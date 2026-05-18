@@ -4,6 +4,7 @@ import type { ApiJsonValue } from "../api/api-types";
 import { AppSettingService } from "../app/app-setting-service";
 import { FileFormatService } from "./file-format-service";
 import { Item } from "../../base/item";
+import { normalize_setting_snapshot } from "../../base/setting";
 import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/platform/native-fs";
 
@@ -105,16 +106,14 @@ export class FilePreviewService {
    * 每次按当前配置创建格式服务，避免设置页改动后预演仍使用旧语言
    */
   private create_format_service(): FileFormatService {
-    const config = this.app_setting_service.read_setting();
+    const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
     return new FileFormatService(
       {
-        source_language: String(config["source_language"] ?? "JA"),
-        target_language: String(config["target_language"] ?? "ZH"),
-        app_language: String(config["app_language"] ?? "ZH"),
-        deduplication_in_bilingual: Boolean(config["deduplication_in_bilingual"] ?? true),
-        write_translated_name_fields_to_file: Boolean(
-          config["write_translated_name_fields_to_file"] ?? true,
-        ),
+        source_language: config.source_language,
+        target_language: config.target_language,
+        app_language: config.app_language,
+        deduplication_in_bilingual: config.deduplication_in_bilingual,
+        write_translated_name_fields_to_file: config.write_translated_name_fields_to_file,
       },
       this.native_fs,
     );

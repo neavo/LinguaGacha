@@ -1,4 +1,5 @@
 import { QualityRuleSnapshotTool } from "../quality/snapshot";
+import { normalize_setting_snapshot } from "../../base/setting";
 
 // 文本处理层只接受可序列化 JSON 值，避免 worker 与主线程共享可变对象实例
 export type TextJsonValue =
@@ -67,7 +68,7 @@ export type TextTaskItemRecord = TextJsonRecord & {
  */
 export class TextQualitySnapshotTool {
   /**
-   * 从 API JSON 恢复成不可变值对象；缺失字段按“规则关闭”处理
+   * 从 API JSON 恢复成不可变值对象；缺失字段按质量规则领域默认值处理
    */
   public static from_api_value(value: TextJsonValue | undefined): TextQualitySnapshot {
     const snapshot = QualityRuleSnapshotTool.from_json(value);
@@ -93,36 +94,18 @@ export class TextQualitySnapshotTool {
  */
 export class TextProcessingConfigTool {
   /**
-   * 从完整 config 快照抽取文本处理配置，缺失时使用内置默认值
+   * 从完整 config 快照抽取文本处理配置，缺失时使用设置领域默认值
    */
   public static from_api_value(value: TextJsonValue | undefined): TextProcessingConfig {
-    const record =
-      typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
+    const snapshot = normalize_setting_snapshot(value);
     return {
-      source_language: this.read_string(record["source_language"], "JA"),
-      target_language: this.read_string(record["target_language"], "ZH"),
-      clean_ruby: this.read_boolean(record["clean_ruby"], false),
-      check_kana_residue: this.read_boolean(record["check_kana_residue"], true),
-      check_hangeul_residue: this.read_boolean(record["check_hangeul_residue"], true),
-      check_similarity: this.read_boolean(record["check_similarity"], true),
-      auto_process_prefix_suffix_preserved_text: this.read_boolean(
-        record["auto_process_prefix_suffix_preserved_text"],
-        true,
-      ),
+      source_language: snapshot.source_language,
+      target_language: snapshot.target_language,
+      clean_ruby: snapshot.clean_ruby,
+      check_kana_residue: snapshot.check_kana_residue,
+      check_hangeul_residue: snapshot.check_hangeul_residue,
+      check_similarity: snapshot.check_similarity,
+      auto_process_prefix_suffix_preserved_text: snapshot.auto_process_prefix_suffix_preserved_text,
     };
-  }
-
-  /**
-   * 布尔字段不做字符串猜测，避免 `"false"` 被误当启用
-   */
-  private static read_boolean(value: TextJsonValue | undefined, fallback: boolean): boolean {
-    return typeof value === "boolean" ? value : fallback;
-  }
-
-  /**
-   * 语言码字段保持大写字符串，未知值交给具体过滤器兜底
-   */
-  private static read_string(value: TextJsonValue | undefined, fallback: string): string {
-    return typeof value === "string" && value.trim() !== "" ? value.trim().toUpperCase() : fallback;
   }
 }

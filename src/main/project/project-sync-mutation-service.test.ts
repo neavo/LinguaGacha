@@ -830,7 +830,7 @@ describe("ProjectSyncMutationService", () => {
       }),
     ).toEqual({
       source_language: "JA",
-      mtool_optimizer_enable: false,
+      mtool_optimizer_enable: true,
       skip_duplicate_source_text_enable: true,
     });
     database.close();

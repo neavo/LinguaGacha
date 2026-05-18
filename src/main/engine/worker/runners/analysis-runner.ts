@@ -13,6 +13,7 @@ import type { LLMClientPort } from "../../../llm/llm-types";
 import type { AnalysisWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 import type { WorkerExecutionResult } from "../../protocol/worker-result";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
+import { normalize_setting_snapshot } from "../../../../base/setting";
 
 interface AnalysisWorkUnitRequest {
   run_id: string; // run_id 用于隔离一次任务运行，worker 不用它访问项目状态
@@ -163,7 +164,9 @@ export class AnalysisWorkUnitRunner {
     const cleaner_result = ResponseCleaner.extract_rule_analysis_from_response(
       llm_result.response_result,
     );
-    const normalized_think = ResponseCleaner.normalize_blank_lines(llm_result.response_think).trim();
+    const normalized_think = ResponseCleaner.normalize_blank_lines(
+      llm_result.response_think,
+    ).trim();
     const decoded = await new ResponseDecoder().decode(cleaner_result.cleaned_response_result);
     const normalized_entries = new AnalysisPostPipeline(
       prepared.fake_name_injector,
@@ -295,11 +298,7 @@ export class AnalysisWorkUnitRunner {
   }
 
   private read_app_language(config_snapshot: ApiJsonValue): unknown {
-    const config =
-      typeof config_snapshot === "object" && config_snapshot !== null && !Array.isArray(config_snapshot)
-        ? (config_snapshot as Record<string, ApiJsonValue>)
-        : {};
-    return config["app_language"];
+    return normalize_setting_snapshot(config_snapshot).app_language;
   }
 
   private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
@@ -342,16 +341,11 @@ export class AnalysisWorkUnitRunner {
     source_language?: string;
     target_language?: string;
   } {
-    const record =
-      typeof raw_config === "object" && raw_config !== null && !Array.isArray(raw_config)
-        ? raw_config
-        : {};
+    const config = normalize_setting_snapshot(raw_config);
     return {
-      app_language: typeof record["app_language"] === "string" ? record["app_language"] : "ZH",
-      source_language:
-        typeof record["source_language"] === "string" ? record["source_language"] : "JA",
-      target_language:
-        typeof record["target_language"] === "string" ? record["target_language"] : "ZH",
+      app_language: config.app_language,
+      source_language: config.source_language,
+      target_language: config.target_language,
     };
   }
 

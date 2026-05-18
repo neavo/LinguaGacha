@@ -155,6 +155,17 @@ describe("LLMClientPolicy", () => {
     expect(LLMClientPolicy.collect_api_keys("   ")).toEqual(["no_key_required"]);
     expect(LLMClientPolicy.get_primary_api_key(" key-1 \nkey-2")).toBe("key-1");
   });
+
+  it("请求超时缺字段时使用 settings 领域默认值", () => {
+    const policy = new LLMClientPolicy(TEST_USER_AGENT);
+
+    const resolved = policy.resolve({
+      ...create_body({}),
+      config_snapshot: {},
+    });
+
+    expect(resolved.timeout_ms).toBe(120_000);
+  });
 });
 
 /**

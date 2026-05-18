@@ -3,6 +3,7 @@ import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import { FileFormatService } from "../file/file-format-service";
 import { Item } from "../../base/item";
+import { normalize_setting_snapshot } from "../../base/setting";
 import { is_task_skipped_item_status } from "../../shared/task";
 import { TaskRuntimeState } from "../engine/runtime/task-runtime-state";
 import { ProjectSessionState } from "./project-session-state";
@@ -60,9 +61,10 @@ export class ProjectResetPreviewService {
     project_path: string,
     rel_paths: string[],
   ): Promise<Array<{ rel_path: string; items: JsonRecord[] }>> {
+    const default_settings = normalize_setting_snapshot({});
     const format_service = new FileFormatService({
-      source_language: "JA",
-      target_language: "ZH",
+      source_language: default_settings.source_language,
+      target_language: default_settings.target_language,
     });
     const parsed_files: Array<{ rel_path: string; items: JsonRecord[] }> = [];
     for (const rel_path of rel_paths) {
@@ -193,11 +195,7 @@ export class ProjectResetPreviewService {
     return items.map((item) => {
       const identity_key = this.build_item_identity_key(item);
       const item_id = identity_key === null ? undefined : item_id_by_identity.get(identity_key);
-      if (
-        identity_key === null ||
-        item_id === undefined ||
-        used_identity_keys.has(identity_key)
-      ) {
+      if (identity_key === null || item_id === undefined || used_identity_keys.has(identity_key)) {
         this.throw_translation_reset_identity_error("preview_item_identity_mismatch");
       }
       used_identity_keys.add(identity_key);

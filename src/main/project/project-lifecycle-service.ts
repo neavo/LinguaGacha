@@ -19,6 +19,11 @@ import {
   type ProjectItemPublicRecord,
 } from "../../base/item";
 import {
+  normalize_project_settings_snapshot,
+  normalize_setting_snapshot,
+  type ProjectSettingsSnapshot,
+} from "../../base/setting";
+import {
   compute_project_prefilter_mutation,
   create_empty_translation_task_snapshot,
   type ProjectPrefilterMutationOutput,
@@ -55,12 +60,7 @@ interface CreateCommitParsedDraft {
   items: Record<string, ProjectItemPublicRecord>; // items 是后端生成的完整公开 DTO 镜像
 }
 
-interface ProjectMutationSettings {
-  source_language: string; // 源语言决定语言预过滤口径
-  target_language: string; // 目标语言只作为项目设置镜像写入 meta
-  mtool_optimizer_enable: boolean; // MTool 开关决定 KVJSON 内部过滤策略
-  skip_duplicate_source_text_enable: boolean; // 重复原文开关决定同文件重复项状态
-}
+type ProjectMutationSettings = ProjectSettingsSnapshot; // 项目生命周期只消费设置领域定义的项目镜像窄字段
 
 interface QualityDefaultPresetSpec {
   config_key: string; // config_key 对应用户设置里的默认预设虚拟 ID
@@ -280,21 +280,7 @@ export class ProjectLifecycleService {
    */
   private read_create_project_settings(value: ApiJsonValue | undefined): ProjectMutationSettings {
     const current = this.build_current_project_settings();
-    const project_settings = this.normalize_object(value);
-    return {
-      source_language:
-        this.string_value(project_settings["source_language"]) || current.source_language,
-      target_language:
-        this.string_value(project_settings["target_language"]) || current.target_language,
-      mtool_optimizer_enable: this.boolean_value_with_default(
-        project_settings["mtool_optimizer_enable"],
-        current.mtool_optimizer_enable,
-      ),
-      skip_duplicate_source_text_enable: this.boolean_value_with_default(
-        project_settings["skip_duplicate_source_text_enable"],
-        current.skip_duplicate_source_text_enable,
-      ),
-    };
+    return normalize_project_settings_snapshot(value, current);
   }
 
   /**
@@ -367,16 +353,14 @@ export class ProjectLifecycleService {
    * 新建工程解析使用请求设置镜像，避免文件格式处理读取到过期应用语言
    */
   private create_format_service(project_settings: ProjectMutationSettings): FileFormatService {
-    const config = this.app_setting_service.read_setting();
+    const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
     return new FileFormatService(
       {
-        source_language: project_settings.source_language || "JA",
-        target_language: project_settings.target_language || "ZH",
-        app_language: String(config["app_language"] ?? "ZH"),
-        deduplication_in_bilingual: Boolean(config["deduplication_in_bilingual"] ?? true),
-        write_translated_name_fields_to_file: Boolean(
-          config["write_translated_name_fields_to_file"] ?? true,
-        ),
+        source_language: project_settings.source_language,
+        target_language: project_settings.target_language,
+        app_language: config.app_language,
+        deduplication_in_bilingual: config.deduplication_in_bilingual,
+        write_translated_name_fields_to_file: config.write_translated_name_fields_to_file,
       },
       this.native_fs,
     );
@@ -803,19 +787,7 @@ export class ProjectLifecycleService {
     mtool_optimizer_enable: boolean;
     skip_duplicate_source_text_enable: boolean;
   } {
-    const config = this.app_setting_service.read_setting();
-    return {
-      source_language: this.string_value(config["source_language"]) || "JA",
-      target_language: this.string_value(config["target_language"]) || "ZH",
-      mtool_optimizer_enable: this.boolean_value_with_default(
-        config["mtool_optimizer_enable"],
-        true,
-      ),
-      skip_duplicate_source_text_enable: this.boolean_value_with_default(
-        config["skip_duplicate_source_text_enable"],
-        true,
-      ),
-    };
+    return normalize_project_settings_snapshot(this.app_setting_service.read_setting());
   }
 
   /**
@@ -830,19 +802,10 @@ export class ProjectLifecycleService {
     mtool_optimizer_enable: boolean;
     skip_duplicate_source_text_enable: boolean;
   } {
-    return {
-      source_language: this.string_value(meta["source_language"]),
-      target_language: this.string_value(meta["target_language"]),
-      mtool_optimizer_enable: this.boolean_value_with_default(
-        meta["mtool_optimizer_enable"] ?? prefilter_config["mtool_optimizer_enable"],
-        false,
-      ),
-      skip_duplicate_source_text_enable: this.boolean_value_with_default(
-        meta["skip_duplicate_source_text_enable"] ??
-          prefilter_config["skip_duplicate_source_text_enable"],
-        true,
-      ),
-    };
+    return normalize_project_settings_snapshot(
+      meta,
+      normalize_project_settings_snapshot(prefilter_config),
+    );
   }
 
   /**
@@ -1056,16 +1019,6 @@ export class ProjectLifecycleService {
   ): number {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? number_value : fallback;
-  }
-
-  /**
-   * 从未知值读取带默认值的布尔，缺失时保持项目默认语义
-   */
-  private boolean_value_with_default(
-    value: ApiJsonValue | DatabaseJsonValue | undefined,
-    fallback: boolean,
-  ): boolean {
-    return value === undefined || value === null ? fallback : Boolean(value);
   }
 
   /**

@@ -6,6 +6,7 @@ import type { ProjectStoreQualityState, ProjectStoreState } from "@/project/stor
 import {
   DesktopRuntimeProvider,
   normalize_project_mutation_result,
+  normalize_settings_snapshot,
 } from "@/app/desktop/desktop-runtime-context";
 import { DESKTOP_RUNTIME_REFRESH_INTERVAL_MS } from "@/app/desktop/desktop-runtime-refresh-scheduler";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
@@ -386,6 +387,17 @@ describe("normalize_project_mutation_result", () => {
     expect(error.diagnostic_context).toMatchObject({
       reason: "invalid_project_mutation_change_payload",
       index: 0,
+    });
+  });
+});
+
+describe("设置快照归一", () => {
+  it("缺字段 settings payload 使用 base 设置领域默认值", () => {
+    expect(normalize_settings_snapshot({ settings: {} })).toMatchObject({
+      output_folder_open_on_finish: false,
+      request_timeout: 120,
+      mtool_optimizer_enable: true,
+      skip_duplicate_source_text_enable: true,
     });
   });
 });

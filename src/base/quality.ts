@@ -3,7 +3,7 @@ import { UnknownQualityRuleTypeError, UnsupportedQualityRuleMetaError } from "..
 
 export const TEXT_PRESERVE_MODES = ["off", "smart", "custom"] as const; // 文本保护模式是公开 meta、页面状态和规则执行共同使用的稳定值域
 
-// QualityRule kind 是公开 quality section 的 key，不能暴露数据库旧物理命名
+// 质量规则类型是公开质量切片的 key，不能暴露数据库旧物理命名
 export const QUALITY_RULE_KINDS = [
   "glossary",
   "text_preserve",
@@ -37,8 +37,9 @@ type QualityRuleModel = {
     | "text_preserve_default_preset"
     | "pre_translation_replacement_default_preset"
     | "post_translation_replacement_default_preset"; // 默认预设 setting key
-  store_key: QualityRuleKind; // renderer quality section 的公开 key
+  store_key: QualityRuleKind; // 渲染进程质量切片的公开 key
   preset_extension: ".json"; // 质量规则预设扩展名
+  default_enabled: boolean; // 缺失启用 meta 时使用的领域默认值
   default_mode: TextPreserveMode; // 默认文本保护模式
 };
 
@@ -52,6 +53,7 @@ const QUALITY_RULE_MODEL = {
     default_preset_setting_key: "glossary_default_preset",
     store_key: "glossary",
     preset_extension: ".json",
+    default_enabled: true,
     default_mode: "off",
   },
   text_preserve: {
@@ -63,7 +65,8 @@ const QUALITY_RULE_MODEL = {
     default_preset_setting_key: "text_preserve_default_preset",
     store_key: "text_preserve",
     preset_extension: ".json",
-    default_mode: "off",
+    default_enabled: false,
+    default_mode: "smart",
   },
   pre_replacement: {
     database_type: "pre_translation_replacement",
@@ -74,6 +77,7 @@ const QUALITY_RULE_MODEL = {
     default_preset_setting_key: "pre_translation_replacement_default_preset",
     store_key: "pre_replacement",
     preset_extension: ".json",
+    default_enabled: false,
     default_mode: "off",
   },
   post_replacement: {
@@ -85,6 +89,7 @@ const QUALITY_RULE_MODEL = {
     default_preset_setting_key: "post_translation_replacement_default_preset",
     store_key: "post_replacement",
     preset_extension: ".json",
+    default_enabled: false,
     default_mode: "off",
   },
 } as const satisfies Record<QualityRuleKind, QualityRuleModel>;
@@ -174,7 +179,7 @@ export class QualityRule {
   }
 
   /**
-   * store_key 是 renderer quality section 的公开 key
+   * 公开存储键名是渲染进程质量切片的稳定字段名
    */
   public get store_key(): QualityRuleKind {
     return QUALITY_RULE_MODEL[this.kind].store_key;
@@ -188,7 +193,14 @@ export class QualityRule {
   }
 
   /**
-   * 默认 mode 只用于质量规则空态和旧项目缺失值兜底
+   * 缺少 enabled meta 时由规则槽位决定默认启用态
+   */
+  public get default_enabled(): boolean {
+    return QUALITY_RULE_MODEL[this.kind].default_enabled;
+  }
+
+  /**
+   * 默认 mode 只用于质量规则空态和跨层输入缺字段归一
    */
   public get default_mode(): TextPreserveMode {
     return QUALITY_RULE_MODEL[this.kind].default_mode;
@@ -251,10 +263,27 @@ export class QualityRule {
               : [];
           })
         : [],
-      enabled: Boolean(record["enabled"]),
-      mode: normalize_text_preserve_mode(record["mode"]),
+      enabled: this.normalize_enabled(record["enabled"]),
+      mode: this.normalize_mode(record["mode"]),
       revision: Number(record["revision"] ?? 0),
     };
+  }
+
+  /**
+   * 质量规则启用态缺字段时按槽位默认值归一，避免各运行时自行猜布尔值
+   */
+  public normalize_enabled(value: unknown): boolean {
+    return normalize_boolean_meta_value(value, this.default_enabled);
+  }
+
+  /**
+   * 文本保护模式缺字段时按槽位默认值归一，其它规则固定为 off
+   */
+  public normalize_mode(value: unknown): TextPreserveMode {
+    if (this.mode_meta_key === null) {
+      return "off";
+    }
+    return normalize_text_preserve_mode(value, this.default_mode);
   }
 
   /**
@@ -278,7 +307,7 @@ export class QualityRule {
    */
   public normalize_meta_value(key: string, value: unknown): boolean | TextPreserveMode | unknown {
     if (key === "enabled") {
-      return Boolean(value);
+      return normalize_boolean_meta_value(value, false);
     }
     if (key === "mode" && this.mode_meta_key !== null) {
       return normalize_text_preserve_mode(value);
@@ -293,12 +322,15 @@ export function is_text_preserve_mode(value: unknown): value is TextPreserveMode
 }
 
 // 旧配置可能保存大写模式名，归一化后再决定是否启用保护
-export function normalize_text_preserve_mode(value: unknown): TextPreserveMode {
+export function normalize_text_preserve_mode(
+  value: unknown,
+  fallback: TextPreserveMode = "off",
+): TextPreserveMode {
   const normalized_value = read_record(value)["value"] ?? value;
   const normalized = String(normalized_value ?? "")
     .trim()
     .toLowerCase();
-  return is_text_preserve_mode(normalized) ? normalized : "off";
+  return is_text_preserve_mode(normalized) ? normalized : fallback;
 }
 
 export function is_quality_rule_kind(value: unknown): value is QualityRuleKind {
@@ -309,4 +341,23 @@ function read_record(value: unknown): JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as JsonRecord)
     : {};
+}
+
+function normalize_boolean_meta_value(value: unknown, fallback: boolean): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value !== 0;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true" || normalized === "1") {
+      return true;
+    }
+    if (normalized === "false" || normalized === "0") {
+      return false;
+    }
+  }
+  return fallback;
 }

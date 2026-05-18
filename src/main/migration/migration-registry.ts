@@ -7,6 +7,7 @@ import { project_item_public_contract_migration } from "./migrations/project-ite
 import { project_rule_storage_migration } from "./migrations/project-rule-storage-migration";
 import { project_schema_migration } from "./migrations/project-schema-migration";
 import { prompt_user_preset_layout_migration } from "./migrations/prompt-user-preset-layout-migration";
+import { quality_default_meta_migration } from "./migrations/quality-default-meta-migration";
 import { quality_rule_preset_layout_migration } from "./migrations/quality-rule-preset-layout-migration";
 import { text_preserve_mode_migration } from "./migrations/text-preserve-mode-migration";
 import { trans_item_metadata_migration } from "./migrations/trans-item-metadata-migration";
@@ -26,6 +27,7 @@ export const MIGRATIONS: readonly MigrationDescriptor[] = [
   project_item_public_contract_migration,
   analysis_checkpoint_status_migration,
   text_preserve_mode_migration,
+  quality_default_meta_migration,
   translation_prompt_legacy_slot_migration,
   epub_ruby_block_text_migration,
 ];

@@ -1,4 +1,8 @@
-import { normalize_text_preserve_mode, type TextPreserveMode } from "../../base/quality";
+import {
+  QualityRule,
+  normalize_text_preserve_mode,
+  type TextPreserveMode,
+} from "../../base/quality";
 import type { JsonRecord } from "../utils/json-tool";
 
 export type QualityRuleSnapshot = {
@@ -72,7 +76,7 @@ export class QualityRuleSnapshotTool {
   }
 
   /**
-   * 从嵌套 quality/prompts payload 恢复任务用快照；缺失字段按旧 Py 侧默认值兜底
+   * 从嵌套 quality/prompts payload 恢复任务用快照；缺失字段按质量规则领域默认值归一
    */
   public static from_json(data: unknown): QualityRuleSnapshot {
     const root = read_record(data);
@@ -85,14 +89,18 @@ export class QualityRuleSnapshotTool {
     const translation = read_record(prompts["translation"]);
     const analysis = read_record(prompts["analysis"]);
     const glossary_entries = this.normalize_entries(glossary["entries"]);
+    const glossary_rule = QualityRule.from_json("glossary");
+    const text_preserve_rule = QualityRule.from_json("text_preserve");
+    const pre_replacement_rule = QualityRule.from_json("pre_replacement");
+    const post_replacement_rule = QualityRule.from_json("post_replacement");
 
     return {
-      glossary_enable: Boolean(glossary["enabled"] ?? true),
-      text_preserve_mode: this.normalize_text_preserve_mode(text_preserve["mode"] ?? "off"),
+      glossary_enable: glossary_rule.normalize_enabled(glossary["enabled"]),
+      text_preserve_mode: text_preserve_rule.normalize_mode(text_preserve["mode"]),
       text_preserve_entries: this.copy_non_empty_entries(text_preserve["entries"]),
-      pre_replacement_enable: Boolean(pre_replacement["enabled"] ?? false),
+      pre_replacement_enable: pre_replacement_rule.normalize_enabled(pre_replacement["enabled"]),
       pre_replacement_entries: this.copy_non_empty_entries(pre_replacement["entries"]),
-      post_replacement_enable: Boolean(post_replacement["enabled"] ?? false),
+      post_replacement_enable: post_replacement_rule.normalize_enabled(post_replacement["enabled"]),
       post_replacement_entries: this.copy_non_empty_entries(post_replacement["entries"]),
       glossary_revision: this.normalize_revision(glossary["revision"] ?? 0),
       text_preserve_revision: this.normalize_revision(text_preserve["revision"] ?? 0),

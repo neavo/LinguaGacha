@@ -10,6 +10,7 @@ import {
   type FileFormatServiceConfig,
 } from "../file-format-shared";
 import { Item } from "../../../../base/item";
+import { normalize_setting_snapshot } from "../../../../base/setting";
 import { build_items_for_writeback, get_item_target_line } from "./compat";
 import { RenpyExtractor } from "./extractor";
 import { parse_document } from "./parser";
@@ -18,10 +19,12 @@ import { RenpyWriter } from "./writer";
 /**
  * 直接构造 RenPyFormat 的测试默认开启姓名写回，FileFormatService 会注入真实配置。
  */
+const DEFAULT_SETTING_SNAPSHOT = normalize_setting_snapshot({});
 const DEFAULT_CONFIG: FileFormatServiceConfig = {
-  source_language: "JA",
-  target_language: "ZH",
-  write_translated_name_fields_to_file: true,
+  source_language: DEFAULT_SETTING_SNAPSHOT.source_language,
+  target_language: DEFAULT_SETTING_SNAPSHOT.target_language,
+  write_translated_name_fields_to_file:
+    DEFAULT_SETTING_SNAPSHOT.write_translated_name_fields_to_file,
 };
 
 /**

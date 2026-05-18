@@ -17,6 +17,7 @@ import type {
   TsConversionRulePresetPayload,
 } from "@/pages/ts-conversion-page/types";
 import { ITEM_TEXT_TYPES } from "@base/item";
+import { normalize_text_preserve_mode } from "@base/quality";
 
 type TsConversionConfirmState = {
   open: boolean;
@@ -160,7 +161,7 @@ export function useTsConversionPageState() {
 
     try {
       const text_preserve_slice = project_store.getState().quality.text_preserve;
-      const text_preserve_mode = String(text_preserve_slice.mode ?? "off");
+      const text_preserve_mode = normalize_text_preserve_mode(text_preserve_slice.mode, "smart");
       const normalized_text_preserve_mode = text_preserve_mode.toLowerCase();
       const custom_rules = build_ts_conversion_custom_rules(text_preserve_slice.entries);
       // 非 custom 模式才读取内置预设；custom 模式完全使用项目中的页面规则

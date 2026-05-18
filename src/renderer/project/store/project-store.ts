@@ -1,5 +1,5 @@
 import { Prompt } from "@base/prompt";
-import { QualityRule } from "@base/quality";
+import { QualityRule, type QualityRuleKind } from "@base/quality";
 import { normalize_project_item_public_record, type ProjectItemPublicRecord } from "@base/item";
 import {
   PROJECT_DATA_SECTIONS,
@@ -374,11 +374,13 @@ function buildProjectStoreChangeApplyResult(args: {
   };
 }
 
+// 质量规则切片必须按真实 rule_type 归一，避免术语表默认值泄漏到替换规则
 function normalizeQualityRuleSlice(
+  rule_type: QualityRuleKind,
   value: ProjectStoreQualityRuleSlice | Record<string, unknown> | undefined,
 ): ProjectStoreQualityRuleSlice {
-  return QualityRule.from_json("glossary").normalize_slice(
-    value ?? createEmptyQualityRuleSlice(),
+  return QualityRule.from_json(rule_type).normalize_slice(
+    value ?? {},
   ) as ProjectStoreQualityRuleSlice;
 }
 
@@ -389,15 +391,19 @@ function normalizeQualityState(
 
   return {
     glossary: normalizeQualityRuleSlice(
+      "glossary",
       candidate?.glossary as ProjectStoreQualityRuleSlice | undefined,
     ),
     pre_replacement: normalizeQualityRuleSlice(
+      "pre_replacement",
       candidate?.pre_replacement as ProjectStoreQualityRuleSlice | undefined,
     ),
     post_replacement: normalizeQualityRuleSlice(
+      "post_replacement",
       candidate?.post_replacement as ProjectStoreQualityRuleSlice | undefined,
     ),
     text_preserve: normalizeQualityRuleSlice(
+      "text_preserve",
       candidate?.text_preserve as ProjectStoreQualityRuleSlice | undefined,
     ),
   };
