@@ -82,12 +82,15 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260518 v0.100.2
+  - Adjust and Improve #575 #577 #578 #581 #582
+
 - 20260517 v0.100.1
   - Feature - New translation language `Chinese (Traditional)`
   - Adjust and Improve #423 #524 #560 #569 #571 #572 #574
 
 ## Development Guide 🛠️
-- First install [`Node.js 24`](https://nodejs.org/), then initialize with `npm install`
+- Install [`Node.js 24`](https://nodejs.org/) and run `npm install`
 - Update dependencies `npm update`
 - Run the application `npm run dev`
 - Before submitting a PR, run the corresponding checks in [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) based on the scope of your changes
