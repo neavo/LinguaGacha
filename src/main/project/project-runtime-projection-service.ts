@@ -235,7 +235,7 @@ export class ProjectRuntimeProjectionService {
   }
 
   /**
-   * 提示词块只暴露 translation / analysis 两类任务提示词，和质量规则 entries 分离
+   * 提示词块按公开顶层字段输出，任务快照和 ProjectStore 共用同一 DTO
    */
   public build_prompts_block(
     project_path: string,
@@ -245,9 +245,8 @@ export class ProjectRuntimeProjectionService {
       Prompt.all().map((prompt) => [
         prompt.kind,
         {
-          task_type: prompt.kind,
           revision: get_runtime_section_revision(meta, "prompts"),
-          meta: { enabled: Boolean(meta[prompt.enabled_meta_key] ?? false) },
+          enabled: Boolean(meta[prompt.enabled_meta_key] ?? false),
           text: this.get_rule_text(project_path, prompt.database_type),
         },
       ]),
@@ -261,7 +260,7 @@ export class ProjectRuntimeProjectionService {
     return Object.fromEntries(
       Prompt.all().map((prompt) => [
         prompt.kind,
-        { task_type: prompt.kind, revision: 0, meta: { enabled: false }, text: "" },
+        { revision: 0, enabled: false, text: "" },
       ]),
     ) as ProjectRuntimeProjectionMutableRecord;
   }

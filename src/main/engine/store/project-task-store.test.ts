@@ -237,6 +237,52 @@ describe("ProjectTaskStore", () => {
     ]);
   });
 
+  it("构建任务质量快照时保留工程自定义提示词启用态", () => {
+    const { database, project_path, store } = create_store();
+    database.execute({
+      name: "setRuleText",
+      args: {
+        projectPath: project_path,
+        ruleType: "translation_prompt",
+        text: "自定义翻译提示词",
+      },
+    });
+    database.execute({
+      name: "setRuleText",
+      args: {
+        projectPath: project_path,
+        ruleType: "analysis_prompt",
+        text: "自定义分析提示词",
+      },
+    });
+    database.execute({
+      name: "upsertMetaEntries",
+      args: {
+        projectPath: project_path,
+        meta: {
+          translation_prompt_enable: true,
+          analysis_prompt_enable: true,
+          "quality_prompt_revision.translation": 2,
+          "quality_prompt_revision.analysis": 2,
+        },
+      },
+    });
+
+    const snapshot = store.build_quality_snapshot() as MutableJsonRecord;
+    const prompts = snapshot["prompts"] as MutableJsonRecord;
+
+    expect(prompts["translation"]).toEqual({
+      text: "自定义翻译提示词",
+      enabled: true,
+      revision: 2,
+    });
+    expect(prompts["analysis"]).toEqual({
+      text: "自定义分析提示词",
+      enabled: true,
+      revision: 2,
+    });
+  });
+
   function create_store(): {
     database: ProjectDatabase;
     project_path: string;

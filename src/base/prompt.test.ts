@@ -21,4 +21,29 @@ describe("prompt 基础模型", () => {
     }
     expect(code).toBe("prompt.unknown_prompt_type");
   });
+
+  it("归一提示词切片时只消费顶层启用态", () => {
+    expect(
+      Prompt.translation().normalize_slice({
+        text: "自定义提示词",
+        enabled: true,
+        revision: 2,
+      }),
+    ).toEqual({
+      text: "自定义提示词",
+      enabled: true,
+      revision: 2,
+    });
+    expect(
+      Prompt.translation().normalize_slice({
+        text: "旧形状提示词",
+        meta: { enabled: true },
+        revision: 1,
+      }),
+    ).toEqual({
+      text: "旧形状提示词",
+      enabled: false,
+      revision: 1,
+    });
+  });
 });
