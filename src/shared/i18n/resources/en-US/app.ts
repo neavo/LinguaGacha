@@ -14,7 +14,6 @@ export const en_us_app = {
     confirm: "Confirm",
     close: "Close",
     reset: "Reset",
-    retry: "Retry",
     skip: "Skip",
     overwrite: "Overwrite",
     loading: "Loading",
@@ -288,7 +287,6 @@ export const en_us_app = {
       "Task time {TIME} seconds, {LINES} lines of text, input tokens {PT}, output tokens {CT}",
     generate_translation_done: "Translation files saved to {PATH} …",
     generate_translation_start: "Generating translation files …",
-    generate_translation_success: "Translation files generated …",
     response_checker_fail_data: "Data Structure Error",
     response_checker_fail_degradation: "Degradation Occurred",
     response_checker_fail_line_count: "Line Count Mismatch",
@@ -301,13 +299,10 @@ export const en_us_app = {
     translation_response_check_fail: "Data error, will automatically retry, Reason: {REASON}",
     translation_response_check_fail_all:
       "All translated text quality check failed, will automatically split and retry, Reason: {REASON}",
-    translation_response_check_fail_force: "Translation check failed",
     translation_response_check_fail_part:
       "Partial translated text quality check failed, will automatically split and retry, Reason: {REASON}",
-    translation_task_force_accept_info: " | Forced Accept: {REASON}",
     translation_task_result: "Translation Result:",
     translation_task_status_info:
       "Split: {SPLIT} | Retry: {RETRY} | Task Length Threshold: {THRESHOLD}",
-    translation_unknown_reason: "Unknown Reason",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_app>;

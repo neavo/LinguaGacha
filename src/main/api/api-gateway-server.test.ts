@@ -480,9 +480,9 @@ describe("ApiGatewayServer", () => {
     expect(body.data?.accepted).toBe(true);
     expect(body.data?.task).toMatchObject({
       task_type: "translation",
-      status: "requested",
-      busy: true,
     });
+    expect(["requested", "running", "done"]).toContain(body.data?.task?.status);
+    expect(body.data?.task?.busy).toBe(body.data?.task?.status !== "done");
   });
 
   it("生成译文路由使用 generate-translation 且旧路由不保留兼容入口", async () => {

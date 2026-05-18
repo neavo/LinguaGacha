@@ -73,7 +73,7 @@ flowchart LR
 - `/api/project/analysis/import-glossary` 只接收用户确认后的术语表快照和 `consumed_candidate_srcs`；后端在同一事务消费对应分析候选聚合并重新派生 `analysis_candidate_count`，且只在术语表条目真实变化时推进 `quality` revision，候选池消费始终推进 `analysis` revision。
 - `CoreEventHub` 是公开运行期事件总线，只广播领域层已经写好的公开事件，不再把 SSE topic 反向投影为内部状态。
 - `TaskRuntimePublisher` 是任务运行态公开事件唯一出口；它先写 `TaskRuntimeState`，再构建完整 `TaskSnapshot` 并发布 `task.snapshot_changed`。
-- `/api/tasks/stop` 命中当前 run 时由 Engine 写入并发布 `stopping`；HTTP ack 只返回 `TaskRuntimeState` 当前完整 snapshot，不强制旧停止意图覆盖已发布终态。
+- `/api/tasks/start`、`/stop` 的 HTTP ack 只返回命令处理后的当前完整 `TaskSnapshot`；任务已推进到终态时不得用旧启动或停止意图覆盖 `TaskRuntimeState` 真实状态。
 - 任务生命周期状态必须立即发布完整 snapshot；worker 结果经 `TaskPipeline` 的 500ms 提交窗口写入项目事实，提交完成后立即发布进度 snapshot。任务启动时也必须先把本轮初始进度写入 `.lg` meta，再发布首个进度 snapshot。仅 `request_in_flight_count` 这类请求压力展示允许在后端按 500ms 窗口合并，终态 snapshot 发布前必须先冲刷 pending 请求压力。
 - `ProjectRuntimeProjectionService` 是 manifest、read-sections、按 id 补读、项目变更事件和任务输入快照共享的无状态项目数据投影归宿；项目读取响应必须携带后端会话确认的 `projectPath`，公开 block 只从 `.lg` 与 meta 生成，不持有长期缓存。
 - 事件 topic、payload mode、section 集合或 mutation result 语义变化，都必须同步 `src/renderer/app/desktop/desktop-runtime-context.tsx` 与相关测试。

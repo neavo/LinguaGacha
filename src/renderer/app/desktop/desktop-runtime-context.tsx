@@ -39,6 +39,7 @@ import {
   type RecentProjectSetting,
   type SettingSnapshot,
 } from "@base/setting";
+import type { TaskType } from "@shared/task";
 import {
   PROJECT_CHANGE_EVENT_TOPIC,
   PROJECT_DATA_SECTIONS,
@@ -108,7 +109,7 @@ type DesktopRuntimeContextValue = {
   apply_project_mutation_result: (result: ProjectMutationResult) => Promise<void>;
   update_app_language: (language: AppLanguage) => Promise<SettingsSnapshot>;
   refresh_settings: () => Promise<SettingsSnapshot>;
-  refresh_task: () => Promise<TaskSnapshot>;
+  refresh_task: (task_type?: TaskType) => Promise<TaskSnapshot>;
 };
 
 export type SettingsSnapshotPayload = {
@@ -123,6 +124,10 @@ type ProjectSnapshotPayload = {
 
 type TaskSnapshotPayload = {
   task?: Partial<TaskSnapshot>;
+};
+
+type TaskSnapshotRequest = {
+  task_type?: TaskType; // 显式 task_type 用于任务页刷新，避免空闲态按后端默认类型误判
 };
 
 type SettingsChangedEventPayload = {
@@ -835,12 +840,17 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     }
   }, []);
 
-  const refresh_task = useCallback(async (): Promise<TaskSnapshot> => {
-    const payload = await api_fetch<TaskSnapshotPayload>("/api/tasks/snapshot", {});
-    const next_snapshot = normalize_task_snapshot(payload);
-    sync_task_snapshot(next_snapshot);
-    return next_snapshot;
-  }, [sync_task_snapshot]);
+  // 任务页主动刷新时要绑定任务类型；全局 hydration 才允许交给后端推断当前快照类型
+  const refresh_task = useCallback(
+    async (task_type?: TaskType): Promise<TaskSnapshot> => {
+      const request: TaskSnapshotRequest = task_type === undefined ? {} : { task_type };
+      const payload = await api_fetch<TaskSnapshotPayload>("/api/tasks/snapshot", request);
+      const next_snapshot = normalize_task_snapshot(payload);
+      sync_task_snapshot(next_snapshot);
+      return next_snapshot;
+    },
+    [sync_task_snapshot],
+  );
 
   const update_app_language = useCallback(
     async (language: AppLanguage): Promise<SettingsSnapshot> => {

@@ -61,6 +61,7 @@ type RuntimeHandle = {
   };
   refresh_project_snapshot: () => Promise<{ path: string; loaded: boolean }>;
   refresh_project_runtime: () => Promise<void>;
+  refresh_task: (task_type?: "translation" | "analysis") => Promise<unknown>;
   apply_project_mutation_result: (result: {
     accepted: true;
     changes: Array<Record<string, unknown>>;
@@ -508,6 +509,73 @@ describe("DesktopRuntimeProvider", () => {
       proofreadingItemIds: [],
       fileKeys: ["chapter01.txt"],
       itemKeys: ["1"],
+    });
+  });
+
+  it("显式刷新任务快照时会把任务类型传给 Core", async () => {
+    let runtime_handle: RuntimeHandleRef = null;
+    const event_stream = create_event_source_stub();
+
+    api_fetch_mock.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
+      if (path === "/api/settings/app") {
+        return { settings: { app_language: "ZH" } };
+      }
+
+      if (path === "/api/project/snapshot") {
+        return {
+          project: {
+            path: "E:/demo/demo.lg",
+            loaded: true,
+          },
+        };
+      }
+
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: {
+            task_type: body?.["task_type"] ?? "translation",
+            status: "idle",
+            busy: false,
+          },
+        };
+      }
+
+      const project_read_response = create_project_read_response(path);
+      if (project_read_response !== null) {
+        return project_read_response;
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        <DesktopRuntimeProvider>
+          <RuntimeHandleProbe
+            onRuntime={(runtime) => {
+              runtime_handle = runtime;
+            }}
+          />
+        </DesktopRuntimeProvider>,
+      );
+    });
+
+    await wait_for_condition(() => runtime_handle !== null);
+
+    await act(async () => {
+      if (runtime_handle === null) {
+        throw new Error("运行时句柄未准备好。");
+      }
+      await runtime_handle.refresh_task("analysis");
+    });
+
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/tasks/snapshot", {
+      task_type: "analysis",
     });
   });
 

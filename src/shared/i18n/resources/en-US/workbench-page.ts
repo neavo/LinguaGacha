@@ -52,7 +52,6 @@ export const en_us_workbench_page = {
     generate_translation: "Generate Translation",
     close_project: "Close",
     reset: "Reset Translation",
-    delete: "Delete",
     translation_task: "Translation",
     start_translation: "Start Translation",
     reset_translation_all: "Reset All Data",

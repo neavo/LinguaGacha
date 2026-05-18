@@ -511,6 +511,7 @@ describe("useAnalysisTaskRuntime", () => {
         analysis: 4,
       },
     });
+    expect(runtime_fixture.current.refresh_task).toHaveBeenCalledWith("analysis");
     expect(latest_state?.analysis_import_confirm_state.open).toBe(false);
   });
 
@@ -590,6 +591,7 @@ describe("useAnalysisTaskRuntime", () => {
 
     await render_probe();
     await flush_microtasks();
+    initial_fixture.sync_task_snapshot.mockClear();
 
     await act(async () => {
       latest_state?.request_analysis_task_action_confirmation("stop-analysis");
@@ -599,6 +601,8 @@ describe("useAnalysisTaskRuntime", () => {
     await act(async () => {
       await latest_state?.confirm_analysis_task_action();
     });
+    await flush_microtasks();
+    await render_probe();
     await flush_microtasks();
 
     expect(initial_fixture.sync_task_snapshot).toHaveBeenCalledWith(
@@ -614,6 +618,60 @@ describe("useAnalysisTaskRuntime", () => {
         busy: true,
       }),
     );
+    expect(latest_state?.analysis_task_metrics).toMatchObject({
+      active: false,
+      stopping: false,
+    });
+  });
+
+  it("启动回包旧于当前终态时不会绕过运行态 store 改回进行中", async () => {
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        runtime_revision: 3,
+        status: "done",
+        busy: false,
+        total_line: 0,
+      }),
+    );
+    const initial_fixture = runtime_fixture.current;
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: runtime_fixture.current.task_snapshot,
+        };
+      }
+      if (path === "/api/tasks/start") {
+        return {
+          task: create_task_snapshot({
+            runtime_revision: 2,
+            status: "requested",
+            busy: true,
+            total_line: 0,
+          }),
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    await render_probe();
+    await flush_microtasks();
+    initial_fixture.sync_task_snapshot.mockClear();
+
+    await act(async () => {
+      await latest_state?.request_start_or_continue_analysis();
+    });
+    await flush_microtasks();
+
+    expect(initial_fixture.sync_task_snapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runtime_revision: 2,
+        task_type: "analysis",
+        status: "requested",
+        busy: true,
+      }),
+    );
+    expect(latest_state?.analysis_task_display_snapshot).toBeNull();
     expect(latest_state?.analysis_task_metrics).toMatchObject({
       active: false,
       stopping: false,
@@ -844,6 +902,7 @@ describe("useAnalysisTaskRuntime", () => {
       }),
     );
     expect(runtime_fixture.current.refresh_task).toHaveBeenCalledTimes(1);
+    expect(runtime_fixture.current.refresh_task).toHaveBeenCalledWith("analysis");
     expect(runtime_fixture.current.refresh_project_runtime).not.toHaveBeenCalled();
   });
 

@@ -8,7 +8,6 @@ import {
   type JsonRecord,
   type MutableJsonRecord,
   type TaskRuntimeStatePayload,
-  type TaskRunStatus,
   type TaskType,
 } from "./task-runtime-types";
 import type { TaskProgress, TaskSnapshot } from "../protocol/task-snapshot";
@@ -61,29 +60,6 @@ export class TaskSnapshotBuilder {
       ? requested_task_type
       : this.resolve_task_type(engine_state, meta);
     return this.build_task_snapshot_from_state(task_type, engine_state, meta);
-  }
-
-  /**
-   * 启动命令回执要立即覆盖用户操作意图，不能等下一帧 SSE 才改变按钮态
-   */
-  public async build_command_ack(
-    task_type: TaskType,
-    status: TaskRunStatus,
-    busy: boolean,
-    overrides: JsonRecord = {},
-  ): Promise<MutableJsonRecord> {
-    const snapshot = this.build_task_snapshot_from_state(
-      task_type,
-      this.task_runtime_state.snapshot(),
-      this.get_loaded_project_meta(),
-    );
-    return {
-      ...snapshot,
-      ...overrides,
-      busy,
-      status,
-      task_type,
-    };
   }
 
   /**

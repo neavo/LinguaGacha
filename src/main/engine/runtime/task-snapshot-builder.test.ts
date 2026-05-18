@@ -61,33 +61,6 @@ describe("TaskSnapshotBuilder", () => {
     });
   });
 
-  it("命令回执直接读取 运行态并覆盖公开意图", async () => {
-    const task_runtime_state = new TaskRuntimeState();
-    task_runtime_state.begin_task("translation", { kind: "items", item_ids: [1, 2] });
-    const builder = new TaskSnapshotBuilder(
-      {} as unknown as ProjectDatabase,
-      task_runtime_state,
-      new ProjectSessionState(),
-    );
-
-    const result = await builder.build_command_ack("translation", "requested", true);
-
-    expect(result).toMatchObject({
-      task_type: "translation",
-      status: "requested",
-      busy: true,
-      request_in_flight_count: 0,
-      progress: {
-        line: 0,
-        total_line: 0,
-      },
-      extras: {
-        kind: "translation",
-        scope: { kind: "items", item_ids: [1, 2] },
-      },
-    });
-  });
-
   function create_project_database(): { database: ProjectDatabase; project_path: string } {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-task-test-"));
     const project_path = path.join(directory, "task.lg");
