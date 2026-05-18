@@ -48,14 +48,97 @@ let runtime_state = {
     post_replacement: { entries: [], enabled: false, mode: "off", revision: 0 },
     text_preserve: { entries: [], enabled: false, mode: "off", revision: 0 },
   },
+  revisions: {
+    projectRevision: 4,
+    sections: {
+      quality: 4,
+    },
+  },
 };
 
 const project_store_listeners = new Set<() => void>();
 
-function notify_project_store(): void {
-  for (const listener of project_store_listeners) {
-    listener();
+function apply_quality_mutation_result(result: {
+  changes?: Array<{
+    sectionRevisions?: {
+      quality?: number;
+    };
+    operations?: Array<{
+      sections?: {
+        quality?: {
+          data?: typeof runtime_state.quality;
+        };
+      };
+    }>;
+  }>;
+}): void {
+  for (const change of result.changes ?? []) {
+    for (const operation of change.operations ?? []) {
+      const next_quality = operation.sections?.quality?.data;
+      if (next_quality !== undefined) {
+        runtime_state = {
+          ...runtime_state,
+          quality: next_quality,
+          revisions: {
+            projectRevision:
+              change.sectionRevisions?.quality ?? runtime_state.revisions.projectRevision,
+            sections: {
+              ...runtime_state.revisions.sections,
+              quality: change.sectionRevisions?.quality ?? runtime_state.revisions.sections.quality,
+            },
+          },
+        };
+        for (const listener of project_store_listeners) {
+          listener();
+        }
+      }
+    }
   }
+}
+
+// 测试夹具只模拟后端原始 canonical mutation payload，规范化入口仍由页面 hook 真实调用。
+function create_quality_mutation_result(
+  args: {
+    quality?: typeof runtime_state.quality;
+    project_revision?: number;
+    quality_revision?: number;
+  } = {},
+) {
+  const project_revision = args.project_revision ?? 2;
+  return {
+    accepted: true,
+    changes: [
+      {
+        source: "quality_rule_save_entries",
+        projectRevision: project_revision,
+        updatedSections: ["quality"],
+        sectionRevisions: {
+          quality: args.quality_revision ?? project_revision,
+        },
+        sections: {
+          quality: {
+            payloadMode: "canonical-delta",
+            data: args.quality ?? runtime_state.quality,
+          },
+        },
+      },
+    ],
+  };
+}
+
+// 姓名导入只改变 glossary 切片，测试显式写出后端回灌后的完整质量事实。
+function create_glossary_quality(
+  entries: typeof runtime_state.quality.glossary.entries,
+  revision: number,
+): typeof runtime_state.quality {
+  return {
+    ...runtime_state.quality,
+    glossary: {
+      ...runtime_state.quality.glossary,
+      entries,
+      revision,
+    },
+  };
 }
 
 const project_store = {
@@ -79,40 +162,10 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
     useDesktopRuntime: () => ({
       project_snapshot: runtime_state.project,
       project_store,
-      commit_local_project_change: (input: {
-        operations: Array<{
-          sections?: {
-            quality?: {
-              data?: typeof runtime_state.quality;
-            };
-          };
-        }>;
-      }) => {
-        const previous_quality = runtime_state.quality;
-        const quality_patch = input.operations.find(
-          (operation) => operation.sections?.quality?.data !== undefined,
-        );
-        const next_quality = quality_patch?.sections?.quality?.data;
-        if (next_quality !== undefined) {
-          runtime_state = {
-            ...runtime_state,
-            quality: next_quality,
-          };
-          notify_project_store();
-        }
-
-        return {
-          rollback: () => {
-            runtime_state = {
-              ...runtime_state,
-              quality: previous_quality,
-            };
-            notify_project_store();
-          },
-        };
-      },
-      refresh_project_runtime: vi.fn(),
-      align_project_runtime_ack: vi.fn(),
+      apply_project_mutation_result: vi.fn(async (result) => {
+        apply_quality_mutation_result(result);
+      }),
+      refresh_project_runtime: vi.fn(async () => {}),
       task_snapshot: {
         busy: false,
         status: "idle",
@@ -211,13 +264,30 @@ describe("useNameFieldExtractionPageState", () => {
 
   it("导入姓名术语遇到重复时先确认，跳过只保存非重复姓名", async () => {
     await mount_probe();
-    api_fetch_mock.mockResolvedValueOnce({
-      accepted: true,
-      projectRevision: 2,
-      sectionRevisions: {
-        quality: 5,
-      },
-    });
+    api_fetch_mock.mockResolvedValueOnce(
+      create_quality_mutation_result({
+        quality: create_glossary_quality(
+          [
+            {
+              entry_id: "Alice::0",
+              src: "Alice",
+              dst: "爱丽丝",
+              info: "",
+              case_sensitive: false,
+            },
+            {
+              entry_id: "Bob::1",
+              src: "Bob",
+              dst: "",
+              info: "",
+              case_sensitive: false,
+            },
+          ],
+          5,
+        ),
+        quality_revision: 5,
+      }),
+    );
 
     await act(async () => {
       await latest_state?.extract_rows();
@@ -236,7 +306,7 @@ describe("useNameFieldExtractionPageState", () => {
 
     expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
       rule_type: "glossary",
-      expected_revision: 4,
+      expected_section_revisions: { quality: 4 },
       entries: [
         {
           entry_id: "Alice::0",

@@ -2,12 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import type { ProjectStorePromptSlice } from "@/project/store/project-store";
-import { createProjectStoreReplaceSectionChange } from "@/project/store/project-store";
-import { getPromptSlice, replacePromptSlice } from "@/project/quality/quality-runtime";
+import { getPromptSlice } from "@/project/quality/quality-runtime";
 import {
-  normalize_project_mutation_ack,
-  normalize_settings_snapshot,
-  type ProjectMutationAckPayload,
+  normalize_project_mutation_result,
+  type ProjectMutationResultPayload,
   type SettingsSnapshotPayload,
 } from "@/app/desktop/desktop-runtime-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
@@ -157,10 +155,9 @@ export function useCustomPromptPageState(
     project_snapshot,
     project_store,
     settings_snapshot,
-    set_settings_snapshot,
-    commit_local_project_change,
+    apply_settings_snapshot,
     refresh_project_runtime,
-    align_project_runtime_ack,
+    apply_project_mutation_result,
     task_snapshot,
   } = useDesktopRuntime();
   const project_store_state = useSyncExternalStore(
@@ -228,47 +225,33 @@ export function useCustomPromptPageState(
         return false;
       }
 
-      const current_prompt_slice = getPromptSlice(
-        project_store.getState().prompts,
-        config.task_type,
-      );
+      const current_state = project_store.getState();
       const next_prompt_slice = {
         text: normalize_prompt_text(args.nextText),
         enabled: args.nextEnabled,
-        revision: current_prompt_slice.revision + 1,
       };
-      const next_prompts_state = replacePromptSlice(
-        project_store.getState().prompts,
-        config.task_type,
-        next_prompt_slice,
-      );
-      const local_commit = commit_local_project_change({
-        source: "quality_prompt_save",
-        updatedSections: ["prompts"],
-        operations: [createProjectStoreReplaceSectionChange("prompts", next_prompts_state)],
-      });
 
       try {
-        const mutation_ack = normalize_project_mutation_ack(
-          await api_fetch<ProjectMutationAckPayload>("/api/quality/prompts/save", {
+        const mutation_result = normalize_project_mutation_result(
+          await api_fetch<ProjectMutationResultPayload>("/api/quality/prompts/save", {
             task_type: config.task_type,
-            expected_revision: current_prompt_slice.revision,
+            expected_section_revisions: {
+              prompts: current_state.revisions.sections.prompts ?? 0,
+            },
             text: next_prompt_slice.text,
             enabled: next_prompt_slice.enabled,
           }),
         );
-        align_project_runtime_ack(mutation_ack);
+        await apply_project_mutation_result(mutation_result);
         return true;
       } catch (error) {
-        local_commit.rollback();
         void refresh_project_runtime().catch(() => {});
         push_toast("error", resolve_visible_error_message(error, t, args.failureMessage));
         return false;
       }
     },
     [
-      align_project_runtime_ack,
-      commit_local_project_change,
+      apply_project_mutation_result,
       config.task_type,
       project_store,
       push_toast,
@@ -640,7 +623,7 @@ export function useCustomPromptPageState(
             "/api/settings/update",
             build_default_preset_update_payload(config, String(payload.item?.virtual_id ?? "")),
           );
-          set_settings_snapshot(normalize_settings_snapshot(settings_payload));
+          apply_settings_snapshot(settings_payload);
         }
         await refresh_preset_menu();
         push_toast("success", t("custom_prompt_page.feedback.preset_renamed"));
@@ -653,7 +636,7 @@ export function useCustomPromptPageState(
         return false;
       }
     },
-    [config, preset_items, push_toast, readonly, refresh_preset_menu, set_settings_snapshot, t],
+    [apply_settings_snapshot, config, preset_items, push_toast, readonly, refresh_preset_menu, t],
   );
 
   const set_default_preset = useCallback(
@@ -667,7 +650,7 @@ export function useCustomPromptPageState(
           "/api/settings/update",
           build_default_preset_update_payload(config, virtual_id),
         );
-        set_settings_snapshot(normalize_settings_snapshot(payload));
+        apply_settings_snapshot(payload);
         await refresh_preset_menu();
         push_toast("success", t("custom_prompt_page.feedback.default_preset_set"));
       } catch (error) {
@@ -677,7 +660,7 @@ export function useCustomPromptPageState(
         );
       }
     },
-    [config, push_toast, readonly, refresh_preset_menu, set_settings_snapshot, t],
+    [apply_settings_snapshot, config, push_toast, readonly, refresh_preset_menu, t],
   );
 
   const cancel_default_preset = useCallback(async (): Promise<void> => {
@@ -690,7 +673,7 @@ export function useCustomPromptPageState(
         "/api/settings/update",
         build_default_preset_update_payload(config, ""),
       );
-      set_settings_snapshot(normalize_settings_snapshot(payload));
+      apply_settings_snapshot(payload);
       await refresh_preset_menu();
       push_toast("success", t("custom_prompt_page.feedback.default_preset_cleared"));
     } catch (error) {
@@ -699,7 +682,7 @@ export function useCustomPromptPageState(
         resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.preset_failed")),
       );
     }
-  }, [config, push_toast, readonly, refresh_preset_menu, set_settings_snapshot, t]);
+  }, [apply_settings_snapshot, config, push_toast, readonly, refresh_preset_menu, t]);
 
   const close_confirm_dialog = useCallback((): void => {
     set_confirm_state(create_empty_confirm_state());
@@ -820,7 +803,7 @@ export function useCustomPromptPageState(
               "/api/settings/update",
               build_default_preset_update_payload(config, ""),
             );
-            set_settings_snapshot(normalize_settings_snapshot(settings_payload));
+            apply_settings_snapshot(settings_payload);
           }
           await refresh_preset_menu();
           push_toast("success", t("custom_prompt_page.feedback.preset_deleted"));
@@ -858,7 +841,7 @@ export function useCustomPromptPageState(
     readonly,
     refresh_preset_menu,
     save_preset,
-    set_settings_snapshot,
+    apply_settings_snapshot,
     t,
     template.default_text,
   ]);

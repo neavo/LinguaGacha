@@ -6,7 +6,6 @@ import {
   isProjectDataSection,
   type ProjectChangeFilesPayload,
   type ProjectChangeItemsPayload,
-  type ProjectChangeJsonRecord,
   type ProjectChangePayloadMode,
   type ProjectDataSection,
   type ProjectDataSectionRevisions,
@@ -83,17 +82,19 @@ type ProjectStoreChangeSectionPayload = {
 /**
  * 单个操作表达一次 section 替换、items/files delta 或失效标记
  */
-export type ProjectStoreChangeOperation = {
+type ProjectStoreChangeOperation = {
   items?: ProjectChangeItemsPayload;
   files?: ProjectChangeFilesPayload;
   sections?: Partial<Record<ProjectDataSection, ProjectStoreChangeSectionPayload>>;
 };
 
 /**
- * ProjectStore 只消费统一 change event，本地乐观和后端事件共用同一合并路径
+ * ProjectStore 只应用运行态规范化后的后端项目变更或读取结果
  */
 export type ProjectStoreChangeEvent = {
+  eventId?: string;
   source: string;
+  projectPath: string; // 后端确认的项目身份，Provider 用它阻断旧工程事件和迟到补读
   projectRevision: number;
   updatedSections: ProjectStoreStage[];
   operations: ProjectStoreChangeOperation[];
@@ -145,10 +146,19 @@ export function readProjectDataSectionRevisions(
   };
 }
 
-type ProjectStoreApi = {
+/**
+ * 页面只读视图只能观察 ProjectStore，不能绕过运行时调度器写共享项目事实
+ */
+export type ProjectStoreReader = {
   getState: () => ProjectStoreState;
   getRevisionCheckpoint: () => ProjectDataRevisionCheckpoint;
   subscribe: (listener: ProjectStoreListener) => () => void;
+};
+
+/**
+ * Provider 内部写入口负责消费后端 canonical 变更和补读结果
+ */
+export type ProjectStoreWriter = ProjectStoreReader & {
   reset: () => void;
   applyProjectChange: (
     event: ProjectStoreChangeEvent,
@@ -158,10 +168,7 @@ type ProjectStoreApi = {
     events: readonly ProjectStoreChangeEvent[],
     options?: ProjectStoreChangeOptions,
   ) => ProjectStoreChangeApplyResult[];
-  alignRevisions: (input: {
-    projectRevision?: number;
-    sectionRevisions?: ProjectStoreSectionRevisions;
-  }) => void;
+  replaceProjectData: (event: ProjectStoreChangeEvent) => ProjectStoreChangeApplyResult;
 };
 
 function createEmptyQualityRuleSlice(): ProjectStoreQualityRuleSlice {
@@ -242,18 +249,6 @@ function mergeChangeRevisions(args: {
     );
   }
 
-  for (const section of args.updatedSections) {
-    if (!isProjectDataSection(section)) {
-      continue;
-    }
-
-    if (args.sectionRevisions?.[section] !== undefined) {
-      continue;
-    }
-
-    next_section_revisions[section] = (next_section_revisions[section] ?? 0) + 1;
-  }
-
   return {
     projectRevision: Math.max(args.currentRevisions.projectRevision, args.projectRevision),
     sections: next_section_revisions,
@@ -276,8 +271,9 @@ function resolveExactChangeRevisions(args: {
     }
 
     const explicit_revision = args.sectionRevisions?.[section];
-    next_section_revisions[section] =
-      explicit_revision ?? (next_section_revisions[section] ?? 0) + 1;
+    if (explicit_revision !== undefined) {
+      next_section_revisions[section] = explicit_revision;
+    }
   }
 
   return {
@@ -481,171 +477,6 @@ function cloneProjectStoreSection<TStage extends ProjectStoreStage>(
   ) as ProjectStoreSectionStateMap[TStage];
 }
 
-export function snapshotProjectStoreSections(
-  state: ProjectStoreState,
-  sections: ProjectStoreStage[],
-): Partial<ProjectStoreSectionStateMap> {
-  const snapshots: Partial<ProjectStoreSectionStateMap> = {};
-
-  for (const section of sections) {
-    (snapshots as Record<ProjectStoreStage, ProjectStoreSectionStateMap[ProjectStoreStage]>)[
-      section
-    ] = cloneProjectStoreSection(section, state[section]);
-  }
-
-  return snapshots;
-}
-
-export function createProjectStoreReplaceSectionChange<TStage extends ProjectStoreStage>(
-  section: TStage,
-  value: ProjectStoreSectionStateMap[TStage],
-): ProjectStoreChangeOperation {
-  if (section === "files") {
-    return {
-      sections: {
-        files: {
-          payloadMode: "canonical-delta",
-          data: cloneProjectStoreSection("files", value as ProjectStoreState["files"]),
-        },
-      },
-    };
-  }
-
-  if (section === "items") {
-    return {
-      sections: {
-        items: {
-          payloadMode: "canonical-delta",
-          data: cloneProjectStoreSection("items", value as ProjectStoreState["items"]),
-        },
-      },
-    };
-  }
-
-  if (section === "project") {
-    return {
-      sections: {
-        project: {
-          payloadMode: "canonical-delta",
-          data: cloneProjectStoreSection("project", value as ProjectStoreProjectState),
-        },
-      },
-    };
-  }
-
-  if (section === "quality") {
-    return {
-      sections: {
-        quality: {
-          payloadMode: "canonical-delta",
-          data: cloneProjectStoreSection("quality", value as ProjectStoreQualityState),
-        },
-      },
-    };
-  }
-
-  if (section === "prompts") {
-    return {
-      sections: {
-        prompts: {
-          payloadMode: "canonical-delta",
-          data: cloneProjectStoreSection("prompts", value as ProjectStorePromptsState),
-        },
-      },
-    };
-  }
-
-  if (section === "analysis") {
-    return {
-      sections: {
-        analysis: {
-          payloadMode: "canonical-delta",
-          data: cloneProjectStoreSection("analysis", value as Record<string, unknown>),
-        },
-      },
-    };
-  }
-
-  return {
-    sections: {
-      proofreading: {
-        payloadMode: "canonical-delta",
-        data: cloneProjectStoreSection("proofreading", value as ProjectStoreProofreadingState),
-      },
-    },
-  };
-}
-
-// 本地 change 的单条 upsert 也必须是完整公开 DTO，ProjectStore 不做字段级 merge
-function normalize_project_store_item_delta_record(
-  item: Record<string, unknown>,
-): { key: string; id: number; record: ProjectChangeJsonRecord } | null {
-  const normalized_item = normalize_project_item_public_record(item);
-  if (normalized_item === null) {
-    throw new InternalInvariantError({
-      diagnostic_context: { section: "items", reason: "delta_upsert_requires_full_item_dto" },
-    });
-  }
-
-  return {
-    key: String(normalized_item.item_id),
-    id: normalized_item.item_id,
-    record: { ...normalized_item } as unknown as ProjectChangeJsonRecord,
-  };
-}
-
-export function createProjectStoreItemsDeltaChange(args: {
-  upsertItems?: Array<Record<string, unknown>>;
-  deleteIds?: Array<number | string>;
-}): ProjectStoreChangeOperation {
-  const upsert: Record<string, ProjectChangeJsonRecord> = {};
-  const changed_ids: number[] = [];
-
-  for (const item of args.upsertItems ?? []) {
-    const normalized_item = normalize_project_store_item_delta_record(item);
-    if (normalized_item === null) {
-      continue;
-    }
-
-    upsert[normalized_item.key] = normalized_item.record;
-    changed_ids.push(normalized_item.id);
-  }
-
-  const delete_ids = [...new Set((args.deleteIds ?? []).map((item_id) => Number(item_id)))].filter(
-    (item_id) => Number.isInteger(item_id) && item_id > 0,
-  );
-
-  return {
-    items: {
-      payloadMode: "canonical-delta",
-      ...(Object.keys(upsert).length > 0 ? { upsert, changedIds: [...new Set(changed_ids)] } : {}),
-      ...(delete_ids.length > 0 ? { deleteIds: delete_ids } : {}),
-    },
-  };
-}
-
-export function createProjectStoreFilesDeltaChange(args: {
-  upsertFiles?: Record<string, Record<string, unknown>>;
-  deletePaths?: string[];
-}): ProjectStoreChangeOperation {
-  const upsert = Object.fromEntries(
-    Object.entries(args.upsertFiles ?? {}).map(([key, file]) => {
-      return [key, { ...file } as ProjectChangeJsonRecord] as const;
-    }),
-  );
-  const delete_paths = [
-    ...new Set((args.deletePaths ?? []).map((file_path) => file_path.trim()).filter(Boolean)),
-  ];
-
-  return {
-    files: {
-      payloadMode: "canonical-delta",
-      ...(Object.keys(upsert).length > 0 ? { upsert, changedPaths: Object.keys(upsert) } : {}),
-      ...(delete_paths.length > 0 ? { deletePaths: delete_paths } : {}),
-    },
-  };
-}
-
 function cloneState(state: ProjectStoreState): ProjectStoreState {
   return {
     project: cloneProjectStoreSection("project", state.project),
@@ -813,7 +644,7 @@ function applyProjectChangeToState(args: {
   return next_state;
 }
 
-export function createProjectStore(): ProjectStoreApi {
+export function createProjectStore(): ProjectStoreWriter {
   let state = cloneState(INITIAL_STATE);
   const listeners = new Set<ProjectStoreListener>();
 
@@ -884,28 +715,15 @@ export function createProjectStore(): ProjectStoreApi {
       notifyListeners();
       return results;
     },
-    alignRevisions(input: {
-      projectRevision?: number;
-      sectionRevisions?: ProjectStoreSectionRevisions;
-    }): void {
-      const next_project_revision = Number(input.projectRevision);
-      const next_section_revisions = input.sectionRevisions;
-      if (!Number.isFinite(next_project_revision) && next_section_revisions === undefined) {
-        return;
-      }
-
-      state = {
-        ...state,
-        revisions: mergeChangeRevisions({
-          currentRevisions: state.revisions,
-          projectRevision: Number.isFinite(next_project_revision)
-            ? next_project_revision
-            : state.revisions.projectRevision,
-          updatedSections: Object.keys(next_section_revisions ?? {}).filter(isProjectDataSection),
-          sectionRevisions: next_section_revisions,
-        }),
-      };
+    replaceProjectData(event: ProjectStoreChangeEvent): ProjectStoreChangeApplyResult {
+      // 工程初始化必须从空态一次性替换完整快照，避免页面观察到 manifest 与 section 分离的半成品。
+      state = applyProjectChangeToState({
+        state: cloneState(INITIAL_STATE),
+        event,
+        revisionMode: "exact",
+      });
       notifyListeners();
+      return buildProjectStoreChangeApplyResult({ state, event });
     },
   };
 }

@@ -1,5 +1,6 @@
 import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase } from "../database/database-operations";
+import * as AppErrors from "../../shared/error";
 import {
   normalizeProjectChangePayloadMode,
   normalizeProjectDataSections,
@@ -17,7 +18,12 @@ import type {
 } from "./project-runtime-projection-service";
 import { ProjectSessionState } from "./project-session-state";
 
-type ProjectChangeDraftRecord = Record<string, ApiJsonValue>;
+/**
+ * 项目变更草稿必须绑定实际写入工程，adapter 才能按同一 .lg 回读公开投影
+ */
+export type ProjectChangeDraftRecord = Record<string, ApiJsonValue> & {
+  targetProjectPath: string;
+};
 
 /**
  * 将领域写入结果转换为公开 ProjectChangeEvent，canonical delta 只在当前事务结果上投影
@@ -42,10 +48,19 @@ export class ProjectChangeEventAdapter {
   /**
    * 输出 ProjectChangeEvent；调用方只声明变更 section、payload mode 和可选 ids
    */
-  public adapt_project_change(payload: ProjectChangeDraftRecord): ProjectChangeEvent {
+  public adapt_project_change(payload: ProjectChangeDraftRecord): ProjectChangeEvent | null {
     const state = this.session_state.snapshot();
-    const project_path = state.loaded ? state.projectPath : "";
-    const meta = project_path === "" ? {} : this.projection_service.get_all_meta(project_path);
+    const target_project_path = String(payload.targetProjectPath ?? "").trim();
+    if (target_project_path === "") {
+      throw new AppErrors.InternalInvariantError({
+        diagnostic_context: { reason: "project_change_target_missing" },
+      });
+    }
+    if (!state.loaded || state.projectPath !== target_project_path) {
+      return null;
+    }
+    const project_path = target_project_path;
+    const meta = this.projection_service.get_all_meta(project_path);
     const updated_sections = normalizeProjectDataSections(payload["updatedSections"]);
     const all_section_revisions = this.projection_service.build_section_revisions(meta);
     const section_revisions = this.build_section_revision_payload(meta, updated_sections);
@@ -53,6 +68,7 @@ export class ProjectChangeEventAdapter {
       type: "project.changed",
       eventId: this.build_event_id(),
       source: String(payload["source"] ?? "project_change"),
+      projectPath: project_path,
       projectRevision: Math.max(
         ...Object.values(all_section_revisions),
         this.read_number(payload["projectRevision"], 0),
@@ -86,8 +102,7 @@ export class ProjectChangeEventAdapter {
     const delete_ids = this.normalize_number_list(record["deleteIds"]);
     const upsert =
       payload_mode === "canonical-delta"
-        ? (this.normalize_record_map(record["upsert"]) ??
-          this.build_item_upsert_payload(project_path, changed_ids))
+        ? this.build_item_upsert_payload(project_path, changed_ids)
         : undefined;
     return {
       items: {
@@ -115,8 +130,7 @@ export class ProjectChangeEventAdapter {
     const delete_paths = this.normalize_string_list(record["deletePaths"]);
     const upsert =
       payload_mode === "canonical-delta"
-        ? (this.normalize_record_map(record["upsert"]) ??
-          this.build_file_upsert_payload(project_path, changed_paths))
+        ? this.build_file_upsert_payload(project_path, changed_paths)
         : undefined;
     return {
       files: {
@@ -129,7 +143,7 @@ export class ProjectChangeEventAdapter {
   }
 
   /**
-   * 非行级 section 在 canonical-delta 模式下可由投影层补齐完整 section payload
+   * section canonical-delta 由投影层补齐完整 payload；items/files 只在显式要求完整替换时进入这里
    */
   private build_sections_payload(
     value: ApiJsonValue | undefined,
@@ -142,7 +156,11 @@ export class ProjectChangeEventAdapter {
     const raw_sections = this.normalize_object(value);
     const sections: Partial<Record<ProjectDataSection, ProjectChangeSectionPayload>> = {};
     for (const section of args.updatedSections) {
-      if (section === "items" || section === "files") {
+      const has_explicit_section_payload = Object.prototype.hasOwnProperty.call(
+        raw_sections,
+        section,
+      );
+      if ((section === "items" || section === "files") && !has_explicit_section_payload) {
         continue;
       }
       const raw_payload = this.normalize_object(raw_sections[section]);
@@ -154,7 +172,7 @@ export class ProjectChangeEventAdapter {
         ...(payload_mode !== "canonical-delta"
           ? {}
           : {
-              data: raw_payload["data"] ?? this.build_section_data(args.projectState, section),
+              data: this.build_section_data(args.projectState, section),
             }),
       };
     }
@@ -278,24 +296,6 @@ export class ProjectChangeEventAdapter {
     return [
       ...new Set(value.map((item) => String(item ?? "").trim()).filter((item) => item !== "")),
     ];
-  }
-
-  /**
-   * upsert map 只接受普通对象值，避免数组误入 ProjectStore
-   */
-  private normalize_record_map(
-    value: ApiJsonValue | undefined,
-  ): Record<string, ProjectChangeJsonRecord> | undefined {
-    if (!this.is_record(value)) {
-      return undefined;
-    }
-    const records: Record<string, ProjectChangeJsonRecord> = {};
-    for (const [key, record] of Object.entries(value)) {
-      if (this.is_record(record)) {
-        records[key] = record as ProjectChangeJsonRecord;
-      }
-    }
-    return records;
   }
 
   /**

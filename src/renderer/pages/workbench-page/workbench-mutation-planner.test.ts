@@ -48,305 +48,94 @@ function create_state(items: Record<string, ProjectItemPublicRecord>): ProjectSt
   };
 }
 
-function create_item(args: {
-  item_id: number;
-  src: string;
-  dst: string;
-  status?: ProjectItemPublicRecord["status"];
-  name_dst?: ProjectItemPublicRecord["name_dst"];
-  retry_count?: number;
-}): ProjectItemPublicRecord {
-  return {
-    item_id: args.item_id,
-    file_path: "old.txt",
-    row_number: args.item_id,
-    src: args.src,
-    dst: args.dst,
-    name_src: null,
-    name_dst: args.name_dst ?? null,
-    extra_field: "",
-    tag: "",
-    file_type: "TXT",
-    status: args.status ?? "PROCESSED",
-    text_type: "NONE",
-    retry_count: args.retry_count ?? 0,
-    skip_internal_filter: false,
-  };
-}
-
-function create_parsed_file(
-  parsed_items: Array<Record<string, unknown>>,
-): WorkbenchFileParsePreview {
+function create_parsed_file(): WorkbenchFileParsePreview {
   return {
     source_path: "E:/demo/new.txt",
     target_rel_path: "new.txt",
     file_type: "TXT",
-    parsed_items,
+    parsed_items: [{ src: "hello", dst: "", row: 1 }],
   };
 }
 
-function create_single_file_add_plan(args: {
-  state: ProjectStoreState;
-  parsed_file: WorkbenchFileParsePreview;
-  inheritance_mode: "none" | "inherit";
-}) {
-  return create_workbench_add_files_plan({
-    state: args.state,
-    parsed_files: [args.parsed_file],
-    settings: SETTINGS,
-    inheritance_mode: args.inheritance_mode,
-  });
-}
-
-function get_payload_items(plan: ReturnType<typeof create_workbench_add_files_plan>) {
-  const files = plan.requestBody.files as Array<Record<string, unknown>>;
-  return files[0]?.parsed_items as Array<Record<string, unknown>>;
-}
-
-function get_payload_files(plan: ReturnType<typeof create_workbench_add_files_plan>) {
-  return plan.requestBody.files as Array<Record<string, unknown>>;
-}
-
 const SETTINGS = {
-  source_language: "ALL",
+  source_language: "JA",
   mtool_optimizer_enable: false,
   skip_duplicate_source_text_enable: true,
 };
 
-const JA_SETTINGS = {
-  ...SETTINGS,
-  source_language: "JA",
-};
-
-describe("workbench add-file translation inheritance planner", () => {
-  it("不继承时保留解析结果", () => {
-    const plan = create_single_file_add_plan({
-      state: create_state({
-        "1": {
-          ...create_item({ item_id: 1, src: "hello", dst: "你好" }),
-          name_src: "Alice",
-          extra_field: { keep: true },
-          tag: "dialog",
-        },
-      }),
-      parsed_file: create_parsed_file([{ src: "hello", dst: "", row: 1 }]),
-      inheritance_mode: "none",
-    });
-
-    expect(get_payload_items(plan)[0]?.dst).toBe("");
-    expect(get_payload_items(plan)[0]?.status).toBe("NONE");
-  });
-
-  it("唯一已完成译文会自动继承", () => {
-    const plan = create_single_file_add_plan({
-      state: create_state({
-        "1": create_item({
-          item_id: 1,
-          src: "hello",
-          dst: "你好",
-          name_dst: "名字",
-          retry_count: 2,
-        }),
-      }),
-      parsed_file: create_parsed_file([{ src: "hello", dst: "", row: 1 }]),
-      inheritance_mode: "inherit",
-    });
-
-    expect(get_payload_items(plan)[0]).toMatchObject({
-      dst: "你好",
-      name_dst: "名字",
-      status: "PROCESSED",
-      retry_count: 2,
-    });
-  });
-
-  it("多候选时自动选择出现次数最多且并列取最早出现的译文", () => {
-    const plan = create_single_file_add_plan({
-      state: create_state({
-        "1": create_item({ item_id: 1, src: "hello", dst: "甲" }),
-        "2": create_item({ item_id: 2, src: "hello", dst: "乙" }),
-        "3": create_item({ item_id: 3, src: "hello", dst: "甲" }),
-        "4": create_item({ item_id: 4, src: "tie", dst: "先" }),
-        "5": create_item({ item_id: 5, src: "tie", dst: "后" }),
-      }),
-      parsed_file: create_parsed_file([
-        { src: "hello", dst: "", row: 1 },
-        { src: "tie", dst: "", row: 2 },
-      ]),
-      inheritance_mode: "inherit",
-    });
-
-    expect(get_payload_items(plan)).toEqual([
-      expect.objectContaining({ src: "hello", dst: "甲" }),
-      expect.objectContaining({ src: "tie", dst: "先" }),
-    ]);
-  });
-
-  it("结构性状态不会被继承状态覆盖", () => {
-    const plan = create_single_file_add_plan({
-      state: create_state({
-        "1": {
-          ...create_item({ item_id: 1, src: "hello", dst: "你好" }),
-          name_src: "Alice",
-          extra_field: { keep: true },
-          tag: "dialog",
-        },
-      }),
-      parsed_file: create_parsed_file([{ src: "hello", dst: "", row: 1, status: "EXCLUDED" }]),
-      inheritance_mode: "inherit",
-    });
-
-    expect(get_payload_items(plan)[0]).toMatchObject({
-      dst: "",
-      status: "EXCLUDED",
-    });
-  });
-
-  it("预过滤结果会进入 add-file payload，重复原文只在同文件内去重", () => {
+describe("workbench mutation planner", () => {
+  it("新增文件只提交源路径、目标路径、继承模式和 revision 锁", () => {
     const plan = create_workbench_add_files_plan({
       state: create_state({}),
-      parsed_files: [
-        create_parsed_file([
-          { src: "bgm/theme.ogg", dst: "", row: 1 },
-          { src: "plain english line", dst: "", row: 2 },
-          { src: "こんにちは", dst: "", row: 3 },
-          { src: "こんにちは", dst: "", row: 4 },
-        ]),
-        {
-          source_path: "E:/demo/next.txt",
-          target_rel_path: "next.txt",
-          file_type: "TXT",
-          parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
-        },
-      ],
-      settings: JA_SETTINGS,
-      inheritance_mode: "none",
-    });
-
-    const files = get_payload_files(plan);
-    expect(files[0]?.parsed_items).toEqual([
-      expect.objectContaining({ src: "bgm/theme.ogg", status: "RULE_SKIPPED" }),
-      expect.objectContaining({ src: "plain english line", status: "LANGUAGE_SKIPPED" }),
-      expect.objectContaining({ src: "こんにちは", status: "NONE" }),
-      expect.objectContaining({ src: "こんにちは", status: "DUPLICATED" }),
-    ]);
-    expect(files[1]?.parsed_items).toEqual([
-      expect.objectContaining({ src: "こんにちは", status: "NONE" }),
-    ]);
-  });
-
-  it("预过滤优先于继承，只有仍待处理的新增项继承旧译文", () => {
-    const plan = create_workbench_add_files_plan({
-      state: create_state({
-        "1": create_item({ item_id: 1, src: "bgm/theme.ogg", dst: "旧资源" }),
-        "2": create_item({ item_id: 2, src: "plain english line", dst: "旧英文" }),
-        "3": create_item({ item_id: 3, src: "こんにちは", dst: "你好" }),
-      }),
-      parsed_files: [
-        create_parsed_file([
-          { src: "bgm/theme.ogg", dst: "", row: 1 },
-          { src: "plain english line", dst: "", row: 2 },
-          { src: "こんにちは", dst: "", row: 3 },
-          { src: "こんばんは", dst: "", row: 4 },
-        ]),
-      ],
-      settings: JA_SETTINGS,
-      inheritance_mode: "inherit",
-    });
-
-    expect(get_payload_items(plan)).toEqual([
-      expect.objectContaining({ src: "bgm/theme.ogg", dst: "", status: "RULE_SKIPPED" }),
-      expect.objectContaining({ src: "plain english line", dst: "", status: "LANGUAGE_SKIPPED" }),
-      expect.objectContaining({ src: "こんにちは", dst: "你好", status: "PROCESSED" }),
-      expect.objectContaining({ src: "こんばんは", dst: "", status: "NONE" }),
-    ]);
-  });
-
-  it("批量新增会连续分配文件顺序与条目 ID，并让继承模式作用于整批", () => {
-    const plan = create_workbench_add_files_plan({
-      state: create_state({
-        "7": create_item({ item_id: 7, src: "hello", dst: "你好" }),
-      }),
-      parsed_files: [
-        create_parsed_file([{ src: "hello", dst: "", row: 1 }]),
-        {
-          source_path: "E:/demo/next.txt",
-          target_rel_path: "next.txt",
-          file_type: "TXT",
-          parsed_items: [{ src: "hello", dst: "", row: 1 }],
-        },
-      ],
+      parsed_files: [create_parsed_file()],
       settings: SETTINGS,
       inheritance_mode: "inherit",
     });
 
-    const files = get_payload_files(plan);
-    expect(files).toEqual([
-      expect.objectContaining({
-        target_rel_path: "new.txt",
-        file_record: expect.objectContaining({ sort_index: 1 }),
-        parsed_items: [expect.objectContaining({ id: 8, dst: "你好" })],
-      }),
-      expect.objectContaining({
-        target_rel_path: "next.txt",
-        file_record: expect.objectContaining({ sort_index: 2 }),
-        parsed_items: [expect.objectContaining({ id: 9, dst: "你好" })],
-      }),
-    ]);
-  });
-});
-
-describe("workbench file mutation payload planner", () => {
-  it("重置单文件也使用 rel_paths 数组载荷", () => {
-    const plan = create_workbench_reset_file_plan({
-      state: create_state({
-        "1": {
-          ...create_item({ item_id: 1, src: "hello", dst: "你好" }),
-          name_src: "Alice",
-          extra_field: { keep: true },
-          tag: "dialog",
+    expect(plan.requestBody).toEqual({
+      files: [
+        {
+          source_path: "E:/demo/new.txt",
+          target_rel_path: "new.txt",
         },
-      }),
-      rel_path: "old.txt",
-      settings: SETTINGS,
-    });
-
-    expect(plan.requestBody).toMatchObject({
-      rel_paths: ["old.txt"],
-      translation_extras: expect.any(Object),
-      prefilter_config: expect.any(Object),
-    });
-    expect(plan.requestBody).not.toHaveProperty("rel_path");
-    expect(plan.requestBody).not.toHaveProperty("derived_meta");
-    expect(plan.operations[0]).toMatchObject({
-      items: {
-        upsert: {
-          "1": {
-            name_src: "Alice",
-            extra_field: { keep: true },
-            tag: "dialog",
-            file_type: "TXT",
-          },
-        },
+      ],
+      inheritance_mode: "inherit",
+      project_settings: SETTINGS,
+      expected_section_revisions: {
+        files: 1,
+        items: 2,
+        analysis: 3,
       },
     });
   });
 
-  it("删除文件使用统一 rel_paths 数组载荷", () => {
-    const plan = create_workbench_delete_files_plan({
-      state: create_state({
-        "1": create_item({ item_id: 1, src: "hello", dst: "你好" }),
+  it("新增文件拒绝和现有文件冲突的目标路径", () => {
+    expect(() =>
+      create_workbench_add_files_plan({
+        state: create_state({}),
+        parsed_files: [
+          {
+            ...create_parsed_file(),
+            target_rel_path: "old.txt",
+          },
+        ],
+        settings: SETTINGS,
       }),
+    ).toThrow("workbench_mutation.target_filename_conflict");
+  });
+
+  it("重置单文件只提交 rel_paths、设置快照和受影响 section revision", () => {
+    const plan = create_workbench_reset_file_plan({
+      state: create_state({}),
+      rel_path: "old.txt",
+      settings: SETTINGS,
+    });
+
+    expect(plan.requestBody).toEqual({
+      rel_paths: ["old.txt"],
+      project_settings: SETTINGS,
+      expected_section_revisions: {
+        items: 2,
+        analysis: 3,
+      },
+    });
+  });
+
+  it("删除文件只提交 rel_paths、设置快照和受影响 section revision", () => {
+    const plan = create_workbench_delete_files_plan({
+      state: create_state({}),
       rel_paths: ["old.txt"],
       settings: SETTINGS,
     });
 
-    expect(plan.requestBody).toMatchObject({
+    expect(plan.requestBody).toEqual({
       rel_paths: ["old.txt"],
-      translation_extras: expect.any(Object),
-      prefilter_config: expect.any(Object),
+      project_settings: SETTINGS,
+      expected_section_revisions: {
+        files: 1,
+        items: 2,
+        analysis: 3,
+      },
     });
-    expect(plan.requestBody).not.toHaveProperty("rel_path");
-    expect(plan.requestBody).not.toHaveProperty("derived_meta");
   });
 });

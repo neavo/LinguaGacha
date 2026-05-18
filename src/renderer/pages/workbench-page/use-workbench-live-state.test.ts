@@ -9,8 +9,7 @@ import type { DesktopPathPickResult } from "@native/bridge-types";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
 type RuntimeFixture = {
-  align_project_runtime_ack: ReturnType<typeof vi.fn>;
-  commit_local_project_change: ReturnType<typeof vi.fn>;
+  apply_project_mutation_result: ReturnType<typeof vi.fn>;
   project_snapshot: {
     loaded: boolean;
     path: string;
@@ -28,8 +27,8 @@ type RuntimeFixture = {
   };
   refresh_task: ReturnType<typeof vi.fn>;
   settings_snapshot: Record<string, unknown>;
-  set_project_snapshot: ReturnType<typeof vi.fn>;
-  set_task_snapshot: ReturnType<typeof vi.fn>;
+  refresh_project_snapshot: ReturnType<typeof vi.fn>;
+  sync_task_snapshot: ReturnType<typeof vi.fn>;
   task_snapshot: {
     busy: boolean;
     task_type: string;
@@ -177,12 +176,7 @@ vi.mock("@/app/desktop/desktop-api", () => {
 
 function create_runtime_fixture(): RuntimeFixture {
   return {
-    align_project_runtime_ack: vi.fn(),
-    commit_local_project_change: vi.fn(() => {
-      return {
-        rollback: vi.fn(),
-      };
-    }),
+    apply_project_mutation_result: vi.fn(async () => {}),
     project_snapshot: {
       loaded: true,
       path: "E:/demo/sample.lg",
@@ -201,13 +195,21 @@ function create_runtime_fixture(): RuntimeFixture {
     },
     refresh_task: vi.fn(async () => {}),
     settings_snapshot: {},
-    set_project_snapshot: vi.fn(),
-    set_task_snapshot: vi.fn(),
+    refresh_project_snapshot: vi.fn(),
+    sync_task_snapshot: vi.fn(),
     task_snapshot: {
       busy: false,
       task_type: "",
       status: "idle",
     },
+  };
+}
+
+// workbench hook 测试只验证请求编排；空 changes 仍经过真实 mutation result 契约。
+function create_project_mutation_result() {
+  return {
+    accepted: true,
+    changes: [],
   };
 }
 
@@ -345,6 +347,7 @@ function create_analysis_task_snapshot(
   overrides: Partial<AnalysisTaskSnapshot> = {},
 ): AnalysisTaskSnapshot {
   return {
+    runtime_revision: 0,
     task_type: "analysis",
     status: "running",
     busy: true,
@@ -1026,11 +1029,7 @@ describe("useWorkbenchLiveState", () => {
           },
         ],
       })
-      .mockResolvedValueOnce({
-        accepted: true,
-        projectRevision: 2,
-        sectionRevisions: {},
-      });
+      .mockResolvedValueOnce(create_project_mutation_result());
     runtime_fixture.current = {
       ...runtime_fixture.current,
       project_store: {
@@ -1057,15 +1056,26 @@ describe("useWorkbenchLiveState", () => {
       expect.objectContaining({
         files: [
           expect.objectContaining({
+            source_path: "E:/demo/new.txt",
             target_rel_path: "new.txt",
-            parsed_items: [expect.objectContaining({ dst: "" })],
           }),
         ],
+        inheritance_mode: "none",
+        project_settings: {
+          source_language: "JA",
+          mtool_optimizer_enable: false,
+          skip_duplicate_source_text_enable: true,
+        },
+        expected_section_revisions: {
+          files: 1,
+          items: 2,
+          analysis: 3,
+        },
       }),
     );
   });
 
-  it("选择继承且存在多候选时会直接提交最高频译文", async () => {
+  it("选择继承且存在多候选时只提交继承模式", async () => {
     workbench_picker_fixture.current.pickWorkbenchFilePath.mockResolvedValue({
       canceled: false,
       paths: ["E:/demo/new.txt"],
@@ -1081,11 +1091,7 @@ describe("useWorkbenchLiveState", () => {
           },
         ],
       })
-      .mockResolvedValueOnce({
-        accepted: true,
-        projectRevision: 2,
-        sectionRevisions: {},
-      });
+      .mockResolvedValueOnce(create_project_mutation_result());
     runtime_fixture.current = {
       ...runtime_fixture.current,
       project_store: {
@@ -1119,10 +1125,21 @@ describe("useWorkbenchLiveState", () => {
       expect.objectContaining({
         files: [
           expect.objectContaining({
+            source_path: "E:/demo/new.txt",
             target_rel_path: "new.txt",
-            parsed_items: [expect.objectContaining({ src: "こんにちは", dst: "甲" })],
           }),
         ],
+        inheritance_mode: "inherit",
+        project_settings: {
+          source_language: "JA",
+          mtool_optimizer_enable: false,
+          skip_duplicate_source_text_enable: true,
+        },
+        expected_section_revisions: {
+          files: 1,
+          items: 2,
+          analysis: 3,
+        },
       }),
     );
   });

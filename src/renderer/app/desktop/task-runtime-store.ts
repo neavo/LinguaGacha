@@ -1,4 +1,5 @@
 export type TaskSnapshot = {
+  runtime_revision: number;
   task_type: string;
   status: string;
   busy: boolean;
@@ -24,9 +25,7 @@ export type TranslationTaskExtras = {
   scope: TranslationTaskScope;
 };
 
-export type TranslationTaskScope =
-  | { kind: "all" }
-  | { kind: "items"; item_ids: number[] };
+export type TranslationTaskScope = { kind: "all" } | { kind: "items"; item_ids: number[] };
 
 export type AnalysisTaskExtras = {
   kind: "analysis";
@@ -37,6 +36,7 @@ type TaskRuntimeStoreListener = () => void;
 
 // 默认快照是任务运行态唯一空值形状，初始化回到这一份结构
 const DEFAULT_TASK_SNAPSHOT: TaskSnapshot = {
+  runtime_revision: 0,
   task_type: "translation",
   status: "idle",
   busy: false,
@@ -95,6 +95,7 @@ export function normalize_task_snapshot(payload: { task?: Partial<TaskSnapshot> 
   const raw_extras = normalize_record((snapshot as Record<string, unknown>)["extras"]);
   return {
     task_type: String(snapshot.task_type ?? DEFAULT_TASK_SNAPSHOT.task_type),
+    runtime_revision: Number(snapshot.runtime_revision ?? 0),
     status: String(snapshot.status ?? DEFAULT_TASK_SNAPSHOT.status).toLowerCase(),
     busy: Boolean(snapshot.busy),
     request_in_flight_count: Number(snapshot.request_in_flight_count ?? 0),
@@ -159,9 +160,13 @@ export function createTaskRuntimeStore(): TaskRuntimeStore {
         listeners.delete(listener);
       };
     },
-    // 完整快照来自 HTTP 或 task.snapshot_changed，必须覆盖当前任务运行态
+    // 完整快照来自 HTTP 或 task.snapshot_changed，只接受不旧于当前 revision 的后端事实
     applySnapshot(next_snapshot: TaskSnapshot): void {
-      snapshot = normalize_task_snapshot({ task: next_snapshot });
+      const normalized_snapshot = normalize_task_snapshot({ task: next_snapshot });
+      if (normalized_snapshot.runtime_revision < snapshot.runtime_revision) {
+        return;
+      }
+      snapshot = normalized_snapshot;
       notify();
     },
   };

@@ -1,11 +1,11 @@
-import type { ProjectStoreQualityState, ProjectStoreState } from "@/project/store/project-store";
+import type { ProjectStoreState } from "@/project/store/project-store";
 import { collect_project_item_texts } from "@/project/store/project-item-texts";
 import type {
   QualityStatisticsRelationCandidate,
   QualityStatisticsRuleInput,
 } from "@/project/quality/quality-statistics";
 import { getSharedQualityStatisticsWorkerPool } from "@/project/quality/quality-statistics-worker-pool";
-import { getQualityRuleSlice, replaceQualityRuleSlice } from "@/project/quality/quality-runtime";
+import { getQualityRuleSlice } from "@/project/quality/quality-runtime";
 import {
   QualityRuleImportRuleTypeValue,
   preview_quality_rule_import,
@@ -34,15 +34,10 @@ type PreparedAnalysisGlossaryImport = {
   imported_count: number;
   consumed_count: number;
   quality_changed: boolean;
-  next_quality_state: ProjectStoreQualityState;
-  next_analysis_state: Record<string, unknown>;
-  next_task_snapshot: Record<string, unknown>;
   updated_sections: Array<"quality" | "analysis">;
   request_body: {
     entries: GlossaryEntry[];
-    analysis_candidate_count: number;
     consumed_candidate_srcs: string[];
-    expected_glossary_revision: number;
     expected_section_revisions: Record<string, number>;
   };
 };
@@ -164,38 +159,6 @@ function normalize_glossary_entry(entry: Record<string, unknown>): GlossaryEntry
     regex: Boolean(entry.regex ?? false),
     case_sensitive: Boolean(entry.case_sensitive),
   };
-}
-
-function normalize_record(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? { ...(value as Record<string, unknown>) }
-    : {};
-}
-
-function remove_consumed_candidate_aggregate(
-  value: unknown,
-  consumed_srcs: string[],
-): Record<string, unknown> {
-  const consumed_src_set = new Set(
-    consumed_srcs.map((src) => src.trim()).filter((src) => src !== ""),
-  );
-  if (consumed_src_set.size === 0) {
-    return normalize_record(value);
-  }
-
-  const next_candidate_aggregate: Record<string, unknown> = {};
-  for (const [raw_src, raw_entry] of Object.entries(normalize_record(value))) {
-    const normalized_entry = normalize_candidate_aggregate_entry(raw_src, raw_entry);
-    const raw_src_norm = raw_src.trim();
-    if (
-      (normalized_entry !== null && consumed_src_set.has(normalized_entry.src)) ||
-      consumed_src_set.has(raw_src_norm)
-    ) {
-      continue;
-    }
-    next_candidate_aggregate[raw_src] = raw_entry;
-  }
-  return next_candidate_aggregate;
 }
 
 function create_glossary_import_preview(
@@ -382,19 +345,8 @@ export async function prepare_analysis_glossary_import(
     existing_glossary_entries,
     next_glossary_entries,
   );
-  const next_quality_state = replaceQualityRuleSlice(state.quality, "glossary", {
-    ...getQualityRuleSlice(state.quality, "glossary"),
-    entries: next_glossary_entries,
-    revision: Number(state.quality.glossary.revision ?? 0) + (quality_changed ? 1 : 0),
-  });
   const consumed_count = filtered_entries.length;
   const consumed_candidate_srcs = filtered_entries.map((entry) => entry.src);
-  const next_candidate_count = Math.max(
-    0,
-    Number(state.analysis.candidate_count ?? 0) - consumed_count,
-  );
-  const task_snapshot = options.task_snapshot ?? {};
-  const task_extras = normalize_record(task_snapshot["extras"]);
   const imported_count =
     action === "skip" ? import_preview.non_duplicate_count : filtered_entries.length;
   const updated_sections: Array<"quality" | "analysis"> = quality_changed
@@ -407,29 +359,10 @@ export async function prepare_analysis_glossary_import(
     imported_count,
     consumed_count,
     quality_changed,
-    next_quality_state,
-    next_analysis_state: {
-      ...state.analysis,
-      candidate_count: next_candidate_count,
-      candidate_aggregate: remove_consumed_candidate_aggregate(
-        state.analysis.candidate_aggregate,
-        consumed_candidate_srcs,
-      ),
-    },
-    next_task_snapshot: {
-      ...task_snapshot,
-      extras: {
-        ...task_extras,
-        kind: "analysis",
-        candidate_count: next_candidate_count,
-      },
-    },
     updated_sections,
     request_body: {
       entries: next_glossary_entries,
-      analysis_candidate_count: next_candidate_count,
       consumed_candidate_srcs,
-      expected_glossary_revision: Number(state.quality.glossary.revision ?? 0),
       expected_section_revisions: {
         quality: state.revisions.sections.quality ?? 0,
         analysis: state.revisions.sections.analysis ?? 0,

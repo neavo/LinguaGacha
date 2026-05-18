@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  build_project_mutation_ack_from_meta,
   build_section_revisions_from_meta,
   get_runtime_section_revision,
 } from "./project-section-revision";
@@ -32,7 +31,7 @@ describe("project-section-revision", () => {
     expect(get_runtime_section_revision(meta, "unknown")).toBe(0);
   });
 
-  it("构建完整 section revision 快照和局部 mutation ack", () => {
+  it("构建完整 section revision 快照", () => {
     const meta = {
       "project_runtime_revision.files": 3,
       "project_runtime_revision.items": 9,
@@ -50,14 +49,6 @@ describe("project-section-revision", () => {
       prompts: 8,
       analysis: 4,
       proofreading: 6,
-    });
-    expect(build_project_mutation_ack_from_meta(meta, ["items", "analysis"])).toEqual({
-      accepted: true,
-      projectRevision: 9,
-      sectionRevisions: {
-        items: 9,
-        analysis: 4,
-      },
     });
   });
 });

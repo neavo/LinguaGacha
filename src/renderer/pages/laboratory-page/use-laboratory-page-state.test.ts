@@ -3,8 +3,11 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
-import type { SettingsSnapshot } from "@/app/desktop/desktop-runtime-context";
-import { WorkerClientError } from "@/lib/worker-client-error";
+import type {
+  SettingsSnapshot,
+  SettingsSnapshotPayload,
+} from "@/app/desktop/desktop-runtime-context";
+import { normalize_settings_snapshot } from "@/app/desktop/desktop-runtime-context";
 import { useLaboratoryPageState } from "@/pages/laboratory-page/use-laboratory-page-state";
 
 type RuntimeFixture = {
@@ -18,10 +21,9 @@ type RuntimeFixture = {
   project_store: {
     getState: () => Record<string, unknown>;
   };
-  set_settings_snapshot: ReturnType<typeof vi.fn>;
-  commit_local_project_change: ReturnType<typeof vi.fn>;
+  apply_settings_snapshot: ReturnType<typeof vi.fn>;
+  apply_project_mutation_result: ReturnType<typeof vi.fn>;
   refresh_project_runtime: ReturnType<typeof vi.fn>;
-  align_project_runtime_ack: ReturnType<typeof vi.fn>;
   refresh_settings: ReturnType<typeof vi.fn>;
 };
 
@@ -35,11 +37,6 @@ type ToastFixture = {
   run_modal_progress_toast: ReturnType<typeof vi.fn>;
 };
 
-type ProjectPrefilterClientFixture = {
-  compute: ReturnType<typeof vi.fn>;
-  dispose: ReturnType<typeof vi.fn>;
-};
-
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
 };
@@ -50,10 +47,6 @@ const barrier_fixture: { current: BarrierFixture } = {
 
 const toast_fixture: { current: ToastFixture } = {
   current: create_toast_fixture(),
-};
-
-const project_prefilter_client_fixture: { current: ProjectPrefilterClientFixture } = {
-  current: create_project_prefilter_client_fixture(),
 };
 
 const translate = (key: string): string => key;
@@ -79,12 +72,6 @@ vi.mock("@/app/page-runtime/project-pages-context", () => {
 vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
   return {
     useDesktopToast: () => toast_fixture.current,
-  };
-});
-
-vi.mock("@/project/prefilter/prefilter-worker-client", () => {
-  return {
-    createProjectPrefilterClient: () => project_prefilter_client_fixture.current,
   };
 });
 
@@ -146,22 +133,26 @@ function create_runtime_fixture(): RuntimeFixture {
     },
     project_store: {
       getState: () => {
-        return {};
+        return {
+          revisions: {
+            sections: {
+              items: 0,
+              analysis: 0,
+            },
+          },
+        };
       },
     },
-    set_settings_snapshot: vi.fn((next_settings_snapshot: SettingsSnapshot) => {
+    apply_settings_snapshot: vi.fn((payload: SettingsSnapshotPayload) => {
+      const next_settings_snapshot = normalize_settings_snapshot(payload);
       runtime_fixture.current = {
         ...runtime_fixture.current,
         settings_snapshot: next_settings_snapshot,
       };
+      return next_settings_snapshot;
     }),
-    commit_local_project_change: vi.fn(() => {
-      return {
-        rollback: vi.fn(),
-      };
-    }),
+    apply_project_mutation_result: vi.fn(async () => {}),
     refresh_project_runtime: vi.fn(async () => {}),
-    align_project_runtime_ack: vi.fn(),
     refresh_settings: vi.fn(async () => runtime_fixture.current.settings_snapshot),
   };
 }
@@ -179,15 +170,6 @@ function create_toast_fixture(): ToastFixture {
     run_modal_progress_toast: vi.fn(async ({ task }: { task: () => Promise<unknown> }) => {
       return await task();
     }),
-  };
-}
-
-function create_project_prefilter_client_fixture(): ProjectPrefilterClientFixture {
-  return {
-    compute: vi.fn(async () => {
-      return {};
-    }),
-    dispose: vi.fn(),
   };
 }
 
@@ -218,7 +200,6 @@ describe("useLaboratoryPageState", () => {
     runtime_fixture.current = create_runtime_fixture();
     barrier_fixture.current = create_barrier_fixture();
     toast_fixture.current = create_toast_fixture();
-    project_prefilter_client_fixture.current = create_project_prefilter_client_fixture();
     vi.mocked(api_fetch).mockReset();
   });
 
@@ -248,10 +229,7 @@ describe("useLaboratoryPageState", () => {
     await flush_async_updates();
   }
 
-  it("prefilter worker 失败时会回滚 mtool_optimizer_enable 并只显示通用失败提示", async () => {
-    project_prefilter_client_fixture.current.compute = vi.fn(async () => {
-      throw new WorkerClientError("init_failed");
-    });
+  it("后端预过滤提交失败时会回滚 mtool_optimizer_enable 并只显示通用失败提示", async () => {
     vi.mocked(api_fetch).mockImplementation(async (path, body = {}) => {
       if (path === "/api/settings/update") {
         return create_settings_payload(
@@ -260,6 +238,10 @@ describe("useLaboratoryPageState", () => {
             ...body,
           }),
         ) as never;
+      }
+
+      if (path === "/api/project/settings-alignment/apply") {
+        throw new Error("prefilter_failed");
       }
 
       throw new Error(`unexpected path: ${path}`);
@@ -274,7 +256,6 @@ describe("useLaboratoryPageState", () => {
     });
     await flush_async_updates();
 
-    expect(project_prefilter_client_fixture.current.compute).toHaveBeenCalledTimes(1);
     expect(latest_state?.snapshot.mtool_optimizer_enable).toBe(false);
     expect(toast_fixture.current.push_toast).toHaveBeenCalledTimes(1);
     expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
@@ -284,6 +265,22 @@ describe("useLaboratoryPageState", () => {
     expect(barrier_fixture.current.wait_for_barrier).not.toHaveBeenCalled();
     expect(vi.mocked(api_fetch).mock.calls).toEqual([
       ["/api/settings/update", { mtool_optimizer_enable: true }],
+      [
+        "/api/project/settings-alignment/apply",
+        {
+          mode: "prefiltered_items",
+          project_settings: {
+            source_language: "JA",
+            target_language: "ZH",
+            mtool_optimizer_enable: true,
+            skip_duplicate_source_text_enable: true,
+          },
+          expected_section_revisions: {
+            items: 0,
+            analysis: 0,
+          },
+        },
+      ],
       ["/api/settings/update", { mtool_optimizer_enable: false }],
     ]);
   });

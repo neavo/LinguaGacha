@@ -1,8 +1,14 @@
-import type { ProjectPrefilterRunnerSettings } from "@/project/prefilter/prefilter-runner";
 import type { LocaleKey } from "@/app/locale/locale-provider";
 import { get_language_label_key, normalize_language_code } from "@base/setting";
 
 type Translate = (key: LocaleKey) => string;
+
+export type ProjectSettingsAlignmentSettings = {
+  source_language: string; // 源语言展示按当前设置镜像解析
+  target_language: string; // 目标语言展示按当前设置镜像解析
+  mtool_optimizer_enable: boolean; // MTool 开关展示为启用或禁用
+  skip_duplicate_source_text_enable: boolean; // 重复原文开关展示为启用或禁用
+};
 
 export type ProjectSettingsAlignmentChangedFields = Partial<{
   source_language: boolean;
@@ -27,7 +33,7 @@ function format_language_label(language: string, t: Translate): string {
 }
 
 export function format_project_settings_aligned_toast(args: {
-  settings: ProjectPrefilterRunnerSettings;
+  settings: ProjectSettingsAlignmentSettings;
   changed_fields: ProjectSettingsAlignmentChangedFields;
   t: Translate;
 }): string {

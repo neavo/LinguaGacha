@@ -34,11 +34,11 @@ type RuntimeFixture = {
     seq: number;
     reason: string;
   };
-  set_task_snapshot: ReturnType<typeof vi.fn>;
+  sync_task_snapshot: ReturnType<typeof vi.fn>;
   task_snapshot: Record<string, unknown>;
-  commit_local_project_change: ReturnType<typeof vi.fn>;
+  apply_project_mutation_result: ReturnType<typeof vi.fn>;
   refresh_project_runtime: ReturnType<typeof vi.fn>;
-  align_project_runtime_ack: ReturnType<typeof vi.fn>;
+  refresh_task: ReturnType<typeof vi.fn>;
 };
 
 const runtime_fixture: { current: RuntimeFixture } = {
@@ -89,6 +89,7 @@ function create_task_snapshot(
   overrides: Partial<Record<string, unknown>> = {},
 ): Record<string, unknown> {
   return {
+    runtime_revision: 0,
     task_type: "analysis",
     status: "idle",
     busy: false,
@@ -108,8 +109,6 @@ function create_task_snapshot(
 }
 
 function create_runtime_fixture(task_snapshot: Record<string, unknown>): RuntimeFixture {
-  const rollback = vi.fn();
-
   return {
     project_store: {
       getState: () => ({
@@ -215,13 +214,11 @@ function create_runtime_fixture(task_snapshot: Record<string, unknown>): Runtime
       seq: 0,
       reason: "idle",
     },
-    set_task_snapshot: vi.fn(),
+    sync_task_snapshot: vi.fn(),
     task_snapshot,
-    commit_local_project_change: vi.fn(() => ({
-      rollback,
-    })),
+    apply_project_mutation_result: vi.fn(async () => {}),
     refresh_project_runtime: vi.fn(async () => {}),
-    align_project_runtime_ack: vi.fn(),
+    refresh_task: vi.fn(async () => runtime_fixture.current.task_snapshot),
   };
 }
 
@@ -240,50 +237,10 @@ function create_prepared_import(
     imported_count: 1,
     consumed_count: 1,
     quality_changed: true,
-    next_quality_state: {
-      glossary: {
-        entries: [
-          { src: "alpha", dst: "Alpha", info: "角色名", regex: false, case_sensitive: true },
-        ],
-        enabled: true,
-        mode: "custom",
-        revision: 2,
-      },
-      pre_replacement: {
-        entries: [],
-        enabled: false,
-        mode: "off",
-        revision: 0,
-      },
-      post_replacement: {
-        entries: [],
-        enabled: false,
-        mode: "off",
-        revision: 0,
-      },
-      text_preserve: {
-        entries: [],
-        enabled: false,
-        mode: "off",
-        revision: 0,
-      },
-    },
-    next_analysis_state: {
-      candidate_count: 0,
-      candidate_aggregate: {},
-    },
-    next_task_snapshot: {
-      task_type: "analysis",
-      status: "done",
-      busy: false,
-      extras: { kind: "analysis", candidate_count: 0 },
-    },
     updated_sections: ["quality", "analysis"],
     request_body: {
       entries: [{ src: "alpha", dst: "Alpha", info: "角色名", regex: false, case_sensitive: true }],
-      analysis_candidate_count: 0,
       consumed_candidate_srcs: ["alpha"],
-      expected_glossary_revision: 1,
       expected_section_revisions: {
         quality: 0,
         analysis: 4,
@@ -429,7 +386,7 @@ describe("useAnalysisTaskRuntime", () => {
       duplicate_count: 1,
       submitting: false,
     });
-    expect(runtime_fixture.current.commit_local_project_change).not.toHaveBeenCalled();
+    expect(runtime_fixture.current.apply_project_mutation_result).not.toHaveBeenCalled();
     expect(api_fetch_mock).not.toHaveBeenCalledWith(
       "/api/project/analysis/import-glossary",
       expect.anything(),
@@ -453,10 +410,26 @@ describe("useAnalysisTaskRuntime", () => {
       if (path === "/api/project/analysis/import-glossary") {
         return {
           accepted: true,
-          projectRevision: 11,
-          sectionRevisions: {
-            analysis: 5,
-          },
+          changes: [
+            {
+              source: "analysis_import_glossary",
+              projectPath: "E:/demo/sample.lg",
+              projectRevision: 11,
+              updatedSections: ["analysis"],
+              sectionRevisions: {
+                analysis: 5,
+              },
+              sections: {
+                analysis: {
+                  payloadMode: "canonical-delta",
+                  data: {
+                    candidate_count: 0,
+                    candidate_aggregate: {},
+                  },
+                },
+              },
+            },
+          ],
         };
       }
 
@@ -486,9 +459,7 @@ describe("useAnalysisTaskRuntime", () => {
                 case_sensitive: true,
               },
             ],
-            analysis_candidate_count: 0,
             consumed_candidate_srcs: ["alpha"],
-            expected_glossary_revision: 1,
             expected_section_revisions: {
               quality: 0,
               analysis: 4,
@@ -514,10 +485,14 @@ describe("useAnalysisTaskRuntime", () => {
       expect.anything(),
       expect.objectContaining({ action: "skip" }),
     );
-    expect(runtime_fixture.current.commit_local_project_change).toHaveBeenCalledWith(
+    expect(runtime_fixture.current.apply_project_mutation_result).toHaveBeenCalledWith(
       expect.objectContaining({
-        source: "analysis_import_glossary",
-        updatedSections: ["analysis"],
+        changes: [
+          expect.objectContaining({
+            source: "analysis_import_glossary",
+            updatedSections: ["analysis"],
+          }),
+        ],
       }),
     );
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/analysis/import-glossary", {
@@ -530,9 +505,7 @@ describe("useAnalysisTaskRuntime", () => {
           case_sensitive: true,
         },
       ],
-      analysis_candidate_count: 0,
       consumed_candidate_srcs: ["alpha"],
-      expected_glossary_revision: 1,
       expected_section_revisions: {
         quality: 0,
         analysis: 4,
@@ -628,14 +601,14 @@ describe("useAnalysisTaskRuntime", () => {
     });
     await flush_microtasks();
 
-    expect(initial_fixture.set_task_snapshot).toHaveBeenCalledWith(
+    expect(initial_fixture.sync_task_snapshot).toHaveBeenCalledWith(
       expect.objectContaining({
         task_type: "analysis",
         status: "idle",
         busy: false,
       }),
     );
-    expect(initial_fixture.set_task_snapshot).not.toHaveBeenCalledWith(
+    expect(initial_fixture.sync_task_snapshot).not.toHaveBeenCalledWith(
       expect.objectContaining({
         status: "stopping",
         busy: true,
@@ -812,7 +785,7 @@ describe("useAnalysisTaskRuntime", () => {
     );
   });
 
-  it("analysis reset all 成功时走本地 change + apply + ack", async () => {
+  it("analysis reset all 成功时应用后端变更并刷新任务快照", async () => {
     api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/tasks/snapshot") {
         return {
@@ -822,10 +795,23 @@ describe("useAnalysisTaskRuntime", () => {
       if (path === "/api/project/analysis/reset") {
         return {
           accepted: true,
-          projectRevision: 11,
-          sectionRevisions: {
-            analysis: 5,
-          },
+          changes: [
+            {
+              source: "analysis_reset_all",
+              projectPath: "E:/demo/sample.lg",
+              projectRevision: 11,
+              updatedSections: ["analysis"],
+              sectionRevisions: {
+                analysis: 5,
+              },
+              sections: {
+                analysis: {
+                  payloadMode: "canonical-delta",
+                  data: {},
+                },
+              },
+            },
+          ],
         };
       }
 
@@ -847,44 +833,25 @@ describe("useAnalysisTaskRuntime", () => {
     });
     await flush_microtasks();
 
-    expect(runtime_fixture.current.commit_local_project_change).toHaveBeenCalledTimes(1);
-    expect(runtime_fixture.current.commit_local_project_change.mock.calls[0]?.[0]).toMatchObject({
-      source: "analysis_reset_all",
-      updatedSections: ["analysis"],
-    });
-    expect(runtime_fixture.current.set_task_snapshot).toHaveBeenCalledWith(
+    expect(runtime_fixture.current.apply_project_mutation_result).toHaveBeenCalledWith(
       expect.objectContaining({
-        task_type: "analysis",
-        status: "idle",
-        busy: false,
-        extras: { kind: "analysis", candidate_count: 0 },
+        changes: [
+          expect.objectContaining({
+            source: "analysis_reset_all",
+            updatedSections: ["analysis"],
+          }),
+        ],
       }),
     );
-    expect(runtime_fixture.current.align_project_runtime_ack).toHaveBeenCalledWith({
-      accepted: true,
-      projectRevision: 11,
-      sectionRevisions: {
-        analysis: 5,
-      },
-    });
+    expect(runtime_fixture.current.refresh_task).toHaveBeenCalledTimes(1);
     expect(runtime_fixture.current.refresh_project_runtime).not.toHaveBeenCalled();
   });
 
-  it("analysis reset failed 失败时会回滚并刷新运行态", async () => {
+  it("analysis reset failed 失败时会刷新运行态", async () => {
     api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/tasks/snapshot") {
         return {
           task: runtime_fixture.current.task_snapshot,
-        };
-      }
-      if (path === "/api/project/analysis/reset-preview") {
-        return {
-          status_summary: {
-            total_line: 5,
-            processed_line: 3,
-            error_line: 0,
-            line: 3,
-          },
         };
       }
       if (path === "/api/project/analysis/reset") {
@@ -909,9 +876,7 @@ describe("useAnalysisTaskRuntime", () => {
     });
     await flush_microtasks();
 
-    const rollback = runtime_fixture.current.commit_local_project_change.mock.results[0]?.value
-      .rollback as ReturnType<typeof vi.fn>;
-    expect(rollback).toHaveBeenCalledTimes(1);
+    expect(runtime_fixture.current.apply_project_mutation_result).not.toHaveBeenCalled();
     expect(runtime_fixture.current.refresh_project_runtime).toHaveBeenCalledTimes(1);
     expect(push_toast_mock).toHaveBeenCalledWith(
       "error",

@@ -2,26 +2,39 @@ import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import {
-  build_project_mutation_ack_from_meta,
-  get_runtime_section_revision,
-} from "../project/project-section-revision";
+  ProjectMutationCoordinator,
+  type ProjectMutationRevisionContext,
+} from "../project/project-mutation-coordinator";
 import { ProjectChangePublisher } from "../project/project-change-publisher";
 import { ProjectSessionState } from "../project/project-session-state";
 import { Item } from "../../base/item";
+import type { ProjectMutationResult } from "../../shared/project/event";
+import {
+  build_item_view_map,
+  build_public_item_map,
+  build_translation_extras_from_items,
+  create_empty_translation_task_snapshot,
+} from "../project/project-mutation-state";
+import { compile_text_pattern, replace_text_pattern } from "../../shared/text/text-pattern";
 import * as AppErrors from "../../shared/error";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
+type ProofreadingMutationContext = {
+  revision_context: ProjectMutationRevisionContext; // revision guard 快照是本次事务 bump 的唯一基线
+  current_by_id: Map<number, MutableJsonRecord>; // 当前数据库事实索引，后端 mutation 只在它上面派生最终写入
+};
+
 /**
- * 承载校对同步写入口，把 finalized payload 直接持久化到 Electron main 数据库
+ * 承载校对同步写入口，把 renderer 命令转换为 Electron main 数据库事实
  */
 export class ProofreadingService {
   private readonly database: ProjectDatabase; // 校对同步保存直接写 .lg，但仍只能通过 ProjectDatabase workflow 触达数据库
 
   private readonly session_state: ProjectSessionState; // 校对同步写入口只以 公开会话状态定位当前工程
 
-  private readonly project_change_publisher: ProjectChangePublisher | null; // 校对写库成功后用统一项目事件回流到 ProjectStore
+  private readonly mutation_coordinator: ProjectMutationCoordinator; // 校对 mutation 的 revision guard、bump 和 canonical 事件统一经由协调器
 
   /**
    * 注入数据库与运行时桥，保证写库和读侧缓存同步都可被测试替换
@@ -33,86 +46,247 @@ export class ProofreadingService {
   ) {
     this.database = database;
     this.session_state = session_state;
-    this.project_change_publisher = project_change_publisher;
+    this.mutation_coordinator = new ProjectMutationCoordinator(database, project_change_publisher);
   }
 
   /**
-   * 保存单条校对结果，使用 finalized payload 语义
+   * 保存单条校对结果，renderer 只提交 item_id 与目标译文
    */
-  public async save_item(request: JsonRecord): Promise<JsonRecord> {
-    return this.persist_finalized_items(request);
+  public async save_item(request: JsonRecord): Promise<ProjectMutationResult> {
+    return this.persist_save_item(request);
   }
 
   /**
-   * 保存批量校对结果，响应形状保持稳定
+   * 保存批量重置结果，renderer 只提交目标 item_ids
    */
-  public async save_all(request: JsonRecord): Promise<JsonRecord> {
-    return this.persist_finalized_items(request);
+  public async save_all(request: JsonRecord): Promise<ProjectMutationResult> {
+    return this.persist_reset_items(request);
   }
 
   /**
-   * 保存批量替换结果，落库语义仍然只看 finalized items 与 translation_extras
+   * 保存批量替换结果，替换语义在后端基于当前数据库事实执行
    */
-  public async replace_all(request: JsonRecord): Promise<JsonRecord> {
-    return this.persist_finalized_items(request);
+  public async replace_all(request: JsonRecord): Promise<ProjectMutationResult> {
+    return this.persist_replace_all(request);
   }
 
   /**
-   * 校对同步 mutation 的唯一写入口：校验 revision、merge 白名单字段、推进双 revision
+   * 单条保存只更新译文、状态和翻译进度 meta
    */
-  private async persist_finalized_items(request: JsonRecord): Promise<JsonRecord> {
+  private async persist_save_item(request: JsonRecord): Promise<ProjectMutationResult> {
     const project_path = await this.require_loaded_project_path();
-    const expected = this.normalize_expected_section_revisions(
-      request["expected_section_revisions"],
-    );
-    const meta = this.get_all_meta(project_path);
-    const current_items_revision = this.get_project_runtime_revision(meta, "items");
-    const current_proofreading_revision = this.get_proofreading_revision(meta);
-    this.assert_expected_revisions(expected, current_items_revision, current_proofreading_revision);
-
-    const finalized_items = this.merge_finalized_items(project_path, request["items"]);
-    const update_args: Record<string, DatabaseJsonValue> = {
-      projectPath: project_path,
-      meta: {
-        translation_extras: this.normalize_object(request["translation_extras"]),
-      },
-    };
-    if (finalized_items.length > 0) {
-      update_args["items"] = finalized_items;
+    const context = this.prepare_mutation_context(project_path, request);
+    const item_id = this.parse_integer_or_throw(request["item_id"]);
+    const item = context.current_by_id.get(item_id);
+    if (item === undefined) {
+      throw new AppErrors.RequestValidationError({
+        diagnostic_context: { reason: "item_not_found", item_id },
+      });
     }
+    const next_item = this.apply_manual_dst(item, String(request["dst"] ?? ""));
+    if (this.are_items_equal(item, next_item)) {
+      return { accepted: true, changes: [] };
+    }
+    context.current_by_id.set(item_id, next_item);
+    return this.persist_changed_items(project_path, context, [next_item]);
+  }
 
-    this.database.execute_transaction([
-      this.op("updateBatch", update_args),
-      this.op("setMeta", {
-        projectPath: project_path,
-        key: "project_runtime_revision.items",
-        value: current_items_revision + 1,
-      }),
-      this.op("setMeta", {
-        projectPath: project_path,
-        key: "proofreading_revision.proofreading",
-        value: current_proofreading_revision + 1,
-      }),
-    ]);
-    this.publish_project_data_change(this.collect_item_ids(finalized_items));
-    return this.build_project_mutation_ack(project_path);
+  /**
+   * 批量替换在后端编译文本模式，避免 renderer 提交替换后的最终事实
+   */
+  private async persist_replace_all(request: JsonRecord): Promise<ProjectMutationResult> {
+    const project_path = await this.require_loaded_project_path();
+    const context = this.prepare_mutation_context(project_path, request);
+    const pattern = compile_text_pattern({
+      source_text: String(request["search_text"] ?? ""),
+      mode: (request["is_regex"] ?? false) ? "regex" : "literal",
+      case_sensitive: false,
+      global: true,
+      trim: false,
+    });
+    if (pattern === null) {
+      return { accepted: true, changes: [] };
+    }
+    const changed_items: MutableJsonRecord[] = [];
+    for (const item_id of this.normalize_item_ids(request["item_ids"])) {
+      const item = context.current_by_id.get(item_id);
+      if (item === undefined) {
+        continue;
+      }
+      const replace_result = replace_text_pattern({
+        text: String(item["dst"] ?? ""),
+        pattern,
+        replacement_text: String(request["replace_text"] ?? ""),
+        replacement_syntax: (request["is_regex"] ?? false) ? "javascript" : "literal",
+      });
+      if (replace_result.count <= 0 || replace_result.text === item["dst"]) {
+        continue;
+      }
+      const next_item = this.apply_manual_dst(item, replace_result.text);
+      context.current_by_id.set(item_id, next_item);
+      changed_items.push(next_item);
+    }
+    return this.persist_changed_items(project_path, context, changed_items);
+  }
+
+  /**
+   * 批量重置只清空目标 item 的译文、状态和重试计数
+   */
+  private async persist_reset_items(request: JsonRecord): Promise<ProjectMutationResult> {
+    const project_path = await this.require_loaded_project_path();
+    const context = this.prepare_mutation_context(project_path, request);
+    const changed_items: MutableJsonRecord[] = [];
+    for (const item_id of this.normalize_item_ids(request["item_ids"])) {
+      const item = context.current_by_id.get(item_id);
+      if (item === undefined) {
+        continue;
+      }
+      const next_item = {
+        ...item,
+        dst: "",
+        status: "NONE",
+        retry_count: 0,
+      };
+      if (this.are_items_equal(item, next_item)) {
+        continue;
+      }
+      context.current_by_id.set(item_id, next_item);
+      changed_items.push(next_item);
+    }
+    return this.persist_changed_items(project_path, context, changed_items);
   }
 
   /**
    * 校对保存同时影响 item 行和 proofreading revision；item 为空时仍发布 section 变更供读侧对齐
    */
-  private publish_project_data_change(changed_item_ids: number[]): void {
-    this.project_change_publisher?.publish_project_change({
+  private publish_project_data_change(
+    project_path: string,
+    changed_item_ids: number[],
+  ): ProjectMutationResult {
+    return this.mutation_coordinator.publish_project_data_change({
+      projectPath: project_path,
       source: "proofreading_save_items",
       updatedSections: ["items", "proofreading"],
       items: {
         payloadMode: "canonical-delta",
-        changedIds: changed_item_ids as unknown as ApiJsonValue,
-      },
-      sections: {
-        proofreading: { payloadMode: "canonical-delta" },
+        changedIds: changed_item_ids,
       },
     });
+  }
+
+  /**
+   * 校对 mutation 起手必须先校验 revision，再读取当前数据库事实
+   */
+  private prepare_mutation_context(
+    project_path: string,
+    request: JsonRecord,
+  ): ProofreadingMutationContext {
+    this.assert_no_legacy_fields(request, ["items", "translation_extras"]);
+    const revision_context = this.mutation_coordinator.assert_expected_section_revisions(
+      project_path,
+      request["expected_section_revisions"],
+      ["items", "proofreading"],
+    );
+
+    const current_by_id = new Map<number, MutableJsonRecord>();
+    for (const item of this.get_all_items(project_path)) {
+      const item_id = this.parse_integer_like(item["id"]);
+      if (item_id !== null && item_id > 0) {
+        current_by_id.set(item_id, { ...item, id: item_id });
+      }
+    }
+    return {
+      revision_context,
+      current_by_id,
+    };
+  }
+
+  /**
+   * 旧最终事实载荷字段出现时直接拒绝，确保校对事实只由后端生成
+   */
+  private assert_no_legacy_fields(request: JsonRecord, fields: string[]): void {
+    for (const field of fields) {
+      if (field in request) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: { reason: "legacy_payload_field", field },
+        });
+      }
+    }
+  }
+
+  /**
+   * 写入变更 item，并由后端根据完整当前事实重建 translation_extras
+   */
+  private persist_changed_items(
+    project_path: string,
+    context: ProofreadingMutationContext,
+    changed_items: MutableJsonRecord[],
+  ): ProjectMutationResult {
+    if (changed_items.length === 0) {
+      return { accepted: true, changes: [] };
+    }
+    const translation_extras = this.build_translation_extras(project_path, context.current_by_id);
+    this.database.execute_transaction([
+      this.op("updateBatch", {
+        projectPath: project_path,
+        items: changed_items,
+        meta: {
+          translation_extras: translation_extras as unknown as DatabaseJsonValue,
+        },
+      }),
+      ...this.mutation_coordinator.build_section_revision_operations(context.revision_context),
+    ]);
+    return this.publish_project_data_change(project_path, this.collect_item_ids(changed_items));
+  }
+
+  /**
+   * 手动写入译文后由后端统一决定 status，不接受 renderer 提交 status 事实
+   */
+  private apply_manual_dst(item: MutableJsonRecord, next_dst: string): MutableJsonRecord {
+    return {
+      ...item,
+      dst: next_dst,
+      status: next_dst === "" ? this.normalize_item_status(item["status"]) : "PROCESSED",
+    };
+  }
+
+  /**
+   * 重建翻译进度时只消费当前 item 事实，并保留数据库现有 token/time 等进度基底
+   */
+  private build_translation_extras(
+    project_path: string,
+    current_by_id: Map<number, MutableJsonRecord>,
+  ): Record<string, unknown> {
+    const item_record: Record<string, MutableJsonRecord> = {};
+    for (const [item_id, item] of current_by_id.entries()) {
+      item_record[String(item_id)] = item;
+    }
+    const public_item_map = build_public_item_map(item_record);
+    return build_translation_extras_from_items({
+      task_snapshot: this.build_translation_task_snapshot_from_meta(project_path),
+      items: build_item_view_map(public_item_map),
+    });
+  }
+
+  /**
+   * translation_extras 是数据库侧进度事实，重建统计时把它挂回 task_snapshot.progress
+   */
+  private build_translation_task_snapshot_from_meta(project_path: string): Record<string, unknown> {
+    return {
+      ...create_empty_translation_task_snapshot(),
+      progress: this.normalize_object(this.get_all_meta(project_path)["translation_extras"]),
+    };
+  }
+
+  /**
+   * 校对写入只比较会被本服务修改的字段，避免无关字段触发空写
+   */
+  private are_items_equal(left: MutableJsonRecord, right: MutableJsonRecord): boolean {
+    return (
+      String(left["dst"] ?? "") === String(right["dst"] ?? "") &&
+      String(left["status"] ?? "") === String(right["status"] ?? "") &&
+      Number(left["retry_count"] ?? 0) === Number(right["retry_count"] ?? 0)
+    );
   }
 
   /**
@@ -124,73 +298,6 @@ export class ProofreadingService {
       throw new AppErrors.ProjectNotLoadedError();
     }
     return state.projectPath;
-  }
-
-  /**
-   * 缺失期望值时宽容跳过；给出期望值时使用冲突消息
-   */
-  private assert_expected_revisions(
-    expected: Record<string, number> | null,
-    current_items_revision: number,
-    current_proofreading_revision: number,
-  ): void {
-    if (expected === null) {
-      return;
-    }
-    if ("items" in expected && expected["items"] !== current_items_revision) {
-      throw new AppErrors.RevisionConflictError({
-        public_details: {
-          current_revision: current_items_revision,
-          expected_revision: expected["items"] ?? 0,
-          section: "items",
-        },
-      });
-    }
-    if ("proofreading" in expected && expected["proofreading"] !== current_proofreading_revision) {
-      throw new AppErrors.RevisionConflictError({
-        public_details: {
-          current_revision: current_proofreading_revision,
-          expected_revision: expected["proofreading"] ?? 0,
-          section: "proofreading",
-        },
-      });
-    }
-  }
-
-  /**
-   * 按 finalized item 白名单，把 payload 合并到当前数据库事实上
-   */
-  private merge_finalized_items(
-    project_path: string,
-    value: ApiJsonValue | undefined,
-  ): MutableJsonRecord[] {
-    if (!Array.isArray(value)) {
-      return [];
-    }
-    const current_by_id = new Map<number, MutableJsonRecord>();
-    for (const item of this.get_all_items(project_path)) {
-      const item_id = this.parse_integer_like(item["id"]);
-      if (item_id !== null) {
-        current_by_id.set(item_id, item);
-      }
-    }
-
-    const merged_items: MutableJsonRecord[] = [];
-    for (const raw_item of value) {
-      if (!this.is_record(raw_item)) {
-        continue;
-      }
-      const item_id = this.parse_integer_like(raw_item["id"] ?? raw_item["item_id"]);
-      if (item_id === null) {
-        continue;
-      }
-      const current = current_by_id.get(item_id);
-      if (current === undefined) {
-        continue;
-      }
-      merged_items.push(this.merge_item_payload(current, raw_item, item_id));
-    }
-    return merged_items;
   }
 
   /**
@@ -211,76 +318,23 @@ export class ProofreadingService {
   }
 
   /**
-   * 只接受校对写入口允许覆盖的字段，避免校对页顺手写入其它 item 事实
+   * 公开 item_ids 去重并保持顺序，坏 id 在命令边界丢弃
    */
-  private merge_item_payload(
-    current: MutableJsonRecord,
-    payload: JsonRecord,
-    item_id: number,
-  ): MutableJsonRecord {
-    const item: MutableJsonRecord = { ...current, id: item_id };
-    if ("file_path" in payload) {
-      item["file_path"] = String(payload["file_path"] ?? "");
+  private normalize_item_ids(value: ApiJsonValue | undefined): number[] {
+    if (!Array.isArray(value)) {
+      return [];
     }
-    if ("row" in payload || "row_number" in payload) {
-      item["row"] = this.parse_integer_or_throw(payload["row"] ?? payload["row_number"] ?? 0);
+    const item_ids: number[] = [];
+    const seen = new Set<number>();
+    for (const raw_item_id of value) {
+      const item_id = this.parse_integer_like(raw_item_id);
+      if (item_id === null || item_id <= 0 || seen.has(item_id)) {
+        continue;
+      }
+      seen.add(item_id);
+      item_ids.push(item_id);
     }
-    if ("src" in payload) {
-      item["src"] = String(payload["src"] ?? "");
-    }
-    if ("dst" in payload) {
-      item["dst"] = String(payload["dst"] ?? "");
-    }
-    if ("status" in payload) {
-      item["status"] = this.normalize_item_status(payload["status"]);
-    }
-    if ("text_type" in payload) {
-      item["text_type"] = String(payload["text_type"] ?? "");
-    }
-    if ("retry_count" in payload) {
-      item["retry_count"] = this.parse_integer_or_throw(payload["retry_count"] ?? 0);
-    }
-    return item;
-  }
-
-  /**
-   * 构建 ProjectMutationAck，固定回传 items 与 proofreading 两个 section revision
-   */
-  private build_project_mutation_ack(project_path: string): JsonRecord {
-    return build_project_mutation_ack_from_meta(this.get_all_meta(project_path), [
-      "items",
-      "proofreading",
-    ]);
-  }
-
-  /**
-   * 项目运行态 revision 的坏值和负值读取为 0
-   */
-  private get_project_runtime_revision(meta: JsonRecord, section: string): number {
-    return get_runtime_section_revision(meta, section);
-  }
-
-  /**
-   * 校对 revision 的坏值和负值读取为 0
-   */
-  private get_proofreading_revision(meta: JsonRecord): number {
-    return get_runtime_section_revision(meta, "proofreading");
-  }
-
-  /**
-   * 归一期望 section revisions；非对象视为缺失，坏 revision 值直接报错
-   */
-  private normalize_expected_section_revisions(
-    value: ApiJsonValue | undefined,
-  ): Record<string, number> | null {
-    if (!this.is_record(value)) {
-      return null;
-    }
-    const result: Record<string, number> = {};
-    for (const [section, revision] of Object.entries(value)) {
-      result[section] = this.parse_integer_or_throw(revision);
-    }
-    return result;
+    return item_ids;
   }
 
   /**
@@ -296,7 +350,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 读取完整 meta，用于 revision 判断和 ack 构造
+   * 读取完整 meta，用于 revision 判断
    */
   private get_all_meta(project_path: string): MutableJsonRecord {
     return this.normalize_object(
@@ -312,7 +366,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 写入字段和 expected revision 使用严格转换，转换失败时保持失败语义
+   * item_id 命令字段使用严格转换，转换失败时保持请求失败语义
    */
   private parse_integer_or_throw(value: ApiJsonValue | undefined): number {
     const parsed = this.parse_integer_like(value);
@@ -323,14 +377,11 @@ export class ProofreadingService {
   }
 
   /**
-   * 模拟 int：数字截断，整数字符串可转，布尔值按 1/0，null 和非整数字符串失败
+   * item_id 只接受整数数字或整数字符串，拒绝布尔值和小数兼容
    */
   private parse_integer_like(value: ApiJsonValue | undefined): number | null {
     if (typeof value === "number") {
-      return Number.isFinite(value) ? Math.trunc(value) : null;
-    }
-    if (typeof value === "boolean") {
-      return value ? 1 : 0;
+      return Number.isInteger(value) ? value : null;
     }
     if (typeof value === "string") {
       const trimmed = value.trim();

@@ -111,10 +111,74 @@ const project_store = {
 
 const project_store_listeners = new Set<() => void>();
 
-function notify_project_store(): void {
-  for (const listener of project_store_listeners) {
-    listener();
+function apply_quality_mutation_result(result: {
+  changes?: Array<{
+    operations?: Array<{
+      sections?: {
+        quality?: {
+          data?: typeof runtime_state.quality;
+        };
+      };
+    }>;
+  }>;
+}): void {
+  for (const change of result.changes ?? []) {
+    for (const operation of change.operations ?? []) {
+      const next_quality = operation.sections?.quality?.data;
+      if (next_quality !== undefined) {
+        runtime_state.quality = next_quality;
+        for (const listener of project_store_listeners) {
+          listener();
+        }
+      }
+    }
   }
+}
+
+// 测试夹具只模拟后端原始 canonical mutation payload，规范化入口仍由页面 hook 真实调用。
+function create_quality_mutation_result(
+  args: {
+    quality?: typeof runtime_state.quality;
+    project_revision?: number;
+    quality_revision?: number;
+  } = {},
+) {
+  const project_revision = args.project_revision ?? 2;
+  return {
+    accepted: true,
+    changes: [
+      {
+        source: "quality_rule_save_entries",
+        projectPath: "E:/demo/sample.lg",
+        projectRevision: project_revision,
+        updatedSections: ["quality"],
+        sectionRevisions: {
+          quality: args.quality_revision ?? project_revision,
+        },
+        sections: {
+          quality: {
+            payloadMode: "canonical-delta",
+            data: args.quality ?? runtime_state.quality,
+          },
+        },
+      },
+    ],
+  };
+}
+
+// 质量区块快照由后端整体回灌，测试只替换 glossary 切片以表达该次 mutation 的最终事实。
+function create_glossary_quality(
+  entries: GlossaryEntry[],
+  revision: number,
+): typeof runtime_state.quality {
+  return {
+    ...runtime_state.quality,
+    glossary: {
+      ...runtime_state.quality.glossary,
+      entries,
+      revision,
+    },
+  };
 }
 
 let current_statistics_cache: QualityStatisticsCacheSnapshot;
@@ -210,41 +274,11 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
       project_snapshot: runtime_state.project,
       project_store,
       settings_snapshot: {},
-      set_settings_snapshot: vi.fn(),
-      commit_local_project_change: (input: {
-        operations: Array<{
-          sections?: {
-            quality?: {
-              data?: typeof runtime_state.quality;
-            };
-          };
-        }>;
-      }) => {
-        const previous_quality = {
-          ...runtime_state.quality,
-          glossary: {
-            ...runtime_state.quality.glossary,
-            entries: runtime_state.quality.glossary.entries.map((entry) => ({ ...entry })),
-          },
-        };
-        const quality_patch = input.operations.find((operation) => {
-          return operation.sections?.quality?.data !== undefined;
-        });
-        const next_quality = quality_patch?.sections?.quality?.data;
-        if (next_quality !== undefined) {
-          runtime_state.quality = next_quality;
-          notify_project_store();
-        }
-
-        return {
-          rollback: () => {
-            runtime_state.quality = previous_quality;
-            notify_project_store();
-          },
-        };
-      },
-      refresh_project_runtime: vi.fn(),
-      align_project_runtime_ack: vi.fn(),
+      apply_settings_snapshot: vi.fn(),
+      apply_project_mutation_result: vi.fn(async (result) => {
+        apply_quality_mutation_result(result);
+      }),
+      refresh_project_runtime: vi.fn(async () => {}),
       task_snapshot,
     }),
   };
@@ -328,6 +362,7 @@ describe("useGlossaryPageState", () => {
     push_toast_mock.mockReset();
     runtime_state.quality.glossary.entries = create_default_glossary_entries();
     runtime_state.quality.glossary.revision = 1;
+    runtime_state.revisions.sections.quality = 1;
     current_statistics_cache = create_statistics_cache({});
     task_snapshot = {
       busy: false,
@@ -427,13 +462,29 @@ describe("useGlossaryPageState", () => {
       "香蕉::1",
     ]);
 
-    api_fetch_mock.mockResolvedValueOnce({
-      accepted: true,
-      projectRevision: 2,
-      sectionRevisions: {
-        quality: 2,
-      },
-    });
+    api_fetch_mock.mockResolvedValueOnce(
+      create_quality_mutation_result({
+        quality: create_glossary_quality(
+          [
+            {
+              entry_id: "苹果::0",
+              src: "苹果",
+              dst: "Apple",
+              info: "水果",
+              case_sensitive: false,
+            },
+            {
+              entry_id: "香蕉::1",
+              src: "香蕉",
+              dst: "Banana",
+              info: "水果",
+              case_sensitive: false,
+            },
+          ],
+          2,
+        ),
+      }),
+    );
     await act(async () => {
       latest_state?.apply_table_selection({
         selected_row_ids: ["梨::2"],
@@ -540,13 +591,22 @@ describe("useGlossaryPageState", () => {
 
   it("保存仅修改翻译或说明时保留旧统计 ready 与 badge", async () => {
     await mount_probe();
-    api_fetch_mock.mockResolvedValueOnce({
-      accepted: true,
-      projectRevision: 2,
-      sectionRevisions: {
-        quality: 2,
-      },
-    });
+    api_fetch_mock.mockResolvedValueOnce(
+      create_quality_mutation_result({
+        quality: create_glossary_quality(
+          [
+            {
+              entry_id: "苹果::0",
+              src: "苹果",
+              dst: "Malus",
+              info: "新的说明",
+              case_sensitive: false,
+            },
+          ],
+          2,
+        ),
+      }),
+    );
 
     expect(latest_state?.statistics_ready).toBe(true);
     expect(latest_state?.statistics_badge_by_entry_id["苹果::0"]?.matched_count).toBe(1);
@@ -568,7 +628,7 @@ describe("useGlossaryPageState", () => {
 
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/quality/rules/save-entries", {
       rule_type: "glossary",
-      expected_revision: 1,
+      expected_section_revisions: { quality: 1 },
       entries: [
         {
           entry_id: "苹果::0",
@@ -602,13 +662,29 @@ describe("useGlossaryPageState", () => {
           },
         ],
       })
-      .mockResolvedValueOnce({
-        accepted: true,
-        projectRevision: 2,
-        sectionRevisions: {
-          quality: 2,
-        },
-      });
+      .mockResolvedValueOnce(
+        create_quality_mutation_result({
+          quality: create_glossary_quality(
+            [
+              {
+                entry_id: "苹果::0",
+                src: "苹果",
+                dst: "Apple",
+                info: "水果",
+                case_sensitive: false,
+              },
+              {
+                entry_id: "香蕉::1",
+                src: "香蕉",
+                dst: "Banana",
+                info: "水果",
+                case_sensitive: false,
+              },
+            ],
+            2,
+          ),
+        }),
+      );
 
     await act(async () => {
       await latest_state?.import_entries_from_path("E:/demo/glossary.json");
@@ -624,7 +700,7 @@ describe("useGlossaryPageState", () => {
 
     expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
       rule_type: "glossary",
-      expected_revision: 1,
+      expected_section_revisions: { quality: 1 },
       entries: [
         {
           entry_id: "苹果::0",
@@ -658,13 +734,23 @@ describe("useGlossaryPageState", () => {
           },
         ],
       })
-      .mockResolvedValueOnce({
-        accepted: true,
-        projectRevision: 2,
-        sectionRevisions: {
-          quality: 2,
-        },
-      });
+      .mockResolvedValueOnce(
+        create_quality_mutation_result({
+          quality: create_glossary_quality(
+            [
+              ...create_default_glossary_entries(),
+              {
+                entry_id: "香蕉::1",
+                src: "香蕉",
+                dst: "Banana",
+                info: "水果",
+                case_sensitive: false,
+              },
+            ],
+            2,
+          ),
+        }),
+      );
 
     await act(async () => {
       await latest_state?.import_entries_from_path("E:/demo/glossary.json");
@@ -737,13 +823,38 @@ describe("useGlossaryPageState", () => {
           },
         ],
       })
-      .mockResolvedValueOnce({
-        accepted: true,
-        projectRevision: 3,
-        sectionRevisions: {
-          quality: 3,
-        },
-      });
+      .mockResolvedValueOnce(
+        create_quality_mutation_result({
+          quality: create_glossary_quality(
+            [
+              {
+                entry_id: "苹果::0",
+                src: "苹果",
+                dst: "Apple",
+                info: "水果",
+                case_sensitive: false,
+              },
+              {
+                entry_id: "梨::1",
+                src: "梨",
+                dst: "Pear",
+                info: "水果",
+                case_sensitive: false,
+              },
+              {
+                entry_id: "香蕉::2",
+                src: "香蕉",
+                dst: "Banana",
+                info: "水果",
+                case_sensitive: false,
+              },
+            ],
+            3,
+          ),
+          project_revision: 3,
+          quality_revision: 3,
+        }),
+      );
 
     await act(async () => {
       await latest_state?.import_entries_from_path("E:/demo/glossary.json");
@@ -775,7 +886,7 @@ describe("useGlossaryPageState", () => {
 
     expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
       rule_type: "glossary",
-      expected_revision: 2,
+      expected_section_revisions: { quality: 2 },
       entries: [
         {
           entry_id: "苹果::0",
@@ -816,13 +927,22 @@ describe("useGlossaryPageState", () => {
           },
         ],
       })
-      .mockResolvedValueOnce({
-        accepted: true,
-        projectRevision: 2,
-        sectionRevisions: {
-          quality: 2,
-        },
-      });
+      .mockResolvedValueOnce(
+        create_quality_mutation_result({
+          quality: create_glossary_quality(
+            [
+              {
+                entry_id: "苹果::0",
+                src: "苹果",
+                dst: "",
+                info: "",
+                case_sensitive: false,
+              },
+            ],
+            2,
+          ),
+        }),
+      );
 
     await act(async () => {
       await latest_state?.import_entries_from_path("E:/demo/glossary.json");
@@ -833,7 +953,7 @@ describe("useGlossaryPageState", () => {
 
     expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
       rule_type: "glossary",
-      expected_revision: 1,
+      expected_section_revisions: { quality: 1 },
       entries: [
         {
           entry_id: "苹果::0",

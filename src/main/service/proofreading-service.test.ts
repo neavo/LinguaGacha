@@ -5,9 +5,12 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectDatabase } from "../database/database-operations";
+import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectChangePublisher } from "../project/project-change-publisher";
+import { get_runtime_section_revision } from "../project/project-section-revision";
 import { ProjectSessionState } from "../project/project-session-state";
 import { ProofreadingService } from "./proofreading-service";
+import type { ProjectChangeEvent } from "../../shared/project/event";
 
 let temp_dir = "";
 const cleanup_databases: ProjectDatabase[] = [];
@@ -32,7 +35,7 @@ function create_service(): {
     args: { projectPath: lg_path, name: "proofreading" },
   });
   session_state.mark_loaded(lg_path);
-  const publisher = { publish_project_change: vi.fn() };
+  const publisher = create_test_project_change_publisher(database, lg_path);
   return {
     database,
     service: new ProofreadingService(
@@ -43,6 +46,63 @@ function create_service(): {
     session_state,
     lg_path,
     publisher,
+  };
+}
+
+function create_test_project_change_publisher(
+  database: ProjectDatabase,
+  lg_path: string,
+): { publish_project_change: ReturnType<typeof vi.fn> } {
+  return {
+    publish_project_change: vi.fn((payload: Record<string, ApiJsonValue>): ProjectChangeEvent => {
+      const updated_sections = Array.isArray(payload.updatedSections)
+        ? payload.updatedSections.map((section) => String(section))
+        : [];
+      const meta = database.execute({
+        name: "getAllMeta",
+        args: { projectPath: lg_path },
+      }) as Record<string, ApiJsonValue>;
+      const section_revisions = Object.fromEntries(
+        updated_sections.map((section) => [section, get_runtime_section_revision(meta, section)]),
+      );
+      return {
+        type: "project.changed",
+        eventId: `test-${String(payload.source ?? "project_change")}`,
+        source: String(payload.source ?? "project_change"),
+        projectPath: String(payload.targetProjectPath ?? ""),
+        projectRevision: Math.max(...Object.values(section_revisions), 0),
+        sectionRevisions: section_revisions,
+        updatedSections: updated_sections as ProjectChangeEvent["updatedSections"],
+        ...(payload.items === undefined
+          ? {}
+          : { items: payload.items as ProjectChangeEvent["items"] }),
+        ...(payload.sections === undefined
+          ? {}
+          : { sections: payload.sections as ProjectChangeEvent["sections"] }),
+      };
+    }),
+  };
+}
+
+function create_project_item(
+  overrides: Record<string, ApiJsonValue> = {},
+): Record<string, ApiJsonValue> {
+  return {
+    id: 1,
+    file_path: "a.txt",
+    row: 0,
+    src: "原文",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    file_type: "TXT",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
   };
 }
 
@@ -58,24 +118,21 @@ afterEach(() => {
 });
 
 describe("ProofreadingService", () => {
-  it("保存单条校对结果时只合并白名单字段并同步 revision", async () => {
+  it("保存单条校对结果时只提交命令并由后端派生事实", async () => {
     const { database, service, lg_path, publisher } = create_service();
     database.execute({
       name: "setItems",
       args: {
         projectPath: lg_path,
         items: [
-          {
-            id: 1,
-            file_path: "a.txt",
-            row: 1,
+          create_project_item({
             src: "旧原文",
             dst: "旧译文",
             name_dst: "保留姓名",
             status: "NONE",
             text_type: "dialogue",
-            retry_count: 0,
-          },
+            retry_count: 7,
+          }),
         ],
       },
     });
@@ -86,53 +143,53 @@ describe("ProofreadingService", () => {
         meta: {
           "project_runtime_revision.items": 2,
           "proofreading_revision.proofreading": 3,
+          translation_extras: { total_tokens: 99, time: 5 },
         },
       },
     });
 
     const ack = await service.save_item({
-      items: [
-        {
-          id: "1",
-          file_path: "b.txt",
-          row_number: "5",
-          src: "新原文",
-          dst: "新译文",
-          name_dst: "不应写入",
-          status: "PROCESSED",
-          text_type: "name",
-          retry_count: "2",
-        },
-      ],
-      translation_extras: { line: 9 },
+      item_id: 1,
+      dst: "新译文",
       expected_section_revisions: { items: 2, proofreading: 3 },
     });
 
-    expect(ack).toEqual({
+    expect(ack).toMatchObject({
       accepted: true,
-      projectRevision: 4,
-      sectionRevisions: { items: 3, proofreading: 4 },
+      changes: [
+        {
+          source: "proofreading_save_items",
+          projectRevision: 4,
+          sectionRevisions: { items: 3, proofreading: 4 },
+          updatedSections: ["items", "proofreading"],
+        },
+      ],
     });
     expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
-      {
-        id: 1,
-        file_path: "b.txt",
-        row: 5,
-        src: "新原文",
+      create_project_item({
+        src: "旧原文",
         dst: "新译文",
         name_dst: "保留姓名",
         status: "PROCESSED",
-        text_type: "name",
-        retry_count: 2,
-      },
+        text_type: "dialogue",
+        retry_count: 7,
+      }),
     ]);
     expect(
       database.execute({
         name: "getMeta",
         args: { projectPath: lg_path, key: "translation_extras", default: {} },
       }),
-    ).toEqual({ line: 9 });
+    ).toMatchObject({
+      total_tokens: 99,
+      time: 5,
+      processed_line: 1,
+      error_line: 0,
+      total_line: 1,
+      line: 1,
+    });
     expect(publisher.publish_project_change).toHaveBeenCalledWith({
+      targetProjectPath: lg_path,
       source: "proofreading_save_items",
       updatedSections: ["items", "proofreading"],
       items: {
@@ -145,42 +202,39 @@ describe("ProofreadingService", () => {
     });
   });
 
-  it("空 items 或不存在的 item 只写 translation_extras 但仍推进双 revision", async () => {
-    const { database, service, lg_path } = create_service();
+  it("不存在的重置 item 为 no-op 且不写派生 meta", async () => {
+    const { database, service, lg_path, publisher } = create_service();
     database.execute({
       name: "setItems",
       args: {
         projectPath: lg_path,
-        items: [{ id: 1, src: "原文", dst: "旧译文", status: "PROCESSED" }],
+        items: [create_project_item({ dst: "旧译文", status: "PROCESSED" })],
       },
     });
 
     const ack = await service.save_all({
-      items: [{ id: 404, dst: "不会创建" }],
-      translation_extras: { batch: true },
+      item_ids: [404],
+      expected_section_revisions: { items: 0, proofreading: 0 },
     });
 
-    expect(ack).toEqual({
-      accepted: true,
-      projectRevision: 1,
-      sectionRevisions: { items: 1, proofreading: 1 },
-    });
+    expect(ack).toEqual({ accepted: true, changes: [] });
     expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
-      { id: 1, src: "原文", dst: "旧译文", status: "PROCESSED" },
+      create_project_item({ dst: "旧译文", status: "PROCESSED" }),
     ]);
     expect(
       database.execute({
         name: "getMeta",
-        args: { projectPath: lg_path, key: "translation_extras", default: {} },
+        args: { projectPath: lg_path, key: "translation_extras", default: null },
       }),
-    ).toEqual({ batch: true });
+    ).toBeNull();
+    expect(publisher.publish_project_change).not.toHaveBeenCalled();
   });
 
   it("items revision 冲突时拒绝写库且不触发 runtime sync", async () => {
     const { database, service, lg_path, publisher } = create_service();
     database.execute({
       name: "setItems",
-      args: { projectPath: lg_path, items: [{ id: 1, dst: "旧译文" }] },
+      args: { projectPath: lg_path, items: [create_project_item({ dst: "旧译文" })] },
     });
     database.execute({
       name: "setMeta",
@@ -189,14 +243,16 @@ describe("ProofreadingService", () => {
 
     await expect(
       service.replace_all({
-        items: [{ id: 1, dst: "新译文" }],
-        translation_extras: {},
-        expected_section_revisions: { items: 1 },
+        item_ids: [1],
+        search_text: "旧",
+        replace_text: "新",
+        is_regex: false,
+        expected_section_revisions: { items: 1, proofreading: 0 },
       }),
     ).rejects.toThrow("data.revision_conflict");
 
     expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
-      { id: 1, dst: "旧译文" },
+      create_project_item({ dst: "旧译文" }),
     ]);
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
   });
@@ -204,15 +260,19 @@ describe("ProofreadingService", () => {
   it("proofreading revision 冲突时拒绝写库且保留旧 meta", async () => {
     const { database, service, lg_path, publisher } = create_service();
     database.execute({
+      name: "setItems",
+      args: { projectPath: lg_path, items: [create_project_item()] },
+    });
+    database.execute({
       name: "setMeta",
       args: { projectPath: lg_path, key: "proofreading_revision.proofreading", value: 4 },
     });
 
     await expect(
       service.save_item({
-        items: [],
-        translation_extras: { line: 1 },
-        expected_section_revisions: { proofreading: 3 },
+        item_id: 1,
+        dst: "新译文",
+        expected_section_revisions: { items: 0, proofreading: 3 },
       }),
     ).rejects.toThrow("data.revision_conflict");
 
@@ -228,6 +288,10 @@ describe("ProofreadingService", () => {
   it("坏值和负数 revision 按 0 读取并在成功后 bump 到 1", async () => {
     const { database, service, lg_path } = create_service();
     database.execute({
+      name: "setItems",
+      args: { projectPath: lg_path, items: [create_project_item()] },
+    });
+    database.execute({
       name: "upsertMetaEntries",
       args: {
         projectPath: lg_path,
@@ -238,25 +302,37 @@ describe("ProofreadingService", () => {
       },
     });
 
-    const ack = await service.save_all({
-      items: [],
+    const ack = await service.save_item({
+      item_id: 1,
+      dst: "译文",
       expected_section_revisions: { items: 0, proofreading: 0 },
     });
 
-    expect(ack).toEqual({
+    expect(ack).toMatchObject({
       accepted: true,
-      projectRevision: 1,
-      sectionRevisions: { items: 1, proofreading: 1 },
+      changes: [
+        {
+          source: "proofreading_save_items",
+          projectRevision: 1,
+          sectionRevisions: { items: 1, proofreading: 1 },
+          updatedSections: ["items", "proofreading"],
+        },
+      ],
     });
   });
 
   it("无法转换的 expected revision 会失败而不是归零", async () => {
     const { database, service, lg_path } = create_service();
+    database.execute({
+      name: "setItems",
+      args: { projectPath: lg_path, items: [create_project_item()] },
+    });
 
     await expect(
       service.save_item({
-        items: [],
-        expected_section_revisions: { items: "not-a-number" },
+        item_id: 1,
+        dst: "译文",
+        expected_section_revisions: { items: "not-a-number", proofreading: 0 },
       }),
     ).rejects.toThrow("request.validation_failed");
 
@@ -275,22 +351,24 @@ describe("ProofreadingService", () => {
       args: {
         projectPath: lg_path,
         items: [
-          { id: 1, src: "a", dst: "", status: "PROCESSED" },
-          { id: 2, src: "b", dst: "", status: "PROCESSED" },
+          create_project_item({
+            id: 1,
+            src: "a",
+            dst: "旧译文",
+            status: "BROKEN_STATUS",
+          }),
         ],
       },
     });
 
-    await service.replace_all({
-      items: [
-        { item_id: 1, status: "BROKEN_STATUS" },
-        { item_id: 2, status: "SOMETHING_NEW" },
-      ],
+    await service.save_item({
+      item_id: 1,
+      dst: "",
+      expected_section_revisions: { items: 0, proofreading: 0 },
     });
 
     expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
-      { id: 1, src: "a", dst: "", status: "NONE" },
-      { id: 2, src: "b", dst: "", status: "NONE" },
+      create_project_item({ id: 1, src: "a", dst: "", status: "NONE" }),
     ]);
   });
 
@@ -298,6 +376,12 @@ describe("ProofreadingService", () => {
     const { service, session_state } = create_service();
     session_state.clear();
 
-    await expect(service.save_item({ items: [] })).rejects.toThrow("project.not_loaded");
+    await expect(
+      service.save_item({
+        item_id: 1,
+        dst: "译文",
+        expected_section_revisions: { items: 0, proofreading: 0 },
+      }),
+    ).rejects.toThrow("project.not_loaded");
   });
 });

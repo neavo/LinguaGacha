@@ -1,19 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
-import { createProjectStoreReplaceSectionChange } from "@/project/store/project-store";
 import { useProjectPagesBarrier } from "@/app/page-runtime/project-pages-context";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
 import {
   buildProofreadingLookupQuery,
   getQualityRuleSlice,
-  replaceQualityRuleSlice,
 } from "@/project/quality/quality-runtime";
 import type { QualityStatisticsCacheSnapshot } from "@/project/quality/quality-statistics-store";
 import {
-  normalize_project_mutation_ack,
-  normalize_settings_snapshot,
-  type ProjectMutationAckPayload,
+  normalize_project_mutation_result,
+  type ProjectMutationResultPayload,
   type SettingsSnapshotPayload,
 } from "@/app/desktop/desktop-runtime-context";
 import { useQualityStatistics } from "@/project/quality/quality-statistics-context";
@@ -259,10 +256,9 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     project_snapshot,
     project_store,
     settings_snapshot,
-    set_settings_snapshot,
-    commit_local_project_change,
+    apply_settings_snapshot,
     refresh_project_runtime,
-    align_project_runtime_ack,
+    apply_project_mutation_result,
     task_snapshot,
   } = useDesktopRuntime();
   const project_store_state = useSyncExternalStore(
@@ -271,7 +267,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     project_store.getState,
   );
 
-  const [revision, set_revision] = useState(0);
   const [mode, set_mode] = useState<TextPreserveMode>(DEFAULT_MODE);
   const [mode_updating, set_mode_updating] = useState(false);
   const [entries, set_entries] = useState<TextPreserveEntry[]>([]);
@@ -301,7 +296,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     },
   );
   const unknown_error_message = t("text_preserve_page.feedback.unknown_error");
-  const revision_ref = useRef(revision);
   const mode_ref = useRef(mode);
   const mode_update_in_flight_ref = useRef(false);
   const dialog_state_ref = useRef(dialog_state);
@@ -310,10 +304,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     return build_text_preserve_statistics_state_from_cache(statistics_cache);
   }, [statistics_cache]);
   const statistics_ready = statistics_cache.ready;
-
-  useEffect(() => {
-    revision_ref.current = revision;
-  }, [revision]);
 
   useEffect(() => {
     mode_ref.current = mode;
@@ -487,7 +477,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   ]);
 
   const apply_snapshot = useCallback((snapshot: TextPreserveSnapshot): void => {
-    set_revision(snapshot.revision);
     set_mode(normalize_text_preserve_mode(snapshot.meta.mode));
     set_entries(
       ensure_quality_rule_entry_ids(
@@ -531,46 +520,30 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         return false;
       }
 
-      const current_preserve_slice = getQualityRuleSlice(
-        project_store.getState().quality,
-        TEXT_PRESERVE_RULE_TYPE,
-      );
+      const current_state = project_store.getState();
       const normalized_entries = ensure_quality_rule_entry_ids(
         next_entries.map((entry) => {
           return normalize_entry(entry);
         }),
       );
-      const next_quality_state = replaceQualityRuleSlice(
-        project_store.getState().quality,
-        TEXT_PRESERVE_RULE_TYPE,
-        {
-          ...current_preserve_slice,
-          entries: normalized_entries,
-          revision: current_preserve_slice.revision + 1,
-        },
-      );
       const previous_result_view_snapshot = result_view_snapshot;
-      const local_commit = commit_local_project_change({
-        source: "quality_rule_save_entries",
-        updatedSections: ["quality"],
-        operations: [createProjectStoreReplaceSectionChange("quality", next_quality_state)],
-      });
       if (result_view_update === "rebuild") {
         set_result_view_snapshot(null);
       }
 
       try {
-        const mutation_ack = normalize_project_mutation_ack(
-          await api_fetch<ProjectMutationAckPayload>("/api/quality/rules/save-entries", {
+        const mutation_result = normalize_project_mutation_result(
+          await api_fetch<ProjectMutationResultPayload>("/api/quality/rules/save-entries", {
             rule_type: TEXT_PRESERVE_RULE_TYPE,
-            expected_revision: current_preserve_slice.revision,
+            expected_section_revisions: {
+              quality: current_state.revisions.sections.quality ?? 0,
+            },
             entries: normalized_entries,
           }),
         );
-        align_project_runtime_ack(mutation_ack);
+        await apply_project_mutation_result(mutation_result);
         return true;
       } catch (error) {
-        local_commit.rollback();
         if (result_view_update === "rebuild") {
           set_result_view_snapshot(previous_result_view_snapshot);
         }
@@ -580,8 +553,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       }
     },
     [
-      align_project_runtime_ack,
-      commit_local_project_change,
+      apply_project_mutation_result,
       project_store,
       push_action_error_toast,
       refresh_project_runtime,
@@ -780,54 +752,29 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           message: t("text_preserve_page.mode.loading_toast"),
           timeout_ms: TEXT_PRESERVE_MODE_REFRESH_TIMEOUT_MS,
           task: async () => {
-            const current_preserve_slice = getQualityRuleSlice(
-              project_store.getState().quality,
-              TEXT_PRESERVE_RULE_TYPE,
-            );
-            const next_quality_state = replaceQualityRuleSlice(
-              project_store.getState().quality,
-              TEXT_PRESERVE_RULE_TYPE,
-              {
-                ...current_preserve_slice,
-                mode: next_mode,
-                revision: current_preserve_slice.revision + 1,
-              },
-            );
-            const local_commit = commit_local_project_change({
-              source: "quality_rule_meta",
-              updatedSections: ["quality"],
-              operations: [createProjectStoreReplaceSectionChange("quality", next_quality_state)],
-            });
-
-            snapshot_committed = true;
-
+            const current_state = project_store.getState();
             try {
-              const mutation_ack = normalize_project_mutation_ack(
-                await api_fetch<ProjectMutationAckPayload>("/api/quality/rules/update-meta", {
+              const mutation_result = normalize_project_mutation_result(
+                await api_fetch<ProjectMutationResultPayload>("/api/quality/rules/update-meta", {
                   rule_type: TEXT_PRESERVE_RULE_TYPE,
-                  expected_revision: current_preserve_slice.revision,
+                  expected_section_revisions: {
+                    quality: current_state.revisions.sections.quality ?? 0,
+                  },
                   meta: {
                     mode: next_mode,
                   },
                 }),
               );
-              align_project_runtime_ack(mutation_ack);
+              await apply_project_mutation_result(mutation_result);
+              snapshot_committed = true;
             } catch (error) {
-              local_commit.rollback();
               void refresh_project_runtime().catch(() => {});
               throw error;
             }
 
-            try {
-              await wait_for_barrier("proofreading_cache_refresh", {
-                checkpoint: barrier_checkpoint,
-              });
-            } catch (error) {
-              if (!is_modal_progress_timeout_error(error)) {
-                local_commit.rollback();
-              }
-              throw error;
-            }
+            await wait_for_barrier("proofreading_cache_refresh", {
+              checkpoint: barrier_checkpoint,
+            });
           },
         });
       } catch (error) {
@@ -843,8 +790,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       }
     },
     [
-      align_project_runtime_ack,
-      commit_local_project_change,
+      apply_project_mutation_result,
       create_barrier_checkpoint,
       project_store,
       push_toast,
@@ -1062,7 +1008,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           "/api/quality/rules/import",
           {
             rule_type: TEXT_PRESERVE_RULE_TYPE,
-            expected_revision: revision_ref.current,
             path,
           },
         );
@@ -1284,7 +1229,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
             "/api/settings/update",
             build_default_preset_update_payload(String(payload.item?.virtual_id ?? "")),
           );
-          set_settings_snapshot(normalize_settings_snapshot(settings_payload));
+          apply_settings_snapshot(settings_payload);
         }
         await refresh_preset_menu();
         push_toast("success", t("text_preserve_page.feedback.preset_renamed"));
@@ -1300,7 +1245,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       push_toast,
       refresh_preset_menu,
       readonly,
-      set_settings_snapshot,
+      apply_settings_snapshot,
       t,
     ],
   );
@@ -1316,14 +1261,21 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           "/api/settings/update",
           build_default_preset_update_payload(virtual_id),
         );
-        set_settings_snapshot(normalize_settings_snapshot(payload));
+        apply_settings_snapshot(payload);
         await refresh_preset_menu();
         push_toast("success", t("text_preserve_page.feedback.default_preset_set"));
       } catch (error) {
         push_action_error_toast(error);
       }
     },
-    [push_action_error_toast, push_toast, readonly, refresh_preset_menu, set_settings_snapshot, t],
+    [
+      apply_settings_snapshot,
+      push_action_error_toast,
+      push_toast,
+      readonly,
+      refresh_preset_menu,
+      t,
+    ],
   );
 
   const cancel_default_preset = useCallback(async (): Promise<void> => {
@@ -1336,7 +1288,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         "/api/settings/update",
         build_default_preset_update_payload(""),
       );
-      set_settings_snapshot(normalize_settings_snapshot(payload));
+      apply_settings_snapshot(payload);
       await refresh_preset_menu();
       push_toast("success", t("text_preserve_page.feedback.default_preset_cleared"));
     } catch (error) {
@@ -1347,7 +1299,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     push_toast,
     readonly,
     refresh_preset_menu,
-    set_settings_snapshot,
+    apply_settings_snapshot,
     t,
   ]);
 
@@ -1589,7 +1541,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
               "/api/settings/update",
               build_default_preset_update_payload(""),
             );
-            set_settings_snapshot(normalize_settings_snapshot(settings_payload));
+            apply_settings_snapshot(settings_payload);
           }
           await refresh_preset_menu();
           push_toast("success", t("text_preserve_page.feedback.preset_deleted"));
@@ -1626,7 +1578,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     readonly,
     save_preset,
     selected_entry_ids,
-    set_settings_snapshot,
+    apply_settings_snapshot,
     t,
   ]);
 

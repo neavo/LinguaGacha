@@ -7,6 +7,7 @@ export type TranslationTaskActionKind =
   | "generate-translation";
 
 export type TranslationTaskSnapshot = {
+  runtime_revision: number;
   task_type: string;
   status: string;
   busy: boolean;
@@ -25,7 +26,10 @@ export type TranslationTaskSnapshot = {
 export type TranslationTaskPayload = {
   task?: Partial<TranslationTaskSnapshot> & {
     progress?: Partial<
-      Omit<TranslationTaskSnapshot, "task_type" | "status" | "busy" | "request_in_flight_count">
+      Omit<
+        TranslationTaskSnapshot,
+        "runtime_revision" | "task_type" | "status" | "busy" | "request_in_flight_count"
+      >
     >;
   };
 };
@@ -52,6 +56,7 @@ export type TranslationTaskMetrics = {
 
 export function create_empty_translation_task_snapshot(): TranslationTaskSnapshot {
   return {
+    runtime_revision: 0,
     task_type: "translation",
     status: "idle",
     busy: false,
@@ -72,6 +77,7 @@ export function clone_translation_task_snapshot(
   snapshot: TranslationTaskSnapshot,
 ): TranslationTaskSnapshot {
   return {
+    runtime_revision: snapshot.runtime_revision,
     task_type: snapshot.task_type,
     status: snapshot.status,
     busy: snapshot.busy,
@@ -94,6 +100,7 @@ export function normalize_translation_task_snapshot_payload(
   const snapshot = payload.task ?? {};
   const progress = snapshot.progress ?? snapshot;
   return {
+    runtime_revision: Number(snapshot.runtime_revision ?? 0),
     task_type: String(snapshot.task_type ?? "translation"),
     status: String(snapshot.status ?? "idle").toLowerCase(),
     busy: Boolean(snapshot.busy),

@@ -11,19 +11,13 @@ import {
 
 import type { RouteId } from "@/app/navigation/types";
 import { api_fetch, open_event_stream } from "@/app/desktop/desktop-api";
-import { InternalInvariantError } from "@shared/error";
 import {
-  createProjectStoreReplaceSectionChange,
   createProjectStore,
   isProjectStoreStage,
   type ProjectStoreChangeEvent,
-  type ProjectStoreChangeOperation,
   type ProjectStoreChangeRevisionMode,
-  type ProjectStoreSectionStateMap,
+  type ProjectStoreReader,
   type ProjectStoreStage,
-  type ProjectStoreState,
-  type ProjectStoreSectionRevisions,
-  snapshotProjectStoreSections,
 } from "@/project/store/project-store";
 import {
   createTaskRuntimeStore,
@@ -52,6 +46,7 @@ import {
   type ProjectChangePayloadMode,
   type ProjectChangeJsonRecord,
 } from "@shared/project/event";
+import { InternalInvariantError } from "@shared/error";
 
 type RecentProjectEntry = {
   path: string;
@@ -115,6 +110,7 @@ type WorkbenchChangeSignal = {
 type WorkbenchChangeSignalInput = Omit<WorkbenchChangeSignal, "seq">;
 
 const WORKBENCH_REFRESH_SECTIONS = ["project", "files", "items", "analysis"];
+const APPLIED_PROJECT_EVENT_ID_LIMIT = 256; // 去重窗口只覆盖近期 HTTP/SSE 同源事件，避免长期保存事件历史
 
 type ProjectWarmupStatus = "idle" | "warming" | "ready";
 
@@ -130,15 +126,14 @@ type DesktopRuntimeContextValue = {
   project_warmup_stage: ProjectStoreStage | null;
   pending_target_route: RouteId | null;
   is_app_language_updating: boolean;
-  set_settings_snapshot: (snapshot: SettingsSnapshot) => void;
-  set_project_snapshot: (snapshot: ProjectSnapshot) => void;
-  set_task_snapshot: (snapshot: TaskSnapshot) => void;
   set_project_warmup_status: (status: ProjectWarmupStatus) => void;
   set_pending_target_route: (route_id: RouteId | null) => void;
-  project_store: ReturnType<typeof createProjectStore>;
-  commit_local_project_change: (input: LocalProjectChangeInput) => LocalProjectChangeCommit;
+  project_store: ProjectStoreReader;
+  apply_settings_snapshot: (payload: SettingsSnapshotPayload) => SettingsSnapshot;
+  sync_task_snapshot: (snapshot: TaskSnapshot) => void;
+  refresh_project_snapshot: () => Promise<ProjectSnapshot>;
   refresh_project_runtime: () => Promise<void>;
-  align_project_runtime_ack: (ack: ProjectMutationAck) => void;
+  apply_project_mutation_result: (result: ProjectMutationResult) => Promise<void>;
   update_app_language: (language: AppLanguage) => Promise<SettingsSnapshot>;
   refresh_settings: () => Promise<SettingsSnapshot>;
   refresh_task: () => Promise<TaskSnapshot>;
@@ -166,7 +161,9 @@ type SettingsChangedEventPayload = {
 };
 
 type ProjectChangeEventPayload = {
+  eventId?: unknown;
   source?: unknown;
+  projectPath?: unknown;
   projectRevision?: unknown;
   updatedSections?: unknown;
   items?: unknown;
@@ -176,18 +173,21 @@ type ProjectChangeEventPayload = {
 };
 
 type ProjectManifestPayload = {
+  projectPath?: unknown;
   project?: Partial<ProjectSnapshot>;
   projectRevision?: unknown;
   sectionRevisions?: unknown;
 };
 
 type ProjectReadSectionsPayload = {
+  projectPath?: unknown;
   sections?: unknown;
   projectRevision?: unknown;
   sectionRevisions?: unknown;
 };
 
 type ProjectReadItemsByIdsPayload = {
+  projectPath?: unknown;
   items?: unknown;
   missingIds?: unknown;
   projectRevision?: unknown;
@@ -195,36 +195,14 @@ type ProjectReadItemsByIdsPayload = {
   itemRevision?: unknown;
 };
 
-export type ProjectMutationAckPayload = {
+export type ProjectMutationResultPayload = {
   accepted?: unknown;
-  projectRevision?: unknown;
-  sectionRevisions?: unknown;
+  changes?: unknown;
 };
 
-export type ProjectMutationAck = {
-  accepted: boolean;
-  projectRevision: number;
-  sectionRevisions: ProjectStoreSectionRevisions;
-};
-
-/**
- * 本地乐观变更只描述 ProjectStore 操作，不承载后端 mutation 请求体
- */
-export type LocalProjectChangeInput = {
-  source: string;
-  updatedSections: ProjectStoreStage[];
-  operations: ProjectStoreChangeOperation[];
-  rollbackOperations?: ProjectStoreChangeOperation[];
-};
-
-/**
- * 提交结果保留回滚所需的旧 revision 和旧 section，避免页面自行读取 store 历史
- */
-export type LocalProjectChangeCommit = {
-  previousProjectRevision: number;
-  previousSectionRevisions: ProjectStoreSectionRevisions;
-  previousSections: Partial<ProjectStoreSectionStateMap>;
-  rollback: (source?: string) => void;
+export type ProjectMutationResult = {
+  accepted: true;
+  changes: ProjectStoreChangeEvent[];
 };
 
 const DEFAULT_SETTINGS_SNAPSHOT: SettingsSnapshot = {
@@ -363,14 +341,47 @@ function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSna
   };
 }
 
-export function normalize_project_mutation_ack(
-  payload: ProjectMutationAckPayload,
-): ProjectMutationAck {
+export function normalize_project_mutation_result(
+  payload: ProjectMutationResultPayload,
+): ProjectMutationResult {
+  if (payload.accepted !== true || !Array.isArray(payload.changes)) {
+    throw new InternalInvariantError({
+      diagnostic_context: { reason: "invalid_project_mutation_result_payload" },
+    });
+  }
+
   return {
-    accepted: payload.accepted === undefined ? true : Boolean(payload.accepted),
-    projectRevision: Number(payload.projectRevision ?? 0),
-    sectionRevisions: normalize_section_revisions(payload.sectionRevisions) ?? {},
+    accepted: true,
+    // mutation result 是同步 HTTP 的 canonical 事实入口；任何无法规范化的 change 都暴露为协议错误
+    changes: payload.changes.map((change, index) =>
+      normalize_project_mutation_change_event(change, index),
+    ),
   };
+}
+
+function normalize_project_mutation_change_event(
+  change: unknown,
+  index: number,
+): ProjectStoreChangeEvent {
+  if (!is_record(change)) {
+    throw new InternalInvariantError({
+      diagnostic_context: {
+        reason: "invalid_project_mutation_change_record",
+        index,
+      },
+    });
+  }
+
+  const normalized_change = normalize_project_change_event(change);
+  if (normalized_change === null) {
+    throw new InternalInvariantError({
+      diagnostic_context: {
+        reason: "invalid_project_mutation_change_payload",
+        index,
+      },
+    });
+  }
+  return normalized_change;
 }
 
 function is_record(value: unknown): value is Record<string, unknown> {
@@ -411,10 +422,11 @@ function normalize_string_array(value: unknown): string[] {
 function normalize_project_change_event(
   payload: ProjectChangeEventPayload,
 ): ProjectStoreChangeEvent | null {
+  const project_path = String(payload.projectPath ?? "").trim();
   const updated_sections = normalize_section_array(payload.updatedSections).filter(
     isProjectStoreStage,
   );
-  if (updated_sections.length === 0) {
+  if (project_path === "" || updated_sections.length === 0) {
     return null;
   }
 
@@ -449,7 +461,9 @@ function normalize_project_change_event(
     : {};
 
   return {
+    eventId: String(payload.eventId ?? ""),
     source: String(payload.source ?? "project_change"),
+    projectPath: project_path,
     projectRevision: Number(payload.projectRevision ?? 0),
     updatedSections: updated_sections,
     operations: [
@@ -466,6 +480,7 @@ function normalize_project_change_event(
 function normalize_project_read_sections_event(
   payload: ProjectReadSectionsPayload,
 ): ProjectStoreChangeEvent | null {
+  const project_path = String(payload.projectPath ?? "").trim();
   const raw_sections = is_record(payload.sections) ? payload.sections : {};
   const sections = Object.fromEntries(
     Object.entries(raw_sections).flatMap(([section, data]) => {
@@ -476,12 +491,13 @@ function normalize_project_read_sections_event(
     }),
   );
   const updated_sections = Object.keys(sections).filter(isProjectStoreStage);
-  if (updated_sections.length === 0) {
+  if (project_path === "" || updated_sections.length === 0) {
     return null;
   }
 
   return {
     source: "project_read_sections",
+    projectPath: project_path,
     projectRevision: Number(payload.projectRevision ?? 0),
     updatedSections: updated_sections,
     operations: [{ sections }],
@@ -491,19 +507,23 @@ function normalize_project_read_sections_event(
 
 // ids-only 补读结果只替换对应 item 行，并用 missingIds 表达 tombstone
 function normalize_project_read_items_by_ids_event(args: {
+  eventId?: string;
   source: string;
   projectRevision: number;
   itemIds: number[];
   payload: ProjectReadItemsByIdsPayload;
 }): ProjectStoreChangeEvent | null {
+  const project_path = String(args.payload.projectPath ?? "").trim();
   const upsert = normalize_record_map(args.payload.items);
   const delete_ids = normalize_number_array(args.payload.missingIds);
-  if (Object.keys(upsert).length === 0 && delete_ids.length === 0) {
+  if (project_path === "" || (Object.keys(upsert).length === 0 && delete_ids.length === 0)) {
     return null;
   }
 
   return {
+    eventId: args.eventId,
     source: args.source,
+    projectPath: project_path,
     projectRevision: Number(args.payload.projectRevision ?? args.projectRevision),
     updatedSections: ["items"],
     operations: [
@@ -516,9 +536,7 @@ function normalize_project_read_items_by_ids_event(args: {
         },
       },
     ],
-    sectionRevisions: normalize_section_revisions(args.payload.sectionRevisions) ?? {
-      items: Number(args.payload.itemRevision ?? args.projectRevision),
-    },
+    sectionRevisions: normalize_section_revisions(args.payload.sectionRevisions),
   };
 }
 
@@ -824,74 +842,44 @@ function collect_project_change_invalidated_sections(
   return [...sections];
 }
 
-function build_local_project_change_revisions(
-  current_revisions: ProjectStoreState["revisions"],
-  updated_sections: ProjectStoreStage[],
-): {
-  projectRevision: number;
-  sectionRevisions: ProjectStoreSectionRevisions;
-} {
-  const current_max_revision = Math.max(
-    current_revisions.projectRevision,
-    ...Object.values(current_revisions.sections),
-  );
-  const next_section_revisions: ProjectStoreSectionRevisions = {};
-
-  for (const section of updated_sections) {
-    next_section_revisions[section] = (current_revisions.sections[section] ?? 0) + 1;
-  }
-
-  return {
-    projectRevision: current_max_revision + 1,
-    sectionRevisions: next_section_revisions,
-  };
-}
-
-function collect_previous_section_revisions(
-  current_revisions: ProjectStoreState["revisions"],
-  updated_sections: ProjectStoreStage[],
-): ProjectStoreSectionRevisions {
-  const previous_section_revisions: ProjectStoreSectionRevisions = {};
-
-  for (const section of updated_sections) {
-    previous_section_revisions[section] = current_revisions.sections[section] ?? 0;
-  }
-
-  return previous_section_revisions;
-}
-
-function build_local_project_change_rollback_change(args: {
-  updatedSections: ProjectStoreStage[];
-  previousSections: Partial<ProjectStoreSectionStateMap>;
-}): ProjectStoreChangeOperation[] {
-  return args.updatedSections.map((section) => {
-    const previous_section = args.previousSections[section];
-    if (previous_section === undefined) {
-      throw new InternalInvariantError({
-        diagnostic_context: {
-          reason: "missing_local_project_change_rollback_snapshot",
-          section,
-        },
-      });
-    }
-
-    return createProjectStoreReplaceSectionChange(section, previous_section);
+/**
+ * 缺少后端 revision 的变更不能直接写入 ProjectStore，必须补读 canonical section
+ */
+function collect_project_change_missing_revision_sections(
+  event: ProjectStoreChangeEvent,
+): ProjectStoreStage[] {
+  return event.updatedSections.filter((section) => {
+    return event.sectionRevisions?.[section] === undefined;
   });
+}
+
+/**
+ * section 失效或 revision 缺失都走补读，避免 renderer 自行推进版本事实
+ */
+function collect_project_change_sections_requiring_read(
+  event: ProjectStoreChangeEvent,
+): ProjectStoreStage[] {
+  return [
+    ...new Set([
+      ...collect_project_change_invalidated_sections(event),
+      ...collect_project_change_missing_revision_sections(event),
+    ]),
+  ];
 }
 
 export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Element {
   const [hydration_ready, set_hydration_ready] = useState(false);
   const [hydration_error, set_hydration_error] = useState<string | null>(null);
-  const [settings_snapshot, set_settings_snapshot] =
+  const [settings_snapshot, write_settings_snapshot] =
     useState<SettingsSnapshot>(DEFAULT_SETTINGS_SNAPSHOT);
-  const [project_snapshot, set_project_snapshot] =
+  const [project_snapshot, write_project_snapshot] =
     useState<ProjectSnapshot>(DEFAULT_PROJECT_SNAPSHOT);
   const task_runtime_store_ref = useRef(createTaskRuntimeStore());
   const task_snapshot = useSyncExternalStore(
     task_runtime_store_ref.current.subscribe,
     task_runtime_store_ref.current.getSnapshot,
   );
-  const set_task_snapshot = useCallback((snapshot: TaskSnapshot): void => {
+  const sync_task_snapshot = useCallback((snapshot: TaskSnapshot): void => {
     task_runtime_store_ref.current.applySnapshot(snapshot);
   }, []);
   const [proofreading_change_signal, set_proofreading_change_signal] =
@@ -904,16 +892,39 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   const [pending_target_route, set_pending_target_route] = useState<RouteId | null>(null);
   const [is_app_language_updating, set_is_app_language_updating] = useState(false);
   const project_store_ref = useRef(createProjectStore());
+  const project_store_reader_ref = useRef<ProjectStoreReader | null>(null); // context 只暴露稳定只读门面，写入口留在 Provider 内
+  if (project_store_reader_ref.current === null) {
+    project_store_reader_ref.current = {
+      getState: () => project_store_ref.current.getState(),
+      getRevisionCheckpoint: () => project_store_ref.current.getRevisionCheckpoint(),
+      subscribe: (listener) => project_store_ref.current.subscribe(listener),
+    };
+  }
+  const project_store_reader = project_store_reader_ref.current;
+  if (project_store_reader === null) {
+    throw new InternalInvariantError({
+      diagnostic_context: { reason: "project_store_reader_uninitialized" },
+    });
+  }
   const runtime_refresh_scheduler_ref = useRef<DesktopRuntimeRefreshScheduler | null>(null); // 本地操作和项目刷新通过 ref 先冲刷 SSE pending 队列
+  const applied_project_event_ids_ref = useRef<Set<string>>(new Set());
+  const applied_project_event_id_order_ref = useRef<string[]>([]);
 
   const apply_settings_snapshot = useCallback(
     (payload: SettingsSnapshotPayload): SettingsSnapshot => {
       const next_snapshot = normalize_settings_snapshot(payload);
-      set_settings_snapshot(next_snapshot);
+      write_settings_snapshot(next_snapshot);
       return next_snapshot;
     },
     [],
   );
+
+  const refresh_project_snapshot = useCallback(async (): Promise<ProjectSnapshot> => {
+    const payload = await api_fetch<ProjectSnapshotPayload>("/api/project/snapshot", {});
+    const next_snapshot = normalize_project_snapshot(payload);
+    write_project_snapshot(next_snapshot);
+    return next_snapshot;
+  }, []);
 
   const refresh_settings = useCallback(async (): Promise<SettingsSnapshot> => {
     const payload = await api_fetch<SettingsSnapshotPayload>("/api/settings/app", {});
@@ -924,12 +935,39 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     runtime_refresh_scheduler_ref.current?.flush();
   }, []);
 
+  const has_applied_project_event = useCallback((event_id: string | undefined): boolean => {
+    return (
+      event_id !== undefined &&
+      event_id !== "" &&
+      applied_project_event_ids_ref.current.has(event_id)
+    );
+  }, []);
+
+  const mark_project_event_applied = useCallback((event_id: string | undefined): void => {
+    if (event_id === undefined || event_id === "") {
+      return;
+    }
+    const applied_event_ids = applied_project_event_ids_ref.current;
+    if (applied_event_ids.has(event_id)) {
+      return;
+    }
+    applied_event_ids.add(event_id);
+    const event_id_order = applied_project_event_id_order_ref.current;
+    event_id_order.push(event_id);
+    while (event_id_order.length > APPLIED_PROJECT_EVENT_ID_LIMIT) {
+      const expired_event_id = event_id_order.shift();
+      if (expired_event_id !== undefined) {
+        applied_event_ids.delete(expired_event_id);
+      }
+    }
+  }, []);
+
   const refresh_task = useCallback(async (): Promise<TaskSnapshot> => {
     const payload = await api_fetch<TaskSnapshotPayload>("/api/tasks/snapshot", {});
     const next_snapshot = normalize_task_snapshot(payload);
-    set_task_snapshot(next_snapshot);
+    sync_task_snapshot(next_snapshot);
     return next_snapshot;
-  }, [set_task_snapshot]);
+  }, [sync_task_snapshot]);
 
   const update_app_language = useCallback(
     async (language: AppLanguage): Promise<SettingsSnapshot> => {
@@ -982,6 +1020,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       project_store_ref.current.applyProjectChange(change_event, {
         revisionMode: revision_mode,
       });
+      mark_project_event_applied(change_event.eventId);
 
       const updated_sections = change_event.updatedSections;
       const reason = change_event.source || "project_change";
@@ -1003,7 +1042,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         bump_proofreading_runtime_signal(proofreading_change_signal);
       }
     },
-    [bump_proofreading_runtime_signal, bump_workbench_runtime_signal],
+    [bump_proofreading_runtime_signal, bump_workbench_runtime_signal, mark_project_event_applied],
   );
 
   const apply_runtime_project_change_batch = useCallback(
@@ -1014,6 +1053,9 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
       // 同一刷新窗口内 project 事实只写一次 store，再合并页面级派生信号
       project_store_ref.current.applyProjectChangeBatch(change_events);
+      for (const change_event of change_events) {
+        mark_project_event_applied(change_event.eventId);
+      }
 
       const workbench_change_signal = resolve_workbench_change_signal_batch(change_events);
       if (workbench_change_signal !== null) {
@@ -1025,20 +1067,55 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         bump_proofreading_runtime_signal(proofreading_change_signal);
       }
     },
-    [bump_proofreading_runtime_signal, bump_workbench_runtime_signal],
+    [bump_proofreading_runtime_signal, bump_workbench_runtime_signal, mark_project_event_applied],
+  );
+
+  // 当前 ProjectStore 的项目路径是异步补读回写的身份锁，项目切换后迟到响应必须丢弃。
+  const read_current_project_store_path = useCallback((): string => {
+    return project_store_ref.current.getRevisionCheckpoint().projectPath;
+  }, []);
+
+  const replace_runtime_project_data = useCallback(
+    (change_event: ProjectStoreChangeEvent): void => {
+      // 初始化快照绕过增量合并，从空态一次替换，再复用页面信号派发口径。
+      project_store_ref.current.replaceProjectData(change_event);
+      mark_project_event_applied(change_event.eventId);
+
+      const updated_sections = change_event.updatedSections;
+      const reason = change_event.source || "project_read_sections";
+      const workbench_change_signal = resolve_workbench_change_signal({
+        reason,
+        updated_sections,
+        change_event,
+      });
+      if (workbench_change_signal !== null) {
+        bump_workbench_runtime_signal(workbench_change_signal);
+      }
+
+      const proofreading_change_signal = resolve_proofreading_change_signal({
+        reason,
+        updated_sections,
+        change_event,
+      });
+      if (proofreading_change_signal !== null) {
+        bump_proofreading_runtime_signal(proofreading_change_signal);
+      }
+    },
+    [bump_proofreading_runtime_signal, bump_workbench_runtime_signal, mark_project_event_applied],
   );
 
   const should_apply_runtime_project_change = useCallback(
     (change_event: ProjectStoreChangeEvent): boolean => {
-      const current_revisions = project_store_ref.current.getState().revisions;
-      const next_project_revision = Number(change_event.projectRevision);
-      if (
-        Number.isFinite(next_project_revision) &&
-        next_project_revision > 0 &&
-        next_project_revision < current_revisions.projectRevision
-      ) {
+      if (has_applied_project_event(change_event.eventId)) {
         return false;
       }
+
+      const current_project_path = read_current_project_store_path();
+      if (change_event.projectPath === "" || change_event.projectPath !== current_project_path) {
+        return false;
+      }
+
+      const current_revisions = project_store_ref.current.getState().revisions;
 
       for (const section of change_event.updatedSections) {
         const next_section_revision = change_event.sectionRevisions?.[section];
@@ -1053,27 +1130,100 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
       return true;
     },
-    [],
+    [has_applied_project_event, read_current_project_store_path],
+  );
+
+  // 补读结果同时校验项目身份和 section revision，避免旧工程或旧版本覆盖后端新事实镜像。
+  const should_apply_project_change_for_project_path = useCallback(
+    (project_path: string, change_event: ProjectStoreChangeEvent): boolean => {
+      const current_project_path = read_current_project_store_path();
+      if (
+        project_path === "" ||
+        current_project_path !== project_path ||
+        change_event.projectPath !== project_path
+      ) {
+        return false;
+      }
+      return should_apply_runtime_project_change(change_event);
+    },
+    [read_current_project_store_path, should_apply_runtime_project_change],
   );
 
   const read_project_items_by_ids = useCallback(
     async (
       request: DesktopRuntimeProjectItemsReadRequest,
     ): Promise<ProjectStoreChangeEvent | null> => {
+      // ids-only 补读可能排队 500ms 后才执行，发请求前先确认项目身份仍然匹配。
+      if (
+        !should_apply_project_change_for_project_path(request.projectPath, {
+          source: request.source,
+          projectPath: request.projectPath,
+          projectRevision: request.projectRevision,
+          updatedSections: ["items"],
+          operations: [],
+        })
+      ) {
+        return null;
+      }
+
       const read_items_payload = await api_fetch<ProjectReadItemsByIdsPayload>(
         "/api/project/items/read-by-ids",
         {
           itemIds: request.itemIds,
         },
       );
-      return normalize_project_read_items_by_ids_event({
+      const read_items_event = normalize_project_read_items_by_ids_event({
         source: request.source,
+        eventId: request.eventId,
         projectRevision: request.projectRevision,
         itemIds: request.itemIds,
         payload: read_items_payload,
       });
+      if (
+        read_items_event === null ||
+        !should_apply_project_change_for_project_path(request.projectPath, read_items_event)
+      ) {
+        return null;
+      }
+      return read_items_event;
     },
-    [],
+    [should_apply_project_change_for_project_path],
+  );
+
+  const read_project_sections_for_change = useCallback(
+    async (
+      change_event: ProjectStoreChangeEvent,
+      sections: ProjectStoreStage[],
+    ): Promise<ProjectStoreChangeEvent | null> => {
+      // section-invalidated 只能通过后端补读转回 canonical data，补读结果仍要重新过新鲜度闸门。
+      const project_path = change_event.projectPath;
+      if (!should_apply_project_change_for_project_path(project_path, change_event)) {
+        return null;
+      }
+      const read_sections_payload = await api_fetch<ProjectReadSectionsPayload>(
+        "/api/project/read-sections",
+        { sections },
+      );
+      const read_sections_event = normalize_project_read_sections_event(read_sections_payload);
+      if (read_sections_event === null) {
+        return null;
+      }
+      const canonical_event = {
+        ...read_sections_event,
+        eventId: change_event.eventId,
+        source: change_event.source || "project_change",
+      };
+      const has_all_section_revisions = sections.every((section) => {
+        return canonical_event.sectionRevisions?.[section] !== undefined;
+      });
+      if (!has_all_section_revisions) {
+        return null;
+      }
+      return should_apply_project_change_for_project_path(project_path, canonical_event)
+        ? canonical_event
+        : null;
+    },
+    [should_apply_project_change_for_project_path],
   );
 
   const refresh_project_runtime = useCallback(async (): Promise<void> => {
@@ -1087,16 +1237,28 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
     set_project_warmup_status("warming");
     set_project_warmup_stage(null);
-    project_store_ref.current.reset();
     const manifest = await api_fetch<ProjectManifestPayload>("/api/project/manifest", {});
     const next_project_snapshot = normalize_project_snapshot({ project: manifest.project });
-    if (next_project_snapshot.loaded) {
-      set_project_snapshot(next_project_snapshot);
+    const manifest_project_path = String(manifest.projectPath ?? "").trim();
+    if (!next_project_snapshot.loaded || manifest_project_path === "") {
+      write_project_snapshot(next_project_snapshot);
+      project_store_ref.current.reset();
+      set_project_warmup_stage(null);
+      return;
     }
-    project_store_ref.current.alignRevisions({
-      projectRevision: Number(manifest.projectRevision ?? 0),
-      sectionRevisions: normalize_section_revisions(manifest.sectionRevisions) ?? {},
-    });
+    if (
+      manifest_project_path !== next_project_snapshot.path ||
+      manifest_project_path !== project_snapshot.path
+    ) {
+      throw new InternalInvariantError({
+        diagnostic_context: {
+          reason: "project_runtime_manifest_identity_mismatch",
+          manifest_project_path,
+          snapshot_project_path: next_project_snapshot.path,
+          current_project_path: project_snapshot.path,
+        },
+      });
+    }
     const read_sections_payload = await api_fetch<ProjectReadSectionsPayload>(
       "/api/project/read-sections",
       {
@@ -1104,90 +1266,86 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       },
     );
     const read_sections_event = normalize_project_read_sections_event(read_sections_payload);
-    if (read_sections_event !== null) {
-      apply_runtime_project_change(read_sections_event, "exact");
+    if (read_sections_event === null || read_sections_event.projectPath !== manifest_project_path) {
+      throw new InternalInvariantError({
+        diagnostic_context: {
+          reason: "project_runtime_sections_snapshot_unmergeable",
+          manifest_project_path,
+          read_sections_project_path: read_sections_event?.projectPath ?? "",
+        },
+      });
     }
+    replace_runtime_project_data(read_sections_event);
+    write_project_snapshot(next_project_snapshot);
   }, [
     project_snapshot.loaded,
     project_snapshot.path,
     flush_runtime_refresh_scheduler,
     set_project_warmup_status,
-    apply_runtime_project_change,
+    replace_runtime_project_data,
   ]);
 
-  const align_project_runtime_ack = useCallback((ack: ProjectMutationAck): void => {
-    if (!ack.accepted) {
-      return;
-    }
-
-    project_store_ref.current.alignRevisions({
-      projectRevision: ack.projectRevision,
-      sectionRevisions: ack.sectionRevisions,
-    });
-  }, []);
-
-  const commit_local_project_change = useCallback(
-    (input: LocalProjectChangeInput): LocalProjectChangeCommit => {
-      if (input.updatedSections.length === 0) {
-        throw new InternalInvariantError({
-          diagnostic_context: { reason: "local_project_change_requires_updated_sections" },
-        });
+  const apply_project_change_event_immediately = useCallback(
+    async (change_event: ProjectStoreChangeEvent): Promise<void> => {
+      if (!should_apply_runtime_project_change(change_event)) {
+        return;
       }
 
       flush_runtime_refresh_scheduler();
-      const current_state = project_store_ref.current.getState();
-      const previous_sections = snapshotProjectStoreSections(current_state, input.updatedSections);
-      const previous_project_revision = current_state.revisions.projectRevision;
-      const previous_section_revisions = collect_previous_section_revisions(
-        current_state.revisions,
-        input.updatedSections,
-      );
-      const next_revisions = build_local_project_change_revisions(
-        current_state.revisions,
-        input.updatedSections,
-      );
+      const reason = change_event.source || "project_change";
+      const invalidated_sections = collect_project_change_sections_requiring_read(change_event);
+      if (invalidated_sections.length > 0) {
+        if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
+          return;
+        }
+        const read_sections_event = await read_project_sections_for_change(
+          change_event,
+          invalidated_sections,
+        );
+        if (read_sections_event !== null) {
+          apply_runtime_project_change(read_sections_event, "exact");
+        }
+        return;
+      }
 
-      apply_runtime_project_change(
-        {
-          source: input.source,
-          projectRevision: next_revisions.projectRevision,
-          updatedSections: input.updatedSections,
-          operations: input.operations,
-          sectionRevisions: next_revisions.sectionRevisions,
-        },
-        "exact",
-      );
+      const ids_only_item_ids = collect_project_change_ids_only_item_ids(change_event);
+      if (ids_only_item_ids.length > 0) {
+        if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
+          return;
+        }
+        const read_items_event = await read_project_items_by_ids({
+          source: reason,
+          eventId: change_event.eventId,
+          projectPath: change_event.projectPath,
+          projectRevision: change_event.projectRevision,
+          itemIds: ids_only_item_ids,
+        });
+        if (read_items_event !== null) {
+          apply_runtime_project_change(read_items_event, "exact");
+        }
+        return;
+      }
 
-      let rolled_back = false;
-      return {
-        previousProjectRevision: previous_project_revision,
-        previousSectionRevisions: previous_section_revisions,
-        previousSections: previous_sections,
-        rollback: (source = `${input.source}_rollback`) => {
-          if (rolled_back) {
-            return;
-          }
-
-          rolled_back = true;
-          apply_runtime_project_change(
-            {
-              source,
-              projectRevision: previous_project_revision,
-              updatedSections: input.updatedSections,
-              operations:
-                input.rollbackOperations ??
-                build_local_project_change_rollback_change({
-                  updatedSections: input.updatedSections,
-                  previousSections: previous_sections,
-                }),
-              sectionRevisions: previous_section_revisions,
-            },
-            "exact",
-          );
-        },
-      };
+      apply_runtime_project_change(change_event);
     },
-    [apply_runtime_project_change, flush_runtime_refresh_scheduler],
+    [
+      apply_runtime_project_change,
+      flush_runtime_refresh_scheduler,
+      project_snapshot.loaded,
+      project_snapshot.path,
+      read_project_items_by_ids,
+      read_project_sections_for_change,
+      should_apply_runtime_project_change,
+    ],
+  );
+
+  const apply_project_mutation_result = useCallback(
+    async (result: ProjectMutationResult): Promise<void> => {
+      for (const change_event of result.changes) {
+        await apply_project_change_event_immediately(change_event);
+      }
+    },
+    [apply_project_change_event_immediately],
   );
 
   useEffect(() => {
@@ -1206,8 +1364,8 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         }
 
         apply_settings_snapshot(next_settings);
-        set_project_snapshot(normalize_project_snapshot(next_project));
-        set_task_snapshot(normalize_task_snapshot(next_task));
+        write_project_snapshot(normalize_project_snapshot(next_project));
+        sync_task_snapshot(normalize_task_snapshot(next_task));
         set_hydration_error(null);
         set_hydration_ready(true);
       } catch (error) {
@@ -1226,7 +1384,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     return () => {
       cancelled = true;
     };
-  }, [apply_settings_snapshot]);
+  }, [apply_settings_snapshot, sync_task_snapshot]);
 
   useEffect(() => {
     if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
@@ -1274,16 +1432,6 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       shouldApplyProjectChange: should_apply_runtime_project_change,
     });
     runtime_refresh_scheduler_ref.current = runtime_refresh_scheduler;
-
-    function handle_project_changed(event: MessageEvent<string>): void {
-      runtime_refresh_scheduler.flush();
-      const payload = parse_event_payload(event);
-      set_project_snapshot({
-        path: String(payload.path ?? ""),
-        loaded: Boolean(payload.loaded),
-      });
-      void refresh_task();
-    }
 
     function handle_task_snapshot_changed(event: MessageEvent<string>): void {
       const payload = parse_event_payload(event);
@@ -1355,35 +1503,26 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         return;
       }
 
-      if (cancelled) {
+      if (cancelled || !should_apply_runtime_project_change(change_event)) {
         return;
       }
 
-      const invalidated_sections = collect_project_change_invalidated_sections(change_event);
+      const invalidated_sections = collect_project_change_sections_requiring_read(change_event);
       if (invalidated_sections.length > 0) {
         runtime_refresh_scheduler.flush();
         if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
           return;
         }
 
-        const read_sections_payload = await api_fetch<ProjectReadSectionsPayload>(
-          "/api/project/read-sections",
-          {
-            sections: invalidated_sections,
-          },
+        const read_sections_event = await read_project_sections_for_change(
+          change_event,
+          invalidated_sections,
         );
         if (cancelled) {
           return;
         }
-        const read_sections_event = normalize_project_read_sections_event(read_sections_payload);
         if (read_sections_event !== null) {
-          apply_runtime_project_change(
-            {
-              ...read_sections_event,
-              source: reason,
-            },
-            "exact",
-          );
+          apply_runtime_project_change(read_sections_event, "exact");
         }
         return;
       }
@@ -1396,6 +1535,8 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
         runtime_refresh_scheduler.enqueue_project_items_read({
           source: reason,
+          eventId: change_event.eventId,
+          projectPath: change_event.projectPath,
           projectRevision: change_event.projectRevision,
           itemIds: ids_only_item_ids,
         });
@@ -1414,7 +1555,6 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         }
 
         event_source = next_event_source;
-        event_source.addEventListener("project.changed", handle_project_changed as EventListener);
         event_source.addEventListener(
           "task.snapshot_changed",
           handle_task_snapshot_changed as EventListener,
@@ -1449,9 +1589,9 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     project_snapshot.loaded,
     project_snapshot.path,
     read_project_items_by_ids,
+    read_project_sections_for_change,
     refresh_settings,
     refresh_project_runtime,
-    refresh_task,
     should_apply_runtime_project_change,
   ]);
 
@@ -1468,15 +1608,14 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       project_warmup_stage,
       pending_target_route,
       is_app_language_updating,
-      set_settings_snapshot,
-      set_project_snapshot,
-      set_task_snapshot,
       set_project_warmup_status,
       set_pending_target_route,
-      project_store: project_store_ref.current,
-      commit_local_project_change,
+      project_store: project_store_reader,
+      apply_settings_snapshot,
+      sync_task_snapshot,
+      refresh_project_snapshot,
       refresh_project_runtime,
-      align_project_runtime_ack,
+      apply_project_mutation_result,
       update_app_language,
       refresh_settings,
       refresh_task,
@@ -1493,11 +1632,14 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     project_warmup_stage,
     pending_target_route,
     is_app_language_updating,
-    align_project_runtime_ack,
-    commit_local_project_change,
+    apply_settings_snapshot,
+    apply_project_mutation_result,
+    project_store_reader,
+    refresh_project_snapshot,
     refresh_project_runtime,
     refresh_settings,
     refresh_task,
+    sync_task_snapshot,
     update_app_language,
   ]);
 

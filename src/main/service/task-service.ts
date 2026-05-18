@@ -1,7 +1,9 @@
 import type { ApiJsonValue } from "../api/api-types";
 import { AppSettingService } from "../app/app-setting-service";
 import { resolve_active_model } from "../model/model-config-resolver";
+import type { ProjectOperationGate } from "../project/project-operation-gate";
 import { ProjectSessionState } from "../project/project-session-state";
+import { normalize_project_expected_section_revisions } from "../project/project-mutation-coordinator";
 import { TaskEngine } from "../engine/core/engine";
 import { TaskRuntimePublisher } from "../engine/runtime/task-runtime-publisher";
 import { TaskSnapshotBuilder } from "../engine/runtime/task-snapshot-builder";
@@ -29,6 +31,8 @@ export class TaskService {
 
   private readonly task_runtime_publisher: TaskRuntimePublisher; // task_runtime_publisher 是启动乐观态与失败回滚的唯一出口
 
+  private readonly project_operation_gate: ProjectOperationGate; // project_operation_gate 统一判断任务启动是否会撞上 busy 或结构性 mutation
+
   private readonly session_state: ProjectSessionState; // session_state 决定重翻 revision 校验是否能定位当前工程
 
   private readonly app_setting_service: AppSettingService; // app_setting_service 只用于单条翻译前的主动模型可用性检查
@@ -42,12 +46,14 @@ export class TaskService {
     task_engine: TaskEngine,
     snapshot_builder: TaskSnapshotBuilder,
     task_runtime_publisher: TaskRuntimePublisher,
+    project_operation_gate: ProjectOperationGate,
     session_state: ProjectSessionState,
     app_setting_service: AppSettingService,
   ) {
     this.task_engine = task_engine;
     this.snapshot_builder = snapshot_builder;
     this.task_runtime_publisher = task_runtime_publisher;
+    this.project_operation_gate = project_operation_gate;
     this.session_state = session_state;
     this.app_setting_service = app_setting_service;
     this.task_definition_registry.register(new TranslationTaskDefinition());
@@ -60,6 +66,8 @@ export class TaskService {
   public async start_task(request: JsonRecord): Promise<MutableJsonRecord> {
     const command = this.normalize_start_command(request);
     const previous_state = this.task_runtime_publisher.snapshot_state();
+    // assert_task_start_allowed 与 begin_task 之间不能插入 await，保证通过 gate 后立即写入 busy。
+    this.project_operation_gate.assert_task_start_allowed();
     await this.task_runtime_publisher.begin_task(
       command.task_type,
       command.task_type === "translation" ? command.scope : { kind: "all" },
@@ -199,19 +207,12 @@ export class TaskService {
   }
 
   /**
-   * expected_section_revisions 必须是对象；对象内坏值直接按旧入口语义报错
+   * expected_section_revisions 必须是对象；锁值只接受 JSON number 整数
    */
   private normalize_expected_section_revisions(
     value: ApiJsonValue | undefined,
   ): Record<string, number> | null {
-    if (!this.is_record(value)) {
-      return null;
-    }
-    const revisions: Record<string, number> = {};
-    for (const [section, revision] of Object.entries(value)) {
-      revisions[section] = this.parse_integer_or_throw(revision);
-    }
-    return revisions;
+    return normalize_project_expected_section_revisions(value);
   }
 
   /**
@@ -223,25 +224,11 @@ export class TaskService {
   }
 
   /**
-   * 严格整数转换用于 revision 字段，避免坏锁值被静默吞掉
-   */
-  private parse_integer_or_throw(value: ApiJsonValue | undefined): number {
-    const parsed = this.parse_integer_like(value);
-    if (parsed === null) {
-      throw new AppErrors.RequestValidationError();
-    }
-    return parsed;
-  }
-
-  /**
-   * 模拟历史 int：数字截断，整数字符串可转，布尔值按 1/0
+   * item_id 只接受整数数字或整数字符串，拒绝布尔值和小数兼容
    */
   private parse_integer_like(value: ApiJsonValue | undefined): number | null {
     if (typeof value === "number") {
-      return Number.isFinite(value) ? Math.trunc(value) : null;
-    }
-    if (typeof value === "boolean") {
-      return value ? 1 : 0;
+      return Number.isInteger(value) ? value : null;
     }
     if (typeof value === "string" && /^[+-]?\d+$/.test(value.trim())) {
       return Number.parseInt(value, 10);

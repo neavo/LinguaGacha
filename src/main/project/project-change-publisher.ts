@@ -1,7 +1,10 @@
 import { CoreEventHub } from "../events/core-event-hub";
 import type { ApiJsonValue } from "../api/api-types";
-import { ProjectChangeEventAdapter } from "./project-change-event-adapter";
-import { PROJECT_CHANGE_EVENT_TOPIC } from "../../shared/project/event";
+import {
+  ProjectChangeEventAdapter,
+  type ProjectChangeDraftRecord,
+} from "./project-change-event-adapter";
+import { PROJECT_CHANGE_EVENT_TOPIC, type ProjectChangeEvent } from "../../shared/project/event";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 
@@ -25,12 +28,14 @@ export class ProjectChangePublisher {
   }
 
   /**
-   * 发布项目数据变更；payload 只声明变更意图和 payload mode
+   * 发布项目数据变更，并把同一份公开事件返回给 HTTP mutation 响应
    */
-  public publish_project_change(payload: JsonRecord): void {
-    this.core_event_hub.publish(
-      PROJECT_CHANGE_EVENT_TOPIC,
-      this.project_change_adapter.adapt_project_change(payload) as unknown as JsonRecord,
-    );
+  public publish_project_change(payload: ProjectChangeDraftRecord): ProjectChangeEvent | null {
+    const event = this.project_change_adapter.adapt_project_change(payload);
+    if (event === null) {
+      return null;
+    }
+    this.core_event_hub.publish(PROJECT_CHANGE_EVENT_TOPIC, event as unknown as JsonRecord);
+    return event;
   }
 }

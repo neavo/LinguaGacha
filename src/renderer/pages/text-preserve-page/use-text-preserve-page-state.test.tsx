@@ -104,10 +104,81 @@ let runtime_state = {
 
 const project_store_listeners = new Set<() => void>();
 
-function notify_project_store(): void {
-  for (const listener of project_store_listeners) {
-    listener();
+type TextPreserveRuleEntry = (typeof runtime_state.quality.text_preserve.entries)[number] & {
+  entry_id?: string;
+};
+
+function apply_quality_mutation_result(result: {
+  changes?: Array<{
+    operations?: Array<{
+      sections?: {
+        quality?: {
+          data?: typeof runtime_state.quality;
+        };
+      };
+    }>;
+  }>;
+}): void {
+  for (const change of result.changes ?? []) {
+    for (const operation of change.operations ?? []) {
+      const next_quality = operation.sections?.quality?.data;
+      if (next_quality !== undefined) {
+        runtime_state = {
+          ...runtime_state,
+          quality: next_quality,
+        };
+        for (const listener of project_store_listeners) {
+          listener();
+        }
+      }
+    }
   }
+}
+
+// 测试夹具只模拟后端原始 canonical mutation payload，规范化入口仍由页面 hook 真实调用。
+function create_quality_mutation_result(
+  args: {
+    quality?: typeof runtime_state.quality;
+    project_revision?: number;
+    quality_revision?: number;
+  } = {},
+) {
+  const project_revision = args.project_revision ?? 2;
+  return {
+    accepted: true,
+    changes: [
+      {
+        source: "quality_rule_save_entries",
+        projectPath: "E:/demo/sample.lg",
+        projectRevision: project_revision,
+        updatedSections: ["quality"],
+        sectionRevisions: {
+          quality: args.quality_revision ?? project_revision,
+        },
+        sections: {
+          quality: {
+            payloadMode: "canonical-delta",
+            data: args.quality ?? runtime_state.quality,
+          },
+        },
+      },
+    ],
+  };
+}
+
+// 文本保护规则保存只改变 text_preserve 切片，测试显式写出后端回灌后的完整质量事实。
+function create_text_preserve_quality(
+  entries: TextPreserveRuleEntry[],
+  revision: number,
+): typeof runtime_state.quality {
+  return {
+    ...runtime_state.quality,
+    text_preserve: {
+      ...runtime_state.quality.text_preserve,
+      entries,
+      revision,
+    },
+  };
 }
 
 const project_store = {
@@ -206,51 +277,12 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
       },
       project_store,
       settings_snapshot: {},
-      set_settings_snapshot: vi.fn(),
+      apply_settings_snapshot: vi.fn(),
       refresh_project_runtime: vi.fn(async () => {}),
-      align_project_runtime_ack: vi.fn(),
       task_snapshot,
-      commit_local_project_change: (input: {
-        operations: Array<{
-          sections?: {
-            quality?: {
-              data?: typeof runtime_state.quality;
-            };
-          };
-        }>;
-      }) => {
-        const previous_quality = {
-          ...runtime_state.quality,
-          text_preserve: {
-            ...runtime_state.quality.text_preserve,
-            entries: runtime_state.quality.text_preserve.entries.map((entry) => ({ ...entry })),
-          },
-        };
-        const quality_patch = input.operations.find(
-          (operation) => operation.sections?.quality?.data !== undefined,
-        );
-        const next_quality = quality_patch?.sections?.quality?.data;
-        if (next_quality !== undefined) {
-          runtime_state = {
-            ...runtime_state,
-            quality: next_quality,
-          };
-          notify_project_store();
-        }
-
-        return {
-          previousProjectRevision: 0,
-          previousSectionRevisions: { quality: 0 },
-          previousSections: { quality: previous_quality },
-          rollback: () => {
-            runtime_state = {
-              ...runtime_state,
-              quality: previous_quality,
-            };
-            notify_project_store();
-          },
-        };
-      },
+      apply_project_mutation_result: vi.fn(async (result) => {
+        apply_quality_mutation_result(result);
+      }),
     }),
   };
 });
@@ -323,6 +355,13 @@ describe("useTextPreservePageState", () => {
           revision: 1,
         },
       },
+      revisions: {
+        ...runtime_state.revisions,
+        sections: {
+          ...runtime_state.revisions.sections,
+          quality: 1,
+        },
+      },
     };
   });
 
@@ -372,6 +411,30 @@ describe("useTextPreservePageState", () => {
     });
     api_fetch_mock.mockResolvedValue({
       accepted: true,
+      changes: [
+        {
+          source: "quality_rule_update_meta",
+          projectPath: "E:/demo/sample.lg",
+          projectRevision: 2,
+          updatedSections: ["quality"],
+          sectionRevisions: {
+            quality: 2,
+          },
+          sections: {
+            quality: {
+              payloadMode: "canonical-delta",
+              data: {
+                ...runtime_state.quality,
+                text_preserve: {
+                  ...runtime_state.quality.text_preserve,
+                  mode: "smart",
+                  revision: 2,
+                },
+              },
+            },
+          },
+        },
+      ],
     });
 
     await mount_probe();
@@ -409,6 +472,30 @@ describe("useTextPreservePageState", () => {
     });
     api_fetch_mock.mockResolvedValue({
       accepted: true,
+      changes: [
+        {
+          source: "quality_rule_update_meta",
+          projectPath: "E:/demo/sample.lg",
+          projectRevision: 2,
+          updatedSections: ["quality"],
+          sectionRevisions: {
+            quality: 2,
+          },
+          sections: {
+            quality: {
+              payloadMode: "canonical-delta",
+              data: {
+                ...runtime_state.quality,
+                text_preserve: {
+                  ...runtime_state.quality.text_preserve,
+                  mode: "smart",
+                  revision: 2,
+                },
+              },
+            },
+          },
+        },
+      ],
     });
 
     await mount_probe();
@@ -517,13 +604,25 @@ describe("useTextPreservePageState", () => {
           },
         ],
       })
-      .mockResolvedValueOnce({
-        accepted: true,
-        projectRevision: 2,
-        sectionRevisions: {
-          quality: 2,
-        },
-      });
+      .mockResolvedValueOnce(
+        create_quality_mutation_result({
+          quality: create_text_preserve_quality(
+            [
+              {
+                entry_id: "foo::0",
+                src: "foo",
+                info: "bar",
+              },
+              {
+                entry_id: "baz::1",
+                src: "baz",
+                info: "keep",
+              },
+            ],
+            2,
+          ),
+        }),
+      );
 
     await act(async () => {
       await latest_state?.import_entries_from_path("E:/demo/text-preserve.json");
@@ -539,7 +638,7 @@ describe("useTextPreservePageState", () => {
 
     expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
       rule_type: "text_preserve",
-      expected_revision: 1,
+      expected_section_revisions: { quality: 1 },
       entries: [
         {
           entry_id: "foo::0",
@@ -566,22 +665,31 @@ describe("useTextPreservePageState", () => {
           },
         ],
       })
-      .mockResolvedValueOnce({
-        accepted: true,
-        projectRevision: 2,
-        sectionRevisions: {
-          quality: 2,
-        },
-      });
+      .mockResolvedValueOnce(
+        create_quality_mutation_result({
+          quality: create_text_preserve_quality(
+            [
+              {
+                entry_id: "foo::0",
+                src: "foo",
+                info: "bar",
+              },
+              {
+                entry_id: "baz::1",
+                src: "baz",
+                info: "keep",
+              },
+            ],
+            2,
+          ),
+        }),
+      );
 
     await act(async () => {
       await latest_state?.import_entries_from_path("E:/demo/text-preserve.json");
     });
 
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual([
-      "foo",
-      "baz",
-    ]);
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo", "baz"]);
   });
 
   it("导入保存失败时恢复原来的冻结结果成员", async () => {
@@ -651,13 +759,20 @@ describe("useTextPreservePageState", () => {
           },
         ],
       })
-      .mockResolvedValueOnce({
-        accepted: true,
-        projectRevision: 2,
-        sectionRevisions: {
-          quality: 2,
-        },
-      });
+      .mockResolvedValueOnce(
+        create_quality_mutation_result({
+          quality: create_text_preserve_quality(
+            [
+              {
+                entry_id: "foo::0",
+                src: "foo",
+                info: "",
+              },
+            ],
+            2,
+          ),
+        }),
+      );
 
     await act(async () => {
       await latest_state?.apply_preset("builtin:demo.json");
@@ -668,7 +783,7 @@ describe("useTextPreservePageState", () => {
 
     expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
       rule_type: "text_preserve",
-      expected_revision: 1,
+      expected_section_revisions: { quality: 1 },
       entries: [
         {
           entry_id: "foo::0",

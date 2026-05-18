@@ -33,8 +33,8 @@ import {
   type TranslationTaskRuntime,
 } from "@/pages/workbench-page/task-runtime/use-translation-task-runtime";
 import {
-  normalize_project_mutation_ack,
-  type ProjectMutationAckPayload,
+  normalize_project_mutation_result,
+  type ProjectMutationResultPayload,
 } from "@/app/desktop/desktop-runtime-context";
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import { api_fetch } from "@/app/desktop/desktop-api";
@@ -810,16 +810,14 @@ export function useWorkbenchLiveState(
     waitForProjectPagesBarrier: options.waitForProjectPagesBarrier,
   });
   const {
-    align_project_runtime_ack,
-    commit_local_project_change,
+    apply_project_mutation_result,
     project_snapshot,
     project_store,
     refresh_project_runtime,
     workbench_change_signal,
     refresh_task,
+    refresh_project_snapshot,
     settings_snapshot,
-    set_project_snapshot,
-    set_task_snapshot,
     task_snapshot,
   } = useDesktopRuntime();
   const [snapshot, set_snapshot] = useState<WorkbenchSnapshot>(EMPTY_SNAPSHOT);
@@ -1274,27 +1272,19 @@ export function useWorkbenchLiveState(
     });
   }, []);
 
-  const run_ack_only_file_mutation = useCallback(
+  const run_project_file_mutation = useCallback(
     async (
       plan: WorkbenchProjectMutationPlan,
-      request: (body: Record<string, unknown>) => Promise<ProjectMutationAckPayload>,
+      request: (body: Record<string, unknown>) => Promise<ProjectMutationResultPayload>,
       barrier_checkpoint: ProjectPagesBarrierCheckpoint | null,
     ): Promise<void> => {
       set_is_mutation_running(true);
       set_file_op_running(true);
-      const previous_task_snapshot = task_snapshot;
-      const local_commit = commit_local_project_change({
-        source: "workbench_mutation",
-        updatedSections: plan.updatedSections,
-        operations: plan.operations,
-      });
-      if (plan.next_task_snapshot !== undefined) {
-        set_task_snapshot({ ...task_snapshot, ...plan.next_task_snapshot } as typeof task_snapshot);
-      }
 
       try {
-        const mutation_ack = normalize_project_mutation_ack(await request(plan.requestBody));
-        align_project_runtime_ack(mutation_ack);
+        const mutation_result = normalize_project_mutation_result(await request(plan.requestBody));
+        await apply_project_mutation_result(mutation_result);
+        await refresh_task();
         if (options.waitForProjectPagesBarrier !== undefined) {
           await options.waitForProjectPagesBarrier("workbench_file_mutation", {
             checkpoint: barrier_checkpoint,
@@ -1302,24 +1292,13 @@ export function useWorkbenchLiveState(
         }
       } catch (error) {
         set_file_op_running(false);
-        if (plan.next_task_snapshot !== undefined) {
-          set_task_snapshot(previous_task_snapshot);
-        }
-        local_commit.rollback();
         void refresh_project_runtime().catch(() => {});
         throw error;
       } finally {
         set_is_mutation_running(false);
       }
     },
-    [
-      align_project_runtime_ack,
-      commit_local_project_change,
-      options,
-      refresh_project_runtime,
-      set_task_snapshot,
-      task_snapshot,
-    ],
+    [apply_project_mutation_result, options, refresh_project_runtime, refresh_task],
   );
 
   const execute_add_file_request = useCallback(
@@ -1338,10 +1317,10 @@ export function useWorkbenchLiveState(
         },
         inheritance_mode,
       });
-      await run_ack_only_file_mutation(
+      await run_project_file_mutation(
         add_plan,
         async (body) => {
-          return await api_fetch<ProjectMutationAckPayload>(
+          return await api_fetch<ProjectMutationResultPayload>(
             "/api/project/workbench/add-file",
             body,
           );
@@ -1353,7 +1332,7 @@ export function useWorkbenchLiveState(
     },
     [
       project_store,
-      run_ack_only_file_mutation,
+      run_project_file_mutation,
       settings_snapshot.mtool_optimizer_enable,
       settings_snapshot.skip_duplicate_source_text_enable,
       settings_snapshot.source_language,
@@ -1606,10 +1585,10 @@ export function useWorkbenchLiveState(
           state: project_store.getState(),
           ordered_rel_paths: ordered_entry_ids,
         });
-        await run_ack_only_file_mutation(
+        await run_project_file_mutation(
           reorder_plan,
           async (body) => {
-            return await api_fetch<ProjectMutationAckPayload>(
+            return await api_fetch<ProjectMutationResultPayload>(
               "/api/project/workbench/reorder-files",
               body,
             );
@@ -1620,7 +1599,7 @@ export function useWorkbenchLiveState(
         push_toast("error", t("workbench_page.reorder.failed"));
       }
     },
-    [entries.length, project_store, push_toast, readonly, run_ack_only_file_mutation, t],
+    [entries.length, project_store, push_toast, readonly, run_project_file_mutation, t],
   );
 
   async function confirm_dialog(): Promise<void> {
@@ -1660,10 +1639,10 @@ export function useWorkbenchLiveState(
             skip_duplicate_source_text_enable: settings_snapshot.skip_duplicate_source_text_enable,
           },
         });
-        await run_ack_only_file_mutation(
+        await run_project_file_mutation(
           reset_plan,
           async (body) => {
-            return await api_fetch<ProjectMutationAckPayload>(
+            return await api_fetch<ProjectMutationResultPayload>(
               "/api/project/workbench/reset-file",
               body,
             );
@@ -1690,10 +1669,10 @@ export function useWorkbenchLiveState(
             skip_duplicate_source_text_enable: settings_snapshot.skip_duplicate_source_text_enable,
           },
         });
-        await run_ack_only_file_mutation(
+        await run_project_file_mutation(
           delete_plan,
           async (body) => {
-            return await api_fetch<ProjectMutationAckPayload>(
+            return await api_fetch<ProjectMutationResultPayload>(
               "/api/project/workbench/delete-file",
               body,
             );
@@ -1719,13 +1698,8 @@ export function useWorkbenchLiveState(
       if (current_dialog_state.kind === "close-project") {
         set_is_mutation_running(true);
         try {
-          const payload = await api_fetch<{
-            project?: { path?: string; loaded?: boolean };
-          }>("/api/project/unload", {});
-          set_project_snapshot({
-            path: String(payload.project?.path ?? ""),
-            loaded: Boolean(payload.project?.loaded),
-          });
+          await api_fetch("/api/project/unload", {});
+          await refresh_project_snapshot();
           workbench_view_cache_ref.current = null;
           set_snapshot(EMPTY_SNAPSHOT);
           set_file_op_running(false);

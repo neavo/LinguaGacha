@@ -9,14 +9,13 @@ import {
   prepare_analysis_glossary_import,
   type AnalysisGlossaryImportAction,
 } from "@/project/importer/analysis-glossary-importer";
-import { createProjectStoreReplaceSectionChange } from "@/project/store/project-store";
 import {
   create_empty_quality_rule_import_confirm_state,
   type QualityRuleImportConfirmState,
 } from "@/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-state";
 import {
-  normalize_project_mutation_ack,
-  type ProjectMutationAckPayload,
+  normalize_project_mutation_result,
+  type ProjectMutationResultPayload,
 } from "@/app/desktop/desktop-runtime-context";
 import type {
   ProjectPagesBarrierCheckpoint,
@@ -202,11 +201,11 @@ export function useAnalysisTaskRuntime(
   const {
     project_store,
     project_snapshot,
-    set_task_snapshot,
+    sync_task_snapshot,
     task_snapshot,
-    commit_local_project_change,
     refresh_project_runtime,
-    align_project_runtime_ack,
+    apply_project_mutation_result,
+    refresh_task,
   } = useDesktopRuntime();
   const [analysis_task_snapshot, set_analysis_task_snapshot] = useState<AnalysisTaskSnapshot>(
     () => {
@@ -258,10 +257,7 @@ export function useAnalysisTaskRuntime(
     (analysis_confirm_state !== null && analysis_confirm_state.submitting) ||
     analysis_import_confirm_state.submitting;
   const analysis_action_blocked =
-    !project_snapshot.loaded ||
-    task_snapshot.busy ||
-    analysis_dialog_open ||
-    analysis_importing;
+    !project_snapshot.loaded || task_snapshot.busy || analysis_dialog_open || analysis_importing;
   const analysis_task_menu_busy = analysis_action_submitting;
   const analysis_task_menu_disabled = analysis_action_blocked;
   const can_open_analysis_detail_sheet =
@@ -389,7 +385,8 @@ export function useAnalysisTaskRuntime(
 
   const sync_runtime_task_snapshot = useCallback(
     (next_snapshot: AnalysisTaskSnapshot): void => {
-      set_task_snapshot({
+      sync_task_snapshot({
+        runtime_revision: next_snapshot.runtime_revision,
         task_type: next_snapshot.task_type,
         status: next_snapshot.status,
         busy: next_snapshot.busy,
@@ -408,7 +405,7 @@ export function useAnalysisTaskRuntime(
         extras: { kind: "analysis", candidate_count: next_snapshot.candidate_count },
       });
     },
-    [set_task_snapshot],
+    [sync_task_snapshot],
   );
 
   const refresh_analysis_task_snapshot = useCallback(async (): Promise<void> => {
@@ -530,33 +527,19 @@ export function useAnalysisTaskRuntime(
       prepared_import: PreparedAnalysisGlossaryImport,
       barrierCheckpoint: ProjectPagesBarrierCheckpoint | null,
     ): Promise<void> => {
-      const operations = [
-        ...(prepared_import.quality_changed
-          ? [createProjectStoreReplaceSectionChange("quality", prepared_import.next_quality_state)]
-          : []),
-        createProjectStoreReplaceSectionChange("analysis", prepared_import.next_analysis_state),
-      ];
-      const local_commit = commit_local_project_change({
-        source: "analysis_import_glossary",
-        updatedSections: prepared_import.updated_sections,
-        operations,
-      });
-
       try {
-        const next_snapshot = normalize_analysis_task_snapshot_payload({
-          task: prepared_import.next_task_snapshot,
-        });
-        apply_analysis_task_snapshot(next_snapshot);
-        sync_runtime_task_snapshot(next_snapshot);
-        const mutation_ack = normalize_project_mutation_ack(
-          await api_fetch<ProjectMutationAckPayload>(
+        const mutation_result = normalize_project_mutation_result(
+          await api_fetch<ProjectMutationResultPayload>(
             "/api/project/analysis/import-glossary",
             prepared_import.request_body,
           ),
         );
-        align_project_runtime_ack(mutation_ack);
+        await apply_project_mutation_result(mutation_result);
+        const next_snapshot = normalize_analysis_task_snapshot_payload({
+          task: (await refresh_task()) as Partial<AnalysisTaskSnapshot>,
+        });
+        apply_analysis_task_snapshot(next_snapshot);
       } catch (error) {
-        local_commit.rollback();
         void refresh_project_runtime().catch(() => {});
         throw error;
       }
@@ -575,13 +558,12 @@ export function useAnalysisTaskRuntime(
       );
     },
     [
-      align_project_runtime_ack,
       apply_analysis_task_snapshot,
-      commit_local_project_change,
+      apply_project_mutation_result,
       options,
       push_toast,
       refresh_project_runtime,
-      sync_runtime_task_snapshot,
+      refresh_task,
       t,
     ],
   );
@@ -698,41 +680,23 @@ export function useAnalysisTaskRuntime(
               state: project_store.getState(),
               task_snapshot,
             })
-          : await create_analysis_reset_failed_plan({
+          : create_analysis_reset_failed_plan({
               state: project_store.getState(),
               task_snapshot,
-              request_preview: async () => {
-                return await api_fetch<{
-                  status_summary?: Record<string, unknown>;
-                }>("/api/project/analysis/reset-preview", {
-                  mode: "failed",
-                });
-              },
             });
-      const local_commit = commit_local_project_change({
-        source:
-          analysis_confirm_state.kind === "reset-all"
-            ? "analysis_reset_all"
-            : "analysis_reset_failed",
-        updatedSections: reset_plan.updatedSections,
-        operations: reset_plan.operations,
-      });
-
       try {
-        const next_snapshot = normalize_analysis_task_snapshot_payload({
-          task: reset_plan.next_task_snapshot,
-        });
-        apply_analysis_task_snapshot(next_snapshot);
-        sync_runtime_task_snapshot(next_snapshot);
-        const mutation_ack = normalize_project_mutation_ack(
-          await api_fetch<ProjectMutationAckPayload>(
+        const mutation_result = normalize_project_mutation_result(
+          await api_fetch<ProjectMutationResultPayload>(
             "/api/project/analysis/reset",
             reset_plan.requestBody,
           ),
         );
-        align_project_runtime_ack(mutation_ack);
+        await apply_project_mutation_result(mutation_result);
+        const next_snapshot = normalize_analysis_task_snapshot_payload({
+          task: (await refresh_task()) as Partial<AnalysisTaskSnapshot>,
+        });
+        apply_analysis_task_snapshot(next_snapshot);
       } catch (error) {
-        local_commit.rollback();
         void refresh_project_runtime().catch(() => {});
         throw error;
       }
@@ -762,15 +726,14 @@ export function useAnalysisTaskRuntime(
     }
   }, [
     analysis_confirm_state,
-    align_project_runtime_ack,
     apply_analysis_task_snapshot,
-    commit_local_project_change,
+    apply_project_mutation_result,
     execute_analysis_glossary_import,
     project_store,
     push_toast,
     refresh_project_runtime,
+    refresh_task,
     suppress_next_terminal_prompt,
-    sync_runtime_task_snapshot,
     task_snapshot,
     t,
   ]);

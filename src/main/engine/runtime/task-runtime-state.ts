@@ -1,9 +1,5 @@
 import type { ApiJsonValue } from "../../api/api-types";
-import type {
-  TaskRunStatus,
-  TaskRuntimeStatePayload,
-  TaskType,
-} from "./task-runtime-types";
+import type { TaskRunStatus, TaskRuntimeStatePayload, TaskType } from "./task-runtime-types";
 import type { TranslationScope } from "../protocol/task-types";
 
 const IDLE_TASK_TYPE = "idle"; // Engine 空闲态统一用 idle 表达，避免快照泄漏任务类型细节
@@ -22,11 +18,14 @@ export class TaskRuntimeState {
 
   private translation_scope: TranslationScope = { kind: "all" }; // 重翻行级 spinner 只依赖 items scope，不能混入普通翻译任务状态
 
+  private runtime_revision = 0; // 后端任务快照单调序号，renderer 只用它丢弃旧 snapshot
+
   /**
    * 返回不可变快照，调用方不能拿内部数组引用继续改写运行态
    */
   public snapshot(): TaskRuntimeStatePayload {
     return {
+      runtime_revision: this.runtime_revision,
       status: this.status,
       busy: this.busy,
       request_in_flight_count: this.request_in_flight_count,
@@ -38,16 +37,14 @@ export class TaskRuntimeState {
   /**
    * 任务命令被 TaskService 受理后立即占用运行态，避免按钮等到下一帧 SSE 才变化
    */
-  public begin_task(
-    task_type: TaskType,
-    scope: TranslationScope = { kind: "all" },
-  ): void {
+  public begin_task(task_type: TaskType, scope: TranslationScope = { kind: "all" }): void {
     this.status = "requested";
     this.busy = true;
     this.active_task_type = task_type;
     if (task_type === "translation") {
       this.translation_scope = this.normalize_translation_scope(scope);
     }
+    this.bump_runtime_revision();
   }
 
   /**
@@ -59,6 +56,7 @@ export class TaskRuntimeState {
     this.request_in_flight_count = snapshot.request_in_flight_count;
     this.active_task_type = snapshot.active_task_type;
     this.translation_scope = this.normalize_translation_scope(snapshot.translation_scope);
+    this.bump_runtime_revision();
   }
 
   /**
@@ -74,6 +72,7 @@ export class TaskRuntimeState {
         this.translation_scope = { kind: "all" };
       }
     }
+    this.bump_runtime_revision();
   }
 
   /**
@@ -83,6 +82,7 @@ export class TaskRuntimeState {
     if (this.busy) {
       this.active_task_type = task_type;
     }
+    this.bump_runtime_revision();
   }
 
   /**
@@ -93,6 +93,7 @@ export class TaskRuntimeState {
       this.active_task_type = task_type;
     }
     this.request_in_flight_count = Math.max(0, this.read_number(value, 0));
+    this.bump_runtime_revision();
   }
 
   /**
@@ -107,6 +108,14 @@ export class TaskRuntimeState {
       kind: "items",
       item_ids: this.translation_scope.item_ids.filter((item_id) => !done_ids.has(item_id)),
     };
+    this.bump_runtime_revision();
+  }
+
+  /**
+   * 公开 snapshot 只按后端单调 revision 排序，避免 HTTP 回包与 SSE 乱序互相覆盖
+   */
+  private bump_runtime_revision(): void {
+    this.runtime_revision += 1;
   }
 
   /**
@@ -140,7 +149,9 @@ export class TaskRuntimeState {
   /**
    * translation scope 是翻译范围唯一语义源；非法或空 items scope 回退为 all，命令边界负责报错
    */
-  private normalize_translation_scope(value: TranslationScope | ApiJsonValue | undefined): TranslationScope {
+  private normalize_translation_scope(
+    value: TranslationScope | ApiJsonValue | undefined,
+  ): TranslationScope {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
       return { kind: "all" };
     }
@@ -156,6 +167,8 @@ export class TaskRuntimeState {
    * snapshot 不能泄漏内部数组引用
    */
   private clone_translation_scope(scope: TranslationScope): TranslationScope {
-    return scope.kind === "items" ? { kind: "items", item_ids: [...scope.item_ids] } : { kind: "all" };
+    return scope.kind === "items"
+      ? { kind: "items", item_ids: [...scope.item_ids] }
+      : { kind: "all" };
   }
 }

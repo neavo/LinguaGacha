@@ -4,7 +4,9 @@ import type { TaskSnapshot } from "@/app/desktop/task-runtime-store";
 export const DESKTOP_RUNTIME_REFRESH_INTERVAL_MS = 500; // renderer 运行态刷新固定为每秒 2 帧
 
 export type DesktopRuntimeProjectItemsReadRequest = {
+  eventId?: string;
   source: string;
+  projectPath: string; // 补读发起时的项目路径，用于丢弃项目切换后的迟到响应
   projectRevision: number;
   itemIds: number[];
 };
@@ -35,9 +37,7 @@ type PendingProjectRefresh =
 export class DesktopRuntimeRefreshScheduler {
   private readonly apply_task_snapshot: (snapshot: TaskSnapshot) => void; // 只在 flush 时覆盖 TaskRuntimeStore
 
-  private readonly apply_project_change_batch: (
-    events: readonly ProjectStoreChangeEvent[],
-  ) => void; // 保留 project event 到达顺序，flush 时只通知一次 ProjectStore
+  private readonly apply_project_change_batch: (events: readonly ProjectStoreChangeEvent[]) => void; // 保留 project event 到达顺序，flush 时只通知一次 ProjectStore
 
   private readonly read_project_items_by_ids:
     | ((request: DesktopRuntimeProjectItemsReadRequest) => Promise<ProjectStoreChangeEvent | null>)
@@ -109,6 +109,7 @@ export class DesktopRuntimeRefreshScheduler {
       kind: "items-read",
       request: {
         ...request,
+        eventId: request.eventId,
         itemIds: item_ids,
       },
     });
@@ -116,7 +117,7 @@ export class DesktopRuntimeRefreshScheduler {
   }
 
   /**
-   * 立即冲刷 pending 队列，供工程切换、失效补读、本地乐观变更和任务终态保持顺序
+   * 立即冲刷 pending 队列，供工程切换、mutation result、失效补读和任务终态保持顺序
    */
   public flush(): void {
     if (this.disposed) {
@@ -155,17 +156,17 @@ export class DesktopRuntimeRefreshScheduler {
   /**
    * project refresh 可能包含异步 ids-only 补读；所有结果串行收口后再批量通知 store
    */
-  private async flush_project_refreshes(refreshes: readonly PendingProjectRefresh[]): Promise<void> {
+  private async flush_project_refreshes(
+    refreshes: readonly PendingProjectRefresh[],
+  ): Promise<void> {
     const project_changes = await this.resolve_project_refresh_events(refreshes);
     if (this.disposed) {
       return;
     }
 
-    const fresh_changes = project_changes.filter(
-      (event): event is ProjectStoreChangeEvent => {
-        return event !== null && this.should_apply_project_change(event);
-      },
-    );
+    const fresh_changes = project_changes.filter((event): event is ProjectStoreChangeEvent => {
+      return event !== null && this.should_apply_project_change(event);
+    });
     if (fresh_changes.length === 0) {
       return;
     }
@@ -214,9 +215,20 @@ export class DesktopRuntimeRefreshScheduler {
     }
 
     const sources = [...new Set(requests.map((request) => request.source))];
+    const project_paths = [...new Set(requests.map((request) => request.projectPath))];
+    if (project_paths.length !== 1) {
+      return null;
+    }
+    const event_ids = [
+      ...new Set(
+        requests.map((request) => request.eventId ?? "").filter((event_id) => event_id !== ""),
+      ),
+    ];
     const item_ids = [...new Set(requests.flatMap((request) => request.itemIds))];
     return await this.read_project_items_by_ids({
-      source: sources.length === 1 ? sources[0] ?? "project_change" : "project_change_batch",
+      ...(event_ids.length === 1 ? { eventId: event_ids[0] } : {}),
+      source: sources.length === 1 ? (sources[0] ?? "project_change") : "project_change_batch",
+      projectPath: project_paths[0] ?? "",
       projectRevision: Math.max(...requests.map((request) => request.projectRevision), 0),
       itemIds: item_ids,
     });

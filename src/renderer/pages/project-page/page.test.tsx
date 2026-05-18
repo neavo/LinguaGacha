@@ -13,7 +13,6 @@ const {
   dismiss_toast_mock,
   push_progress_toast_mock,
   push_toast_mock,
-  project_prefilter_compute_mock,
   update_progress_toast_mock,
 } = vi.hoisted(() => {
   return {
@@ -36,7 +35,6 @@ const {
     dismiss_toast_mock: vi.fn(),
     push_progress_toast_mock: vi.fn(() => "project-loading-toast"),
     push_toast_mock: vi.fn(),
-    project_prefilter_compute_mock: vi.fn(),
     update_progress_toast_mock: vi.fn(),
   };
 });
@@ -122,15 +120,6 @@ vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
       push_progress_toast: push_progress_toast_mock,
       push_toast: push_toast_mock,
       update_progress_toast: update_progress_toast_mock,
-    }),
-  };
-});
-
-vi.mock("@/project/prefilter/prefilter-worker-client", () => {
-  return {
-    createProjectPrefilterClient: () => ({
-      compute: project_prefilter_compute_mock,
-      dispose: vi.fn(),
     }),
   };
 });
@@ -239,7 +228,7 @@ function create_desktop_runtime_fixture(settings_overrides: Record<string, unkno
   return {
     project_warmup_stage: null,
     settings_snapshot: create_settings_snapshot(settings_overrides),
-    set_project_snapshot: vi.fn(),
+    refresh_project_snapshot: vi.fn(),
     set_project_warmup_status: vi.fn(),
     refresh_settings: vi.fn(async () => {}),
     refresh_task: vi.fn(async () => {}),
@@ -295,41 +284,9 @@ describe("ProjectPage", () => {
       callback(0);
       return 1;
     };
-    project_prefilter_compute_mock.mockResolvedValue({
-      items: {},
-      analysis: {},
-      translation_extras: {},
-      task_snapshot: {},
-      project_settings: {
-        source_language: "JA",
-        target_language: "ZH",
-        mtool_optimizer_enable: true,
-        skip_duplicate_source_text_enable: true,
-      },
-      prefilter_config: {
-        source_language: "JA",
-        mtool_optimizer_enable: true,
-        skip_duplicate_source_text_enable: true,
-      },
-      stats: {
-        rule_skipped: 0,
-        language_skipped: 0,
-        mtool_skipped: 0,
-        duplicated: 0,
-      },
-    });
     api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/project/source-files") {
         return { source_files: ["E:\\Source\\demo.txt"] };
-      }
-      if (path === "/api/project/create-preview") {
-        return {
-          draft: {
-            files: [],
-            items: [],
-            section_revisions: { files: 0, items: 0, analysis: 0 },
-          },
-        };
       }
       if (path === "/api/project/create-commit") {
         return { project: { path: "E:\\Source\\demo_20260428_120000.lg", loaded: true } };
@@ -358,7 +315,6 @@ describe("ProjectPage", () => {
     dismiss_toast_mock.mockReset();
     push_progress_toast_mock.mockClear();
     push_toast_mock.mockReset();
-    project_prefilter_compute_mock.mockReset();
     update_progress_toast_mock.mockReset();
   });
 
@@ -424,18 +380,6 @@ describe("ProjectPage", () => {
       if (path === "/api/project/source-files") {
         return { source_files: selected_paths };
       }
-      if (path === "/api/project/create-preview") {
-        return {
-          draft: {
-            files: [
-              { rel_path: "a.txt", source_path: "E:\\Source\\a.txt" },
-              { rel_path: "b.md", source_path: "E:\\Source\\b.md" },
-            ],
-            items: [],
-            section_revisions: { files: 0, items: 0, analysis: 0 },
-          },
-        };
-      }
       if (path === "/api/project/create-commit") {
         return { project: { path: "E:\\Source\\a_20260428_120000.lg", loaded: true } };
       }
@@ -463,14 +407,21 @@ describe("ProjectPage", () => {
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/source-files", {
       source_paths: selected_paths,
     });
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/create-preview", {
-      source_paths: selected_paths,
-    });
     expect(api_fetch_mock).toHaveBeenCalledWith(
       "/api/project/create-commit",
       expect.objectContaining({
         source_paths: selected_paths,
+        project_settings: {
+          source_language: "JA",
+          target_language: "ZH",
+          mtool_optimizer_enable: true,
+          skip_duplicate_source_text_enable: true,
+        },
       }),
+    );
+    expect(api_fetch_mock).not.toHaveBeenCalledWith(
+      "/api/project/create-preview",
+      expect.anything(),
     );
   });
 
@@ -481,15 +432,6 @@ describe("ProjectPage", () => {
     api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/project/source-files") {
         return { source_files: ["E:\\Source\\demo.txt"] };
-      }
-      if (path === "/api/project/create-preview") {
-        return {
-          draft: {
-            files: [],
-            items: [],
-            section_revisions: { files: 0, items: 0, analysis: 0 },
-          },
-        };
       }
       if (path === "/api/project/create-commit") {
         throw new Error("create boom");

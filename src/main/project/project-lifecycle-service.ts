@@ -3,6 +3,7 @@ import path from "node:path";
 import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
+import { FileFormatService } from "../file/file-format-service";
 import type { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
 import { migration_orchestrator } from "../migration/migration-orchestrator";
@@ -11,9 +12,17 @@ import type { AppSettingService } from "../app/app-setting-service";
 import type { AppPathService } from "../app/app-path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
 import {
+  Item,
   collect_project_item_missing_public_fields,
   normalize_project_item_persistent_record,
+  normalize_project_item_public_record,
+  type ProjectItemPublicRecord,
 } from "../../base/item";
+import {
+  compute_project_prefilter_mutation,
+  create_empty_translation_task_snapshot,
+  type ProjectPrefilterMutationOutput,
+} from "./project-mutation-state";
 import { get_runtime_section_revision } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
 import * as AppErrors from "../../shared/error";
@@ -31,7 +40,6 @@ const SUPPORTED_SOURCE_EXTENSIONS = new Set([
   ".trans",
 ]);
 
-type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 type JsonRecordLike = Record<string, ApiJsonValue | DatabaseJsonValue | undefined>;
 
@@ -39,6 +47,19 @@ interface CreateCommitFileRecord {
   rel_path: string; // rel_path 是 .lg 内 asset 的唯一业务路径，不能用源文件绝对路径替代
   source_path: string; // source_path 只传给 database workflow 读取 bytes，项目域不理解压缩格式
   sort_index: number; // sort_index 决定工作台文件顺序，必须随 asset 一起落库
+}
+
+interface CreateCommitParsedDraft {
+  files: CreateCommitFileRecord[]; // files 是后端从 source_paths 解析出的可信 asset 写入清单
+  file_state: Record<string, unknown>; // file_state 只供后端预过滤算法识别文件类型和相对路径
+  items: Record<string, ProjectItemPublicRecord>; // items 是后端生成的完整公开 DTO 镜像
+}
+
+interface ProjectMutationSettings {
+  source_language: string; // 源语言决定语言预过滤口径
+  target_language: string; // 目标语言只作为项目设置镜像写入 meta
+  mtool_optimizer_enable: boolean; // MTool 开关决定 KVJSON 内部过滤策略
+  skip_duplicate_source_text_enable: boolean; // 重复原文开关决定同文件重复项状态
 }
 
 interface QualityDefaultPresetSpec {
@@ -186,19 +207,25 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 把前端预过滤后的新建工程草稿写入 .lg，并复用 load_project 进入 loaded 状态
+   * 后端按用户源路径生成新建工程事实，并复用 load_project 进入 loaded 状态
    */
   public async create_project_commit(
     body: Record<string, ApiJsonValue>,
   ): Promise<Record<string, ApiJsonValue>> {
     const project_path = this.require_body_string(body, "path");
-    const source_paths = this.normalize_string_list(body["source_paths"]);
-    const draft = this.normalize_object(body["draft"]);
-    const files = this.normalize_create_commit_files(draft["files"]);
-    const items = this.normalize_full_items(draft["items"]);
-    const project_settings = this.normalize_object(body["project_settings"]);
-    const translation_extras = this.normalize_object(body["translation_extras"]);
-    const prefilter_config = this.normalize_object(body["prefilter_config"]);
+    this.assert_no_legacy_create_commit_fields(body);
+    const source_paths = this.normalize_source_paths(body["source_paths"]);
+    const project_settings = this.read_create_project_settings(body["project_settings"]);
+    // parsed_draft 是后端重新解析源文件得到的唯一可信新建草稿。
+    const parsed_draft = await this.build_create_commit_parsed_draft(
+      source_paths,
+      project_settings,
+    );
+    // prefilter_output 是将可信草稿转成持久项目事实的唯一派生结果。
+    const prefilter_output = this.compute_create_project_prefilter_output({
+      draft: parsed_draft,
+      settings: project_settings,
+    });
     const default_preset_result = this.build_default_preset_initialization_operations(project_path);
 
     this.database.execute_transaction([
@@ -207,17 +234,16 @@ export class ProjectLifecycleService {
         name: this.build_project_name(source_paths, project_path),
       }),
       ...default_preset_result.operations,
-      ...this.build_asset_operations(project_path, files),
+      ...this.build_asset_operations(project_path, parsed_draft.files),
       this.op("setItems", {
         projectPath: project_path,
-        items: items as unknown as DatabaseJsonValue,
+        items: this.persistent_items_from_public_record(prefilter_output.items),
       }),
       this.op("upsertMetaEntries", {
         projectPath: project_path,
         meta: this.build_project_settings_meta({
           project_settings,
-          translation_extras,
-          prefilter_config,
+          prefilter_output,
         }) as unknown as DatabaseJsonValue,
       }),
     ]);
@@ -225,6 +251,173 @@ export class ProjectLifecycleService {
     const response = await this.load_project({ path: project_path });
     this.log_loaded_default_presets(default_preset_result.loaded_names);
     return response;
+  }
+
+  /**
+   * 新建工程提交不接受旧前端事实字段，避免恢复 renderer 写库能力
+   */
+  private assert_no_legacy_create_commit_fields(body: Record<string, ApiJsonValue>): void {
+    for (const field of [
+      "draft",
+      "files",
+      "items",
+      "translation_extras",
+      "prefilter_config",
+      "analysis_extras",
+      "parsed_items",
+      "file_record",
+    ]) {
+      if (Object.prototype.hasOwnProperty.call(body, field)) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: { reason: "legacy_create_commit_field", field },
+        });
+      }
+    }
+  }
+
+  /**
+   * 读取 create-commit 设置镜像；缺字段时回到当前应用设置，保持空请求可创建空工程
+   */
+  private read_create_project_settings(value: ApiJsonValue | undefined): ProjectMutationSettings {
+    const current = this.build_current_project_settings();
+    const project_settings = this.normalize_object(value);
+    return {
+      source_language:
+        this.string_value(project_settings["source_language"]) || current.source_language,
+      target_language:
+        this.string_value(project_settings["target_language"]) || current.target_language,
+      mtool_optimizer_enable: this.boolean_value_with_default(
+        project_settings["mtool_optimizer_enable"],
+        current.mtool_optimizer_enable,
+      ),
+      skip_duplicate_source_text_enable: this.boolean_value_with_default(
+        project_settings["skip_duplicate_source_text_enable"],
+        current.skip_duplicate_source_text_enable,
+      ),
+    };
+  }
+
+  /**
+   * create-commit 重新读取源文件并分配 item id，最终事实只由后端生成
+   */
+  private async build_create_commit_parsed_draft(
+    source_paths: string[],
+    project_settings: ProjectMutationSettings,
+  ): Promise<CreateCommitParsedDraft> {
+    const format_service = this.create_format_service(project_settings);
+    const source_files = format_service.collect_source_file_entries(source_paths);
+    const files: CreateCommitFileRecord[] = [];
+    // file_state 只保留后端预过滤所需字段，不能携带源文件绝对路径进入项目事实。
+    const file_state: Record<string, unknown> = {};
+    const items: Record<string, ProjectItemPublicRecord> = {};
+    // next_item_id 由后端顺序分配，避免 renderer 伪造数据库主键。
+    let next_item_id = 1;
+
+    for (const [sort_index, source_file] of source_files.entries()) {
+      const parsed_items = await format_service.parse_asset(
+        source_file.rel_path,
+        this.native_fs.read_file(source_file.source_path),
+      );
+      const file_type = format_service.pick_file_type(parsed_items);
+      files.push({
+        rel_path: source_file.rel_path,
+        source_path: source_file.source_path,
+        sort_index,
+      });
+      file_state[source_file.rel_path] = {
+        rel_path: source_file.rel_path,
+        file_type,
+        sort_index,
+      };
+      for (const parsed_item of parsed_items) {
+        const public_item = this.normalize_public_item({
+          ...Item.from_json(parsed_item).to_json(),
+          id: next_item_id,
+          file_path: source_file.rel_path,
+        });
+        items[String(public_item.item_id)] = public_item;
+        next_item_id += 1;
+      }
+    }
+
+    return { files, file_state, items };
+  }
+
+  /**
+   * create-commit 预过滤从后端解析草稿计算，不消费前端合成结果
+   */
+  private compute_create_project_prefilter_output(args: {
+    draft: CreateCommitParsedDraft;
+    settings: ProjectMutationSettings;
+  }): ProjectPrefilterMutationOutput {
+    return compute_project_prefilter_mutation({
+      state: {
+        files: args.draft.file_state,
+        items: args.draft.items,
+      },
+      task_snapshot: create_empty_translation_task_snapshot(),
+      source_language: args.settings.source_language,
+      target_language: args.settings.target_language,
+      mtool_optimizer_enable: args.settings.mtool_optimizer_enable,
+      skip_duplicate_source_text_enable: args.settings.skip_duplicate_source_text_enable,
+    });
+  }
+
+  /**
+   * 新建工程解析使用请求设置镜像，避免文件格式处理读取到过期应用语言
+   */
+  private create_format_service(project_settings: ProjectMutationSettings): FileFormatService {
+    const config = this.app_setting_service.read_setting();
+    return new FileFormatService(
+      {
+        source_language: project_settings.source_language || "JA",
+        target_language: project_settings.target_language || "ZH",
+        app_language: String(config["app_language"] ?? "ZH"),
+        deduplication_in_bilingual: Boolean(config["deduplication_in_bilingual"] ?? true),
+        write_translated_name_fields_to_file: Boolean(
+          config["write_translated_name_fields_to_file"] ?? true,
+        ),
+      },
+      this.native_fs,
+    );
+  }
+
+  /**
+   * 后端解析条目必须先过公开 DTO 边界，再交给后端预过滤算法
+   */
+  private normalize_public_item(value: unknown): ProjectItemPublicRecord {
+    const public_item = normalize_project_item_public_record(value);
+    if (public_item === null) {
+      throw new AppErrors.RequestValidationError({
+        diagnostic_context: {
+          reason: "parsed_item_incomplete",
+          missing_fields: collect_project_item_missing_public_fields(value),
+        },
+      });
+    }
+    return public_item;
+  }
+
+  /**
+   * 写库前统一把公开 DTO 转成持久字段，禁止调用点手写 id/row 映射
+   */
+  private persistent_items_from_public_record(
+    items: Record<string, ProjectItemPublicRecord>,
+  ): MutableJsonRecord[] {
+    return Object.values(items)
+      .sort((left, right) => left.item_id - right.item_id)
+      .map((item) => {
+        const persistent_item = normalize_project_item_persistent_record(item);
+        if (persistent_item === null) {
+          throw new AppErrors.RequestValidationError({
+            diagnostic_context: {
+              reason: "item_incomplete",
+              missing_fields: collect_project_item_missing_public_fields(item),
+            },
+          });
+        }
+        return persistent_item as MutableJsonRecord;
+      });
   }
 
   /**
@@ -271,7 +464,9 @@ export class ProjectLifecycleService {
         project_settings,
         current_settings,
         changed,
-        draft: needs_prefiltered_items ? this.build_project_draft(project_path, meta) : null,
+        section_revisions: needs_prefiltered_items
+          ? this.build_project_alignment_section_revisions(meta)
+          : null,
       },
     };
   }
@@ -570,63 +765,32 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 构建工程设置镜像 meta，同时把预过滤配置补齐当前项目设置快照
+   * 构建工程设置镜像 meta，预过滤与进度事实只取后端计算结果
    */
   private build_project_settings_meta(args: {
-    project_settings: MutableJsonRecord;
-    translation_extras: MutableJsonRecord;
-    prefilter_config: MutableJsonRecord;
+    project_settings: ProjectMutationSettings;
+    prefilter_output: ProjectPrefilterMutationOutput;
   }): MutableJsonRecord {
-    const source_language = this.string_value(args.project_settings["source_language"]);
-    const mtool_optimizer_enable = this.boolean_value(
-      args.project_settings["mtool_optimizer_enable"],
-    );
-    const skip_duplicate_source_text_enable = this.boolean_value_with_default(
-      args.project_settings["skip_duplicate_source_text_enable"],
-      true,
-    );
     return {
-      source_language,
-      target_language: this.string_value(args.project_settings["target_language"]),
-      mtool_optimizer_enable,
-      skip_duplicate_source_text_enable,
-      prefilter_config: {
-        ...args.prefilter_config,
-        source_language,
-        mtool_optimizer_enable,
-        skip_duplicate_source_text_enable,
-      },
-      translation_extras: args.translation_extras,
+      source_language: args.project_settings.source_language,
+      target_language: args.project_settings.target_language,
+      mtool_optimizer_enable: args.project_settings.mtool_optimizer_enable,
+      skip_duplicate_source_text_enable: args.project_settings.skip_duplicate_source_text_enable,
+      prefilter_config: args.prefilter_output.prefilter_config as unknown as ApiJsonValue,
+      translation_extras: args.prefilter_output.translation_extras as unknown as ApiJsonValue,
       analysis_extras: {},
       analysis_candidate_count: 0,
     };
   }
 
   /**
-   * 从数据库事实重建打开前预过滤草稿，供 renderer 在未 loaded 时运行 planner
+   * 打开前 settings alignment 只声明后端事实依赖版本，项目数据实体仍由 loaded 后的读取接口提供
    */
-  private build_project_draft(project_path: string, meta: MutableJsonRecord): MutableJsonRecord {
-    const asset_records = this.get_asset_records(project_path);
-    const items = this.get_all_items(project_path);
-    const file_type_by_path = new Map<string, string>();
-    for (const item of items) {
-      const rel_path = this.string_value(item["file_path"]);
-      if (rel_path !== "") {
-        file_type_by_path.set(rel_path, this.string_value(item["file_type"]) || "NONE");
-      }
-    }
+  private build_project_alignment_section_revisions(meta: MutableJsonRecord): MutableJsonRecord {
     return {
-      files: asset_records.map((record) => ({
-        rel_path: record.path,
-        file_type: file_type_by_path.get(record.path) ?? "NONE",
-        sort_index: record.sort_order,
-      })),
-      items: items as unknown as ApiJsonValue,
-      section_revisions: {
-        files: get_runtime_section_revision(meta, "files"),
-        items: get_runtime_section_revision(meta, "items"),
-        analysis: get_runtime_section_revision(meta, "analysis"),
-      },
+      files: get_runtime_section_revision(meta, "files"),
+      items: get_runtime_section_revision(meta, "items"),
+      analysis: get_runtime_section_revision(meta, "analysis"),
     };
   }
 
@@ -710,52 +874,6 @@ export class ProjectLifecycleService {
         loaded: true,
       },
     };
-  }
-
-  /**
-   * 归一 create-commit 文件草稿，防止脏 sort_index 影响 asset 顺序
-   */
-  private normalize_create_commit_files(value: ApiJsonValue | undefined): CreateCommitFileRecord[] {
-    if (!Array.isArray(value)) {
-      return [];
-    }
-    return value
-      .filter((item): item is JsonRecord => this.is_record(item))
-      .map((item, index) => ({
-        rel_path: this.string_value(item["rel_path"]),
-        source_path: this.string_value(item["source_path"]),
-        sort_index: this.number_value(item["sort_index"], index),
-      }));
-  }
-
-  /**
-   * 新建工程草稿必须提供完整公开 item DTO，写库前统一转为持久字段
-   */
-  private normalize_full_items(value: ApiJsonValue | undefined): MutableJsonRecord[] {
-    if (!Array.isArray(value)) {
-      throw new AppErrors.RequestValidationError({
-        diagnostic_context: { reason: "items_not_array" },
-      });
-    }
-    const seen_ids = new Set<number>();
-    return value.map((raw_item) => {
-      const item = normalize_project_item_persistent_record(raw_item);
-      if (item === null) {
-        throw new AppErrors.RequestValidationError({
-          diagnostic_context: {
-            reason: "item_incomplete",
-            missing_fields: collect_project_item_missing_public_fields(raw_item),
-          },
-        });
-      }
-      if (seen_ids.has(item.id)) {
-        throw new AppErrors.RequestValidationError({
-          diagnostic_context: { reason: "item_id_duplicated", item_id: item.id },
-        });
-      }
-      seen_ids.add(item.id);
-      return item;
-    });
   }
 
   /**
@@ -870,34 +988,6 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 读取所有 item，供打开前草稿重建
-   */
-  private get_all_items(project_path: string): MutableJsonRecord[] {
-    const value = this.database.execute(this.op("getAllItems", { projectPath: project_path }));
-    return Array.isArray(value)
-      ? value.filter((item): item is MutableJsonRecord => this.is_record(item))
-      : [];
-  }
-
-  /**
-   * 读取 asset 顺序记录，隐藏 database 返回结构
-   */
-  private get_asset_records(project_path: string): Array<{ path: string; sort_order: number }> {
-    const value = this.database.execute(
-      this.op("getAllAssetRecords", { projectPath: project_path }),
-    );
-    if (!Array.isArray(value)) {
-      return [];
-    }
-    return value
-      .filter((item): item is JsonRecord => this.is_record(item))
-      .map((item) => ({
-        path: this.string_value(item["path"]),
-        sort_order: this.number_value(item["sort_order"], 0),
-      }));
-  }
-
-  /**
    * 归一翻译进度摘要，公开 preview 不透出数据库内部额外字段
    */
   private normalize_translation_stats(value: DatabaseJsonValue | ApiJsonValue | undefined) {
@@ -966,13 +1056,6 @@ export class ProjectLifecycleService {
   ): number {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? number_value : fallback;
-  }
-
-  /**
-   * 从未知值读取布尔值，使用 bool(...) 宽松转换
-   */
-  private boolean_value(value: ApiJsonValue | DatabaseJsonValue | undefined): boolean {
-    return Boolean(value ?? false);
   }
 
   /**

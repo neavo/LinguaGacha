@@ -9,8 +9,8 @@ import {
   type ProjectStoreState,
 } from "@/project/store/project-store";
 import {
-  normalize_project_mutation_ack,
-  type ProjectMutationAckPayload,
+  normalize_project_mutation_result,
+  type ProjectMutationResultPayload,
 } from "@/app/desktop/desktop-runtime-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
@@ -513,11 +513,11 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     project_snapshot,
     project_store,
     task_snapshot,
-    set_task_snapshot,
+    sync_task_snapshot,
     proofreading_change_signal,
-    commit_local_project_change,
     refresh_project_runtime,
-    align_project_runtime_ack,
+    apply_project_mutation_result,
+    refresh_task,
   } = useDesktopRuntime();
   const [list_view, set_list_view] = useState(() => create_empty_proofreading_list_view());
   const [current_filters, set_current_filters] = useState<ProofreadingFilterOptions>(() => {
@@ -1118,7 +1118,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     t,
   ]);
 
-  const run_ack_only_mutation = useCallback(
+  const run_project_mutation = useCallback(
     async (args: {
       path: string;
       source: string;
@@ -1146,22 +1146,13 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       preferred_row_id_ref.current = args.preferred_row_id ?? active_row_id_ref.current;
 
       set_is_mutating(true);
-      const previous_task_snapshot = task_snapshot;
-      const local_commit = commit_local_project_change({
-        source: args.source,
-        updatedSections: ["items", "proofreading"],
-        operations: args.plan.operations,
-      });
-      set_task_snapshot({
-        ...task_snapshot,
-        ...args.plan.next_task_snapshot,
-      } as typeof task_snapshot);
 
       try {
-        const mutation_ack = normalize_project_mutation_ack(
-          await api_fetch<ProjectMutationAckPayload>(args.path, args.plan.request_body),
+        const mutation_result = normalize_project_mutation_result(
+          await api_fetch<ProjectMutationResultPayload>(args.path, args.plan.request_body),
         );
-        align_project_runtime_ack(mutation_ack);
+        await apply_project_mutation_result(mutation_result);
+        await refresh_task();
 
         if (args.success_message_builder !== null && args.success_message_builder !== undefined) {
           push_toast("success", args.success_message_builder(args.plan.changed_item_ids.length));
@@ -1172,8 +1163,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
           set_dialog_item_snapshot(null);
         }
       } catch (error) {
-        set_task_snapshot(previous_task_snapshot);
-        local_commit.rollback();
         void refresh_project_runtime().catch(() => {});
         handle_api_error(error, t(args.fallback_error_key));
       } finally {
@@ -1181,13 +1170,11 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       }
     },
     [
-      align_project_runtime_ack,
-      commit_local_project_change,
+      apply_project_mutation_result,
       handle_api_error,
       push_toast,
       refresh_project_runtime,
-      set_task_snapshot,
-      task_snapshot,
+      refresh_task,
       t,
     ],
   );
@@ -1462,7 +1449,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     });
 
     try {
-      await run_ack_only_mutation({
+      await run_project_mutation({
         path: "/api/project/proofreading/save-item",
         source: "proofreading_save_item",
         plan: create_save_item_plan({
@@ -1493,7 +1480,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     project_store,
     push_toast,
     read_items_by_row_ids,
-    run_ack_only_mutation,
+    run_project_mutation,
     task_snapshot,
     t,
   ]);
@@ -1568,7 +1555,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       return;
     }
 
-    await run_ack_only_mutation({
+    await run_project_mutation({
       path: "/api/project/proofreading/save-item",
       source: "proofreading_save_item",
       plan: create_save_item_plan({
@@ -1589,7 +1576,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     push_toast,
     readonly,
     replace_text,
-    run_ack_only_mutation,
+    run_project_mutation,
     search_keyword,
     task_snapshot,
     t,
@@ -1642,7 +1629,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       is_regex,
     });
 
-    await run_ack_only_mutation({
+    await run_project_mutation({
       path: "/api/project/proofreading/replace-all",
       source: "proofreading_replace_all",
       plan: replace_plan,
@@ -1666,7 +1653,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     push_toast,
     readonly,
     replace_text,
-    run_ack_only_mutation,
+    run_project_mutation,
     search_keyword,
     task_snapshot,
     t,
@@ -1763,8 +1750,11 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
             ? (extras["scope"] as Record<string, unknown>)
             : {};
         const translation_item_ids = normalize_numeric_item_ids(scope["item_ids"]);
-        set_task_snapshot({
+        sync_task_snapshot({
           ...task_snapshot,
+          runtime_revision: Number(
+            task_payload_record["runtime_revision"] ?? task_snapshot.runtime_revision,
+          ),
           task_type: String(task_payload_record["task_type"] ?? "translation"),
           status: String(task_payload_record["status"] ?? "requested"),
           busy:
@@ -1801,7 +1791,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       return;
     }
 
-    await run_ack_only_mutation({
+    await run_project_mutation({
       path: "/api/project/proofreading/save-all",
       source: "proofreading_save_all",
       plan: create_reset_items_plan({
@@ -1824,8 +1814,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     pending_mutation,
     project_store,
     read_items_by_row_ids,
-    run_ack_only_mutation,
-    set_task_snapshot,
+    run_project_mutation,
+    sync_task_snapshot,
     t,
     task_snapshot,
   ]);

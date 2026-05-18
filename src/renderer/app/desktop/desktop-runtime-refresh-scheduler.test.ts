@@ -68,11 +68,13 @@ describe("DesktopRuntimeRefreshScheduler", () => {
 
     scheduler.enqueue_project_items_read({
       source: "translation_commit",
+      projectPath: "E:/demo/demo.lg",
       projectRevision: 2,
       itemIds: [2, 3],
     });
     scheduler.enqueue_project_items_read({
       source: "translation_commit",
+      projectPath: "E:/demo/demo.lg",
       projectRevision: 3,
       itemIds: [3, 4],
     });
@@ -101,6 +103,7 @@ describe("DesktopRuntimeRefreshScheduler", () => {
 
     scheduler.enqueue_project_items_read({
       source: "translation_commit",
+      projectPath: "E:/demo/demo.lg",
       projectRevision: 4,
       itemIds: [4],
     });
@@ -124,6 +127,7 @@ describe("DesktopRuntimeRefreshScheduler", () => {
     scheduler.enqueue_project_change(create_project_change(2));
     scheduler.enqueue_project_items_read({
       source: "translation_commit",
+      projectPath: "E:/demo/demo.lg",
       projectRevision: 3,
       itemIds: [3],
     });
@@ -139,6 +143,7 @@ describe("DesktopRuntimeRefreshScheduler", () => {
 // 构造最小可用 task snapshot，方便断言调度器只保留最新运行态
 function create_task_snapshot(line: number): TaskSnapshot {
   return {
+    runtime_revision: line,
     task_type: "translation",
     status: "running",
     busy: true,
@@ -166,6 +171,7 @@ function create_project_change(
 ): ProjectStoreChangeEvent {
   return {
     source,
+    projectPath: "E:/demo/demo.lg",
     projectRevision,
     updatedSections: ["items"],
     operations: [

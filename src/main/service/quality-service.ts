@@ -10,16 +10,19 @@ import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { SpreadsheetTool } from "../../shared/utils/spreadsheet-tool";
-import {
-  build_project_mutation_ack_from_meta,
-  get_runtime_section_revision,
-} from "../project/project-section-revision";
+import { get_runtime_section_revision } from "../project/project-section-revision";
+import { ProjectMutationCoordinator } from "../project/project-mutation-coordinator";
 import { ProjectChangePublisher } from "../project/project-change-publisher";
 import { ProjectSessionState } from "../project/project-session-state";
+import type { ProjectMutationResult } from "../../shared/project/event";
 import { QualityRule, type QualityRuleKind } from "../../base/quality";
 import { Prompt, type PromptKind } from "../../base/prompt";
 import * as AppErrors from "../../shared/error";
-import { NativeFs, default_native_fs, normalize_native_file_bytes } from "../../native/platform/native-fs";
+import {
+  NativeFs,
+  default_native_fs,
+  normalize_native_file_bytes,
+} from "../../native/platform/native-fs";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 
@@ -35,7 +38,7 @@ export class QualityService {
 
   private readonly session_state: ProjectSessionState; // 页面级质量规则 / 提示词写入口以 会话状态作为当前工程目标
 
-  private readonly project_change_publisher: ProjectChangePublisher | null; // 写库成功后统一发布 project.data_changed，HTTP ack 不承载最终项目事实
+  private readonly mutation_coordinator: ProjectMutationCoordinator; // 质量与提示词 mutation 复用项目域统一 revision guard 和 canonical 事件发布
 
   private readonly native_fs: NativeFs; // native_fs 是规则、提示词预设和导入导出的唯一文件 IO 入口
 
@@ -54,20 +57,24 @@ export class QualityService {
     this.app_setting_service = app_setting_service;
     this.database = database;
     this.session_state = session_state;
-    this.project_change_publisher = project_change_publisher;
+    this.mutation_coordinator = new ProjectMutationCoordinator(database, project_change_publisher);
     this.native_fs = native_fs;
   }
 
   /**
-   * 保存规则条目并返回 mutation ack，保持页面 revision 对齐
+   * 保存规则条目并返回后端 canonical mutation 结果
    */
-  public async save_rule_entries(request: JsonRecord): Promise<JsonRecord> {
+  public async save_rule_entries(request: JsonRecord): Promise<ProjectMutationResult> {
+    this.assert_no_legacy_fields(request, ["expected_revision"]);
     const rule_type = this.normalize_rule_type(request["rule_type"]);
-    const expected_revision = Number(request["expected_revision"] ?? 0);
     const entries = this.normalize_rule_entries(request["entries"]);
     const project_path = await this.require_project_path();
-    const current_revision = this.get_rule_revision(project_path, rule_type);
-    this.assert_revision(current_revision, expected_revision);
+    const revision_context = this.mutation_coordinator.assert_expected_section_revisions(
+      project_path,
+      request["expected_section_revisions"],
+      ["quality"],
+    );
+    const current_revision = get_runtime_section_revision(revision_context.meta, "quality");
     this.database.execute_transaction([
       this.op("setRules", {
         projectPath: project_path,
@@ -80,38 +87,51 @@ export class QualityService {
         value: current_revision + 1,
       }),
     ]);
-    this.publish_project_data_change("quality_rule_save_entries", ["quality"]);
-    return this.build_project_mutation_ack(project_path, ["quality"]);
+    return this.mutation_coordinator.publish_project_data_change({
+      projectPath: project_path,
+      source: "quality_rule_save_entries",
+      updatedSections: ["quality"],
+    });
   }
 
   /**
-   * 更新规则 meta 并返回 mutation ack，避免页面直接改工程事实
+   * 更新规则 meta 并返回后端 canonical mutation 结果
    */
-  public async update_rule_meta(request: JsonRecord): Promise<JsonRecord> {
+  public async update_rule_meta(request: JsonRecord): Promise<ProjectMutationResult> {
+    this.assert_no_legacy_fields(request, ["expected_revision"]);
     const rule_type = this.normalize_rule_type(request["rule_type"]);
     const project_path = await this.require_project_path();
-    let current_revision = this.get_rule_revision(project_path, rule_type);
-    let expected_revision = Number(request["expected_revision"] ?? 0);
+    const revision_context = this.mutation_coordinator.assert_expected_section_revisions(
+      project_path,
+      request["expected_section_revisions"],
+      ["quality"],
+    );
+    const current_revision = get_runtime_section_revision(revision_context.meta, "quality");
     const meta = this.normalize_object(request["meta"]);
+    if (Object.keys(meta).length === 0) {
+      return this.mutation_coordinator.empty_project_mutation_result();
+    }
+    const operations: DatabaseOperation[] = [];
     for (const [key, value] of Object.entries(meta)) {
-      this.assert_revision(current_revision, expected_revision);
       const meta_key = this.resolve_rule_meta_key(rule_type, key);
       const meta_value = this.normalize_rule_meta_value(rule_type, key, value);
-      current_revision += 1;
-      this.database.execute_transaction([
+      operations.push(
         this.op("setMeta", { projectPath: project_path, key: meta_key, value: meta_value }),
-        this.op("setMeta", {
-          projectPath: project_path,
-          key: this.build_rule_revision_key(rule_type),
-          value: current_revision,
-        }),
-      ]);
-      expected_revision = current_revision;
+      );
     }
-    if (Object.keys(meta).length > 0) {
-      this.publish_project_data_change("quality_rule_update_meta", ["quality"]);
-    }
-    return this.build_project_mutation_ack(project_path, ["quality"]);
+    operations.push(
+      this.op("setMeta", {
+        projectPath: project_path,
+        key: this.build_rule_revision_key(rule_type),
+        value: current_revision + 1,
+      }),
+    );
+    this.database.execute_transaction(operations);
+    return this.mutation_coordinator.publish_project_data_change({
+      projectPath: project_path,
+      source: "quality_rule_update_meta",
+      updatedSections: ["quality"],
+    });
   }
 
   /**
@@ -250,14 +270,18 @@ export class QualityService {
   }
 
   /**
-   * 保存工程提示词并返回 mutation ack，保持 prompts revision 对齐
+   * 保存工程提示词并返回后端 canonical mutation 结果
    */
-  public async save_prompt(request: JsonRecord): Promise<JsonRecord> {
+  public async save_prompt(request: JsonRecord): Promise<ProjectMutationResult> {
+    this.assert_no_legacy_fields(request, ["expected_revision"]);
     const task_type = Prompt.from_json(request["task_type"]).kind;
-    const expected_revision = Number(request["expected_revision"] ?? 0);
     const project_path = await this.require_project_path();
-    const current_revision = this.get_prompt_revision(project_path, task_type);
-    this.assert_revision(current_revision, expected_revision);
+    const revision_context = this.mutation_coordinator.assert_expected_section_revisions(
+      project_path,
+      request["expected_section_revisions"],
+      ["prompts"],
+    );
+    const current_revision = get_runtime_section_revision(revision_context.meta, "prompts");
     const operations: DatabaseOperation[] = [
       this.op("setRuleText", {
         projectPath: project_path,
@@ -280,8 +304,11 @@ export class QualityService {
       );
     }
     this.database.execute_transaction(operations);
-    this.publish_project_data_change("quality_prompt_save", ["prompts"]);
-    return this.build_project_mutation_ack(project_path, ["prompts"]);
+    return this.mutation_coordinator.publish_project_data_change({
+      projectPath: project_path,
+      source: "quality_prompt_save",
+      updatedSections: ["prompts"],
+    });
   }
 
   /**
@@ -411,61 +438,6 @@ export class QualityService {
   }
 
   /**
-   * 构建 ProjectMutationAck，保持同步 mutation 响应形状一致
-   */
-  private build_project_mutation_ack(project_path: string, updated_sections: string[]): JsonRecord {
-    const meta = this.normalize_object(
-      this.database.execute(this.op("getAllMeta", { projectPath: project_path })) as ApiJsonValue,
-    );
-    return build_project_mutation_ack_from_meta(meta, updated_sections);
-  }
-
-  /**
-   * 项目事实写入成功后只经 ProjectChangePublisher 回流，避免页面把 ack 当数据源
-   */
-  private publish_project_data_change(
-    source: string,
-    updated_sections: Array<"quality" | "prompts">,
-  ): void {
-    this.project_change_publisher?.publish_project_change({
-      source,
-      updatedSections: updated_sections,
-      sections: Object.fromEntries(
-        updated_sections.map((section) => [section, { payloadMode: "canonical-delta" }]),
-      ) as unknown as ApiJsonValue,
-    });
-  }
-
-  /**
-   * 读取规则 revision，隔离 meta key 组合细节
-   */
-  private get_rule_revision(project_path: string, rule_type: QualityRuleKind): number {
-    return get_runtime_section_revision(
-      this.read_project_meta(project_path),
-      `quality:${rule_type}`,
-    );
-  }
-
-  /**
-   * 读取提示词 revision，隔离 meta key 组合细节
-   */
-  private get_prompt_revision(project_path: string, task_type: PromptKind): number {
-    return get_runtime_section_revision(
-      this.read_project_meta(project_path),
-      `prompts:${task_type}`,
-    );
-  }
-
-  /**
-   * revision 读取复用运行态服务的 meta 口径，避免读取接口和 mutation ack 分叉
-   */
-  private read_project_meta(project_path: string): JsonRecord {
-    return this.normalize_object(
-      this.database.execute(this.op("getAllMeta", { projectPath: project_path })) as ApiJsonValue,
-    );
-  }
-
-  /**
    * 生成规则 revision key，避免调用方拼接 meta 名称
    */
   private build_rule_revision_key(rule_type: QualityRuleKind): string {
@@ -498,16 +470,15 @@ export class QualityService {
   }
 
   /**
-   * 校验期望 revision，避免过期页面覆盖新事实
+   * 旧单 revision 字段不再作为兼容层进入服务边界
    */
-  private assert_revision(current_revision: number, expected_revision: number): void {
-    if (current_revision !== expected_revision) {
-      throw new AppErrors.RevisionConflictError({
-        public_details: {
-          current_revision,
-          expected_revision,
-        },
-      });
+  private assert_no_legacy_fields(request: JsonRecord, fields: string[]): void {
+    for (const field of fields) {
+      if (Object.prototype.hasOwnProperty.call(request, field)) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: { reason: "legacy_quality_mutation_field", field },
+        });
+      }
     }
   }
 

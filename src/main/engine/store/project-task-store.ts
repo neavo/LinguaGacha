@@ -2,14 +2,19 @@ import type { ApiJsonValue } from "../../api/api-types";
 import { ProjectDatabase } from "../../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
 import { ProjectChangePublisher } from "../../project/project-change-publisher";
+import { ProjectMutationCoordinator } from "../../project/project-mutation-coordinator";
 import { ProjectRuntimeProjectionService } from "../../project/project-runtime-projection-service";
-import { get_runtime_section_revision } from "../../project/project-section-revision";
+import {
+  get_runtime_section_revision,
+  type ProjectDataSection,
+} from "../../project/project-section-revision";
 import { ProjectSessionState } from "../../project/project-session-state";
 import { TaskRuntimeState } from "../runtime/task-runtime-state";
 import type { JsonRecord, MutableJsonRecord } from "../runtime/task-runtime-types";
 import type { TaskArtifact } from "../protocol/artifact";
 import type { TaskType } from "../protocol/task-types";
 import { QualityRuleSnapshotTool } from "../../../shared/quality/snapshot";
+import { isProjectDataSection } from "../../../shared/project/event";
 import { TASK_PROGRESS_STATUSES } from "../../../shared/task";
 import * as AppErrors from "../../../shared/error";
 
@@ -17,15 +22,28 @@ import * as AppErrors from "../../../shared/error";
  * 项目任务存储端口，是 TaskEngine 读写项目任务事实的唯一内部入口
  */
 export class ProjectTaskStore {
+  private readonly database: ProjectDatabase; // 任务写库也必须经由 ProjectDatabase workflow
+
+  private readonly session_state: ProjectSessionState; // 当前 loaded 工程是任务读写唯一目标
+
+  private readonly task_runtime_state: TaskRuntimeState; // 重翻任务提交后需要同步缩减运行中 item scope
+
+  private readonly mutation_coordinator: ProjectMutationCoordinator; // 任务提交的 revision bump 和 canonical 事件发布统一经由协调器
+
   /**
    * ProjectTaskStore 只组合现有 TS 权威，不自行持有长期项目缓存
    */
   public constructor(
-    private readonly database: ProjectDatabase,
-    private readonly session_state: ProjectSessionState,
-    private readonly task_runtime_state: TaskRuntimeState,
-    private readonly project_change_publisher: ProjectChangePublisher,
-  ) {}
+    database: ProjectDatabase,
+    session_state: ProjectSessionState,
+    task_runtime_state: TaskRuntimeState,
+    project_change_publisher: ProjectChangePublisher,
+  ) {
+    this.database = database;
+    this.session_state = session_state;
+    this.task_runtime_state = task_runtime_state;
+    this.mutation_coordinator = new ProjectMutationCoordinator(database, project_change_publisher);
+  }
 
   /**
    * 任务启动前读取当前工程上下文，不依赖旧会话缓存
@@ -169,12 +187,13 @@ export class ProjectTaskStore {
     ]);
     const changed_item_ids = this.collect_item_ids(finalized_items);
     if (changed_item_ids.length > 0) {
-      this.project_change_publisher.publish_project_change({
+      this.mutation_coordinator.publish_project_data_change({
+        projectPath: project_path,
         source: "translation_batch_update",
         updatedSections: ["items"],
         items: {
           payloadMode: "canonical-delta",
-          changedIds: changed_item_ids as unknown as ApiJsonValue,
+          changedIds: changed_item_ids,
         },
       });
     }
@@ -325,30 +344,25 @@ export class ProjectTaskStore {
     const project_path = this.require_loaded_project_path();
     const finalized_items = this.normalize_items(request["items"]);
     const translation_extras = this.normalize_object(request["translation_extras"]);
-    const next_proofreading_revision =
-      get_runtime_section_revision(this.get_all_meta(project_path), "proofreading") + 1;
     this.database.execute_transaction([
       this.op("updateBatch", {
         projectPath: project_path,
         items: finalized_items as unknown as DatabaseJsonValue,
         meta: {
           translation_extras,
-          "proofreading_revision.proofreading": next_proofreading_revision,
         } as unknown as DatabaseJsonValue,
       }),
-      ...this.bump_runtime_revision_operations(project_path, ["items"]),
+      ...this.bump_runtime_revision_operations(project_path, ["items", "proofreading"]),
     ]);
     const changed_item_ids = this.collect_item_ids(finalized_items);
     this.task_runtime_state.remove_translation_item_ids(changed_item_ids);
-    this.project_change_publisher.publish_project_change({
+    this.mutation_coordinator.publish_project_data_change({
+      projectPath: project_path,
       source: "retranslate_items",
       updatedSections: ["items", "proofreading"],
       items: {
         payloadMode: "canonical-delta",
-        changedIds: changed_item_ids as unknown as ApiJsonValue,
-      },
-      sections: {
-        proofreading: { payloadMode: "canonical-delta" },
+        changedIds: changed_item_ids,
       },
     });
     return {
@@ -374,12 +388,11 @@ export class ProjectTaskStore {
    * 发布 analysis 变更时统一交给 ProjectChangeEventAdapter 补全分析块和 revision
    */
   private publish_analysis_patch(source: string): void {
-    this.project_change_publisher.publish_project_change({
+    const project_path = this.require_loaded_project_path();
+    this.mutation_coordinator.publish_project_data_change({
+      projectPath: project_path,
       source,
       updatedSections: ["analysis"],
-      sections: {
-        analysis: { payloadMode: "canonical-delta" },
-      },
     });
   }
 
@@ -396,20 +409,20 @@ export class ProjectTaskStore {
   }
 
   /**
-   * project_runtime_revision 仍只覆盖由 任务数据写入的运行态 section
+   * 任务提交使用统一 revision writer，proofreading 也走同一 section bump 口径
    */
   private bump_runtime_revision_operations(
     project_path: string,
     sections: string[],
   ): DatabaseOperation[] {
     const meta = this.get_all_meta(project_path);
-    return sections.map((section) =>
-      this.op("setMeta", {
-        projectPath: project_path,
-        key: `project_runtime_revision.${section}`,
-        value: get_runtime_section_revision(meta, section) + 1,
-      }),
-    );
+    return this.mutation_coordinator.build_section_revision_operations({
+      project_path,
+      meta,
+      sections: sections.filter((section): section is ProjectDataSection =>
+        isProjectDataSection(section),
+      ),
+    });
   }
 
   /**

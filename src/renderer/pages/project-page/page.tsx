@@ -19,7 +19,7 @@ import {
   useState,
 } from "react";
 
-import { type ProjectSnapshot, type SettingsSnapshot } from "@/app/desktop/desktop-runtime-context";
+import { type SettingsSnapshot } from "@/app/desktop/desktop-runtime-context";
 import { useProjectPagesBarrier } from "@/app/page-runtime/project-pages-context";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
@@ -53,17 +53,10 @@ import "@/pages/project-page/project-page.css";
 import { PROJECT_FORMAT_SUPPORT_ITEMS } from "@/pages/project-page/support-formats";
 import { DesktopApiError, api_fetch } from "@/app/desktop/desktop-api";
 import { type ProjectStoreStage } from "@/project/store/project-store";
-import { createProjectPrefilterClient } from "@/project/prefilter/prefilter-worker-client";
-import {
-  build_project_state_from_draft,
-  merge_prefilter_output_with_draft_items,
-  run_project_prefilter,
-  type ProjectDraftPayload,
-  type ProjectPrefilterRunnerSettings,
-} from "@/project/prefilter/prefilter-runner";
 import {
   format_project_settings_aligned_toast,
   type ProjectSettingsAlignmentChangedFields,
+  type ProjectSettingsAlignmentSettings,
 } from "@/project/settings/alignment-toast";
 import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
 
@@ -111,21 +104,10 @@ type ProjectSourceFilesPayload = {
   source_files?: string[];
 };
 
-type ProjectSnapshotPayload = {
-  project?: {
-    path?: string;
-    loaded?: boolean;
-  };
-};
-
-type ProjectCreatePreviewPayload = {
-  draft?: ProjectDraftPayload;
-};
-
 type ProjectOpenAlignmentPreviewPayload = {
   preview?: {
     action?: string;
-    draft?: ProjectDraftPayload | null;
+    section_revisions?: Record<string, unknown> | null;
     changed?: ProjectSettingsAlignmentChangedFields;
   };
 };
@@ -318,16 +300,9 @@ function normalize_percent(value: unknown): number {
   return Math.max(0, Math.min(100, numeric_value));
 }
 
-function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSnapshot {
-  return {
-    path: String(payload.project?.path ?? ""),
-    loaded: Boolean(payload.project?.loaded),
-  };
-}
-
 function build_project_prefilter_settings(
   settings_snapshot: SettingsSnapshot,
-): ProjectPrefilterRunnerSettings {
+): ProjectSettingsAlignmentSettings {
   return {
     source_language: settings_snapshot.source_language,
     target_language: settings_snapshot.target_language,
@@ -690,8 +665,8 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   const {
     project_warmup_stage,
     settings_snapshot,
-    set_project_snapshot,
     set_project_warmup_status,
+    refresh_project_snapshot,
     refresh_settings,
     refresh_task,
   } = useDesktopRuntime();
@@ -709,7 +684,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   const [missing_recent_project, set_missing_recent_project] =
     useState<MissingRecentProjectState>(null);
   const project_loading_toast_id_ref = useRef<string | number | null>(null);
-  const project_prefilter_client_ref = useRef(createProjectPrefilterClient());
   const recent_projects = settings_snapshot.recent_projects.slice(0, 5);
   const has_recent_projects = recent_projects.length > 0;
 
@@ -724,13 +698,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   async function refresh_recent_projects(): Promise<void> {
     await refresh_settings();
   }
-
-  useEffect(() => {
-    const project_prefilter_client = project_prefilter_client_ref.current;
-    return () => {
-      project_prefilter_client.dispose();
-    };
-  }, []);
 
   useEffect(() => {
     const toast_id = project_loading_toast_id_ref.current;
@@ -1009,36 +976,13 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       await run_project_loading_modal({
         initial_message: t("project_page.create.loading_toast"),
         task: async () => {
-          const preview_payload = await api_fetch<ProjectCreatePreviewPayload>(
-            "/api/project/create-preview",
-            {
-              source_paths,
-            },
-          );
-          const draft = preview_payload.draft ?? {};
-          const prefilter_output = await run_project_prefilter({
-            state: build_project_state_from_draft(draft),
-            settings: build_project_prefilter_settings(settings_snapshot),
-            executor: (input) => {
-              return project_prefilter_client_ref.current.compute(input);
-            },
-          });
-          const payload = await api_fetch<ProjectSnapshotPayload>("/api/project/create-commit", {
+          await api_fetch("/api/project/create-commit", {
             source_paths,
             path: normalized_output_path,
-            draft: {
-              files: draft.files ?? [],
-              items: merge_prefilter_output_with_draft_items({
-                draft_items: draft.items ?? [],
-                output_items: prefilter_output.items,
-              }),
-            },
-            translation_extras: prefilter_output.translation_extras,
-            prefilter_config: prefilter_output.prefilter_config,
-            project_settings: prefilter_output.project_settings,
+            project_settings: build_project_prefilter_settings(settings_snapshot),
           });
           set_project_warmup_status("warming");
-          set_project_snapshot(normalize_project_snapshot(payload));
+          await refresh_project_snapshot();
           await api_fetch<SettingsPayload>("/api/settings/recent-projects/add", {
             path: normalized_output_path,
             name: extract_stem(extract_file_name(normalized_output_path)),
@@ -1116,38 +1060,25 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
             did_align_project_settings = true;
             aligned_changed_fields = alignment_changed_fields;
           } else if (alignment_action === "prefiltered_items") {
-            const draft = alignment_preview.draft ?? {};
-            const prefilter_output = await run_project_prefilter({
-              state: build_project_state_from_draft(draft),
-              settings: alignment_settings,
-              executor: (input) => {
-                return project_prefilter_client_ref.current.compute(input);
-              },
-            });
+            const section_revisions = alignment_preview.section_revisions ?? {};
             await api_fetch("/api/project/settings-alignment/apply", {
               path: project_to_open.path,
               mode: "prefiltered_items",
-              items: merge_prefilter_output_with_draft_items({
-                draft_items: draft.items ?? [],
-                output_items: prefilter_output.items,
-              }),
-              translation_extras: prefilter_output.translation_extras,
-              prefilter_config: prefilter_output.prefilter_config,
-              project_settings: prefilter_output.project_settings,
+              project_settings: alignment_settings,
               expected_section_revisions: {
-                items: Number(draft.section_revisions?.items ?? 0),
-                analysis: Number(draft.section_revisions?.analysis ?? 0),
+                items: Number(section_revisions.items ?? 0),
+                analysis: Number(section_revisions.analysis ?? 0),
               },
             });
             did_align_project_settings = true;
             aligned_changed_fields = alignment_changed_fields;
           }
 
-          const payload = await api_fetch<ProjectSnapshotPayload>("/api/project/load", {
+          await api_fetch("/api/project/load", {
             path: project_to_open.path,
           });
           set_project_warmup_status("warming");
-          set_project_snapshot(normalize_project_snapshot(payload));
+          await refresh_project_snapshot();
           await api_fetch<SettingsPayload>("/api/settings/recent-projects/add", {
             path: project_to_open.path,
             name: project_to_open.name,

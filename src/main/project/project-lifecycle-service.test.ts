@@ -130,12 +130,12 @@ describe("ProjectLifecycleService", () => {
           mtool_optimizer_enable: false,
           skip_duplicate_source_text_enable: false,
         },
-        draft: null,
+        section_revisions: null,
       },
     });
   });
 
-  it("open-preview 在源语言或预过滤字段变化时返回草稿和 section revision", () => {
+  it("open-preview 在源语言或预过滤字段变化时只返回 section revision 依赖", () => {
     const project_path = write_file(path.join(create_temp_dir(), "prefilter.lg"));
     const service = create_service({
       database: create_database({
@@ -171,27 +171,15 @@ describe("ProjectLifecycleService", () => {
     expect(result["preview"]).toEqual(
       expect.objectContaining({
         action: "prefiltered_items",
-        draft: {
-          files: [{ rel_path: "script.txt", file_type: "TXT", sort_index: 0 }],
-          items: [
-            {
-              id: 1,
-              file_path: "script.txt",
-              file_type: "TXT",
-              src: "Hello",
-              status: "NONE",
-            },
-          ],
-          section_revisions: { files: 2, items: 3, analysis: 4 },
-        },
+        section_revisions: { files: 2, items: 3, analysis: 4 },
       }),
     );
   });
 
-  it("create-commit 写入新工程草稿、默认预设和项目设置后复用 load", async () => {
+  it("create-commit 只凭源路径、目标路径和设置镜像生成新工程事实", async () => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "created.lg");
-    const source_path = write_file(path.join(app_root, "source", "script.txt"));
+    const source_path = write_file(path.join(app_root, "source", "script.txt"), "こんにちは");
     write_file(
       path.join(app_root, "resource", "glossary", "preset", "base.json"),
       JsonTool.stringifyStrict([{ src: "勇者", dst: "Hero" }]),
@@ -221,35 +209,12 @@ describe("ProjectLifecycleService", () => {
       service.create_project_commit({
         source_paths: [path.dirname(source_path)],
         path: project_path,
-        draft: {
-          files: [{ rel_path: "script.txt", source_path, sort_index: 0 }],
-          items: [
-            {
-              id: 1,
-              file_path: "script.txt",
-              file_type: "TXT",
-              row: 1,
-              src: "原文",
-              dst: "",
-              name_src: null,
-              name_dst: null,
-              extra_field: "",
-              tag: "",
-              text_type: "NONE",
-              status: "NONE",
-              retry_count: 0,
-              skip_internal_filter: false,
-            },
-          ],
-        },
         project_settings: {
           source_language: "JA",
           target_language: "ZH",
           mtool_optimizer_enable: true,
           skip_duplicate_source_text_enable: true,
         },
-        translation_extras: { total_line: 1 },
-        prefilter_config: {},
       }),
     ).resolves.toEqual({ project: { path: project_path, loaded: true } });
 
@@ -304,8 +269,8 @@ describe("ProjectLifecycleService", () => {
               id: 1,
               file_path: "script.txt",
               file_type: "TXT",
-              row: 1,
-              src: "原文",
+              row: 0,
+              src: "こんにちは",
               dst: "",
               name_src: null,
               name_dst: null,
@@ -333,7 +298,17 @@ describe("ProjectLifecycleService", () => {
               mtool_optimizer_enable: true,
               skip_duplicate_source_text_enable: true,
             },
-            translation_extras: { total_line: 1 },
+            translation_extras: {
+              line: 0,
+              total_line: 1,
+              processed_line: 0,
+              error_line: 0,
+              total_tokens: 0,
+              total_output_tokens: 0,
+              total_input_tokens: 0,
+              time: 0,
+              start_time: 0,
+            },
             analysis_extras: {},
             analysis_candidate_count: 0,
           },
@@ -343,6 +318,22 @@ describe("ProjectLifecycleService", () => {
     expect(log_manager.info).toHaveBeenCalledWith("已自动加载默认预设：术语表 | 翻译提示词 …", {
       source: "project-lifecycle",
     });
+  });
+
+  it("create-commit 拒绝旧前端最终事实字段", async () => {
+    const app_root = create_temp_dir();
+    const service = create_service({
+      app_root,
+      database: create_database({ create_project_files: true }),
+    });
+
+    await expect(
+      service.create_project_commit({
+        source_paths: [],
+        path: path.join(app_root, "legacy-payload.lg"),
+        draft: { files: [], items: [] },
+      }),
+    ).rejects.toThrow("request.validation_failed");
   });
 
   it("create-commit 默认预设读取失败只记录日志并继续创建", async () => {
@@ -362,10 +353,7 @@ describe("ProjectLifecycleService", () => {
     await service.create_project_commit({
       source_paths: [],
       path: project_path,
-      draft: { files: [], items: [] },
       project_settings: {},
-      translation_extras: {},
-      prefilter_config: {},
     });
 
     expect(transaction_calls[0]?.map((operation) => operation.name)).toContain("createProject");

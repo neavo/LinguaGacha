@@ -6,11 +6,14 @@ import ExcelJS from "exceljs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectDatabase } from "../database/database-operations";
+import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectChangePublisher } from "../project/project-change-publisher";
+import { get_runtime_section_revision } from "../project/project-section-revision";
 import { ProjectSessionState } from "../project/project-session-state";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { QualityService } from "./quality-service";
+import type { ProjectChangeEvent } from "../../shared/project/event";
 
 describe("QualityService", () => {
   const cleanup_paths: string[] = [];
@@ -236,14 +239,21 @@ describe("QualityService", () => {
     await expect(
       service.save_rule_entries({
         rule_type: "glossary",
-        expected_revision: 0,
+        expected_section_revisions: { quality: 0 },
         entries: [{ src: "HP", dst: "生命值" }],
       }),
     ).resolves.toMatchObject({
       accepted: true,
-      sectionRevisions: { quality: 1 },
+      changes: [
+        {
+          source: "quality_rule_save_entries",
+          sectionRevisions: { quality: 1 },
+          updatedSections: ["quality"],
+        },
+      ],
     });
     expect(publisher.publish_project_change).toHaveBeenCalledWith({
+      targetProjectPath: lg_path,
       source: "quality_rule_save_entries",
       updatedSections: ["quality"],
       sections: {
@@ -255,7 +265,7 @@ describe("QualityService", () => {
     await expect(
       service.save_rule_entries({
         rule_type: "glossary",
-        expected_revision: 0,
+        expected_section_revisions: { quality: 0 },
         entries: [],
       }),
     ).rejects.toThrow("data.revision_conflict");
@@ -272,7 +282,7 @@ describe("QualityService", () => {
 
     await service.save_rule_entries({
       rule_type: "glossary",
-      expected_revision: 0,
+      expected_section_revisions: { quality: 0 },
       entries: [{ entry_id: "rule-1", src: "HP", dst: "生命值" }],
     });
 
@@ -288,6 +298,22 @@ describe("QualityService", () => {
         case_sensitive: false,
       },
     ]);
+  });
+
+  it("保存质量规则时拒绝旧 expected_revision 字段", async () => {
+    const database = new ProjectDatabase();
+    cleanup_databases.push(database);
+    const { service, publisher } = create_project_service(database);
+
+    await expect(
+      service.save_rule_entries({
+        rule_type: "glossary",
+        expected_revision: 0,
+        expected_section_revisions: { quality: 0 },
+        entries: [],
+      }),
+    ).rejects.toThrow("request.validation_failed");
+    expect(publisher.publish_project_change).not.toHaveBeenCalled();
   });
 
   function create_service(): { service: QualityService; app_root: string } {
@@ -322,7 +348,7 @@ describe("QualityService", () => {
     const app_setting_service = new AppSettingService(paths);
     const session_state = new ProjectSessionState();
     const lg_path = path.join(app_root, "quality.lg");
-    const publisher = { publish_project_change: vi.fn() };
+    const publisher = create_test_project_change_publisher(database, lg_path);
     database.execute({
       name: "createProject",
       args: { projectPath: lg_path, name: "quality" },
@@ -338,6 +364,38 @@ describe("QualityService", () => {
       ),
       lg_path,
       publisher,
+    };
+  }
+
+  function create_test_project_change_publisher(
+    database: ProjectDatabase,
+    lg_path: string,
+  ): { publish_project_change: ReturnType<typeof vi.fn> } {
+    return {
+      publish_project_change: vi.fn((payload: Record<string, ApiJsonValue>): ProjectChangeEvent => {
+        const updated_sections = Array.isArray(payload.updatedSections)
+          ? payload.updatedSections.map((section) => String(section))
+          : [];
+        const meta = database.execute({
+          name: "getAllMeta",
+          args: { projectPath: lg_path },
+        }) as Record<string, ApiJsonValue>;
+        const section_revisions = Object.fromEntries(
+          updated_sections.map((section) => [section, get_runtime_section_revision(meta, section)]),
+        );
+        return {
+          type: "project.changed",
+          eventId: `test-${String(payload.source ?? "project_change")}`,
+          source: String(payload.source ?? "project_change"),
+          projectPath: String(payload.targetProjectPath ?? ""),
+          projectRevision: Math.max(...Object.values(section_revisions), 0),
+          sectionRevisions: section_revisions,
+          updatedSections: updated_sections as ProjectChangeEvent["updatedSections"],
+          ...(payload.sections === undefined
+            ? {}
+            : { sections: payload.sections as ProjectChangeEvent["sections"] }),
+        };
+      }),
     };
   }
 });
