@@ -392,7 +392,7 @@ export function useTranslationTaskRuntime(
       const task_payload = await api_fetch<TranslationTaskPayload>("/api/tasks/snapshot", {
         task_type: "translation",
       });
-      apply_translation_task_snapshot(normalize_translation_task_snapshot_payload(task_payload));
+      sync_runtime_task_snapshot(normalize_translation_task_snapshot_payload(task_payload));
     } catch (error) {
       push_toast(
         "error",
@@ -404,10 +404,10 @@ export function useTranslationTaskRuntime(
       );
     }
   }, [
-    apply_translation_task_snapshot,
     clear_translation_task_state,
     project_snapshot.loaded,
     push_toast,
+    sync_runtime_task_snapshot,
     t,
     task_snapshot,
   ]);
@@ -442,7 +442,6 @@ export function useTranslationTaskRuntime(
         },
       });
       const next_snapshot = normalize_translation_task_snapshot_payload(task_payload);
-      apply_translation_task_snapshot(next_snapshot);
       sync_runtime_task_snapshot(next_snapshot);
 
       if (!should_continue) {
@@ -461,7 +460,6 @@ export function useTranslationTaskRuntime(
       );
     }
   }, [
-    apply_translation_task_snapshot,
     clear_terminal_prompt_suppression,
     project_store,
     push_toast,
@@ -515,7 +513,6 @@ export function useTranslationTaskRuntime(
         });
         const next_snapshot = normalize_translation_task_snapshot_payload(task_payload);
         suppress_next_terminal_prompt("manual-stop");
-        apply_translation_task_snapshot(next_snapshot);
         sync_runtime_task_snapshot(next_snapshot);
         set_task_confirm_state(null);
       } else if (task_confirm_state.kind === "generate-translation") {
@@ -545,10 +542,7 @@ export function useTranslationTaskRuntime(
             ),
           );
           await apply_project_mutation_result(mutation_result);
-          const next_snapshot = normalize_translation_task_snapshot_payload({
-            task: (await refresh_task()) as Partial<TranslationTaskSnapshot>,
-          });
-          apply_translation_task_snapshot(next_snapshot);
+          await refresh_task("translation");
         } catch (error) {
           void refresh_project_runtime().catch(() => {});
           throw error;
@@ -585,7 +579,6 @@ export function useTranslationTaskRuntime(
       });
     }
   }, [
-    apply_translation_task_snapshot,
     apply_project_mutation_result,
     options,
     project_store,

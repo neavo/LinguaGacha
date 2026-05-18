@@ -97,6 +97,44 @@ describe("TaskService", () => {
     });
   });
 
+  it("启动回包晚于瞬时终态时返回当前真实快照", async () => {
+    let snapshot_status = "requested";
+    let snapshot_busy = true;
+    const service = new TaskService(
+      {
+        start: async () => {
+          snapshot_status = "done";
+          snapshot_busy = false;
+        },
+      } as unknown as TaskEngine,
+      create_snapshot_builder({ quality: 1, prompts: 2 }, () => ({
+        task_type: "translation",
+        status: snapshot_status,
+        busy: snapshot_busy,
+      })),
+      create_task_runtime_publisher(),
+      create_project_operation_gate(),
+      new ProjectSessionState(),
+      create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
+    );
+
+    const result = await service.start_task({
+      task_type: "translation",
+      mode: "new",
+      scope: { kind: "all" },
+      expected_section_revisions: { quality: 1, prompts: 2 },
+    });
+
+    expect(result).toEqual({
+      accepted: true,
+      task: {
+        task_type: "translation",
+        status: "done",
+        busy: false,
+      },
+    });
+  });
+
   it("Engine 启动失败时恢复此前任务运行态并继续抛出错误", async () => {
     const previous_state = {
       active_task_type: "translation",
@@ -301,25 +339,16 @@ describe("TaskService", () => {
 
   function create_snapshot_builder(
     revisions: Record<string, number>,
-    build_task_snapshot: () => Record<string, unknown> = () => ({
-      task_type: "translation",
-      status: "idle",
-      busy: false,
+    build_task_snapshot: (request: Record<string, unknown>) => Record<string, unknown> = (
+      request,
+    ) => ({
+      task_type: String(request["task_type"] ?? "translation"),
+      status: "requested",
+      busy: true,
     }),
   ): TaskSnapshotBuilder {
     return {
-      build_command_ack: async (
-        task_type: string,
-        status: string,
-        busy: boolean,
-        overrides?: Record<string, unknown>,
-      ) => ({
-        task_type,
-        status,
-        busy,
-        ...overrides,
-      }),
-      build_task_snapshot: async () => build_task_snapshot(),
+      build_task_snapshot: async (request: Record<string, unknown>) => build_task_snapshot(request),
       get_runtime_section_revision: (section: string) => revisions[section] ?? 0,
     } as unknown as TaskSnapshotBuilder;
   }

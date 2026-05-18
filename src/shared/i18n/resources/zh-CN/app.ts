@@ -12,7 +12,6 @@ export const zh_cn_app = {
     confirm: "确认",
     close: "关闭",
     reset: "重置",
-    retry: "重试",
     skip: "跳过",
     overwrite: "覆盖",
     loading: "加载中",
@@ -283,7 +282,6 @@ export const zh_cn_app = {
       "任务耗时 {TIME} 秒，文本行数 {LINES} 行，输入消耗 {PT} Tokens，输出消耗 {CT} Tokens",
     generate_translation_done: "译文已保存至 {PATH} …",
     generate_translation_start: "生成译文中 …",
-    generate_translation_success: "译文生成完成 …",
     response_checker_fail_data: "数据结构错误",
     response_checker_fail_degradation: "发生退化现象",
     response_checker_fail_line_count: "行数不一致",
@@ -295,12 +293,9 @@ export const zh_cn_app = {
     system_closed_dropped: "日志系统已关闭，丢弃新日志：{MESSAGE}",
     translation_response_check_fail: "返回数据错误，将自动重试，原因：{REASON}",
     translation_response_check_fail_all: "全部译文质量校验失败，将自动切分重试，原因：{REASON}",
-    translation_response_check_fail_force: "译文校验未通过",
     translation_response_check_fail_part: "部分译文质量校验失败，将自动切分重试，原因：{REASON}",
-    translation_task_force_accept_info: " | 已强制放行：{REASON}",
     translation_task_result: "翻译结果：",
     translation_task_status_info:
       "拆分次数：{SPLIT} | 单条重试次数：{RETRY} | 任务长度阈值：{THRESHOLD}",
-    translation_unknown_reason: "未知原因",
   },
 } as const;

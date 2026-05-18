@@ -48,7 +48,6 @@ export const zh_cn_workbench_page = {
     generate_translation: "生成译文",
     close_project: "关闭项目",
     reset: "重置翻译状态",
-    delete: "删除",
     translation_task: "翻译",
     start_translation: "开始翻译",
     reset_translation_all: "重置所有数据",

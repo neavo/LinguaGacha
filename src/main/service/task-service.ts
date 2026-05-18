@@ -80,11 +80,9 @@ export class TaskService {
     }
     return {
       accepted: true,
-      task: (await this.snapshot_builder.build_command_ack(
-        command.task_type,
-        "requested",
-        true,
-      )) as unknown as ApiJsonValue,
+      task: (await this.snapshot_builder.build_task_snapshot({
+        task_type: command.task_type,
+      })) as unknown as ApiJsonValue,
     };
   }
 

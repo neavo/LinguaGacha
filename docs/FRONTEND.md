@@ -45,7 +45,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - `ProjectStore` 是 renderer 内共享项目事实的唯一缓存，不是后端事实源；`DesktopRuntimeContext` 对页面只暴露 `getState`、`getRevisionCheckpoint`、`subscribe` 只读接口，项目 snapshot 只能通过后端刷新同步，settings 与 task 只能通过后端载荷或任务命令 ack 同步，写入口只留在 Provider 内部。
 - `task` 属于任务运行态，只能由 `TaskRuntimeStore` 作为前端任务镜像；项目数据读取和 `project.data_changed` 都不能把 task 写入 `ProjectStore` 或项目派生缓存依赖。
 - `TaskRuntimeStore` 消费的 `TaskSnapshot` 固定为 `base + progress + extras`：通用状态只在 base，进度只在 `progress`，分析候选数只在 `extras.kind === "analysis"`，重翻行级状态只在 `extras.kind === "translation" && scope.kind === "items"`。
-- 停止命令 HTTP ack 只能携带后端当前完整 `TaskSnapshot`；页面可以同步写入该 snapshot，但不能在页面层追加“终态优先于 stopping”的第二套排序规则。
+- 任务命令 HTTP ack 只能携带后端当前完整 `TaskSnapshot`；页面只经 `TaskRuntimeStore` 同步该 snapshot，不能在页面层追加“终态优先于 requested / stopping”的第二套排序规则。
 - 共享项目事实只能来自项目读取接口、同步 mutation 返回的 `ProjectMutationResult.changes` 和 `project.data_changed`。
 - `ProjectStore.items` 持有完整公开 item DTO 镜像，字段口径与后端项目读取一致；页面、worker 和 planner 可以派生轻量 view model，但工作台、reset、settings alignment 和校对类 mutation 只能提交用户意图、设置镜像和 `ProjectStore.revisions.sections` 中的依赖 revision，不能把派生 `items`、task/progress extras、prefilter config 或 analysis extras 当作最终事实提交。
 - `ProjectChangeEvent`、read-sections 和 ids-only 补读响应都必须携带后端确认的 project path；project path 与当前 `ProjectStore` 不一致的 mutation result、SSE 或补读响应一律丢弃。
@@ -66,7 +66,7 @@ project, files, items, quality, prompts, analysis, proofreading
 | `task.snapshot_changed` | 运行中 snapshot 进入 renderer 500ms 刷新窗口并只保留最新一份；终态或 `busy=false` 事件先冲刷窗口再立即覆盖 `TaskRuntimeStore` | 按钮 busy、任务菜单、进度、请求压力、停止态 |
 | `project.data_changed` | 先校验 `projectPath` 与当前 `ProjectStore` 一致；未经 HTTP mutation result 消费过的 canonical delta 进入同一 500ms 刷新窗口并按到达顺序批量合并；ids-only 合并 item id 后按 `/api/project/items/read-by-ids` 补读；仅异常恢复用的 section-invalidated 或无法规范化事件先冲刷窗口，再按 `ProjectStore` 的 project path 与 section revision 规则补读 canonical 数据或全量刷新 | 工作台、校对、质量、分析、校对数据刷新 |
 
-同步 mutation 成功后，页面必须先规范化 `ProjectMutationResult.changes` 并交给 `DesktopRuntimeProvider` 应用；运行态用 `eventId` 记录近期已应用事件，避免同源 SSE 再次推进 `ProjectStore` 或页面刷新信号。同一 renderer 刷新窗口内，`ProjectStore` 只通知一次，工作台与校对页派生信号按批次合并后最多各 bump 一次。工程切换、设置变更、项目刷新、mutation result、失效 section 补读和任务终态不被普通窗口延迟。任务运行中和任务结束后不再由 Workbench 主动重取 `/api/tasks/snapshot`；项目首次加载、项目切换或页面显式 hydration 时仍可读取一次任务快照。日志窗口的 500ms append batch 与 Workbench 波形 250ms 采样都属于页面表现层，不承载项目或任务事实同步。
+同步 mutation 成功后，页面必须先规范化 `ProjectMutationResult.changes` 并交给 `DesktopRuntimeProvider` 应用；运行态用 `eventId` 记录近期已应用事件，避免同源 SSE 再次推进 `ProjectStore` 或页面刷新信号。同一 renderer 刷新窗口内，`ProjectStore` 只通知一次，工作台与校对页派生信号按批次合并后最多各 bump 一次。工程切换、设置变更、项目刷新、mutation result、失效 section 补读和任务终态不被普通窗口延迟。任务运行中和任务结束后不再由 Workbench 主动重取 `/api/tasks/snapshot`；任务专属页面在项目 mutation 后需要重读本页任务快照时必须通过 `refresh_task(task_type)` 显式声明 `translation` / `analysis`，全局 hydration 或项目切换这类不关心具体任务页的入口才可无类型读取。日志窗口的 500ms append batch 与 Workbench 波形 250ms 采样都属于页面表现层，不承载项目或任务事实同步。
 
 ## 5. 导航与项目页 runtime
 
