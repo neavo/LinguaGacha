@@ -26,6 +26,31 @@ describe("原生路径策略", () => {
 
     const result = policy.to_identity_path("C:\\Project\\Demo.lg");
 
-    expect(result).toBe(path.resolve("C:\\Project\\Demo.lg").toLowerCase());
+    expect(result).toBe(path.win32.resolve("C:\\Project\\Demo.lg").toLowerCase());
+  });
+
+  it.each([
+    ["C:\\", true],
+    ["C:/", true],
+    ["C:\\Project\\Demo.lg", false],
+    ["\\\\server\\share\\", true],
+    ["\\\\server\\share\\Demo.lg", false],
+  ] as const)("按 Windows 规则判断文件系统根目录：%s", (target_path, expected) => {
+    const policy = new NativePathPolicy("win32");
+
+    const result = policy.is_filesystem_root(target_path);
+
+    expect(result).toBe(expected);
+  });
+
+  it.each([
+    ["/", true],
+    ["/tmp/demo.lg", false],
+  ] as const)("按 POSIX 规则判断文件系统根目录：%s", (target_path, expected) => {
+    const policy = new NativePathPolicy("linux");
+
+    const result = policy.is_filesystem_root(target_path);
+
+    expect(result).toBe(expected);
   });
 });
