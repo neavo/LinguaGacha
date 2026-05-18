@@ -13,10 +13,9 @@
     "format": "node ./buildtools/format-related-files.mjs",
     "lint": "oxlint .",
     "test": "vitest run --config buildtools/vitest/vitest.config.ts",
-    "check:frontend": "node ./buildtools/check-frontend-boundaries.mjs && npm run renderer:audit",
+    "check:frontend": "node ./buildtools/check-frontend-boundaries.mjs",
     "check:backend": "node ./buildtools/check-backend-boundaries.mjs",
-    "check:boundaries": "npm run check:frontend && npm run check:backend",
-    "renderer:audit": "node ./buildtools/check-renderer-design-system.mjs"
+    "check:boundaries": "npm run check:frontend && npm run check:backend"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.95.2",

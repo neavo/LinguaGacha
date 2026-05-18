@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import type { ProjectItemPublicRecord } from "@base/item";
-import { compute_project_prefilter_mutation } from "@/project/prefilter/prefilter-mutation-builder";
-import type { ProjectStoreState } from "@/project/store/project-store";
+import type { ProjectItemPublicRecord } from "../../base/item";
+import {
+  compute_project_prefilter_mutation,
+  type ProjectMutationState,
+} from "./project-mutation-state";
 
+// 测试 item 保持完整公开 DTO 形状，避免用半截对象绕过真实归一化边界。
 function create_test_item(
   key: string,
   overrides: Partial<ProjectItemPublicRecord>,
@@ -27,12 +30,11 @@ function create_test_item(
   };
 }
 
-function create_state(items: Record<string, Partial<ProjectItemPublicRecord>>): ProjectStoreState {
+// 每个场景只覆盖需要变动的 item 字段，其余项目事实由后端默认镜像补齐。
+function create_state(
+  items: Record<string, Partial<ProjectItemPublicRecord>>,
+): ProjectMutationState {
   return {
-    project: {
-      path: "E:/demo.lg",
-      loaded: true,
-    },
     files: {
       "script.txt": {
         rel_path: "script.txt",
@@ -46,24 +48,6 @@ function create_state(items: Record<string, Partial<ProjectItemPublicRecord>>): 
     items: Object.fromEntries(
       Object.entries(items).map(([key, item]) => [key, create_test_item(key, item)]),
     ),
-    quality: {
-      glossary: { entries: [], enabled: false, mode: "off", revision: 0 },
-      pre_replacement: { entries: [], enabled: false, mode: "off", revision: 0 },
-      post_replacement: { entries: [], enabled: false, mode: "off", revision: 0 },
-      text_preserve: { entries: [], enabled: false, mode: "off", revision: 0 },
-    },
-    prompts: {
-      translation: { text: "", enabled: false, revision: 0 },
-      analysis: { text: "", enabled: false, revision: 0 },
-    },
-    analysis: {},
-    proofreading: {
-      revision: 0,
-    },
-    revisions: {
-      projectRevision: 0,
-      sections: {},
-    },
   };
 }
 
@@ -115,7 +99,7 @@ describe("compute_project_prefilter_mutation", () => {
     });
   });
 
-  it("启用 MTool 优化器时只在前端派生 KVJSON 重复短句跳过", () => {
+  it("启用 MTool 优化器时只在后端派生 KVJSON 重复短句跳过", () => {
     const output = compute_project_prefilter_mutation({
       state: create_state({
         "1": {

@@ -1,31 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type { ProjectItemPublicRecord } from "@base/item";
 import type { ProjectStoreState } from "@/project/store/project-store";
 import {
   create_analysis_reset_all_plan,
   create_analysis_reset_failed_plan,
 } from "@/project/reset/analysis-reset-plan";
-
-function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
-  return {
-    item_id: 1,
-    src: "",
-    dst: "",
-    name_src: null,
-    name_dst: null,
-    extra_field: "",
-    tag: "",
-    row_number: 0,
-    file_type: "TXT",
-    file_path: "",
-    text_type: "NONE",
-    status: "NONE",
-    retry_count: 0,
-    skip_internal_filter: false,
-    ...overrides,
-  };
-}
 
 function create_test_state(): ProjectStoreState {
   return {
@@ -34,28 +13,7 @@ function create_test_state(): ProjectStoreState {
       loaded: true,
     },
     files: {},
-    items: {
-      "1": create_test_item({
-        item_id: 1,
-        file_path: "script/a.txt",
-        row_number: 1,
-        src: "alpha",
-        dst: "",
-        status: "NONE",
-        text_type: "NONE",
-        retry_count: 0,
-      }),
-      "2": create_test_item({
-        item_id: 2,
-        file_path: "script/a.txt",
-        row_number: 2,
-        src: "skip",
-        dst: "",
-        status: "EXCLUDED",
-        text_type: "NONE",
-        retry_count: 0,
-      }),
-    },
+    items: {},
     quality: {
       glossary: { entries: [], enabled: false, mode: "off", revision: 0 },
       pre_replacement: { entries: [], enabled: false, mode: "off", revision: 0 },
@@ -66,31 +24,7 @@ function create_test_state(): ProjectStoreState {
       translation: { text: "", enabled: false, revision: 0 },
       analysis: { text: "", enabled: false, revision: 0 },
     },
-    analysis: {
-      extras: {
-        start_time: 12,
-        time: 6,
-        total_line: 5,
-        line: 4,
-        processed_line: 3,
-        error_line: 1,
-        total_tokens: 18,
-        total_input_tokens: 10,
-        total_output_tokens: 8,
-      },
-      candidate_count: 6,
-      candidate_aggregate: {
-        foo: {
-          src: "foo",
-        },
-      },
-      status_summary: {
-        total_line: 5,
-        line: 4,
-        processed_line: 3,
-        error_line: 1,
-      },
-    },
+    analysis: {},
     proofreading: {
       revision: 0,
     },
@@ -104,7 +38,7 @@ function create_test_state(): ProjectStoreState {
 }
 
 describe("analysis reset planners", () => {
-  it("reset all 生成空 checkpoint 下的分析快照", () => {
+  it("reset all 只提交模式和 analysis revision", () => {
     const plan = create_analysis_reset_all_plan({
       state: create_test_state(),
     });
@@ -112,63 +46,23 @@ describe("analysis reset planners", () => {
     expect(plan.updatedSections).toEqual(["analysis"]);
     expect(plan.requestBody).toEqual({
       mode: "all",
-      analysis_extras: {
-        start_time: 0,
-        time: 0,
-        total_line: 1,
-        line: 0,
-        processed_line: 0,
-        error_line: 0,
-        total_tokens: 0,
-        total_input_tokens: 0,
-        total_output_tokens: 0,
-      },
       expected_section_revisions: {
         analysis: 4,
       },
     });
-    expect(plan.next_task_snapshot.extras).toMatchObject({
-      kind: "analysis",
-      candidate_count: 0,
-    });
   });
 
-  it("reset failed 保留时间与 token 字段，只替换 summary", async () => {
-    const plan = await create_analysis_reset_failed_plan({
+  it("reset failed 只提交模式和 analysis revision", () => {
+    const plan = create_analysis_reset_failed_plan({
       state: create_test_state(),
-      request_preview: async () => {
-        return {
-          status_summary: {
-            total_line: 5,
-            processed_line: 3,
-            error_line: 0,
-            line: 3,
-          },
-        };
-      },
     });
 
     expect(plan.updatedSections).toEqual(["analysis"]);
     expect(plan.requestBody).toEqual({
       mode: "failed",
-      analysis_extras: {
-        start_time: 12,
-        time: 6,
-        total_line: 5,
-        line: 3,
-        processed_line: 3,
-        error_line: 0,
-        total_tokens: 18,
-        total_input_tokens: 10,
-        total_output_tokens: 8,
-      },
       expected_section_revisions: {
         analysis: 4,
       },
-    });
-    expect(plan.next_task_snapshot.extras).toMatchObject({
-      kind: "analysis",
-      candidate_count: 6,
     });
   });
 });

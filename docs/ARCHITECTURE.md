@@ -102,13 +102,13 @@ sequenceDiagram
   UI->>Store: exact 合并项目数据 section
   UI->>API: /api/events/stream
   Hub-->>UI: project.data_changed / task.snapshot_changed / settings.*
-  UI->>Store: 应用 canonical delta 或按需补读 section
+  UI->>Store: 应用 canonical delta / 完整 section data，异常时按需补读
   UI->>Task: 合并 task snapshot / task event
 ```
 
 - `/api/project/manifest` 与 `/api/project/read-sections` 是项目数据初始化主链路；运行态不再保留 full bootstrap stream。
 - `/api/events/stream` 是运行期增量事件主链路；项目数据通过 `project.data_changed` 更新，任务运行态通过 `task.snapshot_changed` 更新，页面初始化或项目切换时可按需读取 `/api/tasks/snapshot`。
-- 同步 mutation 的 HTTP ack 只用于 revision 对齐；页面最终事实仍以项目读取接口、`project.data_changed`、任务事件和明确的本地乐观 change 进入各自 store。
+- 同步 mutation 的 HTTP 返回使用 `ProjectMutationResult`，页面先应用其中的后端 canonical `changes`，再用 `eventId` 跳过同源 `project.data_changed` 重放；项目读取接口、项目变更事件和任务事件分别进入各自 store。
 
 ## 4. 模块关系边界
 
@@ -122,7 +122,7 @@ sequenceDiagram
 | `src/native/shell/` | Electron main 宿主实现：窗口生命周期、IPC 注册、原生 dialog、日志窗口、DevTools 入口 | Core 领域服务、数据库 workflow、renderer 页面状态、共享契约权威 |
 | `src/main/lifecycle/` | Core 启停顺序、端口分配、日志和 Gateway 生命周期 | 业务路由、数据库 schema、renderer 状态 |
 | `src/main/api/` | 公开 HTTP / SSE 路由、响应壳、CORS、错误映射 | 直接 SQL、页面缓存、文件格式实现 |
-| `src/main/project/` | 项目会话、项目数据投影、项目数据变更事件、同步 mutation | Electron preload、页面局部状态 |
+| `src/main/project/` | 项目会话、项目数据投影、项目数据变更事件、同步 mutation 协调、项目 mutation 派生 | Electron preload、页面局部状态 |
 | `src/main/engine/{command,protocol,runtime,core,definitions,store}` | 任务命令、协议词表、运行态、快照、编排、任务差异解释、artifact 提交和项目任务事实读写 | worker 内提示词、provider 请求策略、响应清洗解码 |
 | `src/main/llm/` | main 进程 LLM provider policy、request policy、official SDK transport、ProviderClientPool、请求结果归一 | 任务编排、项目事实读取、数据库写入、worker 提示词和响应业务解析 |
 | `src/main/engine/worker/` | work unit 执行、提示词构建、runner、pipeline、响应清洗解码、worker_threads 边界 | 数据库写入、全局任务状态、任务进度提交、任务级 Key 轮换、provider policy 与 SDK transport |

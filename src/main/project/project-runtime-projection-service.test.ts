@@ -57,6 +57,7 @@ describe("ProjectRuntimeProjectionService", () => {
 
     const manifest = service.build_manifest({ loaded: true, projectPath: "E:/demo/demo.lg" });
 
+    expect(manifest["projectPath"]).toBe("E:/demo/demo.lg");
     expect(manifest["counts"]).toEqual({ files: 2, items: 5 });
     expect(execute).toHaveBeenCalledWith({
       name: "getAssetCount",
@@ -107,6 +108,7 @@ describe("ProjectRuntimeProjectionService", () => {
     const payload = service.build_item_record_map_by_ids("E:/demo/demo.lg", [2, 3]);
 
     expect(payload).toMatchObject({
+      projectPath: "E:/demo/demo.lg",
       items: {
         "2": {
           item_id: 2,

@@ -16,6 +16,7 @@ describe("ProjectChangePublisher", () => {
           type: "project.changed",
           eventId: "evt-1",
           source: String(payload["source"] ?? ""),
+          projectPath: String(payload["targetProjectPath"] ?? ""),
           projectRevision: 2,
           sectionRevisions: { items: 2 },
           updatedSections: ["items"],
@@ -24,7 +25,10 @@ describe("ProjectChangePublisher", () => {
       core_event_hub,
     );
 
-    publisher.publish_project_change({ source: "translation_reset" });
+    publisher.publish_project_change({
+      targetProjectPath: "E:/Project/demo.lg",
+      source: "translation_reset",
+    });
     const chunk = await reader?.read();
     await reader?.cancel();
     core_event_hub.stop();
@@ -38,9 +42,28 @@ describe("ProjectChangePublisher", () => {
       type: "project.changed",
       eventId: "evt-1",
       source: "translation_reset",
+      projectPath: "E:/Project/demo.lg",
       projectRevision: 2,
       sectionRevisions: { items: 2 },
       updatedSections: ["items"],
     });
+  });
+
+  it("适配器判定无可广播事件时不写入事件流", async () => {
+    const core_event_hub = new CoreEventHub();
+    const publisher = new ProjectChangePublisher(
+      {
+        adapt_project_change: () => null,
+      } as unknown as ProjectChangeEventAdapter,
+      core_event_hub,
+    );
+
+    const event = publisher.publish_project_change({
+      targetProjectPath: "E:/Project/other.lg",
+      source: "settings_alignment",
+    });
+
+    core_event_hub.stop();
+    expect(event).toBeNull();
   });
 });

@@ -217,13 +217,7 @@ describe("ApiGatewayServer", () => {
     const create_commit_response = await post_json(started.baseUrl, "/api/project/create-commit", {
       source_paths: [source_path],
       path: path.join(app_root, "created-by-ts.lg"),
-      draft: {
-        files: [{ rel_path: "source.txt", source_path, sort_index: 0 }],
-        items: [create_project_item({ id: 1, file_path: "source.txt", src: "原文" })],
-      },
-      project_settings: { source_language: "JA", target_language: "ZH" },
-      translation_extras: {},
-      prefilter_config: {},
+      project_settings: { source_language: "ZH", target_language: "ZH" },
     });
     const load_body = (await load_response.json()) as { ok?: boolean };
     const open_preview_body = (await open_preview_response.json()) as { ok?: boolean };
@@ -274,18 +268,21 @@ describe("ApiGatewayServer", () => {
     const started = await gateway.start();
     await post_json(started.baseUrl, "/api/project/load", { path: lg_path });
     const response = await post_json(started.baseUrl, "/api/project/proofreading/save-item", {
-      items: [{ id: 1, dst: "译文", status: "PROCESSED" }],
-      translation_extras: { line: 1 },
+      item_id: 1,
+      dst: "译文",
       expected_section_revisions: { items: 0, proofreading: 0 },
     });
     const body = (await response.json()) as {
       ok?: boolean;
-      data?: { accepted?: boolean; sectionRevisions?: Record<string, number> };
+      data?: {
+        accepted?: boolean;
+        changes?: Array<{ sectionRevisions?: Record<string, number> }>;
+      };
     };
 
     expect(body.ok).toBe(true);
     expect(body.data?.accepted).toBe(true);
-    expect(body.data?.sectionRevisions).toEqual({ items: 1, proofreading: 1 });
+    expect(body.data?.changes?.[0]?.sectionRevisions).toEqual({ items: 1, proofreading: 1 });
     expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toMatchObject(
       [{ id: 1, src: "原文", dst: "译文", status: "PROCESSED" }],
     );
@@ -353,6 +350,7 @@ describe("ApiGatewayServer", () => {
     const manifest_body = (await manifest_response.json()) as {
       ok?: boolean;
       data?: {
+        projectPath?: string;
         projectRevision?: number;
         sectionRevisions?: Record<string, number>;
       };
@@ -363,6 +361,7 @@ describe("ApiGatewayServer", () => {
     const sections_body = (await sections_response.json()) as {
       ok?: boolean;
       data?: {
+        projectPath?: string;
         sections?: {
           items?: Record<string, { src?: string }>;
           prompts?: { translation?: { text?: string } };
@@ -371,11 +370,13 @@ describe("ApiGatewayServer", () => {
     };
 
     expect(manifest_body.ok).toBe(true);
+    expect(manifest_body.data?.projectPath).toBe(lg_path);
     expect(manifest_body.data?.projectRevision).toBeGreaterThanOrEqual(1);
     expect(manifest_body.data?.sectionRevisions).toMatchObject({
       prompts: 1,
     });
     expect(sections_body.ok).toBe(true);
+    expect(sections_body.data?.projectPath).toBe(lg_path);
     expect(sections_body.data?.sections?.items?.["1"]).toMatchObject({
       src: "原文",
     });
@@ -418,12 +419,14 @@ describe("ApiGatewayServer", () => {
     const body = (await response.json()) as {
       ok?: boolean;
       data?: {
+        projectPath?: string;
         items?: Record<string, { src?: string }>;
         missingIds?: number[];
       };
     };
 
     expect(body.ok).toBe(true);
+    expect(body.data?.projectPath).toBe(lg_path);
     expect(body.data?.items).toMatchObject({
       "2": { src: "二号原文" },
       "4": { src: "四号原文" },

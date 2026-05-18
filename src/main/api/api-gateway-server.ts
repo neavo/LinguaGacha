@@ -14,6 +14,7 @@ import { ProjectSessionState } from "../project/project-session-state";
 import { ProjectResetPreviewService } from "../project/project-reset-preview-service";
 import { ProjectChangeEventAdapter } from "../project/project-change-event-adapter";
 import { ProjectRuntimeProjectionService } from "../project/project-runtime-projection-service";
+import { ProjectOperationGate } from "../project/project-operation-gate";
 import { ProofreadingService } from "../service/proofreading-service";
 import { QualityService } from "../service/quality-service";
 import { AppPathService } from "../app/app-path-service";
@@ -194,11 +195,13 @@ export class ApiGatewayServer {
       paths,
       this.options.logManager,
     );
+    const project_operation_gate = new ProjectOperationGate(this.task_runtime_state);
     const project_service = new ProjectSyncMutationService(
       this.options.database,
-      this.task_runtime_state,
+      project_operation_gate,
       this.project_session_state,
       project_change_publisher,
+      app_setting_service,
     );
     const proofreading_service = new ProofreadingService(
       this.options.database,
@@ -239,6 +242,7 @@ export class ApiGatewayServer {
       task_engine,
       task_snapshot_builder,
       task_runtime_publisher,
+      project_operation_gate,
       this.project_session_state,
       app_setting_service,
     );
@@ -474,9 +478,7 @@ export class ApiGatewayServer {
   private post_json(
     app: Hono,
     path_name: string,
-    handler: (
-      body: Record<string, ApiJsonValue>,
-    ) => Record<string, ApiJsonValue> | Promise<Record<string, ApiJsonValue>>,
+    handler: (body: Record<string, ApiJsonValue>) => ApiJsonValue | Promise<ApiJsonValue>,
   ): void {
     app.post(path_name, async (context) => {
       const request_id = crypto.randomUUID();

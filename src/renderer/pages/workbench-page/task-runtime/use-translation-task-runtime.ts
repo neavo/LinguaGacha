@@ -10,8 +10,8 @@ import type {
   ProjectPagesBarrierKind,
 } from "@/app/page-runtime/project-pages-barrier";
 import {
-  normalize_project_mutation_ack,
-  type ProjectMutationAckPayload,
+  normalize_project_mutation_result,
+  type ProjectMutationResultPayload,
 } from "@/app/desktop/desktop-runtime-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
@@ -182,11 +182,11 @@ export function useTranslationTaskRuntime(
     project_store,
     project_snapshot,
     settings_snapshot,
-    set_task_snapshot,
+    sync_task_snapshot,
     task_snapshot,
-    commit_local_project_change,
     refresh_project_runtime,
-    align_project_runtime_ack,
+    apply_project_mutation_result,
+    refresh_task,
   } = useDesktopRuntime();
   const [translation_task_snapshot, set_translation_task_snapshot] =
     useState<TranslationTaskSnapshot>(() => {
@@ -355,7 +355,8 @@ export function useTranslationTaskRuntime(
 
   const sync_runtime_task_snapshot = useCallback(
     (next_snapshot: TranslationTaskSnapshot): void => {
-      set_task_snapshot({
+      sync_task_snapshot({
+        runtime_revision: next_snapshot.runtime_revision,
         task_type: next_snapshot.task_type,
         status: next_snapshot.status,
         busy: next_snapshot.busy,
@@ -374,7 +375,7 @@ export function useTranslationTaskRuntime(
         extras: { kind: "translation", scope: { kind: "all" } },
       });
     },
-    [set_task_snapshot],
+    [sync_task_snapshot],
   );
 
   const refresh_translation_task_snapshot = useCallback(async (): Promise<void> => {
@@ -523,7 +524,7 @@ export function useTranslationTaskRuntime(
       } else {
         const reset_plan =
           task_confirm_state.kind === "reset-all"
-            ? await create_translation_reset_all_plan({
+            ? create_translation_reset_all_plan({
                 state: project_store.getState(),
                 task_snapshot,
                 source_language: String(settings_snapshot.source_language ?? "ALL"),
@@ -531,42 +532,24 @@ export function useTranslationTaskRuntime(
                 skip_duplicate_source_text_enable: Boolean(
                   settings_snapshot.skip_duplicate_source_text_enable,
                 ),
-                request_preview: async () => {
-                  return await api_fetch<{
-                    items?: Array<Record<string, unknown>>;
-                  }>("/api/project/translation/reset-preview", {
-                    mode: "all",
-                  });
-                },
               })
             : create_translation_reset_failed_plan({
                 state: project_store.getState(),
                 task_snapshot,
               });
-        const local_commit = commit_local_project_change({
-          source:
-            task_confirm_state.kind === "reset-all"
-              ? "translation_reset_all"
-              : "translation_reset_failed",
-          updatedSections: reset_plan.updatedSections,
-          operations: reset_plan.operations,
-        });
-
         try {
-          const next_snapshot = normalize_translation_task_snapshot_payload({
-            task: reset_plan.next_task_snapshot,
-          });
-          apply_translation_task_snapshot(next_snapshot);
-          sync_runtime_task_snapshot(next_snapshot);
-          const mutation_ack = normalize_project_mutation_ack(
-            await api_fetch<ProjectMutationAckPayload>(
+          const mutation_result = normalize_project_mutation_result(
+            await api_fetch<ProjectMutationResultPayload>(
               "/api/project/translation/reset",
               reset_plan.requestBody,
             ),
           );
-          align_project_runtime_ack(mutation_ack);
+          await apply_project_mutation_result(mutation_result);
+          const next_snapshot = normalize_translation_task_snapshot_payload({
+            task: (await refresh_task()) as Partial<TranslationTaskSnapshot>,
+          });
+          apply_translation_task_snapshot(next_snapshot);
         } catch (error) {
-          local_commit.rollback();
           void refresh_project_runtime().catch(() => {});
           throw error;
         }
@@ -603,11 +586,11 @@ export function useTranslationTaskRuntime(
     }
   }, [
     apply_translation_task_snapshot,
-    align_project_runtime_ack,
-    commit_local_project_change,
+    apply_project_mutation_result,
     options,
     project_store,
     refresh_project_runtime,
+    refresh_task,
     push_toast,
     settings_snapshot.mtool_optimizer_enable,
     settings_snapshot.source_language,

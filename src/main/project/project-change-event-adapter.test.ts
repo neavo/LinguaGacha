@@ -45,19 +45,26 @@ describe("ProjectChangeEventAdapter", () => {
     );
 
     const event = adapter.adapt_project_change({
+      targetProjectPath: "E:/Project/demo.lg",
       source: "workbench_add_file",
       updatedSections: ["items", "files", "analysis", "items", "unknown"],
       items: {
         payloadMode: "canonical-delta",
+        upsert: {
+          "2": { item_id: 2, src: "调用方伪造" },
+        },
         changedIds: [2, "3", 2, -1, "坏值"],
         deleteIds: [8, 8],
       },
       files: {
         payloadMode: "canonical-delta",
+        upsert: {
+          "a.txt": { rel_path: "a.txt", file_type: "FAKE", sort_index: 99 },
+        },
         changedPaths: [" b.txt ", "", "a.txt", "a.txt"],
       },
       sections: {
-        analysis: { payloadMode: "canonical-delta" },
+        analysis: { payloadMode: "canonical-delta", data: { candidate_count: 999 } },
       },
     });
 
@@ -65,6 +72,7 @@ describe("ProjectChangeEventAdapter", () => {
       type: "project.changed",
       eventId: "10-i",
       source: "workbench_add_file",
+      projectPath: "E:/Project/demo.lg",
       projectRevision: 7,
       sectionRevisions: {
         items: 7,
@@ -102,7 +110,7 @@ describe("ProjectChangeEventAdapter", () => {
     });
   });
 
-  it("未加载工程时按草稿输出失效事件且不回读项目数据", () => {
+  it("未加载工程时不广播项目数据变更", () => {
     const projection_service = create_projection_service({
       meta: {},
       get_all_meta: () => {
@@ -116,6 +124,7 @@ describe("ProjectChangeEventAdapter", () => {
     );
 
     const event = adapter.adapt_project_change({
+      targetProjectPath: "E:/Project/demo.lg",
       source: null,
       projectRevision: 3,
       updatedSections: ["items", "quality"],
@@ -128,27 +137,64 @@ describe("ProjectChangeEventAdapter", () => {
       },
     });
 
-    expect(event).toEqual(
-      expect.objectContaining({
-        type: "project.changed",
-        source: "project_change",
-        projectRevision: 3,
-        sectionRevisions: {
-          items: 0,
-          quality: 0,
-        },
-        updatedSections: ["items", "quality"],
+    expect(event).toBeNull();
+  });
+
+  it("显式 section payload 可把 items/files 发布为后端 canonical 完整替换", () => {
+    const session_state = new ProjectSessionState();
+    session_state.mark_loaded("E:/Project/demo.lg");
+    const projection_service = create_projection_service({
+      meta: {
+        "project_runtime_revision.files": 2,
+        "project_runtime_revision.items": 3,
+      },
+      section_payloads: {
         items: {
-          payloadMode: "ids-only",
-          changedIds: [1],
+          "1": { item_id: 1, src: "勇者" },
         },
-        sections: {
-          quality: {
-            payloadMode: "section-invalidated",
+        files: {
+          "a.txt": { rel_path: "a.txt", file_type: "TXT", sort_index: 0 },
+        },
+      },
+    });
+    const adapter = new ProjectChangeEventAdapter(
+      {} as ProjectDatabase,
+      session_state,
+      projection_service,
+    );
+
+    const event = adapter.adapt_project_change({
+      targetProjectPath: "E:/Project/demo.lg",
+      source: "workbench_reset_file",
+      updatedSections: ["items", "files"],
+      sections: {
+        items: { payloadMode: "canonical-delta" },
+        files: { payloadMode: "canonical-delta" },
+      },
+    });
+
+    expect(event).toMatchObject({
+      source: "workbench_reset_file",
+      updatedSections: ["items", "files"],
+      sectionRevisions: {
+        items: 3,
+        files: 2,
+      },
+      sections: {
+        items: {
+          payloadMode: "canonical-delta",
+          data: {
+            "1": { item_id: 1, src: "勇者" },
           },
         },
-      }),
-    );
+        files: {
+          payloadMode: "canonical-delta",
+          data: {
+            "a.txt": { rel_path: "a.txt", file_type: "TXT", sort_index: 0 },
+          },
+        },
+      },
+    });
   });
 
   function create_projection_service(options: {

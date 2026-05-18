@@ -46,21 +46,6 @@ export class ProjectRuntimeProjectionService {
   }
 
   /**
-   * project block 只暴露加载态和路径，避免把会话内部状态泄漏给 renderer
-   */
-  public build_project_block(project_state: {
-    loaded: boolean;
-    projectPath: string;
-  }): ProjectRuntimeProjectionMutableRecord {
-    return {
-      project: {
-        path: project_state.projectPath,
-        loaded: project_state.loaded,
-      },
-    };
-  }
-
-  /**
    * manifest 只暴露项目数据读取索引，不预热任何大 section
    */
   public build_manifest(project_state: {
@@ -71,6 +56,7 @@ export class ProjectRuntimeProjectionService {
     const meta = project_path === "" ? {} : this.get_all_meta(project_path);
     const section_revisions = this.build_section_revisions(meta);
     return {
+      projectPath: project_path,
       project: {
         path: project_state.projectPath,
         loaded: project_state.loaded,
@@ -116,6 +102,7 @@ export class ProjectRuntimeProjectionService {
     }
     const section_revisions = this.build_section_revisions(meta);
     return {
+      projectPath: project_path,
       sections,
       projectRevision: Math.max(...Object.values(section_revisions), 0),
       sectionRevisions: section_revisions as unknown as ApiJsonValue,
@@ -211,6 +198,7 @@ export class ProjectRuntimeProjectionService {
       upsert[item_id.toString()] = record;
     }
     return {
+      projectPath: project_path,
       items: upsert,
       missingIds: item_ids.filter((item_id) => !found_ids.has(item_id)) as unknown as ApiJsonValue,
       projectRevision: Math.max(...Object.values(section_revisions), 0),
@@ -258,7 +246,7 @@ export class ProjectRuntimeProjectionService {
         prompt.kind,
         {
           task_type: prompt.kind,
-          revision: get_runtime_section_revision(meta, `prompts:${prompt.kind}`),
+          revision: get_runtime_section_revision(meta, "prompts"),
           meta: { enabled: Boolean(meta[prompt.enabled_meta_key] ?? false) },
           text: this.get_rule_text(project_path, prompt.database_type),
         },
@@ -318,7 +306,7 @@ export class ProjectRuntimeProjectionService {
   }
 
   /**
-   * 公开 section revisions 统一从 meta 解析，避免读取接口与 mutation ack 口径分叉
+   * 公开 section revisions 统一从 meta 解析，避免读取接口与 mutation result 口径分叉
    */
   public build_section_revisions(
     meta: ProjectRuntimeProjectionJsonRecord,
@@ -512,7 +500,7 @@ export class ProjectRuntimeProjectionService {
           : meta[rule.enabled_meta_key],
       ),
       mode: rule_type === "text_preserve" ? String(meta["text_preserve_mode"] ?? "off") : "off",
-      revision: get_runtime_section_revision(meta, `quality:${rule_type}`),
+      revision: get_runtime_section_revision(meta, "quality"),
     };
   }
 

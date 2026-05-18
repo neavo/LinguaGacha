@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import type { AppSettingService } from "../app/app-setting-service";
 import type { TaskEngine } from "../engine/core/engine";
+import { TaskRuntimeState } from "../engine/runtime/task-runtime-state";
+import { ProjectOperationGate } from "../project/project-operation-gate";
 import { ProjectSessionState } from "../project/project-session-state";
 import type { TaskRuntimePublisher } from "../engine/runtime/task-runtime-publisher";
 import type { TaskSnapshotBuilder } from "../engine/runtime/task-snapshot-builder";
@@ -25,6 +27,7 @@ describe("TaskService", () => {
         prompts: 4,
       }),
       create_task_runtime_publisher(),
+      create_project_operation_gate(),
       session_state,
       create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
@@ -65,6 +68,7 @@ describe("TaskService", () => {
       } as unknown as TaskEngine,
       create_snapshot_builder({ quality: 5, prompts: 6 }),
       create_task_runtime_publisher({ begin_records }),
+      create_project_operation_gate(),
       new ProjectSessionState(),
       create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
@@ -110,6 +114,7 @@ describe("TaskService", () => {
       } as unknown as TaskEngine,
       create_snapshot_builder({ quality: 1, prompts: 2 }),
       create_task_runtime_publisher({ previous_state, restored_states }),
+      create_project_operation_gate(),
       new ProjectSessionState(),
       create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
@@ -126,6 +131,44 @@ describe("TaskService", () => {
     expect(restored_states).toEqual([previous_state]);
   });
 
+  it("结构性项目 mutation 正在运行时拒绝启动任务", async () => {
+    const calls: string[] = [];
+    const project_operation_gate = create_project_operation_gate();
+    let release_mutation = (): void => {
+      throw new Error("mutation lease 尚未建立");
+    };
+    const running_mutation = project_operation_gate.run_exclusive_project_mutation(
+      async () =>
+        new Promise<void>((resolve) => {
+          release_mutation = resolve;
+        }),
+    );
+    const service = new TaskService(
+      {
+        start: async () => {
+          calls.push("start");
+        },
+      } as unknown as TaskEngine,
+      create_snapshot_builder({ quality: 1, prompts: 2 }),
+      create_task_runtime_publisher(),
+      project_operation_gate,
+      new ProjectSessionState(),
+      create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
+    );
+
+    await expect(
+      service.start_task({
+        task_type: "analysis",
+        mode: "new",
+        expected_section_revisions: { quality: 1, prompts: 2 },
+      }),
+    ).rejects.toThrow("task.busy");
+
+    expect(calls).toEqual([]);
+    release_mutation();
+    await running_mutation;
+  });
+
   it("单条翻译在没有激活模型时直接返回 NO_ACTIVE_MODEL", async () => {
     let called = false;
     const service = new TaskService(
@@ -137,6 +180,7 @@ describe("TaskService", () => {
       } as unknown as TaskEngine,
       create_snapshot_builder({}),
       create_task_runtime_publisher(),
+      create_project_operation_gate(),
       new ProjectSessionState(),
       create_setting_service({ activate_model_id: "", models: [] }),
     );
@@ -164,6 +208,7 @@ describe("TaskService", () => {
         busy: snapshot_busy,
       })),
       create_task_runtime_publisher(),
+      create_project_operation_gate(),
       new ProjectSessionState(),
       create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
@@ -191,6 +236,7 @@ describe("TaskService", () => {
       } as unknown as TaskEngine,
       create_snapshot_builder({}),
       create_task_runtime_publisher(),
+      create_project_operation_gate(),
       new ProjectSessionState(),
       create_setting_service({ activate_model_id: "missing", models: [{ id: "model-1" }] }),
     );
@@ -208,6 +254,7 @@ describe("TaskService", () => {
       {} as unknown as TaskEngine,
       create_snapshot_builder({ items: 8, proofreading: 2, quality: 1, prompts: 1 }),
       create_task_runtime_publisher(),
+      create_project_operation_gate(),
       session_state,
       create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
@@ -234,6 +281,7 @@ describe("TaskService", () => {
       } as unknown as TaskEngine,
       create_snapshot_builder({ quality: 1, prompts: 2 }),
       create_task_runtime_publisher(),
+      create_project_operation_gate(),
       session_state,
       create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
@@ -299,6 +347,13 @@ describe("TaskService", () => {
       },
       snapshot_state: () => previous_state,
     } as unknown as TaskRuntimePublisher;
+  }
+
+  /**
+   * 每个 TaskService 用例持有独立互斥门闩，避免跨用例运行态残留。
+   */
+  function create_project_operation_gate(): ProjectOperationGate {
+    return new ProjectOperationGate(new TaskRuntimeState());
   }
 
   function create_setting_service(config: Record<string, unknown>): AppSettingService {

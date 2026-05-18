@@ -2,17 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
-import { createProjectStoreReplaceSectionChange } from "@/project/store/project-store";
 import {
   buildProofreadingLookupQuery,
   getQualityRuleSlice,
-  replaceQualityRuleSlice,
 } from "@/project/quality/quality-runtime";
 import type { QualityStatisticsCacheSnapshot } from "@/project/quality/quality-statistics-store";
 import {
-  normalize_project_mutation_ack,
-  normalize_settings_snapshot,
-  type ProjectMutationAckPayload,
+  normalize_project_mutation_result,
+  type ProjectMutationResultPayload,
   type SettingsSnapshotPayload,
 } from "@/app/desktop/desktop-runtime-context";
 import { useQualityStatistics } from "@/project/quality/quality-statistics-context";
@@ -261,10 +258,9 @@ export function useTextReplacementPageState(
     project_snapshot,
     project_store,
     settings_snapshot,
-    set_settings_snapshot,
-    commit_local_project_change,
+    apply_settings_snapshot,
     refresh_project_runtime,
-    align_project_runtime_ack,
+    apply_project_mutation_result,
     task_snapshot,
   } = useDesktopRuntime();
   const project_store_state = useSyncExternalStore(
@@ -273,7 +269,6 @@ export function useTextReplacementPageState(
     project_store.getState,
   );
 
-  const [revision, set_revision] = useState(0);
   const [enabled, set_enabled] = useState(true);
   const [entries, set_entries] = useState<TextReplacementEntry[]>([]);
   const [preset_items, set_preset_items] = useState<TextReplacementPresetItem[]>([]);
@@ -301,17 +296,12 @@ export function useTextReplacementPageState(
       return create_empty_preset_input_state();
     },
   );
-  const revision_ref = useRef(revision);
   const dialog_state_ref = useRef(dialog_state);
   const statistics_cache = useQualityStatistics(config.rule_type);
   const statistics_state = useMemo<TextReplacementStatisticsState>(() => {
     return build_text_replacement_statistics_state_from_cache(statistics_cache);
   }, [statistics_cache]);
   const statistics_ready = statistics_cache.ready;
-
-  useEffect(() => {
-    revision_ref.current = revision;
-  }, [revision]);
 
   useEffect(() => {
     dialog_state_ref.current = dialog_state;
@@ -483,7 +473,6 @@ export function useTextReplacementPageState(
   ]);
 
   const apply_snapshot = useCallback((snapshot: TextReplacementSnapshot): void => {
-    set_revision(snapshot.revision);
     set_enabled(snapshot.meta.enabled ?? true);
     set_entries(ensure_quality_rule_entry_ids(snapshot.entries.map((entry) => clone_entry(entry))));
   }, []);
@@ -514,46 +503,30 @@ export function useTextReplacementPageState(
         return false;
       }
 
-      const current_replacement_slice = getQualityRuleSlice(
-        project_store.getState().quality,
-        config.rule_type,
-      );
+      const current_state = project_store.getState();
       const normalized_entries = ensure_quality_rule_entry_ids(
         next_entries.map((entry) => {
           return normalize_entry(entry);
         }),
       );
-      const next_quality_state = replaceQualityRuleSlice(
-        project_store.getState().quality,
-        config.rule_type,
-        {
-          ...current_replacement_slice,
-          entries: normalized_entries,
-          revision: current_replacement_slice.revision + 1,
-        },
-      );
       const previous_result_view_snapshot = result_view_snapshot;
-      const local_commit = commit_local_project_change({
-        source: "quality_rule_save_entries",
-        updatedSections: ["quality"],
-        operations: [createProjectStoreReplaceSectionChange("quality", next_quality_state)],
-      });
       if (result_view_update === "rebuild") {
         set_result_view_snapshot(null);
       }
 
       try {
-        const mutation_ack = normalize_project_mutation_ack(
-          await api_fetch<ProjectMutationAckPayload>("/api/quality/rules/save-entries", {
+        const mutation_result = normalize_project_mutation_result(
+          await api_fetch<ProjectMutationResultPayload>("/api/quality/rules/save-entries", {
             rule_type: config.rule_type,
-            expected_revision: current_replacement_slice.revision,
+            expected_section_revisions: {
+              quality: current_state.revisions.sections.quality ?? 0,
+            },
             entries: normalized_entries,
           }),
         );
-        align_project_runtime_ack(mutation_ack);
+        await apply_project_mutation_result(mutation_result);
         return true;
       } catch (error) {
-        local_commit.rollback();
         if (result_view_update === "rebuild") {
           set_result_view_snapshot(previous_result_view_snapshot);
         }
@@ -566,8 +539,7 @@ export function useTextReplacementPageState(
       }
     },
     [
-      align_project_runtime_ack,
-      commit_local_project_change,
+      apply_project_mutation_result,
       config.rule_type,
       project_store,
       push_toast,
@@ -759,38 +731,21 @@ export function useTextReplacementPageState(
         return;
       }
 
-      const current_replacement_slice = getQualityRuleSlice(
-        project_store.getState().quality,
-        config.rule_type,
-      );
-      const next_quality_state = replaceQualityRuleSlice(
-        project_store.getState().quality,
-        config.rule_type,
-        {
-          ...current_replacement_slice,
-          enabled: next_enabled,
-          revision: current_replacement_slice.revision + 1,
-        },
-      );
-      const local_commit = commit_local_project_change({
-        source: "quality_rule_meta",
-        updatedSections: ["quality"],
-        operations: [createProjectStoreReplaceSectionChange("quality", next_quality_state)],
-      });
-
+      const current_state = project_store.getState();
       try {
-        const mutation_ack = normalize_project_mutation_ack(
-          await api_fetch<ProjectMutationAckPayload>("/api/quality/rules/update-meta", {
+        const mutation_result = normalize_project_mutation_result(
+          await api_fetch<ProjectMutationResultPayload>("/api/quality/rules/update-meta", {
             rule_type: config.rule_type,
-            expected_revision: current_replacement_slice.revision,
+            expected_section_revisions: {
+              quality: current_state.revisions.sections.quality ?? 0,
+            },
             meta: {
               enabled: next_enabled,
             },
           }),
         );
-        align_project_runtime_ack(mutation_ack);
+        await apply_project_mutation_result(mutation_result);
       } catch (error) {
-        local_commit.rollback();
         void refresh_project_runtime().catch(() => {});
         push_toast(
           "error",
@@ -799,8 +754,7 @@ export function useTextReplacementPageState(
       }
     },
     [
-      align_project_runtime_ack,
-      commit_local_project_change,
+      apply_project_mutation_result,
       config.rule_type,
       project_store,
       push_toast,
@@ -1080,7 +1034,6 @@ export function useTextReplacementPageState(
           "/api/quality/rules/import",
           {
             rule_type: config.rule_type,
-            expected_revision: revision_ref.current,
             path,
           },
         );
@@ -1318,7 +1271,7 @@ export function useTextReplacementPageState(
             "/api/settings/update",
             build_default_preset_update_payload(config, String(payload.item?.virtual_id ?? "")),
           );
-          set_settings_snapshot(normalize_settings_snapshot(settings_payload));
+          apply_settings_snapshot(settings_payload);
         }
         await refresh_preset_menu();
         push_toast("success", t("text_replacement_page.feedback.preset_renamed"));
@@ -1335,7 +1288,7 @@ export function useTextReplacementPageState(
         return false;
       }
     },
-    [config, preset_items, push_toast, readonly, refresh_preset_menu, set_settings_snapshot, t],
+    [apply_settings_snapshot, config, preset_items, push_toast, readonly, refresh_preset_menu, t],
   );
 
   const set_default_preset = useCallback(
@@ -1349,7 +1302,7 @@ export function useTextReplacementPageState(
           "/api/settings/update",
           build_default_preset_update_payload(config, virtual_id),
         );
-        set_settings_snapshot(normalize_settings_snapshot(payload));
+        apply_settings_snapshot(payload);
         await refresh_preset_menu();
         push_toast("success", t("text_replacement_page.feedback.default_preset_set"));
       } catch (error) {
@@ -1363,7 +1316,7 @@ export function useTextReplacementPageState(
         );
       }
     },
-    [config, push_toast, readonly, refresh_preset_menu, set_settings_snapshot, t],
+    [apply_settings_snapshot, config, push_toast, readonly, refresh_preset_menu, t],
   );
 
   const cancel_default_preset = useCallback(async (): Promise<void> => {
@@ -1376,7 +1329,7 @@ export function useTextReplacementPageState(
         "/api/settings/update",
         build_default_preset_update_payload(config, ""),
       );
-      set_settings_snapshot(normalize_settings_snapshot(payload));
+      apply_settings_snapshot(payload);
       await refresh_preset_menu();
       push_toast("success", t("text_replacement_page.feedback.default_preset_cleared"));
     } catch (error) {
@@ -1385,7 +1338,7 @@ export function useTextReplacementPageState(
         resolve_visible_error_message(error, t, t("text_replacement_page.feedback.preset_failed")),
       );
     }
-  }, [config, push_toast, readonly, refresh_preset_menu, set_settings_snapshot, t]);
+  }, [apply_settings_snapshot, config, push_toast, readonly, refresh_preset_menu, t]);
 
   const validate_entry = useCallback(
     (entry: TextReplacementEntry): string | null => {
@@ -1629,7 +1582,7 @@ export function useTextReplacementPageState(
               "/api/settings/update",
               build_default_preset_update_payload(config, ""),
             );
-            set_settings_snapshot(normalize_settings_snapshot(settings_payload));
+            apply_settings_snapshot(settings_payload);
           }
           await refresh_preset_menu();
           push_toast("success", t("text_replacement_page.feedback.preset_deleted"));
@@ -1673,7 +1626,7 @@ export function useTextReplacementPageState(
     reset_entries,
     save_preset,
     selected_entry_ids,
-    set_settings_snapshot,
+    apply_settings_snapshot,
     t,
   ]);
 

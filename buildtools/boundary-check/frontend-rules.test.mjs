@@ -55,6 +55,8 @@ describe("frontend boundary rules", () => {
           import { ApiGatewayServer } from "../../main/api/api-gateway-server";
 
           export function BadPage() {
+            const set_project_snapshot = () => {};
+            set_project_snapshot();
             fetch("/api/health");
             return <button title="打开工程">开始</button>;
           }
@@ -70,8 +72,74 @@ describe("frontend boundary rules", () => {
       expect(messages).toContain("renderer 不能读取 native platform/shell 实现");
       expect(messages).toContain("renderer 不能通过相对路径访问 main 内部实现");
       expect(messages).toContain("renderer 访问 Core API 必须先收口到 desktop-api.ts");
+      expect(messages).toContain(
+        "页面不能暴露或调用共享 snapshot 裸 setter；请改用后端刷新、后端载荷同步或任务 ack 同步",
+      );
       expect(messages).toContain("JSX 可见属性文案必须从 src/shared/i18n 解析");
       expect(messages).toContain("JSX 可见中文文案必须从 src/shared/i18n 解析");
+    } finally {
+      rmSync(project_root, { force: true, recursive: true });
+    }
+  });
+
+  it("拦截 renderer 导入项目 mutation 派生模块", () => {
+    const project_root = create_temp_project();
+    try {
+      write_project_file(
+        project_root,
+        "src/renderer/pages/bad-prefilter-page.ts",
+        `
+          import { compute_project_prefilter_mutation } from "@shared/project/project-mutation-state";
+          export const run = compute_project_prefilter_mutation;
+        `,
+      );
+
+      const messages = run_frontend_rules(project_root).map((error) => error.message);
+
+      expect(messages).toContain(
+        "renderer 不能导入项目 mutation 派生模块；最终项目事实只能由 main 后端计算",
+      );
+    } finally {
+      rmSync(project_root, { force: true, recursive: true });
+    }
+  });
+
+  it("拦截 renderer 设计系统越权", () => {
+    const project_root = create_temp_project();
+    try {
+      write_project_file(project_root, "src/renderer/index.css", ":root { --ui-accent: #f97316; }");
+      write_project_file(
+        project_root,
+        "src/renderer/pages/bad-page.css",
+        `
+          .bad-page {
+            --ui-local: #fff;
+            width: 1rem;
+          }
+
+          .project-home__panel {
+            background: white;
+            border-radius: 12px;
+          }
+
+          .workbench-page__table-row td {
+            color: red;
+          }
+        `,
+      );
+
+      const messages = run_frontend_rules(project_root).map((error) => error.message);
+
+      expect(messages).toContain(
+        "违规则使用了 rem 尺寸字面量；请改用 px，或回到 DESIGN.md 判断是否需要沉淀新的长期设计语义",
+      );
+      expect(messages).toContain("违规定义了 --ui-* token，请改到 src/renderer/index.css");
+      expect(messages).toContain(
+        ".project-home__panel 不应定义 background, border-radius；请把 Card 基础视觉收回到 shadcn 组件或 src/renderer/index.css",
+      );
+      expect(messages).toContain(
+        ".workbench-page__table-row td 不应定义 color；请把 Table 基础视觉收回到 shadcn 组件或 src/renderer/index.css",
+      );
     } finally {
       rmSync(project_root, { force: true, recursive: true });
     }

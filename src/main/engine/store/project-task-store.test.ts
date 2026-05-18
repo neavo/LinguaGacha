@@ -60,6 +60,7 @@ describe("ProjectTaskStore", () => {
     });
     expect(published_changes).toEqual([
       {
+        targetProjectPath: project_path,
         source: "translation_batch_update",
         updatedSections: ["items"],
         items: {
@@ -106,6 +107,7 @@ describe("ProjectTaskStore", () => {
     });
     expect(published_changes).toEqual([
       {
+        targetProjectPath: project_path,
         source: "retranslate_items",
         updatedSections: ["items", "proofreading"],
         items: {
@@ -225,6 +227,7 @@ describe("ProjectTaskStore", () => {
     });
     expect(published_changes).toEqual([
       {
+        targetProjectPath: project_path,
         source: "analysis_batch_update",
         updatedSections: ["analysis"],
         sections: {

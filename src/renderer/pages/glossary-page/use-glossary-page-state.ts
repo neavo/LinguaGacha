@@ -2,18 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
-import { createProjectStoreReplaceSectionChange } from "@/project/store/project-store";
 import type { QualityStatisticsDependencySnapshot } from "@/project/quality/quality-statistics-auto";
 import {
   buildProofreadingLookupQuery,
   getQualityRuleSlice,
-  replaceQualityRuleSlice,
 } from "@/project/quality/quality-runtime";
 import type { QualityStatisticsCacheSnapshot } from "@/project/quality/quality-statistics-store";
 import {
-  normalize_project_mutation_ack,
-  normalize_settings_snapshot,
-  type ProjectMutationAckPayload,
+  normalize_project_mutation_result,
+  type ProjectMutationResultPayload,
   type SettingsSnapshotPayload,
 } from "@/app/desktop/desktop-runtime-context";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
@@ -325,10 +322,9 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     project_snapshot,
     project_store,
     settings_snapshot,
-    set_settings_snapshot,
-    commit_local_project_change,
+    apply_settings_snapshot,
     refresh_project_runtime,
-    align_project_runtime_ack,
+    apply_project_mutation_result,
     task_snapshot,
   } = useDesktopRuntime();
   const { navigate_to_route, push_proofreading_lookup_intent } = useAppNavigation();
@@ -337,7 +333,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     project_store.getState,
     project_store.getState,
   );
-  const [revision, set_revision] = useState(0);
   const [enabled, set_enabled] = useState(true);
   const [entries, set_entries] = useState<GlossaryEntry[]>([]);
   const [preset_items, set_preset_items] = useState<GlossaryPresetItem[]>([]);
@@ -365,7 +360,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const [preset_input_state, set_preset_input_state] = useState<GlossaryPresetInputState>(() => {
     return create_empty_preset_input_state();
   });
-  const revision_ref = useRef(revision);
   const dialog_state_ref = useRef(dialog_state);
   const statistics_cache = useQualityStatistics("glossary");
   const statistics_state = useMemo<GlossaryStatisticsState>(() => {
@@ -374,10 +368,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const statistics_ready = statistics_cache.ready;
   const statistics_sort_available =
     statistics_ready || statistics_state.completed_snapshot !== null;
-
-  useEffect(() => {
-    revision_ref.current = revision;
-  }, [revision]);
 
   useEffect(() => {
     dialog_state_ref.current = dialog_state;
@@ -546,7 +536,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     t,
   ]);
   const apply_snapshot = useCallback((snapshot: GlossarySnapshot): void => {
-    set_revision(snapshot.revision);
     set_enabled(snapshot.meta.enabled ?? true);
     set_entries(ensure_quality_rule_entry_ids(snapshot.entries.map((entry) => clone_entry(entry))));
   }, []);
@@ -577,46 +566,30 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return false;
       }
 
-      const current_glossary_slice = getQualityRuleSlice(
-        project_store.getState().quality,
-        "glossary",
-      );
+      const current_state = project_store.getState();
       const normalized_entries = ensure_quality_rule_entry_ids(
         next_entries.map((entry) => {
           return normalize_dialog_entry(entry);
         }),
       );
-      const next_quality_state = replaceQualityRuleSlice(
-        project_store.getState().quality,
-        "glossary",
-        {
-          ...current_glossary_slice,
-          entries: normalized_entries,
-          revision: current_glossary_slice.revision + 1,
-        },
-      );
       const previous_result_view_snapshot = result_view_snapshot;
-      const local_commit = commit_local_project_change({
-        source: "quality_rule_save_entries",
-        updatedSections: ["quality"],
-        operations: [createProjectStoreReplaceSectionChange("quality", next_quality_state)],
-      });
       if (result_view_update === "rebuild") {
         set_result_view_snapshot(null);
       }
 
       try {
-        const mutation_ack = normalize_project_mutation_ack(
-          await api_fetch<ProjectMutationAckPayload>("/api/quality/rules/save-entries", {
+        const mutation_result = normalize_project_mutation_result(
+          await api_fetch<ProjectMutationResultPayload>("/api/quality/rules/save-entries", {
             rule_type: "glossary",
-            expected_revision: current_glossary_slice.revision,
+            expected_section_revisions: {
+              quality: current_state.revisions.sections.quality ?? 0,
+            },
             entries: normalized_entries,
           }),
         );
-        align_project_runtime_ack(mutation_ack);
+        await apply_project_mutation_result(mutation_result);
         return true;
       } catch (error) {
-        local_commit.rollback();
         if (result_view_update === "rebuild") {
           set_result_view_snapshot(previous_result_view_snapshot);
         }
@@ -629,8 +602,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       }
     },
     [
-      align_project_runtime_ack,
-      commit_local_project_change,
+      apply_project_mutation_result,
       project_store,
       push_toast,
       refresh_project_runtime,
@@ -833,38 +805,21 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return;
       }
 
-      const current_glossary_slice = getQualityRuleSlice(
-        project_store.getState().quality,
-        "glossary",
-      );
-      const next_quality_state = replaceQualityRuleSlice(
-        project_store.getState().quality,
-        "glossary",
-        {
-          ...current_glossary_slice,
-          enabled: next_enabled,
-          revision: current_glossary_slice.revision + 1,
-        },
-      );
-      const local_commit = commit_local_project_change({
-        source: "quality_rule_meta",
-        updatedSections: ["quality"],
-        operations: [createProjectStoreReplaceSectionChange("quality", next_quality_state)],
-      });
-
+      const current_state = project_store.getState();
       try {
-        const mutation_ack = normalize_project_mutation_ack(
-          await api_fetch<ProjectMutationAckPayload>("/api/quality/rules/update-meta", {
+        const mutation_result = normalize_project_mutation_result(
+          await api_fetch<ProjectMutationResultPayload>("/api/quality/rules/update-meta", {
             rule_type: "glossary",
-            expected_revision: current_glossary_slice.revision,
+            expected_section_revisions: {
+              quality: current_state.revisions.sections.quality ?? 0,
+            },
             meta: {
               enabled: next_enabled,
             },
           }),
         );
-        align_project_runtime_ack(mutation_ack);
+        await apply_project_mutation_result(mutation_result);
       } catch (error) {
-        local_commit.rollback();
         void refresh_project_runtime().catch(() => {});
         push_toast(
           "error",
@@ -873,8 +828,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       }
     },
     [
-      align_project_runtime_ack,
-      commit_local_project_change,
+      apply_project_mutation_result,
       project_store,
       push_toast,
       readonly,
@@ -1163,7 +1117,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
           "/api/quality/rules/import",
           {
             rule_type: "glossary",
-            expected_revision: revision_ref.current,
             path,
           },
         );
@@ -1391,7 +1344,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
               glossary_default_preset: String(payload.item?.virtual_id ?? ""),
             },
           );
-          set_settings_snapshot(normalize_settings_snapshot(settings_payload));
+          apply_settings_snapshot(settings_payload);
         }
         await refresh_preset_menu();
         push_toast("success", t("glossary_page.feedback.preset_renamed"));
@@ -1404,7 +1357,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return false;
       }
     },
-    [preset_items, push_toast, readonly, refresh_preset_menu, set_settings_snapshot, t],
+    [apply_settings_snapshot, preset_items, push_toast, readonly, refresh_preset_menu, t],
   );
 
   const set_default_preset = useCallback(
@@ -1417,7 +1370,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         const payload = await api_fetch<SettingsSnapshotPayload>("/api/settings/update", {
           glossary_default_preset: virtual_id,
         });
-        set_settings_snapshot(normalize_settings_snapshot(payload));
+        apply_settings_snapshot(payload);
         await refresh_preset_menu();
         push_toast("success", t("glossary_page.feedback.default_preset_set"));
       } catch (error) {
@@ -1427,7 +1380,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         );
       }
     },
-    [push_toast, readonly, refresh_preset_menu, set_settings_snapshot, t],
+    [apply_settings_snapshot, push_toast, readonly, refresh_preset_menu, t],
   );
 
   const cancel_default_preset = useCallback(async (): Promise<void> => {
@@ -1439,7 +1392,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       const payload = await api_fetch<SettingsSnapshotPayload>("/api/settings/update", {
         glossary_default_preset: "",
       });
-      set_settings_snapshot(normalize_settings_snapshot(payload));
+      apply_settings_snapshot(payload);
       await refresh_preset_menu();
       push_toast("success", t("glossary_page.feedback.default_preset_cleared"));
     } catch (error) {
@@ -1448,7 +1401,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         resolve_visible_error_message(error, t, t("glossary_page.feedback.preset_failed")),
       );
     }
-  }, [push_toast, readonly, refresh_preset_menu, set_settings_snapshot, t]);
+  }, [apply_settings_snapshot, push_toast, readonly, refresh_preset_menu, t]);
 
   const close_confirm_dialog = useCallback((): void => {
     set_confirm_state(create_empty_confirm_state());
@@ -1585,7 +1538,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
                 glossary_default_preset: "",
               },
             );
-            set_settings_snapshot(normalize_settings_snapshot(settings_payload));
+            apply_settings_snapshot(settings_payload);
           }
           await refresh_preset_menu();
           push_toast("success", t("glossary_page.feedback.preset_deleted"));
@@ -1623,7 +1576,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     reset_entries,
     readonly,
     save_preset,
-    set_settings_snapshot,
+    apply_settings_snapshot,
     t,
   ]);
 

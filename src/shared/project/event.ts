@@ -42,7 +42,7 @@ export type ProjectChangeFilesPayload = {
   deletePaths?: string[];
 };
 
-// 非行级 section 在 canonical-delta 下携带完整 section data，其它模式只表达失效
+// 完整 section 替换在 canonical-delta 下携带完整 section data，其它模式只表达异常失效
 export type ProjectChangeSectionPayload = {
   payloadMode: ProjectChangePayloadMode;
   data?: ProjectChangeJsonValue;
@@ -53,12 +53,19 @@ export type ProjectChangeEvent = {
   type: "project.changed";
   eventId: string;
   source: string;
+  projectPath: string; // projectPath 是后端会话确认后的项目身份，renderer 必须用它拦截旧工程事件
   projectRevision: number;
   sectionRevisions: ProjectDataSectionRevisions;
   updatedSections: ProjectDataSection[];
   items?: ProjectChangeItemsPayload;
   files?: ProjectChangeFilesPayload;
   sections?: Partial<Record<ProjectDataSection, ProjectChangeSectionPayload>>;
+};
+
+// 同步项目 mutation 返回和 SSE 广播共用同一批后端 canonical change
+export type ProjectMutationResult = {
+  accepted: true;
+  changes: ProjectChangeEvent[];
 };
 
 // section 顺序同时约束 manifest、read-sections 和 renderer 初始化合并顺序

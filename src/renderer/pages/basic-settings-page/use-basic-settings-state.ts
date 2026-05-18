@@ -1,20 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
-import { createProjectPrefilterClient } from "@/project/prefilter/prefilter-worker-client";
 import { apply_project_prefilter_mutation } from "@/project/prefilter/prefilter-mutation-committer";
 import { format_project_settings_aligned_toast } from "@/project/settings/alignment-toast";
-import {
-  normalize_settings_snapshot,
-  type SettingsSnapshot,
-  type SettingsSnapshotPayload,
+import type {
+  SettingsSnapshot,
+  SettingsSnapshotPayload,
 } from "@/app/desktop/desktop-runtime-context";
 import { useProjectPagesBarrier } from "@/app/page-runtime/project-pages-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
-import { is_worker_client_error } from "@/lib/worker-client-error";
 import {
   REQUEST_TIMEOUT_MAX,
   REQUEST_TIMEOUT_MIN,
@@ -58,10 +55,9 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     task_snapshot,
     project_snapshot,
     project_store,
-    set_settings_snapshot,
-    commit_local_project_change,
+    apply_settings_snapshot,
     refresh_project_runtime,
-    align_project_runtime_ack,
+    apply_project_mutation_result,
     refresh_settings,
   } = useDesktopRuntime();
   const { create_barrier_checkpoint, wait_for_barrier } = useProjectPagesBarrier();
@@ -75,7 +71,6 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
   });
   const snapshot_ref = useRef<BasicSettingsSnapshot>(snapshot);
   const settings_snapshot_ref = useRef<SettingsSnapshot>(settings_snapshot);
-  const project_prefilter_client_ref = useRef(createProjectPrefilterClient());
   const context_snapshot = useMemo(() => {
     return build_basic_settings_snapshot(settings_snapshot);
   }, [settings_snapshot]);
@@ -122,13 +117,6 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     void refresh_snapshot();
   }, [refresh_snapshot]);
 
-  useEffect(() => {
-    const project_prefilter_client = project_prefilter_client_ref.current;
-    return () => {
-      project_prefilter_client.dispose();
-    };
-  }, []);
-
   const commit_update = useCallback(
     async (
       field: BasicSettingsPendingField,
@@ -141,8 +129,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
 
       try {
         const payload = await api_fetch<SettingsSnapshotPayload>("/api/settings/update", request);
-        const next_settings_snapshot = normalize_settings_snapshot(payload);
-        set_settings_snapshot(next_settings_snapshot);
+        const next_settings_snapshot = apply_settings_snapshot(payload);
         set_snapshot(build_basic_settings_snapshot(next_settings_snapshot));
         return next_settings_snapshot;
       } catch (error) {
@@ -183,7 +170,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
         set_pending(field, false);
       }
     },
-    [push_toast, set_pending, set_settings_snapshot, t],
+    [apply_settings_snapshot, push_toast, set_pending, t],
   );
 
   const apply_project_settings_only_alignment = useCallback(
@@ -214,26 +201,19 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
 
       await apply_project_prefilter_mutation({
         state: project_store.getState(),
-        task_snapshot,
         source_language: next_settings_snapshot.source_language,
         target_language: next_settings_snapshot.target_language,
         mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
         skip_duplicate_source_text_enable: next_settings_snapshot.skip_duplicate_source_text_enable,
-        compute_prefilter: (input) => {
-          return project_prefilter_client_ref.current.compute(input);
-        },
-        commit_local_project_change,
-        align_project_runtime_ack,
+        apply_project_mutation_result,
         refresh_project_runtime,
       });
     },
     [
-      align_project_runtime_ack,
-      commit_local_project_change,
+      apply_project_mutation_result,
       project_snapshot.loaded,
       project_store,
       refresh_project_runtime,
-      task_snapshot,
     ],
   );
 
@@ -322,11 +302,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
             }
           },
         });
-      } catch (error) {
-        if (!is_worker_client_error(error)) {
-          throw error;
-        }
-
+      } catch {
         await rollback_source_language_after_prefilter_error(
           previous_snapshot,
           previous_settings_snapshot,

@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
-import { createProjectStoreReplaceSectionChange } from "@/project/store/project-store";
-import { getQualityRuleSlice, replaceQualityRuleSlice } from "@/project/quality/quality-runtime";
+import { getQualityRuleSlice } from "@/project/quality/quality-runtime";
 import {
-  normalize_project_mutation_ack,
-  type ProjectMutationAckPayload,
+  normalize_project_mutation_result,
+  type ProjectMutationResultPayload,
 } from "@/app/desktop/desktop-runtime-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
@@ -139,9 +138,8 @@ export function useNameFieldExtractionPageState() {
   const {
     project_snapshot,
     project_store,
-    commit_local_project_change,
     refresh_project_runtime,
-    align_project_runtime_ack,
+    apply_project_mutation_result,
     task_snapshot,
   } = useDesktopRuntime();
   const project_store_state = useSyncExternalStore(
@@ -603,41 +601,24 @@ export function useNameFieldExtractionPageState() {
 
   const apply_glossary_import_entries = useCallback(
     async (next_entries: GlossaryEntry[]): Promise<boolean> => {
-      const current_glossary_slice = getQualityRuleSlice(
-        project_store.getState().quality,
-        "glossary",
-      );
+      const current_state = project_store.getState();
       const normalized_entries = ensure_quality_rule_entry_ids(
         next_entries.map(normalize_glossary_entry),
       );
-      const next_quality_state = replaceQualityRuleSlice(
-        project_store.getState().quality,
-        "glossary",
-        {
-          ...current_glossary_slice,
-          entries: normalized_entries,
-          revision: current_glossary_slice.revision + 1,
-        },
-      );
-      const local_commit = commit_local_project_change({
-        source: "name_field_extraction_import_glossary",
-        updatedSections: ["quality"],
-        operations: [createProjectStoreReplaceSectionChange("quality", next_quality_state)],
-      });
-
       try {
-        const mutation_ack = normalize_project_mutation_ack(
-          await api_fetch<ProjectMutationAckPayload>("/api/quality/rules/save-entries", {
+        const mutation_result = normalize_project_mutation_result(
+          await api_fetch<ProjectMutationResultPayload>("/api/quality/rules/save-entries", {
             rule_type: "glossary",
-            expected_revision: current_glossary_slice.revision,
+            expected_section_revisions: {
+              quality: current_state.revisions.sections.quality ?? 0,
+            },
             entries: normalized_entries,
           }),
         );
-        align_project_runtime_ack(mutation_ack);
+        await apply_project_mutation_result(mutation_result);
         push_toast("success", t("name_field_extraction_page.feedback.import_success"));
         return true;
       } catch (error) {
-        local_commit.rollback();
         void refresh_project_runtime().catch(() => {});
         push_toast(
           "error",
@@ -650,14 +631,7 @@ export function useNameFieldExtractionPageState() {
         return false;
       }
     },
-    [
-      align_project_runtime_ack,
-      commit_local_project_change,
-      project_store,
-      push_toast,
-      refresh_project_runtime,
-      t,
-    ],
+    [apply_project_mutation_result, project_store, push_toast, refresh_project_runtime, t],
   );
 
   const get_import_existing_entries = useCallback((): GlossaryEntry[] => {

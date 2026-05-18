@@ -7,6 +7,7 @@ export type AnalysisTaskActionKind =
   | "stop-analysis";
 
 export type AnalysisTaskSnapshot = {
+  runtime_revision: number;
   task_type: string;
   status: string;
   busy: boolean;
@@ -26,7 +27,15 @@ export type AnalysisTaskSnapshot = {
 export type AnalysisTaskPayload = {
   task?: Partial<AnalysisTaskSnapshot> & {
     progress?: Partial<
-      Omit<AnalysisTaskSnapshot, "task_type" | "status" | "busy" | "request_in_flight_count" | "candidate_count">
+      Omit<
+        AnalysisTaskSnapshot,
+        | "runtime_revision"
+        | "task_type"
+        | "status"
+        | "busy"
+        | "request_in_flight_count"
+        | "candidate_count"
+      >
     >;
     extras?: { kind?: string; candidate_count?: number };
   };
@@ -56,6 +65,7 @@ export type AnalysisTaskMetrics = {
 
 export function create_empty_analysis_task_snapshot(): AnalysisTaskSnapshot {
   return {
+    runtime_revision: 0,
     task_type: "analysis",
     status: "idle",
     busy: false,
@@ -75,6 +85,7 @@ export function create_empty_analysis_task_snapshot(): AnalysisTaskSnapshot {
 
 export function clone_analysis_task_snapshot(snapshot: AnalysisTaskSnapshot): AnalysisTaskSnapshot {
   return {
+    runtime_revision: snapshot.runtime_revision,
     task_type: snapshot.task_type,
     status: snapshot.status,
     busy: snapshot.busy,
@@ -99,6 +110,7 @@ export function normalize_analysis_task_snapshot_payload(
   const progress = snapshot.progress ?? snapshot;
   const extras = snapshot.extras ?? {};
   return {
+    runtime_revision: Number(snapshot.runtime_revision ?? 0),
     task_type: String(snapshot.task_type ?? "analysis"),
     status: String(snapshot.status ?? "idle").toLowerCase(),
     busy: Boolean(snapshot.busy),

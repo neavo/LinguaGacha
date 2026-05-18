@@ -8,9 +8,9 @@ import {
 } from "@/app/page-runtime/project-pages-context";
 import {
   createProjectStore,
-  createProjectStoreReplaceSectionChange,
   type ProjectDataSection,
   type ProjectDataSectionRevisions,
+  type ProjectStoreChangeEvent,
 } from "@/project/store/project-store";
 
 const REQUIRED_SECTIONS: ProjectDataSection[] = ["project", "files", "items", "analysis"];
@@ -80,11 +80,12 @@ function create_runtime_fixture(): RuntimeFixture {
   project_store.applyProjectChange(
     {
       source: "project_read_sections",
+      projectPath: "E:/demo/sample.lg",
       projectRevision: 1,
       updatedSections: ["project"],
       sectionRevisions: CURRENT_REVISIONS,
       operations: [
-        createProjectStoreReplaceSectionChange("project", {
+        create_replace_section_operation("project", {
           loaded: true,
           path: "E:/demo/sample.lg",
         }),
@@ -103,6 +104,20 @@ function create_runtime_fixture(): RuntimeFixture {
     set_project_warmup_status: vi.fn(),
     project_store,
   };
+}
+
+// page runtime 测试只需要已规范化的项目读取事件，不依赖 ProjectStore 暴露构造 helper
+function create_replace_section_operation(
+  section: ProjectDataSection,
+  value: unknown,
+): ProjectStoreChangeEvent["operations"][number] {
+  const sections = {
+    [section]: {
+      payloadMode: "canonical-delta",
+      data: value,
+    },
+  } as ProjectStoreChangeEvent["operations"][number]["sections"];
+  return { sections };
 }
 
 function create_proofreading_fixture(): ProofreadingFixture {
@@ -278,11 +293,15 @@ describe("ProjectPagesProvider", () => {
     const checkpoint = latest_barrier_api?.create_barrier_checkpoint();
     expect(checkpoint).not.toBeNull();
     await act(async () => {
-      runtime_fixture.current.project_store.alignRevisions({
+      runtime_fixture.current.project_store.applyProjectChange({
+        source: "project_read_sections",
+        projectPath: "E:/demo/sample.lg",
         projectRevision: 2,
+        updatedSections: ["analysis"],
         sectionRevisions: {
           analysis: 2,
         },
+        operations: [],
       });
     });
     await render_provider();

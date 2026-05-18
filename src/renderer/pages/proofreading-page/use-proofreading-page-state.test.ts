@@ -29,16 +29,16 @@ type RuntimeFixture = {
       scope: { kind: "all" } | { kind: "items"; item_ids: number[] };
     };
   };
-  set_task_snapshot: ReturnType<typeof vi.fn>;
+  sync_task_snapshot: ReturnType<typeof vi.fn>;
   proofreading_change_signal: {
     seq: number;
     mode: "full" | "delta" | "noop";
     item_ids: Array<number | string>;
     updated_sections: string[];
   };
-  commit_local_project_change: ReturnType<typeof vi.fn>;
+  apply_project_mutation_result: ReturnType<typeof vi.fn>;
   refresh_project_runtime: ReturnType<typeof vi.fn>;
-  align_project_runtime_ack: ReturnType<typeof vi.fn>;
+  refresh_task: ReturnType<typeof vi.fn>;
 };
 
 type NavigationFixture = {
@@ -217,7 +217,7 @@ function create_runtime_fixture(): RuntimeFixture {
       task_type: "idle",
       extras: { kind: "translation", scope: { kind: "all" } },
     },
-    set_task_snapshot: vi.fn((snapshot) => {
+    sync_task_snapshot: vi.fn((snapshot) => {
       runtime_fixture.current = {
         ...runtime_fixture.current,
         task_snapshot: snapshot,
@@ -229,13 +229,9 @@ function create_runtime_fixture(): RuntimeFixture {
       item_ids: [],
       updated_sections: [],
     },
-    commit_local_project_change: vi.fn(() => {
-      return {
-        rollback: vi.fn(),
-      };
-    }),
+    apply_project_mutation_result: vi.fn(async () => {}),
     refresh_project_runtime: vi.fn(async () => {}),
-    align_project_runtime_ack: vi.fn(),
+    refresh_task: vi.fn(async () => runtime_fixture.current.task_snapshot),
   };
 }
 
@@ -737,7 +733,7 @@ describe("useProofreadingPageState", () => {
         prompts: 0,
       },
     });
-    expect(runtime_fixture.current.set_task_snapshot).toHaveBeenCalledWith(
+    expect(runtime_fixture.current.sync_task_snapshot).toHaveBeenCalledWith(
       expect.objectContaining({
         task_type: "translation",
         status: "requested",
@@ -860,7 +856,7 @@ describe("useProofreadingPageState", () => {
       await confirm_promise;
     });
 
-    expect(runtime_fixture.current.set_task_snapshot).not.toHaveBeenCalled();
+    expect(runtime_fixture.current.sync_task_snapshot).not.toHaveBeenCalled();
     expect(latest_state?.retranslating_row_ids).toEqual([]);
     expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
       "error",

@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
-import {
-  normalize_settings_snapshot,
-  type SettingsSnapshotPayload,
-} from "@/app/desktop/desktop-runtime-context";
+import type { SettingsSnapshotPayload } from "@/app/desktop/desktop-runtime-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
@@ -57,7 +54,7 @@ function clamp_preceding_lines_threshold(next_value: number): number {
 }
 
 export function useExpertSettingsState(): UseExpertSettingsStateResult {
-  const { settings_snapshot, set_settings_snapshot, refresh_settings, task_snapshot } =
+  const { settings_snapshot, apply_settings_snapshot, refresh_settings, task_snapshot } =
     useDesktopRuntime();
   const { push_toast } = useDesktopToast();
   const { t } = useI18n();
@@ -125,8 +122,7 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
 
       try {
         const payload = await api_fetch<SettingsSnapshotPayload>("/api/settings/update", request);
-        const next_settings_snapshot = normalize_settings_snapshot(payload);
-        set_settings_snapshot(next_settings_snapshot);
+        const next_settings_snapshot = apply_settings_snapshot(payload);
         set_snapshot(build_expert_settings_snapshot(next_settings_snapshot));
       } catch (error) {
         set_snapshot((current_snapshot) => {
@@ -174,7 +170,7 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
         set_pending(field, false);
       }
     },
-    [is_task_busy, push_toast, set_pending, set_settings_snapshot, t],
+    [apply_settings_snapshot, is_task_busy, push_toast, set_pending, t],
   );
 
   const update_preceding_lines_threshold = useCallback(

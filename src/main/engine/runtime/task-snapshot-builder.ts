@@ -99,6 +99,7 @@ export class TaskSnapshotBuilder {
         ? this.build_analysis_progress_snapshot(meta)
         : this.normalize_progress_snapshot(this.normalize_object(meta["translation_extras"]));
     const snapshot: TaskSnapshot = {
+      runtime_revision: engine_state.runtime_revision,
       task_type,
       status: engine_state.status,
       busy: engine_state.busy,

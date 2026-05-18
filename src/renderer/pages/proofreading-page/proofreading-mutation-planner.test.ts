@@ -72,44 +72,24 @@ function create_test_state(): ProjectStoreState {
 }
 
 describe("proofreading mutation planner", () => {
-  it("保存译文的本地 upsert 保留完整公开 item DTO", () => {
+  it("保存译文只提交 item_id、dst 与 revision 锁", () => {
     const plan = create_save_item_plan({
       state: create_test_state(),
       item_id: 1,
       next_dst: "译文",
     });
 
-    expect(plan?.operations[0]).toMatchObject({
-      items: {
-        upsert: {
-          "1": {
-            item_id: 1,
-            src: "原文",
-            dst: "译文",
-            name_src: "Alice",
-            extra_field: { keep: true },
-            tag: "dialog",
-            file_type: "TXT",
-            status: "PROCESSED",
-          },
-        },
+    expect(plan?.request_body).toEqual({
+      item_id: 1,
+      dst: "译文",
+      expected_section_revisions: {
+        items: 4,
+        proofreading: 2,
       },
     });
-    expect(plan?.request_body.items).toEqual([
-      {
-        id: 1,
-        file_path: "script/a.txt",
-        row: 1,
-        src: "原文",
-        dst: "译文",
-        status: "PROCESSED",
-        text_type: "NONE",
-        retry_count: 0,
-      },
-    ]);
   });
 
-  it("正则全部替换会按捕获组引用写回译文", () => {
+  it("正则全部替换只提交搜索命令并保留变更计数", () => {
     const plan = create_replace_all_plan({
       state: {
         ...create_test_state(),
@@ -130,7 +110,16 @@ describe("proofreading mutation planner", () => {
       is_regex: true,
     });
 
-    expect(plan?.request_body.items[0]?.dst).toBe("Alice");
+    expect(plan?.request_body).toMatchObject({
+      item_ids: [1],
+      search_text: "Name: (.+)",
+      replace_text: "$1",
+      is_regex: true,
+      expected_section_revisions: {
+        items: 4,
+        proofreading: 2,
+      },
+    });
     expect(plan?.changed_item_ids).toEqual([1]);
   });
 });

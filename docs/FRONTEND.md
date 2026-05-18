@@ -30,7 +30,7 @@ flowchart LR
 ## 2. 运行态初始化
 
 - `DesktopRuntimeProvider` 启动时并行读取 settings、project、task snapshot；这一步不能通过卸载工程来“重置”Core 会话。
-- 工程 loaded 且 path 非空时，前端先通过 `/api/project/manifest` 获取项目数据索引与 revision，再通过 `/api/project/read-sections` 初始化 `ProjectStore`。
+- 工程 loaded 且 path 非空时，前端先通过 `/api/project/manifest` 确认后端项目身份与 revision，再通过 `/api/project/read-sections` 读取完整快照；两次响应的 `projectPath` 必须一致，`ProjectStore` 只在快照规范化成功后从空态原子替换。
 - 工程未加载时 `ProjectStore` 回到空态，页面局部状态可以保留自己的选择或弹窗，但不能伪造项目事实。
 - `src/renderer/app/locale` 只承接 renderer 的 React Provider 和富文本渲染适配；国际化资源、key 类型和查表函数的唯一权威在 `src/shared/i18n`。
 
@@ -42,18 +42,19 @@ flowchart LR
 project, files, items, quality, prompts, analysis, proofreading
 ```
 
-- `ProjectStore` 是 renderer 内共享项目事实的唯一缓存，不是后端事实源。
+- `ProjectStore` 是 renderer 内共享项目事实的唯一缓存，不是后端事实源；`DesktopRuntimeContext` 对页面只暴露 `getState`、`getRevisionCheckpoint`、`subscribe` 只读接口，项目 snapshot 只能通过后端刷新同步，settings 与 task 只能通过后端载荷或任务命令 ack 同步，写入口只留在 Provider 内部。
 - `task` 属于任务运行态，只能由 `TaskRuntimeStore` 作为前端任务镜像；项目数据读取和 `project.data_changed` 都不能把 task 写入 `ProjectStore` 或项目派生缓存依赖。
 - `TaskRuntimeStore` 消费的 `TaskSnapshot` 固定为 `base + progress + extras`：通用状态只在 base，进度只在 `progress`，分析候选数只在 `extras.kind === "analysis"`，重翻行级状态只在 `extras.kind === "translation" && scope.kind === "items"`。
 - 停止命令 HTTP ack 只能携带后端当前完整 `TaskSnapshot`；页面可以同步写入该 snapshot，但不能在页面层追加“终态优先于 stopping”的第二套排序规则。
-- 共享项目事实只能来自项目读取接口、`project.data_changed`、同步 mutation ack 后的 revision 对齐，以及明确的本地乐观 change。
-- `ProjectStore.items` 持有完整公开 item DTO 镜像，字段口径与后端项目读取一致；页面、worker 和 planner 可以派生轻量 view model，但派生物不得直接写回 `.lg` 或作为 `items` upsert 进入共享 store。
-- `section-invalidated` 不能只推进 revision；运行时必须先用 `/api/project/read-sections` 补读失效 section，再以 exact revision 合并，避免旧实体冒充新事实。
-- 本地乐观 change 必须通过 `commit_local_project_change()`，并提供可回滚的 section 快照。
-- 本地 item upsert 必须由当前完整 DTO 加局部 patch 合成完整记录；只表达字段变化的路径应走专门 mutation payload，由后端合并数据库事实。
-- `ProjectStore` change revision 默认合并，乐观 change 使用 exact revision；项目数据派生缓存只能消费 `ProjectDataRevisionCheckpoint` 和声明的 required sections，不得用 `task` 或时间戳作为 freshness 主依据。
+- 共享项目事实只能来自项目读取接口、同步 mutation 返回的 `ProjectMutationResult.changes` 和 `project.data_changed`。
+- `ProjectStore.items` 持有完整公开 item DTO 镜像，字段口径与后端项目读取一致；页面、worker 和 planner 可以派生轻量 view model，但工作台、reset、settings alignment 和校对类 mutation 只能提交用户意图、设置镜像和 `ProjectStore.revisions.sections` 中的依赖 revision，不能把派生 `items`、task/progress extras、prefilter config 或 analysis extras 当作最终事实提交。
+- `ProjectChangeEvent`、read-sections 和 ids-only 补读响应都必须携带后端确认的 project path；project path 与当前 `ProjectStore` 不一致的 mutation result、SSE 或补读响应一律丢弃。
+- 正常项目变更应携带后端 canonical payload：行级 items/files delta 直接合并，完整 items/files 替换和其它 section 通过 `sections.*.data` 合并。`section-invalidated`、ids-only 补读或缺少后端 section revision 的项目变更不能直接写入 `ProjectStore`；补读请求必须绑定发起时的 project path，读回后同时校验当前 project path、响应 project path 与后端 section revision，项目切换后的迟到响应或旧 revision 响应必须丢弃，合格响应再以 exact revision 合并。
+- 项目变更中的 item upsert 必须携带完整公开 DTO；只表达字段变化的路径应走专门 mutation payload，由后端合并数据库事实。
+- `ProjectStore` change revision 默认合并，补读结果使用 exact revision；两种模式都只能写入后端显式返回的 section revision，不按 updated section 自增。项目数据派生缓存只能消费 `ProjectDataRevisionCheckpoint` 和声明的 required sections，不得用 `task` 或时间戳作为 freshness 主依据。
+- 新建工程提交只能发送 `source_paths`、目标 `path` 和当前 `project_settings`；`create-preview` 若用于 UI 展示，也不能把预览 `items`、`translation_extras` 或 `prefilter_config` 作为提交事实来源。
 - `delete_items` / `delete_files` 是显式 tombstone 语义；无法精确表达删除时必须使用对应 section 的 full replace，让派生缓存重建。
-- renderer 与 main 共享的数据实体和值对象从 `src/base` 导入；跨运行时业务共享规则、协议词表和纯工具从 `src/shared` 导入，质量规则页面合并和分析导入预演复用 `src/shared/quality`；Electron 桌面原生契约从 `src/native` 根导入。页面只保留局部筛选、弹窗、排序等 UI 状态，不在页面层重定义跨层枚举。
+- renderer 与 main 共享的数据实体和值对象从 `src/base` 导入；跨运行时业务共享规则、协议词表和纯工具从 `src/shared` 导入，质量规则页面合并和分析导入预演复用 `src/shared/quality`；项目 mutation 派生模块只属于 main，renderer 不导入或复刻最终 `items`、`translation_extras`、`prefilter_config`、`analysis` 输出算法。Electron 桌面原生契约从 `src/native` 根导入，页面只保留局部筛选、弹窗、排序等 UI 状态，不在页面层重定义跨层枚举。
 - 基础设置页的源语言与目标语言控件分别消费 `SOURCE_LANGUAGE_CODES` 和 `TARGET_LANGUAGE_CODES`；`ALL` 只作为源语言过滤关闭值进入源语言控件，页面不得用总语言表同时驱动源/目标下拉。
 - `ProjectStore` 只消费 `Prompt` 和 `QualityRule` 派生出的公开 key 与切片归一化结果；页面发起质量规则预设请求时传 `rule_type`，不传物理预设目录名。
 
@@ -61,12 +62,11 @@ project, files, items, quality, prompts, analysis, proofreading
 
 | 事件 | 前端处理 | 页面影响 |
 | --- | --- | --- |
-| `project.changed` | 更新项目 snapshot，并在项目加载或切换链路读取 task snapshot | 触发项目读取或清空 store |
 | `settings.changed` | 应用 settings payload 或重新拉取 settings | 影响语言、默认预设和应用设置 |
 | `task.snapshot_changed` | 运行中 snapshot 进入 renderer 500ms 刷新窗口并只保留最新一份；终态或 `busy=false` 事件先冲刷窗口再立即覆盖 `TaskRuntimeStore` | 按钮 busy、任务菜单、进度、请求压力、停止态 |
-| `project.data_changed` | canonical delta 进入同一 500ms 刷新窗口并按到达顺序批量合并；ids-only 进入同一窗口合并 item id 后按 `/api/project/items/read-by-ids` 补读，响应 revision 落后当前 `ProjectStore` 时丢弃；section-invalidated 或无法规范化事件先冲刷窗口，再补读 canonical 数据或全量刷新 | 工作台、校对、质量、分析、校对数据刷新 |
+| `project.data_changed` | 先校验 `projectPath` 与当前 `ProjectStore` 一致；未经 HTTP mutation result 消费过的 canonical delta 进入同一 500ms 刷新窗口并按到达顺序批量合并；ids-only 合并 item id 后按 `/api/project/items/read-by-ids` 补读；仅异常恢复用的 section-invalidated 或无法规范化事件先冲刷窗口，再按 `ProjectStore` 的 project path 与 section revision 规则补读 canonical 数据或全量刷新 | 工作台、校对、质量、分析、校对数据刷新 |
 
-同一 renderer 刷新窗口内，`ProjectStore` 只通知一次，工作台与校对页派生信号按批次合并后最多各 bump 一次。工程切换、设置变更、项目刷新、本地乐观 change、失效 section 补读和任务终态不被普通窗口延迟。任务运行中和任务结束后不再由 Workbench 主动重取 `/api/tasks/snapshot`；项目首次加载、项目切换或页面显式 hydration 时仍可读取一次任务快照。日志窗口的 500ms append batch 与 Workbench 波形 250ms 采样都属于页面表现层，不承载项目或任务事实同步。
+同步 mutation 成功后，页面必须先规范化 `ProjectMutationResult.changes` 并交给 `DesktopRuntimeProvider` 应用；运行态用 `eventId` 记录近期已应用事件，避免同源 SSE 再次推进 `ProjectStore` 或页面刷新信号。同一 renderer 刷新窗口内，`ProjectStore` 只通知一次，工作台与校对页派生信号按批次合并后最多各 bump 一次。工程切换、设置变更、项目刷新、mutation result、失效 section 补读和任务终态不被普通窗口延迟。任务运行中和任务结束后不再由 Workbench 主动重取 `/api/tasks/snapshot`；项目首次加载、项目切换或页面显式 hydration 时仍可读取一次任务快照。日志窗口的 500ms append batch 与 Workbench 波形 250ms 采样都属于页面表现层，不承载项目或任务事实同步。
 
 ## 5. 导航与项目页 runtime
 
@@ -92,7 +92,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - preload 暴露能力、`window.desktopApp` 类型或 Core API 接入方式变化。
 - `src/native` 根契约的桥接 API、IPC、标题栏壳层、Core API 地址注入或外链策略变化。
 - `desktop-api.ts` 的响应壳、错误、SSE、项目读取或外部网络调用语义变化。
-- `ProjectStore` section、项目变更 payload、revision 对齐、本地乐观 change 或项目读取消费方式变化。
+- `ProjectStore` section、项目变更 payload、revision 对齐、mutation result 或项目读取消费方式变化。
 - 改 renderer 消费的跨层基础值域、合法值集合、normalize 或派生判断。
 - 导航注册、项目页 runtime adapter、barrier 或页面共享缓存策略变化。
 - 样式 token、设计系统约束或前端视觉边界变化。

@@ -29,6 +29,7 @@ export type AnalysisExtras = {
 
 /** TaskSnapshot 是 renderer 订阅和 `/api/tasks/snapshot` 的唯一公开形状 */
 export type TaskSnapshot = {
+  runtime_revision: number;
   task_type: TaskType;
   status: TaskRunStatus;
   busy: boolean;

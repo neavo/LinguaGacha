@@ -1,11 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ProjectItemPublicRecord } from "@base/item";
+import type { ProjectChangeJsonRecord } from "@shared/project/event";
 
 import {
   createProjectStore,
-  createProjectStoreFilesDeltaChange,
-  createProjectStoreItemsDeltaChange,
-  createProjectStoreReplaceSectionChange,
+  type ProjectStoreChangeEvent,
   type ProjectStoreSectionStateMap,
   type ProjectStoreStage,
 } from "./project-store";
@@ -30,6 +29,66 @@ function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectI
   };
 }
 
+type ProjectStoreChangeOperation = ProjectStoreChangeEvent["operations"][number];
+
+// 测试只构造已规范化的后端变更载荷，不恢复页面侧 canonical 写入口
+function create_replace_section_operation(
+  section: ProjectStoreStage,
+  value: unknown,
+): ProjectStoreChangeOperation {
+  const sections = {
+    [section]: {
+      payloadMode: "canonical-delta",
+      data: value,
+    },
+  } as ProjectStoreChangeOperation["sections"];
+  return { sections };
+}
+
+// items delta 测试沿用公开完整 DTO，瘦身 DTO 由独立用例直接穿过 store 校验
+function create_items_delta_operation(args: {
+  upsertItems?: ProjectItemPublicRecord[];
+  deleteIds?: Array<number | string>;
+}): ProjectStoreChangeOperation {
+  const upsert_items = args.upsertItems ?? [];
+  const upsert = Object.fromEntries(
+    upsert_items.map((item) => [String(item.item_id), item as unknown as ProjectChangeJsonRecord]),
+  );
+  const delete_ids = [...new Set((args.deleteIds ?? []).map((item_id) => Number(item_id)))].filter(
+    (item_id) => Number.isInteger(item_id) && item_id > 0,
+  );
+  return {
+    items: {
+      payloadMode: "canonical-delta",
+      ...(upsert_items.length > 0
+        ? {
+            upsert,
+            changedIds: [...new Set(upsert_items.map((item) => item.item_id))],
+          }
+        : {}),
+      ...(delete_ids.length > 0 ? { deleteIds: delete_ids } : {}),
+    },
+  };
+}
+
+// files delta 的公开 key 是相对路径，测试侧保持与后端事件一致的 tombstone 语义
+function create_files_delta_operation(args: {
+  upsertFiles?: Record<string, ProjectChangeJsonRecord>;
+  deletePaths?: string[];
+}): ProjectStoreChangeOperation {
+  const upsert = args.upsertFiles ?? {};
+  const delete_paths = [
+    ...new Set((args.deletePaths ?? []).map((file_path) => file_path.trim()).filter(Boolean)),
+  ];
+  return {
+    files: {
+      payloadMode: "canonical-delta",
+      ...(Object.keys(upsert).length > 0 ? { upsert, changedPaths: Object.keys(upsert) } : {}),
+      ...(delete_paths.length > 0 ? { deletePaths: delete_paths } : {}),
+    },
+  };
+}
+
 function apply_store_sections(
   store: ReturnType<typeof createProjectStore>,
   args: {
@@ -48,11 +107,12 @@ function apply_store_sections(
   store.applyProjectChange(
     {
       source: "project_read_sections",
+      projectPath: String(args.sections.project?.path ?? "E:/demo/demo.lg"),
       projectRevision: args.projectRevision,
       updatedSections: updated_sections,
       sectionRevisions: args.sectionRevisions,
       operations: updated_sections.map((section) =>
-        createProjectStoreReplaceSectionChange(
+        create_replace_section_operation(
           section,
           args.sections[section] as ProjectStoreSectionStateMap[typeof section],
         ),
@@ -95,7 +155,7 @@ describe("createProjectStore", () => {
     expect(store.getState().revisions.sections.items).toBe(3);
   });
 
-  it("合并项目变更只推进项目数据 section", () => {
+  it("合并项目变更不会为缺失后端 revision 的 section 自增", () => {
     const store = createProjectStore();
 
     apply_store_sections(store, {
@@ -118,10 +178,11 @@ describe("createProjectStore", () => {
 
     store.applyProjectChange({
       source: "task",
+      projectPath: "E:/demo/demo.lg",
       projectRevision: 3,
       updatedSections: ["items"],
       operations: [
-        createProjectStoreItemsDeltaChange({
+        create_items_delta_operation({
           upsertItems: [
             create_test_item({
               item_id: 1,
@@ -145,10 +206,10 @@ describe("createProjectStore", () => {
       }),
     );
     expect(store.getState().revisions.projectRevision).toBe(3);
-    expect(store.getState().revisions.sections.items).toBe(3);
+    expect(store.getState().revisions.sections.items).toBe(2);
   });
 
-  it("批量应用项目变更时保持顺序且只通知一次 listener", () => {
+  it("批量应用项目变更时保持顺序且不发明 section revision", () => {
     const store = createProjectStore();
     const listener = vi.fn();
 
@@ -156,10 +217,11 @@ describe("createProjectStore", () => {
     store.applyProjectChangeBatch([
       {
         source: "translation_batch",
+        projectPath: "E:/demo/demo.lg",
         projectRevision: 2,
         updatedSections: ["items"],
         operations: [
-          createProjectStoreItemsDeltaChange({
+          create_items_delta_operation({
             upsertItems: [
               create_test_item({
                 item_id: 1,
@@ -174,10 +236,11 @@ describe("createProjectStore", () => {
       },
       {
         source: "translation_batch",
+        projectPath: "E:/demo/demo.lg",
         projectRevision: 3,
         updatedSections: ["items"],
         operations: [
-          createProjectStoreItemsDeltaChange({
+          create_items_delta_operation({
             upsertItems: [
               create_test_item({
                 item_id: 1,
@@ -197,17 +260,31 @@ describe("createProjectStore", () => {
       status: "PROCESSED",
     });
     expect(store.getState().revisions.projectRevision).toBe(3);
-    expect(store.getState().revisions.sections.items).toBe(2);
+    expect(store.getState().revisions.sections.items).toBeUndefined();
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
   it("拒绝把瘦身 item upsert 写入共享 ProjectStore", () => {
+    const store = createProjectStore();
+
     expect(() =>
-      createProjectStoreItemsDeltaChange({
-        upsertItems: [
+      store.applyProjectChange({
+        source: "translation_batch_update",
+        projectPath: "E:/demo/demo.lg",
+        projectRevision: 1,
+        updatedSections: ["items"],
+        operations: [
           {
-            item_id: 1,
-            file_path: "chapter01.txt",
+            items: {
+              payloadMode: "canonical-delta",
+              upsert: {
+                1: {
+                  item_id: 1,
+                  file_path: "chapter01.txt",
+                },
+              },
+              changedIds: [1],
+            },
           },
         ],
       }),
@@ -237,10 +314,11 @@ describe("createProjectStore", () => {
 
     store.applyProjectChange({
       source: "translation_batch_update",
+      projectPath: "E:/demo/demo.lg",
       projectRevision: 0,
       updatedSections: ["items"],
       operations: [
-        createProjectStoreItemsDeltaChange({
+        create_items_delta_operation({
           upsertItems: [
             create_test_item({
               item_id: 1,
@@ -264,7 +342,7 @@ describe("createProjectStore", () => {
       }),
     );
     expect(store.getState().revisions.projectRevision).toBe(5);
-    expect(store.getState().revisions.sections.items).toBe(3);
+    expect(store.getState().revisions.sections.items).toBe(2);
   });
 
   it("显式删除 items/files 并返回变更摘要", () => {
@@ -273,6 +351,7 @@ describe("createProjectStore", () => {
     apply_store_sections(store, {
       projectRevision: 4,
       sectionRevisions: {
+        project: 1,
         items: 4,
         files: 2,
       },
@@ -291,6 +370,7 @@ describe("createProjectStore", () => {
 
     const result = store.applyProjectChange({
       source: "workbench_delete_file",
+      projectPath: "E:/demo/demo.lg",
       projectRevision: 6,
       updatedSections: ["files", "items"],
       sectionRevisions: {
@@ -298,8 +378,8 @@ describe("createProjectStore", () => {
         items: 5,
       },
       operations: [
-        createProjectStoreFilesDeltaChange({ deletePaths: ["a.txt"] }),
-        createProjectStoreItemsDeltaChange({ deleteIds: [1] }),
+        create_files_delta_operation({ deletePaths: ["a.txt"] }),
+        create_items_delta_operation({ deleteIds: [1] }),
       ],
     });
 
@@ -376,9 +456,13 @@ describe("createProjectStore", () => {
 
     store.applyProjectChange({
       source: "quality_prompt_save",
+      projectPath: "E:/demo/demo.lg",
       projectRevision: 8,
       updatedSections: ["prompts"],
-      operations: [createProjectStoreReplaceSectionChange("prompts", patched_prompts)],
+      sectionRevisions: {
+        prompts: 5,
+      },
+      operations: [create_replace_section_operation("prompts", patched_prompts)],
     });
 
     expect(store.getState().prompts.translation).toEqual({
@@ -390,14 +474,20 @@ describe("createProjectStore", () => {
     expect(store.getState().revisions.sections.prompts).toBe(5);
   });
 
-  it("精确 revision 模式允许本地 change 回滚到旧 revision", () => {
+  it("后端 exact 补读按返回快照覆盖 section 数据和 revision", () => {
     const store = createProjectStore();
     const initial_quality = {
       glossary: {
-        entries: [],
+        entries: [
+          {
+            id: "1",
+            src: "旧原文",
+            dst: "旧译文",
+          },
+        ],
         enabled: true,
         mode: "off",
-        revision: 2,
+        revision: 3,
       },
       pre_replacement: {
         entries: [],
@@ -420,58 +510,34 @@ describe("createProjectStore", () => {
     };
 
     apply_store_sections(store, {
-      projectRevision: 4,
+      projectRevision: 5,
       sectionRevisions: {
-        quality: 2,
+        quality: 3,
       },
       sections: {
         quality: initial_quality,
       },
     });
 
-    const optimistic_quality = {
+    const server_quality = {
       ...store.getState().quality,
       glossary: {
         ...store.getState().quality.glossary,
-        entries: [
-          {
-            id: "1",
-            src: "原文",
-            dst: "译文",
-          },
-        ],
-        revision: 3,
+        entries: [],
+        revision: 2,
       },
     };
 
     store.applyProjectChange(
       {
-        source: "quality_rule_save_entries",
-        projectRevision: 5,
-        updatedSections: ["quality"],
-        sectionRevisions: {
-          quality: 3,
-        },
-        operations: [createProjectStoreReplaceSectionChange("quality", optimistic_quality)],
-      },
-      {
-        revisionMode: "exact",
-      },
-    );
-
-    expect(store.getState().quality.glossary.revision).toBe(3);
-    expect(store.getState().revisions.projectRevision).toBe(5);
-    expect(store.getState().revisions.sections.quality).toBe(3);
-
-    store.applyProjectChange(
-      {
-        source: "quality_rule_save_entries_rollback",
+        source: "project_read_sections",
+        projectPath: "E:/demo/demo.lg",
         projectRevision: 4,
         updatedSections: ["quality"],
         sectionRevisions: {
           quality: 2,
         },
-        operations: [createProjectStoreReplaceSectionChange("quality", initial_quality)],
+        operations: [create_replace_section_operation("quality", server_quality)],
       },
       {
         revisionMode: "exact",
@@ -484,13 +550,13 @@ describe("createProjectStore", () => {
     expect(store.getState().revisions.sections.quality).toBe(2);
   });
 
-  it("服务器项目变更不会把本地合成 revision 压回去", () => {
+  it("merge 模式应用 canonical payload 时保持 section revision 单调", () => {
     const store = createProjectStore();
 
     apply_store_sections(store, {
-      projectRevision: 4,
+      projectRevision: 5,
       sectionRevisions: {
-        quality: 2,
+        quality: 3,
       },
       sections: {
         quality: {
@@ -498,7 +564,7 @@ describe("createProjectStore", () => {
             entries: [],
             enabled: true,
             mode: "off",
-            revision: 2,
+            revision: 3,
           },
           pre_replacement: {
             entries: [],
@@ -522,29 +588,6 @@ describe("createProjectStore", () => {
       },
     });
 
-    const optimistic_quality = {
-      ...store.getState().quality,
-      glossary: {
-        ...store.getState().quality.glossary,
-        revision: 3,
-      },
-    };
-
-    store.applyProjectChange(
-      {
-        source: "quality_rule_save_entries",
-        projectRevision: 5,
-        updatedSections: ["quality"],
-        sectionRevisions: {
-          quality: 3,
-        },
-        operations: [createProjectStoreReplaceSectionChange("quality", optimistic_quality)],
-      },
-      {
-        revisionMode: "exact",
-      },
-    );
-
     const server_quality = {
       ...store.getState().quality,
       glossary: {
@@ -553,34 +596,35 @@ describe("createProjectStore", () => {
           {
             id: "1",
             src: "原文",
-            dst: "服务器译文",
+            dst: "后端译文",
           },
         ],
       },
     };
 
     store.applyProjectChange({
-      source: "quality_rule_save_entries_confirmed",
-      projectRevision: 4,
+      source: "quality_rule_save_entries",
+      projectPath: "E:/demo/demo.lg",
+      projectRevision: 6,
       updatedSections: ["quality"],
       sectionRevisions: {
         quality: 2,
       },
-      operations: [createProjectStoreReplaceSectionChange("quality", server_quality)],
+      operations: [create_replace_section_operation("quality", server_quality)],
     });
 
     expect(store.getState().quality.glossary.entries).toEqual([
       {
         id: "1",
         src: "原文",
-        dst: "服务器译文",
+        dst: "后端译文",
       },
     ]);
-    expect(store.getState().revisions.projectRevision).toBe(5);
+    expect(store.getState().revisions.projectRevision).toBe(6);
     expect(store.getState().revisions.sections.quality).toBe(3);
   });
 
-  it("revision 对齐后下一次本地 change 会从对齐值继续递增", () => {
+  it("初始化快照原子替换旧项目数据并采用后端 section revision", () => {
     const store = createProjectStore();
 
     apply_store_sections(store, {
@@ -603,45 +647,45 @@ describe("createProjectStore", () => {
       },
     });
 
-    store.alignRevisions({
-      projectRevision: 10,
+    store.replaceProjectData({
+      source: "project_read_sections",
+      projectPath: "E:/demo/next.lg",
+      projectRevision: 11,
+      updatedSections: ["project", "analysis"],
       sectionRevisions: {
-        analysis: 8,
+        project: 1,
+        analysis: 9,
       },
+      operations: [
+        create_replace_section_operation("project", {
+          path: "E:/demo/next.lg",
+          loaded: true,
+        }),
+        create_replace_section_operation("analysis", {
+          extras: {
+            start_time: 12,
+            time: 6,
+            total_line: 3,
+            line: 1,
+            processed_line: 1,
+            error_line: 0,
+          },
+          candidate_count: 2,
+          candidate_aggregate: {},
+          status_summary: {
+            total_line: 3,
+            processed_line: 1,
+            error_line: 0,
+            line: 1,
+          },
+        }),
+      ],
     });
 
-    store.applyProjectChange(
-      {
-        source: "analysis_reset_failed",
-        projectRevision: 11,
-        updatedSections: ["analysis"],
-        operations: [
-          createProjectStoreReplaceSectionChange("analysis", {
-            extras: {
-              start_time: 12,
-              time: 6,
-              total_line: 3,
-              line: 1,
-              processed_line: 1,
-              error_line: 0,
-            },
-            candidate_count: 2,
-            candidate_aggregate: {},
-            status_summary: {
-              total_line: 3,
-              processed_line: 1,
-              error_line: 0,
-              line: 1,
-            },
-          }),
-        ],
-      },
-      {
-        revisionMode: "exact",
-      },
-    );
-
+    expect(store.getState().project.path).toBe("E:/demo/next.lg");
+    expect(store.getState().items).toEqual({});
     expect(store.getState().revisions.projectRevision).toBe(11);
+    expect(store.getState().revisions.sections.project).toBe(1);
     expect(store.getState().revisions.sections.analysis).toBe(9);
   });
 });

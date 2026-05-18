@@ -1,153 +1,38 @@
-import {
-  build_analysis_progress_snapshot,
-  build_analysis_status_summary,
-  derive_project_item_view_record,
-  normalize_analysis_progress_snapshot,
-} from "@/project/reset/reset-state-builders";
-import {
-  createProjectStoreReplaceSectionChange,
-  type ProjectStoreChangeOperation,
-  type ProjectStoreState,
-} from "@/project/store/project-store";
-
-type AnalysisResetPreviewPayload = {
-  status_summary?: Record<string, unknown>;
-};
+import type { ProjectStoreState } from "@/project/store/project-store";
 
 export type AnalysisResetPlan = {
-  updatedSections: Array<"analysis">;
-  operations: ProjectStoreChangeOperation[];
-  requestBody: Record<string, unknown>;
-  next_task_snapshot: Record<string, unknown>;
+  updatedSections: Array<"analysis">; // UI 预期刷新 section，实际 revision 以后端事件为准
+  requestBody: Record<string, unknown>; // analysis reset 命令体，不包含前端生成的 analysis_extras
 };
 
-function build_runtime_items(state: ProjectStoreState) {
-  return Object.values(state.items).flatMap((item) => {
-    const normalized_item = derive_project_item_view_record(item);
-    return normalized_item === null ? [] : [normalized_item];
-  });
-}
-
-function normalize_status_summary(
-  value: Record<string, unknown> | undefined,
-): Record<string, unknown> {
-  return {
-    total_line: Number(value?.total_line ?? 0),
-    processed_line: Number(value?.processed_line ?? 0),
-    error_line: Number(value?.error_line ?? 0),
-    line: Number(value?.line ?? 0),
-  };
-}
-
-function normalize_record(value: unknown): Record<string, unknown> {
-  if (typeof value !== "object" || value === null) {
-    return {};
-  }
-  return value as Record<string, unknown>;
-}
-
-function pick_preserved_analysis_extras(extras: Record<string, unknown>): Record<string, unknown> {
-  return {
-    start_time: extras.start_time ?? 0.0,
-    time: extras.time ?? 0.0,
-    total_tokens: extras.total_tokens ?? 0,
-    total_input_tokens: extras.total_input_tokens ?? 0,
-    total_output_tokens: extras.total_output_tokens ?? 0,
-  };
-}
-
-function build_next_task_snapshot(args: {
-  task_snapshot: Record<string, unknown>;
-  analysis_extras: Record<string, unknown>;
-  candidate_count: number;
-}): Record<string, unknown> {
-  return {
-    ...args.task_snapshot,
-    status: "idle",
-    progress: args.analysis_extras,
-    extras: { kind: "analysis", candidate_count: args.candidate_count },
-  };
-}
-
+// 全量分析重置只提交 mode 和 analysis revision，后端清空 checkpoint 与候选事实。
 export function create_analysis_reset_all_plan(args: {
   state: ProjectStoreState;
   task_snapshot?: Record<string, unknown>;
 }): AnalysisResetPlan {
-  const task_snapshot = args.task_snapshot ?? {};
-  const status_summary = build_analysis_status_summary(build_runtime_items(args.state));
-  const empty_analysis_extras: Record<string, unknown> = {};
-  const analysis_extras = build_analysis_progress_snapshot({
-    extras: empty_analysis_extras,
-    status_summary,
-  });
-  const next_analysis_state = {
-    ...args.state.analysis,
-    extras: analysis_extras,
-    candidate_count: 0,
-    candidate_aggregate: {},
-    status_summary,
-  };
-  const next_task_snapshot = build_next_task_snapshot({
-    task_snapshot,
-    analysis_extras,
-    candidate_count: 0,
-  });
-
   return {
     updatedSections: ["analysis"],
-    operations: [createProjectStoreReplaceSectionChange("analysis", next_analysis_state)],
     requestBody: {
       mode: "all",
-      analysis_extras: analysis_extras,
       expected_section_revisions: {
         analysis: args.state.revisions.sections.analysis ?? 0,
       },
     },
-    next_task_snapshot,
   };
 }
 
-export async function create_analysis_reset_failed_plan(args: {
+// 失败分析重置只提交 mode 和 analysis revision，后端按 ERROR checkpoint 重建进度。
+export function create_analysis_reset_failed_plan(args: {
   state: ProjectStoreState;
   task_snapshot?: Record<string, unknown>;
-  request_preview: () => Promise<AnalysisResetPreviewPayload>;
-}): Promise<AnalysisResetPlan> {
-  const task_snapshot = args.task_snapshot ?? {};
-  const preview_payload = await args.request_preview();
-  const status_summary = normalize_status_summary(preview_payload.status_summary);
-  const current_analysis_extras = normalize_record(args.state.analysis.extras);
-  const analysis_extras = build_analysis_progress_snapshot({
-    extras: pick_preserved_analysis_extras(
-      normalize_analysis_progress_snapshot(current_analysis_extras),
-    ),
-    status_summary,
-  });
-  const candidate_count = Number(
-    args.state.analysis.candidate_count ??
-      normalize_record(task_snapshot.extras)["candidate_count"] ??
-      0,
-  );
-  const next_analysis_state = {
-    ...args.state.analysis,
-    extras: analysis_extras,
-    status_summary,
-  };
-  const next_task_snapshot = build_next_task_snapshot({
-    task_snapshot,
-    analysis_extras,
-    candidate_count,
-  });
-
+}): AnalysisResetPlan {
   return {
     updatedSections: ["analysis"],
-    operations: [createProjectStoreReplaceSectionChange("analysis", next_analysis_state)],
     requestBody: {
       mode: "failed",
-      analysis_extras: analysis_extras,
       expected_section_revisions: {
         analysis: args.state.revisions.sections.analysis ?? 0,
       },
     },
-    next_task_snapshot,
   };
 }

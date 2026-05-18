@@ -4,13 +4,12 @@ import { Prompt } from "../../base/prompt";
 import { PROJECT_DATA_SECTIONS, type ProjectDataSection } from "../../shared/project/event";
 
 type JsonRecord = Record<string, ApiJsonValue>;
-type MutableJsonRecord = Record<string, ApiJsonValue>;
 
 export { PROJECT_DATA_SECTIONS };
 export type { ProjectDataSection };
 
 /**
- * 统一读取项目运行态 section revision，供读取接口和同步 mutation ack 共享口径
+ * 统一读取项目运行态 section revision，供读取接口和同步 mutation 事件共享口径
  */
 export function get_runtime_section_revision(meta: JsonRecord, section: string): number {
   if (section.startsWith("quality:")) {
@@ -47,23 +46,6 @@ export function build_section_revisions_from_meta(
   return Object.fromEntries(
     PROJECT_DATA_SECTIONS.map((section) => [section, get_runtime_section_revision(meta, section)]),
   ) as Record<ProjectDataSection, number>;
-}
-
-export function build_project_mutation_ack_from_meta(
-  meta: JsonRecord,
-  updated_sections: string[],
-): MutableJsonRecord {
-  const section_revisions: MutableJsonRecord = {};
-  for (const section of updated_sections) {
-    // ack 的 sectionRevisions 只包含本次写入影响的 section，保留旧前端对局部 ack 的消费语义
-    section_revisions[section] = get_runtime_section_revision(meta, section);
-  }
-  const all_section_revisions = build_section_revisions_from_meta(meta);
-  return {
-    accepted: true,
-    projectRevision: Math.max(...Object.values(all_section_revisions), 0),
-    sectionRevisions: section_revisions,
-  };
 }
 
 function read_revision_meta(value: ApiJsonValue | undefined): number {

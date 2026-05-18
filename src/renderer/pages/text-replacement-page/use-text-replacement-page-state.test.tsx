@@ -107,10 +107,74 @@ const project_store = {
 
 const project_store_listeners = new Set<() => void>();
 
-function notify_project_store(): void {
-  for (const listener of project_store_listeners) {
-    listener();
+function apply_quality_mutation_result(result: {
+  changes?: Array<{
+    operations?: Array<{
+      sections?: {
+        quality?: {
+          data?: typeof runtime_state.quality;
+        };
+      };
+    }>;
+  }>;
+}): void {
+  for (const change of result.changes ?? []) {
+    for (const operation of change.operations ?? []) {
+      const next_quality = operation.sections?.quality?.data;
+      if (next_quality !== undefined) {
+        runtime_state.quality = next_quality;
+        for (const listener of project_store_listeners) {
+          listener();
+        }
+      }
+    }
   }
+}
+
+// 测试夹具只模拟后端原始 canonical mutation payload，规范化入口仍由页面 hook 真实调用。
+function create_quality_mutation_result(
+  args: {
+    quality?: typeof runtime_state.quality;
+    project_revision?: number;
+    quality_revision?: number;
+  } = {},
+) {
+  const project_revision = args.project_revision ?? 2;
+  return {
+    accepted: true,
+    changes: [
+      {
+        source: "quality_rule_save_entries",
+        projectPath: "E:/demo/sample.lg",
+        projectRevision: project_revision,
+        updatedSections: ["quality"],
+        sectionRevisions: {
+          quality: args.quality_revision ?? project_revision,
+        },
+        sections: {
+          quality: {
+            payloadMode: "canonical-delta",
+            data: args.quality ?? runtime_state.quality,
+          },
+        },
+      },
+    ],
+  };
+}
+
+// 质量区块快照由后端整体回灌，测试只替换 pre_replacement 切片以表达保存后的事实。
+function create_pre_replacement_quality(
+  entries: typeof runtime_state.quality.pre_replacement.entries,
+  revision: number,
+): typeof runtime_state.quality {
+  return {
+    ...runtime_state.quality,
+    pre_replacement: {
+      ...runtime_state.quality.pre_replacement,
+      entries,
+      revision,
+    },
+  };
 }
 
 let current_statistics_cache: QualityStatisticsCacheSnapshot;
@@ -186,41 +250,11 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
       project_snapshot: runtime_state.project,
       project_store,
       settings_snapshot: {},
-      set_settings_snapshot: vi.fn(),
-      commit_local_project_change: (input: {
-        operations: Array<{
-          sections?: {
-            quality?: {
-              data?: typeof runtime_state.quality;
-            };
-          };
-        }>;
-      }) => {
-        const previous_quality = {
-          ...runtime_state.quality,
-          pre_replacement: {
-            ...runtime_state.quality.pre_replacement,
-            entries: runtime_state.quality.pre_replacement.entries.map((entry) => ({ ...entry })),
-          },
-        };
-        const quality_patch = input.operations.find((operation) => {
-          return operation.sections?.quality?.data !== undefined;
-        });
-        const next_quality = quality_patch?.sections?.quality?.data;
-        if (next_quality !== undefined) {
-          runtime_state.quality = next_quality;
-          notify_project_store();
-        }
-
-        return {
-          rollback: () => {
-            runtime_state.quality = previous_quality;
-            notify_project_store();
-          },
-        };
-      },
-      refresh_project_runtime: vi.fn(),
-      align_project_runtime_ack: vi.fn(),
+      apply_settings_snapshot: vi.fn(),
+      apply_project_mutation_result: vi.fn(async (result) => {
+        apply_quality_mutation_result(result);
+      }),
+      refresh_project_runtime: vi.fn(async () => {}),
       task_snapshot: runtime_state.task,
     }),
   };
@@ -285,6 +319,7 @@ describe("useTextReplacementPageState", () => {
       mode: "custom",
       revision: 2,
     };
+    runtime_state.revisions.sections.quality = 2;
     current_statistics_cache = create_statistics_cache({});
   });
 
@@ -401,13 +436,30 @@ describe("useTextReplacementPageState", () => {
           },
         ],
       })
-      .mockResolvedValueOnce({
-        accepted: true,
-        projectRevision: 2,
-        sectionRevisions: {
-          quality: 3,
-        },
-      });
+      .mockResolvedValueOnce(
+        create_quality_mutation_result({
+          quality: create_pre_replacement_quality(
+            [
+              {
+                entry_id: "hero::0",
+                src: "hero",
+                dst: "勇者",
+                regex: false,
+                case_sensitive: false,
+              },
+              {
+                entry_id: "mage::1",
+                src: "mage",
+                dst: "法师",
+                regex: false,
+                case_sensitive: false,
+              },
+            ],
+            3,
+          ),
+          quality_revision: 3,
+        }),
+      );
 
     await act(async () => {
       await latest_state?.import_entries_from_path("E:/demo/replacement.json");
@@ -423,7 +475,7 @@ describe("useTextReplacementPageState", () => {
 
     expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
       rule_type: "pre_replacement",
-      expected_revision: 2,
+      expected_section_revisions: { quality: 2 },
       entries: [
         {
           entry_id: "hero::0",
@@ -456,13 +508,30 @@ describe("useTextReplacementPageState", () => {
           },
         ],
       })
-      .mockResolvedValueOnce({
-        accepted: true,
-        projectRevision: 2,
-        sectionRevisions: {
-          quality: 3,
-        },
-      });
+      .mockResolvedValueOnce(
+        create_quality_mutation_result({
+          quality: create_pre_replacement_quality(
+            [
+              {
+                entry_id: "hero::0",
+                src: "hero",
+                dst: "勇者",
+                regex: false,
+                case_sensitive: false,
+              },
+              {
+                entry_id: "mage::1",
+                src: "mage",
+                dst: "法师",
+                regex: false,
+                case_sensitive: false,
+              },
+            ],
+            3,
+          ),
+          quality_revision: 3,
+        }),
+      );
 
     await act(async () => {
       await latest_state?.import_entries_from_path("E:/demo/replacement.json");
@@ -536,13 +605,23 @@ describe("useTextReplacementPageState", () => {
           },
         ],
       })
-      .mockResolvedValueOnce({
-        accepted: true,
-        projectRevision: 2,
-        sectionRevisions: {
-          quality: 3,
-        },
-      });
+      .mockResolvedValueOnce(
+        create_quality_mutation_result({
+          quality: create_pre_replacement_quality(
+            [
+              {
+                entry_id: "hero::0",
+                src: "hero",
+                dst: "",
+                regex: true,
+                case_sensitive: true,
+              },
+            ],
+            3,
+          ),
+          quality_revision: 3,
+        }),
+      );
 
     await act(async () => {
       await latest_state?.apply_preset("builtin:demo.json");
@@ -553,7 +632,7 @@ describe("useTextReplacementPageState", () => {
 
     expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
       rule_type: "pre_replacement",
-      expected_revision: 2,
+      expected_section_revisions: { quality: 2 },
       entries: [
         {
           entry_id: "hero::0",
