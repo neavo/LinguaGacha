@@ -10,6 +10,15 @@ export class NativePathPolicy {
   public constructor(private readonly platform: NodeJS.Platform = process.platform) {}
 
   /**
+   * 按目标平台解析路径，避免测试模拟平台时混入宿主系统分隔符规则。
+   */
+  private resolve_path(file_path: string): string {
+    return this.platform === "win32"
+      ? path.win32.resolve(file_path)
+      : path.posix.resolve(file_path);
+  }
+
+  /**
    * 将文件系统 IO 路径转换为当前平台原生可接受形态。
    */
   public to_native_path(file_path: string): string {
@@ -23,8 +32,18 @@ export class NativePathPolicy {
    * 生成用于路径去重和连接表索引的稳定身份，避免 Windows 大小写差异造成重复打开。
    */
   public to_identity_path(file_path: string): string {
-    const resolved_path = path.resolve(file_path);
+    const resolved_path = this.resolve_path(file_path);
     return this.platform === "win32" ? resolved_path.toLowerCase() : resolved_path;
+  }
+
+  /**
+   * 判断路径是否已经是文件系统根，根目录存在性由平台保证，不能当成待创建目录。
+   */
+  public is_filesystem_root(directory: string): boolean {
+    const resolved_path = this.resolve_path(directory);
+    const parsed_path =
+      this.platform === "win32" ? path.win32.parse(resolved_path) : path.posix.parse(resolved_path);
+    return resolved_path === parsed_path.root;
   }
 
   /**

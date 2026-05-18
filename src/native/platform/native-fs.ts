@@ -76,10 +76,27 @@ export class NativeFs {
   }
 
   /**
-   * 递归创建目录；空目录字符串视为当前路径，无需额外动作。
+   * 判断目录创建是否可以跳过；空目录和文件系统根都不是可创建的业务目录。
+   */
+  private should_skip_make_dir(directory: string): boolean {
+    return directory === "" || this.path_policy.is_filesystem_root(directory);
+  }
+
+  /**
+   * 异步递归创建目录，和同步入口共享根目录 no-op 语义。
+   */
+  private async make_dir_async(directory: string): Promise<void> {
+    if (this.should_skip_make_dir(directory)) {
+      return;
+    }
+    await fs.promises.mkdir(this.to_native_path(directory), { recursive: true });
+  }
+
+  /**
+   * 递归创建目录；空目录和文件系统根目录视为已存在，无需额外动作。
    */
   public make_dir(directory: string): void {
-    if (directory === "") {
+    if (this.should_skip_make_dir(directory)) {
       return;
     }
     fs.mkdirSync(this.to_native_path(directory), { recursive: true });
@@ -110,7 +127,7 @@ export class NativeFs {
    * 异步写入二进制或文本文件，并在写入前创建父目录。
    */
   public async write_file(file_path: string, data: string | Uint8Array): Promise<void> {
-    await fs.promises.mkdir(this.to_native_path(path.dirname(file_path)), { recursive: true });
+    await this.make_dir_async(path.dirname(file_path));
     await fs.promises.writeFile(this.to_native_path(file_path), data);
   }
 

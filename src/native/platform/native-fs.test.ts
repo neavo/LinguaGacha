@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { NativeFs, normalize_native_file_bytes } from "./native-fs";
 import { NativePathPolicy } from "./native-path";
@@ -14,6 +14,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
   new NativeFs(new NativePathPolicy(process.platform)).remove(temp_dir, {
     recursive: true,
     force: true,
@@ -21,6 +22,16 @@ afterEach(() => {
 });
 
 describe("原生文件系统门面", () => {
+  it("Windows 根目录创建视为已存在", () => {
+    const native_fs = new NativeFs(new NativePathPolicy("win32"));
+    const mkdir_sync = vi.spyOn(fs, "mkdirSync").mockImplementation(() => {
+      throw new Error("不应创建文件系统根目录");
+    });
+
+    expect(() => native_fs.make_dir("E:\\")).not.toThrow();
+    expect(mkdir_sync).not.toHaveBeenCalled();
+  });
+
   it("写文件前会自动创建父目录", async () => {
     const native_fs = new NativeFs(new NativePathPolicy(process.platform));
     const target_path = path.join(temp_dir, "nested", "deep", "payload.txt");
@@ -28,6 +39,28 @@ describe("原生文件系统门面", () => {
     await native_fs.write_file(target_path, "译文");
 
     expect(fs.readFileSync(target_path, "utf-8")).toBe("译文");
+  });
+
+  it("异步写入根目录文件时不创建盘符根目录", async () => {
+    const native_fs = new NativeFs(new NativePathPolicy("win32"));
+    const mkdir = vi
+      .spyOn(fs.promises, "mkdir")
+      .mockRejectedValue(new Error("不应创建文件系统根目录"));
+    const write_file = vi.spyOn(fs.promises, "writeFile").mockResolvedValue(undefined);
+
+    await native_fs.write_file("E:\\root-project.lg", "内容");
+
+    expect(mkdir).not.toHaveBeenCalled();
+    expect(write_file).toHaveBeenCalledWith("\\\\?\\E:\\root-project.lg", "内容");
+  });
+
+  it("显式创建嵌套目录时仍会递归创建", () => {
+    const native_fs = new NativeFs(new NativePathPolicy(process.platform));
+    const target_dir = path.join(temp_dir, "explicit", "nested");
+
+    native_fs.make_dir(target_dir);
+
+    expect(fs.statSync(target_dir).isDirectory()).toBe(true);
   });
 
   it("同步写入和追加都复用同一父目录策略", () => {
