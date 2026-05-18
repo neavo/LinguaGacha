@@ -69,12 +69,14 @@ describe("DesktopRuntimeRefreshScheduler", () => {
     scheduler.enqueue_project_items_read({
       source: "translation_commit",
       projectPath: "E:/demo/demo.lg",
+      projectEpoch: 1,
       projectRevision: 2,
       itemIds: [2, 3],
     });
     scheduler.enqueue_project_items_read({
       source: "translation_commit",
       projectPath: "E:/demo/demo.lg",
+      projectEpoch: 1,
       projectRevision: 3,
       itemIds: [3, 4],
     });
@@ -91,6 +93,58 @@ describe("DesktopRuntimeRefreshScheduler", () => {
     expect(applied_batches[0]?.[0]?.operations[0]?.items?.changedIds).toEqual([2, 3, 4]);
   });
 
+  it("同一 ids-only 窗口遇到不同项目 epoch 会分段补读", async () => {
+    vi.useFakeTimers();
+    const read_requests: Array<{ epoch: number; itemIds: number[] }> = [];
+    const applied_batches: ProjectStoreChangeEvent[][] = [];
+    const scheduler = new DesktopRuntimeRefreshScheduler({
+      applyTaskSnapshot: () => {},
+      applyProjectChangeBatch: (events) => {
+        applied_batches.push([...events]);
+      },
+      readProjectItemsByIds: async (request) => {
+        read_requests.push({
+          epoch: request.projectEpoch,
+          itemIds: [...request.itemIds],
+        });
+        return create_project_change(request.projectRevision, request.itemIds, request.source);
+      },
+    });
+
+    scheduler.enqueue_project_items_read({
+      source: "translation_commit",
+      projectPath: "E:/demo/demo.lg",
+      projectEpoch: 1,
+      projectRevision: 2,
+      itemIds: [2],
+    });
+    scheduler.enqueue_project_items_read({
+      source: "translation_commit",
+      projectPath: "E:/demo/demo.lg",
+      projectEpoch: 2,
+      projectRevision: 3,
+      itemIds: [3],
+    });
+    scheduler.enqueue_project_items_read({
+      source: "translation_commit",
+      projectPath: "E:/demo/demo.lg",
+      projectEpoch: 1,
+      projectRevision: 4,
+      itemIds: [4],
+    });
+
+    await vi.advanceTimersByTimeAsync(DESKTOP_RUNTIME_REFRESH_INTERVAL_MS);
+    await Promise.resolve();
+
+    expect(read_requests).toEqual([
+      { epoch: 1, itemIds: [2] },
+      { epoch: 2, itemIds: [3] },
+      { epoch: 1, itemIds: [4] },
+    ]);
+    expect(applied_batches).toHaveLength(1);
+    expect(applied_batches[0]?.map((event) => event.projectRevision)).toEqual([2, 3, 4]);
+  });
+
   it("ids-only 补读响应过期时不写入 ProjectStore", async () => {
     vi.useFakeTimers();
     const apply_project_change_batch = vi.fn();
@@ -104,6 +158,7 @@ describe("DesktopRuntimeRefreshScheduler", () => {
     scheduler.enqueue_project_items_read({
       source: "translation_commit",
       projectPath: "E:/demo/demo.lg",
+      projectEpoch: 1,
       projectRevision: 4,
       itemIds: [4],
     });
@@ -128,6 +183,7 @@ describe("DesktopRuntimeRefreshScheduler", () => {
     scheduler.enqueue_project_items_read({
       source: "translation_commit",
       projectPath: "E:/demo/demo.lg",
+      projectEpoch: 1,
       projectRevision: 3,
       itemIds: [3],
     });

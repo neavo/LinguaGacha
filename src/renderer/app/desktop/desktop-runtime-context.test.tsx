@@ -70,6 +70,25 @@ type RuntimeHandle = {
 
 type RuntimeHandleRef = RuntimeHandle | null;
 
+function create_deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+} {
+  let resolve_value: ((value: T) => void) | null = null;
+  const promise = new Promise<T>((resolve) => {
+    resolve_value = resolve;
+  });
+  return {
+    promise,
+    resolve: (value: T) => {
+      if (resolve_value === null) {
+        throw new Error("deferred 尚未初始化。");
+      }
+      resolve_value(value);
+    },
+  };
+}
+
 function RuntimeProbe(props: {
   onSnapshot: (snapshot: RuntimeSnapshot) => void;
 }): JSX.Element | null {
@@ -173,6 +192,11 @@ function create_event_source_stub(): {
       } as MessageEvent<string>);
     },
   };
+}
+
+function has_event_stream_listener(event_source: EventSource, event_name: string): boolean {
+  const add_event_listener = event_source.addEventListener as unknown as ReturnType<typeof vi.fn>;
+  return add_event_listener.mock.calls.some((call) => call[0] === event_name);
 }
 
 function create_project_item(overrides: Record<string, unknown>): Record<string, unknown> {
@@ -1915,6 +1939,115 @@ describe("DesktopRuntimeProvider", () => {
     expect(snapshots.at(-1)).toMatchObject({
       projectPath: "E:/demo/next.lg",
       itemKeys: ["9"],
+    });
+  });
+
+  it("项目 warmup 期间的 mutation result 与同源 SSE 会在快照后只重放一次", async () => {
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
+    const initial_project_read = create_deferred<Record<string, unknown>>();
+    let runtime_handle: RuntimeHandleRef = null;
+
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/settings/app") {
+        return { settings: { app_language: "ZH" } };
+      }
+      if (path === "/api/project/snapshot") {
+        return { project: { path: "E:/demo/demo.lg", loaded: true } };
+      }
+      if (path === "/api/tasks/snapshot") {
+        return { task: { task_type: "translation", status: "idle", busy: false } };
+      }
+      if (path === "/api/project/manifest") {
+        return create_project_read_response(path, {
+          projectRevision: 1,
+          sectionRevisions: { project: 1, files: 1, items: 1, analysis: 1 },
+        });
+      }
+      if (path === "/api/project/read-sections") {
+        return await initial_project_read.promise;
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        <DesktopRuntimeProvider>
+          <RuntimeProbe
+            onSnapshot={(snapshot) => {
+              snapshots.push(snapshot);
+            }}
+          />
+          <RuntimeHandleProbe
+            onRuntime={(runtime) => {
+              runtime_handle = runtime;
+            }}
+          />
+        </DesktopRuntimeProvider>,
+      );
+    });
+
+    await wait_for_condition(() => runtime_handle !== null);
+    await wait_for_condition(() =>
+      has_event_stream_listener(event_stream.event_source, "project.data_changed"),
+    );
+    await wait_for_condition(() =>
+      api_fetch_mock.mock.calls.some((call) => call[0] === "/api/project/read-sections"),
+    );
+
+    const warmup_change = {
+      eventId: "warmup-mutation-1",
+      source: "translation_commit",
+      projectPath: "E:/demo/demo.lg",
+      projectRevision: 2,
+      updatedSections: ["items"],
+      sectionRevisions: { items: 2 },
+      items: {
+        payloadMode: "canonical-delta",
+        changedIds: [2],
+        upsert: {
+          "2": create_project_item({
+            item_id: 2,
+            file_path: "chapter02.txt",
+            src: "queued",
+            status: "PROCESSED",
+          }),
+        },
+      },
+    };
+    const warmup_mutation_result = normalize_project_mutation_result({
+      accepted: true,
+      changes: [warmup_change],
+    });
+
+    await act(async () => {
+      await runtime_handle?.apply_project_mutation_result(warmup_mutation_result);
+      event_stream.emit("project.data_changed", warmup_change);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      initial_project_read.resolve(
+        create_project_read_response("/api/project/read-sections", {
+          projectRevision: 1,
+          sectionRevisions: { project: 1, files: 1, items: 1, analysis: 1 },
+        }) ?? {},
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await wait_for_condition(() => snapshots.at(-1)?.itemKeys.includes("2") === true);
+    expect(snapshots.at(-1)).toMatchObject({
+      itemKeys: ["1", "2"],
+      proofreadingSeq: 2,
+      proofreadingReason: "translation_commit",
     });
   });
 

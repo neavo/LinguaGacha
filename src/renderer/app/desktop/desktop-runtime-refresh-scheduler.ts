@@ -7,6 +7,7 @@ export type DesktopRuntimeProjectItemsReadRequest = {
   eventId?: string;
   source: string;
   projectPath: string; // 补读发起时的项目路径，用于丢弃项目切换后的迟到响应
+  projectEpoch: number; // 补读发起时的运行态 epoch，用于丢弃同路径重新 warmup 的迟到响应
   projectRevision: number;
   itemIds: number[];
 };
@@ -187,7 +188,7 @@ export class DesktopRuntimeRefreshScheduler {
       if (pending_item_reads.length === 0) {
         return;
       }
-      events.push(await this.read_project_items_by_ids_batch(pending_item_reads));
+      events.push(...(await this.read_project_items_by_ids_batches(pending_item_reads)));
       pending_item_reads = [];
     };
 
@@ -205,7 +206,40 @@ export class DesktopRuntimeRefreshScheduler {
   }
 
   /**
-   * 同一连续 ids-only 组内合并 item id，避免高频任务提交放大 HTTP 请求
+   * 连续 ids-only 只合并相同项目身份，避免旧 epoch 污染新项目镜像或打乱到达顺序
+   */
+  private async read_project_items_by_ids_batches(
+    requests: readonly DesktopRuntimeProjectItemsReadRequest[],
+  ): Promise<Array<ProjectStoreChangeEvent | null>> {
+    const request_batches: DesktopRuntimeProjectItemsReadRequest[][] = [];
+    let current_batch: DesktopRuntimeProjectItemsReadRequest[] = [];
+    for (const request of requests) {
+      const identity = current_batch[0];
+      if (
+        identity === undefined ||
+        (identity.projectPath === request.projectPath &&
+          identity.projectEpoch === request.projectEpoch)
+      ) {
+        current_batch.push(request);
+        continue;
+      }
+
+      request_batches.push(current_batch);
+      current_batch = [request];
+    }
+    if (current_batch.length > 0) {
+      request_batches.push(current_batch);
+    }
+
+    const events: Array<ProjectStoreChangeEvent | null> = [];
+    for (const request_batch of request_batches) {
+      events.push(await this.read_project_items_by_ids_batch(request_batch));
+    }
+    return events;
+  }
+
+  /**
+   * 同一项目身份内合并 item id，避免高频任务提交放大 HTTP 请求
    */
   private async read_project_items_by_ids_batch(
     requests: readonly DesktopRuntimeProjectItemsReadRequest[],
@@ -216,7 +250,8 @@ export class DesktopRuntimeRefreshScheduler {
 
     const sources = [...new Set(requests.map((request) => request.source))];
     const project_paths = [...new Set(requests.map((request) => request.projectPath))];
-    if (project_paths.length !== 1) {
+    const project_epochs = [...new Set(requests.map((request) => request.projectEpoch))];
+    if (project_paths.length !== 1 || project_epochs.length !== 1) {
       return null;
     }
     const event_ids = [
@@ -229,6 +264,7 @@ export class DesktopRuntimeRefreshScheduler {
       ...(event_ids.length === 1 ? { eventId: event_ids[0] } : {}),
       source: sources.length === 1 ? (sources[0] ?? "project_change") : "project_change_batch",
       projectPath: project_paths[0] ?? "",
+      projectEpoch: project_epochs[0] ?? 0,
       projectRevision: Math.max(...requests.map((request) => request.projectRevision), 0),
       itemIds: item_ids,
     });
