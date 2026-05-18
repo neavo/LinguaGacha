@@ -154,14 +154,13 @@ export class Prompt {
   }
 
   /**
-   * ProjectStore 消费提示词 slice 时复用同一归一化口径
+   * ProjectStore 消费提示词 slice 时只接受公开顶层字段口径
    */
   public normalize_slice(value: unknown): { text: string; enabled: boolean; revision: number } {
     const record = read_record(value);
-    const meta = read_record(record["meta"]);
     return {
       text: String(record["text"] ?? ""),
-      enabled: Boolean(record["enabled"] ?? meta["enabled"]),
+      enabled: Boolean(record["enabled"]),
       revision: Number(record["revision"] ?? 0),
     };
   }

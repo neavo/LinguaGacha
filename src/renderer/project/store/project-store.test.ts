@@ -409,37 +409,29 @@ describe("createProjectStore", () => {
     });
   });
 
-  it("从 prompts 快照的 meta.enabled 归一化提示词启用态", () => {
+  it("从 prompts 快照的顶层 enabled 归一化提示词启用态", () => {
     const store = createProjectStore();
     const initial_prompts = {
       translation: {
         revision: 10,
-        meta: {
-          enabled: false,
-        },
+        enabled: false,
         text: "旧提示词",
       },
       analysis: {
         revision: 3,
-        meta: {
-          enabled: false,
-        },
+        enabled: false,
         text: "分析提示词",
       },
     } as unknown as ReturnType<typeof store.getState>["prompts"];
     const patched_prompts = {
       translation: {
         revision: 11,
-        meta: {
-          enabled: true,
-        },
+        enabled: true,
         text: "新提示词",
       },
       analysis: {
         revision: 3,
-        meta: {
-          enabled: false,
-        },
+        enabled: false,
         text: "分析提示词",
       },
     } as unknown as ReturnType<typeof store.getState>["prompts"];

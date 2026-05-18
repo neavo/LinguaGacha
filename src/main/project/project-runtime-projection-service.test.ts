@@ -37,6 +37,44 @@ describe("ProjectRuntimeProjectionService", () => {
     expect(calls).not.toContain("getAllItems");
   });
 
+  it("prompts section 使用顶层 enabled 表达自定义提示词启用态", () => {
+    const service = new ProjectRuntimeProjectionService(
+      create_database_stub((operation) => {
+        if (operation.name === "getAllMeta") {
+          return {
+            translation_prompt_enable: true,
+            analysis_prompt_enable: false,
+            "quality_prompt_revision.translation": 4,
+          };
+        }
+        if (operation.name === "getRuleText") {
+          return operation.args.ruleType === "translation_prompt" ? "翻译提示词" : "分析提示词";
+        }
+        return null;
+      }),
+    );
+
+    const payload = service.build_section_payloads({
+      projectState: { loaded: true, projectPath: "E:/demo/demo.lg" },
+      sections: ["prompts"],
+    });
+    const sections = payload["sections"] as Record<string, unknown>;
+    const prompts = sections["prompts"] as Record<string, Record<string, unknown>>;
+
+    expect(prompts["translation"]).toEqual({
+      revision: 4,
+      enabled: true,
+      text: "翻译提示词",
+    });
+    expect(prompts["analysis"]).toEqual({
+      revision: 4,
+      enabled: false,
+      text: "分析提示词",
+    });
+    expect(prompts["translation"]).not.toHaveProperty("meta");
+    expect(prompts["translation"]).not.toHaveProperty("task_type");
+  });
+
   it("manifest 计数使用聚合 operation，不为计数扫描完整 item payload", () => {
     const execute = vi.fn((operation: DatabaseOperation) => {
       if (operation.name === "getAllMeta") {
