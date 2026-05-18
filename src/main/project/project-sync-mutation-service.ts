@@ -15,6 +15,11 @@ import {
   normalize_project_item_public_record,
   type ProjectItemPublicRecord,
 } from "../../base/item";
+import {
+  normalize_project_settings_snapshot,
+  normalize_setting_snapshot,
+  type ProjectSettingsSnapshot,
+} from "../../base/setting";
 import type { ProjectChangePublisher } from "./project-change-publisher";
 import type { ProjectDataSection, ProjectMutationResult } from "../../shared/project/event";
 import {
@@ -35,12 +40,7 @@ import * as AppErrors from "../../shared/error";
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
-type ProjectMutationSettings = {
-  source_language: string; // 预过滤语言判断只消费当前项目设置镜像
-  target_language: string; // 目标语言随 settings mirror 写入 meta，不参与预过滤计算
-  mtool_optimizer_enable: boolean; // MTool 优化开关决定 KVJSON 内部过滤策略
-  skip_duplicate_source_text_enable: boolean; // 重复原文过滤开关决定同文件重复项状态
-};
+type ProjectMutationSettings = ProjectSettingsSnapshot; // 同步 mutation 只消费设置领域定义的项目镜像窄字段
 
 type AddWorkbenchFileCommand = {
   source_path: string; // source_path 是用户选中的真实文件路径，只允许慢准备阶段读取
@@ -697,16 +697,14 @@ export class ProjectSyncMutationService {
    * 文件解析必须跟随当前应用格式配置；没有配置服务的单测使用稳定默认值
    */
   private create_format_service(): FileFormatService {
-    const config = this.app_setting_service?.read_setting() ?? {};
+    const config = normalize_setting_snapshot(this.app_setting_service?.read_setting() ?? {});
     return new FileFormatService(
       {
-        source_language: String(config["source_language"] ?? "JA"),
-        target_language: String(config["target_language"] ?? "ZH"),
-        app_language: String(config["app_language"] ?? "ZH"),
-        deduplication_in_bilingual: Boolean(config["deduplication_in_bilingual"] ?? true),
-        write_translated_name_fields_to_file: Boolean(
-          config["write_translated_name_fields_to_file"] ?? true,
-        ),
+        source_language: config.source_language,
+        target_language: config.target_language,
+        app_language: config.app_language,
+        deduplication_in_bilingual: config.deduplication_in_bilingual,
+        write_translated_name_fields_to_file: config.write_translated_name_fields_to_file,
       },
       this.native_fs,
     );
@@ -722,39 +720,13 @@ export class ProjectSyncMutationService {
     const request_settings = this.normalize_object(value);
     const meta = this.get_all_meta(project_path);
     const prefilter_config = this.normalize_object(meta["prefilter_config"]);
-    return {
-      source_language:
-        String(request_settings["source_language"] ?? "") ||
-        String(meta["source_language"] ?? "") ||
-        String(prefilter_config["source_language"] ?? "") ||
-        "JA",
-      target_language:
-        String(request_settings["target_language"] ?? "") ||
-        String(meta["target_language"] ?? "") ||
-        "ZH",
-      mtool_optimizer_enable:
-        "mtool_optimizer_enable" in request_settings
-          ? Boolean(request_settings["mtool_optimizer_enable"])
-          : this.read_boolean_setting(
-              meta["mtool_optimizer_enable"] ?? prefilter_config["mtool_optimizer_enable"],
-              false,
-            ),
-      skip_duplicate_source_text_enable:
-        "skip_duplicate_source_text_enable" in request_settings
-          ? Boolean(request_settings["skip_duplicate_source_text_enable"])
-          : this.read_boolean_setting(
-              meta["skip_duplicate_source_text_enable"] ??
-                prefilter_config["skip_duplicate_source_text_enable"],
-              true,
-            ),
-    };
-  }
-
-  /**
-   * 布尔设置缺失时使用领域默认值，避免空 meta 被 false 覆盖
-   */
-  private read_boolean_setting(value: ApiJsonValue | undefined, fallback: boolean): boolean {
-    return value === undefined || value === null ? fallback : Boolean(value);
+    return normalize_project_settings_snapshot(
+      request_settings,
+      normalize_project_settings_snapshot(
+        meta,
+        normalize_project_settings_snapshot(prefilter_config),
+      ),
+    );
   }
 
   /**
@@ -1302,15 +1274,7 @@ export class ProjectSyncMutationService {
    * 只写项目设置镜像时使用的受限 meta 白名单
    */
   private build_project_settings_only_meta(value: ApiJsonValue | undefined): MutableJsonRecord {
-    const settings = this.normalize_object(value);
-    return {
-      source_language: String(settings["source_language"] ?? ""),
-      target_language: String(settings["target_language"] ?? ""),
-      mtool_optimizer_enable: Boolean(settings["mtool_optimizer_enable"] ?? false),
-      skip_duplicate_source_text_enable: Boolean(
-        settings["skip_duplicate_source_text_enable"] ?? true,
-      ),
-    };
+    return normalize_project_settings_snapshot(value) as unknown as MutableJsonRecord;
   }
 
   /**

@@ -70,6 +70,10 @@ describe("ProjectLifecycleService", () => {
         args: { projectPath: project_path, key: "text_preserve_mode", value: "custom" },
       },
       {
+        name: "setMeta",
+        args: { projectPath: project_path, key: "glossary_enable", value: true },
+      },
+      {
         name: "setRuleText",
         args: {
           projectPath: project_path,

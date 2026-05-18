@@ -7,6 +7,7 @@ import { AppSettingService } from "../app/app-setting-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { FileFormatService } from "./file-format-service";
 import { Item, type ItemStatus } from "../../base/item";
+import { normalize_setting_snapshot } from "../../base/setting";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../shared/i18n";
 import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/platform/native-fs";
@@ -140,20 +141,19 @@ export class FileExportService {
     custom_suffix: string,
     config: SettingRecord,
   ): Promise<string> {
+    const setting_snapshot = normalize_setting_snapshot(config);
     const paths = this.build_export_paths(
       project_path,
       custom_suffix,
-      String(config["app_language"] ?? "ZH"),
+      setting_snapshot.app_language,
     );
     const format_service = new FileFormatService(
       {
-        source_language: String(config["source_language"] ?? "JA"),
-        target_language: String(config["target_language"] ?? "ZH"),
-        app_language: String(config["app_language"] ?? "ZH"),
-        deduplication_in_bilingual: Boolean(config["deduplication_in_bilingual"] ?? true),
-        write_translated_name_fields_to_file: Boolean(
-          config["write_translated_name_fields_to_file"] ?? true,
-        ),
+        source_language: setting_snapshot.source_language,
+        target_language: setting_snapshot.target_language,
+        app_language: setting_snapshot.app_language,
+        deduplication_in_bilingual: setting_snapshot.deduplication_in_bilingual,
+        write_translated_name_fields_to_file: setting_snapshot.write_translated_name_fields_to_file,
       },
       this.native_fs,
     );
@@ -172,8 +172,9 @@ export class FileExportService {
    * 导出成功后的宿主附加动作不能推翻译文已经写出的事实
    */
   private async complete_export_success(config: SettingRecord, output_path: string): Promise<void> {
+    const setting_snapshot = normalize_setting_snapshot(config);
     this.log_export_done(config, output_path);
-    if (config["output_folder_open_on_finish"] !== true) {
+    if (!setting_snapshot.output_folder_open_on_finish) {
       return;
     }
     try {
@@ -296,7 +297,11 @@ export class FileExportService {
     key: LocaleKey,
     params: Record<string, string> = {},
   ): string {
-    return format_i18n_message(resolve_i18n_locale(config["app_language"]), key, params);
+    return format_i18n_message(
+      resolve_i18n_locale(normalize_setting_snapshot(config).app_language),
+      key,
+      params,
+    );
   }
 
   /**

@@ -11,6 +11,7 @@ import { LLMClient } from "../llm/llm-client";
 import type { LLMMessage, LLMRequestResult } from "../llm/llm-types";
 import { LLMClientPolicy } from "../llm/llm-client-policy";
 import { Model, type ModelApiFormat } from "../../base/model";
+import { normalize_setting_snapshot } from "../../base/setting";
 import {
   read_model_records,
   resolve_active_model_id,
@@ -465,7 +466,7 @@ export class ModelService {
     }
     if (result.timeout) {
       return this.t(config["app_language"], "app.log.api_test_timeout", {
-        SECONDS: String(config["request_timeout"] ?? 120),
+        SECONDS: String(normalize_setting_snapshot(config).request_timeout),
       });
     }
     if (result.degraded) {

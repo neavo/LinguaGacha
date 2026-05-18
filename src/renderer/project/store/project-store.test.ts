@@ -466,6 +466,38 @@ describe("createProjectStore", () => {
     expect(store.getState().revisions.sections.prompts).toBe(5);
   });
 
+  it("按质量规则槽位归一缺失 meta，不让术语表默认值泄漏到替换规则", () => {
+    const store = createProjectStore();
+
+    apply_store_sections(store, {
+      projectRevision: 7,
+      sectionRevisions: {
+        quality: 4,
+      },
+      sections: {
+        quality: {
+          glossary: {
+            entries: [{ src: "HP", dst: "生命值" }],
+            revision: 4,
+          },
+          pre_replacement: {
+            entries: [{ src: "A", dst: "B" }],
+            revision: 4,
+          },
+          text_preserve: {
+            entries: [],
+            revision: 4,
+          },
+        } as unknown as ProjectStoreSectionStateMap["quality"],
+      },
+    });
+
+    expect(store.getState().quality.glossary.enabled).toBe(true);
+    expect(store.getState().quality.pre_replacement.enabled).toBe(false);
+    expect(store.getState().quality.post_replacement.enabled).toBe(false);
+    expect(store.getState().quality.text_preserve.mode).toBe("smart");
+  });
+
   it("后端 exact 补读按返回快照覆盖 section 数据和 revision", () => {
     const store = createProjectStore();
     const initial_quality = {

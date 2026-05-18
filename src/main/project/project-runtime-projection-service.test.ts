@@ -48,7 +48,7 @@ describe("ProjectRuntimeProjectionService", () => {
           };
         }
         if (operation.name === "getRuleText") {
-          return operation.args.ruleType === "translation_prompt" ? "翻译提示词" : "分析提示词";
+          return operation.args?.ruleType === "translation_prompt" ? "翻译提示词" : "分析提示词";
         }
         return null;
       }),
@@ -73,6 +73,38 @@ describe("ProjectRuntimeProjectionService", () => {
     });
     expect(prompts["translation"]).not.toHaveProperty("meta");
     expect(prompts["translation"]).not.toHaveProperty("task_type");
+  });
+
+  it("质量切片缺少 meta 时使用质量规则领域默认值", () => {
+    const service = new ProjectRuntimeProjectionService(
+      create_database_stub((operation) => {
+        if (operation.name === "getAllMeta") {
+          return {};
+        }
+        if (operation.name === "getRules") {
+          return operation.args?.ruleType === "glossary" ? [{ src: "HP", dst: "生命值" }] : [];
+        }
+        return null;
+      }),
+    );
+
+    const payload = service.build_section_payloads({
+      projectState: { loaded: true, projectPath: "E:/demo/demo.lg" },
+      sections: ["quality"],
+    });
+    const sections = payload["sections"] as Record<string, unknown>;
+    const quality = sections["quality"] as Record<string, Record<string, unknown>>;
+
+    expect(quality["glossary"]).toMatchObject({
+      enabled: true,
+      entries: [{ src: "HP", dst: "生命值" }],
+    });
+    expect(quality["text_preserve"]).toMatchObject({
+      enabled: false,
+      mode: "smart",
+    });
+    expect(quality["pre_replacement"]?.enabled).toBe(false);
+    expect(quality["post_replacement"]?.enabled).toBe(false);
   });
 
   it("manifest 计数使用聚合 operation，不为计数扫描完整 item payload", () => {

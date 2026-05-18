@@ -5,6 +5,7 @@ import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../../shared
 import type { LLMMessage } from "../../../llm/llm-types";
 import { default_native_fs } from "../../../../native/platform/native-fs";
 import { Prompt } from "../../../../base/prompt";
+import { normalize_setting_snapshot } from "../../../../base/setting";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
 import {
   get_language_display_locale,
@@ -48,8 +49,13 @@ export class PromptBuilder {
     config: PromptBuilderConfig,
     quality_snapshot: TextQualitySnapshot,
   ) {
+    const setting_snapshot = normalize_setting_snapshot(config);
     this.app_root = app_root;
-    this.config = config;
+    this.config = {
+      app_language: setting_snapshot.app_language,
+      source_language: setting_snapshot.source_language,
+      target_language: setting_snapshot.target_language,
+    };
     this.quality_snapshot = quality_snapshot;
   }
 
@@ -297,7 +303,7 @@ export class PromptBuilder {
    * UI 语言只支持中英提示词模板，未知值回退中文
    */
   private get_prompt_ui_language(): "zh" | "en" {
-    return String(this.config.app_language ?? "ZH").toUpperCase() === "EN" ? "en" : "zh";
+    return this.config.app_language === "EN" ? "en" : "zh";
   }
 
   /**
@@ -321,8 +327,8 @@ export class PromptBuilder {
   } {
     const prompt_language = this.get_prompt_ui_language();
     const display_locale = get_language_display_locale(this.config.app_language);
-    const source_code = normalize_language_code(String(this.config.source_language ?? "ALL"));
-    const target_code = normalize_language_code(String(this.config.target_language ?? "ZH"));
+    const source_code = normalize_language_code(String(this.config.source_language));
+    const target_code = normalize_language_code(String(this.config.target_language));
     return {
       prompt_language,
       source_language: get_prompt_source_language_name(source_code, display_locale),

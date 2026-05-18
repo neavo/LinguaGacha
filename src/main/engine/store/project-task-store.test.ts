@@ -283,6 +283,27 @@ describe("ProjectTaskStore", () => {
     });
   });
 
+  it("构建任务质量快照时术语表缺启用 meta 仍按领域默认值启用", () => {
+    const { database, project_path, store } = create_store();
+    database.execute({
+      name: "setRules",
+      args: {
+        projectPath: project_path,
+        ruleType: "glossary",
+        rules: [{ src: "HP", dst: "生命值" }],
+      },
+    });
+
+    const snapshot = store.build_quality_snapshot() as MutableJsonRecord;
+    const quality = snapshot["quality"] as MutableJsonRecord;
+
+    expect(quality["glossary"]).toEqual({
+      entries: [{ src: "HP", dst: "生命值" }],
+      enabled: true,
+      revision: 0,
+    });
+  });
+
   function create_store(): {
     database: ProjectDatabase;
     project_path: string;

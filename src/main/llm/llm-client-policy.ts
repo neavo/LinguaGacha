@@ -1,4 +1,5 @@
 import { Model, type ModelApiFormat } from "../../base/model";
+import { normalize_setting_snapshot } from "../../base/setting";
 import { JsonTool } from "../../shared/utils/json-tool";
 import type { ApiJsonValue } from "../api/api-types";
 import { build_anthropic_payload } from "./policy/anthropic-policy";
@@ -16,7 +17,6 @@ import type {
 import type { LLMMessage, LLMRequestBody } from "./llm-types";
 
 const DEFAULT_OUTPUT_TOKEN_LIMIT = 4096;
-const DEFAULT_REQUEST_TIMEOUT_MS = 120_000;
 
 /**
  * LLMClientPolicy 是 LLM client 的请求策略编排器，负责读取快照、选择 provider policy 并产出最终请求事实。
@@ -175,12 +175,8 @@ export class LLMClientPolicy {
    * 请求超时来自任务启动快照，运行中设置变更不影响已启动请求。
    */
   private read_request_timeout_ms(config_snapshot: ApiJsonValue): number {
-    const record = this.read_record(config_snapshot);
-    const seconds = Number(record["request_timeout"] ?? DEFAULT_REQUEST_TIMEOUT_MS / 1000);
-    return Math.max(
-      1_000,
-      Math.trunc(Number.isFinite(seconds) ? seconds * 1000 : DEFAULT_REQUEST_TIMEOUT_MS),
-    );
+    const seconds = normalize_setting_snapshot(config_snapshot).request_timeout;
+    return Math.max(1_000, Math.trunc(seconds * 1000));
   }
 
   /**

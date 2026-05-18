@@ -258,10 +258,7 @@ export class ProjectRuntimeProjectionService {
    */
   public build_empty_prompts_block(): ProjectRuntimeProjectionMutableRecord {
     return Object.fromEntries(
-      Prompt.all().map((prompt) => [
-        prompt.kind,
-        { revision: 0, enabled: false, text: "" },
-      ]),
+      Prompt.all().map((prompt) => [prompt.kind, { revision: 0, enabled: false, text: "" }]),
     ) as ProjectRuntimeProjectionMutableRecord;
   }
 
@@ -493,12 +490,14 @@ export class ProjectRuntimeProjectionService {
     const rule = QualityRule.from_json(rule_type);
     return {
       entries: this.get_rule_entries(project_path, rule.database_type) as unknown as ApiJsonValue,
-      enabled: Boolean(
-        rule_type === "text_preserve" || rule.enabled_meta_key === null
-          ? false
-          : meta[rule.enabled_meta_key],
-      ),
-      mode: rule_type === "text_preserve" ? String(meta["text_preserve_mode"] ?? "off") : "off",
+      enabled:
+        rule.enabled_meta_key === null
+          ? rule.default_enabled
+          : rule.normalize_enabled(meta[rule.enabled_meta_key]),
+      mode:
+        rule.mode_meta_key === null
+          ? rule.default_mode
+          : rule.normalize_mode(meta[rule.mode_meta_key]),
       revision: get_runtime_section_revision(meta, "quality"),
     };
   }

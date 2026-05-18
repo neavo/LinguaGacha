@@ -68,6 +68,24 @@ describe("quality rule snapshot", () => {
     expect(entries).toEqual([{ src: "HP", dst: "生命值" }]);
   });
 
+  it("缺少质量规则 meta 时使用统一领域默认值", () => {
+    const snapshot = QualityRuleSnapshotTool.from_json({
+      quality: {
+        glossary: {
+          entries: [{ src: "HP", dst: "生命值" }],
+        },
+        text_preserve: {
+          entries: [{ src: "<i>", dst: "<i>" }],
+        },
+      },
+    });
+
+    expect(snapshot.glossary_enable).toBe(true);
+    expect(snapshot.text_preserve_mode).toBe("smart");
+    expect(snapshot.pre_replacement_enable).toBe(false);
+    expect(snapshot.post_replacement_enable).toBe(false);
+  });
+
   it("to_json 输出嵌套质量规则和提示词快照", () => {
     const snapshot = QualityRuleSnapshotTool.from_json({
       quality: {

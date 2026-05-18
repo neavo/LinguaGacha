@@ -17,6 +17,7 @@ import { ProjectSessionState } from "../project/project-session-state";
 import type { ProjectMutationResult } from "../../shared/project/event";
 import { QualityRule, type QualityRuleKind } from "../../base/quality";
 import { Prompt, type PromptKind } from "../../base/prompt";
+import { normalize_setting_snapshot } from "../../base/setting";
 import * as AppErrors from "../../shared/error";
 import {
   NativeFs,
@@ -254,8 +255,8 @@ export class QualityService {
    */
   public get_prompt_template(request: JsonRecord): JsonRecord {
     const task_type = Prompt.from_json(request["task_type"]).kind;
-    const config = this.app_setting_service.read_setting();
-    const language = String(config["app_language"] ?? "ZH").toLowerCase();
+    const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
+    const language = config.app_language.toLowerCase();
     const template_dir = this.paths.get_prompt_template_dir(
       task_type,
       language === "en" ? "en" : "zh",

@@ -34,10 +34,10 @@ import {
   parse_event_payload,
 } from "@/app/desktop/desktop-runtime-event-payload";
 import {
-  normalize_app_language,
-  normalize_project_save_mode,
+  normalize_setting_snapshot,
   type AppLanguage,
-  type ProjectSaveMode,
+  type RecentProjectSetting,
+  type SettingSnapshot,
 } from "@base/setting";
 import {
   PROJECT_CHANGE_EVENT_TOPIC,
@@ -48,37 +48,9 @@ import {
 } from "@shared/project/event";
 import { InternalInvariantError } from "@shared/error";
 
-type RecentProjectEntry = {
-  path: string;
-  name: string;
-};
+type RecentProjectEntry = RecentProjectSetting;
 
-export type SettingsSnapshot = {
-  app_language: AppLanguage;
-  source_language: string;
-  target_language: string;
-  project_save_mode: ProjectSaveMode;
-  project_fixed_path: string;
-  output_folder_open_on_finish: boolean;
-  request_timeout: number;
-  preceding_lines_threshold: number;
-  clean_ruby: boolean;
-  deduplication_in_bilingual: boolean;
-  check_kana_residue: boolean;
-  check_hangeul_residue: boolean;
-  check_similarity: boolean;
-  write_translated_name_fields_to_file: boolean;
-  auto_process_prefix_suffix_preserved_text: boolean;
-  mtool_optimizer_enable: boolean;
-  skip_duplicate_source_text_enable: boolean;
-  glossary_default_preset: string;
-  pre_translation_replacement_default_preset: string;
-  post_translation_replacement_default_preset: string;
-  text_preserve_default_preset: string;
-  translation_custom_prompt_default_preset: string;
-  analysis_custom_prompt_default_preset: string;
-  recent_projects: RecentProjectEntry[];
-};
+export type SettingsSnapshot = SettingSnapshot;
 
 export type ProjectSnapshot = {
   path: string;
@@ -205,33 +177,6 @@ export type ProjectMutationResult = {
   changes: ProjectStoreChangeEvent[];
 };
 
-const DEFAULT_SETTINGS_SNAPSHOT: SettingsSnapshot = {
-  app_language: "ZH",
-  source_language: "JA",
-  target_language: "ZH",
-  project_save_mode: "MANUAL",
-  project_fixed_path: "",
-  output_folder_open_on_finish: true,
-  request_timeout: 60,
-  preceding_lines_threshold: 0,
-  clean_ruby: false,
-  deduplication_in_bilingual: true,
-  check_kana_residue: true,
-  check_hangeul_residue: true,
-  check_similarity: true,
-  write_translated_name_fields_to_file: true,
-  auto_process_prefix_suffix_preserved_text: true,
-  mtool_optimizer_enable: true,
-  skip_duplicate_source_text_enable: true,
-  glossary_default_preset: "",
-  pre_translation_replacement_default_preset: "",
-  post_translation_replacement_default_preset: "",
-  text_preserve_default_preset: "",
-  translation_custom_prompt_default_preset: "",
-  analysis_custom_prompt_default_preset: "",
-  recent_projects: [],
-};
-
 const DEFAULT_PROJECT_SNAPSHOT: ProjectSnapshot = {
   path: "",
   loaded: false,
@@ -256,81 +201,8 @@ const DEFAULT_WORKBENCH_CHANGE_SIGNAL: WorkbenchChangeSignal = {
 
 export const DesktopRuntimeContext = createContext<DesktopRuntimeContextValue | null>(null);
 
-function normalize_recent_projects(
-  recent_projects: Array<Partial<RecentProjectEntry>> | undefined,
-): RecentProjectEntry[] {
-  if (!Array.isArray(recent_projects)) {
-    return [];
-  }
-
-  return recent_projects
-    .filter((entry) => typeof entry?.path === "string" && entry.path !== "")
-    .map((entry) => ({
-      path: String(entry.path),
-      name: String(entry.name ?? ""),
-    }));
-}
-
 export function normalize_settings_snapshot(payload: SettingsSnapshotPayload): SettingsSnapshot {
-  const snapshot = payload.settings ?? {};
-  return {
-    app_language: normalize_app_language(snapshot.app_language),
-    source_language: String(snapshot.source_language ?? DEFAULT_SETTINGS_SNAPSHOT.source_language),
-    target_language: String(snapshot.target_language ?? DEFAULT_SETTINGS_SNAPSHOT.target_language),
-    project_save_mode: normalize_project_save_mode(snapshot.project_save_mode),
-    project_fixed_path: String(snapshot.project_fixed_path ?? ""),
-    output_folder_open_on_finish: Boolean(
-      snapshot.output_folder_open_on_finish ??
-      DEFAULT_SETTINGS_SNAPSHOT.output_folder_open_on_finish,
-    ),
-    request_timeout: Number(snapshot.request_timeout ?? DEFAULT_SETTINGS_SNAPSHOT.request_timeout),
-    preceding_lines_threshold: Number(
-      snapshot.preceding_lines_threshold ?? DEFAULT_SETTINGS_SNAPSHOT.preceding_lines_threshold,
-    ),
-    clean_ruby: Boolean(snapshot.clean_ruby ?? DEFAULT_SETTINGS_SNAPSHOT.clean_ruby),
-    deduplication_in_bilingual: Boolean(
-      snapshot.deduplication_in_bilingual ?? DEFAULT_SETTINGS_SNAPSHOT.deduplication_in_bilingual,
-    ),
-    check_kana_residue: Boolean(
-      snapshot.check_kana_residue ?? DEFAULT_SETTINGS_SNAPSHOT.check_kana_residue,
-    ),
-    check_hangeul_residue: Boolean(
-      snapshot.check_hangeul_residue ?? DEFAULT_SETTINGS_SNAPSHOT.check_hangeul_residue,
-    ),
-    check_similarity: Boolean(
-      snapshot.check_similarity ?? DEFAULT_SETTINGS_SNAPSHOT.check_similarity,
-    ),
-    write_translated_name_fields_to_file: Boolean(
-      snapshot.write_translated_name_fields_to_file ??
-      DEFAULT_SETTINGS_SNAPSHOT.write_translated_name_fields_to_file,
-    ),
-    auto_process_prefix_suffix_preserved_text: Boolean(
-      snapshot.auto_process_prefix_suffix_preserved_text ??
-      DEFAULT_SETTINGS_SNAPSHOT.auto_process_prefix_suffix_preserved_text,
-    ),
-    mtool_optimizer_enable: Boolean(
-      snapshot.mtool_optimizer_enable ?? DEFAULT_SETTINGS_SNAPSHOT.mtool_optimizer_enable,
-    ),
-    skip_duplicate_source_text_enable: Boolean(
-      snapshot.skip_duplicate_source_text_enable ??
-      DEFAULT_SETTINGS_SNAPSHOT.skip_duplicate_source_text_enable,
-    ),
-    glossary_default_preset: String(snapshot.glossary_default_preset ?? ""),
-    pre_translation_replacement_default_preset: String(
-      snapshot.pre_translation_replacement_default_preset ?? "",
-    ),
-    post_translation_replacement_default_preset: String(
-      snapshot.post_translation_replacement_default_preset ?? "",
-    ),
-    text_preserve_default_preset: String(snapshot.text_preserve_default_preset ?? ""),
-    translation_custom_prompt_default_preset: String(
-      snapshot.translation_custom_prompt_default_preset ?? "",
-    ),
-    analysis_custom_prompt_default_preset: String(
-      snapshot.analysis_custom_prompt_default_preset ?? "",
-    ),
-    recent_projects: normalize_recent_projects(snapshot.recent_projects),
-  };
+  return normalize_setting_snapshot(payload.settings);
 }
 
 function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSnapshot {
@@ -870,8 +742,9 @@ function collect_project_change_sections_requiring_read(
 export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Element {
   const [hydration_ready, set_hydration_ready] = useState(false);
   const [hydration_error, set_hydration_error] = useState<string | null>(null);
-  const [settings_snapshot, write_settings_snapshot] =
-    useState<SettingsSnapshot>(DEFAULT_SETTINGS_SNAPSHOT);
+  const [settings_snapshot, write_settings_snapshot] = useState<SettingsSnapshot>(() =>
+    normalize_settings_snapshot({}),
+  );
   const [project_snapshot, write_project_snapshot] =
     useState<ProjectSnapshot>(DEFAULT_PROJECT_SNAPSHOT);
   const task_runtime_store_ref = useRef(createTaskRuntimeStore());

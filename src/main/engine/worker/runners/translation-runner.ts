@@ -18,6 +18,7 @@ import { ResponseDecoder } from "../response/response-decoder";
 import type { LLMClientPort, LLMRequestResult } from "../../../llm/llm-types";
 import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 import type { WorkerExecutionResult } from "../../protocol/worker-result";
+import { normalize_setting_snapshot } from "../../../../base/setting";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
 import { RequestValidationError } from "../../../../shared/error";
 
@@ -577,13 +578,7 @@ export class TranslationWorkUnitRunner {
   }
 
   private read_app_language(config_snapshot: ApiJsonValue): unknown {
-    const config =
-      typeof config_snapshot === "object" &&
-      config_snapshot !== null &&
-      !Array.isArray(config_snapshot)
-        ? (config_snapshot as Record<string, ApiJsonValue>)
-        : {};
-    return config["app_language"];
+    return normalize_setting_snapshot(config_snapshot).app_language;
   }
 
   private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
@@ -597,12 +592,9 @@ export class TranslationWorkUnitRunner {
     config: TextProcessingConfig,
     raw_config: ApiJsonValue,
   ): { app_language?: string; source_language: string; target_language: string } {
-    const record =
-      typeof raw_config === "object" && raw_config !== null && !Array.isArray(raw_config)
-        ? raw_config
-        : {};
+    const setting_snapshot = normalize_setting_snapshot(raw_config);
     return {
-      app_language: typeof record["app_language"] === "string" ? record["app_language"] : "ZH",
+      app_language: setting_snapshot.app_language,
       source_language: config.source_language,
       target_language: config.target_language,
     };
