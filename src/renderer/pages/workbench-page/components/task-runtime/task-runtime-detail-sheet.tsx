@@ -3,7 +3,10 @@ import { CircleStop } from "lucide-react";
 
 import "./task-runtime.css";
 import { cn } from "@/lib/utils";
-import { WORKBENCH_WAVEFORM_VISIBLE_POINTS } from "@/pages/workbench-page/task-runtime/workbench-waveform";
+import {
+  build_workbench_waveform_columns,
+  WORKBENCH_WAVEFORM_VISIBLE_POINTS,
+} from "@/pages/workbench-page/task-runtime/workbench-waveform";
 import type { WorkbenchTaskDetailViewModel, WorkbenchTaskTone } from "@/pages/workbench-page/types";
 import { AppButton } from "@/widgets/app-button/app-button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/shadcn/sheet";
@@ -23,43 +26,6 @@ const WAVEFORM_FONT_SIZE_PX = 6;
 const WAVEFORM_CANVAS_WIDTH = WAVEFORM_COLUMN_COUNT * WAVEFORM_COLUMN_STEP_PX;
 const WAVEFORM_CANVAS_HEIGHT = WAVEFORM_ROW_COUNT * WAVEFORM_ROW_STEP_PX;
 
-function normalize_waveform_values(history: number[]): number[] {
-  if (history.length === 0) {
-    return [0];
-  }
-
-  const min_value = Math.min(...history);
-  const max_value = Math.max(...history);
-
-  if (max_value - min_value === 0 && history[0] === 0) {
-    return history.map(() => 0);
-  }
-
-  if (max_value - min_value === 0 && history[0] !== 0) {
-    return history.map(() => 1);
-  }
-
-  return history.map((value) => {
-    return (value - min_value) / (max_value - min_value);
-  });
-}
-
-function build_waveform_columns(history: number[]): number[] {
-  if (history.length === 0) {
-    return [];
-  }
-
-  const visible_history =
-    history.length >= WAVEFORM_COLUMN_COUNT
-      ? history.slice(history.length - WAVEFORM_COLUMN_COUNT)
-      : history;
-  const normalized_values = normalize_waveform_values(visible_history);
-
-  return normalized_values.map((value) => {
-    return Math.floor(value * (WAVEFORM_ROW_COUNT - 1) + 1);
-  });
-}
-
 function resolve_percent_pill_tone_class_name(tone: WorkbenchTaskTone): string {
   if (tone === "warning") {
     return "task-runtime__percent-pill--warning";
@@ -76,7 +42,7 @@ function TaskWaveform(props: { history: number[] }): JSX.Element {
   const canvas_ref = useRef<HTMLCanvasElement | null>(null);
 
   const column_heights = useMemo(() => {
-    return build_waveform_columns(props.history);
+    return build_workbench_waveform_columns(props.history, WAVEFORM_ROW_COUNT);
   }, [props.history]);
 
   useEffect(() => {

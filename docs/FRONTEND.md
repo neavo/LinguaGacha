@@ -67,7 +67,7 @@ project, files, items, quality, prompts, analysis, proofreading
 | `task.snapshot_changed` | 运行中 snapshot 进入 renderer 500ms 刷新窗口并只保留最新一份；终态或 `busy=false` 事件先冲刷窗口再立即覆盖 `TaskRuntimeStore` | 按钮 busy、任务菜单、进度、请求压力、停止态 |
 | `project.data_changed` | 先校验 `projectPath` 与当前运行态项目身份一致；warmup 期间的同项目事件进入队列并在完整快照后重放；未经 HTTP mutation result 消费过的 canonical delta 进入同一 500ms 刷新窗口并按到达顺序批量合并；ids-only 合并 item id 后按 `/api/project/items/read-by-ids` 补读；仅异常恢复用的 section-invalidated 或无法规范化事件先冲刷窗口，再按运行态项目身份与 section revision 规则补读 canonical 数据或全量刷新 | 工作台、校对、质量、分析、校对数据刷新 |
 
-同步 mutation 成功后，页面必须先规范化 `ProjectMutationResult.changes` 并交给 `DesktopRuntimeProvider` 应用；运行态用 `eventId` 记录近期已应用事件，避免同源 SSE 再次推进 `ProjectStore` 或页面刷新信号。同一 renderer 刷新窗口内，`ProjectStore` 只通知一次，工作台与校对页派生信号按批次合并后最多各 bump 一次。工程切换、设置变更、项目刷新、mutation result、失效 section 补读和任务终态不被普通窗口延迟。任务运行中和任务结束后不再由 Workbench 主动重取 `/api/tasks/snapshot`；任务专属页面在项目 mutation 后需要重读本页任务快照时必须通过 `refresh_task(task_type)` 显式声明 `translation` / `analysis`，全局 hydration 或项目切换这类不关心具体任务页的入口才可无类型读取。日志窗口的 500ms append batch 与 Workbench 波形 250ms 采样都属于页面表现层，不承载项目或任务事实同步。
+同步 mutation 成功后，页面必须先规范化 `ProjectMutationResult.changes` 并交给 `DesktopRuntimeProvider` 应用；运行态用 `eventId` 记录近期已应用事件，避免同源 SSE 再次推进 `ProjectStore` 或页面刷新信号。同一 renderer 刷新窗口内，`ProjectStore` 只通知一次，工作台与校对页派生信号按批次合并后最多各 bump 一次。工程切换、设置变更、项目刷新、mutation result、失效 section 补读和任务终态不被普通窗口延迟。任务运行中和任务结束后不再由 Workbench 主动重取 `/api/tasks/snapshot`；任务专属页面在项目 mutation 后需要重读本页任务快照时必须通过 `refresh_task(task_type)` 显式声明 `translation` / `analysis`，全局 hydration 或项目切换这类不关心具体任务页的入口才可无类型读取。日志窗口的 500ms append batch 与 Workbench 波形 500ms 采样都属于页面表现层，不承载项目或任务事实同步。
 
 ## 5. 导航与项目页 runtime
 
