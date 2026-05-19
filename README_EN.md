@@ -10,11 +10,11 @@
 
 ## Overview 📢
 - [LinguaGacha](https://github.com/neavo/LinguaGacha) (/ˈlɪŋɡwə ˈɡɑːtʃə/), is an AI-powered next-generation text translator
-- Out of the box, (almost) no setup needed, powerful does not need to be shown through complicated setting options
+- Out of the box, (almost) no setup needed, powerful does not need to be shown through complicated options
 - Supports one-click translation between 16 languages
   - including `Chinese`, `English`, `Japanese`, `Korean`, `Russian`, `German`, `French`, `Italian`, etc
 - Supports various text types and formats such as `Subtitle`, `E-Book`, and `Game Text`
-- Supports both local and online interfaces such as `Claude`, `ChatGPT`, `DeepSeek`, `SakuraLLM`
+- Supports both local and online interfaces compatible with `OpenAI`, `Google`, `Anthropic`, `SakuraLLM`
 
 > <img width="2570" height="1605" alt="01" src="https://github.com/user-attachments/assets/898f6606-9c74-47db-b63e-33d544cfdf15" />
 
@@ -26,14 +26,11 @@
 
 ## Feature Advantages 📌
 - Ultra-fast translation speed: subtitles in ten seconds, novels in one minute, games in five minutes
-- Automatically generate a glossary to ensure consistent translation of proper nouns like character names throughout the entire work.  `👈👈 Exclusive Feature`
+- One click to generate glossary to ensure consistent translation of proper nouns like character names `👈👈 Exclusive Feature`
 - Optimal translation quality, whether it's flagship models `such as DeepSeek-R1` or local small models `such as Qwen2.5-7B`
 - The strongest style and code retention capability among similar applications, significantly reducing post-processing workload, making it the best choice for creating embedded Chinese localization.
   - `.md` `.ass` `.epub` formats can almost retain all original styles.
   - Most `WOLF`, `RenPy`, `RPGMaker`, `Kirikiri` games require no manual processing, allowing for instant translation and play `👈👈 Exclusive Feature`
-
-## System Requirements 🖥️
-- Compatible with AI model interfaces following `OpenAI`, `Google`, `Anthropic`, `SakuraLLM` standards
 
 ## Basic Workflow 🛸
 - Download application from [Releases page](https://github.com/neavo/LinguaGacha/releases)
@@ -50,8 +47,11 @@
   - `Subtitles`/`E-books` typically require no preprocessing
   - `Game texts` need extraction using appropriate tools for specific game engines
 - Launch the application:
-  - Configure essential settings (source/target languages) in `Project Settings`
-  - Copy files to input folder (default: `input`), start translation in `Begin Translation`
+  - Drag the `files to translate` onto the page to create a project
+  - Configure and activate the model you want to use in `Model Management`
+  - Configure essential information such as source and target languages in `Basic Settings`
+  - Run an `Analysis` or `Translation` task in `Workbench`
+  - Enjoy!
 
 ## User Guide 📝
 - Overall
@@ -82,15 +82,12 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260518 v0.100.2
-  - Adjust and Improve #575 #577 #578 #581 #582
-
-- 20260517 v0.100.1
-  - Feature - New translation language `Chinese (Traditional)`
-  - Adjust and Improve #423 #524 #560 #569 #571 #572 #574
+- 20260519 v0.101.0
+  - feat - [Command Line Mode](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
+  - fix - Attempted to fix page freezing [#583](https://github.com/neavo/LinguaGacha/issues/583) [#585](https://github.com/neavo/LinguaGacha/issues/585)
 
 ## Development Guide 🛠️
-- Install [`Node.js 24`](https://nodejs.org/) and run `npm install`
+- Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org), then run `npm install`
 - Update dependencies `npm update`
 - Run the application `npm run dev`
 - Before submitting a PR, run the corresponding checks in [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) based on the scope of your changes
@@ -101,3 +98,13 @@
 - Please attach relevant logs when reporting issues
 - You can also join our groups for discussion and feedback:
   - Discord - https://discord.gg/pyMRBGse75
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=neavo%2FLinguaGacha&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=neavo/LinguaGacha&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=neavo/LinguaGacha&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=neavo/LinguaGacha&type=date&legend=top-left" />
+ </picture>
+</a>

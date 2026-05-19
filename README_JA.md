@@ -13,7 +13,7 @@
 - 箱から出してすぐに使え、（ほぼ）設定不要。機能の強力さは、煩雑な設定を必要としません。
 - `中国語`、`英語`、`日本語`、`韓国語`、`ロシア語`、`ドイツ語`、`フランス語`、`イタリア語`など 16 言語にワンタッチ双方向翻訳対応。
 - `字幕`、`電子書籍`、`ゲームテキストなど`、色々なテキストタイプと形式に対応。
-- `Claude`、`ChatGPT`、`DeepSeek`、`SakuraLLM` などのローカルおよびオンラインインターフェースをサポート
+- `OpenAI`、`Google`、`Anthropic`、`SakuraLLM` などのローカルおよびオンラインインターフェースをサポート
 
 > <img width="2570" height="1605" alt="01" src="https://github.com/user-attachments/assets/898f6606-9c74-47db-b63e-33d544cfdf15" />
 
@@ -25,14 +25,11 @@
 
 ## 機能の利点 📌
 - 圧倒的な翻訳速度、10秒で字幕1本、1分で小説1冊、5分でゲーム1本
-- 用語集の自動生成、キャラクター名などの専門用語の訳語を作品全体で統一　`👈👈 独自の強み`
+- 用語集をワンクリックで生成し、キャラクター名などの専門用語の訳語を作品全体で統一　`👈👈 独自の強み`
 - 最高の翻訳品質、フラッグシップモデル `DeepSeek-R1など` でも、ローカル小規模モデル　`Qwen2.5-7Bなど` でも
 - 同種のアプリケーションの中で最強のスタイルとコード保持能力、後工程の作業量を大幅に削減、字幕埋め込み（内嵌字幕）作成に最適
   - `.md` `.ass` `.epub` 形式はほぼすべての元のスタイルを保持可能
   - 大部分の `WOLF`、`RenPy`、`RPGMaker`、`Kirikiri` エンジンゲームは手作業なしで、即翻訳即プレイ可能　`👈👈 独自の強み`
-
-## システム要件 🖥️
-- `OpenAI`、`Google`、`Anthropic`、`SakuraLLM` 標準に準拠したAIモデルインターフェースに対応
 
 ## ワークフロー 🛸
 - [リリースページ](https://github.com/neavo/LinguaGacha/releases) からアプリケーションをダウンロード
@@ -49,8 +46,11 @@
   - `字幕`/`電子書籍`は通常、前処理が不要
   - `ゲームテキスト`は特定のゲームエンジンに適したツールを使用して抽出が必要
 - アプリケーションを起動：
-  - `プロジェクト設定` で必要な設定（ソース/ターゲット言語）を行う
-  - 入力フォルダ（デフォルト：`input`）にファイルをコピーし、`翻訳開始` で翻訳を開始
+  - `翻訳するファイル` をページにドラッグしてプロジェクトを作成
+  - `モデル管理` で使用するモデルを設定し、有効化
+  - `基本設定` でソース言語、ターゲット言語などの必要な情報を設定
+  - `ワークベンチ` で `分析` または `翻訳` タスクを実行
+  - Enjoy!
 
 ## 使い方チュートリアル - English 📝
 - Overall
@@ -81,7 +81,7 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 開発ガイド 🛠️
-- 先に [`Node.js 24`](https://nodejs.org/) をインストールし、その後 `npm install` で初期化します
+- [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストールし、その後 `npm install` を実行します
 - 依存関係の更新: `npm update`
 - アプリの実行: `npm run dev`
 - PRを提出する前に、変更範囲に応じて [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) の対応する検証を実行してください
@@ -92,3 +92,13 @@
 - 問題を報告する際は、関連するログを添付してください
 - グループに参加して、ディスカッションやフィードバックもできます。
   - Discord - https://discord.gg/pyMRBGse75
+
+## Star History
+
+<a href="https://www.star-history.com/?repos=neavo%2FLinguaGacha&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=neavo/LinguaGacha&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=neavo/LinguaGacha&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=neavo/LinguaGacha&type=date&legend=top-left" />
+ </picture>
+</a>
