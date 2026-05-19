@@ -61,31 +61,17 @@ jobs:
         run: |
           npm install
 
-      - name: Build Electron Unpacked Package
+      - name: Build Electron Zip Package
         shell: bash
         run: |
-          npm run build -- --win --x64 --dir --publish never
-
-      - name: Create Windows Zip Package
-        shell: pwsh
-        run: |
-          $version = "${{ needs.prepare.outputs.version }}"
-          $releaseDir = Join-Path "build/release" $version
-          $unpackedDir = Join-Path $releaseDir "win-unpacked"
-          $zipPath = Join-Path $releaseDir "LinguaGacha_v${version}_Windows_x64.zip"
-
-          Compress-Archive `
-            -Path (Join-Path $unpackedDir "*") `
-            -DestinationPath $zipPath `
-            -CompressionLevel Optimal `
-            -Force
+          npm run build -- --win zip --x64 --publish never
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Windows_x64
           path: |
-            build/release/${{ needs.prepare.outputs.version }}/*.zip
+            build/release/${{ needs.prepare.outputs.version }}/LinguaGacha_v${{ needs.prepare.outputs.version }}_Windows_x64.zip
 
   build-macos:
     needs: prepare
@@ -128,14 +114,14 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: |
-          npm run build -- --mac --${{ matrix.arch }} --publish never
+          npm run build -- --mac dmg --${{ matrix.arch }} --publish never
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_macOS_${{ matrix.arch }}
           path: |
-            build/release/${{ needs.prepare.outputs.version }}/*.dmg
+            build/release/${{ needs.prepare.outputs.version }}/LinguaGacha_v${{ needs.prepare.outputs.version }}_macOS_${{ matrix.arch }}.dmg
 
   build-linux:
     needs: prepare
@@ -168,14 +154,14 @@ jobs:
       - name: Build Electron AppImage Package
         shell: bash
         run: |
-          npm run build -- --linux --x64 --publish never
+          npm run build -- --linux AppImage --x64 --publish never
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
           name: ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Linux_x64
           path: |
-            build/release/${{ needs.prepare.outputs.version }}/*.AppImage
+            build/release/${{ needs.prepare.outputs.version }}/LinguaGacha_v${{ needs.prepare.outputs.version }}_Linux_x86_64.AppImage
 
   create-release:
     needs: [prepare, build-windows, build-macos, build-linux]
@@ -202,7 +188,7 @@ jobs:
           draft: true
           prerelease: false
           files: |
-            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Windows_x64/*.zip
-            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_macOS_x64/*.dmg
-            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_macOS_arm64/*.dmg
-            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Linux_x64/*.AppImage
+            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Windows_x64/LinguaGacha_v${{ needs.prepare.outputs.version }}_Windows_x64.zip
+            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_macOS_x64/LinguaGacha_v${{ needs.prepare.outputs.version }}_macOS_x64.dmg
+            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_macOS_arm64/LinguaGacha_v${{ needs.prepare.outputs.version }}_macOS_arm64.dmg
+            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Linux_x64/LinguaGacha_v${{ needs.prepare.outputs.version }}_Linux_x86_64.AppImage
