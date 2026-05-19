@@ -25,7 +25,7 @@ flowchart LR
 - `src/renderer/app/desktop/desktop-api.ts` 是 renderer 访问 Core API 的唯一封装，负责 `/api/health` 探测、POST 响应壳解析、SSE 连接和错误类型。
 - `DesktopApiError` 是 renderer 消费 Core 失败的唯一错误类型，Core API 错误码和 envelope 类型从 `src/shared/error` 导入，本地网络、探测和事件流失败使用 renderer 本地错误码与 `app.error.desktop.*.message`；页面只能按 code/status 决定刷新、重试、禁用或跳转，不读取后端原始异常文本。
 - `src/renderer/app/ui-runtime/error-message.ts` 是普通页面解析用户可见错误文案的唯一入口；页面 toast、dialog 和空状态不能直接展示 `Error.message` 或自行解析 `DesktopApiError.message_key`。
-- 普通页面只展示 `DesktopApiError.message_key` 对应本地化文案或后端提供的安全 `message`；非 Core API 异常只按页面语境 fallback 展示，`WorkerClientError` 等本地错误只提供稳定 code 给页面分支。日志窗口可以展示脱敏后的诊断信息，但不能显示 stack、API key、Authorization header、provider 原始响应或内部绝对路径。
+- 普通页面只展示 `DesktopApiError.message_key` 对应本地化文案或后端提供的安全 `message`；非 Core API 异常只按页面语境 fallback 展示，`ProjectUiWorkerClientError` 等本地错误只提供稳定 code 给页面分支。日志窗口可以展示脱敏后的诊断信息，但不能显示 stack、API key、Authorization header、provider 原始响应或内部绝对路径。
 
 ## 2. 运行态初始化
 
@@ -47,7 +47,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - `TaskRuntimeStore` 消费的 `TaskSnapshot` 固定为 `base + progress + extras`：通用状态只在 base，进度只在 `progress`，分析候选数只在 `extras.kind === "analysis"`，重翻行级状态只在 `extras.kind === "translation" && scope.kind === "items"`。
 - 任务命令 HTTP ack 只能携带后端当前完整 `TaskSnapshot`；页面只经 `TaskRuntimeStore` 同步该 snapshot，不能在页面层追加“终态优先于 requested / stopping”的第二套排序规则。
 - 共享项目事实只能来自项目读取接口、同步 mutation 返回的 `ProjectMutationResult.changes` 和 `project.data_changed`。
-- `ProjectStore.items` 以只读 `ProjectItemIndex` 持有当前完整公开 item DTO 镜像，字段口径与后端项目读取一致；页面、worker 和 planner 只能通过索引 API 派生轻量 view model，不能把它当普通对象快照或历史版本保存。工作台、reset、settings alignment 和校对类 mutation 只能提交用户意图、设置镜像和 `ProjectStore.revisions.sections` 中的依赖 revision，不能把派生 `items`、task/progress extras、prefilter config 或 analysis extras 当作最终事实提交。
+- `ProjectStore.items` 以只读 `ProjectItemIndex` 持有当前完整公开 item DTO 镜像，字段口径与后端项目读取一致；页面、Project UI Worker 和 planner 只能通过索引 API 派生轻量 view model，不能把它当普通对象快照或历史版本保存。工作台、reset、settings alignment 和校对类 mutation 只能提交用户意图、设置镜像和 `ProjectStore.revisions.sections` 中的依赖 revision，不能把派生 `items`、task/progress extras、prefilter config 或 analysis extras 当作最终事实提交。
 - `ProjectChangeEvent`、read-sections 和 ids-only 补读响应都必须携带后端确认的 project path；`DesktopRuntimeProvider` 维护独立于 `ProjectStore` 的当前项目身份 `path + epoch + phase`，project path 与当前身份不一致的 mutation result、SSE 或读响应一律丢弃，异步补读响应还必须匹配发起时的 epoch。
 - 工程 warmup 期间，同项目身份的 mutation result 和 `project.data_changed` 先进入运行态队列；完整 read-sections 快照原子替换 `ProjectStore` 后再按原顺序重放，`eventId` 去重仍负责避免 HTTP mutation result 与同源 SSE 重复推进页面信号。
 - 项目变更按 payload mode 分流：canonical 行级 items/files delta 直接合并，完整 items/files 替换和其它 section 通过 `sections.*.data` 合并；任务翻译这类高频 item 变更可发布 ids-only，只在 renderer 刷新窗口合并 id 后补读公开 DTO；`section-invalidated` 只用于异常恢复。ids-only、`section-invalidated` 或缺少后端 section revision 的项目变更不能直接写入 `ProjectStore`；补读请求必须绑定发起时的 project path 与 epoch，读回后同时校验当前项目身份、响应 project path 与后端 section revision，项目切换、同路径重新 warmup 后的迟到响应或旧 revision 响应必须丢弃，合格响应再以 exact revision 合并。
@@ -75,9 +75,10 @@ project, files, items, quality, prompts, analysis, proofreading
 - `SCREEN_REGISTRY` 是页面注册和标题 key 的唯一入口。
 - `ProjectPagesProvider` 持有工作台与校对页 runtime adapter，并用 revision checkpoint barrier 协调项目 warmup、缓存刷新、文件操作和页面跳转。
 - 工作台与校对页可维护页面级缓存，但 ready 判定必须覆盖当前 `ProjectStore.revisions.sections` 中声明依赖的 sections；页面 runtime adapter 不暴露时间戳或 stale boolean 作为缓存新旧依据。工作台缓存由页面 ref 独占，精确 item delta 只更新变更 id 相关索引和统计，不在刷新窗口复制全量 items Map。
-- 校对 worker 的缓存身份必须同时覆盖 project path、source language、items / quality / proofreading revisions；items tombstone 必须从 worker 原始行、评估行、计数索引和列表缓存中同步删除。
-- 校对、质量规则和姓名字段等结果型页面的主列表使用结果视图快照：搜索、筛选、替换、排序或刷新等显式 action 生成有序稳定 id；项目事实刷新只回读最新行内容、状态、警告和统计徽标，不自动改变当前成员与顺序；实体删除、项目切换、全量数据源重建或运行态不兼容时才剪除或重建快照，不按位置把旧 id 映射到新实体。
-- Quality statistics 的文本变更判断使用顺序滚动 hash，不以全量文本数组 stringify 作为主要 stale 判断；Quality statistics 与校对 worker 的质量规则编译、替换、文本保护和术语匹配口径收口到 `quality-runtime-context`。
+- `src/renderer/project/worker` 是 Project UI Worker 的唯一归宿：单 worker 统一承接校对视图、Quality statistics 和分析术语导入预演等项目 UI 派生计算；它只消费 `ProjectStore` 只读快照、section revision 与显式查询，不写项目事实、不发 mutation、不替代 Core 或 `ProjectStore`。Project UI Worker client 统一 request id、优先级、stale、稳定错误码和带明确 projectId 的项目缓存释放；未有性能证据前不拆 renderer worker pool。
+- Project UI Worker 中校对缓存身份必须同时覆盖 project path、source language、items / quality / proofreading revisions；items tombstone 必须从原始行、评估行、计数索引和列表缓存中同步删除。
+- 校对、质量规则和姓名字段等结果型页面的主列表使用结果视图快照：搜索、筛选、替换、排序或刷新等显式 action 生成有序稳定 id；项目事实刷新只回读最新行内容、状态、警告和统计徽标，不自动改变当前成员与顺序；实体删除、项目切换、全量数据源重建或运行态不兼容时才剪除或重建快照，不按位置把旧 id 映射到新实体。校对页 ready 只等待 Project UI Worker hydrate 与主列表视图，筛选面板统计允许后台预热或弹窗内刷新；搜索输入状态即时落在页面，提交 Project UI Worker 的列表查询固定 250ms 防抖，scope、regex、排序和筛选确认仍立即重建列表。
+- Quality statistics 的文本变更判断使用顺序滚动 hash，不以全量文本数组 stringify 作为主要 stale 判断；Quality statistics 与 Project UI Worker 校对缓存的质量规则编译、替换、文本保护和术语匹配口径收口到 `quality-runtime-context`。
 - 新增页面若依赖项目事实，应接入 `ProjectPagesProvider` 或现有 runtime adapter；不要在页面里建立第二套全局项目缓存。
 
 ## 6. 样式和设计消费边界

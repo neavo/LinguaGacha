@@ -1,14 +1,9 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shared/text/text-types";
-import * as text_tool from "../../../../shared/utils/text-tool";
 import { ResponseChecker } from "./response-checker";
 
 describe("响应检查器整体检查", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it("流式退化时为每行返回退化错误", () => {
     expect(
       check_response(["原文1", "原文2"], ["译文1", "译文2"], {
@@ -48,10 +43,6 @@ describe("响应检查器整体检查", () => {
 });
 
 describe("响应检查器逐行规则", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it("原文非空且译文为空时返回空行错误", () => {
     expect(
       check_lines(["有内容"], [""], {
@@ -137,10 +128,8 @@ describe("响应检查器逐行规则", () => {
   });
 
   it("日翻中相似检查要求译文包含假名", () => {
-    vi.spyOn(text_tool, "check_similarity_by_jaccard").mockReturnValue(0.95);
-
     expect(
-      check_lines(["こんにちは"], ["你好世界"], {
+      check_lines(["東京"], ["東京"], {
         config: create_config({
           source_language: "JA",
           target_language: "ZH",
@@ -151,10 +140,8 @@ describe("响应检查器逐行规则", () => {
   });
 
   it("日翻中相似且译文包含假名时返回相似错误", () => {
-    vi.spyOn(text_tool, "check_similarity_by_jaccard").mockReturnValue(0.95);
-
     expect(
-      check_lines(["こんにちは"], ["あいうえお"], {
+      check_lines(["東京"], ["東京あ"], {
         config: create_config({
           source_language: "JA",
           target_language: "ZH",
@@ -165,10 +152,8 @@ describe("响应检查器逐行规则", () => {
   });
 
   it("韩翻中相似且译文包含谚文时返回相似错误", () => {
-    vi.spyOn(text_tool, "check_similarity_by_jaccard").mockReturnValue(0.95);
-
     expect(
-      check_lines(["안녕하세요"], ["테스트"], {
+      check_lines(["韓國"], ["韓國한"], {
         config: create_config({
           source_language: "KO",
           target_language: "ZH",
@@ -179,10 +164,8 @@ describe("响应检查器逐行规则", () => {
   });
 
   it("韩翻中相似但译文不含谚文时返回无错误", () => {
-    vi.spyOn(text_tool, "check_similarity_by_jaccard").mockReturnValue(0.95);
-
     expect(
-      check_lines(["안녕하세요"], ["你好世界"], {
+      check_lines(["韓國"], ["韓國"], {
         config: create_config({
           source_language: "KO",
           target_language: "ZH",

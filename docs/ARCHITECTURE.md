@@ -52,7 +52,7 @@ flowchart LR
 - `src/core` 承载业务内核、公开 API、领域服务、任务引擎、数据库和 bootstrap；API 留在 `src/core/api`，由 GUI Gateway 暴露给 renderer，CLI 直接复用 `CoreServices`。
 - Electron GUI 和 Core 当前在同一 Electron 主进程内运行；运行态没有独立 backend 子进程或内部 database HTTP 服务。
 - `src/base` 只承载跨层数据实体和值对象的序列化、反序列化、合法值集合和贴身派生判断；不能反向依赖 Core、renderer 或 Electron 宿主边界。
-- `src/shared` 承载 Core、renderer、worker 和测试复用的跨运行时共享规则、协议词表与纯工具，包括 error、task、quality、language、log、i18n、文本工具、fixer、prefilter、纯 JSON 和压缩能力；Electron 桌面宿主契约与文件系统能力不放在这里。
+- `src/shared` 承载 Core、renderer、worker 和测试复用的跨运行时共享规则、协议词表与纯工具，包括 error、task、quality、language、log、i18n、文本工具、fixer、prefilter、纯 JSON 和压缩能力；翻译质量规则中的残留、相似度和重试人工阈值以 `src/shared/text/translation-quality-rules.ts` 为唯一规则入口，Core 只做任务裁决，Project UI Worker 只做 UI 派生；Electron 桌面宿主契约与文件系统能力不放在这里。
 - `src/core/app` 承载应用级文件事实：应用根和数据根路径、`userdata/config.json` 设置读写缓存、`version.txt` 应用元信息和 LLM User-Agent。
 - `src/native` 只承载 Core / worker 可用的原生平台能力；`NativeFs` 与 `NativePathPolicy` 是磁盘 IO、Windows 长路径转换和路径身份比较的唯一入口。
 - `CoreBootstrap` 按 `LogManager -> ProjectDatabase -> CoreServices -> 可选 ApiGatewayServer` 启动，退出时逆序关闭，避免 Gateway 或 worker 仍持有数据库、日志或线程资源。

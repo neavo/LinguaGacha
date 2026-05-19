@@ -5,16 +5,16 @@ import type { ProjectStoreState } from "@/project/store/project-store";
 import { createProjectItemIndex } from "@/project/store/project-item-index";
 import { prepare_analysis_glossary_import } from "@/project/importer/analysis-glossary-importer";
 
-const { quality_statistics_submit_mock } = vi.hoisted(() => {
+const { compute_quality_statistics_mock } = vi.hoisted(() => {
   return {
-    quality_statistics_submit_mock: vi.fn(),
+    compute_quality_statistics_mock: vi.fn(),
   };
 });
 
-vi.mock("@/project/quality/quality-statistics-worker-pool", () => {
+vi.mock("@/project/worker/project-ui-worker-client", () => {
   return {
-    getSharedQualityStatisticsWorkerPool: () => ({
-      submit: quality_statistics_submit_mock,
+    getSharedProjectUiWorkerClient: () => ({
+      compute_quality_statistics: compute_quality_statistics_mock,
     }),
   };
 });
@@ -127,8 +127,8 @@ function create_test_state(overrides: Partial<ProjectStoreState> = {}): ProjectS
 
 describe("prepare_analysis_glossary_import", () => {
   beforeEach(() => {
-    quality_statistics_submit_mock.mockReset();
-    quality_statistics_submit_mock.mockResolvedValue({
+    compute_quality_statistics_mock.mockReset();
+    compute_quality_statistics_mock.mockResolvedValue({
       results: {
         "艾琳|1": {
           matched_item_count: 1,
@@ -144,7 +144,7 @@ describe("prepare_analysis_glossary_import", () => {
     });
 
     expect(prepared_import).not.toBeNull();
-    expect(quality_statistics_submit_mock).toHaveBeenCalledTimes(1);
+    expect(compute_quality_statistics_mock).toHaveBeenCalledTimes(1);
     expect(prepared_import?.duplicate_count).toBe(0);
     expect(prepared_import?.imported_count).toBe(1);
     expect(prepared_import?.consumed_count).toBe(1);
@@ -164,12 +164,13 @@ describe("prepare_analysis_glossary_import", () => {
       quality: 12,
       analysis: 3,
     });
-    expect(quality_statistics_submit_mock).toHaveBeenCalledWith(
+    expect(compute_quality_statistics_mock).toHaveBeenCalledWith(
       expect.objectContaining({
         relationTargetCandidates: [{ key: "艾琳|1", src: "艾琳" }],
       }),
       {
-        stale_key: "quality-statistics:analysis-glossary-importer",
+        staleKey: "quality-statistics:analysis-glossary-importer",
+        priority: "foreground",
       },
     );
   });
@@ -270,7 +271,7 @@ describe("prepare_analysis_glossary_import", () => {
   });
 
   it("候选全被统计过滤时仍返回 analysis-only 消费请求", async () => {
-    quality_statistics_submit_mock.mockResolvedValue({
+    compute_quality_statistics_mock.mockResolvedValue({
       results: {
         "艾琳|1": {
           matched_item_count: 0,
@@ -308,7 +309,7 @@ describe("prepare_analysis_glossary_import", () => {
       },
     });
 
-    expect(quality_statistics_submit_mock).not.toHaveBeenCalled();
+    expect(compute_quality_statistics_mock).not.toHaveBeenCalled();
     expect(prepared_import).not.toBeNull();
     expect(prepared_import?.imported_count).toBe(0);
     expect(prepared_import?.consumed_count).toBe(1);

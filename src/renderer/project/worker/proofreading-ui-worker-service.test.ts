@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { createProofreadingRuntimeEngine } from "./proofreading-runtime-engine";
-import { PROOFREADING_STATUS_ORDER, PROOFREADING_WARNING_CODES } from "./types";
+import { createProofreadingUiWorkerService } from "./proofreading-ui-worker-service";
+import {
+  PROOFREADING_STATUS_ORDER,
+  PROOFREADING_WARNING_CODES,
+} from "@/pages/proofreading-page/types";
 
 const ALL_STATUS_FILTERS = [...PROOFREADING_STATUS_ORDER];
 const DEFAULT_STATUS_FILTERS = ["NONE", "PROCESSED", "ERROR"];
@@ -71,6 +74,7 @@ function create_hydration_input() {
     total_item_count: 2,
     quality: create_quality_state(),
     sourceLanguage: "JA",
+    targetLanguage: "ZH",
     upsertItems: [
       {
         item_id: 1,
@@ -103,6 +107,7 @@ function create_skipped_status_hydration_input() {
     total_item_count: 6,
     quality: create_quality_state(),
     sourceLanguage: "JA",
+    targetLanguage: "ZH",
     upsertItems: [
       create_runtime_item({
         item_id: 3,
@@ -156,13 +161,14 @@ function create_skipped_status_hydration_input() {
   };
 }
 
-describe("createProofreadingRuntimeEngine", () => {
+describe("createProofreadingUiWorkerService", () => {
   it("hydrate_full 后列表、默认筛选与筛选面板会基于 worker 缓存一致产出", () => {
-    const engine = createProofreadingRuntimeEngine();
+    const engine = createProofreadingUiWorkerService();
 
     const sync_state = engine.hydrate_full(create_hydration_input());
     expect(sync_state).toMatchObject({
       projectId: "demo",
+      targetLanguage: "ZH",
       revisions: create_runtime_revisions(3),
       defaultFilters: {
         warning_types: [...PROOFREADING_WARNING_CODES],
@@ -212,8 +218,60 @@ describe("createProofreadingRuntimeEngine", () => {
     expect(filter_panel.without_glossary_miss_count).toBe(1);
   });
 
+  it("列表搜索保持字面量大小写不敏感，非法正则只提示不裁剪结果", () => {
+    const engine = createProofreadingUiWorkerService();
+    const sync_state = engine.hydrate_full(create_hydration_input());
+
+    const literal_list_view = engine.build_list_view({
+      filters: sync_state.defaultFilters,
+      keyword: "ALPHA",
+      scope: "src",
+      is_regex: false,
+      sort_state: null,
+    });
+    expect(literal_list_view.window_rows.map((item) => item.row_id)).toEqual(["2"]);
+    expect(literal_list_view.invalid_regex_message).toBeNull();
+
+    const invalid_regex_list_view = engine.build_list_view({
+      filters: sync_state.defaultFilters,
+      keyword: "[",
+      scope: "src",
+      is_regex: true,
+      sort_state: null,
+    });
+    expect(invalid_regex_list_view.row_count).toBe(2);
+    expect(invalid_regex_list_view.invalid_regex_message).not.toBeNull();
+  });
+
+  it("dispose_project 只释放身份匹配的项目缓存", () => {
+    const engine = createProofreadingUiWorkerService();
+    const sync_state = engine.hydrate_full(create_hydration_input());
+
+    engine.dispose_project("other-project");
+    expect(
+      engine.build_list_view({
+        filters: sync_state.defaultFilters,
+        keyword: "",
+        scope: "all",
+        is_regex: false,
+        sort_state: null,
+      }).row_count,
+    ).toBe(2);
+
+    engine.dispose_project("demo");
+    expect(
+      engine.build_list_view({
+        filters: sync_state.defaultFilters,
+        keyword: "",
+        scope: "all",
+        is_regex: false,
+        sort_state: null,
+      }).row_count,
+    ).toBe(0);
+  });
+
   it("apply_item_delta 只更新变更条目与相关计数，不回退整页重建结果", () => {
-    const engine = createProofreadingRuntimeEngine();
+    const engine = createProofreadingUiWorkerService();
     const sync_state = engine.hydrate_full(create_hydration_input());
     const old_list_view = engine.build_list_view({
       filters: sync_state.defaultFilters,
@@ -293,7 +351,7 @@ describe("createProofreadingRuntimeEngine", () => {
   });
 
   it("apply_item_delta 支持 tombstone 删除并从当前列表快照剪除对应 id", () => {
-    const engine = createProofreadingRuntimeEngine();
+    const engine = createProofreadingUiWorkerService();
     const sync_state = engine.hydrate_full({
       ...create_hydration_input(),
       revisions: {
@@ -347,7 +405,7 @@ describe("createProofreadingRuntimeEngine", () => {
   });
 
   it("跳过 warning 的状态仍进入筛选源并计为无警告", () => {
-    const engine = createProofreadingRuntimeEngine();
+    const engine = createProofreadingUiWorkerService();
 
     const sync_state = engine.hydrate_full(create_skipped_status_hydration_input());
     expect(sync_state.defaultFilters.statuses).toEqual(DEFAULT_STATUS_FILTERS);
@@ -408,13 +466,14 @@ describe("createProofreadingRuntimeEngine", () => {
   });
 
   it("假名残留只在日文源语言检查，并排除 TextBase 中的假名符号例外", () => {
-    const engine = createProofreadingRuntimeEngine();
+    const engine = createProofreadingUiWorkerService();
     const sync_state = engine.hydrate_full({
       projectId: "demo",
       revisions: create_runtime_revisions(5),
       total_item_count: 3,
       quality: create_quality_state(),
       sourceLanguage: "JA",
+      targetLanguage: "ZH",
       upsertItems: [
         create_runtime_item({
           item_id: 9,
@@ -453,13 +512,14 @@ describe("createProofreadingRuntimeEngine", () => {
     expect(warning_by_row_id.get("11")).toEqual([]);
     expect(item_by_row_id.get("10")?.warning_fragments_by_code.KANA).toEqual(["かな"]);
 
-    const english_engine = createProofreadingRuntimeEngine();
+    const english_engine = createProofreadingUiWorkerService();
     const english_sync_state = english_engine.hydrate_full({
       projectId: "demo",
       revisions: create_runtime_revisions(6),
       total_item_count: 1,
       quality: create_quality_state(),
       sourceLanguage: "EN",
+      targetLanguage: "ZH",
       upsertItems: [
         create_runtime_item({
           item_id: 12,
@@ -479,13 +539,14 @@ describe("createProofreadingRuntimeEngine", () => {
   });
 
   it("谚文残留只在韩文源语言检查", () => {
-    const engine = createProofreadingRuntimeEngine();
+    const engine = createProofreadingUiWorkerService();
     const sync_state = engine.hydrate_full({
       projectId: "demo",
       revisions: create_runtime_revisions(7),
       total_item_count: 1,
       quality: create_quality_state(),
       sourceLanguage: "KO",
+      targetLanguage: "ZH",
       upsertItems: [
         create_runtime_item({
           item_id: 13,
@@ -505,6 +566,70 @@ describe("createProofreadingRuntimeEngine", () => {
     expect(list_view.window_rows[0]?.item.warning_fragments_by_code.HANGEUL).toEqual(["번역"]);
   });
 
+  it("中文目标下日韩相似度必须伴随对应残留，残留 warning 仍独立展示", () => {
+    const ja_engine = createProofreadingUiWorkerService();
+    const ja_sync_state = ja_engine.hydrate_full({
+      projectId: "demo",
+      revisions: create_runtime_revisions(8),
+      total_item_count: 2,
+      quality: create_quality_state(),
+      sourceLanguage: "JA",
+      targetLanguage: "ZH",
+      upsertItems: [
+        create_runtime_item({
+          item_id: 14,
+          src: "東京",
+          dst: "東京",
+        }),
+        create_runtime_item({
+          item_id: 15,
+          src: "東京",
+          dst: "東京あ",
+        }),
+      ],
+    });
+    const ja_list_view = ja_engine.build_list_view({
+      filters: ja_sync_state.defaultFilters,
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: null,
+    });
+    expect(ja_list_view.window_rows[0]?.item.warnings).toEqual([]);
+    expect(ja_list_view.window_rows[1]?.item.warnings).toEqual(["KANA", "SIMILARITY"]);
+
+    const ko_engine = createProofreadingUiWorkerService();
+    const ko_sync_state = ko_engine.hydrate_full({
+      projectId: "demo",
+      revisions: create_runtime_revisions(9),
+      total_item_count: 2,
+      quality: create_quality_state(),
+      sourceLanguage: "KO",
+      targetLanguage: "ZH",
+      upsertItems: [
+        create_runtime_item({
+          item_id: 16,
+          src: "韓國",
+          dst: "韓國",
+        }),
+        create_runtime_item({
+          item_id: 17,
+          src: "韓國",
+          dst: "韓國한",
+        }),
+      ],
+    });
+    const ko_list_view = ko_engine.build_list_view({
+      filters: ko_sync_state.defaultFilters,
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: null,
+    });
+    expect(ko_list_view.window_rows[0]?.item.warnings).toEqual([]);
+    expect(ko_list_view.window_rows[1]?.item.warnings).toEqual(["HANGEUL", "SIMILARITY"]);
+  });
+
   it("空译文会跳过检查，文本保护按非空保护段的顺序和值比较", () => {
     const quality = {
       ...create_quality_state(),
@@ -520,13 +645,14 @@ describe("createProofreadingRuntimeEngine", () => {
         ],
       },
     };
-    const engine = createProofreadingRuntimeEngine();
+    const engine = createProofreadingUiWorkerService();
     const sync_state = engine.hydrate_full({
       projectId: "demo",
       revisions: create_runtime_revisions(8),
       total_item_count: 3,
       quality,
       sourceLanguage: "EN",
+      targetLanguage: "ZH",
       upsertItems: [
         create_runtime_item({
           item_id: 14,
@@ -577,13 +703,14 @@ describe("createProofreadingRuntimeEngine", () => {
         ],
       },
     };
-    const engine = createProofreadingRuntimeEngine();
+    const engine = createProofreadingUiWorkerService();
     const sync_state = engine.hydrate_full({
       projectId: "demo",
       revisions: create_runtime_revisions(9),
       total_item_count: 3,
       quality,
       sourceLanguage: "EN",
+      targetLanguage: "ZH",
       upsertItems: [
         create_runtime_item({
           item_id: 17,
@@ -616,13 +743,14 @@ describe("createProofreadingRuntimeEngine", () => {
   });
 
   it("重试次数达到 2 次时才产生阈值警告", () => {
-    const engine = createProofreadingRuntimeEngine();
+    const engine = createProofreadingUiWorkerService();
     const sync_state = engine.hydrate_full({
       projectId: "demo",
       revisions: create_runtime_revisions(10),
       total_item_count: 2,
       quality: create_quality_state(),
       sourceLanguage: "EN",
+      targetLanguage: "ZH",
       upsertItems: [
         create_runtime_item({
           item_id: 20,
@@ -687,13 +815,14 @@ describe("createProofreadingRuntimeEngine", () => {
         ],
       },
     };
-    const engine = createProofreadingRuntimeEngine();
+    const engine = createProofreadingUiWorkerService();
     const sync_state = engine.hydrate_full({
       projectId: "demo",
       revisions: create_runtime_revisions(11),
       total_item_count: 4,
       quality,
       sourceLanguage: "EN",
+      targetLanguage: "ZH",
       upsertItems: [
         create_runtime_item({
           item_id: 22,

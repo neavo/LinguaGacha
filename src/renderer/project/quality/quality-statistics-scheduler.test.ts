@@ -12,7 +12,7 @@ import {
   createQualityStatisticsScheduler,
 } from "@/project/quality/quality-statistics-scheduler";
 import { createQualityStatisticsStore } from "@/project/quality/quality-statistics-store";
-import type { QualityStatisticsTaskExecutor } from "@/project/quality/quality-statistics-worker-pool";
+import type { QualityStatisticsTaskExecutor } from "@/project/quality/quality-statistics";
 
 function create_success_result(input: QualityStatisticsTaskInput): QualityStatisticsTaskResult {
   return {
