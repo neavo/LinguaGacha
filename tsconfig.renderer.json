@@ -15,13 +15,13 @@
     "paths": {
       "@/*": ["./src/renderer/*"],
       "@base/*": ["./src/base/*"],
-      "@native/bridge-api": ["./src/native/bridge-api.ts"],
-      "@native/bridge-types": ["./src/native/bridge-types.ts"],
-      "@native/core-api-endpoint": ["./src/native/core-api-endpoint.ts"],
-      "@native/external-url-policy": ["./src/native/external-url-policy.ts"],
-      "@native/ipc-contract": ["./src/native/ipc-contract.ts"],
-      "@native/shell-contract": ["./src/native/shell-contract.ts"],
-      "@shared/*": ["./src/shared/*"],
+      "@gui/bridge-api": ["./src/gui/bridge/bridge-api.ts"],
+      "@gui/bridge-types": ["./src/gui/bridge/bridge-types.ts"],
+      "@core/api/core-api-endpoint": ["./src/core/api/core-api-endpoint.ts"],
+      "@gui/external-url-policy": ["./src/gui/shell/external-url-policy.ts"],
+      "@gui/ipc-contract": ["./src/gui/ipc/ipc-contract.ts"],
+      "@gui/shell-contract": ["./src/gui/shell/shell-contract.ts"],
+      "@shared/*": ["./src/shared/*"]
     },
     "resolveJsonModule": true,
     "skipLibCheck": true,
@@ -30,5 +30,15 @@
     "tsBuildInfoFile": "./build/tsconfig.renderer.tsbuildinfo",
     "verbatimModuleSyntax": true
   },
-  "include": ["src/renderer", "src/base", "src/shared", "src/native/*.ts", "src/electron-env.d.ts"]
+  "include": [
+    "src/renderer",
+    "src/base",
+    "src/shared",
+    "src/gui/bridge/*.ts",
+    "src/gui/ipc/*.ts",
+    "src/gui/shell/shell-contract.ts",
+    "src/gui/shell/external-url-policy.ts",
+    "src/core/api/core-api-endpoint.ts",
+    "src/electron-env.d.ts"
+  ]
 }

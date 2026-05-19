@@ -10,15 +10,18 @@ export default defineConfig({
     alias: {
       "@": path.resolve(project_root, "src/renderer"),
       "@base": path.resolve(project_root, "src/base"),
-      "@native/bridge-api": path.resolve(project_root, "src/native/bridge-api.ts"),
-      "@native/bridge-types": path.resolve(project_root, "src/native/bridge-types.ts"),
-      "@native/core-api-endpoint": path.resolve(project_root, "src/native/core-api-endpoint.ts"),
-      "@native/external-url-policy": path.resolve(
+      "@core/api/core-api-endpoint": path.resolve(
         project_root,
-        "src/native/external-url-policy.ts",
+        "src/core/api/core-api-endpoint.ts",
       ),
-      "@native/ipc-contract": path.resolve(project_root, "src/native/ipc-contract.ts"),
-      "@native/shell-contract": path.resolve(project_root, "src/native/shell-contract.ts"),
+      "@gui/bridge-api": path.resolve(project_root, "src/gui/bridge/bridge-api.ts"),
+      "@gui/bridge-types": path.resolve(project_root, "src/gui/bridge/bridge-types.ts"),
+      "@gui/external-url-policy": path.resolve(
+        project_root,
+        "src/gui/shell/external-url-policy.ts",
+      ),
+      "@gui/ipc-contract": path.resolve(project_root, "src/gui/ipc/ipc-contract.ts"),
+      "@gui/shell-contract": path.resolve(project_root, "src/gui/shell/shell-contract.ts"),
       "@shared": path.resolve(project_root, "src/shared"),
     },
   },

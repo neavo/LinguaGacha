@@ -23,6 +23,7 @@ description: 使用此技能维护项目长期文档
 AGENTS.md
 docs/
   ARCHITECTURE.md
+  CLI.md
   BACKEND.md
   FRONTEND.md
   WORKFLOW.md
@@ -48,7 +49,8 @@ docs/
 | 信息回答的问题 | 唯一归宿 |
 | --- | --- |
 | Agent 如何协作、编码和交付 | `AGENTS.md` |
-| 系统如何分层、跨层边界、运行时主链路和阅读路径在哪里 | `docs/ARCHITECTURE.md` |
+| 系统如何分层、跨层边界、运行时主链路和专题边界地图在哪里 | `docs/ARCHITECTURE.md` |
+| CLI 命令模式、入口分发、命令协议、临时工程、资源注入、输出和平台启动器是什么 | `docs/CLI.md` |
 | 后端公开协议、HTTP / SSE、bootstrap、topic、错误码和 mutation 契约是什么 | `docs/BACKEND.md` |
 | 后端领域边界、状态拥有者、唯一写入口、数据库和 `.lg` 物理存储落点是什么 | `docs/BACKEND.md` |
 | Electron、preload、renderer、`ProjectStore`、导航和样式消费边界是什么 | `docs/FRONTEND.md` |
@@ -80,8 +82,14 @@ docs/
 
 ### `docs/ARCHITECTURE.md`
 
-- 保留：系统分层、跨层边界、运行时主链路、文档地图和模块关系。
-- 避免：平铺协议字段、状态表、设计规则或验证矩阵；它是阅读路由，不是专题正文合集。
+- 保留：系统分层、跨层边界、运行时主链路、专题边界地图和模块关系。
+- 避免：平铺协议字段、状态表、设计规则或验证矩阵；它是专题边界地图，不是专题正文合集。
+
+### `docs/CLI.md`
+
+- 保留：文件进出型 CLI 命令模式、`--cli` 分发、平台可执行入口、命令参数边界、同步 job、临时 `.lg` 工程、外部资源注入、输出语义、退出码和打包启动器规则。
+- 说明：CLI 如何作为产品入口适配器进入 Core，如何隐藏内部工程并复用任务链路。
+- 避免：承载 HTTP / SSE 协议、数据库 schema、renderer 运行态、用户长教程或 Wiki 镜像。
 
 ### `docs/BACKEND.md`
 
