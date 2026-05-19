@@ -7,13 +7,9 @@ export function collect_project_item_texts(items: ProjectStoreState["items"]): {
   const src_texts: string[] = [];
   const dst_texts: string[] = [];
 
-  for (const item of Object.values(items)) {
-    if (typeof item !== "object" || item === null) {
-      continue;
-    }
-
-    src_texts.push(String((item as { src?: string }).src ?? ""));
-    dst_texts.push(String((item as { dst?: string }).dst ?? ""));
+  for (const item of items.values()) {
+    src_texts.push(String(item.src ?? ""));
+    dst_texts.push(String(item.dst ?? ""));
   }
 
   return {

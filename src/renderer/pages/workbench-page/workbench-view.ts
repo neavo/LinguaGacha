@@ -5,12 +5,13 @@ import type {
   WorkbenchSnapshotEntry,
   WorkbenchStats,
 } from "./types";
+import type { ProjectItemIndex } from "@/project/store/project-item-index";
 import { is_task_skipped_item_status } from "@shared/task";
 
 type BuildWorkbenchViewArgs = {
   project?: { path?: unknown };
   files: Record<string, unknown>;
-  items: Record<string, unknown>;
+  items: ProjectItemIndex;
   analysis?: Record<string, unknown>;
   revisions?: {
     sections?: {
@@ -264,7 +265,7 @@ function build_snapshot_from_cache(
  */
 export function createWorkbenchViewCache(args: BuildWorkbenchViewArgs): WorkbenchViewCache {
   const identity = build_workbench_view_cache_identity(args);
-  const item_values = Object.values(args.items)
+  const item_values = [...args.items.values()]
     .map((item) => normalizeWorkbenchItemRecord(item))
     .filter((item): item is WorkbenchSelectorItemRecord => item !== null);
   const file_values = Object.values(args.files)
@@ -342,18 +343,13 @@ export function applyWorkbenchItemsDeltaToCache(args: {
   state: BuildWorkbenchViewArgs;
   item_ids: Array<number | string>;
 }): WorkbenchViewCache | null {
-  const cache: WorkbenchViewCache = {
-    identity: build_workbench_view_cache_identity(args.state),
-    snapshot: args.cache.snapshot,
-    files: args.cache.files,
-    items_by_id: new Map(args.cache.items_by_id),
-    item_count_by_file_path: new Map(args.cache.item_count_by_file_path),
-    translation_counts: { ...args.cache.translation_counts },
-  };
+  // WorkbenchViewCache 只由页面 ref 持有；增量路径原地维护内部索引，避免每个 delta 复制全量 Map。
+  const cache = args.cache;
+  cache.identity = build_workbench_view_cache_identity(args.state);
 
   for (const item_id of new Set(args.item_ids.map((value) => String(value)))) {
     const previous_item = cache.items_by_id.get(item_id) ?? null;
-    const next_item = normalizeWorkbenchItemRecord(args.state.items[item_id]);
+    const next_item = normalizeWorkbenchItemRecord(args.state.items.get(item_id));
 
     if (previous_item !== null) {
       cache.items_by_id.delete(item_id);
@@ -373,10 +369,8 @@ export function applyWorkbenchItemsDeltaToCache(args: {
     return null;
   }
 
-  return {
-    ...cache,
-    snapshot,
-  };
+  cache.snapshot = snapshot;
+  return cache;
 }
 
 function are_workbench_cache_identities_equal(

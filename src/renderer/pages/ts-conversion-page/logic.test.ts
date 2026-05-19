@@ -5,20 +5,44 @@ import {
   convert_text_with_optional_preserve,
   normalize_ts_conversion_runtime_items,
 } from "@/pages/ts-conversion-page/logic";
+import type { ProjectItemPublicRecord } from "@base/item";
+import { createProjectItemIndex } from "@/project/store/project-item-index";
 
 const marker_converter = (text: string): string =>
   text.replaceAll("台", "臺").replaceAll("后", "後");
 
+function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
+  return {
+    item_id: 1,
+    src: "",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 0,
+    file_type: "TXT",
+    file_path: "",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}
+
 describe("ts-conversion-page logic", () => {
   it("转换译文并保留原始条目以外的运行态字段", () => {
-    const items = normalize_ts_conversion_runtime_items({
-      1: {
-        item_id: 1,
-        dst: "后台",
-        name_dst: "后藤",
-        text_type: "NONE",
-      },
-    });
+    const items = normalize_ts_conversion_runtime_items(
+      createProjectItemIndex({
+        1: create_test_item({
+          item_id: 1,
+          dst: "后台",
+          name_dst: "后藤",
+          text_type: "NONE",
+        }),
+      }),
+    );
 
     const converted_items = build_ts_conversion_converted_items({
       items,

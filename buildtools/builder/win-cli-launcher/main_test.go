@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-// TestBuildLauncherPlanForwardsCliMarkerAndUserArgs 证明启动器只追加 --cli，不改写用户参数。
-func TestBuildLauncherPlanForwardsCliMarkerAndUserArgs(t *testing.T) {
+// TestBuildLauncherPlanForwardsCLIMarkerAndUserArgs 证明启动器只追加 --cli，不改写用户参数。
+func TestBuildLauncherPlanForwardsCLIMarkerAndUserArgs(t *testing.T) {
 	currentExecutablePath := filepath.Join("install", "cli.exe")
 	userArgs := []string{"translate", "--input", filepath.Join("game files", "script.txt")}
 

@@ -6,6 +6,7 @@ import type {
   TsConversionNameDst,
   TsConversionRuntimeItem,
 } from "@/pages/ts-conversion-page/types";
+import type { ProjectItemIndex } from "@/project/store/project-item-index";
 
 type TsConversionTextConverter = (text: string) => string;
 
@@ -43,9 +44,9 @@ function normalize_name_dst(value: unknown): TsConversionNameDst {
 }
 
 export function normalize_ts_conversion_runtime_items(
-  items: Record<string, unknown>,
+  items: ProjectItemIndex,
 ): TsConversionRuntimeItem[] {
-  return Object.values(items).flatMap((value) => {
+  return [...items.values()].flatMap((value) => {
     if (typeof value !== "object" || value === null) {
       return [];
     }

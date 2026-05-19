@@ -1,10 +1,50 @@
 import { describe, expect, it } from "vitest";
+import type { ProjectItemPublicRecord } from "@base/item";
 
 import {
   applyWorkbenchItemsDeltaToCache,
   createWorkbenchViewCache,
   getWorkbenchViewCache,
 } from "@/pages/workbench-page/workbench-view";
+import { createProjectItemIndex } from "@/project/store/project-item-index";
+
+function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
+  return {
+    item_id: 1,
+    src: "",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 0,
+    file_type: "TXT",
+    file_path: "",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}
+
+function create_test_item_index(
+  items: Record<string, Partial<ProjectItemPublicRecord>>,
+): ReturnType<typeof createProjectItemIndex> {
+  return createProjectItemIndex(
+    Object.fromEntries(
+      Object.entries(items).map(([item_id, item]) => {
+        return [
+          item_id,
+          create_test_item({
+            item_id: Number(item_id),
+            ...item,
+          }),
+        ];
+      }),
+    ),
+  );
+}
 
 describe("createWorkbenchViewCache", () => {
   it("会保持文件排序并一次遍历聚合工作台统计", () => {
@@ -31,50 +71,43 @@ describe("createWorkbenchViewCache", () => {
           sort_index: 3,
         },
       },
-      items: {
+      items: create_test_item_index({
         "1": {
-          item_id: 1,
           file_path: "chapter02.txt",
           src: "done",
-          status: "DONE",
+          status: "EXCLUDED",
         },
         "2": {
-          item_id: 2,
           file_path: "chapter01.txt",
           src: "processed 1",
           status: "PROCESSED",
         },
         "3": {
-          item_id: 3,
           file_path: "chapter01.txt",
           src: "processed 2",
           status: "PROCESSED",
         },
         "4": {
-          item_id: 4,
           file_path: "chapter03.txt",
           src: "error",
           status: "ERROR",
         },
         "5": {
-          item_id: 5,
           file_path: "missing.txt",
           src: "pending",
           status: "NONE",
         },
         "6": {
-          item_id: 6,
           file_path: "chapter03.txt",
           src: "rule skipped",
           status: "RULE_SKIPPED",
         },
         "7": {
-          item_id: 7,
           file_path: "chapter03.txt",
           src: "language skipped",
           status: "LANGUAGE_SKIPPED",
         },
-      },
+      }),
       analysis: {
         status_summary: {
           total_line: 5,
@@ -143,20 +176,18 @@ describe("createWorkbenchViewCache", () => {
           sort_index: 2,
         },
       },
-      items: {
+      items: create_test_item_index({
         "1": {
-          item_id: 1,
           file_path: "chapter01.txt",
           src: "a",
           status: "NONE",
         },
         "2": {
-          item_id: 2,
           file_path: "chapter01.txt",
           src: "b",
           status: "PROCESSED",
         },
-      },
+      }),
       analysis: {
         status_summary: {
           total_line: 2,
@@ -171,19 +202,19 @@ describe("createWorkbenchViewCache", () => {
       cache,
       state: {
         ...base_state,
-        items: {
-          ...base_state.items,
+        items: create_test_item_index({
+          ...base_state.items.toRecordSnapshot(),
           "1": {
-            item_id: 1,
             file_path: "chapter02.txt",
             src: "a",
             status: "PROCESSED",
           },
-        },
+        }),
       },
       item_ids: [1],
     });
 
+    expect(next_cache).toBe(cache);
     expect(next_cache?.snapshot.entries).toEqual([
       {
         rel_path: "chapter01.txt",
@@ -206,14 +237,13 @@ describe("createWorkbenchViewCache", () => {
   it("缺少 analysis.status_summary 时增量缓存会要求回退全量重建", () => {
     const cache = createWorkbenchViewCache({
       files: {},
-      items: {
+      items: create_test_item_index({
         "1": {
-          item_id: 1,
           file_path: "chapter01.txt",
           src: "a",
           status: "NONE",
         },
-      },
+      }),
       analysis: {},
     });
 
@@ -222,14 +252,13 @@ describe("createWorkbenchViewCache", () => {
         cache,
         state: {
           files: {},
-          items: {
+          items: create_test_item_index({
             "1": {
-              item_id: 1,
               file_path: "chapter01.txt",
               src: "a",
               status: "PROCESSED",
             },
-          },
+          }),
           analysis: {},
         },
         item_ids: [1],
@@ -247,14 +276,13 @@ describe("createWorkbenchViewCache", () => {
           sort_index: 1,
         },
       },
-      items: {
+      items: create_test_item_index({
         "1": {
-          item_id: 1,
           file_path: "chapter01.txt",
           src: "a",
           status: "NONE",
         },
-      },
+      }),
       analysis: {
         status_summary: {
           total_line: 1,
@@ -275,15 +303,14 @@ describe("createWorkbenchViewCache", () => {
     const delta_cache = getWorkbenchViewCache({
       state: {
         ...base_state,
-        items: {
-          ...base_state.items,
+        items: create_test_item_index({
+          ...base_state.items.toRecordSnapshot(),
           "1": {
-            item_id: 1,
             file_path: "chapter01.txt",
             src: "a",
             status: "PROCESSED",
           },
-        },
+        }),
         revisions: { sections: { files: 1, items: 2, analysis: 1 } },
       },
       previousCache: base_cache,

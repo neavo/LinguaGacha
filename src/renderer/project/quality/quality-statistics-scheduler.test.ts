@@ -6,6 +6,7 @@ import type {
 } from "@/project/quality/quality-statistics";
 import type { ProjectItemPublicRecord } from "@base/item";
 import type { ProjectStoreState } from "@/project/store/project-store";
+import { createProjectItemIndex } from "@/project/store/project-item-index";
 import {
   REFRESH_DELAY_BY_PRIORITY,
   createQualityStatisticsScheduler,
@@ -75,14 +76,14 @@ function create_test_state(): ProjectStoreState {
       loaded: true,
     },
     files: {},
-    items: {
+    items: createProjectItemIndex({
       "1": create_test_item({
         item_id: 1,
         file_path: "chapter01.txt",
         src: "apple hero foo42",
         dst: "banana hero 保留",
       }),
-    },
+    }),
     quality: {
       glossary: {
         entries: [

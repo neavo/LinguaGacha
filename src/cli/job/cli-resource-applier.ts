@@ -4,9 +4,9 @@ import { load_quality_rule_entries_from_file } from "../../core/service/quality-
 import { default_native_fs } from "../../native/native-fs";
 import { Prompt } from "../../base/prompt";
 import { QualityRule, type QualityRuleKind } from "../../base/quality";
-import type { CliCommandOptions } from "../cli-parser";
+import type { CLICommandOptions } from "../cli-parser";
 
-type CliRuleResourceSpec = {
+type CLIRuleResourceSpec = {
   resource_path: string | null; // resource_path 为 null 表示该规则在本次 CLI 任务中关闭
   rule_kind: QualityRuleKind;
   enabled_meta_key: string | null;
@@ -18,7 +18,7 @@ type CliRuleResourceSpec = {
  */
 export async function apply_cli_resources(
   core_services: CoreServices,
-  command: CliCommandOptions,
+  command: CLICommandOptions,
   project_path: string,
 ): Promise<void> {
   const operations = await build_cli_resource_operations(command, project_path);
@@ -32,7 +32,7 @@ export async function apply_cli_resources(
  * 构造 CLI 资源写库操作；默认关闭所有可选规则，再按显式文件覆盖启用。
  */
 async function build_cli_resource_operations(
-  command: CliCommandOptions,
+  command: CLICommandOptions,
   project_path: string,
 ): Promise<DatabaseOperation[]> {
   const operations: DatabaseOperation[] = [
@@ -86,7 +86,7 @@ function build_disabled_prompt_operations(project_path: string): DatabaseOperati
  */
 async function build_rule_resource_operations(
   project_path: string,
-  command: CliCommandOptions,
+  command: CLICommandOptions,
 ): Promise<DatabaseOperation[]> {
   const operations: DatabaseOperation[] = [];
   if (command.command !== "translate") {
@@ -121,7 +121,7 @@ async function build_rule_resource_operations(
 /**
  * 规则参数与工程 meta 的对应关系集中在这里，避免 CLI job 散落物理 key。
  */
-function build_rule_resource_specs(command: CliCommandOptions): CliRuleResourceSpec[] {
+function build_rule_resource_specs(command: CLICommandOptions): CLIRuleResourceSpec[] {
   return [
     {
       resource_path: command.resources.glossaryPath,
@@ -155,7 +155,7 @@ function build_rule_resource_specs(command: CliCommandOptions): CliRuleResourceS
  */
 function read_prompt_resource_operations(
   project_path: string,
-  command: CliCommandOptions,
+  command: CLICommandOptions,
 ): DatabaseOperation[] {
   if (command.resources.promptPath === null) {
     return [];
@@ -184,7 +184,7 @@ function read_prompt_resource_operations(
  */
 function build_revision_operations(
   project_path: string,
-  command: CliCommandOptions,
+  command: CLICommandOptions,
 ): DatabaseOperation[] {
   const quality_revisions = QualityRule.all().map((rule) =>
     op("setMeta", {

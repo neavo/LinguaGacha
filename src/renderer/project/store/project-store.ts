@@ -1,6 +1,5 @@
 import { Prompt } from "@base/prompt";
 import { QualityRule, type QualityRuleKind } from "@base/quality";
-import { normalize_project_item_public_record, type ProjectItemPublicRecord } from "@base/item";
 import {
   PROJECT_DATA_SECTIONS,
   isProjectDataSection,
@@ -10,7 +9,12 @@ import {
   type ProjectDataSection,
   type ProjectDataSectionRevisions,
 } from "@shared/project/event";
-import { InternalInvariantError } from "@shared/error";
+import {
+  applyProjectItemIndexDelta,
+  cloneProjectItemIndex,
+  createProjectItemIndex,
+  type ProjectItemIndex,
+} from "@/project/store/project-item-index";
 
 export type { ProjectDataSection, ProjectDataSectionRevisions };
 
@@ -60,7 +64,7 @@ export type ProjectStoreProofreadingState = {
 export type ProjectStoreSectionStateMap = {
   project: ProjectStoreProjectState;
   files: Record<string, unknown>;
-  items: Record<string, ProjectItemPublicRecord>;
+  items: ProjectItemIndex;
   quality: ProjectStoreQualityState;
   prompts: ProjectStorePromptsState;
   analysis: Record<string, unknown>;
@@ -207,7 +211,7 @@ const INITIAL_STATE: ProjectStoreState = {
     loaded: false,
   },
   files: {},
-  items: {},
+  items: createProjectItemIndex(),
   quality: {
     glossary: createEmptyQualityRuleSlice(),
     pre_replacement: createEmptyQualityRuleSlice(),
@@ -455,9 +459,7 @@ function cloneProjectStoreSection<TStage extends ProjectStoreStage>(
   }
 
   if (section === "items") {
-    return normalizeProjectItemRecordMap(
-      value as Record<string, unknown>,
-    ) as ProjectStoreSectionStateMap[TStage];
+    return cloneProjectItemIndex(value as ProjectItemIndex) as ProjectStoreSectionStateMap[TStage];
   }
 
   if (section === "files" || section === "analysis") {
@@ -513,26 +515,6 @@ function normalizeRecordMap(value: Record<string, unknown> | undefined): Record<
   );
 }
 
-// section replace 和 canonical delta 共用同一完整 DTO 校验，禁止瘦身 item 进入共享 store
-function normalizeProjectItemRecordMap(
-  value: Record<string, unknown> | undefined,
-): Record<string, ProjectItemPublicRecord> {
-  if (value === undefined) {
-    return {};
-  }
-  const records: Record<string, ProjectItemPublicRecord> = {};
-  for (const item of Object.values(value)) {
-    const normalized_item = normalize_project_item_public_record(item);
-    if (normalized_item === null) {
-      throw new InternalInvariantError({
-        diagnostic_context: { section: "items", reason: "section_requires_full_item_dto_map" },
-      });
-    }
-    records[String(normalized_item.item_id)] = normalized_item;
-  }
-  return records;
-}
-
 function applySectionPayloadToState(
   state: ProjectStoreState,
   section: ProjectDataSection,
@@ -550,7 +532,7 @@ function applySectionPayloadToState(
   if (section === "items") {
     return {
       ...state,
-      items: normalizeProjectItemRecordMap(payload.data as Record<string, unknown>),
+      items: createProjectItemIndex(payload.data as Record<string, unknown>),
     };
   }
   if (section === "quality") {
@@ -575,18 +557,9 @@ function applyItemsPayloadToState(
   if (payload.payloadMode !== "canonical-delta") {
     return state;
   }
-  const upsert = normalizeProjectItemRecordMap(
-    payload.upsert as Record<string, unknown> | undefined,
-  );
   return {
     ...state,
-    items: deleteSectionRecords(
-      {
-        ...state.items,
-        ...upsert,
-      },
-      payload.deleteIds,
-    ) as Record<string, ProjectItemPublicRecord>,
+    items: applyProjectItemIndexDelta(state.items, payload),
   };
 }
 

@@ -2,7 +2,7 @@ import type {
   ProjectStoreSectionRevisions,
   ProjectStoreState,
 } from "@/project/store/project-store";
-import { normalize_project_item_public_record, type ProjectItemPublicRecord } from "@base/item";
+import type { ProjectItemPublicRecord } from "@base/item";
 import { compile_text_pattern, replace_text_pattern } from "@shared/text/text-pattern";
 
 // 校对 planner 只读取公开 DTO 镜像判断是否需要发命令。
@@ -21,19 +21,10 @@ export type ProofreadingMutationPlan = {
   };
 };
 
-// 读取 ProjectStore 时必须先归一公开 DTO，缺字段条目不参与校对命令判断。
-function normalize_store_item(value: unknown): ProofreadingStoreItem | null {
-  return normalize_project_item_public_record(value);
-}
-
 // 批量校对操作按 item_id 建索引，只用于判断命令是否有实际影响。
 function build_store_item_index(state: ProjectStoreState): Map<number, ProofreadingStoreItem> {
   const item_index = new Map<number, ProofreadingStoreItem>();
-  for (const value of Object.values(state.items)) {
-    const item = normalize_store_item(value);
-    if (item === null) {
-      continue;
-    }
+  for (const item of state.items.values()) {
     item_index.set(item.item_id, item);
   }
   return item_index;

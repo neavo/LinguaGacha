@@ -10,9 +10,9 @@ import {
   is_task_type,
   type TaskType,
 } from "../../core/engine/protocol/task-types";
-import type { CliCommandOptions } from "../cli-parser";
-import type { CliJobRunOptions } from "./cli-job-types";
-import { CliTempProject } from "./cli-temp-project";
+import type { CLICommandOptions } from "../cli-parser";
+import type { CLIJobRunOptions } from "./cli-job-types";
+import { CLITempProject } from "./cli-temp-project";
 import { apply_cli_resources } from "./cli-resource-applier";
 
 /**
@@ -20,17 +20,17 @@ import { apply_cli_resources } from "./cli-resource-applier";
  */
 export async function run_cli_job(
   core_services: CoreServices,
-  command: CliCommandOptions,
-  options: CliJobRunOptions,
+  command: CLICommandOptions,
+  options: CLIJobRunOptions,
 ): Promise<void> {
   options.statusReporter.emit_started();
-  let temp_project: CliTempProject | null = null; // temp_project 只有成功创建后才需要卸载工程和删目录
+  let temp_project: CLITempProject | null = null; // temp_project 只有成功创建后才需要卸载工程和删目录
   let transient_overrides_active = false; // transient_overrides_active 防止输入校验失败时写入多余撤销调用
 
   try {
     assert_existing_inputs(command);
     fs.mkdirSync(command.outputDir, { recursive: true });
-    temp_project = await CliTempProject.create();
+    temp_project = await CLITempProject.create();
     core_services.app_setting_service.set_transient_overrides({
       ...build_cli_default_preset_overrides(),
       output_folder_open_on_finish: false,
@@ -91,7 +91,7 @@ function build_cli_default_preset_overrides(): Record<string, ApiJsonValue> {
  */
 function build_project_settings(
   core_services: CoreServices,
-  command: CliCommandOptions,
+  command: CLICommandOptions,
 ): Record<string, ApiJsonValue> {
   return normalize_project_settings_snapshot({
     ...core_services.app_setting_service.read_setting(),
@@ -103,7 +103,7 @@ function build_project_settings(
 /**
  * CLI 输入路径必须真实存在，避免内部工程创建成空任务后才报错。
  */
-function assert_existing_inputs(command: CliCommandOptions): void {
+function assert_existing_inputs(command: CLICommandOptions): void {
   for (const input_path of command.inputPaths) {
     if (!fs.existsSync(input_path)) {
       throw new Error(`Input path does not exist: ${input_path}`);
@@ -119,7 +119,7 @@ function assert_existing_inputs(command: CliCommandOptions): void {
 /**
  * 资源文件存在性在 job 边界统一校验，避免读取阶段抛出底层文件系统错误。
  */
-function collect_resource_paths(command: CliCommandOptions): string[] {
+function collect_resource_paths(command: CLICommandOptions): string[] {
   return [
     command.resources.promptPath,
     command.resources.glossaryPath,
@@ -135,7 +135,7 @@ function collect_resource_paths(command: CliCommandOptions): string[] {
 async function start_and_wait_for_task(
   core_services: CoreServices,
   task_type: "translation" | "analysis",
-  options: CliJobRunOptions,
+  options: CLIJobRunOptions,
 ): Promise<void> {
   const task_waiter = create_task_event_waiter(core_services, task_type, options);
   try {
@@ -160,7 +160,7 @@ async function start_and_wait_for_task(
 function create_task_event_waiter(
   core_services: CoreServices,
   task_type: TaskType,
-  options: CliJobRunOptions,
+  options: CLIJobRunOptions,
 ): { wait: () => Promise<void>; dispose: () => void } {
   let resolve_wait: (() => void) | null = null; // resolve_wait 由终态 done 事件触发
   let reject_wait: ((error: Error) => void) | null = null; // reject_wait 由终态 error 事件触发

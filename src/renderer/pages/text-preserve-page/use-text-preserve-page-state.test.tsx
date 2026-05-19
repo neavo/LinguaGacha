@@ -3,6 +3,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { QualityStatisticsCacheSnapshot } from "@/project/quality/quality-statistics-store";
+import type { ProjectItemPublicRecord } from "@base/item";
+import { createProjectItemIndex } from "@/project/store/project-item-index";
 import { useTextPreservePageState } from "./use-text-preserve-page-state";
 
 const { api_fetch_mock, push_toast_mock, wait_for_barrier_mock, create_barrier_checkpoint_mock } =
@@ -36,20 +38,40 @@ const run_modal_progress_toast_mock = vi.fn(
   },
 );
 
+function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
+  return {
+    item_id: 1,
+    src: "",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 0,
+    file_type: "TXT",
+    file_path: "",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}
+
 let runtime_state = {
   project: {
     path: "E:/demo/sample.lg",
     loaded: true,
   },
   files: {},
-  items: {
-    "1": {
+  items: createProjectItemIndex({
+    "1": create_test_item({
       item_id: 1,
       file_path: "chapter01.txt",
       src: "foo42",
       dst: "bar",
-    },
-  },
+    }),
+  }),
   quality: {
     glossary: { entries: [], enabled: true, mode: "off", revision: 0 },
     pre_replacement: { entries: [], enabled: true, mode: "off", revision: 0 },

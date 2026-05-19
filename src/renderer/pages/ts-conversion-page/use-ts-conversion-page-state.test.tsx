@@ -1,8 +1,10 @@
 import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ProjectItemPublicRecord } from "@base/item";
 
 import { useTsConversionPageState } from "@/pages/ts-conversion-page/use-ts-conversion-page-state";
+import { createProjectItemIndex, type ProjectItemIndex } from "@/project/store/project-item-index";
 
 const {
   api_fetch_mock,
@@ -22,7 +24,7 @@ const {
 
 // 测试只需要模拟 hook 会消费的 ProjectStore 切片，避免把完整运行态搬进页面测试
 type RuntimeState = {
-  items: Record<string, Record<string, unknown>>;
+  items: ProjectItemIndex;
   quality: {
     text_preserve: {
       entries: Array<Record<string, unknown>>;
@@ -82,6 +84,50 @@ vi.mock("@/app/locale/locale-provider", () => {
   };
 });
 
+function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
+  return {
+    item_id: 1,
+    src: "",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 0,
+    file_type: "TXT",
+    file_path: "",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}
+
+function create_runtime_items(
+  overrides: Record<string, Partial<ProjectItemPublicRecord>> = {},
+): ProjectItemIndex {
+  return createProjectItemIndex({
+    "1": create_test_item({
+      item_id: 1,
+      dst: "后台[code]台后",
+      name_dst: "台后",
+      text_type: "RENPY",
+    }),
+    "2": create_test_item({
+      item_id: 2,
+      dst: "后台",
+      name_dst: null,
+      text_type: "NONE",
+    }),
+    ...Object.fromEntries(
+      Object.entries(overrides).map(([item_id, item]) => {
+        return [item_id, create_test_item({ item_id: Number(item_id), ...item })];
+      }),
+    ),
+  });
+}
+
 // 探针组件把 hook 的公开状态交给测试，避免测试依赖 React 内部实现
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useTsConversionPageState>) => void;
@@ -103,20 +149,7 @@ describe("useTsConversionPageState", () => {
   beforeEach(() => {
     project_store_listeners.clear();
     runtime_state = {
-      items: {
-        "1": {
-          item_id: 1,
-          dst: "后台[code]台后",
-          name_dst: "台后",
-          text_type: "RENPY",
-        },
-        "2": {
-          item_id: 2,
-          dst: "后台",
-          name_dst: null,
-          text_type: "NONE",
-        },
-      },
+      items: create_runtime_items(),
       quality: {
         text_preserve: {
           entries: [],
@@ -280,12 +313,17 @@ describe("useTsConversionPageState", () => {
     expect(push_toast_mock).not.toHaveBeenCalledWith("error", expect.anything());
   });
 
-  it("未知 text_type 沿用旧路由语义跳过预设读取并继续导出", async () => {
-    runtime_state.items["3"] = {
-      item_id: 3,
-      dst: "后台[code]台后",
-      name_dst: null,
-      text_type: "../secret",
+  it("重复 text_type 只读取一次预设并继续导出全部条目", async () => {
+    runtime_state = {
+      ...runtime_state,
+      items: create_runtime_items({
+        "3": {
+          item_id: 3,
+          dst: "后台[code]台后",
+          name_dst: null,
+          text_type: "NONE",
+        },
+      }),
     };
 
     await mount_probe();

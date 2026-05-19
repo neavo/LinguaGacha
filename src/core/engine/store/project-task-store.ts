@@ -171,7 +171,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 翻译批次提交同事务写入 items 和 translation_extras，再发最小运行态 patch
+   * 翻译批次提交同事务写入 items 和 translation_extras，再发 ids-only 行级信号供 renderer 批量补读
    */
   private commit_item_updates_batch(request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
@@ -192,7 +192,7 @@ export class ProjectTaskStore {
         source: "translation_batch_update",
         updatedSections: ["items"],
         items: {
-          payloadMode: "canonical-delta",
+          payloadMode: "ids-only",
           changedIds: changed_item_ids,
         },
       });

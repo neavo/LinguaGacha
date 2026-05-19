@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ProjectItemPublicRecord } from "@base/item";
 import type { ProjectStoreState } from "@/project/store/project-store";
+import { createProjectItemIndex } from "@/project/store/project-item-index";
 import {
   create_workbench_add_files_plan,
   create_workbench_delete_files_plan,
@@ -22,7 +23,7 @@ function create_state(items: Record<string, ProjectItemPublicRecord>): ProjectSt
         sort_index: 0,
       },
     },
-    items,
+    items: createProjectItemIndex(items),
     quality: {
       glossary: { entries: [], enabled: true, mode: "default", revision: 0 },
       pre_replacement: { entries: [], enabled: true, mode: "default", revision: 0 },

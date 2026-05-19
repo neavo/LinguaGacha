@@ -3,12 +3,14 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
+import type { ProjectItemPublicRecord } from "@base/item";
 import { WorkerClientError } from "@/lib/worker-client-error";
 import {
   create_empty_proofreading_filter_panel_state,
   create_empty_proofreading_list_view,
 } from "@/pages/proofreading-page/types";
 import { useProofreadingPageState } from "@/pages/proofreading-page/use-proofreading-page-state";
+import { createProjectItemIndex } from "@/project/store/project-item-index";
 
 type RuntimeFixture = {
   settings_snapshot: {
@@ -67,6 +69,26 @@ type Deferred<T> = {
   resolve: (value: T) => void;
   reject: (reason?: unknown) => void;
 };
+
+function create_project_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
+  return {
+    item_id: 1,
+    src: "",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 0,
+    file_type: "TXT",
+    file_path: "",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}
 
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
@@ -197,8 +219,8 @@ function create_runtime_fixture(): RuntimeFixture {
               items: 7,
             },
           },
-          items: {
-            "1": {
+          items: createProjectItemIndex({
+            "1": create_project_item({
               item_id: 1,
               file_path: "chapter01.txt",
               row_number: 1,
@@ -207,8 +229,8 @@ function create_runtime_fixture(): RuntimeFixture {
               status: "NONE",
               text_type: "NONE",
               retry_count: 0,
-            },
-          },
+            }),
+          }),
         };
       },
     },

@@ -7,8 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CoreServices } from "../../core/bootstrap/core-services";
 import { CoreEventHub } from "../../core/events/core-event-hub";
 import type { DatabaseOperation } from "../../core/database/database-types";
-import type { CliCommandResources } from "../cli-parser";
-import { CliJsonStatusReporter } from "../cli-status-reporter";
+import type { CLICommandResources } from "../cli-parser";
+import { CLIJsonStatusReporter } from "../cli-status-reporter";
 import { run_cli_job } from "./cli-job-runner";
 
 const cleanup_roots: string[] = [];
@@ -441,8 +441,8 @@ function create_core_services_harness(snapshots: HarnessTaskSnapshot[]): {
 function create_status_reporter(
   command: "translate" | "analyze",
   lines: string[],
-): CliJsonStatusReporter {
-  return new CliJsonStatusReporter({
+): CLIJsonStatusReporter {
+  return new CLIJsonStatusReporter({
     command,
     now: () => new Date("2026-05-19T10:00:00.000Z"),
     writeLine: (line) => lines.push(line),
@@ -458,7 +458,7 @@ function create_cli_paths(): { input_path: string; output_dir: string; root: str
   return { input_path, output_dir, root };
 }
 
-function create_empty_resources(): CliCommandResources {
+function create_empty_resources(): CLICommandResources {
   return {
     promptPath: null,
     glossaryPath: null,

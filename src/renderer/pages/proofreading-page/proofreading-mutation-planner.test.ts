@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ProjectItemPublicRecord } from "@base/item";
 import type { ProjectStoreState } from "@/project/store/project-store";
+import { createProjectItemIndex } from "@/project/store/project-item-index";
 import {
   create_replace_all_plan,
   create_save_item_plan,
@@ -34,7 +35,7 @@ function create_test_state(): ProjectStoreState {
       loaded: true,
     },
     files: {},
-    items: {
+    items: createProjectItemIndex({
       "1": create_test_item({
         item_id: 1,
         file_path: "script/a.txt",
@@ -46,7 +47,7 @@ function create_test_state(): ProjectStoreState {
         tag: "dialog",
         file_type: "TXT",
       }),
-    },
+    }),
     quality: {
       glossary: { entries: [], enabled: false, mode: "off", revision: 0 },
       pre_replacement: { entries: [], enabled: false, mode: "off", revision: 0 },
@@ -93,7 +94,7 @@ describe("proofreading mutation planner", () => {
     const plan = create_replace_all_plan({
       state: {
         ...create_test_state(),
-        items: {
+        items: createProjectItemIndex({
           "1": create_test_item({
             item_id: 1,
             file_path: "script/a.txt",
@@ -102,7 +103,7 @@ describe("proofreading mutation planner", () => {
             dst: "Name: Alice",
             status: "NONE",
           }),
-        },
+        }),
       },
       item_ids: [1],
       search_text: "Name: (.+)",

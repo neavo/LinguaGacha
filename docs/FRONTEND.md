@@ -47,10 +47,10 @@ project, files, items, quality, prompts, analysis, proofreading
 - `TaskRuntimeStore` 消费的 `TaskSnapshot` 固定为 `base + progress + extras`：通用状态只在 base，进度只在 `progress`，分析候选数只在 `extras.kind === "analysis"`，重翻行级状态只在 `extras.kind === "translation" && scope.kind === "items"`。
 - 任务命令 HTTP ack 只能携带后端当前完整 `TaskSnapshot`；页面只经 `TaskRuntimeStore` 同步该 snapshot，不能在页面层追加“终态优先于 requested / stopping”的第二套排序规则。
 - 共享项目事实只能来自项目读取接口、同步 mutation 返回的 `ProjectMutationResult.changes` 和 `project.data_changed`。
-- `ProjectStore.items` 持有完整公开 item DTO 镜像，字段口径与后端项目读取一致；页面、worker 和 planner 可以派生轻量 view model，但工作台、reset、settings alignment 和校对类 mutation 只能提交用户意图、设置镜像和 `ProjectStore.revisions.sections` 中的依赖 revision，不能把派生 `items`、task/progress extras、prefilter config 或 analysis extras 当作最终事实提交。
+- `ProjectStore.items` 以只读 `ProjectItemIndex` 持有当前完整公开 item DTO 镜像，字段口径与后端项目读取一致；页面、worker 和 planner 只能通过索引 API 派生轻量 view model，不能把它当普通对象快照或历史版本保存。工作台、reset、settings alignment 和校对类 mutation 只能提交用户意图、设置镜像和 `ProjectStore.revisions.sections` 中的依赖 revision，不能把派生 `items`、task/progress extras、prefilter config 或 analysis extras 当作最终事实提交。
 - `ProjectChangeEvent`、read-sections 和 ids-only 补读响应都必须携带后端确认的 project path；`DesktopRuntimeProvider` 维护独立于 `ProjectStore` 的当前项目身份 `path + epoch + phase`，project path 与当前身份不一致的 mutation result、SSE 或读响应一律丢弃，异步补读响应还必须匹配发起时的 epoch。
 - 工程 warmup 期间，同项目身份的 mutation result 和 `project.data_changed` 先进入运行态队列；完整 read-sections 快照原子替换 `ProjectStore` 后再按原顺序重放，`eventId` 去重仍负责避免 HTTP mutation result 与同源 SSE 重复推进页面信号。
-- 正常项目变更应携带后端 canonical payload：行级 items/files delta 直接合并，完整 items/files 替换和其它 section 通过 `sections.*.data` 合并。`section-invalidated`、ids-only 补读或缺少后端 section revision 的项目变更不能直接写入 `ProjectStore`；补读请求必须绑定发起时的 project path 与 epoch，读回后同时校验当前项目身份、响应 project path 与后端 section revision，项目切换、同路径重新 warmup 后的迟到响应或旧 revision 响应必须丢弃，合格响应再以 exact revision 合并。
+- 项目变更按 payload mode 分流：canonical 行级 items/files delta 直接合并，完整 items/files 替换和其它 section 通过 `sections.*.data` 合并；任务翻译这类高频 item 变更可发布 ids-only，只在 renderer 刷新窗口合并 id 后补读公开 DTO；`section-invalidated` 只用于异常恢复。ids-only、`section-invalidated` 或缺少后端 section revision 的项目变更不能直接写入 `ProjectStore`；补读请求必须绑定发起时的 project path 与 epoch，读回后同时校验当前项目身份、响应 project path 与后端 section revision，项目切换、同路径重新 warmup 后的迟到响应或旧 revision 响应必须丢弃，合格响应再以 exact revision 合并。
 - 项目变更中的 item upsert 必须携带完整公开 DTO；只表达字段变化的路径应走专门 mutation payload，由后端合并数据库事实。
 - `ProjectStore` change revision 默认合并，补读结果使用 exact revision；两种模式都只能写入后端显式返回的 section revision，不按 updated section 自增。项目数据派生缓存只能消费 `ProjectDataRevisionCheckpoint` 和声明的 required sections，不得用 `task` 或时间戳作为 freshness 主依据。
 - 新建工程提交只能发送 `source_paths`、目标 `path` 和当前 `project_settings`；`create-preview` 若用于 UI 展示，也不能把预览 `items`、`translation_extras` 或 `prefilter_config` 作为提交事实来源。
@@ -73,7 +73,7 @@ project, files, items, quality, prompts, analysis, proofreading
 
 - `SCREEN_REGISTRY` 是页面注册和标题 key 的唯一入口。
 - `ProjectPagesProvider` 持有工作台与校对页 runtime adapter，并用 revision checkpoint barrier 协调项目 warmup、缓存刷新、文件操作和页面跳转。
-- 工作台与校对页可维护页面级缓存，但 ready 判定必须覆盖当前 `ProjectStore.revisions.sections` 中声明依赖的 sections；页面 runtime adapter 不暴露时间戳或 stale boolean 作为缓存新旧依据。
+- 工作台与校对页可维护页面级缓存，但 ready 判定必须覆盖当前 `ProjectStore.revisions.sections` 中声明依赖的 sections；页面 runtime adapter 不暴露时间戳或 stale boolean 作为缓存新旧依据。工作台缓存由页面 ref 独占，精确 item delta 只更新变更 id 相关索引和统计，不在刷新窗口复制全量 items Map。
 - 校对 worker 的缓存身份必须同时覆盖 project path、source language、items / quality / proofreading revisions；items tombstone 必须从 worker 原始行、评估行、计数索引和列表缓存中同步删除。
 - 校对、质量规则和姓名字段等结果型页面的主列表使用结果视图快照：搜索、筛选、替换、排序或刷新等显式 action 生成有序稳定 id；项目事实刷新只回读最新行内容、状态、警告和统计徽标，不自动改变当前成员与顺序；实体删除、项目切换、全量数据源重建或运行态不兼容时才剪除或重建快照，不按位置把旧 id 映射到新实体。
 - Quality statistics 的文本变更判断使用顺序滚动 hash，不以全量文本数组 stringify 作为主要 stale 判断；Quality statistics 与校对 worker 的质量规则编译、替换、文本保护和术语匹配口径收口到 `quality-runtime-context`。

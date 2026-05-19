@@ -5,6 +5,7 @@ import type {
   NameFieldSortState,
   NameFieldStatus,
 } from "@/pages/name-field-extraction-page/types";
+import type { ProjectItemIndex } from "@/project/store/project-item-index";
 
 type RuntimeItemRecord = {
   item_id: number;
@@ -70,13 +71,13 @@ function build_glossary_dst_by_src(entries: Array<Record<string, unknown>>): Map
 }
 
 export function extract_name_field_rows(args: {
-  items: Record<string, unknown>;
+  items: ProjectItemIndex;
   glossary_entries: Array<Record<string, unknown>>;
 }): NameFieldRow[] {
   const groups = new Map<string, NameFieldExtractionGroup>();
   const glossary_dst_by_src = build_glossary_dst_by_src(args.glossary_entries);
 
-  for (const value of Object.values(args.items)) {
+  for (const value of args.items.values()) {
     const item = normalize_runtime_item_record(value);
     if (item === null) {
       continue;

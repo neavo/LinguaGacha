@@ -94,9 +94,10 @@ function apply_store_sections(
   args: {
     projectRevision: number;
     sectionRevisions?: Partial<Record<ProjectStoreStage, number>>;
-    sections: Partial<ProjectStoreSectionStateMap>;
+    sections: Partial<Record<ProjectStoreStage, unknown>>;
   },
 ): void {
+  const project_section = args.sections.project as { path?: unknown } | undefined;
   const updated_sections = Object.keys(args.sections).filter(
     (section): section is ProjectStoreStage =>
       ["project", "files", "items", "quality", "prompts", "analysis", "proofreading"].includes(
@@ -107,7 +108,7 @@ function apply_store_sections(
   store.applyProjectChange(
     {
       source: "project_read_sections",
-      projectPath: String(args.sections.project?.path ?? "E:/demo/demo.lg"),
+      projectPath: String(project_section?.path ?? "E:/demo/demo.lg"),
       projectRevision: args.projectRevision,
       updatedSections: updated_sections,
       sectionRevisions: args.sectionRevisions,
@@ -150,7 +151,7 @@ describe("createProjectStore", () => {
     });
 
     expect(store.getState().project.path).toBe("E:/demo/demo.lg");
-    expect(Object.keys(store.getState().items)).toEqual(["1", "2"]);
+    expect([...store.getState().items.keys()]).toEqual(["1", "2"]);
     expect(store.getState().revisions.projectRevision).toBe(1);
     expect(store.getState().revisions.sections.items).toBe(3);
   });
@@ -196,7 +197,7 @@ describe("createProjectStore", () => {
       ],
     });
 
-    expect(store.getState().items["1"]).toEqual(
+    expect(store.getState().items.get(1)).toEqual(
       create_test_item({
         item_id: 1,
         file_path: "chapter01.txt",
@@ -255,7 +256,7 @@ describe("createProjectStore", () => {
       },
     ]);
 
-    expect(store.getState().items["1"]).toMatchObject({
+    expect(store.getState().items.get(1)).toMatchObject({
       dst: "第二版",
       status: "PROCESSED",
     });
@@ -332,7 +333,7 @@ describe("createProjectStore", () => {
       ],
     });
 
-    expect(store.getState().items["1"]).toEqual(
+    expect(store.getState().items.get(1)).toEqual(
       create_test_item({
         item_id: 1,
         file_path: "chapter01.txt",
@@ -386,7 +387,7 @@ describe("createProjectStore", () => {
     expect(store.getState().files).toEqual({
       "b.txt": { rel_path: "b.txt" },
     });
-    expect(store.getState().items).toEqual({
+    expect(store.getState().items.toRecordSnapshot()).toEqual({
       2: create_test_item({ item_id: 2, file_path: "b.txt" }),
     });
     expect(result.fileDelta).toEqual({
@@ -707,7 +708,7 @@ describe("createProjectStore", () => {
     });
 
     expect(store.getState().project.path).toBe("E:/demo/next.lg");
-    expect(store.getState().items).toEqual({});
+    expect(store.getState().items.toRecordSnapshot()).toEqual({});
     expect(store.getState().revisions.projectRevision).toBe(11);
     expect(store.getState().revisions.sections.project).toBe(1);
     expect(store.getState().revisions.sections.analysis).toBe(9);

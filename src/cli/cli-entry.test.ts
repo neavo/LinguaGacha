@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { CliCommandOptions } from "./cli-parser";
+import type { CLICommandOptions } from "./cli-parser";
 import type { WorkerPoolExecution } from "../core/engine/worker/worker-execution";
 
 const run_cli_command_mock = vi.hoisted(() => {
@@ -79,7 +79,7 @@ describe("run_cli_entry", () => {
           postReplacementPath: null,
           textPreservePath: null,
         },
-      } satisfies CliCommandOptions,
+      } satisfies CLICommandOptions,
       DIRECT_WORKER_EXECUTION,
     );
     expect(stdout.messages).toEqual([]);
