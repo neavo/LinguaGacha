@@ -20,8 +20,8 @@ import { useI18n } from "@/app/locale/locale-provider";
 import { should_defer_runtime_snapshot_refresh } from "@/pages/workbench-page/task-runtime/task-runtime-ownership";
 import { useTerminalPromptSuppression } from "@/pages/workbench-page/task-runtime/terminal-prompt-suppression";
 import {
-  append_workbench_waveform_sample,
-  decay_workbench_waveform_sample,
+  advance_workbench_waveform_state,
+  create_empty_workbench_waveform_state,
   has_unsettled_workbench_waveform_tail,
   WORKBENCH_WAVEFORM_SAMPLE_INTERVAL_MS,
 } from "@/pages/workbench-page/task-runtime/workbench-waveform";
@@ -74,50 +74,6 @@ function create_task_confirm_state(kind: TranslationTaskActionKind): Translation
     open: true,
     submitting: false,
   };
-}
-
-function has_translation_waveform_progress_changed(
-  previous_snapshot: TranslationTaskSnapshot,
-  next_snapshot: TranslationTaskSnapshot,
-): boolean {
-  if (previous_snapshot.total_output_tokens !== next_snapshot.total_output_tokens) {
-    return true;
-  }
-  if (previous_snapshot.line !== next_snapshot.line) {
-    return true;
-  }
-  if (previous_snapshot.processed_line !== next_snapshot.processed_line) {
-    return true;
-  }
-  if (previous_snapshot.error_line !== next_snapshot.error_line) {
-    return true;
-  }
-
-  return false;
-}
-
-function resolve_translation_waveform_sample(args: {
-  previous_snapshot: TranslationTaskSnapshot | null;
-  previous_time: number | null;
-  next_snapshot: TranslationTaskSnapshot;
-  next_metrics: TranslationTaskMetrics;
-  next_now_seconds: number;
-}): number {
-  if (args.previous_snapshot === null || args.previous_time === null) {
-    return args.next_metrics.average_output_speed;
-  }
-
-  if (!has_translation_waveform_progress_changed(args.previous_snapshot, args.next_snapshot)) {
-    return 0;
-  }
-
-  const elapsed_seconds = Math.max(0.001, args.next_now_seconds - args.previous_time);
-  const output_token_delta = Math.max(
-    0,
-    args.next_snapshot.total_output_tokens - args.previous_snapshot.total_output_tokens,
-  );
-
-  return output_token_delta / elapsed_seconds;
 }
 
 function resolve_translation_terminal_feedback_message(args: {
@@ -210,9 +166,7 @@ export function useTranslationTaskRuntime(
   const previous_project_loaded_ref = useRef(false);
   const previous_project_path_ref = useRef("");
   const previous_translation_status_ref = useRef(create_empty_translation_task_snapshot().status);
-  const observed_translation_waveform_snapshot_ref = useRef<TranslationTaskSnapshot | null>(null);
-  const observed_translation_waveform_time_ref = useRef<number | null>(null);
-  const current_translation_waveform_sample_ref = useRef(0);
+  const translation_waveform_state_ref = useRef(create_empty_workbench_waveform_state());
   const {
     clear_terminal_prompt_suppression,
     consume_terminal_prompt_suppression,
@@ -243,15 +197,9 @@ export function useTranslationTaskRuntime(
   const should_animate_translation_waveform =
     translation_task_active || has_unsettled_translation_waveform_tail;
 
-  const reset_translation_waveform_observation = useCallback((): void => {
-    observed_translation_waveform_snapshot_ref.current = null;
-    observed_translation_waveform_time_ref.current = null;
-  }, []);
-
   const clear_translation_waveform_sampling = useCallback((): void => {
-    reset_translation_waveform_observation();
-    current_translation_waveform_sample_ref.current = 0;
-  }, [reset_translation_waveform_observation]);
+    translation_waveform_state_ref.current = create_empty_workbench_waveform_state();
+  }, []);
 
   const append_translation_waveform_sample = useEffectEvent((): void => {
     const next_now_seconds = Date.now() / 1000;
@@ -269,50 +217,18 @@ export function useTranslationTaskRuntime(
       return;
     }
 
-    const previous_observed_snapshot = observed_translation_waveform_snapshot_ref.current;
-    const previous_observed_time = observed_translation_waveform_time_ref.current;
-    if (translation_task_active) {
-      const has_progress_delta =
-        previous_observed_snapshot !== null &&
-        previous_observed_time !== null &&
-        has_translation_waveform_progress_changed(previous_observed_snapshot, next_visual_snapshot);
-
-      if (previous_observed_snapshot === null || previous_observed_time === null) {
-        current_translation_waveform_sample_ref.current = next_metrics.average_output_speed;
-        observed_translation_waveform_snapshot_ref.current = next_visual_snapshot;
-        observed_translation_waveform_time_ref.current = next_now_seconds;
-      } else if (has_progress_delta) {
-        current_translation_waveform_sample_ref.current = resolve_translation_waveform_sample({
-          previous_snapshot: previous_observed_snapshot,
-          previous_time: previous_observed_time,
-          next_snapshot: next_visual_snapshot,
-          next_metrics,
-          next_now_seconds,
-        });
-        observed_translation_waveform_snapshot_ref.current = next_visual_snapshot;
-        observed_translation_waveform_time_ref.current = next_now_seconds;
-      }
-
-      set_translation_waveform_history((previous_history) => {
-        // 为什么：运行态两帧之间没有新数据时，要保留上一跳高度，视觉上才能保持连续扫屏
-        return append_workbench_waveform_sample(
-          previous_history,
-          current_translation_waveform_sample_ref.current,
-        );
-      });
-      return;
-    }
-
-    current_translation_waveform_sample_ref.current = decay_workbench_waveform_sample(
-      current_translation_waveform_sample_ref.current,
+    // 为什么：波形只消费累计输出 token，行进度变化不应制造 0 样本或尖峰。
+    const next_waveform_state = advance_workbench_waveform_state(
+      translation_waveform_state_ref.current,
+      {
+        active: translation_task_active,
+        now_seconds: next_now_seconds,
+        total_output_tokens: next_visual_snapshot.total_output_tokens,
+      },
     );
-
-    set_translation_waveform_history((previous_history) => {
-      // 为什么：任务结束后不再生成新峰值，只让旧波形带着衰减尾巴继续向前推进，直到视窗归零
-      return append_workbench_waveform_sample(
-        previous_history,
-        current_translation_waveform_sample_ref.current,
-      );
+    translation_waveform_state_ref.current = next_waveform_state;
+    set_translation_waveform_history(() => {
+      return next_waveform_state.history;
     });
   });
 
@@ -680,7 +596,7 @@ export function useTranslationTaskRuntime(
       return;
     }
 
-    const next_now_seconds = Date.now() / 1000; // 为什么：结束态仍然要对齐最终指标，但波形采样只保留最后一跳，然后交给衰减尾巴继续前推
+    const next_now_seconds = Date.now() / 1000; // 为什么：结束态仍然要对齐最终指标，波形尾巴由共享状态机继续衰减
     const next_visual_snapshot =
       translation_task_display_snapshot === null
         ? null
@@ -691,12 +607,7 @@ export function useTranslationTaskRuntime(
         now_seconds: next_now_seconds,
       }),
     );
-    reset_translation_waveform_observation();
-  }, [
-    reset_translation_waveform_observation,
-    translation_task_active,
-    translation_task_display_snapshot,
-  ]);
+  }, [translation_task_active, translation_task_display_snapshot]);
 
   useEffect(() => {
     if (!should_animate_translation_waveform) {

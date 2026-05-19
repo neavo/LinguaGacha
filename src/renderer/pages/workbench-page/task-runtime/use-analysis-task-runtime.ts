@@ -28,8 +28,8 @@ import { useI18n } from "@/app/locale/locale-provider";
 import { should_defer_runtime_snapshot_refresh } from "@/pages/workbench-page/task-runtime/task-runtime-ownership";
 import { useTerminalPromptSuppression } from "@/pages/workbench-page/task-runtime/terminal-prompt-suppression";
 import {
-  append_workbench_waveform_sample,
-  decay_workbench_waveform_sample,
+  advance_workbench_waveform_state,
+  create_empty_workbench_waveform_state,
   has_unsettled_workbench_waveform_tail,
   WORKBENCH_WAVEFORM_SAMPLE_INTERVAL_MS,
 } from "@/pages/workbench-page/task-runtime/workbench-waveform";
@@ -94,50 +94,6 @@ function create_task_confirm_state(kind: AnalysisTaskActionKind): AnalysisTaskCo
     open: true,
     submitting: false,
   };
-}
-
-function has_analysis_waveform_progress_changed(
-  previous_snapshot: AnalysisTaskSnapshot,
-  next_snapshot: AnalysisTaskSnapshot,
-): boolean {
-  if (previous_snapshot.total_output_tokens !== next_snapshot.total_output_tokens) {
-    return true;
-  }
-  if (previous_snapshot.line !== next_snapshot.line) {
-    return true;
-  }
-  if (previous_snapshot.processed_line !== next_snapshot.processed_line) {
-    return true;
-  }
-  if (previous_snapshot.error_line !== next_snapshot.error_line) {
-    return true;
-  }
-
-  return false;
-}
-
-function resolve_analysis_waveform_sample(args: {
-  previous_snapshot: AnalysisTaskSnapshot | null;
-  previous_time: number | null;
-  next_snapshot: AnalysisTaskSnapshot;
-  next_metrics: AnalysisTaskMetrics;
-  next_now_seconds: number;
-}): number {
-  if (args.previous_snapshot === null || args.previous_time === null) {
-    return args.next_metrics.average_output_speed;
-  }
-
-  if (!has_analysis_waveform_progress_changed(args.previous_snapshot, args.next_snapshot)) {
-    return 0;
-  }
-
-  const elapsed_seconds = Math.max(0.001, args.next_now_seconds - args.previous_time);
-  const output_token_delta = Math.max(
-    0,
-    args.next_snapshot.total_output_tokens - args.previous_snapshot.total_output_tokens,
-  );
-
-  return output_token_delta / elapsed_seconds;
 }
 
 function resolve_analysis_terminal_feedback_message(args: {
@@ -234,9 +190,7 @@ export function useAnalysisTaskRuntime(
   const previous_project_loaded_ref = useRef(false);
   const previous_project_path_ref = useRef("");
   const previous_analysis_status_ref = useRef(create_empty_analysis_task_snapshot().status);
-  const observed_analysis_waveform_snapshot_ref = useRef<AnalysisTaskSnapshot | null>(null);
-  const observed_analysis_waveform_time_ref = useRef<number | null>(null);
-  const current_analysis_waveform_sample_ref = useRef(0);
+  const analysis_waveform_state_ref = useRef(create_empty_workbench_waveform_state());
   const {
     clear_terminal_prompt_suppression,
     consume_terminal_prompt_suppression,
@@ -269,15 +223,9 @@ export function useAnalysisTaskRuntime(
   const should_animate_analysis_waveform =
     analysis_task_active || has_unsettled_analysis_waveform_tail;
 
-  const reset_analysis_waveform_observation = useCallback((): void => {
-    observed_analysis_waveform_snapshot_ref.current = null;
-    observed_analysis_waveform_time_ref.current = null;
-  }, []);
-
   const clear_analysis_waveform_sampling = useCallback((): void => {
-    reset_analysis_waveform_observation();
-    current_analysis_waveform_sample_ref.current = 0;
-  }, [reset_analysis_waveform_observation]);
+    analysis_waveform_state_ref.current = create_empty_workbench_waveform_state();
+  }, []);
 
   const append_analysis_waveform_sample = useEffectEvent((): void => {
     const next_now_seconds = Date.now() / 1000;
@@ -295,50 +243,18 @@ export function useAnalysisTaskRuntime(
       return;
     }
 
-    const previous_observed_snapshot = observed_analysis_waveform_snapshot_ref.current;
-    const previous_observed_time = observed_analysis_waveform_time_ref.current;
-    if (analysis_task_active) {
-      const has_progress_delta =
-        previous_observed_snapshot !== null &&
-        previous_observed_time !== null &&
-        has_analysis_waveform_progress_changed(previous_observed_snapshot, next_visual_snapshot);
-
-      if (previous_observed_snapshot === null || previous_observed_time === null) {
-        current_analysis_waveform_sample_ref.current = next_metrics.average_output_speed;
-        observed_analysis_waveform_snapshot_ref.current = next_visual_snapshot;
-        observed_analysis_waveform_time_ref.current = next_now_seconds;
-      } else if (has_progress_delta) {
-        current_analysis_waveform_sample_ref.current = resolve_analysis_waveform_sample({
-          previous_snapshot: previous_observed_snapshot,
-          previous_time: previous_observed_time,
-          next_snapshot: next_visual_snapshot,
-          next_metrics,
-          next_now_seconds,
-        });
-        observed_analysis_waveform_snapshot_ref.current = next_visual_snapshot;
-        observed_analysis_waveform_time_ref.current = next_now_seconds;
-      }
-
-      set_analysis_waveform_history((previous_history) => {
-        // 为什么：运行态两帧之间没有新数据时，分析波形也要延续上一跳，才能维持连贯的监视器节奏
-        return append_workbench_waveform_sample(
-          previous_history,
-          current_analysis_waveform_sample_ref.current,
-        );
-      });
-      return;
-    }
-
-    current_analysis_waveform_sample_ref.current = decay_workbench_waveform_sample(
-      current_analysis_waveform_sample_ref.current,
+    // 为什么：分析和翻译共用同一视觉信号模型，避免两套瞬时速度算法继续分叉。
+    const next_waveform_state = advance_workbench_waveform_state(
+      analysis_waveform_state_ref.current,
+      {
+        active: analysis_task_active,
+        now_seconds: next_now_seconds,
+        total_output_tokens: next_visual_snapshot.total_output_tokens,
+      },
     );
-
-    set_analysis_waveform_history((previous_history) => {
-      // 为什么：分析任务结束后只保留衰减中的尾巴继续前推，直到可见窗口完全沉到 0
-      return append_workbench_waveform_sample(
-        previous_history,
-        current_analysis_waveform_sample_ref.current,
-      );
+    analysis_waveform_state_ref.current = next_waveform_state;
+    set_analysis_waveform_history(() => {
+      return next_waveform_state.history;
     });
   });
 
@@ -887,7 +803,7 @@ export function useAnalysisTaskRuntime(
       return;
     }
 
-    const next_now_seconds = Date.now() / 1000; // 为什么：结束态继续展示最终指标，但采样只保留最后一跳，后续由衰减尾巴负责收束到 0
+    const next_now_seconds = Date.now() / 1000; // 为什么：结束态继续展示最终指标，波形收尾由共享状态机接管
     const next_visual_snapshot =
       analysis_task_display_snapshot === null
         ? null
@@ -898,8 +814,7 @@ export function useAnalysisTaskRuntime(
         now_seconds: next_now_seconds,
       }),
     );
-    reset_analysis_waveform_observation();
-  }, [reset_analysis_waveform_observation, analysis_task_active, analysis_task_display_snapshot]);
+  }, [analysis_task_active, analysis_task_display_snapshot]);
 
   useEffect(() => {
     if (!should_animate_analysis_waveform) {
