@@ -82,6 +82,10 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260520 v0.101.1
+  - fix - lag during task start/process [#587](https://github.com/neavo/LinguaGacha/issues/587)
+  - fix - incorrect MacOS packaging arch [#588](https://github.com/neavo/LinguaGacha/issues/588)
+
 - 20260519 v0.101.0
   - feat - [Command Line Mode](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
   - fix - Attempted to fix page freezing [#583](https://github.com/neavo/LinguaGacha/issues/583) [#585](https://github.com/neavo/LinguaGacha/issues/585)

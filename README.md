@@ -81,6 +81,10 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20260520 v0.101.1
+  - fix - 任务启动/执行时的卡顿的问题 [#587](https://github.com/neavo/LinguaGacha/issues/587)
+  - fix - MacOS 打包架构不正确的问题 [#588](https://github.com/neavo/LinguaGacha/issues/588)
+
 - 20260519 v0.101.0
   - feat - [命令行模式](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
   - fix - 尝试修复页面假死的问题 [#583](https://github.com/neavo/LinguaGacha/issues/583) [#585](https://github.com/neavo/LinguaGacha/issues/585)
