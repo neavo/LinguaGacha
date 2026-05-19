@@ -31,19 +31,15 @@ import {
   type ProofreadingVisibleItem,
   type ProofreadingWarningFragmentsByCode,
 } from "@/pages/proofreading-page/types";
-import { is_hangul_character, is_kana_character } from "@shared/language";
 import { InternalInvariantError } from "@shared/error";
 import type { TextPreserveRule } from "@shared/text/text-preserve-rules";
+import { create_text_keyword_matcher, type TextKeywordMatcher } from "@shared/text/text-pattern";
 import {
-  compile_text_pattern,
-  matches_text_pattern,
-  type CompiledTextPattern,
-} from "@shared/text/text-pattern";
+  collect_translation_residue_fragments,
+  has_translation_retry_reached_review_threshold,
+  has_translation_similarity_issue,
+} from "@shared/text/translation-quality-rules";
 import type { AppTableSortState } from "@/widgets/app-table/app-table-types";
-
-const PROOFREADING_SIMILARITY_THRESHOLD = 0.8; // 相似度阈值沿用任务侧轻量 Jaccard 口径，避免校对页给出另一套警告标准
-
-const PROOFREADING_RETRY_THRESHOLD = 2; // 重试次数达到该阈值才提示人工介入，低于阈值的错误仍交给任务重试消化
 
 // 跳过类状态仍要进入筛选统计，但不参与警告计算
 const PROOFREADING_SKIPPED_WARNING_STATUSES = new Set([
@@ -72,7 +68,7 @@ export type ProofreadingRuntimeRevisions = {
   proofreading: number;
 };
 
-// 全量 hydrate 输入包含项目分段 revision、质量规则快照和当前源语言
+// 全量 hydrate 输入包含项目分段 revision、质量规则快照和当前源/目标语言
 export type ProofreadingRuntimeHydrationInput = {
   projectId: string;
   revisions: ProofreadingRuntimeRevisions;
@@ -80,6 +76,7 @@ export type ProofreadingRuntimeHydrationInput = {
   upsertItems: ProofreadingRuntimeItemRecord[];
   quality: ProjectStoreQualityState;
   sourceLanguage: string;
+  targetLanguage: string;
 };
 
 // 增量输入只携带变化 item，质量规则和源语言沿用已 hydrate 状态
@@ -134,10 +131,11 @@ export type ProofreadingListWindow = {
   rows: ProofreadingVisibleItem[];
 };
 
-// 同步状态是主线程判断 worker 缓存是否可继续复用的最小凭据
+// 同步状态是主线程判断 worker 缓存是否可继续复用的最小凭据，语言变化必须触发全量重建
 export type ProofreadingRuntimeSyncState = {
   projectId: string;
   sourceLanguage: string;
+  targetLanguage: string;
   revisions: ProofreadingRuntimeRevisions;
   defaultFilters: ProofreadingFilterOptions;
 };
@@ -149,6 +147,7 @@ type ProofreadingRuntimeState = {
   total_item_count: number;
   quality: ProjectStoreQualityState;
   sourceLanguage: string;
+  targetLanguage: string;
   quality_context: QualityRuntimeContext;
   sample_rule_cache: Map<string, TextPreserveRule | null>;
   raw_item_by_id: Map<string, ProofreadingRuntimeItemRecord>;
@@ -170,6 +169,22 @@ type ProofreadingRuntimeListViewCache = {
 
 // 筛选维度枚举用于“构建面板时忽略当前维度”的交叉统计
 type ProofreadingFilterDimension = "warning_types" | "statuses" | "file_paths" | "glossary_terms";
+
+// 单次筛选查询的预编译上下文，避免在每个 item 上重复构造 Set
+type ProofreadingRuntimeFilterContext = {
+  warning_type_set: Set<string> | null; // null 表示当前查询忽略 warning 维度
+  status_set: Set<string> | null; // null 表示当前查询忽略 status 维度
+  file_path_set: Set<string> | null; // null 表示当前查询忽略 file 维度
+  glossary_filter_enabled: boolean; // false 表示当前查询忽略术语维度
+  glossary_term_key_set: Set<string>; // 预归一后的术语缺失筛选键
+  include_without_glossary_miss: boolean; // 是否保留没有术语缺失的条目
+};
+
+// 单次搜索查询的预编译上下文，普通文本走包含匹配，正则只编译一次
+type ProofreadingRuntimeSearchContext = {
+  matcher: TextKeywordMatcher; // 由共享文本规则生成的稳定匹配器
+  scope: ProofreadingSearchScope; // 当前搜索范围：原文、译文或两者
+};
 
 const PROOFREADING_DEFAULT_WINDOW_COUNT = 160; // 默认窗口大小控制 worker 每次返回量，防止大项目一次复制全量行
 
@@ -263,7 +278,7 @@ function sort_visible_items(
 ): ProofreadingClientItem[] {
   const effective_sort_state = sort_state ?? PROOFREADING_NATURAL_SORT_STATE;
 
-  return [...items].sort((left_item, right_item) => {
+  return items.sort((left_item, right_item) => {
     const result = compare_visible_items(left_item, right_item, effective_sort_state);
     if (result !== 0) {
       return result;
@@ -282,61 +297,6 @@ function sort_visible_items(
 
     return compare_text(left_item.row_id, right_item.row_id);
   });
-}
-
-/**
- * 根据搜索模式构造单次查询正则；空关键字表示不过滤
- */
-function create_search_pattern(keyword: string, is_regex: boolean): CompiledTextPattern | null {
-  return compile_text_pattern({
-    source_text: keyword,
-    mode: is_regex ? "regex" : "literal",
-    case_sensitive: false,
-    global: false,
-  });
-}
-
-/**
- * 搜索匹配兼容正则和普通包含，非法正则由调用方传入 null 后宽松放行
- */
-function matches_search_pattern(
-  text: string,
-  search_pattern: CompiledTextPattern | null,
-  keyword: string,
-): boolean {
-  const normalized_keyword = keyword.trim();
-  if (normalized_keyword === "") {
-    return true;
-  }
-
-  if (search_pattern === null) {
-    return true;
-  }
-
-  return matches_text_pattern(text, search_pattern);
-}
-
-/**
- * 搜索范围决定比较 src、dst 还是二者任一命中
- */
-function matches_proofreading_search_scope(args: {
-  item: ProofreadingClientItem;
-  search_pattern: CompiledTextPattern | null;
-  keyword: string;
-  scope: ProofreadingSearchScope;
-}): boolean {
-  if (args.scope === "src") {
-    return matches_search_pattern(args.item.src, args.search_pattern, args.keyword);
-  }
-
-  if (args.scope === "dst") {
-    return matches_search_pattern(args.item.dst, args.search_pattern, args.keyword);
-  }
-
-  return (
-    matches_search_pattern(args.item.src, args.search_pattern, args.keyword) ||
-    matches_search_pattern(args.item.dst, args.search_pattern, args.keyword)
-  );
 }
 
 /**
@@ -394,84 +354,6 @@ function build_text_preserve_failed_fragments(args: {
 }
 
 /**
- * 连续语言残留按片段聚合，避免每个字符都生成一个警告碎片
- */
-function collect_contiguous_text_segments(
-  text: string,
-  is_fragment_character: (character: string) => boolean,
-): string[] {
-  const segments: string[] = [];
-  let current_segment = "";
-
-  Array.from(text).forEach((character) => {
-    if (is_fragment_character(character)) {
-      current_segment += character;
-      return;
-    }
-
-    if (current_segment !== "") {
-      segments.push(current_segment);
-      current_segment = "";
-    }
-  });
-
-  if (current_segment !== "") {
-    segments.push(current_segment);
-  }
-
-  return unique_strings(segments);
-}
-
-/**
- * 假名残留片段使用共享语言规则，和任务侧响应检查保持一致
- */
-function collect_kana_residue_fragments(text: string): string[] {
-  return collect_contiguous_text_segments(text, is_kana_character);
-}
-
-/**
- * 谚文残留片段使用共享语言规则，避免校对页复制韩文 Unicode 范围
- */
-function collect_hangeul_residue_fragments(text: string): string[] {
-  return collect_contiguous_text_segments(text, is_hangul_character);
-}
-
-/**
- * 相似度警告先做包含关系快判，再按字符集合 Jaccard 兜底
- */
-function has_similarity_error(args: {
-  src_replaced: string;
-  dst_replaced: string;
-  sample_rule: TextPreserveRule | null;
-}): boolean {
-  const src = stripQualityPreservedSegments(args.src_replaced, args.sample_rule).trim();
-  const dst = stripQualityPreservedSegments(args.dst_replaced, args.sample_rule).trim();
-  if (src === "" || dst === "") {
-    return false;
-  }
-
-  if (src.includes(dst) || dst.includes(src)) {
-    return true;
-  }
-
-  const left_set = new Set(src);
-  const right_set = new Set(dst);
-  const union_size = new Set([...left_set, ...right_set]).size;
-  if (union_size === 0) {
-    return false;
-  }
-
-  let intersection_size = 0;
-  for (const value of left_set) {
-    if (right_set.has(value)) {
-      intersection_size += 1;
-    }
-  }
-
-  return intersection_size / union_size > PROOFREADING_SIMILARITY_THRESHOLD;
-}
-
-/**
  * 构建对外可见 item 时一次性压缩文本和克隆数组，避免 UI 改到 worker 缓存
  */
 function create_proofreading_client_item(args: {
@@ -510,6 +392,7 @@ function evaluate_proofreading_item(args: {
   quality_context: QualityRuntimeContext;
   quality: ProjectStoreQualityState;
   sourceLanguage: string;
+  targetLanguage: string;
   sample_rule_cache: Map<string, TextPreserveRule | null>;
 }): ProofreadingClientItem | null {
   const warnings: string[] = [];
@@ -542,15 +425,17 @@ function evaluate_proofreading_item(args: {
     args.quality_context,
   );
   const normalized_dst = stripQualityPreservedSegments(args.item.dst, sample_rule);
-  const kana_fragments =
-    args.sourceLanguage === "JA" ? collect_kana_residue_fragments(normalized_dst) : [];
+  const residue_fragments = collect_translation_residue_fragments({
+    text: normalized_dst,
+    sourceLanguage: args.sourceLanguage,
+  });
+  const kana_fragments = residue_fragments.kana;
   if (kana_fragments.length > 0) {
     warnings.push("KANA");
     warning_fragments_by_code.KANA = kana_fragments;
   }
 
-  const hangeul_fragments =
-    args.sourceLanguage === "KO" ? collect_hangeul_residue_fragments(normalized_dst) : [];
+  const hangeul_fragments = residue_fragments.hangeul;
   if (hangeul_fragments.length > 0) {
     warnings.push("HANGEUL");
     warning_fragments_by_code.HANGEUL = hangeul_fragments;
@@ -573,10 +458,11 @@ function evaluate_proofreading_item(args: {
   }
 
   if (
-    has_similarity_error({
-      src_replaced,
-      dst_replaced,
-      sample_rule,
+    has_translation_similarity_issue({
+      src: stripQualityPreservedSegments(src_replaced, sample_rule),
+      dst: stripQualityPreservedSegments(dst_replaced, sample_rule),
+      sourceLanguage: args.sourceLanguage,
+      targetLanguage: args.targetLanguage,
     })
   ) {
     warnings.push("SIMILARITY");
@@ -595,7 +481,7 @@ function evaluate_proofreading_item(args: {
     }
   }
 
-  if (args.item.retry_count >= PROOFREADING_RETRY_THRESHOLD) {
+  if (has_translation_retry_reached_review_threshold(args.item.retry_count)) {
     warnings.push("RETRY_THRESHOLD");
   }
 
@@ -705,53 +591,123 @@ function item_has_glossary_miss(item: ProofreadingClientItem): boolean {
 }
 
 /**
+ * 将 UI 筛选值编译成单次查询上下文，大列表过滤时直接复用集合
+ */
+function create_proofreading_filter_context(args: {
+  filters: ProofreadingFilterOptions;
+  ignored_dimensions?: ProofreadingFilterDimension[];
+}): ProofreadingRuntimeFilterContext {
+  const ignored_dimension_set = new Set(args.ignored_dimensions ?? []);
+  const glossary_filter_enabled = !ignored_dimension_set.has("glossary_terms");
+
+  return {
+    warning_type_set: ignored_dimension_set.has("warning_types")
+      ? null
+      : new Set(args.filters.warning_types),
+    status_set: ignored_dimension_set.has("statuses") ? null : new Set(args.filters.statuses),
+    file_path_set: ignored_dimension_set.has("file_paths")
+      ? null
+      : new Set(args.filters.file_paths),
+    glossary_filter_enabled,
+    glossary_term_key_set: glossary_filter_enabled
+      ? new Set(args.filters.glossary_terms.map((term) => build_glossary_term_key(term)))
+      : new Set<string>(),
+    include_without_glossary_miss: args.filters.include_without_glossary_miss,
+  };
+}
+
+/**
+ * 搜索上下文统一使用共享文本规则，普通关键字不再为每个候选文本创建 RegExp
+ */
+function create_proofreading_search_context(args: {
+  keyword: string;
+  is_regex: boolean;
+  scope: ProofreadingSearchScope;
+}): ProofreadingRuntimeSearchContext {
+  return {
+    matcher: create_text_keyword_matcher({
+      keyword: args.keyword,
+      is_regex: args.is_regex,
+      case_sensitive: false,
+    }),
+    scope: args.scope,
+  };
+}
+
+/**
  * 术语筛选支持“无术语缺失”开关和指定 miss 术语列表两种语义
  */
 function item_matches_glossary_filter(
   item: ProofreadingClientItem,
-  filters: ProofreadingFilterOptions,
+  context: ProofreadingRuntimeFilterContext,
 ): boolean {
-  if (!item_has_glossary_miss(item)) {
-    return filters.include_without_glossary_miss;
+  if (!context.glossary_filter_enabled) {
+    return true;
   }
 
-  const selected_term_key_set = new Set(
-    filters.glossary_terms.map((term) => build_glossary_term_key(term)),
-  );
-  if (selected_term_key_set.size === 0) {
+  if (!item_has_glossary_miss(item)) {
+    return context.include_without_glossary_miss;
+  }
+
+  if (context.glossary_term_key_set.size === 0) {
     return false;
   }
 
   return item.failed_glossary_terms.some((term) => {
-    return selected_term_key_set.has(build_glossary_term_key(term));
+    return context.glossary_term_key_set.has(build_glossary_term_key(term));
   });
 }
 
 /**
  * 单个 item 必须同时满足 warning、status、file 和术语筛选
  */
-function item_matches_filters(
+function item_matches_filter_context(
   item: ProofreadingClientItem,
-  filters: ProofreadingFilterOptions,
+  context: ProofreadingRuntimeFilterContext,
 ): boolean {
   const item_warning_codes =
     item.warnings.length > 0 ? item.warnings : [PROOFREADING_NO_WARNING_CODE];
-  const selected_warning_set = new Set(filters.warning_types);
-  if (!item_warning_codes.some((warning) => selected_warning_set.has(warning))) {
+  if (context.warning_type_set !== null) {
+    const warning_type_set = context.warning_type_set;
+    if (!item_warning_codes.some((warning) => warning_type_set.has(warning))) {
+      return false;
+    }
+  }
+
+  if (context.status_set !== null && !context.status_set.has(item.status)) {
     return false;
   }
 
-  const selected_status_set = new Set(filters.statuses);
-  if (!selected_status_set.has(item.status)) {
+  if (context.file_path_set !== null && !context.file_path_set.has(item.file_path)) {
     return false;
   }
 
-  const selected_file_path_set = new Set(filters.file_paths);
-  if (!selected_file_path_set.has(item.file_path)) {
-    return false;
+  return item_matches_glossary_filter(item, context);
+}
+
+/**
+ * 搜索范围决定比较 src、dst 还是二者任一命中；非法正则保持旧语义只提示不裁剪
+ */
+function matches_proofreading_search_scope(args: {
+  item: ProofreadingClientItem;
+  search_context: ProofreadingRuntimeSearchContext;
+}): boolean {
+  if (args.search_context.matcher.invalid_regex_message !== null) {
+    return true;
   }
 
-  return item_matches_glossary_filter(item, filters);
+  if (args.search_context.scope === "src") {
+    return args.search_context.matcher.matches(args.item.src);
+  }
+
+  if (args.search_context.scope === "dst") {
+    return args.search_context.matcher.matches(args.item.dst);
+  }
+
+  return (
+    args.search_context.matcher.matches(args.item.src) ||
+    args.search_context.matcher.matches(args.item.dst)
+  );
 }
 
 /**
@@ -762,42 +718,13 @@ function filter_items_by_context(args: {
   filters: ProofreadingFilterOptions;
   ignored_dimensions?: ProofreadingFilterDimension[];
 }): ProofreadingClientItem[] {
-  const ignored_dimension_set = new Set(args.ignored_dimensions ?? []);
-  const selected_warning_set = ignored_dimension_set.has("warning_types")
-    ? null
-    : new Set(args.filters.warning_types);
-  const selected_status_set = ignored_dimension_set.has("statuses")
-    ? null
-    : new Set(args.filters.statuses);
-  const selected_file_path_set = ignored_dimension_set.has("file_paths")
-    ? null
-    : new Set(args.filters.file_paths);
-  const glossary_filter_enabled = !ignored_dimension_set.has("glossary_terms");
+  const filter_context = create_proofreading_filter_context({
+    filters: args.filters,
+    ignored_dimensions: args.ignored_dimensions,
+  });
 
   return args.items.filter((item) => {
-    const item_warning_codes =
-      item.warnings.length > 0 ? item.warnings : [PROOFREADING_NO_WARNING_CODE];
-
-    if (
-      selected_warning_set !== null &&
-      !item_warning_codes.some((warning) => selected_warning_set.has(warning))
-    ) {
-      return false;
-    }
-
-    if (selected_status_set !== null && !selected_status_set.has(item.status)) {
-      return false;
-    }
-
-    if (selected_file_path_set !== null && !selected_file_path_set.has(item.file_path)) {
-      return false;
-    }
-
-    if (glossary_filter_enabled && !item_matches_glossary_filter(item, args.filters)) {
-      return false;
-    }
-
-    return true;
+    return item_matches_filter_context(item, filter_context);
   });
 }
 
@@ -1032,6 +959,7 @@ function build_runtime_sync_state(state: ProofreadingRuntimeState): Proofreading
   return {
     projectId: state.projectId,
     sourceLanguage: state.sourceLanguage,
+    targetLanguage: state.targetLanguage,
     revisions: { ...state.revisions },
     defaultFilters: clone_proofreading_filter_options(state.defaultFilters),
   };
@@ -1108,6 +1036,7 @@ function create_runtime_state(input: ProofreadingRuntimeHydrationInput): Proofre
     total_item_count: input.total_item_count,
     quality: input.quality,
     sourceLanguage: input.sourceLanguage,
+    targetLanguage: input.targetLanguage,
     quality_context,
     sample_rule_cache,
     raw_item_by_id,
@@ -1133,6 +1062,7 @@ function create_runtime_state(input: ProofreadingRuntimeHydrationInput): Proofre
       quality_context,
       quality: input.quality,
       sourceLanguage: input.sourceLanguage,
+      targetLanguage: input.targetLanguage,
       sample_rule_cache,
     });
     if (evaluated_item === null) {
@@ -1163,9 +1093,42 @@ function resolve_items_in_natural_order(state: ProofreadingRuntimeState): Proofr
 }
 
 /**
+ * 列表查询沿自然 id 顺序流式收集结果，避免为搜索先复制一份全量 item 数组
+ */
+function collect_visible_items_in_natural_order(args: {
+  state: ProofreadingRuntimeState;
+  filter_context: ProofreadingRuntimeFilterContext;
+  search_context: ProofreadingRuntimeSearchContext;
+}): ProofreadingClientItem[] {
+  const matched_items: ProofreadingClientItem[] = [];
+  args.state.natural_item_ids.forEach((item_id) => {
+    const item = args.state.evaluated_item_by_id.get(item_id);
+    if (item === undefined) {
+      return;
+    }
+
+    if (!item_matches_filter_context(item, args.filter_context)) {
+      return;
+    }
+
+    if (
+      !matches_proofreading_search_scope({
+        item,
+        search_context: args.search_context,
+      })
+    ) {
+      return;
+    }
+
+    matched_items.push(item);
+  });
+  return matched_items;
+}
+
+/**
  * 创建校对运行态 worker 实例，集中管理项目态、列表缓存和筛选面板派生数据
  */
-export function createProofreadingRuntimeEngine() {
+export function createProofreadingUiWorkerService() {
   let state: ProofreadingRuntimeState | null = null; // 当前项目的完整运行态，dispose 或跨项目 hydrate 前不得泄露给渲染层
   let list_view_cache: ProofreadingRuntimeListViewCache | null = null; // 最近一次列表视图的排序结果缓存，窗口滚动只读取 id 切片
   let next_list_view_id = 0; // 视图 id 单调递增，避免同 revision 下筛选条件变化时复用旧窗口请求
@@ -1258,6 +1221,7 @@ export function createProofreadingRuntimeEngine() {
           quality_context: current_state.quality_context,
           quality: current_state.quality,
           sourceLanguage: current_state.sourceLanguage,
+          targetLanguage: current_state.targetLanguage,
           sample_rule_cache: current_state.sample_rule_cache,
         });
         if (next_evaluated_item === null) {
@@ -1302,34 +1266,20 @@ export function createProofreadingRuntimeEngine() {
         filters: query.filters,
         defaultFilters: state.defaultFilters,
       });
-      const items_in_natural_order = resolve_items_in_natural_order(state);
-
-      let invalid_regex_message: string | null = null;
-      let search_pattern: CompiledTextPattern | null = null;
-      try {
-        search_pattern = create_search_pattern(query.keyword, query.is_regex);
-      } catch (error) {
-        invalid_regex_message = error instanceof Error ? error.message : null;
-      }
-
-      const searched_items =
-        invalid_regex_message === null
-          ? items_in_natural_order.filter((item) => {
-              if (!item_matches_filters(item, filters)) {
-                return false;
-              }
-
-              return matches_proofreading_search_scope({
-                item,
-                search_pattern,
-                keyword: query.keyword,
-                scope: query.scope,
-              });
-            })
-          : items_in_natural_order.filter((item) => {
-              return item_matches_filters(item, filters);
-            });
-      const sorted_items = sort_visible_items(searched_items, query.sort_state);
+      const filter_context = create_proofreading_filter_context({ filters });
+      const search_context = create_proofreading_search_context({
+        keyword: query.keyword,
+        is_regex: query.is_regex,
+        scope: query.scope,
+      });
+      const sorted_items = sort_visible_items(
+        collect_visible_items_in_natural_order({
+          state,
+          filter_context,
+          search_context,
+        }),
+        query.sort_state,
+      );
       next_list_view_id += 1;
       const revision_signature = build_revision_signature(state.revisions);
       const view_id = `${state.projectId}:${revision_signature}:${next_list_view_id.toString()}`;
@@ -1357,7 +1307,7 @@ export function createProofreadingRuntimeEngine() {
           start: window_bounds.start,
           count: window_bounds.count,
         }),
-        invalid_regex_message,
+        invalid_regex_message: search_context.matcher.invalid_regex_message,
       };
     },
     /**
@@ -1465,9 +1415,7 @@ export function createProofreadingRuntimeEngine() {
         filters,
         ignored_dimensions: ["glossary_terms"],
       });
-      const all_file_paths = [
-        ...new Set(items_in_natural_order.map((item) => item.file_path)),
-      ].sort(compare_text);
+      const all_file_paths = [...state.file_count_by_path.keys()].sort(compare_text);
       const file_count_by_path = build_file_count_by_path(file_scope_items);
 
       return {
@@ -1495,14 +1443,14 @@ export function createProofreadingRuntimeEngine() {
       };
     },
     /**
-     * 释放指定项目的 worker 缓存，避免关闭项目后旧运行态继续响应异步请求
+     * 只释放身份完全一致的项目缓存；共享 worker 禁止用空项目身份清理全局状态。
      */
-    dispose_project(projectId?: string): void {
+    dispose_project(projectId: string): void {
       if (state === null) {
         return;
       }
 
-      if (projectId !== undefined && projectId !== "" && state.projectId !== projectId) {
+      if (state.projectId !== projectId) {
         return;
       }
 

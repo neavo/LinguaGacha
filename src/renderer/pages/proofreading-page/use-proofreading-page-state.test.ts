@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import type { ProjectItemPublicRecord } from "@base/item";
-import { WorkerClientError } from "@/lib/worker-client-error";
+import { ProjectUiWorkerClientError } from "@/project/worker/project-ui-worker-errors";
 import {
   create_empty_proofreading_filter_panel_state,
   create_empty_proofreading_list_view,
@@ -15,6 +15,7 @@ import { createProjectItemIndex } from "@/project/store/project-item-index";
 type RuntimeFixture = {
   settings_snapshot: {
     source_language: string;
+    target_language: string;
   };
   project_snapshot: {
     loaded: boolean;
@@ -49,13 +50,13 @@ type NavigationFixture = {
 };
 
 type ProofreadingRuntimeClientFixture = {
-  hydrate_full: ReturnType<typeof vi.fn>;
-  apply_item_delta: ReturnType<typeof vi.fn>;
-  build_list_view: ReturnType<typeof vi.fn>;
-  read_list_window: ReturnType<typeof vi.fn>;
-  read_row_ids_range: ReturnType<typeof vi.fn>;
-  read_items_by_row_ids: ReturnType<typeof vi.fn>;
-  build_filter_panel: ReturnType<typeof vi.fn>;
+  hydrate_proofreading_full: ReturnType<typeof vi.fn>;
+  apply_proofreading_item_delta: ReturnType<typeof vi.fn>;
+  build_proofreading_list_view: ReturnType<typeof vi.fn>;
+  read_proofreading_list_window: ReturnType<typeof vi.fn>;
+  read_proofreading_row_ids_range: ReturnType<typeof vi.fn>;
+  read_proofreading_items_by_row_ids: ReturnType<typeof vi.fn>;
+  build_proofreading_filter_panel: ReturnType<typeof vi.fn>;
   dispose_project: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
 };
@@ -142,9 +143,9 @@ vi.mock("@/app/locale/locale-provider", () => {
   };
 });
 
-vi.mock("@/pages/proofreading-page/proofreading-runtime-client", () => {
+vi.mock("@/project/worker/project-ui-worker-client", () => {
   return {
-    createProofreadingRuntimeClient: () => proofreading_runtime_client_fixture.current,
+    getSharedProjectUiWorkerClient: () => proofreading_runtime_client_fixture.current,
   };
 });
 
@@ -197,6 +198,7 @@ function create_runtime_fixture(): RuntimeFixture {
   return {
     settings_snapshot: {
       source_language: "JA",
+      target_language: "ZH",
     },
     project_snapshot: {
       loaded: true,
@@ -268,6 +270,7 @@ function create_sync_state() {
   return {
     projectId: "E:/demo/sample.lg",
     sourceLanguage: "JA",
+    targetLanguage: "ZH",
     revisions: {
       items: 7,
       quality: 0,
@@ -361,10 +364,10 @@ function create_filter_panel() {
 
 function create_proofreading_runtime_client_fixture(): ProofreadingRuntimeClientFixture {
   return {
-    hydrate_full: vi.fn(async () => create_sync_state()),
-    apply_item_delta: vi.fn(async () => create_sync_state()),
-    build_list_view: vi.fn(async () => create_list_view()),
-    read_list_window: vi.fn(async () => {
+    hydrate_proofreading_full: vi.fn(async () => create_sync_state()),
+    apply_proofreading_item_delta: vi.fn(async () => create_sync_state()),
+    build_proofreading_list_view: vi.fn(async () => create_list_view()),
+    read_proofreading_list_window: vi.fn(async () => {
       return {
         view_id: "view-1",
         start: 0,
@@ -372,11 +375,11 @@ function create_proofreading_runtime_client_fixture(): ProofreadingRuntimeClient
         rows: create_list_view().window_rows,
       };
     }),
-    read_row_ids_range: vi.fn(async () => ["1"]),
-    read_items_by_row_ids: vi.fn(async () => {
+    read_proofreading_row_ids_range: vi.fn(async () => ["1"]),
+    read_proofreading_items_by_row_ids: vi.fn(async () => {
       return create_list_view().window_rows.map((row) => row.item);
     }),
-    build_filter_panel: vi.fn(async () => create_filter_panel()),
+    build_proofreading_filter_panel: vi.fn(async () => create_filter_panel()),
     dispose_project: vi.fn(async () => {}),
     dispose: vi.fn(),
   };
@@ -409,6 +412,7 @@ describe("useProofreadingPageState", () => {
     proofreading_runtime_client_fixture.current = create_proofreading_runtime_client_fixture();
     toast_fixture.current = create_toast_fixture();
     vi.mocked(api_fetch).mockReset();
+    vi.useRealTimers();
   });
 
   function ProofreadingProbe(): JSX.Element | null {
@@ -441,8 +445,12 @@ describe("useProofreadingPageState", () => {
     await render_hook();
 
     expect(latest_state).not.toBeNull();
-    expect(proofreading_runtime_client_fixture.current.hydrate_full).not.toHaveBeenCalled();
-    expect(proofreading_runtime_client_fixture.current.apply_item_delta).not.toHaveBeenCalled();
+    expect(
+      proofreading_runtime_client_fixture.current.hydrate_proofreading_full,
+    ).not.toHaveBeenCalled();
+    expect(
+      proofreading_runtime_client_fixture.current.apply_proofreading_item_delta,
+    ).not.toHaveBeenCalled();
     expect(latest_state?.cache_status).toBe("refreshing");
     expect(latest_state?.settled_project_path).toBe("");
   });
@@ -461,9 +469,18 @@ describe("useProofreadingPageState", () => {
     };
     await render_hook();
 
-    expect(proofreading_runtime_client_fixture.current.hydrate_full).toHaveBeenCalledTimes(1);
-    expect(proofreading_runtime_client_fixture.current.build_list_view).toHaveBeenCalledTimes(1);
-    expect(proofreading_runtime_client_fixture.current.build_filter_panel).toHaveBeenCalledTimes(1);
+    expect(
+      proofreading_runtime_client_fixture.current.hydrate_proofreading_full,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenLastCalledWith(expect.objectContaining({ window_start: 0, window_count: 128 }));
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_filter_panel,
+    ).toHaveBeenCalledTimes(1);
     expect(latest_state?.cache_status).toBe("ready");
 
     runtime_fixture.current = {
@@ -477,12 +494,64 @@ describe("useProofreadingPageState", () => {
     };
     await render_hook();
 
-    expect(proofreading_runtime_client_fixture.current.hydrate_full).toHaveBeenCalledTimes(1);
-    expect(proofreading_runtime_client_fixture.current.apply_item_delta).toHaveBeenCalledTimes(1);
-    expect(proofreading_runtime_client_fixture.current.build_list_view).toHaveBeenCalledTimes(1);
-    expect(proofreading_runtime_client_fixture.current.read_list_window).toHaveBeenCalledTimes(1);
+    expect(
+      proofreading_runtime_client_fixture.current.hydrate_proofreading_full,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      proofreading_runtime_client_fixture.current.apply_proofreading_item_delta,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      proofreading_runtime_client_fixture.current.read_proofreading_list_window,
+    ).toHaveBeenCalledTimes(1);
     expect(latest_state?.cache_status).toBe("ready");
     expect(latest_state?.visible_items).toHaveLength(1);
+  });
+
+  it("目标语言变化后会全量重建 worker 校对缓存", async () => {
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
+      },
+    };
+    await render_hook();
+
+    expect(
+      proofreading_runtime_client_fixture.current.hydrate_proofreading_full,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      proofreading_runtime_client_fixture.current.hydrate_proofreading_full,
+    ).toHaveBeenLastCalledWith(expect.objectContaining({ targetLanguage: "ZH" }));
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      settings_snapshot: {
+        ...runtime_fixture.current.settings_snapshot,
+        target_language: "EN",
+      },
+      proofreading_change_signal: {
+        seq: 2,
+        mode: "delta",
+        item_ids: [1],
+        updated_sections: ["items"],
+      },
+    };
+    await render_hook();
+
+    expect(
+      proofreading_runtime_client_fixture.current.hydrate_proofreading_full,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      proofreading_runtime_client_fixture.current.apply_proofreading_item_delta,
+    ).not.toHaveBeenCalled();
   });
 
   it("缓存 ready 后收到 noop 信号不会重新查询列表和筛选面板", async () => {
@@ -499,9 +568,15 @@ describe("useProofreadingPageState", () => {
     };
     await render_hook();
 
-    expect(proofreading_runtime_client_fixture.current.hydrate_full).toHaveBeenCalledTimes(1);
-    expect(proofreading_runtime_client_fixture.current.build_list_view).toHaveBeenCalledTimes(1);
-    expect(proofreading_runtime_client_fixture.current.build_filter_panel).toHaveBeenCalledTimes(1);
+    expect(
+      proofreading_runtime_client_fixture.current.hydrate_proofreading_full,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_filter_panel,
+    ).toHaveBeenCalledTimes(1);
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
@@ -514,10 +589,18 @@ describe("useProofreadingPageState", () => {
     };
     await render_hook();
 
-    expect(proofreading_runtime_client_fixture.current.hydrate_full).toHaveBeenCalledTimes(1);
-    expect(proofreading_runtime_client_fixture.current.apply_item_delta).not.toHaveBeenCalled();
-    expect(proofreading_runtime_client_fixture.current.build_list_view).toHaveBeenCalledTimes(1);
-    expect(proofreading_runtime_client_fixture.current.build_filter_panel).toHaveBeenCalledTimes(1);
+    expect(
+      proofreading_runtime_client_fixture.current.hydrate_proofreading_full,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      proofreading_runtime_client_fixture.current.apply_proofreading_item_delta,
+    ).not.toHaveBeenCalled();
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_filter_panel,
+    ).toHaveBeenCalledTimes(1);
     expect(latest_state?.cache_status).toBe("ready");
   });
 
@@ -535,7 +618,9 @@ describe("useProofreadingPageState", () => {
     };
     await render_hook();
 
-    expect(proofreading_runtime_client_fixture.current.build_filter_panel).toHaveBeenCalledTimes(1);
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_filter_panel,
+    ).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       latest_state?.open_filter_dialog();
@@ -543,10 +628,115 @@ describe("useProofreadingPageState", () => {
     await flush_async_updates();
 
     expect(latest_state?.filter_dialog_open).toBe(true);
-    expect(proofreading_runtime_client_fixture.current.build_filter_panel).toHaveBeenCalledTimes(1);
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_filter_panel,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it("全量刷新只等待列表完成，筛选面板在后台预热", async () => {
+    const filter_panel_deferred = create_deferred<ReturnType<typeof create_filter_panel>>();
+    proofreading_runtime_client_fixture.current.build_proofreading_filter_panel = vi.fn(() => {
+      return filter_panel_deferred.promise;
+    });
+
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
+      },
+    };
+    await render_hook();
+
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_filter_panel,
+    ).toHaveBeenCalledTimes(1);
+    expect(latest_state?.cache_status).toBe("ready");
+    expect(latest_state?.visible_items).toHaveLength(1);
+    expect(latest_state?.filter_panel.available_statuses).toEqual([]);
+
+    await act(async () => {
+      filter_panel_deferred.resolve(create_filter_panel());
+    });
+    await flush_async_updates();
+
+    expect(latest_state?.filter_panel.available_statuses).toEqual(["NONE"]);
   });
 
   it("搜索输入更新时输入本身不会被后台列表查询阻塞", async () => {
+    vi.useFakeTimers();
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
+      },
+    };
+    await render_hook();
+
+    const initial_query_count =
+      proofreading_runtime_client_fixture.current.build_proofreading_list_view.mock.calls.length;
+
+    await act(async () => {
+      latest_state?.update_search_keyword("needle");
+    });
+
+    expect(latest_state?.search_keyword).toBe("needle");
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenCalledTimes(initial_query_count);
+
+    await act(async () => {
+      vi.advanceTimersByTime(249);
+    });
+    await flush_async_updates();
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenCalledTimes(initial_query_count);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    await flush_async_updates();
+
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenCalledTimes(initial_query_count + 1);
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({ keyword: "needle", window_start: 0, window_count: 128 }),
+    );
+  });
+
+  it("读取可见范围时会按滚动预取窗口扩展请求", async () => {
+    proofreading_runtime_client_fixture.current.build_proofreading_list_view = vi.fn(async () => {
+      return {
+        ...create_list_view(),
+        row_count: 1000,
+      };
+    });
+    proofreading_runtime_client_fixture.current.read_proofreading_list_window = vi.fn(
+      async (query: { view_id: string; start: number; count: number }) => {
+        return {
+          view_id: query.view_id,
+          start: query.start,
+          row_count: 1000,
+          rows: [],
+        };
+      },
+    );
     await render_hook();
 
     runtime_fixture.current = {
@@ -561,14 +751,68 @@ describe("useProofreadingPageState", () => {
     await render_hook();
 
     await act(async () => {
-      latest_state?.update_search_keyword("needle");
+      latest_state?.read_visible_range({
+        start: 300,
+        count: 10,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
     });
 
-    expect(latest_state?.search_keyword).toBe("needle");
+    expect(
+      proofreading_runtime_client_fixture.current.read_proofreading_list_window,
+    ).toHaveBeenLastCalledWith({
+      view_id: "view-1",
+      start: 44,
+      count: 522,
+    });
+  });
+
+  it("替换下一个匹配时会按替换扫描块读取 worker 窗口", async () => {
+    vi.useFakeTimers();
+    proofreading_runtime_client_fixture.current.read_proofreading_list_window = vi.fn(
+      async (query: { view_id: string; start: number; count: number }) => {
+        return {
+          view_id: query.view_id,
+          start: query.start,
+          row_count: 1,
+          rows: [],
+        };
+      },
+    );
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
+      },
+    };
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.update_search_keyword("missing");
+    });
+    await flush_async_updates();
+
+    await act(async () => {
+      await latest_state?.replace_next_visible_match();
+    });
+
+    expect(
+      proofreading_runtime_client_fixture.current.read_proofreading_list_window,
+    ).toHaveBeenLastCalledWith({
+      view_id: "view-1",
+      start: 0,
+      count: 256,
+    });
   });
 
   it("切换可见窗口不会裁剪窗口外选区", async () => {
-    proofreading_runtime_client_fixture.current.build_list_view = vi.fn(async () => {
+    proofreading_runtime_client_fixture.current.build_proofreading_list_view = vi.fn(async () => {
       return {
         ...create_list_view(),
         row_count: 3,
@@ -583,7 +827,7 @@ describe("useProofreadingPageState", () => {
         ],
       };
     });
-    proofreading_runtime_client_fixture.current.read_list_window = vi.fn(async () => {
+    proofreading_runtime_client_fixture.current.read_proofreading_list_window = vi.fn(async () => {
       return {
         view_id: "view-1",
         start: 1,
@@ -629,6 +873,13 @@ describe("useProofreadingPageState", () => {
     });
 
     expect(latest_state?.visible_items.map((item) => item.row_id)).toEqual(["2"]);
+    expect(
+      proofreading_runtime_client_fixture.current.read_proofreading_list_window,
+    ).toHaveBeenLastCalledWith({
+      view_id: "view-1",
+      start: 0,
+      count: 3,
+    });
     expect(latest_state?.selected_row_ids).toEqual(["1", "3"]);
     expect(latest_state?.active_row_id).toBe("3");
     expect(latest_state?.anchor_row_id).toBe("1");
@@ -669,8 +920,8 @@ describe("useProofreadingPageState", () => {
   });
 
   it("worker 类错误会统一收口成刷新失败 toast", async () => {
-    proofreading_runtime_client_fixture.current.hydrate_full = vi.fn(async () => {
-      throw new WorkerClientError("init_failed");
+    proofreading_runtime_client_fixture.current.hydrate_proofreading_full = vi.fn(async () => {
+      throw new ProjectUiWorkerClientError("init_failed");
     });
 
     await render_hook();
@@ -692,6 +943,42 @@ describe("useProofreadingPageState", () => {
       "error",
       "proofreading_page.feedback.refresh_failed",
     );
+  });
+
+  it("stale worker 查询属于旧请求退场，不会弹刷新失败 toast", async () => {
+    proofreading_runtime_client_fixture.current.build_proofreading_list_view = vi.fn(async () => {
+      throw new ProjectUiWorkerClientError("stale");
+    });
+
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
+      },
+    };
+    await render_hook();
+
+    expect(latest_state?.cache_status).not.toBe("error");
+    expect(toast_fixture.current.push_toast).not.toHaveBeenCalledWith(
+      "error",
+      "proofreading_page.feedback.refresh_failed",
+    );
+  });
+
+  it("未建立 worker 项目缓存时卸载不会发送空项目释放请求", async () => {
+    await render_hook();
+
+    await act(async () => {
+      root?.unmount();
+    });
+    root = null;
+
+    expect(proofreading_runtime_client_fixture.current.dispose_project).not.toHaveBeenCalled();
   });
 
   it("校对重翻请求收到任务回执后会通过 task snapshot 暴露正在重翻的行 id", async () => {
@@ -771,7 +1058,7 @@ describe("useProofreadingPageState", () => {
   });
 
   it("批量校对重翻会按请求顺序去重任务中的行 id", async () => {
-    proofreading_runtime_client_fixture.current.read_items_by_row_ids = vi.fn(
+    proofreading_runtime_client_fixture.current.read_proofreading_items_by_row_ids = vi.fn(
       async ({ row_ids }: { row_ids: string[] }) => {
         return row_ids.map((row_id) => create_client_item(row_id));
       },

@@ -1,4 +1,3 @@
-import { is_hangul_character, is_kana_character } from "../../../../shared/language";
 import { should_skip_by_language_prefilter } from "../../../../shared/prefilter/language-prefilter";
 import { should_skip_by_rule_prefilter } from "../../../../shared/prefilter/rule-prefilter";
 import {
@@ -6,8 +5,12 @@ import {
   normalize_text_preserve_mode,
   type TextPreserveRule,
 } from "../../../../shared/text/text-preserve-rules";
+import {
+  collect_translation_residue_fragments,
+  has_translation_retry_reached_review_threshold,
+  has_translation_similarity_issue,
+} from "../../../../shared/text/translation-quality-rules";
 import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shared/text/text-types";
-import * as text_tool from "../../../../shared/utils/text-tool";
 
 /**
  * 翻译响应行质量检查器，按模型结果决定哪些行可提交
@@ -32,7 +35,7 @@ export class ResponseChecker {
     if (dsts.every((value) => value === "")) {
       return srcs.map(() => "FAIL_DATA");
     }
-    if (item_retry_count >= 2) {
+    if (has_translation_retry_reached_review_threshold(item_retry_count)) {
       return srcs.map(() => "NONE");
     }
     if (srcs.length !== dsts.length) {
@@ -102,21 +105,25 @@ export class ResponseChecker {
       src = preserve_rule.replace(src, "");
       dst = preserve_rule.replace(dst, "");
     }
-    if (
-      config.check_kana_residue &&
-      config.source_language === "JA" &&
-      [...dst].some((char) => is_kana_character(char))
-    ) {
+    const residue_fragments = collect_translation_residue_fragments({
+      text: dst,
+      sourceLanguage: config.source_language,
+    });
+    if (config.check_kana_residue && residue_fragments.kana.length > 0) {
       return "LINE_ERROR_KANA";
     }
-    if (
-      config.check_hangeul_residue &&
-      config.source_language === "KO" &&
-      [...dst].some((char) => is_hangul_character(char))
-    ) {
+    if (config.check_hangeul_residue && residue_fragments.hangeul.length > 0) {
       return "LINE_ERROR_HANGEUL";
     }
-    if (config.check_similarity && this.is_similar_residue(src, dst, config)) {
+    if (
+      config.check_similarity &&
+      has_translation_similarity_issue({
+        src,
+        dst,
+        sourceLanguage: config.source_language,
+        targetLanguage: config.target_language,
+      })
+    ) {
       return "LINE_ERROR_SIMILARITY";
     }
     return "NONE";
@@ -135,29 +142,5 @@ export class ResponseChecker {
       entries: quality_snapshot.text_preserve_entries,
       kind: "sample",
     });
-  }
-
-  /**
-   * 相似度在日/韩翻中时只对目标残留字符触发，其他语言按通用相似度判断
-   */
-  private static is_similar_residue(
-    src: string,
-    dst: string,
-    config: TextProcessingConfig,
-  ): boolean {
-    const similar =
-      src.includes(dst) ||
-      dst.includes(src) ||
-      text_tool.check_similarity_by_jaccard(src, dst) > 0.8;
-    if (!similar) {
-      return false;
-    }
-    if (config.source_language === "JA" && config.target_language === "ZH") {
-      return [...dst].some((char) => is_kana_character(char));
-    }
-    if (config.source_language === "KO" && config.target_language === "ZH") {
-      return [...dst].some((char) => is_hangul_character(char));
-    }
-    return true;
   }
 }

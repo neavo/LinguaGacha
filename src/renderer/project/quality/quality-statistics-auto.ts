@@ -1,43 +1,41 @@
 import type {
   QualityStatisticsRelationCandidate,
   QualityStatisticsRuleInput,
+  QualityStatisticsTaskExecutor,
   QualityStatisticsTaskResult,
 } from "@/project/quality/quality-statistics";
 import { casefold_text } from "@/project/quality/quality-statistics";
-import {
-  isQualityStatisticsStaleError,
-  type QualityStatisticsTaskExecutor,
-} from "@/project/quality/quality-statistics-worker-pool";
+import { is_project_ui_worker_client_error } from "@/project/worker/project-ui-worker-errors";
 import { JsonTool } from "../../../shared/utils/json-tool";
 
-export type QualityStatisticsAutoTextSource = "src" | "dst";
+export type QualityStatisticsAutoTextSource = "src" | "dst"; // 统计文本来源，决定快照和 worker 输入使用原文还是译文
 
 export type QualityStatisticsAutoRuleDescriptor = {
-  key: string;
-  dependency_parts: unknown[];
-  relation_label: string;
-  rule: QualityStatisticsRuleInput;
+  key: string; // key 是统计结果回写缓存的稳定索引
+  dependency_parts: unknown[]; // dependency_parts 描述影响该规则统计结果的全部配置
+  relation_label: string; // relation_label 用于判断局部重算时的父子术语关联
+  rule: QualityStatisticsRuleInput; // rule 是最终派发给 worker 的规则载荷
 };
 
 export type QualityStatisticsDependencyRuleSnapshot = {
-  key: string;
-  dependency_signature: string;
-  relation_label: string;
-  token: string;
+  key: string; // key 保留规则自身身份，允许同依赖规则映射回原结果
+  dependency_signature: string; // dependency_signature 只表达规则配置，不包含列表位置
+  relation_label: string; // relation_label 是局部关系扩散的可读文本
+  token: string; // token 是去重后的依赖身份，相同配置规则用序号拆分
 };
 
 export type QualityStatisticsDependencySnapshot = {
-  text_source: QualityStatisticsAutoTextSource;
-  text_signature: string;
-  dependency_signature: string;
-  snapshot_signature: string;
-  rules: QualityStatisticsDependencyRuleSnapshot[];
+  text_source: QualityStatisticsAutoTextSource; // text_source 变化必须触发全量统计
+  text_signature: string; // text_signature 表示当前项目文本集合
+  dependency_signature: string; // dependency_signature 用于判断统计结果是否仍然可复用
+  snapshot_signature: string; // snapshot_signature 同时包含 key，用于 UI 缓存身份判断
+  rules: QualityStatisticsDependencyRuleSnapshot[]; // rules 是按依赖稳定排序后的规则快照
 };
 
 export type QualityStatisticsAutoContext = {
-  snapshot: QualityStatisticsDependencySnapshot;
-  rules: QualityStatisticsRuleInput[];
-  relation_candidates: QualityStatisticsRelationCandidate[];
+  snapshot: QualityStatisticsDependencySnapshot; // snapshot 是调度层做增量规划的只读事实
+  rules: QualityStatisticsRuleInput[]; // rules 是 worker 实际计算的规则列表
+  relation_candidates: QualityStatisticsRelationCandidate[]; // relation_candidates 用于计算术语包含关系
 };
 
 export type QualityStatisticsAutoPlanReason =
@@ -65,12 +63,18 @@ export type QualityStatisticsAutoPlan =
 
 type QualityStatisticsResultMap = QualityStatisticsTaskResult["results"];
 
-const MAX_PARTIAL_RULE_CHANGES = 6;
+const MAX_PARTIAL_RULE_CHANGES = 6; // 超过该数量时全量计算通常比维护局部依赖更稳定
 
+/**
+ * 把规则依赖部件序列化成稳定签名，所有增量判断都依赖这个口径。
+ */
 function build_rule_dependency_signature(dependency_parts: unknown[]): string {
   return JsonTool.stringifyStrict(dependency_parts);
 }
 
+/**
+ * 规则快照按依赖、key、关系标签排序，消除数组顺序对增量计划的影响。
+ */
 function compare_snapshot_rules(
   left_rule: QualityStatisticsDependencyRuleSnapshot,
   right_rule: QualityStatisticsDependencyRuleSnapshot,
@@ -86,6 +90,9 @@ function compare_snapshot_rules(
   return left_rule.relation_label.localeCompare(right_rule.relation_label);
 }
 
+/**
+ * 构建规则依赖快照，并为相同依赖签名的规则分配可复用 token。
+ */
 function build_snapshot_rules(
   descriptors: QualityStatisticsAutoRuleDescriptor[],
 ): QualityStatisticsDependencyRuleSnapshot[] {
@@ -146,6 +153,9 @@ function build_text_signature(texts: string[]): string {
   return `${texts.length.toString()}:${hash.toString(36)}`;
 }
 
+/**
+ * dependency_signature 不含 key，只回答“已有统计值是否还能复用”。
+ */
 function build_dependency_signature(
   text_source: QualityStatisticsAutoTextSource,
   text_signature: string,
@@ -160,6 +170,9 @@ function build_dependency_signature(
   });
 }
 
+/**
+ * snapshot_signature 含 key，用于区分同依赖但不同规则身份的 UI 缓存快照。
+ */
 function build_snapshot_signature(
   text_source: QualityStatisticsAutoTextSource,
   text_signature: string,
@@ -174,6 +187,9 @@ function build_snapshot_signature(
   });
 }
 
+/**
+ * 创建空结果项，供首次或无历史结果的规则占位。
+ */
 function create_empty_result_entry(): { matched_item_count: number; subset_parents: string[] } {
   return {
     matched_item_count: 0,
@@ -181,6 +197,9 @@ function create_empty_result_entry(): { matched_item_count: number; subset_paren
   };
 }
 
+/**
+ * 克隆 worker 结果项，避免缓存复用时共享可变数组引用。
+ */
 function clone_result_entry(
   result_entry: { matched_item_count?: number; subset_parents?: string[] } | undefined,
 ): { matched_item_count: number; subset_parents: string[] } {
@@ -190,6 +209,9 @@ function clone_result_entry(
   };
 }
 
+/**
+ * 统计规则快照中指定字段的多重集合数量，用于处理重复规则。
+ */
 function build_rule_count_map(
   rules: QualityStatisticsDependencyRuleSnapshot[],
   field: "token" | "relation_label",
@@ -204,6 +226,9 @@ function build_rule_count_map(
   return count_map;
 }
 
+/**
+ * 计算 source 相对 target 的多重集合差集，重复规则会按 token 数量逐个抵消。
+ */
 function collect_rule_multiset_difference(
   source_rules: QualityStatisticsDependencyRuleSnapshot[],
   target_rules: QualityStatisticsDependencyRuleSnapshot[],
@@ -224,6 +249,9 @@ function collect_rule_multiset_difference(
   return diff_rules;
 }
 
+/**
+ * 计算关系标签差集，局部重算会沿包含关系扩散到受影响的规则。
+ */
 function collect_relation_label_difference(
   source_rules: QualityStatisticsDependencyRuleSnapshot[],
   target_rules: QualityStatisticsDependencyRuleSnapshot[],
@@ -245,6 +273,9 @@ function collect_relation_label_difference(
   return diff_labels;
 }
 
+/**
+ * 判断两个关系标签是否可能互为父子术语；这里只做大小写折叠后的包含关系。
+ */
 function are_relation_labels_linked(left_label: string, right_label: string): boolean {
   const normalized_left_label = String(left_label ?? "").trim();
   const normalized_right_label = String(right_label ?? "").trim();
@@ -257,6 +288,9 @@ function are_relation_labels_linked(left_label: string, right_label: string): bo
   return left_fold.includes(right_fold) || right_fold.includes(left_fold);
 }
 
+/**
+ * 把历史结果按 token 重映射，规则 key 改变但依赖未变时仍可复用统计值。
+ */
 function build_result_map_by_token(args: {
   snapshot: QualityStatisticsDependencySnapshot;
   results: QualityStatisticsResultMap;
@@ -270,6 +304,9 @@ function build_result_map_by_token(args: {
   return result_map;
 }
 
+/**
+ * 为当前快照生成全空结果，保证 UI 不会读到缺失 key。
+ */
 function build_empty_results(
   snapshot: QualityStatisticsDependencySnapshot,
 ): QualityStatisticsResultMap {
@@ -280,6 +317,9 @@ function build_empty_results(
   );
 }
 
+/**
+ * 从当前文本和规则描述符创建增量统计上下文。
+ */
 export function createQualityStatisticsAutoContext(args: {
   text_source: QualityStatisticsAutoTextSource;
   texts: string[];
@@ -316,6 +356,9 @@ export function createQualityStatisticsAutoContext(args: {
   };
 }
 
+/**
+ * 比较完整快照身份，供 store 判断缓存是否对应当前统计上下文。
+ */
 export function areQualityStatisticsSnapshotsEqual(
   left_snapshot: QualityStatisticsDependencySnapshot | null,
   right_snapshot: QualityStatisticsDependencySnapshot,
@@ -323,6 +366,9 @@ export function areQualityStatisticsSnapshotsEqual(
   return left_snapshot?.snapshot_signature === right_snapshot.snapshot_signature;
 }
 
+/**
+ * 把历史统计结果映射到当前快照；无法复用的规则会回落为空结果。
+ */
 export function remapQualityStatisticsResults(args: {
   completed_snapshot: QualityStatisticsDependencySnapshot | null;
   current_snapshot: QualityStatisticsDependencySnapshot;
@@ -344,6 +390,9 @@ export function remapQualityStatisticsResults(args: {
   );
 }
 
+/**
+ * 根据当前快照和已完成快照生成 noop、局部或全量统计计划。
+ */
 export function planQualityStatisticsAutoRun(args: {
   current_snapshot: QualityStatisticsDependencySnapshot;
   completed_snapshot: QualityStatisticsDependencySnapshot | null;
@@ -498,6 +547,9 @@ export function planQualityStatisticsAutoRun(args: {
   };
 }
 
+/**
+ * 执行自动统计计划；局部计划只派发目标规则，再合并到重映射后的基础结果。
+ */
 export async function executeQualityStatisticsAutoPlan(args: {
   executor: QualityStatisticsTaskExecutor;
   current_snapshot: QualityStatisticsDependencySnapshot;
@@ -568,7 +620,7 @@ export async function executeQualityStatisticsAutoPlan(args: {
       },
     };
   } catch (error) {
-    if (isQualityStatisticsStaleError(error)) {
+    if (is_project_ui_worker_client_error(error, "stale")) {
       return {
         kind: "stale",
       };
