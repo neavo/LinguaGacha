@@ -39,7 +39,8 @@ flowchart LR
   Project --> DB["ProjectDatabase workflow<br/>SQL、事务、.lg asset"]
   Project --> Engine["engine<br/>protocol/runtime/core/definitions/store"]
   Project --> LLM["core/llm<br/>request policy / official SDK transport"]
-  Engine --> Worker["engine/worker<br/>WorkerPool / runner"]
+  Engine --> Planner["engine/planning<br/>TaskPlanner / PlanningWorkerPool"]
+  Engine --> Worker["engine/work-unit<br/>WorkUnitWorkerPool / runner"]
   Worker --> Pipeline["提示词、pipeline、响应处理"]
   Worker --> LLM
   Engine --> Events["CoreEventHub / events"]
@@ -58,9 +59,9 @@ flowchart LR
 - `CoreServices` 是 GUI API Gateway 与 CLI job 共用的服务组合根；领域服务只在这里装配一次，Gateway 不再自行 new 业务依赖。
 - `ApiGatewayServer` 只监听 `127.0.0.1`，是 renderer 可见的唯一 Core API 边界；CLI 不启动 Gateway。
 - `ProjectDatabase` 是 `.lg` 物理读写和 SQLite 连接生命周期的唯一入口；上层只发送 database operation，不直接持有 SQL 连接。
-- `src/core/engine` 是任务域主控包：`command` 受理统一 `/api/tasks/start|stop|snapshot`，`protocol` 持有任务词表与跨 worker 协议，`runtime` 持有公开运行态和快照，`core` 编排任务，`definitions` 承接任务差异，`store` 通过 artifact 写入项目任务事实。
-- `src/core/llm` 是 Core 进程内 LLM 能力层，承接 provider policy、request policy、official SDK transport、ProviderClientPool 和请求结果归一；`model`、`engine/core`、`engine/worker` 只能消费它，不能反向成为它的依赖。
-- `TaskEngine` 通过 `ProjectTaskStore` 取项目事实，通过 `ModelKeyLeasePool`、`WorkerExecutor` / `WorkerPool` 执行统一 `WorkUnit`；任务运行态只经 `TaskRuntimePublisher` 写入 `TaskRuntimeState` 并广播完整 `task.snapshot_changed`。
+- `src/core/engine` 是任务域主控包：`command` 受理统一 `/api/tasks/start|stop|snapshot`，`protocol` 持有任务词表与跨 worker 协议，`runtime` 持有公开运行态和快照，`core` 编排任务，`planning` 构建任务 work unit 计划，`definitions` 承接任务差异，`store` 通过 artifact 写入项目任务事实。
+- `src/core/llm` 是 Core 进程内 LLM 能力层，承接 provider policy、request policy、official SDK transport、ProviderClientPool 和请求结果归一；`model`、`engine/core`、`engine/work-unit` 只能消费它，不能反向成为它的依赖。
+- `TaskEngine` 通过 `ProjectTaskStore` 取项目事实，通过 `TaskPlanner` 构建 work unit 计划，再经 `ModelKeyLeasePool`、`WorkUnitExecutor` / `WorkUnitWorkerPool` 执行统一 `WorkUnit`；任务运行态只经 `TaskRuntimePublisher` 写入 `TaskRuntimeState` 并广播完整 `task.snapshot_changed`。
 - renderer 只通过 preload 暴露的 `window.desktopApp` 获得宿主能力和 Core API base URL，再由 `desktop-api.ts` 发起 HTTP / SSE。
 
 ## 3. 主链路
@@ -147,9 +148,10 @@ sequenceDiagram
 | `src/core/bootstrap/` | Core 启停顺序、服务组合根、日志、数据库和 Gateway 生命周期 | 业务路由、数据库 schema、renderer 状态、CLI 参数语义 |
 | `src/core/api/` | 公开 HTTP / SSE 路由、响应壳、CORS、错误映射 | 直接 SQL、页面缓存、文件格式实现 |
 | `src/core/project/` | 项目会话、项目数据投影、项目数据变更事件、同步 mutation 协调、项目 mutation 派生 | Electron preload、页面局部状态 |
-| `src/core/engine/{command,protocol,runtime,core,definitions,store}` | 任务命令、协议词表、运行态、快照、编排、任务差异解释、artifact 提交和项目任务事实读写 | worker 内提示词、provider 请求策略、响应清洗解码 |
+| `src/core/engine/{command,protocol,runtime,core,definitions,store}` | 任务命令、协议词表、运行态、快照、编排、任务差异解释、artifact 提交和项目任务事实读写 | worker 内提示词、provider 请求策略、响应清洗解码、规划期 token 计数 |
+| `src/core/engine/planning/` | 任务启动前的 work unit 规划、精确 token 计数调度、进程内 token metric cache | 数据库写入、任务 artifact 提交、LLM 请求执行、项目公开投影 |
 | `src/core/llm/` | Core 进程内 LLM provider policy、request policy、official SDK transport、ProviderClientPool、请求结果归一 | 任务编排、项目事实读取、数据库写入、worker 提示词和响应业务解析 |
-| `src/core/engine/worker/` | work unit 执行、提示词构建、runner、pipeline、响应清洗解码、worker_threads 边界 | 数据库写入、全局任务状态、任务进度提交、任务级 Key 轮换、provider policy 与 SDK transport |
+| `src/core/engine/work-unit/` | work unit 执行、提示词构建、runner、pipeline、响应清洗解码、worker_threads 边界 | 数据库写入、全局任务状态、任务进度提交、任务级 Key 轮换、provider policy 与 SDK transport |
 | `src/core/events/` | Core 公开运行期事件总线与 SSE 连接管理 | 任务编排、项目变更事件适配、领域状态规则 |
 | `src/core/database/` | SQL、事务、`.lg` asset 压缩读写、database operation | HTTP 协议和页面 DTO |
 | `src/gui/preload/` | 窄宿主桥接、原生对话框和 Core base URL 暴露 | Core 业务实现、Node 能力泛开放 |

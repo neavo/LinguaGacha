@@ -1,7 +1,7 @@
 import type { StartTaskCommand } from "../../protocol/task-command";
 import type { TaskDefinition, TaskPlan, WorkerResultInterpretation } from "../task-definition";
 import type { WorkUnit } from "../../protocol/work-unit";
-import type { WorkerExecutionResult } from "../../protocol/worker-result";
+import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
 import { build_analysis_units } from "./analysis-unit-builder";
 import { create_analysis_task_plan } from "./analysis-plan";
 import { interpret_analysis_worker_result } from "./analysis-result-interpreter";
@@ -30,7 +30,7 @@ export class AnalysisTaskDefinition implements TaskDefinition<AnalysisCommand> {
     return build_analysis_units(plan);
   }
 
-  public interpret_worker_result(result: WorkerExecutionResult): WorkerResultInterpretation {
+  public interpret_worker_result(result: WorkUnitExecutionResult): WorkerResultInterpretation {
     return interpret_analysis_worker_result(result);
   }
 }

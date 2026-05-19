@@ -1,7 +1,7 @@
 import type { StartTaskCommand } from "../../protocol/task-command";
 import type { TaskDefinition, TaskPlan, WorkerResultInterpretation } from "../task-definition";
 import type { WorkUnit } from "../../protocol/work-unit";
-import type { WorkerExecutionResult } from "../../protocol/worker-result";
+import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
 import { build_translation_units } from "./translation-unit-builder";
 import { create_translation_task_plan } from "./translation-plan";
 import { interpret_translation_worker_result } from "./translation-result-interpreter";
@@ -32,7 +32,7 @@ export class TranslationTaskDefinition implements TaskDefinition<TranslationComm
     return build_translation_units(plan);
   }
 
-  public interpret_worker_result(result: WorkerExecutionResult): WorkerResultInterpretation {
+  public interpret_worker_result(result: WorkUnitExecutionResult): WorkerResultInterpretation {
     return interpret_translation_worker_result(result);
   }
 }

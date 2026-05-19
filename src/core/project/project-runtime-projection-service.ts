@@ -7,7 +7,6 @@ import {
   collect_project_item_missing_public_fields,
   normalize_project_item_public_record,
 } from "../../base/item";
-import { is_task_skipped_item_status } from "../../shared/task";
 import {
   build_section_revisions_from_meta,
   get_runtime_section_revision,
@@ -263,18 +262,33 @@ export class ProjectRuntimeProjectionService {
   }
 
   /**
-   * analysis block 把持久化 extras、候选池和当前 item 覆盖率组合成最小运行态
+   * analysis block 只公开轻量运行态；候选明细由按需 API 读取，避免常规刷新扫描大候选池。
    */
   public build_analysis_block(
-    project_path: string,
     meta: ProjectRuntimeProjectionJsonRecord,
-    snapshot?: ProjectRuntimeItemsSnapshot,
   ): ProjectRuntimeProjectionMutableRecord {
+    const extras = this.normalize_object(meta["analysis_extras"]);
     return {
-      extras: this.normalize_object(meta["analysis_extras"]),
+      extras,
+      candidate_count: this.read_number(meta["analysis_candidate_count"], 0),
+      status_summary: this.build_analysis_status_summary_from_extras(extras),
+    };
+  }
+
+  /**
+   * 术语导入和 CLI 预览按需读取完整候选池，避免普通 ProjectStore 刷新承载大对象。
+   */
+  public build_analysis_candidate_payload(
+    project_path: string,
+  ): ProjectRuntimeProjectionMutableRecord {
+    const meta = this.get_all_meta(project_path);
+    const section_revisions = this.build_section_revisions(meta);
+    return {
+      projectPath: project_path,
       candidate_count: this.read_number(meta["analysis_candidate_count"], 0),
       candidate_aggregate: this.build_candidate_aggregate(project_path),
-      status_summary: this.build_analysis_status_summary(project_path, snapshot),
+      projectRevision: Math.max(...Object.values(section_revisions), 0),
+      sectionRevisions: section_revisions as unknown as ApiJsonValue,
     };
   }
 
@@ -285,7 +299,6 @@ export class ProjectRuntimeProjectionService {
     return {
       extras: {},
       candidate_count: 0,
-      candidate_aggregate: {},
       status_summary: { total_line: 0, processed_line: 0, error_line: 0, line: 0 },
     };
   }
@@ -338,38 +351,18 @@ export class ProjectRuntimeProjectionService {
   }
 
   /**
-   * 分析覆盖率按当前 item 文本重新计算，跳过状态和空 src 不能计入总量
+   * 分析覆盖率来自任务提交的 analysis_extras，投影层不在读取路径重新扫描 item 表。
    */
-  public build_analysis_status_summary(
-    project_path: string,
-    snapshot: ProjectRuntimeItemsSnapshot = this.build_runtime_items_snapshot(project_path),
+  public build_analysis_status_summary_from_extras(
+    extras: ProjectRuntimeProjectionJsonRecord,
   ): ProjectRuntimeProjectionMutableRecord {
-    const checkpoints = this.get_analysis_checkpoints(project_path);
-    let total_line = 0;
-    let processed_line = 0;
-    let error_line = 0;
-    for (const item of snapshot.item_records) {
-      const status = String(item["status"] ?? "NONE");
-      if (is_task_skipped_item_status(status)) {
-        continue;
-      }
-      const item_id = this.read_number(item["item_id"], 0);
-      if (item_id <= 0 || String(item["src"] ?? "").trim() === "") {
-        continue;
-      }
-      total_line += 1;
-      const checkpoint_status = checkpoints.get(item_id) ?? "NONE";
-      if (checkpoint_status === "PROCESSED") {
-        processed_line += 1;
-      } else if (checkpoint_status === "ERROR") {
-        error_line += 1;
-      }
-    }
+    const processed_line = this.read_number(extras["processed_line"], 0);
+    const error_line = this.read_number(extras["error_line"], 0);
     return {
-      total_line,
+      total_line: this.read_number(extras["total_line"], 0),
       processed_line,
       error_line,
-      line: processed_line + error_line,
+      line: this.read_number(extras["line"], processed_line + error_line),
     };
   }
 
@@ -474,7 +467,7 @@ export class ProjectRuntimeProjectionService {
     if (args.section === "analysis") {
       return args.projectPath === ""
         ? this.build_empty_analysis_block()
-        : this.build_analysis_block(args.projectPath, args.meta, args.readItemsSnapshot());
+        : this.build_analysis_block(args.meta);
     }
     return this.build_proofreading_block(args.meta);
   }
@@ -643,30 +636,6 @@ export class ProjectRuntimeProjectionService {
         this.op("getRuleText", { projectPath: project_path, ruleType: rule_type }),
       ) ?? "",
     );
-  }
-
-  /**
-   * checkpoint 以 item_id 建索引，分析摘要只需要当前覆盖状态而不暴露更新时间
-   */
-  private get_analysis_checkpoints(project_path: string): Map<number, string> {
-    const value = this.database.execute(
-      this.op("getAnalysisItemCheckpoints", { projectPath: project_path }),
-    );
-    const checkpoints = new Map<number, string>();
-    if (!Array.isArray(value)) {
-      return checkpoints;
-    }
-    for (const row of value) {
-      if (!this.is_record(row)) {
-        continue;
-      }
-      const item_id = this.read_number(row["item_id"], 0);
-      const status = String(row["status"] ?? "NONE");
-      if (item_id > 0) {
-        checkpoints.set(item_id, status);
-      }
-    }
-    return checkpoints;
   }
 
   /**

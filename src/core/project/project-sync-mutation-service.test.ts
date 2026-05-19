@@ -645,6 +645,50 @@ describe("ProjectSyncMutationService", () => {
     database.close();
   });
 
+  it("分析候选导入按共享术语口径重算剩余候选数", async () => {
+    const { database, service, lg_path } = create_service();
+    database.execute({
+      name: "upsertAnalysisCandidateAggregates",
+      args: {
+        projectPath: lg_path,
+        aggregates: [
+          {
+            src: "艾琳",
+            dst_votes: { Erin: 1 },
+            info_votes: { 角色名: 1 },
+            observation_count: 1,
+            first_seen_at: "t",
+            last_seen_at: "t",
+            case_sensitive: true,
+          },
+          {
+            src: "说明",
+            dst_votes: { Note: 1 },
+            info_votes: { 其他: 1 },
+            observation_count: 1,
+            first_seen_at: "t",
+            last_seen_at: "t",
+            case_sensitive: false,
+          },
+        ],
+      },
+    });
+
+    await service.import_analysis_glossary({
+      entries: [{ src: "艾琳", dst: "Erin", info: "角色名", regex: false, case_sensitive: true }],
+      consumed_candidate_srcs: ["艾琳"],
+      expected_section_revisions: { quality: 0, analysis: 0 },
+    });
+
+    expect(
+      database.execute({
+        name: "getMeta",
+        args: { projectPath: lg_path, key: "analysis_candidate_count", default: 0 },
+      }),
+    ).toBe(0);
+    database.close();
+  });
+
   it("分析候选导入拒绝旧 glossary 单 revision 字段", async () => {
     const { database, service } = create_service();
 

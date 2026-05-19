@@ -2,7 +2,7 @@ import { app, BrowserWindow, shell } from "electron";
 import path from "node:path";
 
 import { CoreBootstrap } from "../core/bootstrap/core-bootstrap";
-import type { WorkerPoolExecution } from "../core/engine/worker/worker-execution";
+import type { EngineExecution } from "../core/engine/core/engine-execution";
 import { write_electron_main_error } from "../core/log/log-bridge";
 import { t_main_log } from "../core/log/log-text";
 import * as AppErrors from "../shared/error";
@@ -19,7 +19,7 @@ import { show_native_error_dialog } from "./shell/native-error-dialog";
 
 export interface GuiEntryOptions {
   desktopBundleDir: string; // desktopBundleDir 是产品入口解析出的桌面 bundle 根目录
-  workerExecution: WorkerPoolExecution; // workerExecution 是 GUI Core 任务执行模式的唯一入口契约
+  engineExecution: EngineExecution; // engineExecution 是 GUI Core 任务执行模式的唯一入口契约
 }
 
 /**
@@ -52,7 +52,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     appRoot: app.isPackaged ? path.dirname(process.execPath) : process.cwd(),
     exposeApiGateway: true,
     openOutputFolder: open_output_folder,
-    workerExecution: options.workerExecution,
+    engineExecution: options.engineExecution,
   });
 
   /**

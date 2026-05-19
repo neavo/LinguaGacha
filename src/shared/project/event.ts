@@ -42,7 +42,7 @@ export type ProjectChangeFilesPayload = {
   deletePaths?: string[];
 };
 
-// 完整 section 替换在 canonical-delta 下携带完整 section data，其它模式只表达异常失效
+// section canonical-delta 携带后端规范 data；analysis 高频事件可只携带轻量进度块
 export type ProjectChangeSectionPayload = {
   payloadMode: ProjectChangePayloadMode;
   data?: ProjectChangeJsonValue;

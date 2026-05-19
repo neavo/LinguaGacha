@@ -58,6 +58,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - renderer 与 Core 共享的数据实体和值对象从 `src/base` 导入；跨运行时业务共享规则、协议词表和纯工具从 `src/shared` 导入，质量规则页面合并和分析导入预演复用 `src/shared/quality`；项目 mutation 派生模块只属于 Core，renderer 不导入或复刻最终 `items`、`translation_extras`、`prefilter_config`、`analysis` 输出算法。Electron 桌面宿主契约从 `@gui/*` 与 `@core/api/core-api-endpoint` 白名单导入，页面只保留局部筛选、弹窗、排序等 UI 状态，不在页面层重定义跨层枚举。
 - 基础设置页的源语言与目标语言控件分别消费 `SOURCE_LANGUAGE_CODES` 和 `TARGET_LANGUAGE_CODES`；`ALL` 只作为源语言过滤关闭值进入源语言控件，页面不得用总语言表同时驱动源/目标下拉。
 - `ProjectStore` 只消费 `Prompt` 和 `QualityRule` 派生出的公开 key 与切片归一化结果；页面发起质量规则预设请求时传 `rule_type`，不传物理预设目录名。
+- `ProjectStore.analysis` 只保留轻量进度、候选数量和状态摘要；完整分析候选聚合不进入常驻项目快照，术语导入动作必须先通过 `/api/project/analysis/candidates` 按需读取，再把候选聚合显式传给导入预演，预演结果提交的是本轮已处理候选 src 而不只是写入术语表的条目。
 
 ## 4. 事件流与页面刷新
 

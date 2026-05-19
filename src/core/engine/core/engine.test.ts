@@ -10,10 +10,12 @@ import type { AppSettingService } from "../../app/app-setting-service";
 import type { MutableJsonRecord } from "../runtime/task-runtime-types";
 import type { TaskRuntimePublisher } from "../runtime/task-runtime-publisher";
 import type { ProjectTaskStore } from "../store/project-task-store";
-import type { WorkerExecutor } from "../worker/worker-executor";
-import { WorkUnitExecutorTransportError } from "../worker/worker-transport-error";
+import type { TaskTokenCountInput } from "../planning/token-metric-cache";
+import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
+import { WorkUnitExecutorTransportError } from "../work-unit/work-unit-transport-error";
 import { TaskEngine } from "./engine";
-import type { TokenCounter } from "./token-counter";
+import type { PlanningWorkerPool } from "../planning/planning-worker-pool";
+import { TaskPlanner } from "../planning/task-planner";
 
 describe("TaskEngine", () => {
   const cleanup_paths: string[] = [];
@@ -41,8 +43,8 @@ describe("TaskEngine", () => {
           }
           return { text: "第二条" };
         },
-      } as unknown as WorkerExecutor,
-      tokenCounter: create_test_token_counter(),
+      } as unknown as WorkUnitExecutor,
+      taskPlanner: create_test_task_planner(),
       AppSettingService: create_setting_service(1),
       logManager: create_log_manager(),
     });
@@ -91,8 +93,8 @@ describe("TaskEngine", () => {
       executorClient: {
         execute_unit: async () =>
           create_translation_worker_result([create_pending_item()], 0, 1, 2),
-      } as unknown as WorkerExecutor,
-      tokenCounter: create_test_token_counter(),
+      } as unknown as WorkUnitExecutor,
+      taskPlanner: create_test_task_planner(),
       AppSettingService: create_setting_service(),
       logManager: create_log_manager(),
     });
@@ -159,8 +161,8 @@ describe("TaskEngine", () => {
           ...translation_extras,
         });
       }),
-      executorClient: {} as unknown as WorkerExecutor,
-      tokenCounter: create_test_token_counter(),
+      executorClient: {} as unknown as WorkUnitExecutor,
+      taskPlanner: create_test_task_planner(),
       AppSettingService: create_setting_service(),
       logManager: create_log_manager(),
     });
@@ -237,8 +239,8 @@ describe("TaskEngine", () => {
             1,
           );
         },
-      } as unknown as WorkerExecutor,
-      tokenCounter: create_test_token_counter(),
+      } as unknown as WorkUnitExecutor,
+      taskPlanner: create_test_task_planner(),
       AppSettingService: create_setting_service(2),
       logManager: create_log_manager(),
     });
@@ -295,8 +297,8 @@ describe("TaskEngine", () => {
             1,
           );
         },
-      } as unknown as WorkerExecutor,
-      tokenCounter: create_test_token_counter(1),
+      } as unknown as WorkUnitExecutor,
+      taskPlanner: create_test_task_planner(1),
       AppSettingService: create_setting_service(1, 16),
       logManager: create_log_manager(),
     });
@@ -328,8 +330,8 @@ describe("TaskEngine", () => {
         build_quality_snapshot: () => null,
       } as unknown as ProjectTaskStore,
       taskRuntimePublisher: create_task_runtime_publisher(done.publish),
-      executorClient: {} as unknown as WorkerExecutor,
-      tokenCounter: create_test_token_counter(),
+      executorClient: {} as unknown as WorkUnitExecutor,
+      taskPlanner: create_test_task_planner(),
       AppSettingService: create_setting_service(),
       logManager: create_log_manager(logs),
     });
@@ -363,8 +365,8 @@ describe("TaskEngine", () => {
         build_quality_snapshot: () => null,
       } as unknown as ProjectTaskStore,
       taskRuntimePublisher: create_task_runtime_publisher(done.publish),
-      executorClient: {} as unknown as WorkerExecutor,
-      tokenCounter: create_test_token_counter(),
+      executorClient: {} as unknown as WorkUnitExecutor,
+      taskPlanner: create_test_task_planner(),
       AppSettingService: create_setting_service(),
       logManager: create_log_manager(logs),
     });
@@ -478,12 +480,15 @@ describe("TaskEngine", () => {
   }
 
   /**
-   * 注入稳定 token 计数，隔离 tokenizer 细节后只验证 TaskEngine 是否消费计数边界
+   * 注入稳定 planning worker，隔离 tokenizer 细节后只验证 TaskEngine 是否消费规划边界。
    */
-  function create_test_token_counter(token_count = 1): TokenCounter {
-    return {
-      count: () => token_count,
-    };
+  function create_test_task_planner(token_count = 1): TaskPlanner {
+    return new TaskPlanner({
+      planningWorkerPool: {
+        count_items: async (items: TaskTokenCountInput[]) =>
+          items.map((item) => ({ cache_key: item.cache_key, token_count })),
+      } as unknown as PlanningWorkerPool,
+    });
   }
 
   /**

@@ -2,7 +2,7 @@ import type { TaskArtifact } from "../protocol/artifact";
 import type { StartTaskCommand } from "../protocol/task-command";
 import type { TaskType } from "../protocol/task-types";
 import type { WorkUnit } from "../protocol/work-unit";
-import type { WorkerExecutionResult } from "../protocol/worker-result";
+import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
 import type { MutableJsonRecord } from "../runtime/task-runtime-types";
 
 export type TaskPlan = {
@@ -37,7 +37,7 @@ export interface TaskDefinition<TCommand extends StartTaskCommand = StartTaskCom
   build_units(plan: TaskPlan): WorkUnit[];
 
   /** 解释 worker 结果为重试、artifact、进度增量或终止错误 */
-  interpret_worker_result(result: WorkerExecutionResult): WorkerResultInterpretation;
+  interpret_worker_result(result: WorkUnitExecutionResult): WorkerResultInterpretation;
 
   /** 启动前钩子只允许检查任务私有前置条件，不直接写项目事实 */
   on_before_start?(command: TCommand): void;

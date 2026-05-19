@@ -2,17 +2,18 @@ import crypto from "node:crypto";
 import { Worker } from "node:worker_threads";
 
 import type { ApiJsonValue } from "../../api/api-types";
+import type { EngineExecution } from "../core/engine-execution";
+import { resolve_engine_worker_count } from "../core/engine-worker-capacity";
 import type { WorkUnit } from "../protocol/work-unit";
-import type { WorkerExecutionResult } from "../protocol/worker-result";
-import { WorkUnitRunner } from "./worker-runner";
-import type { WorkerExecutor } from "./worker-executor";
-import type { WorkerPoolExecution } from "./worker-execution";
-import { WorkUnitExecutorTransportError } from "./worker-transport-error";
+import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
+import { WorkUnitRunner } from "./work-unit-runner";
+import type { WorkUnitExecutor } from "./work-unit-executor";
+import { WorkUnitExecutorTransportError } from "./work-unit-transport-error";
 import { RuntimeCancelledError, RuntimeDisposedError } from "../../../shared/error";
 
-interface WorkerPoolOptions {
+interface WorkUnitWorkerPoolOptions {
   appRoot: string;
-  execution: WorkerPoolExecution;
+  execution: EngineExecution;
   workerCount?: number;
   maxInFlight?: number;
 }
@@ -35,28 +36,28 @@ interface WorkerSlot {
 /**
  * multiplexed worker_threads 池：少量 worker 线程承载多个 in-flight LLM work unit。
  */
-export class WorkerPool implements WorkerExecutor {
-  private readonly app_root: string; // app_root 提供 worker 和 direct runner 读取资源模板的根目录
-  private readonly execution: WorkerPoolExecution; // execution 由入口层显式决定，生产路径不再静默回退 direct runner
+export class WorkUnitWorkerPool implements WorkUnitExecutor {
+  private readonly app_root: string; // app_root 提供 worker_threads 和同进程 runner 读取资源模板的根目录
+  private readonly execution: EngineExecution; // execution 由入口层显式决定，池内不做入口探测或模式回退
   private readonly worker_count: number; // worker_count 是 worker_threads 模式下的固定线程数
   private readonly max_in_flight: number; // max_in_flight 是全池并发上限，不等同于线程数
   private readonly queue: PendingTask[] = [];
   private readonly slots: WorkerSlot[] = [];
-  private readonly direct_runner: WorkUnitRunner | null = null;
-  private readonly direct_in_flight = new Map<string, PendingTask>(); // direct runner 测试路径也遵守同一 in-flight 上限
+  private readonly in_process_runner: WorkUnitRunner | null = null;
+  private readonly in_process_in_flight = new Map<string, PendingTask>(); // 同进程测试路径也遵守同一 in-flight 上限
   private in_flight_count = 0; // in_flight_count 是池内已派发但尚未完成的任务数，不含等待队列
   private disposed = false; // disposed 关闭入队入口，避免 Gateway stop 后继续派发新任务
 
   /**
-   * 构造固定 worker_threads 数量与独立 in-flight 上限，并按显式执行模式启动。
+   * 构造共享 worker_threads 容量与独立 in-flight 上限，并按显式执行模式启动。
    */
-  public constructor(options: WorkerPoolOptions) {
+  public constructor(options: WorkUnitWorkerPoolOptions) {
     this.app_root = options.appRoot;
     this.execution = options.execution;
-    this.worker_count = Math.max(1, Math.trunc(options.workerCount ?? 4));
+    this.worker_count = resolve_engine_worker_count(options.workerCount);
     this.max_in_flight = Math.max(1, Math.trunc(options.maxInFlight ?? Number.MAX_SAFE_INTEGER));
-    if (this.execution.kind === "direct") {
-      this.direct_runner = new WorkUnitRunner({ appRoot: this.app_root });
+    if (this.execution.kind === "in_process") {
+      this.in_process_runner = new WorkUnitRunner({ appRoot: this.app_root });
       return;
     }
     for (let index = 0; index < this.worker_count; index += 1) {
@@ -65,10 +66,10 @@ export class WorkerPool implements WorkerExecutor {
   }
 
   /**
-   * 后台任务 unit 走统一 enqueue，WorkerPool 不读取任务领域状态。
+   * 后台任务 unit 走统一 enqueue，WorkUnitWorkerPool 不读取任务领域状态。
    */
-  public async execute_unit(unit: WorkUnit, signal: AbortSignal): Promise<WorkerExecutionResult> {
-    return (await this.enqueue(unit, null, signal)) as WorkerExecutionResult;
+  public async execute_unit(unit: WorkUnit, signal: AbortSignal): Promise<WorkUnitExecutionResult> {
+    return (await this.enqueue(unit, null, signal)) as WorkUnitExecutionResult;
   }
 
   /**
@@ -97,11 +98,11 @@ export class WorkerPool implements WorkerExecutor {
       task.signal.removeEventListener("abort", task.abort_listener);
       task.reject(this.create_disposed_error());
     }
-    for (const task of this.direct_in_flight.values()) {
+    for (const task of this.in_process_in_flight.values()) {
       task.signal.removeEventListener("abort", task.abort_listener);
       task.reject(this.create_disposed_error());
     }
-    this.direct_in_flight.clear();
+    this.in_process_in_flight.clear();
     for (const slot of this.slots) {
       for (const task of slot.in_flight.values()) {
         this.clear_task_listener(task);
@@ -154,8 +155,8 @@ export class WorkerPool implements WorkerExecutor {
       if (task === undefined) {
         return;
       }
-      if (this.direct_runner !== null) {
-        this.dispatch_direct_task(task);
+      if (this.in_process_runner !== null) {
+        this.dispatch_in_process_task(task);
         continue;
       }
       const slot = this.pick_least_loaded_slot();
@@ -181,23 +182,23 @@ export class WorkerPool implements WorkerExecutor {
   }
 
   /**
-   * direct runner 用于测试和源码环境，仍按同一个 in-flight 计数进入执行。
+   * 同进程 runner 用于测试和源码环境，仍按同一个 in-flight 计数进入执行。
    */
-  private dispatch_direct_task(task: PendingTask): void {
-    const runner = this.direct_runner;
+  private dispatch_in_process_task(task: PendingTask): void {
+    const runner = this.in_process_runner;
     if (runner === null) {
       return;
     }
-    this.direct_in_flight.set(task.id, task);
+    this.in_process_in_flight.set(task.id, task);
     this.in_flight_count += 1;
     const task_promise =
       task.unit === null
         ? runner.translate_single(task.translate_single_body ?? {}, task.signal)
         : runner.run(task.unit, task.signal);
     task_promise.then(
-      (value) => this.finish_direct_task(task.id, { ok: true, data: value }),
+      (value) => this.finish_in_process_task(task.id, { ok: true, data: value }),
       (error: unknown) =>
-        this.finish_direct_task(task.id, {
+        this.finish_in_process_task(task.id, {
           ok: false,
           error: error instanceof Error ? error.message : String(error),
         }),
@@ -216,7 +217,7 @@ export class WorkerPool implements WorkerExecutor {
       this.drain_queue();
       return;
     }
-    if (this.direct_in_flight.has(task.id)) {
+    if (this.in_process_in_flight.has(task.id)) {
       return;
     }
     const slot = this.slots.find((item) => item.in_flight.has(task.id));
@@ -228,10 +229,10 @@ export class WorkerPool implements WorkerExecutor {
    */
   private create_slot(): WorkerSlot {
     if (this.execution.kind !== "worker_threads") {
-      throw new Error("WorkerPool 创建 worker slot 时必须使用 worker_threads 执行模式。");
+      throw new Error("WorkUnitWorkerPool 创建 worker slot 时必须使用 worker_threads 执行模式。");
     }
     const slot: WorkerSlot = {
-      worker: new Worker(this.execution.workerEntryUrl, {
+      worker: new Worker(this.execution.workUnitWorkerEntryUrl, {
         workerData: { appRoot: this.app_root },
       }),
       in_flight: new Map(),
@@ -282,17 +283,17 @@ export class WorkerPool implements WorkerExecutor {
   }
 
   /**
-   * direct runner 完成后释放全池 in-flight，并继续推进等待队列。
+   * 同进程 runner 完成后释放全池 in-flight，并继续推进等待队列。
    */
-  private finish_direct_task(
+  private finish_in_process_task(
     id: string,
     message: { ok: boolean; data?: unknown; error?: string },
   ): void {
-    const task = this.direct_in_flight.get(id);
+    const task = this.in_process_in_flight.get(id);
     if (task === undefined) {
       return;
     }
-    this.direct_in_flight.delete(id);
+    this.in_process_in_flight.delete(id);
     this.clear_task_listener(task);
     this.in_flight_count = Math.max(0, this.in_flight_count - 1);
     this.settle_task(task, { id, ...message });
@@ -338,7 +339,7 @@ export class WorkerPool implements WorkerExecutor {
   }
 
   /**
-   * 成功值和传输错误在 WorkerPool 边界统一完成，Engine 只识别 executor 结果。
+   * 成功值和传输错误在 WorkUnitWorkerPool 边界统一完成，Engine 只识别 executor 结果。
    */
   private settle_task(
     task: PendingTask,
@@ -352,11 +353,11 @@ export class WorkerPool implements WorkerExecutor {
   }
 
   /**
-   * WorkerPool 生命周期错误集中生成，调用方只按稳定 code 判断资源是否已释放。
+   * WorkUnitWorkerPool 生命周期错误集中生成，调用方只按稳定 code 判断资源是否已释放。
    */
   private create_disposed_error(): RuntimeDisposedError {
     return new RuntimeDisposedError({
-      public_details: { resource: "WorkerPool" },
+      public_details: { resource: "WorkUnitWorkerPool" },
       diagnostic_context: {
         queue_length: this.queue.length,
         in_flight_count: this.in_flight_count,

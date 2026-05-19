@@ -11,7 +11,7 @@ import { ResponseCleaner } from "../response/response-cleaner";
 import { ResponseDecoder } from "../response/response-decoder";
 import type { LLMClientPort } from "../../../llm/llm-types";
 import type { AnalysisWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
-import type { WorkerExecutionResult } from "../../protocol/worker-result";
+import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
 import { normalize_setting_snapshot } from "../../../../base/setting";
 
@@ -55,7 +55,7 @@ export class AnalysisWorkUnitRunner {
   public async execute_unit(
     unit: AnalysisWorkUnit,
     signal: AbortSignal,
-  ): Promise<WorkerExecutionResult> {
+  ): Promise<WorkUnitExecutionResult> {
     const result = await this.run_analysis_chunk(
       {
         run_id: unit.run_id,

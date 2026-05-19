@@ -16,6 +16,7 @@ import type { TaskType } from "../protocol/task-types";
 import { QualityRuleSnapshotTool } from "../../../shared/quality/snapshot";
 import { isProjectDataSection } from "../../../shared/project/event";
 import { TASK_PROGRESS_STATUSES } from "../../../shared/task";
+import { count_analysis_glossary_candidates } from "../../../shared/analysis-candidate";
 import * as AppErrors from "../../../shared/error";
 
 /**
@@ -244,7 +245,7 @@ export class ProjectTaskStore {
       }),
       ...this.bump_runtime_revision_operations(project_path, ["analysis"]),
     ]);
-    this.publish_analysis_patch("analysis_reset");
+    this.publish_analysis_patch("analysis_reset", {}, 0);
     return { accepted: true };
   }
 
@@ -280,7 +281,12 @@ export class ProjectTaskStore {
     const progress_snapshot = this.normalize_nullable_progress_snapshot(
       request["progress_snapshot"],
     );
-    const candidate_result = this.build_next_candidate_rows(project_path, glossary_entries);
+    const meta = this.get_all_meta(project_path);
+    const candidate_result = this.build_next_candidate_rows(
+      project_path,
+      glossary_entries,
+      this.read_number(meta["analysis_candidate_count"], 0),
+    );
     const operations: DatabaseOperation[] = [];
     if (success_checkpoints.length > 0 || error_checkpoints.length > 0) {
       operations.push(
@@ -312,7 +318,11 @@ export class ProjectTaskStore {
       ...this.bump_runtime_revision_operations(project_path, ["analysis"]),
     );
     this.database.execute_transaction(operations);
-    this.publish_analysis_patch("analysis_batch_update");
+    this.publish_analysis_patch(
+      "analysis_batch_update",
+      progress_snapshot ?? this.normalize_object(meta["analysis_extras"]),
+      candidate_result.count,
+    );
     return {
       inserted_count: glossary_entries.length,
       analysis_candidate_count: candidate_result.count,
@@ -385,15 +395,45 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 发布 analysis 变更时统一交给 ProjectChangeEventAdapter 补全分析块和 revision
+   * 发布 analysis 变更时只携带轻量进度摘要，避免运行中事件回读完整候选池。
    */
-  private publish_analysis_patch(source: string): void {
+  private publish_analysis_patch(
+    source: string,
+    analysis_extras: MutableJsonRecord,
+    candidate_count: number,
+  ): void {
     const project_path = this.require_loaded_project_path();
     this.mutation_coordinator.publish_project_data_change({
       projectPath: project_path,
       source,
       updatedSections: ["analysis"],
+      sections: {
+        analysis: {
+          payloadMode: "canonical-delta",
+          data: this.build_analysis_section_delta(analysis_extras, candidate_count),
+        },
+      },
     });
+  }
+
+  /**
+   * analysis 高频事件只需要进度与候选数量，完整 candidate_aggregate 改由按需接口读取。
+   */
+  private build_analysis_section_delta(
+    analysis_extras: MutableJsonRecord,
+    candidate_count: number,
+  ): MutableJsonRecord {
+    const snapshot = this.normalize_progress_snapshot(analysis_extras);
+    return {
+      extras: snapshot,
+      candidate_count: Math.max(0, Math.trunc(candidate_count)),
+      status_summary: {
+        total_line: this.read_number(snapshot["total_line"], 0),
+        processed_line: this.read_number(snapshot["processed_line"], 0),
+        error_line: this.read_number(snapshot["error_line"], 0),
+        line: this.read_number(snapshot["line"], 0),
+      },
+    };
   }
 
   /**
@@ -431,9 +471,21 @@ export class ProjectTaskStore {
   private build_next_candidate_rows(
     project_path: string,
     glossary_entries: MutableJsonRecord[],
+    current_count: number,
   ): { rows: MutableJsonRecord[]; count: number } {
+    const normalized_entries = glossary_entries.filter((entry) => {
+      const src = String(entry["src"] ?? "").trim();
+      const dst = String(entry["dst"] ?? "").trim();
+      return src !== "" && dst !== "";
+    });
+    if (normalized_entries.length === 0) {
+      return { rows: [], count: Math.max(0, current_count) };
+    }
+    const touched_srcs = [
+      ...new Set(normalized_entries.map((entry) => String(entry["src"] ?? "").trim())),
+    ];
     const aggregate = new Map<string, MutableJsonRecord>();
-    for (const row of this.get_candidate_aggregate(project_path)) {
+    for (const row of this.get_candidate_aggregate_by_srcs(project_path, touched_srcs)) {
       const src = String(row["src"] ?? "").trim();
       if (src !== "") {
         aggregate.set(src, {
@@ -443,8 +495,9 @@ export class ProjectTaskStore {
         });
       }
     }
+    const previous_touched_count = this.count_candidate_entries([...aggregate.values()]);
     const now = new Date().toISOString();
-    for (const entry of glossary_entries) {
+    for (const entry of normalized_entries) {
       const src = String(entry["src"] ?? "").trim();
       const dst = String(entry["dst"] ?? "").trim();
       if (src === "" || dst === "") {
@@ -477,38 +530,18 @@ export class ProjectTaskStore {
       aggregate.set(src, current);
     }
     const rows = [...aggregate.values()];
-    return { rows, count: this.count_candidate_entries(rows) };
+    const next_touched_count = this.count_candidate_entries(rows);
+    return {
+      rows,
+      count: Math.max(0, current_count - previous_touched_count + next_touched_count),
+    };
   }
 
   /**
-   * 候选数只统计可导出的候选项，和旧 AnalysisCandidateService 口径一致
+   * 候选数只统计共享规则认定的可导出术语，避免任务提交和导入后重算口径分叉
    */
   private count_candidate_entries(rows: MutableJsonRecord[]): number {
-    let count = 0;
-    for (const row of rows) {
-      const src = String(row["src"] ?? "").trim();
-      const dst = this.pick_vote_winner(this.normalize_vote_map(row["dst_votes"]));
-      const info = this.pick_vote_winner(this.normalize_vote_map(row["info_votes"]));
-      if (src !== "" && dst !== "" && info !== "" && info.toLowerCase() !== "other") {
-        count += 1;
-      }
-    }
-    return count;
-  }
-
-  /**
-   * 同票时保留对象插入顺序，匹配历史字典遍历的稳定性
-   */
-  private pick_vote_winner(votes: Record<string, number>): string {
-    let best_text = "";
-    let best_votes = -1;
-    for (const [text, count] of Object.entries(votes)) {
-      if (count > best_votes) {
-        best_text = text;
-        best_votes = count;
-      }
-    }
-    return best_text;
+    return count_analysis_glossary_candidates(rows);
   }
 
   /**
@@ -687,11 +720,17 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 候选聚合读取只服务分析提交合并，不暴露给公开 API
+   * 候选聚合只按本批触达 src 回读，避免分析运行中每个批次全量扫描候选池。
    */
-  private get_candidate_aggregate(project_path: string): MutableJsonRecord[] {
+  private get_candidate_aggregate_by_srcs(
+    project_path: string,
+    srcs: string[],
+  ): MutableJsonRecord[] {
     const value = this.database.execute(
-      this.op("getAnalysisCandidateAggregates", { projectPath: project_path }),
+      this.op("getAnalysisCandidateAggregatesBySrcs", {
+        projectPath: project_path,
+        srcs: srcs as unknown as DatabaseJsonValue,
+      }),
     );
     return Array.isArray(value)
       ? value.filter((row): row is JsonRecord => this.is_record(row)).map((row) => ({ ...row }))

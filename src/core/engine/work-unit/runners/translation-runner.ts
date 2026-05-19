@@ -17,7 +17,7 @@ import { ResponseCleaner } from "../response/response-cleaner";
 import { ResponseDecoder } from "../response/response-decoder";
 import type { LLMClientPort, LLMRequestResult } from "../../../llm/llm-types";
 import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
-import type { WorkerExecutionResult } from "../../protocol/worker-result";
+import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
 import { normalize_setting_snapshot } from "../../../../base/setting";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
 import { RequestValidationError } from "../../../../shared/error";
@@ -80,7 +80,7 @@ export class TranslationWorkUnitRunner {
   public async execute_unit(
     unit: TranslationWorkUnit,
     signal: AbortSignal,
-  ): Promise<WorkerExecutionResult> {
+  ): Promise<WorkUnitExecutionResult> {
     const result = await this.run_translation_chunk(
       {
         run_id: unit.run_id,

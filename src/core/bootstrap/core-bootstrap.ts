@@ -81,7 +81,7 @@ export class CoreBootstrap {
         database: this.database,
         logManager: log_manager,
         openOutputFolder: this.options.openOutputFolder,
-        workerExecution: this.options.workerExecution,
+        engineExecution: this.options.engineExecution,
       });
       core_services.start();
       this.core_services = core_services;

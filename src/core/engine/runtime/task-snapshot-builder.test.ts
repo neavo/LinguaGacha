@@ -18,7 +18,7 @@ describe("TaskSnapshotBuilder", () => {
     }
   });
 
-  it("用 数据库事实和 运行态组装任务快照", async () => {
+  it("用数据库进度事实和运行态组装任务快照", async () => {
     const { database, project_path } = create_project_database();
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
@@ -49,10 +49,10 @@ describe("TaskSnapshotBuilder", () => {
     expect(analysis).toMatchObject({
       task_type: "analysis",
       progress: {
-        line: 2,
-        total_line: 2,
-        processed_line: 1,
-        error_line: 1,
+        line: 4,
+        total_line: 9,
+        processed_line: 4,
+        error_line: 0,
       },
       extras: {
         kind: "analysis",
@@ -90,7 +90,13 @@ describe("TaskSnapshotBuilder", () => {
           projectPath: project_path,
           meta: {
             translation_extras: { line: 5, total_line: 10, total_tokens: 42 },
-            analysis_extras: { total_tokens: 12 },
+            analysis_extras: {
+              total_line: 9,
+              line: 4,
+              processed_line: 4,
+              error_line: 0,
+              total_tokens: 12,
+            },
             analysis_candidate_count: 3,
           },
         },

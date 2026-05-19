@@ -101,9 +101,7 @@ describe("ProjectChangeEventAdapter", () => {
         analysis: {
           payloadMode: "canonical-delta",
           data: {
-            extras: {},
-            candidate_count: 1,
-            status_summary: { total_line: 2, processed_line: 1, error_line: 0, line: 1 },
+            candidate_count: 999,
           },
         },
       },

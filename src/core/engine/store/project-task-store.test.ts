@@ -142,6 +142,12 @@ describe("ProjectTaskStore", () => {
         ],
       },
     });
+    database.execute({
+      name: "setMeta",
+      args: { projectPath: project_path, key: "analysis_candidate_count", value: 1 },
+    });
+    const execute_spy = vi.spyOn(database, "execute");
+    execute_spy.mockClear();
 
     const ack = store.commit_artifacts({
       task_type: "analysis",
@@ -176,6 +182,13 @@ describe("ProjectTaskStore", () => {
       progress_snapshot: create_progress_snapshot({ total_line: 2, line: 1, processed_line: 1 }),
     });
 
+    expect(execute_spy).toHaveBeenCalledWith({
+      name: "getAnalysisCandidateAggregatesBySrcs",
+      args: { projectPath: project_path, srcs: ["魔法", "人物"] },
+    });
+    expect(execute_spy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ name: "getAnalysisCandidateAggregates" }),
+    );
     expect(
       database.execute({
         name: "getAnalysisItemCheckpoints",
@@ -231,7 +244,23 @@ describe("ProjectTaskStore", () => {
         source: "analysis_batch_update",
         updatedSections: ["analysis"],
         sections: {
-          analysis: { payloadMode: "canonical-delta" },
+          analysis: {
+            payloadMode: "canonical-delta",
+            data: {
+              extras: create_progress_snapshot({
+                total_line: 2,
+                line: 1,
+                processed_line: 1,
+              }),
+              candidate_count: 2,
+              status_summary: {
+                total_line: 2,
+                processed_line: 1,
+                error_line: 0,
+                line: 1,
+              },
+            },
+          },
         },
       },
     ]);

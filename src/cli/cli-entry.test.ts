@@ -5,12 +5,12 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { CLICommandOptions } from "./cli-parser";
-import type { WorkerPoolExecution } from "../core/engine/worker/worker-execution";
+import type { EngineExecution } from "../core/engine/core/engine-execution";
 
 const run_cli_command_mock = vi.hoisted(() => {
   return vi.fn();
 });
-const DIRECT_WORKER_EXECUTION: WorkerPoolExecution = { kind: "direct" }; // CLI entry 测试 mock 真实 job，只需传递显式执行契约
+const IN_PROCESS_ENGINE_EXECUTION: EngineExecution = { kind: "in_process" }; // CLI entry 测试 mock 真实 job，只需传递显式执行契约
 
 vi.mock("./cli-runner", () => {
   return {
@@ -31,9 +31,9 @@ describe("run_cli_entry", () => {
       fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3\n", "utf-8");
       const { run_cli_entry } = await import("./cli-entry");
 
-      await expect(run_cli_entry(["--version"], app_root, DIRECT_WORKER_EXECUTION)).resolves.toBe(
-        0,
-      );
+      await expect(
+        run_cli_entry(["--version"], app_root, IN_PROCESS_ENGINE_EXECUTION),
+      ).resolves.toBe(0);
 
       expect(stdout.messages).toEqual(["1.2.3\n"]);
     } finally {
@@ -60,7 +60,7 @@ describe("run_cli_entry", () => {
           "ZH",
         ],
         "E:/App",
-        DIRECT_WORKER_EXECUTION,
+        IN_PROCESS_ENGINE_EXECUTION,
       ),
     ).resolves.toBe(0);
 
@@ -80,7 +80,7 @@ describe("run_cli_entry", () => {
           textPreservePath: null,
         },
       } satisfies CLICommandOptions,
-      DIRECT_WORKER_EXECUTION,
+      IN_PROCESS_ENGINE_EXECUTION,
     );
     expect(stdout.messages).toEqual([]);
   });
@@ -89,7 +89,9 @@ describe("run_cli_entry", () => {
     const stderr = spy_process_write(process.stderr);
     const { run_cli_entry } = await import("./cli-entry");
 
-    await expect(run_cli_entry(["translate"], "E:/App", DIRECT_WORKER_EXECUTION)).resolves.toBe(2);
+    await expect(run_cli_entry(["translate"], "E:/App", IN_PROCESS_ENGINE_EXECUTION)).resolves.toBe(
+      2,
+    );
 
     expect(stderr.messages.join("")).toContain("Missing required option --input");
     expect(stderr.messages.join("")).toContain("全局参数 | Global Options:");

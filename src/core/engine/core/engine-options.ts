@@ -4,8 +4,9 @@ import type { LogManager } from "../../log/log-manager";
 import type { AppSettingService } from "../../app/app-setting-service";
 import type { TaskRuntimePublisher } from "../runtime/task-runtime-publisher";
 import type { ProjectTaskStore } from "../store/project-task-store";
-import type { WorkerExecutor } from "../worker/worker-executor";
-import type { TokenCounter } from "./token-counter";
+import type { TaskPlanner } from "../planning/task-planner";
+import type { TaskItemRecord } from "../planning/task-plan-types";
+import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
 
 export const TASK_IDLE_STATUSES = new Set<string>(BASE_TASK_IDLE_STATUSES);
 
@@ -16,8 +17,8 @@ export interface TaskEngineOptions {
   appRoot: string; // appRoot 用于任务启动日志读取提示词模板，保持 main 与 worker 资源根一致
   taskStore: ProjectTaskStore; // taskStore 是任务编排器读写项目任务事实的唯一端口
   taskRuntimePublisher: TaskRuntimePublisher; // taskRuntimePublisher 是完整 task snapshot 的唯一公开出口
-  executorClient: WorkerExecutor; // executorClient 屏蔽 worker_threads 与直接 runner 的传输差异
-  tokenCounter: TokenCounter; // tokenCounter 是切块预算的唯一 token 数量来源，不影响 worker 返回的真实 token 统计
+  executorClient: WorkUnitExecutor; // executorClient 屏蔽 worker_threads 与直接 runner 的传输差异
+  taskPlanner: TaskPlanner; // taskPlanner 是精确 token 切块、cache 复用和后台规划的唯一入口
   AppSettingService: AppSettingService; // AppSettingService 在每次任务启动时提供设置与模型快照
   logManager: LogManager; // logManager 统一收敛任务引擎和 worker 回放日志
 }
@@ -45,11 +46,6 @@ export interface TaskProgressSnapshot {
   total_input_tokens: number;
   total_output_tokens: number;
 }
-
-/**
- * runner 使用的 item 字典；数据库事实仍是普通 JSON，runner 只读写稳定字段
- */
-export type TaskItemRecord = MutableJsonRecord;
 
 /**
  * work-unit executor 返回的翻译类结果

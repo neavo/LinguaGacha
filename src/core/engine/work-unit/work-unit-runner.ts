@@ -1,6 +1,6 @@
 import type { ApiJsonValue } from "../../api/api-types";
 import type { WorkUnit } from "../protocol/work-unit";
-import type { WorkerExecutionResult } from "../protocol/worker-result";
+import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
 import { LLMClient } from "../../llm/llm-client";
 import { AppMetadataService } from "../../app/app-metadata-service";
 import { AppPathService } from "../../app/app-path-service";
@@ -11,7 +11,7 @@ import {
 } from "./runners/translation-runner";
 
 /**
- * worker 内 runner 的固定依赖，全部由 WorkerPool 传入，避免 worker 自己读取进程环境
+ * worker 内 runner 的固定依赖，全部由 WorkUnitWorkerPool 传入，避免 worker 自己读取进程环境
  */
 export interface WorkUnitRunnerOptions {
   appRoot: string; // appRoot 用于读取资源模板和预设，不能从 worker 当前目录反推
@@ -38,7 +38,7 @@ export class WorkUnitRunner {
   /**
    * 按 unit.kind 分发，worker 不再理解业务 method string
    */
-  public async run(unit: WorkUnit, signal: AbortSignal): Promise<WorkerExecutionResult> {
+  public async run(unit: WorkUnit, signal: AbortSignal): Promise<WorkUnitExecutionResult> {
     if (unit.kind === "translation") {
       return this.translation_runner.execute_unit(unit, signal);
     }

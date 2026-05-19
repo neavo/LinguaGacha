@@ -515,6 +515,16 @@ function normalizeRecordMap(value: Record<string, unknown> | undefined): Record<
   );
 }
 
+// analysis section 是轻量进度对象，不是 record map，必须保留 candidate_count 这类标量字段。
+function normalizeAnalysisState(
+  value: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  if (value === undefined || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  return { ...value };
+}
+
 function applySectionPayloadToState(
   state: ProjectStoreState,
   section: ProjectDataSection,
@@ -542,7 +552,7 @@ function applySectionPayloadToState(
     return { ...state, prompts: normalizePromptsState(payload.data as ProjectStorePromptsState) };
   }
   if (section === "analysis") {
-    return { ...state, analysis: normalizeRecordMap(payload.data as Record<string, unknown>) };
+    return { ...state, analysis: normalizeAnalysisState(payload.data as Record<string, unknown>) };
   }
   return {
     ...state,

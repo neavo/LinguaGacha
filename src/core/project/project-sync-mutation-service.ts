@@ -34,6 +34,7 @@ import {
   normalize_analysis_progress_snapshot,
   type ProjectPrefilterMutationOutput,
 } from "./project-mutation-state";
+import { count_analysis_glossary_candidates } from "../../shared/analysis-candidate";
 import { is_task_skipped_item_status } from "../../shared/task";
 import * as AppErrors from "../../shared/error";
 
@@ -881,8 +882,11 @@ export class ProjectSyncMutationService {
       skip_duplicate_source_text_enable: settings.skip_duplicate_source_text_enable,
       prefilter_config: output.prefilter_config as unknown as ApiJsonValue,
       translation_extras: output.translation_extras as unknown as ApiJsonValue,
-      analysis_extras: {},
-      analysis_candidate_count: 0,
+      analysis_extras: build_analysis_progress_snapshot({
+        extras: output.analysis.extras,
+        status_summary: output.analysis.status_summary,
+      }) as unknown as ApiJsonValue,
+      analysis_candidate_count: output.analysis.candidate_count,
     };
   }
 
@@ -1340,7 +1344,7 @@ export class ProjectSyncMutationService {
   }
 
   /**
-   * 术语导入后的候选数只从数据库候选聚合派生，renderer 不参与提交派生统计
+   * 术语导入后的候选数只从数据库候选聚合和共享可导出规则派生，renderer 不参与提交统计
    */
   private count_remaining_analysis_candidates(
     project_path: string,
@@ -1350,16 +1354,7 @@ export class ProjectSyncMutationService {
     const rows = this.get_analysis_candidate_aggregates(project_path).filter((row) => {
       return !consumed_src_set.has(String(row["src"] ?? "").trim());
     });
-    let count = 0;
-    for (const row of rows) {
-      const src = String(row["src"] ?? "").trim();
-      const dst = this.pick_vote_winner(this.normalize_vote_map(row["dst_votes"]));
-      const info = this.pick_vote_winner(this.normalize_vote_map(row["info_votes"]));
-      if (src !== "" && dst !== "" && info !== "" && info.toLowerCase() !== "other") {
-        count += 1;
-      }
-    }
-    return count;
+    return count_analysis_glossary_candidates(rows);
   }
 
   /**
@@ -1372,39 +1367,6 @@ export class ProjectSyncMutationService {
     return Array.isArray(value)
       ? value.filter((row): row is JsonRecord => this.is_record(row)).map((row) => ({ ...row }))
       : [];
-  }
-
-  /**
-   * 归一投票表，只保留正数票，避免坏候选聚合影响派生统计
-   */
-  private normalize_vote_map(value: ApiJsonValue | undefined): Record<string, number> {
-    if (!this.is_record(value)) {
-      return {};
-    }
-    const votes: Record<string, number> = {};
-    for (const [text, raw_count] of Object.entries(value)) {
-      const normalized_text = text.trim();
-      const count = this.read_number(raw_count, 0);
-      if (normalized_text !== "" && count > 0) {
-        votes[normalized_text] = count;
-      }
-    }
-    return votes;
-  }
-
-  /**
-   * 候选导入预览按最高票选展示值，后端统计沿用同一最小口径
-   */
-  private pick_vote_winner(votes: Record<string, number>): string {
-    let winner = "";
-    let winner_votes = -1;
-    for (const [text, count] of Object.entries(votes)) {
-      if (count > winner_votes) {
-        winner = text;
-        winner_votes = count;
-      }
-    }
-    return winner;
   }
 
   /**

@@ -143,7 +143,7 @@ export class ProjectChangeEventAdapter {
   }
 
   /**
-   * section canonical-delta 由投影层补齐完整 payload；items/files 只在显式要求完整替换时进入这里
+   * section canonical-delta 可携带调用方给出的后端规范 data；缺省时才由投影层补齐完整 section。
    */
   private build_sections_payload(
     value: ApiJsonValue | undefined,
@@ -167,12 +167,15 @@ export class ProjectChangeEventAdapter {
       const payload_mode = normalizeProjectChangePayloadMode(
         raw_payload["payloadMode"] ?? "section-invalidated",
       );
+      const has_explicit_data = Object.prototype.hasOwnProperty.call(raw_payload, "data");
       sections[section] = {
         payloadMode: payload_mode,
         ...(payload_mode !== "canonical-delta"
           ? {}
           : {
-              data: this.build_section_data(args.projectState, section),
+              data: has_explicit_data
+                ? (raw_payload["data"] ?? null)
+                : this.build_section_data(args.projectState, section),
             }),
       };
     }

@@ -19,6 +19,19 @@ vi.mock("@/project/quality/quality-statistics-worker-pool", () => {
   };
 });
 
+const CANDIDATE_AGGREGATE: Record<string, unknown> = {
+  艾琳: {
+    src: "艾琳",
+    dst_votes: {
+      Erin: 1,
+    },
+    info_votes: {
+      角色名: 1,
+    },
+    case_sensitive: true,
+  },
+};
+
 function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
     item_id: 1,
@@ -94,18 +107,6 @@ function create_test_state(overrides: Partial<ProjectStoreState> = {}): ProjectS
     },
     analysis: {
       candidate_count: 1,
-      candidate_aggregate: {
-        艾琳: {
-          src: "艾琳",
-          dst_votes: {
-            Erin: 1,
-          },
-          info_votes: {
-            角色名: 1,
-          },
-          case_sensitive: true,
-        },
-      },
     },
     proofreading: {
       revision: 0,
@@ -138,7 +139,9 @@ describe("prepare_analysis_glossary_import", () => {
   });
 
   it("保留只出现一次的候选术语", async () => {
-    const prepared_import = await prepare_analysis_glossary_import(create_test_state());
+    const prepared_import = await prepare_analysis_glossary_import(create_test_state(), {
+      candidate_aggregate: CANDIDATE_AGGREGATE,
+    });
 
     expect(prepared_import).not.toBeNull();
     expect(quality_statistics_submit_mock).toHaveBeenCalledTimes(1);
@@ -183,7 +186,10 @@ describe("prepare_analysis_glossary_import", () => {
       },
     ];
 
-    const prepared_import = await prepare_analysis_glossary_import(state, { action: "skip" });
+    const prepared_import = await prepare_analysis_glossary_import(state, {
+      action: "skip",
+      candidate_aggregate: CANDIDATE_AGGREGATE,
+    });
 
     expect(prepared_import).not.toBeNull();
     expect(prepared_import?.duplicate_count).toBe(1);
@@ -215,7 +221,10 @@ describe("prepare_analysis_glossary_import", () => {
       },
     ];
 
-    const prepared_import = await prepare_analysis_glossary_import(state, { action: "overwrite" });
+    const prepared_import = await prepare_analysis_glossary_import(state, {
+      action: "overwrite",
+      candidate_aggregate: CANDIDATE_AGGREGATE,
+    });
 
     expect(prepared_import).not.toBeNull();
     expect(prepared_import?.duplicate_count).toBe(1);
@@ -233,38 +242,77 @@ describe("prepare_analysis_glossary_import", () => {
     expect(prepared_import?.request_body.consumed_candidate_srcs).toEqual(["艾琳"]);
   });
 
-  it("请求体只携带后端消费候选所需的 src 列表", async () => {
+  it("导入请求消费本轮候选池而不是只消费写入术语表的子集", async () => {
     const state = create_test_state({
       analysis: {
         candidate_count: 2,
-        candidate_aggregate: {
-          艾琳: {
-            src: "艾琳",
-            dst_votes: {
-              Erin: 1,
-            },
-            info_votes: {
-              角色名: 1,
-            },
-            case_sensitive: true,
+      },
+    });
+
+    const prepared_import = await prepare_analysis_glossary_import(state, {
+      candidate_aggregate: {
+        ...CANDIDATE_AGGREGATE,
+        王: {
+          src: "王",
+          dst_votes: {
+            King: 1,
           },
-          王: {
-            src: "王",
-            dst_votes: {
-              King: 1,
-            },
-            info_votes: {
-              角色名: 1,
-            },
-            case_sensitive: false,
+          info_votes: {
+            角色名: 1,
           },
+          case_sensitive: false,
         },
       },
     });
 
-    const prepared_import = await prepare_analysis_glossary_import(state);
+    expect(prepared_import?.consumed_count).toBe(2);
+    expect(prepared_import?.request_body.consumed_candidate_srcs).toEqual(["艾琳", "王"]);
+  });
 
+  it("候选全被统计过滤时仍返回 analysis-only 消费请求", async () => {
+    quality_statistics_submit_mock.mockResolvedValue({
+      results: {
+        "艾琳|1": {
+          matched_item_count: 0,
+          subset_parents: [],
+        },
+      },
+    });
+
+    const prepared_import = await prepare_analysis_glossary_import(create_test_state(), {
+      candidate_aggregate: CANDIDATE_AGGREGATE,
+    });
+
+    expect(prepared_import).not.toBeNull();
+    expect(prepared_import?.imported_count).toBe(0);
     expect(prepared_import?.consumed_count).toBe(1);
+    expect(prepared_import?.quality_changed).toBe(false);
+    expect(prepared_import?.updated_sections).toEqual(["analysis"]);
+    expect(prepared_import?.request_body.entries).toEqual([]);
+    expect(prepared_import?.request_body.consumed_candidate_srcs).toEqual(["艾琳"]);
+  });
+
+  it("候选全被静态规则过滤时不运行统计但仍消费候选池", async () => {
+    const prepared_import = await prepare_analysis_glossary_import(create_test_state(), {
+      candidate_aggregate: {
+        艾琳: {
+          src: "艾琳",
+          dst_votes: {
+            Erin: 1,
+          },
+          info_votes: {
+            其他: 1,
+          },
+          case_sensitive: true,
+        },
+      },
+    });
+
+    expect(quality_statistics_submit_mock).not.toHaveBeenCalled();
+    expect(prepared_import).not.toBeNull();
+    expect(prepared_import?.imported_count).toBe(0);
+    expect(prepared_import?.consumed_count).toBe(1);
+    expect(prepared_import?.request_body.entries).toEqual([]);
     expect(prepared_import?.request_body.consumed_candidate_srcs).toEqual(["艾琳"]);
   });
 });
