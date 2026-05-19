@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { LogEvent } from "@/app/desktop/desktop-api";
+import { INPUT_QUERY_DEBOUNCE_MS } from "@/hooks/use-debounce";
 import { LogWindowPage } from "@/pages/log-window-page/page";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
@@ -246,6 +247,12 @@ function get_active_stream(): StreamController {
   return active_stream;
 }
 
+function change_input_value(input: HTMLInputElement, value: string): void {
+  const value_descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+  value_descriptor?.set?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 describe("LogWindowPage", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
@@ -333,6 +340,40 @@ describe("LogWindowPage", () => {
     expect(container?.textContent).toContain("[log_window_page.level.warning]");
     expect(container?.textContent).toContain("警告正文");
     expect(container?.querySelector('[data-level="warning"]')).not.toBeNull();
+  });
+
+  it("搜索输入即时显示，日志列表在 250ms 后刷新", async () => {
+    await mount_page();
+
+    await act(async () => {
+      get_active_stream().emit(build_log_event("alpha ready", { id: "log-alpha", sequence: 1 }));
+      get_active_stream().emit(build_log_event("beta ready", { id: "log-beta", sequence: 2 }));
+      await Promise.resolve();
+      vi.advanceTimersByTime(500);
+    });
+
+    const input = container?.querySelector("input");
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("日志搜索输入框未挂载。");
+    }
+
+    await act(async () => {
+      change_input_value(input, "alpha");
+    });
+
+    expect(input.value).toBe("alpha");
+    expect(container?.textContent).toContain("beta ready");
+
+    await act(async () => {
+      vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS - 1);
+    });
+    expect(container?.textContent).toContain("beta ready");
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(container?.textContent).toContain("alpha ready");
+    expect(container?.textContent).not.toContain("beta ready");
   });
 
   it("双击日志行会放大详情区", async () => {

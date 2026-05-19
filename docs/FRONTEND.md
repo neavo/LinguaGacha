@@ -77,7 +77,9 @@ project, files, items, quality, prompts, analysis, proofreading
 - 工作台与校对页可维护页面级缓存，但 ready 判定必须覆盖当前 `ProjectStore.revisions.sections` 中声明依赖的 sections；页面 runtime adapter 不暴露时间戳或 stale boolean 作为缓存新旧依据。工作台缓存由页面 ref 独占，精确 item delta 只更新变更 id 相关索引和统计，不在刷新窗口复制全量 items Map。
 - `src/renderer/project/worker` 是 Project UI Worker 的唯一归宿：单 worker 统一承接校对视图、Quality statistics 和分析术语导入预演等项目 UI 派生计算；它只消费 `ProjectStore` 只读快照、section revision 与显式查询，不写项目事实、不发 mutation、不替代 Core 或 `ProjectStore`。Project UI Worker client 统一 request id、优先级、stale、稳定错误码和带明确 projectId 的项目缓存释放；未有性能证据前不拆 renderer worker pool。
 - Project UI Worker 中校对缓存身份必须同时覆盖 project path、source language、items / quality / proofreading revisions；items tombstone 必须从原始行、评估行、计数索引和列表缓存中同步删除。
-- 校对、质量规则和姓名字段等结果型页面的主列表使用结果视图快照：搜索、筛选、替换、排序或刷新等显式 action 生成有序稳定 id；项目事实刷新只回读最新行内容、状态、警告和统计徽标，不自动改变当前成员与顺序；实体删除、项目切换、全量数据源重建或运行态不兼容时才剪除或重建快照，不按位置把旧 id 映射到新实体。校对页 ready 只等待 Project UI Worker hydrate 与主列表视图，筛选面板统计允许后台预热或弹窗内刷新；搜索输入状态即时落在页面，提交 Project UI Worker 的列表查询固定 250ms 防抖，scope、regex、排序和筛选确认仍立即重建列表。
+- 校对、质量规则和姓名字段等结果型页面的主列表使用结果视图快照：搜索、筛选、替换、排序或刷新等显式 action 生成有序稳定 id；项目事实刷新只回读最新行内容、状态、警告和统计徽标，不自动改变当前成员与顺序；实体删除、项目切换、全量数据源重建或运行态不兼容时才剪除或重建快照，不按位置把旧 id 映射到新实体。
+- 搜索/筛选输入状态即时落在控件；日志窗口、模型选择器、质量规则与姓名字段结果页、校对主搜索和校对筛选面板等派生刷新统一消费 `INPUT_QUERY_DEBOUNCE_MS`（250ms）后的查询值。scope、regex、排序、统计跳转、筛选确认和刷新等显式 action 取消待处理输入查询并立即重建。
+- 校对页 ready 只等待 Project UI Worker hydrate 与主列表视图；筛选面板统计允许后台预热或弹窗内刷新，弹窗内筛选项变化同样走统一 250ms 输入防抖。
 - Quality statistics 的文本变更判断使用顺序滚动 hash，不以全量文本数组 stringify 作为主要 stale 判断；Quality statistics 与 Project UI Worker 校对缓存的质量规则编译、替换、文本保护和术语匹配口径收口到 `quality-runtime-context`。
 - 新增页面若依赖项目事实，应接入 `ProjectPagesProvider` 或现有 runtime adapter；不要在页面里建立第二套全局项目缓存。
 

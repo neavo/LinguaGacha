@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
+import { useDebouncedCallback } from "@/hooks/use-debounce";
 import type { QualityStatisticsDependencySnapshot } from "@/project/quality/quality-statistics-auto";
 import {
   buildProofreadingLookupQuery,
@@ -432,6 +433,12 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       statistics_state,
     ],
   );
+  // 筛选控件状态即时更新；结果视图快照延迟刷新，显式 action 会 cancel 后立即重建。
+  const debounced_result_view_snapshot = useDebouncedCallback(
+    (next_filter_state: GlossaryFilterState, next_sort_state: GlossarySortState): void => {
+      set_result_view_snapshot(build_result_view_snapshot(next_filter_state, next_sort_state));
+    },
+  );
   const live_filter_result = useMemo(() => {
     return build_glossary_filter_result({
       entries,
@@ -717,9 +724,9 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         keyword: next_keyword,
       };
       set_filter_state(next_filter_state);
-      set_result_view_snapshot(build_result_view_snapshot(next_filter_state, sort_state));
+      debounced_result_view_snapshot.schedule(next_filter_state, sort_state);
     },
-    [build_result_view_snapshot, filter_state, sort_state],
+    [debounced_result_view_snapshot, filter_state, sort_state],
   );
 
   const update_filter_scope = useCallback(
@@ -729,9 +736,9 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         scope: next_scope,
       };
       set_filter_state(next_filter_state);
-      set_result_view_snapshot(build_result_view_snapshot(next_filter_state, sort_state));
+      debounced_result_view_snapshot.schedule(next_filter_state, sort_state);
     },
-    [build_result_view_snapshot, filter_state, sort_state],
+    [debounced_result_view_snapshot, filter_state, sort_state],
   );
 
   const update_filter_regex = useCallback(
@@ -741,9 +748,9 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         is_regex: next_is_regex,
       };
       set_filter_state(next_filter_state);
-      set_result_view_snapshot(build_result_view_snapshot(next_filter_state, sort_state));
+      debounced_result_view_snapshot.schedule(next_filter_state, sort_state);
     },
-    [build_result_view_snapshot, filter_state, sort_state],
+    [debounced_result_view_snapshot, filter_state, sort_state],
   );
 
   const apply_table_sort_state = useCallback(
@@ -755,10 +762,11 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
               field: next_sort_state.column_id as GlossarySortField,
               direction: next_sort_state.direction,
             };
+      debounced_result_view_snapshot.cancel();
       set_sort_state(next_glossary_sort_state);
       set_result_view_snapshot(build_result_view_snapshot(filter_state, next_glossary_sort_state));
     },
-    [build_result_view_snapshot, filter_state],
+    [build_result_view_snapshot, debounced_result_view_snapshot, filter_state],
   );
 
   const apply_table_selection = useCallback((payload: AppTableSelectionChange): void => {
@@ -793,10 +801,17 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         scope: "src" as const,
         is_regex: false,
       };
+      debounced_result_view_snapshot.cancel();
       set_filter_state(next_filter_state);
       set_result_view_snapshot(build_result_view_snapshot(next_filter_state, sort_state));
     },
-    [build_result_view_snapshot, entries, entry_index_by_id, sort_state],
+    [
+      build_result_view_snapshot,
+      debounced_result_view_snapshot,
+      entries,
+      entry_index_by_id,
+      sort_state,
+    ],
   );
 
   const update_enabled = useCallback(

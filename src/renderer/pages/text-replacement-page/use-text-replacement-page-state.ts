@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
+import { useDebouncedCallback } from "@/hooks/use-debounce";
 import {
   buildProofreadingLookupQuery,
   getQualityRuleSlice,
@@ -363,6 +364,15 @@ export function useTextReplacementPageState(
     },
     [entries, entry_ids, statistics_ready, statistics_state],
   );
+  // 筛选控件状态即时更新；结果视图快照延迟刷新，显式 action 会 cancel 后立即重建。
+  const debounced_result_view_snapshot = useDebouncedCallback(
+    (
+      next_filter_state: TextReplacementFilterState,
+      next_sort_state: AppTableSortState | null,
+    ): void => {
+      set_result_view_snapshot(build_result_view_snapshot(next_filter_state, next_sort_state));
+    },
+  );
 
   const filter_result = useMemo(() => {
     return build_text_replacement_filter_result({
@@ -670,9 +680,9 @@ export function useTextReplacementPageState(
         keyword: next_keyword,
       };
       set_filter_state(next_filter_state);
-      set_result_view_snapshot(build_result_view_snapshot(next_filter_state, sort_state));
+      debounced_result_view_snapshot.schedule(next_filter_state, sort_state);
     },
-    [build_result_view_snapshot, filter_state, sort_state],
+    [debounced_result_view_snapshot, filter_state, sort_state],
   );
 
   const update_filter_scope = useCallback(
@@ -682,9 +692,9 @@ export function useTextReplacementPageState(
         scope: next_scope,
       };
       set_filter_state(next_filter_state);
-      set_result_view_snapshot(build_result_view_snapshot(next_filter_state, sort_state));
+      debounced_result_view_snapshot.schedule(next_filter_state, sort_state);
     },
-    [build_result_view_snapshot, filter_state, sort_state],
+    [debounced_result_view_snapshot, filter_state, sort_state],
   );
 
   const update_filter_regex = useCallback(
@@ -694,17 +704,18 @@ export function useTextReplacementPageState(
         is_regex: next_is_regex,
       };
       set_filter_state(next_filter_state);
-      set_result_view_snapshot(build_result_view_snapshot(next_filter_state, sort_state));
+      debounced_result_view_snapshot.schedule(next_filter_state, sort_state);
     },
-    [build_result_view_snapshot, filter_state, sort_state],
+    [debounced_result_view_snapshot, filter_state, sort_state],
   );
 
   const apply_table_sort_state = useCallback(
     (next_sort_state: AppTableSortState | null): void => {
+      debounced_result_view_snapshot.cancel();
       set_sort_state(next_sort_state);
       set_result_view_snapshot(build_result_view_snapshot(filter_state, next_sort_state));
     },
-    [build_result_view_snapshot, filter_state],
+    [build_result_view_snapshot, debounced_result_view_snapshot, filter_state],
   );
 
   const apply_table_selection = useCallback((payload: AppTableSelectionChange): void => {
@@ -1012,11 +1023,12 @@ export function useTextReplacementPageState(
         scope: "src" as const,
         is_regex: false,
       };
+      debounced_result_view_snapshot.cancel();
       set_filter_state(next_filter_state);
       set_sort_state(null);
       set_result_view_snapshot(build_result_view_snapshot(next_filter_state, null));
     },
-    [build_result_view_snapshot, entries, entry_index_by_id],
+    [build_result_view_snapshot, debounced_result_view_snapshot, entries, entry_index_by_id],
   );
 
   const import_entries_from_path = useCallback(

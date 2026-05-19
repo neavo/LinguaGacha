@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
+import { useDebouncedCallback } from "@/hooks/use-debounce";
 import { getQualityRuleSlice } from "@/project/quality/quality-runtime";
 import {
   normalize_project_mutation_result,
@@ -219,6 +220,14 @@ export function useNameFieldExtractionPageState() {
     },
     [],
   );
+  // 筛选控件状态即时更新；结果视图快照延迟刷新，显式 action 会 cancel 后立即重建。
+  const debounced_result_view_snapshot = useDebouncedCallback(
+    (next_filter_state: NameFieldFilterState, next_sort_state: NameFieldSortState): void => {
+      set_result_view_snapshot(
+        build_result_view_snapshot(rows, next_filter_state, next_sort_state),
+      );
+    },
+  );
 
   const invalid_filter_message = useMemo(() => {
     return result_view_snapshot?.invalid_message ?? get_name_field_filter_error(filter_state);
@@ -312,6 +321,7 @@ export function useNameFieldExtractionPageState() {
         previous_rows: rows,
         extracted_rows,
       });
+      debounced_result_view_snapshot.cancel();
       set_rows(next_rows);
       set_result_view_snapshot(build_result_view_snapshot(next_rows, filter_state, sort_state));
       clear_selection_state();
@@ -336,6 +346,7 @@ export function useNameFieldExtractionPageState() {
     rows,
     build_result_view_snapshot,
     clear_selection_state,
+    debounced_result_view_snapshot,
     filter_state,
     push_toast,
     sort_state,
@@ -349,9 +360,9 @@ export function useNameFieldExtractionPageState() {
         keyword: next_keyword,
       };
       set_filter_state(next_filter_state);
-      set_result_view_snapshot(build_result_view_snapshot(rows, next_filter_state, sort_state));
+      debounced_result_view_snapshot.schedule(next_filter_state, sort_state);
     },
-    [build_result_view_snapshot, filter_state, rows, sort_state],
+    [debounced_result_view_snapshot, filter_state, sort_state],
   );
 
   const update_filter_scope = useCallback(
@@ -361,9 +372,9 @@ export function useNameFieldExtractionPageState() {
         scope: next_scope,
       };
       set_filter_state(next_filter_state);
-      set_result_view_snapshot(build_result_view_snapshot(rows, next_filter_state, sort_state));
+      debounced_result_view_snapshot.schedule(next_filter_state, sort_state);
     },
-    [build_result_view_snapshot, filter_state, rows, sort_state],
+    [debounced_result_view_snapshot, filter_state, sort_state],
   );
 
   const update_filter_regex = useCallback(
@@ -373,9 +384,9 @@ export function useNameFieldExtractionPageState() {
         is_regex: next_is_regex,
       };
       set_filter_state(next_filter_state);
-      set_result_view_snapshot(build_result_view_snapshot(rows, next_filter_state, sort_state));
+      debounced_result_view_snapshot.schedule(next_filter_state, sort_state);
     },
-    [build_result_view_snapshot, filter_state, rows, sort_state],
+    [debounced_result_view_snapshot, filter_state, sort_state],
   );
 
   const apply_table_sort_state = useCallback(
@@ -388,6 +399,7 @@ export function useNameFieldExtractionPageState() {
               direction: next_sort_state.direction,
             };
       if (next_sort_state === null) {
+        debounced_result_view_snapshot.cancel();
         set_sort_state(next_name_field_sort_state);
         set_result_view_snapshot(
           build_result_view_snapshot(rows, filter_state, next_name_field_sort_state),
@@ -396,6 +408,7 @@ export function useNameFieldExtractionPageState() {
       }
 
       if (!is_name_field_sort_field(next_sort_state.column_id)) {
+        debounced_result_view_snapshot.cancel();
         set_sort_state(next_name_field_sort_state);
         set_result_view_snapshot(
           build_result_view_snapshot(rows, filter_state, next_name_field_sort_state),
@@ -403,12 +416,13 @@ export function useNameFieldExtractionPageState() {
         return;
       }
 
+      debounced_result_view_snapshot.cancel();
       set_sort_state(next_name_field_sort_state);
       set_result_view_snapshot(
         build_result_view_snapshot(rows, filter_state, next_name_field_sort_state),
       );
     },
-    [build_result_view_snapshot, filter_state, rows],
+    [build_result_view_snapshot, debounced_result_view_snapshot, filter_state, rows],
   );
 
   const apply_table_selection = useCallback((payload: AppTableSelectionChange): void => {

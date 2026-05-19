@@ -2,6 +2,7 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { INPUT_QUERY_DEBOUNCE_MS } from "@/hooks/use-debounce";
 import type { QualityStatisticsCacheSnapshot } from "@/project/quality/quality-statistics-store";
 import type { ProjectItemPublicRecord } from "@base/item";
 import { createProjectItemIndex } from "@/project/store/project-item-index";
@@ -404,6 +405,7 @@ describe("useTextPreservePageState", () => {
     wait_for_barrier_mock.mockReset();
     create_barrier_checkpoint_mock.mockReset();
     run_modal_progress_toast_mock.mockClear();
+    vi.useRealTimers();
   });
 
   async function mount_probe(): Promise<void> {
@@ -423,6 +425,12 @@ describe("useTextPreservePageState", () => {
           }}
         />,
       );
+    });
+  }
+
+  async function flush_filter_debounce(): Promise<void> {
+    await act(async () => {
+      vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
     });
   }
 
@@ -715,11 +723,14 @@ describe("useTextPreservePageState", () => {
   });
 
   it("导入保存失败时恢复原来的冻结结果成员", async () => {
+    vi.useFakeTimers();
     await mount_probe();
 
     await act(async () => {
       latest_state?.update_filter_keyword("foo");
     });
+    expect(latest_state?.filter_state.keyword).toBe("foo");
+    await flush_filter_debounce();
     expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo"]);
 
     runtime_state = {

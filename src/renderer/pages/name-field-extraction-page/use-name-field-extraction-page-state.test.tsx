@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectItemPublicRecord } from "@base/item";
 
+import { INPUT_QUERY_DEBOUNCE_MS } from "@/hooks/use-debounce";
 import { useNameFieldExtractionPageState } from "@/pages/name-field-extraction-page/use-name-field-extraction-page-state";
 import { createProjectItemIndex } from "@/project/store/project-item-index";
 
@@ -271,6 +272,7 @@ describe("useNameFieldExtractionPageState", () => {
     container = null;
     root = null;
     latest_state = null;
+    vi.useRealTimers();
   });
 
   async function mount_probe(): Promise<void> {
@@ -351,5 +353,32 @@ describe("useNameFieldExtractionPageState", () => {
         },
       ],
     });
+  });
+
+  it("筛选输入即时更新，结果行在 250ms 后刷新", async () => {
+    vi.useFakeTimers();
+    await mount_probe();
+
+    await act(async () => {
+      await latest_state?.extract_rows();
+    });
+    expect(latest_state?.filtered_rows.map((row) => row.src)).toEqual(["Alice", "Bob"]);
+
+    await act(async () => {
+      latest_state?.update_filter_keyword("Alice");
+    });
+
+    expect(latest_state?.filter_state.keyword).toBe("Alice");
+    expect(latest_state?.filtered_rows.map((row) => row.src)).toEqual(["Alice", "Bob"]);
+
+    await act(async () => {
+      vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS - 1);
+    });
+    expect(latest_state?.filtered_rows.map((row) => row.src)).toEqual(["Alice", "Bob"]);
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(latest_state?.filtered_rows.map((row) => row.src)).toEqual(["Alice"]);
   });
 });
