@@ -89,7 +89,7 @@ function render_glossary_tooltip_content(
       )}
       {render_fragment_section(
         t("proofreading_page.tooltip.glossary_failed_terms"),
-        failed_terms.map((term) => term[0]),
+        failed_terms.map(format_proofreading_glossary_term),
       )}
     </div>
   );
