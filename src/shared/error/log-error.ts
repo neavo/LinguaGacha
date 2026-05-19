@@ -14,7 +14,7 @@ export interface AppErrorLogProjectionOptions {
 }
 
 /**
- * 日志投影保留诊断上下文和 cause 链，但不依赖 main 侧 LogManager 实例。
+ * 日志投影保留诊断上下文和 cause 链，但不依赖 Core LogManager 实例。
  */
 export function to_app_error_log_projection(
   error: AppError,

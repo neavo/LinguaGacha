@@ -12,18 +12,15 @@ const config = {
   main: {
     build: {
       outDir: desktop_dist_dir,
-    },
-    rollupOptions: {
-      input: {
-        index: path.resolve(project_root, "src/main/index.ts"),
-        // task worker 必须作为独立入口产物输出，worker_threads 运行时不能从 main bundle 内动态取源码
-        "task-worker-entry": path.resolve(
-          project_root,
-          "src/main/task-worker/task-worker-entry.ts",
-        ),
-      },
-      output: {
-        entryFileNames: "[name].js",
+      rollupOptions: {
+        input: {
+          index: path.resolve(project_root, "src/index.ts"),
+          // 产物名必须与 core-bundle-contract.ts 的 worker 入口契约一致
+          "worker-entry": path.resolve(project_root, "src/core/engine/worker/worker-entry.ts"),
+        },
+        output: {
+          entryFileNames: "[name].js",
+        },
       },
     },
   },
@@ -31,13 +28,13 @@ const config = {
     build: {
       outDir: desktop_dist_dir,
       emptyOutDir: false,
-    },
-    rollupOptions: {
-      input: {
-        preload: path.resolve(project_root, "src/preload/index.ts"),
-      },
-      output: {
-        entryFileNames: "index.mjs", // BrowserWindow 的 preload 契约固定读取 build/dist-electron/index.mjs，产物名不能随入口名漂移
+      rollupOptions: {
+        input: {
+          preload: path.resolve(project_root, "src/gui/preload/index.ts"),
+        },
+        output: {
+          entryFileNames: "preload.mjs", // electron-vite 开发态固定生成 preload.mjs，发布构建沿用同名产物，避免 BrowserWindow 读取不存在的预加载脚本
+        },
       },
     },
   },
@@ -51,12 +48,18 @@ const config = {
       alias: {
         "@": path.resolve(project_root, "src/renderer"),
         "@base": path.resolve(project_root, "src/base"),
-        "@native/bridge-api": path.resolve(project_root, "src/native/bridge-api.ts"),
-        "@native/bridge-types": path.resolve(project_root, "src/native/bridge-types.ts"),
-        "@native/core-api-endpoint": path.resolve(project_root, "src/native/core-api-endpoint.ts"),
-        "@native/external-url-policy": path.resolve(project_root,"src/native/external-url-policy.ts",),
-        "@native/ipc-contract": path.resolve(project_root, "src/native/ipc-contract.ts"),
-        "@native/shell-contract": path.resolve(project_root, "src/native/shell-contract.ts"),
+        "@gui/bridge-api": path.resolve(project_root, "src/gui/bridge/bridge-api.ts"),
+        "@gui/bridge-types": path.resolve(project_root, "src/gui/bridge/bridge-types.ts"),
+        "@core/api/core-api-endpoint": path.resolve(
+          project_root,
+          "src/core/api/core-api-endpoint.ts",
+        ),
+        "@gui/external-url-policy": path.resolve(
+          project_root,
+          "src/gui/shell/external-url-policy.ts",
+        ),
+        "@gui/ipc-contract": path.resolve(project_root, "src/gui/ipc/ipc-contract.ts"),
+        "@gui/shell-contract": path.resolve(project_root, "src/gui/shell/shell-contract.ts"),
         "@shared": path.resolve(project_root, "src/shared"),
       },
     },

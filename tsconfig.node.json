@@ -15,9 +15,12 @@
     "buildtools/vite/electron.vite.config.ts",
     "src/base",
     "src/electron-env.d.ts",
-    "src/main",
+    "src/index.ts",
+    "src/*.test.ts",
+    "src/cli",
+    "src/core",
+    "src/gui",
     "src/native",
-    "src/preload",
     "src/shared",
     "src/test"
   ]

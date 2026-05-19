@@ -1,7 +1,7 @@
 # LinguaGacha Agent 协作指南
 
 - 本文件只规定 Agent 在 LinguaGacha 仓库内如何起手、协作、编码和交付。
-- 系统分层、后端协议与数据域、前端运行态、验证矩阵分别归入 `docs/` 下的唯一权威文档，不要在本文件展开专题正文。
+- 系统分层、CLI 命令模式、后端协议与数据域、前端运行态、验证矩阵分别归入 `docs/` 下的唯一权威文档，不要在本文件展开专题正文。
 
 ## 1. 任务入口
 
@@ -13,6 +13,7 @@
 | 你要判断的问题 | 唯一归宿 |
 | --- | --- |
 | 系统分层、跨层边界、运行时主链路、模块关系 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
+| CLI 命令模式、入口分发、命令参数、临时工程、平台启动器 | [`docs/CLI.md`](docs/CLI.md) |
 | 后端公开协议、HTTP / SSE、项目读取、topic、错误码、mutation 契约 | [`docs/BACKEND.md`](docs/BACKEND.md) |
 | 后端领域边界、状态拥有者、唯一写入口、数据库和 `.lg` 物理存储落点 | [`docs/BACKEND.md`](docs/BACKEND.md) |
 | Electron、preload、renderer、`ProjectStore`、导航和样式消费边界 | [`docs/FRONTEND.md`](docs/FRONTEND.md) |
@@ -57,7 +58,7 @@ TypeScript / React / CSS：
 
 - 长期文档只记录未来维护必须知道、且不能轻易从代码表面得出的当前稳定事实。
 - 同一业务语义只允许一个权威来源，其它位置只保留必要短引用或删除。
-- `AGENTS.md` 不承载专题正文，系统、后端、前端、验证规则分别归入 `ARCHITECTURE`、`BACKEND`、`FRONTEND`、`WORKFLOW`。
+- `AGENTS.md` 不承载专题正文，系统、CLI、后端、前端、验证规则分别归入 `ARCHITECTURE`、`CLI`、`BACKEND`、`FRONTEND`、`WORKFLOW`。
 - 结构性文档任务必须体现删除、合并、迁移或压缩，只新增内容通常不是完成。
 - 生成物、归档、任务临时文档、外部规范镜像、用户明确保留材料和有独立生命周期的样例文件，不自动吸收为长期权威文档。
 

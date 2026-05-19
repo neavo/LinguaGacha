@@ -4,8 +4,11 @@
 
 ## 1. 公开协议边界
 
-- `src/main/api/api-gateway-server.ts` 是 Electron 运行态公开 `/api/*` 协议的唯一注册点；路由注册集中在该文件，POST JSON 路由统一返回响应壳。
+- `src/core/bootstrap` 是 GUI 与 CLI 共享的 Core 启动和服务组合根；`CoreBootstrap` 负责日志、数据库、`CoreServices` 与可选 Gateway 生命周期，`CoreServices` 负责装配项目、任务、文件、质量、模型和事件领域服务。
+- `src/core/api/api-gateway-server.ts` 是 Electron 运行态公开 `/api/*` 协议的唯一注册点；路由注册集中在该文件，POST JSON 路由统一返回响应壳。
 - Gateway 只监听 `127.0.0.1`，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
+- CLI 不启动 Gateway；同进程命令入口通过 `CoreBootstrap(exposeApiGateway=false)` 复用 `CoreServices`。CLI 命令模式、临时工程、资源注入、输出和平台启动器归 [`docs/CLI.md`](CLI.md)。
+- GUI 与 CLI 入口必须向 `CoreBootstrap` 注入 `WorkerPoolExecution`：产品发布态固定使用构建根目录的 `worker-entry.js` 作为 `worker_threads` 入口；源码测试等单线程场景必须显式选择 `direct`。`CoreServices` 与 `WorkerPool` 不做入口探测、文件存在性探测或执行模式回退。
 - 所有 POST JSON 路由返回统一响应壳：成功为 `{ ok: true, data }`，失败为 `{ ok: false, error: { code, message, message_key, request_id, details?, action?, action_key? } }`。
 - `src/shared/error` 是公开错误 code、HTTP status、日志分级、API envelope 投影和日志投影的唯一模型；用户可见错误文案只从 `src/shared/i18n` 的 `message_key` / `action_key` 解析。
 - 稳定错误码使用点分语义码：请求与路由归 `request.*`，项目归 `project.*`，文件归 `file.*`，数据一致性归 `data.*` / `database.*`，任务归 `task.*`，模型归 `model.*`，worker 归 `worker.*`，运行时归 `runtime.*`。文件域必须区分不支持格式、内容解析失败、结构不符合格式和读写失败；运行时资源释放、主动取消和内部不变量失败不能混用同一错误码。业务代码需要抛错时使用 `src/shared/error` 的语义化 `AppError` 子类，不再通过 API 层手拼 code/message/details。
@@ -66,12 +69,12 @@ flowchart LR
 - 同步 mutation 的慢准备阶段只能读取用户源文件或当前 asset 内容，并生成不绑定当前 section revision 保护可写事实的解析草稿；revision guard、当前 `items` / `meta` 读取、用于路径冲突或预过滤派生的最终 `files` 读取、item id 分配、译文继承、预过滤派生和 revision bump 必须在 `ProjectMutationCoordinator` 的提交阶段连续完成。`.lg` 事务提交成功后再生成变更草稿并交给 `ProjectChangePublisher` 发布项目数据变更；变更草稿必须携带本次写入的目标工程路径，调用方只声明变更 section、payload mode 和可选 ids。
 - `ProjectChangeEventAdapter` 负责把变更草稿转换为公开 `ProjectChangeEvent`，并通过 `ProjectRuntimeProjectionService` 按目标工程路径补齐 canonical delta 与本次更新 section revision；目标工程不是当前 loaded 工程时返回空 `changes` 且不广播 SSE。
 - `ProjectChangeEvent` 的 payload mode 只有 `canonical-delta`、`ids-only`、`section-invalidated`；`items` / `files` 的行级 upsert 由 adapter 按 id / path 从数据库投影回读，完整替换和非行级 section 在 canonical-delta 下由 `ProjectRuntimeProjectionService` 返回完整 section data，调用方不能手拼公开 data。正常 mutation 不发布 `section-invalidated`；它只保留给异常恢复或无法携带 canonical payload 的事件。
-- `ProjectLifecycleService.create_project_commit`、`ProjectSyncMutationService`、`ProofreadingService` 与 `QualityService` 是 renderer 可触发项目事实 mutation 的后端权威入口。新建工程只接收源路径、目标路径和当前设置镜像；打开前 settings alignment 预演只返回 action、设置差异和所需 section revision，不返回可提交的 `files` / `items` 草稿；工作台文件操作、`prefiltered_items` 设置对齐、translation reset、analysis reset、质量规则、提示词、校对保存/替换/重置只接收用户意图、当前设置和 `expected_section_revisions`；最终 `items`、`translation_extras`、`prefilter_config`、`analysis_extras`、继承译文、预过滤状态、校对状态和重试次数都由后端从当前源文件、`.lg` 或数据库事实派生。项目 mutation 派生模块只落在 `src/main/project/`，`src/shared/prefilter` 只提供规则谓词，不输出可写项目事实。
+- `ProjectLifecycleService.create_project_commit`、`ProjectSyncMutationService`、`ProofreadingService` 与 `QualityService` 是 renderer 可触发项目事实 mutation 的后端权威入口。新建工程只接收源路径、目标路径和当前设置镜像；打开前 settings alignment 预演只返回 action、设置差异和所需 section revision，不返回可提交的 `files` / `items` 草稿；工作台文件操作、`prefiltered_items` 设置对齐、translation reset、analysis reset、质量规则、提示词、校对保存/替换/重置只接收用户意图、当前设置和 `expected_section_revisions`；最终 `items`、`translation_extras`、`prefilter_config`、`analysis_extras`、继承译文、预过滤状态、校对状态和重试次数都由后端从当前源文件、`.lg` 或数据库事实派生。项目 mutation 派生模块只落在 `src/core/project/`，`src/shared/prefilter` 只提供规则谓词，不输出可写项目事实。
 - 同步项目事实 mutation 必须携带所有依赖 section 的 `expected_section_revisions`；锁值只接受非负 JSON number 整数，缺少对象、缺少依赖 section、字符串、布尔值、小数、坏值或负数是请求校验失败，当前 revision 不一致是 `data.revision_conflict`。旧最终事实载荷和旧单 revision 字段不能作为兼容层保留，出现 `draft`、`files`、`items`、`translation_extras`、`prefilter_config`、`analysis_extras`、`parsed_items`、`file_record` 或 `expected_glossary_revision` 等旧事实字段时应在服务边界拒绝。
 - translation reset-all 提交必须重新读取 `.lg` asset 并按 `file_path + row` 回填当前 item id；preview 路由只服务 UI 展示，不能成为提交事实来源。文件重排只能改变展示顺序，不能让数组下标决定 item 身份。
 - `project` section 只表达工程加载态和路径；项目设置 meta 不进入 `ProjectStore.project`，settings-only mutation 只写 meta 并返回空 `changes`，不发布不可消费的 project data 事件。
 - `/api/project/analysis/import-glossary` 只接收用户确认后的术语表快照和 `consumed_candidate_srcs`；后端在同一事务消费对应分析候选聚合并重新派生 `analysis_candidate_count`，且只在术语表条目真实变化时推进 `quality` revision，候选池消费始终推进 `analysis` revision。
-- `CoreEventHub` 是公开运行期事件总线，只广播领域层已经写好的公开事件，不再把 SSE topic 反向投影为内部状态。
+- `CoreEventHub` 是公开运行期事件总线，同一份公开事件同时服务 `/api/events/stream` SSE 与 CLI 等同进程订阅者；它只广播领域层已经写好的公开事件，不把 topic 反向投影为内部状态。
 - `TaskRuntimePublisher` 是任务运行态公开事件唯一出口；它先写 `TaskRuntimeState`，再构建完整 `TaskSnapshot` 并发布 `task.snapshot_changed`。
 - `/api/tasks/start`、`/stop` 的 HTTP ack 只返回命令处理后的当前完整 `TaskSnapshot`；任务已推进到终态时不得用旧启动或停止意图覆盖 `TaskRuntimeState` 真实状态。
 - 任务生命周期状态必须立即发布完整 snapshot；worker 结果经 `TaskPipeline` 的 500ms 提交窗口写入项目事实，提交完成后立即发布进度 snapshot。任务启动时也必须先把本轮初始进度写入 `.lg` meta，再发布首个进度 snapshot。仅 `request_in_flight_count` 这类请求压力展示允许在后端按 500ms 窗口合并，终态 snapshot 发布前必须先冲刷 pending 请求压力。
@@ -83,18 +86,18 @@ flowchart LR
 | 领域 | 权威职责 | 写入口 |
 | --- | --- | --- |
 | project | 工程加载态、项目读取、项目数据投影、工作台文件 mutation、reset、分析导入、项目 mutation 派生、项目数据变更适配、同步 mutation 协调、结构性 mutation 与任务启动互斥 | `ProjectLifecycleService`、`ProjectSyncMutationService`、`ProjectMutationCoordinator`、`ProjectOperationGate`、`ProjectRuntimeProjectionService`、`ProjectChangeEventAdapter` |
-| events | 公开运行期事件广播、SSE 订阅和 keepalive | `CoreEventHub` |
+| events | 公开运行期事件广播、同进程订阅、SSE 订阅和 keepalive | `CoreEventHub` |
 | service/task-service | 统一任务命令、请求校验、命令回执 | `TaskService` |
-| engine/protocol | TaskType、TaskRunStatus、TaskCommand、TaskSnapshot、WorkUnit、WorkerExecutionResult、TaskArtifact | `src/main/engine/protocol/` |
+| engine/protocol | TaskType、TaskRunStatus、TaskCommand、TaskSnapshot、WorkUnit、WorkerExecutionResult、TaskArtifact | `src/core/engine/protocol/` |
 | engine/runtime | 任务快照、运行时 busy、请求中数量、translation extras 行级状态、完整 snapshot 发布 | `TaskRuntimeState`、`TaskSnapshotBuilder`、`TaskRuntimePublisher` |
 | engine/core | 任务锁、流水线、LLM 请求资格限流、任务级 Key 租约、worker 调度、进度提交；后台 work unit 与公开单条翻译都必须先取得 limiter lease | `TaskEngine`、`ModelKeyLeasePool` |
 | engine/definitions | 任务差异解释边界；新增任务类型应新增 definition，不改 Engine 主流程 | `TaskDefinitionRegistry`、`TaskDefinition` |
 | engine/store | 任务输入读取、任务质量快照构建、artifact 提交、项目数据变更发布 | `ProjectTaskStore`、`TaskArtifactCommitter` |
-| llm | main 进程 LLM provider policy、request policy、official SDK transport、ProviderClientPool、请求结果归一 | `LLMClient`、`LLMClientPolicy`、各 provider policy 与 transport |
+| llm | Core 进程内 LLM provider policy、request policy、official SDK transport、ProviderClientPool、请求结果归一 | `LLMClient`、`LLMClientPolicy`、各 provider policy 与 transport |
 | engine/worker | work unit 执行、提示词构建、runner、pipeline、响应清洗解码、worker_threads 边界 | `WorkerPool`、`worker-entry`、各 runner |
 | app | 应用路径、设置文件读写缓存、应用版本和 User-Agent 元信息 | `AppPathService`、`AppSettingService`、`AppMetadataService` |
-| platform | main / worker 原生文件系统与路径策略，含 Windows 长路径和路径身份比较 | `src/native/platform` 的 `NativeFs`、`NativePathPolicy` |
-| file | 源文件解析、预览、导出、格式适配 | `FilePreviewService`、`FileExportService`、`src/main/file/formats/` |
+| platform | Core / worker 原生文件系统与路径策略，含 Windows 长路径和路径身份比较 | `src/native` 的 `NativeFs`、`NativePathPolicy` |
+| file | 源文件解析、预览、导出、格式适配 | `FilePreviewService`、`FileExportService`、`src/core/file/formats/` |
 | model | 模型配置、激活、可用模型、连通性测试 | `ModelService`、`ModelConfigResolver` |
 | service | 质量规则、提示词、校对保存和任务命令门面 | `QualityService`、`ProofreadingService`、`TaskService` |
 | log | 内部日志聚合、`AppError` 日志投影、fatal 兜底和日志 SSE | `LogManager`、`record_app_error` |
@@ -123,14 +126,14 @@ LLM 请求并发由 `TaskEngine` 在主线程解析为最终值：`concurrency_l
 
 任务级多 Key 轮换由 `ModelKeyLeasePool` 在 work unit 即将进入 in-flight 前按 `api_format / api_url / model_id / normalized key list` 做全局 round-robin；它复用 `LLMClientPolicy.collect_api_keys` 的 key 归一规则，但不把任务级轮换下放到 worker。重试重新获取 Key，worker 内不做本地轮换。模型连通性测试遍历所有 Key，模型列表查询只使用 primary Key。
 
-`src/main/llm` 的 LLM 请求链路固定为 `LLMClient -> LLMClientPolicy -> ProviderClientPool -> official SDK transport -> LLMRequestResult`，worker 通过 `LLMClientPort` 消费该能力。OpenAI-compatible 与 SakuraLLM 使用 `openai`，Google / Gemini 使用 `@google/genai`，Anthropic / Claude 使用 `@anthropic-ai/sdk`；核心请求链路不保留 pi-ai fallback。Google 的 `api_url` 在 `LLMClientPolicy` 归一为 `@google/genai` SDK base URL，末尾 `/v1`、`/v1beta`、`/v1alpha` 版本段由 SDK `apiVersion` 负责拼接，任务请求和 Google 模型列表共用同一规则。`LLMClientPolicy` 是模型族 thinking、generation、extra body/header 和 provider 强制删字段规则的唯一归宿；transport 只从 `ProviderClientPool` 取 SDK client、发送最终 payload、读取 stream 并归一响应。
+`src/core/llm` 的 LLM 请求链路固定为 `LLMClient -> LLMClientPolicy -> ProviderClientPool -> official SDK transport -> LLMRequestResult`，worker 通过 `LLMClientPort` 消费该能力。OpenAI-compatible 与 SakuraLLM 使用 `openai`，Google / Gemini 使用 `@google/genai`，Anthropic / Claude 使用 `@anthropic-ai/sdk`；核心请求链路不保留 pi-ai fallback。Google 的 `api_url` 在 `LLMClientPolicy` 归一为 `@google/genai` SDK base URL，末尾 `/v1`、`/v1beta`、`/v1alpha` 版本段由 SDK `apiVersion` 负责拼接，任务请求和 Google 模型列表共用同一规则。`LLMClientPolicy` 是模型族 thinking、generation、extra body/header 和 provider 强制删字段规则的唯一归宿；transport 只从 `ProviderClientPool` 取 SDK client、发送最终 payload、读取 stream 并归一响应。
 
 ## 6. 数据库与 `.lg` 物理存储
 
-- SQL、事务、SQLite 连接生命周期和 `.lg` asset 读写落在 `src/main/database/`；迁移可在 `src/main/migration/` 直接使用数据库连接，普通领域服务不能持有 SQLite 句柄。
-- main / worker 侧所有真实磁盘 IO 经 `src/native/platform` 的 `NativeFs`，业务层落盘和读取统一交给平台层处理。
+- SQL、事务、SQLite 连接生命周期和 `.lg` asset 读写落在 `src/core/database/`；迁移可在 `src/core/migration/` 直接使用数据库连接，普通领域服务不能持有 SQLite 句柄。
+- Core / worker 侧所有真实磁盘 IO 经 `src/native` 的 `NativeFs`，业务层落盘和读取统一交给平台层处理。
 - `NativePathPolicy` 是 Windows namespaced path 转换与跨平台路径身份比较的唯一策略入口；需要判断路径相等或传给 SQLite、文件格式库、日志、迁移、配置和导出链路时先走该策略。
-- 旧版本迁移规则只允许落在 `src/main/migration/`，由单一编排器按 startup、project database schema、project database writeback、project open operation hook 执行；单个迁移文件只承载一个历史场景，不能恢复运行时兼容层。历史 item 缺失完整公开 DTO 所需稳定字段时只在 migration 层补齐，projection、ProjectStore 和写回入口不得现场猜默认值。
+- 旧版本迁移规则只允许落在 `src/core/migration/`，由单一编排器按 startup、project database schema、project database writeback、project open operation hook 执行；单个迁移文件只承载一个历史场景，不能恢复运行时兼容层。历史 item 缺失完整公开 DTO 所需稳定字段时只在 migration 层补齐，projection、ProjectStore 和写回入口不得现场猜默认值。
 - Zstd 压缩/解压参数和运行时能力检查只允许落在 `src/shared/utils/zstd-tool.ts`。
 - `ProjectDatabase.execute()` 是上层服务使用的窄 workflow；新增 operation 必须集中校验参数，避免 SQL 语义散落到 service。
 - `execute_transaction()` 单个事务只允许绑定一个工程文件，避免跨 `.lg` 半提交。
@@ -150,6 +153,7 @@ LLM 请求并发由 `TaskEngine` 在主线程解析为最终值：`concurrency_l
 - 新增、删除、重命名或改变 `/api/*` 路由语义。
 - 改响应壳、错误码、SSE topic、项目读取接口、`project.data_changed` 或 mutation result。
 - 新增后端状态拥有者、写入口、任务事件来源或跨层载荷规则。
+- 改 CoreBootstrap、CoreServices、入口适配器与 Gateway 的装配关系。
 - 改 database operation、事务语义、`.lg` schema、asset 压缩、migration 或文件格式存储落点。
 - 改任务引擎与 worker 的事实回流方式、LLM request policy、official SDK transport、ProviderClientPool、ModelKeyLeasePool 或并发推导语义。
 - 改跨后端领域共享的实体值对象、共享规则、合法值集合、normalize 或派生判断。

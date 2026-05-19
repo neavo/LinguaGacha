@@ -7,15 +7,13 @@
   "type": "module",
   "main": "build/dist-electron/index.js",
   "scripts": {
-    "postinstall": "node ./node_modules/electron/install.js",
+    "build": "tsc -b --noEmit && electron-vite build --config buildtools/vite/electron.vite.config.ts && electron-builder --config buildtools/builder/electron-builder.json5",
+    "check": "node ./buildtools/check/index.mjs",
     "dev": "electron-vite dev --config buildtools/vite/electron.vite.config.ts",
-    "build": "tsc -b --noEmit && electron-vite build --config buildtools/vite/electron.vite.config.ts && electron-builder --config buildtools/electron-builder/electron-builder.json5",
     "format": "node ./buildtools/format-related-files.mjs",
     "lint": "oxlint .",
-    "test": "vitest run --config buildtools/vitest/vitest.config.ts",
-    "check:frontend": "node ./buildtools/check-frontend-boundaries.mjs",
-    "check:backend": "node ./buildtools/check-backend-boundaries.mjs",
-    "check:boundaries": "npm run check:frontend && npm run check:backend"
+    "postinstall": "node ./node_modules/electron/install.js",
+    "test": "vitest run --config buildtools/vitest/vitest.config.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
