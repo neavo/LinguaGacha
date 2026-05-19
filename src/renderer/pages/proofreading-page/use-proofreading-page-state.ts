@@ -2,6 +2,7 @@ import { startTransition, useCallback, useEffect, useMemo, useRef, useState } fr
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
+import { INPUT_QUERY_DEBOUNCE_MS, useDebouncedCallback } from "@/hooks/use-debounce";
 import {
   readProjectDataSectionRevisions,
   type ProjectDataSection,
@@ -62,7 +63,6 @@ import {
 const PROOFREADING_INITIAL_WINDOW_ROWS = 128; // 首屏只取可见窗口的轻量余量，避免初次状态包过大
 const PROOFREADING_WINDOW_PREFETCH_ROWS = 256; // 滚动读取前后扩展窗口，降低快速滚动时的补取频率
 const PROOFREADING_REPLACE_SCAN_CHUNK_ROWS = 256; // 替换查找按较大块扫描，减少跨 worker 往返
-const PROOFREADING_SEARCH_QUERY_DEBOUNCE_MS = 250;
 const PROOFREADING_REQUIRED_SECTIONS: ProjectDataSection[] = [
   "project",
   "items",
@@ -125,6 +125,14 @@ export type UseProofreadingPageStateResult = {
   request_reset_row_ids: (row_ids: string[]) => void;
   confirm_pending_mutation: () => Promise<void>;
   close_pending_mutation: () => void;
+};
+
+type ProofreadingListQueryInput = {
+  filters: ProofreadingFilterOptions;
+  keyword: string;
+  scope: ProofreadingSearchScope;
+  is_regex: boolean;
+  sort_state: AppTableSortState | null;
 };
 
 function create_empty_filter_options(): ProofreadingFilterOptions {
@@ -590,17 +598,11 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const last_filter_panel_signature_ref = useRef("");
   const last_visible_range_signature_ref = useRef("");
   const list_view_ref = useRef(list_view);
-  const search_query_debounce_id_ref = useRef<number | null>(null);
   const [dialog_item_snapshot, set_dialog_item_snapshot] = useState<ProofreadingItem | null>(null);
 
   useEffect(() => {
     const proofreading_runtime_client = proofreading_runtime_client_ref.current;
     return () => {
-      if (search_query_debounce_id_ref.current !== null) {
-        window.clearTimeout(search_query_debounce_id_ref.current);
-        search_query_debounce_id_ref.current = null;
-      }
-
       list_view_request_id_ref.current += 1;
       list_window_request_id_ref.current += 1;
       filter_panel_request_id_ref.current += 1;
@@ -714,20 +716,58 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     [push_toast, t],
   );
 
-  const clear_pending_search_query = useCallback((): void => {
-    if (search_query_debounce_id_ref.current === null) {
-      return;
-    }
+  // 主搜索和筛选面板共用输入防抖；确认、刷新等显式路径会 cancel 后即时查询。
+  const search_list_view_query_scheduler = useDebouncedCallback(
+    (args: ProofreadingListQueryInput): void => {
+      void run_list_view_query(args).catch((error) => {
+        report_project_ui_worker_error(error, t("proofreading_page.feedback.refresh_failed"));
+      });
+    },
+    INPUT_QUERY_DEBOUNCE_MS,
+  );
 
-    window.clearTimeout(search_query_debounce_id_ref.current);
-    search_query_debounce_id_ref.current = null;
-  }, []);
+  const filter_panel_query_scheduler = useDebouncedCallback(
+    (filters: ProofreadingFilterOptions): void => {
+      void run_filter_panel_query(filters, {
+        mark_loading: true,
+      }).catch((error) => {
+        report_project_ui_worker_error(error, t("proofreading_page.feedback.refresh_failed"));
+      });
+    },
+    INPUT_QUERY_DEBOUNCE_MS,
+  );
+
+  const cancel_pending_list_view_query = useCallback((): void => {
+    search_list_view_query_scheduler.cancel();
+  }, [search_list_view_query_scheduler]);
+
+  const cancel_pending_cache_bound_queries = useCallback((): void => {
+    search_list_view_query_scheduler.cancel();
+    filter_panel_query_scheduler.cancel();
+  }, [filter_panel_query_scheduler, search_list_view_query_scheduler]);
 
   const invalidate_list_view_requests = useCallback((): void => {
     list_view_request_id_ref.current += 1;
     list_window_request_id_ref.current += 1;
     last_visible_range_signature_ref.current = "";
   }, []);
+
+  const invalidate_filter_panel_requests = useCallback((): void => {
+    filter_panel_request_id_ref.current += 1;
+  }, []);
+
+  const invalidate_cache_bound_queries = useCallback((): void => {
+    // cache 身份切换时，所有依赖 runtime_sync_state_ref 的待发布/在途查询都必须失效。
+    cancel_pending_cache_bound_queries();
+    invalidate_list_view_requests();
+    invalidate_filter_panel_requests();
+    last_list_query_signature_ref.current = "";
+    last_filter_panel_signature_ref.current = "";
+  }, [
+    cancel_pending_cache_bound_queries,
+    invalidate_filter_panel_requests,
+    invalidate_list_view_requests,
+  ]);
 
   const clear_table_selection = useCallback((): void => {
     set_selected_row_ids([]);
@@ -736,7 +776,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   }, []);
 
   const clear_transient_state_for_new_project = useCallback((): void => {
-    clear_pending_search_query();
     const empty_current_filters = create_empty_filter_options();
     const empty_dialog_filters = create_empty_filter_options();
     set_current_filters(empty_current_filters);
@@ -769,15 +808,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     preferred_row_id_ref.current = null;
     should_select_first_visible_ref.current = false;
     pending_reset_filters_ref.current = false;
-    last_list_query_signature_ref.current = "";
-    last_filter_panel_signature_ref.current = "";
-    last_visible_range_signature_ref.current = "";
-  }, [clear_pending_search_query]);
+  }, []);
 
   const clear_cache_state = useCallback((): void => {
-    clear_pending_search_query();
-    invalidate_list_view_requests();
-    filter_panel_request_id_ref.current += 1;
+    invalidate_cache_bound_queries();
     const currentProjectId = runtime_sync_state_ref.current?.projectId;
     runtime_sync_state_ref.current = null;
     defaultFiltersRef.current = create_empty_filter_options();
@@ -789,21 +823,14 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_is_refreshing(false);
     set_cache_status("idle");
     set_is_mutating(false);
-    last_visible_range_signature_ref.current = "";
     if (currentProjectId !== undefined) {
       void proofreading_runtime_client_ref.current.dispose_project(currentProjectId);
     }
-  }, [clear_pending_search_query, invalidate_list_view_requests]);
+  }, [invalidate_cache_bound_queries]);
 
   const run_list_view_query = useCallback(
     async (
-      args: {
-        filters: ProofreadingFilterOptions;
-        keyword: string;
-        scope: ProofreadingSearchScope;
-        is_regex: boolean;
-        sort_state: AppTableSortState | null;
-      },
+      args: ProofreadingListQueryInput,
       options?: {
         force?: boolean;
       },
@@ -926,28 +953,15 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   );
 
   const schedule_search_list_view_query = useCallback(
-    (args: {
-      filters: ProofreadingFilterOptions;
-      keyword: string;
-      scope: ProofreadingSearchScope;
-      is_regex: boolean;
-      sort_state: AppTableSortState | null;
-    }): void => {
-      clear_pending_search_query();
+    (args: ProofreadingListQueryInput): void => {
+      cancel_pending_list_view_query();
       invalidate_list_view_requests();
-      search_query_debounce_id_ref.current = window.setTimeout(() => {
-        search_query_debounce_id_ref.current = null;
-        void run_list_view_query(args).catch((error) => {
-          report_project_ui_worker_error(error, t("proofreading_page.feedback.refresh_failed"));
-        });
-      }, PROOFREADING_SEARCH_QUERY_DEBOUNCE_MS);
+      search_list_view_query_scheduler.schedule(args);
     },
     [
-      clear_pending_search_query,
+      cancel_pending_list_view_query,
       invalidate_list_view_requests,
-      report_project_ui_worker_error,
-      run_list_view_query,
-      t,
+      search_list_view_query_scheduler,
     ],
   );
 
@@ -1120,8 +1134,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
     const request_id = refresh_generation_ref.current + 1;
     refresh_generation_ref.current = request_id;
-    set_is_refreshing(true);
-    set_cache_status("refreshing");
 
     try {
       const current_state = project_store.getState();
@@ -1146,6 +1158,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         set_settled_project_path(project_snapshot.path);
         return;
       }
+
+      // 离开 ready 前先终止旧 cache 查询，避免防抖回调在刷新窗口读取旧 runtime。
+      invalidate_cache_bound_queries();
+      set_filter_panel_loading(false);
+      set_is_refreshing(true);
+      set_cache_status("refreshing");
 
       if (sync_mode === "full") {
         runtime_sync_state =
@@ -1262,6 +1280,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     cache_status,
     clear_cache_state,
     clear_transient_state_for_new_project,
+    invalidate_cache_bound_queries,
     project_snapshot.loaded,
     project_snapshot.path,
     project_store,
@@ -1360,7 +1379,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
   const update_search_scope = useCallback(
     (next_scope: ProofreadingSearchScope): void => {
-      clear_pending_search_query();
+      cancel_pending_list_view_query();
       set_search_scope(next_scope);
       search_scope_ref.current = next_scope;
       should_select_first_visible_ref.current = false;
@@ -1378,12 +1397,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         },
       );
     },
-    [clear_pending_search_query, clear_table_selection, run_list_view_query],
+    [cancel_pending_list_view_query, clear_table_selection, run_list_view_query],
   );
 
   const update_regex = useCallback(
     (next_is_regex: boolean): void => {
-      clear_pending_search_query();
+      cancel_pending_list_view_query();
       set_is_regex(next_is_regex);
       is_regex_ref.current = next_is_regex;
       should_select_first_visible_ref.current = false;
@@ -1401,7 +1420,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         },
       );
     },
-    [clear_pending_search_query, clear_table_selection, run_list_view_query],
+    [cancel_pending_list_view_query, clear_table_selection, run_list_view_query],
   );
 
   const apply_table_selection = useCallback((payload: AppTableSelectionChange): void => {
@@ -1412,7 +1431,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
   const apply_table_sort_state = useCallback(
     (next_sort_state: AppTableSortState | null): void => {
-      clear_pending_search_query();
+      cancel_pending_list_view_query();
       set_sort_state(next_sort_state);
       sort_state_ref.current = next_sort_state;
       clear_table_selection();
@@ -1429,7 +1448,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         },
       );
     },
-    [clear_pending_search_query, clear_table_selection, run_list_view_query],
+    [cancel_pending_list_view_query, clear_table_selection, run_list_view_query],
   );
 
   const get_visible_row_at_index = useCallback(
@@ -1487,6 +1506,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   }, []);
 
   const close_filter_dialog = useCallback((): void => {
+    filter_panel_query_scheduler.cancel();
     set_filter_dialog_open(false);
     const restored_filters = clone_proofreading_filter_options(current_filters_ref.current);
     set_filter_dialog_filters(restored_filters);
@@ -1494,13 +1514,23 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       force: true,
       mark_loading: false,
     });
-  }, [run_filter_panel_query]);
+  }, [filter_panel_query_scheduler, run_filter_panel_query]);
 
   const update_filter_dialog_filters = useCallback(
     (next_filters: ProofreadingFilterOptions): void => {
-      set_filter_dialog_filters(clone_proofreading_filter_options(next_filters));
+      const cloned_filters = clone_proofreading_filter_options(next_filters);
+      set_filter_dialog_filters(cloned_filters);
+      filter_dialog_filters_ref.current = cloned_filters;
+
+      if (
+        filter_dialog_open &&
+        cache_status === "ready" &&
+        runtime_sync_state_ref.current !== null
+      ) {
+        filter_panel_query_scheduler.schedule(cloned_filters);
+      }
     },
-    [],
+    [cache_status, filter_dialog_open, filter_panel_query_scheduler],
   );
 
   const confirm_filter_dialog_filters = useCallback(async (): Promise<void> => {
@@ -1511,7 +1541,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     const normalized_filters = clone_proofreading_filter_options(filter_dialog_filters_ref.current);
     preferred_row_id_ref.current = null;
     should_select_first_visible_ref.current = false;
-    clear_pending_search_query();
+    cancel_pending_list_view_query();
+    filter_panel_query_scheduler.cancel();
     clear_table_selection();
     set_current_filters(clone_proofreading_filter_options(normalized_filters));
     set_filter_dialog_filters(clone_proofreading_filter_options(normalized_filters));
@@ -1531,8 +1562,9 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     }
   }, [
     cache_status,
-    clear_pending_search_query,
+    cancel_pending_list_view_query,
     clear_table_selection,
+    filter_panel_query_scheduler,
     is_refreshing,
     project_snapshot.loaded,
     report_project_ui_worker_error,
@@ -2012,35 +2044,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   }, [project_snapshot.loaded, proofreading_change_signal.seq, refresh_snapshot]);
 
   useEffect(() => {
-    if (
-      !filter_dialog_open ||
-      cache_status !== "ready" ||
-      runtime_sync_state_ref.current === null
-    ) {
-      return;
-    }
-
-    const debounce_id = window.setTimeout(() => {
-      void run_filter_panel_query(filter_dialog_filters, {
-        mark_loading: true,
-      }).catch((error) => {
-        report_project_ui_worker_error(error, t("proofreading_page.feedback.refresh_failed"));
-      });
-    }, 160);
-
-    return () => {
-      window.clearTimeout(debounce_id);
-    };
-  }, [
-    cache_status,
-    filter_dialog_filters,
-    filter_dialog_open,
-    report_project_ui_worker_error,
-    run_filter_panel_query,
-    t,
-  ]);
-
-  useEffect(() => {
     if (proofreading_lookup_intent === null) {
       return;
     }
@@ -2052,7 +2055,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_is_regex(proofreading_lookup_intent.is_regex);
     is_regex_ref.current = proofreading_lookup_intent.is_regex;
     should_select_first_visible_ref.current = false;
-    clear_pending_search_query();
+    cancel_pending_list_view_query();
     clear_table_selection();
     void run_list_view_query(
       {
@@ -2069,7 +2072,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     clear_proofreading_lookup_intent();
   }, [
     clear_proofreading_lookup_intent,
-    clear_pending_search_query,
+    cancel_pending_list_view_query,
     clear_table_selection,
     proofreading_lookup_intent,
     run_list_view_query,

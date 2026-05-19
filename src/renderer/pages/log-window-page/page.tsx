@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { open_log_stream, type LogEvent } from "@/app/desktop/desktop-api";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
+import { useDebouncedValue } from "@/hooks/use-debounce";
 import { cn } from "@/lib/utils";
 import {
   append_log_events,
@@ -53,6 +54,7 @@ export function LogWindowPage(): JSX.Element {
   const [events, set_events] = useState<LogEvent[]>([]);
   const [level_filter, set_level_filter] = useState<LogLevelFilter>("all");
   const [keyword, set_keyword] = useState<string>("");
+  const debounced_keyword = useDebouncedValue(keyword); // 搜索框即时显示 keyword，日志过滤只消费延迟值
   const [is_regex, set_is_regex] = useState<boolean>(false);
   const [auto_scroll, set_auto_scroll] = useState<boolean>(true);
   const [selected_row_ids, set_selected_row_ids] = useState<string[]>([]);
@@ -119,26 +121,26 @@ export function LogWindowPage(): JSX.Element {
     return filter_log_events({
       events,
       level_filter,
-      keyword,
+      keyword: debounced_keyword,
       is_regex,
     });
-  }, [events, is_regex, keyword, level_filter]);
+  }, [debounced_keyword, events, is_regex, level_filter]);
   const visible_events = useMemo(() => {
     return sort_log_events_latest_first(filtered_events);
   }, [filtered_events]);
 
   const invalid_filter_message = useMemo(() => {
-    if (!is_regex || keyword.trim() === "") {
+    if (!is_regex || debounced_keyword.trim() === "") {
       return null;
     }
 
     try {
-      new RegExp(keyword, "iu");
+      new RegExp(debounced_keyword, "iu");
       return null;
     } catch {
       return t("log_window_page.search.regex_invalid");
     }
-  }, [is_regex, keyword, t]);
+  }, [debounced_keyword, is_regex, t]);
 
   const level_filter_options = useMemo<SearchBarScopeOption<LogLevelFilter>[]>(() => {
     return LEVEL_FILTERS.map((level) => ({

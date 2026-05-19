@@ -2,6 +2,7 @@ import { LoaderCircle } from "lucide-react";
 import { useEffect, useMemo, useRef } from "react";
 
 import { useI18n } from "@/app/locale/locale-provider";
+import { useDebouncedValue } from "@/hooks/use-debounce";
 import type { ModelEntrySnapshot } from "@/pages/model-page/types";
 import { Input } from "@/shadcn/input";
 import { ScrollArea } from "@/shadcn/scroll-area";
@@ -33,6 +34,7 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
     onSelectModelId,
     open,
   } = props;
+  const debounced_filter_text = useDebouncedValue(filter_text); // 模型列表只做本地过滤，派生结果统一延迟刷新
 
   useEffect(() => {
     if (!open || model === null) {
@@ -49,13 +51,13 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
   }, [model, onLoadAvailableModels, open]);
 
   const filtered_models = useMemo(() => {
-    const keyword = filter_text.trim().toLowerCase();
+    const keyword = debounced_filter_text.trim().toLowerCase();
     if (keyword === "") {
       return available_models;
     } else {
       return available_models.filter((model_name) => model_name.toLowerCase().includes(keyword));
     }
-  }, [available_models, filter_text]);
+  }, [available_models, debounced_filter_text]);
 
   if (model === null) {
     return null;

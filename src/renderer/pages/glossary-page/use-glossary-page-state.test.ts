@@ -2,6 +2,7 @@ import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { INPUT_QUERY_DEBOUNCE_MS } from "@/hooks/use-debounce";
 import type { QualityStatisticsCacheSnapshot } from "@/project/quality/quality-statistics-store";
 import type { ProjectItemPublicRecord } from "@base/item";
 import { createProjectItemIndex } from "@/project/store/project-item-index";
@@ -404,6 +405,7 @@ describe("useGlossaryPageState", () => {
     container = null;
     root = null;
     latest_state = null;
+    vi.useRealTimers();
   });
 
   async function mount_probe(): Promise<void> {
@@ -425,6 +427,12 @@ describe("useGlossaryPageState", () => {
           },
         }),
       );
+    });
+  }
+
+  async function flush_filter_debounce(): Promise<void> {
+    await act(async () => {
+      vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
     });
   }
 
@@ -785,11 +793,14 @@ describe("useGlossaryPageState", () => {
   });
 
   it("导入保存失败时恢复原来的冻结结果成员", async () => {
+    vi.useFakeTimers();
     await mount_probe();
 
     await act(async () => {
       latest_state?.update_filter_keyword("苹果");
     });
+    expect(latest_state?.filter_state.keyword).toBe("苹果");
+    await flush_filter_debounce();
     expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
 
     runtime_state.quality.glossary.entries = [
@@ -1013,6 +1024,7 @@ describe("useGlossaryPageState", () => {
   });
 
   it("同长度结构性替换不会把旧筛选快照映射到新实体", async () => {
+    vi.useFakeTimers();
     runtime_state.quality.glossary.entries = [
       {
         src: "苹果",
@@ -1031,6 +1043,21 @@ describe("useGlossaryPageState", () => {
 
     act(() => {
       latest_state?.update_filter_keyword("苹果");
+    });
+    expect(latest_state?.filter_state.keyword).toBe("苹果");
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual([
+      "苹果",
+      "香蕉",
+    ]);
+    await act(async () => {
+      vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS - 1);
+    });
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual([
+      "苹果",
+      "香蕉",
+    ]);
+    await act(async () => {
+      vi.advanceTimersByTime(1);
     });
     expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
 

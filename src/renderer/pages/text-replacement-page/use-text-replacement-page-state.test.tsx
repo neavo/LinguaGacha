@@ -2,6 +2,7 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { INPUT_QUERY_DEBOUNCE_MS } from "@/hooks/use-debounce";
 import type { QualityStatisticsCacheSnapshot } from "@/project/quality/quality-statistics-store";
 import type { ProjectItemPublicRecord } from "@base/item";
 import { createProjectItemIndex } from "@/project/store/project-item-index";
@@ -356,6 +357,7 @@ describe("useTextReplacementPageState", () => {
     container = null;
     root = null;
     latest_state = null;
+    vi.useRealTimers();
   });
 
   async function mount_probe(): Promise<void> {
@@ -375,6 +377,12 @@ describe("useTextReplacementPageState", () => {
           }}
         />,
       );
+    });
+  }
+
+  async function flush_filter_debounce(): Promise<void> {
+    await act(async () => {
+      vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
     });
   }
 
@@ -566,11 +574,14 @@ describe("useTextReplacementPageState", () => {
   });
 
   it("导入保存失败时恢复原来的冻结结果成员", async () => {
+    vi.useFakeTimers();
     await mount_probe();
 
     await act(async () => {
       latest_state?.update_filter_keyword("hero");
     });
+    expect(latest_state?.filter_state.keyword).toBe("hero");
+    await flush_filter_debounce();
     expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["hero"]);
 
     runtime_state.quality.pre_replacement.entries = [

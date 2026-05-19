@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
+import { INPUT_QUERY_DEBOUNCE_MS } from "@/hooks/use-debounce";
 import type { ProjectItemPublicRecord } from "@base/item";
 import { ProjectUiWorkerClientError } from "@/project/worker/project-ui-worker-errors";
 import {
@@ -685,8 +686,7 @@ describe("useProofreadingPageState", () => {
     };
     await render_hook();
 
-    const initial_query_count =
-      proofreading_runtime_client_fixture.current.build_proofreading_list_view.mock.calls.length;
+    proofreading_runtime_client_fixture.current.build_proofreading_list_view.mockClear();
 
     await act(async () => {
       latest_state?.update_search_keyword("needle");
@@ -695,15 +695,15 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.search_keyword).toBe("needle");
     expect(
       proofreading_runtime_client_fixture.current.build_proofreading_list_view,
-    ).toHaveBeenCalledTimes(initial_query_count);
+    ).not.toHaveBeenCalled();
 
     await act(async () => {
-      vi.advanceTimersByTime(249);
+      vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS - 1);
     });
     await flush_async_updates();
     expect(
       proofreading_runtime_client_fixture.current.build_proofreading_list_view,
-    ).toHaveBeenCalledTimes(initial_query_count);
+    ).not.toHaveBeenCalled();
 
     await act(async () => {
       vi.advanceTimersByTime(1);
@@ -712,12 +712,159 @@ describe("useProofreadingPageState", () => {
 
     expect(
       proofreading_runtime_client_fixture.current.build_proofreading_list_view,
-    ).toHaveBeenCalledTimes(initial_query_count + 1);
+    ).toHaveBeenCalledTimes(1);
     expect(
       proofreading_runtime_client_fixture.current.build_proofreading_list_view,
     ).toHaveBeenLastCalledWith(
       expect.objectContaining({ keyword: "needle", window_start: 0, window_count: 128 }),
     );
+  });
+
+  it("筛选面板统计会跟随弹窗筛选输入统一 250ms 防抖", async () => {
+    vi.useFakeTimers();
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
+      },
+    };
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.open_filter_dialog();
+    });
+    await flush_async_updates();
+
+    expect(latest_state?.cache_status).toBe("ready");
+    expect(latest_state?.filter_dialog_open).toBe(true);
+
+    proofreading_runtime_client_fixture.current.build_proofreading_filter_panel.mockClear();
+
+    await act(async () => {
+      if (latest_state === null) {
+        throw new Error("校对页面状态未准备就绪。");
+      }
+      latest_state.update_filter_dialog_filters({
+        ...latest_state.filter_dialog_filters,
+        statuses: [],
+      });
+    });
+
+    expect(latest_state?.filter_dialog_filters.statuses).toEqual([]);
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_filter_panel,
+    ).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS - 1);
+    });
+    await flush_async_updates();
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_filter_panel,
+    ).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(1);
+    });
+    await flush_async_updates();
+
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_filter_panel,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_filter_panel,
+    ).toHaveBeenLastCalledWith({
+      filters: expect.objectContaining({
+        statuses: [],
+      }),
+    });
+  });
+
+  it("缓存刷新开始后会取消筛选面板尚未发布的防抖查询", async () => {
+    vi.useFakeTimers();
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
+      },
+    };
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.open_filter_dialog();
+    });
+    await flush_async_updates();
+
+    expect(latest_state?.cache_status).toBe("ready");
+    expect(latest_state?.filter_dialog_open).toBe(true);
+
+    proofreading_runtime_client_fixture.current.build_proofreading_filter_panel.mockClear();
+
+    await act(async () => {
+      if (latest_state === null) {
+        throw new Error("校对页面状态未准备就绪。");
+      }
+      latest_state.update_filter_dialog_filters({
+        ...latest_state.filter_dialog_filters,
+        statuses: [],
+      });
+    });
+
+    const refresh_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
+    proofreading_runtime_client_fixture.current.hydrate_proofreading_full = vi.fn(() => {
+      return refresh_deferred.promise;
+    });
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 2,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
+      },
+    };
+    await render_hook();
+
+    expect(latest_state?.cache_status).toBe("refreshing");
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_filter_panel,
+    ).not.toHaveBeenCalled();
+
+    await act(async () => {
+      vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
+    });
+    await flush_async_updates();
+
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_filter_panel,
+    ).not.toHaveBeenCalled();
+
+    await act(async () => {
+      refresh_deferred.resolve(create_sync_state());
+    });
+    await flush_async_updates();
+
+    expect(latest_state?.cache_status).toBe("ready");
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_filter_panel,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_filter_panel,
+    ).toHaveBeenLastCalledWith({
+      filters: expect.objectContaining({
+        statuses: ["NONE"],
+      }),
+    });
   });
 
   it("读取可见范围时会按滚动预取窗口扩展请求", async () => {
