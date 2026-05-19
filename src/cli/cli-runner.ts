@@ -1,8 +1,8 @@
 import { CoreBootstrap } from "../core/bootstrap/core-bootstrap";
 import { run_cli_job } from "./job/cli-job-runner";
-import type { CliCommandOptions } from "./cli-parser";
+import type { CLICommandOptions } from "./cli-parser";
 import type { WorkerPoolExecution } from "../core/engine/worker/worker-execution";
-import { CliJsonStatusReporter } from "./cli-status-reporter";
+import { CLIJsonStatusReporter } from "./cli-status-reporter";
 import { write_stdout } from "./cli-output";
 
 /**
@@ -10,7 +10,7 @@ import { write_stdout } from "./cli-output";
  */
 export async function run_cli_command(
   app_root: string,
-  command: CliCommandOptions,
+  command: CLICommandOptions,
   worker_execution: WorkerPoolExecution,
 ): Promise<void> {
   const bootstrap = new CoreBootstrap({
@@ -23,7 +23,7 @@ export async function run_cli_command(
   try {
     const start_result = await bootstrap.start();
     await run_cli_job(start_result.coreServices, command, {
-      statusReporter: new CliJsonStatusReporter({
+      statusReporter: new CLIJsonStatusReporter({
         command: command.command,
         writeLine: write_stdout,
       }),

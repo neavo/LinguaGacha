@@ -7,23 +7,23 @@ import {
   type TargetLanguageCode,
 } from "../shared/language";
 
-export type CliCommandName = "translate" | "analyze";
+export type CLICommandName = "translate" | "analyze";
 
-export type CliParseResult =
-  | { kind: "help"; command?: CliCommandName }
+export type CLIParseResult =
+  | { kind: "help"; command?: CLICommandName }
   | { kind: "version" }
-  | { kind: "command"; command: CliCommandOptions };
+  | { kind: "command"; command: CLICommandOptions };
 
-export interface CliCommandOptions {
-  command: CliCommandName;
+export interface CLICommandOptions {
+  command: CLICommandName;
   inputPaths: string[]; // inputPaths 保留用户输入顺序，文件域会进一步过滤支持格式
   outputDir: string; // outputDir 是 CLI 唯一输出位置，任务产物会覆盖同名文件
   sourceLanguage: SourceLanguageCode | typeof ALL_LANGUAGE_CODE;
   targetLanguage: TargetLanguageCode;
-  resources: CliCommandResources; // resources 只接受本次 CLI 外部文件，不读取 GUI 默认预设
+  resources: CLICommandResources; // resources 只接受本次 CLI 外部文件，不读取 GUI 默认预设
 }
 
-export interface CliCommandResources {
+export interface CLICommandResources {
   promptPath: string | null; // promptPath 按命令写入 translation_prompt 或 analysis_prompt
   glossaryPath: string | null; // glossaryPath 仅服务翻译任务术语表
   preReplacementPath: string | null; // preReplacementPath 仅服务翻译任务译前替换
@@ -43,14 +43,14 @@ export class CLIUsageError extends Error {
   }
 }
 
-const COMMANDS = new Set<CliCommandName>(["translate", "analyze"]);
+const COMMANDS = new Set<CLICommandName>(["translate", "analyze"]);
 const SOURCE_LANGUAGE_SET = new Set<string>([ALL_LANGUAGE_CODE, ...SOURCE_LANGUAGE_CODES]);
 const TARGET_LANGUAGE_SET = new Set<string>(TARGET_LANGUAGE_CODES);
 
 /**
  * 解析第一阶段 CLI 参数；全局只保留 help/version，业务参数全部挂在命令下。
  */
-export function parse_cli_args(argv: string[]): CliParseResult {
+export function parse_cli_args(argv: string[]): CLIParseResult {
   const tokens = [...argv];
   const first_token = tokens.shift();
   if (first_token === undefined || first_token === "--help") {
@@ -71,14 +71,14 @@ export function parse_cli_args(argv: string[]): CliParseResult {
 /**
  * 判断命令名，CLI 只接受单一动词命令。
  */
-function is_cli_command_name(value: string): value is CliCommandName {
-  return COMMANDS.has(value as CliCommandName);
+function is_cli_command_name(value: string): value is CLICommandName {
+  return COMMANDS.has(value as CLICommandName);
 }
 
 /**
  * 将命令参数收窄成 job 输入；重复 --input 会被保留，后续文件域按路径身份去重。
  */
-function parse_command_options(command: CliCommandName, tokens: string[]): CliCommandOptions {
+function parse_command_options(command: CLICommandName, tokens: string[]): CLICommandOptions {
   const input_paths: string[] = [];
   let output_dir = "";
   let source_language = "";
@@ -153,7 +153,7 @@ function parse_command_options(command: CliCommandName, tokens: string[]): CliCo
 /**
  * CLI 资源默认全部关闭，只有显式传入外部文件才写入临时工程。
  */
-function create_empty_command_resources(): CliCommandResources {
+function create_empty_command_resources(): CLICommandResources {
   return {
     promptPath: null,
     glossaryPath: null,
@@ -166,7 +166,7 @@ function create_empty_command_resources(): CliCommandResources {
 /**
  * 分析任务当前只支持自定义提示词，翻译专属规则不能静默忽略。
  */
-function assert_translation_only_option(command: CliCommandName, option_name: string): void {
+function assert_translation_only_option(command: CLICommandName, option_name: string): void {
   if (command !== "translate") {
     throw new CLIUsageError(`${option_name} is only supported by the translate command`);
   }

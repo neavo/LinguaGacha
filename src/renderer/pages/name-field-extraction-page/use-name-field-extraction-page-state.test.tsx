@@ -1,8 +1,10 @@
 import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ProjectItemPublicRecord } from "@base/item";
 
 import { useNameFieldExtractionPageState } from "@/pages/name-field-extraction-page/use-name-field-extraction-page-state";
+import { createProjectItemIndex } from "@/project/store/project-item-index";
 
 const { api_fetch_mock, push_toast_mock } = vi.hoisted(() => {
   return {
@@ -17,18 +19,7 @@ let runtime_state = {
     loaded: true,
   },
   files: {},
-  items: {
-    "1": {
-      item_id: 1,
-      src: "Alice says hello",
-      name_src: "Alice",
-    },
-    "2": {
-      item_id: 2,
-      src: "Bob says hello",
-      name_src: "Bob",
-    },
-  },
+  items: createProjectItemIndex({}),
   quality: {
     glossary: {
       entries: [
@@ -55,6 +46,41 @@ let runtime_state = {
     },
   },
 };
+
+function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
+  return {
+    item_id: 1,
+    src: "",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 0,
+    file_type: "TXT",
+    file_path: "",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}
+
+function create_runtime_items(): ReturnType<typeof createProjectItemIndex> {
+  return createProjectItemIndex({
+    "1": create_test_item({
+      item_id: 1,
+      src: "Alice says hello",
+      name_src: "Alice",
+    }),
+    "2": create_test_item({
+      item_id: 2,
+      src: "Bob says hello",
+      name_src: "Bob",
+    }),
+  });
+}
 
 const project_store_listeners = new Set<() => void>();
 
@@ -213,6 +239,7 @@ describe("useNameFieldExtractionPageState", () => {
     push_toast_mock.mockReset();
     runtime_state = {
       ...runtime_state,
+      items: create_runtime_items(),
       quality: {
         ...runtime_state.quality,
         glossary: {

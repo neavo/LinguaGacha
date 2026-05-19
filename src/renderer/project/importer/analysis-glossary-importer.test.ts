@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectItemPublicRecord } from "@base/item";
 import type { ProjectStoreState } from "@/project/store/project-store";
+import { createProjectItemIndex } from "@/project/store/project-item-index";
 import { prepare_analysis_glossary_import } from "@/project/importer/analysis-glossary-importer";
 
 const { quality_statistics_submit_mock } = vi.hoisted(() => {
@@ -45,14 +46,14 @@ function create_test_state(overrides: Partial<ProjectStoreState> = {}): ProjectS
       loaded: true,
     },
     files: {},
-    items: {
+    items: createProjectItemIndex({
       "1": create_test_item({
         item_id: 1,
         file_path: "chapter01.txt",
         src: "艾琳",
         dst: "",
       }),
-    },
+    }),
     quality: {
       glossary: {
         entries: [],

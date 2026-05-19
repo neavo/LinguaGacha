@@ -3,8 +3,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
+import type { ProjectItemPublicRecord } from "@base/item";
 import type { AnalysisTaskSnapshot } from "@/pages/workbench-page/task-runtime/analysis-task-model";
 import { useWorkbenchLiveState } from "@/pages/workbench-page/use-workbench-live-state";
+import { createProjectItemIndex, type ProjectItemIndex } from "@/project/store/project-item-index";
 import type { DesktopPathPickResult } from "@gui/bridge-types";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
@@ -17,7 +19,7 @@ type RuntimeFixture = {
   project_store: {
     getState: () => {
       files: Record<string, unknown>;
-      items: Record<string, unknown>;
+      items: ProjectItemIndex;
       analysis?: Record<string, unknown>;
     };
   };
@@ -185,7 +187,7 @@ function create_runtime_fixture(): RuntimeFixture {
       getState: () => {
         return {
           files: {},
-          items: {},
+          items: createProjectItemIndex(),
         };
       },
     },
@@ -278,7 +280,7 @@ function create_toast_fixture(): ToastFixture {
   };
 }
 
-function create_project_store_state(items: Record<string, unknown>) {
+function create_project_store_state(items: Record<string, ProjectItemPublicRecord>) {
   return {
     project: {
       path: "E:/demo/sample.lg",
@@ -291,7 +293,7 @@ function create_project_store_state(items: Record<string, unknown>) {
         sort_index: 0,
       },
     },
-    items,
+    items: createProjectItemIndex(items),
     quality: {
       glossary: { entries: [], enabled: true, mode: "default", revision: 0 },
       pre_replacement: { entries: [], enabled: true, mode: "default", revision: 0 },
@@ -323,8 +325,8 @@ function create_project_item(args: {
   src?: string;
   dst?: string;
   file_path?: string;
-  status?: string;
-}): Record<string, unknown> {
+  status?: ProjectItemPublicRecord["status"];
+}): ProjectItemPublicRecord {
   return {
     item_id: args.item_id,
     file_path: args.file_path ?? "old.txt",
@@ -438,13 +440,13 @@ describe("useWorkbenchLiveState", () => {
                 sort_index: 1,
               },
             },
-            items: {
+            items: createProjectItemIndex({
               "1": create_project_item({
                 item_id: 1,
                 file_path: "chapter01.txt",
-                status: "DONE",
+                status: "EXCLUDED",
               }),
-            },
+            }),
           };
         },
       },
@@ -484,7 +486,7 @@ describe("useWorkbenchLiveState", () => {
                 sort_index: 2,
               },
             },
-            items: {},
+            items: createProjectItemIndex(),
           };
         },
       },
@@ -547,7 +549,7 @@ describe("useWorkbenchLiveState", () => {
                 sort_index: 1,
               },
             },
-            items: {
+            items: createProjectItemIndex({
               "1": create_project_item({
                 item_id: 1,
                 file_path: "chapter01.txt",
@@ -571,9 +573,9 @@ describe("useWorkbenchLiveState", () => {
               "5": create_project_item({
                 item_id: 5,
                 file_path: "chapter01.txt",
-                status: "DONE",
+                status: "EXCLUDED",
               }),
-            },
+            }),
             analysis: {
               status_summary: {
                 total_line: 4,
@@ -651,7 +653,7 @@ describe("useWorkbenchLiveState", () => {
                 sort_index: 1,
               },
             },
-            items: {
+            items: createProjectItemIndex({
               "1": create_project_item({
                 item_id: 1,
                 file_path: "chapter01.txt",
@@ -682,7 +684,7 @@ describe("useWorkbenchLiveState", () => {
                 src: "五",
                 status: "RULE_SKIPPED",
               }),
-            },
+            }),
             analysis: {
               status_summary: {
                 total_line: 4,
@@ -745,7 +747,7 @@ describe("useWorkbenchLiveState", () => {
                 sort_index: 1,
               },
             },
-            items: {
+            items: createProjectItemIndex({
               "1": create_project_item({
                 item_id: 1,
                 file_path: "chapter01.txt",
@@ -758,7 +760,7 @@ describe("useWorkbenchLiveState", () => {
                 src: "二",
                 status: "NONE",
               }),
-            },
+            }),
             analysis: {
               status_summary: {
                 total_line: 2,
@@ -800,7 +802,7 @@ describe("useWorkbenchLiveState", () => {
     };
     await render_hook();
 
-    let item_status = "NONE";
+    let item_status: ProjectItemPublicRecord["status"] = "NONE";
     let items_revision = 1;
     runtime_fixture.current = {
       ...runtime_fixture.current,
@@ -814,13 +816,13 @@ describe("useWorkbenchLiveState", () => {
                 sort_index: 1,
               },
             },
-            items: {
+            items: createProjectItemIndex({
               "1": create_project_item({
                 item_id: 1,
                 file_path: "chapter01.txt",
                 status: item_status,
               }),
-            },
+            }),
             revisions: {
               sections: {
                 files: 1,

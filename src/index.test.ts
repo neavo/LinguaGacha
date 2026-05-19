@@ -10,7 +10,7 @@ const original_exit_code = process.exitCode;
 const original_exec_path_descriptor = Object.getOwnPropertyDescriptor(process, "execPath");
 let exit_codes: Array<string | number | null | undefined> = []; // exit_codes 记录 CLI 分支请求的进程退出码
 
-type CliEntryCall = {
+type CLIEntryCall = {
   appRoot: string;
   argv: string[];
   workerExecution: WorkerPoolExecution;
@@ -126,11 +126,11 @@ describe("产品统一入口", () => {
  * 替换 GUI 与 CLI 入口模块，测试只观察产品入口分发结果。
  */
 function mock_entry_modules(): {
-  cli: CliEntryCall[];
+  cli: CLIEntryCall[];
   gui: GuiEntryCall[];
 } {
   const calls = {
-    cli: [] as CliEntryCall[],
+    cli: [] as CLIEntryCall[],
     gui: [] as GuiEntryCall[],
   };
   vi.doMock("./cli/cli-entry", () => {

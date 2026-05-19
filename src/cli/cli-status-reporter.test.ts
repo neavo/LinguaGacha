@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { CliJsonStatusReporter } from "./cli-status-reporter";
+import { CLIJsonStatusReporter } from "./cli-status-reporter";
 
-describe("CliJsonStatusReporter", () => {
+describe("CLIJsonStatusReporter", () => {
   it("按 started/progress/finished 输出稳定 JSONL 协议", () => {
     const lines: string[] = [];
-    const reporter = new CliJsonStatusReporter({
+    const reporter = new CLIJsonStatusReporter({
       command: "translate",
       now: () => new Date("2026-05-19T10:00:00.000Z"),
       writeLine: (line) => lines.push(line),
@@ -54,7 +54,7 @@ describe("CliJsonStatusReporter", () => {
 
   it("四卡片统计未变化时不重复输出 progress", () => {
     const lines: string[] = [];
-    const reporter = new CliJsonStatusReporter({
+    const reporter = new CLIJsonStatusReporter({
       command: "analyze",
       now: () => new Date("2026-05-19T10:00:00.000Z"),
       writeLine: (line) => lines.push(line),
@@ -74,7 +74,7 @@ describe("CliJsonStatusReporter", () => {
 
   it("失败结束时只追加稳定错误消息", () => {
     const lines: string[] = [];
-    const reporter = new CliJsonStatusReporter({
+    const reporter = new CLIJsonStatusReporter({
       command: "translate",
       now: () => new Date("2026-05-19T10:00:00.000Z"),
       writeLine: (line) => lines.push(line),

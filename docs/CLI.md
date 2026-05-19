@@ -29,7 +29,7 @@ CLI 只接受单一动词命令；全局层只保留 `--help` 和 `--version`。
 ```mermaid
 sequenceDiagram
   participant Entry as src/index.ts
-  participant CliEntry as cli-entry
+  participant CLIEntry as cli-entry
   participant Runner as cli-runner
   participant Boot as CoreBootstrap
   participant Job as run_cli_job
@@ -38,9 +38,9 @@ sequenceDiagram
   participant Stdout as stdout JSONL
   participant Out as output-dir
 
-  Entry->>CliEntry: --cli 后的 argv + appRoot + WorkerPoolExecution
-  CliEntry->>CliEntry: help / version / parse command
-  CliEntry->>Runner: run_cli_command
+  Entry->>CLIEntry: --cli 后的 argv + appRoot + WorkerPoolExecution
+  CLIEntry->>CLIEntry: help / version / parse command
+  CLIEntry->>Runner: run_cli_command
   Runner->>Boot: exposeApiGateway=false + console log off
   Boot-->>Runner: CoreServices
   Runner->>Job: run_cli_job

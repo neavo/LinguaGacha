@@ -402,8 +402,8 @@ function collect_full_sync_input(args: {
   return {
     projectId: args.state.project.path,
     revisions,
-    total_item_count: Object.keys(args.state.items).length,
-    upsertItems: Object.values(args.state.items).flatMap((record) => {
+    total_item_count: args.state.items.size,
+    upsertItems: [...args.state.items.values()].flatMap((record) => {
       const normalized_item = normalize_runtime_item_from_state(record);
       return normalized_item === null ? [] : [normalized_item];
     }),
@@ -418,7 +418,7 @@ function collect_delta_sync_input(args: {
 }): ProofreadingRuntimeDeltaInput {
   const sections = args.state.revisions.sections;
   const items = args.item_ids.flatMap((item_id) => {
-    const item_record = args.state.items[String(item_id)];
+    const item_record = args.state.items.get(item_id);
     const normalized_item = normalize_runtime_item_from_state(item_record);
     return normalized_item === null ? [] : [normalized_item];
   });
@@ -430,13 +430,11 @@ function collect_delta_sync_input(args: {
       quality: sections.quality ?? 0,
       proofreading: sections.proofreading ?? Number(args.state.proofreading.revision ?? 0),
     },
-    total_item_count: Object.keys(args.state.items).length,
+    total_item_count: args.state.items.size,
     upsertItems: items,
     deleteItemIds: args.item_ids
       .map((item_id) => Number(item_id))
-      .filter(
-        (item_id) => Number.isInteger(item_id) && args.state.items[String(item_id)] === undefined,
-      ),
+      .filter((item_id) => Number.isInteger(item_id) && !args.state.items.has(item_id)),
   };
 }
 

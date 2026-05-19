@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ProjectStoreState } from "@/project/store/project-store";
+import { createProjectItemIndex } from "@/project/store/project-item-index";
 import {
   create_translation_reset_all_plan,
   create_translation_reset_failed_plan,
@@ -13,7 +14,7 @@ function create_test_state(): ProjectStoreState {
       loaded: true,
     },
     files: {},
-    items: {},
+    items: createProjectItemIndex(),
     quality: {
       glossary: { entries: [], enabled: false, mode: "off", revision: 0 },
       pre_replacement: { entries: [], enabled: false, mode: "off", revision: 0 },

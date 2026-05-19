@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectItemPublicRecord } from "@base/item";
 import type { ProjectStoreState } from "@/project/store/project-store";
+import { createProjectItemIndex } from "@/project/store/project-item-index";
 import type { QualityStatisticsRuleType } from "@/project/quality/quality-statistics-store";
 import { QualityStatisticsProvider } from "@/project/quality/quality-statistics-context";
 
@@ -78,14 +79,14 @@ function create_test_state(): ProjectStoreState {
       loaded: true,
     },
     files: {},
-    items: {
+    items: createProjectItemIndex({
       "1": create_test_item({
         item_id: 1,
         file_path: "chapter01.txt",
         src: "苹果真甜",
         dst: "Apple is sweet",
       }),
-    },
+    }),
     quality: {
       glossary: {
         entries: [

@@ -9,6 +9,8 @@ import {
   preserve_name_field_row_translations,
   update_name_field_row_dst,
 } from "@/pages/name-field-extraction-page/logic";
+import type { ProjectItemPublicRecord } from "@base/item";
+import { createProjectItemIndex } from "@/project/store/project-item-index";
 import type {
   NameFieldFilterState,
   NameFieldRow,
@@ -29,16 +31,47 @@ function filter_state(patch: Partial<NameFieldFilterState>): NameFieldFilterStat
   };
 }
 
+function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
+  return {
+    item_id: 1,
+    src: "",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 0,
+    file_type: "TXT",
+    file_path: "",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}
+
+function create_test_item_index(
+  items: Record<string, Partial<ProjectItemPublicRecord>>,
+): ReturnType<typeof createProjectItemIndex> {
+  return createProjectItemIndex(
+    Object.fromEntries(
+      Object.entries(items).map(([item_id, item]) => {
+        return [item_id, create_test_item({ item_id: Number(item_id), ...item })];
+      }),
+    ),
+  );
+}
+
 describe("name-field extraction logic", () => {
   it("从 ProjectStore.items 提取字符串姓名并用术语表预填译文", () => {
     const rows = extract_name_field_rows({
-      items: {
+      items: create_test_item_index({
         "1": {
-          item_id: 1,
           src: "Alice says hello",
           name_src: "Alice",
         },
-      },
+      }),
       glossary_entries: [
         {
           src: "Alice",
@@ -60,18 +93,16 @@ describe("name-field extraction logic", () => {
 
   it("支持数组姓名并为同名保留最长上下文", () => {
     const rows = extract_name_field_rows({
-      items: {
+      items: create_test_item_index({
         "1": {
-          item_id: 1,
           src: "short",
           name_src: ["Alice", "Bob"],
         },
         "2": {
-          item_id: 2,
           src: "Alice has a much longer context",
           name_src: "Alice",
         },
-      },
+      }),
       glossary_entries: [],
     });
 

@@ -105,7 +105,7 @@ function RuntimeProbe(props: {
       proofreadingItemIds: runtime.proofreading_change_signal.item_ids,
       projectPath: runtime.project_store.getState().project.path,
       fileKeys: Object.keys(runtime.project_store.getState().files),
-      itemKeys: Object.keys(runtime.project_store.getState().items),
+      itemKeys: [...runtime.project_store.getState().items.keys()],
       taskStatus: runtime.task_snapshot.status,
       taskLine: runtime.task_snapshot.progress.line,
       taskProcessedLine: runtime.task_snapshot.progress.processed_line,

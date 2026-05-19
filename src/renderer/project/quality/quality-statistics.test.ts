@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ProjectItemPublicRecord } from "@base/item";
 import { collect_project_item_texts } from "@/project/store/project-item-texts";
+import { createProjectItemIndex } from "@/project/store/project-item-index";
 import { run_quality_statistics_task } from "./quality-statistics";
 
 function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
@@ -174,10 +175,12 @@ describe("run_quality_statistics_task", () => {
   });
 
   it("collect_project_item_texts 同时抽取 src 与 dst", () => {
-    const texts = collect_project_item_texts({
-      "1": create_test_item({ item_id: 1, src: "原文", dst: "译文" }),
-      "2": create_test_item({ item_id: 2, src: "第二行", dst: "第二译文" }),
-    });
+    const texts = collect_project_item_texts(
+      createProjectItemIndex({
+        "1": create_test_item({ item_id: 1, src: "原文", dst: "译文" }),
+        "2": create_test_item({ item_id: 2, src: "第二行", dst: "第二译文" }),
+      }),
+    );
 
     expect(texts).toEqual({
       srcTexts: ["原文", "第二行"],

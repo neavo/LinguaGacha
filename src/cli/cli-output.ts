@@ -1,4 +1,4 @@
-import type { CliCommandName } from "./cli-parser";
+import type { CLICommandName } from "./cli-parser";
 
 /**
  * 构造全局帮助文本，入口名按平台展示真实可用的 CLI 调用方式。
@@ -26,7 +26,7 @@ function build_global_help_text(executable_name: string): string {
 /**
  * 构造单命令帮助文本，只暴露该命令实际支持的文件进出参数。
  */
-function build_command_help_text(command: CliCommandName, executable_name: string): string {
+function build_command_help_text(command: CLICommandName, executable_name: string): string {
   if (command === "translate") {
     return `用法 | Usage:
   ${executable_name} translate --input <文件或目录 | file-or-dir> --output-dir <目录 | dir> --source-language <语言码 | code> --target-language <语言码 | code>
@@ -76,7 +76,7 @@ function build_command_help_text(command: CliCommandName, executable_name: strin
  * 输出 CLI 帮助文本；命令帮助只展示当前命令需要的参数。
  */
 export function build_cli_help(
-  command?: CliCommandName,
+  command?: CLICommandName,
   platform: NodeJS.Platform = process.platform,
 ): string {
   const executable_name = resolve_cli_executable_name(platform);

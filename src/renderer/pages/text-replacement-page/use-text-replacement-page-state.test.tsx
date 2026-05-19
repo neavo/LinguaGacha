@@ -3,6 +3,8 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { QualityStatisticsCacheSnapshot } from "@/project/quality/quality-statistics-store";
+import type { ProjectItemPublicRecord } from "@base/item";
+import { createProjectItemIndex } from "@/project/store/project-item-index";
 import { useTextReplacementPageState } from "@/pages/text-replacement-page/use-text-replacement-page-state";
 
 const { api_fetch_mock, push_toast_mock } = vi.hoisted(() => {
@@ -12,20 +14,40 @@ const { api_fetch_mock, push_toast_mock } = vi.hoisted(() => {
   };
 });
 
+function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
+  return {
+    item_id: 1,
+    src: "",
+    dst: "",
+    name_src: null,
+    name_dst: null,
+    extra_field: "",
+    tag: "",
+    row_number: 0,
+    file_type: "TXT",
+    file_path: "",
+    text_type: "NONE",
+    status: "NONE",
+    retry_count: 0,
+    skip_internal_filter: false,
+    ...overrides,
+  };
+}
+
 const runtime_state = {
   project: {
     path: "E:/demo/sample.lg",
     loaded: true,
   },
   files: {},
-  items: {
-    "1": {
+  items: createProjectItemIndex({
+    "1": create_test_item({
       item_id: 1,
       file_path: "chapter01.txt",
       src: "hero appears",
       dst: "hero 登场",
-    },
-  },
+    }),
+  }),
   quality: {
     glossary: {
       entries: [],
