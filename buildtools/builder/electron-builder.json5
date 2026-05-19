@@ -15,12 +15,8 @@
     "build/dist-electron/**/*",
   ],
   win: {
-    target: [
-      {
-        target: "dir",
-        arch: ["x64"],
-      },
-    ],
+    target: ["zip"],
+    artifactName: "${productName}_v${version}_Windows_${arch}.${ext}",
     executableName: "app",
     icon: "icon.png",
     extraFiles: [
@@ -29,12 +25,7 @@
     ],
   },
   mac: {
-    target: [
-      {
-        target: "dmg",
-        arch: ["x64", "arm64"],
-      },
-    ],
+    target: ["dmg"],
     artifactName: "${productName}_v${version}_macOS_${arch}.${ext}",
     category: "public.app-category.productivity",
     icon: "icon.png",
@@ -48,12 +39,7 @@
     sign: false,
   },
   linux: {
-    target: [
-      {
-        target: "AppImage",
-        arch: ["x64"],
-      },
-    ],
+    target: ["AppImage"],
     artifactName: "${productName}_v${version}_Linux_${arch}.${ext}",
     category: "Utility",
     icon: "icon.png",

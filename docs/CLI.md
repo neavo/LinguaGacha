@@ -74,7 +74,8 @@ sequenceDiagram
 ## 5. 平台启动器与打包
 
 - Windows `cli.exe` 是 console launcher，只定位同目录 `app.exe`，追加 `--cli`，继承 stdin / stdout / stderr，并返回 `app.exe` 的退出码。
-- `buildtools/builder/after-pack.mjs` 只在 Windows afterPack 阶段构建 `buildtools/builder/win-cli-launcher` Go 模块，再复制 `build/builder/win-cli-launcher/cli.exe` 到发布目录；缺少 Go 工具链或启动器产物必须立即失败，避免发布包静默丢失 CLI 入口。
+- `buildtools/builder/electron-builder.json5` 只声明平台产物类型、命名模板和资源落点；目标平台与架构由 `.github/workflows/build.yml` 的构建命令唯一传入，避免同一 job 生成或上传其它架构的发布资产。
+- Windows 发布资产由 electron-builder `zip` target 直接生成；`buildtools/builder/after-pack.mjs` 只在 Windows afterPack 阶段构建 `buildtools/builder/win-cli-launcher` Go 模块，再复制 `build/builder/win-cli-launcher/cli.exe` 到发布目录；缺少 Go 工具链或启动器产物必须立即失败，避免发布包静默丢失 CLI 入口。
 - macOS 和 Linux 不生成额外 CLI 文件，用户通过主程序追加 `--cli` 进入命令模式。
 
 ## 6. 更新触发条件
