@@ -1,24 +1,24 @@
 import { CoreBootstrap } from "../core/bootstrap/core-bootstrap";
 import { run_cli_job } from "./job/cli-job-runner";
 import type { CLICommandOptions } from "./cli-parser";
-import type { WorkerPoolExecution } from "../core/engine/worker/worker-execution";
+import type { EngineExecution } from "../core/engine/core/engine-execution";
 import { CLIJsonStatusReporter } from "./cli-status-reporter";
 import { write_stdout } from "./cli-output";
 
 /**
- * 在无 GUI Gateway 的 CoreBootstrap 中执行 CLI 命令，并沿入口契约下传 worker_execution。
+ * 在无 GUI Gateway 的 CoreBootstrap 中执行 CLI 命令，并沿入口契约下传 engine_execution。
  */
 export async function run_cli_command(
   app_root: string,
   command: CLICommandOptions,
-  worker_execution: WorkerPoolExecution,
+  engine_execution: EngineExecution,
 ): Promise<void> {
   const bootstrap = new CoreBootstrap({
     appRoot: app_root,
     exposeApiGateway: false,
     logTargets: { console: false, window: false },
     openOutputFolder: async () => undefined,
-    workerExecution: worker_execution,
+    engineExecution: engine_execution,
   });
   try {
     const start_result = await bootstrap.start();

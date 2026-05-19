@@ -6,27 +6,32 @@ import { TaskRuntimePublisher } from "../runtime/task-runtime-publisher";
 import type { JsonRecord, MutableJsonRecord, TaskType } from "../runtime/task-runtime-types";
 import { ProjectTaskStore } from "../store/project-task-store";
 import { TaskArtifactCommitter } from "../store/task-artifact-committer";
-import type { WorkerExecutor } from "../worker/worker-executor";
-import { WorkUnitExecutorTransportError } from "../worker/worker-transport-error";
+import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
+import { WorkUnitExecutorTransportError } from "../work-unit/work-unit-transport-error";
 import type { StartTaskCommand, StopTaskCommand } from "../protocol/task-command";
 import type { TaskStartMode } from "../protocol/task-types";
-import type { WorkerExecutionResult } from "../protocol/worker-result";
-import { PromptBuilder } from "../worker/prompt/prompt-builder";
+import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
+import { PromptBuilder } from "../work-unit/prompt/prompt-builder";
 import type {
   AnalysisWorkUnitResult,
-  TaskItemRecord,
   TaskProgressSnapshot,
   TaskRunHandle,
   TranslationWorkUnitResult,
   TaskEngineOptions,
 } from "./engine-options";
+import type {
+  AnalysisCommitEntry,
+  AnalysisContext,
+  TaskItemRecord,
+  TranslationCommitEntry,
+  TranslationContext,
+} from "../planning/task-plan-types";
 import { LimiterPool, TaskLimiter } from "./limiter-pool";
 import { ModelKeyLeasePool } from "./model-key-lease-pool";
 import { TaskPipeline } from "./pipeline-runner";
 import { TaskProgressSnapshotTool } from "./progress-accumulator";
 import { RunCoordinator } from "./run-coordinator";
 import { TaskLogReplay } from "./log-replay";
-import type { TokenCounter } from "./token-counter";
 import { is_task_skipped_item_status } from "../../../shared/task";
 import { TextQualitySnapshotTool } from "../../../shared/text/text-types";
 import * as AppErrors from "../../../shared/error";
@@ -37,66 +42,10 @@ const TRANSLATION_RETRY_LIMIT = 3; // 翻译重试次数高于分析，因为翻
 const ANALYSIS_RETRY_LIMIT = 2; // 分析失败只重发同一 chunk，过多重试会阻塞后续文件 checkpoint
 
 const DEFAULT_INPUT_TOKEN_LIMIT = 512; // 模型未配置 token 限制时使用保守默认值，避免一次塞入过长 prompt
-const DEFAULT_ANALYSIS_INPUT_TOKEN_LIMIT = 512; // 分析 prompt 额外包含术语抽取说明，默认 token 门槛与翻译保持一致但独立调参
-
-const END_LINE_PUNCTUATION = new Set([".", "。", "?", "？", "!", "！", "…", "'", '"', "」", "』"]); // chunk 拆分优先在句末标点处分割，减少上下文被硬切断的概率
-
 // 一次任务启动时冻结配置和模型，运行中不跟随设置页热变更
 interface TaskRuntimeSnapshot {
   config_snapshot: MutableJsonRecord;
   model: MutableJsonRecord;
-}
-
-// 翻译 context 是 pipeline 的最小工作单元，包含 chunk、preceding 与重试元信息
-interface TranslationContext {
-  work_unit_id: string;
-  items: TaskItemRecord[];
-  precedings: TaskItemRecord[];
-  token_threshold: number;
-  split_count: number;
-  retry_count: number;
-  is_initial: boolean;
-}
-
-// 翻译提交项只携带可批量写库的数据和 token 累计值
-interface TranslationCommitEntry {
-  items: TaskItemRecord[];
-  input_tokens: number;
-  output_tokens: number;
-}
-
-// 拆分重试会同时产生新 context 和强制失败条目，两者必须分开提交
-interface TranslationRetryPlan {
-  retry_contexts: TranslationContext[];
-  forced_error_items: TaskItemRecord[];
-}
-
-// 分析 item 上下文不传完整 item，防止 worker 误写非分析字段
-interface AnalysisItemContext {
-  item_id: number;
-  file_path: string;
-  src_text: string;
-  first_name_src: string | null;
-  previous_status: string | null;
-}
-
-// 分析 context 按文件路径聚合，日志和候选 first_seen_index 都依赖稳定顺序
-interface AnalysisContext {
-  work_unit_id: string;
-  file_path: string;
-  items: AnalysisItemContext[];
-  retry_count: number;
-}
-
-// 分析提交项把 checkpoint、候选和进度 delta 分开，避免提交时再次推导
-interface AnalysisCommitEntry {
-  success_checkpoints: MutableJsonRecord[];
-  error_checkpoints: MutableJsonRecord[];
-  glossary_entries: MutableJsonRecord[];
-  input_tokens: number;
-  output_tokens: number;
-  processed_delta: number;
-  error_delta: number;
 }
 
 /**
@@ -107,8 +56,8 @@ export class TaskEngine {
   private readonly task_store: ProjectTaskStore; // task_store 是后台任务唯一项目数据写入口，TaskEngine 不直接碰 database
   private readonly artifact_committer: TaskArtifactCommitter; // artifact_committer 是 Engine 写入项目任务事实的唯一出口
   private readonly task_runtime_publisher: TaskRuntimePublisher; // task_runtime_publisher 同步写运行态并发布完整 snapshot
-  private readonly executor_client: WorkerExecutor; // executor_client 屏蔽 worker_threads / direct runner 差异，主流程只关心 work-unit 结果
-  private readonly token_counter: TokenCounter; // token_counter 只服务切块预算，不参与 worker token 统计或持久化
+  private readonly executor_client: WorkUnitExecutor; // executor_client 屏蔽 worker_threads / in_process runner 差异，主流程只关心 work-unit 结果
+  private readonly task_planner: TaskEngineOptions["taskPlanner"]; // task_planner 是切块与 token cache 复用的唯一规划入口
   private readonly app_setting_service: TaskEngineOptions["AppSettingService"];
   private readonly run_coordinator: RunCoordinator; // run_coordinator 是整场任务互斥、停止和终态发布的唯一权威
   private readonly log_replay: TaskLogReplay; // log_replay 统一处理任务生命周期日志和 worker 日志回放
@@ -125,7 +74,7 @@ export class TaskEngine {
     this.artifact_committer = new TaskArtifactCommitter(options.taskStore);
     this.task_runtime_publisher = options.taskRuntimePublisher;
     this.executor_client = options.executorClient;
-    this.token_counter = options.tokenCounter;
+    this.task_planner = options.taskPlanner;
     this.app_setting_service = options.AppSettingService;
     this.run_coordinator = new RunCoordinator(options.taskRuntimePublisher);
     this.log_replay = new TaskLogReplay(options.logManager);
@@ -213,7 +162,12 @@ export class TaskEngine {
       const meta = this.normalize_record(payload["meta"]);
       const contexts = retranslate
         ? all_items.map((item) => this.build_retranslate_context(item))
-        : this.build_translation_contexts(all_items, runtime.config_snapshot, runtime.model);
+        : await this.task_planner.build_translation_contexts(
+            all_items,
+            runtime.config_snapshot,
+            runtime.model,
+            handle.signal,
+          );
       let progress = retranslate
         ? this.build_retranslate_progress(all_items, meta)
         : this.build_translation_progress(legacy_mode, all_items, meta);
@@ -283,7 +237,12 @@ export class TaskEngine {
       const all_items = this.normalize_record_list(payload["items"]);
       const checkpoints = this.normalize_record_list(payload["checkpoints"]);
       const meta = this.normalize_record(payload["meta"]);
-      const contexts = this.build_analysis_contexts(all_items, checkpoints, runtime.model);
+      const contexts = await this.task_planner.build_analysis_contexts(
+        all_items,
+        checkpoints,
+        runtime.model,
+        handle.signal,
+      );
       let progress = this.build_analysis_progress(legacy_mode, all_items, checkpoints, meta);
       await this.update_analysis_progress_if_current(handle, progress);
       await this.emit_progress(handle.task_type);
@@ -366,7 +325,7 @@ export class TaskEngine {
           .then((unit_result) => this.to_translation_work_unit_result(unit_result)),
     );
     this.log_replay.work_unit_logs(result.logs);
-    return this.build_translation_worker_result(context, result);
+    return await this.build_translation_worker_result(context, result, signal);
   }
 
   /**
@@ -452,10 +411,10 @@ export class TaskEngine {
   }
 
   /**
-   * WorkerExecutionResult 转回当前翻译解释器输入，过渡期只在 Engine 边界做一次形状窄化
+   * WorkUnitExecutionResult 转回当前翻译解释器输入，过渡期只在 Engine 边界做一次形状窄化
    */
   private to_translation_work_unit_result(
-    result: WorkerExecutionResult,
+    result: WorkUnitExecutionResult,
   ): TranslationWorkUnitResult {
     if (result.kind !== "translation" || result.output.kind !== "translation") {
       throw new AppErrors.WorkerExecutionFailedError({
@@ -477,9 +436,9 @@ export class TaskEngine {
   }
 
   /**
-   * WorkerExecutionResult 转回当前分析解释器输入，checkpoint 与 progress 仍由 Engine 侧生成
+   * WorkUnitExecutionResult 转回当前分析解释器输入，checkpoint 与 progress 仍由 Engine 侧生成
    */
-  private to_analysis_work_unit_result(result: WorkerExecutionResult): AnalysisWorkUnitResult {
+  private to_analysis_work_unit_result(result: WorkUnitExecutionResult): AnalysisWorkUnitResult {
     if (result.kind !== "analysis" || result.output.kind !== "analysis") {
       throw new AppErrors.WorkerExecutionFailedError({
         diagnostic_context: {
@@ -502,9 +461,10 @@ export class TaskEngine {
   /**
    * 翻译 worker 结果拆成可提交终态 items 与需要重试的上下文
    */
-  private build_translation_worker_result(
+  private async build_translation_worker_result(
     context: TranslationContext,
     result: TranslationWorkUnitResult,
+    signal: AbortSignal,
   ) {
     if (result.stopped) {
       return { commit_entries: [], retry_contexts: [] };
@@ -513,7 +473,13 @@ export class TaskEngine {
     const terminal_items = returned_items.filter((item) =>
       TRANSLATION_TERMINAL_STATUSES.has(this.read_status(item)),
     );
-    const retry_plan = this.build_translation_retry_plan(context, returned_items);
+    const retry_plan = await this.task_planner.build_translation_retry_plan(
+      context,
+      returned_items,
+      TRANSLATION_RETRY_LIMIT,
+      (item) => this.mark_translation_item_error(item),
+      signal,
+    );
     const commit_items = [...terminal_items, ...retry_plan.forced_error_items];
     return {
       commit_entries:
@@ -717,120 +683,6 @@ export class TaskEngine {
   }
 
   /**
-   * 构建翻译初始上下文，切块规则使用 TaskScheduler 边界
-   */
-  private build_translation_contexts(
-    items: TaskItemRecord[],
-    config: MutableJsonRecord,
-    model: MutableJsonRecord,
-  ): TranslationContext[] {
-    const threshold = this.get_input_token_limit(model, DEFAULT_INPUT_TOKEN_LIMIT);
-    const chunks = this.generate_item_chunks(
-      items,
-      threshold,
-      this.read_number(config["preceding_lines_threshold"], 0),
-    );
-    return chunks.map(({ chunk_items, precedings }) => ({
-      work_unit_id: crypto.randomUUID(),
-      items: chunk_items,
-      precedings,
-      token_threshold: threshold,
-      split_count: 0,
-      retry_count: 0,
-      is_initial: true,
-    }));
-  }
-
-  /**
-   * 翻译失败上下文先拆分，单条最多重试三次，超限标 ERROR
-   */
-  private build_translation_retry_plan(
-    context: TranslationContext,
-    returned_items: TaskItemRecord[],
-  ): TranslationRetryPlan {
-    const pending_items = returned_items.filter((item) => this.read_status(item) === "NONE");
-    if (pending_items.length === 0) {
-      return { retry_contexts: [], forced_error_items: [] };
-    }
-    if (pending_items.length === 1) {
-      const item = pending_items[0] as TaskItemRecord;
-      if (context.retry_count < TRANSLATION_RETRY_LIMIT) {
-        return {
-          retry_contexts: [
-            {
-              ...context,
-              work_unit_id: crypto.randomUUID(),
-              items: [item],
-              precedings: [],
-              retry_count: context.retry_count + 1,
-              is_initial: false,
-            },
-          ],
-          forced_error_items: [],
-        };
-      }
-      this.mark_translation_item_error(item);
-      return { retry_contexts: [], forced_error_items: [item] };
-    }
-    const next_threshold = Math.max(
-      1,
-      Math.floor(context.token_threshold * this.get_split_factor(context.token_threshold)),
-    );
-    const sub_chunks = this.generate_item_chunks(pending_items, next_threshold, 0);
-    return {
-      retry_contexts: sub_chunks.map(({ chunk_items }) => ({
-        work_unit_id: crypto.randomUUID(),
-        items: chunk_items,
-        precedings: [],
-        token_threshold: next_threshold,
-        split_count: context.split_count + 1,
-        retry_count: 0,
-        is_initial: false,
-      })),
-      forced_error_items: [],
-    };
-  }
-
-  /**
-   * 构建分析上下文，checkpoint 已完成或错误的条目不会重复调度
-   */
-  private build_analysis_contexts(
-    items: TaskItemRecord[],
-    checkpoints: MutableJsonRecord[],
-    model: MutableJsonRecord,
-  ): AnalysisContext[] {
-    const checkpoint_status_by_id = this.build_checkpoint_status_map(checkpoints);
-    const pending_items = items
-      .map((item) => this.build_analysis_item_context(item, checkpoint_status_by_id))
-      .filter((item): item is AnalysisItemContext => item !== null)
-      .filter((item) => item.previous_status !== "PROCESSED" && item.previous_status !== "ERROR");
-    const seed_items = pending_items.map((item) => ({
-      id: item.item_id,
-      src: item.src_text,
-      file_path: item.file_path,
-      status: "NONE",
-    }));
-    const context_by_id = new Map(pending_items.map((item) => [item.item_id, item]));
-    return this.generate_item_chunks(
-      seed_items,
-      this.get_input_token_limit(model, DEFAULT_ANALYSIS_INPUT_TOKEN_LIMIT),
-      0,
-    )
-      .map(({ chunk_items }) => {
-        const chunk_contexts = chunk_items
-          .map((item) => context_by_id.get(this.read_item_id(item)))
-          .filter((item): item is AnalysisItemContext => item !== undefined);
-        return {
-          work_unit_id: crypto.randomUUID(),
-          file_path: chunk_contexts[0]?.file_path ?? "",
-          items: chunk_contexts,
-          retry_count: 0,
-        };
-      })
-      .filter((context) => context.items.length > 0);
-  }
-
-  /**
    * 重翻每个 item 独立执行，保持行级 busy 状态能逐条收敛
    */
   private build_retranslate_context(item: TaskItemRecord): TranslationContext {
@@ -843,101 +695,6 @@ export class TaskEngine {
       retry_count: 0,
       is_initial: true,
     };
-  }
-
-  /**
-   * 共享切块实现，只依赖 item 快照和注入的 token 计数器，不读取数据库或跨层对象
-   */
-  private generate_item_chunks(
-    items: TaskItemRecord[],
-    input_token_threshold: number,
-    preceding_lines_threshold: number,
-  ): Array<{ chunk_items: TaskItemRecord[]; precedings: TaskItemRecord[] }> {
-    const line_limit = Math.max(8, Math.trunc(input_token_threshold / 16));
-    const chunks: Array<{ chunk_items: TaskItemRecord[]; precedings: TaskItemRecord[] }> = [];
-    let skipped_count = 0;
-    let line_length = 0;
-    let token_length = 0;
-    let chunk: TaskItemRecord[] = [];
-    for (const [index, item] of items.entries()) {
-      if (this.read_status(item) !== "NONE") {
-        skipped_count += 1;
-        continue;
-      }
-      const current_line_length = this.count_non_empty_lines(String(item["src"] ?? ""));
-      const current_token_length = this.token_counter.count(String(item["src"] ?? ""));
-      if (
-        chunk.length > 0 &&
-        (line_length + current_line_length > line_limit ||
-          token_length + current_token_length > input_token_threshold ||
-          String(item["file_path"] ?? "") !== String(chunk[chunk.length - 1]?.["file_path"] ?? ""))
-      ) {
-        chunks.push({
-          chunk_items: chunk,
-          precedings: this.generate_preceding_chunk(
-            items,
-            chunk,
-            index,
-            skipped_count,
-            preceding_lines_threshold,
-          ),
-        });
-        skipped_count = 0;
-        line_length = 0;
-        token_length = 0;
-        chunk = [];
-      }
-      chunk.push(item);
-      line_length += current_line_length;
-      token_length += current_token_length;
-    }
-    if (chunk.length > 0) {
-      chunks.push({
-        chunk_items: chunk,
-        precedings: this.generate_preceding_chunk(
-          items,
-          chunk,
-          items.length,
-          skipped_count,
-          preceding_lines_threshold,
-        ),
-      });
-    }
-    return chunks;
-  }
-
-  /**
-   * 生成翻译上文块，边界跟随文件路径和句末标点
-   */
-  private generate_preceding_chunk(
-    items: TaskItemRecord[],
-    chunk: TaskItemRecord[],
-    start: number,
-    skipped_count: number,
-    preceding_lines_threshold: number,
-  ): TaskItemRecord[] {
-    const result: TaskItemRecord[] = [];
-    const current_file_path = String(chunk[chunk.length - 1]?.["file_path"] ?? "");
-    for (let index = start - skipped_count - chunk.length - 1; index >= 0; index -= 1) {
-      const item = items[index];
-      if (item === undefined || is_task_skipped_item_status(this.read_status(item))) {
-        continue;
-      }
-      const src = String(item["src"] ?? "").trim();
-      if (src === "" || result.length >= preceding_lines_threshold) {
-        break;
-      }
-      if (String(item["file_path"] ?? "") !== current_file_path) {
-        break;
-      }
-      const last_char = src.at(-1) ?? "";
-      if (END_LINE_PUNCTUATION.has(last_char)) {
-        result.push(item);
-      } else {
-        break;
-      }
-    }
-    return result.reverse();
   }
 
   /**
@@ -1155,21 +912,6 @@ export class TaskEngine {
   }
 
   /**
-   * 输入 token 阈值读取集中处理，保护模型配置缺字段场景
-   */
-  private get_input_token_limit(model: MutableJsonRecord, fallback: number): number {
-    const threshold = this.normalize_record(model["threshold"]);
-    return Math.max(16, this.read_number(threshold["input_token_limit"], fallback));
-  }
-
-  /**
-   * 失败拆分比例使用 `pow(16 / t0, 0.25)` 的收敛速度
-   */
-  private get_split_factor(token_threshold: number): number {
-    return Math.pow(16 / Math.max(17, token_threshold), 0.25);
-  }
-
-  /**
    * 重试超限后只标记 ERROR，译文字段继续只承载真实译文
    */
   private mark_translation_item_error(item: TaskItemRecord): void {
@@ -1190,40 +932,6 @@ export class TaskEngine {
       updated_at,
       error_count: status === "ERROR" ? 1 : 0,
     }));
-  }
-
-  /**
-   * 分析上下文转 executor payload，保持 dataclass 字段名稳定
-   */
-  private analysis_context_to_payload(context: AnalysisContext): MutableJsonRecord {
-    return {
-      file_path: context.file_path,
-      retry_count: context.retry_count,
-      items: context.items as unknown as ApiJsonValue,
-    };
-  }
-
-  /**
-   * 从 item 和 checkpoint map 构建不可变分析输入快照
-   */
-  private build_analysis_item_context(
-    item: TaskItemRecord,
-    checkpoint_status_by_id: Map<number, string>,
-  ): AnalysisItemContext | null {
-    if (!this.is_analyzable_item(item)) {
-      return null;
-    }
-    const item_id = this.read_item_id(item);
-    if (item_id <= 0) {
-      return null;
-    }
-    return {
-      item_id,
-      file_path: String(item["file_path"] ?? ""),
-      src_text: String(item["src"] ?? "").trim(),
-      first_name_src: this.read_first_name_src(item),
-      previous_status: checkpoint_status_by_id.get(item_id) ?? null,
-    };
   }
 
   /**
@@ -1252,20 +960,6 @@ export class TaskEngine {
   }
 
   /**
-   * 姓名字段可能是字符串或数组，分析 prompt 只需要第一个说话人名
-   */
-  private read_first_name_src(item: TaskItemRecord): string | null {
-    const name_src = item["name_src"];
-    if (typeof name_src === "string" && name_src !== "") {
-      return name_src;
-    }
-    if (Array.isArray(name_src) && typeof name_src[0] === "string" && name_src[0] !== "") {
-      return name_src[0];
-    }
-    return null;
-  }
-
-  /**
    * item id 同时兼容数据库内部 id 和公开 item_id
    */
   private read_item_id(item: TaskItemRecord): number {
@@ -1277,13 +971,6 @@ export class TaskEngine {
    */
   private read_status(item: TaskItemRecord): string {
     return String(item["status"] ?? "NONE");
-  }
-
-  /**
-   * 非空行数用于切块 line_limit，保持同一量纲
-   */
-  private count_non_empty_lines(text: string): number {
-    return text.split(/\r?\n/).filter((line) => line.trim() !== "").length;
   }
 
   /**

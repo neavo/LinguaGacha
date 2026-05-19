@@ -11,11 +11,11 @@ import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { CoreServices } from "../bootstrap/core-services";
 import { ProjectDatabase } from "../database/database-operations";
+import type { EngineExecution } from "../engine/core/engine-execution";
 import { type FileLogWriter, LogManager } from "../log/log-manager";
 import { ApiGatewayServer } from "./api-gateway-server";
-import type { WorkerPoolExecution } from "../engine/worker/worker-execution";
 
-const DIRECT_WORKER_EXECUTION: WorkerPoolExecution = { kind: "direct" }; // Gateway 测试只验证 HTTP 协议，不依赖真实 worker_threads
+const IN_PROCESS_ENGINE_EXECUTION: EngineExecution = { kind: "in_process" }; // Gateway 测试只验证 HTTP 协议，不依赖真实 worker_threads
 
 describe("ApiGatewayServer", () => {
   const cleanup_callbacks: Array<() => Promise<void> | void> = []; // Gateway 测试会启动真实本机 HTTP server，清理顺序必须由用例统一登记
@@ -131,10 +131,10 @@ describe("ApiGatewayServer", () => {
     const gateway = await create_gateway_with_database(app_root, database);
     cleanup_callbacks.push(() => gateway.stop());
     cleanup_callbacks.push(() => database.close());
-    const lg_path = path.join(app_root, "direct-write.lg");
+    const lg_path = path.join(app_root, "sync-write.lg");
     database.execute({
       name: "createProject",
-      args: { projectPath: lg_path, name: "direct-write" },
+      args: { projectPath: lg_path, name: "sync-write" },
     });
 
     const started = await gateway.start();
@@ -253,13 +253,13 @@ describe("ApiGatewayServer", () => {
   it("校对同步 mutation 由 API Gateway 直接写库", async () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
-    const lg_path = path.join(app_root, "proofreading-direct-write.lg");
+    const lg_path = path.join(app_root, "proofreading-sync-write.lg");
     const gateway = await create_gateway_with_database(app_root, database);
     cleanup_callbacks.push(() => gateway.stop());
     cleanup_callbacks.push(() => database.close());
     database.execute({
       name: "createProject",
-      args: { projectPath: lg_path, name: "proofreading-direct-write" },
+      args: { projectPath: lg_path, name: "proofreading-sync-write" },
     });
     database.execute({
       name: "setItems",
@@ -322,7 +322,7 @@ describe("ApiGatewayServer", () => {
   it("由 API Gateway 直接提供项目数据读取接口", async () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
-    const lg_path = path.join(app_root, "project-read-direct.lg");
+    const lg_path = path.join(app_root, "project-read-api.lg");
     const gateway = await create_gateway_with_database(app_root, database);
     cleanup_callbacks.push(() => gateway.stop());
     cleanup_callbacks.push(() => database.close());
@@ -437,6 +437,57 @@ describe("ApiGatewayServer", () => {
     });
     expect(Object.keys(body.data?.items ?? {})).toEqual(["2", "4"]);
     expect(body.data?.missingIds).toEqual([99]);
+  });
+
+  it("analysis 候选读取路由只绑定当前 loaded 工程并返回完整候选池", async () => {
+    const app_root = create_app_root();
+    const database = new ProjectDatabase();
+    const lg_path = path.join(app_root, "analysis-candidates.lg");
+    const gateway = await create_gateway_with_database(app_root, database);
+    cleanup_callbacks.push(() => gateway.stop());
+    cleanup_callbacks.push(() => database.close());
+    database.execute({
+      name: "createProject",
+      args: { projectPath: lg_path, name: "analysis-candidates" },
+    });
+    database.execute({
+      name: "upsertAnalysisCandidateAggregates",
+      args: {
+        projectPath: lg_path,
+        aggregates: [
+          {
+            src: "魔法",
+            dst_votes: { magic: 2 },
+            info_votes: { 术语: 1 },
+            observation_count: 2,
+            first_seen_at: "2026-01-01T00:00:00.000Z",
+            last_seen_at: "2026-01-02T00:00:00.000Z",
+            case_sensitive: false,
+          },
+        ],
+      },
+    });
+    database.execute({
+      name: "setMeta",
+      args: { projectPath: lg_path, key: "analysis_candidate_count", value: 1 },
+    });
+
+    const started = await gateway.start();
+    await post_json(started.baseUrl, "/api/project/load", { path: lg_path });
+    const response = await post_json(started.baseUrl, "/api/project/analysis/candidates", {});
+    const body = (await response.json()) as {
+      ok?: boolean;
+      data?: {
+        projectPath?: string;
+        candidate_count?: number;
+        candidate_aggregate?: Record<string, { dst_votes?: Record<string, number> }>;
+      };
+    };
+
+    expect(body.ok).toBe(true);
+    expect(body.data?.projectPath).toBe(lg_path);
+    expect(body.data?.candidate_count).toBe(1);
+    expect(body.data?.candidate_aggregate?.["魔法"]?.dst_votes).toEqual({ magic: 2 });
   });
 
   it("按 item id 补读在工程未加载时拒绝读取任意路径", async () => {
@@ -586,7 +637,7 @@ describe("ApiGatewayServer", () => {
       database,
       logManager: log_manager,
       openOutputFolder: noop_output_folder,
-      workerExecution: DIRECT_WORKER_EXECUTION,
+      engineExecution: IN_PROCESS_ENGINE_EXECUTION,
     });
     core_services.start();
     const gateway = new ApiGatewayServer({
@@ -628,7 +679,7 @@ describe("ApiGatewayServer", () => {
       database,
       logManager: log_manager,
       openOutputFolder: noop_output_folder,
-      workerExecution: DIRECT_WORKER_EXECUTION,
+      engineExecution: IN_PROCESS_ENGINE_EXECUTION,
     });
     core_services.start();
     return new ApiGatewayServer({

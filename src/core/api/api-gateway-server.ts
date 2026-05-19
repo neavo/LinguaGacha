@@ -246,6 +246,11 @@ export class ApiGatewayServer {
     this.post_json(app, "/api/project/analysis/reset-preview", (body) =>
       project_reset_preview_service.preview_analysis_reset(body),
     );
+    this.post_json(app, "/api/project/analysis/candidates", () =>
+      project_runtime_projection_service.build_analysis_candidate_payload(
+        this.require_loaded_project_path(),
+      ),
+    );
     this.post_json(app, "/api/project/analysis/import-glossary", (body) =>
       project_service.import_analysis_glossary(body),
     );

@@ -206,6 +206,109 @@ describe("ProjectRuntimeProjectionService", () => {
     });
   });
 
+  it("analysis section 只从 meta 构建轻量进度，不扫描候选池或 checkpoint", () => {
+    const execute = vi.fn((operation: DatabaseOperation) => {
+      if (operation.name === "getAllMeta") {
+        return {
+          analysis_extras: {
+            total_line: 8,
+            processed_line: 3,
+            error_line: 1,
+            line: 4,
+          },
+          analysis_candidate_count: 2,
+        };
+      }
+      if (
+        operation.name === "getAnalysisCandidateAggregates" ||
+        operation.name === "getAnalysisItemCheckpoints" ||
+        operation.name === "getAllItems"
+      ) {
+        throw new Error("analysis section 不应扫描明细数据");
+      }
+      return null;
+    });
+    const service = new ProjectRuntimeProjectionService(create_database_stub(execute));
+
+    const payload = service.build_section_payloads({
+      projectState: { loaded: true, projectPath: "E:/demo/demo.lg" },
+      sections: ["analysis"],
+    });
+    const sections = payload["sections"] as Record<string, Record<string, unknown>>;
+
+    expect(sections["analysis"]).toEqual({
+      extras: {
+        total_line: 8,
+        processed_line: 3,
+        error_line: 1,
+        line: 4,
+      },
+      candidate_count: 2,
+      status_summary: {
+        total_line: 8,
+        processed_line: 3,
+        error_line: 1,
+        line: 4,
+      },
+    });
+    expect(execute).not.toHaveBeenCalledWith(
+      expect.objectContaining({ name: "getAnalysisCandidateAggregates" }),
+    );
+  });
+
+  it("analysis 候选载荷只在按需入口读取完整候选池", () => {
+    const service = new ProjectRuntimeProjectionService(
+      create_database_stub((operation) => {
+        if (operation.name === "getAllMeta") {
+          return {
+            analysis_candidate_count: 1,
+            "project_runtime_revision.analysis": 6,
+          };
+        }
+        if (operation.name === "getAnalysisCandidateAggregates") {
+          return [
+            {
+              src: "魔法",
+              dst_votes: { magic: 2 },
+              info_votes: { 术语: 1 },
+              observation_count: 2,
+              first_seen_at: "2026-01-01T00:00:00.000Z",
+              last_seen_at: "2026-01-02T00:00:00.000Z",
+              case_sensitive: true,
+              first_seen_index: 3,
+            },
+            {
+              src: "",
+              dst_votes: { empty: 1 },
+              info_votes: { 术语: 1 },
+            },
+          ];
+        }
+        return null;
+      }),
+    );
+
+    const payload = service.build_analysis_candidate_payload("E:/demo/demo.lg");
+
+    expect(payload).toMatchObject({
+      projectPath: "E:/demo/demo.lg",
+      candidate_count: 1,
+      projectRevision: 6,
+      sectionRevisions: {
+        analysis: 6,
+      },
+      candidate_aggregate: {
+        魔法: {
+          src: "魔法",
+          dst_votes: { magic: 2 },
+          info_votes: { 术语: 1 },
+          observation_count: 2,
+          first_seen_index: 3,
+        },
+      },
+    });
+  });
+
   function create_database_stub(
     execute: (operation: DatabaseOperation) => unknown,
   ): ProjectDatabase {

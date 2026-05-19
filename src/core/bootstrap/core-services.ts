@@ -3,13 +3,14 @@ import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { ProjectDatabase } from "../database/database-operations";
 import { TaskEngine } from "../engine/core/engine";
-import { create_o200k_base_token_counter } from "../engine/core/token-counter";
+import type { EngineExecution } from "../engine/core/engine-execution";
+import { PlanningWorkerPool } from "../engine/planning/planning-worker-pool";
+import { TaskPlanner } from "../engine/planning/task-planner";
 import { TaskRuntimePublisher } from "../engine/runtime/task-runtime-publisher";
 import { TaskRuntimeState } from "../engine/runtime/task-runtime-state";
 import { TaskSnapshotBuilder } from "../engine/runtime/task-snapshot-builder";
 import { ProjectTaskStore } from "../engine/store/project-task-store";
-import { WorkerPool } from "../engine/worker/worker-pool";
-import type { WorkerPoolExecution } from "../engine/worker/worker-execution";
+import { WorkUnitWorkerPool } from "../engine/work-unit/work-unit-worker-pool";
 import { CoreEventHub } from "../events/core-event-hub";
 import { FileExportService, type OutputFolderOpener } from "../file/file-export-service";
 import { FilePreviewService } from "../file/file-preview-service";
@@ -35,7 +36,7 @@ export interface CoreServicesOptions {
   database: ProjectDatabase; // database 由 Bootstrap 持有并负责关闭，服务层只组合业务能力
   logManager: LogManager; // logManager 是 Core 内部日志和任务日志的唯一汇聚点
   openOutputFolder: OutputFolderOpener; // openOutputFolder 是 GUI 专用副作用，CLI 注入空实现
-  workerExecution: WorkerPoolExecution; // workerExecution 是入口层注入的任务执行模式契约
+  engineExecution: EngineExecution; // engineExecution 是入口层注入的任务执行模式契约
 }
 
 /**
@@ -66,7 +67,8 @@ export class CoreServices {
   public readonly file_preview_service: FilePreviewService;
   public readonly file_export_service: FileExportService;
   public readonly quality_service: QualityService;
-  private readonly task_worker_pool: WorkerPool; // worker pool 必须跟随 CoreServices 释放，避免 CLI 任务结束后残留线程
+  private readonly work_unit_worker_pool: WorkUnitWorkerPool; // work_unit_worker_pool 执行 LLM work unit，生命周期跟随 CoreServices
+  private readonly planning_worker_pool: PlanningWorkerPool; // planning_worker_pool 只承担精确 token 计数，生命周期跟随 CoreServices
   private started = false; // started 防止事件 hub 被重复 start/stop 打乱订阅者状态
 
   /**
@@ -131,16 +133,21 @@ export class CoreServices {
       this.task_runtime_state,
       this.project_change_publisher,
     );
-    this.task_worker_pool = new WorkerPool({
+    this.work_unit_worker_pool = new WorkUnitWorkerPool({
       appRoot: this.paths.get_app_root(),
-      execution: options.workerExecution,
+      execution: options.engineExecution,
+    });
+    this.planning_worker_pool = new PlanningWorkerPool({
+      execution: options.engineExecution,
     });
     this.task_engine = new TaskEngine({
       appRoot: this.paths.get_app_root(),
       taskStore: this.project_task_store,
       taskRuntimePublisher: this.task_runtime_publisher,
-      executorClient: this.task_worker_pool,
-      tokenCounter: create_o200k_base_token_counter(),
+      executorClient: this.work_unit_worker_pool,
+      taskPlanner: new TaskPlanner({
+        planningWorkerPool: this.planning_worker_pool,
+      }),
       AppSettingService: this.app_setting_service,
       logManager: this.log_manager,
     });
@@ -192,7 +199,7 @@ export class CoreServices {
   public async dispose(): Promise<void> {
     this.app_setting_service.set_event_publisher(null);
     this.core_event_hub.stop();
-    await this.task_worker_pool.dispose();
+    await Promise.all([this.work_unit_worker_pool.dispose(), this.planning_worker_pool.dispose()]);
     this.started = false;
   }
 

@@ -11,6 +11,7 @@ import { ProjectMutationCoordinator } from "../project/project-mutation-coordina
 import { ProjectChangePublisher } from "../project/project-change-publisher";
 import { ProjectSessionState } from "../project/project-session-state";
 import type { ProjectMutationResult } from "../../shared/project/event";
+import { build_analysis_glossary_entry_from_candidate } from "../../shared/analysis-candidate";
 import { QualityRule, type QualityRuleKind } from "../../base/quality";
 import { Prompt, type PromptKind } from "../../base/prompt";
 import { normalize_setting_snapshot } from "../../base/setting";
@@ -22,8 +23,6 @@ import {
 } from "./quality-rule-file-io";
 
 type JsonRecord = Record<string, ApiJsonValue>;
-
-const ANALYSIS_CONTROL_CODE_PATTERN = /\\(?:n|N){1,2}\[\d+\]/u; // 控制码自映射可作为术语输出，普通原译相同候选需要过滤
 
 /**
  * 封装 质量规则与提示词 CRUD、预设 IO 和 revision 对齐
@@ -551,79 +550,18 @@ export class QualityService {
   }
 
   /**
-   * 从候选投票池生成可导出的术语条目，沿用分析导入页的 winner 与过滤口径。
+   * 从候选投票池生成可导出的术语条目，沿用共享候选术语口径。
    */
   private build_glossary_entries_from_candidates(candidates: JsonRecord[]): JsonRecord[] {
     const entries: JsonRecord[] = [];
     for (const candidate of candidates) {
-      const src = String(candidate["src"] ?? "").trim();
-      const dst = this.pick_candidate_winner(this.normalize_vote_map(candidate["dst_votes"]));
-      const info = this.pick_candidate_winner(this.normalize_vote_map(candidate["info_votes"]));
-      if (src === "" || dst === "" || info === "") {
+      const entry = build_analysis_glossary_entry_from_candidate(candidate);
+      if (entry === null) {
         continue;
       }
-      if (dst === src && !this.is_control_code_self_mapping(src, dst)) {
-        continue;
-      }
-      if (["其它", "其他", "other", "others"].includes(info.toLowerCase())) {
-        continue;
-      }
-      entries.push(
-        this.normalize_rule_entry({
-          src,
-          dst,
-          info,
-          regex: false,
-          case_sensitive: Boolean(candidate["case_sensitive"]),
-        }),
-      );
+      entries.push(this.normalize_rule_entry(entry as unknown as JsonRecord));
     }
     return entries;
-  }
-
-  /**
-   * 候选投票只接受正数票，坏值不会影响最终 winner。
-   */
-  private normalize_vote_map(value: ApiJsonValue | undefined): Record<string, number> {
-    if (!this.is_record(value)) {
-      return {};
-    }
-    const votes: Record<string, number> = {};
-    for (const [raw_text, raw_vote_count] of Object.entries(value)) {
-      const text = String(raw_text).trim();
-      const vote_count = this.read_number(raw_vote_count);
-      if (text !== "" && vote_count > 0) {
-        votes[text] = (votes[text] ?? 0) + vote_count;
-      }
-    }
-    return votes;
-  }
-
-  /**
-   * 同票时保留对象插入顺序，和分析候选池聚合语义一致。
-   */
-  private pick_candidate_winner(votes: Record<string, number>): string {
-    let winner = "";
-    let winner_votes = -1;
-    for (const [text, count] of Object.entries(votes)) {
-      if (count > winner_votes) {
-        winner = text;
-        winner_votes = count;
-      }
-    }
-    return winner.trim();
-  }
-
-  /**
-   * 控制码自映射用于保留 RPG/脚本姓名占位符，不把普通相同原译当成有效术语。
-   */
-  private is_control_code_self_mapping(src: string, dst: string): boolean {
-    const normalized_src = src.trim();
-    return (
-      normalized_src !== "" &&
-      normalized_src === dst.trim() &&
-      ANALYSIS_CONTROL_CODE_PATTERN.test(normalized_src)
-    );
   }
 
   /**

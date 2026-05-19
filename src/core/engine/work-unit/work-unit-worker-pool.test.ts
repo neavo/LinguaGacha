@@ -6,12 +6,12 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LLMClient } from "../../llm/llm-client";
-import { WorkerPool } from "./worker-pool";
+import { WorkUnitWorkerPool } from "./work-unit-worker-pool";
 import { RuntimeCancelledError, RuntimeDisposedError } from "../../../shared/error";
 
 const cleanup_roots: string[] = []; // cleanup_roots 记录测试创建的临时 appRoot 和 worker 文件目录
 
-describe("WorkerPool", () => {
+describe("WorkUnitWorkerPool", () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     while (cleanup_roots.length > 0) {
@@ -22,7 +22,7 @@ describe("WorkerPool", () => {
     }
   });
 
-  it("显式 direct runner 模式仍执行完整翻译 work unit", async () => {
+  it("显式 in_process runner 模式仍执行完整翻译 work unit", async () => {
     vi.spyOn(LLMClient.prototype, "request").mockResolvedValue({
       response_think: "",
       response_result: '{"0":"你好"}',
@@ -33,9 +33,9 @@ describe("WorkerPool", () => {
       degraded: false,
       error: "",
     });
-    const pool = new WorkerPool({
+    const pool = new WorkUnitWorkerPool({
       appRoot: await create_template_root(),
-      execution: { kind: "direct" },
+      execution: { kind: "in_process" },
       workerCount: 2,
     });
 
@@ -85,7 +85,7 @@ describe("WorkerPool", () => {
 
   it("worker_threads 模式只使用显式入口 URL 执行任务", async () => {
     const app_root = await create_temp_root();
-    const worker_path = path.join(app_root, "test-worker-entry.mjs");
+    const worker_path = path.join(app_root, "test-work-unit-worker-entry.mjs");
     await writeFile(
       worker_path,
       `import { parentPort } from "node:worker_threads";
@@ -95,9 +95,13 @@ parentPort?.on("message", (message) => {
 `,
       "utf-8",
     );
-    const pool = new WorkerPool({
+    const pool = new WorkUnitWorkerPool({
       appRoot: app_root,
-      execution: { kind: "worker_threads", workerEntryUrl: pathToFileURL(worker_path) },
+      execution: {
+        kind: "worker_threads",
+        workUnitWorkerEntryUrl: pathToFileURL(worker_path),
+        planningWorkerEntryUrl: pathToFileURL(worker_path),
+      },
       workerCount: 1,
     });
 
@@ -110,7 +114,7 @@ parentPort?.on("message", (message) => {
     }
   });
 
-  it("direct runner 测试路径遵守 maxInFlight 上限并持续派发队列", async () => {
+  it("in_process runner 测试路径遵守 maxInFlight 上限并持续派发队列", async () => {
     let current = 0;
     let peak = 0;
     let request_count = 0;
@@ -134,9 +138,9 @@ parentPort?.on("message", (message) => {
         error: "",
       };
     });
-    const pool = new WorkerPool({
+    const pool = new WorkUnitWorkerPool({
       appRoot: await create_template_root(),
-      execution: { kind: "direct" },
+      execution: { kind: "in_process" },
       maxInFlight: 2,
       workerCount: 1,
     });
@@ -167,9 +171,9 @@ parentPort?.on("message", (message) => {
   });
 
   it("释放后拒绝新任务并返回结构化运行时错误", async () => {
-    const pool = new WorkerPool({
+    const pool = new WorkUnitWorkerPool({
       appRoot: await create_template_root(),
-      execution: { kind: "direct" },
+      execution: { kind: "in_process" },
     });
 
     await pool.dispose();
@@ -181,9 +185,9 @@ parentPort?.on("message", (message) => {
 
   it("等待队列中的 work unit 被取消时返回结构化取消错误", async () => {
     vi.spyOn(LLMClient.prototype, "request").mockImplementation(() => new Promise(() => undefined));
-    const pool = new WorkerPool({
+    const pool = new WorkUnitWorkerPool({
       appRoot: await create_template_root(),
-      execution: { kind: "direct" },
+      execution: { kind: "in_process" },
       maxInFlight: 1,
     });
     const first = pool.execute_unit(
@@ -205,7 +209,7 @@ parentPort?.on("message", (message) => {
 });
 
 /**
- * 构造最小翻译 unit，用于 multiplex direct runner 路径测试。
+ * 构造最小翻译 unit，用于 multiplex in_process runner 路径测试。
  */
 function create_translation_unit(unit_id: string) {
   return {
@@ -244,7 +248,7 @@ function create_translation_unit(unit_id: string) {
 }
 
 /**
- * direct runner 测试需要真实模板目录，用临时 appRoot 隔离资源读取。
+ * in_process runner 测试需要真实模板目录，用临时 appRoot 隔离资源读取。
  */
 async function create_template_root(): Promise<string> {
   const app_root = await create_temp_root();
@@ -279,7 +283,7 @@ async function write_template(
 }
 
 /**
- * 释放指定数量的挂起 LLM 请求，用于观察 WorkerPool 是否继续排空等待队列。
+ * 释放指定数量的挂起 LLM 请求，用于观察 WorkUnitWorkerPool 是否继续排空等待队列。
  */
 function release_pending_requests(release_requests: Array<() => void>, count: number): void {
   const pending = release_requests.splice(0, count);

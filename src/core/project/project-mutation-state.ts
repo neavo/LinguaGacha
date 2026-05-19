@@ -36,9 +36,15 @@ export type ProjectPrefilterStats = {
   duplicated: number; // 同文件重复原文跳过数量
 };
 
+export type ProjectAnalysisMutationOutput = {
+  extras: Record<string, unknown>; // 当前分析进度保留字段，新建和 reset 默认从空对象开始
+  candidate_count: number; // 当前候选术语数，预过滤不会生成候选
+  status_summary: Record<string, unknown>; // 分析视角的可处理、已处理和失败行数摘要
+};
+
 export type ProjectPrefilterMutationOutput = {
   items: Record<string, ProjectItemPublicRecord>; // 预过滤后的完整公开 item 集合
-  analysis: Record<string, unknown>; // 重置后的分析派生事实
+  analysis: ProjectAnalysisMutationOutput; // 重置后的分析派生事实
   translation_extras: Record<string, unknown>; // 按最终 item 状态重建的翻译进度 meta
   project_settings: {
     source_language: string; // 写回 settings mirror 的源语言
@@ -411,7 +417,6 @@ export function compute_project_prefilter_mutation(
     analysis: {
       extras: {},
       candidate_count: 0,
-      candidate_aggregate: {},
       status_summary: build_analysis_status_summary(item_index.values()),
     },
     translation_extras,

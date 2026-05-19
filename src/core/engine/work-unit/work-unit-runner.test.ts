@@ -8,7 +8,7 @@ import type { ApiJsonValue } from "../../api/api-types";
 import type { LLMRequestBody, LLMClientPort, LLMRequestResult } from "../../llm/llm-types";
 import { AnalysisWorkUnitRunner } from "./runners/analysis-runner";
 import { TranslationWorkUnitRunner } from "./runners/translation-runner";
-import { WorkUnitRunner } from "./worker-runner";
+import { WorkUnitRunner } from "./work-unit-runner";
 
 describe("work-unit runner", () => {
   afterEach(() => {

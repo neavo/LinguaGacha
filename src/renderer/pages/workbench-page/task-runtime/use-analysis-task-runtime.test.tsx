@@ -8,9 +8,12 @@ const { api_fetch_mock, prepare_analysis_glossary_import_mock, push_toast_mock }
   () => {
     return {
       api_fetch_mock: vi.fn(),
-      prepare_analysis_glossary_import_mock: vi.fn<() => Promise<Record<string, unknown> | null>>(
-        async () => null,
-      ),
+      prepare_analysis_glossary_import_mock: vi.fn<
+        (
+          _state: unknown,
+          _options: Record<string, unknown>,
+        ) => Promise<Record<string, unknown> | null>
+      >(async () => null),
       push_toast_mock: vi.fn(),
     };
   },
@@ -186,7 +189,6 @@ function create_runtime_fixture(task_snapshot: Record<string, unknown>): Runtime
             total_output_tokens: 8,
           },
           candidate_count: 3,
-          candidate_aggregate: {},
           status_summary: {
             total_line: 5,
             line: 4,
@@ -316,6 +318,18 @@ describe("useAnalysisTaskRuntime", () => {
           task: runtime_fixture.current.task_snapshot,
         };
       }
+      if (path === "/api/project/analysis/candidates") {
+        return {
+          candidate_aggregate: {
+            alpha: {
+              src: "alpha",
+              dst_votes: { Alpha: 1 },
+              info_votes: { 角色名: 1 },
+              case_sensitive: true,
+            },
+          },
+        };
+      }
 
       throw new Error(`未预期的请求：${path}`);
     });
@@ -354,6 +368,7 @@ describe("useAnalysisTaskRuntime", () => {
         busy: false,
         line: 10,
         processed_line: 10,
+        candidate_count: 2,
         extras: { kind: "analysis", candidate_count: 2 },
       }),
     );
@@ -361,6 +376,18 @@ describe("useAnalysisTaskRuntime", () => {
       if (path === "/api/tasks/snapshot") {
         return {
           task: runtime_fixture.current.task_snapshot,
+        };
+      }
+      if (path === "/api/project/analysis/candidates") {
+        return {
+          candidate_aggregate: {
+            alpha: {
+              src: "alpha",
+              dst_votes: { Alpha: 1 },
+              info_votes: { 角色名: 1 },
+              case_sensitive: true,
+            },
+          },
         };
       }
 
@@ -375,6 +402,9 @@ describe("useAnalysisTaskRuntime", () => {
 
     await render_probe();
     await flush_microtasks();
+    await flush_microtasks();
+
+    expect(latest_state?.analysis_task_metrics.candidate_count).toBe(2);
 
     await act(async () => {
       await latest_state?.request_import_analysis_glossary();
@@ -398,6 +428,7 @@ describe("useAnalysisTaskRuntime", () => {
       create_task_snapshot({
         status: "idle",
         busy: false,
+        candidate_count: 1,
         extras: { kind: "analysis", candidate_count: 1 },
       }),
     );
@@ -405,6 +436,18 @@ describe("useAnalysisTaskRuntime", () => {
       if (path === "/api/tasks/snapshot") {
         return {
           task: runtime_fixture.current.task_snapshot,
+        };
+      }
+      if (path === "/api/project/analysis/candidates") {
+        return {
+          candidate_aggregate: {
+            alpha: {
+              src: "alpha",
+              dst_votes: { Alpha: 1 },
+              info_votes: { 角色名: 1 },
+              case_sensitive: true,
+            },
+          },
         };
       }
       if (path === "/api/project/analysis/import-glossary") {
@@ -424,7 +467,6 @@ describe("useAnalysisTaskRuntime", () => {
                   payloadMode: "canonical-delta",
                   data: {
                     candidate_count: 0,
-                    candidate_aggregate: {},
                   },
                 },
               },
@@ -470,6 +512,7 @@ describe("useAnalysisTaskRuntime", () => {
 
     await render_probe();
     await flush_microtasks();
+    await flush_microtasks();
 
     await act(async () => {
       await latest_state?.request_import_analysis_glossary();
@@ -483,7 +526,12 @@ describe("useAnalysisTaskRuntime", () => {
 
     expect(prepare_analysis_glossary_import_mock).toHaveBeenLastCalledWith(
       expect.anything(),
-      expect.objectContaining({ action: "skip" }),
+      expect.objectContaining({
+        action: "skip",
+        candidate_aggregate: expect.objectContaining({
+          alpha: expect.objectContaining({ src: "alpha" }),
+        }),
+      }),
     );
     expect(runtime_fixture.current.apply_project_mutation_result).toHaveBeenCalledWith(
       expect.objectContaining({

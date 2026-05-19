@@ -8,6 +8,7 @@ import type {
   ProjectChangeFilesPayload,
   ProjectChangeItemsPayload,
   ProjectChangePayloadMode,
+  ProjectChangeSectionPayload,
   ProjectMutationResult,
 } from "../../shared/project/event";
 import * as AppErrors from "../../shared/error";
@@ -28,6 +29,9 @@ export type ProjectMutationChangeRequest = {
   updatedSections: ProjectDataSection[]; // updatedSections 决定前端更新哪些 ProjectStore section
   items?: Pick<ProjectChangeItemsPayload, "payloadMode" | "changedIds" | "deleteIds">;
   files?: Pick<ProjectChangeFilesPayload, "payloadMode" | "changedPaths" | "deletePaths">;
+  sections?: Partial<
+    Record<ProjectDataSection, Pick<ProjectChangeSectionPayload, "payloadMode" | "data">>
+  >;
   sectionModes?: Partial<Record<ProjectDataSection, ProjectChangePayloadMode>>;
 };
 
@@ -181,20 +185,21 @@ export class ProjectMutationCoordinator {
   }
 
   /**
-   * 未提供行级 delta 的 updated section 默认发布 canonical 完整 section data
+   * 未提供行级 delta 的 updated section 默认发布 canonical section；调用方可显式给出轻量 data。
    */
   private build_section_payloads(request: ProjectMutationChangeRequest): {
     sections?: ApiJsonValue;
   } {
-    const sections = Object.fromEntries(
-      request.updatedSections
-        .filter((section) => !(section === "items" && request.items !== undefined))
-        .filter((section) => !(section === "files" && request.files !== undefined))
-        .map((section) => [
-          section,
-          { payloadMode: request.sectionModes?.[section] ?? "canonical-delta" },
-        ]),
-    ) as Partial<Record<ProjectDataSection, { payloadMode: ProjectChangePayloadMode }>>;
+    const sections = { ...request.sections };
+    for (const section of request.updatedSections) {
+      if ((section === "items" && request.items !== undefined) || sections[section] !== undefined) {
+        continue;
+      }
+      if (section === "files" && request.files !== undefined) {
+        continue;
+      }
+      sections[section] = { payloadMode: request.sectionModes?.[section] ?? "canonical-delta" };
+    }
     return Object.keys(sections).length === 0
       ? {}
       : { sections: sections as unknown as ApiJsonValue };

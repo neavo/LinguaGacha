@@ -2,7 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { WorkerPoolExecution } from "../core/engine/worker/worker-execution";
+import type { EngineExecution } from "../core/engine/core/engine-execution";
 
 type Listener = (...args: unknown[]) => void;
 type ReadyResolver = () => void;
@@ -11,7 +11,7 @@ type CoreBootstrapOptions = {
   appRoot: string;
   exposeApiGateway: boolean;
   openOutputFolder: (output_path: string) => Promise<void>;
-  workerExecution: WorkerPoolExecution;
+  engineExecution: EngineExecution;
 };
 type CoreBootstrapInstance = {
   options: CoreBootstrapOptions;
@@ -76,8 +76,8 @@ describe("Electron main 入口", () => {
     expect(harness.calls.core_bootstraps).toHaveLength(1);
     expect(harness.calls.core_bootstraps[0]?.options.appRoot).toBe(process.cwd());
     expect(harness.calls.core_bootstraps[0]?.options.exposeApiGateway).toBe(true);
-    expect(harness.calls.core_bootstraps[0]?.options.workerExecution).toEqual(
-      create_test_worker_execution(),
+    expect(harness.calls.core_bootstraps[0]?.options.engineExecution).toEqual(
+      create_test_engine_execution(),
     );
     expect(harness.calls.log_window_options).toEqual([
       {
@@ -363,7 +363,7 @@ function create_index_harness(): {
       const entry = await import("./gui-entry");
       entry.run_gui_entry({
         desktopBundleDir: path.join(process.cwd(), "build", "dist-electron"),
-        workerExecution: create_test_worker_execution(),
+        engineExecution: create_test_engine_execution(),
       });
     },
     log_window_host,
@@ -378,13 +378,16 @@ function create_index_harness(): {
 }
 
 /**
- * 构造 GUI 启动测试使用的 worker 契约，断言入口层会原样传入 CoreBootstrap。
+ * 构造 GUI 启动测试使用的 Engine 执行契约，断言入口层会原样传入 CoreBootstrap。
  */
-function create_test_worker_execution(): WorkerPoolExecution {
+function create_test_engine_execution(): EngineExecution {
   return {
     kind: "worker_threads",
-    workerEntryUrl: pathToFileURL(
-      path.join(process.cwd(), "build", "dist-electron", "worker-entry.js"),
+    workUnitWorkerEntryUrl: pathToFileURL(
+      path.join(process.cwd(), "build", "dist-electron", "work-unit-worker-entry.js"),
+    ),
+    planningWorkerEntryUrl: pathToFileURL(
+      path.join(process.cwd(), "build", "dist-electron", "planning-worker-entry.js"),
     ),
   };
 }

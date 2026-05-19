@@ -33,7 +33,7 @@ export class TaskSnapshotBuilder {
 
   private readonly session_state: ProjectSessionState; // session_state 决定当前公开工程路径
 
-  private readonly projection_service: ProjectRuntimeProjectionService; // 分析覆盖率和 meta 读取复用项目投影口径
+  private readonly projection_service: ProjectRuntimeProjectionService; // projection_service 只负责 meta/revision 读取，快照热路径不扫大 section
 
   /**
    * 注入公开快照所需的三个权威来源，便于 Gateway 和任务命令共用同一口径
@@ -116,13 +116,10 @@ export class TaskSnapshotBuilder {
   }
 
   /**
-   * 分析快照把持久 extras 与当前 checkpoint 覆盖率合并，保持既有读取口径
+   * 分析快照只读取已提交进度 extras，运行中不再为高频 snapshot 扫描 items/checkpoint。
    */
   private build_analysis_progress_snapshot(meta: JsonRecord): MutableJsonRecord {
-    return this.normalize_progress_snapshot({
-      ...this.normalize_object(meta["analysis_extras"]),
-      ...this.build_analysis_status_summary(),
-    });
+    return this.normalize_progress_snapshot(this.normalize_object(meta["analysis_extras"]));
   }
 
   /**
@@ -134,17 +131,6 @@ export class TaskSnapshotBuilder {
       return {};
     }
     return this.projection_service.get_all_meta(state.projectPath);
-  }
-
-  /**
-   * 分析覆盖率只依赖当前 `.lg` 中的 items 与 checkpoint
-   */
-  private build_analysis_status_summary(): MutableJsonRecord {
-    const state = this.session_state.snapshot();
-    if (!state.loaded || state.projectPath === "") {
-      return { total_line: 0, processed_line: 0, error_line: 0, line: 0 };
-    }
-    return this.projection_service.build_analysis_status_summary(state.projectPath);
   }
 
   /**

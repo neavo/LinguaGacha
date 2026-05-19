@@ -6,7 +6,7 @@
 
 - `src/index.ts` 是 GUI / CLI 的唯一产品入口；CLI 只能由显式 `--cli` 标记触发，用户参数从 `--cli` 后开始读取，入口本身不持有业务服务。
 - `src/cli/` 是文件进出型命令适配层，负责参数解析、stdout / stderr、同步 job、临时工程生命周期和 JSONL 状态输出；它不承接 GUI 项目文件心智、renderer 协议或领域服务实现。
-- CLI 通过 `CoreBootstrap` 以 `exposeApiGateway=false` 启动 Core，不开放本机 HTTP Gateway，并关闭 Core 控制台日志，避免人类诊断文本污染 stdout JSONL；`run_cli_command` 只把产品入口提供的 `WorkerPoolExecution` 原样下传给 Core，不在 CLI、`CoreServices` 或 `WorkerPool` 内探测入口文件或执行模式。
+- CLI 通过 `CoreBootstrap` 以 `exposeApiGateway=false` 启动 Core，不开放本机 HTTP Gateway，并关闭 Core 控制台日志，避免人类诊断文本污染 stdout JSONL；`run_cli_command` 只把产品入口提供的 `EngineExecution` 原样下传给 Core，不在 CLI、`CoreServices`、`WorkUnitWorkerPool` 或 `PlanningWorkerPool` 内探测入口文件或执行模式。
 - Windows 发布包提供 Go 编译的轻量 `cli.exe`，只转发到同目录 `app.exe --cli` 并保留用户参数顺序；macOS 使用 `LinguaGacha --cli`，Linux AppImage 使用 `LinguaGacha.AppImage --cli`。
 - CLI 用户教程、长示例和语言说明不进入本文；`build_cli_help` 只输出当前可用命令的简短说明，并继续链接 Wiki。
 
@@ -38,7 +38,7 @@ sequenceDiagram
   participant Stdout as stdout JSONL
   participant Out as output-dir
 
-  Entry->>CLIEntry: --cli 后的 argv + appRoot + WorkerPoolExecution
+  Entry->>CLIEntry: --cli 后的 argv + appRoot + EngineExecution
   CLIEntry->>CLIEntry: help / version / parse command
   CLIEntry->>Runner: run_cli_command
   Runner->>Boot: exposeApiGateway=false + console log off
@@ -82,7 +82,7 @@ sequenceDiagram
 必须同步更新本文的改动：
 
 - 新增、删除、重命名 CLI 命令、参数、资源类型、资源扩展名、语言约束、输出路径或退出码语义。
-- 改 `src/index.ts` 的 `--cli` 分发、appRoot 解析、CLI 退出流程或 `WorkerPoolExecution` 下传方式。
+- 改 `src/index.ts` 的 `--cli` 分发、appRoot 解析、CLI 退出流程或 `EngineExecution` 下传方式。
 - 改 CLI 临时工程生命周期、默认预设关闭策略、资源写入、revision 推进、任务等待或导出链路。
 - 改 Windows `cli.exe`、Go launcher、afterPack 复制规则、macOS / Linux CLI 入口展示或构建脚本。
 - 改 CLI 相关验证要求时同步 [`docs/WORKFLOW.md`](WORKFLOW.md)；改 Core API、状态、数据库、任务引擎或 worker 执行契约时同步 [`docs/BACKEND.md`](BACKEND.md)。

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
-  build_worker_threads_execution_from_desktop_bundle_dir,
+  build_worker_threads_engine_execution_from_desktop_bundle_dir,
   resolve_desktop_bundle_dir_from_module_url,
 } from "./core/bootstrap/core-bundle-contract";
 
@@ -16,17 +16,17 @@ void run_product_entry();
  */
 async function run_product_entry(): Promise<void> {
   const desktop_bundle_dir = resolve_desktop_bundle_dir_from_module_url(import.meta.url); // desktop_bundle_dir 是产品入口所在的构建根目录。
-  const worker_execution =
-    build_worker_threads_execution_from_desktop_bundle_dir(desktop_bundle_dir); // worker_execution 把 worker_threads 入口契约注入后续启动链路。
+  const engine_execution =
+    build_worker_threads_engine_execution_from_desktop_bundle_dir(desktop_bundle_dir); // engine_execution 把 worker_threads 入口契约注入后续启动链路。
   if (should_run_cli()) {
     const { run_cli_entry } = await import("./cli/cli-entry");
     return exit_cli_process(
-      await run_cli_entry(resolve_cli_argv(), resolve_app_root(), worker_execution),
+      await run_cli_entry(resolve_cli_argv(), resolve_app_root(), engine_execution),
     );
   }
 
   const { run_gui_entry } = await import("./gui/gui-entry");
-  run_gui_entry({ desktopBundleDir: desktop_bundle_dir, workerExecution: worker_execution });
+  run_gui_entry({ desktopBundleDir: desktop_bundle_dir, engineExecution: engine_execution });
 }
 
 /**

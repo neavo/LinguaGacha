@@ -24,6 +24,7 @@ import {
   type ProjectSettingsSnapshot,
 } from "../../base/setting";
 import {
+  build_analysis_progress_snapshot,
   compute_project_prefilter_mutation,
   create_empty_translation_task_snapshot,
   type ProjectPrefilterMutationOutput,
@@ -762,8 +763,11 @@ export class ProjectLifecycleService {
       skip_duplicate_source_text_enable: args.project_settings.skip_duplicate_source_text_enable,
       prefilter_config: args.prefilter_output.prefilter_config as unknown as ApiJsonValue,
       translation_extras: args.prefilter_output.translation_extras as unknown as ApiJsonValue,
-      analysis_extras: {},
-      analysis_candidate_count: 0,
+      analysis_extras: build_analysis_progress_snapshot({
+        extras: args.prefilter_output.analysis.extras,
+        status_summary: args.prefilter_output.analysis.status_summary,
+      }) as unknown as ApiJsonValue,
+      analysis_candidate_count: args.prefilter_output.analysis.candidate_count,
     };
   }
 

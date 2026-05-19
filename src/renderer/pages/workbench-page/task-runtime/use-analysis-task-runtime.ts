@@ -53,6 +53,11 @@ type AnalysisTaskCommandPayload = {
   task?: Partial<AnalysisTaskSnapshot>;
 };
 
+type AnalysisCandidatesPayload = {
+  // 候选池只在导入动作前按需读取，不进入常驻 ProjectStore。
+  candidate_aggregate: Record<string, unknown>;
+};
+
 type PreparedAnalysisGlossaryImport = NonNullable<
   Awaited<ReturnType<typeof prepare_analysis_glossary_import>>
 >;
@@ -492,11 +497,15 @@ export function useAnalysisTaskRuntime(
         await run_modal_progress_toast({
           message: t("workbench_page.analysis_task.feedback.import_loading_toast"),
           task: async () => {
+            const candidate_payload = await api_fetch<AnalysisCandidatesPayload>(
+              "/api/project/analysis/candidates",
+            );
             const prepared_import = await prepare_analysis_glossary_import(
               project_store.getState(),
               {
                 action,
                 task_snapshot,
+                candidate_aggregate: candidate_payload.candidate_aggregate,
               },
             );
             if (prepared_import === null) {

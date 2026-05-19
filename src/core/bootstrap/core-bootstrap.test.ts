@@ -7,11 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NPM_INITIAL_CWD_ENV_NAME } from "./core-app-root-resolver";
 import { CoreBootstrap } from "./core-bootstrap";
 import { InternalInvariantError } from "../../shared/error";
-import type { WorkerPoolExecution } from "../engine/worker/worker-execution";
+import type { EngineExecution } from "../engine/core/engine-execution";
 
 let temp_dir = ""; // temp_dir 承载测试应用根和数据根，避免 bootstrap 日志写入真实工作区
 let original_initial_cwd: string | undefined; // original_initial_cwd 用于恢复 npm 启动目录，避免测试污染后续用例的应用根解析
-const DIRECT_WORKER_EXECUTION: WorkerPoolExecution = { kind: "direct" }; // bootstrap 测试只验证启动编排，不启动真实 worker_threads
+const IN_PROCESS_ENGINE_EXECUTION: EngineExecution = { kind: "in_process" }; // bootstrap 测试只验证启动编排，不启动真实 worker_threads
 
 /**
  * 读取 bootstrap 测试写出的日志文本，用于确认启动链路不再记录旧 database HTTP 服务
@@ -52,7 +52,7 @@ describe("CoreBootstrap", () => {
       appRoot: temp_dir,
       exposeApiGateway: true,
       openOutputFolder: noop_output_folder,
-      workerExecution: DIRECT_WORKER_EXECUTION,
+      engineExecution: IN_PROCESS_ENGINE_EXECUTION,
     });
 
     const start_result = await manager.start();
@@ -94,7 +94,7 @@ describe("CoreBootstrap", () => {
       appRoot: temp_dir,
       exposeApiGateway: true,
       openOutputFolder: noop_output_folder,
-      workerExecution: DIRECT_WORKER_EXECUTION,
+      engineExecution: IN_PROCESS_ENGINE_EXECUTION,
     });
 
     await manager.start();
@@ -127,7 +127,7 @@ describe("CoreBootstrap", () => {
       exposeApiGateway: false,
       logTargets: { console: false, window: false },
       openOutputFolder: noop_output_folder,
-      workerExecution: DIRECT_WORKER_EXECUTION,
+      engineExecution: IN_PROCESS_ENGINE_EXECUTION,
     });
 
     await manager.start();

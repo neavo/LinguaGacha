@@ -661,7 +661,6 @@ describe("createProjectStore", () => {
         analysis: {
           extras: {},
           candidate_count: 2,
-          candidate_aggregate: {},
           status_summary: {
             total_line: 3,
             processed_line: 1,
@@ -696,7 +695,6 @@ describe("createProjectStore", () => {
             error_line: 0,
           },
           candidate_count: 2,
-          candidate_aggregate: {},
           status_summary: {
             total_line: 3,
             processed_line: 1,
@@ -709,6 +707,15 @@ describe("createProjectStore", () => {
 
     expect(store.getState().project.path).toBe("E:/demo/next.lg");
     expect(store.getState().items.toRecordSnapshot()).toEqual({});
+    expect(store.getState().analysis).toMatchObject({
+      candidate_count: 2,
+      status_summary: {
+        total_line: 3,
+        processed_line: 1,
+        error_line: 0,
+        line: 1,
+      },
+    });
     expect(store.getState().revisions.projectRevision).toBe(11);
     expect(store.getState().revisions.sections.project).toBe(1);
     expect(store.getState().revisions.sections.analysis).toBe(9);
