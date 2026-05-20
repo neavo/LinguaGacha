@@ -1,3 +1,5 @@
+import { app, session } from "electron";
+
 import { CoreBootstrap } from "../core/bootstrap/core-bootstrap";
 import { run_cli_job } from "./job/cli-job-runner";
 import type { CLICommandOptions } from "./cli-parser";
@@ -13,10 +15,14 @@ export async function run_cli_command(
   command: CLICommandOptions,
   engine_execution: EngineExecution,
 ): Promise<void> {
+  await app.whenReady();
   const bootstrap = new CoreBootstrap({
     appRoot: app_root,
     exposeApiGateway: false,
     logTargets: { console: false, window: false },
+    systemProxyResolver: {
+      resolveProxy: (url) => session.defaultSession.resolveProxy(url),
+    },
     openOutputFolder: async () => undefined,
     engineExecution: engine_execution,
   });

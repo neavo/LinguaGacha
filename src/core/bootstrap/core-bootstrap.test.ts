@@ -138,6 +138,55 @@ describe("CoreBootstrap", () => {
       await manager.stop();
     }
   });
+
+  it("启动期按当前模型 URL 抓取一次系统代理快照", async () => {
+    fs.mkdirSync(path.join(temp_dir, "userdata"), { recursive: true });
+    fs.writeFileSync(
+      path.join(temp_dir, "userdata", "config.json"),
+      JSON.stringify({
+        activate_model_id: "openai-custom",
+        models: [
+          {
+            id: "openai-custom",
+            api_format: "OpenAI",
+            api_url: "https://api.example/v1/chat/completions",
+          },
+          {
+            id: "local-sakura",
+            api_format: "SakuraLLM",
+            api_url: "http://127.0.0.1:8080",
+          },
+        ],
+      }),
+      "utf-8",
+    );
+    const resolved_urls: string[] = []; // resolved_urls 记录启动期 resolveProxy 调用顺序，证明不会按请求反复探测
+    const manager = new CoreBootstrap({
+      appRoot: temp_dir,
+      exposeApiGateway: false,
+      logTargets: { console: false, window: false },
+      systemProxyResolver: {
+        resolveProxy: async (url) => {
+          resolved_urls.push(url);
+          return "DIRECT";
+        },
+      },
+      openOutputFolder: noop_output_folder,
+      engineExecution: IN_PROCESS_ENGINE_EXECUTION,
+    });
+
+    await manager.start();
+    try {
+      expect(resolved_urls).toEqual([
+        "https://api.example/v1",
+        "https://generativelanguage.googleapis.com",
+        "https://api.openai.com/v1",
+        "https://api.anthropic.com",
+      ]);
+    } finally {
+      await manager.stop();
+    }
+  });
 });
 
 async function noop_output_folder(_output_path: string): Promise<void> {}

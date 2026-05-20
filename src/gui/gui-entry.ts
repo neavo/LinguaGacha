@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow, session, shell } from "electron";
 import path from "node:path";
 
 import { CoreBootstrap } from "../core/bootstrap/core-bootstrap";
@@ -51,6 +51,9 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   const core_bootstrap = new CoreBootstrap({
     appRoot: app.isPackaged ? path.dirname(process.execPath) : process.cwd(),
     exposeApiGateway: true,
+    systemProxyResolver: {
+      resolveProxy: (url) => session.defaultSession.resolveProxy(url),
+    },
     openOutputFolder: open_output_folder,
     engineExecution: options.engineExecution,
   });

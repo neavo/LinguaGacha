@@ -10,6 +10,7 @@ type FakeWindow = { id: string };
 type CoreBootstrapOptions = {
   appRoot: string;
   exposeApiGateway: boolean;
+  systemProxyResolver?: { resolveProxy: (url: string) => Promise<string> };
   openOutputFolder: (output_path: string) => Promise<void>;
   engineExecution: EngineExecution;
 };
@@ -76,6 +77,12 @@ describe("Electron main 入口", () => {
     expect(harness.calls.core_bootstraps).toHaveLength(1);
     expect(harness.calls.core_bootstraps[0]?.options.appRoot).toBe(process.cwd());
     expect(harness.calls.core_bootstraps[0]?.options.exposeApiGateway).toBe(true);
+    await expect(
+      harness.calls.core_bootstraps[0]?.options.systemProxyResolver?.resolveProxy(
+        "https://api.example/v1",
+      ),
+    ).resolves.toBe("DIRECT");
+    expect(harness.calls.proxy_resolve_urls).toEqual(["https://api.example/v1"]);
     expect(harness.calls.core_bootstraps[0]?.options.engineExecution).toEqual(
       create_test_engine_execution(),
     );
@@ -186,6 +193,7 @@ function create_index_harness(): {
     log_window_options: LogWindowOptions[];
     main_errors: Array<{ message: string; context: Record<string, unknown> }>;
     main_window_options: MainWindowOptions[];
+    proxy_resolve_urls: string[];
     remote_debugging_configured: number;
     renderer_public_path_dirs: string[];
     show_error_boxes: Array<[string, string]>;
@@ -222,6 +230,7 @@ function create_index_harness(): {
     log_window_options: [] as LogWindowOptions[],
     main_errors: [] as Array<{ message: string; context: Record<string, unknown> }>,
     main_window_options: [] as MainWindowOptions[],
+    proxy_resolve_urls: [] as string[],
     remote_debugging_configured: 0,
     renderer_public_path_dirs: [] as string[],
     show_error_boxes: [] as Array<[string, string]>,
@@ -282,6 +291,14 @@ function create_index_harness(): {
       },
       shell: {
         openPath: async () => open_path_result,
+      },
+      session: {
+        defaultSession: {
+          resolveProxy: async (url: string) => {
+            calls.proxy_resolve_urls.push(url);
+            return "DIRECT";
+          },
+        },
       },
     };
   });

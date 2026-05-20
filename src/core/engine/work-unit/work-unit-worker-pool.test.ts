@@ -88,9 +88,9 @@ describe("WorkUnitWorkerPool", () => {
     const worker_path = path.join(app_root, "test-work-unit-worker-entry.mjs");
     await writeFile(
       worker_path,
-      `import { parentPort } from "node:worker_threads";
+      `import { parentPort, workerData } from "node:worker_threads";
 parentPort?.on("message", (message) => {
-  parentPort?.postMessage({ id: message.id, ok: true, data: { type: message.type, from_worker: true } });
+  parentPort?.postMessage({ id: message.id, ok: true, data: { type: message.type, from_worker: true, systemProxySnapshot: workerData.systemProxySnapshot } });
 });
 `,
       "utf-8",
@@ -102,13 +102,32 @@ parentPort?.on("message", (message) => {
         workUnitWorkerEntryUrl: pathToFileURL(worker_path),
         planningWorkerEntryUrl: pathToFileURL(worker_path),
       },
+      systemProxySnapshot: {
+        routes: {
+          "https://api.example": {
+            kind: "proxy",
+            uri: "http://127.0.0.1:7890/",
+          },
+        },
+      },
       workerCount: 1,
     });
 
     try {
       await expect(
         pool.translate_single({ text: "こんにちは" }, new AbortController().signal),
-      ).resolves.toEqual({ type: "translate_single", from_worker: true });
+      ).resolves.toEqual({
+        type: "translate_single",
+        from_worker: true,
+        systemProxySnapshot: {
+          routes: {
+            "https://api.example": {
+              kind: "proxy",
+              uri: "http://127.0.0.1:7890/",
+            },
+          },
+        },
+      });
     } finally {
       await pool.dispose();
     }

@@ -636,6 +636,7 @@ describe("ApiGatewayServer", () => {
       appSettingService: new AppSettingService(paths),
       database,
       logManager: log_manager,
+      systemProxySnapshot: null,
       openOutputFolder: noop_output_folder,
       engineExecution: IN_PROCESS_ENGINE_EXECUTION,
     });
@@ -678,6 +679,7 @@ describe("ApiGatewayServer", () => {
       appSettingService: new AppSettingService(paths),
       database,
       logManager: log_manager,
+      systemProxySnapshot: null,
       openOutputFolder: noop_output_folder,
       engineExecution: IN_PROCESS_ENGINE_EXECUTION,
     });

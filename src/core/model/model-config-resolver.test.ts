@@ -1,6 +1,11 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import {
+  read_model_preset_records,
   read_model_records,
   resolve_active_model,
   resolve_active_model_id,
@@ -50,5 +55,27 @@ describe("model-config-resolver", () => {
 
     expect(model).toEqual({ id: "model-1", name: "原始模型" });
     expect(read_model_records(config)).toEqual([{ id: "model-1", name: "原始模型" }]);
+  });
+
+  it("读取内置模型预设时过滤非对象项并兼容缺失文件", () => {
+    const preset_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-model-preset-"));
+    const preset_dir = path.join(preset_root, "resource", "model", "preset");
+    const paths = {
+      get_model_preset_dir: () => preset_dir,
+    };
+    try {
+      fs.mkdirSync(preset_dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(preset_dir, "preset_model_builtin.json"),
+        JSON.stringify([{ id: "preset-1" }, null, "bad", ["bad"]]),
+        "utf-8",
+      );
+
+      expect(read_model_preset_records(paths)).toEqual([{ id: "preset-1" }]);
+      fs.rmSync(path.join(preset_dir, "preset_model_builtin.json"));
+      expect(read_model_preset_records(paths)).toEqual([]);
+    } finally {
+      fs.rmSync(preset_root, { force: true, recursive: true });
+    }
   });
 });

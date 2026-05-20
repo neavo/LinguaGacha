@@ -13,6 +13,7 @@ import { LLMClientPolicy } from "../llm/llm-client-policy";
 import { Model, type ModelApiFormat } from "../../base/model";
 import { normalize_setting_snapshot } from "../../base/setting";
 import {
+  read_model_preset_records,
   read_model_records,
   resolve_active_model_id,
   type ModelRecord,
@@ -649,14 +650,7 @@ export class ModelService {
    * 读取内置模型预设，保持 UI 语言不影响模型集合
    */
   private load_preset_models(): ModelRecord[] {
-    const preset_path = path.join(this.paths.get_model_preset_dir(), "preset_model_builtin.json");
-    const data = this.read_json_file(preset_path, []);
-    return Array.isArray(data)
-      ? data.filter(
-          (item): item is ModelRecord =>
-            typeof item === "object" && item !== null && !Array.isArray(item),
-        )
-      : [];
+    return read_model_preset_records(this.paths, this.native_fs);
   }
 
   /**
