@@ -220,6 +220,7 @@ function create_runtime_fixture(): RuntimeFixture {
           revisions: {
             sections: {
               items: 7,
+              proofreading: 1,
             },
           },
           items: createProjectItemIndex({
@@ -1318,5 +1319,126 @@ describe("useProofreadingPageState", () => {
       "error",
       "proofreading_page.feedback.retranslate_failed",
     );
+  });
+
+  it("确认清空译文时只提交目标条目和 revision 锁", async () => {
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
+      },
+    };
+    await render_hook();
+
+    vi.mocked(api_fetch).mockResolvedValueOnce({ accepted: true, changes: [] });
+    proofreading_runtime_client_fixture.current.read_proofreading_items_by_row_ids.mockClear();
+
+    await act(async () => {
+      latest_state?.request_clear_translation_row_ids(["1"]);
+    });
+    await act(async () => {
+      await latest_state?.confirm_pending_mutation();
+    });
+
+    expect(api_fetch).toHaveBeenCalledWith("/api/project/proofreading/clear-translations", {
+      item_ids: [1],
+      expected_section_revisions: {
+        items: 7,
+        proofreading: 1,
+      },
+    });
+    expect(runtime_fixture.current.apply_project_mutation_result).toHaveBeenCalledWith({
+      accepted: true,
+      changes: [],
+    });
+    expect(
+      proofreading_runtime_client_fixture.current.read_proofreading_items_by_row_ids,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("编辑弹窗保存时直接读取 ProjectStore 当前行，不再回读 worker item", async () => {
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
+      },
+    };
+    await render_hook();
+
+    await act(async () => {
+      await latest_state?.open_edit_dialog("1");
+    });
+    proofreading_runtime_client_fixture.current.read_proofreading_items_by_row_ids.mockClear();
+    vi.mocked(api_fetch).mockResolvedValueOnce({ accepted: true, changes: [] });
+
+    await act(async () => {
+      latest_state?.update_dialog_draft("新译文");
+    });
+    await act(async () => {
+      await latest_state?.save_dialog_entry();
+    });
+
+    expect(api_fetch).toHaveBeenCalledWith("/api/project/proofreading/save-item", {
+      item_id: 1,
+      dst: "新译文",
+      expected_section_revisions: {
+        items: 7,
+        proofreading: 1,
+      },
+    });
+    expect(
+      proofreading_runtime_client_fixture.current.read_proofreading_items_by_row_ids,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("确认设置翻译状态时提交目标状态并保持译文由后端保留", async () => {
+    await render_hook();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      proofreading_change_signal: {
+        seq: 1,
+        mode: "full",
+        item_ids: [],
+        updated_sections: ["project", "items", "quality"],
+      },
+    };
+    await render_hook();
+
+    vi.mocked(api_fetch).mockResolvedValueOnce({ accepted: true, changes: [] });
+    proofreading_runtime_client_fixture.current.read_proofreading_items_by_row_ids.mockClear();
+
+    await act(async () => {
+      latest_state?.request_set_translation_status_row_ids(["1"], "PROCESSED");
+    });
+    await act(async () => {
+      await latest_state?.confirm_pending_mutation();
+    });
+
+    expect(api_fetch).toHaveBeenCalledWith("/api/project/proofreading/set-status", {
+      item_ids: [1],
+      status: "PROCESSED",
+      expected_section_revisions: {
+        items: 7,
+        proofreading: 1,
+      },
+    });
+    expect(runtime_fixture.current.apply_project_mutation_result).toHaveBeenCalledWith({
+      accepted: true,
+      changes: [],
+    });
+    expect(
+      proofreading_runtime_client_fixture.current.read_proofreading_items_by_row_ids,
+    ).not.toHaveBeenCalled();
   });
 });

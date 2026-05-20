@@ -44,6 +44,7 @@ import {
   PROJECT_CHANGE_EVENT_TOPIC,
   PROJECT_DATA_SECTIONS,
   normalizeProjectChangePayloadMode,
+  type ProjectChangeItemFieldPatch,
   type ProjectChangePayloadMode,
   type ProjectChangeJsonRecord,
 } from "@shared/project/event";
@@ -67,6 +68,7 @@ type ProofreadingChangeSignal = {
   mode: ProofreadingChangeMode;
   updated_sections: ProjectStoreStage[];
   item_ids: Array<number | string>;
+  field_patch: ProjectChangeItemFieldPatch | null;
 };
 
 type ProofreadingChangeSignalInput = Omit<ProofreadingChangeSignal, "seq">;
@@ -205,6 +207,7 @@ const DEFAULT_PROOFREADING_CHANGE_SIGNAL: ProofreadingChangeSignal = {
   mode: "full",
   updated_sections: [],
   item_ids: [],
+  field_patch: null,
 };
 
 const DEFAULT_WORKBENCH_CHANGE_SIGNAL: WorkbenchChangeSignal = {
@@ -308,6 +311,24 @@ function normalize_string_array(value: unknown): string[] {
   return [...new Set(value.map((item) => String(item ?? "").trim()).filter((item) => item !== ""))];
 }
 
+function normalize_project_change_item_field_patch(value: unknown): ProjectChangeItemFieldPatch {
+  if (!is_record(value)) {
+    return {};
+  }
+  const patch: ProjectChangeItemFieldPatch = {};
+  if (typeof value.dst === "string") {
+    patch.dst = value.dst;
+  }
+  if (typeof value.status === "string") {
+    patch.status = value.status;
+  }
+  const retry_count = Number(value.retry_count);
+  if (Number.isFinite(retry_count)) {
+    patch.retry_count = Math.trunc(retry_count);
+  }
+  return patch;
+}
+
 function normalize_project_change_event(
   payload: ProjectChangeEventPayload,
 ): ProjectStoreChangeEvent | null {
@@ -323,6 +344,7 @@ function normalize_project_change_event(
     ? {
         payloadMode: normalizeProjectChangePayloadMode(payload.items.payloadMode),
         upsert: normalize_record_map(payload.items.upsert),
+        fieldPatch: normalize_project_change_item_field_patch(payload.items.fieldPatch),
         changedIds: normalize_number_array(payload.items.changedIds),
         deleteIds: normalize_number_array(payload.items.deleteIds),
       }
@@ -455,6 +477,49 @@ function collect_project_change_item_ids(event: ProjectStoreChangeEvent): number
   return [...new Set(item_ids)];
 }
 
+function clone_project_change_item_field_patch(
+  patch: ProjectChangeItemFieldPatch,
+): ProjectChangeItemFieldPatch {
+  return {
+    ...(patch.dst === undefined ? {} : { dst: patch.dst }),
+    ...(patch.status === undefined ? {} : { status: patch.status }),
+    ...(patch.retry_count === undefined ? {} : { retry_count: patch.retry_count }),
+  };
+}
+
+function are_project_change_item_field_patches_equal(
+  left: ProjectChangeItemFieldPatch,
+  right: ProjectChangeItemFieldPatch,
+): boolean {
+  return (
+    left.dst === right.dst && left.status === right.status && left.retry_count === right.retry_count
+  );
+}
+
+// 只有同一窗口内所有 item delta 都是同一个字段 patch 时，校对 worker 才走零 DTO 增量。
+function collect_project_change_item_field_patch(
+  event: ProjectStoreChangeEvent,
+): ProjectChangeItemFieldPatch | null {
+  let field_patch: ProjectChangeItemFieldPatch | null = null;
+  for (const operation of event.operations) {
+    if (operation.items === undefined) {
+      continue;
+    }
+    if (operation.items.payloadMode !== "field-patch" || operation.items.fieldPatch === undefined) {
+      return null;
+    }
+    const next_patch = clone_project_change_item_field_patch(operation.items.fieldPatch);
+    if (
+      field_patch !== null &&
+      !are_project_change_item_field_patches_equal(field_patch, next_patch)
+    ) {
+      return null;
+    }
+    field_patch = next_patch;
+  }
+  return field_patch;
+}
+
 // ids-only 只给 item id，renderer 必须按 id 补读公开行后再写 ProjectStore
 function collect_project_change_ids_only_item_ids(event: ProjectStoreChangeEvent): number[] {
   const item_ids: number[] = [];
@@ -504,6 +569,7 @@ function resolve_proofreading_change_signal(args: {
         mode: "full",
         updated_sections,
         item_ids: [],
+        field_patch: null,
       };
     }
 
@@ -513,6 +579,7 @@ function resolve_proofreading_change_signal(args: {
         mode: "noop",
         updated_sections,
         item_ids: [],
+        field_patch: null,
       };
     }
 
@@ -530,6 +597,7 @@ function resolve_proofreading_change_signal(args: {
       mode: "full",
       updated_sections,
       item_ids: [],
+      field_patch: null,
     };
   }
 
@@ -539,6 +607,7 @@ function resolve_proofreading_change_signal(args: {
       mode: "noop",
       updated_sections,
       item_ids: [],
+      field_patch: null,
     };
   }
 
@@ -553,6 +622,7 @@ function resolve_proofreading_change_signal(args: {
       mode: "delta",
       updated_sections,
       item_ids,
+      field_patch: collect_project_change_item_field_patch(change_event),
     };
   }
 
@@ -562,6 +632,7 @@ function resolve_proofreading_change_signal(args: {
       mode: "full",
       updated_sections,
       item_ids: [],
+      field_patch: null,
     };
   }
 
@@ -690,11 +761,32 @@ function resolve_proofreading_change_signal_batch(
     : signals.some((signal) => signal.mode === "delta")
       ? "delta"
       : "noop";
+  const delta_signals = signals.filter((signal) => signal.mode === "delta");
+  let field_patch: ProjectChangeItemFieldPatch | null = null;
+  let can_use_field_patch = mode === "delta" && delta_signals.length > 0;
+  for (const signal of delta_signals) {
+    if (signal.field_patch === null) {
+      can_use_field_patch = false;
+      break;
+    }
+    if (field_patch === null) {
+      field_patch = clone_project_change_item_field_patch(signal.field_patch);
+      continue;
+    }
+    if (!are_project_change_item_field_patches_equal(field_patch, signal.field_patch)) {
+      can_use_field_patch = false;
+      break;
+    }
+  }
+  if (!can_use_field_patch) {
+    field_patch = null;
+  }
   return {
     reason,
     mode,
     updated_sections: collect_unique_updated_sections(events),
     item_ids: mode === "delta" ? [...new Set(signals.flatMap((signal) => signal.item_ids))] : [],
+    field_patch,
   };
 }
 
@@ -1022,6 +1114,10 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         mode: args.mode,
         updated_sections: [...args.updated_sections],
         item_ids: [...args.item_ids],
+        field_patch:
+          args.field_patch === null
+            ? null
+            : clone_project_change_item_field_patch(args.field_patch),
       }));
     },
     [],

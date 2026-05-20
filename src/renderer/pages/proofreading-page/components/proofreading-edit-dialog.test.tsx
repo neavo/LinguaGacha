@@ -15,15 +15,18 @@ vi.mock("@/app/locale/locale-provider", () => {
         t: (key: string) => {
           const messages: Record<string, string> = {
             "proofreading_page.action.cancel": "取消",
+            "proofreading_page.action.clear_translation": "清空译文",
             "proofreading_page.action.retranslate": "重新翻译",
-            "proofreading_page.action.reset_translation": "重置翻译状态",
+            "proofreading_page.action.set_translation_status": "设置翻译状态",
             "proofreading_page.action.save": "保存",
             "proofreading_page.dialog.edit_title": "编辑条目",
             "proofreading_page.fields.source": "原文",
             "proofreading_page.fields.status": "状态",
             "proofreading_page.fields.translation": "译文",
             "proofreading_page.glossary.miss": "术语全部失效",
-            "proofreading_page.status.processed": "翻译完成",
+            "proofreading_page.status.excluded": "已排除",
+            "proofreading_page.status.none": "等待翻译",
+            "proofreading_page.status.processed": "翻译成功",
             "proofreading_page.tooltip.glossary_applied_terms": "生效",
             "proofreading_page.tooltip.glossary_failed_terms": "未生效",
           };
@@ -66,6 +69,16 @@ vi.mock("@/widgets/app-page-dialog/app-page-dialog", () => {
         </div>
       );
     },
+  };
+});
+
+vi.mock("@/widgets/app-dropdown-menu/app-dropdown-menu", () => {
+  return {
+    AppDropdownMenu: (props: { children: ReactNode }) => <div>{props.children}</div>,
+    AppDropdownMenuContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
+    AppDropdownMenuGroup: (props: { children: ReactNode }) => <div>{props.children}</div>,
+    AppDropdownMenuItem: (props: { children: ReactNode }) => <button>{props.children}</button>,
+    AppDropdownMenuTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
   };
 });
 
@@ -140,7 +153,8 @@ describe("ProofreadingEditDialog", () => {
           on_save={async () => {}}
           on_close={() => {}}
           on_request_retranslate={() => {}}
-          on_request_reset={() => {}}
+          on_request_clear_translation={() => {}}
+          on_request_set_translation_status={() => {}}
         />,
       );
     });

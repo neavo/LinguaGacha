@@ -195,6 +195,60 @@ describe("ProjectChangeEventAdapter", () => {
     });
   });
 
+  it("字段级 item patch 作为后端事实增量发布且不回读完整 item", () => {
+    const session_state = new ProjectSessionState();
+    session_state.mark_loaded("E:/Project/demo.lg");
+    const build_item_records_by_ids = vi.fn(() => {
+      throw new Error("字段 patch 不应回读完整 item DTO");
+    });
+    const projection_service = {
+      ...create_projection_service({
+        meta: {
+          "project_runtime_revision.items": 9,
+        },
+      }),
+      build_item_records_by_ids,
+    } as unknown as ProjectRuntimeProjectionService;
+    const adapter = new ProjectChangeEventAdapter(
+      {} as ProjectDatabase,
+      session_state,
+      projection_service,
+    );
+
+    const event = adapter.adapt_project_change({
+      targetProjectPath: "E:/Project/demo.lg",
+      source: "proofreading_set_status",
+      updatedSections: ["items", "proofreading"],
+      items: {
+        payloadMode: "field-patch",
+        changedIds: [1, "2", 2, -1],
+        fieldPatch: {
+          status: "PROCESSED",
+          retry_count: 0,
+          dst: 123,
+        },
+      },
+    });
+
+    expect(event).toMatchObject({
+      source: "proofreading_set_status",
+      updatedSections: ["items", "proofreading"],
+      sectionRevisions: {
+        items: 9,
+        proofreading: 0,
+      },
+      items: {
+        payloadMode: "field-patch",
+        changedIds: [1, 2],
+        fieldPatch: {
+          status: "PROCESSED",
+          retry_count: 0,
+        },
+      },
+    });
+    expect(build_item_records_by_ids).not.toHaveBeenCalled();
+  });
+
   function create_projection_service(options: {
     meta: ProjectRuntimeProjectionJsonRecord;
     item_records?: ProjectRuntimeProjectionJsonRecord[];

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { ProjectItemPublicRecord } from "@base/item";
-import type { ProjectChangeJsonRecord } from "@shared/project/event";
+import type { ProjectChangeItemFieldPatch, ProjectChangeJsonRecord } from "@shared/project/event";
 
 import {
   createProjectStore,
@@ -67,6 +67,20 @@ function create_items_delta_operation(args: {
           }
         : {}),
       ...(delete_ids.length > 0 ? { deleteIds: delete_ids } : {}),
+    },
+  };
+}
+
+// field-patch 由后端提交后生成，只携带受限字段增量而非完整 DTO
+function create_items_field_patch_operation(args: {
+  changedIds: Array<number | string>;
+  fieldPatch: ProjectChangeItemFieldPatch;
+}): ProjectStoreChangeOperation {
+  return {
+    items: {
+      payloadMode: "field-patch",
+      changedIds: args.changedIds.map((item_id) => Number(item_id)),
+      fieldPatch: args.fieldPatch,
     },
   };
 }
@@ -407,6 +421,67 @@ describe("createProjectStore", () => {
         files: 3,
         items: 5,
       },
+    });
+  });
+
+  it("消费后端字段级 item patch 并保留未触碰字段", () => {
+    const store = createProjectStore();
+
+    apply_store_sections(store, {
+      projectRevision: 4,
+      sectionRevisions: {
+        project: 1,
+        items: 4,
+      },
+      sections: {
+        project: { path: "E:/demo/demo.lg", loaded: true },
+        items: {
+          1: create_test_item({
+            item_id: 1,
+            src: "原文",
+            dst: "旧译文",
+            status: "NONE",
+            retry_count: 3,
+          }),
+          2: create_test_item({ item_id: 2, dst: "保留译文", status: "EXCLUDED" }),
+        },
+      },
+    });
+
+    const result = store.applyProjectChange({
+      source: "proofreading_set_status",
+      projectPath: "E:/demo/demo.lg",
+      projectRevision: 5,
+      updatedSections: ["items", "proofreading"],
+      sectionRevisions: {
+        items: 5,
+        proofreading: 2,
+      },
+      operations: [
+        create_items_field_patch_operation({
+          changedIds: [1],
+          fieldPatch: {
+            status: "PROCESSED",
+            retry_count: 0,
+          },
+        }),
+      ],
+    });
+
+    expect(store.getState().items.get(1)).toEqual(
+      create_test_item({
+        item_id: 1,
+        src: "原文",
+        dst: "旧译文",
+        status: "PROCESSED",
+        retry_count: 0,
+      }),
+    );
+    expect(store.getState().items.get(2)?.status).toBe("EXCLUDED");
+    expect(result.itemDelta).toEqual({
+      upsertItemIds: [1],
+      deleteItemIds: [],
+      fullReplace: false,
     });
   });
 

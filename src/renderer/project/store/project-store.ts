@@ -10,7 +10,7 @@ import {
   type ProjectDataSectionRevisions,
 } from "@shared/project/event";
 import {
-  applyProjectItemIndexDelta,
+  applyProjectItemIndexChange,
   cloneProjectItemIndex,
   createProjectItemIndex,
   type ProjectItemIndex,
@@ -564,12 +564,12 @@ function applyItemsPayloadToState(
   state: ProjectStoreState,
   payload: ProjectChangeItemsPayload,
 ): ProjectStoreState {
-  if (payload.payloadMode !== "canonical-delta") {
+  if (payload.payloadMode !== "canonical-delta" && payload.payloadMode !== "field-patch") {
     return state;
   }
   return {
     ...state,
-    items: applyProjectItemIndexDelta(state.items, payload),
+    items: applyProjectItemIndexChange(state.items, payload),
   };
 }
 

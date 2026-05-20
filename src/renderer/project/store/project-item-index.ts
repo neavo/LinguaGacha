@@ -1,6 +1,10 @@
-import { normalize_project_item_public_record, type ProjectItemPublicRecord } from "@base/item";
+import {
+  is_item_status,
+  normalize_project_item_public_record,
+  type ProjectItemPublicRecord,
+} from "@base/item";
 import { InternalInvariantError } from "@shared/error";
-import type { ProjectChangeItemsPayload } from "@shared/project/event";
+import type { ProjectChangeItemFieldPatch, ProjectChangeItemsPayload } from "@shared/project/event";
 
 /**
  * renderer 内共享的 item 只读索引；页面只能通过方法读取当前事实，不能把它当普通对象改写。
@@ -123,24 +127,62 @@ export function cloneProjectItemIndex(index: ProjectItemIndex): ProjectItemIndex
   return new MutableProjectItemIndex(new Map(index.entries()));
 }
 
+function apply_item_field_patch(
+  item: ProjectItemPublicRecord,
+  patch: ProjectChangeItemFieldPatch | undefined,
+): ProjectItemPublicRecord | null {
+  if (patch === undefined) {
+    return null;
+  }
+  const next_item: ProjectItemPublicRecord = { ...item };
+  let touched = false;
+  if (typeof patch.dst === "string" && patch.dst !== item.dst) {
+    next_item.dst = patch.dst;
+    touched = true;
+  }
+  if (is_item_status(patch.status) && patch.status !== item.status) {
+    next_item.status = patch.status;
+    touched = true;
+  }
+  if (typeof patch.retry_count === "number" && patch.retry_count !== item.retry_count) {
+    next_item.retry_count = patch.retry_count;
+    touched = true;
+  }
+  return touched ? next_item : null;
+}
+
 /**
- * canonical item delta 只触碰 upsert 与 tombstone 行，并返回新的索引包装器触发页面依赖更新。
+ * item 行级变更只触碰 upsert、field-patch 与 tombstone 行，并返回新包装器触发页面依赖更新。
  */
-export function applyProjectItemIndexDelta(
+export function applyProjectItemIndexChange(
   index: ProjectItemIndex,
   payload: ProjectChangeItemsPayload,
 ): ProjectItemIndex {
-  if (payload.payloadMode !== "canonical-delta") {
-    return index;
-  }
-
   const records = read_index_records(index);
   let touched = false;
 
-  for (const item of Object.values(payload.upsert ?? {})) {
-    const normalized_item = normalize_project_item_record(item);
-    records.set(String(normalized_item.item_id), normalized_item);
-    touched = true;
+  if (payload.payloadMode === "canonical-delta") {
+    for (const item of Object.values(payload.upsert ?? {})) {
+      const normalized_item = normalize_project_item_record(item);
+      records.set(String(normalized_item.item_id), normalized_item);
+      touched = true;
+    }
+  }
+
+  if (payload.payloadMode === "field-patch") {
+    for (const item_id of payload.changedIds ?? []) {
+      const key = String(item_id);
+      const current_item = records.get(key);
+      if (current_item === undefined) {
+        continue;
+      }
+      const patched_item = apply_item_field_patch(current_item, payload.fieldPatch);
+      if (patched_item === null) {
+        continue;
+      }
+      records.set(key, patched_item);
+      touched = true;
+    }
   }
 
   for (const item_id of payload.deleteIds ?? []) {

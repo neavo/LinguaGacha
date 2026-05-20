@@ -8,22 +8,37 @@ import {
 import { ProjectChangePublisher } from "../project/project-change-publisher";
 import { ProjectSessionState } from "../project/project-session-state";
 import { Item } from "../../base/item";
-import type { ProjectMutationResult } from "../../shared/project/event";
-import {
-  build_item_view_map,
-  build_public_item_map,
-  build_translation_extras_from_items,
-  create_empty_translation_task_snapshot,
-} from "../project/project-mutation-state";
+import type {
+  ProjectChangeItemFieldPatch,
+  ProjectChangeItemsPayload,
+  ProjectMutationResult,
+} from "../../shared/project/event";
+import { create_empty_translation_task_snapshot } from "../project/project-mutation-state";
 import { compile_text_pattern, replace_text_pattern } from "../../shared/text/text-pattern";
 import * as AppErrors from "../../shared/error";
+import { is_task_progress_status } from "../../shared/task";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
+const PROOFREADING_MANUAL_STATUS_CODES = ["NONE", "PROCESSED", "EXCLUDED"] as const; // 后端只接受菜单显式暴露的人工可写状态
+
+type ProofreadingManualStatus = (typeof PROOFREADING_MANUAL_STATUS_CODES)[number];
+
 type ProofreadingMutationContext = {
   revision_context: ProjectMutationRevisionContext; // revision guard 快照是本次事务 bump 的唯一基线
-  current_by_id: Map<number, MutableJsonRecord>; // 当前数据库事实索引，后端 mutation 只在它上面派生最终写入
+};
+
+type ProofreadingItemChange = {
+  current: MutableJsonRecord; // 数据库提交前的行事实，用于派生统计 delta
+  next: MutableJsonRecord; // 数据库将要写入的最终行事实
+};
+
+type TranslationProgressCounters = {
+  total_line: number;
+  processed_line: number;
+  error_line: number;
+  line: number;
 };
 
 /**
@@ -57,17 +72,24 @@ export class ProofreadingService {
   }
 
   /**
-   * 保存批量重置结果，renderer 只提交目标 item_ids
-   */
-  public async save_all(request: JsonRecord): Promise<ProjectMutationResult> {
-    return this.persist_reset_items(request);
-  }
-
-  /**
    * 保存批量替换结果，替换语义在后端基于当前数据库事实执行
    */
   public async replace_all(request: JsonRecord): Promise<ProjectMutationResult> {
     return this.persist_replace_all(request);
+  }
+
+  /**
+   * 清空目标译文；状态和重试计数属于独立用户意图，不能在这里被隐式修改
+   */
+  public async clear_translations(request: JsonRecord): Promise<ProjectMutationResult> {
+    return this.persist_clear_translations(request);
+  }
+
+  /**
+   * 设置人工翻译状态；状态变更会清除重试计数，但不触碰译文内容
+   */
+  public async set_translation_status(request: JsonRecord): Promise<ProjectMutationResult> {
+    return this.persist_set_translation_status(request);
   }
 
   /**
@@ -77,7 +99,7 @@ export class ProofreadingService {
     const project_path = await this.require_loaded_project_path();
     const context = this.prepare_mutation_context(project_path, request);
     const item_id = this.parse_integer_or_throw(request["item_id"]);
-    const item = context.current_by_id.get(item_id);
+    const item = this.get_item_mutation_facts_by_ids(project_path, [item_id]).get(item_id);
     if (item === undefined) {
       throw new AppErrors.RequestValidationError({
         diagnostic_context: { reason: "item_not_found", item_id },
@@ -87,8 +109,12 @@ export class ProofreadingService {
     if (this.are_items_equal(item, next_item)) {
       return { accepted: true, changes: [] };
     }
-    context.current_by_id.set(item_id, next_item);
-    return this.persist_changed_items(project_path, context, [next_item]);
+    const field_patch = this.build_item_field_patch(item, next_item, ["dst", "status"]);
+    return this.persist_field_patch_items(project_path, context, {
+      changes: [{ current: item, next: next_item }],
+      field_patch,
+      update_translation_extras: true,
+    });
   }
 
   /**
@@ -97,6 +123,7 @@ export class ProofreadingService {
   private async persist_replace_all(request: JsonRecord): Promise<ProjectMutationResult> {
     const project_path = await this.require_loaded_project_path();
     const context = this.prepare_mutation_context(project_path, request);
+    const item_ids = this.normalize_item_ids(request["item_ids"]);
     const pattern = compile_text_pattern({
       source_text: String(request["search_text"] ?? ""),
       mode: (request["is_regex"] ?? false) ? "regex" : "literal",
@@ -107,9 +134,10 @@ export class ProofreadingService {
     if (pattern === null) {
       return { accepted: true, changes: [] };
     }
-    const changed_items: MutableJsonRecord[] = [];
-    for (const item_id of this.normalize_item_ids(request["item_ids"])) {
-      const item = context.current_by_id.get(item_id);
+    const current_by_id = this.get_items_by_ids(project_path, item_ids);
+    const changes: ProofreadingItemChange[] = [];
+    for (const item_id of item_ids) {
+      const item = current_by_id.get(item_id);
       if (item === undefined) {
         continue;
       }
@@ -123,37 +151,83 @@ export class ProofreadingService {
         continue;
       }
       const next_item = this.apply_manual_dst(item, replace_result.text);
-      context.current_by_id.set(item_id, next_item);
-      changed_items.push(next_item);
+      changes.push({ current: item, next: next_item });
     }
-    return this.persist_changed_items(project_path, context, changed_items);
+    return this.persist_changed_items(project_path, context, {
+      changes,
+      items_payload: {
+        payloadMode: "canonical-delta",
+        changedIds: this.collect_item_ids(changes.map((change) => change.next)),
+      },
+      update_translation_extras: true,
+    });
   }
 
   /**
-   * 批量重置只清空目标 item 的译文、状态和重试计数
+   * 批量清空译文只改 dst，保留 status 和 retry_count 供用户手动判定
    */
-  private async persist_reset_items(request: JsonRecord): Promise<ProjectMutationResult> {
+  private async persist_clear_translations(request: JsonRecord): Promise<ProjectMutationResult> {
     const project_path = await this.require_loaded_project_path();
     const context = this.prepare_mutation_context(project_path, request);
-    const changed_items: MutableJsonRecord[] = [];
-    for (const item_id of this.normalize_item_ids(request["item_ids"])) {
-      const item = context.current_by_id.get(item_id);
+    const item_ids = this.normalize_item_ids(request["item_ids"]);
+    const current_by_id = this.get_item_mutation_facts_by_ids(project_path, item_ids);
+    const changes: ProofreadingItemChange[] = [];
+    for (const item_id of item_ids) {
+      const item = current_by_id.get(item_id);
       if (item === undefined) {
         continue;
       }
       const next_item = {
         ...item,
         dst: "",
-        status: "NONE",
+      };
+      if (this.are_items_equal(item, next_item)) {
+        continue;
+      }
+      changes.push({ current: item, next: next_item });
+    }
+    return this.persist_field_patch_items(project_path, context, {
+      changes,
+      field_patch: { dst: "" },
+      update_translation_extras: false,
+    });
+  }
+
+  /**
+   * 批量设置状态只接受人工可写状态集合，并把旧重试计数从新状态事实中清掉
+   */
+  private async persist_set_translation_status(
+    request: JsonRecord,
+  ): Promise<ProjectMutationResult> {
+    const project_path = await this.require_loaded_project_path();
+    const context = this.prepare_mutation_context(project_path, request);
+    const next_status = this.parse_manual_status_or_throw(request["status"]);
+    const item_ids = this.normalize_item_ids(request["item_ids"]);
+    const current_by_id = this.get_item_mutation_facts_by_ids(project_path, item_ids);
+    const changes: ProofreadingItemChange[] = [];
+    for (const item_id of item_ids) {
+      const item = current_by_id.get(item_id);
+      if (item === undefined) {
+        continue;
+      }
+      const next_item = {
+        ...item,
+        status: next_status,
         retry_count: 0,
       };
       if (this.are_items_equal(item, next_item)) {
         continue;
       }
-      context.current_by_id.set(item_id, next_item);
-      changed_items.push(next_item);
+      changes.push({ current: item, next: next_item });
     }
-    return this.persist_changed_items(project_path, context, changed_items);
+    return this.persist_field_patch_items(project_path, context, {
+      changes,
+      field_patch: {
+        status: next_status,
+        retry_count: 0,
+      },
+      update_translation_extras: true,
+    });
   }
 
   /**
@@ -161,16 +235,16 @@ export class ProofreadingService {
    */
   private publish_project_data_change(
     project_path: string,
-    changed_item_ids: number[],
+    items_payload: Pick<
+      ProjectChangeItemsPayload,
+      "payloadMode" | "changedIds" | "deleteIds" | "fieldPatch"
+    >,
   ): ProjectMutationResult {
     return this.mutation_coordinator.publish_project_data_change({
       projectPath: project_path,
       source: "proofreading_save_items",
       updatedSections: ["items", "proofreading"],
-      items: {
-        payloadMode: "canonical-delta",
-        changedIds: changed_item_ids,
-      },
+      items: items_payload,
     });
   }
 
@@ -188,16 +262,8 @@ export class ProofreadingService {
       ["items", "proofreading"],
     );
 
-    const current_by_id = new Map<number, MutableJsonRecord>();
-    for (const item of this.get_all_items(project_path)) {
-      const item_id = this.parse_integer_like(item["id"]);
-      if (item_id !== null && item_id > 0) {
-        current_by_id.set(item_id, { ...item, id: item_id });
-      }
-    }
     return {
       revision_context,
-      current_by_id,
     };
   }
 
@@ -215,28 +281,89 @@ export class ProofreadingService {
   }
 
   /**
-   * 写入变更 item，并由后端根据完整当前事实重建 translation_extras
+   * 写入变更 item，并按状态 delta 更新翻译统计，避免校对热路径扫描全量条目。
    */
   private persist_changed_items(
     project_path: string,
     context: ProofreadingMutationContext,
-    changed_items: MutableJsonRecord[],
+    args: {
+      changes: ProofreadingItemChange[];
+      items_payload: Pick<
+        ProjectChangeItemsPayload,
+        "payloadMode" | "changedIds" | "deleteIds" | "fieldPatch"
+      >;
+      update_translation_extras: boolean;
+    },
   ): ProjectMutationResult {
-    if (changed_items.length === 0) {
+    if (args.changes.length === 0) {
       return { accepted: true, changes: [] };
     }
-    const translation_extras = this.build_translation_extras(project_path, context.current_by_id);
+    const update_args: Record<string, DatabaseJsonValue> = {
+      projectPath: project_path,
+      items: args.changes.map((change) => change.next) as unknown as DatabaseJsonValue,
+    };
+    if (args.update_translation_extras) {
+      update_args.meta = {
+        translation_extras: this.build_translation_extras_after_status_changes(
+          project_path,
+          context.revision_context,
+          args.changes,
+        ) as unknown as DatabaseJsonValue,
+      };
+    }
     this.database.execute_transaction([
-      this.op("updateBatch", {
-        projectPath: project_path,
-        items: changed_items,
-        meta: {
-          translation_extras: translation_extras as unknown as DatabaseJsonValue,
-        },
-      }),
+      this.op("updateBatch", update_args),
       ...this.mutation_coordinator.build_section_revision_operations(context.revision_context),
     ]);
-    return this.publish_project_data_change(project_path, this.collect_item_ids(changed_items));
+    return this.publish_project_data_change(project_path, args.items_payload);
+  }
+
+  /**
+   * 统一字段 patch 走数据库 JSON 局部写入，避免为校对批量操作构造完整 item DTO。
+   */
+  private persist_field_patch_items(
+    project_path: string,
+    context: ProofreadingMutationContext,
+    args: {
+      changes: ProofreadingItemChange[];
+      field_patch: ProjectChangeItemFieldPatch;
+      update_translation_extras: boolean;
+    },
+  ): ProjectMutationResult {
+    if (args.changes.length === 0) {
+      return { accepted: true, changes: [] };
+    }
+    const changed_item_ids = this.collect_item_ids(args.changes.map((change) => change.next));
+    const patch_args: Record<string, DatabaseJsonValue> = {
+      projectPath: project_path,
+      itemIds: changed_item_ids,
+      patch: args.field_patch as unknown as DatabaseJsonValue,
+    };
+    const operations: DatabaseOperation[] = [this.op("patchItemFieldsByIds", patch_args)];
+    if (args.update_translation_extras) {
+      const meta = {
+        translation_extras: this.build_translation_extras_after_status_changes(
+          project_path,
+          context.revision_context,
+          args.changes,
+        ) as unknown as DatabaseJsonValue,
+      };
+      operations.push(
+        this.op("upsertMetaEntries", {
+          projectPath: project_path,
+          meta,
+        }),
+      );
+    }
+    this.database.execute_transaction([
+      ...operations,
+      ...this.mutation_coordinator.build_section_revision_operations(context.revision_context),
+    ]);
+    return this.publish_project_data_change(project_path, {
+      payloadMode: "field-patch",
+      changedIds: changed_item_ids,
+      fieldPatch: args.field_patch,
+    });
   }
 
   /**
@@ -251,31 +378,146 @@ export class ProofreadingService {
   }
 
   /**
-   * 重建翻译进度时只消费当前 item 事实，并保留数据库现有 token/time 等进度基底
+   * translation_extras 只按本次旧状态到新状态的差量修正，token/time 等非状态字段原样保留。
    */
-  private build_translation_extras(
+  private build_translation_extras_after_status_changes(
     project_path: string,
-    current_by_id: Map<number, MutableJsonRecord>,
+    revision_context: ProjectMutationRevisionContext,
+    changes: ProofreadingItemChange[],
   ): Record<string, unknown> {
-    const item_record: Record<string, MutableJsonRecord> = {};
-    for (const [item_id, item] of current_by_id.entries()) {
-      item_record[String(item_id)] = item;
-    }
-    const public_item_map = build_public_item_map(item_record);
-    return build_translation_extras_from_items({
-      task_snapshot: this.build_translation_task_snapshot_from_meta(project_path),
-      items: build_item_view_map(public_item_map),
-    });
+    const stored_progress = this.normalize_object(revision_context.meta["translation_extras"]);
+    const progress = this.read_translation_progress(revision_context.meta);
+    const counters = this.has_translation_progress_counters(stored_progress)
+      ? this.read_translation_progress_counters(progress)
+      : this.get_translation_status_summary(project_path);
+    const next_counters = this.apply_translation_status_deltas(counters, changes);
+    return {
+      ...progress,
+      ...next_counters,
+    };
   }
 
   /**
-   * translation_extras 是数据库侧进度事实，重建统计时把它挂回 task_snapshot.progress
+   * 进度 meta 缺省时从空翻译任务进度起步，保证字段集合对任务面板稳定。
    */
-  private build_translation_task_snapshot_from_meta(project_path: string): Record<string, unknown> {
+  private read_translation_progress(meta: JsonRecord): Record<string, unknown> {
+    const empty_snapshot = create_empty_translation_task_snapshot();
     return {
-      ...create_empty_translation_task_snapshot(),
-      progress: this.normalize_object(this.get_all_meta(project_path)["translation_extras"]),
+      ...this.normalize_object(empty_snapshot["progress"] as ApiJsonValue),
+      ...this.normalize_object(meta["translation_extras"]),
     };
+  }
+
+  /**
+   * 统计字段齐全时才允许差量更新复用 meta，否则用数据库聚合重新建立状态基线。
+   */
+  private has_translation_progress_counters(progress: Record<string, unknown>): boolean {
+    return (
+      this.is_finite_number(progress["total_line"]) &&
+      this.is_finite_number(progress["processed_line"]) &&
+      this.is_finite_number(progress["error_line"])
+    );
+  }
+
+  /**
+   * 从 progress 中读取非负整数统计，坏值在差量计算边界归零。
+   */
+  private read_translation_progress_counters(
+    progress: Record<string, unknown>,
+  ): TranslationProgressCounters {
+    const processed_line = this.read_non_negative_integer(progress["processed_line"]);
+    const error_line = this.read_non_negative_integer(progress["error_line"]);
+    return {
+      total_line: this.read_non_negative_integer(progress["total_line"]),
+      processed_line,
+      error_line,
+      line: processed_line + error_line,
+    };
+  }
+
+  /**
+   * 通过 SQLite 聚合状态基线，避免 meta 缺失时退回 JS 全量解析。
+   */
+  private get_translation_status_summary(project_path: string): TranslationProgressCounters {
+    const summary = this.normalize_object(
+      this.database.execute(this.op("getItemStatusSummary", { projectPath: project_path })),
+    );
+    const processed_line = this.read_non_negative_integer(summary["processed_line"]);
+    const error_line = this.read_non_negative_integer(summary["error_line"]);
+    return {
+      total_line: this.read_non_negative_integer(summary["total_line"]),
+      processed_line,
+      error_line,
+      line: processed_line + error_line,
+    };
+  }
+
+  /**
+   * 每条变更只贡献旧状态和新状态的统计差，译文本身不参与工作台统计。
+   */
+  private apply_translation_status_deltas(
+    counters: TranslationProgressCounters,
+    changes: ProofreadingItemChange[],
+  ): TranslationProgressCounters {
+    let total_line = counters.total_line;
+    let processed_line = counters.processed_line;
+    let error_line = counters.error_line;
+    for (const change of changes) {
+      const before = this.count_translation_status(change.current["status"]);
+      const after = this.count_translation_status(change.next["status"]);
+      total_line += after.total_line - before.total_line;
+      processed_line += after.processed_line - before.processed_line;
+      error_line += after.error_line - before.error_line;
+    }
+    processed_line = Math.max(0, Math.trunc(processed_line));
+    error_line = Math.max(0, Math.trunc(error_line));
+    return {
+      total_line: Math.max(0, Math.trunc(total_line)),
+      processed_line,
+      error_line,
+      line: processed_line + error_line,
+    };
+  }
+
+  /**
+   * 翻译统计只认任务进度三态，跳过、排除和未知状态不进入分母。
+   */
+  private count_translation_status(value: ApiJsonValue | undefined): TranslationProgressCounters {
+    const status = String(value ?? "");
+    const is_progress_status = is_task_progress_status(status);
+    const processed_line = status === "PROCESSED" ? 1 : 0;
+    const error_line = status === "ERROR" ? 1 : 0;
+    return {
+      total_line: is_progress_status ? 1 : 0,
+      processed_line,
+      error_line,
+      line: processed_line + error_line,
+    };
+  }
+
+  /**
+   * field-patch 只发布本次统一改变的字段；值从后端最终 item 事实提取。
+   */
+  private build_item_field_patch(
+    current_item: MutableJsonRecord,
+    next_item: MutableJsonRecord,
+    fields: Array<keyof ProjectChangeItemFieldPatch>,
+  ): ProjectChangeItemFieldPatch {
+    const patch: ProjectChangeItemFieldPatch = {};
+    for (const field of fields) {
+      if (field === "retry_count") {
+        const retry_count = Number(next_item["retry_count"]);
+        if (Number.isFinite(retry_count) && retry_count !== Number(current_item["retry_count"])) {
+          patch.retry_count = Math.trunc(retry_count);
+        }
+        continue;
+      }
+      const value = next_item[field];
+      if (typeof value === "string" && value !== current_item[field]) {
+        patch[field] = value;
+      }
+    }
+    return patch;
   }
 
   /**
@@ -338,24 +580,68 @@ export class ProofreadingService {
   }
 
   /**
-   * 读取全部 item dict，供局部 merge 使用
+   * 按目标 id 读取当前 item 事实，校对批量操作不再预热全量 items。
    */
-  private get_all_items(project_path: string): MutableJsonRecord[] {
-    const value = this.database.execute(this.op("getAllItems", { projectPath: project_path }));
-    return Array.isArray(value)
-      ? value
-          .filter((item): item is JsonRecord => this.is_record(item))
-          .map((item) => ({ ...item }))
-      : [];
+  private get_items_by_ids(
+    project_path: string,
+    item_ids: number[],
+  ): Map<number, MutableJsonRecord> {
+    const items_by_id = new Map<number, MutableJsonRecord>();
+    const value = this.database.execute(
+      this.op("getItemsByIds", {
+        projectPath: project_path,
+        itemIds: item_ids,
+      }),
+    );
+    if (!Array.isArray(value)) {
+      return items_by_id;
+    }
+    for (const item of value) {
+      if (!this.is_record(item)) {
+        continue;
+      }
+      const item_id = this.parse_integer_like(item["id"]);
+      if (item_id === null || item_id <= 0) {
+        continue;
+      }
+      items_by_id.set(item_id, { ...item, id: item_id });
+    }
+    return items_by_id;
   }
 
   /**
-   * 读取完整 meta，用于 revision 判断
+   * 读取校对字段 patch 所需的窄行事实，避免批量状态操作解析完整 item JSON。
    */
-  private get_all_meta(project_path: string): MutableJsonRecord {
-    return this.normalize_object(
-      this.database.execute(this.op("getAllMeta", { projectPath: project_path })),
+  private get_item_mutation_facts_by_ids(
+    project_path: string,
+    item_ids: number[],
+  ): Map<number, MutableJsonRecord> {
+    const items_by_id = new Map<number, MutableJsonRecord>();
+    const value = this.database.execute(
+      this.op("getItemMutationFactsByIds", {
+        projectPath: project_path,
+        itemIds: item_ids,
+      }),
     );
+    if (!Array.isArray(value)) {
+      return items_by_id;
+    }
+    for (const item of value) {
+      if (!this.is_record(item)) {
+        continue;
+      }
+      const item_id = this.parse_integer_like(item["id"]);
+      if (item_id === null || item_id <= 0) {
+        continue;
+      }
+      items_by_id.set(item_id, {
+        id: item_id,
+        dst: String(item["dst"] ?? ""),
+        status: String(item["status"] ?? ""),
+        retry_count: Number(item["retry_count"] ?? 0),
+      });
+    }
+    return items_by_id;
   }
 
   /**
@@ -363,6 +649,22 @@ export class ProofreadingService {
    */
   private normalize_item_status(value: ApiJsonValue | undefined): string {
     return Item.normalize_status(value);
+  }
+
+  /**
+   * 人工状态菜单只暴露三种可写状态，其它派生状态不能从校对页直接写入
+   */
+  private parse_manual_status_or_throw(value: ApiJsonValue | undefined): ProofreadingManualStatus {
+    if (
+      typeof value === "string" &&
+      (PROOFREADING_MANUAL_STATUS_CODES as readonly string[]).includes(value)
+    ) {
+      return value as ProofreadingManualStatus;
+    }
+
+    throw new AppErrors.RequestValidationError({
+      diagnostic_context: { reason: "invalid_proofreading_manual_status", status: value },
+    });
   }
 
   /**
@@ -397,6 +699,24 @@ export class ProofreadingService {
    */
   private normalize_object(value: ApiJsonValue | undefined): MutableJsonRecord {
     return this.is_record(value) ? { ...value } : {};
+  }
+
+  /**
+   * 统计字段只接受有限数值，避免 NaN 进入持久化 meta。
+   */
+  private is_finite_number(value: unknown): boolean {
+    return typeof value === "number" && Number.isFinite(value);
+  }
+
+  /**
+   * 持久化统计统一使用非负整数，消除小数和坏值对进度条的污染。
+   */
+  private read_non_negative_integer(value: unknown): number {
+    const number_value = typeof value === "number" ? value : Number(value ?? 0);
+    if (!Number.isFinite(number_value)) {
+      return 0;
+    }
+    return Math.max(0, Math.trunc(number_value));
   }
 
   /**

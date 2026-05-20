@@ -100,6 +100,8 @@ export class ProjectChangeEventAdapter {
     const payload_mode = normalizeProjectChangePayloadMode(record["payloadMode"]);
     const changed_ids = this.normalize_number_list(record["changedIds"]);
     const delete_ids = this.normalize_number_list(record["deleteIds"]);
+    const field_patch =
+      payload_mode === "field-patch" ? this.normalize_item_field_patch(record["fieldPatch"]) : {};
     const upsert =
       payload_mode === "canonical-delta"
         ? this.build_item_upsert_payload(project_path, changed_ids)
@@ -108,6 +110,7 @@ export class ProjectChangeEventAdapter {
       items: {
         payloadMode: payload_mode,
         ...(upsert === undefined ? {} : { upsert }),
+        ...(Object.keys(field_patch).length === 0 ? {} : { fieldPatch: field_patch }),
         ...(changed_ids.length === 0 ? {} : { changedIds: changed_ids }),
         ...(delete_ids.length === 0 ? {} : { deleteIds: delete_ids }),
       },
@@ -235,6 +238,29 @@ export class ProjectChangeEventAdapter {
       }
     }
     return upsert;
+  }
+
+  /**
+   * 字段级 item patch 只允许校对页可写字段，保持后端事件仍是窄事实表达。
+   */
+  private normalize_item_field_patch(value: ApiJsonValue | undefined): {
+    dst?: string;
+    status?: string;
+    retry_count?: number;
+  } {
+    const record = this.normalize_object(value);
+    const patch: { dst?: string; status?: string; retry_count?: number } = {};
+    if (typeof record["dst"] === "string") {
+      patch.dst = record["dst"];
+    }
+    if (typeof record["status"] === "string") {
+      patch.status = record["status"];
+    }
+    const retry_count = Number(record["retry_count"]);
+    if (Number.isFinite(retry_count)) {
+      patch.retry_count = Math.trunc(retry_count);
+    }
+    return patch;
   }
 
   /**

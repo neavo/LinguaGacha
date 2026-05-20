@@ -9,7 +9,8 @@ export const en_us_proofreading_page = {
     replace_all: "Replace All",
     edit: "Edit",
     retranslate: "Retranslate",
-    reset_translation: "Reset Translation",
+    clear_translation: "Clear Translation",
+    set_translation_status: "Set Translation Status",
     save: "Save",
     cancel: "Cancel",
     confirm: "Confirm",
@@ -44,7 +45,7 @@ export const en_us_proofreading_page = {
     clear: "Clear",
   },
   status: {
-    none: "Untranslated",
+    none: "Awaiting Translation",
     processed: "Translation Completed",
     excluded: "Excluded",
     rule_skipped: "Rule Skipped",
@@ -92,7 +93,10 @@ export const en_us_proofreading_page = {
   },
   confirm: {
     retranslate_description: "Confirm retranslating {COUNT} entries …?",
-    reset_description: "Confirm resetting the translation status of {COUNT} entries …?",
+    clear_translation_description:
+      "Confirm clearing translations for {COUNT} entries …? Translation status will not change.",
+    set_status_description:
+      "Confirm setting the translation status of {COUNT} entries to {STATUS} …? Translation text will not change.",
   },
   feedback: {
     refresh_failed: "Failed to refresh proofreading.",
@@ -100,11 +104,13 @@ export const en_us_proofreading_page = {
     save_failed: "Save failed",
     replace_failed: "Replace failed",
     retranslate_failed: "Retranslate failed",
-    reset_failed: "Reset translation failed",
+    clear_translation_failed: "Failed to clear translations.",
+    set_status_failed: "Failed to set translation status.",
     replace_done: "Replace complete: changed {N} items",
     replace_no_change: "No content to replace",
     no_match: "No matches found",
     regex_invalid: "Invalid regular expression",
-    reset_success: "Reset {COUNT} entries",
+    clear_translation_success: "Cleared translations for {COUNT} entries",
+    set_status_success: "Set {COUNT} entries to {STATUS}",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_proofreading_page>;
