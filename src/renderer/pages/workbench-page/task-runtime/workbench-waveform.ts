@@ -2,16 +2,44 @@ export const WORKBENCH_WAVEFORM_SAMPLE_INTERVAL_MS = 500; // Workbench 波形只
 export const WORKBENCH_WAVEFORM_VISIBLE_POINTS = 96;
 const WORKBENCH_WAVEFORM_MAX_POINTS = 256;
 
+// 速度估计参数：短窗口负责吞吐稳定性，attack / release 负责视觉响应手感。
 const WORKBENCH_WAVEFORM_RATE_WINDOW_SECONDS = 2;
 const WORKBENCH_WAVEFORM_MIN_RATE_WINDOW_SECONDS = 1.5;
 const WORKBENCH_WAVEFORM_ATTACK_SECONDS = 0.9;
 const WORKBENCH_WAVEFORM_RELEASE_SECONDS = 1.6;
 const WORKBENCH_WAVEFORM_IDLE_DECAY_SECONDS = 1.1;
-const WORKBENCH_WAVEFORM_SCALE_RELEASE_SECONDS = 12;
-const WORKBENCH_WAVEFORM_SCALE_TARGET_RATIO = 0.72;
-const WORKBENCH_WAVEFORM_MIN_ACTIVE_AMPLITUDE = 0.08;
+
+// 参照速度参数：参照速度慢于当前速度变化，避免爬坡期被重标定成同一高度。
+const WORKBENCH_WAVEFORM_REFERENCE_ATTACK_SECONDS = 5.5;
+const WORKBENCH_WAVEFORM_REFERENCE_RELEASE_SECONDS = 16;
+const WORKBENCH_WAVEFORM_REFERENCE_INITIAL_LEVEL = 0.32;
+const WORKBENCH_WAVEFORM_REFERENCE_TARGET_LEVEL = 0.68;
+const WORKBENCH_WAVEFORM_MAX_SPEED_LEVEL = 0.86;
+const WORKBENCH_WAVEFORM_MIN_ACTIVE_SPEED_LEVEL = 0.12;
+
+// 趋势与载波参数：速度水平控制能量，趋势控制方向，载波保证持续起伏。
+const WORKBENCH_WAVEFORM_TREND_SECONDS = 0.8;
+const WORKBENCH_WAVEFORM_CARRIER_BASE_HZ = 0.72;
+const WORKBENCH_WAVEFORM_CARRIER_SPEED_HZ = 0.58;
+const WORKBENCH_WAVEFORM_CARRIER_TREND_HZ = 0.18;
+
+// 视觉合成参数：baseline 与 radius 永远给上下边界留余量，避免贴顶贴底。
+const WORKBENCH_WAVEFORM_BASELINE_MIN = 0.2;
+const WORKBENCH_WAVEFORM_BASELINE_RANGE = 0.46;
+const WORKBENCH_WAVEFORM_WAVE_RADIUS_MIN = 0.055;
+const WORKBENCH_WAVEFORM_WAVE_RADIUS_RANGE = 0.17;
+const WORKBENCH_WAVEFORM_TREND_BIAS_LIMIT = 0.08;
+const WORKBENCH_WAVEFORM_TREND_RADIUS_BONUS = 0.055;
+const WORKBENCH_WAVEFORM_BOTTOM_HEADROOM = 0.04;
+const WORKBENCH_WAVEFORM_TOP_HEADROOM = 0.1;
+const WORKBENCH_WAVEFORM_FULL_TURN = Math.PI * 2;
 const WORKBENCH_WAVEFORM_SPEED_ZERO_THRESHOLD = 0.05;
-const WORKBENCH_WAVEFORM_AMPLITUDE_ZERO_THRESHOLD = 0.002;
+const WORKBENCH_WAVEFORM_SAMPLE_ZERO_THRESHOLD = 0.002;
+const WORKBENCH_WAVEFORM_ACTIVE_RISE_LIMIT = 0.18;
+const WORKBENCH_WAVEFORM_ACTIVE_FALL_LIMIT = 0.13;
+const WORKBENCH_WAVEFORM_IDLE_RISE_LIMIT = 0.08;
+const WORKBENCH_WAVEFORM_IDLE_FALL_LIMIT = 0.06;
+const WORKBENCH_WAVEFORM_DISPLAY_SPIKE_LIMIT = 0.08;
 
 type WorkbenchWaveformObservation = {
   time_seconds: number; // 最近一次采样时间，用来计算滑动窗口吞吐
@@ -19,10 +47,12 @@ type WorkbenchWaveformObservation = {
 };
 
 export type WorkbenchWaveformState = {
-  history: number[]; // 已归一化到 0..1 的可绘制视觉幅度
+  history: number[]; // 已归一化到 0..1 的可绘制视觉样本，值已预留上下边界余量
   observations: WorkbenchWaveformObservation[]; // 只保留短窗口内的累计 token 观察值
   smoothed_speed: number; // 经过窗口吞吐和 EMA 后的视觉速度
-  scale_speed: number; // 慢释放动态尺度，避免单个尖峰长期压扁后续波形
+  reference_speed: number; // 慢变速度参照，用来判断当前速度水平而不直接拉满高度
+  trend_level: number; // -1..1 的加速 / 减速趋势，负责表达爬坡和回落方向
+  carrier_phase: number; // 连续载波相位，保证速度上升或下降时仍然有可见起伏
   last_sample_time_seconds: number | null; // 上一次推进状态机的时间
 };
 
@@ -38,15 +68,51 @@ export function create_empty_workbench_waveform_state(): WorkbenchWaveformState 
     history: [],
     observations: [],
     smoothed_speed: 0,
-    scale_speed: 0,
+    reference_speed: 0,
+    trend_level: 0,
+    carrier_phase: 0,
     last_sample_time_seconds: null,
   };
 }
 
-// 追加已归一化幅度，并限制历史长度防止详情面板长期打开后无界增长。
-function append_workbench_waveform_amplitude(history: number[], amplitude: number): number[] {
-  const normalized_amplitude = normalize_unit_value(amplitude);
-  const next_history = [...history, normalized_amplitude];
+// 对单帧跳变做视觉限速，避免采样命中波峰或任务结束时把曲线切成尖刺和平底。
+function resolve_workbench_waveform_temporal_sample(args: {
+  active: boolean;
+  history: number[];
+  sample: number;
+}): number {
+  const normalized_sample = normalize_unit_value(args.sample);
+  const previous_sample = args.history.at(-1);
+  if (previous_sample === undefined) {
+    return normalized_sample;
+  }
+
+  const rise_limit = args.active
+    ? WORKBENCH_WAVEFORM_ACTIVE_RISE_LIMIT
+    : WORKBENCH_WAVEFORM_IDLE_RISE_LIMIT;
+  const fall_limit = args.active
+    ? WORKBENCH_WAVEFORM_ACTIVE_FALL_LIMIT
+    : WORKBENCH_WAVEFORM_IDLE_FALL_LIMIT;
+  if (normalized_sample > previous_sample + rise_limit) {
+    return previous_sample + rise_limit;
+  }
+  if (normalized_sample < previous_sample - fall_limit) {
+    const released_sample = previous_sample - fall_limit;
+
+    return released_sample <= WORKBENCH_WAVEFORM_SAMPLE_ZERO_THRESHOLD ? 0 : released_sample;
+  }
+
+  return normalized_sample;
+}
+
+// 追加已归一化视觉样本，并限制历史长度防止详情面板长期打开后无界增长。
+function append_workbench_waveform_sample(args: {
+  active: boolean;
+  history: number[];
+  sample: number;
+}): number[] {
+  const normalized_sample = resolve_workbench_waveform_temporal_sample(args);
+  const next_history = [...args.history, normalized_sample];
 
   if (next_history.length > WORKBENCH_WAVEFORM_MAX_POINTS) {
     return next_history.slice(next_history.length - WORKBENCH_WAVEFORM_MAX_POINTS);
@@ -79,11 +145,20 @@ function normalize_non_negative_value(value: number): number {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
-// 将幅度限制在 0..1，组件只消费这个稳定视觉区间。
+// 将视觉样本限制在 0..1，组件只消费这个稳定绘制区间。
 function normalize_unit_value(value: number): number {
   const normalized_value = normalize_non_negative_value(value);
 
   return Math.min(1, normalized_value);
+}
+
+// 将趋势类信号限制在 -1..1，避免异常采样间隔把方向性放大成绘制尖峰。
+function normalize_signed_unit_value(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.min(1, Math.max(-1, value));
 }
 
 // 计算两次采样间隔，首帧按默认采样周期处理以保持 EMA 手感稳定。
@@ -131,6 +206,16 @@ function decay_workbench_waveform_value(args: {
   return next_value <= WORKBENCH_WAVEFORM_SPEED_ZERO_THRESHOLD ? 0 : next_value;
 }
 
+// 视觉层级使用轻微开方，让低中速不至于贴在底部，但仍保留高速余量。
+function ease_workbench_waveform_level(speed_level: number): number {
+  const normalized_level = Math.min(
+    1,
+    Math.max(0, speed_level / WORKBENCH_WAVEFORM_MAX_SPEED_LEVEL),
+  );
+
+  return Math.sqrt(normalized_level);
+}
+
 // 用累计输出 token 的短窗口差值估计吞吐，避免单个 SSE 间隔决定整帧高度。
 function resolve_window_output_speed(observations: WorkbenchWaveformObservation[]): number {
   const first_observation = observations[0];
@@ -151,49 +236,158 @@ function resolve_window_output_speed(observations: WorkbenchWaveformObservation[
   return output_token_delta / elapsed_seconds;
 }
 
-// 维护慢释放动态尺度，让尖峰不过度拉满，同时让后续低中速仍然可见。
-function resolve_workbench_waveform_scale(args: {
-  previous_scale: number;
+// 维护慢变参照速度：首个信号从低位进入，持续高吞吐再慢慢重标定。
+function resolve_workbench_waveform_reference_speed(args: {
+  previous_reference_speed: number;
   smoothed_speed: number;
   elapsed_seconds: number;
 }): number {
-  const released_scale = decay_workbench_waveform_value({
-    previous_value: args.previous_scale,
-    elapsed_seconds: args.elapsed_seconds,
-    time_constant_seconds: WORKBENCH_WAVEFORM_SCALE_RELEASE_SECONDS,
-  });
-  const target_scale =
-    args.smoothed_speed <= 0 ? 0 : args.smoothed_speed / WORKBENCH_WAVEFORM_SCALE_TARGET_RATIO;
+  const previous_reference_speed = normalize_non_negative_value(args.previous_reference_speed);
+  const smoothed_speed = normalize_non_negative_value(args.smoothed_speed);
 
-  return Math.max(released_scale, target_scale);
+  if (
+    previous_reference_speed <= WORKBENCH_WAVEFORM_SPEED_ZERO_THRESHOLD &&
+    smoothed_speed <= WORKBENCH_WAVEFORM_SPEED_ZERO_THRESHOLD
+  ) {
+    return 0;
+  }
+
+  if (previous_reference_speed <= WORKBENCH_WAVEFORM_SPEED_ZERO_THRESHOLD) {
+    return smoothed_speed / WORKBENCH_WAVEFORM_REFERENCE_INITIAL_LEVEL;
+  }
+
+  const target_reference_speed =
+    smoothed_speed <= WORKBENCH_WAVEFORM_SPEED_ZERO_THRESHOLD
+      ? 0
+      : smoothed_speed / WORKBENCH_WAVEFORM_REFERENCE_TARGET_LEVEL;
+  const time_constant_seconds =
+    target_reference_speed > previous_reference_speed
+      ? WORKBENCH_WAVEFORM_REFERENCE_ATTACK_SECONDS
+      : WORKBENCH_WAVEFORM_REFERENCE_RELEASE_SECONDS;
+  const next_reference_speed = smooth_workbench_waveform_value({
+    previous_value: previous_reference_speed,
+    target_value: target_reference_speed,
+    elapsed_seconds: args.elapsed_seconds,
+    time_constant_seconds,
+  });
+  const minimum_reference_speed =
+    smoothed_speed <= WORKBENCH_WAVEFORM_SPEED_ZERO_THRESHOLD
+      ? 0
+      : smoothed_speed / WORKBENCH_WAVEFORM_MAX_SPEED_LEVEL;
+
+  return Math.max(minimum_reference_speed, next_reference_speed);
 }
 
-// 将平滑速度映射成最终视觉幅度，低中速用曲线放大，尖峰用动态尺度压回可读范围。
-function resolve_workbench_waveform_amplitude(args: {
-  active: boolean;
-  scale_speed: number;
+// 把平滑速度投影成 0..1 水平；最大水平低于 1，给载波和趋势预留空间。
+function resolve_workbench_waveform_speed_level(args: {
+  reference_speed: number;
   smoothed_speed: number;
 }): number {
   if (
-    args.scale_speed <= WORKBENCH_WAVEFORM_SPEED_ZERO_THRESHOLD ||
+    args.reference_speed <= WORKBENCH_WAVEFORM_SPEED_ZERO_THRESHOLD ||
     args.smoothed_speed <= WORKBENCH_WAVEFORM_SPEED_ZERO_THRESHOLD
   ) {
     return 0;
   }
 
-  // 为什么：平方根曲线保留中低速层次，同时把短促尖峰压回可读范围。
-  const curved_amplitude = Math.sqrt(
-    Math.min(1, Math.max(0, args.smoothed_speed / args.scale_speed)),
+  return Math.min(
+    WORKBENCH_WAVEFORM_MAX_SPEED_LEVEL,
+    Math.max(0, args.smoothed_speed / args.reference_speed),
   );
-  if (curved_amplitude <= WORKBENCH_WAVEFORM_AMPLITUDE_ZERO_THRESHOLD) {
+}
+
+// 把相邻平滑速度差转成方向性信号，正值表示爬坡，负值表示回落。
+function resolve_workbench_waveform_trend_level(args: {
+  previous_smoothed_speed: number;
+  next_smoothed_speed: number;
+  previous_trend_level: number;
+  reference_speed: number;
+  elapsed_seconds: number;
+}): number {
+  if (args.reference_speed <= WORKBENCH_WAVEFORM_SPEED_ZERO_THRESHOLD) {
     return 0;
   }
 
-  if (args.active) {
-    return Math.max(WORKBENCH_WAVEFORM_MIN_ACTIVE_AMPLITUDE, curved_amplitude);
+  const speed_delta = args.next_smoothed_speed - args.previous_smoothed_speed;
+  const trend_target = normalize_signed_unit_value(
+    speed_delta / Math.max(args.reference_speed * 0.18, WORKBENCH_WAVEFORM_SPEED_ZERO_THRESHOLD),
+  );
+  const next_trend_level = smooth_workbench_waveform_value({
+    previous_value: args.previous_trend_level,
+    target_value: trend_target,
+    elapsed_seconds: args.elapsed_seconds,
+    time_constant_seconds: WORKBENCH_WAVEFORM_TREND_SECONDS,
+  });
+
+  return Math.abs(next_trend_level) <= WORKBENCH_WAVEFORM_SAMPLE_ZERO_THRESHOLD
+    ? 0
+    : normalize_signed_unit_value(next_trend_level);
+}
+
+// 根据速度水平和趋势推进载波，让历史样本形成真正的波而不是速度高度线。
+function advance_workbench_waveform_carrier_phase(args: {
+  previous_phase: number;
+  speed_level: number;
+  trend_level: number;
+  elapsed_seconds: number;
+}): number {
+  if (
+    args.speed_level <= WORKBENCH_WAVEFORM_SPEED_ZERO_THRESHOLD &&
+    Math.abs(args.trend_level) <= WORKBENCH_WAVEFORM_SAMPLE_ZERO_THRESHOLD
+  ) {
+    return args.previous_phase;
   }
 
-  return curved_amplitude;
+  const carrier_frequency_hz =
+    WORKBENCH_WAVEFORM_CARRIER_BASE_HZ +
+    WORKBENCH_WAVEFORM_CARRIER_SPEED_HZ * args.speed_level +
+    WORKBENCH_WAVEFORM_CARRIER_TREND_HZ * Math.abs(args.trend_level);
+  const next_phase =
+    args.previous_phase +
+    carrier_frequency_hz * Math.max(0, args.elapsed_seconds) * WORKBENCH_WAVEFORM_FULL_TURN;
+
+  return next_phase % WORKBENCH_WAVEFORM_FULL_TURN;
+}
+
+// 合成最终视觉样本：速度给能量，趋势给方向，载波负责始终可见的起伏。
+function resolve_workbench_waveform_visual_sample(args: {
+  active: boolean;
+  speed_level: number;
+  trend_level: number;
+  carrier_phase: number;
+}): number {
+  if (args.speed_level <= WORKBENCH_WAVEFORM_SPEED_ZERO_THRESHOLD) {
+    return 0;
+  }
+
+  const visible_speed_level = args.active
+    ? Math.max(args.speed_level, WORKBENCH_WAVEFORM_MIN_ACTIVE_SPEED_LEVEL)
+    : args.speed_level;
+  const eased_level = ease_workbench_waveform_level(visible_speed_level);
+  const baseline =
+    WORKBENCH_WAVEFORM_BASELINE_MIN +
+    WORKBENCH_WAVEFORM_BASELINE_RANGE * eased_level +
+    args.trend_level * WORKBENCH_WAVEFORM_TREND_BIAS_LIMIT;
+  const bounded_baseline = Math.min(
+    1 - WORKBENCH_WAVEFORM_TOP_HEADROOM,
+    Math.max(WORKBENCH_WAVEFORM_BOTTOM_HEADROOM, baseline),
+  );
+  const wave_radius =
+    WORKBENCH_WAVEFORM_WAVE_RADIUS_MIN +
+    WORKBENCH_WAVEFORM_WAVE_RADIUS_RANGE * eased_level +
+    Math.abs(args.trend_level) * WORKBENCH_WAVEFORM_TREND_RADIUS_BONUS;
+  const safe_wave_radius = Math.min(
+    wave_radius,
+    Math.max(
+      0,
+      Math.min(
+        bounded_baseline - WORKBENCH_WAVEFORM_BOTTOM_HEADROOM,
+        1 - WORKBENCH_WAVEFORM_TOP_HEADROOM - bounded_baseline,
+      ),
+    ),
+  );
+
+  return normalize_unit_value(bounded_baseline + Math.sin(args.carrier_phase) * safe_wave_radius);
 }
 
 // 推进波形状态机：活跃期采样累计 token，非活跃期只推进衰减尾巴。
@@ -212,22 +406,46 @@ export function advance_workbench_waveform_state(
       elapsed_seconds,
       time_constant_seconds: WORKBENCH_WAVEFORM_IDLE_DECAY_SECONDS,
     });
-    const next_scale_speed = resolve_workbench_waveform_scale({
-      previous_scale: state.scale_speed,
+    const next_reference_speed = resolve_workbench_waveform_reference_speed({
+      previous_reference_speed: state.reference_speed,
       smoothed_speed: next_smoothed_speed,
       elapsed_seconds,
     });
-    const next_amplitude = resolve_workbench_waveform_amplitude({
-      active: false,
-      scale_speed: next_scale_speed,
+    const next_speed_level = resolve_workbench_waveform_speed_level({
+      reference_speed: next_reference_speed,
       smoothed_speed: next_smoothed_speed,
+    });
+    const next_trend_level = resolve_workbench_waveform_trend_level({
+      previous_smoothed_speed: state.smoothed_speed,
+      next_smoothed_speed,
+      previous_trend_level: state.trend_level,
+      reference_speed: next_reference_speed,
+      elapsed_seconds,
+    });
+    const next_carrier_phase = advance_workbench_waveform_carrier_phase({
+      previous_phase: state.carrier_phase,
+      speed_level: next_speed_level,
+      trend_level: next_trend_level,
+      elapsed_seconds,
+    });
+    const next_visual_sample = resolve_workbench_waveform_visual_sample({
+      active: false,
+      speed_level: next_speed_level,
+      trend_level: next_trend_level,
+      carrier_phase: next_carrier_phase,
     });
 
     return {
-      history: append_workbench_waveform_amplitude(state.history, next_amplitude),
+      history: append_workbench_waveform_sample({
+        active: false,
+        history: state.history,
+        sample: next_visual_sample,
+      }),
       observations: [],
       smoothed_speed: next_smoothed_speed,
-      scale_speed: next_scale_speed,
+      reference_speed: next_reference_speed,
+      trend_level: next_trend_level,
+      carrier_phase: next_carrier_phase,
       last_sample_time_seconds: now_seconds,
     };
   }
@@ -247,47 +465,88 @@ export function advance_workbench_waveform_state(
     elapsed_seconds,
     time_constant_seconds: smoothing_seconds,
   });
-  const next_scale_speed = resolve_workbench_waveform_scale({
-    previous_scale: state.scale_speed,
+  const next_reference_speed = resolve_workbench_waveform_reference_speed({
+    previous_reference_speed: state.reference_speed,
     smoothed_speed: next_smoothed_speed,
     elapsed_seconds,
   });
-  const next_amplitude = resolve_workbench_waveform_amplitude({
-    active: true,
-    scale_speed: next_scale_speed,
+  const next_speed_level = resolve_workbench_waveform_speed_level({
+    reference_speed: next_reference_speed,
     smoothed_speed: next_smoothed_speed,
+  });
+  const next_trend_level = resolve_workbench_waveform_trend_level({
+    previous_smoothed_speed: state.smoothed_speed,
+    next_smoothed_speed,
+    previous_trend_level: state.trend_level,
+    reference_speed: next_reference_speed,
+    elapsed_seconds,
+  });
+  const next_carrier_phase = advance_workbench_waveform_carrier_phase({
+    previous_phase: state.carrier_phase,
+    speed_level: next_speed_level,
+    trend_level: next_trend_level,
+    elapsed_seconds,
+  });
+  const next_visual_sample = resolve_workbench_waveform_visual_sample({
+    active: true,
+    speed_level: next_speed_level,
+    trend_level: next_trend_level,
+    carrier_phase: next_carrier_phase,
   });
 
   return {
-    history: append_workbench_waveform_amplitude(state.history, next_amplitude),
+    history: append_workbench_waveform_sample({
+      active: true,
+      history: state.history,
+      sample: next_visual_sample,
+    }),
     observations: next_observations,
     smoothed_speed: next_smoothed_speed,
-    scale_speed: next_scale_speed,
+    reference_speed: next_reference_speed,
+    trend_level: next_trend_level,
+    carrier_phase: next_carrier_phase,
     last_sample_time_seconds: now_seconds,
   };
 }
 
-// 将 0..1 幅度转换成 canvas 绘制列高，保持组件只关心像素绘制。
+// 只修正孤立尖峰，连续峰丘保留原貌，避免波形被处理成迟钝的平均线。
+function soften_workbench_waveform_display_spikes(samples: number[]): number[] {
+  return samples.map((sample, index) => {
+    const previous_sample = samples[index - 1];
+    const next_sample = samples[index + 1];
+    if (previous_sample === undefined || next_sample === undefined) {
+      return sample;
+    }
+
+    const neighbor_ceiling = Math.max(previous_sample, next_sample);
+    if (sample <= neighbor_ceiling + WORKBENCH_WAVEFORM_DISPLAY_SPIKE_LIMIT) {
+      return sample;
+    }
+
+    return neighbor_ceiling + WORKBENCH_WAVEFORM_DISPLAY_SPIKE_LIMIT;
+  });
+}
+
+// 将 0..1 视觉样本转换成 canvas 绘制列高，保持组件只关心像素绘制。
 export function build_workbench_waveform_columns(history: number[], row_count: number): number[] {
   const normalized_row_count = Math.max(1, Math.floor(normalize_non_negative_value(row_count)));
   const visible_history =
     history.length >= WORKBENCH_WAVEFORM_VISIBLE_POINTS
       ? history.slice(history.length - WORKBENCH_WAVEFORM_VISIBLE_POINTS)
       : history;
+  const display_history = soften_workbench_waveform_display_spikes(visible_history);
 
-  return visible_history.map((amplitude) => {
-    return Math.floor(normalize_unit_value(amplitude) * (normalized_row_count - 1) + 1);
+  return display_history.map((sample) => {
+    return Math.floor(normalize_unit_value(sample) * (normalized_row_count - 1) + 1);
   });
 }
 
-// 只检查可见窗口是否还有非零幅度，用来决定收尾动画是否继续运行。
+// 只检查可见窗口是否还有非零样本，用来决定收尾动画是否继续运行。
 export function has_unsettled_workbench_waveform_tail(history: number[]): boolean {
   const visible_history =
     history.length <= WORKBENCH_WAVEFORM_VISIBLE_POINTS
       ? history
       : history.slice(history.length - WORKBENCH_WAVEFORM_VISIBLE_POINTS);
 
-  return visible_history.some(
-    (amplitude) => amplitude > WORKBENCH_WAVEFORM_AMPLITUDE_ZERO_THRESHOLD,
-  );
+  return visible_history.some((sample) => sample > WORKBENCH_WAVEFORM_SAMPLE_ZERO_THRESHOLD);
 }
