@@ -8,7 +8,11 @@ import {
   buildProofreadingLookupQuery,
   getQualityRuleSlice,
 } from "@/project/quality/quality-runtime";
-import type { QualityStatisticsCacheSnapshot } from "@/project/quality/quality-statistics-store";
+import {
+  isQualityStatisticsCacheReady,
+  isQualityStatisticsCacheRunning,
+  type QualityStatisticsCacheSnapshot,
+} from "@/project/quality/quality-statistics-store";
 import {
   normalize_project_mutation_result,
   type ProjectMutationResultPayload,
@@ -236,8 +240,9 @@ function is_modal_progress_timeout_error(error: unknown): boolean {
 function build_text_preserve_statistics_state_from_cache(
   statistics_cache: QualityStatisticsCacheSnapshot,
 ): TextPreserveStatisticsState {
+  // 页面只从质量统计缓存派生展示状态，不持有也不修改文本保护规则事实。
   return {
-    running: statistics_cache.running,
+    running: isQualityStatisticsCacheRunning(statistics_cache),
     completed_snapshot: statistics_cache.completed_snapshot,
     completed_entry_ids: statistics_cache.completed_entry_ids,
     matched_count_by_entry_id: statistics_cache.matched_count_by_entry_id,
@@ -319,7 +324,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const statistics_state = useMemo<TextPreserveStatisticsState>(() => {
     return build_text_preserve_statistics_state_from_cache(statistics_cache);
   }, [statistics_cache]);
-  const statistics_ready = statistics_cache.ready;
+  const statistics_ready = isQualityStatisticsCacheReady(statistics_cache);
 
   useEffect(() => {
     mode_ref.current = mode;

@@ -1,6 +1,7 @@
 import {
   executeQualityStatisticsAutoPlan,
   planQualityStatisticsAutoRun,
+  remapQualityStatisticsResults,
 } from "@/project/quality/quality-statistics-auto";
 import type { QualityStatisticsTaskExecutor } from "@/project/quality/quality-statistics";
 import {
@@ -28,6 +29,7 @@ type ScheduledRefresh = {
 
 type InFlightRefresh = {
   request_key: string; // request_key 去重相同项目、快照和刷新模式下的并发请求
+  request_token: number; // request_token 与缓存 token 对齐，用于判断 in-flight 是否已被后续变更废弃
   promise: Promise<void>; // promise 复用正在执行的统计任务，避免重复派发 worker
 };
 
@@ -153,15 +155,15 @@ export function createQualityStatisticsScheduler(args: {
   }
 
   /**
-   * 把缓存置为需要刷新状态，同时保留旧统计供 UI 在后台计算期间继续展示。
+   * 把缓存置为已调度状态，并立即废弃更早的 in-flight 结果。
    */
-  function mark_cache_dirty(rule_type: QualityStatisticsRuleType): void {
+  function mark_cache_scheduled(rule_type: QualityStatisticsRuleType): void {
     args.store.updateCache(rule_type, (cache) => {
       return {
         ...cache,
-        ready: false,
-        stale:
-          cache.running || cache.current_snapshot !== null || cache.completed_snapshot !== null,
+        phase: "scheduled",
+        last_error: null,
+        request_token: cache.request_token + 1,
         updated_at: Date.now(),
       };
     });
@@ -188,11 +190,15 @@ export function createQualityStatisticsScheduler(args: {
       force_full: options.force_full,
     });
     const current_in_flight_refresh = in_flight_refreshes.get(rule_type);
-    if (current_in_flight_refresh?.request_key === request_key) {
+    const current_cache = args.store.getSnapshot().caches[rule_type];
+    if (
+      current_in_flight_refresh?.request_key === request_key &&
+      current_cache.request_token === current_in_flight_refresh.request_token
+    ) {
       return await current_in_flight_refresh.promise;
     }
 
-    const previous_cache = args.store.getSnapshot().caches[rule_type];
+    const previous_cache = current_cache;
     const current_snapshot = prepared_context.current_statistics_context.snapshot;
     const auto_plan = planQualityStatisticsAutoRun({
       current_snapshot,
@@ -202,13 +208,28 @@ export function createQualityStatisticsScheduler(args: {
     const request_token = previous_cache.request_token + 1;
     const session_token = active_session_token;
 
+    // noop/remap 不占用 worker，也不能暴露 refresh 中间态，否则页面会把删除规则误判为前台待刷新。
+    if (auto_plan.kind === "noop" || auto_plan.target_rule_keys.length === 0) {
+      const remapped_results = remapQualityStatisticsResults({
+        completed_snapshot: previous_cache.completed_snapshot,
+        current_snapshot,
+        previous_results: buildQualityStatisticsResultMap(previous_cache),
+      });
+      args.store.updateCache(rule_type, (cache) => {
+        return buildQualityStatisticsCacheFromResults({
+          previous_cache: cache,
+          current_snapshot,
+          results: remapped_results,
+          request_token,
+        });
+      });
+      return;
+    }
+
     args.store.updateCache(rule_type, (cache) => {
       return {
         ...cache,
-        running: auto_plan.kind !== "noop",
-        ready: false,
-        stale: auto_plan.kind !== "noop",
-        failed: false,
+        phase: "running",
         current_snapshot,
         last_error: null,
         request_token,
@@ -257,10 +278,7 @@ export function createQualityStatisticsScheduler(args: {
         args.store.updateCache(rule_type, (cache) => {
           return {
             ...cache,
-            running: false,
-            ready: false,
-            stale: true,
-            failed: true,
+            phase: "failed",
             current_snapshot,
             last_error: runtime_error,
             request_token,
@@ -276,6 +294,7 @@ export function createQualityStatisticsScheduler(args: {
 
     in_flight_refreshes.set(rule_type, {
       request_key,
+      request_token,
       promise: refresh_promise,
     });
 
@@ -297,8 +316,6 @@ export function createQualityStatisticsScheduler(args: {
       return;
     }
 
-    mark_cache_dirty(rule_type);
-
     const existing_schedule = scheduled_refreshes.get(rule_type);
     const next_priority =
       existing_schedule === undefined
@@ -315,6 +332,7 @@ export function createQualityStatisticsScheduler(args: {
     }
 
     cancel_scheduled_refresh(rule_type);
+    mark_cache_scheduled(rule_type);
 
     const timer_id = globalThis.setTimeout(() => {
       scheduled_refreshes.delete(rule_type);

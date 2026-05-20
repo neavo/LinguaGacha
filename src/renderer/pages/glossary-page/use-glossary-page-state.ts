@@ -8,7 +8,11 @@ import {
   buildProofreadingLookupQuery,
   getQualityRuleSlice,
 } from "@/project/quality/quality-runtime";
-import type { QualityStatisticsCacheSnapshot } from "@/project/quality/quality-statistics-store";
+import {
+  isQualityStatisticsCacheReady,
+  isQualityStatisticsCacheRunning,
+  type QualityStatisticsCacheSnapshot,
+} from "@/project/quality/quality-statistics-store";
 import {
   normalize_project_mutation_result,
   type ProjectMutationResultPayload,
@@ -243,8 +247,9 @@ export function buildGlossaryStatisticsState(args: {
 function build_glossary_statistics_state_from_cache(
   statistics_cache: QualityStatisticsCacheSnapshot,
 ): GlossaryStatisticsState {
+  // 页面只从质量统计缓存派生展示状态，不持有也不修改项目质量规则事实。
   return {
-    running: statistics_cache.running,
+    running: isQualityStatisticsCacheRunning(statistics_cache),
     completed_snapshot: statistics_cache.completed_snapshot,
     completed_entry_ids: statistics_cache.completed_entry_ids,
     matched_count_by_entry_id: statistics_cache.matched_count_by_entry_id,
@@ -379,7 +384,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const statistics_state = useMemo<GlossaryStatisticsState>(() => {
     return build_glossary_statistics_state_from_cache(statistics_cache);
   }, [statistics_cache]);
-  const statistics_ready = statistics_cache.ready;
+  const statistics_ready = isQualityStatisticsCacheReady(statistics_cache);
   const statistics_sort_available =
     statistics_ready || statistics_state.completed_snapshot !== null;
 
