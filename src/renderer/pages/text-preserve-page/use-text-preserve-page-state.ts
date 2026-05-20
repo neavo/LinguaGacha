@@ -27,12 +27,17 @@ import {
   sort_text_preserve_entries,
 } from "@/pages/text-preserve-page/filtering";
 import {
+  PRESERVE_RESULT_VIEW_SOURCE_UPDATE,
+  REBUILD_RESULT_VIEW_SOURCE_UPDATE,
   create_result_view_snapshot,
+  is_result_view_source_update_ready,
   materialize_result_view_snapshot,
-  prune_result_view_snapshot,
+  reconcile_result_view_snapshot,
+  type ResultViewSourceUpdateRequest,
   type ResultViewSourceUpdatePolicy,
   type ResultViewSnapshot,
 } from "@/pages/result-view-snapshot";
+import { create_project_section_result_view_source_update_request } from "@/pages/project-section-result-view-source-update";
 import {
   create_quality_rule_entry_id,
   ensure_quality_rule_entry_ids,
@@ -64,14 +69,6 @@ import type {
 } from "@/widgets/app-table/app-table-types";
 import { normalize_text_preserve_mode } from "@base/quality";
 import { QualityRuleImportRuleTypeValue } from "@shared/quality/importer";
-
-type TextPreserveSnapshot = {
-  revision: number;
-  meta: {
-    mode?: string;
-  };
-  entries: Array<Partial<TextPreserveEntry>>;
-};
 
 type TextPreservePresetPayload = {
   builtin_presets: TextPreservePresetItem[];
@@ -268,9 +265,24 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     project_store.getState,
   );
 
-  const [mode, set_mode] = useState<TextPreserveMode>(DEFAULT_MODE);
+  const preserve_slice = useMemo(() => {
+    return getQualityRuleSlice(project_store_state.quality, TEXT_PRESERVE_RULE_TYPE);
+  }, [project_store_state.quality]);
+  const mode = project_snapshot.loaded
+    ? normalize_text_preserve_mode(preserve_slice.mode)
+    : DEFAULT_MODE;
+  const entries = useMemo<TextPreserveEntry[]>(() => {
+    if (!project_snapshot.loaded) {
+      return [];
+    }
+
+    return ensure_quality_rule_entry_ids(
+      preserve_slice.entries.map((entry) => {
+        return normalize_entry(entry);
+      }),
+    );
+  }, [preserve_slice.entries, project_snapshot.loaded]);
   const [mode_updating, set_mode_updating] = useState(false);
-  const [entries, set_entries] = useState<TextPreserveEntry[]>([]);
   const [preset_items, set_preset_items] = useState<TextPreservePresetItem[]>([]);
   const [selected_entry_ids, set_selected_entry_ids] = useState<TextPreserveEntryId[]>([]);
   const [active_entry_id, set_active_entry_id] = useState<TextPreserveEntryId | null>(null);
@@ -285,6 +297,9 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     TextPreserveResultViewQuery,
     TextPreserveEntryId
   > | null>(null);
+  // 保存类 action 返回的项目 section 事实源负责跨越 HTTP / SSE 先后到达的竞态。
+  const [pending_result_view_source_update, set_pending_result_view_source_update] =
+    useState<ResultViewSourceUpdateRequest | null>(null);
   const [dialog_state, set_dialog_state] = useState<TextPreserveDialogState>(() => {
     return create_empty_dialog_state();
   });
@@ -418,15 +433,36 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   ]);
 
   useEffect(() => {
+    const should_rebuild_from_source = is_result_view_source_update_ready({
+      request: pending_result_view_source_update,
+      current_source_checkpoint: {
+        projectPath: project_store_state.project.path,
+        sections: project_store_state.revisions.sections,
+      },
+    });
     set_result_view_snapshot((previous_snapshot) => {
       const valid_entry_id_set = new Set(entry_ids);
-      if (previous_snapshot === null) {
-        return build_result_view_snapshot(filter_state, sort_state);
-      }
-
-      return prune_result_view_snapshot(previous_snapshot, valid_entry_id_set);
+      return reconcile_result_view_snapshot({
+        previous_snapshot,
+        current_snapshot: build_result_view_snapshot(filter_state, sort_state),
+        valid_id_set: valid_entry_id_set,
+        source_update_policy: should_rebuild_from_source
+          ? pending_result_view_source_update?.policy
+          : PRESERVE_RESULT_VIEW_SOURCE_UPDATE,
+      });
     });
-  }, [build_result_view_snapshot, entry_ids, filter_state, sort_state]);
+    if (should_rebuild_from_source) {
+      set_pending_result_view_source_update(null);
+    }
+  }, [
+    build_result_view_snapshot,
+    entry_ids,
+    filter_state,
+    project_store_state.project.path,
+    project_store_state.revisions.sections,
+    pending_result_view_source_update,
+    sort_state,
+  ]);
 
   const visible_entry_ids = useMemo<TextPreserveEntryId[]>(() => {
     return filtered_entries.map((item) => item.entry_id);
@@ -486,17 +522,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     t,
   ]);
 
-  const apply_snapshot = useCallback((snapshot: TextPreserveSnapshot): void => {
-    set_mode(normalize_text_preserve_mode(snapshot.meta.mode));
-    set_entries(
-      ensure_quality_rule_entry_ids(
-        snapshot.entries.map((entry) => {
-          return normalize_entry(entry);
-        }),
-      ),
-    );
-  }, []);
-
   const clear_selection_state = useCallback((): void => {
     set_selected_entry_ids([]);
     set_active_entry_id(null);
@@ -510,21 +535,10 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     [push_toast, unknown_error_message],
   );
 
-  const apply_store_snapshot = useCallback((): void => {
-    const preserve_slice = getQualityRuleSlice(project_store_state.quality, "text_preserve");
-    apply_snapshot({
-      revision: preserve_slice.revision,
-      meta: {
-        mode: preserve_slice.mode,
-      },
-      entries: preserve_slice.entries,
-    });
-  }, [apply_snapshot, project_store_state.quality]);
-
   const save_entries_snapshot = useCallback(
     async (
       next_entries: TextPreserveEntry[],
-      result_view_update: ResultViewSourceUpdatePolicy = "preserve",
+      result_view_update: ResultViewSourceUpdatePolicy = PRESERVE_RESULT_VIEW_SOURCE_UPDATE,
     ): Promise<boolean> => {
       if (readonly) {
         return false;
@@ -536,10 +550,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           return normalize_entry(entry);
         }),
       );
-      const previous_result_view_snapshot = result_view_snapshot;
-      if (result_view_update === "rebuild") {
-        set_result_view_snapshot(null);
-      }
 
       try {
         const mutation_result = normalize_project_mutation_result(
@@ -551,12 +561,17 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
             entries: normalized_entries,
           }),
         );
+        set_pending_result_view_source_update(
+          create_project_section_result_view_source_update_request({
+            mutation_result,
+            policy: result_view_update,
+            section: "quality",
+          }),
+        );
         await apply_project_mutation_result(mutation_result);
         return true;
       } catch (error) {
-        if (result_view_update === "rebuild") {
-          set_result_view_snapshot(previous_result_view_snapshot);
-        }
+        set_pending_result_view_source_update(null);
         void refresh_project_runtime().catch(() => {});
         push_action_error_toast(error);
         return false;
@@ -567,7 +582,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       project_store,
       push_action_error_toast,
       refresh_project_runtime,
-      result_view_snapshot,
       readonly,
     ],
   );
@@ -579,7 +593,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         close_preset_menu: boolean;
       },
     ): Promise<boolean> => {
-      const saved = await save_entries_snapshot(next_entries, "rebuild");
+      const saved = await save_entries_snapshot(next_entries, REBUILD_RESULT_VIEW_SOURCE_UPDATE);
       if (!saved) {
         return false;
       }
@@ -638,22 +652,8 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
   useEffect(() => {
     set_result_view_snapshot(null);
+    set_pending_result_view_source_update(null);
   }, [project_snapshot.loaded, project_snapshot.path]);
-
-  useEffect(() => {
-    if (!project_snapshot.loaded) {
-      apply_snapshot({
-        revision: 0,
-        meta: {
-          mode: DEFAULT_MODE,
-        },
-        entries: [],
-      });
-      return;
-    }
-
-    apply_store_snapshot();
-  }, [apply_snapshot, apply_store_snapshot, project_snapshot.loaded, project_snapshot.path]);
 
   useEffect(() => {
     if (statistics_ready || sort_state?.column_id !== "statistics") {
@@ -689,10 +689,14 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         ...filter_state,
         keyword: next_keyword,
       };
+      // 首次快照尚未落地时，先冻结旧查询结果，再让输入防抖决定何时应用新查询。
+      set_result_view_snapshot((previous_snapshot) => {
+        return previous_snapshot ?? build_result_view_snapshot(filter_state, sort_state);
+      });
       set_filter_state(next_filter_state);
       debounced_result_view_snapshot.schedule(next_filter_state, sort_state);
     },
-    [debounced_result_view_snapshot, filter_state, sort_state],
+    [build_result_view_snapshot, debounced_result_view_snapshot, filter_state, sort_state],
   );
 
   const update_filter_scope = useCallback(
@@ -701,10 +705,13 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         ...filter_state,
         scope: next_scope,
       };
+      set_result_view_snapshot((previous_snapshot) => {
+        return previous_snapshot ?? build_result_view_snapshot(filter_state, sort_state);
+      });
       set_filter_state(next_filter_state);
       debounced_result_view_snapshot.schedule(next_filter_state, sort_state);
     },
-    [debounced_result_view_snapshot, filter_state, sort_state],
+    [build_result_view_snapshot, debounced_result_view_snapshot, filter_state, sort_state],
   );
 
   const update_filter_regex = useCallback(
@@ -713,10 +720,13 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         ...filter_state,
         is_regex: next_is_regex,
       };
+      set_result_view_snapshot((previous_snapshot) => {
+        return previous_snapshot ?? build_result_view_snapshot(filter_state, sort_state);
+      });
       set_filter_state(next_filter_state);
       debounced_result_view_snapshot.schedule(next_filter_state, sort_state);
     },
-    [debounced_result_view_snapshot, filter_state, sort_state],
+    [build_result_view_snapshot, debounced_result_view_snapshot, filter_state, sort_state],
   );
 
   const apply_table_sort_state = useCallback(
@@ -792,7 +802,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         if (snapshot_committed && is_modal_progress_timeout_error(error)) {
           push_toast("warning", t("text_preserve_page.feedback.mode_refresh_pending"));
         } else {
-          set_mode(previous_mode);
           push_action_error_toast(error);
         }
       } finally {
@@ -882,7 +891,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       }
 
       const target_set = new Set(target_entry_ids);
-      const previous_entries = entries;
       const previous_selected_entry_ids = selected_entry_ids;
       const previous_active_entry_id = active_entry_id;
       const previous_anchor_entry_id = selection_anchor_entry_id;
@@ -890,12 +898,10 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         return !target_set.has(entry_ids[index] ?? "");
       });
 
-      set_entries(next_entries);
       clear_selection_state();
 
       const saved = await save_entries_snapshot(next_entries);
       if (!saved) {
-        set_entries(previous_entries);
         set_selected_entry_ids(previous_selected_entry_ids);
         set_active_entry_id(previous_active_entry_id);
         set_selection_anchor_entry_id(previous_anchor_entry_id);
@@ -941,7 +947,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         return;
       }
 
-      const previous_entries = entries;
       const next_entries = reorder_text_preserve_selected_group(
         entries,
         entry_ids,
@@ -950,11 +955,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         over_entry_id,
       );
 
-      set_entries(next_entries);
-      const saved = await save_entries_snapshot(next_entries);
-      if (!saved) {
-        set_entries(previous_entries);
-      }
+      await save_entries_snapshot(next_entries, REBUILD_RESULT_VIEW_SOURCE_UPDATE);
     },
     [drag_disabled, entries, entry_ids, save_entries_snapshot, selected_entry_ids],
   );
@@ -1391,7 +1392,12 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     };
     set_dialog_state(create_empty_dialog_state());
 
-    const saved = await save_entries_snapshot(next_entries);
+    const saved = await save_entries_snapshot(
+      next_entries,
+      dialog_state.mode === "create"
+        ? REBUILD_RESULT_VIEW_SOURCE_UPDATE
+        : PRESERVE_RESULT_VIEW_SOURCE_UPDATE,
+    );
     if (saved) {
       push_toast("success", t("app.feedback.save_success"));
       return true;
@@ -1508,7 +1514,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       return false;
     }
 
-    const saved = await save_entries_snapshot([], "rebuild");
+    const saved = await save_entries_snapshot([], REBUILD_RESULT_VIEW_SOURCE_UPDATE);
     if (!saved) {
       return false;
     }
