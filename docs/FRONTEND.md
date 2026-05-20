@@ -80,7 +80,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - 校对、质量规则和姓名字段等结果型页面的主列表使用结果视图快照：搜索、筛选、替换、排序或刷新等显式 action 生成有序稳定 id；项目事实刷新只回读最新行内容、状态、警告和统计徽标，不自动改变当前成员与顺序；质量规则新增、导入、重排、重置等改变成员或顺序的 action 以 mutation result 确认的项目身份和目标 section revision 作为重建门闩，无论 SSE 与 HTTP 先后，只有 `ProjectStore` 当前项目和 section revision 同时到达目标事实源后才重建快照；实体删除、项目切换、全量数据源重建或运行态不兼容时才剪除或重建快照，不按位置把旧 id 映射到新实体。
 - 搜索/筛选输入状态即时落在控件；日志窗口、模型选择器、质量规则与姓名字段结果页、校对主搜索和校对筛选面板等派生刷新统一消费 `INPUT_QUERY_DEBOUNCE_MS`（250ms）后的查询值。scope、regex、排序、统计跳转、筛选确认和刷新等显式 action 取消待处理输入查询并立即重建。
 - 校对页 ready 只等待 Project UI Worker hydrate 与主列表视图；筛选面板统计允许后台预热或弹窗内刷新，弹窗内筛选项变化同样走统一 250ms 输入防抖。
-- Quality statistics 的文本变更判断使用顺序滚动 hash，不以全量文本数组 stringify 作为主要 stale 判断；Quality statistics 与 Project UI Worker 校对缓存的质量规则编译、替换、文本保护和术语匹配口径收口到 `quality-runtime-context`。
+- Quality statistics 的文本变更判断使用顺序滚动 hash，不以全量文本数组 stringify 作为主要 stale 判断；缓存用 `empty` / `scheduled` / `running` / `current` / `failed` 显式 phase 表达刷新状态，noop 或纯重映射计划直接落回 `current`，只有 partial / full worker 计划进入 `running`，页面前台补算只允许从 `empty` 发起；Quality statistics 与 Project UI Worker 校对缓存的质量规则编译、替换、文本保护和术语匹配口径收口到 `quality-runtime-context`。
 - 新增页面若依赖项目事实，应接入 `ProjectPagesProvider` 或现有 runtime adapter；不要在页面里建立第二套全局项目缓存。
 
 ## 6. 样式和设计消费边界

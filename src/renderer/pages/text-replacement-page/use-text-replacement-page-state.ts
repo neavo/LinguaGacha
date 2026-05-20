@@ -7,7 +7,11 @@ import {
   buildProofreadingLookupQuery,
   getQualityRuleSlice,
 } from "@/project/quality/quality-runtime";
-import type { QualityStatisticsCacheSnapshot } from "@/project/quality/quality-statistics-store";
+import {
+  isQualityStatisticsCacheReady,
+  isQualityStatisticsCacheRunning,
+  type QualityStatisticsCacheSnapshot,
+} from "@/project/quality/quality-statistics-store";
 import {
   normalize_project_mutation_result,
   type ProjectMutationResultPayload,
@@ -236,8 +240,9 @@ function build_default_preset_update_payload(
 function build_text_replacement_statistics_state_from_cache(
   statistics_cache: QualityStatisticsCacheSnapshot,
 ): TextReplacementStatisticsState {
+  // 页面只从质量统计缓存派生展示状态，不持有也不修改替换规则事实。
   return {
-    running: statistics_cache.running,
+    running: isQualityStatisticsCacheRunning(statistics_cache),
     completed_snapshot: statistics_cache.completed_snapshot,
     completed_entry_ids: statistics_cache.completed_entry_ids,
     matched_count_by_entry_id: statistics_cache.matched_count_by_entry_id,
@@ -315,7 +320,7 @@ export function useTextReplacementPageState(
   const statistics_state = useMemo<TextReplacementStatisticsState>(() => {
     return build_text_replacement_statistics_state_from_cache(statistics_cache);
   }, [statistics_cache]);
-  const statistics_ready = statistics_cache.ready;
+  const statistics_ready = isQualityStatisticsCacheReady(statistics_cache);
 
   useEffect(() => {
     dialog_state_ref.current = dialog_state;
@@ -969,14 +974,7 @@ export function useTextReplacementPageState(
 
       await save_entries_snapshot(next_entries, REBUILD_RESULT_VIEW_SOURCE_UPDATE);
     },
-    [
-      drag_disabled,
-      entries,
-      entry_ids,
-      readonly,
-      save_entries_snapshot,
-      selected_entry_ids,
-    ],
+    [drag_disabled, entries, entry_ids, readonly, save_entries_snapshot, selected_entry_ids],
   );
 
   const query_entry_source = useCallback(

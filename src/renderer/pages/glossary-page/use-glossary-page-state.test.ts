@@ -229,10 +229,7 @@ function create_statistics_cache(
   args: Partial<QualityStatisticsCacheSnapshot>,
 ): QualityStatisticsCacheSnapshot {
   return {
-    running: false,
-    ready: true,
-    stale: false,
-    failed: false,
+    phase: "current",
     current_snapshot: {
       text_source: "src",
       text_signature: "texts",
@@ -558,8 +555,7 @@ describe("useGlossaryPageState", () => {
         "香蕉::1": 1,
         "梨::2": 5,
       },
-      ready: false,
-      stale: true,
+      phase: "running",
     });
     await rerender_probe();
 
@@ -589,8 +585,7 @@ describe("useGlossaryPageState", () => {
       },
     ];
     current_statistics_cache = create_statistics_cache({
-      ready: false,
-      stale: false,
+      phase: "empty",
       current_snapshot: null,
       completed_snapshot: null,
       completed_entry_ids: [],

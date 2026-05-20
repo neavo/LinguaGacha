@@ -212,10 +212,7 @@ function create_statistics_cache(
   args: Partial<QualityStatisticsCacheSnapshot>,
 ): QualityStatisticsCacheSnapshot {
   return {
-    running: false,
-    ready: true,
-    stale: false,
-    failed: false,
+    phase: "current",
     current_snapshot: {
       text_source: "src",
       text_signature: "texts",
@@ -411,8 +408,7 @@ describe("useTextReplacementPageState", () => {
     expect(latest_state?.sort_state?.column_id).toBe("statistics");
 
     current_statistics_cache = create_statistics_cache({
-      ready: false,
-      stale: true,
+      phase: "running",
     });
     await act(async () => {
       root?.render(

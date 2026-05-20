@@ -12,6 +12,7 @@ import { createQualityStatisticsScheduler } from "@/project/quality/quality-stat
 import {
   createQualityStatisticsStore,
   QUALITY_STATISTICS_RULE_TYPES,
+  shouldRequestQualityStatisticsForeground,
   type QualityStatisticsCacheSnapshot,
   type QualityStatisticsRuleType,
   type QualityStatisticsStore,
@@ -27,6 +28,9 @@ type QualityStatisticsContextValue = {
 
 const QualityStatisticsContext = createContext<QualityStatisticsContextValue | null>(null);
 
+/**
+ * 只提取会影响统计结果的依赖签名，避免 dst/info 等展示字段误触发统计刷新。
+ */
 function extract_quality_dependency_signatures(
   state: ProjectStoreState,
 ): Record<QualityStatisticsRuleType, string> {
@@ -68,6 +72,7 @@ export function QualityStatisticsProvider(props: { children: ReactNode }): JSX.E
   );
   const previous_warmup_ready_ref = useRef(false);
 
+  // Provider 拥有质量统计缓存会话，项目切换时必须先 reset，再接受新项目的派生结果。
   useEffect(() => {
     const scheduler = scheduler_ref.current;
     return () => {
@@ -171,23 +176,14 @@ export function useQualityStatistics(
       return store.getSnapshot().caches[rule_type];
     },
   );
+  // 前台补算只允许空缓存发起，避免 scheduled/noop/remap 阶段被页面 effect 反复触发。
+  const should_request_foreground = shouldRequestQualityStatisticsForeground(cache_snapshot);
 
   useEffect(() => {
-    if (
-      !cache_snapshot.running &&
-      !cache_snapshot.failed &&
-      (!cache_snapshot.ready || cache_snapshot.stale)
-    ) {
+    if (should_request_foreground) {
       scheduler.requestForeground(rule_type);
     }
-  }, [
-    cache_snapshot.failed,
-    cache_snapshot.ready,
-    cache_snapshot.running,
-    cache_snapshot.stale,
-    rule_type,
-    scheduler,
-  ]);
+  }, [rule_type, scheduler, should_request_foreground]);
 
   return cache_snapshot;
 }

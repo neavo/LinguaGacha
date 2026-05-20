@@ -353,7 +353,82 @@ describe("createQualityStatisticsScheduler", () => {
     scheduler.dispose();
   });
 
-  it("执行异常后会进入 failed/stale，并能在后续刷新中恢复", async () => {
+  it("删除无关联规则时只重映射缓存，不派发 worker", async () => {
+    let current_state = create_test_state();
+    current_state = {
+      ...current_state,
+      quality: {
+        ...current_state.quality,
+        glossary: {
+          ...current_state.quality.glossary,
+          entries: [
+            ...current_state.quality.glossary.entries,
+            {
+              src: "1234567",
+              dst: "",
+              info: "",
+              case_sensitive: false,
+            },
+          ],
+        },
+      },
+    };
+    const store = createQualityStatisticsStore();
+    const glossary_compute = vi.fn(async (input: QualityStatisticsTaskInput) => {
+      return create_success_result(input);
+    });
+    const scheduler = createQualityStatisticsScheduler({
+      store,
+      get_project_state: () => current_state,
+      get_executor: (rule_type): QualityStatisticsTaskExecutor => {
+        return {
+          compute:
+            rule_type === "glossary"
+              ? glossary_compute
+              : async (input: QualityStatisticsTaskInput) => create_success_result(input),
+        };
+      },
+    });
+
+    scheduler.resetProject(current_state.project.path);
+    scheduler.markQualityDirty("glossary");
+    await vi.advanceTimersByTimeAsync(REFRESH_DELAY_BY_PRIORITY.background);
+
+    expect(glossary_compute).toHaveBeenCalledTimes(1);
+
+    // 删除 1234567 后没有新增规则也没有关联目标，应只重映射缓存，不再派发 worker。
+    current_state = {
+      ...current_state,
+      quality: {
+        ...current_state.quality,
+        glossary: {
+          ...current_state.quality.glossary,
+          entries: [current_state.quality.glossary.entries[0]!],
+          revision: current_state.quality.glossary.revision + 1,
+        },
+      },
+      revisions: {
+        ...current_state.revisions,
+        sections: {
+          ...current_state.revisions.sections,
+          quality: Number(current_state.revisions.sections.quality ?? 0) + 1,
+        },
+      },
+    };
+    scheduler.markQualityDirty("glossary");
+    await vi.advanceTimersByTimeAsync(REFRESH_DELAY_BY_PRIORITY.background);
+
+    const cache = store.getSnapshot().caches.glossary;
+    expect(glossary_compute).toHaveBeenCalledTimes(1);
+    expect(cache.phase).toBe("current");
+    expect(cache.completed_entry_ids).toEqual(["apple::0"]);
+    expect(cache.matched_count_by_entry_id).toEqual({
+      "apple::0": 1,
+    });
+    scheduler.dispose();
+  });
+
+  it("执行异常后会进入 failed phase，并能在后续刷新中恢复", async () => {
     const current_state = create_test_state();
     const store = createQualityStatisticsStore();
     const glossary_compute = vi
@@ -384,15 +459,12 @@ describe("createQualityStatisticsScheduler", () => {
     scheduler.markQualityDirty("glossary");
     await vi.advanceTimersByTimeAsync(REFRESH_DELAY_BY_PRIORITY.background);
 
-    expect(store.getSnapshot().caches.glossary.failed).toBe(true);
-    expect(store.getSnapshot().caches.glossary.stale).toBe(true);
-    expect(store.getSnapshot().caches.glossary.ready).toBe(false);
+    expect(store.getSnapshot().caches.glossary.phase).toBe("failed");
 
     scheduler.requestForeground("glossary");
     await vi.advanceTimersByTimeAsync(REFRESH_DELAY_BY_PRIORITY.foreground);
 
-    expect(store.getSnapshot().caches.glossary.failed).toBe(false);
-    expect(store.getSnapshot().caches.glossary.ready).toBe(true);
+    expect(store.getSnapshot().caches.glossary.phase).toBe("current");
     expect(store.getSnapshot().caches.glossary.matched_count_by_entry_id).toEqual({
       "apple::0": 3,
     });
