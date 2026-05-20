@@ -34,6 +34,7 @@ type RuntimeSnapshot = {
   proofreadingMode: "full" | "delta" | "noop";
   proofreadingUpdatedSections: string[];
   proofreadingItemIds: Array<number | string>;
+  proofreadingFieldPatch: unknown;
   projectPath: string;
   fileKeys: string[];
   itemKeys: string[];
@@ -103,6 +104,7 @@ function RuntimeProbe(props: {
       proofreadingMode: runtime.proofreading_change_signal.mode,
       proofreadingUpdatedSections: runtime.proofreading_change_signal.updated_sections,
       proofreadingItemIds: runtime.proofreading_change_signal.item_ids,
+      proofreadingFieldPatch: runtime.proofreading_change_signal.field_patch,
       projectPath: runtime.project_store.getState().project.path,
       fileKeys: Object.keys(runtime.project_store.getState().files),
       itemKeys: [...runtime.project_store.getState().items.keys()],
@@ -1346,7 +1348,52 @@ describe("DesktopRuntimeProvider", () => {
       proofreadingMode: "delta",
       proofreadingUpdatedSections: ["items", "proofreading"],
       proofreadingItemIds: [1, 2],
+      proofreadingFieldPatch: null,
       itemKeys: ["1", "2"],
+    });
+
+    await act(async () => {
+      event_stream.emit("project.data_changed", {
+        source: "proofreading_set_status",
+        projectPath: "E:/demo/demo.lg",
+        projectRevision: 4,
+        updatedSections: ["items", "proofreading"],
+        sectionRevisions: { items: 4, proofreading: 4 },
+        items: {
+          payloadMode: "field-patch",
+          changedIds: [1],
+          fieldPatch: {
+            status: "PROCESSED",
+            retry_count: 0,
+          },
+        },
+        sections: {
+          proofreading: {
+            payloadMode: "canonical-delta",
+            data: {
+              revision: 4,
+            },
+          },
+        },
+      });
+      await Promise.resolve();
+    });
+
+    await flush_runtime_refresh_window();
+
+    await wait_for_condition(() => {
+      return snapshots.at(-1)?.proofreadingSeq === 3;
+    });
+
+    expect(snapshots.at(-1)).toMatchObject({
+      proofreadingSeq: 3,
+      proofreadingReason: "proofreading_set_status",
+      proofreadingMode: "delta",
+      proofreadingItemIds: [1],
+      proofreadingFieldPatch: {
+        status: "PROCESSED",
+        retry_count: 0,
+      },
     });
   });
 

@@ -298,6 +298,8 @@ describe("createProofreadingUiWorkerService", () => {
           retry_count: 0,
         },
       ],
+      patchItemIds: [],
+      fieldPatch: null,
       deleteItemIds: [],
     });
 
@@ -350,6 +352,115 @@ describe("createProofreadingUiWorkerService", () => {
     expect(filter_panel.without_glossary_miss_count).toBe(2);
   });
 
+  it("apply_item_delta 支持字段级 patch 并保留 worker 内完整条目事实", () => {
+    const engine = createProofreadingUiWorkerService();
+    const sync_state = engine.hydrate_full(create_hydration_input());
+
+    const delta_state = engine.apply_item_delta({
+      projectId: "demo",
+      revisions: create_runtime_revisions(4, 3),
+      total_item_count: 2,
+      upsertItems: [],
+      patchItemIds: [2],
+      fieldPatch: {
+        status: "PROCESSED",
+        retry_count: 0,
+      },
+      deleteItemIds: [],
+    });
+
+    const list_view = engine.build_list_view({
+      filters: delta_state.defaultFilters,
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: null,
+    });
+
+    expect(list_view.row_count).toBe(2);
+    expect(list_view.window_rows[1]?.item).toMatchObject({
+      item_id: 2,
+      dst: "beta",
+      status: "PROCESSED",
+    });
+    expect(
+      engine.build_filter_panel({ filters: sync_state.defaultFilters }).status_count_by_code,
+    ).toMatchObject({
+      PROCESSED: 2,
+    });
+  });
+
+  it("字段级状态 patch 会同步维护当前列表筛选缓存", () => {
+    const engine = createProofreadingUiWorkerService();
+    const sync_state = engine.hydrate_full(create_hydration_input());
+    const old_list_view = engine.build_list_view({
+      filters: sync_state.defaultFilters,
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: null,
+    });
+    expect(old_list_view.window_rows.map((row) => row.row_id)).toEqual(["1", "2"]);
+
+    engine.apply_item_delta({
+      projectId: "demo",
+      revisions: create_runtime_revisions(4, 3),
+      total_item_count: 2,
+      upsertItems: [],
+      patchItemIds: [2],
+      fieldPatch: {
+        status: "EXCLUDED",
+        retry_count: 0,
+      },
+      deleteItemIds: [],
+    });
+
+    const old_window = engine.read_list_window({
+      view_id: old_list_view.view_id,
+      start: 0,
+      count: 10,
+    });
+    expect(old_window.row_count).toBe(1);
+    expect(old_window.rows.map((row) => row.row_id)).toEqual(["1"]);
+  });
+
+  it("字段级译文 patch 会同步维护当前列表排序缓存", () => {
+    const engine = createProofreadingUiWorkerService();
+    const sync_state = engine.hydrate_full(create_hydration_input());
+    const old_list_view = engine.build_list_view({
+      filters: sync_state.defaultFilters,
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: {
+        column_id: "dst",
+        direction: "ascending",
+      },
+    });
+    expect(old_list_view.window_rows.map((row) => row.row_id)).toEqual(["1", "2"]);
+
+    engine.apply_item_delta({
+      projectId: "demo",
+      revisions: create_runtime_revisions(4, 3),
+      total_item_count: 2,
+      upsertItems: [],
+      patchItemIds: [2],
+      fieldPatch: {
+        dst: "aardvark",
+      },
+      deleteItemIds: [],
+    });
+
+    const old_window = engine.read_list_window({
+      view_id: old_list_view.view_id,
+      start: 0,
+      count: 10,
+    });
+    expect(old_window.row_count).toBe(2);
+    expect(old_window.rows.map((row) => row.row_id)).toEqual(["2", "1"]);
+    expect(old_window.rows[0]?.item.dst).toBe("aardvark");
+  });
+
   it("apply_item_delta 支持 tombstone 删除并从当前列表快照剪除对应 id", () => {
     const engine = createProofreadingUiWorkerService();
     const sync_state = engine.hydrate_full({
@@ -377,6 +488,8 @@ describe("createProofreadingUiWorkerService", () => {
       },
       total_item_count: 1,
       upsertItems: [],
+      patchItemIds: [],
+      fieldPatch: null,
       deleteItemIds: [1],
     });
     const old_window = engine.read_list_window({

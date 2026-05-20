@@ -19,9 +19,10 @@ import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import { is_project_ui_worker_client_error } from "@/project/worker/project-ui-worker-errors";
 import {
+  create_clear_translations_plan,
   create_replace_all_plan,
-  create_reset_items_plan,
   create_save_item_plan,
+  create_set_translation_status_plan,
   type ProofreadingMutationPlan,
 } from "@/pages/proofreading-page/proofreading-mutation-planner";
 import {
@@ -43,11 +44,13 @@ import type {
   AppTableSortState,
 } from "@/widgets/app-table/app-table-types";
 import { JsonTool } from "../../../shared/utils/json-tool";
+import type { ProjectChangeItemFieldPatch } from "@shared/project/event";
 import {
   build_proofreading_row_id,
   clone_proofreading_filter_options,
   create_empty_proofreading_filter_panel_state,
   create_empty_proofreading_list_view,
+  PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
   type ProofreadingClientItem,
   type ProofreadingDialogState,
   type ProofreadingFilterOptions,
@@ -55,6 +58,7 @@ import {
   type ProofreadingGlossaryTerm,
   type ProofreadingItem,
   type ProofreadingListView,
+  type ProofreadingManualStatusCode,
   type ProofreadingPendingMutation,
   type ProofreadingSearchScope,
   type ProofreadingVisibleItem,
@@ -122,7 +126,11 @@ export type UseProofreadingPageStateResult = {
   replace_next_visible_match: () => Promise<void>;
   replace_all_visible_matches: () => Promise<void>;
   request_retranslate_row_ids: (row_ids: string[]) => void;
-  request_reset_row_ids: (row_ids: string[]) => void;
+  request_clear_translation_row_ids: (row_ids: string[]) => void;
+  request_set_translation_status_row_ids: (
+    row_ids: string[],
+    status: ProofreadingManualStatusCode,
+  ) => void;
   confirm_pending_mutation: () => Promise<void>;
   close_pending_mutation: () => void;
 };
@@ -261,7 +269,7 @@ function normalize_numeric_item_ids(raw_item_ids: unknown): number[] {
   const seen_ids = new Set<number>();
   raw_item_ids.forEach((raw_item_id) => {
     const item_id = Number(raw_item_id);
-    if (!Number.isInteger(item_id) || seen_ids.has(item_id)) {
+    if (!Number.isInteger(item_id) || item_id <= 0 || seen_ids.has(item_id)) {
       return;
     }
 
@@ -430,13 +438,25 @@ function collect_full_sync_input(args: {
 function collect_delta_sync_input(args: {
   state: ProjectStoreState;
   item_ids: Array<number | string>;
+  field_patch: ProjectChangeItemFieldPatch | null;
 }): ProofreadingRuntimeDeltaInput {
   const sections = args.state.revisions.sections;
-  const items = args.item_ids.flatMap((item_id) => {
-    const item_record = args.state.items.get(item_id);
-    const normalized_item = normalize_runtime_item_from_state(item_record);
-    return normalized_item === null ? [] : [normalized_item];
-  });
+  const field_patch = args.field_patch ?? null;
+  const normalized_item_ids = args.item_ids
+    .map((item_id) => Number(item_id))
+    .filter((item_id) => Number.isInteger(item_id) && item_id > 0);
+  const items =
+    field_patch === null
+      ? normalized_item_ids.flatMap((item_id) => {
+          const item_record = args.state.items.get(item_id);
+          const normalized_item = normalize_runtime_item_from_state(item_record);
+          return normalized_item === null ? [] : [normalized_item];
+        })
+      : [];
+  const patch_item_ids =
+    field_patch === null
+      ? []
+      : normalized_item_ids.filter((item_id) => args.state.items.has(item_id));
 
   return {
     projectId: args.state.project.path,
@@ -447,9 +467,9 @@ function collect_delta_sync_input(args: {
     },
     total_item_count: args.state.items.size,
     upsertItems: items,
-    deleteItemIds: args.item_ids
-      .map((item_id) => Number(item_id))
-      .filter((item_id) => Number.isInteger(item_id) && !args.state.items.has(item_id)),
+    patchItemIds: patch_item_ids,
+    fieldPatch: field_patch,
+    deleteItemIds: normalized_item_ids.filter((item_id) => !args.state.items.has(item_id)),
   };
 }
 
@@ -1180,6 +1200,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
             collect_delta_sync_input({
               state: current_state,
               item_ids: proofreading_change_signal.item_ids,
+              field_patch: proofreading_change_signal.field_patch,
             }),
           );
       }
@@ -1284,6 +1305,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     project_snapshot.loaded,
     project_snapshot.path,
     project_store,
+    proofreading_change_signal.field_patch,
     proofreading_change_signal.item_ids,
     proofreading_change_signal.mode,
     read_list_window,
@@ -1298,12 +1320,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const run_project_mutation = useCallback(
     async (args: {
       path: string;
-      source: string;
       plan: ProofreadingMutationPlan | null;
       fallback_error_key:
         | "proofreading_page.feedback.save_failed"
         | "proofreading_page.feedback.replace_failed"
-        | "proofreading_page.feedback.reset_failed";
+        | "proofreading_page.feedback.clear_translation_failed"
+        | "proofreading_page.feedback.set_status_failed";
       preferred_row_id?: string | null;
       pending_replace_cursor?: number | null;
       success_message_builder?: ((changed_count: number) => string) | null;
@@ -1609,7 +1631,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       return;
     }
 
-    const target_item = (await read_items_by_row_ids([dialog_state.target_row_id]))[0];
+    const target_item_id = Number(dialog_state.target_row_id);
+    const target_item = Number.isInteger(target_item_id)
+      ? project_store.getState().items.get(target_item_id)
+      : undefined;
     if (target_item === undefined) {
       set_dialog_state(create_empty_dialog_state());
       set_dialog_item_snapshot(null);
@@ -1633,11 +1658,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     try {
       await run_project_mutation({
         path: "/api/project/proofreading/save-item",
-        source: "proofreading_save_item",
         plan: create_save_item_plan({
           state: project_store.getState(),
           task_snapshot,
-          item_id: Number(target_item.item_id),
+          item_id: target_item.item_id,
           next_dst: dialog_state.draft_dst,
         }),
         fallback_error_key: "proofreading_page.feedback.save_failed",
@@ -1657,15 +1681,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         };
       });
     }
-  }, [
-    dialog_state,
-    project_store,
-    push_toast,
-    read_items_by_row_ids,
-    run_project_mutation,
-    task_snapshot,
-    t,
-  ]);
+  }, [dialog_state, project_store, push_toast, run_project_mutation, task_snapshot, t]);
 
   const replace_next_visible_match = useCallback(async (): Promise<void> => {
     if (readonly || is_refreshing || is_mutating) {
@@ -1740,7 +1756,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
     await run_project_mutation({
       path: "/api/project/proofreading/save-item",
-      source: "proofreading_save_item",
       plan: create_save_item_plan({
         state: project_store.getState(),
         task_snapshot,
@@ -1814,7 +1829,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
     await run_project_mutation({
       path: "/api/project/proofreading/replace-all",
-      source: "proofreading_replace_all",
       plan: replace_plan,
       fallback_error_key: "proofreading_page.feedback.replace_failed",
       preferred_row_id: active_row_id_ref.current,
@@ -1856,16 +1870,31 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     });
   }, []);
 
-  const request_reset_row_ids = useCallback((row_ids: string[]): void => {
+  const request_clear_translation_row_ids = useCallback((row_ids: string[]): void => {
     if (row_ids.length === 0) {
       return;
     }
 
     set_pending_mutation({
-      kind: "reset-items",
+      kind: "clear-translations",
       target_row_ids: row_ids,
     });
   }, []);
+
+  const request_set_translation_status_row_ids = useCallback(
+    (row_ids: string[], status: ProofreadingManualStatusCode): void => {
+      if (row_ids.length === 0) {
+        return;
+      }
+
+      set_pending_mutation({
+        kind: "set-status",
+        target_row_ids: row_ids,
+        status,
+      });
+    },
+    [],
+  );
 
   const close_pending_mutation = useCallback((): void => {
     set_pending_mutation(null);
@@ -1876,21 +1905,17 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       return;
     }
 
-    const target_items = await read_items_by_row_ids(pending_mutation.target_row_ids);
-    if (target_items.length === 0) {
+    const target_item_ids = normalize_numeric_item_ids(pending_mutation.target_row_ids);
+    if (target_item_ids.length === 0) {
       set_pending_mutation(null);
       return;
     }
 
-    const is_retranslate = pending_mutation.kind === "retranslate";
-    const reset_success_message = t("proofreading_page.feedback.reset_success").replace(
-      "{COUNT}",
-      "{COUNT}",
-    );
-
+    const pending_mutation_to_confirm = pending_mutation;
+    const is_retranslate = pending_mutation_to_confirm.kind === "retranslate";
     set_pending_mutation(null);
     if (is_retranslate) {
-      const item_ids = normalize_numeric_item_ids(target_items.map((item) => item.item_id));
+      const item_ids = target_item_ids;
       if (item_ids.length === 0) {
         return;
       }
@@ -1974,18 +1999,45 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       return;
     }
 
+    if (pending_mutation_to_confirm.kind === "clear-translations") {
+      await run_project_mutation({
+        path: "/api/project/proofreading/clear-translations",
+        plan: create_clear_translations_plan({
+          state: project_store.getState(),
+          task_snapshot,
+          item_ids: target_item_ids,
+        }),
+        fallback_error_key: "proofreading_page.feedback.clear_translation_failed",
+        preferred_row_id: active_row_id_ref.current,
+        success_message_builder: (changed_count) => {
+          return t("proofreading_page.feedback.clear_translation_success").replace(
+            "{COUNT}",
+            changed_count.toString(),
+          );
+        },
+        close_dialog: dialog_state.open,
+        empty_warning_message: null,
+      });
+      return;
+    }
+
+    const next_status = pending_mutation_to_confirm.status;
+    const status_label_key = PROOFREADING_STATUS_LABEL_KEY_BY_CODE[next_status];
+    const status_label = t(status_label_key);
     await run_project_mutation({
-      path: "/api/project/proofreading/save-all",
-      source: "proofreading_save_all",
-      plan: create_reset_items_plan({
+      path: "/api/project/proofreading/set-status",
+      plan: create_set_translation_status_plan({
         state: project_store.getState(),
         task_snapshot,
-        item_ids: target_items.map((item) => Number(item.item_id)),
+        item_ids: target_item_ids,
+        status: next_status,
       }),
-      fallback_error_key: "proofreading_page.feedback.reset_failed",
+      fallback_error_key: "proofreading_page.feedback.set_status_failed",
       preferred_row_id: active_row_id_ref.current,
       success_message_builder: (changed_count) => {
-        return reset_success_message.replace("{COUNT}", changed_count.toString());
+        return t("proofreading_page.feedback.set_status_success")
+          .replace("{COUNT}", changed_count.toString())
+          .replace("{STATUS}", status_label);
       },
       close_dialog: dialog_state.open,
       empty_warning_message: null,
@@ -1996,7 +2048,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     list_view.revisions.proofreading,
     pending_mutation,
     project_store,
-    read_items_by_row_ids,
     run_project_mutation,
     sync_task_snapshot,
     t,
@@ -2164,7 +2215,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       replace_next_visible_match,
       replace_all_visible_matches,
       request_retranslate_row_ids,
-      request_reset_row_ids,
+      request_clear_translation_row_ids,
+      request_set_translation_status_row_ids,
       confirm_pending_mutation,
       close_pending_mutation,
     };
@@ -2205,8 +2257,9 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     replace_next_visible_match,
     replace_text,
     request_close_dialog,
-    request_reset_row_ids,
+    request_clear_translation_row_ids,
     request_retranslate_row_ids,
+    request_set_translation_status_row_ids,
     resolve_visible_row_index,
     save_dialog_entry,
     search_keyword,

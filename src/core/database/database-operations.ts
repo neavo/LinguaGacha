@@ -272,8 +272,15 @@ export class ProjectDatabase {
         return this.get_all_items(this.require_string(args, "projectPath"));
       case "getItemCount":
         return this.get_item_count(this.require_string(args, "projectPath"));
+      case "getItemStatusSummary":
+        return this.get_item_status_summary(this.require_string(args, "projectPath"));
       case "getItemsByIds":
         return this.get_items_by_ids(
+          this.require_string(args, "projectPath"),
+          this.require_number_array(args, "itemIds"),
+        );
+      case "getItemMutationFactsByIds":
+        return this.get_item_mutation_facts_by_ids(
           this.require_string(args, "projectPath"),
           this.require_number_array(args, "itemIds"),
         );
@@ -298,6 +305,13 @@ export class ProjectDatabase {
           this.optional_array(args, "items"),
           this.optional_record(args, "rules"),
           this.optional_record(args, "meta"),
+        );
+        return null;
+      case "patchItemFieldsByIds":
+        this.patch_item_fields_by_ids(
+          this.require_string(args, "projectPath"),
+          this.require_number_array(args, "itemIds"),
+          this.require_record(args, "patch"),
         );
         return null;
       case "getRules":
@@ -1005,6 +1019,35 @@ export class ProjectDatabase {
   }
 
   /**
+   * 翻译统计口径由 status 决定，SQL 聚合为缺失 meta 的校对保存提供低成本基线。
+   */
+  private get_item_status_summary(project_path: string): DatabaseJsonValue {
+    const row = this.open_project(project_path)
+      .prepare(
+        `SELECT
+           COALESCE(SUM(CASE WHEN status IN ('NONE', 'PROCESSED', 'ERROR') THEN 1 ELSE 0 END), 0)
+             AS total_line,
+           COALESCE(SUM(CASE WHEN status = 'PROCESSED' THEN 1 ELSE 0 END), 0)
+             AS processed_line,
+           COALESCE(SUM(CASE WHEN status = 'ERROR' THEN 1 ELSE 0 END), 0)
+             AS error_line
+         FROM (
+           SELECT json_extract(data, '$.status') AS status
+           FROM items
+         )`,
+      )
+      .get();
+    const processed_line = row === undefined ? 0 : row_number(row, "processed_line");
+    const error_line = row === undefined ? 0 : row_number(row, "error_line");
+    return {
+      total_line: row === undefined ? 0 : row_number(row, "total_line"),
+      processed_line,
+      error_line,
+      line: processed_line + error_line,
+    };
+  }
+
+  /**
    * 按 id 读取条目，减少校对和任务提交后的回查范围
    */
   private get_items_by_ids(project_path: string, item_ids: number[]): DatabaseJsonValue {
@@ -1026,6 +1069,53 @@ export class ProjectDatabase {
         .all(...chunk)) {
         const item_id = row_number(row, "id");
         rows_by_id.set(item_id, { ...this.value_record(json_parse(row["data"])), id: item_id });
+      }
+    }
+    return normalized_ids
+      .map((item_id) => rows_by_id.get(item_id))
+      .filter((item): item is DatabaseRow => item !== undefined) as DatabaseJsonValue;
+  }
+
+  /**
+   * 校对统一字段 mutation 只需要少量事实，避免为状态设置解析完整 item JSON。
+   */
+  private get_item_mutation_facts_by_ids(
+    project_path: string,
+    item_ids: number[],
+  ): DatabaseJsonValue {
+    const normalized_ids = [
+      ...new Set(
+        item_ids
+          .map((item_id) => Number(item_id))
+          .filter((item_id) => Number.isInteger(item_id) && item_id > 0),
+      ),
+    ];
+    if (normalized_ids.length === 0) {
+      return [];
+    }
+    const rows_by_id = new Map<number, DatabaseRow>();
+    const db = this.open_project(project_path);
+    for (let index = 0; index < normalized_ids.length; index += 500) {
+      const chunk = normalized_ids.slice(index, index + 500);
+      const placeholders = chunk.map(() => "?").join(",");
+      for (const row of db
+        .prepare(
+          `SELECT
+             id,
+             json_extract(data, '$.dst') AS dst,
+             json_extract(data, '$.status') AS status,
+             json_extract(data, '$.retry_count') AS retry_count
+           FROM items
+           WHERE id IN (${placeholders})`,
+        )
+        .all(...chunk)) {
+        const item_id = row_number(row, "id");
+        rows_by_id.set(item_id, {
+          id: item_id,
+          dst: row_text(row, "dst"),
+          status: row_text(row, "status"),
+          retry_count: row_number(row, "retry_count"),
+        });
       }
     }
     return normalized_ids
@@ -1140,6 +1230,49 @@ export class ProjectDatabase {
     }
     if (meta !== null) {
       this.upsert_meta_entries_with_db(db, meta);
+    }
+  }
+
+  /**
+   * 用 SQLite JSON patch 写入同一个字段增量，避免校对批量状态修改重写完整 DTO。
+   */
+  private patch_item_fields_by_ids(
+    project_path: string,
+    item_ids: number[],
+    patch: DatabaseRow,
+  ): void {
+    const normalized_ids = [
+      ...new Set(
+        item_ids
+          .map((item_id) => Number(item_id))
+          .filter((item_id) => Number.isInteger(item_id) && item_id > 0),
+      ),
+    ];
+    if (normalized_ids.length === 0) {
+      return;
+    }
+    const patch_entries: Array<[string, string | number]> = [];
+    if (typeof patch["dst"] === "string") {
+      patch_entries.push(["$.dst", patch["dst"]]);
+    }
+    if (typeof patch["status"] === "string") {
+      patch_entries.push(["$.status", patch["status"]]);
+    }
+    if (typeof patch["retry_count"] === "number") {
+      patch_entries.push(["$.retry_count", Math.trunc(patch["retry_count"])]);
+    }
+    if (patch_entries.length === 0) {
+      return;
+    }
+    const json_set_args = patch_entries.map(() => "?, ?").join(", ");
+    const patch_values = patch_entries.flatMap(([path_key, value]) => [path_key, value]);
+    const db = this.open_project(project_path);
+    for (let index = 0; index < normalized_ids.length; index += 500) {
+      const chunk = normalized_ids.slice(index, index + 500);
+      const placeholders = chunk.map(() => "?").join(",");
+      db.prepare(
+        `UPDATE items SET data = json_set(data, ${json_set_args}) WHERE id IN (${placeholders})`,
+      ).run(...patch_values, ...chunk);
     }
   }
 

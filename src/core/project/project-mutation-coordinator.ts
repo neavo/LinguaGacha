@@ -27,7 +27,10 @@ export type ProjectMutationChangeRequest = {
   projectPath: string; // projectPath 已由会话或显式路径校验，publisher 不再猜测目标工程
   source: string; // source 是 HTTP mutation 与 SSE 事件共用的行为标签
   updatedSections: ProjectDataSection[]; // updatedSections 决定前端更新哪些 ProjectStore section
-  items?: Pick<ProjectChangeItemsPayload, "payloadMode" | "changedIds" | "deleteIds">;
+  items?: Pick<
+    ProjectChangeItemsPayload,
+    "payloadMode" | "changedIds" | "deleteIds" | "fieldPatch"
+  >;
   files?: Pick<ProjectChangeFilesPayload, "payloadMode" | "changedPaths" | "deletePaths">;
   sections?: Partial<
     Record<ProjectDataSection, Pick<ProjectChangeSectionPayload, "payloadMode" | "data">>

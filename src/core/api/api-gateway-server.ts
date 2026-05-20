@@ -257,8 +257,11 @@ export class ApiGatewayServer {
     this.post_json(app, "/api/project/proofreading/save-item", (body) =>
       proofreading_service.save_item(body),
     );
-    this.post_json(app, "/api/project/proofreading/save-all", (body) =>
-      proofreading_service.save_all(body),
+    this.post_json(app, "/api/project/proofreading/clear-translations", (body) =>
+      proofreading_service.clear_translations(body),
+    );
+    this.post_json(app, "/api/project/proofreading/set-status", (body) =>
+      proofreading_service.set_translation_status(body),
     );
     this.post_json(app, "/api/project/proofreading/replace-all", (body) =>
       proofreading_service.replace_all(body),

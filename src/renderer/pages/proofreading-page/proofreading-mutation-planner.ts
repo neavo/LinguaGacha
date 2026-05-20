@@ -2,6 +2,7 @@ import type {
   ProjectStoreSectionRevisions,
   ProjectStoreState,
 } from "@/project/store/project-store";
+import type { ProofreadingManualStatusCode } from "@/pages/proofreading-page/types";
 import type { ProjectItemPublicRecord } from "@base/item";
 import { compile_text_pattern, replace_text_pattern } from "@shared/text/text-pattern";
 
@@ -13,7 +14,8 @@ export type ProofreadingMutationPlan = {
   request_body: {
     item_id?: number; // 单条保存目标 item
     dst?: string; // 单条保存目标译文
-    item_ids?: number[]; // 批量替换或重置的目标 item 集合
+    item_ids?: number[]; // 批量替换、清空译文或设置状态的目标 item 集合
+    status?: ProofreadingManualStatusCode; // 批量设置的人工翻译状态
     search_text?: string; // 批量替换搜索文本，真实替换由后端执行
     replace_text?: string; // 批量替换目标文本
     is_regex?: boolean; // 批量替换是否使用正则语义
@@ -21,13 +23,12 @@ export type ProofreadingMutationPlan = {
   };
 };
 
-// 批量校对操作按 item_id 建索引，只用于判断命令是否有实际影响。
-function build_store_item_index(state: ProjectStoreState): Map<number, ProofreadingStoreItem> {
-  const item_index = new Map<number, ProofreadingStoreItem>();
-  for (const item of state.items.values()) {
-    item_index.set(item.item_id, item);
-  }
-  return item_index;
+// 校对计划只按目标 id 读取共享索引，避免大项目操作前扫描全部 items。
+function read_store_item(
+  state: ProjectStoreState,
+  item_id: number,
+): ProofreadingStoreItem | undefined {
+  return state.items.get(item_id);
 }
 
 // 校对 mutation 同时依赖 items 与 proofreading revision。
@@ -81,7 +82,7 @@ export function create_save_item_plan(args: {
   item_id: number;
   next_dst: string;
 }): ProofreadingMutationPlan | null {
-  const current_item = build_store_item_index(args.state).get(args.item_id);
+  const current_item = read_store_item(args.state, args.item_id);
   if (current_item === undefined || current_item.dst === args.next_dst) {
     return null;
   }
@@ -105,11 +106,10 @@ export function create_replace_all_plan(args: {
   replace_text: string;
   is_regex: boolean;
 }): ProofreadingMutationPlan | null {
-  const item_index = build_store_item_index(args.state);
   const changed_item_ids: number[] = [];
 
   for (const item_id of args.item_ids) {
-    const current_item = item_index.get(item_id);
+    const current_item = read_store_item(args.state, item_id);
     if (current_item === undefined) {
       continue;
     }
@@ -140,25 +140,20 @@ export function create_replace_all_plan(args: {
   };
 }
 
-// 批量重置只提交目标 id，后端清空译文、状态和重试次数。
-export function create_reset_items_plan(args: {
+// 批量清空译文只提交目标 id，后端保留状态和重试计数。
+export function create_clear_translations_plan(args: {
   state: ProjectStoreState;
   task_snapshot?: Record<string, unknown>;
   item_ids: number[];
 }): ProofreadingMutationPlan | null {
-  const item_index = build_store_item_index(args.state);
   const changed_item_ids: number[] = [];
 
   for (const item_id of args.item_ids) {
-    const current_item = item_index.get(item_id);
+    const current_item = read_store_item(args.state, item_id);
     if (current_item === undefined) {
       continue;
     }
-    if (
-      current_item.dst === "" &&
-      current_item.status === "NONE" &&
-      current_item.retry_count === 0
-    ) {
+    if (current_item.dst === "") {
       continue;
     }
     changed_item_ids.push(item_id);
@@ -172,6 +167,40 @@ export function create_reset_items_plan(args: {
     changed_item_ids,
     request_body: {
       item_ids: args.item_ids,
+      expected_section_revisions: build_expected_revisions(args.state),
+    },
+  };
+}
+
+// 批量设置状态提交目标状态；同状态但仍有 retry_count 时也需要提交清理。
+export function create_set_translation_status_plan(args: {
+  state: ProjectStoreState;
+  task_snapshot?: Record<string, unknown>;
+  item_ids: number[];
+  status: ProofreadingManualStatusCode;
+}): ProofreadingMutationPlan | null {
+  const changed_item_ids: number[] = [];
+
+  for (const item_id of args.item_ids) {
+    const current_item = read_store_item(args.state, item_id);
+    if (current_item === undefined) {
+      continue;
+    }
+    if (current_item.status === args.status && current_item.retry_count === 0) {
+      continue;
+    }
+    changed_item_ids.push(item_id);
+  }
+
+  if (changed_item_ids.length === 0) {
+    return null;
+  }
+
+  return {
+    changed_item_ids,
+    request_body: {
+      item_ids: args.item_ids,
+      status: args.status,
       expected_section_revisions: build_expected_revisions(args.state),
     },
   };

@@ -4,8 +4,10 @@ import type { ProjectItemPublicRecord } from "@base/item";
 import type { ProjectStoreState } from "@/project/store/project-store";
 import { createProjectItemIndex } from "@/project/store/project-item-index";
 import {
+  create_clear_translations_plan,
   create_replace_all_plan,
   create_save_item_plan,
+  create_set_translation_status_plan,
 } from "@/pages/proofreading-page/proofreading-mutation-planner";
 
 function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
@@ -122,5 +124,63 @@ describe("proofreading mutation planner", () => {
       },
     });
     expect(plan?.changed_item_ids).toEqual([1]);
+  });
+
+  it("清空译文只提交目标 item_ids 并保留状态和重试计数事实给后端", () => {
+    const plan = create_clear_translations_plan({
+      state: {
+        ...create_test_state(),
+        items: createProjectItemIndex({
+          "1": create_test_item({
+            item_id: 1,
+            dst: "已有译文",
+            status: "PROCESSED",
+            retry_count: 3,
+          }),
+        }),
+      },
+      item_ids: [1],
+    });
+
+    expect(plan).toEqual({
+      changed_item_ids: [1],
+      request_body: {
+        item_ids: [1],
+        expected_section_revisions: {
+          items: 4,
+          proofreading: 2,
+        },
+      },
+    });
+  });
+
+  it("设置翻译状态会在状态相同但仍有重试计数时提交清理命令", () => {
+    const plan = create_set_translation_status_plan({
+      state: {
+        ...create_test_state(),
+        items: createProjectItemIndex({
+          "1": create_test_item({
+            item_id: 1,
+            dst: "已有译文",
+            status: "PROCESSED",
+            retry_count: 2,
+          }),
+        }),
+      },
+      item_ids: [1],
+      status: "PROCESSED",
+    });
+
+    expect(plan).toEqual({
+      changed_item_ids: [1],
+      request_body: {
+        item_ids: [1],
+        status: "PROCESSED",
+        expected_section_revisions: {
+          items: 4,
+          proofreading: 2,
+        },
+      },
+    });
   });
 });

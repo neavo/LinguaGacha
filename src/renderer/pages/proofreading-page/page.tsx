@@ -121,7 +121,12 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
           on_selection_error={proofreading_page_state.handle_table_selection_error}
           on_open_edit={proofreading_page_state.open_edit_dialog}
           on_request_retranslate_row_ids={proofreading_page_state.request_retranslate_row_ids}
-          on_request_reset_row_ids={proofreading_page_state.request_reset_row_ids}
+          on_request_clear_translation_row_ids={
+            proofreading_page_state.request_clear_translation_row_ids
+          }
+          on_request_set_translation_status_row_ids={
+            proofreading_page_state.request_set_translation_status_row_ids
+          }
         />
       </div>
 
@@ -145,7 +150,10 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
         on_save={proofreading_page_state.save_dialog_entry}
         on_close={proofreading_page_state.request_close_dialog}
         on_request_retranslate={proofreading_page_state.request_retranslate_row_ids}
-        on_request_reset={proofreading_page_state.request_reset_row_ids}
+        on_request_clear_translation={proofreading_page_state.request_clear_translation_row_ids}
+        on_request_set_translation_status={
+          proofreading_page_state.request_set_translation_status_row_ids
+        }
       />
 
       <ProofreadingConfirmDialog

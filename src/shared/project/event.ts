@@ -21,15 +21,27 @@ export type ProjectDataSection =
   | "proofreading";
 
 // 变更事件的 payload mode 决定 renderer 是直接合并、按 id 补读还是整段补读
-export type ProjectChangePayloadMode = "canonical-delta" | "ids-only" | "section-invalidated";
+export type ProjectChangePayloadMode =
+  | "canonical-delta"
+  | "field-patch"
+  | "ids-only"
+  | "section-invalidated";
 
 // section revision 只回填本次更新 section，避免消费者误判未更新 section
 export type ProjectDataSectionRevisions = Partial<Record<ProjectDataSection, number>>;
 
-// items 支持 canonical upsert、ids-only 补读和 tombstone 删除三种行级表达
+// item 字段级 patch 只表达后端已提交事实中的少量校对字段，不能替代完整 DTO。
+export type ProjectChangeItemFieldPatch = {
+  dst?: string;
+  status?: string;
+  retry_count?: number;
+};
+
+// items 支持 canonical upsert、field-patch、ids-only 补读和 tombstone 删除四种行级表达
 export type ProjectChangeItemsPayload = {
   payloadMode: ProjectChangePayloadMode;
   upsert?: Record<string, ProjectChangeJsonRecord>;
+  fieldPatch?: ProjectChangeItemFieldPatch;
   changedIds?: number[];
   deleteIds?: number[];
 };
@@ -103,7 +115,12 @@ export function normalizeProjectDataSections(value: unknown): ProjectDataSection
 
 // 坏值默认降级为 section-invalidated，让前端走补读而不是误合并
 export function normalizeProjectChangePayloadMode(value: unknown): ProjectChangePayloadMode {
-  if (value === "canonical-delta" || value === "ids-only" || value === "section-invalidated") {
+  if (
+    value === "canonical-delta" ||
+    value === "field-patch" ||
+    value === "ids-only" ||
+    value === "section-invalidated"
+  ) {
     return value;
   }
   return "section-invalidated";

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ProjectItemPublicRecord } from "@base/item";
 
 import {
-  applyProjectItemIndexDelta,
+  applyProjectItemIndexChange,
   cloneProjectItemIndex,
   createProjectItemIndex,
 } from "@/project/store/project-item-index";
@@ -57,7 +57,7 @@ describe("ProjectItemIndex", () => {
     });
     const cloned_index = cloneProjectItemIndex(index);
 
-    const next_index = applyProjectItemIndexDelta(index, {
+    const next_index = applyProjectItemIndexChange(index, {
       payloadMode: "canonical-delta",
       upsert: {
         "1": create_test_item({ item_id: 1, dst: "新译文", status: "PROCESSED" }),
@@ -70,5 +70,41 @@ describe("ProjectItemIndex", () => {
     expect(next_index.has(2)).toBe(false);
     expect(cloned_index.get(1)?.dst).toBe("旧译文");
     expect(cloned_index.has(2)).toBe(true);
+  });
+
+  it("field patch 只合并白名单字段并保留其它 item 事实", () => {
+    const index = createProjectItemIndex({
+      "1": create_test_item({
+        item_id: 1,
+        src: "原文",
+        dst: "旧译文",
+        status: "NONE",
+        retry_count: 2,
+      }),
+      "2": create_test_item({ item_id: 2, dst: "保留译文", status: "EXCLUDED" }),
+    });
+
+    const next_index = applyProjectItemIndexChange(index, {
+      payloadMode: "field-patch",
+      changedIds: [1, 404],
+      fieldPatch: {
+        status: "PROCESSED",
+        retry_count: 0,
+      },
+    });
+
+    expect(next_index.get(1)).toEqual(
+      create_test_item({
+        item_id: 1,
+        src: "原文",
+        dst: "旧译文",
+        status: "PROCESSED",
+        retry_count: 0,
+      }),
+    );
+    expect(next_index.get(2)).toEqual(
+      create_test_item({ item_id: 2, dst: "保留译文", status: "EXCLUDED" }),
+    );
+    expect(next_index.has(404)).toBe(false);
   });
 });

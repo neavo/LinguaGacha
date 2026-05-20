@@ -3,8 +3,9 @@ import {
   Ban,
   CircleCheck,
   CircleMinus,
+  Eraser,
+  ListChecks,
   PencilLine,
-  Recycle,
   RefreshCcw,
   TriangleAlert,
 } from "lucide-react";
@@ -12,9 +13,11 @@ import { useMemo } from "react";
 
 import { useI18n } from "@/app/locale/locale-provider";
 import {
+  PROOFREADING_MANUAL_STATUS_CODES,
   PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
   PROOFREADING_WARNING_LABEL_KEY_BY_CODE,
   type ProofreadingItem,
+  type ProofreadingManualStatusCode,
   type ProofreadingVisibleItem,
 } from "@/pages/proofreading-page/types";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shadcn/card";
@@ -23,6 +26,9 @@ import {
   AppContextMenuContent,
   AppContextMenuGroup,
   AppContextMenuItem,
+  AppContextMenuSub,
+  AppContextMenuSubContent,
+  AppContextMenuSubTrigger,
 } from "@/widgets/app-context-menu/app-context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import { AppTable } from "@/widgets/app-table/app-table";
@@ -53,7 +59,11 @@ type ProofreadingTableProps = {
   on_selection_error: (error: unknown) => void;
   on_open_edit: (row_id: string) => void;
   on_request_retranslate_row_ids: (row_ids: string[]) => void;
-  on_request_reset_row_ids: (row_ids: string[]) => void;
+  on_request_clear_translation_row_ids: (row_ids: string[]) => void;
+  on_request_set_translation_status_row_ids: (
+    row_ids: string[],
+    status: ProofreadingManualStatusCode,
+  ) => void;
 };
 
 type ProofreadingStatusIconTone = "success" | "warning" | "failure" | "neutral";
@@ -403,12 +413,31 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
                   <AppContextMenuItem
                     disabled={props.readonly}
                     onClick={() => {
-                      props.on_request_reset_row_ids(target_row_ids);
+                      props.on_request_clear_translation_row_ids(target_row_ids);
                     }}
                   >
-                    <Recycle />
-                    {t("proofreading_page.action.reset_translation")}
+                    <Eraser />
+                    {t("proofreading_page.action.clear_translation")}
                   </AppContextMenuItem>
+                  <AppContextMenuSub>
+                    <AppContextMenuSubTrigger disabled={props.readonly}>
+                      <ListChecks />
+                      {t("proofreading_page.action.set_translation_status")}
+                    </AppContextMenuSubTrigger>
+                    <AppContextMenuSubContent>
+                      {PROOFREADING_MANUAL_STATUS_CODES.map((status) => (
+                        <AppContextMenuItem
+                          key={status}
+                          disabled={props.readonly}
+                          onSelect={() => {
+                            props.on_request_set_translation_status_row_ids(target_row_ids, status);
+                          }}
+                        >
+                          {t(PROOFREADING_STATUS_LABEL_KEY_BY_CODE[status])}
+                        </AppContextMenuItem>
+                      ))}
+                    </AppContextMenuSubContent>
+                  </AppContextMenuSub>
                 </AppContextMenuGroup>
               </AppContextMenuContent>
             );

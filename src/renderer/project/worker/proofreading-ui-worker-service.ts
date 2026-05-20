@@ -32,6 +32,7 @@ import {
   type ProofreadingWarningFragmentsByCode,
 } from "@/pages/proofreading-page/types";
 import { InternalInvariantError } from "@shared/error";
+import type { ProjectChangeItemFieldPatch } from "@shared/project/event";
 import type { TextPreserveRule } from "@shared/text/text-preserve-rules";
 import { create_text_keyword_matcher, type TextKeywordMatcher } from "@shared/text/text-pattern";
 import {
@@ -85,6 +86,8 @@ export type ProofreadingRuntimeDeltaInput = {
   revisions: ProofreadingRuntimeRevisions;
   total_item_count: number;
   upsertItems: ProofreadingRuntimeItemRecord[];
+  patchItemIds: number[];
+  fieldPatch: ProjectChangeItemFieldPatch | null;
   deleteItemIds: number[];
 };
 
@@ -160,11 +163,32 @@ type ProofreadingRuntimeState = {
   defaultFilters: ProofreadingFilterOptions;
 };
 
-// 列表视图缓存只保存排序后的 id 序列，避免重复复制大 item
+type ProofreadingRuntimeItemFieldName =
+  | "file_path"
+  | "row_number"
+  | "src"
+  | "dst"
+  | "status"
+  | "text_type"
+  | "retry_count";
+
+type ProofreadingRuntimeItemChange = {
+  item_id: string; // 变更记录统一使用 row id 字符串，直接对接列表缓存
+  previous_evaluated_item: ProofreadingClientItem | null;
+  next_evaluated_item: ProofreadingClientItem | null;
+  changed_fields: Set<ProofreadingRuntimeItemFieldName>;
+  natural_order_changed: boolean; // 文件、行号或 item_id 变化会影响所有排序的兜底顺序
+};
+
+// 列表视图缓存保存查询上下文和排序后的 id 序列，让 delta 可以维护当前 view 而不是等整页重建
 type ProofreadingRuntimeListViewCache = {
   view_id: string;
   projectId: string;
+  filter_context: ProofreadingRuntimeFilterContext;
+  search_context: ProofreadingRuntimeSearchContext;
+  sort_state: AppTableSortState | null;
   ordered_item_ids: string[];
+  ordered_item_id_set: Set<string>;
 };
 
 // 筛选维度枚举用于“构建面板时忽略当前维度”的交叉统计
@@ -187,6 +211,7 @@ type ProofreadingRuntimeSearchContext = {
 };
 
 const PROOFREADING_DEFAULT_WINDOW_COUNT = 160; // 默认窗口大小控制 worker 每次返回量，防止大项目一次复制全量行
+const PROOFREADING_LIST_CACHE_INCREMENTAL_INSERT_LIMIT = 64; // 大批量新增/重排直接重建派生 view，比反复 splice 更稳
 
 // 自然排序固定为文件路径 + 行号，是所有二级排序的稳定兜底
 const PROOFREADING_NATURAL_SORT_STATE: AppTableSortState = {
@@ -206,6 +231,18 @@ function compare_text(left: string, right: string): number {
  */
 function normalize_sort_direction(direction: "ascending" | "descending"): number {
   return direction === "ascending" ? 1 : -1;
+}
+
+/**
+ * 缓存持有排序状态快照，避免调用方后续修改查询对象影响 worker 内部 view。
+ */
+function clone_sort_state(sort_state: AppTableSortState | null): AppTableSortState | null {
+  return sort_state === null
+    ? null
+    : {
+        column_id: sort_state.column_id,
+        direction: sort_state.direction,
+      };
 }
 
 /**
@@ -272,30 +309,40 @@ function compare_visible_items(
 /**
  * 可见列表排序会叠加自然顺序兜底，保证相同列值时行顺序不抖动
  */
+function compare_list_view_items(
+  left_item: ProofreadingClientItem,
+  right_item: ProofreadingClientItem,
+  sort_state: AppTableSortState | null,
+): number {
+  const effective_sort_state = sort_state ?? PROOFREADING_NATURAL_SORT_STATE;
+  const result = compare_visible_items(left_item, right_item, effective_sort_state);
+  if (result !== 0) {
+    return result;
+  }
+
+  if (effective_sort_state.column_id !== PROOFREADING_NATURAL_SORT_STATE.column_id) {
+    const natural_order_result = compare_visible_items(
+      left_item,
+      right_item,
+      PROOFREADING_NATURAL_SORT_STATE,
+    );
+    if (natural_order_result !== 0) {
+      return natural_order_result;
+    }
+  }
+
+  return compare_text(left_item.row_id, right_item.row_id);
+}
+
+/**
+ * 可见列表排序会叠加自然顺序兜底，保证相同列值时行顺序不抖动
+ */
 function sort_visible_items(
   items: ProofreadingClientItem[],
   sort_state: AppTableSortState | null,
 ): ProofreadingClientItem[] {
-  const effective_sort_state = sort_state ?? PROOFREADING_NATURAL_SORT_STATE;
-
   return items.sort((left_item, right_item) => {
-    const result = compare_visible_items(left_item, right_item, effective_sort_state);
-    if (result !== 0) {
-      return result;
-    }
-
-    if (effective_sort_state.column_id !== PROOFREADING_NATURAL_SORT_STATE.column_id) {
-      const natural_order_result = compare_visible_items(
-        left_item,
-        right_item,
-        PROOFREADING_NATURAL_SORT_STATE,
-      );
-      if (natural_order_result !== 0) {
-        return natural_order_result;
-      }
-    }
-
-    return compare_text(left_item.row_id, right_item.row_id);
+    return compare_list_view_items(left_item, right_item, sort_state);
   });
 }
 
@@ -323,6 +370,33 @@ function normalize_runtime_item(record: unknown): ProofreadingRuntimeItemRecord 
     text_type: String(candidate.text_type ?? "NONE"),
     retry_count: Number(candidate.retry_count ?? 0),
   };
+}
+
+/**
+ * 字段级 patch 只合并后端事件允许的校对字段，保留 worker 内完整 item 事实。
+ */
+function apply_runtime_item_field_patch(
+  item: ProofreadingRuntimeItemRecord,
+  patch: ProjectChangeItemFieldPatch | null,
+): ProofreadingRuntimeItemRecord | null {
+  if (patch === null) {
+    return null;
+  }
+  const next_item: ProofreadingRuntimeItemRecord = { ...item };
+  let touched = false;
+  if (typeof patch.dst === "string" && patch.dst !== item.dst) {
+    next_item.dst = patch.dst;
+    touched = true;
+  }
+  if (typeof patch.status === "string" && patch.status !== item.status) {
+    next_item.status = patch.status;
+    touched = true;
+  }
+  if (typeof patch.retry_count === "number" && patch.retry_count !== item.retry_count) {
+    next_item.retry_count = patch.retry_count;
+    touched = true;
+  }
+  return touched ? next_item : null;
 }
 
 /**
@@ -902,6 +976,106 @@ function apply_counter_delta(args: {
   });
 }
 
+const RUNTIME_ITEM_CHANGE_FIELDS: readonly ProofreadingRuntimeItemFieldName[] = [
+  "file_path",
+  "row_number",
+  "src",
+  "dst",
+  "status",
+  "text_type",
+  "retry_count",
+];
+
+/**
+ * 变更字段用于判断当前列表 view 是否需要重排，避免无关 patch 触发整表排序。
+ */
+function collect_runtime_item_changed_fields(
+  previous_item: ProofreadingRuntimeItemRecord | null,
+  next_item: ProofreadingRuntimeItemRecord | null,
+): Set<ProofreadingRuntimeItemFieldName> {
+  const changed_fields = new Set<ProofreadingRuntimeItemFieldName>();
+  for (const field of RUNTIME_ITEM_CHANGE_FIELDS) {
+    if (previous_item?.[field] !== next_item?.[field]) {
+      changed_fields.add(field);
+    }
+  }
+  return changed_fields;
+}
+
+/**
+ * 单条 raw item 更新会同步重评估警告和所有筛选计数，并输出当前 view 可消费的变更记录。
+ */
+function upsert_runtime_item_in_state(
+  state: ProofreadingRuntimeState,
+  normalized_item: ProofreadingRuntimeItemRecord,
+): ProofreadingRuntimeItemChange {
+  const item_key = String(normalized_item.item_id);
+  const previous_item = state.raw_item_by_id.get(item_key) ?? null;
+  const should_rebuild_natural_order =
+    previous_item === null || compare_runtime_items(previous_item, normalized_item) !== 0;
+  const previous_evaluated_item = state.evaluated_item_by_id.get(item_key) ?? null;
+  if (previous_evaluated_item !== null) {
+    apply_counter_delta({
+      state,
+      item: previous_evaluated_item,
+      delta: -1,
+    });
+    state.evaluated_item_by_id.delete(item_key);
+  }
+
+  state.raw_item_by_id.set(item_key, normalized_item);
+  const next_evaluated_item = evaluate_proofreading_item({
+    item: normalized_item,
+    quality_context: state.quality_context,
+    quality: state.quality,
+    sourceLanguage: state.sourceLanguage,
+    targetLanguage: state.targetLanguage,
+    sample_rule_cache: state.sample_rule_cache,
+  });
+  if (next_evaluated_item !== null) {
+    state.evaluated_item_by_id.set(item_key, next_evaluated_item);
+    apply_counter_delta({
+      state,
+      item: next_evaluated_item,
+      delta: 1,
+    });
+  }
+  return {
+    item_id: item_key,
+    previous_evaluated_item,
+    next_evaluated_item,
+    changed_fields: collect_runtime_item_changed_fields(previous_item, normalized_item),
+    natural_order_changed: should_rebuild_natural_order,
+  };
+}
+
+/**
+ * 删除也产出同形变更记录，列表缓存不需要关心 delta 来源是 tombstone 还是 upsert。
+ */
+function delete_runtime_item_from_state(
+  state: ProofreadingRuntimeState,
+  item_id: string,
+): ProofreadingRuntimeItemChange {
+  const previous_item = state.raw_item_by_id.get(item_id) ?? null;
+  const previous_evaluated_item = state.evaluated_item_by_id.get(item_id) ?? null;
+  if (previous_evaluated_item !== null) {
+    apply_counter_delta({
+      state,
+      item: previous_evaluated_item,
+      delta: -1,
+    });
+  }
+  state.raw_item_by_id.delete(item_id);
+  state.evaluated_item_by_id.delete(item_id);
+  return {
+    item_id,
+    previous_evaluated_item,
+    next_evaluated_item: null,
+    changed_fields: collect_runtime_item_changed_fields(previous_item, null),
+    natural_order_changed: previous_item !== null,
+  };
+}
+
 /**
  * 默认筛选从当前可见事实派生，进入页面时只展示最常用的有效范围
  */
@@ -1055,26 +1229,7 @@ function create_runtime_state(input: ProofreadingRuntimeHydrationInput): Proofre
       return;
     }
 
-    const item_key = String(normalized_item.item_id);
-    raw_item_by_id.set(item_key, normalized_item);
-    const evaluated_item = evaluate_proofreading_item({
-      item: normalized_item,
-      quality_context,
-      quality: input.quality,
-      sourceLanguage: input.sourceLanguage,
-      targetLanguage: input.targetLanguage,
-      sample_rule_cache,
-    });
-    if (evaluated_item === null) {
-      return;
-    }
-
-    evaluated_item_by_id.set(item_key, evaluated_item);
-    apply_counter_delta({
-      state,
-      item: evaluated_item,
-      delta: 1,
-    });
+    upsert_runtime_item_in_state(state, normalized_item);
   });
 
   rebuild_natural_item_ids(state);
@@ -1123,6 +1278,178 @@ function collect_visible_items_in_natural_order(args: {
     matched_items.push(item);
   });
   return matched_items;
+}
+
+/**
+ * 当前列表 view 的筛选和搜索上下文共同决定 item 是否应出现在缓存 id 序列中。
+ */
+function item_matches_list_view_cache(
+  item: ProofreadingClientItem,
+  cache: ProofreadingRuntimeListViewCache,
+): boolean {
+  return (
+    item_matches_filter_context(item, cache.filter_context) &&
+    matches_proofreading_search_scope({
+      item,
+      search_context: cache.search_context,
+    })
+  );
+}
+
+function changed_fields_include_any(
+  fields: Set<ProofreadingRuntimeItemFieldName>,
+  candidates: readonly ProofreadingRuntimeItemFieldName[],
+): boolean {
+  return candidates.some((field) => fields.has(field));
+}
+
+/**
+ * 两端都仍可见时，只有排序键或自然兜底顺序改变才需要移动缓存中的 id。
+ */
+function should_reposition_visible_item_in_cache(
+  change: ProofreadingRuntimeItemChange,
+  cache: ProofreadingRuntimeListViewCache,
+): boolean {
+  if (change.natural_order_changed) {
+    return true;
+  }
+  if (cache.sort_state === null) {
+    return false;
+  }
+  if (cache.sort_state.column_id === "file") {
+    return changed_fields_include_any(change.changed_fields, ["file_path", "row_number"]);
+  }
+  if (cache.sort_state.column_id === "status") {
+    return change.changed_fields.has("status");
+  }
+  if (cache.sort_state.column_id === "src") {
+    return change.changed_fields.has("src");
+  }
+  if (cache.sort_state.column_id === "dst") {
+    return change.changed_fields.has("dst");
+  }
+  return true;
+}
+
+/**
+ * 重建当前 view 的派生 id 序列，不触碰后端事实和 worker 主索引。
+ */
+function build_ordered_item_ids_for_cache(
+  state: ProofreadingRuntimeState,
+  cache: ProofreadingRuntimeListViewCache,
+): string[] {
+  return sort_visible_items(
+    collect_visible_items_in_natural_order({
+      state,
+      filter_context: cache.filter_context,
+      search_context: cache.search_context,
+    }),
+    cache.sort_state,
+  ).map((item) => String(item.item_id));
+}
+
+function rebuild_list_view_cache_order(
+  state: ProofreadingRuntimeState,
+  cache: ProofreadingRuntimeListViewCache,
+): ProofreadingRuntimeListViewCache {
+  const ordered_item_ids = build_ordered_item_ids_for_cache(state, cache);
+  return {
+    ...cache,
+    ordered_item_ids,
+    ordered_item_id_set: new Set(ordered_item_ids),
+  };
+}
+
+/**
+ * 少量新增或重排使用二分插入，避免每次 field-patch 都重新排序整张列表。
+ */
+function insert_item_id_into_list_view_cache(args: {
+  state: ProofreadingRuntimeState;
+  cache: ProofreadingRuntimeListViewCache;
+  item: ProofreadingClientItem;
+}): void {
+  const item_id = String(args.item.item_id);
+  if (args.cache.ordered_item_id_set.has(item_id)) {
+    return;
+  }
+  let low = 0;
+  let high = args.cache.ordered_item_ids.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    const middle_item_id = args.cache.ordered_item_ids[middle] ?? "";
+    const middle_item = args.state.evaluated_item_by_id.get(middle_item_id);
+    if (
+      middle_item === undefined ||
+      compare_list_view_items(args.item, middle_item, args.cache.sort_state) < 0
+    ) {
+      high = middle;
+    } else {
+      low = middle + 1;
+    }
+  }
+  args.cache.ordered_item_ids.splice(low, 0, item_id);
+  args.cache.ordered_item_id_set.add(item_id);
+}
+
+/**
+ * item delta 提交后同步维护当前列表缓存；大批量重排退回 worker 内部派生重建。
+ */
+function apply_item_changes_to_list_view_cache(args: {
+  state: ProofreadingRuntimeState;
+  cache: ProofreadingRuntimeListViewCache | null;
+  changes: ProofreadingRuntimeItemChange[];
+}): ProofreadingRuntimeListViewCache | null {
+  if (
+    args.cache === null ||
+    args.cache.projectId !== args.state.projectId ||
+    args.changes.length === 0
+  ) {
+    return args.cache;
+  }
+
+  const changed_item_ids = new Set(args.changes.map((change) => change.item_id));
+  const next_visible_items_to_insert: ProofreadingClientItem[] = [];
+  let should_update_ordered_ids = false;
+
+  for (const change of args.changes) {
+    const was_visible = args.cache.ordered_item_id_set.has(change.item_id);
+    const is_visible =
+      change.next_evaluated_item !== null &&
+      item_matches_list_view_cache(change.next_evaluated_item, args.cache);
+    const should_reposition =
+      was_visible && is_visible && should_reposition_visible_item_in_cache(change, args.cache);
+    if (was_visible === is_visible && !should_reposition) {
+      continue;
+    }
+    should_update_ordered_ids = true;
+    if (is_visible && change.next_evaluated_item !== null) {
+      next_visible_items_to_insert.push(change.next_evaluated_item);
+    }
+  }
+
+  if (!should_update_ordered_ids) {
+    return args.cache;
+  }
+  if (next_visible_items_to_insert.length > PROOFREADING_LIST_CACHE_INCREMENTAL_INSERT_LIMIT) {
+    return rebuild_list_view_cache_order(args.state, args.cache);
+  }
+
+  const next_ordered_item_ids = args.cache.ordered_item_ids.filter((item_id) => {
+    return !changed_item_ids.has(item_id);
+  });
+  const next_cache: ProofreadingRuntimeListViewCache = {
+    ...args.cache,
+    ordered_item_ids: next_ordered_item_ids,
+    ordered_item_id_set: new Set(next_ordered_item_ids),
+  };
+  next_visible_items_to_insert.forEach((item) => {
+    insert_item_id_into_list_view_cache({
+      state: args.state,
+      cache: next_cache,
+      item,
+    });
+  });
+  return next_cache;
 }
 
 /**
@@ -1177,21 +1504,32 @@ export function createProofreadingUiWorkerService() {
       current_state.revisions = revisions;
       current_state.total_item_count = input.total_item_count;
 
+      const item_changes: ProofreadingRuntimeItemChange[] = [];
       const delete_item_ids = new Set(input.deleteItemIds.map((item_id) => String(item_id)));
       for (const item_id of delete_item_ids) {
-        const previous_evaluated_item = current_state.evaluated_item_by_id.get(item_id) ?? null;
-        if (previous_evaluated_item !== null) {
-          apply_counter_delta({
-            state: current_state,
-            item: previous_evaluated_item,
-            delta: -1,
-          });
-        }
-        if (current_state.raw_item_by_id.delete(item_id)) {
+        const change = delete_runtime_item_from_state(current_state, item_id);
+        item_changes.push(change);
+        if (change.natural_order_changed) {
           should_rebuild_natural_order = true;
         }
-        current_state.evaluated_item_by_id.delete(item_id);
       }
+
+      input.patchItemIds.forEach((item_id) => {
+        const item_key = String(item_id);
+        const previous_item = current_state.raw_item_by_id.get(item_key);
+        if (previous_item === undefined) {
+          return;
+        }
+        const patched_item = apply_runtime_item_field_patch(previous_item, input.fieldPatch);
+        if (patched_item === null) {
+          return;
+        }
+        const change = upsert_runtime_item_in_state(current_state, patched_item);
+        item_changes.push(change);
+        if (change.natural_order_changed) {
+          should_rebuild_natural_order = true;
+        }
+      });
 
       input.upsertItems.forEach((raw_item) => {
         const normalized_item = normalize_runtime_item(raw_item);
@@ -1199,41 +1537,11 @@ export function createProofreadingUiWorkerService() {
           return;
         }
 
-        const item_key = String(normalized_item.item_id);
-        const previous_item = current_state.raw_item_by_id.get(item_key) ?? null;
-        if (previous_item === null || compare_runtime_items(previous_item, normalized_item) !== 0) {
+        const change = upsert_runtime_item_in_state(current_state, normalized_item);
+        item_changes.push(change);
+        if (change.natural_order_changed) {
           should_rebuild_natural_order = true;
         }
-
-        const previous_evaluated_item = current_state.evaluated_item_by_id.get(item_key) ?? null;
-        if (previous_evaluated_item !== null) {
-          apply_counter_delta({
-            state: current_state,
-            item: previous_evaluated_item,
-            delta: -1,
-          });
-          current_state.evaluated_item_by_id.delete(item_key);
-        }
-
-        current_state.raw_item_by_id.set(item_key, normalized_item);
-        const next_evaluated_item = evaluate_proofreading_item({
-          item: normalized_item,
-          quality_context: current_state.quality_context,
-          quality: current_state.quality,
-          sourceLanguage: current_state.sourceLanguage,
-          targetLanguage: current_state.targetLanguage,
-          sample_rule_cache: current_state.sample_rule_cache,
-        });
-        if (next_evaluated_item === null) {
-          return;
-        }
-
-        current_state.evaluated_item_by_id.set(item_key, next_evaluated_item);
-        apply_counter_delta({
-          state: current_state,
-          item: next_evaluated_item,
-          delta: 1,
-        });
       });
 
       if (should_rebuild_natural_order) {
@@ -1241,17 +1549,11 @@ export function createProofreadingUiWorkerService() {
       }
 
       current_state.defaultFilters = buildDefaultFiltersFromState(current_state);
-      if (list_view_cache !== null && list_view_cache.projectId === current_state.projectId) {
-        const deleted_id_set = new Set(input.deleteItemIds.map((item_id) => String(item_id)));
-        if (deleted_id_set.size > 0) {
-          list_view_cache = {
-            ...list_view_cache,
-            ordered_item_ids: list_view_cache.ordered_item_ids.filter((item_id) => {
-              return !deleted_id_set.has(item_id);
-            }),
-          };
-        }
-      }
+      list_view_cache = apply_item_changes_to_list_view_cache({
+        state: current_state,
+        cache: list_view_cache,
+        changes: item_changes,
+      });
       return build_runtime_sync_state(current_state);
     },
     /**
@@ -1287,7 +1589,11 @@ export function createProofreadingUiWorkerService() {
       list_view_cache = {
         view_id,
         projectId: state.projectId,
+        filter_context,
+        search_context,
+        sort_state: clone_sort_state(query.sort_state ?? null),
         ordered_item_ids,
+        ordered_item_id_set: new Set(ordered_item_ids),
       };
       const window_bounds = normalize_window_bounds({
         start: query.window_start,

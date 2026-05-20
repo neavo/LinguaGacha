@@ -193,8 +193,12 @@ describe("ProofreadingService", () => {
       source: "proofreading_save_items",
       updatedSections: ["items", "proofreading"],
       items: {
-        payloadMode: "canonical-delta",
+        payloadMode: "field-patch",
         changedIds: [1],
+        fieldPatch: {
+          dst: "新译文",
+          status: "PROCESSED",
+        },
       },
       sections: {
         proofreading: { payloadMode: "canonical-delta" },
@@ -202,7 +206,123 @@ describe("ProofreadingService", () => {
     });
   });
 
-  it("不存在的重置 item 为 no-op 且不写派生 meta", async () => {
+  it("清空译文只清 dst 并保留状态和重试计数", async () => {
+    const { database, service, lg_path, publisher } = create_service();
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [create_project_item({ dst: "旧译文", status: "PROCESSED", retry_count: 5 })],
+      },
+    });
+
+    const ack = await service.clear_translations({
+      item_ids: [1],
+      expected_section_revisions: { items: 0, proofreading: 0 },
+    });
+
+    expect(ack).toMatchObject({
+      accepted: true,
+      changes: [
+        {
+          source: "proofreading_save_items",
+          sectionRevisions: { items: 1, proofreading: 1 },
+          updatedSections: ["items", "proofreading"],
+        },
+      ],
+    });
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+      create_project_item({ dst: "", status: "PROCESSED", retry_count: 5 }),
+    ]);
+    expect(publisher.publish_project_change).toHaveBeenCalledWith({
+      targetProjectPath: lg_path,
+      source: "proofreading_save_items",
+      updatedSections: ["items", "proofreading"],
+      items: {
+        payloadMode: "field-patch",
+        changedIds: [1],
+        fieldPatch: {
+          dst: "",
+        },
+      },
+      sections: {
+        proofreading: { payloadMode: "canonical-delta" },
+      },
+    });
+  });
+
+  it("设置翻译状态只改 status 并清除重试计数", async () => {
+    const { database, service, lg_path, publisher } = create_service();
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [create_project_item({ dst: "保留译文", status: "ERROR", retry_count: 4 })],
+      },
+    });
+
+    const ack = await service.set_translation_status({
+      item_ids: [1],
+      status: "PROCESSED",
+      expected_section_revisions: { items: 0, proofreading: 0 },
+    });
+
+    expect(ack).toMatchObject({
+      accepted: true,
+      changes: [
+        {
+          source: "proofreading_save_items",
+          sectionRevisions: { items: 1, proofreading: 1 },
+          updatedSections: ["items", "proofreading"],
+        },
+      ],
+    });
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+      create_project_item({ dst: "保留译文", status: "PROCESSED", retry_count: 0 }),
+    ]);
+    expect(publisher.publish_project_change).toHaveBeenCalledWith({
+      targetProjectPath: lg_path,
+      source: "proofreading_save_items",
+      updatedSections: ["items", "proofreading"],
+      items: {
+        payloadMode: "field-patch",
+        changedIds: [1],
+        fieldPatch: {
+          status: "PROCESSED",
+          retry_count: 0,
+        },
+      },
+      sections: {
+        proofreading: { payloadMode: "canonical-delta" },
+      },
+    });
+  });
+
+  it("设置翻译状态拒绝菜单外的派生状态", async () => {
+    const { database, service, lg_path, publisher } = create_service();
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [create_project_item({ dst: "保留译文", status: "ERROR", retry_count: 4 })],
+      },
+    });
+
+    await expect(
+      service.set_translation_status({
+        item_ids: [1],
+        status: "ERROR",
+        expected_section_revisions: { items: 0, proofreading: 0 },
+      }),
+    ).rejects.toThrow("request.validation_failed");
+
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+      create_project_item({ dst: "保留译文", status: "ERROR", retry_count: 4 }),
+    ]);
+    expect(publisher.publish_project_change).not.toHaveBeenCalled();
+  });
+
+  it("不存在的清空译文 item 为 no-op 且不写派生 meta", async () => {
     const { database, service, lg_path, publisher } = create_service();
     database.execute({
       name: "setItems",
@@ -212,7 +332,7 @@ describe("ProofreadingService", () => {
       },
     });
 
-    const ack = await service.save_all({
+    const ack = await service.clear_translations({
       item_ids: [404],
       expected_section_revisions: { items: 0, proofreading: 0 },
     });

@@ -1,4 +1,4 @@
-import { Recycle, RefreshCcw } from "lucide-react";
+import { Eraser, ListChecks, RefreshCcw } from "lucide-react";
 
 import { useI18n } from "@/app/locale/locale-provider";
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
@@ -8,16 +8,25 @@ import {
 } from "@/pages/proofreading-page/components/proofreading-code-editor";
 import {
   format_proofreading_glossary_term,
+  PROOFREADING_MANUAL_STATUS_CODES,
   PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
   PROOFREADING_WARNING_LABEL_KEY_BY_CODE,
   type ProofreadingGlossaryTerm,
   type ProofreadingItem,
+  type ProofreadingManualStatusCode,
 } from "@/pages/proofreading-page/types";
 import { Badge } from "@/shadcn/badge";
 import { AppButton } from "@/widgets/app-button/app-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
 import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
+import {
+  AppDropdownMenu,
+  AppDropdownMenuContent,
+  AppDropdownMenuGroup,
+  AppDropdownMenuItem,
+  AppDropdownMenuTrigger,
+} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
 
 type ProofreadingEditDialogProps = {
   open: boolean;
@@ -29,7 +38,11 @@ type ProofreadingEditDialogProps = {
   on_save: () => Promise<void>;
   on_close: () => void;
   on_request_retranslate: (row_ids: string[]) => void;
-  on_request_reset: (row_ids: string[]) => void;
+  on_request_clear_translation: (row_ids: string[]) => void;
+  on_request_set_translation_status: (
+    row_ids: string[],
+    status: ProofreadingManualStatusCode,
+  ) => void;
 };
 
 type ProofreadingBadgeTone = "neutral" | "success" | "warning" | "failure";
@@ -390,12 +403,39 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
               size="sm"
               disabled={props.readonly || props.saving}
               onClick={() => {
-                props.on_request_reset([String(item.item_id)]);
+                props.on_request_clear_translation([String(item.item_id)]);
               }}
             >
-              <Recycle data-icon="inline-start" />
-              {t("proofreading_page.action.reset_translation")}
+              <Eraser data-icon="inline-start" />
+              {t("proofreading_page.action.clear_translation")}
             </AppButton>
+            <AppDropdownMenu>
+              <AppDropdownMenuTrigger asChild>
+                <AppButton
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={props.readonly || props.saving}
+                >
+                  <ListChecks data-icon="inline-start" />
+                  {t("proofreading_page.action.set_translation_status")}
+                </AppButton>
+              </AppDropdownMenuTrigger>
+              <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
+                <AppDropdownMenuGroup>
+                  {PROOFREADING_MANUAL_STATUS_CODES.map((status) => (
+                    <AppDropdownMenuItem
+                      key={status}
+                      onSelect={() => {
+                        props.on_request_set_translation_status([String(item.item_id)], status);
+                      }}
+                    >
+                      {t(PROOFREADING_STATUS_LABEL_KEY_BY_CODE[status])}
+                    </AppDropdownMenuItem>
+                  ))}
+                </AppDropdownMenuGroup>
+              </AppDropdownMenuContent>
+            </AppDropdownMenu>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <AppButton

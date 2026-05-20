@@ -6,7 +6,8 @@ export const zh_cn_proofreading_page = {
     replace_all: "全部替换",
     edit: "编辑",
     retranslate: "重新翻译",
-    reset_translation: "重置翻译状态",
+    clear_translation: "清空译文",
+    set_translation_status: "设置翻译状态",
     save: "保存",
     cancel: "取消",
     confirm: "确认",
@@ -41,8 +42,8 @@ export const zh_cn_proofreading_page = {
     clear: "取消",
   },
   status: {
-    none: "未翻译",
-    processed: "翻译完成",
+    none: "等待翻译",
+    processed: "翻译成功",
     excluded: "已排除",
     rule_skipped: "规则跳过",
     non_target_source_language: "非目标语言",
@@ -89,7 +90,9 @@ export const zh_cn_proofreading_page = {
   },
   confirm: {
     retranslate_description: "是否确认重新翻译 {COUNT} 个条目 …?",
-    reset_description: "是否确认重置 {COUNT} 个条目的翻译状态 …?",
+    clear_translation_description: "是否确认清空 {COUNT} 个条目的译文 …? 翻译状态不会改变。",
+    set_status_description:
+      "是否确认将 {COUNT} 个条目的翻译状态设置为「{STATUS}」 …? 译文不会改变。",
   },
   feedback: {
     refresh_failed: "校对页刷新失败",
@@ -97,11 +100,13 @@ export const zh_cn_proofreading_page = {
     save_failed: "保存失败",
     replace_failed: "替换失败",
     retranslate_failed: "重新翻译失败",
-    reset_failed: "重置翻译状态失败",
+    clear_translation_failed: "清空译文失败",
+    set_status_failed: "设置翻译状态失败",
     replace_done: "替换完成：变更 {N} 条",
     replace_no_change: "没有需要替换的内容",
     no_match: "未找到匹配项",
     regex_invalid: "正则表达式无效",
-    reset_success: "已重置 {COUNT} 个条目",
+    clear_translation_success: "已清空 {COUNT} 个条目的译文",
+    set_status_success: "已将 {COUNT} 个条目设置为「{STATUS}」",
   },
 } as const;

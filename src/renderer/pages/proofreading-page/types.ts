@@ -12,6 +12,8 @@ export const PROOFREADING_WARNING_CODES = [
 
 const PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES = ["NONE", "PROCESSED", "ERROR"] as const;
 
+export const PROOFREADING_MANUAL_STATUS_CODES = ["NONE", "PROCESSED", "EXCLUDED"] as const; // 设置翻译状态菜单的唯一状态词表
+
 export const PROOFREADING_STATUS_ORDER = [
   "NONE",
   "PROCESSED",
@@ -31,6 +33,8 @@ export const PROOFREADING_STATUS_LABEL_KEY_BY_CODE = {
   DUPLICATED: "proofreading_page.status.duplicated",
   ERROR: "proofreading_page.status.error",
 } as const;
+
+export type ProofreadingManualStatusCode = (typeof PROOFREADING_MANUAL_STATUS_CODES)[number];
 
 export const PROOFREADING_WARNING_LABEL_KEY_BY_CODE = {
   KANA: "proofreading_page.warning.kana",
@@ -122,14 +126,22 @@ export type ProofreadingDialogState = {
   saving: boolean;
 };
 
-type ProofreadingPendingMutationKind = "retranslate" | "reset-items";
-
 export type ProofreadingSearchScope = "all" | "src" | "dst";
 
-export type ProofreadingPendingMutation = {
-  kind: ProofreadingPendingMutationKind;
-  target_row_ids: string[];
-};
+export type ProofreadingPendingMutation =
+  | {
+      kind: "retranslate";
+      target_row_ids: string[];
+    }
+  | {
+      kind: "clear-translations";
+      target_row_ids: string[];
+    }
+  | {
+      kind: "set-status";
+      target_row_ids: string[];
+      status: ProofreadingManualStatusCode;
+    };
 
 export function build_proofreading_row_id(item_id: number | string): string {
   return String(item_id);
