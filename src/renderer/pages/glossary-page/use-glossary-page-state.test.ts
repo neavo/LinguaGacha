@@ -136,6 +136,10 @@ const project_store_listeners = new Set<() => void>();
 
 function apply_quality_mutation_result(result: {
   changes?: Array<{
+    projectPath?: string;
+    sectionRevisions?: {
+      quality?: number;
+    };
     operations?: Array<{
       sections?: {
         quality?: {
@@ -146,10 +150,17 @@ function apply_quality_mutation_result(result: {
   }>;
 }): void {
   for (const change of result.changes ?? []) {
+    if (change.projectPath !== undefined && change.projectPath !== runtime_state.project.path) {
+      continue;
+    }
+
     for (const operation of change.operations ?? []) {
       const next_quality = operation.sections?.quality?.data;
       if (next_quality !== undefined) {
         runtime_state.quality = next_quality;
+        if (change.sectionRevisions?.quality !== undefined) {
+          runtime_state.revisions.sections.quality = change.sectionRevisions.quality;
+        }
         for (const listener of project_store_listeners) {
           listener();
         }
@@ -162,6 +173,7 @@ function apply_quality_mutation_result(result: {
 function create_quality_mutation_result(
   args: {
     quality?: typeof runtime_state.quality;
+    project_path?: string;
     project_revision?: number;
     quality_revision?: number;
   } = {},
@@ -172,7 +184,7 @@ function create_quality_mutation_result(
     changes: [
       {
         source: "quality_rule_save_entries",
-        projectPath: "E:/demo/sample.lg",
+        projectPath: args.project_path ?? "E:/demo/sample.lg",
         projectRevision: project_revision,
         updatedSections: ["quality"],
         sectionRevisions: {
@@ -206,6 +218,12 @@ function create_glossary_quality(
 
 let current_statistics_cache: QualityStatisticsCacheSnapshot;
 let task_snapshot: { busy: boolean; status: string };
+
+function notify_project_store_listeners(): void {
+  for (const listener of project_store_listeners) {
+    listener();
+  }
+}
 
 function create_statistics_cache(
   args: Partial<QualityStatisticsCacheSnapshot>,
@@ -383,6 +401,8 @@ describe("useGlossaryPageState", () => {
     project_store_listeners.clear();
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
+    runtime_state.project.path = "E:/demo/sample.lg";
+    runtime_state.project.loaded = true;
     runtime_state.quality.glossary.entries = create_default_glossary_entries();
     runtime_state.quality.glossary.revision = 1;
     runtime_state.revisions.sections.quality = 1;
@@ -617,6 +637,197 @@ describe("useGlossaryPageState", () => {
     });
 
     expect(latest_state?.dialog_state.open).toBe(false);
+  });
+
+  it("新增术语保存成功后立即显示后端回灌的新条目", async () => {
+    await mount_probe();
+    api_fetch_mock.mockResolvedValueOnce(
+      create_quality_mutation_result({
+        quality: create_glossary_quality(
+          [
+            ...create_default_glossary_entries(),
+            {
+              entry_id: "qr:banana",
+              src: "香蕉",
+              dst: "Banana",
+              info: "水果",
+              case_sensitive: false,
+            },
+          ],
+          2,
+        ),
+      }),
+    );
+
+    await act(async () => {
+      latest_state?.open_create_dialog();
+    });
+    await act(async () => {
+      latest_state?.update_dialog_draft({
+        src: "香蕉",
+        dst: "Banana",
+        info: "水果",
+      });
+    });
+    await act(async () => {
+      await latest_state?.save_dialog_entry();
+    });
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual([
+      "苹果",
+      "香蕉",
+    ]);
+  });
+
+  it("新增术语保存时即使 SSE 先于 HTTP 返回也立即显示新条目", async () => {
+    await mount_probe();
+    const mutation_result = create_quality_mutation_result({
+      quality: create_glossary_quality(
+        [
+          ...create_default_glossary_entries(),
+          {
+            entry_id: "qr:banana",
+            src: "香蕉",
+            dst: "Banana",
+            info: "水果",
+            case_sensitive: false,
+          },
+        ],
+        2,
+      ),
+    });
+    let resolve_save: (payload: typeof mutation_result) => void = () => {};
+    api_fetch_mock.mockReturnValueOnce(
+      new Promise<typeof mutation_result>((resolve) => {
+        resolve_save = resolve;
+      }),
+    );
+
+    await act(async () => {
+      latest_state?.open_create_dialog();
+    });
+    await act(async () => {
+      latest_state?.update_dialog_draft({
+        src: "香蕉",
+        dst: "Banana",
+        info: "水果",
+      });
+    });
+
+    let save_promise: Promise<void> = Promise.resolve();
+    await act(async () => {
+      save_promise = latest_state?.save_dialog_entry() ?? Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      apply_quality_mutation_result(mutation_result);
+    });
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
+
+    await act(async () => {
+      resolve_save(mutation_result);
+      await save_promise;
+    });
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual([
+      "苹果",
+      "香蕉",
+    ]);
+  });
+
+  it("旧项目保存回包不会在新项目事实刷新后重建当前结果成员", async () => {
+    await mount_probe();
+    const stale_project_mutation_result = create_quality_mutation_result({
+      quality: create_glossary_quality(
+        [
+          ...create_default_glossary_entries(),
+          {
+            entry_id: "qr:banana",
+            src: "香蕉",
+            dst: "Banana",
+            info: "水果",
+            case_sensitive: false,
+          },
+        ],
+        2,
+      ),
+      quality_revision: 2,
+    });
+    let resolve_save: (payload: typeof stale_project_mutation_result) => void = () => {};
+    api_fetch_mock.mockReturnValueOnce(
+      new Promise<typeof stale_project_mutation_result>((resolve) => {
+        resolve_save = resolve;
+      }),
+    );
+
+    await act(async () => {
+      latest_state?.open_create_dialog();
+    });
+    await act(async () => {
+      latest_state?.update_dialog_draft({
+        src: "香蕉",
+        dst: "Banana",
+        info: "水果",
+      });
+    });
+
+    let save_promise: Promise<void> = Promise.resolve();
+    await act(async () => {
+      save_promise = latest_state?.save_dialog_entry() ?? Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      runtime_state.project.path = "E:/demo/other.lg";
+      runtime_state.quality = create_glossary_quality(
+        [
+          {
+            entry_id: "qr:orange",
+            src: "橘子",
+            dst: "Orange",
+            info: "水果",
+            case_sensitive: false,
+          },
+        ],
+        1,
+      );
+      runtime_state.revisions.sections.quality = 1;
+      notify_project_store_listeners();
+    });
+    await rerender_probe();
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["橘子"]);
+
+    await act(async () => {
+      resolve_save(stale_project_mutation_result);
+      await save_promise;
+    });
+    await act(async () => {
+      runtime_state.quality = create_glossary_quality(
+        [
+          {
+            entry_id: "qr:orange",
+            src: "橘子",
+            dst: "Orange",
+            info: "水果",
+            case_sensitive: false,
+          },
+          {
+            entry_id: "qr:grape",
+            src: "葡萄",
+            dst: "Grape",
+            info: "水果",
+            case_sensitive: false,
+          },
+        ],
+        2,
+      );
+      runtime_state.revisions.sections.quality = 2;
+      notify_project_store_listeners();
+    });
+    await rerender_probe();
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["橘子"]);
   });
 
   it("保存仅修改翻译或说明时保留旧统计 ready 与 badge", async () => {

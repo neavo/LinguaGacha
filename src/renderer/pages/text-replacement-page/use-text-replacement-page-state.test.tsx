@@ -132,6 +132,9 @@ const project_store_listeners = new Set<() => void>();
 
 function apply_quality_mutation_result(result: {
   changes?: Array<{
+    sectionRevisions?: {
+      quality?: number;
+    };
     operations?: Array<{
       sections?: {
         quality?: {
@@ -146,6 +149,9 @@ function apply_quality_mutation_result(result: {
       const next_quality = operation.sections?.quality?.data;
       if (next_quality !== undefined) {
         runtime_state.quality = next_quality;
+        if (change.sectionRevisions?.quality !== undefined) {
+          runtime_state.revisions.sections.quality = change.sectionRevisions.quality;
+        }
         for (const listener of project_store_listeners) {
           listener();
         }
@@ -445,6 +451,115 @@ describe("useTextReplacementPageState", () => {
     });
 
     expect(latest_state?.dialog_state.open).toBe(false);
+  });
+
+  it("新增替换规则保存成功后立即显示后端回灌的新条目", async () => {
+    await mount_probe();
+    api_fetch_mock.mockResolvedValueOnce(
+      create_quality_mutation_result({
+        quality: create_pre_replacement_quality(
+          [
+            {
+              entry_id: "hero::0",
+              src: "hero",
+              dst: "勇者",
+              regex: false,
+              case_sensitive: false,
+            },
+            {
+              entry_id: "qr:mage",
+              src: "mage",
+              dst: "法师",
+              regex: false,
+              case_sensitive: false,
+            },
+          ],
+          3,
+        ),
+        quality_revision: 3,
+      }),
+    );
+
+    await act(async () => {
+      latest_state?.open_create_dialog();
+    });
+    await act(async () => {
+      latest_state?.update_dialog_draft({
+        src: "mage",
+        dst: "法师",
+      });
+    });
+    await act(async () => {
+      await latest_state?.save_dialog_entry();
+    });
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual([
+      "hero",
+      "mage",
+    ]);
+  });
+
+  it("新增替换规则保存时即使 SSE 先于 HTTP 返回也立即显示新条目", async () => {
+    await mount_probe();
+    const mutation_result = create_quality_mutation_result({
+      quality: create_pre_replacement_quality(
+        [
+          {
+            entry_id: "hero::0",
+            src: "hero",
+            dst: "勇者",
+            regex: false,
+            case_sensitive: false,
+          },
+          {
+            entry_id: "qr:mage",
+            src: "mage",
+            dst: "法师",
+            regex: false,
+            case_sensitive: false,
+          },
+        ],
+        3,
+      ),
+      quality_revision: 3,
+    });
+    let resolve_save: (payload: typeof mutation_result) => void = () => {};
+    api_fetch_mock.mockReturnValueOnce(
+      new Promise<typeof mutation_result>((resolve) => {
+        resolve_save = resolve;
+      }),
+    );
+
+    await act(async () => {
+      latest_state?.open_create_dialog();
+    });
+    await act(async () => {
+      latest_state?.update_dialog_draft({
+        src: "mage",
+        dst: "法师",
+      });
+    });
+
+    let save_promise: Promise<void> = Promise.resolve();
+    await act(async () => {
+      save_promise = latest_state?.save_dialog_entry() ?? Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      apply_quality_mutation_result(mutation_result);
+    });
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["hero"]);
+
+    await act(async () => {
+      resolve_save(mutation_result);
+      await save_promise;
+    });
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual([
+      "hero",
+      "mage",
+    ]);
   });
 
   it("导入重复替换规则时跳过只保存非重复规则", async () => {
