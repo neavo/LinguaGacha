@@ -13,6 +13,12 @@ const toast_mock = vi.hoisted(() => {
   };
 });
 
+const runtime_provider_mock = vi.hoisted(() => {
+  return {
+    render_desktop_runtime_provider: vi.fn(),
+  };
+});
+
 vi.mock("next-themes", () => {
   return {
     ThemeProvider: (props: { children: ReactNode }) => <>{props.children}</>,
@@ -50,7 +56,10 @@ vi.mock("@/app/navigation/navigation-context", () => {
 
 vi.mock("@/app/desktop/desktop-runtime-context", () => {
   return {
-    DesktopRuntimeProvider: (props: { children: ReactNode }) => <>{props.children}</>,
+    DesktopRuntimeProvider: (props: { children: ReactNode }) => {
+      runtime_provider_mock.render_desktop_runtime_provider();
+      return <>{props.children}</>;
+    },
   };
 });
 
@@ -83,6 +92,7 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
 
 vi.mock("@/app/desktop/desktop-api", () => {
   return {
+    api_fetch: vi.fn(async () => ({ settings: { app_language: "ZH" } })),
     check_github_release_update: vi.fn(async () => null),
     get_core_metadata: vi.fn(async () => ({ version: "9.8.7" })),
     open_external_url: vi.fn(async () => undefined),
@@ -101,7 +111,9 @@ vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
 
 vi.mock("@/app/locale/locale-provider", () => {
   return {
-    LocaleProvider: (props: { children: ReactNode }) => <>{props.children}</>,
+    LocaleProvider: (props: { app_language: unknown; children: ReactNode }) => (
+      <>{props.children}</>
+    ),
     useI18n: () => ({
       t: (key: string, params?: Record<string, string>) =>
         key === "app.system_proxy.startup_notice" ? `${key}:${params?.["PROXY"] ?? ""}` : key,
@@ -222,6 +234,7 @@ describe("App 字体模式同步", () => {
 
     expect(container?.querySelector('[data-testid="log-window-page"]')).not.toBeNull();
     expect(document.documentElement.dataset.lgBaseFont).toBe("disabled");
+    expect(runtime_provider_mock.render_desktop_runtime_provider).not.toHaveBeenCalled();
   });
 
   it("日志窗口会响应其他窗口写入的字体模式变化", async () => {
