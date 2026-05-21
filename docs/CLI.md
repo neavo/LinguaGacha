@@ -66,7 +66,7 @@ sequenceDiagram
 - stdout 在 help / version 时输出普通文本；执行 job 时只输出一行一个 JSON 的状态事件，事件类型固定为 `started`、`progress`、`finished`，对外只以 `command` 区分 `translate` / `analyze`。
 - `progress.stats` 是 CLI 对外稳定的四卡片投影，字段固定为 `total`、`skipped`、`failed`、`completed`、`pending`、`percent`；它不直接暴露内部 `TaskSnapshot.progress` 字段名。
 - `finished` 成功时不输出产物路径；调用方以自己传入的 `--output-dir` 作为产物位置。失败时 `finished` 携带稳定 `error.message`，进程仍返回运行期错误退出码。
-- stderr 只输出参数错误、帮助回显或运行期错误；Core 诊断日志仍写文件，不进入 CLI job stdout。
+- stderr 只输出参数错误、帮助回显、运行期错误和启动期系统代理提示；Core 诊断日志仍写文件，不进入 CLI job stdout。系统代理提示来自 `CoreBootstrap` 返回的脱敏 `SystemProxyStartupNotice`，只在检测到非 `DIRECT` 代理时按 `检查到系统代理设置 - [代理 URL]` 形式输出一次。
 - `src/index.ts` 在 CLI 命令完成后必须用返回码主动结束 Electron 进程，避免 Windows `cli.exe` 启动器等待未退出的子进程。
 - `--output-dir` 是 CLI 唯一用户可见输出位置，命令可创建该目录，并允许导出链路按既有服务语义覆盖同名产物。
 - CLI 不打开输出目录；`openOutputFolder` 在 CLI CoreBootstrap 中固定为空操作。

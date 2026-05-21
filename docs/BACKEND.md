@@ -9,6 +9,7 @@
 - Gateway 只监听 `127.0.0.1`，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
 - CLI 不启动 Gateway；同进程命令入口通过 `CoreBootstrap(exposeApiGateway=false)` 复用 `CoreServices`。CLI 命令模式、临时工程、资源注入、输出和平台启动器归 [`docs/CLI.md`](CLI.md)。
 - GUI 与 CLI 入口必须向 `CoreBootstrap` 注入 `EngineExecution`：产品发布态固定使用构建根目录的 `work-unit-worker-entry.js` 与 `planning-worker-entry.js` 作为 `worker_threads` 入口；测试和源码执行必须显式选择 `kind: "in_process"`。`in_process` 不读取构建产物，也不是 `worker_threads` 失败回退或兼容层；`CoreServices`、`WorkUnitWorkerPool` 与 `PlanningWorkerPool` 不做入口探测、文件存在性探测或执行模式回退。
+- GUI 与 CLI 入口在 Electron ready 后把 `session.defaultSession.resolveProxy` 作为 `systemProxyResolver` 注入 `CoreBootstrap`；Bootstrap 只在启动期按模型配置、内置预设和 provider 默认远端 URL 解析一次系统代理，安装主线程 Undici dispatcher，并把同一代理快照传给 work unit worker。检测到非 `DIRECT` 路由时写入 `检查到系统代理设置 - [代理 URL]` 形式的脱敏日志并返回 `SystemProxyStartupNotice`，该摘要只包含是否检测到代理、命中的远端 origin 数和去除凭据与路径后的 `protocol://host:port` 代理展示值；运行期不监听系统代理变化，也不在每次请求前重新探测。
 - 所有 POST JSON 路由返回统一响应壳：成功为 `{ ok: true, data }`，失败为 `{ ok: false, error: { code, message, message_key, request_id, details?, action?, action_key? } }`。
 - `src/shared/error` 是公开错误 code、HTTP status、日志分级、API envelope 投影和日志投影的唯一模型；用户可见错误文案只从 `src/shared/i18n` 的 `message_key` / `action_key` 解析。
 - 稳定错误码使用点分语义码：请求与路由归 `request.*`，项目归 `project.*`，文件归 `file.*`，数据一致性归 `data.*` / `database.*`，任务归 `task.*`，模型归 `model.*`，worker 归 `worker.*`，运行时归 `runtime.*`。文件域必须区分不支持格式、内容解析失败、结构不符合格式和读写失败；运行时资源释放、主动取消和内部不变量失败不能混用同一错误码。业务代码需要抛错时使用 `src/shared/error` 的语义化 `AppError` 子类，不再通过 API 层手拼 code/message/details。

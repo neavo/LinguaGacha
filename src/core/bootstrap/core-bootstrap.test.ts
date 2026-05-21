@@ -183,6 +183,49 @@ describe("CoreBootstrap", () => {
         "https://api.openai.com/v1",
         "https://api.anthropic.com",
       ]);
+      expect(read_log_text(path.join(temp_dir, "log"))).not.toContain("检查到系统代理设置");
+    } finally {
+      await manager.stop();
+    }
+  });
+
+  it("检测到系统代理时返回启动提示摘要并写入脱敏日志", async () => {
+    fs.mkdirSync(path.join(temp_dir, "userdata"), { recursive: true });
+    fs.writeFileSync(
+      path.join(temp_dir, "userdata", "config.json"),
+      JSON.stringify({
+        models: [
+          {
+            id: "openai-custom",
+            api_format: "OpenAI",
+            api_url: "https://api.example/v1/chat/completions",
+          },
+        ],
+      }),
+      "utf-8",
+    );
+    const manager = new CoreBootstrap({
+      appRoot: temp_dir,
+      exposeApiGateway: false,
+      logTargets: { console: false, window: false },
+      systemProxyResolver: {
+        resolveProxy: async () => "PROXY 127.0.0.1:7890",
+      },
+      openOutputFolder: noop_output_folder,
+      engineExecution: IN_PROCESS_ENGINE_EXECUTION,
+    });
+
+    const start_result = await manager.start();
+    try {
+      expect(start_result.systemProxyStartupNotice).toEqual({
+        detected: true,
+        proxiedOriginCount: 4,
+        proxyDisplay: "http://127.0.0.1:7890",
+      });
+      const log_text = read_log_text(path.join(temp_dir, "log"));
+
+      expect(log_text).toContain("检查到系统代理设置 - http://127.0.0.1:7890");
+      expect(log_text).not.toContain("http://127.0.0.1:7890/");
     } finally {
       await manager.stop();
     }

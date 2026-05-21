@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { getGlobalDispatcher } from "undici";
 
 import {
+  EMPTY_SYSTEM_PROXY_STARTUP_NOTICE,
+  build_system_proxy_startup_notice,
   collect_system_proxy_urls,
   install_system_proxy_dispatcher,
   install_system_proxy_dispatcher_from_snapshot,
@@ -115,5 +117,22 @@ describe("system-proxy-dispatcher", () => {
 
     expect(getGlobalDispatcher()).toBe(original_dispatcher);
     expect(installation.snapshot.routes["https://api.example"]).toEqual({ kind: "direct" });
+  });
+
+  it("启动提示摘要只暴露代理命中结果，不暴露代理 URI", () => {
+    const notice = build_system_proxy_startup_notice({
+      routes: {
+        "https://api.example": { kind: "proxy", uri: "http://user:password@127.0.0.1:7890/" },
+        "https://api.openai.com": { kind: "direct" },
+      },
+    });
+
+    expect(build_system_proxy_startup_notice(null)).toBe(EMPTY_SYSTEM_PROXY_STARTUP_NOTICE);
+    expect(notice).toEqual({
+      detected: true,
+      proxiedOriginCount: 1,
+      proxyDisplay: "http://127.0.0.1:7890",
+    });
+    expect(JSON.stringify(notice)).not.toContain("user:password");
   });
 });

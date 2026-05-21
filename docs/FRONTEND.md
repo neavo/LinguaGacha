@@ -20,8 +20,8 @@ flowchart LR
 ```
 
 - renderer 的宿主能力只通过 `window.desktopApp` 暴露，Core API 访问只通过 `desktop-api.ts`，页面不直接拼接 `/api/*` 请求或事件流。
-- `src/gui/bridge`、`src/gui/ipc` 与 `src/gui/shell-contract.ts` 是 GUI、preload、renderer 共享的桌面宿主契约归宿，负责 `window.desktopApp` 类型、IPC channel 与载荷、标题栏壳层规则、Core API 地址注入和外链策略；renderer 只能通过 `@gui/*` 白名单或 `@core/api/core-api-endpoint` 读取契约，不依赖 `src/gui/shell`、`src/gui/preload` 或 `src/native` 的实现。
-- `src/gui/preload/index.ts` 是宿主桥接唯一暴露点，只实现 GUI 契约并负责 Core API base URL、原生对话框、外链、窗口关闭、日志窗口和标题栏主题的窄桥接。
+- `src/gui/bridge`、`src/gui/ipc` 与 `src/gui/shell-contract.ts` 是 GUI、preload、renderer 共享的桌面宿主契约归宿，负责 `window.desktopApp` 类型、IPC channel 与载荷、标题栏壳层规则、Core API 地址与启动期系统代理提示注入、外链策略；renderer 只能通过 `@gui/*` 白名单或 `@core/api/core-api-endpoint` 读取契约，不依赖 `src/gui/shell`、`src/gui/preload` 或 `src/native` 的实现。
+- `src/gui/preload/index.ts` 是宿主桥接唯一暴露点，只实现 GUI 契约并负责 Core API base URL、系统代理启动提示摘要、原生对话框、外链、窗口关闭、日志窗口和标题栏主题的窄桥接；代理摘要只包含是否检测到代理、命中的远端 origin 数和去除凭据与路径后的 `protocol://host:port` 代理展示值。
 - `src/renderer/app/desktop/desktop-api.ts` 是 renderer 访问 Core API 的唯一封装，负责 `/api/health` 探测、POST 响应壳解析、SSE 连接和错误类型。
 - `DesktopApiError` 是 renderer 消费 Core 失败的唯一错误类型，Core API 错误码和 envelope 类型从 `src/shared/error` 导入，本地网络、探测和事件流失败使用 renderer 本地错误码与 `app.error.desktop.*.message`；页面只能按 code/status 决定刷新、重试、禁用或跳转，不读取后端原始异常文本。
 - `src/renderer/app/ui-runtime/error-message.ts` 是普通页面解析用户可见错误文案的唯一入口；页面 toast、dialog 和空状态不能直接展示 `Error.message` 或自行解析 `DesktopApiError.message_key`。
@@ -30,6 +30,7 @@ flowchart LR
 ## 2. 运行态初始化
 
 - `DesktopRuntimeProvider` 启动时并行读取 settings、project、task snapshot；这一步不能通过卸载工程来“重置”Core 会话。
+- 主窗口只在运行态 hydration 完成后消费 `window.desktopApp.coreApi.systemProxyStartupNotice` 并按 `检查到系统代理设置 - [代理 URL]` 展示一次系统代理 Toast；日志窗口不消费该提示。
 - 工程 loaded 且 path 非空时，前端先通过 `/api/project/manifest` 确认后端项目身份与 revision，再通过 `/api/project/read-sections` 读取完整快照；两次响应的 `projectPath` 必须一致，`ProjectStore` 只在快照规范化成功后从空态原子替换。
 - 工程未加载时 `ProjectStore` 回到空态，页面局部状态可以保留自己的选择或弹窗，但不能伪造项目事实。
 - `src/renderer/app/locale` 只承接 renderer 的 React Provider 和富文本渲染适配；国际化资源、key 类型和查表函数的唯一权威在 `src/shared/i18n`。

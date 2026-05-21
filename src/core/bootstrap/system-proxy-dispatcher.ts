@@ -24,10 +24,22 @@ export interface SystemProxySnapshot {
   routes: Record<string, SystemProxyRoute>; // routes 以请求 origin 为键，供主线程和 worker 共享同一启动期快照
 }
 
+export interface SystemProxyStartupNotice {
+  detected: boolean; // detected 只表达是否命中系统代理，入口层据此决定是否提示
+  proxiedOriginCount: number; // proxiedOriginCount 是被代理的远端 origin 数，用于测试和诊断摘要
+  proxyDisplay: string | null; // proxyDisplay 是去除凭据和路径后的代理 URL 展示值，供启动提示填充
+}
+
 export interface InstalledSystemProxyDispatcher {
   snapshot: SystemProxySnapshot; // snapshot 是可结构化克隆的代理事实，worker 只消费它而不重新探测系统代理
   dispose: () => Promise<void>;
 }
+
+export const EMPTY_SYSTEM_PROXY_STARTUP_NOTICE: SystemProxyStartupNotice = Object.freeze({
+  detected: false,
+  proxiedOriginCount: 0,
+  proxyDisplay: null,
+});
 
 const PROVIDER_DEFAULT_PROXY_URLS = [
   { apiFormat: "Google", apiUrl: "https://generativelanguage.googleapis.com" },
@@ -84,6 +96,29 @@ export function install_system_proxy_dispatcher_from_snapshot(
         await dispatcher.close();
       }
     },
+  };
+}
+
+/**
+ * 从代理快照生成启动提示摘要；摘要只保留脱敏展示值，避免把代理凭据或完整 URI 暴露给界面和 CLI。
+ */
+export function build_system_proxy_startup_notice(
+  snapshot: SystemProxySnapshot | null,
+): SystemProxyStartupNotice {
+  if (snapshot === null) {
+    return EMPTY_SYSTEM_PROXY_STARTUP_NOTICE;
+  }
+
+  const proxy_routes = Object.values(snapshot.routes).filter((route) => route.kind !== "direct");
+  const proxied_origin_count = proxy_routes.length;
+  if (proxied_origin_count === 0) {
+    return EMPTY_SYSTEM_PROXY_STARTUP_NOTICE;
+  }
+
+  return {
+    detected: true,
+    proxiedOriginCount: proxied_origin_count,
+    proxyDisplay: format_system_proxy_route_display(proxy_routes[0]!),
   };
 }
 
@@ -305,6 +340,21 @@ function normalize_dispatch_origin(origin: Dispatcher.DispatchOptions["origin"])
     return null;
   }
   return read_origin(String(origin));
+}
+
+/**
+ * 生成用户可见代理 URL，只展示协议和 host:port，不保留用户名、密码或路径。
+ */
+function format_system_proxy_route_display(
+  route: Exclude<SystemProxyRoute, { kind: "direct" }>,
+): string {
+  try {
+    const proxy_url = new URL(route.uri);
+    const scheme = route.kind === "socks5" ? "socks5" : proxy_url.protocol.replace(/:$/u, "");
+    return `${scheme}://${proxy_url.host}`;
+  } catch {
+    return route.kind === "socks5" ? "socks5://" : "http://";
+  }
 }
 
 /**

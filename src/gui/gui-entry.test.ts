@@ -16,19 +16,30 @@ type CoreBootstrapOptions = {
 };
 type CoreBootstrapInstance = {
   options: CoreBootstrapOptions;
-  start: () => Promise<{ apiBaseUrl: string | null; readAppLanguage: () => unknown }>;
+  start: () => Promise<{
+    apiBaseUrl: string | null;
+    readAppLanguage: () => unknown;
+    systemProxyStartupNotice: SystemProxyStartupNotice;
+  }>;
   stop: () => Promise<void>;
   isStopped: () => boolean;
+};
+type SystemProxyStartupNotice = {
+  detected: boolean; // 测试只关心入口层是否把脱敏提示摘要继续传给窗口宿主
+  proxiedOriginCount: number; // 命中数量帮助断言摘要没有被入口层重新计算
+  proxyDisplay: string | null; // URL 展示值必须由 Core 生成，GUI 入口不重新解析代理
 };
 type MainWindowOptions = {
   desktopBundleDir: string;
   coreApiBaseUrl: string;
+  systemProxyStartupNotice: SystemProxyStartupNotice;
   shouldBypassCloseConfirmation: () => boolean;
   onClosed: () => void;
 };
 type LogWindowOptions = {
   desktopBundleDir: string;
   coreApiBaseUrl: string;
+  systemProxyStartupNotice: SystemProxyStartupNotice;
 };
 type IpcHandlerOptions = {
   getMainWindow: () => FakeWindow | null;
@@ -90,6 +101,7 @@ describe("Electron main 入口", () => {
       {
         desktopBundleDir: expect.any(String),
         coreApiBaseUrl: harness.base_url,
+        systemProxyStartupNotice: harness.system_proxy_startup_notice,
       },
     ]);
     expect(harness.calls.ipc_handler_options).toHaveLength(1);
@@ -97,6 +109,7 @@ describe("Electron main 入口", () => {
       {
         desktopBundleDir: expect.any(String),
         coreApiBaseUrl: harness.base_url,
+        systemProxyStartupNotice: harness.system_proxy_startup_notice,
         shouldBypassCloseConfirmation: expect.any(Function),
         onClosed: expect.any(Function),
       },
@@ -180,6 +193,7 @@ describe("Electron main 入口", () => {
 function create_index_harness(): {
   base_url: string;
   log_window_host: { close: () => void };
+  system_proxy_startup_notice: SystemProxyStartupNotice;
   calls: {
     app_exit_codes: number[];
     app_quit_count: number;
@@ -205,6 +219,11 @@ function create_index_harness(): {
   set_start_error: (error: Error) => void;
 } {
   const base_url = "http://127.0.0.1:19001";
+  const system_proxy_startup_notice: SystemProxyStartupNotice = {
+    detected: true,
+    proxiedOriginCount: 2,
+    proxyDisplay: "http://127.0.0.1:7890",
+  }; // system_proxy_startup_notice 模拟 CoreBootstrap 返回的启动期代理摘要
   const listeners = new Map<string, Listener[]>();
   let resolve_ready: ReadyResolver = () => undefined;
   const ready_promise = new Promise<void>((resolve) => {
@@ -245,7 +264,11 @@ function create_index_harness(): {
       calls.core_bootstraps.push(this);
     }
 
-    public async start(): Promise<{ apiBaseUrl: string; readAppLanguage: () => unknown }> {
+    public async start(): Promise<{
+      apiBaseUrl: string;
+      readAppLanguage: () => unknown;
+      systemProxyStartupNotice: SystemProxyStartupNotice;
+    }> {
       calls.core_start_count += 1;
       if (start_error !== null) {
         throw start_error;
@@ -253,6 +276,7 @@ function create_index_harness(): {
       return {
         apiBaseUrl: base_url,
         readAppLanguage: () => "ZH",
+        systemProxyStartupNotice: system_proxy_startup_notice,
       };
     }
 
@@ -385,6 +409,7 @@ function create_index_harness(): {
     },
     log_window_host,
     resolve_ready,
+    system_proxy_startup_notice,
     set_open_path_result: (result) => {
       open_path_result = result;
     },

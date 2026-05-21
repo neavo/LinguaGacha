@@ -55,19 +55,38 @@ describe("run_cli_command", () => {
     expect(harness.calls.run_cli_jobs).toHaveLength(1);
     expect(harness.calls.run_cli_jobs[0]?.coreServices).toBe(harness.core_services);
     expect(harness.calls.run_cli_jobs[0]?.command.command).toBe("translate");
+    expect(harness.calls.stderr_lines).toEqual([]);
+  });
+
+  it("检测到系统代理时只向 stderr 输出启动提示", async () => {
+    const harness = create_runner_harness({
+      systemProxyStartupNotice: {
+        detected: true,
+        proxiedOriginCount: 1,
+        proxyDisplay: "http://127.0.0.1:7890",
+      },
+    });
+    const { run_cli_command } = await import("./cli-runner");
+
+    await run_cli_command("E:/App", create_translate_command(), { kind: "in_process" });
+
+    expect(harness.calls.events).toEqual(["ready", "bootstrap", "start", "stderr", "job", "stop"]);
+    expect(harness.calls.stderr_lines).toEqual(["检查到系统代理设置 - http://127.0.0.1:7890"]);
+    expect(harness.calls.stdout_lines).toEqual([]);
   });
 });
 
 /**
  * 搭建 CLI runner 测试夹具，用假的 Electron、CoreBootstrap 和 job 观察入口编排。
  */
-function create_runner_harness(): {
+function create_runner_harness(options: Partial<CoreBootstrapStartResult> = {}): {
   core_services: FakeCoreServices;
   calls: {
     core_bootstrap_options: CoreBootstrapOptions[];
     events: string[];
     proxy_resolve_urls: string[];
     run_cli_jobs: RunCliJobCall[];
+    stderr_lines: string[];
     stdout_lines: string[];
   };
 } {
@@ -77,6 +96,7 @@ function create_runner_harness(): {
     events: [] as string[],
     proxy_resolve_urls: [] as string[],
     run_cli_jobs: [] as RunCliJobCall[],
+    stderr_lines: [] as string[],
     stdout_lines: [] as string[],
   };
 
@@ -92,12 +112,19 @@ function create_runner_harness(): {
     /**
      * start 返回同进程 job 需要的 CoreServices 句柄。
      */
-    public async start(): Promise<Pick<CoreBootstrapStartResult, "coreServices">> {
+    public async start(): Promise<CoreBootstrapStartResult> {
       calls.events.push("start");
-      return { coreServices: core_services } as unknown as Pick<
-        CoreBootstrapStartResult,
-        "coreServices"
-      >;
+      return {
+        apiBaseUrl: null,
+        coreServices: core_services as unknown as CoreBootstrapStartResult["coreServices"],
+        readAppLanguage: () => "ZH",
+        systemProxyStartupNotice: {
+          detected: false,
+          proxiedOriginCount: 0,
+          proxyDisplay: null,
+        },
+        ...options,
+      };
     }
 
     /**
@@ -147,6 +174,10 @@ function create_runner_harness(): {
 
   vi.doMock("./cli-output", () => {
     return {
+      write_stderr: (line: string) => {
+        calls.events.push("stderr");
+        calls.stderr_lines.push(line);
+      },
       write_stdout: (line: string) => {
         calls.stdout_lines.push(line);
       },

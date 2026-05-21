@@ -14,10 +14,13 @@ import { resolve_core_app_root } from "./core-app-root-resolver";
 import { write_bootstrap_error, write_bootstrap_log } from "./bootstrap-log";
 import { CoreServices } from "./core-services";
 import {
+  EMPTY_SYSTEM_PROXY_STARTUP_NOTICE,
+  build_system_proxy_startup_notice,
   collect_system_proxy_urls,
   install_system_proxy_dispatcher,
   type InstalledSystemProxyDispatcher,
   type SystemProxySnapshot,
+  type SystemProxyStartupNotice,
 } from "./system-proxy-dispatcher";
 import type {
   CoreBootstrapOptions,
@@ -37,6 +40,7 @@ export class CoreBootstrap {
   private log_manager: LogManager | null = null; // log_manager 先于服务组合创建，确保启动失败和退出阶段都有统一日志出口
   private system_proxy_dispatcher: InstalledSystemProxyDispatcher | null = null; // system_proxy_dispatcher 只在入口注入 resolver 时安装
   private system_proxy_snapshot: SystemProxySnapshot | null = null; // system_proxy_snapshot 会传给 work unit worker 线程复用
+  private system_proxy_startup_notice: SystemProxyStartupNotice = EMPTY_SYSTEM_PROXY_STARTUP_NOTICE; // system_proxy_startup_notice 是给 GUI/CLI 的脱敏启动提示摘要
 
   /**
    * Bootstrap 只接收入口层参数，路径、端口和运行期资源句柄由自身拥有。
@@ -105,6 +109,7 @@ export class CoreBootstrap {
         apiBaseUrl: api_base_url,
         coreServices: core_services,
         readAppLanguage: () => app_setting_service.read_app_language(),
+        systemProxyStartupNotice: this.system_proxy_startup_notice,
       };
     } catch (error) {
       write_bootstrap_error(
@@ -164,6 +169,7 @@ export class CoreBootstrap {
     const resolver = this.options.systemProxyResolver;
     if (resolver === undefined) {
       this.system_proxy_snapshot = null;
+      this.system_proxy_startup_notice = EMPTY_SYSTEM_PROXY_STARTUP_NOTICE;
       return;
     }
     const urls = collect_system_proxy_urls(
@@ -172,6 +178,16 @@ export class CoreBootstrap {
     );
     this.system_proxy_dispatcher = await install_system_proxy_dispatcher({ resolver, urls });
     this.system_proxy_snapshot = this.system_proxy_dispatcher.snapshot;
+    this.system_proxy_startup_notice = build_system_proxy_startup_notice(
+      this.system_proxy_snapshot,
+    );
+    if (this.system_proxy_startup_notice.detected) {
+      write_bootstrap_log(
+        t_main_log("app.log.system_proxy_startup_detected", {
+          PROXY: this.system_proxy_startup_notice.proxyDisplay ?? "",
+        }),
+      );
+    }
   }
 
   /**
@@ -189,6 +205,7 @@ export class CoreBootstrap {
     await this.system_proxy_dispatcher?.dispose();
     this.system_proxy_dispatcher = null;
     this.system_proxy_snapshot = null;
+    this.system_proxy_startup_notice = EMPTY_SYSTEM_PROXY_STARTUP_NOTICE;
     this.database.close();
     await this.log_manager?.shutdown();
     this.log_manager = null;
