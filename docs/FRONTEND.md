@@ -8,7 +8,9 @@
 flowchart LR
   Contract["@gui/* 契约<br/>bridge / ipc / shell-contract"] --> Preload["preload<br/>window.desktopApp"]
   Preload --> API["desktop-api.ts"]
-  API --> Runtime["DesktopRuntimeProvider"]
+  API --> Root["renderer root<br/>按窗口类型组合运行态"]
+  Root --> Runtime["主窗口<br/>DesktopRuntimeProvider"]
+  Root --> Logs["日志窗口<br/>LogWindowPage / logs stream"]
   Runtime --> Store["ProjectStore / TaskRuntimeStore"]
   Runtime --> PagesRuntime["ProjectPagesProvider"]
   PagesRuntime --> Pages["pages / widgets"]
@@ -23,7 +25,7 @@ flowchart LR
 
 ## 2. 共享运行态写入口
 
-- `DesktopRuntimeProvider` 是 renderer 内 settings、project snapshot、task snapshot、项目 warmup、事件流和共享 store 写入的唯一运行态入口。
+- `DesktopRuntimeProvider` 是主窗口内 settings、project snapshot、task snapshot、项目 warmup、事件流和共享 store 写入的唯一运行态入口。
 - 启动 hydration 并行读取 `/api/settings/app`、`/api/project/snapshot`、`/api/tasks/snapshot`；这一步不能通过卸载工程来“重置”Core 会话。
 - `ProjectStore` 只缓存后端公开项目事实，section 固定为 `project / files / items / quality / prompts / analysis / proofreading`；它不是后端事实源。
 - `TaskRuntimeStore` 只缓存 `TaskSnapshot`，并用 `runtime_revision` 丢弃旧 snapshot；task 不进入 `ProjectStore` 或项目派生缓存。

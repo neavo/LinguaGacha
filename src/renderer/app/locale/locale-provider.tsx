@@ -7,7 +7,6 @@ import {
   type ReactNode,
 } from "react";
 
-import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import {
   create_text_resolver,
   resolve_i18n_locale,
@@ -22,11 +21,16 @@ type LocaleContextValue = {
 
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 
-export function LocaleProvider({ children }: { children: ReactNode }): ReactNode {
-  const { settings_snapshot } = useDesktopRuntime();
+type LocaleProviderProps = {
+  app_language: unknown;
+  children: ReactNode;
+};
+
+export function LocaleProvider({ app_language, children }: LocaleProviderProps): ReactNode {
+  // LocaleProvider 只消费调用方传入的语言值，避免 i18n 反向绑定某一种窗口运行态
   const locale = useMemo<Locale>(() => {
-    return resolve_i18n_locale(settings_snapshot.app_language);
-  }, [settings_snapshot.app_language]);
+    return resolve_i18n_locale(app_language);
+  }, [app_language]);
 
   useEffect(() => {
     document.documentElement.lang = locale;

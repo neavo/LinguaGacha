@@ -5,6 +5,7 @@ import {
   useState,
   type CSSProperties,
   type Dispatch,
+  type ReactNode,
   type SetStateAction,
 } from "react";
 import { ThemeProvider, useTheme } from "next-themes";
@@ -16,6 +17,7 @@ import { DesktopRuntimeProvider } from "@/app/desktop/desktop-runtime-context";
 import { ProjectPagesProvider } from "@/app/page-runtime/project-pages-context";
 import { QualityStatisticsProvider } from "@/project/quality/quality-statistics-context";
 import {
+  api_fetch,
   check_github_release_update,
   get_core_metadata,
   open_external_url,
@@ -41,6 +43,7 @@ import type { ThemeMode } from "@gui/bridge-types";
 const SIDEBAR_STORAGE_KEY = "lg-sidebar-collapsed";
 const THEME_STORAGE_KEY = "lg-theme-mode";
 const FONT_FAMILY_STORAGE_KEY = "lg-base-font-mode";
+const LOG_WINDOW_APP_LANGUAGE_STORAGE_KEY = "lg-log-window-app-language"; // 日志窗口不启动主运行态，首屏语言用独立缓存兜底
 const GITHUB_REPOSITORY_URL = "https://github.com/neavo/LinguaGacha";
 
 const PROJECT_DEPENDENT_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
@@ -188,6 +191,12 @@ function useLgBaseFontMode(): [boolean, Dispatch<SetStateAction<boolean>>] {
 type AppContentProps = {
   is_lg_base_font_enabled: boolean;
   set_is_lg_base_font_enabled: Dispatch<SetStateAction<boolean>>;
+};
+
+type LogWindowSettingsPayload = {
+  settings?: {
+    app_language?: unknown;
+  };
 };
 
 function AppContent(props: AppContentProps): JSX.Element {
@@ -617,35 +626,110 @@ function AppContent(props: AppContentProps): JSX.Element {
   );
 }
 
-function App(): JSX.Element {
-  const log_window_mode = is_log_window_mode();
-  const [is_lg_base_font_enabled, set_is_lg_base_font_enabled] = useLgBaseFontMode();
+function normalize_log_window_app_language(value: unknown): "ZH" | "EN" {
+  const normalized_value = String(value ?? "")
+    .trim()
+    .toUpperCase();
+  if (normalized_value === "EN" || normalized_value.startsWith("EN-")) {
+    return "EN";
+  }
 
+  return "ZH";
+}
+
+function read_initial_log_window_app_language(): "ZH" | "EN" {
+  const stored_language = window.localStorage.getItem(LOG_WINDOW_APP_LANGUAGE_STORAGE_KEY);
+  return normalize_log_window_app_language(stored_language ?? window.navigator.language);
+}
+
+function WindowVisualProviders({ children }: { children: ReactNode }): JSX.Element {
+  // 多窗口共享的视觉壳层只承载主题、tooltip 和 toast，不读取项目或任务运行态
+  return (
+    <ThemeProvider
+      attribute="class"
+      defaultTheme={read_theme_mode()}
+      enableSystem={false}
+      storageKey={THEME_STORAGE_KEY}
+      themes={["light", "dark"]}
+    >
+      <TooltipProvider delayDuration={120}>
+        {children}
+        <Toaster />
+      </TooltipProvider>
+    </ThemeProvider>
+  );
+}
+
+function MainWindowLocaleProvider({ children }: { children: ReactNode }): JSX.Element {
+  const { settings_snapshot } = useDesktopRuntime();
+
+  // 主窗口语言仍跟随 DesktopRuntimeProvider 的 settings 快照，避免页面各自读取设置
+  return <LocaleProvider app_language={settings_snapshot.app_language}>{children}</LocaleProvider>;
+}
+
+function MainWindowApp(props: AppContentProps): JSX.Element {
+  // 只有主窗口拥有项目、任务、设置和主事件流运行态
   return (
     <DesktopRuntimeProvider>
-      <LocaleProvider>
-        <ThemeProvider
-          attribute="class"
-          defaultTheme={read_theme_mode()}
-          enableSystem={false}
-          storageKey={THEME_STORAGE_KEY}
-          themes={["light", "dark"]}
-        >
-          <TooltipProvider delayDuration={120}>
-            {log_window_mode ? (
-              <LogWindowPage />
-            ) : (
-              <AppContent
-                is_lg_base_font_enabled={is_lg_base_font_enabled}
-                set_is_lg_base_font_enabled={set_is_lg_base_font_enabled}
-              />
-            )}
-            {!log_window_mode ? <DesktopProgressToastModalLayer /> : null}
-            <Toaster />
-          </TooltipProvider>
-        </ThemeProvider>
-      </LocaleProvider>
+      <MainWindowLocaleProvider>
+        <WindowVisualProviders>
+          <AppContent
+            is_lg_base_font_enabled={props.is_lg_base_font_enabled}
+            set_is_lg_base_font_enabled={props.set_is_lg_base_font_enabled}
+          />
+          <DesktopProgressToastModalLayer />
+        </WindowVisualProviders>
+      </MainWindowLocaleProvider>
     </DesktopRuntimeProvider>
+  );
+}
+
+function LogWindowApp(): JSX.Element {
+  const [app_language, set_app_language] = useState<"ZH" | "EN">(() =>
+    read_initial_log_window_app_language(),
+  );
+
+  useEffect(() => {
+    let is_disposed = false;
+
+    // 日志窗口只轻量读取一次设置语言，不订阅 project/task 主事件流
+    void api_fetch<LogWindowSettingsPayload>("/api/settings/app", {})
+      .then((payload) => {
+        if (is_disposed) {
+          return;
+        }
+        const next_app_language = normalize_log_window_app_language(payload.settings?.app_language);
+        window.localStorage.setItem(LOG_WINDOW_APP_LANGUAGE_STORAGE_KEY, next_app_language);
+        set_app_language(next_app_language);
+      })
+      .catch(() => undefined); // 设置读取失败时保留首屏兜底语言，日志流本身不受影响
+
+    return () => {
+      is_disposed = true;
+    };
+  }, []);
+
+  return (
+    <LocaleProvider app_language={app_language}>
+      <WindowVisualProviders>
+        <LogWindowPage />
+      </WindowVisualProviders>
+    </LocaleProvider>
+  );
+}
+
+function App(): JSX.Element {
+  const [is_lg_base_font_enabled, set_is_lg_base_font_enabled] = useLgBaseFontMode();
+
+  if (is_log_window_mode()) {
+    return <LogWindowApp />;
+  }
+
+  return (
+    <MainWindowApp
+      is_lg_base_font_enabled={is_lg_base_font_enabled}
+      set_is_lg_base_font_enabled={set_is_lg_base_font_enabled}
+    />
   );
 }
 
