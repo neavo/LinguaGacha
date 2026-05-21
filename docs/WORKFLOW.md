@@ -1,44 +1,45 @@
 # LinguaGacha 工作流
 
-本文件规定任务起手式、阅读路径、验证矩阵、文档同步和交付自检。专题正文不要写在这里；这里只告诉维护者何时读哪里、跑什么、交付时说明什么。
+本文件规定任务起手式、阅读路径、验证矩阵、文档同步和交付自检。专题正文不要写在这里；这里只说明维护者何时读哪里、跑什么、交付时说明什么。
 
 ## 1. 起手式
 
-1. 先判断任务类型，再按下表选择阅读路径。
-2. 除非任务只涉及纯文档自检，否则先读 [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)。
-3. 改代码前确认状态拥有者、唯一写入口和事件回流路径。
-4. 改动若会改变长期边界，同一任务内同步对应文档。
-5. 完成后回看 diff，确认没有制造并行规则、旧入口或低密度重复正文。
+1. 先判断任务类型，再按阅读路径进入唯一归宿。
+2. 除非任务只涉及纯文档自检，否则先读 [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)，再读对应专题文档。
+3. 改代码前确认状态拥有者、唯一写入口、事件回流路径和失败回滚语义；不要只按目录名推断边界。
+4. 代码事实优先于文档；文档与代码冲突时回到当前实现，证据仍不足则列为未决，不写成长期规则。
+5. 改动会影响未来维护判断时，同一任务内同步唯一归宿文档；不影响边界、契约或验证的局部实现不要写长期文档。
+6. 完成后回看 diff，确认没有制造并行规则、旧入口、低密度重复正文或无关改动。
 
 ## 2. 阅读路径
 
 | 任务类型 | 必读 | 视情况补读 |
 | --- | --- | --- |
-| 架构、跨层边界、进程链路 | [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) | [`docs/BACKEND.md`](BACKEND.md)、[`docs/FRONTEND.md`](FRONTEND.md) |
-| 产品入口、GUI / CLI 分发、打包入口 | [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) | [`docs/CLI.md`](CLI.md)、`src/index.ts`、`src/gui/`、`src/cli/`、`buildtools/builder/` |
-| CLI 命令模式、参数、临时工程、资源、输出 | [`docs/CLI.md`](CLI.md) | [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)、[`docs/BACKEND.md`](BACKEND.md)、`src/cli/`、`buildtools/builder/` |
-| Electron 桌面宿主契约、preload 桥接、IPC | [`docs/ARCHITECTURE.md`](ARCHITECTURE.md)、[`docs/FRONTEND.md`](FRONTEND.md) | `src/gui/bridge/`、`src/gui/ipc/`、`src/gui/shell/`、`src/gui/preload/`、`src/renderer/app/desktop/` |
-| API、SSE、项目读取、mutation、错误码 | [`docs/BACKEND.md`](BACKEND.md) | `src/core/api/`、`src/renderer/app/desktop/` |
-| 数据库、`.lg`、migration、状态写入口 | [`docs/BACKEND.md`](BACKEND.md) | `src/core/database/`、`src/core/migration/`、相关 service 测试 |
-| 任务命令、运行态、引擎、worker、事件 | [`docs/BACKEND.md`](BACKEND.md) | `src/core/engine/`、`src/core/events/` |
-| renderer、ProjectStore、导航 | [`docs/FRONTEND.md`](FRONTEND.md) | `src/renderer/app/`、相关页面 |
-| 前端视觉和交互 | [`docs/FRONTEND.md`](FRONTEND.md) | `DESIGN.md`、相关 CSS 和组件 |
-| 长期文档治理 | `.codex/skills/project-doc/SKILL.md` | `AGENTS.md` 与 `docs/` 目标形态 |
+| 架构、跨层边界、进程链路 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | `src/index.ts`、`src/core/bootstrap/` |
+| GUI / CLI 分发、产品入口、打包入口 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | [`CLI.md`](CLI.md)、`src/gui/`、`src/cli/`、`buildtools/builder/` |
+| CLI 命令、参数、临时工程、资源、输出 | [`CLI.md`](CLI.md) | [`BACKEND.md`](BACKEND.md)、`src/cli/`、相关 CLI 测试 |
+| API、SSE、错误、项目读取、mutation | [`BACKEND.md`](BACKEND.md) | `src/core/api/`、`src/core/project/`、`src/shared/error/` |
+| 数据库、`.lg`、migration、asset、NativeFs | [`BACKEND.md`](BACKEND.md) | `src/core/database/`、`src/core/migration/`、`src/native/` |
+| 任务命令、运行态、worker、LLM | [`BACKEND.md`](BACKEND.md) | `src/core/engine/`、`src/core/llm/`、`src/core/service/task-service.ts` |
+| Electron / preload / renderer Core 接入 | [`FRONTEND.md`](FRONTEND.md) | `src/gui/bridge/`、`src/gui/ipc/`、`src/gui/preload/`、`src/renderer/app/desktop/` |
+| `ProjectStore`、导航、项目页 runtime、Project UI Worker | [`FRONTEND.md`](FRONTEND.md) | `src/renderer/project/`、`src/renderer/pages/`、相关 renderer 测试 |
+| 前端视觉、样式、可见文案 | [`FRONTEND.md`](FRONTEND.md) | `DESIGN.md`、`src/renderer/index.css`、相关组件 / 页面 CSS |
+| 长期文档治理 | `.codex/skills/project-doc/SKILL.md` | `AGENTS.md`、`docs/` 目标形态、README / 脚本引用 |
 
 ## 3. 验证矩阵
 
 | 改动范围 | 最小验证 | 追加验证 |
 | --- | --- | --- |
-| 纯长期文档 | `npm run lint` 可选；必须检查链接和目标文档形态 | 涉及 README / 脚本提示时跑相关脚本或全文检索 |
+| 纯长期文档 | 检查目标文档形态、相对链接和 diff；依赖可用时可跑 `npm run lint` | 涉及 README、脚本提示或测试断言时全文检索相关入口 |
 | TypeScript 非视觉逻辑 | `npm test -- <相关 test 文件>` 或 `npm test` | `npm run lint` |
-| 后端 API / database / task | `npm run check` + 相关 `src/core/**/*.test.ts` | `npm test` |
-| CLI 命令、入口分发或打包启动器 | 相关 `src/cli/**/*.test.ts`、`src/index.test.ts`、`buildtools/builder/*.test.mjs` | `npm run check`、`npm run build` |
+| 后端 API / database / task / shared error | `npm run check` + 相关 `src/core/**/*.test.ts` | `npm test` |
+| CLI 命令、入口分发或平台启动器 | 相关 `src/cli/**/*.test.ts`、`src/index.test.ts`、`buildtools/builder/*.test.mjs` | `npm run check`；影响打包时跑 `npm run build` |
 | renderer 状态 / 页面逻辑 | `npm run check` + 相关 `src/renderer/**/*.test.ts(x)` | `npm run lint` |
-| 前端视觉 / CSS / 组件外观 | `npm run check` + 相关组件或页面测试 | Electron 真机检查；需要时接 9222 DevTools |
-| 跨前后端运行态或共享契约 | `npm run check` + 后端相关测试 + renderer runtime/store 测试 | `npm test`，必要时启动 `npm run dev` 真机走主链路 |
-| 构建或打包配置 | `npm run build` | 按影响范围追加测试 |
+| 前端视觉 / CSS / 可见文案 | `npm run check` + 相关页面或组件测试 | 核对 `DESIGN.md`；必要时 Electron 真机检查 |
+| 跨前后端运行态或共享契约 | `npm run check` + 后端相关测试 + renderer runtime/store 测试 | `npm test`；必要时 `npm run dev` 走主链路 |
+| 构建、Vite、electron-builder、发布资产 | `npm run build` | 按影响范围追加 CLI / renderer / backend 测试 |
 
-无法执行、只执行部分或验证失败时，交付必须说明原因、影响范围和剩余风险。
+验证无法执行、只执行部分或失败时，交付必须说明原因、影响范围和剩余风险。
 
 ## 4. 文档同步规则
 
@@ -48,30 +49,33 @@ flowchart TD
   A -->|是| C["能从代码表面直接看出吗？"]
   C -->|是| B
   C -->|否| D["选择唯一归宿"]
-  D --> E["架构 -> ARCHITECTURE"]
+  D --> E["系统分层 / 主链路 -> ARCHITECTURE"]
   D --> F["CLI 命令模式 -> CLI"]
-  D --> G["后端协议/状态/存储 -> BACKEND"]
-  D --> H["前端接入/运行态/导航/样式消费 -> FRONTEND"]
-  D --> I["验证/阅读/交付流程 -> WORKFLOW"]
-  D --> J["协作/编码/交付硬约束 -> AGENTS"]
+  D --> G["后端协议 / 状态 / 存储 -> BACKEND"]
+  D --> H["前端接入 / 运行态 / 样式消费 -> FRONTEND"]
+  D --> I["验证 / 阅读 / 交付流程 -> WORKFLOW"]
+  D --> J["协作 / 编码 / 交付硬约束 -> AGENTS"]
 ```
 
-- 同一规则只能有一个权威归宿；其它位置只保留短引用。
+- 同一规则只能有一个权威归宿；其它位置只保留必要短引用。
 - `AGENTS.md` 只保留代理协作、仓库级硬约束、编码约束和交付硬约束，不展开专题正文。
-- `docs/ARCHITECTURE.md` 是专题边界地图和系统分层，不承载任务阅读路径、协议字段、状态表或验证矩阵。
-- `docs/CLI.md` 是 CLI 命令模式权威，不承载 Core API、数据库、renderer 运行态或用户长教程。
-- 后端协议与数据域权威都归 `docs/BACKEND.md`，不得新增并行 API 或数据域入口。
-- `docs/FRONTEND.md` 不替代产品与设计流程；遇到产品语义或设计权威，提醒走 `PRODUCT.md` / `DESIGN.md` 对应流程。
-- 删除或迁移文档入口前，必须全文检索 README、脚本报错、测试断言和技能提示，确认不再指向旧入口。
+- `ARCHITECTURE.md` 是专题边界地图和运行时分层，不承载协议字段、状态表、验证矩阵或用户教程。
+- `CLI.md` 不承载 HTTP / SSE、数据库 schema、renderer 运行态或用户长教程。
+- `BACKEND.md` 不写页面交互教程，也不替代字段类型定义。
+- `FRONTEND.md` 不替代产品与设计流程；产品语义和视觉规范分别回 `PRODUCT.md` / `DESIGN.md`。
+- 删除或迁移文档入口前，全文检索 README、脚本报错、测试断言、技能提示和文档内链接，确认不再指向旧入口。
 
 ## 5. 交付自检
 
-交付前逐项确认：
+- `git diff` 只包含本任务相关文件，命名、注释、实现边界与文档边界一致。
+- 没有把专题正文写进 `AGENTS.md` 或 `ARCHITECTURE.md`，也没有新增临时权威入口。
+- 协议、状态、数据库、前端运行态、CLI 或验证要求的变化已同步到唯一归宿。
+- 触及后端、前端或跨层共享契约的改动已按矩阵执行 `npm run check` 或说明未执行原因。
+- 前端视觉改动已说明是否核对 `DESIGN.md`，以及是否做了真机或等价验证。
+- 交付中列出实际执行的验证；失败、跳过或无法执行的命令要说明原因和影响范围。
 
-- `git diff` 中的命名、注释、实现边界和文档边界一致。
-- 没有把专题正文写进 `AGENTS.md` 或 `ARCHITECTURE.md`。
-- 没有新增未登记的临时权威入口，新增专题必须进入阅读路径和文档同步规则。
-- 协议、状态、数据库、前端运行态和验证要求的变更已同步到唯一归宿。
-- 命中前端、后端或跨层共享契约边界的改动已执行 `npm run check`。
-- 验证命令已按矩阵执行，并在交付中说明结果。
-- 前端视觉改动已说明是否核对 `DESIGN.md` 和是否执行 `npm run check`。
+## 6. 更新触发条件
+
+- 改起手阅读路径、验证命令、检查脚本、文档同步归宿或交付格式，更新本文。
+- 新增长期文档入口、删除旧入口或改变 `AGENTS.md` 与 `docs/` 的目标形态，更新本文并检查仓库链接。
+- 改产品 / 设计流程入口时，只在本文保留入口关系，不吸收 `PRODUCT.md` / `DESIGN.md` 正文。
