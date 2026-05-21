@@ -134,7 +134,9 @@ describe("desktop-api", () => {
       sequence: 1,
       created_at: "2026-04-26T00:00:00.000+00:00",
       level: "warning",
-      message: "hello",
+      source: "test",
+      message_preview: "hello",
+      message_length: 2048,
     });
 
     await expect(next_event).resolves.toEqual({
@@ -144,7 +146,9 @@ describe("desktop-api", () => {
         sequence: 1,
         created_at: "2026-04-26T00:00:00.000+00:00",
         level: "warning",
-        message: "hello",
+        source: "test",
+        message_preview: "hello",
+        message_length: 2048,
       },
     });
     expect(EventSourceStub.instances[0]?.url).toBe("http://127.0.0.1:38191/api/logs/stream");
@@ -184,25 +188,88 @@ describe("desktop-api", () => {
       sequence: 1,
       created_at: "2026-04-26T00:00:00.000+00:00",
       level: "info",
-      message: "第一条",
+      source: "engine",
+      message_preview: "第一条",
+      message_length: 3,
     });
     EventSourceStub.instances[0]?.emit("log.appended", {
       id: "log-2",
       sequence: 2,
       created_at: "2026-04-26T00:00:01.000+00:00",
       level: "error",
-      message: "第二条",
+      source: "engine-worker",
+      message_preview: "第二条",
+      message_length: 3,
     });
 
     await expect(first_read).resolves.toMatchObject({
       done: false,
-      value: { id: "log-1", sequence: 1, message: "第一条" },
+      value: { id: "log-1", sequence: 1, message_preview: "第一条" },
     });
     await expect(iterator.next()).resolves.toMatchObject({
       done: false,
-      value: { id: "log-2", sequence: 2, message: "第二条" },
+      value: { id: "log-2", sequence: 2, message_preview: "第二条" },
     });
     await iterator.return?.();
+  });
+
+  it("read_log_detail 读取完整日志详情", async () => {
+    const fetch_mock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/health")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            data: {
+              status: "ok",
+              service: "linguagacha-core",
+              version: "9.9.9",
+            },
+          }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ok: true,
+          data: {
+            detail: {
+              id: "log-1",
+              sequence: 1,
+              created_at: "2026-04-26T00:00:00.000+00:00",
+              level: "error",
+              source: "engine-worker",
+              message: "完整日志正文",
+              error_message: "boom",
+              stack: "Error: boom",
+              context: { unit: "u1" },
+            },
+          },
+        }),
+      } as Response;
+    });
+
+    install_desktop_api_host("http://127.0.0.1:38191/");
+    vi.stubGlobal("fetch", fetch_mock);
+
+    const { read_log_detail } = await import("./desktop-api");
+
+    await expect(read_log_detail("log-1")).resolves.toMatchObject({
+      id: "log-1",
+      level: "error",
+      source: "engine-worker",
+      message: "完整日志正文",
+      context: { unit: "u1" },
+    });
+    expect(fetch_mock).toHaveBeenCalledWith(
+      "http://127.0.0.1:38191/api/logs/detail",
+      expect.objectContaining({
+        method: "POST",
+      }),
+    );
   });
 
   it("check_github_release_update 识别带前缀的新版 release tag", async () => {

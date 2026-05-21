@@ -10,7 +10,7 @@ flowchart LR
   Preload --> API["desktop-api.ts"]
   API --> Root["renderer root<br/>按窗口类型组合运行态"]
   Root --> Runtime["主窗口<br/>DesktopRuntimeProvider"]
-  Root --> Logs["日志窗口<br/>LogWindowPage / logs stream"]
+  Root --> Logs["日志窗口<br/>LogWindowPage / logs stream + detail"]
   Runtime --> Store["ProjectStore / TaskRuntimeStore"]
   Runtime --> PagesRuntime["ProjectPagesProvider"]
   PagesRuntime --> Pages["pages / widgets"]
@@ -19,6 +19,7 @@ flowchart LR
 - renderer 只能通过 `window.desktopApp` 接触 Electron 宿主能力，不能直接导入 Electron、Node、`src/native`、preload 实现或 Core 内部实现。
 - Core API 访问只允许收口到 `src/renderer/app/desktop/desktop-api.ts`；页面不直接 `fetch('/api/*')`，也不直接创建 Core EventSource。
 - `desktop-api.ts` 负责 Core base URL 归一、`/api/health` 探测、POST 响应壳解析、SSE 打开、本地网络错误和 GitHub release 检查。
+- 日志窗口只把 `log.appended` 的轻量事件放入列表状态；完整正文由 `desktop-api.ts` 通过 `/api/logs/detail` 按当前选中行懒加载，不能进入列表筛选、排序或批量渲染路径。
 - `DesktopApiError` 是 renderer 消费 Core / 本地网络失败的唯一错误类型；页面根据 code/status/action 决定刷新、重试、禁用或跳转，不解析后端原始异常文本。
 - 普通页面展示用户可见错误时走 `src/renderer/app/ui-runtime/error-message.ts`；toast、dialog 和空状态不得直接显示 `Error.message`。
 - 可见文案从 `src/shared/i18n` 解析；renderer 的 React Provider 和富文本渲染适配在 `src/renderer/app/locale`。

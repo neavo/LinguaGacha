@@ -150,6 +150,7 @@ export class ApiGatewayServer {
     app.get("/api/logs/stream", () => {
       return this.create_log_stream_response();
     });
+    this.post_json(app, "/api/logs/detail", (body) => this.read_log_detail(body));
     app.get("/api/events/stream", () => {
       return services.core_event_hub.create_stream_response();
     });
@@ -403,6 +404,17 @@ export class ApiGatewayServer {
           .filter((item): item is number => Number.isInteger(item) && item > 0),
       ),
     ];
+  }
+
+  /**
+   * 日志详情只从当前进程内详情池读取；旧日志文件不在 API 层扫描
+   */
+  private read_log_detail(body: Record<string, ApiJsonValue>): ApiJsonValue {
+    const id = String(body["id"] ?? "").trim();
+    return {
+      detail:
+        id === "" ? null : (this.options.coreServices.log_manager.read_detail(id) as ApiJsonValue),
+    };
   }
 
   /**

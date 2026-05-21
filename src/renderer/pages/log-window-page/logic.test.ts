@@ -16,7 +16,9 @@ function build_event(overrides: Partial<LogEvent>): LogEvent {
     sequence: 1,
     created_at: "2026-04-26T08:30:15.000+00:00",
     level: "info",
-    message: "hello",
+    source: "test",
+    message_preview: "hello",
+    message_length: 5,
     ...overrides,
   };
 }
@@ -28,18 +30,18 @@ describe("log-window logic", () => {
   });
 
   it("追加日志时会 trim 消息并折叠连续空日志", () => {
-    const first_empty = build_event({ id: "log-1", sequence: 1, message: "  " });
-    const latest_empty = build_event({ id: "log-2", sequence: 2, message: "\n\t" });
-    const next_message = build_event({ id: "log-3", sequence: 3, message: "  ready  " });
+    const first_empty = build_event({ id: "log-1", sequence: 1, message_preview: "  " });
+    const latest_empty = build_event({ id: "log-2", sequence: 2, message_preview: "\n\t" });
+    const next_message = build_event({ id: "log-3", sequence: 3, message_preview: "  ready  " });
 
     const with_first_empty = append_log_events([], [first_empty]);
     const with_latest_empty = append_log_events(with_first_empty, [latest_empty]);
     const with_next_message = append_log_events(with_latest_empty, [next_message]);
 
     expect(with_first_empty).toHaveLength(1);
-    expect(with_first_empty[0]?.message).toBe("");
+    expect(with_first_empty[0]?.message_preview).toBe("");
     expect(with_latest_empty.map((event) => event.id)).toEqual(["log-2"]);
-    expect(with_next_message.map((event) => event.message)).toEqual(["", "ready"]);
+    expect(with_next_message.map((event) => event.message_preview)).toEqual(["", "ready"]);
   });
 
   it("批量追加日志会保留去重折叠并限制窗口上限", () => {
@@ -47,7 +49,7 @@ describe("log-window logic", () => {
       return build_event({
         id: `seed-${index + 1}`,
         sequence: index + 1,
-        message: `seed ${index + 1}`,
+        message_preview: `seed ${index + 1}`,
       });
     });
 
@@ -55,43 +57,43 @@ describe("log-window logic", () => {
       build_event({
         id: `seed-${LOG_WINDOW_EVENT_CAPACITY - 1}`,
         sequence: LOG_WINDOW_EVENT_CAPACITY - 1,
-        message: "重复日志",
+        message_preview: "重复日志",
       }),
       build_event({
         id: `log-${LOG_WINDOW_EVENT_CAPACITY}`,
         sequence: LOG_WINDOW_EVENT_CAPACITY,
-        message: "  ",
+        message_preview: "  ",
       }),
       build_event({
         id: `log-${LOG_WINDOW_EVENT_CAPACITY + 1}`,
         sequence: LOG_WINDOW_EVENT_CAPACITY + 1,
-        message: "\n",
+        message_preview: "\n",
       }),
       build_event({
         id: `log-${LOG_WINDOW_EVENT_CAPACITY + 2}`,
         sequence: LOG_WINDOW_EVENT_CAPACITY + 2,
-        message: "latest",
+        message_preview: "latest",
       }),
     ]);
 
     expect(next_events).toHaveLength(LOG_WINDOW_EVENT_CAPACITY);
     expect(next_events[0]?.id).toBe("seed-2");
     expect(next_events.at(-2)?.id).toBe(`log-${LOG_WINDOW_EVENT_CAPACITY + 1}`);
-    expect(next_events.at(-2)?.message).toBe("");
-    expect(next_events.at(-1)?.message).toBe("latest");
+    expect(next_events.at(-2)?.message_preview).toBe("");
+    expect(next_events.at(-1)?.message_preview).toBe("latest");
   });
 
   it("连续空日志折叠后允许被替换掉的旧 id 再次进入窗口", () => {
     const next_events = append_log_events(
-      [build_event({ id: "log-1", sequence: 1, message: "" })],
+      [build_event({ id: "log-1", sequence: 1, message_preview: "" })],
       [
-        build_event({ id: "log-2", sequence: 2, message: " " }),
-        build_event({ id: "log-1", sequence: 3, message: "旧 id 重新出现" }),
+        build_event({ id: "log-2", sequence: 2, message_preview: " " }),
+        build_event({ id: "log-1", sequence: 3, message_preview: "旧 id 重新出现" }),
       ],
     );
 
     expect(next_events.map((event) => event.id)).toEqual(["log-2", "log-1"]);
-    expect(next_events.map((event) => event.message)).toEqual(["", "旧 id 重新出现"]);
+    expect(next_events.map((event) => event.message_preview)).toEqual(["", "旧 id 重新出现"]);
   });
 
   it("按序号倒序展示日志", () => {
@@ -110,8 +112,8 @@ describe("log-window logic", () => {
 
   it("按级别和关键词过滤日志", () => {
     const events = [
-      build_event({ id: "log-1", level: "info", message: "ready" }),
-      build_event({ id: "log-2", level: "error", message: "task boom" }),
+      build_event({ id: "log-1", level: "info", message_preview: "ready" }),
+      build_event({ id: "log-2", level: "error", message_preview: "task boom" }),
     ];
 
     expect(
@@ -125,8 +127,8 @@ describe("log-window logic", () => {
 
   it("支持使用正则表达式过滤日志", () => {
     const events = [
-      build_event({ id: "log-1", message: "ready 12" }),
-      build_event({ id: "log-2", message: "ready 99" }),
+      build_event({ id: "log-1", message_preview: "ready 12" }),
+      build_event({ id: "log-2", message_preview: "ready 99" }),
     ];
 
     expect(

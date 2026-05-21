@@ -25,7 +25,7 @@ describe("LogManager", () => {
 
     log_manager.info("第一条", { targets: { file: false, console: false } });
     log_manager.subscribe((event) => {
-      received.push(event.message);
+      received.push(event.message_preview);
     });
     log_manager.warning("第二条", { targets: { file: false, console: false } });
 
@@ -60,14 +60,19 @@ describe("LogManager", () => {
     log_manager.info("二", { targets: { file: false, console: false } });
     log_manager.info("三", { targets: { file: false, console: false } });
 
-    expect(log_manager.snapshot_events().map((event) => event.message)).toEqual(["二", "三"]);
+    expect(log_manager.snapshot_events().map((event) => event.message_preview)).toEqual([
+      "二",
+      "三",
+    ]);
+    expect(log_manager.read_detail("log-1")).toBeNull();
+    expect(log_manager.read_detail("log-2")?.message).toBe("二");
   });
 
   it("订阅取消后不再接收新的窗口日志", () => {
     const log_manager = create_log_manager();
     const received: string[] = [];
     const unsubscribe = log_manager.subscribe((event) => {
-      received.push(event.message);
+      received.push(event.message_preview);
     });
 
     log_manager.info("订阅期日志", { targets: { file: false, console: false } });
@@ -75,10 +80,40 @@ describe("LogManager", () => {
     log_manager.info("取消后日志", { targets: { file: false, console: false } });
 
     expect(received).toEqual(["订阅期日志"]);
-    expect(log_manager.snapshot_events().map((event) => event.message)).toEqual([
+    expect(log_manager.snapshot_events().map((event) => event.message_preview)).toEqual([
       "订阅期日志",
       "取消后日志",
     ]);
+  });
+
+  it("窗口事件只暴露轻量预览，完整正文留在详情池", () => {
+    const log_manager = create_log_manager();
+    const full_message = `${"长日志".repeat(600)}\n第二行`;
+
+    log_manager.error(full_message, {
+      context: { route: "/api/demo" },
+      error_message: "boom",
+      source: "test",
+      stack: "Error: boom",
+      targets: { console: false, file: false },
+    });
+
+    const [snapshot_event] = log_manager.snapshot_events();
+    const detail = log_manager.read_detail(snapshot_event?.id ?? "");
+    expect(snapshot_event).toMatchObject({
+      id: "log-1",
+      sequence: 1,
+      source: "test",
+      message_length: full_message.length,
+    });
+    expect(snapshot_event?.message_preview.length).toBeLessThan(full_message.length);
+    expect(detail).toMatchObject({
+      id: "log-1",
+      message: full_message,
+      error_message: "boom",
+      stack: "Error: boom",
+      context: { route: "/api/demo" },
+    });
   });
 
   it("fatal 日志会尽力同步刷新文件输出", () => {
@@ -113,7 +148,10 @@ describe("LogManager", () => {
     log_manager.error("关闭后日志");
 
     expect(file_lines).toHaveLength(1);
-    expect(log_manager.snapshot_events().map((event) => event.message)).toEqual(["关闭前日志"]);
+    expect(log_manager.snapshot_events().map((event) => event.message_preview)).toEqual([
+      "关闭前日志",
+    ]);
+    expect(log_manager.read_detail("log-1")?.message).toBe("关闭前日志");
     expect(stderr_write).toHaveBeenCalledWith(
       expect.stringContaining("日志系统已关闭，丢弃新日志：关闭后日志"),
     );

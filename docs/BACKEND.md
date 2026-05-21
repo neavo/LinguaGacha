@@ -9,6 +9,7 @@
 - Gateway 只监听 `127.0.0.1`，CORS 只允许 `Content-Type`；renderer 不依赖额外私有请求头。
 - 成功响应形状为 `{ ok: true, data }`，失败响应形状为 `{ ok: false, error }`。错误载荷来自 `src/shared/error` 的 `AppError` 投影，只暴露安全字段；用户可见文案通过 i18n key 解析，内部异常、stack、API key、Authorization header 和 provider 原始响应只允许进入日志诊断。
 - 公开 SSE 使用固定 topic 和严格 JSON 序列化：项目数据通过 `project.data_changed`，任务运行态通过 `task.snapshot_changed`，设置通过 `settings.changed`，日志窗口通过 `log.appended`。
+- `log.appended` 只携带列表、筛选和排序所需的轻量日志事件；完整日志正文只保留在当前进程内详情池，并通过 `/api/logs/detail` 按 ID 读取。Core 不为日志详情写数据库、索引或额外文件，历史 `app.yyyymmdd.log` 不作为详情接口的数据源。
 - CLI 不启动 Gateway；CLI 命令通过同进程 `CoreServices` 和 `CoreEventHub` 复用任务、项目、导出和质量服务。
 - 发布态任务执行入口由产品入口构造为 `worker_threads`，指向桌面 bundle 内的 work-unit 与 planning worker；`in_process` 只允许测试或源码执行显式选择，不是 worker 失败回退。
 
@@ -26,7 +27,7 @@
 | 后台任务生命周期 | `TaskEngine` | `TaskService.start_task` / `stop_task` |
 | `.lg` 物理读写 | `ProjectDatabase` | `DatabaseOperation` / `execute_transaction` |
 | 真实磁盘 IO 与路径身份 | `NativeFs` / `NativePathPolicy` | `src/native` |
-| Core 内部日志 | `LogManager` | 文件日志、日志 SSE、Electron main 诊断 |
+| Core 内部日志 | `LogManager` | `app.yyyymmdd.log` 完整文件日志、轻量日志 SSE、当前进程详情池、Electron main 诊断 |
 
 `ProjectOperationGate` 是结构性项目 mutation 与后台任务启动的互斥门闩；涉及文件集合、reset、settings alignment 或任务启动的改动必须先确认它是否应参与 gate。
 

@@ -14,66 +14,75 @@ type StreamController = {
   iterator: AsyncIterator<LogEvent>;
 };
 
-const { open_log_stream_mock, push_toast_mock, stream_controllers } = vi.hoisted(() => {
-  const controllers: StreamController[] = [];
+const { open_log_stream_mock, push_toast_mock, read_log_detail_mock, stream_controllers } =
+  vi.hoisted(() => {
+    const controllers: StreamController[] = [];
 
-  function create_controller(): StreamController {
-    const event_queue: LogEvent[] = [];
-    let pending_resolve: ((result: IteratorResult<LogEvent>) => void) | null = null;
-    const controller: StreamController = {
-      closed: false,
-      emit(event: LogEvent): void {
-        if (controller.closed) {
-          return;
-        }
-        if (pending_resolve !== null) {
-          const resolve = pending_resolve;
-          pending_resolve = null;
-          resolve({ done: false, value: event });
-          return;
-        }
-        event_queue.push(event);
-      },
-      iterator: {
-        next(): Promise<IteratorResult<LogEvent>> {
+    function create_controller(): StreamController {
+      const event_queue: LogEvent[] = [];
+      let pending_resolve: ((result: IteratorResult<LogEvent>) => void) | null = null;
+      const controller: StreamController = {
+        closed: false,
+        emit(event: LogEvent): void {
           if (controller.closed) {
-            return Promise.resolve({ done: true, value: undefined });
+            return;
           }
-          const event = event_queue.shift();
-          if (event !== undefined) {
-            return Promise.resolve({ done: false, value: event });
-          }
-          return new Promise<IteratorResult<LogEvent>>((resolve) => {
-            pending_resolve = resolve;
-          });
-        },
-        return(): Promise<IteratorResult<LogEvent>> {
-          controller.closed = true;
           if (pending_resolve !== null) {
             const resolve = pending_resolve;
             pending_resolve = null;
-            resolve({ done: true, value: undefined });
+            resolve({ done: false, value: event });
+            return;
           }
-          return Promise.resolve({ done: true, value: undefined });
+          event_queue.push(event);
         },
-      },
-    };
-
-    return controller;
-  }
-
-  return {
-    open_log_stream_mock: vi.fn(() => {
-      const controller = create_controller();
-      controllers.push(controller);
-      return {
-        [Symbol.asyncIterator]: () => controller.iterator,
+        iterator: {
+          next(): Promise<IteratorResult<LogEvent>> {
+            if (controller.closed) {
+              return Promise.resolve({ done: true, value: undefined });
+            }
+            const event = event_queue.shift();
+            if (event !== undefined) {
+              return Promise.resolve({ done: false, value: event });
+            }
+            return new Promise<IteratorResult<LogEvent>>((resolve) => {
+              pending_resolve = resolve;
+            });
+          },
+          return(): Promise<IteratorResult<LogEvent>> {
+            controller.closed = true;
+            if (pending_resolve !== null) {
+              const resolve = pending_resolve;
+              pending_resolve = null;
+              resolve({ done: true, value: undefined });
+            }
+            return Promise.resolve({ done: true, value: undefined });
+          },
+        },
       };
-    }),
-    push_toast_mock: vi.fn(),
-    stream_controllers: controllers,
-  };
-});
+
+      return controller;
+    }
+
+    return {
+      open_log_stream_mock: vi.fn(() => {
+        const controller = create_controller();
+        controllers.push(controller);
+        return {
+          [Symbol.asyncIterator]: () => controller.iterator,
+        };
+      }),
+      push_toast_mock: vi.fn(),
+      read_log_detail_mock: vi.fn(async (id: string) => ({
+        id,
+        sequence: Number(id.replace(/^log-/u, "")) || 1,
+        created_at: "2026-04-26T00:00:00.000+00:00",
+        level: "info",
+        source: "test",
+        message: `完整详情：${id}`,
+      })),
+      stream_controllers: controllers,
+    };
+  });
 
 vi.mock("@/app/desktop/desktop-api", async () => {
   const actual = await vi.importActual<typeof import("@/app/desktop/desktop-api")>(
@@ -82,6 +91,7 @@ vi.mock("@/app/desktop/desktop-api", async () => {
   return {
     ...actual,
     open_log_stream: open_log_stream_mock,
+    read_log_detail: read_log_detail_mock,
   };
 });
 
@@ -193,6 +203,11 @@ vi.mock("@/widgets/app-table/app-table", () => {
         }) => ReactNode;
       }>;
       get_row_id: (row: LogEvent, index: number) => string;
+      on_selection_change?: (payload: {
+        selected_row_ids: string[];
+        active_row_id: string | null;
+        anchor_row_id: string | null;
+      }) => void;
       on_row_double_click?: (payload: { row: LogEvent; row_id: string; row_index: number }) => void;
     }) => (
       <div>
@@ -202,6 +217,13 @@ vi.mock("@/widgets/app-table/app-table", () => {
             <div
               key={row_id}
               data-log-row-id={row_id}
+              onClick={() => {
+                props.on_selection_change?.({
+                  selected_row_ids: [row_id],
+                  active_row_id: row_id,
+                  anchor_row_id: row_id,
+                });
+              }}
               onDoubleClick={() => {
                 props.on_row_double_click?.({ row: event, row_id, row_index: index });
               }}
@@ -234,7 +256,9 @@ function build_log_event(message: string, overrides: Partial<LogEvent> = {}): Lo
     sequence: 1,
     created_at: "2026-04-26T00:00:00.000+00:00",
     level: "info",
-    message,
+    source: "test",
+    message_preview: message,
+    message_length: message.length,
     ...overrides,
   };
 }
@@ -267,6 +291,7 @@ describe("LogWindowPage", () => {
     container = null;
     root = null;
     open_log_stream_mock.mockClear();
+    read_log_detail_mock.mockClear();
     push_toast_mock.mockReset();
     stream_controllers.splice(0, stream_controllers.length);
     vi.useRealTimers();
@@ -394,5 +419,24 @@ describe("LogWindowPage", () => {
     });
 
     expect(container?.querySelector(".log-window-page__content--detail-expanded")).not.toBeNull();
+  });
+
+  it("选中日志行后按需读取完整详情", async () => {
+    await mount_page();
+
+    await act(async () => {
+      get_active_stream().emit(build_log_event("列表预览", { id: "log-9", sequence: 9 }));
+      await Promise.resolve();
+      vi.advanceTimersByTime(500);
+    });
+
+    const row = container?.querySelector('[data-log-row-id="log-9"]');
+    await act(async () => {
+      row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(read_log_detail_mock).toHaveBeenCalledWith("log-9");
+    expect(container?.textContent).toContain("完整详情：log-9");
   });
 });
