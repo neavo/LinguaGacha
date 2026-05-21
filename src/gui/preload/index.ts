@@ -19,15 +19,20 @@ import {
 import { resolve_core_api_base_url_from_argv } from "../../core/api/core-api-endpoint";
 import { resolve_desktop_shell_info } from "../shell/shell-contract";
 import { DESKTOP_BRIDGE_GLOBAL_NAME, type DesktopBridgeApi } from "../bridge/bridge-api";
+import { resolve_desktop_system_proxy_startup_notice_from_argv } from "../bridge/system-proxy-startup-notice";
 import type { DesktopPathPickResult, DesktopPlatform, ThemeMode } from "../bridge/bridge-types";
 
 const DESKTOP_SHELL_INFO = resolve_desktop_shell_info(process.platform as DesktopPlatform);
 const CORE_API_BASE_URL = resolve_core_api_base_url_from_argv(process.argv);
+const SYSTEM_PROXY_STARTUP_NOTICE = resolve_desktop_system_proxy_startup_notice_from_argv(
+  process.argv,
+); // 系统代理提示来自 main 启动参数，preload 只转交脱敏摘要给 renderer
 
 const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
   shell: DESKTOP_SHELL_INFO,
   coreApi: {
     baseUrl: CORE_API_BASE_URL,
+    systemProxyStartupNotice: SYSTEM_PROXY_STARTUP_NOTICE,
   },
   /**
    * 暴露安全文件路径查询，避免 renderer 直接访问 Node

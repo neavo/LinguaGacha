@@ -21,6 +21,15 @@ describe("shared i18n", () => {
     );
     expect(zh_t("app.log.app_version", { VERSION: "9.8.7" })).toBe("LinguaGacha v9.8.7 …");
     expect(en_t("app.log.app_version", { VERSION: "9.8.7" })).toBe("LinguaGacha v9.8.7 …");
+    expect(zh_t("app.system_proxy.startup_notice", { PROXY: "http://127.0.0.1:7890" })).toBe(
+      "检查到系统代理设置 - http://127.0.0.1:7890",
+    );
+    expect(en_t("app.system_proxy.startup_notice", { PROXY: "http://127.0.0.1:7890" })).toBe(
+      "System proxy setting detected - http://127.0.0.1:7890",
+    );
+    expect(zh_t("app.log.system_proxy_startup_detected", { PROXY: "http://127.0.0.1:7890" })).toBe(
+      "检查到系统代理设置 - http://127.0.0.1:7890",
+    );
   });
 
   it("未知 app_language 回退中文界面", () => {

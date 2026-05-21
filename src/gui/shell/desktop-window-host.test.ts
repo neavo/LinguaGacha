@@ -3,6 +3,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { build_core_api_base_url_argument } from "../../core/api/core-api-endpoint";
+import { build_desktop_system_proxy_startup_notice_argument } from "../bridge/system-proxy-startup-notice";
 import { IPC_CHANNEL_WINDOW_CLOSE_REQUEST } from "../ipc/ipc-contract";
 import { resolve_title_bar_overlay_theme } from "./shell-contract";
 import { LOG_WINDOW_QUERY_KEY, LOG_WINDOW_QUERY_VALUE } from "./log-window-host";
@@ -213,6 +214,11 @@ describe("桌面窗口宿主", () => {
     create_main_window({
       desktopBundleDir: desktop_bundle_dir,
       coreApiBaseUrl: "http://127.0.0.1:4567",
+      systemProxyStartupNotice: {
+        detected: true,
+        proxiedOriginCount: 2,
+        proxyDisplay: "http://127.0.0.1:7890",
+      },
       shouldBypassCloseConfirmation: () => false,
       onClosed: on_closed,
     });
@@ -233,7 +239,14 @@ describe("桌面窗口宿主", () => {
         preload: path.join(desktop_bundle_dir, "preload.mjs"),
         contextIsolation: true,
         nodeIntegration: false,
-        additionalArguments: [build_core_api_base_url_argument("http://127.0.0.1:4567")],
+        additionalArguments: [
+          build_core_api_base_url_argument("http://127.0.0.1:4567"),
+          build_desktop_system_proxy_startup_notice_argument({
+            detected: true,
+            proxiedOriginCount: 2,
+            proxyDisplay: "http://127.0.0.1:7890",
+          }),
+        ],
         sandbox: false,
       },
     });
@@ -254,6 +267,7 @@ describe("桌面窗口宿主", () => {
     const host = create_log_window_host({
       desktopBundleDir: desktop_bundle_dir,
       coreApiBaseUrl: "http://127.0.0.1:6789",
+      systemProxyStartupNotice: { detected: false, proxiedOriginCount: 0, proxyDisplay: null },
     });
     const close_event = { preventDefault: vi.fn() };
 
@@ -280,6 +294,7 @@ describe("桌面窗口宿主", () => {
     create_main_window({
       desktopBundleDir: path.join(process.cwd(), "build", "dist-electron"),
       coreApiBaseUrl: "http://127.0.0.1:4567",
+      systemProxyStartupNotice: { detected: false, proxiedOriginCount: 0, proxyDisplay: null },
       shouldBypassCloseConfirmation: () => true,
       onClosed: vi.fn(),
     });
@@ -343,6 +358,7 @@ describe("桌面窗口宿主", () => {
     create_main_window({
       desktopBundleDir: path.join(process.cwd(), "build", "dist-electron"),
       coreApiBaseUrl: "http://127.0.0.1:4567",
+      systemProxyStartupNotice: { detected: false, proxiedOriginCount: 0, proxyDisplay: null },
       shouldBypassCloseConfirmation: () => true,
       onClosed: vi.fn(),
     });

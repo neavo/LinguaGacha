@@ -43,6 +43,9 @@ export const en_us_app = {
   update: {
     toast: "New version is available, click the bottom-left update entry to download it …",
   },
+  system_proxy: {
+    startup_notice: "System proxy setting detected - {PROXY}",
+  },
   drop: {
     multiple_unavailable: "Only one file can be dropped at a time",
     unavailable:
@@ -272,6 +275,7 @@ export const en_us_app = {
     api_test_timeout: "Request timed out ({SECONDS}s)",
     api_test_token_info: "Task time {TIME} seconds, input tokens {PT}, output tokens {CT}",
     app_version: "LinguaGacha v{VERSION} …",
+    system_proxy_startup_detected: "System proxy setting detected - {PROXY}",
     default_preset_loaded: "Default presets loaded automatically: {NAMES} …",
     engine_api_model: "API Model",
     engine_api_name: "API Name",
