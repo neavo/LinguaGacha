@@ -24,10 +24,7 @@ import {
   normalize_task_snapshot,
   type TaskSnapshot,
 } from "@/app/desktop/task-runtime-store";
-import {
-  DesktopRuntimeRefreshScheduler,
-  type DesktopRuntimeProjectItemsReadRequest,
-} from "@/app/desktop/desktop-runtime-refresh-scheduler";
+import { DesktopRuntimeRefreshScheduler } from "@/app/desktop/desktop-runtime-refresh-scheduler";
 import {
   normalize_section_array,
   normalize_section_revisions,
@@ -175,15 +172,6 @@ type ProjectReadSectionsPayload = {
   sections?: unknown;
   projectRevision?: unknown;
   sectionRevisions?: unknown;
-};
-
-type ProjectReadItemsByIdsPayload = {
-  projectPath?: unknown;
-  items?: unknown;
-  missingIds?: unknown;
-  projectRevision?: unknown;
-  sectionRevisions?: unknown;
-  itemRevision?: unknown;
 };
 
 export type ProjectMutationResultPayload = {
@@ -416,41 +404,6 @@ function normalize_project_read_sections_event(
   };
 }
 
-// ids-only 补读结果只替换对应 item 行，并用 missingIds 表达 tombstone
-function normalize_project_read_items_by_ids_event(args: {
-  eventId?: string;
-  source: string;
-  projectRevision: number;
-  itemIds: number[];
-  payload: ProjectReadItemsByIdsPayload;
-}): ProjectStoreChangeEvent | null {
-  const project_path = String(args.payload.projectPath ?? "").trim();
-  const upsert = normalize_record_map(args.payload.items);
-  const delete_ids = normalize_number_array(args.payload.missingIds);
-  if (project_path === "" || (Object.keys(upsert).length === 0 && delete_ids.length === 0)) {
-    return null;
-  }
-
-  return {
-    eventId: args.eventId,
-    source: args.source,
-    projectPath: project_path,
-    projectRevision: Number(args.payload.projectRevision ?? args.projectRevision),
-    updatedSections: ["items"],
-    operations: [
-      {
-        items: {
-          payloadMode: "canonical-delta",
-          upsert,
-          changedIds: args.itemIds,
-          deleteIds: delete_ids,
-        },
-      },
-    ],
-    sectionRevisions: normalize_section_revisions(args.payload.sectionRevisions),
-  };
-}
-
 // item id 在事件里可能来自 upsert key 或 changedIds，进入页面信号前统一成数字
 function normalize_project_change_item_id(value: number | string): number | null {
   const item_id = Number(value);
@@ -518,23 +471,6 @@ function collect_project_change_item_field_patch(
     field_patch = next_patch;
   }
   return field_patch;
-}
-
-// ids-only 只给 item id，renderer 必须按 id 补读公开行后再写 ProjectStore
-function collect_project_change_ids_only_item_ids(event: ProjectStoreChangeEvent): number[] {
-  const item_ids: number[] = [];
-  for (const operation of event.operations) {
-    if (operation.items?.payloadMode !== "ids-only") {
-      continue;
-    }
-    for (const raw_item_id of operation.items.changedIds ?? []) {
-      const item_id = normalize_project_change_item_id(raw_item_id);
-      if (item_id !== null) {
-        item_ids.push(item_id);
-      }
-    }
-  }
-  return [...new Set(item_ids)];
 }
 
 function project_change_event_has_full_section(
@@ -1243,7 +1179,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     [has_applied_project_event, read_runtime_project_identity],
   );
 
-  // 补读结果同时校验项目 path、epoch 和 section revision，避免旧工程或旧版本覆盖后端新事实镜像。
+  // section 补读结果同时校验项目 path、epoch 和 section revision，避免旧工程或旧版本覆盖后端新事实镜像。
   const should_apply_project_change_for_identity = useCallback(
     (
       identity: Pick<RuntimeProjectIdentity, "path" | "epoch">,
@@ -1258,51 +1194,6 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       return should_apply_runtime_project_change(change_event);
     },
     [is_current_runtime_project_identity, should_apply_runtime_project_change],
-  );
-
-  const read_project_items_by_ids = useCallback(
-    async (
-      request: DesktopRuntimeProjectItemsReadRequest,
-    ): Promise<ProjectStoreChangeEvent | null> => {
-      // ids-only 补读可能排队 500ms 后才执行，发请求前先确认项目身份仍然匹配。
-      const request_identity = {
-        path: request.projectPath,
-        epoch: request.projectEpoch,
-      };
-      if (
-        !should_apply_project_change_for_identity(request_identity, {
-          source: request.source,
-          projectPath: request.projectPath,
-          projectRevision: request.projectRevision,
-          updatedSections: ["items"],
-          operations: [],
-        })
-      ) {
-        return null;
-      }
-
-      const read_items_payload = await api_fetch<ProjectReadItemsByIdsPayload>(
-        "/api/project/items/read-by-ids",
-        {
-          itemIds: request.itemIds,
-        },
-      );
-      const read_items_event = normalize_project_read_items_by_ids_event({
-        source: request.source,
-        eventId: request.eventId,
-        projectRevision: request.projectRevision,
-        itemIds: request.itemIds,
-        payload: read_items_payload,
-      });
-      if (
-        read_items_event === null ||
-        !should_apply_project_change_for_identity(request_identity, read_items_event)
-      ) {
-        return null;
-      }
-      return read_items_event;
-    },
-    [should_apply_project_change_for_identity],
   );
 
   const read_project_sections_for_change = useCallback(
@@ -1355,7 +1246,6 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       }
 
       flush_runtime_refresh_scheduler();
-      const reason = change_event.source || "project_change";
       const invalidated_sections = collect_project_change_sections_requiring_read(change_event);
       if (invalidated_sections.length > 0) {
         if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
@@ -1371,25 +1261,6 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         return;
       }
 
-      const ids_only_item_ids = collect_project_change_ids_only_item_ids(change_event);
-      if (ids_only_item_ids.length > 0) {
-        if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
-          return;
-        }
-        const read_items_event = await read_project_items_by_ids({
-          source: reason,
-          eventId: change_event.eventId,
-          projectPath: change_event.projectPath,
-          projectEpoch: read_runtime_project_identity().epoch,
-          projectRevision: change_event.projectRevision,
-          itemIds: ids_only_item_ids,
-        });
-        if (read_items_event !== null) {
-          apply_runtime_project_change(read_items_event, "exact");
-        }
-        return;
-      }
-
       apply_runtime_project_change(change_event);
     },
     [
@@ -1398,9 +1269,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       project_snapshot.loaded,
       project_snapshot.path,
       queue_runtime_project_change_during_warmup,
-      read_project_items_by_ids,
       read_project_sections_for_change,
-      read_runtime_project_identity,
       should_apply_runtime_project_change,
     ],
   );
@@ -1579,7 +1448,6 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         task_runtime_store_ref.current.applySnapshot(snapshot);
       },
       applyProjectChangeBatch: apply_runtime_project_change_batch,
-      readProjectItemsByIds: read_project_items_by_ids,
       shouldApplyProjectChange: should_apply_runtime_project_change,
     });
     runtime_refresh_scheduler_ref.current = runtime_refresh_scheduler;
@@ -1684,23 +1552,6 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         return;
       }
 
-      const ids_only_item_ids = collect_project_change_ids_only_item_ids(change_event);
-      if (ids_only_item_ids.length > 0) {
-        if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
-          return;
-        }
-
-        runtime_refresh_scheduler.enqueue_project_items_read({
-          source: reason,
-          eventId: change_event.eventId,
-          projectPath: change_event.projectPath,
-          projectEpoch: read_runtime_project_identity().epoch,
-          projectRevision: change_event.projectRevision,
-          itemIds: ids_only_item_ids,
-        });
-        return;
-      }
-
       runtime_refresh_scheduler.enqueue_project_change(change_event);
     }
 
@@ -1747,9 +1598,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     project_snapshot.loaded,
     project_snapshot.path,
     queue_runtime_project_change_during_warmup,
-    read_project_items_by_ids,
     read_project_sections_for_change,
-    read_runtime_project_identity,
     refresh_settings,
     refresh_project_runtime,
     should_apply_runtime_project_change,

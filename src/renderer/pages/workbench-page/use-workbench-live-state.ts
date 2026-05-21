@@ -46,7 +46,6 @@ import { normalize_source_paths } from "@/lib/source-paths";
 import type {
   AnalysisTaskConfirmState,
   AnalysisTaskMetrics,
-  AnalysisTaskSnapshot,
 } from "@/pages/workbench-page/task-runtime/analysis-task-model";
 import type {
   TranslationTaskConfirmState,
@@ -94,14 +93,6 @@ type WorkbenchParseFailedFile = {
   message_key: LocaleKey;
 };
 
-function clamp_workbench_count(value: number, min_value: number, max_value: number): number {
-  if (!Number.isFinite(value)) {
-    return min_value;
-  }
-
-  return Math.min(max_value, Math.max(min_value, Math.floor(value)));
-}
-
 function normalize_parse_failed_file(value: unknown): WorkbenchParseFailedFile | null {
   if (typeof value !== "object" || value === null) {
     return null;
@@ -114,58 +105,6 @@ function normalize_parse_failed_file(value: unknown): WorkbenchParseFailedFile |
     return null;
   }
   return { filename, code, message_key: message_key as LocaleKey };
-}
-
-function complete_workbench_stats(args: {
-  total_items: number;
-  completed_count: number;
-  failed_count: number;
-  pending_count: number;
-  skipped_count: number;
-}): WorkbenchStats {
-  const completed_or_skipped_count = args.completed_count + args.skipped_count;
-  return {
-    total_items: args.total_items,
-    completed_count: args.completed_count,
-    failed_count: args.failed_count,
-    pending_count: args.pending_count,
-    skipped_count: args.skipped_count,
-    completion_percent:
-      args.total_items > 0 ? (completed_or_skipped_count / args.total_items) * 100 : 0,
-  };
-}
-
-function build_running_analysis_workbench_stats(args: {
-  base_stats: WorkbenchStats;
-  task_snapshot: AnalysisTaskSnapshot | null;
-  task_metrics: AnalysisTaskMetrics;
-}): WorkbenchStats {
-  if (
-    args.task_snapshot === null ||
-    (!args.task_metrics.active && !args.task_metrics.stopping) ||
-    args.task_snapshot.total_line <= 0
-  ) {
-    return args.base_stats;
-  }
-
-  const total_items = Math.max(args.base_stats.total_items, 0);
-  const total_line = clamp_workbench_count(args.task_snapshot.total_line, 0, total_items);
-  const completed_count = clamp_workbench_count(args.task_snapshot.processed_line, 0, total_line);
-  const failed_count = clamp_workbench_count(
-    args.task_snapshot.error_line,
-    0,
-    Math.max(0, total_line - completed_count),
-  );
-  const pending_count = Math.max(0, total_line - completed_count - failed_count);
-  const skipped_count = Math.max(0, total_items - total_line);
-
-  return complete_workbench_stats({
-    total_items,
-    completed_count,
-    failed_count,
-    pending_count,
-    skipped_count,
-  });
 }
 
 type PendingImportFilesRequest = {
@@ -623,8 +562,22 @@ function build_analysis_task_summary_view_model(
   };
 }
 
+function resolve_task_detail_progress_percent(args: {
+  metrics: Pick<
+    TranslationTaskMetrics | AnalysisTaskMetrics,
+    "active" | "stopping" | "completion_percent"
+  >;
+  workbench_stats: WorkbenchStats;
+}): number {
+  // 任务详情运行中展示 TaskSnapshot 进度；空闲态才回落到项目事实统计，避免新任务沿用旧 ProjectStore 百分比。
+  return args.metrics.active || args.metrics.stopping
+    ? args.metrics.completion_percent
+    : args.workbench_stats.completion_percent;
+}
+
 function build_translation_task_detail_view_model(args: {
   metrics: TranslationTaskMetrics;
+  progress_percent: number;
   waveform_history: number[];
   t: ReturnType<typeof useI18n>["t"];
 }): WorkbenchTaskDetailViewModel {
@@ -633,7 +586,7 @@ function build_translation_task_detail_view_model(args: {
     description: args.t("workbench_page.translation_task.detail.description"),
     waveform_title: args.t("workbench_page.translation_task.detail.waveform_title"),
     metrics_title: args.t("workbench_page.translation_task.detail.metrics_title"),
-    completion_percent_text: `${args.metrics.completion_percent.toFixed(2)}%`,
+    completion_percent_text: `${args.progress_percent.toFixed(2)}%`,
     percent_tone: resolve_percent_tone(args.metrics),
     metric_entries: build_translation_task_metric_entries(args.metrics, args.t),
     stop_button_label: args.metrics.stopping
@@ -646,6 +599,7 @@ function build_translation_task_detail_view_model(args: {
 
 function build_analysis_task_detail_view_model(args: {
   metrics: AnalysisTaskMetrics;
+  progress_percent: number;
   waveform_history: number[];
   t: ReturnType<typeof useI18n>["t"];
 }): WorkbenchTaskDetailViewModel {
@@ -654,7 +608,7 @@ function build_analysis_task_detail_view_model(args: {
     description: args.t("workbench_page.analysis_task.detail.description"),
     waveform_title: args.t("workbench_page.analysis_task.detail.waveform_title"),
     metrics_title: args.t("workbench_page.analysis_task.detail.metrics_title"),
-    completion_percent_text: `${args.metrics.completion_percent.toFixed(2)}%`,
+    completion_percent_text: `${args.progress_percent.toFixed(2)}%`,
     percent_tone: resolve_percent_tone(args.metrics),
     metric_entries: build_analysis_task_metric_entries(args.metrics, args.t),
     stop_button_label: args.metrics.stopping
@@ -1100,21 +1054,9 @@ export function useWorkbenchLiveState(
     });
   }, []);
 
-  const display_analysis_stats = useMemo<WorkbenchStats>(() => {
-    return build_running_analysis_workbench_stats({
-      base_stats: snapshot.analysis_stats,
-      task_snapshot: raw_analysis_task_runtime.analysis_task_display_snapshot,
-      task_metrics: raw_analysis_task_runtime.analysis_task_metrics,
-    });
-  }, [
-    raw_analysis_task_runtime.analysis_task_display_snapshot,
-    raw_analysis_task_runtime.analysis_task_metrics,
-    snapshot.analysis_stats,
-  ]);
-
   const stats = useMemo<WorkbenchStats>(() => {
-    return stats_mode === "analysis" ? display_analysis_stats : snapshot.translation_stats;
-  }, [display_analysis_stats, snapshot.translation_stats, stats_mode]);
+    return stats_mode === "analysis" ? snapshot.analysis_stats : snapshot.translation_stats;
+  }, [snapshot.analysis_stats, snapshot.translation_stats, stats_mode]);
 
   const has_translation_display =
     raw_translation_task_runtime.translation_task_display_snapshot !== null;
@@ -1173,6 +1115,10 @@ export function useWorkbenchLiveState(
     if (display_workbench_task_kind === "translation") {
       return build_translation_task_detail_view_model({
         metrics: raw_translation_task_runtime.translation_task_metrics,
+        progress_percent: resolve_task_detail_progress_percent({
+          metrics: raw_translation_task_runtime.translation_task_metrics,
+          workbench_stats: snapshot.translation_stats,
+        }),
         waveform_history: raw_translation_task_runtime.translation_waveform_history,
         t,
       });
@@ -1181,6 +1127,10 @@ export function useWorkbenchLiveState(
     if (display_workbench_task_kind === "analysis") {
       return build_analysis_task_detail_view_model({
         metrics: raw_analysis_task_runtime.analysis_task_metrics,
+        progress_percent: resolve_task_detail_progress_percent({
+          metrics: raw_analysis_task_runtime.analysis_task_metrics,
+          workbench_stats: snapshot.analysis_stats,
+        }),
         waveform_history: raw_analysis_task_runtime.analysis_waveform_history,
         t,
       });
@@ -1193,6 +1143,8 @@ export function useWorkbenchLiveState(
     raw_analysis_task_runtime.analysis_waveform_history,
     raw_translation_task_runtime.translation_task_metrics,
     raw_translation_task_runtime.translation_waveform_history,
+    snapshot.analysis_stats.completion_percent,
+    snapshot.translation_stats.completion_percent,
     t,
   ]);
 
@@ -1928,7 +1880,7 @@ export function useWorkbenchLiveState(
     file_op_running,
     stats,
     translation_stats: snapshot.translation_stats,
-    analysis_stats: display_analysis_stats,
+    analysis_stats: snapshot.analysis_stats,
     stats_mode,
     translation_task_runtime,
     analysis_task_runtime,

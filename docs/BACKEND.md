@@ -19,7 +19,7 @@
 | --- | --- | --- |
 | 应用设置、最近工程、语言 | `AppSettingService` | 设置 API、CLI transient overrides、`settings.changed` |
 | 当前 loaded 工程身份 | `ProjectSessionState` | `ProjectLifecycleService` |
-| 项目公开快照 | `.lg` + `ProjectRuntimeProjectionService` | `/api/project/manifest`、`/api/project/read-sections`、`/api/project/items/read-by-ids` |
+| 项目公开快照 | `.lg` + `ProjectRuntimeProjectionService` | `/api/project/manifest`、`/api/project/read-sections` |
 | 同步项目 mutation | `ProjectSyncMutationService` / `ProofreadingService` / `QualityService` 等领域服务 | database transaction + `ProjectChangePublisher` |
 | 项目变更事件 | `ProjectChangeEventAdapter` + `ProjectChangePublisher` | 同一事件同时返回 HTTP mutation result 并广播 SSE |
 | 任务 busy/status/request pressure | `TaskRuntimeState` | `TaskRuntimePublisher` |
@@ -44,8 +44,8 @@ project, files, items, quality, prompts, analysis, proofreading
 - 完整分析候选池不进入常驻项目快照，只能通过 `/api/project/analysis/candidates` 按需读取。
 - 同步项目 mutation 成功返回 `ProjectMutationResult = { accepted: true, changes }`；`changes` 与后续 SSE 广播是同一批后端 canonical `ProjectChangeEvent`。
 - `ProjectChangeEvent` 必须带后端确认的 `projectPath`、`projectRevision`、本次更新 section 的 `sectionRevisions` 和 `updatedSections`；不属于当前 loaded 工程的草稿不能发布。
-- 变更 payload mode 只允许四类：`canonical-delta` 直接携带后端规范数据，`field-patch` 只表达校对可写字段 `dst / status / retry_count`，`ids-only` 要求前端补读公开 DTO，`section-invalidated` 只用于异常恢复。
-- canonical item upsert 必须是完整公开 DTO；瘦身 item DTO 不能进入项目事件。
+- 变更 payload mode 只允许三类：`canonical-delta` 直接携带后端规范数据，`field-patch` 只表达校对可写字段 `dst / status / retry_count`，`section-invalidated` 只用于异常恢复。
+- canonical item upsert 必须是完整公开 DTO；领域草稿可只给 `changedIds`，但公开事件必须由后端 adapter 回读补齐，瘦身 item DTO 不能进入项目事件。
 - 删除语义必须显式表达 tombstone：items 用 `deleteIds`，files 用 `deletePaths`；无法精确表达删除时使用对应 section 的 full replace。
 - 后端 mutation 不接收 renderer 派生的 `items`、task/progress extras、prefilter config 或 analysis extras 作为最终事实；页面只能提交用户意图、设置镜像和当前 section revision 依赖。
 

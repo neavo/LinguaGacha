@@ -40,8 +40,8 @@ flowchart LR
 - `DesktopRuntimeProvider` 维护独立于 `ProjectStore` 的项目身份 `path + epoch + phase`；项目切换、同路径重新 warmup 或迟到补读都必须过这道身份闸门。
 - warmup 期间，同项目身份的 mutation result 和 `project.data_changed` 先进入队列；完整 read-sections 快照原子替换 `ProjectStore` 后再按原顺序重放。
 - 同步 mutation 成功后，页面必须先规范化并应用 `ProjectMutationResult.changes`；`eventId` 去重窗口用于跳过同源 SSE 重放。
-- `canonical-delta` 可直接合并；`field-patch` 只合并后端确认的 `dst / status / retry_count`；`ids-only` 只能合并 id 后补读 `/api/project/items/read-by-ids`；`section-invalidated` 或缺少 section revision 的变更必须补读 canonical section。
-- 补读请求必须绑定发起时的 project path 和 epoch，返回后还要校验当前身份、响应 project path 与后端 section revision；合格补读结果以 exact revision 合并。
+- `canonical-delta` 可直接合并；`field-patch` 只合并后端确认的 `dst / status / retry_count`；`section-invalidated` 或缺少 section revision 的变更必须补读 canonical section。
+- section 补读请求必须绑定发起时的 project path 和 epoch，返回后还要校验当前身份、响应 project path 与后端 section revision；合格补读结果以 exact revision 合并。
 - `ProjectStore` 默认用 merge revision 合并事件，补读和完整快照用 exact revision；两者都只写入后端显式返回的 section revision，不按本地 updated section 自增。
 - `DesktopRuntimeRefreshScheduler` 将运行中 task snapshot 与可批量项目变更合并到 500ms 窗口；项目切换、设置刷新、mutation result、失效补读和任务终态必须先冲刷窗口，不能被普通合帧延迟。
 
@@ -62,6 +62,7 @@ flowchart LR
 - `src/renderer/project/worker` 是 Project UI Worker 的唯一归宿：单 worker 承接校对视图、质量统计和分析术语导入预演等 UI 派生计算；它只消费只读快照、section revision 和显式查询，不写项目事实、不发 mutation、不替代 Core 或 `ProjectStore`。
 - Project UI Worker client 统一 request id、优先级、stale 错误、稳定错误码和带 projectId 的缓存释放；没有性能证据前不拆 renderer worker pool。
 - 结果型页面的主列表使用结果视图快照：搜索、筛选、替换、排序或刷新等显式 action 生成新的稳定 id 序列；项目事实刷新只能在当前 view 语义内更新受影响实体和窗口事实。
+- 工作台统计区和任务菜单百分比消费 `ProjectStore` 派生的 `WorkbenchStats`；任务详情在运行或停止中消费 `TaskSnapshot.progress`，空闲态才回落到 `WorkbenchStats`。
 
 ## 6. 样式与设计消费
 

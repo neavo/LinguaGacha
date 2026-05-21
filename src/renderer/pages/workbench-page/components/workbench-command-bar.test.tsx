@@ -48,7 +48,6 @@ function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCo
   const translation_task_metrics = {
     active: false,
     stopping: false,
-    completion_percent: 0,
     processed_count: 0,
     failed_count: 0,
     elapsed_seconds: 0,

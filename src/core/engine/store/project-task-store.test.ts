@@ -64,7 +64,7 @@ describe("ProjectTaskStore", () => {
         source: "translation_batch_update",
         updatedSections: ["items"],
         items: {
-          payloadMode: "ids-only",
+          payloadMode: "canonical-delta",
           changedIds: [1],
         },
       },

@@ -300,7 +300,7 @@ export class ProjectChangeEventAdapter {
   }
 
   /**
-   * ids-only 与 canonical-delta 共用正整数 id 归一口径
+   * item delta 共用正整数 id 归一口径
    */
   private normalize_number_list(value: ApiJsonValue | undefined): number[] {
     if (!Array.isArray(value)) {

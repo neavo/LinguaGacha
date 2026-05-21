@@ -163,12 +163,6 @@ export class ApiGatewayServer {
         sections: normalizeProjectDataSections(body["sections"]),
       }),
     );
-    this.post_json(app, "/api/project/items/read-by-ids", (body) =>
-      project_runtime_projection_service.build_item_record_map_by_ids(
-        this.require_loaded_project_path(),
-        this.normalize_positive_integer_list(body["itemIds"] ?? body["item_ids"]),
-      ),
-    );
     this.post_json(app, "/api/settings/app", () => app_setting_service.get_app_settings());
     this.post_json(app, "/api/settings/update", (body) =>
       app_setting_service.update_app_settings(body),
@@ -388,22 +382,6 @@ export class ApiGatewayServer {
       throw new ProjectNotLoadedError();
     }
     return state.projectPath;
-  }
-
-  /**
-   * item id 查询只接受正整数列表，坏值在读取入口直接丢弃
-   */
-  private normalize_positive_integer_list(value: ApiJsonValue | undefined): number[] {
-    if (!Array.isArray(value)) {
-      return [];
-    }
-    return [
-      ...new Set(
-        value
-          .map((item) => Number(item))
-          .filter((item): item is number => Number.isInteger(item) && item > 0),
-      ),
-    ];
   }
 
   /**

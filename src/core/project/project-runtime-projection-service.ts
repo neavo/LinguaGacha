@@ -178,35 +178,6 @@ export class ProjectRuntimeProjectionService {
   }
 
   /**
-   * 局部 item 读取返回 item_id map 和 missing ids，供 ids-only 事件按需补齐
-   */
-  public build_item_record_map_by_ids(
-    project_path: string,
-    item_ids: number[],
-  ): ProjectRuntimeProjectionMutableRecord {
-    const meta = this.get_all_meta(project_path);
-    const section_revisions = this.build_section_revisions(meta);
-    const upsert: ProjectRuntimeProjectionMutableRecord = {};
-    const found_ids = new Set<number>();
-    for (const record of this.build_item_records_by_ids(project_path, item_ids)) {
-      const item_id = this.read_number(record["item_id"], 0);
-      if (item_id <= 0) {
-        continue;
-      }
-      found_ids.add(item_id);
-      upsert[item_id.toString()] = record;
-    }
-    return {
-      projectPath: project_path,
-      items: upsert,
-      missingIds: item_ids.filter((item_id) => !found_ids.has(item_id)) as unknown as ApiJsonValue,
-      projectRevision: Math.max(...Object.values(section_revisions), 0),
-      sectionRevisions: section_revisions as unknown as ApiJsonValue,
-      itemRevision: section_revisions.items,
-    };
-  }
-
-  /**
    * 质量块按公开 rule type 输出，避免页面理解数据库物理命名
    */
   public build_quality_block(

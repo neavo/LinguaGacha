@@ -127,7 +127,7 @@ describe("ProjectChangeEventAdapter", () => {
       projectRevision: 3,
       updatedSections: ["items", "quality"],
       items: {
-        payloadMode: "ids-only",
+        payloadMode: "canonical-delta",
         changedIds: [1],
       },
       sections: {
