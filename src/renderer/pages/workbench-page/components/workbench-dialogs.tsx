@@ -5,6 +5,7 @@ import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
 type WorkbenchDialogsProps = {
   dialog_state: WorkbenchDialogState;
   on_confirm: () => void;
+  on_secondary: () => void;
   on_cancel: () => void;
   on_close: () => void;
 };
@@ -13,13 +14,19 @@ type DialogCopy = {
   description_key: LocaleKey;
   confirm_key?: LocaleKey;
   cancel_key?: LocaleKey;
+  secondary_key?: LocaleKey;
 };
 
 const DIALOG_COPY_BY_KIND: Record<NonNullable<WorkbenchDialogState["kind"]>, DialogCopy> = {
-  "inherit-add-file": {
-    description_key: "workbench_page.dialog.inherit_add.description",
-    confirm_key: "workbench_page.dialog.inherit_add.confirm",
-    cancel_key: "workbench_page.dialog.inherit_add.cancel",
+  "confirm-import-files": {
+    description_key: "workbench_page.dialog.import_conflict.description",
+    confirm_key: "app.action.replace",
+    secondary_key: "app.action.skip",
+  },
+  "inherit-import-files": {
+    description_key: "workbench_page.dialog.inherit_import.description",
+    confirm_key: "workbench_page.dialog.inherit_import.confirm",
+    cancel_key: "workbench_page.dialog.inherit_import.cancel",
   },
   "reset-file": {
     description_key: "workbench_page.dialog.reset.description",
@@ -46,16 +53,27 @@ function resolve_dialog_copy(dialog_state: WorkbenchDialogState): DialogCopy | n
 export function WorkbenchDialogs(props: WorkbenchDialogsProps): JSX.Element {
   const { t } = useI18n();
   const dialog_copy = resolve_dialog_copy(props.dialog_state);
+  const description =
+    dialog_copy === null
+      ? ""
+      : t(dialog_copy.description_key).replace(
+          "{COUNT}",
+          props.dialog_state.target_rel_paths.length.toString(),
+        );
   return (
     <AppAlertDialog
       open={dialog_copy !== null}
-      description={dialog_copy === null ? "" : t(dialog_copy.description_key)}
+      description={description}
       submitting={props.dialog_state.submitting}
       onConfirm={props.on_confirm}
       onCancel={props.on_cancel}
       onClose={props.on_close}
       confirmLabel={dialog_copy?.confirm_key === undefined ? undefined : t(dialog_copy.confirm_key)}
       cancelLabel={dialog_copy?.cancel_key === undefined ? undefined : t(dialog_copy.cancel_key)}
+      secondaryLabel={
+        dialog_copy?.secondary_key === undefined ? undefined : t(dialog_copy.secondary_key)
+      }
+      onSecondary={dialog_copy?.secondary_key === undefined ? undefined : props.on_secondary}
     />
   );
 }

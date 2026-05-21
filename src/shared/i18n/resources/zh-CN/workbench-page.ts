@@ -150,10 +150,13 @@ export const zh_cn_workbench_page = {
     failed: "文件顺序保存失败，请稍后再试。",
   },
   dialog: {
-    inherit_add: {
+    import_conflict: {
+      description: "检测到 {COUNT} 个同名文件，请选择处理方式 …?",
+    },
+    inherit_import: {
       description: "是否使用当前项目中已完成的翻译文本填充新文件 …?",
-      confirm: "继承",
-      cancel: "不继承",
+      confirm: "填充",
+      cancel: "不填充",
     },
     reset: {
       description: "是否确认重置该文件的翻译状态 …?",

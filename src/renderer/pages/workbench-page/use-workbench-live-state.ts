@@ -13,11 +13,14 @@ import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { is_task_stopping } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import {
-  create_workbench_add_files_plan,
   create_workbench_delete_files_plan,
+  create_workbench_import_files_plan,
+  create_workbench_import_files_preview,
   create_workbench_reorder_plan,
   create_workbench_reset_file_plan,
+  type WorkbenchFileConflictAction,
   type WorkbenchFileParsePreview,
+  type WorkbenchImportFilesPreview,
   type WorkbenchProjectMutationPlan,
 } from "@/pages/workbench-page/workbench-mutation-planner";
 import {
@@ -165,16 +168,14 @@ function build_running_analysis_workbench_stats(args: {
   });
 }
 
-type PendingAddFilesRequest = {
+type PendingImportFilesRequest = {
   parsed_files: WorkbenchFileParsePreview[];
   barrier_checkpoint: ProjectPagesBarrierCheckpoint | null;
+  conflict_action: WorkbenchFileConflictAction | null;
+  conflict_signature: string;
 };
 
 type WorkbenchAddFileDropIssue = "multiple" | "unavailable";
-
-function normalize_path_key(value: string): string {
-  return value.trim().toLocaleLowerCase("en-US");
-}
 
 function close_dialog_state(): WorkbenchDialogState {
   return {
@@ -784,6 +785,7 @@ export type UseWorkbenchLiveStateResult = {
   request_delete_selected_files: () => void;
   request_reorder_entries: (ordered_entry_ids: string[]) => Promise<void>;
   confirm_dialog: () => Promise<void>;
+  secondary_dialog: () => Promise<void>;
   cancel_dialog: () => Promise<void>;
   close_dialog: () => void;
 };
@@ -833,8 +835,8 @@ export function useWorkbenchLiveState(
   const [active_entry_id, set_active_entry_id] = useState<string | null>(null);
   const [anchor_entry_id, set_anchor_entry_id] = useState<string | null>(null);
   const [dialog_state, set_dialog_state] = useState<WorkbenchDialogState>(close_dialog_state());
-  const [pending_add_files_request, set_pending_add_files_request] =
-    useState<PendingAddFilesRequest | null>(null);
+  const [pending_import_files_request, set_pending_import_files_request] =
+    useState<PendingImportFilesRequest | null>(null);
   const [is_mutation_running, set_is_mutation_running] = useState(false);
   const [recent_workbench_task_kind, set_recent_workbench_task_kind] =
     useState<WorkbenchTaskKind | null>(null);
@@ -901,7 +903,7 @@ export function useWorkbenchLiveState(
     set_entries([]);
     apply_selection_state(create_empty_selection_state());
     set_dialog_state(close_dialog_state());
-    set_pending_add_files_request(null);
+    set_pending_import_files_request(null);
     set_is_refreshing(false);
     set_consumed_revisions({});
     set_settled_project_path("");
@@ -1301,15 +1303,93 @@ export function useWorkbenchLiveState(
     [apply_project_mutation_result, options, refresh_project_runtime, refresh_task],
   );
 
-  const execute_add_file_request = useCallback(
+  const open_import_conflict_dialog = useCallback(
+    (pending_request: PendingImportFilesRequest, preview: WorkbenchImportFilesPreview): void => {
+      // 同名确认只保存用户决策上下文，不把预演结果当作最终项目事实。
+      set_pending_import_files_request({
+        ...pending_request,
+        conflict_action: null,
+        conflict_signature: preview.conflict_signature,
+      });
+      set_dialog_state({
+        kind: "confirm-import-files",
+        target_rel_paths: preview.conflicting_files.map((file) => file.target_rel_path),
+        pending_path: preview.conflicting_files[0]?.source_path ?? null,
+        submitting: false,
+      });
+    },
+    [],
+  );
+
+  const open_import_inheritance_dialog = useCallback(
+    (
+      pending_request: PendingImportFilesRequest,
+      conflict_action: WorkbenchFileConflictAction,
+      preview: WorkbenchImportFilesPreview,
+    ): void => {
+      // 跳过策略只继承新文件；替换策略需要同时展示新增文件和即将重建的同名文件。
+      const files_to_import =
+        conflict_action === "replace" ? preview.importable_files : preview.new_files;
+      if (files_to_import.length === 0) {
+        set_pending_import_files_request(null);
+        set_dialog_state(close_dialog_state());
+        return;
+      }
+
+      set_pending_import_files_request({
+        ...pending_request,
+        conflict_action,
+        conflict_signature: preview.conflict_signature,
+      });
+      set_dialog_state({
+        kind: "inherit-import-files",
+        target_rel_paths: files_to_import.map((file) => file.target_rel_path),
+        pending_path: files_to_import[0]?.source_path ?? null,
+        submitting: false,
+      });
+    },
+    [],
+  );
+
+  const execute_import_files_request = useCallback(
     async (
-      pending_request: PendingAddFilesRequest,
+      pending_request: PendingImportFilesRequest,
       inheritance_mode: "none" | "inherit",
     ): Promise<void> => {
-      const add_plan = create_workbench_add_files_plan({
-        state: project_store.getState(),
+      // 提交前重新基于 ProjectStore 预演，避免对话期间项目事实变化后沿用旧同名判断。
+      const state = project_store.getState();
+      const preview = create_workbench_import_files_preview({
+        state,
+        parsed_files: pending_request.parsed_files,
+      });
+      if (
+        preview.conflicting_files.length > 0 &&
+        preview.conflict_signature !== pending_request.conflict_signature
+      ) {
+        open_import_conflict_dialog(pending_request, preview);
+        return;
+      }
+
+      const conflict_action =
+        pending_request.conflict_action ?? (preview.conflicting_files.length > 0 ? null : "skip");
+      if (conflict_action === null) {
+        open_import_conflict_dialog(pending_request, preview);
+        return;
+      }
+
+      const files_to_import =
+        conflict_action === "replace" ? preview.importable_files : preview.new_files;
+      if (files_to_import.length === 0) {
+        set_pending_import_files_request(null);
+        set_dialog_state(close_dialog_state());
+        return;
+      }
+
+      const import_plan = create_workbench_import_files_plan({
+        state,
         task_snapshot,
         parsed_files: pending_request.parsed_files,
+        conflict_action,
         settings: {
           source_language: settings_snapshot.source_language,
           mtool_optimizer_enable: settings_snapshot.mtool_optimizer_enable,
@@ -1318,25 +1398,55 @@ export function useWorkbenchLiveState(
         inheritance_mode,
       });
       await run_project_file_mutation(
-        add_plan,
+        import_plan,
         async (body) => {
           return await api_fetch<ProjectMutationResultPayload>(
-            "/api/project/workbench/add-file",
+            "/api/project/workbench/import-files",
             body,
           );
         },
         pending_request.barrier_checkpoint,
       );
-      set_pending_add_files_request(null);
+      set_pending_import_files_request(null);
       set_dialog_state(close_dialog_state());
     },
     [
+      open_import_conflict_dialog,
       project_store,
       run_project_file_mutation,
       settings_snapshot.mtool_optimizer_enable,
       settings_snapshot.skip_duplicate_source_text_enable,
       settings_snapshot.source_language,
       task_snapshot,
+    ],
+  );
+
+  const accept_import_conflict_action = useCallback(
+    async (conflict_action: WorkbenchFileConflictAction): Promise<void> => {
+      // 策略确认时只推进到继承确认；真正写库必须等继承意图也确定。
+      const pending_request = pending_import_files_request;
+      if (pending_request === null) {
+        set_dialog_submitting(false);
+        return;
+      }
+
+      const preview = create_workbench_import_files_preview({
+        state: project_store.getState(),
+        parsed_files: pending_request.parsed_files,
+      });
+      if (preview.conflict_signature !== pending_request.conflict_signature) {
+        open_import_conflict_dialog(pending_request, preview);
+        return;
+      }
+
+      open_import_inheritance_dialog(pending_request, conflict_action, preview);
+    },
+    [
+      open_import_conflict_dialog,
+      open_import_inheritance_dialog,
+      pending_import_files_request,
+      project_store,
+      set_dialog_submitting,
     ],
   );
 
@@ -1411,17 +1521,6 @@ export function useWorkbenchLiveState(
 
       const barrier_checkpoint = options.createProjectPagesBarrierCheckpoint?.() ?? null;
       const parsed_files: WorkbenchFileParsePreview[] = [];
-      const state = project_store.getState();
-      const existing_target_path_set = new Set(
-        Object.values(state.files).flatMap((file) => {
-          if (typeof file !== "object" || file === null) {
-            return [];
-          }
-          const rel_path = String((file as { rel_path?: unknown }).rel_path ?? "").trim();
-          return rel_path === "" ? [] : [normalize_path_key(rel_path)];
-        }),
-      );
-      const batch_target_path_set = new Set<string>();
 
       await run_modal_progress_toast({
         message: t("workbench_page.feedback.add_file_loading_toast"),
@@ -1461,16 +1560,12 @@ export function useWorkbenchLiveState(
             const parsed_file = normalize_workbench_file_parse_preview(
               preview_file as Record<string, unknown>,
             );
-            const target_path_key = normalize_path_key(parsed_file.target_rel_path);
             if (
               parsed_file.source_path.trim() === "" ||
-              target_path_key === "" ||
-              existing_target_path_set.has(target_path_key) ||
-              batch_target_path_set.has(target_path_key)
+              parsed_file.target_rel_path.trim() === ""
             ) {
               continue;
             }
-            batch_target_path_set.add(target_path_key);
             parsed_files.push({
               ...parsed_file,
               source_path: parsed_file.source_path.trim(),
@@ -1480,23 +1575,32 @@ export function useWorkbenchLiveState(
         },
       });
 
-      if (parsed_files.length === 0) {
+      const import_preview = create_workbench_import_files_preview({
+        state: project_store.getState(),
+        parsed_files,
+      });
+      if (import_preview.importable_files.length === 0) {
         push_toast("error", t("workbench_page.feedback.no_valid_file"));
         return;
       }
 
-      set_pending_add_files_request({
+      const pending_request: PendingImportFilesRequest = {
         parsed_files,
         barrier_checkpoint,
-      });
-      set_dialog_state({
-        kind: "inherit-add-file",
-        target_rel_paths: parsed_files.map((parsed_file) => parsed_file.target_rel_path),
-        pending_path: parsed_files[0]?.source_path ?? null,
-        submitting: false,
-      });
+        conflict_action: null,
+        conflict_signature: import_preview.conflict_signature,
+      };
+      // NEW 入口内隐式处理同名：有冲突先确认策略，没有冲突直接进入继承确认。
+      if (import_preview.conflicting_files.length > 0) {
+        open_import_conflict_dialog(pending_request, import_preview);
+        return;
+      }
+
+      open_import_inheritance_dialog(pending_request, "skip", import_preview);
     },
     [
+      open_import_conflict_dialog,
+      open_import_inheritance_dialog,
       options.createProjectPagesBarrierCheckpoint,
       project_store,
       push_toast,
@@ -1613,13 +1717,18 @@ export function useWorkbenchLiveState(
     set_dialog_submitting(true);
 
     try {
-      if (current_dialog_state.kind === "inherit-add-file") {
-        if (pending_add_files_request === null) {
+      if (current_dialog_state.kind === "confirm-import-files") {
+        await accept_import_conflict_action("replace");
+        return;
+      }
+
+      if (current_dialog_state.kind === "inherit-import-files") {
+        if (pending_import_files_request === null) {
           set_dialog_submitting(false);
           return;
         }
 
-        await execute_add_file_request(pending_add_files_request, "inherit");
+        await execute_import_files_request(pending_import_files_request, "inherit");
         return;
       }
 
@@ -1724,25 +1833,49 @@ export function useWorkbenchLiveState(
     }
   }
 
+  async function secondary_dialog(): Promise<void> {
+    const current_dialog_state = dialog_state;
+    if (current_dialog_state.kind !== "confirm-import-files" || current_dialog_state.submitting) {
+      return;
+    }
+
+    set_dialog_submitting(true);
+    try {
+      await accept_import_conflict_action("skip");
+    } catch (error) {
+      push_toast(
+        "error",
+        resolve_visible_error_message(error, t, t("workbench_page.feedback.file_action_failed")),
+      );
+      set_dialog_submitting(false);
+    }
+  }
+
   async function cancel_dialog(): Promise<void> {
     const current_dialog_state = dialog_state;
     if (current_dialog_state.submitting) {
       return;
     }
 
-    if (current_dialog_state.kind !== "inherit-add-file") {
+    if (current_dialog_state.kind === "confirm-import-files") {
+      set_pending_import_files_request(null);
       set_dialog_state(close_dialog_state());
       return;
     }
 
-    if (pending_add_files_request === null) {
+    if (current_dialog_state.kind !== "inherit-import-files") {
+      set_dialog_state(close_dialog_state());
+      return;
+    }
+
+    if (pending_import_files_request === null) {
       set_dialog_state(close_dialog_state());
       return;
     }
 
     set_dialog_submitting(true);
     try {
-      await execute_add_file_request(pending_add_files_request, "none");
+      await execute_import_files_request(pending_import_files_request, "none");
     } catch (error) {
       push_toast(
         "error",
@@ -1757,8 +1890,11 @@ export function useWorkbenchLiveState(
       return;
     }
 
-    if (dialog_state.kind === "inherit-add-file") {
-      set_pending_add_files_request(null);
+    if (
+      dialog_state.kind === "confirm-import-files" ||
+      dialog_state.kind === "inherit-import-files"
+    ) {
+      set_pending_import_files_request(null);
     }
     set_dialog_state(close_dialog_state());
   }
@@ -1825,6 +1961,7 @@ export function useWorkbenchLiveState(
     request_delete_selected_files,
     request_reorder_entries,
     confirm_dialog,
+    secondary_dialog,
     cancel_dialog,
     close_dialog,
   };

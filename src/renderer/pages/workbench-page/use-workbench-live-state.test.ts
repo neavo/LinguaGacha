@@ -887,7 +887,7 @@ describe("useWorkbenchLiveState", () => {
       await latest_state?.request_add_file_from_path("E:/demo/new.txt");
     });
 
-    expect(latest_state?.dialog_state.kind).toBe("inherit-add-file");
+    expect(latest_state?.dialog_state.kind).toBe("inherit-import-files");
     expect(workbench_picker_fixture.current.pickWorkbenchFilePath).not.toHaveBeenCalled();
     expect(api_fetch).toHaveBeenCalledWith("/api/project/workbench/parse-file", {
       source_paths: ["E:/demo/new.txt"],
@@ -916,30 +916,28 @@ describe("useWorkbenchLiveState", () => {
       await latest_state?.request_add_file();
     });
 
-    expect(latest_state?.dialog_state.kind).toBe("inherit-add-file");
+    expect(latest_state?.dialog_state.kind).toBe("inherit-import-files");
     expect(api_fetch).toHaveBeenCalledWith("/api/project/workbench/parse-file", {
       source_paths: ["E:/demo/new.txt"],
     });
   });
 
-  it("批量添加会静默跳过解析失败和重名文件，只保留有效文件", async () => {
-    vi.mocked(api_fetch).mockImplementation(async () => {
-      return {
-        files: [
-          {
-            source_path: "E:/demo/new.txt",
-            target_rel_path: "new.txt",
-            file_type: "TXT",
-            parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
-          },
-          {
-            source_path: "E:/demo/old-copy.txt",
-            target_rel_path: "old.txt",
-            file_type: "TXT",
-            parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
-          },
-        ],
-      };
+  it("批量添加检测到同名文件时会先打开处理方式确认", async () => {
+    vi.mocked(api_fetch).mockResolvedValueOnce({
+      files: [
+        {
+          source_path: "E:/demo/new.txt",
+          target_rel_path: "new.txt",
+          file_type: "TXT",
+          parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
+        },
+        {
+          source_path: "E:/demo/old-copy.txt",
+          target_rel_path: "old.txt",
+          file_type: "TXT",
+          parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
+        },
+      ],
     });
     runtime_fixture.current = {
       ...runtime_fixture.current,
@@ -957,8 +955,8 @@ describe("useWorkbenchLiveState", () => {
       ]);
     });
 
-    expect(latest_state?.dialog_state.kind).toBe("inherit-add-file");
-    expect(latest_state?.dialog_state.target_rel_paths).toEqual(["new.txt"]);
+    expect(latest_state?.dialog_state.kind).toBe("confirm-import-files");
+    expect(latest_state?.dialog_state.target_rel_paths).toEqual(["old.txt"]);
     expect(api_fetch).toHaveBeenCalledWith("/api/project/workbench/parse-file", {
       source_paths: ["E:/demo/new.txt", "E:/demo/bad.txt", "E:/demo/old-copy.txt"],
     });
@@ -969,8 +967,14 @@ describe("useWorkbenchLiveState", () => {
     vi.mocked(api_fetch).mockResolvedValue({
       files: [
         {
-          source_path: "E:/demo/old-copy.txt",
-          target_rel_path: "old.txt",
+          source_path: "E:/demo/dup-a.txt",
+          target_rel_path: "dup.txt",
+          file_type: "TXT",
+          parsed_items: [],
+        },
+        {
+          source_path: "E:/demo/dup-b.txt",
+          target_rel_path: "DUP.txt",
           file_type: "TXT",
           parsed_items: [],
         },
@@ -995,6 +999,156 @@ describe("useWorkbenchLiveState", () => {
     );
   });
 
+  it("同名确认选择跳过时只提交新增文件", async () => {
+    vi.mocked(api_fetch)
+      .mockResolvedValueOnce({
+        files: [
+          {
+            source_path: "E:/demo/new.txt",
+            target_rel_path: "new.txt",
+            file_type: "TXT",
+            parsed_items: [{ src: "新規", dst: "", row: 1 }],
+          },
+          {
+            source_path: "E:/demo/old-copy.txt",
+            target_rel_path: "old.txt",
+            file_type: "TXT",
+            parsed_items: [{ src: "既存", dst: "", row: 1 }],
+          },
+        ],
+      })
+      .mockResolvedValueOnce(create_project_mutation_result());
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_store: {
+        getState: () => create_project_store_state({}),
+      },
+    };
+    await render_hook();
+
+    await act(async () => {
+      await latest_state?.request_add_files_from_paths(["E:/demo/new.txt", "E:/demo/old-copy.txt"]);
+    });
+    expect(latest_state?.dialog_state.kind).toBe("confirm-import-files");
+
+    await act(async () => {
+      await latest_state?.secondary_dialog();
+    });
+    expect(latest_state?.dialog_state.kind).toBe("inherit-import-files");
+    expect(latest_state?.dialog_state.target_rel_paths).toEqual(["new.txt"]);
+
+    await act(async () => {
+      await latest_state?.cancel_dialog();
+    });
+
+    expect(api_fetch).toHaveBeenLastCalledWith(
+      "/api/project/workbench/import-files",
+      expect.objectContaining({
+        files: [
+          {
+            source_path: "E:/demo/new.txt",
+            target_rel_path: "new.txt",
+          },
+        ],
+        conflict_action: "skip",
+        inheritance_mode: "none",
+      }),
+    );
+  });
+
+  it("同名确认选择替换时会把新增和替换文件一起提交", async () => {
+    vi.mocked(api_fetch)
+      .mockResolvedValueOnce({
+        files: [
+          {
+            source_path: "E:/demo/new.txt",
+            target_rel_path: "new.txt",
+            file_type: "TXT",
+            parsed_items: [{ src: "新規", dst: "", row: 1 }],
+          },
+          {
+            source_path: "E:/demo/old-copy.txt",
+            target_rel_path: "old.txt",
+            file_type: "TXT",
+            parsed_items: [{ src: "既存", dst: "", row: 1 }],
+          },
+        ],
+      })
+      .mockResolvedValueOnce(create_project_mutation_result());
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_store: {
+        getState: () => create_project_store_state({}),
+      },
+    };
+    await render_hook();
+
+    await act(async () => {
+      await latest_state?.request_add_files_from_paths(["E:/demo/new.txt", "E:/demo/old-copy.txt"]);
+    });
+    expect(latest_state?.dialog_state.kind).toBe("confirm-import-files");
+
+    await act(async () => {
+      await latest_state?.confirm_dialog();
+    });
+    expect(latest_state?.dialog_state.kind).toBe("inherit-import-files");
+    expect(latest_state?.dialog_state.target_rel_paths).toEqual(["new.txt", "old.txt"]);
+
+    await act(async () => {
+      await latest_state?.confirm_dialog();
+    });
+
+    expect(api_fetch).toHaveBeenLastCalledWith(
+      "/api/project/workbench/import-files",
+      expect.objectContaining({
+        files: [
+          {
+            source_path: "E:/demo/new.txt",
+            target_rel_path: "new.txt",
+          },
+          {
+            source_path: "E:/demo/old-copy.txt",
+            target_rel_path: "old.txt",
+          },
+        ],
+        conflict_action: "replace",
+        inheritance_mode: "inherit",
+      }),
+    );
+  });
+
+  it("同名确认取消时不会提交导入 mutation", async () => {
+    vi.mocked(api_fetch).mockResolvedValueOnce({
+      files: [
+        {
+          source_path: "E:/demo/old-copy.txt",
+          target_rel_path: "old.txt",
+          file_type: "TXT",
+          parsed_items: [{ src: "既存", dst: "", row: 1 }],
+        },
+      ],
+    });
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_store: {
+        getState: () => create_project_store_state({}),
+      },
+    };
+    await render_hook();
+
+    await act(async () => {
+      await latest_state?.request_add_files_from_paths(["E:/demo/old-copy.txt"]);
+    });
+    expect(latest_state?.dialog_state.kind).toBe("confirm-import-files");
+
+    await act(async () => {
+      await latest_state?.cancel_dialog();
+    });
+
+    expect(latest_state?.dialog_state.kind).toBeNull();
+    expect(api_fetch).toHaveBeenCalledTimes(1);
+  });
+
   it("拖拽失败提示会复用全局 drop warning 文案", async () => {
     await render_hook();
 
@@ -1015,7 +1169,7 @@ describe("useWorkbenchLiveState", () => {
     );
   });
 
-  it("选择不继承会直接提交 add-file", async () => {
+  it("选择不继承会直接提交 import-files", async () => {
     workbench_picker_fixture.current.pickWorkbenchFilePath.mockResolvedValue({
       canceled: false,
       paths: ["E:/demo/new.txt"],
@@ -1054,7 +1208,7 @@ describe("useWorkbenchLiveState", () => {
     });
 
     expect(api_fetch).toHaveBeenLastCalledWith(
-      "/api/project/workbench/add-file",
+      "/api/project/workbench/import-files",
       expect.objectContaining({
         files: [
           expect.objectContaining({
@@ -1062,6 +1216,7 @@ describe("useWorkbenchLiveState", () => {
             target_rel_path: "new.txt",
           }),
         ],
+        conflict_action: "skip",
         inheritance_mode: "none",
         project_settings: {
           source_language: "JA",
@@ -1123,7 +1278,7 @@ describe("useWorkbenchLiveState", () => {
 
     expect(latest_state?.dialog_state.kind).toBeNull();
     expect(api_fetch).toHaveBeenLastCalledWith(
-      "/api/project/workbench/add-file",
+      "/api/project/workbench/import-files",
       expect.objectContaining({
         files: [
           expect.objectContaining({
@@ -1131,6 +1286,7 @@ describe("useWorkbenchLiveState", () => {
             target_rel_path: "new.txt",
           }),
         ],
+        conflict_action: "skip",
         inheritance_mode: "inherit",
         project_settings: {
           source_language: "JA",

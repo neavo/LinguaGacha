@@ -43,12 +43,14 @@ type MutableJsonRecord = Record<string, ApiJsonValue>;
 
 type ProjectMutationSettings = ProjectSettingsSnapshot; // 同步 mutation 只消费设置领域定义的项目镜像窄字段
 
-type AddWorkbenchFileCommand = {
+type WorkbenchImportConflictAction = "skip" | "replace";
+
+type ImportWorkbenchFileCommand = {
   source_path: string; // source_path 是用户选中的真实文件路径，只允许慢准备阶段读取
   target_rel_path: string; // target_rel_path 是写入 .lg asset 的相对路径，提交阶段重新做唯一性校验
 };
 
-type AddWorkbenchFileDraft = AddWorkbenchFileCommand & {
+type ImportWorkbenchFileDraft = ImportWorkbenchFileCommand & {
   parsed_items: JsonRecord[]; // parsed_items 是格式解析产物，不携带 item id 或当前项目快照
   file_type: string; // file_type 只来自解析结果，提交阶段再绑定 asset 顺序
 };
@@ -94,16 +96,23 @@ export class ProjectSyncMutationService {
   }
 
   /**
-   * 新增工作台文件，并同步重建 items 与分析派生 meta
+   * 导入工作台文件，并按同名策略同步新增或替换文件事实
    */
-  public async add_workbench_file(request: JsonRecord): Promise<ProjectMutationResult> {
+  public async import_workbench_files(request: JsonRecord): Promise<ProjectMutationResult> {
     const project_path = await this.require_loaded_project_path();
     return this.project_operation_gate.run_exclusive_project_mutation(async () => {
-      const file_commands = this.normalize_add_file_commands(request["files"]);
+      this.assert_no_legacy_fields(request, [
+        "items",
+        "translation_extras",
+        "prefilter_config",
+        "analysis_extras",
+      ]);
+      const conflict_action = this.normalize_import_conflict_action(request["conflict_action"]);
+      const file_commands = this.normalize_import_file_commands(request["files"]);
       if (file_commands.length === 0) {
         throw new AppErrors.RequestValidationError();
       }
-      const file_drafts = await this.parse_add_file_commands(file_commands);
+      const file_drafts = await this.parse_import_file_commands(file_commands);
 
       return this.mutation_coordinator.commit_project_mutation({
         projectPath: project_path,
@@ -111,8 +120,11 @@ export class ProjectSyncMutationService {
         sections: ["files", "items", "analysis"],
         buildOperations: (revision_context) => {
           const asset_records = this.get_asset_records(project_path); // 提交点重新读取当前 asset，路径冲突以最新数据库事实为准
-          const existing_paths = new Set(asset_records.map((record) => record.path.toLowerCase()));
-          const incoming_paths = new Set<string>();
+          // 同名匹配按数据库当前 asset 路径建立大小写不敏感索引，保留原始 path 作为规范写入路径。
+          const existing_record_by_key = new Map(
+            asset_records.map((record) => [record.path.toLowerCase(), record]),
+          );
+          const incoming_paths = new Set<string>(); // 单次请求内部目标路径不得重复，否则用户意图不明确
           const current_items = this.to_public_items_by_id(this.get_all_items(project_path));
           const current_files = this.build_file_section_from_asset_records(
             project_path,
@@ -120,43 +132,72 @@ export class ProjectSyncMutationService {
           );
           const next_items = new Map(current_items);
           const old_items = [...current_items.values()];
-          const added_item_ids: number[] = [];
-          const normalized_files: Array<{
+          const imported_item_ids: number[] = [];
+          const imported_files: Array<{
+            mode: "add" | "replace";
             source_path: string;
             target_rel_path: string;
             file_record: { rel_path: string; file_type: string; sort_index: number };
           }> = [];
           let next_item_id = this.next_item_id_seed(current_items);
-          for (const [index, file] of file_drafts.entries()) {
+          let next_sort_order =
+            asset_records.reduce((max_sort_order, record) => {
+              return Math.max(max_sort_order, record.sort_order);
+            }, -1) + 1;
+          for (const file of file_drafts) {
+            // 新增与替换共用同一条解析结果绑定流程，避免维护两套 item id / 预过滤逻辑。
             const target_key = file.target_rel_path.toLowerCase();
-            if (existing_paths.has(target_key) || incoming_paths.has(target_key)) {
-              throw new AppErrors.DatabaseConflictError({
-                public_details: {
+            if (incoming_paths.has(target_key)) {
+              throw new AppErrors.RequestValidationError({
+                diagnostic_context: {
+                  reason: "duplicate_import_target",
                   rel_path: file.target_rel_path,
                 },
               });
             }
             incoming_paths.add(target_key);
+            const existing_record = existing_record_by_key.get(target_key);
+            if (existing_record !== undefined && conflict_action === "skip") {
+              continue;
+            }
+            const target_rel_path = existing_record?.path ?? file.target_rel_path;
+            if (existing_record !== undefined) {
+              for (const [item_id, item] of next_items.entries()) {
+                if (item.file_path === target_rel_path) {
+                  next_items.delete(item_id);
+                }
+              }
+            }
+            // 替换保留原 asset 顺序和规范路径；新增才占用新的排序号。
             const file_record = {
-              rel_path: file.target_rel_path,
+              rel_path: target_rel_path,
               file_type: file.file_type,
-              sort_index: asset_records.length + index,
+              sort_index: existing_record?.sort_order ?? next_sort_order,
             };
+            if (existing_record === undefined) {
+              next_sort_order += 1;
+            }
             current_files[file_record.rel_path] = file_record;
             for (const parsed_item of file.parsed_items) {
               next_item_id += 1;
               const public_item = this.normalize_public_item({
                 ...Item.from_json(parsed_item).to_json(),
                 id: next_item_id,
-                file_path: file.target_rel_path,
+                file_path: target_rel_path,
               });
               next_items.set(public_item.item_id, public_item);
-              added_item_ids.push(public_item.item_id);
+              imported_item_ids.push(public_item.item_id);
             }
-            normalized_files.push({
+            imported_files.push({
+              mode: existing_record === undefined ? "add" : "replace",
               source_path: file.source_path,
-              target_rel_path: file.target_rel_path,
+              target_rel_path,
               file_record,
+            });
+          }
+          if (imported_files.length === 0) {
+            throw new AppErrors.RequestValidationError({
+              diagnostic_context: { reason: "no_importable_files" },
             });
           }
 
@@ -171,10 +212,11 @@ export class ProjectSyncMutationService {
             settings,
           });
           if (String(request["inheritance_mode"] ?? "none") === "inherit") {
+            // 继承只作用于本次导入产生的新 item，随后重跑预过滤，避免旧派生状态泄漏。
             const inherited_items = this.clone_public_item_record(mutation_output.items);
             this.inherit_completed_translations({
               old_items,
-              next_items: added_item_ids.flatMap((item_id) => {
+              next_items: imported_item_ids.flatMap((item_id) => {
                 const item = inherited_items[String(item_id)];
                 return item === undefined ? [] : [item];
               }),
@@ -188,14 +230,20 @@ export class ProjectSyncMutationService {
           }
 
           const operations: DatabaseOperation[] = [];
-          for (const file of normalized_files) {
+          for (const file of imported_files) {
             operations.push(
-              this.op("addAssetFromSource", {
-                projectPath: project_path,
-                path: file.target_rel_path,
-                sourcePath: file.source_path,
-                sortOrder: file.file_record.sort_index,
-              }),
+              file.mode === "add"
+                ? this.op("addAssetFromSource", {
+                    projectPath: project_path,
+                    path: file.target_rel_path,
+                    sourcePath: file.source_path,
+                    sortOrder: file.file_record.sort_index,
+                  })
+                : this.op("updateAssetFromSource", {
+                    projectPath: project_path,
+                    path: file.target_rel_path,
+                    sourcePath: file.source_path,
+                  }),
             );
           }
           operations.push(
@@ -214,7 +262,7 @@ export class ProjectSyncMutationService {
           return operations;
         },
         change: {
-          source: "workbench_add_file",
+          source: "workbench_import_files",
           updatedSections: ["files", "items", "analysis"],
         },
       });
@@ -641,9 +689,25 @@ export class ProjectSyncMutationService {
   }
 
   /**
-   * 工作台新增文件 command 只承载用户意图；解析、id、预过滤和继承都在 Core 侧完成
+   * 文件导入同名策略必须由页面确认后显式提交，避免后端猜测用户意图
    */
-  private normalize_add_file_commands(value: ApiJsonValue | undefined): AddWorkbenchFileCommand[] {
+  private normalize_import_conflict_action(
+    value: ApiJsonValue | undefined,
+  ): WorkbenchImportConflictAction {
+    if (value === "skip" || value === "replace") {
+      return value;
+    }
+    throw new AppErrors.RequestValidationError({
+      diagnostic_context: { reason: "invalid_import_conflict_action" },
+    });
+  }
+
+  /**
+   * 工作台导入文件 command 只承载用户意图；解析、id、预过滤和继承都在 Core 侧完成
+   */
+  private normalize_import_file_commands(
+    value: ApiJsonValue | undefined,
+  ): ImportWorkbenchFileCommand[] {
     if (!Array.isArray(value)) {
       return [];
     }
@@ -662,11 +726,11 @@ export class ProjectSyncMutationService {
   /**
    * 慢准备阶段只读取用户源文件并解析格式，不读取当前项目 meta、items 或 asset 集合
    */
-  private async parse_add_file_commands(
-    file_commands: AddWorkbenchFileCommand[],
-  ): Promise<AddWorkbenchFileDraft[]> {
+  private async parse_import_file_commands(
+    file_commands: ImportWorkbenchFileCommand[],
+  ): Promise<ImportWorkbenchFileDraft[]> {
     const format_service = this.create_format_service();
-    const file_drafts: AddWorkbenchFileDraft[] = [];
+    const file_drafts: ImportWorkbenchFileDraft[] = [];
     for (const file of file_commands) {
       const parsed_items = await format_service.parse_asset(
         file.target_rel_path,
