@@ -139,7 +139,7 @@ describe("ProjectRuntimeProjectionService", () => {
     });
   });
 
-  it("按 id 读取 item 时返回项目和 section revision", () => {
+  it("按 id 读取 item 时只返回后端规范行 DTO", () => {
     const execute = vi.fn((operation: DatabaseOperation) => {
       if (operation.name === "getAllMeta") {
         return {
@@ -175,31 +175,20 @@ describe("ProjectRuntimeProjectionService", () => {
     });
     const service = new ProjectRuntimeProjectionService(create_database_stub(execute));
 
-    const payload = service.build_item_record_map_by_ids("E:/demo/demo.lg", [2, 3]);
+    const records = service.build_item_records_by_ids("E:/demo/demo.lg", [2, 3]);
 
-    expect(payload).toMatchObject({
-      projectPath: "E:/demo/demo.lg",
-      items: {
-        "2": {
-          item_id: 2,
-          file_path: "chapter02.txt",
-          row_number: 1,
-          file_type: "TXT",
-          name_src: "Alice",
-          extra_field: { note: "keep" },
-          tag: "line",
-          skip_internal_filter: false,
-        },
+    expect(records).toMatchObject([
+      {
+        item_id: 2,
+        file_path: "chapter02.txt",
+        row_number: 1,
+        file_type: "TXT",
+        name_src: "Alice",
+        extra_field: { note: "keep" },
+        tag: "line",
+        skip_internal_filter: false,
       },
-      missingIds: [3],
-      projectRevision: 7,
-      sectionRevisions: {
-        items: 7,
-        files: 3,
-        proofreading: 5,
-      },
-      itemRevision: 7,
-    });
+    ]);
     expect(execute).toHaveBeenCalledWith({
       name: "getItemsByIds",
       args: { projectPath: "E:/demo/demo.lg", itemIds: [2, 3] },

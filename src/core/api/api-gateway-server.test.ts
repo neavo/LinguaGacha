@@ -406,58 +406,6 @@ describe("ApiGatewayServer", () => {
     expect(sections_body.data?.sections?.prompts?.translation?.text).toBe("\uD800");
   });
 
-  it("按 item id 补读只接受当前工程正整数并去重", async () => {
-    const app_root = create_app_root();
-    const database = new ProjectDatabase();
-    const lg_path = path.join(app_root, "read-items-by-id.lg");
-    const gateway = await create_gateway_with_database(app_root, database);
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
-    database.execute({
-      name: "createProject",
-      args: { projectPath: lg_path, name: "read-items-by-id" },
-    });
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: lg_path,
-        items: [
-          create_project_item({ id: 2, file_path: "a.txt", row: 1, src: "二号原文" }),
-          create_project_item({
-            id: 4,
-            file_path: "b.txt",
-            row: 2,
-            src: "四号原文",
-            status: "PROCESSED",
-          }),
-        ],
-      },
-    });
-
-    const started = await gateway.start();
-    await post_json(started.baseUrl, "/api/project/load", { path: lg_path });
-    const response = await post_json(started.baseUrl, "/api/project/items/read-by-ids", {
-      itemIds: [2, "2", 4, 0, -1, "bad", 99],
-    });
-    const body = (await response.json()) as {
-      ok?: boolean;
-      data?: {
-        projectPath?: string;
-        items?: Record<string, { src?: string }>;
-        missingIds?: number[];
-      };
-    };
-
-    expect(body.ok).toBe(true);
-    expect(body.data?.projectPath).toBe(lg_path);
-    expect(body.data?.items).toMatchObject({
-      "2": { src: "二号原文" },
-      "4": { src: "四号原文" },
-    });
-    expect(Object.keys(body.data?.items ?? {})).toEqual(["2", "4"]);
-    expect(body.data?.missingIds).toEqual([99]);
-  });
-
   it("analysis 候选读取路由只绑定当前 loaded 工程并返回完整候选池", async () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
@@ -507,30 +455,6 @@ describe("ApiGatewayServer", () => {
     expect(body.data?.projectPath).toBe(lg_path);
     expect(body.data?.candidate_count).toBe(1);
     expect(body.data?.candidate_aggregate?.["魔法"]?.dst_votes).toEqual({ magic: 2 });
-  });
-
-  it("按 item id 补读在工程未加载时拒绝读取任意路径", async () => {
-    const app_root = create_app_root();
-    const database = new ProjectDatabase();
-    const lg_path = path.join(app_root, "unloaded-read-items.lg");
-    const gateway = await create_gateway_with_database(app_root, database);
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
-    database.execute({
-      name: "createProject",
-      args: { projectPath: lg_path, name: "unloaded-read-items" },
-    });
-
-    const started = await gateway.start();
-    const response = await post_json(started.baseUrl, "/api/project/items/read-by-ids", {
-      itemIds: [1],
-      path: lg_path,
-    });
-    const body = (await response.json()) as { ok?: boolean; error?: { code?: string } };
-
-    expect(response.status).toBe(409);
-    expect(body.ok).toBe(false);
-    expect(body.error?.code).toBe("project.not_loaded");
   });
 
   it("公开任务路由由 API Gateway 直处理", async () => {

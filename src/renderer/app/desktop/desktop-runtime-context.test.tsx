@@ -1469,12 +1469,12 @@ describe("DesktopRuntimeProvider", () => {
     });
   });
 
-  it("items ids-only 会在刷新窗口内合并补读后推进 ProjectStore", async () => {
+  it("items canonical-delta 会在刷新窗口内直接推进 ProjectStore", async () => {
     vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
-    api_fetch_mock.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
+    api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/settings/app") {
         return { settings: { app_language: "ZH" } };
       }
@@ -1483,32 +1483,6 @@ describe("DesktopRuntimeProvider", () => {
       }
       if (path === "/api/tasks/snapshot") {
         return { task: { task_type: "translation", status: "idle", busy: false } };
-      }
-      if (path === "/api/project/items/read-by-ids") {
-        expect(body).toEqual({ itemIds: [3, 4] });
-        return {
-          projectPath: "E:/demo/demo.lg",
-          items: {
-            "3": create_project_item({
-              item_id: 3,
-              file_path: "chapter03.txt",
-              src: "foo",
-              dst: "bar",
-              status: "PROCESSED",
-            }),
-            "4": create_project_item({
-              item_id: 4,
-              file_path: "chapter04.txt",
-              src: "hello",
-              dst: "world",
-              status: "PROCESSED",
-            }),
-          },
-          missingIds: [],
-          projectRevision: 5,
-          sectionRevisions: { items: 5 },
-          itemRevision: 5,
-        };
       }
 
       const project_read_response = create_project_read_response(path);
@@ -1542,12 +1516,21 @@ describe("DesktopRuntimeProvider", () => {
       event_stream.emit("project.data_changed", {
         source: "translation_commit",
         projectPath: "E:/demo/demo.lg",
-        projectRevision: 6,
+        projectRevision: 4,
         updatedSections: ["items"],
-        sectionRevisions: { items: 6 },
+        sectionRevisions: { items: 4 },
         items: {
-          payloadMode: "ids-only",
+          payloadMode: "canonical-delta",
           changedIds: [3],
+          upsert: {
+            "3": create_project_item({
+              item_id: 3,
+              file_path: "chapter03.txt",
+              src: "foo",
+              dst: "bar",
+              status: "PROCESSED",
+            }),
+          },
         },
       });
       event_stream.emit("project.data_changed", {
@@ -1557,8 +1540,17 @@ describe("DesktopRuntimeProvider", () => {
         updatedSections: ["items"],
         sectionRevisions: { items: 5 },
         items: {
-          payloadMode: "ids-only",
+          payloadMode: "canonical-delta",
           changedIds: [4],
+          upsert: {
+            "4": create_project_item({
+              item_id: 4,
+              file_path: "chapter04.txt",
+              src: "hello",
+              dst: "world",
+              status: "PROCESSED",
+            }),
+          },
         },
       });
       await Promise.resolve();
@@ -1569,9 +1561,6 @@ describe("DesktopRuntimeProvider", () => {
 
     await wait_for_condition(() => snapshots.at(-1)?.itemKeys.includes("4") === true);
 
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/items/read-by-ids", {
-      itemIds: [3, 4],
-    });
     expect(snapshots.at(-1)).toMatchObject({
       proofreadingReason: "translation_commit",
       proofreadingMode: "delta",
@@ -1580,12 +1569,12 @@ describe("DesktopRuntimeProvider", () => {
     });
   });
 
-  it("items ids-only 旧补读响应不会回退当前 ProjectStore", async () => {
+  it("items canonical-delta 旧 revision 不会回退当前 ProjectStore", async () => {
     vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
-    api_fetch_mock.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
+    api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/settings/app") {
         return { settings: { app_language: "ZH" } };
       }
@@ -1594,25 +1583,6 @@ describe("DesktopRuntimeProvider", () => {
       }
       if (path === "/api/tasks/snapshot") {
         return { task: { task_type: "translation", status: "idle", busy: false } };
-      }
-      if (path === "/api/project/items/read-by-ids") {
-        expect(body).toEqual({ itemIds: [3] });
-        return {
-          projectPath: "E:/demo/demo.lg",
-          items: {
-            "3": create_project_item({
-              item_id: 3,
-              file_path: "chapter03.txt",
-              src: "old",
-              dst: "old",
-              status: "PROCESSED",
-            }),
-          },
-          missingIds: [],
-          projectRevision: 4,
-          sectionRevisions: { items: 4 },
-          itemRevision: 4,
-        };
       }
 
       const project_read_response = create_project_read_response(path, {
@@ -1649,12 +1619,48 @@ describe("DesktopRuntimeProvider", () => {
       event_stream.emit("project.data_changed", {
         source: "translation_commit",
         projectPath: "E:/demo/demo.lg",
-        projectRevision: 6,
+        projectRevision: 5,
         updatedSections: ["items"],
-        sectionRevisions: { items: 6 },
+        sectionRevisions: { items: 5 },
         items: {
-          payloadMode: "ids-only",
+          payloadMode: "canonical-delta",
+          changedIds: [2],
+          upsert: {
+            "2": create_project_item({
+              item_id: 2,
+              file_path: "chapter02.txt",
+              src: "fresh",
+              dst: "fresh",
+              status: "PROCESSED",
+            }),
+          },
+        },
+      });
+      await Promise.resolve();
+    });
+
+    await flush_runtime_refresh_window();
+    await wait_for_condition(() => snapshots.at(-1)?.itemKeys.includes("2") === true);
+
+    await act(async () => {
+      event_stream.emit("project.data_changed", {
+        source: "translation_commit",
+        projectPath: "E:/demo/demo.lg",
+        projectRevision: 4,
+        updatedSections: ["items"],
+        sectionRevisions: { items: 4 },
+        items: {
+          payloadMode: "canonical-delta",
           changedIds: [3],
+          upsert: {
+            "3": create_project_item({
+              item_id: 3,
+              file_path: "chapter03.txt",
+              src: "old",
+              dst: "old",
+              status: "PROCESSED",
+            }),
+          },
         },
       });
       await Promise.resolve();
@@ -1662,12 +1668,8 @@ describe("DesktopRuntimeProvider", () => {
 
     await flush_runtime_refresh_window();
 
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/items/read-by-ids", {
-      itemIds: [3],
-    });
     expect(snapshots.at(-1)).toMatchObject({
-      proofreadingSeq: 1,
-      itemKeys: ["1"],
+      itemKeys: ["1", "2"],
     });
   });
 

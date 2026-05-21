@@ -187,6 +187,7 @@ export function resolve_translation_task_metrics(args: {
   const processed_count =
     args.snapshot.processed_line > 0 ? args.snapshot.processed_line : args.snapshot.line;
   const failed_count = Math.max(0, args.snapshot.error_line);
+  // 任务快照行号是运行态进度事实源，总量缺失时不借用项目完成度。
   const completion_ratio =
     args.snapshot.total_line <= 0
       ? 0

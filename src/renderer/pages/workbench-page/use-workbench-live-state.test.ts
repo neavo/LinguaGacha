@@ -43,9 +43,9 @@ type TranslationTaskRuntimeFixture = {
   translation_task_metrics: {
     active: boolean;
     stopping: boolean;
+    completion_percent: number;
     processed_count: number;
     failed_count: number;
-    completion_percent: number;
     average_output_speed: number;
     total_output_tokens: number;
   };
@@ -64,9 +64,9 @@ type AnalysisTaskRuntimeFixture = {
   analysis_task_metrics: {
     active: boolean;
     stopping: boolean;
+    completion_percent: number;
     processed_count: number;
     failed_count: number;
-    completion_percent: number;
     average_output_speed: number;
     total_output_tokens: number;
   };
@@ -221,9 +221,9 @@ function create_translation_task_runtime_fixture(): TranslationTaskRuntimeFixtur
     translation_task_metrics: {
       active: false,
       stopping: false,
+      completion_percent: 0,
       processed_count: 0,
       failed_count: 0,
-      completion_percent: 0,
       average_output_speed: 0,
       total_output_tokens: 0,
     },
@@ -244,9 +244,9 @@ function create_analysis_task_runtime_fixture(): AnalysisTaskRuntimeFixture {
     analysis_task_metrics: {
       active: false,
       stopping: false,
+      completion_percent: 0,
       processed_count: 0,
       failed_count: 0,
-      completion_percent: 0,
       average_output_speed: 0,
       total_output_tokens: 0,
     },
@@ -520,9 +520,9 @@ describe("useWorkbenchLiveState", () => {
       translation_task_metrics: {
         ...translation_runtime_fixture.current.translation_task_metrics,
         active: true,
+        completion_percent: 88,
         processed_count: 99,
         failed_count: 10,
-        completion_percent: 88,
       },
     };
     analysis_runtime_fixture.current = {
@@ -530,9 +530,9 @@ describe("useWorkbenchLiveState", () => {
       analysis_task_metrics: {
         ...analysis_runtime_fixture.current.analysis_task_metrics,
         active: true,
+        completion_percent: 66,
         processed_count: 77,
         failed_count: 6,
-        completion_percent: 66,
       },
     };
     await render_hook();
@@ -602,6 +602,7 @@ describe("useWorkbenchLiveState", () => {
       skipped_count: 2,
       completion_percent: 60,
     });
+    expect(latest_state?.active_workbench_task_detail?.completion_percent_text).toBe("88.00%");
 
     act(() => {
       latest_state?.toggle_stats_mode();
@@ -617,7 +618,7 @@ describe("useWorkbenchLiveState", () => {
     });
   });
 
-  it("运行中分析统计会优先使用分析任务快照展示", async () => {
+  it("运行中分析统计按 ProjectStore，详情进度按任务快照展示", async () => {
     analysis_runtime_fixture.current = {
       ...analysis_runtime_fixture.current,
       analysis_task_display_snapshot: create_analysis_task_snapshot({
@@ -629,9 +630,9 @@ describe("useWorkbenchLiveState", () => {
       analysis_task_metrics: {
         ...analysis_runtime_fixture.current.analysis_task_metrics,
         active: true,
+        completion_percent: 75,
         processed_count: 2,
         failed_count: 1,
-        completion_percent: 75,
       },
     };
     await render_hook();
@@ -706,16 +707,17 @@ describe("useWorkbenchLiveState", () => {
     expect(latest_state?.stats_mode).toBe("analysis");
     expect(latest_state?.stats).toMatchObject({
       total_items: 5,
-      completed_count: 2,
-      failed_count: 1,
-      pending_count: 1,
+      completed_count: 0,
+      failed_count: 0,
+      pending_count: 4,
       skipped_count: 1,
-      completion_percent: 60,
+      completion_percent: 20,
     });
     expect(latest_state?.analysis_stats).toMatchObject(latest_state?.stats ?? {});
+    expect(latest_state?.active_workbench_task_detail?.completion_percent_text).toBe("75.00%");
   });
 
-  it("分析任务快照无有效总量时会回退到 ProjectStore 分析统计", async () => {
+  it("运行中分析任务无有效总量时详情进度不沿用 ProjectStore 旧统计", async () => {
     analysis_runtime_fixture.current = {
       ...analysis_runtime_fixture.current,
       analysis_task_display_snapshot: create_analysis_task_snapshot({
@@ -726,6 +728,7 @@ describe("useWorkbenchLiveState", () => {
       analysis_task_metrics: {
         ...analysis_runtime_fixture.current.analysis_task_metrics,
         active: true,
+        completion_percent: 0,
       },
     };
     await render_hook();
@@ -787,6 +790,7 @@ describe("useWorkbenchLiveState", () => {
       skipped_count: 0,
       completion_percent: 50,
     });
+    expect(latest_state?.active_workbench_task_detail?.completion_percent_text).toBe("0.00%");
   });
 
   it("翻译统计会在 items 信号后继续按 ProjectStore 状态刷新", async () => {
@@ -795,9 +799,9 @@ describe("useWorkbenchLiveState", () => {
       translation_task_metrics: {
         ...translation_runtime_fixture.current.translation_task_metrics,
         active: true,
+        completion_percent: 88,
         processed_count: 99,
         failed_count: 10,
-        completion_percent: 88,
       },
     };
     await render_hook();
