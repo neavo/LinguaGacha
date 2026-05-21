@@ -8,10 +8,20 @@ import { LogManager } from "../log/log-manager";
 import { set_electron_main_log_manager } from "../log/log-bridge";
 import { set_main_log_language_reader, t_main_log } from "../log/log-text";
 import { migration_orchestrator } from "../migration/migration-orchestrator";
+import { read_model_preset_records } from "../model/model-config-resolver";
 import { InternalInvariantError } from "../../shared/error";
 import { resolve_core_app_root } from "./core-app-root-resolver";
 import { write_bootstrap_error, write_bootstrap_log } from "./bootstrap-log";
 import { CoreServices } from "./core-services";
+import {
+  EMPTY_SYSTEM_PROXY_STARTUP_NOTICE,
+  build_system_proxy_startup_notice,
+  collect_system_proxy_urls,
+  install_system_proxy_dispatcher,
+  type InstalledSystemProxyDispatcher,
+  type SystemProxySnapshot,
+  type SystemProxyStartupNotice,
+} from "./system-proxy-dispatcher";
 import type {
   CoreBootstrapOptions,
   CoreBootstrapStartResult,
@@ -28,6 +38,9 @@ export class CoreBootstrap {
   private core_services: CoreServices | null = null; // core_services 是 API Gateway 与 CLI job 的共享业务组合根
   private readonly database = new ProjectDatabase(); // database 直接承载 `.lg` 物理 workflow，由 Bootstrap 统一关闭
   private log_manager: LogManager | null = null; // log_manager 先于服务组合创建，确保启动失败和退出阶段都有统一日志出口
+  private system_proxy_dispatcher: InstalledSystemProxyDispatcher | null = null; // system_proxy_dispatcher 只在入口注入 resolver 时安装
+  private system_proxy_snapshot: SystemProxySnapshot | null = null; // system_proxy_snapshot 会传给 work unit worker 线程复用
+  private system_proxy_startup_notice: SystemProxyStartupNotice = EMPTY_SYSTEM_PROXY_STARTUP_NOTICE; // system_proxy_startup_notice 是给 GUI/CLI 的脱敏启动提示摘要
 
   /**
    * Bootstrap 只接收入口层参数，路径、端口和运行期资源句柄由自身拥有。
@@ -74,12 +87,14 @@ export class CoreBootstrap {
       migration_orchestrator.run_startup_migrations({ paths, log_manager });
       const app_setting_service = new AppSettingService(paths);
       set_main_log_language_reader(() => app_setting_service.read_app_language());
+      await this.install_system_proxy_snapshot(paths, app_setting_service);
       const core_services = new CoreServices({
         paths,
         metadata,
         appSettingService: app_setting_service,
         database: this.database,
         logManager: log_manager,
+        systemProxySnapshot: this.system_proxy_snapshot,
         openOutputFolder: this.options.openOutputFolder,
         engineExecution: this.options.engineExecution,
       });
@@ -94,6 +109,7 @@ export class CoreBootstrap {
         apiBaseUrl: api_base_url,
         coreServices: core_services,
         readAppLanguage: () => app_setting_service.read_app_language(),
+        systemProxyStartupNotice: this.system_proxy_startup_notice,
       };
     } catch (error) {
       write_bootstrap_error(
@@ -144,7 +160,38 @@ export class CoreBootstrap {
   }
 
   /**
-   * Gateway、CoreServices、ProjectDatabase 与日志必须逆序关闭，确保收尾阶段不丢日志。
+   * 启动期只解析一次系统代理，并把快照同时安装给主线程和后续 worker 线程。
+   */
+  private async install_system_proxy_snapshot(
+    paths: AppPathService,
+    app_setting_service: AppSettingService,
+  ): Promise<void> {
+    const resolver = this.options.systemProxyResolver;
+    if (resolver === undefined) {
+      this.system_proxy_snapshot = null;
+      this.system_proxy_startup_notice = EMPTY_SYSTEM_PROXY_STARTUP_NOTICE;
+      return;
+    }
+    const urls = collect_system_proxy_urls(
+      app_setting_service.read_setting(),
+      read_model_preset_records(paths),
+    );
+    this.system_proxy_dispatcher = await install_system_proxy_dispatcher({ resolver, urls });
+    this.system_proxy_snapshot = this.system_proxy_dispatcher.snapshot;
+    this.system_proxy_startup_notice = build_system_proxy_startup_notice(
+      this.system_proxy_snapshot,
+    );
+    if (this.system_proxy_startup_notice.detected) {
+      write_bootstrap_log(
+        t_main_log("app.log.system_proxy_startup_detected", {
+          PROXY: this.system_proxy_startup_notice.proxyDisplay ?? "",
+        }),
+      );
+    }
+  }
+
+  /**
+   * Gateway、CoreServices、系统代理、ProjectDatabase 与日志必须逆序关闭，确保收尾阶段不丢日志。
    */
   private async stop_services(): Promise<void> {
     if (this.state === "stopping") {
@@ -155,6 +202,10 @@ export class CoreBootstrap {
     this.gateway_server = null;
     await this.core_services?.dispose();
     this.core_services = null;
+    await this.system_proxy_dispatcher?.dispose();
+    this.system_proxy_dispatcher = null;
+    this.system_proxy_snapshot = null;
+    this.system_proxy_startup_notice = EMPTY_SYSTEM_PROXY_STARTUP_NOTICE;
     this.database.close();
     await this.log_manager?.shutdown();
     this.log_manager = null;

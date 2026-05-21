@@ -20,6 +20,13 @@ export type DesktopPlatform =
 
 export type DesktopCoreApiInfo = {
   baseUrl: string; // main 启动公开 API Gateway 后注入给 preload 的本机访问地址
+  systemProxyStartupNotice: DesktopSystemProxyStartupNotice; // 启动期系统代理提示摘要，不包含完整代理 URI
+};
+
+export type DesktopSystemProxyStartupNotice = {
+  detected: boolean; // renderer 只关心是否需要提示用户，不重新判断系统代理
+  proxiedOriginCount: number; // 命中的远端 origin 数量，用于测试和诊断摘要
+  proxyDisplay: string | null; // 去除凭据和路径后的代理 URL 展示值，用于填充启动提示
 };
 
 export type DesktopShellInfo = {

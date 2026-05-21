@@ -41,6 +41,9 @@ export const zh_cn_app = {
   update: {
     toast: "发现新版本，点击左下角更新入口下载新版本 …",
   },
+  system_proxy: {
+    startup_notice: "检查到系统代理设置 - {PROXY}",
+  },
   drop: {
     multiple_unavailable: "一次只能拖拽一个文件",
     unavailable: "当前无法读取拖拽文件的本地路径，请换用点击导入。",
@@ -268,6 +271,7 @@ export const zh_cn_app = {
     api_test_timeout: "请求超时（{SECONDS} 秒）",
     api_test_token_info: "任务耗时 {TIME} 秒，输入消耗 {PT} Tokens，输出消耗 {CT} Tokens",
     app_version: "LinguaGacha v{VERSION} …",
+    system_proxy_startup_detected: "检查到系统代理设置 - {PROXY}",
     default_preset_loaded: "已自动加载默认预设：{NAMES} …",
     engine_api_model: "接口模型",
     engine_api_name: "接口名称",

@@ -1,6 +1,10 @@
 import { parentPort, workerData } from "node:worker_threads";
 
 import type { ApiJsonValue } from "../../api/api-types";
+import {
+  install_system_proxy_dispatcher_from_snapshot,
+  type SystemProxySnapshot,
+} from "../../bootstrap/system-proxy-dispatcher";
 import type { WorkUnit } from "../protocol/work-unit";
 import { WorkUnitRunner, type WorkUnitRunnerOptions } from "./work-unit-runner";
 
@@ -29,6 +33,10 @@ type WorkUnitWorkerIncomingMessage =
   | WorkUnitExecuteMessage
   | WorkUnitTranslateSingleMessage
   | WorkUnitCancelMessage;
+
+interface WorkUnitWorkerData extends WorkUnitRunnerOptions {
+  systemProxySnapshot?: SystemProxySnapshot | null; // systemProxySnapshot 是主线程启动期快照，worker 不重新访问 Electron
+}
 
 /**
  * work unit worker_threads 入口，只处理消息、取消和结果回传，不承载业务逻辑
@@ -81,7 +89,11 @@ class WorkUnitWorkerEntry {
   }
 }
 
-const entry = new WorkUnitWorkerEntry(workerData as WorkUnitRunnerOptions); // 顶层入口必须立即绑定 parentPort，worker_threads 加载后即可接收池派发消息
+const worker_data = workerData as WorkUnitWorkerData; // worker_data 只包含可结构化克隆的启动事实
+if (worker_data.systemProxySnapshot !== null && worker_data.systemProxySnapshot !== undefined) {
+  install_system_proxy_dispatcher_from_snapshot(worker_data.systemProxySnapshot);
+}
+const entry = new WorkUnitWorkerEntry(worker_data); // 顶层入口必须立即绑定 parentPort，worker_threads 加载后即可接收池派发消息
 parentPort?.on("message", (message: WorkUnitWorkerIncomingMessage) =>
   entry.handle_message(message),
 );

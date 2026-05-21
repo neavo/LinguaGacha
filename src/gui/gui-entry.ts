@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow, session, shell } from "electron";
 import path from "node:path";
 
 import { CoreBootstrap } from "../core/bootstrap/core-bootstrap";
@@ -6,6 +6,8 @@ import type { EngineExecution } from "../core/engine/core/engine-execution";
 import { write_electron_main_error } from "../core/log/log-bridge";
 import { t_main_log } from "../core/log/log-text";
 import * as AppErrors from "../shared/error";
+import type { DesktopSystemProxyStartupNotice } from "./bridge/bridge-types";
+import { EMPTY_DESKTOP_SYSTEM_PROXY_STARTUP_NOTICE } from "./bridge/system-proxy-startup-notice";
 import { register_desktop_ipc_handlers } from "./shell/desktop-ipc-host";
 import {
   configure_development_remote_debugging,
@@ -33,6 +35,8 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   let win: BrowserWindow | null = null; // 主窗口是桌面宿主的唯一工作台窗口，关闭后引用必须归零，避免 IPC 误用失效窗口
   let log_window_host: LogWindowHost | null = null; // 日志窗口由独立宿主管理，避免主窗口生命周期和日志诊断窗口互相持有复杂状态
   let core_api_base_url: string | null = null; // Core API 地址由 Bootstrap 启动结果注入窗口，preload 不再猜测固定端口
+  let system_proxy_startup_notice: DesktopSystemProxyStartupNotice =
+    EMPTY_DESKTOP_SYSTEM_PROXY_STARTUP_NOTICE; // 启动期代理提示只保存脱敏摘要，窗口重建时复用同一事实
   let is_app_shutdown_in_progress = false; // 退出流程只允许进入一次，防止 before-quit、fatal 和窗口关闭同时触发重复清理
   let is_renderer_confirmed_app_quit = false; // renderer 已确认退出时，主窗口 close 事件不再反向弹出网页确认流程
 
@@ -51,6 +55,9 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   const core_bootstrap = new CoreBootstrap({
     appRoot: app.isPackaged ? path.dirname(process.execPath) : process.cwd(),
     exposeApiGateway: true,
+    systemProxyResolver: {
+      resolveProxy: (url) => session.defaultSession.resolveProxy(url),
+    },
     openOutputFolder: open_output_folder,
     engineExecution: options.engineExecution,
   });
@@ -75,6 +82,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     win = create_main_window({
       desktopBundleDir: desktop_bundle_dir,
       coreApiBaseUrl: require_core_api_base_url(),
+      systemProxyStartupNotice: system_proxy_startup_notice,
       shouldBypassCloseConfirmation: () => {
         return is_app_shutdown_in_progress || is_renderer_confirmed_app_quit;
       },
@@ -158,9 +166,11 @@ export function run_gui_entry(options: GuiEntryOptions): void {
         });
       }
       core_api_base_url = core_start_result.apiBaseUrl;
+      system_proxy_startup_notice = core_start_result.systemProxyStartupNotice;
       log_window_host = create_log_window_host({
         desktopBundleDir: desktop_bundle_dir,
         coreApiBaseUrl: core_start_result.apiBaseUrl,
+        systemProxyStartupNotice: system_proxy_startup_notice,
       });
       register_runtime_ipc_handlers(core_start_result.readAppLanguage);
       create_main_window_for_runtime();

@@ -3,6 +3,15 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import App from "@/app/index";
+import { create_desktop_bridge_api_mock } from "../../test/desktop-bridge-mock";
+
+const toast_mock = vi.hoisted(() => {
+  // toast_mock 让 App 根测试可以观察 toast 类型和文案，而不渲染真实 sonner UI
+  return {
+    push_persistent_toast: vi.fn(),
+    push_toast: vi.fn(),
+  };
+});
 
 vi.mock("next-themes", () => {
   return {
@@ -72,12 +81,20 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
   };
 });
 
+vi.mock("@/app/desktop/desktop-api", () => {
+  return {
+    check_github_release_update: vi.fn(async () => null),
+    get_core_metadata: vi.fn(async () => ({ version: "9.8.7" })),
+    open_external_url: vi.fn(async () => undefined),
+  };
+});
+
 vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
   return {
     DesktopProgressToastModalLayer: () => null,
     useDesktopToast: () => ({
-      push_persistent_toast: vi.fn(),
-      push_toast: vi.fn(),
+      push_persistent_toast: toast_mock.push_persistent_toast,
+      push_toast: toast_mock.push_toast,
     }),
   };
 });
@@ -86,7 +103,8 @@ vi.mock("@/app/locale/locale-provider", () => {
   return {
     LocaleProvider: (props: { children: ReactNode }) => <>{props.children}</>,
     useI18n: () => ({
-      t: (key: string) => key,
+      t: (key: string, params?: Record<string, string>) =>
+        key === "app.system_proxy.startup_notice" ? `${key}:${params?.["PROXY"] ?? ""}` : key,
     }),
   };
 });
@@ -163,6 +181,10 @@ describe("App 字体模式同步", () => {
 
   beforeEach(() => {
     install_local_storage_fallback();
+    Object.defineProperty(window, "desktopApp", {
+      configurable: true,
+      value: create_desktop_bridge_api_mock(),
+    });
   });
 
   afterEach(async () => {
@@ -178,6 +200,7 @@ describe("App 字体模式同步", () => {
     window.localStorage.clear();
     document.documentElement.removeAttribute("data-lg-base-font");
     window.history.replaceState(null, "", "/");
+    vi.clearAllMocks();
   });
 
   async function mount_app_at(url: string): Promise<void> {
@@ -218,5 +241,37 @@ describe("App 字体模式同步", () => {
 
     expect(document.documentElement.dataset.lgBaseFont).toBe("enabled");
     expect(window.localStorage.getItem("lg-base-font-mode")).toBe("enabled");
+  });
+
+  it("主窗口加载完成后展示一次系统代理启动提示", async () => {
+    Object.defineProperty(window, "desktopApp", {
+      configurable: true,
+      value: create_desktop_bridge_api_mock({
+        coreApi: {
+          systemProxyStartupNotice: {
+            detected: true,
+            proxiedOriginCount: 2,
+            proxyDisplay: "http://127.0.0.1:7890",
+          },
+        },
+      }),
+    });
+
+    await mount_app_at("/");
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(toast_mock.push_toast).toHaveBeenCalledTimes(1);
+    expect(toast_mock.push_toast).toHaveBeenCalledWith(
+      "info",
+      "app.system_proxy.startup_notice:http://127.0.0.1:7890",
+    );
+
+    await act(async () => {
+      root?.render(<App />);
+    });
+
+    expect(toast_mock.push_toast).toHaveBeenCalledTimes(1);
   });
 });

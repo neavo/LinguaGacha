@@ -28,6 +28,7 @@ import { ProofreadingService } from "../service/proofreading-service";
 import { QualityService } from "../service/quality-service";
 import { TaskService } from "../service/task-service";
 import { create_text_resolver, resolve_i18n_locale, type TextResolver } from "../../shared/i18n";
+import type { SystemProxySnapshot } from "./system-proxy-dispatcher";
 
 export interface CoreServicesOptions {
   paths: AppPathService; // paths 是启动阶段解析出的应用根与数据根权威
@@ -35,6 +36,7 @@ export interface CoreServicesOptions {
   appSettingService: AppSettingService; // appSettingService 是配置文件唯一读写入口
   database: ProjectDatabase; // database 由 Bootstrap 持有并负责关闭，服务层只组合业务能力
   logManager: LogManager; // logManager 是 Core 内部日志和任务日志的唯一汇聚点
+  systemProxySnapshot: SystemProxySnapshot | null; // systemProxySnapshot 是启动期系统代理事实，传给 LLM worker 线程复用
   openOutputFolder: OutputFolderOpener; // openOutputFolder 是 GUI 专用副作用，CLI 注入空实现
   engineExecution: EngineExecution; // engineExecution 是入口层注入的任务执行模式契约
 }
@@ -136,6 +138,7 @@ export class CoreServices {
     this.work_unit_worker_pool = new WorkUnitWorkerPool({
       appRoot: this.paths.get_app_root(),
       execution: options.engineExecution,
+      systemProxySnapshot: options.systemProxySnapshot,
     });
     this.planning_worker_pool = new PlanningWorkerPool({
       execution: options.engineExecution,
