@@ -396,7 +396,7 @@ describe("desktop-api", () => {
     install_desktop_api_host("http://127.0.0.1:38191/");
 
     const { DesktopApiError, api_fetch } = await import("./desktop-api");
-    const promise = api_fetch("/api/project/workbench/add-file", {});
+    const promise = api_fetch("/api/project/workbench/import-files", {});
 
     await expect(promise).rejects.toMatchObject({
       action: "请刷新当前数据后再次提交 …",

@@ -46,7 +46,7 @@ describe("ProjectChangeEventAdapter", () => {
 
     const event = adapter.adapt_project_change({
       targetProjectPath: "E:/Project/demo.lg",
-      source: "workbench_add_file",
+      source: "workbench_import_files",
       updatedSections: ["items", "files", "analysis", "items", "unknown"],
       items: {
         payloadMode: "canonical-delta",
@@ -71,7 +71,7 @@ describe("ProjectChangeEventAdapter", () => {
     expect(event).toEqual({
       type: "project.changed",
       eventId: "10-i",
-      source: "workbench_add_file",
+      source: "workbench_import_files",
       projectPath: "E:/Project/demo.lg",
       projectRevision: 7,
       sectionRevisions: {

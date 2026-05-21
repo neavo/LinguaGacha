@@ -16,6 +16,7 @@ export const en_us_app = {
     reset: "Reset",
     skip: "Skip",
     overwrite: "Overwrite",
+    replace: "Replace",
     loading: "Loading",
     select_file: "Select File",
     select_folder: "Select Folder",

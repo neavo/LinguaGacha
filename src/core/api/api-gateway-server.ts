@@ -217,8 +217,8 @@ export class ApiGatewayServer {
       project_lifecycle_service.get_open_alignment_preview(body),
     );
 
-    this.post_json(app, "/api/project/workbench/add-file", (body) =>
-      project_service.add_workbench_file(body),
+    this.post_json(app, "/api/project/workbench/import-files", (body) =>
+      project_service.import_workbench_files(body),
     );
     this.post_json(app, "/api/project/workbench/reset-file", (body) =>
       project_service.reset_workbench_file(body),

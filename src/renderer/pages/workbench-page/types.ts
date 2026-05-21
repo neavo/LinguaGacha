@@ -1,5 +1,6 @@
 type WorkbenchActionKind =
-  | "inherit-add-file"
+  | "confirm-import-files"
+  | "inherit-import-files"
   | "reset-file"
   | "delete-file"
   | "generate-translation"

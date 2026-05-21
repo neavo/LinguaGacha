@@ -14,6 +14,7 @@ export const zh_cn_app = {
     reset: "重置",
     skip: "跳过",
     overwrite: "覆盖",
+    replace: "替换",
     loading: "加载中",
     select_file: "选择文件",
     select_folder: "选择文件夹",

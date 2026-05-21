@@ -449,7 +449,7 @@ describe("ProjectSyncMutationService", () => {
     database.close();
   });
 
-  it("新增工作台文件解析窗口内拒绝另一段结构性 mutation", async () => {
+  it("导入工作台文件解析窗口内拒绝另一段结构性 mutation", async () => {
     const { database, service, lg_path } = create_service();
     const first_source = project_path("a.txt");
     const second_source = project_path("b.txt");
@@ -475,8 +475,9 @@ describe("ProjectSyncMutationService", () => {
     });
     const { parse_started, release_parse } = pause_next_parse_asset();
 
-    const add_file_promise = service.add_workbench_file({
+    const import_files_promise = service.import_workbench_files({
       files: [{ source_path: second_source, target_rel_path: "b.txt" }],
+      conflict_action: "skip",
       project_settings: { source_language: "JA", target_language: "ZH" },
       expected_section_revisions: { files: 0, items: 0, analysis: 0 },
     });
@@ -492,7 +493,7 @@ describe("ProjectSyncMutationService", () => {
       release_parse();
     }
 
-    await expect(add_file_promise).resolves.toMatchObject({ accepted: true });
+    await expect(import_files_promise).resolves.toMatchObject({ accepted: true });
     expect(
       database.execute({ name: "getAllAssetRecords", args: { projectPath: lg_path } }),
     ).toEqual([
@@ -513,6 +514,117 @@ describe("ProjectSyncMutationService", () => {
         row_number: 0,
       }),
     ]);
+    database.close();
+  });
+
+  it("导入同名工作台文件选择跳过时只新增非同名文件", async () => {
+    const { database, service, lg_path } = create_service();
+    const old_source = project_path("a.txt");
+    const conflict_source = project_path("a-new.txt");
+    const new_source = project_path("b.txt");
+    fs.writeFileSync(old_source, "旧", "utf-8");
+    fs.writeFileSync(conflict_source, "替换候选", "utf-8");
+    fs.writeFileSync(new_source, "新", "utf-8");
+    database.execute({
+      name: "addAssetFromSource",
+      args: { projectPath: lg_path, path: "a.txt", sourcePath: old_source, sortOrder: 0 },
+    });
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [create_persistent_item({ src: "旧", dst: "old", row_number: 0 })],
+      },
+    });
+
+    await service.import_workbench_files({
+      files: [
+        { source_path: conflict_source, target_rel_path: "a.txt" },
+        { source_path: new_source, target_rel_path: "b.txt" },
+      ],
+      conflict_action: "skip",
+      project_settings: { source_language: "JA", target_language: "ZH" },
+      expected_section_revisions: { files: 0, items: 0, analysis: 0 },
+    });
+
+    expect(
+      database.execute({ name: "getAllAssetRecords", args: { projectPath: lg_path } }),
+    ).toEqual([
+      { path: "a.txt", sort_order: 0 },
+      { path: "b.txt", sort_order: 1 },
+    ]);
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+      create_persistent_item({ src: "旧", dst: "old", row_number: 0 }),
+      create_persistent_item({ item_id: 2, src: "新", file_path: "b.txt", row_number: 0 }),
+    ]);
+    expect(database.read_asset_content(lg_path, "a.txt")?.toString("utf-8")).toBe("旧");
+    database.close();
+  });
+
+  it("导入同名工作台文件选择替换时保留排序并重建条目", async () => {
+    const { database, service, lg_path } = create_service();
+    const old_source = project_path("a.txt");
+    const replace_source = project_path("a-new.txt");
+    fs.writeFileSync(old_source, "旧", "utf-8");
+    fs.writeFileSync(replace_source, "新", "utf-8");
+    database.execute({
+      name: "addAssetFromSource",
+      args: { projectPath: lg_path, path: "a.txt", sourcePath: old_source, sortOrder: 3 },
+    });
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [create_persistent_item({ src: "旧", dst: "old", row_number: 0 })],
+      },
+    });
+    database.execute({
+      name: "upsertAnalysisCandidateAggregates",
+      args: {
+        projectPath: lg_path,
+        aggregates: [
+          {
+            src: "旧",
+            dst_votes: { old: 1 },
+            info_votes: {},
+            observation_count: 1,
+            first_seen_at: "t",
+            last_seen_at: "t",
+            case_sensitive: false,
+          },
+        ],
+      },
+    });
+
+    const ack = await service.import_workbench_files({
+      files: [{ source_path: replace_source, target_rel_path: "a.txt" }],
+      conflict_action: "replace",
+      project_settings: { source_language: "JA", target_language: "ZH" },
+      expected_section_revisions: { files: 0, items: 0, analysis: 0 },
+    });
+
+    expect(ack).toMatchObject({
+      accepted: true,
+      changes: [
+        {
+          source: "workbench_import_files",
+          updatedSections: ["files", "items", "analysis"],
+        },
+      ],
+    });
+    expect(
+      database.execute({ name: "getAllAssetRecords", args: { projectPath: lg_path } }),
+    ).toEqual([{ path: "a.txt", sort_order: 3 }]);
+    expect(database.read_asset_content(lg_path, "a.txt")?.toString("utf-8")).toBe("新");
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+      create_persistent_item({ item_id: 2, src: "新", file_path: "a.txt", row_number: 0 }),
+    ]);
+    expect(
+      database.execute({
+        name: "getAnalysisCandidateAggregates",
+        args: { projectPath: lg_path },
+      }),
+    ).toEqual([]);
     database.close();
   });
 

@@ -75,6 +75,9 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
         on_confirm={() => {
           void workbench_state.confirm_dialog();
         }}
+        on_secondary={() => {
+          void workbench_state.secondary_dialog();
+        }}
         on_cancel={() => {
           void workbench_state.cancel_dialog();
         }}

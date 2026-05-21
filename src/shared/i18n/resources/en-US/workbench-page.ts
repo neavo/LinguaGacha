@@ -154,10 +154,13 @@ export const en_us_workbench_page = {
     failed: "Failed to save the file order. Please try again later.",
   },
   dialog: {
-    inherit_add: {
-      description: "Use completed translations from the current project to fill the new file …?",
-      confirm: "Reuse",
-      cancel: "Do Not Reuse",
+    import_conflict: {
+      description: "{COUNT} files with the same name were detected. Choose how to handle them …?",
+    },
+    inherit_import: {
+      description: "Use completed translations from the current project to fill the new files …?",
+      confirm: "Fill",
+      cancel: "Do Not Fill",
     },
     reset: {
       description: "Confirm resetting this file's translation status …?",
