@@ -77,7 +77,7 @@ describe("log-bridge", () => {
     expect(log_manager.snapshot_events()).toMatchObject([
       {
         level: "error",
-        message: "主进程异常",
+        message_preview: "主进程异常",
       },
     ]);
   });

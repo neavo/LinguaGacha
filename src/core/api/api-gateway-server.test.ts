@@ -292,11 +292,12 @@ describe("ApiGatewayServer", () => {
     );
   });
 
-  it("由 LogManager 直接提供公开日志流", async () => {
+  it("由 LogManager 提供轻量日志流和按需详情", async () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
     const log_manager = create_log_manager(app_root);
-    log_manager.info("启动完成", { source: "test" });
+    const full_message = `启动完成\n${"完整详情".repeat(400)}\n详情尾部`;
+    log_manager.info(full_message, { source: "test" });
     const gateway = await create_gateway_with_database(app_root, database, log_manager);
     cleanup_callbacks.push(() => gateway.stop());
     cleanup_callbacks.push(() => database.close());
@@ -316,7 +317,25 @@ describe("ApiGatewayServer", () => {
     const text = new TextDecoder().decode(chunk.value);
     expect(response.status).toBe(200);
     expect(text).toContain("event: log.appended");
-    expect(text).toContain('"message":"启动完成"');
+    expect(text).toContain('"message_preview"');
+    expect(text).toContain('"source":"test"');
+    expect(text).not.toContain('"message":"');
+    expect(text).not.toContain("详情尾部");
+
+    const detail_response = await fetch(`${started.baseUrl}/api/logs/detail`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: "log-1" }),
+    });
+    const detail_body = (await detail_response.json()) as {
+      data?: { detail?: { message?: string; source?: string } };
+    };
+
+    expect(detail_response.status).toBe(200);
+    expect(detail_body.data?.detail).toMatchObject({
+      message: full_message,
+      source: "test",
+    });
   });
 
   it("由 API Gateway 直接提供项目数据读取接口", async () => {

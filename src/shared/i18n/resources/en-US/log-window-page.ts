@@ -34,6 +34,11 @@ export const en_us_log_window_page = {
     title: "Detail",
     maximize: "Maximize",
     minimize: "Minimize",
+    empty: "Select a log entry to view details.",
+    loading: "Loading log detail …",
+    unavailable:
+      "Log detail has been released from current process memory. Please check the log file.",
+    failed: "Failed to load log detail.",
   },
   feedback: {
     stream_failed: "Log stream connection failed.",

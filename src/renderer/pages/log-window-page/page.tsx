@@ -2,7 +2,12 @@ import { ListEnd, Maximize2, Minimize2, ScrollText } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 
-import { open_log_stream, type LogEvent } from "@/app/desktop/desktop-api";
+import {
+  open_log_stream,
+  read_log_detail,
+  type LogDetail,
+  type LogEvent,
+} from "@/app/desktop/desktop-api";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import { useDebouncedValue } from "@/hooks/use-debounce";
@@ -40,6 +45,15 @@ const DETAIL_EXPAND_LABEL_KEYS: Record<"expanded" | "collapsed", LocaleKey> = {
   collapsed: "log_window_page.detail.maximize" as LocaleKey,
 };
 
+// 详情区状态绑定当前选中日志 ID，避免迟到请求覆盖下一条选中项
+type LogDetailState =
+  | { status: "idle"; event_id: null; detail: null }
+  | { status: "loading" | "unavailable" | "failed"; event_id: string; detail: null }
+  | { status: "ready"; event_id: string; detail: LogDetail };
+
+/**
+ * 日志表格滚动视口由 AppTable 内部创建，页面只在自动滚动时定位它
+ */
 function find_log_scroll_viewport(): HTMLElement | null {
   return document.querySelector<HTMLElement>(
     '.log-window-page__table [data-slot="scroll-area-viewport"]',
@@ -61,6 +75,11 @@ export function LogWindowPage(): JSX.Element {
   const [active_row_id, set_active_row_id] = useState<string | null>(null);
   const [anchor_row_id, set_anchor_row_id] = useState<string | null>(null);
   const [detail_expanded, set_detail_expanded] = useState<boolean>(false);
+  const [detail_state, set_detail_state] = useState<LogDetailState>({
+    status: "idle",
+    event_id: null,
+    detail: null,
+  });
 
   useEffect(() => {
     document.title = t("log_window_page.title");
@@ -171,6 +190,39 @@ export function LogWindowPage(): JSX.Element {
     }
     return visible_events.find((event) => event.id === active_row_id) ?? null;
   }, [active_row_id, visible_events]);
+  const selected_event_id = selected_event?.id ?? null;
+
+  // 详情正文按当前选中行懒加载，避免完整日志进入列表 state 和筛选排序热路径
+  useEffect(() => {
+    if (selected_event_id === null) {
+      set_detail_state({ status: "idle", event_id: null, detail: null });
+      return;
+    }
+
+    let disposed = false;
+    set_detail_state({ status: "loading", event_id: selected_event_id, detail: null });
+
+    void read_log_detail(selected_event_id)
+      .then((detail) => {
+        if (disposed) {
+          return;
+        }
+        set_detail_state(
+          detail === null
+            ? { status: "unavailable", event_id: selected_event_id, detail: null }
+            : { status: "ready", event_id: selected_event_id, detail },
+        );
+      })
+      .catch(() => {
+        if (!disposed) {
+          set_detail_state({ status: "failed", event_id: selected_event_id, detail: null });
+        }
+      });
+
+    return () => {
+      disposed = true;
+    };
+  }, [selected_event_id]);
 
   useEffect(() => {
     if (active_row_id === null) {
@@ -224,7 +276,7 @@ export function LogWindowPage(): JSX.Element {
                 [{t(LEVEL_LABEL_KEYS[payload.row.level])}]
               </span>
               <span className="log-window-page__message-body">
-                {compress_log_message_text(payload.row.message)}
+                {compress_log_message_text(payload.row.message_preview)}
               </span>
             </span>
           );
@@ -237,6 +289,24 @@ export function LogWindowPage(): JSX.Element {
     set_selected_row_ids(payload.selected_row_ids);
     set_active_row_id(payload.active_row_id);
     set_anchor_row_id(payload.anchor_row_id);
+  }
+
+  /**
+   * 详情区只显示当前选中项的完整正文或稳定状态文案
+   */
+  function render_detail_value(): string {
+    switch (detail_state.status) {
+      case "idle":
+        return t("log_window_page.detail.empty");
+      case "loading":
+        return t("log_window_page.detail.loading");
+      case "unavailable":
+        return t("log_window_page.detail.unavailable");
+      case "failed":
+        return t("log_window_page.detail.failed");
+      case "ready":
+        return detail_state.detail.message;
+    }
   }
 
   return (
@@ -388,7 +458,7 @@ export function LogWindowPage(): JSX.Element {
             </div>
             <AppEditor
               class_name="log-window-page__detail-editor"
-              value={selected_event?.message ?? ""}
+              value={render_detail_value()}
               aria_label={t("log_window_page.detail.title")}
               read_only
             />

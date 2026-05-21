@@ -3,10 +3,11 @@ import { LOG_WINDOW_EVENT_CAPACITY } from "@shared/log";
 
 export type LogLevelFilter = "all" | LogLevel;
 
+// 列表事件只处理轻量预览，trim 后的正文用于折叠空日志和表格显示
 function normalize_log_event_message(event: LogEvent): LogEvent {
   return {
     ...event,
-    message: event.message.trim(),
+    message_preview: event.message_preview.trim(),
   };
 }
 
@@ -27,7 +28,7 @@ export function append_log_events(
     }
 
     const last_event = appended_events.at(-1);
-    if (normalized_event.message === "" && last_event?.message === "") {
+    if (normalized_event.message_preview === "" && last_event?.message_preview === "") {
       appended_events[appended_events.length - 1] = normalized_event;
       existing_ids.delete(last_event.id);
     } else {
@@ -43,21 +44,23 @@ export function append_log_events(
   return appended_events.slice(appended_events.length - LOG_WINDOW_EVENT_CAPACITY);
 }
 
+// 展示顺序只依赖后端单调递增序号，避免本地时间解析差异影响排序
 export function sort_log_events_latest_first(events: LogEvent[]): LogEvent[] {
   return [...events].sort((left_event, right_event) => {
     return right_event.sequence - left_event.sequence;
   });
 }
 
+// 表格列保持单行预览，完整正文由详情接口按需读取
 export function compress_log_message_text(message: string): string {
   if (message.trim() === "") {
     return "(blank)";
   }
 
-  const compressed_message = message.replace(/\r\n|\r|\n/gu, " ↵ ");
-  return compressed_message;
+  return message.replace(/\r\n|\r|\n/gu, " ↵ ");
 }
 
+// 筛选只搜索轻量事件字段，避免完整日志正文进入 React 列表热路径
 export function filter_log_events(args: {
   events: LogEvent[];
   level_filter: LogLevelFilter;
@@ -81,7 +84,8 @@ export function filter_log_events(args: {
 
     const search_text = [
       event.level,
-      event.message,
+      event.source,
+      event.message_preview,
       event.sequence.toString(),
       event.created_at,
     ].join("\n");
@@ -94,6 +98,7 @@ export function filter_log_events(args: {
   });
 }
 
+// 正则输入错误时回退为不过滤，错误提示由页面层根据同一输入独立展示
 function build_log_filter_regex(pattern: string): RegExp | null {
   try {
     return new RegExp(pattern, "iu");
@@ -102,6 +107,7 @@ function build_log_filter_regex(pattern: string): RegExp | null {
   }
 }
 
+// 日志窗口使用本地可读时间，无法解析时保留原始时间戳用于诊断
 export function format_log_timestamp(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {

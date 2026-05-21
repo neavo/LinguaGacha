@@ -31,6 +31,10 @@ export const zh_cn_log_window_page = {
     title: "详情",
     maximize: "最大化",
     minimize: "最小化",
+    empty: "请选择一条日志查看详情。",
+    loading: "正在读取日志详情 …",
+    unavailable: "日志详情已从当前进程内存释放，请查看日志文件。",
+    failed: "日志详情读取失败。",
   },
   feedback: {
     stream_failed: "日志流连接失败。",

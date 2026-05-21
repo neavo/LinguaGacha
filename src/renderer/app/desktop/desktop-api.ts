@@ -1,9 +1,9 @@
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { normalize_core_api_base_url } from "@core/api/core-api-endpoint";
-import { normalize_log_level, type LogLevel } from "@shared/log";
+import { normalize_log_level, type LogDetail, type LogEvent, type LogLevel } from "@shared/log";
 import type { ApiErrorPayload, AppErrorCode } from "@shared/error";
 
-export type { LogLevel };
+export type { LogDetail, LogEvent, LogLevel };
 
 type ApiEnvelope<data_type> = {
   ok: boolean;
@@ -34,14 +34,6 @@ export type GithubReleaseUpdate = {
 type EventSourceJsonEvent = {
   type: string;
   [key: string]: unknown;
-};
-
-export type LogEvent = {
-  id: string;
-  sequence: number;
-  created_at: string;
-  level: LogLevel;
-  message: string;
 };
 
 type SemanticVersion = {
@@ -478,6 +470,7 @@ async function* open_json_event_source_stream(args: {
   }
 }
 
+// 日志流只接受轻量事件字段，缺失预览契约时直接丢弃该条边界数据
 function normalize_log_event(payload: EventSourceJsonEvent): LogEvent | null {
   if (typeof payload.id !== "string") {
     return null;
@@ -488,7 +481,13 @@ function normalize_log_event(payload: EventSourceJsonEvent): LogEvent | null {
   if (typeof payload.created_at !== "string") {
     return null;
   }
-  if (typeof payload.message !== "string") {
+  if (typeof payload.source !== "string") {
+    return null;
+  }
+  if (typeof payload.message_preview !== "string") {
+    return null;
+  }
+  if (typeof payload.message_length !== "number") {
     return null;
   }
 
@@ -497,7 +496,46 @@ function normalize_log_event(payload: EventSourceJsonEvent): LogEvent | null {
     sequence: payload.sequence,
     created_at: payload.created_at,
     level: normalize_log_level(payload.level),
-    message: payload.message,
+    source: payload.source,
+    message_preview: payload.message_preview,
+    message_length: payload.message_length,
+  };
+}
+
+/**
+ * 日志详情是按需读取的完整正文，边界归一后才交给页面编辑器显示
+ */
+function normalize_log_detail(payload: unknown): LogDetail | null {
+  if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
+    return null;
+  }
+  const detail = payload as Record<string, unknown>;
+  if (
+    typeof detail["id"] !== "string" ||
+    typeof detail["sequence"] !== "number" ||
+    typeof detail["created_at"] !== "string" ||
+    typeof detail["source"] !== "string" ||
+    typeof detail["message"] !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    id: detail["id"],
+    sequence: detail["sequence"],
+    created_at: detail["created_at"],
+    level: normalize_log_level(detail["level"]),
+    source: detail["source"],
+    message: detail["message"],
+    error_message:
+      typeof detail["error_message"] === "string" ? detail["error_message"] : undefined,
+    stack: typeof detail["stack"] === "string" ? detail["stack"] : undefined,
+    context:
+      typeof detail["context"] === "object" &&
+      detail["context"] !== null &&
+      !Array.isArray(detail["context"])
+        ? { ...(detail["context"] as Record<string, unknown>) }
+        : undefined,
   };
 }
 
@@ -511,6 +549,14 @@ export async function* open_log_stream(): AsyncIterable<LogEvent> {
       yield log_event;
     }
   }
+}
+
+/**
+ * 读取当前进程内日志详情；详情被淘汰或载荷异常时统一返回 null
+ */
+export async function read_log_detail(id: string): Promise<LogDetail | null> {
+  const payload = await api_fetch<{ detail?: unknown }>("/api/logs/detail", { id });
+  return normalize_log_detail(payload.detail);
 }
 
 export async function open_external_url(url: string): Promise<void> {
