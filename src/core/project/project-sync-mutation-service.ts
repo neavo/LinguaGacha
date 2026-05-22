@@ -3,6 +3,11 @@ import type { AppSettingService } from "../app/app-setting-service";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import { FileFormatService } from "../file/file-format-service";
+import {
+  build_source_file_parse_failure,
+  log_source_file_parse_failures,
+} from "../file/source-file-parse-failure-reporter";
+import type { LogManager } from "../log/log-manager";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import { ProjectMutationCoordinator } from "./project-mutation-coordinator";
 import type { ProjectOperationGate } from "./project-operation-gate";
@@ -22,6 +27,7 @@ import {
 } from "../../base/setting";
 import type { ProjectChangePublisher } from "./project-change-publisher";
 import type { ProjectDataSection, ProjectMutationResult } from "../../shared/project/event";
+import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import {
   build_analysis_progress_snapshot,
   build_analysis_status_summary,
@@ -37,6 +43,7 @@ import {
 import { count_analysis_glossary_candidates } from "../../shared/analysis-candidate";
 import { is_task_skipped_item_status } from "../../shared/task";
 import * as AppErrors from "../../shared/error";
+import { t_main_log } from "../log/log-text";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
@@ -53,6 +60,11 @@ type ImportWorkbenchFileCommand = {
 type ImportWorkbenchFileDraft = ImportWorkbenchFileCommand & {
   parsed_items: JsonRecord[]; // parsed_items 是格式解析产物，不携带 item id 或当前项目快照
   file_type: string; // file_type 只来自解析结果，提交阶段再绑定 asset 顺序
+};
+
+type ImportWorkbenchFileParseResult = {
+  file_drafts: ImportWorkbenchFileDraft[]; // file_drafts 只包含最终可进入 mutation 的解析成功文件
+  failed_files: SourceFileParseFailureRecord[]; // failed_files 汇总支持格式但读取或解析失败的源文件
 };
 
 type TranslationResetParsedItemDraft = {
@@ -76,6 +88,8 @@ export class ProjectSyncMutationService {
 
   private readonly native_fs: NativeFs; // native_fs 只用于显式项目路径存在性校验，.lg 写入仍归 ProjectDatabase
 
+  private readonly log_manager: Pick<LogManager, "warning"> | null; // log_manager 记录批量文件解析失败明细，不影响事务边界
+
   /**
    * 注入 database、互斥门闩和会话状态，保持写库边界可测试
    */
@@ -86,6 +100,7 @@ export class ProjectSyncMutationService {
     project_change_publisher: ProjectChangePublisher | null = null,
     app_setting_service: AppSettingService | null = null,
     native_fs: NativeFs = default_native_fs,
+    log_manager: Pick<LogManager, "warning"> | null = null,
   ) {
     this.database = database;
     this.project_operation_gate = project_operation_gate;
@@ -93,6 +108,7 @@ export class ProjectSyncMutationService {
     this.mutation_coordinator = new ProjectMutationCoordinator(database, project_change_publisher);
     this.app_setting_service = app_setting_service;
     this.native_fs = native_fs;
+    this.log_manager = log_manager;
   }
 
   /**
@@ -112,9 +128,10 @@ export class ProjectSyncMutationService {
       if (file_commands.length === 0) {
         throw new AppErrors.RequestValidationError();
       }
-      const file_drafts = await this.parse_import_file_commands(file_commands);
+      const parse_result = await this.parse_import_file_commands(file_commands);
+      this.assert_workbench_import_has_parseable_files(parse_result);
 
-      return this.mutation_coordinator.commit_project_mutation({
+      const mutation_result = await this.mutation_coordinator.commit_project_mutation({
         projectPath: project_path,
         expectedSectionRevisions: request["expected_section_revisions"],
         sections: ["files", "items", "analysis"],
@@ -144,7 +161,7 @@ export class ProjectSyncMutationService {
             asset_records.reduce((max_sort_order, record) => {
               return Math.max(max_sort_order, record.sort_order);
             }, -1) + 1;
-          for (const file of file_drafts) {
+          for (const file of parse_result.file_drafts) {
             // 新增与替换共用同一条解析结果绑定流程，避免维护两套 item id / 预过滤逻辑。
             const target_key = file.target_rel_path.toLowerCase();
             if (incoming_paths.has(target_key)) {
@@ -266,6 +283,8 @@ export class ProjectSyncMutationService {
           updatedSections: ["files", "items", "analysis"],
         },
       });
+      this.log_workbench_import_parse_failures(parse_result.failed_files);
+      return this.with_parse_failures(mutation_result, parse_result.failed_files);
     });
   }
 
@@ -728,21 +747,80 @@ export class ProjectSyncMutationService {
    */
   private async parse_import_file_commands(
     file_commands: ImportWorkbenchFileCommand[],
-  ): Promise<ImportWorkbenchFileDraft[]> {
+  ): Promise<ImportWorkbenchFileParseResult> {
     const format_service = this.create_format_service();
     const file_drafts: ImportWorkbenchFileDraft[] = [];
+    const failed_files: SourceFileParseFailureRecord[] = [];
     for (const file of file_commands) {
-      const parsed_items = await format_service.parse_asset(
-        file.target_rel_path,
-        this.native_fs.read_file(file.source_path),
-      );
+      let parsed_items: Item[];
+      try {
+        parsed_items = await format_service.parse_asset(
+          file.target_rel_path,
+          this.native_fs.read_file(file.source_path),
+        );
+      } catch (error) {
+        failed_files.push(
+          build_source_file_parse_failure({
+            source_path: file.source_path,
+            rel_path: file.target_rel_path,
+            error,
+          }),
+        );
+        continue;
+      }
       file_drafts.push({
         ...file,
         parsed_items: parsed_items.map((item) => Item.from_json(item).to_json()),
         file_type: format_service.pick_file_type(parsed_items),
       });
     }
-    return file_drafts;
+    return { file_drafts, failed_files };
+  }
+
+  /**
+   * 所有提交文件都解析失败时阻断 mutation，避免创建一次无实际文件变化的项目事件。
+   */
+  private assert_workbench_import_has_parseable_files(
+    result: ImportWorkbenchFileParseResult,
+  ): void {
+    if (result.file_drafts.length > 0 || result.failed_files.length === 0) {
+      return;
+    }
+    this.log_workbench_import_parse_failures(result.failed_files);
+    throw new AppErrors.FileParseFailedError({
+      public_details: { failed_files: result.failed_files as unknown as ApiJsonValue },
+      diagnostic_context: { reason: "all_workbench_import_files_parse_failed" },
+    });
+  }
+
+  /**
+   * mutation 成功时只在确实跳过文件后附带失败明细，保持普通 mutation payload 简洁。
+   */
+  private with_parse_failures(
+    result: ProjectMutationResult,
+    failed_files: SourceFileParseFailureRecord[],
+  ): ProjectMutationResult {
+    if (failed_files.length === 0) {
+      return result;
+    }
+    return {
+      ...result,
+      failed_files,
+    };
+  }
+
+  /**
+   * 工作台导入解析失败写入日志，日志内容与页面 Toast 使用同一格式。
+   */
+  private log_workbench_import_parse_failures(
+    failed_files: SourceFileParseFailureRecord[],
+  ): void {
+    log_source_file_parse_failures({
+      failures: failed_files,
+      log_manager: this.log_manager,
+      source: "workbench-import",
+      text: t_main_log,
+    });
   }
 
   /**

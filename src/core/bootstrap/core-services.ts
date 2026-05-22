@@ -112,6 +112,8 @@ export class CoreServices {
       this.project_session_state,
       this.project_change_publisher,
       this.app_setting_service,
+      undefined,
+      this.log_manager,
     );
     this.proofreading_service = new ProofreadingService(
       this.database,
@@ -167,7 +169,7 @@ export class CoreServices {
       this.task_runtime_state,
       this.project_session_state,
     );
-    this.file_preview_service = new FilePreviewService(this.app_setting_service);
+    this.file_preview_service = new FilePreviewService(this.app_setting_service, this.log_manager);
     this.file_export_service = new FileExportService(
       this.database,
       this.app_setting_service,

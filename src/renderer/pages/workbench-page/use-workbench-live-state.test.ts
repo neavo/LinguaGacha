@@ -967,6 +967,82 @@ describe("useWorkbenchLiveState", () => {
     expect(toast_fixture.current.push_toast).not.toHaveBeenCalled();
   });
 
+  it("批量添加存在解析失败文件时展示完整跳过明细并继续处理成功文件", async () => {
+    vi.mocked(api_fetch).mockResolvedValueOnce({
+      files: [
+        {
+          source_path: "E:/demo/new.txt",
+          target_rel_path: "new.txt",
+          file_type: "TXT",
+          parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
+        },
+      ],
+      failed_files: [
+        {
+          source_path: "E:/demo/broken.json",
+          rel_path: "broken.json",
+          filename: "broken.json",
+          code: "file.parse_failed",
+          message_key: "app.error.file.parse_failed.message",
+        },
+        {
+          source_path: "E:/demo/dialogue.epub",
+          rel_path: "dialogue.epub",
+          filename: "dialogue.epub",
+          code: "file.invalid_structure",
+          message_key: "app.error.file.invalid_structure.message",
+        },
+      ],
+    });
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_store: {
+        getState: () => create_project_store_state({}),
+      },
+    };
+    await render_hook();
+
+    await act(async () => {
+      await latest_state?.request_add_files_from_paths(["E:/demo/new.txt", "E:/demo/broken.json"]);
+    });
+
+    expect(latest_state?.dialog_state.kind).toBe("inherit-import-files");
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
+      "warning",
+      [
+        "broken.json - app.error.file.parse_failed.message",
+        "dialogue.epub - app.error.file.invalid_structure.message",
+      ].join("\n"),
+    );
+  });
+
+  it("批量添加全部文件解析失败时展示阻断明细且不再叠加泛错误", async () => {
+    vi.mocked(api_fetch).mockResolvedValueOnce({
+      files: [],
+      failed_files: [
+        {
+          source_path: "E:/demo/broken.json",
+          rel_path: "broken.json",
+          filename: "broken.json",
+          code: "file.parse_failed",
+          message_key: "app.error.file.parse_failed.message",
+        },
+      ],
+    });
+    await render_hook();
+
+    await act(async () => {
+      await latest_state?.request_add_files_from_paths(["E:/demo/broken.json"]);
+    });
+
+    expect(latest_state?.dialog_state.kind).toBeNull();
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledTimes(1);
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
+      "error",
+      "broken.json - app.error.file.parse_failed.message",
+    );
+  });
+
   it("批量添加没有有效文件时只提示一次错误", async () => {
     vi.mocked(api_fetch).mockResolvedValue({
       files: [

@@ -177,6 +177,7 @@ type ProjectReadSectionsPayload = {
 export type ProjectMutationResultPayload = {
   accepted?: unknown;
   changes?: unknown;
+  failed_files?: unknown;
 };
 
 export type ProjectMutationResult = {

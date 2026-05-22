@@ -8,6 +8,7 @@ import { ProjectDatabase } from "../database/database-operations";
 import type { ApiJsonValue } from "../api/api-types";
 import { TaskRuntimeState } from "../engine/runtime/task-runtime-state";
 import { FileFormatService } from "../file/file-format-service";
+import type { LogManager } from "../log/log-manager";
 import { ProjectOperationGate } from "./project-operation-gate";
 import { ProjectSyncMutationService } from "./project-sync-mutation-service";
 import type { ProjectChangePublisher } from "./project-change-publisher";
@@ -27,7 +28,10 @@ function project_path(name: string): string {
 /**
  * 为每个用例创建独立 .lg 和服务实例，避免 revision / asset 顺序互相污染
  */
-function create_service(project_change_publisher?: ProjectChangePublisher | null): {
+function create_service(
+  project_change_publisher?: ProjectChangePublisher | null,
+  log_manager: Pick<LogManager, "warning"> | null = create_log_manager(),
+): {
   database: ProjectDatabase;
   service: ProjectSyncMutationService;
   task_runtime_state: TaskRuntimeState;
@@ -54,10 +58,19 @@ function create_service(project_change_publisher?: ProjectChangePublisher | null
       project_operation_gate,
       session_state,
       publisher,
+      null,
+      undefined,
+      log_manager,
     ),
     task_runtime_state,
     lg_path,
   };
+}
+
+function create_log_manager(): Pick<LogManager, "warning"> {
+  return {
+    warning: vi.fn(),
+  } as unknown as Pick<LogManager, "warning">;
 }
 
 function create_test_project_change_publisher(
@@ -558,6 +571,84 @@ describe("ProjectSyncMutationService", () => {
       create_persistent_item({ item_id: 2, src: "新", file_path: "b.txt", row_number: 0 }),
     ]);
     expect(database.read_asset_content(lg_path, "a.txt")?.toString("utf-8")).toBe("旧");
+    database.close();
+  });
+
+  it("导入工作台文件时跳过最终解析失败文件并继续写入成功文件", async () => {
+    const log_manager = create_log_manager();
+    const { database, service, lg_path } = create_service(undefined, log_manager);
+    const valid_source = project_path("valid.txt");
+    const broken_json = project_path("broken.json");
+    fs.writeFileSync(valid_source, "新", "utf-8");
+    fs.writeFileSync(broken_json, "{", "utf-8");
+
+    const ack = await service.import_workbench_files({
+      files: [
+        { source_path: valid_source, target_rel_path: "valid.txt" },
+        { source_path: broken_json, target_rel_path: "broken.json" },
+      ],
+      conflict_action: "replace",
+      project_settings: { source_language: "JA", target_language: "ZH" },
+      expected_section_revisions: { files: 0, items: 0, analysis: 0 },
+    });
+
+    expect(ack).toMatchObject({
+      accepted: true,
+      failed_files: [
+        {
+          source_path: broken_json,
+          rel_path: "broken.json",
+          filename: "broken.json",
+          code: "file.parse_failed",
+          message_key: "app.error.file.parse_failed.message",
+        },
+      ],
+    });
+    expect(
+      database.execute({ name: "getAllAssetRecords", args: { projectPath: lg_path } }),
+    ).toEqual([{ path: "valid.txt", sort_order: 0 }]);
+    expect(log_manager.warning).toHaveBeenCalledWith(
+      "broken.json - 文件内容解析失败 …",
+      expect.objectContaining({ source: "workbench-import" }),
+    );
+    database.close();
+  });
+
+  it("导入工作台文件全部解析失败时不写入工程并返回失败明细", async () => {
+    const log_manager = create_log_manager();
+    const { database, service, lg_path } = create_service(undefined, log_manager);
+    const broken_json = project_path("broken.json");
+    fs.writeFileSync(broken_json, "{", "utf-8");
+
+    await expect(
+      service.import_workbench_files({
+        files: [{ source_path: broken_json, target_rel_path: "broken.json" }],
+        conflict_action: "replace",
+        project_settings: { source_language: "JA", target_language: "ZH" },
+        expected_section_revisions: { files: 0, items: 0, analysis: 0 },
+      }),
+    ).rejects.toMatchObject({
+      code: "file.parse_failed",
+      public_details: {
+        failed_files: [
+          {
+            source_path: broken_json,
+            rel_path: "broken.json",
+            filename: "broken.json",
+            code: "file.parse_failed",
+            message_key: "app.error.file.parse_failed.message",
+          },
+        ],
+      },
+    });
+
+    expect(
+      database.execute({ name: "getAllAssetRecords", args: { projectPath: lg_path } }),
+    ).toEqual([]);
+    expect(log_manager.warning).toHaveBeenCalledWith(
+      "broken.json - 文件内容解析失败 …",
+      expect.objectContaining({ source: "workbench-import" }),
+    );
     database.close();
   });
 

@@ -22,6 +22,7 @@ flowchart LR
 - 日志窗口只把 `log.appended` 的轻量事件放入列表状态；完整正文由 `desktop-api.ts` 通过 `/api/logs/detail` 按当前选中行懒加载，不能进入列表筛选、排序或批量渲染路径。
 - `DesktopApiError` 是 renderer 消费 Core / 本地网络失败的唯一错误类型；页面根据 code/status/action 决定刷新、重试、禁用或跳转，不解析后端原始异常文本。
 - 普通页面展示用户可见错误时走 `src/renderer/app/ui-runtime/error-message.ts`；toast、dialog 和空状态不得直接显示 `Error.message`。
+- 项目创建和工作台添加文件消费后端 `failed_files` 时必须使用统一的源文件解析失败 Toast：部分成功用跳过提示继续流程，全部候选解析失败用阻断提示；不支持后缀不进入失败明细，仍按“没有可导入文件”处理。
 - 可见文案从 `src/shared/i18n` 解析；renderer 的 React Provider 和富文本渲染适配在 `src/renderer/app/locale`。
 
 ## 2. 共享运行态写入口

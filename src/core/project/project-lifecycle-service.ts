@@ -32,6 +32,11 @@ import {
 import { get_runtime_section_revision } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
 import * as AppErrors from "../../shared/error";
+import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
+import {
+  build_source_file_parse_failure,
+  log_source_file_parse_failures,
+} from "../file/source-file-parse-failure-reporter";
 
 // 公开 source-files 只枚举当前文件域已经支持的格式，避免新建工程误收未知文件
 const SUPPORTED_SOURCE_EXTENSIONS = new Set([
@@ -57,6 +62,7 @@ interface CreateCommitFileRecord {
 
 interface CreateCommitParsedDraft {
   files: CreateCommitFileRecord[]; // files 是后端从 source_paths 解析出的可信 asset 写入清单
+  failed_files: SourceFileParseFailureRecord[]; // failed_files 只记录支持格式但解析失败的源文件
   file_state: Record<string, unknown>; // file_state 只供后端预过滤算法识别文件类型和相对路径
   items: Record<string, ProjectItemPublicRecord>; // items 是后端生成的完整公开 DTO 镜像
 }
@@ -222,6 +228,7 @@ export class ProjectLifecycleService {
       source_paths,
       project_settings,
     );
+    this.assert_create_commit_has_importable_files(parsed_draft);
     // prefilter_output 是将可信草稿转成持久项目事实的唯一派生结果。
     const prefilter_output = this.compute_create_project_prefilter_output({
       draft: parsed_draft,
@@ -250,8 +257,9 @@ export class ProjectLifecycleService {
     ]);
 
     const response = await this.load_project({ path: project_path });
+    this.log_create_commit_parse_failures(parsed_draft.failed_files);
     this.log_loaded_default_presets(default_preset_result.loaded_names);
-    return response;
+    return this.build_create_project_response(response, parsed_draft.failed_files);
   }
 
   /**
@@ -297,25 +305,40 @@ export class ProjectLifecycleService {
     // file_state 只保留后端预过滤所需字段，不能携带源文件绝对路径进入项目事实。
     const file_state: Record<string, unknown> = {};
     const items: Record<string, ProjectItemPublicRecord> = {};
+    const failed_files: SourceFileParseFailureRecord[] = [];
     // next_item_id 由后端顺序分配，避免 renderer 伪造数据库主键。
     let next_item_id = 1;
+    let next_sort_index = 0;
 
-    for (const [sort_index, source_file] of source_files.entries()) {
-      const parsed_items = await format_service.parse_asset(
-        source_file.rel_path,
-        this.native_fs.read_file(source_file.source_path),
-      );
+    for (const source_file of source_files) {
+      let parsed_items: Item[];
+      try {
+        parsed_items = await format_service.parse_asset(
+          source_file.rel_path,
+          this.native_fs.read_file(source_file.source_path),
+        );
+      } catch (error) {
+        failed_files.push(
+          build_source_file_parse_failure({
+            source_path: source_file.source_path,
+            rel_path: source_file.rel_path,
+            error,
+          }),
+        );
+        continue;
+      }
       const file_type = format_service.pick_file_type(parsed_items);
       files.push({
         rel_path: source_file.rel_path,
         source_path: source_file.source_path,
-        sort_index,
+        sort_index: next_sort_index,
       });
       file_state[source_file.rel_path] = {
         rel_path: source_file.rel_path,
         file_type,
-        sort_index,
+        sort_index: next_sort_index,
       };
+      next_sort_index += 1;
       for (const parsed_item of parsed_items) {
         const public_item = this.normalize_public_item({
           ...Item.from_json(parsed_item).to_json(),
@@ -327,7 +350,51 @@ export class ProjectLifecycleService {
       }
     }
 
-    return { files, file_state, items };
+    return { files, failed_files, file_state, items };
+  }
+
+  /**
+   * 只在存在候选源文件且全部解析失败时阻断；空工程创建仍保留原有测试和内部语义。
+   */
+  private assert_create_commit_has_importable_files(draft: CreateCommitParsedDraft): void {
+    if (draft.files.length > 0 || draft.failed_files.length === 0) {
+      return;
+    }
+    this.log_create_commit_parse_failures(draft.failed_files);
+    throw new AppErrors.FileParseFailedError({
+      public_details: { failed_files: draft.failed_files as unknown as ApiJsonValue },
+      diagnostic_context: { reason: "all_source_files_parse_failed" },
+    });
+  }
+
+  /**
+   * 新建工程成功响应只在确实跳过文件时附带失败明细，避免成功空列表污染旧调用点。
+   */
+  private build_create_project_response(
+    response: Record<string, ApiJsonValue>,
+    failed_files: SourceFileParseFailureRecord[],
+  ): Record<string, ApiJsonValue> {
+    if (failed_files.length === 0) {
+      return response;
+    }
+    return {
+      ...response,
+      failed_files: failed_files as unknown as ApiJsonValue,
+    };
+  }
+
+  /**
+   * 新建工程解析失败日志和 Toast 使用同一套逐文件原因，便于用户按日志复核。
+   */
+  private log_create_commit_parse_failures(
+    failed_files: SourceFileParseFailureRecord[],
+  ): void {
+    log_source_file_parse_failures({
+      failures: failed_files,
+      log_manager: this.log_manager,
+      source: "project-lifecycle",
+      text: t_main_log,
+    });
   }
 
   /**

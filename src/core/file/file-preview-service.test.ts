@@ -2,11 +2,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 
 import { write_epub_fixture } from "../../test/epub-fixture";
 import type { AppSettingService } from "../app/app-setting-service";
+import type { LogManager } from "../log/log-manager";
 import { FilePreviewService } from "./file-preview-service";
 
 let temp_dir = "";
@@ -32,14 +33,19 @@ function create_setting_service(): AppSettingService {
 }
 
 describe("FilePreviewService", () => {
-  it("工作台预解析返回成功文件和结构化失败文件", async () => {
+  it("工作台预解析忽略不支持后缀并返回支持格式的失败文件", async () => {
     const source_file = path.join(temp_dir, "script.txt");
+    const broken_json = path.join(temp_dir, "broken.json");
+    const ignored_file = path.join(temp_dir, "ignore.bin");
     fs.writeFileSync(source_file, "原文", "utf-8");
-    const service = new FilePreviewService(create_setting_service());
+    fs.writeFileSync(broken_json, "{", "utf-8");
+    fs.writeFileSync(ignored_file, "noise", "utf-8");
+    const log_manager = create_log_manager();
+    const service = new FilePreviewService(create_setting_service(), log_manager);
 
     await expect(
       service.parse_workbench_file({
-        source_paths: [source_file, path.join(temp_dir, "missing.bin")],
+        source_paths: [source_file, broken_json, ignored_file],
       }),
     ).resolves.toEqual({
       files: [
@@ -51,13 +57,18 @@ describe("FilePreviewService", () => {
       ],
       failed_files: [
         {
-          source_path: path.join(temp_dir, "missing.bin"),
-          filename: "missing.bin",
-          code: "file.unsupported_format",
-          message_key: "app.error.file.unsupported_format.message",
+          source_path: broken_json,
+          rel_path: "broken.json",
+          filename: "broken.json",
+          code: "file.parse_failed",
+          message_key: "app.error.file.parse_failed.message",
         },
       ],
     });
+    expect(log_manager.warning).toHaveBeenCalledWith(
+      "broken.json - 文件内容解析失败 …",
+      expect.objectContaining({ source: "file-preview" }),
+    );
   });
 
   it("工作台预解析 EPUB 时直接返回解析结果", async () => {
@@ -115,6 +126,7 @@ describe("FilePreviewService", () => {
       failed_files: [
         {
           source_path: epub_file,
+          rel_path: "broken.epub",
           filename: "broken.epub",
           code: "file.parse_failed",
           message_key: "app.error.file.parse_failed.message",
@@ -145,4 +157,32 @@ describe("FilePreviewService", () => {
       [2, "章节", "EPUB", "book.epub"],
     ]);
   });
+
+  it("新建工程预览跳过解析失败文件并保留成功文件", async () => {
+    const txt_file = path.join(temp_dir, "script.txt");
+    const broken_json = path.join(temp_dir, "broken.json");
+    fs.writeFileSync(txt_file, "文本", "utf-8");
+    fs.writeFileSync(broken_json, "{", "utf-8");
+    const service = new FilePreviewService(create_setting_service(), create_log_manager());
+
+    const result = await service.build_create_preview({ source_paths: [txt_file, broken_json] });
+    const draft = result["draft"] as { files: Array<{ rel_path: string }> };
+
+    expect(draft.files.map((file) => file.rel_path)).toEqual(["script.txt"]);
+    expect(result["failed_files"]).toEqual([
+      {
+        source_path: broken_json,
+        rel_path: "broken.json",
+        filename: "broken.json",
+        code: "file.parse_failed",
+        message_key: "app.error.file.parse_failed.message",
+      },
+    ]);
+  });
 });
+
+function create_log_manager(): Pick<LogManager, "warning"> {
+  return {
+    warning: vi.fn(),
+  } as unknown as Pick<LogManager, "warning">;
+}
