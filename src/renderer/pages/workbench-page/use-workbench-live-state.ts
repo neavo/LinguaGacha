@@ -39,10 +39,14 @@ import {
   normalize_project_mutation_result,
   type ProjectMutationResultPayload,
 } from "@/app/desktop/desktop-runtime-context";
-import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
+import { useI18n } from "@/app/locale/locale-provider";
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { normalize_source_paths } from "@/lib/source-paths";
+import {
+  format_source_file_parse_failure_error_toast,
+  format_source_file_parse_failure_toast,
+} from "@/lib/source-file-parse-failure-toast";
 import type {
   AnalysisTaskConfirmState,
   AnalysisTaskMetrics,
@@ -86,26 +90,6 @@ const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
 };
 
 const WORKBENCH_REQUIRED_SECTIONS: ProjectDataSection[] = ["project", "files", "items", "analysis"];
-
-type WorkbenchParseFailedFile = {
-  filename: string;
-  code: string;
-  message_key: LocaleKey;
-};
-
-function normalize_parse_failed_file(value: unknown): WorkbenchParseFailedFile | null {
-  if (typeof value !== "object" || value === null) {
-    return null;
-  }
-  const record = value as Record<string, unknown>;
-  const filename = String(record["filename"] ?? "").trim();
-  const code = String(record["code"] ?? "").trim();
-  const message_key = String(record["message_key"] ?? `app.error.${code}.message`).trim();
-  if (filename === "" || code === "") {
-    return null;
-  }
-  return { filename, code, message_key: message_key as LocaleKey };
-}
 
 type PendingImportFilesRequest = {
   parsed_files: WorkbenchFileParsePreview[];
@@ -1231,12 +1215,13 @@ export function useWorkbenchLiveState(
       plan: WorkbenchProjectMutationPlan,
       request: (body: Record<string, unknown>) => Promise<ProjectMutationResultPayload>,
       barrier_checkpoint: ProjectPagesBarrierCheckpoint | null,
-    ): Promise<void> => {
+    ): Promise<ProjectMutationResultPayload> => {
       set_is_mutation_running(true);
       set_file_op_running(true);
 
       try {
-        const mutation_result = normalize_project_mutation_result(await request(plan.requestBody));
+        const payload = await request(plan.requestBody);
+        const mutation_result = normalize_project_mutation_result(payload);
         await apply_project_mutation_result(mutation_result);
         await refresh_task();
         if (options.waitForProjectPagesBarrier !== undefined) {
@@ -1244,6 +1229,7 @@ export function useWorkbenchLiveState(
             checkpoint: barrier_checkpoint,
           });
         }
+        return payload;
       } catch (error) {
         set_file_op_running(false);
         void refresh_project_runtime().catch(() => {});
@@ -1349,7 +1335,7 @@ export function useWorkbenchLiveState(
         },
         inheritance_mode,
       });
-      await run_project_file_mutation(
+      const import_payload = await run_project_file_mutation(
         import_plan,
         async (body) => {
           return await api_fetch<ProjectMutationResultPayload>(
@@ -1359,17 +1345,26 @@ export function useWorkbenchLiveState(
         },
         pending_request.barrier_checkpoint,
       );
+      const failure_toast = format_source_file_parse_failure_toast({
+        value: (import_payload as { failed_files?: unknown }).failed_files,
+        text: t,
+      });
+      if (failure_toast !== null) {
+        push_toast("warning", failure_toast);
+      }
       set_pending_import_files_request(null);
       set_dialog_state(close_dialog_state());
     },
     [
       open_import_conflict_dialog,
       project_store,
+      push_toast,
       run_project_file_mutation,
       settings_snapshot.mtool_optimizer_enable,
       settings_snapshot.skip_duplicate_source_text_enable,
       settings_snapshot.source_language,
       task_snapshot,
+      t,
     ],
   );
 
@@ -1473,6 +1468,7 @@ export function useWorkbenchLiveState(
 
       const barrier_checkpoint = options.createProjectPagesBarrierCheckpoint?.() ?? null;
       const parsed_files: WorkbenchFileParsePreview[] = [];
+      let parse_failure_toast_shown = false; // parse_failure_toast_shown 防止全失败时再叠加泛错误
 
       await run_modal_progress_toast({
         message: t("workbench_page.feedback.add_file_loading_toast"),
@@ -1485,24 +1481,6 @@ export function useWorkbenchLiveState(
           );
           const preview_files = Array.isArray(payload.files) ? payload.files : [];
           const raw_failed_files = (payload as { failed_files?: unknown }).failed_files;
-          const failed_files = Array.isArray(raw_failed_files)
-            ? raw_failed_files
-                .map((item) => normalize_parse_failed_file(item))
-                .filter((item): item is WorkbenchParseFailedFile => item !== null)
-            : [];
-          if (failed_files.length > 0) {
-            const failed_file = failed_files[0];
-            if (failed_file !== undefined) {
-              const reason = t(failed_file.message_key);
-              push_toast(
-                "warning",
-                t("workbench_page.feedback.file_parse_failed", {
-                  FILENAME: failed_file.filename,
-                  REASON: reason,
-                }),
-              );
-            }
-          }
 
           for (const preview_file of preview_files) {
             if (typeof preview_file !== "object" || preview_file === null) {
@@ -1524,6 +1502,15 @@ export function useWorkbenchLiveState(
               target_rel_path: parsed_file.target_rel_path.trim(),
             });
           }
+
+          const failure_toast = format_source_file_parse_failure_toast({
+            value: raw_failed_files,
+            text: t,
+          });
+          if (failure_toast !== null) {
+            push_toast(parsed_files.length > 0 ? "warning" : "error", failure_toast);
+            parse_failure_toast_shown = true;
+          }
         },
       });
 
@@ -1532,6 +1519,9 @@ export function useWorkbenchLiveState(
         parsed_files,
       });
       if (import_preview.importable_files.length === 0) {
+        if (parsed_files.length === 0 && parse_failure_toast_shown) {
+          return;
+        }
         push_toast("error", t("workbench_page.feedback.no_valid_file"));
         return;
       }
@@ -1773,6 +1763,12 @@ export function useWorkbenchLiveState(
         }
       }
     } catch (error) {
+      const parse_failure_toast = format_source_file_parse_failure_error_toast({ error, text: t });
+      if (parse_failure_toast !== null) {
+        push_toast("error", parse_failure_toast);
+        set_dialog_submitting(false);
+        return;
+      }
       const fallback_message =
         current_dialog_state.kind === "generate-translation"
           ? t("workbench_page.feedback.generate_translation_failed")
@@ -1829,6 +1825,12 @@ export function useWorkbenchLiveState(
     try {
       await execute_import_files_request(pending_import_files_request, "none");
     } catch (error) {
+      const parse_failure_toast = format_source_file_parse_failure_error_toast({ error, text: t });
+      if (parse_failure_toast !== null) {
+        push_toast("error", parse_failure_toast);
+        set_dialog_submitting(false);
+        return;
+      }
       push_toast(
         "error",
         resolve_visible_error_message(error, t, t("workbench_page.feedback.file_action_failed")),

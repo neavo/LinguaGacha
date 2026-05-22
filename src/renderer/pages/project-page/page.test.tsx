@@ -3,6 +3,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { DesktopApiError } from "@/app/desktop/desktop-api";
 import { ProjectPage } from "@/pages/project-page/page";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
@@ -44,6 +45,8 @@ const I18N_TEXT_BY_KEY: Record<string, string> = {
   "app.action.reset": "重置",
   "app.action.select_file": "选择文件",
   "app.action.select_folder": "选择文件夹",
+  "app.error.file.invalid_structure.message": "文件结构不符合格式要求 …",
+  "app.error.file.parse_failed.message": "文件内容解析失败 …",
   "project_page.create.action": "创建工程",
   "project_page.create.default_preset_loaded": "已自动加载默认预设：{NAMES} …",
   "project_page.create.default_presets.analysis_prompt": "分析提示词",
@@ -86,7 +89,12 @@ const I18N_TEXT_BY_KEY: Record<string, string> = {
 vi.mock("@/app/locale/locale-provider", () => {
   return {
     useI18n: () => ({
-      t: (key: string) => I18N_TEXT_BY_KEY[key] ?? key,
+      t: (key: string, params: Record<string, string> = {}) => {
+        const template = I18N_TEXT_BY_KEY[key] ?? key;
+        return Object.entries(params).reduce((text, [name, value]) => {
+          return text.replaceAll(`{${name}}`, value);
+        }, template);
+      },
     }),
   };
 });
@@ -422,6 +430,92 @@ describe("ProjectPage", () => {
     expect(api_fetch_mock).not.toHaveBeenCalledWith(
       "/api/project/create-preview",
       expect.anything(),
+    );
+  });
+
+  it("新建工程成功但跳过解析失败文件时展示完整明细 Toast", async () => {
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/project/source-files") {
+        return { source_files: ["E:\\Source\\demo.txt", "E:\\Source\\broken.json"] };
+      }
+      if (path === "/api/project/create-commit") {
+        return {
+          project: { path: "E:\\Source\\demo_20260428_120000.lg", loaded: true },
+          failed_files: [
+            {
+              source_path: "E:\\Source\\broken.json",
+              rel_path: "broken.json",
+              filename: "broken.json",
+              code: "file.parse_failed",
+              message_key: "app.error.file.parse_failed.message",
+            },
+            {
+              source_path: "E:\\Source\\dialogue.epub",
+              rel_path: "dialogue.epub",
+              filename: "dialogue.epub",
+              code: "file.invalid_structure",
+              message_key: "app.error.file.invalid_structure.message",
+            },
+          ],
+        };
+      }
+      if (path === "/api/settings/recent-projects/add") {
+        return { settings: { recent_projects: [] } };
+      }
+
+      return {};
+    });
+    await mount_page();
+
+    await create_project_from_selected_source();
+
+    expect(push_toast_mock).toHaveBeenCalledWith(
+      "warning",
+      [
+        "broken.json - 文件内容解析失败 …",
+        "dialogue.epub - 文件结构不符合格式要求 …",
+      ].join("\n"),
+    );
+  });
+
+  it("新建工程全部源文件解析失败时展示阻断明细且不叠加泛失败", async () => {
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/project/source-files") {
+        return { source_files: ["E:\\Source\\broken.json"] };
+      }
+      if (path === "/api/project/create-commit") {
+        throw new DesktopApiError({
+          code: "file.parse_failed",
+          details: {
+            failed_files: [
+              {
+                source_path: "E:\\Source\\broken.json",
+                rel_path: "broken.json",
+                filename: "broken.json",
+                code: "file.parse_failed",
+                message_key: "app.error.file.parse_failed.message",
+              },
+            ],
+          },
+          message: "app.error.file.parse_failed.message",
+          message_key: "app.error.file.parse_failed.message",
+          status: 415,
+        });
+      }
+
+      return {};
+    });
+    await mount_page();
+
+    await create_project_from_selected_source();
+
+    expect(push_toast_mock).toHaveBeenCalledWith(
+      "error",
+      "broken.json - 文件内容解析失败 …",
+    );
+    expect(push_toast_mock).not.toHaveBeenCalledWith(
+      "error",
+      expect.stringContaining("创建工程失败"),
     );
   });
 

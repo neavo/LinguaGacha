@@ -40,7 +40,6 @@ export const en_us_workbench_page = {
     refresh_failed: "Failed to refresh workbench.",
     add_file_loading_toast: "Adding file and refreshing cache …",
     no_valid_file: "No valid files can be added.",
-    file_parse_failed: "{FILENAME}: {REASON}",
     file_action_failed: "File operation failed. Please try again later.",
     generate_translation_failed:
       "Failed to generate available translation files. Please try again later.",

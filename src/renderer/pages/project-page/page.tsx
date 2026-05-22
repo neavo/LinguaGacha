@@ -44,6 +44,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import { type LocaleKey, useI18n } from "@/app/locale/locale-provider";
 import { has_path_drop_payload, resolve_dropped_path } from "@/lib/file-drop";
 import { normalize_source_paths } from "@/lib/source-paths";
+import {
+  format_source_file_parse_failure_error_toast,
+  format_source_file_parse_failure_toast,
+} from "@/lib/source-file-parse-failure-toast";
 import { cn } from "@/lib/utils";
 import {
   SegmentedProgress,
@@ -102,6 +106,10 @@ type ProjectPreviewPayload = {
 
 type ProjectSourceFilesPayload = {
   source_files?: string[];
+};
+
+type ProjectCreateCommitPayload = {
+  failed_files?: unknown;
 };
 
 type ProjectOpenAlignmentPreviewPayload = {
@@ -976,11 +984,21 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       await run_project_loading_modal({
         initial_message: t("project_page.create.loading_toast"),
         task: async () => {
-          await api_fetch("/api/project/create-commit", {
-            source_paths,
-            path: normalized_output_path,
-            project_settings: build_project_prefilter_settings(settings_snapshot),
+          const create_payload = await api_fetch<ProjectCreateCommitPayload>(
+            "/api/project/create-commit",
+            {
+              source_paths,
+              path: normalized_output_path,
+              project_settings: build_project_prefilter_settings(settings_snapshot),
+            },
+          );
+          const failure_toast = format_source_file_parse_failure_toast({
+            value: create_payload.failed_files,
+            text: t,
           });
+          if (failure_toast !== null) {
+            push_toast("warning", failure_toast);
+          }
           set_project_warmup_status("warming");
           await refresh_project_snapshot();
           await api_fetch<SettingsPayload>("/api/settings/recent-projects/add", {
@@ -1009,6 +1027,11 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       clear_selected_source();
       clear_selected_project();
     } catch (error) {
+      const parse_failure_toast = format_source_file_parse_failure_error_toast({ error, text: t });
+      if (parse_failure_toast !== null) {
+        push_toast("error", parse_failure_toast);
+        return;
+      }
       push_toast(
         "error",
         format_project_error_message({

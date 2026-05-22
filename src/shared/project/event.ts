@@ -1,3 +1,5 @@
+import type { SourceFileParseFailureRecord } from "../source-file-parse-failure";
+
 // 公开项目变更事件只能承载严格 JSON 值，避免跨进程传递可变对象或特殊类型
 export type ProjectChangeJsonValue =
   | null
@@ -74,6 +76,7 @@ export type ProjectChangeEvent = {
 export type ProjectMutationResult = {
   accepted: true;
   changes: ProjectChangeEvent[];
+  failed_files?: SourceFileParseFailureRecord[];
 };
 
 // section 顺序同时约束 manifest、read-sections 和 renderer 初始化合并顺序

@@ -56,6 +56,7 @@ function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCo
     input_tokens: 0,
     output_tokens: 0,
     request_in_flight_count: 0,
+    completion_percent: 0,
   };
   const analysis_task_metrics = {
     ...translation_task_metrics,

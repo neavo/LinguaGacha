@@ -350,6 +350,98 @@ describe("ProjectLifecycleService", () => {
     ).rejects.toThrow("request.validation_failed");
   });
 
+  it("create-commit 跳过解析失败源文件并继续创建可用文件", async () => {
+    const app_root = create_temp_dir();
+    const project_path = path.join(app_root, "partial-created.lg");
+    const source_dir = path.join(app_root, "source");
+    const valid_file = write_file(path.join(source_dir, "script.txt"), "こんにちは");
+    const broken_json = write_file(path.join(source_dir, "broken.json"), "{");
+    const transaction_calls: DatabaseOperation[][] = [];
+    const log_manager = create_log_manager();
+    const service = create_service({
+      app_root,
+      database: create_database({ transaction_calls, create_project_files: true }),
+      log_manager,
+    });
+
+    await expect(
+      service.create_project_commit({
+        source_paths: [source_dir],
+        path: project_path,
+        project_settings: {},
+      }),
+    ).resolves.toEqual({
+      project: { path: project_path, loaded: true },
+      failed_files: [
+        {
+          source_path: broken_json,
+          rel_path: "broken.json",
+          filename: "broken.json",
+          code: "file.parse_failed",
+          message_key: "app.error.file.parse_failed.message",
+        },
+      ],
+    });
+
+    expect(
+      transaction_calls[0]?.filter((operation) => operation.name === "addAssetFromSource"),
+    ).toEqual([
+      {
+        name: "addAssetFromSource",
+        args: {
+          projectPath: project_path,
+          path: "script.txt",
+          sourcePath: valid_file,
+          sortOrder: 0,
+        },
+      },
+    ]);
+    expect(log_manager.warning).toHaveBeenCalledWith(
+      "broken.json - 文件内容解析失败 …",
+      expect.objectContaining({ source: "project-lifecycle" }),
+    );
+  });
+
+  it("create-commit 全部源文件解析失败时不创建工程并返回失败明细", async () => {
+    const app_root = create_temp_dir();
+    const project_path = path.join(app_root, "all-failed.lg");
+    const broken_json = write_file(path.join(app_root, "source", "broken.json"), "{");
+    const transaction_calls: DatabaseOperation[][] = [];
+    const log_manager = create_log_manager();
+    const service = create_service({
+      app_root,
+      database: create_database({ transaction_calls, create_project_files: true }),
+      log_manager,
+    });
+
+    await expect(
+      service.create_project_commit({
+        source_paths: [path.dirname(broken_json)],
+        path: project_path,
+        project_settings: {},
+      }),
+    ).rejects.toMatchObject({
+      code: "file.parse_failed",
+      public_details: {
+        failed_files: [
+          {
+            source_path: broken_json,
+            rel_path: "broken.json",
+            filename: "broken.json",
+            code: "file.parse_failed",
+            message_key: "app.error.file.parse_failed.message",
+          },
+        ],
+      },
+    });
+
+    expect(transaction_calls).toEqual([]);
+    expect(log_manager.warning).toHaveBeenCalledWith(
+      "broken.json - 文件内容解析失败 …",
+      expect.objectContaining({ source: "project-lifecycle" }),
+    );
+  });
+
   it("create-commit 默认预设读取失败只记录日志并继续创建", async () => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "created-with-broken-preset.lg");
