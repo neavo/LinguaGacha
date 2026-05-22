@@ -35,6 +35,25 @@ export interface PatchTarget {
   row_index: number;
 }
 
+/**
+ * TRANS 过滤派生结果，统一承载标签、状态与分区写回判断
+ */
+export interface TransFilterEffect {
+  block: boolean[];
+  tag: string[];
+  status: ItemStatus;
+  is_mixed_partition: boolean;
+}
+
+/**
+ * derive_trans_filter_effect 的窄输入，parameter 只用于判断是否允许分区参数
+ */
+export interface TransFilterEffectInput {
+  block: boolean[];
+  tag: string[];
+  parameter?: unknown;
+}
+
 // 扩展名黑名单与旧 NONE.BLACKLIST_EXT 保持一致，只检查文本内容中的资源引用
 export const BLACKLIST_EXTENSIONS = [
   ".mp3", // 音频资源引用
@@ -108,6 +127,81 @@ export function to_mutable_record(value: unknown): ApiJsonRecord {
 }
 
 /**
+ * 从过滤结果派生公开状态、gold 标签和分区参数资格，读入与写回必须共用同一口径
+ */
+export function derive_trans_filter_effect(input: TransFilterEffectInput): TransFilterEffect {
+  const block = normalize_trans_filter_block(input.block);
+  const has_blocked_partition = block.some(Boolean);
+  const has_unblocked_partition = block.some((value) => !value);
+  const is_mixed_block = has_blocked_partition && has_unblocked_partition;
+
+  return {
+    block,
+    tag: derive_trans_filter_tag(input.tag, has_blocked_partition),
+    status: has_unblocked_partition ? "NONE" : "EXCLUDED",
+    is_mixed_partition: is_mixed_block && can_generate_trans_partition_parameter(input.parameter),
+  };
+}
+
+/**
+ * 空 block 在历史上代表没有过滤，归一后避免 every/any 空数组陷阱
+ */
+function normalize_trans_filter_block(block: boolean[]): boolean[] {
+  return block.length === 0 ? [false] : block;
+}
+
+/**
+ * gold 表示命中过自动过滤；没有任何过滤时移除派生 gold，保留 red/blue 的人工排除语义
+ */
+function derive_trans_filter_tag(tag: string[], has_blocked_partition: boolean): string[] {
+  if (has_blocked_partition) {
+    return tag.some((value) => value === "red" || value === "blue" || value === "gold")
+      ? tag
+      : [...tag, "gold"];
+  }
+  if (tag.includes("gold") && !has_color_block_tag(tag)) {
+    return tag.filter((value) => value !== "gold");
+  }
+  return tag;
+}
+
+/**
+ * span schema 表示 KAG/RENPY 等定位参数，不能被 TRANS 分区参数覆盖
+ */
+function can_generate_trans_partition_parameter(parameter: unknown): boolean {
+  const parameter_list = Array.isArray(parameter) ? parameter : [];
+  return has_trans_partition_parameter(parameter_list) || !has_trans_span_parameter(parameter_list);
+}
+
+/**
+ * 已存在 contextStr/translation 时说明该行本来就是分区参数结构
+ */
+function has_trans_partition_parameter(parameter_list: unknown[]): boolean {
+  return parameter_list.some(
+    (value) =>
+      is_trans_parameter_record(value) && ("contextStr" in value || "translation" in value),
+  );
+}
+
+/**
+ * start/end/enclosure/lineIndent 属于 span 定位结构，不承载 TRANS 分区语义
+ */
+function has_trans_span_parameter(parameter_list: unknown[]): boolean {
+  return parameter_list.some(
+    (value) =>
+      is_trans_parameter_record(value) &&
+      ("start" in value || "end" in value || "enclosure" in value || "lineIndent" in value),
+  );
+}
+
+/**
+ * 参数 schema 探测只接受普通对象，数组与 null 都不能当作参数记录
+ */
+function is_trans_parameter_record(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
  * TRANS 默认处理器，对齐旧 NONE：只按资源扩展名和颜色标签过滤
  */
 export class NoneTransProcessor {
@@ -139,41 +233,27 @@ export class NoneTransProcessor {
   ): TransCheckResult {
     const src = typeof data[0] === "string" ? data[0] : "";
     const dst = typeof data[1] === "string" ? data[1] : "";
-    let updated_tag = tag;
 
     if (src === "") {
-      return { src, dst, tag: updated_tag, status: "EXCLUDED", skip_internal_filter: false };
+      return { src, dst, tag, status: "EXCLUDED", skip_internal_filter: false };
     }
-    if (updated_tag.some((value) => value === "aqua")) {
-      return { src, dst, tag: updated_tag, status: "NONE", skip_internal_filter: true };
+    if (tag.some((value) => value === "aqua")) {
+      return { src, dst, tag, status: "NONE", skip_internal_filter: true };
     }
     if (dst !== "" && src !== dst) {
-      return { src, dst, tag: updated_tag, status: "PROCESSED", skip_internal_filter: false };
+      return { src, dst, tag, status: "PROCESSED", skip_internal_filter: false };
     }
 
-    let block = this.filter(src, path_key, updated_tag, context);
-    if (block.length === 0) {
-      block = [false];
-    }
-
-    const is_all_blocked = block.every(Boolean);
-    const is_all_unblocked = block.every((value) => !value);
-    const is_mixed = !is_all_blocked && !is_all_unblocked;
-
-    if (
-      is_mixed &&
-      !updated_tag.some((value) => value === "red" || value === "blue" || value === "gold")
-    ) {
-      updated_tag = [...updated_tag, "gold"];
-    } else if (!is_mixed && updated_tag.includes("gold") && !has_color_block_tag(updated_tag)) {
-      updated_tag = updated_tag.filter((value) => value !== "gold");
-    }
+    const effect = derive_trans_filter_effect({
+      block: this.filter(src, path_key, tag, context),
+      tag,
+    });
 
     return {
       src,
       dst,
-      tag: updated_tag,
-      status: block.some((value) => !value) ? "NONE" : "EXCLUDED",
+      tag: effect.tag,
+      status: effect.status,
       skip_internal_filter: false,
     };
   }
@@ -201,26 +281,11 @@ export class NoneTransProcessor {
     if (block.every((value) => value === true) || block.every((value) => value === false)) {
       return record_array(parameter);
     }
-
-    const parameter_list = Array.isArray(parameter) ? parameter : [];
-    const has_partition = parameter_list.some(
-      (value) =>
-        typeof value === "object" &&
-        value !== null &&
-        !Array.isArray(value) &&
-        ("contextStr" in value || "translation" in value),
-    );
-    const has_span = parameter_list.some(
-      (value) =>
-        typeof value === "object" &&
-        value !== null &&
-        !Array.isArray(value) &&
-        ("start" in value || "end" in value || "enclosure" in value || "lineIndent" in value),
-    );
-    if (has_span && !has_partition) {
-      return record_array(parameter_list);
+    if (!can_generate_trans_partition_parameter(parameter)) {
+      return record_array(parameter);
     }
 
+    const parameter_list = Array.isArray(parameter) ? parameter : [];
     const result = trans_record_array(parameter_list);
     for (const [index, is_blocked] of block.entries()) {
       while (index >= result.length) {
