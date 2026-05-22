@@ -43,7 +43,6 @@ project, files, items, quality, prompts, analysis, proofreading
 - `/api/project/read-sections` 按需返回 ProjectStore 可合并形状；`items` 使用 `item_id` map，`files` 使用相对路径 map，`quality` / `prompts` 使用公开 kind，`analysis` 只返回轻量 extras、candidate count 和 status summary。
 - 完整分析候选池不进入常驻项目快照，只能通过 `/api/project/analysis/candidates` 按需读取。
 - 同步项目 mutation 成功返回 `ProjectMutationResult = { accepted: true, changes }`；`changes` 与后续 SSE 广播是同一批后端 canonical `ProjectChangeEvent`。
-- 批量源文件解析只把已进入支持格式候选集、但读取或解析失败的文件放入 `failed_files`；不支持后缀只影响候选收集，不作为失败项。项目创建和工作台文件导入在部分成功时继续提交并随成功响应返回 `failed_files`，全部候选都解析失败时返回 `file.parse_failed`，同一份 `failed_files` 进入错误 `details`。
 - `ProjectChangeEvent` 必须带后端确认的 `projectPath`、`projectRevision`、本次更新 section 的 `sectionRevisions` 和 `updatedSections`；不属于当前 loaded 工程的草稿不能发布。
 - 变更 payload mode 只允许三类：`canonical-delta` 直接携带后端规范数据，`field-patch` 只表达校对可写字段 `dst / status / retry_count`，`section-invalidated` 只用于异常恢复。
 - canonical item upsert 必须是完整公开 DTO；领域草稿可只给 `changedIds`，但公开事件必须由后端 adapter 回读补齐，瘦身 item DTO 不能进入项目事件。

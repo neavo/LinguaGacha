@@ -4,15 +4,14 @@ import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import { FileFormatService } from "../file/file-format-service";
+import { SourceFileParsePipeline } from "../file/source-file-parse-pipeline";
 import type { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
 import { migration_orchestrator } from "../migration/migration-orchestrator";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { AppPathService } from "../app/app-path-service";
-import { JsonTool } from "../../shared/utils/json-tool";
 import {
-  Item,
   collect_project_item_missing_public_fields,
   normalize_project_item_persistent_record,
   normalize_project_item_public_record,
@@ -31,12 +30,10 @@ import {
 } from "./project-mutation-state";
 import { get_runtime_section_revision } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
+import { ProjectDefaultPresetInitializer } from "./project-default-preset-initializer";
 import * as AppErrors from "../../shared/error";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
-import {
-  build_source_file_parse_failure,
-  log_source_file_parse_failures,
-} from "../file/source-file-parse-failure-reporter";
+import { log_source_file_parse_failures } from "../file/source-file-parse-failure-reporter";
 
 // 公开 source-files 只枚举当前文件域已经支持的格式，避免新建工程误收未知文件
 const SUPPORTED_SOURCE_EXTENSIONS = new Set([
@@ -69,75 +66,6 @@ interface CreateCommitParsedDraft {
 
 type ProjectMutationSettings = ProjectSettingsSnapshot; // 项目生命周期只消费设置领域定义的项目镜像窄字段
 
-interface QualityDefaultPresetSpec {
-  config_key: string; // config_key 对应用户设置里的默认预设虚拟 ID
-  preset_directory: string; // preset_directory 决定内置和用户预设目录
-  rule_type: string; // rule_type 是 rules 表当前物理类型
-  meta_key: string; // meta_key 表示预设成功加载后需要同步开启的工程设置
-  meta_value: DatabaseJsonValue; // meta_value 是预设启用后的工程设置值
-  display_name: string; // display_name 只用于日志，不进入公开协议
-}
-
-interface PromptDefaultPresetSpec {
-  config_key: string; // config_key 对应翻译或分析提示词默认预设
-  task_type: "translation" | "analysis"; // task_type 由 AppPathService 映射到 prompt 目录
-  rule_type: string; // rule_type 是 rules 表当前提示词物理类型
-  meta_key: string; // meta_key 控制提示词启用态
-  display_name: string; // display_name 只用于日志，不进入公开协议
-}
-
-const QUALITY_DEFAULT_PRESET_SPECS: QualityDefaultPresetSpec[] = [
-  {
-    config_key: "glossary_default_preset",
-    preset_directory: "glossary",
-    rule_type: "glossary",
-    meta_key: "glossary_enable",
-    meta_value: true,
-    display_name: "术语表",
-  },
-  {
-    config_key: "text_preserve_default_preset",
-    preset_directory: "text_preserve",
-    rule_type: "text_preserve",
-    meta_key: "text_preserve_mode",
-    meta_value: "custom",
-    display_name: "文本保护",
-  },
-  {
-    config_key: "pre_translation_replacement_default_preset",
-    preset_directory: "pre_translation_replacement",
-    rule_type: "pre_translation_replacement",
-    meta_key: "pre_translation_replacement_enable",
-    meta_value: true,
-    display_name: "译前替换",
-  },
-  {
-    config_key: "post_translation_replacement_default_preset",
-    preset_directory: "post_translation_replacement",
-    rule_type: "post_translation_replacement",
-    meta_key: "post_translation_replacement_enable",
-    meta_value: true,
-    display_name: "译后替换",
-  },
-];
-
-const PROMPT_DEFAULT_PRESET_SPECS: PromptDefaultPresetSpec[] = [
-  {
-    config_key: "translation_custom_prompt_default_preset",
-    task_type: "translation",
-    rule_type: "translation_prompt",
-    meta_key: "translation_prompt_enable",
-    display_name: "翻译提示词",
-  },
-  {
-    config_key: "analysis_custom_prompt_default_preset",
-    task_type: "analysis",
-    rule_type: "analysis_prompt",
-    meta_key: "analysis_prompt_enable",
-    display_name: "分析提示词",
-  },
-];
-
 /**
  * 承载 项目轻生命周期公开接口，公开 loaded/path 与 .lg 写入边界都在这里收口
  */
@@ -148,11 +76,11 @@ export class ProjectLifecycleService {
 
   private readonly app_setting_service: AppSettingService; // app_setting_service 提供当前应用设置，用于打开预演与默认预设选择
 
-  private readonly paths: AppPathService; // paths 统一解析内置 / 用户预设目录，避免项目域拼第二套路由规则
-
-  private readonly log_manager: LogManager; // log_manager 记录默认预设初始化结果，响应体不扩大公开协议
+  private readonly log_manager: LogManager; // log_manager 记录生命周期解析失败和诊断，响应体不扩大公开协议
 
   private readonly native_fs: NativeFs; // native_fs 是项目域读取外部文件和校验 .lg 路径的唯一文件系统门面
+
+  private readonly default_preset_initializer: ProjectDefaultPresetInitializer; // default_preset_initializer 隔离默认预设文件读取和非阻断日志
 
   /**
    * 初始化项目生命周期依赖，保持公开路由层只负责装配
@@ -168,9 +96,14 @@ export class ProjectLifecycleService {
     this.database = database;
     this.session_state = session_state;
     this.app_setting_service = app_setting_service;
-    this.paths = paths;
     this.log_manager = log_manager;
     this.native_fs = native_fs;
+    this.default_preset_initializer = new ProjectDefaultPresetInitializer(
+      app_setting_service,
+      paths,
+      log_manager,
+      native_fs,
+    );
   }
 
   /**
@@ -234,7 +167,7 @@ export class ProjectLifecycleService {
       draft: parsed_draft,
       settings: project_settings,
     });
-    const default_preset_result = this.build_default_preset_initialization_operations(project_path);
+    const default_preset_result = this.default_preset_initializer.build_operations(project_path);
 
     this.database.execute_transaction([
       this.op("createProject", {
@@ -258,7 +191,7 @@ export class ProjectLifecycleService {
 
     const response = await this.load_project({ path: project_path });
     this.log_create_commit_parse_failures(parsed_draft.failed_files);
-    this.log_loaded_default_presets(default_preset_result.loaded_names);
+    this.default_preset_initializer.log_loaded_names(default_preset_result.loaded_names);
     return this.build_create_project_response(response, parsed_draft.failed_files);
   }
 
@@ -299,58 +232,27 @@ export class ProjectLifecycleService {
     source_paths: string[],
     project_settings: ProjectMutationSettings,
   ): Promise<CreateCommitParsedDraft> {
-    const format_service = this.create_format_service(project_settings);
-    const source_files = format_service.collect_source_file_entries(source_paths);
-    const files: CreateCommitFileRecord[] = [];
-    // file_state 只保留后端预过滤所需字段，不能携带源文件绝对路径进入项目事实。
-    const file_state: Record<string, unknown> = {};
+    const parsed_draft = await new SourceFileParsePipeline(
+      this.create_format_service(project_settings),
+      this.native_fs,
+    ).build_project_draft(source_paths);
+    const files: CreateCommitFileRecord[] = parsed_draft.files.map((file) => ({
+      rel_path: file.rel_path,
+      source_path: file.source_path,
+      sort_index: file.sort_index,
+    }));
     const items: Record<string, ProjectItemPublicRecord> = {};
-    const failed_files: SourceFileParseFailureRecord[] = [];
-    // next_item_id 由后端顺序分配，避免 renderer 伪造数据库主键。
-    let next_item_id = 1;
-    let next_sort_index = 0;
-
-    for (const source_file of source_files) {
-      let parsed_items: Item[];
-      try {
-        parsed_items = await format_service.parse_asset(
-          source_file.rel_path,
-          this.native_fs.read_file(source_file.source_path),
-        );
-      } catch (error) {
-        failed_files.push(
-          build_source_file_parse_failure({
-            source_path: source_file.source_path,
-            rel_path: source_file.rel_path,
-            error,
-          }),
-        );
-        continue;
-      }
-      const file_type = format_service.pick_file_type(parsed_items);
-      files.push({
-        rel_path: source_file.rel_path,
-        source_path: source_file.source_path,
-        sort_index: next_sort_index,
-      });
-      file_state[source_file.rel_path] = {
-        rel_path: source_file.rel_path,
-        file_type,
-        sort_index: next_sort_index,
-      };
-      next_sort_index += 1;
-      for (const parsed_item of parsed_items) {
-        const public_item = this.normalize_public_item({
-          ...Item.from_json(parsed_item).to_json(),
-          id: next_item_id,
-          file_path: source_file.rel_path,
-        });
-        items[String(public_item.item_id)] = public_item;
-        next_item_id += 1;
-      }
+    for (const parsed_item of parsed_draft.items) {
+      const public_item = this.normalize_public_item(parsed_item);
+      items[String(public_item.item_id)] = public_item;
     }
 
-    return { files, failed_files, file_state, items };
+    return {
+      files,
+      failed_files: parsed_draft.failed_files,
+      file_state: parsed_draft.file_state,
+      items,
+    };
   }
 
   /**
@@ -386,9 +288,7 @@ export class ProjectLifecycleService {
   /**
    * 新建工程解析失败日志和 Toast 使用同一套逐文件原因，便于用户按日志复核。
    */
-  private log_create_commit_parse_failures(
-    failed_files: SourceFileParseFailureRecord[],
-  ): void {
+  private log_create_commit_parse_failures(failed_files: SourceFileParseFailureRecord[]): void {
     log_source_file_parse_failures({
       failures: failed_files,
       log_manager: this.log_manager,
@@ -587,213 +487,6 @@ export class ProjectLifecycleService {
       }
     }
     return { source_files };
-  }
-
-  /**
-   * 构建新建工程默认预设初始化操作，单个预设失败只记录日志并继续创建
-   */
-  private build_default_preset_initialization_operations(project_path: string): {
-    operations: DatabaseOperation[];
-    loaded_names: string[];
-  } {
-    const config = this.app_setting_service.read_setting();
-    const operations: DatabaseOperation[] = [
-      this.op("setMeta", {
-        projectPath: project_path,
-        key: "text_preserve_mode",
-        value: "smart",
-      }),
-    ];
-    const loaded_names: string[] = [];
-
-    for (const spec of QUALITY_DEFAULT_PRESET_SPECS) {
-      const virtual_id = this.string_value(config[spec.config_key]);
-      if (virtual_id === "") {
-        continue;
-      }
-      try {
-        const entries = this.read_quality_rule_preset(spec.preset_directory, virtual_id);
-        operations.push(
-          this.op("setRules", {
-            projectPath: project_path,
-            ruleType: spec.rule_type,
-            rules: entries as unknown as DatabaseJsonValue,
-          }),
-          this.op("setMeta", {
-            projectPath: project_path,
-            key: spec.meta_key,
-            value: spec.meta_value,
-          }),
-        );
-        loaded_names.push(spec.display_name);
-      } catch (error) {
-        this.log_non_blocking_project_lifecycle_warning(
-          t_main_log("app.diagnostic.default_preset.quality_rule_load_failed"),
-          error,
-          {
-            preset_directory: spec.preset_directory,
-            virtual_id,
-          },
-        );
-      }
-    }
-
-    for (const spec of PROMPT_DEFAULT_PRESET_SPECS) {
-      const virtual_id = this.string_value(config[spec.config_key]);
-      if (virtual_id === "") {
-        continue;
-      }
-      try {
-        operations.push(
-          this.op("setRuleText", {
-            projectPath: project_path,
-            ruleType: spec.rule_type,
-            text: this.read_prompt_preset(spec.task_type, virtual_id),
-          }),
-          this.op("setMeta", {
-            projectPath: project_path,
-            key: spec.meta_key,
-            value: true,
-          }),
-        );
-        loaded_names.push(spec.display_name);
-      } catch (error) {
-        this.log_non_blocking_project_lifecycle_warning(
-          t_main_log("app.diagnostic.default_preset.prompt_load_failed"),
-          error,
-          {
-            task_type: spec.task_type,
-            virtual_id,
-          },
-        );
-      }
-    }
-
-    return { operations, loaded_names };
-  }
-
-  /**
-   * 读取质量规则预设，并把非对象条目过滤掉
-   */
-  private read_quality_rule_preset(
-    preset_directory: string,
-    virtual_id: string,
-  ): MutableJsonRecord[] {
-    const preset_path = this.resolve_quality_rule_preset_path(preset_directory, virtual_id);
-    const data = JsonTool.parseStrict(this.native_fs.read_file(preset_path)) as unknown;
-    if (!Array.isArray(data)) {
-      throw new AppErrors.RequestValidationError({
-        public_details: {
-          filename: path.basename(preset_path),
-        },
-      });
-    }
-    return data.filter((entry): entry is MutableJsonRecord => this.is_record(entry));
-  }
-
-  /**
-   * 读取提示词预设正文，统一去掉 BOM 与首尾空白
-   */
-  private read_prompt_preset(task_type: "translation" | "analysis", virtual_id: string): string {
-    const preset_path = this.resolve_prompt_preset_path(task_type, virtual_id);
-    return this.native_fs
-      .read_text_file(preset_path)
-      .replace(/^\uFEFF/, "")
-      .trim();
-  }
-
-  /**
-   * 解析质量规则预设虚拟 ID 到真实路径
-   */
-  private resolve_quality_rule_preset_path(preset_directory: string, virtual_id: string): string {
-    const { source, file_name } = this.split_virtual_id(virtual_id, ".json");
-    const directory =
-      source === "builtin"
-        ? this.paths.get_quality_rule_builtin_preset_dir(preset_directory)
-        : this.paths.get_quality_rule_user_preset_dir(preset_directory);
-    return path.join(directory, file_name);
-  }
-
-  /**
-   * 解析提示词预设虚拟 ID 到真实路径
-   */
-  private resolve_prompt_preset_path(
-    task_type: "translation" | "analysis",
-    virtual_id: string,
-  ): string {
-    const { source, file_name } = this.split_virtual_id(virtual_id, ".txt");
-    const directory =
-      source === "builtin"
-        ? this.paths.get_prompt_builtin_preset_dir(task_type)
-        : this.paths.get_prompt_user_preset_dir(task_type);
-    return path.join(directory, file_name);
-  }
-
-  /**
-   * 拆分虚拟 ID，集中保护 preset 文件名不能逃逸目录
-   */
-  private split_virtual_id(
-    virtual_id: string,
-    extension: ".json" | ".txt",
-  ): { source: "builtin" | "user"; file_name: string } {
-    const parts = virtual_id.split(":");
-    if (parts.length !== 2 && !(extension === ".json" && parts.length === 3)) {
-      throw new AppErrors.RequestValidationError();
-    }
-    const source = parts[0];
-    const file_name = parts.at(-1) ?? "";
-    if (source !== "builtin" && source !== "user") {
-      throw new AppErrors.RequestValidationError();
-    }
-    this.ensure_preset_file_name(file_name, extension);
-    return { source, file_name };
-  }
-
-  /**
-   * 校验预设文件名，避免用户配置值被解释成任意文件路径
-   */
-  private ensure_preset_file_name(file_name: string, extension: ".json" | ".txt"): void {
-    const has_path_boundary =
-      path.basename(file_name) !== file_name ||
-      path.win32.basename(file_name) !== file_name ||
-      path.posix.basename(file_name) !== file_name ||
-      path.isAbsolute(file_name) ||
-      path.win32.isAbsolute(file_name) ||
-      path.posix.isAbsolute(file_name);
-    if (file_name === "" || has_path_boundary || !file_name.toLowerCase().endsWith(extension)) {
-      throw new AppErrors.RequestValidationError();
-    }
-  }
-
-  /**
-   * 记录不阻断当前主流程的生命周期错误，保留上下文供日志窗口排查
-   */
-  private log_non_blocking_project_lifecycle_warning(
-    message: string,
-    error: unknown,
-    context: Record<string, unknown>,
-  ): void {
-    this.log_manager.warning(message, {
-      source: "project-lifecycle",
-      context,
-      error_message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
-    });
-  }
-
-  /**
-   * 记录成功加载的默认预设名；为空时不写日志，避免制造噪声
-   */
-  private log_loaded_default_presets(loaded_names: string[]): void {
-    if (loaded_names.length === 0) {
-      return;
-    }
-    this.log_manager.info(
-      t_main_log("app.log.default_preset_loaded", { NAMES: loaded_names.join(" | ") }),
-      {
-        source: "project-lifecycle",
-      },
-    );
   }
 
   /**

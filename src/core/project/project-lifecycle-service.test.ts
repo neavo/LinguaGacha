@@ -9,7 +9,6 @@ import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-
 import type { LogManager } from "../log/log-manager";
 import type { AppSettingService } from "../app/app-setting-service";
 import { AppPathService } from "../app/app-path-service";
-import { JsonTool } from "../../shared/utils/json-tool";
 import { ProjectLifecycleService } from "./project-lifecycle-service";
 import { ProjectSessionState } from "./project-session-state";
 
@@ -184,24 +183,11 @@ describe("ProjectLifecycleService", () => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "created.lg");
     const source_path = write_file(path.join(app_root, "source", "script.txt"), "こんにちは");
-    write_file(
-      path.join(app_root, "resource", "glossary", "preset", "base.json"),
-      JsonTool.stringifyStrict([{ src: "勇者", dst: "Hero" }]),
-    );
-    write_file(
-      path.join(app_root, "resource", "translation_prompt", "preset", "base.txt"),
-      "翻译提示词",
-    );
     const transaction_calls: DatabaseOperation[][] = [];
-    const database = create_database({ transaction_calls, create_project_files: true });
-    const log_manager = create_log_manager();
     const service = create_service({
       app_root,
-      database,
-      log_manager,
+      database: create_database({ transaction_calls, create_project_files: true }),
       config: {
-        glossary_default_preset: "builtin:base.json",
-        translation_custom_prompt_default_preset: "builtin:base.txt",
         source_language: "JA",
         target_language: "ZH",
         mtool_optimizer_enable: true,
@@ -230,30 +216,6 @@ describe("ProjectLifecycleService", () => {
       {
         name: "setMeta",
         args: { projectPath: project_path, key: "text_preserve_mode", value: "smart" },
-      },
-      {
-        name: "setRules",
-        args: {
-          projectPath: project_path,
-          ruleType: "glossary",
-          rules: [{ src: "勇者", dst: "Hero" }],
-        },
-      },
-      {
-        name: "setMeta",
-        args: { projectPath: project_path, key: "glossary_enable", value: true },
-      },
-      {
-        name: "setRuleText",
-        args: {
-          projectPath: project_path,
-          ruleType: "translation_prompt",
-          text: "翻译提示词",
-        },
-      },
-      {
-        name: "setMeta",
-        args: { projectPath: project_path, key: "translation_prompt_enable", value: true },
       },
       {
         name: "addAssetFromSource",
@@ -329,9 +291,6 @@ describe("ProjectLifecycleService", () => {
         },
       },
     ]);
-    expect(log_manager.info).toHaveBeenCalledWith("已自动加载默认预设：术语表 | 翻译提示词 …", {
-      source: "project-lifecycle",
-    });
   });
 
   it("create-commit 拒绝旧前端最终事实字段", async () => {
@@ -439,36 +398,6 @@ describe("ProjectLifecycleService", () => {
     expect(log_manager.warning).toHaveBeenCalledWith(
       "broken.json - 文件内容解析失败 …",
       expect.objectContaining({ source: "project-lifecycle" }),
-    );
-  });
-
-  it("create-commit 默认预设读取失败只记录日志并继续创建", async () => {
-    const app_root = create_temp_dir();
-    const project_path = path.join(app_root, "created-with-broken-preset.lg");
-    const transaction_calls: DatabaseOperation[][] = [];
-    const log_manager = create_log_manager();
-    const service = create_service({
-      app_root,
-      database: create_database({ transaction_calls, create_project_files: true }),
-      log_manager,
-      config: {
-        glossary_default_preset: "builtin:missing.json",
-      },
-    });
-
-    await service.create_project_commit({
-      source_paths: [],
-      path: project_path,
-      project_settings: {},
-    });
-
-    expect(transaction_calls[0]?.map((operation) => operation.name)).toContain("createProject");
-    expect(log_manager.warning).toHaveBeenCalledWith(
-      "默认质量规则预设加载失败 …",
-      expect.objectContaining({
-        context: { preset_directory: "glossary", virtual_id: "builtin:missing.json" },
-        source: "project-lifecycle",
-      }),
     );
   });
 

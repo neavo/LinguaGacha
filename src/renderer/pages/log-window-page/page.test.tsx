@@ -439,4 +439,45 @@ describe("LogWindowPage", () => {
     expect(read_log_detail_mock).toHaveBeenCalledWith("log-9");
     expect(container?.textContent).toContain("完整详情：log-9");
   });
+
+  it("切换选中日志时不展示上一条详情", async () => {
+    read_log_detail_mock.mockImplementation((id: string) => {
+      if (id === "log-2") {
+        return new Promise(() => {});
+      }
+      return Promise.resolve({
+        id,
+        sequence: 1,
+        created_at: "2026-04-26T00:00:00.000+00:00",
+        level: "info",
+        source: "test",
+        message: `完整详情：${id}`,
+      });
+    });
+    await mount_page();
+
+    await act(async () => {
+      get_active_stream().emit(build_log_event("第一条", { id: "log-1", sequence: 1 }));
+      get_active_stream().emit(build_log_event("第二条", { id: "log-2", sequence: 2 }));
+      await Promise.resolve();
+      vi.advanceTimersByTime(500);
+    });
+
+    const first_row = container?.querySelector('[data-log-row-id="log-1"]');
+    await act(async () => {
+      first_row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(container?.textContent).toContain("完整详情：log-1");
+
+    const second_row = container?.querySelector('[data-log-row-id="log-2"]');
+    await act(async () => {
+      second_row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    expect(container?.textContent).not.toContain("完整详情：log-1");
+    expect(container?.textContent).toContain("log_window_page.detail.loading");
+  });
 });
