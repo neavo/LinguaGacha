@@ -295,6 +295,12 @@ export function LogWindowPage(): JSX.Element {
    * 详情区只显示当前选中项的完整正文或稳定状态文案
    */
   function render_detail_value(): string {
+    if (detail_state.event_id !== selected_event_id) {
+      return selected_event_id === null
+        ? t("log_window_page.detail.empty")
+        : t("log_window_page.detail.loading");
+    }
+
     switch (detail_state.status) {
       case "idle":
         return t("log_window_page.detail.empty");

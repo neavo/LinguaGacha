@@ -14,13 +14,8 @@ import { is_task_stopping } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import {
   create_workbench_delete_files_plan,
-  create_workbench_import_files_plan,
-  create_workbench_import_files_preview,
   create_workbench_reorder_plan,
   create_workbench_reset_file_plan,
-  type WorkbenchFileConflictAction,
-  type WorkbenchFileParsePreview,
-  type WorkbenchImportFilesPreview,
   type WorkbenchProjectMutationPlan,
 } from "@/pages/workbench-page/workbench-mutation-planner";
 import {
@@ -42,11 +37,11 @@ import {
 import { useI18n } from "@/app/locale/locale-provider";
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
-import { normalize_source_paths } from "@/lib/source-paths";
+import { format_source_file_parse_failure_error_toast } from "@/lib/source-file-parse-failure-toast";
 import {
-  format_source_file_parse_failure_error_toast,
-  format_source_file_parse_failure_toast,
-} from "@/lib/source-file-parse-failure-toast";
+  close_dialog_state,
+  useWorkbenchImportFilesFlow,
+} from "@/pages/workbench-page/use-workbench-import-files-flow";
 import type {
   AnalysisTaskConfirmState,
   AnalysisTaskMetrics,
@@ -91,43 +86,7 @@ const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
 
 const WORKBENCH_REQUIRED_SECTIONS: ProjectDataSection[] = ["project", "files", "items", "analysis"];
 
-type PendingImportFilesRequest = {
-  parsed_files: WorkbenchFileParsePreview[];
-  barrier_checkpoint: ProjectPagesBarrierCheckpoint | null;
-  conflict_action: WorkbenchFileConflictAction | null;
-  conflict_signature: string;
-};
-
 type WorkbenchAddFileDropIssue = "multiple" | "unavailable";
-
-function close_dialog_state(): WorkbenchDialogState {
-  return {
-    kind: null,
-    target_rel_paths: [],
-    pending_path: null,
-    submitting: false,
-  };
-}
-
-function normalize_workbench_file_parse_preview(payload: {
-  source_path?: unknown;
-  target_rel_path?: unknown;
-  file_type?: unknown;
-  parsed_items?: unknown;
-}): WorkbenchFileParsePreview {
-  return {
-    source_path: String(payload.source_path ?? ""),
-    target_rel_path: String(payload.target_rel_path ?? ""),
-    file_type: String(payload.file_type ?? "NONE"),
-    parsed_items: Array.isArray(payload.parsed_items)
-      ? payload.parsed_items.flatMap((item) => {
-          return typeof item === "object" && item !== null
-            ? [{ ...(item as Record<string, unknown>) }]
-            : [];
-        })
-      : [],
-  };
-}
 
 function map_snapshot_entries(entries: WorkbenchSnapshotEntry[]): WorkbenchFileEntry[] {
   return entries.map((entry) => ({ ...entry }));
@@ -773,8 +732,6 @@ export function useWorkbenchLiveState(
   const [active_entry_id, set_active_entry_id] = useState<string | null>(null);
   const [anchor_entry_id, set_anchor_entry_id] = useState<string | null>(null);
   const [dialog_state, set_dialog_state] = useState<WorkbenchDialogState>(close_dialog_state());
-  const [pending_import_files_request, set_pending_import_files_request] =
-    useState<PendingImportFilesRequest | null>(null);
   const [is_mutation_running, set_is_mutation_running] = useState(false);
   const [recent_workbench_task_kind, set_recent_workbench_task_kind] =
     useState<WorkbenchTaskKind | null>(null);
@@ -841,7 +798,6 @@ export function useWorkbenchLiveState(
     set_entries([]);
     apply_selection_state(create_empty_selection_state());
     set_dialog_state(close_dialog_state());
-    set_pending_import_files_request(null);
     set_is_refreshing(false);
     set_consumed_revisions({});
     set_settled_project_path("");
@@ -1241,161 +1197,21 @@ export function useWorkbenchLiveState(
     [apply_project_mutation_result, options, refresh_project_runtime, refresh_task],
   );
 
-  const open_import_conflict_dialog = useCallback(
-    (pending_request: PendingImportFilesRequest, preview: WorkbenchImportFilesPreview): void => {
-      // 同名确认只保存用户决策上下文，不把预演结果当作最终项目事实。
-      set_pending_import_files_request({
-        ...pending_request,
-        conflict_action: null,
-        conflict_signature: preview.conflict_signature,
-      });
-      set_dialog_state({
-        kind: "confirm-import-files",
-        target_rel_paths: preview.conflicting_files.map((file) => file.target_rel_path),
-        pending_path: preview.conflicting_files[0]?.source_path ?? null,
-        submitting: false,
-      });
-    },
-    [],
-  );
-
-  const open_import_inheritance_dialog = useCallback(
-    (
-      pending_request: PendingImportFilesRequest,
-      conflict_action: WorkbenchFileConflictAction,
-      preview: WorkbenchImportFilesPreview,
-    ): void => {
-      // 跳过策略只继承新文件；替换策略需要同时展示新增文件和即将重建的同名文件。
-      const files_to_import =
-        conflict_action === "replace" ? preview.importable_files : preview.new_files;
-      if (files_to_import.length === 0) {
-        set_pending_import_files_request(null);
-        set_dialog_state(close_dialog_state());
-        return;
-      }
-
-      set_pending_import_files_request({
-        ...pending_request,
-        conflict_action,
-        conflict_signature: preview.conflict_signature,
-      });
-      set_dialog_state({
-        kind: "inherit-import-files",
-        target_rel_paths: files_to_import.map((file) => file.target_rel_path),
-        pending_path: files_to_import[0]?.source_path ?? null,
-        submitting: false,
-      });
-    },
-    [],
-  );
-
-  const execute_import_files_request = useCallback(
-    async (
-      pending_request: PendingImportFilesRequest,
-      inheritance_mode: "none" | "inherit",
-    ): Promise<void> => {
-      // 提交前重新基于 ProjectStore 预演，避免对话期间项目事实变化后沿用旧同名判断。
-      const state = project_store.getState();
-      const preview = create_workbench_import_files_preview({
-        state,
-        parsed_files: pending_request.parsed_files,
-      });
-      if (
-        preview.conflicting_files.length > 0 &&
-        preview.conflict_signature !== pending_request.conflict_signature
-      ) {
-        open_import_conflict_dialog(pending_request, preview);
-        return;
-      }
-
-      const conflict_action =
-        pending_request.conflict_action ?? (preview.conflicting_files.length > 0 ? null : "skip");
-      if (conflict_action === null) {
-        open_import_conflict_dialog(pending_request, preview);
-        return;
-      }
-
-      const files_to_import =
-        conflict_action === "replace" ? preview.importable_files : preview.new_files;
-      if (files_to_import.length === 0) {
-        set_pending_import_files_request(null);
-        set_dialog_state(close_dialog_state());
-        return;
-      }
-
-      const import_plan = create_workbench_import_files_plan({
-        state,
-        task_snapshot,
-        parsed_files: pending_request.parsed_files,
-        conflict_action,
-        settings: {
-          source_language: settings_snapshot.source_language,
-          mtool_optimizer_enable: settings_snapshot.mtool_optimizer_enable,
-          skip_duplicate_source_text_enable: settings_snapshot.skip_duplicate_source_text_enable,
-        },
-        inheritance_mode,
-      });
-      const import_payload = await run_project_file_mutation(
-        import_plan,
-        async (body) => {
-          return await api_fetch<ProjectMutationResultPayload>(
-            "/api/project/workbench/import-files",
-            body,
-          );
-        },
-        pending_request.barrier_checkpoint,
-      );
-      const failure_toast = format_source_file_parse_failure_toast({
-        value: (import_payload as { failed_files?: unknown }).failed_files,
-        text: t,
-      });
-      if (failure_toast !== null) {
-        push_toast("warning", failure_toast);
-      }
-      set_pending_import_files_request(null);
-      set_dialog_state(close_dialog_state());
-    },
-    [
-      open_import_conflict_dialog,
-      project_store,
-      push_toast,
-      run_project_file_mutation,
-      settings_snapshot.mtool_optimizer_enable,
-      settings_snapshot.skip_duplicate_source_text_enable,
-      settings_snapshot.source_language,
-      task_snapshot,
-      t,
-    ],
-  );
-
-  const accept_import_conflict_action = useCallback(
-    async (conflict_action: WorkbenchFileConflictAction): Promise<void> => {
-      // 策略确认时只推进到继承确认；真正写库必须等继承意图也确定。
-      const pending_request = pending_import_files_request;
-      if (pending_request === null) {
-        set_dialog_submitting(false);
-        return;
-      }
-
-      const preview = create_workbench_import_files_preview({
-        state: project_store.getState(),
-        parsed_files: pending_request.parsed_files,
-      });
-      if (preview.conflict_signature !== pending_request.conflict_signature) {
-        open_import_conflict_dialog(pending_request, preview);
-        return;
-      }
-
-      open_import_inheritance_dialog(pending_request, conflict_action, preview);
-    },
-    [
-      open_import_conflict_dialog,
-      open_import_inheritance_dialog,
-      pending_import_files_request,
-      project_store,
-      set_dialog_submitting,
-    ],
-  );
+  const import_files_flow = useWorkbenchImportFilesFlow({
+    readonly,
+    project_identity: project_snapshot.loaded ? project_snapshot.path : "",
+    dialog_state,
+    project_store,
+    task_snapshot,
+    settings_snapshot,
+    createProjectPagesBarrierCheckpoint: options.createProjectPagesBarrierCheckpoint,
+    run_modal_progress_toast,
+    run_project_file_mutation,
+    set_dialog_state: set_dialog_state,
+    set_dialog_submitting,
+    push_toast,
+    t,
+  });
 
   const apply_table_selection = useCallback(
     (payload: AppTableSelectionChange): void => {
@@ -1454,110 +1270,8 @@ export function useWorkbenchLiveState(
     [can_edit_files, entries],
   );
 
-  const request_add_files_from_paths = useCallback(
-    async (source_paths: string[]): Promise<void> => {
-      if (readonly) {
-        return;
-      }
-
-      const normalized_source_paths = normalize_source_paths(source_paths);
-      if (normalized_source_paths.length === 0) {
-        push_toast("error", t("workbench_page.feedback.no_valid_file"));
-        return;
-      }
-
-      const barrier_checkpoint = options.createProjectPagesBarrierCheckpoint?.() ?? null;
-      const parsed_files: WorkbenchFileParsePreview[] = [];
-      let parse_failure_toast_shown = false; // parse_failure_toast_shown 防止全失败时再叠加泛错误
-
-      await run_modal_progress_toast({
-        message: t("workbench_page.feedback.add_file_loading_toast"),
-        task: async () => {
-          const payload = await api_fetch<{ files?: unknown }>(
-            "/api/project/workbench/parse-file",
-            {
-              source_paths: normalized_source_paths,
-            },
-          );
-          const preview_files = Array.isArray(payload.files) ? payload.files : [];
-          const raw_failed_files = (payload as { failed_files?: unknown }).failed_files;
-
-          for (const preview_file of preview_files) {
-            if (typeof preview_file !== "object" || preview_file === null) {
-              continue;
-            }
-
-            const parsed_file = normalize_workbench_file_parse_preview(
-              preview_file as Record<string, unknown>,
-            );
-            if (
-              parsed_file.source_path.trim() === "" ||
-              parsed_file.target_rel_path.trim() === ""
-            ) {
-              continue;
-            }
-            parsed_files.push({
-              ...parsed_file,
-              source_path: parsed_file.source_path.trim(),
-              target_rel_path: parsed_file.target_rel_path.trim(),
-            });
-          }
-
-          const failure_toast = format_source_file_parse_failure_toast({
-            value: raw_failed_files,
-            text: t,
-          });
-          if (failure_toast !== null) {
-            push_toast(parsed_files.length > 0 ? "warning" : "error", failure_toast);
-            parse_failure_toast_shown = true;
-          }
-        },
-      });
-
-      const import_preview = create_workbench_import_files_preview({
-        state: project_store.getState(),
-        parsed_files,
-      });
-      if (import_preview.importable_files.length === 0) {
-        if (parsed_files.length === 0 && parse_failure_toast_shown) {
-          return;
-        }
-        push_toast("error", t("workbench_page.feedback.no_valid_file"));
-        return;
-      }
-
-      const pending_request: PendingImportFilesRequest = {
-        parsed_files,
-        barrier_checkpoint,
-        conflict_action: null,
-        conflict_signature: import_preview.conflict_signature,
-      };
-      // NEW 入口内隐式处理同名：有冲突先确认策略，没有冲突直接进入继承确认。
-      if (import_preview.conflicting_files.length > 0) {
-        open_import_conflict_dialog(pending_request, import_preview);
-        return;
-      }
-
-      open_import_inheritance_dialog(pending_request, "skip", import_preview);
-    },
-    [
-      open_import_conflict_dialog,
-      open_import_inheritance_dialog,
-      options.createProjectPagesBarrierCheckpoint,
-      project_store,
-      push_toast,
-      readonly,
-      run_modal_progress_toast,
-      t,
-    ],
-  );
-
-  const request_add_file_from_path = useCallback(
-    async (source_path: string): Promise<void> => {
-      await request_add_files_from_paths([source_path]);
-    },
-    [request_add_files_from_paths],
-  );
+  const request_add_files_from_paths = import_files_flow.request_add_files_from_paths;
+  const request_add_file_from_path = import_files_flow.request_add_file_from_path;
 
   async function request_add_file(): Promise<void> {
     if (readonly) {
@@ -1654,26 +1368,14 @@ export function useWorkbenchLiveState(
       return;
     }
 
+    if (await import_files_flow.confirm_dialog()) {
+      return;
+    }
+
     const barrier_checkpoint = options.createProjectPagesBarrierCheckpoint?.() ?? null;
     const target_rel_path = current_dialog_state.target_rel_paths[0] ?? null;
     set_dialog_submitting(true);
-
     try {
-      if (current_dialog_state.kind === "confirm-import-files") {
-        await accept_import_conflict_action("replace");
-        return;
-      }
-
-      if (current_dialog_state.kind === "inherit-import-files") {
-        if (pending_import_files_request === null) {
-          set_dialog_submitting(false);
-          return;
-        }
-
-        await execute_import_files_request(pending_import_files_request, "inherit");
-        return;
-      }
-
       if (current_dialog_state.kind === "reset-file") {
         if (target_rel_path === null) {
           set_dialog_submitting(false);
@@ -1782,74 +1484,31 @@ export function useWorkbenchLiveState(
   }
 
   async function secondary_dialog(): Promise<void> {
-    const current_dialog_state = dialog_state;
-    if (current_dialog_state.kind !== "confirm-import-files" || current_dialog_state.submitting) {
-      return;
-    }
-
-    set_dialog_submitting(true);
-    try {
-      await accept_import_conflict_action("skip");
-    } catch (error) {
-      push_toast(
-        "error",
-        resolve_visible_error_message(error, t, t("workbench_page.feedback.file_action_failed")),
-      );
-      set_dialog_submitting(false);
-    }
+    await import_files_flow.secondary_dialog();
   }
 
   async function cancel_dialog(): Promise<void> {
     const current_dialog_state = dialog_state;
+    if (await import_files_flow.cancel_dialog()) {
+      return;
+    }
+
     if (current_dialog_state.submitting) {
       return;
     }
 
-    if (current_dialog_state.kind === "confirm-import-files") {
-      set_pending_import_files_request(null);
-      set_dialog_state(close_dialog_state());
-      return;
-    }
-
-    if (current_dialog_state.kind !== "inherit-import-files") {
-      set_dialog_state(close_dialog_state());
-      return;
-    }
-
-    if (pending_import_files_request === null) {
-      set_dialog_state(close_dialog_state());
-      return;
-    }
-
-    set_dialog_submitting(true);
-    try {
-      await execute_import_files_request(pending_import_files_request, "none");
-    } catch (error) {
-      const parse_failure_toast = format_source_file_parse_failure_error_toast({ error, text: t });
-      if (parse_failure_toast !== null) {
-        push_toast("error", parse_failure_toast);
-        set_dialog_submitting(false);
-        return;
-      }
-      push_toast(
-        "error",
-        resolve_visible_error_message(error, t, t("workbench_page.feedback.file_action_failed")),
-      );
-      set_dialog_submitting(false);
-    }
+    set_dialog_state(close_dialog_state());
   }
 
   function close_dialog(): void {
+    if (import_files_flow.close_dialog()) {
+      return;
+    }
+
     if (dialog_state.submitting) {
       return;
     }
 
-    if (
-      dialog_state.kind === "confirm-import-files" ||
-      dialog_state.kind === "inherit-import-files"
-    ) {
-      set_pending_import_files_request(null);
-    }
     set_dialog_state(close_dialog_state());
   }
 

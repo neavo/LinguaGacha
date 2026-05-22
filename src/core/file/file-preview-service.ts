@@ -1,17 +1,11 @@
-import path from "node:path";
-
 import type { ApiJsonValue } from "../api/api-types";
 import { AppSettingService } from "../app/app-setting-service";
 import { FileFormatService } from "./file-format-service";
-import { Item } from "../../base/item";
 import { normalize_setting_snapshot } from "../../base/setting";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { LogManager } from "../log/log-manager";
-import {
-  build_source_file_parse_failure,
-  log_source_file_parse_failures,
-} from "./source-file-parse-failure-reporter";
-import type { ProjectSourceFileEntry } from "./formats/file-format-shared";
+import { SourceFileParsePipeline } from "./source-file-parse-pipeline";
+import { log_source_file_parse_failures } from "./source-file-parse-failure-reporter";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import { create_text_resolver, resolve_i18n_locale, type TextResolver } from "../../shared/i18n";
 
@@ -45,34 +39,15 @@ export class FilePreviewService {
     const source_paths = this.normalize_string_list(request["source_paths"]);
     const current_rel_path =
       typeof request["current_rel_path"] === "string" ? request["current_rel_path"] : undefined;
-    const format_service = this.create_format_service();
-    const files: JsonRecord[] = [];
-    const failed_files: SourceFileParseFailureRecord[] = [];
-    for (const source_file of this.collect_workbench_source_file_entries(
-      format_service,
+    const pipeline = this.create_parse_pipeline();
+    const result = await pipeline.parse_workbench_preview({
       source_paths,
       current_rel_path,
-    )) {
-      try {
-        const parsed =
-          current_rel_path === undefined
-            ? await this.parse_source_file_entry(format_service, source_file)
-            : await format_service.parse_file_preview(source_file.source_path, current_rel_path);
-        files.push({ source_path: source_file.source_path, ...(parsed as unknown as JsonRecord) });
-      } catch (error) {
-        failed_files.push(
-          build_source_file_parse_failure({
-            source_path: source_file.source_path,
-            rel_path: source_file.rel_path,
-            error,
-          }),
-        );
-      }
-    }
-    this.log_parse_failures(failed_files);
+    });
+    this.log_parse_failures(result.failed_files);
     return {
-      files: files as unknown as ApiJsonValue,
-      failed_files: failed_files as unknown as ApiJsonValue,
+      files: result.files as unknown as ApiJsonValue,
+      failed_files: result.failed_files as unknown as ApiJsonValue,
     };
   }
 
@@ -81,106 +56,30 @@ export class FilePreviewService {
    */
   public async build_create_preview(request: JsonRecord): Promise<JsonRecord> {
     const source_paths = this.normalize_string_list(request["source_paths"]);
-    const format_service = this.create_format_service();
-    const effective_source_paths = format_service.normalize_source_paths(source_paths);
-    const source_files = format_service.collect_source_file_entries(effective_source_paths);
-    const files: JsonRecord[] = [];
-    const failed_files: SourceFileParseFailureRecord[] = [];
-    const items: JsonRecord[] = [];
-    let next_item_id = 1;
-    let next_sort_index = 0;
-    for (const source_file of source_files) {
-      let parsed_items: Item[];
-      try {
-        parsed_items = await format_service.parse_asset(
-          source_file.rel_path,
-          this.native_fs.read_file(source_file.source_path),
-        );
-      } catch (error) {
-        failed_files.push(
-          build_source_file_parse_failure({
-            source_path: source_file.source_path,
-            rel_path: source_file.rel_path,
-            error,
-          }),
-        );
-        continue;
-      }
-      let file_type = "NONE";
-      for (const item of parsed_items) {
-        const payload = Item.from_json(item).to_json();
-        payload["id"] = next_item_id;
-        payload["file_path"] =
-          String(payload["file_path"] ?? source_file.rel_path) || source_file.rel_path;
-        payload["file_type"] = String(payload["file_type"] ?? "NONE") || "NONE";
-        file_type = String(payload["file_type"] ?? "NONE");
-        items.push(payload);
-        next_item_id += 1;
-      }
-      files.push({
-        rel_path: source_file.rel_path,
-        file_type,
-        sort_index: next_sort_index,
-        source_path: source_file.source_path,
-      });
-      next_sort_index += 1;
-    }
-    this.log_parse_failures(failed_files);
+    const draft = await this.create_parse_pipeline().build_project_draft(source_paths);
+    this.log_parse_failures(draft.failed_files);
     return {
       draft: {
-        source_paths: effective_source_paths,
-        files,
-        items,
+        source_paths: draft.source_paths,
+        files: draft.files,
+        items: draft.items,
         section_revisions: { files: 0, items: 0, analysis: 0 },
       },
-      failed_files: failed_files as unknown as ApiJsonValue,
+      failed_files: draft.failed_files as unknown as ApiJsonValue,
     };
   }
 
   /**
-   * 工作台新增文件时展开目录；替换预览保留单文件目标路径计算语义。
+   * 解析流水线固定当前设置快照，避免同一批预览中语言配置前后漂移。
    */
-  private collect_workbench_source_file_entries(
-    format_service: FileFormatService,
-    source_paths: string[],
-    current_rel_path: string | undefined,
-  ): ProjectSourceFileEntry[] {
-    if (current_rel_path === undefined) {
-      return format_service.collect_source_file_entries(source_paths);
-    }
-    return format_service
-      .normalize_source_paths(source_paths)
-      .filter((source_path) => format_service.is_supported_file(source_path))
-      .map((source_path) => ({
-        source_path,
-        rel_path: path.basename(source_path),
-      }));
-  }
-
-  /**
-   * 目录展开后的工作台文件直接使用已分配相对路径，避免再次按单文件规则改名。
-   */
-  private async parse_source_file_entry(
-    format_service: FileFormatService,
-    source_file: ProjectSourceFileEntry,
-  ): Promise<JsonRecord> {
-    const parsed_items = await format_service.parse_asset(
-      source_file.rel_path,
-      this.native_fs.read_file(source_file.source_path),
-    );
-    return {
-      target_rel_path: source_file.rel_path,
-      file_type: format_service.pick_file_type(parsed_items),
-      parsed_items: parsed_items.map((item) => Item.from_json(item).to_json()),
-    } as unknown as JsonRecord;
+  private create_parse_pipeline(): SourceFileParsePipeline {
+    return new SourceFileParsePipeline(this.create_format_service(), this.native_fs);
   }
 
   /**
    * 批量解析失败统一写日志；日志内容只保留逐文件原因。
    */
-  private log_parse_failures(
-    failed_files: SourceFileParseFailureRecord[],
-  ): void {
+  private log_parse_failures(failed_files: SourceFileParseFailureRecord[]): void {
     log_source_file_parse_failures({
       failures: failed_files,
       log_manager: this.log_manager,
@@ -222,5 +121,4 @@ export class FilePreviewService {
       ? value.filter((item): item is string => typeof item === "string" && item.trim() !== "")
       : [];
   }
-
 }

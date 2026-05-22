@@ -4,9 +4,10 @@ import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import { FileFormatService } from "../file/file-format-service";
 import {
-  build_source_file_parse_failure,
-  log_source_file_parse_failures,
-} from "../file/source-file-parse-failure-reporter";
+  SourceFileParsePipeline,
+  type SourceFileParseResult,
+} from "../file/source-file-parse-pipeline";
+import { log_source_file_parse_failures } from "../file/source-file-parse-failure-reporter";
 import type { LogManager } from "../log/log-manager";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import { ProjectMutationCoordinator } from "./project-mutation-coordinator";
@@ -55,16 +56,6 @@ type WorkbenchImportConflictAction = "skip" | "replace";
 type ImportWorkbenchFileCommand = {
   source_path: string; // source_path 是用户选中的真实文件路径，只允许慢准备阶段读取
   target_rel_path: string; // target_rel_path 是写入 .lg asset 的相对路径，提交阶段重新做唯一性校验
-};
-
-type ImportWorkbenchFileDraft = ImportWorkbenchFileCommand & {
-  parsed_items: JsonRecord[]; // parsed_items 是格式解析产物，不携带 item id 或当前项目快照
-  file_type: string; // file_type 只来自解析结果，提交阶段再绑定 asset 顺序
-};
-
-type ImportWorkbenchFileParseResult = {
-  file_drafts: ImportWorkbenchFileDraft[]; // file_drafts 只包含最终可进入 mutation 的解析成功文件
-  failed_files: SourceFileParseFailureRecord[]; // failed_files 汇总支持格式但读取或解析失败的源文件
 };
 
 type TranslationResetParsedItemDraft = {
@@ -163,12 +154,12 @@ export class ProjectSyncMutationService {
             }, -1) + 1;
           for (const file of parse_result.file_drafts) {
             // 新增与替换共用同一条解析结果绑定流程，避免维护两套 item id / 预过滤逻辑。
-            const target_key = file.target_rel_path.toLowerCase();
+            const target_key = file.rel_path.toLowerCase();
             if (incoming_paths.has(target_key)) {
               throw new AppErrors.RequestValidationError({
                 diagnostic_context: {
                   reason: "duplicate_import_target",
-                  rel_path: file.target_rel_path,
+                  rel_path: file.rel_path,
                 },
               });
             }
@@ -177,7 +168,7 @@ export class ProjectSyncMutationService {
             if (existing_record !== undefined && conflict_action === "skip") {
               continue;
             }
-            const target_rel_path = existing_record?.path ?? file.target_rel_path;
+            const target_rel_path = existing_record?.path ?? file.rel_path;
             if (existing_record !== undefined) {
               for (const [item_id, item] of next_items.entries()) {
                 if (item.file_path === target_rel_path) {
@@ -747,42 +738,22 @@ export class ProjectSyncMutationService {
    */
   private async parse_import_file_commands(
     file_commands: ImportWorkbenchFileCommand[],
-  ): Promise<ImportWorkbenchFileParseResult> {
-    const format_service = this.create_format_service();
-    const file_drafts: ImportWorkbenchFileDraft[] = [];
-    const failed_files: SourceFileParseFailureRecord[] = [];
-    for (const file of file_commands) {
-      let parsed_items: Item[];
-      try {
-        parsed_items = await format_service.parse_asset(
-          file.target_rel_path,
-          this.native_fs.read_file(file.source_path),
-        );
-      } catch (error) {
-        failed_files.push(
-          build_source_file_parse_failure({
-            source_path: file.source_path,
-            rel_path: file.target_rel_path,
-            error,
-          }),
-        );
-        continue;
-      }
-      file_drafts.push({
-        ...file,
-        parsed_items: parsed_items.map((item) => Item.from_json(item).to_json()),
-        file_type: format_service.pick_file_type(parsed_items),
-      });
-    }
-    return { file_drafts, failed_files };
+  ): Promise<SourceFileParseResult> {
+    return new SourceFileParsePipeline(
+      this.create_format_service(),
+      this.native_fs,
+    ).parse_import_commands(
+      file_commands.map((file) => ({
+        source_path: file.source_path,
+        rel_path: file.target_rel_path,
+      })),
+    );
   }
 
   /**
    * 所有提交文件都解析失败时阻断 mutation，避免创建一次无实际文件变化的项目事件。
    */
-  private assert_workbench_import_has_parseable_files(
-    result: ImportWorkbenchFileParseResult,
-  ): void {
+  private assert_workbench_import_has_parseable_files(result: SourceFileParseResult): void {
     if (result.file_drafts.length > 0 || result.failed_files.length === 0) {
       return;
     }
@@ -812,9 +783,7 @@ export class ProjectSyncMutationService {
   /**
    * 工作台导入解析失败写入日志，日志内容与页面 Toast 使用同一格式。
    */
-  private log_workbench_import_parse_failures(
-    failed_files: SourceFileParseFailureRecord[],
-  ): void {
+  private log_workbench_import_parse_failures(failed_files: SourceFileParseFailureRecord[]): void {
     log_source_file_parse_failures({
       failures: failed_files,
       log_manager: this.log_manager,

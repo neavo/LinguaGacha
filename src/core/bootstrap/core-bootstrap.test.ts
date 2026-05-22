@@ -189,6 +189,35 @@ describe("CoreBootstrap", () => {
     }
   });
 
+  it("系统代理解析失败不阻断 Core 启动", async () => {
+    const manager = new CoreBootstrap({
+      appRoot: temp_dir,
+      exposeApiGateway: false,
+      logTargets: { console: false, window: false },
+      systemProxyResolver: {
+        resolveProxy: async () => {
+          throw new Error("resolve failed");
+        },
+      },
+      openOutputFolder: noop_output_folder,
+      engineExecution: IN_PROCESS_ENGINE_EXECUTION,
+    });
+
+    const start_result = await manager.start();
+    try {
+      expect(start_result.systemProxyStartupNotice).toEqual({
+        detected: false,
+        proxiedOriginCount: 0,
+        proxyDisplay: null,
+      });
+      const log_text = read_log_text(path.join(temp_dir, "log"));
+      expect(log_text).toContain("LinguaGacha v9.8.7 …");
+      expect(log_text).not.toContain("检查到系统代理设置");
+    } finally {
+      await manager.stop();
+    }
+  });
+
   it("检测到系统代理时返回启动提示摘要并写入脱敏日志", async () => {
     fs.mkdirSync(path.join(temp_dir, "userdata"), { recursive: true });
     fs.writeFileSync(

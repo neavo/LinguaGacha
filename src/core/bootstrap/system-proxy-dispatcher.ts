@@ -160,21 +160,31 @@ export function parse_system_proxy_route(proxy_rules: string): SystemProxyRoute 
 }
 
 /**
- * 按 URL 逐项 resolveProxy，生成可传给 worker 的不可变代理快照。
+ * 按 origin 并发 resolveProxy，单项探测失败降级直连，不阻断 Core 启动。
  */
 async function resolve_system_proxy_snapshot(
   urls: string[],
   resolver: SystemProxyResolver,
 ): Promise<SystemProxySnapshot> {
-  const routes: Record<string, SystemProxyRoute> = {};
+  const urls_by_origin = new Map<string, string>();
   for (const url of urls) {
     const origin = read_origin(url);
-    if (origin === null || routes[origin] !== undefined) {
+    if (origin === null || urls_by_origin.has(origin)) {
       continue;
     }
-    routes[origin] = parse_system_proxy_route(await resolver.resolveProxy(url));
+    urls_by_origin.set(origin, url);
   }
-  return { routes };
+
+  const route_entries = await Promise.all(
+    [...urls_by_origin.entries()].map(async ([origin, url]) => {
+      try {
+        return [origin, parse_system_proxy_route(await resolver.resolveProxy(url))] as const;
+      } catch {
+        return [origin, { kind: "direct" } satisfies SystemProxyRoute] as const;
+      }
+    }),
+  );
+  return { routes: Object.fromEntries(route_entries) };
 }
 
 /**

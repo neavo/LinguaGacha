@@ -119,6 +119,30 @@ describe("system-proxy-dispatcher", () => {
     expect(installation.snapshot.routes["https://api.example"]).toEqual({ kind: "direct" });
   });
 
+  it("系统代理单项解析失败时降级 DIRECT，并保留其它代理命中", async () => {
+    const installation = await install_system_proxy_dispatcher({
+      urls: ["https://bad.example/v1", "https://good.example/v1"],
+      resolver: {
+        resolveProxy: async (url) => {
+          if (url.includes("bad.example")) {
+            throw new Error("resolve failed");
+          }
+          return "PROXY 127.0.0.1:7890";
+        },
+      },
+    });
+    installed_disposers.push(installation.dispose);
+
+    expect(installation.snapshot.routes).toEqual({
+      "https://bad.example": { kind: "direct" },
+      "https://good.example": {
+        kind: "proxy",
+        uri: "http://127.0.0.1:7890/",
+      },
+    });
+    expect(getGlobalDispatcher()).not.toBe(original_dispatcher);
+  });
+
   it("启动提示摘要只暴露代理命中结果，不暴露代理 URI", () => {
     const notice = build_system_proxy_startup_notice({
       routes: {
