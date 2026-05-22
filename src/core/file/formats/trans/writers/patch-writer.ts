@@ -1,7 +1,7 @@
 import type { ApiJsonValue } from "../../../../api/api-types";
 import { InvalidFileStructureError } from "../../../../../shared/error";
 import {
-  has_color_block_tag,
+  derive_trans_filter_effect,
   string_array,
   to_mutable_record,
   type ApiJsonRecord,
@@ -58,50 +58,21 @@ export function patch_trans_row(
   const tag_row = read_row_string_array(entry["tags"], target.row_index);
   const context_row = read_row_string_array(entry["context"], target.row_index);
   const parameter_row = read_row_value(entry["parameters"], target.row_index);
-  let block = processor.filter(target.snap.src, target.file_key, tag_row, context_row);
-  if (block.length === 0) {
-    block = [false];
-  }
+  const effect = derive_trans_filter_effect({
+    block: processor.filter(target.snap.src, target.file_key, tag_row, context_row),
+    tag: tag_row,
+    parameter: parameter_row,
+  });
 
-  const is_all_blocked = block.every(Boolean);
-  const is_all_unblocked = block.every((value) => !value);
-  const is_mixed_block = !is_all_blocked && !is_all_unblocked;
-  const parameter_list_for_schema = Array.isArray(parameter_row) ? parameter_row : [];
-  const has_partition = parameter_list_for_schema.some(
-    (value) =>
-      typeof value === "object" &&
-      value !== null &&
-      !Array.isArray(value) &&
-      ("contextStr" in value || "translation" in value),
-  );
-  const has_span = parameter_list_for_schema.some(
-    (value) =>
-      typeof value === "object" &&
-      value !== null &&
-      !Array.isArray(value) &&
-      ("start" in value || "end" in value || "enclosure" in value || "lineIndent" in value),
-  );
-  const is_span_schema = has_span && !has_partition;
-  const is_mixed_partition = is_mixed_block && !is_span_schema;
-
-  let new_tags = tag_row;
-  if (
-    is_mixed_partition &&
-    !tag_row.some((value) => value === "red" || value === "blue" || value === "gold")
-  ) {
-    new_tags = [...tag_row, "gold"];
-  } else if (!is_mixed_partition && tag_row.includes("gold") && !has_color_block_tag(tag_row)) {
-    new_tags = tag_row.filter((value) => value !== "gold");
-  }
-  if (new_tags !== tag_row) {
+  if (effect.tag !== tag_row) {
     const tags_field = ensure_array_field(entry, "tags");
     while (tags_field.length <= target.row_index) {
       tags_field.push([]);
     }
-    tags_field[target.row_index] = new_tags;
+    tags_field[target.row_index] = effect.tag;
   }
 
-  if (is_mixed_partition) {
+  if (effect.is_mixed_partition) {
     const parameters_field = ensure_array_field(entry, "parameters");
     while (parameters_field.length <= target.row_index) {
       parameters_field.push(null);
@@ -110,7 +81,7 @@ export function patch_trans_row(
       target.snap.src,
       context_row,
       parameter_row,
-      block,
+      effect.block,
     );
   }
 
