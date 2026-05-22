@@ -14,6 +14,7 @@ import { is_task_stopping } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import {
   create_workbench_delete_files_plan,
+  create_workbench_planner_settings,
   create_workbench_reorder_plan,
   create_workbench_reset_file_plan,
   type WorkbenchProjectMutationPlan,
@@ -738,6 +739,11 @@ export function useWorkbenchLiveState(
   const [stats_mode, set_stats_mode] = useState<WorkbenchStatsMode>("translation");
   const previous_workbench_change_seq_ref = useRef(workbench_change_signal.seq);
   const previous_project_loaded_ref = useRef(false);
+  // 工作台文件 mutation 共享同一份窄设置镜像，避免各入口重复拼命令字段。
+  const planner_settings = useMemo(
+    () => create_workbench_planner_settings(settings_snapshot),
+    [settings_snapshot],
+  );
   const previous_project_path_ref = useRef("");
   const refresh_generation_ref = useRef(0);
   const snapshot_ref = useRef(snapshot);
@@ -1203,7 +1209,7 @@ export function useWorkbenchLiveState(
     dialog_state,
     project_store,
     task_snapshot,
-    settings_snapshot,
+    planner_settings,
     createProjectPagesBarrierCheckpoint: options.createProjectPagesBarrierCheckpoint,
     run_modal_progress_toast,
     run_project_file_mutation,
@@ -1386,11 +1392,7 @@ export function useWorkbenchLiveState(
           state: project_store.getState(),
           task_snapshot,
           rel_path: target_rel_path,
-          settings: {
-            source_language: settings_snapshot.source_language,
-            mtool_optimizer_enable: settings_snapshot.mtool_optimizer_enable,
-            skip_duplicate_source_text_enable: settings_snapshot.skip_duplicate_source_text_enable,
-          },
+          settings: planner_settings,
         });
         await run_project_file_mutation(
           reset_plan,
@@ -1416,11 +1418,7 @@ export function useWorkbenchLiveState(
           state: project_store.getState(),
           task_snapshot,
           rel_paths: current_dialog_state.target_rel_paths,
-          settings: {
-            source_language: settings_snapshot.source_language,
-            mtool_optimizer_enable: settings_snapshot.mtool_optimizer_enable,
-            skip_duplicate_source_text_enable: settings_snapshot.skip_duplicate_source_text_enable,
-          },
+          settings: planner_settings,
         });
         await run_project_file_mutation(
           delete_plan,

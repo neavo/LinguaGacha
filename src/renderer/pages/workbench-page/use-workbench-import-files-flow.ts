@@ -2,10 +2,7 @@ import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } 
 
 import type { ProjectPagesBarrierCheckpoint } from "@/app/page-runtime/project-pages-barrier";
 import { api_fetch } from "@/app/desktop/desktop-api";
-import type {
-  ProjectMutationResultPayload,
-  SettingsSnapshot,
-} from "@/app/desktop/desktop-runtime-context";
+import type { ProjectMutationResultPayload } from "@/app/desktop/desktop-runtime-context";
 import type { TaskSnapshot } from "@/app/desktop/task-runtime-store";
 import type { LocaleKey } from "@/app/locale/locale-provider";
 import type { ProjectStoreReader } from "@/project/store/project-store";
@@ -21,6 +18,7 @@ import {
   type WorkbenchFileConflictAction,
   type WorkbenchFileParsePreview,
   type WorkbenchImportFilesPreview,
+  type WorkbenchPlannerSettings,
   type WorkbenchProjectMutationPlan,
 } from "@/pages/workbench-page/workbench-mutation-planner";
 import type { WorkbenchDialogState } from "@/pages/workbench-page/types";
@@ -40,7 +38,7 @@ type WorkbenchImportFilesFlowOptions = {
   dialog_state: WorkbenchDialogState;
   project_store: ProjectStoreReader;
   task_snapshot: TaskSnapshot;
-  settings_snapshot: SettingsSnapshot;
+  planner_settings: WorkbenchPlannerSettings; // 导入命令只需要预过滤设置，不依赖完整应用设置快照
   createProjectPagesBarrierCheckpoint?: () => ProjectPagesBarrierCheckpoint;
   run_modal_progress_toast: <T>(args: {
     message: string;
@@ -211,12 +209,7 @@ export function useWorkbenchImportFilesFlow(
         task_snapshot: options.task_snapshot,
         parsed_files: pending_request.parsed_files,
         conflict_action,
-        settings: {
-          source_language: options.settings_snapshot.source_language,
-          mtool_optimizer_enable: options.settings_snapshot.mtool_optimizer_enable,
-          skip_duplicate_source_text_enable:
-            options.settings_snapshot.skip_duplicate_source_text_enable,
-        },
+        settings: options.planner_settings,
         inheritance_mode,
       });
       const import_payload = await options.run_project_file_mutation(

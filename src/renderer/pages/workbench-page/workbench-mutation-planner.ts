@@ -1,6 +1,6 @@
 import type { ProjectStoreState } from "@/project/store/project-store";
 
-type WorkbenchPlannerSettings = {
+export type WorkbenchPlannerSettings = {
   source_language: string; // 后端预过滤使用的源语言设置
   mtool_optimizer_enable: boolean; // 后端 KVJSON 优化预过滤开关
   skip_duplicate_source_text_enable: boolean; // 后端同文件重复原文过滤开关
@@ -117,6 +117,18 @@ function build_expected_revisions(
 
 // 项目设置镜像只传后端重算预过滤需要的稳定字段。
 function build_project_settings(settings: WorkbenchPlannerSettings): Record<string, unknown> {
+  return {
+    source_language: settings.source_language,
+    mtool_optimizer_enable: settings.mtool_optimizer_enable,
+    skip_duplicate_source_text_enable: settings.skip_duplicate_source_text_enable,
+  };
+}
+
+// 从完整运行态设置投影出工作台 planner 可消费的命令设置。
+export function create_workbench_planner_settings(
+  settings: WorkbenchPlannerSettings,
+): WorkbenchPlannerSettings {
+  // 工作台 mutation 边界只保留预过滤设置，避免完整应用设置泄漏进命令规划。
   return {
     source_language: settings.source_language,
     mtool_optimizer_enable: settings.mtool_optimizer_enable,

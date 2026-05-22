@@ -7,8 +7,10 @@ import {
   create_workbench_delete_files_plan,
   create_workbench_import_files_plan,
   create_workbench_import_files_preview,
+  create_workbench_planner_settings,
   create_workbench_reset_file_plan,
   type WorkbenchFileParsePreview,
+  type WorkbenchPlannerSettings,
 } from "@/pages/workbench-page/workbench-mutation-planner";
 
 function create_state(items: Record<string, ProjectItemPublicRecord>): ProjectStoreState {
@@ -59,13 +61,23 @@ function create_parsed_file(): WorkbenchFileParsePreview {
   };
 }
 
-const SETTINGS = {
+const SETTINGS: WorkbenchPlannerSettings = {
   source_language: "JA",
   mtool_optimizer_enable: false,
   skip_duplicate_source_text_enable: true,
 };
 
 describe("workbench mutation planner", () => {
+  it("投影工作台设置时只保留后端预过滤字段", () => {
+    const runtime_settings = {
+      ...SETTINGS,
+      target_language: "ZH",
+      request_timeout: 120,
+    };
+
+    expect(create_workbench_planner_settings(runtime_settings)).toEqual(SETTINGS);
+  });
+
   it("导入新文件只提交源路径、目标路径、同名策略、继承模式和 revision 锁", () => {
     const plan = create_workbench_import_files_plan({
       state: create_state({}),

@@ -195,14 +195,10 @@ function HookProbe(props: {
     dialog_state,
     project_store,
     task_snapshot: create_task_snapshot(),
-    settings_snapshot: {
+    planner_settings: {
       source_language: "JA",
-      target_language: "ZH",
       mtool_optimizer_enable: true,
       skip_duplicate_source_text_enable: false,
-      app_language: "ZH",
-      deduplication_in_bilingual: true,
-      write_translated_name_fields_to_file: true,
     },
     run_modal_progress_toast: async (args) => {
       return await args.task();
