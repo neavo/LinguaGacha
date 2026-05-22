@@ -390,7 +390,7 @@ describe("createProofreadingUiWorkerService", () => {
     });
   });
 
-  it("字段级状态 patch 会同步维护当前列表筛选缓存", () => {
+  it("重翻完成后即使状态脱离筛选条件，也保留旧视图成员供用户确认", () => {
     const engine = createProofreadingUiWorkerService();
     const sync_state = engine.hydrate_full(create_hydration_input());
     const old_list_view = engine.build_list_view({
@@ -420,11 +420,12 @@ describe("createProofreadingUiWorkerService", () => {
       start: 0,
       count: 10,
     });
-    expect(old_window.row_count).toBe(1);
-    expect(old_window.rows.map((row) => row.row_id)).toEqual(["1"]);
+    expect(old_window.row_count).toBe(2);
+    expect(old_window.rows.map((row) => row.row_id)).toEqual(["1", "2"]);
+    expect(old_window.rows[1]?.item.status).toBe("EXCLUDED");
   });
 
-  it("字段级译文 patch 会同步维护当前列表排序缓存", () => {
+  it("重翻完成后即使译文改变排序键，也保留旧视图顺序供用户确认", () => {
     const engine = createProofreadingUiWorkerService();
     const sync_state = engine.hydrate_full(create_hydration_input());
     const old_list_view = engine.build_list_view({
@@ -457,8 +458,8 @@ describe("createProofreadingUiWorkerService", () => {
       count: 10,
     });
     expect(old_window.row_count).toBe(2);
-    expect(old_window.rows.map((row) => row.row_id)).toEqual(["2", "1"]);
-    expect(old_window.rows[0]?.item.dst).toBe("aardvark");
+    expect(old_window.rows.map((row) => row.row_id)).toEqual(["1", "2"]);
+    expect(old_window.rows[1]?.item.dst).toBe("aardvark");
   });
 
   it("apply_item_delta 支持 tombstone 删除并从当前列表快照剪除对应 id", () => {

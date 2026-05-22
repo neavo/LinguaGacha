@@ -163,32 +163,17 @@ type ProofreadingRuntimeState = {
   defaultFilters: ProofreadingFilterOptions;
 };
 
-type ProofreadingRuntimeItemFieldName =
-  | "file_path"
-  | "row_number"
-  | "src"
-  | "dst"
-  | "status"
-  | "text_type"
-  | "retry_count";
-
 type ProofreadingRuntimeItemChange = {
   item_id: string; // 变更记录统一使用 row id 字符串，直接对接列表缓存
-  previous_evaluated_item: ProofreadingClientItem | null;
-  next_evaluated_item: ProofreadingClientItem | null;
-  changed_fields: Set<ProofreadingRuntimeItemFieldName>;
+  removed_from_runtime: boolean; // 只有后端 tombstone 能改变旧结果视图的成员集合
   natural_order_changed: boolean; // 文件、行号或 item_id 变化会影响所有排序的兜底顺序
 };
 
-// 列表视图缓存保存查询上下文和排序后的 id 序列，让 delta 可以维护当前 view 而不是等整页重建
+// 列表视图缓存只保存显式查询生成的稳定 id 序列，让用户在筛选校对后能先确认重翻结果
 type ProofreadingRuntimeListViewCache = {
   view_id: string;
   projectId: string;
-  filter_context: ProofreadingRuntimeFilterContext;
-  search_context: ProofreadingRuntimeSearchContext;
-  sort_state: AppTableSortState | null;
   ordered_item_ids: string[];
-  ordered_item_id_set: Set<string>;
 };
 
 // 筛选维度枚举用于“构建面板时忽略当前维度”的交叉统计
@@ -211,7 +196,6 @@ type ProofreadingRuntimeSearchContext = {
 };
 
 const PROOFREADING_DEFAULT_WINDOW_COUNT = 160; // 默认窗口大小控制 worker 每次返回量，防止大项目一次复制全量行
-const PROOFREADING_LIST_CACHE_INCREMENTAL_INSERT_LIMIT = 64; // 大批量新增/重排直接重建派生 view，比反复 splice 更稳
 
 // 自然排序固定为文件路径 + 行号，是所有二级排序的稳定兜底
 const PROOFREADING_NATURAL_SORT_STATE: AppTableSortState = {
@@ -231,18 +215,6 @@ function compare_text(left: string, right: string): number {
  */
 function normalize_sort_direction(direction: "ascending" | "descending"): number {
   return direction === "ascending" ? 1 : -1;
-}
-
-/**
- * 缓存持有排序状态快照，避免调用方后续修改查询对象影响 worker 内部 view。
- */
-function clone_sort_state(sort_state: AppTableSortState | null): AppTableSortState | null {
-  return sort_state === null
-    ? null
-    : {
-        column_id: sort_state.column_id,
-        direction: sort_state.direction,
-      };
 }
 
 /**
@@ -976,34 +948,8 @@ function apply_counter_delta(args: {
   });
 }
 
-const RUNTIME_ITEM_CHANGE_FIELDS: readonly ProofreadingRuntimeItemFieldName[] = [
-  "file_path",
-  "row_number",
-  "src",
-  "dst",
-  "status",
-  "text_type",
-  "retry_count",
-];
-
 /**
- * 变更字段用于判断当前列表 view 是否需要重排，避免无关 patch 触发整表排序。
- */
-function collect_runtime_item_changed_fields(
-  previous_item: ProofreadingRuntimeItemRecord | null,
-  next_item: ProofreadingRuntimeItemRecord | null,
-): Set<ProofreadingRuntimeItemFieldName> {
-  const changed_fields = new Set<ProofreadingRuntimeItemFieldName>();
-  for (const field of RUNTIME_ITEM_CHANGE_FIELDS) {
-    if (previous_item?.[field] !== next_item?.[field]) {
-      changed_fields.add(field);
-    }
-  }
-  return changed_fields;
-}
-
-/**
- * 单条 raw item 更新会同步重评估警告和所有筛选计数，并输出当前 view 可消费的变更记录。
+ * 单条 raw item 更新会同步重评估警告和所有筛选计数，并输出自然顺序和删除剪裁需要的变更记录。
  */
 function upsert_runtime_item_in_state(
   state: ProofreadingRuntimeState,
@@ -1042,9 +988,7 @@ function upsert_runtime_item_in_state(
   }
   return {
     item_id: item_key,
-    previous_evaluated_item,
-    next_evaluated_item,
-    changed_fields: collect_runtime_item_changed_fields(previous_item, normalized_item),
+    removed_from_runtime: false,
     natural_order_changed: should_rebuild_natural_order,
   };
 }
@@ -1069,9 +1013,7 @@ function delete_runtime_item_from_state(
   state.evaluated_item_by_id.delete(item_id);
   return {
     item_id,
-    previous_evaluated_item,
-    next_evaluated_item: null,
-    changed_fields: collect_runtime_item_changed_fields(previous_item, null),
+    removed_from_runtime: previous_item !== null || previous_evaluated_item !== null,
     natural_order_changed: previous_item !== null,
   };
 }
@@ -1281,175 +1223,33 @@ function collect_visible_items_in_natural_order(args: {
 }
 
 /**
- * 当前列表 view 的筛选和搜索上下文共同决定 item 是否应出现在缓存 id 序列中。
- */
-function item_matches_list_view_cache(
-  item: ProofreadingClientItem,
-  cache: ProofreadingRuntimeListViewCache,
-): boolean {
-  return (
-    item_matches_filter_context(item, cache.filter_context) &&
-    matches_proofreading_search_scope({
-      item,
-      search_context: cache.search_context,
-    })
-  );
-}
-
-function changed_fields_include_any(
-  fields: Set<ProofreadingRuntimeItemFieldName>,
-  candidates: readonly ProofreadingRuntimeItemFieldName[],
-): boolean {
-  return candidates.some((field) => fields.has(field));
-}
-
-/**
- * 两端都仍可见时，只有排序键或自然兜底顺序改变才需要移动缓存中的 id。
- */
-function should_reposition_visible_item_in_cache(
-  change: ProofreadingRuntimeItemChange,
-  cache: ProofreadingRuntimeListViewCache,
-): boolean {
-  if (change.natural_order_changed) {
-    return true;
-  }
-  if (cache.sort_state === null) {
-    return false;
-  }
-  if (cache.sort_state.column_id === "file") {
-    return changed_fields_include_any(change.changed_fields, ["file_path", "row_number"]);
-  }
-  if (cache.sort_state.column_id === "status") {
-    return change.changed_fields.has("status");
-  }
-  if (cache.sort_state.column_id === "src") {
-    return change.changed_fields.has("src");
-  }
-  if (cache.sort_state.column_id === "dst") {
-    return change.changed_fields.has("dst");
-  }
-  return true;
-}
-
-/**
- * 重建当前 view 的派生 id 序列，不触碰后端事实和 worker 主索引。
- */
-function build_ordered_item_ids_for_cache(
-  state: ProofreadingRuntimeState,
-  cache: ProofreadingRuntimeListViewCache,
-): string[] {
-  return sort_visible_items(
-    collect_visible_items_in_natural_order({
-      state,
-      filter_context: cache.filter_context,
-      search_context: cache.search_context,
-    }),
-    cache.sort_state,
-  ).map((item) => String(item.item_id));
-}
-
-function rebuild_list_view_cache_order(
-  state: ProofreadingRuntimeState,
-  cache: ProofreadingRuntimeListViewCache,
-): ProofreadingRuntimeListViewCache {
-  const ordered_item_ids = build_ordered_item_ids_for_cache(state, cache);
-  return {
-    ...cache,
-    ordered_item_ids,
-    ordered_item_id_set: new Set(ordered_item_ids),
-  };
-}
-
-/**
- * 少量新增或重排使用二分插入，避免每次 field-patch 都重新排序整张列表。
- */
-function insert_item_id_into_list_view_cache(args: {
-  state: ProofreadingRuntimeState;
-  cache: ProofreadingRuntimeListViewCache;
-  item: ProofreadingClientItem;
-}): void {
-  const item_id = String(args.item.item_id);
-  if (args.cache.ordered_item_id_set.has(item_id)) {
-    return;
-  }
-  let low = 0;
-  let high = args.cache.ordered_item_ids.length;
-  while (low < high) {
-    const middle = Math.floor((low + high) / 2);
-    const middle_item_id = args.cache.ordered_item_ids[middle] ?? "";
-    const middle_item = args.state.evaluated_item_by_id.get(middle_item_id);
-    if (
-      middle_item === undefined ||
-      compare_list_view_items(args.item, middle_item, args.cache.sort_state) < 0
-    ) {
-      high = middle;
-    } else {
-      low = middle + 1;
-    }
-  }
-  args.cache.ordered_item_ids.splice(low, 0, item_id);
-  args.cache.ordered_item_id_set.add(item_id);
-}
-
-/**
- * item delta 提交后同步维护当前列表缓存；大批量重排退回 worker 内部派生重建。
+ * item delta 提交后只从当前结果快照剪除 tombstone；字段变化只刷新行内容，不重新执行筛选或排序。
+ * 这保证重翻修复术语命中后，行仍停留在当前筛选结果里供用户检查其它问题。
  */
 function apply_item_changes_to_list_view_cache(args: {
-  state: ProofreadingRuntimeState;
   cache: ProofreadingRuntimeListViewCache | null;
   changes: ProofreadingRuntimeItemChange[];
 }): ProofreadingRuntimeListViewCache | null {
-  if (
-    args.cache === null ||
-    args.cache.projectId !== args.state.projectId ||
-    args.changes.length === 0
-  ) {
+  if (args.cache === null || args.changes.length === 0) {
     return args.cache;
   }
 
-  const changed_item_ids = new Set(args.changes.map((change) => change.item_id));
-  const next_visible_items_to_insert: ProofreadingClientItem[] = [];
-  let should_update_ordered_ids = false;
-
-  for (const change of args.changes) {
-    const was_visible = args.cache.ordered_item_id_set.has(change.item_id);
-    const is_visible =
-      change.next_evaluated_item !== null &&
-      item_matches_list_view_cache(change.next_evaluated_item, args.cache);
-    const should_reposition =
-      was_visible && is_visible && should_reposition_visible_item_in_cache(change, args.cache);
-    if (was_visible === is_visible && !should_reposition) {
-      continue;
-    }
-    should_update_ordered_ids = true;
-    if (is_visible && change.next_evaluated_item !== null) {
-      next_visible_items_to_insert.push(change.next_evaluated_item);
-    }
-  }
-
-  if (!should_update_ordered_ids) {
+  const deleted_item_ids = new Set(
+    args.changes
+      .filter((change) => change.removed_from_runtime)
+      .map((change) => change.item_id),
+  );
+  if (deleted_item_ids.size === 0) {
     return args.cache;
-  }
-  if (next_visible_items_to_insert.length > PROOFREADING_LIST_CACHE_INCREMENTAL_INSERT_LIMIT) {
-    return rebuild_list_view_cache_order(args.state, args.cache);
   }
 
   const next_ordered_item_ids = args.cache.ordered_item_ids.filter((item_id) => {
-    return !changed_item_ids.has(item_id);
+    return !deleted_item_ids.has(item_id);
   });
-  const next_cache: ProofreadingRuntimeListViewCache = {
+  return {
     ...args.cache,
     ordered_item_ids: next_ordered_item_ids,
-    ordered_item_id_set: new Set(next_ordered_item_ids),
   };
-  next_visible_items_to_insert.forEach((item) => {
-    insert_item_id_into_list_view_cache({
-      state: args.state,
-      cache: next_cache,
-      item,
-    });
-  });
-  return next_cache;
 }
 
 /**
@@ -1550,7 +1350,6 @@ export function createProofreadingUiWorkerService() {
 
       current_state.defaultFilters = buildDefaultFiltersFromState(current_state);
       list_view_cache = apply_item_changes_to_list_view_cache({
-        state: current_state,
         cache: list_view_cache,
         changes: item_changes,
       });
@@ -1589,11 +1388,7 @@ export function createProofreadingUiWorkerService() {
       list_view_cache = {
         view_id,
         projectId: state.projectId,
-        filter_context,
-        search_context,
-        sort_state: clone_sort_state(query.sort_state ?? null),
         ordered_item_ids,
-        ordered_item_id_set: new Set(ordered_item_ids),
       };
       const window_bounds = normalize_window_bounds({
         start: query.window_start,
