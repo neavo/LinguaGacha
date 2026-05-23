@@ -58,11 +58,15 @@ type ProofreadingTableProps = {
   on_selection_change: (payload: AppTableSelectionChange) => void;
   on_selection_error: (error: unknown) => void;
   on_open_edit: (row_id: string) => void;
-  on_request_retranslate_row_ids: (row_ids: string[]) => void;
-  on_request_clear_translation_row_ids: (row_ids: string[]) => void;
+  on_request_retranslate_row_ids: (row_ids: string[], preferred_row_id?: string | null) => void;
+  on_request_clear_translation_row_ids: (
+    row_ids: string[],
+    preferred_row_id?: string | null,
+  ) => void;
   on_request_set_translation_status_row_ids: (
     row_ids: string[],
     status: ProofreadingManualStatusCode,
+    preferred_row_id?: string | null,
   ) => void;
 };
 
@@ -91,6 +95,11 @@ function should_ignore_row_click_target(target_element: HTMLElement): boolean {
       ].join(", "),
     ) !== null
   );
+}
+
+function run_after_context_menu_close(action: () => void): void {
+  // Radix ContextMenu 会在 select 后恢复焦点；弹窗类动作延后一拍，避免两个临时 layer 同轮抢焦点。
+  window.setTimeout(action, 0);
 }
 
 function resolve_context_target_row_ids(row_id: string, selected_row_ids: string[]): string[] {
@@ -394,8 +403,10 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
               <AppContextMenuContent>
                 <AppContextMenuGroup>
                   <AppContextMenuItem
-                    onClick={() => {
-                      props.on_open_edit(payload.row_id);
+                    onSelect={() => {
+                      run_after_context_menu_close(() => {
+                        props.on_open_edit(payload.row_id);
+                      });
                     }}
                   >
                     <PencilLine />
@@ -403,8 +414,10 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
                   </AppContextMenuItem>
                   <AppContextMenuItem
                     disabled={props.readonly}
-                    onClick={() => {
-                      props.on_request_retranslate_row_ids(target_row_ids);
+                    onSelect={() => {
+                      run_after_context_menu_close(() => {
+                        props.on_request_retranslate_row_ids(target_row_ids, payload.row_id);
+                      });
                     }}
                   >
                     <RefreshCcw />
@@ -412,8 +425,10 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
                   </AppContextMenuItem>
                   <AppContextMenuItem
                     disabled={props.readonly}
-                    onClick={() => {
-                      props.on_request_clear_translation_row_ids(target_row_ids);
+                    onSelect={() => {
+                      run_after_context_menu_close(() => {
+                        props.on_request_clear_translation_row_ids(target_row_ids, payload.row_id);
+                      });
                     }}
                   >
                     <Eraser />
@@ -430,7 +445,11 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
                           key={status}
                           disabled={props.readonly}
                           onSelect={() => {
-                            props.on_request_set_translation_status_row_ids(target_row_ids, status);
+                            props.on_request_set_translation_status_row_ids(
+                              target_row_ids,
+                              status,
+                              payload.row_id,
+                            );
                           }}
                         >
                           {t(PROOFREADING_STATUS_LABEL_KEY_BY_CODE[status])}

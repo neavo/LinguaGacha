@@ -91,8 +91,6 @@ export const zh_cn_proofreading_page = {
   confirm: {
     retranslate_description: "是否确认重新翻译 {COUNT} 个条目 …?",
     clear_translation_description: "是否确认清空 {COUNT} 个条目的译文 …?",
-    set_status_description:
-      "是否确认将 {COUNT} 个条目的翻译状态设置为「{STATUS}」 …?",
   },
   feedback: {
     refresh_failed: "校对页刷新失败",

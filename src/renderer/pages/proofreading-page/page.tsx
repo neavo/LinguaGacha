@@ -157,9 +157,9 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
       />
 
       <ProofreadingConfirmDialog
-        state={proofreading_page_state.pending_mutation}
-        on_confirm={proofreading_page_state.confirm_pending_mutation}
-        on_close={proofreading_page_state.close_pending_mutation}
+        state={proofreading_page_state.pending_confirmation}
+        on_confirm={proofreading_page_state.confirm_pending_confirmation}
+        on_close={proofreading_page_state.close_pending_confirmation}
       />
     </div>
   );

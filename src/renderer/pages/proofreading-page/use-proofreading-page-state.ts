@@ -19,12 +19,11 @@ import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import { is_project_ui_worker_client_error } from "@/project/worker/project-ui-worker-errors";
 import {
-  create_clear_translations_plan,
   create_replace_all_plan,
   create_save_item_plan,
-  create_set_translation_status_plan,
   type ProofreadingMutationPlan,
 } from "@/pages/proofreading-page/proofreading-mutation-planner";
+import { useProofreadingBatchActions } from "@/pages/proofreading-page/use-proofreading-batch-actions";
 import {
   compile_text_pattern,
   matches_text_pattern,
@@ -50,7 +49,6 @@ import {
   clone_proofreading_filter_options,
   create_empty_proofreading_filter_panel_state,
   create_empty_proofreading_list_view,
-  PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
   type ProofreadingClientItem,
   type ProofreadingDialogState,
   type ProofreadingFilterOptions,
@@ -59,7 +57,7 @@ import {
   type ProofreadingItem,
   type ProofreadingListView,
   type ProofreadingManualStatusCode,
-  type ProofreadingPendingMutation,
+  type ProofreadingPendingConfirmation,
   type ProofreadingSearchScope,
   type ProofreadingVisibleItem,
 } from "@/pages/proofreading-page/types";
@@ -101,7 +99,7 @@ export type UseProofreadingPageStateResult = {
   filter_dialog_open: boolean;
   dialog_state: ProofreadingDialogState;
   dialog_item: ProofreadingItem | null;
-  pending_mutation: ProofreadingPendingMutation | null;
+  pending_confirmation: ProofreadingPendingConfirmation | null;
   refresh_snapshot: () => Promise<void>;
   update_search_keyword: (next_keyword: string) => void;
   update_replace_text: (next_replace_text: string) => void;
@@ -125,14 +123,15 @@ export type UseProofreadingPageStateResult = {
   save_dialog_entry: () => Promise<void>;
   replace_next_visible_match: () => Promise<void>;
   replace_all_visible_matches: () => Promise<void>;
-  request_retranslate_row_ids: (row_ids: string[]) => void;
-  request_clear_translation_row_ids: (row_ids: string[]) => void;
+  request_retranslate_row_ids: (row_ids: string[], preferred_row_id?: string | null) => void;
+  request_clear_translation_row_ids: (row_ids: string[], preferred_row_id?: string | null) => void;
   request_set_translation_status_row_ids: (
     row_ids: string[],
     status: ProofreadingManualStatusCode,
+    preferred_row_id?: string | null,
   ) => void;
-  confirm_pending_mutation: () => Promise<void>;
-  close_pending_mutation: () => void;
+  confirm_pending_confirmation: () => Promise<void>;
+  close_pending_confirmation: () => void;
 };
 
 type ProofreadingListQueryInput = {
@@ -238,46 +237,6 @@ function build_sort_signature(sort_state: AppTableSortState | null): string {
 }
 
 type ProofreadingFilterValueKeyResolver<T> = (value: T) => string;
-
-type RetranslateTaskAck = {
-  accepted?: boolean;
-  task?: {
-    task_type?: unknown;
-    status?: unknown;
-    busy?: unknown;
-    request_in_flight_count?: unknown;
-    line?: unknown;
-    total_line?: unknown;
-    processed_line?: unknown;
-    error_line?: unknown;
-    total_tokens?: unknown;
-    total_output_tokens?: unknown;
-    total_input_tokens?: unknown;
-    time?: unknown;
-    start_time?: unknown;
-    progress?: unknown;
-    extras?: unknown;
-  };
-};
-
-function normalize_numeric_item_ids(raw_item_ids: unknown): number[] {
-  if (!Array.isArray(raw_item_ids)) {
-    return [];
-  }
-
-  const item_ids: number[] = [];
-  const seen_ids = new Set<number>();
-  raw_item_ids.forEach((raw_item_id) => {
-    const item_id = Number(raw_item_id);
-    if (!Number.isInteger(item_id) || item_id <= 0 || seen_ids.has(item_id)) {
-      return;
-    }
-
-    seen_ids.add(item_id);
-    item_ids.push(item_id);
-  });
-  return item_ids;
-}
 
 function create_filter_value_key_set<T>(
   values: T[],
@@ -589,9 +548,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const [dialog_state, set_dialog_state] = useState<ProofreadingDialogState>(() => {
     return create_empty_dialog_state();
   });
-  const [pending_mutation, set_pending_mutation] = useState<ProofreadingPendingMutation | null>(
-    null,
-  );
   const refresh_generation_ref = useRef(0);
   const list_view_request_id_ref = useRef(0);
   const list_window_request_id_ref = useRef(0);
@@ -736,6 +692,106 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     [push_toast, t],
   );
 
+  const run_project_mutation = useCallback(
+    async (args: {
+      path: string;
+      plan: ProofreadingMutationPlan | null;
+      fallback_error_key:
+        | "proofreading_page.feedback.save_failed"
+        | "proofreading_page.feedback.replace_failed"
+        | "proofreading_page.feedback.clear_translation_failed"
+        | "proofreading_page.feedback.set_status_failed";
+      preferred_row_id?: string | null;
+      pending_replace_cursor?: number | null;
+      success_message_builder?: ((changed_count: number) => string) | null;
+      empty_warning_message?: string | null;
+      close_dialog?: boolean;
+    }): Promise<void> => {
+      if (args.plan === null || args.plan.changed_item_ids.length === 0) {
+        if (args.empty_warning_message !== null && args.empty_warning_message !== undefined) {
+          push_toast("warning", args.empty_warning_message);
+        }
+        return;
+      }
+
+      if (args.pending_replace_cursor !== undefined) {
+        pending_replace_cursor_ref.current = args.pending_replace_cursor;
+      }
+      preferred_row_id_ref.current = args.preferred_row_id ?? active_row_id_ref.current;
+
+      set_is_mutating(true);
+
+      try {
+        const mutation_result = normalize_project_mutation_result(
+          await api_fetch<ProjectMutationResultPayload>(args.path, args.plan.request_body),
+        );
+        await apply_project_mutation_result(mutation_result);
+        await refresh_task();
+
+        if (args.success_message_builder !== null && args.success_message_builder !== undefined) {
+          push_toast("success", args.success_message_builder(args.plan.changed_item_ids.length));
+        }
+
+        if (args.close_dialog) {
+          set_dialog_state(create_empty_dialog_state());
+          set_dialog_item_snapshot(null);
+        }
+      } catch (error) {
+        void refresh_project_runtime().catch(() => {});
+        handle_api_error(error, t(args.fallback_error_key));
+      } finally {
+        set_is_mutating(false);
+      }
+    },
+    [
+      apply_project_mutation_result,
+      handle_api_error,
+      push_toast,
+      refresh_project_runtime,
+      refresh_task,
+      t,
+    ],
+  );
+
+  const request_close_dialog = useCallback((): void => {
+    set_dialog_state(create_empty_dialog_state());
+    set_dialog_item_snapshot(null);
+  }, []);
+
+  const resolve_preferred_row_id = useCallback((preferred_row_id?: string | null): string | null => {
+    return preferred_row_id ?? active_row_id_ref.current;
+  }, []);
+
+  const remember_preferred_row_id = useCallback((preferred_row_id: string | null): void => {
+    preferred_row_id_ref.current = preferred_row_id;
+  }, []);
+
+  const {
+    pending_confirmation,
+    request_retranslate_row_ids,
+    request_clear_translation_row_ids,
+    request_set_translation_status_row_ids,
+    confirm_pending_confirmation,
+    close_pending_confirmation,
+    clear_pending_confirmation,
+  } = useProofreadingBatchActions({
+    readonly,
+    is_refreshing,
+    is_mutating,
+    dialog_open: dialog_state.open,
+    project_store,
+    task_snapshot,
+    proofreading_revision: list_view.revisions.proofreading,
+    sync_task_snapshot,
+    run_project_mutation,
+    set_is_mutating,
+    resolve_preferred_row_id,
+    remember_preferred_row_id,
+    close_edit_dialog: request_close_dialog,
+    handle_api_error,
+    t,
+  });
+
   // 主搜索和筛选面板共用输入防抖；确认、刷新等显式路径会 cancel 后即时查询。
   const search_list_view_query_scheduler = useDebouncedCallback(
     (args: ProofreadingListQueryInput): void => {
@@ -796,6 +852,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   }, []);
 
   const clear_transient_state_for_new_project = useCallback((): void => {
+    clear_pending_confirmation();
     const empty_current_filters = create_empty_filter_options();
     const empty_dialog_filters = create_empty_filter_options();
     set_current_filters(empty_current_filters);
@@ -822,15 +879,15 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_filter_dialog_open(false);
     set_dialog_state(create_empty_dialog_state());
     set_dialog_item_snapshot(null);
-    set_pending_mutation(null);
     replace_cursor_ref.current = 0;
     pending_replace_cursor_ref.current = null;
     preferred_row_id_ref.current = null;
     should_select_first_visible_ref.current = false;
     pending_reset_filters_ref.current = false;
-  }, []);
+  }, [clear_pending_confirmation]);
 
   const clear_cache_state = useCallback((): void => {
+    clear_pending_confirmation();
     invalidate_cache_bound_queries();
     const currentProjectId = runtime_sync_state_ref.current?.projectId;
     runtime_sync_state_ref.current = null;
@@ -846,7 +903,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     if (currentProjectId !== undefined) {
       void proofreading_runtime_client_ref.current.dispose_project(currentProjectId);
     }
-  }, [invalidate_cache_bound_queries]);
+  }, [clear_pending_confirmation, invalidate_cache_bound_queries]);
 
   const run_list_view_query = useCallback(
     async (
@@ -1317,67 +1374,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     warm_filter_panel_query,
   ]);
 
-  const run_project_mutation = useCallback(
-    async (args: {
-      path: string;
-      plan: ProofreadingMutationPlan | null;
-      fallback_error_key:
-        | "proofreading_page.feedback.save_failed"
-        | "proofreading_page.feedback.replace_failed"
-        | "proofreading_page.feedback.clear_translation_failed"
-        | "proofreading_page.feedback.set_status_failed";
-      preferred_row_id?: string | null;
-      pending_replace_cursor?: number | null;
-      success_message_builder?: ((changed_count: number) => string) | null;
-      empty_warning_message?: string | null;
-      close_dialog?: boolean;
-    }): Promise<void> => {
-      if (args.plan === null || args.plan.changed_item_ids.length === 0) {
-        if (args.empty_warning_message !== null && args.empty_warning_message !== undefined) {
-          push_toast("warning", args.empty_warning_message);
-        }
-        return;
-      }
-
-      if (args.pending_replace_cursor !== undefined) {
-        pending_replace_cursor_ref.current = args.pending_replace_cursor;
-      }
-      preferred_row_id_ref.current = args.preferred_row_id ?? active_row_id_ref.current;
-
-      set_is_mutating(true);
-
-      try {
-        const mutation_result = normalize_project_mutation_result(
-          await api_fetch<ProjectMutationResultPayload>(args.path, args.plan.request_body),
-        );
-        await apply_project_mutation_result(mutation_result);
-        await refresh_task();
-
-        if (args.success_message_builder !== null && args.success_message_builder !== undefined) {
-          push_toast("success", args.success_message_builder(args.plan.changed_item_ids.length));
-        }
-
-        if (args.close_dialog) {
-          set_dialog_state(create_empty_dialog_state());
-          set_dialog_item_snapshot(null);
-        }
-      } catch (error) {
-        void refresh_project_runtime().catch(() => {});
-        handle_api_error(error, t(args.fallback_error_key));
-      } finally {
-        set_is_mutating(false);
-      }
-    },
-    [
-      apply_project_mutation_result,
-      handle_api_error,
-      push_toast,
-      refresh_project_runtime,
-      refresh_task,
-      t,
-    ],
-  );
-
   const update_search_keyword = useCallback(
     (next_keyword: string): void => {
       set_search_keyword(next_keyword);
@@ -1611,11 +1607,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     },
     [read_items_by_row_ids],
   );
-
-  const request_close_dialog = useCallback((): void => {
-    set_dialog_state(create_empty_dialog_state());
-    set_dialog_item_snapshot(null);
-  }, []);
 
   const update_dialog_draft = useCallback((next_draft_dst: string): void => {
     set_dialog_state((previous_state) => {
@@ -1859,201 +1850,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     read_items_by_row_ids,
   ]);
 
-  const request_retranslate_row_ids = useCallback((row_ids: string[]): void => {
-    if (row_ids.length === 0) {
-      return;
-    }
-
-    set_pending_mutation({
-      kind: "retranslate",
-      target_row_ids: row_ids,
-    });
-  }, []);
-
-  const request_clear_translation_row_ids = useCallback((row_ids: string[]): void => {
-    if (row_ids.length === 0) {
-      return;
-    }
-
-    set_pending_mutation({
-      kind: "clear-translations",
-      target_row_ids: row_ids,
-    });
-  }, []);
-
-  const request_set_translation_status_row_ids = useCallback(
-    (row_ids: string[], status: ProofreadingManualStatusCode): void => {
-      if (row_ids.length === 0) {
-        return;
-      }
-
-      set_pending_mutation({
-        kind: "set-status",
-        target_row_ids: row_ids,
-        status,
-      });
-    },
-    [],
-  );
-
-  const close_pending_mutation = useCallback((): void => {
-    set_pending_mutation(null);
-  }, []);
-
-  const confirm_pending_mutation = useCallback(async (): Promise<void> => {
-    if (pending_mutation === null) {
-      return;
-    }
-
-    const target_item_ids = normalize_numeric_item_ids(pending_mutation.target_row_ids);
-    if (target_item_ids.length === 0) {
-      set_pending_mutation(null);
-      return;
-    }
-
-    const pending_mutation_to_confirm = pending_mutation;
-    const is_retranslate = pending_mutation_to_confirm.kind === "retranslate";
-    set_pending_mutation(null);
-    if (is_retranslate) {
-      const item_ids = target_item_ids;
-      if (item_ids.length === 0) {
-        return;
-      }
-
-      preferred_row_id_ref.current = active_row_id_ref.current;
-      set_is_mutating(true);
-      try {
-        const current_project_state = project_store.getState();
-        const ack = await api_fetch<RetranslateTaskAck>("/api/tasks/start", {
-          task_type: "translation",
-          mode: "new",
-          scope: { kind: "items", item_ids },
-          expected_section_revisions: {
-            items: current_project_state.revisions.sections.items ?? 0,
-            proofreading: list_view.revisions.proofreading,
-            quality: current_project_state.revisions.sections.quality ?? 0,
-            prompts: current_project_state.revisions.sections.prompts ?? 0,
-          },
-        });
-        const task = ack.task ?? {};
-        const task_record =
-          typeof task === "object" && task !== null && !Array.isArray(task) ? task : {};
-        const task_payload_record = task_record as Record<string, unknown>;
-        const progress =
-          typeof task_payload_record["progress"] === "object" &&
-          task_payload_record["progress"] !== null &&
-          !Array.isArray(task_payload_record["progress"])
-            ? (task_payload_record["progress"] as Record<string, unknown>)
-            : {};
-        const extras =
-          typeof task_payload_record["extras"] === "object" &&
-          task_payload_record["extras"] !== null &&
-          !Array.isArray(task_payload_record["extras"])
-            ? (task_payload_record["extras"] as Record<string, unknown>)
-            : {};
-        const scope =
-          typeof extras["scope"] === "object" &&
-          extras["scope"] !== null &&
-          !Array.isArray(extras["scope"])
-            ? (extras["scope"] as Record<string, unknown>)
-            : {};
-        const translation_item_ids = normalize_numeric_item_ids(scope["item_ids"]);
-        sync_task_snapshot({
-          ...task_snapshot,
-          runtime_revision: Number(
-            task_payload_record["runtime_revision"] ?? task_snapshot.runtime_revision,
-          ),
-          task_type: String(task_payload_record["task_type"] ?? "translation"),
-          status: String(task_payload_record["status"] ?? "requested"),
-          busy:
-            task_payload_record["busy"] === undefined ? true : Boolean(task_payload_record["busy"]),
-          request_in_flight_count: Number(task_payload_record["request_in_flight_count"] ?? 0),
-          progress: {
-            line: Number(progress["line"] ?? 0),
-            total_line: Number(progress["total_line"] ?? 0),
-            processed_line: Number(progress["processed_line"] ?? 0),
-            error_line: Number(progress["error_line"] ?? 0),
-            total_tokens: Number(progress["total_tokens"] ?? 0),
-            total_output_tokens: Number(progress["total_output_tokens"] ?? 0),
-            total_input_tokens: Number(progress["total_input_tokens"] ?? 0),
-            time: Number(progress["time"] ?? 0),
-            start_time: Number(progress["start_time"] ?? 0),
-          },
-          extras: {
-            kind: "translation",
-            scope: {
-              kind: "items",
-              item_ids: translation_item_ids.length > 0 ? translation_item_ids : item_ids,
-            },
-          },
-        });
-        if (dialog_state.open) {
-          set_dialog_state(create_empty_dialog_state());
-          set_dialog_item_snapshot(null);
-        }
-      } catch (error) {
-        handle_api_error(error, t("proofreading_page.feedback.retranslate_failed"));
-      } finally {
-        set_is_mutating(false);
-      }
-      return;
-    }
-
-    if (pending_mutation_to_confirm.kind === "clear-translations") {
-      await run_project_mutation({
-        path: "/api/project/proofreading/clear-translations",
-        plan: create_clear_translations_plan({
-          state: project_store.getState(),
-          task_snapshot,
-          item_ids: target_item_ids,
-        }),
-        fallback_error_key: "proofreading_page.feedback.clear_translation_failed",
-        preferred_row_id: active_row_id_ref.current,
-        success_message_builder: (changed_count) => {
-          return t("proofreading_page.feedback.clear_translation_success").replace(
-            "{COUNT}",
-            changed_count.toString(),
-          );
-        },
-        close_dialog: dialog_state.open,
-        empty_warning_message: null,
-      });
-      return;
-    }
-
-    const next_status = pending_mutation_to_confirm.status;
-    const status_label_key = PROOFREADING_STATUS_LABEL_KEY_BY_CODE[next_status];
-    const status_label = t(status_label_key);
-    await run_project_mutation({
-      path: "/api/project/proofreading/set-status",
-      plan: create_set_translation_status_plan({
-        state: project_store.getState(),
-        task_snapshot,
-        item_ids: target_item_ids,
-        status: next_status,
-      }),
-      fallback_error_key: "proofreading_page.feedback.set_status_failed",
-      preferred_row_id: active_row_id_ref.current,
-      success_message_builder: (changed_count) => {
-        return t("proofreading_page.feedback.set_status_success")
-          .replace("{COUNT}", changed_count.toString())
-          .replace("{STATUS}", status_label);
-      },
-      close_dialog: dialog_state.open,
-      empty_warning_message: null,
-    });
-  }, [
-    dialog_state.open,
-    handle_api_error,
-    list_view.revisions.proofreading,
-    pending_mutation,
-    project_store,
-    run_project_mutation,
-    sync_task_snapshot,
-    t,
-    task_snapshot,
-  ]);
-
   useEffect(() => {
     const previous_project_loaded = previous_project_loaded_ref.current;
     const previous_project_path = previous_project_path_ref.current;
@@ -2190,7 +1986,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       filter_dialog_open,
       dialog_state,
       dialog_item,
-      pending_mutation,
+      pending_confirmation,
       refresh_snapshot,
       update_search_keyword,
       update_replace_text,
@@ -2217,8 +2013,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       request_retranslate_row_ids,
       request_clear_translation_row_ids,
       request_set_translation_status_row_ids,
-      confirm_pending_mutation,
-      close_pending_mutation,
+      confirm_pending_confirmation,
+      close_pending_confirmation,
     };
   }, [
     active_row_id,
@@ -2228,9 +2024,9 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     cache_status,
     consumed_revisions,
     close_filter_dialog,
-    close_pending_mutation,
+    close_pending_confirmation,
     confirm_filter_dialog_filters,
-    confirm_pending_mutation,
+    confirm_pending_confirmation,
     current_filters,
     dialog_item,
     dialog_state,
@@ -2247,7 +2043,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     is_regex,
     open_edit_dialog,
     open_filter_dialog,
-    pending_mutation,
+    pending_confirmation,
     readonly,
     retranslating_row_ids,
     refresh_snapshot,

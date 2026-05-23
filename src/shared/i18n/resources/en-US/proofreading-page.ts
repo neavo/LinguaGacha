@@ -95,8 +95,6 @@ export const en_us_proofreading_page = {
     retranslate_description: "Confirm retranslating {COUNT} entries …?",
     clear_translation_description:
       "Confirm clearing translations for {COUNT} entries …?",
-    set_status_description:
-      "Confirm setting the translation status of {COUNT} entries to {STATUS} …?",
   },
   feedback: {
     refresh_failed: "Failed to refresh proofreading.",

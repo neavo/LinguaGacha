@@ -443,6 +443,13 @@ describe("useProofreadingPageState", () => {
     await flush_async_updates();
   }
 
+  async function request_pending_confirmation(action: () => void): Promise<void> {
+    await act(async () => {
+      action();
+    });
+    await flush_async_updates();
+  }
+
   it("项目路径切换后会先保持 refreshing，不会对空缓存立刻做 worker 同步", async () => {
     await render_hook();
 
@@ -1154,17 +1161,26 @@ describe("useProofreadingPageState", () => {
     }>();
     vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
 
-    await act(async () => {
+    await request_pending_confirmation(() => {
       latest_state?.request_retranslate_row_ids(["1"]);
+    });
+    expect(latest_state?.pending_confirmation).toMatchObject({
+      kind: "retranslate",
+      target_row_ids: ["1"],
+      submitting: false,
     });
 
     let confirm_promise: Promise<void> | undefined;
     await act(async () => {
-      confirm_promise = latest_state?.confirm_pending_mutation();
+      confirm_promise = latest_state?.confirm_pending_confirmation();
       await Promise.resolve();
     });
 
     expect(latest_state?.retranslating_row_ids).toEqual([]);
+    expect(latest_state?.pending_confirmation).toMatchObject({
+      kind: "retranslate",
+      submitting: true,
+    });
 
     await act(async () => {
       retranslate_deferred.resolve({
@@ -1235,13 +1251,13 @@ describe("useProofreadingPageState", () => {
     }>();
     vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
 
-    await act(async () => {
+    await request_pending_confirmation(() => {
       latest_state?.request_retranslate_row_ids(["2", "1", "2"]);
     });
 
     let confirm_promise: Promise<void> | undefined;
     await act(async () => {
-      confirm_promise = latest_state?.confirm_pending_mutation();
+      confirm_promise = latest_state?.confirm_pending_confirmation();
       await Promise.resolve();
     });
 
@@ -1296,13 +1312,13 @@ describe("useProofreadingPageState", () => {
     }>();
     vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
 
-    await act(async () => {
+    await request_pending_confirmation(() => {
       latest_state?.request_retranslate_row_ids(["1"]);
     });
 
     let confirm_promise: Promise<void> | undefined;
     await act(async () => {
-      confirm_promise = latest_state?.confirm_pending_mutation();
+      confirm_promise = latest_state?.confirm_pending_confirmation();
       await Promise.resolve();
     });
 
@@ -1338,11 +1354,16 @@ describe("useProofreadingPageState", () => {
     vi.mocked(api_fetch).mockResolvedValueOnce({ accepted: true, changes: [] });
     proofreading_runtime_client_fixture.current.read_proofreading_items_by_row_ids.mockClear();
 
-    await act(async () => {
+    await request_pending_confirmation(() => {
       latest_state?.request_clear_translation_row_ids(["1"]);
     });
+    expect(latest_state?.pending_confirmation).toMatchObject({
+      kind: "clear-translations",
+      target_row_ids: ["1"],
+      submitting: false,
+    });
     await act(async () => {
-      await latest_state?.confirm_pending_mutation();
+      await latest_state?.confirm_pending_confirmation();
     });
 
     expect(api_fetch).toHaveBeenCalledWith("/api/project/proofreading/clear-translations", {
@@ -1401,7 +1422,7 @@ describe("useProofreadingPageState", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("确认设置翻译状态时提交目标状态并保持译文由后端保留", async () => {
+  it("设置翻译状态会直接提交目标状态并保持译文由后端保留", async () => {
     await render_hook();
 
     runtime_fixture.current = {
@@ -1421,10 +1442,9 @@ describe("useProofreadingPageState", () => {
     await act(async () => {
       latest_state?.request_set_translation_status_row_ids(["1"], "PROCESSED");
     });
-    await act(async () => {
-      await latest_state?.confirm_pending_mutation();
-    });
+    await flush_async_updates();
 
+    expect(latest_state?.pending_confirmation).toBeNull();
     expect(api_fetch).toHaveBeenCalledWith("/api/project/proofreading/set-status", {
       item_ids: [1],
       status: "PROCESSED",
