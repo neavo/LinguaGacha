@@ -128,20 +128,14 @@ export type ProofreadingDialogState = {
 
 export type ProofreadingSearchScope = "all" | "src" | "dst";
 
-export type ProofreadingPendingMutation =
-  | {
-      kind: "retranslate";
-      target_row_ids: string[];
-    }
-  | {
-      kind: "clear-translations";
-      target_row_ids: string[];
-    }
-  | {
-      kind: "set-status";
-      target_row_ids: string[];
-      status: ProofreadingManualStatusCode;
-    };
+export type ProofreadingConfirmationKind = "retranslate" | "clear-translations";
+
+export type ProofreadingPendingConfirmation = {
+  kind: ProofreadingConfirmationKind; // 只有高风险操作进入确认流，状态设置走直接提交。
+  target_row_ids: string[];
+  preferred_row_id: string | null;
+  submitting: boolean;
+};
 
 export function build_proofreading_row_id(item_id: number | string): string {
   return String(item_id);
