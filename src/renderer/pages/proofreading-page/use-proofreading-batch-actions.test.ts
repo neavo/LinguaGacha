@@ -30,13 +30,15 @@ type HookFixture = {
   project_store: ProjectStoreReader;
   task_snapshot: TaskSnapshot;
   proofreading_revision: number;
-  sync_task_snapshot: ReturnType<typeof vi.fn>;
+  sync_task_snapshot: ReturnType<typeof vi.fn<(snapshot: TaskSnapshot) => void>>;
   run_project_mutation: ReturnType<typeof vi.fn<(_args: MutationCall) => Promise<void>>>;
-  set_is_mutating: ReturnType<typeof vi.fn>;
-  resolve_preferred_row_id: ReturnType<typeof vi.fn<(preferred_row_id?: string | null) => string | null>>;
-  remember_preferred_row_id: ReturnType<typeof vi.fn>;
-  close_edit_dialog: ReturnType<typeof vi.fn>;
-  handle_api_error: ReturnType<typeof vi.fn>;
+  set_is_mutating: ReturnType<typeof vi.fn<(next_is_mutating: boolean) => void>>;
+  resolve_preferred_row_id: ReturnType<
+    typeof vi.fn<(preferred_row_id?: string | null) => string | null>
+  >;
+  remember_preferred_row_id: ReturnType<typeof vi.fn<(preferred_row_id: string | null) => void>>;
+  close_edit_dialog: ReturnType<typeof vi.fn<() => void>>;
+  handle_api_error: ReturnType<typeof vi.fn<(error: unknown, fallback_message: string) => void>>;
   mutation_calls: MutationCall[];
   t: (key: string) => string;
 };
@@ -47,6 +49,7 @@ vi.mock("@/app/desktop/desktop-api", () => {
   };
 });
 
+// create_project_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_project_item(
   overrides: Partial<ProjectItemPublicRecord> = {},
 ): ProjectItemPublicRecord {
@@ -69,6 +72,7 @@ function create_project_item(
   };
 }
 
+// create_project_state 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_project_state(): ProjectStoreState {
   const quality_slice = {
     entries: [],
@@ -117,6 +121,7 @@ function create_project_state(): ProjectStoreState {
   };
 }
 
+// create_task_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_task_snapshot(): TaskSnapshot {
   return {
     runtime_revision: 3,
@@ -144,6 +149,7 @@ function create_task_snapshot(): TaskSnapshot {
   };
 }
 
+// create_project_store_reader 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_project_store_reader(state: ProjectStoreState): ProjectStoreReader {
   return {
     getState: () => state,
@@ -159,6 +165,7 @@ function create_project_store_reader(state: ProjectStoreState): ProjectStoreRead
   };
 }
 
+// create_hook_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_hook_fixture(): HookFixture {
   const project_state = create_project_state();
   const mutation_calls: MutationCall[] = [];
@@ -170,17 +177,17 @@ function create_hook_fixture(): HookFixture {
     project_store: create_project_store_reader(project_state),
     task_snapshot: create_task_snapshot(),
     proofreading_revision: 5,
-    sync_task_snapshot: vi.fn(),
+    sync_task_snapshot: vi.fn((_snapshot: TaskSnapshot) => undefined),
     run_project_mutation: vi.fn(async (args: MutationCall) => {
       mutation_calls.push(args);
     }),
-    set_is_mutating: vi.fn(),
+    set_is_mutating: vi.fn((_next_is_mutating: boolean) => undefined),
     resolve_preferred_row_id: vi.fn((preferred_row_id?: string | null) => {
       return preferred_row_id ?? "1";
     }),
-    remember_preferred_row_id: vi.fn(),
-    close_edit_dialog: vi.fn(),
-    handle_api_error: vi.fn(),
+    remember_preferred_row_id: vi.fn((_preferred_row_id: string | null) => undefined),
+    close_edit_dialog: vi.fn(() => undefined),
+    handle_api_error: vi.fn((_error: unknown, _fallback_message: string) => undefined),
     mutation_calls,
     t: (key: string) => key,
   };
@@ -207,11 +214,13 @@ describe("useProofreadingBatchActions", () => {
     vi.mocked(api_fetch).mockReset();
   });
 
+  // BatchActionProbe 收口测试中的共享步骤，保证断言只关注当前行为。
   function BatchActionProbe(): null {
     latest_state = useProofreadingBatchActions(fixture);
     return null;
   }
 
+  // render_hook 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -224,6 +233,7 @@ describe("useProofreadingBatchActions", () => {
     });
   }
 
+  // flush_async_updates 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function flush_async_updates(): Promise<void> {
     await act(async () => {
       await Promise.resolve();

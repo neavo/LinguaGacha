@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ProjectMutationResult } from "@/app/desktop/desktop-runtime-context";
+import type { ProjectMutationResult } from "@/app/desktop/desktop-project-mutation";
 import { REBUILD_RESULT_VIEW_SOURCE_UPDATE } from "@/pages/result-view-snapshot";
 import {
   create_project_section_result_view_source_update_request,

@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
+import {
+  type ProjectMutationOperation,
+  type ProjectMutationResultPayload,
+} from "@/app/desktop/desktop-project-mutation";
 import { useDebouncedCallback } from "@/hooks/use-debounce";
 import { getQualityRuleSlice } from "@/project/quality/quality-runtime";
-import {
-  normalize_project_mutation_result,
-  type ProjectMutationResultPayload,
-} from "@/app/desktop/desktop-runtime-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
@@ -60,6 +60,11 @@ type NameFieldResultViewQuery = {
   sort_state: NameFieldSortState;
 };
 
+// 姓名字段提取页只把导入术语表这一业务动作映射成诊断 operation。
+const NAME_FIELD_GLOSSARY_IMPORT_MUTATION: ProjectMutationOperation =
+  "name-field-extraction.glossary_import";
+
+// EMPTY ROW 是默认快照事实，调用方只读取副本不临时拼装。
 const EMPTY_ROW: NameFieldRow = {
   id: "",
   src: "",
@@ -68,6 +73,7 @@ const EMPTY_ROW: NameFieldRow = {
   status: "untranslated",
 };
 
+// clone_row 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function clone_row(row: NameFieldRow): NameFieldRow {
   return {
     id: row.id,
@@ -78,6 +84,7 @@ function clone_row(row: NameFieldRow): NameFieldRow {
   };
 }
 
+// create_empty_filter_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_filter_state(): NameFieldFilterState {
   return {
     keyword: "",
@@ -86,6 +93,7 @@ function create_empty_filter_state(): NameFieldFilterState {
   };
 }
 
+// create_empty_sort_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_sort_state(): NameFieldSortState {
   return {
     field: null,
@@ -93,6 +101,7 @@ function create_empty_sort_state(): NameFieldSortState {
   };
 }
 
+// create_empty_confirm_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_confirm_state(): NameFieldConfirmState {
   return {
     open: false,
@@ -103,6 +112,7 @@ function create_empty_confirm_state(): NameFieldConfirmState {
   };
 }
 
+// create_empty_dialog_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_dialog_state(): NameFieldDialogState {
   return {
     open: false,
@@ -112,6 +122,7 @@ function create_empty_dialog_state(): NameFieldDialogState {
   };
 }
 
+// create_empty_run_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_run_state(): NameFieldRunState {
   return {
     extracting: false,
@@ -119,10 +130,12 @@ function create_empty_run_state(): NameFieldRunState {
   };
 }
 
+// is_name_field_sort_field 集中表达布尔判定口径，避免调用方按局部字段猜测。
 function is_name_field_sort_field(column_id: string): column_id is NameFieldSortField {
   return column_id === "src" || column_id === "dst";
 }
 
+// normalize_glossary_entry 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_glossary_entry(entry: GlossaryEntry): GlossaryEntry {
   return {
     entry_id: entry.entry_id,
@@ -133,16 +146,12 @@ function normalize_glossary_entry(entry: GlossaryEntry): GlossaryEntry {
   };
 }
 
+// useNameFieldExtractionPageState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useNameFieldExtractionPageState() {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
-  const {
-    project_snapshot,
-    project_store,
-    refresh_project_runtime,
-    apply_project_mutation_result,
-    task_snapshot,
-  } = useDesktopRuntime();
+  const { project_snapshot, project_store, commit_project_mutation, task_snapshot } =
+    useDesktopRuntime();
   const project_store_state = useSyncExternalStore(
     project_store.subscribe,
     project_store.getState,
@@ -620,20 +629,24 @@ export function useNameFieldExtractionPageState() {
         next_entries.map(normalize_glossary_entry),
       );
       try {
-        const mutation_result = normalize_project_mutation_result(
-          await api_fetch<ProjectMutationResultPayload>("/api/quality/rules/save-entries", {
-            rule_type: "glossary",
-            expected_section_revisions: {
-              quality: current_state.revisions.sections.quality ?? 0,
-            },
-            entries: normalized_entries,
-          }),
-        );
-        await apply_project_mutation_result(mutation_result);
+        await commit_project_mutation({
+          operation: NAME_FIELD_GLOSSARY_IMPORT_MUTATION,
+          run: async () => {
+            return await api_fetch<ProjectMutationResultPayload>(
+              "/api/quality/rules/save-entries",
+              {
+                rule_type: "glossary",
+                expected_section_revisions: {
+                  quality: current_state.revisions.sections.quality ?? 0,
+                },
+                entries: normalized_entries,
+              },
+            );
+          },
+        });
         push_toast("success", t("name_field_extraction_page.feedback.import_success"));
         return true;
       } catch (error) {
-        void refresh_project_runtime().catch(() => {});
         push_toast(
           "error",
           resolve_visible_error_message(
@@ -645,7 +658,7 @@ export function useNameFieldExtractionPageState() {
         return false;
       }
     },
-    [apply_project_mutation_result, project_store, push_toast, refresh_project_runtime, t],
+    [commit_project_mutation, project_store, push_toast, t],
   );
 
   const get_import_existing_entries = useCallback((): GlossaryEntry[] => {

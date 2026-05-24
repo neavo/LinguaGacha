@@ -3,6 +3,11 @@ import process from "node:process";
 import type { LogManager } from "./log-manager";
 import { format_console_log } from "./log-console-formatter";
 import type { LogAppendPayload, LogLevel } from "../../shared/log";
+import {
+  error_diagnostic_to_log_fields,
+  sanitize_error_diagnostic_context,
+  to_error_diagnostic,
+} from "../../shared/error";
 
 let active_log_manager: LogManager | null = null;
 
@@ -13,82 +18,80 @@ export function set_electron_main_log_manager(log_manager: LogManager | null): v
   active_log_manager = log_manager;
 }
 
+// get_electron_main_log_manager 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function get_electron_main_log_manager(): LogManager | null {
   return active_log_manager;
 }
 
+// write_electron_main_warning 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function write_electron_main_warning(
   message: string,
   payload: { error?: unknown; context?: Record<string, unknown> } = {},
 ): void {
   const log_manager = get_electron_main_log_manager();
-  const normalized = normalize_error_payload(payload.error);
+  const normalized = normalize_log_error_payload(payload);
   if (log_manager === null) {
     write_fallback_console_log("warning", message, normalized);
     return;
   }
   log_manager.warning(message, {
     source: "electron-main",
-    context: payload.context,
-    error_message: normalized.error_message,
-    stack: normalized.stack,
+    ...normalized,
   });
 }
 
+// write_electron_main_debug 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function write_electron_main_debug(
   message: string,
   payload: { error?: unknown; context?: Record<string, unknown> } = {},
 ): void {
   const log_manager = get_electron_main_log_manager();
-  const normalized = normalize_error_payload(payload.error);
+  const normalized = normalize_log_error_payload(payload);
   if (log_manager === null) {
     write_fallback_console_log("debug", message, normalized);
     return;
   }
   log_manager.debug(message, {
     source: "electron-main",
-    context: payload.context,
-    error_message: normalized.error_message,
-    stack: normalized.stack,
+    ...normalized,
   });
 }
 
+// write_electron_main_error 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function write_electron_main_error(
   message: string,
   payload: { error?: unknown; context?: Record<string, unknown> } = {},
 ): void {
   const log_manager = get_electron_main_log_manager();
-  const normalized = normalize_error_payload(payload.error);
+  const normalized = normalize_log_error_payload(payload);
   if (log_manager === null) {
     write_fallback_console_log("error", message, normalized);
     return;
   }
   log_manager.error(message, {
     source: "electron-main",
-    context: payload.context,
-    error_message: normalized.error_message,
-    stack: normalized.stack,
+    ...normalized,
   });
 }
 
-function normalize_error_payload(error: unknown): {
+// normalize_log_error_payload 在边界处归一化输入，避免下游再处理坏载荷分支。
+function normalize_log_error_payload(payload: {
+  error?: unknown;
+  context?: Record<string, unknown>;
+}): {
   error_message?: string;
   stack?: string;
+  context?: Record<string, unknown>;
 } {
-  if (error === undefined) {
-    return {};
+  const context =
+    payload.context === undefined ? undefined : sanitize_error_diagnostic_context(payload.context);
+  if (payload.error === undefined) {
+    return context === undefined || Object.keys(context).length === 0 ? {} : { context };
   }
-  if (error instanceof Error) {
-    return {
-      error_message: error.message,
-      stack: error.stack,
-    };
-  }
-  return {
-    error_message: String(error),
-  };
+  return error_diagnostic_to_log_fields(to_error_diagnostic(payload.error, context ?? {}));
 }
 
+// write_fallback_console_log 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function write_fallback_console_log(
   level: Extract<LogLevel, "debug" | "warning" | "error">,
   message: string,

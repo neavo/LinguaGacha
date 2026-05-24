@@ -32,6 +32,7 @@ export class GoogleTransport implements RequestTransport {
    */
   public constructor(private readonly pool: ProviderClientResolver) {}
 
+  // send 是跨边界副作用入口，集中处理调用时序和错误投影。
   public async send(policy: ResolvedRequestPolicy, signal: AbortSignal): Promise<LLMRequestResult> {
     const client = this.pool.get_client<{ models: { generateContentStream: Function } }>({
       provider: policy.provider,
@@ -81,7 +82,6 @@ export class GoogleTransport implements RequestTransport {
       cancelled: false,
       timeout: false,
       degraded: false,
-      error: "",
     };
   }
 
@@ -125,7 +125,6 @@ export class GoogleTransport implements RequestTransport {
       cancelled: false,
       timeout: false,
       degraded: false,
-      error: "",
       ...overrides,
     };
   }

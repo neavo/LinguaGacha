@@ -4,6 +4,9 @@ import type { ApiJsonValue } from "../../api/api-types";
 export type WorkUnitLogEntry = {
   level: "info" | "warning" | "error";
   message: string;
+  error_message?: string;
+  stack?: string;
+  context?: Record<string, ApiJsonValue>;
 };
 
 /** 翻译 work unit 是 Engine 发给 worker 的不可变执行载荷 */

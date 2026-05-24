@@ -29,6 +29,7 @@ interface PromptDefaultPresetSpec {
   display_name: string; // display_name 只用于日志，不进入公开协议
 }
 
+// QUALITY DEFAULT PRESET SPECS 是默认快照事实，调用方只读取副本不临时拼装。
 const QUALITY_DEFAULT_PRESET_SPECS: QualityDefaultPresetSpec[] = [
   {
     config_key: "glossary_default_preset",
@@ -64,6 +65,7 @@ const QUALITY_DEFAULT_PRESET_SPECS: QualityDefaultPresetSpec[] = [
   },
 ];
 
+// PROMPT DEFAULT PRESET SPECS 是默认快照事实，调用方只读取副本不临时拼装。
 const PROMPT_DEFAULT_PRESET_SPECS: PromptDefaultPresetSpec[] = [
   {
     config_key: "translation_custom_prompt_default_preset",
@@ -323,9 +325,7 @@ export class ProjectDefaultPresetInitializer {
   ): void {
     this.log_manager.warning(message, {
       source: "project-lifecycle",
-      context,
-      error_message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
+      ...AppErrors.error_diagnostic_to_log_fields(AppErrors.to_error_diagnostic(error, context)),
     });
   }
 

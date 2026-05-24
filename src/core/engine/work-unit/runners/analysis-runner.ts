@@ -14,6 +14,10 @@ import type { AnalysisWorkUnit, WorkUnitLogEntry } from "../../protocol/work-uni
 import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
 import { normalize_setting_snapshot } from "../../../../base/setting";
+import {
+  error_diagnostic_to_log_fields,
+  type ErrorDiagnosticPayload,
+} from "../../../../shared/error";
 
 interface AnalysisWorkUnitRequest {
   run_id: string; // run_id 用于隔离一次任务运行，worker 不用它访问项目状态
@@ -134,7 +138,7 @@ export class AnalysisWorkUnitRunner {
         glossary_entries: [],
       };
     }
-    if (llm_result.timeout || llm_result.degraded || llm_result.error !== "") {
+    if (llm_result.timeout || llm_result.degraded || llm_result.failure !== undefined) {
       const app_language = this.read_app_language(request.config_snapshot);
       const status_text = llm_result.timeout
         ? this.t(app_language, "app.log.response_checker_fail_timeout")
@@ -156,6 +160,7 @@ export class AnalysisWorkUnitRunner {
           response_think: llm_result.response_think,
           rule_analysis: "",
           status_text,
+          request_failure: llm_result.failure,
           app_language,
           level: "warning",
         }),
@@ -231,6 +236,7 @@ export class AnalysisWorkUnitRunner {
     response_think: string;
     rule_analysis: string;
     status_text: string;
+    request_failure?: ErrorDiagnosticPayload;
     app_language: unknown;
     level: WorkUnitLogEntry["level"];
   }): WorkUnitLogEntry[] {
@@ -277,7 +283,15 @@ export class AnalysisWorkUnitRunner {
           : this.t(context.app_language, "app.log.analysis_task_no_terms")
       }`,
     );
-    return [{ level: context.level, message: `${rows.filter(Boolean).join("\n\n")}\n` }];
+    return [
+      {
+        level: context.level,
+        message: `${rows.filter(Boolean).join("\n\n")}\n`,
+        ...(context.request_failure === undefined
+          ? {}
+          : error_diagnostic_to_log_fields(context.request_failure)),
+      },
+    ];
   }
 
   /**
@@ -297,10 +311,12 @@ export class AnalysisWorkUnitRunner {
     return rows;
   }
 
+  // read_app_language 封装类内部的非显然分支，避免调用方重复理解同一约束。
   private read_app_language(config_snapshot: ApiJsonValue): unknown {
     return normalize_setting_snapshot(config_snapshot).app_language;
   }
 
+  // t 封装类内部的非显然分支，避免调用方重复理解同一约束。
   private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
     return format_i18n_message(resolve_i18n_locale(app_language), key, params);
   }

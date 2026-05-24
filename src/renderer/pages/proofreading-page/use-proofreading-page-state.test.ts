@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
+import type { ProjectRuntimeChangeSignal } from "@/app/desktop/desktop-runtime-context";
 import { INPUT_QUERY_DEBOUNCE_MS } from "@/hooks/use-debounce";
 import type { ProjectItemPublicRecord } from "@base/item";
 import { ProjectUiWorkerClientError } from "@/project/worker/project-ui-worker-errors";
@@ -34,13 +35,8 @@ type RuntimeFixture = {
     };
   };
   sync_task_snapshot: ReturnType<typeof vi.fn>;
-  proofreading_change_signal: {
-    seq: number;
-    mode: "full" | "delta" | "noop";
-    item_ids: Array<number | string>;
-    updated_sections: string[];
-  };
-  apply_project_mutation_result: ReturnType<typeof vi.fn>;
+  project_change_signal: ProjectRuntimeChangeSignal;
+  commit_project_mutation: ReturnType<typeof vi.fn>;
   refresh_project_runtime: ReturnType<typeof vi.fn>;
   refresh_task: ReturnType<typeof vi.fn>;
 };
@@ -72,6 +68,7 @@ type Deferred<T> = {
   reject: (reason?: unknown) => void;
 };
 
+// create_project_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_project_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
     item_id: 1,
@@ -92,18 +89,72 @@ function create_project_item(overrides: Partial<ProjectItemPublicRecord>): Proje
   };
 }
 
+// create_project_change_signal 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+function create_project_change_signal(
+  seq: number,
+  options: {
+    mode?: "full" | "delta" | "noop";
+    itemIds?: Array<number | string>;
+    updatedSections?: Array<ProjectRuntimeChangeSignal["updated_sections"][number] | "task">;
+  } = {},
+): ProjectRuntimeChangeSignal {
+  const mode = options.mode ?? "full";
+  const requested_sections =
+    options.updatedSections ??
+    (mode === "noop"
+      ? ["proofreading"]
+      : mode === "delta"
+        ? ["items"]
+        : ["project", "items", "quality"]);
+  const updated_sections = requested_sections.filter(
+    (section): section is ProjectRuntimeChangeSignal["updated_sections"][number] =>
+      section !== "task",
+  );
+  const item_ids = options.itemIds ?? [];
+  return {
+    seq,
+    reason: mode === "noop" ? "task_status_refresh" : "translation_commit",
+    updated_sections,
+    results:
+      updated_sections.length === 0
+        ? []
+        : [
+            {
+              applied: true,
+              source: mode === "noop" ? "task_status_refresh" : "translation_commit",
+              projectRevision: seq,
+              updatedSections: updated_sections,
+              ...(updated_sections.includes("items")
+                ? {
+                    itemDelta: {
+                      upsertItemIds: item_ids,
+                      deleteItemIds: [],
+                      fullReplace: mode !== "delta",
+                    },
+                  }
+                : {}),
+              sectionRevisions: {},
+            },
+          ],
+  };
+}
+
+// runtime fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
 };
 
+// navigation fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const navigation_fixture: { current: NavigationFixture } = {
   current: create_navigation_fixture(),
 };
 
+// proofreading runtime client fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const proofreading_runtime_client_fixture: { current: ProofreadingRuntimeClientFixture } = {
   current: create_proofreading_runtime_client_fixture(),
 };
 
+// toast fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const toast_fixture: { current: ToastFixture } = {
   current: create_toast_fixture(),
 };
@@ -153,9 +204,11 @@ vi.mock("@/project/worker/project-ui-worker-client", () => {
 vi.mock("@/app/desktop/desktop-api", () => {
   return {
     api_fetch: vi.fn(),
+    report_renderer_error: vi.fn(async () => undefined),
   };
 });
 
+// create_quality_store_payload 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_quality_store_payload(): Record<string, unknown> {
   return {
     quality: {
@@ -195,6 +248,7 @@ function create_quality_store_payload(): Record<string, unknown> {
   };
 }
 
+// create_runtime_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_runtime_fixture(): RuntimeFixture {
   return {
     settings_snapshot: {
@@ -249,18 +303,23 @@ function create_runtime_fixture(): RuntimeFixture {
         task_snapshot: snapshot,
       };
     }),
-    proofreading_change_signal: {
-      seq: 0,
-      mode: "full",
-      item_ids: [],
-      updated_sections: [],
-    },
-    apply_project_mutation_result: vi.fn(async () => {}),
+    project_change_signal: create_project_change_signal(0, { updatedSections: [] }),
+    commit_project_mutation: vi.fn(async ({ run }: { run: () => Promise<unknown> }) => {
+      const payload = await run();
+      return {
+        payload,
+        mutation_result: {
+          accepted: true,
+          changes: [],
+        },
+      };
+    }),
     refresh_project_runtime: vi.fn(async () => {}),
     refresh_task: vi.fn(async () => runtime_fixture.current.task_snapshot),
   };
 }
 
+// create_navigation_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_navigation_fixture(): NavigationFixture {
   return {
     proofreading_lookup_intent: null,
@@ -268,6 +327,7 @@ function create_navigation_fixture(): NavigationFixture {
   };
 }
 
+// create_sync_state 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_sync_state() {
   return {
     projectId: "E:/demo/sample.lg",
@@ -288,6 +348,7 @@ function create_sync_state() {
   };
 }
 
+// create_deferred 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_deferred<T>(): Deferred<T> {
   let resolve_deferred: (value: T) => void = () => {};
   let reject_deferred: (reason?: unknown) => void = () => {};
@@ -302,6 +363,7 @@ function create_deferred<T>(): Deferred<T> {
   };
 }
 
+// create_client_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_client_item(item_id: number | string) {
   return {
     item_id,
@@ -320,6 +382,7 @@ function create_client_item(item_id: number | string) {
   };
 }
 
+// create_list_view 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_list_view() {
   return {
     ...create_empty_proofreading_list_view(),
@@ -343,6 +406,7 @@ function create_list_view() {
   };
 }
 
+// create_filter_panel 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_filter_panel() {
   return {
     ...create_empty_proofreading_filter_panel_state(),
@@ -364,6 +428,7 @@ function create_filter_panel() {
   };
 }
 
+// create_proofreading_runtime_client_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_proofreading_runtime_client_fixture(): ProofreadingRuntimeClientFixture {
   return {
     hydrate_proofreading_full: vi.fn(async () => create_sync_state()),
@@ -387,6 +452,7 @@ function create_proofreading_runtime_client_fixture(): ProofreadingRuntimeClient
   };
 }
 
+// create_toast_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_toast_fixture(): ToastFixture {
   return {
     push_toast: vi.fn(),
@@ -417,11 +483,13 @@ describe("useProofreadingPageState", () => {
     vi.useRealTimers();
   });
 
+  // ProofreadingProbe 收口测试中的共享步骤，保证断言只关注当前行为。
   function ProofreadingProbe(): JSX.Element | null {
     latest_state = useProofreadingPageState();
     return null;
   }
 
+  // flush_async_updates 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function flush_async_updates(): Promise<void> {
     await act(async () => {
       await Promise.resolve();
@@ -430,6 +498,7 @@ describe("useProofreadingPageState", () => {
     });
   }
 
+  // render_hook 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -443,6 +512,7 @@ describe("useProofreadingPageState", () => {
     await flush_async_updates();
   }
 
+  // request_pending_confirmation 收口测试中的共享步骤，保证断言只关注当前行为。
   async function request_pending_confirmation(action: () => void): Promise<void> {
     await act(async () => {
       action();
@@ -469,12 +539,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -494,12 +563,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 2,
+      project_change_signal: create_project_change_signal(2, {
         mode: "delta",
-        item_ids: [1],
-        updated_sections: ["items"],
-      },
+        itemIds: [1],
+        updatedSections: ["items"],
+      }),
     };
     await render_hook();
 
@@ -524,12 +592,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -546,12 +613,11 @@ describe("useProofreadingPageState", () => {
         ...runtime_fixture.current.settings_snapshot,
         target_language: "EN",
       },
-      proofreading_change_signal: {
-        seq: 2,
+      project_change_signal: create_project_change_signal(2, {
         mode: "delta",
-        item_ids: [1],
-        updated_sections: ["items"],
-      },
+        itemIds: [1],
+        updatedSections: ["items"],
+      }),
     };
     await render_hook();
 
@@ -568,12 +634,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -589,12 +654,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 2,
+      project_change_signal: create_project_change_signal(2, {
         mode: "noop",
-        item_ids: [],
-        updated_sections: ["proofreading", "task"],
-      },
+        itemIds: [],
+        updatedSections: ["proofreading", "task"],
+      }),
     };
     await render_hook();
 
@@ -618,12 +682,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -652,12 +715,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -685,12 +747,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -734,12 +795,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -799,12 +859,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -834,12 +893,11 @@ describe("useProofreadingPageState", () => {
     });
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 2,
+      project_change_signal: create_project_change_signal(2, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -896,12 +954,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -939,12 +996,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -1001,12 +1057,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -1045,12 +1100,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -1083,12 +1137,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -1109,12 +1162,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -1141,12 +1193,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -1231,12 +1282,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -1295,12 +1345,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -1342,12 +1391,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -1373,10 +1421,11 @@ describe("useProofreadingPageState", () => {
         proofreading: 1,
       },
     });
-    expect(runtime_fixture.current.apply_project_mutation_result).toHaveBeenCalledWith({
-      accepted: true,
-      changes: [],
-    });
+    expect(runtime_fixture.current.commit_project_mutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: "proofreading.mutation",
+      }),
+    );
     expect(
       proofreading_runtime_client_fixture.current.read_proofreading_items_by_row_ids,
     ).not.toHaveBeenCalled();
@@ -1387,12 +1436,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -1427,12 +1475,11 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      proofreading_change_signal: {
-        seq: 1,
+      project_change_signal: create_project_change_signal(1, {
         mode: "full",
-        item_ids: [],
-        updated_sections: ["project", "items", "quality"],
-      },
+        itemIds: [],
+        updatedSections: ["project", "items", "quality"],
+      }),
     };
     await render_hook();
 
@@ -1453,10 +1500,11 @@ describe("useProofreadingPageState", () => {
         proofreading: 1,
       },
     });
-    expect(runtime_fixture.current.apply_project_mutation_result).toHaveBeenCalledWith({
-      accepted: true,
-      changes: [],
-    });
+    expect(runtime_fixture.current.commit_project_mutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: "proofreading.mutation",
+      }),
+    );
     expect(
       proofreading_runtime_client_fixture.current.read_proofreading_items_by_row_ids,
     ).not.toHaveBeenCalled();

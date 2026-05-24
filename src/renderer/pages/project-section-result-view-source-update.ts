@@ -1,4 +1,4 @@
-import type { ProjectMutationResult } from "@/app/desktop/desktop-runtime-context";
+import type { ProjectMutationResult } from "@/app/desktop/desktop-project-mutation";
 import {
   create_result_view_source_update_request,
   should_rebuild_result_view_source,

@@ -35,6 +35,11 @@ const PATCH_ALLOWED_KEYS = new Set([
   "request",
 ]);
 
+type ModelTestFailure = {
+  reason: string;
+  diagnostic?: AppErrors.ErrorDiagnosticPayload;
+};
+
 // 嵌套配置字段采用浅合并，保留未出现在 patch 中的历史配置项
 const PATCH_OBJECT_KEYS = new Set(["thinking", "threshold", "generation", "request"]);
 
@@ -257,19 +262,19 @@ export class ModelService {
         new AbortController().signal,
       );
       const response_time_ms = Math.max(0, Date.now() - started_at);
-      const error_reason = this.build_model_test_error_reason(result, config);
-      if (error_reason === "") {
+      const failure = this.build_model_test_failure(result, config);
+      if (failure === null) {
         this.log_model_test_success(app_language, result, response_time_ms);
       } else {
-        this.log_model_test_failure(app_language, error_reason);
+        this.log_model_test_failure(app_language, failure);
       }
       key_results.push({
         masked_key,
-        success: error_reason === "",
+        success: failure === null,
         input_tokens: result.input_tokens,
         output_tokens: result.output_tokens,
         response_time_ms,
-        error_reason,
+        error_reason: failure?.reason ?? "",
       });
     }
     const success_count = key_results.filter((item) => item["success"] === true).length;
@@ -458,24 +463,35 @@ export class ModelService {
   /**
    * 把 LLM 原始请求事实转换为模型页测试失败原因
    */
-  private build_model_test_error_reason(
+  /**
+   * 将模型测试请求事实转成单个密钥的失败摘要和结构化诊断。
+   */
+  private build_model_test_failure(
     result: LLMRequestResult,
     config: Record<string, ApiJsonValue>,
-  ): string {
+  ): ModelTestFailure | null {
     if (result.cancelled) {
-      return "请求已取消。";
+      return { reason: "请求已取消。" };
     }
     if (result.timeout) {
-      return this.t(config["app_language"], "app.log.api_test_timeout", {
-        SECONDS: String(normalize_setting_snapshot(config).request_timeout),
-      });
+      return {
+        reason: this.t(config["app_language"], "app.log.api_test_timeout", {
+          SECONDS: String(normalize_setting_snapshot(config).request_timeout),
+        }),
+      };
     }
     if (result.degraded) {
-      return this.t(config["app_language"], "app.log.response_checker_fail_degradation");
+      return {
+        reason: this.t(config["app_language"], "app.log.response_checker_fail_degradation"),
+      };
     }
-    return result.error;
+    if (result.failure !== undefined) {
+      return { reason: result.failure.message, diagnostic: result.failure };
+    }
+    return null;
   }
 
+  // log_model_test_key_start 封装类内部的非显然分支，避免调用方重复理解同一约束。
   private log_model_test_key_start(
     app_language: unknown,
     masked_key: string,
@@ -491,6 +507,7 @@ export class ModelService {
     );
   }
 
+  // log_model_test_success 封装类内部的非显然分支，避免调用方重复理解同一约束。
   private log_model_test_success(
     app_language: unknown,
     result: LLMRequestResult,
@@ -521,13 +538,19 @@ export class ModelService {
     );
   }
 
-  private log_model_test_failure(app_language: unknown, reason: string): void {
-    this.log_manager?.warning(this.t(app_language, "app.log.api_test_fail", { REASON: reason }), {
+  /**
+   * 模型测试失败日志只把稳定摘要放进 message，具体原因进入结构化错误字段。
+   */
+  private log_model_test_failure(app_language: unknown, failure: ModelTestFailure): void {
+    const diagnostic =
+      failure.diagnostic ?? AppErrors.error_diagnostic_from_message(failure.reason);
+    this.log_manager?.warning(this.t(app_language, "app.log.api_test_fail"), {
       source: "model",
-      error_message: reason,
+      ...AppErrors.error_diagnostic_to_log_fields(diagnostic),
     });
   }
 
+  // log_model_test_summary 封装类内部的非显然分支，避免调用方重复理解同一约束。
   private log_model_test_summary(
     app_language: unknown,
     result_msg: string,
@@ -547,6 +570,7 @@ export class ModelService {
     }
   }
 
+  // format_model_test_messages_for_log 封装类内部的非显然分支，避免调用方重复理解同一约束。
   private format_model_test_messages_for_log(messages: LLMMessage[]): string {
     const rows = messages.map(
       (message) =>
@@ -557,10 +581,12 @@ export class ModelService {
     return `[${rows.join(", ")}]`;
   }
 
+  // escape_python_repr 封装类内部的非显然分支，避免调用方重复理解同一约束。
   private escape_python_repr(value: string): string {
     return value.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
   }
 
+  // t 封装类内部的非显然分支，避免调用方重复理解同一约束。
   private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
     return format_i18n_message(resolve_i18n_locale(app_language), key, params);
   }

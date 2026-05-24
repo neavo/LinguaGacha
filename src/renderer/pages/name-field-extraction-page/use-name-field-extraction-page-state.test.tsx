@@ -48,6 +48,7 @@ let runtime_state = {
   },
 };
 
+// create_test_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
     item_id: 1,
@@ -68,6 +69,7 @@ function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectI
   };
 }
 
+// create_runtime_items 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_runtime_items(): ReturnType<typeof createProjectItemIndex> {
   return createProjectItemIndex({
     "1": create_test_item({
@@ -85,6 +87,7 @@ function create_runtime_items(): ReturnType<typeof createProjectItemIndex> {
 
 const project_store_listeners = new Set<() => void>();
 
+// apply_quality_mutation_result 收口测试中的共享步骤，保证断言只关注当前行为。
 function apply_quality_mutation_result(result: {
   changes?: Array<{
     sectionRevisions?: {
@@ -123,7 +126,7 @@ function apply_quality_mutation_result(result: {
   }
 }
 
-// 测试夹具只模拟后端原始 canonical mutation payload，规范化入口仍由页面 hook 真实调用。
+// 测试夹具只模拟后端原始 canonical mutation payload，回灌入口由运行态 commit mock 触发。
 function create_quality_mutation_result(
   args: {
     quality?: typeof runtime_state.quality;
@@ -181,6 +184,7 @@ const project_store = {
 vi.mock("@/app/desktop/desktop-api", () => {
   return {
     api_fetch: api_fetch_mock,
+    report_renderer_error: vi.fn(async () => undefined),
   };
 });
 
@@ -189,8 +193,18 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
     useDesktopRuntime: () => ({
       project_snapshot: runtime_state.project,
       project_store,
-      apply_project_mutation_result: vi.fn(async (result) => {
-        apply_quality_mutation_result(result);
+      commit_project_mutation: vi.fn(async (request) => {
+        const payload = await request.run();
+        const mutation_result = {
+          accepted: true,
+          changes: Array.isArray(payload.changes) ? payload.changes : [],
+        };
+        await request.prepare?.({ payload, mutation_result });
+        apply_quality_mutation_result(mutation_result);
+        return {
+          payload,
+          mutation_result,
+        };
       }),
       refresh_project_runtime: vi.fn(async () => {}),
       task_snapshot: {
@@ -217,6 +231,7 @@ vi.mock("@/app/locale/locale-provider", () => {
   };
 });
 
+// Probe 收口测试中的共享步骤，保证断言只关注当前行为。
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useNameFieldExtractionPageState>) => void;
 }): JSX.Element | null {
@@ -275,6 +290,7 @@ describe("useNameFieldExtractionPageState", () => {
     vi.useRealTimers();
   });
 
+  // mount_probe 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function mount_probe(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);

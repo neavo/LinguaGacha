@@ -10,9 +10,9 @@ import type {
   ProjectPagesBarrierKind,
 } from "@/app/page-runtime/project-pages-barrier";
 import {
-  normalize_project_mutation_result,
+  type ProjectMutationOperation,
   type ProjectMutationResultPayload,
-} from "@/app/desktop/desktop-runtime-context";
+} from "@/app/desktop/desktop-project-mutation";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
@@ -44,6 +44,9 @@ type TranslationTaskCommandPayload = {
   task?: Partial<TranslationTaskSnapshot>;
 };
 
+// 翻译任务 runtime 拥有翻译提交 operation，任务归因通过 task_type 固定到 translation。
+const WORKBENCH_TRANSLATION_MUTATION: ProjectMutationOperation = "workbench.translation_mutation";
+
 type TranslationTaskRuntimeOptions = {
   createProjectPagesBarrierCheckpoint?: () => ProjectPagesBarrierCheckpoint;
   waitForProjectPagesBarrier?: (
@@ -68,6 +71,7 @@ export type TranslationTaskRuntime = {
   close_task_action_confirmation: () => void;
 };
 
+// create_task_confirm_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_task_confirm_state(kind: TranslationTaskActionKind): TranslationTaskConfirmState {
   return {
     kind,
@@ -76,6 +80,7 @@ function create_task_confirm_state(kind: TranslationTaskActionKind): Translation
   };
 }
 
+// resolve_translation_terminal_feedback_message 集中解析运行时决策，避免调用点复制条件判断。
 function resolve_translation_terminal_feedback_message(args: {
   previous_status: string;
   next_status: string;
@@ -100,6 +105,7 @@ function resolve_translation_terminal_feedback_message(args: {
   return null;
 }
 
+// should_prompt_translation_generate_confirmation 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function should_prompt_translation_generate_confirmation(args: {
   previous_status: string;
   next_status: string;
@@ -119,6 +125,7 @@ function should_prompt_translation_generate_confirmation(args: {
   return args.next_status === "idle" && args.has_result;
 }
 
+// is_translation_terminal_prompt_boundary 集中表达布尔判定口径，避免调用方按局部字段猜测。
 function is_translation_terminal_prompt_boundary(args: {
   previous_status: string;
   next_status: string;
@@ -129,6 +136,7 @@ function is_translation_terminal_prompt_boundary(args: {
   );
 }
 
+// useTranslationTaskRuntime 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useTranslationTaskRuntime(
   options: TranslationTaskRuntimeOptions = {},
 ): TranslationTaskRuntime {
@@ -140,8 +148,7 @@ export function useTranslationTaskRuntime(
     settings_snapshot,
     sync_task_snapshot,
     task_snapshot,
-    refresh_project_runtime,
-    apply_project_mutation_result,
+    commit_project_mutation,
     refresh_task,
   } = useDesktopRuntime();
   const [translation_task_snapshot, set_translation_task_snapshot] =
@@ -172,7 +179,6 @@ export function useTranslationTaskRuntime(
     consume_terminal_prompt_suppression,
     suppress_next_terminal_prompt,
   } = useTerminalPromptSuppression();
-
   const translation_task_display_snapshot = useMemo(() => {
     return resolve_translation_task_display_snapshot({
       current_snapshot: translation_task_snapshot,
@@ -450,19 +456,17 @@ export function useTranslationTaskRuntime(
                 state: project_store.getState(),
                 task_snapshot,
               });
-        try {
-          const mutation_result = normalize_project_mutation_result(
-            await api_fetch<ProjectMutationResultPayload>(
+        await commit_project_mutation({
+          operation: WORKBENCH_TRANSLATION_MUTATION,
+          task_type: "translation",
+          run: async () => {
+            return await api_fetch<ProjectMutationResultPayload>(
               "/api/project/translation/reset",
               reset_plan.requestBody,
-            ),
-          );
-          await apply_project_mutation_result(mutation_result);
-          await refresh_task("translation");
-        } catch (error) {
-          void refresh_project_runtime().catch(() => {});
-          throw error;
-        }
+            );
+          },
+        });
+        await refresh_task("translation");
 
         if (options.waitForProjectPagesBarrier !== undefined) {
           await options.waitForProjectPagesBarrier("proofreading_cache_refresh", {
@@ -495,10 +499,9 @@ export function useTranslationTaskRuntime(
       });
     }
   }, [
-    apply_project_mutation_result,
+    commit_project_mutation,
     options,
     project_store,
-    refresh_project_runtime,
     refresh_task,
     push_toast,
     settings_snapshot.mtool_optimizer_enable,

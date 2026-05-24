@@ -2,12 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { set_electron_main_log_manager } from "../log/log-bridge";
 import type { LogManager } from "../log/log-manager";
-import {
-  format_bootstrap_error,
-  format_bootstrap_log,
-  write_bootstrap_error,
-  write_bootstrap_log,
-} from "./bootstrap-log";
+import { format_bootstrap_log, write_bootstrap_error, write_bootstrap_log } from "./bootstrap-log";
 
 afterEach(() => {
   set_electron_main_log_manager(null);
@@ -57,22 +52,32 @@ describe("write_bootstrap_error", () => {
     expect(stderr_write).toHaveBeenCalledWith("[12:12:12] MAIN     Core 启动失败\n");
   });
 
+  it("没有日志管理器时把诊断拼到 stderr 兜底日志", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 3, 26, 12, 12, 12));
+    const stderr_write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
+    write_bootstrap_error("Core 启动失败", {
+      error: new Error("端口占用"),
+    });
+
+    expect(stderr_write).toHaveBeenCalledWith(expect.stringContaining("Core 启动失败\n端口占用"));
+  });
+
   it("存在日志管理器时写入生命周期来源的 error 记录", () => {
     const error = vi.fn();
     set_electron_main_log_manager({ error } as unknown as LogManager);
 
-    write_bootstrap_error("Core 启动失败");
+    write_bootstrap_error("Core 启动失败", {
+      error: new Error("端口占用"),
+    });
 
-    expect(error).toHaveBeenCalledWith("Core 启动失败", { source: "core-bootstrap" });
-  });
-});
-
-describe("format_bootstrap_error", () => {
-  it("优先输出 Error message", () => {
-    expect(format_bootstrap_error(new Error("启动失败"))).toBe("启动失败");
-  });
-
-  it("兼容非 Error 抛出值", () => {
-    expect(format_bootstrap_error("失败")).toBe("失败");
+    expect(error).toHaveBeenCalledWith(
+      "Core 启动失败",
+      expect.objectContaining({
+        source: "core-bootstrap",
+        error_message: "端口占用",
+      }),
+    );
   });
 });

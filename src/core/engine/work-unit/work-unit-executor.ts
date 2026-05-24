@@ -1,5 +1,5 @@
 import type { ApiJsonValue } from "../../api/api-types";
-import type { WorkUnit } from "../protocol/work-unit";
+import type { WorkUnit, WorkUnitLogEntry } from "../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
 
 /**
@@ -19,7 +19,7 @@ export interface WorkUnitExecutor {
     signal: AbortSignal,
   ): Promise<
     Record<string, ApiJsonValue> & {
-      logs?: Array<{ level: "info" | "warning" | "error"; message: string }>;
+      logs?: WorkUnitLogEntry[];
     }
   >;
 }

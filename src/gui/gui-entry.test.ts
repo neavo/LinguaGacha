@@ -33,6 +33,7 @@ type MainWindowOptions = {
   desktopBundleDir: string;
   coreApiBaseUrl: string;
   systemProxyStartupNotice: SystemProxyStartupNotice;
+  rendererDiagnostics: RendererDiagnosticsRegistry;
   shouldBypassCloseConfirmation: () => boolean;
   onClosed: () => void;
 };
@@ -40,22 +41,32 @@ type LogWindowOptions = {
   desktopBundleDir: string;
   coreApiBaseUrl: string;
   systemProxyStartupNotice: SystemProxyStartupNotice;
+  rendererDiagnostics: RendererDiagnosticsRegistry;
 };
 type IpcHandlerOptions = {
   getMainWindow: () => FakeWindow | null;
   getLogWindowHost: () => { close: () => void } | null;
   markRendererConfirmedAppQuit: () => void;
+  recordRendererDiagnostics: (...args: unknown[]) => void;
   readAppLanguage: () => unknown;
 };
 type FatalHandlerOptions = {
   isAppShutdownInProgress: () => boolean;
   quitAfterCoreShutdown: (exit_code: number) => Promise<void>;
 };
+type RendererDiagnosticsRegistry = {
+  registerWindow: (...args: unknown[]) => void;
+  recordRendererDiagnostics: (...args: unknown[]) => void;
+  buildRendererProcessGoneContext: (...args: unknown[]) => Record<string, unknown>;
+  buildWindowUnresponsiveContext: (...args: unknown[]) => Record<string, unknown>;
+};
 
+// MOCK MODULES 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const MOCK_MODULES = [
   "electron",
   "./shell/desktop-ipc-host",
   "./shell/desktop-window-host",
+  "./shell/renderer-process-diagnostics",
   "./shell/native-error-dialog",
   "../core/bootstrap/core-bootstrap",
   "./shell/main-fatal-error-handler",
@@ -85,6 +96,8 @@ describe("Electron main 入口", () => {
 
     expect(harness.calls.renderer_public_path_dirs).toHaveLength(1);
     expect(harness.calls.remote_debugging_configured).toBe(1);
+    expect(harness.calls.renderer_crash_reporting_configured).toBe(1);
+    expect(harness.calls.renderer_diagnostics_registry_count).toBe(1);
     expect(harness.calls.core_bootstraps).toHaveLength(1);
     expect(harness.calls.core_bootstraps[0]?.options.appRoot).toBe(process.cwd());
     expect(harness.calls.core_bootstraps[0]?.options.exposeApiGateway).toBe(true);
@@ -102,6 +115,7 @@ describe("Electron main 入口", () => {
         desktopBundleDir: expect.any(String),
         coreApiBaseUrl: harness.base_url,
         systemProxyStartupNotice: harness.system_proxy_startup_notice,
+        rendererDiagnostics: harness.renderer_process_diagnostics,
       },
     ]);
     expect(harness.calls.ipc_handler_options).toHaveLength(1);
@@ -110,6 +124,7 @@ describe("Electron main 入口", () => {
         desktopBundleDir: expect.any(String),
         coreApiBaseUrl: harness.base_url,
         systemProxyStartupNotice: harness.system_proxy_startup_notice,
+        rendererDiagnostics: harness.renderer_process_diagnostics,
         shouldBypassCloseConfirmation: expect.any(Function),
         onClosed: expect.any(Function),
       },
@@ -119,6 +134,9 @@ describe("Electron main 入口", () => {
     );
     expect(harness.calls.ipc_handler_options[0]?.readAppLanguage()).toBe("ZH");
     expect(harness.calls.ipc_handler_options[0]?.getLogWindowHost()).toBe(harness.log_window_host);
+    expect(harness.calls.ipc_handler_options[0]?.recordRendererDiagnostics).toBe(
+      harness.renderer_process_diagnostics.recordRendererDiagnostics,
+    );
     expect(harness.calls.main_window_options[0]?.shouldBypassCloseConfirmation()).toBe(false);
 
     harness.calls.ipc_handler_options[0]?.markRendererConfirmedAppQuit();
@@ -193,6 +211,7 @@ describe("Electron main 入口", () => {
 function create_index_harness(): {
   base_url: string;
   log_window_host: { close: () => void };
+  renderer_process_diagnostics: RendererDiagnosticsRegistry;
   system_proxy_startup_notice: SystemProxyStartupNotice;
   calls: {
     app_exit_codes: number[];
@@ -209,6 +228,8 @@ function create_index_harness(): {
     main_window_options: MainWindowOptions[];
     proxy_resolve_urls: string[];
     remote_debugging_configured: number;
+    renderer_crash_reporting_configured: number;
+    renderer_diagnostics_registry_count: number;
     renderer_public_path_dirs: string[];
     show_error_boxes: Array<[string, string]>;
   };
@@ -236,6 +257,12 @@ function create_index_harness(): {
       calls.log_window_close_count += 1;
     },
   };
+  const renderer_process_diagnostics: RendererDiagnosticsRegistry = {
+    registerWindow: vi.fn(),
+    recordRendererDiagnostics: vi.fn(),
+    buildRendererProcessGoneContext: vi.fn(() => ({})),
+    buildWindowUnresponsiveContext: vi.fn(() => ({})),
+  };
   const calls = {
     app_exit_codes: [] as number[],
     app_quit_count: 0,
@@ -251,19 +278,24 @@ function create_index_harness(): {
     main_window_options: [] as MainWindowOptions[],
     proxy_resolve_urls: [] as string[],
     remote_debugging_configured: 0,
+    renderer_crash_reporting_configured: 0,
+    renderer_diagnostics_registry_count: 0,
     renderer_public_path_dirs: [] as string[],
     show_error_boxes: [] as Array<[string, string]>,
   };
 
+  // FakeCoreBootstrap 模拟外部运行时对象，只保留当前测试会触发的行为面。
   class FakeCoreBootstrap implements CoreBootstrapInstance {
     public readonly options: CoreBootstrapOptions;
     private stopped = false;
 
+    // 构造阶段只注入必要依赖，避免实例创建时读取外部可变状态。
     public constructor(options: CoreBootstrapOptions) {
       this.options = options;
       calls.core_bootstraps.push(this);
     }
 
+    // start 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     public async start(): Promise<{
       apiBaseUrl: string;
       readAppLanguage: () => unknown;
@@ -280,11 +312,13 @@ function create_index_harness(): {
       };
     }
 
+    // stop 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     public async stop(): Promise<void> {
       calls.core_stop_count += 1;
       this.stopped = true;
     }
 
+    // isStopped 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     public isStopped(): boolean {
       return this.stopped;
     }
@@ -356,6 +390,18 @@ function create_index_harness(): {
     };
   });
 
+  vi.doMock("./shell/renderer-process-diagnostics", () => {
+    return {
+      configure_renderer_crash_reporting: () => {
+        calls.renderer_crash_reporting_configured += 1;
+      },
+      create_renderer_process_diagnostics_registry: () => {
+        calls.renderer_diagnostics_registry_count += 1;
+        return renderer_process_diagnostics;
+      },
+    };
+  });
+
   vi.doMock("./shell/native-error-dialog", () => {
     return {
       show_native_error_dialog: (title: string, message: string) => {
@@ -408,6 +454,7 @@ function create_index_harness(): {
       });
     },
     log_window_host,
+    renderer_process_diagnostics,
     resolve_ready,
     system_proxy_startup_notice,
     set_open_path_result: (result) => {

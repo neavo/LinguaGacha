@@ -1,7 +1,12 @@
 import crypto from "node:crypto";
 import { Worker } from "node:worker_threads";
 
-import { RuntimeCancelledError, RuntimeDisposedError } from "../../../shared/error";
+import {
+  normalize_error_diagnostic,
+  RuntimeCancelledError,
+  RuntimeDisposedError,
+  WorkerExecutionFailedError,
+} from "../../../shared/error";
 import type { EngineExecution } from "../core/engine-execution";
 import { resolve_engine_worker_count } from "../core/engine-worker-capacity";
 import { create_o200k_base_token_counter, type TokenCounter } from "../core/token-counter";
@@ -265,7 +270,16 @@ export class PlanningWorkerPool {
     if (message.ok) {
       task.resolve(message.data ?? []);
     } else {
-      task.reject(new Error(message.error ?? "planning worker 计数失败。"));
+      task.reject(
+        new WorkerExecutionFailedError({
+          diagnostic_context: {
+            failure: normalize_error_diagnostic(
+              message.error_diagnostic,
+              "planning worker 计数失败。",
+            ),
+          },
+        }),
+      );
     }
     this.drain_queue();
   }

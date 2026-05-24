@@ -25,6 +25,11 @@ export const zh_cn_app = {
     update_failed: "更新失败 …",
     project_settings_aligned: "已按当前设置更新项目设置 …",
   },
+  error_boundary: {
+    eyebrow: "Renderer Runtime",
+    title: "页面运行时发生异常",
+    description: "当前窗口已切换到保护视图，异常详情已经写入日志。",
+  },
   project_settings_alignment: {
     field: {
       source_language: "输入语言",
@@ -245,7 +250,7 @@ export const zh_cn_app = {
     },
     lifecycle: {
       app_start_failed: "LinguaGacha 启动失败 …",
-      core_gateway_start_failed: "Core / Gateway 启动失败 - {ERROR} …",
+      core_gateway_start_failed: "Core / Gateway 启动失败 …",
       main_fatal_uncaught: "Electron main 捕获到未处理致命异常 …",
     },
     migration: {
@@ -254,6 +259,7 @@ export const zh_cn_app = {
     renderer: {
       main_frame_load_failed: "渲染层主框架加载失败 …",
       process_exited: "渲染进程已退出 …",
+      reported_error: "Renderer 捕获到前端运行时异常 …",
       subframe_load_failed: "渲染层子框架加载失败 …",
       window_unresponsive: "窗口失去响应 …",
     },
@@ -263,7 +269,7 @@ export const zh_cn_app = {
     analysis_task_result: "分析结果：",
     analysis_task_source_texts: "分析输入：",
     api_gateway_started: "API Gateway 已启动 - {BASE_URL}",
-    api_test_fail: "接口测试失败 …\n原因：{REASON}",
+    api_test_fail: "接口测试失败 …",
     api_test_key: "正在测试密钥：",
     api_test_messages: "任务提示词：",
     api_test_result: "共测试 {COUNT} 个接口，成功 {SUCCESS} 个，失败 {FAILURE} 个 …",
@@ -290,6 +296,7 @@ export const zh_cn_app = {
     response_checker_fail_data: "数据结构错误",
     response_checker_fail_degradation: "发生退化现象",
     response_checker_fail_line_count: "行数不一致",
+    response_checker_fail_request: "模型请求失败",
     response_checker_fail_timeout: "网络请求超时",
     response_checker_line_error_empty_line: "存在空行",
     response_checker_line_error_hangeul: "谚文残留",

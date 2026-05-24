@@ -10,6 +10,7 @@ import {
   type ProjectDataSectionRevisions,
 } from "@/project/store/project-store";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
+import { capture_renderer_error } from "@/app/diagnostics/renderer-error-reporter";
 import { is_task_stopping } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import {
@@ -23,6 +24,7 @@ import {
   getWorkbenchViewCache,
   type WorkbenchViewCache,
 } from "@/pages/workbench-page/workbench-view";
+import { resolve_workbench_project_change_signal } from "@/pages/workbench-page/workbench-project-change-signal";
 import {
   useAnalysisTaskRuntime,
   type AnalysisTaskRuntime,
@@ -32,9 +34,9 @@ import {
   type TranslationTaskRuntime,
 } from "@/pages/workbench-page/task-runtime/use-translation-task-runtime";
 import {
-  normalize_project_mutation_result,
+  type ProjectMutationOperation,
   type ProjectMutationResultPayload,
-} from "@/app/desktop/desktop-runtime-context";
+} from "@/app/desktop/desktop-project-mutation";
 import { useI18n } from "@/app/locale/locale-provider";
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
@@ -47,6 +49,7 @@ import type {
   AnalysisTaskConfirmState,
   AnalysisTaskMetrics,
 } from "@/pages/workbench-page/task-runtime/analysis-task-model";
+import type { RendererErrorContextInput } from "@shared/error";
 import type {
   TranslationTaskConfirmState,
   TranslationTaskMetrics,
@@ -68,6 +71,7 @@ import type {
   WorkbenchTaskViewState,
 } from "@/pages/workbench-page/types";
 
+// EMPTY WORKBENCH STATS 是默认快照事实，调用方只读取副本不临时拼装。
 const EMPTY_WORKBENCH_STATS: WorkbenchStats = {
   total_items: 0,
   completed_count: 0,
@@ -77,6 +81,11 @@ const EMPTY_WORKBENCH_STATS: WorkbenchStats = {
   completion_percent: 0,
 };
 
+type WorkbenchCacheErrorContext = Pick<
+  RendererErrorContextInput,
+  "stage" | "signalSeq" | "itemIdCount" | "mode"
+>; // 工作台缓存异常只上报白名单诊断字段，不透传页面快照
+
 const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
   file_count: 0,
   total_items: 0,
@@ -85,10 +94,14 @@ const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
   entries: [],
 };
 
+// WORKBENCH REQUIRED SECTIONS 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const WORKBENCH_REQUIRED_SECTIONS: ProjectDataSection[] = ["project", "files", "items", "analysis"];
+// 工作台文件 mutation 由工作台页拥有业务动作名，desktop committer 只消费 operation。
+const WORKBENCH_FILE_MUTATION: ProjectMutationOperation = "workbench.file_mutation";
 
 type WorkbenchAddFileDropIssue = "multiple" | "unavailable";
 
+// map_snapshot_entries 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function map_snapshot_entries(entries: WorkbenchSnapshotEntry[]): WorkbenchFileEntry[] {
   return entries.map((entry) => ({ ...entry }));
 }
@@ -99,6 +112,7 @@ type WorkbenchSelectionState = {
   anchor_entry_id: string | null;
 };
 
+// create_empty_selection_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_selection_state(): WorkbenchSelectionState {
   return {
     selected_entry_ids: [],
@@ -107,10 +121,12 @@ function create_empty_selection_state(): WorkbenchSelectionState {
   };
 }
 
+// dedupe_workbench_entry_ids 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function dedupe_workbench_entry_ids(entry_ids: string[]): string[] {
   return Array.from(new Set(entry_ids));
 }
 
+// are_workbench_entry_ids_equal 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function are_workbench_entry_ids_equal(
   left_entry_ids: string[],
   right_entry_ids: string[],
@@ -124,6 +140,7 @@ function are_workbench_entry_ids_equal(
   });
 }
 
+// select_after_snapshot 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function select_after_snapshot(
   previous_entries: WorkbenchFileEntry[],
   next_entries: WorkbenchFileEntry[],
@@ -153,6 +170,7 @@ function select_after_snapshot(
   return next_entries[0]?.rel_path ?? null;
 }
 
+// normalize_workbench_selection_state 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_workbench_selection_state(
   selection_state: WorkbenchSelectionState,
   entries: WorkbenchFileEntry[],
@@ -181,6 +199,7 @@ function normalize_workbench_selection_state(
   };
 }
 
+// resolve_workbench_selection_after_snapshot 集中解析运行时决策，避免调用点复制条件判断。
 function resolve_workbench_selection_after_snapshot(args: {
   previous_entries: WorkbenchFileEntry[];
   next_entries: WorkbenchFileEntry[];
@@ -229,10 +248,12 @@ function resolve_workbench_selection_after_snapshot(args: {
   };
 }
 
+// is_workbench_task_kind 集中表达布尔判定口径，避免调用方按局部字段猜测。
 function is_workbench_task_kind(value: string): value is WorkbenchTaskKind {
   return value === "translation" || value === "analysis";
 }
 
+// resolve_active_workbench_task_kind 集中解析运行时决策，避免调用点复制条件判断。
 function resolve_active_workbench_task_kind(args: {
   running_task_kind: WorkbenchTaskKind | null;
   recent_task_kind: WorkbenchTaskKind | null;
@@ -269,6 +290,7 @@ function resolve_active_workbench_task_kind(args: {
   return null;
 }
 
+// format_duration_value 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
 function format_duration_value(
   seconds: number,
 ): Pick<WorkbenchTaskMetricEntry, "value_text" | "unit_text"> {
@@ -294,6 +316,7 @@ function format_duration_value(
   };
 }
 
+// format_compact_metric_value 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
 function format_compact_metric_value(
   value: number,
   base_unit: string,
@@ -318,6 +341,7 @@ function format_compact_metric_value(
   };
 }
 
+// format_speed_value 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
 function format_speed_value(
   value: number,
 ): Pick<WorkbenchTaskMetricEntry, "value_text" | "unit_text"> {
@@ -334,11 +358,13 @@ function format_speed_value(
   };
 }
 
+// format_summary_speed 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
 function format_summary_speed(value: number): string {
   const metric_value = format_speed_value(value);
   return `${metric_value.value_text} ${metric_value.unit_text}`;
 }
 
+// resolve_task_tone 集中解析运行时决策，避免调用点复制条件判断。
 function resolve_task_tone(args: {
   active: boolean;
   stopping: boolean;
@@ -355,6 +381,7 @@ function resolve_task_tone(args: {
   return "neutral";
 }
 
+// resolve_percent_tone 集中解析运行时决策，避免调用点复制条件判断。
 function resolve_percent_tone(
   metrics: Pick<TranslationTaskMetrics, "active" | "stopping">,
 ): WorkbenchTaskTone {
@@ -364,6 +391,7 @@ function resolve_percent_tone(
   });
 }
 
+// build_translation_task_metric_entries 构造跨层载荷，保证字段形状在一个入口维护。
 function build_translation_task_metric_entries(
   metrics: TranslationTaskMetrics,
   t: ReturnType<typeof useI18n>["t"],
@@ -402,6 +430,7 @@ function build_translation_task_metric_entries(
   ];
 }
 
+// build_analysis_task_metric_entries 构造跨层载荷，保证字段形状在一个入口维护。
 function build_analysis_task_metric_entries(
   metrics: AnalysisTaskMetrics,
   t: ReturnType<typeof useI18n>["t"],
@@ -445,6 +474,7 @@ function build_analysis_task_metric_entries(
   ];
 }
 
+// build_empty_task_summary_view_model 构造跨层载荷，保证字段形状在一个入口维护。
 function build_empty_task_summary_view_model(
   t: ReturnType<typeof useI18n>["t"],
 ): WorkbenchTaskSummaryViewModel {
@@ -457,6 +487,7 @@ function build_empty_task_summary_view_model(
   };
 }
 
+// build_translation_task_summary_view_model 构造跨层载荷，保证字段形状在一个入口维护。
 function build_translation_task_summary_view_model(
   metrics: TranslationTaskMetrics,
   t: ReturnType<typeof useI18n>["t"],
@@ -482,6 +513,7 @@ function build_translation_task_summary_view_model(
   };
 }
 
+// build_analysis_task_summary_view_model 构造跨层载荷，保证字段形状在一个入口维护。
 function build_analysis_task_summary_view_model(
   metrics: AnalysisTaskMetrics,
   t: ReturnType<typeof useI18n>["t"],
@@ -506,6 +538,7 @@ function build_analysis_task_summary_view_model(
   };
 }
 
+// resolve_task_detail_progress_percent 集中解析运行时决策，避免调用点复制条件判断。
 function resolve_task_detail_progress_percent(args: {
   metrics: Pick<
     TranslationTaskMetrics | AnalysisTaskMetrics,
@@ -519,6 +552,7 @@ function resolve_task_detail_progress_percent(args: {
     : args.workbench_stats.completion_percent;
 }
 
+// build_translation_task_detail_view_model 构造跨层载荷，保证字段形状在一个入口维护。
 function build_translation_task_detail_view_model(args: {
   metrics: TranslationTaskMetrics;
   progress_percent: number;
@@ -541,6 +575,7 @@ function build_translation_task_detail_view_model(args: {
   };
 }
 
+// build_analysis_task_detail_view_model 构造跨层载荷，保证字段形状在一个入口维护。
 function build_analysis_task_detail_view_model(args: {
   metrics: AnalysisTaskMetrics;
   progress_percent: number;
@@ -563,6 +598,7 @@ function build_analysis_task_detail_view_model(args: {
   };
 }
 
+// build_translation_task_confirm_dialog_view_model 构造跨层载荷，保证字段形状在一个入口维护。
 function build_translation_task_confirm_dialog_view_model(
   state: TranslationTaskConfirmState | null,
   t: ReturnType<typeof useI18n>["t"],
@@ -602,6 +638,7 @@ function build_translation_task_confirm_dialog_view_model(
   };
 }
 
+// build_analysis_task_confirm_dialog_view_model 构造跨层载荷，保证字段形状在一个入口维护。
 function build_analysis_task_confirm_dialog_view_model(
   state: AnalysisTaskConfirmState | null,
   t: ReturnType<typeof useI18n>["t"],
@@ -696,6 +733,7 @@ type UseWorkbenchLiveStateOptions = {
   ) => Promise<void>;
 };
 
+// useWorkbenchLiveState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useWorkbenchLiveState(
   options: UseWorkbenchLiveStateOptions = {},
 ): UseWorkbenchLiveStateResult {
@@ -710,11 +748,10 @@ export function useWorkbenchLiveState(
     waitForProjectPagesBarrier: options.waitForProjectPagesBarrier,
   });
   const {
-    apply_project_mutation_result,
     project_snapshot,
     project_store,
-    refresh_project_runtime,
-    workbench_change_signal,
+    commit_project_mutation,
+    project_change_signal,
     refresh_task,
     refresh_project_snapshot,
     settings_snapshot,
@@ -737,8 +774,12 @@ export function useWorkbenchLiveState(
   const [recent_workbench_task_kind, set_recent_workbench_task_kind] =
     useState<WorkbenchTaskKind | null>(null);
   const [stats_mode, set_stats_mode] = useState<WorkbenchStatsMode>("translation");
-  const previous_workbench_change_seq_ref = useRef(workbench_change_signal.seq);
+  const previous_workbench_change_seq_ref = useRef(0);
   const previous_project_loaded_ref = useRef(false);
+  const workbench_change_signal = useMemo(
+    () => resolve_workbench_project_change_signal(project_change_signal),
+    [project_change_signal],
+  );
   // 工作台文件 mutation 共享同一份窄设置镜像，避免各入口重复拼命令字段。
   const planner_settings = useMemo(
     () => create_workbench_planner_settings(settings_snapshot),
@@ -919,6 +960,20 @@ export function useWorkbenchLiveState(
     [apply_refreshed_entries, project_snapshot.loaded, project_snapshot.path, project_store],
   );
 
+  // 工作台缓存是可重建派生状态，delta 失败只记录异常并回退到全量重建。
+  const report_workbench_cache_error = useCallback(
+    (error: unknown, context: WorkbenchCacheErrorContext): void => {
+      capture_renderer_error(error, {
+        source: "page-cache",
+        context: {
+          page: "workbench",
+          ...context,
+        },
+      });
+    },
+    [],
+  );
+
   useEffect(() => {
     const previous_project_loaded = previous_project_loaded_ref.current;
     const previous_project_path = previous_project_path_ref.current;
@@ -944,28 +999,41 @@ export function useWorkbenchLiveState(
 
   useEffect(() => {
     const previous_seq = previous_workbench_change_seq_ref.current;
-    previous_workbench_change_seq_ref.current = workbench_change_signal.seq;
 
-    if (!project_snapshot.loaded) {
+    if (!project_snapshot.loaded || workbench_change_signal === null) {
       return;
     }
 
     if (previous_seq !== workbench_change_signal.seq) {
-      if (
-        workbench_change_signal.mode === "items_delta" &&
-        apply_items_delta_snapshot(workbench_change_signal.item_ids)
-      ) {
-        return;
+      previous_workbench_change_seq_ref.current = workbench_change_signal.seq;
+      if (workbench_change_signal.mode === "items_delta") {
+        try {
+          if (apply_items_delta_snapshot(workbench_change_signal.item_ids)) {
+            return;
+          }
+        } catch (error) {
+          workbench_view_cache_ref.current = null;
+          report_workbench_cache_error(error, {
+            stage: "apply_items_delta_snapshot",
+            signalSeq: workbench_change_signal.seq,
+            itemIdCount: workbench_change_signal.item_ids.length,
+          });
+        }
       }
-      void refresh_snapshot().catch(() => {});
+      void refresh_snapshot().catch((error) => {
+        report_workbench_cache_error(error, {
+          stage: "refresh_snapshot_after_workbench_signal",
+          signalSeq: workbench_change_signal.seq,
+          mode: workbench_change_signal.mode,
+        });
+      });
     }
   }, [
     apply_items_delta_snapshot,
     project_snapshot.loaded,
     refresh_snapshot,
-    workbench_change_signal.item_ids,
-    workbench_change_signal.mode,
-    workbench_change_signal.seq,
+    report_workbench_cache_error,
+    workbench_change_signal,
   ]);
 
   const running_workbench_task_kind = useMemo<WorkbenchTaskKind | null>(() => {
@@ -1182,9 +1250,12 @@ export function useWorkbenchLiveState(
       set_file_op_running(true);
 
       try {
-        const payload = await request(plan.requestBody);
-        const mutation_result = normalize_project_mutation_result(payload);
-        await apply_project_mutation_result(mutation_result);
+        const { payload } = await commit_project_mutation({
+          operation: WORKBENCH_FILE_MUTATION,
+          run: async () => {
+            return await request(plan.requestBody);
+          },
+        });
         await refresh_task();
         if (options.waitForProjectPagesBarrier !== undefined) {
           await options.waitForProjectPagesBarrier("workbench_file_mutation", {
@@ -1194,13 +1265,12 @@ export function useWorkbenchLiveState(
         return payload;
       } catch (error) {
         set_file_op_running(false);
-        void refresh_project_runtime().catch(() => {});
         throw error;
       } finally {
         set_is_mutation_running(false);
       }
     },
-    [apply_project_mutation_result, options, refresh_project_runtime, refresh_task],
+    [commit_project_mutation, options, refresh_task],
   );
 
   const import_files_flow = useWorkbenchImportFilesFlow({
@@ -1279,6 +1349,7 @@ export function useWorkbenchLiveState(
   const request_add_files_from_paths = import_files_flow.request_add_files_from_paths;
   const request_add_file_from_path = import_files_flow.request_add_file_from_path;
 
+  // request_add_file 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   async function request_add_file(): Promise<void> {
     if (readonly) {
       return;
@@ -1291,6 +1362,7 @@ export function useWorkbenchLiveState(
     await request_add_files_from_paths(result.paths);
   }
 
+  // notify_add_file_drop_issue 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   function notify_add_file_drop_issue(issue: WorkbenchAddFileDropIssue): void {
     push_toast(
       "warning",
@@ -1298,6 +1370,7 @@ export function useWorkbenchLiveState(
     );
   }
 
+  // request_generate_translation 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   function request_generate_translation(): void {
     if (!can_generate_translation) {
       return;
@@ -1311,6 +1384,7 @@ export function useWorkbenchLiveState(
     });
   }
 
+  // request_close_project 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   function request_close_project(): void {
     set_dialog_state({
       kind: "close-project",
@@ -1320,6 +1394,7 @@ export function useWorkbenchLiveState(
     });
   }
 
+  // request_reset_file 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   function request_reset_file(entry_id: string): void {
     set_dialog_state({
       kind: "reset-file",
@@ -1329,6 +1404,7 @@ export function useWorkbenchLiveState(
     });
   }
 
+  // request_delete_selected_files 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   function request_delete_selected_files(): void {
     request_delete_entries(selection_state_ref.current.selected_entry_ids);
   }
@@ -1368,6 +1444,7 @@ export function useWorkbenchLiveState(
     [entries.length, project_store, push_toast, readonly, run_project_file_mutation, t],
   );
 
+  // confirm_dialog 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   async function confirm_dialog(): Promise<void> {
     const current_dialog_state = dialog_state;
     if (current_dialog_state.kind === null || current_dialog_state.submitting) {
@@ -1481,10 +1558,12 @@ export function useWorkbenchLiveState(
     }
   }
 
+  // secondary_dialog 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   async function secondary_dialog(): Promise<void> {
     await import_files_flow.secondary_dialog();
   }
 
+  // cancel_dialog 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   async function cancel_dialog(): Promise<void> {
     const current_dialog_state = dialog_state;
     if (await import_files_flow.cancel_dialog()) {
@@ -1498,6 +1577,7 @@ export function useWorkbenchLiveState(
     set_dialog_state(close_dialog_state());
   }
 
+  // close_dialog 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   function close_dialog(): void {
     if (import_files_flow.close_dialog()) {
       return;

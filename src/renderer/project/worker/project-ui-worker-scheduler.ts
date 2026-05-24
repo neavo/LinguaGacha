@@ -6,6 +6,7 @@ import type {
   ProjectUiWorkerRequestPayload,
   ProjectUiWorkerResponse,
 } from "@/project/worker/project-ui-worker-protocol";
+import type { ErrorDiagnosticPayload } from "@shared/error";
 
 export type ProjectUiWorkerPriority = "foreground" | "normal" | "background" | "disposable";
 
@@ -36,10 +37,14 @@ const PROJECT_UI_WORKER_PRIORITY_RANK: Readonly<Record<ProjectUiWorkerPriority, 
 /**
  * 创建稳定的 worker 边界错误，调用点只暴露 code，不分叉错误文案。
  */
-function create_project_ui_worker_error(code: ProjectUiWorkerClientErrorCode): Error {
-  return new ProjectUiWorkerClientError(code);
+function create_project_ui_worker_error(
+  code: ProjectUiWorkerClientErrorCode,
+  diagnostic?: ErrorDiagnosticPayload,
+): Error {
+  return new ProjectUiWorkerClientError(code, diagnostic);
 }
 
+// ProjectUiWorkerScheduler 收口当前模块的状态和副作用边界，避免调用方分散维护同一流程。
 export class ProjectUiWorkerScheduler {
   private readonly create_worker: () => Worker; // create_worker 是唯一创建浏览器 Worker 的入口，测试可注入替身
 
@@ -235,7 +240,7 @@ export class ProjectUiWorkerScheduler {
     } else if (message.ok) {
       task.resolve(message.result);
     } else {
-      task.reject(create_project_ui_worker_error("execution_failed"));
+      task.reject(create_project_ui_worker_error("execution_failed", message.error_diagnostic));
     }
     this.dispatch_next();
   }

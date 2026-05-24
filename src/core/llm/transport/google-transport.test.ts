@@ -42,7 +42,6 @@ describe("GoogleTransport", () => {
       cancelled: false,
       timeout: false,
       degraded: false,
-      error: "",
     });
   });
 
@@ -88,6 +87,7 @@ describe("GoogleTransport", () => {
   });
 });
 
+// create_pool 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_pool(
   captured_payloads: unknown[],
   chunks: unknown[] = [
@@ -113,12 +113,14 @@ function create_pool(
   };
 }
 
+// create_stream 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 async function* create_stream(chunks: unknown[]): AsyncGenerator<unknown> {
   for (const chunk of chunks) {
     yield chunk;
   }
 }
 
+// create_policy 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_policy(overrides: Partial<ResolvedRequestPolicy> = {}): ResolvedRequestPolicy {
   return {
     provider: "google",

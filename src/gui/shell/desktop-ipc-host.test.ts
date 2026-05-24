@@ -14,9 +14,11 @@ import {
   IPC_CHANNEL_PICK_PROMPT_IMPORT_FILE_PATH,
   IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH,
   IPC_CHANNEL_QUIT_APP,
+  IPC_CHANNEL_RENDERER_DIAGNOSTICS,
   IPC_CHANNEL_TITLE_BAR_THEME,
 } from "../ipc/ipc-contract";
 
+// electron mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const electron_mock = vi.hoisted(() => {
   type IpcEvent = { sender: unknown };
   type IpcListener = (event: IpcEvent, ...args: unknown[]) => unknown;
@@ -40,6 +42,7 @@ const electron_mock = vi.hoisted(() => {
   };
 });
 
+// window handler mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const window_handler_mock = vi.hoisted(() => {
   return {
     sync_title_bar_overlay: vi.fn(),
@@ -109,6 +112,24 @@ describe("桌面 IPC 宿主", () => {
     expect(electron_mock.app_quit).toHaveBeenCalledTimes(1);
     expect(log_window_host.toggle).toHaveBeenCalledTimes(1);
     expect(electron_mock.open_external).toHaveBeenCalledWith("https://example.com/docs");
+  });
+
+  it("renderer 诊断 IPC 会按发送方交给诊断注册器", async () => {
+    const renderer_contents = { id: "renderer-contents" };
+    const record_renderer_diagnostics = vi.fn();
+    const payload = {
+      route: "workbench",
+      event: {
+        topic: "task.snapshot_changed",
+      },
+    };
+    await register_handlers({
+      recordRendererDiagnostics: record_renderer_diagnostics,
+    });
+
+    emit_send(IPC_CHANNEL_RENDERER_DIAGNOSTICS, { sender: renderer_contents }, payload);
+
+    expect(record_renderer_diagnostics).toHaveBeenCalledWith(renderer_contents, payload);
   });
 
   it("外链 IPC 拒绝非 http 协议并且不交给系统浏览器", async () => {
@@ -297,11 +318,13 @@ describe("桌面 IPC 宿主", () => {
   });
 });
 
+// register_handlers 收口测试中的共享步骤，保证断言只关注当前行为。
 async function register_handlers(
   options: {
     mainWindow?: unknown | null;
     logWindowHost?: { toggle: () => void } | null;
     markRendererConfirmedAppQuit?: () => void;
+    recordRendererDiagnostics?: (sender: unknown, payload: unknown) => void;
     readAppLanguage?: () => unknown;
   } = {},
 ): Promise<void> {
@@ -310,10 +333,12 @@ async function register_handlers(
     getMainWindow: () => (options.mainWindow ?? null) as never,
     getLogWindowHost: () => (options.logWindowHost ?? null) as never,
     markRendererConfirmedAppQuit: options.markRendererConfirmedAppQuit ?? vi.fn(),
+    recordRendererDiagnostics: (options.recordRendererDiagnostics ?? vi.fn()) as never,
     readAppLanguage: options.readAppLanguage ?? (() => "ZH"),
   });
 }
 
+// emit_send 收口测试中的共享步骤，保证断言只关注当前行为。
 function emit_send(channel: string, event: { sender: unknown }, ...args: unknown[]): void {
   const listener = electron_mock.send_handlers.get(channel);
   if (listener === undefined) {
@@ -322,6 +347,7 @@ function emit_send(channel: string, event: { sender: unknown }, ...args: unknown
   listener(event, ...args);
 }
 
+// invoke 收口测试中的共享步骤，保证断言只关注当前行为。
 async function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
   const handler = electron_mock.invoke_handlers.get(channel);
   if (handler === undefined) {

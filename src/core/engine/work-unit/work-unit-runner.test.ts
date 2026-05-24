@@ -71,7 +71,6 @@ describe("work-unit runner", () => {
           cancelled: false,
           timeout: false,
           degraded: false,
-          error: "",
         };
       },
     });
@@ -141,6 +140,58 @@ describe("work-unit runner", () => {
     expect(message).toContain("规则分析：\n[核心约束]：保持行数");
     expect(message).toContain('翻译结果：\n{"0":"你好"}');
     expect(message).not.toContain("模型思考内容");
+  });
+
+  it("LLM 请求失败时翻译日志只在结构化字段保留调用栈", async () => {
+    const app_root = await create_template_root();
+    const runner = new TranslationWorkUnitRunner(
+      app_root,
+      create_llm_client([], {
+        failure: {
+          name: "ProviderError",
+          message: "供应商爆炸",
+          stack: "ProviderError: 供应商爆炸\n    at request",
+          context: {
+            provider: "openai-compatible",
+          },
+        },
+      }),
+    );
+
+    const result = await runner.execute_unit(
+      {
+        run_id: "run-1",
+        unit_id: "unit-1",
+        kind: "translation",
+        model: { api_format: "OpenAI" },
+        config_snapshot: create_config_payload(),
+        quality_snapshot: create_quality_payload(),
+        payload: {
+          items: [{ id: 1, src: "こんにちは", dst: "", status: "NONE", text_type: "TXT" }],
+          precedings: [],
+        },
+        diagnostics: {
+          token_threshold: 512,
+          split_count: 0,
+          retry_count: 0,
+          is_initial: true,
+        },
+      },
+      new AbortController().signal,
+    );
+
+    expect(result.outcome).toBe("failed");
+    expect(result.logs[0]).toMatchObject({
+      level: "error",
+      error_message: "供应商爆炸",
+      stack: "ProviderError: 供应商爆炸\n    at request",
+      context: {
+        provider: "openai-compatible",
+        error_name: "ProviderError",
+      },
+    });
+    expect(result.logs[0]?.message).toContain("模型请求失败");
+    expect(result.logs[0]?.message).not.toContain("ProviderError: 供应商爆炸");
   });
 
   it("分析 runner 归一模型术语候选", async () => {
@@ -288,7 +339,6 @@ function create_llm_client(
         cancelled: false,
         timeout: false,
         degraded: false,
-        error: "",
         ...overrides,
       };
     },

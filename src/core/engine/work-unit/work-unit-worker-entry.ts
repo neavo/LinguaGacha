@@ -5,6 +5,7 @@ import {
   install_system_proxy_dispatcher_from_snapshot,
   type SystemProxySnapshot,
 } from "../../bootstrap/system-proxy-dispatcher";
+import { to_error_diagnostic } from "../../../shared/error";
 import type { WorkUnit } from "../protocol/work-unit";
 import { WorkUnitRunner, type WorkUnitRunnerOptions } from "./work-unit-runner";
 
@@ -81,7 +82,7 @@ class WorkUnitWorkerEntry {
       parentPort?.postMessage({
         id: message.id,
         ok: false,
-        error: error instanceof Error ? error.message : String(error),
+        error_diagnostic: to_error_diagnostic(error, { worker_message_type: message.type }),
       });
     } finally {
       this.controllers.delete(message.id);

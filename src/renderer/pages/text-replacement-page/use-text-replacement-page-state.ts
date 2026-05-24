@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
+import {
+  type ProjectMutationOperation,
+  type ProjectMutationResultPayload,
+} from "@/app/desktop/desktop-project-mutation";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
 import { useDebouncedCallback } from "@/hooks/use-debounce";
 import {
@@ -12,11 +16,7 @@ import {
   isQualityStatisticsCacheRunning,
   type QualityStatisticsCacheSnapshot,
 } from "@/project/quality/quality-statistics-store";
-import {
-  normalize_project_mutation_result,
-  type ProjectMutationResultPayload,
-  type SettingsSnapshotPayload,
-} from "@/app/desktop/desktop-runtime-context";
+import type { SettingsSnapshotPayload } from "@/app/desktop/desktop-runtime-context";
 import { useQualityStatistics } from "@/project/quality/quality-statistics-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
@@ -89,11 +89,31 @@ type TextReplacementResultViewQuery = {
   sort_state: AppTableSortState | null;
 };
 
+// IMPORT RULE TYPE BY PUBLIC RULE TYPE 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const IMPORT_RULE_TYPE_BY_PUBLIC_RULE_TYPE = {
   pre_replacement: QualityRuleImportRuleTypeValue.PRE_REPLACEMENT,
   post_replacement: QualityRuleImportRuleTypeValue.POST_REPLACEMENT,
 } as const satisfies Record<TextReplacementVariantConfig["rule_type"], QualityRuleImportRuleType>;
 
+// 替换规则页把规则类型收窄成固定 operation，避免运行态接收临时拼接诊断名。
+function create_quality_rule_entries_save_mutation(
+  rule_type: TextReplacementVariantConfig["rule_type"],
+): ProjectMutationOperation {
+  return rule_type === "pre_replacement"
+    ? "pre_replacement.entries_save"
+    : "post_replacement.entries_save";
+}
+
+// create_quality_rule_meta_update_mutation 构造跨层载荷，保证字段形状在一个入口维护。
+function create_quality_rule_meta_update_mutation(
+  rule_type: TextReplacementVariantConfig["rule_type"],
+): ProjectMutationOperation {
+  return rule_type === "pre_replacement"
+    ? "pre_replacement.meta_update"
+    : "post_replacement.meta_update";
+}
+
+// EMPTY ENTRY 是默认快照事实，调用方只读取副本不临时拼装。
 const EMPTY_ENTRY: TextReplacementEntry = {
   src: "",
   dst: "",
@@ -101,6 +121,7 @@ const EMPTY_ENTRY: TextReplacementEntry = {
   case_sensitive: false,
 };
 
+// clone_entry 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function clone_entry(entry: TextReplacementEntry): TextReplacementEntry {
   return {
     entry_id: entry.entry_id,
@@ -111,6 +132,7 @@ function clone_entry(entry: TextReplacementEntry): TextReplacementEntry {
   };
 }
 
+// create_empty_filter_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_filter_state(): TextReplacementFilterState {
   return {
     keyword: "",
@@ -119,6 +141,7 @@ function create_empty_filter_state(): TextReplacementFilterState {
   };
 }
 
+// create_empty_dialog_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_dialog_state(): TextReplacementDialogState {
   return {
     open: false,
@@ -131,6 +154,7 @@ function create_empty_dialog_state(): TextReplacementDialogState {
   };
 }
 
+// create_empty_confirm_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_confirm_state(): TextReplacementConfirmState {
   return {
     open: false,
@@ -143,6 +167,7 @@ function create_empty_confirm_state(): TextReplacementConfirmState {
   };
 }
 
+// create_empty_preset_input_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_preset_input_state(): TextReplacementPresetInputState {
   return {
     open: false,
@@ -153,6 +178,7 @@ function create_empty_preset_input_state(): TextReplacementPresetInputState {
   };
 }
 
+// normalize_entry 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_entry(entry: TextReplacementEntry): TextReplacementEntry {
   return {
     entry_id: entry.entry_id,
@@ -163,14 +189,17 @@ function normalize_entry(entry: TextReplacementEntry): TextReplacementEntry {
   };
 }
 
+// build_user_preset_virtual_id 构造跨层载荷，保证字段形状在一个入口维护。
 function build_user_preset_virtual_id(name: string): string {
   return `user:${name}.json`;
 }
 
+// normalize_preset_name 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_preset_name(name: string): string {
   return name.trim();
 }
 
+// has_casefold_duplicate_preset 集中表达布尔判定口径，避免调用方按局部字段猜测。
 function has_casefold_duplicate_preset(
   preset_items: TextReplacementPresetItem[],
   target_virtual_id: string,
@@ -191,6 +220,7 @@ function has_casefold_duplicate_preset(
   });
 }
 
+// decorate_preset_items 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function decorate_preset_items(
   builtin_presets: TextReplacementPresetItem[],
   user_presets: TextReplacementPresetItem[],
@@ -204,6 +234,7 @@ function decorate_preset_items(
   });
 }
 
+// build_statistics_badge_tooltip 构造跨层载荷，保证字段形状在一个入口维护。
 function build_statistics_badge_tooltip(
   t: (key: LocaleKey) => string,
   entry: TextReplacementEntry,
@@ -228,6 +259,7 @@ function build_statistics_badge_tooltip(
   return tooltip_lines.join("\n");
 }
 
+// build_default_preset_update_payload 构造跨层载荷，保证字段形状在一个入口维护。
 function build_default_preset_update_payload(
   config: TextReplacementVariantConfig,
   value: string,
@@ -237,6 +269,7 @@ function build_default_preset_update_payload(
   };
 }
 
+// build_text_replacement_statistics_state_from_cache 构造跨层载荷，保证字段形状在一个入口维护。
 function build_text_replacement_statistics_state_from_cache(
   statistics_cache: QualityStatisticsCacheSnapshot,
 ): TextReplacementStatisticsState {
@@ -250,6 +283,7 @@ function build_text_replacement_statistics_state_from_cache(
   };
 }
 
+// useTextReplacementPageState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useTextReplacementPageState(
   variant: TextReplacementVariant,
 ): UseTextReplacementPageStateResult {
@@ -262,8 +296,7 @@ export function useTextReplacementPageState(
     project_store,
     settings_snapshot,
     apply_settings_snapshot,
-    refresh_project_runtime,
-    apply_project_mutation_result,
+    commit_project_mutation,
     task_snapshot,
   } = useDesktopRuntime();
   const project_store_state = useSyncExternalStore(
@@ -544,27 +577,33 @@ export function useTextReplacementPageState(
       );
 
       try {
-        const mutation_result = normalize_project_mutation_result(
-          await api_fetch<ProjectMutationResultPayload>("/api/quality/rules/save-entries", {
-            rule_type: config.rule_type,
-            expected_section_revisions: {
-              quality: current_state.revisions.sections.quality ?? 0,
-            },
-            entries: normalized_entries,
-          }),
-        );
-        set_pending_result_view_source_update(
-          create_project_section_result_view_source_update_request({
-            mutation_result,
-            policy: result_view_update,
-            section: "quality",
-          }),
-        );
-        await apply_project_mutation_result(mutation_result);
+        await commit_project_mutation({
+          operation: create_quality_rule_entries_save_mutation(config.rule_type),
+          run: async () => {
+            return await api_fetch<ProjectMutationResultPayload>(
+              "/api/quality/rules/save-entries",
+              {
+                rule_type: config.rule_type,
+                expected_section_revisions: {
+                  quality: current_state.revisions.sections.quality ?? 0,
+                },
+                entries: normalized_entries,
+              },
+            );
+          },
+          prepare: ({ mutation_result }) => {
+            set_pending_result_view_source_update(
+              create_project_section_result_view_source_update_request({
+                mutation_result,
+                policy: result_view_update,
+                section: "quality",
+              }),
+            );
+          },
+        });
         return true;
       } catch (error) {
         set_pending_result_view_source_update(null);
-        void refresh_project_runtime().catch(() => {});
         push_toast(
           "error",
           resolve_visible_error_message(error, t, t("text_replacement_page.feedback.save_failed")),
@@ -572,15 +611,7 @@ export function useTextReplacementPageState(
         return false;
       }
     },
-    [
-      apply_project_mutation_result,
-      config.rule_type,
-      project_store,
-      push_toast,
-      readonly,
-      refresh_project_runtime,
-      t,
-    ],
+    [commit_project_mutation, config.rule_type, project_store, push_toast, readonly, t],
   );
 
   const apply_import_entries = useCallback(
@@ -763,35 +794,28 @@ export function useTextReplacementPageState(
 
       const current_state = project_store.getState();
       try {
-        const mutation_result = normalize_project_mutation_result(
-          await api_fetch<ProjectMutationResultPayload>("/api/quality/rules/update-meta", {
-            rule_type: config.rule_type,
-            expected_section_revisions: {
-              quality: current_state.revisions.sections.quality ?? 0,
-            },
-            meta: {
-              enabled: next_enabled,
-            },
-          }),
-        );
-        await apply_project_mutation_result(mutation_result);
+        await commit_project_mutation({
+          operation: create_quality_rule_meta_update_mutation(config.rule_type),
+          run: async () => {
+            return await api_fetch<ProjectMutationResultPayload>("/api/quality/rules/update-meta", {
+              rule_type: config.rule_type,
+              expected_section_revisions: {
+                quality: current_state.revisions.sections.quality ?? 0,
+              },
+              meta: {
+                enabled: next_enabled,
+              },
+            });
+          },
+        });
       } catch (error) {
-        void refresh_project_runtime().catch(() => {});
         push_toast(
           "error",
           resolve_visible_error_message(error, t, t("text_replacement_page.feedback.save_failed")),
         );
       }
     },
-    [
-      apply_project_mutation_result,
-      config.rule_type,
-      project_store,
-      push_toast,
-      readonly,
-      refresh_project_runtime,
-      t,
-    ],
+    [commit_project_mutation, config.rule_type, project_store, push_toast, readonly, t],
   );
 
   const open_create_dialog = useCallback((): void => {

@@ -22,6 +22,11 @@ import {
   get_core_metadata,
   open_external_url,
 } from "@/app/desktop/desktop-api";
+import {
+  summarize_runtime_project_for_diagnostics,
+  summarize_task_snapshot_for_diagnostics,
+} from "@/app/desktop/desktop-runtime-diagnostics";
+import { update_renderer_diagnostics_context } from "@/app/diagnostics/renderer-error-reporter";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import {
   DesktopProgressToastModalLayer,
@@ -40,12 +45,16 @@ import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
 import { LogWindowPage } from "@/pages/log-window-page/page";
 import type { ThemeMode } from "@gui/bridge-types";
 
+// SIDEBAR STORAGE KEY 是持久化或快捷键契约，集中保存避免调用点散落魔术字符串。
 const SIDEBAR_STORAGE_KEY = "lg-sidebar-collapsed";
+// THEME STORAGE KEY 是持久化或快捷键契约，集中保存避免调用点散落魔术字符串。
 const THEME_STORAGE_KEY = "lg-theme-mode";
+// FONT FAMILY STORAGE KEY 是持久化或快捷键契约，集中保存避免调用点散落魔术字符串。
 const FONT_FAMILY_STORAGE_KEY = "lg-base-font-mode";
 const LOG_WINDOW_APP_LANGUAGE_STORAGE_KEY = "lg-log-window-app-language"; // 日志窗口不启动主运行态，首屏语言用独立缓存兜底
 const GITHUB_REPOSITORY_URL = "https://github.com/neavo/LinguaGacha";
 
+// PROJECT DEPENDENT ROUTE IDS 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const PROJECT_DEPENDENT_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
   "proofreading",
   "workbench",
@@ -59,6 +68,7 @@ const PROJECT_DEPENDENT_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
   "toolbox",
 ]);
 
+// ROUTE IDS DISABLED WHEN PROJECT UNLOADED 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const ROUTE_IDS_DISABLED_WHEN_PROJECT_UNLOADED: ReadonlySet<RouteId> = new Set([
   "glossary",
   "text-preserve",
@@ -70,6 +80,7 @@ const ROUTE_IDS_DISABLED_WHEN_PROJECT_UNLOADED: ReadonlySet<RouteId> = new Set([
   "toolbox",
 ]);
 
+// resolve_toggled_app_language 集中解析运行时决策，避免调用点复制条件判断。
 function resolve_toggled_app_language(app_language: "ZH" | "EN"): "ZH" | "EN" {
   if (app_language === "EN") {
     return "ZH";
@@ -78,6 +89,7 @@ function resolve_toggled_app_language(app_language: "ZH" | "EN"): "ZH" | "EN" {
   return "EN";
 }
 
+// resolve_selectable_route 集中解析运行时决策，避免调用点复制条件判断。
 function resolve_selectable_route(route_id: RouteId): RouteId {
   if (route_id === "text-replacement") {
     return "pre-translation-replacement";
@@ -88,10 +100,12 @@ function resolve_selectable_route(route_id: RouteId): RouteId {
   }
 }
 
+// has_registered_screen 集中表达布尔判定口径，避免调用方按局部字段猜测。
 function has_registered_screen(route_id: RouteId): boolean {
   return SCREEN_REGISTRY[route_id] !== undefined;
 }
 
+// read_sidebar_state 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 function read_sidebar_state(): boolean {
   const stored_sidebar_state = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
 
@@ -102,6 +116,7 @@ function read_sidebar_state(): boolean {
   }
 }
 
+// read_theme_mode 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 function read_theme_mode(): ThemeMode {
   if (typeof window === "undefined") {
     return "light";
@@ -118,6 +133,7 @@ function read_theme_mode(): ThemeMode {
   }
 }
 
+// read_lg_base_font_enabled 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 function read_lg_base_font_enabled(): boolean {
   if (typeof window === "undefined") {
     return true;
@@ -132,18 +148,22 @@ function read_lg_base_font_enabled(): boolean {
   }
 }
 
+// serialize_lg_base_font_mode 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function serialize_lg_base_font_mode(is_enabled: boolean): "enabled" | "disabled" {
   return is_enabled ? "enabled" : "disabled";
 }
 
+// parse_lg_base_font_mode 收口外部文本解析，解析失败时由这里决定降级口径。
 function parse_lg_base_font_mode(stored_font_mode: string | null): boolean {
   return stored_font_mode !== "disabled";
 }
 
+// is_log_window_mode 集中表达布尔判定口径，避免调用方按局部字段猜测。
 function is_log_window_mode(): boolean {
   return new URLSearchParams(window.location.search).get("window") === "logs";
 }
 
+// format_app_titlebar_title 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
 function format_app_titlebar_title(app_name: string, version: string | null): string {
   const normalized_version = version?.trim();
   if (normalized_version === undefined || normalized_version === "") {
@@ -155,6 +175,7 @@ function format_app_titlebar_title(app_name: string, version: string | null): st
   return `${app_name} ${version_label}`;
 }
 
+// useLgBaseFontMode 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function useLgBaseFontMode(): [boolean, Dispatch<SetStateAction<boolean>>] {
   const [is_lg_base_font_enabled, set_is_lg_base_font_enabled] = useState<boolean>(() =>
     read_lg_base_font_enabled(),
@@ -170,6 +191,7 @@ function useLgBaseFontMode(): [boolean, Dispatch<SetStateAction<boolean>>] {
   }, [is_lg_base_font_enabled]);
 
   useEffect(() => {
+    // handle_storage 是事件处理边界，只把外部事件转换为本模块状态更新。
     function handle_storage(event: StorageEvent): void {
       if (event.key !== FONT_FAMILY_STORAGE_KEY) {
         return;
@@ -199,6 +221,7 @@ type LogWindowSettingsPayload = {
   };
 };
 
+// AppContent 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function AppContent(props: AppContentProps): JSX.Element {
   const {
     hydration_ready,
@@ -208,6 +231,7 @@ function AppContent(props: AppContentProps): JSX.Element {
     project_warmup_status,
     settings_snapshot,
     set_pending_target_route,
+    task_snapshot,
     update_app_language,
   } = useDesktopRuntime();
   const { push_persistent_toast, push_toast } = useDesktopToast();
@@ -236,6 +260,24 @@ function AppContent(props: AppContentProps): JSX.Element {
   const app_titlebar_title = format_app_titlebar_title(app_title, app_version);
   const theme_mode: ThemeMode =
     resolvedTheme === "dark" ? "dark" : resolvedTheme === "light" ? "light" : read_theme_mode();
+
+  useEffect(() => {
+    update_renderer_diagnostics_context({
+      route: selected_route,
+      project: summarize_runtime_project_for_diagnostics({
+        loaded: project_snapshot.loaded,
+        path: project_snapshot.path,
+        warmupStatus: project_warmup_status,
+      }),
+      task: summarize_task_snapshot_for_diagnostics(task_snapshot),
+    });
+  }, [
+    project_snapshot.loaded,
+    project_snapshot.path,
+    project_warmup_status,
+    selected_route,
+    task_snapshot,
+  ]);
 
   useEffect(() => {
     window.desktopApp.setTitleBarTheme(theme_mode);
@@ -420,6 +462,7 @@ function AppContent(props: AppContentProps): JSX.Element {
     });
   }, []);
 
+  // handle_select_route 是事件处理边界，只把外部事件转换为本模块状态更新。
   function handle_select_route(route_id: RouteId): void {
     const next_route = resolve_selectable_route(route_id);
 
@@ -466,6 +509,7 @@ function AppContent(props: AppContentProps): JSX.Element {
     set_log_badge_visible(true);
   }, [project_snapshot.loaded, project_snapshot.path, project_warmup_status]);
 
+  // handle_toggle_group 是事件处理边界，只把外部事件转换为本模块状态更新。
   function handle_toggle_group(route_id: RouteId): void {
     if (is_sidebar_collapsed) {
       set_is_sidebar_collapsed(false);
@@ -489,6 +533,7 @@ function AppContent(props: AppContentProps): JSX.Element {
     }
   }
 
+  // handle_bottom_action 是事件处理边界，只把外部事件转换为本模块状态更新。
   function handle_bottom_action(action_id: BottomActionId): void {
     if (action_id === "logs") {
       set_log_badge_visible(false);
@@ -515,6 +560,7 @@ function AppContent(props: AppContentProps): JSX.Element {
     );
   }
 
+  // handle_appearance_menu_action 是事件处理边界，只把外部事件转换为本模块状态更新。
   function handle_appearance_menu_action(action_id: AppearanceMenuActionId): void {
     if (action_id === "theme-mode") {
       if (theme_mode === "light") {
@@ -527,6 +573,7 @@ function AppContent(props: AppContentProps): JSX.Element {
     }
   }
 
+  // handle_profile_action 是事件处理边界，只把外部事件转换为本模块状态更新。
   function handle_profile_action(): void {
     const target_url = update_release_url ?? GITHUB_REPOSITORY_URL;
 
@@ -535,6 +582,7 @@ function AppContent(props: AppContentProps): JSX.Element {
     });
   }
 
+  // handle_confirm_window_close 是事件处理边界，只把外部事件转换为本模块状态更新。
   async function handle_confirm_window_close(): Promise<void> {
     set_close_confirm_submitting(true);
     try {
@@ -626,6 +674,7 @@ function AppContent(props: AppContentProps): JSX.Element {
   );
 }
 
+// normalize_log_window_app_language 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_log_window_app_language(value: unknown): "ZH" | "EN" {
   const normalized_value = String(value ?? "")
     .trim()
@@ -637,11 +686,13 @@ function normalize_log_window_app_language(value: unknown): "ZH" | "EN" {
   return "ZH";
 }
 
+// read_initial_log_window_app_language 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 function read_initial_log_window_app_language(): "ZH" | "EN" {
   const stored_language = window.localStorage.getItem(LOG_WINDOW_APP_LANGUAGE_STORAGE_KEY);
   return normalize_log_window_app_language(stored_language ?? window.navigator.language);
 }
 
+// WindowVisualProviders 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function WindowVisualProviders({ children }: { children: ReactNode }): JSX.Element {
   // 多窗口共享的视觉壳层只承载主题、tooltip 和 toast，不读取项目或任务运行态
   return (
@@ -660,6 +711,7 @@ function WindowVisualProviders({ children }: { children: ReactNode }): JSX.Eleme
   );
 }
 
+// MainWindowLocaleProvider 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function MainWindowLocaleProvider({ children }: { children: ReactNode }): JSX.Element {
   const { settings_snapshot } = useDesktopRuntime();
 
@@ -667,6 +719,7 @@ function MainWindowLocaleProvider({ children }: { children: ReactNode }): JSX.El
   return <LocaleProvider app_language={settings_snapshot.app_language}>{children}</LocaleProvider>;
 }
 
+// MainWindowApp 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function MainWindowApp(props: AppContentProps): JSX.Element {
   // 只有主窗口拥有项目、任务、设置和主事件流运行态
   return (
@@ -684,6 +737,7 @@ function MainWindowApp(props: AppContentProps): JSX.Element {
   );
 }
 
+// LogWindowApp 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function LogWindowApp(): JSX.Element {
   const [app_language, set_app_language] = useState<"ZH" | "EN">(() =>
     read_initial_log_window_app_language(),
@@ -718,6 +772,7 @@ function LogWindowApp(): JSX.Element {
   );
 }
 
+// App 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function App(): JSX.Element {
   const [is_lg_base_font_enabled, set_is_lg_base_font_enabled] = useLgBaseFontMode();
 

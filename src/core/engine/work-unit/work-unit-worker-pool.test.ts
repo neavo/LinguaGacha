@@ -31,7 +31,6 @@ describe("WorkUnitWorkerPool", () => {
       cancelled: false,
       timeout: false,
       degraded: false,
-      error: "",
     });
     const pool = new WorkUnitWorkerPool({
       appRoot: await create_template_root(),
@@ -154,7 +153,6 @@ parentPort?.on("message", (message) => {
         cancelled: false,
         timeout: false,
         degraded: false,
-        error: "",
       };
     });
     const pool = new WorkUnitWorkerPool({

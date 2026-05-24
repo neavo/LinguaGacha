@@ -8,6 +8,7 @@ import { serve } from "@hono/node-server";
 
 import { t_main_log } from "../log/log-text";
 import { record_app_error } from "../log/app-error-reporter";
+import { renderer_error_report_to_log_fields } from "../log/renderer-error-log-adapter";
 import type { LogEvent } from "../../shared/log";
 import type { CoreServices } from "../bootstrap/core-services";
 import { normalizeProjectDataSections } from "../../shared/project/event";
@@ -22,6 +23,7 @@ import {
   InvalidJsonError,
   ProjectNotLoadedError,
   RouteNotFoundError,
+  normalize_renderer_error_report,
   is_app_error,
   resolve_app_error_http_status,
   to_api_error_payload,
@@ -151,6 +153,9 @@ export class ApiGatewayServer {
       return this.create_log_stream_response();
     });
     this.post_json(app, "/api/logs/detail", (body) => this.read_log_detail(body));
+    this.post_json(app, "/api/diagnostics/renderer-error", (body) =>
+      this.record_renderer_error(body),
+    );
     app.get("/api/events/stream", () => {
       return services.core_event_hub.create_stream_response();
     });
@@ -396,6 +401,23 @@ export class ApiGatewayServer {
   }
 
   /**
+   * renderer 只能提交已裁剪的异常快照；Gateway 再做一次边界收窄后写入统一 LogManager。
+   */
+  private record_renderer_error(body: Record<string, ApiJsonValue>): ApiJsonValue {
+    const report = normalize_renderer_error_report(body);
+
+    this.options.coreServices.log_manager.error(
+      t_main_log("app.diagnostic.renderer.reported_error"),
+      {
+        source: "renderer",
+        ...renderer_error_report_to_log_fields(report),
+      },
+    );
+
+    return {};
+  }
+
+  /**
    * 内部异常只映射成稳定错误壳，调用方不需要理解 Core 实现细节
    */
   private normalize_error_to_app_error(error: unknown): AppError {
@@ -424,6 +446,7 @@ export class ApiGatewayServer {
     );
   }
 
+  // read_node_error_code 封装类内部的非显然分支，避免调用方重复理解同一约束。
   private read_node_error_code(error: unknown): string {
     return typeof error === "object" &&
       error !== null &&
@@ -433,6 +456,7 @@ export class ApiGatewayServer {
       : "";
   }
 
+  // safe_path_detail 封装类内部的非显然分支，避免调用方重复理解同一约束。
   private safe_path_detail(error: unknown): AppErrorPublicDetails {
     const candidate =
       typeof error === "object" && error !== null && "path" in error

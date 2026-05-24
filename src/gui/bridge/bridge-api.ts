@@ -1,6 +1,7 @@
 import type {
   DesktopCoreApiInfo,
   DesktopPathPickResult,
+  DesktopRendererDiagnosticsPayload,
   DesktopShellInfo,
   ThemeMode,
 } from "./bridge-types";
@@ -15,6 +16,7 @@ export interface DesktopBridgeApi {
   quitApp: () => Promise<void>; // 应用退出必须回到 main 统一收尾 Core 生命周期
   openLogWindow: () => Promise<void>; // 日志窗口单例由 main 持有，renderer 只发起显隐请求
   onWindowCloseRequest: (callback: () => void) => () => void; // 主窗口关闭确认由 renderer 展示 UI，main 只发送请求事件
+  reportRendererDiagnostics: (payload: DesktopRendererDiagnosticsPayload) => void; // renderer 崩溃前的轻量黑匣子面包屑留在 main，避免依赖崩溃瞬间 HTTP 上报
   openExternalUrl: (url: string) => Promise<void>; // 外链打开必须经 main 的协议白名单校验后交给系统浏览器
   pickProjectSourceFilePath: () => Promise<DesktopPathPickResult>; // 项目源文件入口允许多选，格式校验留给后续 Core / renderer 流程
   pickProjectSourceDirectoryPath: () => Promise<DesktopPathPickResult>; // 项目源目录入口只返回目录路径，和源文件入口保持语义分离

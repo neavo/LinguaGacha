@@ -1,4 +1,4 @@
-# Node / Electron 构建产物
+# node
 /build
 /node_modules
 /dist
@@ -14,7 +14,7 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
-# 编辑器与系统文件
+# system
 /.vscode/*
 !/.vscode/extensions.json
 /.idea
@@ -25,13 +25,17 @@ lerna-debug.log*
 *.sln
 *.sw?
 
-/*log*
-/*input*
-/*output*
-/*userdata*
+# app
+/.codegraph
+/log
+/input
+/output
+/userdata
 
 *.lg
+/*.log
 /*.xlsx
 /*.json
 
+# extra
 !/tsconfig*.json

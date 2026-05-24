@@ -18,6 +18,10 @@ import {
 import { type LogWindowHost } from "./shell/log-window-host";
 import { install_main_fatal_error_handler } from "./shell/main-fatal-error-handler";
 import { show_native_error_dialog } from "./shell/native-error-dialog";
+import {
+  configure_renderer_crash_reporting,
+  create_renderer_process_diagnostics_registry,
+} from "./shell/renderer-process-diagnostics";
 
 export interface GuiEntryOptions {
   desktopBundleDir: string; // desktopBundleDir 是产品入口解析出的桌面 bundle 根目录
@@ -31,6 +35,9 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   const desktop_bundle_dir = options.desktopBundleDir;
   configure_renderer_public_path(desktop_bundle_dir);
   configure_development_remote_debugging();
+  configure_renderer_crash_reporting();
+  const renderer_process_diagnostics = create_renderer_process_diagnostics_registry();
+  // main 持有 renderer 黑匣子，覆盖原生崩溃时 HTTP 诊断来不及发出的场景
 
   let win: BrowserWindow | null = null; // 主窗口是桌面宿主的唯一工作台窗口，关闭后引用必须归零，避免 IPC 误用失效窗口
   let log_window_host: LogWindowHost | null = null; // 日志窗口由独立宿主管理，避免主窗口生命周期和日志诊断窗口互相持有复杂状态
@@ -83,6 +90,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       desktopBundleDir: desktop_bundle_dir,
       coreApiBaseUrl: require_core_api_base_url(),
       systemProxyStartupNotice: system_proxy_startup_notice,
+      rendererDiagnostics: renderer_process_diagnostics,
       shouldBypassCloseConfirmation: () => {
         return is_app_shutdown_in_progress || is_renderer_confirmed_app_quit;
       },
@@ -107,6 +115,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       markRendererConfirmedAppQuit: () => {
         is_renderer_confirmed_app_quit = true;
       },
+      recordRendererDiagnostics: renderer_process_diagnostics.recordRendererDiagnostics,
       readAppLanguage: read_app_language,
     });
   }
@@ -171,6 +180,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
         desktopBundleDir: desktop_bundle_dir,
         coreApiBaseUrl: core_start_result.apiBaseUrl,
         systemProxyStartupNotice: system_proxy_startup_notice,
+        rendererDiagnostics: renderer_process_diagnostics,
       });
       register_runtime_ipc_handlers(core_start_result.readAppLanguage);
       create_main_window_for_runtime();

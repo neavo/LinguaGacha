@@ -6,11 +6,13 @@ import {
   normalizeProjectDataSections,
   type ProjectChangeEvent,
   type ProjectChangeFilesPayload,
+  type ProjectChangeItemFieldPatch,
   type ProjectChangeItemsPayload,
   type ProjectChangeJsonRecord,
   type ProjectChangeSectionPayload,
   type ProjectDataSection,
 } from "../../shared/project/event";
+import { is_item_status } from "../../base/item";
 import { ProjectRuntimeProjectionService } from "./project-runtime-projection-service";
 import type {
   ProjectRuntimeProjectionJsonRecord,
@@ -243,17 +245,13 @@ export class ProjectChangeEventAdapter {
   /**
    * 字段级 item patch 只允许校对页可写字段，保持后端事件仍是窄事实表达。
    */
-  private normalize_item_field_patch(value: ApiJsonValue | undefined): {
-    dst?: string;
-    status?: string;
-    retry_count?: number;
-  } {
+  private normalize_item_field_patch(value: ApiJsonValue | undefined): ProjectChangeItemFieldPatch {
     const record = this.normalize_object(value);
-    const patch: { dst?: string; status?: string; retry_count?: number } = {};
+    const patch: ProjectChangeItemFieldPatch = {};
     if (typeof record["dst"] === "string") {
       patch.dst = record["dst"];
     }
-    if (typeof record["status"] === "string") {
+    if (is_item_status(record["status"])) {
       patch.status = record["status"];
     }
     const retry_count = Number(record["retry_count"]);

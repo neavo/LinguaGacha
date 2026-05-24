@@ -15,12 +15,13 @@ export class SakuraTransport extends OpenAICompatibleTransport {
     super(pool);
   }
 
+  // send 是跨边界副作用入口，集中处理调用时序和错误投影。
   public override async send(
     policy: ResolvedRequestPolicy,
     signal: AbortSignal,
   ): Promise<LLMRequestResult> {
     const result = await super.send(policy, signal);
-    if (result.response_result === "" || result.error !== "") {
+    if (result.response_result === "" || result.failure !== undefined) {
       return result;
     }
     return { ...result, response_result: this.convert_sakura_response(result.response_result) };

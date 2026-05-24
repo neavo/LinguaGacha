@@ -1,4 +1,6 @@
 import { JsonTool } from "../../shared/utils/json-tool";
+import { to_error_diagnostic } from "../../shared/error";
+import type { ApiJsonValue } from "../api/api-types";
 import { LLMClientPolicy } from "./llm-client-policy";
 import type { RequestProvider } from "./policy/policy-types";
 import type { LLMRequestBody, LLMClientPort, LLMRequestResult } from "./llm-types";
@@ -77,8 +79,15 @@ export class LLMClient implements LLMClientPort {
       if (cancelled || signal.aborted) {
         return this.empty_result({ cancelled: true });
       }
+      const model_id = this.read_model_id(body.model);
       return this.empty_result({
-        error: error instanceof Error ? error.message : String(error),
+        failure: to_error_diagnostic(error, {
+          api_format: resolved_policy.api_format,
+          ...(model_id === "" ? {} : { model_id }),
+          provider: resolved_policy.provider,
+          run_id: body.run_id,
+          work_unit_id: body.work_unit_id,
+        }),
       });
     } finally {
       clearTimeout(timer);
@@ -98,9 +107,19 @@ export class LLMClient implements LLMClientPort {
       cancelled: false,
       timeout: false,
       degraded: false,
-      error: "",
       ...overrides,
     };
+  }
+
+  /**
+   * 模型 ID 是安全诊断值；缺失时不向错误 context 写空字段。
+   */
+  private read_model_id(value: ApiJsonValue): string {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return "";
+    }
+    const model_id = value["model_id"];
+    return typeof model_id === "string" ? model_id : "";
   }
 }
 

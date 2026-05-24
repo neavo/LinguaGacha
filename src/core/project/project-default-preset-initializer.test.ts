@@ -121,24 +121,31 @@ describe("ProjectDefaultPresetInitializer", () => {
     expect(log_manager.warning).toHaveBeenCalledWith(
       "默认质量规则预设加载失败 …",
       expect.objectContaining({
-        context: { preset_directory: "glossary", virtual_id: "builtin:missing.json" },
+        context: expect.objectContaining({
+          preset_directory: "glossary",
+          virtual_id: "builtin:missing.json",
+        }),
+        error_message: expect.stringContaining("missing.json"),
         source: "project-lifecycle",
       }),
     );
   });
 
+  // create_temp_dir 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_temp_dir(): string {
     const temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-default-preset-"));
     cleanup_paths.push(temp_dir);
     return temp_dir;
   }
 
+  // write_file 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function write_file(file_path: string, content: string): string {
     fs.mkdirSync(path.dirname(file_path), { recursive: true });
     fs.writeFileSync(file_path, content, "utf-8");
     return file_path;
   }
 
+  // create_initializer 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_initializer(options: {
     app_root: string;
     config: MutableJsonRecord;
@@ -152,12 +159,14 @@ describe("ProjectDefaultPresetInitializer", () => {
     );
   }
 
+  // create_setting_service 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_setting_service(config: MutableJsonRecord): AppSettingService {
     return {
       read_setting: vi.fn(() => config),
     } as unknown as AppSettingService;
   }
 
+  // create_log_manager 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_log_manager(): LogManager & {
     info: ReturnType<typeof vi.fn>;
     warning: ReturnType<typeof vi.fn>;

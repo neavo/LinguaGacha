@@ -14,9 +14,9 @@ import {
   type QualityRuleImportConfirmState,
 } from "@/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-state";
 import {
-  normalize_project_mutation_result,
+  type ProjectMutationOperation,
   type ProjectMutationResultPayload,
-} from "@/app/desktop/desktop-runtime-context";
+} from "@/app/desktop/desktop-project-mutation";
 import type {
   ProjectPagesBarrierCheckpoint,
   ProjectPagesBarrierKind,
@@ -52,6 +52,11 @@ import {
 type AnalysisTaskCommandPayload = {
   task?: Partial<AnalysisTaskSnapshot>;
 };
+
+// 分析任务 runtime 分别标记导入和重置动作，desktop 层不登记任务页面词表。
+const WORKBENCH_ANALYSIS_IMPORT_MUTATION: ProjectMutationOperation = "workbench.analysis_import";
+// WORKBENCH ANALYSIS RESET MUTATION 是模块级稳定契约，集中维护避免调用点散落魔术值。
+const WORKBENCH_ANALYSIS_RESET_MUTATION: ProjectMutationOperation = "workbench.analysis_reset";
 
 type AnalysisCandidatesPayload = {
   // 候选池只在导入动作前按需读取，不进入常驻 ProjectStore。
@@ -93,6 +98,7 @@ export type AnalysisTaskRuntime = {
   refresh_analysis_task_snapshot: () => Promise<void>;
 };
 
+// create_task_confirm_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_task_confirm_state(kind: AnalysisTaskActionKind): AnalysisTaskConfirmState {
   return {
     kind,
@@ -101,6 +107,7 @@ function create_task_confirm_state(kind: AnalysisTaskActionKind): AnalysisTaskCo
   };
 }
 
+// resolve_analysis_terminal_feedback_message 集中解析运行时决策，避免调用点复制条件判断。
 function resolve_analysis_terminal_feedback_message(args: {
   previous_status: string;
   next_status: string;
@@ -125,6 +132,7 @@ function resolve_analysis_terminal_feedback_message(args: {
   return null;
 }
 
+// should_prompt_analysis_glossary_import_confirmation 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function should_prompt_analysis_glossary_import_confirmation(args: {
   previous_status: string;
   next_status: string;
@@ -144,6 +152,7 @@ function should_prompt_analysis_glossary_import_confirmation(args: {
   return args.next_status === "done" || args.next_status === "idle";
 }
 
+// is_analysis_terminal_prompt_boundary 集中表达布尔判定口径，避免调用方按局部字段猜测。
 function is_analysis_terminal_prompt_boundary(args: {
   previous_status: string;
   next_status: string;
@@ -154,6 +163,7 @@ function is_analysis_terminal_prompt_boundary(args: {
   );
 }
 
+// useAnalysisTaskRuntime 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useAnalysisTaskRuntime(
   options: AnalysisTaskRuntimeOptions = {},
 ): AnalysisTaskRuntime {
@@ -164,8 +174,7 @@ export function useAnalysisTaskRuntime(
     project_snapshot,
     sync_task_snapshot,
     task_snapshot,
-    refresh_project_runtime,
-    apply_project_mutation_result,
+    commit_project_mutation,
     refresh_task,
   } = useDesktopRuntime();
   const [analysis_task_snapshot, set_analysis_task_snapshot] = useState<AnalysisTaskSnapshot>(
@@ -201,7 +210,6 @@ export function useAnalysisTaskRuntime(
     consume_terminal_prompt_suppression,
     suppress_next_terminal_prompt,
   } = useTerminalPromptSuppression();
-
   const analysis_task_display_snapshot = useMemo(() => {
     return resolve_analysis_task_display_snapshot({
       current_snapshot: analysis_task_snapshot,
@@ -446,19 +454,17 @@ export function useAnalysisTaskRuntime(
       prepared_import: PreparedAnalysisGlossaryImport,
       barrierCheckpoint: ProjectPagesBarrierCheckpoint | null,
     ): Promise<void> => {
-      try {
-        const mutation_result = normalize_project_mutation_result(
-          await api_fetch<ProjectMutationResultPayload>(
+      await commit_project_mutation({
+        operation: WORKBENCH_ANALYSIS_IMPORT_MUTATION,
+        task_type: "analysis",
+        run: async () => {
+          return await api_fetch<ProjectMutationResultPayload>(
             "/api/project/analysis/import-glossary",
             prepared_import.request_body,
-          ),
-        );
-        await apply_project_mutation_result(mutation_result);
-        await refresh_task("analysis");
-      } catch (error) {
-        void refresh_project_runtime().catch(() => {});
-        throw error;
-      }
+          );
+        },
+      });
+      await refresh_task("analysis");
 
       if (options.waitForProjectPagesBarrier !== undefined) {
         await options.waitForProjectPagesBarrier("proofreading_cache_refresh", {
@@ -473,7 +479,7 @@ export function useAnalysisTaskRuntime(
         ),
       );
     },
-    [apply_project_mutation_result, options, push_toast, refresh_project_runtime, refresh_task, t],
+    [commit_project_mutation, options, push_toast, refresh_task, t],
   );
 
   const execute_analysis_glossary_import = useCallback(
@@ -595,19 +601,17 @@ export function useAnalysisTaskRuntime(
               state: project_store.getState(),
               task_snapshot,
             });
-      try {
-        const mutation_result = normalize_project_mutation_result(
-          await api_fetch<ProjectMutationResultPayload>(
+      await commit_project_mutation({
+        operation: WORKBENCH_ANALYSIS_RESET_MUTATION,
+        task_type: "analysis",
+        run: async () => {
+          return await api_fetch<ProjectMutationResultPayload>(
             "/api/project/analysis/reset",
             reset_plan.requestBody,
-          ),
-        );
-        await apply_project_mutation_result(mutation_result);
-        await refresh_task("analysis");
-      } catch (error) {
-        void refresh_project_runtime().catch(() => {});
-        throw error;
-      }
+          );
+        },
+      });
+      await refresh_task("analysis");
 
       set_analysis_confirm_state(null);
     } catch (error) {
@@ -634,11 +638,10 @@ export function useAnalysisTaskRuntime(
     }
   }, [
     analysis_confirm_state,
-    apply_project_mutation_result,
+    commit_project_mutation,
     execute_analysis_glossary_import,
     project_store,
     push_toast,
-    refresh_project_runtime,
     refresh_task,
     suppress_next_terminal_prompt,
     sync_runtime_task_snapshot,

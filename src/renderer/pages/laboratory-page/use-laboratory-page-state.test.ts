@@ -22,7 +22,7 @@ type RuntimeFixture = {
     getState: () => Record<string, unknown>;
   };
   apply_settings_snapshot: ReturnType<typeof vi.fn>;
-  apply_project_mutation_result: ReturnType<typeof vi.fn>;
+  commit_project_mutation: ReturnType<typeof vi.fn>;
   refresh_project_runtime: ReturnType<typeof vi.fn>;
   refresh_settings: ReturnType<typeof vi.fn>;
 };
@@ -37,14 +37,17 @@ type ToastFixture = {
   run_modal_progress_toast: ReturnType<typeof vi.fn>;
 };
 
+// runtime fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
 };
 
+// barrier fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const barrier_fixture: { current: BarrierFixture } = {
   current: create_barrier_fixture(),
 };
 
+// toast fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const toast_fixture: { current: ToastFixture } = {
   current: create_toast_fixture(),
 };
@@ -88,9 +91,11 @@ vi.mock("@/app/locale/locale-provider", () => {
 vi.mock("@/app/desktop/desktop-api", () => {
   return {
     api_fetch: vi.fn(),
+    report_renderer_error: vi.fn(async () => undefined),
   };
 });
 
+// create_settings_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_settings_snapshot(overrides: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
   return {
     app_language: "ZH",
@@ -121,6 +126,7 @@ function create_settings_snapshot(overrides: Partial<SettingsSnapshot> = {}): Se
   };
 }
 
+// create_runtime_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_runtime_fixture(): RuntimeFixture {
   const settings_snapshot = create_settings_snapshot();
   return {
@@ -151,12 +157,22 @@ function create_runtime_fixture(): RuntimeFixture {
       };
       return next_settings_snapshot;
     }),
-    apply_project_mutation_result: vi.fn(async () => {}),
+    commit_project_mutation: vi.fn(async ({ run }: { run: () => Promise<unknown> }) => {
+      const payload = await run();
+      return {
+        payload,
+        mutation_result: {
+          accepted: true,
+          changes: [],
+        },
+      };
+    }),
     refresh_project_runtime: vi.fn(async () => {}),
     refresh_settings: vi.fn(async () => runtime_fixture.current.settings_snapshot),
   };
 }
 
+// create_barrier_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_barrier_fixture(): BarrierFixture {
   return {
     create_barrier_checkpoint: vi.fn(() => "checkpoint"),
@@ -164,6 +180,7 @@ function create_barrier_fixture(): BarrierFixture {
   };
 }
 
+// create_toast_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_toast_fixture(): ToastFixture {
   return {
     push_toast: vi.fn(),
@@ -173,6 +190,7 @@ function create_toast_fixture(): ToastFixture {
   };
 }
 
+// create_settings_payload 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_settings_payload(settings_snapshot: SettingsSnapshot): {
   settings: SettingsSnapshot;
 } {
@@ -203,11 +221,13 @@ describe("useLaboratoryPageState", () => {
     vi.mocked(api_fetch).mockReset();
   });
 
+  // LaboratoryProbe 收口测试中的共享步骤，保证断言只关注当前行为。
   function LaboratoryProbe(): JSX.Element | null {
     latest_state = useLaboratoryPageState();
     return null;
   }
 
+  // flush_async_updates 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function flush_async_updates(): Promise<void> {
     await act(async () => {
       await Promise.resolve();
@@ -216,6 +236,7 @@ describe("useLaboratoryPageState", () => {
     });
   }
 
+  // render_hook 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");

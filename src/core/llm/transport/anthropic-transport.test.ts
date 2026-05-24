@@ -35,7 +35,6 @@ describe("AnthropicTransport", () => {
       cancelled: false,
       timeout: false,
       degraded: false,
-      error: "",
     });
   });
 
@@ -61,11 +60,15 @@ describe("AnthropicTransport", () => {
       response_result: "",
       input_tokens: 2,
       output_tokens: 4,
-      error: "供应商返回长度截断。",
+      failure: {
+        message: "供应商返回长度截断。",
+        context: { stop_reason: "max_tokens" },
+      },
     });
   });
 });
 
+// create_pool 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_pool(chunks: unknown[]): ProviderClientResolver {
   return {
     get_client: <T>() =>
@@ -77,12 +80,14 @@ function create_pool(chunks: unknown[]): ProviderClientResolver {
   };
 }
 
+// create_stream 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 async function* create_stream(chunks: unknown[]): AsyncGenerator<unknown> {
   for (const chunk of chunks) {
     yield chunk;
   }
 }
 
+// create_policy 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_policy(overrides: Partial<ResolvedRequestPolicy> = {}): ResolvedRequestPolicy {
   return {
     provider: "anthropic",

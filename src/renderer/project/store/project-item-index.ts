@@ -1,8 +1,4 @@
-import {
-  is_item_status,
-  normalize_project_item_public_record,
-  type ProjectItemPublicRecord,
-} from "@base/item";
+import { normalize_project_item_public_record, type ProjectItemPublicRecord } from "@base/item";
 import { InternalInvariantError } from "@shared/error";
 import type { ProjectChangeItemFieldPatch, ProjectChangeItemsPayload } from "@shared/project/event";
 
@@ -23,6 +19,13 @@ export type ProjectItemIndex = {
   entries: () => IterableIterator<[string, ProjectItemPublicRecord]>;
   /** 显式物化对象快照，只允许测试或真实需要对象形状的边界调用。 */
   toRecordSnapshot: () => Record<string, ProjectItemPublicRecord>;
+};
+
+/**
+ * ProjectStore 批量 prepare 的 item 写作用域；作用域内 Map 不暴露给页面。
+ */
+export type ProjectItemIndexWriteScope = {
+  records: Map<string, ProjectItemPublicRecord>; // draft records 是批量 prepare 阶段唯一可写副本
 };
 
 /**
@@ -75,19 +78,16 @@ class MutableProjectItemIndex implements ProjectItemIndex {
   public cloneRecords(): Map<string, ProjectItemPublicRecord> {
     return new Map(this.records);
   }
-
-  /** delta 热路径共享 Map 存储，由新包装器负责触发 React 依赖更新。 */
-  public shareRecords(): Map<string, ProjectItemPublicRecord> {
-    return this.records;
-  }
 }
 
+// create_internal_invariant_error 构造跨层载荷，保证字段形状在一个入口维护。
 function create_internal_invariant_error(reason: string): InternalInvariantError {
   return new InternalInvariantError({
     diagnostic_context: { section: "items", reason },
   });
 }
 
+// normalize_project_item_record 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_project_item_record(value: unknown): ProjectItemPublicRecord {
   const normalized_item = normalize_project_item_public_record(value);
   if (normalized_item === null) {
@@ -96,11 +96,23 @@ function normalize_project_item_record(value: unknown): ProjectItemPublicRecord 
   return normalized_item;
 }
 
-function read_index_records(index: ProjectItemIndex): Map<string, ProjectItemPublicRecord> {
+// clone_index_records 封装当前模块的共享逻辑，避免重复实现同一维护规则。
+function clone_index_records(index: ProjectItemIndex): Map<string, ProjectItemPublicRecord> {
   if (index instanceof MutableProjectItemIndex) {
-    return index.shareRecords();
+    return index.cloneRecords();
   }
   return new Map(index.entries());
+}
+
+/**
+ * 为批量 ProjectStore prepare 创建一次 item 副本，后续 delta 都写入这份 draft。
+ */
+export function createProjectItemIndexWriteScope(
+  index: ProjectItemIndex,
+): ProjectItemIndexWriteScope {
+  return {
+    records: clone_index_records(index),
+  };
 }
 
 /**
@@ -127,6 +139,7 @@ export function cloneProjectItemIndex(index: ProjectItemIndex): ProjectItemIndex
   return new MutableProjectItemIndex(new Map(index.entries()));
 }
 
+// apply_item_field_patch 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function apply_item_field_patch(
   item: ProjectItemPublicRecord,
   patch: ProjectChangeItemFieldPatch | undefined,
@@ -140,7 +153,7 @@ function apply_item_field_patch(
     next_item.dst = patch.dst;
     touched = true;
   }
-  if (is_item_status(patch.status) && patch.status !== item.status) {
+  if (patch.status !== undefined && patch.status !== item.status) {
     next_item.status = patch.status;
     touched = true;
   }
@@ -152,13 +165,14 @@ function apply_item_field_patch(
 }
 
 /**
- * item 行级变更只触碰 upsert、field-patch 与 tombstone 行，并返回新包装器触发页面依赖更新。
+ * item 行级变更先写入调用方传入的 draft，原索引只在调用方提交新包装器后才可见。
  */
-export function applyProjectItemIndexChange(
-  index: ProjectItemIndex,
+export function applyProjectItemIndexChangeInScope(
+  currentIndex: ProjectItemIndex,
+  scope: ProjectItemIndexWriteScope,
   payload: ProjectChangeItemsPayload,
 ): ProjectItemIndex {
-  const records = read_index_records(index);
+  const records = scope.records;
   let touched = false;
 
   if (payload.payloadMode === "canonical-delta") {
@@ -186,9 +200,22 @@ export function applyProjectItemIndexChange(
   }
 
   for (const item_id of payload.deleteIds ?? []) {
-    records.delete(String(item_id));
-    touched = true;
+    const key = String(item_id);
+    if (records.delete(key)) {
+      touched = true;
+    }
   }
 
-  return touched ? new MutableProjectItemIndex(records) : index;
+  return touched ? new MutableProjectItemIndex(records) : currentIndex;
+}
+
+/**
+ * 单条 delta 也走 prepare 副本，校验失败时不会污染传入索引。
+ */
+export function applyProjectItemIndexChange(
+  index: ProjectItemIndex,
+  payload: ProjectChangeItemsPayload,
+): ProjectItemIndex {
+  const scope = createProjectItemIndexWriteScope(index);
+  return applyProjectItemIndexChangeInScope(index, scope, payload);
 }

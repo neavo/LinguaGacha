@@ -112,11 +112,9 @@ export class CoreBootstrap {
         systemProxyStartupNotice: this.system_proxy_startup_notice,
       };
     } catch (error) {
-      write_bootstrap_error(
-        t_main_log("app.diagnostic.lifecycle.core_gateway_start_failed", {
-          ERROR: error instanceof Error ? error.message : String(error),
-        }),
-      );
+      write_bootstrap_error(t_main_log("app.diagnostic.lifecycle.core_gateway_start_failed"), {
+        error,
+      });
       this.state = "failed";
       await this.stop_services();
       throw error;

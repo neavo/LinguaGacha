@@ -7,6 +7,13 @@ type DesktopRuntimeRefreshSchedulerOptions = {
   applyTaskSnapshot: (snapshot: TaskSnapshot) => void; // flush 阶段唯一写入 TaskRuntimeStore 的回调
   applyProjectChangeBatch: (events: readonly ProjectStoreChangeEvent[]) => void; // flush 阶段唯一批量写入 ProjectStore 的回调
   shouldApplyProjectChange?: (event: ProjectStoreChangeEvent) => boolean; // flush 前过滤旧 project revision
+  onFlushError: (error: unknown, context: DesktopRuntimeRefreshSchedulerErrorContext) => void; // 调度器内部异常由运行态统一记录和恢复
+};
+
+export type DesktopRuntimeRefreshSchedulerErrorContext = {
+  phase: "project_change_batch" | "task_snapshot";
+  projectChanges: readonly ProjectStoreChangeEvent[];
+  taskSnapshot: TaskSnapshot | null;
 };
 
 /**
@@ -18,6 +25,11 @@ export class DesktopRuntimeRefreshScheduler {
   private readonly apply_project_change_batch: (events: readonly ProjectStoreChangeEvent[]) => void; // 保留 project event 到达顺序，flush 时只通知一次 ProjectStore
 
   private readonly should_apply_project_change: (event: ProjectStoreChangeEvent) => boolean;
+
+  private readonly on_flush_error: (
+    error: unknown,
+    context: DesktopRuntimeRefreshSchedulerErrorContext,
+  ) => void;
 
   private pending_task_snapshot: TaskSnapshot | null = null; // task snapshot 是覆盖式事实，同一窗口只保留最后一份
 
@@ -34,6 +46,7 @@ export class DesktopRuntimeRefreshScheduler {
     this.apply_task_snapshot = options.applyTaskSnapshot;
     this.apply_project_change_batch = options.applyProjectChangeBatch;
     this.should_apply_project_change = options.shouldApplyProjectChange ?? (() => true);
+    this.on_flush_error = options.onFlushError;
   }
 
   /**
@@ -73,17 +86,8 @@ export class DesktopRuntimeRefreshScheduler {
     const task_snapshot = this.pending_task_snapshot;
     this.pending_task_snapshot = null;
 
-    if (project_changes.length > 0) {
-      const fresh_changes = project_changes.filter((event) =>
-        this.should_apply_project_change(event),
-      );
-      if (fresh_changes.length > 0) {
-        this.apply_project_change_batch(fresh_changes);
-      }
-    }
-    if (task_snapshot !== null) {
-      this.apply_task_snapshot(task_snapshot);
-    }
+    this.flush_project_changes(project_changes, task_snapshot);
+    this.flush_task_snapshot(task_snapshot, project_changes);
   }
 
   /**
@@ -111,6 +115,55 @@ export class DesktopRuntimeRefreshScheduler {
       this.refresh_timer = null;
       this.flush();
     }, DESKTOP_RUNTIME_REFRESH_INTERVAL_MS);
+  }
+
+  /**
+   * 项目变更失败时只丢弃当前 pending 批次并上报，恢复由 DesktopRuntimeProvider 读取后端权威快照完成。
+   */
+  private flush_project_changes(
+    projectChanges: ProjectStoreChangeEvent[],
+    taskSnapshot: TaskSnapshot | null,
+  ): void {
+    if (projectChanges.length === 0) {
+      return;
+    }
+
+    try {
+      const fresh_changes = projectChanges.filter((event) =>
+        this.should_apply_project_change(event),
+      );
+      if (fresh_changes.length > 0) {
+        this.apply_project_change_batch(fresh_changes);
+      }
+    } catch (error) {
+      this.on_flush_error(error, {
+        phase: "project_change_batch",
+        projectChanges,
+        taskSnapshot,
+      });
+    }
+  }
+
+  /**
+   * task snapshot 与 project change 相互独立；project 批次失败也不阻断最新任务状态落地。
+   */
+  private flush_task_snapshot(
+    taskSnapshot: TaskSnapshot | null,
+    projectChanges: readonly ProjectStoreChangeEvent[],
+  ): void {
+    if (taskSnapshot === null) {
+      return;
+    }
+
+    try {
+      this.apply_task_snapshot(taskSnapshot);
+    } catch (error) {
+      this.on_flush_error(error, {
+        phase: "task_snapshot",
+        projectChanges,
+        taskSnapshot,
+      });
+    }
   }
 
   /**

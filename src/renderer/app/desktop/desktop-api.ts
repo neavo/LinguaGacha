@@ -1,7 +1,7 @@
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { normalize_core_api_base_url } from "@core/api/core-api-endpoint";
 import { normalize_log_level, type LogDetail, type LogEvent, type LogLevel } from "@shared/log";
-import type { ApiErrorPayload, AppErrorCode } from "@shared/error";
+import type { ApiErrorPayload, AppErrorCode, RendererErrorReport } from "@shared/error";
 
 export type { LogDetail, LogEvent, LogLevel };
 
@@ -54,8 +54,11 @@ export type DesktopLocalErrorCode =
 export type DesktopApiErrorCode = AppErrorCode | DesktopLocalErrorCode;
 export type DesktopLocalErrorMessageKey = `app.error.desktop.${DesktopLocalErrorCode}.message`;
 
+// CORE API HEALTH PATH 是跨边界路径或地址契约，集中保存避免调用点散落魔术字符串。
 const CORE_API_HEALTH_PATH = "/api/health";
+// CORE API SERVICE NAME 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const CORE_API_SERVICE_NAME = "linguagacha-core";
+// CORE API PROBE TIMEOUT MS 是运行时节流或容量阈值，集中保存便于评估性能影响。
 const CORE_API_PROBE_TIMEOUT_MS = 300;
 const GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/neavo/LinguaGacha/releases/latest";
 
@@ -109,12 +112,14 @@ export class DesktopApiError extends Error {
   }
 }
 
+// build_desktop_local_error_message_key 构造跨层载荷，保证字段形状在一个入口维护。
 function build_desktop_local_error_message_key(
   code: DesktopLocalErrorCode,
 ): DesktopLocalErrorMessageKey {
   return `app.error.desktop.${code}.message`;
 }
 
+// build_desktop_api_error 构造跨层载荷，保证字段形状在一个入口维护。
 function build_desktop_api_error<data_type>(
   path: string,
   response: Response,
@@ -133,6 +138,7 @@ function build_desktop_api_error<data_type>(
   });
 }
 
+// read_api_envelope 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 async function read_api_envelope<data_type>(
   response: Response,
 ): Promise<ApiEnvelope<data_type> | null> {
@@ -143,6 +149,7 @@ async function read_api_envelope<data_type>(
   }
 }
 
+// create_network_error 构造跨层载荷，保证字段形状在一个入口维护。
 function create_network_error(path: string, cause: unknown): DesktopApiError {
   const code: DesktopLocalErrorCode =
     cause instanceof Error && cause.name === "AbortError" ? "timeout" : "network_failed";
@@ -156,6 +163,7 @@ function create_network_error(path: string, cause: unknown): DesktopApiError {
   });
 }
 
+// read_core_api_base_url 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 function read_core_api_base_url(): string {
   const base_url = normalize_core_api_base_url(window.desktopApp.coreApi.baseUrl);
 
@@ -166,11 +174,13 @@ function read_core_api_base_url(): string {
   return base_url;
 }
 
+// build_api_url 构造跨层载荷，保证字段形状在一个入口维护。
 function build_api_url(base_url: string, path: string): string {
   const normalized_path = path.startsWith("/") ? path : `/${path}`;
   return `${base_url}${normalized_path}`;
 }
 
+// parse_event_source_payload 收口外部文本解析，解析失败时由这里决定降级口径。
 function parse_event_source_payload(event: MessageEvent<string>): Record<string, unknown> {
   try {
     return JsonTool.parseStrict<Record<string, unknown>>(event.data);
@@ -179,6 +189,7 @@ function parse_event_source_payload(event: MessageEvent<string>): Record<string,
   }
 }
 
+// normalize_core_metadata 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_core_metadata(payload: HealthPayload): CoreMetadata | null {
   const version = payload.version?.trim();
   if (version === undefined || version === "") {
@@ -188,6 +199,7 @@ function normalize_core_metadata(payload: HealthPayload): CoreMetadata | null {
   return { version };
 }
 
+// parse_semantic_version 收口外部文本解析，解析失败时由这里决定降级口径。
 function parse_semantic_version(value: string): SemanticVersion | null {
   const version_match = value.match(/(\d+)\.(\d+)\.(\d+)/u);
   if (version_match === null) {
@@ -201,6 +213,7 @@ function parse_semantic_version(value: string): SemanticVersion | null {
   };
 }
 
+// compare_semantic_version 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function compare_semantic_version(left: SemanticVersion, right: SemanticVersion): number {
   if (left.major !== right.major) {
     return left.major - right.major;
@@ -213,6 +226,7 @@ function compare_semantic_version(left: SemanticVersion, right: SemanticVersion)
   return left.patch - right.patch;
 }
 
+// normalize_github_release_update 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_github_release_update(
   payload: GithubReleasePayload,
   current_version: string,
@@ -242,6 +256,7 @@ function normalize_github_release_update(
   };
 }
 
+// probe_core_api_candidate 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 async function probe_core_api_candidate(base_url: string): Promise<CoreMetadata | null> {
   const abort_controller = new AbortController();
   const timeout_id = window.setTimeout(() => {
@@ -278,6 +293,7 @@ async function probe_core_api_candidate(base_url: string): Promise<CoreMetadata 
   }
 }
 
+// resolve_core_api_base_url 集中解析运行时决策，避免调用点复制条件判断。
 async function resolve_core_api_base_url(): Promise<string> {
   if (cached_core_api_base_url !== null) {
     return cached_core_api_base_url;
@@ -306,6 +322,7 @@ async function resolve_core_api_base_url(): Promise<string> {
   }
 }
 
+// get_core_metadata 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export async function get_core_metadata(): Promise<CoreMetadata> {
   await resolve_core_api_base_url();
   if (cached_core_metadata === null) {
@@ -315,6 +332,7 @@ export async function get_core_metadata(): Promise<CoreMetadata> {
   return cached_core_metadata;
 }
 
+// check_github_release_update 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export async function check_github_release_update(
   current_version: string,
 ): Promise<GithubReleaseUpdate | null> {
@@ -336,6 +354,7 @@ export async function check_github_release_update(
   }
 }
 
+// api_fetch 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export async function api_fetch<data_type>(
   path: string,
   body: Record<string, unknown> = {},
@@ -362,15 +381,25 @@ export async function api_fetch<data_type>(
   return payload.data;
 }
 
+/**
+ * renderer 诊断只通过公开 Core API 写日志，保持页面侧不直接接触 Node/Electron 日志能力。
+ */
+export async function report_renderer_error(report: RendererErrorReport): Promise<void> {
+  await api_fetch<Record<string, never>>("/api/diagnostics/renderer-error", report);
+}
+
+// open_event_source_at_path 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 async function open_event_source_at_path(path: string): Promise<EventSource> {
   const base_url = await resolve_core_api_base_url();
   return new EventSource(build_api_url(base_url, path));
 }
 
+// open_event_stream 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export async function open_event_stream(): Promise<EventSource> {
   return open_event_source_at_path("/api/events/stream");
 }
 
+// open_json_event_source_stream 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 async function* open_json_event_source_stream(args: {
   path: string;
   event_types: string[];
@@ -382,6 +411,7 @@ async function* open_json_event_source_stream(args: {
   let stream_error: Error | null = null;
   let closed = false;
 
+  // push_event 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   function push_event(event: EventSourceJsonEvent): void {
     if (pending_resolve !== null) {
       const resolve = pending_resolve;
@@ -393,6 +423,7 @@ async function* open_json_event_source_stream(args: {
     queue.push(event);
   }
 
+  // close_stream 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   function close_stream(): void {
     if (closed) {
       return;
@@ -407,6 +438,7 @@ async function* open_json_event_source_stream(args: {
     }
   }
 
+  // fail_stream 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   function fail_stream(): void {
     stream_error = DesktopApiError.local("event_stream_failed", 503);
     close_stream();
@@ -539,6 +571,7 @@ function normalize_log_detail(payload: unknown): LogDetail | null {
   };
 }
 
+// open_log_stream 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export async function* open_log_stream(): AsyncIterable<LogEvent> {
   for await (const event of open_json_event_source_stream({
     path: "/api/logs/stream",
@@ -559,6 +592,7 @@ export async function read_log_detail(id: string): Promise<LogDetail | null> {
   return normalize_log_detail(payload.detail);
 }
 
+// open_external_url 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export async function open_external_url(url: string): Promise<void> {
   const normalized_url = url.trim();
 

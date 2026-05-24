@@ -41,6 +41,7 @@ class EventSourceStub {
   }
 }
 
+// install_desktop_api_host 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function install_desktop_api_host(base_url: string): void {
   Object.defineProperty(window, "desktopApp", {
     configurable: true,
@@ -267,6 +268,66 @@ describe("desktop-api", () => {
     expect(fetch_mock).toHaveBeenCalledWith(
       "http://127.0.0.1:38191/api/logs/detail",
       expect.objectContaining({
+        method: "POST",
+      }),
+    );
+  });
+
+  it("report_renderer_error 通过诊断 API 写入前端异常快照", async () => {
+    const fetch_mock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/health")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            ok: true,
+            data: {
+              status: "ok",
+              service: "linguagacha-core",
+              version: "9.9.9",
+            },
+          }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ok: true,
+          data: {},
+        }),
+      } as Response;
+    });
+
+    install_desktop_api_host("http://127.0.0.1:38191/");
+    vi.stubGlobal("fetch", fetch_mock);
+
+    const { report_renderer_error } = await import("./desktop-api");
+    await report_renderer_error({
+      source: "scheduler",
+      diagnostic: {
+        message: "批量应用失败",
+      },
+      route: "workbench",
+      triggeringEvent: {
+        topic: "project.data_changed",
+      },
+    });
+
+    expect(fetch_mock).toHaveBeenLastCalledWith(
+      "http://127.0.0.1:38191/api/diagnostics/renderer-error",
+      expect.objectContaining({
+        body: JsonTool.stringifyStrict({
+          source: "scheduler",
+          diagnostic: {
+            message: "批量应用失败",
+          },
+          route: "workbench",
+          triggeringEvent: {
+            topic: "project.data_changed",
+          },
+        }),
         method: "POST",
       }),
     );

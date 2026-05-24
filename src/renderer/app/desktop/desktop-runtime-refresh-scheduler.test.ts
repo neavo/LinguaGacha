@@ -20,6 +20,7 @@ describe("DesktopRuntimeRefreshScheduler", () => {
         applied_tasks.push(snapshot);
       },
       applyProjectChangeBatch: () => {},
+      onFlushError: noop_flush_error_handler,
     });
 
     scheduler.enqueue_task_snapshot(create_task_snapshot(1));
@@ -40,6 +41,7 @@ describe("DesktopRuntimeRefreshScheduler", () => {
       applyProjectChangeBatch: (events) => {
         applied_batches.push([...events]);
       },
+      onFlushError: noop_flush_error_handler,
     });
 
     scheduler.enqueue_project_change(create_project_change(2));
@@ -58,6 +60,7 @@ describe("DesktopRuntimeRefreshScheduler", () => {
       applyTaskSnapshot: () => {},
       applyProjectChangeBatch: apply_project_change_batch,
       shouldApplyProjectChange: (event) => event.projectRevision >= 5,
+      onFlushError: noop_flush_error_handler,
     });
 
     scheduler.enqueue_project_change(create_project_change(4));
@@ -67,6 +70,51 @@ describe("DesktopRuntimeRefreshScheduler", () => {
     expect(apply_project_change_batch).not.toHaveBeenCalled();
   });
 
+  it("project 批次失败时上报错误并继续落地 task snapshot", async () => {
+    vi.useFakeTimers();
+    const apply_task_snapshot = vi.fn();
+    const flush_errors: Array<{ error: unknown; phase: string }> = [];
+    const scheduler = new DesktopRuntimeRefreshScheduler({
+      applyTaskSnapshot: apply_task_snapshot,
+      applyProjectChangeBatch: () => {
+        throw new Error("project batch failed");
+      },
+      onFlushError: (error, context) => {
+        flush_errors.push({ error, phase: context.phase });
+      },
+    });
+
+    scheduler.enqueue_project_change(create_project_change(2));
+    scheduler.enqueue_task_snapshot(create_task_snapshot(3));
+
+    await vi.advanceTimersByTimeAsync(DESKTOP_RUNTIME_REFRESH_INTERVAL_MS);
+
+    expect(flush_errors).toHaveLength(1);
+    expect(flush_errors[0]?.phase).toBe("project_change_batch");
+    expect(apply_task_snapshot).toHaveBeenCalledWith(create_task_snapshot(3));
+  });
+
+  it("task snapshot 写入失败时上报错误", async () => {
+    vi.useFakeTimers();
+    const flush_errors: Array<{ error: unknown; phase: string }> = [];
+    const scheduler = new DesktopRuntimeRefreshScheduler({
+      applyTaskSnapshot: () => {
+        throw new Error("task snapshot failed");
+      },
+      applyProjectChangeBatch: () => {},
+      onFlushError: (error, context) => {
+        flush_errors.push({ error, phase: context.phase });
+      },
+    });
+
+    scheduler.enqueue_task_snapshot(create_task_snapshot(5));
+
+    await vi.advanceTimersByTimeAsync(DESKTOP_RUNTIME_REFRESH_INTERVAL_MS);
+
+    expect(flush_errors).toHaveLength(1);
+    expect(flush_errors[0]?.phase).toBe("task_snapshot");
+  });
+
   it("dispose 会清理 timer 和 pending 事件", async () => {
     vi.useFakeTimers();
     const apply_task_snapshot = vi.fn();
@@ -74,6 +122,7 @@ describe("DesktopRuntimeRefreshScheduler", () => {
     const scheduler = new DesktopRuntimeRefreshScheduler({
       applyTaskSnapshot: apply_task_snapshot,
       applyProjectChangeBatch: apply_project_change_batch,
+      onFlushError: noop_flush_error_handler,
     });
 
     scheduler.enqueue_task_snapshot(create_task_snapshot(1));
@@ -86,6 +135,9 @@ describe("DesktopRuntimeRefreshScheduler", () => {
     expect(apply_project_change_batch).not.toHaveBeenCalled();
   });
 });
+
+// noop_flush_error_handler 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+function noop_flush_error_handler(): void {}
 
 // 构造最小可用 task snapshot，方便断言调度器只保留最新运行态
 function create_task_snapshot(line: number): TaskSnapshot {
