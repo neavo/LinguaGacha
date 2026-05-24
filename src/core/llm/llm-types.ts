@@ -1,4 +1,5 @@
 import type { ApiJsonValue } from "../api/api-types";
+import type { ErrorDiagnosticPayload } from "../../shared/error";
 
 /**
  * 请求消息保持标准 chat 形状，policy 再转换为各官方 SDK 的最终 payload。
@@ -31,7 +32,7 @@ export interface LLMRequestResult {
   cancelled: boolean; // 以下布尔标记保留请求事实，TaskEngine 决定如何重试或降级
   timeout: boolean;
   degraded: boolean;
-  error: string; // error 保留供应商侧错误文本，空字符串表示没有可展示错误
+  failure?: ErrorDiagnosticPayload; // failure 保留供应商或传输异常诊断，缺失表示没有请求级失败
 }
 
 /**

@@ -35,6 +35,7 @@ export function create_desktop_bridge_api_mock(
     onWindowCloseRequest: () => {
       return () => {};
     },
+    reportRendererDiagnostics: () => {},
     openExternalUrl: async () => {},
     pickProjectSourceFilePath: async () => ({ canceled: true, paths: [] }),
     pickProjectSourceDirectoryPath: async () => ({ canceled: true, paths: [] }),

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
+import type { ProjectMutationOperation } from "@/app/desktop/desktop-project-mutation";
 import { apply_project_prefilter_mutation } from "@/project/prefilter/prefilter-mutation-committer";
 import { format_project_settings_aligned_toast } from "@/project/settings/alignment-toast";
 import type {
@@ -24,6 +25,10 @@ import {
 
 type SettingsUpdateRequest = Record<string, unknown>;
 
+// 基础设置页拥有自己的预过滤 mutation 诊断名，避免 desktop runtime 反向登记页面业务词表。
+const BASIC_SETTINGS_PREFILTER_MUTATION: ProjectMutationOperation =
+  "basic-settings.prefilter_settings";
+
 type UseBasicSettingsStateResult = {
   snapshot: BasicSettingsSnapshot;
   pending_state: SettingPendingState;
@@ -35,6 +40,7 @@ type UseBasicSettingsStateResult = {
   update_request_timeout: (next_value: number) => Promise<void>;
 };
 
+// create_pending_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_pending_state(): SettingPendingState {
   return {
     source_language: false,
@@ -45,10 +51,12 @@ function create_pending_state(): SettingPendingState {
   };
 }
 
+// clamp_request_timeout 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function clamp_request_timeout(next_value: number): number {
   return Math.min(REQUEST_TIMEOUT_MAX, Math.max(REQUEST_TIMEOUT_MIN, next_value));
 }
 
+// useBasicSettingsState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useBasicSettingsState(): UseBasicSettingsStateResult {
   const {
     settings_snapshot,
@@ -56,8 +64,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     project_snapshot,
     project_store,
     apply_settings_snapshot,
-    refresh_project_runtime,
-    apply_project_mutation_result,
+    commit_project_mutation,
     refresh_settings,
   } = useDesktopRuntime();
   const { create_barrier_checkpoint, wait_for_barrier } = useProjectPagesBarrier();
@@ -205,16 +212,11 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
         target_language: next_settings_snapshot.target_language,
         mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
         skip_duplicate_source_text_enable: next_settings_snapshot.skip_duplicate_source_text_enable,
-        apply_project_mutation_result,
-        refresh_project_runtime,
+        commit_project_mutation,
+        operation: BASIC_SETTINGS_PREFILTER_MUTATION,
       });
     },
-    [
-      apply_project_mutation_result,
-      project_snapshot.loaded,
-      project_store,
-      refresh_project_runtime,
-    ],
+    [commit_project_mutation, project_snapshot.loaded, project_store],
   );
 
   const rollback_source_language_after_prefilter_error = useCallback(

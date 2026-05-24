@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
+import {
+  type ProjectMutationOperation,
+  type ProjectMutationResultPayload,
+} from "@/app/desktop/desktop-project-mutation";
 import { useProjectPagesBarrier } from "@/app/page-runtime/project-pages-context";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
 import { useDebouncedCallback } from "@/hooks/use-debounce";
@@ -13,11 +17,7 @@ import {
   isQualityStatisticsCacheRunning,
   type QualityStatisticsCacheSnapshot,
 } from "@/project/quality/quality-statistics-store";
-import {
-  normalize_project_mutation_result,
-  type ProjectMutationResultPayload,
-  type SettingsSnapshotPayload,
-} from "@/app/desktop/desktop-runtime-context";
+import type { SettingsSnapshotPayload } from "@/app/desktop/desktop-runtime-context";
 import { useQualityStatistics } from "@/project/quality/quality-statistics-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
@@ -84,19 +84,32 @@ type TextPreserveResultViewQuery = {
   sort_state: AppTableSortState | null;
 };
 
+// TEXT PRESERVE DEFAULT PRESET SETTINGS KEY 是持久化或快捷键契约，集中保存避免调用点散落魔术字符串。
 const TEXT_PRESERVE_DEFAULT_PRESET_SETTINGS_KEY = "text_preserve_default_preset";
+// TEXT PRESERVE RULE TYPE 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const TEXT_PRESERVE_RULE_TYPE = "text_preserve";
+// TEXT PRESERVE TITLE KEY 是持久化或快捷键契约，集中保存避免调用点散落魔术字符串。
 const TEXT_PRESERVE_TITLE_KEY: LocaleKey = "text_preserve_page.title";
+// TEXT PRESERVE EXPORT FILE NAME 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const TEXT_PRESERVE_EXPORT_FILE_NAME = "text_preserve.json";
+// DEFAULT MODE 是默认快照事实，调用方只读取副本不临时拼装。
 const DEFAULT_MODE: TextPreserveMode = "off";
+// TEXT PRESERVE MODE REFRESH TIMEOUT MS 是运行时节流或容量阈值，集中保存便于评估性能影响。
 const TEXT_PRESERVE_MODE_REFRESH_TIMEOUT_MS = 15000;
+// MODAL PROGRESS TIMEOUT MESSAGE 是运行时节流或容量阈值，集中保存便于评估性能影响。
 const MODAL_PROGRESS_TIMEOUT_MESSAGE = "模态进度通知等待超时。";
+// 保留文本页分别标记条目保存和模式保存，诊断名由页面领域拥有。
+const TEXT_PRESERVE_ENTRIES_SAVE_MUTATION: ProjectMutationOperation = "text_preserve.entries_save";
+// TEXT PRESERVE MODE UPDATE MUTATION 是模块级稳定契约，集中维护避免调用点散落魔术值。
+const TEXT_PRESERVE_MODE_UPDATE_MUTATION: ProjectMutationOperation = "text_preserve.mode_update";
 
+// EMPTY ENTRY 是默认快照事实，调用方只读取副本不临时拼装。
 const EMPTY_ENTRY: TextPreserveEntry = {
   src: "",
   info: "",
 };
 
+// clone_entry 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function clone_entry(entry: TextPreserveEntry): TextPreserveEntry {
   return {
     entry_id: entry.entry_id,
@@ -105,6 +118,7 @@ function clone_entry(entry: TextPreserveEntry): TextPreserveEntry {
   };
 }
 
+// normalize_entry 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_entry(entry: Partial<TextPreserveEntry>): TextPreserveEntry {
   return {
     entry_id: entry.entry_id,
@@ -113,6 +127,7 @@ function normalize_entry(entry: Partial<TextPreserveEntry>): TextPreserveEntry {
   };
 }
 
+// normalize_imported_entry 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_imported_entry(entry: Record<string, unknown>): TextPreserveEntry {
   return normalize_entry({
     src: String(entry.src ?? ""),
@@ -120,6 +135,7 @@ function normalize_imported_entry(entry: Record<string, unknown>): TextPreserveE
   });
 }
 
+// create_empty_filter_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_filter_state(): TextPreserveFilterState {
   return {
     keyword: "",
@@ -128,6 +144,7 @@ function create_empty_filter_state(): TextPreserveFilterState {
   };
 }
 
+// create_empty_dialog_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_dialog_state(): TextPreserveDialogState {
   return {
     open: false,
@@ -140,6 +157,7 @@ function create_empty_dialog_state(): TextPreserveDialogState {
   };
 }
 
+// create_empty_confirm_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_confirm_state(): TextPreserveConfirmState {
   return {
     open: false,
@@ -152,6 +170,7 @@ function create_empty_confirm_state(): TextPreserveConfirmState {
   };
 }
 
+// create_empty_preset_input_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_preset_input_state(): TextPreservePresetInputState {
   return {
     open: false,
@@ -162,14 +181,17 @@ function create_empty_preset_input_state(): TextPreservePresetInputState {
   };
 }
 
+// build_user_preset_virtual_id 构造跨层载荷，保证字段形状在一个入口维护。
 function build_user_preset_virtual_id(name: string): string {
   return `user:${name}.json`;
 }
 
+// normalize_preset_name 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_preset_name(name: string): string {
   return name.trim();
 }
 
+// has_casefold_duplicate_preset 集中表达布尔判定口径，避免调用方按局部字段猜测。
 function has_casefold_duplicate_preset(
   preset_items: TextPreservePresetItem[],
   target_virtual_id: string,
@@ -190,6 +212,7 @@ function has_casefold_duplicate_preset(
   });
 }
 
+// decorate_preset_items 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function decorate_preset_items(
   builtin_presets: TextPreservePresetItem[],
   user_presets: TextPreservePresetItem[],
@@ -203,6 +226,7 @@ function decorate_preset_items(
   });
 }
 
+// build_statistics_badge_tooltip 构造跨层载荷，保证字段形状在一个入口维护。
 function build_statistics_badge_tooltip(
   t: (key: LocaleKey) => string,
   entry: TextPreserveEntry,
@@ -227,16 +251,19 @@ function build_statistics_badge_tooltip(
   return tooltip_lines.join("\n");
 }
 
+// build_default_preset_update_payload 构造跨层载荷，保证字段形状在一个入口维护。
 function build_default_preset_update_payload(value: string): Record<string, string> {
   return {
     [TEXT_PRESERVE_DEFAULT_PRESET_SETTINGS_KEY]: value,
   };
 }
 
+// is_modal_progress_timeout_error 集中表达布尔判定口径，避免调用方按局部字段猜测。
 function is_modal_progress_timeout_error(error: unknown): boolean {
   return error instanceof Error && error.message === MODAL_PROGRESS_TIMEOUT_MESSAGE;
 }
 
+// build_text_preserve_statistics_state_from_cache 构造跨层载荷，保证字段形状在一个入口维护。
 function build_text_preserve_statistics_state_from_cache(
   statistics_cache: QualityStatisticsCacheSnapshot,
 ): TextPreserveStatisticsState {
@@ -250,6 +277,7 @@ function build_text_preserve_statistics_state_from_cache(
   };
 }
 
+// useTextPreservePageState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const { t } = useI18n();
   const { create_barrier_checkpoint, wait_for_barrier } = useProjectPagesBarrier();
@@ -260,8 +288,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     project_store,
     settings_snapshot,
     apply_settings_snapshot,
-    refresh_project_runtime,
-    apply_project_mutation_result,
+    commit_project_mutation,
     task_snapshot,
   } = useDesktopRuntime();
   const project_store_state = useSyncExternalStore(
@@ -557,38 +584,38 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       );
 
       try {
-        const mutation_result = normalize_project_mutation_result(
-          await api_fetch<ProjectMutationResultPayload>("/api/quality/rules/save-entries", {
-            rule_type: TEXT_PRESERVE_RULE_TYPE,
-            expected_section_revisions: {
-              quality: current_state.revisions.sections.quality ?? 0,
-            },
-            entries: normalized_entries,
-          }),
-        );
-        set_pending_result_view_source_update(
-          create_project_section_result_view_source_update_request({
-            mutation_result,
-            policy: result_view_update,
-            section: "quality",
-          }),
-        );
-        await apply_project_mutation_result(mutation_result);
+        await commit_project_mutation({
+          operation: TEXT_PRESERVE_ENTRIES_SAVE_MUTATION,
+          run: async () => {
+            return await api_fetch<ProjectMutationResultPayload>(
+              "/api/quality/rules/save-entries",
+              {
+                rule_type: TEXT_PRESERVE_RULE_TYPE,
+                expected_section_revisions: {
+                  quality: current_state.revisions.sections.quality ?? 0,
+                },
+                entries: normalized_entries,
+              },
+            );
+          },
+          prepare: ({ mutation_result }) => {
+            set_pending_result_view_source_update(
+              create_project_section_result_view_source_update_request({
+                mutation_result,
+                policy: result_view_update,
+                section: "quality",
+              }),
+            );
+          },
+        });
         return true;
       } catch (error) {
         set_pending_result_view_source_update(null);
-        void refresh_project_runtime().catch(() => {});
         push_action_error_toast(error);
         return false;
       }
     },
-    [
-      apply_project_mutation_result,
-      project_store,
-      push_action_error_toast,
-      refresh_project_runtime,
-      readonly,
-    ],
+    [commit_project_mutation, project_store, push_action_error_toast, readonly],
   );
 
   const apply_import_entries = useCallback(
@@ -779,24 +806,24 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           timeout_ms: TEXT_PRESERVE_MODE_REFRESH_TIMEOUT_MS,
           task: async () => {
             const current_state = project_store.getState();
-            try {
-              const mutation_result = normalize_project_mutation_result(
-                await api_fetch<ProjectMutationResultPayload>("/api/quality/rules/update-meta", {
-                  rule_type: TEXT_PRESERVE_RULE_TYPE,
-                  expected_section_revisions: {
-                    quality: current_state.revisions.sections.quality ?? 0,
+            await commit_project_mutation({
+              operation: TEXT_PRESERVE_MODE_UPDATE_MUTATION,
+              run: async () => {
+                return await api_fetch<ProjectMutationResultPayload>(
+                  "/api/quality/rules/update-meta",
+                  {
+                    rule_type: TEXT_PRESERVE_RULE_TYPE,
+                    expected_section_revisions: {
+                      quality: current_state.revisions.sections.quality ?? 0,
+                    },
+                    meta: {
+                      mode: next_mode,
+                    },
                   },
-                  meta: {
-                    mode: next_mode,
-                  },
-                }),
-              );
-              await apply_project_mutation_result(mutation_result);
-              snapshot_committed = true;
-            } catch (error) {
-              void refresh_project_runtime().catch(() => {});
-              throw error;
-            }
+                );
+              },
+            });
+            snapshot_committed = true;
 
             await wait_for_barrier("proofreading_cache_refresh", {
               checkpoint: barrier_checkpoint,
@@ -815,12 +842,11 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       }
     },
     [
-      apply_project_mutation_result,
+      commit_project_mutation,
       create_barrier_checkpoint,
       project_store,
       push_toast,
       push_action_error_toast,
-      refresh_project_runtime,
       readonly,
       run_modal_progress_toast,
       t,

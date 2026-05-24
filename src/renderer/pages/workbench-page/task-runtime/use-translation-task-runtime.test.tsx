@@ -26,11 +26,12 @@ type RuntimeFixture = {
   };
   sync_task_snapshot: ReturnType<typeof vi.fn>;
   task_snapshot: Record<string, unknown>;
-  apply_project_mutation_result: ReturnType<typeof vi.fn>;
+  commit_project_mutation: ReturnType<typeof vi.fn>;
   refresh_project_runtime: ReturnType<typeof vi.fn>;
   refresh_task: ReturnType<typeof vi.fn>;
 };
 
+// runtime fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
 };
@@ -38,6 +39,7 @@ const runtime_fixture: { current: RuntimeFixture } = {
 vi.mock("@/app/desktop/desktop-api", () => {
   return {
     api_fetch: api_fetch_mock,
+    report_renderer_error: vi.fn(async () => undefined),
   };
 });
 
@@ -63,6 +65,7 @@ vi.mock("@/app/locale/locale-provider", () => {
   };
 });
 
+// create_task_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_task_snapshot(
   overrides: Partial<Record<string, unknown>> = {},
 ): Record<string, unknown> {
@@ -86,6 +89,7 @@ function create_task_snapshot(
   };
 }
 
+// create_runtime_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_runtime_fixture(
   task_snapshot: Record<string, unknown> = create_task_snapshot(),
 ): RuntimeFixture {
@@ -166,18 +170,29 @@ function create_runtime_fixture(
     },
     sync_task_snapshot: vi.fn(),
     task_snapshot,
-    apply_project_mutation_result: vi.fn(async () => {}),
+    commit_project_mutation: vi.fn(async ({ run }: { run: () => Promise<unknown> }) => {
+      const payload = await run();
+      return {
+        payload,
+        mutation_result: {
+          accepted: true,
+          changes: [],
+        },
+      };
+    }),
     refresh_project_runtime: vi.fn(async () => {}),
     refresh_task: vi.fn(async () => runtime_fixture.current.task_snapshot),
   };
 }
 
+// flush_microtasks 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function flush_microtasks(): Promise<void> {
   return act(async () => {
     await Promise.resolve();
   });
 }
 
+// Probe 收口测试中的共享步骤，保证断言只关注当前行为。
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useTranslationTaskRuntime>) => void;
 }): JSX.Element | null {
@@ -211,6 +226,7 @@ describe("useTranslationTaskRuntime", () => {
     push_toast_mock.mockReset();
   });
 
+  // render_probe 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function render_probe(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -813,15 +829,10 @@ describe("useTranslationTaskRuntime", () => {
     });
     await flush_microtasks();
 
-    expect(runtime_fixture.current.apply_project_mutation_result).toHaveBeenCalledWith(
+    expect(runtime_fixture.current.commit_project_mutation).toHaveBeenCalledWith(
       expect.objectContaining({
-        accepted: true,
-        changes: [
-          expect.objectContaining({
-            source: "translation_reset_all",
-            updatedSections: ["items", "analysis"],
-          }),
-        ],
+        operation: "workbench.translation_mutation",
+        task_type: "translation",
       }),
     );
     expect(api_fetch_mock).toHaveBeenCalledWith(
@@ -841,7 +852,6 @@ describe("useTranslationTaskRuntime", () => {
     );
     expect(runtime_fixture.current.refresh_task).toHaveBeenCalledTimes(1);
     expect(runtime_fixture.current.refresh_task).toHaveBeenCalledWith("translation");
-    expect(runtime_fixture.current.refresh_project_runtime).not.toHaveBeenCalled();
   });
 
   it("translation reset failed 只提交失败项重置命令", async () => {
@@ -915,14 +925,10 @@ describe("useTranslationTaskRuntime", () => {
     });
     await flush_microtasks();
 
-    expect(runtime_fixture.current.apply_project_mutation_result).toHaveBeenCalledWith(
+    expect(runtime_fixture.current.commit_project_mutation).toHaveBeenCalledWith(
       expect.objectContaining({
-        changes: [
-          expect.objectContaining({
-            source: "translation_reset_failed",
-            updatedSections: ["items"],
-          }),
-        ],
+        operation: "workbench.translation_mutation",
+        task_type: "translation",
       }),
     );
     expect(api_fetch_mock).toHaveBeenCalledWith(
@@ -937,7 +943,7 @@ describe("useTranslationTaskRuntime", () => {
     expect(runtime_fixture.current.refresh_task).toHaveBeenCalledWith("translation");
   });
 
-  it("translation reset failed 失败时会刷新运行态", async () => {
+  it("translation reset failed 失败时由统一 mutation 管线回传错误", async () => {
     api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/tasks/snapshot") {
         return {
@@ -964,8 +970,12 @@ describe("useTranslationTaskRuntime", () => {
     });
     await flush_microtasks();
 
-    expect(runtime_fixture.current.apply_project_mutation_result).not.toHaveBeenCalled();
-    expect(runtime_fixture.current.refresh_project_runtime).toHaveBeenCalledTimes(1);
+    expect(runtime_fixture.current.commit_project_mutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: "workbench.translation_mutation",
+        task_type: "translation",
+      }),
+    );
     expect(push_toast_mock).toHaveBeenCalledWith(
       "error",
       "workbench_page.translation_task.feedback.reset_failed_failed",

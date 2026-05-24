@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
+import type { ProjectMutationOperation } from "@/app/desktop/desktop-project-mutation";
 import { apply_project_prefilter_mutation } from "@/project/prefilter/prefilter-mutation-committer";
 import { format_project_settings_aligned_toast } from "@/project/settings/alignment-toast";
 import type {
@@ -21,6 +22,9 @@ import {
 
 type SettingsUpdateRequest = Record<string, unknown>;
 
+// 实验室页拥有自己的预过滤 mutation 诊断名，desktop runtime 只接收显式 operation。
+const LABORATORY_PREFILTER_MUTATION: ProjectMutationOperation = "laboratory.prefilter_settings";
+
 type UseLaboratoryPageStateResult = {
   snapshot: LaboratorySnapshot;
   pending_state: LaboratoryPendingState;
@@ -29,6 +33,7 @@ type UseLaboratoryPageStateResult = {
   update_skip_duplicate_source_text_enable: (next_checked: boolean) => Promise<void>;
 };
 
+// create_pending_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_pending_state(): LaboratoryPendingState {
   return {
     mtool_optimizer_enable: false,
@@ -36,6 +41,7 @@ function create_pending_state(): LaboratoryPendingState {
   };
 }
 
+// useLaboratoryPageState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
   const {
     settings_snapshot,
@@ -43,8 +49,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     project_snapshot,
     project_store,
     apply_settings_snapshot,
-    refresh_project_runtime,
-    apply_project_mutation_result,
+    commit_project_mutation,
     refresh_settings,
   } = useDesktopRuntime();
   const { create_barrier_checkpoint, wait_for_barrier } = useProjectPagesBarrier();
@@ -152,16 +157,11 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
         target_language: next_settings_snapshot.target_language,
         mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
         skip_duplicate_source_text_enable: next_settings_snapshot.skip_duplicate_source_text_enable,
-        apply_project_mutation_result,
-        refresh_project_runtime,
+        commit_project_mutation,
+        operation: LABORATORY_PREFILTER_MUTATION,
       });
     },
-    [
-      apply_project_mutation_result,
-      project_snapshot.loaded,
-      project_store,
-      refresh_project_runtime,
-    ],
+    [commit_project_mutation, project_snapshot.loaded, project_store],
   );
 
   const rollback_prefilter_setting_after_prefilter_error = useCallback(

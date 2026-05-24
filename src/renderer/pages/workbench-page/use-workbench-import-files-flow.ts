@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } 
 
 import type { ProjectPagesBarrierCheckpoint } from "@/app/page-runtime/project-pages-barrier";
 import { api_fetch } from "@/app/desktop/desktop-api";
-import type { ProjectMutationResultPayload } from "@/app/desktop/desktop-runtime-context";
+import type { ProjectMutationResultPayload } from "@/app/desktop/desktop-project-mutation";
 import type { TaskSnapshot } from "@/app/desktop/task-runtime-store";
 import type { LocaleKey } from "@/app/locale/locale-provider";
 import type { ProjectStoreReader } from "@/project/store/project-store";

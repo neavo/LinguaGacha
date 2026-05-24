@@ -1,21 +1,23 @@
-import { StrictMode, act, useEffect } from "react";
+import { StrictMode, act, useEffect, useMemo, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ProjectStoreQualityState, ProjectStoreState } from "@/project/store/project-store";
 import {
   DesktopRuntimeProvider,
-  normalize_project_mutation_result,
   normalize_settings_snapshot,
 } from "@/app/desktop/desktop-runtime-context";
+import type { ProjectMutationCommitter } from "@/app/desktop/desktop-project-mutation";
+import { resolve_proofreading_project_change_signal } from "@/pages/proofreading-page/proofreading-project-change-signal";
+import { resolve_workbench_project_change_signal } from "@/pages/workbench-page/workbench-project-change-signal";
 import { DESKTOP_RUNTIME_REFRESH_INTERVAL_MS } from "@/app/desktop/desktop-runtime-refresh-scheduler";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
-import { InternalInvariantError } from "@shared/error";
 
-const { api_fetch_mock, open_event_stream_mock } = vi.hoisted(() => {
+const { api_fetch_mock, open_event_stream_mock, report_renderer_error_mock } = vi.hoisted(() => {
   return {
     api_fetch_mock: vi.fn(),
     open_event_stream_mock: vi.fn(),
+    report_renderer_error_mock: vi.fn(async () => undefined),
   };
 });
 
@@ -23,6 +25,7 @@ vi.mock("@/app/desktop/desktop-api", () => {
   return {
     api_fetch: api_fetch_mock,
     open_event_stream: open_event_stream_mock,
+    report_renderer_error: report_renderer_error_mock,
   };
 });
 
@@ -46,16 +49,6 @@ type RuntimeSnapshot = {
   sourceLanguage: string;
 };
 
-function capture_internal_invariant(operation: () => unknown): InternalInvariantError {
-  try {
-    operation();
-  } catch (error) {
-    expect(error).toBeInstanceOf(InternalInvariantError);
-    return error as InternalInvariantError;
-  }
-  throw new Error("预期抛出 InternalInvariantError。");
-}
-
 type RuntimeHandle = {
   project_store: {
     getState: () => ProjectStoreState;
@@ -63,14 +56,12 @@ type RuntimeHandle = {
   refresh_project_snapshot: () => Promise<{ path: string; loaded: boolean }>;
   refresh_project_runtime: () => Promise<void>;
   refresh_task: (task_type?: "translation" | "analysis") => Promise<unknown>;
-  apply_project_mutation_result: (result: {
-    accepted: true;
-    changes: Array<Record<string, unknown>>;
-  }) => Promise<void>;
+  commit_project_mutation: ProjectMutationCommitter;
 };
 
 type RuntimeHandleRef = RuntimeHandle | null;
 
+// create_deferred 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_deferred<T>(): {
   promise: Promise<T>;
   resolve: (value: T) => void;
@@ -90,21 +81,40 @@ function create_deferred<T>(): {
   };
 }
 
+// RuntimeProbe 收口测试中的共享步骤，保证断言只关注当前行为。
 function RuntimeProbe(props: {
   onSnapshot: (snapshot: RuntimeSnapshot) => void;
 }): JSX.Element | null {
   const runtime = useDesktopRuntime();
+  const workbench_signal = useMemo(
+    () => resolve_workbench_project_change_signal(runtime.project_change_signal),
+    [runtime.project_change_signal],
+  );
+  const proofreading_signal = useMemo(
+    () => resolve_proofreading_project_change_signal(runtime.project_change_signal),
+    [runtime.project_change_signal],
+  );
+  const last_workbench_signal_ref = useRef(workbench_signal);
+  const last_proofreading_signal_ref = useRef(proofreading_signal);
+  if (workbench_signal !== null) {
+    last_workbench_signal_ref.current = workbench_signal;
+  }
+  if (proofreading_signal !== null) {
+    last_proofreading_signal_ref.current = proofreading_signal;
+  }
 
   useEffect(() => {
+    const current_workbench_signal = last_workbench_signal_ref.current;
+    const current_proofreading_signal = last_proofreading_signal_ref.current;
     props.onSnapshot({
-      workbenchSeq: runtime.workbench_change_signal.seq,
-      workbenchReason: runtime.workbench_change_signal.reason,
-      proofreadingSeq: runtime.proofreading_change_signal.seq,
-      proofreadingReason: runtime.proofreading_change_signal.reason,
-      proofreadingMode: runtime.proofreading_change_signal.mode,
-      proofreadingUpdatedSections: runtime.proofreading_change_signal.updated_sections,
-      proofreadingItemIds: runtime.proofreading_change_signal.item_ids,
-      proofreadingFieldPatch: runtime.proofreading_change_signal.field_patch,
+      workbenchSeq: current_workbench_signal?.seq ?? 0,
+      workbenchReason: current_workbench_signal?.reason ?? "",
+      proofreadingSeq: current_proofreading_signal?.seq ?? 0,
+      proofreadingReason: current_proofreading_signal?.reason ?? "",
+      proofreadingMode: current_proofreading_signal?.mode ?? "full",
+      proofreadingUpdatedSections: current_proofreading_signal?.updated_sections ?? [],
+      proofreadingItemIds: current_proofreading_signal?.item_ids ?? [],
+      proofreadingFieldPatch: current_proofreading_signal?.field_patch ?? null,
       projectPath: runtime.project_store.getState().project.path,
       fileKeys: Object.keys(runtime.project_store.getState().files),
       itemKeys: [...runtime.project_store.getState().items.keys()],
@@ -117,9 +127,7 @@ function RuntimeProbe(props: {
     });
   }, [
     props,
-    runtime.proofreading_change_signal.reason,
-    runtime.proofreading_change_signal.mode,
-    runtime.proofreading_change_signal.seq,
+    proofreading_signal,
     runtime.settings_snapshot.source_language,
     runtime.task_snapshot.progress.line,
     runtime.task_snapshot.progress.processed_line,
@@ -127,13 +135,13 @@ function RuntimeProbe(props: {
     runtime.task_snapshot.status,
     runtime.task_snapshot.progress.total_output_tokens,
     runtime.project_store,
-    runtime.workbench_change_signal.reason,
-    runtime.workbench_change_signal.seq,
+    workbench_signal,
   ]);
 
   return null;
 }
 
+// RuntimeHandleProbe 收口测试中的共享步骤，保证断言只关注当前行为。
 function RuntimeHandleProbe(props: {
   onRuntime: (runtime: RuntimeHandleRef) => void;
 }): JSX.Element | null {
@@ -146,6 +154,7 @@ function RuntimeHandleProbe(props: {
   return null;
 }
 
+// wait_for_condition 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 async function wait_for_condition(predicate: () => boolean, attempts = 20): Promise<void> {
   for (let index = 0; index < attempts; index += 1) {
     if (predicate()) {
@@ -160,6 +169,7 @@ async function wait_for_condition(predicate: () => boolean, attempts = 20): Prom
   throw new Error("等待运行时状态收敛失败。");
 }
 
+// flush_runtime_refresh_window 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 async function flush_runtime_refresh_window(): Promise<void> {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(DESKTOP_RUNTIME_REFRESH_INTERVAL_MS);
@@ -167,6 +177,7 @@ async function flush_runtime_refresh_window(): Promise<void> {
   });
 }
 
+// create_event_source_stub 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_event_source_stub(): {
   event_source: EventSource;
   emit: (event_name: string, payload: Record<string, unknown>) => void;
@@ -196,11 +207,13 @@ function create_event_source_stub(): {
   };
 }
 
+// has_event_stream_listener 收口测试中的共享步骤，保证断言只关注当前行为。
 function has_event_stream_listener(event_source: EventSource, event_name: string): boolean {
   const add_event_listener = event_source.addEventListener as unknown as ReturnType<typeof vi.fn>;
   return add_event_listener.mock.calls.some((call) => call[0] === event_name);
 }
 
+// create_project_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_project_item(overrides: Record<string, unknown>): Record<string, unknown> {
   return {
     item_id: 1,
@@ -221,6 +234,7 @@ function create_project_item(overrides: Record<string, unknown>): Record<string,
   };
 }
 
+// create_default_project_sections 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_default_project_sections(
   overrides: Record<string, unknown> = {},
 ): Record<string, unknown> {
@@ -293,6 +307,7 @@ function create_default_project_sections(
   };
 }
 
+// create_project_read_response 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_project_read_response(
   path: string,
   options: {
@@ -333,91 +348,6 @@ function create_project_read_response(
   return null;
 }
 
-describe("normalize_project_mutation_result", () => {
-  it("只接受后端 canonical changes 数组并规范化为 ProjectStore 事件", () => {
-    const result = normalize_project_mutation_result({
-      accepted: true,
-      changes: [
-        {
-          eventId: "mutation-quality-1",
-          source: "quality_rule_save_entries",
-          projectPath: "E:/demo/demo.lg",
-          projectRevision: 2,
-          updatedSections: ["quality"],
-          sectionRevisions: {
-            quality: 2,
-          },
-          sections: {
-            quality: {
-              payloadMode: "canonical-delta",
-              data: {
-                glossary: {
-                  entries: [],
-                  enabled: true,
-                  mode: "off",
-                  revision: 2,
-                },
-              },
-            },
-          },
-        },
-      ],
-    });
-
-    expect(result).toMatchObject({
-      accepted: true,
-      changes: [
-        {
-          eventId: "mutation-quality-1",
-          source: "quality_rule_save_entries",
-          projectPath: "E:/demo/demo.lg",
-          projectRevision: 2,
-          updatedSections: ["quality"],
-          sectionRevisions: {
-            quality: 2,
-          },
-        },
-      ],
-    });
-    expect(result.changes[0]?.operations[0]?.sections?.quality?.payloadMode).toBe(
-      "canonical-delta",
-    );
-  });
-
-  it.each([
-    ["缺少 accepted=true", { changes: [] }],
-    ["changes 不是数组", { accepted: true, changes: {} }],
-  ] as const)("拒绝%s的 mutation result", (_name, payload) => {
-    const error = capture_internal_invariant(() => normalize_project_mutation_result(payload));
-
-    expect(error.diagnostic_context).toMatchObject({
-      reason: "invalid_project_mutation_result_payload",
-    });
-  });
-
-  it("拒绝无法规范化为项目数据变更的 change 载荷", () => {
-    const error = capture_internal_invariant(() =>
-      normalize_project_mutation_result({
-        accepted: true,
-        changes: [
-          {
-            eventId: "mutation-invalid-1",
-            source: "invalid",
-            projectPath: "E:/demo/demo.lg",
-            projectRevision: 2,
-            updatedSections: [],
-          },
-        ],
-      }),
-    );
-
-    expect(error.diagnostic_context).toMatchObject({
-      reason: "invalid_project_mutation_change_payload",
-      index: 0,
-    });
-  });
-});
-
 describe("设置快照归一", () => {
   it("缺字段 settings payload 使用 base 设置领域默认值", () => {
     expect(normalize_settings_snapshot({ settings: {} })).toMatchObject({
@@ -445,6 +375,7 @@ describe("DesktopRuntimeProvider", () => {
     container = null;
     api_fetch_mock.mockReset();
     open_event_stream_mock.mockReset();
+    report_renderer_error_mock.mockReset();
     vi.useRealTimers();
   });
 
@@ -536,6 +467,126 @@ describe("DesktopRuntimeProvider", () => {
       fileKeys: ["chapter01.txt"],
       itemKeys: ["1"],
     });
+  });
+
+  it("页面恢复入口会把业务上下文交给运行态统一上报", async () => {
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
+    let runtime_handle: RuntimeHandleRef = null;
+
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/settings/app") {
+        return { settings: { app_language: "ZH" } };
+      }
+
+      if (path === "/api/project/snapshot") {
+        return {
+          project: {
+            path: "E:/demo/demo.lg",
+            loaded: true,
+          },
+        };
+      }
+
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: {
+            task_type: "translation",
+            status: "idle",
+            busy: false,
+          },
+        };
+      }
+
+      const project_read_response = create_project_read_response(path);
+      if (project_read_response !== null) {
+        return project_read_response;
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        <DesktopRuntimeProvider>
+          <RuntimeProbe
+            onSnapshot={(snapshot) => {
+              snapshots.push(snapshot);
+            }}
+          />
+          <RuntimeHandleProbe
+            onRuntime={(runtime) => {
+              runtime_handle = runtime;
+            }}
+          />
+        </DesktopRuntimeProvider>,
+      );
+    });
+
+    await wait_for_condition(() => {
+      return runtime_handle !== null && snapshots.at(-1)?.proofreadingSeq === 1;
+    });
+
+    api_fetch_mock.mockClear();
+    report_renderer_error_mock.mockClear();
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/project/manifest") {
+        throw new Error("manifest boom");
+      }
+
+      throw new Error(`未预期的恢复请求：${path}`);
+    });
+
+    await act(async () => {
+      await expect(
+        runtime_handle?.commit_project_mutation({
+          operation: "glossary.entries_save",
+          task_type: "translation",
+          run: async () => {
+            throw new Error("mutation boom");
+          },
+        }),
+      ).rejects.toThrow("mutation boom");
+      await Promise.resolve();
+    });
+
+    await wait_for_condition(() => report_renderer_error_mock.mock.calls.length >= 2);
+
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/manifest", {});
+    expect(report_renderer_error_mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "project-mutation",
+        triggeringEvent: {
+          operation: "glossary.entries_save",
+        },
+        context: expect.objectContaining({
+          stage: "commit_project_mutation",
+          operation: "glossary.entries_save",
+          phase: "request",
+          taskType: "translation",
+        }),
+      }),
+    );
+    expect(report_renderer_error_mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "runtime-recovery",
+        triggeringEvent: {
+          operation: "glossary.entries_save",
+        },
+        context: expect.objectContaining({
+          reason: "project_mutation_failed",
+          recovery: "project_runtime",
+          operation: "glossary.entries_save",
+          phase: "request",
+          taskType: "translation",
+        }),
+      }),
+    );
   });
 
   it("显式刷新任务快照时会把任务类型传给 Core", async () => {
@@ -903,47 +954,46 @@ describe("DesktopRuntimeProvider", () => {
       const current_quality = runtime_handle.project_store.getState()
         .quality as ProjectStoreQualityState;
 
-      await runtime_handle.apply_project_mutation_result({
-        accepted: true,
-        changes: [
-          {
-            eventId: "quality-mutation-1",
-            source: "quality_rule_save_entries",
-            projectPath: "E:/demo/demo.lg",
-            projectRevision: 2,
-            updatedSections: ["quality"],
-            sectionRevisions: {
-              quality: 2,
-            },
-            operations: [
-              {
-                sections: {
-                  quality: {
-                    payloadMode: "canonical-delta",
-                    data: {
-                      glossary: {
-                        ...current_quality.glossary,
-                        enabled: Boolean(current_quality.glossary.enabled),
-                        mode: String(current_quality.glossary.mode),
-                        entries: [
-                          {
-                            id: "1",
-                            src: "原文",
-                            dst: "译文",
-                          },
-                        ],
-                        revision: 2,
-                      },
-                      pre_replacement: current_quality.pre_replacement,
-                      post_replacement: current_quality.post_replacement,
-                      text_preserve: current_quality.text_preserve,
+      await runtime_handle.commit_project_mutation({
+        operation: "glossary.entries_save",
+        run: async () => ({
+          accepted: true,
+          changes: [
+            {
+              eventId: "quality-mutation-1",
+              source: "quality_rule_save_entries",
+              projectPath: "E:/demo/demo.lg",
+              projectRevision: 2,
+              updatedSections: ["quality"],
+              sectionRevisions: {
+                quality: 2,
+              },
+              sections: {
+                quality: {
+                  payloadMode: "canonical-delta",
+                  data: {
+                    glossary: {
+                      ...current_quality.glossary,
+                      enabled: Boolean(current_quality.glossary.enabled),
+                      mode: String(current_quality.glossary.mode),
+                      entries: [
+                        {
+                          id: "1",
+                          src: "原文",
+                          dst: "译文",
+                        },
+                      ],
+                      revision: 2,
                     },
+                    pre_replacement: current_quality.pre_replacement,
+                    post_replacement: current_quality.post_replacement,
+                    text_preserve: current_quality.text_preserve,
                   },
                 },
               },
-            ],
-          },
-        ],
+            },
+          ],
+        }),
       });
       await Promise.resolve();
     });
@@ -1156,37 +1206,37 @@ describe("DesktopRuntimeProvider", () => {
         throw new Error("运行时句柄未准备好。");
       }
 
-      await runtime_handle.apply_project_mutation_result({
-        accepted: true,
-        changes: [
-          {
-            eventId: "analysis-mutation-1",
-            source: "analysis_reset_all",
-            projectPath: "E:/demo/demo.lg",
-            projectRevision: 2,
-            updatedSections: ["analysis"],
-            sectionRevisions: {
-              analysis: 2,
-            },
-            operations: [
-              {
-                sections: {
-                  analysis: {
-                    payloadMode: "canonical-delta",
-                    data: {
-                      status_summary: {
-                        total_line: 2,
-                        processed_line: 0,
-                        error_line: 0,
-                        line: 0,
-                      },
+      await runtime_handle.commit_project_mutation({
+        operation: "workbench.analysis_reset",
+        task_type: "analysis",
+        run: async () => ({
+          accepted: true,
+          changes: [
+            {
+              eventId: "analysis-mutation-1",
+              source: "analysis_reset_all",
+              projectPath: "E:/demo/demo.lg",
+              projectRevision: 2,
+              updatedSections: ["analysis"],
+              sectionRevisions: {
+                analysis: 2,
+              },
+              sections: {
+                analysis: {
+                  payloadMode: "canonical-delta",
+                  data: {
+                    status_summary: {
+                      total_line: 2,
+                      processed_line: 0,
+                      error_line: 0,
+                      line: 0,
                     },
                   },
                 },
               },
-            ],
-          },
-        ],
+            },
+          ],
+        }),
       });
       await Promise.resolve();
     });
@@ -1567,6 +1617,109 @@ describe("DesktopRuntimeProvider", () => {
       proofreadingItemIds: [3, 4],
       itemKeys: ["1", "3", "4"],
     });
+  });
+
+  it("刷新窗口内项目批次异常会写入 renderer 日志并回退后端权威快照", async () => {
+    vi.useFakeTimers();
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
+
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/settings/app") {
+        return { settings: { app_language: "ZH" } };
+      }
+      if (path === "/api/project/snapshot") {
+        return { project: { path: "E:/demo/demo.lg", loaded: true } };
+      }
+      if (path === "/api/tasks/snapshot") {
+        return { task: { task_type: "translation", status: "idle", busy: false } };
+      }
+
+      const project_read_response = create_project_read_response(path, {
+        projectRevision: 6,
+        sectionRevisions: { items: 6 },
+      });
+      if (project_read_response !== null) {
+        return project_read_response;
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        <DesktopRuntimeProvider>
+          <RuntimeProbe
+            onSnapshot={(snapshot) => {
+              snapshots.push(snapshot);
+            }}
+          />
+        </DesktopRuntimeProvider>,
+      );
+    });
+
+    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
+
+    await act(async () => {
+      event_stream.emit("project.data_changed", {
+        source: "translation_commit",
+        projectPath: "E:/demo/demo.lg",
+        projectRevision: 7,
+        updatedSections: ["items"],
+        sectionRevisions: { items: 7 },
+        items: {
+          payloadMode: "canonical-delta",
+          changedIds: [3],
+          upsert: {
+            "3": create_project_item({
+              item_id: 3,
+              file_path: "chapter03.txt",
+              src: "ok",
+              dst: "ok",
+            }),
+          },
+        },
+      });
+      event_stream.emit("project.data_changed", {
+        source: "translation_commit",
+        projectPath: "E:/demo/demo.lg",
+        projectRevision: 8,
+        updatedSections: ["items"],
+        sectionRevisions: { items: 8 },
+        items: {
+          payloadMode: "canonical-delta",
+          changedIds: [4],
+          upsert: {
+            "4": {
+              item_id: 4,
+              file_path: "chapter04.txt",
+            },
+          },
+        },
+      });
+      await Promise.resolve();
+    });
+
+    await flush_runtime_refresh_window();
+    await wait_for_condition(() => report_renderer_error_mock.mock.calls.length > 0);
+
+    expect(report_renderer_error_mock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: "scheduler",
+        triggeringEvent: expect.objectContaining({
+          phase: "project_change_batch",
+        }),
+      }),
+    );
+    expect(snapshots.at(-1)?.itemKeys).toEqual(["1"]);
+    expect(
+      api_fetch_mock.mock.calls.filter((call) => call[0] === "/api/project/read-sections").length,
+    ).toBeGreaterThanOrEqual(2);
   });
 
   it("items canonical-delta 旧 revision 不会回退当前 ProjectStore", async () => {
@@ -2070,13 +2223,16 @@ describe("DesktopRuntimeProvider", () => {
         },
       },
     };
-    const warmup_mutation_result = normalize_project_mutation_result({
+    const warmup_mutation_payload = {
       accepted: true,
       changes: [warmup_change],
-    });
+    };
 
     await act(async () => {
-      await runtime_handle?.apply_project_mutation_result(warmup_mutation_result);
+      await runtime_handle?.commit_project_mutation({
+        operation: "workbench.file_mutation",
+        run: async () => warmup_mutation_payload,
+      });
       event_stream.emit("project.data_changed", warmup_change);
       await Promise.resolve();
     });

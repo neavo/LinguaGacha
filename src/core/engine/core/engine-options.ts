@@ -7,7 +7,9 @@ import type { ProjectTaskStore } from "../store/project-task-store";
 import type { TaskPlanner } from "../planning/task-planner";
 import type { TaskItemRecord } from "../planning/task-plan-types";
 import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
+import type { WorkUnitLogEntry } from "../protocol/work-unit";
 
+// TASK IDLE STATUSES 是领域白名单或配置表，集中维护避免分支散落。
 export const TASK_IDLE_STATUSES = new Set<string>(BASE_TASK_IDLE_STATUSES);
 
 /**
@@ -56,11 +58,7 @@ export interface TranslationWorkUnitResult {
   input_tokens: number; // token 字段用于任务统计累加，不作为成功与否的唯一依据
   output_tokens: number;
   stopped: boolean; // stopped 表示主动取消，区别于失败后可重试
-  logs?: Array<{
-    // logs 统一回放到 LogManager，worker 不直接写日志
-    level: "info" | "warning" | "error";
-    message: string;
-  }>;
+  logs?: WorkUnitLogEntry[]; // logs 统一回放到 LogManager，worker 不直接写日志
 }
 
 /**
@@ -72,11 +70,7 @@ export interface AnalysisWorkUnitResult {
   input_tokens: number; // token 字段与翻译共享统计口径
   output_tokens: number;
   glossary_entries: MutableJsonRecord[]; // glossary_entries 是候选快照，去重和 checkpoint 归属由 TaskEngine 处理
-  logs?: Array<{
-    // logs 只承载诊断文本，不携带数据库对象
-    level: "info" | "warning" | "error";
-    message: string;
-  }>;
+  logs?: WorkUnitLogEntry[]; // logs 只承载结构化诊断文本，不携带数据库对象
 }
 
 /**

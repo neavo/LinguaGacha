@@ -27,6 +27,12 @@ export const en_us_app = {
     update_failed: "Update failed …",
     project_settings_aligned: "Project settings updated from current settings …",
   },
+  error_boundary: {
+    eyebrow: "Renderer Runtime",
+    title: "Page runtime error",
+    description:
+      "This window switched to the protected view, and the error details were written to logs.",
+  },
   project_settings_alignment: {
     field: {
       source_language: "Source language",
@@ -249,7 +255,7 @@ export const en_us_app = {
     },
     lifecycle: {
       app_start_failed: "LinguaGacha failed to start …",
-      core_gateway_start_failed: "Core / Gateway startup failed - {ERROR} …",
+      core_gateway_start_failed: "Core / Gateway startup failed …",
       main_fatal_uncaught: "Electron main caught an unhandled fatal exception …",
     },
     migration: {
@@ -258,6 +264,7 @@ export const en_us_app = {
     renderer: {
       main_frame_load_failed: "Renderer main frame failed to load …",
       process_exited: "Renderer process exited …",
+      reported_error: "Renderer captured a frontend runtime error …",
       subframe_load_failed: "Renderer subframe failed to load …",
       window_unresponsive: "Window became unresponsive …",
     },
@@ -267,7 +274,7 @@ export const en_us_app = {
     analysis_task_result: "Analysis Result:",
     analysis_task_source_texts: "Analysis Input:",
     api_gateway_started: "API Gateway started - {BASE_URL}",
-    api_test_fail: "API test failed …\nReason: {REASON}",
+    api_test_fail: "API test failed …",
     api_test_key: "Testing Key:",
     api_test_messages: "Task Prompts:",
     api_test_result: "Tested {COUNT} APIs in total, {SUCCESS} successful, {FAILURE} failed …",
@@ -295,6 +302,7 @@ export const en_us_app = {
     response_checker_fail_data: "Data Structure Error",
     response_checker_fail_degradation: "Degradation Occurred",
     response_checker_fail_line_count: "Line Count Mismatch",
+    response_checker_fail_request: "Model Request Failed",
     response_checker_fail_timeout: "Network Request Timeout",
     response_checker_line_error_empty_line: "Empty Line",
     response_checker_line_error_hangeul: "Hangeul Residue",

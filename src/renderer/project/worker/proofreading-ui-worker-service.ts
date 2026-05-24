@@ -360,7 +360,7 @@ function apply_runtime_item_field_patch(
     next_item.dst = patch.dst;
     touched = true;
   }
-  if (typeof patch.status === "string" && patch.status !== item.status) {
+  if (patch.status !== undefined && patch.status !== item.status) {
     next_item.status = patch.status;
     touched = true;
   }
@@ -1064,6 +1064,7 @@ function rebuild_natural_item_ids(state: ProofreadingRuntimeState): void {
     .map((item) => String(item.item_id));
 }
 
+// build_revision_signature 构造跨层载荷，保证字段形状在一个入口维护。
 function build_revision_signature(revisions: ProofreadingRuntimeRevisions): string {
   return `${revisions.items.toString()}:${revisions.quality.toString()}:${revisions.proofreading.toString()}`;
 }
@@ -1235,9 +1236,7 @@ function apply_item_changes_to_list_view_cache(args: {
   }
 
   const deleted_item_ids = new Set(
-    args.changes
-      .filter((change) => change.removed_from_runtime)
-      .map((change) => change.item_id),
+    args.changes.filter((change) => change.removed_from_runtime).map((change) => change.item_id),
   );
   if (deleted_item_ids.size === 0) {
     return args.cache;

@@ -7,25 +7,31 @@ import { build_desktop_system_proxy_startup_notice_argument } from "../bridge/sy
 import { IPC_CHANNEL_WINDOW_CLOSE_REQUEST } from "../ipc/ipc-contract";
 import { resolve_title_bar_overlay_theme } from "./shell-contract";
 import { LOG_WINDOW_QUERY_KEY, LOG_WINDOW_QUERY_VALUE } from "./log-window-host";
+import type { RendererProcessDiagnosticsRegistry } from "./renderer-process-diagnostics";
 
+// electron mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const electron_mock = vi.hoisted(() => {
   type Listener = (...args: unknown[]) => void;
 
+  // FakeDevToolsContents 模拟外部运行时对象，只保留当前测试会触发的行为面。
   class FakeDevToolsContents {
     loading = false;
     executed_scripts: string[] = [];
     listeners = new Map<string, Listener[]>();
 
+    // isLoadingMainFrame 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     isLoadingMainFrame(): boolean {
       return this.loading;
     }
 
+    // once 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     once(event_name: string, listener: Listener): void {
       const listeners = this.listeners.get(event_name) ?? [];
       listeners.push(listener);
       this.listeners.set(event_name, listeners);
     }
 
+    // emit 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     emit(event_name: string, ...args: unknown[]): void {
       for (const listener of this.listeners.get(event_name) ?? []) {
         listener(...args);
@@ -33,12 +39,14 @@ const electron_mock = vi.hoisted(() => {
       this.listeners.delete(event_name);
     }
 
+    // executeJavaScript 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     async executeJavaScript(script: string): Promise<boolean> {
       this.executed_scripts.push(script);
       return true;
     }
   }
 
+  // FakeWebContents 模拟外部运行时对象，只保留当前测试会触发的行为面。
   class FakeWebContents {
     listeners = new Map<string, Listener[]>();
     once_listeners = new Map<string, Listener[]>();
@@ -47,18 +55,21 @@ const electron_mock = vi.hoisted(() => {
     devToolsWebContents: FakeDevToolsContents | null = null;
     toggleDevTools = vi.fn();
 
+    // on 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     on(event_name: string, listener: Listener): void {
       const listeners = this.listeners.get(event_name) ?? [];
       listeners.push(listener);
       this.listeners.set(event_name, listeners);
     }
 
+    // once 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     once(event_name: string, listener: Listener): void {
       const listeners = this.once_listeners.get(event_name) ?? [];
       listeners.push(listener);
       this.once_listeners.set(event_name, listeners);
     }
 
+    // emit 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     emit(event_name: string, ...args: unknown[]): void {
       for (const listener of this.once_listeners.get(event_name) ?? []) {
         listener(...args);
@@ -69,20 +80,24 @@ const electron_mock = vi.hoisted(() => {
       }
     }
 
+    // isLoadingMainFrame 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     isLoadingMainFrame(): boolean {
       return this.loading;
     }
 
+    // send 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     send(channel: string): void {
       this.sent_channels.push(channel);
     }
 
+    // openDevTools 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     openDevTools(): void {
       this.devToolsWebContents = new FakeDevToolsContents();
       this.emit("devtools-opened");
     }
   }
 
+  // FakeBrowserWindow 模拟外部运行时对象，只保留当前测试会触发的行为面。
   class FakeBrowserWindow {
     static created_windows: FakeBrowserWindow[] = [];
 
@@ -97,23 +112,27 @@ const electron_mock = vi.hoisted(() => {
       [];
     loaded_urls: string[] = [];
 
+    // 构造阶段只注入必要依赖，避免实例创建时读取外部可变状态。
     constructor(options: Record<string, unknown>) {
       this.options = options;
       FakeBrowserWindow.created_windows.push(this);
     }
 
+    // on 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     on(event_name: string, listener: Listener): void {
       const listeners = this.listeners.get(event_name) ?? [];
       listeners.push(listener);
       this.listeners.set(event_name, listeners);
     }
 
+    // once 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     once(event_name: string, listener: Listener): void {
       const listeners = this.once_listeners.get(event_name) ?? [];
       listeners.push(listener);
       this.once_listeners.set(event_name, listeners);
     }
 
+    // emit 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     emit(event_name: string, ...args: unknown[]): void {
       for (const listener of this.once_listeners.get(event_name) ?? []) {
         listener(...args);
@@ -124,26 +143,32 @@ const electron_mock = vi.hoisted(() => {
       }
     }
 
+    // isVisible 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     isVisible(): boolean {
       return this.visible;
     }
 
+    // show 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     show(): void {
       this.visible = true;
     }
 
+    // focus 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     focus(): void {
       this.focused = true;
     }
 
+    // loadFile 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     async loadFile(file_path: string, options?: { query?: Record<string, string> }): Promise<void> {
       this.load_file_calls.push({ file_path, options });
     }
 
+    // loadURL 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     async loadURL(url: string): Promise<void> {
       this.loaded_urls.push(url);
     }
 
+    // setTitleBarOverlay 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     setTitleBarOverlay(overlay: unknown): void {
       this.title_bar_overlays.push(overlay);
     }
@@ -159,6 +184,7 @@ const electron_mock = vi.hoisted(() => {
   };
 });
 
+// log bridge mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const log_bridge_mock = vi.hoisted(() => {
   return {
     write_electron_main_error: vi.fn(),
@@ -219,6 +245,7 @@ describe("桌面窗口宿主", () => {
         proxiedOriginCount: 2,
         proxyDisplay: "http://127.0.0.1:7890",
       },
+      rendererDiagnostics: create_renderer_diagnostics_stub(),
       shouldBypassCloseConfirmation: () => false,
       onClosed: on_closed,
     });
@@ -268,6 +295,7 @@ describe("桌面窗口宿主", () => {
       desktopBundleDir: desktop_bundle_dir,
       coreApiBaseUrl: "http://127.0.0.1:6789",
       systemProxyStartupNotice: { detected: false, proxiedOriginCount: 0, proxyDisplay: null },
+      rendererDiagnostics: create_renderer_diagnostics_stub(),
     });
     const close_event = { preventDefault: vi.fn() };
 
@@ -295,6 +323,7 @@ describe("桌面窗口宿主", () => {
       desktopBundleDir: path.join(process.cwd(), "build", "dist-electron"),
       coreApiBaseUrl: "http://127.0.0.1:4567",
       systemProxyStartupNotice: { detected: false, proxiedOriginCount: 0, proxyDisplay: null },
+      rendererDiagnostics: create_renderer_diagnostics_stub(),
       shouldBypassCloseConfirmation: () => true,
       onClosed: vi.fn(),
     });
@@ -345,6 +374,53 @@ describe("桌面窗口宿主", () => {
     expect(main_window.focused).toBe(true);
   });
 
+  it("渲染进程退出时记录诊断注册器生成的崩溃上下文", async () => {
+    restore_env("ELECTRON_RENDERER_URL", undefined);
+    const { create_main_window } = await import("./desktop-window-host");
+    const renderer_diagnostics = create_renderer_diagnostics_stub({
+      processGoneContext: {
+        windowKind: "main",
+        rendererDiagnostics: {
+          route: "workbench",
+        },
+      },
+    });
+
+    create_main_window({
+      desktopBundleDir: path.join(process.cwd(), "build", "dist-electron"),
+      coreApiBaseUrl: "http://127.0.0.1:4567",
+      systemProxyStartupNotice: { detected: false, proxiedOriginCount: 0, proxyDisplay: null },
+      rendererDiagnostics: renderer_diagnostics,
+      shouldBypassCloseConfirmation: () => true,
+      onClosed: vi.fn(),
+    });
+    const main_window = get_created_window(0);
+    const details = {
+      reason: "crashed",
+      exitCode: -36861,
+    };
+
+    main_window.webContents.emit("render-process-gone", {}, details);
+
+    expect(renderer_diagnostics.buildRendererProcessGoneContext).toHaveBeenCalledWith(
+      main_window,
+      details,
+    );
+    expect(log_bridge_mock.write_electron_main_error).toHaveBeenCalledWith(
+      "app.diagnostic.renderer.process_exited",
+      {
+        context: {
+          windowKind: "main",
+          rendererDiagnostics: {
+            route: "workbench",
+          },
+        },
+      },
+    );
+    expect(main_window.visible).toBe(true);
+    expect(main_window.focused).toBe(true);
+  });
+
   it("开发态启用调试端口、加载 dev server 并响应 DevTools 快捷键", async () => {
     restore_env("ELECTRON_RENDERER_URL", "http://127.0.0.1:5173/app");
     const {
@@ -359,6 +435,7 @@ describe("桌面窗口宿主", () => {
       desktopBundleDir: path.join(process.cwd(), "build", "dist-electron"),
       coreApiBaseUrl: "http://127.0.0.1:4567",
       systemProxyStartupNotice: { detected: false, proxiedOriginCount: 0, proxyDisplay: null },
+      rendererDiagnostics: create_renderer_diagnostics_stub(),
       shouldBypassCloseConfirmation: () => true,
       onClosed: vi.fn(),
     });
@@ -397,6 +474,7 @@ describe("桌面窗口宿主", () => {
   });
 });
 
+// restore_env 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function restore_env(name: string, value: string | undefined): void {
   if (value === undefined) {
     delete process.env[name];
@@ -405,6 +483,7 @@ function restore_env(name: string, value: string | undefined): void {
   }
 }
 
+// get_created_window 收口测试中的共享步骤，保证断言只关注当前行为。
 function get_created_window(
   index: number,
 ): (typeof electron_mock.FakeBrowserWindow.created_windows)[number] {
@@ -413,4 +492,19 @@ function get_created_window(
     throw new Error("缺少已创建的窗口实例。");
   }
   return target_window;
+}
+
+// create_renderer_diagnostics_stub 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+function create_renderer_diagnostics_stub(
+  options: {
+    processGoneContext?: Record<string, unknown>;
+    unresponsiveContext?: Record<string, unknown>;
+  } = {},
+): RendererProcessDiagnosticsRegistry {
+  return {
+    registerWindow: vi.fn(),
+    recordRendererDiagnostics: vi.fn(),
+    buildRendererProcessGoneContext: vi.fn(() => options.processGoneContext ?? {}),
+    buildWindowUnresponsiveContext: vi.fn(() => options.unresponsiveContext ?? {}),
+  };
 }

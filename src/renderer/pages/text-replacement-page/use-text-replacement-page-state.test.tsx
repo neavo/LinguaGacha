@@ -15,6 +15,7 @@ const { api_fetch_mock, push_toast_mock } = vi.hoisted(() => {
   };
 });
 
+// create_test_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
     item_id: 1,
@@ -130,10 +131,16 @@ const project_store = {
 
 const project_store_listeners = new Set<() => void>();
 
+// apply_quality_mutation_result 收口测试中的共享步骤，保证断言只关注当前行为。
 function apply_quality_mutation_result(result: {
   changes?: Array<{
     sectionRevisions?: {
       quality?: number;
+    };
+    sections?: {
+      quality?: {
+        data?: typeof runtime_state.quality;
+      };
     };
     operations?: Array<{
       sections?: {
@@ -145,6 +152,18 @@ function apply_quality_mutation_result(result: {
   }>;
 }): void {
   for (const change of result.changes ?? []) {
+    const canonical_quality = change.sections?.quality?.data;
+    if (canonical_quality !== undefined) {
+      runtime_state.quality = canonical_quality;
+      if (change.sectionRevisions?.quality !== undefined) {
+        runtime_state.revisions.sections.quality = change.sectionRevisions.quality;
+      }
+      for (const listener of project_store_listeners) {
+        listener();
+      }
+      continue;
+    }
+
     for (const operation of change.operations ?? []) {
       const next_quality = operation.sections?.quality?.data;
       if (next_quality !== undefined) {
@@ -160,7 +179,7 @@ function apply_quality_mutation_result(result: {
   }
 }
 
-// 测试夹具只模拟后端原始 canonical mutation payload，规范化入口仍由页面 hook 真实调用。
+// 测试夹具只模拟后端原始 canonical mutation payload，回灌入口由运行态 commit mock 触发。
 function create_quality_mutation_result(
   args: {
     quality?: typeof runtime_state.quality;
@@ -208,6 +227,7 @@ function create_pre_replacement_quality(
 
 let current_statistics_cache: QualityStatisticsCacheSnapshot;
 
+// create_statistics_cache 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_statistics_cache(
   args: Partial<QualityStatisticsCacheSnapshot>,
 ): QualityStatisticsCacheSnapshot {
@@ -258,6 +278,7 @@ function create_statistics_cache(
 vi.mock("@/app/desktop/desktop-api", () => {
   return {
     api_fetch: api_fetch_mock,
+    report_renderer_error: vi.fn(async () => undefined),
   };
 });
 
@@ -277,8 +298,18 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
       project_store,
       settings_snapshot: {},
       apply_settings_snapshot: vi.fn(),
-      apply_project_mutation_result: vi.fn(async (result) => {
-        apply_quality_mutation_result(result);
+      commit_project_mutation: vi.fn(async (request) => {
+        const payload = await request.run();
+        const mutation_result = {
+          accepted: true,
+          changes: Array.isArray(payload.changes) ? payload.changes : [],
+        };
+        await request.prepare?.({ payload, mutation_result });
+        apply_quality_mutation_result(mutation_result);
+        return {
+          payload,
+          mutation_result,
+        };
       }),
       refresh_project_runtime: vi.fn(async () => {}),
       task_snapshot: runtime_state.task,
@@ -308,6 +339,7 @@ vi.mock("@/app/locale/locale-provider", () => {
   };
 });
 
+// Probe 收口测试中的共享步骤，保证断言只关注当前行为。
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useTextReplacementPageState>) => void;
 }): JSX.Element | null {
@@ -363,6 +395,7 @@ describe("useTextReplacementPageState", () => {
     vi.useRealTimers();
   });
 
+  // mount_probe 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function mount_probe(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -371,6 +404,7 @@ describe("useTextReplacementPageState", () => {
     await rerender_probe();
   }
 
+  // rerender_probe 收口测试中的共享步骤，保证断言只关注当前行为。
   async function rerender_probe(): Promise<void> {
     await act(async () => {
       root?.render(
@@ -383,6 +417,7 @@ describe("useTextReplacementPageState", () => {
     });
   }
 
+  // flush_filter_debounce 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function flush_filter_debounce(): Promise<void> {
     await act(async () => {
       vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
@@ -495,7 +530,7 @@ describe("useTextReplacementPageState", () => {
     ]);
   });
 
-  it("新增替换规则保存时即使 SSE 先于 HTTP 返回也立即显示新条目", async () => {
+  it("新增替换规则保存时若 SSE 先于 HTTP 返回，最终仍由统一 commit 回灌新条目", async () => {
     await mount_probe();
     const mutation_result = create_quality_mutation_result({
       quality: create_pre_replacement_quality(

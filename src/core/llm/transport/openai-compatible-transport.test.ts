@@ -33,7 +33,6 @@ describe("OpenAICompatibleTransport", () => {
       cancelled: false,
       timeout: false,
       degraded: false,
-      error: "",
     });
     expect(captured_requests[0]).toMatchObject({
       provider: "openai-compatible",
@@ -61,7 +60,10 @@ describe("OpenAICompatibleTransport", () => {
       response_result: "",
       input_tokens: 2,
       output_tokens: 4,
-      error: "供应商返回长度截断。",
+      failure: {
+        message: "供应商返回长度截断。",
+        context: { finish_reason: "length" },
+      },
     });
   });
 
@@ -86,6 +88,7 @@ describe("OpenAICompatibleTransport", () => {
   });
 });
 
+// create_pool 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_pool(
   captured_requests: ProviderClientPoolRequest[],
   chunks: unknown[],
@@ -104,12 +107,14 @@ function create_pool(
   };
 }
 
+// create_stream 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 async function* create_stream(chunks: unknown[]): AsyncGenerator<unknown> {
   for (const chunk of chunks) {
     yield chunk;
   }
 }
 
+// create_policy 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_policy(overrides: Partial<ResolvedRequestPolicy> = {}): ResolvedRequestPolicy {
   return {
     provider: "openai-compatible",

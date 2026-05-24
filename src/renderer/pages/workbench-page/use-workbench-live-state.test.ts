@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import type { ProjectItemPublicRecord } from "@base/item";
+import type { ProjectRuntimeChangeSignal } from "@/app/desktop/desktop-runtime-context";
 import type { AnalysisTaskSnapshot } from "@/pages/workbench-page/task-runtime/analysis-task-model";
 import { useWorkbenchLiveState } from "@/pages/workbench-page/use-workbench-live-state";
 import { createProjectItemIndex, type ProjectItemIndex } from "@/project/store/project-item-index";
@@ -11,7 +12,7 @@ import type { DesktopPathPickResult } from "@gui/bridge-types";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
 type RuntimeFixture = {
-  apply_project_mutation_result: ReturnType<typeof vi.fn>;
+  commit_project_mutation: ReturnType<typeof vi.fn>;
   project_snapshot: {
     loaded: boolean;
     path: string;
@@ -24,9 +25,7 @@ type RuntimeFixture = {
     };
   };
   refresh_project_runtime: ReturnType<typeof vi.fn>;
-  workbench_change_signal: {
-    seq: number;
-  };
+  project_change_signal: ProjectRuntimeChangeSignal;
   refresh_task: ReturnType<typeof vi.fn>;
   settings_snapshot: Record<string, unknown>;
   refresh_project_snapshot: ReturnType<typeof vi.fn>;
@@ -99,24 +98,29 @@ type ToastFixture = {
   run_modal_progress_toast: ReturnType<typeof vi.fn>;
 };
 
+// runtime fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
 };
 
+// translation runtime fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const translation_runtime_fixture: { current: TranslationTaskRuntimeFixture } = {
   current: create_translation_task_runtime_fixture(),
 };
 
+// analysis runtime fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const analysis_runtime_fixture: { current: AnalysisTaskRuntimeFixture } = {
   current: create_analysis_task_runtime_fixture(),
 };
 
+// workbench picker fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const workbench_picker_fixture: { current: WorkbenchPickerFixture } = {
   current: {
     pickWorkbenchFilePath: vi.fn<() => Promise<DesktopPathPickResult>>(),
   },
 };
 
+// toast fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const toast_fixture: { current: ToastFixture } = {
   current: create_toast_fixture(),
 };
@@ -173,12 +177,62 @@ vi.mock("@/app/locale/locale-provider", () => {
 vi.mock("@/app/desktop/desktop-api", () => {
   return {
     api_fetch: vi.fn(),
+    report_renderer_error: vi.fn(async () => undefined),
   };
 });
 
+// create_project_change_signal 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+function create_project_change_signal(
+  seq: number,
+  options: {
+    reason?: string;
+    updatedSections?: ProjectRuntimeChangeSignal["updated_sections"];
+    itemIds?: Array<number | string>;
+  } = {},
+): ProjectRuntimeChangeSignal {
+  const updated_sections = options.updatedSections ?? ["project", "files", "items", "analysis"];
+  const item_ids = options.itemIds ?? [];
+  return {
+    seq,
+    reason: options.reason ?? "project_read_sections",
+    updated_sections,
+    results:
+      updated_sections.length === 0
+        ? []
+        : [
+            {
+              applied: true,
+              source: options.reason ?? "project_read_sections",
+              projectRevision: seq,
+              updatedSections: updated_sections,
+              ...(updated_sections.includes("items")
+                ? {
+                    itemDelta: {
+                      upsertItemIds: item_ids,
+                      deleteItemIds: [],
+                      fullReplace: item_ids.length === 0,
+                    },
+                  }
+                : {}),
+              sectionRevisions: {},
+            },
+          ],
+  };
+}
+
+// create_runtime_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_runtime_fixture(): RuntimeFixture {
   return {
-    apply_project_mutation_result: vi.fn(async () => {}),
+    commit_project_mutation: vi.fn(async ({ run }: { run: () => Promise<unknown> }) => {
+      const payload = await run();
+      return {
+        payload,
+        mutation_result: {
+          accepted: true,
+          changes: [],
+        },
+      };
+    }),
     project_snapshot: {
       loaded: true,
       path: "E:/demo/sample.lg",
@@ -192,9 +246,7 @@ function create_runtime_fixture(): RuntimeFixture {
       },
     },
     refresh_project_runtime: vi.fn(async () => {}),
-    workbench_change_signal: {
-      seq: 0,
-    },
+    project_change_signal: create_project_change_signal(0, { updatedSections: [] }),
     refresh_task: vi.fn(async () => {}),
     settings_snapshot: {},
     refresh_project_snapshot: vi.fn(),
@@ -215,6 +267,7 @@ function create_project_mutation_result() {
   };
 }
 
+// create_translation_task_runtime_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_translation_task_runtime_fixture(): TranslationTaskRuntimeFixture {
   return {
     translation_task_display_snapshot: null,
@@ -238,6 +291,7 @@ function create_translation_task_runtime_fixture(): TranslationTaskRuntimeFixtur
   };
 }
 
+// create_analysis_task_runtime_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_analysis_task_runtime_fixture(): AnalysisTaskRuntimeFixture {
   return {
     analysis_task_display_snapshot: null,
@@ -271,6 +325,7 @@ function create_analysis_task_runtime_fixture(): AnalysisTaskRuntimeFixture {
   };
 }
 
+// create_toast_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_toast_fixture(): ToastFixture {
   return {
     push_toast: vi.fn(),
@@ -280,6 +335,7 @@ function create_toast_fixture(): ToastFixture {
   };
 }
 
+// create_project_store_state 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_project_store_state(items: Record<string, ProjectItemPublicRecord>) {
   return {
     project: {
@@ -320,6 +376,7 @@ function create_project_store_state(items: Record<string, ProjectItemPublicRecor
   };
 }
 
+// create_project_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_project_item(args: {
   item_id: number;
   src?: string;
@@ -345,6 +402,7 @@ function create_project_item(args: {
   };
 }
 
+// create_analysis_task_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_analysis_task_snapshot(
   overrides: Partial<AnalysisTaskSnapshot> = {},
 ): AnalysisTaskSnapshot {
@@ -392,17 +450,20 @@ describe("useWorkbenchLiveState", () => {
     vi.mocked(api_fetch).mockReset();
   });
 
+  // WorkbenchProbe 收口测试中的共享步骤，保证断言只关注当前行为。
   function WorkbenchProbe(): JSX.Element | null {
     latest_state = useWorkbenchLiveState();
     return null;
   }
 
+  // flush_async_updates 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function flush_async_updates(): Promise<void> {
     await act(async () => {
       await Promise.resolve();
     });
   }
 
+  // render_hook 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -450,9 +511,7 @@ describe("useWorkbenchLiveState", () => {
           };
         },
       },
-      workbench_change_signal: {
-        seq: 1,
-      },
+      project_change_signal: create_project_change_signal(1),
     };
 
     await render_hook();
@@ -490,9 +549,7 @@ describe("useWorkbenchLiveState", () => {
           };
         },
       },
-      workbench_change_signal: {
-        seq: 1,
-      },
+      project_change_signal: create_project_change_signal(1),
     };
     await render_hook();
 
@@ -587,9 +644,7 @@ describe("useWorkbenchLiveState", () => {
           };
         },
       },
-      workbench_change_signal: {
-        seq: 1,
-      },
+      project_change_signal: create_project_change_signal(1),
     };
 
     await render_hook();
@@ -697,9 +752,7 @@ describe("useWorkbenchLiveState", () => {
           };
         },
       },
-      workbench_change_signal: {
-        seq: 1,
-      },
+      project_change_signal: create_project_change_signal(1),
     };
 
     await render_hook();
@@ -775,9 +828,7 @@ describe("useWorkbenchLiveState", () => {
           };
         },
       },
-      workbench_change_signal: {
-        seq: 1,
-      },
+      project_change_signal: create_project_change_signal(1),
     };
 
     await render_hook();
@@ -837,9 +888,7 @@ describe("useWorkbenchLiveState", () => {
           };
         },
       },
-      workbench_change_signal: {
-        seq: 1,
-      },
+      project_change_signal: create_project_change_signal(1),
     };
 
     await render_hook();
@@ -857,9 +906,11 @@ describe("useWorkbenchLiveState", () => {
     items_revision = 2;
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      workbench_change_signal: {
-        seq: 2,
-      },
+      project_change_signal: create_project_change_signal(2, {
+        reason: "translation_commit",
+        updatedSections: ["items"],
+        itemIds: [1],
+      }),
     };
 
     await render_hook();

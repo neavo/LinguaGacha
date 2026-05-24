@@ -45,6 +45,7 @@ type ModelServiceFixture = {
 type LogEntry = {
   level: "info" | "warning";
   message: string;
+  payload?: Record<string, unknown>;
 };
 
 const TEST_LLM_USER_AGENT = "LinguaGacha/v9.8.7 (https://github.com/neavo/LinguaGacha)";
@@ -592,7 +593,6 @@ describe("ModelService 远端模型能力", () => {
       .mockResolvedValueOnce({
         cancelled: false,
         degraded: false,
-        error: "",
         input_tokens: 2,
         output_tokens: 3,
         response_result: '{"0":"成功"}',
@@ -602,7 +602,6 @@ describe("ModelService 远端模型能力", () => {
       .mockResolvedValueOnce({
         cancelled: false,
         degraded: false,
-        error: "",
         input_tokens: 0,
         output_tokens: 0,
         response_result: "",
@@ -652,11 +651,15 @@ describe("ModelService 远端模型能力", () => {
         "info",
         "任务提示词：\n[{'role': 'system', 'content': '任务目标是将内容文本翻译成中文，译文必须严格保持原文的格式。'}, {'role': 'user', 'content': '{\"0\":\"魔導具師ダリヤはうつむかない\"}'}]",
       ],
-      ["warning", "接口测试失败 …\n原因：请求超时（120 秒）"],
+      ["warning", "接口测试失败 …"],
       ["info", ""],
       ["info", "共测试 2 个接口，成功 1 个，失败 1 个 …"],
       ["warning", "失败的密钥：\n*******"],
     ]);
+    expect(log_entries[8]?.payload).toMatchObject({
+      error_message: "请求超时（120 秒）",
+      source: "model",
+    });
   });
 });
 
@@ -680,11 +683,13 @@ async function create_model_service(
     log_entries === undefined
       ? undefined
       : {
-          info(message: string): void {
-            log_entries.push({ level: "info", message });
+          // info 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+          info(message: string, payload?: Record<string, unknown>): void {
+            log_entries.push({ level: "info", message, payload });
           },
-          warning(message: string): void {
-            log_entries.push({ level: "warning", message });
+          // warning 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+          warning(message: string, payload?: Record<string, unknown>): void {
+            log_entries.push({ level: "warning", message, payload });
           },
         };
   return {
@@ -771,6 +776,7 @@ async function* create_google_model_pager(
   }
 }
 
+// create_template 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_template(name: string, api_format: string): Record<string, ApiJsonValue> {
   return {
     api_format,
@@ -781,6 +787,7 @@ function create_template(name: string, api_format: string): Record<string, ApiJs
   };
 }
 
+// read_model_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function read_model_snapshot(response: Record<string, ApiJsonValue>): {
   active_model_id: string;
   models: Array<Record<string, ApiJsonValue>>;
@@ -801,6 +808,7 @@ function read_model_snapshot(response: Record<string, ApiJsonValue>): {
   };
 }
 
+// read_model_ids_by_type 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function read_model_ids_by_type(
   models: Array<Record<string, ApiJsonValue>>,
   model_type: string,
@@ -810,6 +818,7 @@ function read_model_ids_by_type(
     .map((model) => String(model["id"] ?? ""));
 }
 
+// stub_random_ids 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function stub_random_ids(...ids: string[]): void {
   const queue = [...ids];
   vi.spyOn(crypto, "randomUUID").mockImplementation(() => {

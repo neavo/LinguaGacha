@@ -24,7 +24,6 @@ describe("SakuraTransport", () => {
     expect(result).toMatchObject({
       input_tokens: 3,
       output_tokens: 5,
-      error: "",
     });
   });
 
@@ -41,11 +40,14 @@ describe("SakuraTransport", () => {
 
     expect(result).toMatchObject({
       response_result: "",
-      error: "供应商返回长度截断。",
+      failure: {
+        message: "供应商返回长度截断。",
+      },
     });
   });
 });
 
+// create_pool 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_pool(chunks: unknown[]): ProviderClientResolver {
   return {
     get_client: <T>() =>
@@ -59,12 +61,14 @@ function create_pool(chunks: unknown[]): ProviderClientResolver {
   };
 }
 
+// create_stream 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 async function* create_stream(chunks: unknown[]): AsyncGenerator<unknown> {
   for (const chunk of chunks) {
     yield chunk;
   }
 }
 
+// create_policy 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_policy(overrides: Partial<ResolvedRequestPolicy> = {}): ResolvedRequestPolicy {
   return {
     provider: "sakura",

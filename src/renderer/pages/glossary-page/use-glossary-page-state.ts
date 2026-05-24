@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
+import {
+  type ProjectMutationOperation,
+  type ProjectMutationResultPayload,
+} from "@/app/desktop/desktop-project-mutation";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
 import { useDebouncedCallback } from "@/hooks/use-debounce";
 import type { QualityStatisticsDependencySnapshot } from "@/project/quality/quality-statistics-auto";
@@ -13,11 +17,7 @@ import {
   isQualityStatisticsCacheRunning,
   type QualityStatisticsCacheSnapshot,
 } from "@/project/quality/quality-statistics-store";
-import {
-  normalize_project_mutation_result,
-  type ProjectMutationResultPayload,
-  type SettingsSnapshotPayload,
-} from "@/app/desktop/desktop-runtime-context";
+import type { SettingsSnapshotPayload } from "@/app/desktop/desktop-runtime-context";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
 import { useQualityStatistics } from "@/project/quality/quality-statistics-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
@@ -71,6 +71,7 @@ import type {
   GlossaryStatisticsState,
   GlossaryVisibleEntry,
 } from "@/pages/glossary-page/types";
+
 import { QualityRuleImportRuleTypeValue } from "@shared/quality/importer";
 
 type GlossaryPresetPayload = {
@@ -83,6 +84,12 @@ type GlossaryResultViewQuery = {
   sort_state: GlossarySortState;
 };
 
+// 术语表页维护自己的 mutation 诊断名，desktop 层只负责提交和失败恢复。
+const GLOSSARY_ENTRIES_SAVE_MUTATION: ProjectMutationOperation = "glossary.entries_save";
+// GLOSSARY META UPDATE MUTATION 是模块级稳定契约，集中维护避免调用点散落魔术值。
+const GLOSSARY_META_UPDATE_MUTATION: ProjectMutationOperation = "glossary.meta_update";
+
+// EMPTY ENTRY 是默认快照事实，调用方只读取副本不临时拼装。
 const EMPTY_ENTRY: GlossaryEntry = {
   src: "",
   dst: "",
@@ -90,6 +97,7 @@ const EMPTY_ENTRY: GlossaryEntry = {
   case_sensitive: false,
 };
 
+// clone_entry 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function clone_entry(entry: GlossaryEntry): GlossaryEntry {
   return {
     entry_id: entry.entry_id,
@@ -100,6 +108,7 @@ function clone_entry(entry: GlossaryEntry): GlossaryEntry {
   };
 }
 
+// create_empty_filter_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_filter_state(): GlossaryFilterState {
   return {
     keyword: "",
@@ -108,6 +117,7 @@ function create_empty_filter_state(): GlossaryFilterState {
   };
 }
 
+// create_empty_sort_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_sort_state(): GlossarySortState {
   return {
     field: null,
@@ -115,6 +125,7 @@ function create_empty_sort_state(): GlossarySortState {
   };
 }
 
+// create_empty_dialog_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_dialog_state(): GlossaryDialogState {
   return {
     open: false,
@@ -127,6 +138,7 @@ function create_empty_dialog_state(): GlossaryDialogState {
   };
 }
 
+// create_empty_confirm_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_confirm_state(): GlossaryConfirmState {
   return {
     open: false,
@@ -139,6 +151,7 @@ function create_empty_confirm_state(): GlossaryConfirmState {
   };
 }
 
+// create_empty_preset_input_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_preset_input_state(): GlossaryPresetInputState {
   return {
     open: false,
@@ -149,6 +162,7 @@ function create_empty_preset_input_state(): GlossaryPresetInputState {
   };
 }
 
+// normalize_dialog_entry 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_dialog_entry(entry: GlossaryEntry): GlossaryEntry {
   return {
     entry_id: entry.entry_id,
@@ -159,14 +173,17 @@ function normalize_dialog_entry(entry: GlossaryEntry): GlossaryEntry {
   };
 }
 
+// build_user_preset_virtual_id 构造跨层载荷，保证字段形状在一个入口维护。
 function build_user_preset_virtual_id(name: string): string {
   return `user:${name}.json`;
 }
 
+// normalize_preset_name 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_preset_name(name: string): string {
   return name.trim();
 }
 
+// has_casefold_duplicate_preset 集中表达布尔判定口径，避免调用方按局部字段猜测。
 function has_casefold_duplicate_preset(
   preset_items: GlossaryPresetItem[],
   target_virtual_id: string,
@@ -187,6 +204,7 @@ function has_casefold_duplicate_preset(
   });
 }
 
+// decorate_preset_items 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function decorate_preset_items(
   builtin_presets: GlossaryPresetItem[],
   user_presets: GlossaryPresetItem[],
@@ -200,6 +218,7 @@ function decorate_preset_items(
   });
 }
 
+// build_statistics_badge_tooltip 构造跨层载荷，保证字段形状在一个入口维护。
 function build_statistics_badge_tooltip(
   t: (key: LocaleKey) => string,
   entry: GlossaryEntry,
@@ -222,6 +241,7 @@ function build_statistics_badge_tooltip(
   return tooltip_lines.join("\n");
 }
 
+// buildGlossaryStatisticsState 构造跨层载荷，保证字段形状在一个入口维护。
 export function buildGlossaryStatisticsState(args: {
   snapshot: QualityStatisticsDependencySnapshot;
   completed_entry_ids: GlossaryEntryId[];
@@ -244,6 +264,7 @@ export function buildGlossaryStatisticsState(args: {
   };
 }
 
+// build_glossary_statistics_state_from_cache 构造跨层载荷，保证字段形状在一个入口维护。
 function build_glossary_statistics_state_from_cache(
   statistics_cache: QualityStatisticsCacheSnapshot,
 ): GlossaryStatisticsState {
@@ -318,6 +339,7 @@ type UseGlossaryPageStateResult = {
   set_preset_menu_open: (next_open: boolean) => void;
 };
 
+// useGlossaryPageState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -326,8 +348,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     project_store,
     settings_snapshot,
     apply_settings_snapshot,
-    refresh_project_runtime,
-    apply_project_mutation_result,
+    commit_project_mutation,
     task_snapshot,
   } = useDesktopRuntime();
   const { navigate_to_route, push_proofreading_lookup_intent } = useAppNavigation();
@@ -604,27 +625,33 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       );
 
       try {
-        const mutation_result = normalize_project_mutation_result(
-          await api_fetch<ProjectMutationResultPayload>("/api/quality/rules/save-entries", {
-            rule_type: "glossary",
-            expected_section_revisions: {
-              quality: current_state.revisions.sections.quality ?? 0,
-            },
-            entries: normalized_entries,
-          }),
-        );
-        set_pending_result_view_source_update(
-          create_project_section_result_view_source_update_request({
-            mutation_result,
-            policy: result_view_update,
-            section: "quality",
-          }),
-        );
-        await apply_project_mutation_result(mutation_result);
+        await commit_project_mutation({
+          operation: GLOSSARY_ENTRIES_SAVE_MUTATION,
+          run: async () => {
+            return await api_fetch<ProjectMutationResultPayload>(
+              "/api/quality/rules/save-entries",
+              {
+                rule_type: "glossary",
+                expected_section_revisions: {
+                  quality: current_state.revisions.sections.quality ?? 0,
+                },
+                entries: normalized_entries,
+              },
+            );
+          },
+          prepare: ({ mutation_result }) => {
+            set_pending_result_view_source_update(
+              create_project_section_result_view_source_update_request({
+                mutation_result,
+                policy: result_view_update,
+                section: "quality",
+              }),
+            );
+          },
+        });
         return true;
       } catch (error) {
         set_pending_result_view_source_update(null);
-        void refresh_project_runtime().catch(() => {});
         push_toast(
           "error",
           resolve_visible_error_message(error, t, t("glossary_page.feedback.save_failed")),
@@ -632,14 +659,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return false;
       }
     },
-    [
-      apply_project_mutation_result,
-      project_store,
-      push_toast,
-      refresh_project_runtime,
-      readonly,
-      t,
-    ],
+    [commit_project_mutation, project_store, push_toast, readonly, t],
   );
 
   const apply_import_entries = useCallback(
@@ -841,34 +861,28 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
       const current_state = project_store.getState();
       try {
-        const mutation_result = normalize_project_mutation_result(
-          await api_fetch<ProjectMutationResultPayload>("/api/quality/rules/update-meta", {
-            rule_type: "glossary",
-            expected_section_revisions: {
-              quality: current_state.revisions.sections.quality ?? 0,
-            },
-            meta: {
-              enabled: next_enabled,
-            },
-          }),
-        );
-        await apply_project_mutation_result(mutation_result);
+        await commit_project_mutation({
+          operation: GLOSSARY_META_UPDATE_MUTATION,
+          run: async () => {
+            return await api_fetch<ProjectMutationResultPayload>("/api/quality/rules/update-meta", {
+              rule_type: "glossary",
+              expected_section_revisions: {
+                quality: current_state.revisions.sections.quality ?? 0,
+              },
+              meta: {
+                enabled: next_enabled,
+              },
+            });
+          },
+        });
       } catch (error) {
-        void refresh_project_runtime().catch(() => {});
         push_toast(
           "error",
           resolve_visible_error_message(error, t, t("glossary_page.feedback.save_failed")),
         );
       }
     },
-    [
-      apply_project_mutation_result,
-      project_store,
-      push_toast,
-      readonly,
-      refresh_project_runtime,
-      t,
-    ],
+    [commit_project_mutation, project_store, push_toast, readonly, t],
   );
 
   const open_create_dialog = useCallback((): void => {

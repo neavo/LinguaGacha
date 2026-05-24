@@ -18,6 +18,7 @@ const { api_fetch_mock, push_toast_mock, wait_for_barrier_mock, create_barrier_c
     };
   });
 
+// run modal progress toast mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const run_modal_progress_toast_mock = vi.fn(
   async <T,>(args: {
     message: string;
@@ -39,6 +40,7 @@ const run_modal_progress_toast_mock = vi.fn(
   },
 );
 
+// create_test_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
     item_id: 1,
@@ -131,10 +133,16 @@ type TextPreserveRuleEntry = (typeof runtime_state.quality.text_preserve.entries
   entry_id?: string;
 };
 
+// apply_quality_mutation_result 收口测试中的共享步骤，保证断言只关注当前行为。
 function apply_quality_mutation_result(result: {
   changes?: Array<{
     sectionRevisions?: {
       quality?: number;
+    };
+    sections?: {
+      quality?: {
+        data?: typeof runtime_state.quality;
+      };
     };
     operations?: Array<{
       sections?: {
@@ -146,6 +154,27 @@ function apply_quality_mutation_result(result: {
   }>;
 }): void {
   for (const change of result.changes ?? []) {
+    const canonical_quality = change.sections?.quality?.data;
+    if (canonical_quality !== undefined) {
+      runtime_state = {
+        ...runtime_state,
+        quality: canonical_quality,
+        revisions: {
+          ...runtime_state.revisions,
+          sections: {
+            ...runtime_state.revisions.sections,
+            ...(change.sectionRevisions?.quality === undefined
+              ? {}
+              : { quality: change.sectionRevisions.quality }),
+          },
+        },
+      };
+      for (const listener of project_store_listeners) {
+        listener();
+      }
+      continue;
+    }
+
     for (const operation of change.operations ?? []) {
       const next_quality = operation.sections?.quality?.data;
       if (next_quality !== undefined) {
@@ -170,7 +199,7 @@ function apply_quality_mutation_result(result: {
   }
 }
 
-// 测试夹具只模拟后端原始 canonical mutation payload，规范化入口仍由页面 hook 真实调用。
+// 测试夹具只模拟后端原始 canonical mutation payload，回灌入口由运行态 commit mock 触发。
 function create_quality_mutation_result(
   args: {
     quality?: typeof runtime_state.quality;
@@ -229,6 +258,7 @@ const project_store = {
 let current_statistics_cache: QualityStatisticsCacheSnapshot;
 let task_snapshot: { busy: boolean; status: string };
 
+// create_statistics_cache 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_statistics_cache(
   args: Partial<QualityStatisticsCacheSnapshot>,
 ): QualityStatisticsCacheSnapshot {
@@ -279,6 +309,7 @@ function create_statistics_cache(
 vi.mock("@/app/desktop/desktop-api", () => {
   return {
     api_fetch: api_fetch_mock,
+    report_renderer_error: vi.fn(async () => undefined),
   };
 });
 
@@ -312,8 +343,18 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
       apply_settings_snapshot: vi.fn(),
       refresh_project_runtime: vi.fn(async () => {}),
       task_snapshot,
-      apply_project_mutation_result: vi.fn(async (result) => {
-        apply_quality_mutation_result(result);
+      commit_project_mutation: vi.fn(async (request) => {
+        const payload = await request.run();
+        const mutation_result = {
+          accepted: true,
+          changes: Array.isArray(payload.changes) ? payload.changes : [],
+        };
+        await request.prepare?.({ payload, mutation_result });
+        apply_quality_mutation_result(mutation_result);
+        return {
+          payload,
+          mutation_result,
+        };
       }),
     }),
   };
@@ -342,6 +383,7 @@ vi.mock("@/app/locale/locale-provider", () => {
   };
 });
 
+// Probe 收口测试中的共享步骤，保证断言只关注当前行为。
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useTextPreservePageState>) => void;
 }): JSX.Element | null {
@@ -417,6 +459,7 @@ describe("useTextPreservePageState", () => {
     vi.useRealTimers();
   });
 
+  // mount_probe 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function mount_probe(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -425,6 +468,7 @@ describe("useTextPreservePageState", () => {
     await rerender_probe();
   }
 
+  // rerender_probe 收口测试中的共享步骤，保证断言只关注当前行为。
   async function rerender_probe(): Promise<void> {
     await act(async () => {
       root?.render(
@@ -437,6 +481,7 @@ describe("useTextPreservePageState", () => {
     });
   }
 
+  // flush_filter_debounce 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function flush_filter_debounce(): Promise<void> {
     await act(async () => {
       vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
@@ -665,7 +710,7 @@ describe("useTextPreservePageState", () => {
     expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo", "baz"]);
   });
 
-  it("新增文本保护规则保存时即使 SSE 先于 HTTP 返回也立即显示新条目", async () => {
+  it("新增文本保护规则保存时若 SSE 先于 HTTP 返回，统一 commit 重放后仍保留新条目", async () => {
     await mount_probe();
     const mutation_result = create_quality_mutation_result({
       quality: create_text_preserve_quality(
@@ -710,7 +755,7 @@ describe("useTextPreservePageState", () => {
       apply_quality_mutation_result(mutation_result);
     });
 
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo"]);
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo", "baz"]);
 
     await act(async () => {
       resolve_save(mutation_result);

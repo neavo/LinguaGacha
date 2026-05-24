@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@/app/index";
 import { create_desktop_bridge_api_mock } from "../../test/desktop-bridge-mock";
 
+// toast mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const toast_mock = vi.hoisted(() => {
   // toast_mock 让 App 根测试可以观察 toast 类型和文案，而不渲染真实 sonner UI
   return {
@@ -13,6 +14,7 @@ const toast_mock = vi.hoisted(() => {
   };
 });
 
+// runtime provider mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const runtime_provider_mock = vi.hoisted(() => {
   return {
     render_desktop_runtime_provider: vi.fn(),
@@ -84,6 +86,19 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
       project_snapshot: { loaded: false, path: "" },
       project_warmup_status: "idle",
       settings_snapshot: { app_language: "ZH" },
+      task_snapshot: {
+        runtime_revision: 0,
+        task_type: "translation",
+        status: "idle",
+        busy: false,
+        request_in_flight_count: 0,
+        progress: {
+          line: 0,
+          total_line: 0,
+          processed_line: 0,
+          error_line: 0,
+        },
+      },
       set_pending_target_route: vi.fn(),
       update_app_language: vi.fn(),
     }),
@@ -96,6 +111,7 @@ vi.mock("@/app/desktop/desktop-api", () => {
     check_github_release_update: vi.fn(async () => null),
     get_core_metadata: vi.fn(async () => ({ version: "9.8.7" })),
     open_external_url: vi.fn(async () => undefined),
+    report_renderer_error: vi.fn(async () => undefined),
   };
 });
 
@@ -164,6 +180,7 @@ vi.mock("@/pages/log-window-page/page", () => {
   };
 });
 
+// install_local_storage_fallback 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function install_local_storage_fallback(): void {
   if (typeof window.localStorage.setItem === "function") {
     return;
@@ -215,6 +232,7 @@ describe("App 字体模式同步", () => {
     vi.clearAllMocks();
   });
 
+  // mount_app_at 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function mount_app_at(url: string): Promise<void> {
     window.history.replaceState(null, "", url);
     window.localStorage.setItem("lg-theme-mode", "light");

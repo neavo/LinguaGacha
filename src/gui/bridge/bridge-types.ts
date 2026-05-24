@@ -1,3 +1,5 @@
+import type { RendererDiagnosticsPayload } from "../../shared/error";
+
 // 桌面主题只暴露网页壳层和原生标题栏都能稳定消费的明暗两态
 export type ThemeMode = "light" | "dark";
 
@@ -42,3 +44,6 @@ export type DesktopPathPickResult = {
   canceled: boolean; // 用户取消或没有可用路径时为 true
   paths: string[]; // 经 main 原生对话框确认后返回给 renderer 的路径快照
 };
+
+// renderer 黑匣子面包屑复用 shared 诊断载荷，避免 preload / renderer / main 各维护一套裁剪规则
+export type DesktopRendererDiagnosticsPayload = RendererDiagnosticsPayload;

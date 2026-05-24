@@ -4,7 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
-import type { ProjectMutationResultPayload } from "@/app/desktop/desktop-runtime-context";
+import type { ProjectMutationResultPayload } from "@/app/desktop/desktop-project-mutation";
 import type { TaskSnapshot } from "@/app/desktop/task-runtime-store";
 import type {
   ProjectDataRevisionCheckpoint,
@@ -25,6 +25,7 @@ type HookSnapshot = {
   dialog_state: WorkbenchDialogState;
 };
 
+// api fetch mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const api_fetch_mock = vi.mocked(api_fetch);
 
 vi.mock("@/app/desktop/desktop-api", () => {
@@ -149,6 +150,7 @@ describe("useWorkbenchImportFilesFlow", () => {
     });
   });
 
+  // mount_hook 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function mount_hook(
     options: {
       state?: ProjectStoreState;
@@ -179,6 +181,7 @@ describe("useWorkbenchImportFilesFlow", () => {
   }
 });
 
+// HookProbe 收口测试中的共享步骤，保证断言只关注当前行为。
 function HookProbe(props: {
   state: ProjectStoreState;
   run_project_file_mutation?: (
@@ -227,6 +230,7 @@ function HookProbe(props: {
   return null;
 }
 
+// latest_snapshot 收口测试中的共享步骤，保证断言只关注当前行为。
 function latest_snapshot(snapshots: HookSnapshot[]): HookSnapshot {
   const snapshot = snapshots.at(-1);
   if (snapshot === undefined) {
@@ -235,6 +239,7 @@ function latest_snapshot(snapshots: HookSnapshot[]): HookSnapshot {
   return snapshot;
 }
 
+// create_project_store_reader 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_project_store_reader(state: ProjectStoreState): ProjectStoreReader {
   return {
     getState: () => state,
@@ -248,6 +253,7 @@ function create_project_store_reader(state: ProjectStoreState): ProjectStoreRead
   };
 }
 
+// create_project_store_state 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_project_store_state(): ProjectStoreState {
   return {
     project: {
@@ -287,6 +293,7 @@ function create_project_store_state(): ProjectStoreState {
   };
 }
 
+// create_task_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_task_snapshot(): TaskSnapshot {
   return {
     runtime_revision: 0,

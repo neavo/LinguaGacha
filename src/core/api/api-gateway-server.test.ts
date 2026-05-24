@@ -27,6 +27,7 @@ describe("ApiGatewayServer", () => {
     }
   });
 
+  // create_project_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_project_item(
     overrides: Partial<Record<string, string | number | boolean | null>>,
   ): Record<string, string | number | boolean | null> {
@@ -338,6 +339,56 @@ describe("ApiGatewayServer", () => {
     });
   });
 
+  it("接收 renderer 异常诊断并写入统一日志", async () => {
+    const app_root = create_app_root();
+    const database = new ProjectDatabase();
+    const log_manager = create_log_manager(app_root);
+    const gateway = await create_gateway_with_database(app_root, database, log_manager);
+    cleanup_callbacks.push(() => gateway.stop());
+    cleanup_callbacks.push(() => database.close());
+
+    const started = await gateway.start();
+    const response = await post_json(started.baseUrl, "/api/diagnostics/renderer-error", {
+      source: "scheduler",
+      diagnostic: {
+        name: "InternalInvariantError",
+        message: "缺少完整 item DTO",
+        stack: "Error: 缺少完整 item DTO\n    at applyProjectChangeBatch",
+      },
+      route: "workbench",
+      triggeringEvent: {
+        topic: "project.data_changed",
+        updatedSections: ["items"],
+        projectRevision: 12,
+      },
+    });
+
+    const body = (await response.json()) as { ok?: boolean };
+    const [event] = log_manager.snapshot_events();
+    const detail = event === undefined ? null : log_manager.read_detail(event.id);
+
+    expect(response.status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(event).toMatchObject({
+      level: "error",
+      source: "renderer",
+    });
+    expect(detail).toMatchObject({
+      error_message: "缺少完整 item DTO",
+      stack: "Error: 缺少完整 item DTO\n    at applyProjectChangeBatch",
+      context: {
+        renderer_source: "scheduler",
+        error_name: "InternalInvariantError",
+        route: "workbench",
+        triggeringEvent: {
+          topic: "project.data_changed",
+          updatedSections: ["items"],
+          projectRevision: 12,
+        },
+      },
+    });
+  });
+
   it("由 API Gateway 直接提供项目数据读取接口", async () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
@@ -633,6 +684,7 @@ describe("ApiGatewayServer", () => {
     });
   }
 
+  // noop_output_folder 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function noop_output_folder(_output_path: string): Promise<void> {}
 
   /**

@@ -382,7 +382,7 @@ export class FileExportService {
       this.export_log_text(config, "app.diagnostic.file_export.write_file_failed"),
       {
         source: FILE_EXPORT_LOG_SOURCE,
-        ...this.error_log_payload(error),
+        ...AppErrors.error_diagnostic_to_log_fields(AppErrors.to_error_diagnostic(error)),
       },
     );
   }
@@ -395,7 +395,7 @@ export class FileExportService {
       this.export_log_text(config, "app.diagnostic.file_export.open_output_folder_failed"),
       {
         source: FILE_EXPORT_LOG_SOURCE,
-        ...this.error_log_payload(error),
+        ...AppErrors.error_diagnostic_to_log_fields(AppErrors.to_error_diagnostic(error)),
       },
     );
   }
@@ -408,18 +408,8 @@ export class FileExportService {
       this.export_log_text(config, "app.diagnostic.file_export.translation_failed"),
       {
         source: FILE_EXPORT_LOG_SOURCE,
-        ...this.error_log_payload(error),
+        ...AppErrors.error_diagnostic_to_log_fields(AppErrors.to_error_diagnostic(error)),
       },
     );
-  }
-
-  /**
-   * 日志载荷显式拆出 message 和 stack，避免 Error 对象跨边界被 JSON 化丢字段
-   */
-  private error_log_payload(error: unknown): { error_message?: string; stack?: string } {
-    if (error instanceof Error) {
-      return { error_message: error.message, stack: error.stack };
-    }
-    return { error_message: String(error) };
   }
 }

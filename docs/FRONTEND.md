@@ -19,7 +19,10 @@ flowchart LR
 - renderer 只能通过 `window.desktopApp` 接触 Electron 宿主能力，不能直接导入 Electron、Node、`src/native`、preload 实现或 Core 内部实现。
 - Core API 访问只允许收口到 `src/renderer/app/desktop/desktop-api.ts`；页面不直接 `fetch('/api/*')`，也不直接创建 Core EventSource。
 - `desktop-api.ts` 负责 Core base URL 归一、`/api/health` 探测、POST 响应壳解析、SSE 打开、本地网络错误和 GitHub release 检查。
+- renderer JS 异常诊断只能经 `desktop-api.ts` 提交到 `/api/diagnostics/renderer-error`；renderer diagnostics、runtime diagnostics、worker diagnostics 和 renderer error context 只能提供实际抛错摘要、route / project / task / event 轻量上下文和白名单字段，不上报完整 items/files payload、页面自定义对象或原始路径 / URL。诊断协议与日志写入规则以 [`docs/BACKEND.md`](BACKEND.md) 为权威。
+- Chromium renderer 进程级崩溃由 main 侧 renderer process diagnostics registry 接管：renderer 通过 preload IPC 持续上报 route / project / task 摘要和近期 task/project 事件头，`render-process-gone` 日志写入窗口类型、`webContents.id`、OS 进程 id、URL 摘要、进程指标、crash dumps 目录摘要和最近面包屑。
 - 日志窗口只把 `log.appended` 的轻量事件放入列表状态；完整正文由 `desktop-api.ts` 通过 `/api/logs/detail` 按当前选中行懒加载，不能进入列表筛选、排序或批量渲染路径。
+- 日志详情显示时在 renderer 拼接 `message / error_message / stack`；后端事件、列表预览和文件日志继续保留结构化字段，不把调用栈写回 `message`。
 - `DesktopApiError` 是 renderer 消费 Core / 本地网络失败的唯一错误类型；页面根据 code/status/action 决定刷新、重试、禁用或跳转，不解析后端原始异常文本。
 - 普通页面展示用户可见错误时走 `src/renderer/app/ui-runtime/error-message.ts`；toast、dialog 和空状态不得直接显示 `Error.message`。
 - 可见文案从 `src/shared/i18n` 解析；renderer 的 React Provider 和富文本渲染适配在 `src/renderer/app/locale`。
@@ -32,22 +35,25 @@ flowchart LR
 - `TaskRuntimeStore` 只缓存 `TaskSnapshot`，并用 `runtime_revision` 丢弃旧 snapshot；task 不进入 `ProjectStore` 或项目派生缓存。
 - context 对页面只暴露 `ProjectStoreReader` 的 `getState`、`getRevisionCheckpoint`、`subscribe`；共享项目事实写入口留在 Provider 内部。
 - settings 只能由后端设置载荷同步，task 只能由后端 task 载荷或任务命令 ack 同步，project 只能由项目读取、mutation result 或 `project.data_changed` 同步。
-- 页面 mutation 只能提交用户意图、设置镜像和 `ProjectStore.revisions.sections` 中的依赖 revision；不能把页面派生 items、task extras、prefilter config 或 analysis extras 当后端事实提交。
+- 页面 mutation 只能提交用户意图、设置镜像和 `ProjectStore.revisions.sections` 中的依赖 revision，并必须通过 `commit_project_mutation` 携带页面领域拥有的显式 `operation` 进入统一提交管线；需要依赖 mutation result 的页面派生门闩必须在 `prepare` 阶段登记。页面不能自建刷新、诊断或 mutation result 应用链路，也不能把派生 items、task extras、prefilter config 或 analysis extras 当后端事实提交。
 
 ## 3. 项目初始化、事件和刷新
 
 - 已加载工程刷新时，前端先读 `/api/project/manifest` 校验后端项目身份和 revision，再读 `/api/project/read-sections` 获取完整 section 快照；两次响应的 `projectPath` 必须与当前运行态身份一致。
 - `DesktopRuntimeProvider` 维护独立于 `ProjectStore` 的项目身份 `path + epoch + phase`；项目切换、同路径重新 warmup 或迟到补读都必须过这道身份闸门。
 - warmup 期间，同项目身份的 mutation result 和 `project.data_changed` 先进入队列；完整 read-sections 快照原子替换 `ProjectStore` 后再按原顺序重放。
-- 同步 mutation 成功后，页面必须先规范化并应用 `ProjectMutationResult.changes`；`eventId` 去重窗口用于跳过同源 SSE 重放。
-- `canonical-delta` 可直接合并；`field-patch` 只合并后端确认的 `dst / status / retry_count`；`section-invalidated` 或缺少 section revision 的变更必须补读 canonical section。
+- 同步 mutation 成功后，`commit_project_mutation` 统一规范化 `ProjectMutationResult.changes`，先执行页面声明的提交前准备，再应用到 `ProjectStore`；`eventId` 去重窗口用于跳过同源 SSE 重放。
+- `canonical-delta` 可直接合并；`field-patch` 只合并入口已窄化的 `dst / status / retry_count`，坏 patch 必须退化为 `section-invalidated` 并补读 canonical section；`section-invalidated` 或缺少 section revision 的变更必须补读 canonical section。
 - section 补读请求必须绑定发起时的 project path 和 epoch，返回后还要校验当前身份、响应 project path 与后端 section revision；合格补读结果以 exact revision 合并。
 - `ProjectStore` 默认用 merge revision 合并事件，补读和完整快照用 exact revision；两者都只写入后端显式返回的 section revision，不按本地 updated section 自增。
+- `DesktopRuntimeProvider` 只发布通用 `ProjectRuntimeChangeSignal`，其内容来自 `ProjectStoreChangeApplyResult`；工作台、校对页等页面缓存必须在页面 runtime 内从该标准结果派生刷新信号，Core SSE 消费层不得持有页面刷新策略。
 - `DesktopRuntimeRefreshScheduler` 将运行中 task snapshot 与可批量项目变更合并到 500ms 窗口；项目切换、设置刷新、mutation result、失效补读和任务终态必须先冲刷窗口，不能被普通合帧延迟。
+- flush、SSE 和 mutation 异常必须写 renderer 诊断，并经 `useDesktopRuntimeRecovery` 发起可等待、可去重的后端权威快照恢复；当前项目有效事件不能静默丢弃。
 
 ## 4. ProjectStore 消费规则
 
 - `ProjectStore.items` 持有只读 `ProjectItemIndex` 和完整公开 item DTO 镜像；页面和 Project UI Worker 只能通过索引 API 派生轻量 view model，不能保存为历史事实副本。
+- `ProjectStore.applyProjectChangeBatch` 是运行态项目变更的批量事务入口；items delta 先写入本地 draft 索引，整批准备成功后一次提交给 store，失败批次不接触当前可见状态且不通知订阅者。
 - `ProjectStore.analysis` 只保留轻量进度、候选数量和状态摘要；完整候选聚合由页面在需要导入术语时按需读取。
 - renderer 与 Core 共享的数据实体和值对象从 `src/base` 导入；跨运行时纯规则、协议词表和工具从 `src/shared` 导入；最终项目 mutation 派生算法只属于 Core，renderer 不导入或复刻。
 - 质量规则页面使用 `QualityRule` / `Prompt` 派生出的公开 key 与归一化切片；请求预设时传公开 rule type，不传物理目录名。
@@ -60,7 +66,7 @@ flowchart LR
 - 页面级缓存的新旧判定必须覆盖声明依赖的 `ProjectStore.revisions.sections`；不得用时间戳、task 状态或裸 stale boolean 代替 section revision。
 - 工作台和校对页可以维护页面局部缓存，但 ready 判定必须基于项目 path、required sections 与 consumed revisions。
 - `src/renderer/project/worker` 是 Project UI Worker 的唯一归宿：单 worker 承接校对视图、质量统计和分析术语导入预演等 UI 派生计算；它只消费只读快照、section revision 和显式查询，不写项目事实、不发 mutation、不替代 Core 或 `ProjectStore`。
-- Project UI Worker client 统一 request id、优先级、stale 错误、稳定错误码和带 projectId 的缓存释放；没有性能证据前不拆 renderer worker pool。
+- Project UI Worker client 统一 request id、优先级、stale 错误、稳定错误码、结构化 `error_diagnostic` 和带 projectId 的缓存释放；worker 结构化诊断只在 worker 诊断 helper 解包并交给 renderer error reporter，页面不直接解析自定义 Error 字段。没有性能证据前不拆 renderer worker pool。
 - 结果型页面的主列表使用结果视图快照：搜索、筛选、替换、排序或刷新等显式 action 生成新的稳定 id 序列；项目事实刷新只更新快照内实体的最新内容、状态、警告和统计，不能重新筛选、插入或重排当前 view；后端 tombstone 删除、项目切换、全量数据源重建或运行态不兼容时才剪除或重建快照。
 - 工作台统计区和任务菜单百分比消费 `ProjectStore` 派生的 `WorkbenchStats`；任务详情在运行或停止中消费 `TaskSnapshot.progress`，空闲态才回落到 `WorkbenchStats`。
 

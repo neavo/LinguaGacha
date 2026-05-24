@@ -6,10 +6,12 @@ import {
   append_log_events,
   compress_log_message_text,
   filter_log_events,
+  format_log_detail_text,
   format_log_timestamp,
   sort_log_events_latest_first,
 } from "@/pages/log-window-page/logic";
 
+// build_event 收口测试中的共享步骤，保证断言只关注当前行为。
 function build_event(overrides: Partial<LogEvent>): LogEvent {
   return {
     id: "log-1",
@@ -27,6 +29,16 @@ describe("log-window logic", () => {
   it("压缩多行日志消息以用于表格预览", () => {
     expect(compress_log_message_text("第一行\n第二行\r\n第三行")).toBe("第一行 ↵ 第二行 ↵ 第三行");
     expect(compress_log_message_text("\n")).toBe("(blank)");
+  });
+
+  it("详情文本会在前端把结构化错误和调用栈拼到正文后面", () => {
+    expect(
+      format_log_detail_text({
+        message: "模型请求失败",
+        error_message: "供应商爆炸",
+        stack: "Error: 供应商爆炸\n    at request",
+      }),
+    ).toBe("模型请求失败\n供应商爆炸\nError: 供应商爆炸\n    at request");
   });
 
   it("追加日志时会 trim 消息并折叠连续空日志", () => {

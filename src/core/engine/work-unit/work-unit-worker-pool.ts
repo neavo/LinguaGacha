@@ -9,7 +9,14 @@ import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
 import { WorkUnitRunner } from "./work-unit-runner";
 import type { WorkUnitExecutor } from "./work-unit-executor";
 import { WorkUnitExecutorTransportError } from "./work-unit-transport-error";
-import { RuntimeCancelledError, RuntimeDisposedError } from "../../../shared/error";
+import {
+  normalize_error_diagnostic,
+  RuntimeCancelledError,
+  RuntimeDisposedError,
+  to_error_diagnostic,
+  type ErrorDiagnosticPayload,
+} from "../../../shared/error";
+import type { WorkUnitLogEntry } from "../protocol/work-unit";
 import type { SystemProxySnapshot } from "../../bootstrap/system-proxy-dispatcher";
 
 interface WorkUnitWorkerPoolOptions {
@@ -84,11 +91,11 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
     signal: AbortSignal,
   ): Promise<
     Record<string, ApiJsonValue> & {
-      logs?: Array<{ level: "info" | "warning" | "error"; message: string }>;
+      logs?: WorkUnitLogEntry[];
     }
   > {
     return (await this.enqueue(null, body, signal)) as Record<string, ApiJsonValue> & {
-      logs?: Array<{ level: "info" | "warning" | "error"; message: string }>;
+      logs?: WorkUnitLogEntry[];
     };
   }
 
@@ -204,7 +211,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
       (error: unknown) =>
         this.finish_in_process_task(task.id, {
           ok: false,
-          error: error instanceof Error ? error.message : String(error),
+          error_diagnostic: to_error_diagnostic(error, { execution: "in_process" }),
         }),
     );
   }
@@ -246,7 +253,12 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
     };
     slot.worker.on(
       "message",
-      (message: { id: string; ok: boolean; data?: unknown; error?: string }) => {
+      (message: {
+        id: string;
+        ok: boolean;
+        data?: unknown;
+        error_diagnostic?: ErrorDiagnosticPayload;
+      }) => {
         this.finish_slot_message(slot, message);
       },
     );
@@ -278,7 +290,12 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
    */
   private finish_slot_message(
     slot: WorkerSlot,
-    message: { id: string; ok: boolean; data?: unknown; error?: string },
+    message: {
+      id: string;
+      ok: boolean;
+      data?: unknown;
+      error_diagnostic?: ErrorDiagnosticPayload;
+    },
   ): void {
     const task = slot.in_flight.get(message.id);
     if (task === undefined) {
@@ -294,7 +311,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
    */
   private finish_in_process_task(
     id: string,
-    message: { ok: boolean; data?: unknown; error?: string },
+    message: { ok: boolean; data?: unknown; error_diagnostic?: ErrorDiagnosticPayload },
   ): void {
     const task = this.in_process_in_flight.get(id);
     if (task === undefined) {
@@ -316,7 +333,12 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
     this.in_flight_count = Math.max(0, this.in_flight_count - failed_tasks.length);
     for (const task of failed_tasks) {
       this.clear_task_listener(task);
-      task.reject(new WorkUnitExecutorTransportError("task worker 线程失败。", error));
+      task.reject(
+        new WorkUnitExecutorTransportError(
+          to_error_diagnostic(error, { worker_failure: "slot_error" }),
+          error,
+        ),
+      );
     }
     const index = this.slots.indexOf(slot);
     if (index >= 0 && !this.disposed) {
@@ -350,13 +372,23 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
    */
   private settle_task(
     task: PendingTask,
-    message: { id: string; ok: boolean; data?: unknown; error?: string },
+    message: {
+      id: string;
+      ok: boolean;
+      data?: unknown;
+      error_diagnostic?: ErrorDiagnosticPayload;
+    },
   ): void {
     if (message.ok) {
       task.resolve(message.data);
       return;
     }
-    task.reject(new WorkUnitExecutorTransportError(message.error ?? "work unit 执行失败。", null));
+    task.reject(
+      new WorkUnitExecutorTransportError(
+        normalize_error_diagnostic(message.error_diagnostic, "work unit 执行失败。"),
+        null,
+      ),
+    );
   }
 
   /**

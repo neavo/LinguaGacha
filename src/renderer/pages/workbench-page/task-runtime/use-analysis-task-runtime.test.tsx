@@ -19,6 +19,7 @@ const { api_fetch_mock, prepare_analysis_glossary_import_mock, push_toast_mock }
   },
 );
 
+// run modal progress toast mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const run_modal_progress_toast_mock = vi.fn(
   async <T,>(args: { message: string; task: () => Promise<T> }): Promise<T> => {
     return await args.task();
@@ -39,11 +40,12 @@ type RuntimeFixture = {
   };
   sync_task_snapshot: ReturnType<typeof vi.fn>;
   task_snapshot: Record<string, unknown>;
-  apply_project_mutation_result: ReturnType<typeof vi.fn>;
+  commit_project_mutation: ReturnType<typeof vi.fn>;
   refresh_project_runtime: ReturnType<typeof vi.fn>;
   refresh_task: ReturnType<typeof vi.fn>;
 };
 
+// runtime fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(
     create_task_snapshot({
@@ -56,6 +58,7 @@ const runtime_fixture: { current: RuntimeFixture } = {
 vi.mock("@/app/desktop/desktop-api", () => {
   return {
     api_fetch: api_fetch_mock,
+    report_renderer_error: vi.fn(async () => undefined),
   };
 });
 
@@ -88,6 +91,7 @@ vi.mock("@/app/locale/locale-provider", () => {
   };
 });
 
+// create_task_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_task_snapshot(
   overrides: Partial<Record<string, unknown>> = {},
 ): Record<string, unknown> {
@@ -111,6 +115,7 @@ function create_task_snapshot(
   };
 }
 
+// create_runtime_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_runtime_fixture(task_snapshot: Record<string, unknown>): RuntimeFixture {
   return {
     project_store: {
@@ -218,18 +223,29 @@ function create_runtime_fixture(task_snapshot: Record<string, unknown>): Runtime
     },
     sync_task_snapshot: vi.fn(),
     task_snapshot,
-    apply_project_mutation_result: vi.fn(async () => {}),
+    commit_project_mutation: vi.fn(async ({ run }: { run: () => Promise<unknown> }) => {
+      const payload = await run();
+      return {
+        payload,
+        mutation_result: {
+          accepted: true,
+          changes: [],
+        },
+      };
+    }),
     refresh_project_runtime: vi.fn(async () => {}),
     refresh_task: vi.fn(async () => runtime_fixture.current.task_snapshot),
   };
 }
 
+// flush_microtasks 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function flush_microtasks(): Promise<void> {
   return act(async () => {
     await Promise.resolve();
   });
 }
 
+// create_prepared_import 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_prepared_import(
   overrides: Partial<Record<string, unknown>> = {},
 ): Record<string, unknown> {
@@ -252,6 +268,7 @@ function create_prepared_import(
   };
 }
 
+// Probe 收口测试中的共享步骤，保证断言只关注当前行为。
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useAnalysisTaskRuntime>) => void;
 }): JSX.Element | null {
@@ -293,6 +310,7 @@ describe("useAnalysisTaskRuntime", () => {
     run_modal_progress_toast_mock.mockClear();
   });
 
+  // render_probe 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function render_probe(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -416,7 +434,7 @@ describe("useAnalysisTaskRuntime", () => {
       duplicate_count: 1,
       submitting: false,
     });
-    expect(runtime_fixture.current.apply_project_mutation_result).not.toHaveBeenCalled();
+    expect(runtime_fixture.current.commit_project_mutation).not.toHaveBeenCalled();
     expect(api_fetch_mock).not.toHaveBeenCalledWith(
       "/api/project/analysis/import-glossary",
       expect.anything(),
@@ -533,14 +551,10 @@ describe("useAnalysisTaskRuntime", () => {
         }),
       }),
     );
-    expect(runtime_fixture.current.apply_project_mutation_result).toHaveBeenCalledWith(
+    expect(runtime_fixture.current.commit_project_mutation).toHaveBeenCalledWith(
       expect.objectContaining({
-        changes: [
-          expect.objectContaining({
-            source: "analysis_import_glossary",
-            updatedSections: ["analysis"],
-          }),
-        ],
+        operation: "workbench.analysis_import",
+        task_type: "analysis",
       }),
     );
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/analysis/import-glossary", {
@@ -939,22 +953,17 @@ describe("useAnalysisTaskRuntime", () => {
     });
     await flush_microtasks();
 
-    expect(runtime_fixture.current.apply_project_mutation_result).toHaveBeenCalledWith(
+    expect(runtime_fixture.current.commit_project_mutation).toHaveBeenCalledWith(
       expect.objectContaining({
-        changes: [
-          expect.objectContaining({
-            source: "analysis_reset_all",
-            updatedSections: ["analysis"],
-          }),
-        ],
+        operation: "workbench.analysis_reset",
+        task_type: "analysis",
       }),
     );
     expect(runtime_fixture.current.refresh_task).toHaveBeenCalledTimes(1);
     expect(runtime_fixture.current.refresh_task).toHaveBeenCalledWith("analysis");
-    expect(runtime_fixture.current.refresh_project_runtime).not.toHaveBeenCalled();
   });
 
-  it("analysis reset failed 失败时会刷新运行态", async () => {
+  it("analysis reset failed 失败时由统一 mutation 管线回传错误", async () => {
     api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/tasks/snapshot") {
         return {
@@ -983,8 +992,12 @@ describe("useAnalysisTaskRuntime", () => {
     });
     await flush_microtasks();
 
-    expect(runtime_fixture.current.apply_project_mutation_result).not.toHaveBeenCalled();
-    expect(runtime_fixture.current.refresh_project_runtime).toHaveBeenCalledTimes(1);
+    expect(runtime_fixture.current.commit_project_mutation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        operation: "workbench.analysis_reset",
+        task_type: "analysis",
+      }),
+    );
     expect(push_toast_mock).toHaveBeenCalledWith(
       "error",
       "workbench_page.analysis_task.feedback.reset_failed_failed",

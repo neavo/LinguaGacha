@@ -1,6 +1,10 @@
 import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
+import {
+  type ProjectMutationOperation,
+  type ProjectMutationResultPayload,
+} from "@/app/desktop/desktop-project-mutation";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
 import { INPUT_QUERY_DEBOUNCE_MS, useDebouncedCallback } from "@/hooks/use-debounce";
 import {
@@ -9,20 +13,18 @@ import {
   type ProjectDataSectionRevisions,
   type ProjectStoreState,
 } from "@/project/store/project-store";
-import {
-  normalize_project_mutation_result,
-  type ProjectMutationResultPayload,
-} from "@/app/desktop/desktop-runtime-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import { is_project_ui_worker_client_error } from "@/project/worker/project-ui-worker-errors";
+import { capture_project_ui_worker_error } from "@/project/worker/project-ui-worker-diagnostics";
 import {
   create_replace_all_plan,
   create_save_item_plan,
   type ProofreadingMutationPlan,
 } from "@/pages/proofreading-page/proofreading-mutation-planner";
+import { resolve_proofreading_project_change_signal } from "@/pages/proofreading-page/proofreading-project-change-signal";
 import { useProofreadingBatchActions } from "@/pages/proofreading-page/use-proofreading-batch-actions";
 import {
   compile_text_pattern,
@@ -42,6 +44,7 @@ import type {
   AppTableSelectionChange,
   AppTableSortState,
 } from "@/widgets/app-table/app-table-types";
+
 import { JsonTool } from "../../../shared/utils/json-tool";
 import type { ProjectChangeItemFieldPatch } from "@shared/project/event";
 import {
@@ -61,6 +64,9 @@ import {
   type ProofreadingSearchScope,
   type ProofreadingVisibleItem,
 } from "@/pages/proofreading-page/types";
+
+// 校对页所有保存动作共享同一业务 operation，具体 item 范围留在 mutation context。
+const PROOFREADING_MUTATION: ProjectMutationOperation = "proofreading.mutation";
 
 const PROOFREADING_INITIAL_WINDOW_ROWS = 128; // 首屏只取可见窗口的轻量余量，避免初次状态包过大
 const PROOFREADING_WINDOW_PREFETCH_ROWS = 256; // 滚动读取前后扩展窗口，降低快速滚动时的补取频率
@@ -142,6 +148,7 @@ type ProofreadingListQueryInput = {
   sort_state: AppTableSortState | null;
 };
 
+// create_empty_filter_options 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_filter_options(): ProofreadingFilterOptions {
   return {
     warning_types: [],
@@ -152,6 +159,7 @@ function create_empty_filter_options(): ProofreadingFilterOptions {
   };
 }
 
+// create_empty_dialog_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_dialog_state(): ProofreadingDialogState {
   return {
     open: false,
@@ -161,6 +169,7 @@ function create_empty_dialog_state(): ProofreadingDialogState {
   };
 }
 
+// serialize_glossary_terms 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function serialize_glossary_terms(glossary_terms: ProofreadingGlossaryTerm[]): string[][] {
   return glossary_terms.map((term) => [term[0], term[1]]);
 }
@@ -218,6 +227,7 @@ function replace_first_visible_match(
   };
 }
 
+// build_filter_signature 构造跨层载荷，保证字段形状在一个入口维护。
 function build_filter_signature(filters: ProofreadingFilterOptions): string {
   return JsonTool.stringifyStrict({
     warning_types: [...filters.warning_types].sort(),
@@ -232,12 +242,14 @@ function build_filter_signature(filters: ProofreadingFilterOptions): string {
   });
 }
 
+// build_sort_signature 构造跨层载荷，保证字段形状在一个入口维护。
 function build_sort_signature(sort_state: AppTableSortState | null): string {
   return sort_state === null ? "null" : `${sort_state.column_id}:${sort_state.direction}`;
 }
 
 type ProofreadingFilterValueKeyResolver<T> = (value: T) => string;
 
+// create_filter_value_key_set 构造跨层载荷，保证字段形状在一个入口维护。
 function create_filter_value_key_set<T>(
   values: T[],
   resolve_key: ProofreadingFilterValueKeyResolver<T>,
@@ -245,6 +257,7 @@ function create_filter_value_key_set<T>(
   return new Set(values.map((value) => resolve_key(value)));
 }
 
+// are_filter_value_key_sets_equal 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function are_filter_value_key_sets_equal(left_keys: Set<string>, right_keys: Set<string>): boolean {
   if (left_keys.size !== right_keys.size) {
     return false;
@@ -259,14 +272,17 @@ function are_filter_value_key_sets_equal(left_keys: Set<string>, right_keys: Set
   return true;
 }
 
+// build_glossary_term_key 构造跨层载荷，保证字段形状在一个入口维护。
 function build_glossary_term_key(term: ProofreadingGlossaryTerm): string {
   return `${term[0]}→${term[1]}`;
 }
 
+// clone_glossary_term 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function clone_glossary_term(term: ProofreadingGlossaryTerm): ProofreadingGlossaryTerm {
   return [term[0], term[1]] as const;
 }
 
+// reconcile_filter_dimension 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function reconcile_filter_dimension<T>(args: {
   previous_applied: T[];
   previous_default: T[];
@@ -304,6 +320,7 @@ function reconcile_filter_dimension<T>(args: {
   return reconciled_values;
 }
 
+// reconcile_proofreading_filter_options 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function reconcile_proofreading_filter_options(args: {
   previous_applied: ProofreadingFilterOptions;
   previous_default: ProofreadingFilterOptions;
@@ -346,6 +363,7 @@ function reconcile_proofreading_filter_options(args: {
   };
 }
 
+// normalize_runtime_item_from_state 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_runtime_item_from_state(record: unknown): ProofreadingRuntimeItemRecord | null {
   if (typeof record !== "object" || record === null) {
     return null;
@@ -369,6 +387,7 @@ function normalize_runtime_item_from_state(record: unknown): ProofreadingRuntime
   };
 }
 
+// collect_full_sync_input 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function collect_full_sync_input(args: {
   state: ProjectStoreState;
   sourceLanguage: string;
@@ -394,6 +413,7 @@ function collect_full_sync_input(args: {
   };
 }
 
+// collect_delta_sync_input 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function collect_delta_sync_input(args: {
   state: ProjectStoreState;
   item_ids: Array<number | string>;
@@ -432,6 +452,7 @@ function collect_delta_sync_input(args: {
   };
 }
 
+// build_list_query_signature 构造跨层载荷，保证字段形状在一个入口维护。
 function build_list_query_signature(args: {
   revisions: {
     items: number;
@@ -454,6 +475,7 @@ function build_list_query_signature(args: {
   });
 }
 
+// build_filter_panel_signature 构造跨层载荷，保证字段形状在一个入口维护。
 function build_filter_panel_signature(args: {
   revisions: {
     items: number;
@@ -468,6 +490,7 @@ function build_filter_panel_signature(args: {
   });
 }
 
+// resolve_requested_sync_mode 集中解析运行时决策，避免调用点复制条件判断。
 function resolve_requested_sync_mode(args: {
   cache_status: "idle" | "refreshing" | "ready" | "error";
   runtime_sync_state: ProofreadingRuntimeSyncState | null;
@@ -501,6 +524,7 @@ function resolve_requested_sync_mode(args: {
   return args.signal_mode;
 }
 
+// useProofreadingPageState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -511,9 +535,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     project_store,
     task_snapshot,
     sync_task_snapshot,
-    proofreading_change_signal,
-    refresh_project_runtime,
-    apply_project_mutation_result,
+    project_change_signal,
+    commit_project_mutation,
     refresh_task,
   } = useDesktopRuntime();
   const [list_view, set_list_view] = useState(() => create_empty_proofreading_list_view());
@@ -565,7 +588,11 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const pending_reset_filters_ref = useRef(false);
   const previous_project_loaded_ref = useRef(false);
   const previous_project_path_ref = useRef("");
-  const previous_proofreading_change_seq_ref = useRef(proofreading_change_signal.seq);
+  const previous_proofreading_change_seq_ref = useRef(0);
+  const proofreading_change_signal = useMemo(
+    () => resolve_proofreading_project_change_signal(project_change_signal),
+    [project_change_signal],
+  );
   const search_keyword_ref = useRef(search_keyword);
   const search_scope_ref = useRef(search_scope);
   const is_regex_ref = useRef(is_regex);
@@ -678,8 +705,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
   const report_project_ui_worker_error = useCallback(
     (error: unknown, fallback_message: string): boolean => {
-      // stale 表示同类新请求已经接管 UI，属于正常取消，不应打扰用户。
-      if (is_project_ui_worker_client_error(error, "stale")) {
+      const captured = capture_project_ui_worker_error(error, {
+        context: {
+          page: "proofreading",
+        },
+      });
+      if (!captured) {
         return false;
       }
 
@@ -691,7 +722,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     },
     [push_toast, t],
   );
-
   const run_project_mutation = useCallback(
     async (args: {
       path: string;
@@ -713,6 +743,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         }
         return;
       }
+      const mutation_plan = args.plan;
 
       if (args.pending_replace_cursor !== undefined) {
         pending_replace_cursor_ref.current = args.pending_replace_cursor;
@@ -722,14 +753,22 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       set_is_mutating(true);
 
       try {
-        const mutation_result = normalize_project_mutation_result(
-          await api_fetch<ProjectMutationResultPayload>(args.path, args.plan.request_body),
-        );
-        await apply_project_mutation_result(mutation_result);
+        await commit_project_mutation({
+          operation: PROOFREADING_MUTATION,
+          run: async () => {
+            return await api_fetch<ProjectMutationResultPayload>(
+              args.path,
+              mutation_plan.request_body,
+            );
+          },
+        });
         await refresh_task();
 
         if (args.success_message_builder !== null && args.success_message_builder !== undefined) {
-          push_toast("success", args.success_message_builder(args.plan.changed_item_ids.length));
+          push_toast(
+            "success",
+            args.success_message_builder(mutation_plan.changed_item_ids.length),
+          );
         }
 
         if (args.close_dialog) {
@@ -737,20 +776,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
           set_dialog_item_snapshot(null);
         }
       } catch (error) {
-        void refresh_project_runtime().catch(() => {});
         handle_api_error(error, t(args.fallback_error_key));
       } finally {
         set_is_mutating(false);
       }
     },
-    [
-      apply_project_mutation_result,
-      handle_api_error,
-      push_toast,
-      refresh_project_runtime,
-      refresh_task,
-      t,
-    ],
+    [commit_project_mutation, handle_api_error, push_toast, refresh_task, t],
   );
 
   const request_close_dialog = useCallback((): void => {
@@ -758,9 +789,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_dialog_item_snapshot(null);
   }, []);
 
-  const resolve_preferred_row_id = useCallback((preferred_row_id?: string | null): string | null => {
-    return preferred_row_id ?? active_row_id_ref.current;
-  }, []);
+  const resolve_preferred_row_id = useCallback(
+    (preferred_row_id?: string | null): string | null => {
+      return preferred_row_id ?? active_row_id_ref.current;
+    },
+    [],
+  );
 
   const remember_preferred_row_id = useCallback((preferred_row_id: string | null): void => {
     preferred_row_id_ref.current = preferred_row_id;
@@ -1221,7 +1255,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         current_state,
         sourceLanguage: settings_snapshot.source_language,
         targetLanguage: settings_snapshot.target_language,
-        signal_mode: proofreading_change_signal.mode,
+        signal_mode: proofreading_change_signal?.mode ?? "full",
       });
       let runtime_sync_state = runtime_sync_state_ref.current;
       if (sync_mode === "noop") {
@@ -1256,8 +1290,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
           await proofreading_runtime_client_ref.current.apply_proofreading_item_delta(
             collect_delta_sync_input({
               state: current_state,
-              item_ids: proofreading_change_signal.item_ids,
-              field_patch: proofreading_change_signal.field_patch,
+              item_ids: proofreading_change_signal?.item_ids ?? [],
+              field_patch: proofreading_change_signal?.field_patch ?? null,
             }),
           );
       }
@@ -1362,9 +1396,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     project_snapshot.loaded,
     project_snapshot.path,
     project_store,
-    proofreading_change_signal.field_patch,
-    proofreading_change_signal.item_ids,
-    proofreading_change_signal.mode,
+    proofreading_change_signal,
     read_list_window,
     run_list_view_query,
     report_project_ui_worker_error,
@@ -1413,9 +1445,17 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         {
           force: true,
         },
-      );
+      ).catch((error) => {
+        report_project_ui_worker_error(error, t("proofreading_page.feedback.refresh_failed"));
+      });
     },
-    [cancel_pending_list_view_query, clear_table_selection, run_list_view_query],
+    [
+      cancel_pending_list_view_query,
+      clear_table_selection,
+      report_project_ui_worker_error,
+      run_list_view_query,
+      t,
+    ],
   );
 
   const update_regex = useCallback(
@@ -1436,9 +1476,17 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         {
           force: true,
         },
-      );
+      ).catch((error) => {
+        report_project_ui_worker_error(error, t("proofreading_page.feedback.refresh_failed"));
+      });
     },
-    [cancel_pending_list_view_query, clear_table_selection, run_list_view_query],
+    [
+      cancel_pending_list_view_query,
+      clear_table_selection,
+      report_project_ui_worker_error,
+      run_list_view_query,
+      t,
+    ],
   );
 
   const apply_table_selection = useCallback((payload: AppTableSelectionChange): void => {
@@ -1464,9 +1512,17 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         {
           force: true,
         },
-      );
+      ).catch((error) => {
+        report_project_ui_worker_error(error, t("proofreading_page.feedback.refresh_failed"));
+      });
     },
-    [cancel_pending_list_view_query, clear_table_selection, run_list_view_query],
+    [
+      cancel_pending_list_view_query,
+      clear_table_selection,
+      report_project_ui_worker_error,
+      run_list_view_query,
+      t,
+    ],
   );
 
   const get_visible_row_at_index = useCallback(
@@ -1531,8 +1587,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     void run_filter_panel_query(restored_filters, {
       force: true,
       mark_loading: false,
+    }).catch((error) => {
+      report_project_ui_worker_error(error, t("proofreading_page.feedback.refresh_failed"));
     });
-  }, [filter_panel_query_scheduler, run_filter_panel_query]);
+  }, [filter_panel_query_scheduler, report_project_ui_worker_error, run_filter_panel_query, t]);
 
   const update_filter_dialog_filters = useCallback(
     (next_filters: ProofreadingFilterOptions): void => {
@@ -1879,16 +1937,16 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
   useEffect(() => {
     const previous_seq = previous_proofreading_change_seq_ref.current;
-    previous_proofreading_change_seq_ref.current = proofreading_change_signal.seq;
 
-    if (!project_snapshot.loaded) {
+    if (!project_snapshot.loaded || proofreading_change_signal === null) {
       return;
     }
 
     if (previous_seq !== proofreading_change_signal.seq) {
+      previous_proofreading_change_seq_ref.current = proofreading_change_signal.seq;
       void refresh_snapshot();
     }
-  }, [project_snapshot.loaded, proofreading_change_signal.seq, refresh_snapshot]);
+  }, [project_snapshot.loaded, proofreading_change_signal, refresh_snapshot]);
 
   useEffect(() => {
     if (proofreading_lookup_intent === null) {
@@ -1915,14 +1973,18 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       {
         force: true,
       },
-    );
+    ).catch((error) => {
+      report_project_ui_worker_error(error, t("proofreading_page.feedback.refresh_failed"));
+    });
     clear_proofreading_lookup_intent();
   }, [
     clear_proofreading_lookup_intent,
     cancel_pending_list_view_query,
     clear_table_selection,
     proofreading_lookup_intent,
+    report_project_ui_worker_error,
     run_list_view_query,
+    t,
   ]);
 
   useEffect(() => {

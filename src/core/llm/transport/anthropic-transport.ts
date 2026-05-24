@@ -3,6 +3,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { ResolvedRequestPolicy } from "../policy/policy-types";
 import type { LLMRequestResult } from "../llm-types";
 import { LLMClientDegradationDetector } from "../llm-client-degradation-detector";
+import { error_diagnostic_from_message, type ErrorDiagnosticPayload } from "../../../shared/error";
 import type {
   ProviderClientPoolRequest,
   ProviderClientResolver,
@@ -31,6 +32,7 @@ export class AnthropicTransport implements RequestTransport {
    */
   public constructor(private readonly pool: ProviderClientResolver) {}
 
+  // send 是跨边界副作用入口，集中处理调用时序和错误投影。
   public async send(policy: ResolvedRequestPolicy, signal: AbortSignal): Promise<LLMRequestResult> {
     const client = this.pool.get_client<{ messages: { create: Function } }>({
       provider: policy.provider,
@@ -46,7 +48,7 @@ export class AnthropicTransport implements RequestTransport {
     let response_think = "";
     let input_tokens = 0;
     let output_tokens = 0;
-    let error = "";
+    let failure: ErrorDiagnosticPayload | undefined;
     for await (const event of stream as AsyncIterable<unknown>) {
       const record = this.as_record(event);
       if (record["type"] === "content_block_delta") {
@@ -69,10 +71,12 @@ export class AnthropicTransport implements RequestTransport {
       output_tokens = this.read_number(usage["output_tokens"], output_tokens);
       const stop_reason = this.read_text(message["stop_reason"] ?? record["stop_reason"]);
       if (stop_reason === "max_tokens") {
-        error = "供应商返回长度截断。";
+        failure = error_diagnostic_from_message("供应商返回长度截断。", { stop_reason });
       }
       if (stop_reason === "tool_use") {
-        error = "供应商返回工具调用，当前任务不支持。";
+        failure = error_diagnostic_from_message("供应商返回工具调用，当前任务不支持。", {
+          stop_reason,
+        });
       }
     }
     if (LLMClientDegradationDetector.has_output_degradation(response_result)) {
@@ -80,13 +84,13 @@ export class AnthropicTransport implements RequestTransport {
     }
     return {
       response_think: response_think.trim(),
-      response_result: error === "" ? response_result.trim() : "",
+      response_result: failure === undefined ? response_result.trim() : "",
       input_tokens,
       output_tokens,
       cancelled: false,
       timeout: false,
       degraded: false,
-      error,
+      ...(failure === undefined ? {} : { failure }),
     };
   }
 
@@ -102,7 +106,6 @@ export class AnthropicTransport implements RequestTransport {
       cancelled: false,
       timeout: false,
       degraded: false,
-      error: "",
       ...overrides,
     };
   }

@@ -8,8 +8,10 @@
 - `ApiGatewayServer` 是 Electron 运行态公开 `/api/*` 的唯一注册点；路由集中注册在 `src/core/api/api-gateway-server.ts`，POST JSON 路由必须经 `post_json` 返回统一响应壳。
 - Gateway 只监听 `127.0.0.1`，CORS 只允许 `Content-Type`；renderer 不依赖额外私有请求头。
 - 成功响应形状为 `{ ok: true, data }`，失败响应形状为 `{ ok: false, error }`。错误载荷来自 `src/shared/error` 的 `AppError` 投影，只暴露安全字段；用户可见文案通过 i18n key 解析，内部异常、stack、API key、Authorization header 和 provider 原始响应只允许进入日志诊断。
+- 内部异常跨 LLM、worker、bootstrap 或日志边界时先归一为 `ErrorDiagnosticPayload` 或 `LogManager` 的 `error_message / stack / context` 字段；shared error 只负责 JSON 化与长度 / 深度裁剪，路径和 URL 等敏感字段必须由 LLM、worker、Electron、renderer 等调用边界本地 typed builder 显式转成摘要值对象。`message` 只保留业务摘要，调用栈不得拼进 `message`，控制台和日志详情页才把结构化诊断拼成可读正文。
 - 公开 SSE 使用固定 topic 和严格 JSON 序列化：项目数据通过 `project.data_changed`，任务运行态通过 `task.snapshot_changed`，设置通过 `settings.changed`，日志窗口通过 `log.appended`。
 - `log.appended` 只携带列表、筛选和排序所需的轻量日志事件；完整日志正文只保留在当前进程内详情池，并通过 `/api/logs/detail` 按 ID 读取。Core 不为日志详情写数据库、索引或额外文件，历史 `app.yyyymmdd.log` 不作为详情接口的数据源。
+- `/api/diagnostics/renderer-error` 只接收 renderer 实际异常摘要并写入 `LogManager`；载荷必须是 shared error 的 `RendererErrorReport`，其中异常本体固定为 `ErrorDiagnosticPayload`，触发事件和 renderer error context 都按 shared 白名单收窄。Gateway 只做 shared normalizer，并把日志字段映射交给 `src/core/log/renderer-error-log-adapter.ts`，不维护第二套 message / stack / context 裁剪规则；该路由不改变项目、任务或设置事实，也不保存正常 SSE 流水、完整项目 payload 或页面自定义上下文对象。
 - CLI 不启动 Gateway；CLI 命令通过同进程 `CoreServices` 和 `CoreEventHub` 复用任务、项目、导出和质量服务。
 - 发布态任务执行入口由产品入口构造为 `worker_threads`，指向桌面 bundle 内的 work-unit 与 planning worker；`in_process` 只允许测试或源码执行显式选择，不是 worker 失败回退。
 
@@ -27,7 +29,7 @@
 | 后台任务生命周期 | `TaskEngine` | `TaskService.start_task` / `stop_task` |
 | `.lg` 物理读写 | `ProjectDatabase` | `DatabaseOperation` / `execute_transaction` |
 | 真实磁盘 IO 与路径身份 | `NativeFs` / `NativePathPolicy` | `src/native` |
-| Core 内部日志 | `LogManager` | `app.yyyymmdd.log` 完整文件日志、轻量日志 SSE、当前进程详情池、Electron main 诊断 |
+| Core 内部日志 | `LogManager` | `app.yyyymmdd.log` 完整文件日志、轻量日志 SSE、当前进程详情池、Electron main 与 renderer 诊断 |
 
 `ProjectOperationGate` 是结构性项目 mutation 与后台任务启动的互斥门闩；涉及文件集合、reset、settings alignment 或任务启动的改动必须先确认它是否应参与 gate。
 
@@ -62,6 +64,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - `TaskEngine` 是后台任务执行权威：全量翻译和分析经 RunCoordinator 全局运行锁、Planner、WorkUnit、Limiter、ModelKeyLease、Pipeline 和 Artifact Committer；单条翻译复用 limiter / key lease，但不占用全局后台任务锁。
 - work-unit worker 负责提示词构建、runner、pipeline 和响应处理；planning worker 只做规划期 token 计数。worker 数量不等同于 LLM 并发。
 - `src/core/llm` 是 provider policy、request policy、官方 SDK transport、ProviderClientPool 和请求结果归一的边界；任务编排和 worker 只能消费归一后的 LLM 能力，不反向持有 provider SDK 细节。
+- `LLMRequestResult.failure` 和 worker `error_diagnostic` 是请求级、线程级故障的唯一结构化载体；runner 只把它们映射到 `WorkUnitLogEntry` 的诊断字段，任务重试和 UI 展示不解析供应商异常文本。
 
 ## 5. 数据库与 `.lg` 物理存储
 

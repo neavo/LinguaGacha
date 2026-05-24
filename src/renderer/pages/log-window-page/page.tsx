@@ -16,6 +16,7 @@ import {
   append_log_events,
   compress_log_message_text,
   filter_log_events,
+  format_log_detail_text,
   format_log_timestamp,
   sort_log_events_latest_first,
   type LogLevelFilter,
@@ -31,7 +32,9 @@ import { SearchBar, type SearchBarScopeOption } from "@/widgets/search-bar/searc
 import "@/app/shell/app-titlebar.css";
 import "@/pages/log-window-page/log-window-page.css";
 
+// LEVEL FILTERS 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const LEVEL_FILTERS: LogLevelFilter[] = ["all", "debug", "info", "warning", "error", "fatal"];
+// LEVEL LABEL KEYS 是持久化或快捷键契约，集中保存避免调用点散落魔术字符串。
 const LEVEL_LABEL_KEYS: Record<LogLevelFilter, LocaleKey> = {
   all: "log_window_page.level.all",
   debug: "log_window_page.level.debug",
@@ -40,6 +43,7 @@ const LEVEL_LABEL_KEYS: Record<LogLevelFilter, LocaleKey> = {
   error: "log_window_page.level.error",
   fatal: "log_window_page.level.fatal",
 };
+// DETAIL EXPAND LABEL KEYS 是持久化或快捷键契约，集中保存避免调用点散落魔术字符串。
 const DETAIL_EXPAND_LABEL_KEYS: Record<"expanded" | "collapsed", LocaleKey> = {
   expanded: "log_window_page.detail.minimize" as LocaleKey,
   collapsed: "log_window_page.detail.maximize" as LocaleKey,
@@ -60,6 +64,7 @@ function find_log_scroll_viewport(): HTMLElement | null {
   );
 }
 
+// LogWindowPage 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function LogWindowPage(): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -108,6 +113,7 @@ export function LogWindowPage(): JSX.Element {
     let disposed = false;
     const iterator = open_log_stream()[Symbol.asyncIterator]();
 
+    // run_stream 封装当前模块的共享逻辑，避免重复实现同一维护规则。
     async function run_stream(): Promise<void> {
       try {
         while (!disposed) {
@@ -285,6 +291,7 @@ export function LogWindowPage(): JSX.Element {
     ];
   }, [t]);
 
+  // handle_selection_change 是事件处理边界，只把外部事件转换为本模块状态更新。
   function handle_selection_change(payload: AppTableSelectionChange): void {
     set_selected_row_ids(payload.selected_row_ids);
     set_active_row_id(payload.active_row_id);
@@ -311,7 +318,7 @@ export function LogWindowPage(): JSX.Element {
       case "failed":
         return t("log_window_page.detail.failed");
       case "ready":
-        return detail_state.detail.message;
+        return format_log_detail_text(detail_state.detail);
     }
   }
 

@@ -1,11 +1,10 @@
 import type { LogManager } from "../../log/log-manager";
 import type { MutableJsonRecord } from "../runtime/task-runtime-types";
+import type { WorkUnitLogEntry } from "../protocol/work-unit";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../shared/i18n";
+import { error_diagnostic_to_log_fields, to_error_diagnostic } from "../../../shared/error";
 
-export type ReplayLogEntry = {
-  level: "info" | "warning" | "error";
-  message: string;
-};
+export type ReplayLogEntry = WorkUnitLogEntry;
 
 /**
  * TaskLogReplay 统一任务生命周期日志和 worker 日志回放，避免 Engine 主流程夹杂日志格式细节
@@ -24,27 +23,33 @@ export class TaskLogReplay {
     app_language: unknown,
     prompt_text: string | null = null,
   ): void {
-    this.append("info", "", "engine");
+    this.append({ level: "info", message: "" }, "engine");
     this.append(
-      "info",
-      `${this.t(app_language, "app.log.engine_api_name")} - ${String(model["name"] ?? "")}`,
+      {
+        level: "info",
+        message: `${this.t(app_language, "app.log.engine_api_name")} - ${String(model["name"] ?? "")}`,
+      },
       "engine",
     );
     this.append(
-      "info",
-      `${this.t(app_language, "app.log.engine_api_url")} - ${String(model["api_url"] ?? "")}`,
+      {
+        level: "info",
+        message: `${this.t(app_language, "app.log.engine_api_url")} - ${String(model["api_url"] ?? "")}`,
+      },
       "engine",
     );
     this.append(
-      "info",
-      `${this.t(app_language, "app.log.engine_api_model")} - ${String(model["model_id"] ?? "")}`,
+      {
+        level: "info",
+        message: `${this.t(app_language, "app.log.engine_api_model")} - ${String(model["model_id"] ?? "")}`,
+      },
       "engine",
     );
-    this.append("info", "", "engine");
+    this.append({ level: "info", message: "" }, "engine");
     const normalized_prompt_text = prompt_text?.trim() ?? "";
     if (normalized_prompt_text !== "") {
-      this.append("info", normalized_prompt_text, "engine");
-      this.append("info", "", "engine");
+      this.append({ level: "info", message: normalized_prompt_text }, "engine");
+      this.append({ level: "info", message: "" }, "engine");
     }
   }
 
@@ -58,9 +63,9 @@ export class TaskLogReplay {
         : status === "idle"
           ? this.t(app_language, "app.log.engine_task_stop")
           : this.t(app_language, "app.log.engine_task_fail");
-    this.append("info", "", "engine");
-    this.append(status === "error" ? "warning" : "info", message, "engine");
-    this.append("info", "", "engine");
+    this.append({ level: "info", message: "" }, "engine");
+    this.append({ level: status === "error" ? "warning" : "info", message }, "engine");
+    this.append({ level: "info", message: "" }, "engine");
   }
 
   /**
@@ -71,7 +76,7 @@ export class TaskLogReplay {
       return;
     }
     for (const entry of logs) {
-      this.append(entry.level, entry.message, "engine-worker");
+      this.append(entry, "engine-worker");
     }
   }
 
@@ -79,21 +84,27 @@ export class TaskLogReplay {
    * 任务异常统一写入应用日志，便于和 work-unit 日志并排排查
    */
   public task_error(message: string, error: unknown): void {
+    const diagnostic = to_error_diagnostic(error);
     this.log_manager.error(message, {
       source: "engine",
-      error_message: error instanceof Error ? error.message : String(error),
-      stack: error instanceof Error ? error.stack : undefined,
+      ...error_diagnostic_to_log_fields(diagnostic),
     });
   }
 
   /**
    * 测试桩可能只实现部分日志方法；生产环境仍会走完整 LogManager
    */
-  private append(level: ReplayLogEntry["level"], message: string, source: string): void {
+  private append(entry: ReplayLogEntry, source: string): void {
     const log_manager = this.log_manager as Partial<Pick<LogManager, "info" | "warning" | "error">>;
-    log_manager[level]?.(message, { source });
+    log_manager[entry.level]?.(entry.message, {
+      source,
+      error_message: entry.error_message,
+      stack: entry.stack,
+      context: entry.context,
+    });
   }
 
+  // t 封装类内部的非显然分支，避免调用方重复理解同一约束。
   private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
     return format_i18n_message(resolve_i18n_locale(app_language), key, params);
   }

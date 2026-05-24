@@ -7,6 +7,7 @@ import {
   createProjectItemIndex,
 } from "@/project/store/project-item-index";
 
+// create_test_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
     item_id: 1,
@@ -106,5 +107,32 @@ describe("ProjectItemIndex", () => {
       create_test_item({ item_id: 2, dst: "保留译文", status: "EXCLUDED" }),
     );
     expect(next_index.has(404)).toBe(false);
+  });
+
+  it("delta 准备失败时不会污染原索引", () => {
+    const index = createProjectItemIndex({
+      "1": create_test_item({ item_id: 1, dst: "旧译文", status: "NONE" }),
+      "2": create_test_item({ item_id: 2, dst: "保留译文", status: "PROCESSED" }),
+    });
+
+    expect(() =>
+      applyProjectItemIndexChange(index, {
+        payloadMode: "canonical-delta",
+        upsert: {
+          "1": create_test_item({ item_id: 1, dst: "新译文", status: "PROCESSED" }),
+          "3": {
+            item_id: 3,
+            file_path: "chapter03.txt",
+          },
+        },
+        changedIds: [1],
+        deleteIds: [2],
+      }),
+    ).toThrow("runtime.internal_invariant");
+
+    expect(index.toRecordSnapshot()).toEqual({
+      "1": create_test_item({ item_id: 1, dst: "旧译文", status: "NONE" }),
+      "2": create_test_item({ item_id: 2, dst: "保留译文", status: "PROCESSED" }),
+    });
   });
 });

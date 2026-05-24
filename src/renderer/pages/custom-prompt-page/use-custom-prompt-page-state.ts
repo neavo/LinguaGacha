@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
+import {
+  type ProjectMutationOperation,
+  type ProjectMutationResultPayload,
+} from "@/app/desktop/desktop-project-mutation";
 import type { ProjectStorePromptSlice } from "@/project/store/project-store";
 import { getPromptSlice } from "@/project/quality/quality-runtime";
-import {
-  normalize_project_mutation_result,
-  type ProjectMutationResultPayload,
-  type SettingsSnapshotPayload,
-} from "@/app/desktop/desktop-runtime-context";
+import type { SettingsSnapshotPayload } from "@/app/desktop/desktop-runtime-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
@@ -39,6 +39,10 @@ type PromptImportPayload = {
   text?: string;
 };
 
+// 自定义提示词页的保存动作固定，任务类型作为独立诊断维度进入提交管线。
+const CUSTOM_PROMPT_SAVE_MUTATION: ProjectMutationOperation = "custom-prompt.prompt_save";
+
+// create_empty_prompt_template 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_prompt_template(): CustomPromptTemplate {
   return {
     default_text: "",
@@ -47,6 +51,7 @@ function create_empty_prompt_template(): CustomPromptTemplate {
   };
 }
 
+// create_empty_confirm_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_confirm_state(): CustomPromptConfirmState {
   return {
     open: false,
@@ -58,6 +63,7 @@ function create_empty_confirm_state(): CustomPromptConfirmState {
   };
 }
 
+// create_empty_preset_input_state 构造跨层载荷，保证字段形状在一个入口维护。
 function create_empty_preset_input_state(): CustomPromptPresetInputState {
   return {
     open: false,
@@ -68,6 +74,7 @@ function create_empty_preset_input_state(): CustomPromptPresetInputState {
   };
 }
 
+// normalize_prompt_template 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_prompt_template(
   template: Partial<CustomPromptTemplate> | undefined,
 ): CustomPromptTemplate {
@@ -78,10 +85,12 @@ function normalize_prompt_template(
   };
 }
 
+// normalize_prompt_text 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_prompt_text(text: string): string {
   return text.trim();
 }
 
+// resolve_editor_prompt_text 集中解析运行时决策，避免调用点复制条件判断。
 function resolve_editor_prompt_text(
   snapshot: ProjectStorePromptSlice,
   template: CustomPromptTemplate,
@@ -95,14 +104,17 @@ function resolve_editor_prompt_text(
   return normalized_text;
 }
 
+// build_user_preset_virtual_id 构造跨层载荷，保证字段形状在一个入口维护。
 function build_user_preset_virtual_id(name: string): string {
   return `user:${name}.txt`;
 }
 
+// normalize_preset_name 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_preset_name(name: string): string {
   return name.trim();
 }
 
+// has_casefold_duplicate_preset 集中表达布尔判定口径，避免调用方按局部字段猜测。
 function has_casefold_duplicate_preset(
   preset_items: CustomPromptPresetItem[],
   target_virtual_id: string,
@@ -123,6 +135,7 @@ function has_casefold_duplicate_preset(
   });
 }
 
+// decorate_preset_items 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function decorate_preset_items(
   builtin_presets: CustomPromptPresetItem[],
   user_presets: CustomPromptPresetItem[],
@@ -136,6 +149,7 @@ function decorate_preset_items(
   });
 }
 
+// build_default_preset_update_payload 构造跨层载荷，保证字段形状在一个入口维护。
 function build_default_preset_update_payload(
   config: CustomPromptVariantConfig,
   value: string,
@@ -145,6 +159,7 @@ function build_default_preset_update_payload(
   };
 }
 
+// useCustomPromptPageState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useCustomPromptPageState(
   variant: CustomPromptVariant,
 ): UseCustomPromptPageStateResult {
@@ -156,8 +171,7 @@ export function useCustomPromptPageState(
     project_store,
     settings_snapshot,
     apply_settings_snapshot,
-    refresh_project_runtime,
-    apply_project_mutation_result,
+    commit_project_mutation,
     task_snapshot,
   } = useDesktopRuntime();
   const project_store_state = useSyncExternalStore(
@@ -232,32 +246,27 @@ export function useCustomPromptPageState(
       };
 
       try {
-        const mutation_result = normalize_project_mutation_result(
-          await api_fetch<ProjectMutationResultPayload>("/api/quality/prompts/save", {
-            task_type: config.task_type,
-            expected_section_revisions: {
-              prompts: current_state.revisions.sections.prompts ?? 0,
-            },
-            text: next_prompt_slice.text,
-            enabled: next_prompt_slice.enabled,
-          }),
-        );
-        await apply_project_mutation_result(mutation_result);
+        await commit_project_mutation({
+          operation: CUSTOM_PROMPT_SAVE_MUTATION,
+          task_type: config.task_type,
+          run: async () => {
+            return await api_fetch<ProjectMutationResultPayload>("/api/quality/prompts/save", {
+              task_type: config.task_type,
+              expected_section_revisions: {
+                prompts: current_state.revisions.sections.prompts ?? 0,
+              },
+              text: next_prompt_slice.text,
+              enabled: next_prompt_slice.enabled,
+            });
+          },
+        });
         return true;
       } catch (error) {
-        void refresh_project_runtime().catch(() => {});
         push_toast("error", resolve_visible_error_message(error, t, args.failureMessage));
         return false;
       }
     },
-    [
-      apply_project_mutation_result,
-      config.task_type,
-      project_store,
-      push_toast,
-      readonly,
-      refresh_project_runtime,
-    ],
+    [commit_project_mutation, config.task_type, project_store, push_toast, readonly],
   );
 
   const refresh_template = useCallback(async (): Promise<void> => {

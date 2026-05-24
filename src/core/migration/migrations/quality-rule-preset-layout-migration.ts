@@ -3,7 +3,11 @@ import path from "node:path";
 import type { ApiJsonValue } from "../../api/api-types";
 import { t_main_log } from "../../log/log-text";
 import { default_native_fs } from "../../../native/native-fs";
-import { InternalInvariantError } from "../../../shared/error";
+import {
+  error_diagnostic_to_log_fields,
+  InternalInvariantError,
+  to_error_diagnostic,
+} from "../../../shared/error";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { PathRelocation } from "../path-relocation";
 import type { MigrationDescriptor, StartupMigrationContext } from "../migration-types";
@@ -13,9 +17,13 @@ type PresetSource = "builtin" | "user";
 
 // 下面这些目录名是历史资源布局和当前路径服务之间的显式映射边界。
 const RESOURCE_DIR_NAME = "resource";
+// PRESET DIR NAME 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const PRESET_DIR_NAME = "preset";
+// USER DIR NAME 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const USER_DIR_NAME = "user";
+// QUALITY RULE PRESET EXTENSION 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const QUALITY_RULE_PRESET_EXTENSION = ".json";
+// LANGUAGE DIR NAMES 是领域白名单或配置表，集中维护避免分支散落。
 const LANGUAGE_DIR_NAMES = ["zh", "en"] as const;
 // 设置 key 到质量规则预设目录名的唯一对应关系，迁移只改这组默认预设字段。
 const QUALITY_RULE_PRESET_SETTING_KEYS = {
@@ -201,8 +209,7 @@ export class QualityRulePresetLayoutMigration {
         }),
         {
           source: "migration",
-          error_message: error instanceof Error ? error.message : undefined,
-          stack: error instanceof Error ? error.stack : undefined,
+          ...error_diagnostic_to_log_fields(to_error_diagnostic(error)),
         },
       );
     }

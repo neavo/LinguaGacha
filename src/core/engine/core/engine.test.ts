@@ -16,6 +16,7 @@ import { WorkUnitExecutorTransportError } from "../work-unit/work-unit-transport
 import { TaskEngine } from "./engine";
 import type { PlanningWorkerPool } from "../planning/planning-worker-pool";
 import { TaskPlanner } from "../planning/task-planner";
+import { error_diagnostic_from_message } from "../../../shared/error";
 
 describe("TaskEngine", () => {
   const cleanup_paths: string[] = [];
@@ -226,7 +227,10 @@ describe("TaskEngine", () => {
           const item_id = Number(items[0]?.["id"] ?? 0);
           if (item_id === 1 && !failed_once_ids.has(item_id)) {
             failed_once_ids.add(item_id);
-            throw new WorkUnitExecutorTransportError("fetch failed", new TypeError("fetch failed"));
+            throw new WorkUnitExecutorTransportError(
+              error_diagnostic_from_message("fetch failed"),
+              new TypeError("fetch failed"),
+            );
           }
           return create_translation_worker_result(
             items.map((item) => ({
@@ -394,6 +398,7 @@ describe("TaskEngine", () => {
     };
   }
 
+  // create_translation_worker_result 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_translation_worker_result(
     items: MutableJsonRecord[],
     row_count: number,
@@ -414,6 +419,7 @@ describe("TaskEngine", () => {
     };
   }
 
+  // create_status_waiter 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_status_waiter(
     task_type: string,
     status: string,
@@ -440,6 +446,7 @@ describe("TaskEngine", () => {
     };
   }
 
+  // create_task_runtime_publisher 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_task_runtime_publisher(
     on_publish: (event_type: string, payload: MutableJsonRecord) => void = () => undefined,
     on_progress_committed: (task_type: string) => void = () => undefined,
@@ -458,6 +465,7 @@ describe("TaskEngine", () => {
     } as unknown as TaskRuntimePublisher;
   }
 
+  // create_deferred 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_deferred<T>(): {
     promise: Promise<T>;
     resolve: (value: T) => void;
@@ -469,6 +477,7 @@ describe("TaskEngine", () => {
     return { promise, resolve: resolve_deferred };
   }
 
+  // wait_until 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function wait_until(predicate: () => boolean): Promise<void> {
     for (let index = 0; index < 10; index += 1) {
       if (predicate()) {
@@ -513,6 +522,7 @@ describe("TaskEngine", () => {
     } as unknown as AppSettingService;
   }
 
+  // create_template_root 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_template_root(): string {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-engine-"));
     cleanup_paths.push(app_root);
@@ -531,6 +541,7 @@ describe("TaskEngine", () => {
     return app_root;
   }
 
+  // write_template 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function write_template(
     app_root: string,
     task_dir_name: string,
@@ -544,6 +555,7 @@ describe("TaskEngine", () => {
     }
   }
 
+  // create_log_manager 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_log_manager(logs: string[] = []): LogManager {
     return {
       info: (message: string) => {

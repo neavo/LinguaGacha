@@ -1,0 +1,36 @@
+.renderer-error-boundary {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 32px;
+  background: var(--ui-color-bg-page, #f7f8fb);
+  color: var(--ui-color-text-primary, #171923);
+}
+
+.renderer-error-boundary__panel {
+  width: min(560px, 100%);
+  padding: 28px;
+  border: 1px solid var(--ui-color-border-muted, #d9dee8);
+  border-radius: 8px;
+  background: var(--ui-color-bg-panel, #ffffff);
+}
+
+.renderer-error-boundary__eyebrow {
+  margin: 0 0 10px;
+  color: var(--ui-color-text-muted, #5f6b7a);
+  font-size: 13px;
+}
+
+.renderer-error-boundary__title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: 0;
+}
+
+.renderer-error-boundary__description {
+  margin: 14px 0 0;
+  color: var(--ui-color-text-secondary, #394150);
+  font-size: 14px;
+  line-height: 1.7;
+}

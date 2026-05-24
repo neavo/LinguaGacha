@@ -14,10 +14,15 @@ import {
   IPC_CHANNEL_PICK_PROMPT_IMPORT_FILE_PATH,
   IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH,
   IPC_CHANNEL_QUIT_APP,
+  IPC_CHANNEL_RENDERER_DIAGNOSTICS,
   IPC_CHANNEL_TITLE_BAR_THEME,
 } from "../ipc/ipc-contract";
 import { resolve_external_url } from "./external-url-policy";
-import { type DesktopPathPickResult, type ThemeMode } from "../bridge/bridge-types";
+import {
+  type DesktopPathPickResult,
+  type DesktopRendererDiagnosticsPayload,
+  type ThemeMode,
+} from "../bridge/bridge-types";
 import { type LogWindowHost } from "./log-window-host";
 import { sync_title_bar_overlay } from "./desktop-window-host";
 import { create_text_resolver, resolve_i18n_locale, type TextResolver } from "../../shared/i18n";
@@ -26,6 +31,10 @@ export type DesktopIpcHandlerOptions = {
   getMainWindow: () => BrowserWindow | null;
   getLogWindowHost: () => LogWindowHost | null;
   markRendererConfirmedAppQuit: () => void;
+  recordRendererDiagnostics: (
+    sender: Electron.WebContents,
+    payload: DesktopRendererDiagnosticsPayload,
+  ) => void; // 诊断载荷由 main 注册器统一清洗，IPC 层只保持 sender 归属
   readAppLanguage: () => unknown; // 原生系统对话框文案必须跟随当前应用语言
 };
 
@@ -37,6 +46,14 @@ export function register_desktop_ipc_handlers(options: DesktopIpcHandlerOptions)
   ipcMain.on(IPC_CHANNEL_TITLE_BAR_THEME, (event, theme_mode: ThemeMode) => {
     sync_title_bar_overlay(BrowserWindow.fromWebContents(event.sender), theme_mode);
   });
+
+  // renderer 运行态面包屑写入 main 内存，覆盖 Chromium 原生崩溃时 HTTP 上报来不及发出的场景
+  ipcMain.on(
+    IPC_CHANNEL_RENDERER_DIAGNOSTICS,
+    (event, payload: DesktopRendererDiagnosticsPayload) => {
+      options.recordRendererDiagnostics(event.sender, payload);
+    },
+  );
 
   // renderer 已完成自己的关闭确认后，主窗口 close 事件不再二次拦截
   ipcMain.handle(IPC_CHANNEL_QUIT_APP, async () => {

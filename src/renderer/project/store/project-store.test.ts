@@ -9,6 +9,7 @@ import {
   type ProjectStoreStage,
 } from "./project-store";
 
+// create_test_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
     item_id: 1,
@@ -85,6 +86,30 @@ function create_items_field_patch_operation(args: {
   };
 }
 
+// section-invalidated 测试只覆盖刷新语义，真实运行态会先补读 canonical section。
+function create_items_invalidated_operation(args: {
+  changedIds?: Array<number | string>;
+}): ProjectStoreChangeOperation {
+  return {
+    items: {
+      payloadMode: "section-invalidated",
+      changedIds: args.changedIds?.map((item_id) => Number(item_id)),
+    },
+  };
+}
+
+// changedIds-only delta 用于验证刷新信号，不要求构造完整 item DTO。
+function create_items_changed_ids_operation(
+  changedIds: Array<number | string>,
+): ProjectStoreChangeOperation {
+  return {
+    items: {
+      payloadMode: "canonical-delta",
+      changedIds: changedIds.map((item_id) => Number(item_id)),
+    },
+  };
+}
+
 // files delta 的公开 key 是相对路径，测试侧保持与后端事件一致的 tombstone 语义
 function create_files_delta_operation(args: {
   upsertFiles?: Record<string, ProjectChangeJsonRecord>;
@@ -103,6 +128,19 @@ function create_files_delta_operation(args: {
   };
 }
 
+// files section-invalidated 测试只覆盖刷新语义，真实运行态会先补读 canonical section。
+function create_files_invalidated_operation(args: {
+  changedPaths?: string[];
+}): ProjectStoreChangeOperation {
+  return {
+    files: {
+      payloadMode: "section-invalidated",
+      changedPaths: args.changedPaths,
+    },
+  };
+}
+
+// apply_store_sections 收口测试中的共享步骤，保证断言只关注当前行为。
 function apply_store_sections(
   store: ReturnType<typeof createProjectStore>,
   args: {
@@ -279,6 +317,58 @@ describe("createProjectStore", () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 
+  it("批量应用中途失败时丢弃 draft item delta 且不通知订阅者", () => {
+    const store = createProjectStore();
+    const listener = vi.fn();
+    store.subscribe(listener);
+
+    expect(() =>
+      store.applyProjectChangeBatch([
+        {
+          source: "translation_batch",
+          projectPath: "E:/demo/demo.lg",
+          projectRevision: 2,
+          updatedSections: ["items"],
+          operations: [
+            create_items_delta_operation({
+              upsertItems: [
+                create_test_item({
+                  item_id: 1,
+                  file_path: "chapter01.txt",
+                  dst: "第一版",
+                }),
+              ],
+            }),
+          ],
+        },
+        {
+          source: "translation_batch",
+          projectPath: "E:/demo/demo.lg",
+          projectRevision: 3,
+          updatedSections: ["items"],
+          operations: [
+            {
+              items: {
+                payloadMode: "canonical-delta",
+                upsert: {
+                  2: {
+                    item_id: 2,
+                    file_path: "chapter02.txt",
+                  },
+                },
+                changedIds: [2],
+              },
+            },
+          ],
+        },
+      ]),
+    ).toThrow("runtime.internal_invariant");
+
+    expect([...store.getState().items.keys()]).toEqual([]);
+    expect(store.getState().revisions.projectRevision).toBe(0);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
   it("拒绝把瘦身 item upsert 写入共享 ProjectStore", () => {
     const store = createProjectStore();
 
@@ -304,6 +394,45 @@ describe("createProjectStore", () => {
         ],
       }),
     ).toThrow("runtime.internal_invariant");
+  });
+
+  it("单条变更失败时不会提交同批次前半段 item 写入", () => {
+    const store = createProjectStore();
+
+    expect(() =>
+      store.applyProjectChange({
+        source: "translation_batch_update",
+        projectPath: "E:/demo/demo.lg",
+        projectRevision: 1,
+        updatedSections: ["items"],
+        operations: [
+          create_items_delta_operation({
+            upsertItems: [
+              create_test_item({
+                item_id: 1,
+                file_path: "chapter01.txt",
+                dst: "已写入但应回滚",
+              }),
+            ],
+          }),
+          {
+            items: {
+              payloadMode: "canonical-delta",
+              upsert: {
+                2: {
+                  item_id: 2,
+                  file_path: "chapter02.txt",
+                },
+              },
+              changedIds: [2],
+            },
+          },
+        ],
+      }),
+    ).toThrow("runtime.internal_invariant");
+
+    expect([...store.getState().items.keys()]).toEqual([]);
+    expect(store.getState().revisions.projectRevision).toBe(0);
   });
 
   it("对缺省 projectRevision 的项目变更保留已有 revision", () => {
@@ -481,7 +610,115 @@ describe("createProjectStore", () => {
     expect(result.itemDelta).toEqual({
       upsertItemIds: [1],
       deleteItemIds: [],
+      fieldPatch: {
+        status: "PROCESSED",
+        retry_count: 0,
+      },
       fullReplace: false,
+    });
+  });
+
+  it.each([
+    [
+      "full replace 在前",
+      [
+        create_items_invalidated_operation({ changedIds: [1] }),
+        create_items_changed_ids_operation([1]),
+      ],
+    ],
+    [
+      "full replace 在后",
+      [
+        create_items_changed_ids_operation([1]),
+        create_items_invalidated_operation({ changedIds: [1] }),
+      ],
+    ],
+  ] as const)("items %s 时应用结果仍要求 full refresh", (_name, operations) => {
+    const store = createProjectStore();
+
+    const result = store.applyProjectChange({
+      source: "project_data_changed",
+      projectPath: "E:/demo/demo.lg",
+      projectRevision: 2,
+      updatedSections: ["items"],
+      sectionRevisions: {
+        items: 2,
+      },
+      operations: [...operations],
+    });
+
+    expect(result.itemDelta).toMatchObject({
+      upsertItemIds: [1],
+      deleteItemIds: [],
+      fullReplace: true,
+    });
+    expect(result.itemDelta).not.toHaveProperty("fieldPatch");
+  });
+
+  it("field-patch 混入 section invalidated 时丢弃字段补丁优化", () => {
+    const store = createProjectStore();
+
+    const result = store.applyProjectChange({
+      source: "proofreading_set_status",
+      projectPath: "E:/demo/demo.lg",
+      projectRevision: 2,
+      updatedSections: ["items", "proofreading"],
+      sectionRevisions: {
+        items: 2,
+        proofreading: 2,
+      },
+      operations: [
+        create_items_field_patch_operation({
+          changedIds: [1],
+          fieldPatch: {
+            status: "PROCESSED",
+          },
+        }),
+        create_items_invalidated_operation({ changedIds: [1] }),
+      ],
+    });
+
+    expect(result.itemDelta).toMatchObject({
+      upsertItemIds: [1],
+      deleteItemIds: [],
+      fullReplace: true,
+    });
+    expect(result.itemDelta).not.toHaveProperty("fieldPatch");
+  });
+
+  it.each([
+    [
+      "full replace 在前",
+      [
+        create_files_invalidated_operation({ changedPaths: ["a.txt"] }),
+        create_files_delta_operation({ upsertFiles: { "a.txt": { rel_path: "a.txt" } } }),
+      ],
+    ],
+    [
+      "full replace 在后",
+      [
+        create_files_delta_operation({ upsertFiles: { "a.txt": { rel_path: "a.txt" } } }),
+        create_files_invalidated_operation({ changedPaths: ["a.txt"] }),
+      ],
+    ],
+  ] as const)("files %s 时应用结果仍要求 full refresh", (_name, operations) => {
+    const store = createProjectStore();
+
+    const result = store.applyProjectChange({
+      source: "project_data_changed",
+      projectPath: "E:/demo/demo.lg",
+      projectRevision: 2,
+      updatedSections: ["files"],
+      sectionRevisions: {
+        files: 2,
+      },
+      operations: [...operations],
+    });
+
+    expect(result.fileDelta).toEqual({
+      upsertFilePaths: ["a.txt"],
+      deleteFilePaths: [],
+      fullReplace: true,
     });
   });
 

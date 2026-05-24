@@ -19,12 +19,14 @@ import { build_desktop_system_proxy_startup_notice_argument } from "../bridge/sy
 import { LOG_WINDOW_QUERY_KEY, LOG_WINDOW_QUERY_VALUE, LogWindowHost } from "./log-window-host";
 import { write_electron_main_error, write_electron_main_warning } from "../../core/log/log-bridge";
 import { t_main_log } from "../../core/log/log-text";
+import type { RendererProcessDiagnosticsRegistry } from "./renderer-process-diagnostics";
 
 const WINDOW_STANDARD_WIDTH = 1280; // 与旧桌面版 AppFluentWindow 对齐，后续 Electron UI 也以 1280 x 800 作为标准开发基线
 const WINDOW_STANDARD_HEIGHT = 800;
 const WINDOW_BACKGROUND_COLOR = "#F8FAFC"; // 主窗口背景要早于 renderer 首帧生效，避免加载阶段出现默认白屏或暗色闪烁
 const DEVTOOLS_TOGGLE_KEY = "F12"; // 主窗口隐藏菜单栏后，开发态仍保留显式快捷键作为 DevTools 唯一稳定入口
 const DEVTOOLS_TOGGLE_WITH_MODIFIER_KEY = "i";
+// DEVTOOLS INSPECT WITH MODIFIER KEY 是持久化或快捷键契约，集中保存避免调用点散落魔术字符串。
 const DEVTOOLS_INSPECT_WITH_MODIFIER_KEY = "c";
 const PRELOAD_ENTRY_FILE_NAME = "preload.mjs"; // preload 产物名必须与 electron-vite 开发态和发布态输出一致，否则 window.desktopApp 不会注入
 const DEVTOOLS_ENTER_INSPECT_MODE_SCRIPT = `
@@ -46,6 +48,7 @@ export type MainWindowHostOptions = {
   desktopBundleDir: string;
   coreApiBaseUrl: string;
   systemProxyStartupNotice: DesktopSystemProxyStartupNotice;
+  rendererDiagnostics: RendererProcessDiagnosticsRegistry;
   shouldBypassCloseConfirmation: () => boolean;
   onClosed: () => void;
 };
@@ -54,6 +57,7 @@ export type LogWindowHostFactoryOptions = {
   desktopBundleDir: string;
   coreApiBaseUrl: string;
   systemProxyStartupNotice: DesktopSystemProxyStartupNotice;
+  rendererDiagnostics: RendererProcessDiagnosticsRegistry;
 };
 
 /**
@@ -87,9 +91,11 @@ export function create_log_window_host(options: LogWindowHostFactoryOptions): Lo
       );
     },
     registerWindow: (target_window) => {
+      options.rendererDiagnostics.registerWindow(target_window, "log");
       register_development_devtools_shortcut(target_window);
       register_window_runtime_events(target_window, {
         confirmOnClose: false,
+        rendererDiagnostics: options.rendererDiagnostics,
         shouldBypassCloseConfirmation: () => true,
       });
     },
@@ -112,9 +118,11 @@ export function create_main_window(options: MainWindowHostOptions): BrowserWindo
       options.systemProxyStartupNotice,
     ),
   );
+  options.rendererDiagnostics.registerWindow(main_window, "main");
   register_development_devtools_shortcut(main_window);
   register_window_runtime_events(main_window, {
     confirmOnClose: true,
+    rendererDiagnostics: options.rendererDiagnostics,
     shouldBypassCloseConfirmation: options.shouldBypassCloseConfirmation,
   });
 
@@ -307,7 +315,11 @@ function show_window_if_hidden(target_window: BrowserWindow): void {
  */
 function register_window_runtime_events(
   target_window: BrowserWindow,
-  options: { confirmOnClose: boolean; shouldBypassCloseConfirmation: () => boolean },
+  options: {
+    confirmOnClose: boolean;
+    rendererDiagnostics: RendererProcessDiagnosticsRegistry;
+    shouldBypassCloseConfirmation: () => boolean;
+  },
 ): void {
   target_window.on("close", (event) => {
     // 日志窗口和退出中的应用不能进入主窗口的网页关闭确认流程
@@ -362,13 +374,16 @@ function register_window_runtime_events(
   target_window.webContents.on("render-process-gone", (_event, details) => {
     write_electron_main_error(t_main_log("app.diagnostic.renderer.process_exited"), {
       // 渲染进程退出后保持窗口可见，方便用户和开发者看到当前故障状态
-      context: details as unknown as Record<string, unknown>,
+      context: options.rendererDiagnostics.buildRendererProcessGoneContext(target_window, details),
     });
     show_window_if_hidden(target_window);
   });
 
   target_window.on("unresponsive", () => {
-    write_electron_main_error(t_main_log("app.diagnostic.renderer.window_unresponsive")); // 失去响应时不自动重载，先记录并拉前台，避免破坏用户尚未保存的页面状态
+    write_electron_main_error(t_main_log("app.diagnostic.renderer.window_unresponsive"), {
+      // 失去响应时不自动重载，先记录宿主快照并拉前台，避免破坏用户尚未保存的页面状态
+      context: options.rendererDiagnostics.buildWindowUnresponsiveContext(target_window),
+    });
     show_window_if_hidden(target_window);
   });
 }

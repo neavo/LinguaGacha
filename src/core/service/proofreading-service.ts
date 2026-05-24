@@ -7,7 +7,7 @@ import {
 } from "../project/project-mutation-coordinator";
 import { ProjectChangePublisher } from "../project/project-change-publisher";
 import { ProjectSessionState } from "../project/project-session-state";
-import { Item } from "../../base/item";
+import { Item, type ItemStatus } from "../../base/item";
 import type {
   ProjectChangeItemFieldPatch,
   ProjectChangeItemsPayload,
@@ -21,7 +21,12 @@ import { is_task_progress_status } from "../../shared/task";
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
-const PROOFREADING_MANUAL_STATUS_CODES = ["NONE", "PROCESSED", "EXCLUDED"] as const; // 后端只接受菜单显式暴露的人工可写状态
+// PROOFREADING MANUAL STATUS CODES 是领域白名单或配置表，集中维护避免分支散落。
+const PROOFREADING_MANUAL_STATUS_CODES = [
+  "NONE",
+  "PROCESSED",
+  "EXCLUDED",
+] as const satisfies readonly ItemStatus[]; // 后端只接受菜单显式暴露的人工可写状态
 
 type ProofreadingManualStatus = (typeof PROOFREADING_MANUAL_STATUS_CODES)[number];
 
@@ -512,9 +517,16 @@ export class ProofreadingService {
         }
         continue;
       }
-      const value = next_item[field];
-      if (typeof value === "string" && value !== current_item[field]) {
-        patch[field] = value;
+      if (field === "status") {
+        const status = Item.normalize_status(next_item["status"]);
+        if (status !== current_item["status"]) {
+          patch.status = status;
+        }
+        continue;
+      }
+      const dst = next_item["dst"];
+      if (field === "dst" && typeof dst === "string" && dst !== current_item["dst"]) {
+        patch.dst = dst;
       }
     }
     return patch;
@@ -647,7 +659,7 @@ export class ProofreadingService {
   /**
    * 校对写入口只接受当前状态域，非法值按未处理状态兜底
    */
-  private normalize_item_status(value: ApiJsonValue | undefined): string {
+  private normalize_item_status(value: ApiJsonValue | undefined): ItemStatus {
     return Item.normalize_status(value);
   }
 

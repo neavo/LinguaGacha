@@ -3,6 +3,7 @@ import path from "node:path";
 import type { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
+import { error_diagnostic_to_log_fields, to_error_diagnostic } from "../../shared/error";
 
 /**
  * 启动期历史文件迁移只使用 copy-delete 语义：先把旧源完整复制到当前权威位置，
@@ -68,8 +69,7 @@ export class PathRelocation {
         }),
         {
           source: "migration",
-          error_message: error instanceof Error ? error.message : undefined,
-          stack: error instanceof Error ? error.stack : undefined,
+          ...error_diagnostic_to_log_fields(to_error_diagnostic(error)),
         },
       );
     }

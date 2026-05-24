@@ -52,7 +52,22 @@ describe("LLMClient", () => {
 
     const result = await client.request(create_body(), new AbortController().signal);
 
-    expect(result).toEqual(create_result({ error: "供应商爆炸" }));
+    expect(result).toMatchObject(
+      create_result({
+        failure: {
+          name: "Error",
+          message: "供应商爆炸",
+          context: {
+            api_format: "OpenAI",
+            model_id: "gpt-5-mini",
+            provider: "openai-compatible",
+            run_id: "run-1",
+            work_unit_id: "unit-1",
+          },
+        },
+      }),
+    );
+    expect(result.failure?.stack).toContain("供应商爆炸");
   });
 
   it("外部取消请求时返回 cancelled 结果", async () => {
@@ -126,6 +141,7 @@ function create_request(overrides: Partial<Parameters<ProviderClientPool["get_cl
   };
 }
 
+// create_body 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_body(
   model_overrides: Record<string, ApiJsonValue> = {},
   config_snapshot: ApiJsonValue = { request_timeout: 120 },
@@ -149,6 +165,7 @@ function create_body(
   };
 }
 
+// create_abortable_transport 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_abortable_transport(): RequestTransport {
   return {
     send: async (_policy: ResolvedRequestPolicy, signal: AbortSignal) =>
@@ -162,6 +179,7 @@ function create_abortable_transport(): RequestTransport {
   };
 }
 
+// create_result 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_result(overrides: Partial<LLMRequestResult> = {}): LLMRequestResult {
   return {
     response_think: "",
@@ -171,7 +189,6 @@ function create_result(overrides: Partial<LLMRequestResult> = {}): LLMRequestRes
     cancelled: false,
     timeout: false,
     degraded: false,
-    error: "",
     ...overrides,
   };
 }

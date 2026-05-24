@@ -70,7 +70,7 @@ describe("log-bridge", () => {
     const file_record = JSON.parse(file_lines[0] ?? "{}") as Record<string, unknown>;
     expect(file_record["message"]).toBe("主进程异常");
     expect(file_record["source"]).toBe("electron-main");
-    expect(file_record["context"]).toEqual({ phase: "ready" });
+    expect(file_record["context"]).toMatchObject({ phase: "ready", error_name: "Error" });
     expect(file_record["error_message"]).toBe("provider boom");
     expect(String(file_record["stack"])).toContain("provider boom");
     expect(console_lines[0]).toContain("主进程异常");
@@ -82,6 +82,34 @@ describe("log-bridge", () => {
     ]);
   });
 
+  it("保留 renderer 加载失败的 Electron 原生诊断字段", async () => {
+    const file_lines: string[] = [];
+    const log_manager = new LogManager({
+      consoleWriter: () => undefined,
+      fileWriter: create_memory_file_writer(file_lines),
+      logDir: ".",
+      now: () => new Date(2012, 11, 12, 12, 12, 12),
+    });
+    set_electron_main_log_manager(log_manager);
+
+    write_electron_main_error("渲染层入口加载失败", {
+      context: {
+        error_code: -105,
+        error_description: "NAME_NOT_RESOLVED",
+        validated_url: "http://127.0.0.1:5173/",
+      },
+    });
+    await log_manager.shutdown();
+
+    const file_record = JSON.parse(file_lines[0] ?? "{}") as Record<string, unknown>;
+    expect(file_record["context"]).toEqual({
+      error_code: -105,
+      error_description: "NAME_NOT_RESOLVED",
+      validated_url: "http://127.0.0.1:5173/",
+    });
+  });
+
+  // create_memory_file_writer 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_memory_file_writer(lines: string[]): FileLogWriter {
     return {
       write: (text) => lines.push(text),
