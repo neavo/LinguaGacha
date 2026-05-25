@@ -50,7 +50,7 @@ function ProjectPipelineProbe(props: {
     applyProjectChange: vi.fn(),
     applyProjectChangeBatch: vi.fn(),
     shouldApplyProjectChange: () => true,
-    queueProjectChangeDuringWarmup: () => false,
+    queueProjectChangeDuringSessionWarming: () => false,
     normalizeProjectChangeEvent: props.normalizeProjectChangeEvent,
     collectProjectChangeSectionsRequiringRead: () => [],
     readProjectSectionsForChange: async () => null,

@@ -520,31 +520,21 @@ describe("useProofreadingPageState", () => {
     await flush_async_updates();
   }
 
-  it("项目路径切换后会先保持 refreshing，不会对空缓存立刻做 worker 同步", async () => {
+  it("项目路径切换后会基于当前 ProjectStore 完成首刷", async () => {
     await render_hook();
 
     expect(latest_state).not.toBeNull();
     expect(
       proofreading_runtime_client_fixture.current.hydrate_proofreading_full,
-    ).not.toHaveBeenCalled();
+    ).toHaveBeenCalledTimes(1);
     expect(
       proofreading_runtime_client_fixture.current.apply_proofreading_item_delta,
     ).not.toHaveBeenCalled();
-    expect(latest_state?.cache_status).toBe("refreshing");
-    expect(latest_state?.settled_project_path).toBe("");
+    expect(latest_state?.cache_status).toBe("ready");
+    expect(latest_state?.settled_project_path).toBe("E:/demo/sample.lg");
   });
 
   it("缓存 ready 后再次收到 delta 信号时会走增量路径而不是全量 hydrate", async () => {
-    await render_hook();
-
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_change_signal: create_project_change_signal(1, {
-        mode: "full",
-        itemIds: [],
-        updatedSections: ["project", "items", "quality"],
-      }),
-    };
     await render_hook();
 
     expect(
@@ -563,7 +553,7 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      project_change_signal: create_project_change_signal(2, {
+      project_change_signal: create_project_change_signal(1, {
         mode: "delta",
         itemIds: [1],
         updatedSections: ["items"],
@@ -590,16 +580,6 @@ describe("useProofreadingPageState", () => {
   it("目标语言变化后会全量重建 worker 校对缓存", async () => {
     await render_hook();
 
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_change_signal: create_project_change_signal(1, {
-        mode: "full",
-        itemIds: [],
-        updatedSections: ["project", "items", "quality"],
-      }),
-    };
-    await render_hook();
-
     expect(
       proofreading_runtime_client_fixture.current.hydrate_proofreading_full,
     ).toHaveBeenCalledTimes(1);
@@ -613,7 +593,7 @@ describe("useProofreadingPageState", () => {
         ...runtime_fixture.current.settings_snapshot,
         target_language: "EN",
       },
-      project_change_signal: create_project_change_signal(2, {
+      project_change_signal: create_project_change_signal(1, {
         mode: "delta",
         itemIds: [1],
         updatedSections: ["items"],
@@ -632,16 +612,6 @@ describe("useProofreadingPageState", () => {
   it("缓存 ready 后收到 noop 信号不会重新查询列表和筛选面板", async () => {
     await render_hook();
 
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_change_signal: create_project_change_signal(1, {
-        mode: "full",
-        itemIds: [],
-        updatedSections: ["project", "items", "quality"],
-      }),
-    };
-    await render_hook();
-
     expect(
       proofreading_runtime_client_fixture.current.hydrate_proofreading_full,
     ).toHaveBeenCalledTimes(1);
@@ -654,7 +624,7 @@ describe("useProofreadingPageState", () => {
 
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      project_change_signal: create_project_change_signal(2, {
+      project_change_signal: create_project_change_signal(1, {
         mode: "noop",
         itemIds: [],
         updatedSections: ["proofreading", "task"],
@@ -680,16 +650,6 @@ describe("useProofreadingPageState", () => {
   it("打开筛选弹窗时不会再触发首次面板计算", async () => {
     await render_hook();
 
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_change_signal: create_project_change_signal(1, {
-        mode: "full",
-        itemIds: [],
-        updatedSections: ["project", "items", "quality"],
-      }),
-    };
-    await render_hook();
-
     expect(
       proofreading_runtime_client_fixture.current.build_proofreading_filter_panel,
     ).toHaveBeenCalledTimes(1);
@@ -711,16 +671,6 @@ describe("useProofreadingPageState", () => {
       return filter_panel_deferred.promise;
     });
 
-    await render_hook();
-
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_change_signal: create_project_change_signal(1, {
-        mode: "full",
-        itemIds: [],
-        updatedSections: ["project", "items", "quality"],
-      }),
-    };
     await render_hook();
 
     expect(
@@ -1160,16 +1110,6 @@ describe("useProofreadingPageState", () => {
 
     await render_hook();
 
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_change_signal: create_project_change_signal(1, {
-        mode: "full",
-        itemIds: [],
-        updatedSections: ["project", "items", "quality"],
-      }),
-    };
-    await render_hook();
-
     expect(latest_state?.cache_status).not.toBe("error");
     expect(toast_fixture.current.push_toast).not.toHaveBeenCalledWith(
       "error",
@@ -1178,6 +1118,13 @@ describe("useProofreadingPageState", () => {
   });
 
   it("未建立 worker 项目缓存时卸载不会发送空项目释放请求", async () => {
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_snapshot: {
+        loaded: false,
+        path: "",
+      },
+    };
     await render_hook();
 
     await act(async () => {
@@ -1186,6 +1133,38 @@ describe("useProofreadingPageState", () => {
     root = null;
 
     expect(proofreading_runtime_client_fixture.current.dispose_project).not.toHaveBeenCalled();
+  });
+
+  it("项目卸载会废弃在途刷新结果", async () => {
+    const refresh_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
+    proofreading_runtime_client_fixture.current.hydrate_proofreading_full = vi.fn(() => {
+      return refresh_deferred.promise;
+    });
+
+    await render_hook();
+    expect(latest_state?.cache_status).toBe("refreshing");
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_snapshot: {
+        loaded: false,
+        path: "",
+      },
+    };
+    await render_hook();
+
+    expect(latest_state?.cache_status).toBe("idle");
+
+    await act(async () => {
+      refresh_deferred.resolve(create_sync_state());
+    });
+    await flush_async_updates();
+
+    expect(latest_state?.cache_status).toBe("idle");
+    expect(latest_state?.settled_project_path).toBe("");
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_list_view,
+    ).not.toHaveBeenCalled();
   });
 
   it("校对重翻请求收到任务回执后会通过 task snapshot 暴露正在重翻的行 id", async () => {

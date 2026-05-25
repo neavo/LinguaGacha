@@ -69,7 +69,7 @@ describe("desktop runtime diagnostics", () => {
       summarize_runtime_project_for_diagnostics({
         loaded: true,
         path: "E:/secret/project/demo.lg",
-        warmupStatus: "ready",
+        sessionStatus: "ready",
       }),
     ).toMatchObject({
       loaded: true,
@@ -78,7 +78,7 @@ describe("desktop runtime diagnostics", () => {
         pathHash: expect.any(String),
         length: 25,
       },
-      warmupStatus: "ready",
+      sessionStatus: "ready",
     });
 
     expect(summarize_task_snapshot_for_diagnostics(create_task_snapshot())).toEqual({

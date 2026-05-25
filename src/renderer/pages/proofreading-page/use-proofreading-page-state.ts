@@ -922,6 +922,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
   const clear_cache_state = useCallback((): void => {
     clear_pending_confirmation();
+    refresh_generation_ref.current += 1;
     invalidate_cache_bound_queries();
     const currentProjectId = runtime_sync_state_ref.current?.projectId;
     runtime_sync_state_ref.current = null;
@@ -1916,9 +1917,11 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     previous_project_path_ref.current = project_snapshot.path;
 
     if (!project_snapshot.loaded) {
-      clear_transient_state_for_new_project();
-      clear_cache_state();
-      set_cache_status("idle");
+      if (previous_project_loaded || previous_project_path !== "") {
+        clear_transient_state_for_new_project();
+        clear_cache_state();
+        set_cache_status("idle");
+      }
       return;
     }
 
@@ -1927,12 +1930,17 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       clear_cache_state();
       set_cache_status("refreshing");
       pending_reset_filters_ref.current = true;
+      previous_proofreading_change_seq_ref.current =
+        proofreading_change_signal?.seq ?? previous_proofreading_change_seq_ref.current;
+      void refresh_snapshot();
     }
   }, [
     clear_cache_state,
     clear_transient_state_for_new_project,
     project_snapshot.loaded,
     project_snapshot.path,
+    proofreading_change_signal,
+    refresh_snapshot,
   ]);
 
   useEffect(() => {

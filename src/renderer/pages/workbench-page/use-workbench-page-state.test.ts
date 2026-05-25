@@ -6,7 +6,9 @@ import { api_fetch } from "@/app/desktop/desktop-api";
 import type { ProjectItemPublicRecord } from "@base/item";
 import type { ProjectRuntimeChangeSignal } from "@/app/desktop/desktop-runtime-context";
 import type { AnalysisTaskSnapshot } from "@/pages/workbench-page/task-runtime/analysis-task-model";
-import { useWorkbenchLiveState } from "@/pages/workbench-page/use-workbench-live-state";
+import type { AnalysisTaskRuntime } from "@/pages/workbench-page/task-runtime/use-analysis-task-runtime";
+import type { TranslationTaskRuntime } from "@/pages/workbench-page/task-runtime/use-translation-task-runtime";
+import { useWorkbenchPageState } from "@/pages/workbench-page/use-workbench-page-state";
 import { createProjectItemIndex, type ProjectItemIndex } from "@/project/store/project-item-index";
 import type { DesktopPathPickResult } from "@gui/bridge-types";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
@@ -37,57 +39,9 @@ type RuntimeFixture = {
   };
 };
 
-type TranslationTaskRuntimeFixture = {
-  translation_task_display_snapshot: null;
-  translation_task_metrics: {
-    active: boolean;
-    stopping: boolean;
-    completion_percent: number;
-    processed_count: number;
-    failed_count: number;
-    average_output_speed: number;
-    total_output_tokens: number;
-  };
-  translation_waveform_history: number[];
-  task_confirm_state: null;
-  open_translation_detail_sheet: ReturnType<typeof vi.fn>;
-  close_translation_detail_sheet: ReturnType<typeof vi.fn>;
-  request_start_or_continue_translation: ReturnType<typeof vi.fn>;
-  request_task_action_confirmation: ReturnType<typeof vi.fn>;
-  confirm_task_action: ReturnType<typeof vi.fn>;
-  close_task_action_confirmation: ReturnType<typeof vi.fn>;
-};
+type TranslationTaskRuntimeFixture = TranslationTaskRuntime;
 
-type AnalysisTaskRuntimeFixture = {
-  analysis_task_display_snapshot: AnalysisTaskSnapshot | null;
-  analysis_task_metrics: {
-    active: boolean;
-    stopping: boolean;
-    completion_percent: number;
-    processed_count: number;
-    failed_count: number;
-    average_output_speed: number;
-    total_output_tokens: number;
-  };
-  analysis_waveform_history: number[];
-  analysis_confirm_state: null;
-  analysis_import_confirm_state: {
-    open: boolean;
-    duplicate_count: number;
-    submitting: boolean;
-  };
-  open_analysis_detail_sheet: ReturnType<typeof vi.fn>;
-  close_analysis_detail_sheet: ReturnType<typeof vi.fn>;
-  request_start_or_continue_analysis: ReturnType<typeof vi.fn>;
-  request_analysis_task_action_confirmation: ReturnType<typeof vi.fn>;
-  confirm_analysis_task_action: ReturnType<typeof vi.fn>;
-  close_analysis_task_action_confirmation: ReturnType<typeof vi.fn>;
-  request_import_analysis_glossary: ReturnType<typeof vi.fn>;
-  import_analysis_glossary_duplicate_skip: ReturnType<typeof vi.fn>;
-  import_analysis_glossary_duplicate_overwrite: ReturnType<typeof vi.fn>;
-  close_analysis_glossary_import_confirmation: ReturnType<typeof vi.fn>;
-  refresh_analysis_task_snapshot: ReturnType<typeof vi.fn>;
-};
+type AnalysisTaskRuntimeFixture = AnalysisTaskRuntime;
 
 type WorkbenchPickerFixture = {
   pickWorkbenchFilePath: ReturnType<typeof vi.fn<() => Promise<DesktopPathPickResult>>>;
@@ -149,18 +103,6 @@ vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
     useDesktopToast: () => {
       return toast_fixture.current;
     },
-  };
-});
-
-vi.mock("@/pages/workbench-page/task-runtime/use-translation-task-runtime", () => {
-  return {
-    useTranslationTaskRuntime: () => translation_runtime_fixture.current,
-  };
-});
-
-vi.mock("@/pages/workbench-page/task-runtime/use-analysis-task-runtime", () => {
-  return {
-    useAnalysisTaskRuntime: () => analysis_runtime_fixture.current,
   };
 });
 
@@ -277,11 +219,18 @@ function create_translation_task_runtime_fixture(): TranslationTaskRuntimeFixtur
       completion_percent: 0,
       processed_count: 0,
       failed_count: 0,
+      elapsed_seconds: 0,
+      remaining_seconds: 0,
       average_output_speed: 0,
-      total_output_tokens: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+      request_in_flight_count: 0,
     },
     translation_waveform_history: [],
+    translation_detail_sheet_open: false,
     task_confirm_state: null,
+    translation_task_menu_disabled: false,
+    translation_task_menu_busy: false,
     open_translation_detail_sheet: vi.fn(),
     close_translation_detail_sheet: vi.fn(),
     request_start_or_continue_translation: vi.fn(async () => {}),
@@ -301,16 +250,25 @@ function create_analysis_task_runtime_fixture(): AnalysisTaskRuntimeFixture {
       completion_percent: 0,
       processed_count: 0,
       failed_count: 0,
+      elapsed_seconds: 0,
+      remaining_seconds: 0,
       average_output_speed: 0,
-      total_output_tokens: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+      request_in_flight_count: 0,
+      candidate_count: 0,
     },
     analysis_waveform_history: [],
+    analysis_detail_sheet_open: false,
     analysis_confirm_state: null,
     analysis_import_confirm_state: {
       open: false,
       duplicate_count: 0,
       submitting: false,
     },
+    analysis_importing: false,
+    analysis_task_menu_disabled: false,
+    analysis_task_menu_busy: false,
     open_analysis_detail_sheet: vi.fn(),
     close_analysis_detail_sheet: vi.fn(),
     request_start_or_continue_analysis: vi.fn(async () => {}),
@@ -426,10 +384,10 @@ function create_analysis_task_snapshot(
   };
 }
 
-describe("useWorkbenchLiveState", () => {
+describe("useWorkbenchPageState", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
-  let latest_state: ReturnType<typeof useWorkbenchLiveState> | null = null;
+  let latest_state: ReturnType<typeof useWorkbenchPageState> | null = null;
 
   afterEach(async () => {
     if (root !== null) {
@@ -452,7 +410,10 @@ describe("useWorkbenchLiveState", () => {
 
   // WorkbenchProbe 收口测试中的共享步骤，保证断言只关注当前行为。
   function WorkbenchProbe(): JSX.Element | null {
-    latest_state = useWorkbenchLiveState();
+    latest_state = useWorkbenchPageState({
+      translationTaskRuntime: translation_runtime_fixture.current,
+      analysisTaskRuntime: analysis_runtime_fixture.current,
+    });
     return null;
   }
 
@@ -477,18 +438,16 @@ describe("useWorkbenchLiveState", () => {
     await flush_async_updates();
   }
 
-  it("项目路径切换后会先保持未 settled，直到收到工作台变更信号", async () => {
+  it("项目路径切换后会基于当前 ProjectStore 完成首刷", async () => {
     await render_hook();
 
     expect(latest_state).not.toBeNull();
-    expect(latest_state?.cache_status).toBe("refreshing");
-    expect(latest_state?.settled_project_path).toBe("");
+    expect(latest_state?.cache_status).toBe("ready");
+    expect(latest_state?.settled_project_path).toBe("E:/demo/sample.lg");
     expect(latest_state?.entries).toEqual([]);
   });
 
-  it("收到本次项目读取对应的工作台信号后才会落到 ready", async () => {
-    await render_hook();
-
+  it("最后一次信号与工作台无关时仍会在首次挂载全量刷新", async () => {
     runtime_fixture.current = {
       ...runtime_fixture.current,
       project_store: {
@@ -511,7 +470,7 @@ describe("useWorkbenchLiveState", () => {
           };
         },
       },
-      project_change_signal: create_project_change_signal(1),
+      project_change_signal: create_project_change_signal(1, { updatedSections: ["quality"] }),
     };
 
     await render_hook();
@@ -592,8 +551,6 @@ describe("useWorkbenchLiveState", () => {
         failed_count: 6,
       },
     };
-    await render_hook();
-
     runtime_fixture.current = {
       ...runtime_fixture.current,
       project_store: {
@@ -690,8 +647,6 @@ describe("useWorkbenchLiveState", () => {
         failed_count: 1,
       },
     };
-    await render_hook();
-
     runtime_fixture.current = {
       ...runtime_fixture.current,
       task_snapshot: {
@@ -784,8 +739,6 @@ describe("useWorkbenchLiveState", () => {
         completion_percent: 0,
       },
     };
-    await render_hook();
-
     runtime_fixture.current = {
       ...runtime_fixture.current,
       task_snapshot: {

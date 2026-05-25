@@ -20,7 +20,7 @@ import {
 } from "react";
 
 import { type SettingsSnapshot } from "@/app/desktop/desktop-runtime-context";
-import { useProjectPagesBarrier } from "@/app/page-runtime/project-pages-context";
+import { useProjectSessionBarrier } from "@/app/session/project-session-context";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
@@ -671,14 +671,14 @@ function wait_for_next_animation_frame(): Promise<void> {
 
 export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   const {
-    project_warmup_stage,
+    project_session_stage,
     settings_snapshot,
-    set_project_warmup_status,
+    set_project_session_status,
     refresh_project_snapshot,
     refresh_settings,
     refresh_task,
   } = useDesktopRuntime();
-  const { create_barrier_checkpoint, wait_for_barrier } = useProjectPagesBarrier();
+  const { create_barrier_checkpoint, wait_for_barrier } = useProjectSessionBarrier();
   const { push_toast, push_progress_toast, update_progress_toast, dismiss_toast } =
     useDesktopToast();
   const { t } = useI18n();
@@ -709,7 +709,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
   useEffect(() => {
     const toast_id = project_loading_toast_id_ref.current;
-    const next_message = resolve_project_loading_stage_message(project_warmup_stage, t);
+    const next_message = resolve_project_loading_stage_message(project_session_stage, t);
     const normalized_message = next_message?.trim() ?? "";
 
     if (toast_id === null || normalized_message === "") {
@@ -720,7 +720,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       message: normalized_message,
       presentation: "modal",
     });
-  }, [project_warmup_stage, t, update_progress_toast]);
+  }, [project_session_stage, t, update_progress_toast]);
 
   async function run_project_loading_modal(args: {
     initial_message: string;
@@ -999,16 +999,17 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
           if (failure_toast !== null) {
             push_toast("warning", failure_toast);
           }
-          set_project_warmup_status("warming");
+          set_project_session_status("warming");
           await refresh_project_snapshot();
           await api_fetch<SettingsPayload>("/api/settings/recent-projects/add", {
             path: normalized_output_path,
             name: extract_stem(extract_file_name(normalized_output_path)),
           });
+          // 新建工程完成后只等待全局 session ready，页面缓存由进入页面后自行注册和刷新。
           await Promise.all([
             refresh_recent_projects(),
             refresh_task(),
-            wait_for_barrier("project_warmup", {
+            wait_for_barrier("project_session_ready", {
               projectPath: normalized_output_path,
               checkpoint: barrier_checkpoint,
             }),
@@ -1100,16 +1101,17 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
           await api_fetch("/api/project/load", {
             path: project_to_open.path,
           });
-          set_project_warmup_status("warming");
+          set_project_session_status("warming");
           await refresh_project_snapshot();
           await api_fetch<SettingsPayload>("/api/settings/recent-projects/add", {
             path: project_to_open.path,
             name: project_to_open.name,
           });
+          // 打开工程完成后只等待全局 session ready，避免未挂载页面缓存阻塞导航。
           await Promise.all([
             refresh_recent_projects(),
             refresh_task(),
-            wait_for_barrier("project_warmup", {
+            wait_for_barrier("project_session_ready", {
               projectPath: project_to_open.path,
               checkpoint: barrier_checkpoint,
             }),

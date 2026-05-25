@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { INPUT_QUERY_DEBOUNCE_MS } from "@/hooks/use-debounce";
-import type { QualityStatisticsCacheSnapshot } from "@/project/quality/quality-statistics-store";
+import type { QualityRuleStatisticsCacheSnapshot } from "@/project/quality/quality-rule-statistics-store";
 import type { ProjectItemPublicRecord } from "@base/item";
 import { createProjectItemIndex } from "@/project/store/project-item-index";
 import { useTextPreservePageState } from "./use-text-preserve-page-state";
@@ -255,13 +255,13 @@ const project_store = {
   getState: () => runtime_state,
 };
 
-let current_statistics_cache: QualityStatisticsCacheSnapshot;
+let current_statistics_cache: QualityRuleStatisticsCacheSnapshot;
 let task_snapshot: { busy: boolean; status: string };
 
 // create_statistics_cache 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_statistics_cache(
-  args: Partial<QualityStatisticsCacheSnapshot>,
-): QualityStatisticsCacheSnapshot {
+  args: Partial<QualityRuleStatisticsCacheSnapshot>,
+): QualityRuleStatisticsCacheSnapshot {
   return {
     phase: "current",
     current_snapshot: {
@@ -313,9 +313,9 @@ vi.mock("@/app/desktop/desktop-api", () => {
   };
 });
 
-vi.mock("@/app/page-runtime/project-pages-context", () => {
+vi.mock("@/app/session/project-session-context", () => {
   return {
-    useProjectPagesBarrier: () => ({
+    useProjectSessionBarrier: () => ({
       create_barrier_checkpoint: create_barrier_checkpoint_mock,
       wait_for_barrier: wait_for_barrier_mock,
     }),
@@ -369,9 +369,9 @@ vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
   };
 });
 
-vi.mock("@/project/quality/quality-statistics-context", () => {
+vi.mock("@/project/quality/quality-rule-statistics-context", () => {
   return {
-    useQualityStatistics: () => current_statistics_cache,
+    useQualityRuleStatistics: () => current_statistics_cache,
   };
 });
 

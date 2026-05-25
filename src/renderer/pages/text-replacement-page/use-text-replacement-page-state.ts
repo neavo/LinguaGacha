@@ -12,12 +12,12 @@ import {
   getQualityRuleSlice,
 } from "@/project/quality/quality-runtime";
 import {
-  isQualityStatisticsCacheReady,
-  isQualityStatisticsCacheRunning,
-  type QualityStatisticsCacheSnapshot,
-} from "@/project/quality/quality-statistics-store";
+  isQualityRuleStatisticsCacheReady,
+  isQualityRuleStatisticsCacheRunning,
+  type QualityRuleStatisticsCacheSnapshot,
+} from "@/project/quality/quality-rule-statistics-store";
 import type { SettingsSnapshotPayload } from "@/app/desktop/desktop-runtime-context";
-import { useQualityStatistics } from "@/project/quality/quality-statistics-context";
+import { useQualityRuleStatistics } from "@/project/quality/quality-rule-statistics-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
@@ -271,11 +271,11 @@ function build_default_preset_update_payload(
 
 // build_text_replacement_statistics_state_from_cache 构造跨层载荷，保证字段形状在一个入口维护。
 function build_text_replacement_statistics_state_from_cache(
-  statistics_cache: QualityStatisticsCacheSnapshot,
+  statistics_cache: QualityRuleStatisticsCacheSnapshot,
 ): TextReplacementStatisticsState {
   // 页面只从质量统计缓存派生展示状态，不持有也不修改替换规则事实。
   return {
-    running: isQualityStatisticsCacheRunning(statistics_cache),
+    running: isQualityRuleStatisticsCacheRunning(statistics_cache),
     completed_snapshot: statistics_cache.completed_snapshot,
     completed_entry_ids: statistics_cache.completed_entry_ids,
     matched_count_by_entry_id: statistics_cache.matched_count_by_entry_id,
@@ -349,11 +349,11 @@ export function useTextReplacementPageState(
     },
   );
   const dialog_state_ref = useRef(dialog_state);
-  const statistics_cache = useQualityStatistics(config.rule_type);
+  const statistics_cache = useQualityRuleStatistics(config.rule_type);
   const statistics_state = useMemo<TextReplacementStatisticsState>(() => {
     return build_text_replacement_statistics_state_from_cache(statistics_cache);
   }, [statistics_cache]);
-  const statistics_ready = isQualityStatisticsCacheReady(statistics_cache);
+  const statistics_ready = isQualityRuleStatisticsCacheReady(statistics_cache);
 
   useEffect(() => {
     dialog_state_ref.current = dialog_state;

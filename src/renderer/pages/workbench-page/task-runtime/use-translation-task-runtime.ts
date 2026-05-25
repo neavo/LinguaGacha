@@ -6,9 +6,9 @@ import {
   create_translation_reset_failed_plan,
 } from "@/project/reset/translation-reset-plan";
 import type {
-  ProjectPagesBarrierCheckpoint,
-  ProjectPagesBarrierKind,
-} from "@/app/page-runtime/project-pages-barrier";
+  ProjectSessionBarrierCheckpoint,
+  ProjectSessionBarrierKind,
+} from "@/app/session/project-session-barrier";
 import {
   type ProjectMutationOperation,
   type ProjectMutationResultPayload,
@@ -48,11 +48,11 @@ type TranslationTaskCommandPayload = {
 const WORKBENCH_TRANSLATION_MUTATION: ProjectMutationOperation = "workbench.translation_mutation";
 
 type TranslationTaskRuntimeOptions = {
-  createProjectPagesBarrierCheckpoint?: () => ProjectPagesBarrierCheckpoint;
-  waitForProjectPagesBarrier?: (
-    kind: Exclude<ProjectPagesBarrierKind, "project_warmup">,
-    options?: { checkpoint?: ProjectPagesBarrierCheckpoint | null },
-  ) => Promise<void>;
+  createProjectSessionBarrierCheckpoint?: () => ProjectSessionBarrierCheckpoint; // 翻译重置前固定项目 session 身份
+  waitForProjectSessionBarrier?: (
+    kind: Exclude<ProjectSessionBarrierKind, "project_session_ready">,
+    options?: { checkpoint?: ProjectSessionBarrierCheckpoint | null },
+  ) => Promise<void>; // 翻译重置后等待校对缓存追上已提交的 ProjectStore 变更
 };
 
 export type TranslationTaskRuntime = {
@@ -415,7 +415,7 @@ export function useTranslationTaskRuntime(
       return;
     }
 
-    const barrierCheckpoint = options.createProjectPagesBarrierCheckpoint?.() ?? null;
+    const barrierCheckpoint = options.createProjectSessionBarrierCheckpoint?.() ?? null;
 
     set_task_confirm_state((previous_state) => {
       if (previous_state === null) {
@@ -468,8 +468,8 @@ export function useTranslationTaskRuntime(
         });
         await refresh_task("translation");
 
-        if (options.waitForProjectPagesBarrier !== undefined) {
-          await options.waitForProjectPagesBarrier("proofreading_cache_refresh", {
+        if (options.waitForProjectSessionBarrier !== undefined) {
+          await options.waitForProjectSessionBarrier("proofreading_cache_refresh", {
             checkpoint: barrierCheckpoint,
           });
         }

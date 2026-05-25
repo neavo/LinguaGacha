@@ -9,9 +9,9 @@ import type { ProjectStoreState } from "@/project/store/project-store";
 import { createProjectItemIndex } from "@/project/store/project-item-index";
 import {
   REFRESH_DELAY_BY_PRIORITY,
-  createQualityStatisticsScheduler,
-} from "@/project/quality/quality-statistics-scheduler";
-import { createQualityStatisticsStore } from "@/project/quality/quality-statistics-store";
+  createQualityRuleStatisticsScheduler,
+} from "@/project/quality/quality-rule-statistics-scheduler";
+import { createQualityRuleStatisticsStore } from "@/project/quality/quality-rule-statistics-store";
 import type { QualityStatisticsTaskExecutor } from "@/project/quality/quality-statistics";
 
 function create_success_result(input: QualityStatisticsTaskInput): QualityStatisticsTaskResult {
@@ -162,7 +162,7 @@ function create_test_state(): ProjectStoreState {
   };
 }
 
-describe("createQualityStatisticsScheduler", () => {
+describe("createQualityRuleStatisticsScheduler", () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -171,45 +171,9 @@ describe("createQualityStatisticsScheduler", () => {
     vi.useRealTimers();
   });
 
-  it("warmupAll 会触发四类规则预热", async () => {
-    let current_state = create_test_state();
-    const store = createQualityStatisticsStore();
-    const compute_by_rule_type = {
-      glossary: vi.fn(async (input: QualityStatisticsTaskInput) => create_success_result(input)),
-      pre_replacement: vi.fn(async (input: QualityStatisticsTaskInput) =>
-        create_success_result(input),
-      ),
-      post_replacement: vi.fn(async (input: QualityStatisticsTaskInput) =>
-        create_success_result(input),
-      ),
-      text_preserve: vi.fn(async (input: QualityStatisticsTaskInput) =>
-        create_success_result(input),
-      ),
-    };
-    const scheduler = createQualityStatisticsScheduler({
-      store,
-      get_project_state: () => current_state,
-      get_executor: (rule_type) => {
-        return {
-          compute: compute_by_rule_type[rule_type],
-        };
-      },
-    });
-
-    scheduler.resetProject(current_state.project.path);
-    scheduler.warmupAll();
-    await vi.advanceTimersByTimeAsync(REFRESH_DELAY_BY_PRIORITY.warmup);
-
-    expect(compute_by_rule_type.glossary).toHaveBeenCalledTimes(1);
-    expect(compute_by_rule_type.pre_replacement).toHaveBeenCalledTimes(1);
-    expect(compute_by_rule_type.post_replacement).toHaveBeenCalledTimes(1);
-    expect(compute_by_rule_type.text_preserve).toHaveBeenCalledTimes(1);
-    scheduler.dispose();
-  });
-
   it("quality slice 变更时只刷新对应 rule type", async () => {
     const current_state = create_test_state();
-    const store = createQualityStatisticsStore();
+    const store = createQualityRuleStatisticsStore();
     const compute_by_rule_type = {
       glossary: vi.fn(async (input: QualityStatisticsTaskInput) => create_success_result(input)),
       pre_replacement: vi.fn(async (input: QualityStatisticsTaskInput) =>
@@ -222,7 +186,7 @@ describe("createQualityStatisticsScheduler", () => {
         create_success_result(input),
       ),
     };
-    const scheduler = createQualityStatisticsScheduler({
+    const scheduler = createQualityRuleStatisticsScheduler({
       store,
       get_project_state: () => current_state,
       get_executor: (rule_type) => {
@@ -245,10 +209,10 @@ describe("createQualityStatisticsScheduler", () => {
 
   it("同一 key 的并发刷新会保持 single-flight", async () => {
     const current_state = create_test_state();
-    const store = createQualityStatisticsStore();
+    const store = createQualityRuleStatisticsStore();
     const deferred = create_deferred<QualityStatisticsTaskResult>();
     const glossary_compute = vi.fn(() => deferred.promise);
-    const scheduler = createQualityStatisticsScheduler({
+    const scheduler = createQualityRuleStatisticsScheduler({
       store,
       get_project_state: () => current_state,
       get_executor: (rule_type): QualityStatisticsTaskExecutor => {
@@ -282,14 +246,14 @@ describe("createQualityStatisticsScheduler", () => {
 
   it("迟到结果不会覆盖更新后的 revision 缓存", async () => {
     let current_state = create_test_state();
-    const store = createQualityStatisticsStore();
+    const store = createQualityRuleStatisticsStore();
     const first_deferred = create_deferred<QualityStatisticsTaskResult>();
     const second_deferred = create_deferred<QualityStatisticsTaskResult>();
     const glossary_compute = vi
       .fn<QualityStatisticsTaskExecutor["compute"]>()
       .mockImplementationOnce(() => first_deferred.promise)
       .mockImplementationOnce(() => second_deferred.promise);
-    const scheduler = createQualityStatisticsScheduler({
+    const scheduler = createQualityRuleStatisticsScheduler({
       store,
       get_project_state: () => current_state,
       get_executor: (rule_type): QualityStatisticsTaskExecutor => {
@@ -373,11 +337,11 @@ describe("createQualityStatisticsScheduler", () => {
         },
       },
     };
-    const store = createQualityStatisticsStore();
+    const store = createQualityRuleStatisticsStore();
     const glossary_compute = vi.fn(async (input: QualityStatisticsTaskInput) => {
       return create_success_result(input);
     });
-    const scheduler = createQualityStatisticsScheduler({
+    const scheduler = createQualityRuleStatisticsScheduler({
       store,
       get_project_state: () => current_state,
       get_executor: (rule_type): QualityStatisticsTaskExecutor => {
@@ -430,7 +394,7 @@ describe("createQualityStatisticsScheduler", () => {
 
   it("执行异常后会进入 failed phase，并能在后续刷新中恢复", async () => {
     const current_state = create_test_state();
-    const store = createQualityStatisticsStore();
+    const store = createQualityRuleStatisticsStore();
     const glossary_compute = vi
       .fn<QualityStatisticsTaskExecutor["compute"]>()
       .mockRejectedValueOnce(new Error("boom"))
@@ -442,7 +406,7 @@ describe("createQualityStatisticsScheduler", () => {
           },
         },
       });
-    const scheduler = createQualityStatisticsScheduler({
+    const scheduler = createQualityRuleStatisticsScheduler({
       store,
       get_project_state: () => current_state,
       get_executor: (rule_type): QualityStatisticsTaskExecutor => {

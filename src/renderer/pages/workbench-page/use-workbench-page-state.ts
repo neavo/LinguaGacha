@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type {
-  ProjectPagesBarrierCheckpoint,
-  ProjectPagesBarrierKind,
-} from "@/app/page-runtime/project-pages-barrier";
+  ProjectSessionBarrierCheckpoint,
+  ProjectSessionBarrierKind,
+} from "@/app/session/project-session-barrier";
 import {
   readProjectDataSectionRevisions,
   type ProjectDataSection,
@@ -25,14 +25,8 @@ import {
   type WorkbenchViewCache,
 } from "@/pages/workbench-page/workbench-view";
 import { resolve_workbench_project_change_signal } from "@/pages/workbench-page/workbench-project-change-signal";
-import {
-  useAnalysisTaskRuntime,
-  type AnalysisTaskRuntime,
-} from "@/pages/workbench-page/task-runtime/use-analysis-task-runtime";
-import {
-  useTranslationTaskRuntime,
-  type TranslationTaskRuntime,
-} from "@/pages/workbench-page/task-runtime/use-translation-task-runtime";
+import type { AnalysisTaskRuntime } from "@/pages/workbench-page/task-runtime/use-analysis-task-runtime";
+import type { TranslationTaskRuntime } from "@/pages/workbench-page/task-runtime/use-translation-task-runtime";
 import {
   type ProjectMutationOperation,
   type ProjectMutationResultPayload,
@@ -45,18 +39,11 @@ import {
   close_dialog_state,
   useWorkbenchImportFilesFlow,
 } from "@/pages/workbench-page/use-workbench-import-files-flow";
-import type {
-  AnalysisTaskConfirmState,
-  AnalysisTaskMetrics,
-} from "@/pages/workbench-page/task-runtime/analysis-task-model";
+import type { AnalysisTaskMetrics } from "@/pages/workbench-page/task-runtime/analysis-task-model";
 import type { RendererErrorContextInput } from "@shared/error";
-import type {
-  TranslationTaskConfirmState,
-  TranslationTaskMetrics,
-} from "@/pages/workbench-page/task-runtime/translation-task-model";
+import type { TranslationTaskMetrics } from "@/pages/workbench-page/task-runtime/translation-task-model";
 import type { AppTableSelectionChange } from "@/widgets/app-table/app-table-types";
 import type {
-  WorkbenchTaskConfirmDialogViewModel,
   WorkbenchTaskDetailViewModel,
   WorkbenchDialogState,
   WorkbenchFileEntry,
@@ -598,87 +585,7 @@ function build_analysis_task_detail_view_model(args: {
   };
 }
 
-// build_translation_task_confirm_dialog_view_model 构造跨层载荷，保证字段形状在一个入口维护。
-function build_translation_task_confirm_dialog_view_model(
-  state: TranslationTaskConfirmState | null,
-  t: ReturnType<typeof useI18n>["t"],
-): WorkbenchTaskConfirmDialogViewModel | null {
-  if (state === null) {
-    return null;
-  }
-
-  if (state.kind === "reset-all") {
-    return {
-      open: state.open,
-      description: t("workbench_page.translation_task.confirm.reset_all_description"),
-      submitting: state.submitting,
-    };
-  }
-
-  if (state.kind === "reset-failed") {
-    return {
-      open: state.open,
-      description: t("workbench_page.translation_task.confirm.reset_failed_description"),
-      submitting: state.submitting,
-    };
-  }
-
-  if (state.kind === "generate-translation") {
-    return {
-      open: state.open,
-      description: t("workbench_page.translation_task.confirm.generate_description"),
-      submitting: state.submitting,
-    };
-  }
-
-  return {
-    open: state.open,
-    description: t("workbench_page.translation_task.confirm.stop_description"),
-    submitting: state.submitting,
-  };
-}
-
-// build_analysis_task_confirm_dialog_view_model 构造跨层载荷，保证字段形状在一个入口维护。
-function build_analysis_task_confirm_dialog_view_model(
-  state: AnalysisTaskConfirmState | null,
-  t: ReturnType<typeof useI18n>["t"],
-): WorkbenchTaskConfirmDialogViewModel | null {
-  if (state === null) {
-    return null;
-  }
-
-  if (state.kind === "reset-all") {
-    return {
-      open: state.open,
-      description: t("workbench_page.analysis_task.confirm.reset_all_description"),
-      submitting: state.submitting,
-    };
-  }
-
-  if (state.kind === "reset-failed") {
-    return {
-      open: state.open,
-      description: t("workbench_page.analysis_task.confirm.reset_failed_description"),
-      submitting: state.submitting,
-    };
-  }
-
-  if (state.kind === "import-glossary") {
-    return {
-      open: state.open,
-      description: t("workbench_page.analysis_task.confirm.import_glossary_description"),
-      submitting: state.submitting,
-    };
-  }
-
-  return {
-    open: state.open,
-    description: t("workbench_page.analysis_task.confirm.stop_description"),
-    submitting: state.submitting,
-  };
-}
-
-export type UseWorkbenchLiveStateResult = {
+export type UseWorkbenchPageStateResult = {
   cache_status: "idle" | "refreshing" | "ready" | "error";
   consumed_revisions: ProjectDataSectionRevisions;
   required_sections: ProjectDataSection[];
@@ -694,8 +601,6 @@ export type UseWorkbenchLiveStateResult = {
   active_workbench_task_view: WorkbenchTaskViewState;
   active_workbench_task_summary: WorkbenchTaskSummaryViewModel;
   active_workbench_task_detail: WorkbenchTaskDetailViewModel | null;
-  translation_task_confirm_dialog: WorkbenchTaskConfirmDialogViewModel | null;
-  analysis_task_confirm_dialog: WorkbenchTaskConfirmDialogViewModel | null;
   entries: WorkbenchFileEntry[];
   selected_entry_ids: string[];
   active_entry_id: string | null;
@@ -725,28 +630,24 @@ export type UseWorkbenchLiveStateResult = {
   close_dialog: () => void;
 };
 
-type UseWorkbenchLiveStateOptions = {
-  createProjectPagesBarrierCheckpoint?: () => ProjectPagesBarrierCheckpoint;
-  waitForProjectPagesBarrier?: (
-    kind: Exclude<ProjectPagesBarrierKind, "project_warmup">,
-    options?: { checkpoint?: ProjectPagesBarrierCheckpoint | null },
-  ) => Promise<void>;
+type UseWorkbenchPageStateOptions = {
+  translationTaskRuntime: TranslationTaskRuntime; // 常驻任务 runtime 由 WorkbenchTaskRuntimeProvider 持有
+  analysisTaskRuntime: AnalysisTaskRuntime; // 页面只消费任务状态，不拥有任务完成意图
+  createProjectSessionBarrierCheckpoint?: () => ProjectSessionBarrierCheckpoint; // 文件 mutation 开始前固定项目 session 身份
+  waitForProjectSessionBarrier?: (
+    kind: Exclude<ProjectSessionBarrierKind, "project_session_ready">,
+    options?: { checkpoint?: ProjectSessionBarrierCheckpoint | null },
+  ) => Promise<void>; // 文件类动作结束前等待已挂载页面缓存追上 ProjectStore
 };
 
-// useWorkbenchLiveState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
-export function useWorkbenchLiveState(
-  options: UseWorkbenchLiveStateOptions = {},
-): UseWorkbenchLiveStateResult {
+// useWorkbenchPageState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
+export function useWorkbenchPageState(
+  options: UseWorkbenchPageStateOptions,
+): UseWorkbenchPageStateResult {
   const { t } = useI18n();
   const { push_toast, run_modal_progress_toast } = useDesktopToast();
-  const raw_translation_task_runtime = useTranslationTaskRuntime({
-    createProjectPagesBarrierCheckpoint: options.createProjectPagesBarrierCheckpoint,
-    waitForProjectPagesBarrier: options.waitForProjectPagesBarrier,
-  });
-  const raw_analysis_task_runtime = useAnalysisTaskRuntime({
-    createProjectPagesBarrierCheckpoint: options.createProjectPagesBarrierCheckpoint,
-    waitForProjectPagesBarrier: options.waitForProjectPagesBarrier,
-  });
+  const raw_translation_task_runtime = options.translationTaskRuntime;
+  const raw_analysis_task_runtime = options.analysisTaskRuntime;
   const {
     project_snapshot,
     project_store,
@@ -837,7 +738,7 @@ export function useWorkbenchLiveState(
   }, [current_selection_state]);
 
   const clear_workbench_snapshot_state = useCallback((): void => {
-    refresh_generation_ref.current = 0;
+    refresh_generation_ref.current += 1;
     snapshot_ref.current = EMPTY_SNAPSHOT;
     workbench_view_cache_ref.current = null;
     set_snapshot(EMPTY_SNAPSHOT);
@@ -982,10 +883,12 @@ export function useWorkbenchLiveState(
     previous_project_path_ref.current = project_snapshot.path;
 
     if (!project_snapshot.loaded) {
-      clear_workbench_snapshot_state();
-      set_cache_status("idle");
-      set_recent_workbench_task_kind(null);
-      set_stats_mode("translation");
+      if (previous_project_loaded || previous_project_path !== "") {
+        clear_workbench_snapshot_state();
+        set_cache_status("idle");
+        set_recent_workbench_task_kind(null);
+        set_stats_mode("translation");
+      }
       return;
     }
 
@@ -994,8 +897,17 @@ export function useWorkbenchLiveState(
       set_cache_status("refreshing");
       set_recent_workbench_task_kind(null);
       set_stats_mode("translation");
+      previous_workbench_change_seq_ref.current =
+        workbench_change_signal?.seq ?? previous_workbench_change_seq_ref.current;
+      void refresh_snapshot();
     }
-  }, [clear_workbench_snapshot_state, project_snapshot.loaded, project_snapshot.path]);
+  }, [
+    clear_workbench_snapshot_state,
+    project_snapshot.loaded,
+    project_snapshot.path,
+    refresh_snapshot,
+    workbench_change_signal,
+  ]);
 
   useEffect(() => {
     const previous_seq = previous_workbench_change_seq_ref.current;
@@ -1162,21 +1074,6 @@ export function useWorkbenchLiveState(
     t,
   ]);
 
-  const translation_task_confirm_dialog =
-    useMemo<WorkbenchTaskConfirmDialogViewModel | null>(() => {
-      return build_translation_task_confirm_dialog_view_model(
-        raw_translation_task_runtime.task_confirm_state,
-        t,
-      );
-    }, [raw_translation_task_runtime.task_confirm_state, t]);
-
-  const analysis_task_confirm_dialog = useMemo<WorkbenchTaskConfirmDialogViewModel | null>(() => {
-    return build_analysis_task_confirm_dialog_view_model(
-      raw_analysis_task_runtime.analysis_confirm_state,
-      t,
-    );
-  }, [raw_analysis_task_runtime.analysis_confirm_state, t]);
-
   useEffect(() => {
     if (running_workbench_task_kind !== null) {
       set_recent_workbench_task_kind(running_workbench_task_kind);
@@ -1244,7 +1141,7 @@ export function useWorkbenchLiveState(
     async (
       plan: WorkbenchProjectMutationPlan,
       request: (body: Record<string, unknown>) => Promise<ProjectMutationResultPayload>,
-      barrier_checkpoint: ProjectPagesBarrierCheckpoint | null,
+      barrier_checkpoint: ProjectSessionBarrierCheckpoint | null,
     ): Promise<ProjectMutationResultPayload> => {
       set_is_mutation_running(true);
       set_file_op_running(true);
@@ -1257,8 +1154,8 @@ export function useWorkbenchLiveState(
           },
         });
         await refresh_task();
-        if (options.waitForProjectPagesBarrier !== undefined) {
-          await options.waitForProjectPagesBarrier("workbench_file_mutation", {
+        if (options.waitForProjectSessionBarrier !== undefined) {
+          await options.waitForProjectSessionBarrier("workbench_file_operation", {
             checkpoint: barrier_checkpoint,
           });
         }
@@ -1280,7 +1177,7 @@ export function useWorkbenchLiveState(
     project_store,
     task_snapshot,
     planner_settings,
-    createProjectPagesBarrierCheckpoint: options.createProjectPagesBarrierCheckpoint,
+    createProjectSessionBarrierCheckpoint: options.createProjectSessionBarrierCheckpoint,
     run_modal_progress_toast,
     run_project_file_mutation,
     set_dialog_state: set_dialog_state,
@@ -1455,7 +1352,7 @@ export function useWorkbenchLiveState(
       return;
     }
 
-    const barrier_checkpoint = options.createProjectPagesBarrierCheckpoint?.() ?? null;
+    const barrier_checkpoint = options.createProjectSessionBarrierCheckpoint?.() ?? null;
     const target_rel_path = current_dialog_state.target_rel_paths[0] ?? null;
     set_dialog_submitting(true);
     try {
@@ -1626,8 +1523,6 @@ export function useWorkbenchLiveState(
     active_workbench_task_view,
     active_workbench_task_summary,
     active_workbench_task_detail,
-    translation_task_confirm_dialog,
-    analysis_task_confirm_dialog,
     entries,
     selected_entry_ids,
     active_entry_id,

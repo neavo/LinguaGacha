@@ -2144,7 +2144,7 @@ describe("DesktopRuntimeProvider", () => {
     });
   });
 
-  it("项目 warmup 期间的 mutation result 与同源 SSE 会在快照后只重放一次", async () => {
+  it("项目 session 初始化期间的 mutation result 与同源 SSE 会在快照后只重放一次", async () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
     const initial_project_read = create_deferred<Record<string, unknown>>();
@@ -2203,8 +2203,8 @@ describe("DesktopRuntimeProvider", () => {
       api_fetch_mock.mock.calls.some((call) => call[0] === "/api/project/read-sections"),
     );
 
-    const warmup_change = {
-      eventId: "warmup-mutation-1",
+    const session_initializing_change = {
+      eventId: "session-initializing-mutation-1",
       source: "translation_commit",
       projectPath: "E:/demo/demo.lg",
       projectRevision: 2,
@@ -2223,17 +2223,17 @@ describe("DesktopRuntimeProvider", () => {
         },
       },
     };
-    const warmup_mutation_payload = {
+    const session_initializing_mutation_payload = {
       accepted: true,
-      changes: [warmup_change],
+      changes: [session_initializing_change],
     };
 
     await act(async () => {
       await runtime_handle?.commit_project_mutation({
         operation: "workbench.file_mutation",
-        run: async () => warmup_mutation_payload,
+        run: async () => session_initializing_mutation_payload,
       });
-      event_stream.emit("project.data_changed", warmup_change);
+      event_stream.emit("project.data_changed", session_initializing_change);
       await Promise.resolve();
     });
 

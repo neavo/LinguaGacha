@@ -5,13 +5,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectItemPublicRecord } from "@base/item";
 import type { ProjectStoreState } from "@/project/store/project-store";
 import { createProjectItemIndex } from "@/project/store/project-item-index";
-import type { QualityStatisticsRuleType } from "@/project/quality/quality-statistics-store";
-import { QualityStatisticsProvider } from "@/project/quality/quality-statistics-context";
+import type { QualityRuleStatisticsRuleType } from "@/project/quality/quality-rule-statistics-store";
+import {
+  QualityRuleStatisticsProvider,
+  useQualityRuleStatistics,
+} from "@/project/quality/quality-rule-statistics-context";
 
 const { scheduler_mock } = vi.hoisted(() => {
   return {
     scheduler_mock: {
-      warmupAll: vi.fn(),
       markQualityDirty: vi.fn(),
       requestForeground: vi.fn(),
       resetProject: vi.fn(),
@@ -21,7 +23,7 @@ const { scheduler_mock } = vi.hoisted(() => {
 });
 
 let current_state: ProjectStoreState;
-let current_project_warmup_status: "idle" | "loading" | "ready";
+let current_project_session_status: "idle" | "warming" | "ready";
 const project_store_listeners = new Set<() => void>();
 
 const project_store = {
@@ -36,9 +38,9 @@ const project_store = {
   },
 };
 
-vi.mock("@/project/quality/quality-statistics-scheduler", () => {
+vi.mock("@/project/quality/quality-rule-statistics-scheduler", () => {
   return {
-    createQualityStatisticsScheduler: vi.fn(() => scheduler_mock),
+    createQualityRuleStatisticsScheduler: vi.fn(() => scheduler_mock),
   };
 });
 
@@ -47,7 +49,7 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
     useDesktopRuntime: () => ({
       project_snapshot: current_state.project,
       project_store,
-      project_warmup_status: current_project_warmup_status,
+      project_session_status: current_project_session_status,
     }),
   };
 });
@@ -180,13 +182,13 @@ async function apply_project_state(next_state: ProjectStoreState): Promise<void>
   });
 }
 
-describe("QualityStatisticsProvider", () => {
+describe("QualityRuleStatisticsProvider", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 
   beforeEach(async () => {
     current_state = create_test_state();
-    current_project_warmup_status = "ready";
+    current_project_session_status = "ready";
     project_store_listeners.clear();
     vi.clearAllMocks();
 
@@ -194,13 +196,7 @@ describe("QualityStatisticsProvider", () => {
     document.body.append(container);
     root = createRoot(container);
 
-    await act(async () => {
-      root?.render(
-        <QualityStatisticsProvider>
-          <span />
-        </QualityStatisticsProvider>,
-      );
-    });
+    await render_provider();
 
     scheduler_mock.markQualityDirty.mockClear();
   });
@@ -216,6 +212,23 @@ describe("QualityStatisticsProvider", () => {
     container = null;
     root = null;
   });
+
+  function StatisticsProbe(props: {
+    rule_type: QualityRuleStatisticsRuleType;
+  }): JSX.Element | null {
+    useQualityRuleStatistics(props.rule_type);
+    return null;
+  }
+
+  async function render_provider(active_rule?: QualityRuleStatisticsRuleType): Promise<void> {
+    await act(async () => {
+      root?.render(
+        <QualityRuleStatisticsProvider>
+          {active_rule === undefined ? <span /> : <StatisticsProbe rule_type={active_rule} />}
+        </QualityRuleStatisticsProvider>,
+      );
+    });
+  }
 
   it.each([
     ["dst", (entry: Record<string, unknown>) => ({ ...entry, dst: "New Apple" }), undefined],
@@ -244,18 +257,34 @@ describe("QualityStatisticsProvider", () => {
     await apply_project_state(next_state);
 
     expect(scheduler_mock.markQualityDirty).not.toHaveBeenCalledWith(
-      "glossary" satisfies QualityStatisticsRuleType,
+      "glossary" satisfies QualityRuleStatisticsRuleType,
     );
   });
 
   it.each([
     ["src", (entry: Record<string, unknown>) => ({ ...entry, src: "香蕉" })],
     ["case_sensitive", (entry: Record<string, unknown>) => ({ ...entry, case_sensitive: true })],
-  ])("改 glossary 的 %s 时会标记统计依赖失效", async (_label, update_entry) => {
+  ])("页面正在消费 glossary 时改 %s 会标记统计依赖失效", async (_label, update_entry) => {
+    await render_provider("glossary");
+    scheduler_mock.markQualityDirty.mockClear();
+
     await apply_project_state(update_glossary_state(update_entry));
 
     expect(scheduler_mock.markQualityDirty).toHaveBeenCalledWith(
-      "glossary" satisfies QualityStatisticsRuleType,
+      "glossary" satisfies QualityRuleStatisticsRuleType,
+    );
+  });
+
+  it("页面未消费 glossary 时依赖变化不会安排后台刷新", async () => {
+    await apply_project_state(
+      update_glossary_state((entry) => ({
+        ...entry,
+        src: "香蕉",
+      })),
+    );
+
+    expect(scheduler_mock.markQualityDirty).not.toHaveBeenCalledWith(
+      "glossary" satisfies QualityRuleStatisticsRuleType,
     );
   });
 });

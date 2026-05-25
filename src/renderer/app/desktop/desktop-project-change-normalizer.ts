@@ -32,7 +32,7 @@ export type ProjectChangeEventPayload = {
 };
 
 /**
- * read-sections 返回的是 canonical section 快照，只允许作为补读或完整 warmup 的写入来源。
+ * read-sections 返回的是 canonical section 快照，只允许作为补读或完整 session 初始化的写入来源。
  */
 export type ProjectReadSectionsPayload = {
   projectPath?: unknown;

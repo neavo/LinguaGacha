@@ -66,9 +66,9 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
   };
 });
 
-vi.mock("@/app/page-runtime/project-pages-context", () => {
+vi.mock("@/app/session/project-session-context", () => {
   return {
-    useProjectPagesBarrier: () => barrier_fixture.current,
+    useProjectSessionBarrier: () => barrier_fixture.current,
   };
 });
 

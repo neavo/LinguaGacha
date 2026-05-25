@@ -5,7 +5,7 @@ import {
   type ProjectMutationOperation,
   type ProjectMutationResultPayload,
 } from "@/app/desktop/desktop-project-mutation";
-import { useProjectPagesBarrier } from "@/app/page-runtime/project-pages-context";
+import { useProjectSessionBarrier } from "@/app/session/project-session-context";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
 import { useDebouncedCallback } from "@/hooks/use-debounce";
 import {
@@ -13,12 +13,12 @@ import {
   getQualityRuleSlice,
 } from "@/project/quality/quality-runtime";
 import {
-  isQualityStatisticsCacheReady,
-  isQualityStatisticsCacheRunning,
-  type QualityStatisticsCacheSnapshot,
-} from "@/project/quality/quality-statistics-store";
+  isQualityRuleStatisticsCacheReady,
+  isQualityRuleStatisticsCacheRunning,
+  type QualityRuleStatisticsCacheSnapshot,
+} from "@/project/quality/quality-rule-statistics-store";
 import type { SettingsSnapshotPayload } from "@/app/desktop/desktop-runtime-context";
-import { useQualityStatistics } from "@/project/quality/quality-statistics-context";
+import { useQualityRuleStatistics } from "@/project/quality/quality-rule-statistics-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
@@ -265,11 +265,11 @@ function is_modal_progress_timeout_error(error: unknown): boolean {
 
 // build_text_preserve_statistics_state_from_cache 构造跨层载荷，保证字段形状在一个入口维护。
 function build_text_preserve_statistics_state_from_cache(
-  statistics_cache: QualityStatisticsCacheSnapshot,
+  statistics_cache: QualityRuleStatisticsCacheSnapshot,
 ): TextPreserveStatisticsState {
   // 页面只从质量统计缓存派生展示状态，不持有也不修改文本保护规则事实。
   return {
-    running: isQualityStatisticsCacheRunning(statistics_cache),
+    running: isQualityRuleStatisticsCacheRunning(statistics_cache),
     completed_snapshot: statistics_cache.completed_snapshot,
     completed_entry_ids: statistics_cache.completed_entry_ids,
     matched_count_by_entry_id: statistics_cache.matched_count_by_entry_id,
@@ -280,7 +280,7 @@ function build_text_preserve_statistics_state_from_cache(
 // useTextPreservePageState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const { t } = useI18n();
-  const { create_barrier_checkpoint, wait_for_barrier } = useProjectPagesBarrier();
+  const { create_barrier_checkpoint, wait_for_barrier } = useProjectSessionBarrier();
   const { push_toast, run_modal_progress_toast } = useDesktopToast();
   const { navigate_to_route, push_proofreading_lookup_intent } = useAppNavigation();
   const {
@@ -347,11 +347,11 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const mode_ref = useRef(mode);
   const mode_update_in_flight_ref = useRef(false);
   const dialog_state_ref = useRef(dialog_state);
-  const statistics_cache = useQualityStatistics(TEXT_PRESERVE_RULE_TYPE);
+  const statistics_cache = useQualityRuleStatistics(TEXT_PRESERVE_RULE_TYPE);
   const statistics_state = useMemo<TextPreserveStatisticsState>(() => {
     return build_text_preserve_statistics_state_from_cache(statistics_cache);
   }, [statistics_cache]);
-  const statistics_ready = isQualityStatisticsCacheReady(statistics_cache);
+  const statistics_ready = isQualityRuleStatisticsCacheReady(statistics_cache);
 
   useEffect(() => {
     mode_ref.current = mode;
@@ -825,6 +825,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
             });
             snapshot_committed = true;
 
+            // 文本保护模式会影响校对列表警告，提示完成前要等已挂载校对缓存追上。
             await wait_for_barrier("proofreading_cache_refresh", {
               checkpoint: barrier_checkpoint,
             });

@@ -115,9 +115,9 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
   };
 });
 
-vi.mock("@/app/page-runtime/project-pages-context", () => {
+vi.mock("@/app/session/project-session-context", () => {
   return {
-    useProjectPagesBarrier: () => barrier_fixture.current,
+    useProjectSessionBarrier: () => barrier_fixture.current,
   };
 });
 
@@ -234,10 +234,10 @@ function create_settings_snapshot(overrides: Record<string, unknown> = {}) {
 
 function create_desktop_runtime_fixture(settings_overrides: Record<string, unknown> = {}) {
   return {
-    project_warmup_stage: null,
+    project_session_stage: null,
     settings_snapshot: create_settings_snapshot(settings_overrides),
     refresh_project_snapshot: vi.fn(),
-    set_project_warmup_status: vi.fn(),
+    set_project_session_status: vi.fn(),
     refresh_settings: vi.fn(async () => {}),
     refresh_task: vi.fn(async () => {}),
   };
@@ -471,10 +471,7 @@ describe("ProjectPage", () => {
 
     expect(push_toast_mock).toHaveBeenCalledWith(
       "warning",
-      [
-        "broken.json - 文件内容解析失败 …",
-        "dialogue.epub - 文件结构不符合格式要求 …",
-      ].join("\n"),
+      ["broken.json - 文件内容解析失败 …", "dialogue.epub - 文件结构不符合格式要求 …"].join("\n"),
     );
   });
 
@@ -509,10 +506,7 @@ describe("ProjectPage", () => {
 
     await create_project_from_selected_source();
 
-    expect(push_toast_mock).toHaveBeenCalledWith(
-      "error",
-      "broken.json - 文件内容解析失败 …",
-    );
+    expect(push_toast_mock).toHaveBeenCalledWith("error", "broken.json - 文件内容解析失败 …");
     expect(push_toast_mock).not.toHaveBeenCalledWith(
       "error",
       expect.stringContaining("创建工程失败"),

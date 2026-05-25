@@ -1,13 +1,17 @@
-import { useCachedWorkbenchLiveState } from "@/app/page-runtime/project-pages-context";
+import { useMemo } from "react";
+
+import {
+  useProjectSessionBarrier,
+  useProjectSessionPageCacheRegistration,
+} from "@/app/session/project-session-context";
 import { useI18n } from "@/app/locale/locale-provider";
-import type { UseWorkbenchLiveStateResult } from "@/pages/workbench-page/use-workbench-live-state";
+import { useWorkbenchTaskRuntime } from "@/pages/workbench-page/task-runtime/workbench-task-runtime-context";
+import { useWorkbenchPageState } from "@/pages/workbench-page/use-workbench-page-state";
 import { WorkbenchCommandBar } from "@/pages/workbench-page/components/workbench-command-bar";
 import { WorkbenchDialogs } from "@/pages/workbench-page/components/workbench-dialogs";
 import { WorkbenchFileTable } from "@/pages/workbench-page/components/workbench-file-table";
 import { WorkbenchStatsSection } from "@/pages/workbench-page/components/workbench-stats-section";
-import { TaskRuntimeConfirmDialog } from "@/pages/workbench-page/components/task-runtime/task-runtime-confirm-dialog";
 import { TaskRuntimeDetailSheet } from "@/pages/workbench-page/components/task-runtime/task-runtime-detail-sheet";
-import { QualityRuleImportConfirmDialog } from "@/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-dialog";
 import { FileDropZone } from "@/widgets/file-drop-zone/file-drop-zone";
 import "@/pages/workbench-page/workbench-page.css";
 
@@ -15,9 +19,35 @@ type WorkbenchPageProps = {
   is_sidebar_collapsed: boolean;
 };
 
+// WorkbenchPage 只组合工作台页面状态、任务运行态和页面缓存登记，不创建全局 session 事实。
 export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
   const { t } = useI18n();
-  const workbench_state = useCachedWorkbenchLiveState<UseWorkbenchLiveStateResult>();
+  const { create_barrier_checkpoint, wait_for_barrier } = useProjectSessionBarrier();
+  const { translation_task_runtime, analysis_task_runtime } = useWorkbenchTaskRuntime();
+  // 工作台页面状态拥有文件操作和列表缓存，session 只消费它声明的 barrier 快照。
+  const workbench_state = useWorkbenchPageState({
+    translationTaskRuntime: translation_task_runtime,
+    analysisTaskRuntime: analysis_task_runtime,
+    createProjectSessionBarrierCheckpoint: create_barrier_checkpoint,
+    waitForProjectSessionBarrier: wait_for_barrier,
+  });
+  // page_cache_snapshot 只描述当前挂载页面缓存，不把工作台内部状态提升为全局事实。
+  const page_cache_snapshot = useMemo(() => {
+    return {
+      isRefreshing: workbench_state.is_refreshing,
+      consumedRevisions: workbench_state.consumed_revisions,
+      requiredSections: workbench_state.required_sections,
+      settledProjectPath: workbench_state.settled_project_path,
+      fileOperationRunning: workbench_state.file_op_running,
+    };
+  }, [
+    workbench_state.consumed_revisions,
+    workbench_state.file_op_running,
+    workbench_state.is_refreshing,
+    workbench_state.required_sections,
+    workbench_state.settled_project_path,
+  ]);
+  useProjectSessionPageCacheRegistration("workbench", page_cache_snapshot);
 
   return (
     <div className="workbench-page page-shell page-shell--full">
@@ -82,24 +112,6 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
           void workbench_state.cancel_dialog();
         }}
         on_close={workbench_state.close_dialog}
-      />
-      <TaskRuntimeConfirmDialog
-        view_model={workbench_state.translation_task_confirm_dialog}
-        on_confirm={workbench_state.translation_task_runtime.confirm_task_action}
-        on_close={workbench_state.translation_task_runtime.close_task_action_confirmation}
-      />
-      <TaskRuntimeConfirmDialog
-        view_model={workbench_state.analysis_task_confirm_dialog}
-        on_confirm={workbench_state.analysis_task_runtime.confirm_analysis_task_action}
-        on_close={workbench_state.analysis_task_runtime.close_analysis_task_action_confirmation}
-      />
-      <QualityRuleImportConfirmDialog
-        state={workbench_state.analysis_task_runtime.analysis_import_confirm_state}
-        on_skip={workbench_state.analysis_task_runtime.import_analysis_glossary_duplicate_skip}
-        on_overwrite={
-          workbench_state.analysis_task_runtime.import_analysis_glossary_duplicate_overwrite
-        }
-        on_close={workbench_state.analysis_task_runtime.close_analysis_glossary_import_confirmation}
       />
       {workbench_state.active_workbench_task_view.task_kind === "analysis" &&
       workbench_state.active_workbench_task_detail !== null ? (

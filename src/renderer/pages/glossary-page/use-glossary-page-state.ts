@@ -13,13 +13,13 @@ import {
   getQualityRuleSlice,
 } from "@/project/quality/quality-runtime";
 import {
-  isQualityStatisticsCacheReady,
-  isQualityStatisticsCacheRunning,
-  type QualityStatisticsCacheSnapshot,
-} from "@/project/quality/quality-statistics-store";
+  isQualityRuleStatisticsCacheReady,
+  isQualityRuleStatisticsCacheRunning,
+  type QualityRuleStatisticsCacheSnapshot,
+} from "@/project/quality/quality-rule-statistics-store";
 import type { SettingsSnapshotPayload } from "@/app/desktop/desktop-runtime-context";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
-import { useQualityStatistics } from "@/project/quality/quality-statistics-context";
+import { useQualityRuleStatistics } from "@/project/quality/quality-rule-statistics-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
@@ -266,11 +266,11 @@ export function buildGlossaryStatisticsState(args: {
 
 // build_glossary_statistics_state_from_cache 构造跨层载荷，保证字段形状在一个入口维护。
 function build_glossary_statistics_state_from_cache(
-  statistics_cache: QualityStatisticsCacheSnapshot,
+  statistics_cache: QualityRuleStatisticsCacheSnapshot,
 ): GlossaryStatisticsState {
   // 页面只从质量统计缓存派生展示状态，不持有也不修改项目质量规则事实。
   return {
-    running: isQualityStatisticsCacheRunning(statistics_cache),
+    running: isQualityRuleStatisticsCacheRunning(statistics_cache),
     completed_snapshot: statistics_cache.completed_snapshot,
     completed_entry_ids: statistics_cache.completed_entry_ids,
     matched_count_by_entry_id: statistics_cache.matched_count_by_entry_id,
@@ -401,11 +401,11 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     return create_empty_preset_input_state();
   });
   const dialog_state_ref = useRef(dialog_state);
-  const statistics_cache = useQualityStatistics("glossary");
+  const statistics_cache = useQualityRuleStatistics("glossary");
   const statistics_state = useMemo<GlossaryStatisticsState>(() => {
     return build_glossary_statistics_state_from_cache(statistics_cache);
   }, [statistics_cache]);
-  const statistics_ready = isQualityStatisticsCacheReady(statistics_cache);
+  const statistics_ready = isQualityRuleStatisticsCacheReady(statistics_cache);
   const statistics_sort_available =
     statistics_ready || statistics_state.completed_snapshot !== null;
 
