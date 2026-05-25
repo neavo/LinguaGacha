@@ -67,12 +67,12 @@ export type ProjectRuntimeChangeSignal = {
 
 const APPLIED_PROJECT_EVENT_ID_LIMIT = 256; // 去重窗口只覆盖近期 HTTP/SSE 同源事件，避免长期保存事件历史
 
-type ProjectWarmupStatus = "idle" | "warming" | "ready";
+type ProjectSessionStatus = "idle" | "warming" | "ready";
 
 type RuntimeProjectIdentity = {
   path: string; // 后端会话确认的当前项目路径，独立于可能滞后的 ProjectStore 镜像
-  epoch: number; // 每次项目切换或完整 warmup 递增，用于丢弃迟到补读和旧快照
-  phase: ProjectWarmupStatus; // 这里只表示 ProjectStore 初始化阶段，不等同于页面缓存 warmup 状态
+  epoch: number; // 每次项目切换或完整 session 初始化递增，用于丢弃迟到补读和旧快照
+  phase: ProjectSessionStatus; // phase 只表示 ProjectStore session 初始化阶段，不等同于页面缓存状态
 };
 
 // EMPTY RUNTIME PROJECT IDENTITY 是默认快照事实，调用方只读取副本不临时拼装。
@@ -89,11 +89,11 @@ type DesktopRuntimeContextValue = {
   project_snapshot: ProjectSnapshot;
   task_snapshot: TaskSnapshot;
   project_change_signal: ProjectRuntimeChangeSignal;
-  project_warmup_status: ProjectWarmupStatus;
-  project_warmup_stage: ProjectStoreStage | null;
+  project_session_status: ProjectSessionStatus;
+  project_session_stage: ProjectStoreStage | null;
   pending_target_route: RouteId | null;
   is_app_language_updating: boolean;
-  set_project_warmup_status: (status: ProjectWarmupStatus) => void;
+  set_project_session_status: (status: ProjectSessionStatus) => void;
   set_pending_target_route: (route_id: RouteId | null) => void;
   project_store: ProjectStoreReader;
   apply_settings_snapshot: (payload: SettingsSnapshotPayload) => SettingsSnapshot;
@@ -245,8 +245,11 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   const [project_change_signal, set_project_change_signal] = useState<ProjectRuntimeChangeSignal>(
     DEFAULT_PROJECT_CHANGE_SIGNAL,
   );
-  const [project_warmup_status, set_project_warmup_status] = useState<ProjectWarmupStatus>("idle");
-  const [project_warmup_stage, set_project_warmup_stage] = useState<ProjectStoreStage | null>(null);
+  const [project_session_status, set_project_session_status] =
+    useState<ProjectSessionStatus>("idle");
+  const [project_session_stage, set_project_session_stage] = useState<ProjectStoreStage | null>(
+    null,
+  );
   const [pending_target_route, set_pending_target_route] = useState<RouteId | null>(null);
   const [is_app_language_updating, set_is_app_language_updating] = useState(false);
   const project_store_ref = useRef(createProjectStore());
@@ -270,7 +273,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   const runtime_project_identity_ref = useRef<RuntimeProjectIdentity>({
     ...EMPTY_RUNTIME_PROJECT_IDENTITY,
   });
-  const pending_warmup_project_changes_ref = useRef<ProjectStoreChangeEvent[]>([]); // ProjectStore 完整快照落地前暂存当前项目事件，避免 warmup 窗口漏同步
+  const pending_session_project_changes_ref = useRef<ProjectStoreChangeEvent[]>([]); // ProjectStore 完整快照落地前暂存当前项目事件，避免 session 初始化窗口漏同步
 
   const apply_settings_snapshot = useCallback(
     (payload: SettingsSnapshotPayload): SettingsSnapshot => {
@@ -338,7 +341,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     [read_runtime_project_identity],
   );
 
-  const is_current_runtime_project_warmup = useCallback(
+  const is_current_runtime_project_session_warming = useCallback(
     (identity: Pick<RuntimeProjectIdentity, "path" | "epoch">): boolean => {
       const current_identity = read_runtime_project_identity();
       return is_current_runtime_project_identity(identity) && current_identity.phase === "warming";
@@ -352,11 +355,11 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       epoch: runtime_project_identity_ref.current.epoch + 1,
       phase: "idle",
     };
-    pending_warmup_project_changes_ref.current = [];
+    pending_session_project_changes_ref.current = [];
     clear_applied_project_events();
   }, [clear_applied_project_events]);
 
-  const begin_runtime_project_warmup = useCallback(
+  const begin_runtime_project_session = useCallback(
     (project_path: string): RuntimeProjectIdentity => {
       const current_identity = runtime_project_identity_ref.current;
       if (current_identity.path === project_path && current_identity.phase === "warming") {
@@ -369,7 +372,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         phase: "warming",
       };
       runtime_project_identity_ref.current = next_identity;
-      pending_warmup_project_changes_ref.current = [];
+      pending_session_project_changes_ref.current = [];
       if (current_identity.path !== project_path) {
         clear_applied_project_events();
       }
@@ -378,7 +381,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     [clear_applied_project_events],
   );
 
-  const complete_runtime_project_warmup = useCallback(
+  const complete_runtime_project_session = useCallback(
     (identity: RuntimeProjectIdentity): ProjectStoreChangeEvent[] => {
       if (!is_current_runtime_project_identity(identity)) {
         return [];
@@ -388,14 +391,14 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         ...identity,
         phase: "ready",
       };
-      const queued_changes = pending_warmup_project_changes_ref.current;
-      pending_warmup_project_changes_ref.current = [];
+      const queued_changes = pending_session_project_changes_ref.current;
+      pending_session_project_changes_ref.current = [];
       return queued_changes;
     },
     [is_current_runtime_project_identity],
   );
 
-  const queue_runtime_project_change_during_warmup = useCallback(
+  const queue_runtime_project_change_during_session_warming = useCallback(
     (change_event: ProjectStoreChangeEvent): boolean => {
       if (has_applied_project_event(change_event.eventId)) {
         return true;
@@ -410,7 +413,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         return false;
       }
 
-      pending_warmup_project_changes_ref.current.push(change_event);
+      pending_session_project_changes_ref.current.push(change_event);
       return true;
     },
     [has_applied_project_event, read_runtime_project_identity],
@@ -427,10 +430,10 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
       const current_identity = runtime_project_identity_ref.current;
       if (current_identity.path !== project_path || current_identity.phase === "idle") {
-        begin_runtime_project_warmup(project_path);
+        begin_runtime_project_session(project_path);
       }
     },
-    [begin_runtime_project_warmup, clear_runtime_project_identity],
+    [begin_runtime_project_session, clear_runtime_project_identity],
   );
 
   const refresh_project_snapshot = useCallback(async (): Promise<ProjectSnapshot> => {
@@ -646,7 +649,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
 
   const apply_project_change_event_immediately = useCallback(
     async (change_event: ProjectStoreChangeEvent): Promise<void> => {
-      if (queue_runtime_project_change_during_warmup(change_event)) {
+      if (queue_runtime_project_change_during_session_warming(change_event)) {
         return;
       }
       if (!should_apply_runtime_project_change(change_event)) {
@@ -676,7 +679,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       flush_runtime_refresh_scheduler,
       project_snapshot.loaded,
       project_snapshot.path,
-      queue_runtime_project_change_during_warmup,
+      queue_runtime_project_change_during_session_warming,
       read_project_sections_for_change,
       should_apply_runtime_project_change,
     ],
@@ -688,15 +691,16 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
       clear_runtime_project_identity();
       project_store_ref.current.reset();
-      set_project_warmup_stage(null);
+      set_project_session_stage(null);
+      set_project_session_status("idle");
       return;
     }
 
-    const warmup_identity = begin_runtime_project_warmup(project_snapshot.path.trim());
-    set_project_warmup_status("warming");
-    set_project_warmup_stage(null);
+    const session_identity = begin_runtime_project_session(project_snapshot.path.trim());
+    set_project_session_status("warming");
+    set_project_session_stage(null);
     const manifest = await api_fetch<ProjectManifestPayload>("/api/project/manifest", {});
-    if (!is_current_runtime_project_warmup(warmup_identity)) {
+    if (!is_current_runtime_project_session_warming(session_identity)) {
       return;
     }
 
@@ -705,19 +709,20 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     if (!next_project_snapshot.loaded || manifest_project_path === "") {
       sync_project_snapshot(next_project_snapshot);
       project_store_ref.current.reset();
-      set_project_warmup_stage(null);
+      set_project_session_stage(null);
+      set_project_session_status("idle");
       return;
     }
     if (
       manifest_project_path !== next_project_snapshot.path ||
-      manifest_project_path !== warmup_identity.path
+      manifest_project_path !== session_identity.path
     ) {
       throw new InternalInvariantError({
         diagnostic_context: {
           reason: "project_runtime_manifest_identity_mismatch",
           manifest_project_path,
           snapshot_project_path: next_project_snapshot.path,
-          current_project_path: warmup_identity.path,
+          current_project_path: session_identity.path,
         },
       });
     }
@@ -727,7 +732,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
         sections: [...PROJECT_DATA_SECTIONS],
       },
     );
-    if (!is_current_runtime_project_warmup(warmup_identity)) {
+    if (!is_current_runtime_project_session_warming(session_identity)) {
       return;
     }
 
@@ -742,22 +747,23 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       });
     }
     replace_runtime_project_data(read_sections_event);
-    const queued_project_changes = complete_runtime_project_warmup(warmup_identity);
+    const queued_project_changes = complete_runtime_project_session(session_identity);
     sync_project_snapshot(next_project_snapshot);
     for (const queued_change of queued_project_changes) {
       await apply_project_change_event_immediately(queued_change);
     }
+    set_project_session_status("ready");
   }, [
     apply_project_change_event_immediately,
-    begin_runtime_project_warmup,
+    begin_runtime_project_session,
     clear_runtime_project_identity,
-    complete_runtime_project_warmup,
+    complete_runtime_project_session,
     flush_runtime_refresh_scheduler,
-    is_current_runtime_project_warmup,
+    is_current_runtime_project_session_warming,
     project_snapshot.loaded,
     project_snapshot.path,
     replace_runtime_project_data,
-    set_project_warmup_status,
+    set_project_session_status,
     sync_project_snapshot,
   ]);
 
@@ -837,7 +843,7 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
       clear_runtime_project_identity();
       project_store_ref.current.reset();
-      set_project_warmup_stage(null);
+      set_project_session_stage(null);
       return;
     }
 
@@ -874,17 +880,17 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
   ]);
 
   useEffect(() => {
-    if (project_warmup_status === "ready") {
-      set_project_warmup_stage(null);
+    if (project_session_status === "ready") {
+      set_project_session_stage(null);
     }
-  }, [project_warmup_status]);
+  }, [project_session_status]);
 
   const project_event_pipeline = useDesktopRuntimeProjectEventPipeline({
     projectSnapshot: project_snapshot,
     applyProjectChange: apply_runtime_project_change,
     applyProjectChangeBatch: apply_runtime_project_change_batch,
     shouldApplyProjectChange: should_apply_runtime_project_change,
-    queueProjectChangeDuringWarmup: queue_runtime_project_change_during_warmup,
+    queueProjectChangeDuringSessionWarming: queue_runtime_project_change_during_session_warming,
     normalizeProjectChangeEvent: normalize_project_change_event,
     collectProjectChangeSectionsRequiringRead: collect_project_change_sections_requiring_read,
     readProjectSectionsForChange: read_project_sections_for_change,
@@ -915,11 +921,11 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
       project_snapshot,
       task_snapshot,
       project_change_signal,
-      project_warmup_status,
-      project_warmup_stage,
+      project_session_status,
+      project_session_stage,
       pending_target_route,
       is_app_language_updating,
-      set_project_warmup_status,
+      set_project_session_status,
       set_pending_target_route,
       project_store: project_store_reader,
       apply_settings_snapshot,
@@ -938,8 +944,8 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     project_snapshot,
     task_snapshot,
     project_change_signal,
-    project_warmup_status,
-    project_warmup_stage,
+    project_session_status,
+    project_session_stage,
     pending_target_route,
     is_app_language_updating,
     apply_settings_snapshot,

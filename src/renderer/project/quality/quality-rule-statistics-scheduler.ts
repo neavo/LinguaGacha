@@ -5,21 +5,21 @@ import {
 } from "@/project/quality/quality-statistics-auto";
 import type { QualityStatisticsTaskExecutor } from "@/project/quality/quality-statistics";
 import {
-  prepareQualityStatisticsRuleContext,
-  type QualityStatisticsPreparedRuleContext,
-} from "@/project/quality/quality-statistics-descriptors";
+  prepareQualityRuleStatisticsRuleContext,
+  type QualityRuleStatisticsPreparedRuleContext,
+} from "@/project/quality/quality-rule-statistics-descriptors";
 import type { ProjectStoreState } from "@/project/store/project-store";
 import {
-  buildQualityStatisticsCacheFromResults,
-  buildQualityStatisticsResultMap,
-  type QualityStatisticsRuleType,
-  type QualityStatisticsStore,
-} from "@/project/quality/quality-statistics-store";
+  buildQualityRuleStatisticsCacheFromResults,
+  buildQualityRuleStatisticsResultMap,
+  type QualityRuleStatisticsRuleType,
+  type QualityRuleStatisticsStore,
+} from "@/project/quality/quality-rule-statistics-store";
 import { getSharedProjectUiWorkerClient } from "@/project/worker/project-ui-worker-client";
 import { ProjectUiWorkerClientError } from "@/project/worker/project-ui-worker-errors";
 import { JsonTool } from "../../../shared/utils/json-tool";
 
-type RefreshPriority = "warmup" | "background" | "foreground";
+type RefreshPriority = "background" | "foreground"; // RefreshPriority 区分页面可见刷新和后台追赶刷新
 
 type ScheduledRefresh = {
   priority: RefreshPriority; // priority 决定本次延迟刷新等待时间
@@ -33,26 +33,23 @@ type InFlightRefresh = {
   promise: Promise<void>; // promise 复用正在执行的统计任务，避免重复派发 worker
 };
 
-type QualityStatisticsScheduler = {
-  warmupAll: () => void; // warmupAll 在项目打开后预热全部质量规则统计
-  markQualityDirty: (rule_type: QualityStatisticsRuleType) => void; // markQualityDirty 标记后台刷新
-  requestForeground: (rule_type: QualityStatisticsRuleType) => void; // requestForeground 服务用户打开面板的即时刷新
+type QualityRuleStatisticsScheduler = {
+  markQualityDirty: (rule_type: QualityRuleStatisticsRuleType) => void; // markQualityDirty 只刷新已挂载页面正在消费的规则
+  requestForeground: (rule_type: QualityRuleStatisticsRuleType) => void; // requestForeground 服务用户打开面板的即时刷新
   resetProject: (project_path: string) => void; // resetProject 切换项目并废弃旧会话结果
   dispose: () => void; // dispose 清理定时器和 in-flight 记录
 };
 
 // 不同优先级用固定延迟合并高频修改，前台请求保持立即响应。
 const REFRESH_DELAY_BY_PRIORITY: Record<RefreshPriority, number> = {
-  warmup: 80,
   background: 200,
   foreground: 0,
 };
 
 // 数值越大优先级越高；同一规则重复调度时只提升不降级。
 const PRIORITY_ORDER: Record<RefreshPriority, number> = {
-  warmup: 1,
-  background: 2,
-  foreground: 3,
+  background: 1,
+  foreground: 2,
 };
 
 /**
@@ -60,7 +57,7 @@ const PRIORITY_ORDER: Record<RefreshPriority, number> = {
  */
 function build_request_key(args: {
   project_path: string;
-  prepared_context: QualityStatisticsPreparedRuleContext;
+  prepared_context: QualityRuleStatisticsPreparedRuleContext;
   force_full: boolean;
 }): string {
   return JsonTool.stringifyStrict({
@@ -82,7 +79,7 @@ function pick_higher_priority(left: RefreshPriority, right: RefreshPriority): Re
  * 为指定规则创建 worker 执行器，调度器只依赖任务接口，不直接知道 worker 协议细节。
  */
 function create_executor_for_rule_type(
-  rule_type: QualityStatisticsRuleType,
+  rule_type: QualityRuleStatisticsRuleType,
 ): QualityStatisticsTaskExecutor {
   const client = getSharedProjectUiWorkerClient();
   return {
@@ -101,14 +98,14 @@ function create_executor_for_rule_type(
 /**
  * 创建质量统计调度器；它拥有刷新节流、会话废弃和缓存落库前的最后裁决。
  */
-export function createQualityStatisticsScheduler(args: {
-  store: QualityStatisticsStore;
+export function createQualityRuleStatisticsScheduler(args: {
+  store: QualityRuleStatisticsStore;
   get_project_state: () => ProjectStoreState;
-  get_executor?: (rule_type: QualityStatisticsRuleType) => QualityStatisticsTaskExecutor;
-}): QualityStatisticsScheduler {
+  get_executor?: (rule_type: QualityRuleStatisticsRuleType) => QualityStatisticsTaskExecutor;
+}): QualityRuleStatisticsScheduler {
   const get_executor = args.get_executor ?? create_executor_for_rule_type;
-  const scheduled_refreshes = new Map<QualityStatisticsRuleType, ScheduledRefresh>();
-  const in_flight_refreshes = new Map<QualityStatisticsRuleType, InFlightRefresh>();
+  const scheduled_refreshes = new Map<QualityRuleStatisticsRuleType, ScheduledRefresh>();
+  const in_flight_refreshes = new Map<QualityRuleStatisticsRuleType, InFlightRefresh>();
   let active_project_path = ""; // active_project_path 防止旧项目的迟到结果写入新项目缓存
   let active_session_token = 0; // active_session_token 每次 reset/dispose 递增，用于废弃旧异步链路
 
@@ -116,7 +113,7 @@ export function createQualityStatisticsScheduler(args: {
    * 判断异步返回仍属于当前项目和当前缓存请求，迟到结果一律丢弃。
    */
   function is_active_request(
-    rule_type: QualityStatisticsRuleType,
+    rule_type: QualityRuleStatisticsRuleType,
     request_token: number,
     session_token: number,
   ): boolean {
@@ -134,7 +131,7 @@ export function createQualityStatisticsScheduler(args: {
   /**
    * 取消单个规则的等待刷新，用于提升优先级或项目切换。
    */
-  function cancel_scheduled_refresh(rule_type: QualityStatisticsRuleType): void {
+  function cancel_scheduled_refresh(rule_type: QualityRuleStatisticsRuleType): void {
     const scheduled_refresh = scheduled_refreshes.get(rule_type);
     if (scheduled_refresh === undefined) {
       return;
@@ -157,7 +154,7 @@ export function createQualityStatisticsScheduler(args: {
   /**
    * 把缓存置为已调度状态，并立即废弃更早的 in-flight 结果。
    */
-  function mark_cache_scheduled(rule_type: QualityStatisticsRuleType): void {
+  function mark_cache_scheduled(rule_type: QualityRuleStatisticsRuleType): void {
     args.store.updateCache(rule_type, (cache) => {
       return {
         ...cache,
@@ -173,7 +170,7 @@ export function createQualityStatisticsScheduler(args: {
    * 执行一次统计刷新；同请求去重、自动增量规划和迟到结果废弃都在这里闭环。
    */
   async function execute_refresh(
-    rule_type: QualityStatisticsRuleType,
+    rule_type: QualityRuleStatisticsRuleType,
     options: {
       force_full: boolean;
     },
@@ -183,7 +180,7 @@ export function createQualityStatisticsScheduler(args: {
       return;
     }
 
-    const prepared_context = prepareQualityStatisticsRuleContext(project_state, rule_type);
+    const prepared_context = prepareQualityRuleStatisticsRuleContext(project_state, rule_type);
     const request_key = build_request_key({
       project_path: project_state.project.path,
       prepared_context,
@@ -213,10 +210,10 @@ export function createQualityStatisticsScheduler(args: {
       const remapped_results = remapQualityStatisticsResults({
         completed_snapshot: previous_cache.completed_snapshot,
         current_snapshot,
-        previous_results: buildQualityStatisticsResultMap(previous_cache),
+        previous_results: buildQualityRuleStatisticsResultMap(previous_cache),
       });
       args.store.updateCache(rule_type, (cache) => {
-        return buildQualityStatisticsCacheFromResults({
+        return buildQualityRuleStatisticsCacheFromResults({
           previous_cache: cache,
           current_snapshot,
           results: remapped_results,
@@ -244,7 +241,7 @@ export function createQualityStatisticsScheduler(args: {
           executor: get_executor(rule_type),
           current_snapshot,
           completed_snapshot: previous_cache.completed_snapshot,
-          previous_results: buildQualityStatisticsResultMap(previous_cache),
+          previous_results: buildQualityRuleStatisticsResultMap(previous_cache),
           plan: auto_plan,
           rules: prepared_context.current_statistics_context.rules,
           relation_candidates: prepared_context.current_statistics_context.relation_candidates,
@@ -261,7 +258,7 @@ export function createQualityStatisticsScheduler(args: {
         }
 
         args.store.updateCache(rule_type, (cache) => {
-          return buildQualityStatisticsCacheFromResults({
+          return buildQualityRuleStatisticsCacheFromResults({
             previous_cache: cache,
             current_snapshot,
             results: execution_result.results,
@@ -305,7 +302,7 @@ export function createQualityStatisticsScheduler(args: {
    * 安排一次刷新并合并同 rule_type 的等待任务，避免编辑时反复派发 worker。
    */
   function schedule_refresh(
-    rule_type: QualityStatisticsRuleType,
+    rule_type: QualityRuleStatisticsRuleType,
     options: {
       priority: RefreshPriority;
       force_full?: boolean;
@@ -349,27 +346,9 @@ export function createQualityStatisticsScheduler(args: {
   }
 
   /**
-   * 项目打开后低优先级预热所有统计缓存，首开面板时尽量已有结果。
+   * 已挂载页面正在消费的质量规则变化后安排后台刷新，UI 可继续读旧缓存。
    */
-  function warmupAll(): void {
-    schedule_refresh("glossary", {
-      priority: "warmup",
-    });
-    schedule_refresh("pre_replacement", {
-      priority: "warmup",
-    });
-    schedule_refresh("post_replacement", {
-      priority: "warmup",
-    });
-    schedule_refresh("text_preserve", {
-      priority: "warmup",
-    });
-  }
-
-  /**
-   * 质量规则或项目文本变化后安排后台刷新，UI 可继续读旧缓存。
-   */
-  function markQualityDirty(rule_type: QualityStatisticsRuleType): void {
+  function markQualityDirty(rule_type: QualityRuleStatisticsRuleType): void {
     schedule_refresh(rule_type, {
       priority: "background",
     });
@@ -378,7 +357,7 @@ export function createQualityStatisticsScheduler(args: {
   /**
    * 用户进入对应面板时立即刷新当前规则，提高可见路径响应优先级。
    */
-  function requestForeground(rule_type: QualityStatisticsRuleType): void {
+  function requestForeground(rule_type: QualityRuleStatisticsRuleType): void {
     schedule_refresh(rule_type, {
       priority: "foreground",
     });
@@ -404,7 +383,6 @@ export function createQualityStatisticsScheduler(args: {
   }
 
   return {
-    warmupAll,
     markQualityDirty,
     requestForeground,
     resetProject,
@@ -413,4 +391,4 @@ export function createQualityStatisticsScheduler(args: {
 }
 
 export { REFRESH_DELAY_BY_PRIORITY };
-export type { QualityStatisticsScheduler };
+export type { QualityRuleStatisticsScheduler };

@@ -11,6 +11,7 @@ describe("renderer diagnostics payload", () => {
       route: "workbench",
       project: {
         path: "E:/secret/project/demo.lg",
+        sessionStatus: "ready",
       },
       event: {
         topic: "project.data_changed",
@@ -26,6 +27,7 @@ describe("renderer diagnostics payload", () => {
           pathHash: expect.any(String),
           length: 25,
         },
+        sessionStatus: "ready",
       },
       event: {
         topic: "project.data_changed",

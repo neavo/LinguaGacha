@@ -14,7 +14,7 @@ import {
 type RuntimeProjectDiagnosticsInput = {
   loaded: boolean;
   path: string;
-  warmupStatus: string;
+  sessionStatus: string;
 };
 
 type ProjectChangePayloadDiagnosticsInput = {
@@ -27,7 +27,7 @@ type ProjectChangePayloadDiagnosticsInput = {
 };
 
 /**
- * 项目诊断只保留运行态身份和 warmup 阶段，避免把 ProjectStore 大 section 写入异常日志。
+ * 项目诊断只保留运行态身份和 session 阶段，避免把 ProjectStore 大 section 写入异常日志。
  */
 export function summarize_runtime_project_for_diagnostics(
   input: RuntimeProjectDiagnosticsInput,
@@ -35,7 +35,7 @@ export function summarize_runtime_project_for_diagnostics(
   return {
     loaded: input.loaded,
     path: summarize_path_for_diagnostics(input.path),
-    warmupStatus: input.warmupStatus,
+    sessionStatus: input.sessionStatus,
   };
 }
 

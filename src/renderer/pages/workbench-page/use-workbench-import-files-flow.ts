@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 
-import type { ProjectPagesBarrierCheckpoint } from "@/app/page-runtime/project-pages-barrier";
+import type { ProjectSessionBarrierCheckpoint } from "@/app/session/project-session-barrier";
 import { api_fetch } from "@/app/desktop/desktop-api";
 import type { ProjectMutationResultPayload } from "@/app/desktop/desktop-project-mutation";
 import type { TaskSnapshot } from "@/app/desktop/task-runtime-store";
@@ -25,7 +25,7 @@ import type { WorkbenchDialogState } from "@/pages/workbench-page/types";
 
 type PendingImportFilesRequest = {
   parsed_files: WorkbenchFileParsePreview[]; // parsed_files 是 Core 预解析后的文件草稿，不作为最终项目事实
-  barrier_checkpoint: ProjectPagesBarrierCheckpoint | null;
+  barrier_checkpoint: ProjectSessionBarrierCheckpoint | null;
   conflict_action: WorkbenchFileConflictAction | null;
   conflict_signature: string; // conflict_signature 用于识别对话期间 ProjectStore 是否变化
 };
@@ -39,7 +39,7 @@ type WorkbenchImportFilesFlowOptions = {
   project_store: ProjectStoreReader;
   task_snapshot: TaskSnapshot;
   planner_settings: WorkbenchPlannerSettings; // 导入命令只需要预过滤设置，不依赖完整应用设置快照
-  createProjectPagesBarrierCheckpoint?: () => ProjectPagesBarrierCheckpoint;
+  createProjectSessionBarrierCheckpoint?: () => ProjectSessionBarrierCheckpoint;
   run_modal_progress_toast: <T>(args: {
     message: string;
     task: () => Promise<T>;
@@ -48,7 +48,7 @@ type WorkbenchImportFilesFlowOptions = {
   run_project_file_mutation: (
     plan: WorkbenchProjectMutationPlan,
     request: (body: Record<string, unknown>) => Promise<ProjectMutationResultPayload>,
-    barrier_checkpoint: ProjectPagesBarrierCheckpoint | null,
+    barrier_checkpoint: ProjectSessionBarrierCheckpoint | null,
   ) => Promise<ProjectMutationResultPayload>;
   set_dialog_state: Dispatch<SetStateAction<WorkbenchDialogState>>;
   set_dialog_submitting: (next_submitting: boolean) => void;
@@ -281,7 +281,7 @@ export function useWorkbenchImportFilesFlow(
         return;
       }
 
-      const barrier_checkpoint = options.createProjectPagesBarrierCheckpoint?.() ?? null;
+      const barrier_checkpoint = options.createProjectSessionBarrierCheckpoint?.() ?? null;
       const parsed_files: WorkbenchFileParsePreview[] = [];
       let parse_failure_toast_shown = false; // parse_failure_toast_shown 防止全失败时再叠加泛错误
 

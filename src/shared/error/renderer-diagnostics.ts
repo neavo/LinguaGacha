@@ -9,7 +9,7 @@ import {
 const MAX_RENDERER_DIAGNOSTIC_TEXT_LENGTH = 4096;
 // renderer 黑匣子只接收本地摘要字段，避免 shared error 的通用 sanitizer 记录完整业务 payload。
 const RENDERER_DIAGNOSTIC_CONTEXT_KEYS = {
-  project: ["loaded", "path", "projectPath", "projectRevision", "runtimeRevision", "warmupStatus"],
+  project: ["loaded", "path", "projectPath", "projectRevision", "runtimeRevision", "sessionStatus"],
   task: ["runtimeRevision", "taskType", "status", "busy", "requestInFlightCount", "progress"],
   event: [
     "topic",

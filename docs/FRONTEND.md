@@ -12,8 +12,9 @@ flowchart LR
   Root --> Runtime["主窗口<br/>DesktopRuntimeProvider"]
   Root --> Logs["日志窗口<br/>LogWindowPage / logs stream + detail"]
   Runtime --> Store["ProjectStore / TaskRuntimeStore"]
-  Runtime --> PagesRuntime["ProjectPagesProvider"]
-  PagesRuntime --> Pages["pages / widgets"]
+  Runtime --> Session["ProjectSessionProvider<br/>session / page-cache barrier"]
+  Session --> Followup["WorkbenchTaskRuntimeProvider<br/>task follow-up dialogs"]
+  Followup --> Pages["pages / widgets"]
 ```
 
 - renderer 只能通过 `window.desktopApp` 接触 Electron 宿主能力，不能直接导入 Electron、Node、`src/native`、preload 实现或 Core 内部实现。
@@ -29,7 +30,7 @@ flowchart LR
 
 ## 2. 共享运行态写入口
 
-- `DesktopRuntimeProvider` 是主窗口内 settings、project snapshot、task snapshot、项目 warmup、事件流和共享 store 写入的唯一运行态入口。
+- `DesktopRuntimeProvider` 是主窗口内 settings、project snapshot、task snapshot、项目 session 初始化、事件流和共享 store 写入的唯一运行态入口。
 - 启动 hydration 并行读取 `/api/settings/app`、`/api/project/snapshot`、`/api/tasks/snapshot`；这一步不能通过卸载工程来“重置”Core 会话。
 - `ProjectStore` 只缓存后端公开项目事实，section 固定为 `project / files / items / quality / prompts / analysis / proofreading`；它不是后端事实源。
 - `TaskRuntimeStore` 只缓存 `TaskSnapshot`，并用 `runtime_revision` 丢弃旧 snapshot；task 不进入 `ProjectStore` 或项目派生缓存。
@@ -40,8 +41,8 @@ flowchart LR
 ## 3. 项目初始化、事件和刷新
 
 - 已加载工程刷新时，前端先读 `/api/project/manifest` 校验后端项目身份和 revision，再读 `/api/project/read-sections` 获取完整 section 快照；两次响应的 `projectPath` 必须与当前运行态身份一致。
-- `DesktopRuntimeProvider` 维护独立于 `ProjectStore` 的项目身份 `path + epoch + phase`；项目切换、同路径重新 warmup 或迟到补读都必须过这道身份闸门。
-- warmup 期间，同项目身份的 mutation result 和 `project.data_changed` 先进入队列；完整 read-sections 快照原子替换 `ProjectStore` 后再按原顺序重放。
+- `DesktopRuntimeProvider` 维护独立于 `ProjectStore` 的项目身份 `path + epoch + phase`；项目切换、同路径重新初始化 session 或迟到补读都必须过这道身份闸门。
+- session 初始化期间，同项目身份的 mutation result 和 `project.data_changed` 先进入队列；完整 read-sections 快照原子替换 `ProjectStore` 后再按原顺序重放。
 - 同步 mutation 成功后，`commit_project_mutation` 统一规范化 `ProjectMutationResult.changes`，先执行页面声明的提交前准备，再应用到 `ProjectStore`；`eventId` 去重窗口用于跳过同源 SSE 重放。
 - `canonical-delta` 可直接合并；`field-patch` 只合并入口已窄化的 `dst / status / retry_count`，坏 patch 必须退化为 `section-invalidated` 并补读 canonical section；`section-invalidated` 或缺少 section revision 的变更必须补读 canonical section。
 - section 补读请求必须绑定发起时的 project path 和 epoch，返回后还要校验当前身份、响应 project path 与后端 section revision；合格补读结果以 exact revision 合并。
@@ -59,14 +60,19 @@ flowchart LR
 - 质量规则页面使用 `QualityRule` / `Prompt` 派生出的公开 key 与归一化切片；请求预设时传公开 rule type，不传物理目录名。
 - 源语言与目标语言控件分别消费 `SOURCE_LANGUAGE_CODES` 与 `TARGET_LANGUAGE_CODES`；`ALL` 只作为源语言过滤关闭值，不进入目标语言控件。
 
-## 5. 导航与项目页 runtime
+## 5. 导航、Session 与页面派生缓存
 
-- `SCREEN_REGISTRY` 是页面注册和标题 key 的唯一入口；新增页面先进入注册表，再接入对应页面 runtime。
-- `ProjectPagesProvider` 持有工作台与校对页 runtime adapter，并通过 revision checkpoint barrier 协调项目 warmup、文件操作、页面缓存刷新和跳转。
+- `SCREEN_REGISTRY` 是页面注册和标题 key 的唯一入口；新增页面先进入注册表，再接入对应页面状态。
+- `src/renderer/app/session` 是全局项目 session 与页面缓存门闩的唯一归宿：session ready 对齐项目加载到应用关闭 / 项目关闭的生命周期，页面缓存义务只来自当前已挂载页面。
+- `ProjectSessionProvider` 的输入只来自 `DesktopRuntimeProvider`、`ProjectStore` 与已注册页面缓存快照；它只提供 session ready、工作台文件操作和页面缓存刷新 barrier。
+- `WorkbenchTaskRuntimeProvider` 常驻在项目 session 内，拥有翻译 / 分析任务完成后的生成译文、导入术语和任务确认意图；任务 follow-up 不属于工作台页面缓存，不能随工作台页面卸载而丢失。
+- 工作台、校对页等页面状态随页面挂载创建、随卸载释放；卸载页面必须注销缓存快照，不能继续阻塞跳转或文件操作等待。
+- 页面级缓存挂载或项目路径切换时必须先从当前 `ProjectStore` 完成一次全量同步；后续增量或失效刷新再消费 `ProjectRuntimeChangeSignal`。
 - 页面级缓存的新旧判定必须覆盖声明依赖的 `ProjectStore.revisions.sections`；不得用时间戳、task 状态或裸 stale boolean 代替 section revision。
 - 工作台和校对页可以维护页面局部缓存，但 ready 判定必须基于项目 path、required sections 与 consumed revisions。
 - `src/renderer/project/worker` 是 Project UI Worker 的唯一归宿：单 worker 承接校对视图、质量统计和分析术语导入预演等 UI 派生计算；它只消费只读快照、section revision 和显式查询，不写项目事实、不发 mutation、不替代 Core 或 `ProjectStore`。
 - Project UI Worker client 统一 request id、优先级、stale 错误、稳定错误码、结构化 `error_diagnostic` 和带 projectId 的缓存释放；worker 结构化诊断只在 worker 诊断 helper 解包并交给 renderer error reporter，页面不直接解析自定义 Error 字段。没有性能证据前不拆 renderer worker pool。
+- `src/renderer/project/quality` 是质量规则统计共享调度、缓存与规则描述的归宿；页面只激活已挂载规则，未挂载规则仅失效缓存，失败态只能由依赖变化或显式用户动作重新调度。
 - 结果型页面的主列表使用结果视图快照：搜索、筛选、替换、排序或刷新等显式 action 生成新的稳定 id 序列；项目事实刷新只更新快照内实体的最新内容、状态、警告和统计，不能重新筛选、插入或重排当前 view；后端 tombstone 删除、项目切换、全量数据源重建或运行态不兼容时才剪除或重建快照。
 - 工作台统计区和任务菜单百分比消费 `ProjectStore` 派生的 `WorkbenchStats`；任务详情在运行或停止中消费 `TaskSnapshot.progress`，空闲态才回落到 `WorkbenchStats`。
 
@@ -82,6 +88,6 @@ flowchart LR
 
 - 改 preload 暴露能力、`window.desktopApp` 类型、GUI 契约白名单、IPC 或 Core API 接入方式，更新本文。
 - 改 `desktop-api.ts` 的 health probe、响应壳、错误、本地网络错误、SSE 或外部网络检查语义，更新本文。
-- 改 `ProjectStore` section、项目身份、warmup、mutation result、payload mode、revision 合并或补读策略，更新本文并同步 [`docs/BACKEND.md`](BACKEND.md)。
-- 改导航注册、`ProjectPagesProvider` barrier、项目页 runtime adapter、Project UI Worker 或页面共享缓存策略，更新本文。
+- 改 `ProjectStore` section、项目身份、session 初始化、mutation result、payload mode、revision 合并或补读策略，更新本文并同步 [`docs/BACKEND.md`](BACKEND.md)。
+- 改导航注册、`ProjectSessionProvider` barrier、页面派生缓存注册、Project UI Worker 或质量规则统计共享缓存策略，更新本文。
 - 改 i18n、可见文案、样式 token、px-first、基础组件视觉边界或设计系统消费方式，更新本文；产品 / 设计权威仍回到 `PRODUCT.md` / `DESIGN.md`。

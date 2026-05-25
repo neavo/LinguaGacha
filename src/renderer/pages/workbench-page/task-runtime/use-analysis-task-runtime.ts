@@ -18,9 +18,9 @@ import {
   type ProjectMutationResultPayload,
 } from "@/app/desktop/desktop-project-mutation";
 import type {
-  ProjectPagesBarrierCheckpoint,
-  ProjectPagesBarrierKind,
-} from "@/app/page-runtime/project-pages-barrier";
+  ProjectSessionBarrierCheckpoint,
+  ProjectSessionBarrierKind,
+} from "@/app/session/project-session-barrier";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
@@ -68,11 +68,11 @@ type PreparedAnalysisGlossaryImport = NonNullable<
 >;
 
 type AnalysisTaskRuntimeOptions = {
-  createProjectPagesBarrierCheckpoint?: () => ProjectPagesBarrierCheckpoint;
-  waitForProjectPagesBarrier?: (
-    kind: Exclude<ProjectPagesBarrierKind, "project_warmup">,
-    options?: { checkpoint?: ProjectPagesBarrierCheckpoint | null },
-  ) => Promise<void>;
+  createProjectSessionBarrierCheckpoint?: () => ProjectSessionBarrierCheckpoint; // 导入分析术语前固定项目 session 身份
+  waitForProjectSessionBarrier?: (
+    kind: Exclude<ProjectSessionBarrierKind, "project_session_ready">,
+    options?: { checkpoint?: ProjectSessionBarrierCheckpoint | null },
+  ) => Promise<void>; // 分析导入后等待校对缓存追上已提交的 ProjectStore 变更
 };
 
 export type AnalysisTaskRuntime = {
@@ -452,7 +452,7 @@ export function useAnalysisTaskRuntime(
   const commit_prepared_analysis_glossary_import = useCallback(
     async (
       prepared_import: PreparedAnalysisGlossaryImport,
-      barrierCheckpoint: ProjectPagesBarrierCheckpoint | null,
+      barrierCheckpoint: ProjectSessionBarrierCheckpoint | null,
     ): Promise<void> => {
       await commit_project_mutation({
         operation: WORKBENCH_ANALYSIS_IMPORT_MUTATION,
@@ -466,8 +466,8 @@ export function useAnalysisTaskRuntime(
       });
       await refresh_task("analysis");
 
-      if (options.waitForProjectPagesBarrier !== undefined) {
-        await options.waitForProjectPagesBarrier("proofreading_cache_refresh", {
+      if (options.waitForProjectSessionBarrier !== undefined) {
+        await options.waitForProjectSessionBarrier("proofreading_cache_refresh", {
           checkpoint: barrierCheckpoint,
         });
       }
@@ -495,7 +495,7 @@ export function useAnalysisTaskRuntime(
         return false;
       }
 
-      const barrierCheckpoint = options.createProjectPagesBarrierCheckpoint?.() ?? null;
+      const barrierCheckpoint = options.createProjectSessionBarrierCheckpoint?.() ?? null;
       let committed = false;
       set_analysis_importing(true);
 

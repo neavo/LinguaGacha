@@ -65,15 +65,21 @@ vi.mock("@/app/desktop/desktop-runtime-context", () => {
   };
 });
 
-vi.mock("@/app/page-runtime/project-pages-context", () => {
+vi.mock("@/app/session/project-session-context", () => {
   return {
-    ProjectPagesProvider: (props: { children: ReactNode }) => <>{props.children}</>,
+    ProjectSessionProvider: (props: { children: ReactNode }) => <>{props.children}</>,
   };
 });
 
-vi.mock("@/project/quality/quality-statistics-context", () => {
+vi.mock("@/pages/workbench-page/task-runtime/workbench-task-runtime-context", () => {
   return {
-    QualityStatisticsProvider: (props: { children: ReactNode }) => <>{props.children}</>,
+    WorkbenchTaskRuntimeProvider: (props: { children: ReactNode }) => <>{props.children}</>,
+  };
+});
+
+vi.mock("@/project/quality/quality-rule-statistics-context", () => {
+  return {
+    QualityRuleStatisticsProvider: (props: { children: ReactNode }) => <>{props.children}</>,
   };
 });
 
@@ -84,7 +90,7 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
       pending_target_route: null,
       is_app_language_updating: false,
       project_snapshot: { loaded: false, path: "" },
-      project_warmup_status: "idle",
+      project_session_status: "idle",
       settings_snapshot: { app_language: "ZH" },
       task_snapshot: {
         runtime_revision: 0,

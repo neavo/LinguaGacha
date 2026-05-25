@@ -40,7 +40,7 @@ type DesktopRuntimeProjectEventPipelineOptions = {
   applyProjectChange: (event: ProjectStoreChangeEvent, revisionMode?: "merge" | "exact") => void;
   applyProjectChangeBatch: (events: readonly ProjectStoreChangeEvent[]) => void;
   shouldApplyProjectChange: (event: ProjectStoreChangeEvent) => boolean;
-  queueProjectChangeDuringWarmup: (event: ProjectStoreChangeEvent) => boolean;
+  queueProjectChangeDuringSessionWarming: (event: ProjectStoreChangeEvent) => boolean;
   normalizeProjectChangeEvent: (
     payload: ProjectChangeEventPayload,
   ) => ProjectStoreChangeEvent | null;
@@ -58,7 +58,7 @@ type DesktopRuntimeProjectEventPipelineOptions = {
 };
 
 /**
- * 项目 SSE 事件的唯一运行态管线，负责 warmup 队列、补读、调度和失败恢复。
+ * 项目 SSE 事件的唯一运行态管线，负责 session 初始化队列、补读、调度和失败恢复。
  */
 export function useDesktopRuntimeProjectEventPipeline(
   options: DesktopRuntimeProjectEventPipelineOptions,
@@ -68,7 +68,7 @@ export function useDesktopRuntimeProjectEventPipeline(
     applyProjectChange,
     applyProjectChangeBatch,
     shouldApplyProjectChange,
-    queueProjectChangeDuringWarmup,
+    queueProjectChangeDuringSessionWarming,
     normalizeProjectChangeEvent,
     collectProjectChangeSectionsRequiringRead,
     readProjectSectionsForChange,
@@ -133,7 +133,7 @@ export function useDesktopRuntimeProjectEventPipeline(
         if (isCancelled()) {
           return;
         }
-        if (queueProjectChangeDuringWarmup(change_event)) {
+        if (queueProjectChangeDuringSessionWarming(change_event)) {
           return;
         }
         if (!shouldApplyProjectChange(change_event)) {
@@ -179,7 +179,7 @@ export function useDesktopRuntimeProjectEventPipeline(
       normalizeProjectChangeEvent,
       projectSnapshot.loaded,
       projectSnapshot.path,
-      queueProjectChangeDuringWarmup,
+      queueProjectChangeDuringSessionWarming,
       readProjectSectionsForChange,
       recover_unmergeable_project_event,
       refresh_project_runtime_after_error,

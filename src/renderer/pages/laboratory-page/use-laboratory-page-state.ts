@@ -8,7 +8,7 @@ import type {
   SettingsSnapshot,
   SettingsSnapshotPayload,
 } from "@/app/desktop/desktop-runtime-context";
-import { useProjectPagesBarrier } from "@/app/page-runtime/project-pages-context";
+import { useProjectSessionBarrier } from "@/app/session/project-session-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
@@ -52,7 +52,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     commit_project_mutation,
     refresh_settings,
   } = useDesktopRuntime();
-  const { create_barrier_checkpoint, wait_for_barrier } = useProjectPagesBarrier();
+  const { create_barrier_checkpoint, wait_for_barrier } = useProjectSessionBarrier();
   const { push_toast, run_modal_progress_toast } = useDesktopToast();
   const { t } = useI18n();
   const [snapshot, set_snapshot] = useState<LaboratorySnapshot>(() => {
@@ -210,7 +210,8 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
             }
 
             await apply_prefilter_from_settings(next_settings_snapshot);
-            await wait_for_barrier("project_cache_refresh", {
+            // 预过滤设置会影响工作台统计，提示用户前必须等已挂载工作台缓存追上。
+            await wait_for_barrier("workbench_cache_refresh", {
               checkpoint: barrier_checkpoint,
             });
             if (project_snapshot.loaded) {
@@ -286,7 +287,8 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
             }
 
             await apply_prefilter_from_settings(next_settings_snapshot);
-            await wait_for_barrier("project_cache_refresh", {
+            // 去重设置会影响工作台统计，提示用户前必须等已挂载工作台缓存追上。
+            await wait_for_barrier("workbench_cache_refresh", {
               checkpoint: barrier_checkpoint,
             });
             if (project_snapshot.loaded) {

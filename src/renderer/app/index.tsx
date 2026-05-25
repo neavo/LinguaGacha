@@ -14,8 +14,9 @@ import { DEFAULT_ROUTE_ID, BOTTOM_ACTIONS, NAVIGATION_GROUPS } from "@/app/navig
 import { SCREEN_REGISTRY } from "@/app/navigation/screen-registry";
 import { AppNavigationProvider } from "@/app/navigation/navigation-context";
 import { DesktopRuntimeProvider } from "@/app/desktop/desktop-runtime-context";
-import { ProjectPagesProvider } from "@/app/page-runtime/project-pages-context";
-import { QualityStatisticsProvider } from "@/project/quality/quality-statistics-context";
+import { ProjectSessionProvider } from "@/app/session/project-session-context";
+import { WorkbenchTaskRuntimeProvider } from "@/pages/workbench-page/task-runtime/workbench-task-runtime-context";
+import { QualityRuleStatisticsProvider } from "@/project/quality/quality-rule-statistics-context";
 import {
   api_fetch,
   check_github_release_update,
@@ -228,7 +229,7 @@ function AppContent(props: AppContentProps): JSX.Element {
     pending_target_route,
     is_app_language_updating,
     project_snapshot,
-    project_warmup_status,
+    project_session_status,
     settings_snapshot,
     set_pending_target_route,
     task_snapshot,
@@ -249,7 +250,7 @@ function AppContent(props: AppContentProps): JSX.Element {
   const [close_confirm_submitting, set_close_confirm_submitting] = useState<boolean>(false);
   const previous_project_loaded_ref = useRef<boolean>(project_snapshot.loaded);
   const previous_project_path_ref = useRef<string>(project_snapshot.path);
-  const previous_project_warmup_status_ref = useRef(project_warmup_status);
+  const previous_project_session_status_ref = useRef(project_session_status);
   const log_badge_project_path_ref = useRef<string | null>(null);
   const update_toast_shown_ref = useRef<boolean>(false);
   const system_proxy_toast_shown_ref = useRef<boolean>(false); // 系统代理提示只展示一次，避免 hydration 或语言刷新重复打扰用户
@@ -267,14 +268,14 @@ function AppContent(props: AppContentProps): JSX.Element {
       project: summarize_runtime_project_for_diagnostics({
         loaded: project_snapshot.loaded,
         path: project_snapshot.path,
-        warmupStatus: project_warmup_status,
+        sessionStatus: project_session_status,
       }),
       task: summarize_task_snapshot_for_diagnostics(task_snapshot),
     });
   }, [
     project_snapshot.loaded,
     project_snapshot.path,
-    project_warmup_status,
+    project_session_status,
     selected_route,
     task_snapshot,
   ]);
@@ -369,10 +370,10 @@ function AppContent(props: AppContentProps): JSX.Element {
 
     const was_loaded = previous_project_loaded_ref.current;
     const previous_project_path = previous_project_path_ref.current;
-    const previous_project_warmup_status = previous_project_warmup_status_ref.current;
+    const previous_project_session_status = previous_project_session_status_ref.current;
     previous_project_loaded_ref.current = project_snapshot.loaded;
     previous_project_path_ref.current = project_snapshot.path;
-    previous_project_warmup_status_ref.current = project_warmup_status;
+    previous_project_session_status_ref.current = project_session_status;
 
     if (was_loaded && !project_snapshot.loaded) {
       set_selected_route(DEFAULT_ROUTE_ID);
@@ -380,15 +381,15 @@ function AppContent(props: AppContentProps): JSX.Element {
       return;
     }
 
-    if (!project_snapshot.loaded || project_warmup_status !== "ready") {
+    if (!project_snapshot.loaded || project_session_status !== "ready") {
       return;
     }
 
     const project_just_loaded = !was_loaded;
     const project_path_changed = previous_project_path !== project_snapshot.path;
-    const warmup_just_completed = previous_project_warmup_status !== "ready";
+    const session_just_became_ready = previous_project_session_status !== "ready";
 
-    if (project_just_loaded || project_path_changed || warmup_just_completed) {
+    if (project_just_loaded || project_path_changed || session_just_became_ready) {
       if (pending_target_route !== null) {
         set_selected_route(resolve_selectable_route(pending_target_route));
         set_pending_target_route(null);
@@ -396,7 +397,7 @@ function AppContent(props: AppContentProps): JSX.Element {
         selected_route === DEFAULT_ROUTE_ID ||
         project_just_loaded ||
         project_path_changed ||
-        warmup_just_completed
+        session_just_became_ready
       ) {
         set_selected_route("workbench");
       }
@@ -406,7 +407,7 @@ function AppContent(props: AppContentProps): JSX.Element {
     pending_target_route,
     project_snapshot.loaded,
     project_snapshot.path,
-    project_warmup_status,
+    project_session_status,
     selected_route,
     set_pending_target_route,
   ]);
@@ -416,12 +417,12 @@ function AppContent(props: AppContentProps): JSX.Element {
       return new Set(ROUTE_IDS_DISABLED_WHEN_PROJECT_UNLOADED);
     }
 
-    if (project_warmup_status === "ready") {
+    if (project_session_status === "ready") {
       return new Set();
     }
 
     return new Set(PROJECT_DEPENDENT_ROUTE_IDS);
-  }, [project_snapshot.loaded, project_warmup_status]);
+  }, [project_snapshot.loaded, project_session_status]);
   const badged_bottom_action_ids = useMemo<ReadonlySet<BottomActionId>>(() => {
     return log_badge_visible ? new Set<BottomActionId>(["logs"]) : new Set();
   }, [log_badge_visible]);
@@ -474,7 +475,7 @@ function AppContent(props: AppContentProps): JSX.Element {
 
     if (
       project_snapshot.loaded &&
-      project_warmup_status !== "ready" &&
+      project_session_status !== "ready" &&
       PROJECT_DEPENDENT_ROUTE_IDS.has(next_route)
     ) {
       set_pending_target_route(next_route);
@@ -497,7 +498,7 @@ function AppContent(props: AppContentProps): JSX.Element {
     }
 
     const project_path = project_snapshot.path.trim();
-    if (project_path === "" || project_warmup_status !== "ready") {
+    if (project_path === "" || project_session_status !== "ready") {
       return;
     }
 
@@ -507,7 +508,7 @@ function AppContent(props: AppContentProps): JSX.Element {
 
     log_badge_project_path_ref.current = project_path;
     set_log_badge_visible(true);
-  }, [project_snapshot.loaded, project_snapshot.path, project_warmup_status]);
+  }, [project_snapshot.loaded, project_snapshot.path, project_session_status]);
 
   // handle_toggle_group 是事件处理边界，只把外部事件转换为本模块状态更新。
   function handle_toggle_group(route_id: RouteId): void {
@@ -650,11 +651,13 @@ function AppContent(props: AppContentProps): JSX.Element {
                 selected_route={selected_route}
                 navigate_to_route={handle_select_route}
               >
-                <ProjectPagesProvider>
-                  <QualityStatisticsProvider>
-                    <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
-                  </QualityStatisticsProvider>
-                </ProjectPagesProvider>
+                <ProjectSessionProvider>
+                  <WorkbenchTaskRuntimeProvider>
+                    <QualityRuleStatisticsProvider>
+                      <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
+                    </QualityRuleStatisticsProvider>
+                  </WorkbenchTaskRuntimeProvider>
+                </ProjectSessionProvider>
               </AppNavigationProvider>
             </SidebarInset>
           </section>

@@ -99,7 +99,7 @@ export function useDesktopRuntimeRecovery(
     [refresh_task, report_runtime_error],
   );
 
-  // 同一 project path 的恢复共享一个 warmup，请求方可 await 同一完成信号。
+  // 同一 project path 的恢复共享一个 session 初始化流程，请求方可 await 同一完成信号。
   const refresh_project_runtime_after_error = useCallback(
     async (
       reason: string,
