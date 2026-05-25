@@ -93,10 +93,10 @@ export const en_us_proofreading_page = {
   },
   confirm: {
     retranslate_description: "Confirm retranslating {COUNT} entries …?",
-    clear_translation_description:
-      "Confirm clearing translations for {COUNT} entries …?",
+    clear_translation_description: "Confirm clearing translations for {COUNT} entries …?",
   },
   feedback: {
+    loading_toast: "Loading data …",
     refresh_failed: "Failed to refresh proofreading.",
     selection_failed: "Failed to read selection.",
     save_failed: "Save failed",

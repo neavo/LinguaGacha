@@ -3,6 +3,7 @@ import type {
   ProofreadingItemsByRowIdsQuery,
   ProofreadingListViewQuery,
   ProofreadingListWindowQuery,
+  ProofreadingRowIndexQuery,
   ProofreadingRowIdsRangeQuery,
   ProofreadingRuntimeDeltaInput,
   ProofreadingRuntimeHydrationInput,
@@ -36,6 +37,11 @@ export type ProjectUiWorkerRequest =
       id: number; // id 由 scheduler 分配，用于把 worker 回包配对到 in-flight 请求
       type: "proofreading.read_row_ids_range"; // type 是 worker 入口分发的唯一判别字段
       input: ProofreadingRowIdsRangeQuery; // input 是批量选择需要读取的 row id 范围
+    }
+  | {
+      id: number; // id 由 scheduler 分配，用于把 worker 回包配对到 in-flight 请求
+      type: "proofreading.resolve_row_index"; // type 是 worker 入口分发的唯一判别字段
+      input: ProofreadingRowIndexQuery; // input 是滚动恢复按 row id 解析当前视图索引
     }
   | {
       id: number; // id 由 scheduler 分配，用于把 worker 回包配对到 in-flight 请求

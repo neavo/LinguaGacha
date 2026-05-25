@@ -17,6 +17,11 @@ import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
+import {
+  resolve_project_session_table_restore_scroll_row_id,
+  useProjectSessionUiState,
+  type ProjectSessionTableUiState,
+} from "@/app/session/project-session-ui-state-context";
 import { is_project_ui_worker_client_error } from "@/project/worker/project-ui-worker-errors";
 import { capture_project_ui_worker_error } from "@/project/worker/project-ui-worker-diagnostics";
 import {
@@ -77,6 +82,57 @@ const PROOFREADING_REQUIRED_SECTIONS: ProjectDataSection[] = [
   "quality",
   "proofreading",
 ];
+// PROOFREADING_SORT_COLUMN_IDS 是 session 恢复排序的白名单，避免旧列 id 进入 worker 查询。
+const PROOFREADING_SORT_COLUMN_IDS = new Set(["src", "dst", "status"]);
+
+// ProofreadingSessionUiState 包含校对页额外搜索条件，不能直接复用通用表格状态。
+type ProofreadingSessionUiState = ProjectSessionTableUiState<
+  ProofreadingFilterOptions,
+  AppTableSortState | null
+> & {
+  search_keyword: string;
+  search_scope: ProofreadingSearchScope;
+  is_regex: boolean;
+};
+
+// clone_app_table_sort_state 切断 session 快照引用，避免页面排序对象被外部复用。
+function clone_app_table_sort_state(
+  sort_state: AppTableSortState | null,
+): AppTableSortState | null {
+  return sort_state === null
+    ? null
+    : {
+        column_id: sort_state.column_id,
+        direction: sort_state.direction,
+      };
+}
+
+// normalize_proofreading_sort_state 在 session 边界收窄排序状态，坏状态统一回到默认排序。
+function normalize_proofreading_sort_state(
+  sort_state: AppTableSortState | null,
+): AppTableSortState | null {
+  if (sort_state === null || !PROOFREADING_SORT_COLUMN_IDS.has(sort_state.column_id)) {
+    return null;
+  }
+
+  return clone_app_table_sort_state(sort_state);
+}
+
+// clone_proofreading_page_ui_state 复制完整校对页 UI 快照，避免首帧恢复持有缓存引用。
+function clone_proofreading_page_ui_state(
+  ui_state: ProofreadingSessionUiState,
+): ProofreadingSessionUiState {
+  return {
+    filter_state: clone_proofreading_filter_options(ui_state.filter_state),
+    sort_state: normalize_proofreading_sort_state(ui_state.sort_state),
+    selected_row_ids: [...ui_state.selected_row_ids],
+    active_row_id: ui_state.active_row_id,
+    anchor_row_id: ui_state.anchor_row_id,
+    search_keyword: ui_state.search_keyword,
+    search_scope: ui_state.search_scope,
+    is_regex: ui_state.is_regex,
+  };
+}
 
 export type UseProofreadingPageStateResult = {
   cache_status: "idle" | "refreshing" | "ready" | "error";
@@ -101,6 +157,7 @@ export type UseProofreadingPageStateResult = {
   selected_row_ids: string[];
   active_row_id: string | null;
   anchor_row_id: string | null;
+  restore_scroll_row_id: string | null;
   retranslating_row_ids: string[];
   filter_dialog_open: boolean;
   dialog_state: ProofreadingDialogState;
@@ -116,6 +173,7 @@ export type UseProofreadingPageStateResult = {
   get_visible_row_at_index: (index: number) => ProofreadingVisibleItem | undefined;
   get_visible_row_id_at_index: (index: number) => string | undefined;
   resolve_visible_row_index: (row_id: string) => number | undefined;
+  resolve_visible_row_index_async: (row_id: string) => Promise<number | undefined>;
   resolve_visible_row_ids_range: (range: { start: number; count: number }) => Promise<string[]>;
   read_visible_range: (range: { start: number; count: number }) => void;
   handle_table_selection_error: (error: unknown) => void;
@@ -527,7 +585,17 @@ function resolve_requested_sync_mode(args: {
 // useProofreadingPageState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const { t } = useI18n();
-  const { push_toast } = useDesktopToast();
+  const { dismiss_toast, push_progress_toast, push_toast } = useDesktopToast();
+  const { get_page_ui_state, set_page_ui_state } = useProjectSessionUiState();
+  // initial_ui_state_ref 只在 hook 首帧读取 session 快照，避免刷新时覆盖用户当前输入。
+  const initial_ui_state_ref = useRef<ProofreadingSessionUiState | null>(null);
+  const initial_ui_state_loaded_ref = useRef(false);
+  if (!initial_ui_state_loaded_ref.current) {
+    const stored_ui_state = get_page_ui_state<ProofreadingSessionUiState>("proofreading");
+    initial_ui_state_ref.current =
+      stored_ui_state === null ? null : clone_proofreading_page_ui_state(stored_ui_state);
+    initial_ui_state_loaded_ref.current = true;
+  }
   const { proofreading_lookup_intent, clear_proofreading_lookup_intent } = useAppNavigation();
   const {
     settings_snapshot,
@@ -541,11 +609,15 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   } = useDesktopRuntime();
   const [list_view, set_list_view] = useState(() => create_empty_proofreading_list_view());
   const [current_filters, set_current_filters] = useState<ProofreadingFilterOptions>(() => {
-    return create_empty_filter_options();
+    return initial_ui_state_ref.current === null
+      ? create_empty_filter_options()
+      : clone_proofreading_filter_options(initial_ui_state_ref.current.filter_state);
   });
   const [filter_dialog_filters, set_filter_dialog_filters] = useState<ProofreadingFilterOptions>(
     () => {
-      return create_empty_filter_options();
+      return initial_ui_state_ref.current === null
+        ? create_empty_filter_options()
+        : clone_proofreading_filter_options(initial_ui_state_ref.current.filter_state);
     },
   );
   const [filter_panel, set_filter_panel] = useState(() => {
@@ -559,14 +631,26 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const [consumed_revisions, set_consumed_revisions] = useState<ProjectDataSectionRevisions>({});
   const [settled_project_path, set_settled_project_path] = useState("");
   const [is_mutating, set_is_mutating] = useState(false);
-  const [search_keyword, set_search_keyword] = useState("");
+  const [search_keyword, set_search_keyword] = useState(
+    () => initial_ui_state_ref.current?.search_keyword ?? "",
+  );
   const [replace_text, set_replace_text] = useState("");
-  const [search_scope, set_search_scope] = useState<ProofreadingSearchScope>("all");
-  const [is_regex, set_is_regex] = useState(false);
-  const [sort_state, set_sort_state] = useState<AppTableSortState | null>(null);
-  const [selected_row_ids, set_selected_row_ids] = useState<string[]>([]);
-  const [active_row_id, set_active_row_id] = useState<string | null>(null);
-  const [anchor_row_id, set_anchor_row_id] = useState<string | null>(null);
+  const [search_scope, set_search_scope] = useState<ProofreadingSearchScope>(
+    () => initial_ui_state_ref.current?.search_scope ?? "all",
+  );
+  const [is_regex, set_is_regex] = useState(() => initial_ui_state_ref.current?.is_regex ?? false);
+  const [sort_state, set_sort_state] = useState<AppTableSortState | null>(() => {
+    return normalize_proofreading_sort_state(initial_ui_state_ref.current?.sort_state ?? null);
+  });
+  const [selected_row_ids, set_selected_row_ids] = useState<string[]>(() => {
+    return initial_ui_state_ref.current?.selected_row_ids ?? [];
+  });
+  const [active_row_id, set_active_row_id] = useState<string | null>(
+    () => initial_ui_state_ref.current?.active_row_id ?? null,
+  );
+  const [anchor_row_id, set_anchor_row_id] = useState<string | null>(
+    () => initial_ui_state_ref.current?.anchor_row_id ?? null,
+  );
   const [filter_dialog_open, set_filter_dialog_open] = useState(false);
   const [dialog_state, set_dialog_state] = useState<ProofreadingDialogState>(() => {
     return create_empty_dialog_state();
@@ -585,9 +669,21 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const replace_cursor_ref = useRef(0);
   const pending_replace_cursor_ref = useRef<number | null>(null);
   const active_row_id_ref = useRef<string | null>(active_row_id);
+  const selected_row_ids_ref = useRef<string[]>(selected_row_ids);
+  const anchor_row_id_ref = useRef<string | null>(anchor_row_id);
   const pending_reset_filters_ref = useRef(false);
   const previous_project_loaded_ref = useRef(false);
   const previous_project_path_ref = useRef("");
+  // restored_ui_state_ref 标记本轮进入页面是否来自 session 恢复，决定是否套用默认筛选。
+  const restored_ui_state_ref = useRef(initial_ui_state_ref.current !== null);
+  // default_filters_ready_ref 避免首轮 worker 默认筛选覆盖从 session 恢复的筛选条件。
+  const default_filters_ready_ref = useRef(false);
+  // loading_toast_id_ref 记录当前模态 loading toast，确保刷新结束和卸载时能精确关闭。
+  const loading_toast_id_ref = useRef<ReturnType<typeof push_progress_toast> | null>(null);
+  // restore_scroll_row_id_ref 只保存首帧恢复滚动目标，用户后续选区动作会取消它。
+  const restore_scroll_row_id_ref = useRef<string | null>(
+    resolve_project_session_table_restore_scroll_row_id(initial_ui_state_ref.current),
+  );
   const previous_proofreading_change_seq_ref = useRef(0);
   const proofreading_change_signal = useMemo(
     () => resolve_proofreading_project_change_signal(project_change_signal),
@@ -629,6 +725,14 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   }, [active_row_id]);
 
   useEffect(() => {
+    selected_row_ids_ref.current = selected_row_ids;
+  }, [selected_row_ids]);
+
+  useEffect(() => {
+    anchor_row_id_ref.current = anchor_row_id;
+  }, [anchor_row_id]);
+
+  useEffect(() => {
     search_keyword_ref.current = search_keyword;
   }, [search_keyword]);
 
@@ -647,6 +751,34 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   useEffect(() => {
     list_view_ref.current = list_view;
   }, [list_view]);
+
+  // write_page_ui_state 写入完整快照，避免 session 中搜索、筛选、排序和选区组合错位。
+  const write_page_ui_state = useCallback(
+    (patch: Partial<ProofreadingSessionUiState> = {}): void => {
+      const next_filter_state = clone_proofreading_filter_options(
+        patch.filter_state ?? current_filters_ref.current,
+      );
+      const next_sort_state = normalize_proofreading_sort_state(
+        patch.sort_state ?? sort_state_ref.current,
+      );
+
+      set_page_ui_state<ProofreadingSessionUiState>("proofreading", {
+        filter_state: next_filter_state,
+        sort_state: next_sort_state,
+        selected_row_ids: [...(patch.selected_row_ids ?? selected_row_ids_ref.current)],
+        active_row_id:
+          patch.active_row_id === undefined ? active_row_id_ref.current : patch.active_row_id,
+        anchor_row_id:
+          patch.anchor_row_id === undefined ? anchor_row_id_ref.current : patch.anchor_row_id,
+        search_keyword:
+          patch.search_keyword === undefined ? search_keyword_ref.current : patch.search_keyword,
+        search_scope:
+          patch.search_scope === undefined ? search_scope_ref.current : patch.search_scope,
+        is_regex: patch.is_regex === undefined ? is_regex_ref.current : patch.is_regex,
+      });
+    },
+    [set_page_ui_state],
+  );
 
   const visible_items = list_view.window_rows;
   const visible_row_ids = useMemo(() => {
@@ -880,10 +1012,19 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   ]);
 
   const clear_table_selection = useCallback((): void => {
+    selected_row_ids_ref.current = [];
+    active_row_id_ref.current = null;
+    anchor_row_id_ref.current = null;
+    restore_scroll_row_id_ref.current = null;
     set_selected_row_ids([]);
     set_active_row_id(null);
     set_anchor_row_id(null);
-  }, []);
+    write_page_ui_state({
+      selected_row_ids: [],
+      active_row_id: null,
+      anchor_row_id: null,
+    });
+  }, [write_page_ui_state]);
 
   const clear_transient_state_for_new_project = useCallback((): void => {
     clear_pending_confirmation();
@@ -907,9 +1048,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_sort_state(null);
     sort_state_ref.current = null;
     set_selected_row_ids([]);
+    selected_row_ids_ref.current = [];
     set_active_row_id(null);
     active_row_id_ref.current = null;
     set_anchor_row_id(null);
+    anchor_row_id_ref.current = null;
+    restore_scroll_row_id_ref.current = null;
     set_filter_dialog_open(false);
     set_dialog_state(create_empty_dialog_state());
     set_dialog_item_snapshot(null);
@@ -918,6 +1062,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     preferred_row_id_ref.current = null;
     should_select_first_visible_ref.current = false;
     pending_reset_filters_ref.current = false;
+    default_filters_ready_ref.current = false;
   }, [clear_pending_confirmation]);
 
   const clear_cache_state = useCallback((): void => {
@@ -927,6 +1072,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     const currentProjectId = runtime_sync_state_ref.current?.projectId;
     runtime_sync_state_ref.current = null;
     defaultFiltersRef.current = create_empty_filter_options();
+    default_filters_ready_ref.current = false;
     const empty_list_view = create_empty_proofreading_list_view();
     set_list_view(empty_list_view);
     list_view_ref.current = empty_list_view;
@@ -1306,14 +1452,17 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       );
       const next_current_filters = pending_reset_filters_ref.current
         ? clone_proofreading_filter_options(nextDefaultFilters)
-        : reconcile_proofreading_filter_options({
-            previous_applied: current_filters_ref.current,
-            previous_default: defaultFiltersRef.current,
-            next_default: nextDefaultFilters,
-          });
+        : default_filters_ready_ref.current
+          ? reconcile_proofreading_filter_options({
+              previous_applied: current_filters_ref.current,
+              previous_default: defaultFiltersRef.current,
+              next_default: nextDefaultFilters,
+            })
+          : clone_proofreading_filter_options(current_filters_ref.current);
 
       runtime_sync_state_ref.current = runtime_sync_state;
       defaultFiltersRef.current = clone_proofreading_filter_options(nextDefaultFilters);
+      default_filters_ready_ref.current = true;
       set_current_filters(clone_proofreading_filter_options(next_current_filters));
       set_filter_dialog_filters(clone_proofreading_filter_options(next_current_filters));
 
@@ -1413,6 +1562,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       search_keyword_ref.current = next_keyword;
       should_select_first_visible_ref.current = false;
       clear_table_selection();
+      write_page_ui_state({
+        search_keyword: next_keyword,
+        selected_row_ids: [],
+        active_row_id: null,
+        anchor_row_id: null,
+      });
       schedule_search_list_view_query({
         filters: current_filters_ref.current,
         keyword: next_keyword,
@@ -1421,7 +1576,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         sort_state: sort_state_ref.current,
       });
     },
-    [clear_table_selection, schedule_search_list_view_query],
+    [clear_table_selection, schedule_search_list_view_query, write_page_ui_state],
   );
 
   const update_replace_text = useCallback((next_replace_text: string): void => {
@@ -1435,6 +1590,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       search_scope_ref.current = next_scope;
       should_select_first_visible_ref.current = false;
       clear_table_selection();
+      write_page_ui_state({
+        search_scope: next_scope,
+        selected_row_ids: [],
+        active_row_id: null,
+        anchor_row_id: null,
+      });
       void run_list_view_query(
         {
           filters: current_filters_ref.current,
@@ -1456,6 +1617,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       report_project_ui_worker_error,
       run_list_view_query,
       t,
+      write_page_ui_state,
     ],
   );
 
@@ -1466,6 +1628,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       is_regex_ref.current = next_is_regex;
       should_select_first_visible_ref.current = false;
       clear_table_selection();
+      write_page_ui_state({
+        is_regex: next_is_regex,
+        selected_row_ids: [],
+        active_row_id: null,
+        anchor_row_id: null,
+      });
       void run_list_view_query(
         {
           filters: current_filters_ref.current,
@@ -1487,14 +1655,27 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       report_project_ui_worker_error,
       run_list_view_query,
       t,
+      write_page_ui_state,
     ],
   );
 
-  const apply_table_selection = useCallback((payload: AppTableSelectionChange): void => {
-    set_selected_row_ids(payload.selected_row_ids);
-    set_active_row_id(payload.active_row_id);
-    set_anchor_row_id(payload.anchor_row_id);
-  }, []);
+  const apply_table_selection = useCallback(
+    (payload: AppTableSelectionChange): void => {
+      set_selected_row_ids(payload.selected_row_ids);
+      set_active_row_id(payload.active_row_id);
+      set_anchor_row_id(payload.anchor_row_id);
+      selected_row_ids_ref.current = payload.selected_row_ids;
+      active_row_id_ref.current = payload.active_row_id;
+      anchor_row_id_ref.current = payload.anchor_row_id;
+      restore_scroll_row_id_ref.current = null;
+      write_page_ui_state({
+        selected_row_ids: payload.selected_row_ids,
+        active_row_id: payload.active_row_id,
+        anchor_row_id: payload.anchor_row_id,
+      });
+    },
+    [write_page_ui_state],
+  );
 
   const apply_table_sort_state = useCallback(
     (next_sort_state: AppTableSortState | null): void => {
@@ -1502,6 +1683,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       set_sort_state(next_sort_state);
       sort_state_ref.current = next_sort_state;
       clear_table_selection();
+      write_page_ui_state({
+        sort_state: next_sort_state,
+        selected_row_ids: [],
+        active_row_id: null,
+        anchor_row_id: null,
+      });
       void run_list_view_query(
         {
           filters: current_filters_ref.current,
@@ -1523,6 +1710,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       report_project_ui_worker_error,
       run_list_view_query,
       t,
+      write_page_ui_state,
     ],
   );
 
@@ -1550,6 +1738,26 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       return visible_row_index_by_id.get(row_id);
     },
     [visible_row_index_by_id],
+  );
+
+  const resolve_visible_row_index_async = useCallback(
+    async (row_id: string): Promise<number | undefined> => {
+      // 已加载窗口优先本地命中，未加载行才请求 worker 当前视图缓存。
+      const visible_row_index = visible_row_index_by_id.get(row_id);
+      if (visible_row_index !== undefined) {
+        return visible_row_index;
+      }
+
+      if (list_view.view_id === "" || list_view.row_count <= 0) {
+        return undefined;
+      }
+
+      return await proofreading_runtime_client_ref.current.resolve_proofreading_row_index({
+        view_id: list_view.view_id,
+        row_id,
+      });
+    },
+    [list_view.row_count, list_view.view_id, visible_row_index_by_id],
   );
 
   const read_visible_range = useCallback(
@@ -1624,6 +1832,14 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     set_current_filters(clone_proofreading_filter_options(normalized_filters));
     set_filter_dialog_filters(clone_proofreading_filter_options(normalized_filters));
     set_filter_dialog_open(false);
+    current_filters_ref.current = clone_proofreading_filter_options(normalized_filters);
+    filter_dialog_filters_ref.current = clone_proofreading_filter_options(normalized_filters);
+    write_page_ui_state({
+      filter_state: normalized_filters,
+      selected_row_ids: [],
+      active_row_id: null,
+      anchor_row_id: null,
+    });
 
     try {
       await settle_list_view_and_filter_panel({
@@ -1647,6 +1863,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     report_project_ui_worker_error,
     settle_list_view_and_filter_panel,
     t,
+    write_page_ui_state,
   ]);
 
   const open_edit_dialog = useCallback(
@@ -1910,6 +2127,37 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   ]);
 
   useEffect(() => {
+    // 校对页首刷可能较久，刷新态用模态进度提示阻止用户误以为页面卡死。
+    if (!project_snapshot.loaded || cache_status !== "refreshing") {
+      const toast_id = loading_toast_id_ref.current;
+      if (toast_id !== null) {
+        loading_toast_id_ref.current = null;
+        dismiss_toast(toast_id);
+      }
+      return;
+    }
+
+    if (loading_toast_id_ref.current !== null) {
+      return;
+    }
+
+    const toast_id = push_progress_toast({
+      message: t("proofreading_page.feedback.loading_toast"),
+      presentation: "modal",
+    });
+    loading_toast_id_ref.current = toast_id;
+
+    return () => {
+      if (loading_toast_id_ref.current !== toast_id) {
+        return;
+      }
+
+      loading_toast_id_ref.current = null;
+      dismiss_toast(toast_id);
+    };
+  }, [cache_status, dismiss_toast, project_snapshot.loaded, push_progress_toast, t]);
+
+  useEffect(() => {
     const previous_project_loaded = previous_project_loaded_ref.current;
     const previous_project_path = previous_project_path_ref.current;
 
@@ -1926,10 +2174,14 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     }
 
     if (!previous_project_loaded || previous_project_path !== project_snapshot.path) {
-      clear_transient_state_for_new_project();
+      const restored_ui_state = restored_ui_state_ref.current;
+      if (!restored_ui_state) {
+        clear_transient_state_for_new_project();
+      }
+      restored_ui_state_ref.current = false;
       clear_cache_state();
       set_cache_status("refreshing");
-      pending_reset_filters_ref.current = true;
+      pending_reset_filters_ref.current = !restored_ui_state;
       previous_proofreading_change_seq_ref.current =
         proofreading_change_signal?.seq ?? previous_proofreading_change_seq_ref.current;
       void refresh_snapshot();
@@ -1970,6 +2222,14 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     should_select_first_visible_ref.current = false;
     cancel_pending_list_view_query();
     clear_table_selection();
+    write_page_ui_state({
+      search_keyword: proofreading_lookup_intent.keyword,
+      search_scope: "all",
+      is_regex: proofreading_lookup_intent.is_regex,
+      selected_row_ids: [],
+      active_row_id: null,
+      anchor_row_id: null,
+    });
     void run_list_view_query(
       {
         filters: current_filters_ref.current,
@@ -1993,6 +2253,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     report_project_ui_worker_error,
     run_list_view_query,
     t,
+    write_page_ui_state,
   ]);
 
   useEffect(() => {
@@ -2013,6 +2274,14 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       set_selected_row_ids([preferred_row_id]);
       set_active_row_id(preferred_row_id);
       set_anchor_row_id(preferred_row_id);
+      selected_row_ids_ref.current = [preferred_row_id];
+      active_row_id_ref.current = preferred_row_id;
+      anchor_row_id_ref.current = preferred_row_id;
+      write_page_ui_state({
+        selected_row_ids: [preferred_row_id],
+        active_row_id: preferred_row_id,
+        anchor_row_id: preferred_row_id,
+      });
       return;
     }
 
@@ -2023,10 +2292,18 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         set_selected_row_ids([first_visible_row_id]);
         set_active_row_id(first_visible_row_id);
         set_anchor_row_id(first_visible_row_id);
+        selected_row_ids_ref.current = [first_visible_row_id];
+        active_row_id_ref.current = first_visible_row_id;
+        anchor_row_id_ref.current = first_visible_row_id;
+        write_page_ui_state({
+          selected_row_ids: [first_visible_row_id],
+          active_row_id: first_visible_row_id,
+          anchor_row_id: first_visible_row_id,
+        });
         return;
       }
     }
-  }, [visible_row_ids]);
+  }, [visible_row_ids, write_page_ui_state]);
 
   return useMemo<UseProofreadingPageStateResult>(() => {
     return {
@@ -2052,6 +2329,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       selected_row_ids,
       active_row_id,
       anchor_row_id,
+      restore_scroll_row_id: restore_scroll_row_id_ref.current,
       retranslating_row_ids,
       filter_dialog_open,
       dialog_state,
@@ -2067,6 +2345,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       get_visible_row_at_index,
       get_visible_row_id_at_index,
       resolve_visible_row_index,
+      resolve_visible_row_index_async,
       resolve_visible_row_ids_range,
       read_visible_range,
       handle_table_selection_error,
@@ -2119,6 +2398,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     refresh_snapshot,
     read_visible_range,
     resolve_visible_row_ids_range,
+    resolve_visible_row_index_async,
     replace_all_visible_matches,
     replace_next_visible_match,
     replace_text,

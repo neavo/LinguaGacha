@@ -80,6 +80,9 @@ type SelectionBoxState = {
   moved: boolean;
 };
 
+// AppTableScrollAlignment 区分普通键盘滚动和 session 恢复滚动的对齐策略。
+type AppTableScrollAlignment = "nearest" | "start";
+
 type AppTableSortableRowProps<Row> = {
   row: Row;
   row_id: string;
@@ -419,6 +422,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     drag_enabled: drag_enabled_prop,
     get_row_id,
     row_model: row_model_prop,
+    restore_scroll_row_id,
     get_row_can_drag,
     on_selection_change,
     on_selection_error,
@@ -450,6 +454,10 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
   const active_row_index_ref = useRef<number | null>(null);
   const anchor_row_index_ref = useRef<number | null>(null);
   const selection_request_epoch_ref = useRef(0);
+  // restore_scroll_request_epoch_ref 让迟到的异步 row index 结果不能覆盖更新后的恢复目标。
+  const restore_scroll_request_epoch_ref = useRef(0);
+  // restored_scroll_row_id_ref 记录已处理目标，避免同一个恢复目标在重渲染时重复滚动。
+  const restored_scroll_row_id_ref = useRef<string | null>(null);
   const row_height = estimated_row_height ?? APP_TABLE_DEFAULT_ESTIMATED_ROW_HEIGHT;
   const [viewport_element, set_viewport_element] = useState<HTMLElement | null>(null);
   const [viewport_height, set_viewport_height] = useState(row_height);
@@ -747,27 +755,106 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
   }, []);
 
   const scroll_row_index_into_view = useCallback(
-    (row_index: number | null, row_id?: string | null): void => {
+    (
+      row_index: number | null,
+      row_id?: string | null,
+      alignment: AppTableScrollAlignment = "nearest",
+    ): boolean => {
       if (row_index === null || row_index < 0) {
-        return;
+        return false;
       }
 
       const row_element =
         row_id === undefined || row_id === null ? undefined : row_elements_ref.current.get(row_id);
       if (row_element !== undefined) {
         row_element.scrollIntoView({
-          block: "nearest",
+          block: alignment,
           inline: "nearest",
         });
-      } else {
-        // 为什么：虚拟列表里目标行可能还没挂到 DOM，上卷交给 virtualizer 才能稳定命中
-        virtualizer.scrollToIndex(row_index, {
-          align: "auto",
-        });
+        return true;
       }
+
+      if (viewport_element === null) {
+        return false;
+      }
+
+      // 为什么：虚拟列表里目标行可能还没挂到 DOM，上卷交给 virtualizer 才能稳定命中
+      virtualizer.scrollToIndex(row_index, {
+        align: alignment === "nearest" ? "auto" : "start",
+      });
+      return true;
     },
-    [virtualizer],
+    [viewport_element, virtualizer],
   );
+
+  useLayoutEffect(() => {
+    // session 恢复滚动只负责把外部保存的目标行带回视口，不参与选区状态写入。
+    const request_epoch = restore_scroll_request_epoch_ref.current + 1;
+    restore_scroll_request_epoch_ref.current = request_epoch;
+    let request_active = true;
+    const is_current_request = (): boolean => {
+      return request_active && restore_scroll_request_epoch_ref.current === request_epoch;
+    };
+
+    if (restore_scroll_row_id === undefined || restore_scroll_row_id === null) {
+      restored_scroll_row_id_ref.current = null;
+      return () => {
+        request_active = false;
+        restore_scroll_request_epoch_ref.current += 1;
+      };
+    }
+
+    if (restored_scroll_row_id_ref.current === restore_scroll_row_id) {
+      return () => {
+        request_active = false;
+        restore_scroll_request_epoch_ref.current += 1;
+      };
+    }
+
+    const resolved_row_index = row_model.resolve_row_index(restore_scroll_row_id);
+    if (resolved_row_index !== undefined) {
+      if (
+        is_current_request() &&
+        scroll_row_index_into_view(resolved_row_index, restore_scroll_row_id, "start")
+      ) {
+        restored_scroll_row_id_ref.current = restore_scroll_row_id;
+      }
+      return () => {
+        request_active = false;
+        restore_scroll_request_epoch_ref.current += 1;
+      };
+    }
+
+    if (row_model.resolve_row_index_async === undefined) {
+      return () => {
+        request_active = false;
+        restore_scroll_request_epoch_ref.current += 1;
+      };
+    }
+
+    void Promise.resolve(row_model.resolve_row_index_async(restore_scroll_row_id))
+      .then((async_row_index) => {
+        if (!is_current_request() || async_row_index === undefined) {
+          return;
+        }
+
+        if (scroll_row_index_into_view(async_row_index, restore_scroll_row_id, "start")) {
+          restored_scroll_row_id_ref.current = restore_scroll_row_id;
+        }
+      })
+      .catch((error: unknown) => {
+        if (!is_current_request()) {
+          return;
+        }
+
+        on_selection_error?.(error);
+      });
+
+    return () => {
+      request_active = false;
+      restore_scroll_request_epoch_ref.current += 1;
+    };
+  }, [on_selection_error, restore_scroll_row_id, row_model, scroll_row_index_into_view]);
 
   const resolve_row_ids_range = useCallback(
     async (range: { start: number; count: number }): Promise<string[]> => {

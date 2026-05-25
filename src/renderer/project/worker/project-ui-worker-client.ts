@@ -9,6 +9,7 @@ import type {
   ProofreadingListViewQuery,
   ProofreadingListWindow,
   ProofreadingListWindowQuery,
+  ProofreadingRowIndexQuery,
   ProofreadingRowIdsRangeQuery,
   ProofreadingRuntimeDeltaInput,
   ProofreadingRuntimeHydrationInput,
@@ -50,6 +51,10 @@ export type ProjectUiWorkerClient = {
    * 读取当前视图 row id 范围，供批量操作和选择逻辑消费。
    */
   read_proofreading_row_ids_range: (input: ProofreadingRowIdsRangeQuery) => Promise<string[]>;
+  /**
+   * 在 worker 的当前列表视图缓存内解析 row id 所在索引，供恢复滚动消费。
+   */
+  resolve_proofreading_row_index: (input: ProofreadingRowIndexQuery) => Promise<number | undefined>;
   /**
    * 按 row id 回读当前 worker 缓存中的校对条目。
    */
@@ -131,6 +136,15 @@ export function createProjectUiWorkerClient(
           input,
         },
         { priority: "foreground" },
+      );
+    },
+    resolve_proofreading_row_index(input) {
+      return scheduler.submit(
+        {
+          type: "proofreading.resolve_row_index",
+          input,
+        },
+        { priority: "foreground", staleKey: "proofreading:row_index" },
       );
     },
     read_proofreading_items_by_row_ids(input) {

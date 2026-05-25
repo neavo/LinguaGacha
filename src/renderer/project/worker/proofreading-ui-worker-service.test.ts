@@ -191,6 +191,12 @@ describe("createProofreadingUiWorkerService", () => {
       row_count: 2,
     });
     expect(list_view.window_rows.map((item) => item.row_id)).toEqual(["1", "2"]);
+    expect(
+      engine.resolve_row_index({
+        view_id: list_view.view_id,
+        row_id: "2",
+      }),
+    ).toBe(1);
     expect(list_view.window_rows[0]?.item.failed_glossary_terms).toEqual([["foo", "baz"]]);
 
     const filter_panel = engine.build_filter_panel({

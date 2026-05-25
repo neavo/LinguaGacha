@@ -109,6 +109,44 @@ describe("project-ui-worker-entry", () => {
     });
   });
 
+  it("将校对行索引解析请求分发到校对派生服务", async () => {
+    const harness = install_worker_scope_mock();
+    const resolve_row_index = vi.fn(() => 7);
+    vi.doMock("@/project/quality/quality-statistics", () => {
+      return {
+        run_quality_statistics_task: vi.fn(),
+      };
+    });
+    vi.doMock("@/project/worker/proofreading-ui-worker-service", () => {
+      return {
+        createProofreadingUiWorkerService: () => ({
+          resolve_row_index,
+          dispose_project: vi.fn(),
+        }),
+      };
+    });
+
+    await import_worker_entry();
+
+    const input = {
+      view_id: "view-1",
+      row_id: "row-7",
+    };
+    harness.emit({
+      id: 3,
+      type: "proofreading.resolve_row_index",
+      input,
+    });
+    await flush_worker_microtasks();
+
+    expect(resolve_row_index).toHaveBeenCalledWith(input);
+    expect(harness.postMessage).toHaveBeenCalledWith({
+      id: 3,
+      ok: true,
+      result: 7,
+    });
+  });
+
   it("校对派生服务抛错时返回带消息类型的结构化诊断", async () => {
     const harness = install_worker_scope_mock();
     const dispose_project = vi.fn(() => {

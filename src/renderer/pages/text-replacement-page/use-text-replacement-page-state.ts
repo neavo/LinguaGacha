@@ -6,6 +6,11 @@ import {
   type ProjectMutationResultPayload,
 } from "@/app/desktop/desktop-project-mutation";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
+import {
+  useProjectSessionTableUiState,
+  type ProjectSessionTableSelectionState,
+  type ProjectSessionUiStateKey,
+} from "@/app/session/project-session-ui-state-context";
 import { useDebouncedCallback } from "@/hooks/use-debounce";
 import {
   buildProofreadingLookupQuery,
@@ -89,6 +94,41 @@ type TextReplacementResultViewQuery = {
   sort_state: AppTableSortState | null;
 };
 
+// TEXT REPLACEMENT SORT COLUMN IDS 是 session 恢复排序的白名单，避免跨变体列 id 污染表格。
+const TEXT_REPLACEMENT_SORT_COLUMN_IDS = new Set(["src", "dst", "rule", "statistics"]);
+
+// create_text_replacement_ui_state_key 把前后替换页隔离到各自 session UI 状态命名空间。
+function create_text_replacement_ui_state_key(
+  rule_type: TextReplacementVariantConfig["rule_type"],
+): ProjectSessionUiStateKey {
+  return `quality:${rule_type}`;
+}
+
+// normalize_text_replacement_sort_state 在 session 边界收窄排序状态，坏状态统一回到默认排序。
+function normalize_text_replacement_sort_state(
+  sort_state: AppTableSortState | null,
+): AppTableSortState | null {
+  if (sort_state === null || !TEXT_REPLACEMENT_SORT_COLUMN_IDS.has(sort_state.column_id)) {
+    return null;
+  }
+
+  return {
+    column_id: sort_state.column_id,
+    direction: sort_state.direction,
+  };
+}
+
+// clone_text_replacement_filter_state 切断 session 快照引用，避免页面编辑直接修改缓存对象。
+function clone_text_replacement_filter_state(
+  filter_state: TextReplacementFilterState,
+): TextReplacementFilterState {
+  return {
+    keyword: filter_state.keyword,
+    scope: filter_state.scope,
+    is_regex: filter_state.is_regex,
+  };
+}
+
 // IMPORT RULE TYPE BY PUBLIC RULE TYPE 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const IMPORT_RULE_TYPE_BY_PUBLIC_RULE_TYPE = {
   pre_replacement: QualityRuleImportRuleTypeValue.PRE_REPLACEMENT,
@@ -139,6 +179,11 @@ function create_empty_filter_state(): TextReplacementFilterState {
     scope: "all",
     is_regex: false,
   };
+}
+
+// create_empty_sort_state 保持表格排序默认值与 AppTable 的无排序状态一致。
+function create_empty_sort_state(): AppTableSortState | null {
+  return null;
 }
 
 // create_empty_dialog_state 构造跨层载荷，保证字段形状在一个入口维护。
@@ -290,6 +335,8 @@ export function useTextReplacementPageState(
   const config = TEXT_REPLACEMENT_VARIANT_CONFIG[variant];
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
+  // ui_state_key 用公开 rule_type 隔离前后替换页的 session 表格状态。
+  const ui_state_key = create_text_replacement_ui_state_key(config.rule_type);
   const { navigate_to_route, push_proofreading_lookup_intent } = useAppNavigation();
   const {
     project_snapshot,
@@ -321,15 +368,30 @@ export function useTextReplacementPageState(
     );
   }, [project_snapshot.loaded, replacement_slice.entries]);
   const [preset_items, set_preset_items] = useState<TextReplacementPresetItem[]>([]);
-  const [selected_entry_ids, set_selected_entry_ids] = useState<TextReplacementEntryId[]>([]);
-  const [active_entry_id, set_active_entry_id] = useState<TextReplacementEntryId | null>(null);
-  const [selection_anchor_entry_id, set_selection_anchor_entry_id] =
-    useState<TextReplacementEntryId | null>(null);
   const [preset_menu_open, set_preset_menu_open] = useState(false);
-  const [filter_state, set_filter_state] = useState<TextReplacementFilterState>(() => {
-    return create_empty_filter_state();
+  const table_ui_state = useProjectSessionTableUiState<
+    TextReplacementFilterState,
+    AppTableSortState | null
+  >({
+    key: ui_state_key,
+    create_default_filter_state: create_empty_filter_state,
+    create_default_sort_state: create_empty_sort_state,
+    clone_filter_state: clone_text_replacement_filter_state,
+    normalize_sort_state: normalize_text_replacement_sort_state,
   });
-  const [sort_state, set_sort_state] = useState<AppTableSortState | null>(null);
+  // table_ui_state 是文本替换页跨路由保留筛选、排序和选区的唯一 session 状态入口。
+  const filter_state = table_ui_state.filter_state;
+  const sort_state = table_ui_state.sort_state;
+  const selected_entry_ids = table_ui_state.selected_row_ids as TextReplacementEntryId[];
+  const active_entry_id = table_ui_state.active_row_id as TextReplacementEntryId | null;
+  const selection_anchor_entry_id = table_ui_state.anchor_row_id as TextReplacementEntryId | null;
+  const restore_scroll_entry_id =
+    table_ui_state.restore_scroll_row_id as TextReplacementEntryId | null;
+  const set_table_filter_state = table_ui_state.set_filter_state;
+  const set_table_sort_state = table_ui_state.set_sort_state;
+  const set_table_selection_state = table_ui_state.set_selection_state;
+  const restore_table_selection_state = table_ui_state.restore_selection_state;
+  const reset_table_state = table_ui_state.reset_table_state;
   const [result_view_snapshot, set_result_view_snapshot] = useState<ResultViewSnapshot<
     TextReplacementResultViewQuery,
     TextReplacementEntryId
@@ -354,6 +416,8 @@ export function useTextReplacementPageState(
     return build_text_replacement_statistics_state_from_cache(statistics_cache);
   }, [statistics_cache]);
   const statistics_ready = isQualityRuleStatisticsCacheReady(statistics_cache);
+  // project_view_identity_ref 区分同组件内项目身份切换，避免旧项目状态污染新项目。
+  const project_view_identity_ref = useRef(project_snapshot.loaded ? project_snapshot.path : "");
 
   useEffect(() => {
     dialog_state_ref.current = dialog_state;
@@ -554,11 +618,7 @@ export function useTextReplacementPageState(
     t,
   ]);
 
-  const clear_selection_state = useCallback((): void => {
-    set_selected_entry_ids([]);
-    set_active_entry_id(null);
-    set_selection_anchor_entry_id(null);
-  }, []);
+  const clear_selection_state = table_ui_state.clear_selection_state;
 
   const save_entries_snapshot = useCallback(
     async (
@@ -681,37 +741,70 @@ export function useTextReplacementPageState(
   }, [config.default_preset_settings_key, config.rule_type, settings_snapshot]);
 
   useEffect(() => {
+    // 项目身份变化时页面派生视图和 session 表格状态必须一起重置。
+    const next_project_identity = project_snapshot.loaded ? project_snapshot.path : "";
     set_result_view_snapshot(null);
     set_pending_result_view_source_update(null);
-  }, [project_snapshot.loaded, project_snapshot.path]);
+    if (project_view_identity_ref.current === next_project_identity) {
+      return;
+    }
+
+    project_view_identity_ref.current = next_project_identity;
+    reset_table_state({ persist: false });
+  }, [project_snapshot.loaded, project_snapshot.path, reset_table_state]);
 
   useEffect(() => {
     if (statistics_ready || sort_state?.column_id !== "statistics") {
       return;
     }
 
-    set_sort_state(null);
+    set_table_sort_state(null);
     set_result_view_snapshot(build_result_view_snapshot(filter_state, null));
-  }, [build_result_view_snapshot, filter_state, sort_state, statistics_ready]);
+  }, [
+    build_result_view_snapshot,
+    filter_state,
+    set_table_sort_state,
+    sort_state,
+    statistics_ready,
+  ]);
 
   useEffect(() => {
-    set_selected_entry_ids((previous_ids) => {
-      return previous_ids.filter((entry_id) => {
-        return entry_index_by_id.has(entry_id) && visible_entry_id_set.has(entry_id);
-      });
+    // 可见结果变化会让旧选区失去操作上下文，必须同步裁剪 session 选区。
+    const next_selected_entry_ids = selected_entry_ids.filter((entry_id) => {
+      return entry_index_by_id.has(entry_id) && visible_entry_id_set.has(entry_id);
     });
-
-    if (active_entry_id !== null && !visible_entry_id_set.has(active_entry_id)) {
-      set_active_entry_id(null);
-    }
+    const next_active_entry_id =
+      active_entry_id !== null && visible_entry_id_set.has(active_entry_id)
+        ? active_entry_id
+        : null;
+    const next_anchor_entry_id =
+      selection_anchor_entry_id !== null && visible_entry_id_set.has(selection_anchor_entry_id)
+        ? selection_anchor_entry_id
+        : null;
+    const selection_changed = !are_text_replacement_entry_ids_equal(
+      selected_entry_ids,
+      next_selected_entry_ids,
+    );
 
     if (
-      selection_anchor_entry_id !== null &&
-      !visible_entry_id_set.has(selection_anchor_entry_id)
+      selection_changed ||
+      active_entry_id !== next_active_entry_id ||
+      selection_anchor_entry_id !== next_anchor_entry_id
     ) {
-      set_selection_anchor_entry_id(null);
+      set_table_selection_state({
+        selected_row_ids: next_selected_entry_ids,
+        active_row_id: next_active_entry_id,
+        anchor_row_id: next_anchor_entry_id,
+      });
     }
-  }, [active_entry_id, entry_index_by_id, selection_anchor_entry_id, visible_entry_id_set]);
+  }, [
+    active_entry_id,
+    entry_index_by_id,
+    selected_entry_ids,
+    selection_anchor_entry_id,
+    set_table_selection_state,
+    visible_entry_id_set,
+  ]);
 
   const update_filter_keyword = useCallback(
     (next_keyword: string): void => {
@@ -723,10 +816,16 @@ export function useTextReplacementPageState(
       set_result_view_snapshot((previous_snapshot) => {
         return previous_snapshot ?? build_result_view_snapshot(filter_state, sort_state);
       });
-      set_filter_state(next_filter_state);
+      set_table_filter_state(next_filter_state);
       debounced_result_view_snapshot.schedule(next_filter_state, sort_state);
     },
-    [build_result_view_snapshot, debounced_result_view_snapshot, filter_state, sort_state],
+    [
+      build_result_view_snapshot,
+      debounced_result_view_snapshot,
+      filter_state,
+      set_table_filter_state,
+      sort_state,
+    ],
   );
 
   const update_filter_scope = useCallback(
@@ -738,10 +837,16 @@ export function useTextReplacementPageState(
       set_result_view_snapshot((previous_snapshot) => {
         return previous_snapshot ?? build_result_view_snapshot(filter_state, sort_state);
       });
-      set_filter_state(next_filter_state);
+      set_table_filter_state(next_filter_state);
       debounced_result_view_snapshot.schedule(next_filter_state, sort_state);
     },
-    [build_result_view_snapshot, debounced_result_view_snapshot, filter_state, sort_state],
+    [
+      build_result_view_snapshot,
+      debounced_result_view_snapshot,
+      filter_state,
+      set_table_filter_state,
+      sort_state,
+    ],
   );
 
   const update_filter_regex = useCallback(
@@ -753,38 +858,38 @@ export function useTextReplacementPageState(
       set_result_view_snapshot((previous_snapshot) => {
         return previous_snapshot ?? build_result_view_snapshot(filter_state, sort_state);
       });
-      set_filter_state(next_filter_state);
+      set_table_filter_state(next_filter_state);
       debounced_result_view_snapshot.schedule(next_filter_state, sort_state);
     },
-    [build_result_view_snapshot, debounced_result_view_snapshot, filter_state, sort_state],
+    [
+      build_result_view_snapshot,
+      debounced_result_view_snapshot,
+      filter_state,
+      set_table_filter_state,
+      sort_state,
+    ],
   );
 
   const apply_table_sort_state = useCallback(
     (next_sort_state: AppTableSortState | null): void => {
       debounced_result_view_snapshot.cancel();
-      set_sort_state(next_sort_state);
+      set_table_sort_state(next_sort_state);
       set_result_view_snapshot(build_result_view_snapshot(filter_state, next_sort_state));
     },
-    [build_result_view_snapshot, debounced_result_view_snapshot, filter_state],
+    [
+      build_result_view_snapshot,
+      debounced_result_view_snapshot,
+      filter_state,
+      set_table_sort_state,
+    ],
   );
 
-  const apply_table_selection = useCallback((payload: AppTableSelectionChange): void => {
-    set_selected_entry_ids((previous_ids) => {
-      return are_text_replacement_entry_ids_equal(previous_ids, payload.selected_row_ids)
-        ? previous_ids
-        : payload.selected_row_ids;
-    });
-    set_active_entry_id((previous_entry_id) => {
-      return previous_entry_id === payload.active_row_id
-        ? previous_entry_id
-        : payload.active_row_id;
-    });
-    set_selection_anchor_entry_id((previous_entry_id) => {
-      return previous_entry_id === payload.anchor_row_id
-        ? previous_entry_id
-        : payload.anchor_row_id;
-    });
-  }, []);
+  const apply_table_selection = useCallback(
+    (payload: AppTableSelectionChange): void => {
+      set_table_selection_state(payload);
+    },
+    [set_table_selection_state],
+  );
 
   const update_enabled = useCallback(
     async (next_enabled: boolean): Promise<void> => {
@@ -850,9 +955,11 @@ export function useTextReplacementPageState(
         return;
       }
 
-      set_active_entry_id(entry_id);
-      set_selected_entry_ids([entry_id]);
-      set_selection_anchor_entry_id(entry_id);
+      set_table_selection_state({
+        selected_row_ids: [entry_id],
+        active_row_id: entry_id,
+        anchor_row_id: entry_id,
+      });
       set_dialog_state({
         open: true,
         mode: "edit",
@@ -863,7 +970,7 @@ export function useTextReplacementPageState(
         validation_message: null,
       });
     },
-    [entries, entry_index_by_id, readonly],
+    [entries, entry_index_by_id, readonly, set_table_selection_state],
   );
 
   const update_dialog_draft = useCallback((patch: Partial<TextReplacementEntry>): void => {
@@ -886,9 +993,11 @@ export function useTextReplacementPageState(
       }
 
       const target_set = new Set(target_entry_ids);
-      const previous_selected_entry_ids = selected_entry_ids;
-      const previous_active_entry_id = active_entry_id;
-      const previous_anchor_entry_id = selection_anchor_entry_id;
+      const previous_selection_state: ProjectSessionTableSelectionState = {
+        selected_row_ids: selected_entry_ids,
+        active_row_id: active_entry_id,
+        anchor_row_id: selection_anchor_entry_id,
+      };
       const next_entries = entries.filter((_entry, index) => {
         return !target_set.has(entry_ids[index] ?? "");
       });
@@ -897,9 +1006,7 @@ export function useTextReplacementPageState(
 
       const saved = await save_entries_snapshot(next_entries);
       if (!saved) {
-        set_selected_entry_ids(previous_selected_entry_ids);
-        set_active_entry_id(previous_active_entry_id);
-        set_selection_anchor_entry_id(previous_anchor_entry_id);
+        restore_table_selection_state(previous_selection_state);
         return false;
       }
 
@@ -914,6 +1021,7 @@ export function useTextReplacementPageState(
       save_entries_snapshot,
       selected_entry_ids,
       selection_anchor_entry_id,
+      restore_table_selection_state,
     ],
   );
 
@@ -1049,11 +1157,18 @@ export function useTextReplacementPageState(
         is_regex: false,
       };
       debounced_result_view_snapshot.cancel();
-      set_filter_state(next_filter_state);
-      set_sort_state(null);
+      set_table_filter_state(next_filter_state);
+      set_table_sort_state(null);
       set_result_view_snapshot(build_result_view_snapshot(next_filter_state, null));
     },
-    [build_result_view_snapshot, debounced_result_view_snapshot, entries, entry_index_by_id],
+    [
+      build_result_view_snapshot,
+      debounced_result_view_snapshot,
+      entries,
+      entry_index_by_id,
+      set_table_filter_state,
+      set_table_sort_state,
+    ],
   );
 
   const import_entries_from_path = useCallback(
@@ -1690,6 +1805,7 @@ export function useTextReplacementPageState(
     selected_entry_ids,
     active_entry_id,
     selection_anchor_entry_id,
+    restore_scroll_entry_id,
     preset_menu_open,
     dialog_state,
     confirm_state,

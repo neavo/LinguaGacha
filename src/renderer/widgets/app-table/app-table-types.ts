@@ -45,6 +45,8 @@ export type AppTableRowModel<Row> = {
   get_row_at_index: (index: number) => Row | undefined;
   get_row_id_at_index: (index: number) => string | undefined;
   resolve_row_index: (row_id: string) => number | undefined;
+  // resolve_row_index_async 供虚拟/worker 视图按 row id 懒解析未加载行的索引。
+  resolve_row_index_async?: (row_id: string) => number | undefined | Promise<number | undefined>;
   resolve_row_ids_range?: (range: { start: number; count: number }) => string[] | Promise<string[]>;
   on_visible_range_change?: (range: { start: number; count: number }) => void;
 };
@@ -112,6 +114,8 @@ export type AppTableProps<Row> = {
   drag_enabled: boolean;
   get_row_id: (row: Row, index: number) => string;
   row_model?: AppTableRowModel<Row>;
+  // restore_scroll_row_id 是外部 session 恢复滚动的目标行，不改变表格选区。
+  restore_scroll_row_id?: string | null;
   get_row_can_drag?: (row: Row, index: number) => boolean;
   on_selection_change: (payload: AppTableSelectionChange) => void;
   on_selection_error?: (error: unknown) => void;

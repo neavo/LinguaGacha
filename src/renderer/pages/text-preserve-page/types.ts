@@ -121,6 +121,7 @@ export type UseTextPreservePageStateResult = {
   selected_entry_ids: TextPreserveEntryId[];
   active_entry_id: TextPreserveEntryId | null;
   selection_anchor_entry_id: TextPreserveEntryId | null;
+  restore_scroll_entry_id: TextPreserveEntryId | null;
   preset_menu_open: boolean;
   dialog_state: TextPreserveDialogState;
   confirm_state: TextPreserveConfirmState;

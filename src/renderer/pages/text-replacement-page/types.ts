@@ -120,6 +120,7 @@ export type UseTextReplacementPageStateResult = {
   selected_entry_ids: TextReplacementEntryId[];
   active_entry_id: TextReplacementEntryId | null;
   selection_anchor_entry_id: TextReplacementEntryId | null;
+  restore_scroll_entry_id: TextReplacementEntryId | null;
   preset_menu_open: boolean;
   dialog_state: TextReplacementDialogState;
   confirm_state: TextReplacementConfirmState;

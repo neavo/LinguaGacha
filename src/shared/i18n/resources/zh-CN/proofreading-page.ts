@@ -93,6 +93,7 @@ export const zh_cn_proofreading_page = {
     clear_translation_description: "是否确认清空 {COUNT} 个条目的译文 …?",
   },
   feedback: {
+    loading_toast: "数据加载中 …",
     refresh_failed: "校对页刷新失败",
     selection_failed: "读取选区失败",
     save_failed: "保存失败",
