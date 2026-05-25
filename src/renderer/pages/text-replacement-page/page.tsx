@@ -104,6 +104,7 @@ export function TextReplacementPage(props: TextReplacementPageProps): JSX.Elemen
             selected_entry_ids={page_state.selected_entry_ids}
             active_entry_id={page_state.active_entry_id}
             anchor_entry_id={page_state.selection_anchor_entry_id}
+            restore_scroll_entry_id={page_state.restore_scroll_entry_id}
             statistics_badge_by_entry_id={page_state.statistics_badge_by_entry_id}
             on_sort_change={page_state.apply_table_sort_state}
             on_selection_change={page_state.apply_table_selection}

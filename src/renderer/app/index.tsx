@@ -15,6 +15,7 @@ import { SCREEN_REGISTRY } from "@/app/navigation/screen-registry";
 import { AppNavigationProvider } from "@/app/navigation/navigation-context";
 import { DesktopRuntimeProvider } from "@/app/desktop/desktop-runtime-context";
 import { ProjectSessionProvider } from "@/app/session/project-session-context";
+import { ProjectSessionUiStateProvider } from "@/app/session/project-session-ui-state-context";
 import { WorkbenchTaskRuntimeProvider } from "@/pages/workbench-page/task-runtime/workbench-task-runtime-context";
 import { QualityRuleStatisticsProvider } from "@/project/quality/quality-rule-statistics-context";
 import {
@@ -652,11 +653,14 @@ function AppContent(props: AppContentProps): JSX.Element {
                 navigate_to_route={handle_select_route}
               >
                 <ProjectSessionProvider>
-                  <WorkbenchTaskRuntimeProvider>
-                    <QualityRuleStatisticsProvider>
-                      <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
-                    </QualityRuleStatisticsProvider>
-                  </WorkbenchTaskRuntimeProvider>
+                  {/* 项目 session UI 状态必须位于 session barrier 内，随项目身份清空且不参与缓存门闩。 */}
+                  <ProjectSessionUiStateProvider>
+                    <WorkbenchTaskRuntimeProvider>
+                      <QualityRuleStatisticsProvider>
+                        <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
+                      </QualityRuleStatisticsProvider>
+                    </WorkbenchTaskRuntimeProvider>
+                  </ProjectSessionUiStateProvider>
                 </ProjectSessionProvider>
               </AppNavigationProvider>
             </SidebarInset>

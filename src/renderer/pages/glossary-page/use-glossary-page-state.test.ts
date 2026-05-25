@@ -9,10 +9,11 @@ import { createProjectItemIndex } from "@/project/store/project-item-index";
 import { buildGlossaryStatisticsState, useGlossaryPageState } from "./use-glossary-page-state";
 import type { GlossaryEntry } from "./types";
 
-const { api_fetch_mock, push_toast_mock } = vi.hoisted(() => {
+const { api_fetch_mock, push_toast_mock, page_ui_state_store } = vi.hoisted(() => {
   return {
     api_fetch_mock: vi.fn(),
     push_toast_mock: vi.fn(),
+    page_ui_state_store: new Map<string, unknown>(),
   };
 });
 
@@ -370,6 +371,208 @@ vi.mock("@/project/quality/quality-rule-statistics-context", () => {
   };
 });
 
+vi.mock("@/app/session/project-session-ui-state-context", async () => {
+  const React = await import("react");
+  const resolve_restore_scroll_row_id = (
+    ui_state: {
+      selected_row_ids: string[];
+      active_row_id: string | null;
+      anchor_row_id: string | null;
+    } | null,
+  ): string | null => {
+    if (ui_state === null) {
+      return null;
+    }
+
+    if (ui_state.selected_row_ids.length > 1) {
+      return ui_state.selected_row_ids[0] ?? ui_state.active_row_id;
+    }
+
+    return ui_state.selected_row_ids[0] ?? ui_state.active_row_id ?? ui_state.anchor_row_id;
+  };
+
+  return {
+    resolve_project_session_table_restore_scroll_row_id: resolve_restore_scroll_row_id,
+    useProjectSessionTableUiState: (options: {
+      key: string;
+      create_default_filter_state: () => unknown;
+      create_default_sort_state: () => unknown;
+      clone_filter_state: (filter_state: never) => unknown;
+      normalize_sort_state: (sort_state: never) => unknown;
+    }) => {
+      const {
+        key,
+        create_default_filter_state,
+        create_default_sort_state,
+        clone_filter_state,
+        normalize_sort_state,
+      } = options;
+      const stored_ui_state = page_ui_state_store.get(key) as
+        | {
+            filter_state: never;
+            sort_state: never;
+            selected_row_ids: string[];
+            active_row_id: string | null;
+            anchor_row_id: string | null;
+          }
+        | undefined;
+      const [filter_state, set_filter_state_snapshot] = React.useState(() => {
+        return stored_ui_state === undefined
+          ? create_default_filter_state()
+          : clone_filter_state(stored_ui_state.filter_state);
+      });
+      const [sort_state, set_sort_state_snapshot] = React.useState(() => {
+        return stored_ui_state === undefined
+          ? create_default_sort_state()
+          : normalize_sort_state(stored_ui_state.sort_state);
+      });
+      const [selected_row_ids, set_selected_row_ids] = React.useState(
+        () => stored_ui_state?.selected_row_ids ?? [],
+      );
+      const [active_row_id, set_active_row_id] = React.useState(
+        () => stored_ui_state?.active_row_id ?? null,
+      );
+      const [anchor_row_id, set_anchor_row_id] = React.useState(
+        () => stored_ui_state?.anchor_row_id ?? null,
+      );
+      const [restore_scroll_row_id, set_restore_scroll_row_id] = React.useState(() => {
+        return resolve_restore_scroll_row_id(stored_ui_state ?? null);
+      });
+      const filter_state_ref = React.useRef(filter_state);
+      const sort_state_ref = React.useRef(sort_state);
+      const selected_row_ids_ref = React.useRef(selected_row_ids);
+      const active_row_id_ref = React.useRef(active_row_id);
+      const anchor_row_id_ref = React.useRef(anchor_row_id);
+      const write_page_ui_state = React.useCallback(
+        (patch: Record<string, unknown> = {}): void => {
+          const next_filter_state =
+            "filter_state" in patch ? patch.filter_state : filter_state_ref.current;
+          const next_sort_state = "sort_state" in patch ? patch.sort_state : sort_state_ref.current;
+          const next_selected_row_ids =
+            "selected_row_ids" in patch ? patch.selected_row_ids : selected_row_ids_ref.current;
+          const next_active_row_id =
+            "active_row_id" in patch ? patch.active_row_id : active_row_id_ref.current;
+          const next_anchor_row_id =
+            "anchor_row_id" in patch ? patch.anchor_row_id : anchor_row_id_ref.current;
+          page_ui_state_store.set(key, {
+            filter_state: next_filter_state,
+            sort_state: next_sort_state,
+            selected_row_ids: next_selected_row_ids,
+            active_row_id: next_active_row_id,
+            anchor_row_id: next_anchor_row_id,
+          });
+        },
+        [key],
+      );
+      const set_filter_state = React.useCallback(
+        (next_filter_state: never): void => {
+          const cloned_filter_state = clone_filter_state(next_filter_state);
+          filter_state_ref.current = cloned_filter_state;
+          set_filter_state_snapshot(cloned_filter_state);
+          write_page_ui_state({ filter_state: cloned_filter_state });
+        },
+        [clone_filter_state, write_page_ui_state],
+      );
+      const set_sort_state = React.useCallback(
+        (next_sort_state: never): void => {
+          const normalized_sort_state = normalize_sort_state(next_sort_state);
+          sort_state_ref.current = normalized_sort_state;
+          set_sort_state_snapshot(normalized_sort_state);
+          write_page_ui_state({ sort_state: normalized_sort_state });
+        },
+        [normalize_sort_state, write_page_ui_state],
+      );
+      const set_selection_state = React.useCallback(
+        (selection_state: {
+          selected_row_ids: string[];
+          active_row_id: string | null;
+          anchor_row_id: string | null;
+        }): void => {
+          const next_selected_row_ids = [...selection_state.selected_row_ids];
+          selected_row_ids_ref.current = next_selected_row_ids;
+          active_row_id_ref.current = selection_state.active_row_id;
+          anchor_row_id_ref.current = selection_state.anchor_row_id;
+          set_selected_row_ids(next_selected_row_ids);
+          set_active_row_id(selection_state.active_row_id);
+          set_anchor_row_id(selection_state.anchor_row_id);
+          set_restore_scroll_row_id(null);
+          write_page_ui_state({
+            selected_row_ids: next_selected_row_ids,
+            active_row_id: selection_state.active_row_id,
+            anchor_row_id: selection_state.anchor_row_id,
+          });
+        },
+        [write_page_ui_state],
+      );
+      const clear_selection_state = React.useCallback((): void => {
+        set_selection_state({
+          selected_row_ids: [],
+          active_row_id: null,
+          anchor_row_id: null,
+        });
+      }, [set_selection_state]);
+      const reset_table_state = React.useCallback((): void => {
+        const next_filter_state = clone_filter_state(create_default_filter_state() as never);
+        const next_sort_state = normalize_sort_state(create_default_sort_state() as never);
+        filter_state_ref.current = next_filter_state;
+        sort_state_ref.current = next_sort_state;
+        selected_row_ids_ref.current = [];
+        active_row_id_ref.current = null;
+        anchor_row_id_ref.current = null;
+        set_filter_state_snapshot(next_filter_state);
+        set_sort_state_snapshot(next_sort_state);
+        set_selected_row_ids([]);
+        set_active_row_id(null);
+        set_anchor_row_id(null);
+        set_restore_scroll_row_id(null);
+      }, [
+        clone_filter_state,
+        create_default_filter_state,
+        create_default_sort_state,
+        normalize_sort_state,
+      ]);
+      return {
+        filter_state,
+        sort_state,
+        selected_row_ids,
+        active_row_id,
+        anchor_row_id,
+        restore_scroll_row_id,
+        set_filter_state,
+        set_sort_state,
+        set_selection_state,
+        clear_selection_state,
+        restore_selection_state: set_selection_state,
+        reset_table_state,
+        write_page_ui_state,
+      };
+    },
+    useProjectSessionUiState: () => ({
+      get_page_ui_state: <UiState>(key: string): UiState | null => {
+        return (page_ui_state_store.get(key) as UiState | undefined) ?? null;
+      },
+      set_page_ui_state: <UiState>(key: string, ui_state: UiState): void => {
+        page_ui_state_store.set(key, ui_state);
+      },
+      update_page_ui_state: <UiState>(
+        key: string,
+        updater: (previous_ui_state: UiState | null) => UiState | null,
+      ): void => {
+        const previous_ui_state = (page_ui_state_store.get(key) as UiState | undefined) ?? null;
+        const next_ui_state = updater(previous_ui_state);
+        if (next_ui_state === null) {
+          page_ui_state_store.delete(key);
+        } else {
+          page_ui_state_store.set(key, next_ui_state);
+        }
+      },
+      clear_page_ui_state: (key: string): void => {
+        page_ui_state_store.delete(key);
+      },
+    }),
+  };
+});
+
 vi.mock("@/app/locale/locale-provider", () => {
   return {
     useI18n: () => ({
@@ -443,6 +646,7 @@ describe("useGlossaryPageState", () => {
       busy: false,
       status: "idle",
     };
+    page_ui_state_store.clear();
     render_version = 0;
   });
 
@@ -1355,5 +1559,54 @@ describe("useGlossaryPageState", () => {
     });
 
     expect(api_fetch_mock).not.toHaveBeenCalled();
+  });
+
+  it("重新进入术语表页时保留搜索排序和选中位置", async () => {
+    runtime_state.quality.glossary.entries = [
+      {
+        src: "苹果",
+        dst: "Apple",
+        info: "水果",
+        case_sensitive: false,
+      },
+      {
+        src: "香蕉",
+        dst: "Banana",
+        info: "水果",
+        case_sensitive: false,
+      },
+    ];
+    await mount_probe();
+
+    await act(async () => {
+      latest_state?.update_filter_keyword("苹果");
+      latest_state?.apply_table_sort_state({
+        column_id: "dst",
+        direction: "descending",
+      });
+      latest_state?.apply_table_selection({
+        selected_row_ids: ["苹果::0"],
+        active_row_id: "苹果::0",
+        anchor_row_id: "苹果::0",
+      });
+    });
+
+    await act(async () => {
+      root?.unmount();
+    });
+    root = null;
+    container?.remove();
+    container = null;
+
+    await mount_probe();
+
+    expect(latest_state?.filter_state.keyword).toBe("苹果");
+    expect(latest_state?.sort_state).toEqual({
+      field: "dst",
+      direction: "descending",
+    });
+    expect(latest_state?.selected_entry_ids).toEqual(["苹果::0"]);
+    expect(latest_state?.active_entry_id).toBe("苹果::0");
+    expect(latest_state?.restore_scroll_entry_id).toBe("苹果::0");
   });
 });

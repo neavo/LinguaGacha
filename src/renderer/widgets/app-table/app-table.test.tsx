@@ -10,6 +10,7 @@ const app_table_test_state = vi.hoisted(() => {
     virtual_item_indices: null as number[] | null,
     measure: vi.fn(),
     measureElement: vi.fn(),
+    scrollToIndex: vi.fn(),
   };
 });
 
@@ -43,6 +44,7 @@ vi.mock("@tanstack/react-virtual", () => {
     useVirtualizer: (options: {
       count: number;
       estimateSize: () => number;
+      getScrollElement: () => HTMLElement | null;
       getItemKey?: (index: number) => string | number;
     }) => {
       const row_height = options.estimateSize();
@@ -64,7 +66,13 @@ vi.mock("@tanstack/react-virtual", () => {
         getTotalSize: () => options.count * row_height,
         measure: app_table_test_state.measure,
         measureElement: app_table_test_state.measureElement,
-        scrollToIndex: () => {},
+        scrollToIndex: (...args: [number, { align: "auto" | "start" }]) => {
+          if (options.getScrollElement() === null) {
+            return;
+          }
+
+          app_table_test_state.scrollToIndex(...args);
+        },
       };
     },
   };
@@ -235,6 +243,7 @@ describe("AppTable row model", () => {
     app_table_test_state.virtual_item_indices = null;
     app_table_test_state.measure.mockClear();
     app_table_test_state.measureElement.mockClear();
+    app_table_test_state.scrollToIndex.mockClear();
   });
 
   afterEach(() => {
@@ -279,6 +288,145 @@ describe("AppTable row model", () => {
       selected_row_ids: ["a"],
       active_row_id: "a",
       anchor_row_id: "a",
+    });
+  });
+
+  it("恢复页面状态时会把本地表格的选中行滚入视口", async () => {
+    app_table_test_state.virtual_item_indices = [0];
+
+    await mount(
+      create_default_props({
+        rows: [
+          {
+            id: "a",
+            label: "Alpha",
+          },
+          {
+            id: "b",
+            label: "Beta",
+          },
+          {
+            id: "c",
+            label: "Gamma",
+          },
+        ],
+        selected_row_ids: ["c"],
+        active_row_id: "c",
+        anchor_row_id: "c",
+        restore_scroll_row_id: "c",
+      }),
+    );
+
+    expect(app_table_test_state.scrollToIndex).toHaveBeenCalledWith(2, {
+      align: "start",
+    });
+  });
+
+  it("恢复页面状态时会通过远端 row_model 解析未加载选中行的位置", async () => {
+    app_table_test_state.virtual_item_indices = [0];
+    const resolve_row_index_async = vi.fn(async () => 2);
+    const rows = [
+      {
+        id: "a",
+        label: "Alpha",
+      },
+      {
+        id: "b",
+        label: "Beta",
+      },
+      {
+        id: "c",
+        label: "Gamma",
+      },
+    ];
+
+    await mount(
+      create_default_props({
+        rows: [rows[0] as TestRow],
+        row_model: {
+          ...create_remote_row_model({
+            rows,
+            loaded_indices: [0],
+          }),
+          resolve_row_index_async,
+        },
+        selected_row_ids: ["c"],
+        active_row_id: "c",
+        anchor_row_id: "c",
+        restore_scroll_row_id: "c",
+      }),
+    );
+    await flush_promises();
+
+    expect(resolve_row_index_async).toHaveBeenCalledWith("c");
+    expect(app_table_test_state.scrollToIndex).toHaveBeenCalledWith(2, {
+      align: "start",
+    });
+  });
+
+  it("过期的异步恢复请求返回后不会覆盖新的同步滚动位置", async () => {
+    app_table_test_state.virtual_item_indices = [0];
+    const restore_request = create_controlled_promise<number | undefined>();
+    const resolve_row_index_async = vi.fn(() => restore_request.promise);
+    const rows = [
+      {
+        id: "a",
+        label: "Alpha",
+      },
+      {
+        id: "c",
+        label: "Gamma",
+      },
+      {
+        id: "b",
+        label: "Beta",
+      },
+    ];
+    const rendered = await render_app_table(
+      create_default_props({
+        rows: [rows[0] as TestRow],
+        row_model: {
+          ...create_remote_row_model({
+            rows,
+            loaded_indices: [0],
+          }),
+          resolve_row_index_async,
+        },
+        selected_row_ids: ["c"],
+        active_row_id: "c",
+        anchor_row_id: "c",
+        restore_scroll_row_id: "c",
+      }),
+    );
+    mounted_roots.push(rendered.root);
+    mounted_containers.push(rendered.container);
+
+    await act(async () => {
+      rendered.root.render(
+        create_default_props({
+          rows: [rows[0] as TestRow],
+          row_model: create_remote_row_model({
+            rows,
+            loaded_indices: [1],
+          }),
+          selected_row_ids: ["c"],
+          active_row_id: "c",
+          anchor_row_id: "c",
+          restore_scroll_row_id: "c",
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(app_table_test_state.scrollToIndex).toHaveBeenCalledWith(1, {
+      align: "start",
+    });
+
+    restore_request.resolve(2);
+    await flush_promises();
+
+    expect(app_table_test_state.scrollToIndex).not.toHaveBeenCalledWith(2, {
+      align: "start",
     });
   });
 

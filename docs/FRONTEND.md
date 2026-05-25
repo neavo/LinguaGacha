@@ -13,7 +13,8 @@ flowchart LR
   Root --> Logs["日志窗口<br/>LogWindowPage / logs stream + detail"]
   Runtime --> Store["ProjectStore / TaskRuntimeStore"]
   Runtime --> Session["ProjectSessionProvider<br/>session / page-cache barrier"]
-  Session --> Followup["WorkbenchTaskRuntimeProvider<br/>task follow-up dialogs"]
+  Session --> SessionUiState["ProjectSessionUiStateProvider<br/>session UI state"]
+  SessionUiState --> Followup["WorkbenchTaskRuntimeProvider<br/>task follow-up dialogs"]
   Followup --> Pages["pages / widgets"]
 ```
 
@@ -63,10 +64,11 @@ flowchart LR
 ## 5. 导航、Session 与页面派生缓存
 
 - `SCREEN_REGISTRY` 是页面注册和标题 key 的唯一入口；新增页面先进入注册表，再接入对应页面状态。
-- `src/renderer/app/session` 是全局项目 session 与页面缓存门闩的唯一归宿：session ready 对齐项目加载到应用关闭 / 项目关闭的生命周期，页面缓存义务只来自当前已挂载页面。
+- `src/renderer/app/session` 是全局项目 session、页面缓存门闩与当前项目 UI 状态的唯一归宿：session ready 对齐项目加载到应用关闭 / 项目关闭的生命周期，页面缓存义务只来自当前已挂载页面。
 - `ProjectSessionProvider` 的输入只来自 `DesktopRuntimeProvider`、`ProjectStore` 与已注册页面缓存快照；它只提供 session ready、工作台文件操作和页面缓存刷新 barrier。
+- `ProjectSessionUiStateProvider` 只保存当前项目 session 内可跨路由恢复的轻量页面 UI 状态；项目切换或关闭时清空，不写入 `ProjectStore`，也不参与任何页面缓存 barrier。
 - `WorkbenchTaskRuntimeProvider` 常驻在项目 session 内，拥有翻译 / 分析任务完成后的生成译文、导入术语和任务确认意图；任务 follow-up 不属于工作台页面缓存，不能随工作台页面卸载而丢失。
-- 工作台、校对页等页面状态随页面挂载创建、随卸载释放；卸载页面必须注销缓存快照，不能继续阻塞跳转或文件操作等待。
+- 页面派生缓存、弹窗、确认框、导入状态和提交中状态随页面挂载创建、随卸载释放；只有登记到 `ProjectSessionUiStateProvider` 的轻量页面 UI 状态可在当前项目 session 内跨路由保留。卸载页面必须注销缓存快照，不能继续阻塞跳转或文件操作等待。
 - 页面级缓存挂载或项目路径切换时必须先从当前 `ProjectStore` 完成一次全量同步；后续增量或失效刷新再消费 `ProjectRuntimeChangeSignal`。
 - 页面级缓存的新旧判定必须覆盖声明依赖的 `ProjectStore.revisions.sections`；不得用时间戳、task 状态或裸 stale boolean 代替 section revision。
 - 工作台和校对页可以维护页面局部缓存，但 ready 判定必须基于项目 path、required sections 与 consumed revisions。
@@ -89,5 +91,5 @@ flowchart LR
 - 改 preload 暴露能力、`window.desktopApp` 类型、GUI 契约白名单、IPC 或 Core API 接入方式，更新本文。
 - 改 `desktop-api.ts` 的 health probe、响应壳、错误、本地网络错误、SSE 或外部网络检查语义，更新本文。
 - 改 `ProjectStore` section、项目身份、session 初始化、mutation result、payload mode、revision 合并或补读策略，更新本文并同步 [`docs/BACKEND.md`](BACKEND.md)。
-- 改导航注册、`ProjectSessionProvider` barrier、页面派生缓存注册、Project UI Worker 或质量规则统计共享缓存策略，更新本文。
+- 改导航注册、`ProjectSessionProvider` barrier、页面派生缓存注册、项目 UI 状态、Project UI Worker 或质量规则统计共享缓存策略，更新本文。
 - 改 i18n、可见文案、样式 token、px-first、基础组件视觉边界或设计系统消费方式，更新本文；产品 / 设计权威仍回到 `PRODUCT.md` / `DESIGN.md`。

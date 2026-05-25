@@ -121,6 +121,12 @@ export type ProofreadingRowIdsRangeQuery = {
   count: number;
 };
 
+// 行索引解析留在 worker 内执行，避免 renderer 为定位一行拉取完整视图
+export type ProofreadingRowIndexQuery = {
+  view_id: string;
+  row_id: string;
+};
+
 // 按行 id 回读 item，供编辑弹窗或批量操作获取当前缓存事实
 export type ProofreadingItemsByRowIdsQuery = {
   row_ids: string[];
@@ -174,6 +180,8 @@ type ProofreadingRuntimeListViewCache = {
   view_id: string;
   projectId: string;
   ordered_item_ids: string[];
+  // row_index_by_id 让恢复滚动按 row id O(1) 定位，不需要把完整视图传回 renderer。
+  row_index_by_id: Map<string, number>;
 };
 
 // 筛选维度枚举用于“构建面板时忽略当前维度”的交叉统计
@@ -1134,6 +1142,24 @@ function build_window_rows(args: {
   );
 }
 
+// create_list_view_cache 统一维护有序 id 列表和反向索引，避免增量更新忘记重建索引。
+function create_list_view_cache(args: {
+  view_id: string;
+  projectId: string;
+  ordered_item_ids: string[];
+}): ProofreadingRuntimeListViewCache {
+  return {
+    view_id: args.view_id,
+    projectId: args.projectId,
+    ordered_item_ids: args.ordered_item_ids,
+    row_index_by_id: new Map(
+      args.ordered_item_ids.map((item_id, index) => {
+        return [item_id, index] as const;
+      }),
+    ),
+  };
+}
+
 /**
  * 全量 hydrate 初始化全部索引和质量上下文，后续 delta 只在这些索引上增量维护
  */
@@ -1245,10 +1271,11 @@ function apply_item_changes_to_list_view_cache(args: {
   const next_ordered_item_ids = args.cache.ordered_item_ids.filter((item_id) => {
     return !deleted_item_ids.has(item_id);
   });
-  return {
-    ...args.cache,
+  return create_list_view_cache({
+    view_id: args.cache.view_id,
+    projectId: args.cache.projectId,
     ordered_item_ids: next_ordered_item_ids,
-  };
+  });
 }
 
 /**
@@ -1384,11 +1411,11 @@ export function createProofreadingUiWorkerService() {
       const revision_signature = build_revision_signature(state.revisions);
       const view_id = `${state.projectId}:${revision_signature}:${next_list_view_id.toString()}`;
       const ordered_item_ids = sorted_items.map((item) => String(item.item_id));
-      list_view_cache = {
+      list_view_cache = create_list_view_cache({
         view_id,
         projectId: state.projectId,
         ordered_item_ids,
-      };
+      });
       const window_bounds = normalize_window_bounds({
         start: query.window_start,
         count: query.window_count,
@@ -1467,6 +1494,21 @@ export function createProofreadingUiWorkerService() {
         window_bounds.start,
         window_bounds.start + window_bounds.count,
       );
+    },
+    /**
+     * 按 row id 在当前列表视图缓存内解析索引，滚动恢复不需要跨线程传输完整 id 列表
+     */
+    resolve_row_index(query: ProofreadingRowIndexQuery): number | undefined {
+      if (
+        state === null ||
+        list_view_cache === null ||
+        list_view_cache.view_id !== query.view_id ||
+        list_view_cache.projectId !== state.projectId
+      ) {
+        return undefined;
+      }
+
+      return list_view_cache.row_index_by_id.get(query.row_id);
     },
     /**
      * 按 row id 精确回读条目，避免详情面板为了少量行重新构建完整列表视图

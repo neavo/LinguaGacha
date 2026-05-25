@@ -37,6 +37,7 @@ type GlossaryTableProps = {
   selected_entry_ids: GlossaryEntryId[];
   active_entry_id: GlossaryEntryId | null;
   anchor_entry_id: GlossaryEntryId | null;
+  restore_scroll_entry_id: GlossaryEntryId | null;
   statistics_badge_by_entry_id: Record<GlossaryEntryId, GlossaryStatisticsBadgeState>;
   on_sort_change: (sort_state: AppTableSortState | null) => void;
   on_selection_change: (payload: AppTableSelectionChange) => void;
@@ -447,6 +448,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
           sort_state={map_glossary_sort_state(props.sort_state)}
           drag_enabled={!props.drag_disabled}
           get_row_id={(entry) => entry.entry_id}
+          restore_scroll_row_id={props.restore_scroll_entry_id}
           on_selection_change={props.on_selection_change}
           on_sort_change={props.on_sort_change}
           on_reorder={(payload) => {

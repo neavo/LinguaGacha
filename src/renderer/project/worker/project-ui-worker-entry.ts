@@ -30,6 +30,9 @@ async function execute_project_ui_worker_request(
   if (request.type === "proofreading.read_row_ids_range") {
     return proofreading_service.read_row_ids_range(request.input);
   }
+  if (request.type === "proofreading.resolve_row_index") {
+    return proofreading_service.resolve_row_index(request.input);
+  }
   if (request.type === "proofreading.read_items_by_row_ids") {
     return proofreading_service.read_items_by_row_ids(request.input);
   }

@@ -52,6 +52,7 @@ type ProofreadingRuntimeClientFixture = {
   build_proofreading_list_view: ReturnType<typeof vi.fn>;
   read_proofreading_list_window: ReturnType<typeof vi.fn>;
   read_proofreading_row_ids_range: ReturnType<typeof vi.fn>;
+  resolve_proofreading_row_index: ReturnType<typeof vi.fn>;
   read_proofreading_items_by_row_ids: ReturnType<typeof vi.fn>;
   build_proofreading_filter_panel: ReturnType<typeof vi.fn>;
   dispose_project: ReturnType<typeof vi.fn>;
@@ -59,6 +60,8 @@ type ProofreadingRuntimeClientFixture = {
 };
 
 type ToastFixture = {
+  dismiss_toast: ReturnType<typeof vi.fn>;
+  push_progress_toast: ReturnType<typeof vi.fn>;
   push_toast: ReturnType<typeof vi.fn>;
 };
 
@@ -67,6 +70,12 @@ type Deferred<T> = {
   resolve: (value: T) => void;
   reject: (reason?: unknown) => void;
 };
+
+const { page_ui_state_store } = vi.hoisted(() => {
+  return {
+    page_ui_state_store: new Map<string, unknown>(),
+  };
+});
 
 // create_project_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_project_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
@@ -205,6 +214,51 @@ vi.mock("@/app/desktop/desktop-api", () => {
   return {
     api_fetch: vi.fn(),
     report_renderer_error: vi.fn(async () => undefined),
+  };
+});
+
+vi.mock("@/app/session/project-session-ui-state-context", () => {
+  return {
+    resolve_project_session_table_restore_scroll_row_id: (
+      ui_state: {
+        selected_row_ids: string[];
+        active_row_id: string | null;
+        anchor_row_id: string | null;
+      } | null,
+    ): string | null => {
+      if (ui_state === null) {
+        return null;
+      }
+
+      if (ui_state.selected_row_ids.length > 1) {
+        return ui_state.selected_row_ids[0] ?? ui_state.active_row_id;
+      }
+
+      return ui_state.selected_row_ids[0] ?? ui_state.active_row_id ?? ui_state.anchor_row_id;
+    },
+    useProjectSessionUiState: () => ({
+      get_page_ui_state: <UiState>(key: string): UiState | null => {
+        return (page_ui_state_store.get(key) as UiState | undefined) ?? null;
+      },
+      set_page_ui_state: <UiState>(key: string, ui_state: UiState): void => {
+        page_ui_state_store.set(key, ui_state);
+      },
+      update_page_ui_state: <UiState>(
+        key: string,
+        updater: (previous_ui_state: UiState | null) => UiState | null,
+      ): void => {
+        const previous_ui_state = (page_ui_state_store.get(key) as UiState | undefined) ?? null;
+        const next_ui_state = updater(previous_ui_state);
+        if (next_ui_state === null) {
+          page_ui_state_store.delete(key);
+        } else {
+          page_ui_state_store.set(key, next_ui_state);
+        }
+      },
+      clear_page_ui_state: (key: string): void => {
+        page_ui_state_store.delete(key);
+      },
+    }),
   };
 });
 
@@ -443,6 +497,7 @@ function create_proofreading_runtime_client_fixture(): ProofreadingRuntimeClient
       };
     }),
     read_proofreading_row_ids_range: vi.fn(async () => ["1"]),
+    resolve_proofreading_row_index: vi.fn(async () => 0),
     read_proofreading_items_by_row_ids: vi.fn(async () => {
       return create_list_view().window_rows.map((row) => row.item);
     }),
@@ -455,6 +510,8 @@ function create_proofreading_runtime_client_fixture(): ProofreadingRuntimeClient
 // create_toast_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_toast_fixture(): ToastFixture {
   return {
+    dismiss_toast: vi.fn(),
+    push_progress_toast: vi.fn(() => "proofreading-loading-toast"),
     push_toast: vi.fn(),
   };
 }
@@ -479,6 +536,7 @@ describe("useProofreadingPageState", () => {
     navigation_fixture.current = create_navigation_fixture();
     proofreading_runtime_client_fixture.current = create_proofreading_runtime_client_fixture();
     toast_fixture.current = create_toast_fixture();
+    page_ui_state_store.clear();
     vi.mocked(api_fetch).mockReset();
     vi.useRealTimers();
   });
@@ -532,6 +590,32 @@ describe("useProofreadingPageState", () => {
     ).not.toHaveBeenCalled();
     expect(latest_state?.cache_status).toBe("ready");
     expect(latest_state?.settled_project_path).toBe("E:/demo/sample.lg");
+  });
+
+  it("校对页首刷期间展示不定加载 toast 并在完成后关闭", async () => {
+    const refresh_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
+    proofreading_runtime_client_fixture.current.hydrate_proofreading_full = vi.fn(() => {
+      return refresh_deferred.promise;
+    });
+
+    await render_hook();
+
+    expect(latest_state?.cache_status).toBe("refreshing");
+    expect(toast_fixture.current.push_progress_toast).toHaveBeenCalledWith({
+      message: "proofreading_page.feedback.loading_toast",
+      presentation: "modal",
+    });
+    expect(toast_fixture.current.dismiss_toast).not.toHaveBeenCalledWith(
+      "proofreading-loading-toast",
+    );
+
+    await act(async () => {
+      refresh_deferred.resolve(create_sync_state());
+    });
+    await flush_async_updates();
+
+    expect(latest_state?.cache_status).toBe("ready");
+    expect(toast_fixture.current.dismiss_toast).toHaveBeenCalledWith("proofreading-loading-toast");
   });
 
   it("缓存 ready 后再次收到 delta 信号时会走增量路径而不是全量 hydrate", async () => {
@@ -1003,6 +1087,12 @@ describe("useProofreadingPageState", () => {
         ],
       };
     });
+    proofreading_runtime_client_fixture.current.read_proofreading_row_ids_range = vi.fn(
+      async () => ["1", "2", "3"],
+    );
+    proofreading_runtime_client_fixture.current.resolve_proofreading_row_index = vi.fn(
+      async () => 2,
+    );
     await render_hook();
 
     runtime_fixture.current = {
@@ -1043,6 +1133,13 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.selected_row_ids).toEqual(["1", "3"]);
     expect(latest_state?.active_row_id).toBe("3");
     expect(latest_state?.anchor_row_id).toBe("1");
+    await expect(latest_state?.resolve_visible_row_index_async("3")).resolves.toBe(2);
+    expect(
+      proofreading_runtime_client_fixture.current.resolve_proofreading_row_index,
+    ).toHaveBeenCalledWith({
+      view_id: "view-1",
+      row_id: "3",
+    });
   });
 
   it("排序语义变化会清空表格选区", async () => {
@@ -1076,6 +1173,85 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.selected_row_ids).toEqual([]);
     expect(latest_state?.active_row_id).toBeNull();
     expect(latest_state?.anchor_row_id).toBeNull();
+  });
+
+  it("重新进入校对页时保留搜索排序和选中位置", async () => {
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.open_filter_dialog();
+    });
+    await flush_async_updates();
+
+    await act(async () => {
+      if (latest_state === null) {
+        throw new Error("校对页面状态未准备就绪。");
+      }
+
+      latest_state.update_filter_dialog_filters({
+        ...latest_state.filter_dialog_filters,
+        statuses: [],
+      });
+      await latest_state.confirm_filter_dialog_filters();
+    });
+    await flush_async_updates();
+
+    await act(async () => {
+      latest_state?.update_search_keyword("foo");
+      latest_state?.apply_table_sort_state({
+        column_id: "src",
+        direction: "descending",
+      });
+      latest_state?.apply_table_selection({
+        selected_row_ids: ["1"],
+        active_row_id: "1",
+        anchor_row_id: "1",
+      });
+    });
+
+    await act(async () => {
+      root?.unmount();
+    });
+    root = null;
+    container?.remove();
+    container = null;
+    proofreading_runtime_client_fixture.current.build_proofreading_list_view.mockClear();
+
+    await render_hook();
+
+    expect(latest_state?.search_keyword).toBe("foo");
+    expect(latest_state?.current_filters.statuses).toEqual([]);
+    expect(latest_state?.filter_dialog_filters.statuses).toEqual([]);
+    expect(latest_state?.sort_state).toEqual({
+      column_id: "src",
+      direction: "descending",
+    });
+    expect(latest_state?.selected_row_ids).toEqual(["1"]);
+    expect(latest_state?.active_row_id).toBe("1");
+    expect(latest_state?.restore_scroll_row_id).toBe("1");
+
+    await act(async () => {
+      latest_state?.update_search_keyword("bar");
+    });
+
+    expect(latest_state?.selected_row_ids).toEqual([]);
+    expect(latest_state?.active_row_id).toBeNull();
+    expect(latest_state?.anchor_row_id).toBeNull();
+    expect(latest_state?.restore_scroll_row_id).toBeNull();
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        keyword: "foo",
+        filters: expect.objectContaining({
+          statuses: [],
+        }),
+        sort_state: {
+          column_id: "src",
+          direction: "descending",
+        },
+      }),
+    );
   });
 
   it("worker 类错误会统一收口成刷新失败 toast", async () => {

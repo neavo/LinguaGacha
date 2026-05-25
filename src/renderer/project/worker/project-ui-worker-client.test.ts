@@ -102,26 +102,40 @@ describe("createProjectUiWorkerClient", () => {
       projectId: "demo",
     });
 
+    const row_index = client.resolve_proofreading_row_index({
+      view_id: "view-1",
+      row_id: "42",
+    });
+    expect(worker?.posted_messages[1]).toMatchObject({
+      type: "proofreading.resolve_row_index",
+      input: {
+        view_id: "view-1",
+        row_id: "42",
+      },
+    });
+    worker?.dispatch_message(2, 7);
+    await expect(row_index).resolves.toBe(7);
+
     const statistics = client.compute_quality_statistics({
       rules: [],
       srcTexts: [],
       dstTexts: [],
       relationCandidates: [],
     });
-    expect(worker?.posted_messages[1]).toMatchObject({
+    expect(worker?.posted_messages[2]).toMatchObject({
       type: "quality.compute_statistics",
     });
-    worker?.dispatch_message(2, { results: {} });
+    worker?.dispatch_message(3, { results: {} });
     await expect(statistics).resolves.toEqual({ results: {} });
 
     const dispose = client.dispose_project("demo");
-    expect(worker?.posted_messages[2]).toMatchObject({
+    expect(worker?.posted_messages[3]).toMatchObject({
       type: "project.dispose",
       input: {
         projectId: "demo",
       },
     });
-    worker?.dispatch_message(3, null);
+    worker?.dispatch_message(4, null);
     await expect(dispose).resolves.toBeUndefined();
     client.dispose();
   });
