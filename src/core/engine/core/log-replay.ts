@@ -2,7 +2,6 @@ import type { LogManager } from "../../log/log-manager";
 import type { MutableJsonRecord } from "../runtime/task-runtime-types";
 import type { WorkUnitLogEntry } from "../protocol/work-unit";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../shared/i18n";
-import { error_diagnostic_to_log_fields, to_error_diagnostic } from "../../../shared/error";
 
 export type ReplayLogEntry = WorkUnitLogEntry;
 
@@ -84,10 +83,9 @@ export class TaskLogReplay {
    * 任务异常统一写入应用日志，便于和 work-unit 日志并排排查
    */
   public task_error(message: string, error: unknown): void {
-    const diagnostic = to_error_diagnostic(error);
     this.log_manager.error(message, {
       source: "engine",
-      ...error_diagnostic_to_log_fields(diagnostic),
+      error,
     });
   }
 
@@ -98,8 +96,7 @@ export class TaskLogReplay {
     const log_manager = this.log_manager as Partial<Pick<LogManager, "info" | "warning" | "error">>;
     log_manager[entry.level]?.(entry.message, {
       source,
-      error_message: entry.error_message,
-      stack: entry.stack,
+      error: entry.error,
       context: entry.context,
     });
   }

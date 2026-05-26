@@ -56,8 +56,10 @@ describe("TaskLogReplay", () => {
       {
         level: "warning",
         message: "worker warning",
-        error_message: "provider failed",
-        stack: "stack",
+        error: {
+          message: "provider failed",
+          stack: "stack",
+        },
         context: {
           unit: "unit-1",
         },
@@ -66,8 +68,10 @@ describe("TaskLogReplay", () => {
 
     expect(log_manager.warning).toHaveBeenCalledWith("worker warning", {
       source: "engine-worker",
-      error_message: "provider failed",
-      stack: "stack",
+      error: {
+        message: "provider failed",
+        stack: "stack",
+      },
       context: {
         unit: "unit-1",
       },
@@ -84,8 +88,10 @@ describe("TaskLogReplay", () => {
       "任务执行失败",
       expect.objectContaining({
         source: "engine",
-        error_message: "provider timeout",
-        stack: expect.any(String),
+        error: expect.objectContaining({
+          message: "provider timeout",
+          stack: expect.any(String),
+        }),
       }),
     );
   });

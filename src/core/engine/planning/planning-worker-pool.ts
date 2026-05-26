@@ -3,7 +3,7 @@ import os from "node:os";
 import { Worker } from "node:worker_threads";
 
 import {
-  normalize_error_diagnostic,
+  normalize_log_error,
   RuntimeCancelledError,
   RuntimeDisposedError,
   WorkerExecutionFailedError,
@@ -277,10 +277,7 @@ export class PlanningWorkerPool {
       task.reject(
         new WorkerExecutionFailedError({
           diagnostic_context: {
-            failure: normalize_error_diagnostic(
-              message.error_diagnostic,
-              "planning worker 计数失败。",
-            ),
+            failure: normalize_log_error(message.error, "planning worker 计数失败。"),
           },
         }),
       );

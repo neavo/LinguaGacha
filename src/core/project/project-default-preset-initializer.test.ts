@@ -125,7 +125,9 @@ describe("ProjectDefaultPresetInitializer", () => {
           preset_directory: "glossary",
           virtual_id: "builtin:missing.json",
         }),
-        error_message: expect.stringContaining("missing.json"),
+        error: expect.objectContaining({
+          message: expect.stringContaining("missing.json"),
+        }),
         source: "project-lifecycle",
       }),
     );

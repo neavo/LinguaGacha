@@ -4,7 +4,8 @@ import { execFileSync } from "node:child_process";
 import { Ansis } from "ansis";
 import wrapAnsi from "wrap-ansi";
 
-import type { LogAppendPayload, LogLevel } from "../../shared/log";
+import { format_log_readable_text, type LogLevel } from "../../shared/log";
+import type { LogError } from "../../shared/error";
 
 const CONSOLE_LEVEL_COLUMN_WIDTH = 7;
 const CONSOLE_TIME_COLUMN_WIDTH = 10;
@@ -27,6 +28,12 @@ interface ConsoleLogFormatOptions {
   columns?: number;
 }
 
+interface ConsoleLogPayload {
+  level: LogLevel;
+  message: string;
+  error?: LogError;
+}
+
 interface ConsoleColumnsCache {
   expires_at: number;
   value: number | null;
@@ -38,16 +45,17 @@ let console_columns_cache: ConsoleColumnsCache | null = null;
  * 控制台输出是给人看的诊断视图，独立于文件日志的结构化 JSON
  */
 export function format_console_log(
-  payload: LogAppendPayload,
+  payload: ConsoleLogPayload,
   created_at: Date,
   options: ConsoleLogFormatOptions = {},
 ): string {
-  const error_text = payload.error_message === undefined ? "" : `\n${payload.error_message}`;
-  const stack_text = payload.stack === undefined ? "" : `\n${payload.stack}`;
   const time_text = format_console_time_key(created_at);
   const level_text = payload.level.toUpperCase().padEnd(CONSOLE_LEVEL_COLUMN_WIDTH, " ");
   const prefix = build_console_prefix(time_text, payload.level, level_text);
-  const message = `${payload.message}${error_text}${stack_text}`;
+  const message = format_log_readable_text({
+    message: payload.message,
+    error: payload.error,
+  });
   const message_text = format_console_message_lines(message, resolve_console_columns(options));
   return `${prefix}${message_text}\n`;
 }

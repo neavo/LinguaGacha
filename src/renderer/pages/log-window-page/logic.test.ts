@@ -35,8 +35,11 @@ describe("log-window logic", () => {
     expect(
       format_log_detail_text({
         message: "模型请求失败",
-        error_message: "供应商爆炸",
-        stack: "Error: 供应商爆炸\n    at request",
+        error: {
+          name: "Error",
+          message: "供应商爆炸",
+          stack: "Error: 供应商爆炸\n    at request",
+        },
       }),
     ).toBe("模型请求失败\n供应商爆炸\nError: 供应商爆炸\n    at request");
   });

@@ -1,9 +1,5 @@
 import { get_electron_main_log_manager } from "../log/log-bridge";
-import {
-  error_diagnostic_to_log_fields,
-  to_error_diagnostic,
-  type ErrorDiagnosticPayload,
-} from "../../shared/error";
+import { to_log_error, type LogError } from "../../shared/error";
 
 // MAIN LOG LEVEL 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const MAIN_LOG_LEVEL = "MAIN";
@@ -39,21 +35,21 @@ export function write_bootstrap_log(message: string): void {
  */
 export function write_bootstrap_error(
   message: string,
-  payload: { error?: unknown; diagnostic?: ErrorDiagnosticPayload } = {},
+  payload: { error?: unknown; logError?: LogError } = {},
 ): void {
   const log_manager = get_electron_main_log_manager();
-  const diagnostic =
-    payload.diagnostic ?? (payload.error === undefined ? null : to_error_diagnostic(payload.error));
+  const log_error =
+    payload.logError ?? (payload.error === undefined ? null : to_log_error(payload.error));
   if (log_manager === null) {
     const suffix =
-      diagnostic === null
+      log_error === null
         ? ""
-        : `\n${diagnostic.message}${diagnostic.stack === undefined ? "" : `\n${diagnostic.stack}`}`;
+        : `\n${log_error.message}${log_error.stack === undefined ? "" : `\n${log_error.stack}`}`;
     process.stderr.write(`${format_bootstrap_log(`${message}${suffix}`)}\n`);
     return;
   }
   log_manager.error(message, {
     source: "core-bootstrap",
-    ...(diagnostic === null ? {} : error_diagnostic_to_log_fields(diagnostic)),
+    ...(log_error === null ? {} : { error: log_error }),
   });
 }

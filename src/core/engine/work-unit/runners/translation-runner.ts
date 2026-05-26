@@ -20,11 +20,7 @@ import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-
 import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
 import { normalize_setting_snapshot } from "../../../../base/setting";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
-import {
-  error_diagnostic_to_log_fields,
-  RequestValidationError,
-  type ErrorDiagnosticPayload,
-} from "../../../../shared/error";
+import { RequestValidationError, type LogError } from "../../../../shared/error";
 
 interface WorkUnitBaseRequest {
   run_id: string; // run_id 用于隔离一次任务运行，worker 不用它访问项目状态
@@ -203,7 +199,7 @@ export class TranslationWorkUnitRunner {
         items,
         skip_response_check,
         stream_degraded: response.degraded,
-        request_failure: response.failure,
+        request_error: response.request_error,
         request_timeout: response.timeout,
       },
       response,
@@ -287,22 +283,22 @@ export class TranslationWorkUnitRunner {
       items: TextTaskItemRecord[];
       skip_response_check: boolean;
       stream_degraded: boolean;
-      request_failure?: ErrorDiagnosticPayload;
+      request_error?: LogError;
       request_timeout: boolean;
     },
     response: LLMRequestResult,
   ): Promise<TranslationWorkUnitResult> {
     const cleaner_result =
-      context.request_failure === undefined
+      context.request_error === undefined
         ? ResponseCleaner.extract_rule_analysis_from_response(response.response_result)
         : { cleaned_response_result: "", rule_analysis_text: "" };
     const normalized_think = ResponseCleaner.normalize_blank_lines(response.response_think).trim();
     const decoded =
-      context.request_failure === undefined
+      context.request_error === undefined
         ? await new ResponseDecoder().decode(cleaner_result.cleaned_response_result)
         : { translations: [] };
     const dsts =
-      context.stream_degraded || context.request_timeout || context.request_failure !== undefined
+      context.stream_degraded || context.request_timeout || context.request_error !== undefined
         ? []
         : decoded.translations;
     const checks = this.build_checks(context, dsts);
@@ -317,7 +313,7 @@ export class TranslationWorkUnitRunner {
       response_think: normalized_think,
       rule_analysis: cleaner_result.rule_analysis_text,
       response_result: cleaner_result.cleaned_response_result,
-      request_failure: context.request_failure,
+      request_error: context.request_error,
       request: context.request,
     });
     let updated_count = 0;
@@ -383,12 +379,12 @@ export class TranslationWorkUnitRunner {
       items: TextTaskItemRecord[];
       skip_response_check: boolean;
       stream_degraded: boolean;
-      request_failure?: ErrorDiagnosticPayload;
+      request_error?: LogError;
       request_timeout: boolean;
     },
     dsts: string[],
   ): string[] {
-    if (context.request_failure !== undefined) {
+    if (context.request_error !== undefined) {
       return context.srcs.map(() => "FAIL_REQUEST");
     }
     if (context.request_timeout) {
@@ -430,7 +426,7 @@ export class TranslationWorkUnitRunner {
     response_think: string;
     rule_analysis: string;
     response_result: string;
-    request_failure?: ErrorDiagnosticPayload;
+    request_error?: LogError;
     request: TranslationWorkUnitRequest | TranslateSingleWorkUnitRequest;
   }): WorkUnitLogEntry[] {
     const app_language = this.read_app_language(context.request.config_snapshot);
@@ -484,9 +480,7 @@ export class TranslationWorkUnitRunner {
       {
         level: log_decision.level,
         message: `${rows.filter(Boolean).join("\n\n")}\n`,
-        ...(context.request_failure === undefined
-          ? {}
-          : error_diagnostic_to_log_fields(context.request_failure)),
+        ...(context.request_error === undefined ? {} : { error: context.request_error }),
       },
     ];
   }
@@ -547,7 +541,7 @@ export class TranslationWorkUnitRunner {
       };
     }
     if (checks.every((check) => check === "FAIL_REQUEST")) {
-      return { level: "error", message: fail("app.log.translation_response_check_fail") };
+      return { level: "error", message: this.t(app_language, "app.log.request_failed_retry") };
     }
     if (checks.every((check) => check === "FAIL_DEGRADATION")) {
       return { level: "error", message: fail("app.log.translation_response_check_fail_all") };

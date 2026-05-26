@@ -9,7 +9,7 @@ import type { DesktopRuntimeRecoveryActions } from "@/app/desktop/desktop-runtim
 import type { ProjectStoreChangeEvent } from "@/project/store/project-store";
 import {
   InternalInvariantError,
-  type ErrorDiagnosticContextInput,
+  type LogErrorContextInput,
   type RendererErrorContextInput,
 } from "@shared/error";
 import type { TaskType } from "@shared/task";
@@ -164,7 +164,7 @@ function normalize_project_mutation_change_event(
 function summarize_project_mutation_trigger_for_diagnostics(
   operation: ProjectMutationOperation,
   mutation_result: ProjectMutationResult | null,
-): ErrorDiagnosticContextInput {
+): LogErrorContextInput {
   if (mutation_result === null) {
     return {
       operation,

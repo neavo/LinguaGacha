@@ -1,5 +1,5 @@
 import type { LogDetail, LogEvent, LogLevel } from "@/app/desktop/desktop-api";
-import { LOG_WINDOW_EVENT_CAPACITY } from "@shared/log";
+import { LOG_WINDOW_EVENT_CAPACITY, format_log_readable_text } from "@shared/log";
 
 export type LogLevelFilter = "all" | LogLevel;
 
@@ -61,12 +61,8 @@ export function compress_log_message_text(message: string): string {
 }
 
 // 详情视图才把结构化异常字段拼回可读文本，列表仍只消费轻量 message_preview。
-export function format_log_detail_text(
-  detail: Pick<LogDetail, "message" | "error_message" | "stack">,
-): string {
-  return [detail.message, detail.error_message, detail.stack]
-    .filter((value): value is string => value !== undefined && value.trim() !== "")
-    .join("\n");
+export function format_log_detail_text(detail: Pick<LogDetail, "message" | "error">): string {
+  return format_log_readable_text(detail);
 }
 
 // 筛选只搜索轻量事件字段，避免完整日志正文进入 React 列表热路径

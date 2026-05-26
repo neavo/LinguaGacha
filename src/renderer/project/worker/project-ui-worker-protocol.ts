@@ -10,7 +10,7 @@ import type {
   ProofreadingRuntimeHydrationInput,
 } from "@/project/worker/proofreading-ui-worker-service";
 import type { QualityStatisticsTaskInput } from "@/project/quality/quality-statistics";
-import type { ErrorDiagnosticPayload } from "@shared/error";
+import type { LogError } from "@shared/error";
 
 // Project UI Worker 协议只承载 renderer 项目 UI 派生任务，不表达项目事实写入。
 export type ProjectUiWorkerRequest =
@@ -94,5 +94,5 @@ export type ProjectUiWorkerResponse =
   | {
       id: number; // id 与请求 id 一致，用于 scheduler 只完成当前 in-flight 任务
       ok: false; // ok=false 表示 worker 侧执行失败
-      error_diagnostic: ErrorDiagnosticPayload; // error_diagnostic 保留 worker 侧异常快照，client 仍映射稳定错误码
+      error: LogError; // error 保留 worker 侧异常快照，client 仍映射稳定错误码
     };

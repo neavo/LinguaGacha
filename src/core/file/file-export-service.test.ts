@@ -246,7 +246,10 @@ describe("FileExportService", () => {
       "打开输出文件夹失败 …",
     ]);
     expect(log_collector.entries.at(-1)?.payload).toEqual(
-      expect.objectContaining({ source: "file-export", error_message: "open failed" }),
+      expect.objectContaining({
+        source: "file-export",
+        error: expect.objectContaining({ message: "open failed" }),
+      }),
     );
   });
 
@@ -286,7 +289,10 @@ describe("FileExportService", () => {
       "译文生成失败 …",
     ]);
     expect(error_entries[0]?.payload).toEqual(
-      expect.objectContaining({ source: "file-export", error_message: "boom" }),
+      expect.objectContaining({
+        source: "file-export",
+        error: expect.objectContaining({ message: "boom" }),
+      }),
     );
   });
 

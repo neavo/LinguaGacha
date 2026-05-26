@@ -3,10 +3,10 @@ import { app, crashReporter, type BrowserWindow } from "electron";
 import type { DesktopRendererDiagnosticsPayload } from "../bridge/bridge-types";
 import {
   normalize_renderer_diagnostics_payload,
-  sanitize_error_diagnostic_context,
-  summarize_diagnostic_path,
-  summarize_diagnostic_url,
-  type ErrorDiagnosticContext,
+  sanitize_log_error_context,
+  summarize_log_error_path,
+  summarize_log_error_url,
+  type LogErrorContext,
 } from "../../shared/error";
 
 export type RendererWindowKind = "main" | "log" | "unknown";
@@ -29,14 +29,14 @@ export type RendererProcessDiagnosticsRegistry = {
 
 type RendererDiagnosticsBreadcrumb = {
   capturedAt: string; // main 收到面包屑的时间，避免依赖 renderer 崩溃前的系统时钟状态
-  event: ErrorDiagnosticContext; // 已脱敏的事件头摘要，不保存完整事件 payload
+  event: LogErrorContext; // 已脱敏的事件头摘要，不保存完整事件 payload
 };
 
 type RendererDiagnosticsContext = {
   capturedAt: string; // 当前 route / project / task 摘要的最后更新时间
   route?: string;
-  project?: ErrorDiagnosticContext;
-  task?: ErrorDiagnosticContext;
+  project?: LogErrorContext;
+  task?: LogErrorContext;
 };
 
 type RendererWindowDiagnosticsState = {
@@ -44,7 +44,7 @@ type RendererWindowDiagnosticsState = {
   webContentsId: number; // webContentsId 是 IPC sender 与窗口状态对齐的稳定键
   createdAt: string; // createdAt 帮助判断崩溃发生在首屏、热重载还是长时间任务后
   lastSeenAt: string; // lastSeenAt 表示当前诊断上下文的新鲜度
-  lastUrlIdentity: ErrorDiagnosticContext; // lastUrlIdentity 只保留宿主 URL 摘要，避免日志暴露完整地址
+  lastUrlIdentity: LogErrorContext; // lastUrlIdentity 只保留宿主 URL 摘要，避免日志暴露完整地址
   osProcessId: number | null; // osProcessId 用于匹配 Electron app metrics 与 Crashpad 文件
   lastRendererDiagnostics: RendererDiagnosticsContext | null; // lastRendererDiagnostics 保存最新 route/project/task 摘要
   recentRendererEvents: RendererDiagnosticsBreadcrumb[]; // recentRendererEvents 是固定长度事件面包屑
@@ -143,9 +143,7 @@ export function create_renderer_process_diagnostics_registry(): RendererProcessD
     return {
       reason: details.reason,
       exitCode: details.exitCode,
-      electronDetails: sanitize_error_diagnostic_context(
-        details as unknown as Record<string, unknown>,
-      ),
+      electronDetails: sanitize_log_error_context(details as unknown as Record<string, unknown>),
       ...build_window_context(state, target_window.webContents),
     };
   }
@@ -238,13 +236,11 @@ function build_window_context(
 /**
  * 读取当前 webContents URL 身份摘要；读取失败时记录空 URL 摘要并继续写主日志。
  */
-function read_web_contents_url_identity(
-  web_contents: Electron.WebContents,
-): ErrorDiagnosticContext {
+function read_web_contents_url_identity(web_contents: Electron.WebContents): LogErrorContext {
   try {
-    return summarize_diagnostic_url(web_contents.getURL());
+    return summarize_log_error_url(web_contents.getURL());
   } catch {
-    return summarize_diagnostic_url("");
+    return summarize_log_error_url("");
   }
 }
 
@@ -274,8 +270,8 @@ function read_crash_dump_directory(): string | null {
 /**
  * Crashpad 目录也按路径身份摘要写入日志，避免暴露用户目录结构。
  */
-function summarize_optional_path(raw_path: string | null): ErrorDiagnosticContext | null {
-  return raw_path === null ? null : summarize_diagnostic_path(raw_path);
+function summarize_optional_path(raw_path: string | null): LogErrorContext | null {
+  return raw_path === null ? null : summarize_log_error_path(raw_path);
 }
 
 /**

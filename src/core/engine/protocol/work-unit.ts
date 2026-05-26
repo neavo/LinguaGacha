@@ -1,11 +1,11 @@
 import type { ApiJsonValue } from "../../api/api-types";
+import type { LogError } from "../../../shared/error";
 
 /** work unit 日志只允许可序列化摘要，避免 worker 线程回传 Error 引用 */
 export type WorkUnitLogEntry = {
   level: "info" | "warning" | "error";
   message: string;
-  error_message?: string;
-  stack?: string;
+  error?: LogError;
   context?: Record<string, ApiJsonValue>;
 };
 

@@ -12,6 +12,12 @@ import {
   type LogSubscriber,
   type LogTargets,
 } from "../../shared/log";
+import {
+  sanitize_log_error_context,
+  to_log_error,
+  type LogError,
+  type LogErrorContext,
+} from "../../shared/error";
 import { t_main_log } from "./log-text";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 
@@ -54,9 +60,16 @@ interface FileLogRecord {
   time: string;
   source: string;
   message: string;
-  error_message?: string;
-  stack?: string;
-  context?: Record<string, unknown>;
+  error?: LogError;
+  context?: LogErrorContext;
+}
+
+interface NormalizedLogAppendPayload {
+  level: LogLevel;
+  message: string;
+  source: string;
+  error?: LogError;
+  context?: LogErrorContext;
 }
 
 /**
@@ -140,12 +153,7 @@ export class LogManager {
 
     const targets = this.resolve_targets(payload.targets);
     const created_at = this.now();
-    const normalized_message = normalize_log_message(payload.message);
-    const normalized_payload: LogAppendPayload = {
-      ...payload,
-      message: normalized_message,
-      source: payload.source ?? "electron-main",
-    };
+    const normalized_payload = this.normalize_payload(payload);
 
     if (targets.file) {
       this.write_file_record(normalized_payload, created_at);
@@ -192,6 +200,7 @@ export class LogManager {
 
     return {
       ...detail,
+      error: detail.error === undefined ? undefined : { ...detail.error },
       context: detail.context === undefined ? undefined : { ...detail.context },
     };
   }
@@ -254,19 +263,16 @@ export class LogManager {
   /**
    * 文件记录保存完整正文和诊断上下文，是当前 app.yyyymmdd.log 的唯一落盘格式
    */
-  private write_file_record(payload: LogAppendPayload, created_at: Date): void {
+  private write_file_record(payload: NormalizedLogAppendPayload, created_at: Date): void {
     const record: FileLogRecord = {
       level: resolve_file_log_level(payload.level),
       level_label: payload.level,
       time: created_at.toISOString(),
-      source: payload.source ?? "electron-main",
+      source: payload.source,
       message: payload.message,
     };
-    if (payload.error_message !== undefined) {
-      record.error_message = payload.error_message;
-    }
-    if (payload.stack !== undefined) {
-      record.stack = payload.stack;
+    if (payload.error !== undefined) {
+      record.error = payload.error;
     }
     if (payload.context !== undefined) {
       record.context = payload.context;
@@ -278,18 +284,18 @@ export class LogManager {
   /**
    * 控制台输出保留完整正文，便于启动期和开发调试直接观察
    */
-  private write_console_record(payload: LogAppendPayload, created_at: Date): void {
+  private write_console_record(payload: NormalizedLogAppendPayload, created_at: Date): void {
     this.console_writer(format_console_log(payload, created_at), payload.level);
   }
 
   /**
    * 窗口事件只发布轻量预览，同时把完整正文写入同 ID 的详情池
    */
-  private publish_event(payload: LogAppendPayload, created_at: Date): LogEvent {
+  private publish_event(payload: NormalizedLogAppendPayload, created_at: Date): LogEvent {
     const sequence = this.next_sequence;
     this.next_sequence += 1;
     const id = `log-${sequence.toString()}`;
-    const source = payload.source ?? "electron-main";
+    const source = payload.source;
     const created_at_text = created_at.toISOString();
     const event: LogEvent = {
       id,
@@ -308,11 +314,8 @@ export class LogManager {
       source,
       message: payload.message,
     };
-    if (payload.error_message !== undefined) {
-      detail.error_message = payload.error_message;
-    }
-    if (payload.stack !== undefined) {
-      detail.stack = payload.stack;
+    if (payload.error !== undefined) {
+      detail.error = payload.error;
     }
     if (payload.context !== undefined) {
       detail.context = { ...payload.context };
@@ -325,6 +328,30 @@ export class LogManager {
       subscriber(event);
     }
     return event;
+  }
+
+  /**
+   * 写入口统一把原始错误和上下文收窄成可序列化日志事实。
+   */
+  private normalize_payload(payload: LogAppendPayload): NormalizedLogAppendPayload {
+    const message = normalize_log_message(payload.message);
+    const source = payload.source ?? "electron-main";
+    if (payload.error !== undefined) {
+      return {
+        level: payload.level,
+        message,
+        source,
+        error: to_log_error(payload.error, payload.context ?? {}),
+      };
+    }
+    const context =
+      payload.context === undefined ? undefined : sanitize_log_error_context(payload.context);
+    return {
+      level: payload.level,
+      message,
+      source,
+      ...(context === undefined || Object.keys(context).length === 0 ? {} : { context }),
+    };
   }
 
   /**

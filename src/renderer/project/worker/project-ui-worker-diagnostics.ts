@@ -6,8 +6,8 @@ import { is_project_ui_worker_client_error } from "@/project/worker/project-ui-w
 
 export type ProjectUiWorkerErrorCaptureOptions = Omit<
   RendererErrorCaptureOptions,
-  "source" | "diagnostic"
->; // source 和 diagnostic 固定由 worker 边界决定，页面只补业务上下文
+  "source" | "logError"
+>; // source 和 logError 固定由 worker 边界决定，页面只补业务上下文
 
 /**
  * Project UI Worker 失败只在这个边界解包结构化诊断，页面不需要理解 Error 子类细节。
@@ -23,7 +23,7 @@ export function capture_project_ui_worker_error(
   capture_renderer_error(error, {
     ...options,
     source: "worker",
-    diagnostic: is_project_ui_worker_client_error(error) ? error.diagnostic : undefined,
+    logError: is_project_ui_worker_client_error(error) ? error.log_error : undefined,
   });
   return true;
 }

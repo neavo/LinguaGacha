@@ -1,4 +1,4 @@
-import type { ErrorDiagnosticPayload } from "@shared/error";
+import type { LogError } from "@shared/error";
 
 export type ProjectUiWorkerClientErrorCode =
   | "unsupported"
@@ -21,16 +21,16 @@ const PROJECT_UI_WORKER_ERROR_MESSAGE_BY_CODE: Readonly<
 // ProjectUiWorkerClientError 收口当前模块的状态和副作用边界，避免调用方分散维护同一流程。
 export class ProjectUiWorkerClientError extends Error {
   public readonly code: ProjectUiWorkerClientErrorCode; // code 是页面判断 worker 边界错误的唯一稳定事实
-  public readonly diagnostic?: ErrorDiagnosticPayload; // diagnostic 只供调试日志和测试观察，不进入页面分支
+  public readonly log_error?: LogError; // log_error 只供调试日志和测试观察，不进入页面分支
 
   /**
    * Project UI Worker 错误只暴露稳定 code，message 保留给非展示诊断。
    */
-  public constructor(code: ProjectUiWorkerClientErrorCode, diagnostic?: ErrorDiagnosticPayload) {
+  public constructor(code: ProjectUiWorkerClientErrorCode, log_error?: LogError) {
     super(PROJECT_UI_WORKER_ERROR_MESSAGE_BY_CODE[code]);
     this.name = "ProjectUiWorkerClientError";
     this.code = code;
-    this.diagnostic = diagnostic;
+    this.log_error = log_error;
   }
 }
 

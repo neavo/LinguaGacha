@@ -6,9 +6,9 @@ import {
 } from "@/app/desktop/desktop-runtime-event-payload";
 import type { ProjectStoreChangeEvent } from "@/project/store/project-store";
 import {
-  summarize_diagnostic_path,
-  type DiagnosticPathIdentity,
-  type ErrorDiagnosticContext,
+  summarize_log_error_path,
+  type LogErrorPathIdentity,
+  type LogErrorContext,
 } from "@shared/error";
 
 type RuntimeProjectDiagnosticsInput = {
@@ -31,7 +31,7 @@ type ProjectChangePayloadDiagnosticsInput = {
  */
 export function summarize_runtime_project_for_diagnostics(
   input: RuntimeProjectDiagnosticsInput,
-): ErrorDiagnosticContext {
+): LogErrorContext {
   return {
     loaded: input.loaded,
     path: summarize_path_for_diagnostics(input.path),
@@ -42,9 +42,7 @@ export function summarize_runtime_project_for_diagnostics(
 /**
  * task 诊断只取状态和进度数字，避免把页面展示 extras 写入异常日志。
  */
-export function summarize_task_snapshot_for_diagnostics(
-  snapshot: TaskSnapshot,
-): ErrorDiagnosticContext {
+export function summarize_task_snapshot_for_diagnostics(snapshot: TaskSnapshot): LogErrorContext {
   return {
     runtimeRevision: snapshot.runtime_revision,
     taskType: snapshot.task_type,
@@ -65,7 +63,7 @@ export function summarize_task_snapshot_for_diagnostics(
  */
 export function summarize_project_change_for_diagnostics(
   event: ProjectStoreChangeEvent,
-): ErrorDiagnosticContext {
+): LogErrorContext {
   return {
     eventId: event.eventId ?? "",
     source: event.source,
@@ -82,7 +80,7 @@ export function summarize_project_change_for_diagnostics(
  */
 export function summarize_project_change_payload_for_diagnostics(
   payload: ProjectChangePayloadDiagnosticsInput,
-): ErrorDiagnosticContext {
+): LogErrorContext {
   return {
     eventId: String(payload.eventId ?? ""),
     source: String(payload.source ?? ""),
@@ -96,8 +94,8 @@ export function summarize_project_change_payload_for_diagnostics(
 /**
  * 路径诊断只保留文件名和稳定 hash，避免日志中出现用户完整目录结构。
  */
-function summarize_path_for_diagnostics(raw_path: string): DiagnosticPathIdentity {
-  return summarize_diagnostic_path(raw_path);
+function summarize_path_for_diagnostics(raw_path: string): LogErrorPathIdentity {
+  return summarize_log_error_path(raw_path);
 }
 
 /**
@@ -105,7 +103,7 @@ function summarize_path_for_diagnostics(raw_path: string): DiagnosticPathIdentit
  */
 export function summarize_scheduler_error_context(
   context: DesktopRuntimeRefreshSchedulerErrorContext,
-): ErrorDiagnosticContext {
+): LogErrorContext {
   return {
     phase: context.phase,
     projectChanges: context.projectChanges.map(summarize_project_change_for_diagnostics),

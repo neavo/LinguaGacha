@@ -24,7 +24,7 @@ flowchart LR
 - renderer JS 异常诊断只能经 `desktop-api.ts` 提交到 `/api/diagnostics/renderer-error`；renderer diagnostics、runtime diagnostics、worker diagnostics 和 renderer error context 只能提供实际抛错摘要、route / project / task / event 轻量上下文和白名单字段，不上报完整 items/files payload、页面自定义对象或原始路径 / URL。诊断协议与日志写入规则以 [`docs/BACKEND.md`](BACKEND.md) 为权威。
 - Chromium renderer 进程级崩溃由 main 侧 renderer process diagnostics registry 接管：renderer 通过 preload IPC 持续上报 route / project / task 摘要和近期 task/project 事件头，`render-process-gone` 日志写入窗口类型、`webContents.id`、OS 进程 id、URL 摘要、进程指标、crash dumps 目录摘要和最近面包屑。
 - 日志窗口只把 `log.appended` 的轻量事件放入列表状态；完整正文由 `desktop-api.ts` 通过 `/api/logs/detail` 按当前选中行懒加载，不能进入列表筛选、排序或批量渲染路径。
-- 日志详情显示时在 renderer 拼接 `message / error_message / stack`；后端事件、列表预览和文件日志继续保留结构化字段，不把调用栈写回 `message`。
+- 日志窗口详情是 renderer 内唯一可展开结构化错误和调用栈的诊断视图；日志列表、toast 和普通页面错误提示不得展示调用栈或原始异常文本。
 - `DesktopApiError` 是 renderer 消费 Core / 本地网络失败的唯一错误类型；页面根据 code/status/action 决定刷新、重试、禁用或跳转，不解析后端原始异常文本。
 - 普通页面展示用户可见错误时走 `src/renderer/app/ui-runtime/error-message.ts`；toast、dialog 和空状态不得直接显示 `Error.message`。
 - 可见文案从 `src/shared/i18n` 解析；renderer 的 React Provider 和富文本渲染适配在 `src/renderer/app/locale`。

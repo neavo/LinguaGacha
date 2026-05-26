@@ -1,3 +1,5 @@
+import type { LogError } from "./error/log-error";
+
 export const LOG_LEVELS = ["debug", "info", "warning", "error", "fatal"] as const; // 日志等级同时进入 main 日志、SSE payload 和日志窗口筛选
 
 export const TASK_VISIBLE_LOG_LEVELS = ["info", "warning", "error"] as const; // worker 回放到用户可见任务日志时只允许这三个等级
@@ -32,8 +34,7 @@ export interface LogDetail {
   level: LogLevel; // 与轻量事件共享的日志等级
   source: string; // 产生日志的模块或任务源
   message: string; // 完整日志正文，只通过详情接口按需读取
-  error_message?: string; // Error.message 的边界快照
-  stack?: string; // Error.stack 的边界快照
+  error?: LogError; // Error 的可序列化边界快照
   context?: Record<string, unknown>; // 额外结构化上下文
 }
 
@@ -41,8 +42,7 @@ export interface LogAppendPayload {
   level: LogLevel; // 写入等级
   message: string; // 原始日志正文
   source?: string; // 产生日志的模块或任务源
-  error_message?: string; // Error.message 的边界快照
-  stack?: string; // Error.stack 的边界快照
+  error?: unknown; // 进程内可传原始 Error，跨边界只传 LogError 快照
   context?: Record<string, unknown>; // 额外结构化上下文
   targets?: Partial<LogTargets>; // 单次写入的输出目标覆盖
 }
@@ -65,4 +65,11 @@ export function normalize_log_level(value: unknown): LogLevel {
 // 任务日志只允许用户可见等级，worker 内部 debug/fatal 不直接穿透
 export function is_task_visible_log_level(value: unknown): value is TaskVisibleLogLevel {
   return TASK_VISIBLE_LOG_LEVEL_SET.has(value as TaskVisibleLogLevel);
+}
+
+// format_log_readable_text 是日志人类可读出口的共享模板。
+export function format_log_readable_text(detail: Pick<LogDetail, "message" | "error">): string {
+  return [detail.message, detail.error?.message, detail.error?.stack]
+    .filter((value): value is string => value !== undefined && value.trim() !== "")
+    .join("\n");
 }

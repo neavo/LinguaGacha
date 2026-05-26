@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import { normalize_renderer_error_report } from "./renderer-error-report";
-import { summarize_diagnostic_path } from "./error-diagnostic";
+import { summarize_log_error_path } from "./log-error";
 
 describe("renderer error report", () => {
   it("收窄 renderer 异常报告并保留显式路径摘要", () => {
     const report = normalize_renderer_error_report({
       source: "worker",
-      diagnostic: {
+      error: {
         name: "Error",
         message: "worker 爆炸",
         context: {
-          output_path: summarize_diagnostic_path("E:/secret/out/result.txt"),
+          output_path: summarize_log_error_path("E:/secret/out/result.txt"),
         },
       },
       project: {
@@ -45,7 +45,7 @@ describe("renderer error report", () => {
 
     expect(report).toMatchObject({
       source: "worker",
-      diagnostic: {
+      error: {
         name: "Error",
         message: "worker 爆炸",
         context: {

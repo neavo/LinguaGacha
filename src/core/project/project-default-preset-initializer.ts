@@ -325,7 +325,8 @@ export class ProjectDefaultPresetInitializer {
   ): void {
     this.log_manager.warning(message, {
       source: "project-lifecycle",
-      ...AppErrors.error_diagnostic_to_log_fields(AppErrors.to_error_diagnostic(error, context)),
+      error,
+      context,
     });
   }
 

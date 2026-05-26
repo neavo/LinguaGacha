@@ -1,9 +1,9 @@
-import type { ErrorDiagnosticContext, ErrorDiagnosticContextInput } from "./error-diagnostic";
+import type { LogErrorContext, LogErrorContextInput } from "./log-error";
 import {
-  sanitize_error_diagnostic_context,
-  summarize_diagnostic_path,
-  summarize_diagnostic_url,
-} from "./error-diagnostic";
+  sanitize_log_error_context,
+  summarize_log_error_path,
+  summarize_log_error_url,
+} from "./log-error";
 
 // MAX RENDERER DIAGNOSTIC TEXT LENGTH 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const MAX_RENDERER_DIAGNOSTIC_TEXT_LENGTH = 4096;
@@ -69,12 +69,12 @@ const RENDERER_ERROR_CONTEXT_URL_KEYS = new Set<RendererErrorContextKey>(["locat
 
 export type RendererDiagnosticsContext = {
   route?: string; // route 定位当前 renderer 页面区域
-  project?: ErrorDiagnosticContext; // project 只保存项目身份和 revision 级摘要
-  task?: ErrorDiagnosticContext; // task 只保存任务状态和进度级摘要
+  project?: LogErrorContext; // project 只保存项目身份和 revision 级摘要
+  task?: LogErrorContext; // task 只保存任务状态和进度级摘要
 };
 
 export type RendererDiagnosticsPayload = RendererDiagnosticsContext & {
-  event?: ErrorDiagnosticContext; // event 保存最近触发事件头，禁止完整业务 payload
+  event?: LogErrorContext; // event 保存最近触发事件头，禁止完整业务 payload
 };
 
 /**
@@ -109,24 +109,22 @@ export function normalize_renderer_diagnostics_text(value: unknown): string | un
 export function normalize_renderer_diagnostics_context_field(
   value: unknown,
   key: RendererDiagnosticsContextKey,
-): ErrorDiagnosticContext | undefined {
+): LogErrorContext | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return undefined;
   }
-  const context = sanitize_error_diagnostic_context(pick_renderer_diagnostic_context(value, key));
+  const context = sanitize_log_error_context(pick_renderer_diagnostic_context(value, key));
   return Object.keys(context).length === 0 ? undefined : context;
 }
 
 /**
  * renderer error context 只接收白名单字段；敏感身份字段在这里转成摘要值对象。
  */
-export function normalize_renderer_error_context(
-  value: unknown,
-): ErrorDiagnosticContext | undefined {
+export function normalize_renderer_error_context(value: unknown): LogErrorContext | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return undefined;
   }
-  const context = sanitize_error_diagnostic_context(pick_renderer_error_context(value));
+  const context = sanitize_log_error_context(pick_renderer_error_context(value));
   return Object.keys(context).length === 0 ? undefined : context;
 }
 
@@ -141,7 +139,7 @@ function read_optional_context_field(
   record: Record<string, unknown>,
   field: "project" | "task" | "event",
   key: RendererDiagnosticsContextKey,
-): Record<string, ErrorDiagnosticContext> {
+): Record<string, LogErrorContext> {
   const context = normalize_renderer_diagnostics_context_field(record[field], key);
   return context === undefined ? {} : { [field]: context };
 }
@@ -150,7 +148,7 @@ function read_optional_context_field(
 function pick_renderer_diagnostic_context(
   value: object,
   key: keyof typeof RENDERER_DIAGNOSTIC_CONTEXT_KEYS,
-): ErrorDiagnosticContextInput {
+): LogErrorContextInput {
   // 字段白名单属于 renderer 黑匣子边界，不回流到 shared error 通用 sanitizer。
   const record = value as Record<string, unknown>;
   return Object.fromEntries(
@@ -170,13 +168,13 @@ function summarize_renderer_diagnostic_context_value(
 ): unknown {
   const value = record[context_key];
   if (RENDERER_DIAGNOSTIC_PATH_KEYS.has(context_key) && typeof value === "string") {
-    return summarize_diagnostic_path(value);
+    return summarize_log_error_path(value);
   }
   return value;
 }
 
 // pick_renderer_error_context 封装当前模块的共享逻辑，避免重复实现同一维护规则。
-function pick_renderer_error_context(value: object): ErrorDiagnosticContextInput {
+function pick_renderer_error_context(value: object): LogErrorContextInput {
   const record = value as Record<string, unknown>;
   return Object.fromEntries(
     RENDERER_ERROR_CONTEXT_KEYS.flatMap((context_key) => {
@@ -196,13 +194,11 @@ function summarize_renderer_error_context_value(
   const value = record[context_key];
   if (RENDERER_ERROR_CONTEXT_PATH_KEYS.has(context_key)) {
     return typeof value === "string"
-      ? summarize_diagnostic_path(value)
-      : summarize_diagnostic_path("");
+      ? summarize_log_error_path(value)
+      : summarize_log_error_path("");
   }
   if (RENDERER_ERROR_CONTEXT_URL_KEYS.has(context_key)) {
-    return typeof value === "string"
-      ? summarize_diagnostic_url(value)
-      : summarize_diagnostic_url("");
+    return typeof value === "string" ? summarize_log_error_url(value) : summarize_log_error_url("");
   }
   return value;
 }

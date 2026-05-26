@@ -61,7 +61,7 @@ class MockWorker {
       data: {
         id,
         ok: false,
-        error_diagnostic: {
+        error: {
           name: "Error",
           message: "worker 爆炸",
           stack: "Error: worker 爆炸\n    at run",
@@ -240,7 +240,7 @@ describe("ProjectUiWorkerScheduler", () => {
       name: "ProjectUiWorkerClientError",
       code: "execution_failed",
       message: "project_ui_worker_execution_failed",
-      diagnostic: {
+      log_error: {
         message: "worker 爆炸",
         context: {
           worker_message_type: "quality.compute_statistics",

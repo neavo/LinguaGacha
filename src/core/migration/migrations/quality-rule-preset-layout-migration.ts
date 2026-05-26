@@ -3,11 +3,7 @@ import path from "node:path";
 import type { ApiJsonValue } from "../../api/api-types";
 import { t_main_log } from "../../log/log-text";
 import { default_native_fs } from "../../../native/native-fs";
-import {
-  error_diagnostic_to_log_fields,
-  InternalInvariantError,
-  to_error_diagnostic,
-} from "../../../shared/error";
+import { InternalInvariantError } from "../../../shared/error";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { PathRelocation } from "../path-relocation";
 import type { MigrationDescriptor, StartupMigrationContext } from "../migration-types";
@@ -209,7 +205,7 @@ export class QualityRulePresetLayoutMigration {
         }),
         {
           source: "migration",
-          ...error_diagnostic_to_log_fields(to_error_diagnostic(error)),
+          error,
         },
       );
     }

@@ -40,7 +40,7 @@ describe("SakuraTransport", () => {
 
     expect(result).toMatchObject({
       response_result: "",
-      failure: {
+      request_error: {
         message: "供应商返回长度截断。",
       },
     });

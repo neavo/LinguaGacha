@@ -4,7 +4,7 @@ import type { Stream } from "openai/streaming";
 import type { ResolvedRequestPolicy } from "../policy/policy-types";
 import type { LLMRequestResult } from "../llm-types";
 import { LLMClientDegradationDetector } from "../llm-client-degradation-detector";
-import { error_diagnostic_from_message, type ErrorDiagnosticPayload } from "../../../shared/error";
+import { log_error_from_message, type LogError } from "../../../shared/error";
 import type {
   ProviderClientPoolRequest,
   ProviderClientResolver,
@@ -56,7 +56,7 @@ export class OpenAICompatibleTransport implements RequestTransport {
     let response_think = "";
     let input_tokens = 0;
     let output_tokens = 0;
-    let failure: ErrorDiagnosticPayload | undefined;
+    let request_error: LogError | undefined;
     for await (const chunk of stream) {
       const record = this.as_record(chunk);
       const choices = Array.isArray(record["choices"]) ? record["choices"] : [];
@@ -84,10 +84,10 @@ export class OpenAICompatibleTransport implements RequestTransport {
       );
       const finish_reason = this.read_text(first_choice["finish_reason"]);
       if (finish_reason === "length") {
-        failure = error_diagnostic_from_message("供应商返回长度截断。", { finish_reason });
+        request_error = log_error_from_message("供应商返回长度截断。", { finish_reason });
       }
       if (finish_reason === "tool_calls") {
-        failure = error_diagnostic_from_message("供应商返回工具调用，当前任务不支持。", {
+        request_error = log_error_from_message("供应商返回工具调用，当前任务不支持。", {
           finish_reason,
         });
       }
@@ -97,13 +97,13 @@ export class OpenAICompatibleTransport implements RequestTransport {
     }
     return {
       response_think: response_think.trim(),
-      response_result: failure === undefined ? response_result.trim() : "",
+      response_result: request_error === undefined ? response_result.trim() : "",
       input_tokens,
       output_tokens,
       cancelled: false,
       timeout: false,
       degraded: false,
-      ...(failure === undefined ? {} : { failure }),
+      ...(request_error === undefined ? {} : { request_error }),
     };
   }
 
