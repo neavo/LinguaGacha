@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import os from "node:os";
 import { Worker } from "node:worker_threads";
 
 import {
@@ -7,8 +8,8 @@ import {
   RuntimeDisposedError,
   WorkerExecutionFailedError,
 } from "../../../shared/error";
+import { resolve_default_worker_count } from "../../../shared/worker-capacity";
 import type { EngineExecution } from "../core/engine-execution";
-import { resolve_engine_worker_count } from "../core/engine-worker-capacity";
 import { create_o200k_base_token_counter, type TokenCounter } from "../core/token-counter";
 import type {
   PlanningWorkerIncomingMessage,
@@ -55,7 +56,10 @@ export class PlanningWorkerPool {
    */
   public constructor(options: PlanningWorkerPoolOptions) {
     this.execution = options.execution;
-    this.worker_count = resolve_engine_worker_count(options.workerCount);
+    this.worker_count = resolve_default_worker_count({
+      workerCount: options.workerCount,
+      availableParallelism: os.availableParallelism?.() ?? os.cpus().length,
+    });
     if (this.execution.kind === "in_process") {
       this.in_process_counter = create_o200k_base_token_counter();
       return;

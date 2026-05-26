@@ -6,6 +6,7 @@ import type {
   ProofreadingRowIndexQuery,
   ProofreadingRowIdsRangeQuery,
   ProofreadingRuntimeDeltaInput,
+  ProofreadingRuntimeEvaluatedHydrationInput,
   ProofreadingRuntimeHydrationInput,
 } from "@/project/worker/proofreading-ui-worker-service";
 import type { QualityStatisticsTaskInput } from "@/project/quality/quality-statistics";
@@ -17,6 +18,16 @@ export type ProjectUiWorkerRequest =
       id: number; // id 由 scheduler 分配，用于把 worker 回包配对到 in-flight 请求
       type: "proofreading.hydrate_full"; // type 是 worker 入口分发的唯一判别字段
       input: ProofreadingRuntimeHydrationInput; // input 是校对 UI 派生缓存的全量快照
+    }
+  | {
+      id: number; // id 由 scheduler 分配，用于把 worker 回包配对到 in-flight 请求
+      type: "proofreading.evaluate_hydration_slice"; // type 是 worker 入口分发的唯一判别字段
+      input: ProofreadingRuntimeHydrationInput; // input 是校对 hydrate 的 item 分片快照
+    }
+  | {
+      id: number; // id 由 scheduler 分配，用于把 worker 回包配对到 in-flight 请求
+      type: "proofreading.hydrate_evaluated_full"; // type 是 worker 入口分发的唯一判别字段
+      input: ProofreadingRuntimeEvaluatedHydrationInput; // input 是已分片评估后的完整校对缓存
     }
   | {
       id: number; // id 由 scheduler 分配，用于把 worker 回包配对到 in-flight 请求

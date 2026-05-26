@@ -121,4 +121,56 @@ describe("quality-runtime-context", () => {
       }),
     ).toEqual(["text_preserve", "\\d+"]);
   });
+
+  it("术语匹配单次扫描仍保持嵌套术语、重复项和启用状态语义", () => {
+    const context = buildQualityRuntimeContext({
+      ...create_quality_state(),
+      glossary: {
+        enabled: true,
+        mode: "off",
+        revision: 2,
+        entries: [
+          { src: "魔法", dst: "Magic" },
+          { src: "魔法少女", dst: "Magical Girl" },
+          { src: "少女", dst: "Girl" },
+          { src: "魔法", dst: "Magic" },
+          { src: "", dst: "Empty" },
+        ],
+      },
+    });
+
+    expect(
+      partitionQualityRuntimeGlossaryTerms({
+        glossary: context.glossary,
+        src_replaced: "魔法少女登场",
+        dst_replaced: "Magic Girl",
+      }),
+    ).toEqual({
+      applied_terms: [
+        ["魔法", "Magic"],
+        ["少女", "Girl"],
+      ],
+      failed_terms: [["魔法少女", "Magical Girl"]],
+    });
+
+    const disabled_context = buildQualityRuntimeContext({
+      ...create_quality_state(),
+      glossary: {
+        enabled: false,
+        mode: "off",
+        revision: 3,
+        entries: [{ src: "魔法", dst: "Magic" }],
+      },
+    });
+    expect(
+      partitionQualityRuntimeGlossaryTerms({
+        glossary: disabled_context.glossary,
+        src_replaced: "魔法",
+        dst_replaced: "",
+      }),
+    ).toEqual({
+      applied_terms: [],
+      failed_terms: [],
+    });
+  });
 });

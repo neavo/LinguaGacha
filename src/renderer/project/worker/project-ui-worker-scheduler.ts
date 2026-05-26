@@ -105,6 +105,14 @@ export class ProjectUiWorkerScheduler {
   }
 
   /**
+   * 让同类可覆盖任务立即过期；释放缓存时需要取消 hydrate，但释放请求本身必须执行。
+   */
+  public invalidate_stale_key(staleKey: string): void {
+    const generation = (this.latest_generation_by_stale_key.get(staleKey) ?? 0) + 1;
+    this.latest_generation_by_stale_key.set(staleKey, generation);
+  }
+
+  /**
    * 释放 worker 和全部待处理请求；只在测试或 renderer 生命周期结束时调用。
    */
   public dispose(): void {

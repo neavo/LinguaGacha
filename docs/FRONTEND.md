@@ -72,8 +72,10 @@ flowchart LR
 - 页面级缓存挂载或项目路径切换时必须先从当前 `ProjectStore` 完成一次全量同步；后续增量或失效刷新再消费 `ProjectRuntimeChangeSignal`。
 - 页面级缓存的新旧判定必须覆盖声明依赖的 `ProjectStore.revisions.sections`；不得用时间戳、task 状态或裸 stale boolean 代替 section revision。
 - 工作台和校对页可以维护页面局部缓存，但 ready 判定必须基于项目 path、required sections 与 consumed revisions。
-- `src/renderer/project/worker` 是 Project UI Worker 的唯一归宿：单 worker 承接校对视图、质量统计和分析术语导入预演等 UI 派生计算；它只消费只读快照、section revision 和显式查询，不写项目事实、不发 mutation、不替代 Core 或 `ProjectStore`。
-- Project UI Worker client 统一 request id、优先级、stale 错误、稳定错误码、结构化 `error_diagnostic` 和带 projectId 的缓存释放；worker 结构化诊断只在 worker 诊断 helper 解包并交给 renderer error reporter，页面不直接解析自定义 Error 字段。没有性能证据前不拆 renderer worker pool。
+- `src/renderer/project/worker` 是 Project UI Worker 的唯一归宿：它只消费只读快照、section revision 和显式查询，不写项目事实、不发 mutation、不替代 Core 或 `ProjectStore`；高成本 UI 派生可以按场景使用受限 worker 分片，但完整页面派生缓存只能在合并后的拥有者运行态维护。
+- Project UI Worker 错误和诊断必须通过稳定错误码、结构化诊断和 renderer error reporter 收口；页面不直接解析 worker 自定义 Error 字段。
+- 校对页允许质量缓存未 ready 时先显示由 `ProjectStore.items` 派生的基础表格；警告、术语派生和筛选面板仍由 Project UI Worker hydrate 后提供，cache ready 与 consumed revisions 仍以质量 hydrate 完成为准。
+- 校对页卸载、项目切换和 clear cache 必须取消在途 hydrate 并按 projectId 释放 worker 项目缓存；当前不做跨路由 Project UI Worker cache registry、TTL、LRU 或后台保留策略。
 - `src/renderer/project/quality` 是质量规则统计共享调度、缓存与规则描述的归宿；页面只激活已挂载规则，未挂载规则仅失效缓存，失败态只能由依赖变化或显式用户动作重新调度。
 - 结果型页面的主列表使用结果视图快照：搜索、筛选、替换、排序或刷新等显式 action 生成新的稳定 id 序列；项目事实刷新只更新快照内实体的最新内容、状态、警告和统计，不能重新筛选、插入或重排当前 view；后端 tombstone 删除、项目切换、全量数据源重建或运行态不兼容时才剪除或重建快照。
 - 工作台统计区和任务菜单百分比消费 `ProjectStore` 派生的 `WorkbenchStats`；任务详情在运行或停止中消费 `TaskSnapshot.progress`，空闲态才回落到 `WorkbenchStats`。

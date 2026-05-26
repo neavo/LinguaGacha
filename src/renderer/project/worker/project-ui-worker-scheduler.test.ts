@@ -183,6 +183,30 @@ describe("ProjectUiWorkerScheduler", () => {
     scheduler.dispose();
   });
 
+  it("显式废弃 staleKey 会让在途请求退场但不阻止后续普通请求", async () => {
+    const scheduler = create_scheduler();
+    const hydrate_result = scheduler.submit(create_quality_request("hydrate"), {
+      staleKey: "proofreading:hydrate",
+    });
+    const worker = MockWorker.instances[0];
+
+    scheduler.invalidate_stale_key("proofreading:hydrate");
+    const dispose_result = scheduler.submit(create_quality_request("dispose"), {
+      priority: "foreground",
+    });
+
+    worker?.dispatch_message(1, "hydrate-result");
+    await expect(hydrate_result).rejects.toMatchObject({
+      name: "ProjectUiWorkerClientError",
+      code: "stale",
+    });
+    expect(read_quality_rule_keys(worker)).toEqual(["hydrate", "dispose"]);
+
+    worker?.dispatch_message(2, "dispose-result");
+    await expect(dispose_result).resolves.toBe("dispose-result");
+    scheduler.dispose();
+  });
+
   it("worker 通道失败后拒绝当前任务并用新 worker 继续处理队列", async () => {
     const scheduler = create_scheduler();
     const broken_result = scheduler.submit(create_quality_request("broken"));

@@ -14,9 +14,15 @@ export type QualityRuntimeGlossaryEntry = {
 
 export type QualityRuntimeGlossaryTerm = [string, string];
 
+type QualityRuntimeGlossaryAhoNode = {
+  next: Map<string, number>;
+  fail: number;
+  entries: QualityRuntimeGlossaryEntry[];
+};
+
 export type QualityRuntimeGlossaryIndex = {
   entries: QualityRuntimeGlossaryEntry[];
-  entry_by_first_character: Map<string, QualityRuntimeGlossaryEntry[]>;
+  aho_nodes: QualityRuntimeGlossaryAhoNode[];
 };
 
 export type QualityRuntimeReplacementRule = {
@@ -141,13 +147,13 @@ function build_replacement_rules(args: {
 }
 
 /**
- * 术语按首字符分桶，校对逐项检查时只扫描可能命中的术语集合
+ * 术语编译成 Aho-Corasick 自动机，校对逐项检查时只扫描一次源文。
  */
 function build_glossary_index(quality: ProjectStoreQualityState): QualityRuntimeGlossaryIndex {
   if (!quality.glossary.enabled) {
     return {
       entries: [],
-      entry_by_first_character: new Map(),
+      aho_nodes: create_empty_glossary_aho_nodes(),
     };
   }
 
@@ -156,18 +162,79 @@ function build_glossary_index(quality: ProjectStoreQualityState): QualityRuntime
     const dst = String(entry.dst ?? "");
     return src === "" ? [] : [{ src, dst }];
   });
-  const entry_by_first_character = new Map<string, QualityRuntimeGlossaryEntry[]>();
-  entries.forEach((entry) => {
-    const first_character = Array.from(entry.src)[0] ?? "";
-    const bucket = entry_by_first_character.get(first_character) ?? [];
-    bucket.push(entry);
-    entry_by_first_character.set(first_character, bucket);
-  });
 
   return {
     entries,
-    entry_by_first_character,
+    aho_nodes: build_glossary_aho_nodes(entries),
   };
+}
+
+/**
+ * 空自动机保留根节点，扫描逻辑无需为禁用 glossary 分叉特殊状态。
+ */
+function create_empty_glossary_aho_nodes(): QualityRuntimeGlossaryAhoNode[] {
+  return [
+    {
+      next: new Map(),
+      fail: 0,
+      entries: [],
+    },
+  ];
+}
+
+/**
+ * 构建 failure links 并继承 fallback 终点，保证嵌套术语和后缀术语都能命中。
+ */
+function build_glossary_aho_nodes(
+  entries: QualityRuntimeGlossaryEntry[],
+): QualityRuntimeGlossaryAhoNode[] {
+  const nodes = create_empty_glossary_aho_nodes();
+
+  entries.forEach((entry) => {
+    let node_index = 0;
+    for (const character of Array.from(entry.src)) {
+      const node = nodes[node_index];
+      const next_index = node.next.get(character);
+      if (next_index !== undefined) {
+        node_index = next_index;
+        continue;
+      }
+
+      const created_index = nodes.length;
+      node.next.set(character, created_index);
+      nodes.push({
+        next: new Map(),
+        fail: 0,
+        entries: [],
+      });
+      node_index = created_index;
+    }
+    nodes[node_index].entries.push(entry);
+  });
+
+  const queue: number[] = [];
+  for (const child_index of nodes[0].next.values()) {
+    nodes[child_index].fail = 0;
+    queue.push(child_index);
+  }
+
+  for (let queue_index = 0; queue_index < queue.length; queue_index += 1) {
+    const current_index = queue[queue_index];
+    const current_node = nodes[current_index];
+
+    for (const [character, child_index] of current_node.next) {
+      let fallback_index = current_node.fail;
+      while (fallback_index !== 0 && !nodes[fallback_index].next.has(character)) {
+        fallback_index = nodes[fallback_index].fail;
+      }
+
+      nodes[child_index].fail = nodes[fallback_index].next.get(character) ?? 0;
+      nodes[child_index].entries.push(...nodes[nodes[child_index].fail].entries);
+      queue.push(child_index);
+    }
+  }
+
+  return nodes;
 }
 
 /**
@@ -243,9 +310,9 @@ function apply_quality_runtime_replacement(
 }
 
 /**
- * 只从源文中实际出现过首字符的术语桶收集候选，降低大术语表的逐项扫描成本
+ * Aho 自动机按源文单次扫描收集命中术语，输出保持同一 src/dst 只出现一次。
  */
-function collect_candidate_glossary_entries(args: {
+function collect_matched_glossary_entries(args: {
   glossary: QualityRuntimeGlossaryIndex;
   src_replaced: string;
 }): QualityRuntimeGlossaryEntry[] {
@@ -253,19 +320,20 @@ function collect_candidate_glossary_entries(args: {
     return [];
   }
 
-  const candidate_entries = new Map<string, QualityRuntimeGlossaryEntry>();
-  Array.from(args.src_replaced).forEach((character) => {
-    const bucket = args.glossary.entry_by_first_character.get(character);
-    if (bucket === undefined) {
-      return;
+  const matched_entries = new Map<string, QualityRuntimeGlossaryEntry>();
+  let node_index = 0;
+  for (const character of Array.from(args.src_replaced)) {
+    while (node_index !== 0 && !args.glossary.aho_nodes[node_index].next.has(character)) {
+      node_index = args.glossary.aho_nodes[node_index].fail;
     }
 
-    bucket.forEach((entry) => {
-      candidate_entries.set(`${entry.src}\u0000${entry.dst}`, entry);
-    });
-  });
+    node_index = args.glossary.aho_nodes[node_index].next.get(character) ?? 0;
+    for (const entry of args.glossary.aho_nodes[node_index].entries) {
+      matched_entries.set(`${entry.src}\u0000${entry.dst}`, entry);
+    }
+  }
 
-  return [...candidate_entries.values()];
+  return [...matched_entries.values()];
 }
 
 /**
@@ -282,14 +350,10 @@ export function partitionQualityRuntimeGlossaryTerms(args: {
   const failed_terms: QualityRuntimeGlossaryTerm[] = [];
   const applied_terms: QualityRuntimeGlossaryTerm[] = [];
 
-  for (const entry of collect_candidate_glossary_entries({
+  for (const entry of collect_matched_glossary_entries({
     glossary: args.glossary,
     src_replaced: args.src_replaced,
   })) {
-    if (!args.src_replaced.includes(entry.src)) {
-      continue;
-    }
-
     const term: QualityRuntimeGlossaryTerm = [entry.src, entry.dst];
     if (args.dst_replaced.includes(entry.dst)) {
       applied_terms.push(term);

@@ -18,6 +18,12 @@ async function execute_project_ui_worker_request(
   if (request.type === "proofreading.hydrate_full") {
     return proofreading_service.hydrate_full(request.input);
   }
+  if (request.type === "proofreading.evaluate_hydration_slice") {
+    return proofreading_service.evaluate_hydration_slice(request.input);
+  }
+  if (request.type === "proofreading.hydrate_evaluated_full") {
+    return proofreading_service.hydrate_evaluated_full(request.input);
+  }
   if (request.type === "proofreading.apply_item_delta") {
     return proofreading_service.apply_item_delta(request.input);
   }

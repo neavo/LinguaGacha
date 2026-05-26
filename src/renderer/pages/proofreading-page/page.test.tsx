@@ -52,6 +52,7 @@ vi.mock("@/widgets/app-button/app-button", () => {
 vi.mock("@/widgets/search-bar/search-bar", () => {
   return {
     SearchBar: (props: {
+      disabled?: boolean;
       extra_actions?: ReactNode;
       keyword: string;
       on_keyword_change: (keyword: string) => void;
@@ -59,6 +60,7 @@ vi.mock("@/widgets/search-bar/search-bar", () => {
       <div data-keyword={props.keyword}>
         <button
           type="button"
+          disabled={props.disabled}
           onClick={() => {
             props.on_keyword_change("苹果");
           }}
@@ -71,7 +73,9 @@ vi.mock("@/widgets/search-bar/search-bar", () => {
 
 vi.mock("@/pages/proofreading-page/components/proofreading-table", () => {
   return {
-    ProofreadingTable: () => <div data-testid="proofreading-table" />,
+    ProofreadingTable: (props: { readonly: boolean }) => (
+      <div data-readonly={props.readonly ? "true" : "false"} data-testid="proofreading-table" />
+    ),
   };
 });
 
@@ -83,7 +87,9 @@ vi.mock("@/pages/proofreading-page/components/proofreading-filter-dialog", () =>
 
 vi.mock("@/pages/proofreading-page/components/proofreading-edit-dialog", () => {
   return {
-    ProofreadingEditDialog: () => null,
+    ProofreadingEditDialog: (props: { readonly: boolean }) => (
+      <div data-readonly={props.readonly ? "true" : "false"} data-testid="proofreading-edit" />
+    ),
   };
 });
 
@@ -102,6 +108,7 @@ function create_proofreading_state_fixture() {
     apply_table_sort_state: vi.fn(),
     close_filter_dialog: vi.fn(),
     close_pending_confirmation: vi.fn(),
+    cache_status: "ready",
     confirm_filter_dialog_filters: vi.fn(),
     confirm_pending_confirmation: vi.fn(),
     consumed_revisions: {
@@ -203,5 +210,32 @@ describe("ProofreadingPage", () => {
       requiredSections: ["project", "items", "quality", "proofreading"],
       settledProjectPath: "E:/demo/demo.lg",
     });
+  });
+
+  it("质量缓存未 ready 时保留搜索并锁住筛选和编辑动作", async () => {
+    if (proofreading_state_fixture.current === null) {
+      throw new Error("缺少校对页状态夹具。");
+    }
+    proofreading_state_fixture.current.cache_status = "refreshing";
+    proofreading_state_fixture.current.is_refreshing = true;
+
+    await mount_page();
+
+    const buttons = [...(container?.querySelectorAll("button") ?? [])];
+    expect(buttons[0]?.disabled).toBe(false);
+    expect(buttons[1]?.disabled).toBe(true);
+    expect(
+      container?.querySelector("[data-testid='proofreading-table']")?.getAttribute("data-readonly"),
+    ).toBe("true");
+    expect(
+      container?.querySelector("[data-testid='proofreading-edit']")?.getAttribute("data-readonly"),
+    ).toBe("true");
+
+    await act(async () => {
+      buttons[0]?.click();
+      buttons[1]?.click();
+    });
+    expect(proofreading_state_fixture.current.update_search_keyword).toHaveBeenCalledWith("苹果");
+    expect(proofreading_state_fixture.current.open_filter_dialog).not.toHaveBeenCalled();
   });
 });
