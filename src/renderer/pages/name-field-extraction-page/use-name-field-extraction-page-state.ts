@@ -13,7 +13,10 @@ import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import type { GlossaryEntry } from "@/pages/glossary-page/types";
-import { useQualityRuleImportConfirmation } from "@/project/quality/quality-rule-import-confirmation";
+import {
+  create_quality_rule_duplicate_resolution_plan,
+  useQualityRuleImportConfirmation,
+} from "@/project/quality/quality-rule-import-confirmation";
 import {
   build_name_field_glossary_entries,
   count_name_field_rows,
@@ -679,14 +682,13 @@ export function useNameFieldExtractionPageState() {
   );
   const {
     import_confirm_state,
-    persist_import_entries,
+    persist_entries_with_duplicate_resolution,
     import_duplicate_skip,
     import_duplicate_overwrite,
     close_import_duplicate_confirm,
     reset_import_confirmation,
   } = useQualityRuleImportConfirmation<GlossaryEntry>({
     rule_type: QualityRuleImportRuleTypeValue.GLOSSARY,
-    get_existing_entries: get_import_existing_entries,
     apply_entries: apply_import_entries,
   });
 
@@ -705,8 +707,24 @@ export function useNameFieldExtractionPageState() {
       return;
     }
 
-    await persist_import_entries(incoming_entries, { close_preset_menu: false });
-  }, [glossary_import_locked, is_running, persist_import_entries, push_toast, rows, t]);
+    await persist_entries_with_duplicate_resolution(
+      () => {
+        return create_quality_rule_duplicate_resolution_plan({
+          existing_entries: get_import_existing_entries(),
+          incoming_entries,
+        });
+      },
+      { close_preset_menu: false },
+    );
+  }, [
+    get_import_existing_entries,
+    glossary_import_locked,
+    is_running,
+    persist_entries_with_duplicate_resolution,
+    push_toast,
+    rows,
+    t,
+  ]);
 
   const confirm_pending_action = useCallback(async (): Promise<void> => {
     if (!confirm_state.open || confirm_state.kind === null) {

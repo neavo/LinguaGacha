@@ -45,7 +45,10 @@ import {
   create_quality_rule_entry_id,
   ensure_quality_rule_entry_ids,
 } from "@/project/quality/quality-rule-entry-id";
-import { useQualityRuleImportConfirmation } from "@/project/quality/quality-rule-import-confirmation";
+import {
+  create_quality_rule_duplicate_resolution_plan,
+  useQualityRuleImportConfirmation,
+} from "@/project/quality/quality-rule-import-confirmation";
 import type { QualityRuleImportConfirmState } from "@/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-state";
 import {
   useProjectSessionTableUiState,
@@ -86,6 +89,12 @@ type GlossaryPresetPayload = {
 type GlossaryResultViewQuery = {
   filter_state: GlossaryFilterState;
   sort_state: GlossarySortState;
+};
+
+type GlossaryDuplicateApplyOptions = {
+  close_preset_menu: boolean;
+  result_view_update: ResultViewSourceUpdatePolicy;
+  feedback: "import" | "dialog";
 };
 
 // 术语表页维护自己的 mutation 诊断名，desktop 层只负责提交和失败恢复。
@@ -702,20 +711,20 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     [commit_project_mutation, project_store, push_toast, readonly, t],
   );
 
-  const apply_import_entries = useCallback(
+  const apply_duplicate_resolved_entries = useCallback(
     async (
       next_entries: GlossaryEntry[],
-      options: {
-        close_preset_menu: boolean;
-      },
+      options: GlossaryDuplicateApplyOptions,
     ): Promise<boolean> => {
-      const saved = await save_entries_snapshot(next_entries, REBUILD_RESULT_VIEW_SOURCE_UPDATE);
+      const saved = await save_entries_snapshot(next_entries, options.result_view_update);
       if (!saved) {
         return false;
       }
 
-      clear_selection_state();
-      push_toast("success", t("glossary_page.feedback.import_success"));
+      if (options.feedback === "import") {
+        clear_selection_state();
+        push_toast("success", t("glossary_page.feedback.import_success"));
+      }
 
       if (options.close_preset_menu) {
         set_preset_menu_open(false);
@@ -726,25 +735,84 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     [clear_selection_state, push_toast, save_entries_snapshot, t],
   );
 
-  const get_import_existing_entries = useCallback((): GlossaryEntry[] => {
+  const read_current_glossary_entries = useCallback((): GlossaryEntry[] => {
     const current_glossary_slice = getQualityRuleSlice(
       project_store.getState().quality,
       "glossary",
     );
-    return current_glossary_slice.entries as GlossaryEntry[];
+    return ensure_quality_rule_entry_ids(
+      (current_glossary_slice.entries as GlossaryEntry[]).map((entry) => {
+        return clone_entry(entry);
+      }),
+    );
   }, [project_store]);
-  const import_confirmation = useQualityRuleImportConfirmation<GlossaryEntry>({
+  const import_confirmation = useQualityRuleImportConfirmation<
+    GlossaryEntry,
+    GlossaryDuplicateApplyOptions
+  >({
     rule_type: QualityRuleImportRuleTypeValue.GLOSSARY,
-    get_existing_entries: get_import_existing_entries,
-    apply_entries: apply_import_entries,
+    apply_entries: apply_duplicate_resolved_entries,
   });
   const {
     import_confirm_state,
-    persist_import_entries,
+    persist_entries_with_duplicate_resolution,
     import_duplicate_skip,
     import_duplicate_overwrite,
     close_import_duplicate_confirm,
   } = import_confirmation;
+
+  const build_dialog_duplicate_resolution_plan = useCallback(
+    (current_dialog_state: GlossaryDialogState, normalized_entry: GlossaryEntry) => {
+      const current_entries = read_current_glossary_entries();
+      const current_entry_ids = current_entries.map((entry, index) => {
+        return build_glossary_entry_id(entry, index);
+      });
+      const existing_entries =
+        current_dialog_state.mode === "edit"
+          ? current_entries.filter((_entry, index) => {
+              return current_entry_ids[index] !== current_dialog_state.target_entry_id;
+            })
+          : current_entries;
+      const direct_entries =
+        current_dialog_state.mode === "create"
+          ? (() => {
+              const insert_after_index =
+                current_dialog_state.insert_after_entry_id === null
+                  ? -1
+                  : current_entry_ids.findIndex((entry_id) => {
+                      return entry_id === current_dialog_state.insert_after_entry_id;
+                    });
+              const insert_index =
+                insert_after_index < 0 ? current_entries.length : insert_after_index + 1;
+              const next_entries = [...current_entries];
+
+              next_entries.splice(insert_index, 0, normalized_entry);
+              return next_entries;
+            })()
+          : current_entries.map((entry, index) => {
+              return current_entry_ids[index] === current_dialog_state.target_entry_id
+                ? {
+                    ...entry,
+                    ...normalized_entry,
+                  }
+                : entry;
+            });
+
+      return create_quality_rule_duplicate_resolution_plan({
+        existing_entries,
+        incoming_entries: [normalized_entry],
+        direct_entries,
+        skip_entries: null,
+        before_pending: () => {
+          set_dialog_state(create_empty_dialog_state());
+        },
+        before_apply: () => {
+          set_dialog_state(create_empty_dialog_state());
+        },
+      });
+    },
+    [read_current_glossary_entries],
+  );
 
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
     const preset_payload = await api_fetch<GlossaryPresetPayload>("/api/quality/rules/presets", {
@@ -1145,52 +1213,44 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       saving: true,
     }));
 
-    const next_entries =
-      dialog_state.mode === "create"
-        ? (() => {
-            const insert_after_index =
-              dialog_state.insert_after_entry_id === null
-                ? -1
-                : entry_ids.findIndex(
-                    (entry_id) => entry_id === dialog_state.insert_after_entry_id,
-                  );
-            const insert_index = insert_after_index < 0 ? entries.length : insert_after_index + 1;
-            const next_entries = [...entries];
-
-            next_entries.splice(insert_index, 0, normalized_entry);
-            return next_entries;
-          })()
-        : entries.map((entry, index) => {
-            return entry_ids[index] === dialog_state.target_entry_id
-              ? {
-                  ...entry,
-                  ...normalized_entry,
-                }
-              : entry;
-          });
-
     const reopen_dialog_state: GlossaryDialogState = {
       ...current_dialog_state,
       saving: false,
     };
-    set_dialog_state(create_empty_dialog_state());
-
-    const saved = await save_entries_snapshot(
-      next_entries,
-      dialog_state.mode === "create"
-        ? REBUILD_RESULT_VIEW_SOURCE_UPDATE
-        : PRESERVE_RESULT_VIEW_SOURCE_UPDATE,
+    const save_result = await persist_entries_with_duplicate_resolution(
+      () => {
+        return build_dialog_duplicate_resolution_plan(current_dialog_state, normalized_entry);
+      },
+      {
+        close_preset_menu: false,
+        result_view_update:
+          current_dialog_state.mode === "create"
+            ? REBUILD_RESULT_VIEW_SOURCE_UPDATE
+            : PRESERVE_RESULT_VIEW_SOURCE_UPDATE,
+        feedback: "dialog",
+      },
     );
-    if (saved) {
+    if (save_result === "saved") {
       push_toast("success", t("app.feedback.save_success"));
       return true;
+    }
+
+    if (save_result === "pending") {
+      return false;
     }
 
     if (!dialog_state_ref.current.open) {
       set_dialog_state(reopen_dialog_state);
     }
     return false;
-  }, [dialog_state, entries, entry_ids, push_toast, readonly, save_entries_snapshot, t]);
+  }, [
+    build_dialog_duplicate_resolution_plan,
+    dialog_state,
+    persist_entries_with_duplicate_resolution,
+    push_toast,
+    readonly,
+    t,
+  ]);
 
   const save_dialog_entry = useCallback(async (): Promise<void> => {
     await persist_dialog_entry();
@@ -1246,7 +1306,19 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
           return;
         }
 
-        await persist_import_entries(imported_entries, { close_preset_menu: false });
+        await persist_entries_with_duplicate_resolution(
+          () => {
+            return create_quality_rule_duplicate_resolution_plan({
+              existing_entries: read_current_glossary_entries(),
+              incoming_entries: imported_entries,
+            });
+          },
+          {
+            close_preset_menu: false,
+            result_view_update: REBUILD_RESULT_VIEW_SOURCE_UPDATE,
+            feedback: "import",
+          },
+        );
       } catch (error) {
         push_toast(
           "error",
@@ -1254,7 +1326,13 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         );
       }
     },
-    [persist_import_entries, push_toast, readonly, t],
+    [
+      persist_entries_with_duplicate_resolution,
+      push_toast,
+      read_current_glossary_entries,
+      readonly,
+      t,
+    ],
   );
 
   const import_entries_from_picker = useCallback(async (): Promise<void> => {
@@ -1322,7 +1400,19 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
             virtual_id,
           },
         );
-        await persist_import_entries(payload.entries, { close_preset_menu: true });
+        await persist_entries_with_duplicate_resolution(
+          () => {
+            return create_quality_rule_duplicate_resolution_plan({
+              existing_entries: read_current_glossary_entries(),
+              incoming_entries: payload.entries,
+            });
+          },
+          {
+            close_preset_menu: true,
+            result_view_update: REBUILD_RESULT_VIEW_SOURCE_UPDATE,
+            feedback: "import",
+          },
+        );
       } catch (error) {
         push_toast(
           "error",
@@ -1330,7 +1420,13 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         );
       }
     },
-    [persist_import_entries, push_toast, readonly, t],
+    [
+      persist_entries_with_duplicate_resolution,
+      push_toast,
+      read_current_glossary_entries,
+      readonly,
+      t,
+    ],
   );
 
   const request_reset_entries = useCallback((): void => {
