@@ -81,6 +81,9 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20260526 v0.101.4
+  - 调整与改进 [#611](https://github.com/neavo/LinguaGacha/issues/611) [#615](https://github.com/neavo/LinguaGacha/issues/615) [#616](https://github.com/neavo/LinguaGacha/issues/#616)
+
 - 20260522 v0.101.3
   - 调整与改进 [#598](https://github.com/neavo/LinguaGacha/issues/598) [#599](https://github.com/neavo/LinguaGacha/issues/599) [#601](https://github.com/neavo/LinguaGacha/issues/601) [#603](https://github.com/neavo/LinguaGacha/issues/603) [#604](https://github.com/neavo/LinguaGacha/issues/604)
 
