@@ -15,67 +15,83 @@ export type QualityRuleImportApplyOptions = {
   close_preset_menu: boolean;
 };
 
-type PendingQualityRuleImport<TEntry extends JsonRecord> = {
+export type QualityRuleDuplicateResolutionResult = "saved" | "pending" | "failed";
+
+export type QualityRuleDuplicateResolutionPlan<TEntry extends JsonRecord> = {
+  existing_entries: TEntry[];
   incoming_entries: TEntry[];
-  options: QualityRuleImportApplyOptions;
+  direct_entries?: TEntry[];
+  skip_entries?: TEntry[] | null;
+  overwrite_entries?: TEntry[];
+  before_pending?: () => void;
+  before_apply?: () => void;
+};
+
+type QualityRuleDuplicateResolutionPlanFactory<TEntry extends JsonRecord> =
+  () => QualityRuleDuplicateResolutionPlan<TEntry>;
+
+type PendingQualityRuleImport<TEntry extends JsonRecord, TApplyOptions> = {
+  create_plan: QualityRuleDuplicateResolutionPlanFactory<TEntry>;
+  options: TApplyOptions;
   duplicate_signature: string;
 };
 
-type UseQualityRuleImportConfirmationOptions<TEntry extends JsonRecord> = {
+type UseQualityRuleImportConfirmationOptions<TEntry extends JsonRecord, TApplyOptions> = {
   rule_type: QualityRuleImportRuleType;
-  get_existing_entries: () => TEntry[];
-  apply_entries: (
-    next_entries: TEntry[],
-    options: QualityRuleImportApplyOptions,
-  ) => Promise<boolean>;
+  apply_entries: (next_entries: TEntry[], options: TApplyOptions) => Promise<boolean>;
 };
 
-type UseQualityRuleImportConfirmationResult<TEntry extends JsonRecord> = {
+type UseQualityRuleImportConfirmationResult<TEntry extends JsonRecord, TApplyOptions> = {
   import_confirm_state: QualityRuleImportConfirmState;
-  persist_import_entries: (
-    incoming_entries: TEntry[],
-    options: QualityRuleImportApplyOptions,
-  ) => Promise<boolean>;
+  persist_entries_with_duplicate_resolution: (
+    create_plan: QualityRuleDuplicateResolutionPlanFactory<TEntry>,
+    options: TApplyOptions,
+  ) => Promise<QualityRuleDuplicateResolutionResult>;
   import_duplicate_skip: () => Promise<void>;
   import_duplicate_overwrite: () => Promise<void>;
   close_import_duplicate_confirm: () => void;
   reset_import_confirmation: () => void;
 };
 
-export function useQualityRuleImportConfirmation<TEntry extends JsonRecord>(
-  options: UseQualityRuleImportConfirmationOptions<TEntry>,
-): UseQualityRuleImportConfirmationResult<TEntry> {
-  const { rule_type, get_existing_entries, apply_entries } = options;
+export function useQualityRuleImportConfirmation<
+  TEntry extends JsonRecord,
+  TApplyOptions = QualityRuleImportApplyOptions,
+>(
+  options: UseQualityRuleImportConfirmationOptions<TEntry, TApplyOptions>,
+): UseQualityRuleImportConfirmationResult<TEntry, TApplyOptions> {
+  const { rule_type, apply_entries } = options;
   const [import_confirm_state, set_import_confirm_state] = useState<QualityRuleImportConfirmState>(
     () => {
       return create_empty_quality_rule_import_confirm_state();
     },
   );
-  // 待确认状态只保存导入输入；最终写入快照必须在用户确认时用最新 ProjectStore 事实重算
-  const [pending_import, set_pending_import] = useState<PendingQualityRuleImport<TEntry> | null>(
-    null,
-  );
+  // 待确认状态只保存计划工厂；最终写入快照必须在用户确认时用最新 ProjectStore 事实重算
+  const [pending_import, set_pending_import] = useState<PendingQualityRuleImport<
+    TEntry,
+    TApplyOptions
+  > | null>(null);
 
   const build_preview = useCallback(
-    (incoming_entries: TEntry[]) => {
+    (plan: QualityRuleDuplicateResolutionPlan<TEntry>) => {
       return preview_quality_rule_import({
         rule_type,
-        existing: get_existing_entries(),
-        incoming: incoming_entries,
+        existing: plan.existing_entries,
+        incoming: plan.incoming_entries,
       });
     },
-    [get_existing_entries, rule_type],
+    [rule_type],
   );
 
-  const persist_import_entries = useCallback(
+  const persist_entries_with_duplicate_resolution = useCallback(
     async (
-      incoming_entries: TEntry[],
-      apply_options: QualityRuleImportApplyOptions,
-    ): Promise<boolean> => {
-      const preview = build_preview(incoming_entries);
+      create_plan: QualityRuleDuplicateResolutionPlanFactory<TEntry>,
+      apply_options: TApplyOptions,
+    ): Promise<QualityRuleDuplicateResolutionResult> => {
+      const plan = create_plan();
+      const preview = build_preview(plan);
       if (preview.duplicate_count > 0) {
         set_pending_import({
-          incoming_entries: clone_entries(incoming_entries),
+          create_plan,
           options: apply_options,
           duplicate_signature: build_duplicate_signature(preview),
         });
@@ -84,10 +100,14 @@ export function useQualityRuleImportConfirmation<TEntry extends JsonRecord>(
           duplicate_count: preview.duplicate_count,
           submitting: false,
         });
-        return false;
+        plan.before_pending?.();
+        return "pending";
       }
 
-      return apply_entries(preview.overwrite_entries as TEntry[], apply_options);
+      plan.before_apply?.();
+      const next_entries = plan.direct_entries ?? preview.overwrite_entries;
+      const saved = await apply_entries(next_entries as TEntry[], apply_options);
+      return saved ? "saved" : "failed";
     },
     [apply_entries, build_preview],
   );
@@ -118,7 +138,8 @@ export function useQualityRuleImportConfirmation<TEntry extends JsonRecord>(
         };
       });
 
-      const preview = build_preview(pending_import.incoming_entries);
+      const plan = pending_import.create_plan();
+      const preview = build_preview(plan);
       const duplicate_signature = build_duplicate_signature(preview);
       if (
         preview.duplicate_count > 0 &&
@@ -136,7 +157,16 @@ export function useQualityRuleImportConfirmation<TEntry extends JsonRecord>(
         return;
       }
 
-      const next_entries = action === "skip" ? preview.skip_entries : preview.overwrite_entries;
+      const planned_entries = action === "skip" ? plan.skip_entries : plan.overwrite_entries;
+      if (planned_entries === null) {
+        set_pending_import(null);
+        set_import_confirm_state(create_empty_quality_rule_import_confirm_state());
+        return;
+      }
+
+      const next_entries =
+        planned_entries ?? (action === "skip" ? preview.skip_entries : preview.overwrite_entries);
+      plan.before_apply?.();
       const saved = await apply_entries(next_entries as TEntry[], pending_import.options);
       if (saved) {
         set_pending_import(null);
@@ -164,7 +194,7 @@ export function useQualityRuleImportConfirmation<TEntry extends JsonRecord>(
 
   return {
     import_confirm_state,
-    persist_import_entries,
+    persist_entries_with_duplicate_resolution,
     import_duplicate_skip,
     import_duplicate_overwrite,
     close_import_duplicate_confirm,
@@ -172,8 +202,33 @@ export function useQualityRuleImportConfirmation<TEntry extends JsonRecord>(
   };
 }
 
-function clone_entries<TEntry extends JsonRecord>(entries: TEntry[]): TEntry[] {
-  return entries.map((entry) => ({ ...entry }) as TEntry);
+export function create_quality_rule_duplicate_resolution_plan<TEntry extends JsonRecord>(args: {
+  existing_entries: TEntry[];
+  incoming_entries: TEntry[];
+  direct_entries?: TEntry[];
+  skip_entries?: TEntry[] | null;
+  overwrite_entries?: TEntry[];
+  before_pending?: () => void;
+  before_apply?: () => void;
+}): QualityRuleDuplicateResolutionPlan<TEntry> {
+  return {
+    existing_entries: clone_entries(args.existing_entries),
+    incoming_entries: clone_entries(args.incoming_entries),
+    direct_entries:
+      args.direct_entries === undefined ? undefined : clone_entries(args.direct_entries),
+    skip_entries:
+      args.skip_entries === undefined || args.skip_entries === null
+        ? args.skip_entries
+        : clone_entries(args.skip_entries),
+    overwrite_entries:
+      args.overwrite_entries === undefined ? undefined : clone_entries(args.overwrite_entries),
+    before_pending: args.before_pending,
+    before_apply: args.before_apply,
+  };
+}
+
+function clone_entries<TEntry extends JsonRecord>(entries: TEntry[] | undefined): TEntry[] {
+  return (entries ?? []).map((entry) => ({ ...entry }) as TEntry);
 }
 
 function build_duplicate_signature(

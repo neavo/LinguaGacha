@@ -916,6 +916,163 @@ describe("useGlossaryPageState", () => {
     ]);
   });
 
+  it("新增重复术语时先确认，覆盖后改写已有条目", async () => {
+    await mount_probe();
+    api_fetch_mock.mockResolvedValueOnce(
+      create_quality_mutation_result({
+        quality: create_glossary_quality(
+          [
+            {
+              entry_id: "苹果::0",
+              src: "苹果",
+              dst: "Malus",
+              info: "新说明",
+              case_sensitive: false,
+            },
+          ],
+          2,
+        ),
+      }),
+    );
+
+    await act(async () => {
+      latest_state?.open_create_dialog();
+    });
+    await act(async () => {
+      latest_state?.update_dialog_draft({
+        src: "苹果",
+        dst: "Malus",
+        info: "新说明",
+      });
+    });
+    await act(async () => {
+      await latest_state?.save_dialog_entry();
+    });
+
+    expect(latest_state?.dialog_state.open).toBe(false);
+    expect(latest_state?.import_confirm_state.open).toBe(true);
+    expect(latest_state?.import_confirm_state.duplicate_count).toBe(1);
+    expect(api_fetch_mock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await latest_state?.import_duplicate_overwrite();
+    });
+
+    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
+      rule_type: "glossary",
+      expected_section_revisions: { quality: 1 },
+      entries: [
+        {
+          entry_id: "苹果::0",
+          src: "苹果",
+          dst: "Malus",
+          info: "新说明",
+          case_sensitive: false,
+        },
+      ],
+    });
+    expect(latest_state?.import_confirm_state.open).toBe(false);
+  });
+
+  it("新增重复术语选择跳过时不会保存未变化快照", async () => {
+    await mount_probe();
+
+    await act(async () => {
+      latest_state?.open_create_dialog();
+    });
+    await act(async () => {
+      latest_state?.update_dialog_draft({
+        src: "苹果",
+        dst: "Malus",
+        info: "新说明",
+      });
+    });
+    await act(async () => {
+      await latest_state?.save_dialog_entry();
+    });
+
+    expect(latest_state?.import_confirm_state.open).toBe(true);
+
+    await act(async () => {
+      await latest_state?.import_duplicate_skip();
+    });
+
+    expect(api_fetch_mock).not.toHaveBeenCalled();
+    expect(latest_state?.import_confirm_state.open).toBe(false);
+  });
+
+  it("编辑术语撞到已有原文时先确认，覆盖后删除被合并条目", async () => {
+    runtime_state.quality.glossary.entries = [
+      {
+        entry_id: "qr:apple",
+        src: "苹果",
+        dst: "Apple",
+        info: "水果",
+        case_sensitive: false,
+      },
+      {
+        entry_id: "qr:banana",
+        src: "香蕉",
+        dst: "Banana",
+        info: "水果",
+        case_sensitive: false,
+      },
+    ];
+    await mount_probe();
+    api_fetch_mock.mockResolvedValueOnce(
+      create_quality_mutation_result({
+        quality: create_glossary_quality(
+          [
+            {
+              entry_id: "qr:apple",
+              src: "苹果",
+              dst: "Malus",
+              info: "新说明",
+              case_sensitive: false,
+            },
+          ],
+          2,
+        ),
+      }),
+    );
+
+    await act(async () => {
+      latest_state?.open_edit_dialog("qr:banana");
+    });
+    await act(async () => {
+      latest_state?.update_dialog_draft({
+        src: "苹果",
+        dst: "Malus",
+        info: "新说明",
+      });
+    });
+    await act(async () => {
+      await latest_state?.save_dialog_entry();
+    });
+
+    expect(latest_state?.dialog_state.open).toBe(false);
+    expect(latest_state?.import_confirm_state.open).toBe(true);
+    expect(api_fetch_mock).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await latest_state?.import_duplicate_overwrite();
+    });
+
+    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
+      rule_type: "glossary",
+      expected_section_revisions: { quality: 1 },
+      entries: [
+        {
+          entry_id: "qr:apple",
+          src: "苹果",
+          dst: "Malus",
+          info: "新说明",
+          case_sensitive: false,
+        },
+      ],
+    });
+  });
+
   it("新增术语保存时若 SSE 先于 HTTP 返回，最终仍由统一 commit 回灌新条目", async () => {
     await mount_probe();
     const mutation_result = create_quality_mutation_result({

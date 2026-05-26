@@ -55,7 +55,10 @@ import {
   create_quality_rule_entry_id,
   ensure_quality_rule_entry_ids,
 } from "@/project/quality/quality-rule-entry-id";
-import { useQualityRuleImportConfirmation } from "@/project/quality/quality-rule-import-confirmation";
+import {
+  create_quality_rule_duplicate_resolution_plan,
+  useQualityRuleImportConfirmation,
+} from "@/project/quality/quality-rule-import-confirmation";
 import {
   are_text_replacement_entry_ids_equal,
   build_text_replacement_entry_id,
@@ -711,12 +714,11 @@ export function useTextReplacementPageState(
   }, [config.rule_type, project_store]);
   const import_confirmation = useQualityRuleImportConfirmation<TextReplacementEntry>({
     rule_type: IMPORT_RULE_TYPE_BY_PUBLIC_RULE_TYPE[config.rule_type],
-    get_existing_entries: get_import_existing_entries,
     apply_entries: apply_import_entries,
   });
   const {
     import_confirm_state,
-    persist_import_entries,
+    persist_entries_with_duplicate_resolution,
     import_duplicate_skip,
     import_duplicate_overwrite,
     close_import_duplicate_confirm,
@@ -1195,7 +1197,15 @@ export function useTextReplacementPageState(
           return;
         }
 
-        await persist_import_entries(imported_entries, { close_preset_menu: false });
+        await persist_entries_with_duplicate_resolution(
+          () => {
+            return create_quality_rule_duplicate_resolution_plan({
+              existing_entries: get_import_existing_entries(),
+              incoming_entries: imported_entries,
+            });
+          },
+          { close_preset_menu: false },
+        );
       } catch (error) {
         push_toast(
           "error",
@@ -1207,7 +1217,14 @@ export function useTextReplacementPageState(
         );
       }
     },
-    [config.rule_type, persist_import_entries, push_toast, readonly, t],
+    [
+      config.rule_type,
+      get_import_existing_entries,
+      persist_entries_with_duplicate_resolution,
+      push_toast,
+      readonly,
+      t,
+    ],
   );
 
   const import_entries_from_picker = useCallback(async (): Promise<void> => {
@@ -1275,7 +1292,15 @@ export function useTextReplacementPageState(
             virtual_id,
           },
         );
-        await persist_import_entries(payload.entries, { close_preset_menu: true });
+        await persist_entries_with_duplicate_resolution(
+          () => {
+            return create_quality_rule_duplicate_resolution_plan({
+              existing_entries: get_import_existing_entries(),
+              incoming_entries: payload.entries,
+            });
+          },
+          { close_preset_menu: true },
+        );
       } catch (error) {
         push_toast(
           "error",
@@ -1287,7 +1312,14 @@ export function useTextReplacementPageState(
         );
       }
     },
-    [config.rule_type, persist_import_entries, push_toast, readonly, t],
+    [
+      config.rule_type,
+      get_import_existing_entries,
+      persist_entries_with_duplicate_resolution,
+      push_toast,
+      readonly,
+      t,
+    ],
   );
 
   const request_reset_entries = useCallback((): void => {
