@@ -42,10 +42,9 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
     proofreading_page_state.settled_project_path,
   ]);
   useProjectSessionPageCacheRegistration("proofreading", page_cache_snapshot);
-  const toolbar_disabled =
-    proofreading_page_state.readonly ||
-    proofreading_page_state.is_refreshing ||
-    proofreading_page_state.is_mutating;
+  const search_disabled = proofreading_page_state.readonly || proofreading_page_state.is_mutating;
+  const table_action_disabled = search_disabled || proofreading_page_state.is_refreshing;
+  const filter_disabled = table_action_disabled || proofreading_page_state.cache_status !== "ready";
   const regex_state_label = proofreading_page_state.is_regex
     ? t("app.toggle.enabled")
     : t("app.toggle.disabled");
@@ -78,7 +77,7 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
         placeholder={t("proofreading_page.search.placeholder")}
         clear_label={t("proofreading_page.search.clear")}
         invalid_message={proofreading_page_state.invalid_regex_message}
-        disabled={toolbar_disabled}
+        disabled={search_disabled}
         on_keyword_change={proofreading_page_state.update_search_keyword}
         replace_text={proofreading_page_state.replace_text}
         replace_placeholder={t("proofreading_page.search.replace_placeholder")}
@@ -109,7 +108,7 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
             type="button"
             size="toolbar"
             variant="ghost"
-            disabled={toolbar_disabled}
+            disabled={filter_disabled}
             data-active={proofreading_page_state.filter_dialog_open ? "true" : undefined}
             onClick={proofreading_page_state.open_filter_dialog}
           >
@@ -128,7 +127,7 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
           active_row_id={proofreading_page_state.active_row_id}
           anchor_row_id={proofreading_page_state.anchor_row_id}
           retranslating_row_ids={proofreading_page_state.retranslating_row_ids}
-          readonly={toolbar_disabled}
+          readonly={table_action_disabled}
           get_row_at_index={proofreading_page_state.get_visible_row_at_index}
           get_row_id_at_index={proofreading_page_state.get_visible_row_id_at_index}
           resolve_row_index={proofreading_page_state.resolve_visible_row_index}
@@ -165,7 +164,7 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
         item={proofreading_page_state.dialog_item}
         draft_dst={proofreading_page_state.dialog_state.draft_dst}
         saving={proofreading_page_state.dialog_state.saving}
-        readonly={toolbar_disabled}
+        readonly={table_action_disabled}
         on_change={proofreading_page_state.update_dialog_draft}
         on_save={proofreading_page_state.save_dialog_entry}
         on_close={proofreading_page_state.request_close_dialog}

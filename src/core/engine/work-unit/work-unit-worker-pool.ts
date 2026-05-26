@@ -1,14 +1,15 @@
 import crypto from "node:crypto";
+import os from "node:os";
 import { Worker } from "node:worker_threads";
 
 import type { ApiJsonValue } from "../../api/api-types";
 import type { EngineExecution } from "../core/engine-execution";
-import { resolve_engine_worker_count } from "../core/engine-worker-capacity";
 import type { WorkUnit } from "../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
 import { WorkUnitRunner } from "./work-unit-runner";
 import type { WorkUnitExecutor } from "./work-unit-executor";
 import { WorkUnitExecutorTransportError } from "./work-unit-transport-error";
+import { resolve_default_worker_count } from "../../../shared/worker-capacity";
 import {
   normalize_error_diagnostic,
   RuntimeCancelledError,
@@ -65,7 +66,10 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
     this.app_root = options.appRoot;
     this.execution = options.execution;
     this.system_proxy_snapshot = options.systemProxySnapshot ?? null;
-    this.worker_count = resolve_engine_worker_count(options.workerCount);
+    this.worker_count = resolve_default_worker_count({
+      workerCount: options.workerCount,
+      availableParallelism: os.availableParallelism?.() ?? os.cpus().length,
+    });
     this.max_in_flight = Math.max(1, Math.trunc(options.maxInFlight ?? Number.MAX_SAFE_INTEGER));
     if (this.execution.kind === "in_process") {
       this.in_process_runner = new WorkUnitRunner({ appRoot: this.app_root });

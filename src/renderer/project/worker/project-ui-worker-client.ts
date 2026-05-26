@@ -12,6 +12,7 @@ import type {
   ProofreadingRowIndexQuery,
   ProofreadingRowIdsRangeQuery,
   ProofreadingRuntimeDeltaInput,
+  ProofreadingRuntimeEvaluatedSliceResult,
   ProofreadingRuntimeHydrationInput,
   ProofreadingRuntimeSyncState,
 } from "@/project/worker/proofreading-ui-worker-service";
@@ -23,6 +24,20 @@ import {
   ProjectUiWorkerScheduler,
   type ProjectUiWorkerSubmitOptions,
 } from "@/project/worker/project-ui-worker-scheduler";
+import { resolve_default_worker_count } from "@shared/worker-capacity";
+
+const PROOFREADING_HYDRATE_WORKER_LIMIT = 3; // 校对 hydrate 的结构化 clone 成本较高，单场景再收一层上限。
+const PROOFREADING_HYDRATE_MIN_ITEMS_PER_WORKER = 512; // 小项目走单 worker，避免分片调度成本高于收益。
+const PROOFREADING_HYDRATE_STALE_KEY = "proofreading:hydrate"; // hydrate 与释放共享 stale key，释放时先让旧分片退场。
+
+type ProjectUiWorkerClientOptions = {
+  hydrationWorkerCount?: number;
+  createHydrationScheduler?: () => ProjectUiWorkerScheduler;
+};
+
+type ProjectUiWorkerListQueryOptions = {
+  staleKey?: string | null;
+};
 
 export type ProjectUiWorkerClient = {
   /**
@@ -40,7 +55,10 @@ export type ProjectUiWorkerClient = {
   /**
    * 构建校对主列表视图；同类旧请求可被新查询覆盖。
    */
-  build_proofreading_list_view: (input: ProofreadingListViewQuery) => Promise<ProofreadingListView>;
+  build_proofreading_list_view: (
+    input: ProofreadingListViewQuery,
+    options?: ProjectUiWorkerListQueryOptions,
+  ) => Promise<ProofreadingListView>;
   /**
    * 读取当前列表视图窗口；滚动中的旧窗口请求可被新窗口覆盖。
    */
@@ -91,16 +109,77 @@ let shared_project_ui_worker_client: ProjectUiWorkerClient | null = null;
  */
 export function createProjectUiWorkerClient(
   scheduler: ProjectUiWorkerScheduler = new ProjectUiWorkerScheduler(),
+  options: ProjectUiWorkerClientOptions = {},
 ): ProjectUiWorkerClient {
-  return {
-    hydrate_proofreading_full(input) {
-      return scheduler.submit(
+  const hydration_schedulers: ProjectUiWorkerScheduler[] = [];
+
+  const ensure_hydration_schedulers = (worker_count: number): ProjectUiWorkerScheduler[] => {
+    while (hydration_schedulers.length < Math.max(0, worker_count - 1)) {
+      hydration_schedulers.push(
+        options.createHydrationScheduler === undefined
+          ? new ProjectUiWorkerScheduler()
+          : options.createHydrationScheduler(),
+      );
+    }
+    return [scheduler, ...hydration_schedulers].slice(0, worker_count);
+  };
+
+  const hydrate_proofreading_full = async (
+    input: ProofreadingRuntimeHydrationInput,
+  ): Promise<ProofreadingRuntimeSyncState> => {
+    const worker_count = resolve_proofreading_hydrate_worker_count({
+      item_count: input.upsertItems.length,
+      configured_worker_count: options.hydrationWorkerCount,
+    });
+    if (worker_count <= 1) {
+      return await scheduler.submit(
         {
           type: "proofreading.hydrate_full",
           input,
         },
-        { priority: "normal" },
+        { priority: "normal", staleKey: PROOFREADING_HYDRATE_STALE_KEY },
       );
+    }
+
+    const chunks = partition_proofreading_hydration_items(input.upsertItems, worker_count);
+    const slice_schedulers = ensure_hydration_schedulers(chunks.length);
+    const slice_results = await Promise.all(
+      chunks.map((upsertItems, index) => {
+        const slice_scheduler = slice_schedulers[index] ?? scheduler;
+        return slice_scheduler.submit<ProofreadingRuntimeEvaluatedSliceResult>(
+          {
+            type: "proofreading.evaluate_hydration_slice",
+            input: {
+              ...input,
+              upsertItems,
+            },
+          },
+          { priority: "normal", staleKey: PROOFREADING_HYDRATE_STALE_KEY },
+        );
+      }),
+    );
+
+    return await scheduler.submit(
+      {
+        type: "proofreading.hydrate_evaluated_full",
+        input: {
+          projectId: input.projectId,
+          revisions: { ...input.revisions },
+          total_item_count: input.total_item_count,
+          quality: input.quality,
+          sourceLanguage: input.sourceLanguage,
+          targetLanguage: input.targetLanguage,
+          rawItems: slice_results.flatMap((result) => result.rawItems),
+          evaluatedItems: slice_results.flatMap((result) => result.evaluatedItems),
+        },
+      },
+      { priority: "normal", staleKey: PROOFREADING_HYDRATE_STALE_KEY },
+    );
+  };
+
+  return {
+    hydrate_proofreading_full(input) {
+      return hydrate_proofreading_full(input);
     },
     apply_proofreading_item_delta(input) {
       return scheduler.submit(
@@ -111,13 +190,13 @@ export function createProjectUiWorkerClient(
         { priority: "normal" },
       );
     },
-    build_proofreading_list_view(input) {
+    build_proofreading_list_view(input, options = {}) {
       return scheduler.submit(
         {
           type: "proofreading.build_list_view",
           input,
         },
-        { priority: "foreground", staleKey: "proofreading:list_view" },
+        { priority: "foreground", staleKey: options.staleKey ?? "proofreading:list_view" },
       );
     },
     read_proofreading_list_window(input) {
@@ -178,22 +257,71 @@ export function createProjectUiWorkerClient(
       );
     },
     dispose_project(projectId) {
-      return scheduler
-        .submit(
-          {
-            type: "project.dispose",
-            input: {
-              projectId,
+      [scheduler, ...hydration_schedulers].forEach((worker_scheduler) => {
+        worker_scheduler.invalidate_stale_key(PROOFREADING_HYDRATE_STALE_KEY);
+      });
+      return Promise.all(
+        [scheduler, ...hydration_schedulers].map((worker_scheduler) => {
+          return worker_scheduler.submit(
+            {
+              type: "project.dispose",
+              input: {
+                projectId,
+              },
             },
-          },
-          { priority: "normal" },
-        )
-        .then(() => undefined);
+            { priority: "foreground" },
+          );
+        }),
+      ).then(() => undefined);
     },
     dispose() {
       scheduler.dispose();
+      hydration_schedulers.forEach((worker_scheduler) => {
+        worker_scheduler.dispose();
+      });
+      hydration_schedulers.length = 0;
     },
   };
+}
+
+function resolve_renderer_available_parallelism(): number {
+  return typeof navigator === "undefined" ? 1 : (navigator.hardwareConcurrency ?? 1);
+}
+
+function resolve_proofreading_hydrate_worker_count(args: {
+  item_count: number;
+  configured_worker_count?: number;
+}): number {
+  if (args.item_count <= 1) {
+    return 1;
+  }
+
+  const default_worker_count = resolve_default_worker_count({
+    workerCount: args.configured_worker_count,
+    availableParallelism: resolve_renderer_available_parallelism(),
+  });
+  const useful_worker_count = Math.ceil(
+    args.item_count / PROOFREADING_HYDRATE_MIN_ITEMS_PER_WORKER,
+  );
+  return Math.max(
+    1,
+    Math.min(
+      PROOFREADING_HYDRATE_WORKER_LIMIT,
+      default_worker_count,
+      useful_worker_count,
+      args.item_count,
+    ),
+  );
+}
+
+function partition_proofreading_hydration_items<T>(items: T[], worker_count: number): T[][] {
+  const chunk_count = Math.min(worker_count, items.length);
+  const chunk_size = Math.ceil(items.length / chunk_count);
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += chunk_size) {
+    chunks.push(items.slice(index, index + chunk_size));
+  }
+  return chunks;
 }
 
 /**

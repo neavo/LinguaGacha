@@ -224,6 +224,64 @@ describe("createProofreadingUiWorkerService", () => {
     expect(filter_panel.without_glossary_miss_count).toBe(1);
   });
 
+  it("已评估分片 hydrate 与单 worker hydrate 结果确定性一致", () => {
+    const input = {
+      ...create_hydration_input(),
+      upsertItems: [
+        ...create_hydration_input().upsertItems,
+        create_runtime_item({
+          item_id: 3,
+          file_path: "a.txt",
+          row_number: 3,
+          src: "foo",
+          dst: "baz",
+          status: "PROCESSED",
+        }),
+      ],
+      total_item_count: 3,
+    };
+    const single_engine = createProofreadingUiWorkerService();
+    const single_sync_state = single_engine.hydrate_full(input);
+    const single_list_view = single_engine.build_list_view({
+      filters: single_sync_state.defaultFilters,
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: null,
+    });
+
+    const slice_engine = createProofreadingUiWorkerService();
+    const first_slice = slice_engine.evaluate_hydration_slice({
+      ...input,
+      upsertItems: [input.upsertItems[0], input.upsertItems[2]],
+    });
+    const second_slice = slice_engine.evaluate_hydration_slice({
+      ...input,
+      upsertItems: [input.upsertItems[1]],
+    });
+    const merged_engine = createProofreadingUiWorkerService();
+    const merged_sync_state = merged_engine.hydrate_evaluated_full({
+      ...input,
+      rawItems: [...second_slice.rawItems, ...first_slice.rawItems],
+      evaluatedItems: [...second_slice.evaluatedItems, ...first_slice.evaluatedItems],
+    });
+    const merged_list_view = merged_engine.build_list_view({
+      filters: merged_sync_state.defaultFilters,
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: null,
+    });
+
+    expect(merged_sync_state.defaultFilters).toEqual(single_sync_state.defaultFilters);
+    expect(merged_list_view.window_rows.map((row) => row.item)).toEqual(
+      single_list_view.window_rows.map((row) => row.item),
+    );
+    expect(merged_engine.build_filter_panel({ filters: merged_sync_state.defaultFilters })).toEqual(
+      single_engine.build_filter_panel({ filters: single_sync_state.defaultFilters }),
+    );
+  });
+
   it("列表搜索保持字面量大小写不敏感，非法正则只提示不裁剪结果", () => {
     const engine = createProofreadingUiWorkerService();
     const sync_state = engine.hydrate_full(create_hydration_input());
