@@ -646,6 +646,61 @@ describe("useProofreadingPageState", () => {
     expect(toast_fixture.current.dismiss_toast).toHaveBeenCalledWith("proofreading-loading-toast");
   });
 
+  it("当前全量 hydrate 被 stale 废弃后保持加载并重试默认筛选", async () => {
+    // stale_deferred 模拟当前 hydrate 被 worker staleKey 废弃的旧回包。
+    const stale_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
+    // retry_deferred 模拟同一加载流程重新 hydrate 后拿到的有效缓存。
+    const retry_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
+    proofreading_runtime_client_fixture.current.hydrate_proofreading_full = vi
+      .fn()
+      .mockImplementationOnce(() => stale_deferred.promise)
+      .mockImplementationOnce(() => retry_deferred.promise);
+
+    await render_hook();
+
+    expect(latest_state?.cache_status).toBe("refreshing");
+    expect(toast_fixture.current.push_progress_toast).toHaveBeenCalledWith({
+      message: "proofreading_page.feedback.loading_toast",
+      presentation: "modal",
+    });
+
+    // 当前请求 stale 后仍应保持刷新态，等待重试接管默认筛选应用。
+    await act(async () => {
+      stale_deferred.reject(new ProjectUiWorkerClientError("stale"));
+    });
+    await flush_async_updates();
+
+    expect(
+      proofreading_runtime_client_fixture.current.hydrate_proofreading_full,
+    ).toHaveBeenCalledTimes(2);
+    expect(latest_state?.cache_status).toBe("refreshing");
+    expect(toast_fixture.current.dismiss_toast).not.toHaveBeenCalledWith(
+      "proofreading-loading-toast",
+    );
+
+    // 重试完成后，默认筛选必须进入当前筛选状态和列表查询。
+    await act(async () => {
+      retry_deferred.resolve(create_sync_state());
+    });
+    await flush_async_updates();
+
+    expect(latest_state?.cache_status).toBe("ready");
+    expect(latest_state?.current_filters.statuses).toEqual(["NONE"]);
+    expect(
+      proofreading_runtime_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          statuses: ["NONE"],
+        }),
+      }),
+      {
+        staleKey: null,
+      },
+    );
+    expect(toast_fixture.current.dismiss_toast).toHaveBeenCalledWith("proofreading-loading-toast");
+  });
+
   it("质量 hydrate 未完成时筛选弹窗不可打开但基础列表仍响应搜索", async () => {
     vi.useFakeTimers();
     const refresh_deferred = create_deferred<ReturnType<typeof create_sync_state>>();

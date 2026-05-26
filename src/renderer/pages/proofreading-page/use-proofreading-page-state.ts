@@ -686,6 +686,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   // loading_toast_id_ref 记录当前模态 loading toast，确保刷新结束和卸载时能精确关闭。
   const loading_toast_id_ref = useRef<ReturnType<typeof push_progress_toast> | null>(null);
   const [loading_toast_visible, set_loading_toast_visible] = useState(false);
+  // refresh_retry_nonce 用递增信号触发当前 stale hydrate 的一次性重试。
+  const [refresh_retry_nonce, set_refresh_retry_nonce] = useState(0);
+  // consumed_refresh_retry_nonce_ref 记录已消费的重试信号，避免 effect 因 refresh_snapshot 身份变化重复执行。
+  const consumed_refresh_retry_nonce_ref = useRef(0);
   // restore_scroll_row_id_ref 只保存首帧恢复滚动目标，用户后续选区动作会取消它。
   const restore_scroll_row_id_ref = useRef<string | null>(
     resolve_project_session_table_restore_scroll_row_id(initial_ui_state_ref.current),
@@ -1488,6 +1492,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
     const request_id = refresh_generation_ref.current + 1;
     refresh_generation_ref.current = request_id;
+    let retry_after_stale = false;
 
     try {
       const current_state = project_store.getState();
@@ -1632,6 +1637,15 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         return;
       }
 
+      if (is_project_ui_worker_client_error(error, "stale")) {
+        // 当前项目仍加载时，stale 表示 worker 缓存被释放路径废弃，需要保留刷新态并立即重试。
+        retry_after_stale = project_snapshot.loaded;
+        if (retry_after_stale) {
+          set_refresh_retry_nonce((previous_nonce) => previous_nonce + 1);
+        }
+        return;
+      }
+
       const reported = report_project_ui_worker_error(
         error,
         t("proofreading_page.feedback.refresh_failed"),
@@ -1643,10 +1657,16 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       set_cache_status("error");
       set_settled_project_path(project_snapshot.path);
     } finally {
-      pending_reset_filters_ref.current = false;
+      // stale 重试期间不能清掉 pending_reset_filters_ref，否则首刷默认筛选会丢失。
+      if (!retry_after_stale) {
+        pending_reset_filters_ref.current = false;
+      }
       if (request_id === refresh_generation_ref.current) {
-        set_loading_toast_visible(false);
-        set_is_refreshing(false);
+        // stale 重试期间保持模态和刷新态，让用户看到同一轮加载仍在继续。
+        if (!retry_after_stale) {
+          set_loading_toast_visible(false);
+          set_is_refreshing(false);
+        }
       }
     }
   }, [
@@ -1667,6 +1687,20 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     t,
     warm_filter_panel_query,
   ]);
+
+  // refresh_retry_nonce effect 负责把 catch 分支里的重试信号接回刷新主链路。
+  useEffect(() => {
+    if (
+      refresh_retry_nonce === 0 ||
+      refresh_retry_nonce === consumed_refresh_retry_nonce_ref.current ||
+      !project_snapshot.loaded
+    ) {
+      return;
+    }
+
+    consumed_refresh_retry_nonce_ref.current = refresh_retry_nonce;
+    void refresh_snapshot();
+  }, [project_snapshot.loaded, refresh_retry_nonce, refresh_snapshot]);
 
   const update_search_keyword = useCallback(
     (next_keyword: string): void => {
