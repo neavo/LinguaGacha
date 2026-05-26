@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { format_console_log } from "./log-console-formatter";
-import type { LogAppendPayload } from "../../shared/log";
+
+type ConsoleLogTestPayload = Parameters<typeof format_console_log>[0];
 
 describe("format_console_log", () => {
   const created_at = new Date(2012, 11, 12, 12, 12, 12);
@@ -55,7 +56,7 @@ describe("format_console_log", () => {
     );
   });
 
-  function create_payload(message: string): LogAppendPayload {
+  function create_payload(message: string): ConsoleLogTestPayload {
     return {
       level: "info",
       message,

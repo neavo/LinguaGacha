@@ -1,5 +1,5 @@
 import { JsonTool } from "../../shared/utils/json-tool";
-import { to_error_diagnostic } from "../../shared/error";
+import { to_log_error } from "../../shared/error";
 import type { ApiJsonValue } from "../api/api-types";
 import { LLMClientPolicy } from "./llm-client-policy";
 import type { RequestProvider } from "./policy/policy-types";
@@ -81,7 +81,7 @@ export class LLMClient implements LLMClientPort {
       }
       const model_id = this.read_model_id(body.model);
       return this.empty_result({
-        failure: to_error_diagnostic(error, {
+        request_error: to_log_error(error, {
           api_format: resolved_policy.api_format,
           ...(model_id === "" ? {} : { model_id }),
           provider: resolved_policy.provider,

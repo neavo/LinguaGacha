@@ -350,7 +350,7 @@ describe("ApiGatewayServer", () => {
     const started = await gateway.start();
     const response = await post_json(started.baseUrl, "/api/diagnostics/renderer-error", {
       source: "scheduler",
-      diagnostic: {
+      error: {
         name: "InternalInvariantError",
         message: "缺少完整 item DTO",
         stack: "Error: 缺少完整 item DTO\n    at applyProjectChangeBatch",
@@ -374,16 +374,18 @@ describe("ApiGatewayServer", () => {
       source: "renderer",
     });
     expect(detail).toMatchObject({
-      error_message: "缺少完整 item DTO",
-      stack: "Error: 缺少完整 item DTO\n    at applyProjectChangeBatch",
-      context: {
-        renderer_source: "scheduler",
-        error_name: "InternalInvariantError",
-        route: "workbench",
-        triggeringEvent: {
-          topic: "project.data_changed",
-          updatedSections: ["items"],
-          projectRevision: 12,
+      error: {
+        name: "InternalInvariantError",
+        message: "缺少完整 item DTO",
+        stack: "Error: 缺少完整 item DTO\n    at applyProjectChangeBatch",
+        context: {
+          renderer_source: "scheduler",
+          route: "workbench",
+          triggeringEvent: {
+            topic: "project.data_changed",
+            updatedSections: ["items"],
+            projectRevision: 12,
+          },
         },
       },
     });

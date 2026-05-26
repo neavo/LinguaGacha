@@ -76,7 +76,9 @@ describe("write_bootstrap_error", () => {
       "Core 启动失败",
       expect.objectContaining({
         source: "core-bootstrap",
-        error_message: "端口占用",
+        error: expect.objectContaining({
+          message: "端口占用",
+        }),
       }),
     );
   });

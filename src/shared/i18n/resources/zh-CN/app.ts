@@ -297,6 +297,7 @@ export const zh_cn_app = {
     response_checker_fail_degradation: "发生退化现象",
     response_checker_fail_line_count: "行数不一致",
     response_checker_fail_request: "模型请求失败",
+    request_failed_retry: "模型请求失败，将自动重试 …",
     response_checker_fail_timeout: "网络请求超时",
     response_checker_line_error_empty_line: "存在空行",
     response_checker_line_error_hangeul: "谚文残留",

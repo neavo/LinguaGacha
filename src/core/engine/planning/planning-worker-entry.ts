@@ -6,7 +6,7 @@ import type {
   PlanningCountTokensMessage,
   PlanningWorkerIncomingMessage,
 } from "./planning-worker-types";
-import { to_error_diagnostic } from "../../../shared/error";
+import { to_log_error } from "../../../shared/error";
 import type { TaskTokenCountResult } from "./token-metric-cache";
 
 const YIELD_EVERY_ITEMS = 256; // 大批量计数定期让出事件循环，使 cancel 消息能被处理。
@@ -47,7 +47,7 @@ class PlanningWorkerEntry {
       parentPort?.postMessage({
         id: message.id,
         ok: false,
-        error_diagnostic: to_error_diagnostic(error, { worker_message_type: message.type }),
+        error: to_log_error(error, { worker_message_type: message.type }),
       });
     } finally {
       this.cancelled_ids.delete(message.id);

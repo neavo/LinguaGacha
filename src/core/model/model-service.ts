@@ -37,7 +37,7 @@ const PATCH_ALLOWED_KEYS = new Set([
 
 type ModelTestFailure = {
   reason: string;
-  diagnostic?: AppErrors.ErrorDiagnosticPayload;
+  error?: AppErrors.LogError;
 };
 
 // 嵌套配置字段采用浅合并，保留未出现在 patch 中的历史配置项
@@ -485,8 +485,8 @@ export class ModelService {
         reason: this.t(config["app_language"], "app.log.response_checker_fail_degradation"),
       };
     }
-    if (result.failure !== undefined) {
-      return { reason: result.failure.message, diagnostic: result.failure };
+    if (result.request_error !== undefined) {
+      return { reason: result.request_error.message, error: result.request_error };
     }
     return null;
   }
@@ -542,11 +542,10 @@ export class ModelService {
    * 模型测试失败日志只把稳定摘要放进 message，具体原因进入结构化错误字段。
    */
   private log_model_test_failure(app_language: unknown, failure: ModelTestFailure): void {
-    const diagnostic =
-      failure.diagnostic ?? AppErrors.error_diagnostic_from_message(failure.reason);
+    const error = failure.error ?? AppErrors.log_error_from_message(failure.reason);
     this.log_manager?.warning(this.t(app_language, "app.log.api_test_fail"), {
       source: "model",
-      ...AppErrors.error_diagnostic_to_log_fields(diagnostic),
+      error,
     });
   }
 

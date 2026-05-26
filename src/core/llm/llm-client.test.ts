@@ -54,7 +54,7 @@ describe("LLMClient", () => {
 
     expect(result).toMatchObject(
       create_result({
-        failure: {
+        request_error: {
           name: "Error",
           message: "供应商爆炸",
           context: {
@@ -67,7 +67,7 @@ describe("LLMClient", () => {
         },
       }),
     );
-    expect(result.failure?.stack).toContain("供应商爆炸");
+    expect(result.request_error?.stack).toContain("供应商爆炸");
   });
 
   it("外部取消请求时返回 cancelled 结果", async () => {

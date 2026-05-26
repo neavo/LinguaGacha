@@ -24,10 +24,13 @@ describe("record_app_error", () => {
     const file_record = JSON.parse(events[0] ?? "{}") as Record<string, unknown>;
     expect(file_record["level_label"]).toBe("warning");
     expect(file_record["source"]).toBe("test");
-    expect(file_record["context"]).toMatchObject({
-      code: "model.provider_failed",
-      request_id: "request-1",
-      severity: "warning",
+    expect(file_record["error"]).toMatchObject({
+      message: "model.provider_failed",
+      context: {
+        code: "model.provider_failed",
+        request_id: "request-1",
+        severity: "warning",
+      },
     });
     expect(log_manager.snapshot_events()[0]?.level).toBe("warning");
   });

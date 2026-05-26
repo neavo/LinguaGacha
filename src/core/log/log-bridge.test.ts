@@ -70,9 +70,12 @@ describe("log-bridge", () => {
     const file_record = JSON.parse(file_lines[0] ?? "{}") as Record<string, unknown>;
     expect(file_record["message"]).toBe("主进程异常");
     expect(file_record["source"]).toBe("electron-main");
-    expect(file_record["context"]).toMatchObject({ phase: "ready", error_name: "Error" });
-    expect(file_record["error_message"]).toBe("provider boom");
-    expect(String(file_record["stack"])).toContain("provider boom");
+    expect(file_record["error"]).toMatchObject({
+      name: "Error",
+      message: "provider boom",
+      context: { phase: "ready" },
+    });
+    expect(JSON.stringify(file_record["error"])).toContain("provider boom");
     expect(console_lines[0]).toContain("主进程异常");
     expect(log_manager.snapshot_events()).toMatchObject([
       {

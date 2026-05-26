@@ -8,7 +8,7 @@ import { serve } from "@hono/node-server";
 
 import { t_main_log } from "../log/log-text";
 import { record_app_error } from "../log/app-error-reporter";
-import { renderer_error_report_to_log_fields } from "../log/renderer-error-log-adapter";
+import { renderer_error_report_to_log_payload } from "../log/renderer-error-log-adapter";
 import type { LogEvent } from "../../shared/log";
 import type { CoreServices } from "../bootstrap/core-services";
 import { normalizeProjectDataSections } from "../../shared/project/event";
@@ -410,7 +410,7 @@ export class ApiGatewayServer {
       t_main_log("app.diagnostic.renderer.reported_error"),
       {
         source: "renderer",
-        ...renderer_error_report_to_log_fields(report),
+        ...renderer_error_report_to_log_payload(report),
       },
     );
 

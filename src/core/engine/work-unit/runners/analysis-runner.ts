@@ -14,10 +14,7 @@ import type { AnalysisWorkUnit, WorkUnitLogEntry } from "../../protocol/work-uni
 import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
 import { normalize_setting_snapshot } from "../../../../base/setting";
-import {
-  error_diagnostic_to_log_fields,
-  type ErrorDiagnosticPayload,
-} from "../../../../shared/error";
+import type { LogError } from "../../../../shared/error";
 
 interface AnalysisWorkUnitRequest {
   run_id: string; // run_id 用于隔离一次任务运行，worker 不用它访问项目状态
@@ -138,13 +135,13 @@ export class AnalysisWorkUnitRunner {
         glossary_entries: [],
       };
     }
-    if (llm_result.timeout || llm_result.degraded || llm_result.failure !== undefined) {
+    if (llm_result.timeout || llm_result.degraded || llm_result.request_error !== undefined) {
       const app_language = this.read_app_language(request.config_snapshot);
       const status_text = llm_result.timeout
         ? this.t(app_language, "app.log.response_checker_fail_timeout")
         : llm_result.degraded
           ? this.t(app_language, "app.log.response_checker_fail_degradation")
-          : this.t(app_language, "app.log.engine_task_exception");
+          : this.t(app_language, "app.log.request_failed_retry");
       return {
         success: false,
         stopped: false,
@@ -160,7 +157,7 @@ export class AnalysisWorkUnitRunner {
           response_think: llm_result.response_think,
           rule_analysis: "",
           status_text,
-          request_failure: llm_result.failure,
+          request_error: llm_result.request_error,
           app_language,
           level: "warning",
         }),
@@ -236,7 +233,7 @@ export class AnalysisWorkUnitRunner {
     response_think: string;
     rule_analysis: string;
     status_text: string;
-    request_failure?: ErrorDiagnosticPayload;
+    request_error?: LogError;
     app_language: unknown;
     level: WorkUnitLogEntry["level"];
   }): WorkUnitLogEntry[] {
@@ -287,9 +284,7 @@ export class AnalysisWorkUnitRunner {
       {
         level: context.level,
         message: `${rows.filter(Boolean).join("\n\n")}\n`,
-        ...(context.request_failure === undefined
-          ? {}
-          : error_diagnostic_to_log_fields(context.request_failure)),
+        ...(context.request_error === undefined ? {} : { error: context.request_error }),
       },
     ];
   }

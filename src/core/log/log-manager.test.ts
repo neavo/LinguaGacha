@@ -92,9 +92,8 @@ describe("LogManager", () => {
 
     log_manager.error(full_message, {
       context: { route: "/api/demo" },
-      error_message: "boom",
+      error: Object.assign(new Error("boom"), { stack: "Error: boom" }),
       source: "test",
-      stack: "Error: boom",
       targets: { console: false, file: false },
     });
 
@@ -110,9 +109,11 @@ describe("LogManager", () => {
     expect(detail).toMatchObject({
       id: "log-1",
       message: full_message,
-      error_message: "boom",
-      stack: "Error: boom",
-      context: { route: "/api/demo" },
+      error: {
+        message: "boom",
+        stack: "Error: boom",
+        context: { route: "/api/demo" },
+      },
     });
   });
 
@@ -169,7 +170,7 @@ describe("LogManager", () => {
     cleanup_callbacks.push(() => log_manager.shutdown());
 
     log_manager.error("文件日志", {
-      error_message: "boom",
+      error: new Error("boom"),
       source: "test",
       targets: { console: false, window: false },
     });
@@ -184,7 +185,7 @@ describe("LogManager", () => {
     expect(record["level_label"]).toBe("error");
     expect(record["time"]).toBe(now.toISOString());
     expect(record["source"]).toBe("test");
-    expect(record["error_message"]).toBe("boom");
+    expect(record["error"]).toMatchObject({ message: "boom" });
   });
 
   it("磁盘日志只保留最近 3 份 app.yyyymmdd.log", async () => {

@@ -16,7 +16,7 @@ import { WorkUnitExecutorTransportError } from "../work-unit/work-unit-transport
 import { TaskEngine } from "./engine";
 import type { PlanningWorkerPool } from "../planning/planning-worker-pool";
 import { TaskPlanner } from "../planning/task-planner";
-import { error_diagnostic_from_message } from "../../../shared/error";
+import { log_error_from_message } from "../../../shared/error";
 
 describe("TaskEngine", () => {
   const cleanup_paths: string[] = [];
@@ -228,7 +228,7 @@ describe("TaskEngine", () => {
           if (item_id === 1 && !failed_once_ids.has(item_id)) {
             failed_once_ids.add(item_id);
             throw new WorkUnitExecutorTransportError(
-              error_diagnostic_from_message("fetch failed"),
+              log_error_from_message("fetch failed"),
               new TypeError("fetch failed"),
             );
           }

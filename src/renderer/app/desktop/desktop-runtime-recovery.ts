@@ -5,7 +5,7 @@ import {
   type RendererErrorSource,
 } from "@/app/diagnostics/renderer-error-reporter";
 import type { TaskSnapshot } from "@/app/desktop/task-runtime-store";
-import type { ErrorDiagnosticContextInput, RendererErrorContextInput } from "@shared/error";
+import type { LogErrorContextInput, RendererErrorContextInput } from "@shared/error";
 import type { TaskType } from "@shared/task";
 
 export type RuntimeErrorReportArgs = {
@@ -13,7 +13,7 @@ export type RuntimeErrorReportArgs = {
     RendererErrorSource,
     "sse" | "project-mutation" | "settings" | "scheduler" | "runtime-recovery"
   >; // source 限定为运行态错误来源
-  triggeringEvent?: ErrorDiagnosticContextInput; // triggeringEvent 与 renderer error report 同形
+  triggeringEvent?: LogErrorContextInput; // triggeringEvent 与 renderer error report 同形
   context?: RendererErrorContextInput; // context 只允许 renderer error 白名单字段
 };
 
@@ -21,12 +21,12 @@ export type DesktopRuntimeRecoveryActions = {
   report_runtime_error: (error: unknown, args: RuntimeErrorReportArgs) => void;
   refresh_task_after_runtime_error: (
     reason: string,
-    triggering_event: ErrorDiagnosticContextInput | undefined,
+    triggering_event: LogErrorContextInput | undefined,
     task_type?: TaskType,
   ) => Promise<void>;
   refresh_project_runtime_after_error: (
     reason: string,
-    triggering_event: ErrorDiagnosticContextInput | undefined,
+    triggering_event: LogErrorContextInput | undefined,
     recovery_context?: RendererErrorContextInput,
   ) => Promise<void>;
 };
@@ -67,7 +67,7 @@ export function useDesktopRuntimeRecovery(
   const refresh_task_after_runtime_error = useCallback(
     async (
       reason: string,
-      triggering_event: ErrorDiagnosticContextInput | undefined,
+      triggering_event: LogErrorContextInput | undefined,
       task_type?: TaskType,
     ): Promise<void> => {
       const recovery_key = task_type ?? DEFAULT_TASK_RECOVERY_KEY;
@@ -103,7 +103,7 @@ export function useDesktopRuntimeRecovery(
   const refresh_project_runtime_after_error = useCallback(
     async (
       reason: string,
-      triggering_event: ErrorDiagnosticContextInput | undefined,
+      triggering_event: LogErrorContextInput | undefined,
       recovery_context: RendererErrorContextInput = {},
     ): Promise<void> => {
       const current_project_path = project_path.trim();

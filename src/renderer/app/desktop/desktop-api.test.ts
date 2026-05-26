@@ -244,8 +244,10 @@ describe("desktop-api", () => {
               level: "error",
               source: "engine-worker",
               message: "完整日志正文",
-              error_message: "boom",
-              stack: "Error: boom",
+              error: {
+                message: "boom",
+                stack: "Error: boom",
+              },
               context: { unit: "u1" },
             },
           },
@@ -263,6 +265,10 @@ describe("desktop-api", () => {
       level: "error",
       source: "engine-worker",
       message: "完整日志正文",
+      error: {
+        message: "boom",
+        stack: "Error: boom",
+      },
       context: { unit: "u1" },
     });
     expect(fetch_mock).toHaveBeenCalledWith(
@@ -306,7 +312,7 @@ describe("desktop-api", () => {
     const { report_renderer_error } = await import("./desktop-api");
     await report_renderer_error({
       source: "scheduler",
-      diagnostic: {
+      error: {
         message: "批量应用失败",
       },
       route: "workbench",
@@ -320,7 +326,7 @@ describe("desktop-api", () => {
       expect.objectContaining({
         body: JsonTool.stringifyStrict({
           source: "scheduler",
-          diagnostic: {
+          error: {
             message: "批量应用失败",
           },
           route: "workbench",

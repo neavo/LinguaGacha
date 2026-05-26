@@ -2,12 +2,8 @@ import process from "node:process";
 
 import type { LogManager } from "./log-manager";
 import { format_console_log } from "./log-console-formatter";
-import type { LogAppendPayload, LogLevel } from "../../shared/log";
-import {
-  error_diagnostic_to_log_fields,
-  sanitize_error_diagnostic_context,
-  to_error_diagnostic,
-} from "../../shared/error";
+import type { LogLevel } from "../../shared/log";
+import { to_log_error, type LogError } from "../../shared/error";
 
 let active_log_manager: LogManager | null = null;
 
@@ -29,14 +25,13 @@ export function write_electron_main_warning(
   payload: { error?: unknown; context?: Record<string, unknown> } = {},
 ): void {
   const log_manager = get_electron_main_log_manager();
-  const normalized = normalize_log_error_payload(payload);
   if (log_manager === null) {
-    write_fallback_console_log("warning", message, normalized);
+    write_fallback_console_log("warning", message, payload);
     return;
   }
   log_manager.warning(message, {
     source: "electron-main",
-    ...normalized,
+    ...payload,
   });
 }
 
@@ -46,14 +41,13 @@ export function write_electron_main_debug(
   payload: { error?: unknown; context?: Record<string, unknown> } = {},
 ): void {
   const log_manager = get_electron_main_log_manager();
-  const normalized = normalize_log_error_payload(payload);
   if (log_manager === null) {
-    write_fallback_console_log("debug", message, normalized);
+    write_fallback_console_log("debug", message, payload);
     return;
   }
   log_manager.debug(message, {
     source: "electron-main",
-    ...normalized,
+    ...payload,
   });
 }
 
@@ -63,51 +57,45 @@ export function write_electron_main_error(
   payload: { error?: unknown; context?: Record<string, unknown> } = {},
 ): void {
   const log_manager = get_electron_main_log_manager();
-  const normalized = normalize_log_error_payload(payload);
   if (log_manager === null) {
-    write_fallback_console_log("error", message, normalized);
+    write_fallback_console_log("error", message, payload);
     return;
   }
   log_manager.error(message, {
     source: "electron-main",
-    ...normalized,
+    ...payload,
   });
-}
-
-// normalize_log_error_payload 在边界处归一化输入，避免下游再处理坏载荷分支。
-function normalize_log_error_payload(payload: {
-  error?: unknown;
-  context?: Record<string, unknown>;
-}): {
-  error_message?: string;
-  stack?: string;
-  context?: Record<string, unknown>;
-} {
-  const context =
-    payload.context === undefined ? undefined : sanitize_error_diagnostic_context(payload.context);
-  if (payload.error === undefined) {
-    return context === undefined || Object.keys(context).length === 0 ? {} : { context };
-  }
-  return error_diagnostic_to_log_fields(to_error_diagnostic(payload.error, context ?? {}));
 }
 
 // write_fallback_console_log 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function write_fallback_console_log(
   level: Extract<LogLevel, "debug" | "warning" | "error">,
   message: string,
-  normalized: { error_message?: string; stack?: string },
+  payload: { error?: unknown; context?: Record<string, unknown> },
 ): void {
-  const payload: LogAppendPayload = {
-    level,
-    message,
-    source: "electron-main",
-    error_message: normalized.error_message,
-    stack: normalized.stack,
-  };
-  const text = format_console_log(payload, new Date());
+  const normalized_error = normalize_fallback_error(payload);
+  const text = format_console_log(
+    {
+      level,
+      message,
+      ...(normalized_error === undefined ? {} : { error: normalized_error }),
+    },
+    new Date(),
+  );
   if (level === "error") {
     process.stderr.write(text);
   } else {
     process.stdout.write(text);
   }
+}
+
+// normalize_fallback_error 保持无 LogManager 时的控制台输出与正式写入口一致。
+function normalize_fallback_error(payload: {
+  error?: unknown;
+  context?: Record<string, unknown>;
+}): LogError | undefined {
+  if (payload.error !== undefined) {
+    return to_log_error(payload.error, payload.context ?? {});
+  }
+  return undefined;
 }

@@ -60,7 +60,7 @@ describe("AnthropicTransport", () => {
       response_result: "",
       input_tokens: 2,
       output_tokens: 4,
-      failure: {
+      request_error: {
         message: "供应商返回长度截断。",
         context: { stop_reason: "max_tokens" },
       },

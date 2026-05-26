@@ -382,7 +382,7 @@ export class FileExportService {
       this.export_log_text(config, "app.diagnostic.file_export.write_file_failed"),
       {
         source: FILE_EXPORT_LOG_SOURCE,
-        ...AppErrors.error_diagnostic_to_log_fields(AppErrors.to_error_diagnostic(error)),
+        error,
       },
     );
   }
@@ -395,7 +395,7 @@ export class FileExportService {
       this.export_log_text(config, "app.diagnostic.file_export.open_output_folder_failed"),
       {
         source: FILE_EXPORT_LOG_SOURCE,
-        ...AppErrors.error_diagnostic_to_log_fields(AppErrors.to_error_diagnostic(error)),
+        error,
       },
     );
   }
@@ -408,7 +408,7 @@ export class FileExportService {
       this.export_log_text(config, "app.diagnostic.file_export.translation_failed"),
       {
         source: FILE_EXPORT_LOG_SOURCE,
-        ...AppErrors.error_diagnostic_to_log_fields(AppErrors.to_error_diagnostic(error)),
+        error,
       },
     );
   }

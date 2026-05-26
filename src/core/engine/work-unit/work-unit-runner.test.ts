@@ -147,7 +147,7 @@ describe("work-unit runner", () => {
     const runner = new TranslationWorkUnitRunner(
       app_root,
       create_llm_client([], {
-        failure: {
+        request_error: {
           name: "ProviderError",
           message: "供应商爆炸",
           stack: "ProviderError: 供应商爆炸\n    at request",
@@ -183,11 +183,13 @@ describe("work-unit runner", () => {
     expect(result.outcome).toBe("failed");
     expect(result.logs[0]).toMatchObject({
       level: "error",
-      error_message: "供应商爆炸",
-      stack: "ProviderError: 供应商爆炸\n    at request",
-      context: {
-        provider: "openai-compatible",
-        error_name: "ProviderError",
+      error: {
+        name: "ProviderError",
+        message: "供应商爆炸",
+        stack: "ProviderError: 供应商爆炸\n    at request",
+        context: {
+          provider: "openai-compatible",
+        },
       },
     });
     expect(result.logs[0]?.message).toContain("模型请求失败");

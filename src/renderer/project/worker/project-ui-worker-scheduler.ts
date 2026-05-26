@@ -6,7 +6,7 @@ import type {
   ProjectUiWorkerRequestPayload,
   ProjectUiWorkerResponse,
 } from "@/project/worker/project-ui-worker-protocol";
-import type { ErrorDiagnosticPayload } from "@shared/error";
+import type { LogError } from "@shared/error";
 
 export type ProjectUiWorkerPriority = "foreground" | "normal" | "background" | "disposable";
 
@@ -39,9 +39,9 @@ const PROJECT_UI_WORKER_PRIORITY_RANK: Readonly<Record<ProjectUiWorkerPriority, 
  */
 function create_project_ui_worker_error(
   code: ProjectUiWorkerClientErrorCode,
-  diagnostic?: ErrorDiagnosticPayload,
+  log_error?: LogError,
 ): Error {
-  return new ProjectUiWorkerClientError(code, diagnostic);
+  return new ProjectUiWorkerClientError(code, log_error);
 }
 
 // ProjectUiWorkerScheduler 收口当前模块的状态和副作用边界，避免调用方分散维护同一流程。
@@ -248,7 +248,7 @@ export class ProjectUiWorkerScheduler {
     } else if (message.ok) {
       task.resolve(message.result);
     } else {
-      task.reject(create_project_ui_worker_error("execution_failed", message.error_diagnostic));
+      task.reject(create_project_ui_worker_error("execution_failed", message.error));
     }
     this.dispatch_next();
   }

@@ -43,19 +43,21 @@ describe("shared/error", () => {
     });
 
     expect(projection.level).toBe("error");
-    expect(projection.context).toMatchObject({
+    expect(projection.error.context).toMatchObject({
       code: "runtime.internal_invariant",
       request_id: "request-1",
       public_details: { request: "safe" },
-      cause_chain: [{ name: "Error", message: "底层失败" }],
     });
+    expect(projection.error.cause_chain).toEqual([
+      expect.objectContaining({ name: "Error", message: "底层失败" }),
+    ]);
   });
 
   it("expected 错误默认只进入 debug 诊断等级", () => {
     const projection = to_app_error_log_projection(new RequestValidationError());
 
     expect(projection.level).toBe("debug");
-    expect(projection.context["severity"]).toBe("expected");
+    expect(projection.error.context?.["severity"]).toBe("expected");
   });
 
   it("运行能力错误保留统一诊断上下文", () => {

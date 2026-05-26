@@ -2,8 +2,8 @@ import { report_renderer_error } from "@/app/desktop/desktop-api";
 import {
   create_renderer_error_report,
   normalize_renderer_diagnostics_payload,
-  type ErrorDiagnosticContextInput,
-  type ErrorDiagnosticPayload,
+  type LogErrorContextInput,
+  type LogError,
   type RendererDiagnosticsContext,
   type RendererDiagnosticsPayload,
   type RendererErrorContextInput,
@@ -23,8 +23,8 @@ export type RendererErrorSource =
 
 export type RendererErrorCaptureOptions = {
   source: RendererErrorSource; // source 表示 renderer 内部错误来源
-  diagnostic?: ErrorDiagnosticPayload; // diagnostic 允许 worker 等边界传入既有结构化错误快照
-  triggeringEvent?: ErrorDiagnosticContextInput; // triggeringEvent 记录导致异常的事件头
+  logError?: LogError; // logError 允许 worker 等边界传入既有结构化错误快照
+  triggeringEvent?: LogErrorContextInput; // triggeringEvent 记录导致异常的事件头
   context?: RendererErrorContextInput; // context 只允许 renderer error 白名单字段
   dedupeKey?: string; // dedupeKey 用于调用点覆盖默认去重签名
 };
@@ -49,7 +49,7 @@ export function update_renderer_diagnostics_context(context: RendererDiagnostics
 /**
  * 记录运行态关键事件面包屑，给原生 renderer 崩溃日志补齐最后的业务触发点。
  */
-export function record_renderer_diagnostics_event(event: ErrorDiagnosticContextInput): void {
+export function record_renderer_diagnostics_event(event: LogErrorContextInput): void {
   report_renderer_diagnostics_to_main(normalize_renderer_diagnostics_payload({ event }));
 }
 
@@ -60,7 +60,7 @@ export function capture_renderer_error(error: unknown, options: RendererErrorCap
   const report = create_renderer_error_report({
     source: options.source,
     error,
-    diagnostic: options.diagnostic,
+    logError: options.logError,
     diagnosticsContext: diagnostics_context,
     triggeringEvent: options.triggeringEvent,
     context: options.context,
@@ -113,8 +113,8 @@ export function install_renderer_global_error_handlers(): () => void {
 
 // build_error_signature 构造跨层载荷，保证字段形状在一个入口维护。
 function build_error_signature(report: RendererErrorReport): string {
-  const stack_head = report.diagnostic.stack?.split("\n").slice(0, 3).join("\n") ?? "";
-  return [report.source, report.diagnostic.message, stack_head, report.route ?? ""].join("|");
+  const stack_head = report.error.stack?.split("\n").slice(0, 3).join("\n") ?? "";
+  return [report.source, report.error.message, stack_head, report.route ?? ""].join("|");
 }
 
 // is_recent_error_signature 集中表达布尔判定口径，避免调用方按局部字段猜测。

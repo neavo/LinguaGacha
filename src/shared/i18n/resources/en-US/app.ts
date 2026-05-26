@@ -303,6 +303,7 @@ export const en_us_app = {
     response_checker_fail_degradation: "Degradation Occurred",
     response_checker_fail_line_count: "Line Count Mismatch",
     response_checker_fail_request: "Model Request Failed",
+    request_failed_retry: "Model request failed, will automatically retry …",
     response_checker_fail_timeout: "Network Request Timeout",
     response_checker_line_error_empty_line: "Empty Line",
     response_checker_line_error_hangeul: "Hangeul Residue",

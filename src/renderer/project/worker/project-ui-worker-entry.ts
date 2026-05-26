@@ -4,7 +4,7 @@ import type {
   ProjectUiWorkerRequest,
   ProjectUiWorkerResponse,
 } from "@/project/worker/project-ui-worker-protocol";
-import { to_error_diagnostic } from "@shared/error";
+import { to_log_error } from "@shared/error";
 
 const worker_scope = self; // worker_scope 保留 DedicatedWorkerGlobalScope 语义，避免和 window 全局混淆
 const proofreading_service = createProofreadingUiWorkerService(); // 单 worker 内共享校对派生缓存，按 project.dispose 显式释放
@@ -69,7 +69,7 @@ worker_scope.addEventListener("message", (event: MessageEvent<ProjectUiWorkerReq
       const response: ProjectUiWorkerResponse = {
         id: request.id,
         ok: false,
-        error_diagnostic: to_error_diagnostic(error, {
+        error: to_log_error(error, {
           worker_message_type: request.type,
         }),
       };

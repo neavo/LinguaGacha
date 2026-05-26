@@ -116,7 +116,7 @@ describe("planning-worker-entry", () => {
       expect.objectContaining({
         id: "count-2",
         ok: false,
-        error_diagnostic: expect.objectContaining({
+        error: expect.objectContaining({
           message: "规划 token 计数已取消。",
           context: expect.objectContaining({
             worker_message_type: "count_tokens",

@@ -6,7 +6,7 @@ import type { DesktopRuntimeRefreshScheduler } from "@/app/desktop/desktop-runti
 import { record_renderer_diagnostics_event } from "@/app/diagnostics/renderer-error-reporter";
 import type { ProjectStoreChangeEvent, ProjectStoreStage } from "@/project/store/project-store";
 import type { ProjectChangeEventPayload } from "@/app/desktop/desktop-project-change-normalizer";
-import type { ErrorDiagnosticContextInput } from "@shared/error";
+import type { LogErrorContextInput } from "@shared/error";
 import { PROJECT_CHANGE_EVENT_TOPIC } from "@shared/project/event";
 
 export type { ProjectChangeEventPayload } from "@/app/desktop/desktop-project-change-normalizer";
@@ -80,7 +80,7 @@ export function useDesktopRuntimeProjectEventPipeline(
   const recover_unmergeable_project_event = useCallback(
     async (args: {
       scheduler: DesktopRuntimeRefreshScheduler;
-      triggeringEvent: ErrorDiagnosticContextInput;
+      triggeringEvent: LogErrorContextInput;
       isCancelled: () => boolean;
     }): Promise<void> => {
       args.scheduler.flush();
@@ -109,7 +109,7 @@ export function useDesktopRuntimeProjectEventPipeline(
     DesktopRuntimeProjectEventPipeline["handleProjectDataChangedPayload"]
   >(
     async ({ payload, scheduler, isCancelled }) => {
-      let triggering_event: ErrorDiagnosticContextInput = {
+      let triggering_event: LogErrorContextInput = {
         topic: PROJECT_CHANGE_EVENT_TOPIC,
       };
       try {

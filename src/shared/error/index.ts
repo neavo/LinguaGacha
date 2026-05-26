@@ -1,7 +1,6 @@
 export * from "./app-error";
 export * from "./api-error";
 export * from "./log-error";
-export * from "./error-diagnostic";
 export * from "./renderer-diagnostics";
 export * from "./renderer-error-report";
 export * from "./errors/request-errors";

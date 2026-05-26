@@ -200,6 +200,13 @@ export class AppError extends Error {
   public constructor(options: AppErrorOptions) {
     const definition = APP_ERROR_DEFINITIONS[options.code];
     super(options.code, options.cause === undefined ? undefined : { cause: options.cause });
+    if (options.cause !== undefined && this.cause === undefined) {
+      Object.defineProperty(this, "cause", {
+        value: options.cause,
+        configurable: true,
+        writable: true,
+      });
+    }
     this.name = new.target.name;
     this.code = options.code;
     this.severity = definition.severity;

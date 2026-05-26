@@ -179,7 +179,7 @@ describe("project-ui-worker-entry", () => {
       expect.objectContaining({
         id: 2,
         ok: false,
-        error_diagnostic: expect.objectContaining({
+        error: expect.objectContaining({
           message: "dispose_failed",
           context: expect.objectContaining({
             worker_message_type: "project.dispose",

@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  AppError,
-  InternalInvariantError,
-  RuntimeCancelledError,
-  to_error_diagnostic,
-} from "./index";
+import { AppError, InternalInvariantError, RuntimeCancelledError, to_log_error } from "./index";
 
 describe("shared error barrel", () => {
   it("统一导出 renderer、core 和测试共用的错误基类与诊断工具", () => {
@@ -20,7 +15,7 @@ describe("shared error barrel", () => {
     expect(error.diagnostic_context).toEqual({
       source: "barrel-test",
     });
-    expect(to_error_diagnostic(error, error.diagnostic_context)).toMatchObject({
+    expect(to_log_error(error, error.diagnostic_context)).toMatchObject({
       name: "InternalInvariantError",
       message: "runtime.internal_invariant",
       context: {

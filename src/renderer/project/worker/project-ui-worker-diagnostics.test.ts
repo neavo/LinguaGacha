@@ -39,7 +39,7 @@ describe("capture_project_ui_worker_error", () => {
       expect.any(ProjectUiWorkerClientError),
       {
         source: "worker",
-        diagnostic: {
+        logError: {
           name: "Error",
           message: "worker 爆炸",
           stack: "Error: worker 爆炸\n    at run",

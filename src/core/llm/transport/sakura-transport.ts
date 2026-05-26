@@ -21,7 +21,7 @@ export class SakuraTransport extends OpenAICompatibleTransport {
     signal: AbortSignal,
   ): Promise<LLMRequestResult> {
     const result = await super.send(policy, signal);
-    if (result.response_result === "" || result.failure !== undefined) {
+    if (result.response_result === "" || result.request_error !== undefined) {
       return result;
     }
     return { ...result, response_result: this.convert_sakura_response(result.response_result) };

@@ -46,7 +46,7 @@ describe("renderer error reporter", () => {
     expect(report_renderer_error_mock).toHaveBeenCalledWith(
       expect.objectContaining({
         source: "scheduler",
-        diagnostic: expect.objectContaining({
+        error: expect.objectContaining({
           message: "批量应用失败",
         }),
         route: "workbench",
@@ -95,7 +95,7 @@ describe("renderer error reporter", () => {
     expect(report_renderer_error_mock).toHaveBeenCalledWith(
       expect.objectContaining({
         source: "global",
-        diagnostic: expect.objectContaining({
+        error: expect.objectContaining({
           message: "全局爆炸",
         }),
         context: expect.objectContaining({
@@ -126,7 +126,7 @@ describe("renderer error reporter", () => {
   it("显式传入 worker 结构化诊断时保留原始失败快照", () => {
     capture_renderer_error(new Error("project_ui_worker_execution_failed"), {
       source: "worker",
-      diagnostic: {
+      logError: {
         name: "Error",
         message: "worker 爆炸",
         stack: "Error: worker 爆炸\n    at run",
@@ -142,7 +142,7 @@ describe("renderer error reporter", () => {
     expect(report_renderer_error_mock).toHaveBeenCalledWith(
       expect.objectContaining({
         source: "worker",
-        diagnostic: expect.objectContaining({
+        error: expect.objectContaining({
           message: "worker 爆炸",
           context: {
             worker_message_type: "quality.compute_statistics",

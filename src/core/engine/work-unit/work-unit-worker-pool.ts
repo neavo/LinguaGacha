@@ -11,11 +11,11 @@ import type { WorkUnitExecutor } from "./work-unit-executor";
 import { WorkUnitExecutorTransportError } from "./work-unit-transport-error";
 import { resolve_default_worker_count } from "../../../shared/worker-capacity";
 import {
-  normalize_error_diagnostic,
+  normalize_log_error,
   RuntimeCancelledError,
   RuntimeDisposedError,
-  to_error_diagnostic,
-  type ErrorDiagnosticPayload,
+  to_log_error,
+  type LogError,
 } from "../../../shared/error";
 import type { WorkUnitLogEntry } from "../protocol/work-unit";
 import type { SystemProxySnapshot } from "../../bootstrap/system-proxy-dispatcher";
@@ -215,7 +215,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
       (error: unknown) =>
         this.finish_in_process_task(task.id, {
           ok: false,
-          error_diagnostic: to_error_diagnostic(error, { execution: "in_process" }),
+          error: to_log_error(error, { execution: "in_process" }),
         }),
     );
   }
@@ -257,12 +257,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
     };
     slot.worker.on(
       "message",
-      (message: {
-        id: string;
-        ok: boolean;
-        data?: unknown;
-        error_diagnostic?: ErrorDiagnosticPayload;
-      }) => {
+      (message: { id: string; ok: boolean; data?: unknown; error?: LogError }) => {
         this.finish_slot_message(slot, message);
       },
     );
@@ -298,7 +293,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
       id: string;
       ok: boolean;
       data?: unknown;
-      error_diagnostic?: ErrorDiagnosticPayload;
+      error?: LogError;
     },
   ): void {
     const task = slot.in_flight.get(message.id);
@@ -315,7 +310,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
    */
   private finish_in_process_task(
     id: string,
-    message: { ok: boolean; data?: unknown; error_diagnostic?: ErrorDiagnosticPayload },
+    message: { ok: boolean; data?: unknown; error?: LogError },
   ): void {
     const task = this.in_process_in_flight.get(id);
     if (task === undefined) {
@@ -339,7 +334,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
       this.clear_task_listener(task);
       task.reject(
         new WorkUnitExecutorTransportError(
-          to_error_diagnostic(error, { worker_failure: "slot_error" }),
+          to_log_error(error, { worker_failure: "slot_error" }),
           error,
         ),
       );
@@ -380,7 +375,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
       id: string;
       ok: boolean;
       data?: unknown;
-      error_diagnostic?: ErrorDiagnosticPayload;
+      error?: LogError;
     },
   ): void {
     if (message.ok) {
@@ -389,7 +384,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
     }
     task.reject(
       new WorkUnitExecutorTransportError(
-        normalize_error_diagnostic(message.error_diagnostic, "work unit 执行失败。"),
+        normalize_log_error(message.error, "work unit 执行失败。"),
         null,
       ),
     );

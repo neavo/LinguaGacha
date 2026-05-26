@@ -1,7 +1,12 @@
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { normalize_core_api_base_url } from "@core/api/core-api-endpoint";
 import { normalize_log_level, type LogDetail, type LogEvent, type LogLevel } from "@shared/log";
-import type { ApiErrorPayload, AppErrorCode, RendererErrorReport } from "@shared/error";
+import {
+  normalize_log_error,
+  type ApiErrorPayload,
+  type AppErrorCode,
+  type RendererErrorReport,
+} from "@shared/error";
 
 export type { LogDetail, LogEvent, LogLevel };
 
@@ -559,9 +564,12 @@ function normalize_log_detail(payload: unknown): LogDetail | null {
     level: normalize_log_level(detail["level"]),
     source: detail["source"],
     message: detail["message"],
-    error_message:
-      typeof detail["error_message"] === "string" ? detail["error_message"] : undefined,
-    stack: typeof detail["stack"] === "string" ? detail["stack"] : undefined,
+    error:
+      typeof detail["error"] === "object" &&
+      detail["error"] !== null &&
+      !Array.isArray(detail["error"])
+        ? normalize_log_error(detail["error"], "unknown_log_error")
+        : undefined,
     context:
       typeof detail["context"] === "object" &&
       detail["context"] !== null &&

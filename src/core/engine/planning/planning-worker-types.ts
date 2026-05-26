@@ -1,5 +1,5 @@
 import type { TaskTokenCountInput, TaskTokenCountResult } from "./token-metric-cache";
-import type { ErrorDiagnosticPayload } from "../../../shared/error";
+import type { LogError } from "../../../shared/error";
 
 /**
  * planning worker 的 token 计算请求；id 只服务线程消息匹配，不进入任务事实。
@@ -30,5 +30,5 @@ export interface PlanningWorkerOutgoingMessage {
   id: string;
   ok: boolean;
   data?: TaskTokenCountResult[];
-  error_diagnostic?: ErrorDiagnosticPayload;
+  error?: LogError;
 }

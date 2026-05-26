@@ -657,7 +657,9 @@ describe("ModelService 远端模型能力", () => {
       ["warning", "失败的密钥：\n*******"],
     ]);
     expect(log_entries[8]?.payload).toMatchObject({
-      error_message: "请求超时（120 秒）",
+      error: {
+        message: "请求超时（120 秒）",
+      },
       source: "model",
     });
   });

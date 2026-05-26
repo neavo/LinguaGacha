@@ -23,9 +23,7 @@ export function record_app_error(error: AppError, options: RecordAppErrorOptions
   });
   const payload = {
     source: options.source,
-    context: projection.context,
-    error_message: projection.error_message,
-    stack: projection.stack,
+    error: projection.error,
   };
 
   switch (projection.level) {
