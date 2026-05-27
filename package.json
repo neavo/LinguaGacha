@@ -15,6 +15,9 @@
     "postinstall": "node ./node_modules/electron/install.js",
     "test": "vitest run --config buildtools/vitest/vitest.config.ts"
   },
+  "overrides": {
+    "yauzl": "3.3.1"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.96.0",
     "@codemirror/commands": "^6.10.3",
