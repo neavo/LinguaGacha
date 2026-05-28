@@ -35,22 +35,22 @@ flowchart LR
 - 启动 hydration 并行读取 `/api/settings/app`、`/api/project/snapshot`、`/api/tasks/snapshot`；这一步不能通过卸载工程来“重置”Core 会话。
 - `TaskRuntimeStore` 只缓存 `TaskSnapshot`，并用 `runtime_revision` 丢弃旧 snapshot；task 不进入项目 query 或页面派生缓存。
 - settings 只能由后端设置载荷同步，task 只能由后端 task 载荷或任务命令 ack 同步，project identity 只能由后端项目载荷同步。
-- 页面 mutation 只能提交用户意图、设置镜像和后端 query 返回的依赖 revision，并必须通过 `commit_project_mutation` 携带页面领域拥有的显式 `operation` 进入统一提交管线；页面不能自建刷新、诊断或 mutation result 应用链路，也不能把派生 items、task extras、prefilter config 或 analysis extras 当后端事实提交。
+- 页面写入只能提交用户意图、设置镜像和后端 query 返回的依赖 revision，并必须通过 `commit_project_mutation` 携带页面领域拥有的显式 `operation` 进入统一提交管线；页面不能自建刷新、诊断或写入结果应用链路，也不能把派生 items、task extras、prefilter config 或 analysis extras 当后端事实提交。
 
 ## 3. 项目初始化、事件和刷新
 
 - 已加载工程刷新时，前端只校验后端项目身份和 revision，不读取完整项目大 section。
 - `DesktopRuntimeProvider` 维护项目身份 `path + epoch + phase`；项目切换、同路径重新初始化 session 或迟到事件都必须过这道身份闸门。
-- session 初始化期间，同项目身份的 mutation result 和 `project.data_changed` 先进入队列；项目身份确认后再按原顺序重放。
-- 同步 mutation result 与 SSE 统一归一成轻量项目刷新信号；页面按自身 query 参数重新读取 view model，不能在 renderer 合并项目事实。
-- `DesktopRuntimeRefreshScheduler` 只合并可延迟的 task snapshot 和项目刷新信号；项目切换、设置刷新、mutation result 和任务终态必须先冲刷窗口。
-- flush、SSE 和 mutation 异常必须写 renderer 诊断，并经 `useDesktopRuntimeRecovery` 发起可等待、可去重的后端权威 query 恢复；当前项目有效事件不能静默丢弃。
+- session 初始化期间，同项目身份的写入结果和 `project.data_changed` 先进入队列；项目身份确认后再按原顺序重放。
+- 同步写入结果与 SSE 统一归一成轻量项目刷新信号；页面按自身 query 参数重新读取 view model，不能在 renderer 合并项目事实。
+- `DesktopRuntimeRefreshScheduler` 只合并可延迟的 task snapshot 和项目刷新信号；项目切换、设置刷新、写入结果和任务终态必须先冲刷窗口。
+- flush、SSE 和写入异常必须写 renderer 诊断，并经 `useDesktopRuntimeRecovery` 发起可等待、可去重的后端权威 query 恢复；当前项目有效事件不能静默丢弃。
 
 ## 4. 页面 Query 与局部状态
 
-- renderer 与 Core 共享的数据实体和值对象从 `src/base` 导入；跨运行时纯规则、协议词表和工具从 `src/shared` 导入；最终项目 mutation 派生算法只属于 Core，renderer 不导入或复刻。
+- renderer 与 Core 共享的数据实体和值对象从 `src/base` 导入；跨运行时纯规则、协议词表和工具从 `src/shared` 导入；最终项目写入派生算法只属于 Core，renderer 不导入或复刻。
 - 页面读取项目事实只能通过 `src/renderer/project/query/*` 包装的 `/api/project/query/*`；页面状态只保存 query 参数、结果 view model、窗口缓存和交互态。
-- query response 的 `sectionRevisions` 是页面 mutation 的乐观锁来源；页面不得从本地缓存、task 状态或时间戳推导 revision。
+- query response 的 `sectionRevisions` 是页面写入的乐观锁来源；页面不得从本地缓存、task 状态或时间戳推导 revision。
 - 质量规则页面使用 `QualityRule` / `Prompt` 派生出的公开 key 与归一化切片；请求预设时传公开 rule type，不传物理目录名。
 - 源语言与目标语言控件分别消费 `SOURCE_LANGUAGE_CODES` 与 `TARGET_LANGUAGE_CODES`；`ALL` 只作为源语言过滤关闭值，不进入目标语言控件。
 
@@ -79,6 +79,6 @@ flowchart LR
 
 - 改 preload 暴露能力、`window.desktopApp` 类型、GUI 契约白名单、IPC 或 Core API 接入方式，更新本文。
 - 改 `desktop-api.ts` 的 health probe、响应壳、错误、本地网络错误、SSE 或外部网络检查语义，更新本文。
-- 改项目身份、session 初始化、mutation result、payload mode、revision 来源或页面 query 恢复策略，更新本文并同步 [`docs/BACKEND.md`](BACKEND.md)。
+- 改项目身份、session 初始化、写入结果、payload mode、revision 来源或页面 query 恢复策略，更新本文并同步 [`docs/BACKEND.md`](BACKEND.md)。
 - 改导航注册、`ProjectSessionProvider`、页面派生缓存、项目 UI 状态、Core 校对 query 消费方式或质量规则统计共享缓存策略，更新本文。
 - 改 i18n、可见文案、样式 token、px-first、基础组件视觉边界或设计系统消费方式，更新本文；产品 / 设计权威仍回到 `PRODUCT.md` / `DESIGN.md`。

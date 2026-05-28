@@ -11,7 +11,7 @@ import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { CoreServices } from "../bootstrap/core-services";
 import { ProjectDatabase } from "../database/database-operations";
-import type { CoreWorkerExecution } from "../worker/core-worker-execution";
+import type { CoreWorkerExecution } from "../worker/worker-execution";
 import { type FileLogWriter, LogManager } from "../log/log-manager";
 import { ApiGatewayServer } from "./api-gateway-server";
 

@@ -14,7 +14,7 @@ export const TASK_REQUEST_PRESSURE_PUBLISH_INTERVAL_MS = 500; // 请求压力展
  * 任务运行态公开 stream 唯一出口，负责写状态、构建完整快照并发布 SSE
  */
 export class TaskRuntimePublisher {
-  private readonly api_stream_hub: ApiStreamHub; // api_stream_hub 只负责广播完整快照，不再投影 task 局部消息
+  private readonly api_stream_hub: ApiStreamHub; // api_stream_hub 只负责广播完整快照，不再数据读取 task 局部消息
 
   private readonly runtime_state: TaskRuntimeState; // runtime_state 是 busy/status/request pressure 的唯一写入目标
 

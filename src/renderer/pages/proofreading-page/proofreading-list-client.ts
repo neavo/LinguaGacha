@@ -46,7 +46,7 @@ export type ProofreadingListClient = {
 let shared_proofreading_list_client: ProofreadingListClient | null = null;
 
 /**
- * 创建校对列表 client；页面通过 Core read model 获取校对列表和窗口数据。
+ * 创建校对列表 client；页面通过 Core query runtime 获取校对列表和窗口数据。
  */
 export function createProofreadingListClient(): ProofreadingListClient {
   return {

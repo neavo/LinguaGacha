@@ -25,12 +25,12 @@ describe("后端边界规则", () => {
       write_good_backend_project(project_root);
       write_project_file(
         project_root,
-        "src/core/service/bad-route.ts",
+        "src/core/workbench/bad-route.ts",
         "app.get('/api/bad', () => {});",
       );
       write_project_file(
         project_root,
-        "src/core/service/bad-storage.ts",
+        "src/core/workbench/bad-storage.ts",
         `
           import fs from "node:fs";
           import { DatabaseSync } from "node:sqlite";
@@ -60,11 +60,11 @@ describe("后端边界规则", () => {
 
       const messages = run_backend_rules(project_root).map((error) => error.message);
 
-      expect(messages).toContain("/api/* 路由只能在 api-gateway-server.ts 注册");
+      expect(messages).toContain("/api/* 路由只能在 api-gateway-server.ts 或 api/routes 注册");
       expect(messages).toContain("生产代码真实磁盘 IO 必须经 src/native/native-fs.ts");
       expect(messages).toContain("SQLite 连接生命周期只允许落在 database 或 migration 边界");
       expect(messages).toContain(
-        "APP_ERROR_DEFINITIONS 只能保存投影策略，用户可见文案必须放在 i18n 资源",
+        "APP_ERROR_DEFINITIONS 只能保存数据读取策略，用户可见文案必须放在 i18n 资源",
       );
       expect(messages).toContain("公开 SSE data 必须使用 JsonTool.stringifyStrict 序列化");
     } finally {
@@ -90,7 +90,7 @@ function write_good_backend_project(project_root) {
     project_root,
     "src/core/api/api-gateway-server.ts",
     `
-      import { JsonTool } from "../../../shared/utils/json-tool";
+      import { JsonTool } from "../../src/shared/utils/json-tool";
       app.get("/api/health", () => {});
       app.all("*", () => {});
       function post_json(app, path_name) {

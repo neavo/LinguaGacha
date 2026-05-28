@@ -59,17 +59,17 @@ function create_core_services_options(): CoreServicesOptions {
 }
 
 describe("CoreServices", () => {
-  it("装配 AppEventBus、AppSessionCache 和 ProjectQueryService 到同一个组合根", () => {
+  it("装配 ProjectEventBus、ProjectDataCache 和 WorkbenchQueryService 到同一个组合根", () => {
     const services = new CoreServices(create_core_services_options());
 
-    expect(services.app_event_bus).toBeDefined();
-    expect(services.app_session_cache).toBeDefined();
-    expect(services.app_session_proofreading_cache).toBeDefined();
-    expect(services.project_query_service).toBeDefined();
-    expect(services.proofreading_query_service).toBeDefined();
-    expect(services.proofreading_query_worker).toBeDefined();
-    expect(services.project_service).toBeDefined();
-    expect(services.project_task_store).toBeDefined();
+    expect(services.project).toBeDefined();
+    expect(services.workbench).toBeDefined();
+    expect(services.proofreading).toBeDefined();
+    expect(services.quality).toBeDefined();
+    expect(services.analysis).toBeDefined();
+    expect(services.export).toBeDefined();
+    expect(services.engine).toBeDefined();
+    expect(services.streams).toBeDefined();
   });
 
   it("启动和释放时只管理组合根拥有的运行期资源", async () => {

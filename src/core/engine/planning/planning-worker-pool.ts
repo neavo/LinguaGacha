@@ -9,7 +9,7 @@ import {
   WorkerExecutionFailedError,
 } from "../../../shared/error";
 import { resolve_default_worker_count } from "../../../shared/utils/worker-capacity-tool";
-import type { CoreWorkerExecution } from "../../worker/core-worker-execution";
+import type { CoreWorkerExecution } from "../../worker/worker-execution";
 import { create_o200k_base_token_counter, type TokenCounter } from "../core/token-counter";
 import type {
   PlanningWorkerIncomingMessage,

@@ -22,40 +22,21 @@ function create_translate_command(): CLICommandOptions {
 }
 
 function create_core_services() {
-  const execute_transaction = vi.fn();
-  const execute = vi.fn(() => {
-    return {
-      "project_runtime_revision.quality": 1,
-      "project_runtime_revision.prompts": 2,
-    };
-  });
-  const publish = vi.fn(async () => []);
+  const commit_cli_resource_operations = vi.fn(async () => undefined);
   return {
-    database: {
-      execute_transaction,
-      execute,
-    },
-    app_event_bus: {
-      publish,
-    },
+    commit_cli_resource_operations,
   } as unknown as CoreServices & {
-    database: {
-      execute_transaction: typeof execute_transaction;
-      execute: typeof execute;
-    };
-    app_event_bus: {
-      publish: typeof publish;
-    };
+    commit_cli_resource_operations: typeof commit_cli_resource_operations;
   };
 }
-
 describe("cli-resource-applier", () => {
   it("写入 CLI 临时工程资源后发布质量和提示词缓存刷新事件", async () => {
     const core_services = create_core_services();
 
     await apply_cli_resources(core_services, create_translate_command(), "E:/Project/tmp.lg");
 
-    expect(core_services.database.execute_transaction).toHaveBeenCalledWith(
+    expect(core_services.commit_cli_resource_operations).toHaveBeenCalledWith(
+      "E:/Project/tmp.lg",
       expect.arrayContaining([
         expect.objectContaining({
           name: "setMeta",
@@ -74,25 +55,6 @@ describe("cli-resource-applier", () => {
           }),
         }),
       ]),
-    );
-    expect(core_services.app_event_bus.publish).toHaveBeenCalledTimes(2);
-    expect(core_services.app_event_bus.publish).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        type: "project.quality.changed",
-        projectPath: "E:/Project/tmp.lg",
-        source: "cli",
-        affectedSections: ["quality", "prompts"],
-      }),
-    );
-    expect(core_services.app_event_bus.publish).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        type: "project.prompts.changed",
-        projectPath: "E:/Project/tmp.lg",
-        source: "cli",
-        affectedSections: ["quality", "prompts"],
-      }),
     );
   });
 });

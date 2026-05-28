@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CoreWorkerExecution } from "./core/worker/core-worker-execution";
+import type { CoreWorkerExecution } from "./core/worker/worker-execution";
 
 const original_argv = process.argv;
 const original_exit_code = process.exitCode;

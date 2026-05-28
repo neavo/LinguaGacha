@@ -7,8 +7,7 @@ import {
   build_worker_threads_core_worker_execution_from_desktop_bundle_dir,
   CORE_WORK_UNIT_WORKER_ENTRY_FILE_NAME,
   CORE_PLANNING_WORKER_ENTRY_FILE_NAME,
-  CORE_PROOFREADING_QUERY_WORKER_ENTRY_FILE_NAME,
-  CORE_PROJECT_READ_MODEL_WORKER_ENTRY_FILE_NAME,
+  CORE_WORKER_ENTRY_FILE_NAME,
   resolve_desktop_bundle_dir_from_module_url,
 } from "./core-bundle-contract";
 
@@ -41,12 +40,7 @@ describe("core-bundle-contract", () => {
       planningWorkerEntryUrl: pathToFileURL(
         path.join(bundle_root, CORE_PLANNING_WORKER_ENTRY_FILE_NAME),
       ),
-      projectReadModelWorkerEntryUrl: pathToFileURL(
-        path.join(bundle_root, CORE_PROJECT_READ_MODEL_WORKER_ENTRY_FILE_NAME),
-      ),
-      proofreadingQueryWorkerEntryUrl: pathToFileURL(
-        path.join(bundle_root, CORE_PROOFREADING_QUERY_WORKER_ENTRY_FILE_NAME),
-      ),
+      coreWorkerEntryUrl: pathToFileURL(path.join(bundle_root, CORE_WORKER_ENTRY_FILE_NAME)),
     });
   });
 });

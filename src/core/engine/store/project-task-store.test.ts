@@ -5,11 +5,11 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiJsonValue } from "../../api/api-types";
-import { AppEventBus } from "../../app/app-event-bus";
-import { AppSessionCache } from "../../app/app-session-cache";
+import { ProjectEventBus } from "../../project/project-events";
+import { ProjectDataCache } from "../../project/project-data";
 import { ProjectDatabase } from "../../database/database-operations";
-import type { ProjectChangePublisher } from "../../project/project-change-publisher";
-import { ProjectSessionState } from "../../project/project-session-state";
+import type { ProjectChangePublisher } from "../../project/project-changes";
+import { ProjectSessionState } from "../../project/project-session";
 import { TaskRuntimeState } from "../runtime/task-runtime-state";
 import type { MutableJsonRecord } from "../runtime/task-runtime-types";
 import { ProjectTaskStore } from "./project-task-store";
@@ -269,7 +269,7 @@ describe("ProjectTaskStore", () => {
   });
 
   it("构建任务质量快照时保留工程自定义提示词启用态", async () => {
-    const { app_session_cache, database, project_path, store } = create_store();
+    const { project_data_cache, database, project_path, store } = create_store();
     database.execute({
       name: "setRuleText",
       args: {
@@ -298,7 +298,7 @@ describe("ProjectTaskStore", () => {
         },
       },
     });
-    await app_session_cache.warmProject(project_path);
+    await project_data_cache.warmProject(project_path);
 
     const snapshot = store.build_quality_snapshot() as MutableJsonRecord;
     const prompts = snapshot["prompts"] as MutableJsonRecord;
@@ -316,7 +316,7 @@ describe("ProjectTaskStore", () => {
   });
 
   it("构建任务质量快照时术语表缺启用 meta 仍按领域默认值启用", async () => {
-    const { app_session_cache, database, project_path, store } = create_store();
+    const { project_data_cache, database, project_path, store } = create_store();
     database.execute({
       name: "setRules",
       args: {
@@ -325,7 +325,7 @@ describe("ProjectTaskStore", () => {
         rules: [{ src: "HP", dst: "生命值" }],
       },
     });
-    await app_session_cache.warmProject(project_path);
+    await project_data_cache.warmProject(project_path);
 
     const snapshot = store.build_quality_snapshot() as MutableJsonRecord;
     const quality = snapshot["quality"] as MutableJsonRecord;
@@ -341,7 +341,7 @@ describe("ProjectTaskStore", () => {
     database: ProjectDatabase;
     project_path: string;
     runtime_state: TaskRuntimeState;
-    app_session_cache: AppSessionCache;
+    project_data_cache: ProjectDataCache;
     store: ProjectTaskStore;
     published_changes: MutableJsonRecord[];
   } {
@@ -350,7 +350,7 @@ describe("ProjectTaskStore", () => {
     const database = new ProjectDatabase();
     const session_state = new ProjectSessionState();
     const runtime_state = new TaskRuntimeState();
-    const app_session_cache = new AppSessionCache(database);
+    const project_data_cache = new ProjectDataCache(database);
     const published_changes: MutableJsonRecord[] = [];
     database.execute({
       name: "createProject",
@@ -363,18 +363,18 @@ describe("ProjectTaskStore", () => {
       database,
       project_path,
       runtime_state,
-      app_session_cache,
+      project_data_cache,
       store: new ProjectTaskStore(
         database,
         session_state,
         runtime_state,
-        app_session_cache,
+        project_data_cache,
         {
           publish_project_change: (payload: MutableJsonRecord) => {
             published_changes.push(payload);
           },
         } as unknown as ProjectChangePublisher,
-        new AppEventBus(),
+        new ProjectEventBus(),
       ),
       published_changes,
     };

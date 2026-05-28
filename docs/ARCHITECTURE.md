@@ -28,24 +28,28 @@ flowchart LR
   RendererApi --> API
   RendererApi --> Runtime["DesktopRuntimeProvider<br/>project refresh signal / TaskRuntimeStore"]
   Runtime --> Pages["pages / widgets / query runtime"]
-  Services --> ProjectState["loaded project cache<br/>committed event fan-out"]
-  Services --> Project["project / service / file / model"]
+  Services --> Project["core/project<br/>loaded project cache / committed event fan-out"]
+  Services --> Domains["workbench / proofreading / quality / analysis / export / model"]
+  Services --> Worker["core/worker<br/>串行 client / 无状态 task"]
   Services --> Engine["task engine<br/>planning / runtime / store / work-unit"]
   Engine --> LLM["core/llm<br/>policy / SDK transport"]
   Project --> DB["ProjectDatabase<br/>SQLite .lg workflow"]
+  Domains --> DB
   Engine --> DB
   Base["src/base<br/>实体和值对象"] --> Services
   Base --> Runtime
   Shared["src/shared<br/>跨运行时纯规则"] --> Services
   Shared --> Runtime
   Native["src/native<br/>平台 IO / 路径策略"] --> Project
+  Native --> Domains
   Native --> DB
 ```
 
 - `src/index.ts` 只按显式 `--cli` 分发 GUI 或 CLI，并把入口层解析出的 `CoreWorkerExecution` 继续下传；它不持有业务服务、命令语义或窗口生命周期。
 - GUI 与 Core 同在 Electron 主进程内运行；当前没有独立 backend 子进程，也没有内部 database HTTP 服务。
 - GUI 模式由 `CoreBootstrap(exposeApiGateway=true)` 暴露本机 Gateway 给 renderer；CLI 模式由 `CoreBootstrap(exposeApiGateway=false)` 直接复用 `CoreServices`，不启动 HTTP / SSE Gateway。
-- `CoreServices` 是 Gateway 与 CLI job 共用的业务组合根；项目会话缓存、事件分发、领域服务、任务引擎、Core worker 和数据库 workflow 只在这里装配。
+- `CoreServices` 是 Gateway 与 CLI job 共用的业务组合根；底层数据库、cache、worker client 与事件总线只在组合根内部装配。
+- `src/core/worker` 只承接非 engine 的无状态后台派生；engine planning / work-unit worker 仍归 `src/core/engine`。
 - `src/base` 承载跨层实体和值对象的 JSON 边界、合法值集合和贴身派生判断；它不得反向依赖 Core、renderer 或 Electron。
 - `src/shared` 承载 Core、renderer、worker 和测试复用的纯规则、协议词表和工具；Electron 桌面契约、Node / 文件系统能力和数据库 workflow 不进入这里。
 - `src/gui/bridge`、`src/gui/ipc`、`src/gui/shell-contract.ts` 是桌面宿主契约；renderer 只能通过白名单契约或 `@core/api/api-base-url` 接触宿主边界。
@@ -74,7 +78,7 @@ CLI 协议、退出码和平台启动器只看 [`docs/CLI.md`](CLI.md)。
 
 - 后端 loaded 工程只有一套项目热读缓存；工程加载以缓存热机成功为准，卸载时同步释放缓存和 session 身份。
 - renderer 用 manifest 校验项目身份，页面通过 `/api/project/query/*` 读取自身 view model；前端不再维护完整项目事实缓存。
-- 项目写入必须在数据库事务提交后进入 committed event 链路；公开 mutation result 与 SSE 只作为前端刷新信号，项目事实仍由后端 query 返回。
+- 项目写入必须在数据库事务提交后进入 committed event 链路；公开写入结果与 SSE 只作为前端刷新信号，项目事实仍由后端 query 返回。
 - 项目事实与任务运行态分离：项目数据不包含 task，任务 snapshot 不写入项目 query 缓存。
 
 ## 4. 模块边界速查
@@ -86,7 +90,9 @@ CLI 协议、退出码和平台启动器只看 [`docs/CLI.md`](CLI.md)。
 | `src/cli` | 命令解析、stdout/stderr、同步 job、临时工程生命周期 | HTTP 协议、GUI 项目心智、领域服务实现 |
 | `src/core/bootstrap` | Core 启停顺序、服务组合根、Gateway 生命周期 | 路由字段、数据库 schema、页面缓存 |
 | `src/core/api` | 公开 HTTP / SSE、响应壳、错误投影、CORS | 直接 SQL、renderer 状态、文件格式实现 |
-| `src/core/project` | 项目会话、投影、同步 mutation、项目变更事件、项目 read model | preload / renderer 局部状态 |
+| `src/core/project` | loaded 工程身份、热读缓存、数据读取、committed event 与公开项目变更事件 | 页面局部状态、各领域写入和派生规则 |
+| `src/core/{workbench,proofreading,quality,analysis,export,model}` | 项目领域服务；workbench 管结构性项目写入，其它领域只管各自 query、写入或导出派生 | Gateway 外壳、项目 session/cache/event 总线、任务引擎 |
+| `src/core/worker` | 非 engine worker 执行契约、串行后台 client、无状态 task 分发 | 项目 cache、数据库读写、任务引擎 planning / work-unit worker |
 | `src/core/engine` | 翻译 / 分析任务引擎、任务运行态、规划、执行、artifact 写回 | provider SDK 细节、页面派生缓存、项目 query 派生 |
 | `src/core/llm` | provider policy、request policy、官方 SDK transport、请求结果归一 | 任务编排、数据库写入、项目事实读取 |
 | `src/core/database` | SQLite、事务、`.lg` asset、database operation | HTTP DTO、页面状态 |

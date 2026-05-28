@@ -1,6 +1,6 @@
 import type { ApiJsonValue } from "../api/api-types";
 import { AppSettingService } from "../app/app-setting-service";
-import { FileFormatService } from "./file-format-service";
+import { FileFormatService } from "../file/file-format-service";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { LogManager } from "../log/log-manager";

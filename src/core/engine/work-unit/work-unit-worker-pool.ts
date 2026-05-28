@@ -3,7 +3,7 @@ import os from "node:os";
 import { Worker } from "node:worker_threads";
 
 import type { ApiJsonValue } from "../../api/api-types";
-import type { CoreWorkerExecution } from "../../worker/core-worker-execution";
+import type { CoreWorkerExecution } from "../../worker/worker-execution";
 import type { WorkUnit } from "../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
 import { WorkUnitRunner } from "./work-unit-runner";

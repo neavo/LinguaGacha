@@ -19,7 +19,7 @@ import {
   type FileFormatServiceConfig,
   type ParsedFilePreview,
   type ProjectSourceFileEntry,
-} from "./formats/file-format-shared";
+} from "../file/formats/file-format-shared";
 
 // 支持扩展名集中在门面层，文件发现和单文件预览共享同一白名单
 const SUPPORTED_EXTENSIONS = new Set([

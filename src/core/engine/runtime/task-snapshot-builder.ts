@@ -1,7 +1,7 @@
 import type { ApiJsonValue } from "../../api/api-types";
 import { ProjectDatabase } from "../../database/database-operations";
-import { ProjectRuntimeProjectionService } from "../../project/project-runtime-projection-service";
-import { ProjectSessionState } from "../../project/project-session-state";
+import { ProjectDataReader } from "../../project/project-data";
+import { ProjectSessionState } from "../../project/project-session";
 import { TaskRuntimeState } from "./task-runtime-state";
 import {
   is_task_type,
@@ -33,7 +33,7 @@ export class TaskSnapshotBuilder {
 
   private readonly session_state: ProjectSessionState; // session_state 决定当前公开工程路径
 
-  private readonly projection_service: ProjectRuntimeProjectionService; // projection_service 只负责 meta/revision 读取，快照热路径不扫大 section
+  private readonly data_reader: ProjectDataReader; // data_reader 只负责 meta/revision 读取，快照热路径不扫大 section
 
   /**
    * 注入公开快照所需的三个权威来源，便于 Gateway 和任务命令共用同一口径
@@ -42,11 +42,11 @@ export class TaskSnapshotBuilder {
     database: ProjectDatabase,
     task_runtime_state: TaskRuntimeState,
     session_state: ProjectSessionState,
-    projection_service = new ProjectRuntimeProjectionService(database),
+    data_reader = new ProjectDataReader(database),
   ) {
     this.task_runtime_state = task_runtime_state;
     this.session_state = session_state;
-    this.projection_service = projection_service;
+    this.data_reader = data_reader;
   }
 
   /**
@@ -130,7 +130,7 @@ export class TaskSnapshotBuilder {
     if (!state.loaded || state.projectPath === "") {
       return {};
     }
-    return this.projection_service.get_all_meta(state.projectPath);
+    return this.data_reader.get_all_meta(state.projectPath);
   }
 
   /**
@@ -151,10 +151,7 @@ export class TaskSnapshotBuilder {
    * 重翻 revision 校验与快照构建共享 section revision 读取口径
    */
   public get_runtime_section_revision(section: string): number {
-    return this.projection_service.get_runtime_section_revision(
-      this.get_loaded_project_meta(),
-      section,
-    );
+    return this.data_reader.get_runtime_section_revision(this.get_loaded_project_meta(), section);
   }
 
   /**

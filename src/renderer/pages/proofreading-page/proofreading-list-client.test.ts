@@ -19,7 +19,7 @@ describe("proofreading-list-client", () => {
     api_fetch_mock.mockReset();
   });
 
-  it("创建 API 列表 client 并把 hydrate、列表与窗口读取委托给 Core read model", async () => {
+  it("创建 API 列表 client 并把 hydrate、列表与窗口读取委托给 Core query runtime", async () => {
     const client = createProofreadingListClient();
     api_fetch_mock.mockImplementation(async (_url: string, body: Record<string, unknown>) => {
       if (body.action === "sync") {

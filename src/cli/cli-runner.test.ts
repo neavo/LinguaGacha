@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CoreBootstrapOptions } from "../core/bootstrap/core-bootstrap-types";
 import type { CoreBootstrapStartResult } from "../core/bootstrap/core-bootstrap-types";
-import type { CoreWorkerExecution } from "../core/worker/core-worker-execution";
+import type { CoreWorkerExecution } from "../core/worker/worker-execution";
 import type { CLICommandOptions } from "./cli-parser";
 
 type FakeCoreServices = { marker: "core-services" };

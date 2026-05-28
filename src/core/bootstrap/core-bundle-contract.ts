@@ -1,13 +1,12 @@
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import type { CoreWorkerExecution } from "../worker/core-worker-execution";
+import type { CoreWorkerExecution } from "../worker/worker-execution";
 
 const BUNDLED_CHUNK_DIRECTORY_NAME = "chunks"; // electron-vite 会把动态入口拆到 chunks，运行时契约需要回到 dist-electron 根目录
 export const CORE_WORK_UNIT_WORKER_ENTRY_FILE_NAME = "work-unit-worker-entry.js"; // work unit worker 入口产物名必须与 Vite main input 保持一致
 export const CORE_PLANNING_WORKER_ENTRY_FILE_NAME = "planning-worker-entry.js"; // planning worker 入口产物名必须与 Vite main input 保持一致
-export const CORE_PROJECT_READ_MODEL_WORKER_ENTRY_FILE_NAME = "project-read-model-worker-entry.js"; // 项目 read model worker 入口产物名必须与 Vite main input 保持一致
-export const CORE_PROOFREADING_QUERY_WORKER_ENTRY_FILE_NAME = "proofreading-query-worker-entry.js"; // 校对 query worker 入口产物名必须与 Vite main input 保持一致
+export const CORE_WORKER_ENTRY_FILE_NAME = "core-worker-entry.js"; // 非 engine Core worker 入口产物名必须与 Vite main input 保持一致
 
 /**
  * 从当前 ESM 模块地址解析桌面 bundle 根目录；动态 chunk 内执行时必须回到父目录。
@@ -35,11 +34,6 @@ export function build_worker_threads_core_worker_execution_from_desktop_bundle_d
     planningWorkerEntryUrl: pathToFileURL(
       path.join(desktop_bundle_dir, CORE_PLANNING_WORKER_ENTRY_FILE_NAME),
     ),
-    projectReadModelWorkerEntryUrl: pathToFileURL(
-      path.join(desktop_bundle_dir, CORE_PROJECT_READ_MODEL_WORKER_ENTRY_FILE_NAME),
-    ),
-    proofreadingQueryWorkerEntryUrl: pathToFileURL(
-      path.join(desktop_bundle_dir, CORE_PROOFREADING_QUERY_WORKER_ENTRY_FILE_NAME),
-    ),
+    coreWorkerEntryUrl: pathToFileURL(path.join(desktop_bundle_dir, CORE_WORKER_ENTRY_FILE_NAME)),
   };
 }

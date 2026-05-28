@@ -2,7 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { CoreWorkerExecution } from "../core/worker/core-worker-execution";
+import type { CoreWorkerExecution } from "../core/worker/worker-execution";
 
 type Listener = (...args: unknown[]) => void;
 type ReadyResolver = () => void;
@@ -478,11 +478,8 @@ function create_test_worker_execution(): CoreWorkerExecution {
     planningWorkerEntryUrl: pathToFileURL(
       path.join(process.cwd(), "build", "dist-electron", "planning-worker-entry.js"),
     ),
-    projectReadModelWorkerEntryUrl: pathToFileURL(
-      path.join(process.cwd(), "build", "dist-electron", "project-read-model-worker-entry.js"),
-    ),
-    proofreadingQueryWorkerEntryUrl: pathToFileURL(
-      path.join(process.cwd(), "build", "dist-electron", "proofreading-query-worker-entry.js"),
+    coreWorkerEntryUrl: pathToFileURL(
+      path.join(process.cwd(), "build", "dist-electron", "core-worker-entry.js"),
     ),
   };
 }

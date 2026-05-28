@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AppEventBus } from "../../core/app/app-event-bus";
+import { ProjectEventBus } from "../../core/project/project-events";
 import type { CoreServices } from "../../core/bootstrap/core-services";
 import { ApiStreamHub } from "../../core/api/api-stream-hub";
 import type { DatabaseOperation } from "../../core/database/database-types";
@@ -366,10 +366,15 @@ function create_core_services_harness(snapshots: HarnessTaskSnapshot[]): {
   unload_project: ReturnType<typeof vi.fn>;
 } {
   const api_stream_hub = new ApiStreamHub();
-  const app_event_bus = new AppEventBus();
+  const project_event_bus = new ProjectEventBus();
   const set_transient_overrides = vi.fn();
   const execute = vi.fn(() => ({}));
   const execute_transaction = vi.fn();
+  const commit_cli_resource_operations = vi.fn(
+    async (_project_path: string, operations: DatabaseOperation[]) => {
+      execute_transaction(operations);
+    },
+  );
   const create_project_commit = vi.fn(async () => undefined);
   const unload_project = vi.fn(async () => undefined);
   const start_task = vi.fn(async (request: { task_type?: string }) => {
@@ -413,25 +418,39 @@ function create_core_services_harness(snapshots: HarnessTaskSnapshot[]): {
 
   return {
     core_services: {
-      app_setting_service: {
-        read_setting: () => ({
-          prefilter_config: {},
-          source_language: "JA",
-          target_language: "ZH",
-        }),
-        set_transient_overrides,
+      app: {
+        settings: {
+          read_setting: () => ({
+            prefilter_config: {},
+            source_language: "JA",
+            target_language: "ZH",
+          }),
+          set_transient_overrides,
+        },
+      },
+      project: {
+        lifecycle: {
+          create_project_commit,
+          unload_project,
+        },
+      },
+      export: {
+        files: { generate_translation_to_directory },
+      },
+      quality: {
+        service: { export_analysis_candidates_to_directory },
+      },
+      engine: {
+        tasks: { start_task },
+      },
+      streams: {
+        api: api_stream_hub,
       },
       build_expected_section_revisions: () => ({ quality: 0, prompts: 0 }),
-      app_event_bus,
+      commit_cli_resource_operations,
+      project_event_bus,
       api_stream_hub,
       database: { execute, execute_transaction },
-      file_export_service: { generate_translation_to_directory },
-      project_lifecycle_service: {
-        create_project_commit,
-        unload_project,
-      },
-      quality_service: { export_analysis_candidates_to_directory },
-      task_service: { start_task },
     } as unknown as CoreServices,
     create_project_commit,
     execute_transaction,

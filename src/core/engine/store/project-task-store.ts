@@ -1,15 +1,12 @@
 import type { ApiJsonValue } from "../../api/api-types";
-import type { AppEventBus } from "../../app/app-event-bus";
-import type { AppSessionCache } from "../../app/app-session-cache";
+import type { ProjectEventBus } from "../../project/project-events";
+import type { ProjectDataCache } from "../../project/project-data";
 import { ProjectDatabase } from "../../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
-import { ProjectChangePublisher } from "../../project/project-change-publisher";
-import { ProjectMutationCoordinator } from "../../project/project-mutation-coordinator";
-import {
-  get_runtime_section_revision,
-  type ProjectDataSection,
-} from "../../project/project-section-revision";
-import { ProjectSessionState } from "../../project/project-session-state";
+import { ProjectChangePublisher } from "../../project/project-changes";
+import { ProjectChangeCoordinator } from "../../project/project-changes";
+import { get_runtime_section_revision, type ProjectDataSection } from "../../project/project-data";
+import { ProjectSessionState } from "../../project/project-session";
 import { TaskRuntimeState } from "../runtime/task-runtime-state";
 import type { JsonRecord, MutableJsonRecord } from "../runtime/task-runtime-types";
 import type { TaskArtifact } from "../protocol/artifact";
@@ -30,9 +27,9 @@ export class ProjectTaskStore {
 
   private readonly task_runtime_state: TaskRuntimeState; // 重翻任务提交后需要同步缩减运行中 item scope
 
-  private readonly app_session_cache: AppSessionCache; // 任务启动热读 items / quality / prompts，写库仍只走 ProjectDatabase
+  private readonly project_data_cache: ProjectDataCache; // 任务启动热读 items / quality / prompts，写库仍只走 ProjectDatabase
 
-  private readonly mutation_coordinator: ProjectMutationCoordinator; // 任务提交的 revision bump 和 canonical 事件发布统一经由协调器
+  private readonly mutation_coordinator: ProjectChangeCoordinator; // 任务提交的 revision bump 和 canonical 事件发布统一经由协调器
 
   /**
    * ProjectTaskStore 只组合现有 TS 权威，不自行持有长期项目缓存
@@ -41,18 +38,18 @@ export class ProjectTaskStore {
     database: ProjectDatabase,
     session_state: ProjectSessionState,
     task_runtime_state: TaskRuntimeState,
-    app_session_cache: AppSessionCache,
+    project_data_cache: ProjectDataCache,
     project_change_publisher: ProjectChangePublisher,
-    app_event_bus: AppEventBus,
+    project_event_bus: ProjectEventBus,
   ) {
     this.database = database;
     this.session_state = session_state;
     this.task_runtime_state = task_runtime_state;
-    this.app_session_cache = app_session_cache;
-    this.mutation_coordinator = new ProjectMutationCoordinator(
+    this.project_data_cache = project_data_cache;
+    this.mutation_coordinator = new ProjectChangeCoordinator(
       database,
       project_change_publisher,
-      app_event_bus,
+      project_event_bus,
     );
   }
 
@@ -85,8 +82,8 @@ export class ProjectTaskStore {
     }
     return QualityRuleSnapshotTool.to_json(
       QualityRuleSnapshotTool.from_json({
-        quality: this.app_session_cache.readQualityBlock(),
-        prompts: this.app_session_cache.readPromptsBlock(),
+        quality: this.project_data_cache.readQualityBlock(),
+        prompts: this.project_data_cache.readPromptsBlock(),
       }),
     ) as unknown as ApiJsonValue;
   }
@@ -97,7 +94,7 @@ export class ProjectTaskStore {
   public get_translation_items(request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
     const mode = String(request["mode"] ?? "NEW");
-    const items = this.app_session_cache.readItems().map((item) => {
+    const items = this.project_data_cache.readItems().map((item) => {
       if (mode !== "RESET") {
         return item;
       }
@@ -238,7 +235,7 @@ export class ProjectTaskStore {
   public get_analysis_context(_request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
     return {
-      items: this.app_session_cache.readItems() as unknown as ApiJsonValue,
+      items: this.project_data_cache.readItems() as unknown as ApiJsonValue,
       checkpoints: this.get_analysis_checkpoints(project_path) as unknown as ApiJsonValue,
       meta: this.get_all_meta(project_path),
     };
@@ -350,7 +347,7 @@ export class ProjectTaskStore {
     const project_path = this.require_loaded_project_path();
     const item_ids = this.normalize_number_list(request["item_ids"]);
     const items = item_ids
-      .map((item_id) => this.app_session_cache.readItem(item_id))
+      .map((item_id) => this.project_data_cache.readItem(item_id))
       .filter((item): item is MutableJsonRecord => item !== null)
       .map((item) => ({
         ...item,

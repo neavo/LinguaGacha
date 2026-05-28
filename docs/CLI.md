@@ -5,7 +5,7 @@
 ## 1. 入口边界
 
 - CLI 只能由产品入口中的显式 `--cli` 触发；用户参数从 `--cli` 后开始读取，平台启动器不得把文件名或进程名语义泄漏给 `src/index.ts`。
-- 产品入口负责解析 appRoot 和桌面 bundle 根，并把 `CoreWorkerExecution` 原样传给 CLI；CLI、`CoreServices`、`WorkUnitWorkerPool`、`PlanningWorkerPool` 和 `ProjectReadModelWorkerPool` 不探测 worker 文件，也不把 `in_process` 当失败回退。
+- 产品入口负责解析 appRoot 和桌面 bundle 根，并把 `CoreWorkerExecution` 原样传给 CLI；CLI、Core 组合根与各 worker 消费方不探测 worker 文件，也不把 `in_process` 当失败回退。
 - CLI 以 `CoreBootstrap(exposeApiGateway=false)` 启动 Core，不开放本机 HTTP / SSE Gateway；Core 控制台日志在 CLI job 中关闭，避免诊断文本污染 stdout JSONL。
 - CLI 是文件进出型适配层：它只接收输入文件、输出目录、语言和本次命令显式资源，不承接 GUI 工程文件心智或 renderer 协议。
 

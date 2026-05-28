@@ -30,7 +30,7 @@ type QualityStatisticsQueryResponse = {
 
 type QualityRuleStatisticsContextValue = {
   activateRule: (rule_type: QualityRuleStatisticsRuleType) => () => void; // activateRule 记录页面正在消费的规则
-  refreshRule: (rule_type: QualityRuleStatisticsRuleType) => void; // refreshRule 从 Core query 读取 AppSessionCache 统计结果
+  refreshRule: (rule_type: QualityRuleStatisticsRuleType) => void; // refreshRule 从 Core query 读取 ProjectDataCache 统计结果
   store: QualityRuleStatisticsStore; // store 只保存后端 query 结果，不再执行 renderer 统计
 };
 

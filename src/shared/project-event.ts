@@ -73,7 +73,7 @@ export type ProjectChangeEvent = {
   sections?: Partial<Record<ProjectDataSection, ProjectChangeSectionPayload>>;
 };
 
-// 同步项目 mutation 返回和 SSE 广播共用同一批后端 canonical change
+// 同步项目写入返回和 SSE 广播共用同一批后端 canonical change
 export type ProjectMutationResult = {
   accepted: true;
   changes: ProjectChangeEvent[];

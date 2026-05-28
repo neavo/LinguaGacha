@@ -3,7 +3,7 @@ import { app, session } from "electron";
 import { CoreBootstrap } from "../core/bootstrap/core-bootstrap";
 import { run_cli_job } from "./job/cli-job-runner";
 import type { CLICommandOptions } from "./cli-parser";
-import type { CoreWorkerExecution } from "../core/worker/core-worker-execution";
+import type { CoreWorkerExecution } from "../core/worker/worker-execution";
 import type { CoreBootstrapStartResult } from "../core/bootstrap/core-bootstrap-types";
 import { CLIJsonStatusReporter } from "./cli-status-reporter";
 import { create_text_resolver, resolve_i18n_locale } from "../shared/i18n";

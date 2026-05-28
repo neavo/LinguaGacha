@@ -1,5 +1,5 @@
 import type { CoreServices } from "./core-services";
-import type { CoreWorkerExecution } from "../worker/core-worker-execution";
+import type { CoreWorkerExecution } from "../worker/worker-execution";
 import type { LogTargets } from "../../shared/log";
 import type { SystemProxyResolver, SystemProxyStartupNotice } from "./system-proxy-dispatcher";
 

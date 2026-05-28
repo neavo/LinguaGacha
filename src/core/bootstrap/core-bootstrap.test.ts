@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NPM_INITIAL_CWD_ENV_NAME } from "./core-app-root-resolver";
 import { CoreBootstrap } from "./core-bootstrap";
 import { InternalInvariantError } from "../../shared/error";
-import type { CoreWorkerExecution } from "../worker/core-worker-execution";
+import type { CoreWorkerExecution } from "../worker/worker-execution";
 
 let temp_dir = ""; // temp_dir 承载测试应用根和数据根，避免 bootstrap 日志写入真实工作区
 let original_initial_cwd: string | undefined; // original_initial_cwd 用于恢复 npm 启动目录，避免测试污染后续用例的应用根解析

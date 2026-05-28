@@ -668,7 +668,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const list_view_ref = useRef(list_view);
   const [dialog_item_snapshot, set_dialog_item_snapshot] = useState<ProofreadingItem | null>(null);
 
-  // runtime identity 只来自 Core read model 同步结果。
+  // runtime identity 只来自 Core query runtime 同步结果。
   const resolve_disposable_project_id = useCallback((): string | null => {
     return runtime_sync_state_ref.current?.projectId ?? null;
   }, []);

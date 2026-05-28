@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { FileFormatService } from "./file-format-service";
+import { FileFormatService } from "../file/file-format-service";
 
 let temp_dir = "";
 

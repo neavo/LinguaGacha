@@ -2,7 +2,7 @@ import { app, BrowserWindow, session, shell } from "electron";
 import path from "node:path";
 
 import { CoreBootstrap } from "../core/bootstrap/core-bootstrap";
-import type { CoreWorkerExecution } from "../core/worker/core-worker-execution";
+import type { CoreWorkerExecution } from "../core/worker/worker-execution";
 import { write_electron_main_error } from "../core/log/log-bridge";
 import { t_main_log } from "../core/log/log-text";
 import * as AppErrors from "../shared/error";

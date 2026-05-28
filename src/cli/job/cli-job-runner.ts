@@ -27,14 +27,14 @@ export async function run_cli_job(
     assert_existing_inputs(command);
     fs.mkdirSync(command.outputDir, { recursive: true });
     temp_project = await CLITempProject.create();
-    core_services.app_setting_service.set_transient_overrides({
+    core_services.app.settings.set_transient_overrides({
       ...build_cli_default_preset_overrides(),
       output_folder_open_on_finish: false,
       source_language: command.sourceLanguage,
       target_language: command.targetLanguage,
     });
     transient_overrides_active = true;
-    await core_services.project_lifecycle_service.create_project_commit({
+    await core_services.project.lifecycle.create_project_commit({
       path: temp_project.projectPath,
       source_paths: command.inputPaths as unknown as ApiJsonValue,
       project_settings: build_project_settings(core_services, command) as unknown as ApiJsonValue,
@@ -42,24 +42,24 @@ export async function run_cli_job(
     await apply_cli_resources(core_services, command, temp_project.projectPath);
     if (command.command === "translate") {
       await start_and_wait_for_task(core_services, "translation", options);
-      await core_services.file_export_service.generate_translation_to_directory(command.outputDir);
+      await core_services.export.files.generate_translation_to_directory(command.outputDir);
       options.statusReporter.emit_finished("done");
       return;
     }
 
     await start_and_wait_for_task(core_services, "analysis", options);
-    await core_services.quality_service.export_analysis_candidates_to_directory(command.outputDir);
+    await core_services.quality.service.export_analysis_candidates_to_directory(command.outputDir);
     options.statusReporter.emit_finished("done");
   } catch (error) {
     options.statusReporter.emit_finished("error", error);
     throw error;
   } finally {
     if (transient_overrides_active) {
-      core_services.app_setting_service.set_transient_overrides(null);
+      core_services.app.settings.set_transient_overrides(null);
     }
     if (temp_project !== null) {
       try {
-        await core_services.project_lifecycle_service.unload_project();
+        await core_services.project.lifecycle.unload_project();
       } finally {
         // 卸载失败也必须删除临时目录，避免 CLI 批处理留下内部工程残片。
         await temp_project.cleanup();
@@ -90,7 +90,7 @@ function build_project_settings(
   command: CLICommandOptions,
 ): Record<string, ApiJsonValue> {
   return normalize_project_settings_snapshot({
-    ...core_services.app_setting_service.read_setting(),
+    ...core_services.app.settings.read_setting(),
     source_language: command.sourceLanguage,
     target_language: command.targetLanguage,
   }) as unknown as Record<string, ApiJsonValue>;
@@ -135,7 +135,7 @@ async function start_and_wait_for_task(
 ): Promise<void> {
   const task_waiter = create_task_event_waiter(core_services, task_type, options);
   try {
-    await core_services.task_service.start_task({
+    await core_services.engine.tasks.start_task({
       task_type,
       mode: "new",
       scope: { kind: "all" } as unknown as ApiJsonValue,
@@ -164,7 +164,7 @@ function create_task_event_waiter(
     resolve_wait = resolve;
     reject_wait = reject;
   });
-  const unsubscribe = core_services.api_stream_hub.subscribe("task.snapshot_changed", (message) => {
+  const unsubscribe = core_services.streams.api.subscribe("task.snapshot_changed", (message) => {
     const snapshot = normalize_task_snapshot_payload(message.payload);
     if (snapshot === null || snapshot.task_type !== task_type) {
       return;
