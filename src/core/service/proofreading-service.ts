@@ -8,7 +8,7 @@ import {
 } from "../project/project-mutation-coordinator";
 import { ProjectChangePublisher } from "../project/project-change-publisher";
 import { ProjectSessionState } from "../project/project-session-state";
-import { Item, type ItemStatus } from "../../base/item";
+import { Item, type ItemStatus } from "../../domain/item";
 import type {
   ProjectChangeItemFieldPatch,
   ProjectChangeItemsPayload,
@@ -17,7 +17,7 @@ import type {
 import { create_empty_translation_task_snapshot } from "../project/project-mutation-state";
 import { compile_text_pattern, replace_text_pattern } from "../../shared/text/text-pattern";
 import * as AppErrors from "../../shared/error";
-import { is_task_progress_status } from "../../shared/task";
+import { is_task_progress_status } from "../../domain/task";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;

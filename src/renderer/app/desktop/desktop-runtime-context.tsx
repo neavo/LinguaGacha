@@ -36,8 +36,8 @@ import {
   type AppLanguage,
   type RecentProjectSetting,
   type SettingSnapshot,
-} from "@base/setting";
-import type { TaskType } from "@shared/task";
+} from "@domain/setting";
+import type { TaskType } from "@domain/task";
 import { PROJECT_DATA_SECTIONS } from "@shared/project-event";
 import { InternalInvariantError } from "@shared/error";
 
@@ -137,14 +137,23 @@ const DEFAULT_PROJECT_CHANGE_SIGNAL: ProjectChangeSignal = {
 };
 
 // Desktop Runtime Context 是模块级稳定契约，集中维护避免调用点散落魔术值。
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const DesktopRuntimeContext = createContext<DesktopRuntimeContextValue | null>(null);
 
 // normalize_settings_snapshot 在边界处归一化输入，避免下游再处理坏载荷分支。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 export function normalize_settings_snapshot(payload: SettingsSnapshotPayload): SettingsSnapshot {
   return normalize_setting_snapshot(payload.settings);
 }
 
 // normalize_project_snapshot 在边界处归一化输入，避免下游再处理坏载荷分支。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSnapshot {
   const snapshot = payload.project ?? {};
   return {
@@ -154,6 +163,9 @@ function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSna
 }
 
 // collect_project_apply_result_sections 封装当前模块的共享逻辑，避免重复实现同一维护规则。
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 function collect_project_apply_result_sections(
   results: readonly ProjectRuntimeChangeApplyResult[],
 ): ProjectRuntimeStage[] {
@@ -161,6 +173,9 @@ function collect_project_apply_result_sections(
 }
 
 // resolve_project_apply_result_reason 集中解析运行时决策，避免调用点复制条件判断。
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_project_apply_result_reason(
   results: readonly ProjectRuntimeChangeApplyResult[],
 ): string {
@@ -168,6 +183,9 @@ function resolve_project_apply_result_reason(
   return reasons.length === 1 ? (reasons[0] ?? "project_change") : "project_change_batch";
 }
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 function create_project_change_apply_result(
   event: ProjectRuntimeChangeEvent,
 ): ProjectRuntimeChangeApplyResult {
@@ -247,6 +265,9 @@ function create_project_change_apply_result(
 }
 
 // DesktopRuntimeProvider 封装当前模块的共享逻辑，避免重复实现同一维护规则。
+/**
+ * 渲染当前组件的公开界面。
+ */
 export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Element {
   const [hydration_ready, set_hydration_ready] = useState(false);
   const [hydration_error, set_hydration_error] = useState<string | null>(null);
@@ -693,6 +714,9 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     let cancelled = false;
 
     // hydrate_runtime 封装当前模块的共享逻辑，避免重复实现同一维护规则。
+    /**
+     * 承接当前模块的核心控制分支。
+     */
     async function hydrate_runtime(): Promise<void> {
       try {
         // Core API 状态是共享权威源，渲染层启动或热更新时不能通过卸载工程去“重置会话”，否则开发态的 StrictMode、Fast Refresh 或整页重载都会把外部手动打开的旧应用状态一起清空
@@ -742,6 +766,9 @@ export function DesktopRuntimeProvider(props: { children: ReactNode }): JSX.Elem
     let cancelled = false;
 
     // refresh_loaded_project_runtime 封装当前模块的共享逻辑，避免重复实现同一维护规则。
+    /**
+     * 承接当前模块的核心控制分支。
+     */
     async function refresh_loaded_project_runtime(): Promise<void> {
       try {
         await refresh_project_runtime();

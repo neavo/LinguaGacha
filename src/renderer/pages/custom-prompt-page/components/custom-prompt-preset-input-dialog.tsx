@@ -1,10 +1,10 @@
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import type { CustomPromptPresetInputState } from "@/pages/custom-prompt-page/types";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import { Input } from "@/shadcn/input";
-import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
-import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
+import { AppPageDialog } from "@/widgets/app-page-dialog";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd";
 
 type CustomPromptPresetInputDialogProps = {
   state: CustomPromptPresetInputState;
@@ -31,7 +31,6 @@ const PRESET_DIALOG_COPY_BY_MODE: Record<
     confirm_key: "custom_prompt_page.preset.dialog.rename_confirm",
   },
 };
-
 export function CustomPromptPresetInputDialog(
   props: CustomPromptPresetInputDialogProps,
 ): JSX.Element {

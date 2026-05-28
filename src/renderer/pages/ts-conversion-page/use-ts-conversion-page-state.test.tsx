@@ -1,7 +1,7 @@
 import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ProjectItemPublicRecord } from "@base/item";
+import type { ProjectItemPublicRecord } from "@domain/item";
 
 import { useTsConversionPageState } from "@/pages/ts-conversion-page/use-ts-conversion-page-state";
 import { createProjectItemIndex, type ProjectItemIndex } from "@/project/project-item-index";
@@ -81,7 +81,7 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
   };
 });
 
-vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
+vi.mock("@/app/ui-runtime/use-desktop-toast", () => {
   return {
     useDesktopToast: () => ({
       push_toast: push_toast_mock,
@@ -100,6 +100,9 @@ vi.mock("@/app/locale/locale-provider", () => {
   };
 });
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
     item_id: 1,
@@ -120,6 +123,9 @@ function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectI
   };
 }
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 function create_runtime_items(
   overrides: Record<string, Partial<ProjectItemPublicRecord>> = {},
 ): ProjectItemIndex {
@@ -215,6 +221,9 @@ describe("useTsConversionPageState", () => {
   });
 
   // 每个用例单独挂载 hook 探针，确保状态初始化和卸载副作用完整执行
+  /**
+   * 挂载当前测试组件并等待渲染完成。
+   */
   async function mount_probe(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);

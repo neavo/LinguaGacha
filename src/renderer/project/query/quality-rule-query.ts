@@ -1,5 +1,5 @@
 import { api_fetch } from "@/app/desktop/desktop-api";
-import type { QualityRuleKind } from "@base/quality";
+import type { QualityRuleKind } from "@domain/quality";
 
 import type { ProjectQuerySectionRevisions } from "@/project/query/project-section-revisions-query";
 
@@ -18,6 +18,9 @@ export type ProjectQualityRuleQueryResponse = {
 };
 
 // 质量规则页只从后端 query 读取项目事实，mutation 仍走统一提交管线。
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 export async function read_project_quality_rule(
   rule_type: QualityRuleKind,
 ): Promise<ProjectQualityRuleQueryResponse> {

@@ -1,12 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import type { ProjectItemPublicRecord } from "../../base/item";
+import type { ProjectItemPublicRecord } from "../../domain/item";
 import {
   compute_project_prefilter_mutation,
   type ProjectMutationState,
 } from "./project-mutation-state";
 
 // 测试 item 保持完整公开 DTO 形状，避免用半截对象绕过真实归一化边界。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_test_item(
   key: string,
   overrides: Partial<ProjectItemPublicRecord>,
@@ -31,6 +34,9 @@ function create_test_item(
 }
 
 // 每个场景只覆盖需要变动的 item 字段，其余项目事实由后端默认镜像补齐。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_state(
   items: Record<string, Partial<ProjectItemPublicRecord>>,
 ): ProjectMutationState {

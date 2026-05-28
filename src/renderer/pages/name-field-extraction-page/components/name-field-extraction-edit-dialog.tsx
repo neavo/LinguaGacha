@@ -1,10 +1,10 @@
 import { useI18n } from "@/app/locale/locale-provider";
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import type { NameFieldDialogState, NameFieldRow } from "@/pages/name-field-extraction-page/types";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import { AppEditor } from "@/widgets/app-editor/app-editor";
-import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
-import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
+import { AppPageDialog } from "@/widgets/app-page-dialog";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd";
 
 type NameFieldExtractionEditDialogProps = {
   state: NameFieldDialogState;
@@ -12,7 +12,6 @@ type NameFieldExtractionEditDialogProps = {
   on_save: () => Promise<void>;
   on_close: () => Promise<void>;
 };
-
 export function NameFieldExtractionEditDialog(
   props: NameFieldExtractionEditDialogProps,
 ): JSX.Element {

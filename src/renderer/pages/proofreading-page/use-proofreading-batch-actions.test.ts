@@ -6,7 +6,7 @@ import { api_fetch } from "@/app/desktop/desktop-api";
 import type { TaskSnapshot } from "@/app/desktop/task-runtime-store";
 import type { ProofreadingMutationPlan } from "@/pages/proofreading-page/proofreading-mutation-planner";
 import { useProofreadingBatchActions } from "@/pages/proofreading-page/use-proofreading-batch-actions";
-import type { ProjectItemPublicRecord } from "@base/item";
+import type { ProjectItemPublicRecord } from "@domain/item";
 import type { ProjectDataSectionRevisions } from "@shared/project-event";
 
 type BatchActionState = ReturnType<typeof useProofreadingBatchActions>;
@@ -52,6 +52,9 @@ vi.mock("@/app/desktop/desktop-api", () => {
 });
 
 // create_project_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_project_item(
   overrides: Partial<ProjectItemPublicRecord> = {},
 ): ProjectItemPublicRecord {
@@ -75,6 +78,9 @@ function create_project_item(
 }
 
 // create_task_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_task_snapshot(): TaskSnapshot {
   return {
     runtime_revision: 3,
@@ -103,6 +109,9 @@ function create_task_snapshot(): TaskSnapshot {
 }
 
 // create_hook_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_hook_fixture(): HookFixture {
   const mutation_calls: MutationCall[] = [];
   return {
@@ -180,6 +189,9 @@ describe("useProofreadingBatchActions", () => {
   }
 
   // render_hook 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+  /**
+   * 生成当前场景的展示内容。
+   */
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -193,6 +205,9 @@ describe("useProofreadingBatchActions", () => {
   }
 
   // flush_async_updates 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+  /**
+   * 支撑当前测试场景的专用辅助逻辑。
+   */
   async function flush_async_updates(): Promise<void> {
     await act(async () => {
       await Promise.resolve();

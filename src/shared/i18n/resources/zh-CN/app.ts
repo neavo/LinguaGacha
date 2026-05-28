@@ -1,4 +1,4 @@
-import { LANGUAGE_DISPLAY_NAMES } from "../../../language";
+import { LANGUAGE_DISPLAY_NAMES } from "../../../../domain/language";
 
 export const zh_cn_app = {
   aria: {

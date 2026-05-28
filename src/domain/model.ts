@@ -1,6 +1,9 @@
 import type { JsonRecord, JsonValue } from "../shared/utils/json-tool";
 
 // 模型类型是设置文件、模型页分组和服务端模板选择共享的稳定值域
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const MODEL_TYPES = [
   "PRESET",
   "CUSTOM_GOOGLE",
@@ -8,8 +11,14 @@ export const MODEL_TYPES = [
   "CUSTOM_ANTHROPIC",
 ] as const;
 
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const MODEL_API_FORMATS = ["OpenAI", "SakuraLLM", "Google", "Anthropic"] as const; // API 格式同时影响连通性测试、LLM adapter 和请求 payload 兼容策略
 
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const MODEL_THINKING_LEVELS = ["OFF", "LOW", "MEDIUM", "HIGH"] as const; // thinking 档位只在支持推理的模型上生效，但快照值域保持统一
 
 export type ModelType = (typeof MODEL_TYPES)[number];
@@ -110,6 +119,9 @@ export class Model {
   public readonly thinking: ModelThinkingConfig; // 思考挡位配置快照
   public readonly generation: ModelGenerationConfig; // 生成参数配置快照
 
+  /**
+   * 初始化当前实例的内部状态。
+   */
   private constructor(fields: {
     id: string;
     type: ModelType;
@@ -238,6 +250,9 @@ export class Model {
     return api_format === "Google" || api_format === "Anthropic";
   }
 
+  /**
+   * 判断当前值是否满足业务条件。
+   */
   public static is_custom_type(value: unknown): value is Exclude<ModelType, "PRESET"> {
     return value === "CUSTOM_GOOGLE" || value === "CUSTOM_OPENAI" || value === "CUSTOM_ANTHROPIC";
   }
@@ -249,6 +264,9 @@ export class Model {
     return ["CUSTOM_GOOGLE", "CUSTOM_OPENAI", "CUSTOM_ANTHROPIC"];
   }
 
+  /**
+   * 归一化输入，保证下游消费稳定形状。
+   */
   private static normalize_request_config(value: unknown): ModelRequestConfig {
     const record = read_model_record(value);
     return {
@@ -261,6 +279,9 @@ export class Model {
     };
   }
 
+  /**
+   * 归一化输入，保证下游消费稳定形状。
+   */
   private static normalize_threshold_config(value: unknown): ModelThresholdConfig {
     const record = read_model_record(value);
     return {
@@ -280,6 +301,9 @@ export class Model {
     };
   }
 
+  /**
+   * 归一化输入，保证下游消费稳定形状。
+   */
   private static normalize_thinking_config(value: unknown): ModelThinkingConfig {
     const record = read_model_record(value);
     return {
@@ -287,6 +311,9 @@ export class Model {
     };
   }
 
+  /**
+   * 归一化输入，保证下游消费稳定形状。
+   */
   private static normalize_generation_config(value: unknown): ModelGenerationConfig {
     const record = read_model_record(value);
     return {
@@ -308,30 +335,48 @@ export class Model {
   }
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function is_model_type(value: unknown): value is ModelType {
   return MODEL_TYPE_SET.has(value as ModelType);
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function is_model_api_format(value: unknown): value is ModelApiFormat {
   return MODEL_API_FORMAT_SET.has(value as ModelApiFormat);
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function is_model_thinking_level(value: unknown): value is ModelThinkingLevel {
   return MODEL_THINKING_LEVEL_SET.has(value as ModelThinkingLevel);
 }
 
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 function read_model_record(value: unknown): ModelJsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? { ...(value as ModelJsonRecord) }
     : {};
 }
 
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 function read_json_record(value: unknown): JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? { ...(value as JsonRecord) }
     : {};
 }
 
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 function read_model_number(value: unknown, fallback: number): number {
   const number_value = Number(value ?? fallback);
   return Number.isFinite(number_value) ? number_value : fallback;

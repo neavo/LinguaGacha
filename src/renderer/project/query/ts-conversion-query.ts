@@ -1,5 +1,5 @@
 import { api_fetch } from "@/app/desktop/desktop-api";
-import type { ProjectItemPublicRecord } from "@base/item";
+import type { ProjectItemPublicRecord } from "@domain/item";
 
 import type { ProjectQuerySectionRevisions } from "@/project/query/project-section-revisions-query";
 
@@ -18,6 +18,9 @@ export type TsConversionQueryResponse = {
 };
 
 // 简繁转换页只读取后端 query view，避免为了导出流程常驻订阅项目事实。
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 export async function read_ts_conversion_query(): Promise<TsConversionQueryResponse> {
   return await api_fetch<TsConversionQueryResponse>("/api/project/query/ts-conversion", {});
 }

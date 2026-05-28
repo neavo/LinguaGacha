@@ -26,8 +26,8 @@ import {
 import type { SettingsSnapshotPayload } from "@/app/desktop/desktop-runtime-context";
 import { useQualityRuleStatistics } from "@/project/quality/quality-statistics-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
-import { is_task_mutation_locked } from "@/project/tasks/task-lock";
-import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { is_task_mutation_locked } from "@/project/project-task-lock";
+import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import {
@@ -109,6 +109,9 @@ type TextReplacementQualitySlice = {
 const TEXT_REPLACEMENT_SORT_COLUMN_IDS = new Set(["src", "dst", "rule", "statistics"]);
 
 // create_text_replacement_ui_state_key 把前后替换页隔离到各自 session UI 状态命名空间。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_text_replacement_ui_state_key(
   rule_type: TextReplacementVariantConfig["rule_type"],
 ): ProjectSessionUiStateKey {
@@ -116,6 +119,9 @@ function create_text_replacement_ui_state_key(
 }
 
 // normalize_text_replacement_sort_state 在 session 边界收窄排序状态，坏状态统一回到默认排序。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_text_replacement_sort_state(
   sort_state: AppTableSortState | null,
 ): AppTableSortState | null {
@@ -147,6 +153,9 @@ const IMPORT_RULE_TYPE_BY_PUBLIC_RULE_TYPE = {
 } as const satisfies Record<TextReplacementVariantConfig["rule_type"], QualityRuleImportRuleType>;
 
 // 替换规则页把规则类型收窄成固定 operation，避免运行态接收临时拼接诊断名。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_quality_rule_entries_save_mutation(
   rule_type: TextReplacementVariantConfig["rule_type"],
 ): ProjectMutationOperation {
@@ -156,6 +165,9 @@ function create_quality_rule_entries_save_mutation(
 }
 
 // create_quality_rule_meta_update_mutation 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_quality_rule_meta_update_mutation(
   rule_type: TextReplacementVariantConfig["rule_type"],
 ): ProjectMutationOperation {
@@ -189,6 +201,9 @@ function clone_entry(entry: TextReplacementEntry): TextReplacementEntry {
 }
 
 // create_empty_filter_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_filter_state(): TextReplacementFilterState {
   return {
     keyword: "",
@@ -198,11 +213,17 @@ function create_empty_filter_state(): TextReplacementFilterState {
 }
 
 // create_empty_sort_state 保持表格排序默认值与 AppTable 的无排序状态一致。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_sort_state(): AppTableSortState | null {
   return null;
 }
 
 // create_empty_dialog_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_dialog_state(): TextReplacementDialogState {
   return {
     open: false,
@@ -216,6 +237,9 @@ function create_empty_dialog_state(): TextReplacementDialogState {
 }
 
 // create_empty_confirm_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_confirm_state(): TextReplacementConfirmState {
   return {
     open: false,
@@ -229,6 +253,9 @@ function create_empty_confirm_state(): TextReplacementConfirmState {
 }
 
 // create_empty_preset_input_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_preset_input_state(): TextReplacementPresetInputState {
   return {
     open: false,
@@ -240,6 +267,9 @@ function create_empty_preset_input_state(): TextReplacementPresetInputState {
 }
 
 // normalize_entry 在边界处归一化输入，避免下游再处理坏载荷分支。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_entry(entry: TextReplacementEntry): TextReplacementEntry {
   return {
     entry_id: entry.entry_id,
@@ -251,6 +281,9 @@ function normalize_entry(entry: TextReplacementEntry): TextReplacementEntry {
 }
 
 // normalize_text_replacement_quality_slice 在后端 query 边界收窄规则事实，页面内部只消费稳定形状。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_text_replacement_quality_slice(
   slice: ProjectQualityRuleQuerySlice | undefined,
   section_revision: number,
@@ -272,16 +305,25 @@ function normalize_text_replacement_quality_slice(
 }
 
 // build_user_preset_virtual_id 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_user_preset_virtual_id(name: string): string {
   return `user:${name}.json`;
 }
 
 // normalize_preset_name 在边界处归一化输入，避免下游再处理坏载荷分支。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_preset_name(name: string): string {
   return name.trim();
 }
 
 // has_casefold_duplicate_preset 集中表达布尔判定口径，避免调用方按局部字段猜测。
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function has_casefold_duplicate_preset(
   preset_items: TextReplacementPresetItem[],
   target_virtual_id: string,
@@ -317,6 +359,9 @@ function decorate_preset_items(
 }
 
 // build_statistics_badge_tooltip 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_statistics_badge_tooltip(
   t: (key: LocaleKey) => string,
   entry: TextReplacementEntry,
@@ -342,6 +387,9 @@ function build_statistics_badge_tooltip(
 }
 
 // build_default_preset_update_payload 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_default_preset_update_payload(
   config: TextReplacementVariantConfig,
   value: string,
@@ -352,6 +400,9 @@ function build_default_preset_update_payload(
 }
 
 // build_text_replacement_statistics_state_from_cache 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_text_replacement_statistics_state_from_cache(
   statistics_cache: QualityRuleStatisticsCacheSnapshot,
 ): TextReplacementStatisticsState {

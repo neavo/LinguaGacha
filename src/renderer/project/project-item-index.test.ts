@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { ProjectItemPublicRecord } from "@base/item";
+import type { ProjectItemPublicRecord } from "@domain/item";
 
 import {
   applyProjectItemIndexChange,
@@ -8,6 +8,9 @@ import {
 } from "@/project/project-item-index";
 
 // create_test_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
     item_id: 1,

@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import type { Item } from "../../../../base/item";
+import type { Item } from "../../../../domain/item";
 import {
   build_bilingual_path,
   build_target_path,

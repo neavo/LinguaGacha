@@ -3,7 +3,7 @@ import type { QualityRuleImportConfirmState } from "@/widgets/quality-rule-impor
 import type { AppTableSortState } from "@/widgets/app-table/app-table-types";
 
 import type { LocaleKey } from "@/app/locale/locale-provider";
-import type { TextPreserveMode } from "@base/quality";
+import type { TextPreserveMode } from "@domain/quality";
 
 export type { TextPreserveMode };
 

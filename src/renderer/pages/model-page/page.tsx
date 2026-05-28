@@ -10,7 +10,7 @@ import {
 
 import { useI18n } from "@/app/locale/locale-provider";
 import "@/pages/model-page/model-page.css";
-import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import { ModelCategoryCard } from "@/pages/model-page/components/model-category-card";
 import { ModelItemChip } from "@/pages/model-page/components/model-item-chip";
 import { ModelAdvancedSettingsDialog } from "@/pages/model-page/dialogs/model-advanced-settings-dialog";
@@ -18,19 +18,18 @@ import { ModelBasicSettingsDialog } from "@/pages/model-page/dialogs/model-basic
 import { ModelSelectorDialog } from "@/pages/model-page/dialogs/model-selector-dialog";
 import { ModelTaskSettingsDialog } from "@/pages/model-page/dialogs/model-task-settings-dialog";
 import { useModelPageState } from "@/pages/model-page/use-model-page-state";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import {
   AppDropdownMenuContent,
   AppDropdownMenuGroup,
   AppDropdownMenuItem,
   AppDropdownMenuSeparator,
-} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
-import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
+} from "@/widgets/app-dropdown-menu";
+import { AppAlertDialog } from "@/widgets/app-alert-dialog";
 
 type ModelPageProps = {
   is_sidebar_collapsed: boolean;
 };
-
 export function ModelPage(_props: ModelPageProps): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();

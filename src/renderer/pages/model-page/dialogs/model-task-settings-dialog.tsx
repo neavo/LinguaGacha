@@ -1,7 +1,7 @@
 import { useI18n } from "@/app/locale/locale-provider";
 import type { ModelEntrySnapshot } from "@/pages/model-page/types";
 import { Input } from "@/shadcn/input";
-import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
+import { AppPageDialog } from "@/widgets/app-page-dialog";
 import { SettingCardRow } from "@/widgets/setting-card-row/setting-card-row";
 
 type ModelTaskSettingsDialogProps = {
@@ -15,6 +15,9 @@ type ModelTaskSettingsDialogProps = {
 const THRESHOLD_INPUT_MIN = 0;
 const THRESHOLD_INPUT_MAX = 9_999_999;
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_number_input(value: string): number {
   const parsed_value = Number(value);
   if (Number.isFinite(parsed_value)) {
@@ -24,7 +27,6 @@ function normalize_number_input(value: string): number {
     return 0;
   }
 }
-
 export function ModelTaskSettingsDialog(props: ModelTaskSettingsDialogProps): JSX.Element | null {
   const { t } = useI18n();
 

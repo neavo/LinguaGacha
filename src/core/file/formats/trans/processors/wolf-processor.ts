@@ -1,4 +1,4 @@
-import type { ItemTextType } from "../../../../../base/item";
+import type { ItemTextType } from "../../../../../domain/item";
 import {
   BLACKLIST_EXTENSIONS,
   has_color_block_tag,

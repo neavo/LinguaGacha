@@ -8,7 +8,7 @@ import { ProofreadingEditDialog } from "@/pages/proofreading-page/components/pro
 import { ProofreadingFilterDialog } from "@/pages/proofreading-page/components/proofreading-filter-dialog";
 import { ProofreadingTable } from "@/pages/proofreading-page/components/proofreading-table";
 import type { ProofreadingSearchScope } from "@/pages/proofreading-page/types";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import { SearchBar, type SearchBarScopeOption } from "@/widgets/search-bar/search-bar";
 

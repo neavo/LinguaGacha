@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import type { ApiJsonValue } from "../api/api-types";
-import { Item, type ItemFileType } from "../../base/item";
+import { Item, type ItemFileType } from "../../domain/item";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";

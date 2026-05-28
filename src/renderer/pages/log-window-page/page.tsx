@@ -8,7 +8,7 @@ import {
   type LogDetail,
   type LogEvent,
 } from "@/app/desktop/desktop-api";
-import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import { useDebouncedValue } from "@/hooks/use-debounce";
 import { cn } from "@/lib/utils";
@@ -22,7 +22,7 @@ import {
   type LogLevelFilter,
 } from "@/pages/log-window-page/logic";
 import { LogAppendBuffer } from "@/pages/log-window-page/log-append-buffer";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shadcn/card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import { AppEditor } from "@/widgets/app-editor/app-editor";
@@ -114,6 +114,9 @@ export function LogWindowPage(): JSX.Element {
     const iterator = open_log_stream()[Symbol.asyncIterator]();
 
     // run_stream 封装当前模块的共享逻辑，避免重复实现同一维护规则。
+    /**
+     * 执行当前场景的异步流程。
+     */
     async function run_stream(): Promise<void> {
       try {
         while (!disposed) {

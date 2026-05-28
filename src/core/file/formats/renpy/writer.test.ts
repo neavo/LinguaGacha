@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { Item } from "../../../../base/item";
+import { Item } from "../../../../domain/item";
 import { build_skeleton, scan_double_quoted_literals, sha1_hex } from "./lexer";
 import type { RenpyBlockKind, RenpySlot } from "./types";
 import { RenpyWriter } from "./writer";

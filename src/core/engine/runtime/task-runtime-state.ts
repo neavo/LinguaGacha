@@ -1,6 +1,6 @@
 import type { ApiJsonValue } from "../../api/api-types";
 import type { TaskRunStatus, TaskRuntimeStatePayload, TaskType } from "./task-runtime-types";
-import type { TranslationScope } from "../protocol/task-types";
+import type { TranslationScope } from "../../../domain/task";
 
 const IDLE_TASK_TYPE = "idle"; // Engine 空闲态统一用 idle 表达，避免快照泄漏任务类型细节
 

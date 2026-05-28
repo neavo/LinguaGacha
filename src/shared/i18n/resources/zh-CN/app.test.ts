@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { LANGUAGE_DISPLAY_NAMES } from "../../../language";
+import { LANGUAGE_DISPLAY_NAMES } from "../../../../domain/language";
 import { zh_cn_app } from "./app";
 
 describe("zh_cn_app", () => {

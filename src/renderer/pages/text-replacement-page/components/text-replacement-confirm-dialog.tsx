@@ -1,6 +1,6 @@
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import type { TextReplacementConfirmState } from "@/pages/text-replacement-page/types";
-import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
+import { AppAlertDialog } from "@/widgets/app-alert-dialog";
 
 type TextReplacementConfirmDialogProps = {
   state: TextReplacementConfirmState;
@@ -29,7 +29,6 @@ const CONFIRM_COPY_BY_KIND: Record<
     description_key: "text_replacement_page.confirm.overwrite_preset.description",
   },
 };
-
 export function TextReplacementConfirmDialog(
   props: TextReplacementConfirmDialogProps,
 ): JSX.Element {

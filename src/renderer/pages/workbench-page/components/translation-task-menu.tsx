@@ -8,7 +8,7 @@ import {
 } from "@/pages/workbench-page/task-runtime/translation-task-model";
 import type { WorkbenchStats } from "@/pages/workbench-page/types";
 import { SegmentedProgress } from "@/widgets/segmented-progress/segmented-progress";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,
@@ -16,7 +16,7 @@ import {
   AppDropdownMenuItem,
   AppDropdownMenuSeparator,
   AppDropdownMenuTrigger,
-} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
+} from "@/widgets/app-dropdown-menu";
 import { Spinner } from "@/shadcn/spinner";
 
 type TranslationTaskMenuProps = {
@@ -28,7 +28,6 @@ type TranslationTaskMenuProps = {
   on_start_or_continue: () => Promise<void>;
   on_request_confirmation: (kind: TranslationTaskActionKind) => void;
 };
-
 export function TranslationTaskMenu(props: TranslationTaskMenuProps): JSX.Element {
   const { t } = useI18n();
   const action_items_disabled =

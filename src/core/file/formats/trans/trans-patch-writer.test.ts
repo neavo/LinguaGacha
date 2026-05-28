@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { InvalidFileStructureError } from "../../../../../shared/error";
-import { RPGMakerTransProcessor } from "../processors/rpgmaker-processor";
-import { WolfTransProcessor } from "../processors/wolf-processor";
-import type { ApiJsonRecord, PatchTarget, TransSnapshot } from "../trans-processor";
-import { collect_patch_targets, patch_trans_row } from "./patch-writer";
+import { InvalidFileStructureError } from "../../../../shared/error";
+import { RPGMakerTransProcessor } from "./processors/rpgmaker-processor";
+import { WolfTransProcessor } from "./processors/wolf-processor";
+import type { ApiJsonRecord, PatchTarget, TransSnapshot } from "./trans-processor";
+import { collect_patch_targets, patch_trans_row } from "./trans-patch-writer";
 
 describe("collect_patch_targets", () => {
   it("拒绝缺失 trans_ref 的条目，避免猜测写回位置", () => {
@@ -134,6 +134,9 @@ describe("patch_trans_row", () => {
   });
 });
 
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_snapshot(overrides: Partial<TransSnapshot> = {}): TransSnapshot {
   return {
     row: 0,
@@ -146,6 +149,9 @@ function create_snapshot(overrides: Partial<TransSnapshot> = {}): TransSnapshot 
   };
 }
 
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_target(overrides: Partial<PatchTarget> = {}): PatchTarget {
   const snap = overrides.snap ?? create_snapshot();
   return {

@@ -12,11 +12,11 @@ import {
   type ProofreadingGlossaryTerm,
 } from "@/pages/proofreading-page/types";
 import { Badge } from "@/shadcn/badge";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import { Input } from "@/shadcn/input";
 import { ScrollArea } from "@/shadcn/scroll-area";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
-import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
+import { AppPageDialog } from "@/widgets/app-page-dialog";
 
 type ProofreadingFilterDialogProps = {
   open: boolean;
@@ -28,16 +28,25 @@ type ProofreadingFilterDialogProps = {
   on_close: () => void;
 };
 
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_term_key(term: ProofreadingGlossaryTerm): string {
   return format_proofreading_glossary_term(term);
 }
 
+/**
+ * 切换当前交互状态。
+ */
 function toggle_string(values: string[], target_value: string): string[] {
   return values.includes(target_value)
     ? values.filter((value) => value !== target_value)
     : [...values, target_value];
 }
 
+/**
+ * 切换当前交互状态。
+ */
 function toggle_term(
   glossary_terms: ProofreadingGlossaryTerm[],
   target_term: ProofreadingGlossaryTerm,
@@ -49,7 +58,6 @@ function toggle_term(
 
   return [...glossary_terms, target_term];
 }
-
 function FilterToggleButton(props: {
   label: string;
   count: number;
@@ -76,7 +84,6 @@ function FilterToggleButton(props: {
     </AppButton>
   );
 }
-
 function FilterListRow(props: {
   label: string;
   count: number;
@@ -107,7 +114,6 @@ function FilterListRow(props: {
     </Tooltip>
   );
 }
-
 export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): JSX.Element {
   const { t } = useI18n();
   const [file_keyword, set_file_keyword] = useState("");
@@ -145,7 +151,6 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
       return build_term_key(entry.term).toLocaleLowerCase().includes(normalized_keyword);
     });
   }, [props.panel.glossary_term_entries, term_keyword]);
-
   async function handle_confirm(): Promise<void> {
     set_submitting(true);
     try {

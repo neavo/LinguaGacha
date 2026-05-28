@@ -6,11 +6,11 @@ import type {
   TextReplacementDialogMode,
   TextReplacementEntry,
 } from "@/pages/text-replacement-page/types";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import { AppEditor } from "@/widgets/app-editor/app-editor";
-import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
+import { AppPageDialog } from "@/widgets/app-page-dialog";
 import { SegmentedToggle } from "@/widgets/segmented-toggle/segmented-toggle";
-import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd";
 
 type TextReplacementEditDialogProps = {
   open: boolean;
@@ -22,7 +22,6 @@ type TextReplacementEditDialogProps = {
   on_save: () => Promise<void>;
   on_close: () => Promise<void>;
 };
-
 export function TextReplacementEditDialog(props: TextReplacementEditDialogProps): JSX.Element {
   const { t } = useI18n();
   const save_label = t("text_replacement_page.action.save");

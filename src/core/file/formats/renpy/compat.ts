@@ -1,4 +1,4 @@
-import { Item, read_json_record } from "../../../../base/item";
+import { Item, read_json_record } from "../../../../domain/item";
 import { parse_document, parse_translate_header } from "./parser";
 import { RenpyExtractor } from "./extractor";
 import { sha1_hex } from "./lexer";

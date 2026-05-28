@@ -1,5 +1,5 @@
 import type { MutableJsonRecord, TaskType } from "../runtime/task-runtime-types";
-import { TASK_IDLE_STATUSES as BASE_TASK_IDLE_STATUSES } from "../../../shared/task";
+import { TASK_IDLE_STATUSES as BASE_TASK_IDLE_STATUSES } from "../../../domain/task";
 import type { LogManager } from "../../log/log-manager";
 import type { AppSettingService } from "../../app/app-setting-service";
 import type { TaskRuntimePublisher } from "../runtime/task-runtime-publisher";
@@ -10,6 +10,9 @@ import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
 import type { WorkUnitLogEntry } from "../protocol/work-unit";
 
 // TASK IDLE STATUSES 是领域白名单或配置表，集中维护避免分支散落。
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const TASK_IDLE_STATUSES = new Set<string>(BASE_TASK_IDLE_STATUSES);
 
 /**

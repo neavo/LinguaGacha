@@ -16,7 +16,7 @@ import {
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import type { TextPreserveMode, TextPreservePresetItem } from "@/pages/text-preserve-page/types";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,
@@ -27,7 +27,7 @@ import {
   AppDropdownMenuSubContent,
   AppDropdownMenuSubTrigger,
   AppDropdownMenuTrigger,
-} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
+} from "@/widgets/app-dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import {
   CommandBar,
@@ -38,7 +38,7 @@ import {
   SegmentedToggle,
   type SegmentedToggleOption,
 } from "@/widgets/segmented-toggle/segmented-toggle";
-import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd";
 
 type TextPreserveCommandBarProps = {
   title_key: LocaleKey;
@@ -69,7 +69,6 @@ const MODE_LABEL_KEY_BY_MODE: Record<TextPreserveMode, LocaleKey> = {
   smart: "text_preserve_page.mode.options.smart",
   custom: "text_preserve_page.mode.options.custom",
 };
-
 export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.Element {
   const { t } = useI18n();
   const mode_options: readonly SegmentedToggleOption<TextPreserveMode>[] = [

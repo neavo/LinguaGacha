@@ -1,4 +1,4 @@
-import type { ModelApiFormat, ModelThinkingLevel } from "../../../base/model";
+import type { ModelApiFormat, ModelThinkingLevel } from "../../../domain/model";
 import type { ApiJsonValue } from "../../api/api-types";
 import type { LLMMessage } from "../llm-types";
 

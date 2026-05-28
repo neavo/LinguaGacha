@@ -3,7 +3,7 @@ import {
   patch_temperature,
   resolve_max_tokens_for_request,
 } from "../llm-client-policy";
-import type { ModelThinkingLevel } from "../../../base/model";
+import type { ModelThinkingLevel } from "../../../domain/model";
 import type { ApiJsonValue } from "../../api/api-types";
 import { RequestValidationError } from "../../../shared/error";
 import type { ModelRequestSnapshot } from "./policy-types";

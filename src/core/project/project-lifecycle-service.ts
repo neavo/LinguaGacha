@@ -22,12 +22,12 @@ import {
   normalize_project_item_persistent_record,
   normalize_project_item_public_record,
   type ProjectItemPublicRecord,
-} from "../../base/item";
+} from "../../domain/item";
 import {
   normalize_project_settings_snapshot,
   normalize_setting_snapshot,
   type ProjectSettingsSnapshot,
-} from "../../base/setting";
+} from "../../domain/setting";
 import {
   build_analysis_progress_snapshot,
   compute_project_prefilter_mutation,

@@ -2,7 +2,7 @@ import type { ScreenComponentProps } from "@/app/navigation/types";
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import "@/pages/laboratory-page/laboratory-page.css";
 import { useLaboratoryPageState } from "@/pages/laboratory-page/use-laboratory-page-state";
-import { SettingHelpButton } from "@/widgets/setting-help-button/setting-help-button";
+import { SettingHelpButton } from "@/widgets/setting-help-button";
 import { SettingCardRow } from "@/widgets/setting-card-row/setting-card-row";
 import { SegmentedToggle } from "@/widgets/segmented-toggle/segmented-toggle";
 
@@ -20,7 +20,6 @@ const HELP_URL_BY_FIELD = {
 const HELP_LABEL_KEY_BY_FIELD: Record<LaboratoryHelpField, LocaleKey> = {
   mtool_optimizer_enable: "laboratory_page.fields.mtool_optimizer_enable.help_label",
 };
-
 export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
   const { locale, t } = useI18n();
   const laboratory_page_state = useLaboratoryPageState();
@@ -35,6 +34,9 @@ export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
     },
   ] as const;
 
+  /**
+   * 生成当前场景的展示内容。
+   */
   function render_help_button(field: LaboratoryHelpField): JSX.Element {
     const help_url = HELP_URL_BY_FIELD[locale][field];
     const help_label_key = HELP_LABEL_KEY_BY_FIELD[field];
@@ -48,6 +50,9 @@ export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
     );
   }
 
+  /**
+   * 生成当前场景的展示内容。
+   */
   function render_boolean_toggle(options: {
     title_key:
       | "laboratory_page.fields.mtool_optimizer_enable.title"

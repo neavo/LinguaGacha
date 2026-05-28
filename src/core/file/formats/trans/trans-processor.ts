@@ -1,5 +1,5 @@
 import type { ApiJsonValue } from "../../../api/api-types";
-import { read_json_record, type ItemStatus, type ItemTextType } from "../../../../base/item";
+import { read_json_record, type ItemStatus, type ItemTextType } from "../../../../domain/item";
 
 export type ApiJsonRecord = Record<string, ApiJsonValue>;
 
@@ -55,6 +55,9 @@ export interface TransFilterEffectInput {
 }
 
 // 扩展名黑名单与旧 NONE.BLACKLIST_EXT 保持一致，只检查文本内容中的资源引用
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const BLACKLIST_EXTENSIONS = [
   ".mp3", // 音频资源引用
   ".wav", // 音频资源引用

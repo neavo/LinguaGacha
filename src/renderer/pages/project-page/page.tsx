@@ -20,10 +20,10 @@ import {
 } from "react";
 
 import { type SettingsSnapshot } from "@/app/desktop/desktop-runtime-context";
-import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import {
   Card,
   CardContent,
@@ -37,7 +37,7 @@ import {
   AppContextMenuContent,
   AppContextMenuItem,
   AppContextMenuTrigger,
-} from "@/widgets/app-context-menu/app-context-menu";
+} from "@/widgets/app-context-menu";
 import { Spinner } from "@/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import { type LocaleKey, useI18n } from "@/app/locale/locale-provider";
@@ -61,7 +61,7 @@ import {
   type ProjectSettingsAlignmentChangedFields,
   type ProjectSettingsAlignmentSettings,
 } from "@/project/settings/alignment-toast";
-import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
+import { AppAlertDialog } from "@/widgets/app-alert-dialog";
 
 type ProjectPageProps = {
   is_sidebar_collapsed: boolean;
@@ -220,15 +220,24 @@ const DEFAULT_PRESET_SETTING_SPECS: DefaultPresetSettingSpec[] = [
   },
 ];
 
+/**
+ * 提取路径片段供派生逻辑复用。
+ */
 function extract_file_name(file_path: string): string {
   const normalized_segments = file_path.split(/[\\/]+/u);
   return normalized_segments.at(-1) ?? file_path;
 }
 
+/**
+ * 提取路径片段供派生逻辑复用。
+ */
 function extract_stem(file_name: string): string {
   return file_name.replace(/\.[^.]+$/u, "");
 }
 
+/**
+ * 提取路径片段供派生逻辑复用。
+ */
 function extract_parent_dir(file_path: string): string {
   const normalized_index = Math.max(file_path.lastIndexOf("/"), file_path.lastIndexOf("\\"));
   if (normalized_index <= 0) {
@@ -238,6 +247,9 @@ function extract_parent_dir(file_path: string): string {
   return file_path.slice(0, normalized_index);
 }
 
+/**
+ * 拼接路径片段并统一展示规则。
+ */
 function join_path(directory_path: string, file_name: string): string {
   if (directory_path === "") {
     return file_name;
@@ -248,6 +260,9 @@ function join_path(directory_path: string, file_name: string): string {
   return `${normalized_directory}${path_separator}${file_name}`;
 }
 
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_timestamp_suffix(): string {
   const now = new Date();
   const year = now.getFullYear().toString().padStart(4, "0");
@@ -259,6 +274,9 @@ function build_timestamp_suffix(): string {
   return `${year}${month}${day}_${hour}${minute}${second}`;
 }
 
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_default_project_file_name(source_path: string): string {
   const file_name = extract_file_name(source_path);
   const has_extension = file_name.lastIndexOf(".") > 0;
@@ -266,6 +284,9 @@ function build_default_project_file_name(source_path: string): string {
   return `${base_name}_${build_timestamp_suffix()}.lg`;
 }
 
+/**
+ * 格式化当前场景的用户可读文本。
+ */
 function format_project_error_message(args: {
   template: string;
   generic_text: string;
@@ -281,6 +302,9 @@ function format_project_error_message(args: {
   }
 }
 
+/**
+ * 追加可选信息并保持输出语义稳定。
+ */
 function append_optional_unit_label(text: string, unit_label: string): string {
   if (unit_label === "") {
     return text;
@@ -289,6 +313,9 @@ function append_optional_unit_label(text: string, unit_label: string): string {
   }
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_count(value: unknown): number {
   const numeric_value = Number(value ?? 0);
   if (!Number.isFinite(numeric_value)) {
@@ -298,6 +325,9 @@ function normalize_count(value: unknown): number {
   return Math.max(0, Math.trunc(numeric_value));
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_percent(value: unknown): number {
   const numeric_value = Number(value ?? 0);
   if (!Number.isFinite(numeric_value)) {
@@ -307,6 +337,9 @@ function normalize_percent(value: unknown): number {
   return Math.max(0, Math.min(100, numeric_value));
 }
 
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_project_prefilter_settings(
   settings_snapshot: SettingsSnapshot,
 ): ProjectSettingsAlignmentSettings {
@@ -318,6 +351,9 @@ function build_project_prefilter_settings(
   };
 }
 
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 function collect_loaded_default_preset_names(
   settings_snapshot: SettingsSnapshot,
   t: ReturnType<typeof useI18n>["t"],
@@ -332,6 +368,9 @@ function collect_loaded_default_preset_names(
   });
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_project_preview_translation_stats(
   preview: NonNullable<ProjectPreviewPayload["preview"]>,
 ): SegmentedProgressStats {
@@ -362,6 +401,9 @@ function normalize_project_preview_translation_stats(
   };
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_project_preview(
   project_path: string,
   fallback_name: string,
@@ -384,6 +426,9 @@ function normalize_project_preview(
   };
 }
 
+/**
+ * 切换当前交互状态。
+ */
 function open_context_menu_at_click_position(event: MouseEvent<HTMLButtonElement>): void {
   event.preventDefault();
   event.currentTarget.dispatchEvent(
@@ -398,7 +443,6 @@ function open_context_menu_at_click_position(event: MouseEvent<HTMLButtonElement
     }),
   );
 }
-
 function PanelHeader(props: PanelHeaderProps): JSX.Element {
   const Icon = props.icon;
 
@@ -469,7 +513,6 @@ const DropZoneCard = forwardRef<HTMLButtonElement, DropZoneCardProps>(
     );
   },
 );
-
 function FormatSupportCard(props: FormatSupportCardProps): JSX.Element {
   return (
     <div className="project-home__format-item">
@@ -478,7 +521,6 @@ function FormatSupportCard(props: FormatSupportCardProps): JSX.Element {
     </div>
   );
 }
-
 function RecentProjectRow(props: RecentProjectRowProps): JSX.Element {
   function handle_remove_click(event: MouseEvent<HTMLButtonElement>): void {
     event.stopPropagation();
@@ -521,7 +563,6 @@ function RecentProjectRow(props: RecentProjectRowProps): JSX.Element {
     </div>
   );
 }
-
 function RecentProjectEmptyState(): JSX.Element {
   const { t } = useI18n();
 
@@ -532,7 +573,6 @@ function RecentProjectEmptyState(): JSX.Element {
     </div>
   );
 }
-
 function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
   const { t } = useI18n();
   const preview = props.project.preview;
@@ -610,7 +650,6 @@ function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
     </div>
   );
 }
-
 function ProjectActionButton(props: ProjectActionButtonProps): JSX.Element {
   const Icon = props.icon;
 
@@ -628,6 +667,9 @@ function ProjectActionButton(props: ProjectActionButtonProps): JSX.Element {
   );
 }
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_project_loading_stage_message(
   stage: ProjectRuntimeStage | null,
   t: ReturnType<typeof useI18n>["t"],
@@ -659,7 +701,6 @@ function resolve_project_loading_stage_message(
 
   return null;
 }
-
 function wait_for_next_animation_frame(): Promise<void> {
   return new Promise((resolve) => {
     window.requestAnimationFrame(() => {
@@ -696,14 +737,19 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   const recent_projects = settings_snapshot.recent_projects.slice(0, 5);
   const has_recent_projects = recent_projects.length > 0;
 
+  /**
+   * 清理当前场景的数据状态。
+   */
   function clear_selected_project(): void {
     set_selected_project(null);
   }
 
+  /**
+   * 清理当前场景的数据状态。
+   */
   function clear_selected_source(): void {
     set_selected_source(null);
   }
-
   async function refresh_recent_projects(): Promise<void> {
     await refresh_settings();
   }
@@ -723,6 +769,9 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
     });
   }, [project_session_stage, t, update_progress_toast]);
 
+  /**
+   * 执行当前场景的异步流程。
+   */
   async function run_project_loading_modal(args: {
     initial_message: string;
     task: () => Promise<void>;
@@ -744,6 +793,9 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
     }
   }
 
+  /**
+   * 选择当前场景的目标项。
+   */
   async function select_project_path(
     project_path: string,
     recent_project_name?: string,
@@ -796,7 +848,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       set_is_preview_loading(false);
     }
   }
-
   async function handle_select_source_paths(source_paths: string[]): Promise<void> {
     const normalized_source_paths = normalize_source_paths(source_paths);
     if (normalized_source_paths.length === 0) {
@@ -836,11 +887,9 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       set_is_source_checking(false);
     }
   }
-
   async function handle_select_source_path(source_path: string): Promise<void> {
     await handle_select_source_paths([source_path]);
   }
-
   async function handle_select_source_file(): Promise<void> {
     const result = await window.desktopApp.pickProjectSourceFilePath();
     const selected_path = result.paths[0] ?? null;
@@ -850,7 +899,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
     await handle_select_source_paths(result.paths);
   }
-
   async function handle_select_source_folder(): Promise<void> {
     const result = await window.desktopApp.pickProjectSourceDirectoryPath();
     const selected_path = result.paths[0] ?? null;
@@ -860,7 +908,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
     await handle_select_source_path(selected_path);
   }
-
   async function handle_select_project_file(): Promise<void> {
     const result = await window.desktopApp.pickProjectFilePath();
     const selected_path = result.paths[0] ?? null;
@@ -870,7 +917,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
     await select_project_path(selected_path);
   }
-
   function handle_drop_over(
     dropzone: Exclude<ActiveDropzone, null>,
     event: DragEvent<HTMLButtonElement>,
@@ -891,7 +937,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       event.dataTransfer.dropEffect = "none";
     }
   }
-
   function handle_drop_leave(dropzone: Exclude<ActiveDropzone, null>): void {
     set_active_dropzone((current_dropzone) => {
       if (current_dropzone === dropzone) {
@@ -901,7 +946,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       }
     });
   }
-
   async function handle_path_drop(
     event: DragEvent<HTMLButtonElement>,
     on_resolved_path: (path: string) => Promise<void>,
@@ -921,15 +965,16 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
     await on_resolved_path(dropped_path.path);
   }
-
   async function handle_source_drop(event: DragEvent<HTMLButtonElement>): Promise<void> {
     await handle_path_drop(event, handle_select_source_path);
   }
-
   async function handle_project_drop(event: DragEvent<HTMLButtonElement>): Promise<void> {
     await handle_path_drop(event, select_project_path);
   }
 
+  /**
+   * 解析当前场景的最终消费值。
+   */
   async function resolve_project_output_path(source_path: string): Promise<string | null> {
     const default_file_name = build_default_project_file_name(source_path);
     const save_mode = settings_snapshot.project_save_mode;
@@ -961,7 +1006,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
     return join_path(fixed_directory, default_file_name);
   }
-
   async function handle_create_project(): Promise<void> {
     if (selected_source === null || is_creating_project) {
       return;
@@ -1038,7 +1082,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       set_is_creating_project(false);
     }
   }
-
   async function handle_open_project(): Promise<void> {
     if (selected_project === null || selected_project.preview === null || is_opening_project) {
       return;
@@ -1125,14 +1168,12 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       set_is_opening_project(false);
     }
   }
-
   async function handle_recent_project_select(
     project_path: string,
     project_name: string,
   ): Promise<void> {
     await select_project_path(project_path, project_name);
   }
-
   async function handle_recent_project_remove(project_path: string): Promise<void> {
     try {
       await api_fetch<SettingsPayload>("/api/settings/recent-projects/remove", {

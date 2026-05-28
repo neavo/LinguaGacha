@@ -2,14 +2,13 @@ import { BadgeHelp } from "lucide-react";
 
 import { open_external_url } from "@/app/desktop/desktop-api";
 import { cn } from "@/lib/utils";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 
 type SettingHelpButtonProps = {
   url: string;
   aria_label: string;
   className?: string;
 };
-
 export function SettingHelpButton(props: SettingHelpButtonProps): JSX.Element {
   return (
     <AppButton

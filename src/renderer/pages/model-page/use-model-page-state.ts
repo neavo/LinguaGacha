@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
-import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import type {
@@ -19,7 +19,7 @@ import type {
   ModelThresholdSnapshot,
   ModelType,
 } from "@/pages/model-page/types";
-import { MODEL_TYPES, Model } from "@base/model";
+import { MODEL_TYPES, Model } from "@domain/model";
 
 type ModelPageSnapshotPayload = {
   snapshot?: Partial<ModelPageSnapshot> & {
@@ -122,6 +122,9 @@ const EMPTY_SNAPSHOT: ModelPageSnapshot = {
   models: [],
 };
 
+/**
+ * 关闭当前交互状态并重置相关上下文。
+ */
 function close_dialog_state(): ModelDialogState {
   return {
     kind: null,
@@ -129,6 +132,9 @@ function close_dialog_state(): ModelDialogState {
   };
 }
 
+/**
+ * 关闭当前交互状态并重置相关上下文。
+ */
 function close_confirm_state(): ModelConfirmState {
   return {
     kind: null,
@@ -136,6 +142,9 @@ function close_confirm_state(): ModelConfirmState {
   };
 }
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 function create_selector_state(): ModelSelectorState {
   return {
     open: false,
@@ -146,6 +155,9 @@ function create_selector_state(): ModelSelectorState {
   };
 }
 
+/**
+ * 读取当前值并屏蔽异常输入形状。
+ */
 function read_number(candidate: unknown, fallback_value: number): number {
   const parsed_value = Number(candidate);
   if (Number.isFinite(parsed_value)) {
@@ -155,6 +167,9 @@ function read_number(candidate: unknown, fallback_value: number): number {
   }
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_request_snapshot(candidate: unknown): ModelRequestSnapshot {
   const source =
     typeof candidate === "object" && candidate !== null
@@ -181,6 +196,9 @@ function normalize_request_snapshot(candidate: unknown): ModelRequestSnapshot {
   };
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_threshold_snapshot(candidate: unknown): ModelThresholdSnapshot {
   const source =
     typeof candidate === "object" && candidate !== null
@@ -204,6 +222,9 @@ function normalize_threshold_snapshot(candidate: unknown): ModelThresholdSnapsho
   };
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_thinking_snapshot(candidate: unknown): ModelThinkingSnapshot {
   const source =
     typeof candidate === "object" && candidate !== null
@@ -215,6 +236,9 @@ function normalize_thinking_snapshot(candidate: unknown): ModelThinkingSnapshot 
   };
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_generation_snapshot(candidate: unknown): ModelGenerationSnapshot {
   const source =
     typeof candidate === "object" && candidate !== null
@@ -239,6 +263,9 @@ function normalize_generation_snapshot(candidate: unknown): ModelGenerationSnaps
   };
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_model_entry(
   candidate: Partial<ModelEntrySnapshot> | undefined,
 ): ModelEntrySnapshot {
@@ -262,6 +289,9 @@ function normalize_model_entry(
   };
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_model_page_snapshot(payload: ModelPageSnapshotPayload): ModelPageSnapshot {
   const snapshot = payload.snapshot ?? {};
   const models = Array.isArray(snapshot.models)
@@ -277,6 +307,9 @@ function normalize_model_page_snapshot(payload: ModelPageSnapshotPayload): Model
   };
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_model_test_result(payload: ModelTestPayload): ModelTestResult {
   return {
     success: Boolean(payload.success),
@@ -284,6 +317,9 @@ function normalize_model_test_result(payload: ModelTestPayload): ModelTestResult
   };
 }
 
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 function find_model(
   snapshot: ModelPageSnapshot,
   model_id: string | null,
@@ -295,6 +331,9 @@ function find_model(
   }
 }
 
+/**
+ * 合并局部变更并保留既有业务字段。
+ */
 function merge_model_patch(
   model: ModelEntrySnapshot,
   patch: Record<string, unknown>,
@@ -341,6 +380,9 @@ function merge_model_patch(
   };
 }
 
+/**
+ * 应用局部变更并返回稳定状态。
+ */
 function apply_model_patch(
   snapshot: ModelPageSnapshot,
   model_id: string,
@@ -357,7 +399,6 @@ function apply_model_patch(
     }),
   };
 }
-
 function reorder_snapshot_group(
   snapshot: ModelPageSnapshot,
   model_type: ModelType,
@@ -401,7 +442,6 @@ function reorder_snapshot_group(
     models: next_models,
   };
 }
-
 export function useModelPageState(): UseModelPageStateResult {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -653,6 +693,9 @@ export function useModelPageState(): UseModelPageStateResult {
     [push_toast, readonly, t],
   );
 
+  /**
+   * 切换当前交互状态。
+   */
   function open_dialog(kind: Exclude<ModelDialogState["kind"], null>, model_id: string): void {
     set_dialog_state({
       kind,
@@ -660,6 +703,9 @@ export function useModelPageState(): UseModelPageStateResult {
     });
   }
 
+  /**
+   * 切换当前交互状态。
+   */
   function close_dialog(): void {
     set_dialog_state(close_dialog_state());
   }
@@ -703,10 +749,16 @@ export function useModelPageState(): UseModelPageStateResult {
     }
   }, [confirm_state, dialog_state.model_id, push_toast, readonly, t]);
 
+  /**
+   * 切换当前交互状态。
+   */
   function close_confirm(): void {
     set_confirm_state(close_confirm_state());
   }
 
+  /**
+   * 切换当前交互状态。
+   */
   function open_selector_dialog(model_id: string): void {
     set_selector_state((previous_state) => {
       return {
@@ -718,6 +770,9 @@ export function useModelPageState(): UseModelPageStateResult {
     });
   }
 
+  /**
+   * 切换当前交互状态。
+   */
   function close_selector_dialog(): void {
     set_selector_state((previous_state) => {
       return {
@@ -729,6 +784,9 @@ export function useModelPageState(): UseModelPageStateResult {
     });
   }
 
+  /**
+   * 写入当前场景的状态变化。
+   */
   function set_selector_filter_text(next_text: string): void {
     set_selector_state((previous_state) => {
       return {

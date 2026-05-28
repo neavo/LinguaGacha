@@ -1,6 +1,6 @@
 import { useI18n } from "@/app/locale/locale-provider";
 import type { QualityRuleImportConfirmState } from "@/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-state";
-import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
+import { AppAlertDialog } from "@/widgets/app-alert-dialog";
 
 type QualityRuleImportConfirmDialogProps = {
   state: QualityRuleImportConfirmState;
@@ -8,7 +8,6 @@ type QualityRuleImportConfirmDialogProps = {
   on_overwrite: () => void | Promise<void>;
   on_close: () => void;
 };
-
 export function QualityRuleImportConfirmDialog(
   props: QualityRuleImportConfirmDialogProps,
 ): JSX.Element {

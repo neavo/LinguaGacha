@@ -40,6 +40,9 @@ const toast_fixture: { current: ToastFixture } = {
   current: create_toast_fixture(),
 };
 
+/**
+ * 支撑当前测试场景的专用辅助逻辑。
+ */
 const translate = (key: string): string => key;
 
 (
@@ -54,7 +57,7 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
   };
 });
 
-vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
+vi.mock("@/app/ui-runtime/use-desktop-toast", () => {
   return {
     useDesktopToast: () => toast_fixture.current,
   };
@@ -79,6 +82,9 @@ vi.mock("@/app/desktop/desktop-api", () => {
 });
 
 // create_settings_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_settings_snapshot(overrides: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
   return {
     app_language: "ZH",
@@ -110,6 +116,9 @@ function create_settings_snapshot(overrides: Partial<SettingsSnapshot> = {}): Se
 }
 
 // create_runtime_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_runtime_fixture(): RuntimeFixture {
   const settings_snapshot = create_settings_snapshot();
   return {
@@ -145,6 +154,9 @@ function create_runtime_fixture(): RuntimeFixture {
 }
 
 // create_toast_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_toast_fixture(): ToastFixture {
   return {
     push_toast: vi.fn(),
@@ -155,6 +167,9 @@ function create_toast_fixture(): ToastFixture {
 }
 
 // create_settings_payload 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_settings_payload(settings_snapshot: SettingsSnapshot): {
   settings: SettingsSnapshot;
 } {
@@ -191,6 +206,9 @@ describe("useBasicSettingsState", () => {
   }
 
   // flush_async_updates 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+  /**
+   * 支撑当前测试场景的专用辅助逻辑。
+   */
   async function flush_async_updates(): Promise<void> {
     await act(async () => {
       await Promise.resolve();
@@ -200,6 +218,9 @@ describe("useBasicSettingsState", () => {
   }
 
   // render_hook 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+  /**
+   * 生成当前场景的展示内容。
+   */
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");

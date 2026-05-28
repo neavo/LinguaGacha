@@ -9,8 +9,8 @@ import {
   type ExportPaths,
   type FileFormatServiceConfig,
 } from "../file-format-shared";
-import { Item } from "../../../../base/item";
-import { normalize_setting_snapshot } from "../../../../base/setting";
+import { Item } from "../../../../domain/item";
+import { normalize_setting_snapshot } from "../../../../domain/setting";
 import { build_items_for_writeback, get_item_target_line } from "./compat";
 import { RenpyExtractor } from "./extractor";
 import { parse_document } from "./parser";

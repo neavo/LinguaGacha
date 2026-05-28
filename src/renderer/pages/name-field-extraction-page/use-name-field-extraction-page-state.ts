@@ -12,8 +12,8 @@ import {
   type NameFieldExtractionGlossaryQuerySlice,
 } from "@/project/query/name-field-extraction-query";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
-import { is_task_mutation_locked } from "@/project/tasks/task-lock";
-import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { is_task_mutation_locked } from "@/project/project-task-lock";
+import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import type { GlossaryEntry } from "@/pages/glossary-page/types";
@@ -57,7 +57,7 @@ import {
 } from "@/pages/result-view-snapshot";
 import { ensure_quality_rule_entry_ids } from "@/project/quality/quality-rule-entry-id";
 import { createProjectItemIndex } from "@/project/project-item-index";
-import type { ProjectItemPublicRecord } from "@base/item";
+import type { ProjectItemPublicRecord } from "@domain/item";
 
 type TranslateSinglePayload = {
   success?: boolean;
@@ -104,6 +104,9 @@ function clone_row(row: NameFieldRow): NameFieldRow {
 }
 
 // create_empty_filter_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_filter_state(): NameFieldFilterState {
   return {
     keyword: "",
@@ -113,6 +116,9 @@ function create_empty_filter_state(): NameFieldFilterState {
 }
 
 // create_empty_sort_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_sort_state(): NameFieldSortState {
   return {
     field: null,
@@ -121,6 +127,9 @@ function create_empty_sort_state(): NameFieldSortState {
 }
 
 // create_empty_confirm_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_confirm_state(): NameFieldConfirmState {
   return {
     open: false,
@@ -132,6 +141,9 @@ function create_empty_confirm_state(): NameFieldConfirmState {
 }
 
 // create_empty_dialog_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_dialog_state(): NameFieldDialogState {
   return {
     open: false,
@@ -142,6 +154,9 @@ function create_empty_dialog_state(): NameFieldDialogState {
 }
 
 // create_empty_run_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_run_state(): NameFieldRunState {
   return {
     extracting: false,
@@ -150,11 +165,17 @@ function create_empty_run_state(): NameFieldRunState {
 }
 
 // is_name_field_sort_field 集中表达布尔判定口径，避免调用方按局部字段猜测。
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function is_name_field_sort_field(column_id: string): column_id is NameFieldSortField {
   return column_id === "src" || column_id === "dst";
 }
 
 // normalize_glossary_entry 在边界处归一化输入，避免下游再处理坏载荷分支。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_glossary_entry(entry: GlossaryEntry): GlossaryEntry {
   return {
     entry_id: entry.entry_id,
@@ -165,6 +186,9 @@ function normalize_glossary_entry(entry: GlossaryEntry): GlossaryEntry {
   };
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_glossary_query_entries(
   slice: NameFieldExtractionGlossaryQuerySlice | undefined,
 ): GlossaryEntry[] {

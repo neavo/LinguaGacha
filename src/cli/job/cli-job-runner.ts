@@ -3,13 +3,9 @@ import fs from "node:fs";
 import type { ApiJsonValue } from "../../core/api/api-types";
 import type { CoreServices } from "../../core/bootstrap/core-services";
 import type { ApiStreamPayload } from "../../core/api/api-stream-hub";
-import { normalize_project_settings_snapshot } from "../../base/setting";
+import { normalize_project_settings_snapshot } from "../../domain/setting";
 import type { TaskSnapshot } from "../../core/engine/protocol/task-snapshot";
-import {
-  is_task_run_status,
-  is_task_type,
-  type TaskType,
-} from "../../core/engine/protocol/task-types";
+import { is_task_run_status, is_task_type, type TaskType } from "../../domain/task";
 import type { CLICommandOptions } from "../cli-parser";
 import type { CLIJobRunOptions } from "./cli-job-types";
 import { CLITempProject } from "./cli-temp-project";

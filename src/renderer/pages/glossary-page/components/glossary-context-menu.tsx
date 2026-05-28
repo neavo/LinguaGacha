@@ -10,14 +10,13 @@ import {
   AppContextMenuSub,
   AppContextMenuSubContent,
   AppContextMenuSubTrigger,
-} from "@/widgets/app-context-menu/app-context-menu";
+} from "@/widgets/app-context-menu";
 
 type GlossaryContextMenuContentProps = {
   case_sensitive_state: "enabled" | "disabled" | "mixed";
   on_open_edit: () => void;
   on_toggle_case_sensitive: (next_value: boolean) => Promise<void>;
 };
-
 export function GlossaryContextMenuContent(props: GlossaryContextMenuContentProps): JSX.Element {
   const { t } = useI18n();
 

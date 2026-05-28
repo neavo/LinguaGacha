@@ -1,4 +1,4 @@
-import { normalize_app_language } from "../../../base/setting";
+import { normalize_app_language } from "../../../domain/setting";
 import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
 import type { MigrationDescriptor, ProjectOpenMigrationContext } from "../migration-types";
 

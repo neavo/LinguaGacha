@@ -10,8 +10,8 @@ import { AppSettingService } from "../app/app-setting-service";
 import { LLMClient } from "../llm/llm-client";
 import type { LLMMessage, LLMRequestResult } from "../llm/llm-types";
 import { LLMClientPolicy } from "../llm/llm-client-policy";
-import { Model, type ModelApiFormat } from "../../base/model";
-import { normalize_setting_snapshot } from "../../base/setting";
+import { Model, type ModelApiFormat } from "../../domain/model";
+import { normalize_setting_snapshot } from "../../domain/setting";
 import {
   read_model_preset_records,
   read_model_records,
@@ -492,6 +492,9 @@ export class ModelService {
   }
 
   // log_model_test_key_start 封装类内部的非显然分支，避免调用方重复理解同一约束。
+  /**
+   * 记录当前操作的诊断日志。
+   */
   private log_model_test_key_start(
     app_language: unknown,
     masked_key: string,
@@ -508,6 +511,9 @@ export class ModelService {
   }
 
   // log_model_test_success 封装类内部的非显然分支，避免调用方重复理解同一约束。
+  /**
+   * 记录当前操作的诊断日志。
+   */
   private log_model_test_success(
     app_language: unknown,
     result: LLMRequestResult,
@@ -550,6 +556,9 @@ export class ModelService {
   }
 
   // log_model_test_summary 封装类内部的非显然分支，避免调用方重复理解同一约束。
+  /**
+   * 记录当前操作的诊断日志。
+   */
   private log_model_test_summary(
     app_language: unknown,
     result_msg: string,
@@ -570,6 +579,9 @@ export class ModelService {
   }
 
   // format_model_test_messages_for_log 封装类内部的非显然分支，避免调用方重复理解同一约束。
+  /**
+   * 生成当前场景的展示内容。
+   */
   private format_model_test_messages_for_log(messages: LLMMessage[]): string {
     const rows = messages.map(
       (message) =>
@@ -581,11 +593,17 @@ export class ModelService {
   }
 
   // escape_python_repr 封装类内部的非显然分支，避免调用方重复理解同一约束。
+  /**
+   * 转义文本以保持日志内容稳定。
+   */
   private escape_python_repr(value: string): string {
     return value.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
   }
 
   // t 封装类内部的非显然分支，避免调用方重复理解同一约束。
+  /**
+   * 转换本地化键为当前语言文本。
+   */
   private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
     return format_i18n_message(resolve_i18n_locale(app_language), key, params);
   }

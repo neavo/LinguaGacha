@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { Item } from "../../../../base/item";
+import { Item } from "../../../../domain/item";
 import { TRANSFormat } from "./trans-format";
 
 let temp_dir = "";
@@ -17,6 +17,9 @@ afterEach(() => {
   fs.rmSync(temp_dir, { recursive: true, force: true });
 });
 
+/**
+ * 转换当前格式片段并保持序列化语义稳定。
+ */
 function encode_trans(project: Record<string, unknown>): Uint8Array {
   return new TextEncoder().encode(JSON.stringify({ project }));
 }

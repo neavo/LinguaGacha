@@ -38,7 +38,6 @@ type AppButtonProps = Omit<ShadcnButtonProps, "size"> &
   VariantProps<typeof appButtonVariants> & {
     size?: AppButtonSize;
   };
-
 function AppButton({
   className,
   variant = "default",

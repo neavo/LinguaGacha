@@ -2,12 +2,8 @@ import ExcelJS from "exceljs";
 import type { Row } from "exceljs";
 
 import type { ApiJsonValue } from "../api/api-types";
-import { QualityRule } from "../../base/quality";
-import {
-  NativeFs,
-  default_native_fs,
-  normalize_native_file_bytes,
-} from "../../native/native-fs";
+import { QualityRule } from "../../domain/quality";
+import { NativeFs, default_native_fs, normalize_native_file_bytes } from "../../native/native-fs";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { SpreadsheetTool } from "../../shared/utils/spreadsheet-tool";
 

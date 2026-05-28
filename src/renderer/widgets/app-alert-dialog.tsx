@@ -35,11 +35,9 @@ type AppAlertDialogProps = {
 type ClosableEvent = {
   preventDefault: () => void;
 };
-
 function preventDialogClose(event: ClosableEvent): void {
   event.preventDefault();
 }
-
 export function AppAlertDialog(props: AppAlertDialogProps): JSX.Element {
   const { t } = useI18n();
   const submitting = props.submitting ?? false;

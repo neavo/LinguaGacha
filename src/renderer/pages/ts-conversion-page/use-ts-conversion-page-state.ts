@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
-import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import {
@@ -21,8 +21,8 @@ import type {
   TsConversionExportPayload,
   TsConversionRulePresetPayload,
 } from "@/pages/ts-conversion-page/types";
-import { ITEM_TEXT_TYPES, type ProjectItemPublicRecord } from "@base/item";
-import { normalize_text_preserve_mode } from "@base/quality";
+import { ITEM_TEXT_TYPES, type ProjectItemPublicRecord } from "@domain/item";
+import { normalize_text_preserve_mode } from "@domain/quality";
 
 type TsConversionConfirmState = {
   open: boolean;
@@ -46,6 +46,9 @@ const EMPTY_QUERY_STATE: TsConversionQueryState = {
 };
 
 // 确认弹窗状态保持独立构造，避免关闭和初始化分支各自拼对象
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_confirm_state(): TsConversionConfirmState {
   return {
     open: false,
@@ -53,11 +56,17 @@ function create_empty_confirm_state(): TsConversionConfirmState {
 }
 
 // 导出后缀沿用 旧写出链路的既有命名约定，页面只按方向选择
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_suffix(direction: TsConversionDirection): string {
   return direction === "s2t" ? "_S2T" : "_T2S";
 }
 
 // 质量规则预设返回原始 entries，简繁转换页只消费非空 src 作为保护规则
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 function extract_preset_rule_sources(entries: unknown[] | undefined): string[] {
   if (!Array.isArray(entries)) {
     return [];
@@ -72,6 +81,9 @@ function extract_preset_rule_sources(entries: unknown[] | undefined): string[] {
   });
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_text_preserve_query_slice(
   slice: TsConversionTextPreserveQuerySlice | undefined,
 ): TsConversionQueryState["text_preserve"] {
@@ -89,6 +101,9 @@ function normalize_text_preserve_query_slice(
 }
 
 // 单个 text_type 读取失败不应中断整次转换，缺失预设等价于没有保护规则
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 async function read_preset_rules_for_text_type(text_type: string): Promise<string[]> {
   try {
     const payload = await api_fetch<TsConversionRulePresetPayload>(
@@ -106,6 +121,9 @@ async function read_preset_rules_for_text_type(text_type: string): Promise<strin
 }
 
 // 按原始 text_type 大写键回填规则，保持转换逻辑与运行态条目字段一致
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 async function read_preset_rules_by_text_type(
   text_types: string[],
 ): Promise<Record<string, string[]>> {

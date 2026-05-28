@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import JSZip from "jszip";
 
 import { create_epub_fixture, read_epub_entry_text } from "../../../../test/epub-fixture";
-import { Item } from "../../../../base/item";
+import { Item } from "../../../../domain/item";
 import { EpubAst } from "./epub-ast";
 import { EpubWriter } from "./epub-writer";
 
@@ -71,6 +71,9 @@ async function create_layout_epub_fixture(): Promise<Buffer> {
   return zip.generateAsync({ compression: "STORE", type: "nodebuffer" });
 }
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 async function create_nav_epub_fixture(): Promise<Buffer> {
   const zip = new JSZip();
   zip.file(

@@ -5,7 +5,7 @@ import path from "node:path";
 import ExcelJS from "exceljs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { Item } from "../../../base/item";
+import { Item } from "../../../domain/item";
 import { XLSXFormat } from "./xlsx-format";
 
 let temp_dir = ""; // 每个用例独占工作簿输出目录，避免 ExcelJS 文件写回互相影响

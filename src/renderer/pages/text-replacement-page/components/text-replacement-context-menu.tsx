@@ -10,7 +10,7 @@ import {
   AppContextMenuSub,
   AppContextMenuSubContent,
   AppContextMenuSubTrigger,
-} from "@/widgets/app-context-menu/app-context-menu";
+} from "@/widgets/app-context-menu";
 
 type TextReplacementContextMenuContentProps = {
   regex_state: "enabled" | "disabled" | "mixed";
@@ -19,7 +19,6 @@ type TextReplacementContextMenuContentProps = {
   on_toggle_regex: (next_value: boolean) => Promise<void>;
   on_toggle_case_sensitive: (next_value: boolean) => Promise<void>;
 };
-
 export function TextReplacementContextMenuContent(
   props: TextReplacementContextMenuContentProps,
 ): JSX.Element {

@@ -2,7 +2,7 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 
 const sonner_mock = vi.hoisted(() => {
   const toast = vi.fn(() => "progress-toast-id") as unknown as {
@@ -39,6 +39,9 @@ type ToastProbeProps = {
   on_ready: (api: DesktopToastApi) => void;
 };
 
+/**
+ * 渲染当前组件的公开界面。
+ */
 function ToastProbe(props: ToastProbeProps): JSX.Element | null {
   const toast_api = useDesktopToast();
 
@@ -54,6 +57,9 @@ describe("useDesktopToast", () => {
   let root: Root | null = null;
   let toast_api: DesktopToastApi | null = null;
 
+  /**
+   * 读取当前场景需要的稳定数据。
+   */
   function read_toast_api(): DesktopToastApi {
     if (toast_api === null) {
       throw new Error("toast_api 尚未初始化。");
@@ -61,6 +67,9 @@ describe("useDesktopToast", () => {
     return toast_api;
   }
 
+  /**
+   * 生成当前场景的展示内容。
+   */
   async function render_probe(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);

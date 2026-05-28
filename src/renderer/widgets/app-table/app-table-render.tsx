@@ -2,7 +2,7 @@ import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import type { CSSProperties } from "react";
 
 import { cn } from "@/lib/utils";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import { TableCell, TableHead, TableRow } from "@/shadcn/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import type {
@@ -11,6 +11,9 @@ import type {
   AppTableSortDirection,
 } from "@/widgets/app-table/app-table-types";
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_sort_action_label(args: {
   direction: AppTableSortDirection | null;
   column: AppTableDataColumn<unknown>;
@@ -29,7 +32,6 @@ function resolve_sort_action_label(args: {
 
   return args.column.sortable.action_labels.clear;
 }
-
 export function AppTableHeadCell<Row>(args: {
   column: AppTableColumn<Row>;
   direction: AppTableSortDirection | null;
@@ -108,7 +110,6 @@ export function AppTableHeadCell<Row>(args: {
     </TableHead>
   );
 }
-
 export function AppTableSpacerRow(props: { column_count: number; height: number }): JSX.Element {
   return (
     <TableRow aria-hidden="true" className="app-table__row app-table__spacer-row">
@@ -118,7 +119,6 @@ export function AppTableSpacerRow(props: { column_count: number; height: number 
     </TableRow>
   );
 }
-
 export function AppTablePlaceholderRow<Row>(props: {
   columns: AppTableColumn<Row>[];
   row_index: number;

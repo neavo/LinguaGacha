@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import type { ApiJsonValue } from "../../api/api-types";
 import type { MutableJsonRecord } from "../runtime/task-runtime-types";
-import { is_task_skipped_item_status } from "../../../shared/task";
+import { is_task_skipped_item_status } from "../../../domain/task";
 import type { PlanningWorkerPool } from "./planning-worker-pool";
 import {
   build_task_token_metric_cache_key,

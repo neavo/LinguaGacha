@@ -1,6 +1,6 @@
 import type { CLICommandName } from "./cli-parser";
 import type { ApiJsonValue } from "../core/api/api-types";
-import type { TaskRunStatus } from "../core/engine/protocol/task-types";
+import type { TaskRunStatus } from "../domain/task";
 import { JsonTool } from "../shared/utils/json-tool";
 
 type NowProvider = () => Date;

@@ -1,5 +1,5 @@
 import type { ApiJsonValue } from "../../api/api-types";
-import type { TaskRunStatus, TaskType, TranslationScope } from "./task-types";
+import type { TaskRunStatus, TaskType, TranslationScope } from "../../../domain/task";
 
 /** progress 只承载可累加的执行进度，任务差异字段必须放进 extras */
 export type TaskProgress = {

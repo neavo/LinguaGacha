@@ -1,7 +1,7 @@
 import type { ApiJsonValue } from "../api/api-types";
 import { AppPathService } from "./app-path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
-import { Setting } from "../../base/setting";
+import { Setting } from "../../domain/setting";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 
 interface AppSettingsStreamPublisher {

@@ -18,14 +18,12 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@/shadcn/context-menu";
-
 function AppContextMenuContent({
   className,
   ...props
 }: ComponentProps<typeof ContextMenuContent>): JSX.Element {
   return <ContextMenuContent className={cn("w-max min-w-36 text-[13px]", className)} {...props} />;
 }
-
 function AppContextMenuSubContent({
   className,
   ...props
@@ -37,42 +35,36 @@ function AppContextMenuSubContent({
     />
   );
 }
-
 function AppContextMenuItem({
   className,
   ...props
 }: ComponentProps<typeof ContextMenuItem>): JSX.Element {
   return <ContextMenuItem className={cn("text-[13px]", className)} {...props} />;
 }
-
 function AppContextMenuCheckboxItem({
   className,
   ...props
 }: ComponentProps<typeof ContextMenuCheckboxItem>): JSX.Element {
   return <ContextMenuCheckboxItem className={cn("text-[13px]", className)} {...props} />;
 }
-
 function AppContextMenuRadioItem({
   className,
   ...props
 }: ComponentProps<typeof ContextMenuRadioItem>): JSX.Element {
   return <ContextMenuRadioItem className={cn("text-[13px]", className)} {...props} />;
 }
-
 function AppContextMenuSubTrigger({
   className,
   ...props
 }: ComponentProps<typeof ContextMenuSubTrigger>): JSX.Element {
   return <ContextMenuSubTrigger className={cn("text-[13px]", className)} {...props} />;
 }
-
 function AppContextMenuLabel({
   className,
   ...props
 }: ComponentProps<typeof ContextMenuLabel>): JSX.Element {
   return <ContextMenuLabel className={cn("text-[13px]", className)} {...props} />;
 }
-
 function AppContextMenuShortcut({
   className,
   ...props

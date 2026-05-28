@@ -1,18 +1,18 @@
 import path from "node:path";
 
-import { JsonTool } from "../../../../shared/utils/json-tool";
-import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../../shared/text/text-types";
-import type { LLMMessage } from "../../../llm/llm-types";
-import { default_native_fs } from "../../../../native/native-fs";
-import { Prompt } from "../../../../base/prompt";
-import { normalize_setting_snapshot } from "../../../../base/setting";
-import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
+import { JsonTool } from "../../../shared/utils/json-tool";
+import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../shared/text/text-types";
+import type { LLMMessage } from "../../llm/llm-types";
+import { default_native_fs } from "../../../native/native-fs";
+import { Prompt } from "../../../domain/prompt";
+import { normalize_setting_snapshot } from "../../../domain/setting";
+import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../shared/i18n";
 import {
   get_language_display_locale,
   get_prompt_source_language_name,
   get_prompt_target_language_name,
   normalize_language_code,
-} from "../../../../shared/language";
+} from "../../../domain/language";
 
 /**
  * 提示词构造所需的最小配置快照，worker 只读取语言与界面语言
@@ -313,6 +313,9 @@ export class PromptBuilder {
     return this.get_prompt_ui_language() === "zh";
   }
 
+  /**
+   * 转换本地化键为当前语言文本。
+   */
   private t(key: LocaleKey, params: Record<string, string> = {}): string {
     return format_i18n_message(resolve_i18n_locale(this.config.app_language), key, params);
   }

@@ -6,7 +6,7 @@ import {
   IPC_CHANNEL_RENDERER_DIAGNOSTICS,
   IPC_CHANNEL_TITLE_BAR_THEME,
   IPC_CHANNEL_WINDOW_CLOSE_REQUEST,
-} from "../ipc/ipc-contract";
+} from "../gui-ipc-contract";
 import { DESKTOP_BRIDGE_GLOBAL_NAME, type DesktopBridgeApi } from "../bridge/bridge-api";
 
 // electron mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。

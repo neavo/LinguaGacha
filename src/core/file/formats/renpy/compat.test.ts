@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { Item } from "../../../../base/item";
+import { Item } from "../../../../domain/item";
 import { sha1_hex } from "./lexer";
 import {
   build_ast_keys,

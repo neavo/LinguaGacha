@@ -9,7 +9,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(project_root, "src/renderer"),
-      "@base": path.resolve(project_root, "src/base"),
+      "@domain": path.resolve(project_root, "src/domain"),
       "@core/api/api-base-url": path.resolve(project_root, "src/core/api/api-base-url.ts"),
       "@gui/bridge-api": path.resolve(project_root, "src/gui/bridge/bridge-api.ts"),
       "@gui/bridge-types": path.resolve(project_root, "src/gui/bridge/bridge-types.ts"),
@@ -17,7 +17,7 @@ export default defineConfig({
         project_root,
         "src/gui/shell/external-url-policy.ts",
       ),
-      "@gui/ipc-contract": path.resolve(project_root, "src/gui/ipc/ipc-contract.ts"),
+      "@gui/ipc-contract": path.resolve(project_root, "src/gui/gui-ipc-contract.ts"),
       "@gui/shell-contract": path.resolve(project_root, "src/gui/shell/shell-contract.ts"),
       "@shared": path.resolve(project_root, "src/shared"),
     },

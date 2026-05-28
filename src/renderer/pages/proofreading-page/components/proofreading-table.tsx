@@ -29,7 +29,7 @@ import {
   AppContextMenuSub,
   AppContextMenuSubContent,
   AppContextMenuSubTrigger,
-} from "@/widgets/app-context-menu/app-context-menu";
+} from "@/widgets/app-context-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import { AppTable } from "@/widgets/app-table/app-table";
 import { AppTableDragIndicator } from "@/widgets/app-table/app-table-drag-indicator";
@@ -74,6 +74,9 @@ type ProofreadingTableProps = {
 
 type ProofreadingStatusIconTone = "success" | "warning" | "failure" | "neutral";
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function should_ignore_box_selection_target(target_element: HTMLElement): boolean {
   return (
     target_element.closest(
@@ -88,6 +91,9 @@ function should_ignore_box_selection_target(target_element: HTMLElement): boolea
   );
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function should_ignore_row_click_target(target_element: HTMLElement): boolean {
   return (
     target_element.closest(
@@ -99,11 +105,17 @@ function should_ignore_row_click_target(target_element: HTMLElement): boolean {
   );
 }
 
+/**
+ * 执行当前场景的异步流程。
+ */
 function run_after_context_menu_close(action: () => void): void {
   // Radix ContextMenu 会在 select 后恢复焦点；弹窗类动作延后一拍，避免两个临时 layer 同轮抢焦点。
   window.setTimeout(action, 0);
 }
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_context_target_row_ids(row_id: string, selected_row_ids: string[]): string[] {
   if (selected_row_ids.includes(row_id)) {
     return selected_row_ids;
@@ -112,10 +124,16 @@ function resolve_context_target_row_ids(row_id: string, selected_row_ids: string
   return [row_id];
 }
 
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_row_number_label(row_index: number): string {
   return String(row_index + 1);
 }
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_status_icon(status: string): typeof AlertCircle | null {
   if (status === "PROCESSED") {
     return CircleCheck;
@@ -133,6 +151,9 @@ function resolve_status_icon(status: string): typeof AlertCircle | null {
   return null;
 }
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_status_icon_tone(status: string): ProofreadingStatusIconTone {
   if (status === "PROCESSED") {
     return "success";
@@ -144,10 +165,12 @@ function resolve_status_icon_tone(status: string): ProofreadingStatusIconTone {
   return "neutral";
 }
 
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_compact_tooltip(template: string, title: string, content: string): string {
   return template.replace("{TITLE}", title).replace("{STATE}", content);
 }
-
 export function ProofreadingStatusCell(props: {
   item: ProofreadingItem;
   retranslating: boolean;
@@ -255,7 +278,6 @@ export function ProofreadingStatusCell(props: {
     </div>
   );
 }
-
 export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
   const { t } = useI18n();
   const retranslating_row_id_set = useMemo(() => {

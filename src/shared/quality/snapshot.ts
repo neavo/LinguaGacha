@@ -2,7 +2,7 @@ import {
   QualityRule,
   normalize_text_preserve_mode,
   type TextPreserveMode,
-} from "../../base/quality";
+} from "../../domain/quality";
 import type { JsonRecord } from "../utils/json-tool";
 
 export type QualityRuleSnapshot = {
@@ -26,9 +26,18 @@ export type QualityRuleSnapshot = {
   glossary_entries: JsonRecord[];
 };
 
+/**
+ * 集中维护当前导出常量，避免调用点散落魔术值。
+ */
 export const QUALITY_RULE_REVISION_META_KEY_PREFIX = "quality_rule_revision";
+/**
+ * 集中维护当前导出常量，避免调用点散落魔术值。
+ */
 export const QUALITY_PROMPT_REVISION_META_KEY_PREFIX = "quality_prompt_revision";
 
+/**
+ * 封装当前类的状态边界与公开行为。
+ */
 export class QualityRuleSnapshotTool {
   /**
    * 统一复制有效规则项，避免不同规则各写一套筛选逻辑
@@ -49,10 +58,16 @@ export class QualityRuleSnapshotTool {
     return raw_entries.flatMap((entry) => (is_record(entry) ? [{ ...entry }] : []));
   }
 
+  /**
+   * 归一化输入，保证下游消费稳定形状。
+   */
   public static normalize_text_preserve_mode(value: unknown): TextPreserveMode {
     return normalize_text_preserve_mode(value);
   }
 
+  /**
+   * 归一化输入，保证下游消费稳定形状。
+   */
   public static normalize_revision(value: unknown): number {
     let revision = 0;
     if (typeof value === "number") {
@@ -67,10 +82,16 @@ export class QualityRuleSnapshotTool {
     return Math.max(0, Number.isFinite(revision) ? revision : 0);
   }
 
+  /**
+   * 构建当前场景的稳定结果。
+   */
   public static build_rule_revision_meta_key(rule_type: string): string {
     return `${QUALITY_RULE_REVISION_META_KEY_PREFIX}.${rule_type}`;
   }
 
+  /**
+   * 构建当前场景的稳定结果。
+   */
   public static build_prompt_revision_meta_key(task_type: string): string {
     return `${QUALITY_PROMPT_REVISION_META_KEY_PREFIX}.${task_type}`;
   }
@@ -166,10 +187,16 @@ export class QualityRuleSnapshotTool {
   }
 }
 
+/**
+ * 读取当前值并屏蔽异常输入形状。
+ */
 function read_record(value: unknown): JsonRecord {
   return is_record(value) ? { ...value } : {};
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function is_record(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

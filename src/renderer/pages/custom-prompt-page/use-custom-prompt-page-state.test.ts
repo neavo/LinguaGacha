@@ -41,6 +41,9 @@ const toast_fixture: { current: ToastFixture } = {
 };
 
 // translate 固定返回 key，避免文案资源变化影响状态流断言。
+/**
+ * 支撑当前测试场景的专用辅助逻辑。
+ */
 const translate = (key: string): string => key;
 
 (
@@ -55,7 +58,7 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
   };
 });
 
-vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
+vi.mock("@/app/ui-runtime/use-desktop-toast", () => {
   return {
     useDesktopToast: () => toast_fixture.current,
   };
@@ -78,6 +81,9 @@ vi.mock("@/app/desktop/desktop-api", () => {
 });
 
 // runtime fixture 模拟 DesktopRuntimeProvider 对页面暴露的最小稳定契约。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_runtime_fixture(): RuntimeFixture {
   return {
     project_snapshot: {
@@ -107,6 +113,9 @@ function create_runtime_fixture(): RuntimeFixture {
 }
 
 // toast fixture 只记录调用参数，错误和成功路径都由 hook 自己收口。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_toast_fixture(): ToastFixture {
   return {
     push_toast: vi.fn(),
@@ -141,6 +150,9 @@ describe("useCustomPromptPageState", () => {
   }
 
   // React effect 与异步模板读取连续排队，三次 tick 覆盖当前 hook 的更新链。
+  /**
+   * 支撑当前测试场景的专用辅助逻辑。
+   */
   async function flush_async_updates(): Promise<void> {
     await act(async () => {
       await Promise.resolve();
@@ -150,6 +162,9 @@ describe("useCustomPromptPageState", () => {
   }
 
   // render_hook 复用同一个 root，贴近页面生命周期中的重复渲染方式。
+  /**
+   * 生成当前场景的展示内容。
+   */
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -163,6 +178,9 @@ describe("useCustomPromptPageState", () => {
     await flush_async_updates();
   }
 
+  /**
+   * 构造当前测试场景的标准数据。
+   */
   function create_prompt_query_payload(): Record<string, unknown> {
     return {
       prompt: {

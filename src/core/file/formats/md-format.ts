@@ -8,7 +8,7 @@ import {
   type ExportPaths,
   type FileFormatServiceConfig,
 } from "./file-format-shared";
-import { Item } from "../../../base/item";
+import { Item } from "../../../domain/item";
 
 const IMAGE_PATTERN = /!\[.*?\]\(.*?\)/u; // 旧实现会直接排除 Markdown 图片行，避免把资源引用送进翻译
 

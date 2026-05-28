@@ -4,11 +4,8 @@ import { ChevronDown, GripVertical } from "lucide-react";
 import type { CSSProperties, ReactNode } from "react";
 
 import type { ModelEntrySnapshot } from "@/pages/model-page/types";
-import { AppButton } from "@/widgets/app-button/app-button";
-import {
-  AppDropdownMenu,
-  AppDropdownMenuTrigger,
-} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
+import { AppButton } from "@/widgets/app-button";
+import { AppDropdownMenu, AppDropdownMenuTrigger } from "@/widgets/app-dropdown-menu";
 
 type ModelItemChipProps = {
   model: ModelEntrySnapshot;
@@ -17,7 +14,6 @@ type ModelItemChipProps = {
   drag_aria_label: string;
   menu: ReactNode;
 };
-
 export function ModelItemChip(props: ModelItemChipProps): JSX.Element {
   const { attributes, isDragging, listeners, setNodeRef, transform, transition } = useSortable({
     id: props.model.id,

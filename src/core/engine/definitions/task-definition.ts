@@ -1,6 +1,6 @@
 import type { TaskArtifact } from "../protocol/artifact";
 import type { StartTaskCommand } from "../protocol/task-command";
-import type { TaskType } from "../protocol/task-types";
+import type { TaskType } from "../../../domain/task";
 import type { WorkUnit } from "../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
 import type { MutableJsonRecord } from "../runtime/task-runtime-types";

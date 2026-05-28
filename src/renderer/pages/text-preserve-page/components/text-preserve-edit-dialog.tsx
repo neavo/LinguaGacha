@@ -1,10 +1,10 @@
 import { useI18n } from "@/app/locale/locale-provider";
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import type { TextPreserveDialogMode, TextPreserveEntry } from "@/pages/text-preserve-page/types";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import { AppEditor } from "@/widgets/app-editor/app-editor";
-import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
-import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
+import { AppPageDialog } from "@/widgets/app-page-dialog";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd";
 
 type TextPreserveEditDialogProps = {
   open: boolean;
@@ -16,7 +16,6 @@ type TextPreserveEditDialogProps = {
   on_save: () => Promise<void>;
   on_close: () => Promise<void>;
 };
-
 export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.Element {
   const { t } = useI18n();
   const save_label = t("text_preserve_page.action.save");

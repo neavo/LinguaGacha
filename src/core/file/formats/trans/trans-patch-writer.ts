@@ -1,5 +1,5 @@
-import type { ApiJsonValue } from "../../../../api/api-types";
-import { InvalidFileStructureError } from "../../../../../shared/error";
+import type { ApiJsonValue } from "../../../api/api-types";
+import { InvalidFileStructureError } from "../../../../shared/error";
 import {
   derive_trans_filter_effect,
   string_array,
@@ -8,7 +8,7 @@ import {
   type PatchTarget,
   type TransSnapshot,
   type NoneTransProcessor,
-} from "../trans-processor";
+} from "./trans-processor";
 
 /**
  * 校验所有条目都能通过 trans_ref 定位原始数据行，避免无定位信息时猜测写回

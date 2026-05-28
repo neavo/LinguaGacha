@@ -10,7 +10,7 @@ import {
   type ProjectMutationResultPayload,
 } from "@/app/desktop/desktop-project-mutation";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
-import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import { should_defer_runtime_snapshot_refresh } from "@/pages/workbench-page/task-runtime/task-runtime-ownership";
@@ -63,6 +63,9 @@ export type TranslationTaskRuntime = {
 };
 
 // create_task_confirm_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_task_confirm_state(kind: TranslationTaskActionKind): TranslationTaskConfirmState {
   return {
     kind,
@@ -72,6 +75,9 @@ function create_task_confirm_state(kind: TranslationTaskActionKind): Translation
 }
 
 // resolve_translation_terminal_feedback_message 集中解析运行时决策，避免调用点复制条件判断。
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_translation_terminal_feedback_message(args: {
   previous_status: string;
   next_status: string;
@@ -97,6 +103,9 @@ function resolve_translation_terminal_feedback_message(args: {
 }
 
 // should_prompt_translation_generate_confirmation 封装当前模块的共享逻辑，避免重复实现同一维护规则。
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function should_prompt_translation_generate_confirmation(args: {
   previous_status: string;
   next_status: string;
@@ -117,6 +126,9 @@ function should_prompt_translation_generate_confirmation(args: {
 }
 
 // is_translation_terminal_prompt_boundary 集中表达布尔判定口径，避免调用方按局部字段猜测。
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function is_translation_terminal_prompt_boundary(args: {
   previous_status: string;
   next_status: string;

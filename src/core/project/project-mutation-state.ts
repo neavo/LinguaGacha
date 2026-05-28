@@ -1,10 +1,10 @@
 import {
   normalize_project_item_public_record,
   type ProjectItemPublicRecord,
-} from "../../base/item";
+} from "../../domain/item";
 import { should_skip_by_language_prefilter } from "../../shared/prefilter/language-prefilter";
 import { should_skip_by_rule_prefilter } from "../../shared/prefilter/rule-prefilter";
-import { is_task_skipped_item_status, TASK_PROGRESS_STATUSES } from "../../shared/task";
+import { is_task_skipped_item_status, TASK_PROGRESS_STATUSES } from "../../domain/task";
 
 type ProjectMutationFileRecord = {
   rel_path: string; // 项目内相对路径，用于按文件分组预过滤
@@ -70,6 +70,9 @@ export type ProjectPrefilterMutationInput = {
 };
 
 // 外部输入必须先是完整公开 DTO，派生视图只服务局部计算。
+/**
+ * 解析当前场景的最终消费值。
+ */
 export function derive_project_item_view_record(value: unknown): ProjectItemViewRecord | null {
   const item = normalize_project_item_public_record(value);
   if (item === null) {
@@ -79,6 +82,9 @@ export function derive_project_item_view_record(value: unknown): ProjectItemView
 }
 
 // 从已校验公开 DTO 派生可变视图，保留 reset、预过滤和统计需要的字段。
+/**
+ * 解析当前场景的最终消费值。
+ */
 export function derive_project_item_view_record_from_public(
   item: ProjectItemPublicRecord,
 ): ProjectItemViewRecord {
@@ -97,6 +103,9 @@ export function derive_project_item_view_record_from_public(
 }
 
 // 局部计算会原地修改视图，复制后再交给调用点避免污染上游缓存。
+/**
+ * 承接当前模块的核心控制分支。
+ */
 export function clone_project_item_view_record(item: ProjectItemViewRecord): ProjectItemViewRecord {
   return {
     ...item,
@@ -104,6 +113,9 @@ export function clone_project_item_view_record(item: ProjectItemViewRecord): Pro
 }
 
 // 从任务快照中提取可持久化进度字段，排除任务生命周期专用字段。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_translation_extras(task_snapshot: Record<string, unknown>): Record<string, unknown> {
   const progress = task_snapshot.progress;
   if (typeof progress === "object" && progress !== null && !Array.isArray(progress)) {
@@ -128,6 +140,9 @@ function build_translation_extras(task_snapshot: Record<string, unknown>): Recor
 }
 
 // 构造空闲翻译任务快照，供后端 reset 或无历史进度时作为统计基底。
+/**
+ * 构建当前场景的稳定结果。
+ */
 export function create_empty_translation_task_snapshot(): Record<string, unknown> {
   return {
     task_type: "translation",
@@ -150,6 +165,9 @@ export function create_empty_translation_task_snapshot(): Record<string, unknown
 }
 
 // 按最终 item 状态重建翻译进度 meta，task snapshot 运行态由专属任务模块发布。
+/**
+ * 构建当前场景的稳定结果。
+ */
 export function build_translation_extras_from_items(args: {
   task_snapshot: Record<string, unknown>;
   items: Map<number, ProjectItemViewRecord>;
@@ -180,6 +198,9 @@ export function build_translation_extras_from_items(args: {
 }
 
 // 分析 reset 的默认统计只统计仍需分析的非跳过条目。
+/**
+ * 构建当前场景的稳定结果。
+ */
 export function build_analysis_status_summary(
   items: Iterable<ProjectItemViewRecord>,
 ): Record<string, unknown> {
@@ -200,6 +221,9 @@ export function build_analysis_status_summary(
 }
 
 // 分析进度快照只保留稳定数字字段，避免坏 meta 扩散到任务运行态。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 export function normalize_analysis_progress_snapshot(
   snapshot: Record<string, unknown>,
 ): Record<string, unknown> {
@@ -217,6 +241,9 @@ export function normalize_analysis_progress_snapshot(
 }
 
 // 把保留统计和当前状态摘要合成为分析进度 meta。
+/**
+ * 构建当前场景的稳定结果。
+ */
 export function build_analysis_progress_snapshot(args: {
   extras: Record<string, unknown>;
   status_summary: Record<string, unknown>;
@@ -243,6 +270,9 @@ export function build_analysis_progress_snapshot(args: {
 }
 
 // 从 files section 镜像收窄预过滤需要的文件字段。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_file_record(value: unknown): ProjectMutationFileRecord | null {
   if (typeof value !== "object" || value === null) {
     return null;
@@ -255,6 +285,9 @@ function normalize_file_record(value: unknown): ProjectMutationFileRecord | null
 }
 
 // 把 record 形状的 item 集合收窄成公开 DTO Map，非法条目在后端算法边界丢弃。
+/**
+ * 构建当前场景的稳定结果。
+ */
 export function build_public_item_map(
   items: Record<string, unknown>,
 ): Map<number, ProjectItemPublicRecord> {
@@ -270,6 +303,9 @@ export function build_public_item_map(
 }
 
 // 把公开 DTO Map 派生为预过滤和进度统计使用的轻量 view Map。
+/**
+ * 构建当前场景的稳定结果。
+ */
 export function build_item_view_map(
   public_items: Map<number, ProjectItemPublicRecord>,
 ): Map<number, ProjectItemViewRecord> {
@@ -281,6 +317,9 @@ export function build_item_view_map(
 }
 
 // 后端预过滤核心只接收当前项目事实快照，输出完整可写的派生事实。
+/**
+ * 解析当前场景的最终消费值。
+ */
 export function compute_project_prefilter_mutation(
   input: ProjectPrefilterMutationInput,
 ): ProjectPrefilterMutationOutput {

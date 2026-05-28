@@ -2,7 +2,7 @@ import path from "node:path";
 
 import type { ApiJsonValue } from "../../api/api-types";
 import { default_native_fs, normalize_native_file_bytes } from "../../../native/native-fs";
-import { Item, type ItemFileType } from "../../../base/item";
+import { Item, type ItemFileType } from "../../../domain/item";
 
 /**
  * 文件格式处理器共享配置，来源于应用设置或测试显式注入

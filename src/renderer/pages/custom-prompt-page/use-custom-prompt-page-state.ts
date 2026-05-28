@@ -8,8 +8,8 @@ import {
 import type { SettingsSnapshotPayload } from "@/app/desktop/desktop-runtime-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { read_project_section_revisions } from "@/project/query/project-section-revisions-query";
-import { is_task_mutation_locked } from "@/project/tasks/task-lock";
-import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { is_task_mutation_locked } from "@/project/project-task-lock";
+import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import {
@@ -51,6 +51,9 @@ type PromptQueryPayload = {
 const CUSTOM_PROMPT_SAVE_MUTATION: ProjectMutationOperation = "custom-prompt.prompt_save";
 
 // create_empty_prompt_template 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_prompt_template(): CustomPromptTemplate {
   return {
     default_text: "",
@@ -60,6 +63,9 @@ function create_empty_prompt_template(): CustomPromptTemplate {
 }
 
 // create_empty_confirm_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_confirm_state(): CustomPromptConfirmState {
   return {
     open: false,
@@ -72,6 +78,9 @@ function create_empty_confirm_state(): CustomPromptConfirmState {
 }
 
 // create_empty_preset_input_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_preset_input_state(): CustomPromptPresetInputState {
   return {
     open: false,
@@ -83,6 +92,9 @@ function create_empty_preset_input_state(): CustomPromptPresetInputState {
 }
 
 // normalize_prompt_template 在边界处归一化输入，避免下游再处理坏载荷分支。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_prompt_template(
   template: Partial<CustomPromptTemplate> | undefined,
 ): CustomPromptTemplate {
@@ -94,11 +106,17 @@ function normalize_prompt_template(
 }
 
 // normalize_prompt_text 在边界处归一化输入，避免下游再处理坏载荷分支。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_prompt_text(text: string): string {
   return text.trim();
 }
 
 // resolve_editor_prompt_text 集中解析运行时决策，避免调用点复制条件判断。
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_editor_prompt_text(snapshot: PromptSlice, template: CustomPromptTemplate): string {
   const normalized_text = normalize_prompt_text(String(snapshot.text ?? ""));
 
@@ -110,16 +128,25 @@ function resolve_editor_prompt_text(snapshot: PromptSlice, template: CustomPromp
 }
 
 // build_user_preset_virtual_id 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_user_preset_virtual_id(name: string): string {
   return `user:${name}.txt`;
 }
 
 // normalize_preset_name 在边界处归一化输入，避免下游再处理坏载荷分支。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_preset_name(name: string): string {
   return name.trim();
 }
 
 // has_casefold_duplicate_preset 集中表达布尔判定口径，避免调用方按局部字段猜测。
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function has_casefold_duplicate_preset(
   preset_items: CustomPromptPresetItem[],
   target_virtual_id: string,
@@ -155,6 +182,9 @@ function decorate_preset_items(
 }
 
 // build_default_preset_update_payload 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_default_preset_update_payload(
   config: CustomPromptVariantConfig,
   value: string,

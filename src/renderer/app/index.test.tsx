@@ -137,7 +137,7 @@ vi.mock("@/app/desktop/desktop-api", () => {
   };
 });
 
-vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
+vi.mock("@/app/ui-runtime/use-desktop-toast", () => {
   return {
     DesktopProgressToastModalLayer: () => null,
     useDesktopToast: () => ({
@@ -190,7 +190,7 @@ vi.mock("@/app/shell/app-titlebar", () => {
   };
 });
 
-vi.mock("@/widgets/app-alert-dialog/app-alert-dialog", () => {
+vi.mock("@/widgets/app-alert-dialog", () => {
   return {
     AppAlertDialog: () => null,
   };
@@ -203,6 +203,9 @@ vi.mock("@/pages/log-window-page/page", () => {
 });
 
 // install_local_storage_fallback 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 配置当前测试场景依赖。
+ */
 function install_local_storage_fallback(): void {
   if (typeof window.localStorage.setItem === "function") {
     return;
@@ -255,6 +258,9 @@ describe("App 字体模式同步", () => {
   });
 
   // mount_app_at 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+  /**
+   * 挂载当前测试组件并等待渲染完成。
+   */
   async function mount_app_at(url: string): Promise<void> {
     window.history.replaceState(null, "", url);
     window.localStorage.setItem("lg-theme-mode", "light");

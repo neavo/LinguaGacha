@@ -1,15 +1,12 @@
 import { useI18n } from "@/app/locale/locale-provider";
-import {
-  type ProofreadingPendingConfirmation,
-} from "@/pages/proofreading-page/types";
-import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
+import { type ProofreadingPendingConfirmation } from "@/pages/proofreading-page/types";
+import { AppAlertDialog } from "@/widgets/app-alert-dialog";
 
 type ProofreadingConfirmDialogProps = {
   state: ProofreadingPendingConfirmation | null;
   on_confirm: () => Promise<void>;
   on_close: () => void;
 };
-
 export function ProofreadingConfirmDialog(props: ProofreadingConfirmDialogProps): JSX.Element {
   const { t } = useI18n();
   const selection_count = props.state?.target_row_ids.length ?? 0;

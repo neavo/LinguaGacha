@@ -9,7 +9,7 @@ import {
   type ExportPaths,
   type FileFormatServiceConfig,
 } from "./file-format-shared";
-import { Item } from "../../../base/item";
+import { Item } from "../../../domain/item";
 
 /**
  * SRT 格式以字幕块为单位解析，序号和时间轴放入 row/extra_field

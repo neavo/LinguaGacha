@@ -3,11 +3,11 @@ import { CaseSensitive } from "lucide-react";
 import { useI18n } from "@/app/locale/locale-provider";
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import type { GlossaryDialogMode, GlossaryEntry } from "@/pages/glossary-page/types";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import { AppEditor } from "@/widgets/app-editor/app-editor";
-import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
+import { AppPageDialog } from "@/widgets/app-page-dialog";
 import { SegmentedToggle } from "@/widgets/segmented-toggle/segmented-toggle";
-import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd";
 
 type GlossaryEditDialogProps = {
   open: boolean;
@@ -18,7 +18,6 @@ type GlossaryEditDialogProps = {
   on_save: () => Promise<void>;
   on_close: () => Promise<void>;
 };
-
 export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element {
   const { t } = useI18n();
   const save_label = t("glossary_page.action.save");

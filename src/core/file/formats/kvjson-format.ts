@@ -6,7 +6,7 @@ import {
   write_text_file,
   type ExportPaths,
 } from "./file-format-shared";
-import { Item } from "../../../base/item";
+import { Item } from "../../../domain/item";
 
 /**
  * 键值 JSON 格式把 key 作为原文，value 作为已有译文

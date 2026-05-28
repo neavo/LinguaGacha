@@ -9,7 +9,7 @@ import {
 import type { WorkbenchStats } from "@/pages/workbench-page/types";
 import { SegmentedProgress } from "@/widgets/segmented-progress/segmented-progress";
 import { Badge } from "@/shadcn/badge";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,
@@ -17,7 +17,7 @@ import {
   AppDropdownMenuItem,
   AppDropdownMenuSeparator,
   AppDropdownMenuTrigger,
-} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
+} from "@/widgets/app-dropdown-menu";
 import { Spinner } from "@/shadcn/spinner";
 
 type AnalysisTaskMenuProps = {
@@ -31,7 +31,6 @@ type AnalysisTaskMenuProps = {
   on_request_confirmation: (kind: AnalysisTaskActionKind) => void;
   on_import_glossary: () => Promise<void>;
 };
-
 export function AnalysisTaskMenu(props: AnalysisTaskMenuProps): JSX.Element {
   const { t } = useI18n();
   const action_items_disabled = props.analysis_task_metrics.active || props.busy || props.disabled;

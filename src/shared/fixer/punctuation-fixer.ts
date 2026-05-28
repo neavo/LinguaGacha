@@ -1,4 +1,4 @@
-import { is_cjk_language_code } from "../language";
+import { is_cjk_language_code } from "../../domain/language";
 
 // 数量匹配规则 A：以 CJK/全角风格为目标，修复模型把源文符号改成半角或相邻样式的情况
 const RULE_SAME_COUNT_A: Record<string, readonly string[]> = {

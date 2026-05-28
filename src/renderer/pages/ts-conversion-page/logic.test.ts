@@ -5,12 +5,18 @@ import {
   convert_text_with_optional_preserve,
   normalize_ts_conversion_runtime_items,
 } from "@/pages/ts-conversion-page/logic";
-import type { ProjectItemPublicRecord } from "@base/item";
+import type { ProjectItemPublicRecord } from "@domain/item";
 import { createProjectItemIndex } from "@/project/project-item-index";
 
+/**
+ * 支撑当前测试场景的专用辅助逻辑。
+ */
 const marker_converter = (text: string): string =>
   text.replaceAll("台", "臺").replaceAll("后", "後");
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
     item_id: 1,

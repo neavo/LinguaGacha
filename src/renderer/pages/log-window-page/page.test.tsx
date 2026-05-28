@@ -18,11 +18,17 @@ const { open_log_stream_mock, push_toast_mock, read_log_detail_mock, stream_cont
   vi.hoisted(() => {
     const controllers: StreamController[] = [];
 
+    /**
+     * 构造当前测试场景的标准数据。
+     */
     function create_controller(): StreamController {
       const event_queue: LogEvent[] = [];
       let pending_resolve: ((result: IteratorResult<LogEvent>) => void) | null = null;
       const controller: StreamController = {
         closed: false,
+        /**
+         * 模拟事件订阅与派发行为。
+         */
         emit(event: LogEvent): void {
           if (controller.closed) {
             return;
@@ -36,6 +42,9 @@ const { open_log_stream_mock, push_toast_mock, read_log_detail_mock, stream_cont
           event_queue.push(event);
         },
         iterator: {
+          /**
+           * 支撑当前测试场景的专用辅助逻辑。
+           */
           next(): Promise<IteratorResult<LogEvent>> {
             if (controller.closed) {
               return Promise.resolve({ done: true, value: undefined });
@@ -48,6 +57,9 @@ const { open_log_stream_mock, push_toast_mock, read_log_detail_mock, stream_cont
               pending_resolve = resolve;
             });
           },
+          /**
+           * 支撑当前测试场景的专用辅助逻辑。
+           */
           return(): Promise<IteratorResult<LogEvent>> {
             controller.closed = true;
             if (pending_resolve !== null) {
@@ -95,7 +107,7 @@ vi.mock("@/app/desktop/desktop-api", async () => {
   };
 });
 
-vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
+vi.mock("@/app/ui-runtime/use-desktop-toast", () => {
   return {
     useDesktopToast: () => ({
       push_toast: push_toast_mock,
@@ -119,7 +131,7 @@ vi.mock("@/app/locale/locale-provider", () => {
   };
 });
 
-vi.mock("@/widgets/app-button/app-button", () => {
+vi.mock("@/widgets/app-button", () => {
   return {
     AppButton: (props: {
       children: ReactNode;
@@ -250,6 +262,9 @@ vi.mock("@/widgets/app-table/app-table", () => {
   };
 });
 
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_log_event(message: string, overrides: Partial<LogEvent> = {}): LogEvent {
   return {
     id: "log-1",
@@ -263,6 +278,9 @@ function build_log_event(message: string, overrides: Partial<LogEvent> = {}): Lo
   };
 }
 
+/**
+ * 获取当前测试场景的公开值。
+ */
 function get_active_stream(): StreamController {
   const active_stream = stream_controllers.findLast((controller) => !controller.closed);
   if (active_stream === undefined) {
@@ -271,6 +289,9 @@ function get_active_stream(): StreamController {
   return active_stream;
 }
 
+/**
+ * 派发当前测试场景的输入变化。
+ */
 function change_input_value(input: HTMLInputElement, value: string): void {
   const value_descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
   value_descriptor?.set?.call(input, value);
@@ -297,6 +318,9 @@ describe("LogWindowPage", () => {
     vi.useRealTimers();
   });
 
+  /**
+   * 挂载当前测试组件并等待渲染完成。
+   */
   async function mount_page(): Promise<void> {
     vi.useFakeTimers();
     Object.defineProperty(window, "desktopApp", {

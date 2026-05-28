@@ -21,12 +21,12 @@ import {
   normalize_project_item_persistent_record,
   normalize_project_item_public_record,
   type ProjectItemPublicRecord,
-} from "../../base/item";
+} from "../../domain/item";
 import {
   normalize_project_settings_snapshot,
   normalize_setting_snapshot,
   type ProjectSettingsSnapshot,
-} from "../../base/setting";
+} from "../../domain/setting";
 import type { ProjectChangePublisher } from "./project-change-publisher";
 import type { ProjectDataSection, ProjectMutationResult } from "../../shared/project-event";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
@@ -43,7 +43,7 @@ import {
   type ProjectPrefilterMutationOutput,
 } from "./project-mutation-state";
 import { count_analysis_glossary_candidates } from "../../shared/analysis-candidate";
-import { is_task_skipped_item_status } from "../../shared/task";
+import { is_task_skipped_item_status } from "../../domain/task";
 import * as AppErrors from "../../shared/error";
 import { t_main_log } from "../log/log-text";
 

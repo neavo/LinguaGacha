@@ -1,6 +1,6 @@
 import type { ApiJsonValue } from "../api/api-types";
-import { QualityRule } from "../../base/quality";
-import { Prompt } from "../../base/prompt";
+import { QualityRule } from "../../domain/quality";
+import { Prompt } from "../../domain/prompt";
 import { PROJECT_DATA_SECTIONS, type ProjectDataSection } from "../../shared/project-event";
 
 type JsonRecord = Record<string, ApiJsonValue>;
@@ -39,6 +39,9 @@ export function get_runtime_section_revision(meta: JsonRecord, section: string):
   return 0;
 }
 
+/**
+ * 构建当前场景的稳定结果。
+ */
 export function build_section_revisions_from_meta(
   meta: JsonRecord,
 ): Record<ProjectDataSection, number> {
@@ -48,6 +51,9 @@ export function build_section_revisions_from_meta(
   ) as Record<ProjectDataSection, number>;
 }
 
+/**
+ * 读取当前值并屏蔽异常输入形状。
+ */
 function read_revision_meta(value: ApiJsonValue | undefined): number {
   const number_value = Number(value ?? 0);
   if (!Number.isFinite(number_value) || number_value < 0) {

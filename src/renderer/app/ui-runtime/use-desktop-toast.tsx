@@ -61,6 +61,9 @@ const progress_toast_modal_listener_set = new Set<() => void>();
 let progress_toast_state: ProgressToastState | null = null;
 let progress_toast_owner_token_seed = 0;
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_toast_sender(
   kind: DesktopToastKind,
 ): (message: string, options?: ExternalToast) => DesktopToastId {
@@ -79,16 +82,25 @@ function resolve_toast_sender(
   return toast.info;
 }
 
+/**
+ * 承接当前模块的核心控制分支。
+ */
 function emit_progress_toast_modal_change(): void {
   for (const listener of progress_toast_modal_listener_set) {
     listener();
   }
 }
 
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 function read_progress_toast_modal_active(): boolean {
   return progress_toast_state?.presentation === "modal";
 }
 
+/**
+ * 承接当前模块的核心控制分支。
+ */
 function subscribe_progress_toast_modal(listener: () => void): () => void {
   progress_toast_modal_listener_set.add(listener);
 
@@ -97,6 +109,9 @@ function subscribe_progress_toast_modal(listener: () => void): () => void {
   };
 }
 
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_progress_toast_config(
   options: ProgressToastOptions,
   toast_id?: DesktopToastId,
@@ -122,15 +137,24 @@ function build_progress_toast_config(
   };
 }
 
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_progress_toast_owner_token(): DesktopToastId {
   progress_toast_owner_token_seed += 1;
   return progress_toast_owner_token_seed;
 }
 
+/**
+ * 生成当前场景的展示内容。
+ */
 function render_progress_toast(options: ProgressToastOptions): void {
   toast(options.message, build_progress_toast_config(options, PROGRESS_TOAST_SONNER_ID));
 }
 
+/**
+ * 写入当前场景的状态变化。
+ */
 function sync_progress_toast_state(
   owner_token: DesktopToastId,
   options: ProgressToastOptions,
@@ -157,6 +181,9 @@ function sync_progress_toast_state(
   emit_progress_toast_modal_change();
 }
 
+/**
+ * 承接当前模块的核心控制分支。
+ */
 function schedule_progress_toast_dismiss(owner_token: DesktopToastId): void {
   const current_progress_state = progress_toast_state;
 
@@ -195,6 +222,9 @@ function schedule_progress_toast_dismiss(owner_token: DesktopToastId): void {
   }, PROGRESS_TOAST_DISMISS_DELAY_MS);
 }
 
+/**
+ * 渲染当前组件的公开界面。
+ */
 export function DesktopProgressToastModalLayer(): JSX.Element | null {
   const modal_active = useSyncExternalStore(
     subscribe_progress_toast_modal,
@@ -209,6 +239,9 @@ export function DesktopProgressToastModalLayer(): JSX.Element | null {
   return <div className="cn-progress-toast-modal-layer" aria-hidden="true" />;
 }
 
+/**
+ * 承接当前模块的核心控制分支。
+ */
 export function useDesktopToast(): DesktopToastApi {
   const push_toast = useCallback((kind: DesktopToastKind, message: string): DesktopToastId => {
     const send_toast = resolve_toast_sender(kind);

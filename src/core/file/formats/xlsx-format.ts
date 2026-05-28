@@ -4,7 +4,7 @@ import ExcelJS from "exceljs";
 
 import { SpreadsheetTool } from "../../../shared/utils/spreadsheet-tool";
 import { group_items, write_binary_file, type ExportPaths } from "./file-format-shared";
-import { Item } from "../../../base/item";
+import { Item } from "../../../domain/item";
 
 /**
  * 通用双列表格格式，第一列原文、第二列译文

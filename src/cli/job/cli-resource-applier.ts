@@ -3,8 +3,8 @@ import type { DatabaseJsonValue, DatabaseOperation } from "../../core/database/d
 import { build_section_revisions_from_meta } from "../../core/project/project-section-revision";
 import { load_quality_rule_entries_from_file } from "../../core/service/quality-rule-file-io";
 import { default_native_fs } from "../../native/native-fs";
-import { Prompt } from "../../base/prompt";
-import { QualityRule, type QualityRuleKind } from "../../base/quality";
+import { Prompt } from "../../domain/prompt";
+import { QualityRule, type QualityRuleKind } from "../../domain/quality";
 import type { CLICommandOptions } from "../cli-parser";
 
 type CLIRuleResourceSpec = {

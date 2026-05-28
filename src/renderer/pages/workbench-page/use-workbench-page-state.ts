@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { capture_renderer_error } from "@/app/diagnostics/renderer-error-reporter";
-import { is_task_stopping } from "@/project/tasks/task-lock";
-import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { is_task_stopping } from "@/project/project-task-lock";
+import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import {
   create_workbench_delete_files_plan,
   create_workbench_planner_settings,
@@ -97,6 +97,9 @@ type WorkbenchSelectionState = {
 };
 
 // create_empty_selection_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_selection_state(): WorkbenchSelectionState {
   return {
     selected_entry_ids: [],
@@ -106,6 +109,9 @@ function create_empty_selection_state(): WorkbenchSelectionState {
 }
 
 // dedupe_workbench_entry_ids 封装当前模块的共享逻辑，避免重复实现同一维护规则。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function dedupe_workbench_entry_ids(entry_ids: string[]): string[] {
   return Array.from(new Set(entry_ids));
 }
@@ -125,6 +131,9 @@ function are_workbench_entry_ids_equal(
 }
 
 // select_after_snapshot 封装当前模块的共享逻辑，避免重复实现同一维护规则。
+/**
+ * 选择当前场景的目标项。
+ */
 function select_after_snapshot(
   previous_entries: WorkbenchFileEntry[],
   next_entries: WorkbenchFileEntry[],
@@ -155,6 +164,9 @@ function select_after_snapshot(
 }
 
 // normalize_workbench_selection_state 在边界处归一化输入，避免下游再处理坏载荷分支。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_workbench_selection_state(
   selection_state: WorkbenchSelectionState,
   entries: WorkbenchFileEntry[],
@@ -184,6 +196,9 @@ function normalize_workbench_selection_state(
 }
 
 // resolve_workbench_selection_after_snapshot 集中解析运行时决策，避免调用点复制条件判断。
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_workbench_selection_after_snapshot(args: {
   previous_entries: WorkbenchFileEntry[];
   next_entries: WorkbenchFileEntry[];
@@ -233,11 +248,17 @@ function resolve_workbench_selection_after_snapshot(args: {
 }
 
 // is_workbench_task_kind 集中表达布尔判定口径，避免调用方按局部字段猜测。
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function is_workbench_task_kind(value: string): value is WorkbenchTaskKind {
   return value === "translation" || value === "analysis";
 }
 
 // resolve_active_workbench_task_kind 集中解析运行时决策，避免调用点复制条件判断。
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_active_workbench_task_kind(args: {
   running_task_kind: WorkbenchTaskKind | null;
   recent_task_kind: WorkbenchTaskKind | null;
@@ -275,6 +296,9 @@ function resolve_active_workbench_task_kind(args: {
 }
 
 // format_duration_value 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
+/**
+ * 生成当前场景的展示内容。
+ */
 function format_duration_value(
   seconds: number,
 ): Pick<WorkbenchTaskMetricEntry, "value_text" | "unit_text"> {
@@ -301,6 +325,9 @@ function format_duration_value(
 }
 
 // format_compact_metric_value 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
+/**
+ * 生成当前场景的展示内容。
+ */
 function format_compact_metric_value(
   value: number,
   base_unit: string,
@@ -326,6 +353,9 @@ function format_compact_metric_value(
 }
 
 // format_speed_value 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
+/**
+ * 生成当前场景的展示内容。
+ */
 function format_speed_value(
   value: number,
 ): Pick<WorkbenchTaskMetricEntry, "value_text" | "unit_text"> {
@@ -343,12 +373,18 @@ function format_speed_value(
 }
 
 // format_summary_speed 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
+/**
+ * 生成当前场景的展示内容。
+ */
 function format_summary_speed(value: number): string {
   const metric_value = format_speed_value(value);
   return `${metric_value.value_text} ${metric_value.unit_text}`;
 }
 
 // resolve_task_tone 集中解析运行时决策，避免调用点复制条件判断。
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_task_tone(args: {
   active: boolean;
   stopping: boolean;
@@ -366,6 +402,9 @@ function resolve_task_tone(args: {
 }
 
 // resolve_percent_tone 集中解析运行时决策，避免调用点复制条件判断。
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_percent_tone(
   metrics: Pick<TranslationTaskMetrics, "active" | "stopping">,
 ): WorkbenchTaskTone {
@@ -376,6 +415,9 @@ function resolve_percent_tone(
 }
 
 // build_translation_task_metric_entries 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_translation_task_metric_entries(
   metrics: TranslationTaskMetrics,
   t: ReturnType<typeof useI18n>["t"],
@@ -415,6 +457,9 @@ function build_translation_task_metric_entries(
 }
 
 // build_analysis_task_metric_entries 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_analysis_task_metric_entries(
   metrics: AnalysisTaskMetrics,
   t: ReturnType<typeof useI18n>["t"],
@@ -459,6 +504,9 @@ function build_analysis_task_metric_entries(
 }
 
 // build_empty_task_summary_view_model 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_empty_task_summary_view_model(
   t: ReturnType<typeof useI18n>["t"],
 ): WorkbenchTaskSummaryViewModel {
@@ -472,6 +520,9 @@ function build_empty_task_summary_view_model(
 }
 
 // build_translation_task_summary_view_model 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_translation_task_summary_view_model(
   metrics: TranslationTaskMetrics,
   t: ReturnType<typeof useI18n>["t"],
@@ -498,6 +549,9 @@ function build_translation_task_summary_view_model(
 }
 
 // build_analysis_task_summary_view_model 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_analysis_task_summary_view_model(
   metrics: AnalysisTaskMetrics,
   t: ReturnType<typeof useI18n>["t"],
@@ -523,6 +577,9 @@ function build_analysis_task_summary_view_model(
 }
 
 // resolve_task_detail_progress_percent 集中解析运行时决策，避免调用点复制条件判断。
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_task_detail_progress_percent(args: {
   metrics: Pick<
     TranslationTaskMetrics | AnalysisTaskMetrics,
@@ -537,6 +594,9 @@ function resolve_task_detail_progress_percent(args: {
 }
 
 // build_translation_task_detail_view_model 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_translation_task_detail_view_model(args: {
   metrics: TranslationTaskMetrics;
   progress_percent: number;
@@ -560,6 +620,9 @@ function build_translation_task_detail_view_model(args: {
 }
 
 // build_analysis_task_detail_view_model 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_analysis_task_detail_view_model(args: {
   metrics: AnalysisTaskMetrics;
   progress_percent: number;
@@ -1213,6 +1276,9 @@ export function useWorkbenchPageState(
   }
 
   // notify_add_file_drop_issue 封装当前模块的共享逻辑，避免重复实现同一维护规则。
+  /**
+   * 触发当前界面反馈行为。
+   */
   function notify_add_file_drop_issue(issue: WorkbenchAddFileDropIssue): void {
     push_toast(
       "warning",
@@ -1421,6 +1487,9 @@ export function useWorkbenchPageState(
   }
 
   // close_dialog 封装当前模块的共享逻辑，避免重复实现同一维护规则。
+  /**
+   * 切换当前交互状态。
+   */
   function close_dialog(): void {
     if (import_files_flow.close_dialog()) {
       return;

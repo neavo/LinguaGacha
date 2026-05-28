@@ -14,12 +14,12 @@
     "noUnusedParameters": true,
     "paths": {
       "@/*": ["./src/renderer/*"],
-      "@base/*": ["./src/base/*"],
+      "@domain/*": ["./src/domain/*"],
       "@gui/bridge-api": ["./src/gui/bridge/bridge-api.ts"],
       "@gui/bridge-types": ["./src/gui/bridge/bridge-types.ts"],
       "@core/api/api-base-url": ["./src/core/api/api-base-url.ts"],
       "@gui/external-url-policy": ["./src/gui/shell/external-url-policy.ts"],
-      "@gui/ipc-contract": ["./src/gui/ipc/ipc-contract.ts"],
+      "@gui/ipc-contract": ["./src/gui/gui-ipc-contract.ts"],
       "@gui/shell-contract": ["./src/gui/shell/shell-contract.ts"],
       "@shared/*": ["./src/shared/*"]
     },
@@ -32,10 +32,10 @@
   },
   "include": [
     "src/renderer",
-    "src/base",
+    "src/domain",
     "src/shared",
     "src/gui/bridge/*.ts",
-    "src/gui/ipc/*.ts",
+    "src/gui/gui-ipc-contract.ts",
     "src/gui/shell/shell-contract.ts",
     "src/gui/shell/external-url-policy.ts",
     "src/core/api/api-base-url.ts",

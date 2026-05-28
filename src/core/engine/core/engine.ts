@@ -9,9 +9,9 @@ import { TaskArtifactCommitter } from "../store/task-artifact-committer";
 import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
 import { WorkUnitExecutorTransportError } from "../work-unit/work-unit-transport-error";
 import type { StartTaskCommand, StopTaskCommand } from "../protocol/task-command";
-import type { TaskStartMode } from "../protocol/task-types";
+import type { TaskStartMode } from "../../../domain/task";
 import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
-import { PromptBuilder } from "../work-unit/prompt/prompt-builder";
+import { PromptBuilder } from "../work-unit/work-unit-prompt-builder";
 import type {
   AnalysisWorkUnitResult,
   TaskProgressSnapshot,
@@ -32,7 +32,7 @@ import { TaskPipeline } from "./pipeline-runner";
 import { TaskProgressSnapshotTool } from "./progress-accumulator";
 import { RunCoordinator } from "./run-coordinator";
 import { TaskLogReplay } from "./log-replay";
-import { is_task_skipped_item_status } from "../../../shared/task";
+import { is_task_skipped_item_status } from "../../../domain/task";
 import { TextQualitySnapshotTool } from "../../../shared/text/text-types";
 import * as AppErrors from "../../../shared/error";
 

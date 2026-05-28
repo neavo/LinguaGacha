@@ -1,6 +1,6 @@
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import type { CustomPromptConfirmState } from "@/pages/custom-prompt-page/types";
-import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
+import { AppAlertDialog } from "@/widgets/app-alert-dialog";
 
 type CustomPromptConfirmDialogProps = {
   state: CustomPromptConfirmState;
@@ -23,7 +23,6 @@ const CONFIRM_COPY_BY_KIND: Record<NonNullable<CustomPromptConfirmState["kind"]>
     description_key: "custom_prompt_page.confirm.overwrite_preset.description",
   },
 };
-
 export function CustomPromptConfirmDialog(props: CustomPromptConfirmDialogProps): JSX.Element {
   const { t } = useI18n();
   const dialog_copy = props.state.kind === null ? null : CONFIRM_COPY_BY_KIND[props.state.kind];

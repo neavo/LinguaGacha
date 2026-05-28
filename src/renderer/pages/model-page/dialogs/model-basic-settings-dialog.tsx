@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { useI18n } from "@/app/locale/locale-provider";
 import type { ModelEntrySnapshot, ModelThinkingLevel } from "@/pages/model-page/types";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import { Input } from "@/shadcn/input";
 import {
   Select,
@@ -14,10 +14,10 @@ import {
   SelectValue,
 } from "@/shadcn/select";
 import { Textarea } from "@/shadcn/textarea";
-import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
-import { SettingHelpButton } from "@/widgets/setting-help-button/setting-help-button";
+import { AppPageDialog } from "@/widgets/app-page-dialog";
+import { SettingHelpButton } from "@/widgets/setting-help-button";
 import { SettingCardRow } from "@/widgets/setting-card-row/setting-card-row";
-import { MODEL_THINKING_LEVELS, Model } from "@base/model";
+import { MODEL_THINKING_LEVELS, Model } from "@domain/model";
 
 type ModelBasicSettingsDialogProps = {
   open: boolean;
@@ -34,6 +34,9 @@ const THINKING_SUPPORT_URL_BY_LOCALE = {
   "zh-CN": "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupport",
   "en-US": "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN",
 } as const;
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_thinking_label(
   t: ReturnType<typeof useI18n>["t"],
   thinking_level: ModelThinkingLevel,
@@ -49,10 +52,16 @@ function resolve_thinking_label(
   }
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function should_show_connection_fields(api_format: string): boolean {
   return Model.normalize_api_format(api_format) === api_format;
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function should_show_thinking_field(api_format: string): boolean {
   const normalized_api_format = Model.normalize_api_format(api_format);
   return (
@@ -60,7 +69,6 @@ function should_show_thinking_field(api_format: string): boolean {
     Model.api_format_supports_reasoning_by_default(normalized_api_format)
   );
 }
-
 export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): JSX.Element | null {
   const { locale, t } = useI18n();
   const [is_model_id_editor_open, set_is_model_id_editor_open] = useState(false);
@@ -95,6 +103,9 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
   const show_connection_fields = should_show_connection_fields(model.api_format);
   const show_thinking_field = should_show_thinking_field(model.api_format);
 
+  /**
+   * 提交当前场景的数据变化。
+   */
   async function commit_model_id_input(): Promise<void> {
     await props.onPatch({
       model_id: model_id_input_value.trim(),

@@ -13,10 +13,10 @@ import { ProjectSessionState } from "../../project/project-session-state";
 import { TaskRuntimeState } from "../runtime/task-runtime-state";
 import type { JsonRecord, MutableJsonRecord } from "../runtime/task-runtime-types";
 import type { TaskArtifact } from "../protocol/artifact";
-import type { TaskType } from "../protocol/task-types";
+import type { TaskType } from "../../../domain/task";
 import { QualityRuleSnapshotTool } from "../../../shared/quality/snapshot";
 import { isProjectDataSection } from "../../../shared/project-event";
-import { TASK_PROGRESS_STATUSES } from "../../../shared/task";
+import { TASK_PROGRESS_STATUSES } from "../../../domain/task";
 import { count_analysis_glossary_candidates } from "../../../shared/analysis-candidate";
 import * as AppErrors from "../../../shared/error";
 

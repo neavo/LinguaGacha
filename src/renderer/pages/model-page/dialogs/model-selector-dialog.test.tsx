@@ -28,7 +28,7 @@ vi.mock("@/shadcn/scroll-area", () => {
   };
 });
 
-vi.mock("@/widgets/app-page-dialog/app-page-dialog", () => {
+vi.mock("@/widgets/app-page-dialog", () => {
   return {
     AppPageDialog: (props: {
       children: ReactNode;
@@ -52,6 +52,9 @@ vi.mock("@/widgets/app-page-dialog/app-page-dialog", () => {
   };
 });
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 function create_model_snapshot(): ModelEntrySnapshot {
   return {
     id: "model-1",
@@ -89,18 +92,23 @@ function create_model_snapshot(): ModelEntrySnapshot {
   };
 }
 
+/**
+ * 派发当前测试场景的输入变化。
+ */
 function change_input_value(input: HTMLInputElement, value: string): void {
   const value_descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
   value_descriptor?.set?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+/**
+ * 读取当前值并屏蔽异常输入形状。
+ */
 function read_option_texts(container: HTMLElement): string[] {
   return Array.from(container.querySelectorAll(".model-page__selector-item")).map((button) => {
     return button.textContent ?? "";
   });
 }
-
 function ModelSelectorProbe(props: {
   on_load_available_models: (model_id: string) => Promise<void>;
 }): JSX.Element {
@@ -138,6 +146,9 @@ describe("ModelSelectorDialog", () => {
     vi.useRealTimers();
   });
 
+  /**
+   * 生成当前场景的展示内容。
+   */
   async function render_dialog(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);

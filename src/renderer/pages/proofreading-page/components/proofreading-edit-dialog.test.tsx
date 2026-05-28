@@ -49,7 +49,7 @@ vi.mock("@/pages/proofreading-page/components/proofreading-code-editor", () => {
   };
 });
 
-vi.mock("@/widgets/app-page-dialog/app-page-dialog", () => {
+vi.mock("@/widgets/app-page-dialog", () => {
   return {
     AppPageDialog: (props: {
       open: boolean;
@@ -72,7 +72,7 @@ vi.mock("@/widgets/app-page-dialog/app-page-dialog", () => {
   };
 });
 
-vi.mock("@/widgets/app-dropdown-menu/app-dropdown-menu", () => {
+vi.mock("@/widgets/app-dropdown-menu", () => {
   return {
     AppDropdownMenu: (props: { children: ReactNode }) => <div>{props.children}</div>,
     AppDropdownMenuContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
@@ -90,6 +90,9 @@ vi.mock("@/shadcn/tooltip", () => {
   };
 });
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 function create_proofreading_item(): ProofreadingItem {
   return {
     item_id: 1,

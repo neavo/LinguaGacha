@@ -3,8 +3,11 @@ import { ApiStreamHub } from "../../api/api-stream-hub";
 import { TaskRuntimeState } from "./task-runtime-state";
 import { TaskSnapshotBuilder } from "./task-snapshot-builder";
 import type { TaskRunStatus, TaskRuntimeStatePayload, TaskType } from "./task-runtime-types";
-import type { TranslationScope } from "../protocol/task-types";
+import type { TranslationScope } from "../../../domain/task";
 
+/**
+ * 集中维护当前导出常量，避免调用点散落魔术值。
+ */
 export const TASK_REQUEST_PRESSURE_PUBLISH_INTERVAL_MS = 500; // 请求压力展示保持每秒 2 帧，任务事实仍立即发布
 
 /**

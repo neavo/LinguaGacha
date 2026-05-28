@@ -9,7 +9,7 @@ import {
   preserve_name_field_row_translations,
   update_name_field_row_dst,
 } from "@/pages/name-field-extraction-page/logic";
-import type { ProjectItemPublicRecord } from "@base/item";
+import type { ProjectItemPublicRecord } from "@domain/item";
 import { createProjectItemIndex } from "@/project/project-item-index";
 import type {
   NameFieldFilterState,
@@ -22,6 +22,9 @@ const EMPTY_SORT: NameFieldSortState = {
   direction: null,
 };
 
+/**
+ * 过滤当前列表的可见数据。
+ */
 function filter_state(patch: Partial<NameFieldFilterState>): NameFieldFilterState {
   return {
     keyword: "",
@@ -31,6 +34,9 @@ function filter_state(patch: Partial<NameFieldFilterState>): NameFieldFilterStat
   };
 }
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
     item_id: 1,
@@ -51,6 +57,9 @@ function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectI
   };
 }
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 function create_test_item_index(
   items: Record<string, Partial<ProjectItemPublicRecord>>,
 ): ReturnType<typeof createProjectItemIndex> {

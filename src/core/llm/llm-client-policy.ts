@@ -1,5 +1,5 @@
-import { Model, type ModelApiFormat } from "../../base/model";
-import { normalize_setting_snapshot } from "../../base/setting";
+import { Model, type ModelApiFormat } from "../../domain/model";
+import { normalize_setting_snapshot } from "../../domain/setting";
 import { JsonTool } from "../../shared/utils/json-tool";
 import type { ApiJsonValue } from "../api/api-types";
 import { build_anthropic_payload } from "./policy/anthropic-policy";

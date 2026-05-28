@@ -16,7 +16,7 @@ import { decodeHTML } from "entities";
 import JSZip from "jszip";
 
 import type { ApiJsonValue } from "../../../api/api-types";
-import { Item, read_json_record } from "../../../../base/item";
+import { Item, read_json_record } from "../../../../domain/item";
 import { FileParseFailedError, InvalidFileStructureError } from "../../../../shared/error";
 
 /**

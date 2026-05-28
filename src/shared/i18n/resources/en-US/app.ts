@@ -1,5 +1,5 @@
 import { zh_cn_app } from "../zh-CN/app";
-import { LANGUAGE_DISPLAY_NAMES } from "../../../language";
+import { LANGUAGE_DISPLAY_NAMES } from "../../../../domain/language";
 import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_app = {

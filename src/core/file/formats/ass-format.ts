@@ -9,7 +9,7 @@ import {
   type ExportPaths,
   type FileFormatServiceConfig,
 } from "./file-format-shared";
-import { Item } from "../../../base/item";
+import { Item } from "../../../domain/item";
 
 /**
  * ASS 字幕格式按 Events/Dialogue 文本字段解析，保留整行模板用于写回

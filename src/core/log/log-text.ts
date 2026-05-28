@@ -1,4 +1,4 @@
-import { DEFAULT_SETTING } from "../../base/setting";
+import { DEFAULT_SETTING } from "../../domain/setting";
 import { create_text_resolver, resolve_i18n_locale, type LocaleKey } from "../../shared/i18n";
 
 type AppLanguageReader = () => unknown;

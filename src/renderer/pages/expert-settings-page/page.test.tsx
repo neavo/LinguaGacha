@@ -22,7 +22,7 @@ vi.mock("@/app/locale/locale-provider", () => {
   };
 });
 
-vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
+vi.mock("@/app/ui-runtime/use-desktop-toast", () => {
   return {
     useDesktopToast: () => ({
       push_toast: push_toast_mock,
@@ -50,7 +50,7 @@ vi.mock("@/widgets/segmented-toggle/segmented-toggle", () => {
   };
 });
 
-vi.mock("@/widgets/app-dropdown-menu/app-dropdown-menu", () => {
+vi.mock("@/widgets/app-dropdown-menu", () => {
   return {
     AppDropdownMenu: (props: { children: ReactNode }) => <div>{props.children}</div>,
     AppDropdownMenuCheckboxItem: (props: { children: ReactNode }) => (
@@ -62,6 +62,9 @@ vi.mock("@/widgets/app-dropdown-menu/app-dropdown-menu", () => {
   };
 });
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 function create_expert_settings_state_fixture() {
   return {
     snapshot: {
@@ -97,6 +100,9 @@ function create_expert_settings_state_fixture() {
   };
 }
 
+/**
+ * 写入当前测试交互值。
+ */
 function set_input_value(input: HTMLInputElement, value: string): void {
   const value_setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
 
@@ -108,6 +114,9 @@ function set_input_value(input: HTMLInputElement, value: string): void {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+/**
+ * 获取当前测试场景的公开值。
+ */
 function get_current_expert_settings_state(): ReturnType<
   typeof create_expert_settings_state_fixture
 > {
@@ -139,6 +148,9 @@ describe("ExpertSettingsPage", () => {
     push_toast_mock.mockReset();
   });
 
+  /**
+   * 挂载当前测试组件并等待渲染完成。
+   */
   async function mount_page(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -149,6 +161,9 @@ describe("ExpertSettingsPage", () => {
     });
   }
 
+  /**
+   * 读取当前场景需要的稳定数据。
+   */
   function get_preceding_lines_threshold_input(): HTMLInputElement {
     const input = container?.querySelector('input[type="number"]');
 

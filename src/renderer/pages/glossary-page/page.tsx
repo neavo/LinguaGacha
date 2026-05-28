@@ -1,6 +1,6 @@
 import "@/pages/glossary-page/glossary-page.css";
 import type { ScreenComponentProps } from "@/app/navigation/types";
-import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import { GlossaryCommandBar } from "@/pages/glossary-page/components/glossary-command-bar";
 import { GlossaryConfirmDialog } from "@/pages/glossary-page/components/glossary-confirm-dialog";

@@ -12,7 +12,7 @@ import {
   type ProjectChangeSectionPayload,
   type ProjectDataSection,
 } from "../../shared/project-event";
-import { is_item_status } from "../../base/item";
+import { is_item_status } from "../../domain/item";
 import { ProjectRuntimeProjectionService } from "./project-runtime-projection-service";
 import type {
   ProjectRuntimeProjectionJsonRecord,

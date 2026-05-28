@@ -15,7 +15,7 @@ import {
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import type { CustomPromptPresetItem } from "@/pages/custom-prompt-page/types";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,
@@ -26,7 +26,7 @@ import {
   AppDropdownMenuSubContent,
   AppDropdownMenuSubTrigger,
   AppDropdownMenuTrigger,
-} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
+} from "@/widgets/app-dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import {
   CommandBar,
@@ -34,7 +34,7 @@ import {
   CommandBarSeparator,
 } from "@/widgets/command-bar/command-bar";
 import { SegmentedToggle } from "@/widgets/segmented-toggle/segmented-toggle";
-import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd";
 
 type CustomPromptCommandBarProps = {
   title_key: LocaleKey;
@@ -59,7 +59,6 @@ type CustomPromptCommandBarProps = {
   on_cancel_default_preset: () => Promise<void>;
   on_preset_menu_open_change: (next_open: boolean) => void;
 };
-
 export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.Element {
   const { t } = useI18n();
   const save_label = t("custom_prompt_page.action.save");

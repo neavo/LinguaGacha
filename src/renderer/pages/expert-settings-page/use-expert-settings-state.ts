@@ -3,8 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api_fetch } from "@/app/desktop/desktop-api";
 import type { SettingsSnapshotPayload } from "@/app/desktop/desktop-runtime-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
-import { is_task_mutation_locked } from "@/project/tasks/task-lock";
-import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { is_task_mutation_locked } from "@/project/project-task-lock";
+import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import {
@@ -33,6 +33,9 @@ type UseExpertSettingsStateResult = {
   update_auto_process_prefix_suffix_preserved_text: (next_checked: boolean) => Promise<void>;
 };
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 function create_pending_state(): ExpertSettingsPendingState {
   return {
     preceding_lines_threshold: false,
@@ -45,14 +48,12 @@ function create_pending_state(): ExpertSettingsPendingState {
     auto_process_prefix_suffix_preserved_text: false,
   };
 }
-
 function clamp_preceding_lines_threshold(next_value: number): number {
   return Math.min(
     PRECEDING_LINES_THRESHOLD_MAX,
     Math.max(PRECEDING_LINES_THRESHOLD_MIN, next_value),
   );
 }
-
 export function useExpertSettingsState(): UseExpertSettingsStateResult {
   const { settings_snapshot, apply_settings_snapshot, refresh_settings, task_snapshot } =
     useDesktopRuntime();

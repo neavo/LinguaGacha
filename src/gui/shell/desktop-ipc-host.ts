@@ -16,7 +16,7 @@ import {
   IPC_CHANNEL_QUIT_APP,
   IPC_CHANNEL_RENDERER_DIAGNOSTICS,
   IPC_CHANNEL_TITLE_BAR_THEME,
-} from "../ipc/ipc-contract";
+} from "../gui-ipc-contract";
 import { resolve_external_url } from "./external-url-policy";
 import {
   type DesktopPathPickResult,

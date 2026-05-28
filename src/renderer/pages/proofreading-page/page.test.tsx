@@ -27,7 +27,7 @@ vi.mock("@/pages/proofreading-page/use-proofreading-page-state", () => {
   };
 });
 
-vi.mock("@/widgets/app-button/app-button", () => {
+vi.mock("@/widgets/app-button", () => {
   return {
     AppButton: (props: {
       children: ReactNode;
@@ -93,6 +93,9 @@ vi.mock("@/pages/proofreading-page/components/proofreading-confirm-dialog", () =
 });
 
 // create_proofreading_state_fixture 构造页面壳消费的最小校对页状态。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_proofreading_state_fixture() {
   return {
     active_row_id: null,
@@ -179,6 +182,9 @@ describe("ProofreadingPage", () => {
     root = null;
   });
 
+  /**
+   * 挂载当前测试组件并等待渲染完成。
+   */
   async function mount_page(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);

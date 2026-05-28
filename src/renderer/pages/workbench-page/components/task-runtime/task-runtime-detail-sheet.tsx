@@ -8,7 +8,7 @@ import {
   WORKBENCH_WAVEFORM_VISIBLE_POINTS,
 } from "@/pages/workbench-page/task-runtime/workbench-waveform";
 import type { WorkbenchTaskDetailViewModel, WorkbenchTaskTone } from "@/pages/workbench-page/types";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/shadcn/sheet";
 
 type TaskRuntimeDetailSheetProps = {
@@ -26,6 +26,9 @@ const WAVEFORM_FONT_SIZE_PX = 6;
 const WAVEFORM_CANVAS_WIDTH = WAVEFORM_COLUMN_COUNT * WAVEFORM_COLUMN_STEP_PX;
 const WAVEFORM_CANVAS_HEIGHT = WAVEFORM_ROW_COUNT * WAVEFORM_ROW_STEP_PX;
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_percent_pill_tone_class_name(tone: WorkbenchTaskTone): string {
   if (tone === "warning") {
     return "task-runtime__percent-pill--warning";
@@ -37,7 +40,6 @@ function resolve_percent_pill_tone_class_name(tone: WorkbenchTaskTone): string {
 
   return "task-runtime__percent-pill--neutral";
 }
-
 function TaskWaveform(props: { history: number[] }): JSX.Element {
   const canvas_ref = useRef<HTMLCanvasElement | null>(null);
 
@@ -94,7 +96,6 @@ function TaskWaveform(props: { history: number[] }): JSX.Element {
     </div>
   );
 }
-
 export function TaskRuntimeDetailSheet(props: TaskRuntimeDetailSheetProps): JSX.Element {
   return (
     <Sheet

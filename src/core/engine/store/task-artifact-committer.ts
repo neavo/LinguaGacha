@@ -1,6 +1,6 @@
 import type { ApiJsonValue } from "../../api/api-types";
 import type { TaskArtifact } from "../protocol/artifact";
-import type { TaskType } from "../protocol/task-types";
+import type { TaskType } from "../../../domain/task";
 import type { JsonRecord, MutableJsonRecord } from "../runtime/task-runtime-types";
 import { ProjectTaskStore } from "./project-task-store";
 

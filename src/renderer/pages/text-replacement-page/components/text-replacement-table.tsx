@@ -17,7 +17,7 @@ import {
   AppDropdownMenuGroup,
   AppDropdownMenuItem,
   AppDropdownMenuTrigger,
-} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
+} from "@/widgets/app-dropdown-menu";
 import { Spinner } from "@/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import { AppTable } from "@/widgets/app-table/app-table";
@@ -56,10 +56,16 @@ type TextReplacementTableProps = {
 
 type TextReplacementRuleMenuState = "enabled" | "disabled" | "mixed";
 
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_row_number_label(row_index: number): string {
   return String(row_index + 1);
 }
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_text_replacement_context_target_entry_ids(
   row_id: TextReplacementEntryId,
   selected_entry_ids: TextReplacementEntryId[],
@@ -71,6 +77,9 @@ function resolve_text_replacement_context_target_entry_ids(
   return [row_id];
 }
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_text_replacement_rule_menu_state(args: {
   entry_by_id: Map<TextReplacementEntryId, TextReplacementVisibleEntry>;
   target_entry_ids: TextReplacementEntryId[];
@@ -107,6 +116,9 @@ function resolve_text_replacement_rule_menu_state(args: {
   return "mixed";
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function should_ignore_box_selection_target(target_element: HTMLElement): boolean {
   return (
     target_element.closest(
@@ -121,6 +133,9 @@ function should_ignore_box_selection_target(target_element: HTMLElement): boolea
   );
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function should_ignore_row_click_target(target_element: HTMLElement): boolean {
   return (
     target_element.closest(
@@ -137,7 +152,6 @@ type TextReplacementRuleBadgeProps = {
   enabled: boolean;
   tooltip: string;
 };
-
 function TextReplacementRuleBadge(props: TextReplacementRuleBadgeProps): JSX.Element {
   const Icon = props.icon === "regex" ? Regex : CaseSensitive;
   const badge = (
@@ -169,7 +183,6 @@ type TextReplacementStatisticsBadgeProps = {
   on_query_entry_source: (entry_id: TextReplacementEntryId) => Promise<void>;
   on_search_entry_relations: (entry_id: TextReplacementEntryId) => void;
 };
-
 function TextReplacementStatisticsBadge(
   props: TextReplacementStatisticsBadgeProps,
 ): JSX.Element | null {
@@ -296,7 +309,6 @@ function TextReplacementStatisticsBadge(
     </AppDropdownMenu>
   );
 }
-
 export function TextReplacementTable(props: TextReplacementTableProps): JSX.Element {
   const { t } = useI18n();
   const visible_entry_by_id = useMemo(() => {

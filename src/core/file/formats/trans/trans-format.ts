@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import { JsonTool } from "../../../../shared/utils/json-tool";
-import { Item } from "../../../../base/item";
+import { Item } from "../../../../domain/item";
 import { group_items, write_text_file, type ExportPaths } from "../file-format-shared";
 import { KagTransProcessor } from "./processors/kag-processor";
 import { RenPyTransProcessor } from "./processors/renpy-processor";
@@ -15,7 +15,7 @@ import {
   type ApiJsonRecord,
   type TransSnapshot,
 } from "./trans-processor";
-import { collect_patch_targets, patch_trans_row } from "./writers/patch-writer";
+import { collect_patch_targets, patch_trans_row } from "./trans-patch-writer";
 
 /**
  * TRANS 格式处理器，负责 .trans 的读入、引擎处理器选择和最小补丁写回

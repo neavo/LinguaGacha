@@ -9,7 +9,7 @@ import type {
   SettingsSnapshotPayload,
 } from "@/app/desktop/desktop-runtime-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
-import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import {
@@ -33,6 +33,9 @@ type UseLaboratoryPageStateResult = {
 };
 
 // create_pending_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_pending_state(): LaboratoryPendingState {
   return {
     mtool_optimizer_enable: false,

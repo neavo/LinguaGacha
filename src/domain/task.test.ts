@@ -4,7 +4,9 @@ import {
   is_active_analysis_task_status,
   is_active_translation_task_status,
   is_task_idle_status,
+  is_task_run_status,
   is_task_skipped_item_status,
+  is_task_start_mode,
   is_task_type,
   normalize_task_type,
 } from "./task";
@@ -15,6 +17,10 @@ describe("task 基础模型", () => {
     expect(is_task_type("legacy")).toBe(false);
     expect(normalize_task_type("analysis")).toBe("analysis");
     expect(normalize_task_type("legacy")).toBe("translation");
+    expect(is_task_run_status("running")).toBe(true);
+    expect(is_task_run_status("RUNNING")).toBe(false);
+    expect(is_task_start_mode("reset")).toBe(true);
+    expect(is_task_start_mode("resume")).toBe(false);
     expect(is_task_idle_status("done")).toBe(true);
   });
 

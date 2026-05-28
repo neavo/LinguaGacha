@@ -18,7 +18,7 @@ import {
   AppDropdownMenuGroup,
   AppDropdownMenuItem,
   AppDropdownMenuTrigger,
-} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
+} from "@/widgets/app-dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import { AppTable } from "@/widgets/app-table/app-table";
 import type {
@@ -50,10 +50,16 @@ type GlossaryTableProps = {
 
 type GlossaryRuleMenuState = "enabled" | "disabled" | "mixed";
 
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_glossary_row_number_label(row_index: number): string {
   return String(row_index + 1);
 }
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_glossary_context_target_entry_ids(
   row_id: GlossaryEntryId,
   selected_entry_ids: GlossaryEntryId[],
@@ -65,6 +71,9 @@ function resolve_glossary_context_target_entry_ids(
   return [row_id];
 }
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_glossary_rule_menu_state(args: {
   entry_by_id: Map<GlossaryEntryId, GlossaryVisibleEntry>;
   target_entry_ids: GlossaryEntryId[];
@@ -101,6 +110,9 @@ function resolve_glossary_rule_menu_state(args: {
   return "mixed";
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function should_ignore_box_selection_target(target_element: HTMLElement): boolean {
   return (
     target_element.closest(
@@ -115,6 +127,9 @@ function should_ignore_box_selection_target(target_element: HTMLElement): boolea
   );
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function should_ignore_row_click_target(target_element: HTMLElement): boolean {
   return (
     target_element.closest(
@@ -124,7 +139,6 @@ function should_ignore_row_click_target(target_element: HTMLElement): boolean {
     ) !== null
   );
 }
-
 function map_glossary_sort_state(sort_state: GlossarySortState): AppTableSortState | null {
   if (sort_state.field === null || sort_state.direction === null) {
     return null;
@@ -140,7 +154,6 @@ type GlossaryRuleBadgeProps = {
   enabled: boolean;
   tooltip: string;
 };
-
 function GlossaryRuleBadge(props: GlossaryRuleBadgeProps): JSX.Element {
   const badge = (
     <span className="glossary-page__rule-badge-wrap">
@@ -170,7 +183,6 @@ type GlossaryStatisticsBadgeProps = {
   on_query_entry_source: (entry_id: GlossaryEntryId) => Promise<void>;
   on_search_entry_relations: (entry_id: GlossaryEntryId) => void;
 };
-
 function GlossaryStatisticsBadge(props: GlossaryStatisticsBadgeProps): JSX.Element | null {
   const { t } = useI18n();
 
@@ -277,7 +289,6 @@ function GlossaryStatisticsBadge(props: GlossaryStatisticsBadgeProps): JSX.Eleme
     </AppDropdownMenu>
   );
 }
-
 export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
   const { t } = useI18n();
   const visible_entry_by_id = useMemo(() => {

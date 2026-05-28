@@ -1,12 +1,12 @@
 import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
-import { QualityRule, type QualityRuleKind } from "../../base/quality";
-import { Prompt } from "../../base/prompt";
+import { QualityRule, type QualityRuleKind } from "../../domain/quality";
+import { Prompt } from "../../domain/prompt";
 import {
   collect_project_item_missing_public_fields,
   normalize_project_item_public_record,
-} from "../../base/item";
+} from "../../domain/item";
 import {
   build_section_revisions_from_meta,
   get_runtime_section_revision,

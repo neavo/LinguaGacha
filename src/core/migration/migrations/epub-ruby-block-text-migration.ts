@@ -1,4 +1,4 @@
-import { Item, read_json_record } from "../../../base/item";
+import { Item, read_json_record } from "../../../domain/item";
 import type { ProjectDatabase } from "../../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
 import { EpubAst, read_epub_extra } from "../../file/formats/epub/epub-ast";

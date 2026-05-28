@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { api_fetch } from "@/app/desktop/desktop-api";
 import type { ProjectChangeSignal } from "@/app/desktop/desktop-runtime-context";
 import { INPUT_QUERY_DEBOUNCE_MS } from "@/hooks/use-debounce";
-import type { ProjectItemPublicRecord } from "@base/item";
+import type { ProjectItemPublicRecord } from "@domain/item";
 import {
   create_empty_proofreading_filter_panel_state,
   create_empty_proofreading_list_view,
@@ -73,6 +73,9 @@ const { page_ui_state_store } = vi.hoisted(() => {
 });
 
 // create_project_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_project_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
     item_id: 1,
@@ -94,6 +97,9 @@ function create_project_item(overrides: Partial<ProjectItemPublicRecord>): Proje
 }
 
 // create_project_change_signal 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_project_change_signal(
   seq: number,
   options: {
@@ -174,7 +180,7 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
   };
 });
 
-vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
+vi.mock("@/app/ui-runtime/use-desktop-toast", () => {
   return {
     useDesktopToast: () => {
       return toast_fixture.current;
@@ -257,6 +263,9 @@ vi.mock("@/app/session/project-session-ui-state-context", () => {
 });
 
 // create_quality_store_payload 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_quality_store_payload(): Record<string, unknown> {
   return {
     quality: {
@@ -297,6 +306,9 @@ function create_quality_store_payload(): Record<string, unknown> {
 }
 
 // create_runtime_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_runtime_fixture(): RuntimeFixture {
   return {
     settings_snapshot: {
@@ -335,6 +347,9 @@ function create_runtime_fixture(): RuntimeFixture {
 }
 
 // create_navigation_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_navigation_fixture(): NavigationFixture {
   return {
     proofreading_lookup_intent: null,
@@ -343,6 +358,9 @@ function create_navigation_fixture(): NavigationFixture {
 }
 
 // create_sync_state 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_sync_state() {
   return {
     projectId: "E:/demo/sample.lg",
@@ -364,6 +382,9 @@ function create_sync_state() {
 }
 
 // create_deferred 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_deferred<T>(): Deferred<T> {
   let resolve_deferred: (value: T) => void = () => {};
   let reject_deferred: (reason?: unknown) => void = () => {};
@@ -379,6 +400,9 @@ function create_deferred<T>(): Deferred<T> {
 }
 
 // create_client_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_client_item(item_id: number | string) {
   return {
     item_id,
@@ -398,6 +422,9 @@ function create_client_item(item_id: number | string) {
 }
 
 // create_list_view 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_list_view() {
   return {
     ...create_empty_proofreading_list_view(),
@@ -421,6 +448,9 @@ function create_list_view() {
   };
 }
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 function create_proofreading_runtime_query_response() {
   const quality_payload = create_quality_store_payload();
   return {
@@ -448,6 +478,9 @@ function create_proofreading_runtime_query_response() {
   };
 }
 
+/**
+ * 配置当前测试场景依赖。
+ */
 function install_api_fetch_default_mock(): void {
   vi.mocked(api_fetch).mockImplementation(async (path: string, body: unknown) => {
     if (path === "/api/project/query/proofreading") {
@@ -470,6 +503,9 @@ function install_api_fetch_default_mock(): void {
 }
 
 // create_filter_panel 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_filter_panel() {
   return {
     ...create_empty_proofreading_filter_panel_state(),
@@ -492,6 +528,9 @@ function create_filter_panel() {
 }
 
 // create_proofreading_runtime_client_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_proofreading_runtime_client_fixture(): ProofreadingRuntimeClientFixture {
   return {
     hydrate_proofreading_full: vi.fn(async () => create_sync_state()),
@@ -517,6 +556,9 @@ function create_proofreading_runtime_client_fixture(): ProofreadingRuntimeClient
 }
 
 // create_toast_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_toast_fixture(): ToastFixture {
   return {
     dismiss_toast: vi.fn(),
@@ -561,6 +603,9 @@ describe("useProofreadingPageState", () => {
   }
 
   // flush_async_updates 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+  /**
+   * 支撑当前测试场景的专用辅助逻辑。
+   */
   async function flush_async_updates(): Promise<void> {
     await act(async () => {
       await Promise.resolve();
@@ -570,6 +615,9 @@ describe("useProofreadingPageState", () => {
   }
 
   // render_hook 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+  /**
+   * 生成当前场景的展示内容。
+   */
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -584,6 +632,9 @@ describe("useProofreadingPageState", () => {
   }
 
   // request_pending_confirmation 收口测试中的共享步骤，保证断言只关注当前行为。
+  /**
+   * 支撑当前测试场景的专用辅助逻辑。
+   */
   async function request_pending_confirmation(action: () => void): Promise<void> {
     await act(async () => {
       action();

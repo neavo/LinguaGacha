@@ -6,7 +6,7 @@ import JSZip from "jszip";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { create_epub_fixture } from "../../../../test/epub-fixture";
-import { Item } from "../../../../base/item";
+import { Item } from "../../../../domain/item";
 import { EPUBFormat } from "./epub-format";
 
 let temp_dir = ""; // 每个用例独占 EPUB 输出目录，避免门面写回断言共享文件状态

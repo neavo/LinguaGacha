@@ -6,7 +6,7 @@ import {
   setGlobalDispatcher,
 } from "undici";
 
-import { Model, type ModelApiFormat } from "../../base/model";
+import { Model, type ModelApiFormat } from "../../domain/model";
 import { LLMClientPolicy } from "../llm/llm-client-policy";
 import { read_model_records, type ModelRecord } from "../model/model-config-resolver";
 import type { ApiJsonValue } from "../api/api-types";
@@ -35,6 +35,9 @@ export interface InstalledSystemProxyDispatcher {
   dispose: () => Promise<void>;
 }
 
+/**
+ * 集中维护当前导出常量，避免调用点散落魔术值。
+ */
 export const EMPTY_SYSTEM_PROXY_STARTUP_NOTICE: SystemProxyStartupNotice = Object.freeze({
   detected: false,
   proxiedOriginCount: 0,
@@ -229,7 +232,13 @@ class SystemProxyDispatcher extends Dispatcher {
    * 关闭代理连接池；原始 dispatcher 由安装者恢复后继续归宿原生命周期。
    */
   public override close(callback: () => void): void;
+  /**
+   * close 释放当前资源句柄。
+   */
   public override close(): Promise<void>;
+  /**
+   * close 释放当前资源句柄。
+   */
   public override close(callback?: () => void): Promise<void> | void {
     const close_promise = this.close_proxy_dispatchers();
     if (callback !== undefined) {
@@ -243,9 +252,21 @@ class SystemProxyDispatcher extends Dispatcher {
    * 异常销毁只影响本快照创建的代理连接池，不碰入口原有 dispatcher。
    */
   public override destroy(error: Error | null, callback: () => void): void;
+  /**
+   * destroy 销毁当前资源并清理副作用。
+   */
   public override destroy(callback: () => void): void;
+  /**
+   * destroy 销毁当前资源并清理副作用。
+   */
   public override destroy(error: Error | null): Promise<void>;
+  /**
+   * destroy 销毁当前资源并清理副作用。
+   */
   public override destroy(): Promise<void>;
+  /**
+   * destroy 销毁当前资源并清理副作用。
+   */
   public override destroy(
     error_or_callback?: Error | null | (() => void),
     callback?: () => void,

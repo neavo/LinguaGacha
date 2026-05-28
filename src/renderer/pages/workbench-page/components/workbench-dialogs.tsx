@@ -1,6 +1,6 @@
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import type { WorkbenchDialogState } from "@/pages/workbench-page/types";
-import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
+import { AppAlertDialog } from "@/widgets/app-alert-dialog";
 
 type WorkbenchDialogsProps = {
   dialog_state: WorkbenchDialogState;
@@ -42,6 +42,9 @@ const DIALOG_COPY_BY_KIND: Record<NonNullable<WorkbenchDialogState["kind"]>, Dia
   },
 };
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_dialog_copy(dialog_state: WorkbenchDialogState): DialogCopy | null {
   if (dialog_state.kind === null) {
     return null;
@@ -49,7 +52,6 @@ function resolve_dialog_copy(dialog_state: WorkbenchDialogState): DialogCopy | n
     return DIALOG_COPY_BY_KIND[dialog_state.kind];
   }
 }
-
 export function WorkbenchDialogs(props: WorkbenchDialogsProps): JSX.Element {
   const { t } = useI18n();
   const dialog_copy = resolve_dialog_copy(props.dialog_state);

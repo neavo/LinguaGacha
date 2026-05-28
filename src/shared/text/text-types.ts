@@ -1,5 +1,5 @@
 import { QualityRuleSnapshotTool } from "../quality/snapshot";
-import { normalize_setting_snapshot } from "../../base/setting";
+import { normalize_setting_snapshot } from "../../domain/setting";
 
 // 文本处理层只接受可序列化 JSON 值，避免 worker 与主线程共享可变对象实例
 export type TextJsonValue =

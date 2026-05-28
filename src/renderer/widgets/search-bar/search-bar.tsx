@@ -3,7 +3,7 @@ import * as React from "react";
 
 import "@/widgets/search-bar/search-bar.css";
 import { cn } from "@/lib/utils";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import { Card, CardContent } from "@/shadcn/card";
 import {
   AppDropdownMenu,
@@ -11,7 +11,7 @@ import {
   AppDropdownMenuRadioGroup,
   AppDropdownMenuRadioItem,
   AppDropdownMenuTrigger,
-} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
+} from "@/widgets/app-dropdown-menu";
 import {
   InputGroup,
   InputGroupAddon,
@@ -73,6 +73,9 @@ type SearchBarProps<scope_value extends string = string> =
   | SearchBarFilterProps<scope_value>
   | SearchBarReplaceProps<scope_value>;
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_search_bar_card_props<scope_value extends string = string>(
   props: SearchBarProps<scope_value>,
 ): React.ComponentProps<"section"> {
@@ -162,7 +165,6 @@ type SearchBarKeywordFieldProps = {
   on_keyword_change: (next_keyword: string) => void;
   className?: string;
 };
-
 function SearchBarKeywordField(props: SearchBarKeywordFieldProps): JSX.Element {
   const show_clear_keyword = props.keyword !== "";
   const show_invalid_state = props.invalid_message !== null;
@@ -231,7 +233,6 @@ type SearchBarScopeActionProps<scope_value extends string = string> = {
   disabled?: boolean;
   scope: SearchBarSharedProps<scope_value>["scope"];
 };
-
 function SearchBarScopeAction<scope_value extends string = string>(
   props: SearchBarScopeActionProps<scope_value>,
 ): JSX.Element {
@@ -280,7 +281,6 @@ type SearchBarRegexActionProps = {
   disabled?: boolean;
   regex: SearchBarSharedProps["regex"];
 };
-
 function SearchBarRegexAction(props: SearchBarRegexActionProps): JSX.Element {
   return (
     <Tooltip>
@@ -319,7 +319,6 @@ type SearchBarReplaceFieldProps = {
   on_replace_next: () => void | Promise<void>;
   on_replace_all: () => void | Promise<void>;
 };
-
 function SearchBarReplaceField(props: SearchBarReplaceFieldProps): JSX.Element {
   const show_clear_replace_text = props.replace_text !== "";
 
@@ -401,7 +400,6 @@ function SearchBarReplaceField(props: SearchBarReplaceFieldProps): JSX.Element {
     </InputGroup>
   );
 }
-
 export function SearchBar<scope_value extends string = string>(
   props: SearchBarProps<scope_value>,
 ): JSX.Element {

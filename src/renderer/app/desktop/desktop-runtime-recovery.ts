@@ -6,7 +6,7 @@ import {
 } from "@/app/diagnostics/renderer-error-reporter";
 import type { TaskSnapshot } from "@/app/desktop/task-runtime-store";
 import type { LogErrorContextInput, RendererErrorContextInput } from "@shared/error";
-import type { TaskType } from "@shared/task";
+import type { TaskType } from "@domain/task";
 
 export type RuntimeErrorReportArgs = {
   source: Extract<

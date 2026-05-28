@@ -4,8 +4,8 @@ import type {
   QualityRuleRuntimeSlice,
   QualityRulesRuntimeState,
 } from "@/project/quality/quality-runtime-state";
-import type { PromptKind } from "@base/prompt";
-import type { QualityRuleKind } from "@base/quality";
+import type { PromptKind } from "@domain/prompt";
+import type { QualityRuleKind } from "@domain/quality";
 
 type QualityRuntimeRuleType = QualityRuleKind;
 
@@ -17,11 +17,17 @@ type ProofreadingLookupQuery = {
 };
 
 // cloneEntries 保证页面编辑切片时不会改写 query 返回的原始规则数组。
+/**
+ * 承接当前模块的核心控制分支。
+ */
 function cloneEntries(entries: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
   return entries.map((entry) => ({ ...entry }));
 }
 
 // cloneQualitySlice 是质量规则 runtime 的唯一浅克隆入口。
+/**
+ * 承接当前模块的核心控制分支。
+ */
 function cloneQualitySlice(slice: QualityRuleRuntimeSlice): QualityRuleRuntimeSlice {
   return {
     ...slice,
@@ -30,6 +36,9 @@ function cloneQualitySlice(slice: QualityRuleRuntimeSlice): QualityRuleRuntimeSl
 }
 
 // clonePromptSlice 让提示词切片替换逻辑和质量规则切片保持同一不可变语义。
+/**
+ * 承接当前模块的核心控制分支。
+ */
 function clonePromptSlice(slice: PromptRuntimeSlice): PromptRuntimeSlice {
   return {
     ...slice,

@@ -1,7 +1,7 @@
 import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ProjectItemPublicRecord } from "@base/item";
+import type { ProjectItemPublicRecord } from "@domain/item";
 
 import { INPUT_QUERY_DEBOUNCE_MS } from "@/hooks/use-debounce";
 import { useNameFieldExtractionPageState } from "@/pages/name-field-extraction-page/use-name-field-extraction-page-state";
@@ -49,6 +49,9 @@ let runtime_state = {
 };
 
 // create_test_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
     item_id: 1,
@@ -70,6 +73,9 @@ function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectI
 }
 
 // create_runtime_items 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_runtime_items(): ReturnType<typeof createProjectItemIndex> {
   return createProjectItemIndex({
     "1": create_test_item({
@@ -88,6 +94,9 @@ function create_runtime_items(): ReturnType<typeof createProjectItemIndex> {
 const project_store_listeners = new Set<() => void>();
 
 // apply_quality_mutation_result 收口测试中的共享步骤，保证断言只关注当前行为。
+/**
+ * 写入当前场景的状态变化。
+ */
 function apply_quality_mutation_result(result: {
   changes?: Array<{
     sectionRevisions?: {
@@ -127,6 +136,9 @@ function apply_quality_mutation_result(result: {
 }
 
 // 测试夹具只模拟后端原始 canonical mutation payload，回灌入口由运行态 commit mock 触发。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_quality_mutation_result(
   args: {
     quality?: typeof runtime_state.quality;
@@ -157,6 +169,9 @@ function create_quality_mutation_result(
 }
 
 // 姓名导入只改变 glossary 切片，测试显式写出后端回灌后的完整质量事实。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_glossary_quality(
   entries: typeof runtime_state.quality.glossary.entries,
   revision: number,
@@ -240,7 +255,7 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
   };
 });
 
-vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
+vi.mock("@/app/ui-runtime/use-desktop-toast", () => {
   return {
     useDesktopToast: () => ({
       push_toast: push_toast_mock,
@@ -316,6 +331,9 @@ describe("useNameFieldExtractionPageState", () => {
   });
 
   // mount_probe 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+  /**
+   * 挂载当前测试组件并等待渲染完成。
+   */
   async function mount_probe(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);

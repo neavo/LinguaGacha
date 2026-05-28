@@ -11,7 +11,7 @@ import {
   type ExportPaths,
   type FileFormatServiceConfig,
 } from "./file-format-shared";
-import { Item, read_json_record } from "../../../base/item";
+import { Item, read_json_record } from "../../../domain/item";
 
 /**
  * message JSON 格式用于 KAG 风格 name/message 数组结构

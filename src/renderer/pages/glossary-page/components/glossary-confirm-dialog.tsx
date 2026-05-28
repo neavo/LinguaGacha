@@ -1,6 +1,6 @@
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import type { GlossaryConfirmState } from "@/pages/glossary-page/types";
-import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
+import { AppAlertDialog } from "@/widgets/app-alert-dialog";
 
 type GlossaryConfirmDialogProps = {
   state: GlossaryConfirmState;
@@ -26,7 +26,6 @@ const CONFIRM_COPY_BY_KIND: Record<NonNullable<GlossaryConfirmState["kind"]>, Co
     description_key: "glossary_page.confirm.overwrite_preset.description",
   },
 };
-
 export function GlossaryConfirmDialog(props: GlossaryConfirmDialogProps): JSX.Element {
   const { t } = useI18n();
   const dialog_copy = props.state.kind === null ? null : CONFIRM_COPY_BY_KIND[props.state.kind];

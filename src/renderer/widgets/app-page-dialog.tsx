@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 
 import { useI18n } from "@/app/locale/locale-provider";
 import { cn } from "@/lib/utils";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import { Dialog, DialogContent, DialogTitle } from "@/shadcn/dialog";
 
 type AppPageDialogSize = "sm" | "md" | "lg" | "xl";
@@ -38,11 +38,9 @@ const DEFAULT_HEIGHT_CLASS_NAME_BY_SIZE: Record<AppPageDialogSize, string> = {
   lg: "h-[640px]",
   xl: "h-[640px]",
 };
-
 function preventDialogClose(event: ClosableEvent): void {
   event.preventDefault();
 }
-
 export function AppPageDialog(props: AppPageDialogProps): JSX.Element {
   const { t } = useI18n();
   const dismiss_behavior = props.dismissBehavior ?? "default";

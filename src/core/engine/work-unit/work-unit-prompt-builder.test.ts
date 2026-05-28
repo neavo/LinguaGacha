@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { TextQualitySnapshot } from "../../../../shared/text/text-types";
-import { PromptBuilder } from "./prompt-builder";
+import type { TextQualitySnapshot } from "../../../shared/text/text-types";
+import { PromptBuilder } from "./work-unit-prompt-builder";
 
 describe("PromptBuilder", () => {
   afterEach(() => {

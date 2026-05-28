@@ -57,7 +57,7 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
   };
 });
 
-vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
+vi.mock("@/app/ui-runtime/use-desktop-toast", () => {
   return {
     useDesktopToast: () => ({
       push_toast: push_toast_mock,
@@ -75,6 +75,9 @@ vi.mock("@/app/locale/locale-provider", () => {
 });
 
 // create_task_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_task_snapshot(
   overrides: Partial<Record<string, unknown>> = {},
 ): Record<string, unknown> {
@@ -99,6 +102,9 @@ function create_task_snapshot(
 }
 
 // create_runtime_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_runtime_fixture(task_snapshot: Record<string, unknown>): RuntimeFixture {
   return {
     project_snapshot: {
@@ -127,6 +133,9 @@ function create_runtime_fixture(task_snapshot: Record<string, unknown>): Runtime
 }
 
 // flush_microtasks 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 支撑当前测试场景的专用辅助逻辑。
+ */
 function flush_microtasks(): Promise<void> {
   return act(async () => {
     await Promise.resolve();
@@ -134,6 +143,9 @@ function flush_microtasks(): Promise<void> {
 }
 
 // create_prepared_import 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_prepared_import(
   overrides: Partial<Record<string, unknown>> = {},
 ): Record<string, unknown> {
@@ -156,6 +168,9 @@ function create_prepared_import(
   };
 }
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 function create_workbench_query_response(): Record<string, unknown> {
   return {
     sectionRevisions: {
@@ -207,6 +222,9 @@ describe("useAnalysisTaskRuntime", () => {
   });
 
   // render_probe 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+  /**
+   * 生成当前场景的展示内容。
+   */
   async function render_probe(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");

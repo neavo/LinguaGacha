@@ -6,7 +6,7 @@ import "@/pages/ts-conversion-page/ts-conversion-page.css";
 import type { TsConversionDirection } from "@/pages/ts-conversion-page/types";
 import { useTsConversionPageState } from "@/pages/ts-conversion-page/use-ts-conversion-page-state";
 import { Badge } from "@/shadcn/badge";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import {
   Select,
   SelectContent,
@@ -17,7 +17,7 @@ import {
 } from "@/shadcn/select";
 import { Spinner } from "@/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
-import { AppAlertDialog } from "@/widgets/app-alert-dialog/app-alert-dialog";
+import { AppAlertDialog } from "@/widgets/app-alert-dialog";
 import { CommandBar, CommandBarGroup } from "@/widgets/command-bar/command-bar";
 import { SegmentedToggle } from "@/widgets/segmented-toggle/segmented-toggle";
 import { SettingCardRow } from "@/widgets/setting-card-row/setting-card-row";
@@ -27,7 +27,6 @@ const DIRECTION_LABEL_KEY_BY_DIRECTION = {
   t2s: "ts_conversion_page.direction.t2s",
   s2t: "ts_conversion_page.direction.s2t",
 } satisfies Record<TsConversionDirection, LocaleKey>;
-
 export function TsConversionPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const page_state = useTsConversionPageState();

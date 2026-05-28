@@ -20,10 +20,10 @@ import {
   type QualityRuleStatisticsCacheSnapshot,
 } from "@/project/quality/quality-statistics-store";
 import type { SettingsSnapshotPayload } from "@/app/desktop/desktop-runtime-context";
-import { is_task_mutation_locked } from "@/project/tasks/task-lock";
+import { is_task_mutation_locked } from "@/project/project-task-lock";
 import { useQualityRuleStatistics } from "@/project/quality/quality-statistics-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
-import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import {
@@ -135,6 +135,9 @@ function clone_entry(entry: GlossaryEntry): GlossaryEntry {
 }
 
 // create_empty_filter_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_filter_state(): GlossaryFilterState {
   return {
     keyword: "",
@@ -144,6 +147,9 @@ function create_empty_filter_state(): GlossaryFilterState {
 }
 
 // create_empty_sort_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_sort_state(): GlossarySortState {
   return {
     field: null,
@@ -155,6 +161,9 @@ function create_empty_sort_state(): GlossarySortState {
 const GLOSSARY_SORT_FIELDS = new Set(["src", "dst", "info", "rule", "statistics"]);
 
 // normalize_glossary_sort_state 在 session 边界收窄排序状态，坏状态统一回到默认值。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_glossary_sort_state(sort_state: GlossarySortState): GlossarySortState {
   if (sort_state.field === null || sort_state.direction === null) {
     return create_empty_sort_state();
@@ -180,6 +189,9 @@ function clone_glossary_filter_state(filter_state: GlossaryFilterState): Glossar
 }
 
 // create_empty_dialog_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_dialog_state(): GlossaryDialogState {
   return {
     open: false,
@@ -193,6 +205,9 @@ function create_empty_dialog_state(): GlossaryDialogState {
 }
 
 // create_empty_confirm_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_confirm_state(): GlossaryConfirmState {
   return {
     open: false,
@@ -206,6 +221,9 @@ function create_empty_confirm_state(): GlossaryConfirmState {
 }
 
 // create_empty_preset_input_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_preset_input_state(): GlossaryPresetInputState {
   return {
     open: false,
@@ -217,6 +235,9 @@ function create_empty_preset_input_state(): GlossaryPresetInputState {
 }
 
 // normalize_dialog_entry 在边界处归一化输入，避免下游再处理坏载荷分支。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_dialog_entry(entry: GlossaryEntry): GlossaryEntry {
   return {
     entry_id: entry.entry_id,
@@ -228,6 +249,9 @@ function normalize_dialog_entry(entry: GlossaryEntry): GlossaryEntry {
 }
 
 // normalize_glossary_quality_slice 在后端 query 边界收窄规则事实，页面内部只消费稳定形状。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_glossary_quality_slice(
   slice: ProjectQualityRuleQuerySlice | undefined,
   section_revision: number,
@@ -249,16 +273,25 @@ function normalize_glossary_quality_slice(
 }
 
 // build_user_preset_virtual_id 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_user_preset_virtual_id(name: string): string {
   return `user:${name}.json`;
 }
 
 // normalize_preset_name 在边界处归一化输入，避免下游再处理坏载荷分支。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_preset_name(name: string): string {
   return name.trim();
 }
 
 // has_casefold_duplicate_preset 集中表达布尔判定口径，避免调用方按局部字段猜测。
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function has_casefold_duplicate_preset(
   preset_items: GlossaryPresetItem[],
   target_virtual_id: string,
@@ -294,6 +327,9 @@ function decorate_preset_items(
 }
 
 // build_statistics_badge_tooltip 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_statistics_badge_tooltip(
   t: (key: LocaleKey) => string,
   entry: GlossaryEntry,
@@ -340,6 +376,9 @@ export function buildGlossaryStatisticsState(args: {
 }
 
 // build_glossary_statistics_state_from_cache 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_glossary_statistics_state_from_cache(
   statistics_cache: QualityRuleStatisticsCacheSnapshot,
 ): GlossaryStatisticsState {

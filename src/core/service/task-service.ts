@@ -19,7 +19,7 @@ import {
   type TaskStartMode,
   type TaskType,
   type TranslationScope,
-} from "../engine/protocol/task-types";
+} from "../../domain/task";
 
 /**
  * 公开 `/api/tasks/*` 的任务服务，负责校验命令、调用 TaskEngine 并组装回执

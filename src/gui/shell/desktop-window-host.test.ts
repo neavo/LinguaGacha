@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { build_core_api_base_url_argument } from "../../core/api/api-base-url";
 import { build_desktop_system_proxy_startup_notice_argument } from "../bridge/system-proxy-startup-notice";
-import { IPC_CHANNEL_WINDOW_CLOSE_REQUEST } from "../ipc/ipc-contract";
+import { IPC_CHANNEL_WINDOW_CLOSE_REQUEST } from "../gui-ipc-contract";
 import { resolve_title_bar_overlay_theme } from "./shell-contract";
 import { LOG_WINDOW_QUERY_KEY, LOG_WINDOW_QUERY_VALUE } from "./log-window-host";
 import type { RendererProcessDiagnosticsRegistry } from "./renderer-process-diagnostics";
@@ -14,17 +14,26 @@ const electron_mock = vi.hoisted(() => {
   type Listener = (...args: unknown[]) => void;
 
   // FakeDevToolsContents 模拟外部运行时对象，只保留当前测试会触发的行为面。
+  /**
+   * 封装当前测试场景的替身对象行为。
+   */
   class FakeDevToolsContents {
     loading = false;
     executed_scripts: string[] = [];
     listeners = new Map<string, Listener[]>();
 
     // isLoadingMainFrame 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+    /**
+     * 判断当前值是否满足业务条件。
+     */
     isLoadingMainFrame(): boolean {
       return this.loading;
     }
 
     // once 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+    /**
+     * 模拟事件订阅与派发行为。
+     */
     once(event_name: string, listener: Listener): void {
       const listeners = this.listeners.get(event_name) ?? [];
       listeners.push(listener);
@@ -32,6 +41,9 @@ const electron_mock = vi.hoisted(() => {
     }
 
     // emit 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+    /**
+     * 模拟事件订阅与派发行为。
+     */
     emit(event_name: string, ...args: unknown[]): void {
       for (const listener of this.listeners.get(event_name) ?? []) {
         listener(...args);
@@ -40,6 +52,9 @@ const electron_mock = vi.hoisted(() => {
     }
 
     // executeJavaScript 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+    /**
+     * 模拟开发者工具脚本执行结果。
+     */
     async executeJavaScript(script: string): Promise<boolean> {
       this.executed_scripts.push(script);
       return true;
@@ -47,6 +62,9 @@ const electron_mock = vi.hoisted(() => {
   }
 
   // FakeWebContents 模拟外部运行时对象，只保留当前测试会触发的行为面。
+  /**
+   * 封装当前测试场景的替身对象行为。
+   */
   class FakeWebContents {
     listeners = new Map<string, Listener[]>();
     once_listeners = new Map<string, Listener[]>();
@@ -56,6 +74,9 @@ const electron_mock = vi.hoisted(() => {
     toggleDevTools = vi.fn();
 
     // on 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+    /**
+     * 模拟事件订阅与派发行为。
+     */
     on(event_name: string, listener: Listener): void {
       const listeners = this.listeners.get(event_name) ?? [];
       listeners.push(listener);
@@ -63,6 +84,9 @@ const electron_mock = vi.hoisted(() => {
     }
 
     // once 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+    /**
+     * 模拟事件订阅与派发行为。
+     */
     once(event_name: string, listener: Listener): void {
       const listeners = this.once_listeners.get(event_name) ?? [];
       listeners.push(listener);
@@ -70,6 +94,9 @@ const electron_mock = vi.hoisted(() => {
     }
 
     // emit 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+    /**
+     * 模拟事件订阅与派发行为。
+     */
     emit(event_name: string, ...args: unknown[]): void {
       for (const listener of this.once_listeners.get(event_name) ?? []) {
         listener(...args);
@@ -81,16 +108,25 @@ const electron_mock = vi.hoisted(() => {
     }
 
     // isLoadingMainFrame 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+    /**
+     * 判断当前值是否满足业务条件。
+     */
     isLoadingMainFrame(): boolean {
       return this.loading;
     }
 
     // send 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+    /**
+     * 模拟 IPC 通信行为。
+     */
     send(channel: string): void {
       this.sent_channels.push(channel);
     }
 
     // openDevTools 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+    /**
+     * 切换当前交互状态。
+     */
     openDevTools(): void {
       this.devToolsWebContents = new FakeDevToolsContents();
       this.emit("devtools-opened");
@@ -98,6 +134,9 @@ const electron_mock = vi.hoisted(() => {
   }
 
   // FakeBrowserWindow 模拟外部运行时对象，只保留当前测试会触发的行为面。
+  /**
+   * 封装当前测试场景的替身对象行为。
+   */
   class FakeBrowserWindow {
     static created_windows: FakeBrowserWindow[] = [];
 
@@ -113,12 +152,18 @@ const electron_mock = vi.hoisted(() => {
     loaded_urls: string[] = [];
 
     // 构造阶段只注入必要依赖，避免实例创建时读取外部可变状态。
+    /**
+     * 初始化当前实例的内部状态。
+     */
     constructor(options: Record<string, unknown>) {
       this.options = options;
       FakeBrowserWindow.created_windows.push(this);
     }
 
     // on 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+    /**
+     * 模拟事件订阅与派发行为。
+     */
     on(event_name: string, listener: Listener): void {
       const listeners = this.listeners.get(event_name) ?? [];
       listeners.push(listener);
@@ -126,6 +171,9 @@ const electron_mock = vi.hoisted(() => {
     }
 
     // once 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+    /**
+     * 模拟事件订阅与派发行为。
+     */
     once(event_name: string, listener: Listener): void {
       const listeners = this.once_listeners.get(event_name) ?? [];
       listeners.push(listener);
@@ -133,6 +181,9 @@ const electron_mock = vi.hoisted(() => {
     }
 
     // emit 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+    /**
+     * 模拟事件订阅与派发行为。
+     */
     emit(event_name: string, ...args: unknown[]): void {
       for (const listener of this.once_listeners.get(event_name) ?? []) {
         listener(...args);
@@ -144,31 +195,49 @@ const electron_mock = vi.hoisted(() => {
     }
 
     // isVisible 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+    /**
+     * 判断当前值是否满足业务条件。
+     */
     isVisible(): boolean {
       return this.visible;
     }
 
     // show 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+    /**
+     * 支撑当前测试场景的专用辅助逻辑。
+     */
     show(): void {
       this.visible = true;
     }
 
     // focus 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+    /**
+     * 支撑当前测试场景的专用辅助逻辑。
+     */
     focus(): void {
       this.focused = true;
     }
 
     // loadFile 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+    /**
+     * 加载当前场景的资源入口。
+     */
     async loadFile(file_path: string, options?: { query?: Record<string, string> }): Promise<void> {
       this.load_file_calls.push({ file_path, options });
     }
 
     // loadURL 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+    /**
+     * 加载当前场景的资源入口。
+     */
     async loadURL(url: string): Promise<void> {
       this.loaded_urls.push(url);
     }
 
     // setTitleBarOverlay 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
+    /**
+     * 写入当前场景的状态变化。
+     */
     setTitleBarOverlay(overlay: unknown): void {
       this.title_bar_overlays.push(overlay);
     }
@@ -475,6 +544,9 @@ describe("桌面窗口宿主", () => {
 });
 
 // restore_env 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 写入当前场景的状态变化。
+ */
 function restore_env(name: string, value: string | undefined): void {
   if (value === undefined) {
     delete process.env[name];
@@ -484,6 +556,9 @@ function restore_env(name: string, value: string | undefined): void {
 }
 
 // get_created_window 收口测试中的共享步骤，保证断言只关注当前行为。
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 function get_created_window(
   index: number,
 ): (typeof electron_mock.FakeBrowserWindow.created_windows)[number] {
@@ -495,6 +570,9 @@ function get_created_window(
 }
 
 // create_renderer_diagnostics_stub 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_renderer_diagnostics_stub(
   options: {
     processGoneContext?: Record<string, unknown>;

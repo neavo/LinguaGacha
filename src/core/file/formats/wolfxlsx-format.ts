@@ -4,7 +4,7 @@ import ExcelJS from "exceljs";
 
 import { SpreadsheetTool } from "../../../shared/utils/spreadsheet-tool";
 import { group_items, write_binary_file, type ExportPaths } from "./file-format-shared";
-import { Item } from "../../../base/item";
+import { Item } from "../../../domain/item";
 
 const COL_SRC_TEXT = 6; // WOLF XLSX 的源文和译文列号来自旧固定实现
 const COL_DST_TEXT = 7;

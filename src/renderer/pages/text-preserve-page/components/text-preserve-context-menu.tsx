@@ -5,12 +5,11 @@ import {
   AppContextMenuContent,
   AppContextMenuGroup,
   AppContextMenuItem,
-} from "@/widgets/app-context-menu/app-context-menu";
+} from "@/widgets/app-context-menu";
 
 type TextPreserveContextMenuContentProps = {
   on_open_edit: () => void;
 };
-
 export function TextPreserveContextMenuContent(
   props: TextPreserveContextMenuContentProps,
 ): JSX.Element {

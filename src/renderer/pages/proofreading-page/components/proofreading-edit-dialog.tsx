@@ -16,17 +16,17 @@ import {
   type ProofreadingManualStatusCode,
 } from "@/pages/proofreading-page/types";
 import { Badge } from "@/shadcn/badge";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
-import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
-import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
+import { AppPageDialog } from "@/widgets/app-page-dialog";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,
   AppDropdownMenuGroup,
   AppDropdownMenuItem,
   AppDropdownMenuTrigger,
-} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
+} from "@/widgets/app-dropdown-menu";
 
 type ProofreadingEditDialogProps = {
   open: boolean;
@@ -47,6 +47,9 @@ type ProofreadingEditDialogProps = {
 
 type ProofreadingBadgeTone = "neutral" | "success" | "warning" | "failure";
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_status_badge_tone(status: string): ProofreadingBadgeTone {
   if (status === "PROCESSED") {
     return "success";
@@ -58,14 +61,23 @@ function resolve_status_badge_tone(status: string): ProofreadingBadgeTone {
   return "neutral";
 }
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_warning_badge_tone(): ProofreadingBadgeTone {
   return "warning";
 }
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_badge_tone_class_name(tone: ProofreadingBadgeTone): string {
   return `proofreading-page__dialog-status-badge--tone-${tone}`;
 }
 
+/**
+ * 生成当前场景的展示内容。
+ */
 function render_fragment_section(title: string, fragments: string[]): JSX.Element | null {
   if (fragments.length === 0) {
     return null;
@@ -85,6 +97,9 @@ function render_fragment_section(title: string, fragments: string[]): JSX.Elemen
   );
 }
 
+/**
+ * 生成当前场景的展示内容。
+ */
 function render_glossary_tooltip_content(
   applied_terms: ProofreadingGlossaryTerm[],
   failed_terms: ProofreadingGlossaryTerm[],
@@ -108,6 +123,9 @@ function render_glossary_tooltip_content(
   );
 }
 
+/**
+ * 生成当前场景的展示内容。
+ */
 function render_warning_tooltip_content(
   item: ProofreadingItem,
   warning: string,
@@ -147,6 +165,9 @@ function render_warning_tooltip_content(
   return null;
 }
 
+/**
+ * 生成当前场景的展示内容。
+ */
 function render_status_badge(args: {
   label: string;
   tone: ProofreadingBadgeTone;
@@ -181,10 +202,16 @@ function render_status_badge(args: {
   );
 }
 
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_glossary_term_key(term: ProofreadingGlossaryTerm): string {
   return format_proofreading_glossary_term(term);
 }
 
+/**
+ * 整理集合数据并保持下游消费稳定。
+ */
 function dedupe_glossary_terms(terms: ProofreadingGlossaryTerm[]): ProofreadingGlossaryTerm[] {
   const term_map = new Map<string, ProofreadingGlossaryTerm>();
   terms.forEach((term) => {
@@ -193,10 +220,16 @@ function dedupe_glossary_terms(terms: ProofreadingGlossaryTerm[]): ProofreadingG
   return [...term_map.values()];
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function is_glossary_term_applied(term: ProofreadingGlossaryTerm, draft_dst: string): boolean {
   return term[1].trim().length > 0 && draft_dst.includes(term[1]);
 }
 
+/**
+ * 整理集合数据并保持下游消费稳定。
+ */
 function partition_glossary_terms(
   item: ProofreadingItem,
   draft_dst: string,
@@ -218,10 +251,16 @@ function partition_glossary_terms(
   };
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_code_editor_match_text(text: string): string {
   return text.replace(/\r\n|\r/gu, "\n");
 }
 
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 export function find_text_match_ranges(
   text: string,
   fragment: string,
@@ -253,6 +292,9 @@ export function find_text_match_ranges(
   return ranges;
 }
 
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_glossary_highlights(
   item: ProofreadingItem,
   draft_dst: string,
@@ -298,6 +340,9 @@ function build_glossary_highlights(
   };
 }
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_glossary_badge_state(
   item: ProofreadingItem,
   draft_dst: string,
@@ -331,7 +376,6 @@ function resolve_glossary_badge_state(
     tone: "warning",
   };
 }
-
 export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.Element | null {
   const { t } = useI18n();
   const item = props.item;

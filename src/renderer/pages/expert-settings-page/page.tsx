@@ -1,6 +1,6 @@
 import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
 
-import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import { useI18n } from "@/app/locale/locale-provider";
 import "@/pages/expert-settings-page/expert-settings-page.css";
 import { useExpertSettingsState } from "@/pages/expert-settings-page/use-expert-settings-state";
@@ -8,14 +8,14 @@ import {
   PRECEDING_LINES_THRESHOLD_MAX,
   PRECEDING_LINES_THRESHOLD_MIN,
 } from "@/pages/expert-settings-page/types";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import {
   AppDropdownMenu,
   AppDropdownMenuCheckboxItem,
   AppDropdownMenuContent,
   AppDropdownMenuGroup,
   AppDropdownMenuTrigger,
-} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
+} from "@/widgets/app-dropdown-menu";
 import { Input } from "@/shadcn/input";
 import { SettingCardRow } from "@/widgets/setting-card-row/setting-card-row";
 import { SegmentedToggle } from "@/widgets/segmented-toggle/segmented-toggle";
@@ -24,6 +24,9 @@ type ExpertSettingsPageProps = {
   is_sidebar_collapsed: boolean;
 };
 
+/**
+ * 解析输入并收窄为业务可用值。
+ */
 function parse_number_draft(
   input_value: string,
   min_value: number,
@@ -43,7 +46,6 @@ function parse_number_draft(
 
   return parsed_value;
 }
-
 export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -74,6 +76,9 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
     },
   ] as const;
 
+  /**
+   * 生成当前场景的展示内容。
+   */
   function render_boolean_toggle(options: {
     title_key:
       | "expert_settings_page.fields.clean_ruby.title"
@@ -98,7 +103,6 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
       />
     );
   }
-
   async function handle_response_check_menu_button_click(
     event: MouseEvent<HTMLButtonElement>,
   ): Promise<void> {
@@ -127,6 +131,9 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
     is_preceding_lines_threshold_editing,
   ]);
 
+  /**
+   * 提交当前场景的数据变化。
+   */
   async function commit_preceding_lines_threshold_draft(): Promise<void> {
     if (parsed_preceding_lines_threshold === null) {
       push_toast("error", t("expert_settings_page.feedback.preceding_lines_threshold_invalid"));
@@ -145,7 +152,6 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
     await expert_settings_state.update_preceding_lines_threshold(parsed_preceding_lines_threshold);
     set_is_preceding_lines_threshold_editing(false);
   }
-
   function handle_preceding_lines_threshold_key_down(event: KeyboardEvent<HTMLInputElement>): void {
     if (event.key !== "Enter") {
       return;

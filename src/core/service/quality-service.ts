@@ -13,9 +13,9 @@ import { ProjectChangePublisher } from "../project/project-change-publisher";
 import { ProjectSessionState } from "../project/project-session-state";
 import type { ProjectMutationResult } from "../../shared/project-event";
 import { build_analysis_glossary_entry_from_candidate } from "../../shared/analysis-candidate";
-import { QualityRule, type QualityRuleKind } from "../../base/quality";
-import { Prompt, type PromptKind } from "../../base/prompt";
-import { normalize_setting_snapshot } from "../../base/setting";
+import { QualityRule, type QualityRuleKind } from "../../domain/quality";
+import { Prompt, type PromptKind } from "../../domain/prompt";
+import { normalize_setting_snapshot } from "../../domain/setting";
 import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import {

@@ -7,7 +7,7 @@ import {
   type DesktopRuntimeRecoveryActions,
 } from "@/app/desktop/desktop-runtime-recovery";
 import type { TaskSnapshot } from "@/app/desktop/task-runtime-store";
-import type { TaskType } from "@shared/task";
+import type { TaskType } from "@domain/task";
 
 // capture renderer error mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const capture_renderer_error_mock = vi.hoisted(() => vi.fn());
@@ -27,6 +27,9 @@ type RecoveryProbeProps = {
 };
 
 // RecoveryProbe 收口测试中的共享步骤，保证断言只关注当前行为。
+/**
+ * 渲染当前组件的公开界面。
+ */
 function RecoveryProbe(props: RecoveryProbeProps): null {
   const actions = useDesktopRuntimeRecovery({
     project_loaded: props.projectLoaded,
@@ -178,6 +181,9 @@ describe("useDesktopRuntimeRecovery", () => {
   });
 
   // render_probe 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+  /**
+   * 生成当前场景的展示内容。
+   */
   async function render_probe(props: RecoveryProbeProps): Promise<void> {
     host = document.createElement("div");
     document.body.appendChild(host);

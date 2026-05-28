@@ -3,7 +3,7 @@ import { Element, isTag, Text, type ChildNode } from "domhandler";
 import JSZip from "jszip";
 
 import type { ApiJsonValue } from "../../../api/api-types";
-import { Item, read_json_record } from "../../../../base/item";
+import { Item, read_json_record } from "../../../../domain/item";
 import {
   should_preserve_epub_reading_layout,
   write_binary_file,

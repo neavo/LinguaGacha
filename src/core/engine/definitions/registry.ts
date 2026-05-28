@@ -1,5 +1,5 @@
 import type { StartTaskCommand } from "../protocol/task-command";
-import type { TaskType } from "../protocol/task-types";
+import type { TaskType } from "../../../domain/task";
 import type { TaskDefinition } from "./task-definition";
 import * as AppErrors from "../../../shared/error";
 

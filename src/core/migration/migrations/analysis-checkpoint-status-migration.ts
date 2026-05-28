@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import { is_task_progress_status } from "../../../shared/task";
+import { is_task_progress_status } from "../../../domain/task";
 import type { MigrationDescriptor, ProjectDatabaseMigrationContext } from "../migration-types";
 
 type CheckpointMigrationRow = Record<string, unknown>;

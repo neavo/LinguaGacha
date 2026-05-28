@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ProjectItemPublicRecord } from "@base/item";
+import type { ProjectItemPublicRecord } from "@domain/item";
 import {
   create_clear_translations_plan,
   create_replace_all_plan,
@@ -9,6 +9,9 @@ import {
   type ProofreadingMutationSnapshot,
 } from "@/pages/proofreading-page/proofreading-mutation-planner";
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
     item_id: 1,
@@ -29,6 +32,9 @@ function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectI
   };
 }
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 function create_test_snapshot(
   items: ProjectItemPublicRecord[] = [
     create_test_item({

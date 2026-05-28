@@ -8,7 +8,7 @@ import {
 import { useAppNavigation } from "@/app/navigation/navigation-context";
 import { INPUT_QUERY_DEBOUNCE_MS, useDebouncedCallback } from "@/hooks/use-debounce";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
-import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import {
@@ -105,6 +105,9 @@ function clone_app_table_sort_state(
 }
 
 // normalize_proofreading_sort_state 在 session 边界收窄排序状态，坏状态统一回到默认排序。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_proofreading_sort_state(
   sort_state: AppTableSortState | null,
 ): AppTableSortState | null {
@@ -208,11 +211,17 @@ type ProofreadingRefreshSignal = {
   mode: "full" | "noop";
 };
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function is_stale_proofreading_list_error(_error: unknown): boolean {
   return false;
 }
 
 // create_empty_filter_options 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_filter_options(): ProofreadingFilterOptions {
   return {
     warning_types: [],
@@ -224,6 +233,9 @@ function create_empty_filter_options(): ProofreadingFilterOptions {
 }
 
 // create_empty_dialog_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_dialog_state(): ProofreadingDialogState {
   return {
     open: false,
@@ -292,6 +304,9 @@ function replace_first_visible_match(
 }
 
 // build_filter_signature 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_filter_signature(filters: ProofreadingFilterOptions): string {
   return JsonTool.stringifyStrict({
     warning_types: [...filters.warning_types].sort(),
@@ -307,6 +322,9 @@ function build_filter_signature(filters: ProofreadingFilterOptions): string {
 }
 
 // build_sort_signature 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_sort_signature(sort_state: AppTableSortState | null): string {
   return sort_state === null ? "null" : `${sort_state.column_id}:${sort_state.direction}`;
 }
@@ -314,6 +332,9 @@ function build_sort_signature(sort_state: AppTableSortState | null): string {
 type ProofreadingFilterValueKeyResolver<T> = (value: T) => string;
 
 // create_filter_value_key_set 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_filter_value_key_set<T>(
   values: T[],
   resolve_key: ProofreadingFilterValueKeyResolver<T>,
@@ -337,6 +358,9 @@ function are_filter_value_key_sets_equal(left_keys: Set<string>, right_keys: Set
 }
 
 // build_glossary_term_key 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_glossary_term_key(term: ProofreadingGlossaryTerm): string {
   return `${term[0]}→${term[1]}`;
 }
@@ -428,6 +452,9 @@ function reconcile_proofreading_filter_options(args: {
 }
 
 // build_list_query_signature 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_list_query_signature(args: {
   revisions: {
     items: number;
@@ -451,6 +478,9 @@ function build_list_query_signature(args: {
 }
 
 // build_filter_panel_signature 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_filter_panel_signature(args: {
   revisions: {
     items: number;
@@ -466,6 +496,9 @@ function build_filter_panel_signature(args: {
 }
 
 // resolve_requested_sync_mode 集中解析运行时决策，避免调用点复制条件判断。
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_requested_sync_mode(args: {
   cache_status: "idle" | "refreshing" | "ready" | "error";
   runtime_sync_state: ProofreadingRuntimeSyncState | null;
@@ -493,6 +526,9 @@ function resolve_requested_sync_mode(args: {
   return args.signal_mode === "noop" ? "noop" : "full";
 }
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_proofreading_refresh_signal(signal: {
   seq: number;
   updated_sections: string[];

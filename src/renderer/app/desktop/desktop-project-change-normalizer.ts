@@ -14,7 +14,7 @@ import {
   type ProjectChangeJsonRecord,
   type ProjectChangePayloadMode,
 } from "@shared/project-event";
-import { is_item_status } from "@base/item";
+import { is_item_status } from "@domain/item";
 
 /**
  * Core SSE 与同步 mutation 共享的项目变更载荷，入口处必须立即转成运行态事件。
@@ -81,6 +81,9 @@ export function is_project_change_record(value: unknown): value is Record<string
 }
 
 // normalize_project_change_sections 在边界处归一化输入，避免下游再处理坏载荷分支。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_project_change_sections(
   value: unknown,
 ): Partial<Record<ProjectRuntimeStage, { payloadMode: ProjectChangePayloadMode; data: unknown }>> {
@@ -139,6 +142,9 @@ function normalize_project_change_items(value: unknown): ProjectChangeItemsPaylo
 }
 
 // normalize_record_map 在边界处归一化输入，避免下游再处理坏载荷分支。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_record_map(value: unknown): Record<string, ProjectChangeJsonRecord> {
   if (!is_record(value)) {
     return {};
@@ -151,6 +157,9 @@ function normalize_record_map(value: unknown): Record<string, ProjectChangeJsonR
 }
 
 // normalize_number_array 在边界处归一化输入，避免下游再处理坏载荷分支。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_number_array(value: unknown): number[] {
   if (!Array.isArray(value)) {
     return [];
@@ -165,6 +174,9 @@ function normalize_number_array(value: unknown): number[] {
 }
 
 // normalize_string_array 在边界处归一化输入，避免下游再处理坏载荷分支。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_string_array(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -196,6 +208,9 @@ function normalize_project_change_item_field_patch(
 }
 
 // is_record 集中表达布尔判定口径，避免调用方按局部字段猜测。
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function is_record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

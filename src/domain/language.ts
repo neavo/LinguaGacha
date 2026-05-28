@@ -1,11 +1,17 @@
-import { InvalidTargetLanguageError, UnsupportedAllTargetLanguageError } from "./error";
+import { InvalidTargetLanguageError, UnsupportedAllTargetLanguageError } from "../shared/error";
 
 type CharacterMatcher = (char: string) => boolean;
 type TextMatcher = (text: string) => boolean;
 
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const ALL_LANGUAGE_CODE = "ALL"; // 特殊值：表示“任意原文语言”（关闭语言过滤）
 
 // 源语言列表不包含繁中变体，避免预过滤把简繁当成可精确区分的源语言
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const SOURCE_LANGUAGE_CODES = [
   "ZH", // 中文
   "EN", // 英文
@@ -27,6 +33,9 @@ export const SOURCE_LANGUAGE_CODES = [
 ] as const;
 
 // 目标语言列表允许繁中作为原生目标，并贴近中文排列，避免在下拉末尾割裂同族语言
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const TARGET_LANGUAGE_CODES = [
   "ZH", // 中文
   "ZH-HANT", // 中文（繁体）
@@ -49,6 +58,9 @@ export const TARGET_LANGUAGE_CODES = [
 ] as const;
 
 // 总语言表只服务定义表和 i18n 资源对齐，页面应按源/目标语义选择窄列表
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const LANGUAGE_CODES = TARGET_LANGUAGE_CODES;
 
 export type SourceLanguageCode = (typeof SOURCE_LANGUAGE_CODES)[number];
@@ -67,6 +79,9 @@ export type LanguageDefinition = {
 };
 
 // 语言名称与语言码同源维护，UI、提示词和日志都复用这一套“中文/日文”口径
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const LANGUAGE_DISPLAY_NAMES: Record<
   LanguageCode,
   Readonly<Record<LanguageDisplayLocale, string>>
@@ -150,16 +165,25 @@ export const LANGUAGE_DISPLAY_NAMES: Record<
 };
 
 // 语言标签 key 从语言码派生，避免 UI 手写 i18n key
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 export function get_language_label_key(language_code: LanguageCode): LanguageLabelKey {
   return `app.language.${language_code}`;
 }
 
 // 应用语言只影响语言显示名本地化，未知值默认回中文
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 export function get_language_display_locale(app_language: unknown): LanguageDisplayLocale {
   return String(app_language).trim().toUpperCase() === "EN" ? "en" : "zh";
 }
 
 // 展示名统一从语言定义表读取，不在调用点重复维护语言名称
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 export function get_language_display_name(
   language_code: LanguageCode,
   locale: LanguageDisplayLocale,
@@ -168,6 +192,9 @@ export function get_language_display_name(
 }
 
 // 源语言允许 ALL 和空值，提示词里表达为泛化的“原文”
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 export function get_prompt_source_language_name(
   language_code: LanguageCode | null,
   locale: LanguageDisplayLocale,
@@ -180,6 +207,9 @@ export function get_prompt_source_language_name(
 }
 
 // 目标语言不能是 ALL 或空值，调用方配置损坏时必须显式报错
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 export function get_prompt_target_language_name(
   language_code: LanguageCode | null,
   locale: LanguageDisplayLocale,
@@ -227,16 +257,25 @@ const NON_STANDALONE_LANGUAGE_CHARACTERS = new Set([
 ]);
 
 // 单字符正文判断统一收口排除项和 Script 检查，避免各语言分支自行组合
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function is_language_body_character(char: string, script_pattern: RegExp): boolean {
   return !NON_BODY_LANGUAGE_CHARACTER_PATTERN.test(char) && script_pattern.test(char);
 }
 
 // 全量匹配沿用 Python all 的空字符串真值语义
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function all_matching_characters(text: string, matches_character: CharacterMatcher): boolean {
   return [...text].every((char) => matches_character(char));
 }
 
 // 首尾剥离只移除边缘非目标字符，中间内容必须原样保留
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function strip_non_matching_characters(text: string, matches_character: CharacterMatcher): string {
   const chars = [...text.trim()];
   let start = 0;
@@ -254,51 +293,81 @@ function strip_non_matching_characters(text: string, matches_character: Characte
 }
 
 // 汉字正文判断覆盖 Unicode 当前运行时支持的 Han Script，包括扩展区和兼容汉字
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function is_han_character(char: string): boolean {
   return is_language_body_character(char, HAN_CHARACTER_PATTERN);
 }
 
 // 拉丁语系共享 Latin Script 粗过滤，不区分具体自然语言
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function is_latin_character(char: string): boolean {
   return is_language_body_character(char, LATIN_CHARACTER_PATTERN);
 }
 
 // 俄文按 Cyrillic Script 判断，避免误收 Glagolitic 等旧手写范围偏差
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function is_cyrillic_character(char: string): boolean {
   return is_language_body_character(char, CYRILLIC_CHARACTER_PATTERN);
 }
 
 // 阿拉伯文按 Arabic Script 判断，数字和符号由正文排除规则统一剔除
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function is_arabic_character(char: string): boolean {
   return is_language_body_character(char, ARABIC_CHARACTER_PATTERN);
 }
 
 // 泰文按 Thai Script 判断，泰文数字不再被当作正文字符
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function is_thai_character(char: string): boolean {
   return is_language_body_character(char, THAI_CHARACTER_PATTERN);
 }
 
 // 谚文正文判断供韩文语言过滤、残留检查和 fixer 共用
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function is_hangul_character(char: string): boolean {
   return is_language_body_character(char, HANGUL_CHARACTER_PATTERN);
 }
 
 // 平假名正文判断排除不能独立成文的日文标记
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function is_hiragana_character(char: string): boolean {
   return is_language_body_character(char, HIRAGANA_CHARACTER_PATTERN);
 }
 
 // 片假名正文判断支持全角和半角片假名，但不把长音与中点当作正文
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function is_katakana_character(char: string): boolean {
   return is_language_body_character(char, KATAKANA_CHARACTER_PATTERN);
 }
 
 // 假名聚合入口供校对和 fixer 复用，不让调用方重复拼平假名/片假名判断
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function is_kana_character(char: string): boolean {
   return is_hiragana_character(char) || is_katakana_character(char);
 }
 
 // 非独立语言字符只服务“无正文价值”判断，不能单独触发语言正文命中
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function is_non_standalone_language_character(char: string): boolean {
   return (
     NON_STANDALONE_LANGUAGE_MARK_PATTERN.test(char) || NON_STANDALONE_LANGUAGE_CHARACTERS.has(char)
@@ -306,56 +375,89 @@ export function is_non_standalone_language_character(char: string): boolean {
 }
 
 // 中日韩正文字符判断供文本保护等下游语义过滤复用，不暴露正则拼接细节
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function is_cjk_language_character(char: string): boolean {
   return is_han_character(char) || is_kana_character(char) || is_hangul_character(char);
 }
 
 // 中日韩正文任意命中入口用于下游排除含自然语言正文的控制段候选
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function has_cjk_language_character(text: string): boolean {
   return JAPANESE_TEXT_PATTERN.test(text) || HANGUL_TEXT_PATTERN.test(text);
 }
 
 // 平假名任意命中入口供旧 JA.any_hiragana 语义复用
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function has_any_hiragana_character(text: string): boolean {
   return HIRAGANA_TEXT_PATTERN.test(text);
 }
 
 // 平假名全量入口供旧 JA.all_hiragana 语义复用
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function has_only_hiragana_characters(text: string): boolean {
   return all_matching_characters(text, is_hiragana_character);
 }
 
 // 片假名任意命中入口供旧 JA.any_katakana 语义复用
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function has_any_katakana_character(text: string): boolean {
   return KATAKANA_TEXT_PATTERN.test(text);
 }
 
 // 片假名全量入口供旧 JA.all_katakana 语义复用
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function has_only_katakana_characters(text: string): boolean {
   return all_matching_characters(text, is_katakana_character);
 }
 
 // 谚文任意命中入口供旧 KO.any_hangeul 语义复用
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function has_any_hangul_character(text: string): boolean {
   return HANGUL_TEXT_PATTERN.test(text);
 }
 
 // 谚文全量入口供旧 KO.all_hangeul 语义复用
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function has_only_hangul_characters(text: string): boolean {
   return all_matching_characters(text, is_hangul_character);
 }
 
 // 日文允许汉字或假名命中，符合原文混排的常见场景
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function is_ja_character(char: string): boolean {
   return is_han_character(char) || is_kana_character(char);
 }
 
 // 韩文允许汉字或谚文命中，兼容含汉字词的韩文本地化文本
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function is_ko_character(char: string): boolean {
   return is_han_character(char) || is_hangul_character(char);
 }
 
 // 定义表构造器保证单字符判断和整段命中规则成对登记
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_definition(
   code: LanguageCode,
   cjk: boolean,
@@ -371,6 +473,9 @@ function build_definition(
 }
 
 // 语言定义是运行态唯一正文规则表；拉丁语系只做 Latin Script 粗过滤，不做自然语言识别
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const LANGUAGE_DEFINITIONS: Record<LanguageCode, LanguageDefinition> = {
   ALL: build_definition("ALL", false, null, null), // ALL 关闭语言过滤
   ZH: build_definition("ZH", true, is_han_character, HAN_TEXT_PATTERN), // 中文只以 Han Script 正文命中
@@ -393,9 +498,15 @@ export const LANGUAGE_DEFINITIONS: Record<LanguageCode, LanguageDefinition> = {
   VI: build_definition("VI", false, is_latin_character, LATIN_TEXT_PATTERN), // 越南文走 Latin Script 粗过滤
 };
 
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const CJK_LANGUAGE_CODES = new Set<LanguageCode>(["ZH", "ZH-HANT", "JA", "KO"]); // CJK 语言集合供 UI 和规则分支快速判断，不重复解释字符范围
 
 // 语言码入口统一大小写与空白处理，未知值显式返回 null
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 export function normalize_language_code(value: string): LanguageCode | null {
   const normalized_value = value.trim().toUpperCase();
   if (normalized_value in LANGUAGE_DEFINITIONS) {
@@ -406,12 +517,18 @@ export function normalize_language_code(value: string): LanguageCode | null {
 }
 
 // 判断语言族时必须先归一化，避免小写配置让 CJK 分支失效
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function is_cjk_language_code(value: string): boolean {
   const language_code = normalize_language_code(value);
   return language_code !== null && CJK_LANGUAGE_CODES.has(language_code);
 }
 
 // 文本语言命中入口，ALL 语言永远返回 true 表示不过滤
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function has_language_character(text: string, language_code: LanguageCode): boolean {
   const matches_text = LANGUAGE_DEFINITIONS[language_code].matches_text;
   if (matches_text === null) {
@@ -422,6 +539,9 @@ export function has_language_character(text: string, language_code: LanguageCode
 }
 
 // 单字符语言判断入口对齐历史 TextBase.char
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function is_language_character(char: string, language_code: LanguageCode): boolean {
   const matches_character = LANGUAGE_DEFINITIONS[language_code].matches_character;
   if (matches_character === null) {
@@ -432,6 +552,9 @@ export function is_language_character(char: string, language_code: LanguageCode)
 }
 
 // 全量语言判断入口对齐历史 TextBase.all
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function all_language_characters(text: string, language_code: LanguageCode): boolean {
   const matches_character = LANGUAGE_DEFINITIONS[language_code].matches_character;
   if (matches_character === null) {
@@ -442,6 +565,9 @@ export function all_language_characters(text: string, language_code: LanguageCod
 }
 
 // 语言边缘剥离入口对齐历史 TextBase.strip_non_target
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 export function strip_non_language_characters(text: string, language_code: LanguageCode): string {
   const matches_character = LANGUAGE_DEFINITIONS[language_code].matches_character;
   if (matches_character === null) {

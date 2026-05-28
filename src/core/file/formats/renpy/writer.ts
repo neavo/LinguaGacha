@@ -1,4 +1,4 @@
-import { Item, read_json_record } from "../../../../base/item";
+import { Item, read_json_record } from "../../../../domain/item";
 import { effective_export_text } from "../file-format-shared";
 import {
   build_skeleton,

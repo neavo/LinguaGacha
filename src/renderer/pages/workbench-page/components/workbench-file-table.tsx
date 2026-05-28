@@ -7,7 +7,7 @@ import {
   WorkbenchTableContextMenuContent,
 } from "@/pages/workbench-page/components/workbench-table-action-menu";
 import type { WorkbenchFileEntry } from "@/pages/workbench-page/types";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shadcn/card";
 import { AppTable } from "@/widgets/app-table/app-table";
 import { AppTableDragIndicator } from "@/widgets/app-table/app-table-drag-indicator";
@@ -29,10 +29,16 @@ type WorkbenchFileTableProps = {
   on_reorder: (ordered_entry_ids: string[]) => void;
 };
 
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_workbench_row_number_label(row_index: number): string {
   return String(row_index + 1);
 }
 
+/**
+ * 排序当前列表并保持展示稳定。
+ */
 function sort_workbench_entries(
   entries: WorkbenchFileEntry[],
   sort_state: AppTableSortState | null,
@@ -69,6 +75,9 @@ function sort_workbench_entries(
   return sorted_entries;
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function should_ignore_workbench_row_click(target_element: HTMLElement): boolean {
   return (
     target_element.closest(
@@ -79,6 +88,9 @@ function should_ignore_workbench_row_click(target_element: HTMLElement): boolean
   );
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function should_ignore_workbench_box_selection_target(target_element: HTMLElement): boolean {
   return (
     target_element.closest(
@@ -92,7 +104,6 @@ function should_ignore_workbench_box_selection_target(target_element: HTMLElemen
     ) !== null
   );
 }
-
 export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element {
   const { t } = useI18n();
   const [sort_state, set_sort_state] = useState<AppTableSortState | null>(null);

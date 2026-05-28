@@ -1,4 +1,4 @@
-import { is_active_analysis_task_status as is_base_active_analysis_task_status } from "@shared/task";
+import { is_active_analysis_task_status as is_base_active_analysis_task_status } from "@domain/task";
 
 export type AnalysisTaskActionKind =
   | "reset-all"
@@ -63,6 +63,9 @@ export type AnalysisTaskMetrics = {
   candidate_count: number;
 };
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 export function create_empty_analysis_task_snapshot(): AnalysisTaskSnapshot {
   return {
     runtime_revision: 0,
@@ -83,6 +86,9 @@ export function create_empty_analysis_task_snapshot(): AnalysisTaskSnapshot {
   };
 }
 
+/**
+ * 克隆当前快照，避免共享可变引用。
+ */
 export function clone_analysis_task_snapshot(snapshot: AnalysisTaskSnapshot): AnalysisTaskSnapshot {
   return {
     runtime_revision: snapshot.runtime_revision,
@@ -103,6 +109,9 @@ export function clone_analysis_task_snapshot(snapshot: AnalysisTaskSnapshot): An
   };
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 export function normalize_analysis_task_snapshot_payload(
   payload: AnalysisTaskPayload,
 ): AnalysisTaskSnapshot {
@@ -128,10 +137,16 @@ export function normalize_analysis_task_snapshot_payload(
   };
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function is_active_analysis_task_status(status: string): boolean {
   return is_base_active_analysis_task_status(status);
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function has_analysis_task_progress(snapshot: AnalysisTaskSnapshot | null): boolean {
   if (snapshot === null) {
     return false;
@@ -149,6 +164,9 @@ export function has_analysis_task_progress(snapshot: AnalysisTaskSnapshot | null
   );
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function has_analysis_task_display_state(snapshot: AnalysisTaskSnapshot | null): boolean {
   if (snapshot === null) {
     return false;
@@ -157,6 +175,9 @@ export function has_analysis_task_display_state(snapshot: AnalysisTaskSnapshot |
   return has_analysis_task_progress(snapshot) || snapshot.candidate_count > 0;
 }
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 export function resolve_analysis_task_display_snapshot(args: {
   current_snapshot: AnalysisTaskSnapshot;
   last_snapshot: AnalysisTaskSnapshot | null;
@@ -180,6 +201,9 @@ export function resolve_analysis_task_display_snapshot(args: {
   return null;
 }
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 export function resolve_analysis_task_metrics(args: {
   snapshot: AnalysisTaskSnapshot | null;
   now_seconds: number;

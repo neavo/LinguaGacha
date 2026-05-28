@@ -1,4 +1,4 @@
-import { is_active_translation_task_status as is_base_active_translation_task_status } from "@shared/task";
+import { is_active_translation_task_status as is_base_active_translation_task_status } from "@domain/task";
 
 export type TranslationTaskActionKind =
   | "reset-all"
@@ -54,6 +54,9 @@ export type TranslationTaskMetrics = {
   request_in_flight_count: number;
 };
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 export function create_empty_translation_task_snapshot(): TranslationTaskSnapshot {
   return {
     runtime_revision: 0,
@@ -73,6 +76,9 @@ export function create_empty_translation_task_snapshot(): TranslationTaskSnapsho
   };
 }
 
+/**
+ * 克隆当前快照，避免共享可变引用。
+ */
 export function clone_translation_task_snapshot(
   snapshot: TranslationTaskSnapshot,
 ): TranslationTaskSnapshot {
@@ -94,6 +100,9 @@ export function clone_translation_task_snapshot(
   };
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 export function normalize_translation_task_snapshot_payload(
   payload: TranslationTaskPayload,
 ): TranslationTaskSnapshot {
@@ -117,10 +126,16 @@ export function normalize_translation_task_snapshot_payload(
   };
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function is_active_translation_task_status(status: string): boolean {
   return is_base_active_translation_task_status(status);
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function has_translation_task_progress(snapshot: TranslationTaskSnapshot | null): boolean {
   if (snapshot === null) {
     return false;
@@ -139,6 +154,9 @@ export function has_translation_task_progress(snapshot: TranslationTaskSnapshot 
   );
 }
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 export function resolve_translation_task_display_snapshot(args: {
   current_snapshot: TranslationTaskSnapshot;
   last_snapshot: TranslationTaskSnapshot | null;
@@ -162,6 +180,9 @@ export function resolve_translation_task_display_snapshot(args: {
   return null;
 }
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 export function resolve_translation_task_metrics(args: {
   snapshot: TranslationTaskSnapshot | null;
   now_seconds: number;

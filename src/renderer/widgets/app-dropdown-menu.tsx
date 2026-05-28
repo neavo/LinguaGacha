@@ -22,7 +22,6 @@ import {
 type AppDropdownMenuContentProps = ComponentProps<typeof DropdownMenuContent> & {
   matchTriggerWidth?: boolean;
 };
-
 function AppDropdownMenuContent({
   align = "center",
   className,
@@ -41,49 +40,42 @@ function AppDropdownMenuContent({
     />
   );
 }
-
 function AppDropdownMenuSubContent({
   className,
   ...props
 }: ComponentProps<typeof DropdownMenuSubContent>): JSX.Element {
   return <DropdownMenuSubContent className={cn("text-[13px]", className)} {...props} />;
 }
-
 function AppDropdownMenuItem({
   className,
   ...props
 }: ComponentProps<typeof DropdownMenuItem>): JSX.Element {
   return <DropdownMenuItem className={cn("text-[13px]", className)} {...props} />;
 }
-
 function AppDropdownMenuCheckboxItem({
   className,
   ...props
 }: ComponentProps<typeof DropdownMenuCheckboxItem>): JSX.Element {
   return <DropdownMenuCheckboxItem className={cn("text-[13px]", className)} {...props} />;
 }
-
 function AppDropdownMenuRadioItem({
   className,
   ...props
 }: ComponentProps<typeof DropdownMenuRadioItem>): JSX.Element {
   return <DropdownMenuRadioItem className={cn("text-[13px]", className)} {...props} />;
 }
-
 function AppDropdownMenuSubTrigger({
   className,
   ...props
 }: ComponentProps<typeof DropdownMenuSubTrigger>): JSX.Element {
   return <DropdownMenuSubTrigger className={cn("text-[13px]", className)} {...props} />;
 }
-
 function AppDropdownMenuLabel({
   className,
   ...props
 }: ComponentProps<typeof DropdownMenuLabel>): JSX.Element {
   return <DropdownMenuLabel className={cn("text-[13px]", className)} {...props} />;
 }
-
 function AppDropdownMenuShortcut({
   className,
   ...props

@@ -5,12 +5,11 @@ import {
   AppContextMenuContent,
   AppContextMenuGroup,
   AppContextMenuItem,
-} from "@/widgets/app-context-menu/app-context-menu";
+} from "@/widgets/app-context-menu";
 
 type NameFieldExtractionContextMenuContentProps = {
   on_edit: () => void;
 };
-
 export function NameFieldExtractionContextMenuContent(
   props: NameFieldExtractionContextMenuContentProps,
 ): JSX.Element {

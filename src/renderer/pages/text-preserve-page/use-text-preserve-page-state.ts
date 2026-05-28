@@ -25,8 +25,8 @@ import {
 import type { SettingsSnapshotPayload } from "@/app/desktop/desktop-runtime-context";
 import { useQualityRuleStatistics } from "@/project/quality/quality-statistics-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
-import { is_task_mutation_locked } from "@/project/tasks/task-lock";
-import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { is_task_mutation_locked } from "@/project/project-task-lock";
+import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import {
@@ -79,7 +79,7 @@ import type {
   AppTableSelectionChange,
   AppTableSortState,
 } from "@/widgets/app-table/app-table-types";
-import { normalize_text_preserve_mode } from "@base/quality";
+import { normalize_text_preserve_mode } from "@domain/quality";
 import { QualityRuleImportRuleTypeValue } from "@shared/quality/importer";
 
 type TextPreservePresetPayload = {
@@ -119,6 +119,9 @@ const TEXT_PRESERVE_MODE_REFRESH_TIMEOUT_MS = 15000;
 const TEXT_PRESERVE_SORT_COLUMN_IDS = new Set(["src", "info", "statistics"]);
 
 // normalize_text_preserve_sort_state 在 session 边界收窄排序状态，坏状态统一回到默认排序。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_text_preserve_sort_state(
   sort_state: AppTableSortState | null,
 ): AppTableSortState | null {
@@ -166,6 +169,9 @@ function clone_entry(entry: TextPreserveEntry): TextPreserveEntry {
 }
 
 // normalize_entry 在边界处归一化输入，避免下游再处理坏载荷分支。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_entry(entry: Partial<TextPreserveEntry>): TextPreserveEntry {
   return {
     entry_id: entry.entry_id,
@@ -175,6 +181,9 @@ function normalize_entry(entry: Partial<TextPreserveEntry>): TextPreserveEntry {
 }
 
 // normalize_imported_entry 在边界处归一化输入，避免下游再处理坏载荷分支。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_imported_entry(entry: Record<string, unknown>): TextPreserveEntry {
   return normalize_entry({
     src: String(entry.src ?? ""),
@@ -183,6 +192,9 @@ function normalize_imported_entry(entry: Record<string, unknown>): TextPreserveE
 }
 
 // normalize_text_preserve_quality_slice 在后端 query 边界收窄规则事实，页面内部只消费稳定形状。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_text_preserve_quality_slice(
   slice: ProjectQualityRuleQuerySlice | undefined,
   section_revision: number,
@@ -202,6 +214,9 @@ function normalize_text_preserve_quality_slice(
 }
 
 // create_empty_filter_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_filter_state(): TextPreserveFilterState {
   return {
     keyword: "",
@@ -211,11 +226,17 @@ function create_empty_filter_state(): TextPreserveFilterState {
 }
 
 // create_empty_sort_state 保持表格排序默认值与 AppTable 的无排序状态一致。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_sort_state(): AppTableSortState | null {
   return null;
 }
 
 // create_empty_dialog_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_dialog_state(): TextPreserveDialogState {
   return {
     open: false,
@@ -229,6 +250,9 @@ function create_empty_dialog_state(): TextPreserveDialogState {
 }
 
 // create_empty_confirm_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_confirm_state(): TextPreserveConfirmState {
   return {
     open: false,
@@ -242,6 +266,9 @@ function create_empty_confirm_state(): TextPreserveConfirmState {
 }
 
 // create_empty_preset_input_state 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function create_empty_preset_input_state(): TextPreservePresetInputState {
   return {
     open: false,
@@ -253,16 +280,25 @@ function create_empty_preset_input_state(): TextPreservePresetInputState {
 }
 
 // build_user_preset_virtual_id 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_user_preset_virtual_id(name: string): string {
   return `user:${name}.json`;
 }
 
 // normalize_preset_name 在边界处归一化输入，避免下游再处理坏载荷分支。
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_preset_name(name: string): string {
   return name.trim();
 }
 
 // has_casefold_duplicate_preset 集中表达布尔判定口径，避免调用方按局部字段猜测。
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function has_casefold_duplicate_preset(
   preset_items: TextPreservePresetItem[],
   target_virtual_id: string,
@@ -298,6 +334,9 @@ function decorate_preset_items(
 }
 
 // build_statistics_badge_tooltip 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_statistics_badge_tooltip(
   t: (key: LocaleKey) => string,
   entry: TextPreserveEntry,
@@ -323,6 +362,9 @@ function build_statistics_badge_tooltip(
 }
 
 // build_default_preset_update_payload 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_default_preset_update_payload(value: string): Record<string, string> {
   return {
     [TEXT_PRESERVE_DEFAULT_PRESET_SETTINGS_KEY]: value,
@@ -330,11 +372,17 @@ function build_default_preset_update_payload(value: string): Record<string, stri
 }
 
 // is_modal_progress_timeout_error 集中表达布尔判定口径，避免调用方按局部字段猜测。
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function is_modal_progress_timeout_error(error: unknown): boolean {
   return error instanceof Error && error.message === MODAL_PROGRESS_TIMEOUT_MESSAGE;
 }
 
 // build_text_preserve_statistics_state_from_cache 构造跨层载荷，保证字段形状在一个入口维护。
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_text_preserve_statistics_state_from_cache(
   statistics_cache: QualityRuleStatisticsCacheSnapshot,
 ): TextPreserveStatisticsState {

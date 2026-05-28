@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import path from "node:path";
 
-import { Item } from "../../../base/item";
+import { Item } from "../../../domain/item";
 import {
   build_bilingual_path,
   build_target_path,

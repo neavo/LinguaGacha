@@ -1,4 +1,4 @@
-import type { TaskStartMode, TaskType, TranslationScope } from "./task-types";
+import type { TaskStartMode, TaskType, TranslationScope } from "../../../domain/task";
 
 /** StartTaskCommand 是 API 命令层交给 Engine 的唯一启动命令形状 */
 export type StartTaskCommand =

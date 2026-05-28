@@ -1,6 +1,9 @@
 import type { JsonRecord } from "../shared/utils/json-tool";
 import { UnknownPromptTypeError } from "../shared/error";
 
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const PROMPT_KINDS = ["translation", "analysis"] as const; // 提示词只暴露翻译和分析两类任务，重翻复用翻译语义
 
 export type PromptKind = (typeof PROMPT_KINDS)[number];
@@ -50,6 +53,9 @@ const PROMPT_KIND_SET = new Set<PromptKind>(PROMPT_KINDS);
 export class Prompt {
   public readonly kind: PromptKind; // 提示词槽位类型
 
+  /**
+   * 初始化当前实例的内部状态。
+   */
   private constructor(kind: PromptKind) {
     this.kind = kind;
   }
@@ -166,10 +172,16 @@ export class Prompt {
   }
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function is_prompt_kind(value: unknown): value is PromptKind {
   return PROMPT_KIND_SET.has(value as PromptKind);
 }
 
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 function read_record(value: unknown): JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as JsonRecord)

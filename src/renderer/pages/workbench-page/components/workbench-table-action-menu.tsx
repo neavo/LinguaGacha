@@ -1,18 +1,18 @@
 import { CircleEllipsis, Recycle } from "lucide-react";
 
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import {
   AppContextMenuContent,
   AppContextMenuGroup,
   AppContextMenuItem,
-} from "@/widgets/app-context-menu/app-context-menu";
+} from "@/widgets/app-context-menu";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,
   AppDropdownMenuGroup,
   AppDropdownMenuItem,
   AppDropdownMenuTrigger,
-} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
+} from "@/widgets/app-dropdown-menu";
 import { useI18n } from "@/app/locale/locale-provider";
 
 type WorkbenchTableActionMenuProps = {
@@ -25,7 +25,6 @@ type WorkbenchTableMenuActionProps = {
   disabled: boolean;
   on_reset: () => void;
 };
-
 function WorkbenchTableActionMenuContent(props: WorkbenchTableMenuActionProps): JSX.Element {
   const { t } = useI18n();
 
@@ -38,7 +37,6 @@ function WorkbenchTableActionMenuContent(props: WorkbenchTableMenuActionProps): 
     </AppDropdownMenuGroup>
   );
 }
-
 export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): JSX.Element {
   const { t } = useI18n();
 
@@ -71,7 +69,6 @@ export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): 
     </AppDropdownMenu>
   );
 }
-
 export function WorkbenchTableContextMenuContent(
   props: WorkbenchTableMenuActionProps,
 ): JSX.Element {

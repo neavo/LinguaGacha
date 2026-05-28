@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { Item } from "../../../base/item";
+import { Item } from "../../../domain/item";
 import { ASSFormat } from "./ass-format";
 
 let temp_dir = "";

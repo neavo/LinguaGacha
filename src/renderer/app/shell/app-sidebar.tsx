@@ -30,7 +30,7 @@ import {
   AppDropdownMenuGroup,
   AppDropdownMenuItem,
   AppDropdownMenuTrigger,
-} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
+} from "@/widgets/app-dropdown-menu";
 import "@/app/shell/app-sidebar.css";
 
 const SIDEBAR_PROFILE_ICON_URL: string = new URL("icon.png", document.baseURI).toString();
@@ -52,7 +52,6 @@ type AppSidebarProps = {
   on_appearance_menu_action: (action_id: AppearanceMenuActionId) => void;
   on_profile_action: () => void;
 };
-
 export function AppSidebar(props: AppSidebarProps): JSX.Element {
   const { t } = useI18n();
   const { state } = useSidebar();

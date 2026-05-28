@@ -4,7 +4,7 @@ import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import { useI18n } from "@/app/locale/locale-provider";
 import type { NameFieldRunState } from "@/pages/name-field-extraction-page/types";
 import { Badge } from "@/shadcn/badge";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import { Spinner } from "@/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import {
@@ -12,7 +12,7 @@ import {
   CommandBarGroup,
   CommandBarSeparator,
 } from "@/widgets/command-bar/command-bar";
-import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd";
 
 type NameFieldExtractionCommandBarProps = {
   row_count: number;
@@ -26,7 +26,6 @@ type NameFieldExtractionCommandBarProps = {
   on_delete: () => void;
   on_import: () => Promise<void>;
 };
-
 export function NameFieldExtractionCommandBar(
   props: NameFieldExtractionCommandBarProps,
 ): JSX.Element {

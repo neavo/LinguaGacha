@@ -1,5 +1,5 @@
 import type { ApiJsonValue } from "../../../api/api-types";
-import { Item } from "../../../../base/item";
+import { Item } from "../../../../domain/item";
 import { is_translatable_text, looks_like_resource_path, sha1_hex } from "./lexer";
 import {
   find_character_name_lit_index,

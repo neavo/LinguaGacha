@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 
 import { create_epub_fixture } from "../../../../test/epub-fixture";
-import { Item } from "../../../../base/item";
+import { Item } from "../../../../domain/item";
 import { FileParseFailedError, InvalidFileStructureError } from "../../../../shared/error";
 import { EpubAst, read_epub_extra } from "./epub-ast";
 

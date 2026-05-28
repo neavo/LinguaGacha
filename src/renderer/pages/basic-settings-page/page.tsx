@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from "react";
 
-import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
+import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import { useI18n } from "@/app/locale/locale-provider";
 import "@/pages/basic-settings-page/basic-settings-page.css";
 import {
@@ -13,7 +13,7 @@ import {
   TARGET_LANGUAGE_CODES,
   is_project_save_mode,
 } from "@/pages/basic-settings-page/types";
-import { get_language_label_key } from "@base/setting";
+import { get_language_label_key } from "@domain/setting";
 import { useBasicSettingsState } from "@/pages/basic-settings-page/use-basic-settings-state";
 import { Input } from "@/shadcn/input";
 import { SettingCardRow } from "@/widgets/setting-card-row/setting-card-row";
@@ -30,11 +30,13 @@ import {
 type BasicSettingsPageProps = {
   is_sidebar_collapsed: boolean;
 };
-
 function replace_placeholder(template: string, value: string): string {
   return template.replace("{PATH}", value);
 }
 
+/**
+ * 解析输入并收窄为业务可用值。
+ */
 function parse_number_draft(
   input_value: string,
   min_value: number,
@@ -54,7 +56,6 @@ function parse_number_draft(
 
   return parsed_value;
 }
-
 export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -132,6 +133,9 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
     set_request_timeout_draft(String(basic_settings_state.snapshot.request_timeout));
   }, [basic_settings_state.snapshot.request_timeout, is_request_timeout_editing]);
 
+  /**
+   * 提交当前场景的数据变化。
+   */
   async function commit_request_timeout_draft(): Promise<void> {
     if (parsed_request_timeout === null) {
       push_toast("error", t("basic_settings_page.feedback.request_timeout_invalid"));
@@ -148,7 +152,6 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
     await basic_settings_state.update_request_timeout(parsed_request_timeout);
     set_is_request_timeout_editing(false);
   }
-
   function handle_request_timeout_key_down(event: KeyboardEvent<HTMLInputElement>): void {
     if (event.key !== "Enter") {
       return;

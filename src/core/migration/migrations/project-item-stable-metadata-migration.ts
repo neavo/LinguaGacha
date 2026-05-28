@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import { Item, is_item_file_type, is_item_status, is_item_text_type } from "../../../base/item";
+import { Item, is_item_file_type, is_item_status, is_item_text_type } from "../../../domain/item";
 import { JsonTool } from "../../../shared/utils/json-tool";
 import type { MigrationDescriptor, ProjectDatabaseMigrationContext } from "../migration-types";
 

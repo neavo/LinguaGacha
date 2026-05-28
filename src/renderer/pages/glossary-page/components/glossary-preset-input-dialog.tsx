@@ -1,10 +1,10 @@
 import { useI18n, type LocaleKey } from "@/app/locale/locale-provider";
 import { useActionShortcut } from "@/hooks/use-action-shortcut";
 import type { GlossaryPresetInputState } from "@/pages/glossary-page/types";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import { Input } from "@/shadcn/input";
-import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
-import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
+import { AppPageDialog } from "@/widgets/app-page-dialog";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd";
 
 type GlossaryPresetInputDialogProps = {
   state: GlossaryPresetInputState;
@@ -31,7 +31,6 @@ const PRESET_DIALOG_COPY_BY_MODE: Record<
     confirm_key: "glossary_page.preset.dialog.rename_confirm",
   },
 };
-
 export function GlossaryPresetInputDialog(props: GlossaryPresetInputDialogProps): JSX.Element {
   const { t } = useI18n();
   const dialog_copy =

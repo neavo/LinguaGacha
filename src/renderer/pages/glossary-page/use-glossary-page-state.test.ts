@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { INPUT_QUERY_DEBOUNCE_MS } from "@/hooks/use-debounce";
 import type { QualityRuleStatisticsCacheSnapshot } from "@/project/quality/quality-statistics-store";
-import type { ProjectItemPublicRecord } from "@base/item";
+import type { ProjectItemPublicRecord } from "@domain/item";
 import { createProjectItemIndex } from "@/project/project-item-index";
 import { buildGlossaryStatisticsState, useGlossaryPageState } from "./use-glossary-page-state";
 import type { GlossaryEntry } from "./types";
@@ -18,6 +18,9 @@ const { api_fetch_mock, push_toast_mock, page_ui_state_store } = vi.hoisted(() =
 });
 
 // create_default_glossary_entries 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_default_glossary_entries(): GlossaryEntry[] {
   return [
     {
@@ -30,6 +33,9 @@ function create_default_glossary_entries(): GlossaryEntry[] {
 }
 
 // create_test_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
     item_id: 1,
@@ -138,6 +144,9 @@ const project_store = {
 const project_store_listeners = new Set<() => void>();
 
 // apply_quality_mutation_result 收口测试中的共享步骤，保证断言只关注当前行为。
+/**
+ * 写入当前场景的状态变化。
+ */
 function apply_quality_mutation_result(result: {
   changes?: Array<{
     projectPath?: string;
@@ -191,6 +200,9 @@ function apply_quality_mutation_result(result: {
 }
 
 // 测试夹具只模拟后端原始 canonical mutation payload，回灌入口由运行态 commit mock 触发。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_quality_mutation_result(
   args: {
     quality?: typeof runtime_state.quality;
@@ -223,6 +235,9 @@ function create_quality_mutation_result(
 }
 
 // 质量区块快照由后端整体回灌，测试只替换 glossary 切片以表达该次 mutation 的最终事实。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_glossary_quality(
   entries: GlossaryEntry[],
   revision: number,
@@ -242,6 +257,9 @@ let task_snapshot: { busy: boolean; status: string };
 let project_change_seq = 0;
 
 // notify_project_store_listeners 收口测试中的共享步骤，保证断言只关注当前行为。
+/**
+ * 触发当前界面反馈行为。
+ */
 function notify_project_store_listeners(): void {
   project_change_seq += 1;
   for (const listener of project_store_listeners) {
@@ -250,6 +268,9 @@ function notify_project_store_listeners(): void {
 }
 
 // create_statistics_cache 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_statistics_cache(
   args: Partial<QualityRuleStatisticsCacheSnapshot>,
 ): QualityRuleStatisticsCacheSnapshot {
@@ -298,6 +319,9 @@ function create_statistics_cache(
 }
 
 // create_statistics_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_statistics_snapshot(
   entry_ids: string[],
 ): QualityRuleStatisticsCacheSnapshot["completed_snapshot"] {
@@ -383,7 +407,7 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
   };
 });
 
-vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
+vi.mock("@/app/ui-runtime/use-desktop-toast", () => {
   return {
     useDesktopToast: () => ({
       push_toast: push_toast_mock,
@@ -692,6 +716,9 @@ describe("useGlossaryPageState", () => {
   });
 
   // mount_probe 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+  /**
+   * 挂载当前测试组件并等待渲染完成。
+   */
   async function mount_probe(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -701,6 +728,9 @@ describe("useGlossaryPageState", () => {
   }
 
   // rerender_probe 收口测试中的共享步骤，保证断言只关注当前行为。
+  /**
+   * 支撑当前测试场景的专用辅助逻辑。
+   */
   async function rerender_probe(): Promise<void> {
     render_version += 1;
     project_change_seq += 1;
@@ -723,6 +753,9 @@ describe("useGlossaryPageState", () => {
   }
 
   // flush_filter_debounce 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+  /**
+   * 支撑当前测试场景的专用辅助逻辑。
+   */
   async function flush_filter_debounce(): Promise<void> {
     await act(async () => {
       vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);

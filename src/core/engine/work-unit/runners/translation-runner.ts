@@ -11,14 +11,14 @@ import {
   type TranslationPrePipelineContext,
 } from "../pipeline/translation-pre-pipeline";
 import { TranslationPostPipeline } from "../pipeline/translation-post-pipeline";
-import { PromptBuilder } from "../prompt/prompt-builder";
+import { PromptBuilder } from "../work-unit-prompt-builder";
 import { ResponseChecker } from "../response/response-checker";
 import { ResponseCleaner } from "../response/response-cleaner";
 import { ResponseDecoder } from "../response/response-decoder";
 import type { LLMClientPort, LLMRequestResult } from "../../../llm/llm-types";
 import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
-import { normalize_setting_snapshot } from "../../../../base/setting";
+import { normalize_setting_snapshot } from "../../../../domain/setting";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
 import { RequestValidationError, type LogError } from "../../../../shared/error";
 
@@ -590,6 +590,9 @@ export class TranslationWorkUnitRunner {
   }
 
   // is_line_error 封装类内部的非显然分支，避免调用方重复理解同一约束。
+  /**
+   * 判断当前值是否满足业务条件。
+   */
   private is_line_error(check: string): boolean {
     return (
       check === "LINE_ERROR_KANA" ||
@@ -600,11 +603,17 @@ export class TranslationWorkUnitRunner {
   }
 
   // read_app_language 封装类内部的非显然分支，避免调用方重复理解同一约束。
+  /**
+   * 读取当前场景需要的稳定数据。
+   */
   private read_app_language(config_snapshot: ApiJsonValue): unknown {
     return normalize_setting_snapshot(config_snapshot).app_language;
   }
 
   // t 封装类内部的非显然分支，避免调用方重复理解同一约束。
+  /**
+   * 转换本地化键为当前语言文本。
+   */
   private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
     return format_i18n_message(resolve_i18n_locale(app_language), key, params);
   }

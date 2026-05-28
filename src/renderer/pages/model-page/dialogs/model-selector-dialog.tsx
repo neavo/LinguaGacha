@@ -6,7 +6,7 @@ import { useDebouncedValue } from "@/hooks/use-debounce";
 import type { ModelEntrySnapshot } from "@/pages/model-page/types";
 import { Input } from "@/shadcn/input";
 import { ScrollArea } from "@/shadcn/scroll-area";
-import { AppPageDialog } from "@/widgets/app-page-dialog/app-page-dialog";
+import { AppPageDialog } from "@/widgets/app-page-dialog";
 
 type ModelSelectorDialogProps = {
   open: boolean;
@@ -19,7 +19,6 @@ type ModelSelectorDialogProps = {
   onSelectModelId: (model_name: string) => Promise<void>;
   onClose: () => void;
 };
-
 export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Element | null {
   const { t } = useI18n();
   const requested_model_id_ref = useRef<string | null>(null);

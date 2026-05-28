@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { TranslationScope } from "../protocol/task-types";
+import type { TranslationScope } from "../../../domain/task";
 import { TaskRuntimeState } from "./task-runtime-state";
 
 describe("TaskRuntimeState", () => {

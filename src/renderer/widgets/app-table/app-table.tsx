@@ -34,7 +34,7 @@ import {
 } from "react";
 
 import { cn } from "@/lib/utils";
-import { AppContextMenu, AppContextMenuTrigger } from "@/widgets/app-context-menu/app-context-menu";
+import { AppContextMenu, AppContextMenuTrigger } from "@/widgets/app-context-menu";
 import { ScrollArea } from "@/shadcn/scroll-area";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/shadcn/table";
 import "@/widgets/app-table/app-table.css";
@@ -108,6 +108,9 @@ type AppTableVisibleRange = {
   count: number;
 };
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 function create_array_row_model<Row>(
   rows: Row[],
   get_row_id: (row: Row, index: number) => string,
@@ -127,7 +130,6 @@ function create_array_row_model<Row>(
     resolve_row_index: (row_id) => row_index_by_id.get(row_id),
   };
 }
-
 function use_array_row_model<Row>(
   rows: Row[],
   get_row_id: (row: Row, index: number) => string,
@@ -143,6 +145,9 @@ function use_array_row_model<Row>(
   }, [rows]);
 }
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_visible_sortable_row_ids(args: {
   virtual_rows: Array<VirtualItem>;
   resolve_row_id_at_index: (index: number) => string | undefined;
@@ -153,6 +158,9 @@ function resolve_visible_sortable_row_ids(args: {
   });
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_visible_range(virtual_rows: Array<VirtualItem>): AppTableVisibleRange | null {
   if (virtual_rows.length === 0) {
     return null;
@@ -166,6 +174,9 @@ function normalize_visible_range(virtual_rows: Array<VirtualItem>): AppTableVisi
   };
 }
 
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_selection_box_rect(selection_box: SelectionBoxState): DOMRect {
   return new DOMRect(
     Math.min(selection_box.origin_x, selection_box.current_x),
@@ -174,7 +185,6 @@ function build_selection_box_rect(selection_box: SelectionBoxState): DOMRect {
     Math.abs(selection_box.current_y - selection_box.origin_y),
   );
 }
-
 function intersects_selection_box(
   row_element: HTMLTableRowElement,
   selection_box: SelectionBoxState,
@@ -190,6 +200,9 @@ function intersects_selection_box(
   );
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_selection_box_style(
   host_element: HTMLDivElement | null,
   selection_box: SelectionBoxState | null,
@@ -212,6 +225,9 @@ function normalize_selection_box_style(
   };
 }
 
+/**
+ * 写入当前场景的状态变化。
+ */
 function sync_selection_box_element_style(args: {
   host_element: HTMLDivElement | null;
   selection_box_element: HTMLDivElement | null;
@@ -234,10 +250,16 @@ function sync_selection_box_element_style(args: {
   args.selection_box_element.style.height = `${String(next_style.height ?? 0)}px`;
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function has_primary_keyboard_modifier(event: Pick<KeyboardEvent, "ctrlKey" | "metaKey">): boolean {
   return event.ctrlKey || event.metaKey;
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function should_handle_table_keydown(event: ReactKeyboardEvent<HTMLDivElement>): boolean {
   if (event.nativeEvent.isComposing) {
     return false;
@@ -248,6 +270,9 @@ function should_handle_table_keydown(event: ReactKeyboardEvent<HTMLDivElement>):
 
 type AppTableKeyboardNavigationAction = "previous" | "next" | "first" | "last";
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_keyboard_target_index(args: {
   row_count: number;
   current_index: number | null;
@@ -268,6 +293,9 @@ function resolve_keyboard_target_index(args: {
   }
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_row_range(
   row_count: number,
   start: number,
@@ -284,7 +312,6 @@ function normalize_row_range(
     count: normalized_end - normalized_start,
   };
 }
-
 function AppTableSortableRow<Row>(props: AppTableSortableRowProps<Row>): JSX.Element {
   const { attributes, isDragging, listeners, setNodeRef, transform, transition } = useSortable({
     id: props.row_id,
@@ -409,7 +436,6 @@ function AppTableSortableRow<Row>(props: AppTableSortableRowProps<Row>): JSX.Ele
     </AppContextMenu>
   );
 }
-
 export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
   const {
     rows,
@@ -1030,7 +1056,6 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     if (!box_selection_enabled) {
       return;
     }
-
     function handle_pointer_move(event: PointerEvent): void {
       const previous_state = selection_box_ref.current;
       if (previous_state === null) {
@@ -1051,18 +1076,15 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
       selection_box_ref.current = next_state;
       schedule_selection_box_update();
     }
-
     function handle_pointer_up(): void {
       flush_selection_box_update();
       reset_selection_interaction({
         commit_selection_preview: selection_box_ref.current?.moved === true,
       });
     }
-
     function handle_pointer_cancel(): void {
       reset_selection_interaction();
     }
-
     function handle_window_blur(): void {
       reset_selection_interaction();
     }
@@ -1441,7 +1463,6 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     },
     [get_row_can_drag],
   );
-
   function handle_drag_start(event: DragStartEvent): void {
     if (!drag_enabled) {
       return;
@@ -1464,11 +1485,9 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     set_active_drag_row_id(next_active_row_id);
     sync_drag_overlay_width();
   }
-
   function handle_drag_cancel(): void {
     reset_drag_state();
   }
-
   function handle_drag_end(event: DragEndEvent): void {
     const over_row_id = event.over === null ? null : String(event.over.id);
     const current_active_drag_row_id = active_drag_row_id;

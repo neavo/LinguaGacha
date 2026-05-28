@@ -6,14 +6,14 @@ import {
   type AnalysisItemContext,
   type AnalysisTaskContext,
 } from "../pipeline/analysis-pre-pipeline";
-import { PromptBuilder } from "../prompt/prompt-builder";
+import { PromptBuilder } from "../work-unit-prompt-builder";
 import { ResponseCleaner } from "../response/response-cleaner";
 import { ResponseDecoder } from "../response/response-decoder";
 import type { LLMClientPort } from "../../../llm/llm-types";
 import type { AnalysisWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
-import { normalize_setting_snapshot } from "../../../../base/setting";
+import { normalize_setting_snapshot } from "../../../../domain/setting";
 import type { LogError } from "../../../../shared/error";
 
 interface AnalysisWorkUnitRequest {
@@ -307,11 +307,17 @@ export class AnalysisWorkUnitRunner {
   }
 
   // read_app_language 封装类内部的非显然分支，避免调用方重复理解同一约束。
+  /**
+   * 读取当前场景需要的稳定数据。
+   */
   private read_app_language(config_snapshot: ApiJsonValue): unknown {
     return normalize_setting_snapshot(config_snapshot).app_language;
   }
 
   // t 封装类内部的非显然分支，避免调用方重复理解同一约束。
+  /**
+   * 转换本地化键为当前语言文本。
+   */
   private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
     return format_i18n_message(resolve_i18n_locale(app_language), key, params);
   }

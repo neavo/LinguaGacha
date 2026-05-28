@@ -16,7 +16,7 @@ import {
   AppDropdownMenuGroup,
   AppDropdownMenuItem,
   AppDropdownMenuTrigger,
-} from "@/widgets/app-dropdown-menu/app-dropdown-menu";
+} from "@/widgets/app-dropdown-menu";
 import { Spinner } from "@/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shadcn/tooltip";
 import { AppTable } from "@/widgets/app-table/app-table";
@@ -51,10 +51,16 @@ type TextPreserveTableProps = {
   on_search_entry_relations: (entry_id: TextPreserveEntryId) => void;
 };
 
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_row_number_label(row_index: number): string {
   return String(row_index + 1);
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function should_ignore_box_selection_target(target_element: HTMLElement): boolean {
   return (
     target_element.closest(
@@ -69,6 +75,9 @@ function should_ignore_box_selection_target(target_element: HTMLElement): boolea
   );
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function should_ignore_row_click_target(target_element: HTMLElement): boolean {
   return (
     target_element.closest(
@@ -87,7 +96,6 @@ type TextPreserveStatisticsBadgeProps = {
   on_query_entry_source: (entry_id: TextPreserveEntryId) => Promise<void>;
   on_search_entry_relations: (entry_id: TextPreserveEntryId) => void;
 };
-
 function TextPreserveStatisticsBadge(props: TextPreserveStatisticsBadgeProps): JSX.Element | null {
   const { t } = useI18n();
 
@@ -212,7 +220,6 @@ function TextPreserveStatisticsBadge(props: TextPreserveStatisticsBadgeProps): J
     </AppDropdownMenu>
   );
 }
-
 export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
   const { t } = useI18n();
 

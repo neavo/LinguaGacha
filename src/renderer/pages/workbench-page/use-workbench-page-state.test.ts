@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
-import type { ProjectItemPublicRecord } from "@base/item";
+import type { ProjectItemPublicRecord } from "@domain/item";
 import type { ProjectChangeSignal } from "@/app/desktop/desktop-runtime-context";
 import type { AnalysisTaskSnapshot } from "@/pages/workbench-page/task-runtime/analysis-task-model";
 import type { AnalysisTaskRuntime } from "@/pages/workbench-page/task-runtime/use-analysis-task-runtime";
@@ -114,7 +114,7 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
   };
 });
 
-vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
+vi.mock("@/app/ui-runtime/use-desktop-toast", () => {
   return {
     useDesktopToast: () => {
       return toast_fixture.current;
@@ -140,6 +140,9 @@ vi.mock("@/app/desktop/desktop-api", () => {
 });
 
 // create_project_change_signal 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_project_change_signal(
   seq: number,
   options: {
@@ -179,6 +182,9 @@ function create_project_change_signal(
 }
 
 // create_runtime_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_runtime_fixture(): RuntimeFixture {
   return {
     commit_project_mutation: vi.fn(async ({ run }: { run: () => Promise<unknown> }) => {
@@ -218,6 +224,9 @@ function create_runtime_fixture(): RuntimeFixture {
 }
 
 // workbench hook 测试只验证请求编排；空 changes 仍经过真实 mutation result 契约。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_project_mutation_result() {
   return {
     accepted: true,
@@ -225,12 +234,18 @@ function create_project_mutation_result() {
   };
 }
 
+/**
+ * 支撑当前测试场景的专用辅助逻辑。
+ */
 function enqueue_api_response(path: string, responder: ApiRouteResponder): void {
   const queue = api_route_queues.get(path) ?? [];
   queue.push(responder);
   api_route_queues.set(path, queue);
 }
 
+/**
+ * 配置当前测试场景依赖。
+ */
 function setup_api_fetch_mock(): void {
   vi.mocked(api_fetch).mockImplementation(async (path: string, body = {}) => {
     const queue = api_route_queues.get(path);
@@ -252,6 +267,9 @@ function setup_api_fetch_mock(): void {
   });
 }
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 function create_workbench_query_response() {
   const state = runtime_fixture.current.project_store.getState();
   const files = Object.values(state.files ?? {}).flatMap((value) => {
@@ -296,6 +314,9 @@ function create_workbench_query_response() {
   };
 }
 
+/**
+ * 构建当前场景的稳定结果。
+ */
 function build_workbench_query_stats(items: ProjectItemPublicRecord[]): WorkbenchQueryStats {
   let completed_count = 0;
   let failed_count = 0;
@@ -326,11 +347,17 @@ function build_workbench_query_stats(items: ProjectItemPublicRecord[]): Workbenc
   };
 }
 
+/**
+ * 统计当前测试场景的调用次数。
+ */
 function count_api_calls(path: string): number {
   return vi.mocked(api_fetch).mock.calls.filter((call) => call[0] === path).length;
 }
 
 // create_translation_task_runtime_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_translation_task_runtime_fixture(): TranslationTaskRuntimeFixture {
   return {
     translation_task_display_snapshot: null,
@@ -362,6 +389,9 @@ function create_translation_task_runtime_fixture(): TranslationTaskRuntimeFixtur
 }
 
 // create_analysis_task_runtime_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_analysis_task_runtime_fixture(): AnalysisTaskRuntimeFixture {
   return {
     analysis_task_display_snapshot: null,
@@ -405,6 +435,9 @@ function create_analysis_task_runtime_fixture(): AnalysisTaskRuntimeFixture {
 }
 
 // create_toast_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_toast_fixture(): ToastFixture {
   return {
     push_toast: vi.fn(),
@@ -415,6 +448,9 @@ function create_toast_fixture(): ToastFixture {
 }
 
 // create_project_store_state 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_project_store_state(items: Record<string, ProjectItemPublicRecord>) {
   return {
     project: {
@@ -456,6 +492,9 @@ function create_project_store_state(items: Record<string, ProjectItemPublicRecor
 }
 
 // create_project_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_project_item(args: {
   item_id: number;
   src?: string;
@@ -482,6 +521,9 @@ function create_project_item(args: {
 }
 
 // create_analysis_task_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/**
+ * 构造当前测试场景的标准数据。
+ */
 function create_analysis_task_snapshot(
   overrides: Partial<AnalysisTaskSnapshot> = {},
 ): AnalysisTaskSnapshot {
@@ -545,6 +587,9 @@ describe("useWorkbenchPageState", () => {
   }
 
   // flush_async_updates 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+  /**
+   * 支撑当前测试场景的专用辅助逻辑。
+   */
   async function flush_async_updates(): Promise<void> {
     await act(async () => {
       await Promise.resolve();
@@ -552,6 +597,9 @@ describe("useWorkbenchPageState", () => {
   }
 
   // render_hook 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+  /**
+   * 生成当前场景的展示内容。
+   */
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");

@@ -1,4 +1,4 @@
-import { is_text_preserve_mode } from "../../../base/quality";
+import { is_text_preserve_mode } from "../../../domain/quality";
 import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
 import type { MigrationDescriptor, ProjectOpenMigrationContext } from "../migration-types";
 

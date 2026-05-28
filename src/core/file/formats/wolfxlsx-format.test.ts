@@ -5,7 +5,7 @@ import path from "node:path";
 import ExcelJS from "exceljs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { Item } from "../../../base/item";
+import { Item } from "../../../domain/item";
 import { WOLFXLSXFormat } from "./wolfxlsx-format";
 
 let temp_dir = ""; // 每个用例独占工作簿输出目录，避免 WOLF 写回测试共享文件状态

@@ -14,13 +14,13 @@ import type {
 import { AnalysisTaskMenu } from "@/pages/workbench-page/components/analysis-task-menu";
 import { TaskRuntimeSummary } from "@/pages/workbench-page/components/task-runtime/task-runtime-summary";
 import { TranslationTaskMenu } from "@/pages/workbench-page/components/translation-task-menu";
-import { AppButton } from "@/widgets/app-button/app-button";
+import { AppButton } from "@/widgets/app-button";
 import {
   CommandBar,
   CommandBarGroup,
   CommandBarSeparator,
 } from "@/widgets/command-bar/command-bar";
-import { ShortcutKbd } from "@/widgets/shortcut-kbd/shortcut-kbd";
+import { ShortcutKbd } from "@/widgets/shortcut-kbd";
 
 type WorkbenchCommandBarProps = {
   translation_task_runtime: TranslationTaskRuntime;
@@ -46,7 +46,6 @@ type CommandAction = {
   disabled: boolean;
   on_click: () => void;
 };
-
 export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Element {
   const { t } = useI18n();
   const active_translation_task_action_kind: TranslationTaskActionKind | null =

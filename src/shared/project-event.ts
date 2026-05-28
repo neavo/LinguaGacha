@@ -1,4 +1,4 @@
-import type { ItemStatus } from "../base/item";
+import type { ItemStatus } from "../domain/item";
 import type { SourceFileParseFailureRecord } from "./source-file-parse-failure";
 
 // 公开项目变更事件只能承载严格 JSON 值，避免跨进程传递可变对象或特殊类型
@@ -81,6 +81,9 @@ export type ProjectMutationResult = {
 };
 
 // section 顺序同时约束 manifest、项目变更和 renderer 初始化刷新顺序
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const PROJECT_DATA_SECTIONS: readonly ProjectDataSection[] = [
   "project",
   "files",
@@ -92,14 +95,23 @@ export const PROJECT_DATA_SECTIONS: readonly ProjectDataSection[] = [
 ] as const;
 
 // 公开 SSE topic；所有项目数据变更必须从这个 topic 进入 renderer
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const PROJECT_CHANGE_EVENT_TOPIC = "project.data_changed";
 
 // 字符串 section 的唯一窄化入口，防止调用点散落并行合法值判断
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function isProjectDataSection(value: string): value is ProjectDataSection {
   return (PROJECT_DATA_SECTIONS as readonly string[]).includes(value);
 }
 
 // 外部 payload 的 section 列表在边界去重，保持后续 revision 和补读逻辑稳定
+/**
+ * 承接当前模块的核心控制分支。
+ */
 export function normalizeProjectDataSections(value: unknown): ProjectDataSection[] {
   if (!Array.isArray(value)) {
     return [];
@@ -114,6 +126,9 @@ export function normalizeProjectDataSections(value: unknown): ProjectDataSection
 }
 
 // 坏值默认降级为 section-invalidated，让前端走补读而不是误合并
+/**
+ * 承接当前模块的核心控制分支。
+ */
 export function normalizeProjectChangePayloadMode(value: unknown): ProjectChangePayloadMode {
   if (value === "canonical-delta" || value === "field-patch" || value === "section-invalidated") {
     return value;

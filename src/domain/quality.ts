@@ -1,9 +1,15 @@
 import type { JsonRecord } from "../shared/utils/json-tool";
 import { UnknownQualityRuleTypeError, UnsupportedQualityRuleMetaError } from "../shared/error";
 
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const TEXT_PRESERVE_MODES = ["off", "smart", "custom"] as const; // 文本保护模式是公开 meta、页面状态和规则执行共同使用的稳定值域
 
 // 质量规则类型是公开质量切片的 key，不能暴露数据库旧物理命名
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const QUALITY_RULE_KINDS = [
   "glossary",
   "text_preserve",
@@ -103,6 +109,9 @@ const QUALITY_RULE_KIND_SET = new Set<QualityRuleKind>(QUALITY_RULE_KINDS);
 export class QualityRule {
   public readonly kind: QualityRuleKind; // 质量规则槽位类型
 
+  /**
+   * 初始化当前实例的内部状态。
+   */
   private constructor(kind: QualityRuleKind) {
     this.kind = kind;
   }
@@ -317,11 +326,17 @@ export class QualityRule {
 }
 
 // 文本保护模式来自 meta 和页面状态，进入规则执行前先收窄
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function is_text_preserve_mode(value: unknown): value is TextPreserveMode {
   return TEXT_PRESERVE_MODE_SET.has(value as TextPreserveMode);
 }
 
 // 旧配置可能保存大写模式名，归一化后再决定是否启用保护
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 export function normalize_text_preserve_mode(
   value: unknown,
   fallback: TextPreserveMode = "off",
@@ -333,16 +348,25 @@ export function normalize_text_preserve_mode(
   return is_text_preserve_mode(normalized) ? normalized : fallback;
 }
 
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function is_quality_rule_kind(value: unknown): value is QualityRuleKind {
   return QUALITY_RULE_KIND_SET.has(value as QualityRuleKind);
 }
 
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 function read_record(value: unknown): JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as JsonRecord)
     : {};
 }
 
+/**
+ * 归一化输入，保证下游消费稳定形状。
+ */
 function normalize_boolean_meta_value(value: unknown, fallback: boolean): boolean {
   if (typeof value === "boolean") {
     return value;

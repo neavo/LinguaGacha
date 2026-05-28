@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { Item, type ItemFileType } from "../../base/item";
+import { Item, type ItemFileType } from "../../domain/item";
 import { ASSFormat } from "./formats/ass-format";
 import { KVJSONFormat } from "./formats/kvjson-format";
 import { MDFormat } from "./formats/md-format";
@@ -78,6 +78,9 @@ export class FileFormatService {
     return SUPPORTED_EXTENSIONS.has(path.extname(file_path).toLowerCase());
   }
 
+  /**
+   * 判断当前值是否满足业务条件。
+   */
   public is_epub_path(file_path: string): boolean {
     return path.extname(file_path).toLowerCase() === ".epub";
   }

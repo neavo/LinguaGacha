@@ -1,4 +1,4 @@
-import type { ModelThinkingLevel, ModelType } from "@base/model";
+import type { ModelThinkingLevel, ModelType } from "@domain/model";
 
 export type { ModelThinkingLevel, ModelType };
 

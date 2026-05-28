@@ -1,5 +1,5 @@
 import { api_fetch } from "@/app/desktop/desktop-api";
-import type { ProjectItemPublicRecord } from "@base/item";
+import type { ProjectItemPublicRecord } from "@domain/item";
 
 import type { ProjectQuerySectionRevisions } from "@/project/query/project-section-revisions-query";
 
@@ -17,6 +17,9 @@ export type NameFieldExtractionQueryResponse = {
 };
 
 // 姓名字段提取页只读取后端 query view，避免为一次性提取流程订阅项目事实。
+/**
+ * 读取当前场景需要的稳定数据。
+ */
 export async function read_name_field_extraction_query(): Promise<NameFieldExtractionQueryResponse> {
   return await api_fetch<NameFieldExtractionQueryResponse>(
     "/api/project/query/name-field-extraction",
