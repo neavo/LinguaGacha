@@ -19,7 +19,7 @@ import { normalize_task_snapshot, type TaskSnapshot } from "@/app/desktop/task-r
 import type { SettingsSnapshotPayload } from "@/app/desktop/desktop-runtime-context";
 import { record_renderer_diagnostics_event } from "@/app/diagnostics/renderer-error-reporter";
 import { parse_event_payload } from "@/app/desktop/desktop-runtime-event-payload";
-import { PROJECT_CHANGE_EVENT_TOPIC } from "@shared/project/event";
+import { PROJECT_CHANGE_EVENT_TOPIC } from "@shared/project-event";
 import { is_task_type } from "@shared/task";
 
 type SettingsChangedEventPayload = {

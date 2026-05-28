@@ -1,9 +1,9 @@
 import type {
-  ProjectStorePromptSlice,
-  ProjectStorePromptsState,
-  ProjectStoreQualityRuleSlice,
-  ProjectStoreQualityState,
-} from "@/project/store/project-store";
+  PromptRuntimeSlice,
+  PromptsRuntimeState,
+  QualityRuleRuntimeSlice,
+  QualityRulesRuntimeState,
+} from "@/project/quality/quality-runtime-state";
 import type { PromptKind } from "@base/prompt";
 import type { QualityRuleKind } from "@base/quality";
 
@@ -16,27 +16,33 @@ type ProofreadingLookupQuery = {
   is_regex: boolean;
 };
 
+// cloneEntries 保证页面编辑切片时不会改写 query 返回的原始规则数组。
 function cloneEntries(entries: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
   return entries.map((entry) => ({ ...entry }));
 }
 
-function cloneQualitySlice(slice: ProjectStoreQualityRuleSlice): ProjectStoreQualityRuleSlice {
+// cloneQualitySlice 是质量规则 runtime 的唯一浅克隆入口。
+function cloneQualitySlice(slice: QualityRuleRuntimeSlice): QualityRuleRuntimeSlice {
   return {
     ...slice,
     entries: cloneEntries(slice.entries),
   };
 }
 
-function clonePromptSlice(slice: ProjectStorePromptSlice): ProjectStorePromptSlice {
+// clonePromptSlice 让提示词切片替换逻辑和质量规则切片保持同一不可变语义。
+function clonePromptSlice(slice: PromptRuntimeSlice): PromptRuntimeSlice {
   return {
     ...slice,
   };
 }
 
+/**
+ * 按公开规则类型读取质量规则切片，并返回可安全编辑的克隆对象。
+ */
 export function getQualityRuleSlice(
-  quality: ProjectStoreQualityState,
+  quality: QualityRulesRuntimeState,
   rule_type: QualityRuntimeRuleType,
-): ProjectStoreQualityRuleSlice {
+): QualityRuleRuntimeSlice {
   if (rule_type === "glossary") {
     return cloneQualitySlice(quality.glossary);
   }
@@ -49,20 +55,26 @@ export function getQualityRuleSlice(
   return cloneQualitySlice(quality.text_preserve);
 }
 
+/**
+ * 按任务类型读取提示词切片，并返回可安全编辑的克隆对象。
+ */
 export function getPromptSlice(
-  prompts: ProjectStorePromptsState,
+  prompts: PromptsRuntimeState,
   task_type: QualityRuntimeTaskType,
-): ProjectStorePromptSlice {
+): PromptRuntimeSlice {
   return task_type === "translation"
     ? clonePromptSlice(prompts.translation)
     : clonePromptSlice(prompts.analysis);
 }
 
+/**
+ * 替换单个质量规则切片，同时克隆其它切片以避免保留可变引用。
+ */
 export function replaceQualityRuleSlice(
-  quality: ProjectStoreQualityState,
+  quality: QualityRulesRuntimeState,
   rule_type: QualityRuntimeRuleType,
-  next_slice: ProjectStoreQualityRuleSlice,
-): ProjectStoreQualityState {
+  next_slice: QualityRuleRuntimeSlice,
+): QualityRulesRuntimeState {
   const cloned_quality = {
     glossary: cloneQualitySlice(quality.glossary),
     pre_replacement: cloneQualitySlice(quality.pre_replacement),
@@ -87,11 +99,14 @@ export function replaceQualityRuleSlice(
   return cloned_quality;
 }
 
+/**
+ * 替换单个任务提示词切片，保持 PromptsRuntimeState 的不可变更新形状。
+ */
 export function replacePromptSlice(
-  prompts: ProjectStorePromptsState,
+  prompts: PromptsRuntimeState,
   task_type: QualityRuntimeTaskType,
-  next_slice: ProjectStorePromptSlice,
-): ProjectStorePromptsState {
+  next_slice: PromptRuntimeSlice,
+): PromptsRuntimeState {
   return {
     translation:
       task_type === "translation"
@@ -102,6 +117,9 @@ export function replacePromptSlice(
   };
 }
 
+/**
+ * 质量规则页跳转校对查找时，文本保护规则始终按正则语义查询。
+ */
 export function buildProofreadingLookupQuery(args: {
   rule_type: QualityRuntimeRuleType;
   entry: Record<string, unknown>;

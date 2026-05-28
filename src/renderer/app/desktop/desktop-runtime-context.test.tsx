@@ -2,14 +2,12 @@ import { StrictMode, act, useEffect, useMemo, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ProjectStoreQualityState, ProjectStoreState } from "@/project/store/project-store";
+import type { QualityRulesRuntimeState } from "@/project/quality/quality-runtime-state";
 import {
   DesktopRuntimeProvider,
   normalize_settings_snapshot,
 } from "@/app/desktop/desktop-runtime-context";
 import type { ProjectMutationCommitter } from "@/app/desktop/desktop-project-mutation";
-import { resolve_proofreading_project_change_signal } from "@/pages/proofreading-page/proofreading-project-change-signal";
-import { resolve_workbench_project_change_signal } from "@/pages/workbench-page/workbench-project-change-signal";
 import { DESKTOP_RUNTIME_REFRESH_INTERVAL_MS } from "@/app/desktop/desktop-runtime-refresh-scheduler";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 
@@ -39,8 +37,6 @@ type RuntimeSnapshot = {
   proofreadingItemIds: Array<number | string>;
   proofreadingFieldPatch: unknown;
   projectPath: string;
-  fileKeys: string[];
-  itemKeys: string[];
   taskStatus: string;
   taskLine: number;
   taskProcessedLine: number;
@@ -50,9 +46,6 @@ type RuntimeSnapshot = {
 };
 
 type RuntimeHandle = {
-  project_store: {
-    getState: () => ProjectStoreState;
-  };
   refresh_project_snapshot: () => Promise<{ path: string; loaded: boolean }>;
   refresh_project_runtime: () => Promise<void>;
   refresh_task: (task_type?: "translation" | "analysis") => Promise<unknown>;
@@ -61,24 +54,89 @@ type RuntimeHandle = {
 
 type RuntimeHandleRef = RuntimeHandle | null;
 
-// create_deferred 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-function create_deferred<T>(): {
-  promise: Promise<T>;
-  resolve: (value: T) => void;
-} {
-  let resolve_value: ((value: T) => void) | null = null;
-  const promise = new Promise<T>((resolve) => {
-    resolve_value = resolve;
-  });
+type ProofreadingSignalSnapshot = {
+  seq: number;
+  reason: string;
+  mode: "full" | "delta" | "noop";
+  updated_sections: string[];
+  item_ids: Array<number | string>;
+  field_patch: unknown;
+};
+
+function resolve_proofreading_project_change_signal(
+  signal: ReturnType<typeof useDesktopRuntime>["project_change_signal"],
+): ProofreadingSignalSnapshot | null {
+  if (signal.updated_sections.length === 0) {
+    return null;
+  }
+  if (signal.updated_sections.every((section) => section === "proofreading")) {
+    return {
+      seq: signal.seq,
+      reason: signal.reason,
+      mode: "noop",
+      updated_sections: [...signal.updated_sections],
+      item_ids: [],
+      field_patch: null,
+    };
+  }
+  if (
+    signal.updated_sections.includes("project") ||
+    signal.updated_sections.includes("quality") ||
+    signal.results.some((result) => result.itemDelta?.fullReplace === true)
+  ) {
+    return {
+      seq: signal.seq,
+      reason: signal.reason,
+      mode: "full",
+      updated_sections: [...signal.updated_sections],
+      item_ids: [],
+      field_patch: null,
+    };
+  }
+  const item_ids = [
+    ...new Set(
+      signal.results
+        .flatMap((result) => [
+          ...(result.itemDelta?.upsertItemIds ?? []),
+          ...(result.itemDelta?.deleteItemIds ?? []),
+        ])
+        .map((item_id) => Number(item_id))
+        .filter((item_id) => Number.isInteger(item_id) && item_id > 0),
+    ),
+  ];
+  if (signal.updated_sections.includes("items") && item_ids.length > 0) {
+    return {
+      seq: signal.seq,
+      reason: signal.reason,
+      mode: "delta",
+      updated_sections: [...signal.updated_sections],
+      item_ids,
+      field_patch: signal.results[0]?.itemDelta?.fieldPatch ?? null,
+    };
+  }
   return {
-    promise,
-    resolve: (value: T) => {
-      if (resolve_value === null) {
-        throw new Error("deferred 尚未初始化。");
-      }
-      resolve_value(value);
-    },
+    seq: signal.seq,
+    reason: signal.reason,
+    mode: "full",
+    updated_sections: [...signal.updated_sections],
+    item_ids: [],
+    field_patch: null,
   };
+}
+
+function resolve_runtime_workbench_change_signal(signal: {
+  seq: number;
+  reason: string;
+  updated_sections: string[];
+}): { seq: number; reason: string } | null {
+  return signal.updated_sections.some((section) =>
+    ["project", "files", "items", "analysis"].includes(section),
+  )
+    ? {
+        seq: signal.seq,
+        reason: signal.reason,
+      }
+    : null;
 }
 
 // RuntimeProbe 收口测试中的共享步骤，保证断言只关注当前行为。
@@ -87,7 +145,7 @@ function RuntimeProbe(props: {
 }): JSX.Element | null {
   const runtime = useDesktopRuntime();
   const workbench_signal = useMemo(
-    () => resolve_workbench_project_change_signal(runtime.project_change_signal),
+    () => resolve_runtime_workbench_change_signal(runtime.project_change_signal),
     [runtime.project_change_signal],
   );
   const proofreading_signal = useMemo(
@@ -115,9 +173,7 @@ function RuntimeProbe(props: {
       proofreadingUpdatedSections: current_proofreading_signal?.updated_sections ?? [],
       proofreadingItemIds: current_proofreading_signal?.item_ids ?? [],
       proofreadingFieldPatch: current_proofreading_signal?.field_patch ?? null,
-      projectPath: runtime.project_store.getState().project.path,
-      fileKeys: Object.keys(runtime.project_store.getState().files),
-      itemKeys: [...runtime.project_store.getState().items.keys()],
+      projectPath: runtime.project_snapshot.path,
       taskStatus: runtime.task_snapshot.status,
       taskLine: runtime.task_snapshot.progress.line,
       taskProcessedLine: runtime.task_snapshot.progress.processed_line,
@@ -134,7 +190,7 @@ function RuntimeProbe(props: {
     runtime.task_snapshot.request_in_flight_count,
     runtime.task_snapshot.status,
     runtime.task_snapshot.progress.total_output_tokens,
-    runtime.project_store,
+    runtime.project_snapshot.path,
     workbench_signal,
   ]);
 
@@ -307,7 +363,7 @@ function create_default_project_sections(
   };
 }
 
-// create_project_read_response 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+// create_project_read_response 构造 manifest 响应夹具，避免每个用例重复铺设环境。
 function create_project_read_response(
   path: string,
   options: {
@@ -318,7 +374,6 @@ function create_project_read_response(
 ): Record<string, unknown> | null {
   const project_revision = options.projectRevision ?? 1;
   const section_revisions = options.sectionRevisions ?? {};
-  const section_payload = create_default_project_sections(options.sections);
   const project_section = options.sections?.project;
   const response_project_path =
     typeof project_section === "object" && project_section !== null && "path" in project_section
@@ -333,15 +388,6 @@ function create_project_read_response(
       },
       projectRevision: project_revision,
       sectionRevisions: section_revisions,
-    };
-  }
-
-  if (path === "/api/project/read-sections") {
-    return {
-      projectPath: response_project_path,
-      projectRevision: project_revision,
-      sectionRevisions: section_revisions,
-      sections: section_payload,
     };
   }
 
@@ -445,14 +491,11 @@ describe("DesktopRuntimeProvider", () => {
     const latest_snapshot = snapshots.at(-1);
 
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/manifest", {});
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/read-sections", {
-      sections: ["project", "files", "items", "quality", "prompts", "analysis", "proofreading"],
-    });
     expect(latest_snapshot).toMatchObject({
       workbenchSeq: 1,
-      workbenchReason: "project_read_sections",
+      workbenchReason: "project_loaded",
       proofreadingSeq: 1,
-      proofreadingReason: "project_read_sections",
+      proofreadingReason: "project_loaded",
       proofreadingMode: "full",
       proofreadingUpdatedSections: [
         "project",
@@ -464,8 +507,6 @@ describe("DesktopRuntimeProvider", () => {
         "proofreading",
       ],
       proofreadingItemIds: [],
-      fileKeys: ["chapter01.txt"],
-      itemKeys: ["1"],
     });
   });
 
@@ -739,9 +780,9 @@ describe("DesktopRuntimeProvider", () => {
     expect(latest_snapshot).toMatchObject({
       sourceLanguage: "EN",
       workbenchSeq: 1,
-      workbenchReason: "project_read_sections",
+      workbenchReason: "project_loaded",
       proofreadingSeq: 1,
-      proofreadingReason: "project_read_sections",
+      proofreadingReason: "project_loaded",
     });
   });
 
@@ -879,7 +920,7 @@ describe("DesktopRuntimeProvider", () => {
     });
   });
 
-  it("项目 mutation 结果会立即更新 store 并触发校对页刷新信号", async () => {
+  it("项目 mutation 结果会立即触发校对页刷新信号", async () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
     let runtime_handle: RuntimeHandleRef = null;
@@ -951,8 +992,7 @@ describe("DesktopRuntimeProvider", () => {
         throw new Error("运行时句柄未准备好。");
       }
 
-      const current_quality = runtime_handle.project_store.getState()
-        .quality as ProjectStoreQualityState;
+      const current_quality = create_default_project_sections().quality as QualityRulesRuntimeState;
 
       await runtime_handle.commit_project_mutation({
         operation: "glossary.entries_save",
@@ -1003,23 +1043,6 @@ describe("DesktopRuntimeProvider", () => {
       return latest_snapshot?.proofreadingSeq === 2;
     });
 
-    const stable_runtime = runtime_handle as RuntimeHandleRef;
-    if (stable_runtime === null) {
-      throw new Error("运行时句柄未准备好。");
-    }
-
-    expect(
-      (stable_runtime as RuntimeHandle).project_store.getState().quality.glossary,
-    ).toMatchObject({
-      revision: 2,
-      entries: [
-        {
-          id: "1",
-          src: "原文",
-          dst: "译文",
-        },
-      ],
-    });
     expect(snapshots.at(-1)).toMatchObject({
       workbenchSeq: 1,
       proofreadingSeq: 2,
@@ -1245,17 +1268,6 @@ describe("DesktopRuntimeProvider", () => {
       return snapshots.at(-1)?.workbenchSeq === 2;
     });
 
-    const stable_runtime = runtime_handle as RuntimeHandleRef;
-    if (stable_runtime === null) {
-      throw new Error("运行时句柄未准备好。");
-    }
-
-    expect(stable_runtime.project_store.getState().analysis).toMatchObject({
-      status_summary: {
-        total_line: 2,
-        processed_line: 0,
-      },
-    });
     expect(snapshots.at(-1)).toMatchObject({
       workbenchSeq: 2,
       workbenchReason: "analysis_reset_all",
@@ -1399,7 +1411,6 @@ describe("DesktopRuntimeProvider", () => {
       proofreadingUpdatedSections: ["items", "proofreading"],
       proofreadingItemIds: [1, 2],
       proofreadingFieldPatch: null,
-      itemKeys: ["1", "2"],
     });
 
     await act(async () => {
@@ -1447,7 +1458,7 @@ describe("DesktopRuntimeProvider", () => {
     });
   });
 
-  it("items canonical-delta 的项目身份不匹配时不会写入 ProjectStore", async () => {
+  it("items canonical-delta 的项目身份不匹配时不会发布项目信号", async () => {
     vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
@@ -1515,11 +1526,10 @@ describe("DesktopRuntimeProvider", () => {
 
     expect(snapshots.at(-1)).toMatchObject({
       proofreadingSeq: 1,
-      itemKeys: ["1"],
     });
   });
 
-  it("items canonical-delta 会在刷新窗口内直接推进 ProjectStore", async () => {
+  it("items canonical-delta 会在刷新窗口内发布合帧变更信号", async () => {
     vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
@@ -1609,17 +1619,16 @@ describe("DesktopRuntimeProvider", () => {
 
     await flush_runtime_refresh_window();
 
-    await wait_for_condition(() => snapshots.at(-1)?.itemKeys.includes("4") === true);
+    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 2);
 
     expect(snapshots.at(-1)).toMatchObject({
       proofreadingReason: "translation_commit",
       proofreadingMode: "delta",
       proofreadingItemIds: [3, 4],
-      itemKeys: ["1", "3", "4"],
     });
   });
 
-  it("刷新窗口内项目批次异常会写入 renderer 日志并回退后端权威快照", async () => {
+  it("刷新窗口内项目批次只发布轻量变更信号", async () => {
     vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
@@ -1706,23 +1715,17 @@ describe("DesktopRuntimeProvider", () => {
     });
 
     await flush_runtime_refresh_window();
-    await wait_for_condition(() => report_renderer_error_mock.mock.calls.length > 0);
+    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 2);
 
-    expect(report_renderer_error_mock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        source: "scheduler",
-        triggeringEvent: expect.objectContaining({
-          phase: "project_change_batch",
-        }),
-      }),
-    );
-    expect(snapshots.at(-1)?.itemKeys).toEqual(["1"]);
-    expect(
-      api_fetch_mock.mock.calls.filter((call) => call[0] === "/api/project/read-sections").length,
-    ).toBeGreaterThanOrEqual(2);
+    expect(report_renderer_error_mock).not.toHaveBeenCalled();
+    expect(snapshots.at(-1)).toMatchObject({
+      proofreadingReason: "translation_commit",
+      proofreadingItemIds: [3, 4],
+    });
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/manifest", {});
   });
 
-  it("items canonical-delta 旧 revision 不会回退当前 ProjectStore", async () => {
+  it("items canonical-delta 旧 revision 不会回退当前项目信号", async () => {
     vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
@@ -1793,7 +1796,7 @@ describe("DesktopRuntimeProvider", () => {
     });
 
     await flush_runtime_refresh_window();
-    await wait_for_condition(() => snapshots.at(-1)?.itemKeys.includes("2") === true);
+    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 2);
 
     await act(async () => {
       event_stream.emit("project.data_changed", {
@@ -1822,15 +1825,16 @@ describe("DesktopRuntimeProvider", () => {
     await flush_runtime_refresh_window();
 
     expect(snapshots.at(-1)).toMatchObject({
-      itemKeys: ["1", "2"],
+      proofreadingReason: "translation_commit",
     });
   });
 
-  it("items section-invalidated 会补读 section 后再推进 store", async () => {
+  it("items section-invalidated 会直接发布全量刷新信号", async () => {
+    vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
-    api_fetch_mock.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
+    api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/settings/app") {
         return { settings: { app_language: "ZH" } };
       }
@@ -1840,28 +1844,6 @@ describe("DesktopRuntimeProvider", () => {
       if (path === "/api/tasks/snapshot") {
         return { task: { task_type: "translation", status: "idle", busy: false } };
       }
-      if (
-        path === "/api/project/read-sections" &&
-        Array.isArray(body?.sections) &&
-        body.sections.length === 1 &&
-        body.sections[0] === "items"
-      ) {
-        return {
-          projectPath: "E:/demo/demo.lg",
-          projectRevision: 2,
-          sectionRevisions: { items: 2 },
-          sections: {
-            items: {
-              "2": create_project_item({
-                item_id: 2,
-                file_path: "chapter02.txt",
-                status: "NONE",
-              }),
-            },
-          },
-        };
-      }
-
       const project_read_response = create_project_read_response(path);
       if (project_read_response !== null) {
         return project_read_response;
@@ -1904,23 +1886,21 @@ describe("DesktopRuntimeProvider", () => {
       await Promise.resolve();
     });
 
-    await wait_for_condition(() => snapshots.at(-1)?.itemKeys.includes("2") === true);
+    await flush_runtime_refresh_window();
+    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 2);
 
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/read-sections", {
-      sections: ["items"],
-    });
     expect(snapshots.at(-1)).toMatchObject({
       proofreadingReason: "translation_reset",
       proofreadingMode: "full",
-      itemKeys: ["2"],
     });
   });
 
-  it("items section-invalidated 的旧补读响应不会回退当前 ProjectStore", async () => {
+  it("items section-invalidated 的旧项目事件不会回退当前项目信号", async () => {
+    vi.useFakeTimers();
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
-    api_fetch_mock.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
+    api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/settings/app") {
         return { settings: { app_language: "ZH" } };
       }
@@ -1930,28 +1910,6 @@ describe("DesktopRuntimeProvider", () => {
       if (path === "/api/tasks/snapshot") {
         return { task: { task_type: "translation", status: "idle", busy: false } };
       }
-      if (
-        path === "/api/project/read-sections" &&
-        Array.isArray(body?.sections) &&
-        body.sections.length === 1 &&
-        body.sections[0] === "items"
-      ) {
-        return {
-          projectPath: "E:/demo/demo.lg",
-          projectRevision: 4,
-          sectionRevisions: { items: 4 },
-          sections: {
-            items: {
-              "3": create_project_item({
-                item_id: 3,
-                file_path: "chapter03.txt",
-                status: "PROCESSED",
-              }),
-            },
-          },
-        };
-      }
-
       const project_read_response = create_project_read_response(path, {
         projectRevision: 5,
         sectionRevisions: { items: 5 },
@@ -1996,27 +1954,21 @@ describe("DesktopRuntimeProvider", () => {
       await Promise.resolve();
       await Promise.resolve();
     });
+    await flush_runtime_refresh_window();
 
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/read-sections", {
-      sections: ["items"],
-    });
     expect(snapshots.at(-1)).toMatchObject({
-      proofreadingSeq: 1,
-      itemKeys: ["1"],
+      proofreadingSeq: 2,
+      proofreadingReason: "translation_reset",
+      proofreadingMode: "full",
     });
   });
 
-  it("项目切换后迟到的失效补读不会写入新项目 Store", async () => {
+  it("项目切换后迟到的旧项目失效事件不会写入新项目信号", async () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
     let runtime_handle: RuntimeHandleRef = null;
     let project_path = "E:/demo/old.lg";
-    let resolve_old_items_read: ((payload: Record<string, unknown>) => void) | null = null;
-    const old_items_read = new Promise<Record<string, unknown>>((resolve) => {
-      resolve_old_items_read = resolve;
-    });
-
-    api_fetch_mock.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
+    api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/settings/app") {
         return { settings: { app_language: "ZH" } };
       }
@@ -2025,14 +1977,6 @@ describe("DesktopRuntimeProvider", () => {
       }
       if (path === "/api/tasks/snapshot") {
         return { task: { task_type: "translation", status: "idle", busy: false } };
-      }
-      if (
-        path === "/api/project/read-sections" &&
-        Array.isArray(body?.sections) &&
-        body.sections.length === 1 &&
-        body.sections[0] === "items"
-      ) {
-        return await old_items_read;
       }
       if (project_path === "E:/demo/next.lg") {
         const project_read_response = create_project_read_response(path, {
@@ -2118,36 +2062,14 @@ describe("DesktopRuntimeProvider", () => {
     });
     await wait_for_condition(() => snapshots.at(-1)?.projectPath === "E:/demo/next.lg");
 
-    await act(async () => {
-      resolve_old_items_read?.({
-        projectPath: "E:/demo/old.lg",
-        projectRevision: 2,
-        sectionRevisions: { items: 2 },
-        sections: {
-          items: {
-            "2": create_project_item({
-              item_id: 2,
-              file_path: "old.txt",
-              src: "old",
-              status: "PROCESSED",
-            }),
-          },
-        },
-      });
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
     expect(snapshots.at(-1)).toMatchObject({
       projectPath: "E:/demo/next.lg",
-      itemKeys: ["9"],
     });
   });
 
   it("项目 session 初始化期间的 mutation result 与同源 SSE 会在快照后只重放一次", async () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
-    const initial_project_read = create_deferred<Record<string, unknown>>();
     let runtime_handle: RuntimeHandleRef = null;
 
     api_fetch_mock.mockImplementation(async (path: string) => {
@@ -2166,10 +2088,6 @@ describe("DesktopRuntimeProvider", () => {
           sectionRevisions: { project: 1, files: 1, items: 1, analysis: 1 },
         });
       }
-      if (path === "/api/project/read-sections") {
-        return await initial_project_read.promise;
-      }
-
       throw new Error(`未预期的请求：${path}`);
     });
 
@@ -2199,9 +2117,7 @@ describe("DesktopRuntimeProvider", () => {
     await wait_for_condition(() =>
       has_event_stream_listener(event_stream.event_source, "project.data_changed"),
     );
-    await wait_for_condition(() =>
-      api_fetch_mock.mock.calls.some((call) => call[0] === "/api/project/read-sections"),
-    );
+    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
 
     const session_initializing_change = {
       eventId: "session-initializing-mutation-1",
@@ -2237,20 +2153,8 @@ describe("DesktopRuntimeProvider", () => {
       await Promise.resolve();
     });
 
-    await act(async () => {
-      initial_project_read.resolve(
-        create_project_read_response("/api/project/read-sections", {
-          projectRevision: 1,
-          sectionRevisions: { project: 1, files: 1, items: 1, analysis: 1 },
-        }) ?? {},
-      );
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    await wait_for_condition(() => snapshots.at(-1)?.itemKeys.includes("2") === true);
+    await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 2);
     expect(snapshots.at(-1)).toMatchObject({
-      itemKeys: ["1", "2"],
       proofreadingSeq: 2,
       proofreadingReason: "translation_commit",
     });

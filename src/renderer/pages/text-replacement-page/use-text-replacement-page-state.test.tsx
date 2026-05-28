@@ -3,9 +3,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { INPUT_QUERY_DEBOUNCE_MS } from "@/hooks/use-debounce";
-import type { QualityRuleStatisticsCacheSnapshot } from "@/project/quality/quality-rule-statistics-store";
+import type { QualityRuleStatisticsCacheSnapshot } from "@/project/quality/quality-statistics-store";
 import type { ProjectItemPublicRecord } from "@base/item";
-import { createProjectItemIndex } from "@/project/store/project-item-index";
+import { createProjectItemIndex } from "@/project/project-item-index";
 import { useTextReplacementPageState } from "@/pages/text-replacement-page/use-text-replacement-page-state";
 
 const { api_fetch_mock, push_toast_mock, page_ui_state_store } = vi.hoisted(() => {
@@ -227,6 +227,7 @@ function create_pre_replacement_quality(
 }
 
 let current_statistics_cache: QualityRuleStatisticsCacheSnapshot;
+let project_change_seq = 0;
 
 // create_statistics_cache 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_statistics_cache(
@@ -292,10 +293,34 @@ vi.mock("@/app/navigation/navigation-context", () => {
   };
 });
 
+vi.mock("@/project/query/quality-rule-query", () => {
+  return {
+    read_project_quality_rule: vi.fn(async (rule_type: keyof typeof runtime_state.quality) => ({
+      projectPath: runtime_state.project.path,
+      sectionRevisions: { ...runtime_state.revisions.sections },
+      qualityRule: runtime_state.quality[rule_type],
+    })),
+  };
+});
+
+vi.mock("@/project/query/project-section-revisions-query", () => {
+  return {
+    read_project_section_revisions: vi.fn(async () => ({
+      ...runtime_state.revisions.sections,
+    })),
+  };
+});
+
 vi.mock("@/app/desktop/use-desktop-runtime", () => {
   return {
     useDesktopRuntime: () => ({
       project_snapshot: runtime_state.project,
+      project_change_signal: {
+        seq: project_change_seq,
+        reason: "test",
+        updated_sections: ["quality"],
+        results: [],
+      },
       project_store,
       settings_snapshot: {},
       apply_settings_snapshot: vi.fn(),
@@ -326,7 +351,7 @@ vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
   };
 });
 
-vi.mock("@/project/quality/quality-rule-statistics-context", () => {
+vi.mock("@/project/quality/quality-statistics-context", () => {
   return {
     useQualityRuleStatistics: () => current_statistics_cache,
   };
@@ -564,6 +589,7 @@ describe("useTextReplacementPageState", () => {
     project_store_listeners.clear();
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
+    project_change_seq = 0;
     runtime_state.task.busy = false;
     runtime_state.task.status = "idle";
     page_ui_state_store.clear();
@@ -610,6 +636,7 @@ describe("useTextReplacementPageState", () => {
 
   // rerender_probe 收口测试中的共享步骤，保证断言只关注当前行为。
   async function rerender_probe(): Promise<void> {
+    project_change_seq += 1;
     await act(async () => {
       root?.render(
         <Probe
@@ -618,6 +645,12 @@ describe("useTextReplacementPageState", () => {
           }}
         />,
       );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
     });
   }
 

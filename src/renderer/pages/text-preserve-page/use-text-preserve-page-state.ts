@@ -1,28 +1,29 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import {
   type ProjectMutationOperation,
   type ProjectMutationResultPayload,
 } from "@/app/desktop/desktop-project-mutation";
-import { useProjectSessionBarrier } from "@/app/session/project-session-context";
 import {
   useProjectSessionTableUiState,
   type ProjectSessionTableSelectionState,
 } from "@/app/session/project-session-ui-state-context";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
 import { useDebouncedCallback } from "@/hooks/use-debounce";
+import { buildProofreadingLookupQuery } from "@/project/quality/quality-runtime";
+import { read_project_section_revisions } from "@/project/query/project-section-revisions-query";
 import {
-  buildProofreadingLookupQuery,
-  getQualityRuleSlice,
-} from "@/project/quality/quality-runtime";
+  read_project_quality_rule,
+  type ProjectQualityRuleQuerySlice,
+} from "@/project/query/quality-rule-query";
 import {
   isQualityRuleStatisticsCacheReady,
   isQualityRuleStatisticsCacheRunning,
   type QualityRuleStatisticsCacheSnapshot,
-} from "@/project/quality/quality-rule-statistics-store";
+} from "@/project/quality/quality-statistics-store";
 import type { SettingsSnapshotPayload } from "@/app/desktop/desktop-runtime-context";
-import { useQualityRuleStatistics } from "@/project/quality/quality-rule-statistics-context";
+import { useQualityRuleStatistics } from "@/project/quality/quality-statistics-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
@@ -91,6 +92,12 @@ type TextPreserveResultViewQuery = {
   sort_state: AppTableSortState | null;
 };
 
+type TextPreserveQualitySlice = {
+  mode: TextPreserveMode;
+  entries: TextPreserveEntry[];
+  section_revision: number;
+};
+
 // TEXT PRESERVE DEFAULT PRESET SETTINGS KEY 是持久化或快捷键契约，集中保存避免调用点散落魔术字符串。
 const TEXT_PRESERVE_DEFAULT_PRESET_SETTINGS_KEY = "text_preserve_default_preset";
 // TEXT PRESERVE RULE TYPE 是模块级稳定契约，集中维护避免调用点散落魔术值。
@@ -101,6 +108,11 @@ const TEXT_PRESERVE_TITLE_KEY: LocaleKey = "text_preserve_page.title";
 const TEXT_PRESERVE_EXPORT_FILE_NAME = "text_preserve.json";
 // DEFAULT MODE 是默认快照事实，调用方只读取副本不临时拼装。
 const DEFAULT_MODE: TextPreserveMode = "off";
+const DEFAULT_QUALITY_SLICE: TextPreserveQualitySlice = {
+  mode: DEFAULT_MODE,
+  entries: [],
+  section_revision: 0,
+};
 // TEXT PRESERVE MODE REFRESH TIMEOUT MS 是运行时节流或容量阈值，集中保存便于评估性能影响。
 const TEXT_PRESERVE_MODE_REFRESH_TIMEOUT_MS = 15000;
 // TEXT PRESERVE SORT COLUMN IDS 是 session 恢复排序的白名单，避免旧列 id 进入当前表格。
@@ -168,6 +180,25 @@ function normalize_imported_entry(entry: Record<string, unknown>): TextPreserveE
     src: String(entry.src ?? ""),
     info: String(entry.info ?? ""),
   });
+}
+
+// normalize_text_preserve_quality_slice 在后端 query 边界收窄规则事实，页面内部只消费稳定形状。
+function normalize_text_preserve_quality_slice(
+  slice: ProjectQualityRuleQuerySlice | undefined,
+  section_revision: number,
+): TextPreserveQualitySlice {
+  const raw_entries = Array.isArray(slice?.entries) ? slice.entries : [];
+  return {
+    mode: normalize_text_preserve_mode(slice?.mode),
+    entries: ensure_quality_rule_entry_ids(
+      raw_entries.map((entry) => {
+        return typeof entry === "object" && entry !== null
+          ? normalize_entry(entry as Partial<TextPreserveEntry>)
+          : normalize_entry({});
+      }),
+    ),
+    section_revision,
+  };
 }
 
 // create_empty_filter_state 构造跨层载荷，保证字段形状在一个入口维护。
@@ -320,40 +351,22 @@ function build_text_preserve_statistics_state_from_cache(
 // useTextPreservePageState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const { t } = useI18n();
-  const { create_barrier_checkpoint, wait_for_barrier } = useProjectSessionBarrier();
   const { push_toast, run_modal_progress_toast } = useDesktopToast();
   const { navigate_to_route, push_proofreading_lookup_intent } = useAppNavigation();
   const {
     project_snapshot,
-    project_store,
+    project_change_signal,
+    project_session_status = "ready",
     settings_snapshot,
     apply_settings_snapshot,
     commit_project_mutation,
     task_snapshot,
   } = useDesktopRuntime();
-  const project_store_state = useSyncExternalStore(
-    project_store.subscribe,
-    project_store.getState,
-    project_store.getState,
-  );
-
-  const preserve_slice = useMemo(() => {
-    return getQualityRuleSlice(project_store_state.quality, TEXT_PRESERVE_RULE_TYPE);
-  }, [project_store_state.quality]);
-  const mode = project_snapshot.loaded
-    ? normalize_text_preserve_mode(preserve_slice.mode)
-    : DEFAULT_MODE;
-  const entries = useMemo<TextPreserveEntry[]>(() => {
-    if (!project_snapshot.loaded) {
-      return [];
-    }
-
-    return ensure_quality_rule_entry_ids(
-      preserve_slice.entries.map((entry) => {
-        return normalize_entry(entry);
-      }),
-    );
-  }, [preserve_slice.entries, project_snapshot.loaded]);
+  const [quality_slice, set_quality_slice] =
+    useState<TextPreserveQualitySlice>(DEFAULT_QUALITY_SLICE);
+  const [quality_loaded, set_quality_loaded] = useState(false);
+  const mode = project_snapshot.loaded ? quality_slice.mode : DEFAULT_MODE;
+  const entries = project_snapshot.loaded ? quality_slice.entries : [];
   const [mode_updating, set_mode_updating] = useState(false);
   const [preset_items, set_preset_items] = useState<TextPreservePresetItem[]>([]);
   const [preset_menu_open, set_preset_menu_open] = useState(false);
@@ -387,6 +400,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   // 保存类 action 返回的项目 section 事实源负责跨越 HTTP / SSE 先后到达的竞态。
   const [pending_result_view_source_update, set_pending_result_view_source_update] =
     useState<ResultViewSourceUpdateRequest | null>(null);
+  const result_view_source_checkpoint_ref = useRef({ projectPath: "", quality: 0 });
   const [dialog_state, set_dialog_state] = useState<TextPreserveDialogState>(() => {
     return create_empty_dialog_state();
   });
@@ -402,6 +416,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const mode_ref = useRef(mode);
   const mode_update_in_flight_ref = useRef(false);
   const dialog_state_ref = useRef(dialog_state);
+  const entries_ref = useRef(entries);
   const statistics_cache = useQualityRuleStatistics(TEXT_PRESERVE_RULE_TYPE);
   const statistics_state = useMemo<TextPreserveStatisticsState>(() => {
     return build_text_preserve_statistics_state_from_cache(statistics_cache);
@@ -410,6 +425,65 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   // project_view_identity_ref 区分同组件内项目身份切换，避免旧项目状态污染新项目。
   const project_view_identity_ref = useRef(project_snapshot.loaded ? project_snapshot.path : "");
 
+  const refresh_quality_rule_snapshot = useCallback(async (): Promise<TextPreserveQualitySlice> => {
+    if (
+      !project_snapshot.loaded ||
+      project_snapshot.path === "" ||
+      project_session_status !== "ready"
+    ) {
+      set_quality_slice(DEFAULT_QUALITY_SLICE);
+      set_quality_loaded(false);
+      return DEFAULT_QUALITY_SLICE;
+    }
+
+    const response = await read_project_quality_rule(TEXT_PRESERVE_RULE_TYPE);
+    if (response.projectPath !== project_snapshot.path) {
+      return quality_slice;
+    }
+    const next_slice = normalize_text_preserve_quality_slice(
+      response.qualityRule,
+      response.sectionRevisions?.quality ?? 0,
+    );
+    set_quality_slice(next_slice);
+    set_quality_loaded(true);
+    return next_slice;
+  }, [project_session_status, project_snapshot.loaded, project_snapshot.path, quality_slice]);
+
+  useEffect(() => {
+    if (
+      !project_snapshot.loaded ||
+      project_snapshot.path === "" ||
+      project_session_status !== "ready"
+    ) {
+      set_quality_slice(DEFAULT_QUALITY_SLICE);
+      set_quality_loaded(false);
+      return;
+    }
+
+    let cancelled = false;
+    void read_project_quality_rule(TEXT_PRESERVE_RULE_TYPE).then((response) => {
+      if (cancelled || response.projectPath !== project_snapshot.path) {
+        return;
+      }
+      set_quality_slice(
+        normalize_text_preserve_quality_slice(
+          response.qualityRule,
+          response.sectionRevisions?.quality ?? 0,
+        ),
+      );
+      set_quality_loaded(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    project_change_signal?.seq ?? 0,
+    project_session_status,
+    project_snapshot.loaded,
+    project_snapshot.path,
+  ]);
+
   useEffect(() => {
     mode_ref.current = mode;
   }, [mode]);
@@ -417,6 +491,10 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   useEffect(() => {
     dialog_state_ref.current = dialog_state;
   }, [dialog_state]);
+
+  useEffect(() => {
+    entries_ref.current = entries;
+  }, [entries]);
 
   const entry_ids = useMemo<TextPreserveEntryId[]>(() => {
     return entries.map((entry, index) => {
@@ -522,12 +600,23 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   ]);
 
   useEffect(() => {
+    const current_source_checkpoint = {
+      projectPath: project_snapshot.path,
+      sections: {
+        quality: quality_slice.section_revision,
+      },
+    };
+    const previous_source_checkpoint = result_view_source_checkpoint_ref.current;
+    const source_checkpoint_changed =
+      previous_source_checkpoint.projectPath !== current_source_checkpoint.projectPath ||
+      previous_source_checkpoint.quality !== current_source_checkpoint.sections.quality;
+    const should_rebuild_for_source_change =
+      source_checkpoint_changed &&
+      (previous_source_checkpoint.projectPath !== current_source_checkpoint.projectPath ||
+        !has_active_filters);
     const should_rebuild_from_source = is_result_view_source_update_ready({
       request: pending_result_view_source_update,
-      current_source_checkpoint: {
-        projectPath: project_store_state.project.path,
-        sections: project_store_state.revisions.sections,
-      },
+      current_source_checkpoint,
     });
     set_result_view_snapshot((previous_snapshot) => {
       const valid_entry_id_set = new Set(entry_ids);
@@ -537,9 +626,15 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         valid_id_set: valid_entry_id_set,
         source_update_policy: should_rebuild_from_source
           ? pending_result_view_source_update?.policy
-          : PRESERVE_RESULT_VIEW_SOURCE_UPDATE,
+          : should_rebuild_for_source_change
+            ? REBUILD_RESULT_VIEW_SOURCE_UPDATE
+            : PRESERVE_RESULT_VIEW_SOURCE_UPDATE,
       });
     });
+    result_view_source_checkpoint_ref.current = {
+      projectPath: current_source_checkpoint.projectPath,
+      quality: current_source_checkpoint.sections.quality,
+    };
     if (should_rebuild_from_source) {
       set_pending_result_view_source_update(null);
     }
@@ -547,8 +642,8 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     build_result_view_snapshot,
     entry_ids,
     filter_state,
-    project_store_state.project.path,
-    project_store_state.revisions.sections,
+    project_snapshot.path,
+    quality_slice.section_revision,
     pending_result_view_source_update,
     sort_state,
   ]);
@@ -629,7 +724,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         return false;
       }
 
-      const current_state = project_store.getState();
       const normalized_entries = ensure_quality_rule_entry_ids(
         next_entries.map((entry) => {
           return normalize_entry(entry);
@@ -637,6 +731,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       );
 
       try {
+        const section_revisions = await read_project_section_revisions();
         await commit_project_mutation({
           operation: TEXT_PRESERVE_ENTRIES_SAVE_MUTATION,
           run: async () => {
@@ -645,7 +740,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
               {
                 rule_type: TEXT_PRESERVE_RULE_TYPE,
                 expected_section_revisions: {
-                  quality: current_state.revisions.sections.quality ?? 0,
+                  quality: section_revisions.quality ?? 0,
                 },
                 entries: normalized_entries,
               },
@@ -661,6 +756,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
             );
           },
         });
+        await refresh_quality_rule_snapshot();
         return true;
       } catch (error) {
         set_pending_result_view_source_update(null);
@@ -668,7 +764,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         return false;
       }
     },
-    [commit_project_mutation, project_store, push_action_error_toast, readonly],
+    [commit_project_mutation, push_action_error_toast, readonly, refresh_quality_rule_snapshot],
   );
 
   const apply_import_entries = useCallback(
@@ -696,12 +792,8 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   );
 
   const get_import_existing_entries = useCallback((): TextPreserveEntry[] => {
-    const current_preserve_slice = getQualityRuleSlice(
-      project_store.getState().quality,
-      TEXT_PRESERVE_RULE_TYPE,
-    );
-    return current_preserve_slice.entries as TextPreserveEntry[];
-  }, [project_store]);
+    return entries_ref.current.map((entry) => clone_entry(entry));
+  }, []);
   const import_confirmation = useQualityRuleImportConfirmation<TextPreserveEntry>({
     rule_type: QualityRuleImportRuleTypeValue.TEXT_PRESERVE,
     apply_entries: apply_import_entries,
@@ -763,6 +855,9 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   ]);
 
   useEffect(() => {
+    if (!quality_loaded) {
+      return;
+    }
     // 可见结果变化会让旧选区失去操作上下文，必须同步裁剪 session 选区。
     const next_selected_entry_ids = selected_entry_ids.filter((entry_id) => {
       return entry_index_by_id.has(entry_id) && visible_entry_id_set.has(entry_id);
@@ -794,6 +889,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   }, [
     active_entry_id,
     entry_index_by_id,
+    quality_loaded,
     selected_entry_ids,
     selection_anchor_entry_id,
     set_table_selection_state,
@@ -894,7 +990,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
       mode_update_in_flight_ref.current = true;
       set_mode_updating(true);
-      const barrier_checkpoint = create_barrier_checkpoint();
       let snapshot_committed = false;
 
       try {
@@ -902,7 +997,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           message: t("text_preserve_page.mode.loading_toast"),
           timeout_ms: TEXT_PRESERVE_MODE_REFRESH_TIMEOUT_MS,
           task: async () => {
-            const current_state = project_store.getState();
+            const section_revisions = await read_project_section_revisions();
             await commit_project_mutation({
               operation: TEXT_PRESERVE_MODE_UPDATE_MUTATION,
               run: async () => {
@@ -911,7 +1006,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
                   {
                     rule_type: TEXT_PRESERVE_RULE_TYPE,
                     expected_section_revisions: {
-                      quality: current_state.revisions.sections.quality ?? 0,
+                      quality: section_revisions.quality ?? 0,
                     },
                     meta: {
                       mode: next_mode,
@@ -920,12 +1015,8 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
                 );
               },
             });
+            await refresh_quality_rule_snapshot();
             snapshot_committed = true;
-
-            // 文本保护模式会影响校对列表警告，提示完成前要等已挂载校对缓存追上。
-            await wait_for_barrier("proofreading_cache_refresh", {
-              checkpoint: barrier_checkpoint,
-            });
           },
         });
       } catch (error) {
@@ -941,14 +1032,12 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     },
     [
       commit_project_mutation,
-      create_barrier_checkpoint,
-      project_store,
       push_toast,
       push_action_error_toast,
+      refresh_quality_rule_snapshot,
       readonly,
       run_modal_progress_toast,
       t,
-      wait_for_barrier,
     ],
   );
 

@@ -1,5 +1,7 @@
+// PROOFREADING_NO_WARNING_CODE 是筛选面板表示“无警告”的虚拟 warning。
 export const PROOFREADING_NO_WARNING_CODE = "NO_WARNING" as const;
 
+// PROOFREADING_WARNING_CODES 固定警告筛选的默认展示顺序。
 export const PROOFREADING_WARNING_CODES = [
   PROOFREADING_NO_WARNING_CODE,
   "KANA",
@@ -12,8 +14,10 @@ export const PROOFREADING_WARNING_CODES = [
 
 const PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES = ["NONE", "PROCESSED", "ERROR"] as const;
 
-export const PROOFREADING_MANUAL_STATUS_CODES = ["NONE", "PROCESSED", "EXCLUDED"] as const; // 设置翻译状态菜单的唯一状态词表
+// PROOFREADING_MANUAL_STATUS_CODES 是设置翻译状态菜单的唯一状态词表。
+export const PROOFREADING_MANUAL_STATUS_CODES = ["NONE", "PROCESSED", "EXCLUDED"] as const;
 
+// PROOFREADING_STATUS_ORDER 同时服务排序和默认状态筛选。
 export const PROOFREADING_STATUS_ORDER = [
   "NONE",
   "PROCESSED",
@@ -24,6 +28,7 @@ export const PROOFREADING_STATUS_ORDER = [
   "DUPLICATED",
 ] as const;
 
+// PROOFREADING_STATUS_LABEL_KEY_BY_CODE 是状态码到 i18n key 的公开映射。
 export const PROOFREADING_STATUS_LABEL_KEY_BY_CODE = {
   NONE: "proofreading_page.status.none",
   PROCESSED: "proofreading_page.status.processed",
@@ -36,6 +41,7 @@ export const PROOFREADING_STATUS_LABEL_KEY_BY_CODE = {
 
 export type ProofreadingManualStatusCode = (typeof PROOFREADING_MANUAL_STATUS_CODES)[number];
 
+// PROOFREADING_WARNING_LABEL_KEY_BY_CODE 是警告码到 i18n key 的公开映射。
 export const PROOFREADING_WARNING_LABEL_KEY_BY_CODE = {
   KANA: "proofreading_page.warning.kana",
   HANGEUL: "proofreading_page.warning.hangeul",
@@ -69,6 +75,7 @@ export type ProofreadingItem = {
   src: string;
   dst: string;
   status: string;
+  retry_count: number;
   warnings: string[];
   warning_fragments_by_code: ProofreadingWarningFragmentsByCode;
   applied_glossary_terms: ProofreadingGlossaryTerm[];
@@ -137,14 +144,23 @@ export type ProofreadingPendingConfirmation = {
   submitting: boolean;
 };
 
+/**
+ * row id 是校对列表和后端 item id 的字符串桥接，统一在入口处归一。
+ */
 export function build_proofreading_row_id(item_id: number | string): string {
   return String(item_id);
 }
 
+/**
+ * 术语二元组展示为稳定文本，供筛选面板和弹窗复用。
+ */
 export function format_proofreading_glossary_term(term: ProofreadingGlossaryTerm): string {
   return `${term[0]} -> ${term[1]}`;
 }
 
+/**
+ * 状态排序先按固定业务顺序，未知状态统一排在末尾。
+ */
 export function resolve_proofreading_status_sort_rank(status: string): number {
   const known_index = PROOFREADING_STATUS_ORDER.indexOf(
     status as (typeof PROOFREADING_STATUS_ORDER)[number],
@@ -152,10 +168,16 @@ export function resolve_proofreading_status_sort_rank(status: string): number {
   return known_index >= 0 ? known_index : PROOFREADING_STATUS_ORDER.length;
 }
 
+/**
+ * 压缩多行文本，保证表格单元格不会被换行打散布局。
+ */
 export function compress_proofreading_text(text: string): string {
   return text.replace(/\r\n|\r|\n/gu, " ↵ ");
 }
 
+/**
+ * 筛选项克隆会复制术语 tuple，避免页面局部修改污染缓存状态。
+ */
 export function clone_proofreading_filter_options(
   filters: ProofreadingFilterOptions,
 ): ProofreadingFilterOptions {
@@ -174,6 +196,9 @@ function resolve_proofreading_filter_source_items(items: ProofreadingItem[]): Pr
   return [...items];
 }
 
+/**
+ * 默认状态筛选固定展示可操作状态，只有没有默认集合时才回退到可用状态。
+ */
 export function resolve_default_proofreading_statuses(available_statuses: string[]): string[] {
   const ordered_default_statuses = PROOFREADING_STATUS_ORDER.filter((status) => {
     return PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES.includes(
@@ -189,6 +214,9 @@ export function resolve_default_proofreading_statuses(available_statuses: string
     : available_statuses;
 }
 
+/**
+ * 默认警告筛选保留已知顺序，同时把运行时出现的新警告稳定追加。
+ */
 export function resolve_default_proofreading_warning_types(
   available_warning_types: string[],
 ): string[] {
@@ -266,6 +294,9 @@ function build_default_proofreading_filter_options(
   };
 }
 
+/**
+ * 归一化页面传入筛选项，缺失字段由当前 item 集合派生默认值。
+ */
 export function normalize_proofreading_filter_options(
   filters: Partial<ProofreadingFilterOptions> | undefined,
   items: ProofreadingItem[],
@@ -301,6 +332,9 @@ export function normalize_proofreading_filter_options(
   };
 }
 
+/**
+ * 空列表 view 用于运行态尚未 hydrate 或请求失效时的安全回退。
+ */
 export function create_empty_proofreading_list_view(): ProofreadingListView {
   return {
     projectId: "",
@@ -317,6 +351,9 @@ export function create_empty_proofreading_list_view(): ProofreadingListView {
   };
 }
 
+/**
+ * 空筛选面板保留无警告计数入口，避免 UI 需要特殊判断缺失字段。
+ */
 export function create_empty_proofreading_filter_panel_state(): ProofreadingFilterPanelState {
   return {
     available_statuses: [],

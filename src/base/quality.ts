@@ -165,7 +165,7 @@ export class QualityRule {
   }
 
   /**
-   * revision key 进入 ProjectStore change，必须和公开 kind 保持一一对应
+   * revision key 进入项目变更事件，必须和公开 kind 保持一一对应
    */
   public get revision_meta_key(): string {
     return QUALITY_RULE_MODEL[this.kind].revision_meta_key;
@@ -246,7 +246,7 @@ export class QualityRule {
   }
 
   /**
-   * ProjectStore 消费 quality slice 时复用同一 entries / meta / revision 口径
+   * 项目 query 消费 quality slice 时复用同一 entries / meta / revision 口径
    */
   public normalize_slice(value: unknown): {
     entries: JsonRecord[];

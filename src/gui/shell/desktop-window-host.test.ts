@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { build_core_api_base_url_argument } from "../../core/api/core-api-endpoint";
+import { build_core_api_base_url_argument } from "../../core/api/api-base-url";
 import { build_desktop_system_proxy_startup_notice_argument } from "../bridge/system-proxy-startup-notice";
 import { IPC_CHANNEL_WINDOW_CLOSE_REQUEST } from "../ipc/ipc-contract";
 import { resolve_title_bar_overlay_theme } from "./shell-contract";

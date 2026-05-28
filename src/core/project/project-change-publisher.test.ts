@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { CoreEventHub } from "../events/core-event-hub";
+import { ApiStreamHub } from "../api/api-stream-hub";
 import type { ProjectChangeEventAdapter } from "./project-change-event-adapter";
 import { ProjectChangePublisher } from "./project-change-publisher";
 
 describe("ProjectChangePublisher", () => {
   it("把领域变更草稿适配后广播为 project.data_changed 事件", async () => {
-    const core_event_hub = new CoreEventHub();
-    const response = core_event_hub.create_stream_response();
+    const api_stream_hub = new ApiStreamHub();
+    const response = api_stream_hub.create_stream_response();
     const reader = response.body?.getReader();
     expect(reader).toBeDefined();
     const publisher = new ProjectChangePublisher(
@@ -22,7 +22,7 @@ describe("ProjectChangePublisher", () => {
           updatedSections: ["items"],
         }),
       } as ProjectChangeEventAdapter,
-      core_event_hub,
+      api_stream_hub,
     );
 
     publisher.publish_project_change({
@@ -31,7 +31,7 @@ describe("ProjectChangePublisher", () => {
     });
     const chunk = await reader?.read();
     await reader?.cancel();
-    core_event_hub.stop();
+    api_stream_hub.stop();
 
     const frame = new TextDecoder().decode(chunk?.value);
     const event_line = frame.split("\n").find((line) => line.startsWith("event: "));
@@ -50,12 +50,12 @@ describe("ProjectChangePublisher", () => {
   });
 
   it("适配器判定无可广播事件时不写入事件流", async () => {
-    const core_event_hub = new CoreEventHub();
+    const api_stream_hub = new ApiStreamHub();
     const publisher = new ProjectChangePublisher(
       {
         adapt_project_change: () => null,
       } as unknown as ProjectChangeEventAdapter,
-      core_event_hub,
+      api_stream_hub,
     );
 
     const event = publisher.publish_project_change({
@@ -63,7 +63,7 @@ describe("ProjectChangePublisher", () => {
       source: "settings_alignment",
     });
 
-    core_event_hub.stop();
+    api_stream_hub.stop();
     expect(event).toBeNull();
   });
 });

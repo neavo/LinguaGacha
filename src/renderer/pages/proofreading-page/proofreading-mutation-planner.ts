@@ -1,13 +1,19 @@
-import type {
-  ProjectStoreSectionRevisions,
-  ProjectStoreState,
-} from "@/project/store/project-store";
 import type { ProofreadingManualStatusCode } from "@/pages/proofreading-page/types";
-import type { ProjectItemPublicRecord } from "@base/item";
+import type { ProjectDataSectionRevisions } from "@shared/project-event";
 import { compile_text_pattern, replace_text_pattern } from "@shared/text/text-pattern";
 
-// 校对 planner 只读取公开 DTO 镜像判断是否需要发命令。
-type ProofreadingStoreItem = ProjectItemPublicRecord;
+// 校对 planner 只读取当前 query 结果中的轻量 item 快照判断是否需要发命令。
+export type ProofreadingMutationItemSnapshot = {
+  item_id: number | string;
+  dst: string;
+  status: string;
+  retry_count: number;
+};
+
+export type ProofreadingMutationSnapshot = {
+  items: ProofreadingMutationItemSnapshot[];
+  section_revisions: ProjectDataSectionRevisions;
+};
 
 export type ProofreadingMutationPlan = {
   changed_item_ids: number[]; // UI 用于计数和乐观反馈，不作为最终写库事实
@@ -19,23 +25,25 @@ export type ProofreadingMutationPlan = {
     search_text?: string; // 批量替换搜索文本，真实替换由后端执行
     replace_text?: string; // 批量替换目标文本
     is_regex?: boolean; // 批量替换是否使用正则语义
-    expected_section_revisions: ProjectStoreSectionRevisions; // items 与 proofreading 双 section 乐观锁
+    expected_section_revisions: ProjectDataSectionRevisions; // items 与 proofreading 双 section 乐观锁
   };
 };
 
-// 校对计划只按目标 id 读取共享索引，避免大项目操作前扫描全部 items。
+// 校对计划只按目标 id 读取当前动作相关 item，避免重新依赖前端项目事实镜像。
 function read_store_item(
-  state: ProjectStoreState,
+  snapshot: ProofreadingMutationSnapshot,
   item_id: number,
-): ProofreadingStoreItem | undefined {
-  return state.items.get(item_id);
+): ProofreadingMutationItemSnapshot | undefined {
+  return snapshot.items.find((item) => Number(item.item_id) === item_id);
 }
 
 // 校对 mutation 同时依赖 items 与 proofreading revision。
-function build_expected_revisions(state: ProjectStoreState): ProjectStoreSectionRevisions {
+function build_expected_revisions(
+  section_revisions: ProjectDataSectionRevisions,
+): ProjectDataSectionRevisions {
   return {
-    items: state.revisions.sections.items ?? 0,
-    proofreading: state.revisions.sections.proofreading ?? 0,
+    items: section_revisions.items ?? 0,
+    proofreading: section_revisions.proofreading ?? 0,
   };
 }
 
@@ -77,12 +85,12 @@ function replace_all_in_text(args: {
 
 // 单条保存只提交 item_id 和 dst，status 与进度统计由后端派生。
 export function create_save_item_plan(args: {
-  state: ProjectStoreState;
+  snapshot: ProofreadingMutationSnapshot;
   task_snapshot?: Record<string, unknown>;
   item_id: number;
   next_dst: string;
 }): ProofreadingMutationPlan | null {
-  const current_item = read_store_item(args.state, args.item_id);
+  const current_item = read_store_item(args.snapshot, args.item_id);
   if (current_item === undefined || current_item.dst === args.next_dst) {
     return null;
   }
@@ -92,14 +100,14 @@ export function create_save_item_plan(args: {
     request_body: {
       item_id: args.item_id,
       dst: args.next_dst,
-      expected_section_revisions: build_expected_revisions(args.state),
+      expected_section_revisions: build_expected_revisions(args.snapshot.section_revisions),
     },
   };
 }
 
 // 批量替换只提交搜索命令，前端不提交替换后的最终 item 事实。
 export function create_replace_all_plan(args: {
-  state: ProjectStoreState;
+  snapshot: ProofreadingMutationSnapshot;
   task_snapshot?: Record<string, unknown>;
   item_ids: number[];
   search_text: string;
@@ -109,7 +117,7 @@ export function create_replace_all_plan(args: {
   const changed_item_ids: number[] = [];
 
   for (const item_id of args.item_ids) {
-    const current_item = read_store_item(args.state, item_id);
+    const current_item = read_store_item(args.snapshot, item_id);
     if (current_item === undefined) {
       continue;
     }
@@ -135,21 +143,21 @@ export function create_replace_all_plan(args: {
       search_text: args.search_text,
       replace_text: args.replace_text,
       is_regex: args.is_regex,
-      expected_section_revisions: build_expected_revisions(args.state),
+      expected_section_revisions: build_expected_revisions(args.snapshot.section_revisions),
     },
   };
 }
 
 // 批量清空译文只提交目标 id，后端保留状态和重试计数。
 export function create_clear_translations_plan(args: {
-  state: ProjectStoreState;
+  snapshot: ProofreadingMutationSnapshot;
   task_snapshot?: Record<string, unknown>;
   item_ids: number[];
 }): ProofreadingMutationPlan | null {
   const changed_item_ids: number[] = [];
 
   for (const item_id of args.item_ids) {
-    const current_item = read_store_item(args.state, item_id);
+    const current_item = read_store_item(args.snapshot, item_id);
     if (current_item === undefined) {
       continue;
     }
@@ -167,14 +175,14 @@ export function create_clear_translations_plan(args: {
     changed_item_ids,
     request_body: {
       item_ids: args.item_ids,
-      expected_section_revisions: build_expected_revisions(args.state),
+      expected_section_revisions: build_expected_revisions(args.snapshot.section_revisions),
     },
   };
 }
 
 // 批量设置状态提交目标状态；同状态但仍有 retry_count 时也需要提交清理。
 export function create_set_translation_status_plan(args: {
-  state: ProjectStoreState;
+  snapshot: ProofreadingMutationSnapshot;
   task_snapshot?: Record<string, unknown>;
   item_ids: number[];
   status: ProofreadingManualStatusCode;
@@ -182,7 +190,7 @@ export function create_set_translation_status_plan(args: {
   const changed_item_ids: number[] = [];
 
   for (const item_id of args.item_ids) {
-    const current_item = read_store_item(args.state, item_id);
+    const current_item = read_store_item(args.snapshot, item_id);
     if (current_item === undefined) {
       continue;
     }
@@ -201,7 +209,7 @@ export function create_set_translation_status_plan(args: {
     request_body: {
       item_ids: args.item_ids,
       status: args.status,
-      expected_section_revisions: build_expected_revisions(args.state),
+      expected_section_revisions: build_expected_revisions(args.snapshot.section_revisions),
     },
   };
 }

@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
 import net from "node:net";
 
-import { CORE_API_HOST } from "./core-api-endpoint";
+import { CORE_API_HOST } from "./api-base-url";
 import { RuntimeCapabilityMissingError } from "../../shared/error";
 
-export { CORE_API_HOST, build_core_api_base_url } from "./core-api-endpoint";
+export { CORE_API_HOST, build_core_api_base_url } from "./api-base-url";
 
 export const CORE_API_PORT_MIN = 49_152;
 export const CORE_API_PORT_MAX = 65_535;

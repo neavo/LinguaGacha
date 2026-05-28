@@ -4,20 +4,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { useAnalysisTaskRuntime } from "@/pages/workbench-page/task-runtime/use-analysis-task-runtime";
 
-const { api_fetch_mock, prepare_analysis_glossary_import_mock, push_toast_mock } = vi.hoisted(
-  () => {
-    return {
-      api_fetch_mock: vi.fn(),
-      prepare_analysis_glossary_import_mock: vi.fn<
-        (
-          _state: unknown,
-          _options: Record<string, unknown>,
-        ) => Promise<Record<string, unknown> | null>
-      >(async () => null),
-      push_toast_mock: vi.fn(),
-    };
-  },
-);
+const { api_fetch_mock, push_toast_mock } = vi.hoisted(() => {
+  return {
+    api_fetch_mock: vi.fn(),
+    push_toast_mock: vi.fn(),
+  };
+});
 
 // run modal progress toast mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const run_modal_progress_toast_mock = vi.fn(
@@ -27,9 +19,6 @@ const run_modal_progress_toast_mock = vi.fn(
 );
 
 type RuntimeFixture = {
-  project_store: {
-    getState: () => Record<string, unknown>;
-  };
   project_snapshot: {
     loaded: boolean;
     path: string;
@@ -59,12 +48,6 @@ vi.mock("@/app/desktop/desktop-api", () => {
   return {
     api_fetch: api_fetch_mock,
     report_renderer_error: vi.fn(async () => undefined),
-  };
-});
-
-vi.mock("@/project/importer/analysis-glossary-importer", () => {
-  return {
-    prepare_analysis_glossary_import: prepare_analysis_glossary_import_mock,
   };
 });
 
@@ -118,101 +101,6 @@ function create_task_snapshot(
 // create_runtime_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_runtime_fixture(task_snapshot: Record<string, unknown>): RuntimeFixture {
   return {
-    project_store: {
-      getState: () => ({
-        project: {
-          path: "E:/demo/sample.lg",
-          loaded: true,
-        },
-        files: {
-          "script/a.txt": {
-            rel_path: "script/a.txt",
-            file_type: "TXT",
-            sort_index: 0,
-          },
-        },
-        items: {
-          "1": {
-            item_id: 1,
-            file_path: "script/a.txt",
-            row_number: 1,
-            src: "alpha",
-            dst: "",
-            status: "NONE",
-            text_type: "NONE",
-            retry_count: 0,
-          },
-        },
-        quality: {
-          glossary: {
-            entries: [],
-            enabled: true,
-            mode: "custom",
-            revision: 1,
-          },
-          pre_replacement: {
-            entries: [],
-            enabled: false,
-            mode: "off",
-            revision: 0,
-          },
-          post_replacement: {
-            entries: [],
-            enabled: false,
-            mode: "off",
-            revision: 0,
-          },
-          text_preserve: {
-            entries: [],
-            enabled: false,
-            mode: "off",
-            revision: 0,
-          },
-        },
-        prompts: {
-          translation: {
-            text: "",
-            enabled: false,
-            revision: 0,
-          },
-          analysis: {
-            text: "",
-            enabled: false,
-            revision: 0,
-          },
-        },
-        analysis: {
-          extras: {
-            start_time: 12,
-            time: 6,
-            total_line: 5,
-            line: 4,
-            processed_line: 3,
-            error_line: 1,
-            total_tokens: 18,
-            total_input_tokens: 10,
-            total_output_tokens: 8,
-          },
-          candidate_count: 3,
-          status_summary: {
-            total_line: 5,
-            line: 4,
-            processed_line: 3,
-            error_line: 1,
-          },
-        },
-        proofreading: {
-          revision: 0,
-        },
-        task: task_snapshot,
-        revisions: {
-          projectRevision: 8,
-          sections: {
-            analysis: 4,
-          },
-        },
-      }),
-    },
     project_snapshot: {
       loaded: true,
       path: "E:/demo/sample.lg",
@@ -268,6 +156,16 @@ function create_prepared_import(
   };
 }
 
+function create_workbench_query_response(): Record<string, unknown> {
+  return {
+    sectionRevisions: {
+      analysis: 4,
+      quality: 0,
+      prompts: 0,
+    },
+  };
+}
+
 // Probe 收口测试中的共享步骤，保证断言只关注当前行为。
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useAnalysisTaskRuntime>) => void;
@@ -304,8 +202,6 @@ describe("useAnalysisTaskRuntime", () => {
       }),
     );
     api_fetch_mock.mockReset();
-    prepare_analysis_glossary_import_mock.mockReset();
-    prepare_analysis_glossary_import_mock.mockResolvedValue(null);
     push_toast_mock.mockReset();
     run_modal_progress_toast_mock.mockClear();
   });
@@ -408,15 +304,17 @@ describe("useAnalysisTaskRuntime", () => {
           },
         };
       }
+      if (path === "/api/project/query/analysis-glossary-import") {
+        return {
+          prepared_import: create_prepared_import({
+            duplicate_count: 1,
+            duplicate_signature: "0:alpha:different-target:0",
+          }),
+        };
+      }
 
       throw new Error(`未预期的请求：${path}`);
     });
-    prepare_analysis_glossary_import_mock.mockResolvedValue(
-      create_prepared_import({
-        duplicate_count: 1,
-        duplicate_signature: "0:alpha:different-target:0",
-      }),
-    );
 
     await render_probe();
     await flush_microtasks();
@@ -450,7 +348,34 @@ describe("useAnalysisTaskRuntime", () => {
         extras: { kind: "analysis", candidate_count: 1 },
       }),
     );
-    api_fetch_mock.mockImplementation(async (path: string) => {
+    const duplicate_preview = create_prepared_import({
+      duplicate_count: 1,
+      duplicate_signature: "0:alpha:different-target:0",
+    });
+    const skip_preview = create_prepared_import({
+      duplicate_count: 1,
+      duplicate_signature: "0:alpha:different-target:0",
+      imported_count: 0,
+      quality_changed: false,
+      updated_sections: ["analysis"],
+      request_body: {
+        entries: [
+          {
+            src: "alpha",
+            dst: "旧译名",
+            info: "旧说明",
+            regex: false,
+            case_sensitive: true,
+          },
+        ],
+        consumed_candidate_srcs: ["alpha"],
+        expected_section_revisions: {
+          quality: 0,
+          analysis: 4,
+        },
+      },
+    });
+    api_fetch_mock.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
       if (path === "/api/tasks/snapshot") {
         return {
           task: runtime_fixture.current.task_snapshot,
@@ -466,6 +391,11 @@ describe("useAnalysisTaskRuntime", () => {
               case_sensitive: true,
             },
           },
+        };
+      }
+      if (path === "/api/project/query/analysis-glossary-import") {
+        return {
+          prepared_import: body?.["action"] === "skip" ? skip_preview : duplicate_preview,
         };
       }
       if (path === "/api/project/analysis/import-glossary") {
@@ -495,38 +425,6 @@ describe("useAnalysisTaskRuntime", () => {
 
       throw new Error(`未预期的请求：${path}`);
     });
-    prepare_analysis_glossary_import_mock
-      .mockResolvedValueOnce(
-        create_prepared_import({
-          duplicate_count: 1,
-          duplicate_signature: "0:alpha:different-target:0",
-        }),
-      )
-      .mockResolvedValueOnce(
-        create_prepared_import({
-          duplicate_count: 1,
-          duplicate_signature: "0:alpha:different-target:0",
-          imported_count: 0,
-          quality_changed: false,
-          updated_sections: ["analysis"],
-          request_body: {
-            entries: [
-              {
-                src: "alpha",
-                dst: "旧译名",
-                info: "旧说明",
-                regex: false,
-                case_sensitive: true,
-              },
-            ],
-            consumed_candidate_srcs: ["alpha"],
-            expected_section_revisions: {
-              quality: 0,
-              analysis: 4,
-            },
-          },
-        }),
-      );
 
     await render_probe();
     await flush_microtasks();
@@ -542,8 +440,8 @@ describe("useAnalysisTaskRuntime", () => {
     });
     await flush_microtasks();
 
-    expect(prepare_analysis_glossary_import_mock).toHaveBeenLastCalledWith(
-      expect.anything(),
+    expect(api_fetch_mock).toHaveBeenCalledWith(
+      "/api/project/query/analysis-glossary-import",
       expect.objectContaining({
         action: "skip",
         candidate_aggregate: expect.objectContaining({
@@ -701,6 +599,9 @@ describe("useAnalysisTaskRuntime", () => {
         return {
           task: runtime_fixture.current.task_snapshot,
         };
+      }
+      if (path === "/api/project/query/workbench") {
+        return create_workbench_query_response();
       }
       if (path === "/api/tasks/start") {
         return {
@@ -912,6 +813,9 @@ describe("useAnalysisTaskRuntime", () => {
           task: runtime_fixture.current.task_snapshot,
         };
       }
+      if (path === "/api/project/query/workbench") {
+        return create_workbench_query_response();
+      }
       if (path === "/api/project/analysis/reset") {
         return {
           accepted: true,
@@ -969,6 +873,9 @@ describe("useAnalysisTaskRuntime", () => {
         return {
           task: runtime_fixture.current.task_snapshot,
         };
+      }
+      if (path === "/api/project/query/workbench") {
+        return create_workbench_query_response();
       }
       if (path === "/api/project/analysis/reset") {
         throw new Error("analysis reset boom");

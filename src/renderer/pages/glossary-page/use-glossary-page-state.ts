@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import {
@@ -7,19 +7,21 @@ import {
 } from "@/app/desktop/desktop-project-mutation";
 import { useAppNavigation } from "@/app/navigation/navigation-context";
 import { useDebouncedCallback } from "@/hooks/use-debounce";
-import type { QualityStatisticsDependencySnapshot } from "@/project/quality/quality-statistics-auto";
+import type { QualityStatisticsDependencySnapshot } from "@shared/quality/quality-statistics";
+import { buildProofreadingLookupQuery } from "@/project/quality/quality-runtime";
+import { read_project_section_revisions } from "@/project/query/project-section-revisions-query";
 import {
-  buildProofreadingLookupQuery,
-  getQualityRuleSlice,
-} from "@/project/quality/quality-runtime";
+  read_project_quality_rule,
+  type ProjectQualityRuleQuerySlice,
+} from "@/project/query/quality-rule-query";
 import {
   isQualityRuleStatisticsCacheReady,
   isQualityRuleStatisticsCacheRunning,
   type QualityRuleStatisticsCacheSnapshot,
-} from "@/project/quality/quality-rule-statistics-store";
+} from "@/project/quality/quality-statistics-store";
 import type { SettingsSnapshotPayload } from "@/app/desktop/desktop-runtime-context";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
-import { useQualityRuleStatistics } from "@/project/quality/quality-rule-statistics-context";
+import { useQualityRuleStatistics } from "@/project/quality/quality-statistics-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
@@ -91,6 +93,12 @@ type GlossaryResultViewQuery = {
   sort_state: GlossarySortState;
 };
 
+type GlossaryQualitySlice = {
+  enabled: boolean;
+  entries: GlossaryEntry[];
+  section_revision: number;
+};
+
 type GlossaryDuplicateApplyOptions = {
   close_preset_menu: boolean;
   result_view_update: ResultViewSourceUpdatePolicy;
@@ -108,6 +116,11 @@ const EMPTY_ENTRY: GlossaryEntry = {
   dst: "",
   info: "",
   case_sensitive: false,
+};
+const DEFAULT_QUALITY_SLICE: GlossaryQualitySlice = {
+  enabled: true,
+  entries: [],
+  section_revision: 0,
 };
 
 // clone_entry 封装当前模块的共享逻辑，避免重复实现同一维护规则。
@@ -211,6 +224,27 @@ function normalize_dialog_entry(entry: GlossaryEntry): GlossaryEntry {
     dst: entry.dst.trim(),
     info: entry.info.trim(),
     case_sensitive: entry.case_sensitive,
+  };
+}
+
+// normalize_glossary_quality_slice 在后端 query 边界收窄规则事实，页面内部只消费稳定形状。
+function normalize_glossary_quality_slice(
+  slice: ProjectQualityRuleQuerySlice | undefined,
+  section_revision: number,
+): GlossaryQualitySlice {
+  const raw_entries = Array.isArray(slice?.entries) ? slice.entries : [];
+  return {
+    enabled: slice?.enabled === undefined ? true : Boolean(slice.enabled),
+    entries: ensure_quality_rule_entry_ids(
+      raw_entries.map((entry) => {
+        const record = typeof entry === "object" && entry !== null ? entry : {};
+        return normalize_dialog_entry({
+          ...EMPTY_ENTRY,
+          ...(record as Partial<GlossaryEntry>),
+        });
+      }),
+    ),
+    section_revision,
   };
 }
 
@@ -387,33 +421,18 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const { push_toast } = useDesktopToast();
   const {
     project_snapshot,
-    project_store,
+    project_change_signal,
+    project_session_status = "ready",
     settings_snapshot,
     apply_settings_snapshot,
     commit_project_mutation,
     task_snapshot,
   } = useDesktopRuntime();
   const { navigate_to_route, push_proofreading_lookup_intent } = useAppNavigation();
-  const project_store_state = useSyncExternalStore(
-    project_store.subscribe,
-    project_store.getState,
-    project_store.getState,
-  );
-  const glossary_slice = useMemo(() => {
-    return getQualityRuleSlice(project_store_state.quality, "glossary");
-  }, [project_store_state.quality]);
-  const enabled = project_snapshot.loaded ? glossary_slice.enabled : true;
-  const entries = useMemo<GlossaryEntry[]>(() => {
-    if (!project_snapshot.loaded) {
-      return [];
-    }
-
-    return ensure_quality_rule_entry_ids(
-      (glossary_slice.entries as GlossaryEntry[]).map((entry) => {
-        return clone_entry(entry);
-      }),
-    );
-  }, [glossary_slice.entries, project_snapshot.loaded]);
+  const [quality_slice, set_quality_slice] = useState<GlossaryQualitySlice>(DEFAULT_QUALITY_SLICE);
+  const [quality_loaded, set_quality_loaded] = useState(false);
+  const enabled = project_snapshot.loaded ? quality_slice.enabled : true;
+  const entries = project_snapshot.loaded ? quality_slice.entries : [];
   const [preset_items, set_preset_items] = useState<GlossaryPresetItem[]>([]);
   const [preset_menu_open, set_preset_menu_open] = useState(false);
   const table_ui_state = useProjectSessionTableUiState<GlossaryFilterState, GlossarySortState>({
@@ -442,6 +461,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   // 保存类 action 返回的项目 section 事实源负责跨越 HTTP / SSE 先后到达的竞态。
   const [pending_result_view_source_update, set_pending_result_view_source_update] =
     useState<ResultViewSourceUpdateRequest | null>(null);
+  const result_view_source_checkpoint_ref = useRef({ projectPath: "", quality: 0 });
   const [dialog_state, set_dialog_state] = useState<GlossaryDialogState>(() => {
     return create_empty_dialog_state();
   });
@@ -452,6 +472,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     return create_empty_preset_input_state();
   });
   const dialog_state_ref = useRef(dialog_state);
+  const entries_ref = useRef(entries);
   const statistics_cache = useQualityRuleStatistics("glossary");
   const statistics_state = useMemo<GlossaryStatisticsState>(() => {
     return build_glossary_statistics_state_from_cache(statistics_cache);
@@ -462,9 +483,72 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   // project_view_identity_ref 区分同组件内项目身份切换，避免把上一项目的表格状态写入新项目。
   const project_view_identity_ref = useRef(project_snapshot.loaded ? project_snapshot.path : "");
 
+  const refresh_quality_rule_snapshot = useCallback(async (): Promise<GlossaryQualitySlice> => {
+    if (
+      !project_snapshot.loaded ||
+      project_snapshot.path === "" ||
+      project_session_status !== "ready"
+    ) {
+      set_quality_slice(DEFAULT_QUALITY_SLICE);
+      set_quality_loaded(false);
+      return DEFAULT_QUALITY_SLICE;
+    }
+
+    const response = await read_project_quality_rule("glossary");
+    if (response.projectPath !== project_snapshot.path) {
+      return quality_slice;
+    }
+    const next_slice = normalize_glossary_quality_slice(
+      response.qualityRule,
+      response.sectionRevisions?.quality ?? 0,
+    );
+    set_quality_slice(next_slice);
+    set_quality_loaded(true);
+    return next_slice;
+  }, [project_session_status, project_snapshot.loaded, project_snapshot.path, quality_slice]);
+
+  useEffect(() => {
+    if (
+      !project_snapshot.loaded ||
+      project_snapshot.path === "" ||
+      project_session_status !== "ready"
+    ) {
+      set_quality_slice(DEFAULT_QUALITY_SLICE);
+      set_quality_loaded(false);
+      return;
+    }
+
+    let cancelled = false;
+    void read_project_quality_rule("glossary").then((response) => {
+      if (cancelled || response.projectPath !== project_snapshot.path) {
+        return;
+      }
+      set_quality_slice(
+        normalize_glossary_quality_slice(
+          response.qualityRule,
+          response.sectionRevisions?.quality ?? 0,
+        ),
+      );
+      set_quality_loaded(true);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    project_change_signal?.seq ?? 0,
+    project_session_status,
+    project_snapshot.loaded,
+    project_snapshot.path,
+  ]);
+
   useEffect(() => {
     dialog_state_ref.current = dialog_state;
   }, [dialog_state]);
+
+  useEffect(() => {
+    entries_ref.current = entries;
+  }, [entries]);
 
   const entry_ids = useMemo<GlossaryEntryId[]>(() => {
     return entries.map((entry, index) => {
@@ -571,12 +655,23 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const invalid_regex_message =
     result_view_snapshot?.invalid_message ?? live_filter_result.invalid_regex_message;
   useEffect(() => {
+    const current_source_checkpoint = {
+      projectPath: project_snapshot.path,
+      sections: {
+        quality: quality_slice.section_revision,
+      },
+    };
+    const previous_source_checkpoint = result_view_source_checkpoint_ref.current;
+    const source_checkpoint_changed =
+      previous_source_checkpoint.projectPath !== current_source_checkpoint.projectPath ||
+      previous_source_checkpoint.quality !== current_source_checkpoint.sections.quality;
+    const should_rebuild_for_source_change =
+      source_checkpoint_changed &&
+      (previous_source_checkpoint.projectPath !== current_source_checkpoint.projectPath ||
+        !has_active_filters);
     const should_rebuild_from_source = is_result_view_source_update_ready({
       request: pending_result_view_source_update,
-      current_source_checkpoint: {
-        projectPath: project_store_state.project.path,
-        sections: project_store_state.revisions.sections,
-      },
+      current_source_checkpoint,
     });
     set_result_view_snapshot((previous_snapshot) => {
       const valid_entry_id_set = new Set(entry_ids);
@@ -586,9 +681,15 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         valid_id_set: valid_entry_id_set,
         source_update_policy: should_rebuild_from_source
           ? pending_result_view_source_update?.policy
-          : PRESERVE_RESULT_VIEW_SOURCE_UPDATE,
+          : should_rebuild_for_source_change
+            ? REBUILD_RESULT_VIEW_SOURCE_UPDATE
+            : PRESERVE_RESULT_VIEW_SOURCE_UPDATE,
       });
     });
+    result_view_source_checkpoint_ref.current = {
+      projectPath: current_source_checkpoint.projectPath,
+      quality: current_source_checkpoint.sections.quality,
+    };
     if (should_rebuild_from_source) {
       set_pending_result_view_source_update(null);
     }
@@ -596,8 +697,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     build_result_view_snapshot,
     entry_ids,
     filter_state,
-    project_store_state.project.path,
-    project_store_state.revisions.sections,
+    project_snapshot.path,
+    quality_slice.section_revision,
     pending_result_view_source_update,
     sort_state,
   ]);
@@ -666,7 +767,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return false;
       }
 
-      const current_state = project_store.getState();
       const normalized_entries = ensure_quality_rule_entry_ids(
         next_entries.map((entry) => {
           return normalize_dialog_entry(entry);
@@ -674,6 +774,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       );
 
       try {
+        const section_revisions = await read_project_section_revisions();
         await commit_project_mutation({
           operation: GLOSSARY_ENTRIES_SAVE_MUTATION,
           run: async () => {
@@ -682,7 +783,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
               {
                 rule_type: "glossary",
                 expected_section_revisions: {
-                  quality: current_state.revisions.sections.quality ?? 0,
+                  quality: section_revisions.quality ?? 0,
                 },
                 entries: normalized_entries,
               },
@@ -698,6 +799,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
             );
           },
         });
+        await refresh_quality_rule_snapshot();
         return true;
       } catch (error) {
         set_pending_result_view_source_update(null);
@@ -708,7 +810,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return false;
       }
     },
-    [commit_project_mutation, project_store, push_toast, readonly, t],
+    [commit_project_mutation, push_toast, readonly, refresh_quality_rule_snapshot, t],
   );
 
   const apply_duplicate_resolved_entries = useCallback(
@@ -736,16 +838,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   );
 
   const read_current_glossary_entries = useCallback((): GlossaryEntry[] => {
-    const current_glossary_slice = getQualityRuleSlice(
-      project_store.getState().quality,
-      "glossary",
-    );
-    return ensure_quality_rule_entry_ids(
-      (current_glossary_slice.entries as GlossaryEntry[]).map((entry) => {
-        return clone_entry(entry);
-      }),
-    );
-  }, [project_store]);
+    return entries_ref.current.map((entry) => clone_entry(entry));
+  }, []);
   const import_confirmation = useQualityRuleImportConfirmation<
     GlossaryEntry,
     GlossaryDuplicateApplyOptions
@@ -843,6 +937,9 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [project_snapshot.loaded, project_snapshot.path, reset_table_state]);
 
   useEffect(() => {
+    if (!quality_loaded) {
+      return;
+    }
     // 可见结果变化会让旧选区失去操作上下文，必须同步裁剪 session 选区。
     const next_selected_entry_ids = selected_entry_ids.filter((entry_id) => {
       return entry_index_by_id.has(entry_id) && visible_entry_id_set.has(entry_id);
@@ -874,6 +971,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [
     active_entry_id,
     entry_index_by_id,
+    quality_loaded,
     selected_entry_ids,
     selection_anchor_entry_id,
     set_table_selection_state,
@@ -1006,15 +1104,15 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return;
       }
 
-      const current_state = project_store.getState();
       try {
+        const section_revisions = await read_project_section_revisions();
         await commit_project_mutation({
           operation: GLOSSARY_META_UPDATE_MUTATION,
           run: async () => {
             return await api_fetch<ProjectMutationResultPayload>("/api/quality/rules/update-meta", {
               rule_type: "glossary",
               expected_section_revisions: {
-                quality: current_state.revisions.sections.quality ?? 0,
+                quality: section_revisions.quality ?? 0,
               },
               meta: {
                 enabled: next_enabled,
@@ -1022,6 +1120,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
             });
           },
         });
+        await refresh_quality_rule_snapshot();
       } catch (error) {
         push_toast(
           "error",
@@ -1029,7 +1128,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         );
       }
     },
-    [commit_project_mutation, project_store, push_toast, readonly, t],
+    [commit_project_mutation, push_toast, readonly, refresh_quality_rule_snapshot, t],
   );
 
   const open_create_dialog = useCallback((): void => {

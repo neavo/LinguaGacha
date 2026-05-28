@@ -1,6 +1,12 @@
 import path from "node:path";
 
 import type { ApiJsonValue } from "../api/api-types";
+import type { AppEventDispatchResult } from "../app/app-event-bus";
+import type { AppEventBus } from "../app/app-event-bus";
+import {
+  create_project_opened_for_cache_event,
+  create_project_unloaded_event,
+} from "../app/app-events";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import { FileFormatService } from "../file/file-format-service";
@@ -28,7 +34,10 @@ import {
   create_empty_translation_task_snapshot,
   type ProjectPrefilterMutationOutput,
 } from "./project-mutation-state";
-import { get_runtime_section_revision } from "./project-section-revision";
+import {
+  build_section_revisions_from_meta,
+  get_runtime_section_revision,
+} from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
 import { ProjectDefaultPresetInitializer } from "./project-default-preset-initializer";
 import * as AppErrors from "../../shared/error";
@@ -78,6 +87,8 @@ export class ProjectLifecycleService {
 
   private readonly log_manager: LogManager; // log_manager 记录生命周期解析失败和诊断，响应体不扩大公开协议
 
+  private readonly app_event_bus: AppEventBus; // app_event_bus 承担 Core 内部 committed event 分发，热机失败会阻断 loaded
+
   private readonly native_fs: NativeFs; // native_fs 是项目域读取外部文件和校验 .lg 路径的唯一文件系统门面
 
   private readonly default_preset_initializer: ProjectDefaultPresetInitializer; // default_preset_initializer 隔离默认预设文件读取和非阻断日志
@@ -91,12 +102,14 @@ export class ProjectLifecycleService {
     app_setting_service: AppSettingService,
     paths: AppPathService,
     log_manager: LogManager,
+    app_event_bus: AppEventBus,
     native_fs: NativeFs = default_native_fs,
   ) {
     this.database = database;
     this.session_state = session_state;
     this.app_setting_service = app_setting_service;
     this.log_manager = log_manager;
+    this.app_event_bus = app_event_bus;
     this.native_fs = native_fs;
     this.default_preset_initializer = new ProjectDefaultPresetInitializer(
       app_setting_service,
@@ -142,6 +155,17 @@ export class ProjectLifecycleService {
       }),
       ...migration_operations,
     ]);
+    const meta = this.to_record(
+      this.database.execute(this.op("getAllMeta", { projectPath: project_path })) as ApiJsonValue,
+    );
+    this.assert_app_event_dispatch_success(
+      await this.app_event_bus.publish(
+        create_project_opened_for_cache_event({
+          projectPath: project_path,
+          sectionRevisions: build_section_revisions_from_meta(meta as MutableJsonRecord),
+        }),
+      ),
+    );
     this.session_state.mark_loaded(project_path);
     return this.build_loaded_project_response(project_path);
   }
@@ -428,12 +452,17 @@ export class ProjectLifecycleService {
    */
   public async unload_project(): Promise<Record<string, ApiJsonValue>> {
     const state = this.session_state.snapshot();
-    this.session_state.clear();
     if (state.loaded && state.projectPath !== "") {
+      this.assert_app_event_dispatch_success(
+        await this.app_event_bus.publish(create_project_unloaded_event(state.projectPath)),
+      );
+      this.session_state.clear();
       this.database.execute({
         name: "closeProject",
         args: { projectPath: state.projectPath },
       });
+    } else {
+      this.session_state.clear();
     }
     return {
       project: {
@@ -540,6 +569,26 @@ export class ProjectLifecycleService {
       items: get_runtime_section_revision(meta, "items"),
       analysis: get_runtime_section_revision(meta, "analysis"),
     };
+  }
+
+  /**
+   * 工程加载必须等内部缓存热机成功；任何订阅者失败都阻断 loaded 标记。
+   */
+  private assert_app_event_dispatch_success(results: AppEventDispatchResult[]): void {
+    const failed_result = results.find((result) => !result.ok);
+    if (failed_result === undefined) {
+      return;
+    }
+    if (failed_result.error instanceof Error) {
+      throw failed_result.error;
+    }
+    throw new AppErrors.InternalInvariantError({
+      diagnostic_context: {
+        source: "project-lifecycle",
+        reason: "app_event_dispatch_failed",
+        event_type: failed_result.type,
+      },
+    });
   }
 
   /**

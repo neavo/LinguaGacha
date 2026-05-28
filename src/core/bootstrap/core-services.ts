@@ -1,4 +1,7 @@
 import { AppMetadataService } from "../app/app-metadata-service";
+import { AppEventBus } from "../app/app-event-bus";
+import { AppSessionCache } from "../app/app-session-cache";
+import type { AppEventType } from "../app/app-events";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { ProjectDatabase } from "../database/database-operations";
@@ -11,7 +14,7 @@ import { TaskRuntimeState } from "../engine/runtime/task-runtime-state";
 import { TaskSnapshotBuilder } from "../engine/runtime/task-snapshot-builder";
 import { ProjectTaskStore } from "../engine/store/project-task-store";
 import { WorkUnitWorkerPool } from "../engine/work-unit/work-unit-worker-pool";
-import { CoreEventHub } from "../events/core-event-hub";
+import { ApiStreamHub } from "../api/api-stream-hub";
 import { FileExportService, type OutputFolderOpener } from "../file/file-export-service";
 import { FilePreviewService } from "../file/file-preview-service";
 import { LogManager } from "../log/log-manager";
@@ -20,6 +23,7 @@ import { ProjectChangeEventAdapter } from "../project/project-change-event-adapt
 import { ProjectChangePublisher } from "../project/project-change-publisher";
 import { ProjectLifecycleService } from "../project/project-lifecycle-service";
 import { ProjectOperationGate } from "../project/project-operation-gate";
+import { ProjectQueryService } from "../project/project-query-service";
 import { ProjectResetPreviewService } from "../project/project-reset-preview-service";
 import { ProjectRuntimeProjectionService } from "../project/project-runtime-projection-service";
 import { ProjectSessionState } from "../project/project-session-state";
@@ -53,8 +57,11 @@ export class CoreServices {
   public readonly project_session_state = new ProjectSessionState(); // 当前 loaded 工程会话只在 Core 内部流转
   public readonly task_runtime_state = new TaskRuntimeState(); // 任务运行态供 API 查询、CLI 等待和 mutation gate 共享
   public readonly project_runtime_projection_service: ProjectRuntimeProjectionService;
-  public readonly core_event_hub = new CoreEventHub(); // 本地事件流统一服务 GUI SSE 与 Core 内部广播
+  public readonly api_stream_hub = new ApiStreamHub(); // 公开 stream 服务 GUI SSE、CLI task snapshot 与 settings/logs topic
+  public readonly app_event_bus = new AppEventBus(); // Core 内部 committed event 总线，不直接暴露给 renderer
+  public readonly app_session_cache: AppSessionCache;
   public readonly project_change_publisher: ProjectChangePublisher;
+  public readonly project_query_service: ProjectQueryService;
   public readonly model_service: ModelService;
   public readonly project_lifecycle_service: ProjectLifecycleService;
   public readonly project_operation_gate: ProjectOperationGate;
@@ -82,6 +89,8 @@ export class CoreServices {
     this.app_setting_service = options.appSettingService;
     this.database = options.database;
     this.log_manager = options.logManager;
+    this.app_session_cache = new AppSessionCache(this.database, this.log_manager);
+    this.subscribe_app_session_cache();
     this.project_runtime_projection_service = new ProjectRuntimeProjectionService(this.database);
     const project_change_adapter = new ProjectChangeEventAdapter(
       this.database,
@@ -90,7 +99,11 @@ export class CoreServices {
     );
     this.project_change_publisher = new ProjectChangePublisher(
       project_change_adapter,
-      this.core_event_hub,
+      this.api_stream_hub,
+    );
+    this.project_query_service = new ProjectQueryService(
+      this.project_session_state,
+      this.app_session_cache,
     );
     this.model_service = new ModelService(
       this.paths,
@@ -104,12 +117,14 @@ export class CoreServices {
       this.app_setting_service,
       this.paths,
       this.log_manager,
+      this.app_event_bus,
     );
     this.project_operation_gate = new ProjectOperationGate(this.task_runtime_state);
     this.project_service = new ProjectSyncMutationService(
       this.database,
       this.project_operation_gate,
       this.project_session_state,
+      this.app_event_bus,
       this.project_change_publisher,
       this.app_setting_service,
       undefined,
@@ -118,6 +133,7 @@ export class CoreServices {
     this.proofreading_service = new ProofreadingService(
       this.database,
       this.project_session_state,
+      this.app_event_bus,
       this.project_change_publisher,
     );
     this.task_snapshot_builder = new TaskSnapshotBuilder(
@@ -127,7 +143,7 @@ export class CoreServices {
       this.project_runtime_projection_service,
     );
     this.task_runtime_publisher = new TaskRuntimePublisher(
-      this.core_event_hub,
+      this.api_stream_hub,
       this.task_runtime_state,
       this.task_snapshot_builder,
     );
@@ -135,7 +151,9 @@ export class CoreServices {
       this.database,
       this.project_session_state,
       this.task_runtime_state,
+      this.app_session_cache,
       this.project_change_publisher,
+      this.app_event_bus,
     );
     this.work_unit_worker_pool = new WorkUnitWorkerPool({
       appRoot: this.paths.get_app_root(),
@@ -182,28 +200,29 @@ export class CoreServices {
       this.app_setting_service,
       this.database,
       this.project_session_state,
+      this.app_event_bus,
       this.project_change_publisher,
     );
   }
 
   /**
-   * 启动事件 hub，并让设置服务把 settings.changed 发布到同一条事件链路。
+   * 启动 API stream hub，并让设置服务把 settings.changed 发布到同一条公开 stream。
    */
   public start(): void {
     if (this.started) {
       return;
     }
     this.started = true;
-    this.core_event_hub.start();
-    this.app_setting_service.set_event_publisher(this.core_event_hub);
+    this.api_stream_hub.start();
+    this.app_setting_service.set_stream_publisher(this.api_stream_hub);
   }
 
   /**
    * 释放 CoreServices 自己持有的运行期资源；数据库和日志由 Bootstrap 关闭。
    */
   public async dispose(): Promise<void> {
-    this.app_setting_service.set_event_publisher(null);
-    this.core_event_hub.stop();
+    this.app_setting_service.set_stream_publisher(null);
+    this.api_stream_hub.stop();
     await Promise.all([this.work_unit_worker_pool.dispose(), this.planning_worker_pool.dispose()]);
     this.started = false;
   }
@@ -226,5 +245,25 @@ export class CoreServices {
       revisions[section] = this.task_snapshot_builder.get_runtime_section_revision(section);
     }
     return revisions;
+  }
+
+  /**
+   * AppSessionCache 订阅所有会影响后端 query view 的 committed event。
+   */
+  private subscribe_app_session_cache(): void {
+    const event_types: AppEventType[] = [
+      "project.opened_for_cache",
+      "project.unloaded",
+      "project.items.changed",
+      "project.quality.changed",
+      "project.prompts.changed",
+      "project.settings.changed",
+      "project.analysis.changed",
+    ];
+    for (const event_type of event_types) {
+      this.app_event_bus.subscribe(event_type, async (event) => {
+        await this.app_session_cache.handleAppEvent(event);
+      });
+    }
   }
 }

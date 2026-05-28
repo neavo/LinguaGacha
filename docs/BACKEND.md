@@ -12,7 +12,7 @@
 - 公开 SSE 使用固定 topic 和严格 JSON 序列化：项目数据通过 `project.data_changed`，任务运行态通过 `task.snapshot_changed`，设置通过 `settings.changed`，日志窗口通过 `log.appended`。
 - `log.appended` 只携带列表、筛选和排序所需的轻量日志事件；完整日志正文只保留在当前进程内详情池，并通过 `/api/logs/detail` 按 ID 读取。Core 不为日志详情写数据库、索引或额外文件，历史 `app.yyyymmdd.log` 不作为详情接口的数据源。
 - `/api/diagnostics/renderer-error` 只接收 renderer 实际异常摘要并写入 `LogManager`；载荷必须经过 shared error 的 `RendererErrorReport` normalizer，触发事件和 renderer error context 都按 shared 白名单收窄。Gateway 不维护第二套 message / stack / context 裁剪规则；该路由不改变项目、任务或设置事实，也不保存正常 SSE 流水、完整项目 payload 或页面自定义上下文对象。
-- CLI 不启动 Gateway；CLI 命令通过同进程 `CoreServices` 和 `CoreEventHub` 复用任务、项目、导出和质量服务。
+- CLI 不启动 Gateway；CLI 命令通过同进程 `CoreServices` 和 `ApiStreamHub` 复用任务、项目、导出和质量服务。
 - 发布态任务执行入口由产品入口构造为 `worker_threads`，指向桌面 bundle 内的 work-unit 与 planning worker；`in_process` 只允许测试或源码执行显式选择，不是 worker 失败回退。
 
 ## 2. Core 状态拥有者
@@ -21,9 +21,12 @@
 | --- | --- | --- |
 | 应用设置、最近工程、语言 | `AppSettingService` | 设置 API、CLI transient overrides、`settings.changed` |
 | 当前 loaded 工程身份 | `ProjectSessionState` | `ProjectLifecycleService` |
-| 项目公开快照 | `.lg` + `ProjectRuntimeProjectionService` | `/api/project/manifest`、`/api/project/read-sections` |
-| 同步项目 mutation | `ProjectSyncMutationService` / `ProofreadingService` / `QualityService` 等领域服务 | database transaction + `ProjectChangePublisher` |
-| 项目变更事件 | `ProjectChangeEventAdapter` + `ProjectChangePublisher` | 同一事件同时返回 HTTP mutation result 并广播 SSE |
+| 当前 loaded 工程热读数据 | `AppSessionCache` | `ProjectLifecycleService` 热机、`AppEventBus` committed event、`/api/project/query/*` |
+| Core 内部 committed event | `AppEventBus` | 写侧事务成功后的 after-commit 发布 |
+| 项目公开 manifest | `.lg` + `ProjectRuntimeProjectionService` | `/api/project/manifest` |
+| 页面 view model | `ProjectQueryService` + `AppSessionCache` | `/api/project/query/*` |
+| 同步项目 mutation | `ProjectSyncMutationService` / `ProofreadingService` / `QualityService` 等领域服务 | database transaction + internal event + `ProjectChangePublisher` |
+| 项目公开变更事件 | `ProjectChangeEventAdapter` + `ProjectChangePublisher` | 同一事件同时返回 HTTP mutation result 并广播 SSE |
 | 任务 busy/status/request pressure | `TaskRuntimeState` | `TaskRuntimePublisher` |
 | 任务公开快照 | `TaskSnapshotBuilder` | 任务命令 ack、`/api/tasks/snapshot`、`task.snapshot_changed` |
 | 后台任务生命周期 | `TaskEngine` | `TaskService.start_task` / `stop_task` |
@@ -42,11 +45,12 @@ project, files, items, quality, prompts, analysis, proofreading
 ```
 
 - `/api/project/manifest` 只返回项目身份、project revision、section revision 和 counts，不预热大 section。
-- `/api/project/read-sections` 按需返回 ProjectStore 可合并形状；`items` 使用 `item_id` map，`files` 使用相对路径 map，`quality` / `prompts` 使用公开 kind，`analysis` 只返回轻量 extras、candidate count 和 status summary。
+- `/api/project/query/*` 是 renderer 读取项目 view model 的唯一公开入口；query response 必须携带本次 view 依赖的 `sectionRevisions`，页面 mutation 使用这些 revision 作为乐观锁依赖。
+- `AppSessionCache` 是当前 loaded 工程的热读事实拥有者；query service 只能从 cache 和按需数据库投影组合页面 view，不建立第二套长期项目事实缓存。
 - 完整分析候选池不进入常驻项目快照，只能通过 `/api/project/analysis/candidates` 按需读取。
 - 同步项目 mutation 成功返回 `ProjectMutationResult = { accepted: true, changes }`；`changes` 与后续 SSE 广播是同一批后端 canonical `ProjectChangeEvent`。
 - `ProjectChangeEvent` 必须带后端确认的 `projectPath`、`projectRevision`、本次更新 section 的 `sectionRevisions` 和 `updatedSections`；不属于当前 loaded 工程的草稿不能发布。
-- 变更 payload mode 只允许三类：`canonical-delta` 直接携带后端规范数据，`field-patch` 只表达校对可写字段 `dst / status / retry_count`，`section-invalidated` 只用于异常恢复。
+- 变更 payload mode 只允许三类：`canonical-delta` 直接携带后端规范数据，`field-patch` 只表达校对可写字段 `dst / status / retry_count`，`section-invalidated` 只作为页面重新 query 的刷新提示。
 - canonical item upsert 必须是完整公开 DTO；领域草稿可只给 `changedIds`，但公开事件必须由后端 adapter 回读补齐，瘦身 item DTO 不能进入项目事件。
 - 删除语义必须显式表达 tombstone：items 用 `deleteIds`，files 用 `deletePaths`；无法精确表达删除时使用对应 section 的 full replace。
 - 后端 mutation 不接收 renderer 派生的 `items`、task/progress extras、prefilter config 或 analysis extras 作为最终事实；页面只能提交用户意图、设置镜像和当前 section revision 依赖。

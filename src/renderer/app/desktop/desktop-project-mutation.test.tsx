@@ -285,7 +285,7 @@ describe("useProjectMutationCommitter", () => {
 });
 
 describe("normalize_project_mutation_result", () => {
-  it("只接受后端 canonical changes 数组并规范化为 ProjectStore 事件", () => {
+  it("只接受后端 canonical changes 数组并规范化为项目运行态事件", () => {
     const result = normalize_project_mutation_result({
       accepted: true,
       changes: [

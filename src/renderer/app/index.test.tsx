@@ -93,7 +93,7 @@ vi.mock("@/pages/workbench-page/task-runtime/workbench-task-runtime-context", ()
   };
 });
 
-vi.mock("@/project/quality/quality-rule-statistics-context", () => {
+vi.mock("@/project/quality/quality-statistics-context", () => {
   return {
     QualityRuleStatisticsProvider: (props: { children: ReactNode }) => <>{props.children}</>,
   };

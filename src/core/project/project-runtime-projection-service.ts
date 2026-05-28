@@ -12,7 +12,7 @@ import {
   get_runtime_section_revision,
   type ProjectDataSection,
 } from "./project-section-revision";
-import { isProjectDataSection } from "../../shared/project/event";
+import { isProjectDataSection } from "../../shared/project-event";
 import * as AppErrors from "../../shared/error";
 
 export type ProjectRuntimeProjectionJsonRecord = Record<string, ApiJsonValue>;
@@ -70,7 +70,7 @@ export class ProjectRuntimeProjectionService {
   }
 
   /**
-   * 按需读取 section 时直接返回 ProjectStore 可合并形状，避免 renderer 另建解码层
+   * 按需读取 section 时直接返回公开变更可消费形状，避免 renderer 另建解码层
    */
   public build_section_payloads(args: {
     projectState: { loaded: boolean; projectPath: string };
@@ -81,7 +81,7 @@ export class ProjectRuntimeProjectionService {
     let items_snapshot: ProjectRuntimeItemsSnapshot | null = null;
     const read_items_snapshot = (): ProjectRuntimeItemsSnapshot => {
       if (items_snapshot === null) {
-        // 同一次 read-sections 最多读取一次 items，避免 files/items 同取时重复扫表
+        // 同一次 section 投影最多读取一次 items，避免 files/items 同取时重复扫表
         items_snapshot =
           project_path === ""
             ? this.empty_items_snapshot()
@@ -144,7 +144,7 @@ export class ProjectRuntimeProjectionService {
   }
 
   /**
-   * items section 使用 item_id map，保持 ProjectStore 可直接覆盖
+   * items section 使用 item_id map，保持公开变更可直接消费
    */
   public build_items_record_block(
     project_path: string,
@@ -193,7 +193,7 @@ export class ProjectRuntimeProjectionService {
   }
 
   /**
-   * 工程未加载时仍返回完整质量块形状，保持 ProjectStore 默认切片可合并
+   * 工程未加载时仍返回完整质量块形状，保持 query 默认切片可消费
    */
   public build_empty_quality_block(): ProjectRuntimeProjectionMutableRecord {
     return Object.fromEntries(
@@ -205,7 +205,7 @@ export class ProjectRuntimeProjectionService {
   }
 
   /**
-   * 提示词块按公开顶层字段输出，任务快照和 ProjectStore 共用同一 DTO
+   * 提示词块按公开顶层字段输出，任务快照和项目 query 共用同一 DTO
    */
   public build_prompts_block(
     project_path: string,
@@ -247,7 +247,7 @@ export class ProjectRuntimeProjectionService {
   }
 
   /**
-   * 术语导入和 CLI 预览按需读取完整候选池，避免普通 ProjectStore 刷新承载大对象。
+   * 术语导入和 CLI 预览按需读取完整候选池，避免普通项目刷新承载大对象。
    */
   public build_analysis_candidate_payload(
     project_path: string,

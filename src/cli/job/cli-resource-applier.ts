@@ -1,5 +1,6 @@
 import type { CoreServices } from "../../core/bootstrap/core-services";
 import type { DatabaseJsonValue, DatabaseOperation } from "../../core/database/database-types";
+import { build_section_revisions_from_meta } from "../../core/project/project-section-revision";
 import { load_quality_rule_entries_from_file } from "../../core/service/quality-rule-file-io";
 import { default_native_fs } from "../../native/native-fs";
 import { Prompt } from "../../base/prompt";
@@ -26,6 +27,30 @@ export async function apply_cli_resources(
     return;
   }
   core_services.database.execute_transaction(operations);
+  const meta = core_services.database.execute({
+    name: "getAllMeta",
+    args: { projectPath: project_path },
+  });
+  await core_services.app_event_bus.publish({
+    type: "project.quality.changed",
+    projectPath: project_path,
+    source: "cli",
+    affectedSections: ["quality", "prompts"],
+    sectionRevisions: build_section_revisions_from_meta(
+      typeof meta === "object" && meta !== null && !Array.isArray(meta) ? meta : {},
+    ),
+    scope: "quality-full",
+  });
+  await core_services.app_event_bus.publish({
+    type: "project.prompts.changed",
+    projectPath: project_path,
+    source: "cli",
+    affectedSections: ["quality", "prompts"],
+    sectionRevisions: build_section_revisions_from_meta(
+      typeof meta === "object" && meta !== null && !Array.isArray(meta) ? meta : {},
+    ),
+    scope: "prompts-full",
+  });
 }
 
 /**

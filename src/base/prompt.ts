@@ -45,7 +45,7 @@ const PROMPT_MODEL = {
 const PROMPT_KIND_SET = new Set<PromptKind>(PROMPT_KINDS);
 
 /**
- * Prompt 是提示词槽位实体，统一派生目录、rules 表类型、meta key 和 ProjectStore key
+ * Prompt 是提示词槽位实体，统一派生目录、rules 表类型、meta key 和项目 query key
  */
 export class Prompt {
   public readonly kind: PromptKind; // 提示词槽位类型
@@ -119,7 +119,7 @@ export class Prompt {
   }
 
   /**
-   * revision key 进入 ProjectStore change，必须保持集中生成
+   * revision key 进入项目变更事件，必须保持集中生成
    */
   public get revision_meta_key(): string {
     return PROMPT_MODEL[this.kind].revision_meta_key;
@@ -154,7 +154,7 @@ export class Prompt {
   }
 
   /**
-   * ProjectStore 消费提示词 slice 时只接受公开顶层字段口径
+   * 项目 query 消费提示词 slice 时只接受公开顶层字段口径
    */
   public normalize_slice(value: unknown): { text: string; enabled: boolean; revision: number } {
     const record = read_record(value);

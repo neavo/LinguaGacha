@@ -10,7 +10,7 @@ import {
   update_name_field_row_dst,
 } from "@/pages/name-field-extraction-page/logic";
 import type { ProjectItemPublicRecord } from "@base/item";
-import { createProjectItemIndex } from "@/project/store/project-item-index";
+import { createProjectItemIndex } from "@/project/project-item-index";
 import type {
   NameFieldFilterState,
   NameFieldRow,
@@ -64,7 +64,7 @@ function create_test_item_index(
 }
 
 describe("name-field extraction logic", () => {
-  it("从 ProjectStore.items 提取字符串姓名并用术语表预填译文", () => {
+  it("从 item 索引提取字符串姓名并用术语表预填译文", () => {
     const rows = extract_name_field_rows({
       items: create_test_item_index({
         "1": {

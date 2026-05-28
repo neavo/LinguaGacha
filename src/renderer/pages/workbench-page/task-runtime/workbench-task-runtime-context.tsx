@@ -1,6 +1,5 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 
-import { useProjectSessionBarrier } from "@/app/session/project-session-context";
 import { useI18n } from "@/app/locale/locale-provider";
 import { TaskRuntimeConfirmDialog } from "@/pages/workbench-page/components/task-runtime/task-runtime-confirm-dialog";
 import {
@@ -146,17 +145,10 @@ function WorkbenchTaskFollowupDialogsLayer(): JSX.Element {
 
 // WorkbenchTaskRuntimeProvider 拥有跨页面任务 follow-up，页面只消费展示与动作能力。
 export function WorkbenchTaskRuntimeProvider(props: { children: ReactNode }): JSX.Element {
-  const { create_barrier_checkpoint, wait_for_barrier } = useProjectSessionBarrier();
   // translation_task_runtime 常驻于 session 内，确保离开工作台后任务完成确认不丢失。
-  const translation_task_runtime = useTranslationTaskRuntime({
-    createProjectSessionBarrierCheckpoint: create_barrier_checkpoint,
-    waitForProjectSessionBarrier: wait_for_barrier,
-  });
+  const translation_task_runtime = useTranslationTaskRuntime();
   // analysis_task_runtime 同样常驻，承接分析完成后的导入术语确认流程。
-  const analysis_task_runtime = useAnalysisTaskRuntime({
-    createProjectSessionBarrierCheckpoint: create_barrier_checkpoint,
-    waitForProjectSessionBarrier: wait_for_barrier,
-  });
+  const analysis_task_runtime = useAnalysisTaskRuntime();
   const context_value = useMemo<WorkbenchTaskRuntimeContextValue>(() => {
     return {
       translation_task_runtime,

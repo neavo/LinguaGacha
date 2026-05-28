@@ -5,7 +5,7 @@ import type { ProjectItemPublicRecord } from "@base/item";
 
 import { INPUT_QUERY_DEBOUNCE_MS } from "@/hooks/use-debounce";
 import { useNameFieldExtractionPageState } from "@/pages/name-field-extraction-page/use-name-field-extraction-page-state";
-import { createProjectItemIndex } from "@/project/store/project-item-index";
+import { createProjectItemIndex } from "@/project/project-item-index";
 
 const { api_fetch_mock, push_toast_mock } = vi.hoisted(() => {
   return {
@@ -188,10 +188,35 @@ vi.mock("@/app/desktop/desktop-api", () => {
   };
 });
 
+vi.mock("@/project/query/name-field-extraction-query", () => {
+  return {
+    read_name_field_extraction_query: vi.fn(async () => ({
+      projectPath: runtime_state.project.path,
+      sectionRevisions: { ...runtime_state.revisions.sections },
+      items: [...runtime_state.items.values()],
+      glossary: runtime_state.quality.glossary,
+    })),
+  };
+});
+
+vi.mock("@/project/query/project-section-revisions-query", () => {
+  return {
+    read_project_section_revisions: vi.fn(async () => ({
+      ...runtime_state.revisions.sections,
+    })),
+  };
+});
+
 vi.mock("@/app/desktop/use-desktop-runtime", () => {
   return {
     useDesktopRuntime: () => ({
       project_snapshot: runtime_state.project,
+      project_change_signal: {
+        seq: 0,
+        reason: "test",
+        updated_sections: [],
+        results: [],
+      },
       project_store,
       commit_project_mutation: vi.fn(async (request) => {
         const payload = await request.run();
@@ -304,6 +329,9 @@ describe("useNameFieldExtractionPageState", () => {
           }}
         />,
       );
+    });
+    await act(async () => {
+      await Promise.resolve();
     });
   }
 

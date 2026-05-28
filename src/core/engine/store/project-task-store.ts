@@ -1,9 +1,10 @@
 import type { ApiJsonValue } from "../../api/api-types";
+import type { AppEventBus } from "../../app/app-event-bus";
+import type { AppSessionCache } from "../../app/app-session-cache";
 import { ProjectDatabase } from "../../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
 import { ProjectChangePublisher } from "../../project/project-change-publisher";
 import { ProjectMutationCoordinator } from "../../project/project-mutation-coordinator";
-import { ProjectRuntimeProjectionService } from "../../project/project-runtime-projection-service";
 import {
   get_runtime_section_revision,
   type ProjectDataSection,
@@ -14,7 +15,7 @@ import type { JsonRecord, MutableJsonRecord } from "../runtime/task-runtime-type
 import type { TaskArtifact } from "../protocol/artifact";
 import type { TaskType } from "../protocol/task-types";
 import { QualityRuleSnapshotTool } from "../../../shared/quality/snapshot";
-import { isProjectDataSection } from "../../../shared/project/event";
+import { isProjectDataSection } from "../../../shared/project-event";
 import { TASK_PROGRESS_STATUSES } from "../../../shared/task";
 import { count_analysis_glossary_candidates } from "../../../shared/analysis-candidate";
 import * as AppErrors from "../../../shared/error";
@@ -29,6 +30,8 @@ export class ProjectTaskStore {
 
   private readonly task_runtime_state: TaskRuntimeState; // 重翻任务提交后需要同步缩减运行中 item scope
 
+  private readonly app_session_cache: AppSessionCache; // 任务启动热读 items / quality / prompts，写库仍只走 ProjectDatabase
+
   private readonly mutation_coordinator: ProjectMutationCoordinator; // 任务提交的 revision bump 和 canonical 事件发布统一经由协调器
 
   /**
@@ -38,12 +41,19 @@ export class ProjectTaskStore {
     database: ProjectDatabase,
     session_state: ProjectSessionState,
     task_runtime_state: TaskRuntimeState,
+    app_session_cache: AppSessionCache,
     project_change_publisher: ProjectChangePublisher,
+    app_event_bus: AppEventBus,
   ) {
     this.database = database;
     this.session_state = session_state;
     this.task_runtime_state = task_runtime_state;
-    this.mutation_coordinator = new ProjectMutationCoordinator(database, project_change_publisher);
+    this.app_session_cache = app_session_cache;
+    this.mutation_coordinator = new ProjectMutationCoordinator(
+      database,
+      project_change_publisher,
+      app_event_bus,
+    );
   }
 
   /**
@@ -73,16 +83,10 @@ export class ProjectTaskStore {
     if (!state.loaded || state.projectPath === "") {
       return QualityRuleSnapshotTool.to_json(QualityRuleSnapshotTool.from_json({}));
     }
-    const projection_service = new ProjectRuntimeProjectionService(this.database);
-    const payload = projection_service.build_section_payloads({
-      projectState: state,
-      sections: ["quality", "prompts"],
-    });
-    const sections = this.normalize_object(payload["sections"]);
     return QualityRuleSnapshotTool.to_json(
       QualityRuleSnapshotTool.from_json({
-        quality: sections["quality"],
-        prompts: sections["prompts"],
+        quality: this.app_session_cache.readQualityBlock(),
+        prompts: this.app_session_cache.readPromptsBlock(),
       }),
     ) as unknown as ApiJsonValue;
   }
@@ -93,7 +97,7 @@ export class ProjectTaskStore {
   public get_translation_items(request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
     const mode = String(request["mode"] ?? "NEW");
-    const items = this.get_all_items(project_path).map((item) => {
+    const items = this.app_session_cache.readItems().map((item) => {
       if (mode !== "RESET") {
         return item;
       }
@@ -188,6 +192,15 @@ export class ProjectTaskStore {
     ]);
     const changed_item_ids = this.collect_item_ids(finalized_items);
     if (changed_item_ids.length > 0) {
+      void this.mutation_coordinator.publish_app_events_for_committed_change({
+        projectPath: project_path,
+        source: "translation_batch_update",
+        updatedSections: ["items"],
+        items: {
+          payloadMode: "canonical-delta",
+          changedIds: changed_item_ids,
+        },
+      });
       this.mutation_coordinator.publish_project_data_change({
         projectPath: project_path,
         source: "translation_batch_update",
@@ -225,7 +238,7 @@ export class ProjectTaskStore {
   public get_analysis_context(_request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
     return {
-      items: this.get_all_items(project_path) as unknown as ApiJsonValue,
+      items: this.app_session_cache.readItems() as unknown as ApiJsonValue,
       checkpoints: this.get_analysis_checkpoints(project_path) as unknown as ApiJsonValue,
       meta: this.get_all_meta(project_path),
     };
@@ -336,11 +349,14 @@ export class ProjectTaskStore {
   public get_translation_items_by_scope(request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
     const item_ids = this.normalize_number_list(request["item_ids"]);
-    const items = this.get_items_by_ids(project_path, item_ids).map((item) => ({
-      ...item,
-      status: "NONE",
-      retry_count: 0,
-    }));
+    const items = item_ids
+      .map((item_id) => this.app_session_cache.readItem(item_id))
+      .filter((item): item is MutableJsonRecord => item !== null)
+      .map((item) => ({
+        ...item,
+        status: "NONE",
+        retry_count: 0,
+      }));
     return {
       items: items as unknown as ApiJsonValue,
       meta: this.get_all_meta(project_path),
@@ -366,6 +382,15 @@ export class ProjectTaskStore {
     ]);
     const changed_item_ids = this.collect_item_ids(finalized_items);
     this.task_runtime_state.remove_translation_item_ids(changed_item_ids);
+    void this.mutation_coordinator.publish_app_events_for_committed_change({
+      projectPath: project_path,
+      source: "retranslate_items",
+      updatedSections: ["items", "proofreading"],
+      items: {
+        payloadMode: "canonical-delta",
+        changedIds: changed_item_ids,
+      },
+    });
     this.mutation_coordinator.publish_project_data_change({
       projectPath: project_path,
       source: "retranslate_items",
@@ -403,6 +428,17 @@ export class ProjectTaskStore {
     candidate_count: number,
   ): void {
     const project_path = this.require_loaded_project_path();
+    void this.mutation_coordinator.publish_app_events_for_committed_change({
+      projectPath: project_path,
+      source,
+      updatedSections: ["analysis"],
+      sections: {
+        analysis: {
+          payloadMode: "canonical-delta",
+          data: this.build_analysis_section_delta(analysis_extras, candidate_count),
+        },
+      },
+    });
     this.mutation_coordinator.publish_project_data_change({
       projectPath: project_path,
       source,

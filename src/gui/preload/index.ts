@@ -17,7 +17,7 @@ import {
   IPC_CHANNEL_TITLE_BAR_THEME,
   IPC_CHANNEL_WINDOW_CLOSE_REQUEST,
 } from "../ipc/ipc-contract";
-import { resolve_core_api_base_url_from_argv } from "../../core/api/core-api-endpoint";
+import { resolve_core_api_base_url_from_argv } from "../../core/api/api-base-url";
 import { resolve_desktop_shell_info } from "../shell/shell-contract";
 import { DESKTOP_BRIDGE_GLOBAL_NAME, type DesktopBridgeApi } from "../bridge/bridge-api";
 import { resolve_desktop_system_proxy_startup_notice_from_argv } from "../bridge/system-proxy-startup-notice";

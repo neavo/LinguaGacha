@@ -10,10 +10,7 @@ export default defineConfig({
     alias: {
       "@": path.resolve(project_root, "src/renderer"),
       "@base": path.resolve(project_root, "src/base"),
-      "@core/api/core-api-endpoint": path.resolve(
-        project_root,
-        "src/core/api/core-api-endpoint.ts",
-      ),
+      "@core/api/api-base-url": path.resolve(project_root, "src/core/api/api-base-url.ts"),
       "@gui/bridge-api": path.resolve(project_root, "src/gui/bridge/bridge-api.ts"),
       "@gui/bridge-types": path.resolve(project_root, "src/gui/bridge/bridge-types.ts"),
       "@gui/external-url-policy": path.resolve(

@@ -1,4 +1,5 @@
 import type { ApiJsonValue } from "../api/api-types";
+import type { AppEventBus } from "../app/app-event-bus";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import {
@@ -12,7 +13,7 @@ import type {
   ProjectChangeItemFieldPatch,
   ProjectChangeItemsPayload,
   ProjectMutationResult,
-} from "../../shared/project/event";
+} from "../../shared/project-event";
 import { create_empty_translation_task_snapshot } from "../project/project-mutation-state";
 import { compile_text_pattern, replace_text_pattern } from "../../shared/text/text-pattern";
 import * as AppErrors from "../../shared/error";
@@ -62,11 +63,16 @@ export class ProofreadingService {
   public constructor(
     database: ProjectDatabase,
     session_state: ProjectSessionState,
+    app_event_bus: AppEventBus,
     project_change_publisher: ProjectChangePublisher | null = null,
   ) {
     this.database = database;
     this.session_state = session_state;
-    this.mutation_coordinator = new ProjectMutationCoordinator(database, project_change_publisher);
+    this.mutation_coordinator = new ProjectMutationCoordinator(
+      database,
+      project_change_publisher,
+      app_event_bus,
+    );
   }
 
   /**
@@ -115,7 +121,7 @@ export class ProofreadingService {
       return { accepted: true, changes: [] };
     }
     const field_patch = this.build_item_field_patch(item, next_item, ["dst", "status"]);
-    return this.persist_field_patch_items(project_path, context, {
+    return await this.persist_field_patch_items(project_path, context, {
       changes: [{ current: item, next: next_item }],
       field_patch,
       update_translation_extras: true,
@@ -158,7 +164,7 @@ export class ProofreadingService {
       const next_item = this.apply_manual_dst(item, replace_result.text);
       changes.push({ current: item, next: next_item });
     }
-    return this.persist_changed_items(project_path, context, {
+    return await this.persist_changed_items(project_path, context, {
       changes,
       items_payload: {
         payloadMode: "canonical-delta",
@@ -191,7 +197,7 @@ export class ProofreadingService {
       }
       changes.push({ current: item, next: next_item });
     }
-    return this.persist_field_patch_items(project_path, context, {
+    return await this.persist_field_patch_items(project_path, context, {
       changes,
       field_patch: { dst: "" },
       update_translation_extras: false,
@@ -225,7 +231,7 @@ export class ProofreadingService {
       }
       changes.push({ current: item, next: next_item });
     }
-    return this.persist_field_patch_items(project_path, context, {
+    return await this.persist_field_patch_items(project_path, context, {
       changes,
       field_patch: {
         status: next_status,
@@ -238,13 +244,19 @@ export class ProofreadingService {
   /**
    * 校对保存同时影响 item 行和 proofreading revision；item 为空时仍发布 section 变更供读侧对齐
    */
-  private publish_project_data_change(
+  private async publish_project_data_change(
     project_path: string,
     items_payload: Pick<
       ProjectChangeItemsPayload,
       "payloadMode" | "changedIds" | "deleteIds" | "fieldPatch"
     >,
-  ): ProjectMutationResult {
+  ): Promise<ProjectMutationResult> {
+    await this.mutation_coordinator.publish_app_events_for_committed_change({
+      projectPath: project_path,
+      source: "proofreading_save_items",
+      updatedSections: ["items", "proofreading"],
+      items: items_payload,
+    });
     return this.mutation_coordinator.publish_project_data_change({
       projectPath: project_path,
       source: "proofreading_save_items",
@@ -288,7 +300,7 @@ export class ProofreadingService {
   /**
    * 写入变更 item，并按状态 delta 更新翻译统计，避免校对热路径扫描全量条目。
    */
-  private persist_changed_items(
+  private async persist_changed_items(
     project_path: string,
     context: ProofreadingMutationContext,
     args: {
@@ -299,7 +311,7 @@ export class ProofreadingService {
       >;
       update_translation_extras: boolean;
     },
-  ): ProjectMutationResult {
+  ): Promise<ProjectMutationResult> {
     if (args.changes.length === 0) {
       return { accepted: true, changes: [] };
     }
@@ -320,13 +332,13 @@ export class ProofreadingService {
       this.op("updateBatch", update_args),
       ...this.mutation_coordinator.build_section_revision_operations(context.revision_context),
     ]);
-    return this.publish_project_data_change(project_path, args.items_payload);
+    return await this.publish_project_data_change(project_path, args.items_payload);
   }
 
   /**
    * 统一字段 patch 走数据库 JSON 局部写入，避免为校对批量操作构造完整 item DTO。
    */
-  private persist_field_patch_items(
+  private async persist_field_patch_items(
     project_path: string,
     context: ProofreadingMutationContext,
     args: {
@@ -334,7 +346,7 @@ export class ProofreadingService {
       field_patch: ProjectChangeItemFieldPatch;
       update_translation_extras: boolean;
     },
-  ): ProjectMutationResult {
+  ): Promise<ProjectMutationResult> {
     if (args.changes.length === 0) {
       return { accepted: true, changes: [] };
     }
@@ -364,7 +376,7 @@ export class ProofreadingService {
       ...operations,
       ...this.mutation_coordinator.build_section_revision_operations(context.revision_context),
     ]);
-    return this.publish_project_data_change(project_path, {
+    return await this.publish_project_data_change(project_path, {
       payloadMode: "field-patch",
       changedIds: changed_item_ids,
       fieldPatch: args.field_patch,

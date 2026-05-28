@@ -1,18 +1,16 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
-import type { ProjectRuntimeChangeSignal } from "@/app/desktop/desktop-runtime-context";
+import type { ProjectChangeSignal } from "@/app/desktop/desktop-runtime-context";
 import { INPUT_QUERY_DEBOUNCE_MS } from "@/hooks/use-debounce";
 import type { ProjectItemPublicRecord } from "@base/item";
-import { ProjectUiWorkerClientError } from "@/project/worker/project-ui-worker-errors";
 import {
   create_empty_proofreading_filter_panel_state,
   create_empty_proofreading_list_view,
 } from "@/pages/proofreading-page/types";
 import { useProofreadingPageState } from "@/pages/proofreading-page/use-proofreading-page-state";
-import { createProjectItemIndex } from "@/project/store/project-item-index";
 
 type RuntimeFixture = {
   settings_snapshot: {
@@ -23,9 +21,6 @@ type RuntimeFixture = {
     loaded: boolean;
     path: string;
   };
-  project_store: {
-    getState: () => Record<string, unknown>;
-  };
   task_snapshot: {
     busy: boolean;
     task_type?: string;
@@ -35,7 +30,7 @@ type RuntimeFixture = {
     };
   };
   sync_task_snapshot: ReturnType<typeof vi.fn>;
-  project_change_signal: ProjectRuntimeChangeSignal;
+  project_change_signal: ProjectChangeSignal;
   commit_project_mutation: ReturnType<typeof vi.fn>;
   refresh_project_runtime: ReturnType<typeof vi.fn>;
   refresh_task: ReturnType<typeof vi.fn>;
@@ -104,9 +99,9 @@ function create_project_change_signal(
   options: {
     mode?: "full" | "delta" | "noop";
     itemIds?: Array<number | string>;
-    updatedSections?: Array<ProjectRuntimeChangeSignal["updated_sections"][number] | "task">;
+    updatedSections?: Array<ProjectChangeSignal["updated_sections"][number] | "task">;
   } = {},
-): ProjectRuntimeChangeSignal {
+): ProjectChangeSignal {
   const mode = options.mode ?? "full";
   const requested_sections =
     options.updatedSections ??
@@ -116,8 +111,7 @@ function create_project_change_signal(
         ? ["items"]
         : ["project", "items", "quality"]);
   const updated_sections = requested_sections.filter(
-    (section): section is ProjectRuntimeChangeSignal["updated_sections"][number] =>
-      section !== "task",
+    (section): section is ProjectChangeSignal["updated_sections"][number] => section !== "task",
   );
   const item_ids = options.itemIds ?? [];
   return {
@@ -204,9 +198,9 @@ vi.mock("@/app/locale/locale-provider", () => {
   };
 });
 
-vi.mock("@/project/worker/project-ui-worker-client", () => {
+vi.mock("@/pages/proofreading-page/proofreading-list-client", () => {
   return {
-    getSharedProjectUiWorkerClient: () => proofreading_runtime_client_fixture.current,
+    getSharedProofreadingListClient: () => proofreading_runtime_client_fixture.current,
   };
 });
 
@@ -312,39 +306,6 @@ function create_runtime_fixture(): RuntimeFixture {
     project_snapshot: {
       loaded: true,
       path: "E:/demo/sample.lg",
-    },
-    project_store: {
-      getState: () => {
-        const quality_payload = create_quality_store_payload();
-        return {
-          project: {
-            path: "E:/demo/sample.lg",
-          },
-          proofreading: {
-            revision: 1,
-          },
-          quality: quality_payload.quality,
-          prompts: quality_payload.prompts,
-          revisions: {
-            sections: {
-              items: 7,
-              proofreading: 1,
-            },
-          },
-          items: createProjectItemIndex({
-            "1": create_project_item({
-              item_id: 1,
-              file_path: "chapter01.txt",
-              row_number: 1,
-              src: "foo",
-              dst: "bar",
-              status: "NONE",
-              text_type: "NONE",
-              retry_count: 0,
-            }),
-          }),
-        };
-      },
     },
     task_snapshot: {
       busy: false,
@@ -460,6 +421,54 @@ function create_list_view() {
   };
 }
 
+function create_proofreading_runtime_query_response() {
+  const quality_payload = create_quality_store_payload();
+  return {
+    projectPath: "E:/demo/sample.lg",
+    sectionRevisions: {
+      items: 7,
+      proofreading: 1,
+    },
+    runtimeSnapshot: {
+      total_item_count: 1,
+      items: [
+        create_project_item({
+          item_id: 1,
+          file_path: "chapter01.txt",
+          row_number: 1,
+          src: "foo",
+          dst: "bar",
+          status: "NONE",
+          text_type: "NONE",
+          retry_count: 0,
+        }),
+      ],
+      quality: quality_payload.quality,
+    },
+  };
+}
+
+function install_api_fetch_default_mock(): void {
+  vi.mocked(api_fetch).mockImplementation(async (path: string, body: unknown) => {
+    if (path === "/api/project/query/proofreading") {
+      const request = body as { runtime_snapshot?: boolean; row_ids?: string[] };
+      if (request.runtime_snapshot) {
+        return create_proofreading_runtime_query_response();
+      }
+      const row_ids = Array.isArray(request.row_ids) ? request.row_ids : [];
+      return {
+        rows: row_ids.map((row_id) => {
+          return {
+            row_id,
+            item: create_client_item(row_id),
+          };
+        }),
+      };
+    }
+    return { accepted: true, changes: [] };
+  });
+}
+
 // create_filter_panel 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_filter_panel() {
   return {
@@ -521,6 +530,10 @@ describe("useProofreadingPageState", () => {
   let root: Root | null = null;
   let latest_state: ReturnType<typeof useProofreadingPageState> | null = null;
 
+  beforeEach(() => {
+    install_api_fetch_default_mock();
+  });
+
   afterEach(async () => {
     if (root !== null) {
       await act(async () => {
@@ -578,7 +591,7 @@ describe("useProofreadingPageState", () => {
     await flush_async_updates();
   }
 
-  it("项目路径切换后会基于当前 ProjectStore 完成首刷", async () => {
+  it("项目路径切换后会基于当前后端 query 完成首刷", async () => {
     await render_hook();
 
     expect(latest_state).not.toBeNull();
@@ -646,61 +659,6 @@ describe("useProofreadingPageState", () => {
     expect(toast_fixture.current.dismiss_toast).toHaveBeenCalledWith("proofreading-loading-toast");
   });
 
-  it("当前全量 hydrate 被 stale 废弃后保持加载并重试默认筛选", async () => {
-    // stale_deferred 模拟当前 hydrate 被 worker staleKey 废弃的旧回包。
-    const stale_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
-    // retry_deferred 模拟同一加载流程重新 hydrate 后拿到的有效缓存。
-    const retry_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
-    proofreading_runtime_client_fixture.current.hydrate_proofreading_full = vi
-      .fn()
-      .mockImplementationOnce(() => stale_deferred.promise)
-      .mockImplementationOnce(() => retry_deferred.promise);
-
-    await render_hook();
-
-    expect(latest_state?.cache_status).toBe("refreshing");
-    expect(toast_fixture.current.push_progress_toast).toHaveBeenCalledWith({
-      message: "proofreading_page.feedback.loading_toast",
-      presentation: "modal",
-    });
-
-    // 当前请求 stale 后仍应保持刷新态，等待重试接管默认筛选应用。
-    await act(async () => {
-      stale_deferred.reject(new ProjectUiWorkerClientError("stale"));
-    });
-    await flush_async_updates();
-
-    expect(
-      proofreading_runtime_client_fixture.current.hydrate_proofreading_full,
-    ).toHaveBeenCalledTimes(2);
-    expect(latest_state?.cache_status).toBe("refreshing");
-    expect(toast_fixture.current.dismiss_toast).not.toHaveBeenCalledWith(
-      "proofreading-loading-toast",
-    );
-
-    // 重试完成后，默认筛选必须进入当前筛选状态和列表查询。
-    await act(async () => {
-      retry_deferred.resolve(create_sync_state());
-    });
-    await flush_async_updates();
-
-    expect(latest_state?.cache_status).toBe("ready");
-    expect(latest_state?.current_filters.statuses).toEqual(["NONE"]);
-    expect(
-      proofreading_runtime_client_fixture.current.build_proofreading_list_view,
-    ).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        filters: expect.objectContaining({
-          statuses: ["NONE"],
-        }),
-      }),
-      {
-        staleKey: null,
-      },
-    );
-    expect(toast_fixture.current.dismiss_toast).toHaveBeenCalledWith("proofreading-loading-toast");
-  });
-
   it("质量 hydrate 未完成时筛选弹窗不可打开但基础列表仍响应搜索", async () => {
     vi.useFakeTimers();
     const refresh_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
@@ -733,7 +691,7 @@ describe("useProofreadingPageState", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("缓存 ready 后再次收到 delta 信号时会走增量路径而不是全量 hydrate", async () => {
+  it("缓存 ready 后再次收到条目变更时通过后端 query 全量重建 hydrate", async () => {
     await render_hook();
 
     expect(
@@ -764,27 +722,27 @@ describe("useProofreadingPageState", () => {
 
     expect(
       proofreading_runtime_client_fixture.current.hydrate_proofreading_full,
-    ).toHaveBeenCalledTimes(1);
+    ).toHaveBeenCalledTimes(2);
     expect(
       proofreading_runtime_client_fixture.current.apply_proofreading_item_delta,
-    ).toHaveBeenCalledTimes(1);
+    ).not.toHaveBeenCalled();
     expect(
       proofreading_runtime_client_fixture.current.build_proofreading_list_view,
-    ).toHaveBeenCalledTimes(1);
+    ).toHaveBeenCalledTimes(2);
     expect(
       proofreading_runtime_client_fixture.current.read_proofreading_list_window,
-    ).toHaveBeenCalledTimes(1);
+    ).not.toHaveBeenCalled();
     expect(latest_state?.cache_status).toBe("ready");
     expect(latest_state?.visible_items).toHaveLength(1);
   });
 
-  it("翻译写回触发 delta 刷新时不会弹出模态 loading toast", async () => {
+  it("翻译写回触发后端 query 全量刷新时展示模态 loading toast", async () => {
     await render_hook();
     toast_fixture.current.push_progress_toast.mockClear();
     toast_fixture.current.dismiss_toast.mockClear();
-    const delta_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
-    proofreading_runtime_client_fixture.current.apply_proofreading_item_delta = vi.fn(() => {
-      return delta_deferred.promise;
+    const hydrate_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
+    proofreading_runtime_client_fixture.current.hydrate_proofreading_full = vi.fn(() => {
+      return hydrate_deferred.promise;
     });
 
     runtime_fixture.current = {
@@ -798,21 +756,21 @@ describe("useProofreadingPageState", () => {
     await render_hook();
 
     expect(latest_state?.cache_status).toBe("refreshing");
-    expect(toast_fixture.current.push_progress_toast).not.toHaveBeenCalled();
+    expect(toast_fixture.current.push_progress_toast).toHaveBeenCalledWith({
+      message: "proofreading_page.feedback.loading_toast",
+      presentation: "modal",
+    });
 
     await act(async () => {
-      delta_deferred.resolve(create_sync_state());
+      hydrate_deferred.resolve(create_sync_state());
     });
     await flush_async_updates();
 
     expect(latest_state?.cache_status).toBe("ready");
-    expect(toast_fixture.current.push_progress_toast).not.toHaveBeenCalled();
-    expect(toast_fixture.current.dismiss_toast).not.toHaveBeenCalledWith(
-      "proofreading-loading-toast",
-    );
+    expect(toast_fixture.current.dismiss_toast).toHaveBeenCalledWith("proofreading-loading-toast");
   });
 
-  it("目标语言变化后会全量重建 worker 校对缓存", async () => {
+  it("目标语言变化后会全量重建校对列表缓存", async () => {
     await render_hook();
 
     expect(
@@ -1165,7 +1123,7 @@ describe("useProofreadingPageState", () => {
     });
   });
 
-  it("替换下一个匹配时会按替换扫描块读取 worker 窗口", async () => {
+  it("替换下一个匹配时会按替换扫描块读取列表窗口", async () => {
     vi.useFakeTimers();
     proofreading_runtime_client_fixture.current.read_proofreading_list_window = vi.fn(
       async (query: { view_id: string; start: number; count: number }) => {
@@ -1408,9 +1366,9 @@ describe("useProofreadingPageState", () => {
     );
   });
 
-  it("worker 类错误会统一收口成刷新失败 toast", async () => {
+  it("列表运行态错误会统一收口成刷新失败 toast", async () => {
     proofreading_runtime_client_fixture.current.hydrate_proofreading_full = vi.fn(async () => {
-      throw new ProjectUiWorkerClientError("init_failed");
+      throw new Error("init_failed");
     });
 
     await render_hook();
@@ -1433,26 +1391,7 @@ describe("useProofreadingPageState", () => {
     );
   });
 
-  it("普通 worker 查询 stale 属于旧请求退场，不会弹刷新失败 toast", async () => {
-    await render_hook();
-
-    proofreading_runtime_client_fixture.current.build_proofreading_list_view = vi.fn(async () => {
-      throw new ProjectUiWorkerClientError("stale");
-    });
-
-    await act(async () => {
-      latest_state?.update_search_scope("src");
-    });
-    await flush_async_updates();
-
-    expect(latest_state?.cache_status).toBe("ready");
-    expect(toast_fixture.current.push_toast).not.toHaveBeenCalledWith(
-      "error",
-      "proofreading_page.feedback.refresh_failed",
-    );
-  });
-
-  it("未建立 worker 项目缓存时卸载不会发送空项目释放请求", async () => {
+  it("未建立列表项目缓存时卸载不会发送空项目释放请求", async () => {
     runtime_fixture.current = {
       ...runtime_fixture.current,
       project_snapshot: {
@@ -1748,7 +1687,7 @@ describe("useProofreadingPageState", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("编辑弹窗保存时直接读取 ProjectStore 当前行，不再回读 worker item", async () => {
+  it("编辑弹窗保存时直接读取后端 query 当前行", async () => {
     await render_hook();
 
     runtime_fixture.current = {

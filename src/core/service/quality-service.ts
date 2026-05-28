@@ -3,6 +3,7 @@ import path from "node:path";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { ApiJsonValue } from "../api/api-types";
+import type { AppEventBus } from "../app/app-event-bus";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { JsonTool } from "../../shared/utils/json-tool";
@@ -10,7 +11,7 @@ import { get_runtime_section_revision } from "../project/project-section-revisio
 import { ProjectMutationCoordinator } from "../project/project-mutation-coordinator";
 import { ProjectChangePublisher } from "../project/project-change-publisher";
 import { ProjectSessionState } from "../project/project-session-state";
-import type { ProjectMutationResult } from "../../shared/project/event";
+import type { ProjectMutationResult } from "../../shared/project-event";
 import { build_analysis_glossary_entry_from_candidate } from "../../shared/analysis-candidate";
 import { QualityRule, type QualityRuleKind } from "../../base/quality";
 import { Prompt, type PromptKind } from "../../base/prompt";
@@ -48,6 +49,7 @@ export class QualityService {
     app_setting_service: AppSettingService,
     database: ProjectDatabase,
     session_state: ProjectSessionState,
+    app_event_bus: AppEventBus,
     project_change_publisher: ProjectChangePublisher | null = null,
     native_fs: NativeFs = default_native_fs,
   ) {
@@ -55,7 +57,11 @@ export class QualityService {
     this.app_setting_service = app_setting_service;
     this.database = database;
     this.session_state = session_state;
-    this.mutation_coordinator = new ProjectMutationCoordinator(database, project_change_publisher);
+    this.mutation_coordinator = new ProjectMutationCoordinator(
+      database,
+      project_change_publisher,
+      app_event_bus,
+    );
     this.native_fs = native_fs;
   }
 
@@ -85,6 +91,11 @@ export class QualityService {
         value: current_revision + 1,
       }),
     ]);
+    await this.mutation_coordinator.publish_app_events_for_committed_change({
+      projectPath: project_path,
+      source: "quality_rule_save_entries",
+      updatedSections: ["quality"],
+    });
     return this.mutation_coordinator.publish_project_data_change({
       projectPath: project_path,
       source: "quality_rule_save_entries",
@@ -125,6 +136,11 @@ export class QualityService {
       }),
     );
     this.database.execute_transaction(operations);
+    await this.mutation_coordinator.publish_app_events_for_committed_change({
+      projectPath: project_path,
+      source: "quality_rule_update_meta",
+      updatedSections: ["quality"],
+    });
     return this.mutation_coordinator.publish_project_data_change({
       projectPath: project_path,
       source: "quality_rule_update_meta",
@@ -320,6 +336,11 @@ export class QualityService {
       );
     }
     this.database.execute_transaction(operations);
+    await this.mutation_coordinator.publish_app_events_for_committed_change({
+      projectPath: project_path,
+      source: "quality_prompt_save",
+      updatedSections: ["prompts"],
+    });
     return this.mutation_coordinator.publish_project_data_change({
       projectPath: project_path,
       source: "quality_prompt_save",

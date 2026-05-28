@@ -3,10 +3,10 @@ import { useCallback, useState } from "react";
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { normalize_task_snapshot, type TaskSnapshot } from "@/app/desktop/task-runtime-store";
 import type { LocaleKey } from "@/app/locale/locale-provider";
-import type { ProjectStoreReader } from "@/project/store/project-store";
 import {
   create_clear_translations_plan,
   create_set_translation_status_plan,
+  type ProofreadingMutationItemSnapshot,
   type ProofreadingMutationPlan,
 } from "@/pages/proofreading-page/proofreading-mutation-planner";
 import {
@@ -14,6 +14,7 @@ import {
   type ProofreadingManualStatusCode,
   type ProofreadingPendingConfirmation,
 } from "@/pages/proofreading-page/types";
+import type { ProjectDataSectionRevisions } from "@shared/project-event";
 
 type LocaleTextResolver = (key: LocaleKey, params?: Record<string, string>) => string;
 
@@ -39,7 +40,8 @@ type UseProofreadingBatchActionsOptions = {
   is_refreshing: boolean;
   is_mutating: boolean;
   dialog_open: boolean;
-  project_store: ProjectStoreReader;
+  section_revisions: ProjectDataSectionRevisions;
+  read_items_by_row_ids: (row_ids: string[]) => Promise<ProofreadingMutationItemSnapshot[]>;
   task_snapshot: TaskSnapshot;
   proofreading_revision: number;
   sync_task_snapshot: (snapshot: TaskSnapshot) => void;
@@ -126,7 +128,8 @@ export function useProofreadingBatchActions(
     is_refreshing,
     is_mutating,
     dialog_open,
-    project_store,
+    section_revisions,
+    read_items_by_row_ids,
     task_snapshot,
     proofreading_revision,
     sync_task_snapshot,
@@ -158,16 +161,15 @@ export function useProofreadingBatchActions(
       remember_preferred_row_id(resolve_preferred_row_id(preferred_row_id));
       set_is_mutating(true);
       try {
-        const current_project_state = project_store.getState();
         const ack = await api_fetch<RetranslateTaskAck>("/api/tasks/start", {
           task_type: "translation",
           mode: "new",
           scope: { kind: "items", item_ids },
           expected_section_revisions: {
-            items: current_project_state.revisions.sections.items ?? 0,
+            items: section_revisions.items ?? 0,
             proofreading: proofreading_revision,
-            quality: current_project_state.revisions.sections.quality ?? 0,
-            prompts: current_project_state.revisions.sections.prompts ?? 0,
+            quality: section_revisions.quality ?? 0,
+            prompts: section_revisions.prompts ?? 0,
           },
         });
         sync_task_snapshot(
@@ -190,8 +192,10 @@ export function useProofreadingBatchActions(
       close_edit_dialog,
       dialog_open,
       handle_api_error,
-      project_store,
       proofreading_revision,
+      section_revisions.items,
+      section_revisions.prompts,
+      section_revisions.quality,
       remember_preferred_row_id,
       resolve_preferred_row_id,
       set_is_mutating,
@@ -211,21 +215,26 @@ export function useProofreadingBatchActions(
       await run_project_mutation({
         path: "/api/project/proofreading/clear-translations",
         plan: create_clear_translations_plan({
-          state: project_store.getState(),
+          snapshot: {
+            items: await read_items_by_row_ids(row_ids),
+            section_revisions,
+          },
           task_snapshot,
           item_ids: target_item_ids,
         }),
         fallback_error_key: "proofreading_page.feedback.clear_translation_failed",
         preferred_row_id,
         success_message_builder: (changed_count) => {
-          return t("proofreading_page.feedback.clear_translation_success")
-            .replace("{COUNT}", changed_count.toString());
+          return t("proofreading_page.feedback.clear_translation_success").replace(
+            "{COUNT}",
+            changed_count.toString(),
+          );
         },
         close_dialog: dialog_open,
         empty_warning_message: null,
       });
     },
-    [dialog_open, project_store, run_project_mutation, t, task_snapshot],
+    [dialog_open, read_items_by_row_ids, run_project_mutation, section_revisions, t, task_snapshot],
   );
 
   const submit_set_translation_status_row_ids = useCallback(
@@ -243,7 +252,10 @@ export function useProofreadingBatchActions(
       await run_project_mutation({
         path: "/api/project/proofreading/set-status",
         plan: create_set_translation_status_plan({
-          state: project_store.getState(),
+          snapshot: {
+            items: await read_items_by_row_ids(row_ids),
+            section_revisions,
+          },
           task_snapshot,
           item_ids: target_item_ids,
           status,
@@ -259,7 +271,7 @@ export function useProofreadingBatchActions(
         empty_warning_message: null,
       });
     },
-    [dialog_open, project_store, run_project_mutation, t, task_snapshot],
+    [dialog_open, read_items_by_row_ids, run_project_mutation, section_revisions, t, task_snapshot],
   );
 
   const request_retranslate_row_ids = useCallback(

@@ -12,7 +12,7 @@ const TEXT_TYPE_INFERENCE_FILE_TYPES = new Set(["XLSX", "KVJSON", "MESSAGEJSON"]
 
 /**
  * 迁移背景：
- * 完整公开 item DTO 成为 ProjectStore、预过滤、reset 和全量写回的唯一跨层形状。
+ * 完整公开 item DTO 成为项目 query、预过滤、reset 和全量写回的唯一跨层形状。
  * 已执行过旧写回迁移的项目不会再进入旧迁移，因此公开 DTO 依赖字段必须由新的迁移 id 一次性补齐。
  *
  * 生效场景：

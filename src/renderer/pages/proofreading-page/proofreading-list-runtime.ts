@@ -16,6 +16,7 @@ type ProofreadingSortableItemRecord = {
   src: string;
   dst: string;
   status: string;
+  retry_count: number;
 };
 
 // 自然排序固定为文件路径 + 行号，是所有二级排序的稳定兜底。
@@ -156,6 +157,7 @@ export function create_proofreading_client_item(args: {
     src: args.item.src,
     dst: args.item.dst,
     status: args.item.status,
+    retry_count: args.item.retry_count,
     warnings: [...args.warnings],
     warning_fragments_by_code: {
       ...(args.warning_fragments_by_code.KANA === undefined

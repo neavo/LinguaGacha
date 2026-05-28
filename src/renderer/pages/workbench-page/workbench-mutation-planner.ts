@@ -1,5 +1,3 @@
-import type { ProjectStoreState } from "@/project/store/project-store";
-
 export type WorkbenchPlannerSettings = {
   source_language: string; // 后端预过滤使用的源语言设置
   mtool_optimizer_enable: boolean; // 后端 KVJSON 优化预过滤开关
@@ -7,7 +5,7 @@ export type WorkbenchPlannerSettings = {
 };
 
 type WorkbenchPlannerFileRecord = {
-  rel_path: string; // ProjectStore 中的项目内相对路径
+  rel_path: string; // 后端 query 返回的项目内相对路径
   file_type: string; // 只用于前端路径校验，最终文件类型以后端解析为准
   sort_index: number; // 当前文件排序序号，重排命令用完整路径列表表达顺序
 };
@@ -16,6 +14,11 @@ type WorkbenchPlannerFileRecord = {
 type WorkbenchTranslationInheritanceMode = "none" | "inherit";
 
 export type WorkbenchFileConflictAction = "skip" | "replace";
+
+export type WorkbenchMutationPlanningState = {
+  files: WorkbenchPlannerFileRecord[]; // 来自后端工作台 query 的当前文件窗口事实
+  section_revisions: Record<string, number>; // mutation 乐观锁只读取本次 query 携带的 revision
+};
 
 export type WorkbenchProjectMutationPlan = {
   updatedSections: Array<"files" | "items" | "analysis">; // UI 预期受影响 section，真实 revision 以后端事件为准
@@ -50,7 +53,7 @@ function create_workbench_plan_error(
   return new WorkbenchMutationPlanError(code);
 }
 
-// 从 ProjectStore 文件镜像收窄出路径校验需要的字段。
+// 从工作台 query 文件视图收窄出路径校验需要的字段。
 function normalize_file_record(value: unknown): WorkbenchPlannerFileRecord | null {
   if (typeof value !== "object" || value === null) {
     return null;
@@ -64,9 +67,11 @@ function normalize_file_record(value: unknown): WorkbenchPlannerFileRecord | nul
 }
 
 // 建立当前文件路径索引，planner 只做路径存在与冲突判断。
-function build_file_map(state: ProjectStoreState): Map<string, WorkbenchPlannerFileRecord> {
+function build_file_map(
+  state: WorkbenchMutationPlanningState,
+): Map<string, WorkbenchPlannerFileRecord> {
   const file_map = new Map<string, WorkbenchPlannerFileRecord>();
-  for (const value of Object.values(state.files)) {
+  for (const value of state.files) {
     const file = normalize_file_record(value);
     if (file === null || file.rel_path === "") {
       continue;
@@ -77,7 +82,7 @@ function build_file_map(state: ProjectStoreState): Map<string, WorkbenchPlannerF
 }
 
 function build_casefold_file_map(
-  state: ProjectStoreState,
+  state: WorkbenchMutationPlanningState,
 ): Map<string, WorkbenchPlannerFileRecord> {
   // 同名判断采用工作台文件口径的大小写不敏感 key，保留原始 rel_path 作为提交规范路径。
   const file_map = new Map<string, WorkbenchPlannerFileRecord>();
@@ -105,12 +110,12 @@ function normalize_target_rel_paths(rel_paths: string[]): string[] {
 
 // 每个 command 只携带它依赖的 section revision，由后端执行乐观锁。
 function build_expected_revisions(
-  state: ProjectStoreState,
+  state: WorkbenchMutationPlanningState,
   sections: Array<"files" | "items" | "analysis">,
 ): Record<string, number> {
   const expected_section_revisions: Record<string, number> = {};
   for (const section of sections) {
-    expected_section_revisions[section] = state.revisions.sections[section] ?? 0;
+    expected_section_revisions[section] = state.section_revisions[section] ?? 0;
   }
   return expected_section_revisions;
 }
@@ -143,7 +148,7 @@ function normalize_casefold_path(value: string): string {
 
 // 重排命令必须完整覆盖当前文件集合，不能提交局部排序片段。
 export function create_workbench_reorder_plan(args: {
-  state: ProjectStoreState;
+  state: WorkbenchMutationPlanningState;
   ordered_rel_paths: string[];
 }): WorkbenchProjectMutationPlan {
   const file_map = build_file_map(args.state);
@@ -169,7 +174,7 @@ export function create_workbench_reorder_plan(args: {
 
 // 重置文件只提交目标路径和设置镜像，items 与派生 meta 由后端重算。
 export function create_workbench_reset_file_plan(args: {
-  state: ProjectStoreState;
+  state: WorkbenchMutationPlanningState;
   task_snapshot?: Record<string, unknown>;
   rel_path: string;
   settings: WorkbenchPlannerSettings;
@@ -195,7 +200,7 @@ export function create_workbench_reset_file_plan(args: {
 
 // 删除文件只提交目标路径集合，文件删除、items 过滤和分析重置由后端事务完成。
 export function create_workbench_delete_files_plan(args: {
-  state: ProjectStoreState;
+  state: WorkbenchMutationPlanningState;
   task_snapshot?: Record<string, unknown>;
   rel_paths: string[];
   settings: WorkbenchPlannerSettings;
@@ -278,7 +283,7 @@ function build_import_conflict_signature(files: WorkbenchFileParsePreview[]): st
 
 // 工作台导入预演只判断新增与同名替换候选，不把解析出的 item 当作最终事实。
 export function create_workbench_import_files_preview(args: {
-  state: ProjectStoreState;
+  state: WorkbenchMutationPlanningState;
   parsed_files: WorkbenchFileParsePreview[];
 }): WorkbenchImportFilesPreview {
   const existing_file_map = build_casefold_file_map(args.state);
@@ -330,7 +335,7 @@ function select_import_files(
 
 // 文件导入提交源路径、目标路径、同名策略和继承模式；id 分配、解析、继承和预过滤都在后端。
 export function create_workbench_import_files_plan(args: {
-  state: ProjectStoreState;
+  state: WorkbenchMutationPlanningState;
   task_snapshot?: Record<string, unknown>;
   parsed_files: WorkbenchFileParsePreview[];
   conflict_action: WorkbenchFileConflictAction;

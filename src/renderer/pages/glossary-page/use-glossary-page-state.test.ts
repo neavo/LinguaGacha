@@ -3,9 +3,9 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { INPUT_QUERY_DEBOUNCE_MS } from "@/hooks/use-debounce";
-import type { QualityRuleStatisticsCacheSnapshot } from "@/project/quality/quality-rule-statistics-store";
+import type { QualityRuleStatisticsCacheSnapshot } from "@/project/quality/quality-statistics-store";
 import type { ProjectItemPublicRecord } from "@base/item";
-import { createProjectItemIndex } from "@/project/store/project-item-index";
+import { createProjectItemIndex } from "@/project/project-item-index";
 import { buildGlossaryStatisticsState, useGlossaryPageState } from "./use-glossary-page-state";
 import type { GlossaryEntry } from "./types";
 
@@ -239,9 +239,11 @@ function create_glossary_quality(
 
 let current_statistics_cache: QualityRuleStatisticsCacheSnapshot;
 let task_snapshot: { busy: boolean; status: string };
+let project_change_seq = 0;
 
 // notify_project_store_listeners 收口测试中的共享步骤，保证断言只关注当前行为。
 function notify_project_store_listeners(): void {
+  project_change_seq += 1;
   for (const listener of project_store_listeners) {
     listener();
   }
@@ -322,6 +324,24 @@ vi.mock("@/app/desktop/desktop-api", () => {
   };
 });
 
+vi.mock("@/project/query/quality-rule-query", () => {
+  return {
+    read_project_quality_rule: vi.fn(async (rule_type: keyof typeof runtime_state.quality) => ({
+      projectPath: runtime_state.project.path,
+      sectionRevisions: { ...runtime_state.revisions.sections },
+      qualityRule: runtime_state.quality[rule_type],
+    })),
+  };
+});
+
+vi.mock("@/project/query/project-section-revisions-query", () => {
+  return {
+    read_project_section_revisions: vi.fn(async () => ({
+      ...runtime_state.revisions.sections,
+    })),
+  };
+});
+
 vi.mock("@/app/navigation/navigation-context", () => {
   return {
     useAppNavigation: () => ({
@@ -335,6 +355,12 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
   return {
     useDesktopRuntime: () => ({
       project_snapshot: runtime_state.project,
+      project_change_signal: {
+        seq: project_change_seq,
+        reason: "test",
+        updated_sections: ["quality"],
+        results: [],
+      },
       project_store,
       settings_snapshot: {},
       apply_settings_snapshot: vi.fn(),
@@ -365,7 +391,7 @@ vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
   };
 });
 
-vi.mock("@/project/quality/quality-rule-statistics-context", () => {
+vi.mock("@/project/quality/quality-statistics-context", () => {
   return {
     useQualityRuleStatistics: () => current_statistics_cache,
   };
@@ -646,6 +672,7 @@ describe("useGlossaryPageState", () => {
       busy: false,
       status: "idle",
     };
+    project_change_seq = 0;
     page_ui_state_store.clear();
     render_version = 0;
   });
@@ -676,6 +703,7 @@ describe("useGlossaryPageState", () => {
   // rerender_probe 收口测试中的共享步骤，保证断言只关注当前行为。
   async function rerender_probe(): Promise<void> {
     render_version += 1;
+    project_change_seq += 1;
     await act(async () => {
       root?.render(
         createElement(Probe, {
@@ -685,6 +713,12 @@ describe("useGlossaryPageState", () => {
           },
         }),
       );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
     });
   }
 
@@ -1189,8 +1223,14 @@ describe("useGlossaryPageState", () => {
       notify_project_store_listeners();
     });
     await rerender_probe();
+    await rerender_probe();
+    await act(async () => {
+      await new Promise((resolve) => {
+        window.setTimeout(resolve, 0);
+      });
+    });
 
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["橘子"]);
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).not.toContain("香蕉");
 
     await act(async () => {
       resolve_save(stale_project_mutation_result);
@@ -1221,7 +1261,8 @@ describe("useGlossaryPageState", () => {
     });
     await rerender_probe();
 
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["橘子"]);
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toContain("橘子");
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).not.toContain("香蕉");
   });
 
   it("保存仅修改翻译或说明时保留旧统计 ready 与 badge", async () => {

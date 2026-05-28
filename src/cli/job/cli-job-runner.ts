@@ -2,7 +2,7 @@ import fs from "node:fs";
 
 import type { ApiJsonValue } from "../../core/api/api-types";
 import type { CoreServices } from "../../core/bootstrap/core-services";
-import type { CoreEventPayload } from "../../core/events/core-event-hub";
+import type { ApiStreamPayload } from "../../core/api/api-stream-hub";
 import { normalize_project_settings_snapshot } from "../../base/setting";
 import type { TaskSnapshot } from "../../core/engine/protocol/task-snapshot";
 import {
@@ -155,7 +155,7 @@ async function start_and_wait_for_task(
 }
 
 /**
- * 订阅公开任务事件直到 done/error；CLI 与 GUI 共享同一条 TaskSnapshot 事实链路。
+ * 订阅公开任务 stream 直到 done/error；CLI 与 GUI 共享同一条 TaskSnapshot 事实链路。
  */
 function create_task_event_waiter(
   core_services: CoreServices,
@@ -168,8 +168,8 @@ function create_task_event_waiter(
     resolve_wait = resolve;
     reject_wait = reject;
   });
-  const unsubscribe = core_services.core_event_hub.subscribe("task.snapshot_changed", (event) => {
-    const snapshot = normalize_task_snapshot_event(event.payload);
+  const unsubscribe = core_services.api_stream_hub.subscribe("task.snapshot_changed", (message) => {
+    const snapshot = normalize_task_snapshot_payload(message.payload);
     if (snapshot === null || snapshot.task_type !== task_type) {
       return;
     }
@@ -191,7 +191,7 @@ function create_task_event_waiter(
 /**
  * task.snapshot_changed 载荷只在 CLI 边界做窄化；非法 payload 被忽略，避免污染 stdout 协议。
  */
-function normalize_task_snapshot_event(payload: CoreEventPayload): TaskSnapshot | null {
+function normalize_task_snapshot_payload(payload: ApiStreamPayload): TaskSnapshot | null {
   const task = payload["task"];
   if (typeof task !== "object" || task === null || Array.isArray(task)) {
     return null;

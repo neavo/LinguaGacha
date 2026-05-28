@@ -1,8 +1,6 @@
 import { Funnel } from "lucide-react";
-import { useMemo } from "react";
 
 import type { ScreenComponentProps } from "@/app/navigation/types";
-import { useProjectSessionPageCacheRegistration } from "@/app/session/project-session-context";
 import "@/pages/proofreading-page/proofreading-page.css";
 import { useProofreadingPageState } from "@/pages/proofreading-page/use-proofreading-page-state";
 import { ProofreadingConfirmDialog } from "@/pages/proofreading-page/components/proofreading-confirm-dialog";
@@ -23,25 +21,10 @@ const PROOFREADING_SCOPE_LABEL_KEY_BY_SCOPE = {
 // PROOFREADING_SEARCH_SCOPES 是搜索栏作用域的稳定顺序，避免菜单渲染散落魔术数组。
 const PROOFREADING_SEARCH_SCOPES: ProofreadingSearchScope[] = ["all", "src", "dst"];
 
-// ProofreadingPage 只组合校对页状态、页面缓存登记和展示组件，不持有项目事实。
+// ProofreadingPage 只组合校对页状态和展示组件，不持有项目事实。
 export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const proofreading_page_state = useProofreadingPageState();
-  // page_cache_snapshot 只在校对页挂载期间登记，卸载后不阻塞其它页面 barrier。
-  const page_cache_snapshot = useMemo(() => {
-    return {
-      isRefreshing: proofreading_page_state.is_refreshing,
-      consumedRevisions: proofreading_page_state.consumed_revisions,
-      requiredSections: proofreading_page_state.required_sections,
-      settledProjectPath: proofreading_page_state.settled_project_path,
-    };
-  }, [
-    proofreading_page_state.consumed_revisions,
-    proofreading_page_state.is_refreshing,
-    proofreading_page_state.required_sections,
-    proofreading_page_state.settled_project_path,
-  ]);
-  useProjectSessionPageCacheRegistration("proofreading", page_cache_snapshot);
   const search_disabled = proofreading_page_state.readonly || proofreading_page_state.is_mutating;
   const table_action_disabled = search_disabled || proofreading_page_state.is_refreshing;
   const filter_disabled = table_action_disabled || proofreading_page_state.cache_status !== "ready";

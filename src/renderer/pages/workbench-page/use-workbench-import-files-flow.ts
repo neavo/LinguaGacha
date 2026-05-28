@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } from "react";
 
-import type { ProjectSessionBarrierCheckpoint } from "@/app/session/project-session-barrier";
 import { api_fetch } from "@/app/desktop/desktop-api";
 import type { ProjectMutationResultPayload } from "@/app/desktop/desktop-project-mutation";
 import type { TaskSnapshot } from "@/app/desktop/task-runtime-store";
 import type { LocaleKey } from "@/app/locale/locale-provider";
-import type { ProjectStoreReader } from "@/project/store/project-store";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { normalize_source_paths } from "@/lib/source-paths";
 import {
@@ -18,6 +16,7 @@ import {
   type WorkbenchFileConflictAction,
   type WorkbenchFileParsePreview,
   type WorkbenchImportFilesPreview,
+  type WorkbenchMutationPlanningState,
   type WorkbenchPlannerSettings,
   type WorkbenchProjectMutationPlan,
 } from "@/pages/workbench-page/workbench-mutation-planner";
@@ -25,9 +24,8 @@ import type { WorkbenchDialogState } from "@/pages/workbench-page/types";
 
 type PendingImportFilesRequest = {
   parsed_files: WorkbenchFileParsePreview[]; // parsed_files 是 Core 预解析后的文件草稿，不作为最终项目事实
-  barrier_checkpoint: ProjectSessionBarrierCheckpoint | null;
   conflict_action: WorkbenchFileConflictAction | null;
-  conflict_signature: string; // conflict_signature 用于识别对话期间 ProjectStore 是否变化
+  conflict_signature: string; // conflict_signature 用于识别对话期间文件视图是否变化
 };
 
 type WorkbenchImportFlowToastKind = "info" | "success" | "warning" | "error";
@@ -36,10 +34,9 @@ type WorkbenchImportFilesFlowOptions = {
   readonly: boolean;
   project_identity: string;
   dialog_state: WorkbenchDialogState;
-  project_store: ProjectStoreReader;
+  get_planning_state: () => WorkbenchMutationPlanningState;
   task_snapshot: TaskSnapshot;
   planner_settings: WorkbenchPlannerSettings; // 导入命令只需要预过滤设置，不依赖完整应用设置快照
-  createProjectSessionBarrierCheckpoint?: () => ProjectSessionBarrierCheckpoint;
   run_modal_progress_toast: <T>(args: {
     message: string;
     task: () => Promise<T>;
@@ -48,7 +45,6 @@ type WorkbenchImportFilesFlowOptions = {
   run_project_file_mutation: (
     plan: WorkbenchProjectMutationPlan,
     request: (body: Record<string, unknown>) => Promise<ProjectMutationResultPayload>,
-    barrier_checkpoint: ProjectSessionBarrierCheckpoint | null,
   ) => Promise<ProjectMutationResultPayload>;
   set_dialog_state: Dispatch<SetStateAction<WorkbenchDialogState>>;
   set_dialog_submitting: (next_submitting: boolean) => void;
@@ -175,8 +171,8 @@ export function useWorkbenchImportFilesFlow(
       pending_request: PendingImportFilesRequest,
       inheritance_mode: "none" | "inherit",
     ): Promise<void> => {
-      // 提交前重新基于 ProjectStore 预演，避免对话期间项目事实变化后沿用旧同名判断。
-      const state = options.project_store.getState();
+      // 提交前重新基于最近 query 结果预演，避免对话期间项目事实变化后沿用旧同名判断。
+      const state = options.get_planning_state();
       const preview = create_workbench_import_files_preview({
         state,
         parsed_files: pending_request.parsed_files,
@@ -212,16 +208,12 @@ export function useWorkbenchImportFilesFlow(
         settings: options.planner_settings,
         inheritance_mode,
       });
-      const import_payload = await options.run_project_file_mutation(
-        import_plan,
-        async (body) => {
-          return await api_fetch<ProjectMutationResultPayload>(
-            "/api/project/workbench/import-files",
-            body,
-          );
-        },
-        pending_request.barrier_checkpoint,
-      );
+      const import_payload = await options.run_project_file_mutation(import_plan, async (body) => {
+        return await api_fetch<ProjectMutationResultPayload>(
+          "/api/project/workbench/import-files",
+          body,
+        );
+      });
       const failure_toast = format_source_file_parse_failure_toast({
         value: (import_payload as { failed_files?: unknown }).failed_files,
         text: options.t,
@@ -248,7 +240,7 @@ export function useWorkbenchImportFilesFlow(
       }
 
       const preview = create_workbench_import_files_preview({
-        state: options.project_store.getState(),
+        state: options.get_planning_state(),
         parsed_files: pending_request.parsed_files,
       });
       if (preview.conflict_signature !== pending_request.conflict_signature) {
@@ -281,7 +273,6 @@ export function useWorkbenchImportFilesFlow(
         return;
       }
 
-      const barrier_checkpoint = options.createProjectSessionBarrierCheckpoint?.() ?? null;
       const parsed_files: WorkbenchFileParsePreview[] = [];
       let parse_failure_toast_shown = false; // parse_failure_toast_shown 防止全失败时再叠加泛错误
 
@@ -330,7 +321,7 @@ export function useWorkbenchImportFilesFlow(
       });
 
       const import_preview = create_workbench_import_files_preview({
-        state: options.project_store.getState(),
+        state: options.get_planning_state(),
         parsed_files,
       });
       if (import_preview.importable_files.length === 0) {
@@ -343,7 +334,6 @@ export function useWorkbenchImportFilesFlow(
 
       const pending_request: PendingImportFilesRequest = {
         parsed_files,
-        barrier_checkpoint,
         conflict_action: null,
         conflict_signature: import_preview.conflict_signature,
       };

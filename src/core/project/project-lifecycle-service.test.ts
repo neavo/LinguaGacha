@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { AppEventBus } from "../app/app-event-bus";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { LogManager } from "../log/log-manager";
@@ -90,6 +91,24 @@ describe("ProjectLifecycleService", () => {
       },
     ]);
     expect(session_state.snapshot()).toEqual({ loaded: true, projectPath: project_path });
+  });
+
+  it("load 在内部缓存热机失败时阻断 loaded", async () => {
+    const project_path = write_file(path.join(create_temp_dir(), "broken-cache.lg"));
+    const session_state = create_session_state();
+    const app_event_bus = new AppEventBus();
+    app_event_bus.subscribe("project.opened_for_cache", () => {
+      throw new Error("热机失败");
+    });
+    const service = create_service({
+      database: create_database(),
+      session_state,
+      app_event_bus,
+    });
+
+    await expect(service.load_project({ path: project_path })).rejects.toThrow("热机失败");
+
+    expect(session_state.snapshot()).toEqual({ loaded: false, projectPath: "" });
   });
 
   it("open-preview 仅目标语言变化时返回 settings_only", () => {
@@ -501,6 +520,25 @@ describe("ProjectLifecycleService", () => {
     });
   });
 
+  it("unload 先发布内部卸载事件，再清理会话和 database 缓存", async () => {
+    const calls: string[] = [];
+    const project_path = "E:/Project/demo.lg";
+    const app_event_bus = new AppEventBus();
+    app_event_bus.subscribe("project.unloaded", () => {
+      calls.push("cache");
+    });
+    const database = create_database({ calls });
+    const service = create_service({
+      database,
+      app_event_bus,
+      session_state: create_session_state({ loaded: true, projectPath: project_path }),
+    });
+
+    await service.unload_project();
+
+    expect(calls).toEqual(["cache", "closeProject"]);
+  });
+
   it("unload 未加载时不释放 database 缓存", async () => {
     const database = create_database();
     const service = create_service({
@@ -537,6 +575,7 @@ describe("ProjectLifecycleService", () => {
       info: ReturnType<typeof vi.fn>;
       error: ReturnType<typeof vi.fn>;
     };
+    app_event_bus?: AppEventBus;
   }): ProjectLifecycleService {
     const app_root = options.app_root ?? create_temp_dir();
     return new ProjectLifecycleService(
@@ -545,6 +584,7 @@ describe("ProjectLifecycleService", () => {
       create_setting_service(options.config ?? {}),
       new AppPathService({ appRoot: app_root }),
       options.log_manager ?? create_log_manager(),
+      options.app_event_bus ?? new AppEventBus(),
     );
   }
 

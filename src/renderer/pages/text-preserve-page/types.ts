@@ -1,4 +1,4 @@
-import type { QualityStatisticsDependencySnapshot } from "@/project/quality/quality-statistics-auto";
+import type { QualityStatisticsDependencySnapshot } from "@shared/quality/quality-statistics";
 import type { QualityRuleImportConfirmState } from "@/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-state";
 import type { AppTableSortState } from "@/widgets/app-table/app-table-types";
 

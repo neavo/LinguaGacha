@@ -4,9 +4,9 @@ import {
   is_project_change_record,
   normalize_project_change_event,
 } from "@/app/desktop/desktop-project-change-normalizer";
+import type { ProjectRuntimeChangeEvent } from "@/app/desktop/desktop-project-change-types";
 import { summarize_project_change_for_diagnostics } from "@/app/desktop/desktop-runtime-diagnostics";
 import type { DesktopRuntimeRecoveryActions } from "@/app/desktop/desktop-runtime-recovery";
-import type { ProjectStoreChangeEvent } from "@/project/store/project-store";
 import {
   InternalInvariantError,
   type LogErrorContextInput,
@@ -22,7 +22,7 @@ export type ProjectMutationResultPayload = {
 
 export type ProjectMutationResult = {
   accepted: true;
-  changes: ProjectStoreChangeEvent[];
+  changes: ProjectRuntimeChangeEvent[];
 };
 
 type ProjectMutationCommitPhase = "request" | "normalize" | "prepare" | "apply";
@@ -46,7 +46,7 @@ export type ProjectMutationCommitResult<
   TPayload extends ProjectMutationResultPayload = ProjectMutationResultPayload,
 > = {
   payload: TPayload; // payload 保留后端原始响应，供导入流程读取 failed_files 等扩展字段
-  mutation_result: ProjectMutationResult; // mutation_result 是已经进入 ProjectStore 管线的 canonical changes
+  mutation_result: ProjectMutationResult; // mutation_result 是已经进入项目事件管线的 canonical changes
 };
 
 export type ProjectMutationCommitter = <
@@ -138,7 +138,7 @@ export function useProjectMutationCommitter(
 function normalize_project_mutation_change_event(
   change: unknown,
   index: number,
-): ProjectStoreChangeEvent {
+): ProjectRuntimeChangeEvent {
   if (!is_project_change_record(change)) {
     throw new InternalInvariantError({
       diagnostic_context: {

@@ -1,8 +1,8 @@
 import {
-  isProjectStoreStage,
-  type ProjectStoreChangeEvent,
-  type ProjectStoreStage,
-} from "@/project/store/project-store";
+  is_project_runtime_stage,
+  type ProjectRuntimeChangeEvent,
+  type ProjectRuntimeStage,
+} from "@/app/desktop/desktop-project-change-types";
 import {
   normalize_section_array,
   normalize_section_revisions,
@@ -13,11 +13,11 @@ import {
   type ProjectChangeItemsPayload,
   type ProjectChangeJsonRecord,
   type ProjectChangePayloadMode,
-} from "@shared/project/event";
+} from "@shared/project-event";
 import { is_item_status } from "@base/item";
 
 /**
- * Core SSE 与同步 mutation 共享的项目变更载荷，入口处必须立即转成 ProjectStore 事件。
+ * Core SSE 与同步 mutation 共享的项目变更载荷，入口处必须立即转成运行态事件。
  */
 export type ProjectChangeEventPayload = {
   eventId?: unknown;
@@ -32,24 +32,14 @@ export type ProjectChangeEventPayload = {
 };
 
 /**
- * read-sections 返回的是 canonical section 快照，只允许作为补读或完整 session 初始化的写入来源。
- */
-export type ProjectReadSectionsPayload = {
-  projectPath?: unknown;
-  sections?: unknown;
-  projectRevision?: unknown;
-  sectionRevisions?: unknown;
-};
-
-/**
- * 将后端 project.data_changed / mutation change 载荷收窄为 ProjectStore 唯一可写事件形状。
+ * 将后端 project.data_changed / mutation change 载荷收窄为前端运行态刷新事件。
  */
 export function normalize_project_change_event(
   payload: ProjectChangeEventPayload,
-): ProjectStoreChangeEvent | null {
+): ProjectRuntimeChangeEvent | null {
   const project_path = String(payload.projectPath ?? "").trim();
   const updated_sections = normalize_section_array(payload.updatedSections).filter(
-    isProjectStoreStage,
+    is_project_runtime_stage,
   );
   if (project_path === "" || updated_sections.length === 0) {
     return null;
@@ -84,37 +74,6 @@ export function normalize_project_change_event(
 }
 
 /**
- * 将 read-sections 快照包装成 exact revision 可用的 ProjectStore 变更事件。
- */
-export function normalize_project_read_sections_event(
-  payload: ProjectReadSectionsPayload,
-): ProjectStoreChangeEvent | null {
-  const project_path = String(payload.projectPath ?? "").trim();
-  const raw_sections = is_record(payload.sections) ? payload.sections : {};
-  const sections = Object.fromEntries(
-    Object.entries(raw_sections).flatMap(([section, data]) => {
-      if (!isProjectStoreStage(section)) {
-        return [];
-      }
-      return [[section, { payloadMode: "canonical-delta", data }]];
-    }),
-  );
-  const updated_sections = Object.keys(sections).filter(isProjectStoreStage);
-  if (project_path === "" || updated_sections.length === 0) {
-    return null;
-  }
-
-  return {
-    source: "project_read_sections",
-    projectPath: project_path,
-    projectRevision: Number(payload.projectRevision ?? 0),
-    updatedSections: updated_sections,
-    operations: [{ sections }],
-    sectionRevisions: normalize_section_revisions(payload.sectionRevisions),
-  };
-}
-
-/**
  * mutation result 需要先证明单个 change 是对象，再进入共享项目变更 normalizer。
  */
 export function is_project_change_record(value: unknown): value is Record<string, unknown> {
@@ -124,14 +83,14 @@ export function is_project_change_record(value: unknown): value is Record<string
 // normalize_project_change_sections 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_project_change_sections(
   value: unknown,
-): Partial<Record<ProjectStoreStage, { payloadMode: ProjectChangePayloadMode; data: unknown }>> {
+): Partial<Record<ProjectRuntimeStage, { payloadMode: ProjectChangePayloadMode; data: unknown }>> {
   if (!is_record(value)) {
     return {};
   }
 
   return Object.fromEntries(
     Object.entries(value).flatMap(([section, raw_payload]) => {
-      if (!isProjectStoreStage(section) || !is_record(raw_payload)) {
+      if (!is_project_runtime_stage(section) || !is_record(raw_payload)) {
         return [];
       }
       const payload_mode: ProjectChangePayloadMode = normalizeProjectChangePayloadMode(

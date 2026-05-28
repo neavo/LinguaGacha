@@ -391,7 +391,7 @@ describe("ApiGatewayServer", () => {
     });
   });
 
-  it("由 API Gateway 直接提供项目数据读取接口", async () => {
+  it("由 API Gateway 直接提供项目轻量 manifest 和页面 query 接口", async () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
     const lg_path = path.join(app_root, "project-read-api.lg");
@@ -431,17 +431,26 @@ describe("ApiGatewayServer", () => {
         sectionRevisions?: Record<string, number>;
       };
     };
-    const sections_response = await post_json(started.baseUrl, "/api/project/read-sections", {
-      sections: ["project", "items", "prompts"],
-    });
-    const sections_body = (await sections_response.json()) as {
+    const proofreading_response = await post_json(
+      started.baseUrl,
+      "/api/project/query/proofreading",
+      { row_ids: ["1"] },
+    );
+    const proofreading_body = (await proofreading_response.json()) as {
       ok?: boolean;
       data?: {
         projectPath?: string;
-        sections?: {
-          items?: Record<string, { src?: string }>;
-          prompts?: { translation?: { text?: string } };
-        };
+        rows?: Array<{ item?: { src?: string } }>;
+      };
+    };
+    const prompt_response = await post_json(started.baseUrl, "/api/project/query/prompt", {
+      task_type: "translation",
+    });
+    const prompt_body = (await prompt_response.json()) as {
+      ok?: boolean;
+      data?: {
+        projectPath?: string;
+        prompt?: { text?: string };
       };
     };
 
@@ -451,12 +460,14 @@ describe("ApiGatewayServer", () => {
     expect(manifest_body.data?.sectionRevisions).toMatchObject({
       prompts: 1,
     });
-    expect(sections_body.ok).toBe(true);
-    expect(sections_body.data?.projectPath).toBe(lg_path);
-    expect(sections_body.data?.sections?.items?.["1"]).toMatchObject({
+    expect(proofreading_body.ok).toBe(true);
+    expect(proofreading_body.data?.projectPath).toBe(lg_path);
+    expect(proofreading_body.data?.rows?.[0]?.item).toMatchObject({
       src: "原文",
     });
-    expect(sections_body.data?.sections?.prompts?.translation?.text).toBe("\uD800");
+    expect(prompt_body.ok).toBe(true);
+    expect(prompt_body.data?.projectPath).toBe(lg_path);
+    expect(prompt_body.data?.prompt?.text).toBe("\uD800");
   });
 
   it("analysis 候选读取路由只绑定当前 loaded 工程并返回完整候选池", async () => {

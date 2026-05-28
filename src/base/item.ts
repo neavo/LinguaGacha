@@ -333,7 +333,7 @@ export function collect_project_item_missing_public_fields(value: unknown): stri
   return missing_fields;
 }
 
-// API 和 ProjectStore 只使用 item_id/row_number，id/row 只在边界转换时短暂出现
+// API 和项目 query 只使用 item_id/row_number，id/row 只在边界转换时短暂出现
 export function normalize_project_item_public_record(
   value: unknown,
 ): ProjectItemPublicRecord | null {

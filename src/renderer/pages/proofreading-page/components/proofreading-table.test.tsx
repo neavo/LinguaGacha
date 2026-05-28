@@ -24,6 +24,7 @@ function create_item(): ProofreadingItem {
     src: "foo",
     dst: "bar",
     status: "PROCESSED",
+    retry_count: 0,
     warnings: ["GLOSSARY"],
     warning_fragments_by_code: {},
     applied_glossary_terms: [],

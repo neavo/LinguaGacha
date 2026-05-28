@@ -4,8 +4,9 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { AppEventBus } from "../../core/app/app-event-bus";
 import type { CoreServices } from "../../core/bootstrap/core-services";
-import { CoreEventHub } from "../../core/events/core-event-hub";
+import { ApiStreamHub } from "../../core/api/api-stream-hub";
 import type { DatabaseOperation } from "../../core/database/database-types";
 import type { CLICommandResources } from "../cli-parser";
 import { CLIJsonStatusReporter } from "../cli-status-reporter";
@@ -364,15 +365,17 @@ function create_core_services_harness(snapshots: HarnessTaskSnapshot[]): {
   start_task: ReturnType<typeof vi.fn>;
   unload_project: ReturnType<typeof vi.fn>;
 } {
-  const core_event_hub = new CoreEventHub();
+  const api_stream_hub = new ApiStreamHub();
+  const app_event_bus = new AppEventBus();
   const set_transient_overrides = vi.fn();
+  const execute = vi.fn(() => ({}));
   const execute_transaction = vi.fn();
   const create_project_commit = vi.fn(async () => undefined);
   const unload_project = vi.fn(async () => undefined);
   const start_task = vi.fn(async (request: { task_type?: string }) => {
     const task_type = String(request.task_type ?? "translation");
     for (const snapshot of snapshots.length > 0 ? snapshots : [{ status: "done" }]) {
-      core_event_hub.publish("task.snapshot_changed", {
+      api_stream_hub.publish("task.snapshot_changed", {
         task: {
           runtime_revision: 1,
           task_type,
@@ -419,8 +422,9 @@ function create_core_services_harness(snapshots: HarnessTaskSnapshot[]): {
         set_transient_overrides,
       },
       build_expected_section_revisions: () => ({ quality: 0, prompts: 0 }),
-      core_event_hub,
-      database: { execute_transaction },
+      app_event_bus,
+      api_stream_hub,
+      database: { execute, execute_transaction },
       file_export_service: { generate_translation_to_directory },
       project_lifecycle_service: {
         create_project_commit,

@@ -6,7 +6,7 @@ import {
   normalize_ts_conversion_runtime_items,
 } from "@/pages/ts-conversion-page/logic";
 import type { ProjectItemPublicRecord } from "@base/item";
-import { createProjectItemIndex } from "@/project/store/project-item-index";
+import { createProjectItemIndex } from "@/project/project-item-index";
 
 const marker_converter = (text: string): string =>
   text.replaceAll("台", "臺").replaceAll("后", "後");

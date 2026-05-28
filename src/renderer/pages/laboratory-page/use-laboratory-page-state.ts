@@ -2,13 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import type { ProjectMutationOperation } from "@/app/desktop/desktop-project-mutation";
-import { apply_project_prefilter_mutation } from "@/project/prefilter/prefilter-mutation-committer";
+import { apply_project_prefilter_mutation } from "@/project/settings/prefilter-mutation-committer";
 import { format_project_settings_aligned_toast } from "@/project/settings/alignment-toast";
 import type {
   SettingsSnapshot,
   SettingsSnapshotPayload,
 } from "@/app/desktop/desktop-runtime-context";
-import { useProjectSessionBarrier } from "@/app/session/project-session-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
@@ -47,12 +46,10 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     settings_snapshot,
     task_snapshot,
     project_snapshot,
-    project_store,
     apply_settings_snapshot,
     commit_project_mutation,
     refresh_settings,
   } = useDesktopRuntime();
-  const { create_barrier_checkpoint, wait_for_barrier } = useProjectSessionBarrier();
   const { push_toast, run_modal_progress_toast } = useDesktopToast();
   const { t } = useI18n();
   const [snapshot, set_snapshot] = useState<LaboratorySnapshot>(() => {
@@ -152,7 +149,6 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
       }
 
       await apply_project_prefilter_mutation({
-        state: project_store.getState(),
         source_language: next_settings_snapshot.source_language,
         target_language: next_settings_snapshot.target_language,
         mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
@@ -161,7 +157,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
         operation: LABORATORY_PREFILTER_MUTATION,
       });
     },
-    [commit_project_mutation, project_snapshot.loaded, project_store],
+    [commit_project_mutation, project_snapshot.loaded],
   );
 
   const rollback_prefilter_setting_after_prefilter_error = useCallback(
@@ -188,8 +184,6 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
         return;
       }
 
-      const barrier_checkpoint = create_barrier_checkpoint();
-
       try {
         await run_modal_progress_toast({
           message: t("laboratory_page.feedback.mtool_optimizer_loading_toast"),
@@ -210,10 +204,6 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
             }
 
             await apply_prefilter_from_settings(next_settings_snapshot);
-            // 预过滤设置会影响工作台统计，提示用户前必须等已挂载工作台缓存追上。
-            await wait_for_barrier("workbench_cache_refresh", {
-              checkpoint: barrier_checkpoint,
-            });
             if (project_snapshot.loaded) {
               push_toast(
                 "info",
@@ -247,13 +237,11 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     [
       apply_prefilter_from_settings,
       commit_update,
-      create_barrier_checkpoint,
       is_task_busy,
       project_snapshot.loaded,
       rollback_prefilter_setting_after_prefilter_error,
       run_modal_progress_toast,
       t,
-      wait_for_barrier,
     ],
   );
 
@@ -264,8 +252,6 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
       if (is_task_busy || previous_snapshot.skip_duplicate_source_text_enable === next_checked) {
         return;
       }
-
-      const barrier_checkpoint = create_barrier_checkpoint();
 
       try {
         await run_modal_progress_toast({
@@ -287,10 +273,6 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
             }
 
             await apply_prefilter_from_settings(next_settings_snapshot);
-            // 去重设置会影响工作台统计，提示用户前必须等已挂载工作台缓存追上。
-            await wait_for_barrier("workbench_cache_refresh", {
-              checkpoint: barrier_checkpoint,
-            });
             if (project_snapshot.loaded) {
               push_toast(
                 "info",
@@ -324,14 +306,12 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     [
       apply_prefilter_from_settings,
       commit_update,
-      create_barrier_checkpoint,
       is_task_busy,
       project_snapshot.loaded,
       push_toast,
       rollback_prefilter_setting_after_prefilter_error,
       run_modal_progress_toast,
       t,
-      wait_for_barrier,
     ],
   );
 

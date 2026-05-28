@@ -7,7 +7,7 @@ import {
   type ResultViewSourceUpdateSource,
 } from "@/pages/result-view-snapshot";
 import { InternalInvariantError } from "@shared/error";
-import type { ProjectDataSection } from "@shared/project/event";
+import type { ProjectDataSection } from "@shared/project-event";
 
 // 结果型页面以后端 mutation result 确认的 project path 与 section revision 作为重建门闩。
 export function create_project_section_result_view_source_update_request(args: {

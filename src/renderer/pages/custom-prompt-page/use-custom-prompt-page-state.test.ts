@@ -5,18 +5,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { api_fetch } from "@/app/desktop/desktop-api";
 import type { SettingsSnapshotPayload } from "@/app/desktop/desktop-runtime-context";
 import { useCustomPromptPageState } from "@/pages/custom-prompt-page/use-custom-prompt-page-state";
-import { createProjectItemIndex } from "@/project/store/project-item-index";
-import type { ProjectStoreState } from "@/project/store/project-store";
 
 // RuntimeFixture 固定 useDesktopRuntime 对自定义提示词页暴露的状态和写入口。
 type RuntimeFixture = {
   project_snapshot: {
     loaded: boolean;
     path: string;
-  };
-  project_store: {
-    subscribe: (listener: () => void) => () => void;
-    getState: () => ProjectStoreState;
   };
   settings_snapshot: {
     app_language: string;
@@ -83,59 +77,12 @@ vi.mock("@/app/desktop/desktop-api", () => {
   };
 });
 
-// ProjectStore 快照只保留自定义提示词页读取的 section，降低 fixture 噪音。
-function create_project_store_state(): ProjectStoreState {
-  return {
-    project: {
-      path: "E:/demo/project.lg",
-      loaded: true,
-    },
-    files: {},
-    items: createProjectItemIndex(),
-    quality: {
-      glossary: { entries: [], enabled: false, mode: "append", revision: 0 },
-      pre_replacement: { entries: [], enabled: false, mode: "append", revision: 0 },
-      post_replacement: { entries: [], enabled: false, mode: "append", revision: 0 },
-      text_preserve: { entries: [], enabled: false, mode: "append", revision: 0 },
-    },
-    prompts: {
-      translation: {
-        text: "  项目提示词  ",
-        enabled: true,
-        revision: 3,
-      },
-      analysis: {
-        text: "",
-        enabled: false,
-        revision: 0,
-      },
-    },
-    analysis: {},
-    proofreading: {
-      revision: 0,
-    },
-    revisions: {
-      projectRevision: 7,
-      sections: {
-        prompts: 3,
-      },
-    },
-  };
-}
-
 // runtime fixture 模拟 DesktopRuntimeProvider 对页面暴露的最小稳定契约。
 function create_runtime_fixture(): RuntimeFixture {
-  const state = create_project_store_state();
   return {
     project_snapshot: {
       loaded: true,
       path: "E:/demo/project.lg",
-    },
-    project_store: {
-      subscribe: vi.fn(() => {
-        return () => {};
-      }),
-      getState: () => state,
     },
     settings_snapshot: {
       app_language: "ZH",
@@ -216,18 +163,41 @@ describe("useCustomPromptPageState", () => {
     await flush_async_updates();
   }
 
-  it("项目已加载时拉取模板，并用 ProjectStore 提示词覆盖编辑器默认文本", async () => {
-    vi.mocked(api_fetch).mockResolvedValue({
-      template: {
-        default_text: "默认提示词",
-        prefix_text: "前缀",
-        suffix_text: "后缀",
+  function create_prompt_query_payload(): Record<string, unknown> {
+    return {
+      prompt: {
+        text: "  项目提示词  ",
+        enabled: true,
       },
+      sectionRevisions: {
+        prompts: 3,
+      },
+    };
+  }
+
+  it("项目已加载时拉取模板，并用后端提示词覆盖编辑器默认文本", async () => {
+    vi.mocked(api_fetch).mockImplementation(async (path) => {
+      if (path === "/api/quality/prompts/template") {
+        return {
+          template: {
+            default_text: "默认提示词",
+            prefix_text: "前缀",
+            suffix_text: "后缀",
+          },
+        } as never;
+      }
+      if (path === "/api/project/query/prompt") {
+        return create_prompt_query_payload() as never;
+      }
+      throw new Error(`unexpected path: ${path}`);
     });
 
     await render_hook();
 
     expect(api_fetch).toHaveBeenCalledWith("/api/quality/prompts/template", {
+      task_type: "translation",
+    });
+    expect(api_fetch).toHaveBeenCalledWith("/api/project/query/prompt", {
       task_type: "translation",
     });
     expect(latest_state?.template).toEqual({
@@ -245,6 +215,16 @@ describe("useCustomPromptPageState", () => {
         return {
           template: {
             default_text: "默认提示词",
+          },
+        } as never;
+      }
+      if (path === "/api/project/query/prompt") {
+        return create_prompt_query_payload() as never;
+      }
+      if (path === "/api/project/query/workbench") {
+        return {
+          sectionRevisions: {
+            prompts: 3,
           },
         } as never;
       }
@@ -294,10 +274,18 @@ describe("useCustomPromptPageState", () => {
         status: "running",
       },
     };
-    vi.mocked(api_fetch).mockResolvedValue({
-      template: {
-        default_text: "默认提示词",
-      },
+    vi.mocked(api_fetch).mockImplementation(async (path) => {
+      if (path === "/api/quality/prompts/template") {
+        return {
+          template: {
+            default_text: "默认提示词",
+          },
+        } as never;
+      }
+      if (path === "/api/project/query/prompt") {
+        return create_prompt_query_payload() as never;
+      }
+      throw new Error(`unexpected path: ${path}`);
     });
 
     await render_hook();

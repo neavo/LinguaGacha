@@ -1,5 +1,5 @@
 import type { ApiJsonValue } from "../../api/api-types";
-import { CoreEventHub } from "../../events/core-event-hub";
+import { ApiStreamHub } from "../../api/api-stream-hub";
 import { TaskRuntimeState } from "./task-runtime-state";
 import { TaskSnapshotBuilder } from "./task-snapshot-builder";
 import type { TaskRunStatus, TaskRuntimeStatePayload, TaskType } from "./task-runtime-types";
@@ -8,10 +8,10 @@ import type { TranslationScope } from "../protocol/task-types";
 export const TASK_REQUEST_PRESSURE_PUBLISH_INTERVAL_MS = 500; // 请求压力展示保持每秒 2 帧，任务事实仍立即发布
 
 /**
- * 任务运行态公开事件唯一出口，负责写状态、构建完整快照并发布 SSE
+ * 任务运行态公开 stream 唯一出口，负责写状态、构建完整快照并发布 SSE
  */
 export class TaskRuntimePublisher {
-  private readonly event_hub: CoreEventHub; // event_hub 只负责广播完整快照，不再投影 task 局部事件
+  private readonly api_stream_hub: ApiStreamHub; // api_stream_hub 只负责广播完整快照，不再投影 task 局部消息
 
   private readonly runtime_state: TaskRuntimeState; // runtime_state 是 busy/status/request pressure 的唯一写入目标
 
@@ -24,14 +24,14 @@ export class TaskRuntimePublisher {
   private request_pressure_flush: Promise<void> = Promise.resolve(); // 串行化异步 flush，避免同一窗口内快照乱序
 
   /**
-   * 注入任务运行态出口依赖，避免事件总线反向理解任务领域
+   * 注入任务运行态出口依赖，避免 API stream 反向理解任务领域
    */
   public constructor(
-    event_hub: CoreEventHub,
+    api_stream_hub: ApiStreamHub,
     runtime_state: TaskRuntimeState,
     snapshot_builder: TaskSnapshotBuilder,
   ) {
-    this.event_hub = event_hub;
+    this.api_stream_hub = api_stream_hub;
     this.runtime_state = runtime_state;
     this.snapshot_builder = snapshot_builder;
   }
@@ -121,11 +121,11 @@ export class TaskRuntimePublisher {
   }
 
   /**
-   * 发布完整 task.snapshot_changed；payload 中不再出现局部状态事件
+   * 发布完整 task.snapshot_changed；payload 中不再出现局部状态消息
    */
   private async publish_snapshot(task_type: TaskType): Promise<void> {
     const snapshot = await this.snapshot_builder.build_task_snapshot({ task_type });
-    this.event_hub.publish("task.snapshot_changed", {
+    this.api_stream_hub.publish("task.snapshot_changed", {
       task: snapshot as unknown as ApiJsonValue,
     });
   }

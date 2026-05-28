@@ -4,20 +4,48 @@ import {
   sort_proofreading_client_items,
 } from "@/pages/proofreading-page/proofreading-list-runtime";
 import { create_empty_proofreading_list_view, type ProofreadingListView } from "./types";
-import type {
-  ProofreadingListViewQuery,
-  ProofreadingRuntimeHydrationInput,
-} from "@/project/worker/proofreading-ui-worker-service";
 import { create_text_keyword_matcher } from "@shared/text/text-pattern";
+import type { AppTableSortState } from "@/widgets/app-table/app-table-types";
 
-export const PROOFREADING_BASIC_VIEW_MARKER = ":basic:"; // view_id 标记基础列表，避免误读 worker 内质量列表缓存。
+export type ProofreadingBasicRuntimeItemRecord = {
+  item_id: number;
+  file_path: string;
+  row_number: number;
+  src: string;
+  dst: string;
+  status: string;
+  text_type: string;
+  retry_count: number;
+};
+
+export type ProofreadingBasicRuntimeHydrationInput = {
+  projectId: string;
+  revisions: {
+    items: number;
+    quality: number;
+    proofreading: number;
+  };
+  total_item_count: number;
+  upsertItems: ProofreadingBasicRuntimeItemRecord[];
+};
+
+type ProofreadingBasicListViewQuery = {
+  keyword: string;
+  scope: "all" | "src" | "dst";
+  is_regex: boolean;
+  sort_state: AppTableSortState | null;
+  window_start?: number;
+  window_count?: number;
+};
+
+export const PROOFREADING_BASIC_VIEW_MARKER = ":basic:"; // view_id 标记基础列表，避免误读完整质量列表缓存。
 
 /**
- * 基础列表只消费 ProjectStore item 快照，用于质量 hydrate 未完成前的可浏览首屏。
+ * 基础列表只消费后端 query item 快照，用于质量 hydrate 未完成前的可浏览首屏。
  */
 export function build_basic_proofreading_list_view(args: {
-  input: ProofreadingRuntimeHydrationInput;
-  query: Omit<ProofreadingListViewQuery, "filters">;
+  input: ProofreadingBasicRuntimeHydrationInput;
+  query: ProofreadingBasicListViewQuery;
 }): ProofreadingListView {
   if (args.input.upsertItems.length === 0) {
     return create_empty_proofreading_list_view();
@@ -41,7 +69,7 @@ export function build_basic_proofreading_list_view(args: {
       }
     }
 
-    // 基础行明确置空质量派生字段，等待 worker hydrate 后再替换为完整行模型。
+    // 基础行明确置空质量派生字段，等待完整 hydrate 后再替换为完整行模型。
     return [
       create_proofreading_client_item({
         item,

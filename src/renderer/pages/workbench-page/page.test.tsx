@@ -14,11 +14,6 @@ type TaskRuntimeFixture = {
   translation_detail_sheet_open?: boolean;
 };
 
-type BarrierFixture = {
-  create_barrier_checkpoint: () => { projectPath: string };
-  wait_for_barrier: () => Promise<void>;
-};
-
 type WorkbenchStateFixture = {
   active_entry_id: string | null;
   active_workbench_task_detail: null;
@@ -64,15 +59,11 @@ type WorkbenchStateFixture = {
 
 const {
   analysis_task_runtime,
-  barrier_fixture,
-  register_page_cache_mock,
   translation_task_runtime,
   use_workbench_page_state_mock,
   workbench_state_fixture,
 }: {
   analysis_task_runtime: TaskRuntimeFixture;
-  barrier_fixture: BarrierFixture;
-  register_page_cache_mock: ReturnType<typeof vi.fn>;
   translation_task_runtime: TaskRuntimeFixture;
   use_workbench_page_state_mock: ReturnType<typeof vi.fn>;
   workbench_state_fixture: { current: WorkbenchStateFixture | null };
@@ -83,11 +74,6 @@ const {
       close_analysis_detail_sheet: vi.fn(),
       request_analysis_task_action_confirmation: vi.fn(),
     },
-    barrier_fixture: {
-      create_barrier_checkpoint: vi.fn(() => ({ projectPath: "E:/demo/demo.lg" })),
-      wait_for_barrier: vi.fn(async () => {}),
-    },
-    register_page_cache_mock: vi.fn(),
     translation_task_runtime: {
       close_translation_detail_sheet: vi.fn(),
       request_task_action_confirmation: vi.fn(),
@@ -105,13 +91,6 @@ vi.mock("@/app/locale/locale-provider", () => {
     useI18n: () => ({
       t: (key: string) => key,
     }),
-  };
-});
-
-vi.mock("@/app/session/project-session-context", () => {
-  return {
-    useProjectSessionBarrier: () => barrier_fixture,
-    useProjectSessionPageCacheRegistration: register_page_cache_mock,
   };
 });
 
@@ -237,7 +216,6 @@ describe("WorkbenchPage", () => {
     container?.remove();
     container = null;
     root = null;
-    register_page_cache_mock.mockReset();
     use_workbench_page_state_mock.mockReset();
   });
 
@@ -251,30 +229,12 @@ describe("WorkbenchPage", () => {
     });
   }
 
-  it("把任务运行态和 session barrier 注入工作台状态", async () => {
+  it("把任务运行态注入工作台状态", async () => {
     await mount_page();
 
     expect(use_workbench_page_state_mock).toHaveBeenCalledWith({
       analysisTaskRuntime: analysis_task_runtime,
-      createProjectSessionBarrierCheckpoint: barrier_fixture.create_barrier_checkpoint,
       translationTaskRuntime: translation_task_runtime,
-      waitForProjectSessionBarrier: barrier_fixture.wait_for_barrier,
-    });
-  });
-
-  it("挂载时登记工作台缓存和文件操作状态", async () => {
-    await mount_page();
-
-    expect(register_page_cache_mock).toHaveBeenCalledWith("workbench", {
-      consumedRevisions: {
-        analysis: 1,
-        files: 2,
-        items: 3,
-      },
-      fileOperationRunning: true,
-      isRefreshing: false,
-      requiredSections: ["project", "files", "items", "analysis"],
-      settledProjectPath: "E:/demo/demo.lg",
     });
   });
 });

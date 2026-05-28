@@ -1,15 +1,15 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import type { ProjectItemPublicRecord } from "@base/item";
-import type { ProjectRuntimeChangeSignal } from "@/app/desktop/desktop-runtime-context";
+import type { ProjectChangeSignal } from "@/app/desktop/desktop-runtime-context";
 import type { AnalysisTaskSnapshot } from "@/pages/workbench-page/task-runtime/analysis-task-model";
 import type { AnalysisTaskRuntime } from "@/pages/workbench-page/task-runtime/use-analysis-task-runtime";
 import type { TranslationTaskRuntime } from "@/pages/workbench-page/task-runtime/use-translation-task-runtime";
 import { useWorkbenchPageState } from "@/pages/workbench-page/use-workbench-page-state";
-import { createProjectItemIndex, type ProjectItemIndex } from "@/project/store/project-item-index";
+import { createProjectItemIndex, type ProjectItemIndex } from "@/project/project-item-index";
 import type { DesktopPathPickResult } from "@gui/bridge-types";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
@@ -24,10 +24,13 @@ type RuntimeFixture = {
       files: Record<string, unknown>;
       items: ProjectItemIndex;
       analysis?: Record<string, unknown>;
+      revisions?: {
+        sections?: Record<string, number>;
+      };
     };
   };
   refresh_project_runtime: ReturnType<typeof vi.fn>;
-  project_change_signal: ProjectRuntimeChangeSignal;
+  project_change_signal: ProjectChangeSignal;
   refresh_task: ReturnType<typeof vi.fn>;
   settings_snapshot: Record<string, unknown>;
   refresh_project_snapshot: ReturnType<typeof vi.fn>;
@@ -51,6 +54,17 @@ type ToastFixture = {
   push_toast: ReturnType<typeof vi.fn>;
   run_modal_progress_toast: ReturnType<typeof vi.fn>;
 };
+
+type WorkbenchQueryStats = {
+  total_items: number;
+  completed_count: number;
+  failed_count: number;
+  pending_count: number;
+  skipped_count: number;
+  completion_percent: number;
+};
+
+type ApiRouteResponder = unknown | ((body: Record<string, unknown>) => unknown | Promise<unknown>);
 
 // runtime fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const runtime_fixture: { current: RuntimeFixture } = {
@@ -78,6 +92,8 @@ const workbench_picker_fixture: { current: WorkbenchPickerFixture } = {
 const toast_fixture: { current: ToastFixture } = {
   current: create_toast_fixture(),
 };
+
+const api_route_queues = new Map<string, ApiRouteResponder[]>();
 
 (
   globalThis as typeof globalThis & {
@@ -128,10 +144,10 @@ function create_project_change_signal(
   seq: number,
   options: {
     reason?: string;
-    updatedSections?: ProjectRuntimeChangeSignal["updated_sections"];
+    updatedSections?: ProjectChangeSignal["updated_sections"];
     itemIds?: Array<number | string>;
   } = {},
-): ProjectRuntimeChangeSignal {
+): ProjectChangeSignal {
   const updated_sections = options.updatedSections ?? ["project", "files", "items", "analysis"];
   const item_ids = options.itemIds ?? [];
   return {
@@ -207,6 +223,111 @@ function create_project_mutation_result() {
     accepted: true,
     changes: [],
   };
+}
+
+function enqueue_api_response(path: string, responder: ApiRouteResponder): void {
+  const queue = api_route_queues.get(path) ?? [];
+  queue.push(responder);
+  api_route_queues.set(path, queue);
+}
+
+function setup_api_fetch_mock(): void {
+  vi.mocked(api_fetch).mockImplementation(async (path: string, body = {}) => {
+    const queue = api_route_queues.get(path);
+    const responder = queue?.shift();
+    if (responder !== undefined) {
+      return typeof responder === "function" ? await responder(body) : responder;
+    }
+
+    if (path === "/api/project/query/workbench") {
+      return create_workbench_query_response();
+    }
+    if (path === "/api/project/workbench/parse-file") {
+      return { files: [] };
+    }
+    if (path === "/api/tasks/generate-translation") {
+      return {};
+    }
+    return create_project_mutation_result();
+  });
+}
+
+function create_workbench_query_response() {
+  const state = runtime_fixture.current.project_store.getState();
+  const files = Object.values(state.files ?? {}).flatMap((value) => {
+    if (typeof value !== "object" || value === null) {
+      return [];
+    }
+    const file = value as { rel_path?: unknown; file_type?: unknown; sort_index?: unknown };
+    const rel_path = String(file.rel_path ?? "");
+    if (rel_path === "") {
+      return [];
+    }
+    return [
+      {
+        rel_path,
+        file_type: String(file.file_type ?? "TXT"),
+        sort_index: Number(file.sort_index ?? 0),
+      },
+    ];
+  });
+  const items = [...(state.items?.values() ?? [])];
+  const entries = files.map((file) => {
+    return {
+      ...file,
+      item_count: items.filter((item) => item.file_path === file.rel_path).length,
+    };
+  });
+
+  return {
+    projectPath: runtime_fixture.current.project_snapshot.path,
+    sectionRevisions: state.revisions?.sections ?? {
+      files: 1,
+      items: 2,
+      analysis: 3,
+    },
+    view: {
+      file_count: entries.length,
+      total_items: items.length,
+      translation_stats: build_workbench_query_stats(items),
+      analysis_stats: build_workbench_query_stats(items),
+      entries,
+    },
+  };
+}
+
+function build_workbench_query_stats(items: ProjectItemPublicRecord[]): WorkbenchQueryStats {
+  let completed_count = 0;
+  let failed_count = 0;
+  let skipped_count = 0;
+  for (const item of items) {
+    if (item.status === "PROCESSED") {
+      completed_count += 1;
+    } else if (item.status === "ERROR") {
+      failed_count += 1;
+    } else if (
+      item.status === "EXCLUDED" ||
+      item.status === "RULE_SKIPPED" ||
+      item.status === "LANGUAGE_SKIPPED" ||
+      item.status === "DUPLICATED"
+    ) {
+      skipped_count += 1;
+    }
+  }
+  const total_items = items.length;
+  const pending_count = Math.max(0, total_items - completed_count - failed_count - skipped_count);
+  return {
+    total_items,
+    completed_count,
+    failed_count,
+    pending_count,
+    skipped_count,
+    completion_percent: total_items === 0 ? 0 : Math.round((completed_count / total_items) * 100),
+  };
+}
+
+function count_api_calls(path: string): number {
+  return vi.mocked(api_fetch).mock.calls.filter((call) => call[0] === path).length;
 }
 
 // create_translation_task_runtime_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
@@ -389,6 +510,11 @@ describe("useWorkbenchPageState", () => {
   let root: Root | null = null;
   let latest_state: ReturnType<typeof useWorkbenchPageState> | null = null;
 
+  beforeEach(() => {
+    api_route_queues.clear();
+    setup_api_fetch_mock();
+  });
+
   afterEach(async () => {
     if (root !== null) {
       await act(async () => {
@@ -406,6 +532,7 @@ describe("useWorkbenchPageState", () => {
     toast_fixture.current = create_toast_fixture();
     workbench_picker_fixture.current.pickWorkbenchFilePath.mockReset();
     vi.mocked(api_fetch).mockReset();
+    api_route_queues.clear();
   });
 
   // WorkbenchProbe 收口测试中的共享步骤，保证断言只关注当前行为。
@@ -438,7 +565,7 @@ describe("useWorkbenchPageState", () => {
     await flush_async_updates();
   }
 
-  it("项目路径切换后会基于当前 ProjectStore 完成首刷", async () => {
+  it("项目路径切换后会基于当前后端 query 完成首刷", async () => {
     await render_hook();
 
     expect(latest_state).not.toBeNull();
@@ -482,7 +609,7 @@ describe("useWorkbenchPageState", () => {
     expect(latest_state?.stats.total_items).toBe(1);
     expect(latest_state?.stats.completed_count).toBe(0);
     expect(latest_state?.stats.skipped_count).toBe(1);
-    expect(latest_state?.stats.completion_percent).toBe(100);
+    expect(latest_state?.stats.completion_percent).toBe(0);
     expect(latest_state?.entries.map((entry) => entry.rel_path)).toEqual(["chapter01.txt"]);
   });
 
@@ -530,7 +657,7 @@ describe("useWorkbenchPageState", () => {
     expect(toast_fixture.current.push_toast).not.toHaveBeenCalled();
   });
 
-  it("运行中翻译统计仍只按 ProjectStore.items.status 派生", async () => {
+  it("运行中翻译统计仍只按后端 query items.status 派生", async () => {
     translation_runtime_fixture.current = {
       ...translation_runtime_fixture.current,
       translation_task_metrics: {
@@ -612,7 +739,7 @@ describe("useWorkbenchPageState", () => {
       failed_count: 1,
       pending_count: 1,
       skipped_count: 2,
-      completion_percent: 60,
+      completion_percent: 20,
     });
     expect(latest_state?.active_workbench_task_detail?.completion_percent_text).toBe("88.00%");
 
@@ -622,15 +749,15 @@ describe("useWorkbenchPageState", () => {
 
     expect(latest_state?.stats).toMatchObject({
       total_items: 5,
-      completed_count: 2,
+      completed_count: 1,
       failed_count: 1,
       pending_count: 1,
-      skipped_count: 1,
-      completion_percent: 60,
+      skipped_count: 2,
+      completion_percent: 20,
     });
   });
 
-  it("运行中分析统计按 ProjectStore，详情进度按任务快照展示", async () => {
+  it("运行中分析统计按后端 query，详情进度按任务快照展示", async () => {
     analysis_runtime_fixture.current = {
       ...analysis_runtime_fixture.current,
       analysis_task_display_snapshot: create_analysis_task_snapshot({
@@ -719,13 +846,13 @@ describe("useWorkbenchPageState", () => {
       failed_count: 0,
       pending_count: 4,
       skipped_count: 1,
-      completion_percent: 20,
+      completion_percent: 0,
     });
     expect(latest_state?.analysis_stats).toMatchObject(latest_state?.stats ?? {});
     expect(latest_state?.active_workbench_task_detail?.completion_percent_text).toBe("75.00%");
   });
 
-  it("运行中分析任务无有效总量时详情进度不沿用 ProjectStore 旧统计", async () => {
+  it("运行中分析任务无有效总量时详情进度不沿用后端 query 旧统计", async () => {
     analysis_runtime_fixture.current = {
       ...analysis_runtime_fixture.current,
       analysis_task_display_snapshot: create_analysis_task_snapshot({
@@ -788,16 +915,16 @@ describe("useWorkbenchPageState", () => {
 
     expect(latest_state?.analysis_stats).toMatchObject({
       total_items: 2,
-      completed_count: 1,
+      completed_count: 0,
       failed_count: 0,
-      pending_count: 1,
+      pending_count: 2,
       skipped_count: 0,
-      completion_percent: 50,
+      completion_percent: 0,
     });
     expect(latest_state?.active_workbench_task_detail?.completion_percent_text).toBe("0.00%");
   });
 
-  it("翻译统计会在 items 信号后继续按 ProjectStore 状态刷新", async () => {
+  it("翻译统计会在 items 信号后继续按后端 query 状态刷新", async () => {
     translation_runtime_fixture.current = {
       ...translation_runtime_fixture.current,
       translation_task_metrics: {
@@ -879,7 +1006,7 @@ describe("useWorkbenchPageState", () => {
   });
 
   it("添加文件解析成功后会先打开继承确认", async () => {
-    vi.mocked(api_fetch).mockResolvedValueOnce({
+    enqueue_api_response("/api/project/workbench/parse-file", {
       files: [
         {
           source_path: "E:/demo/new.txt",
@@ -900,7 +1027,7 @@ describe("useWorkbenchPageState", () => {
     expect(api_fetch).toHaveBeenCalledWith("/api/project/workbench/parse-file", {
       source_paths: ["E:/demo/new.txt"],
     });
-    expect(api_fetch).toHaveBeenCalledTimes(1);
+    expect(count_api_calls("/api/project/workbench/parse-file")).toBe(1);
   });
 
   it("选择器添加文件会委托到同一条按路径解析流程", async () => {
@@ -908,7 +1035,7 @@ describe("useWorkbenchPageState", () => {
       canceled: false,
       paths: ["E:/demo/new.txt"],
     });
-    vi.mocked(api_fetch).mockResolvedValueOnce({
+    enqueue_api_response("/api/project/workbench/parse-file", {
       files: [
         {
           source_path: "E:/demo/new.txt",
@@ -931,7 +1058,7 @@ describe("useWorkbenchPageState", () => {
   });
 
   it("批量添加检测到同名文件时会先打开处理方式确认", async () => {
-    vi.mocked(api_fetch).mockResolvedValueOnce({
+    enqueue_api_response("/api/project/workbench/parse-file", {
       files: [
         {
           source_path: "E:/demo/new.txt",
@@ -972,7 +1099,7 @@ describe("useWorkbenchPageState", () => {
   });
 
   it("批量添加存在解析失败文件时展示完整跳过明细并继续处理成功文件", async () => {
-    vi.mocked(api_fetch).mockResolvedValueOnce({
+    enqueue_api_response("/api/project/workbench/parse-file", {
       files: [
         {
           source_path: "E:/demo/new.txt",
@@ -1021,7 +1148,7 @@ describe("useWorkbenchPageState", () => {
   });
 
   it("批量添加全部文件解析失败时展示阻断明细且不再叠加泛错误", async () => {
-    vi.mocked(api_fetch).mockResolvedValueOnce({
+    enqueue_api_response("/api/project/workbench/parse-file", {
       files: [],
       failed_files: [
         {
@@ -1048,7 +1175,7 @@ describe("useWorkbenchPageState", () => {
   });
 
   it("批量添加没有有效文件时只提示一次错误", async () => {
-    vi.mocked(api_fetch).mockResolvedValue({
+    enqueue_api_response("/api/project/workbench/parse-file", {
       files: [
         {
           source_path: "E:/demo/dup-a.txt",
@@ -1084,24 +1211,23 @@ describe("useWorkbenchPageState", () => {
   });
 
   it("同名确认选择跳过时只提交新增文件", async () => {
-    vi.mocked(api_fetch)
-      .mockResolvedValueOnce({
-        files: [
-          {
-            source_path: "E:/demo/new.txt",
-            target_rel_path: "new.txt",
-            file_type: "TXT",
-            parsed_items: [{ src: "新規", dst: "", row: 1 }],
-          },
-          {
-            source_path: "E:/demo/old-copy.txt",
-            target_rel_path: "old.txt",
-            file_type: "TXT",
-            parsed_items: [{ src: "既存", dst: "", row: 1 }],
-          },
-        ],
-      })
-      .mockResolvedValueOnce(create_project_mutation_result());
+    enqueue_api_response("/api/project/workbench/parse-file", {
+      files: [
+        {
+          source_path: "E:/demo/new.txt",
+          target_rel_path: "new.txt",
+          file_type: "TXT",
+          parsed_items: [{ src: "新規", dst: "", row: 1 }],
+        },
+        {
+          source_path: "E:/demo/old-copy.txt",
+          target_rel_path: "old.txt",
+          file_type: "TXT",
+          parsed_items: [{ src: "既存", dst: "", row: 1 }],
+        },
+      ],
+    });
+    enqueue_api_response("/api/project/workbench/import-files", create_project_mutation_result());
     runtime_fixture.current = {
       ...runtime_fixture.current,
       project_store: {
@@ -1125,7 +1251,7 @@ describe("useWorkbenchPageState", () => {
       await latest_state?.cancel_dialog();
     });
 
-    expect(api_fetch).toHaveBeenLastCalledWith(
+    expect(api_fetch).toHaveBeenCalledWith(
       "/api/project/workbench/import-files",
       expect.objectContaining({
         files: [
@@ -1141,24 +1267,23 @@ describe("useWorkbenchPageState", () => {
   });
 
   it("同名确认选择替换时会把新增和替换文件一起提交", async () => {
-    vi.mocked(api_fetch)
-      .mockResolvedValueOnce({
-        files: [
-          {
-            source_path: "E:/demo/new.txt",
-            target_rel_path: "new.txt",
-            file_type: "TXT",
-            parsed_items: [{ src: "新規", dst: "", row: 1 }],
-          },
-          {
-            source_path: "E:/demo/old-copy.txt",
-            target_rel_path: "old.txt",
-            file_type: "TXT",
-            parsed_items: [{ src: "既存", dst: "", row: 1 }],
-          },
-        ],
-      })
-      .mockResolvedValueOnce(create_project_mutation_result());
+    enqueue_api_response("/api/project/workbench/parse-file", {
+      files: [
+        {
+          source_path: "E:/demo/new.txt",
+          target_rel_path: "new.txt",
+          file_type: "TXT",
+          parsed_items: [{ src: "新規", dst: "", row: 1 }],
+        },
+        {
+          source_path: "E:/demo/old-copy.txt",
+          target_rel_path: "old.txt",
+          file_type: "TXT",
+          parsed_items: [{ src: "既存", dst: "", row: 1 }],
+        },
+      ],
+    });
+    enqueue_api_response("/api/project/workbench/import-files", create_project_mutation_result());
     runtime_fixture.current = {
       ...runtime_fixture.current,
       project_store: {
@@ -1182,7 +1307,7 @@ describe("useWorkbenchPageState", () => {
       await latest_state?.confirm_dialog();
     });
 
-    expect(api_fetch).toHaveBeenLastCalledWith(
+    expect(api_fetch).toHaveBeenCalledWith(
       "/api/project/workbench/import-files",
       expect.objectContaining({
         files: [
@@ -1202,7 +1327,7 @@ describe("useWorkbenchPageState", () => {
   });
 
   it("同名确认取消时不会提交导入 mutation", async () => {
-    vi.mocked(api_fetch).mockResolvedValueOnce({
+    enqueue_api_response("/api/project/workbench/parse-file", {
       files: [
         {
           source_path: "E:/demo/old-copy.txt",
@@ -1230,7 +1355,7 @@ describe("useWorkbenchPageState", () => {
     });
 
     expect(latest_state?.dialog_state.kind).toBeNull();
-    expect(api_fetch).toHaveBeenCalledTimes(1);
+    expect(count_api_calls("/api/project/workbench/import-files")).toBe(0);
   });
 
   it("拖拽失败提示会复用全局 drop warning 文案", async () => {
@@ -1258,18 +1383,17 @@ describe("useWorkbenchPageState", () => {
       canceled: false,
       paths: ["E:/demo/new.txt"],
     });
-    vi.mocked(api_fetch)
-      .mockResolvedValueOnce({
-        files: [
-          {
-            source_path: "E:/demo/new.txt",
-            target_rel_path: "new.txt",
-            file_type: "TXT",
-            parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
-          },
-        ],
-      })
-      .mockResolvedValueOnce(create_project_mutation_result());
+    enqueue_api_response("/api/project/workbench/parse-file", {
+      files: [
+        {
+          source_path: "E:/demo/new.txt",
+          target_rel_path: "new.txt",
+          file_type: "TXT",
+          parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
+        },
+      ],
+    });
+    enqueue_api_response("/api/project/workbench/import-files", create_project_mutation_result());
     runtime_fixture.current = {
       ...runtime_fixture.current,
       project_store: {
@@ -1291,7 +1415,7 @@ describe("useWorkbenchPageState", () => {
       await latest_state?.cancel_dialog();
     });
 
-    expect(api_fetch).toHaveBeenLastCalledWith(
+    expect(api_fetch).toHaveBeenCalledWith(
       "/api/project/workbench/import-files",
       expect.objectContaining({
         files: [
@@ -1321,18 +1445,17 @@ describe("useWorkbenchPageState", () => {
       canceled: false,
       paths: ["E:/demo/new.txt"],
     });
-    vi.mocked(api_fetch)
-      .mockResolvedValueOnce({
-        files: [
-          {
-            source_path: "E:/demo/new.txt",
-            target_rel_path: "new.txt",
-            file_type: "TXT",
-            parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
-          },
-        ],
-      })
-      .mockResolvedValueOnce(create_project_mutation_result());
+    enqueue_api_response("/api/project/workbench/parse-file", {
+      files: [
+        {
+          source_path: "E:/demo/new.txt",
+          target_rel_path: "new.txt",
+          file_type: "TXT",
+          parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
+        },
+      ],
+    });
+    enqueue_api_response("/api/project/workbench/import-files", create_project_mutation_result());
     runtime_fixture.current = {
       ...runtime_fixture.current,
       project_store: {
@@ -1361,7 +1484,7 @@ describe("useWorkbenchPageState", () => {
     await render_hook();
 
     expect(latest_state?.dialog_state.kind).toBeNull();
-    expect(api_fetch).toHaveBeenLastCalledWith(
+    expect(api_fetch).toHaveBeenCalledWith(
       "/api/project/workbench/import-files",
       expect.objectContaining({
         files: [
@@ -1427,7 +1550,7 @@ describe("useWorkbenchPageState", () => {
   });
 
   it("导出提交中不会重复提交生成译文请求", async () => {
-    vi.mocked(api_fetch).mockReturnValueOnce(new Promise(() => {}));
+    enqueue_api_response("/api/tasks/generate-translation", () => new Promise(() => {}));
     await render_hook();
 
     act(() => {
@@ -1446,7 +1569,7 @@ describe("useWorkbenchPageState", () => {
       await Promise.resolve();
     });
 
-    expect(api_fetch).toHaveBeenCalledTimes(1);
+    expect(count_api_calls("/api/tasks/generate-translation")).toBe(1);
     expect(api_fetch).toHaveBeenCalledWith("/api/tasks/generate-translation", {});
   });
 });

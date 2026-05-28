@@ -11,12 +11,15 @@ import {
   type QualityRuleImportRuleType,
 } from "@shared/quality/importer";
 
+// QualityRuleImportApplyOptions 是导入完成后页面菜单交互的通用控制项。
 export type QualityRuleImportApplyOptions = {
   close_preset_menu: boolean;
 };
 
+// QualityRuleDuplicateResolutionResult 描述一次导入尝试的最终可观察结果。
 export type QualityRuleDuplicateResolutionResult = "saved" | "pending" | "failed";
 
+// QualityRuleDuplicateResolutionPlan 保存重复项导入在 skip / overwrite 两种路径下的候选写入结果。
 export type QualityRuleDuplicateResolutionPlan<TEntry extends JsonRecord> = {
   existing_entries: TEntry[];
   incoming_entries: TEntry[];
@@ -53,6 +56,9 @@ type UseQualityRuleImportConfirmationResult<TEntry extends JsonRecord, TApplyOpt
   reset_import_confirmation: () => void;
 };
 
+/**
+ * 质量规则导入确认 hook 统一处理重复预览、用户选择和确认期间事实变化。
+ */
 export function useQualityRuleImportConfirmation<
   TEntry extends JsonRecord,
   TApplyOptions = QualityRuleImportApplyOptions,
@@ -65,7 +71,7 @@ export function useQualityRuleImportConfirmation<
       return create_empty_quality_rule_import_confirm_state();
     },
   );
-  // 待确认状态只保存计划工厂；最终写入快照必须在用户确认时用最新 ProjectStore 事实重算
+  // 待确认状态只保存计划工厂；最终写入快照必须在用户确认时用最新 query 事实重算
   const [pending_import, set_pending_import] = useState<PendingQualityRuleImport<
     TEntry,
     TApplyOptions
@@ -141,6 +147,7 @@ export function useQualityRuleImportConfirmation<
       const plan = pending_import.create_plan();
       const preview = build_preview(plan);
       const duplicate_signature = build_duplicate_signature(preview);
+      // 用户确认期间项目事实可能变化，需要用签名阻止旧预览继续提交。
       if (
         preview.duplicate_count > 0 &&
         duplicate_signature !== pending_import.duplicate_signature
@@ -202,6 +209,9 @@ export function useQualityRuleImportConfirmation<
   };
 }
 
+/**
+ * 创建重复项导入计划时克隆所有条目数组，避免确认弹窗持有页面可变草稿引用。
+ */
 export function create_quality_rule_duplicate_resolution_plan<TEntry extends JsonRecord>(args: {
   existing_entries: TEntry[];
   incoming_entries: TEntry[];
@@ -227,10 +237,16 @@ export function create_quality_rule_duplicate_resolution_plan<TEntry extends Jso
   };
 }
 
+/**
+ * 规则条目是 JSON 记录，浅克隆即可切断数组和顶层字段引用。
+ */
 function clone_entries<TEntry extends JsonRecord>(entries: TEntry[] | undefined): TEntry[] {
   return (entries ?? []).map((entry) => ({ ...entry }) as TEntry);
 }
 
+/**
+ * 重复签名只描述重复集合身份；确认时签名变化意味着必须重新展示冲突数量。
+ */
 function build_duplicate_signature(
   preview: ReturnType<typeof preview_quality_rule_import>,
 ): string {

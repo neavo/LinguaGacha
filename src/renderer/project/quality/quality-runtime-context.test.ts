@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ProjectStoreQualityState } from "@/project/store/project-store";
+import type { QualityRulesRuntimeState } from "@/project/quality/quality-runtime-state";
 import {
   applyQualityRuntimeReplacements,
   buildQualityRuleDependencyParts,
@@ -11,7 +11,7 @@ import {
   stripQualityPreservedSegments,
 } from "@/project/quality/quality-runtime-context";
 
-function create_quality_state(): ProjectStoreQualityState {
+function create_quality_state(): QualityRulesRuntimeState {
   return {
     glossary: {
       enabled: true,

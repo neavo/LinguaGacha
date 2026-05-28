@@ -4,13 +4,14 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { AppEventBus } from "../app/app-event-bus";
 import { ProjectDatabase } from "../database/database-operations";
 import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectChangePublisher } from "../project/project-change-publisher";
 import { get_runtime_section_revision } from "../project/project-section-revision";
 import { ProjectSessionState } from "../project/project-session-state";
 import { ProofreadingService } from "./proofreading-service";
-import type { ProjectChangeEvent } from "../../shared/project/event";
+import type { ProjectChangeEvent } from "../../shared/project-event";
 
 let temp_dir = "";
 const cleanup_databases: ProjectDatabase[] = [];
@@ -41,6 +42,7 @@ function create_service(): {
     service: new ProofreadingService(
       database,
       session_state,
+      new AppEventBus(),
       publisher as unknown as ProjectChangePublisher,
     ),
     session_state,

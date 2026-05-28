@@ -5,7 +5,7 @@ import type {
   NameFieldSortState,
   NameFieldStatus,
 } from "@/pages/name-field-extraction-page/types";
-import type { ProjectItemIndex } from "@/project/store/project-item-index";
+import type { ProjectItemIndex } from "@/project/project-item-index";
 
 type RuntimeItemRecord = {
   item_id: number;

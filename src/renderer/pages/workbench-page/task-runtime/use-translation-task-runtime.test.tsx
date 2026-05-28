@@ -12,9 +12,6 @@ const { api_fetch_mock, push_toast_mock } = vi.hoisted(() => {
 });
 
 type RuntimeFixture = {
-  project_store: {
-    getState: () => Record<string, unknown>;
-  };
   project_snapshot: {
     loaded: boolean;
     path: string;
@@ -94,71 +91,6 @@ function create_runtime_fixture(
   task_snapshot: Record<string, unknown> = create_task_snapshot(),
 ): RuntimeFixture {
   return {
-    project_store: {
-      getState: () => ({
-        project: {
-          path: "E:/demo/sample.lg",
-          loaded: true,
-        },
-        files: {
-          "script/a.txt": {
-            rel_path: "script/a.txt",
-            file_type: "TXT",
-            sort_index: 0,
-          },
-        },
-        items: {
-          "1": {
-            item_id: 1,
-            file_path: "script/a.txt",
-            row_number: 1,
-            src: "failed",
-            dst: "old",
-            name_src: null,
-            name_dst: null,
-            extra_field: "",
-            tag: "",
-            file_type: "TXT",
-            status: "ERROR",
-            text_type: "NONE",
-            retry_count: 1,
-            skip_internal_filter: false,
-          },
-        },
-        quality: {
-          glossary: { entries: [], enabled: false, mode: "off", revision: 0 },
-          pre_replacement: { entries: [], enabled: false, mode: "off", revision: 0 },
-          post_replacement: { entries: [], enabled: false, mode: "off", revision: 0 },
-          text_preserve: { entries: [], enabled: false, mode: "off", revision: 0 },
-        },
-        prompts: {
-          translation: { text: "", enabled: false, revision: 0 },
-          analysis: { text: "", enabled: false, revision: 0 },
-        },
-        analysis: {
-          extras: {},
-          candidate_count: 2,
-          candidate_aggregate: {},
-          status_summary: {
-            total_line: 1,
-            processed_line: 0,
-            error_line: 1,
-            line: 1,
-          },
-        },
-        proofreading: {
-          revision: 0,
-        },
-        task: task_snapshot,
-        revisions: {
-          projectRevision: 9,
-          sections: {
-            items: 4,
-            analysis: 6,
-          },
-        },
-      }),
-    },
     project_snapshot: {
       loaded: true,
       path: "E:/demo/sample.lg",
@@ -190,6 +122,17 @@ function flush_microtasks(): Promise<void> {
   return act(async () => {
     await Promise.resolve();
   });
+}
+
+function create_workbench_query_response(): Record<string, unknown> {
+  return {
+    sectionRevisions: {
+      items: 4,
+      analysis: 6,
+      quality: 0,
+      prompts: 0,
+    },
+  };
 }
 
 // Probe 收口测试中的共享步骤，保证断言只关注当前行为。
@@ -448,6 +391,9 @@ describe("useTranslationTaskRuntime", () => {
         return {
           task: runtime_fixture.current.task_snapshot,
         };
+      }
+      if (path === "/api/project/query/workbench") {
+        return create_workbench_query_response();
       }
       if (path === "/api/tasks/start") {
         return {
@@ -771,6 +717,9 @@ describe("useTranslationTaskRuntime", () => {
           task: runtime_fixture.current.task_snapshot,
         };
       }
+      if (path === "/api/project/query/workbench") {
+        return create_workbench_query_response();
+      }
       if (path === "/api/project/translation/reset") {
         return {
           accepted: true,
@@ -874,6 +823,9 @@ describe("useTranslationTaskRuntime", () => {
           task: runtime_fixture.current.task_snapshot,
         };
       }
+      if (path === "/api/project/query/workbench") {
+        return create_workbench_query_response();
+      }
       if (path === "/api/project/translation/reset") {
         return {
           accepted: true,
@@ -949,6 +901,9 @@ describe("useTranslationTaskRuntime", () => {
         return {
           task: runtime_fixture.current.task_snapshot,
         };
+      }
+      if (path === "/api/project/query/workbench") {
+        return create_workbench_query_response();
       }
       if (path === "/api/project/translation/reset") {
         throw new Error("reset boom");

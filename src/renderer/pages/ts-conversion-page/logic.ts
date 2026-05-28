@@ -6,7 +6,7 @@ import type {
   TsConversionNameDst,
   TsConversionRuntimeItem,
 } from "@/pages/ts-conversion-page/types";
-import type { ProjectItemIndex } from "@/project/store/project-item-index";
+import type { ProjectItemIndex } from "@/project/project-item-index";
 
 type TsConversionTextConverter = (text: string) => string;
 

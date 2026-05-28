@@ -4,7 +4,7 @@ import {
   normalize_section_array,
   normalize_section_revisions,
 } from "@/app/desktop/desktop-runtime-event-payload";
-import type { ProjectStoreChangeEvent } from "@/project/store/project-store";
+import type { ProjectRuntimeChangeEvent } from "@/app/desktop/desktop-project-change-types";
 import {
   summarize_log_error_path,
   type LogErrorPathIdentity,
@@ -27,7 +27,7 @@ type ProjectChangePayloadDiagnosticsInput = {
 };
 
 /**
- * 项目诊断只保留运行态身份和 session 阶段，避免把 ProjectStore 大 section 写入异常日志。
+ * 项目诊断只保留运行态身份和 session 阶段，避免把大 section 写入异常日志。
  */
 export function summarize_runtime_project_for_diagnostics(
   input: RuntimeProjectDiagnosticsInput,
@@ -62,7 +62,7 @@ export function summarize_task_snapshot_for_diagnostics(snapshot: TaskSnapshot):
  * 项目事件诊断只记录事件头和 operation 数量，不记录可能很大的 items/files payload。
  */
 export function summarize_project_change_for_diagnostics(
-  event: ProjectStoreChangeEvent,
+  event: ProjectRuntimeChangeEvent,
 ): LogErrorContext {
   return {
     eventId: event.eventId ?? "",

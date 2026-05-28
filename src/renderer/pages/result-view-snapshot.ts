@@ -1,4 +1,4 @@
-import type { ProjectDataSection, ProjectDataSectionRevisions } from "@shared/project/event";
+import type { ProjectDataSection, ProjectDataSectionRevisions } from "@shared/project-event";
 
 // 结果视图快照只保存应用查询和有序 id，页面渲染必须再回读当前事实对象
 export type ResultViewSnapshot<Query, Id extends string> = {
@@ -70,9 +70,7 @@ export function is_result_view_source_update_ready(args: {
 
   const current_source_revision =
     args.current_source_checkpoint.sections[args.request.source.section] ?? 0;
-  return (
-    current_source_revision >= args.request.source.revision
-  );
+  return current_source_revision >= args.request.source.revision;
 }
 
 // 用户显式触发查询类 action 时创建新快照，避免后续事实刷新偷偷改变结果成员

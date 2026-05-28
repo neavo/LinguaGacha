@@ -9,8 +9,8 @@ import { JsonTool } from "../../shared/utils/json-tool";
 import { AppPathService } from "./app-path-service";
 import { AppSettingService } from "./app-setting-service";
 
-type SettingsEvent = {
-  event_type: string;
+type SettingsStreamMessage = {
+  topic: string;
   payload: Record<string, ApiJsonValue>;
 };
 
@@ -79,7 +79,7 @@ describe("AppSettingService", () => {
     expect(saved).not.toHaveProperty("unknown_key");
     expect(events).toEqual([
       {
-        event_type: "settings.changed",
+        topic: "settings.changed",
         payload: {
           keys: ["app_language", "request_timeout", "project_save_mode"],
           settings: expect.objectContaining({
@@ -184,15 +184,15 @@ describe("AppSettingService", () => {
 function create_service(): {
   service: AppSettingService;
   config_path: string;
-  events: SettingsEvent[];
+  events: SettingsStreamMessage[];
 } {
   const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-setting-service-"));
   cleanup_roots.push(app_root);
   const paths = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
-  const events: SettingsEvent[] = [];
+  const events: SettingsStreamMessage[] = [];
   const service = new AppSettingService(paths, {
-    publish: (event_type, payload) => {
-      events.push({ event_type, payload });
+    publish: (topic, payload) => {
+      events.push({ topic, payload });
     },
   });
   return { service, config_path: paths.get_config_path(), events };

@@ -4,11 +4,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import type { TaskSnapshot } from "@/app/desktop/task-runtime-store";
-import type { ProjectStoreReader, ProjectStoreState } from "@/project/store/project-store";
-import { createProjectItemIndex } from "@/project/store/project-item-index";
 import type { ProofreadingMutationPlan } from "@/pages/proofreading-page/proofreading-mutation-planner";
 import { useProofreadingBatchActions } from "@/pages/proofreading-page/use-proofreading-batch-actions";
 import type { ProjectItemPublicRecord } from "@base/item";
+import type { ProjectDataSectionRevisions } from "@shared/project-event";
 
 type BatchActionState = ReturnType<typeof useProofreadingBatchActions>;
 
@@ -27,7 +26,10 @@ type HookFixture = {
   is_refreshing: boolean;
   is_mutating: boolean;
   dialog_open: boolean;
-  project_store: ProjectStoreReader;
+  section_revisions: ProjectDataSectionRevisions;
+  read_items_by_row_ids: ReturnType<
+    typeof vi.fn<(row_ids: string[]) => Promise<ProjectItemPublicRecord[]>>
+  >;
   task_snapshot: TaskSnapshot;
   proofreading_revision: number;
   sync_task_snapshot: ReturnType<typeof vi.fn<(snapshot: TaskSnapshot) => void>>;
@@ -72,55 +74,6 @@ function create_project_item(
   };
 }
 
-// create_project_state 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-function create_project_state(): ProjectStoreState {
-  const quality_slice = {
-    entries: [],
-    enabled: true,
-    mode: "custom",
-    revision: 1,
-  };
-  const prompt_slice = {
-    text: "",
-    enabled: true,
-    revision: 1,
-  };
-  return {
-    project: {
-      path: "E:/Project/sample.lg",
-      loaded: true,
-    },
-    files: {},
-    items: createProjectItemIndex({
-      "1": create_project_item(),
-      "2": create_project_item({ item_id: 2, dst: "第二条译文", status: "ERROR", retry_count: 1 }),
-    }),
-    quality: {
-      glossary: quality_slice,
-      pre_replacement: quality_slice,
-      post_replacement: quality_slice,
-      text_preserve: quality_slice,
-    },
-    prompts: {
-      translation: prompt_slice,
-      analysis: prompt_slice,
-    },
-    analysis: {},
-    proofreading: {
-      revision: 5,
-    },
-    revisions: {
-      projectRevision: 11,
-      sections: {
-        items: 7,
-        quality: 3,
-        prompts: 4,
-        proofreading: 5,
-      },
-    },
-  };
-}
-
 // create_task_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_task_snapshot(): TaskSnapshot {
   return {
@@ -149,32 +102,38 @@ function create_task_snapshot(): TaskSnapshot {
   };
 }
 
-// create_project_store_reader 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-function create_project_store_reader(state: ProjectStoreState): ProjectStoreReader {
-  return {
-    getState: () => state,
-    getRevisionCheckpoint: () => {
-      return {
-        projectPath: state.project.path,
-        sections: state.revisions.sections,
-      };
-    },
-    subscribe: () => {
-      return () => {};
-    },
-  };
-}
-
 // create_hook_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_hook_fixture(): HookFixture {
-  const project_state = create_project_state();
   const mutation_calls: MutationCall[] = [];
   return {
     readonly: false,
     is_refreshing: false,
     is_mutating: false,
     dialog_open: false,
-    project_store: create_project_store_reader(project_state),
+    section_revisions: {
+      items: 7,
+      quality: 3,
+      prompts: 4,
+      proofreading: 5,
+    },
+    read_items_by_row_ids: vi.fn(async (row_ids: string[]) => {
+      const items_by_row_id = new Map([
+        ["1", create_project_item()],
+        [
+          "2",
+          create_project_item({
+            item_id: 2,
+            dst: "第二条译文",
+            status: "ERROR",
+            retry_count: 1,
+          }),
+        ],
+      ]);
+      return row_ids.flatMap((row_id) => {
+        const item = items_by_row_id.get(row_id);
+        return item === undefined ? [] : [item];
+      });
+    }),
     task_snapshot: create_task_snapshot(),
     proofreading_revision: 5,
     sync_task_snapshot: vi.fn((_snapshot: TaskSnapshot) => undefined),

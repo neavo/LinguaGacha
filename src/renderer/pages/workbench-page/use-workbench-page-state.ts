@@ -1,14 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import type {
-  ProjectSessionBarrierCheckpoint,
-  ProjectSessionBarrierKind,
-} from "@/app/session/project-session-barrier";
-import {
-  readProjectDataSectionRevisions,
-  type ProjectDataSection,
-  type ProjectDataSectionRevisions,
-} from "@/project/store/project-store";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { capture_renderer_error } from "@/app/diagnostics/renderer-error-reporter";
 import { is_task_stopping } from "@/project/tasks/task-lock";
@@ -18,13 +9,9 @@ import {
   create_workbench_planner_settings,
   create_workbench_reorder_plan,
   create_workbench_reset_file_plan,
+  type WorkbenchMutationPlanningState,
   type WorkbenchProjectMutationPlan,
 } from "@/pages/workbench-page/workbench-mutation-planner";
-import {
-  getWorkbenchViewCache,
-  type WorkbenchViewCache,
-} from "@/pages/workbench-page/workbench-view";
-import { resolve_workbench_project_change_signal } from "@/pages/workbench-page/workbench-project-change-signal";
 import type { AnalysisTaskRuntime } from "@/pages/workbench-page/task-runtime/use-analysis-task-runtime";
 import type { TranslationTaskRuntime } from "@/pages/workbench-page/task-runtime/use-translation-task-runtime";
 import {
@@ -41,6 +28,7 @@ import {
 } from "@/pages/workbench-page/use-workbench-import-files-flow";
 import type { AnalysisTaskMetrics } from "@/pages/workbench-page/task-runtime/analysis-task-model";
 import type { RendererErrorContextInput } from "@shared/error";
+import type { ProjectDataSection, ProjectDataSectionRevisions } from "@shared/project-event";
 import type { TranslationTaskMetrics } from "@/pages/workbench-page/task-runtime/translation-task-model";
 import type { AppTableSelectionChange } from "@/widgets/app-table/app-table-types";
 import type {
@@ -68,10 +56,7 @@ const EMPTY_WORKBENCH_STATS: WorkbenchStats = {
   completion_percent: 0,
 };
 
-type WorkbenchCacheErrorContext = Pick<
-  RendererErrorContextInput,
-  "stage" | "signalSeq" | "itemIdCount" | "mode"
->; // 工作台缓存异常只上报白名单诊断字段，不透传页面快照
+type WorkbenchCacheErrorContext = Pick<RendererErrorContextInput, "stage" | "signalSeq">; // 工作台缓存异常只上报白名单诊断字段，不透传页面快照
 
 const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
   file_count: 0,
@@ -83,10 +68,22 @@ const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
 
 // WORKBENCH REQUIRED SECTIONS 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const WORKBENCH_REQUIRED_SECTIONS: ProjectDataSection[] = ["project", "files", "items", "analysis"];
+const WORKBENCH_REFRESH_SECTIONS: readonly ProjectDataSection[] = [
+  "project",
+  "files",
+  "items",
+  "analysis",
+];
 // 工作台文件 mutation 由工作台页拥有业务动作名，desktop committer 只消费 operation。
 const WORKBENCH_FILE_MUTATION: ProjectMutationOperation = "workbench.file_mutation";
 
 type WorkbenchAddFileDropIssue = "multiple" | "unavailable";
+
+type WorkbenchQueryResponse = {
+  projectPath: string;
+  sectionRevisions: ProjectDataSectionRevisions;
+  view: WorkbenchSnapshot;
+};
 
 // map_snapshot_entries 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function map_snapshot_entries(entries: WorkbenchSnapshotEntry[]): WorkbenchFileEntry[] {
@@ -533,7 +530,7 @@ function resolve_task_detail_progress_percent(args: {
   >;
   workbench_stats: WorkbenchStats;
 }): number {
-  // 任务详情运行中展示 TaskSnapshot 进度；空闲态才回落到项目事实统计，避免新任务沿用旧 ProjectStore 百分比。
+  // 任务详情运行中展示 TaskSnapshot 进度；空闲态才回落到项目事实统计，避免新任务沿用旧百分比。
   return args.metrics.active || args.metrics.stopping
     ? args.metrics.completion_percent
     : args.workbench_stats.completion_percent;
@@ -633,11 +630,6 @@ export type UseWorkbenchPageStateResult = {
 type UseWorkbenchPageStateOptions = {
   translationTaskRuntime: TranslationTaskRuntime; // 常驻任务 runtime 由 WorkbenchTaskRuntimeProvider 持有
   analysisTaskRuntime: AnalysisTaskRuntime; // 页面只消费任务状态，不拥有任务完成意图
-  createProjectSessionBarrierCheckpoint?: () => ProjectSessionBarrierCheckpoint; // 文件 mutation 开始前固定项目 session 身份
-  waitForProjectSessionBarrier?: (
-    kind: Exclude<ProjectSessionBarrierKind, "project_session_ready">,
-    options?: { checkpoint?: ProjectSessionBarrierCheckpoint | null },
-  ) => Promise<void>; // 文件类动作结束前等待已挂载页面缓存追上 ProjectStore
 };
 
 // useWorkbenchPageState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
@@ -650,7 +642,6 @@ export function useWorkbenchPageState(
   const raw_analysis_task_runtime = options.analysisTaskRuntime;
   const {
     project_snapshot,
-    project_store,
     commit_project_mutation,
     project_change_signal,
     refresh_task,
@@ -677,10 +668,13 @@ export function useWorkbenchPageState(
   const [stats_mode, set_stats_mode] = useState<WorkbenchStatsMode>("translation");
   const previous_workbench_change_seq_ref = useRef(0);
   const previous_project_loaded_ref = useRef(false);
-  const workbench_change_signal = useMemo(
-    () => resolve_workbench_project_change_signal(project_change_signal),
-    [project_change_signal],
-  );
+  const workbench_change_seq = useMemo(() => {
+    return project_change_signal.updated_sections.some((section) =>
+      WORKBENCH_REFRESH_SECTIONS.includes(section as ProjectDataSection),
+    )
+      ? project_change_signal.seq
+      : null;
+  }, [project_change_signal]);
   // 工作台文件 mutation 共享同一份窄设置镜像，避免各入口重复拼命令字段。
   const planner_settings = useMemo(
     () => create_workbench_planner_settings(settings_snapshot),
@@ -689,7 +683,6 @@ export function useWorkbenchPageState(
   const previous_project_path_ref = useRef("");
   const refresh_generation_ref = useRef(0);
   const snapshot_ref = useRef(snapshot);
-  const workbench_view_cache_ref = useRef<WorkbenchViewCache | null>(null);
   const entries_ref = useRef<WorkbenchFileEntry[]>(entries);
   const selection_state_ref = useRef<WorkbenchSelectionState>(create_empty_selection_state());
 
@@ -737,10 +730,20 @@ export function useWorkbenchPageState(
     selection_state_ref.current = current_selection_state;
   }, [current_selection_state]);
 
+  const get_workbench_planning_state = useCallback((): WorkbenchMutationPlanningState => {
+    return {
+      files: entries_ref.current.map((entry, index) => ({
+        rel_path: entry.rel_path,
+        file_type: entry.file_type,
+        sort_index: entry.sort_index ?? index,
+      })),
+      section_revisions: consumed_revisions,
+    };
+  }, [consumed_revisions]);
+
   const clear_workbench_snapshot_state = useCallback((): void => {
     refresh_generation_ref.current += 1;
     snapshot_ref.current = EMPTY_SNAPSHOT;
-    workbench_view_cache_ref.current = null;
     set_snapshot(EMPTY_SNAPSHOT);
     set_file_op_running(false);
     set_entries([]);
@@ -784,24 +787,23 @@ export function useWorkbenchPageState(
       set_cache_status("refreshing");
 
       try {
-        const next_cache = getWorkbenchViewCache({
-          state: project_store.getState(),
-          previousCache: workbench_view_cache_ref.current,
-        });
-        const next_snapshot = next_cache.snapshot;
+        const response = await api_fetch<WorkbenchQueryResponse>(
+          "/api/project/query/workbench",
+          {},
+        );
+        const next_snapshot = response.view;
 
         if (request_id !== refresh_generation_ref.current) {
           return next_snapshot;
         }
 
-        workbench_view_cache_ref.current = next_cache;
         snapshot_ref.current = next_snapshot;
         set_snapshot(next_snapshot);
         apply_refreshed_entries(next_snapshot, preferred_active_entry_id);
         set_file_op_running(false);
         set_cache_status("ready");
-        set_consumed_revisions(readProjectDataSectionRevisions(project_store));
-        set_settled_project_path(project_snapshot.path);
+        set_consumed_revisions(response.sectionRevisions);
+        set_settled_project_path(response.projectPath);
         return next_snapshot;
       } catch (error) {
         if (request_id !== refresh_generation_ref.current) {
@@ -827,38 +829,11 @@ export function useWorkbenchPageState(
     [
       apply_refreshed_entries,
       clear_workbench_snapshot_state,
-      project_store,
       project_snapshot.loaded,
       project_snapshot.path,
       push_toast,
       t,
     ],
-  );
-
-  const apply_items_delta_snapshot = useCallback(
-    (item_ids: Array<number | string>): boolean => {
-      if (!project_snapshot.loaded || workbench_view_cache_ref.current === null) {
-        return false;
-      }
-
-      const next_cache = getWorkbenchViewCache({
-        state: project_store.getState(),
-        previousCache: workbench_view_cache_ref.current,
-        itemDeltaIds: item_ids,
-      });
-
-      const next_snapshot = next_cache.snapshot;
-      workbench_view_cache_ref.current = next_cache;
-      snapshot_ref.current = next_snapshot;
-      set_snapshot(next_snapshot);
-      apply_refreshed_entries(next_snapshot, null);
-      set_file_op_running(false);
-      set_cache_status("ready");
-      set_consumed_revisions(readProjectDataSectionRevisions(project_store));
-      set_settled_project_path(project_snapshot.path);
-      return true;
-    },
-    [apply_refreshed_entries, project_snapshot.loaded, project_snapshot.path, project_store],
   );
 
   // 工作台缓存是可重建派生状态，delta 失败只记录异常并回退到全量重建。
@@ -898,7 +873,7 @@ export function useWorkbenchPageState(
       set_recent_workbench_task_kind(null);
       set_stats_mode("translation");
       previous_workbench_change_seq_ref.current =
-        workbench_change_signal?.seq ?? previous_workbench_change_seq_ref.current;
+        workbench_change_seq ?? previous_workbench_change_seq_ref.current;
       void refresh_snapshot();
     }
   }, [
@@ -906,46 +881,30 @@ export function useWorkbenchPageState(
     project_snapshot.loaded,
     project_snapshot.path,
     refresh_snapshot,
-    workbench_change_signal,
+    workbench_change_seq,
   ]);
 
   useEffect(() => {
     const previous_seq = previous_workbench_change_seq_ref.current;
 
-    if (!project_snapshot.loaded || workbench_change_signal === null) {
+    if (!project_snapshot.loaded || workbench_change_seq === null) {
       return;
     }
 
-    if (previous_seq !== workbench_change_signal.seq) {
-      previous_workbench_change_seq_ref.current = workbench_change_signal.seq;
-      if (workbench_change_signal.mode === "items_delta") {
-        try {
-          if (apply_items_delta_snapshot(workbench_change_signal.item_ids)) {
-            return;
-          }
-        } catch (error) {
-          workbench_view_cache_ref.current = null;
-          report_workbench_cache_error(error, {
-            stage: "apply_items_delta_snapshot",
-            signalSeq: workbench_change_signal.seq,
-            itemIdCount: workbench_change_signal.item_ids.length,
-          });
-        }
-      }
+    if (previous_seq !== workbench_change_seq) {
+      previous_workbench_change_seq_ref.current = workbench_change_seq;
       void refresh_snapshot().catch((error) => {
         report_workbench_cache_error(error, {
           stage: "refresh_snapshot_after_workbench_signal",
-          signalSeq: workbench_change_signal.seq,
-          mode: workbench_change_signal.mode,
+          signalSeq: workbench_change_seq,
         });
       });
     }
   }, [
-    apply_items_delta_snapshot,
     project_snapshot.loaded,
     refresh_snapshot,
     report_workbench_cache_error,
-    workbench_change_signal,
+    workbench_change_seq,
   ]);
 
   const running_workbench_task_kind = useMemo<WorkbenchTaskKind | null>(() => {
@@ -1141,7 +1100,6 @@ export function useWorkbenchPageState(
     async (
       plan: WorkbenchProjectMutationPlan,
       request: (body: Record<string, unknown>) => Promise<ProjectMutationResultPayload>,
-      barrier_checkpoint: ProjectSessionBarrierCheckpoint | null,
     ): Promise<ProjectMutationResultPayload> => {
       set_is_mutation_running(true);
       set_file_op_running(true);
@@ -1154,11 +1112,7 @@ export function useWorkbenchPageState(
           },
         });
         await refresh_task();
-        if (options.waitForProjectSessionBarrier !== undefined) {
-          await options.waitForProjectSessionBarrier("workbench_file_operation", {
-            checkpoint: barrier_checkpoint,
-          });
-        }
+        await refresh_snapshot();
         return payload;
       } catch (error) {
         set_file_op_running(false);
@@ -1167,17 +1121,16 @@ export function useWorkbenchPageState(
         set_is_mutation_running(false);
       }
     },
-    [commit_project_mutation, options, refresh_task],
+    [commit_project_mutation, refresh_snapshot, refresh_task],
   );
 
   const import_files_flow = useWorkbenchImportFilesFlow({
     readonly,
     project_identity: project_snapshot.loaded ? project_snapshot.path : "",
     dialog_state,
-    project_store,
+    get_planning_state: get_workbench_planning_state,
     task_snapshot,
     planner_settings,
-    createProjectSessionBarrierCheckpoint: options.createProjectSessionBarrierCheckpoint,
     run_modal_progress_toast,
     run_project_file_mutation,
     set_dialog_state: set_dialog_state,
@@ -1321,24 +1274,27 @@ export function useWorkbenchPageState(
 
       try {
         const reorder_plan = create_workbench_reorder_plan({
-          state: project_store.getState(),
+          state: get_workbench_planning_state(),
           ordered_rel_paths: ordered_entry_ids,
         });
-        await run_project_file_mutation(
-          reorder_plan,
-          async (body) => {
-            return await api_fetch<ProjectMutationResultPayload>(
-              "/api/project/workbench/reorder-files",
-              body,
-            );
-          },
-          null,
-        );
+        await run_project_file_mutation(reorder_plan, async (body) => {
+          return await api_fetch<ProjectMutationResultPayload>(
+            "/api/project/workbench/reorder-files",
+            body,
+          );
+        });
       } catch {
         push_toast("error", t("workbench_page.reorder.failed"));
       }
     },
-    [entries.length, project_store, push_toast, readonly, run_project_file_mutation, t],
+    [
+      entries.length,
+      get_workbench_planning_state,
+      push_toast,
+      readonly,
+      run_project_file_mutation,
+      t,
+    ],
   );
 
   // confirm_dialog 封装当前模块的共享逻辑，避免重复实现同一维护规则。
@@ -1352,7 +1308,6 @@ export function useWorkbenchPageState(
       return;
     }
 
-    const barrier_checkpoint = options.createProjectSessionBarrierCheckpoint?.() ?? null;
     const target_rel_path = current_dialog_state.target_rel_paths[0] ?? null;
     set_dialog_submitting(true);
     try {
@@ -1363,21 +1318,17 @@ export function useWorkbenchPageState(
         }
 
         const reset_plan = create_workbench_reset_file_plan({
-          state: project_store.getState(),
+          state: get_workbench_planning_state(),
           task_snapshot,
           rel_path: target_rel_path,
           settings: planner_settings,
         });
-        await run_project_file_mutation(
-          reset_plan,
-          async (body) => {
-            return await api_fetch<ProjectMutationResultPayload>(
-              "/api/project/workbench/reset-file",
-              body,
-            );
-          },
-          barrier_checkpoint,
-        );
+        await run_project_file_mutation(reset_plan, async (body) => {
+          return await api_fetch<ProjectMutationResultPayload>(
+            "/api/project/workbench/reset-file",
+            body,
+          );
+        });
         set_dialog_state(close_dialog_state());
         return;
       }
@@ -1389,21 +1340,17 @@ export function useWorkbenchPageState(
         }
 
         const delete_plan = create_workbench_delete_files_plan({
-          state: project_store.getState(),
+          state: get_workbench_planning_state(),
           task_snapshot,
           rel_paths: current_dialog_state.target_rel_paths,
           settings: planner_settings,
         });
-        await run_project_file_mutation(
-          delete_plan,
-          async (body) => {
-            return await api_fetch<ProjectMutationResultPayload>(
-              "/api/project/workbench/delete-file",
-              body,
-            );
-          },
-          barrier_checkpoint,
-        );
+        await run_project_file_mutation(delete_plan, async (body) => {
+          return await api_fetch<ProjectMutationResultPayload>(
+            "/api/project/workbench/delete-file",
+            body,
+          );
+        });
 
         set_dialog_state(close_dialog_state());
         return;
@@ -1425,7 +1372,6 @@ export function useWorkbenchPageState(
         try {
           await api_fetch("/api/project/unload", {});
           await refresh_project_snapshot();
-          workbench_view_cache_ref.current = null;
           set_snapshot(EMPTY_SNAPSHOT);
           set_file_op_running(false);
           set_entries([]);

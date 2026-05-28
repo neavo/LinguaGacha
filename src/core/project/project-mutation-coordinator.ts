@@ -1,8 +1,14 @@
 import type { ApiJsonValue } from "../api/api-types";
+import type { AppEventBus } from "../app/app-event-bus";
+import type { AppEvent } from "../app/app-events";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { ProjectChangePublisher } from "./project-change-publisher";
-import { get_runtime_section_revision, type ProjectDataSection } from "./project-section-revision";
+import {
+  build_section_revisions_from_meta,
+  get_runtime_section_revision,
+  type ProjectDataSection,
+} from "./project-section-revision";
 import type {
   ProjectChangeEvent,
   ProjectChangeFilesPayload,
@@ -10,7 +16,7 @@ import type {
   ProjectChangePayloadMode,
   ProjectChangeSectionPayload,
   ProjectMutationResult,
-} from "../../shared/project/event";
+} from "../../shared/project-event";
 import * as AppErrors from "../../shared/error";
 
 type JsonRecord = Record<string, ApiJsonValue>;
@@ -26,7 +32,7 @@ export type ProjectMutationRevisionContext = {
 export type ProjectMutationChangeRequest = {
   projectPath: string; // projectPath 已由会话或显式路径校验，publisher 不再猜测目标工程
   source: string; // source 是 HTTP mutation 与 SSE 事件共用的行为标签
-  updatedSections: ProjectDataSection[]; // updatedSections 决定前端更新哪些 ProjectStore section
+  updatedSections: ProjectDataSection[]; // updatedSections 决定前端刷新哪些项目 section
   items?: Pick<
     ProjectChangeItemsPayload,
     "payloadMode" | "changedIds" | "deleteIds" | "fieldPatch"
@@ -54,15 +60,19 @@ export class ProjectMutationCoordinator {
 
   private readonly project_change_publisher: ProjectChangePublisher | null; // publisher 是写库成功后进入 project.data_changed 的唯一出口
 
+  private readonly app_event_bus: AppEventBus; // 内部 committed event 先于公开变更发布，供 Core cache 维护热数据
+
   /**
    * 注入数据库和可选发布器，保持纯测试场景能只验证写库结果
    */
   public constructor(
     database: ProjectDatabase,
     project_change_publisher: ProjectChangePublisher | null,
+    app_event_bus: AppEventBus,
   ) {
     this.database = database;
     this.project_change_publisher = project_change_publisher;
+    this.app_event_bus = app_event_bus;
   }
 
   /**
@@ -122,7 +132,9 @@ export class ProjectMutationCoordinator {
   /**
    * 在最终提交点连续完成 revision guard、事务构造、写库和 canonical 事件发布
    */
-  public commit_project_mutation(request: ProjectMutationCommitRequest): ProjectMutationResult {
+  public async commit_project_mutation(
+    request: ProjectMutationCommitRequest,
+  ): Promise<ProjectMutationResult> {
     const revision_context = this.assert_expected_section_revisions(
       request.projectPath,
       request.expectedSectionRevisions,
@@ -130,6 +142,10 @@ export class ProjectMutationCoordinator {
     );
     const operations = request.buildOperations(revision_context);
     this.database.execute_transaction(operations);
+    await this.publish_app_events_for_committed_change({
+      projectPath: request.projectPath,
+      ...request.change,
+    });
     return this.publish_project_data_change({
       projectPath: request.projectPath,
       ...request.change,
@@ -206,6 +222,74 @@ export class ProjectMutationCoordinator {
     return Object.keys(sections).length === 0
       ? {}
       : { sections: sections as unknown as ApiJsonValue };
+  }
+
+  /**
+   * 数据库事务成功后先发布 Core 内部事件，确保后端 query cache 先于公开 SSE 更新。
+   */
+  public async publish_app_events_for_committed_change(
+    request: ProjectMutationChangeRequest,
+  ): Promise<void> {
+    for (const event of this.build_app_events_after_commit(request)) {
+      await this.app_event_bus.publish(event);
+    }
+  }
+
+  /**
+   * 将公开变更草稿拆成 cache 可消费的领域事件，避免 AppSessionCache 理解 SSE payload。
+   */
+  private build_app_events_after_commit(request: ProjectMutationChangeRequest): AppEvent[] {
+    const meta = this.read_project_meta(request.projectPath);
+    const section_revisions = build_section_revisions_from_meta(meta);
+    const common = {
+      projectPath: request.projectPath,
+      source: request.source,
+      affectedSections: request.updatedSections,
+      sectionRevisions: section_revisions,
+    };
+    const events: AppEvent[] = [];
+    if (
+      request.updatedSections.some(
+        (section) => section === "items" || section === "files" || section === "proofreading",
+      )
+    ) {
+      events.push({
+        ...common,
+        type: "project.items.changed",
+        items: request.items,
+        files: request.files,
+        scope: request.items?.changedIds === undefined ? "items-full" : "items-partial",
+      });
+    }
+    if (request.updatedSections.includes("quality")) {
+      events.push({
+        ...common,
+        type: "project.quality.changed",
+        scope: "quality-full",
+      });
+    }
+    if (request.updatedSections.includes("prompts")) {
+      events.push({
+        ...common,
+        type: "project.prompts.changed",
+        scope: "prompts-full",
+      });
+    }
+    if (request.updatedSections.includes("analysis")) {
+      events.push({
+        ...common,
+        type: "project.analysis.changed",
+        sections: request.sections,
+        scope: "analysis-full",
+      });
+    }
+    if (request.updatedSections.includes("project")) {
+      events.push({
+        ...common,
+        type: "project.settings.changed",
+      });
+    }
+    return events;
   }
 
   /**

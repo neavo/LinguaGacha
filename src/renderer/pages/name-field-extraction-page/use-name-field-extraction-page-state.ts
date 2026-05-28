@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import {
@@ -6,7 +6,11 @@ import {
   type ProjectMutationResultPayload,
 } from "@/app/desktop/desktop-project-mutation";
 import { useDebouncedCallback } from "@/hooks/use-debounce";
-import { getQualityRuleSlice } from "@/project/quality/quality-runtime";
+import { read_project_section_revisions } from "@/project/query/project-section-revisions-query";
+import {
+  read_name_field_extraction_query,
+  type NameFieldExtractionGlossaryQuerySlice,
+} from "@/project/query/name-field-extraction-query";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
@@ -52,6 +56,8 @@ import {
   type ResultViewSnapshot,
 } from "@/pages/result-view-snapshot";
 import { ensure_quality_rule_entry_ids } from "@/project/quality/quality-rule-entry-id";
+import { createProjectItemIndex } from "@/project/project-item-index";
+import type { ProjectItemPublicRecord } from "@base/item";
 
 type TranslateSinglePayload = {
   success?: boolean;
@@ -61,6 +67,16 @@ type TranslateSinglePayload = {
 type NameFieldResultViewQuery = {
   filter_state: NameFieldFilterState;
   sort_state: NameFieldSortState;
+};
+
+type NameFieldProjectQueryState = {
+  items: ProjectItemPublicRecord[];
+  glossary_entries: GlossaryEntry[];
+};
+
+const EMPTY_PROJECT_QUERY_STATE: NameFieldProjectQueryState = {
+  items: [],
+  glossary_entries: [],
 };
 
 // 姓名字段提取页只把导入术语表这一业务动作映射成诊断 operation。
@@ -149,17 +165,33 @@ function normalize_glossary_entry(entry: GlossaryEntry): GlossaryEntry {
   };
 }
 
+function normalize_glossary_query_entries(
+  slice: NameFieldExtractionGlossaryQuerySlice | undefined,
+): GlossaryEntry[] {
+  const raw_entries = Array.isArray(slice?.entries) ? slice.entries : [];
+  return ensure_quality_rule_entry_ids(
+    raw_entries.flatMap((entry) => {
+      return typeof entry === "object" && entry !== null && !Array.isArray(entry)
+        ? [normalize_glossary_entry(entry as GlossaryEntry)]
+        : [];
+    }),
+  );
+}
+
 // useNameFieldExtractionPageState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useNameFieldExtractionPageState() {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
-  const { project_snapshot, project_store, commit_project_mutation, task_snapshot } =
-    useDesktopRuntime();
-  const project_store_state = useSyncExternalStore(
-    project_store.subscribe,
-    project_store.getState,
-    project_store.getState,
-  );
+  const {
+    project_snapshot,
+    project_change_signal,
+    project_session_status = "ready",
+    commit_project_mutation,
+    task_snapshot,
+  } = useDesktopRuntime();
+  const [project_query_state, set_project_query_state] =
+    useState<NameFieldProjectQueryState>(EMPTY_PROJECT_QUERY_STATE);
+  const glossary_entries_ref = useRef<GlossaryEntry[]>([]);
   const [rows, set_rows] = useState<NameFieldRow[]>([]);
   const [filter_state, set_filter_state] = useState<NameFieldFilterState>(() => {
     return create_empty_filter_state();
@@ -210,6 +242,40 @@ export function useNameFieldExtractionPageState() {
   useEffect(() => {
     clear_local_state();
   }, [clear_local_state, project_snapshot.loaded, project_snapshot.path]);
+
+  useEffect(() => {
+    if (
+      !project_snapshot.loaded ||
+      project_snapshot.path === "" ||
+      project_session_status !== "ready"
+    ) {
+      set_project_query_state(EMPTY_PROJECT_QUERY_STATE);
+      glossary_entries_ref.current = [];
+      return;
+    }
+
+    let cancelled = false;
+    void read_name_field_extraction_query().then((response) => {
+      if (cancelled || response.projectPath !== project_snapshot.path) {
+        return;
+      }
+      const next_glossary_entries = normalize_glossary_query_entries(response.glossary);
+      glossary_entries_ref.current = next_glossary_entries;
+      set_project_query_state({
+        items: Array.isArray(response.items) ? response.items : [],
+        glossary_entries: next_glossary_entries,
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    project_change_signal?.seq ?? 0,
+    project_session_status,
+    project_snapshot.loaded,
+    project_snapshot.path,
+  ]);
 
   const build_result_view_snapshot = useCallback(
     (
@@ -324,10 +390,16 @@ export function useNameFieldExtractionPageState() {
 
     try {
       await Promise.resolve();
-      const glossary_slice = getQualityRuleSlice(project_store_state.quality, "glossary");
+      const project_items = createProjectItemIndex(
+        Object.fromEntries(
+          project_query_state.items.map((item) => {
+            return [String(item.item_id), item];
+          }),
+        ),
+      );
       const extracted_rows = extract_name_field_rows({
-        items: project_store_state.items,
-        glossary_entries: glossary_slice.entries,
+        items: project_items,
+        glossary_entries: project_query_state.glossary_entries,
       });
       const next_rows = preserve_name_field_row_translations({
         previous_rows: rows,
@@ -353,8 +425,8 @@ export function useNameFieldExtractionPageState() {
     }
   }, [
     project_snapshot.loaded,
-    project_store_state.items,
-    project_store_state.quality,
+    project_query_state.glossary_entries,
+    project_query_state.items,
     rows,
     build_result_view_snapshot,
     clear_selection_state,
@@ -627,11 +699,11 @@ export function useNameFieldExtractionPageState() {
 
   const apply_glossary_import_entries = useCallback(
     async (next_entries: GlossaryEntry[]): Promise<boolean> => {
-      const current_state = project_store.getState();
       const normalized_entries = ensure_quality_rule_entry_ids(
         next_entries.map(normalize_glossary_entry),
       );
       try {
+        const section_revisions = await read_project_section_revisions();
         await commit_project_mutation({
           operation: NAME_FIELD_GLOSSARY_IMPORT_MUTATION,
           run: async () => {
@@ -640,7 +712,7 @@ export function useNameFieldExtractionPageState() {
               {
                 rule_type: "glossary",
                 expected_section_revisions: {
-                  quality: current_state.revisions.sections.quality ?? 0,
+                  quality: section_revisions.quality ?? 0,
                 },
                 entries: normalized_entries,
               },
@@ -661,16 +733,12 @@ export function useNameFieldExtractionPageState() {
         return false;
       }
     },
-    [commit_project_mutation, project_store, push_toast, t],
+    [commit_project_mutation, push_toast, t],
   );
 
   const get_import_existing_entries = useCallback((): GlossaryEntry[] => {
-    const current_glossary_slice = getQualityRuleSlice(
-      project_store.getState().quality,
-      "glossary",
-    );
-    return current_glossary_slice.entries as GlossaryEntry[];
-  }, [project_store]);
+    return glossary_entries_ref.current.map((entry) => normalize_glossary_entry(entry));
+  }, []);
   const apply_import_entries = useCallback(
     async (next_entries: GlossaryEntry[]): Promise<boolean> => {
       if (is_running || glossary_import_locked) {

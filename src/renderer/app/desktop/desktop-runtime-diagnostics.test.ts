@@ -8,7 +8,7 @@ import {
   summarize_task_snapshot_for_diagnostics,
 } from "./desktop-runtime-diagnostics";
 import type { TaskSnapshot } from "./task-runtime-store";
-import type { ProjectStoreChangeEvent } from "@/project/store/project-store";
+import type { ProjectRuntimeChangeEvent } from "@/app/desktop/desktop-project-change-types";
 
 /**
  * 构造最小 task snapshot，验证诊断摘要不会携带 extras 大对象。
@@ -38,7 +38,7 @@ function create_task_snapshot(): TaskSnapshot {
 /**
  * 构造项目变更事件，验证诊断只保留事件头和操作数量。
  */
-function create_project_change(): ProjectStoreChangeEvent {
+function create_project_change(): ProjectRuntimeChangeEvent {
   return {
     eventId: "evt-1",
     source: "mutation",

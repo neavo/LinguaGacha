@@ -7,12 +7,9 @@ import { api_fetch } from "@/app/desktop/desktop-api";
 import type { ProjectMutationResultPayload } from "@/app/desktop/desktop-project-mutation";
 import type { TaskSnapshot } from "@/app/desktop/task-runtime-store";
 import type {
-  ProjectDataRevisionCheckpoint,
-  ProjectStoreReader,
-  ProjectStoreState,
-} from "@/project/store/project-store";
-import { createProjectItemIndex } from "@/project/store/project-item-index";
-import type { WorkbenchProjectMutationPlan } from "@/pages/workbench-page/workbench-mutation-planner";
+  WorkbenchMutationPlanningState,
+  WorkbenchProjectMutationPlan,
+} from "@/pages/workbench-page/workbench-mutation-planner";
 import type { WorkbenchDialogState } from "@/pages/workbench-page/types";
 import {
   close_dialog_state,
@@ -153,7 +150,7 @@ describe("useWorkbenchImportFilesFlow", () => {
   // mount_hook 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function mount_hook(
     options: {
-      state?: ProjectStoreState;
+      state?: WorkbenchMutationPlanningState;
       run_project_file_mutation?: (
         plan: WorkbenchProjectMutationPlan,
         request: (body: Record<string, unknown>) => Promise<ProjectMutationResultPayload>,
@@ -183,7 +180,7 @@ describe("useWorkbenchImportFilesFlow", () => {
 
 // HookProbe 收口测试中的共享步骤，保证断言只关注当前行为。
 function HookProbe(props: {
-  state: ProjectStoreState;
+  state: WorkbenchMutationPlanningState;
   run_project_file_mutation?: (
     plan: WorkbenchProjectMutationPlan,
     request: (body: Record<string, unknown>) => Promise<ProjectMutationResultPayload>,
@@ -191,12 +188,11 @@ function HookProbe(props: {
   onSnapshot: (snapshot: HookSnapshot) => void;
 }): null {
   const [dialog_state, set_dialog_state] = useState<WorkbenchDialogState>(close_dialog_state());
-  const project_store = create_project_store_reader(props.state);
   const flow = useWorkbenchImportFilesFlow({
     readonly: false,
     project_identity: "E:/demo/project.lg",
     dialog_state,
-    project_store,
+    get_planning_state: () => props.state,
     task_snapshot: create_task_snapshot(),
     planner_settings: {
       source_language: "JA",
@@ -239,56 +235,20 @@ function latest_snapshot(snapshots: HookSnapshot[]): HookSnapshot {
   return snapshot;
 }
 
-// create_project_store_reader 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-function create_project_store_reader(state: ProjectStoreState): ProjectStoreReader {
-  return {
-    getState: () => state,
-    getRevisionCheckpoint: (): ProjectDataRevisionCheckpoint => ({
-      projectPath: "E:/demo/project.lg",
-      sections: state.revisions.sections,
-    }),
-    subscribe: () => {
-      return () => {};
-    },
-  };
-}
-
 // create_project_store_state 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-function create_project_store_state(): ProjectStoreState {
+function create_project_store_state(): WorkbenchMutationPlanningState {
   return {
-    project: {
-      path: "E:/demo/project.lg",
-      loaded: true,
-    },
-    files: {
-      "old.txt": {
+    files: [
+      {
         rel_path: "old.txt",
         file_type: "TXT",
         sort_index: 0,
       },
-    },
-    items: createProjectItemIndex(),
-    quality: {
-      glossary: { entries: [], enabled: true, mode: "default", revision: 0 },
-      pre_replacement: { entries: [], enabled: true, mode: "default", revision: 0 },
-      post_replacement: { entries: [], enabled: true, mode: "default", revision: 0 },
-      text_preserve: { entries: [], enabled: true, mode: "default", revision: 0 },
-    },
-    prompts: {
-      translation: { text: "", enabled: true, revision: 0 },
-      analysis: { text: "", enabled: true, revision: 0 },
-    },
-    analysis: {},
-    proofreading: {
-      revision: 0,
-    },
-    revisions: {
-      projectRevision: 1,
-      sections: {
-        files: 1,
-        items: 2,
-        analysis: 3,
-      },
+    ],
+    section_revisions: {
+      files: 1,
+      items: 2,
+      analysis: 3,
     },
   };
 }

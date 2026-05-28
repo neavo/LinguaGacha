@@ -11,7 +11,7 @@ import {
 const ALLOWED_GUI_CONTRACT_IMPORTS = new Set([
   "@gui/bridge-api",
   "@gui/bridge-types",
-  "@core/api/core-api-endpoint",
+  "@core/api/api-base-url",
   "@gui/external-url-policy",
   "@gui/ipc-contract",
   "@gui/shell-contract",
@@ -377,13 +377,13 @@ function validate_renderer_import(project_root, file_path, specifier) {
     return "renderer 不能直接导入 Node 能力，只能通过 preload 暴露的窄桥接";
   }
   if (specifier.startsWith("@native/")) {
-    return "renderer 不再通过 @native 读取桌面契约；请使用 @gui/* 或 @core/api/core-api-endpoint 白名单";
+    return "renderer 不再通过 @native 读取桌面契约；请使用 @gui/* 或 @core/api/api-base-url 白名单";
   }
   if (specifier.startsWith("@gui/") && !ALLOWED_GUI_CONTRACT_IMPORTS.has(specifier)) {
     return "renderer 只能通过 @gui/* 白名单读取桌面宿主契约";
   }
-  if (specifier.startsWith("@core/") && specifier !== "@core/api/core-api-endpoint") {
-    return "renderer 只能通过 @core/api/core-api-endpoint 读取 Core API 地址契约";
+  if (specifier.startsWith("@core/") && specifier !== "@core/api/api-base-url") {
+    return "renderer 只能通过 @core/api/api-base-url 读取 Core API 地址契约";
   }
   if (is_project_mutation_state_import(specifier)) {
     return "renderer 不能导入项目 mutation 派生模块；最终项目事实只能由 Core 后端计算";

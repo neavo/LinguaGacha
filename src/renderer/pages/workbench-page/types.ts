@@ -9,6 +9,7 @@ type WorkbenchActionKind =
 export type WorkbenchSnapshotEntry = {
   rel_path: string;
   file_type: string;
+  sort_index: number;
   item_count: number;
 };
 

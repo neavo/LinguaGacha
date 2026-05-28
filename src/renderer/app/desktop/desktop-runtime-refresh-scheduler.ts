@@ -1,18 +1,18 @@
-import type { ProjectStoreChangeEvent } from "@/project/store/project-store";
+import type { ProjectRuntimeChangeEvent } from "@/app/desktop/desktop-project-change-types";
 import type { TaskSnapshot } from "@/app/desktop/task-runtime-store";
 
 export const DESKTOP_RUNTIME_REFRESH_INTERVAL_MS = 500; // renderer 运行态刷新固定为每秒 2 帧
 
 type DesktopRuntimeRefreshSchedulerOptions = {
   applyTaskSnapshot: (snapshot: TaskSnapshot) => void; // flush 阶段唯一写入 TaskRuntimeStore 的回调
-  applyProjectChangeBatch: (events: readonly ProjectStoreChangeEvent[]) => void; // flush 阶段唯一批量写入 ProjectStore 的回调
-  shouldApplyProjectChange?: (event: ProjectStoreChangeEvent) => boolean; // flush 前过滤旧 project revision
+  applyProjectChangeBatch: (events: readonly ProjectRuntimeChangeEvent[]) => void; // flush 阶段唯一批量发布项目变更信号的回调
+  shouldApplyProjectChange?: (event: ProjectRuntimeChangeEvent) => boolean; // flush 前过滤旧 project revision
   onFlushError: (error: unknown, context: DesktopRuntimeRefreshSchedulerErrorContext) => void; // 调度器内部异常由运行态统一记录和恢复
 };
 
 export type DesktopRuntimeRefreshSchedulerErrorContext = {
   phase: "project_change_batch" | "task_snapshot";
-  projectChanges: readonly ProjectStoreChangeEvent[];
+  projectChanges: readonly ProjectRuntimeChangeEvent[];
   taskSnapshot: TaskSnapshot | null;
 };
 
@@ -22,9 +22,11 @@ export type DesktopRuntimeRefreshSchedulerErrorContext = {
 export class DesktopRuntimeRefreshScheduler {
   private readonly apply_task_snapshot: (snapshot: TaskSnapshot) => void; // 只在 flush 时覆盖 TaskRuntimeStore
 
-  private readonly apply_project_change_batch: (events: readonly ProjectStoreChangeEvent[]) => void; // 保留 project event 到达顺序，flush 时只通知一次 ProjectStore
+  private readonly apply_project_change_batch: (
+    events: readonly ProjectRuntimeChangeEvent[],
+  ) => void; // 保留 project event 到达顺序，flush 时只通知一次运行态
 
-  private readonly should_apply_project_change: (event: ProjectStoreChangeEvent) => boolean;
+  private readonly should_apply_project_change: (event: ProjectRuntimeChangeEvent) => boolean;
 
   private readonly on_flush_error: (
     error: unknown,
@@ -33,7 +35,7 @@ export class DesktopRuntimeRefreshScheduler {
 
   private pending_task_snapshot: TaskSnapshot | null = null; // task snapshot 是覆盖式事实，同一窗口只保留最后一份
 
-  private readonly pending_project_changes: ProjectStoreChangeEvent[] = []; // project change 必须按到达顺序批量写入
+  private readonly pending_project_changes: ProjectRuntimeChangeEvent[] = []; // project change 必须按到达顺序批量发布
 
   private refresh_timer: ReturnType<typeof setTimeout> | null = null; // 500ms 窗口内只允许一个待触发 timer
 
@@ -63,7 +65,7 @@ export class DesktopRuntimeRefreshScheduler {
   /**
    * 记录可批量 project change；canonical delta 按到达顺序进入同一个刷新窗口
    */
-  public enqueue_project_change(change_event: ProjectStoreChangeEvent): void {
+  public enqueue_project_change(change_event: ProjectRuntimeChangeEvent): void {
     if (this.disposed) {
       return;
     }
@@ -121,7 +123,7 @@ export class DesktopRuntimeRefreshScheduler {
    * 项目变更失败时只丢弃当前 pending 批次并上报，恢复由 DesktopRuntimeProvider 读取后端权威快照完成。
    */
   private flush_project_changes(
-    projectChanges: ProjectStoreChangeEvent[],
+    projectChanges: ProjectRuntimeChangeEvent[],
     taskSnapshot: TaskSnapshot | null,
   ): void {
     if (projectChanges.length === 0) {
@@ -149,7 +151,7 @@ export class DesktopRuntimeRefreshScheduler {
    */
   private flush_task_snapshot(
     taskSnapshot: TaskSnapshot | null,
-    projectChanges: readonly ProjectStoreChangeEvent[],
+    projectChanges: readonly ProjectRuntimeChangeEvent[],
   ): void {
     if (taskSnapshot === null) {
       return;

@@ -1,4 +1,5 @@
 import type { ApiJsonValue } from "../api/api-types";
+import type { AppEventBus } from "../app/app-event-bus";
 import type { AppSettingService } from "../app/app-setting-service";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
@@ -27,7 +28,7 @@ import {
   type ProjectSettingsSnapshot,
 } from "../../base/setting";
 import type { ProjectChangePublisher } from "./project-change-publisher";
-import type { ProjectDataSection, ProjectMutationResult } from "../../shared/project/event";
+import type { ProjectDataSection, ProjectMutationResult } from "../../shared/project-event";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import {
   build_analysis_progress_snapshot,
@@ -88,6 +89,7 @@ export class ProjectSyncMutationService {
     database: ProjectDatabase,
     project_operation_gate: ProjectOperationGate,
     session_state: ProjectSessionState,
+    app_event_bus: AppEventBus,
     project_change_publisher: ProjectChangePublisher | null = null,
     app_setting_service: AppSettingService | null = null,
     native_fs: NativeFs = default_native_fs,
@@ -96,7 +98,11 @@ export class ProjectSyncMutationService {
     this.database = database;
     this.project_operation_gate = project_operation_gate;
     this.session_state = session_state;
-    this.mutation_coordinator = new ProjectMutationCoordinator(database, project_change_publisher);
+    this.mutation_coordinator = new ProjectMutationCoordinator(
+      database,
+      project_change_publisher,
+      app_event_bus,
+    );
     this.app_setting_service = app_setting_service;
     this.native_fs = native_fs;
     this.log_manager = log_manager;
@@ -332,6 +338,11 @@ export class ProjectSyncMutationService {
         this.op("clearAnalysisCandidateAggregates", { projectPath: project_path }),
         ...this.mutation_coordinator.build_section_revision_operations(revision_context),
       ]);
+      await this.mutation_coordinator.publish_app_events_for_committed_change({
+        projectPath: project_path,
+        source: "workbench_reset_file",
+        updatedSections: ["items", "analysis"],
+      });
       return this.mutation_coordinator.publish_project_data_change({
         projectPath: project_path,
         source: "workbench_reset_file",
@@ -399,6 +410,11 @@ export class ProjectSyncMutationService {
         ...this.mutation_coordinator.build_section_revision_operations(revision_context),
       );
       this.database.execute_transaction(operations);
+      await this.mutation_coordinator.publish_app_events_for_committed_change({
+        projectPath: project_path,
+        source: "workbench_delete_file",
+        updatedSections: ["files", "items", "analysis"],
+      });
       return this.mutation_coordinator.publish_project_data_change({
         projectPath: project_path,
         source: "workbench_delete_file",
@@ -428,6 +444,11 @@ export class ProjectSyncMutationService {
         }),
         ...this.mutation_coordinator.build_section_revision_operations(revision_context),
       ]);
+      await this.mutation_coordinator.publish_app_events_for_committed_change({
+        projectPath: project_path,
+        source: "workbench_reorder_files",
+        updatedSections: ["files"],
+      });
       return this.mutation_coordinator.publish_project_data_change({
         projectPath: project_path,
         source: "workbench_reorder_files",
@@ -447,12 +468,17 @@ export class ProjectSyncMutationService {
       this.database.execute_transaction([
         this.op("upsertMetaEntries", { projectPath: project_path, meta: settings_meta }),
       ]);
+      await this.mutation_coordinator.publish_app_events_for_committed_change({
+        projectPath: project_path,
+        source: "settings_alignment",
+        updatedSections: ["project"],
+      });
       return this.mutation_coordinator.empty_project_mutation_result();
     }
     if (mode !== "prefiltered_items") {
       throw new AppErrors.RequestValidationError();
     }
-    return this.project_operation_gate.run_exclusive_project_mutation(() => {
+    return this.project_operation_gate.run_exclusive_project_mutation(async () => {
       this.assert_no_legacy_fields(request, ["items", "translation_extras", "prefilter_config"]);
       const revision_context = this.mutation_coordinator.assert_expected_section_revisions(
         project_path,
@@ -485,6 +511,11 @@ export class ProjectSyncMutationService {
         this.op("clearAnalysisCandidateAggregates", { projectPath: project_path }),
         ...this.mutation_coordinator.build_section_revision_operations(revision_context),
       ]);
+      await this.mutation_coordinator.publish_app_events_for_committed_change({
+        projectPath: project_path,
+        source: "settings_alignment",
+        updatedSections: ["items", "analysis"],
+      });
       return this.mutation_coordinator.publish_project_data_change({
         projectPath: project_path,
         source: "settings_alignment",
@@ -573,6 +604,11 @@ export class ProjectSyncMutationService {
           }),
           ...this.mutation_coordinator.build_section_revision_operations(revision_context),
         ]);
+        await this.mutation_coordinator.publish_app_events_for_committed_change({
+          projectPath: project_path,
+          source: "translation_reset",
+          updatedSections: ["items"],
+        });
         return this.mutation_coordinator.publish_project_data_change({
           projectPath: project_path,
           source: "translation_reset",
@@ -590,7 +626,7 @@ export class ProjectSyncMutationService {
     const project_path = await this.require_loaded_project_path();
     const mode = String(request["mode"] ?? "").toLowerCase();
     this.assert_no_legacy_fields(request, ["analysis_extras"]);
-    return this.project_operation_gate.run_exclusive_project_mutation(() => {
+    return this.project_operation_gate.run_exclusive_project_mutation(async () => {
       const revision_context = this.mutation_coordinator.assert_expected_section_revisions(
         project_path,
         request["expected_section_revisions"],
@@ -625,6 +661,11 @@ export class ProjectSyncMutationService {
         ...this.mutation_coordinator.build_section_revision_operations(revision_context),
       );
       this.database.execute_transaction(operations);
+      await this.mutation_coordinator.publish_app_events_for_committed_change({
+        projectPath: project_path,
+        source: "analysis_reset",
+        updatedSections: ["analysis"],
+      });
       return this.mutation_coordinator.publish_project_data_change({
         projectPath: project_path,
         source: "analysis_reset",
@@ -691,6 +732,11 @@ export class ProjectSyncMutationService {
       ]),
     ];
     this.database.execute_transaction(operations);
+    await this.mutation_coordinator.publish_app_events_for_committed_change({
+      projectPath: project_path,
+      source: "analysis_glossary_import",
+      updatedSections: updated_sections,
+    });
     return this.mutation_coordinator.publish_project_data_change({
       projectPath: project_path,
       source: "analysis_glossary_import",

@@ -98,6 +98,7 @@ function create_proofreading_item(): ProofreadingItem {
     src: "魔法と美優",
     dst: "Magic 和美1优",
     status: "PROCESSED",
+    retry_count: 0,
     warnings: ["GLOSSARY"],
     warning_fragments_by_code: {},
     applied_glossary_terms: [["魔法", "Magic"]],

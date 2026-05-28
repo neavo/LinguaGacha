@@ -9,7 +9,6 @@ import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-moc
 
 const {
   api_fetch_mock,
-  barrier_fixture,
   desktop_runtime_fixture,
   dismiss_toast_mock,
   push_progress_toast_mock,
@@ -18,18 +17,6 @@ const {
 } = vi.hoisted(() => {
   return {
     api_fetch_mock: vi.fn(),
-    barrier_fixture: {
-      current: {
-        create_barrier_checkpoint: vi.fn(() => {
-          return {
-            projectPath: "",
-            workbenchConsumedRevisions: {},
-            proofreadingConsumedRevisions: {},
-          };
-        }),
-        wait_for_barrier: vi.fn(async () => {}),
-      },
-    },
     desktop_runtime_fixture: {
       current: null as ReturnType<typeof create_desktop_runtime_fixture> | null,
     },
@@ -112,12 +99,6 @@ vi.mock("@/app/desktop/desktop-api", async () => {
 vi.mock("@/app/desktop/use-desktop-runtime", () => {
   return {
     useDesktopRuntime: () => desktop_runtime_fixture.current,
-  };
-});
-
-vi.mock("@/app/session/project-session-context", () => {
-  return {
-    useProjectSessionBarrier: () => barrier_fixture.current,
   };
 });
 
@@ -318,8 +299,6 @@ describe("ProjectPage", () => {
     container = null;
     root = null;
     api_fetch_mock.mockReset();
-    barrier_fixture.current.create_barrier_checkpoint.mockClear();
-    barrier_fixture.current.wait_for_barrier.mockClear();
     dismiss_toast_mock.mockReset();
     push_progress_toast_mock.mockClear();
     push_toast_mock.mockReset();

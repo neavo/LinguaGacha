@@ -5,10 +5,7 @@ import {
   create_analysis_reset_all_plan,
   create_analysis_reset_failed_plan,
 } from "@/project/reset/analysis-reset-plan";
-import {
-  prepare_analysis_glossary_import,
-  type AnalysisGlossaryImportAction,
-} from "@/project/importer/analysis-glossary-importer";
+import { type QualityRuleImportAction } from "@shared/quality/importer";
 import {
   create_empty_quality_rule_import_confirm_state,
   type QualityRuleImportConfirmState,
@@ -17,16 +14,13 @@ import {
   type ProjectMutationOperation,
   type ProjectMutationResultPayload,
 } from "@/app/desktop/desktop-project-mutation";
-import type {
-  ProjectSessionBarrierCheckpoint,
-  ProjectSessionBarrierKind,
-} from "@/app/session/project-session-barrier";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import { should_defer_runtime_snapshot_refresh } from "@/pages/workbench-page/task-runtime/task-runtime-ownership";
 import { useTerminalPromptSuppression } from "@/pages/workbench-page/task-runtime/terminal-prompt-suppression";
+import { read_project_section_revisions } from "@/project/query/project-section-revisions-query";
 import {
   advance_workbench_waveform_state,
   create_empty_workbench_waveform_state,
@@ -59,21 +53,31 @@ const WORKBENCH_ANALYSIS_IMPORT_MUTATION: ProjectMutationOperation = "workbench.
 const WORKBENCH_ANALYSIS_RESET_MUTATION: ProjectMutationOperation = "workbench.analysis_reset";
 
 type AnalysisCandidatesPayload = {
-  // 候选池只在导入动作前按需读取，不进入常驻 ProjectStore。
+  // 候选池只在导入动作前按需读取，不进入常驻项目事实。
   candidate_aggregate: Record<string, unknown>;
 };
 
-type PreparedAnalysisGlossaryImport = NonNullable<
-  Awaited<ReturnType<typeof prepare_analysis_glossary_import>>
->;
+type AnalysisGlossaryImportAction = QualityRuleImportAction;
 
-type AnalysisTaskRuntimeOptions = {
-  createProjectSessionBarrierCheckpoint?: () => ProjectSessionBarrierCheckpoint; // 导入分析术语前固定项目 session 身份
-  waitForProjectSessionBarrier?: (
-    kind: Exclude<ProjectSessionBarrierKind, "project_session_ready">,
-    options?: { checkpoint?: ProjectSessionBarrierCheckpoint | null },
-  ) => Promise<void>; // 分析导入后等待校对缓存追上已提交的 ProjectStore 变更
+type PreparedAnalysisGlossaryImport = {
+  duplicate_count: number;
+  duplicate_signature: string;
+  imported_count: number;
+  consumed_count: number;
+  quality_changed: boolean;
+  updated_sections: Array<"quality" | "analysis">;
+  request_body: {
+    entries: Array<Record<string, unknown>>;
+    consumed_candidate_srcs: string[];
+    expected_section_revisions: Record<string, number>;
+  };
 };
+
+type AnalysisGlossaryImportPreparePayload = {
+  prepared_import: PreparedAnalysisGlossaryImport | null;
+};
+
+type AnalysisTaskRuntimeOptions = Record<string, never>;
 
 export type AnalysisTaskRuntime = {
   analysis_task_display_snapshot: AnalysisTaskSnapshot | null;
@@ -165,12 +169,11 @@ function is_analysis_terminal_prompt_boundary(args: {
 
 // useAnalysisTaskRuntime 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useAnalysisTaskRuntime(
-  options: AnalysisTaskRuntimeOptions = {},
+  _options: AnalysisTaskRuntimeOptions = {},
 ): AnalysisTaskRuntime {
   const { t } = useI18n();
   const { push_toast, run_modal_progress_toast } = useDesktopToast();
   const {
-    project_store,
     project_snapshot,
     sync_task_snapshot,
     task_snapshot,
@@ -387,7 +390,7 @@ export function useAnalysisTaskRuntime(
     }
 
     const should_continue = has_analysis_task_progress(analysis_task_display_snapshot);
-    const current_project_state = project_store.getState();
+    const section_revisions = await read_project_section_revisions();
     clear_terminal_prompt_suppression();
 
     try {
@@ -395,8 +398,8 @@ export function useAnalysisTaskRuntime(
         task_type: "analysis",
         mode: should_continue ? "continue" : "new",
         expected_section_revisions: {
-          quality: current_project_state.revisions.sections.quality ?? 0,
-          prompts: current_project_state.revisions.sections.prompts ?? 0,
+          quality: section_revisions.quality ?? 0,
+          prompts: section_revisions.prompts ?? 0,
         },
       });
       const next_snapshot = normalize_analysis_task_snapshot_payload(task_payload);
@@ -421,7 +424,6 @@ export function useAnalysisTaskRuntime(
     analysis_action_blocked,
     analysis_task_display_snapshot,
     clear_terminal_prompt_suppression,
-    project_store,
     push_toast,
     clear_analysis_waveform_sampling,
     sync_runtime_task_snapshot,
@@ -450,10 +452,7 @@ export function useAnalysisTaskRuntime(
   }, []);
 
   const commit_prepared_analysis_glossary_import = useCallback(
-    async (
-      prepared_import: PreparedAnalysisGlossaryImport,
-      barrierCheckpoint: ProjectSessionBarrierCheckpoint | null,
-    ): Promise<void> => {
+    async (prepared_import: PreparedAnalysisGlossaryImport): Promise<void> => {
       await commit_project_mutation({
         operation: WORKBENCH_ANALYSIS_IMPORT_MUTATION,
         task_type: "analysis",
@@ -465,12 +464,6 @@ export function useAnalysisTaskRuntime(
         },
       });
       await refresh_task("analysis");
-
-      if (options.waitForProjectSessionBarrier !== undefined) {
-        await options.waitForProjectSessionBarrier("proofreading_cache_refresh", {
-          checkpoint: barrierCheckpoint,
-        });
-      }
       push_toast(
         "success",
         t("workbench_page.analysis_task.feedback.import_success").replace(
@@ -479,7 +472,7 @@ export function useAnalysisTaskRuntime(
         ),
       );
     },
-    [commit_project_mutation, options, push_toast, refresh_task, t],
+    [commit_project_mutation, push_toast, refresh_task, t],
   );
 
   const execute_analysis_glossary_import = useCallback(
@@ -495,7 +488,6 @@ export function useAnalysisTaskRuntime(
         return false;
       }
 
-      const barrierCheckpoint = options.createProjectSessionBarrierCheckpoint?.() ?? null;
       let committed = false;
       set_analysis_importing(true);
 
@@ -506,14 +498,14 @@ export function useAnalysisTaskRuntime(
             const candidate_payload = await api_fetch<AnalysisCandidatesPayload>(
               "/api/project/analysis/candidates",
             );
-            const prepared_import = await prepare_analysis_glossary_import(
-              project_store.getState(),
+            const preview_payload = await api_fetch<AnalysisGlossaryImportPreparePayload>(
+              "/api/project/query/analysis-glossary-import",
               {
                 action,
-                task_snapshot,
                 candidate_aggregate: candidate_payload.candidate_aggregate,
               },
             );
+            const prepared_import = preview_payload.prepared_import;
             if (prepared_import === null) {
               set_pending_analysis_import_duplicate_signature(null);
               set_analysis_import_confirm_state(create_empty_quality_rule_import_confirm_state());
@@ -533,7 +525,7 @@ export function useAnalysisTaskRuntime(
               return;
             }
 
-            await commit_prepared_analysis_glossary_import(prepared_import, barrierCheckpoint);
+            await commit_prepared_analysis_glossary_import(prepared_import);
             set_pending_analysis_import_duplicate_signature(null);
             set_analysis_import_confirm_state(create_empty_quality_rule_import_confirm_state());
             committed = true;
@@ -547,9 +539,7 @@ export function useAnalysisTaskRuntime(
     [
       analysis_task_metrics.candidate_count,
       commit_prepared_analysis_glossary_import,
-      options,
       project_snapshot.loaded,
-      project_store,
       run_modal_progress_toast,
       task_snapshot,
       task_snapshot.busy,
@@ -591,14 +581,15 @@ export function useAnalysisTaskRuntime(
         return;
       }
 
+      const section_revisions = await read_project_section_revisions();
       const reset_plan =
         analysis_confirm_state.kind === "reset-all"
           ? create_analysis_reset_all_plan({
-              state: project_store.getState(),
+              section_revisions,
               task_snapshot,
             })
           : create_analysis_reset_failed_plan({
-              state: project_store.getState(),
+              section_revisions,
               task_snapshot,
             });
       await commit_project_mutation({
@@ -640,7 +631,6 @@ export function useAnalysisTaskRuntime(
     analysis_confirm_state,
     commit_project_mutation,
     execute_analysis_glossary_import,
-    project_store,
     push_toast,
     refresh_task,
     suppress_next_terminal_prompt,

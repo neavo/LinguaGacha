@@ -5,12 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProofreadingPage } from "@/pages/proofreading-page/page";
 
-const { proofreading_state_fixture, register_page_cache_mock } = vi.hoisted(() => {
+const { proofreading_state_fixture } = vi.hoisted(() => {
   return {
     proofreading_state_fixture: {
       current: null as ReturnType<typeof create_proofreading_state_fixture> | null,
     },
-    register_page_cache_mock: vi.fn(),
   };
 });
 
@@ -19,12 +18,6 @@ vi.mock("@/app/locale/locale-provider", () => {
     useI18n: () => ({
       t: (key: string) => key,
     }),
-  };
-});
-
-vi.mock("@/app/session/project-session-context", () => {
-  return {
-    useProjectSessionPageCacheRegistration: register_page_cache_mock,
   };
 });
 
@@ -184,7 +177,6 @@ describe("ProofreadingPage", () => {
     container?.remove();
     container = null;
     root = null;
-    register_page_cache_mock.mockReset();
   });
 
   async function mount_page(): Promise<void> {
@@ -196,21 +188,6 @@ describe("ProofreadingPage", () => {
       root?.render(<ProofreadingPage is_sidebar_collapsed={false} />);
     });
   }
-
-  it("挂载时登记校对页缓存快照", async () => {
-    await mount_page();
-
-    expect(register_page_cache_mock).toHaveBeenCalledWith("proofreading", {
-      consumedRevisions: {
-        items: 3,
-        proofreading: 2,
-        quality: 4,
-      },
-      isRefreshing: false,
-      requiredSections: ["project", "items", "quality", "proofreading"],
-      settledProjectPath: "E:/demo/demo.lg",
-    });
-  });
 
   it("质量缓存未 ready 时保留搜索并锁住筛选和编辑动作", async () => {
     if (proofreading_state_fixture.current === null) {

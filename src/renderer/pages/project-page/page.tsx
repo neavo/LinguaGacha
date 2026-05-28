@@ -20,7 +20,6 @@ import {
 } from "react";
 
 import { type SettingsSnapshot } from "@/app/desktop/desktop-runtime-context";
-import { useProjectSessionBarrier } from "@/app/session/project-session-context";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
@@ -56,7 +55,7 @@ import {
 import "@/pages/project-page/project-page.css";
 import { PROJECT_FORMAT_SUPPORT_ITEMS } from "@/pages/project-page/support-formats";
 import { DesktopApiError, api_fetch } from "@/app/desktop/desktop-api";
-import { type ProjectStoreStage } from "@/project/store/project-store";
+import { type ProjectRuntimeStage } from "@/app/desktop/desktop-project-change-types";
 import {
   format_project_settings_aligned_toast,
   type ProjectSettingsAlignmentChangedFields,
@@ -630,7 +629,7 @@ function ProjectActionButton(props: ProjectActionButtonProps): JSX.Element {
 }
 
 function resolve_project_loading_stage_message(
-  stage: ProjectStoreStage | null,
+  stage: ProjectRuntimeStage | null,
   t: ReturnType<typeof useI18n>["t"],
 ): string | null {
   if (stage === "project") {
@@ -669,6 +668,9 @@ function wait_for_next_animation_frame(): Promise<void> {
   });
 }
 
+/**
+ * 项目页是工程创建、打开和最近工程恢复的唯一入口，成功后交给 DesktopRuntime 初始化会话。
+ */
 export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   const {
     project_session_stage,
@@ -678,7 +680,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
     refresh_settings,
     refresh_task,
   } = useDesktopRuntime();
-  const { create_barrier_checkpoint, wait_for_barrier } = useProjectSessionBarrier();
   const { push_toast, push_progress_toast, update_progress_toast, dismiss_toast } =
     useDesktopToast();
   const { t } = useI18n();
@@ -979,8 +980,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       const normalized_output_path = output_path.endsWith(".lg")
         ? output_path
         : `${output_path}.lg`;
-      const barrier_checkpoint = create_barrier_checkpoint();
-
       await run_project_loading_modal({
         initial_message: t("project_page.create.loading_toast"),
         task: async () => {
@@ -1005,15 +1004,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
             path: normalized_output_path,
             name: extract_stem(extract_file_name(normalized_output_path)),
           });
-          // 新建工程完成后只等待全局 session ready，页面缓存由进入页面后自行注册和刷新。
-          await Promise.all([
-            refresh_recent_projects(),
-            refresh_task(),
-            wait_for_barrier("project_session_ready", {
-              projectPath: normalized_output_path,
-              checkpoint: barrier_checkpoint,
-            }),
-          ]);
+          await Promise.all([refresh_recent_projects(), refresh_task()]);
         },
       });
       if (loaded_default_preset_names.length > 0) {
@@ -1057,7 +1048,6 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
     try {
       const project_to_open = selected_project;
-      const barrier_checkpoint = create_barrier_checkpoint();
       let did_align_project_settings = false;
       let aligned_changed_fields: ProjectSettingsAlignmentChangedFields = {};
 
@@ -1107,15 +1097,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
             path: project_to_open.path,
             name: project_to_open.name,
           });
-          // 打开工程完成后只等待全局 session ready，避免未挂载页面缓存阻塞导航。
-          await Promise.all([
-            refresh_recent_projects(),
-            refresh_task(),
-            wait_for_barrier("project_session_ready", {
-              projectPath: project_to_open.path,
-              checkpoint: barrier_checkpoint,
-            }),
-          ]);
+          await Promise.all([refresh_recent_projects(), refresh_task()]);
         },
       });
       if (did_align_project_settings) {

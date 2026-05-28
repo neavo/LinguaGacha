@@ -18,18 +18,10 @@ type RuntimeFixture = {
   project_snapshot: {
     loaded: boolean;
   };
-  project_store: {
-    getState: () => Record<string, unknown>;
-  };
   apply_settings_snapshot: ReturnType<typeof vi.fn>;
   commit_project_mutation: ReturnType<typeof vi.fn>;
   refresh_project_runtime: ReturnType<typeof vi.fn>;
   refresh_settings: ReturnType<typeof vi.fn>;
-};
-
-type BarrierFixture = {
-  create_barrier_checkpoint: ReturnType<typeof vi.fn>;
-  wait_for_barrier: ReturnType<typeof vi.fn>;
 };
 
 type ToastFixture = {
@@ -40,11 +32,6 @@ type ToastFixture = {
 // runtime fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
-};
-
-// barrier fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
-const barrier_fixture: { current: BarrierFixture } = {
-  current: create_barrier_fixture(),
 };
 
 // toast fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
@@ -63,12 +50,6 @@ const translate = (key: string): string => key;
 vi.mock("@/app/desktop/use-desktop-runtime", () => {
   return {
     useDesktopRuntime: () => runtime_fixture.current,
-  };
-});
-
-vi.mock("@/app/session/project-session-context", () => {
-  return {
-    useProjectSessionBarrier: () => barrier_fixture.current,
   };
 });
 
@@ -137,18 +118,6 @@ function create_runtime_fixture(): RuntimeFixture {
     project_snapshot: {
       loaded: true,
     },
-    project_store: {
-      getState: () => {
-        return {
-          revisions: {
-            sections: {
-              items: 0,
-              analysis: 0,
-            },
-          },
-        };
-      },
-    },
     apply_settings_snapshot: vi.fn((payload: SettingsSnapshotPayload) => {
       const next_settings_snapshot = normalize_settings_snapshot(payload);
       runtime_fixture.current = {
@@ -169,14 +138,6 @@ function create_runtime_fixture(): RuntimeFixture {
     }),
     refresh_project_runtime: vi.fn(async () => {}),
     refresh_settings: vi.fn(async () => runtime_fixture.current.settings_snapshot),
-  };
-}
-
-// create_barrier_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-function create_barrier_fixture(): BarrierFixture {
-  return {
-    create_barrier_checkpoint: vi.fn(() => "checkpoint"),
-    wait_for_barrier: vi.fn(async () => {}),
   };
 }
 
@@ -216,7 +177,6 @@ describe("useLaboratoryPageState", () => {
     root = null;
     latest_state = null;
     runtime_fixture.current = create_runtime_fixture();
-    barrier_fixture.current = create_barrier_fixture();
     toast_fixture.current = create_toast_fixture();
     vi.mocked(api_fetch).mockReset();
   });
@@ -264,6 +224,14 @@ describe("useLaboratoryPageState", () => {
       if (path === "/api/project/settings-alignment/apply") {
         throw new Error("prefilter_failed");
       }
+      if (path === "/api/project/query/workbench") {
+        return {
+          sectionRevisions: {
+            items: 0,
+            analysis: 0,
+          },
+        } as never;
+      }
 
       throw new Error(`unexpected path: ${path}`);
     });
@@ -283,9 +251,9 @@ describe("useLaboratoryPageState", () => {
       "error",
       "laboratory_page.feedback.update_failed",
     );
-    expect(barrier_fixture.current.wait_for_barrier).not.toHaveBeenCalled();
     expect(vi.mocked(api_fetch).mock.calls).toEqual([
       ["/api/settings/update", { mtool_optimizer_enable: true }],
+      ["/api/project/query/workbench", {}],
       [
         "/api/project/settings-alignment/apply",
         {

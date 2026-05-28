@@ -4,15 +4,15 @@ import { summarize_project_change_payload_for_diagnostics } from "@/app/desktop/
 import type { DesktopRuntimeRecoveryActions } from "@/app/desktop/desktop-runtime-recovery";
 import type { DesktopRuntimeRefreshScheduler } from "@/app/desktop/desktop-runtime-refresh-scheduler";
 import { record_renderer_diagnostics_event } from "@/app/diagnostics/renderer-error-reporter";
-import type { ProjectStoreChangeEvent, ProjectStoreStage } from "@/project/store/project-store";
+import type { ProjectRuntimeChangeEvent } from "@/app/desktop/desktop-project-change-types";
 import type { ProjectChangeEventPayload } from "@/app/desktop/desktop-project-change-normalizer";
 import type { LogErrorContextInput } from "@shared/error";
-import { PROJECT_CHANGE_EVENT_TOPIC } from "@shared/project/event";
+import { PROJECT_CHANGE_EVENT_TOPIC } from "@shared/project-event";
 
 export type { ProjectChangeEventPayload } from "@/app/desktop/desktop-project-change-normalizer";
 
 /**
- * 项目事件处理只需要运行态项目身份，不直接读取完整 ProjectStore。
+ * 项目事件处理只需要运行态项目身份，不直接读取完整项目事实。
  */
 export type RuntimeProjectSnapshot = {
   loaded: boolean;
@@ -20,10 +20,10 @@ export type RuntimeProjectSnapshot = {
 };
 
 export type DesktopRuntimeProjectEventPipeline = {
-  /** 调度器 flush 时唯一批量写入 ProjectStore 的入口。 */
-  applyProjectChangeBatch: (events: readonly ProjectStoreChangeEvent[]) => void;
+  /** 调度器 flush 时唯一批量发布项目变更信号的入口。 */
+  applyProjectChangeBatch: (events: readonly ProjectRuntimeChangeEvent[]) => void;
   /** 调度器 flush 前复用项目身份过滤，避免旧工程事件落地。 */
-  shouldApplyProjectChange: (event: ProjectStoreChangeEvent) => boolean;
+  shouldApplyProjectChange: (event: ProjectRuntimeChangeEvent) => boolean;
   /** 处理单条 project.data_changed payload，内部决定合并、补读或恢复。 */
   handleProjectDataChangedPayload: (args: {
     payload: ProjectChangeEventPayload;
@@ -37,20 +37,12 @@ export type DesktopRuntimeProjectEventPipeline = {
  */
 type DesktopRuntimeProjectEventPipelineOptions = {
   projectSnapshot: RuntimeProjectSnapshot;
-  applyProjectChange: (event: ProjectStoreChangeEvent, revisionMode?: "merge" | "exact") => void;
-  applyProjectChangeBatch: (events: readonly ProjectStoreChangeEvent[]) => void;
-  shouldApplyProjectChange: (event: ProjectStoreChangeEvent) => boolean;
-  queueProjectChangeDuringSessionWarming: (event: ProjectStoreChangeEvent) => boolean;
+  applyProjectChangeBatch: (events: readonly ProjectRuntimeChangeEvent[]) => void;
+  shouldApplyProjectChange: (event: ProjectRuntimeChangeEvent) => boolean;
+  queueProjectChangeDuringSessionWarming: (event: ProjectRuntimeChangeEvent) => boolean;
   normalizeProjectChangeEvent: (
     payload: ProjectChangeEventPayload,
-  ) => ProjectStoreChangeEvent | null;
-  collectProjectChangeSectionsRequiringRead: (
-    event: ProjectStoreChangeEvent,
-  ) => ProjectStoreStage[];
-  readProjectSectionsForChange: (
-    event: ProjectStoreChangeEvent,
-    sections: ProjectStoreStage[],
-  ) => Promise<ProjectStoreChangeEvent | null>;
+  ) => ProjectRuntimeChangeEvent | null;
   recovery: Pick<
     DesktopRuntimeRecoveryActions,
     "report_runtime_error" | "refresh_project_runtime_after_error"
@@ -65,13 +57,10 @@ export function useDesktopRuntimeProjectEventPipeline(
 ): DesktopRuntimeProjectEventPipeline {
   const {
     projectSnapshot,
-    applyProjectChange,
     applyProjectChangeBatch,
     shouldApplyProjectChange,
     queueProjectChangeDuringSessionWarming,
     normalizeProjectChangeEvent,
-    collectProjectChangeSectionsRequiringRead,
-    readProjectSectionsForChange,
     recovery,
   } = options;
   const { report_runtime_error, refresh_project_runtime_after_error } = recovery;
@@ -100,7 +89,7 @@ export function useDesktopRuntimeProjectEventPipeline(
         return;
       }
 
-      // recovery runner 内部会写入 ProjectStore 并发布标准 ProjectRuntimeChangeSignal。
+      // recovery runner 会重新同步项目 session，并让页面按自身 query 读取后端事实。
     },
     [projectSnapshot.loaded, projectSnapshot.path, refresh_project_runtime_after_error],
   );
@@ -140,26 +129,6 @@ export function useDesktopRuntimeProjectEventPipeline(
           return;
         }
 
-        const invalidated_sections = collectProjectChangeSectionsRequiringRead(change_event);
-        if (invalidated_sections.length > 0) {
-          scheduler.flush();
-          if (!projectSnapshot.loaded || projectSnapshot.path.trim() === "") {
-            return;
-          }
-
-          const read_sections_event = await readProjectSectionsForChange(
-            change_event,
-            invalidated_sections,
-          );
-          if (isCancelled()) {
-            return;
-          }
-          if (read_sections_event !== null) {
-            applyProjectChange(read_sections_event, "exact");
-          }
-          return;
-        }
-
         scheduler.enqueue_project_change(change_event);
       } catch (error) {
         report_runtime_error(error, {
@@ -174,13 +143,10 @@ export function useDesktopRuntimeProjectEventPipeline(
       }
     },
     [
-      applyProjectChange,
-      collectProjectChangeSectionsRequiringRead,
       normalizeProjectChangeEvent,
       projectSnapshot.loaded,
       projectSnapshot.path,
       queueProjectChangeDuringSessionWarming,
-      readProjectSectionsForChange,
       recover_unmergeable_project_event,
       refresh_project_runtime_after_error,
       report_runtime_error,

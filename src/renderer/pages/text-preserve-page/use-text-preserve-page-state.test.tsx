@@ -3,23 +3,15 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { INPUT_QUERY_DEBOUNCE_MS } from "@/hooks/use-debounce";
-import type { QualityRuleStatisticsCacheSnapshot } from "@/project/quality/quality-rule-statistics-store";
+import type { QualityRuleStatisticsCacheSnapshot } from "@/project/quality/quality-statistics-store";
 import type { ProjectItemPublicRecord } from "@base/item";
-import { createProjectItemIndex } from "@/project/store/project-item-index";
+import { createProjectItemIndex } from "@/project/project-item-index";
 import { useTextPreservePageState } from "./use-text-preserve-page-state";
 
-const {
-  api_fetch_mock,
-  push_toast_mock,
-  wait_for_barrier_mock,
-  create_barrier_checkpoint_mock,
-  page_ui_state_store,
-} = vi.hoisted(() => {
+const { api_fetch_mock, push_toast_mock, page_ui_state_store } = vi.hoisted(() => {
   return {
     api_fetch_mock: vi.fn(),
     push_toast_mock: vi.fn(),
-    wait_for_barrier_mock: vi.fn(),
-    create_barrier_checkpoint_mock: vi.fn(),
     page_ui_state_store: new Map<string, unknown>(),
   };
 });
@@ -263,6 +255,7 @@ const project_store = {
 
 let current_statistics_cache: QualityRuleStatisticsCacheSnapshot;
 let task_snapshot: { busy: boolean; status: string };
+let project_change_seq = 0;
 
 // create_statistics_cache 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_statistics_cache(
@@ -319,12 +312,21 @@ vi.mock("@/app/desktop/desktop-api", () => {
   };
 });
 
-vi.mock("@/app/session/project-session-context", () => {
+vi.mock("@/project/query/quality-rule-query", () => {
   return {
-    useProjectSessionBarrier: () => ({
-      create_barrier_checkpoint: create_barrier_checkpoint_mock,
-      wait_for_barrier: wait_for_barrier_mock,
-    }),
+    read_project_quality_rule: vi.fn(async (rule_type: keyof typeof runtime_state.quality) => ({
+      projectPath: runtime_state.project.path,
+      sectionRevisions: { ...runtime_state.revisions.sections },
+      qualityRule: runtime_state.quality[rule_type],
+    })),
+  };
+});
+
+vi.mock("@/project/query/project-section-revisions-query", () => {
+  return {
+    read_project_section_revisions: vi.fn(async () => ({
+      ...runtime_state.revisions.sections,
+    })),
   };
 });
 
@@ -546,6 +548,12 @@ vi.mock("@/app/desktop/use-desktop-runtime", () => {
         loaded: true,
         path: "E:/demo/sample.lg",
       },
+      project_change_signal: {
+        seq: project_change_seq,
+        reason: "test",
+        updated_sections: ["quality"],
+        results: [],
+      },
       project_store,
       settings_snapshot: {},
       apply_settings_snapshot: vi.fn(),
@@ -577,7 +585,7 @@ vi.mock("@/app/ui-runtime/toast/use-desktop-toast", () => {
   };
 });
 
-vi.mock("@/project/quality/quality-rule-statistics-context", () => {
+vi.mock("@/project/quality/quality-statistics-context", () => {
   return {
     useQualityRuleStatistics: () => current_statistics_cache,
   };
@@ -616,11 +624,6 @@ describe("useTextPreservePageState", () => {
       busy: false,
       status: "idle",
     };
-    create_barrier_checkpoint_mock.mockReturnValue({
-      projectPath: "E:/demo/sample.lg",
-      proofreadingConsumedRevisions: {},
-      workbenchConsumedRevisions: {},
-    });
     page_ui_state_store.clear();
     runtime_state = {
       ...runtime_state,
@@ -662,9 +665,8 @@ describe("useTextPreservePageState", () => {
     latest_state = null;
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
-    wait_for_barrier_mock.mockReset();
-    create_barrier_checkpoint_mock.mockReset();
     run_modal_progress_toast_mock.mockClear();
+    project_change_seq = 0;
     vi.useRealTimers();
   });
 
@@ -679,6 +681,7 @@ describe("useTextPreservePageState", () => {
 
   // rerender_probe 收口测试中的共享步骤，保证断言只关注当前行为。
   async function rerender_probe(): Promise<void> {
+    project_change_seq += 1;
     await act(async () => {
       root?.render(
         <Probe
@@ -687,6 +690,12 @@ describe("useTextPreservePageState", () => {
           }}
         />,
       );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
     });
   }
 
@@ -697,37 +706,42 @@ describe("useTextPreservePageState", () => {
     });
   }
 
-  it("在校对缓存等待超时时保留已提交的模式并提示稍后刷新", async () => {
-    vi.useFakeTimers();
-    wait_for_barrier_mock.mockImplementation(async () => {
-      return await new Promise<void>(() => {});
-    });
-    api_fetch_mock.mockResolvedValue({
-      accepted: true,
-      changes: [
-        {
-          source: "quality_rule_update_meta",
-          projectPath: "E:/demo/sample.lg",
-          projectRevision: 2,
-          updatedSections: ["quality"],
+  it("模式切换成功后直接收敛到后端已提交模式", async () => {
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/project/query/workbench") {
+        return {
           sectionRevisions: {
-            quality: 2,
+            quality: 1,
           },
-          sections: {
-            quality: {
-              payloadMode: "canonical-delta",
-              data: {
-                ...runtime_state.quality,
-                text_preserve: {
-                  ...runtime_state.quality.text_preserve,
-                  mode: "smart",
-                  revision: 2,
+        };
+      }
+      return {
+        accepted: true,
+        changes: [
+          {
+            source: "quality_rule_update_meta",
+            projectPath: "E:/demo/sample.lg",
+            projectRevision: 2,
+            updatedSections: ["quality"],
+            sectionRevisions: {
+              quality: 2,
+            },
+            sections: {
+              quality: {
+                payloadMode: "canonical-delta",
+                data: {
+                  ...runtime_state.quality,
+                  text_preserve: {
+                    ...runtime_state.quality.text_preserve,
+                    mode: "smart",
+                    revision: 2,
+                  },
                 },
               },
             },
           },
-        },
-      ],
+        ],
+      };
     });
 
     await mount_probe();
@@ -735,60 +749,58 @@ describe("useTextPreservePageState", () => {
       throw new Error("文本保护页面状态未准备就绪。");
     }
 
-    let update_promise: Promise<void>;
     await act(async () => {
-      update_promise = latest_state!.update_mode("smart");
-      await Promise.resolve();
-    });
-
-    await act(async () => {
-      vi.advanceTimersByTime(20000);
-      await update_promise!;
+      await latest_state!.update_mode("smart");
     });
 
     expect(latest_state?.mode).toBe("smart");
     expect(latest_state?.mode_updating).toBe(false);
-    expect(push_toast_mock).toHaveBeenCalledWith(
-      "warning",
-      "text_preserve_page.feedback.mode_refresh_pending",
-    );
+    expect(push_toast_mock).not.toHaveBeenCalled();
   });
 
   it("在模式切换进行中忽略后续重复点击", async () => {
-    const barrier_deferred: { resolve: () => void } = {
+    const update_deferred: { resolve: () => void } = {
       resolve: () => {},
     };
-    wait_for_barrier_mock.mockImplementation(async () => {
-      return await new Promise<void>((resolve) => {
-        barrier_deferred.resolve = resolve;
-      });
-    });
-    api_fetch_mock.mockResolvedValue({
-      accepted: true,
-      changes: [
-        {
-          source: "quality_rule_update_meta",
-          projectPath: "E:/demo/sample.lg",
-          projectRevision: 2,
-          updatedSections: ["quality"],
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/project/query/workbench") {
+        return {
           sectionRevisions: {
-            quality: 2,
+            quality: 1,
           },
-          sections: {
-            quality: {
-              payloadMode: "canonical-delta",
-              data: {
-                ...runtime_state.quality,
-                text_preserve: {
-                  ...runtime_state.quality.text_preserve,
-                  mode: "smart",
-                  revision: 2,
+        };
+      }
+      return await new Promise((resolve) => {
+        update_deferred.resolve = () => {
+          resolve({
+            accepted: true,
+            changes: [
+              {
+                source: "quality_rule_update_meta",
+                projectPath: "E:/demo/sample.lg",
+                projectRevision: 2,
+                updatedSections: ["quality"],
+                sectionRevisions: {
+                  quality: 2,
+                },
+                sections: {
+                  quality: {
+                    payloadMode: "canonical-delta",
+                    data: {
+                      ...runtime_state.quality,
+                      text_preserve: {
+                        ...runtime_state.quality.text_preserve,
+                        mode: "smart",
+                        revision: 2,
+                      },
+                    },
+                  },
                 },
               },
-            },
-          },
-        },
-      ],
+            ],
+          });
+        };
+      });
     });
 
     await mount_probe();
@@ -807,11 +819,13 @@ describe("useTextPreservePageState", () => {
       await Promise.resolve();
     });
 
-    expect(api_fetch_mock).toHaveBeenCalledTimes(1);
+    expect(
+      api_fetch_mock.mock.calls.filter((call) => call[0] === "/api/quality/rules/update-meta"),
+    ).toHaveLength(1);
     expect(latest_state?.mode_updating).toBe(true);
 
     await act(async () => {
-      barrier_deferred.resolve();
+      update_deferred.resolve();
       await Promise.resolve();
       await first_update!;
       await second_update!;
@@ -963,6 +977,7 @@ describe("useTextPreservePageState", () => {
     await act(async () => {
       apply_quality_mutation_result(mutation_result);
     });
+    await rerender_probe();
 
     expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo", "baz"]);
 

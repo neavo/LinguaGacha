@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { CoreEventHub } from "../../events/core-event-hub";
+import type { ApiStreamHub } from "../../api/api-stream-hub";
 import {
   TaskRuntimePublisher,
   TASK_REQUEST_PRESSURE_PUBLISH_INTERVAL_MS,
@@ -15,15 +15,15 @@ describe("TaskRuntimePublisher", () => {
   });
 
   it("生命周期状态立即发布完整 task.snapshot_changed", async () => {
-    const published_events: Array<{ event_type: string; payload: MutableJsonRecord }> = [];
+    const published_messages: Array<{ topic: string; payload: MutableJsonRecord }> = [];
     const runtime_state = new TaskRuntimeState();
-    const publisher = create_publisher(runtime_state, published_events);
+    const publisher = create_publisher(runtime_state, published_messages);
 
     await publisher.publish_status("translation", "running", true);
 
-    expect(published_events).toEqual([
+    expect(published_messages).toEqual([
       {
-        event_type: "task.snapshot_changed",
+        topic: "task.snapshot_changed",
         payload: {
           task: {
             task_type: "translation",
@@ -39,21 +39,21 @@ describe("TaskRuntimePublisher", () => {
 
   it("request_in_flight_count-only 变化最多按 500ms 发布一次", async () => {
     vi.useFakeTimers();
-    const published_events: Array<{ event_type: string; payload: MutableJsonRecord }> = [];
+    const published_messages: Array<{ topic: string; payload: MutableJsonRecord }> = [];
     const runtime_state = new TaskRuntimeState();
     runtime_state.begin_task("analysis");
-    const publisher = create_publisher(runtime_state, published_events);
+    const publisher = create_publisher(runtime_state, published_messages);
 
     publisher.publish_request_pressure("analysis", 1);
     publisher.publish_request_pressure("analysis", 2);
     await Promise.resolve();
 
-    expect(published_events).toHaveLength(0);
+    expect(published_messages).toHaveLength(0);
 
     await vi.advanceTimersByTimeAsync(TASK_REQUEST_PRESSURE_PUBLISH_INTERVAL_MS);
 
-    expect(published_events).toHaveLength(1);
-    expect(published_events[0]?.payload["task"]).toMatchObject({
+    expect(published_messages).toHaveLength(1);
+    expect(published_messages[0]?.payload["task"]).toMatchObject({
       task_type: "analysis",
       request_in_flight_count: 2,
     });
@@ -61,15 +61,15 @@ describe("TaskRuntimePublisher", () => {
 
   it("终态发布前会先冲刷 pending request pressure", async () => {
     vi.useFakeTimers();
-    const published_events: Array<{ event_type: string; payload: MutableJsonRecord }> = [];
+    const published_messages: Array<{ topic: string; payload: MutableJsonRecord }> = [];
     const runtime_state = new TaskRuntimeState();
     runtime_state.begin_task("translation");
-    const publisher = create_publisher(runtime_state, published_events);
+    const publisher = create_publisher(runtime_state, published_messages);
 
     publisher.publish_request_pressure("translation", 3);
     await publisher.publish_status("translation", "done", false);
 
-    expect(published_events.map((entry) => entry.payload["task"])).toEqual([
+    expect(published_messages.map((entry) => entry.payload["task"])).toEqual([
       {
         task_type: "translation",
         status: "requested",
@@ -89,13 +89,13 @@ describe("TaskRuntimePublisher", () => {
 
   function create_publisher(
     runtime_state: TaskRuntimeState,
-    published_events: Array<{ event_type: string; payload: MutableJsonRecord }>,
+    published_messages: Array<{ topic: string; payload: MutableJsonRecord }>,
   ): TaskRuntimePublisher {
-    const event_hub = {
-      publish: (event_type: string, payload: MutableJsonRecord) => {
-        published_events.push({ event_type, payload });
+    const api_stream_hub = {
+      publish: (topic: string, payload: MutableJsonRecord) => {
+        published_messages.push({ topic, payload });
       },
-    } as unknown as CoreEventHub;
+    } as unknown as ApiStreamHub;
     const snapshot_builder = {
       build_task_snapshot: async (request: JsonRecord) => {
         const snapshot = runtime_state.snapshot();
@@ -108,6 +108,6 @@ describe("TaskRuntimePublisher", () => {
         };
       },
     } as unknown as TaskSnapshotBuilder;
-    return new TaskRuntimePublisher(event_hub, runtime_state, snapshot_builder);
+    return new TaskRuntimePublisher(api_stream_hub, runtime_state, snapshot_builder);
   }
 });

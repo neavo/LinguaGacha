@@ -7,7 +7,7 @@ import {
 } from "electron";
 import path from "node:path";
 
-import { build_core_api_base_url_argument } from "../../core/api/core-api-endpoint";
+import { build_core_api_base_url_argument } from "../../core/api/api-base-url";
 import { IPC_CHANNEL_WINDOW_CLOSE_REQUEST } from "../ipc/ipc-contract";
 import { resolve_title_bar_overlay_theme, uses_title_bar_overlay } from "./shell-contract";
 import type {

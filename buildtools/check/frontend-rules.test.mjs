@@ -15,7 +15,7 @@ describe("前端边界规则", () => {
         project_root,
         "src/renderer/app/desktop/desktop-api.ts",
         `
-          import { normalize_core_api_base_url } from "@core/api/core-api-endpoint";
+          import { normalize_core_api_base_url } from "@core/api/api-base-url";
           export async function api_fetch() {
             return fetch(normalize_core_api_base_url("http://127.0.0.1:1"));
           }

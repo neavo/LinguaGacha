@@ -17,7 +17,7 @@
       "@base/*": ["./src/base/*"],
       "@gui/bridge-api": ["./src/gui/bridge/bridge-api.ts"],
       "@gui/bridge-types": ["./src/gui/bridge/bridge-types.ts"],
-      "@core/api/core-api-endpoint": ["./src/core/api/core-api-endpoint.ts"],
+      "@core/api/api-base-url": ["./src/core/api/api-base-url.ts"],
       "@gui/external-url-policy": ["./src/gui/shell/external-url-policy.ts"],
       "@gui/ipc-contract": ["./src/gui/ipc/ipc-contract.ts"],
       "@gui/shell-contract": ["./src/gui/shell/shell-contract.ts"],
@@ -38,7 +38,7 @@
     "src/gui/ipc/*.ts",
     "src/gui/shell/shell-contract.ts",
     "src/gui/shell/external-url-policy.ts",
-    "src/core/api/core-api-endpoint.ts",
+    "src/core/api/api-base-url.ts",
     "src/electron-env.d.ts"
   ]
 }

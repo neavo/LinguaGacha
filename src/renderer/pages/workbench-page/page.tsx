@@ -1,9 +1,3 @@
-import { useMemo } from "react";
-
-import {
-  useProjectSessionBarrier,
-  useProjectSessionPageCacheRegistration,
-} from "@/app/session/project-session-context";
 import { useI18n } from "@/app/locale/locale-provider";
 import { useWorkbenchTaskRuntime } from "@/pages/workbench-page/task-runtime/workbench-task-runtime-context";
 import { useWorkbenchPageState } from "@/pages/workbench-page/use-workbench-page-state";
@@ -19,35 +13,14 @@ type WorkbenchPageProps = {
   is_sidebar_collapsed: boolean;
 };
 
-// WorkbenchPage 只组合工作台页面状态、任务运行态和页面缓存登记，不创建全局 session 事实。
+// WorkbenchPage 只组合工作台页面状态和任务运行态，不创建全局 session 事实。
 export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
   const { t } = useI18n();
-  const { create_barrier_checkpoint, wait_for_barrier } = useProjectSessionBarrier();
   const { translation_task_runtime, analysis_task_runtime } = useWorkbenchTaskRuntime();
-  // 工作台页面状态拥有文件操作和列表缓存，session 只消费它声明的 barrier 快照。
   const workbench_state = useWorkbenchPageState({
     translationTaskRuntime: translation_task_runtime,
     analysisTaskRuntime: analysis_task_runtime,
-    createProjectSessionBarrierCheckpoint: create_barrier_checkpoint,
-    waitForProjectSessionBarrier: wait_for_barrier,
   });
-  // page_cache_snapshot 只描述当前挂载页面缓存，不把工作台内部状态提升为全局事实。
-  const page_cache_snapshot = useMemo(() => {
-    return {
-      isRefreshing: workbench_state.is_refreshing,
-      consumedRevisions: workbench_state.consumed_revisions,
-      requiredSections: workbench_state.required_sections,
-      settledProjectPath: workbench_state.settled_project_path,
-      fileOperationRunning: workbench_state.file_op_running,
-    };
-  }, [
-    workbench_state.consumed_revisions,
-    workbench_state.file_op_running,
-    workbench_state.is_refreshing,
-    workbench_state.required_sections,
-    workbench_state.settled_project_path,
-  ]);
-  useProjectSessionPageCacheRegistration("workbench", page_cache_snapshot);
 
   return (
     <div className="workbench-page page-shell page-shell--full">

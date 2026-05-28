@@ -17,7 +17,7 @@ import { DesktopRuntimeProvider } from "@/app/desktop/desktop-runtime-context";
 import { ProjectSessionProvider } from "@/app/session/project-session-context";
 import { ProjectSessionUiStateProvider } from "@/app/session/project-session-ui-state-context";
 import { WorkbenchTaskRuntimeProvider } from "@/pages/workbench-page/task-runtime/workbench-task-runtime-context";
-import { QualityRuleStatisticsProvider } from "@/project/quality/quality-rule-statistics-context";
+import { QualityRuleStatisticsProvider } from "@/project/quality/quality-statistics-context";
 import {
   api_fetch,
   check_github_release_update,

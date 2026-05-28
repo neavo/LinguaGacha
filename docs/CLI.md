@@ -33,7 +33,7 @@ sequenceDiagram
   participant Core as CoreBootstrap
   participant Job as run_cli_job
   participant Temp as 临时 .lg
-  participant Task as TaskService / CoreEventHub
+  participant Task as TaskService / ApiStreamHub
   participant Out as output-dir
 
   Entry->>CLI: --cli 后 argv + appRoot + EngineExecution
@@ -52,7 +52,7 @@ sequenceDiagram
 - 每个 CLI job 独占一个临时 `.lg` 工程；成功、失败或任务报错后都必须撤销 transient 设置、卸载工程并删除临时目录。
 - CLI 默认关闭术语表、文本保护、译前替换、译后替换、翻译提示词和分析提示词预设；只有命令参数显式传入的资源会写入本次临时工程。
 - 外部质量规则和提示词仍走 `ProjectDatabase` operation 写入，并推进 `quality` / `prompts` revision；任务启动使用当前 section revision 构造 `expected_section_revisions`。
-- CLI 等待任务时只订阅同进程 `CoreEventHub` 的 `task.snapshot_changed`；不能新增独立轮询状态或另一套任务生命周期。
+- CLI 等待任务时只订阅同进程 `ApiStreamHub` 的 `task.snapshot_changed`；不能新增独立轮询状态或另一套任务生命周期。
 - 翻译命令启动 `translation` 全量任务后调用文件导出服务；分析命令启动 `analysis` 全量任务后调用质量服务导出候选结果。
 
 ## 4. 输出与进程语义

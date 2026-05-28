@@ -1,4 +1,4 @@
-import type { QualityStatisticsDependencySnapshot } from "@/project/quality/quality-statistics-auto";
+import type { QualityStatisticsDependencySnapshot } from "@shared/quality/quality-statistics";
 
 export type GlossaryEntry = {
   entry_id?: string;

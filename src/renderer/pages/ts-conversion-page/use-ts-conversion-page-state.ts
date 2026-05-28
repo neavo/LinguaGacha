@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
@@ -11,19 +11,39 @@ import {
   collect_ts_conversion_text_types,
   normalize_ts_conversion_runtime_items,
 } from "@/pages/ts-conversion-page/logic";
+import {
+  read_ts_conversion_query,
+  type TsConversionTextPreserveQuerySlice,
+} from "@/project/query/ts-conversion-query";
+import { createProjectItemIndex } from "@/project/project-item-index";
 import type {
   TsConversionDirection,
   TsConversionExportPayload,
   TsConversionRulePresetPayload,
 } from "@/pages/ts-conversion-page/types";
-import { ITEM_TEXT_TYPES } from "@base/item";
+import { ITEM_TEXT_TYPES, type ProjectItemPublicRecord } from "@base/item";
 import { normalize_text_preserve_mode } from "@base/quality";
 
 type TsConversionConfirmState = {
   open: boolean;
 };
 
+type TsConversionQueryState = {
+  items: ProjectItemPublicRecord[];
+  text_preserve: {
+    mode: unknown;
+    entries: Array<Record<string, unknown>>;
+  };
+};
+
 const TS_CONVERSION_PRESET_TEXT_TYPES = new Set<string>(ITEM_TEXT_TYPES);
+const EMPTY_QUERY_STATE: TsConversionQueryState = {
+  items: [],
+  text_preserve: {
+    mode: "smart",
+    entries: [],
+  },
+};
 
 // 确认弹窗状态保持独立构造，避免关闭和初始化分支各自拼对象
 function create_empty_confirm_state(): TsConversionConfirmState {
@@ -50,6 +70,22 @@ function extract_preset_rule_sources(entries: unknown[] | undefined): string[] {
     const src = (entry as Record<string, unknown>).src;
     return typeof src === "string" && src.trim() !== "" ? [src.trim()] : [];
   });
+}
+
+function normalize_text_preserve_query_slice(
+  slice: TsConversionTextPreserveQuerySlice | undefined,
+): TsConversionQueryState["text_preserve"] {
+  const entries = Array.isArray(slice?.entries)
+    ? slice.entries.flatMap((entry) => {
+        return typeof entry === "object" && entry !== null && !Array.isArray(entry)
+          ? [{ ...(entry as Record<string, unknown>) }]
+          : [];
+      })
+    : [];
+  return {
+    mode: slice?.mode ?? "smart",
+    entries,
+  };
 }
 
 // 单个 text_type 读取失败不应中断整次转换，缺失预设等价于没有保护规则
@@ -88,14 +124,14 @@ async function read_preset_rules_by_text_type(
 // 页面状态只编排确认、进度和导出请求；实际转换规则留在纯逻辑模块
 export function useTsConversionPageState() {
   const { t } = useI18n();
-  const { project_snapshot, project_store } = useDesktopRuntime();
+  const {
+    project_snapshot,
+    project_change_signal,
+    project_session_status = "ready",
+  } = useDesktopRuntime();
   const { push_toast, push_progress_toast, update_progress_toast, dismiss_toast } =
     useDesktopToast();
-  const project_store_state = useSyncExternalStore(
-    project_store.subscribe,
-    project_store.getState,
-    project_store.getState,
-  );
+  const [query_state, set_query_state] = useState<TsConversionQueryState>(EMPTY_QUERY_STATE);
   const [direction, set_direction] = useState<TsConversionDirection>("s2t");
   const [preserve_text, set_preserve_text] = useState(true);
   const [convert_name, set_convert_name] = useState(true);
@@ -106,10 +142,42 @@ export function useTsConversionPageState() {
   const run_active_ref = useRef(false); // 用 ref 阻止同一轮异步转换被重复触发，避免重复写出文件
   const prefer_native_notice_shown_ref = useRef(false); // 页面挂载提示只在当前 hook 生命周期内展示一次
 
-  // runtime_items 从 ProjectStore 派生，确认弹窗打开后仍以当前 store 快照执行转换
-  const runtime_items = useMemo(() => {
-    return normalize_ts_conversion_runtime_items(project_store_state.items);
-  }, [project_store_state.items]);
+  const runtime_items = normalize_ts_conversion_runtime_items(
+    createProjectItemIndex(
+      Object.fromEntries(query_state.items.map((item) => [String(item.item_id), item])),
+    ),
+  );
+
+  useEffect(() => {
+    if (
+      !project_snapshot.loaded ||
+      project_snapshot.path === "" ||
+      project_session_status !== "ready"
+    ) {
+      set_query_state(EMPTY_QUERY_STATE);
+      return;
+    }
+
+    let cancelled = false;
+    void read_ts_conversion_query().then((response) => {
+      if (cancelled || response.projectPath !== project_snapshot.path) {
+        return;
+      }
+      set_query_state({
+        items: Array.isArray(response.items) ? response.items : [],
+        text_preserve: normalize_text_preserve_query_slice(response.textPreserve),
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    project_change_signal?.seq ?? 0,
+    project_session_status,
+    project_snapshot.loaded,
+    project_snapshot.path,
+  ]);
 
   useEffect(() => {
     if (prefer_native_notice_shown_ref.current) {
@@ -160,7 +228,7 @@ export function useTsConversionPageState() {
     });
 
     try {
-      const text_preserve_slice = project_store.getState().quality.text_preserve;
+      const text_preserve_slice = query_state.text_preserve;
       const text_preserve_mode = normalize_text_preserve_mode(text_preserve_slice.mode, "smart");
       const normalized_text_preserve_mode = text_preserve_mode.toLowerCase();
       const custom_rules = build_ts_conversion_custom_rules(text_preserve_slice.entries);
@@ -218,7 +286,7 @@ export function useTsConversionPageState() {
     direction,
     dismiss_toast,
     preserve_text,
-    project_store,
+    query_state.text_preserve,
     push_progress_toast,
     push_toast,
     runtime_items,

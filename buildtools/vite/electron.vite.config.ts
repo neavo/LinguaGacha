@@ -14,8 +14,14 @@ const config = {
       rollupOptions: {
         input: {
           index: path.resolve(project_root, "src/index.ts"),
-          "planning-worker-entry": path.resolve(project_root, "src/core/engine/planning/planning-worker-entry.ts"),
-          "work-unit-worker-entry": path.resolve(project_root, "src/core/engine/work-unit/work-unit-worker-entry.ts"),
+          "planning-worker-entry": path.resolve(
+            project_root,
+            "src/core/engine/planning/planning-worker-entry.ts",
+          ),
+          "work-unit-worker-entry": path.resolve(
+            project_root,
+            "src/core/engine/work-unit/work-unit-worker-entry.ts",
+          ),
         },
         output: {
           entryFileNames: "[name].js",
@@ -47,10 +53,13 @@ const config = {
       alias: {
         "@": path.resolve(project_root, "src/renderer"),
         "@base": path.resolve(project_root, "src/base"),
-        "@core/api/core-api-endpoint": path.resolve(project_root, "src/core/api/core-api-endpoint.ts"),
+        "@core/api/api-base-url": path.resolve(project_root, "src/core/api/api-base-url.ts"),
         "@gui/bridge-api": path.resolve(project_root, "src/gui/bridge/bridge-api.ts"),
         "@gui/bridge-types": path.resolve(project_root, "src/gui/bridge/bridge-types.ts"),
-        "@gui/external-url-policy": path.resolve(project_root, "src/gui/shell/external-url-policy.ts"),
+        "@gui/external-url-policy": path.resolve(
+          project_root,
+          "src/gui/shell/external-url-policy.ts",
+        ),
         "@gui/ipc-contract": path.resolve(project_root, "src/gui/ipc/ipc-contract.ts"),
         "@gui/shell-contract": path.resolve(project_root, "src/gui/shell/shell-contract.ts"),
         "@shared": path.resolve(project_root, "src/shared"),

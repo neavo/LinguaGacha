@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ProjectStoreChangeEvent } from "@/project/store/project-store";
+import type { ProjectRuntimeChangeEvent } from "@/app/desktop/desktop-project-change-types";
 import type { TaskSnapshot } from "@/app/desktop/task-runtime-store";
 import {
   DESKTOP_RUNTIME_REFRESH_INTERVAL_MS,
@@ -35,7 +35,7 @@ describe("DesktopRuntimeRefreshScheduler", () => {
 
   it("同一窗口内按到达顺序批量应用 project change", async () => {
     vi.useFakeTimers();
-    const applied_batches: ProjectStoreChangeEvent[][] = [];
+    const applied_batches: ProjectRuntimeChangeEvent[][] = [];
     const scheduler = new DesktopRuntimeRefreshScheduler({
       applyTaskSnapshot: () => {},
       applyProjectChangeBatch: (events) => {
@@ -167,7 +167,7 @@ function create_project_change(
   projectRevision: number,
   itemIds: number[] = [projectRevision],
   source = "translation_batch",
-): ProjectStoreChangeEvent {
+): ProjectRuntimeChangeEvent {
   return {
     source,
     projectPath: "E:/demo/demo.lg",

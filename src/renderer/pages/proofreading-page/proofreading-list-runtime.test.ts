@@ -20,6 +20,7 @@ function create_client_item(overrides: Partial<ProofreadingClientItem>): Proofre
     src: "src",
     dst: "dst",
     status: "NONE",
+    retry_count: 0,
     warnings: [],
     warning_fragments_by_code: {},
     applied_glossary_terms: [],
@@ -46,6 +47,7 @@ describe("proofreading-list-runtime", () => {
         src: "很长很长的源文",
         dst: "很长很长的译文",
         status: "NONE",
+        retry_count: 0,
       },
       warnings,
       warning_fragments_by_code: fragments,
@@ -113,8 +115,24 @@ describe("proofreading-list-runtime", () => {
 
   it("运行时自然顺序和可见窗口行保持稳定 row id", () => {
     const ordered = [
-      { item_id: 2, file_path: "chapter-a.txt", row_number: 2, src: "", dst: "", status: "NONE" },
-      { item_id: 1, file_path: "chapter-a.txt", row_number: 1, src: "", dst: "", status: "NONE" },
+      {
+        item_id: 2,
+        file_path: "chapter-a.txt",
+        row_number: 2,
+        src: "",
+        dst: "",
+        status: "NONE",
+        retry_count: 0,
+      },
+      {
+        item_id: 1,
+        file_path: "chapter-a.txt",
+        row_number: 1,
+        src: "",
+        dst: "",
+        status: "NONE",
+        retry_count: 0,
+      },
     ].sort(compare_proofreading_runtime_items);
     const visible_items = build_proofreading_visible_items([
       create_client_item({ item_id: 1, row_id: "1", compressed_src: "s", compressed_dst: "d" }),

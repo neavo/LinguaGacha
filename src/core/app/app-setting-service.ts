@@ -4,8 +4,8 @@ import { JsonTool } from "../../shared/utils/json-tool";
 import { Setting } from "../../base/setting";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 
-interface AppSettingsEventPublisher {
-  publish: (event_type: string, payload: Record<string, ApiJsonValue>) => void; // settings.changed 是本地事件，避免设置更新绕回旧运行态同步链路
+interface AppSettingsStreamPublisher {
+  publish: (topic: string, payload: Record<string, ApiJsonValue>) => void; // settings.changed 走公开 stream topic，避免设置更新绕回旧运行态同步链路
 }
 
 /**
@@ -13,7 +13,7 @@ interface AppSettingsEventPublisher {
  */
 export class AppSettingService {
   private readonly paths: AppPathService; // paths 提供 config.json 的唯一落点
-  private event_publisher: AppSettingsEventPublisher | null; // event_publisher 只广播 settings.changed
+  private stream_publisher: AppSettingsStreamPublisher | null; // stream_publisher 只广播 settings.changed
   private readonly native_fs: NativeFs; // native_fs 统一设置文件读写和长路径策略
   private setting_cache: Setting | null = null; // setting_cache 是运行期配置事实，外部手改不做热加载
   private transient_overrides: Record<string, ApiJsonValue> | null = null; // transient_overrides 只服务 CLI 单次任务，不写回 config.json
@@ -23,19 +23,19 @@ export class AppSettingService {
    */
   public constructor(
     paths: AppPathService,
-    event_publisher: AppSettingsEventPublisher | null = null,
+    stream_publisher: AppSettingsStreamPublisher | null = null,
     native_fs: NativeFs = default_native_fs,
   ) {
     this.paths = paths;
-    this.event_publisher = event_publisher;
+    this.stream_publisher = stream_publisher;
     this.native_fs = native_fs;
   }
 
   /**
-   * 绑定运行期事件出口；Gateway 生命周期重建事件 hub 时只更新这个引用。
+   * 绑定运行期 stream 出口；Gateway 生命周期重建 stream hub 时只更新这个引用。
    */
-  public set_event_publisher(event_publisher: AppSettingsEventPublisher | null): void {
-    this.event_publisher = event_publisher;
+  public set_stream_publisher(stream_publisher: AppSettingsStreamPublisher | null): void {
+    this.stream_publisher = stream_publisher;
   }
 
   /**
@@ -55,7 +55,7 @@ export class AppSettingService {
   }
 
   /**
-   * 更新应用设置白名单字段，并通过 TS 事件 hub 广播设置变化
+   * 更新应用设置白名单字段，并通过 API stream 广播设置变化
    */
   public async update_app_settings(
     request: Record<string, ApiJsonValue>,
@@ -179,7 +179,7 @@ export class AppSettingService {
     changed_keys: string[],
     setting: Record<string, ApiJsonValue>,
   ): void {
-    this.event_publisher?.publish("settings.changed", {
+    this.stream_publisher?.publish("settings.changed", {
       keys: changed_keys as unknown as ApiJsonValue,
       settings: this.build_setting_snapshot(setting),
     });

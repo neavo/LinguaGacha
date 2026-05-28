@@ -22,7 +22,7 @@
 | 数据库、`.lg`、migration、asset、NativeFs | [`BACKEND.md`](BACKEND.md) | `src/core/database/`、`src/core/migration/`、`src/native/` |
 | 任务命令、运行态、worker、LLM | [`BACKEND.md`](BACKEND.md) | `src/core/engine/`、`src/core/llm/`、`src/core/service/task-service.ts` |
 | Electron / preload / renderer Core 接入 | [`FRONTEND.md`](FRONTEND.md) | `src/gui/bridge/`、`src/gui/ipc/`、`src/gui/preload/`、`src/renderer/app/desktop/` |
-| `ProjectStore`、导航、项目页 runtime、Project UI Worker | [`FRONTEND.md`](FRONTEND.md) | `src/renderer/project/`、`src/renderer/pages/`、相关 renderer 测试 |
+| 页面 query runtime、导航、项目页 runtime、校对列表运行态 | [`FRONTEND.md`](FRONTEND.md) | `src/renderer/project/`、`src/renderer/pages/`、相关 renderer 测试 |
 | 前端视觉、样式、可见文案 | [`FRONTEND.md`](FRONTEND.md) | `DESIGN.md`、`src/renderer/index.css`、相关组件 / 页面 CSS |
 | 长期文档治理 | `.codex/skills/project-doc/SKILL.md` | `AGENTS.md`、`docs/` 目标形态、README / 脚本引用 |
 

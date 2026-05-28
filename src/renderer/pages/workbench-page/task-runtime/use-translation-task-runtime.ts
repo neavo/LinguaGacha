@@ -5,10 +5,6 @@ import {
   create_translation_reset_all_plan,
   create_translation_reset_failed_plan,
 } from "@/project/reset/translation-reset-plan";
-import type {
-  ProjectSessionBarrierCheckpoint,
-  ProjectSessionBarrierKind,
-} from "@/app/session/project-session-barrier";
 import {
   type ProjectMutationOperation,
   type ProjectMutationResultPayload,
@@ -19,6 +15,7 @@ import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
 import { should_defer_runtime_snapshot_refresh } from "@/pages/workbench-page/task-runtime/task-runtime-ownership";
 import { useTerminalPromptSuppression } from "@/pages/workbench-page/task-runtime/terminal-prompt-suppression";
+import { read_project_section_revisions } from "@/project/query/project-section-revisions-query";
 import {
   advance_workbench_waveform_state,
   create_empty_workbench_waveform_state,
@@ -47,13 +44,7 @@ type TranslationTaskCommandPayload = {
 // 翻译任务 runtime 拥有翻译提交 operation，任务归因通过 task_type 固定到 translation。
 const WORKBENCH_TRANSLATION_MUTATION: ProjectMutationOperation = "workbench.translation_mutation";
 
-type TranslationTaskRuntimeOptions = {
-  createProjectSessionBarrierCheckpoint?: () => ProjectSessionBarrierCheckpoint; // 翻译重置前固定项目 session 身份
-  waitForProjectSessionBarrier?: (
-    kind: Exclude<ProjectSessionBarrierKind, "project_session_ready">,
-    options?: { checkpoint?: ProjectSessionBarrierCheckpoint | null },
-  ) => Promise<void>; // 翻译重置后等待校对缓存追上已提交的 ProjectStore 变更
-};
+type TranslationTaskRuntimeOptions = Record<string, never>;
 
 export type TranslationTaskRuntime = {
   translation_task_display_snapshot: TranslationTaskSnapshot | null;
@@ -138,12 +129,11 @@ function is_translation_terminal_prompt_boundary(args: {
 
 // useTranslationTaskRuntime 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useTranslationTaskRuntime(
-  options: TranslationTaskRuntimeOptions = {},
+  _options: TranslationTaskRuntimeOptions = {},
 ): TranslationTaskRuntime {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
   const {
-    project_store,
     project_snapshot,
     settings_snapshot,
     sync_task_snapshot,
@@ -350,7 +340,7 @@ export function useTranslationTaskRuntime(
     }
 
     const should_continue = has_translation_task_progress(translation_task_display_snapshot);
-    const current_project_state = project_store.getState();
+    const section_revisions = await read_project_section_revisions();
     clear_terminal_prompt_suppression();
 
     try {
@@ -359,8 +349,8 @@ export function useTranslationTaskRuntime(
         mode: should_continue ? "continue" : "new",
         scope: { kind: "all" },
         expected_section_revisions: {
-          quality: current_project_state.revisions.sections.quality ?? 0,
-          prompts: current_project_state.revisions.sections.prompts ?? 0,
+          quality: section_revisions.quality ?? 0,
+          prompts: section_revisions.prompts ?? 0,
         },
       });
       const next_snapshot = normalize_translation_task_snapshot_payload(task_payload);
@@ -383,7 +373,6 @@ export function useTranslationTaskRuntime(
     }
   }, [
     clear_terminal_prompt_suppression,
-    project_store,
     push_toast,
     sync_runtime_task_snapshot,
     t,
@@ -415,8 +404,6 @@ export function useTranslationTaskRuntime(
       return;
     }
 
-    const barrierCheckpoint = options.createProjectSessionBarrierCheckpoint?.() ?? null;
-
     set_task_confirm_state((previous_state) => {
       if (previous_state === null) {
         return null;
@@ -441,10 +428,11 @@ export function useTranslationTaskRuntime(
         await api_fetch("/api/tasks/generate-translation", {});
         set_task_confirm_state(null);
       } else {
+        const section_revisions = await read_project_section_revisions();
         const reset_plan =
           task_confirm_state.kind === "reset-all"
             ? create_translation_reset_all_plan({
-                state: project_store.getState(),
+                section_revisions,
                 task_snapshot,
                 source_language: String(settings_snapshot.source_language ?? "ALL"),
                 mtool_optimizer_enable: Boolean(settings_snapshot.mtool_optimizer_enable),
@@ -453,7 +441,7 @@ export function useTranslationTaskRuntime(
                 ),
               })
             : create_translation_reset_failed_plan({
-                state: project_store.getState(),
+                section_revisions,
                 task_snapshot,
               });
         await commit_project_mutation({
@@ -467,12 +455,6 @@ export function useTranslationTaskRuntime(
           },
         });
         await refresh_task("translation");
-
-        if (options.waitForProjectSessionBarrier !== undefined) {
-          await options.waitForProjectSessionBarrier("proofreading_cache_refresh", {
-            checkpoint: barrierCheckpoint,
-          });
-        }
         set_task_confirm_state(null);
       }
     } catch (error) {
@@ -500,8 +482,6 @@ export function useTranslationTaskRuntime(
     }
   }, [
     commit_project_mutation,
-    options,
-    project_store,
     refresh_task,
     push_toast,
     settings_snapshot.mtool_optimizer_enable,

@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   PROOFREADING_BASIC_VIEW_MARKER,
   build_basic_proofreading_list_view,
+  type ProofreadingBasicRuntimeHydrationInput,
 } from "@/pages/proofreading-page/proofreading-basic-list";
-import type { ProofreadingRuntimeHydrationInput } from "@/project/worker/proofreading-ui-worker-service";
 
-// create_hydration_input 构造基础列表所需的 ProjectStore 只读快照。
-function create_hydration_input(): ProofreadingRuntimeHydrationInput {
+// create_hydration_input 构造基础列表所需的后端 query 只读快照。
+function create_hydration_input(): ProofreadingBasicRuntimeHydrationInput {
   return {
     projectId: "E:/demo/sample.lg",
     revisions: {
@@ -48,19 +48,11 @@ function create_hydration_input(): ProofreadingRuntimeHydrationInput {
         retry_count: 0,
       },
     ],
-    quality: {
-      glossary: { enabled: false, mode: "off", revision: 0, entries: [] },
-      pre_replacement: { enabled: false, mode: "off", revision: 0, entries: [] },
-      post_replacement: { enabled: false, mode: "off", revision: 0, entries: [] },
-      text_preserve: { enabled: false, mode: "off", revision: 0, entries: [] },
-    },
-    sourceLanguage: "JA",
-    targetLanguage: "ZH",
   };
 }
 
 describe("build_basic_proofreading_list_view", () => {
-  it("质量 hydrate 未完成时只从 ProjectStore items 构建空质量字段基础行", () => {
+  it("质量 hydrate 未完成时只从后端 query items 构建空质量字段基础行", () => {
     const view = build_basic_proofreading_list_view({
       input: create_hydration_input(),
       query: {

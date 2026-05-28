@@ -11,12 +11,12 @@ import { record_app_error } from "../log/app-error-reporter";
 import { renderer_error_report_to_log_payload } from "../log/renderer-error-log-adapter";
 import type { LogEvent } from "../../shared/log";
 import type { CoreServices } from "../bootstrap/core-services";
-import { normalizeProjectDataSections } from "../../shared/project/event";
 import { JsonTool } from "../../shared/utils/json-tool";
 import {
   close_api_gateway_with_connections,
   track_api_gateway_connections,
 } from "./api-gateway-connections";
+import { CORE_API_HOST, build_core_api_base_url } from "./api-base-url";
 import {
   FileNotFoundError,
   InternalInvariantError,
@@ -31,8 +31,6 @@ import {
   type AppErrorPublicDetails,
 } from "../../shared/error";
 import { api_error, ok, type ApiGatewayStartResult, type ApiJsonValue } from "./api-types";
-
-const CORE_API_HOST = "127.0.0.1"; // 公开 Gateway 只监听本机环回地址，避免局域网暴露桌面 API
 
 const LOG_STREAM_KEEPALIVE_INTERVAL_MS = 500; // 日志流 keepalive 短间隔用于保持本机窗口实时性，不作为项目事件节奏
 
@@ -120,6 +118,7 @@ export class ApiGatewayServer {
     const model_service = services.model_service;
     const project_lifecycle_service = services.project_lifecycle_service;
     const project_service = services.project_service;
+    const project_query_service = services.project_query_service;
     const proofreading_service = services.proofreading_service;
     const project_reset_preview_service = services.project_reset_preview_service;
     const project_runtime_projection_service = services.project_runtime_projection_service;
@@ -157,16 +156,34 @@ export class ApiGatewayServer {
       this.record_renderer_error(body),
     );
     app.get("/api/events/stream", () => {
-      return services.core_event_hub.create_stream_response();
+      return services.api_stream_hub.create_stream_response();
     });
     this.post_json(app, "/api/project/manifest", () =>
       project_runtime_projection_service.build_manifest(services.project_session_state.snapshot()),
     );
-    this.post_json(app, "/api/project/read-sections", (body) =>
-      project_runtime_projection_service.build_section_payloads({
-        projectState: services.project_session_state.snapshot(),
-        sections: normalizeProjectDataSections(body["sections"]),
-      }),
+    this.post_json(app, "/api/project/query/workbench", () =>
+      project_query_service.read_workbench_view(),
+    );
+    this.post_json(app, "/api/project/query/proofreading", (body) =>
+      project_query_service.read_proofreading_view(body),
+    );
+    this.post_json(app, "/api/project/query/quality-statistics", (body) =>
+      project_query_service.read_quality_statistics(body),
+    );
+    this.post_json(app, "/api/project/query/quality-rule", (body) =>
+      project_query_service.read_quality_rule_view(body),
+    );
+    this.post_json(app, "/api/project/query/ts-conversion", () =>
+      project_query_service.read_ts_conversion_view(),
+    );
+    this.post_json(app, "/api/project/query/name-field-extraction", () =>
+      project_query_service.read_name_field_extraction_view(),
+    );
+    this.post_json(app, "/api/project/query/analysis-glossary-import", (body) =>
+      project_query_service.prepare_analysis_glossary_import(body),
+    );
+    this.post_json(app, "/api/project/query/prompt", (body) =>
+      project_query_service.read_prompt_view(body),
     );
     this.post_json(app, "/api/settings/app", () => app_setting_service.get_app_settings());
     this.post_json(app, "/api/settings/update", (body) =>
@@ -480,7 +497,7 @@ export class ApiGatewayServer {
    * renderer 只认公开 Gateway 地址，数据库内部资源不会透出到 preload 边界
    */
   private base_url(): string {
-    return `http://${CORE_API_HOST}:${this.options.publicPort.toString()}`;
+    return build_core_api_base_url(this.options.publicPort);
   }
 
   /**

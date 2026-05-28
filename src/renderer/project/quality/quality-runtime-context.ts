@@ -1,4 +1,4 @@
-import type { ProjectStoreQualityState } from "@/project/store/project-store";
+import type { QualityRulesRuntimeState } from "@/project/quality/quality-runtime-state";
 import {
   build_text_preserve_rule,
   collect_non_blank_text_preserve_segments,
@@ -149,7 +149,7 @@ function build_replacement_rules(args: {
 /**
  * 术语编译成 Aho-Corasick 自动机，校对逐项检查时只扫描一次源文。
  */
-function build_glossary_index(quality: ProjectStoreQualityState): QualityRuntimeGlossaryIndex {
+function build_glossary_index(quality: QualityRulesRuntimeState): QualityRuntimeGlossaryIndex {
   if (!quality.glossary.enabled) {
     return {
       entries: [],
@@ -241,7 +241,7 @@ function build_glossary_aho_nodes(
  * 质量运行时上下文把 UI 规则快照编译成校对和统计都能复用的可执行结构
  */
 export function buildQualityRuntimeContext(
-  quality: ProjectStoreQualityState,
+  quality: QualityRulesRuntimeState,
 ): QualityRuntimeContext {
   return {
     glossary: build_glossary_index(quality),

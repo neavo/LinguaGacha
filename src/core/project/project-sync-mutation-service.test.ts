@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { AppEventBus } from "../app/app-event-bus";
 import { ProjectDatabase } from "../database/database-operations";
 import type { ApiJsonValue } from "../api/api-types";
 import { TaskRuntimeState } from "../engine/runtime/task-runtime-state";
@@ -14,7 +15,7 @@ import { ProjectSyncMutationService } from "./project-sync-mutation-service";
 import type { ProjectChangePublisher } from "./project-change-publisher";
 import { get_runtime_section_revision } from "./project-section-revision";
 import { ProjectSessionState } from "./project-session-state";
-import type { ProjectChangeEvent } from "../../shared/project/event";
+import type { ProjectChangeEvent } from "../../shared/project-event";
 
 let temp_dir = "";
 
@@ -57,6 +58,7 @@ function create_service(
       database,
       project_operation_gate,
       session_state,
+      new AppEventBus(),
       publisher,
       null,
       undefined,

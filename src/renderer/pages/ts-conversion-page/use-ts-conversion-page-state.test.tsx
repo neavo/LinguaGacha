@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectItemPublicRecord } from "@base/item";
 
 import { useTsConversionPageState } from "@/pages/ts-conversion-page/use-ts-conversion-page-state";
-import { createProjectItemIndex, type ProjectItemIndex } from "@/project/store/project-item-index";
+import { createProjectItemIndex, type ProjectItemIndex } from "@/project/project-item-index";
 
 const {
   api_fetch_mock,
@@ -22,7 +22,7 @@ const {
   };
 });
 
-// 测试只需要模拟 hook 会消费的 ProjectStore 切片，避免把完整运行态搬进页面测试
+// 测试只需要模拟 hook 会消费的后端 query 切片，避免把完整运行态搬进页面测试
 type RuntimeState = {
   items: ProjectItemIndex;
   quality: {
@@ -36,7 +36,7 @@ type RuntimeState = {
 let runtime_state: RuntimeState; // runtime_state 每个用例重建，保证 hook 通过 useSyncExternalStore 读到隔离快照
 const project_store_listeners = new Set<() => void>();
 
-// ProjectStore 替身只暴露订阅和读取能力，符合页面 hook 的真实依赖边界
+// 项目数据替身只暴露订阅和读取能力，符合页面 hook 的真实依赖边界
 const project_store = {
   subscribe: (listener: () => void) => {
     project_store_listeners.add(listener);
@@ -53,12 +53,28 @@ vi.mock("@/app/desktop/desktop-api", () => {
   };
 });
 
+vi.mock("@/project/query/ts-conversion-query", () => {
+  return {
+    read_ts_conversion_query: vi.fn(async () => ({
+      projectPath: "E:/demo/sample.lg",
+      items: [...runtime_state.items.values()],
+      textPreserve: runtime_state.quality.text_preserve,
+    })),
+  };
+});
+
 vi.mock("@/app/desktop/use-desktop-runtime", () => {
   return {
     useDesktopRuntime: () => ({
       project_snapshot: {
         loaded: true,
         path: "E:/demo/sample.lg",
+      },
+      project_change_signal: {
+        seq: 0,
+        reason: "test",
+        updated_sections: [],
+        results: [],
       },
       project_store,
     }),
@@ -212,6 +228,9 @@ describe("useTsConversionPageState", () => {
           }}
         />,
       );
+    });
+    await act(async () => {
+      await Promise.resolve();
     });
   }
 

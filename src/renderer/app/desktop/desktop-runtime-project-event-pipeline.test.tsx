@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DesktopRuntimeRefreshScheduler } from "@/app/desktop/desktop-runtime-refresh-scheduler";
-import type { ProjectStoreChangeEvent } from "@/project/store/project-store";
+import type { ProjectRuntimeChangeEvent } from "@/app/desktop/desktop-project-change-types";
 import {
   useDesktopRuntimeProjectEventPipeline,
   type DesktopRuntimeProjectEventPipeline,
@@ -13,7 +13,7 @@ import {
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 
-const project_change_event: ProjectStoreChangeEvent = {
+const project_change_event: ProjectRuntimeChangeEvent = {
   eventId: "event-1",
   source: "task",
   projectPath: "E:/demo/demo.lg",
@@ -34,7 +34,7 @@ function create_scheduler_stub(): DesktopRuntimeRefreshScheduler {
 function ProjectPipelineProbe(props: {
   normalizeProjectChangeEvent: (
     payload: ProjectChangeEventPayload,
-  ) => ProjectStoreChangeEvent | null;
+  ) => ProjectRuntimeChangeEvent | null;
   refreshProjectRuntimeAfterError: (
     reason: string,
     triggering_event: unknown,
@@ -47,13 +47,10 @@ function ProjectPipelineProbe(props: {
       loaded: true,
       path: "E:/demo/demo.lg",
     },
-    applyProjectChange: vi.fn(),
     applyProjectChangeBatch: vi.fn(),
     shouldApplyProjectChange: () => true,
     queueProjectChangeDuringSessionWarming: () => false,
     normalizeProjectChangeEvent: props.normalizeProjectChangeEvent,
-    collectProjectChangeSectionsRequiringRead: () => [],
-    readProjectSectionsForChange: async () => null,
     recovery: {
       report_runtime_error: vi.fn(),
       refresh_project_runtime_after_error: props.refreshProjectRuntimeAfterError,
@@ -71,7 +68,7 @@ function ProjectPipelineProbe(props: {
 async function render_pipeline(
   normalizeProjectChangeEvent: (
     payload: ProjectChangeEventPayload,
-  ) => ProjectStoreChangeEvent | null,
+  ) => ProjectRuntimeChangeEvent | null,
   refreshProjectRuntimeAfterError: (
     reason: string,
     triggering_event: unknown,

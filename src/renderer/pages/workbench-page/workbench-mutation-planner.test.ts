@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import type { ProjectItemPublicRecord } from "@base/item";
-import type { ProjectStoreState } from "@/project/store/project-store";
-import { createProjectItemIndex } from "@/project/store/project-item-index";
 import {
   create_workbench_delete_files_plan,
   create_workbench_import_files_plan,
@@ -10,44 +7,23 @@ import {
   create_workbench_planner_settings,
   create_workbench_reset_file_plan,
   type WorkbenchFileParsePreview,
+  type WorkbenchMutationPlanningState,
   type WorkbenchPlannerSettings,
 } from "@/pages/workbench-page/workbench-mutation-planner";
 
-function create_state(items: Record<string, ProjectItemPublicRecord>): ProjectStoreState {
+function create_state(): WorkbenchMutationPlanningState {
   return {
-    project: {
-      path: "E:/demo/sample.lg",
-      loaded: true,
-    },
-    files: {
-      "old.txt": {
+    files: [
+      {
         rel_path: "old.txt",
         file_type: "TXT",
         sort_index: 0,
       },
-    },
-    items: createProjectItemIndex(items),
-    quality: {
-      glossary: { entries: [], enabled: true, mode: "default", revision: 0 },
-      pre_replacement: { entries: [], enabled: true, mode: "default", revision: 0 },
-      post_replacement: { entries: [], enabled: true, mode: "default", revision: 0 },
-      text_preserve: { entries: [], enabled: true, mode: "default", revision: 0 },
-    },
-    prompts: {
-      translation: { text: "", enabled: true, revision: 0 },
-      analysis: { text: "", enabled: true, revision: 0 },
-    },
-    analysis: {},
-    proofreading: {
-      revision: 0,
-    },
-    revisions: {
-      projectRevision: 1,
-      sections: {
-        files: 1,
-        items: 2,
-        analysis: 3,
-      },
+    ],
+    section_revisions: {
+      files: 1,
+      items: 2,
+      analysis: 3,
     },
   };
 }
@@ -80,7 +56,7 @@ describe("workbench mutation planner", () => {
 
   it("导入新文件只提交源路径、目标路径、同名策略、继承模式和 revision 锁", () => {
     const plan = create_workbench_import_files_plan({
-      state: create_state({}),
+      state: create_state(),
       parsed_files: [create_parsed_file()],
       conflict_action: "skip",
       settings: SETTINGS,
@@ -115,7 +91,7 @@ describe("workbench mutation planner", () => {
       },
     ];
     const preview = create_workbench_import_files_preview({
-      state: create_state({}),
+      state: create_state(),
       parsed_files,
     });
 
@@ -123,7 +99,7 @@ describe("workbench mutation planner", () => {
     expect(preview.conflicting_files.map((file) => file.target_rel_path)).toEqual(["old.txt"]);
 
     const plan = create_workbench_import_files_plan({
-      state: create_state({}),
+      state: create_state(),
       parsed_files,
       conflict_action: "skip",
       settings: SETTINGS,
@@ -142,7 +118,7 @@ describe("workbench mutation planner", () => {
 
   it("同名文件选择替换时会提交新增和替换文件", () => {
     const plan = create_workbench_import_files_plan({
-      state: create_state({}),
+      state: create_state(),
       parsed_files: [
         create_parsed_file(),
         {
@@ -172,7 +148,7 @@ describe("workbench mutation planner", () => {
 
   it("同一批内部重名文件不进入导入计划", () => {
     const preview = create_workbench_import_files_preview({
-      state: create_state({}),
+      state: create_state(),
       parsed_files: [
         create_parsed_file(),
         {
@@ -187,7 +163,7 @@ describe("workbench mutation planner", () => {
 
   it("重置单文件只提交 rel_paths、设置快照和受影响 section revision", () => {
     const plan = create_workbench_reset_file_plan({
-      state: create_state({}),
+      state: create_state(),
       rel_path: "old.txt",
       settings: SETTINGS,
     });
@@ -204,7 +180,7 @@ describe("workbench mutation planner", () => {
 
   it("删除文件只提交 rel_paths、设置快照和受影响 section revision", () => {
     const plan = create_workbench_delete_files_plan({
-      state: create_state({}),
+      state: create_state(),
       rel_paths: ["old.txt"],
       settings: SETTINGS,
     });

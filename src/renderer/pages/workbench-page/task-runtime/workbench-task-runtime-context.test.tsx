@@ -16,15 +16,6 @@ const task_runtime_mock = vi.hoisted(() => {
   };
 });
 
-vi.mock("@/app/session/project-session-context", () => {
-  return {
-    useProjectSessionBarrier: () => ({
-      create_barrier_checkpoint: vi.fn(),
-      wait_for_barrier: vi.fn(async () => {}),
-    }),
-  };
-});
-
 vi.mock("@/app/locale/locale-provider", () => {
   return {
     useI18n: () => ({

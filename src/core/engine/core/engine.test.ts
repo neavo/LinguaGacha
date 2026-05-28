@@ -425,7 +425,7 @@ describe("TaskEngine", () => {
     status: string,
   ): {
     promise: Promise<void>;
-    publish: (event_type: string, payload: MutableJsonRecord) => void;
+    publish: (topic: string, payload: MutableJsonRecord) => void;
   } {
     let resolve_waiter: () => void = () => undefined;
     const promise = new Promise<void>((resolve) => {
@@ -433,8 +433,8 @@ describe("TaskEngine", () => {
     });
     return {
       promise,
-      publish: (event_type, payload) => {
-        if (event_type === "task.snapshot_changed") {
+      publish: (topic, payload) => {
+        if (topic === "task.snapshot_changed") {
           const task = payload["task"] as MutableJsonRecord | undefined;
           if (task?.["task_type"] === task_type && task["status"] === status) {
             resolve_waiter();
@@ -448,7 +448,7 @@ describe("TaskEngine", () => {
 
   // create_task_runtime_publisher 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_task_runtime_publisher(
-    on_publish: (event_type: string, payload: MutableJsonRecord) => void = () => undefined,
+    on_publish: (topic: string, payload: MutableJsonRecord) => void = () => undefined,
     on_progress_committed: (task_type: string) => void = () => undefined,
   ): TaskRuntimePublisher {
     return {

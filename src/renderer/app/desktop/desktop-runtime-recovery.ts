@@ -34,7 +34,7 @@ export type DesktopRuntimeRecoveryActions = {
 type DesktopRuntimeRecoveryOptions = {
   project_loaded: boolean; // project_loaded 决定项目恢复是否有权访问后端项目主链路
   project_path: string; // project_path 为空时不尝试项目恢复刷新
-  refresh_project_runtime: () => Promise<void>; // refresh_project_runtime 回到 manifest + read-sections 主链路
+  refresh_project_runtime: () => Promise<void>; // refresh_project_runtime 回到 manifest + 页面 query 主链路
   refresh_task: (task_type?: TaskType) => Promise<TaskSnapshot>; // refresh_task 回到后端 task snapshot 主链路
 };
 

@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@/app/desktop/desktop-api";
 import {
   type ProjectMutationOperation,
   type ProjectMutationResultPayload,
 } from "@/app/desktop/desktop-project-mutation";
-import type { ProjectStorePromptSlice } from "@/project/store/project-store";
-import { getPromptSlice } from "@/project/quality/quality-runtime";
 import type { SettingsSnapshotPayload } from "@/app/desktop/desktop-runtime-context";
 import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
+import { read_project_section_revisions } from "@/project/query/project-section-revisions-query";
 import { is_task_mutation_locked } from "@/project/tasks/task-lock";
 import { useDesktopToast } from "@/app/ui-runtime/toast/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
@@ -37,6 +36,15 @@ type PromptPresetPayload = {
 
 type PromptImportPayload = {
   text?: string;
+};
+
+type PromptSlice = {
+  text: string;
+  enabled: boolean;
+};
+
+type PromptQueryPayload = {
+  prompt?: Partial<PromptSlice>;
 };
 
 // 自定义提示词页的保存动作固定，任务类型作为独立诊断维度进入提交管线。
@@ -91,10 +99,7 @@ function normalize_prompt_text(text: string): string {
 }
 
 // resolve_editor_prompt_text 集中解析运行时决策，避免调用点复制条件判断。
-function resolve_editor_prompt_text(
-  snapshot: ProjectStorePromptSlice,
-  template: CustomPromptTemplate,
-): string {
+function resolve_editor_prompt_text(snapshot: PromptSlice, template: CustomPromptTemplate): string {
   const normalized_text = normalize_prompt_text(String(snapshot.text ?? ""));
 
   if (normalized_text === "") {
@@ -168,17 +173,11 @@ export function useCustomPromptPageState(
   const { push_toast } = useDesktopToast();
   const {
     project_snapshot,
-    project_store,
     settings_snapshot,
     apply_settings_snapshot,
     commit_project_mutation,
     task_snapshot,
   } = useDesktopRuntime();
-  const project_store_state = useSyncExternalStore(
-    project_store.subscribe,
-    project_store.getState,
-    project_store.getState,
-  );
 
   const [template, set_template] = useState<CustomPromptTemplate>(() => {
     return create_empty_prompt_template();
@@ -204,7 +203,7 @@ export function useCustomPromptPageState(
   }, [template]);
 
   const apply_snapshot = useCallback(
-    (snapshot: ProjectStorePromptSlice, template_override?: CustomPromptTemplate): void => {
+    (snapshot: PromptSlice, template_override?: CustomPromptTemplate): void => {
       const resolved_template = template_override ?? template_ref.current;
 
       set_enabled(snapshot.enabled);
@@ -213,6 +212,16 @@ export function useCustomPromptPageState(
     [],
   );
 
+  const fetch_prompt_snapshot = useCallback(async (): Promise<PromptSlice> => {
+    const payload = await api_fetch<PromptQueryPayload>("/api/project/query/prompt", {
+      task_type: config.task_type,
+    });
+    return {
+      text: String(payload.prompt?.text ?? ""),
+      enabled: Boolean(payload.prompt?.enabled),
+    };
+  }, [config.task_type]);
+
   const fetch_prompt_template = useCallback(async (): Promise<CustomPromptTemplate> => {
     const payload = await api_fetch<PromptTemplatePayload>("/api/quality/prompts/template", {
       task_type: config.task_type,
@@ -220,14 +229,6 @@ export function useCustomPromptPageState(
 
     return normalize_prompt_template(payload.template);
   }, [config.task_type]);
-
-  const apply_store_snapshot = useCallback(
-    (template_override?: CustomPromptTemplate): void => {
-      const prompt_slice = getPromptSlice(project_store_state.prompts, config.task_type);
-      apply_snapshot(prompt_slice, template_override);
-    },
-    [apply_snapshot, config.task_type, project_store_state.prompts],
-  );
 
   const persist_prompt_change = useCallback(
     async (args: {
@@ -239,11 +240,11 @@ export function useCustomPromptPageState(
         return false;
       }
 
-      const current_state = project_store.getState();
       const next_prompt_slice = {
         text: normalize_prompt_text(args.nextText),
         enabled: args.nextEnabled,
       };
+      const section_revisions = await read_project_section_revisions();
 
       try {
         await commit_project_mutation({
@@ -253,20 +254,21 @@ export function useCustomPromptPageState(
             return await api_fetch<ProjectMutationResultPayload>("/api/quality/prompts/save", {
               task_type: config.task_type,
               expected_section_revisions: {
-                prompts: current_state.revisions.sections.prompts ?? 0,
+                prompts: section_revisions.prompts ?? 0,
               },
               text: next_prompt_slice.text,
               enabled: next_prompt_slice.enabled,
             });
           },
         });
+        apply_snapshot(next_prompt_slice);
         return true;
       } catch (error) {
         push_toast("error", resolve_visible_error_message(error, t, args.failureMessage));
         return false;
       }
     },
-    [commit_project_mutation, config.task_type, project_store, push_toast, readonly],
+    [apply_snapshot, commit_project_mutation, config.task_type, push_toast, readonly],
   );
 
   const refresh_template = useCallback(async (): Promise<void> => {
@@ -294,8 +296,9 @@ export function useCustomPromptPageState(
       void (async () => {
         try {
           const next_template = await fetch_prompt_template();
+          const prompt_slice = await fetch_prompt_snapshot();
           set_template(next_template);
-          apply_store_snapshot(next_template);
+          apply_snapshot(prompt_slice, next_template);
         } catch (error) {
           push_toast(
             "error",
@@ -305,21 +308,14 @@ export function useCustomPromptPageState(
       })();
     }
   }, [
-    apply_store_snapshot,
+    apply_snapshot,
+    fetch_prompt_snapshot,
     fetch_prompt_template,
     project_snapshot.loaded,
     project_snapshot.path,
     push_toast,
     t,
   ]);
-
-  useEffect(() => {
-    if (!project_snapshot.loaded) {
-      return;
-    }
-
-    apply_store_snapshot();
-  }, [apply_store_snapshot, project_snapshot.loaded, project_snapshot.path]);
 
   useEffect(() => {
     if (!project_snapshot.loaded) {

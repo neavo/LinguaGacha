@@ -5,11 +5,7 @@ export const TASK_MODES = ["full", "selected", "resume"] as const; // 翻译/分
 export const TASK_STATUSES = ["idle", "requested", "running", "stopping", "done", "error"] as const; // 任务状态；公开快照只暴露跨层稳定状态
 
 // 翻译 - 任务生命周期事件（发起/运行/结束）
-export const TRANSLATION_TASK_ACTIVE_STATUSES = [
-  "requested",
-  "running",
-  "stopping",
-] as const;
+export const TRANSLATION_TASK_ACTIVE_STATUSES = ["requested", "running", "stopping"] as const;
 
 export const ANALYSIS_TASK_ACTIVE_STATUSES = ["requested", "running", "stopping"] as const; // 分析 - 任务生命周期事件（发起/运行/结束）
 
@@ -50,7 +46,7 @@ export function is_task_mode(value: unknown): value is TaskMode {
   return TASK_MODE_SET.has(value as TaskMode);
 }
 
-// 公开任务状态用于 ProjectStore 快照，不能混入引擎内部状态
+// 公开任务状态用于 renderer 运行态快照，不能混入引擎内部状态
 export function is_task_status(value: unknown): value is TaskStatus {
   return TASK_STATUS_SET.has(value as TaskStatus);
 }

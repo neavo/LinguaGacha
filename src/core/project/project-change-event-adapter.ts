@@ -11,7 +11,7 @@ import {
   type ProjectChangeJsonRecord,
   type ProjectChangeSectionPayload,
   type ProjectDataSection,
-} from "../../shared/project/event";
+} from "../../shared/project-event";
 import { is_item_status } from "../../base/item";
 import { ProjectRuntimeProjectionService } from "./project-runtime-projection-service";
 import type {
@@ -205,7 +205,7 @@ export class ProjectChangeEventAdapter {
   }
 
   /**
-   * 按需构建单个 section data，复用 read-sections 的 store payload 口径
+   * 按需构建单个 section data，复用公开项目变更 payload 口径
    */
   private build_section_data(
     project_state: { loaded: boolean; projectPath: string },
