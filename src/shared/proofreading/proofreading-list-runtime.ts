@@ -6,12 +6,17 @@ import {
   type ProofreadingVisibleItem,
   type ProofreadingWarningFragmentsByCode,
   type ProofreadingGlossaryTerm,
-} from "@/pages/proofreading-page/types";
-import type { AppTableSortState } from "@/widgets/app-table/app-table-types";
+} from "./proofreading-types";
+
+export type ProofreadingSortState = {
+  column_id: string;
+  direction: "ascending" | "descending";
+};
 
 type ProofreadingSortableItemRecord = {
   item_id: number;
   file_path: string;
+  file_order?: number;
   row_number: number;
   src: string;
   dst: string;
@@ -20,7 +25,7 @@ type ProofreadingSortableItemRecord = {
 };
 
 // 自然排序固定为文件路径 + 行号，是所有二级排序的稳定兜底。
-const PROOFREADING_NATURAL_SORT_STATE: AppTableSortState = {
+const PROOFREADING_NATURAL_SORT_STATE: ProofreadingSortState = {
   column_id: "file",
   direction: "ascending",
 };
@@ -46,6 +51,16 @@ export function compare_proofreading_runtime_items(
   left_item: ProofreadingSortableItemRecord,
   right_item: ProofreadingSortableItemRecord,
 ): number {
+  const left_file_order = Number(left_item.file_order ?? Number.NaN);
+  const right_file_order = Number(right_item.file_order ?? Number.NaN);
+  const file_order_result =
+    Number.isFinite(left_file_order) && Number.isFinite(right_file_order)
+      ? left_file_order - right_file_order
+      : 0;
+  if (file_order_result !== 0) {
+    return file_order_result;
+  }
+
   const file_result = compare_proofreading_text(left_item.file_path, right_item.file_path);
   if (file_result !== 0) {
     return file_result;
@@ -65,7 +80,7 @@ export function compare_proofreading_runtime_items(
 function compare_visible_items(
   left_item: ProofreadingClientItem,
   right_item: ProofreadingClientItem,
-  sort_state: AppTableSortState,
+  sort_state: ProofreadingSortState,
 ): number {
   const direction = normalize_sort_direction(sort_state.direction);
 
@@ -106,7 +121,7 @@ function compare_visible_items(
 function compare_list_view_items(
   left_item: ProofreadingClientItem,
   right_item: ProofreadingClientItem,
-  sort_state: AppTableSortState | null,
+  sort_state: ProofreadingSortState | null,
 ): number {
   const effective_sort_state = sort_state ?? PROOFREADING_NATURAL_SORT_STATE;
   const result = compare_visible_items(left_item, right_item, effective_sort_state);
@@ -133,7 +148,7 @@ function compare_list_view_items(
  */
 export function sort_proofreading_client_items(
   items: ProofreadingClientItem[],
-  sort_state: AppTableSortState | null,
+  sort_state: ProofreadingSortState | null,
 ): ProofreadingClientItem[] {
   return items.sort((left_item, right_item) => {
     return compare_list_view_items(left_item, right_item, sort_state);

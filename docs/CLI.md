@@ -5,7 +5,7 @@
 ## 1. 入口边界
 
 - CLI 只能由产品入口中的显式 `--cli` 触发；用户参数从 `--cli` 后开始读取，平台启动器不得把文件名或进程名语义泄漏给 `src/index.ts`。
-- 产品入口负责解析 appRoot 和桌面 bundle 根，并把 `EngineExecution` 原样传给 CLI；CLI、`CoreServices`、`WorkUnitWorkerPool` 和 `PlanningWorkerPool` 不探测 worker 文件，也不把 `in_process` 当失败回退。
+- 产品入口负责解析 appRoot 和桌面 bundle 根，并把 `CoreWorkerExecution` 原样传给 CLI；CLI、`CoreServices`、`WorkUnitWorkerPool`、`PlanningWorkerPool` 和 `ProjectReadModelWorkerPool` 不探测 worker 文件，也不把 `in_process` 当失败回退。
 - CLI 以 `CoreBootstrap(exposeApiGateway=false)` 启动 Core，不开放本机 HTTP / SSE Gateway；Core 控制台日志在 CLI job 中关闭，避免诊断文本污染 stdout JSONL。
 - CLI 是文件进出型适配层：它只接收输入文件、输出目录、语言和本次命令显式资源，不承接 GUI 工程文件心智或 renderer 协议。
 
@@ -36,7 +36,7 @@ sequenceDiagram
   participant Task as TaskService / ApiStreamHub
   participant Out as output-dir
 
-  Entry->>CLI: --cli 后 argv + appRoot + EngineExecution
+  Entry->>CLI: --cli 后 argv + appRoot + CoreWorkerExecution
   CLI->>Core: exposeApiGateway=false
   Core-->>CLI: CoreServices
   CLI->>Job: run_cli_job
@@ -74,6 +74,6 @@ sequenceDiagram
 ## 6. 更新触发条件
 
 - 新增、删除、重命名 CLI 命令、参数、资源类型、资源扩展名、语言约束、输出路径或退出码，更新本文。
-- 改 `--cli` 分发、appRoot 解析、CLI 进程退出、`EngineExecution` 下传或平台启动器，更新本文。
+- 改 `--cli` 分发、appRoot 解析、CLI 进程退出、`CoreWorkerExecution` 下传或平台启动器，更新本文。
 - 改临时工程生命周期、默认预设关闭策略、资源写入、revision 推进、任务等待或导出链路，更新本文。
 - 改 Core API、任务、数据库或 worker 执行契约，同步 [`docs/BACKEND.md`](BACKEND.md)；改验证要求，同步 [`docs/WORKFLOW.md`](WORKFLOW.md)。

@@ -1,4 +1,3 @@
-import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
 import {
@@ -7,21 +6,6 @@ import {
 } from "../project/project-runtime-projection-service";
 import type { AppEvent } from "./app-events";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
-import {
-  run_quality_statistics_task_sync,
-  type QualityStatisticsDependencySnapshot,
-  type QualityStatisticsRelationCandidate,
-  type QualityStatisticsRuleInput,
-  type QualityStatisticsRuleMode,
-} from "../../shared/quality/quality-statistics";
-
-const QUALITY_STATISTICS_RULE_KEYS = [
-  "glossary",
-  "pre_replacement",
-  "post_replacement",
-  "text_preserve",
-] as const satisfies readonly QualityStatisticsRuleMode[];
-
 // AppSessionCacheFreshness 描述当前热读缓存是否可直接服务 query。
 export type AppSessionCacheFreshness = "empty" | "fresh" | "stale" | "recoverable_error";
 
@@ -56,7 +40,6 @@ export class AppSessionCache {
   private file_index = new Map<string, number[]>();
   private file_entries: AppSessionCachedFileEntry[] = [];
   private quality_block: ProjectRuntimeProjectionMutableRecord = {};
-  private quality_statistics_by_rule: ProjectRuntimeProjectionMutableRecord = {};
   private prompts_block: ProjectRuntimeProjectionMutableRecord = {};
   private analysis_block: ProjectRuntimeProjectionMutableRecord = {};
   private section_revisions: ProjectDataSectionRevisions = {};
@@ -100,7 +83,6 @@ export class AppSessionCache {
     this.file_index = new Map();
     this.file_entries = [];
     this.quality_block = {};
-    this.quality_statistics_by_rule = {};
     this.prompts_block = {};
     this.analysis_block = {};
     this.section_revisions = {};
@@ -169,14 +151,6 @@ export class AppSessionCache {
       warnings: [],
       warning_fragments_by_code: {},
     };
-  }
-
-  /**
-   * 质量统计读取已经完成的后端缓存结果，前端不再自行维护第二套统计事实。
-   */
-  public readQualityStatistics(rule_key: string): ApiJsonValue {
-    this.recover_if_needed();
-    return this.quality_statistics_by_rule[rule_key] ?? null;
   }
 
   /**
@@ -256,12 +230,6 @@ export class AppSessionCache {
       this.projection_service.build_files_record_block(project_path, items_snapshot),
     );
     this.quality_block = this.projection_service.build_quality_block(project_path, meta);
-    this.quality_statistics_by_rule = this.build_quality_statistics_by_rule(
-      this.quality_block,
-      next_item_order
-        .map((item_id) => next_items_by_id.get(item_id))
-        .filter((item): item is AppSessionCachedItem => item !== undefined),
-    );
     this.prompts_block = this.projection_service.build_prompts_block(project_path, meta);
     this.analysis_block = this.projection_service.build_analysis_block(meta);
     this.section_revisions = this.projection_service.build_section_revisions(meta);
@@ -295,169 +263,6 @@ export class AppSessionCache {
         project_path: event.projectPath,
       },
     });
-  }
-
-  /**
-   * 在后端热缓存里预计算质量统计，让质量页读取到和当前 items 对齐的结果。
-   */
-  private build_quality_statistics_by_rule(
-    quality_block: ProjectRuntimeProjectionMutableRecord,
-    items: AppSessionCachedItem[],
-  ): ProjectRuntimeProjectionMutableRecord {
-    const result: ProjectRuntimeProjectionMutableRecord = {};
-    const src_texts = items.map((item) => String(item["src"] ?? ""));
-    const dst_texts = items.map((item) => String(item["dst"] ?? ""));
-    for (const rule_key of QUALITY_STATISTICS_RULE_KEYS) {
-      const slice = this.normalize_record(quality_block[rule_key]);
-      const entries = Array.isArray(slice["entries"]) ? slice["entries"] : [];
-      const rules = this.build_quality_statistics_rules(rule_key, entries);
-      const relation_candidates = this.build_quality_relation_candidates(rules);
-      const statistics_result = run_quality_statistics_task_sync({
-        rules,
-        srcTexts: src_texts,
-        dstTexts: dst_texts,
-        relationCandidates: relation_candidates,
-      });
-      const completed_entry_ids = rules.map((rule) => rule.key);
-      const matched_count_by_entry_id = Object.fromEntries(
-        completed_entry_ids.map((entry_id) => {
-          return [entry_id, statistics_result.results[entry_id]?.matched_item_count ?? 0];
-        }),
-      );
-      const subset_parent_labels_by_entry_id = Object.fromEntries(
-        completed_entry_ids.map((entry_id) => {
-          return [entry_id, statistics_result.results[entry_id]?.subset_parents ?? []];
-        }),
-      );
-      const completed_snapshot = this.build_quality_statistics_dependency_snapshot(
-        rule_key,
-        rules,
-        rule_key === "post_replacement" ? dst_texts : src_texts,
-      );
-      result[rule_key] = {
-        phase: "current",
-        current_snapshot: completed_snapshot,
-        completed_snapshot,
-        completed_entry_ids,
-        matched_count_by_entry_id,
-        subset_parent_labels_by_entry_id,
-        last_error: null,
-        request_token: 0,
-        updated_at: Date.now(),
-      };
-    }
-    return result;
-  }
-
-  /**
-   * 将质量规则投影转成共享统计任务输入，空规则不会进入统计集合。
-   */
-  private build_quality_statistics_rules(
-    rule_key: QualityStatisticsRuleMode,
-    entries: unknown[],
-  ): QualityStatisticsRuleInput[] {
-    return entries.flatMap((entry, index) => {
-      if (!this.is_record(entry)) {
-        return [];
-      }
-      const pattern = String(entry["src"] ?? "");
-      if (pattern.trim() === "") {
-        return [];
-      }
-      return [
-        {
-          key: this.build_quality_entry_id(entry, index),
-          pattern,
-          mode: rule_key,
-          regex: rule_key === "text_preserve" ? true : Boolean(entry["regex"]),
-          case_sensitive: Boolean(entry["case_sensitive"]),
-        },
-      ];
-    });
-  }
-
-  /**
-   * 子集关系统计只需要规则 key 和原始 pattern，避免把完整规则对象传入共享算法。
-   */
-  private build_quality_relation_candidates(
-    rules: QualityStatisticsRuleInput[],
-  ): QualityStatisticsRelationCandidate[] {
-    return rules.map((rule) => {
-      return {
-        key: rule.key,
-        src: rule.pattern,
-      };
-    });
-  }
-
-  /**
-   * dependency snapshot 表达统计结果依赖的文本与规则签名，供前端判断缓存是否当前有效。
-   */
-  private build_quality_statistics_dependency_snapshot(
-    rule_key: QualityStatisticsRuleMode,
-    rules: QualityStatisticsRuleInput[],
-    texts: string[],
-  ): QualityStatisticsDependencySnapshot {
-    const text_signature = this.build_quality_text_signature(texts);
-    const snapshot_rules = rules.map((rule) => {
-      const dependency_signature = JSON.stringify([
-        rule.mode,
-        rule.pattern,
-        Boolean(rule.regex),
-        Boolean(rule.case_sensitive),
-      ]);
-      return {
-        key: rule.key,
-        dependency_signature,
-        relation_label: rule.pattern,
-        token: `${dependency_signature}:${rule.key}`,
-      };
-    });
-    const dependency_signature = JSON.stringify({
-      text_source: rule_key === "post_replacement" ? "dst" : "src",
-      text_signature,
-      tokens: snapshot_rules.map((rule) => rule.token),
-    });
-
-    return {
-      text_source: rule_key === "post_replacement" ? "dst" : "src",
-      text_signature,
-      dependency_signature,
-      snapshot_signature: JSON.stringify({
-        dependency_signature,
-        keys: snapshot_rules.map((rule) => rule.key),
-      }),
-      rules: snapshot_rules,
-    };
-  }
-
-  /**
-   * 文本签名使用带 index 和 length 的 framed text，避免简单拼接造成边界碰撞。
-   */
-  private build_quality_text_signature(texts: string[]): string {
-    let hash = 2166136261;
-    for (const [index, text] of texts.entries()) {
-      const framed_text = `${index.toString()}:${text.length.toString()}:${text}`;
-      for (let char_index = 0; char_index < framed_text.length; char_index += 1) {
-        hash ^= framed_text.charCodeAt(char_index);
-        hash = Math.imul(hash, 16777619) >>> 0;
-      }
-    }
-    return `${texts.length.toString()}:${hash.toString(36)}`;
-  }
-
-  /**
-   * 质量规则缺少稳定 entry_id 时用 pattern 和顺序兜底，保证统计结果仍可回填。
-   */
-  private build_quality_entry_id(
-    entry: ProjectRuntimeProjectionMutableRecord,
-    index: number,
-  ): string {
-    const entry_id = String(entry["entry_id"] ?? "");
-    if (entry_id !== "") {
-      return entry_id;
-    }
-    return `${String(entry["src"] ?? "").trim()}::${index.toString()}`;
   }
 
   /**

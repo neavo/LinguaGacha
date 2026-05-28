@@ -8,10 +8,7 @@ vi.mock("@/app/desktop/desktop-api", () => {
   };
 });
 
-import {
-  read_proofreading_items_by_row_ids,
-  read_proofreading_runtime_hydration_input,
-} from "./proofreading-query";
+import { read_proofreading_items_by_row_ids } from "./proofreading-query";
 
 describe("proofreading-query", () => {
   beforeEach(() => {
@@ -23,15 +20,19 @@ describe("proofreading-query", () => {
       rows: [
         {
           row_id: "7",
-          item: {
-            item_id: 7,
-            file_path: "chapter.txt",
-            row_number: 3,
-            src: "原文",
-            dst: "译文",
-            status: "PROCESSED",
-            retry_count: 1,
-          },
+          item_id: 7,
+          file_path: "chapter.txt",
+          row_number: 3,
+          src: "原文",
+          dst: "译文",
+          status: "PROCESSED",
+          retry_count: 1,
+          warnings: [],
+          warning_fragments_by_code: {},
+          applied_glossary_terms: [],
+          failed_glossary_terms: [],
+          compressed_src: "原文",
+          compressed_dst: "译文",
         },
       ],
     });
@@ -46,52 +47,8 @@ describe("proofreading-query", () => {
       }),
     ]);
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/query/proofreading", {
+      action: "items_by_row_ids",
       row_ids: ["7"],
-    });
-  });
-
-  it("把后端运行态快照归一成校对列表 hydrate 输入", async () => {
-    api_fetch_mock.mockResolvedValue({
-      projectPath: "E:/Project/demo.lg",
-      sectionRevisions: { items: 2, quality: 3, proofreading: 4 },
-      runtimeSnapshot: {
-        total_item_count: 1,
-        quality: { glossary: { entries: [] } },
-        items: [
-          {
-            item_id: 5,
-            file_path: "chapter.txt",
-            row_number: 8,
-            src: "源",
-            dst: "",
-            status: "NONE",
-            text_type: "dialogue",
-          },
-        ],
-      },
-    });
-
-    await expect(
-      read_proofreading_runtime_hydration_input({
-        sourceLanguage: "ja",
-        targetLanguage: "zh-CN",
-      }),
-    ).resolves.toMatchObject({
-      projectId: "E:/Project/demo.lg",
-      revisions: { items: 2, quality: 3, proofreading: 4 },
-      total_item_count: 1,
-      upsertItems: [
-        {
-          item_id: 5,
-          file_path: "chapter.txt",
-          row_number: 8,
-          src: "源",
-          text_type: "dialogue",
-        },
-      ],
-      sourceLanguage: "ja",
-      targetLanguage: "zh-CN",
-      section_revisions: { items: 2, quality: 3, proofreading: 4 },
     });
   });
 });

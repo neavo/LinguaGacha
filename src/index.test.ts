@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { EngineExecution } from "./core/engine/core/engine-execution";
+import type { CoreWorkerExecution } from "./core/worker/core-worker-execution";
 
 const original_argv = process.argv;
 const original_exit_code = process.exitCode;
@@ -13,12 +13,12 @@ let exit_codes: Array<string | number | null | undefined> = []; // exit_codes �
 type CLIEntryCall = {
   appRoot: string;
   argv: string[];
-  engineExecution: EngineExecution;
+  workerExecution: CoreWorkerExecution;
 };
 
 type GuiEntryCall = {
   desktopBundleDir: string;
-  engineExecution: EngineExecution;
+  workerExecution: CoreWorkerExecution;
 };
 
 beforeEach(() => {
@@ -57,7 +57,7 @@ describe("产品统一入口", () => {
         argv: ["translate", "--help"],
         appRoot: app_root,
       });
-      expect_worker_threads_engine_execution(calls.cli[0]?.engineExecution);
+      expect_worker_threads_core_worker_execution(calls.cli[0]?.workerExecution);
       expect(calls.gui).toEqual([]);
       expect(exit_codes).toEqual([0]);
     } finally {
@@ -84,7 +84,7 @@ describe("产品统一入口", () => {
       argv: ["analyze", "--help"],
       appRoot: process.cwd(),
     });
-    expect_worker_threads_engine_execution(calls.cli[0]?.engineExecution);
+    expect_worker_threads_core_worker_execution(calls.cli[0]?.workerExecution);
     expect(calls.gui).toEqual([]);
     expect(exit_codes).toEqual([0]);
   });
@@ -101,7 +101,7 @@ describe("产品统一入口", () => {
     expect(calls.gui[0]).toMatchObject({
       desktopBundleDir: expect.any(String),
     });
-    expect_worker_threads_engine_execution(calls.gui[0]?.engineExecution);
+    expect_worker_threads_core_worker_execution(calls.gui[0]?.workerExecution);
     expect(exit_codes).toEqual([]);
   });
 
@@ -117,7 +117,7 @@ describe("产品统一入口", () => {
     expect(calls.gui[0]).toMatchObject({
       desktopBundleDir: expect.any(String),
     });
-    expect_worker_threads_engine_execution(calls.gui[0]?.engineExecution);
+    expect_worker_threads_core_worker_execution(calls.gui[0]?.workerExecution);
     expect(exit_codes).toEqual([]);
   });
 });
@@ -135,8 +135,12 @@ function mock_entry_modules(): {
   };
   vi.doMock("./cli/cli-entry", () => {
     return {
-      run_cli_entry: async (argv: string[], appRoot: string, engineExecution: EngineExecution) => {
-        calls.cli.push({ argv, appRoot, engineExecution });
+      run_cli_entry: async (
+        argv: string[],
+        appRoot: string,
+        workerExecution: CoreWorkerExecution,
+      ) => {
+        calls.cli.push({ argv, appRoot, workerExecution });
         return 0;
       },
     };
@@ -163,16 +167,16 @@ function set_process_args(executable_path: string, argv: string[]): void {
 }
 
 /**
- * 断言产品入口把后台任务执行模式固定为 worker_threads，并指向约定 worker 产物。
+ * 断言产品入口把 Core worker 执行配置固定为 worker_threads，并指向约定 worker 产物。
  */
-function expect_worker_threads_engine_execution(
-  engine_execution: EngineExecution | undefined,
+function expect_worker_threads_core_worker_execution(
+  worker_execution: CoreWorkerExecution | undefined,
 ): void {
-  expect(engine_execution?.kind).toBe("worker_threads");
-  if (engine_execution?.kind !== "worker_threads") {
+  expect(worker_execution?.kind).toBe("worker_threads");
+  if (worker_execution?.kind !== "worker_threads") {
     return;
   }
-  expect(String(engine_execution.workUnitWorkerEntryUrl)).toMatch(/\/work-unit-worker-entry\.js$/u);
+  expect(String(worker_execution.workUnitWorkerEntryUrl)).toMatch(/\/work-unit-worker-entry\.js$/u);
 }
 
 /**

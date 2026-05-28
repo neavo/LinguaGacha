@@ -99,7 +99,6 @@ export class ApiGatewayServer {
    * 只释放 Gateway 自己持有的监听器，Core 与 Database 生命周期由上层编排
    */
   public async stop(): Promise<void> {
-    await this.options.coreServices.dispose();
     const server = this.server;
     this.server = null;
     if (server === null) {
@@ -119,11 +118,16 @@ export class ApiGatewayServer {
     const project_lifecycle_service = services.project_lifecycle_service;
     const project_service = services.project_service;
     const project_query_service = services.project_query_service;
+    const proofreading_query_service = services.proofreading_query_service;
+    const quality_statistics_read_model_service = services.quality_statistics_read_model_service;
+    const name_field_extraction_read_model_service =
+      services.name_field_extraction_read_model_service;
     const proofreading_service = services.proofreading_service;
     const project_reset_preview_service = services.project_reset_preview_service;
     const project_runtime_projection_service = services.project_runtime_projection_service;
     const file_preview_service = services.file_preview_service;
     const file_export_service = services.file_export_service;
+    const ts_conversion_service = services.ts_conversion_service;
     const task_service = services.task_service;
     const quality_service = services.quality_service;
     const app = new Hono();
@@ -165,19 +169,16 @@ export class ApiGatewayServer {
       project_query_service.read_workbench_view(),
     );
     this.post_json(app, "/api/project/query/proofreading", (body) =>
-      project_query_service.read_proofreading_view(body),
+      proofreading_query_service.read(body),
     );
     this.post_json(app, "/api/project/query/quality-statistics", (body) =>
-      project_query_service.read_quality_statistics(body),
+      quality_statistics_read_model_service.read(body),
     );
     this.post_json(app, "/api/project/query/quality-rule", (body) =>
       project_query_service.read_quality_rule_view(body),
     );
-    this.post_json(app, "/api/project/query/ts-conversion", () =>
-      project_query_service.read_ts_conversion_view(),
-    );
-    this.post_json(app, "/api/project/query/name-field-extraction", () =>
-      project_query_service.read_name_field_extraction_view(),
+    this.post_json(app, "/api/project/query/name-field-extraction", (body) =>
+      name_field_extraction_read_model_service.read(body),
     );
     this.post_json(app, "/api/project/query/analysis-glossary-import", (body) =>
       project_query_service.prepare_analysis_glossary_import(body),
@@ -284,7 +285,7 @@ export class ApiGatewayServer {
       proofreading_service.replace_all(body),
     );
     this.post_json(app, "/api/project/export-converted-translation", (body) =>
-      file_export_service.export_converted_translation(body),
+      ts_conversion_service.export_converted_translation(body),
     );
     this.post_json(app, "/api/tasks/start", (body) => task_service.start_task(body));
     this.post_json(app, "/api/tasks/stop", (body) => task_service.stop_task(body));

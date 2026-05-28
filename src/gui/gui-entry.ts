@@ -2,7 +2,7 @@ import { app, BrowserWindow, session, shell } from "electron";
 import path from "node:path";
 
 import { CoreBootstrap } from "../core/bootstrap/core-bootstrap";
-import type { EngineExecution } from "../core/engine/core/engine-execution";
+import type { CoreWorkerExecution } from "../core/worker/core-worker-execution";
 import { write_electron_main_error } from "../core/log/log-bridge";
 import { t_main_log } from "../core/log/log-text";
 import * as AppErrors from "../shared/error";
@@ -25,7 +25,7 @@ import {
 
 export interface GuiEntryOptions {
   desktopBundleDir: string; // desktopBundleDir 是产品入口解析出的桌面 bundle 根目录
-  engineExecution: EngineExecution; // engineExecution 是 GUI Core 任务执行模式的唯一入口契约
+  workerExecution: CoreWorkerExecution; // workerExecution 是 GUI Core worker 执行配置的唯一入口契约
 }
 
 /**
@@ -66,7 +66,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       resolveProxy: (url) => session.defaultSession.resolveProxy(url),
     },
     openOutputFolder: open_output_folder,
-    engineExecution: options.engineExecution,
+    workerExecution: options.workerExecution,
   });
 
   /**

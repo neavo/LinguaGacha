@@ -19,12 +19,21 @@ describe("name-field-extraction-query", () => {
     const response = {
       projectPath: "E:/Project/demo.lg",
       sectionRevisions: { items: 2, quality: 4 },
-      items: [{ item_id: 1, src: "Alice", dst: "" }],
-      glossary: { entries: [] },
+      view: {
+        rows: [{ id: "Alice", src: "Alice", dst: "", context: "Alice", status: "untranslated" }],
+        counts: { total: 1, translated: 0, untranslated: 1, error: 0 },
+        invalid_regex_message: null,
+      },
     };
     api_fetch_mock.mockResolvedValue(response);
 
-    await expect(read_name_field_extraction_query()).resolves.toBe(response);
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/query/name-field-extraction", {});
+    const filter = { keyword: "", scope: "all", is_regex: false } as const;
+    const sort = { field: null, direction: null } as const;
+
+    await expect(read_name_field_extraction_query({ filter, sort })).resolves.toBe(response);
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/project/query/name-field-extraction", {
+      filter,
+      sort,
+    });
   });
 });

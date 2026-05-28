@@ -19,7 +19,7 @@ export function is_task_snapshot_for_runtime(
 /**
  * 判断当前值是否满足业务条件。
  */
-export function should_defer_runtime_snapshot_refresh(
+export function should_defer_task_snapshot_refresh(
   task_snapshot: TaskSnapshotWithKind & { busy?: unknown },
   runtime_kind: WorkbenchTaskRuntimeKind,
 ): boolean {

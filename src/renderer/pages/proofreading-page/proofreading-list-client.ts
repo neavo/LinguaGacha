@@ -1,16 +1,14 @@
-import {
-  createProofreadingListService,
-  type ProofreadingFilterPanelQuery,
-  type ProofreadingItemsByRowIdsQuery,
-  type ProofreadingListViewQuery,
-  type ProofreadingListWindow,
-  type ProofreadingListWindowQuery,
-  type ProofreadingRowIndexQuery,
-  type ProofreadingRowIdsRangeQuery,
-  type ProofreadingRuntimeDeltaInput,
-  type ProofreadingRuntimeHydrationInput,
-  type ProofreadingRuntimeSyncState,
-} from "@/pages/proofreading-page/proofreading-list-service";
+import { api_fetch } from "@/app/desktop/desktop-api";
+import type {
+  ProofreadingFilterPanelQuery,
+  ProofreadingItemsByRowIdsQuery,
+  ProofreadingListViewQuery,
+  ProofreadingListWindow,
+  ProofreadingListWindowQuery,
+  ProofreadingRowIndexQuery,
+  ProofreadingRowIdsRangeQuery,
+  ProofreadingRuntimeSyncState,
+} from "@shared/proofreading/proofreading-read-model";
 import type {
   ProofreadingClientItem,
   ProofreadingFilterPanelState,
@@ -22,12 +20,10 @@ type ProofreadingListQueryOptions = {
 };
 
 export type ProofreadingListClient = {
-  hydrate_proofreading_full: (
-    input: ProofreadingRuntimeHydrationInput,
-  ) => Promise<ProofreadingRuntimeSyncState>;
-  apply_proofreading_item_delta: (
-    input: ProofreadingRuntimeDeltaInput,
-  ) => Promise<ProofreadingRuntimeSyncState>;
+  hydrate_proofreading_full: (input: {
+    sourceLanguage: string;
+    targetLanguage: string;
+  }) => Promise<ProofreadingRuntimeSyncState>;
   build_proofreading_list_view: (
     input: ProofreadingListViewQuery,
     options?: ProofreadingListQueryOptions,
@@ -50,55 +46,105 @@ export type ProofreadingListClient = {
 let shared_proofreading_list_client: ProofreadingListClient | null = null;
 
 /**
- * 创建校对列表 client；当前实现走本地 service，保留异步接口兼容页面调用节奏。
+ * 创建校对列表 client；页面通过 Core read model 获取校对列表和窗口数据。
  */
 export function createProofreadingListClient(): ProofreadingListClient {
-  const service = createProofreadingListService();
   return {
-    // 全量 hydrate 是每个项目进入校对列表时的唯一初始化入口。
     async hydrate_proofreading_full(input) {
-      return service.hydrate_full(input);
+      const response = await api_fetch<{
+        syncState?: ProofreadingRuntimeSyncState;
+      }>("/api/project/query/proofreading", {
+        action: "sync",
+        source_language: input.sourceLanguage,
+        target_language: input.targetLanguage,
+      });
+      return (
+        response.syncState ?? {
+          projectId: "",
+          sourceLanguage: input.sourceLanguage,
+          targetLanguage: input.targetLanguage,
+          revisions: { files: 0, items: 0, quality: 0, proofreading: 0 },
+          defaultFilters: {
+            warning_types: [],
+            statuses: [],
+            file_paths: [],
+            glossary_terms: [],
+            include_without_glossary_miss: true,
+          },
+        }
+      );
     },
-    // 增量只接受后端确认后的项目事件数据。
-    async apply_proofreading_item_delta(input) {
-      return service.apply_item_delta(input);
-    },
-    // 列表视图构建会生成稳定 view_id，后续窗口读取必须带回该 id。
     async build_proofreading_list_view(input, _options = {}) {
-      return service.build_list_view(input);
+      const response = await api_fetch<{ view?: ProofreadingListView }>(
+        "/api/project/query/proofreading",
+        { action: "list", query: input },
+      );
+      return (
+        response.view ?? {
+          projectId: "",
+          revisions: { files: 0, items: 0, quality: 0, proofreading: 0 },
+          view_id: "",
+          row_count: 0,
+          window_start: 0,
+          window_rows: [],
+          invalid_regex_message: null,
+        }
+      );
     },
-    // 窗口读取只返回已缓存视图的当前切片。
     async read_proofreading_list_window(input) {
-      return service.read_list_window(input);
+      const response = await api_fetch<{ window?: ProofreadingListWindow }>(
+        "/api/project/query/proofreading",
+        { action: "window", ...input },
+      );
+      return response.window ?? { view_id: input.view_id, start: 0, row_count: 0, rows: [] };
     },
-    // 行 id 范围读取供批量操作保存选择集合。
     async read_proofreading_row_ids_range(input) {
-      return service.read_row_ids_range(input);
+      const response = await api_fetch<{ row_ids?: string[] }>("/api/project/query/proofreading", {
+        action: "row_ids_range",
+        ...input,
+      });
+      return Array.isArray(response.row_ids) ? response.row_ids : [];
     },
-    // 行定位留在运行态内执行，避免页面复制完整 id 索引。
     async resolve_proofreading_row_index(input) {
-      return service.resolve_row_index(input);
+      const response = await api_fetch<{ row_index?: number | null }>(
+        "/api/project/query/proofreading",
+        { action: "row_index", ...input },
+      );
+      return typeof response.row_index === "number" ? response.row_index : undefined;
     },
-    // 精确 item 回读用于编辑弹窗和批量提交前确认当前行事实。
     async read_proofreading_items_by_row_ids(input) {
-      return service.read_items_by_row_ids(input);
+      const response = await api_fetch<{ rows?: ProofreadingClientItem[] }>(
+        "/api/project/query/proofreading",
+        { action: "items_by_row_ids", row_ids: input.row_ids },
+      );
+      return Array.isArray(response.rows) ? response.rows : [];
     },
-    // 筛选面板和列表视图共享同一运行态统计。
     async build_proofreading_filter_panel(input) {
-      return service.build_filter_panel(input);
+      const response = await api_fetch<{ filterPanel?: ProofreadingFilterPanelState }>(
+        "/api/project/query/proofreading",
+        { action: "filter_panel", filters: input.filters },
+      );
+      return (
+        response.filterPanel ?? {
+          available_statuses: [],
+          status_count_by_code: {},
+          available_warning_types: [],
+          warning_count_by_code: {},
+          all_file_paths: [],
+          available_file_paths: [],
+          file_count_by_path: {},
+          glossary_term_entries: [],
+          without_glossary_miss_count: 0,
+        }
+      );
     },
-    // 只释放身份匹配的项目缓存，避免迟到清理影响新项目。
-    async dispose_project(projectId) {
-      service.dispose_project(projectId);
-    },
-    dispose() {
-      // 本地列表运行态没有独立后台资源，dispose 只保留统一接口。
-    },
+    async dispose_project(_projectId) {},
+    dispose() {},
   };
 }
 
 /**
- * 页面默认复用单例 client，避免同一项目内重复构建列表运行态。
+ * 页面默认复用单例 client，避免同一项目内重复创建 API client。
  */
 export function getSharedProofreadingListClient(): ProofreadingListClient {
   if (shared_proofreading_list_client === null) {
@@ -109,7 +155,7 @@ export function getSharedProofreadingListClient(): ProofreadingListClient {
 }
 
 /**
- * 测试重置共享 client，保证用例之间没有列表缓存串扰。
+ * 测试重置共享 client，保证用例之间没有实例串扰。
  */
 export function resetSharedProofreadingListClientForTest(): void {
   shared_proofreading_list_client?.dispose();

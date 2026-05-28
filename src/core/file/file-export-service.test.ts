@@ -295,19 +295,4 @@ describe("FileExportService", () => {
       }),
     );
   });
-
-  it("转换导出拒绝未知后缀，避免写入非约定目录", async () => {
-    const session_state = new ProjectSessionState();
-    session_state.mark_loaded(path.join(temp_dir, "demo.lg"));
-    const service = new FileExportService(
-      { execute: () => [], read_asset_content: () => null } as unknown as ProjectDatabase,
-      create_setting_service(),
-      session_state,
-      create_output_folder_opener().open,
-    );
-
-    await expect(
-      service.export_converted_translation({ suffix: "_BAD", items: [{ id: 1, dst: "译文" }] }),
-    ).rejects.toThrow("request.validation_failed");
-  });
 });

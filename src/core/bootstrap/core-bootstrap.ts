@@ -96,7 +96,7 @@ export class CoreBootstrap {
         logManager: log_manager,
         systemProxySnapshot: this.system_proxy_snapshot,
         openOutputFolder: this.options.openOutputFolder,
-        engineExecution: this.options.engineExecution,
+        workerExecution: this.options.workerExecution,
       });
       core_services.start();
       this.core_services = core_services;

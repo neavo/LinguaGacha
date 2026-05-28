@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   is_task_snapshot_for_runtime,
-  should_defer_runtime_snapshot_refresh,
+  should_defer_task_snapshot_refresh,
 } from "@/pages/workbench-page/task-runtime/task-runtime-ownership";
 
 describe("task-runtime-ownership", () => {
@@ -27,7 +27,7 @@ describe("task-runtime-ownership", () => {
 
   it("只在其他任务忙碌时延后当前运行态刷新", () => {
     expect(
-      should_defer_runtime_snapshot_refresh(
+      should_defer_task_snapshot_refresh(
         {
           task_type: "analysis",
           busy: true,
@@ -36,7 +36,7 @@ describe("task-runtime-ownership", () => {
       ),
     ).toBe(true);
     expect(
-      should_defer_runtime_snapshot_refresh(
+      should_defer_task_snapshot_refresh(
         {
           task_type: "analysis",
           busy: false,
@@ -45,7 +45,7 @@ describe("task-runtime-ownership", () => {
       ),
     ).toBe(false);
     expect(
-      should_defer_runtime_snapshot_refresh(
+      should_defer_task_snapshot_refresh(
         {
           task_type: "translation",
           busy: true,

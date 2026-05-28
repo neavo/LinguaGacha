@@ -3,19 +3,19 @@ import { app, session } from "electron";
 import { CoreBootstrap } from "../core/bootstrap/core-bootstrap";
 import { run_cli_job } from "./job/cli-job-runner";
 import type { CLICommandOptions } from "./cli-parser";
-import type { EngineExecution } from "../core/engine/core/engine-execution";
+import type { CoreWorkerExecution } from "../core/worker/core-worker-execution";
 import type { CoreBootstrapStartResult } from "../core/bootstrap/core-bootstrap-types";
 import { CLIJsonStatusReporter } from "./cli-status-reporter";
 import { create_text_resolver, resolve_i18n_locale } from "../shared/i18n";
 import { write_stderr, write_stdout } from "./cli-output";
 
 /**
- * 在无 GUI Gateway 的 CoreBootstrap 中执行 CLI 命令，并沿入口契约下传 engine_execution。
+ * 在无 GUI Gateway 的 CoreBootstrap 中执行 CLI 命令，并沿入口契约下传 worker_execution。
  */
 export async function run_cli_command(
   app_root: string,
   command: CLICommandOptions,
-  engine_execution: EngineExecution,
+  worker_execution: CoreWorkerExecution,
 ): Promise<void> {
   await app.whenReady();
   const bootstrap = new CoreBootstrap({
@@ -26,7 +26,7 @@ export async function run_cli_command(
       resolveProxy: (url) => session.defaultSession.resolveProxy(url),
     },
     openOutputFolder: async () => undefined,
-    engineExecution: engine_execution,
+    workerExecution: worker_execution,
   });
   try {
     const start_result = await bootstrap.start();

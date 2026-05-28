@@ -177,7 +177,7 @@ describe("AppSessionCache", () => {
     expect(cache.snapshot()).toMatchObject({ freshness: "fresh", itemCount: 1 });
   });
 
-  it("热机时计算质量规则统计命中数", async () => {
+  it("热机时只保留质量规则事实，不同步预计算统计", async () => {
     const cache = new AppSessionCache(
       create_database({
         items: [create_item({ id: 1, src: "Hero ẞ" }), create_item({ id: 2, src: "hero ss" })],
@@ -189,11 +189,9 @@ describe("AppSessionCache", () => {
 
     await cache.warmProject("E:/Project/demo.lg");
 
-    expect(cache.readQualityStatistics("glossary")).toMatchObject({
-      phase: "current",
-      completed_entry_ids: ["term.hero"],
-      matched_count_by_entry_id: {
-        "term.hero": 2,
+    expect(cache.readQualityBlock()).toMatchObject({
+      glossary: {
+        entries: [{ entry_id: "term.hero", src: "hero ss", case_sensitive: false }],
       },
     });
   });

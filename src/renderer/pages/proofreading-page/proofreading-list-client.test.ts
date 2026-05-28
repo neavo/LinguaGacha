@@ -1,4 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const api_fetch_mock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/app/desktop/desktop-api", () => {
+  return {
+    api_fetch: api_fetch_mock,
+  };
+});
 
 import {
   createProofreadingListClient,
@@ -7,38 +15,86 @@ import {
 } from "./proofreading-list-client";
 
 describe("proofreading-list-client", () => {
-  it("创建本地列表 client 并把 hydrate 与窗口读取委托给列表运行态", async () => {
+  beforeEach(() => {
+    api_fetch_mock.mockReset();
+  });
+
+  it("创建 API 列表 client 并把 hydrate、列表与窗口读取委托给 Core read model", async () => {
     const client = createProofreadingListClient();
+    api_fetch_mock.mockImplementation(async (_url: string, body: Record<string, unknown>) => {
+      if (body.action === "sync") {
+        return {
+          syncState: {
+            projectId: "E:/Project/demo.lg",
+            sourceLanguage: "ja",
+            targetLanguage: "zh-CN",
+            revisions: { files: 1, items: 1, quality: 1, proofreading: 1 },
+            defaultFilters: {
+              warning_types: [],
+              statuses: [],
+              file_paths: [],
+              glossary_terms: [],
+              include_without_glossary_miss: true,
+            },
+          },
+        };
+      }
+      if (body.action === "list") {
+        return {
+          view: {
+            projectId: "E:/Project/demo.lg",
+            revisions: { files: 1, items: 1, quality: 1, proofreading: 1 },
+            view_id: "view-1",
+            row_count: 1,
+            window_start: 0,
+            window_rows: [],
+            invalid_regex_message: null,
+          },
+        };
+      }
+      if (body.action === "window") {
+        return {
+          window: {
+            view_id: "view-1",
+            start: 0,
+            row_count: 1,
+            rows: [
+              {
+                row_id: "1",
+                item: {
+                  item_id: 1,
+                  row_id: "1",
+                  file_path: "chapter.txt",
+                  row_number: 1,
+                  src: "源文",
+                  dst: "译文",
+                  status: "PROCESSED",
+                  retry_count: 0,
+                  warnings: [],
+                  warning_fragments_by_code: {},
+                  applied_glossary_terms: [],
+                  failed_glossary_terms: [],
+                  compressed_src: "源文",
+                  compressed_dst: "译文",
+                },
+                compressed_src: "源文",
+                compressed_dst: "译文",
+              },
+            ],
+          },
+        };
+      }
+      return {};
+    });
 
     const sync_state = await client.hydrate_proofreading_full({
-      projectId: "E:/Project/demo.lg",
-      revisions: { items: 1, quality: 1, proofreading: 1 },
-      total_item_count: 1,
-      upsertItems: [
-        {
-          item_id: 1,
-          file_path: "chapter.txt",
-          row_number: 1,
-          src: "源文",
-          dst: "译文",
-          status: "PROCESSED",
-          text_type: "NONE",
-          retry_count: 0,
-        },
-      ],
-      quality: {
-        glossary: { entries: [], enabled: false, mode: "custom", revision: 1 },
-        pre_replacement: { entries: [], enabled: false, mode: "custom", revision: 1 },
-        post_replacement: { entries: [], enabled: false, mode: "custom", revision: 1 },
-        text_preserve: { entries: [], enabled: false, mode: "off", revision: 1 },
-      },
       sourceLanguage: "ja",
       targetLanguage: "zh-CN",
     });
 
     expect(sync_state).toMatchObject({
       projectId: "E:/Project/demo.lg",
-      revisions: { items: 1, quality: 1, proofreading: 1 },
+      revisions: { files: 1, items: 1, quality: 1, proofreading: 1 },
     });
 
     const view = await client.build_proofreading_list_view({
@@ -61,6 +117,21 @@ describe("proofreading-list-client", () => {
     ).resolves.toMatchObject({
       row_count: 1,
       rows: [expect.objectContaining({ item: expect.objectContaining({ item_id: 1 }) })],
+    });
+    expect(api_fetch_mock).toHaveBeenNthCalledWith(1, "/api/project/query/proofreading", {
+      action: "sync",
+      source_language: "ja",
+      target_language: "zh-CN",
+    });
+    expect(api_fetch_mock).toHaveBeenNthCalledWith(2, "/api/project/query/proofreading", {
+      action: "list",
+      query: expect.objectContaining({ scope: "all" }),
+    });
+    expect(api_fetch_mock).toHaveBeenNthCalledWith(3, "/api/project/query/proofreading", {
+      action: "window",
+      view_id: "view-1",
+      start: 0,
+      count: 10,
     });
   });
 

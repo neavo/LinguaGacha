@@ -1,13 +1,15 @@
 import { AppMetadataService } from "../app/app-metadata-service";
 import { AppEventBus } from "../app/app-event-bus";
 import { AppSessionCache } from "../app/app-session-cache";
+import { AppSessionProofreadingCache } from "../app/app-session-proofreading-cache";
 import type { AppEventType } from "../app/app-events";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { ProjectDatabase } from "../database/database-operations";
 import { TaskEngine } from "../engine/core/engine";
-import type { EngineExecution } from "../engine/core/engine-execution";
+import type { CoreWorkerExecution } from "../worker/core-worker-execution";
 import { PlanningWorkerPool } from "../engine/planning/planning-worker-pool";
+import { ProjectReadModelWorkerPool } from "../project/read-model/worker/project-read-model-worker-pool";
 import { TaskPlanner } from "../engine/planning/task-planner";
 import { TaskRuntimePublisher } from "../engine/runtime/task-runtime-publisher";
 import { TaskRuntimeState } from "../engine/runtime/task-runtime-state";
@@ -22,15 +24,21 @@ import { ModelService } from "../model/model-service";
 import { ProjectChangeEventAdapter } from "../project/project-change-event-adapter";
 import { ProjectChangePublisher } from "../project/project-change-publisher";
 import { ProjectLifecycleService } from "../project/project-lifecycle-service";
+import { NameFieldExtractionReadModelService } from "../project/read-model/name-field-extraction-read-model-service";
 import { ProjectOperationGate } from "../project/project-operation-gate";
 import { ProjectQueryService } from "../project/project-query-service";
+import { ProofreadingQueryService } from "../project/proofreading/proofreading-query-service";
+import { ProofreadingQueryWorker } from "../project/proofreading/proofreading-query-worker";
+import { QualityStatisticsReadModelService } from "../project/read-model/quality-statistics-read-model-service";
 import { ProjectResetPreviewService } from "../project/project-reset-preview-service";
 import { ProjectRuntimeProjectionService } from "../project/project-runtime-projection-service";
 import { ProjectSessionState } from "../project/project-session-state";
 import { ProjectSyncMutationService } from "../project/project-sync-mutation-service";
 import { ProofreadingService } from "../service/proofreading-service";
+import { QualityRulePresetReader } from "../service/quality-rule-preset-reader";
 import { QualityService } from "../service/quality-service";
 import { TaskService } from "../service/task-service";
+import { TsConversionService } from "../service/ts-conversion-service";
 import { create_text_resolver, resolve_i18n_locale, type TextResolver } from "../../shared/i18n";
 import type { SystemProxySnapshot } from "./system-proxy-dispatcher";
 
@@ -42,7 +50,7 @@ export interface CoreServicesOptions {
   logManager: LogManager; // logManager 是 Core 内部日志和任务日志的唯一汇聚点
   systemProxySnapshot: SystemProxySnapshot | null; // systemProxySnapshot 是启动期系统代理事实，传给 LLM worker 线程复用
   openOutputFolder: OutputFolderOpener; // openOutputFolder 是 GUI 专用副作用，CLI 注入空实现
-  engineExecution: EngineExecution; // engineExecution 是入口层注入的任务执行模式契约
+  workerExecution: CoreWorkerExecution; // workerExecution 是入口层注入的 Core worker 执行配置
 }
 
 /**
@@ -62,6 +70,13 @@ export class CoreServices {
   public readonly app_session_cache: AppSessionCache;
   public readonly project_change_publisher: ProjectChangePublisher;
   public readonly project_query_service: ProjectQueryService;
+  public readonly project_read_model_worker_pool: ProjectReadModelWorkerPool;
+  public readonly proofreading_query_worker: ProofreadingQueryWorker;
+  public readonly app_session_proofreading_cache: AppSessionProofreadingCache;
+  public readonly proofreading_query_service: ProofreadingQueryService;
+  public readonly quality_statistics_read_model_service: QualityStatisticsReadModelService;
+  public readonly name_field_extraction_read_model_service: NameFieldExtractionReadModelService;
+  public readonly ts_conversion_service: TsConversionService;
   public readonly model_service: ModelService;
   public readonly project_lifecycle_service: ProjectLifecycleService;
   public readonly project_operation_gate: ProjectOperationGate;
@@ -105,6 +120,31 @@ export class CoreServices {
       this.project_session_state,
       this.app_session_cache,
     );
+    this.project_read_model_worker_pool = new ProjectReadModelWorkerPool({
+      execution: options.workerExecution,
+    });
+    this.proofreading_query_worker = new ProofreadingQueryWorker({
+      execution: options.workerExecution,
+    });
+    this.app_session_proofreading_cache = new AppSessionProofreadingCache({
+      appSessionCache: this.app_session_cache,
+      appSettingService: this.app_setting_service,
+      worker: this.proofreading_query_worker,
+    });
+    this.proofreading_query_service = new ProofreadingQueryService({
+      sessionState: this.project_session_state,
+      cache: this.app_session_proofreading_cache,
+    });
+    this.quality_statistics_read_model_service = new QualityStatisticsReadModelService({
+      sessionState: this.project_session_state,
+      appSessionCache: this.app_session_cache,
+      workerPool: this.project_read_model_worker_pool,
+    });
+    this.name_field_extraction_read_model_service = new NameFieldExtractionReadModelService({
+      sessionState: this.project_session_state,
+      appSessionCache: this.app_session_cache,
+      workerPool: this.project_read_model_worker_pool,
+    });
     this.model_service = new ModelService(
       this.paths,
       this.app_setting_service,
@@ -157,11 +197,11 @@ export class CoreServices {
     );
     this.work_unit_worker_pool = new WorkUnitWorkerPool({
       appRoot: this.paths.get_app_root(),
-      execution: options.engineExecution,
+      execution: options.workerExecution,
       systemProxySnapshot: options.systemProxySnapshot,
     });
     this.planning_worker_pool = new PlanningWorkerPool({
-      execution: options.engineExecution,
+      execution: options.workerExecution,
     });
     this.task_engine = new TaskEngine({
       appRoot: this.paths.get_app_root(),
@@ -195,6 +235,13 @@ export class CoreServices {
       options.openOutputFolder,
       this.log_manager,
     );
+    this.ts_conversion_service = new TsConversionService({
+      sessionState: this.project_session_state,
+      appSessionCache: this.app_session_cache,
+      workerPool: this.project_read_model_worker_pool,
+      presetReader: new QualityRulePresetReader(this.paths),
+      fileExportService: this.file_export_service,
+    });
     this.quality_service = new QualityService(
       this.paths,
       this.app_setting_service,
@@ -223,7 +270,12 @@ export class CoreServices {
   public async dispose(): Promise<void> {
     this.app_setting_service.set_stream_publisher(null);
     this.api_stream_hub.stop();
-    await Promise.all([this.work_unit_worker_pool.dispose(), this.planning_worker_pool.dispose()]);
+    await Promise.all([
+      this.work_unit_worker_pool.dispose(),
+      this.planning_worker_pool.dispose(),
+      this.project_read_model_worker_pool.dispose(),
+      this.proofreading_query_worker.dispose(),
+    ]);
     this.started = false;
   }
 
@@ -263,6 +315,18 @@ export class CoreServices {
     for (const event_type of event_types) {
       this.app_event_bus.subscribe(event_type, async (event) => {
         await this.app_session_cache.handleAppEvent(event);
+        if (
+          event.type === "project.unloaded" ||
+          event.type === "project.items.changed" ||
+          event.type === "project.quality.changed" ||
+          event.type === "project.settings.changed" ||
+          event.type === "project.opened_for_cache"
+        ) {
+          await this.app_session_proofreading_cache.disposeProject(
+            event.type === "project.opened_for_cache" ? undefined : event.projectPath,
+          );
+          this.quality_statistics_read_model_service.clear();
+        }
       });
     }
   }

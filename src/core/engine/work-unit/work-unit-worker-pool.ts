@@ -3,13 +3,13 @@ import os from "node:os";
 import { Worker } from "node:worker_threads";
 
 import type { ApiJsonValue } from "../../api/api-types";
-import type { EngineExecution } from "../core/engine-execution";
+import type { CoreWorkerExecution } from "../../worker/core-worker-execution";
 import type { WorkUnit } from "../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
 import { WorkUnitRunner } from "./work-unit-runner";
 import type { WorkUnitExecutor } from "./work-unit-executor";
 import { WorkUnitExecutorTransportError } from "./work-unit-transport-error";
-import { resolve_default_worker_count } from "../../../shared/worker-capacity";
+import { resolve_default_worker_count } from "../../../shared/utils/worker-capacity-tool";
 import {
   normalize_log_error,
   RuntimeCancelledError,
@@ -22,7 +22,7 @@ import type { SystemProxySnapshot } from "../../bootstrap/system-proxy-dispatche
 
 interface WorkUnitWorkerPoolOptions {
   appRoot: string;
-  execution: EngineExecution;
+  execution: CoreWorkerExecution;
   systemProxySnapshot?: SystemProxySnapshot | null;
   workerCount?: number;
   maxInFlight?: number;
@@ -48,7 +48,7 @@ interface WorkerSlot {
  */
 export class WorkUnitWorkerPool implements WorkUnitExecutor {
   private readonly app_root: string; // app_root 提供 worker_threads 和同进程 runner 读取资源模板的根目录
-  private readonly execution: EngineExecution; // execution 由入口层显式决定，池内不做入口探测或模式回退
+  private readonly execution: CoreWorkerExecution; // execution 由入口层显式决定，池内不做入口探测或模式回退
   private readonly system_proxy_snapshot: SystemProxySnapshot | null; // system_proxy_snapshot 让 worker 线程复用主线程启动期代理快照
   private readonly worker_count: number; // worker_count 是 worker_threads 模式下的固定线程数
   private readonly max_in_flight: number; // max_in_flight 是全池并发上限，不等同于线程数

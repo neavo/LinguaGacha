@@ -3,7 +3,7 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { JsonTool } from "../../shared/utils/json-tool";
 import { AppMetadataService } from "../app/app-metadata-service";
@@ -11,11 +11,11 @@ import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { CoreServices } from "../bootstrap/core-services";
 import { ProjectDatabase } from "../database/database-operations";
-import type { EngineExecution } from "../engine/core/engine-execution";
+import type { CoreWorkerExecution } from "../worker/core-worker-execution";
 import { type FileLogWriter, LogManager } from "../log/log-manager";
 import { ApiGatewayServer } from "./api-gateway-server";
 
-const IN_PROCESS_ENGINE_EXECUTION: EngineExecution = { kind: "in_process" }; // Gateway 测试只验证 HTTP 协议，不依赖真实 worker_threads
+const IN_PROCESS_WORKER_EXECUTION: CoreWorkerExecution = { kind: "in_process" }; // Gateway 测试只验证 HTTP 协议，不依赖真实 worker_threads
 
 describe("ApiGatewayServer", () => {
   const cleanup_callbacks: Array<() => Promise<void> | void> = []; // Gateway 测试会启动真实本机 HTTP server，清理顺序必须由用例统一登记
@@ -434,13 +434,13 @@ describe("ApiGatewayServer", () => {
     const proofreading_response = await post_json(
       started.baseUrl,
       "/api/project/query/proofreading",
-      { row_ids: ["1"] },
+      { action: "items_by_row_ids", row_ids: ["1"] },
     );
     const proofreading_body = (await proofreading_response.json()) as {
       ok?: boolean;
       data?: {
         projectPath?: string;
-        rows?: Array<{ item?: { src?: string } }>;
+        rows?: Array<{ src?: string }>;
       };
     };
     const prompt_response = await post_json(started.baseUrl, "/api/project/query/prompt", {
@@ -462,7 +462,7 @@ describe("ApiGatewayServer", () => {
     });
     expect(proofreading_body.ok).toBe(true);
     expect(proofreading_body.data?.projectPath).toBe(lg_path);
-    expect(proofreading_body.data?.rows?.[0]?.item).toMatchObject({
+    expect(proofreading_body.data?.rows?.[0]).toMatchObject({
       src: "原文",
     });
     expect(prompt_body.ok).toBe(true);
@@ -618,6 +618,18 @@ describe("ApiGatewayServer", () => {
     await expect(gateway.stop()).resolves.toBeUndefined();
   });
 
+  it("Gateway stop 只释放公开监听器，不越界释放 CoreServices", async () => {
+    const dispose = vi.fn(async () => undefined);
+    const gateway = new ApiGatewayServer({
+      coreServices: { dispose } as unknown as CoreServices,
+      publicPort: 0,
+    });
+
+    await gateway.stop();
+
+    expect(dispose).not.toHaveBeenCalled();
+  });
+
   it("公开端口监听失败时拒绝启动并保持 stop 幂等", async () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
@@ -645,7 +657,7 @@ describe("ApiGatewayServer", () => {
       logManager: log_manager,
       systemProxySnapshot: null,
       openOutputFolder: noop_output_folder,
-      engineExecution: IN_PROCESS_ENGINE_EXECUTION,
+      workerExecution: IN_PROCESS_WORKER_EXECUTION,
     });
     core_services.start();
     const gateway = new ApiGatewayServer({
@@ -688,7 +700,7 @@ describe("ApiGatewayServer", () => {
       logManager: log_manager,
       systemProxySnapshot: null,
       openOutputFolder: noop_output_folder,
-      engineExecution: IN_PROCESS_ENGINE_EXECUTION,
+      workerExecution: IN_PROCESS_WORKER_EXECUTION,
     });
     core_services.start();
     return new ApiGatewayServer({

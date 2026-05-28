@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolve_default_worker_count } from "./worker-capacity";
+import { resolve_default_worker_count } from "./worker-capacity-tool";
 
 describe("resolve_default_worker_count", () => {
   it("显式 workerCount 只做整数收口并至少保留一个 worker", () => {

@@ -13,7 +13,7 @@ import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
-import { should_defer_runtime_snapshot_refresh } from "@/pages/workbench-page/task-runtime/task-runtime-ownership";
+import { should_defer_task_snapshot_refresh } from "@/pages/workbench-page/task-runtime/task-runtime-ownership";
 import { useTerminalPromptSuppression } from "@/pages/workbench-page/task-runtime/terminal-prompt-suppression";
 import { read_project_section_revisions } from "@/project/query/project-section-revisions-query";
 import {
@@ -308,7 +308,7 @@ export function useTranslationTaskRuntime(
       return;
     }
 
-    if (should_defer_runtime_snapshot_refresh(task_snapshot, "translation")) {
+    if (should_defer_task_snapshot_refresh(task_snapshot, "translation")) {
       return;
     }
 

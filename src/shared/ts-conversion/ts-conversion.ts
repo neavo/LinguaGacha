@@ -1,12 +1,21 @@
 import * as OpenCC from "opencc-js";
 
-import type {
-  TsConversionConvertedItem,
-  TsConversionDirection,
-  TsConversionNameDst,
-  TsConversionRuntimeItem,
-} from "@/pages/ts-conversion-page/types";
-import type { ProjectItemIndex } from "@/project/project-item-index";
+export type TsConversionDirection = "s2t" | "t2s";
+
+export type TsConversionNameDst = string | string[] | null;
+
+export type TsConversionRuntimeItem = {
+  item_id: number;
+  dst: string;
+  name_dst: TsConversionNameDst;
+  text_type: string;
+};
+
+export type TsConversionConvertedItem = {
+  item_id: number;
+  dst: string;
+  name_dst: TsConversionNameDst;
+};
 
 type TsConversionTextConverter = (text: string) => string;
 
@@ -44,9 +53,9 @@ function normalize_name_dst(value: unknown): TsConversionNameDst {
 }
 
 export function normalize_ts_conversion_runtime_items(
-  items: ProjectItemIndex,
+  items: Iterable<unknown>,
 ): TsConversionRuntimeItem[] {
-  return [...items.values()].flatMap((value) => {
+  return [...items].flatMap((value) => {
     if (typeof value !== "object" || value === null) {
       return [];
     }

@@ -4,7 +4,7 @@
 
 ## 1. 公开协议边界
 
-- `CoreBootstrap` 是 GUI 与 CLI 共享的 Core 启停入口；它接收入口层注入的 appRoot、`openOutputFolder` 和 `EngineExecution`，并拥有日志、启动期迁移、设置、数据库、`CoreServices` 与可选 Gateway 的生命周期。
+- `CoreBootstrap` 是 GUI 与 CLI 共享的 Core 启停入口；它接收入口层注入的 appRoot、`openOutputFolder` 和 `CoreWorkerExecution`，并拥有日志、启动期迁移、设置、数据库、`CoreServices` 与可选 Gateway 的生命周期。
 - `ApiGatewayServer` 是 Electron 运行态公开 `/api/*` 的唯一注册点；路由集中注册在 `src/core/api/api-gateway-server.ts`，POST JSON 路由必须经 `post_json` 返回统一响应壳。
 - Gateway 只监听 `127.0.0.1`，CORS 只允许 `Content-Type`；renderer 不依赖额外私有请求头。
 - 成功响应形状为 `{ ok: true, data }`，失败响应形状为 `{ ok: false, error }`。错误载荷来自 `src/shared/error` 的 `AppError` 投影，只暴露安全字段；用户可见文案通过 i18n key 解析，内部异常、stack、API key、Authorization header 和 provider 原始响应只允许进入日志诊断。
@@ -13,7 +13,7 @@
 - `log.appended` 只携带列表、筛选和排序所需的轻量日志事件；完整日志正文只保留在当前进程内详情池，并通过 `/api/logs/detail` 按 ID 读取。Core 不为日志详情写数据库、索引或额外文件，历史 `app.yyyymmdd.log` 不作为详情接口的数据源。
 - `/api/diagnostics/renderer-error` 只接收 renderer 实际异常摘要并写入 `LogManager`；载荷必须经过 shared error 的 `RendererErrorReport` normalizer，触发事件和 renderer error context 都按 shared 白名单收窄。Gateway 不维护第二套 message / stack / context 裁剪规则；该路由不改变项目、任务或设置事实，也不保存正常 SSE 流水、完整项目 payload 或页面自定义上下文对象。
 - CLI 不启动 Gateway；CLI 命令通过同进程 `CoreServices` 和 `ApiStreamHub` 复用任务、项目、导出和质量服务。
-- 发布态任务执行入口由产品入口构造为 `worker_threads`，指向桌面 bundle 内的 work-unit 与 planning worker；`in_process` 只允许测试或源码执行显式选择，不是 worker 失败回退。
+- 发布态 Core worker 执行配置由产品入口构造为 `worker_threads`，指向桌面 bundle 内的 Core worker 入口；`in_process` 只允许测试或源码执行显式选择，不是 worker 失败回退。
 
 ## 2. Core 状态拥有者
 
@@ -24,7 +24,7 @@
 | 当前 loaded 工程热读数据 | `AppSessionCache` | `ProjectLifecycleService` 热机、`AppEventBus` committed event、`/api/project/query/*` |
 | Core 内部 committed event | `AppEventBus` | 写侧事务成功后的 after-commit 发布 |
 | 项目公开 manifest | `.lg` + `ProjectRuntimeProjectionService` | `/api/project/manifest` |
-| 页面 view model | `ProjectQueryService` + `AppSessionCache` | `/api/project/query/*` |
+| 页面 view model | 项目 query service + `AppSessionCache` | `/api/project/query/*` |
 | 同步项目 mutation | `ProjectSyncMutationService` / `ProofreadingService` / `QualityService` 等领域服务 | database transaction + internal event + `ProjectChangePublisher` |
 | 项目公开变更事件 | `ProjectChangeEventAdapter` + `ProjectChangePublisher` | 同一事件同时返回 HTTP mutation result 并广播 SSE |
 | 任务 busy/status/request pressure | `TaskRuntimeState` | `TaskRuntimePublisher` |
@@ -46,7 +46,10 @@ project, files, items, quality, prompts, analysis, proofreading
 
 - `/api/project/manifest` 只返回项目身份、project revision、section revision 和 counts，不预热大 section。
 - `/api/project/query/*` 是 renderer 读取项目 view model 的唯一公开入口；query response 必须携带本次 view 依赖的 `sectionRevisions`，页面 mutation 使用这些 revision 作为乐观锁依赖。
-- `AppSessionCache` 是当前 loaded 工程的热读事实拥有者；query service 只能从 cache 和按需数据库投影组合页面 view，不建立第二套长期项目事实缓存。
+- `AppSessionCache` 是当前 loaded 工程的热读事实拥有者；query service 只能从 cache、按需数据库投影和 shared 纯算法组合页面 view，不能建立第二套长期项目事实缓存。
+- 校对列表派生属于 `AppSessionCache` 下游缓存；`AppSessionCache` 不保存列表、筛选或 worker 细节。`/api/project/query/proofreading` 只返回页面所需轻量结果，worker 不读数据库、不写 `.lg`、不发布事件。
+- 质量统计、名称提取和繁简转换的全量 items CPU 派生通过 `ProjectReadModelWorkerPool` 调用 `src/shared/*` 纯算法；worker 不读数据库、不写 `.lg`、不发布事件。
+- `/api/project/export-converted-translation` 只接收转换方向和用户选项；Core 读取当前 items 与文本保护规则后完成繁简转换并导出，renderer 不传转换后的 items。
 - 完整分析候选池不进入常驻项目快照，只能通过 `/api/project/analysis/candidates` 按需读取。
 - 同步项目 mutation 成功返回 `ProjectMutationResult = { accepted: true, changes }`；`changes` 与后续 SSE 广播是同一批后端 canonical `ProjectChangeEvent`。
 - `ProjectChangeEvent` 必须带后端确认的 `projectPath`、`projectRevision`、本次更新 section 的 `sectionRevisions` 和 `updatedSections`；不属于当前 loaded 工程的草稿不能发布。

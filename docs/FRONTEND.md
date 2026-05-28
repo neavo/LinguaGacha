@@ -49,7 +49,7 @@ flowchart LR
 ## 4. 页面 Query 与局部状态
 
 - renderer 与 Core 共享的数据实体和值对象从 `src/base` 导入；跨运行时纯规则、协议词表和工具从 `src/shared` 导入；最终项目 mutation 派生算法只属于 Core，renderer 不导入或复刻。
-- 页面读取项目事实只能通过 `src/renderer/project/query/*` 包装的 `/api/project/query/*`；页面状态只保存 query 参数、结果 view model 和交互态。
+- 页面读取项目事实只能通过 `src/renderer/project/query/*` 包装的 `/api/project/query/*`；页面状态只保存 query 参数、结果 view model、窗口缓存和交互态。
 - query response 的 `sectionRevisions` 是页面 mutation 的乐观锁来源；页面不得从本地缓存、task 状态或时间戳推导 revision。
 - 质量规则页面使用 `QualityRule` / `Prompt` 派生出的公开 key 与归一化切片；请求预设时传公开 rule type，不传物理目录名。
 - 源语言与目标语言控件分别消费 `SOURCE_LANGUAGE_CODES` 与 `TARGET_LANGUAGE_CODES`；`ALL` 只作为源语言过滤关闭值，不进入目标语言控件。
@@ -62,8 +62,8 @@ flowchart LR
 - `WorkbenchTaskRuntimeProvider` 常驻在项目 session 内，拥有翻译 / 分析任务完成后的生成译文、导入术语和任务确认意图；任务 follow-up 不属于工作台页面缓存，不能随工作台页面卸载而丢失。
 - 页面派生缓存、弹窗、确认框、导入状态和提交中状态随页面挂载创建、随卸载释放；只有登记到 `ProjectSessionUiStateProvider` 的轻量页面 UI 状态可在当前项目 session 内跨路由保留。
 - 工作台和校对页可以维护页面局部缓存，但 ready 判定必须基于项目 path、required sections 与 consumed revisions。
-- 校对页使用本地列表运行态维护搜索、筛选、排序、窗口和警告派生；质量 hydrate 未完成时可先显示后端 query item 快照生成的基础表格，cache ready 与 consumed revisions 以完整 hydrate 完成为准。
-- `src/renderer/project/quality` 是质量规则统计共享缓存与规则描述的归宿；页面只激活已挂载规则，未挂载规则仅失效缓存，失败态只能由依赖变化或显式用户动作重新调度。
+- 校对页搜索、筛选、排序、窗口和警告派生由 Core 校对 query 提供；renderer 只保存当前参数、view id、窗口结果、选择和编辑态，cache ready 与 consumed revisions 以 Core `sync` 返回的 section revision 为准，页面卸载或路由切换不代表后端校对派生缓存清理。
+- 质量规则统计的全量匹配计算由 Core query 提供；`src/renderer/project/quality` 只保存规则描述、调度阶段、已完成统计结果和页面订阅状态。页面只激活已挂载规则，未挂载规则仅失效缓存，失败态只能由依赖变化或显式用户动作重新调度。
 - 结果型页面的主列表使用结果视图快照：搜索、筛选、替换、排序或刷新等显式 action 生成新的稳定 id 序列；项目事实刷新只更新快照内实体的最新内容、状态、警告和统计，不能重新筛选、插入或重排当前 view；后端 tombstone 删除、项目切换、全量数据源重建或运行态不兼容时才剪除或重建快照。
 - 工作台统计区和任务菜单百分比消费后端 query 派生的 `WorkbenchStats`；任务详情在运行或停止中消费 `TaskSnapshot.progress`，空闲态才回落到 `WorkbenchStats`。
 
@@ -80,5 +80,5 @@ flowchart LR
 - 改 preload 暴露能力、`window.desktopApp` 类型、GUI 契约白名单、IPC 或 Core API 接入方式，更新本文。
 - 改 `desktop-api.ts` 的 health probe、响应壳、错误、本地网络错误、SSE 或外部网络检查语义，更新本文。
 - 改项目身份、session 初始化、mutation result、payload mode、revision 来源或页面 query 恢复策略，更新本文并同步 [`docs/BACKEND.md`](BACKEND.md)。
-- 改导航注册、`ProjectSessionProvider`、页面派生缓存、项目 UI 状态、校对列表运行态或质量规则统计共享缓存策略，更新本文。
+- 改导航注册、`ProjectSessionProvider`、页面派生缓存、项目 UI 状态、Core 校对 query 消费方式或质量规则统计共享缓存策略，更新本文。
 - 改 i18n、可见文案、样式 token、px-first、基础组件视觉边界或设计系统消费方式，更新本文；产品 / 设计权威仍回到 `PRODUCT.md` / `DESIGN.md`。

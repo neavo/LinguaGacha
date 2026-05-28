@@ -54,7 +54,7 @@ function create_core_services_options(): CoreServicesOptions {
     },
     systemProxySnapshot: null,
     openOutputFolder: vi.fn(),
-    engineExecution: { kind: "in_process" },
+    workerExecution: { kind: "in_process" },
   } as unknown as CoreServicesOptions;
 }
 
@@ -64,7 +64,10 @@ describe("CoreServices", () => {
 
     expect(services.app_event_bus).toBeDefined();
     expect(services.app_session_cache).toBeDefined();
+    expect(services.app_session_proofreading_cache).toBeDefined();
     expect(services.project_query_service).toBeDefined();
+    expect(services.proofreading_query_service).toBeDefined();
+    expect(services.proofreading_query_worker).toBeDefined();
     expect(services.project_service).toBeDefined();
     expect(services.project_task_store).toBeDefined();
   });

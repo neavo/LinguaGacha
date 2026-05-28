@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CoreBootstrapOptions } from "../core/bootstrap/core-bootstrap-types";
 import type { CoreBootstrapStartResult } from "../core/bootstrap/core-bootstrap-types";
-import type { EngineExecution } from "../core/engine/core/engine-execution";
+import type { CoreWorkerExecution } from "../core/worker/core-worker-execution";
 import type { CLICommandOptions } from "./cli-parser";
 
 type FakeCoreServices = { marker: "core-services" };
@@ -44,7 +44,7 @@ describe("run_cli_command", () => {
       appRoot: "E:/App",
       exposeApiGateway: false,
       logTargets: { console: false, window: false },
-      engineExecution: { kind: "in_process" } satisfies EngineExecution,
+      workerExecution: { kind: "in_process" } satisfies CoreWorkerExecution,
     });
     await expect(
       harness.calls.core_bootstrap_options[0]?.systemProxyResolver?.resolveProxy(

@@ -1,9 +1,11 @@
 import { api_fetch } from "@/app/desktop/desktop-api";
-import type { ProjectItemPublicRecord } from "@domain/item";
-
 import type { ProjectQuerySectionRevisions } from "@/project/query/project-section-revisions-query";
+import type {
+  NameFieldFilterState,
+  NameFieldRow,
+  NameFieldSortState,
+} from "@/pages/name-field-extraction-page/types";
 
-// NameFieldExtractionGlossaryQuerySlice 是姓名提取页实际需要的术语规则切片。
 export type NameFieldExtractionGlossaryQuerySlice = {
   entries?: unknown;
 };
@@ -12,7 +14,16 @@ export type NameFieldExtractionGlossaryQuerySlice = {
 export type NameFieldExtractionQueryResponse = {
   projectPath: string;
   sectionRevisions?: ProjectQuerySectionRevisions;
-  items?: ProjectItemPublicRecord[];
+  view?: {
+    rows?: NameFieldRow[];
+    counts?: {
+      total: number;
+      translated: number;
+      untranslated: number;
+      error: number;
+    };
+    invalid_regex_message?: string | null;
+  };
   glossary?: NameFieldExtractionGlossaryQuerySlice;
 };
 
@@ -20,9 +31,15 @@ export type NameFieldExtractionQueryResponse = {
 /**
  * 读取当前场景需要的稳定数据。
  */
-export async function read_name_field_extraction_query(): Promise<NameFieldExtractionQueryResponse> {
+export async function read_name_field_extraction_query(args: {
+  filter: NameFieldFilterState;
+  sort: NameFieldSortState;
+}): Promise<NameFieldExtractionQueryResponse> {
   return await api_fetch<NameFieldExtractionQueryResponse>(
     "/api/project/query/name-field-extraction",
-    {},
+    {
+      filter: args.filter,
+      sort: args.sort,
+    },
   );
 }

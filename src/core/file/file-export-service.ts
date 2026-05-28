@@ -109,46 +109,18 @@ export class FileExportService {
   }
 
   /**
-   * 转换导出只接受前端提交的转换结果，并按 item id 覆盖导出快照
+   * Core 内部转换服务传入已由当前项目事实派生的导出快照，避免 renderer 提交派生 items。
    */
-  public async export_converted_translation(request: JsonRecord): Promise<JsonRecord> {
+  public async export_items_with_suffix(
+    items: Item[],
+    suffix: "_S2T" | "_T2S",
+  ): Promise<JsonRecord> {
     const project_path = this.require_loaded_project_path();
     const config = this.app_setting_service.read_setting();
-    const suffix = String(request["suffix"] ?? "");
-    if (suffix !== "_S2T" && suffix !== "_T2S") {
-      throw new AppErrors.RequestValidationError();
-    }
-    const converted_items = Array.isArray(request["items"])
-      ? request["items"].filter(
-          (item): item is JsonRecord =>
-            typeof item === "object" && item !== null && !Array.isArray(item),
-        )
-      : [];
-    if (converted_items.length === 0) {
-      throw new AppErrors.RequestValidationError();
-    }
-    const converted_by_id = new Map<number, JsonRecord>();
-    for (const item of converted_items) {
-      const item_id = Number(item["item_id"] ?? item["id"] ?? 0);
-      if (Number.isFinite(item_id) && item_id > 0) {
-        converted_by_id.set(Math.trunc(item_id), item);
-      }
-    }
-    const export_items = this.read_project_items(project_path).map((item) => {
-      const converted = item.id === undefined ? undefined : converted_by_id.get(item.id);
-      if (converted === undefined) {
-        return item;
-      }
-      return Item.from_json({
-        ...item,
-        dst: String(converted["dst"] ?? item.dst),
-        name_dst: Item.normalize_name(converted["name_dst"] ?? item.name_dst),
-      });
-    });
-    this.fill_duplicated_translations(export_items);
+    this.fill_duplicated_translations(items);
     this.log_export_start(config);
     try {
-      const output_path = await this.write_export(project_path, export_items, suffix, config);
+      const output_path = await this.write_export(project_path, items, suffix, config);
       await this.complete_export_success(config, output_path);
       return { accepted: true, output_path };
     } catch (error) {

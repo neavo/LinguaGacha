@@ -18,6 +18,14 @@ const config = {
             project_root,
             "src/core/engine/planning/planning-worker-entry.ts",
           ),
+          "project-read-model-worker-entry": path.resolve(
+            project_root,
+            "src/core/project/read-model/worker/project-read-model-worker-entry.ts",
+          ),
+          "proofreading-query-worker-entry": path.resolve(
+            project_root,
+            "src/core/project/proofreading/proofreading-query-worker-entry.ts",
+          ),
           "work-unit-worker-entry": path.resolve(
             project_root,
             "src/core/engine/work-unit/work-unit-worker-entry.ts",

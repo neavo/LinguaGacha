@@ -2,7 +2,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { EngineExecution } from "../core/engine/core/engine-execution";
+import type { CoreWorkerExecution } from "../core/worker/core-worker-execution";
 
 type Listener = (...args: unknown[]) => void;
 type ReadyResolver = () => void;
@@ -12,7 +12,7 @@ type CoreBootstrapOptions = {
   exposeApiGateway: boolean;
   systemProxyResolver?: { resolveProxy: (url: string) => Promise<string> };
   openOutputFolder: (output_path: string) => Promise<void>;
-  engineExecution: EngineExecution;
+  workerExecution: CoreWorkerExecution;
 };
 type CoreBootstrapInstance = {
   options: CoreBootstrapOptions;
@@ -107,8 +107,8 @@ describe("Electron main 入口", () => {
       ),
     ).resolves.toBe("DIRECT");
     expect(harness.calls.proxy_resolve_urls).toEqual(["https://api.example/v1"]);
-    expect(harness.calls.core_bootstraps[0]?.options.engineExecution).toEqual(
-      create_test_engine_execution(),
+    expect(harness.calls.core_bootstraps[0]?.options.workerExecution).toEqual(
+      create_test_worker_execution(),
     );
     expect(harness.calls.log_window_options).toEqual([
       {
@@ -450,7 +450,7 @@ function create_index_harness(): {
       const entry = await import("./gui-entry");
       entry.run_gui_entry({
         desktopBundleDir: path.join(process.cwd(), "build", "dist-electron"),
-        engineExecution: create_test_engine_execution(),
+        workerExecution: create_test_worker_execution(),
       });
     },
     log_window_host,
@@ -467,9 +467,9 @@ function create_index_harness(): {
 }
 
 /**
- * 构造 GUI 启动测试使用的 Engine 执行契约，断言入口层会原样传入 CoreBootstrap。
+ * 构造 GUI 启动测试使用的 Core worker 执行配置，断言入口层会原样传入 CoreBootstrap。
  */
-function create_test_engine_execution(): EngineExecution {
+function create_test_worker_execution(): CoreWorkerExecution {
   return {
     kind: "worker_threads",
     workUnitWorkerEntryUrl: pathToFileURL(
@@ -477,6 +477,12 @@ function create_test_engine_execution(): EngineExecution {
     ),
     planningWorkerEntryUrl: pathToFileURL(
       path.join(process.cwd(), "build", "dist-electron", "planning-worker-entry.js"),
+    ),
+    projectReadModelWorkerEntryUrl: pathToFileURL(
+      path.join(process.cwd(), "build", "dist-electron", "project-read-model-worker-entry.js"),
+    ),
+    proofreadingQueryWorkerEntryUrl: pathToFileURL(
+      path.join(process.cwd(), "build", "dist-electron", "proofreading-query-worker-entry.js"),
     ),
   };
 }

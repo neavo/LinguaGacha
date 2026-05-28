@@ -5,44 +5,13 @@ import { useDesktopRuntime } from "@/app/desktop/use-desktop-runtime";
 import { useDesktopToast } from "@/app/ui-runtime/use-desktop-toast";
 import { resolve_visible_error_message } from "@/app/ui-runtime/error-message";
 import { useI18n } from "@/app/locale/locale-provider";
-import {
-  build_ts_conversion_converted_items,
-  build_ts_conversion_custom_rules,
-  collect_ts_conversion_text_types,
-  normalize_ts_conversion_runtime_items,
-} from "@/pages/ts-conversion-page/logic";
-import {
-  read_ts_conversion_query,
-  type TsConversionTextPreserveQuerySlice,
-} from "@/project/query/ts-conversion-query";
-import { createProjectItemIndex } from "@/project/project-item-index";
 import type {
   TsConversionDirection,
   TsConversionExportPayload,
-  TsConversionRulePresetPayload,
 } from "@/pages/ts-conversion-page/types";
-import { ITEM_TEXT_TYPES, type ProjectItemPublicRecord } from "@domain/item";
-import { normalize_text_preserve_mode } from "@domain/quality";
 
 type TsConversionConfirmState = {
   open: boolean;
-};
-
-type TsConversionQueryState = {
-  items: ProjectItemPublicRecord[];
-  text_preserve: {
-    mode: unknown;
-    entries: Array<Record<string, unknown>>;
-  };
-};
-
-const TS_CONVERSION_PRESET_TEXT_TYPES = new Set<string>(ITEM_TEXT_TYPES);
-const EMPTY_QUERY_STATE: TsConversionQueryState = {
-  items: [],
-  text_preserve: {
-    mode: "smart",
-    entries: [],
-  },
 };
 
 // 确认弹窗状态保持独立构造，避免关闭和初始化分支各自拼对象
@@ -59,97 +28,12 @@ function create_empty_confirm_state(): TsConversionConfirmState {
 /**
  * 解析当前场景的最终消费值。
  */
-function resolve_suffix(direction: TsConversionDirection): string {
-  return direction === "s2t" ? "_S2T" : "_T2S";
-}
-
-// 质量规则预设返回原始 entries，简繁转换页只消费非空 src 作为保护规则
-/**
- * 读取当前场景需要的稳定数据。
- */
-function extract_preset_rule_sources(entries: unknown[] | undefined): string[] {
-  if (!Array.isArray(entries)) {
-    return [];
-  }
-
-  return entries.flatMap((entry) => {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      return [];
-    }
-    const src = (entry as Record<string, unknown>).src;
-    return typeof src === "string" && src.trim() !== "" ? [src.trim()] : [];
-  });
-}
-
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
-function normalize_text_preserve_query_slice(
-  slice: TsConversionTextPreserveQuerySlice | undefined,
-): TsConversionQueryState["text_preserve"] {
-  const entries = Array.isArray(slice?.entries)
-    ? slice.entries.flatMap((entry) => {
-        return typeof entry === "object" && entry !== null && !Array.isArray(entry)
-          ? [{ ...(entry as Record<string, unknown>) }]
-          : [];
-      })
-    : [];
-  return {
-    mode: slice?.mode ?? "smart",
-    entries,
-  };
-}
-
-// 单个 text_type 读取失败不应中断整次转换，缺失预设等价于没有保护规则
-/**
- * 读取当前场景需要的稳定数据。
- */
-async function read_preset_rules_for_text_type(text_type: string): Promise<string[]> {
-  try {
-    const payload = await api_fetch<TsConversionRulePresetPayload>(
-      "/api/quality/rules/presets/read",
-      {
-        rule_type: "text_preserve",
-        virtual_id: `builtin:${text_type.toLowerCase()}.json`,
-      },
-    );
-    return extract_preset_rule_sources(payload.entries);
-  } catch {
-    // 内置保护规则不是每个 text_type 都齐全，读取失败时按空规则继续导出
-    return [];
-  }
-}
-
-// 按原始 text_type 大写键回填规则，保持转换逻辑与运行态条目字段一致
-/**
- * 读取当前场景需要的稳定数据。
- */
-async function read_preset_rules_by_text_type(
-  text_types: string[],
-): Promise<Record<string, string[]>> {
-  // 未知 text_type 沿用旧路由语义跳过，避免把脏数据映射成其它预设
-  const known_text_types = text_types.filter((text_type) =>
-    TS_CONVERSION_PRESET_TEXT_TYPES.has(text_type),
-  );
-  const entries = await Promise.all(
-    known_text_types.map(async (text_type) => {
-      return [text_type, await read_preset_rules_for_text_type(text_type)] as const;
-    }),
-  );
-  return Object.fromEntries(entries);
-}
-
 // 页面状态只编排确认、进度和导出请求；实际转换规则留在纯逻辑模块
 export function useTsConversionPageState() {
   const { t } = useI18n();
-  const {
-    project_snapshot,
-    project_change_signal,
-    project_session_status = "ready",
-  } = useDesktopRuntime();
+  const { project_snapshot, project_session_status = "ready" } = useDesktopRuntime();
   const { push_toast, push_progress_toast, update_progress_toast, dismiss_toast } =
     useDesktopToast();
-  const [query_state, set_query_state] = useState<TsConversionQueryState>(EMPTY_QUERY_STATE);
   const [direction, set_direction] = useState<TsConversionDirection>("s2t");
   const [preserve_text, set_preserve_text] = useState(true);
   const [convert_name, set_convert_name] = useState(true);
@@ -159,43 +43,6 @@ export function useTsConversionPageState() {
   const [is_running, set_is_running] = useState(false);
   const run_active_ref = useRef(false); // 用 ref 阻止同一轮异步转换被重复触发，避免重复写出文件
   const prefer_native_notice_shown_ref = useRef(false); // 页面挂载提示只在当前 hook 生命周期内展示一次
-
-  const runtime_items = normalize_ts_conversion_runtime_items(
-    createProjectItemIndex(
-      Object.fromEntries(query_state.items.map((item) => [String(item.item_id), item])),
-    ),
-  );
-
-  useEffect(() => {
-    if (
-      !project_snapshot.loaded ||
-      project_snapshot.path === "" ||
-      project_session_status !== "ready"
-    ) {
-      set_query_state(EMPTY_QUERY_STATE);
-      return;
-    }
-
-    let cancelled = false;
-    void read_ts_conversion_query().then((response) => {
-      if (cancelled || response.projectPath !== project_snapshot.path) {
-        return;
-      }
-      set_query_state({
-        items: Array.isArray(response.items) ? response.items : [],
-        text_preserve: normalize_text_preserve_query_slice(response.textPreserve),
-      });
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    project_change_signal?.seq ?? 0,
-    project_session_status,
-    project_snapshot.loaded,
-    project_snapshot.path,
-  ]);
 
   useEffect(() => {
     if (prefer_native_notice_shown_ref.current) {
@@ -215,7 +62,7 @@ export function useTsConversionPageState() {
       push_toast("error", t("ts_conversion_page.feedback.project_required"));
       return;
     }
-    if (runtime_items.length === 0) {
+    if (project_session_status !== "ready") {
       push_toast("warning", t("ts_conversion_page.feedback.no_data"));
       return;
     }
@@ -223,7 +70,7 @@ export function useTsConversionPageState() {
     set_confirm_state({
       open: true,
     });
-  }, [project_snapshot.loaded, push_toast, runtime_items.length, t]);
+  }, [project_session_status, project_snapshot.loaded, push_toast, t]);
 
   const close_confirm_dialog = useCallback((): void => {
     set_confirm_state(create_empty_confirm_state());
@@ -246,46 +93,25 @@ export function useTsConversionPageState() {
     });
 
     try {
-      const text_preserve_slice = query_state.text_preserve;
-      const text_preserve_mode = normalize_text_preserve_mode(text_preserve_slice.mode, "smart");
-      const normalized_text_preserve_mode = text_preserve_mode.toLowerCase();
-      const custom_rules = build_ts_conversion_custom_rules(text_preserve_slice.entries);
-      // 非 custom 模式才读取内置预设；custom 模式完全使用项目中的页面规则
-      const preset_rules_by_text_type =
-        preserve_text &&
-        normalized_text_preserve_mode !== "off" &&
-        normalized_text_preserve_mode !== "custom"
-          ? await read_preset_rules_by_text_type(collect_ts_conversion_text_types(runtime_items))
-          : {};
-
       update_progress_toast(progress_toast_id, {
         message: t("ts_conversion_page.action.progress")
-          .replace("{CURRENT}", runtime_items.length === 0 ? "0" : "1")
-          .replace("{TOTAL}", runtime_items.length.toString()),
+          .replace("{CURRENT}", "1")
+          .replace("{TOTAL}", "1"),
         presentation: "modal",
       });
       await Promise.resolve();
 
-      const converted_items = build_ts_conversion_converted_items({
-        items: runtime_items,
-        direction,
-        convert_name,
-        preserve_text,
-        text_preserve_mode,
-        custom_rules,
-        preset_rules_by_text_type,
-      });
-
       update_progress_toast(progress_toast_id, {
         message: t("ts_conversion_page.action.progress")
-          .replace("{CURRENT}", runtime_items.length.toString())
-          .replace("{TOTAL}", runtime_items.length.toString()),
+          .replace("{CURRENT}", "1")
+          .replace("{TOTAL}", "1"),
         presentation: "modal",
       });
 
       await api_fetch<TsConversionExportPayload>("/api/project/export-converted-translation", {
-        suffix: resolve_suffix(direction),
-        items: converted_items,
+        direction,
+        convert_name,
+        preserve_text,
       });
       dismiss_toast(progress_toast_id);
       push_toast("success", t("ts_conversion_page.feedback.task_success"));
@@ -304,10 +130,8 @@ export function useTsConversionPageState() {
     direction,
     dismiss_toast,
     preserve_text,
-    query_state.text_preserve,
     push_progress_toast,
     push_toast,
-    runtime_items,
     t,
     update_progress_toast,
   ]);

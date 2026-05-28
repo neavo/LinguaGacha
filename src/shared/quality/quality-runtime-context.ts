@@ -1,11 +1,16 @@
-import type { QualityRulesRuntimeState } from "@/project/quality/quality-runtime-state";
+import type { QualityRulesRuntimeState } from "./quality-runtime-state";
 import {
   build_text_preserve_rule,
   collect_non_blank_text_preserve_segments,
   type TextPreserveRule,
-} from "@shared/text/text-preserve-rules";
-import { compile_text_pattern, replace_text_pattern } from "@shared/text/text-pattern";
-import type { TextJsonRecord } from "@shared/text/text-types";
+} from "../text/text-preserve-rules";
+import {
+  compile_text_pattern,
+  replace_text_pattern,
+  type CompiledTextPattern,
+  type TextReplacementSyntax,
+} from "../text/text-pattern";
+import type { TextJsonRecord } from "../text/text-types";
 
 export type QualityRuntimeGlossaryEntry = {
   src: string;
@@ -26,10 +31,9 @@ export type QualityRuntimeGlossaryIndex = {
 };
 
 export type QualityRuntimeReplacementRule = {
-  search_text: string; // 运行态实际匹配文本，译后替换会使用规则 dst
+  pattern: CompiledTextPattern; // 运行态构建阶段预编译，逐条 item 替换时不再重复解释正则
   replace_text: string; // 命中后写入文本，译后替换会回到规则 src
-  is_regex: boolean; // 是否按正则编译 search_text
-  case_sensitive: boolean; // 是否保留大小写敏感匹配
+  replacement_syntax: TextReplacementSyntax; // 正则规则使用反斜杠捕获语法，字面量规则保持普通文本
 };
 
 export type QualityRuntimeContext = {
@@ -135,14 +139,29 @@ function build_replacement_rules(args: {
       return [];
     }
 
-    return [
-      {
-        search_text,
-        replace_text: String(entry[args.target_key] ?? ""),
-        is_regex: entry.regex === true,
+    try {
+      const is_regex = entry.regex === true;
+      const pattern = compile_text_pattern({
+        source_text: search_text,
+        mode: is_regex ? "regex" : "literal",
         case_sensitive: entry.case_sensitive === true,
-      },
-    ];
+        global: true,
+        trim: false,
+      });
+      if (pattern === null) {
+        return [];
+      }
+
+      return [
+        {
+          pattern,
+          replace_text: String(entry[args.target_key] ?? ""),
+          replacement_syntax: is_regex ? "backslash" : "literal",
+        },
+      ];
+    } catch {
+      return [];
+    }
   });
 }
 
@@ -291,21 +310,11 @@ function apply_quality_runtime_replacement(
   text: string,
   entry: QualityRuntimeReplacementRule,
 ): string {
-  const pattern = compile_text_pattern({
-    source_text: entry.search_text,
-    mode: entry.is_regex ? "regex" : "literal",
-    case_sensitive: entry.case_sensitive,
-    global: true,
-    trim: false,
-  });
-  if (pattern === null) {
-    return text;
-  }
   return replace_text_pattern({
     text,
-    pattern,
+    pattern: entry.pattern,
     replacement_text: entry.replace_text,
-    replacement_syntax: entry.is_regex ? "backslash" : "literal",
+    replacement_syntax: entry.replacement_syntax,
   }).text;
 }
 

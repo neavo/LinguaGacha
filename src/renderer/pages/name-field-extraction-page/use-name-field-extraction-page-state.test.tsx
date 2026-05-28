@@ -1,11 +1,10 @@
 import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ProjectItemPublicRecord } from "@domain/item";
 
 import { INPUT_QUERY_DEBOUNCE_MS } from "@/hooks/use-debounce";
 import { useNameFieldExtractionPageState } from "@/pages/name-field-extraction-page/use-name-field-extraction-page-state";
-import { createProjectItemIndex } from "@/project/project-item-index";
+import type { NameFieldRow } from "@/pages/name-field-extraction-page/types";
 
 const { api_fetch_mock, push_toast_mock } = vi.hoisted(() => {
   return {
@@ -20,7 +19,7 @@ let runtime_state = {
     loaded: true,
   },
   files: {},
-  items: createProjectItemIndex({}),
+  extracted_rows: [] as NameFieldRow[],
   quality: {
     glossary: {
       entries: [
@@ -48,47 +47,23 @@ let runtime_state = {
   },
 };
 
-// create_test_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-/**
- * 构造当前测试场景的标准数据。
- */
-function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
-  return {
-    item_id: 1,
-    src: "",
-    dst: "",
-    name_src: null,
-    name_dst: null,
-    extra_field: "",
-    tag: "",
-    row_number: 0,
-    file_type: "TXT",
-    file_path: "",
-    text_type: "NONE",
-    status: "NONE",
-    retry_count: 0,
-    skip_internal_filter: false,
-    ...overrides,
-  };
-}
-
-// create_runtime_items 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-/**
- * 构造当前测试场景的标准数据。
- */
-function create_runtime_items(): ReturnType<typeof createProjectItemIndex> {
-  return createProjectItemIndex({
-    "1": create_test_item({
-      item_id: 1,
-      src: "Alice says hello",
-      name_src: "Alice",
-    }),
-    "2": create_test_item({
-      item_id: 2,
-      src: "Bob says hello",
-      name_src: "Bob",
-    }),
-  });
+function create_extracted_rows(): NameFieldRow[] {
+  return [
+    {
+      id: "Alice",
+      src: "Alice",
+      dst: "爱丽丝",
+      context: "Alice says hello",
+      status: "translated",
+    },
+    {
+      id: "Bob",
+      src: "Bob",
+      dst: "",
+      context: "Bob says hello",
+      status: "untranslated",
+    },
+  ];
 }
 
 const project_store_listeners = new Set<() => void>();
@@ -208,7 +183,16 @@ vi.mock("@/project/query/name-field-extraction-query", () => {
     read_name_field_extraction_query: vi.fn(async () => ({
       projectPath: runtime_state.project.path,
       sectionRevisions: { ...runtime_state.revisions.sections },
-      items: [...runtime_state.items.values()],
+      view: {
+        rows: runtime_state.extracted_rows,
+        counts: {
+          total: runtime_state.extracted_rows.length,
+          translated: 1,
+          untranslated: 1,
+          error: 0,
+        },
+        invalid_regex_message: null,
+      },
       glossary: runtime_state.quality.glossary,
     })),
   };
@@ -295,7 +279,7 @@ describe("useNameFieldExtractionPageState", () => {
     push_toast_mock.mockReset();
     runtime_state = {
       ...runtime_state,
-      items: create_runtime_items(),
+      extracted_rows: create_extracted_rows(),
       quality: {
         ...runtime_state.quality,
         glossary: {

@@ -58,78 +58,6 @@ export class ProjectQueryService {
   }
 
   /**
-   * 校对 query 支持运行态全量 hydrate、按 row id 回读和窗口化列表三种读取模式。
-   */
-  public read_proofreading_view(request: Record<string, ApiJsonValue>): MutableJsonRecord {
-    const project_path = this.require_loaded_project_path();
-    if (request["runtime_snapshot"] === true) {
-      const items = this.app_session_cache.readItems();
-      return {
-        projectPath: project_path,
-        sectionRevisions: this.app_session_cache.readSectionRevisions() as unknown as ApiJsonValue,
-        runtimeSnapshot: {
-          items: items as unknown as ApiJsonValue,
-          quality: this.app_session_cache.readQualityBlock() as unknown as ApiJsonValue,
-          total_item_count: items.length,
-        },
-      };
-    }
-
-    const requested_row_ids = this.read_string_array(request["row_ids"]);
-    if (requested_row_ids.length > 0) {
-      const requested_item_ids = new Set(
-        requested_row_ids
-          .map((row_id) => Number(row_id))
-          .filter((item_id) => Number.isInteger(item_id) && item_id > 0),
-      );
-      const rows = this.app_session_cache
-        .readItems()
-        .filter((item) => requested_item_ids.has(this.read_number(item["item_id"], 0)))
-        .map((item, index) => this.build_proofreading_row(item, index));
-      return {
-        projectPath: project_path,
-        sectionRevisions: this.app_session_cache.readSectionRevisions() as unknown as ApiJsonValue,
-        rows: rows as unknown as ApiJsonValue,
-      };
-    }
-
-    const keyword = String(request["keyword"] ?? "")
-      .trim()
-      .toLocaleLowerCase();
-    const scope = String(request["scope"] ?? "all");
-    const window_start = this.read_number(request["window_start"], 0);
-    const window_count = this.read_number(request["window_count"], 100);
-    const matched_items = this.app_session_cache
-      .readItems()
-      .filter((item) => this.matches_keyword(item, keyword, scope));
-    const window_items = matched_items.slice(window_start, window_start + window_count);
-    return {
-      projectPath: project_path,
-      sectionRevisions: this.app_session_cache.readSectionRevisions() as unknown as ApiJsonValue,
-      view: {
-        row_count: matched_items.length,
-        window_start,
-        window_rows: window_items.map((item, index) =>
-          this.build_proofreading_row(item, window_start + index),
-        ) as unknown as ApiJsonValue,
-      },
-    };
-  }
-
-  /**
-   * 质量统计 query 返回指定规则当前缓存结果，前端只负责展示和触发刷新。
-   */
-  public read_quality_statistics(request: Record<string, ApiJsonValue>): MutableJsonRecord {
-    const project_path = this.require_loaded_project_path();
-    const rule_key = String(request["rule_key"] ?? "");
-    return {
-      projectPath: project_path,
-      sectionRevisions: this.app_session_cache.readSectionRevisions() as unknown as ApiJsonValue,
-      statistics: this.app_session_cache.readQualityStatistics(rule_key),
-    };
-  }
-
-  /**
    * 质量规则 query 只读取单个规则切片，避免页面为编辑一个规则加载全部项目事实。
    */
   public read_quality_rule_view(request: Record<string, ApiJsonValue>): MutableJsonRecord {
@@ -140,36 +68,6 @@ export class ProjectQueryService {
       projectPath: project_path,
       sectionRevisions: this.app_session_cache.readSectionRevisions() as unknown as ApiJsonValue,
       qualityRule: this.normalize_record(quality_block[rule_type]) as unknown as ApiJsonValue,
-    };
-  }
-
-  /**
-   * 简繁转换需要 item 列表和文本保护规则，二者都来自后端当前缓存。
-   */
-  public read_ts_conversion_view(): MutableJsonRecord {
-    const project_path = this.require_loaded_project_path();
-    const quality_block = this.app_session_cache.readQualityBlock();
-    return {
-      projectPath: project_path,
-      sectionRevisions: this.app_session_cache.readSectionRevisions() as unknown as ApiJsonValue,
-      items: this.app_session_cache.readItems() as unknown as ApiJsonValue,
-      textPreserve: this.normalize_record(
-        quality_block["text_preserve"],
-      ) as unknown as ApiJsonValue,
-    };
-  }
-
-  /**
-   * 姓名字段提取只依赖 item 列表和术语表规则。
-   */
-  public read_name_field_extraction_view(): MutableJsonRecord {
-    const project_path = this.require_loaded_project_path();
-    const quality_block = this.app_session_cache.readQualityBlock();
-    return {
-      projectPath: project_path,
-      sectionRevisions: this.app_session_cache.readSectionRevisions() as unknown as ApiJsonValue,
-      items: this.app_session_cache.readItems() as unknown as ApiJsonValue,
-      glossary: this.normalize_record(quality_block["glossary"]) as unknown as ApiJsonValue,
     };
   }
 
@@ -378,38 +276,6 @@ export class ProjectQueryService {
   }
 
   /**
-   * 校对行保持 row_id 和 item 原始记录绑定，页面窗口滚动只依赖 row_id。
-   */
-  private build_proofreading_row(item: AppSessionCachedItem, index: number): MutableJsonRecord {
-    return {
-      row_id: String(item["item_id"] ?? index),
-      item,
-      warnings: [],
-      warning_fragments_by_code: {},
-      applied_terms: [],
-      failed_terms: [],
-    };
-  }
-
-  /**
-   * 关键字过滤在后端 query 侧执行，避免 renderer 为搜索复制完整 item 缓存。
-   */
-  private matches_keyword(item: AppSessionCachedItem, keyword: string, scope: string): boolean {
-    if (keyword === "") {
-      return true;
-    }
-    const src = String(item["src"] ?? "").toLocaleLowerCase();
-    const dst = String(item["dst"] ?? "").toLocaleLowerCase();
-    if (scope === "src") {
-      return src.includes(keyword);
-    }
-    if (scope === "dst") {
-      return dst.includes(keyword);
-    }
-    return src.includes(keyword) || dst.includes(keyword);
-  }
-
-  /**
    * 所有 query 都必须绑定当前 loaded 工程，未加载时返回统一业务错误。
    */
   private require_loaded_project_path(): string {
@@ -436,16 +302,6 @@ export class ProjectQueryService {
       return {};
     }
     return value as Record<string, unknown>;
-  }
-
-  /**
-   * row id 请求只接受数组语义，其它输入按空集合处理。
-   */
-  private read_string_array(value: ApiJsonValue | undefined): string[] {
-    if (!Array.isArray(value)) {
-      return [];
-    }
-    return value.map((entry) => String(entry));
   }
 
   /**

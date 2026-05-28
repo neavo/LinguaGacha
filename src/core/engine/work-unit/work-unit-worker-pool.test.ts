@@ -100,6 +100,8 @@ parentPort?.on("message", (message) => {
         kind: "worker_threads",
         workUnitWorkerEntryUrl: pathToFileURL(worker_path),
         planningWorkerEntryUrl: pathToFileURL(worker_path),
+        projectReadModelWorkerEntryUrl: pathToFileURL(worker_path),
+        proofreadingQueryWorkerEntryUrl: pathToFileURL(worker_path),
       },
       systemProxySnapshot: {
         routes: {

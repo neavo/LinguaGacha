@@ -25,7 +25,6 @@ import {
   build_name_field_glossary_entries,
   count_name_field_rows,
   delete_name_field_rows,
-  extract_name_field_rows,
   filter_name_field_rows,
   get_name_field_filter_error,
   parse_name_field_translation_result,
@@ -56,8 +55,6 @@ import {
   type ResultViewSnapshot,
 } from "@/pages/result-view-snapshot";
 import { ensure_quality_rule_entry_ids } from "@/project/quality/quality-rule-entry-id";
-import { createProjectItemIndex } from "@/project/project-item-index";
-import type { ProjectItemPublicRecord } from "@domain/item";
 
 type TranslateSinglePayload = {
   success?: boolean;
@@ -67,16 +64,6 @@ type TranslateSinglePayload = {
 type NameFieldResultViewQuery = {
   filter_state: NameFieldFilterState;
   sort_state: NameFieldSortState;
-};
-
-type NameFieldProjectQueryState = {
-  items: ProjectItemPublicRecord[];
-  glossary_entries: GlossaryEntry[];
-};
-
-const EMPTY_PROJECT_QUERY_STATE: NameFieldProjectQueryState = {
-  items: [],
-  glossary_entries: [],
 };
 
 // 姓名字段提取页只把导入术语表这一业务动作映射成诊断 operation。
@@ -186,9 +173,6 @@ function normalize_glossary_entry(entry: GlossaryEntry): GlossaryEntry {
   };
 }
 
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_glossary_query_entries(
   slice: NameFieldExtractionGlossaryQuerySlice | undefined,
 ): GlossaryEntry[] {
@@ -206,15 +190,7 @@ function normalize_glossary_query_entries(
 export function useNameFieldExtractionPageState() {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
-  const {
-    project_snapshot,
-    project_change_signal,
-    project_session_status = "ready",
-    commit_project_mutation,
-    task_snapshot,
-  } = useDesktopRuntime();
-  const [project_query_state, set_project_query_state] =
-    useState<NameFieldProjectQueryState>(EMPTY_PROJECT_QUERY_STATE);
+  const { project_snapshot, commit_project_mutation, task_snapshot } = useDesktopRuntime();
   const glossary_entries_ref = useRef<GlossaryEntry[]>([]);
   const [rows, set_rows] = useState<NameFieldRow[]>([]);
   const [filter_state, set_filter_state] = useState<NameFieldFilterState>(() => {
@@ -266,40 +242,6 @@ export function useNameFieldExtractionPageState() {
   useEffect(() => {
     clear_local_state();
   }, [clear_local_state, project_snapshot.loaded, project_snapshot.path]);
-
-  useEffect(() => {
-    if (
-      !project_snapshot.loaded ||
-      project_snapshot.path === "" ||
-      project_session_status !== "ready"
-    ) {
-      set_project_query_state(EMPTY_PROJECT_QUERY_STATE);
-      glossary_entries_ref.current = [];
-      return;
-    }
-
-    let cancelled = false;
-    void read_name_field_extraction_query().then((response) => {
-      if (cancelled || response.projectPath !== project_snapshot.path) {
-        return;
-      }
-      const next_glossary_entries = normalize_glossary_query_entries(response.glossary);
-      glossary_entries_ref.current = next_glossary_entries;
-      set_project_query_state({
-        items: Array.isArray(response.items) ? response.items : [],
-        glossary_entries: next_glossary_entries,
-      });
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    project_change_signal?.seq ?? 0,
-    project_session_status,
-    project_snapshot.loaded,
-    project_snapshot.path,
-  ]);
 
   const build_result_view_snapshot = useCallback(
     (
@@ -413,18 +355,12 @@ export function useNameFieldExtractionPageState() {
     });
 
     try {
-      await Promise.resolve();
-      const project_items = createProjectItemIndex(
-        Object.fromEntries(
-          project_query_state.items.map((item) => {
-            return [String(item.item_id), item];
-          }),
-        ),
-      );
-      const extracted_rows = extract_name_field_rows({
-        items: project_items,
-        glossary_entries: project_query_state.glossary_entries,
+      const response = await read_name_field_extraction_query({
+        filter: create_empty_filter_state(),
+        sort: create_empty_sort_state(),
       });
+      glossary_entries_ref.current = normalize_glossary_query_entries(response.glossary);
+      const extracted_rows = Array.isArray(response.view?.rows) ? response.view.rows : [];
       const next_rows = preserve_name_field_row_translations({
         previous_rows: rows,
         extracted_rows,
@@ -449,8 +385,6 @@ export function useNameFieldExtractionPageState() {
     }
   }, [
     project_snapshot.loaded,
-    project_query_state.glossary_entries,
-    project_query_state.items,
     rows,
     build_result_view_snapshot,
     clear_selection_state,
