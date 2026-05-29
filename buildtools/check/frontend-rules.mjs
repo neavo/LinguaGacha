@@ -11,18 +11,18 @@ import {
 const ALLOWED_GUI_CONTRACT_IMPORTS = new Set([
   "@gui/bridge-api",
   "@gui/bridge-types",
-  "@core/api/core-api-endpoint",
+  "@backend/api/api-base-url",
   "@gui/external-url-policy",
   "@gui/ipc-contract",
   "@gui/shell-contract",
 ]);
 
-const DESKTOP_API_RELATIVE_PATH = "src/renderer/app/desktop/desktop-api.ts";
-const TOKEN_OWNER_RELATIVE_PATH = "src/renderer/index.css";
+const DESKTOP_API_RELATIVE_PATH = "src/frontend/app/desktop/desktop-api.ts";
+const TOKEN_OWNER_RELATIVE_PATH = "src/frontend/index.css";
 const PX_FIRST_SCOPE_PREFIXES = [
-  "src/renderer/app/",
-  "src/renderer/pages/",
-  "src/renderer/widgets/",
+  "src/frontend/app/",
+  "src/frontend/pages/",
+  "src/frontend/widgets/",
 ];
 
 const JSX_VISIBLE_TEXT_PATTERN = />[^<>{]*\p{Script=Han}[^<>{]*</gu;
@@ -81,7 +81,9 @@ const CSS_SELECTOR_RULE_GROUPS = [
  */
 export function create_frontend_boundary_rules() {
   return [
+    create_legacy_frontend_project_directory_rule(),
     create_renderer_import_boundary_rule(),
+    create_frontend_interactions_boundary_rule(),
     create_desktop_api_boundary_rule(),
     create_desktop_runtime_snapshot_write_rule(),
     create_renderer_visible_text_rule(),
@@ -89,6 +91,83 @@ export function create_frontend_boundary_rules() {
     create_renderer_token_owner_rule(),
     create_renderer_css_component_boundary_rule(),
   ];
+}
+
+function create_legacy_frontend_project_directory_rule() {
+  return {
+    name: "frontend 旧混合目录边界",
+    check: (context) => {
+      const errors = [];
+      for (const file_path of context.files) {
+        const relative_path = context.relative_path(file_path);
+        if (relative_path.startsWith("src/frontend/project/")) {
+          errors.push({
+            message:
+              "src/frontend/project 是已废弃混合目录；请按职责放入 app、pages、widgets 或 shared",
+            relative_path,
+          });
+        }
+        if (relative_path.startsWith("src/frontend/hooks/")) {
+          errors.push({
+            message:
+              "src/frontend/hooks 是已废弃按技术形态分组目录；请按所有权放入 widgets/interactions、app/state、pages 或 shared",
+            relative_path,
+          });
+        }
+        if (relative_path.startsWith("src/frontend/lib/")) {
+          errors.push({
+            message:
+              "src/frontend/lib 是已废弃通用工具桶；请按所有权放入 app、widgets、ui、pages 或 shared",
+            relative_path,
+          });
+        }
+      }
+      return errors;
+    },
+  };
+}
+
+function create_frontend_interactions_boundary_rule() {
+  return {
+    name: "frontend interactions 所有权边界",
+    check: (context) => {
+      const errors = [];
+      for (const file_path of context.files.filter(is_frontend_production_source)) {
+        const relative_path = context.relative_path(file_path);
+        if (!relative_path.startsWith("src/frontend/widgets/interactions/")) {
+          continue;
+        }
+        const content = context.read_file(file_path);
+        for (const import_entry of find_import_specifiers(content)) {
+          if (
+            import_entry.specifier.startsWith("@frontend/app/") ||
+            import_entry.specifier.startsWith("@frontend/pages/")
+          ) {
+            errors.push({
+              line: import_entry.line,
+              message:
+                "widgets/interactions 只能承接通用 UI 交互行为，不能依赖 app 运行态或页面领域",
+              relative_path,
+            });
+          }
+        }
+        const matches = find_pattern_errors(
+          content,
+          /\b(?:window\.desktopApp|api_fetch|fetch\s*\(|new\s+EventSource\s*\()/g,
+          () => {
+            return "widgets/interactions 不能接触桌面桥、后端 API 或 SSE；请把能力收口到 app/desktop 或 app/state";
+          },
+        );
+        for (const match of matches) {
+          errors.push({
+            ...match,
+            relative_path,
+          });
+        }
+      }
+      return errors;
+    },
+  };
 }
 
 function create_renderer_import_boundary_rule() {
@@ -122,7 +201,7 @@ function create_renderer_import_boundary_rule() {
 
 function create_desktop_api_boundary_rule() {
   return {
-    name: "Core API 接入边界",
+    name: "后端 API 接入边界",
     check: (context) => {
       const errors = [];
       for (const file_path of context.files.filter(is_frontend_production_source)) {
@@ -135,7 +214,7 @@ function create_desktop_api_boundary_rule() {
           content,
           /\b(?:fetch\s*\(|new\s+EventSource\s*\()/g,
           () => {
-            return "renderer 访问 Core API 必须先收口到 desktop-api.ts";
+            return "renderer 访问后端 API 必须先收口到 desktop-api.ts";
           },
         );
         for (const match of matches) {
@@ -155,7 +234,7 @@ function create_desktop_api_boundary_rule() {
  */
 function create_desktop_runtime_snapshot_write_rule() {
   return {
-    name: "renderer 共享运行态写入口边界",
+    name: "renderer 共享状态写入口边界",
     check: (context) => {
       const errors = [];
       for (const file_path of context.files.filter(is_frontend_production_source)) {
@@ -377,16 +456,16 @@ function validate_renderer_import(project_root, file_path, specifier) {
     return "renderer 不能直接导入 Node 能力，只能通过 preload 暴露的窄桥接";
   }
   if (specifier.startsWith("@native/")) {
-    return "renderer 不再通过 @native 读取桌面契约；请使用 @gui/* 或 @core/api/core-api-endpoint 白名单";
+    return "renderer 不再通过 @native 读取桌面契约；请使用 @gui/* 或 @backend/api/api-base-url 白名单";
   }
   if (specifier.startsWith("@gui/") && !ALLOWED_GUI_CONTRACT_IMPORTS.has(specifier)) {
     return "renderer 只能通过 @gui/* 白名单读取桌面宿主契约";
   }
-  if (specifier.startsWith("@core/") && specifier !== "@core/api/core-api-endpoint") {
-    return "renderer 只能通过 @core/api/core-api-endpoint 读取 Core API 地址契约";
+  if (specifier.startsWith("@backend/") && specifier !== "@backend/api/api-base-url") {
+    return "renderer 只能通过 @backend/api/api-base-url 读取后端 API 地址契约";
   }
-  if (is_project_mutation_state_import(specifier)) {
-    return "renderer 不能导入项目 mutation 派生模块；最终项目事实只能由 Core 后端计算";
+  if (is_project_write_state_import(specifier)) {
+    return "renderer 不能导入项目 write 派生模块；最终项目事实只能由后端计算";
   }
 
   const resolved_path = resolve_relative_specifier(file_path, specifier);
@@ -394,13 +473,13 @@ function validate_renderer_import(project_root, file_path, specifier) {
     return null;
   }
 
-  const core_root = path.join(project_root, "src/core");
+  const backend_root = path.join(project_root, "src/backend");
   const gui_root = path.join(project_root, "src/gui");
   const preload_root = path.join(project_root, "src/gui/preload");
   const native_root = path.join(project_root, "src/native");
 
-  if (is_inside(resolved_path, core_root)) {
-    return "renderer 不能通过相对路径访问 Core 内部实现";
+  if (is_inside(resolved_path, backend_root)) {
+    return "renderer 不能通过相对路径访问后端内部实现";
   }
   if (is_inside(resolved_path, preload_root)) {
     return "renderer 不能通过相对路径访问 preload 实现";
@@ -416,18 +495,18 @@ function validate_renderer_import(project_root, file_path, specifier) {
 }
 
 // 旧 shared 入口和相对路径都要拦截，防止最终事实派生算法回流到 renderer。
-function is_project_mutation_state_import(specifier) {
+function is_project_write_state_import(specifier) {
   return (
-    specifier === "@shared/project/project-mutation-state" ||
-    specifier.endsWith("/project/project-mutation-state") ||
-    specifier.endsWith("/project-mutation-state")
+    specifier === "@shared/project/project-write-state" ||
+    specifier.endsWith("/project/project-write-state") ||
+    specifier.endsWith("/project-write-state")
   );
 }
 
 function is_frontend_production_source(file_path) {
   return (
     is_typescript_source(file_path) &&
-    file_path.includes(`${path.sep}src${path.sep}renderer${path.sep}`) &&
+    file_path.includes(`${path.sep}src${path.sep}frontend${path.sep}`) &&
     !is_test_file(file_path)
   );
 }

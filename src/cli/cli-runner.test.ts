@@ -1,20 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { CoreBootstrapOptions } from "../core/bootstrap/core-bootstrap-types";
-import type { CoreBootstrapStartResult } from "../core/bootstrap/core-bootstrap-types";
-import type { EngineExecution } from "../core/engine/core/engine-execution";
+import type { BackendBootstrapOptions } from "../backend/bootstrap/backend-bootstrap-types";
+import type { BackendBootstrapStartResult } from "../backend/bootstrap/backend-bootstrap-types";
+import type { BackendWorkerExecution } from "../backend/worker/worker-execution";
 import type { CLICommandOptions } from "./cli-parser";
 
-type FakeCoreServices = { marker: "core-services" };
+type FakeBackendServices = { marker: "backend-services" };
 type RunCliJobCall = {
-  coreServices: FakeCoreServices;
+  backendServices: FakeBackendServices;
   command: CLICommandOptions;
   options: Record<string, unknown>;
 };
 
 const MOCK_MODULES = [
   "electron",
-  "../core/bootstrap/core-bootstrap",
+  "../backend/bootstrap/backend-bootstrap",
   "./job/cli-job-runner",
   "./cli-output",
 ] as const;
@@ -39,21 +39,21 @@ describe("run_cli_command", () => {
     await run_cli_command("E:/App", create_translate_command(), { kind: "in_process" });
 
     expect(harness.calls.events).toEqual(["ready", "bootstrap", "start", "job", "stop"]);
-    expect(harness.calls.core_bootstrap_options).toHaveLength(1);
-    expect(harness.calls.core_bootstrap_options[0]).toMatchObject({
+    expect(harness.calls.backend_bootstrap_options).toHaveLength(1);
+    expect(harness.calls.backend_bootstrap_options[0]).toMatchObject({
       appRoot: "E:/App",
       exposeApiGateway: false,
       logTargets: { console: false, window: false },
-      engineExecution: { kind: "in_process" } satisfies EngineExecution,
+      workerExecution: { kind: "in_process" } satisfies BackendWorkerExecution,
     });
     await expect(
-      harness.calls.core_bootstrap_options[0]?.systemProxyResolver?.resolveProxy(
+      harness.calls.backend_bootstrap_options[0]?.systemProxyResolver?.resolveProxy(
         "https://api.example/v1",
       ),
     ).resolves.toBe("DIRECT");
     expect(harness.calls.proxy_resolve_urls).toEqual(["https://api.example/v1"]);
     expect(harness.calls.run_cli_jobs).toHaveLength(1);
-    expect(harness.calls.run_cli_jobs[0]?.coreServices).toBe(harness.core_services);
+    expect(harness.calls.run_cli_jobs[0]?.backendServices).toBe(harness.backend_services);
     expect(harness.calls.run_cli_jobs[0]?.command.command).toBe("translate");
     expect(harness.calls.stderr_lines).toEqual([]);
   });
@@ -77,12 +77,12 @@ describe("run_cli_command", () => {
 });
 
 /**
- * 搭建 CLI runner 测试夹具，用假的 Electron、CoreBootstrap 和 job 观察入口编排。
+ * 搭建 CLI runner 测试夹具，用假的 Electron、BackendBootstrap 和 job 观察入口编排。
  */
-function create_runner_harness(options: Partial<CoreBootstrapStartResult> = {}): {
-  core_services: FakeCoreServices;
+function create_runner_harness(options: Partial<BackendBootstrapStartResult> = {}): {
+  backend_services: FakeBackendServices;
   calls: {
-    core_bootstrap_options: CoreBootstrapOptions[];
+    backend_bootstrap_options: BackendBootstrapOptions[];
     events: string[];
     proxy_resolve_urls: string[];
     run_cli_jobs: RunCliJobCall[];
@@ -90,9 +90,9 @@ function create_runner_harness(options: Partial<CoreBootstrapStartResult> = {}):
     stdout_lines: string[];
   };
 } {
-  const core_services: FakeCoreServices = { marker: "core-services" };
+  const backend_services: FakeBackendServices = { marker: "backend-services" };
   const calls = {
-    core_bootstrap_options: [] as CoreBootstrapOptions[],
+    backend_bootstrap_options: [] as BackendBootstrapOptions[],
     events: [] as string[],
     proxy_resolve_urls: [] as string[],
     run_cli_jobs: [] as RunCliJobCall[],
@@ -100,23 +100,24 @@ function create_runner_harness(options: Partial<CoreBootstrapStartResult> = {}):
     stdout_lines: [] as string[],
   };
 
-  class FakeCoreBootstrap {
-    private readonly options: CoreBootstrapOptions; // options 记录 CLI 注入给 CoreBootstrap 的启动契约
+  class FakeBackendBootstrap {
+    private readonly options: BackendBootstrapOptions; // options 记录 CLI 注入给 BackendBootstrap 的启动契约
 
-    public constructor(options: CoreBootstrapOptions) {
+    public constructor(options: BackendBootstrapOptions) {
       this.options = options;
       calls.events.push("bootstrap");
-      calls.core_bootstrap_options.push(options);
+      calls.backend_bootstrap_options.push(options);
     }
 
     /**
-     * start 返回同进程 job 需要的 CoreServices 句柄。
+     * start 返回同进程 job 需要的 BackendServices 句柄。
      */
-    public async start(): Promise<CoreBootstrapStartResult> {
+    public async start(): Promise<BackendBootstrapStartResult> {
       calls.events.push("start");
       return {
         apiBaseUrl: null,
-        coreServices: core_services as unknown as CoreBootstrapStartResult["coreServices"],
+        backendServices:
+          backend_services as unknown as BackendBootstrapStartResult["backendServices"],
         readAppLanguage: () => "ZH",
         systemProxyStartupNotice: {
           detected: false,
@@ -128,7 +129,7 @@ function create_runner_harness(options: Partial<CoreBootstrapStartResult> = {}):
     }
 
     /**
-     * stop 只记录收尾顺序，真实资源释放由 CoreBootstrap 单元测试覆盖。
+     * stop 只记录收尾顺序，真实资源释放由 BackendBootstrap 单元测试覆盖。
      */
     public async stop(): Promise<void> {
       calls.events.push("stop");
@@ -153,21 +154,21 @@ function create_runner_harness(options: Partial<CoreBootstrapStartResult> = {}):
     };
   });
 
-  vi.doMock("../core/bootstrap/core-bootstrap", () => {
+  vi.doMock("../backend/bootstrap/backend-bootstrap", () => {
     return {
-      CoreBootstrap: FakeCoreBootstrap,
+      BackendBootstrap: FakeBackendBootstrap,
     };
   });
 
   vi.doMock("./job/cli-job-runner", () => {
     return {
       run_cli_job: async (
-        coreServices: FakeCoreServices,
+        backendServices: FakeBackendServices,
         command: CLICommandOptions,
         options: Record<string, unknown>,
       ) => {
         calls.events.push("job");
-        calls.run_cli_jobs.push({ coreServices, command, options });
+        calls.run_cli_jobs.push({ backendServices, command, options });
       },
     };
   });
@@ -184,7 +185,7 @@ function create_runner_harness(options: Partial<CoreBootstrapStartResult> = {}):
     };
   });
 
-  return { calls, core_services };
+  return { calls, backend_services };
 }
 
 /**

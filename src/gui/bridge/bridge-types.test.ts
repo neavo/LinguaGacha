@@ -1,7 +1,7 @@
 import { describe, expectTypeOf, it } from "vitest";
 
 import type {
-  DesktopCoreApiInfo,
+  DesktopBackendApiInfo,
   DesktopPathPickResult,
   DesktopPlatform,
   DesktopRendererDiagnosticsPayload,
@@ -21,7 +21,7 @@ describe("bridge-types", () => {
       proxiedOriginCount: number;
       proxyDisplay: string | null;
     }>();
-    expectTypeOf<DesktopCoreApiInfo>().toMatchTypeOf<{
+    expectTypeOf<DesktopBackendApiInfo>().toMatchTypeOf<{
       baseUrl: string;
       systemProxyStartupNotice: DesktopSystemProxyStartupNotice;
     }>();

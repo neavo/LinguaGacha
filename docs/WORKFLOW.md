@@ -15,15 +15,15 @@
 
 | 任务类型 | 必读 | 视情况补读 |
 | --- | --- | --- |
-| 架构、跨层边界、进程链路 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | `src/index.ts`、`src/core/bootstrap/` |
+| 架构、跨层边界、进程链路 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | `src/index.ts`、`src/backend/bootstrap/` |
 | GUI / CLI 分发、产品入口、打包入口 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | [`CLI.md`](CLI.md)、`src/gui/`、`src/cli/`、`buildtools/builder/` |
 | CLI 命令、参数、临时工程、资源、输出 | [`CLI.md`](CLI.md) | [`BACKEND.md`](BACKEND.md)、`src/cli/`、相关 CLI 测试 |
-| API、SSE、错误、项目读取、mutation | [`BACKEND.md`](BACKEND.md) | `src/core/api/`、`src/core/project/`、`src/shared/error/` |
-| 数据库、`.lg`、migration、asset、NativeFs | [`BACKEND.md`](BACKEND.md) | `src/core/database/`、`src/core/migration/`、`src/native/` |
-| 任务命令、运行态、worker、LLM | [`BACKEND.md`](BACKEND.md) | `src/core/engine/`、`src/core/llm/`、`src/core/service/task-service.ts` |
-| Electron / preload / renderer Core 接入 | [`FRONTEND.md`](FRONTEND.md) | `src/gui/bridge/`、`src/gui/ipc/`、`src/gui/preload/`、`src/renderer/app/desktop/` |
-| `ProjectStore`、导航、项目页 runtime、Project UI Worker | [`FRONTEND.md`](FRONTEND.md) | `src/renderer/project/`、`src/renderer/pages/`、相关 renderer 测试 |
-| 前端视觉、样式、可见文案 | [`FRONTEND.md`](FRONTEND.md) | `DESIGN.md`、`src/renderer/index.css`、相关组件 / 页面 CSS |
+| API、SSE、错误、项目读取、项目写入 | [`BACKEND.md`](BACKEND.md) | `src/backend/api/`、`src/backend/project/`、`src/backend/workbench/`、`src/backend/proofreading/`、`src/shared/error/` |
+| 数据库、`.lg`、migration、asset、NativeFs | [`BACKEND.md`](BACKEND.md) | `src/backend/database/`、`src/backend/migration/`、`src/native/` |
+| 任务命令、任务状态、worker、LLM | [`BACKEND.md`](BACKEND.md) | `src/backend/engine/`、`src/backend/llm/`、`src/backend/engine/task-service.ts` |
+| Electron / preload / renderer 后端 API 接入 | [`FRONTEND.md`](FRONTEND.md) | `src/gui/bridge/`、`src/gui/ipc/`、`src/gui/preload/`、`src/frontend/app/desktop/` |
+| 页面 query reader/state、导航、项目页 state、校对列表 reader | [`FRONTEND.md`](FRONTEND.md) | `src/frontend/app/state/`、`src/frontend/app/session/`、`src/frontend/pages/`、相关 前端测试 |
+| 前端视觉、样式、可见文案 | [`FRONTEND.md`](FRONTEND.md) | `DESIGN.md`、`src/frontend/index.css`、相关组件 / 页面 CSS |
 | 长期文档治理 | `.codex/skills/project-doc/SKILL.md` | `AGENTS.md`、`docs/` 目标形态、README / 脚本引用 |
 
 ## 3. 验证矩阵
@@ -39,12 +39,12 @@
 | --- | --- |
 | 纯长期文档 | 检查目标文档形态、相对链接和 diff，涉及 README、脚本提示或测试断言时全文检索相关入口 |
 | TypeScript 非视觉逻辑 | `npm test -- <相关 test 文件>` 或 `npm test` |
-| 后端 API / database / task / shared error | 相关 `src/core/**/*.test.ts`，影响共享行为时跑 `npm test` |
+| 后端 API / database / task / shared error | 相关 `src/backend/**/*.test.ts`，影响共享行为时跑 `npm test` |
 | CLI 命令、入口分发或平台启动器 | 相关 `src/cli/**/*.test.ts`、`src/index.test.ts`、`buildtools/builder/*.test.mjs`，影响打包时跑 `npm run build` |
-| renderer 状态 / 页面逻辑 | 相关 `src/renderer/**/*.test.ts(x)` |
+| 前端状态 / 页面逻辑 | 相关 `src/frontend/**/*.test.ts(x)` |
 | 前端视觉 / CSS / 可见文案 | 相关页面或组件测试，核对 `DESIGN.md`，必要时 Electron 真机检查 |
-| 跨前后端运行态或共享契约 | 后端相关测试 + renderer runtime/store 测试，必要时 `npm test` 或 `npm run dev` 走主链路 |
-| 构建、Vite、electron-builder、发布资产 | `npm run build`，按影响范围追加 CLI / renderer / backend 测试 |
+| 跨前后端状态或共享契约 | 后端相关测试 + frontend state/store 测试，必要时 `npm test` 或 `npm run dev` 走主链路 |
+| 构建、Vite、electron-builder、发布资产 | `npm run build`，按影响范围追加 CLI / frontend / backend 测试 |
 
 纯长期文档不强制执行代码基线验证，若同时改代码或工程配置，则按代码基线处理。
 
@@ -67,7 +67,7 @@ flowchart TD
 - 同一规则只能有一个权威归宿，其它位置只保留必要短引用。
 - `AGENTS.md` 只保留代理协作、仓库级硬约束、编码约束和交付硬约束，不展开专题正文。
 - `ARCHITECTURE.md` 是专题边界地图和运行时分层，不承载协议字段、状态表、验证矩阵或用户教程。
-- `CLI.md` 不承载 HTTP / SSE、数据库 schema、renderer 运行态或用户长教程。
+- `CLI.md` 不承载 HTTP / SSE、数据库 schema、前端运行态或用户长教程。
 - `BACKEND.md` 不写页面交互教程，也不替代字段类型定义。
 - `FRONTEND.md` 不替代产品与设计流程，产品语义和视觉规范分别回 `PRODUCT.md` / `DESIGN.md`。
 - 删除或迁移文档入口前，全文检索 README、脚本报错、测试断言、技能提示和文档内链接，确认不再指向旧入口。

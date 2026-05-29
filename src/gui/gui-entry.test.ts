@@ -2,20 +2,20 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { EngineExecution } from "../core/engine/core/engine-execution";
+import type { BackendWorkerExecution } from "../backend/worker/worker-execution";
 
 type Listener = (...args: unknown[]) => void;
 type ReadyResolver = () => void;
 type FakeWindow = { id: string };
-type CoreBootstrapOptions = {
+type BackendBootstrapOptions = {
   appRoot: string;
   exposeApiGateway: boolean;
   systemProxyResolver?: { resolveProxy: (url: string) => Promise<string> };
   openOutputFolder: (output_path: string) => Promise<void>;
-  engineExecution: EngineExecution;
+  workerExecution: BackendWorkerExecution;
 };
-type CoreBootstrapInstance = {
-  options: CoreBootstrapOptions;
+type BackendBootstrapInstance = {
+  options: BackendBootstrapOptions;
   start: () => Promise<{
     apiBaseUrl: string | null;
     readAppLanguage: () => unknown;
@@ -27,11 +27,11 @@ type CoreBootstrapInstance = {
 type SystemProxyStartupNotice = {
   detected: boolean; // 测试只关心入口层是否把脱敏提示摘要继续传给窗口宿主
   proxiedOriginCount: number; // 命中数量帮助断言摘要没有被入口层重新计算
-  proxyDisplay: string | null; // URL 展示值必须由 Core 生成，GUI 入口不重新解析代理
+  proxyDisplay: string | null; // URL 展示值必须由 Backend 生成，GUI 入口不重新解析代理
 };
 type MainWindowOptions = {
   desktopBundleDir: string;
-  coreApiBaseUrl: string;
+  backendApiBaseUrl: string;
   systemProxyStartupNotice: SystemProxyStartupNotice;
   rendererDiagnostics: RendererDiagnosticsRegistry;
   shouldBypassCloseConfirmation: () => boolean;
@@ -39,7 +39,7 @@ type MainWindowOptions = {
 };
 type LogWindowOptions = {
   desktopBundleDir: string;
-  coreApiBaseUrl: string;
+  backendApiBaseUrl: string;
   systemProxyStartupNotice: SystemProxyStartupNotice;
   rendererDiagnostics: RendererDiagnosticsRegistry;
 };
@@ -52,7 +52,7 @@ type IpcHandlerOptions = {
 };
 type FatalHandlerOptions = {
   isAppShutdownInProgress: () => boolean;
-  quitAfterCoreShutdown: (exit_code: number) => Promise<void>;
+  quitAfterBackendShutdown: (exit_code: number) => Promise<void>;
 };
 type RendererDiagnosticsRegistry = {
   registerWindow: (...args: unknown[]) => void;
@@ -68,10 +68,10 @@ const MOCK_MODULES = [
   "./shell/desktop-window-host",
   "./shell/renderer-process-diagnostics",
   "./shell/native-error-dialog",
-  "../core/bootstrap/core-bootstrap",
+  "../backend/bootstrap/backend-bootstrap",
   "./shell/main-fatal-error-handler",
-  "../core/log/log-bridge",
-  "../core/log/log-text",
+  "../backend/log/log-bridge",
+  "../backend/log/log-text",
 ] as const;
 
 beforeEach(() => {
@@ -87,7 +87,7 @@ afterEach(() => {
 });
 
 describe("Electron main 入口", () => {
-  it("ready 后先启动 Core，再创建日志窗口、注册 IPC 并创建主窗口", async () => {
+  it("ready 后先启动 Backend，再创建日志窗口、注册 IPC 并创建主窗口", async () => {
     const harness = create_index_harness();
 
     await harness.import_index();
@@ -98,22 +98,22 @@ describe("Electron main 入口", () => {
     expect(harness.calls.remote_debugging_configured).toBe(1);
     expect(harness.calls.renderer_crash_reporting_configured).toBe(1);
     expect(harness.calls.renderer_diagnostics_registry_count).toBe(1);
-    expect(harness.calls.core_bootstraps).toHaveLength(1);
-    expect(harness.calls.core_bootstraps[0]?.options.appRoot).toBe(process.cwd());
-    expect(harness.calls.core_bootstraps[0]?.options.exposeApiGateway).toBe(true);
+    expect(harness.calls.backend_bootstraps).toHaveLength(1);
+    expect(harness.calls.backend_bootstraps[0]?.options.appRoot).toBe(process.cwd());
+    expect(harness.calls.backend_bootstraps[0]?.options.exposeApiGateway).toBe(true);
     await expect(
-      harness.calls.core_bootstraps[0]?.options.systemProxyResolver?.resolveProxy(
+      harness.calls.backend_bootstraps[0]?.options.systemProxyResolver?.resolveProxy(
         "https://api.example/v1",
       ),
     ).resolves.toBe("DIRECT");
     expect(harness.calls.proxy_resolve_urls).toEqual(["https://api.example/v1"]);
-    expect(harness.calls.core_bootstraps[0]?.options.engineExecution).toEqual(
-      create_test_engine_execution(),
+    expect(harness.calls.backend_bootstraps[0]?.options.workerExecution).toEqual(
+      create_test_worker_execution(),
     );
     expect(harness.calls.log_window_options).toEqual([
       {
         desktopBundleDir: expect.any(String),
-        coreApiBaseUrl: harness.base_url,
+        backendApiBaseUrl: harness.base_url,
         systemProxyStartupNotice: harness.system_proxy_startup_notice,
         rendererDiagnostics: harness.renderer_process_diagnostics,
       },
@@ -122,7 +122,7 @@ describe("Electron main 入口", () => {
     expect(harness.calls.main_window_options).toEqual([
       {
         desktopBundleDir: expect.any(String),
-        coreApiBaseUrl: harness.base_url,
+        backendApiBaseUrl: harness.base_url,
         systemProxyStartupNotice: harness.system_proxy_startup_notice,
         rendererDiagnostics: harness.renderer_process_diagnostics,
         shouldBypassCloseConfirmation: expect.any(Function),
@@ -144,7 +144,7 @@ describe("Electron main 入口", () => {
     expect(harness.calls.main_window_options[0]?.shouldBypassCloseConfirmation()).toBe(true);
   });
 
-  it("before-quit 会阻止直接退出并先关闭 Core 生命周期", async () => {
+  it("before-quit 会阻止直接退出并先关闭 Backend 生命周期", async () => {
     const harness = create_index_harness();
     let prevented = false;
 
@@ -157,7 +157,7 @@ describe("Electron main 入口", () => {
     await flush_promises();
 
     expect(prevented).toBe(true);
-    expect(harness.calls.core_stop_count).toBe(1);
+    expect(harness.calls.backend_stop_count).toBe(1);
     expect(harness.calls.app_exit_codes).toEqual([0]);
   });
 
@@ -173,7 +173,7 @@ describe("Electron main 入口", () => {
     expect(harness.calls.app_quit_count).toBe(1);
   });
 
-  it("Core 启动失败时写入主进程日志、展示错误并退出应用", async () => {
+  it("Backend 启动失败时写入主进程日志、展示错误并退出应用", async () => {
     const harness = create_index_harness();
     const start_error = new Error("端口不可用");
     harness.set_start_error(start_error);
@@ -197,7 +197,7 @@ describe("Electron main 入口", () => {
     harness.set_open_path_result("系统拒绝访问");
 
     await harness.import_index();
-    const manager = harness.calls.core_bootstraps[0];
+    const manager = harness.calls.backend_bootstraps[0];
 
     await expect(manager?.options.openOutputFolder("E:/Novel/out")).rejects.toThrow(
       "file.io_failed",
@@ -206,7 +206,7 @@ describe("Electron main 入口", () => {
 });
 
 /**
- * 搭建 Electron main 入口测试夹具，用假的 app、窗口和 CoreBootstrap 观察启动顺序。
+ * 搭建 Electron main 入口测试夹具，用假的 app、窗口和 BackendBootstrap 观察启动顺序。
  */
 function create_index_harness(): {
   base_url: string;
@@ -216,9 +216,9 @@ function create_index_harness(): {
   calls: {
     app_exit_codes: number[];
     app_quit_count: number;
-    core_bootstraps: CoreBootstrapInstance[];
-    core_start_count: number;
-    core_stop_count: number;
+    backend_bootstraps: BackendBootstrapInstance[];
+    backend_start_count: number;
+    backend_stop_count: number;
     created_windows: FakeWindow[];
     fatal_handler_options: FatalHandlerOptions[];
     ipc_handler_options: IpcHandlerOptions[];
@@ -244,7 +244,7 @@ function create_index_harness(): {
     detected: true,
     proxiedOriginCount: 2,
     proxyDisplay: "http://127.0.0.1:7890",
-  }; // system_proxy_startup_notice 模拟 CoreBootstrap 返回的启动期代理摘要
+  }; // system_proxy_startup_notice 模拟 BackendBootstrap 返回的启动期代理摘要
   const listeners = new Map<string, Listener[]>();
   let resolve_ready: ReadyResolver = () => undefined;
   const ready_promise = new Promise<void>((resolve) => {
@@ -266,9 +266,9 @@ function create_index_harness(): {
   const calls = {
     app_exit_codes: [] as number[],
     app_quit_count: 0,
-    core_bootstraps: [] as CoreBootstrapInstance[],
-    core_start_count: 0,
-    core_stop_count: 0,
+    backend_bootstraps: [] as BackendBootstrapInstance[],
+    backend_start_count: 0,
+    backend_stop_count: 0,
     created_windows: [] as FakeWindow[],
     fatal_handler_options: [] as FatalHandlerOptions[],
     ipc_handler_options: [] as IpcHandlerOptions[],
@@ -284,15 +284,15 @@ function create_index_harness(): {
     show_error_boxes: [] as Array<[string, string]>,
   };
 
-  // FakeCoreBootstrap 模拟外部运行时对象，只保留当前测试会触发的行为面。
-  class FakeCoreBootstrap implements CoreBootstrapInstance {
-    public readonly options: CoreBootstrapOptions;
+  // FakeBackendBootstrap 模拟外部运行时对象，只保留当前测试会触发的行为面。
+  class FakeBackendBootstrap implements BackendBootstrapInstance {
+    public readonly options: BackendBootstrapOptions;
     private stopped = false;
 
     // 构造阶段只注入必要依赖，避免实例创建时读取外部可变状态。
-    public constructor(options: CoreBootstrapOptions) {
+    public constructor(options: BackendBootstrapOptions) {
       this.options = options;
-      calls.core_bootstraps.push(this);
+      calls.backend_bootstraps.push(this);
     }
 
     // start 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
@@ -301,7 +301,7 @@ function create_index_harness(): {
       readAppLanguage: () => unknown;
       systemProxyStartupNotice: SystemProxyStartupNotice;
     }> {
-      calls.core_start_count += 1;
+      calls.backend_start_count += 1;
       if (start_error !== null) {
         throw start_error;
       }
@@ -314,7 +314,7 @@ function create_index_harness(): {
 
     // stop 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     public async stop(): Promise<void> {
-      calls.core_stop_count += 1;
+      calls.backend_stop_count += 1;
       this.stopped = true;
     }
 
@@ -410,9 +410,9 @@ function create_index_harness(): {
     };
   });
 
-  vi.doMock("../core/bootstrap/core-bootstrap", () => {
+  vi.doMock("../backend/bootstrap/backend-bootstrap", () => {
     return {
-      CoreBootstrap: FakeCoreBootstrap,
+      BackendBootstrap: FakeBackendBootstrap,
     };
   });
 
@@ -424,7 +424,7 @@ function create_index_harness(): {
     };
   });
 
-  vi.doMock("../core/log/log-bridge", () => {
+  vi.doMock("../backend/log/log-bridge", () => {
     return {
       write_electron_main_error: (message: string, context: Record<string, unknown>) => {
         calls.main_errors.push({ message, context });
@@ -432,7 +432,7 @@ function create_index_harness(): {
     };
   });
 
-  vi.doMock("../core/log/log-text", () => {
+  vi.doMock("../backend/log/log-text", () => {
     return {
       t_main_log: (key: string) => `log:${key}`,
     };
@@ -450,7 +450,7 @@ function create_index_harness(): {
       const entry = await import("./gui-entry");
       entry.run_gui_entry({
         desktopBundleDir: path.join(process.cwd(), "build", "dist-electron"),
-        engineExecution: create_test_engine_execution(),
+        workerExecution: create_test_worker_execution(),
       });
     },
     log_window_host,
@@ -467,9 +467,9 @@ function create_index_harness(): {
 }
 
 /**
- * 构造 GUI 启动测试使用的 Engine 执行契约，断言入口层会原样传入 CoreBootstrap。
+ * 构造 GUI 启动测试使用的 Backend worker 执行配置，断言入口层会原样传入 BackendBootstrap。
  */
-function create_test_engine_execution(): EngineExecution {
+function create_test_worker_execution(): BackendWorkerExecution {
   return {
     kind: "worker_threads",
     workUnitWorkerEntryUrl: pathToFileURL(
@@ -477,6 +477,9 @@ function create_test_engine_execution(): EngineExecution {
     ),
     planningWorkerEntryUrl: pathToFileURL(
       path.join(process.cwd(), "build", "dist-electron", "planning-worker-entry.js"),
+    ),
+    backendWorkerEntryUrl: pathToFileURL(
+      path.join(process.cwd(), "build", "dist-electron", "backend-worker-entry.js"),
     ),
   };
 }

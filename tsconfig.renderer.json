@@ -13,13 +13,13 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "paths": {
-      "@/*": ["./src/renderer/*"],
-      "@base/*": ["./src/base/*"],
+      "@backend/api/api-base-url": ["./src/backend/api/api-base-url.ts"],
+      "@domain/*": ["./src/domain/*"],
+      "@frontend/*": ["./src/frontend/*"],
       "@gui/bridge-api": ["./src/gui/bridge/bridge-api.ts"],
       "@gui/bridge-types": ["./src/gui/bridge/bridge-types.ts"],
-      "@core/api/core-api-endpoint": ["./src/core/api/core-api-endpoint.ts"],
       "@gui/external-url-policy": ["./src/gui/shell/external-url-policy.ts"],
-      "@gui/ipc-contract": ["./src/gui/ipc/ipc-contract.ts"],
+      "@gui/ipc-contract": ["./src/gui/gui-ipc-contract.ts"],
       "@gui/shell-contract": ["./src/gui/shell/shell-contract.ts"],
       "@shared/*": ["./src/shared/*"]
     },
@@ -31,14 +31,14 @@
     "verbatimModuleSyntax": true
   },
   "include": [
-    "src/renderer",
-    "src/base",
-    "src/shared",
+    "src/backend/api/api-base-url.ts",
+    "src/domain",
+    "src/electron-env.d.ts",
+    "src/frontend",
     "src/gui/bridge/*.ts",
-    "src/gui/ipc/*.ts",
-    "src/gui/shell/shell-contract.ts",
+    "src/gui/gui-ipc-contract.ts",
     "src/gui/shell/external-url-policy.ts",
-    "src/core/api/core-api-endpoint.ts",
-    "src/electron-env.d.ts"
+    "src/gui/shell/shell-contract.ts",
+    "src/shared"
   ]
 }

@@ -1,7 +1,7 @@
-import { has_cjk_language_character } from "../language";
+import { has_cjk_language_character } from "../../domain/language";
 import type { TextJsonRecord } from "./text-types";
-export { normalize_text_preserve_mode, type TextPreserveMode } from "../../base/quality";
-import { normalize_text_preserve_mode } from "../../base/quality";
+export { normalize_text_preserve_mode, type TextPreserveMode } from "../../domain/quality";
+import { normalize_text_preserve_mode } from "../../domain/quality";
 
 export type TextPreserveRuleKind = "check" | "sample" | "prefix" | "suffix";
 
@@ -78,6 +78,9 @@ export class TextPreserveRule {
   private readonly definitions: CompiledTextPreservePatternDefinition[];
   private readonly kind: TextPreserveRuleKind;
 
+  /**
+   * 初始化当前实例的内部状态。
+   */
   public constructor(
     definitions: readonly TextPreservePatternDefinition[],
     kind: TextPreserveRuleKind,
@@ -147,6 +150,9 @@ export class TextPreserveRule {
     return cursor === text.length;
   }
 
+  /**
+   * 读取当前场景需要的稳定数据。
+   */
   private collect_sample_matches(text: string): TextPreserveMatch[] {
     const candidates: TextPreserveMatch[] = [];
     this.definitions.forEach((definition, definition_index) => {
@@ -165,6 +171,9 @@ export class TextPreserveRule {
     return this.remove_overlapping_matches(candidates);
   }
 
+  /**
+   * 读取当前场景需要的稳定数据。
+   */
   private collect_prefix_matches(text: string): TextPreserveMatch[] {
     const matches: TextPreserveMatch[] = [];
     let cursor = 0;
@@ -179,6 +188,9 @@ export class TextPreserveRule {
     return matches;
   }
 
+  /**
+   * 读取当前场景需要的稳定数据。
+   */
   private collect_suffix_matches(text: string): TextPreserveMatch[] {
     const matches: TextPreserveMatch[] = [];
     let end = text.length;
@@ -193,6 +205,9 @@ export class TextPreserveRule {
     return matches;
   }
 
+  /**
+   * 读取当前场景需要的稳定数据。
+   */
   private find_edge_match(text: string, edge: "prefix" | "suffix"): TextPreserveMatch | null {
     for (const [definition_index, definition] of this.definitions.entries()) {
       const pattern = edge === "prefix" ? definition.prefix_pattern : definition.suffix_pattern;
@@ -210,10 +225,16 @@ export class TextPreserveRule {
     return null;
   }
 
+  /**
+   * 承接当前模块的核心控制分支。
+   */
   private accepts_match(value: string, definition: TextPreservePatternDefinition): boolean {
     return !definition.rejects_cjk_language_text || !has_cjk_language_character(value);
   }
 
+  /**
+   * 清理当前场景的数据状态。
+   */
   private remove_overlapping_matches(candidates: TextPreserveMatch[]): TextPreserveMatch[] {
     const sorted_candidates = [...candidates].sort((left, right) => {
       if (left.index !== right.index) {
@@ -233,6 +254,9 @@ export class TextPreserveRule {
     return result;
   }
 
+  /**
+   * 承接当前模块的核心控制分支。
+   */
   private replace_matches(
     text: string,
     matches: TextPreserveMatch[],
@@ -258,6 +282,9 @@ function normalize_regex_pattern_for_javascript(pattern: string): string {
   });
 }
 
+/**
+ * 编译规则定义为运行期可复用的匹配逻辑。
+ */
 function compile_text_preserve_pattern_definition(
   definition: TextPreservePatternDefinition,
 ): CompiledTextPreservePatternDefinition[] {
@@ -277,6 +304,9 @@ function compile_text_preserve_pattern_definition(
   }
 }
 
+/**
+ * 构造当前场景的标准初始数据。
+ */
 function create_custom_pattern_definitions(
   entries: TextJsonRecord[],
 ): TextPreservePatternDefinition[] {
@@ -293,6 +323,9 @@ function create_custom_pattern_definitions(
     });
 }
 
+/**
+ * 解析当前场景的最终消费值。
+ */
 function resolve_text_preserve_pattern_definitions(args: {
   mode: string;
   text_type: string;

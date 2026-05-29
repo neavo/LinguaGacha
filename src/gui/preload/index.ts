@@ -16,8 +16,8 @@ import {
   IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH,
   IPC_CHANNEL_TITLE_BAR_THEME,
   IPC_CHANNEL_WINDOW_CLOSE_REQUEST,
-} from "../ipc/ipc-contract";
-import { resolve_core_api_base_url_from_argv } from "../../core/api/core-api-endpoint";
+} from "../gui-ipc-contract";
+import { resolve_backend_api_base_url_from_argv } from "../../backend/api/api-base-url";
 import { resolve_desktop_shell_info } from "../shell/shell-contract";
 import { DESKTOP_BRIDGE_GLOBAL_NAME, type DesktopBridgeApi } from "../bridge/bridge-api";
 import { resolve_desktop_system_proxy_startup_notice_from_argv } from "../bridge/system-proxy-startup-notice";
@@ -31,7 +31,7 @@ import type {
 // DESKTOP SHELL INFO 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const DESKTOP_SHELL_INFO = resolve_desktop_shell_info(process.platform as DesktopPlatform);
 // CORE API BASE URL 是跨边界路径或地址契约，集中保存避免调用点散落魔术字符串。
-const CORE_API_BASE_URL = resolve_core_api_base_url_from_argv(process.argv);
+const BACKEND_API_BASE_URL = resolve_backend_api_base_url_from_argv(process.argv);
 // SYSTEM PROXY STARTUP NOTICE 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const SYSTEM_PROXY_STARTUP_NOTICE = resolve_desktop_system_proxy_startup_notice_from_argv(
   process.argv,
@@ -39,8 +39,8 @@ const SYSTEM_PROXY_STARTUP_NOTICE = resolve_desktop_system_proxy_startup_notice_
 
 const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
   shell: DESKTOP_SHELL_INFO,
-  coreApi: {
-    baseUrl: CORE_API_BASE_URL,
+  backendApi: {
+    baseUrl: BACKEND_API_BASE_URL,
     systemProxyStartupNotice: SYSTEM_PROXY_STARTUP_NOTICE,
   },
   /**

@@ -25,7 +25,7 @@ export function normalize_native_file_bytes(content: unknown): Uint8Array {
 }
 
 /**
- * Core / worker 唯一文件系统门面，所有真实磁盘 IO 都先经过平台路径策略。
+ * Backend / worker 唯一文件系统门面，所有真实磁盘 IO 都先经过平台路径策略。
  */
 export class NativeFs {
   /**

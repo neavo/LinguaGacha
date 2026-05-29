@@ -1,15 +1,11 @@
 import fs from "node:fs";
 
-import type { ApiJsonValue } from "../../core/api/api-types";
-import type { CoreServices } from "../../core/bootstrap/core-services";
-import type { CoreEventPayload } from "../../core/events/core-event-hub";
-import { normalize_project_settings_snapshot } from "../../base/setting";
-import type { TaskSnapshot } from "../../core/engine/protocol/task-snapshot";
-import {
-  is_task_run_status,
-  is_task_type,
-  type TaskType,
-} from "../../core/engine/protocol/task-types";
+import type { ApiJsonValue } from "../../backend/api/api-types";
+import type { BackendServices } from "../../backend/bootstrap/backend-services";
+import type { ApiStreamPayload } from "../../backend/api/api-stream-hub";
+import { normalize_project_settings_snapshot } from "../../domain/setting";
+import type { TaskSnapshot } from "../../backend/engine/protocol/task-snapshot";
+import { is_task_run_status, is_task_type, type TaskType } from "../../domain/task";
 import type { CLICommandOptions } from "../cli-parser";
 import type { CLIJobRunOptions } from "./cli-job-types";
 import { CLITempProject } from "./cli-temp-project";
@@ -19,7 +15,7 @@ import { apply_cli_resources } from "./cli-resource-applier";
  * 执行文件进出型 CLI job，并隐藏内部临时 .lg 工程。
  */
 export async function run_cli_job(
-  core_services: CoreServices,
+  backend_services: BackendServices,
   command: CLICommandOptions,
   options: CLIJobRunOptions,
 ): Promise<void> {
@@ -31,39 +27,44 @@ export async function run_cli_job(
     assert_existing_inputs(command);
     fs.mkdirSync(command.outputDir, { recursive: true });
     temp_project = await CLITempProject.create();
-    core_services.app_setting_service.set_transient_overrides({
+    backend_services.app.settings.set_transient_overrides({
       ...build_cli_default_preset_overrides(),
       output_folder_open_on_finish: false,
       source_language: command.sourceLanguage,
       target_language: command.targetLanguage,
     });
     transient_overrides_active = true;
-    await core_services.project_lifecycle_service.create_project_commit({
+    await backend_services.project.lifecycle.create_project_commit({
       path: temp_project.projectPath,
       source_paths: command.inputPaths as unknown as ApiJsonValue,
-      project_settings: build_project_settings(core_services, command) as unknown as ApiJsonValue,
+      project_settings: build_project_settings(
+        backend_services,
+        command,
+      ) as unknown as ApiJsonValue,
     });
-    await apply_cli_resources(core_services, command, temp_project.projectPath);
+    await apply_cli_resources(backend_services, command, temp_project.projectPath);
     if (command.command === "translate") {
-      await start_and_wait_for_task(core_services, "translation", options);
-      await core_services.file_export_service.generate_translation_to_directory(command.outputDir);
+      await start_and_wait_for_task(backend_services, "translation", options);
+      await backend_services.translation.files.export_files_to_directory(command.outputDir);
       options.statusReporter.emit_finished("done");
       return;
     }
 
-    await start_and_wait_for_task(core_services, "analysis", options);
-    await core_services.quality_service.export_analysis_candidates_to_directory(command.outputDir);
+    await start_and_wait_for_task(backend_services, "analysis", options);
+    await backend_services.quality.service.export_analysis_candidates_to_directory(
+      command.outputDir,
+    );
     options.statusReporter.emit_finished("done");
   } catch (error) {
     options.statusReporter.emit_finished("error", error);
     throw error;
   } finally {
     if (transient_overrides_active) {
-      core_services.app_setting_service.set_transient_overrides(null);
+      backend_services.app.settings.set_transient_overrides(null);
     }
     if (temp_project !== null) {
       try {
-        await core_services.project_lifecycle_service.unload_project();
+        await backend_services.project.lifecycle.unload_project();
       } finally {
         // 卸载失败也必须删除临时目录，避免 CLI 批处理留下内部工程残片。
         await temp_project.cleanup();
@@ -90,11 +91,11 @@ function build_cli_default_preset_overrides(): Record<string, ApiJsonValue> {
  * 创建工程时写入命令语言参数，并保留当前应用设置里的预过滤开关。
  */
 function build_project_settings(
-  core_services: CoreServices,
+  backend_services: BackendServices,
   command: CLICommandOptions,
 ): Record<string, ApiJsonValue> {
   return normalize_project_settings_snapshot({
-    ...core_services.app_setting_service.read_setting(),
+    ...backend_services.app.settings.read_setting(),
     source_language: command.sourceLanguage,
     target_language: command.targetLanguage,
   }) as unknown as Record<string, ApiJsonValue>;
@@ -130,20 +131,20 @@ function collect_resource_paths(command: CLICommandOptions): string[] {
 }
 
 /**
- * 启动任务并同步等待终态；任务失败时把 Core 快照状态转成 CLI 错误。
+ * 启动任务并同步等待终态；任务失败时把 Backend 快照状态转成 CLI 错误。
  */
 async function start_and_wait_for_task(
-  core_services: CoreServices,
+  backend_services: BackendServices,
   task_type: "translation" | "analysis",
   options: CLIJobRunOptions,
 ): Promise<void> {
-  const task_waiter = create_task_event_waiter(core_services, task_type, options);
+  const task_waiter = create_task_event_waiter(backend_services, task_type, options);
   try {
-    await core_services.task_service.start_task({
+    await backend_services.engine.tasks.start_task({
       task_type,
       mode: "new",
       scope: { kind: "all" } as unknown as ApiJsonValue,
-      expected_section_revisions: core_services.build_expected_section_revisions([
+      expected_section_revisions: backend_services.build_expected_section_revisions([
         "quality",
         "prompts",
       ]) as unknown as ApiJsonValue,
@@ -155,10 +156,10 @@ async function start_and_wait_for_task(
 }
 
 /**
- * 订阅公开任务事件直到 done/error；CLI 与 GUI 共享同一条 TaskSnapshot 事实链路。
+ * 订阅公开任务 stream 直到 done/error；CLI 与 GUI 共享同一条 TaskSnapshot 事实链路。
  */
 function create_task_event_waiter(
-  core_services: CoreServices,
+  backend_services: BackendServices,
   task_type: TaskType,
   options: CLIJobRunOptions,
 ): { wait: () => Promise<void>; dispose: () => void } {
@@ -168,8 +169,8 @@ function create_task_event_waiter(
     resolve_wait = resolve;
     reject_wait = reject;
   });
-  const unsubscribe = core_services.core_event_hub.subscribe("task.snapshot_changed", (event) => {
-    const snapshot = normalize_task_snapshot_event(event.payload);
+  const unsubscribe = backend_services.streams.api.subscribe("task.snapshot_changed", (message) => {
+    const snapshot = normalize_task_snapshot_payload(message.payload);
     if (snapshot === null || snapshot.task_type !== task_type) {
       return;
     }
@@ -191,7 +192,7 @@ function create_task_event_waiter(
 /**
  * task.snapshot_changed 载荷只在 CLI 边界做窄化；非法 payload 被忽略，避免污染 stdout 协议。
  */
-function normalize_task_snapshot_event(payload: CoreEventPayload): TaskSnapshot | null {
+function normalize_task_snapshot_payload(payload: ApiStreamPayload): TaskSnapshot | null {
   const task = payload["task"];
   if (typeof task !== "object" || task === null || Array.isArray(task)) {
     return null;
@@ -210,7 +211,7 @@ function normalize_task_snapshot_event(payload: CoreEventPayload): TaskSnapshot 
     return null;
   }
   return {
-    runtime_revision: Number(record["runtime_revision"] ?? 0),
+    run_revision: Number(record["run_revision"] ?? 0),
     task_type,
     status,
     busy: Boolean(record["busy"]),

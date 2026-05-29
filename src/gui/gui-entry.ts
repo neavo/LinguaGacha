@@ -1,10 +1,10 @@
 import { app, BrowserWindow, session, shell } from "electron";
 import path from "node:path";
 
-import { CoreBootstrap } from "../core/bootstrap/core-bootstrap";
-import type { EngineExecution } from "../core/engine/core/engine-execution";
-import { write_electron_main_error } from "../core/log/log-bridge";
-import { t_main_log } from "../core/log/log-text";
+import { BackendBootstrap } from "../backend/bootstrap/backend-bootstrap";
+import type { BackendWorkerExecution } from "../backend/worker/worker-execution";
+import { write_electron_main_error } from "../backend/log/log-bridge";
+import { t_main_log } from "../backend/log/log-text";
 import * as AppErrors from "../shared/error";
 import type { DesktopSystemProxyStartupNotice } from "./bridge/bridge-types";
 import { EMPTY_DESKTOP_SYSTEM_PROXY_STARTUP_NOTICE } from "./bridge/system-proxy-startup-notice";
@@ -25,7 +25,7 @@ import {
 
 export interface GuiEntryOptions {
   desktopBundleDir: string; // desktopBundleDir 是产品入口解析出的桌面 bundle 根目录
-  engineExecution: EngineExecution; // engineExecution 是 GUI Core 任务执行模式的唯一入口契约
+  workerExecution: BackendWorkerExecution; // workerExecution 是 GUI Backend worker 执行配置的唯一入口契约
 }
 
 /**
@@ -41,7 +41,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
 
   let win: BrowserWindow | null = null; // 主窗口是桌面宿主的唯一工作台窗口，关闭后引用必须归零，避免 IPC 误用失效窗口
   let log_window_host: LogWindowHost | null = null; // 日志窗口由独立宿主管理，避免主窗口生命周期和日志诊断窗口互相持有复杂状态
-  let core_api_base_url: string | null = null; // Core API 地址由 Bootstrap 启动结果注入窗口，preload 不再猜测固定端口
+  let backend_api_base_url: string | null = null; // Backend API 地址由 Bootstrap 启动结果注入窗口，preload 不再猜测固定端口
   let system_proxy_startup_notice: DesktopSystemProxyStartupNotice =
     EMPTY_DESKTOP_SYSTEM_PROXY_STARTUP_NOTICE; // 启动期代理提示只保存脱敏摘要，窗口重建时复用同一事实
   let is_app_shutdown_in_progress = false; // 退出流程只允许进入一次，防止 before-quit、fatal 和窗口关闭同时触发重复清理
@@ -59,27 +59,27 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     }
   }
 
-  const core_bootstrap = new CoreBootstrap({
+  const backend_bootstrap = new BackendBootstrap({
     appRoot: app.isPackaged ? path.dirname(process.execPath) : process.cwd(),
     exposeApiGateway: true,
     systemProxyResolver: {
       resolveProxy: (url) => session.defaultSession.resolveProxy(url),
     },
     openOutputFolder: open_output_folder,
-    engineExecution: options.engineExecution,
+    workerExecution: options.workerExecution,
   });
 
   /**
-   * 窗口只能在 Core API ready 后创建，避免 preload 暴露不可用的 API 地址。
+   * 窗口只能在 Backend API ready 后创建，避免 preload 暴露不可用的 API 地址。
    */
-  function require_core_api_base_url(): string {
-    if (core_api_base_url === null) {
+  function require_backend_api_base_url(): string {
+    if (backend_api_base_url === null) {
       throw new AppErrors.InternalInvariantError({
-        diagnostic_context: { reason: "core_api_base_url_not_ready" },
+        diagnostic_context: { reason: "backend_api_base_url_not_ready" },
       });
     }
 
-    return core_api_base_url;
+    return backend_api_base_url;
   }
 
   /**
@@ -88,7 +88,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   function create_main_window_for_runtime(): void {
     win = create_main_window({
       desktopBundleDir: desktop_bundle_dir,
-      coreApiBaseUrl: require_core_api_base_url(),
+      backendApiBaseUrl: require_backend_api_base_url(),
       systemProxyStartupNotice: system_proxy_startup_notice,
       rendererDiagnostics: renderer_process_diagnostics,
       shouldBypassCloseConfirmation: () => {
@@ -121,16 +121,16 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   }
 
   /**
-   * 退出前先关闭 Core，确保 Gateway、ProjectDatabase 和日志系统按顺序收尾。
+   * 退出前先关闭 Backend，确保 Gateway、ProjectDatabase 和日志系统按顺序收尾。
    */
-  async function quit_app_after_core_shutdown(exit_code: number): Promise<void> {
+  async function quit_app_after_backend_shutdown(exit_code: number): Promise<void> {
     if (is_app_shutdown_in_progress) {
       return;
     }
 
     is_app_shutdown_in_progress = true;
     try {
-      await core_bootstrap.stop();
+      await backend_bootstrap.stop();
     } finally {
       app.exit(exit_code);
     }
@@ -138,7 +138,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
 
   install_main_fatal_error_handler({
     isAppShutdownInProgress: () => is_app_shutdown_in_progress,
-    quitAfterCoreShutdown: quit_app_after_core_shutdown,
+    quitAfterBackendShutdown: quit_app_after_backend_shutdown,
   });
 
   // 所有窗口关闭时进入应用退出；日志窗口也要一起收掉，避免诊断窗口单独存活。
@@ -148,14 +148,14 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     app.quit();
   });
 
-  // Electron 原生退出前拦截一次，用统一 Core 收尾路径替代直接退出。
+  // Electron 原生退出前拦截一次，用统一 Backend 收尾路径替代直接退出。
   app.on("before-quit", (event) => {
-    if (core_bootstrap.isStopped()) {
+    if (backend_bootstrap.isStopped()) {
       return;
     }
 
     event.preventDefault();
-    void quit_app_after_core_shutdown(0);
+    void quit_app_after_backend_shutdown(0);
   });
 
   // macOS Dock 激活事件只负责恢复工作台窗口，不应在退出流程中重新建窗。
@@ -165,28 +165,28 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     }
   });
 
-  // Electron ready 后才能启动 Core 和创建窗口，保证 app API 与原生资源都已可用。
+  // Electron ready 后才能启动 Backend 和创建窗口，保证 app API 与原生资源都已可用。
   app.whenReady().then(async () => {
     try {
-      const core_start_result = await core_bootstrap.start();
-      if (core_start_result.apiBaseUrl === null) {
+      const backend_start_result = await backend_bootstrap.start();
+      if (backend_start_result.apiBaseUrl === null) {
         throw new AppErrors.InternalInvariantError({
-          diagnostic_context: { reason: "gui_core_api_not_exposed" },
+          diagnostic_context: { reason: "gui_backend_api_not_exposed" },
         });
       }
-      core_api_base_url = core_start_result.apiBaseUrl;
-      system_proxy_startup_notice = core_start_result.systemProxyStartupNotice;
+      backend_api_base_url = backend_start_result.apiBaseUrl;
+      system_proxy_startup_notice = backend_start_result.systemProxyStartupNotice;
       log_window_host = create_log_window_host({
         desktopBundleDir: desktop_bundle_dir,
-        coreApiBaseUrl: core_start_result.apiBaseUrl,
+        backendApiBaseUrl: backend_start_result.apiBaseUrl,
         systemProxyStartupNotice: system_proxy_startup_notice,
         rendererDiagnostics: renderer_process_diagnostics,
       });
-      register_runtime_ipc_handlers(core_start_result.readAppLanguage);
+      register_runtime_ipc_handlers(backend_start_result.readAppLanguage);
       create_main_window_for_runtime();
     } catch (error) {
       write_electron_main_error(t_main_log("app.diagnostic.lifecycle.app_start_failed"), { error });
-      const message = error instanceof Error ? error.message : "Core 启动失败。";
+      const message = error instanceof Error ? error.message : "Backend 启动失败。";
       show_native_error_dialog("LinguaGacha 启动失败", message);
       app.exit(1);
     }

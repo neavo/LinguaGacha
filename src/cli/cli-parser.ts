@@ -5,7 +5,7 @@ import {
   normalize_language_code,
   type SourceLanguageCode,
   type TargetLanguageCode,
-} from "../shared/language";
+} from "../domain/language";
 
 export type CLICommandName = "translate" | "analyze";
 
@@ -31,6 +31,9 @@ export interface CLICommandResources {
   textPreservePath: string | null; // textPreservePath 仅服务翻译任务自定义文本保护
 }
 
+/**
+ * 封装当前类的状态边界与公开行为。
+ */
 export class CLIUsageError extends Error {
   public readonly exitCode = 2; // 2 表示命令行参数错误，和常见 CLI 约定对齐
 
