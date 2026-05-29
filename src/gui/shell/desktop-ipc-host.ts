@@ -71,7 +71,7 @@ export function register_desktop_ipc_handlers(options: DesktopIpcHandlerOptions)
     await shell.openExternal(resolve_external_url(url));
   });
 
-  // 新建项目源文件允许多选，具体格式校验留给 Core / renderer 流程
+  // 新建项目源文件允许多选，具体格式校验留给 Backend / renderer 流程
   ipcMain.handle(IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH, async () => {
     return pick_open_path(options.getMainWindow(), {
       properties: ["openFile", "multiSelections"],
@@ -179,7 +179,7 @@ function build_project_file_filters(t: TextResolver): Electron.FileFilter[] {
 }
 
 /**
- * 术语导入只开放当前 Core 能稳定解析的结构化格式。
+ * 术语导入只开放当前 Backend 能稳定解析的结构化格式。
  */
 function build_glossary_import_file_filters(t: TextResolver): Electron.FileFilter[] {
   return [

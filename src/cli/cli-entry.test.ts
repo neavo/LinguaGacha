@@ -5,12 +5,12 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { CLICommandOptions } from "./cli-parser";
-import type { CoreWorkerExecution } from "../core/worker/worker-execution";
+import type { BackendWorkerExecution } from "../backend/worker/worker-execution";
 
 const run_cli_command_mock = vi.hoisted(() => {
   return vi.fn();
 });
-const IN_PROCESS_WORKER_EXECUTION: CoreWorkerExecution = { kind: "in_process" }; // CLI entry 测试 mock 真实 job，只需传递显式执行契约
+const IN_PROCESS_WORKER_EXECUTION: BackendWorkerExecution = { kind: "in_process" }; // CLI entry 测试 mock 真实 job，只需传递显式执行契约
 
 vi.mock("./cli-runner", () => {
   return {

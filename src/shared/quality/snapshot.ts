@@ -26,6 +26,35 @@ export type QualityRuleSnapshot = {
   glossary_entries: JsonRecord[];
 };
 
+// 页面和 reader 消费的质量规则最小快照。
+export type QualitySlice = {
+  entries: Array<Record<string, unknown>>;
+  enabled: boolean;
+  mode: string;
+  revision: number;
+};
+
+// 公开规则类型固定为四个切片，消费侧不按物理存储落点取值。
+export type QualitySnapshot = {
+  glossary: QualitySlice;
+  pre_replacement: QualitySlice;
+  post_replacement: QualitySlice;
+  text_preserve: QualitySlice;
+};
+
+// 单个任务提示词的窄化快照。
+export type PromptSlice = {
+  text: string;
+  enabled: boolean;
+  revision: number;
+};
+
+// 提示词快照只区分翻译和分析任务。
+export type PromptsSnapshot = {
+  translation: PromptSlice;
+  analysis: PromptSlice;
+};
+
 /**
  * 集中维护当前导出常量，避免调用点散落魔术值。
  */

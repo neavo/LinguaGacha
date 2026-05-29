@@ -7,7 +7,7 @@ import path from "node:path";
  */
 export class CLITempProject {
   public readonly rootDir: string; // rootDir 是临时工程和中间文件的唯一容器
-  public readonly projectPath: string; // projectPath 只供 Core 服务加载和任务执行使用
+  public readonly projectPath: string; // projectPath 只供 Backend 服务加载和任务执行使用
 
   private constructor(root_dir: string) {
     this.rootDir = root_dir;

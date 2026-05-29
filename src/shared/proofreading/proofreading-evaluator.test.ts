@@ -1,12 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildQualityRuntimeContext } from "../quality/quality-runtime-context";
-import type { QualityRulesRuntimeState } from "../quality/quality-runtime-state";
+import { buildQualityCompiledContext } from "../quality/compiled";
+import type { QualitySnapshot } from "../quality/snapshot";
 import { evaluateProofreadingItem } from "./proofreading-evaluator";
 
-function create_quality(
-  overrides: Partial<QualityRulesRuntimeState> = {},
-): QualityRulesRuntimeState {
+function create_quality(overrides: Partial<QualitySnapshot> = {}): QualitySnapshot {
   return {
     glossary: { enabled: false, mode: "custom", revision: 0, entries: [] },
     pre_replacement: { enabled: false, mode: "custom", revision: 0, entries: [] },
@@ -22,7 +20,7 @@ function evaluate(args: {
   sourceLanguage: string;
   targetLanguage?: string;
   retry_count?: number;
-  quality?: QualityRulesRuntimeState;
+  quality?: QualitySnapshot;
 }) {
   const quality = args.quality ?? create_quality();
   return evaluateProofreadingItem({
@@ -38,7 +36,7 @@ function evaluate(args: {
       retry_count: args.retry_count ?? 0,
     },
     quality,
-    quality_context: buildQualityRuntimeContext(quality),
+    quality_context: buildQualityCompiledContext(quality),
     sourceLanguage: args.sourceLanguage,
     targetLanguage: args.targetLanguage ?? "ZH",
     sample_rule_cache: new Map(),

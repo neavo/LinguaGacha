@@ -1,26 +1,10 @@
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { defineConfig } from "vitest/config";
 
-const project_root = fileURLToPath(new URL("../..", import.meta.url));
+import { frontend_resolve_alias } from "../vite/project-paths";
 
 export default defineConfig({
   resolve: {
-    alias: {
-      "@": path.resolve(project_root, "src/renderer"),
-      "@domain": path.resolve(project_root, "src/domain"),
-      "@core/api/api-base-url": path.resolve(project_root, "src/core/api/api-base-url.ts"),
-      "@gui/bridge-api": path.resolve(project_root, "src/gui/bridge/bridge-api.ts"),
-      "@gui/bridge-types": path.resolve(project_root, "src/gui/bridge/bridge-types.ts"),
-      "@gui/external-url-policy": path.resolve(
-        project_root,
-        "src/gui/shell/external-url-policy.ts",
-      ),
-      "@gui/ipc-contract": path.resolve(project_root, "src/gui/gui-ipc-contract.ts"),
-      "@gui/shell-contract": path.resolve(project_root, "src/gui/shell/shell-contract.ts"),
-      "@shared": path.resolve(project_root, "src/shared"),
-    },
+    alias: frontend_resolve_alias,
   },
   test: {
     environment: "happy-dom",

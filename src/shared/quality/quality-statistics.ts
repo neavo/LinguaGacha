@@ -1,10 +1,13 @@
 import { escape_text_pattern } from "../text/text-pattern";
 
-export type QualityStatisticsRuleMode =
-  | "glossary"
-  | "pre_replacement"
-  | "post_replacement"
-  | "text_preserve";
+export const QUALITY_STATISTICS_RULE_MODES = [
+  "glossary",
+  "pre_replacement",
+  "post_replacement",
+  "text_preserve",
+] as const;
+
+export type QualityStatisticsRuleMode = (typeof QUALITY_STATISTICS_RULE_MODES)[number];
 
 export type QualityStatisticsRuleInput = {
   key: string; // key 是统计结果返回给调用方的稳定索引

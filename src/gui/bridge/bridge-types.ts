@@ -20,7 +20,7 @@ export type DesktopPlatform =
   | "cygwin"
   | "netbsd";
 
-export type DesktopCoreApiInfo = {
+export type DesktopBackendApiInfo = {
   baseUrl: string; // main 启动公开 API Gateway 后注入给 preload 的本机访问地址
   systemProxyStartupNotice: DesktopSystemProxyStartupNotice; // 启动期系统代理提示摘要，不包含完整代理 URI
 };

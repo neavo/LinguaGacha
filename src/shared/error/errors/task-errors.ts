@@ -1,7 +1,7 @@
 import { AppError, type AppErrorArgs } from "../app-error";
 
 /**
- * TaskBusyError 统一表达后台任务占用导致的 mutation 拒绝。
+ * TaskBusyError 统一表达后台任务占用导致的 write 拒绝。
  */
 export class TaskBusyError extends AppError {
   /**

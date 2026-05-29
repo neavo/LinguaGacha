@@ -1,19 +1,19 @@
 import {
-  applyQualityRuntimeReplacements,
+  applyQualityCompiledReplacements,
   collectNonBlankQualityPreservedSegments,
   createQualityTextPreserveRule,
-  partitionQualityRuntimeGlossaryTerms,
+  partitionQualityCompiledGlossaryTerms,
   stripQualityPreservedSegments,
-  type QualityRuntimeContext,
-} from "../quality/quality-runtime-context";
-import type { QualityRulesRuntimeState } from "../quality/quality-runtime-state";
+  type QualityCompiledContext,
+} from "../quality/compiled";
+import type { QualitySnapshot } from "../quality/snapshot";
 import type {
   ProofreadingClientItem,
   ProofreadingGlossaryTerm,
-  ProofreadingRuntimeItemRecord,
+  ProofreadingItemRecord,
   ProofreadingWarningFragmentsByCode,
 } from "./proofreading-types";
-import { create_proofreading_client_item } from "./proofreading-list-runtime";
+import { create_proofreading_client_item } from "./list";
 import type { TextPreserveRule } from "../text/text-preserve-rules";
 import {
   collect_translation_residue_fragments,
@@ -62,9 +62,9 @@ function build_text_preserve_failed_fragments(args: {
  * 单条 item 的全部校对警告在这里生成，保证列表、面板和弹窗看到同一份判断。
  */
 export function evaluateProofreadingItem(args: {
-  item: ProofreadingRuntimeItemRecord;
-  quality_context: QualityRuntimeContext;
-  quality: QualityRulesRuntimeState;
+  item: ProofreadingItemRecord;
+  quality_context: QualityCompiledContext;
+  quality: QualitySnapshot;
   sourceLanguage: string;
   targetLanguage: string;
   sample_rule_cache: Map<string, TextPreserveRule | null>;
@@ -94,7 +94,7 @@ export function evaluateProofreadingItem(args: {
     });
   }
 
-  const { src_replaced, dst_replaced } = applyQualityRuntimeReplacements(
+  const { src_replaced, dst_replaced } = applyQualityCompiledReplacements(
     args.item,
     args.quality_context,
   );
@@ -143,7 +143,7 @@ export function evaluateProofreadingItem(args: {
   }
 
   if (args.quality_context.glossary.entries.length > 0) {
-    const glossary_result = partitionQualityRuntimeGlossaryTerms({
+    const glossary_result = partitionQualityCompiledGlossaryTerms({
       glossary: args.quality_context.glossary,
       src_replaced,
       dst_replaced,

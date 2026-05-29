@@ -214,14 +214,14 @@ export const en_us_app = {
       },
     },
     desktop: {
-      missing_core_api_base_url: {
-        message: "Core API URL is not configured …",
+      missing_backend_api_base_url: {
+        message: "Backend API URL is not configured …",
       },
-      core_api_unavailable: {
-        message: "Core API is unavailable …",
+      backend_api_unavailable: {
+        message: "Backend API is unavailable …",
       },
-      core_metadata_unavailable: {
-        message: "Core metadata is unavailable …",
+      backend_metadata_unavailable: {
+        message: "Backend metadata is unavailable …",
       },
       event_stream_failed: {
         message: "Event stream connection failed …",
@@ -255,7 +255,7 @@ export const en_us_app = {
     },
     lifecycle: {
       app_start_failed: "LinguaGacha failed to start …",
-      core_gateway_start_failed: "Core / Gateway startup failed …",
+      backend_gateway_start_failed: "Backend / Gateway startup failed …",
       main_fatal_uncaught: "Electron main caught an unhandled fatal exception …",
     },
     migration: {
@@ -264,7 +264,7 @@ export const en_us_app = {
     renderer: {
       main_frame_load_failed: "Renderer main frame failed to load …",
       process_exited: "Renderer process exited …",
-      reported_error: "Renderer captured a frontend runtime error …",
+      reported_error: "Renderer captured a frontend state error …",
       subframe_load_failed: "Renderer subframe failed to load …",
       window_unresponsive: "Window became unresponsive …",
     },

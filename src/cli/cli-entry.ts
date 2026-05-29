@@ -4,15 +4,15 @@ import path from "node:path";
 import { build_cli_help, write_stderr, write_stdout } from "./cli-output";
 import { CLIUsageError, parse_cli_args } from "./cli-parser";
 import { run_cli_command } from "./cli-runner";
-import type { CoreWorkerExecution } from "../core/worker/worker-execution";
+import type { BackendWorkerExecution } from "../backend/worker/worker-execution";
 
 /**
- * 执行 CLI 入口并返回进程退出码；worker_execution 由产品入口显式决定 Core worker 执行配置。
+ * 执行 CLI 入口并返回进程退出码；worker_execution 由产品入口显式决定 Backend worker 执行配置。
  */
 export async function run_cli_entry(
   argv: string[],
   app_root: string,
-  worker_execution: CoreWorkerExecution,
+  worker_execution: BackendWorkerExecution,
 ): Promise<number> {
   try {
     const parse_result = parse_cli_args(argv);

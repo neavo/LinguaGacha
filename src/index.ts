@@ -2,9 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 import {
-  build_worker_threads_core_worker_execution_from_desktop_bundle_dir,
+  build_worker_threads_backend_worker_execution_from_desktop_bundle_dir,
   resolve_desktop_bundle_dir_from_module_url,
-} from "./core/bootstrap/core-bundle-contract";
+} from "./backend/worker/worker-execution";
 
 /**
  * 统一产品入口只负责 GUI/CLI 分发，不直接持有任何业务服务。
@@ -17,7 +17,7 @@ void run_product_entry();
 async function run_product_entry(): Promise<void> {
   const desktop_bundle_dir = resolve_desktop_bundle_dir_from_module_url(import.meta.url); // desktop_bundle_dir 是产品入口所在的构建根目录。
   const worker_execution =
-    build_worker_threads_core_worker_execution_from_desktop_bundle_dir(desktop_bundle_dir); // worker_execution 把 worker_threads 入口契约注入后续启动链路。
+    build_worker_threads_backend_worker_execution_from_desktop_bundle_dir(desktop_bundle_dir); // worker_execution 把 worker_threads 入口契约注入后续启动链路。
   if (should_run_cli()) {
     const { run_cli_entry } = await import("./cli/cli-entry");
     return exit_cli_process(

@@ -152,7 +152,7 @@ export class Model {
    * 从设置文件、预设模板或页面 patch 反序列化模型，统一补齐嵌套配置默认值
    */
   public static from_json(payload: unknown, fallback_id: string): Model {
-    const record = read_model_record(payload);
+    const record = read_json_model_record(payload);
     return new Model({
       id: String(record["id"] ?? fallback_id),
       type: Model.normalize_type(record["type"]),
@@ -268,7 +268,7 @@ export class Model {
    * 归一化输入，保证下游消费稳定形状。
    */
   private static normalize_request_config(value: unknown): ModelRequestConfig {
-    const record = read_model_record(value);
+    const record = read_json_model_record(value);
     return {
       ...DEFAULT_REQUEST_CONFIG,
       ...record,
@@ -283,18 +283,18 @@ export class Model {
    * 归一化输入，保证下游消费稳定形状。
    */
   private static normalize_threshold_config(value: unknown): ModelThresholdConfig {
-    const record = read_model_record(value);
+    const record = read_json_model_record(value);
     return {
-      input_token_limit: read_model_number(
+      input_token_limit: read_json_model_number(
         record["input_token_limit"],
         DEFAULT_THRESHOLD_CONFIG.input_token_limit,
       ),
-      output_token_limit: read_model_number(
+      output_token_limit: read_json_model_number(
         record["output_token_limit"],
         DEFAULT_THRESHOLD_CONFIG.output_token_limit,
       ),
-      rpm_limit: read_model_number(record["rpm_limit"], DEFAULT_THRESHOLD_CONFIG.rpm_limit),
-      concurrency_limit: read_model_number(
+      rpm_limit: read_json_model_number(record["rpm_limit"], DEFAULT_THRESHOLD_CONFIG.rpm_limit),
+      concurrency_limit: read_json_model_number(
         record["concurrency_limit"],
         DEFAULT_THRESHOLD_CONFIG.concurrency_limit,
       ),
@@ -305,7 +305,7 @@ export class Model {
    * 归一化输入，保证下游消费稳定形状。
    */
   private static normalize_thinking_config(value: unknown): ModelThinkingConfig {
-    const record = read_model_record(value);
+    const record = read_json_model_record(value);
     return {
       level: Model.normalize_thinking_level(record["level"] ?? DEFAULT_THINKING_CONFIG.level),
     };
@@ -315,18 +315,21 @@ export class Model {
    * 归一化输入，保证下游消费稳定形状。
    */
   private static normalize_generation_config(value: unknown): ModelGenerationConfig {
-    const record = read_model_record(value);
+    const record = read_json_model_record(value);
     return {
-      temperature: read_model_number(record["temperature"], DEFAULT_GENERATION_CONFIG.temperature),
+      temperature: read_json_model_number(
+        record["temperature"],
+        DEFAULT_GENERATION_CONFIG.temperature,
+      ),
       temperature_custom_enable: Boolean(record["temperature_custom_enable"]),
-      top_p: read_model_number(record["top_p"], DEFAULT_GENERATION_CONFIG.top_p),
+      top_p: read_json_model_number(record["top_p"], DEFAULT_GENERATION_CONFIG.top_p),
       top_p_custom_enable: Boolean(record["top_p_custom_enable"]),
-      presence_penalty: read_model_number(
+      presence_penalty: read_json_model_number(
         record["presence_penalty"],
         DEFAULT_GENERATION_CONFIG.presence_penalty,
       ),
       presence_penalty_custom_enable: Boolean(record["presence_penalty_custom_enable"]),
-      frequency_penalty: read_model_number(
+      frequency_penalty: read_json_model_number(
         record["frequency_penalty"],
         DEFAULT_GENERATION_CONFIG.frequency_penalty,
       ),
@@ -359,7 +362,7 @@ export function is_model_thinking_level(value: unknown): value is ModelThinkingL
 /**
  * 读取当前场景需要的稳定数据。
  */
-function read_model_record(value: unknown): ModelJsonRecord {
+function read_json_model_record(value: unknown): ModelJsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? { ...(value as ModelJsonRecord) }
     : {};
@@ -377,7 +380,7 @@ function read_json_record(value: unknown): JsonRecord {
 /**
  * 读取当前场景需要的稳定数据。
  */
-function read_model_number(value: unknown, fallback: number): number {
+function read_json_model_number(value: unknown, fallback: number): number {
   const number_value = Number(value ?? fallback);
   return Number.isFinite(number_value) ? number_value : fallback;
 }

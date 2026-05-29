@@ -82,7 +82,7 @@ export type ProofreadingItem = {
   failed_glossary_terms: ProofreadingGlossaryTerm[];
 };
 
-export type ProofreadingRuntimeItemRecord = {
+export type ProofreadingItemRecord = {
   item_id: number;
   file_path: string;
   file_order?: number;

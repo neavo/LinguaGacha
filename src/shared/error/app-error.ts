@@ -51,7 +51,7 @@ export interface AppErrorDefinition {
   action_key?: AppErrorActionKey;
 }
 
-// 定义表只保存协议和投影策略，用户可见文案统一由 i18n 资源解析。
+// 定义表只保存协议和公开形状策略，用户可见文案统一由 i18n 资源解析。
 export const APP_ERROR_DEFINITIONS: Readonly<Record<AppErrorCode, AppErrorDefinition>> = {
   "request.validation_failed": {
     status: 400,
@@ -195,7 +195,7 @@ export class AppError extends Error {
   public readonly diagnostic_context: AppErrorDiagnosticContext;
 
   /**
-   * 构造时只冻结错误事实，HTTP 和日志投影由独立纯函数完成。
+   * 构造时只冻结错误事实，HTTP 和日志快照由独立纯函数完成。
    */
   public constructor(options: AppErrorOptions) {
     const definition = APP_ERROR_DEFINITIONS[options.code];
@@ -221,7 +221,7 @@ export function is_app_error(error: unknown): error is AppError {
   return error instanceof AppError;
 }
 
-// 读取定义时集中收口，避免 API / 日志投影直接触碰定义表形状。
+// 读取定义时集中收口，避免 API / 日志快照直接触碰定义表形状。
 export function get_app_error_definition(code: AppErrorCode): AppErrorDefinition {
   return APP_ERROR_DEFINITIONS[code];
 }

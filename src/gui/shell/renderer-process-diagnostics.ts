@@ -106,7 +106,7 @@ export function create_renderer_process_diagnostics_registry(): RendererProcessD
     }
 
     const diagnostics_payload = normalize_renderer_diagnostics_payload(payload);
-    refresh_window_runtime_state(state, sender);
+    refresh_window_run_state(state, sender);
     if (
       diagnostics_payload.route !== undefined ||
       diagnostics_payload.project !== undefined ||
@@ -164,7 +164,7 @@ export function create_renderer_process_diagnostics_registry(): RendererProcessD
   ): RendererWindowDiagnosticsState {
     const existing_state = windows_by_web_contents_id.get(target_window.webContents.id);
     if (existing_state !== undefined) {
-      refresh_window_runtime_state(existing_state, target_window.webContents);
+      refresh_window_run_state(existing_state, target_window.webContents);
       return existing_state;
     }
 
@@ -202,7 +202,7 @@ function create_window_diagnostics_state(
 /**
  * 从 webContents 刷新宿主侧可直接读取的运行时字段。
  */
-function refresh_window_runtime_state(
+function refresh_window_run_state(
   state: RendererWindowDiagnosticsState,
   web_contents: Electron.WebContents,
 ): void {
@@ -218,7 +218,7 @@ function build_window_context(
   state: RendererWindowDiagnosticsState,
   web_contents: Electron.WebContents,
 ): Record<string, unknown> {
-  refresh_window_runtime_state(state, web_contents);
+  refresh_window_run_state(state, web_contents);
   return {
     windowKind: state.windowKind,
     webContentsId: state.webContentsId,

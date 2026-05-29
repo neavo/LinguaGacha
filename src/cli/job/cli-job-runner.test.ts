@@ -4,10 +4,10 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ProjectEventBus } from "../../core/project/project-events";
-import type { CoreServices } from "../../core/bootstrap/core-services";
-import { ApiStreamHub } from "../../core/api/api-stream-hub";
-import type { DatabaseOperation } from "../../core/database/database-types";
+import { ProjectEventBus } from "../../backend/project/project-events";
+import type { BackendServices } from "../../backend/bootstrap/backend-services";
+import { ApiStreamHub } from "../../backend/api/api-stream-hub";
+import type { DatabaseOperation } from "../../backend/database/database-types";
 import type { CLICommandResources } from "../cli-parser";
 import { CLIJsonStatusReporter } from "../cli-status-reporter";
 import { run_cli_job } from "./cli-job-runner";
@@ -27,7 +27,7 @@ describe("run_cli_job", () => {
   it("翻译命令创建临时工程、同步等待任务并导出到 output-dir", async () => {
     const { input_path, output_dir } = create_cli_paths();
     const status_lines: string[] = [];
-    const harness = create_core_services_harness([
+    const harness = create_backend_services_harness([
       {
         status: "running",
         progress: { total_line: 4, line: 2, processed_line: 2, error_line: 1 },
@@ -40,7 +40,7 @@ describe("run_cli_job", () => {
 
     await expect(
       run_cli_job(
-        harness.core_services,
+        harness.backend_services,
         {
           command: "translate",
           inputPaths: [input_path],
@@ -66,7 +66,7 @@ describe("run_cli_job", () => {
         scope: { kind: "all" },
       }),
     );
-    expect(harness.generate_translation_to_directory).toHaveBeenCalledWith(output_dir);
+    expect(harness.export_files_to_directory).toHaveBeenCalledWith(output_dir);
     expect(harness.execute_transaction).toHaveBeenCalledWith(
       expect.arrayContaining([
         expect.objectContaining({
@@ -142,11 +142,11 @@ describe("run_cli_job", () => {
   it("任务失败时清理临时工程并撤销临时设置覆盖", async () => {
     const { input_path, output_dir } = create_cli_paths();
     const status_lines: string[] = [];
-    const harness = create_core_services_harness([{ status: "error" }]);
+    const harness = create_backend_services_harness([{ status: "error" }]);
 
     await expect(
       run_cli_job(
-        harness.core_services,
+        harness.backend_services,
         {
           command: "analyze",
           inputPaths: [input_path],
@@ -177,11 +177,11 @@ describe("run_cli_job", () => {
   it("输入路径不存在时拒绝创建临时工程", async () => {
     const { output_dir } = create_cli_paths();
     const status_lines: string[] = [];
-    const harness = create_core_services_harness([{ status: "done" }]);
+    const harness = create_backend_services_harness([{ status: "done" }]);
 
     await expect(
       run_cli_job(
-        harness.core_services,
+        harness.backend_services,
         {
           command: "translate",
           inputPaths: [path.join(output_dir, "missing.txt")],
@@ -207,11 +207,11 @@ describe("run_cli_job", () => {
   it("资源文件不存在时拒绝创建临时工程", async () => {
     const { input_path, output_dir } = create_cli_paths();
     const status_lines: string[] = [];
-    const harness = create_core_services_harness([{ status: "done" }]);
+    const harness = create_backend_services_harness([{ status: "done" }]);
 
     await expect(
       run_cli_job(
-        harness.core_services,
+        harness.backend_services,
         {
           command: "translate",
           inputPaths: [input_path],
@@ -247,10 +247,10 @@ describe("run_cli_job", () => {
     fs.writeFileSync(post_path, JSON.stringify([{ src: "旧", dst: "新" }]), "utf-8");
     fs.writeFileSync(preserve_path, JSON.stringify([{ src: "<[^>]+>", regex: true }]), "utf-8");
     const status_lines: string[] = [];
-    const harness = create_core_services_harness([{ status: "done" }]);
+    const harness = create_backend_services_harness([{ status: "done" }]);
 
     await run_cli_job(
-      harness.core_services,
+      harness.backend_services,
       {
         command: "translate",
         inputPaths: [input_path],
@@ -312,10 +312,10 @@ describe("run_cli_job", () => {
     const prompt_path = path.join(root, "analysis-prompt.txt");
     fs.writeFileSync(prompt_path, "自定义分析提示词", "utf-8");
     const status_lines: string[] = [];
-    const harness = create_core_services_harness([{ status: "done" }]);
+    const harness = create_backend_services_harness([{ status: "done" }]);
 
     await run_cli_job(
-      harness.core_services,
+      harness.backend_services,
       {
         command: "analyze",
         inputPaths: [input_path],
@@ -356,10 +356,10 @@ type HarnessTaskSnapshot = {
   progress?: Record<string, number>;
 };
 
-function create_core_services_harness(snapshots: HarnessTaskSnapshot[]): {
-  core_services: CoreServices;
+function create_backend_services_harness(snapshots: HarnessTaskSnapshot[]): {
+  backend_services: BackendServices;
   create_project_commit: ReturnType<typeof vi.fn>;
-  generate_translation_to_directory: ReturnType<typeof vi.fn>;
+  export_files_to_directory: ReturnType<typeof vi.fn>;
   execute_transaction: ReturnType<typeof vi.fn>;
   set_transient_overrides: ReturnType<typeof vi.fn>;
   start_task: ReturnType<typeof vi.fn>;
@@ -382,7 +382,7 @@ function create_core_services_harness(snapshots: HarnessTaskSnapshot[]): {
     for (const snapshot of snapshots.length > 0 ? snapshots : [{ status: "done" }]) {
       api_stream_hub.publish("task.snapshot_changed", {
         task: {
-          runtime_revision: 1,
+          run_revision: 1,
           task_type,
           status: snapshot.status,
           busy: snapshot.status !== "done" && snapshot.status !== "error",
@@ -407,7 +407,7 @@ function create_core_services_harness(snapshots: HarnessTaskSnapshot[]): {
       });
     }
   });
-  const generate_translation_to_directory = vi.fn(async (output_dir: string) => ({
+  const export_files_to_directory = vi.fn(async (output_dir: string) => ({
     output_path: path.join(output_dir, "translated"),
     bilingual_output_path: path.join(output_dir, "bilingual"),
   }));
@@ -417,7 +417,7 @@ function create_core_services_harness(snapshots: HarnessTaskSnapshot[]): {
   }));
 
   return {
-    core_services: {
+    backend_services: {
       app: {
         settings: {
           read_setting: () => ({
@@ -434,8 +434,8 @@ function create_core_services_harness(snapshots: HarnessTaskSnapshot[]): {
           unload_project,
         },
       },
-      export: {
-        files: { generate_translation_to_directory },
+      translation: {
+        files: { export_files_to_directory },
       },
       quality: {
         service: { export_analysis_candidates_to_directory },
@@ -451,10 +451,10 @@ function create_core_services_harness(snapshots: HarnessTaskSnapshot[]): {
       project_event_bus,
       api_stream_hub,
       database: { execute, execute_transaction },
-    } as unknown as CoreServices,
+    } as unknown as BackendServices,
     create_project_commit,
     execute_transaction,
-    generate_translation_to_directory,
+    export_files_to_directory,
     set_transient_overrides,
     start_task,
     unload_project,

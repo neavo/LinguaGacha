@@ -1,27 +1,24 @@
 import { defineConfig } from "electron-vite";
-import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 
-const project_root = path.resolve(__dirname, "..", "..");
-const build_root = path.resolve(project_root, "build");
-const desktop_dist_dir = path.resolve(build_root, "dist-electron");
+import { frontend_resolve_alias, project_path } from "./project-paths";
 
-const config = {
+const desktop_dist_dir = project_path("build", "dist-electron");
+
+export default defineConfig({
   main: {
     build: {
       outDir: desktop_dist_dir,
-      rollupOptions: {
+      rolldownOptions: {
         input: {
-          index: path.resolve(project_root, "src/index.ts"),
-          "planning-worker-entry": path.resolve(
-            project_root,
-            "src/core/engine/planning/planning-worker-entry.ts",
+          index: project_path("src/index.ts"),
+          "backend-worker-entry": project_path("src/backend/worker/worker-entry.ts"),
+          "planning-worker-entry": project_path(
+            "src/backend/engine/planning/planning-worker-entry.ts",
           ),
-          "core-worker-entry": path.resolve(project_root, "src/core/worker/worker-entry.ts"),
-          "work-unit-worker-entry": path.resolve(
-            project_root,
-            "src/core/engine/work-unit/work-unit-worker-entry.ts",
+          "work-unit-worker-entry": project_path(
+            "src/backend/engine/work-unit/work-unit-worker-entry.ts",
           ),
         },
         output: {
@@ -34,9 +31,9 @@ const config = {
     build: {
       outDir: desktop_dist_dir,
       emptyOutDir: false,
-      rollupOptions: {
+      rolldownOptions: {
         input: {
-          preload: path.resolve(project_root, "src/gui/preload/index.ts"),
+          preload: project_path("src/gui/preload/index.ts"),
         },
         output: {
           entryFileNames: "preload.mjs",
@@ -45,35 +42,22 @@ const config = {
     },
   },
   renderer: {
-    root: path.resolve(project_root, "src/renderer"),
-    publicDir: path.resolve(project_root, "public"),
+    root: project_path("src/frontend"),
+    publicDir: project_path("public"),
     server: {
       host: "127.0.0.1",
     },
     resolve: {
-      alias: {
-        "@": path.resolve(project_root, "src/renderer"),
-        "@domain": path.resolve(project_root, "src/domain"),
-        "@core/api/api-base-url": path.resolve(project_root, "src/core/api/api-base-url.ts"),
-        "@gui/bridge-api": path.resolve(project_root, "src/gui/bridge/bridge-api.ts"),
-        "@gui/bridge-types": path.resolve(project_root, "src/gui/bridge/bridge-types.ts"),
-        "@gui/external-url-policy": path.resolve(
-          project_root,
-          "src/gui/shell/external-url-policy.ts",
-        ),
-        "@gui/ipc-contract": path.resolve(project_root, "src/gui/gui-ipc-contract.ts"),
-        "@gui/shell-contract": path.resolve(project_root, "src/gui/shell/shell-contract.ts"),
-        "@shared": path.resolve(project_root, "src/shared"),
-      },
+      alias: frontend_resolve_alias,
     },
     plugins: [react(), tailwindcss()],
-    worker: {
-      format: "es",
-    },
     build: {
-      outDir: path.resolve(build_root, "dist"),
+      outDir: project_path("build", "dist"),
+      rolldownOptions: {
+        input: {
+          index: project_path("src/frontend/index.html"),
+        },
+      },
     },
   },
-};
-
-export default defineConfig(config as import("electron-vite").UserConfig);
+});

@@ -25,12 +25,12 @@ describe("后端边界规则", () => {
       write_good_backend_project(project_root);
       write_project_file(
         project_root,
-        "src/core/workbench/bad-route.ts",
+        "src/backend/workbench/bad-route.ts",
         "app.get('/api/bad', () => {});",
       );
       write_project_file(
         project_root,
-        "src/core/workbench/bad-storage.ts",
+        "src/backend/workbench/bad-storage.ts",
         `
           import fs from "node:fs";
           import { DatabaseSync } from "node:sqlite";
@@ -77,7 +77,7 @@ function run_backend_rules(project_root) {
   return run_boundary_rules({
     project_root,
     roots: [
-      path.join(project_root, "src/core"),
+      path.join(project_root, "src/backend"),
       path.join(project_root, "src/native"),
       path.join(project_root, "src/shared/error"),
     ],
@@ -88,7 +88,7 @@ function run_backend_rules(project_root) {
 function write_good_backend_project(project_root) {
   write_project_file(
     project_root,
-    "src/core/api/api-gateway-server.ts",
+    "src/backend/api/api-gateway-server.ts",
     `
       import { JsonTool } from "../../src/shared/utils/json-tool";
       app.get("/api/health", () => {});
@@ -104,12 +104,12 @@ function write_good_backend_project(project_root) {
   write_project_file(project_root, "src/native/native-fs.ts", 'import fs from "node:fs";');
   write_project_file(
     project_root,
-    "src/core/database/database-operations.ts",
+    "src/backend/database/database-operations.ts",
     'import { DatabaseSync } from "node:sqlite";',
   );
   write_project_file(
     project_root,
-    "src/core/migration/migration-types.ts",
+    "src/backend/migration/migration-types.ts",
     'import type { DatabaseSync } from "node:sqlite";',
   );
   write_project_file(

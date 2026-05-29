@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { CLICommandOptions } from "../cli-parser";
 import { apply_cli_resources } from "./cli-resource-applier";
-import type { CoreServices } from "../../core/bootstrap/core-services";
+import type { BackendServices } from "../../backend/bootstrap/backend-services";
 
 function create_translate_command(): CLICommandOptions {
   return {
@@ -21,21 +21,21 @@ function create_translate_command(): CLICommandOptions {
   };
 }
 
-function create_core_services() {
+function create_backend_services() {
   const commit_cli_resource_operations = vi.fn(async () => undefined);
   return {
     commit_cli_resource_operations,
-  } as unknown as CoreServices & {
+  } as unknown as BackendServices & {
     commit_cli_resource_operations: typeof commit_cli_resource_operations;
   };
 }
 describe("cli-resource-applier", () => {
   it("写入 CLI 临时工程资源后发布质量和提示词缓存刷新事件", async () => {
-    const core_services = create_core_services();
+    const backend_services = create_backend_services();
 
-    await apply_cli_resources(core_services, create_translate_command(), "E:/Project/tmp.lg");
+    await apply_cli_resources(backend_services, create_translate_command(), "E:/Project/tmp.lg");
 
-    expect(core_services.commit_cli_resource_operations).toHaveBeenCalledWith(
+    expect(backend_services.commit_cli_resource_operations).toHaveBeenCalledWith(
       "E:/Project/tmp.lg",
       expect.arrayContaining([
         expect.objectContaining({

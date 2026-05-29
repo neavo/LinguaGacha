@@ -2,13 +2,13 @@ import process from "node:process";
 
 import { AppError, InternalInvariantError } from "../../shared/error";
 import { try_show_native_error_dialog } from "./native-error-dialog";
-import { get_electron_main_log_manager } from "../../core/log/log-bridge";
-import { record_app_error } from "../../core/log/app-error-reporter";
-import { t_main_log } from "../../core/log/log-text";
+import { get_electron_main_log_manager } from "../../backend/log/log-bridge";
+import { record_app_error } from "../../backend/log/app-error-reporter";
+import { t_main_log } from "../../backend/log/log-text";
 
 export interface MainFatalErrorHandlerOptions {
   isAppShutdownInProgress: () => boolean;
-  quitAfterCoreShutdown: (exitCode: number) => Promise<void>;
+  quitAfterBackendShutdown: (exitCode: number) => Promise<void>;
 }
 
 let is_handler_installed = false;
@@ -74,7 +74,7 @@ function handle_main_fatal_error(
 
   try_show_native_error_dialog("LinguaGacha 已遇到致命错误", "已写入诊断日志，应用将退出。");
 
-  void args.options.quitAfterCoreShutdown(1).catch(() => {
+  void args.options.quitAfterBackendShutdown(1).catch(() => {
     process.exit(1);
   });
 }

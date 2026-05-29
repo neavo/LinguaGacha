@@ -54,21 +54,21 @@ describe("preload desktop bridge", () => {
   });
 
   /**
-   * 带 Core API 启动参数加载 preload 模块，模拟 main 创建窗口时的真实 argv。
+   * 带 Backend API 启动参数加载 preload 模块，模拟 main 创建窗口时的真实 argv。
    */
-  async function import_preload_with_core_api_arg(): Promise<void> {
-    process.argv = [...original_argv.slice(0, 2), "--core-api-base-url=http://127.0.0.1:7788"];
+  async function import_preload_with_backend_api_arg(): Promise<void> {
+    process.argv = [...original_argv.slice(0, 2), "--backend-api-base-url=http://127.0.0.1:7788"];
     await import("./index");
   }
 
   it("向 renderer 暴露受控桌面桥接 API", async () => {
-    await import_preload_with_core_api_arg();
+    await import_preload_with_backend_api_arg();
     const bridge = electron_mock.exposed_api;
     if (bridge === null) {
       throw new Error("preload 未暴露 desktop bridge。");
     }
 
-    expect(bridge.coreApi.baseUrl).toBe("http://127.0.0.1:7788");
+    expect(bridge.backendApi.baseUrl).toBe("http://127.0.0.1:7788");
     expect(bridge.getPathForFile({} as File)).toBe("E:/demo/source.txt");
     bridge.setTitleBarTheme("dark");
     await bridge.quitApp();
@@ -85,7 +85,7 @@ describe("preload desktop bridge", () => {
   });
 
   it("关闭请求订阅返回对应解除函数", async () => {
-    await import_preload_with_core_api_arg();
+    await import_preload_with_backend_api_arg();
     const bridge = electron_mock.exposed_api;
     if (bridge === null) {
       throw new Error("preload 未暴露 desktop bridge。");
@@ -106,7 +106,7 @@ describe("preload desktop bridge", () => {
   });
 
   it("使用固定全局名暴露 API", async () => {
-    await import_preload_with_core_api_arg();
+    await import_preload_with_backend_api_arg();
 
     expect(electron_mock.exposed_name).toBe(DESKTOP_BRIDGE_GLOBAL_NAME);
     expect(electron_mock.exposed_api).not.toBeNull();

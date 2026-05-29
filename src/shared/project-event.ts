@@ -74,7 +74,7 @@ export type ProjectChangeEvent = {
 };
 
 // 同步项目写入返回和 SSE 广播共用同一批后端 canonical change
-export type ProjectMutationResult = {
+export type ProjectWriteResult = {
   accepted: true;
   changes: ProjectChangeEvent[];
   failed_files?: SourceFileParseFailureRecord[];

@@ -1,7 +1,7 @@
 import path from "node:path";
 
 /**
- * Core / worker 平台路径策略，统一处理 Windows namespaced path 与路径身份比较。
+ * Backend / worker 平台路径策略，统一处理 Windows namespaced path 与路径身份比较。
  */
 export class NativePathPolicy {
   /**
@@ -55,6 +55,6 @@ export class NativePathPolicy {
 }
 
 /**
- * 运行态默认路径策略，所有 Core / worker 文件 IO 共享同一平台判断。
+ * 运行态默认路径策略，所有 Backend / worker 文件 IO 共享同一平台判断。
  */
 export const default_native_path_policy = new NativePathPolicy();

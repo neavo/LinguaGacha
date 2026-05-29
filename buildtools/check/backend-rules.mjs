@@ -7,8 +7,8 @@ import {
   is_typescript_source,
 } from "./core.mjs";
 
-const API_GATEWAY_RELATIVE_PATH = "src/core/api/api-gateway-server.ts";
-const API_ROUTES_RELATIVE_PREFIX = "src/core/api/routes/";
+const API_GATEWAY_RELATIVE_PATH = "src/backend/api/api-gateway-server.ts";
+const API_ROUTES_RELATIVE_PREFIX = "src/backend/api/routes/";
 const NATIVE_FS_RELATIVE_PATH = "src/native/native-fs.ts";
 const APP_ERROR_RELATIVE_PATH = "src/shared/error/app-error.ts";
 
@@ -156,13 +156,13 @@ function create_sse_json_boundary_rule() {
 }
 
 function is_backend_production_source(file_path) {
-  const core_path = path.sep + "src" + path.sep + "core" + path.sep;
+  const backend_path = path.sep + "src" + path.sep + "backend" + path.sep;
   const native_path = path.sep + "src" + path.sep + "native" + path.sep;
   const error_path = path.sep + "src" + path.sep + "shared" + path.sep + "error" + path.sep;
   return (
     is_typescript_source(file_path) &&
     !is_test_file(file_path) &&
-    (file_path.includes(core_path) ||
+    (file_path.includes(backend_path) ||
       file_path.includes(native_path) ||
       file_path.includes(error_path))
   );
@@ -177,8 +177,8 @@ function is_api_registration_path(relative_path) {
 
 function is_database_or_migration_path(relative_path) {
   return (
-    relative_path.startsWith("src/core/database/") ||
-    relative_path.startsWith("src/core/migration/")
+    relative_path.startsWith("src/backend/database/") ||
+    relative_path.startsWith("src/backend/migration/")
   );
 }
 

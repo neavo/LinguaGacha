@@ -33,7 +33,7 @@ export type ApiSuccessEnvelope = {
 export type ApiEnvelope = ApiSuccessEnvelope | ApiErrorEnvelope;
 
 /**
- * API 投影只暴露安全字段，诊断上下文和 cause 链只能进入日志。
+ * API 公开形状只暴露安全字段，诊断上下文和 cause 链只能进入日志。
  */
 export function to_api_error_payload(
   error: AppError,

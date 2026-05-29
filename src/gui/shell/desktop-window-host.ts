@@ -7,7 +7,7 @@ import {
 } from "electron";
 import path from "node:path";
 
-import { build_core_api_base_url_argument } from "../../core/api/api-base-url";
+import { build_backend_api_base_url_argument } from "../../backend/api/api-base-url";
 import { IPC_CHANNEL_WINDOW_CLOSE_REQUEST } from "../gui-ipc-contract";
 import { resolve_title_bar_overlay_theme, uses_title_bar_overlay } from "./shell-contract";
 import type {
@@ -17,8 +17,11 @@ import type {
 } from "../bridge/bridge-types";
 import { build_desktop_system_proxy_startup_notice_argument } from "../bridge/system-proxy-startup-notice";
 import { LOG_WINDOW_QUERY_KEY, LOG_WINDOW_QUERY_VALUE, LogWindowHost } from "./log-window-host";
-import { write_electron_main_error, write_electron_main_warning } from "../../core/log/log-bridge";
-import { t_main_log } from "../../core/log/log-text";
+import {
+  write_electron_main_error,
+  write_electron_main_warning,
+} from "../../backend/log/log-bridge";
+import { t_main_log } from "../../backend/log/log-text";
 import type { RendererProcessDiagnosticsRegistry } from "./renderer-process-diagnostics";
 
 const WINDOW_STANDARD_WIDTH = 1280; // 与旧桌面版 AppFluentWindow 对齐，后续 Electron UI 也以 1280 x 800 作为标准开发基线
@@ -46,7 +49,7 @@ const RENDERER_DEV_SERVER_URL = process.env["ELECTRON_RENDERER_URL"] ?? null; //
 
 export type MainWindowHostOptions = {
   desktopBundleDir: string;
-  coreApiBaseUrl: string;
+  backendApiBaseUrl: string;
   systemProxyStartupNotice: DesktopSystemProxyStartupNotice;
   rendererDiagnostics: RendererProcessDiagnosticsRegistry;
   shouldBypassCloseConfirmation: () => boolean;
@@ -55,7 +58,7 @@ export type MainWindowHostOptions = {
 
 export type LogWindowHostFactoryOptions = {
   desktopBundleDir: string;
-  coreApiBaseUrl: string;
+  backendApiBaseUrl: string;
   systemProxyStartupNotice: DesktopSystemProxyStartupNotice;
   rendererDiagnostics: RendererProcessDiagnosticsRegistry;
 };
@@ -86,7 +89,7 @@ export function create_log_window_host(options: LogWindowHostFactoryOptions): Lo
     createWindowOptions: () => {
       return create_window_options(
         options.desktopBundleDir,
-        options.coreApiBaseUrl,
+        options.backendApiBaseUrl,
         options.systemProxyStartupNotice,
       );
     },
@@ -114,7 +117,7 @@ export function create_main_window(options: MainWindowHostOptions): BrowserWindo
   const main_window = new BrowserWindow(
     create_window_options(
       options.desktopBundleDir,
-      options.coreApiBaseUrl,
+      options.backendApiBaseUrl,
       options.systemProxyStartupNotice,
     ),
   );
@@ -424,7 +427,7 @@ function load_renderer_entry(
  */
 function create_window_options(
   desktop_bundle_dir: string,
-  core_api_base_url: string,
+  backend_api_base_url: string,
   system_proxy_startup_notice: DesktopSystemProxyStartupNotice,
 ): BrowserWindowConstructorOptions {
   const vite_public = process.env.VITE_PUBLIC ?? resolve_renderer_dist(desktop_bundle_dir);
@@ -443,7 +446,7 @@ function create_window_options(
       contextIsolation: true,
       nodeIntegration: false,
       additionalArguments: [
-        build_core_api_base_url_argument(core_api_base_url),
+        build_backend_api_base_url_argument(backend_api_base_url),
         build_desktop_system_proxy_startup_notice_argument(system_proxy_startup_notice),
       ],
       sandbox: false, // electron-vite 产出的预加载脚本默认是 ESM，关闭 sandbox 才能让 Electron 按模块语义正确执行
