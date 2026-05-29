@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import { should_skip_by_rule_prefilter } from "./rule-prefilter";
 
 describe("rule-prefilter", () => {
-  it("空字符串不过滤，空白行会过滤", () => {
-    expect(should_skip_by_rule_prefilter("")).toBe(false);
+  it("空字符串和仅空白文本会过滤", () => {
+    expect(should_skip_by_rule_prefilter("")).toBe(true);
     expect(should_skip_by_rule_prefilter("   ")).toBe(true);
+    expect(should_skip_by_rule_prefilter("　")).toBe(true);
+    expect(should_skip_by_rule_prefilter("\t\n　")).toBe(true);
     expect(should_skip_by_rule_prefilter("  \n  \n  ")).toBe(true);
   });
 
