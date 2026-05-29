@@ -314,6 +314,12 @@ export class ProjectDatabase {
           this.require_record(args, "patch"),
         );
         return null;
+      case "patchItemTranslationFields":
+        this.patch_item_translation_fields(
+          this.require_string(args, "projectPath"),
+          this.require_array(args, "patches"),
+        );
+        return null;
       case "getRules":
         return this.get_rules(
           this.require_string(args, "projectPath"),
@@ -1267,6 +1273,71 @@ export class ProjectDatabase {
       db.prepare(
         `UPDATE items SET data = json_set(data, ${json_set_args}) WHERE id IN (${placeholders})`,
       ).run(...patch_values, ...chunk);
+    }
+  }
+
+  /**
+   * 按 item 逐条局部更新翻译字段，任务结果不能覆盖完整持久 item。
+   */
+  private patch_item_translation_fields(project_path: string, patches: DatabaseJsonValue[]): void {
+    const db = this.open_project(project_path);
+    for (const raw_patch of patches) {
+      const entry = this.value_record(raw_patch);
+      const item_id = Number(entry["id"]);
+      if (!Number.isInteger(item_id) || item_id <= 0) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: { reason: "invalid_translation_patch_item_id" },
+        });
+      }
+      const patch = this.value_record(entry["patch"]);
+      const patch_entries: Array<{
+        path: string;
+        value: DatabaseJsonValue;
+        json: boolean;
+      }> = [];
+      if (typeof patch["dst"] === "string") {
+        patch_entries.push({ path: "$.dst", value: patch["dst"], json: false });
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "name_dst")) {
+        const name_dst = patch["name_dst"];
+        if (
+          name_dst === null ||
+          typeof name_dst === "string" ||
+          (Array.isArray(name_dst) && name_dst.every((item) => typeof item === "string"))
+        ) {
+          patch_entries.push({ path: "$.name_dst", value: name_dst, json: true });
+        }
+      }
+      if (typeof patch["status"] === "string") {
+        patch_entries.push({ path: "$.status", value: patch["status"], json: false });
+      }
+      if (typeof patch["retry_count"] === "number") {
+        patch_entries.push({
+          path: "$.retry_count",
+          value: Math.max(0, Math.trunc(patch["retry_count"])),
+          json: false,
+        });
+      }
+      if (patch_entries.length === 0) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: { reason: "empty_translation_patch" },
+        });
+      }
+      const json_set_args = patch_entries
+        .map((patch_entry) => (patch_entry.json ? "?, json(?)" : "?, ?"))
+        .join(", ");
+      const patch_values = patch_entries.flatMap((patch_entry) => [
+        patch_entry.path,
+        patch_entry.json ? JsonTool.stringifyStrict(patch_entry.value) : patch_entry.value,
+      ]);
+      const result = db
+        .prepare(`UPDATE items SET data = json_set(data, ${json_set_args}) WHERE id = ?`)
+        .run(...patch_values, item_id);
+      if (Number(result.changes) !== 1) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: { reason: "translation_patch_item_not_found", item_id },
+        });
+      }
     }
   }
 

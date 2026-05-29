@@ -9,6 +9,7 @@ import { ProjectEventBus } from "../project/project-events";
 import { ProjectDatabase } from "../database/database-operations";
 import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectChangePublisher } from "../project/project-changes";
+import { ProjectMutationStore } from "../project/project-mutation-store";
 import { get_section_revision } from "../project/project-data";
 import { ProjectSessionState } from "../project/project-session";
 import { AppPathService } from "../app/app-path-service";
@@ -383,12 +384,13 @@ describe("QualityService", () => {
       platform: process.platform,
     });
     const app_setting_service = new AppSettingService(paths);
+    const database = null as unknown as ProjectDatabase;
     const service = new QualityService(
       paths,
       app_setting_service,
-      null as unknown as ProjectDatabase,
+      database,
       new ProjectSessionState(),
-      new ProjectEventBus(),
+      new ProjectMutationStore(database, new ProjectEventBus(), null),
     );
     return { service, app_root };
   }
@@ -406,6 +408,7 @@ describe("QualityService", () => {
     });
     const app_setting_service = new AppSettingService(paths);
     const session_state = new ProjectSessionState();
+    const project_event_bus = new ProjectEventBus();
     const lg_path = path.join(app_root, "quality.lg");
     const publisher = create_test_project_change_publisher(database, lg_path);
     database.execute({
@@ -419,8 +422,11 @@ describe("QualityService", () => {
         app_setting_service,
         database,
         session_state,
-        new ProjectEventBus(),
-        publisher as unknown as ProjectChangePublisher,
+        new ProjectMutationStore(
+          database,
+          project_event_bus,
+          publisher as unknown as ProjectChangePublisher,
+        ),
       ),
       lg_path,
       publisher,

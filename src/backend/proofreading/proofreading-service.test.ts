@@ -8,6 +8,7 @@ import { ProjectEventBus } from "../project/project-events";
 import { ProjectDatabase } from "../database/database-operations";
 import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectChangePublisher } from "../project/project-changes";
+import { ProjectMutationStore } from "../project/project-mutation-store";
 import { get_section_revision } from "../project/project-data";
 import { ProjectSessionState } from "../project/project-session";
 import { ProofreadingService } from "./proofreading-service";
@@ -37,14 +38,15 @@ function create_service(): {
   });
   session_state.mark_loaded(lg_path);
   const publisher = create_test_project_change_publisher(database, lg_path);
+  const project_event_bus = new ProjectEventBus();
+  const mutation_store = new ProjectMutationStore(
+    database,
+    project_event_bus,
+    publisher as unknown as ProjectChangePublisher,
+  );
   return {
     database,
-    service: new ProofreadingService(
-      database,
-      session_state,
-      new ProjectEventBus(),
-      publisher as unknown as ProjectChangePublisher,
-    ),
+    service: new ProofreadingService(database, session_state, mutation_store),
     session_state,
     lg_path,
     publisher,

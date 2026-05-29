@@ -1,5 +1,4 @@
 import type { ApiJsonValue } from "../api/api-types";
-import type { ProjectEventBus } from "../project/project-events";
 import type { AppSettingService } from "../app/app-setting-service";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
@@ -11,9 +10,8 @@ import {
 import { log_source_file_parse_failures } from "../file/source-file-parse-failure-reporter";
 import type { LogManager } from "../log/log-manager";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
-import { ProjectWriteCoordinator } from "../project/project-changes";
+import { ProjectMutationStore, type ProjectAssetMutation } from "../project/project-mutation-store";
 import type { ProjectOperationGate } from "../project/project-gate";
-import { get_section_revision } from "../project/project-data";
 import { ProjectSessionState } from "../project/project-session";
 import {
   Item,
@@ -27,7 +25,6 @@ import {
   normalize_setting_snapshot,
   type ProjectSettingsSnapshot,
 } from "../../domain/setting";
-import type { ProjectChangePublisher } from "../project/project-changes";
 import type { ProjectDataSection, ProjectWriteResult } from "../../shared/project-event";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import {
@@ -74,7 +71,7 @@ export class WorkbenchService {
 
   private readonly session_state: ProjectSessionState; // 当前公开工程路径由 API Gateway 会话状态提供，避免同步 write 回读旧缓存
 
-  private readonly write_coordinator: ProjectWriteCoordinator; // 同步 write 的 revision guard、bump 和 canonical 事件统一经由协调器
+  private readonly mutation_store: ProjectMutationStore; // 工作台只提交结构性业务意图，事务和事件交给 mutation store
 
   private readonly app_setting_service: AppSettingService | null; // 文件重解析需要当前应用级格式配置；测试可为空并使用稳定默认值
 
@@ -89,8 +86,7 @@ export class WorkbenchService {
     database: ProjectDatabase,
     project_operation_gate: ProjectOperationGate,
     session_state: ProjectSessionState,
-    project_event_bus: ProjectEventBus,
-    project_change_publisher: ProjectChangePublisher | null = null,
+    mutation_store: ProjectMutationStore,
     app_setting_service: AppSettingService | null = null,
     native_fs: NativeFs = default_native_fs,
     log_manager: Pick<LogManager, "warning"> | null = null,
@@ -98,11 +94,7 @@ export class WorkbenchService {
     this.database = database;
     this.project_operation_gate = project_operation_gate;
     this.session_state = session_state;
-    this.write_coordinator = new ProjectWriteCoordinator(
-      database,
-      project_change_publisher,
-      project_event_bus,
-    );
+    this.mutation_store = mutation_store;
     this.app_setting_service = app_setting_service;
     this.native_fs = native_fs;
     this.log_manager = log_manager;
@@ -128,157 +120,130 @@ export class WorkbenchService {
       const parse_result = await this.parse_import_file_commands(file_commands);
       this.assert_workbench_import_has_parseable_files(parse_result);
 
-      const write_result = await this.write_coordinator.commit_project_write({
+      const asset_records = this.get_asset_records(project_path);
+      const existing_record_by_key = new Map(
+        asset_records.map((record) => [record.path.toLowerCase(), record]),
+      );
+      const incoming_paths = new Set<string>();
+      const current_items = this.to_public_items_by_id(this.get_all_items(project_path));
+      const current_files = this.build_file_section_from_asset_records(project_path, asset_records);
+      const next_items = new Map(current_items);
+      const old_items = [...current_items.values()];
+      const imported_item_ids: number[] = [];
+      const imported_files: Array<{
+        mode: "add" | "replace";
+        source_path: string;
+        target_rel_path: string;
+        file_record: { rel_path: string; file_type: string; sort_index: number };
+      }> = [];
+      let next_item_id = this.next_item_id_seed(current_items);
+      let next_sort_order =
+        asset_records.reduce((max_sort_order, record) => {
+          return Math.max(max_sort_order, record.sort_order);
+        }, -1) + 1;
+      for (const file of parse_result.file_drafts) {
+        const target_key = file.rel_path.toLowerCase();
+        if (incoming_paths.has(target_key)) {
+          throw new AppErrors.RequestValidationError({
+            diagnostic_context: {
+              reason: "duplicate_import_target",
+              rel_path: file.rel_path,
+            },
+          });
+        }
+        incoming_paths.add(target_key);
+        const existing_record = existing_record_by_key.get(target_key);
+        if (existing_record !== undefined && conflict_action === "skip") {
+          continue;
+        }
+        const target_rel_path = existing_record?.path ?? file.rel_path;
+        if (existing_record !== undefined) {
+          for (const [item_id, item] of next_items.entries()) {
+            if (item.file_path === target_rel_path) {
+              next_items.delete(item_id);
+            }
+          }
+        }
+        const file_record = {
+          rel_path: target_rel_path,
+          file_type: file.file_type,
+          sort_index: existing_record?.sort_order ?? next_sort_order,
+        };
+        if (existing_record === undefined) {
+          next_sort_order += 1;
+        }
+        current_files[file_record.rel_path] = file_record;
+        for (const parsed_item of file.parsed_items) {
+          next_item_id += 1;
+          const public_item = this.normalize_public_item({
+            ...Item.from_json(parsed_item).to_json(),
+            id: next_item_id,
+            file_path: target_rel_path,
+          });
+          next_items.set(public_item.item_id, public_item);
+          imported_item_ids.push(public_item.item_id);
+        }
+        imported_files.push({
+          mode: existing_record === undefined ? "add" : "replace",
+          source_path: file.source_path,
+          target_rel_path,
+          file_record,
+        });
+      }
+      if (imported_files.length === 0) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: { reason: "no_importable_files" },
+        });
+      }
+
+      const settings = this.read_project_write_settings(project_path, request["project_settings"]);
+      let write_output = this.compute_prefilter_output({
+        project_path,
+        files: current_files,
+        items: this.public_item_record_from_map(next_items),
+        settings,
+      });
+      if (String(request["inheritance_mode"] ?? "none") === "inherit") {
+        const inherited_items = this.clone_public_item_record(write_output.items);
+        this.inherit_completed_translations({
+          old_items,
+          next_items: imported_item_ids.flatMap((item_id) => {
+            const item = inherited_items[String(item_id)];
+            return item === undefined ? [] : [item];
+          }),
+        });
+        write_output = this.compute_prefilter_output({
+          project_path,
+          files: current_files,
+          items: inherited_items,
+          settings,
+        });
+      }
+
+      const asset_mutations: ProjectAssetMutation[] = imported_files.map((file) =>
+        file.mode === "add"
+          ? {
+              kind: "add_from_source",
+              path: file.target_rel_path,
+              sourcePath: file.source_path,
+              sortOrder: file.file_record.sort_index,
+            }
+          : {
+              kind: "update_from_source",
+              path: file.target_rel_path,
+              sourcePath: file.source_path,
+            },
+      );
+      const write_result = await this.mutation_store.replace_workbench_items_and_files({
         projectPath: project_path,
         expectedSectionRevisions: request["expected_section_revisions"],
-        sections: ["files", "items", "analysis"],
-        buildOperations: (revision_context) => {
-          const asset_records = this.get_asset_records(project_path); // 提交点重新读取当前 asset，路径冲突以最新数据库事实为准
-          // 同名匹配按数据库当前 asset 路径建立大小写不敏感索引，保留原始 path 作为规范写入路径。
-          const existing_record_by_key = new Map(
-            asset_records.map((record) => [record.path.toLowerCase(), record]),
-          );
-          const incoming_paths = new Set<string>(); // 单次请求内部目标路径不得重复，否则用户意图不明确
-          const current_items = this.to_public_items_by_id(this.get_all_items(project_path));
-          const current_files = this.build_file_section_from_asset_records(
-            project_path,
-            asset_records,
-          );
-          const next_items = new Map(current_items);
-          const old_items = [...current_items.values()];
-          const imported_item_ids: number[] = [];
-          const imported_files: Array<{
-            mode: "add" | "replace";
-            source_path: string;
-            target_rel_path: string;
-            file_record: { rel_path: string; file_type: string; sort_index: number };
-          }> = [];
-          let next_item_id = this.next_item_id_seed(current_items);
-          let next_sort_order =
-            asset_records.reduce((max_sort_order, record) => {
-              return Math.max(max_sort_order, record.sort_order);
-            }, -1) + 1;
-          for (const file of parse_result.file_drafts) {
-            // 新增与替换共用同一条解析结果绑定流程，避免维护两套 item id / 预过滤逻辑。
-            const target_key = file.rel_path.toLowerCase();
-            if (incoming_paths.has(target_key)) {
-              throw new AppErrors.RequestValidationError({
-                diagnostic_context: {
-                  reason: "duplicate_import_target",
-                  rel_path: file.rel_path,
-                },
-              });
-            }
-            incoming_paths.add(target_key);
-            const existing_record = existing_record_by_key.get(target_key);
-            if (existing_record !== undefined && conflict_action === "skip") {
-              continue;
-            }
-            const target_rel_path = existing_record?.path ?? file.rel_path;
-            if (existing_record !== undefined) {
-              for (const [item_id, item] of next_items.entries()) {
-                if (item.file_path === target_rel_path) {
-                  next_items.delete(item_id);
-                }
-              }
-            }
-            // 替换保留原 asset 顺序和规范路径；新增才占用新的排序号。
-            const file_record = {
-              rel_path: target_rel_path,
-              file_type: file.file_type,
-              sort_index: existing_record?.sort_order ?? next_sort_order,
-            };
-            if (existing_record === undefined) {
-              next_sort_order += 1;
-            }
-            current_files[file_record.rel_path] = file_record;
-            for (const parsed_item of file.parsed_items) {
-              next_item_id += 1;
-              const public_item = this.normalize_public_item({
-                ...Item.from_json(parsed_item).to_json(),
-                id: next_item_id,
-                file_path: target_rel_path,
-              });
-              next_items.set(public_item.item_id, public_item);
-              imported_item_ids.push(public_item.item_id);
-            }
-            imported_files.push({
-              mode: existing_record === undefined ? "add" : "replace",
-              source_path: file.source_path,
-              target_rel_path,
-              file_record,
-            });
-          }
-          if (imported_files.length === 0) {
-            throw new AppErrors.RequestValidationError({
-              diagnostic_context: { reason: "no_importable_files" },
-            });
-          }
-
-          const settings = this.read_project_write_settings(
-            project_path,
-            request["project_settings"],
-          );
-          let write_output = this.compute_prefilter_output({
-            project_path,
-            files: current_files,
-            items: this.public_item_record_from_map(next_items),
-            settings,
-          });
-          if (String(request["inheritance_mode"] ?? "none") === "inherit") {
-            // 继承只作用于本次导入产生的新 item，随后重跑预过滤，避免旧派生状态泄漏。
-            const inherited_items = this.clone_public_item_record(write_output.items);
-            this.inherit_completed_translations({
-              old_items,
-              next_items: imported_item_ids.flatMap((item_id) => {
-                const item = inherited_items[String(item_id)];
-                return item === undefined ? [] : [item];
-              }),
-            });
-            write_output = this.compute_prefilter_output({
-              project_path,
-              files: current_files,
-              items: inherited_items,
-              settings,
-            });
-          }
-
-          const operations: DatabaseOperation[] = [];
-          for (const file of imported_files) {
-            operations.push(
-              file.mode === "add"
-                ? this.op("addAssetFromSource", {
-                    projectPath: project_path,
-                    path: file.target_rel_path,
-                    sourcePath: file.source_path,
-                    sortOrder: file.file_record.sort_index,
-                  })
-                : this.op("updateAssetFromSource", {
-                    projectPath: project_path,
-                    path: file.target_rel_path,
-                    sourcePath: file.source_path,
-                  }),
-            );
-          }
-          operations.push(
-            this.op("setItems", {
-              projectPath: project_path,
-              items: this.persistent_items_from_public_record(write_output.items),
-            }),
-            this.op("upsertMetaEntries", {
-              projectPath: project_path,
-              meta: this.build_prefilter_reset_meta(settings, write_output),
-            }),
-            this.op("deleteAnalysisItemCheckpoints", { projectPath: project_path }),
-            this.op("clearAnalysisCandidateAggregates", { projectPath: project_path }),
-            ...this.write_coordinator.build_section_revision_operations(revision_context),
-          );
-          return operations;
-        },
-        change: {
-          source: "workbench_import_files",
-          updatedSections: ["files", "items", "analysis"],
-        },
+        revisionSections: ["files", "items", "analysis"],
+        source: "workbench_import_files",
+        updatedSections: ["files", "items", "analysis"],
+        assetMutations: asset_mutations,
+        items: this.persistent_items_from_public_record(write_output.items),
+        meta: this.build_prefilter_reset_meta(settings, write_output),
+        resetAnalysis: true,
       });
       this.log_workbench_import_parse_failures(parse_result.failed_files);
       return this.with_parse_failures(write_result, parse_result.failed_files);
@@ -291,11 +256,6 @@ export class WorkbenchService {
   public async reset_workbench_file(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = await this.require_loaded_project_path();
     return this.project_operation_gate.run_exclusive_project_write(async () => {
-      const revision_context = this.write_coordinator.assert_expected_section_revisions(
-        project_path,
-        request["expected_section_revisions"],
-        ["items", "analysis"],
-      );
       this.assert_no_legacy_fields(request, [
         "items",
         "translation_extras",
@@ -322,28 +282,15 @@ export class WorkbenchService {
         items,
         settings,
       });
-      this.database.execute_transaction([
-        this.op("setItems", {
-          projectPath: project_path,
-          items: this.persistent_items_from_public_record(write_output.items),
-        }),
-        this.op("upsertMetaEntries", {
-          projectPath: project_path,
-          meta: this.build_prefilter_reset_meta(settings, write_output),
-        }),
-        this.op("deleteAnalysisItemCheckpoints", { projectPath: project_path }),
-        this.op("clearAnalysisCandidateAggregates", { projectPath: project_path }),
-        ...this.write_coordinator.build_section_revision_operations(revision_context),
-      ]);
-      await this.write_coordinator.publish_app_events_for_committed_change({
+      return await this.mutation_store.replace_workbench_items_and_files({
         projectPath: project_path,
+        expectedSectionRevisions: request["expected_section_revisions"],
+        revisionSections: ["items", "analysis"],
         source: "workbench_reset_file",
         updatedSections: ["items", "analysis"],
-      });
-      return this.write_coordinator.publish_project_data_change({
-        projectPath: project_path,
-        source: "workbench_reset_file",
-        updatedSections: ["items", "analysis"],
+        items: this.persistent_items_from_public_record(write_output.items),
+        meta: this.build_prefilter_reset_meta(settings, write_output),
+        resetAnalysis: true,
       });
     });
   }
@@ -354,11 +301,6 @@ export class WorkbenchService {
   public async delete_workbench_file(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = await this.require_loaded_project_path();
     return this.project_operation_gate.run_exclusive_project_write(async () => {
-      const revision_context = this.write_coordinator.assert_expected_section_revisions(
-        project_path,
-        request["expected_section_revisions"],
-        ["files", "items", "analysis"],
-      );
       this.assert_no_legacy_fields(request, [
         "items",
         "translation_extras",
@@ -386,33 +328,16 @@ export class WorkbenchService {
         items,
         settings,
       });
-      const operations: DatabaseOperation[] = [];
-      for (const rel_path of rel_paths) {
-        operations.push(this.op("deleteAsset", { projectPath: project_path, path: rel_path }));
-      }
-      operations.push(
-        this.op("setItems", {
-          projectPath: project_path,
-          items: this.persistent_items_from_public_record(write_output.items),
-        }),
-        this.op("upsertMetaEntries", {
-          projectPath: project_path,
-          meta: this.build_prefilter_reset_meta(settings, write_output),
-        }),
-        this.op("deleteAnalysisItemCheckpoints", { projectPath: project_path }),
-        this.op("clearAnalysisCandidateAggregates", { projectPath: project_path }),
-        ...this.write_coordinator.build_section_revision_operations(revision_context),
-      );
-      this.database.execute_transaction(operations);
-      await this.write_coordinator.publish_app_events_for_committed_change({
+      return await this.mutation_store.replace_workbench_items_and_files({
         projectPath: project_path,
+        expectedSectionRevisions: request["expected_section_revisions"],
+        revisionSections: ["files", "items", "analysis"],
         source: "workbench_delete_file",
         updatedSections: ["files", "items", "analysis"],
-      });
-      return this.write_coordinator.publish_project_data_change({
-        projectPath: project_path,
-        source: "workbench_delete_file",
-        updatedSections: ["files", "items", "analysis"],
+        assetMutations: rel_paths.map((rel_path) => ({ kind: "delete", path: rel_path })),
+        items: this.persistent_items_from_public_record(write_output.items),
+        meta: this.build_prefilter_reset_meta(settings, write_output),
+        resetAnalysis: true,
       });
     });
   }
@@ -423,30 +348,13 @@ export class WorkbenchService {
   public async reorder_workbench_files(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = await this.require_loaded_project_path();
     return this.project_operation_gate.run_exclusive_project_write(async () => {
-      const revision_context = this.write_coordinator.assert_expected_section_revisions(
-        project_path,
-        request["expected_section_revisions"],
-        ["files"],
-      );
       const ordered_paths = this.normalize_string_list(request["ordered_rel_paths"]);
       const current_paths = this.get_asset_records(project_path).map((record) => record.path);
       this.assert_complete_path_order(current_paths, ordered_paths);
-      this.database.execute_transaction([
-        this.op("updateAssetSortOrders", {
-          projectPath: project_path,
-          orderedPaths: ordered_paths,
-        }),
-        ...this.write_coordinator.build_section_revision_operations(revision_context),
-      ]);
-      await this.write_coordinator.publish_app_events_for_committed_change({
+      return await this.mutation_store.reorder_workbench_files({
         projectPath: project_path,
-        source: "workbench_reorder_files",
-        updatedSections: ["files"],
-      });
-      return this.write_coordinator.publish_project_data_change({
-        projectPath: project_path,
-        source: "workbench_reorder_files",
-        updatedSections: ["files"],
+        expectedSectionRevisions: request["expected_section_revisions"],
+        orderedPaths: ordered_paths,
       });
     });
   }
@@ -459,26 +367,16 @@ export class WorkbenchService {
     const mode = String(request["mode"] ?? "").toLowerCase();
     const settings_meta = this.build_project_settings_only_meta(request["project_settings"]);
     if (mode === "settings_only") {
-      this.database.execute_transaction([
-        this.op("upsertMetaEntries", { projectPath: project_path, meta: settings_meta }),
-      ]);
-      await this.write_coordinator.publish_app_events_for_committed_change({
+      return await this.mutation_store.apply_project_settings_meta({
         projectPath: project_path,
-        source: "settings_alignment",
-        updatedSections: ["project"],
+        meta: settings_meta,
       });
-      return this.write_coordinator.empty_project_write_result();
     }
     if (mode !== "prefiltered_items") {
       throw new AppErrors.RequestValidationError();
     }
     return this.project_operation_gate.run_exclusive_project_write(async () => {
       this.assert_no_legacy_fields(request, ["items", "translation_extras", "prefilter_config"]);
-      const revision_context = this.write_coordinator.assert_expected_section_revisions(
-        project_path,
-        request["expected_section_revisions"],
-        ["items", "analysis"],
-      );
       const settings = this.read_project_write_settings(project_path, request["project_settings"]);
       const write_output = this.compute_prefilter_output({
         project_path,
@@ -486,31 +384,18 @@ export class WorkbenchService {
         items: this.to_public_item_record(this.get_all_items(project_path)),
         settings,
       });
-      this.database.execute_transaction([
-        this.op("setItems", {
-          projectPath: project_path,
-          items: this.persistent_items_from_public_record(write_output.items),
-        }),
-        this.op("upsertMetaEntries", {
-          projectPath: project_path,
-          meta: {
-            ...settings_meta,
-            ...this.build_prefilter_reset_meta(settings, write_output),
-          },
-        }),
-        this.op("deleteAnalysisItemCheckpoints", { projectPath: project_path }),
-        this.op("clearAnalysisCandidateAggregates", { projectPath: project_path }),
-        ...this.write_coordinator.build_section_revision_operations(revision_context),
-      ]);
-      await this.write_coordinator.publish_app_events_for_committed_change({
+      return await this.mutation_store.replace_workbench_items_and_files({
         projectPath: project_path,
+        expectedSectionRevisions: request["expected_section_revisions"],
+        revisionSections: ["items", "analysis"],
         source: "settings_alignment",
         updatedSections: ["items", "analysis"],
-      });
-      return this.write_coordinator.publish_project_data_change({
-        projectPath: project_path,
-        source: "settings_alignment",
-        updatedSections: ["items", "analysis"],
+        items: this.persistent_items_from_public_record(write_output.items),
+        meta: {
+          ...settings_meta,
+          ...this.build_prefilter_reset_meta(settings, write_output),
+        },
+        resetAnalysis: true,
       });
     });
   }
@@ -525,52 +410,33 @@ export class WorkbenchService {
     return this.project_operation_gate.run_exclusive_project_write(async () => {
       if (mode === "all") {
         const reset_item_drafts = await this.reparse_all_asset_identity_items(project_path);
-        return this.write_coordinator.commit_project_write({
+        const settings = this.read_project_write_settings(
+          project_path,
+          request["project_settings"],
+        );
+        const reset_items = this.bind_reset_all_items_to_current_ids(
+          project_path,
+          reset_item_drafts,
+        );
+        const write_output = this.compute_prefilter_output({
+          project_path,
+          files: this.build_file_section_from_asset_records(project_path),
+          items: this.public_item_record_from_array(reset_items),
+          settings,
+          task_snapshot: create_empty_translation_task_snapshot(),
+        });
+        return await this.mutation_store.replace_workbench_items_and_files({
           projectPath: project_path,
           expectedSectionRevisions: request["expected_section_revisions"],
-          sections: ["items", "analysis"],
-          buildOperations: (revision_context) => {
-            const settings = this.read_project_write_settings(
-              project_path,
-              request["project_settings"],
-            );
-            const reset_items = this.bind_reset_all_items_to_current_ids(
-              project_path,
-              reset_item_drafts,
-            );
-            const write_output = this.compute_prefilter_output({
-              project_path,
-              files: this.build_file_section_from_asset_records(project_path),
-              items: this.public_item_record_from_array(reset_items),
-              settings,
-              task_snapshot: create_empty_translation_task_snapshot(),
-            });
-            return [
-              this.op("setItems", {
-                projectPath: project_path,
-                items: this.persistent_items_from_public_record(write_output.items),
-              }),
-              this.op("upsertMetaEntries", {
-                projectPath: project_path,
-                meta: this.build_prefilter_reset_meta(settings, write_output),
-              }),
-              this.op("deleteAnalysisItemCheckpoints", { projectPath: project_path }),
-              this.op("clearAnalysisCandidateAggregates", { projectPath: project_path }),
-              ...this.write_coordinator.build_section_revision_operations(revision_context),
-            ];
-          },
-          change: {
-            source: "translation_reset",
-            updatedSections: ["items", "analysis"],
-          },
+          revisionSections: ["items", "analysis"],
+          source: "translation_reset",
+          updatedSections: ["items", "analysis"],
+          items: this.persistent_items_from_public_record(write_output.items),
+          meta: this.build_prefilter_reset_meta(settings, write_output),
+          resetAnalysis: true,
         });
       }
       if (mode === "failed") {
-        const revision_context = this.write_coordinator.assert_expected_section_revisions(
-          project_path,
-          request["expected_section_revisions"],
-          ["items"],
-        );
         const items = this.to_public_item_record(this.get_all_items(project_path));
         for (const item of Object.values(items)) {
           if (item.status !== "ERROR") {
@@ -582,28 +448,11 @@ export class WorkbenchService {
           item.retry_count = 0;
         }
         const translation_extras = this.build_translation_extras_for_items(project_path, items);
-        this.database.execute_transaction([
-          this.op("setItems", {
-            projectPath: project_path,
-            items: this.persistent_items_from_public_record(items),
-          }),
-          this.op("upsertMetaEntries", {
-            projectPath: project_path,
-            meta: {
-              translation_extras: translation_extras as unknown as DatabaseJsonValue,
-            },
-          }),
-          ...this.write_coordinator.build_section_revision_operations(revision_context),
-        ]);
-        await this.write_coordinator.publish_app_events_for_committed_change({
+        return await this.mutation_store.reset_translation_state({
           projectPath: project_path,
-          source: "translation_reset",
-          updatedSections: ["items"],
-        });
-        return this.write_coordinator.publish_project_data_change({
-          projectPath: project_path,
-          source: "translation_reset",
-          updatedSections: ["items"],
+          expectedSectionRevisions: request["expected_section_revisions"],
+          items: this.persistent_items_from_public_record(items),
+          translationExtras: translation_extras as MutableJsonRecord,
         });
       }
       throw new AppErrors.RequestValidationError();
@@ -618,49 +467,18 @@ export class WorkbenchService {
     const mode = String(request["mode"] ?? "").toLowerCase();
     this.assert_no_legacy_fields(request, ["analysis_extras"]);
     return this.project_operation_gate.run_exclusive_project_write(async () => {
-      const revision_context = this.write_coordinator.assert_expected_section_revisions(
-        project_path,
-        request["expected_section_revisions"],
-        ["analysis"],
-      );
       const analysis_extras = this.build_analysis_reset_extras(project_path, mode);
-      const operations: DatabaseOperation[] = [
-        this.op("upsertMetaEntries", {
-          projectPath: project_path,
-          meta: {
-            analysis_extras: analysis_extras as unknown as DatabaseJsonValue,
-            ...(mode === "all" ? { analysis_candidate_count: 0 } : {}),
-          },
-        }),
-      ];
-      if (mode === "all") {
-        operations.push(
-          this.op("deleteAnalysisItemCheckpoints", { projectPath: project_path }),
-          this.op("clearAnalysisCandidateAggregates", { projectPath: project_path }),
-        );
-      } else if (mode === "failed") {
-        operations.push(
-          this.op("deleteAnalysisItemCheckpoints", {
-            projectPath: project_path,
-            status: "ERROR",
-          }),
-        );
-      } else {
+      if (mode !== "all" && mode !== "failed") {
         throw new AppErrors.RequestValidationError();
       }
-      operations.push(
-        ...this.write_coordinator.build_section_revision_operations(revision_context),
-      );
-      this.database.execute_transaction(operations);
-      await this.write_coordinator.publish_app_events_for_committed_change({
+      return await this.mutation_store.reset_analysis_state({
         projectPath: project_path,
+        expectedSectionRevisions: request["expected_section_revisions"],
+        requireExpectedSectionRevisions: true,
         source: "analysis_reset",
-        updatedSections: ["analysis"],
-      });
-      return this.write_coordinator.publish_project_data_change({
-        projectPath: project_path,
-        source: "analysis_reset",
-        updatedSections: ["analysis"],
+        mode,
+        analysisExtras: analysis_extras as MutableJsonRecord,
+        ...(mode === "all" ? { analysisCandidateCount: 0 } : {}),
       });
     });
   }
@@ -674,12 +492,6 @@ export class WorkbenchService {
       "analysis_candidate_count",
       "expected_glossary_revision",
     ]);
-    const revision_context = this.write_coordinator.assert_expected_section_revisions(
-      project_path,
-      request["expected_section_revisions"],
-      ["analysis", "quality"],
-    );
-    const current_quality_revision = get_section_revision(revision_context.meta, "quality");
     const next_rules = this.normalize_rule_entries(request["entries"]);
     const quality_changed = !this.are_rule_entries_equal(
       this.get_rule_entries(project_path, "glossary"),
@@ -694,41 +506,18 @@ export class WorkbenchService {
       project_path,
       consumed_candidate_srcs,
     );
-    const operations: DatabaseOperation[] = [
-      ...(quality_changed
-        ? [
-            this.op("setRules", {
-              projectPath: project_path,
-              ruleType: "glossary",
-              rules: next_rules,
-            }),
-            this.op("setMeta", {
-              projectPath: project_path,
-              key: "quality_rule_revision.glossary",
-              value: current_quality_revision + 1,
-            }),
-          ]
-        : []),
-      this.op("deleteAnalysisCandidateAggregatesBySrcs", {
-        projectPath: project_path,
-        srcs: consumed_candidate_srcs,
-      }),
-      this.op("setMeta", {
-        projectPath: project_path,
-        key: "analysis_candidate_count",
-        value: analysis_candidate_count,
-      }),
-      ...this.write_coordinator.build_section_revision_operations(revision_context, ["analysis"]),
-    ];
-    this.database.execute_transaction(operations);
-    await this.write_coordinator.publish_app_events_for_committed_change({
+    return await this.mutation_store.import_analysis_glossary({
       projectPath: project_path,
-      source: "analysis_glossary_import",
-      updatedSections: updated_sections,
-    });
-    return this.write_coordinator.publish_project_data_change({
-      projectPath: project_path,
-      source: "analysis_glossary_import",
+      expectedSectionRevisions: request["expected_section_revisions"],
+      qualityRule: quality_changed
+        ? {
+            databaseType: "glossary",
+            entries: next_rules,
+            revisionKey: "quality_rule_revision.glossary",
+          }
+        : null,
+      consumedCandidateSrcs: consumed_candidate_srcs,
+      analysisCandidateCount: analysis_candidate_count,
       updatedSections: updated_sections,
     });
   }

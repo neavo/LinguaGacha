@@ -490,6 +490,68 @@ describe("ProjectDatabase", () => {
     );
   });
 
+  it("patchItemTranslationFields 只更新译文字段并保留条目持久事实", () => {
+    const { database, lg_path } = create_database_project("translation-patch");
+
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [
+          {
+            id: 1,
+            src: "原文",
+            dst: "",
+            name_src: "原名",
+            name_dst: null,
+            status: "NONE",
+            retry_count: 2,
+            file_path: "demo.txt",
+            file_type: "TXT",
+            text_type: "TXT",
+            row: 7,
+            extra_field: { speaker: "春" },
+          },
+        ],
+      },
+    });
+
+    database.execute({
+      name: "patchItemTranslationFields",
+      args: {
+        projectPath: lg_path,
+        patches: [
+          {
+            id: 1,
+            patch: {
+              dst: "译文",
+              name_dst: ["译名"],
+              status: "PROCESSED",
+              retry_count: 0,
+            },
+          },
+        ],
+      },
+    });
+
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+      {
+        id: 1,
+        src: "原文",
+        dst: "译文",
+        name_src: "原名",
+        name_dst: ["译名"],
+        status: "PROCESSED",
+        retry_count: 0,
+        file_path: "demo.txt",
+        file_type: "TXT",
+        text_type: "TXT",
+        row: 7,
+        extra_field: { speaker: "春" },
+      },
+    ]);
+  });
+
   it("保存分析断点和候选聚合后可按状态与原文读取当前事实", () => {
     const { database, lg_path } = create_database_project("analysis");
 

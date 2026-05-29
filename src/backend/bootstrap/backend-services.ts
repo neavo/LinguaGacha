@@ -27,6 +27,7 @@ import { LogManager } from "../log/log-manager";
 import { ModelService } from "../model/model-service";
 import { ProjectChangeEventAdapter } from "../project/project-changes";
 import { ProjectChangePublisher } from "../project/project-changes";
+import { ProjectMutationStore } from "../project/project-mutation-store";
 import { ProjectLifecycleService } from "../project/project-session";
 import { ToolboxNameFieldExtractionService } from "../toolbox/toolbox-name-field-extraction-service";
 import { ProjectOperationGate } from "../project/project-gate";
@@ -127,6 +128,7 @@ export class BackendServices {
   private readonly project_event_bus = new ProjectEventBus(); // Backend 内部 committed event 总线，不直接暴露给 renderer
   private readonly project_data_cache: ProjectDataCache;
   private readonly project_change_publisher: ProjectChangePublisher;
+  private readonly project_mutation_store: ProjectMutationStore;
   private readonly workbench_query_service: WorkbenchQueryService;
   private readonly backend_worker_client: BackendWorkerClient;
   private readonly proofreading_cache: ProofreadingCache;
@@ -184,6 +186,11 @@ export class BackendServices {
       project_change_adapter,
       this.api_stream_hub,
     );
+    this.project_mutation_store = new ProjectMutationStore(
+      this.database,
+      this.project_event_bus,
+      this.project_change_publisher,
+    );
     this.workbench_query_service = new WorkbenchQueryService(
       this.project_session_state,
       this.project_data_cache,
@@ -230,8 +237,7 @@ export class BackendServices {
       this.database,
       this.project_operation_gate,
       this.project_session_state,
-      this.project_event_bus,
-      this.project_change_publisher,
+      this.project_mutation_store,
       this.app_setting_service,
       undefined,
       this.log_manager,
@@ -239,8 +245,7 @@ export class BackendServices {
     this.proofreading_service = new ProofreadingService(
       this.database,
       this.project_session_state,
-      this.project_event_bus,
-      this.project_change_publisher,
+      this.project_mutation_store,
     );
     this.task_snapshot_builder = new TaskSnapshotBuilder(
       this.database,
@@ -258,8 +263,7 @@ export class BackendServices {
       this.project_session_state,
       this.task_run_state,
       this.project_data_cache,
-      this.project_change_publisher,
-      this.project_event_bus,
+      this.project_mutation_store,
     );
     this.work_unit_worker_pool = new WorkUnitWorkerPool({
       appRoot: this.paths.get_app_root(),
@@ -313,8 +317,7 @@ export class BackendServices {
       this.app_setting_service,
       this.database,
       this.project_session_state,
-      this.project_event_bus,
-      this.project_change_publisher,
+      this.project_mutation_store,
     );
     this.app = {
       paths: this.paths,

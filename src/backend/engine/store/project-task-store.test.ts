@@ -9,6 +9,7 @@ import { ProjectEventBus } from "../../project/project-events";
 import { ProjectDataCache } from "../../project/project-data";
 import { ProjectDatabase } from "../../database/database-operations";
 import type { ProjectChangePublisher } from "../../project/project-changes";
+import { ProjectMutationStore } from "../../project/project-mutation-store";
 import { ProjectSessionState } from "../../project/project-session";
 import { TaskRunState } from "../run/task-run-state";
 import type { MutableJsonRecord } from "../run/task-run-types";
@@ -36,11 +37,11 @@ describe("ProjectTaskStore", () => {
           source: "translation",
           items: [
             {
-              id: 1,
-              src: "原文",
+              item_id: 1,
               dst: "译文",
+              name_dst: "译名",
               status: "PROCESSED",
-              file_path: "demo.txt",
+              retry_count: 0,
             },
           ],
           affects_proofreading: false,
@@ -50,8 +51,31 @@ describe("ProjectTaskStore", () => {
     });
 
     expect(read_items(database, project_path)).toEqual([
-      { id: 1, src: "原文", dst: "译文", status: "PROCESSED", file_path: "demo.txt" },
-      { id: 2, src: "待翻", dst: "", status: "NONE", file_path: "demo.txt" },
+      {
+        id: 1,
+        src: "原文",
+        dst: "译文",
+        name_src: "原名",
+        name_dst: "译名",
+        status: "PROCESSED",
+        retry_count: 0,
+        file_path: "demo.txt",
+        file_type: "TXT",
+        text_type: "TXT",
+        row: 7,
+        extra_field: { speaker: "春" },
+      },
+      {
+        id: 2,
+        src: "待翻",
+        dst: "",
+        status: "NONE",
+        retry_count: 0,
+        file_path: "demo.txt",
+        file_type: "TXT",
+        text_type: "TXT",
+        row: 8,
+      },
     ]);
     expect(read_meta(database, project_path)["translation_extras"]).toEqual(
       create_progress_snapshot({ line: 1, processed_line: 1 }),
@@ -86,11 +110,10 @@ describe("ProjectTaskStore", () => {
           source: "translation",
           items: [
             {
-              id: 2,
-              src: "待翻",
+              item_id: 2,
               dst: "重翻译文",
               status: "PROCESSED",
-              file_path: "demo.txt",
+              retry_count: 0,
             },
           ],
           affects_proofreading: true,
@@ -357,11 +380,10 @@ describe("ProjectTaskStore", () => {
           source: "translation",
           items: [
             {
-              id: 1,
-              src: "原文",
+              item_id: 1,
               dst: "译文",
               status: "PROCESSED",
-              file_path: "demo.txt",
+              retry_count: 0,
             },
           ],
           affects_proofreading: false,
@@ -397,6 +419,12 @@ describe("ProjectTaskStore", () => {
     session_state.mark_loaded(project_path);
     cleanup_callbacks.push(() => fs.rmSync(directory, { recursive: true, force: true }));
     cleanup_callbacks.push(() => database.close());
+    const mutation_store = new ProjectMutationStore(database, project_event_bus, {
+      publish_project_change: (payload: MutableJsonRecord) => {
+        options.on_publish_project_change?.();
+        published_changes.push(payload);
+      },
+    } as unknown as ProjectChangePublisher);
     return {
       database,
       project_path,
@@ -407,13 +435,7 @@ describe("ProjectTaskStore", () => {
         session_state,
         run_state,
         project_data_cache,
-        {
-          publish_project_change: (payload: MutableJsonRecord) => {
-            options.on_publish_project_change?.();
-            published_changes.push(payload);
-          },
-        } as unknown as ProjectChangePublisher,
-        project_event_bus,
+        mutation_store,
       ),
       published_changes,
       project_event_bus,
@@ -426,8 +448,31 @@ describe("ProjectTaskStore", () => {
       args: {
         projectPath: project_path,
         items: [
-          { id: 1, src: "原文", dst: "", status: "NONE", file_path: "demo.txt" },
-          { id: 2, src: "待翻", dst: "", status: "NONE", file_path: "demo.txt" },
+          {
+            id: 1,
+            src: "原文",
+            dst: "",
+            name_src: "原名",
+            name_dst: null,
+            status: "NONE",
+            retry_count: 2,
+            file_path: "demo.txt",
+            file_type: "TXT",
+            text_type: "TXT",
+            row: 7,
+            extra_field: { speaker: "春" },
+          },
+          {
+            id: 2,
+            src: "待翻",
+            dst: "",
+            status: "NONE",
+            retry_count: 0,
+            file_path: "demo.txt",
+            file_type: "TXT",
+            text_type: "TXT",
+            row: 8,
+          },
         ],
       },
     });
