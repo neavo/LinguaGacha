@@ -3,13 +3,10 @@ import path from "node:path";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { ApiJsonValue } from "../api/api-types";
-import type { ProjectEventBus } from "../project/project-events";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { JsonTool } from "../../shared/utils/json-tool";
-import { get_section_revision } from "../project/project-data";
-import { ProjectWriteCoordinator } from "../project/project-changes";
-import { ProjectChangePublisher } from "../project/project-changes";
+import { ProjectMutationStore } from "../project/project-mutation-store";
 import { ProjectSessionState } from "../project/project-session";
 import type { ProjectWriteResult } from "../../shared/project-event";
 import { build_analysis_glossary_entry_from_candidate } from "../../shared/analysis-candidate";
@@ -37,7 +34,7 @@ export class QualityService {
 
   private readonly session_state: ProjectSessionState; // 页面级质量规则 / 提示词写入口以 会话状态作为当前工程目标
 
-  private readonly write_coordinator: ProjectWriteCoordinator; // 质量与提示词 write 复用项目域统一 revision guard 和 canonical 事件发布
+  private readonly mutation_store: ProjectMutationStore; // 工程质量 / 提示词事实统一交由 mutation store 提交
 
   private readonly native_fs: NativeFs; // native_fs 是规则、提示词预设和导入导出的唯一文件 IO 入口
 
@@ -49,19 +46,14 @@ export class QualityService {
     app_setting_service: AppSettingService,
     database: ProjectDatabase,
     session_state: ProjectSessionState,
-    project_event_bus: ProjectEventBus,
-    project_change_publisher: ProjectChangePublisher | null = null,
+    mutation_store: ProjectMutationStore,
     native_fs: NativeFs = default_native_fs,
   ) {
     this.paths = paths;
     this.app_setting_service = app_setting_service;
     this.database = database;
     this.session_state = session_state;
-    this.write_coordinator = new ProjectWriteCoordinator(
-      database,
-      project_change_publisher,
-      project_event_bus,
-    );
+    this.mutation_store = mutation_store;
     this.native_fs = native_fs;
   }
 
@@ -73,33 +65,15 @@ export class QualityService {
     const rule_type = this.normalize_rule_type(request["rule_type"]);
     const entries = this.normalize_rule_entries(request["entries"]);
     const project_path = await this.require_project_path();
-    const revision_context = this.write_coordinator.assert_expected_section_revisions(
-      project_path,
-      request["expected_section_revisions"],
-      ["quality"],
-    );
-    const current_revision = get_section_revision(revision_context.meta, "quality");
-    this.database.execute_transaction([
-      this.op("setRules", {
-        projectPath: project_path,
-        ruleType: QualityRule.from_json(rule_type).database_type,
-        rules: entries as unknown as DatabaseJsonValue,
-      }),
-      this.op("setMeta", {
-        projectPath: project_path,
-        key: this.build_rule_revision_key(rule_type),
-        value: current_revision + 1,
-      }),
-    ]);
-    await this.write_coordinator.publish_app_events_for_committed_change({
+    return await this.mutation_store.save_quality_rules({
       projectPath: project_path,
+      expectedSectionRevisions: request["expected_section_revisions"],
       source: "quality_rule_save_entries",
-      updatedSections: ["quality"],
-    });
-    return this.write_coordinator.publish_project_data_change({
-      projectPath: project_path,
-      source: "quality_rule_save_entries",
-      updatedSections: ["quality"],
+      rule: {
+        databaseType: QualityRule.from_json(rule_type).database_type,
+        entries,
+      },
+      revisionKey: this.build_rule_revision_key(rule_type),
     });
   }
 
@@ -110,41 +84,22 @@ export class QualityService {
     this.assert_no_legacy_fields(request, ["expected_revision"]);
     const rule_type = this.normalize_rule_type(request["rule_type"]);
     const project_path = await this.require_project_path();
-    const revision_context = this.write_coordinator.assert_expected_section_revisions(
-      project_path,
-      request["expected_section_revisions"],
-      ["quality"],
-    );
-    const current_revision = get_section_revision(revision_context.meta, "quality");
     const meta = this.normalize_object(request["meta"]);
     if (Object.keys(meta).length === 0) {
-      return this.write_coordinator.empty_project_write_result();
+      return { accepted: true, changes: [] };
     }
-    const operations: DatabaseOperation[] = [];
+    const meta_entries: JsonRecord = {};
     for (const [key, value] of Object.entries(meta)) {
       const meta_key = this.resolve_rule_meta_key(rule_type, key);
       const meta_value = this.normalize_rule_meta_value(rule_type, key, value);
-      operations.push(
-        this.op("setMeta", { projectPath: project_path, key: meta_key, value: meta_value }),
-      );
+      meta_entries[meta_key] = meta_value;
     }
-    operations.push(
-      this.op("setMeta", {
-        projectPath: project_path,
-        key: this.build_rule_revision_key(rule_type),
-        value: current_revision + 1,
-      }),
-    );
-    this.database.execute_transaction(operations);
-    await this.write_coordinator.publish_app_events_for_committed_change({
+    return await this.mutation_store.save_quality_rules({
       projectPath: project_path,
+      expectedSectionRevisions: request["expected_section_revisions"],
       source: "quality_rule_update_meta",
-      updatedSections: ["quality"],
-    });
-    return this.write_coordinator.publish_project_data_change({
-      projectPath: project_path,
-      source: "quality_rule_update_meta",
-      updatedSections: ["quality"],
+      metaEntries: meta_entries,
+      revisionKey: this.build_rule_revision_key(rule_type),
     });
   }
 
@@ -308,43 +263,18 @@ export class QualityService {
     this.assert_no_legacy_fields(request, ["expected_revision"]);
     const task_type = Prompt.from_json(request["task_type"]).kind;
     const project_path = await this.require_project_path();
-    const revision_context = this.write_coordinator.assert_expected_section_revisions(
-      project_path,
-      request["expected_section_revisions"],
-      ["prompts"],
-    );
-    const current_revision = get_section_revision(revision_context.meta, "prompts");
-    const operations: DatabaseOperation[] = [
-      this.op("setRuleText", {
-        projectPath: project_path,
-        ruleType: Prompt.from_json(task_type).database_type,
-        text: String(request["text"] ?? ""),
-      }),
-      this.op("setMeta", {
-        projectPath: project_path,
-        key: this.prompt_revision_key(task_type),
-        value: current_revision + 1,
-      }),
-    ];
-    if (request["enabled"] !== undefined && request["enabled"] !== null) {
-      operations.push(
-        this.op("setMeta", {
-          projectPath: project_path,
-          key: Prompt.from_json(task_type).enabled_meta_key,
-          value: Boolean(request["enabled"]),
-        }),
-      );
-    }
-    this.database.execute_transaction(operations);
-    await this.write_coordinator.publish_app_events_for_committed_change({
+    return await this.mutation_store.save_quality_prompt({
       projectPath: project_path,
-      source: "quality_prompt_save",
-      updatedSections: ["prompts"],
-    });
-    return this.write_coordinator.publish_project_data_change({
-      projectPath: project_path,
-      source: "quality_prompt_save",
-      updatedSections: ["prompts"],
+      expectedSectionRevisions: request["expected_section_revisions"],
+      promptRuleType: Prompt.from_json(task_type).database_type,
+      text: String(request["text"] ?? ""),
+      revisionKey: this.prompt_revision_key(task_type),
+      ...(request["enabled"] === undefined || request["enabled"] === null
+        ? {}
+        : {
+            enabledMetaKey: Prompt.from_json(task_type).enabled_meta_key,
+            enabled: Boolean(request["enabled"]),
+          }),
     });
   }
 

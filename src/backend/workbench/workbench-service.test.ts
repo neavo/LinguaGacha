@@ -13,6 +13,7 @@ import type { LogManager } from "../log/log-manager";
 import { ProjectOperationGate } from "../project/project-gate";
 import { WorkbenchService } from "./workbench-service";
 import type { ProjectChangePublisher } from "../project/project-changes";
+import { ProjectMutationStore } from "../project/project-mutation-store";
 import { get_section_revision } from "../project/project-data";
 import { ProjectSessionState } from "../project/project-session";
 import type { ProjectChangeEvent } from "../../shared/project-event";
@@ -52,14 +53,15 @@ function create_service(
       ? create_test_project_change_publisher(database, lg_path)
       : project_change_publisher;
   const project_operation_gate = new ProjectOperationGate(task_run_state);
+  const project_event_bus = new ProjectEventBus();
+  const mutation_store = new ProjectMutationStore(database, project_event_bus, publisher);
   return {
     database,
     service: new WorkbenchService(
       database,
       project_operation_gate,
       session_state,
-      new ProjectEventBus(),
-      publisher,
+      mutation_store,
       null,
       undefined,
       log_manager,

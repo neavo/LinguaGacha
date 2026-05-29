@@ -1,12 +1,7 @@
 import type { ApiJsonValue } from "../api/api-types";
-import type { ProjectEventBus } from "../project/project-events";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
-import {
-  ProjectWriteCoordinator,
-  type ProjectWriteRevisionContext,
-} from "../project/project-changes";
-import { ProjectChangePublisher } from "../project/project-changes";
+import { ProjectMutationStore } from "../project/project-mutation-store";
 import { ProjectSessionState } from "../project/project-session";
 import { Item, type ItemStatus } from "../../domain/item";
 import type {
@@ -14,10 +9,8 @@ import type {
   ProjectChangeItemsPayload,
   ProjectWriteResult,
 } from "../../shared/project-event";
-import { create_empty_translation_task_snapshot } from "../project/project-changes";
 import { compile_text_pattern, replace_text_pattern } from "../../shared/text/text-pattern";
 import * as AppErrors from "../../shared/error";
-import { is_task_progress_status } from "../../domain/task";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
@@ -31,20 +24,9 @@ const PROOFREADING_MANUAL_STATUS_CODES = [
 
 type ProofreadingManualStatus = (typeof PROOFREADING_MANUAL_STATUS_CODES)[number];
 
-type ProofreadingWriteContext = {
-  revision_context: ProjectWriteRevisionContext; // revision guard 快照是本次事务 bump 的唯一基线
-};
-
 type ProofreadingItemChange = {
   current: MutableJsonRecord; // 数据库提交前的行事实，用于派生统计 delta
   next: MutableJsonRecord; // 数据库将要写入的最终行事实
-};
-
-type TranslationProgressCounters = {
-  total_line: number;
-  processed_line: number;
-  error_line: number;
-  line: number;
 };
 
 /**
@@ -55,7 +37,7 @@ export class ProofreadingService {
 
   private readonly session_state: ProjectSessionState; // 校对同步写入口只以 公开会话状态定位当前工程
 
-  private readonly write_coordinator: ProjectWriteCoordinator; // 校对 write 的 revision guard、bump 和 canonical 事件统一经由协调器
+  private readonly mutation_store: ProjectMutationStore; // 校对只提交业务 patch，事务和事件统一由 mutation store 完成
 
   /**
    * 注入数据库与运行时桥，保证写库和读侧缓存同步都可被测试替换
@@ -63,16 +45,11 @@ export class ProofreadingService {
   public constructor(
     database: ProjectDatabase,
     session_state: ProjectSessionState,
-    project_event_bus: ProjectEventBus,
-    project_change_publisher: ProjectChangePublisher | null = null,
+    mutation_store: ProjectMutationStore,
   ) {
     this.database = database;
     this.session_state = session_state;
-    this.write_coordinator = new ProjectWriteCoordinator(
-      database,
-      project_change_publisher,
-      project_event_bus,
-    );
+    this.mutation_store = mutation_store;
   }
 
   /**
@@ -108,7 +85,7 @@ export class ProofreadingService {
    */
   private async persist_save_item(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = await this.require_loaded_project_path();
-    const context = this.prepare_write_context(project_path, request);
+    const expected_section_revisions = this.prepare_write_context(request);
     const item_id = this.parse_integer_or_throw(request["item_id"]);
     const item = this.get_item_write_facts_by_ids(project_path, [item_id]).get(item_id);
     if (item === undefined) {
@@ -121,7 +98,7 @@ export class ProofreadingService {
       return { accepted: true, changes: [] };
     }
     const field_patch = this.build_item_field_patch(item, next_item, ["dst", "status"]);
-    return await this.persist_field_patch_items(project_path, context, {
+    return await this.persist_field_patch_items(project_path, expected_section_revisions, {
       changes: [{ current: item, next: next_item }],
       field_patch,
       update_translation_extras: true,
@@ -133,7 +110,7 @@ export class ProofreadingService {
    */
   private async persist_replace_all(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = await this.require_loaded_project_path();
-    const context = this.prepare_write_context(project_path, request);
+    const expected_section_revisions = this.prepare_write_context(request);
     const item_ids = this.normalize_item_ids(request["item_ids"]);
     const pattern = compile_text_pattern({
       source_text: String(request["search_text"] ?? ""),
@@ -164,7 +141,7 @@ export class ProofreadingService {
       const next_item = this.apply_manual_dst(item, replace_result.text);
       changes.push({ current: item, next: next_item });
     }
-    return await this.persist_changed_items(project_path, context, {
+    return await this.persist_changed_items(project_path, expected_section_revisions, {
       changes,
       items_payload: {
         payloadMode: "canonical-delta",
@@ -179,7 +156,7 @@ export class ProofreadingService {
    */
   private async persist_clear_translations(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = await this.require_loaded_project_path();
-    const context = this.prepare_write_context(project_path, request);
+    const expected_section_revisions = this.prepare_write_context(request);
     const item_ids = this.normalize_item_ids(request["item_ids"]);
     const current_by_id = this.get_item_write_facts_by_ids(project_path, item_ids);
     const changes: ProofreadingItemChange[] = [];
@@ -197,7 +174,7 @@ export class ProofreadingService {
       }
       changes.push({ current: item, next: next_item });
     }
-    return await this.persist_field_patch_items(project_path, context, {
+    return await this.persist_field_patch_items(project_path, expected_section_revisions, {
       changes,
       field_patch: { dst: "" },
       update_translation_extras: false,
@@ -209,7 +186,7 @@ export class ProofreadingService {
    */
   private async persist_set_translation_status(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = await this.require_loaded_project_path();
-    const context = this.prepare_write_context(project_path, request);
+    const expected_section_revisions = this.prepare_write_context(request);
     const next_status = this.parse_manual_status_or_throw(request["status"]);
     const item_ids = this.normalize_item_ids(request["item_ids"]);
     const current_by_id = this.get_item_write_facts_by_ids(project_path, item_ids);
@@ -229,7 +206,7 @@ export class ProofreadingService {
       }
       changes.push({ current: item, next: next_item });
     }
-    return await this.persist_field_patch_items(project_path, context, {
+    return await this.persist_field_patch_items(project_path, expected_section_revisions, {
       changes,
       field_patch: {
         status: next_status,
@@ -240,46 +217,11 @@ export class ProofreadingService {
   }
 
   /**
-   * 校对保存同时影响 item 行和 proofreading revision；item 为空时仍发布 section 变更供读侧对齐
-   */
-  private async publish_project_data_change(
-    project_path: string,
-    items_payload: Pick<
-      ProjectChangeItemsPayload,
-      "payloadMode" | "changedIds" | "deleteIds" | "fieldPatch"
-    >,
-  ): Promise<ProjectWriteResult> {
-    await this.write_coordinator.publish_app_events_for_committed_change({
-      projectPath: project_path,
-      source: "proofreading_save_items",
-      updatedSections: ["items", "proofreading"],
-      items: items_payload,
-    });
-    return this.write_coordinator.publish_project_data_change({
-      projectPath: project_path,
-      source: "proofreading_save_items",
-      updatedSections: ["items", "proofreading"],
-      items: items_payload,
-    });
-  }
-
-  /**
    * 校对 write 起手必须先校验 revision，再读取当前数据库事实
    */
-  private prepare_write_context(
-    project_path: string,
-    request: JsonRecord,
-  ): ProofreadingWriteContext {
+  private prepare_write_context(request: JsonRecord): ApiJsonValue | undefined {
     this.assert_no_legacy_fields(request, ["items", "translation_extras"]);
-    const revision_context = this.write_coordinator.assert_expected_section_revisions(
-      project_path,
-      request["expected_section_revisions"],
-      ["items", "proofreading"],
-    );
-
-    return {
-      revision_context,
-    };
+    return request["expected_section_revisions"];
   }
 
   /**
@@ -300,7 +242,7 @@ export class ProofreadingService {
    */
   private async persist_changed_items(
     project_path: string,
-    context: ProofreadingWriteContext,
+    expected_section_revisions: ApiJsonValue | undefined,
     args: {
       changes: ProofreadingItemChange[];
       items_payload: Pick<
@@ -313,24 +255,13 @@ export class ProofreadingService {
     if (args.changes.length === 0) {
       return { accepted: true, changes: [] };
     }
-    const update_args: Record<string, DatabaseJsonValue> = {
+    return await this.mutation_store.apply_proofreading_bulk_patch({
       projectPath: project_path,
-      items: args.changes.map((change) => change.next) as unknown as DatabaseJsonValue,
-    };
-    if (args.update_translation_extras) {
-      update_args.meta = {
-        translation_extras: this.build_translation_extras_after_status_changes(
-          project_path,
-          context.revision_context,
-          args.changes,
-        ) as unknown as DatabaseJsonValue,
-      };
-    }
-    this.database.execute_transaction([
-      this.op("updateBatch", update_args),
-      ...this.write_coordinator.build_section_revision_operations(context.revision_context),
-    ]);
-    return await this.publish_project_data_change(project_path, args.items_payload);
+      expectedSectionRevisions: expected_section_revisions,
+      changes: args.changes,
+      itemsPayload: args.items_payload,
+      updateTranslationExtras: args.update_translation_extras,
+    });
   }
 
   /**
@@ -338,7 +269,7 @@ export class ProofreadingService {
    */
   private async persist_field_patch_items(
     project_path: string,
-    context: ProofreadingWriteContext,
+    expected_section_revisions: ApiJsonValue | undefined,
     args: {
       changes: ProofreadingItemChange[];
       field_patch: ProjectChangeItemFieldPatch;
@@ -348,36 +279,12 @@ export class ProofreadingService {
     if (args.changes.length === 0) {
       return { accepted: true, changes: [] };
     }
-    const changed_item_ids = this.collect_item_ids(args.changes.map((change) => change.next));
-    const patch_args: Record<string, DatabaseJsonValue> = {
+    return await this.mutation_store.apply_proofreading_item_patch({
       projectPath: project_path,
-      itemIds: changed_item_ids,
-      patch: args.field_patch as unknown as DatabaseJsonValue,
-    };
-    const operations: DatabaseOperation[] = [this.op("patchItemFieldsByIds", patch_args)];
-    if (args.update_translation_extras) {
-      const meta = {
-        translation_extras: this.build_translation_extras_after_status_changes(
-          project_path,
-          context.revision_context,
-          args.changes,
-        ) as unknown as DatabaseJsonValue,
-      };
-      operations.push(
-        this.op("upsertMetaEntries", {
-          projectPath: project_path,
-          meta,
-        }),
-      );
-    }
-    this.database.execute_transaction([
-      ...operations,
-      ...this.write_coordinator.build_section_revision_operations(context.revision_context),
-    ]);
-    return await this.publish_project_data_change(project_path, {
-      payloadMode: "field-patch",
-      changedIds: changed_item_ids,
+      expectedSectionRevisions: expected_section_revisions,
+      changes: args.changes,
       fieldPatch: args.field_patch,
+      updateTranslationExtras: args.update_translation_extras,
     });
   }
 
@@ -389,124 +296,6 @@ export class ProofreadingService {
       ...item,
       dst: next_dst,
       status: next_dst === "" ? this.normalize_item_status(item["status"]) : "PROCESSED",
-    };
-  }
-
-  /**
-   * translation_extras 只按本次旧状态到新状态的差量修正，token/time 等非状态字段原样保留。
-   */
-  private build_translation_extras_after_status_changes(
-    project_path: string,
-    revision_context: ProjectWriteRevisionContext,
-    changes: ProofreadingItemChange[],
-  ): Record<string, unknown> {
-    const stored_progress = this.normalize_object(revision_context.meta["translation_extras"]);
-    const progress = this.read_translation_progress(revision_context.meta);
-    const counters = this.has_translation_progress_counters(stored_progress)
-      ? this.read_translation_progress_counters(progress)
-      : this.get_translation_status_summary(project_path);
-    const next_counters = this.apply_translation_status_deltas(counters, changes);
-    return {
-      ...progress,
-      ...next_counters,
-    };
-  }
-
-  /**
-   * 进度 meta 缺省时从空翻译任务进度起步，保证字段集合对任务面板稳定。
-   */
-  private read_translation_progress(meta: JsonRecord): Record<string, unknown> {
-    const empty_snapshot = create_empty_translation_task_snapshot();
-    return {
-      ...this.normalize_object(empty_snapshot["progress"] as ApiJsonValue),
-      ...this.normalize_object(meta["translation_extras"]),
-    };
-  }
-
-  /**
-   * 统计字段齐全时才允许差量更新复用 meta，否则用数据库聚合重新建立状态基线。
-   */
-  private has_translation_progress_counters(progress: Record<string, unknown>): boolean {
-    return (
-      this.is_finite_number(progress["total_line"]) &&
-      this.is_finite_number(progress["processed_line"]) &&
-      this.is_finite_number(progress["error_line"])
-    );
-  }
-
-  /**
-   * 从 progress 中读取非负整数统计，坏值在差量计算边界归零。
-   */
-  private read_translation_progress_counters(
-    progress: Record<string, unknown>,
-  ): TranslationProgressCounters {
-    const processed_line = this.read_non_negative_integer(progress["processed_line"]);
-    const error_line = this.read_non_negative_integer(progress["error_line"]);
-    return {
-      total_line: this.read_non_negative_integer(progress["total_line"]),
-      processed_line,
-      error_line,
-      line: processed_line + error_line,
-    };
-  }
-
-  /**
-   * 通过 SQLite 聚合状态基线，避免 meta 缺失时退回 JS 全量解析。
-   */
-  private get_translation_status_summary(project_path: string): TranslationProgressCounters {
-    const summary = this.normalize_object(
-      this.database.execute(this.op("getItemStatusSummary", { projectPath: project_path })),
-    );
-    const processed_line = this.read_non_negative_integer(summary["processed_line"]);
-    const error_line = this.read_non_negative_integer(summary["error_line"]);
-    return {
-      total_line: this.read_non_negative_integer(summary["total_line"]),
-      processed_line,
-      error_line,
-      line: processed_line + error_line,
-    };
-  }
-
-  /**
-   * 每条变更只贡献旧状态和新状态的统计差，译文本身不参与工作台统计。
-   */
-  private apply_translation_status_deltas(
-    counters: TranslationProgressCounters,
-    changes: ProofreadingItemChange[],
-  ): TranslationProgressCounters {
-    let total_line = counters.total_line;
-    let processed_line = counters.processed_line;
-    let error_line = counters.error_line;
-    for (const change of changes) {
-      const before = this.count_translation_status(change.current["status"]);
-      const after = this.count_translation_status(change.next["status"]);
-      total_line += after.total_line - before.total_line;
-      processed_line += after.processed_line - before.processed_line;
-      error_line += after.error_line - before.error_line;
-    }
-    processed_line = Math.max(0, Math.trunc(processed_line));
-    error_line = Math.max(0, Math.trunc(error_line));
-    return {
-      total_line: Math.max(0, Math.trunc(total_line)),
-      processed_line,
-      error_line,
-      line: processed_line + error_line,
-    };
-  }
-
-  /**
-   * 翻译统计只认任务进度三态，跳过、排除和未知状态不进入分母。
-   */
-  private count_translation_status(value: ApiJsonValue | undefined): TranslationProgressCounters {
-    const status = String(value ?? "");
-    const is_progress_status = is_task_progress_status(status);
-    const processed_line = status === "PROCESSED" ? 1 : 0;
-    const error_line = status === "ERROR" ? 1 : 0;
-    return {
-      total_line: is_progress_status ? 1 : 0,
-      processed_line,
-      error_line,
-      line: processed_line + error_line,
     };
   }
 
@@ -714,31 +503,6 @@ export class ProofreadingService {
       }
     }
     return null;
-  }
-
-  /**
-   * 把未知 JSON 收窄为对象，避免深层读取扩散类型断言
-   */
-  private normalize_object(value: ApiJsonValue | undefined): MutableJsonRecord {
-    return this.is_record(value) ? { ...value } : {};
-  }
-
-  /**
-   * 统计字段只接受有限数值，避免 NaN 进入持久化 meta。
-   */
-  private is_finite_number(value: unknown): boolean {
-    return typeof value === "number" && Number.isFinite(value);
-  }
-
-  /**
-   * 持久化统计统一使用非负整数，消除小数和坏值对进度条的污染。
-   */
-  private read_non_negative_integer(value: unknown): number {
-    const number_value = typeof value === "number" ? value : Number(value ?? 0);
-    if (!Number.isFinite(number_value)) {
-      return 0;
-    }
-    return Math.max(0, Math.trunc(number_value));
   }
 
   /**

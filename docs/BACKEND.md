@@ -26,7 +26,7 @@
 | 后端内部 committed event | `ProjectEventBus` | 写侧事务成功后的 after-commit 发布 |
 | 项目公开 manifest | `.lg` + `ProjectDataReader` | `/api/session/project/manifest` |
 | 页面 view model | 各功能域 query service + `ProjectDataCache` | 各功能域 view API |
-| 同步项目写入 | `ProjectWriteCoordinator` + `WorkbenchService` / `ProofreadingService` / `QualityService` 等领域服务 | database transaction + internal event + `ProjectChangePublisher` |
+| 同步运行态项目写入 | `ProjectMutationStore` | database transaction + internal event + `ProjectChangePublisher` |
 | 项目公开变更事件 | `ProjectChangeEventAdapter` + `ProjectChangePublisher` | 同一事件同时返回 HTTP 写入结果并广播 SSE |
 | 任务 busy/status/request pressure | `TaskRunState` | `TaskRunPublisher` |
 | 任务公开快照 | `TaskSnapshotBuilder` | 任务命令 ack、`/api/tasks/snapshot`、`task.snapshot_changed` |
@@ -56,6 +56,9 @@ project, files, items, quality, prompts, analysis, proofreading
 - `/api/translation/files/export` 触发当前 loaded 工程的普通译文文件产物导出。
 - 完整分析候选池不进入常驻项目快照，只能通过 `/api/analysis/candidates/list` 按需读取。
 - 同步项目写入成功返回 `ProjectWriteResult = { accepted: true, changes }`；`changes` 与后续 SSE 广播是同一批后端 canonical `ProjectChangeEvent`。
+- loaded 工程运行态事实写入只允许经 `ProjectMutationStore` 提交；领域服务负责请求校验、业务派生和语义化写入意图，不直接执行事务、推进 section revision 或发布项目变更。
+- `ProjectMutationStore` 的提交顺序固定为数据库事务成功后先发布内部 committed event，再发布公开项目变更；内部事件失败时不能继续发布公开 SSE。
+- project create/load/unload、migration、默认预设初始化、CLI bootstrap 资源提交和测试前置 seed 属于生命周期、初始化或测试夹具写入，不纳入运行态唯一写入口。
 - `ProjectChangeEvent` 必须带后端确认的 `projectPath`、`projectRevision`、本次更新 section 的 `sectionRevisions` 和 `updatedSections`；不属于当前 loaded 工程的草稿不能发布。
 - 变更 payload mode 只允许三类：`canonical-delta` 直接携带后端规范数据，`field-patch` 只表达校对可写字段 `dst / status / retry_count`，`section-invalidated` 只作为页面重新 query 的刷新提示。
 - canonical item upsert 必须是完整公开 DTO；领域草稿可只给 `changedIds`，但公开事件必须由后端 adapter 回读补齐，瘦身 item DTO 不能进入项目事件。

@@ -1,23 +1,15 @@
 import type { ApiJsonValue } from "../../api/api-types";
-import type { ProjectEventBus } from "../../project/project-events";
 import type { ProjectDataCache } from "../../project/project-data";
 import { ProjectDatabase } from "../../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
-import {
-  ProjectChangePublisher,
-  ProjectWriteCoordinator,
-  type ProjectWriteChangeRequest,
-} from "../../project/project-changes";
-import { get_section_revision, type ProjectDataSection } from "../../project/project-data";
+import { ProjectMutationStore } from "../../project/project-mutation-store";
 import { ProjectSessionState } from "../../project/project-session";
 import { TaskRunState } from "../run/task-run-state";
 import type { JsonRecord, MutableJsonRecord } from "../run/task-run-types";
 import type { TaskArtifact } from "../protocol/artifact";
 import type { TaskType } from "../../../domain/task";
 import { QualityRuleSnapshotTool } from "../../../shared/quality/snapshot";
-import { isProjectDataSection } from "../../../shared/project-event";
 import { TASK_PROGRESS_STATUSES } from "../../../domain/task";
-import { count_analysis_glossary_candidates } from "../../../shared/analysis-candidate";
 import * as AppErrors from "../../../shared/error";
 
 /**
@@ -32,7 +24,7 @@ export class ProjectTaskStore {
 
   private readonly project_data_cache: ProjectDataCache; // 任务启动热读 items / quality / prompts，写库仍只走 ProjectDatabase
 
-  private readonly write_coordinator: ProjectWriteCoordinator; // 任务提交的 revision bump 和 canonical 事件发布统一经由协调器
+  private readonly mutation_store: ProjectMutationStore; // 任务提交只表达 artifact 语义，事务与事件由 mutation store 统一完成
 
   /**
    * ProjectTaskStore 只组合现有 TS 权威，不自行持有长期项目缓存
@@ -42,18 +34,13 @@ export class ProjectTaskStore {
     session_state: ProjectSessionState,
     task_run_state: TaskRunState,
     project_data_cache: ProjectDataCache,
-    project_change_publisher: ProjectChangePublisher,
-    project_event_bus: ProjectEventBus,
+    mutation_store: ProjectMutationStore,
   ) {
     this.database = database;
     this.session_state = session_state;
     this.task_run_state = task_run_state;
     this.project_data_cache = project_data_cache;
-    this.write_coordinator = new ProjectWriteCoordinator(
-      database,
-      project_change_publisher,
-      project_event_bus,
-    );
+    this.mutation_store = mutation_store;
   }
 
   /**
@@ -180,31 +167,15 @@ export class ProjectTaskStore {
    */
   private async commit_item_updates_batch(request: JsonRecord): Promise<MutableJsonRecord> {
     const project_path = this.require_loaded_project_path();
-    const finalized_items = this.normalize_items(request["items"]);
     const extras = this.normalize_object(request["translation_extras"]);
-    this.database.execute_transaction([
-      this.op("updateBatch", {
-        projectPath: project_path,
-        items: finalized_items as unknown as DatabaseJsonValue,
-        meta: { translation_extras: extras } as unknown as DatabaseJsonValue,
-      }),
-      ...this.bump_section_revision_operations(project_path, ["items"]),
-    ]);
-    const changed_item_ids = this.collect_item_ids(finalized_items);
-    if (changed_item_ids.length > 0) {
-      await this.publish_task_project_change({
-        projectPath: project_path,
-        source: "translation_batch_update",
-        updatedSections: ["items"],
-        items: {
-          payloadMode: "canonical-delta",
-          changedIds: changed_item_ids,
-        },
-      });
-    }
+    const ack = await this.mutation_store.apply_translation_item_patches({
+      projectPath: project_path,
+      items: request["items"],
+      translationExtras: extras,
+    });
     return {
-      changed_item_ids: changed_item_ids as unknown as ApiJsonValue,
-      section_revisions: this.build_section_revisions(project_path, ["items"]),
+      changed_item_ids: ack.changed_item_ids as unknown as ApiJsonValue,
+      section_revisions: ack.section_revisions,
     };
   }
 
@@ -214,12 +185,10 @@ export class ProjectTaskStore {
   public update_translation_progress(request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
     const extras = this.normalize_object(request["translation_extras"]);
-    this.database.execute(
-      this.op("upsertMetaEntries", {
-        projectPath: project_path,
-        meta: { translation_extras: extras } as unknown as DatabaseJsonValue,
-      }),
-    );
+    this.mutation_store.update_task_progress_meta({
+      projectPath: project_path,
+      meta: { translation_extras: extras as unknown as ApiJsonValue },
+    });
     return { accepted: true };
   }
 
@@ -240,16 +209,15 @@ export class ProjectTaskStore {
    */
   public async reset_analysis_progress(_request: JsonRecord): Promise<MutableJsonRecord> {
     const project_path = this.require_loaded_project_path();
-    this.database.execute_transaction([
-      this.op("deleteAnalysisItemCheckpoints", { projectPath: project_path }),
-      this.op("clearAnalysisCandidateAggregates", { projectPath: project_path }),
-      this.op("upsertMetaEntries", {
-        projectPath: project_path,
-        meta: { analysis_extras: {}, analysis_candidate_count: 0 },
-      }),
-      ...this.bump_section_revision_operations(project_path, ["analysis"]),
-    ]);
-    await this.publish_analysis_patch("analysis_reset", {}, 0);
+    await this.mutation_store.reset_analysis_state({
+      projectPath: project_path,
+      requireExpectedSectionRevisions: false,
+      source: "analysis_reset",
+      mode: "all",
+      analysisExtras: {},
+      analysisCandidateCount: 0,
+      sectionData: this.build_analysis_section_delta({}, 0),
+    });
     return { accepted: true };
   }
 
@@ -261,12 +229,10 @@ export class ProjectTaskStore {
     const snapshot = this.normalize_progress_snapshot(
       this.normalize_object(request["analysis_extras"]),
     );
-    this.database.execute(
-      this.op("upsertMetaEntries", {
-        projectPath: project_path,
-        meta: { analysis_extras: snapshot },
-      }),
-    );
+    this.mutation_store.update_task_progress_meta({
+      projectPath: project_path,
+      meta: { analysis_extras: snapshot as unknown as ApiJsonValue },
+    });
     const meta = this.get_all_meta(project_path);
     return {
       analysis_extras: snapshot,
@@ -279,59 +245,13 @@ export class ProjectTaskStore {
    */
   private async commit_analysis_artifact_batch(request: JsonRecord): Promise<MutableJsonRecord> {
     const project_path = this.require_loaded_project_path();
-    const success_checkpoints = this.normalize_checkpoint_rows(request["success_checkpoints"]);
-    const error_checkpoints = this.normalize_error_checkpoint_rows(request["error_checkpoints"]);
-    const glossary_entries = this.normalize_glossary_entries(request["glossary_entries"]);
-    const progress_snapshot = this.normalize_nullable_progress_snapshot(
-      request["progress_snapshot"],
-    );
-    const meta = this.get_all_meta(project_path);
-    const candidate_result = this.build_next_candidate_rows(
-      project_path,
-      glossary_entries,
-      this.read_number(meta["analysis_candidate_count"], 0),
-    );
-    const operations: DatabaseOperation[] = [];
-    if (success_checkpoints.length > 0 || error_checkpoints.length > 0) {
-      operations.push(
-        this.op("upsertAnalysisItemCheckpoints", {
-          projectPath: project_path,
-          checkpoints: [
-            ...success_checkpoints,
-            ...error_checkpoints,
-          ] as unknown as DatabaseJsonValue,
-        }),
-      );
-    }
-    if (candidate_result.rows.length > 0) {
-      operations.push(
-        this.op("upsertAnalysisCandidateAggregates", {
-          projectPath: project_path,
-          aggregates: candidate_result.rows as unknown as DatabaseJsonValue,
-        }),
-      );
-    }
-    operations.push(
-      this.op("upsertMetaEntries", {
-        projectPath: project_path,
-        meta: {
-          ...(progress_snapshot === null ? {} : { analysis_extras: progress_snapshot }),
-          analysis_candidate_count: candidate_result.count,
-        },
-      }),
-      ...this.bump_section_revision_operations(project_path, ["analysis"]),
-    );
-    this.database.execute_transaction(operations);
-    await this.publish_analysis_patch(
-      "analysis_batch_update",
-      progress_snapshot ?? this.normalize_object(meta["analysis_extras"]),
-      candidate_result.count,
-    );
-    return {
-      inserted_count: glossary_entries.length,
-      analysis_candidate_count: candidate_result.count,
-      section_revisions: this.build_section_revisions(project_path, ["analysis"]),
-    };
+    return await this.mutation_store.commit_analysis_artifacts({
+      projectPath: project_path,
+      successCheckpoints: request["success_checkpoints"],
+      errorCheckpoints: request["error_checkpoints"],
+      glossaryEntries: request["glossary_entries"],
+      progressSnapshot: request["progress_snapshot"],
+    });
   }
 
   /**
@@ -361,34 +281,19 @@ export class ProjectTaskStore {
     request: JsonRecord,
   ): Promise<MutableJsonRecord> {
     const project_path = this.require_loaded_project_path();
-    const finalized_items = this.normalize_items(request["items"]);
     const translation_extras = this.normalize_object(request["translation_extras"]);
-    this.database.execute_transaction([
-      this.op("updateBatch", {
-        projectPath: project_path,
-        items: finalized_items as unknown as DatabaseJsonValue,
-        meta: {
-          translation_extras,
-        } as unknown as DatabaseJsonValue,
-      }),
-      ...this.bump_section_revision_operations(project_path, ["items", "proofreading"]),
-    ]);
-    const changed_item_ids = this.collect_item_ids(finalized_items);
-    this.task_run_state.remove_translation_item_ids(changed_item_ids);
-    await this.publish_task_project_change({
+    const ack = await this.mutation_store.apply_retranslation_item_patches({
       projectPath: project_path,
-      source: "retranslate_items",
-      updatedSections: ["items", "proofreading"],
-      items: {
-        payloadMode: "canonical-delta",
-        changedIds: changed_item_ids,
-      },
+      items: request["items"],
+      translationExtras: translation_extras,
     });
+    const changed_item_ids = ack.changed_item_ids;
+    this.task_run_state.remove_translation_item_ids(changed_item_ids);
     return {
       changed_item_ids: changed_item_ids as unknown as ApiJsonValue,
       translation_scope: this.task_run_state.snapshot()
         .translation_scope as unknown as ApiJsonValue,
-      section_revisions: this.build_section_revisions(project_path, ["items", "proofreading"]),
+      section_revisions: ack.section_revisions,
     };
   }
 
@@ -401,36 +306,6 @@ export class ProjectTaskStore {
       throw new AppErrors.ProjectNotLoadedError();
     }
     return state.projectPath;
-  }
-
-  /**
-   * 发布 analysis 变更时只携带轻量进度摘要，避免运行中事件回读完整候选池。
-   */
-  private async publish_analysis_patch(
-    source: string,
-    analysis_extras: MutableJsonRecord,
-    candidate_count: number,
-  ): Promise<void> {
-    const project_path = this.require_loaded_project_path();
-    await this.publish_task_project_change({
-      projectPath: project_path,
-      source,
-      updatedSections: ["analysis"],
-      sections: {
-        analysis: {
-          payloadMode: "canonical-delta",
-          data: this.build_analysis_section_delta(analysis_extras, candidate_count),
-        },
-      },
-    });
-  }
-
-  /**
-   * 任务写入先完成内部缓存事件，再发布公开项目变更，保持任务链路和普通写入口一致。
-   */
-  private async publish_task_project_change(request: ProjectWriteChangeRequest): Promise<void> {
-    await this.write_coordinator.publish_app_events_for_committed_change(request);
-    this.write_coordinator.publish_project_data_change(request);
   }
 
   /**
@@ -451,132 +326,6 @@ export class ProjectTaskStore {
         line: this.read_number(snapshot["line"], 0),
       },
     };
-  }
-
-  /**
-   * 从当前 meta 构建指定 section revision 响应，供任务提交回执和日志使用
-   */
-  private build_section_revisions(project_path: string, sections: string[]): MutableJsonRecord {
-    const meta = this.get_all_meta(project_path);
-    const result: MutableJsonRecord = {};
-    for (const section of sections) {
-      result[section] = get_section_revision(meta, section);
-    }
-    return result;
-  }
-
-  /**
-   * 任务提交使用统一 revision writer，proofreading 也走同一 section bump 口径
-   */
-  private bump_section_revision_operations(
-    project_path: string,
-    sections: string[],
-  ): DatabaseOperation[] {
-    const meta = this.get_all_meta(project_path);
-    return this.write_coordinator.build_section_revision_operations({
-      project_path,
-      meta,
-      sections: sections.filter((section): section is ProjectDataSection =>
-        isProjectDataSection(section),
-      ),
-    });
-  }
-
-  /**
-   * 分析候选池按 src 合并，保留 服务端内部最小投票语义
-   */
-  private build_next_candidate_rows(
-    project_path: string,
-    glossary_entries: MutableJsonRecord[],
-    current_count: number,
-  ): { rows: MutableJsonRecord[]; count: number } {
-    const normalized_entries = glossary_entries.filter((entry) => {
-      const src = String(entry["src"] ?? "").trim();
-      const dst = String(entry["dst"] ?? "").trim();
-      return src !== "" && dst !== "";
-    });
-    if (normalized_entries.length === 0) {
-      return { rows: [], count: Math.max(0, current_count) };
-    }
-    const touched_srcs = [
-      ...new Set(normalized_entries.map((entry) => String(entry["src"] ?? "").trim())),
-    ];
-    const aggregate = new Map<string, MutableJsonRecord>();
-    for (const row of this.get_candidate_aggregate_by_srcs(project_path, touched_srcs)) {
-      const src = String(row["src"] ?? "").trim();
-      if (src !== "") {
-        aggregate.set(src, {
-          ...row,
-          dst_votes: this.normalize_vote_map(row["dst_votes"]),
-          info_votes: this.normalize_vote_map(row["info_votes"]),
-        });
-      }
-    }
-    const previous_touched_count = this.count_candidate_entries([...aggregate.values()]);
-    const now = new Date().toISOString();
-    for (const entry of normalized_entries) {
-      const src = String(entry["src"] ?? "").trim();
-      const dst = String(entry["dst"] ?? "").trim();
-      if (src === "" || dst === "") {
-        continue;
-      }
-      const current =
-        aggregate.get(src) ??
-        ({
-          src,
-          dst_votes: {},
-          info_votes: {},
-          observation_count: 0,
-          first_seen_at: now,
-          last_seen_at: now,
-          case_sensitive: Boolean(entry["case_sensitive"] ?? false),
-        } as MutableJsonRecord);
-      const dst_votes = this.normalize_vote_map(current["dst_votes"]);
-      const info_votes = this.normalize_vote_map(current["info_votes"]);
-      const info = String(entry["info"] ?? "").trim();
-      dst_votes[dst] = this.read_number(dst_votes[dst], 0) + 1;
-      if (info !== "") {
-        info_votes[info] = this.read_number(info_votes[info], 0) + 1;
-      }
-      current["dst_votes"] = dst_votes as unknown as ApiJsonValue;
-      current["info_votes"] = info_votes as unknown as ApiJsonValue;
-      current["observation_count"] = this.read_number(current["observation_count"], 0) + 1;
-      current["last_seen_at"] = now;
-      current["case_sensitive"] =
-        Boolean(current["case_sensitive"]) || Boolean(entry["case_sensitive"]);
-      aggregate.set(src, current);
-    }
-    const rows = [...aggregate.values()];
-    const next_touched_count = this.count_candidate_entries(rows);
-    return {
-      rows,
-      count: Math.max(0, current_count - previous_touched_count + next_touched_count),
-    };
-  }
-
-  /**
-   * 候选数只统计共享规则认定的可导出术语，避免任务提交和导入后重算口径分叉
-   */
-  private count_candidate_entries(rows: MutableJsonRecord[]): number {
-    return count_analysis_glossary_candidates(rows);
-  }
-
-  /**
-   * 投票 map 只接受正整数票数，坏数据不会进入新候选池
-   */
-  private normalize_vote_map(value: ApiJsonValue | undefined): Record<string, number> {
-    if (!this.is_record(value)) {
-      return {};
-    }
-    const result: Record<string, number> = {};
-    for (const [key, raw_votes] of Object.entries(value)) {
-      const text = String(key).trim();
-      const votes = this.read_number(raw_votes, 0);
-      if (text !== "" && votes > 0) {
-        result[text] = (result[text] ?? 0) + votes;
-      }
-    }
-    return result;
   }
 
   /**
@@ -604,30 +353,6 @@ export class ProjectTaskStore {
       });
     }
     return rows;
-  }
-
-  /**
-   * 失败 checkpoint 在 服务端补齐错误次数，避免 worker 持有旧 checkpoint 缓存
-   */
-  private normalize_error_checkpoint_rows(value: ApiJsonValue | undefined): MutableJsonRecord[] {
-    const project_path = this.require_loaded_project_path();
-    const existing = new Map<number, MutableJsonRecord>();
-    for (const row of this.get_analysis_checkpoints(project_path)) {
-      existing.set(this.read_number(row["item_id"], 0), row);
-    }
-    const now = new Date().toISOString();
-    return this.normalize_checkpoint_rows(value).map((row) => {
-      const item_id = this.read_number(row["item_id"], 0);
-      const previous = existing.get(item_id);
-      const previous_error_count =
-        previous?.["status"] === "ERROR" ? this.read_number(previous["error_count"], 0) : 0;
-      return {
-        ...row,
-        status: "ERROR",
-        updated_at: now,
-        error_count: previous_error_count + 1,
-      };
-    });
   }
 
   /**
@@ -737,24 +462,6 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 候选聚合只按本批触达 src 回读，避免分析运行中每个批次全量扫描候选池。
-   */
-  private get_candidate_aggregate_by_srcs(
-    project_path: string,
-    srcs: string[],
-  ): MutableJsonRecord[] {
-    const value = this.database.execute(
-      this.op("getAnalysisCandidateAggregatesBySrcs", {
-        projectPath: project_path,
-        srcs: srcs as unknown as DatabaseJsonValue,
-      }),
-    );
-    return Array.isArray(value)
-      ? value.filter((row): row is JsonRecord => this.is_record(row)).map((row) => ({ ...row }))
-      : [];
-  }
-
-  /**
    * work unit 提交的 item payload 必须先收窄为普通对象数组
    */
   private normalize_items(value: ApiJsonValue | undefined): MutableJsonRecord[] {
@@ -801,22 +508,6 @@ export class ProjectTaskStore {
       }
     }
     return artifacts;
-  }
-
-  /**
-   * patch 只需要变更 item id，去重后可避免重复 merge
-   */
-  private collect_item_ids(items: MutableJsonRecord[]): number[] {
-    const ids: number[] = [];
-    const seen = new Set<number>();
-    for (const item of items) {
-      const item_id = this.read_number(item["id"], 0);
-      if (item_id > 0 && !seen.has(item_id)) {
-        seen.add(item_id);
-        ids.push(item_id);
-      }
-    }
-    return ids;
   }
 
   /**
