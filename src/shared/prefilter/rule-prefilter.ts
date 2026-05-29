@@ -102,6 +102,8 @@ function should_skip_rule_prefilter_line(raw_line: string): boolean {
  * 判断当前值是否满足业务条件。
  */
 export function should_skip_by_rule_prefilter(text: string): boolean {
-  const lines = text === "" ? [] : text.split(LINE_BREAK_PATTERN);
-  return lines.length > 0 && lines.every(should_skip_rule_prefilter_line);
+  if (text.trim() === "") {
+    return true;
+  }
+  return text.split(LINE_BREAK_PATTERN).every(should_skip_rule_prefilter_line);
 }

@@ -151,6 +151,36 @@ describe("compute_project_prefilter_write", () => {
     });
   });
 
+  it("任意源语言下空白原文仍按规则过滤并统计", () => {
+    const output = compute_project_prefilter_write({
+      state: create_state({
+        "1": {
+          item_id: 1,
+          file_path: "script.txt",
+          row_number: 1,
+          src: "",
+          status: "NONE",
+        },
+        "2": {
+          item_id: 2,
+          file_path: "script.txt",
+          row_number: 2,
+          src: "　",
+          status: "NONE",
+        },
+      }),
+      source_language: "ALL",
+      target_language: "ZH",
+      mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: true,
+    });
+
+    expect(output.items["1"].status).toBe("RULE_SKIPPED");
+    expect(output.items["2"].status).toBe("RULE_SKIPPED");
+    expect(output.stats.rule_skipped).toBe(2);
+    expect(output.stats.language_skipped).toBe(0);
+  });
+
   it("强制翻译条目绕过规则和语言预过滤并保留运行态字段", () => {
     const output = compute_project_prefilter_write({
       state: create_state({

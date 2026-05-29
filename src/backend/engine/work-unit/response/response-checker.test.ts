@@ -257,6 +257,20 @@ describe("响应检查器任意源语言", () => {
       }),
     ).toEqual(["LINE_ERROR_EMPTY_LINE"]);
   });
+
+  it("任意源语言下空白原文仍按规则过滤短路", () => {
+    expect(
+      check_lines(["", "　"], ["", "任意译文"], {
+        config: create_config({
+          source_language: "ALL",
+          target_language: "ZH",
+          check_kana_residue: false,
+          check_hangeul_residue: false,
+          check_similarity: true,
+        }),
+      }),
+    ).toEqual(["NONE", "NONE"]);
+  });
 });
 
 function check_response(
