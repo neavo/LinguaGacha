@@ -293,6 +293,40 @@ describe("useAnalysisWorkbenchTask", () => {
     );
   });
 
+  it("分析完成但没有候选术语时不自动弹出导入确认框", async () => {
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: runtime_fixture.current.task_snapshot,
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    await render_probe();
+    await flush_microtasks();
+
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "done",
+        busy: false,
+        line: 10,
+        processed_line: 10,
+        extras: { kind: "analysis", candidate_count: 0 },
+      }),
+    );
+
+    await render_probe();
+    await flush_microtasks();
+
+    expect(latest_state?.analysis_confirm_state).toBeNull();
+    expect(push_toast_mock).toHaveBeenCalledWith(
+      "success",
+      "workbench_page.analysis_task.feedback.done",
+    );
+  });
+
   it("手动导入遇到重复候选时打开重复确认框且不写入", async () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({

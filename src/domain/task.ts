@@ -128,3 +128,51 @@ export function is_active_analysis_task_status(value: unknown): boolean {
 export function normalize_task_type(value: unknown, fallback: TaskType = "translation"): TaskType {
   return is_task_type(value) ? value : fallback;
 }
+
+function normalize_translation_item_ids(value: unknown): number[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const item_ids: number[] = [];
+  const seen_ids = new Set<number>();
+  value.forEach((raw_item_id) => {
+    const item_id = Number(raw_item_id);
+    if (!Number.isInteger(item_id) || item_id <= 0 || seen_ids.has(item_id)) {
+      return;
+    }
+
+    seen_ids.add(item_id);
+    item_ids.push(item_id);
+  });
+  return item_ids;
+}
+
+/** translation scope 读取侧归一化；空 items 表示运行中重翻已经没有剩余行，命令边界仍负责拒绝空请求 */
+export function normalize_translation_scope(value: unknown): TranslationScope {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return { kind: "all" };
+  }
+
+  const scope = value as Record<string, unknown>;
+  if (scope["kind"] !== "items") {
+    return { kind: "all" };
+  }
+
+  const raw_item_ids = scope["item_ids"];
+  const item_ids = normalize_translation_item_ids(raw_item_ids);
+  if (item_ids.length > 0) {
+    return { kind: "items", item_ids };
+  }
+
+  return Array.isArray(raw_item_ids) && raw_item_ids.length === 0
+    ? { kind: "items", item_ids: [] }
+    : { kind: "all" };
+}
+
+/** 克隆 translation scope，避免跨运行态共享 item_ids 数组引用 */
+export function clone_translation_scope(scope: TranslationScope): TranslationScope {
+  return scope.kind === "items"
+    ? { kind: "items", item_ids: [...scope.item_ids] }
+    : { kind: "all" };
+}

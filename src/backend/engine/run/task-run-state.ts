@@ -1,6 +1,10 @@
 import type { ApiJsonValue } from "../../api/api-types";
 import type { TaskRunStatus, TaskRunStateSnapshot, TaskType } from "./task-run-types";
-import type { TranslationScope } from "../../../domain/task";
+import {
+  clone_translation_scope,
+  normalize_translation_scope,
+  type TranslationScope,
+} from "../../../domain/task";
 
 const IDLE_TASK_TYPE = "idle"; // Engine 空闲态统一用 idle 表达，避免快照泄漏任务类型细节
 
@@ -30,7 +34,7 @@ export class TaskRunState {
       busy: this.busy,
       request_in_flight_count: this.request_in_flight_count,
       active_task_type: this.active_task_type,
-      translation_scope: this.clone_translation_scope(this.translation_scope),
+      translation_scope: clone_translation_scope(this.translation_scope),
     };
   }
 
@@ -42,7 +46,7 @@ export class TaskRunState {
     this.busy = true;
     this.active_task_type = task_type;
     if (task_type === "translation") {
-      this.translation_scope = this.normalize_translation_scope(scope);
+      this.translation_scope = normalize_translation_scope(scope);
     }
     this.bump_run_revision();
   }
@@ -55,7 +59,7 @@ export class TaskRunState {
     this.busy = snapshot.busy;
     this.request_in_flight_count = snapshot.request_in_flight_count;
     this.active_task_type = snapshot.active_task_type;
-    this.translation_scope = this.normalize_translation_scope(snapshot.translation_scope);
+    this.translation_scope = normalize_translation_scope(snapshot.translation_scope);
     this.bump_run_revision();
   }
 
@@ -103,7 +107,8 @@ export class TaskRunState {
     if (this.translation_scope.kind !== "items") {
       return;
     }
-    const done_ids = new Set(this.normalize_item_ids(item_ids));
+    const done_scope = normalize_translation_scope({ kind: "items", item_ids });
+    const done_ids = new Set(done_scope.kind === "items" ? done_scope.item_ids : []);
     this.translation_scope = {
       kind: "items",
       item_ids: this.translation_scope.item_ids.filter((item_id) => !done_ids.has(item_id)),
@@ -124,51 +129,5 @@ export class TaskRunState {
   private read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
-  }
-
-  /**
-   * item id 列表必须去重且为正整数，避免 renderer 行级状态被脏载荷污染
-   */
-  private normalize_item_ids(value: ApiJsonValue | number[] | undefined): number[] {
-    if (!Array.isArray(value)) {
-      return [];
-    }
-    const result: number[] = [];
-    const seen = new Set<number>();
-    for (const raw_item_id of value) {
-      const item_id = this.read_number(raw_item_id as ApiJsonValue, NaN);
-      if (!Number.isFinite(item_id) || item_id <= 0 || seen.has(item_id)) {
-        continue;
-      }
-      seen.add(item_id);
-      result.push(item_id);
-    }
-    return result;
-  }
-
-  /**
-   * translation scope 是翻译范围唯一语义源；非法或空 items scope 回退为 all，命令边界负责报错
-   */
-  private normalize_translation_scope(
-    value: TranslationScope | ApiJsonValue | undefined,
-  ): TranslationScope {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      return { kind: "all" };
-    }
-    const record = value as Record<string, ApiJsonValue>;
-    if (record["kind"] !== "items") {
-      return { kind: "all" };
-    }
-    const item_ids = this.normalize_item_ids(record["item_ids"]);
-    return item_ids.length > 0 ? { kind: "items", item_ids } : { kind: "all" };
-  }
-
-  /**
-   * snapshot 不能泄漏内部数组引用
-   */
-  private clone_translation_scope(scope: TranslationScope): TranslationScope {
-    return scope.kind === "items"
-      ? { kind: "items", item_ids: [...scope.item_ids] }
-      : { kind: "all" };
   }
 }

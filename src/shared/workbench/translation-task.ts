@@ -1,4 +1,9 @@
-import { is_active_translation_task_status as is_base_active_translation_task_status } from "../../domain/task";
+import {
+  clone_translation_scope,
+  is_active_translation_task_status as is_base_active_translation_task_status,
+  normalize_translation_scope,
+  type TranslationScope,
+} from "../../domain/task";
 
 export type TranslationTaskActionKind =
   | "reset-all"
@@ -21,6 +26,7 @@ export type TranslationTaskSnapshot = {
   total_input_tokens: number;
   time: number;
   start_time: number;
+  scope: TranslationScope;
 };
 
 export type TranslationTaskPayload = {
@@ -28,9 +34,13 @@ export type TranslationTaskPayload = {
     progress?: Partial<
       Omit<
         TranslationTaskSnapshot,
-        "run_revision" | "task_type" | "status" | "busy" | "request_in_flight_count"
+        "run_revision" | "task_type" | "status" | "busy" | "request_in_flight_count" | "scope"
       >
     >;
+    extras?: {
+      kind?: string;
+      scope?: unknown;
+    };
   };
 };
 
@@ -73,6 +83,7 @@ export function create_empty_translation_task_snapshot(): TranslationTaskSnapsho
     total_input_tokens: 0,
     time: 0,
     start_time: 0,
+    scope: { kind: "all" },
   };
 }
 
@@ -97,6 +108,7 @@ export function clone_translation_task_snapshot(
     total_input_tokens: snapshot.total_input_tokens,
     time: snapshot.time,
     start_time: snapshot.start_time,
+    scope: clone_translation_scope(snapshot.scope),
   };
 }
 
@@ -123,6 +135,7 @@ export function normalize_translation_task_snapshot_payload(
     total_input_tokens: Number(progress.total_input_tokens ?? 0),
     time: Number(progress.time ?? 0),
     start_time: Number(progress.start_time ?? 0),
+    scope: normalize_translation_scope(snapshot.extras?.scope ?? snapshot.scope),
   };
 }
 
