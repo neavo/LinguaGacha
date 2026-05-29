@@ -83,7 +83,7 @@ describe("proofreading-api-client", () => {
       return {};
     });
 
-    const sync_state = await client.hydrate_proofreading_full({
+    const sync_state = await client.sync_proofreading_cache({
       sourceLanguage: "ja",
       targetLanguage: "zh-CN",
     });

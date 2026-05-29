@@ -22,10 +22,10 @@
 | --- | --- | --- |
 | 应用设置、最近工程、语言 | `AppSettingService` | 设置 API、CLI transient overrides、`settings.changed` |
 | 当前 loaded 工程身份 | `ProjectSessionState` | `ProjectLifecycleService` |
-| 当前 loaded 工程热读数据 | `ProjectDataCache` | `ProjectLifecycleService` 热机、`ProjectEventBus` committed event、各功能域 view API |
+| 当前 loaded 工程热读数据 | `CacheManager` | `ProjectLifecycleService` 热机、`ProjectEventBus` committed event、各功能域 view API |
 | 后端内部 committed event | `ProjectEventBus` | 写侧事务成功后的 after-commit 发布 |
 | 项目公开 manifest | `.lg` + `ProjectDataReader` | `/api/session/project/manifest` |
-| 页面 view model | 各功能域 query service + `ProjectDataCache` | 各功能域 view API |
+| 页面 view model | 各功能域 query service + `CacheManager` | 各功能域 view API |
 | 同步运行态项目写入 | `ProjectMutationStore` | database transaction + internal event + `ProjectChangePublisher` |
 | 项目公开变更事件 | `ProjectChangeEventAdapter` + `ProjectChangePublisher` | 同一事件同时返回 HTTP 写入结果并广播 SSE |
 | 任务 busy/status/request pressure | `TaskRunState` | `TaskRunPublisher` |
@@ -48,8 +48,9 @@ project, files, items, quality, prompts, analysis, proofreading
 - `/api/session/project/manifest` 只返回项目身份、project revision、section revision 和 counts，不预热大 section。
 - `files` / `items` / `analysis` 的 section revision 继续读写既有 `.lg` meta key `project_runtime_revision.*`；本次命名清理不改变数据库物理字段。
 - 前端读取项目 view model 只能走对应功能域 view API；query response 必须携带本次 view 依赖的 `sectionRevisions`，页面写入使用这些 revision 作为乐观锁依赖。
-- `ProjectDataCache` 是当前 loaded 工程的热读事实拥有者；query service 只能从 cache、按需数据库数据读取和 shared 纯算法组合页面 view，不能建立第二套长期项目事实缓存。
-- 校对列表派生由 `ProofreadingCache` 在 Electron 主进程后端能力层持有；`ProjectDataCache` 不保存列表、筛选或 worker 细节，列表查询继续走本地 cache service。
+- `CacheManager` 是当前 session 热读缓存管理根，持有 loaded 缓存身份、epoch、freshness、recoverable error、section revision，并组合 item / file / quality / prompt / analysis 子缓存；query service 只能从 cache、按需数据库数据读取和 shared 纯算法组合页面 view，不能建立第二套长期项目事实缓存。
+- `CacheChange` 是 `src/backend/cache` 内部 committed event 变化对象；`CacheManager` 先把项目事件收窄成 `CacheChange`，item 精确 delta 先更新基础热读 cache，再交给页面读模型缓存应用变化。全量重建只用于打开工程、可恢复错误恢复、未知范围、文件变化或明确 full 失效。
+- 校对列表和质量统计页面读模型缓存由 `src/backend/cache` 持有；基础热读缓存不保存校对筛选、列表窗口、统计结果或 worker 细节，页面读模型查询继续走本地 cache service。
 - 非 engine 的重型派生通过 `BackendWorkerClient` 提交无状态后端 worker task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
 - `/api/toolbox/name-fields/view` 读取当前 loaded 工程的名称字段提取视图；前端只提交筛选和排序参数。
 - `/api/toolbox/ts-conversion/files/export` 只接收转换方向和用户选项；前端不传转换后的 items。

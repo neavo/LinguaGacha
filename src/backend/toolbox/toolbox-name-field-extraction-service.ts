@@ -1,5 +1,5 @@
 import type { ApiJsonValue } from "../api/api-types";
-import type { ProjectDataCache } from "../project/project-data";
+import type { CacheReadPort } from "../cache/cache-types";
 import type { ProjectSessionState } from "../project/project-session";
 import type { BackendWorkerClient } from "../worker/worker-client";
 import * as AppErrors from "../../shared/error";
@@ -12,23 +12,23 @@ type MutableJsonRecord = Record<string, ApiJsonValue>;
 
 export class ToolboxNameFieldExtractionService {
   private readonly session_state: ProjectSessionState;
-  private readonly project_data_cache: ProjectDataCache;
+  private readonly cache: CacheReadPort;
   private readonly worker_client: BackendWorkerClient;
 
   public constructor(options: {
     sessionState: ProjectSessionState;
-    projectDataCache: ProjectDataCache;
+    cache: CacheReadPort;
     workerClient: BackendWorkerClient;
   }) {
     this.session_state = options.sessionState;
-    this.project_data_cache = options.projectDataCache;
+    this.cache = options.cache;
     this.worker_client = options.workerClient;
   }
 
   public async read(request: Record<string, ApiJsonValue>): Promise<MutableJsonRecord> {
     const project_path = this.require_loaded_project_path();
-    const section_revisions = this.project_data_cache.readSectionRevisions();
-    const quality_block = this.project_data_cache.readQualityBlock();
+    const section_revisions = this.cache.readSectionRevisions();
+    const quality_block = this.cache.quality.readBlock();
     const glossary =
       typeof quality_block["glossary"] === "object" &&
       quality_block["glossary"] !== null &&
@@ -46,7 +46,7 @@ export class ToolboxNameFieldExtractionService {
       {
         type: "name_field_extraction",
         input: {
-          items: this.project_data_cache.readItems(),
+          items: this.cache.items.readItems(),
           glossary_entries,
           filter: this.read_filter(request["filter"]),
           sort: this.read_sort(request["sort"]),

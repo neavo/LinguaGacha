@@ -1097,7 +1097,7 @@ export class ProjectWriteCoordinator {
   }
 
   /**
-   * 将公开变更草稿拆成 cache 可消费的领域事件，避免 ProjectDataCache 理解 SSE payload。
+   * 将公开变更草稿拆成 cache 可消费的领域事件，避免缓存模块理解 SSE payload。
    */
   private build_app_events_after_commit(request: ProjectWriteChangeRequest): ProjectEvent[] {
     const meta = this.read_project_meta(request.projectPath);

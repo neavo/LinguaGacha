@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import { CacheManager } from "../cache/cache-manager";
 import { ProjectDatabase } from "../database/database-operations";
-import { ProjectDataCache } from "../project/project-data";
 import { ProjectSessionState } from "../project/project-session";
+import type { BackendWorkerClient } from "../worker/worker-client";
 import { WorkbenchQueryService } from "./workbench-query-service";
 
 function create_item(overrides: Record<string, unknown>): Record<string, unknown> {
@@ -26,7 +27,7 @@ function create_item(overrides: Record<string, unknown>): Record<string, unknown
 }
 
 describe("WorkbenchQueryService", () => {
-  it("从 ProjectDataCache 返回工作台 view model 与 revision", async () => {
+  it("从 CacheManager 返回工作台 view model 与 revision", async () => {
     const { service } = await create_service([
       create_item({ id: 1, status: "PROCESSED" }),
       create_item({ id: 2, src: "失敗", status: "ERROR" }),
@@ -222,7 +223,17 @@ describe("WorkbenchQueryService", () => {
         return null;
       },
     } as unknown as ProjectDatabase;
-    const cache = new ProjectDataCache(database);
+    const cache = new CacheManager({
+      database,
+      logManager: null,
+      appSettingService: {
+        read_setting: () => ({ source_language: "JA", target_language: "ZH" }),
+      } as never,
+      workerClient: {
+        run: async () => ({}),
+        dispose: async () => undefined,
+      } as unknown as BackendWorkerClient,
+    });
     await cache.warmProject("E:/Project/demo.lg");
     const session_state = new ProjectSessionState();
     session_state.mark_loaded("E:/Project/demo.lg");

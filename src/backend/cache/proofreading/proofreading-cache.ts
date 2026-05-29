@@ -1,13 +1,9 @@
-import type { AppSettingService } from "../app/app-setting-service";
-import type {
-  ProjectDataCache,
-  ProjectDataFileEntry,
-  ProjectDataItem,
-} from "../project/project-data";
-import type { BackendWorkerClient } from "../worker/worker-client";
-import * as AppErrors from "../../shared/error";
-import { normalize_setting_snapshot } from "../../domain/setting";
-import type { ApiJsonValue } from "../api/api-types";
+import type { AppSettingService } from "../../app/app-setting-service";
+import type { BackendWorkerClient } from "../../worker/worker-client";
+import type { CacheFileEntry, CacheItem, CacheReadPort } from "../cache-types";
+import * as AppErrors from "../../../shared/error";
+import { normalize_setting_snapshot } from "../../../domain/setting";
+import type { ApiJsonValue } from "../../api/api-types";
 import type {
   ProofreadingFilterPanelQuery,
   ProofreadingItemsByRowIdsQuery,
@@ -18,16 +14,17 @@ import type {
   ProofreadingHydrationInput,
   ProofreadingSyncState,
   createProofreadingListReader,
-} from "../../shared/proofreading/proofreading-list-reader";
+} from "../../../shared/proofreading/proofreading-list-reader";
 import type {
   ProofreadingClientItem,
   ProofreadingFilterPanelState,
   ProofreadingListView,
   ProofreadingItemRecord,
-} from "../../shared/proofreading/proofreading-types";
-import type { ProofreadingListWindow } from "../../shared/proofreading/proofreading-list-reader";
-import type { QualitySlice, QualitySnapshot } from "../../shared/quality/snapshot";
-import type { ProjectDataSectionRevisions } from "../../shared/project-event";
+} from "../../../shared/proofreading/proofreading-types";
+import type { ProofreadingListWindow } from "../../../shared/proofreading/proofreading-list-reader";
+import type { QualitySlice, QualitySnapshot } from "../../../shared/quality/snapshot";
+import type { ProjectDataSectionRevisions } from "../../../shared/project-event";
+import type { CacheChange } from "../cache-change";
 
 const PROOFREADING_CACHE_VERSION = 1;
 
@@ -52,7 +49,7 @@ export type ProofreadingCacheResult<TData> = {
 };
 
 export class ProofreadingCache {
-  private readonly project_data_cache: ProjectDataCache;
+  private readonly cache: CacheReadPort;
   private readonly app_setting_service: AppSettingService;
   private readonly worker_client: BackendWorkerClient;
   private readonly service: ReturnType<typeof createProofreadingListReader>;
@@ -61,12 +58,12 @@ export class ProofreadingCache {
   private sync_promises = new Map<string, Promise<ProofreadingSyncState>>();
 
   public constructor(options: {
-    projectDataCache: ProjectDataCache;
+    cache: CacheReadPort;
     appSettingService: AppSettingService;
     workerClient: BackendWorkerClient;
     service: ReturnType<typeof createProofreadingListReader>;
   }) {
-    this.project_data_cache = options.projectDataCache;
+    this.cache = options.cache;
     this.app_setting_service = options.appSettingService;
     this.worker_client = options.workerClient;
     this.service = options.service;
@@ -117,7 +114,7 @@ export class ProofreadingCache {
     return this.query_current("filter_panel", { action: "filter_panel", query });
   }
 
-  public async disposeProject(projectPath?: string): Promise<void> {
+  public async clearProject(projectPath?: string): Promise<void> {
     const current_key = this.synced_key;
     if (current_key === null) {
       this.sync_promises.clear();
@@ -132,6 +129,59 @@ export class ProofreadingCache {
     this.sync_promises.clear();
     if (parsed_key !== null) {
       this.service.dispose_project(parsed_key.projectPath);
+    }
+  }
+
+  public async applyChange(
+    change: CacheChange,
+    nextSectionRevisions: ProjectDataSectionRevisions,
+  ): Promise<void> {
+    if (change.items.mode !== "delta") {
+      if (this.should_clear_for_full_change(change)) {
+        await this.clearProject(change.projectPath);
+      }
+      return;
+    }
+
+    const item_change = change.items;
+    const current_key = this.synced_key;
+    if (current_key === null || this.synced_state === null) {
+      this.sync_promises.clear();
+      return;
+    }
+    const parsed_key = this.parse_key(current_key);
+    if (parsed_key === null || parsed_key.projectPath !== change.projectPath) {
+      return;
+    }
+    const next_revisions = this.to_proofreading_revisions(nextSectionRevisions, parsed_key);
+    if (this.should_clear_delta_identity(parsed_key, next_revisions)) {
+      await this.clearProject(change.projectPath);
+      return;
+    }
+
+    try {
+      const sync_state = this.service.apply_item_delta({
+        projectId: change.projectPath,
+        revisions: next_revisions,
+        total_item_count: this.cache.snapshot().itemCount,
+        upsertItems:
+          item_change.sourcePayloadMode === "field-patch"
+            ? []
+            : this.build_delta_items(item_change.changedIds),
+        patchItemIds:
+          item_change.fieldPatch === null
+            ? []
+            : item_change.changedIds.filter((item_id) => !item_change.deleteIds.includes(item_id)),
+        fieldPatch: item_change.fieldPatch,
+        deleteItemIds: item_change.deleteIds,
+      });
+      this.synced_state = sync_state;
+      this.synced_key = JSON.stringify({
+        ...parsed_key,
+        revisions: next_revisions,
+      });
+    } catch {
+      await this.clearProject(change.projectPath);
     }
   }
 
@@ -238,8 +288,8 @@ export class ProofreadingCache {
     sectionRevisions: ProjectDataSectionRevisions;
     input: ProofreadingHydrationInput;
   } {
-    const sectionRevisions = this.project_data_cache.readSectionRevisions();
-    const snapshot = this.project_data_cache.snapshot();
+    const sectionRevisions = this.cache.readSectionRevisions();
+    const snapshot = this.cache.snapshot();
     if (snapshot.projectPath === "") {
       throw new AppErrors.ProjectNotLoadedError();
     }
@@ -270,7 +320,7 @@ export class ProofreadingCache {
         revisions,
         total_item_count: items.length,
         upsertItems: items,
-        quality: this.normalize_quality_state(this.project_data_cache.readQualityBlock()),
+        quality: this.normalize_quality_state(this.cache.quality.readBlock()),
         sourceLanguage,
         targetLanguage,
       },
@@ -292,15 +342,21 @@ export class ProofreadingCache {
   }
 
   private build_items(): ProofreadingItemRecord[] {
-    const file_order_by_path = this.build_file_order_by_path(
-      this.project_data_cache.readFileEntries(),
-    );
-    return this.project_data_cache
+    const file_order_by_path = this.build_file_order_by_path(this.cache.files.readFileEntries());
+    return this.cache.items
       .readItems()
       .map((item) => this.to_runtime_item(item, file_order_by_path));
   }
 
-  private build_file_order_by_path(file_entries: ProjectDataFileEntry[]): Map<string, number> {
+  private build_delta_items(item_ids: number[]): ProofreadingItemRecord[] {
+    const file_order_by_path = this.build_file_order_by_path(this.cache.files.readFileEntries());
+    return item_ids.flatMap((item_id) => {
+      const item = this.cache.items.readItem(item_id);
+      return item === null ? [] : [this.to_runtime_item(item, file_order_by_path)];
+    });
+  }
+
+  private build_file_order_by_path(file_entries: CacheFileEntry[]): Map<string, number> {
     return new Map(
       file_entries.map((entry, index) => {
         return [entry.rel_path, Number.isFinite(entry.sort_index) ? entry.sort_index : index];
@@ -309,7 +365,7 @@ export class ProofreadingCache {
   }
 
   private to_runtime_item(
-    item: ProjectDataItem,
+    item: CacheItem,
     file_order_by_path: Map<string, number>,
   ): ProofreadingItemRecord {
     const file_path = String(item["file_path"] ?? "");
@@ -362,6 +418,44 @@ export class ProofreadingCache {
     } catch {
       return null;
     }
+  }
+
+  private should_clear_for_full_change(change: CacheChange): boolean {
+    return (
+      change.fullRebuild ||
+      change.items.mode === "full" ||
+      change.files.mode === "full" ||
+      change.quality.mode === "full" ||
+      change.settings.mode === "full"
+    );
+  }
+
+  private should_clear_delta_identity(
+    current_key: ProofreadingCacheKey,
+    next_revisions: ProofreadingCacheKey["revisions"],
+  ): boolean {
+    return (
+      next_revisions.files !== current_key.revisions.files ||
+      next_revisions.quality !== current_key.revisions.quality ||
+      next_revisions.items < current_key.revisions.items ||
+      next_revisions.proofreading < current_key.revisions.proofreading ||
+      current_key.cacheVersion !== PROOFREADING_CACHE_VERSION
+    );
+  }
+
+  private to_proofreading_revisions(
+    sectionRevisions: ProjectDataSectionRevisions,
+    current_key: ProofreadingCacheKey,
+  ): ProofreadingCacheKey["revisions"] {
+    return {
+      files: this.read_number(sectionRevisions.files, current_key.revisions.files),
+      items: this.read_number(sectionRevisions.items, current_key.revisions.items),
+      quality: this.read_number(sectionRevisions.quality, current_key.revisions.quality),
+      proofreading: this.read_number(
+        sectionRevisions.proofreading,
+        current_key.revisions.proofreading,
+      ),
+    };
   }
 
   private read_number(value: unknown, fallback: number): number {

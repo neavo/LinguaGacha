@@ -1456,6 +1456,43 @@ describe("DesktopStateProvider", () => {
         retry_count: 0,
       },
     });
+
+    await act(async () => {
+      event_stream.emit("project.data_changed", {
+        source: "proofreading_delete_item",
+        projectPath: "E:/demo/demo.lg",
+        projectRevision: 5,
+        updatedSections: ["items", "proofreading"],
+        sectionRevisions: { items: 5, proofreading: 5 },
+        items: {
+          payloadMode: "canonical-delta",
+          deleteIds: [2],
+        },
+        sections: {
+          proofreading: {
+            payloadMode: "canonical-delta",
+            data: {
+              revision: 5,
+            },
+          },
+        },
+      });
+      await Promise.resolve();
+    });
+
+    await flush_state_refresh_window();
+
+    await wait_for_condition(() => {
+      return snapshots.at(-1)?.proofreadingSeq === 4;
+    });
+
+    expect(snapshots.at(-1)).toMatchObject({
+      proofreadingSeq: 4,
+      proofreadingReason: "proofreading_delete_item",
+      proofreadingMode: "delta",
+      proofreadingItemIds: [2],
+      proofreadingFieldPatch: null,
+    });
   });
 
   it("items canonical-delta 的项目身份不匹配时不会发布项目信号", async () => {

@@ -63,7 +63,8 @@ flowchart LR
 - `WorkbenchTasksSessionProvider` 常驻在项目 session 内，拥有翻译 / 分析任务完成后的生成译文、导入术语和任务确认意图；完整翻译完成才触发生成译文确认，校对页局部重翻完成只回到校对工作流；任务 follow-up 不属于工作台页面缓存，不能随工作台页面卸载而丢失。
 - 页面派生缓存、弹窗、确认框、导入状态和提交中状态随页面挂载创建、随卸载释放；只有登记到 `ProjectSessionUiStateProvider` 的轻量页面 UI 状态可在当前项目 session 内跨路由保留。
 - 工作台和校对页可以维护页面局部缓存，但 ready 判定必须基于项目 path、required sections 与 consumed revisions。
-- 校对页搜索、筛选、排序、窗口和警告派生由后端校对 query 提供；前端只保存当前参数、view id、窗口结果、选择和编辑态，cache ready 与 consumed revisions 以后端 `sync` 返回的 section revision 为准，页面卸载或路由切换不代表后端校对派生缓存清理。
+- 校对页搜索、筛选、排序、窗口和警告派生由后端校对 query 提供；前端只保存当前参数、view id、窗口结果、选择和编辑态，cache ready 与 consumed revisions 以后端 `sync` 返回的 section revision 为准，页面卸载或路由切换不代表后端校对页面读模型缓存清理。
+- 校对页只把 `ProjectChangeSignal` 解读成 `full` / `delta` / `noop` 刷新模式：items 精确 delta 调用 `sync_proofreading_cache` 后按当前 query 重新读取 view，project / files / quality / settings 或 full replace 走 full，只有 proofreading section 变化走 noop；页面不合并项目事实。
 - 质量规则统计的全量匹配计算由后端 query 提供；`src/frontend/app/session/quality-rule-statistics-*` 只保存规则描述、调度阶段、已完成统计结果和页面订阅状态。页面挂载对应规则时发起前台 query，未挂载规则仅失效缓存，失败态只能由依赖变化或显式用户动作重新调度。
 - `src/frontend/app/result` 承接结果型页面共用的主列表快照规则：搜索、筛选、替换、排序或刷新等显式 action 生成新的稳定 id 序列；项目事实刷新只更新快照内实体的最新内容、状态、警告和统计，不能重新筛选、插入或重排当前 view；后端 tombstone 删除、项目切换、全量数据源重建或状态不兼容时才剪除或重建快照。
 - 工作台统计区和任务菜单百分比消费后端 query 派生的 `WorkbenchStats`；任务详情在运行或停止中消费 `TaskSnapshot.progress`，空闲态才回落到 `WorkbenchStats`。

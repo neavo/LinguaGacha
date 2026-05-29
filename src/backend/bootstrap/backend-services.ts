@@ -1,8 +1,6 @@
 import { AppMetadataService } from "../app/app-metadata-service";
+import { CacheManager } from "../cache/cache-manager";
 import { ProjectEventBus } from "../project/project-events";
-import { ProjectDataCache } from "../project/project-data";
-import { ProofreadingCache } from "../proofreading/proofreading-cache";
-import type { ProjectEventType } from "../project/project-events";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { ProjectDatabase } from "../database/database-operations";
@@ -45,7 +43,6 @@ import { QualityService } from "../quality/quality-service";
 import { TaskService } from "../engine/task-service";
 import { ToolboxTsConversionExportService } from "../toolbox/toolbox-ts-conversion-export-service";
 import { create_text_resolver, resolve_i18n_locale, type TextResolver } from "../../shared/i18n";
-import { createProofreadingListReader } from "../../shared/proofreading/proofreading-list-reader";
 import type { SystemProxySnapshot } from "../network/system-proxy-dispatcher";
 
 export interface BackendServicesOptions {
@@ -126,12 +123,11 @@ export class BackendServices {
   private readonly project_data_reader: ProjectDataReader;
   private readonly api_stream_hub = new ApiStreamHub(); // 公开 stream 服务 GUI SSE、CLI task snapshot 与 settings/logs topic
   private readonly project_event_bus = new ProjectEventBus(); // Backend 内部 committed event 总线，不直接暴露给 renderer
-  private readonly project_data_cache: ProjectDataCache;
+  private readonly cache_manager: CacheManager;
   private readonly project_change_publisher: ProjectChangePublisher;
   private readonly project_mutation_store: ProjectMutationStore;
   private readonly workbench_query_service: WorkbenchQueryService;
   private readonly backend_worker_client: BackendWorkerClient;
-  private readonly proofreading_cache: ProofreadingCache;
   private readonly proofreading_query_service: ProofreadingQueryService;
   private readonly quality_statistics_service: QualityStatisticsService;
   private readonly name_field_extraction_service: ToolboxNameFieldExtractionService;
@@ -174,9 +170,17 @@ export class BackendServices {
     this.app_setting_service = options.appSettingService;
     this.database = options.database;
     this.log_manager = options.logManager;
-    this.project_data_cache = new ProjectDataCache(this.database, this.log_manager);
-    this.subscribe_project_data_cache();
     this.project_data_reader = new ProjectDataReader(this.database);
+    this.backend_worker_client = new BackendWorkerClient({
+      execution: options.workerExecution,
+    });
+    this.cache_manager = new CacheManager({
+      database: this.database,
+      logManager: this.log_manager,
+      appSettingService: this.app_setting_service,
+      workerClient: this.backend_worker_client,
+    });
+    this.cache_manager.subscribe(this.project_event_bus);
     const project_change_adapter = new ProjectChangeEventAdapter(
       this.database,
       this.project_session_state,
@@ -193,29 +197,19 @@ export class BackendServices {
     );
     this.workbench_query_service = new WorkbenchQueryService(
       this.project_session_state,
-      this.project_data_cache,
+      this.cache_manager,
     );
-    this.backend_worker_client = new BackendWorkerClient({
-      execution: options.workerExecution,
-    });
-    this.proofreading_cache = new ProofreadingCache({
-      projectDataCache: this.project_data_cache,
-      appSettingService: this.app_setting_service,
-      workerClient: this.backend_worker_client,
-      service: createProofreadingListReader(),
-    });
     this.proofreading_query_service = new ProofreadingQueryService({
       sessionState: this.project_session_state,
-      cache: this.proofreading_cache,
+      cache: this.cache_manager.proofreading,
     });
     this.quality_statistics_service = new QualityStatisticsService({
       sessionState: this.project_session_state,
-      projectDataCache: this.project_data_cache,
-      workerClient: this.backend_worker_client,
+      cache: this.cache_manager.qualityStatistics,
     });
     this.name_field_extraction_service = new ToolboxNameFieldExtractionService({
       sessionState: this.project_session_state,
-      projectDataCache: this.project_data_cache,
+      cache: this.cache_manager,
       workerClient: this.backend_worker_client,
     });
     this.model_service = new ModelService(
@@ -262,7 +256,7 @@ export class BackendServices {
       this.database,
       this.project_session_state,
       this.task_run_state,
-      this.project_data_cache,
+      this.cache_manager,
       this.project_mutation_store,
     );
     this.work_unit_worker_pool = new WorkUnitWorkerPool({
@@ -307,7 +301,7 @@ export class BackendServices {
     );
     this.ts_conversion_service = new ToolboxTsConversionExportService({
       sessionState: this.project_session_state,
-      projectDataCache: this.project_data_cache,
+      cache: this.cache_manager,
       workerClient: this.backend_worker_client,
       presetReader: new QualityRulePresetReader(this.paths),
       fileExportService: this.file_export_service,
@@ -436,36 +430,5 @@ export class BackendServices {
       sectionRevisions: section_revisions,
       scope: "prompts-full",
     });
-  }
-  /**
-   * ProjectDataCache 订阅所有会影响后端 query view 的 committed event。
-   */
-  private subscribe_project_data_cache(): void {
-    const event_types: ProjectEventType[] = [
-      "project.opened_for_cache",
-      "project.unloaded",
-      "project.items.changed",
-      "project.quality.changed",
-      "project.prompts.changed",
-      "project.settings.changed",
-      "project.analysis.changed",
-    ];
-    for (const event_type of event_types) {
-      this.project_event_bus.subscribe(event_type, async (event) => {
-        await this.project_data_cache.handleProjectEvent(event);
-        if (
-          event.type === "project.unloaded" ||
-          event.type === "project.items.changed" ||
-          event.type === "project.quality.changed" ||
-          event.type === "project.settings.changed" ||
-          event.type === "project.opened_for_cache"
-        ) {
-          await this.proofreading_cache.disposeProject(
-            event.type === "project.opened_for_cache" ? undefined : event.projectPath,
-          );
-          this.quality_statistics_service.clear();
-        }
-      });
-    }
   }
 }

@@ -1,5 +1,5 @@
 import type { ApiJsonValue } from "../../api/api-types";
-import type { ProjectDataCache } from "../../project/project-data";
+import type { CacheReadPort } from "../../cache/cache-types";
 import { ProjectDatabase } from "../../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
 import { ProjectMutationStore } from "../../project/project-mutation-store";
@@ -22,7 +22,7 @@ export class ProjectTaskStore {
 
   private readonly task_run_state: TaskRunState; // 重翻任务提交后需要同步缩减运行中 item scope
 
-  private readonly project_data_cache: ProjectDataCache; // 任务启动热读 items / quality / prompts，写库仍只走 ProjectDatabase
+  private readonly cache: CacheReadPort; // 任务启动热读 items / quality / prompts，写库仍只走 ProjectDatabase
 
   private readonly mutation_store: ProjectMutationStore; // 任务提交只表达 artifact 语义，事务与事件由 mutation store 统一完成
 
@@ -33,13 +33,13 @@ export class ProjectTaskStore {
     database: ProjectDatabase,
     session_state: ProjectSessionState,
     task_run_state: TaskRunState,
-    project_data_cache: ProjectDataCache,
+    cache: CacheReadPort,
     mutation_store: ProjectMutationStore,
   ) {
     this.database = database;
     this.session_state = session_state;
     this.task_run_state = task_run_state;
-    this.project_data_cache = project_data_cache;
+    this.cache = cache;
     this.mutation_store = mutation_store;
   }
 
@@ -72,8 +72,8 @@ export class ProjectTaskStore {
     }
     return QualityRuleSnapshotTool.to_json(
       QualityRuleSnapshotTool.from_json({
-        quality: this.project_data_cache.readQualityBlock(),
-        prompts: this.project_data_cache.readPromptsBlock(),
+        quality: this.cache.quality.readBlock(),
+        prompts: this.cache.prompts.readBlock(),
       }),
     ) as unknown as ApiJsonValue;
   }
@@ -84,7 +84,7 @@ export class ProjectTaskStore {
   public get_translation_items(request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
     const mode = String(request["mode"] ?? "NEW");
-    const items = this.project_data_cache.readItems().map((item) => {
+    const items = this.cache.items.readItems().map((item) => {
       if (mode !== "RESET") {
         return item;
       }
@@ -198,7 +198,7 @@ export class ProjectTaskStore {
   public get_analysis_context(_request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
     return {
-      items: this.project_data_cache.readItems() as unknown as ApiJsonValue,
+      items: this.cache.items.readItems() as unknown as ApiJsonValue,
       checkpoints: this.get_analysis_checkpoints(project_path) as unknown as ApiJsonValue,
       meta: this.get_all_meta(project_path),
     };
@@ -261,7 +261,7 @@ export class ProjectTaskStore {
     const project_path = this.require_loaded_project_path();
     const item_ids = this.normalize_number_list(request["item_ids"]);
     const items = item_ids
-      .map((item_id) => this.project_data_cache.readItem(item_id))
+      .map((item_id) => this.cache.items.readItem(item_id))
       .filter((item): item is MutableJsonRecord => item !== null)
       .map((item) => ({
         ...item,
