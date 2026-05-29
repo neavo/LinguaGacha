@@ -305,6 +305,44 @@ describe("useProofreadingBatchActions", () => {
     expect(latest_state?.pending_confirmation).toBeNull();
   });
 
+  it("确认重翻的启动回执缺少 scope 时仍同步指定条目范围", async () => {
+    await render_hook();
+    vi.mocked(api_fetch).mockResolvedValueOnce({
+      task: {
+        run_revision: 10,
+        status: "requested",
+      },
+    });
+
+    await act(async () => {
+      latest_state?.request_retranslate_row_ids(["2", "1", "2"], "2");
+    });
+    await act(async () => {
+      await latest_state?.confirm_pending_confirmation();
+    });
+
+    expect(api_fetch).toHaveBeenCalledWith(
+      "/api/tasks/start",
+      expect.objectContaining({
+        scope: {
+          kind: "items",
+          item_ids: [2, 1],
+        },
+      }),
+    );
+    expect(fixture.sync_task_snapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        extras: {
+          kind: "translation",
+          scope: {
+            kind: "items",
+            item_ids: [2, 1],
+          },
+        },
+      }),
+    );
+  });
+
   it("确认清空译文时提交目标条目和 revision 锁", async () => {
     await render_hook();
 

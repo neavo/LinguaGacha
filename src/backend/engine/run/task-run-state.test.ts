@@ -17,7 +17,7 @@ describe("TaskRunState", () => {
       status: "requested",
       busy: true,
       active_task_type: "translation",
-      translation_scope: { kind: "items", item_ids: [3, 2, 4] },
+      translation_scope: { kind: "items", item_ids: [3, 4] },
     });
     if (snapshot.translation_scope.kind !== "items") {
       throw new Error("期望重翻 items scope");
@@ -27,7 +27,7 @@ describe("TaskRunState", () => {
 
     expect(state.snapshot().translation_scope).toEqual({
       kind: "items",
-      item_ids: [3, 2, 4],
+      item_ids: [3, 4],
     });
   });
 
@@ -84,10 +84,10 @@ describe("TaskRunState", () => {
     state.remove_translation_item_ids([2, 3.8, -1]);
     expect(state.snapshot().translation_scope).toEqual({
       kind: "items",
-      item_ids: [1],
+      item_ids: [1, 3],
     });
 
-    state.remove_translation_item_ids([1]);
+    state.remove_translation_item_ids([1, 3]);
     expect(state.snapshot().translation_scope).toEqual({
       kind: "items",
       item_ids: [],

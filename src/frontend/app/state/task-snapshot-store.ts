@@ -1,3 +1,5 @@
+import { normalize_translation_scope, type TranslationScope } from "@domain/task";
+
 export type TaskSnapshot = {
   run_revision: number;
   task_type: string;
@@ -27,10 +29,8 @@ export type TaskProgressSnapshot = {
 
 export type TranslationTaskExtras = {
   kind: "translation";
-  scope: TranslationTaskScope;
+  scope: TranslationScope;
 };
-
-export type TranslationTaskScope = { kind: "all" } | { kind: "items"; item_ids: number[] };
 
 export type AnalysisTaskExtras = {
   kind: "analysis";
@@ -59,37 +59,6 @@ const DEFAULT_TASK_SNAPSHOT: TaskSnapshot = {
   },
   extras: { kind: "translation", scope: { kind: "all" } },
 };
-
-/**
- * 归一重翻 item id，避免 SSE 或本地调用把重复、脏类型写入任务状态
- */
-function normalize_task_item_ids(value: unknown): number[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  const item_ids: number[] = [];
-  const seen_ids = new Set<number>();
-  value.forEach((raw_item_id) => {
-    const item_id = Number(raw_item_id);
-    if (!Number.isInteger(item_id) || item_id <= 0 || seen_ids.has(item_id)) {
-      return;
-    }
-
-    seen_ids.add(item_id);
-    item_ids.push(item_id);
-  });
-  return item_ids;
-}
-
-function normalize_translation_scope(value: unknown): TranslationTaskScope {
-  const scope = normalize_record(value);
-  if (scope["kind"] !== "items") {
-    return { kind: "all" };
-  }
-  const item_ids = normalize_task_item_ids(scope["item_ids"]);
-  return item_ids.length > 0 ? { kind: "items", item_ids } : { kind: "all" };
-}
 
 /**
  * 将 Backend task snapshot 响应收窄为 renderer 内部稳定快照

@@ -60,7 +60,7 @@ flowchart LR
 - `SCREEN_REGISTRY` 是页面注册和标题 key 的唯一入口；新增页面先进入注册表，再接入对应页面状态。
 - `ProjectSessionProvider` 只提供项目 session ready、当前项目 UI 轻状态和文件操作等待；它不登记页面缓存 barrier，也不阻塞页面 query 刷新。
 - `ProjectSessionUiStateProvider` 只保存当前项目 session 内可跨路由恢复的轻量页面 UI 状态；项目切换或关闭时清空，不写入后端事实，也不参与页面缓存 barrier。
-- `WorkbenchTasksSessionProvider` 常驻在项目 session 内，拥有翻译 / 分析任务完成后的生成译文、导入术语和任务确认意图；任务 follow-up 不属于工作台页面缓存，不能随工作台页面卸载而丢失。
+- `WorkbenchTasksSessionProvider` 常驻在项目 session 内，拥有翻译 / 分析任务完成后的生成译文、导入术语和任务确认意图；完整翻译完成才触发生成译文确认，校对页局部重翻完成只回到校对工作流；任务 follow-up 不属于工作台页面缓存，不能随工作台页面卸载而丢失。
 - 页面派生缓存、弹窗、确认框、导入状态和提交中状态随页面挂载创建、随卸载释放；只有登记到 `ProjectSessionUiStateProvider` 的轻量页面 UI 状态可在当前项目 session 内跨路由保留。
 - 工作台和校对页可以维护页面局部缓存，但 ready 判定必须基于项目 path、required sections 与 consumed revisions。
 - 校对页搜索、筛选、排序、窗口和警告派生由后端校对 query 提供；前端只保存当前参数、view id、窗口结果、选择和编辑态，cache ready 与 consumed revisions 以后端 `sync` 返回的 section revision 为准，页面卸载或路由切换不代表后端校对派生缓存清理。

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
+import { clone_translation_scope, type TranslationScope } from "@domain/task";
 import {
   create_translation_reset_all_plan,
   create_translation_reset_failed_plan,
@@ -16,6 +17,7 @@ import { useI18n } from "@frontend/app/locale/locale-provider";
 import { should_defer_task_snapshot_refresh } from "@shared/workbench/task-ownership";
 import { useTerminalPromptSuppression } from "@frontend/app/session/workbench-tasks/terminal-prompt-suppression";
 import { read_workbench_task_section_revisions } from "@frontend/app/session/workbench-tasks/workbench-task-revisions-api";
+import { should_open_translation_export_followup } from "@shared/workbench/task-completion-followup";
 import {
   advance_task_waveform_state,
   create_empty_task_waveform_state,
@@ -102,29 +104,6 @@ function resolve_translation_terminal_feedback_message(args: {
   return null;
 }
 
-// should_prompt_translation_generate_confirmation 封装当前模块的共享逻辑，避免重复实现同一维护规则。
-/**
- * 判断当前值是否满足业务条件。
- */
-function should_prompt_translation_generate_confirmation(args: {
-  previous_status: string;
-  next_status: string;
-  has_result: boolean;
-}): boolean {
-  if (
-    args.previous_status === "stopping" ||
-    !is_active_translation_task_status(args.previous_status)
-  ) {
-    return false;
-  }
-
-  if (args.next_status === "done") {
-    return true;
-  }
-
-  return args.next_status === "idle" && args.has_result;
-}
-
 // is_translation_terminal_prompt_boundary 集中表达布尔判定口径，避免调用方按局部字段猜测。
 /**
  * 判断当前值是否满足业务条件。
@@ -137,6 +116,21 @@ function is_translation_terminal_prompt_boundary(args: {
     is_active_translation_task_status(args.previous_status) &&
     !is_active_translation_task_status(args.next_status)
   );
+}
+
+function resolve_active_translation_completion_scope(args: {
+  active_scope: TranslationScope | null;
+  next_scope: TranslationScope;
+}): TranslationScope {
+  if (args.next_scope.kind === "items") {
+    return clone_translation_scope(args.next_scope);
+  }
+
+  if (args.active_scope?.kind === "items") {
+    return clone_translation_scope(args.active_scope);
+  }
+
+  return { kind: "all" };
 }
 
 // useTranslationWorkbenchTask 封装当前模块的共享逻辑，避免重复实现同一维护规则。
@@ -175,6 +169,10 @@ export function useTranslationWorkbenchTask(
   const previous_project_loaded_ref = useRef(false);
   const previous_project_path_ref = useRef("");
   const previous_translation_status_ref = useRef(create_empty_translation_task_snapshot().status);
+  const translation_completion_scope_ref = useRef<TranslationScope>(
+    create_empty_translation_task_snapshot().scope,
+  );
+  const active_translation_completion_scope_ref = useRef<TranslationScope | null>(null);
   const translation_waveform_state_ref = useRef(create_empty_task_waveform_state());
   const {
     clear_terminal_prompt_suppression,
@@ -242,6 +240,8 @@ export function useTranslationWorkbenchTask(
 
   const clear_translation_task_state = useCallback((): void => {
     clear_terminal_prompt_suppression();
+    translation_completion_scope_ref.current = { kind: "all" };
+    active_translation_completion_scope_ref.current = null;
     set_translation_task_snapshot(create_empty_translation_task_snapshot());
     set_last_translation_task_snapshot(null);
     set_translation_task_metrics(
@@ -260,6 +260,21 @@ export function useTranslationWorkbenchTask(
     (next_snapshot: TranslationTaskSnapshot): void => {
       const normalized_snapshot = clone_translation_task_snapshot(next_snapshot);
       set_translation_task_snapshot(normalized_snapshot);
+      const next_scope = clone_translation_scope(normalized_snapshot.scope);
+
+      if (is_active_translation_task_status(normalized_snapshot.status)) {
+        const completion_scope = resolve_active_translation_completion_scope({
+          active_scope: active_translation_completion_scope_ref.current,
+          next_scope,
+        });
+        active_translation_completion_scope_ref.current = clone_translation_scope(completion_scope);
+        translation_completion_scope_ref.current = clone_translation_scope(completion_scope);
+      } else {
+        active_translation_completion_scope_ref.current = null;
+        if (next_scope.kind === "items") {
+          translation_completion_scope_ref.current = clone_translation_scope(next_scope);
+        }
+      }
 
       if (is_active_translation_task_status(normalized_snapshot.status)) {
         return;
@@ -296,7 +311,7 @@ export function useTranslationWorkbenchTask(
           time: next_snapshot.time,
           start_time: next_snapshot.start_time,
         },
-        extras: { kind: "translation", scope: { kind: "all" } },
+        extras: { kind: "translation", scope: clone_translation_scope(next_snapshot.scope) },
       });
     },
     [sync_task_snapshot],
@@ -568,10 +583,11 @@ export function useTranslationWorkbenchTask(
     if (
       !translation_dialog_open &&
       !terminal_prompt_suppressed &&
-      should_prompt_translation_generate_confirmation({
+      should_open_translation_export_followup({
         previous_status,
         next_status,
         has_result: has_translation_task_progress(translation_task_display_snapshot),
+        scope: translation_completion_scope_ref.current,
       })
     ) {
       set_task_confirm_state(create_task_confirm_state("generate-translation"));

@@ -252,6 +252,188 @@ describe("useTranslationWorkbenchTask", () => {
     expect(api_fetch_mock).not.toHaveBeenCalledWith("/api/translation/files/export", {});
   });
 
+  it("校对页局部重翻完成后不自动弹出生成译文确认框", async () => {
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "running",
+        busy: true,
+        total_line: 2,
+        extras: { kind: "translation", scope: { kind: "items", item_ids: [1, 2] } },
+      }),
+    );
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: runtime_fixture.current.task_snapshot,
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    await render_probe();
+    await flush_microtasks();
+
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "done",
+        busy: false,
+        line: 2,
+        total_line: 2,
+        processed_line: 2,
+        total_output_tokens: 8,
+        extras: { kind: "translation", scope: { kind: "items", item_ids: [1, 2] } },
+      }),
+    );
+
+    await render_probe();
+    await flush_microtasks();
+
+    expect(latest_state?.task_confirm_state).toBeNull();
+    expect(push_toast_mock).toHaveBeenCalledWith(
+      "success",
+      "workbench_page.translation_task.feedback.done",
+    );
+  });
+
+  it("校对页局部重翻的终态回包缺少 scope 时仍不自动弹出生成译文确认框", async () => {
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "running",
+        busy: true,
+        total_line: 1,
+        extras: { kind: "translation", scope: { kind: "items", item_ids: [7] } },
+      }),
+    );
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: runtime_fixture.current.task_snapshot,
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    await render_probe();
+    await flush_microtasks();
+
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "done",
+        busy: false,
+        line: 1,
+        total_line: 1,
+        processed_line: 1,
+        total_output_tokens: 4,
+        extras: { kind: "translation", scope: { kind: "all" } },
+      }),
+    );
+
+    await render_probe();
+    await flush_microtasks();
+
+    expect(latest_state?.task_confirm_state).toBeNull();
+  });
+
+  it("校对页局部重翻被空 items 运行帧覆盖后仍不自动弹出生成译文确认框", async () => {
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "running",
+        busy: true,
+        total_line: 1,
+        extras: { kind: "translation", scope: { kind: "items", item_ids: [7] } },
+      }),
+    );
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: runtime_fixture.current.task_snapshot,
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    await render_probe();
+    await flush_microtasks();
+
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "running",
+        busy: true,
+        line: 1,
+        total_line: 1,
+        processed_line: 1,
+        total_output_tokens: 4,
+        extras: { kind: "translation", scope: { kind: "items", item_ids: [] } },
+      }),
+    );
+
+    await render_probe();
+    await flush_microtasks();
+
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "done",
+        busy: false,
+        line: 1,
+        total_line: 1,
+        processed_line: 1,
+        total_output_tokens: 4,
+        extras: { kind: "translation", scope: { kind: "all" } },
+      }),
+    );
+
+    await render_probe();
+    await flush_microtasks();
+
+    expect(latest_state?.task_confirm_state).toBeNull();
+  });
+
+  it("校对页局部重翻首帧就是空 items 时仍不自动弹出生成译文确认框", async () => {
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "running",
+        busy: true,
+        line: 1,
+        total_line: 1,
+        processed_line: 1,
+        total_output_tokens: 4,
+        extras: { kind: "translation", scope: { kind: "items", item_ids: [] } },
+      }),
+    );
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: runtime_fixture.current.task_snapshot,
+        };
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    await render_probe();
+    await flush_microtasks();
+
+    runtime_fixture.current = create_runtime_fixture(
+      create_task_snapshot({
+        status: "done",
+        busy: false,
+        line: 1,
+        total_line: 1,
+        processed_line: 1,
+        total_output_tokens: 4,
+        extras: { kind: "translation", scope: { kind: "all" } },
+      }),
+    );
+
+    await render_probe();
+    await flush_microtasks();
+
+    expect(latest_state?.task_confirm_state).toBeNull();
+  });
+
   it("首屏加载已完成翻译快照时不自动弹生成译文确认框", async () => {
     runtime_fixture.current = create_runtime_fixture(
       create_task_snapshot({

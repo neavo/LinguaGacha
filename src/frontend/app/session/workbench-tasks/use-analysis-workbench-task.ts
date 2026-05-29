@@ -19,6 +19,7 @@ import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { should_defer_task_snapshot_refresh } from "@shared/workbench/task-ownership";
+import { should_open_analysis_glossary_import_followup } from "@shared/workbench/task-completion-followup";
 import { useTerminalPromptSuppression } from "@frontend/app/session/workbench-tasks/terminal-prompt-suppression";
 import { read_workbench_task_section_revisions } from "@frontend/app/session/workbench-tasks/workbench-task-revisions-api";
 import {
@@ -140,29 +141,6 @@ function resolve_analysis_terminal_feedback_message(args: {
   }
 
   return null;
-}
-
-// should_prompt_analysis_glossary_import_confirmation 封装当前模块的共享逻辑，避免重复实现同一维护规则。
-/**
- * 判断当前值是否满足业务条件。
- */
-function should_prompt_analysis_glossary_import_confirmation(args: {
-  previous_status: string;
-  next_status: string;
-  candidate_count: number;
-}): boolean {
-  if (args.candidate_count <= 0) {
-    return false;
-  }
-
-  if (
-    args.previous_status === "stopping" ||
-    !is_active_analysis_task_status(args.previous_status)
-  ) {
-    return false;
-  }
-
-  return args.next_status === "done" || args.next_status === "idle";
 }
 
 // is_analysis_terminal_prompt_boundary 集中表达布尔判定口径，避免调用方按局部字段猜测。
@@ -790,7 +768,7 @@ export function useAnalysisWorkbenchTask(
     if (
       !analysis_dialog_open &&
       !terminal_prompt_suppressed &&
-      should_prompt_analysis_glossary_import_confirmation({
+      should_open_analysis_glossary_import_followup({
         previous_status,
         next_status,
         candidate_count: analysis_task_snapshot.candidate_count,
