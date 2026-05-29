@@ -1009,6 +1009,49 @@ describe("useProofreadingPageState", () => {
     });
   });
 
+  it("确认筛选时会等待列表和面板刷新完成后再关闭弹窗", async () => {
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.open_filter_dialog();
+    });
+    await flush_async_updates();
+
+    const list_view_deferred = create_deferred<ReturnType<typeof create_list_view>>();
+    const filter_panel_deferred = create_deferred<ReturnType<typeof create_filter_panel>>();
+    proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(() => {
+      return list_view_deferred.promise;
+    });
+    proofreading_client_fixture.current.build_proofreading_filter_panel = vi.fn(() => {
+      return filter_panel_deferred.promise;
+    });
+
+    let confirm_promise: Promise<void> | null = null;
+    await act(async () => {
+      if (latest_state === null) {
+        throw new Error("校对页面状态未准备就绪。");
+      }
+
+      latest_state.update_filter_dialog_filters({
+        ...latest_state.filter_dialog_filters,
+        statuses: [],
+      });
+      confirm_promise = latest_state.confirm_filter_dialog_filters();
+      await Promise.resolve();
+    });
+
+    expect(latest_state?.filter_dialog_open).toBe(true);
+
+    await act(async () => {
+      list_view_deferred.resolve(create_list_view());
+      filter_panel_deferred.resolve(create_filter_panel());
+      await confirm_promise;
+    });
+    await flush_async_updates();
+
+    expect(latest_state?.filter_dialog_open).toBe(false);
+  });
+
   it("缓存刷新开始后会取消筛选面板尚未发布的防抖查询", async () => {
     vi.useFakeTimers();
     await render_hook();
