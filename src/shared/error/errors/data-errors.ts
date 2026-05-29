@@ -1,7 +1,7 @@
 import { AppError, type AppErrorArgs } from "../app-error";
 
 /**
- * RevisionConflictError 是跨 API mutation 的版本冲突语义。
+ * RevisionConflictError 是跨 API write 的版本冲突语义。
  */
 export class RevisionConflictError extends AppError {
   /**

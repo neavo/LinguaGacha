@@ -22,14 +22,14 @@ describe("install_main_fatal_error_handler", () => {
     restore_listeners("uncaughtException", initial_uncaught);
   });
 
-  it("未处理 rejection 会提示用户并进入 Core 收尾退出路径", async () => {
+  it("未处理 rejection 会提示用户并进入 Backend 收尾退出路径", async () => {
     const stderr_write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    const quit_after_core_shutdown = vi.fn().mockResolvedValue(undefined);
+    const quit_after_backend_shutdown = vi.fn().mockResolvedValue(undefined);
     const { install_main_fatal_error_handler } = await import("./main-fatal-error-handler");
 
     install_main_fatal_error_handler({
       isAppShutdownInProgress: () => false,
-      quitAfterCoreShutdown: quit_after_core_shutdown,
+      quitAfterBackendShutdown: quit_after_backend_shutdown,
     });
     process.emit("unhandledRejection", "boom", Promise.resolve());
     await Promise.resolve();
@@ -39,7 +39,7 @@ describe("install_main_fatal_error_handler", () => {
       "LinguaGacha 已遇到致命错误",
       "已写入诊断日志，应用将退出。",
     );
-    expect(quit_after_core_shutdown).toHaveBeenCalledWith(1);
+    expect(quit_after_backend_shutdown).toHaveBeenCalledWith(1);
   });
 
   function restore_listeners(

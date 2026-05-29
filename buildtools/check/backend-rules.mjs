@@ -7,7 +7,8 @@ import {
   is_typescript_source,
 } from "./core.mjs";
 
-const API_GATEWAY_RELATIVE_PATH = "src/core/api/api-gateway-server.ts";
+const API_GATEWAY_RELATIVE_PATH = "src/backend/api/api-gateway-server.ts";
+const API_ROUTES_RELATIVE_PREFIX = "src/backend/api/routes/";
 const NATIVE_FS_RELATIVE_PATH = "src/native/native-fs.ts";
 const APP_ERROR_RELATIVE_PATH = "src/shared/error/app-error.ts";
 
@@ -33,12 +34,12 @@ function create_api_registration_boundary_rule() {
         const relative_path = context.relative_path(file_path);
         const content = context.read_file(file_path);
 
-        if (relative_path !== API_GATEWAY_RELATIVE_PATH) {
+        if (!is_api_registration_path(relative_path)) {
           const matches = find_pattern_errors(
             content,
-            /\bapp\.(?:get|post|put|delete|all)\s*\(/g,
+            /\bapp\.(?:get|post|put|delete|all)\s*\(\s*["']\/api\//g,
             () => {
-              return "/api/* 路由只能在 api-gateway-server.ts 注册";
+              return "/api/* 路由只能在 api-gateway-server.ts 或 api/routes 注册";
             },
           );
           errors.push(...matches.map((match) => ({ ...match, relative_path })));
@@ -49,7 +50,7 @@ function create_api_registration_boundary_rule() {
           content,
           /\bapp\.post\s*\(\s*["']\/api\//g,
           () => {
-            return "POST JSON 路由必须通过 post_json 统一响应壳";
+            return "POST JSON 路由必须通过 postJson 统一响应壳";
           },
         );
         errors.push(...direct_post_matches.map((match) => ({ ...match, relative_path })));
@@ -126,7 +127,7 @@ function create_app_error_definition_rule() {
       const definition_block = read_app_error_definition_block(content);
       const relative_path = context.relative_path(error_file);
       return find_pattern_errors(definition_block.content, /\b(?:message|action)\s*:/g, () => {
-        return "APP_ERROR_DEFINITIONS 只能保存投影策略，用户可见文案必须放在 i18n 资源";
+        return "APP_ERROR_DEFINITIONS 只能保存数据读取策略，用户可见文案必须放在 i18n 资源";
       }).map((match) => ({
         ...match,
         line: match.line + definition_block.start_line - 1,
@@ -155,19 +156,29 @@ function create_sse_json_boundary_rule() {
 }
 
 function is_backend_production_source(file_path) {
+  const backend_path = path.sep + "src" + path.sep + "backend" + path.sep;
+  const native_path = path.sep + "src" + path.sep + "native" + path.sep;
+  const error_path = path.sep + "src" + path.sep + "shared" + path.sep + "error" + path.sep;
   return (
     is_typescript_source(file_path) &&
     !is_test_file(file_path) &&
-    (file_path.includes(`${path.sep}src${path.sep}core${path.sep}`) ||
-      file_path.includes(`${path.sep}src${path.sep}native${path.sep}`) ||
-      file_path.includes(`${path.sep}src${path.sep}shared${path.sep}error${path.sep}`))
+    (file_path.includes(backend_path) ||
+      file_path.includes(native_path) ||
+      file_path.includes(error_path))
+  );
+}
+
+function is_api_registration_path(relative_path) {
+  return (
+    relative_path === API_GATEWAY_RELATIVE_PATH ||
+    relative_path.startsWith(API_ROUTES_RELATIVE_PREFIX)
   );
 }
 
 function is_database_or_migration_path(relative_path) {
   return (
-    relative_path.startsWith("src/core/database/") ||
-    relative_path.startsWith("src/core/migration/")
+    relative_path.startsWith("src/backend/database/") ||
+    relative_path.startsWith("src/backend/migration/")
   );
 }
 

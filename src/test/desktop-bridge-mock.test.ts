@@ -11,7 +11,7 @@ describe("create_desktop_bridge_api_mock", () => {
       shell: {
         platform: "darwin",
       },
-      coreApi: {
+      backendApi: {
         baseUrl: "http://127.0.0.1:4567",
       },
       methods: {
@@ -24,7 +24,7 @@ describe("create_desktop_bridge_api_mock", () => {
       paths: ["E:/demo/demo.lg"],
     });
     expect(bridge.shell.platform).toBe("darwin");
-    expect(bridge.coreApi.baseUrl).toBe("http://127.0.0.1:4567");
-    expect(create_desktop_bridge_api_mock().coreApi.baseUrl).toBe(DESKTOP_BRIDGE_TEST_BASE_URL);
+    expect(bridge.backendApi.baseUrl).toBe("http://127.0.0.1:4567");
+    expect(create_desktop_bridge_api_mock().backendApi.baseUrl).toBe(DESKTOP_BRIDGE_TEST_BASE_URL);
   });
 });

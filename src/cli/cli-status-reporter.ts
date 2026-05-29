@@ -1,6 +1,6 @@
 import type { CLICommandName } from "./cli-parser";
-import type { ApiJsonValue } from "../core/api/api-types";
-import type { TaskRunStatus } from "../core/engine/protocol/task-types";
+import type { ApiJsonValue } from "../backend/api/api-types";
+import type { TaskRunStatus } from "../domain/task";
 import { JsonTool } from "../shared/utils/json-tool";
 
 type NowProvider = () => Date;
@@ -8,7 +8,7 @@ type JsonLineWriter = (line: string) => void;
 
 export interface CLIProgressStats {
   total: number; // total 是外部协议中的任务总量，不暴露内部 total_line 命名
-  skipped: number; // skipped 保留四卡片形状，CLI 全量任务第一版固定由投影层计算
+  skipped: number; // skipped 保留四卡片形状，CLI 全量任务第一版固定由读取层计算
   failed: number; // failed 对应任务失败行数
   completed: number; // completed 对应任务成功处理行数
   pending: number; // pending 是 total 扣除 skipped / failed / completed 后的剩余量
@@ -27,7 +27,7 @@ interface CLIProgressInput {
 }
 
 /**
- * CLI JSONL 状态投影器；它只输出 started / progress / finished 三类机器协议事件。
+ * CLI JSONL 状态状态事件输出器；它只输出 started / progress / finished 三类机器协议事件。
  */
 export class CLIJsonStatusReporter {
   private readonly command: CLICommandName; // command 是外部协议唯一任务标识，task_type 不再重复输出
@@ -38,7 +38,7 @@ export class CLIJsonStatusReporter {
   private last_progress_key: string | null = null; // last_progress_key 只记录外部 stats，内部 snapshot revision 不影响协议节流
 
   /**
-   * 构造 CLI 状态投影器，调用方负责提供具体输出目标。
+   * 构造 CLI 状态状态事件输出器，调用方负责提供具体输出目标。
    */
   public constructor(options: CLIJsonStatusReporterOptions) {
     this.command = options.command;
@@ -62,7 +62,7 @@ export class CLIJsonStatusReporter {
   }
 
   /**
-   * 从任务快照投影四卡片进度；外部 stats 未变化时不重复刷屏。
+   * 从任务快照组装四卡片进度；外部 stats 未变化时不重复刷屏。
    */
   public emit_progress(snapshot: CLIProgressInput): void {
     const stats = build_cli_progress_stats(snapshot.progress as Record<string, ApiJsonValue>);
@@ -135,7 +135,7 @@ function is_empty_stats(stats: CLIProgressStats): boolean {
 }
 
 /**
- * 将内部 TaskProgress 投影为稳定四卡片 stats；外部字段不跟随内部 total_line 等命名变化。
+ * 将内部 TaskProgress 转换为稳定四卡片 stats；外部字段不跟随内部 total_line 等命名变化。
  */
 export function build_cli_progress_stats(progress: Record<string, ApiJsonValue>): CLIProgressStats {
   const total = Math.max(0, read_progress_count(progress["total_line"]));

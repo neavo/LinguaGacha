@@ -14,9 +14,9 @@
 | --- | --- |
 | 系统分层、跨层边界、运行时主链路、模块关系 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | CLI 命令模式、入口分发、命令参数、临时工程、平台启动器 | [`docs/CLI.md`](docs/CLI.md) |
-| 后端公开协议、HTTP / SSE、项目读取、topic、错误码、mutation 契约 | [`docs/BACKEND.md`](docs/BACKEND.md) |
+| 后端公开协议、HTTP / SSE、项目读取、topic、错误码、写入契约 | [`docs/BACKEND.md`](docs/BACKEND.md) |
 | 后端领域边界、状态拥有者、唯一写入口、数据库和 `.lg` 物理存储落点 | [`docs/BACKEND.md`](docs/BACKEND.md) |
-| Electron、preload、renderer、`ProjectStore`、导航和样式消费边界 | [`docs/FRONTEND.md`](docs/FRONTEND.md) |
+| Electron、preload、renderer、前端运行态、导航和样式消费边界 | [`docs/FRONTEND.md`](docs/FRONTEND.md) |
 | 起手式、阅读路径、验证矩阵、文档同步、交付自检 | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) |
 
 ## 2. 协作硬约束
@@ -29,7 +29,7 @@
 ## 3. 改动前判定
 
 - 改代码前先确认状态拥有者、唯一写入口和事件回流路径，不能只按目录名推断。
-- 新增共享状态前，先判定它属于后端运行态、数据库事实、`ProjectStore`、页面缓存还是页面本地状态。
+- 新增共享状态前，先判定它属于后端运行态、数据库事实、前端运行态、页面缓存还是页面本地状态。
 - 改公开协议、状态写入口、数据库、`.lg` 存储、前端运行态或验证要求时，同一任务内同步唯一归宿文档。
 - 删除或迁移文档入口前，必须确认 README、脚本提示、测试断言和技能提示不再指向旧入口。
 - 任何新规则若需要靠“补充、另外、注意、同时”塞入现有段落，先重组信息块再落文。
@@ -52,7 +52,7 @@ TypeScript / React / CSS：
 
 - TypeScript 代码优先保持显式类型，只有第三方类型确实缺失时才局部使用 `any` 兜底。
 - React Hook 必须维护真实依赖数组，禁止用 eslint 禁用注释掩盖依赖问题。
-- renderer 宿主接入、Core API、用户可见文案和样式边界归 `docs/FRONTEND.md`，验证入口归 `docs/WORKFLOW.md`。
+- 前端宿主接入、后端 API、用户可见文案和样式边界归 `docs/FRONTEND.md`，验证入口归 `docs/WORKFLOW.md`。
 
 ## 5. 文档治理硬约束
 

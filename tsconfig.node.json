@@ -12,14 +12,14 @@
     "types": ["electron-vite/node"]
   },
   "include": [
-    "buildtools/vite/electron.vite.config.ts",
-    "src/base",
-    "src/electron-env.d.ts",
-    "src/index.ts",
+    "buildtools/vite/*.ts",
     "src/*.test.ts",
+    "src/backend",
     "src/cli",
-    "src/core",
+    "src/domain",
+    "src/electron-env.d.ts",
     "src/gui",
+    "src/index.ts",
     "src/native",
     "src/shared",
     "src/test"

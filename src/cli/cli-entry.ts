@@ -4,15 +4,15 @@ import path from "node:path";
 import { build_cli_help, write_stderr, write_stdout } from "./cli-output";
 import { CLIUsageError, parse_cli_args } from "./cli-parser";
 import { run_cli_command } from "./cli-runner";
-import type { EngineExecution } from "../core/engine/core/engine-execution";
+import type { BackendWorkerExecution } from "../backend/worker/worker-execution";
 
 /**
- * 执行 CLI 入口并返回进程退出码；engine_execution 由产品入口显式决定任务执行模式。
+ * 执行 CLI 入口并返回进程退出码；worker_execution 由产品入口显式决定 Backend worker 执行配置。
  */
 export async function run_cli_entry(
   argv: string[],
   app_root: string,
-  engine_execution: EngineExecution,
+  worker_execution: BackendWorkerExecution,
 ): Promise<number> {
   try {
     const parse_result = parse_cli_args(argv);
@@ -25,7 +25,7 @@ export async function run_cli_entry(
       return 0;
     }
 
-    await run_cli_command(app_root, parse_result.command, engine_execution);
+    await run_cli_command(app_root, parse_result.command, worker_execution);
     return 0;
   } catch (error) {
     if (error instanceof CLIUsageError) {

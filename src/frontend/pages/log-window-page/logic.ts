@@ -1,0 +1,130 @@
+import type { LogDetail, LogEvent, LogLevel } from "@frontend/app/desktop/desktop-api";
+import { LOG_WINDOW_EVENT_CAPACITY, format_log_readable_text } from "@shared/log";
+
+export type LogLevelFilter = "all" | LogLevel;
+
+// 列表事件只处理轻量预览，trim 后的正文用于折叠空日志和表格显示
+function normalize_log_event_message(event: LogEvent): LogEvent {
+  return {
+    ...event,
+    message_preview: event.message_preview.trim(),
+  };
+}
+
+/**
+ * 批量合并日志窗口事件，保持 trim、去重、连续空日志折叠和容量裁剪在同一条线性路径内完成
+ */
+export function append_log_events(
+  events: LogEvent[],
+  next_events: readonly LogEvent[],
+): LogEvent[] {
+  const appended_events = events.slice();
+  const existing_ids = new Set(appended_events.map((event) => event.id));
+
+  for (const event of next_events) {
+    const normalized_event = normalize_log_event_message(event);
+    if (existing_ids.has(normalized_event.id)) {
+      continue;
+    }
+
+    const last_event = appended_events.at(-1);
+    if (normalized_event.message_preview === "" && last_event?.message_preview === "") {
+      appended_events[appended_events.length - 1] = normalized_event;
+      existing_ids.delete(last_event.id);
+    } else {
+      appended_events.push(normalized_event);
+    }
+    existing_ids.add(normalized_event.id);
+  }
+
+  if (appended_events.length <= LOG_WINDOW_EVENT_CAPACITY) {
+    return appended_events;
+  }
+
+  return appended_events.slice(appended_events.length - LOG_WINDOW_EVENT_CAPACITY);
+}
+
+// 展示顺序只依赖后端单调递增序号，避免本地时间解析差异影响排序
+export function sort_log_events_latest_first(events: LogEvent[]): LogEvent[] {
+  return [...events].sort((left_event, right_event) => {
+    return right_event.sequence - left_event.sequence;
+  });
+}
+
+// 表格列保持单行预览，完整正文由详情接口按需读取
+export function compress_log_message_text(message: string): string {
+  if (message.trim() === "") {
+    return "(blank)";
+  }
+
+  return message.replace(/\r\n|\r|\n/gu, " ↵ ");
+}
+
+// 详情视图才把结构化异常字段拼回可读文本，列表仍只消费轻量 message_preview。
+export function format_log_detail_text(detail: Pick<LogDetail, "message" | "error">): string {
+  return format_log_readable_text(detail);
+}
+
+// 筛选只搜索轻量事件字段，避免完整日志正文进入 React 列表热路径
+export function filter_log_events(args: {
+  events: LogEvent[];
+  level_filter: LogLevelFilter;
+  keyword: string;
+  is_regex?: boolean;
+}): LogEvent[] {
+  const normalized_keyword = args.keyword.trim();
+  const regex =
+    args.is_regex === true && normalized_keyword !== ""
+      ? build_log_filter_regex(normalized_keyword)
+      : null;
+
+  return args.events.filter((event) => {
+    if (args.level_filter !== "all" && event.level !== args.level_filter) {
+      return false;
+    }
+
+    if (normalized_keyword === "") {
+      return true;
+    }
+
+    const search_text = [
+      event.level,
+      event.source,
+      event.message_preview,
+      event.sequence.toString(),
+      event.created_at,
+    ].join("\n");
+
+    if (args.is_regex === true) {
+      return regex === null ? true : regex.test(search_text);
+    }
+
+    return search_text.toLowerCase().includes(normalized_keyword.toLowerCase());
+  });
+}
+
+// 正则输入错误时回退为不过滤，错误提示由页面层根据同一输入独立展示
+function build_log_filter_regex(pattern: string): RegExp | null {
+  try {
+    return new RegExp(pattern, "iu");
+  } catch {
+    return null;
+  }
+}
+
+// 日志窗口使用本地可读时间，无法解析时保留原始时间戳用于诊断
+export function format_log_timestamp(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  const year = date.getFullYear().toString().padStart(4, "0");
+  const month = (date.getMonth() + 1).toString().padStart(2, "0");
+  const day = date.getDate().toString().padStart(2, "0");
+  const hour = date.getHours().toString().padStart(2, "0");
+  const minute = date.getMinutes().toString().padStart(2, "0");
+  const second = date.getSeconds().toString().padStart(2, "0");
+
+  return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
+}

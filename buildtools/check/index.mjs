@@ -10,14 +10,14 @@ run_check_cli([
   {
     title: "前端边界检查",
     project_root,
-    roots: [path.join(project_root, "src", "renderer")],
+    roots: [path.join(project_root, "src", "frontend")],
     rules: create_frontend_boundary_rules(),
   },
   {
     title: "后端边界检查",
     project_root,
     roots: [
-      path.join(project_root, "src", "core"),
+      path.join(project_root, "src", "backend"),
       path.join(project_root, "src", "native"),
       path.join(project_root, "src", "shared", "error"),
     ],

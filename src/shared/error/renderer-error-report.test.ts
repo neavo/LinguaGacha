@@ -36,7 +36,7 @@ describe("renderer error report", () => {
         },
       },
       context: {
-        stage: "commit_project_mutation",
+        stage: "commit_project_write",
         filename: "E:/secret/renderer.js",
         location: "file:///E:/secret/index.html?token=hidden",
         projectPath: "E:/secret/project/demo.lg",
@@ -75,7 +75,7 @@ describe("renderer error report", () => {
         },
       },
       context: {
-        stage: "commit_project_mutation",
+        stage: "commit_project_write",
         filename: {
           basename: "renderer.js",
           pathHash: expect.any(String),

@@ -13,11 +13,11 @@ describe("前端边界规则", () => {
     try {
       write_project_file(
         project_root,
-        "src/renderer/app/desktop/desktop-api.ts",
+        "src/frontend/app/desktop/desktop-api.ts",
         `
-          import { normalize_core_api_base_url } from "@core/api/core-api-endpoint";
+          import { normalize_backend_api_base_url } from "@backend/api/api-base-url";
           export async function api_fetch() {
-            return fetch(normalize_core_api_base_url("http://127.0.0.1:1"));
+            return fetch(normalize_backend_api_base_url("http://127.0.0.1:1"));
           }
           export function open_event_stream(url) {
             return new EventSource(url);
@@ -26,7 +26,7 @@ describe("前端边界规则", () => {
       );
       write_project_file(
         project_root,
-        "src/renderer/app/index.tsx",
+        "src/frontend/app/index.tsx",
         `
           import type { DesktopShellInfo } from "@gui/bridge-types";
           export function App(props: { shell: DesktopShellInfo }) {
@@ -47,12 +47,12 @@ describe("前端边界规则", () => {
     try {
       write_project_file(
         project_root,
-        "src/renderer/pages/bad-page.tsx",
+        "src/frontend/pages/bad-page.tsx",
         `
           import fs from "node:fs";
           import { shell } from "electron";
           import { NativeFs } from "../../native/native-fs";
-          import { ApiGatewayServer } from "../../core/api/api-gateway-server";
+          import { ApiGatewayServer } from "../../backend/api/api-gateway-server";
           import { create_main_window } from "../../gui/shell/desktop-window-host";
 
           export function BadPage() {
@@ -71,9 +71,9 @@ describe("前端边界规则", () => {
         "renderer 不能直接导入 Electron，只能通过 window.desktopApp 接入宿主能力",
       );
       expect(messages).toContain("renderer 不能读取 native 实现");
-      expect(messages).toContain("renderer 不能通过相对路径访问 Core 内部实现");
+      expect(messages).toContain("renderer 不能通过相对路径访问后端内部实现");
       expect(messages).toContain("renderer 读取 GUI 宿主契约必须使用 @gui/* 白名单别名");
-      expect(messages).toContain("renderer 访问 Core API 必须先收口到 desktop-api.ts");
+      expect(messages).toContain("renderer 访问后端 API 必须先收口到 desktop-api.ts");
       expect(messages).toContain(
         "页面不能暴露或调用共享 snapshot 裸 setter；请改用后端刷新、后端载荷同步或任务 ack 同步",
       );
@@ -84,22 +84,92 @@ describe("前端边界规则", () => {
     }
   });
 
-  it("拦截 renderer 导入项目 mutation 派生模块", () => {
+  it("拦截 renderer 导入项目 write 派生模块", () => {
     const project_root = create_temp_project();
     try {
       write_project_file(
         project_root,
-        "src/renderer/pages/bad-prefilter-page.ts",
+        "src/frontend/pages/bad-prefilter-page.ts",
         `
-          import { compute_project_prefilter_mutation } from "@shared/project/project-mutation-state";
-          export const run = compute_project_prefilter_mutation;
+          import { compute_project_prefilter_write } from "@shared/project/project-write-state";
+          export const run = compute_project_prefilter_write;
         `,
       );
 
       const messages = run_frontend_rules(project_root).map((error) => error.message);
 
       expect(messages).toContain(
-        "renderer 不能导入项目 mutation 派生模块；最终项目事实只能由 Core 后端计算",
+        "renderer 不能导入项目 write 派生模块；最终项目事实只能由后端计算",
+      );
+    } finally {
+      rmSync(project_root, { force: true, recursive: true });
+    }
+  });
+
+  it("拦截 frontend 旧混合目录回潮", () => {
+    const project_root = create_temp_project();
+    try {
+      write_project_file(
+        project_root,
+        "src/frontend/project/legacy-runtime.ts",
+        `
+          export const legacy_runtime = {};
+        `,
+      );
+      write_project_file(
+        project_root,
+        "src/frontend/hooks/use-legacy.ts",
+        `
+          export function useLegacy() {}
+        `,
+      );
+      write_project_file(
+        project_root,
+        "src/frontend/lib/misc.ts",
+        `
+          export const misc = {};
+        `,
+      );
+
+      const messages = run_frontend_rules(project_root).map((error) => error.message);
+
+      expect(messages).toContain(
+        "src/frontend/project 是已废弃混合目录；请按职责放入 app、pages、widgets 或 shared",
+      );
+      expect(messages).toContain(
+        "src/frontend/hooks 是已废弃按技术形态分组目录；请按所有权放入 widgets/interactions、app/state、pages 或 shared",
+      );
+      expect(messages).toContain(
+        "src/frontend/lib 是已废弃通用工具桶；请按所有权放入 app、widgets、ui、pages 或 shared",
+      );
+    } finally {
+      rmSync(project_root, { force: true, recursive: true });
+    }
+  });
+
+  it("拦截 widgets interactions 越权访问 app 和桌面 API", () => {
+    const project_root = create_temp_project();
+    try {
+      write_project_file(
+        project_root,
+        "src/frontend/widgets/interactions/use-bad-action.ts",
+        `
+          import { api_fetch } from "@frontend/app/desktop/desktop-api";
+          export function useBadAction() {
+            void api_fetch("/api/health");
+            fetch("/api/health");
+            window.desktopApp.quitApp();
+          }
+        `,
+      );
+
+      const messages = run_frontend_rules(project_root).map((error) => error.message);
+
+      expect(messages).toContain(
+        "widgets/interactions 只能承接通用 UI 交互行为，不能依赖 app 运行态或页面领域",
+      );
+      expect(messages).toContain(
+        "widgets/interactions 不能接触桌面桥、后端 API 或 SSE；请把能力收口到 app/desktop 或 app/state",
       );
     } finally {
       rmSync(project_root, { force: true, recursive: true });
@@ -109,10 +179,10 @@ describe("前端边界规则", () => {
   it("拦截 renderer 设计系统越权", () => {
     const project_root = create_temp_project();
     try {
-      write_project_file(project_root, "src/renderer/index.css", ":root { --ui-accent: #f97316; }");
+      write_project_file(project_root, "src/frontend/index.css", ":root { --ui-accent: #f97316; }");
       write_project_file(
         project_root,
-        "src/renderer/pages/bad-page.css",
+        "src/frontend/pages/bad-page.css",
         `
           .bad-page {
             --ui-local: #fff;
@@ -135,12 +205,12 @@ describe("前端边界规则", () => {
       expect(messages).toContain(
         "违规则使用了 rem 尺寸字面量；请改用 px，或回到 DESIGN.md 判断是否需要沉淀新的长期设计语义",
       );
-      expect(messages).toContain("违规定义了 --ui-* token，请改到 src/renderer/index.css");
+      expect(messages).toContain("违规定义了 --ui-* token，请改到 src/frontend/index.css");
       expect(messages).toContain(
-        ".project-home__panel 不应定义 background, border-radius；请把 Card 基础视觉收回到 shadcn 组件或 src/renderer/index.css",
+        ".project-home__panel 不应定义 background, border-radius；请把 Card 基础视觉收回到 shadcn 组件或 src/frontend/index.css",
       );
       expect(messages).toContain(
-        ".workbench-page__table-row td 不应定义 color；请把 Table 基础视觉收回到 shadcn 组件或 src/renderer/index.css",
+        ".workbench-page__table-row td 不应定义 color；请把 Table 基础视觉收回到 shadcn 组件或 src/frontend/index.css",
       );
     } finally {
       rmSync(project_root, { force: true, recursive: true });
@@ -151,7 +221,7 @@ describe("前端边界规则", () => {
 function run_frontend_rules(project_root) {
   return run_boundary_rules({
     project_root,
-    roots: [path.join(project_root, "src/renderer")],
+    roots: [path.join(project_root, "src/frontend")],
     rules: create_frontend_boundary_rules(),
   });
 }

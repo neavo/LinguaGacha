@@ -49,12 +49,12 @@ export interface LogErrorUrlIdentity extends LogErrorContext {
   length: number; // length 辅助判断空 URL、截断和形态变化
 }
 
-export interface AppErrorLogProjection {
+export interface AppErrorLogSnapshot {
   level: Extract<LogLevel, "debug" | "warning" | "error" | "fatal">;
   error: LogError;
 }
 
-export interface AppErrorLogProjectionOptions {
+export interface AppErrorLogSnapshotOptions {
   fatal?: boolean;
   context?: AppErrorDiagnosticContext;
 }
@@ -163,12 +163,12 @@ export function summarize_log_error_url(raw_url: string): LogErrorUrlIdentity {
 }
 
 /**
- * 日志投影保留 AppError 的公开 code/details 与 cause 链，但不依赖 Core LogManager 实例。
+ * 日志快照保留 AppError 的公开 code/details 与 cause 链，但不依赖 Backend LogManager 实例。
  */
-export function to_app_error_log_projection(
+export function to_app_error_log_snapshot(
   error: AppError,
-  options: AppErrorLogProjectionOptions = {},
-): AppErrorLogProjection {
+  options: AppErrorLogSnapshotOptions = {},
+): AppErrorLogSnapshot {
   return {
     level: options.fatal === true ? "fatal" : resolve_app_error_log_level(error),
     error: to_log_error(error, {

@@ -16,7 +16,7 @@ import {
   IPC_CHANNEL_QUIT_APP,
   IPC_CHANNEL_RENDERER_DIAGNOSTICS,
   IPC_CHANNEL_TITLE_BAR_THEME,
-} from "../ipc/ipc-contract";
+} from "../gui-ipc-contract";
 
 // electron mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const electron_mock = vi.hoisted(() => {
@@ -319,6 +319,9 @@ describe("桌面 IPC 宿主", () => {
 });
 
 // register_handlers 收口测试中的共享步骤，保证断言只关注当前行为。
+/**
+ * 模拟 IPC 通信行为。
+ */
 async function register_handlers(
   options: {
     mainWindow?: unknown | null;
@@ -339,6 +342,9 @@ async function register_handlers(
 }
 
 // emit_send 收口测试中的共享步骤，保证断言只关注当前行为。
+/**
+ * 支撑当前测试场景的专用辅助逻辑。
+ */
 function emit_send(channel: string, event: { sender: unknown }, ...args: unknown[]): void {
   const listener = electron_mock.send_handlers.get(channel);
   if (listener === undefined) {
@@ -348,6 +354,9 @@ function emit_send(channel: string, event: { sender: unknown }, ...args: unknown
 }
 
 // invoke 收口测试中的共享步骤，保证断言只关注当前行为。
+/**
+ * 模拟 IPC 通信行为。
+ */
 async function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
   const handler = electron_mock.invoke_handlers.get(channel);
   if (handler === undefined) {
