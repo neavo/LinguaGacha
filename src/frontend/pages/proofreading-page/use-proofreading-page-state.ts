@@ -1798,7 +1798,6 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     clear_table_selection();
     set_current_filters(clone_proofreading_filter_options(normalized_filters));
     set_filter_dialog_filters(clone_proofreading_filter_options(normalized_filters));
-    set_filter_dialog_open(false);
     current_filters_ref.current = clone_proofreading_filter_options(normalized_filters);
     filter_dialog_filters_ref.current = clone_proofreading_filter_options(normalized_filters);
     write_page_ui_state({
@@ -1819,6 +1818,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       });
     } catch (error) {
       report_proofreading_list_error(error, t("proofreading_page.feedback.refresh_failed"));
+    } finally {
+      set_filter_dialog_open(false);
     }
   }, [
     cache_status,
