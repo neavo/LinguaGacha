@@ -1,9 +1,5 @@
 import type { ApiJsonValue } from "../api/api-types";
-import type {
-  ProjectDataCache,
-  ProjectDataFileEntry,
-  ProjectDataItem,
-} from "../project/project-data";
+import type { CacheFileEntry, CacheItem, CacheReadPort } from "../cache/cache-types";
 import type { ProjectSessionState } from "../project/project-session";
 import {
   prepare_analysis_glossary_import_from_cache,
@@ -18,18 +14,18 @@ const FAILED_STATUSES = new Set(["ERROR"]);
 const SKIPPED_STATUSES = new Set(["EXCLUDED", "RULE_SKIPPED", "LANGUAGE_SKIPPED", "DUPLICATED"]);
 
 /**
- * 后端 query service 从 ProjectDataCache 读取热数据，并返回页面级 view model。
+ * 后端 query service 从 cache 门面读取热数据，并返回页面级 view model。
  */
 export class WorkbenchQueryService {
   private readonly session_state: ProjectSessionState;
-  private readonly project_data_cache: ProjectDataCache;
+  private readonly cache: CacheReadPort;
 
   /**
-   * session_state 提供工程身份，project_data_cache 提供当前项目热读事实。
+   * session_state 提供工程身份，cache 提供当前项目热读事实。
    */
-  public constructor(session_state: ProjectSessionState, project_data_cache: ProjectDataCache) {
+  public constructor(session_state: ProjectSessionState, cache: CacheReadPort) {
     this.session_state = session_state;
-    this.project_data_cache = project_data_cache;
+    this.cache = cache;
   }
 
   /**
@@ -37,16 +33,13 @@ export class WorkbenchQueryService {
    */
   public read_workbench_view(): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
-    const items = this.project_data_cache.readItems();
-    const file_entries = this.build_file_entries(items, this.project_data_cache.readFileEntries());
+    const items = this.cache.items.readItems();
+    const file_entries = this.build_file_entries(items, this.cache.files.readFileEntries());
     const stats = this.build_item_stats(items);
-    const analysis_stats = this.build_analysis_stats(
-      items,
-      this.project_data_cache.readAnalysisBlock(),
-    );
+    const analysis_stats = this.build_analysis_stats(items, this.cache.analysis.readBlock());
     return {
       projectPath: project_path,
-      sectionRevisions: this.project_data_cache.readSectionRevisions() as unknown as ApiJsonValue,
+      sectionRevisions: this.cache.readSectionRevisions() as unknown as ApiJsonValue,
       view: {
         file_count: file_entries.length,
         total_items: items.length,
@@ -63,10 +56,10 @@ export class WorkbenchQueryService {
   public read_quality_rule_view(request: Record<string, ApiJsonValue>): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
     const rule_type = this.read_quality_rule_type(request["rule_type"]);
-    const quality_block = this.project_data_cache.readQualityBlock();
+    const quality_block = this.cache.quality.readBlock();
     return {
       projectPath: project_path,
-      sectionRevisions: this.project_data_cache.readSectionRevisions() as unknown as ApiJsonValue,
+      sectionRevisions: this.cache.readSectionRevisions() as unknown as ApiJsonValue,
       qualityRule: this.normalize_record(quality_block[rule_type]) as unknown as ApiJsonValue,
     };
   }
@@ -77,10 +70,10 @@ export class WorkbenchQueryService {
   public read_prompt_view(request: Record<string, ApiJsonValue>): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
     const task_type = this.read_prompt_task_type(request["task_type"]);
-    const prompts_block = this.project_data_cache.readPromptsBlock();
+    const prompts_block = this.cache.prompts.readBlock();
     return {
       projectPath: project_path,
-      sectionRevisions: this.project_data_cache.readSectionRevisions() as unknown as ApiJsonValue,
+      sectionRevisions: this.cache.readSectionRevisions() as unknown as ApiJsonValue,
       prompt: this.normalize_record(prompts_block[task_type]) as unknown as ApiJsonValue,
     };
   }
@@ -93,10 +86,10 @@ export class WorkbenchQueryService {
   ): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
     const action = this.read_quality_import_action(request["action"]);
-    const section_revisions = this.project_data_cache.readSectionRevisions();
+    const section_revisions = this.cache.readSectionRevisions();
     const prepared_import = prepare_analysis_glossary_import_from_cache({
-      quality_block: this.project_data_cache.readQualityBlock(),
-      items: this.project_data_cache.readItems(),
+      quality_block: this.cache.quality.readBlock(),
+      items: this.cache.items.readItems(),
       section_revisions,
       candidate_aggregate: this.read_record(request["candidate_aggregate"]),
       action,
@@ -112,10 +105,10 @@ export class WorkbenchQueryService {
    * 按文件路径聚合工作台列表，统计结果和文件条目使用同一批 item。
    */
   private build_file_entries(
-    items: ProjectDataItem[],
-    cached_file_entries: ProjectDataFileEntry[],
+    items: CacheItem[],
+    cached_file_entries: CacheFileEntry[],
   ): MutableJsonRecord[] {
-    const entries_by_path = new Map<string, ProjectDataItem[]>();
+    const entries_by_path = new Map<string, CacheItem[]>();
     for (const item of items) {
       const file_path = String(item["file_path"] ?? "");
       if (file_path === "") {
@@ -159,8 +152,8 @@ export class WorkbenchQueryService {
    * 工作台文件行同时携带 asset 顺序和该文件下 item 统计。
    */
   private build_workbench_file_entry(
-    file_entry: ProjectDataFileEntry,
-    file_items: ProjectDataItem[],
+    file_entry: CacheFileEntry,
+    file_items: CacheItem[],
     fallback_sort_index: number,
   ): MutableJsonRecord {
     return {
@@ -174,7 +167,7 @@ export class WorkbenchQueryService {
   /**
    * 工作台进度统计只基于 item status，任务运行态进度由 TaskSnapshot 单独提供。
    */
-  private build_item_stats(items: ProjectDataItem[]): MutableJsonRecord {
+  private build_item_stats(items: CacheItem[]): MutableJsonRecord {
     let completed_count = 0;
     let failed_count = 0;
     let skipped_count = 0;
@@ -203,7 +196,7 @@ export class WorkbenchQueryService {
    * 分析统计优先消费任务写入的 status_summary，缺失时按可分析 item 数生成待处理态。
    */
   private build_analysis_stats(
-    items: ProjectDataItem[],
+    items: CacheItem[],
     analysis_block: MutableJsonRecord,
   ): MutableJsonRecord {
     const status_summary = analysis_block["status_summary"];

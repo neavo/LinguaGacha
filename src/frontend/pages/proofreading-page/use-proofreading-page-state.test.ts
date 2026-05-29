@@ -42,7 +42,7 @@ type NavigationFixture = {
 };
 
 type ProofreadingClientFixture = {
-  hydrate_proofreading_full: ReturnType<typeof vi.fn>;
+  sync_proofreading_cache: ReturnType<typeof vi.fn>;
   build_proofreading_list_view: ReturnType<typeof vi.fn>;
   read_proofreading_list_window: ReturnType<typeof vi.fn>;
   read_proofreading_row_ids_range: ReturnType<typeof vi.fn>;
@@ -527,7 +527,7 @@ function create_filter_panel() {
  */
 function create_proofreading_client_fixture(): ProofreadingClientFixture {
   return {
-    hydrate_proofreading_full: vi.fn(async () => create_sync_state()),
+    sync_proofreading_cache: vi.fn(async () => create_sync_state()),
     build_proofreading_list_view: vi.fn(async () => create_list_view()),
     read_proofreading_list_window: vi.fn(async () => {
       return {
@@ -639,7 +639,7 @@ describe("useProofreadingPageState", () => {
     await render_hook();
 
     expect(latest_state).not.toBeNull();
-    expect(proofreading_client_fixture.current.hydrate_proofreading_full).toHaveBeenCalledTimes(1);
+    expect(proofreading_client_fixture.current.sync_proofreading_cache).toHaveBeenCalledTimes(1);
     expect(latest_state?.cache_status).toBe("ready");
     expect(latest_state?.settled_project_path).toBe("E:/demo/sample.lg");
   });
@@ -660,7 +660,7 @@ describe("useProofreadingPageState", () => {
         },
       ],
     };
-    proofreading_client_fixture.current.hydrate_proofreading_full = vi.fn(() => {
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(() => {
       return refresh_deferred.promise;
     });
     proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async () => {
@@ -699,7 +699,7 @@ describe("useProofreadingPageState", () => {
   it("质量 hydrate 未完成时筛选弹窗不可打开且不触发列表查询", async () => {
     vi.useFakeTimers();
     const refresh_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
-    proofreading_client_fixture.current.hydrate_proofreading_full = vi.fn(() => {
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(() => {
       return refresh_deferred.promise;
     });
 
@@ -729,10 +729,10 @@ describe("useProofreadingPageState", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("缓存 ready 后再次收到条目变更时通过后端 query 全量重建 hydrate", async () => {
+  it("缓存 ready 后再次收到条目变更时按 delta 信号同步后端 query", async () => {
     await render_hook();
 
-    expect(proofreading_client_fixture.current.hydrate_proofreading_full).toHaveBeenCalledTimes(1);
+    expect(proofreading_client_fixture.current.sync_proofreading_cache).toHaveBeenCalledTimes(1);
     expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledTimes(
       1,
     );
@@ -756,7 +756,7 @@ describe("useProofreadingPageState", () => {
     };
     await render_hook();
 
-    expect(proofreading_client_fixture.current.hydrate_proofreading_full).toHaveBeenCalledTimes(2);
+    expect(proofreading_client_fixture.current.sync_proofreading_cache).toHaveBeenCalledTimes(2);
     expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledTimes(
       2,
     );
@@ -767,12 +767,12 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.visible_items).toHaveLength(1);
   });
 
-  it("翻译写回触发后端 query 全量刷新时展示模态 loading toast", async () => {
+  it("翻译写回触发 delta 刷新时保留当前列表且不展示模态 loading toast", async () => {
     await render_hook();
     toast_fixture.current.push_progress_toast.mockClear();
     toast_fixture.current.dismiss_toast.mockClear();
     const hydrate_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
-    proofreading_client_fixture.current.hydrate_proofreading_full = vi.fn(() => {
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(() => {
       return hydrate_deferred.promise;
     });
 
@@ -787,10 +787,8 @@ describe("useProofreadingPageState", () => {
     await render_hook();
 
     expect(latest_state?.cache_status).toBe("refreshing");
-    expect(toast_fixture.current.push_progress_toast).toHaveBeenCalledWith({
-      message: "proofreading_page.feedback.loading_toast",
-      presentation: "modal",
-    });
+    expect(latest_state?.visible_items).toHaveLength(1);
+    expect(toast_fixture.current.push_progress_toast).not.toHaveBeenCalled();
 
     await act(async () => {
       hydrate_deferred.resolve(create_sync_state());
@@ -798,14 +796,63 @@ describe("useProofreadingPageState", () => {
     await flush_async_updates();
 
     expect(latest_state?.cache_status).toBe("ready");
-    expect(toast_fixture.current.dismiss_toast).toHaveBeenCalledWith("proofreading-loading-toast");
+    expect(toast_fixture.current.dismiss_toast).not.toHaveBeenCalledWith(
+      "proofreading-loading-toast",
+    );
+  });
+
+  it("delta 刷新完成时保留打开中的筛选弹窗草稿", async () => {
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.open_filter_dialog();
+    });
+    await flush_async_updates();
+
+    await act(async () => {
+      if (latest_state === null) {
+        throw new Error("校对页面状态未准备就绪。");
+      }
+      latest_state.update_filter_dialog_filters({
+        ...latest_state.filter_dialog_filters,
+        statuses: [],
+      });
+    });
+    expect(latest_state?.filter_dialog_open).toBe(true);
+    expect(latest_state?.current_filters.statuses).toEqual(["NONE"]);
+    expect(latest_state?.filter_dialog_filters.statuses).toEqual([]);
+
+    const hydrate_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(() => {
+      return hydrate_deferred.promise;
+    });
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_change_signal: create_project_change_signal(1, {
+        mode: "delta",
+        itemIds: [1],
+        updatedSections: ["items"],
+      }),
+    };
+    await render_hook();
+
+    await act(async () => {
+      hydrate_deferred.resolve(create_sync_state());
+    });
+    await flush_async_updates();
+
+    expect(latest_state?.cache_status).toBe("ready");
+    expect(latest_state?.filter_dialog_open).toBe(true);
+    expect(latest_state?.current_filters.statuses).toEqual(["NONE"]);
+    expect(latest_state?.filter_dialog_filters.statuses).toEqual([]);
   });
 
   it("目标语言变化后会全量重建校对列表缓存", async () => {
     await render_hook();
 
-    expect(proofreading_client_fixture.current.hydrate_proofreading_full).toHaveBeenCalledTimes(1);
-    expect(proofreading_client_fixture.current.hydrate_proofreading_full).toHaveBeenLastCalledWith(
+    expect(proofreading_client_fixture.current.sync_proofreading_cache).toHaveBeenCalledTimes(1);
+    expect(proofreading_client_fixture.current.sync_proofreading_cache).toHaveBeenLastCalledWith(
       expect.objectContaining({ targetLanguage: "ZH" }),
     );
 
@@ -823,13 +870,13 @@ describe("useProofreadingPageState", () => {
     };
     await render_hook();
 
-    expect(proofreading_client_fixture.current.hydrate_proofreading_full).toHaveBeenCalledTimes(2);
+    expect(proofreading_client_fixture.current.sync_proofreading_cache).toHaveBeenCalledTimes(2);
   });
 
   it("缓存 ready 后收到 noop 信号不会重新查询列表和筛选面板", async () => {
     await render_hook();
 
-    expect(proofreading_client_fixture.current.hydrate_proofreading_full).toHaveBeenCalledTimes(1);
+    expect(proofreading_client_fixture.current.sync_proofreading_cache).toHaveBeenCalledTimes(1);
     expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledTimes(
       1,
     );
@@ -847,7 +894,7 @@ describe("useProofreadingPageState", () => {
     };
     await render_hook();
 
-    expect(proofreading_client_fixture.current.hydrate_proofreading_full).toHaveBeenCalledTimes(1);
+    expect(proofreading_client_fixture.current.sync_proofreading_cache).toHaveBeenCalledTimes(1);
     expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledTimes(
       1,
     );
@@ -1087,7 +1134,7 @@ describe("useProofreadingPageState", () => {
     });
 
     const refresh_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
-    proofreading_client_fixture.current.hydrate_proofreading_full = vi.fn(() => {
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(() => {
       return refresh_deferred.promise;
     });
     runtime_fixture.current = {
@@ -1421,7 +1468,7 @@ describe("useProofreadingPageState", () => {
   });
 
   it("列表运行态错误会统一收口成刷新失败 toast", async () => {
-    proofreading_client_fixture.current.hydrate_proofreading_full = vi.fn(async () => {
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
       throw new Error("init_failed");
     });
 
@@ -1465,7 +1512,7 @@ describe("useProofreadingPageState", () => {
 
   it("项目卸载会废弃在途刷新结果", async () => {
     const refresh_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
-    proofreading_client_fixture.current.hydrate_proofreading_full = vi.fn(() => {
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(() => {
       return refresh_deferred.promise;
     });
 

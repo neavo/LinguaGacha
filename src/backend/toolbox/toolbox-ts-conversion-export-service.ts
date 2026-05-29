@@ -1,5 +1,5 @@
 import type { ApiJsonValue } from "../api/api-types";
-import type { ProjectDataCache } from "../project/project-data";
+import type { CacheReadPort } from "../cache/cache-types";
 import type { TranslationFileExportService } from "../translation/translation-file-export-service";
 import type { ProjectSessionState } from "../project/project-session";
 import type { BackendWorkerClient } from "../worker/worker-client";
@@ -18,20 +18,20 @@ type JsonRecord = Record<string, ApiJsonValue>;
 
 export class ToolboxTsConversionExportService {
   private readonly session_state: ProjectSessionState;
-  private readonly project_data_cache: ProjectDataCache;
+  private readonly cache: CacheReadPort;
   private readonly worker_client: BackendWorkerClient;
   private readonly preset_reader: QualityRulePresetReader;
   private readonly file_export_service: TranslationFileExportService;
 
   public constructor(options: {
     sessionState: ProjectSessionState;
-    projectDataCache: ProjectDataCache;
+    cache: CacheReadPort;
     workerClient: BackendWorkerClient;
     presetReader: QualityRulePresetReader;
     fileExportService: TranslationFileExportService;
   }) {
     this.session_state = options.sessionState;
-    this.project_data_cache = options.projectDataCache;
+    this.cache = options.cache;
     this.worker_client = options.workerClient;
     this.preset_reader = options.presetReader;
     this.file_export_service = options.fileExportService;
@@ -42,7 +42,7 @@ export class ToolboxTsConversionExportService {
     const direction = this.read_direction(request["direction"]);
     const convert_name = request["convert_name"] !== false;
     const preserve_text = request["preserve_text"] !== false;
-    const source_items = this.project_data_cache.readItems();
+    const source_items = this.cache.items.readItems();
     if (source_items.length === 0) {
       throw new AppErrors.RequestValidationError({
         diagnostic_context: { reason: "empty_ts_conversion_items" },
@@ -102,7 +102,7 @@ export class ToolboxTsConversionExportService {
     mode: string;
     entries: Array<Record<string, unknown>>;
   } {
-    const quality_block = this.project_data_cache.readQualityBlock();
+    const quality_block = this.cache.quality.readBlock();
     const slice =
       typeof quality_block["text_preserve"] === "object" &&
       quality_block["text_preserve"] !== null &&

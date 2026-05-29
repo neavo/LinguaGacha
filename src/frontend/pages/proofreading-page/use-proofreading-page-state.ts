@@ -202,7 +202,9 @@ type ProofreadingListQueryInput = {
 
 type ProofreadingRefreshSignal = {
   seq: number;
-  mode: "full" | "noop";
+  mode: "full" | "delta" | "noop";
+  itemIds: number[];
+  deleteItemIds: number[];
 };
 
 /**
@@ -500,7 +502,7 @@ function resolve_requested_sync_mode(args: {
   sourceLanguage: string;
   targetLanguage: string;
   signal_mode: "full" | "delta" | "noop";
-}): "full" | "noop" {
+}): "full" | "delta" | "noop" {
   if (
     args.cache_status === "error" ||
     args.sync_state === null ||
@@ -517,7 +519,7 @@ function resolve_requested_sync_mode(args: {
     return "full";
   }
 
-  return args.signal_mode === "noop" ? "noop" : "full";
+  return args.signal_mode;
 }
 
 /**
@@ -526,6 +528,13 @@ function resolve_requested_sync_mode(args: {
 function resolve_proofreading_refresh_signal(signal: {
   seq: number;
   updated_sections: string[];
+  results: Array<{
+    itemDelta?: {
+      upsertItemIds: Array<number | string>;
+      deleteItemIds: Array<number | string>;
+      fullReplace: boolean;
+    };
+  }>;
 }): ProofreadingRefreshSignal | null {
   if (signal.updated_sections.length === 0) {
     return null;
@@ -534,6 +543,41 @@ function resolve_proofreading_refresh_signal(signal: {
     return {
       seq: signal.seq,
       mode: "noop",
+      itemIds: [],
+      deleteItemIds: [],
+    };
+  }
+  if (
+    signal.updated_sections.some((section) => ["project", "files", "quality"].includes(section)) ||
+    signal.results.some((result) => result.itemDelta?.fullReplace === true)
+  ) {
+    return {
+      seq: signal.seq,
+      mode: "full",
+      itemIds: [],
+      deleteItemIds: [],
+    };
+  }
+  const item_ids = normalize_refresh_item_ids(
+    signal.results.flatMap((result) => result.itemDelta?.upsertItemIds ?? []),
+  );
+  const delete_item_ids = normalize_refresh_item_ids(
+    signal.results.flatMap((result) => result.itemDelta?.deleteItemIds ?? []),
+  );
+  if (signal.updated_sections.includes("items")) {
+    if (item_ids.length > 0 || delete_item_ids.length > 0) {
+      return {
+        seq: signal.seq,
+        mode: "delta",
+        itemIds: item_ids,
+        deleteItemIds: delete_item_ids,
+      };
+    }
+    return {
+      seq: signal.seq,
+      mode: "full",
+      itemIds: [],
+      deleteItemIds: [],
     };
   }
   if (
@@ -544,9 +588,22 @@ function resolve_proofreading_refresh_signal(signal: {
     return {
       seq: signal.seq,
       mode: "full",
+      itemIds: [],
+      deleteItemIds: [],
     };
   }
   return null;
+}
+
+function normalize_refresh_item_ids(values: Array<number | string>): number[] {
+  const ids = new Set<number>();
+  for (const value of values) {
+    const parsed = Number(value);
+    if (Number.isInteger(parsed) && parsed > 0) {
+      ids.add(parsed);
+    }
+  }
+  return [...ids];
 }
 
 // useProofreadingPageState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
@@ -637,6 +694,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const active_row_id_ref = useRef<string | null>(active_row_id);
   const selected_row_ids_ref = useRef<string[]>(selected_row_ids);
   const anchor_row_id_ref = useRef<string | null>(anchor_row_id);
+  const filter_dialog_open_ref = useRef(filter_dialog_open);
   const pending_reset_filters_ref = useRef(false);
   const previous_project_loaded_ref = useRef(false);
   const previous_project_path_ref = useRef("");
@@ -695,6 +753,10 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   useEffect(() => {
     filter_dialog_filters_ref.current = filter_dialog_filters;
   }, [filter_dialog_filters]);
+
+  useEffect(() => {
+    filter_dialog_open_ref.current = filter_dialog_open;
+  }, [filter_dialog_open]);
 
   useEffect(() => {
     active_row_id_ref.current = active_row_id;
@@ -1025,6 +1087,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     anchor_row_id_ref.current = null;
     restore_scroll_row_id_ref.current = null;
     set_filter_dialog_open(false);
+    filter_dialog_open_ref.current = false;
     set_dialog_state(create_empty_dialog_state());
     set_dialog_item_snapshot(null);
     replace_cursor_ref.current = 0;
@@ -1398,14 +1461,19 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
 
       // 离开 ready 前先终止旧 cache 查询，避免防抖回调在刷新窗口读取旧 state。
       invalidate_cache_bound_queries();
-      set_filter_panel_loading(false);
-      set_filter_dialog_open(false);
+      if (sync_mode === "full") {
+        set_filter_panel_loading(false);
+        set_filter_dialog_open(false);
+        filter_dialog_open_ref.current = false;
+      }
       set_is_refreshing(true);
       set_cache_status("refreshing");
       set_loading_toast_visible(sync_mode === "full");
 
-      sync_state_ref.current = null;
-      sync_state = await proofreading_runtime_client_ref.current.hydrate_proofreading_full({
+      if (sync_mode === "full") {
+        sync_state_ref.current = null;
+      }
+      sync_state = await proofreading_runtime_client_ref.current.sync_proofreading_cache({
         sourceLanguage: settings_snapshot.source_language,
         targetLanguage: settings_snapshot.target_language,
       });
@@ -1429,7 +1497,11 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       defaultFiltersRef.current = clone_proofreading_filter_options(nextDefaultFilters);
       default_filters_ready_ref.current = true;
       set_current_filters(clone_proofreading_filter_options(next_current_filters));
-      set_filter_dialog_filters(clone_proofreading_filter_options(next_current_filters));
+      if (sync_mode !== "delta" || !filter_dialog_open_ref.current) {
+        const next_dialog_filters = clone_proofreading_filter_options(next_current_filters);
+        set_filter_dialog_filters(next_dialog_filters);
+        filter_dialog_filters_ref.current = next_dialog_filters;
+      }
 
       const next_list_view = await run_list_view_query(
         {
@@ -1752,18 +1824,24 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const open_filter_dialog = useCallback((): void => {
     if (cache_status !== "ready" || is_refreshing) {
       set_filter_dialog_open(false);
+      filter_dialog_open_ref.current = false;
       return;
     }
 
-    set_filter_dialog_filters(clone_proofreading_filter_options(current_filters_ref.current));
+    const next_dialog_filters = clone_proofreading_filter_options(current_filters_ref.current);
+    set_filter_dialog_filters(next_dialog_filters);
+    filter_dialog_filters_ref.current = next_dialog_filters;
     set_filter_dialog_open(true);
+    filter_dialog_open_ref.current = true;
   }, [cache_status, is_refreshing]);
 
   const close_filter_dialog = useCallback((): void => {
     filter_panel_query_scheduler.cancel();
     set_filter_dialog_open(false);
+    filter_dialog_open_ref.current = false;
     const restored_filters = clone_proofreading_filter_options(current_filters_ref.current);
     set_filter_dialog_filters(restored_filters);
+    filter_dialog_filters_ref.current = restored_filters;
     void run_filter_panel_query(restored_filters, {
       force: true,
       mark_loading: false,
@@ -1820,6 +1898,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       report_proofreading_list_error(error, t("proofreading_page.feedback.refresh_failed"));
     } finally {
       set_filter_dialog_open(false);
+      filter_dialog_open_ref.current = false;
     }
   }, [
     cache_status,

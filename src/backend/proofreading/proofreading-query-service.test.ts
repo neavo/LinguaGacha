@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { ProofreadingCache } from "./proofreading-cache";
+import type { ProofreadingCache } from "../cache/proofreading/proofreading-cache";
 import { ProjectSessionState } from "../project/project-session";
 import { ProofreadingQueryService } from "./proofreading-query-service";
 
@@ -46,7 +46,7 @@ function create_cache(): ProofreadingCache {
       data: [{ item_id: 1, src: "原文", dst: "译文" }],
     })),
     filterPanel: vi.fn(),
-    disposeProject: vi.fn(),
+    clearProject: vi.fn(),
   } as unknown as ProofreadingCache;
 }
 

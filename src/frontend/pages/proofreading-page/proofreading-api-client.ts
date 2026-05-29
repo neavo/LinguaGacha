@@ -20,7 +20,7 @@ type ProofreadingListQueryOptions = {
 };
 
 export type ProofreadingApiClient = {
-  hydrate_proofreading_full: (input: {
+  sync_proofreading_cache: (input: {
     sourceLanguage: string;
     targetLanguage: string;
   }) => Promise<ProofreadingSyncState>;
@@ -48,7 +48,7 @@ export type ProofreadingApiClient = {
  */
 export function createProofreadingApiClient(): ProofreadingApiClient {
   return {
-    async hydrate_proofreading_full(input) {
+    async sync_proofreading_cache(input) {
       const response = await api_fetch<{
         syncState?: ProofreadingSyncState;
       }>("/api/proofreading/view", {

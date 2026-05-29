@@ -59,7 +59,7 @@ function create_backend_services_options(): BackendServicesOptions {
 }
 
 describe("BackendServices", () => {
-  it("装配 ProjectEventBus、ProjectDataCache 和 WorkbenchQueryService 到同一个组合根", () => {
+  it("装配 ProjectEventBus、CacheManager 和 WorkbenchQueryService 到同一个组合根", () => {
     const services = new BackendServices(create_backend_services_options());
 
     expect(services.project).toBeDefined();

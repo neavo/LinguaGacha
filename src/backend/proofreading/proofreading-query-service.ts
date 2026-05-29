@@ -1,5 +1,5 @@
 import type { ApiJsonValue } from "../api/api-types";
-import type { ProofreadingCache } from "./proofreading-cache";
+import type { ProofreadingCache } from "../cache/proofreading/proofreading-cache";
 import type { ProjectSessionState } from "../project/project-session";
 import * as AppErrors from "../../shared/error";
 import type {
