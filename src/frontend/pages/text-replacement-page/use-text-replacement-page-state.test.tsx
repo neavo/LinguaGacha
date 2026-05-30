@@ -186,7 +186,7 @@ function apply_quality_write_result(result: {
   }
 }
 
-// 测试夹具只模拟后端原始 canonical write payload，回灌入口由运行态 commit mock 触发。
+// 测试夹具只模拟后端原始规范化写入载荷，回灌入口由运行态 commit mock 触发。
 /**
  * 构造当前测试场景的标准数据。
  */

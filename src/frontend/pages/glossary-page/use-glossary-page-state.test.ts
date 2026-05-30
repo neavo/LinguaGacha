@@ -199,7 +199,7 @@ function apply_quality_write_result(result: {
   }
 }
 
-// 测试夹具只模拟后端原始 canonical write payload，回灌入口由运行态 commit mock 触发。
+// 测试夹具只模拟后端原始规范化写入载荷，回灌入口由运行态 commit mock 触发。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -234,7 +234,7 @@ function create_quality_write_result(
   };
 }
 
-// 质量区块快照由后端整体回灌，测试只替换 glossary 切片以表达该次 write 的最终事实。
+// 质量区块快照由后端整体回灌，测试只替换 glossary 切片以表达该次写入的最终事实。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -1762,7 +1762,7 @@ describe("useGlossaryPageState", () => {
     expect(latest_state?.filtered_entries).toEqual([]);
   });
 
-  it("任务运行中锁定术语表 write，但保留筛选可用", async () => {
+  it("任务运行中锁定术语表写入，但保留筛选可用", async () => {
     task_snapshot = {
       busy: true,
       status: "running",

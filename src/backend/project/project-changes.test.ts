@@ -117,7 +117,7 @@ describe("compute_project_prefilter_write", () => {
     });
   });
 
-  it("启用 MTool 优化器时只在后端派生 KVJSON 重复短句跳过", () => {
+  it("启用 MTool 优化器时只在后端计算 KVJSON 重复短句跳过", () => {
     const output = compute_project_prefilter_write({
       state: create_state({
         "1": {
@@ -324,7 +324,7 @@ describe("ProjectChangeEventAdapter", () => {
     vi.restoreAllMocks();
   });
 
-  it("把 loaded 工程的领域草稿转换为 canonical delta 项目变更事件", () => {
+  it("把 loaded 工程的领域草稿转换为规范化增量项目变更事件", () => {
     vi.spyOn(Date, "now").mockReturnValue(36);
     vi.spyOn(Math, "random").mockReturnValue(0.5);
     const session_state = new ProjectSessionState();
@@ -669,7 +669,7 @@ function project_path(name: string): string {
 }
 
 /**
- * 创建只回显草稿的发布器，便于断言 coordinator 生成的 canonical payload
+ * 创建只回显草稿的发布器，便于断言 coordinator 生成的规范化 payload
  */
 function create_echo_project_change_publisher(): {
   publish_project_change: ReturnType<typeof vi.fn>;

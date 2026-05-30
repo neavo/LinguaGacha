@@ -245,7 +245,7 @@ describe("useLaboratoryPageState", () => {
       if (path === "/api/workbench/settings-alignment/apply") {
         throw new Error("prefilter_failed");
       }
-      if (path === "/api/workbench/view") {
+      if (path === "/api/workbench/snapshot") {
         return {
           sectionRevisions: {
             items: 0,
@@ -274,7 +274,7 @@ describe("useLaboratoryPageState", () => {
     );
     expect(vi.mocked(api_fetch).mock.calls).toEqual([
       ["/api/settings/update", { mtool_optimizer_enable: true }],
-      ["/api/workbench/view", {}],
+      ["/api/workbench/snapshot", {}],
       [
         "/api/workbench/settings-alignment/apply",
         {

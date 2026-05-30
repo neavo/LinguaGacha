@@ -25,7 +25,7 @@ import { LogManager } from "../log/log-manager";
 import { ModelService } from "../model/model-service";
 import { ProjectChangeEventAdapter } from "../project/project-changes";
 import { ProjectChangePublisher } from "../project/project-changes";
-import { ProjectMutationStore } from "../project/project-mutation-store";
+import { ProjectWriteStore } from "../project/project-write-store";
 import { ProjectLifecycleService } from "../project/project-session";
 import { ToolboxNameFieldExtractionService } from "../toolbox/toolbox-name-field-extraction-service";
 import { ProjectOperationGate } from "../project/project-gate";
@@ -119,13 +119,13 @@ export class BackendServices {
   private readonly database: ProjectDatabase;
   private readonly log_manager: LogManager;
   private readonly project_session_state = new ProjectSessionState(); // 当前 loaded 工程会话只在 Backend 内部流转
-  private readonly task_run_state = new TaskRunState(); // 任务运行态供 API 查询、CLI 等待和 write gate 共享
+  private readonly task_run_state = new TaskRunState(); // 任务运行态供 API 查询、CLI 等待和写入门闩共享
   private readonly project_data_reader: ProjectDataReader;
   private readonly api_stream_hub = new ApiStreamHub(); // 公开 stream 服务 GUI SSE、CLI task snapshot 与 settings/logs topic
   private readonly project_event_bus = new ProjectEventBus(); // Backend 内部 committed event 总线，不直接暴露给 renderer
   private readonly cache_manager: CacheManager;
   private readonly project_change_publisher: ProjectChangePublisher;
-  private readonly project_mutation_store: ProjectMutationStore;
+  private readonly project_write_store: ProjectWriteStore;
   private readonly workbench_query_service: WorkbenchQueryService;
   private readonly backend_worker_client: BackendWorkerClient;
   private readonly proofreading_query_service: ProofreadingQueryService;
@@ -190,7 +190,7 @@ export class BackendServices {
       project_change_adapter,
       this.api_stream_hub,
     );
-    this.project_mutation_store = new ProjectMutationStore(
+    this.project_write_store = new ProjectWriteStore(
       this.database,
       this.project_event_bus,
       this.project_change_publisher,
@@ -231,7 +231,7 @@ export class BackendServices {
       this.database,
       this.project_operation_gate,
       this.project_session_state,
-      this.project_mutation_store,
+      this.project_write_store,
       this.app_setting_service,
       undefined,
       this.log_manager,
@@ -239,7 +239,7 @@ export class BackendServices {
     this.proofreading_service = new ProofreadingService(
       this.database,
       this.project_session_state,
-      this.project_mutation_store,
+      this.project_write_store,
     );
     this.task_snapshot_builder = new TaskSnapshotBuilder(
       this.database,
@@ -257,7 +257,7 @@ export class BackendServices {
       this.project_session_state,
       this.task_run_state,
       this.cache_manager,
-      this.project_mutation_store,
+      this.project_write_store,
     );
     this.work_unit_worker_pool = new WorkUnitWorkerPool({
       appRoot: this.paths.get_app_root(),
@@ -311,7 +311,7 @@ export class BackendServices {
       this.app_setting_service,
       this.database,
       this.project_session_state,
-      this.project_mutation_store,
+      this.project_write_store,
     );
     this.app = {
       paths: this.paths,

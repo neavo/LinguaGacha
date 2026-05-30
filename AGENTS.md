@@ -39,8 +39,8 @@
 通用：
 
 - 命名必须沿用所在领域的既有词表，同一业务概念不得引入第二套名称，避免使用过于书面的措辞：
-  - ✅ `apply`、`read(er)`、`write(r)`、`change(r)`、`update(r)` 等
-  - ❌ `derived` `hydrated` `mutation` `read/view/query/domain model` 等
+  - ✅ `apply` `change` `read(er)` `write(r)` `update(r)` 等
+  - ❌ `derived` `hydrated` `mutation` `read/view/domain model` 等
 - 跨层、跨线程、跨前后端载荷必须使用显式类型、窄化函数或不可变值对象，不传可变引用
 - 新增共享状态前必须确认拥有者、写入口、快照形状和事件回流路径
 - 涉及任务、文件集合、数据库或 `.lg` 写入时，必须确认互斥、事务、失败回滚和事件补偿语义

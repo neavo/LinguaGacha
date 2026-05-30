@@ -117,7 +117,7 @@ type ProjectWriteSettings = ProjectSettingsSnapshot; // 项目生命周期只消
 export class ProjectLifecycleService {
   private readonly database: ProjectDatabase; // database 是 .lg 物理事实唯一写入口，项目域只拼受限 operation
 
-  private readonly session_state: ProjectSessionState; // session_state 是 renderer 可见 loaded/path 的唯一权威
+  private readonly session_state: ProjectSessionState; // session_state 是渲染进程可见 loaded/path 的唯一权威
 
   private readonly app_setting_service: AppSettingService; // app_setting_service 提供当前应用设置，用于打开预演与默认预设选择
 
@@ -222,7 +222,7 @@ export class ProjectLifecycleService {
       project_settings,
     );
     this.assert_create_commit_has_importable_files(parsed_draft);
-    // prefilter_output 是将可信草稿转成持久项目事实的唯一派生结果。
+    // prefilter_output 是将可信草稿转成持久项目事实的唯一计算结果。
     const prefilter_output = this.compute_create_project_prefilter_output({
       draft: parsed_draft,
       settings: project_settings,
@@ -256,7 +256,7 @@ export class ProjectLifecycleService {
   }
 
   /**
-   * 新建工程提交不接受旧前端事实字段，避免恢复 renderer 写库能力
+   * 新建工程提交不接受旧前端事实字段，避免恢复渲染进程写库能力
    */
   private assert_no_legacy_create_commit_fields(body: Record<string, ApiJsonValue>): void {
     for (const field of [

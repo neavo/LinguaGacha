@@ -33,7 +33,7 @@ export function ModelSelectorDialog(props: ModelSelectorDialogProps): JSX.Elemen
     onSelectModelId,
     open,
   } = props;
-  const debounced_filter_text = useDebouncedValue(filter_text); // 模型列表只做本地过滤，派生结果统一延迟刷新
+  const debounced_filter_text = useDebouncedValue(filter_text); // 模型列表只做本地过滤，计算结果统一延迟刷新
 
   useEffect(() => {
     if (!open || model === null) {

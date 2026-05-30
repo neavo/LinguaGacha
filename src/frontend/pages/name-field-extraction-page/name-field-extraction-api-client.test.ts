@@ -18,7 +18,7 @@ describe("name-field-extraction-api-client", () => {
     api_fetch_mock.mockReset();
   });
 
-  it("读取姓名字段提取需要的后端 query view", async () => {
+  it("读取姓名字段提取需要的后端查询视图", async () => {
     const response = {
       projectPath: "E:/Project/demo.lg",
       sectionRevisions: { items: 2, quality: 4 },
@@ -44,6 +44,6 @@ describe("name-field-extraction-api-client", () => {
     api_fetch_mock.mockResolvedValue({ sectionRevisions: { quality: 5 } });
 
     await expect(read_name_field_extraction_section_revisions()).resolves.toEqual({ quality: 5 });
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/workbench/view", {});
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/workbench/snapshot", {});
   });
 });

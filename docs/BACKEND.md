@@ -22,11 +22,11 @@
 | --- | --- | --- |
 | 应用设置、最近工程、语言 | `AppSettingService` | 设置 API、CLI transient overrides、`settings.changed` |
 | 当前 loaded 工程身份 | `ProjectSessionState` | `ProjectLifecycleService` |
-| 当前 loaded 工程热读数据 | `CacheManager` | `ProjectLifecycleService` 热机、`ProjectEventBus` committed event、各功能域 view API |
+| 当前 loaded 工程热读数据 | `CacheManager` | `ProjectLifecycleService` 热机、`ProjectEventBus` committed event、各功能域 query API |
 | 后端内部 committed event | `ProjectEventBus` | 写侧事务成功后的 after-commit 发布 |
 | 项目公开 manifest | `.lg` + `ProjectDataReader` | `/api/session/project/manifest` |
-| 页面 view model | 各功能域 query service + `CacheManager` | 各功能域 view API |
-| 同步运行态项目写入 | `ProjectMutationStore` | database transaction + internal event + `ProjectChangePublisher` |
+| 页面 query 结果 | 各功能域 query service + `CacheManager` | 各功能域 query API |
+| 同步运行态项目写入 | `ProjectWriteStore` | database transaction + internal event + `ProjectChangePublisher` |
 | 项目公开变更事件 | `ProjectChangeEventAdapter` + `ProjectChangePublisher` | 同一事件同时返回 HTTP 写入结果并广播 SSE |
 | 任务 busy/status/request pressure | `TaskRunState` | `TaskRunPublisher` |
 | 任务公开快照 | `TaskSnapshotBuilder` | 任务命令 ack、`/api/tasks/snapshot`、`task.snapshot_changed` |
@@ -47,24 +47,24 @@ project, files, items, quality, prompts, analysis, proofreading
 
 - `/api/session/project/manifest` 只返回项目身份、project revision、section revision 和 counts，不预热大 section。
 - `files` / `items` / `analysis` 的 section revision 继续读写既有 `.lg` meta key `project_runtime_revision.*`；本次命名清理不改变数据库物理字段。
-- 前端读取项目 view model 只能走对应功能域 view API；query response 必须携带本次 view 依赖的 `sectionRevisions`，页面写入使用这些 revision 作为乐观锁依赖。
+- 前端读取项目 query 结果只能走对应功能域 query API；query response 必须携带本次 query 结果依赖的 `sectionRevisions`，页面写入使用这些 revision 作为乐观锁依赖。
 - `CacheManager` 是当前 session 热读缓存管理根，持有 loaded 缓存身份、epoch、freshness、recoverable error、section revision，并组合 item / file / quality / prompt / analysis 子缓存；query service 只能从 cache、按需数据库数据读取和 shared 纯算法组合页面 view，不能建立第二套长期项目事实缓存。
-- `CacheChange` 是 `src/backend/cache` 内部 committed event 变化对象；`CacheManager` 先把项目事件收窄成 `CacheChange`，item 精确 delta 先更新基础热读 cache，再交给页面读模型缓存应用变化。全量重建只用于打开工程、可恢复错误恢复、未知范围、文件变化或明确 full 失效。
-- 校对列表和质量统计页面读模型缓存由 `src/backend/cache` 持有；基础热读缓存不保存校对筛选、列表窗口、统计结果或 worker 细节，页面读模型查询继续走本地 cache service。
-- 非 engine 的重型派生通过 `BackendWorkerClient` 提交无状态后端 worker task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
+- `CacheChange` 是 `src/backend/cache` 内部 committed event 变化对象；`CacheManager` 先把项目事件收窄成 `CacheChange`，item 精确 delta 先更新基础热读 cache，再交给页面读取缓存应用变化。全量重建只用于打开工程、可恢复错误恢复、未知范围、文件变化或明确 full 失效。
+- 校对列表和质量统计页面读取缓存由 `src/backend/cache` 持有；基础热读缓存不保存校对筛选、列表窗口、统计结果或 worker 细节，页面读取查询继续走本地 cache service。
+- 非 engine 的重型计算通过 `BackendWorkerClient` 提交无状态后端 worker task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
 - `/api/toolbox/name-fields/view` 读取当前 loaded 工程的名称字段提取视图；前端只提交筛选和排序参数。
 - `/api/toolbox/ts-conversion/files/export` 只接收转换方向和用户选项；前端不传转换后的 items。
 - `/api/translation/files/export` 触发当前 loaded 工程的普通译文文件产物导出。
 - 完整分析候选池不进入常驻项目快照，只能通过 `/api/analysis/candidates/list` 按需读取。
 - 同步项目写入成功返回 `ProjectWriteResult = { accepted: true, changes }`；`changes` 与后续 SSE 广播是同一批后端 canonical `ProjectChangeEvent`。
-- loaded 工程运行态事实写入只允许经 `ProjectMutationStore` 提交；领域服务负责请求校验、业务派生和语义化写入意图，不直接执行事务、推进 section revision 或发布项目变更。
-- `ProjectMutationStore` 的提交顺序固定为数据库事务成功后先发布内部 committed event，再发布公开项目变更；内部事件失败时不能继续发布公开 SSE。
+- loaded 工程运行态事实写入只允许经 `ProjectWriteStore` 提交；领域服务负责请求校验、业务计算和语义化写入意图，不直接执行事务、推进 section revision 或发布项目变更。
+- `ProjectWriteStore` 的提交顺序固定为数据库事务成功后先发布内部 committed event，再发布公开项目变更；内部事件失败时不能继续发布公开 SSE。
 - project create/load/unload、migration、默认预设初始化、CLI bootstrap 资源提交和测试前置 seed 属于生命周期、初始化或测试夹具写入，不纳入运行态唯一写入口。
 - `ProjectChangeEvent` 必须带后端确认的 `projectPath`、`projectRevision`、本次更新 section 的 `sectionRevisions` 和 `updatedSections`；不属于当前 loaded 工程的草稿不能发布。
 - 变更 payload mode 只允许三类：`canonical-delta` 直接携带后端规范数据，`field-patch` 只表达校对可写字段 `dst / status / retry_count`，`section-invalidated` 只作为页面重新 query 的刷新提示。
 - canonical item upsert 必须是完整公开 DTO；领域草稿可只给 `changedIds`，但公开事件必须由后端 adapter 回读补齐，瘦身 item DTO 不能进入项目事件。
 - 删除语义必须显式表达 tombstone：items 用 `deleteIds`，files 用 `deletePaths`；无法精确表达删除时使用对应 section 的 full replace。
-- 后端写入不接收前端派生的 `items`、task/progress extras、prefilter config 或 analysis extras 作为最终事实；页面只能提交用户意图、设置镜像和当前 section revision 依赖。
+- 后端写入不接收前端计算的 `items`、task/progress extras、prefilter config 或 analysis extras 作为最终事实；页面只能提交用户意图、设置镜像和当前 section revision 依赖。
 
 ## 4. 任务、worker 与 LLM 边界
 

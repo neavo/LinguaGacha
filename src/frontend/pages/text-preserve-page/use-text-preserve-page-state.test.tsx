@@ -203,7 +203,7 @@ function apply_quality_write_result(result: {
   }
 }
 
-// 测试夹具只模拟后端原始 canonical write payload，回灌入口由运行态 commit mock 触发。
+// 测试夹具只模拟后端原始规范化写入载荷，回灌入口由运行态 commit mock 触发。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -727,7 +727,7 @@ describe("useTextPreservePageState", () => {
 
   it("模式切换成功后直接收敛到后端已提交模式", async () => {
     api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/workbench/view") {
+      if (path === "/api/workbench/snapshot") {
         return {
           sectionRevisions: {
             quality: 1,
@@ -782,7 +782,7 @@ describe("useTextPreservePageState", () => {
       resolve: () => {},
     };
     api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/workbench/view") {
+      if (path === "/api/workbench/snapshot") {
         return {
           sectionRevisions: {
             quality: 1,

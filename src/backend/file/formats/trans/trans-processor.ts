@@ -36,7 +36,7 @@ export interface PatchTarget {
 }
 
 /**
- * TRANS 过滤派生结果，统一承载标签、状态与分区写回判断
+ * TRANS 过滤计算结果，统一承载标签、状态与分区写回判断
  */
 export interface TransFilterEffect {
   block: boolean[];
@@ -130,7 +130,7 @@ export function to_mutable_record(value: unknown): ApiJsonRecord {
 }
 
 /**
- * 从过滤结果派生公开状态、gold 标签和分区参数资格，读入与写回必须共用同一口径
+ * 从过滤结果计算公开状态、gold 标签和分区参数资格，读入与写回必须共用同一口径
  */
 export function derive_trans_filter_effect(input: TransFilterEffectInput): TransFilterEffect {
   const block = normalize_trans_filter_block(input.block);
@@ -154,7 +154,7 @@ function normalize_trans_filter_block(block: boolean[]): boolean[] {
 }
 
 /**
- * gold 表示命中过自动过滤；没有任何过滤时移除派生 gold，保留 red/blue 的人工排除语义
+ * gold 表示命中过自动过滤；没有任何过滤时移除计算 gold，保留 red/blue 的人工排除语义
  */
 function derive_trans_filter_tag(tag: string[], has_blocked_partition: boolean): string[] {
   if (has_blocked_partition) {
@@ -226,7 +226,7 @@ export class NoneTransProcessor {
   public post_process(): void {}
 
   /**
-   * 判断一行 .trans 数据的状态，并维护派生 gold 标签与 aqua 跳过语义
+   * 判断一行 .trans 数据的状态，并维护计算 gold 标签与 aqua 跳过语义
    */
   public check(
     path_key: string,

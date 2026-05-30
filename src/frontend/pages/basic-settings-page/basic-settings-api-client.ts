@@ -19,11 +19,11 @@ type ApplyBasicSettingsPrefilterWriteArgs = {
   commit_project_write: ProjectWriteCommitter;
 };
 
-// 基础设置页拥有自己的预过滤 write 诊断名，避免 desktop state 反向登记页面业务词表。
+// 基础设置页拥有自己的预过滤写入诊断名，避免 desktop state 反向登记页面业务词表。
 const BASIC_SETTINGS_PREFILTER_WRITE: ProjectWriteOperation = "basic-settings.prefilter_settings";
 
 async function read_basic_settings_section_revisions(): Promise<BasicSettingsSectionRevisions> {
-  const response = await api_fetch<BasicSettingsRevisionsResponse>("/api/workbench/view", {});
+  const response = await api_fetch<BasicSettingsRevisionsResponse>("/api/workbench/snapshot", {});
   return response.sectionRevisions ?? {};
 }
 

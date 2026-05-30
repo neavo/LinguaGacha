@@ -54,7 +54,7 @@ function capture_internal_invariant(operation: () => unknown): InternalInvariant
 
 // wait_for_expectation 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 async function wait_for_expectation(predicate: () => boolean): Promise<void> {
-  // write catch 链路跨多个 Promise 边界，测试只等待公开恢复调用出现。
+  // 写入 catch 链路跨多个 Promise 边界，测试只等待公开恢复调用出现。
   for (let attempt = 0; attempt < 10; attempt += 1) {
     if (predicate()) {
       return;
@@ -338,7 +338,7 @@ describe("normalize_project_write_result", () => {
   it.each([
     ["缺少 accepted=true", { changes: [] }],
     ["changes 不是数组", { accepted: true, changes: {} }],
-  ] as const)("拒绝%s的 write result", (_name, payload) => {
+  ] as const)("拒绝%s的写入结果", (_name, payload) => {
     const error = capture_internal_invariant(() => normalize_project_write_result(payload));
 
     expect(error.diagnostic_context).toMatchObject({

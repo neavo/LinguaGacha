@@ -164,7 +164,7 @@ export const LANGUAGE_DISPLAY_NAMES: Record<
   },
 };
 
-// 语言标签 key 从语言码派生，避免 UI 手写 i18n key
+// 语言标签 key 从语言码计算，避免 UI 手写 i18n key
 /**
  * 读取当前场景需要的稳定数据。
  */

@@ -17,12 +17,12 @@ export type WorkbenchFileConflictAction = "skip" | "replace";
 
 export type WorkbenchCommandPlanningState = {
   files: WorkbenchPlannerFileRecord[]; // 来自后端工作台 query 的当前文件窗口事实
-  section_revisions: Record<string, number>; // write 乐观锁只读取本次 query 携带的 revision
+  section_revisions: Record<string, number>; // 写入乐观锁只读取本次 query 携带的 revision
 };
 
 export type WorkbenchCommandPlan = {
   updatedSections: Array<"files" | "items" | "analysis">; // UI 预期受影响 section，真实 revision 以后端事件为准
-  requestBody: Record<string, unknown>; // 只包含命令体，不包含 renderer 派生的最终 items/meta
+  requestBody: Record<string, unknown>; // 只包含命令体，不包含渲染进程计算的最终 items/meta
 };
 
 type WorkbenchCommandPlanErrorCode =
@@ -133,7 +133,7 @@ function build_project_settings(settings: WorkbenchPlannerSettings): Record<stri
 export function create_workbench_planner_settings(
   settings: WorkbenchPlannerSettings,
 ): WorkbenchPlannerSettings {
-  // 工作台 write 边界只保留预过滤设置，避免完整应用设置泄漏进命令规划。
+  // 工作台写入边界只保留预过滤设置，避免完整应用设置泄漏进命令规划。
   return {
     source_language: settings.source_language,
     mtool_optimizer_enable: settings.mtool_optimizer_enable,
@@ -172,7 +172,7 @@ export function create_workbench_reorder_plan(args: {
   };
 }
 
-// 重置文件只提交目标路径和设置镜像，items 与派生 meta 由后端重算。
+// 重置文件只提交目标路径和设置镜像，items 与计算元数据由后端重算。
 export function create_workbench_reset_file_plan(args: {
   state: WorkbenchCommandPlanningState;
   task_snapshot?: Record<string, unknown>;

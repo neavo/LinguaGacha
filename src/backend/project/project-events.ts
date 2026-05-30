@@ -55,7 +55,7 @@ export type ProjectItemsChangedEvent = BaseProjectEvent<"project.items.changed">
   scope?: "items-partial" | "items-full";
 };
 
-// ProjectQualityChangedEvent 汇总质量规则或质量派生缓存的刷新范围。
+// ProjectQualityChangedEvent 汇总质量规则或质量计算缓存的刷新范围。
 export type ProjectQualityChangedEvent = BaseProjectEvent<"project.quality.changed"> & {
   affectedSections: ProjectDataSection[];
   ruleTypes?: string[];

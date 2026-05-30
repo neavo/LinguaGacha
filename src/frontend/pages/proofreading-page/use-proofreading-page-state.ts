@@ -61,7 +61,7 @@ import {
   type ProofreadingVisibleItem,
 } from "@frontend/pages/proofreading-page/types";
 
-// 校对页所有保存动作共享同一业务 operation，具体 item 范围留在 write context。
+// 校对页所有保存动作共享同一业务 operation，具体 item 范围留在写入 context。
 const PROOFREADING_WRITE: ProjectWriteOperation = "proofreading.write";
 
 const PROOFREADING_INITIAL_WINDOW_ROWS = 128; // 首屏只取可见窗口的轻量余量，避免初次状态包过大
@@ -595,6 +595,7 @@ function resolve_proofreading_refresh_signal(signal: {
   return null;
 }
 
+// SSE 增量里的 item id 可能来自 JSON 对象键或数组值，这里统一成正整数去重列表。
 function normalize_refresh_item_ids(values: Array<number | string>): number[] {
   const ids = new Set<number>();
   for (const value of values) {
@@ -705,7 +706,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   // loading_toast_id_ref 记录当前模态 loading toast，确保刷新结束和卸载时能精确关闭。
   const loading_toast_id_ref = useRef<ReturnType<typeof push_progress_toast> | null>(null);
   const [loading_toast_visible, set_loading_toast_visible] = useState(false);
-  // refresh_retry_nonce 用递增信号触发当前 stale hydrate 的一次性重试。
+  // refresh_retry_nonce 用递增信号触发当前过期同步的一次性重试。
   const [refresh_retry_nonce, set_refresh_retry_nonce] = useState(0);
   // consumed_refresh_retry_nonce_ref 记录已消费的重试信号，避免 effect 因 refresh_snapshot 身份变化重复执行。
   const consumed_refresh_retry_nonce_ref = useRef(0);

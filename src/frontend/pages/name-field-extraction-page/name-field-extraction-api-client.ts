@@ -32,7 +32,7 @@ type NameFieldExtractionRevisionsResponse = {
   sectionRevisions?: NameFieldExtractionSectionRevisions;
 };
 
-// 姓名字段提取页只读取后端 query view，避免为一次性提取流程订阅项目事实。
+// 姓名字段提取页只读取后端查询视图，避免为一次性提取流程订阅项目事实。
 export async function read_name_field_extraction_query(args: {
   filter: NameFieldFilterState;
   sort: NameFieldSortState;
@@ -45,6 +45,9 @@ export async function read_name_field_extraction_query(args: {
 
 // 姓名字段提取页的术语导入只读取提交所需 revision，不共享跨页面客户端。
 export async function read_name_field_extraction_section_revisions(): Promise<NameFieldExtractionSectionRevisions> {
-  const response = await api_fetch<NameFieldExtractionRevisionsResponse>("/api/workbench/view", {});
+  const response = await api_fetch<NameFieldExtractionRevisionsResponse>(
+    "/api/workbench/snapshot",
+    {},
+  );
   return response.sectionRevisions ?? {};
 }

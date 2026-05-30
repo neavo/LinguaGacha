@@ -8,13 +8,13 @@ import {
   type ProjectDataSectionRevisions,
 } from "@shared/project-event";
 
-// ProjectStage 沿用后端公开 section 词表，renderer 不再维护额外项目阶段名。
+// ProjectStage 沿用后端公开 section 词表，渲染进程不再维护额外项目阶段名。
 export type ProjectStage = ProjectDataSection;
 
 // ProjectSectionRevisions 是项目刷新信号携带的可选 revision 集合。
 export type ProjectSectionRevisions = Partial<Record<ProjectStage, number>>;
 
-// ProjectDataRevisionCheckpoint 表示页面 write 依赖的项目身份与 section revision。
+// ProjectDataRevisionCheckpoint 表示页面写入依赖的项目身份与 section revision。
 export type ProjectDataRevisionCheckpoint = {
   projectPath: string;
   sections: ProjectDataSectionRevisions;
@@ -26,14 +26,14 @@ export type ProjectChangeSectionPayload = {
   data?: unknown;
 };
 
-// ProjectChangeOperation 是 renderer 归一化后的项目变更操作摘要。
+// ProjectChangeOperation 是渲染进程归一化后的项目变更操作摘要。
 export type ProjectChangeOperation = {
   items?: ProjectChangeItemsPayload;
   files?: ProjectChangeFilesPayload;
   sections?: Partial<Record<ProjectDataSection, ProjectChangeSectionPayload>>;
 };
 
-// ProjectChangeEventForState 是 write result 与 SSE 共用的 renderer 内部事件形状。
+// ProjectChangeEventForState 是写入结果与 SSE 共用的渲染进程内部事件形状。
 export type ProjectChangeEventForState = {
   eventId?: string;
   source: string;

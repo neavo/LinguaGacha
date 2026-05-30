@@ -26,16 +26,10 @@ export class RendererErrorBoundary extends Component<
   }
 
   /**
-   * React 进入降级渲染前先切换本地状态，避免异常组件继续反复渲染。
-   */
-  public static getDerivedStateFromError(): RendererErrorBoundaryState {
-    return { has_error: true };
-  }
-
-  /**
    * 组件栈只作为诊断上下文写日志，不暴露到用户界面。
    */
   public componentDidCatch(error: Error, info: ErrorInfo): void {
+    this.setState({ has_error: true });
     capture_renderer_error(error, {
       source: "render",
       context: {

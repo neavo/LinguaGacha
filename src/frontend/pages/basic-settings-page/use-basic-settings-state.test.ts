@@ -251,7 +251,7 @@ describe("useBasicSettingsState", () => {
         }
         return {} as never;
       }
-      if (path === "/api/workbench/view") {
+      if (path === "/api/workbench/snapshot") {
         return {
           sectionRevisions: {
             items: 0,
@@ -280,7 +280,7 @@ describe("useBasicSettingsState", () => {
     );
     expect(vi.mocked(api_fetch).mock.calls).toEqual([
       ["/api/settings/update", { source_language: "EN" }],
-      ["/api/workbench/view", {}],
+      ["/api/workbench/snapshot", {}],
       [
         "/api/workbench/settings-alignment/apply",
         {

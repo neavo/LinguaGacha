@@ -75,8 +75,8 @@ const EMPTY_PROJECT_STATE_IDENTITY: ProjectStateIdentity = {
 };
 
 type DesktopStateContextValue = {
-  hydration_ready: boolean;
-  hydration_error: string | null;
+  initial_state_ready: boolean;
+  initial_state_error: string | null;
   settings_snapshot: SettingsSnapshot;
   project_snapshot: ProjectSnapshot;
   task_snapshot: TaskSnapshot;
@@ -267,8 +267,8 @@ function create_project_change_apply_result(
  * 渲染当前组件的公开界面。
  */
 export function DesktopStateProvider(props: { children: ReactNode }): JSX.Element {
-  const [hydration_ready, set_hydration_ready] = useState(false);
-  const [hydration_error, set_hydration_error] = useState<string | null>(null);
+  const [initial_state_ready, set_initial_state_ready] = useState(false);
+  const [initial_state_error, set_initial_state_error] = useState<string | null>(null);
   const [settings_snapshot, write_settings_snapshot] = useState<SettingsSnapshot>(() =>
     normalize_settings_snapshot({}),
   );
@@ -466,7 +466,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     return next_snapshot;
   }, [sync_project_snapshot]);
 
-  // 任务页主动刷新时要绑定任务类型；全局 hydration 才允许交给后端推断当前快照类型
+  // 任务页主动刷新时要绑定任务类型；全局初始状态读取才允许交给后端推断当前快照类型
   const refresh_task = useCallback(
     async (task_type?: TaskType): Promise<TaskSnapshot> => {
       const request: TaskSnapshotRequest = task_type === undefined ? {} : { task_type };
@@ -685,7 +685,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       refresh_task,
     });
 
-  // HTTP write result 与 SSE 共用同一项目事件入口，保持事件顺序和去重语义一致。
+  // HTTP 写入结果与 SSE 共用同一项目事件入口，保持事件顺序和去重语义一致。
   const apply_project_write_changes = useCallback(
     async (result: ProjectWriteResult): Promise<void> => {
       for (const change_event of result.changes) {
@@ -706,11 +706,11 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
   useEffect(() => {
     let cancelled = false;
 
-    // hydrate_state 封装当前模块的共享逻辑，避免重复实现同一维护规则。
+    // load_initial_state 封装当前模块的共享逻辑，避免重复实现同一维护规则。
     /**
      * 承接当前模块的核心控制分支。
      */
-    async function hydrate_state(): Promise<void> {
+    async function load_initial_state(): Promise<void> {
       try {
         // Backend API 状态是共享权威源，渲染层启动或热更新时不能通过卸载工程去“重置会话”，否则开发态的 StrictMode、Fast Refresh 或整页重载都会把外部手动打开的旧应用状态一起清空
         const [next_settings, next_project, next_task] = await Promise.all([
@@ -725,8 +725,8 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
         apply_settings_snapshot(next_settings);
         sync_project_snapshot(normalize_project_snapshot(next_project));
         sync_task_snapshot(normalize_task_snapshot(next_task));
-        set_hydration_error(null);
-        set_hydration_ready(true);
+        set_initial_state_error(null);
+        set_initial_state_ready(true);
       } catch (error) {
         if (cancelled) {
           return;
@@ -735,14 +735,14 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
         const message = error instanceof Error ? error.message : "桌面运行时初始化失败。";
         report_state_error(error, {
           source: "state-recovery",
-          context: { stage: "hydrate_state" },
+          context: { stage: "load_initial_state" },
         });
-        set_hydration_error(message);
-        set_hydration_ready(true);
+        set_initial_state_error(message);
+        set_initial_state_ready(true);
       }
     }
 
-    void hydrate_state();
+    void load_initial_state();
 
     return () => {
       cancelled = true;
@@ -824,8 +824,8 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
 
   const context_value = useMemo<DesktopStateContextValue>(() => {
     return {
-      hydration_ready,
-      hydration_error,
+      initial_state_ready,
+      initial_state_error,
       settings_snapshot,
       project_snapshot,
       task_snapshot,
@@ -846,8 +846,8 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       refresh_task,
     };
   }, [
-    hydration_ready,
-    hydration_error,
+    initial_state_ready,
+    initial_state_error,
     settings_snapshot,
     project_snapshot,
     task_snapshot,

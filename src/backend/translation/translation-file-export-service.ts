@@ -47,7 +47,7 @@ export class TranslationFileExportService {
   private readonly native_fs: NativeFs; // native_fs 负责导出目录存在性判断和格式写盘策略传递
 
   /**
-   * 导出服务依赖当前 .lg 数据库、设置和项目会话，不直接读取 renderer 状态
+   * 导出服务依赖当前 .lg 数据库、设置和项目会话，不直接读取渲染进程状态
    */
   public constructor(
     database: ProjectDatabase,
@@ -109,7 +109,7 @@ export class TranslationFileExportService {
   }
 
   /**
-   * Backend 内部转换服务传入已由当前项目事实派生的导出快照，避免 renderer 提交派生 items。
+   * 后端内部转换服务传入已由当前项目事实计算的导出快照，避免渲染进程提交计算 items。
    */
   public async export_items_with_suffix(
     items: Item[],

@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WorkbenchTaskSummary } from "@frontend/pages/workbench-page/components/workbench-task-summary";
-import type { WorkbenchTaskSummaryViewModel } from "@frontend/pages/workbench-page/types";
+import type { WorkbenchTaskSummaryDisplay } from "@frontend/pages/workbench-page/types";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
 (
@@ -12,7 +12,7 @@ import { TooltipProvider } from "@frontend/shadcn/tooltip";
   }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-const running_view_model: WorkbenchTaskSummaryViewModel = {
+const running_display: WorkbenchTaskSummaryDisplay = {
   status_text: "翻译中",
   trailing_text: "12 Line/s",
   tone: "warning",
@@ -39,7 +39,7 @@ describe("WorkbenchTaskSummary", () => {
       root?.render(
         <TooltipProvider>
           <WorkbenchTaskSummary
-            view_model={running_view_model}
+            display={running_display}
             can_open={props.can_open ?? true}
             auto_open_key={props.auto_open_key ?? null}
             on_open={props.on_open ?? vi.fn()}

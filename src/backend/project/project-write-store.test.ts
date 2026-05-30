@@ -9,13 +9,13 @@ import { ProjectDatabase } from "../database/database-operations";
 import type { ProjectChangePublisher } from "./project-changes";
 import { get_section_revision } from "./project-data";
 import { ProjectEventBus } from "./project-events";
-import { ProjectMutationStore } from "./project-mutation-store";
+import { ProjectWriteStore } from "./project-write-store";
 import { ZstdTool } from "../../shared/utils/zstd-tool";
 import type { ProjectChangeEvent } from "../../shared/project-event";
 
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
-describe("ProjectMutationStore", () => {
+describe("ProjectWriteStore", () => {
   const cleanup_callbacks: Array<() => void> = [];
 
   afterEach(() => {
@@ -166,7 +166,7 @@ describe("ProjectMutationStore", () => {
       revisionSections: ["files", "items", "analysis"],
       source: "workbench_delete_file",
       updatedSections: ["files", "items", "analysis"],
-      assetMutations: [{ kind: "delete", path: "demo.txt" }],
+      assetWrites: [{ kind: "delete", path: "demo.txt" }],
       items: [],
       meta: { translation_extras: {}, analysis_candidate_count: 0 },
       resetAnalysis: true,
@@ -274,10 +274,10 @@ describe("ProjectMutationStore", () => {
   function create_store(name: string): {
     database: ProjectDatabase;
     project_path: string;
-    store: ProjectMutationStore;
+    store: ProjectWriteStore;
     published_changes: MutableJsonRecord[];
   } {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), `linguagacha-mutation-${name}-`));
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), `linguagacha-write-${name}-`));
     const project_path = path.join(directory, `${name}.lg`);
     const database = new ProjectDatabase();
     const event_bus = new ProjectEventBus();
@@ -291,7 +291,7 @@ describe("ProjectMutationStore", () => {
     return {
       database,
       project_path,
-      store: new ProjectMutationStore(
+      store: new ProjectWriteStore(
         database,
         event_bus,
         create_project_change_publisher(database, project_path, published_changes),

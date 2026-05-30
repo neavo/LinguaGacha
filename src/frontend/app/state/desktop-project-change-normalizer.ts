@@ -17,7 +17,7 @@ import {
 import { is_item_status } from "@domain/item";
 
 /**
- * Backend SSE 与同步 write 共享的项目变更载荷，入口处必须立即转成运行态事件。
+ * 后端 SSE 与同步写入共享的项目变更载荷，入口处必须立即转成运行态事件。
  */
 export type ProjectChangeEventPayload = {
   eventId?: unknown;
@@ -32,7 +32,7 @@ export type ProjectChangeEventPayload = {
 };
 
 /**
- * 将后端 project.data_changed / write change 载荷收窄为前端运行态刷新事件。
+ * 将后端 project.data_changed / 写入 change 载荷收窄为前端运行态刷新事件。
  */
 export function normalize_project_change_event(
   payload: ProjectChangeEventPayload,
@@ -74,7 +74,7 @@ export function normalize_project_change_event(
 }
 
 /**
- * write result 需要先证明单个 change 是对象，再进入共享项目变更 normalizer。
+ * 写入结果需要先证明单个 change 是对象，再进入共享项目变更 normalizer。
  */
 export function is_project_change_record(value: unknown): value is Record<string, unknown> {
   return is_record(value);

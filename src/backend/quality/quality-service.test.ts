@@ -9,7 +9,7 @@ import { ProjectEventBus } from "../project/project-events";
 import { ProjectDatabase } from "../database/database-operations";
 import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectChangePublisher } from "../project/project-changes";
-import { ProjectMutationStore } from "../project/project-mutation-store";
+import { ProjectWriteStore } from "../project/project-write-store";
 import { get_section_revision } from "../project/project-data";
 import { ProjectSessionState } from "../project/project-session";
 import { AppPathService } from "../app/app-path-service";
@@ -390,7 +390,7 @@ describe("QualityService", () => {
       app_setting_service,
       database,
       new ProjectSessionState(),
-      new ProjectMutationStore(database, new ProjectEventBus(), null),
+      new ProjectWriteStore(database, new ProjectEventBus(), null),
     );
     return { service, app_root };
   }
@@ -422,7 +422,7 @@ describe("QualityService", () => {
         app_setting_service,
         database,
         session_state,
-        new ProjectMutationStore(
+        new ProjectWriteStore(
           database,
           project_event_bus,
           publisher as unknown as ProjectChangePublisher,

@@ -227,7 +227,7 @@ describe("useCustomPromptPageState", () => {
     expect(latest_state?.enabled).toBe(true);
   });
 
-  it("保存提示词通过统一 write 管线提交 prompts revision", async () => {
+  it("保存提示词通过统一写入管线提交 prompts revision", async () => {
     vi.mocked(api_fetch).mockImplementation(async (path, body = {}) => {
       if (path === "/api/quality/prompts/template") {
         return {
@@ -239,7 +239,7 @@ describe("useCustomPromptPageState", () => {
       if (path === "/api/quality/prompts/view") {
         return create_prompt_query_payload() as never;
       }
-      if (path === "/api/workbench/view") {
+      if (path === "/api/workbench/snapshot") {
         return {
           sectionRevisions: {
             prompts: 3,

@@ -1,7 +1,9 @@
 import crypto from "node:crypto";
 
-export const TASK_PLANNER_TOKENIZER_ID = "o200k_base"; // 进程内 token metric cache 的 tokenizer 身份，变更 tokenizer 时 cache key 自动隔离。
-export const TASK_TOKEN_METRIC_CACHE_CAPACITY = 32768; // 覆盖大型项目常见重复短句，同时限制进程内内存增长。
+// 进程内令牌指标缓存的 tokenizer 身份，变更 tokenizer 时 cache key 自动隔离。
+export const TASK_PLANNER_TOKENIZER_ID = "o200k_base";
+// 覆盖大型项目常见重复短句，同时限制进程内内存增长。
+export const TASK_TOKEN_METRIC_CACHE_CAPACITY = 32768;
 
 /**
  * 单条源文本的规划指标；这些指标只存在内存中，不写回 `.lg` 项目事实。
@@ -43,7 +45,7 @@ export function build_task_token_metric_cache_key(text: string): string {
 }
 
 /**
- * 进程内 LRU token metric cache，专供任务规划复用精确 token 计数，不引入持久化派生事实。
+ * 进程内 LRU 令牌指标缓存，专供任务规划复用精确 token 计数，不引入持久化计算事实。
  */
 export class TaskTokenMetricCache {
   private readonly capacity: number; // capacity 是 LRU 上限，避免大型项目反复规划后无限增长。

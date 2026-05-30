@@ -27,7 +27,7 @@ export {
 /**
  * 集中维护当前模块的稳定常量。
  */
-export const APP_LANGUAGES = ["ZH", "EN"] as const; // AppLanguage 是设置文件、运行态 settings 和 i18n locale 派生的唯一语言值域
+export const APP_LANGUAGES = ["ZH", "EN"] as const; // AppLanguage 是设置文件、运行态 settings 和 i18n locale 计算的唯一语言值域
 
 /**
  * 集中维护当前模块的稳定常量。
@@ -171,7 +171,7 @@ const PROJECT_SAVE_MODE_SET = new Set<ProjectSaveMode>(PROJECT_SAVE_MODES);
  * Setting 是 userdata/config.json 的业务实体；文件名保留 config.json，但领域语义统一为设置
  */
 export class Setting {
-  public readonly data: SettingJsonRecord; // 完整设置文件形状；设置快照只从白名单派生
+  public readonly data: SettingJsonRecord; // 完整设置文件形状；设置快照只从白名单计算
 
   /**
    * 初始化当前实例的内部状态。
@@ -309,7 +309,7 @@ export class Setting {
   }
 
   /**
-   * i18n locale 是 app_language 的派生结果，不单独持久化为第二状态源
+   * i18n locale 是 app_language 的计算结果，不单独持久化为第二状态源
    */
   public static resolve_app_locale(app_language: AppLanguage): AppLocale {
     return app_language === "EN" ? "en-US" : "zh-CN";

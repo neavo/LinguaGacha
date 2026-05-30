@@ -32,7 +32,7 @@ import type { ProjectDataSection, ProjectDataSectionRevisions } from "@shared/pr
 import type { TranslationTaskMetrics } from "@shared/workbench/translation-task";
 import type { AppTableSelectionChange } from "@frontend/widgets/app-table/app-table-types";
 import type {
-  WorkbenchTaskDetailViewModel,
+  WorkbenchTaskDetailDisplay,
   WorkbenchDialogState,
   WorkbenchFileEntry,
   WorkbenchTaskMetricEntry,
@@ -41,7 +41,7 @@ import type {
   WorkbenchStats,
   WorkbenchStatsMode,
   WorkbenchTaskKind,
-  WorkbenchTaskSummaryViewModel,
+  WorkbenchTaskSummaryDisplay,
   WorkbenchTaskTone,
   WorkbenchTaskViewState,
 } from "@frontend/pages/workbench-page/types";
@@ -74,7 +74,7 @@ const WORKBENCH_REFRESH_SECTIONS: readonly ProjectDataSection[] = [
   "items",
   "analysis",
 ];
-// 工作台文件 write 由工作台页拥有业务动作名，desktop committer 只消费 operation。
+// 工作台文件写入由工作台页拥有业务动作名，desktop committer 只消费 operation。
 const WORKBENCH_FILE_WRITE: ProjectWriteOperation = "workbench.file_write";
 
 type WorkbenchAddFileDropIssue = "multiple" | "unavailable";
@@ -82,7 +82,7 @@ type WorkbenchAddFileDropIssue = "multiple" | "unavailable";
 type WorkbenchQueryResponse = {
   projectPath: string;
   sectionRevisions: ProjectDataSectionRevisions;
-  view: WorkbenchSnapshot;
+  snapshot: WorkbenchSnapshot;
 };
 
 // map_snapshot_entries 封装当前模块的共享逻辑，避免重复实现同一维护规则。
@@ -503,13 +503,13 @@ function build_analysis_task_metric_entries(
   ];
 }
 
-// build_empty_task_summary_view_model 构造跨层载荷，保证字段形状在一个入口维护。
+// build_empty_task_summary_display 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
-function build_empty_task_summary_view_model(
+function build_empty_task_summary_display(
   t: ReturnType<typeof useI18n>["t"],
-): WorkbenchTaskSummaryViewModel {
+): WorkbenchTaskSummaryDisplay {
   return {
     status_text: t("workbench_page.translation_task.summary.empty"),
     trailing_text: null,
@@ -519,14 +519,14 @@ function build_empty_task_summary_view_model(
   };
 }
 
-// build_translation_task_summary_view_model 构造跨层载荷，保证字段形状在一个入口维护。
+// build_translation_task_summary_display 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
-function build_translation_task_summary_view_model(
+function build_translation_task_summary_display(
   metrics: TranslationTaskMetrics,
   t: ReturnType<typeof useI18n>["t"],
-): WorkbenchTaskSummaryViewModel {
+): WorkbenchTaskSummaryDisplay {
   let status_text = t("workbench_page.translation_task.summary.empty");
   if (metrics.stopping) {
     status_text = t("workbench_page.translation_task.summary.stopping");
@@ -548,14 +548,14 @@ function build_translation_task_summary_view_model(
   };
 }
 
-// build_analysis_task_summary_view_model 构造跨层载荷，保证字段形状在一个入口维护。
+// build_analysis_task_summary_display 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
-function build_analysis_task_summary_view_model(
+function build_analysis_task_summary_display(
   metrics: AnalysisTaskMetrics,
   t: ReturnType<typeof useI18n>["t"],
-): WorkbenchTaskSummaryViewModel {
+): WorkbenchTaskSummaryDisplay {
   let status_text = t("workbench_page.analysis_task.summary.empty");
   if (metrics.stopping) {
     status_text = t("workbench_page.analysis_task.summary.stopping");
@@ -593,16 +593,16 @@ function resolve_task_detail_progress_percent(args: {
     : args.workbench_stats.completion_percent;
 }
 
-// build_translation_task_detail_view_model 构造跨层载荷，保证字段形状在一个入口维护。
+// build_translation_task_detail_display 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
-function build_translation_task_detail_view_model(args: {
+function build_translation_task_detail_display(args: {
   metrics: TranslationTaskMetrics;
   progress_percent: number;
   waveform_history: number[];
   t: ReturnType<typeof useI18n>["t"];
-}): WorkbenchTaskDetailViewModel {
+}): WorkbenchTaskDetailDisplay {
   return {
     title: args.t("workbench_page.translation_task.detail.title"),
     description: args.t("workbench_page.translation_task.detail.description"),
@@ -619,16 +619,16 @@ function build_translation_task_detail_view_model(args: {
   };
 }
 
-// build_analysis_task_detail_view_model 构造跨层载荷，保证字段形状在一个入口维护。
+// build_analysis_task_detail_display 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
-function build_analysis_task_detail_view_model(args: {
+function build_analysis_task_detail_display(args: {
   metrics: AnalysisTaskMetrics;
   progress_percent: number;
   waveform_history: number[];
   t: ReturnType<typeof useI18n>["t"];
-}): WorkbenchTaskDetailViewModel {
+}): WorkbenchTaskDetailDisplay {
   return {
     title: args.t("workbench_page.analysis_task.detail.title"),
     description: args.t("workbench_page.analysis_task.detail.description"),
@@ -659,8 +659,8 @@ export type UseWorkbenchPageStateResult = {
   translation_workbench_task: TranslationWorkbenchTask;
   analysis_workbench_task: AnalysisWorkbenchTask;
   active_workbench_task_view: WorkbenchTaskViewState;
-  active_workbench_task_summary: WorkbenchTaskSummaryViewModel;
-  active_workbench_task_detail: WorkbenchTaskDetailViewModel | null;
+  active_workbench_task_summary: WorkbenchTaskSummaryDisplay;
+  active_workbench_task_detail: WorkbenchTaskDetailDisplay | null;
   entries: WorkbenchFileEntry[];
   selected_entry_ids: string[];
   active_entry_id: string | null;
@@ -738,7 +738,7 @@ export function useWorkbenchPageState(
       ? project_change_signal.seq
       : null;
   }, [project_change_signal]);
-  // 工作台文件 write 共享同一份窄设置镜像，避免各入口重复拼命令字段。
+  // 工作台文件写入共享同一份窄设置镜像，避免各入口重复拼命令字段。
   const planner_settings = useMemo(
     () => create_workbench_planner_settings(settings_snapshot),
     [settings_snapshot],
@@ -850,8 +850,8 @@ export function useWorkbenchPageState(
       set_cache_status("refreshing");
 
       try {
-        const response = await api_fetch<WorkbenchQueryResponse>("/api/workbench/view", {});
-        const next_snapshot = response.view;
+        const response = await api_fetch<WorkbenchQueryResponse>("/api/workbench/snapshot", {});
+        const next_snapshot = response.snapshot;
 
         if (request_id !== refresh_generation_ref.current) {
           return next_snapshot;
@@ -896,7 +896,7 @@ export function useWorkbenchPageState(
     ],
   );
 
-  // 工作台缓存是可重建派生状态，delta 失败只记录异常并回退到全量重建。
+  // 工作台缓存是可重建计算状态，增量更新失败只记录异常并回退到全量重建。
   const report_workbench_cache_error = useCallback(
     (error: unknown, context: WorkbenchCacheErrorContext): void => {
       capture_renderer_error(error, {
@@ -1032,22 +1032,22 @@ export function useWorkbenchPageState(
     };
   }, [display_workbench_task_kind]);
 
-  const active_workbench_task_summary = useMemo<WorkbenchTaskSummaryViewModel>(() => {
+  const active_workbench_task_summary = useMemo<WorkbenchTaskSummaryDisplay>(() => {
     if (active_workbench_task_kind === "translation") {
-      return build_translation_task_summary_view_model(
+      return build_translation_task_summary_display(
         raw_translation_workbench_task.translation_task_metrics,
         t,
       );
     }
 
     if (active_workbench_task_kind === "analysis") {
-      return build_analysis_task_summary_view_model(
+      return build_analysis_task_summary_display(
         raw_analysis_workbench_task.analysis_task_metrics,
         t,
       );
     }
 
-    return build_empty_task_summary_view_model(t);
+    return build_empty_task_summary_display(t);
   }, [
     active_workbench_task_kind,
     raw_analysis_workbench_task.analysis_task_metrics,
@@ -1055,10 +1055,10 @@ export function useWorkbenchPageState(
     t,
   ]);
 
-  const active_workbench_task_detail = useMemo<WorkbenchTaskDetailViewModel | null>(() => {
+  const active_workbench_task_detail = useMemo<WorkbenchTaskDetailDisplay | null>(() => {
     // 为什么：工作台空态也要保留可点击的详情胶囊，默认沿用翻译任务模板展示基础指标
     if (display_workbench_task_kind === "translation") {
-      return build_translation_task_detail_view_model({
+      return build_translation_task_detail_display({
         metrics: raw_translation_workbench_task.translation_task_metrics,
         progress_percent: resolve_task_detail_progress_percent({
           metrics: raw_translation_workbench_task.translation_task_metrics,
@@ -1070,7 +1070,7 @@ export function useWorkbenchPageState(
     }
 
     if (display_workbench_task_kind === "analysis") {
-      return build_analysis_task_detail_view_model({
+      return build_analysis_task_detail_display({
         metrics: raw_analysis_workbench_task.analysis_task_metrics,
         progress_percent: resolve_task_detail_progress_percent({
           metrics: raw_analysis_workbench_task.analysis_task_metrics,

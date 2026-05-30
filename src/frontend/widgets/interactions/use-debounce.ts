@@ -13,7 +13,7 @@ export type DebouncedCallback<TArgs extends unknown[]> = {
   has_pending: () => boolean;
 };
 
-// 返回延迟发布的值；控件继续消费原始 value，派生结果消费返回值。
+// 返回延迟发布的值；控件继续消费原始 value，计算结果消费返回值。
 export function useDebouncedValue<TValue>(
   value: TValue,
   delay_ms: number = INPUT_QUERY_DEBOUNCE_MS,

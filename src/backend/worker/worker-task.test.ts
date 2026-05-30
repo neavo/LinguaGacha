@@ -73,9 +73,9 @@ describe("run_worker_task", () => {
     });
   });
 
-  it("执行校对 hydration task 并只返回可序列化评估分片", async () => {
+  it("执行校对 sync task 并只返回可序列化评估分片", async () => {
     const result = await run_worker_task({
-      type: "proofreading_hydration",
+      type: "proofreading_sync",
       input: {
         projectId: "E:/Project/demo.lg",
         revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },

@@ -6,7 +6,7 @@ import type { ApiJsonValue } from "../api/api-types";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { JsonTool } from "../../shared/utils/json-tool";
-import { ProjectMutationStore } from "../project/project-mutation-store";
+import { ProjectWriteStore } from "../project/project-write-store";
 import { ProjectSessionState } from "../project/project-session";
 import type { ProjectWriteResult } from "../../shared/project-event";
 import { build_analysis_glossary_entry_from_candidate } from "../../shared/analysis-candidate";
@@ -34,7 +34,7 @@ export class QualityService {
 
   private readonly session_state: ProjectSessionState; // 页面级质量规则 / 提示词写入口以 会话状态作为当前工程目标
 
-  private readonly mutation_store: ProjectMutationStore; // 工程质量 / 提示词事实统一交由 mutation store 提交
+  private readonly write_store: ProjectWriteStore; // 工程质量 / 提示词事实统一交由 ProjectWriteStore 提交
 
   private readonly native_fs: NativeFs; // native_fs 是规则、提示词预设和导入导出的唯一文件 IO 入口
 
@@ -46,26 +46,26 @@ export class QualityService {
     app_setting_service: AppSettingService,
     database: ProjectDatabase,
     session_state: ProjectSessionState,
-    mutation_store: ProjectMutationStore,
+    write_store: ProjectWriteStore,
     native_fs: NativeFs = default_native_fs,
   ) {
     this.paths = paths;
     this.app_setting_service = app_setting_service;
     this.database = database;
     this.session_state = session_state;
-    this.mutation_store = mutation_store;
+    this.write_store = write_store;
     this.native_fs = native_fs;
   }
 
   /**
-   * 保存规则条目并返回后端 canonical write 结果
+   * 保存规则条目并返回后端规范化写入结果
    */
   public async save_rule_entries(request: JsonRecord): Promise<ProjectWriteResult> {
     this.assert_no_legacy_fields(request, ["expected_revision"]);
     const rule_type = this.normalize_rule_type(request["rule_type"]);
     const entries = this.normalize_rule_entries(request["entries"]);
     const project_path = await this.require_project_path();
-    return await this.mutation_store.save_quality_rules({
+    return await this.write_store.save_quality_rules({
       projectPath: project_path,
       expectedSectionRevisions: request["expected_section_revisions"],
       source: "quality_rule_save_entries",
@@ -78,7 +78,7 @@ export class QualityService {
   }
 
   /**
-   * 更新规则 meta 并返回后端 canonical write 结果
+   * 更新规则 meta 并返回后端规范化写入结果
    */
   public async update_rule_meta(request: JsonRecord): Promise<ProjectWriteResult> {
     this.assert_no_legacy_fields(request, ["expected_revision"]);
@@ -94,7 +94,7 @@ export class QualityService {
       const meta_value = this.normalize_rule_meta_value(rule_type, key, value);
       meta_entries[meta_key] = meta_value;
     }
-    return await this.mutation_store.save_quality_rules({
+    return await this.write_store.save_quality_rules({
       projectPath: project_path,
       expectedSectionRevisions: request["expected_section_revisions"],
       source: "quality_rule_update_meta",
@@ -257,13 +257,13 @@ export class QualityService {
   }
 
   /**
-   * 保存工程提示词并返回后端 canonical write 结果
+   * 保存工程提示词并返回后端规范化写入结果
    */
   public async save_prompt(request: JsonRecord): Promise<ProjectWriteResult> {
     this.assert_no_legacy_fields(request, ["expected_revision"]);
     const task_type = Prompt.from_json(request["task_type"]).kind;
     const project_path = await this.require_project_path();
-    return await this.mutation_store.save_quality_prompt({
+    return await this.write_store.save_quality_prompt({
       projectPath: project_path,
       expectedSectionRevisions: request["expected_section_revisions"],
       promptRuleType: Prompt.from_json(task_type).database_type,
@@ -279,7 +279,7 @@ export class QualityService {
   }
 
   /**
-   * 读取提示词导入文本，避免 renderer 触碰文件系统
+   * 读取提示词导入文本，避免渲染进程触碰文件系统
    */
   public read_prompt_import_text(request: JsonRecord): JsonRecord {
     const file_path = String(request["path"] ?? "");

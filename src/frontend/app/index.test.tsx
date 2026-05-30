@@ -102,7 +102,7 @@ vi.mock("@frontend/app/session/quality-rule-statistics-context", () => {
 vi.mock("@frontend/app/state/use-desktop-state", () => {
   return {
     useDesktopState: () => ({
-      hydration_ready: true,
+      initial_state_ready: true,
       pending_target_route: null,
       is_app_language_updating: false,
       project_snapshot: { loaded: false, path: "" },

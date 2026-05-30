@@ -1,7 +1,8 @@
 import type { ProjectChangeEventForState } from "@frontend/app/state/desktop-project-change-types";
 import type { TaskSnapshot } from "@frontend/app/state/task-snapshot-store";
 
-export const DESKTOP_RUNTIME_REFRESH_INTERVAL_MS = 500; // renderer 运行态刷新固定为每秒 2 帧
+// 渲染进程运行态刷新固定为每秒 2 帧，兼顾任务进度流畅度和 React 重渲染成本。
+export const DESKTOP_RUNTIME_REFRESH_INTERVAL_MS = 500;
 
 type DesktopRefreshSchedulerOptions = {
   applyTaskSnapshot: (snapshot: TaskSnapshot) => void; // flush 阶段唯一写入 TaskSnapshotStore 的回调
@@ -17,7 +18,7 @@ export type DesktopRefreshSchedulerErrorContext = {
 };
 
 /**
- * renderer 运行态刷新调度器，统一合并 task snapshot 与可批量 project change
+ * 渲染进程运行态刷新调度器，统一合并 task snapshot 与可批量 project change
  */
 export class DesktopRefreshScheduler {
   private readonly apply_task_snapshot: (snapshot: TaskSnapshot) => void; // 只在 flush 时覆盖 TaskSnapshotStore
@@ -63,7 +64,7 @@ export class DesktopRefreshScheduler {
   }
 
   /**
-   * 记录可批量 project change；canonical delta 按到达顺序进入同一个刷新窗口
+   * 记录可批量 project change；规范化增量按到达顺序进入同一个刷新窗口
    */
   public enqueue_project_change(change_event: ProjectChangeEventForState): void {
     if (this.disposed) {
@@ -74,7 +75,7 @@ export class DesktopRefreshScheduler {
   }
 
   /**
-   * 立即冲刷 pending 队列，供工程切换、write result、失效补读和任务终态保持顺序
+   * 立即冲刷 pending 队列，供工程切换、写入结果、失效补读和任务终态保持顺序
    */
   public flush(): void {
     if (this.disposed) {

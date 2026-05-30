@@ -33,7 +33,7 @@ type ResultSnapshotState<Query, Id extends string> = {
   reset_result_snapshot: () => void;
 };
 
-// 结果型页面共用同一套 revision 门闩，避免每个页面重复猜 HTTP write 与 SSE 的先后关系。
+// 结果型页面共用同一套 revision 门闩，避免每个页面重复猜 HTTP 写入与 SSE 的先后关系。
 export function useResultSnapshotState<Query, Id extends string>(
   options: ResultSnapshotStateOptions<Query, Id>,
 ): ResultSnapshotState<Query, Id> {

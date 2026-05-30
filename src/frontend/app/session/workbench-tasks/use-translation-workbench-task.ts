@@ -564,7 +564,7 @@ export function useTranslationWorkbenchTask(
       return;
     }
 
-    // 为什么：toast 只应该响应一次真实的生命周期跃迁，不能被首屏 hydration 或快照重刷重复触发
+    // 为什么：提示只应该响应一次真实的生命周期跃迁，不能被首屏初始状态读取或快照重刷重复触发
     const feedback_message = resolve_translation_terminal_feedback_message({
       previous_status,
       next_status,

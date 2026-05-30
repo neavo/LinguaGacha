@@ -1,5 +1,5 @@
 export type TranslationResetPlan = {
-  updatedSections: Array<"items" | "analysis"> | Array<"items">; // UI 预期刷新 section，实际 revision 以后端 write result 为准
+  updatedSections: Array<"items" | "analysis"> | Array<"items">; // UI 预期刷新 section，实际 revision 以后端写入结果为准
   requestBody: Record<string, unknown>; // translation reset 命令体，不包含前端生成的 items 或 progress
 };
 

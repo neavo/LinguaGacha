@@ -646,14 +646,14 @@ describe("useProofreadingPageState", () => {
 
   it("校对页首刷期间展示不定加载 toast 并在完成后关闭", async () => {
     const refresh_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
-    const hydrated_list_view = {
+    const synced_list_view = {
       ...create_list_view(),
       window_rows: [
         {
           row_id: "1",
           item: {
             ...create_client_item(1),
-            warnings: ["FULL_HYDRATED"],
+            warnings: ["FULL_SYNCED"],
           },
           compressed_src: "foo",
           compressed_dst: "bar",
@@ -664,7 +664,7 @@ describe("useProofreadingPageState", () => {
       return refresh_deferred.promise;
     });
     proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async () => {
-      return hydrated_list_view;
+      return synced_list_view;
     });
 
     await render_hook();
@@ -686,7 +686,7 @@ describe("useProofreadingPageState", () => {
     await flush_async_updates();
 
     expect(latest_state?.cache_status).toBe("ready");
-    expect(latest_state?.visible_items[0]?.item.warnings).toEqual(["FULL_HYDRATED"]);
+    expect(latest_state?.visible_items[0]?.item.warnings).toEqual(["FULL_SYNCED"]);
     expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledWith(
       expect.any(Object),
       {
@@ -696,7 +696,7 @@ describe("useProofreadingPageState", () => {
     expect(toast_fixture.current.dismiss_toast).toHaveBeenCalledWith("proofreading-loading-toast");
   });
 
-  it("质量 hydrate 未完成时筛选弹窗不可打开且不触发列表查询", async () => {
+  it("质量 sync 未完成时筛选弹窗不可打开且不触发列表查询", async () => {
     vi.useFakeTimers();
     const refresh_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(() => {
@@ -771,9 +771,9 @@ describe("useProofreadingPageState", () => {
     await render_hook();
     toast_fixture.current.push_progress_toast.mockClear();
     toast_fixture.current.dismiss_toast.mockClear();
-    const hydrate_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
+    const sync_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(() => {
-      return hydrate_deferred.promise;
+      return sync_deferred.promise;
     });
 
     runtime_fixture.current = {
@@ -791,7 +791,7 @@ describe("useProofreadingPageState", () => {
     expect(toast_fixture.current.push_progress_toast).not.toHaveBeenCalled();
 
     await act(async () => {
-      hydrate_deferred.resolve(create_sync_state());
+      sync_deferred.resolve(create_sync_state());
     });
     await flush_async_updates();
 
@@ -822,9 +822,9 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.current_filters.statuses).toEqual(["NONE"]);
     expect(latest_state?.filter_dialog_filters.statuses).toEqual([]);
 
-    const hydrate_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
+    const sync_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(() => {
-      return hydrate_deferred.promise;
+      return sync_deferred.promise;
     });
 
     runtime_fixture.current = {
@@ -838,7 +838,7 @@ describe("useProofreadingPageState", () => {
     await render_hook();
 
     await act(async () => {
-      hydrate_deferred.resolve(create_sync_state());
+      sync_deferred.resolve(create_sync_state());
     });
     await flush_async_updates();
 

@@ -295,7 +295,7 @@ function build_default_proofreading_filter_options(
 }
 
 /**
- * 归一化页面传入筛选项，缺失字段由当前 item 集合派生默认值。
+ * 归一化页面传入筛选项，缺失字段由当前 item 集合计算默认值。
  */
 export function normalize_proofreading_filter_options(
   filters: Partial<ProofreadingFilterOptions> | undefined,
@@ -333,7 +333,7 @@ export function normalize_proofreading_filter_options(
 }
 
 /**
- * 空列表 view 用于运行态尚未 hydrate 或请求失效时的安全回退。
+ * 空列表视图用于运行态尚未同步或请求失效时的安全回退。
  */
 export function create_empty_proofreading_list_view(): ProofreadingListView {
   return {

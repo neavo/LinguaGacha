@@ -90,7 +90,7 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
       workbench_state.active_workbench_task_detail !== null ? (
         <WorkbenchTaskDetailSheet
           open={workbench_state.analysis_workbench_task.analysis_detail_sheet_open}
-          view_model={workbench_state.active_workbench_task_detail}
+          display={workbench_state.active_workbench_task_detail}
           on_close={workbench_state.analysis_workbench_task.close_analysis_detail_sheet}
           on_request_stop_confirmation={() => {
             workbench_state.analysis_workbench_task.request_analysis_task_action_confirmation(
@@ -102,7 +102,7 @@ export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
         workbench_state.active_workbench_task_detail !== null ? (
         <WorkbenchTaskDetailSheet
           open={workbench_state.translation_workbench_task.translation_detail_sheet_open}
-          view_model={workbench_state.active_workbench_task_detail}
+          display={workbench_state.active_workbench_task_detail}
           on_close={workbench_state.translation_workbench_task.close_translation_detail_sheet}
           on_request_stop_confirmation={() => {
             workbench_state.translation_workbench_task.request_task_action_confirmation(

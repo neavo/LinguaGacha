@@ -273,7 +273,7 @@ type LogWindowSettingsPayload = {
  */
 function AppContent(props: AppContentProps): JSX.Element {
   const {
-    hydration_ready,
+    initial_state_ready,
     pending_target_route,
     is_app_language_updating,
     project_snapshot,
@@ -301,7 +301,7 @@ function AppContent(props: AppContentProps): JSX.Element {
   const previous_project_session_status_ref = useRef(project_session_status);
   const log_badge_project_path_ref = useRef<string | null>(null);
   const update_toast_shown_ref = useRef<boolean>(false);
-  const system_proxy_toast_shown_ref = useRef<boolean>(false); // 系统代理提示只展示一次，避免 hydration 或语言刷新重复打扰用户
+  const system_proxy_toast_shown_ref = useRef<boolean>(false); // 系统代理提示只展示一次，避免初始状态读取或语言刷新重复打扰用户
   const [log_badge_visible, set_log_badge_visible] = useState<boolean>(false);
   const active_screen = SCREEN_REGISTRY[selected_route] ?? SCREEN_REGISTRY[DEFAULT_ROUTE_ID]!;
   const ScreenComponent = active_screen.component;
@@ -384,7 +384,7 @@ function AppContent(props: AppContentProps): JSX.Element {
   }, [push_persistent_toast, t, update_release_url]);
 
   useEffect(() => {
-    if (!hydration_ready || system_proxy_toast_shown_ref.current) {
+    if (!initial_state_ready || system_proxy_toast_shown_ref.current) {
       return;
     }
 
@@ -399,7 +399,7 @@ function AppContent(props: AppContentProps): JSX.Element {
         PROXY: window.desktopApp.backendApi.systemProxyStartupNotice.proxyDisplay ?? "",
       }),
     );
-  }, [hydration_ready, push_toast, t]);
+  }, [initial_state_ready, push_toast, t]);
 
   useEffect(() => {
     document.title = app_title;
@@ -412,7 +412,7 @@ function AppContent(props: AppContentProps): JSX.Element {
   }, []);
 
   useEffect(() => {
-    if (!hydration_ready) {
+    if (!initial_state_ready) {
       return;
     }
 
@@ -451,7 +451,7 @@ function AppContent(props: AppContentProps): JSX.Element {
       }
     }
   }, [
-    hydration_ready,
+    initial_state_ready,
     pending_target_route,
     project_snapshot.loaded,
     project_snapshot.path,
@@ -775,7 +775,7 @@ function read_initial_log_window_app_language(): "ZH" | "EN" {
  * 渲染当前组件的公开界面。
  */
 function WindowVisualProviders({ children }: { children: ReactNode }): JSX.Element {
-  // 多窗口共享的视觉壳层只承载主题、tooltip 和 toast，不读取项目或任务运行态
+  // 多窗口共享的视觉壳层只承载主题、tooltip 和提示，不读取项目或任务运行态
   return (
     <ThemeProvider
       attribute="class"

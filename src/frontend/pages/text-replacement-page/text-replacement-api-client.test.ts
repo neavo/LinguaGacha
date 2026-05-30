@@ -36,6 +36,6 @@ describe("text-replacement-api-client", () => {
     api_fetch_mock.mockResolvedValue({ sectionRevisions: { quality: 5 } });
 
     await expect(read_text_replacement_section_revisions()).resolves.toEqual({ quality: 5 });
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/workbench/view", {});
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/workbench/snapshot", {});
   });
 });

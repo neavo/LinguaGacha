@@ -2,7 +2,7 @@ import type { ApiJsonValue } from "../../api/api-types";
 import type { CacheReadPort } from "../../cache/cache-types";
 import { ProjectDatabase } from "../../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
-import { ProjectMutationStore } from "../../project/project-mutation-store";
+import { ProjectWriteStore } from "../../project/project-write-store";
 import { ProjectSessionState } from "../../project/project-session";
 import { TaskRunState } from "../run/task-run-state";
 import type { JsonRecord, MutableJsonRecord } from "../run/task-run-types";
@@ -24,7 +24,7 @@ export class ProjectTaskStore {
 
   private readonly cache: CacheReadPort; // 任务启动热读 items / quality / prompts，写库仍只走 ProjectDatabase
 
-  private readonly mutation_store: ProjectMutationStore; // 任务提交只表达 artifact 语义，事务与事件由 mutation store 统一完成
+  private readonly write_store: ProjectWriteStore; // 任务提交只表达 TaskArtifact 语义，事务与事件由 ProjectWriteStore 统一完成
 
   /**
    * ProjectTaskStore 只组合现有 TS 权威，不自行持有长期项目缓存
@@ -34,13 +34,13 @@ export class ProjectTaskStore {
     session_state: ProjectSessionState,
     task_run_state: TaskRunState,
     cache: CacheReadPort,
-    mutation_store: ProjectMutationStore,
+    write_store: ProjectWriteStore,
   ) {
     this.database = database;
     this.session_state = session_state;
     this.task_run_state = task_run_state;
     this.cache = cache;
-    this.mutation_store = mutation_store;
+    this.write_store = write_store;
   }
 
   /**
@@ -63,7 +63,7 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 任务启动时从 `.lg` 读取质量规则和提示词快照，renderer 缓存不再作为后端任务输入
+   * 任务启动时从 `.lg` 读取质量规则和提示词快照，渲染进程缓存不再作为后端任务输入
    */
   public build_quality_snapshot(): ApiJsonValue {
     const state = this.session_state.snapshot();
@@ -163,12 +163,12 @@ export class ProjectTaskStore {
   }
 
   /**
-   * 翻译批次提交同事务写入 items 和 translation_extras，再发布后端权威行级 delta
+   * 翻译批次提交同事务写入 items 和 translation_extras，再发布后端权威行级增量
    */
   private async commit_item_updates_batch(request: JsonRecord): Promise<MutableJsonRecord> {
     const project_path = this.require_loaded_project_path();
     const extras = this.normalize_object(request["translation_extras"]);
-    const ack = await this.mutation_store.apply_translation_item_patches({
+    const ack = await this.write_store.apply_translation_item_patches({
       projectPath: project_path,
       items: request["items"],
       translationExtras: extras,
@@ -185,7 +185,7 @@ export class ProjectTaskStore {
   public update_translation_progress(request: JsonRecord): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
     const extras = this.normalize_object(request["translation_extras"]);
-    this.mutation_store.update_task_progress_meta({
+    this.write_store.update_task_progress_meta({
       projectPath: project_path,
       meta: { translation_extras: extras as unknown as ApiJsonValue },
     });
@@ -205,11 +205,11 @@ export class ProjectTaskStore {
   }
 
   /**
-   * NEW/RESET 分析任务清空分析派生事实，保持 ProjectTaskStore 为数据写入口
+   * NEW/RESET 分析任务清空分析计算事实，保持 ProjectTaskStore 为数据写入口
    */
   public async reset_analysis_progress(_request: JsonRecord): Promise<MutableJsonRecord> {
     const project_path = this.require_loaded_project_path();
-    await this.mutation_store.reset_analysis_state({
+    await this.write_store.reset_analysis_state({
       projectPath: project_path,
       requireExpectedSectionRevisions: false,
       source: "analysis_reset",
@@ -229,7 +229,7 @@ export class ProjectTaskStore {
     const snapshot = this.normalize_progress_snapshot(
       this.normalize_object(request["analysis_extras"]),
     );
-    this.mutation_store.update_task_progress_meta({
+    this.write_store.update_task_progress_meta({
       projectPath: project_path,
       meta: { analysis_extras: snapshot as unknown as ApiJsonValue },
     });
@@ -245,7 +245,7 @@ export class ProjectTaskStore {
    */
   private async commit_analysis_artifact_batch(request: JsonRecord): Promise<MutableJsonRecord> {
     const project_path = this.require_loaded_project_path();
-    return await this.mutation_store.commit_analysis_artifacts({
+    return await this.write_store.commit_analysis_artifacts({
       projectPath: project_path,
       successCheckpoints: request["success_checkpoints"],
       errorCheckpoints: request["error_checkpoints"],
@@ -282,7 +282,7 @@ export class ProjectTaskStore {
   ): Promise<MutableJsonRecord> {
     const project_path = this.require_loaded_project_path();
     const translation_extras = this.normalize_object(request["translation_extras"]);
-    const ack = await this.mutation_store.apply_retranslation_item_patches({
+    const ack = await this.write_store.apply_retranslation_item_patches({
       projectPath: project_path,
       items: request["items"],
       translationExtras: translation_extras,

@@ -12,7 +12,7 @@ export interface WorkUnitExecutor {
   execute_unit(unit: WorkUnit, signal: AbortSignal): Promise<WorkUnitExecutionResult>;
 
   /**
-   * 执行公开单条翻译工具调用，只返回派生结果和诊断日志
+   * 执行公开单条翻译工具调用，只返回计算结果和诊断日志
    */
   translate_single(
     body: Record<string, ApiJsonValue>,

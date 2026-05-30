@@ -3,7 +3,7 @@ import {
   type QualityStatisticsDependencySnapshot,
 } from "@shared/quality/quality-statistics";
 
-// QUALITY_RULE_STATISTICS_RULE_TYPES 是 renderer 统计调度消费的共享规则词表别名。
+// QUALITY_RULE_STATISTICS_RULE_TYPES 是渲染进程统计调度消费的共享规则词表别名。
 export const QUALITY_RULE_STATISTICS_RULE_TYPES = QUALITY_STATISTICS_RULE_MODES;
 
 // QualityRuleStatisticsRuleType 是页面、调度器和 store 共享的质量统计规则窄化类型。
@@ -22,8 +22,8 @@ export type QualityRuleStatisticsCacheSnapshot = {
   current_snapshot: QualityStatisticsDependencySnapshot | null; // current_snapshot 记录最近一次观察到的项目依赖快照。
   completed_snapshot: QualityStatisticsDependencySnapshot | null; // completed_snapshot 记录统计结果实际对应的依赖快照。
   completed_entry_ids: string[]; // completed_entry_ids 约束页面只展示当前完成快照内的条目结果。
-  matched_count_by_entry_id: Record<string, number>; // matched_count_by_entry_id 是徽标命中数的派生结果表。
-  subset_parent_labels_by_entry_id: Record<string, string[]>; // subset_parent_labels_by_entry_id 是子集关系徽标的派生结果表。
+  matched_count_by_entry_id: Record<string, number>; // matched_count_by_entry_id 是徽标命中数的计算结果表。
+  subset_parent_labels_by_entry_id: Record<string, string[]>; // subset_parent_labels_by_entry_id 是子集关系徽标的计算结果表。
   last_error: Error | null; // last_error 只描述最近一次统计执行失败，不参与项目事实判断。
   request_token: number; // request_token 废弃迟到刷新结果，保证旧 in-flight 不能覆盖新缓存。
   updated_at: number | null; // updated_at 仅用于调试观察，不作为缓存新旧依据。
@@ -34,11 +34,11 @@ export type QualityRuleStatisticsStoreSnapshot = {
   caches: Record<QualityRuleStatisticsRuleType, QualityRuleStatisticsCacheSnapshot>; // caches 按规则类型隔离统计结果
 };
 
-// QualityRuleStatisticsStoreListener 是 renderer 内存 store 的轻量订阅回调。
+// QualityRuleStatisticsStoreListener 是渲染进程内存 store 的轻量订阅回调。
 type QualityRuleStatisticsStoreListener = () => void;
 
 export type QualityRuleStatisticsStore = {
-  getSnapshot: () => QualityRuleStatisticsStoreSnapshot; // getSnapshot 暴露 renderer 派生缓存快照。
+  getSnapshot: () => QualityRuleStatisticsStoreSnapshot; // getSnapshot 暴露渲染进程计算缓存快照。
   subscribe: (listener: QualityRuleStatisticsStoreListener) => () => void; // subscribe 通知页面重读缓存。
   reset: (project_path: string) => void; // reset 切换项目并清空旧项目统计缓存。
   updateCache: (
@@ -123,7 +123,7 @@ export function expireQualityRuleStatisticsCache(
 }
 
 /**
- * 创建 renderer 内存 store；同引用更新不广播，避免无语义刷新触发页面 effect。
+ * 创建渲染进程内存 store；同引用更新不广播，避免无语义刷新触发页面 effect。
  */
 export function createQualityRuleStatisticsStore(): QualityRuleStatisticsStore {
   let snapshot = createEmptyQualityRuleStatisticsStoreSnapshot("");

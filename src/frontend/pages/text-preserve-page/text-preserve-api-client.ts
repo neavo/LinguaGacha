@@ -18,7 +18,7 @@ type TextPreserveRevisionsResponse = {
   sectionRevisions?: TextPreserveSectionRevisions;
 };
 
-// 保留文本页只读取自身质量规则 view，write 仍走统一提交管线。
+// 保留文本页只读取自身质量规则视图，写入仍走统一提交管线。
 export async function read_text_preserve_quality_rule(
   rule_type: string,
 ): Promise<TextPreserveQualityRuleQueryResponse> {
@@ -29,6 +29,6 @@ export async function read_text_preserve_quality_rule(
 
 // 保留文本页只读取自身保存动作所需 revision。
 export async function read_text_preserve_section_revisions(): Promise<TextPreserveSectionRevisions> {
-  const response = await api_fetch<TextPreserveRevisionsResponse>("/api/workbench/view", {});
+  const response = await api_fetch<TextPreserveRevisionsResponse>("/api/workbench/snapshot", {});
   return response.sectionRevisions ?? {};
 }

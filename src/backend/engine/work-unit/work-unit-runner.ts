@@ -46,7 +46,7 @@ export class WorkUnitRunner {
   }
 
   /**
-   * 单条翻译是派生工具调用，不进入后台任务 unit
+   * 单条翻译是计算工具调用，不进入后台任务 unit
    */
   public async translate_single(
     body: Record<string, ApiJsonValue>,

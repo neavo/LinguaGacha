@@ -13,7 +13,7 @@ import type { LogManager } from "../log/log-manager";
 import { ProjectOperationGate } from "../project/project-gate";
 import { WorkbenchService } from "./workbench-service";
 import type { ProjectChangePublisher } from "../project/project-changes";
-import { ProjectMutationStore } from "../project/project-mutation-store";
+import { ProjectWriteStore } from "../project/project-write-store";
 import { get_section_revision } from "../project/project-data";
 import { ProjectSessionState } from "../project/project-session";
 import type { ProjectChangeEvent } from "../../shared/project-event";
@@ -54,14 +54,14 @@ function create_service(
       : project_change_publisher;
   const project_operation_gate = new ProjectOperationGate(task_run_state);
   const project_event_bus = new ProjectEventBus();
-  const mutation_store = new ProjectMutationStore(database, project_event_bus, publisher);
+  const write_store = new ProjectWriteStore(database, project_event_bus, publisher);
   return {
     database,
     service: new WorkbenchService(
       database,
       project_operation_gate,
       session_state,
-      mutation_store,
+      write_store,
       null,
       undefined,
       log_manager,
@@ -174,7 +174,7 @@ function create_persistent_item(
 }
 
 /**
- * 暂停下一次格式解析，稳定复现慢准备阶段持有结构性 write lease 的窗口
+ * 暂停下一次格式解析，稳定复现慢准备阶段持有结构性写入租约的窗口
  */
 function pause_next_parse_asset(): {
   parse_started: Promise<void>;
@@ -1033,7 +1033,7 @@ describe("WorkbenchService", () => {
     database.close();
   });
 
-  it("工作台 reset-file 只写顶层派生 meta 白名单", async () => {
+  it("工作台 reset-file 只写顶层计算 meta 白名单", async () => {
     const { database, service, lg_path } = create_service();
     const source_path = project_path("a.txt");
     fs.writeFileSync(source_path, "a", "utf-8");
