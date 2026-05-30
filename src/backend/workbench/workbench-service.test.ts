@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectEventBus } from "../project/project-events";
 import { ProjectDatabase } from "../database/database-operations";
+import type { DatabaseOperation } from "../database/database-types";
 import type { ApiJsonValue } from "../api/api-types";
 import { TaskRunState } from "../engine/run/task-run-state";
 import { FileFormatService } from "../file/file-format-service";
@@ -173,6 +174,16 @@ function create_persistent_item(
   };
 }
 
+function count_database_operations(database: ProjectDatabase, name: string): () => number {
+  const original_execute = database.execute.bind(database);
+  const operation_names: string[] = [];
+  vi.spyOn(database, "execute").mockImplementation((operation: DatabaseOperation) => {
+    operation_names.push(operation.name);
+    return original_execute(operation);
+  });
+  return () => operation_names.filter((operation_name) => operation_name === name).length;
+}
+
 /**
  * 暂停下一次格式解析，稳定复现慢准备阶段持有结构性写入租约的窗口
  */
@@ -261,10 +272,29 @@ describe("WorkbenchService", () => {
       publish_project_change,
     } as unknown as ProjectChangePublisher);
     const other_lg_path = project_path("other.lg");
+    const other_source_path = project_path("other.txt");
+    fs.writeFileSync(other_source_path, "旧", "utf-8");
     database.execute({
       name: "createProject",
       args: { projectPath: other_lg_path, name: "other" },
     });
+    database.execute({
+      name: "addAssetFromSource",
+      args: {
+        projectPath: other_lg_path,
+        path: "other.txt",
+        sourcePath: other_source_path,
+        sortOrder: 0,
+      },
+    });
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: other_lg_path,
+        items: [create_persistent_item({ src: "旧", file_path: "other.txt", row_number: 0 })],
+      },
+    });
+    const get_all_items_count = count_database_operations(database, "getAllItems");
 
     const ack = await service.apply_settings_alignment({
       path: other_lg_path,
@@ -279,6 +309,7 @@ describe("WorkbenchService", () => {
     });
 
     expect(ack).toEqual({ accepted: true, changes: [] });
+    expect(get_all_items_count()).toBe(1);
     expect(publish_project_change).toHaveBeenCalledWith(
       expect.objectContaining({
         targetProjectPath: other_lg_path,
@@ -327,6 +358,7 @@ describe("WorkbenchService", () => {
         ],
       },
     });
+    const get_all_items_count = count_database_operations(database, "getAllItems");
 
     const ack = await service.apply_translation_reset({
       mode: "all",
@@ -345,6 +377,7 @@ describe("WorkbenchService", () => {
         },
       ],
     });
+    expect(get_all_items_count()).toBe(1);
     expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
       create_persistent_item({
         src: "新",
@@ -585,6 +618,7 @@ describe("WorkbenchService", () => {
     const broken_json = project_path("broken.json");
     fs.writeFileSync(valid_source, "新", "utf-8");
     fs.writeFileSync(broken_json, "{", "utf-8");
+    const get_all_items_count = count_database_operations(database, "getAllItems");
 
     const ack = await service.import_workbench_files({
       files: [
@@ -608,9 +642,13 @@ describe("WorkbenchService", () => {
         },
       ],
     });
+    expect(get_all_items_count()).toBe(1);
     expect(
       database.execute({ name: "getAllAssetRecords", args: { projectPath: lg_path } }),
     ).toEqual([{ path: "valid.txt", sort_order: 0 }]);
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+      create_persistent_item({ src: "新", file_path: "valid.txt", row_number: 0 }),
+    ]);
     expect(log_manager.warning).toHaveBeenCalledWith(
       "broken.json - 文件内容解析失败 …",
       expect.objectContaining({ source: "workbench-import" }),
@@ -720,6 +758,54 @@ describe("WorkbenchService", () => {
         args: { projectPath: lg_path },
       }),
     ).toEqual([]);
+    database.close();
+  });
+
+  it("导入同名工作台文件选择替换并继承译文时只读取一次 items", async () => {
+    const { database, service, lg_path } = create_service();
+    const old_source = project_path("a.txt");
+    const replace_source = project_path("a-new.txt");
+    fs.writeFileSync(old_source, "同文", "utf-8");
+    fs.writeFileSync(replace_source, "同文", "utf-8");
+    database.execute({
+      name: "addAssetFromSource",
+      args: { projectPath: lg_path, path: "a.txt", sourcePath: old_source, sortOrder: 2 },
+    });
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [
+          create_persistent_item({
+            src: "同文",
+            dst: "译文",
+            status: "PROCESSED",
+            row_number: 0,
+          }),
+        ],
+      },
+    });
+    const get_all_items_count = count_database_operations(database, "getAllItems");
+
+    await service.import_workbench_files({
+      files: [{ source_path: replace_source, target_rel_path: "a.txt" }],
+      conflict_action: "replace",
+      inheritance_mode: "inherit",
+      project_settings: { source_language: "JA", target_language: "ZH" },
+      expected_section_revisions: { files: 0, items: 0, analysis: 0 },
+    });
+
+    expect(get_all_items_count()).toBe(1);
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+      create_persistent_item({
+        item_id: 2,
+        src: "同文",
+        dst: "译文",
+        status: "PROCESSED",
+        file_path: "a.txt",
+        row_number: 0,
+      }),
+    ]);
     database.close();
   });
 
@@ -1056,6 +1142,7 @@ describe("WorkbenchService", () => {
         ],
       },
     });
+    const get_all_items_count = count_database_operations(database, "getAllItems");
 
     await service.reset_workbench_file({
       rel_paths: ["a.txt"],
@@ -1063,6 +1150,7 @@ describe("WorkbenchService", () => {
       expected_section_revisions: { items: 0, analysis: 0 },
     });
 
+    expect(get_all_items_count()).toBe(1);
     expect(
       database.execute({
         name: "getMeta",
@@ -1084,6 +1172,62 @@ describe("WorkbenchService", () => {
       mtool_optimizer_enable: true,
       skip_duplicate_source_text_enable: true,
     });
+    database.close();
+  });
+
+  it("删除工作台文件时删除 files 和对应 items 且只读取一次 items", async () => {
+    const { database, service, lg_path } = create_service();
+    const first_source = project_path("a.txt");
+    const second_source = project_path("b.txt");
+    fs.writeFileSync(first_source, "a", "utf-8");
+    fs.writeFileSync(second_source, "b", "utf-8");
+    database.execute({
+      name: "addAssetFromSource",
+      args: { projectPath: lg_path, path: "a.txt", sourcePath: first_source, sortOrder: 0 },
+    });
+    database.execute({
+      name: "addAssetFromSource",
+      args: { projectPath: lg_path, path: "b.txt", sourcePath: second_source, sortOrder: 1 },
+    });
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [
+          create_persistent_item({ src: "删除", file_path: "a.txt", row_number: 0 }),
+          create_persistent_item({
+            item_id: 2,
+            src: "保留",
+            file_path: "b.txt",
+            row_number: 0,
+          }),
+        ],
+      },
+    });
+    const get_all_items_count = count_database_operations(database, "getAllItems");
+
+    const ack = await service.delete_workbench_file({
+      rel_paths: ["a.txt"],
+      project_settings: { source_language: "JA", target_language: "ZH" },
+      expected_section_revisions: { files: 0, items: 0, analysis: 0 },
+    });
+
+    expect(ack).toMatchObject({
+      accepted: true,
+      changes: [
+        {
+          source: "workbench_delete_file",
+          updatedSections: ["files", "items", "analysis"],
+        },
+      ],
+    });
+    expect(get_all_items_count()).toBe(1);
+    expect(
+      database.execute({ name: "getAllAssetRecords", args: { projectPath: lg_path } }),
+    ).toEqual([{ path: "b.txt", sort_order: 1 }]);
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+      create_persistent_item({ item_id: 2, src: "保留", file_path: "b.txt", row_number: 0 }),
+    ]);
     database.close();
   });
 

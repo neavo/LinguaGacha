@@ -49,6 +49,20 @@ type MutableJsonRecord = Record<string, ApiJsonValue>;
 
 type ProjectWriteSettings = ProjectSettingsSnapshot; // 同步写入只消费设置领域定义的项目镜像窄字段
 
+type WorkbenchAssetRecord = { path: string; sort_order: number };
+
+type WorkbenchFileSection = Record<
+  string,
+  { rel_path: string; file_type: string; sort_index: number }
+>;
+
+type WorkbenchWriteSnapshot = {
+  asset_records: WorkbenchAssetRecord[];
+  item_records: MutableJsonRecord[];
+  public_items_by_id: Map<number, ProjectItemPublicRecord>;
+  files: WorkbenchFileSection;
+};
+
 type WorkbenchImportConflictAction = "skip" | "replace";
 
 type ImportWorkbenchFileCommand = {
@@ -120,13 +134,13 @@ export class WorkbenchService {
       const parse_result = await this.parse_import_file_commands(file_commands);
       this.assert_workbench_import_has_parseable_files(parse_result);
 
-      const asset_records = this.get_asset_records(project_path);
+      const snapshot = this.read_workbench_write_snapshot(project_path);
       const existing_record_by_key = new Map(
-        asset_records.map((record) => [record.path.toLowerCase(), record]),
+        snapshot.asset_records.map((record) => [record.path.toLowerCase(), record]),
       );
       const incoming_paths = new Set<string>();
-      const current_items = this.to_public_items_by_id(this.get_all_items(project_path));
-      const current_files = this.build_file_section_from_asset_records(project_path, asset_records);
+      const current_items = snapshot.public_items_by_id;
+      const current_files = { ...snapshot.files };
       const next_items = new Map(current_items);
       const old_items = [...current_items.values()];
       const imported_item_ids: number[] = [];
@@ -138,7 +152,7 @@ export class WorkbenchService {
       }> = [];
       let next_item_id = this.next_item_id_seed(current_items);
       let next_sort_order =
-        asset_records.reduce((max_sort_order, record) => {
+        snapshot.asset_records.reduce((max_sort_order, record) => {
           return Math.max(max_sort_order, record.sort_order);
         }, -1) + 1;
       for (const file of parse_result.file_drafts) {
@@ -263,9 +277,13 @@ export class WorkbenchService {
         "analysis_extras",
       ]);
       const rel_paths = this.normalize_string_list(request["rel_paths"]);
-      this.assert_rel_paths_exist(project_path, rel_paths);
+      if (rel_paths.length === 0) {
+        throw new AppErrors.RequestValidationError();
+      }
+      const snapshot = this.read_workbench_write_snapshot(project_path);
+      this.assert_rel_paths_exist(snapshot.asset_records, rel_paths);
       const rel_path_set = new Set(rel_paths);
-      const items = this.to_public_item_record(this.get_all_items(project_path));
+      const items = this.public_item_record_from_map(snapshot.public_items_by_id);
       for (const item of Object.values(items)) {
         if (!rel_path_set.has(item.file_path)) {
           continue;
@@ -278,7 +296,7 @@ export class WorkbenchService {
       const settings = this.read_project_write_settings(project_path, request["project_settings"]);
       const write_output = this.compute_prefilter_output({
         project_path,
-        files: this.build_file_section_from_asset_records(project_path),
+        files: snapshot.files,
         items,
         settings,
       });
@@ -308,13 +326,17 @@ export class WorkbenchService {
         "analysis_extras",
       ]);
       const rel_paths = this.normalize_string_list(request["rel_paths"]);
-      this.assert_rel_paths_exist(project_path, rel_paths);
+      if (rel_paths.length === 0) {
+        throw new AppErrors.RequestValidationError();
+      }
+      const snapshot = this.read_workbench_write_snapshot(project_path);
+      this.assert_rel_paths_exist(snapshot.asset_records, rel_paths);
       const rel_path_set = new Set(rel_paths);
-      const files = this.build_file_section_from_asset_records(project_path);
+      const files = { ...snapshot.files };
       for (const rel_path of rel_paths) {
         delete files[rel_path];
       }
-      const items = this.to_public_item_record(this.get_all_items(project_path));
+      const items = this.public_item_record_from_map(snapshot.public_items_by_id);
       for (const item_id of Object.keys(items)) {
         const item = items[item_id];
         if (item !== undefined && rel_path_set.has(item.file_path)) {
@@ -378,10 +400,11 @@ export class WorkbenchService {
     return this.project_operation_gate.run_exclusive_project_write(async () => {
       this.assert_no_legacy_fields(request, ["items", "translation_extras", "prefilter_config"]);
       const settings = this.read_project_write_settings(project_path, request["project_settings"]);
+      const snapshot = this.read_workbench_write_snapshot(project_path);
       const write_output = this.compute_prefilter_output({
         project_path,
-        files: this.build_file_section_from_asset_records(project_path),
-        items: this.to_public_item_record(this.get_all_items(project_path)),
+        files: snapshot.files,
+        items: this.public_item_record_from_map(snapshot.public_items_by_id),
         settings,
       });
       return await this.write_store.replace_workbench_items_and_files({
@@ -414,13 +437,18 @@ export class WorkbenchService {
           project_path,
           request["project_settings"],
         );
+        const snapshot = this.read_workbench_write_snapshot(project_path);
         const reset_items = this.bind_reset_all_items_to_current_ids(
-          project_path,
+          snapshot.item_records,
           reset_item_drafts,
+        );
+        const files = this.build_file_section_from_item_records(
+          snapshot.asset_records,
+          reset_items,
         );
         const write_output = this.compute_prefilter_output({
           project_path,
-          files: this.build_file_section_from_asset_records(project_path),
+          files,
           items: this.public_item_record_from_array(reset_items),
           settings,
           task_snapshot: create_empty_translation_task_snapshot(),
@@ -666,22 +694,35 @@ export class WorkbenchService {
   }
 
   /**
-   * 从 asset 与 item 当前事实构建预过滤输入中的 files section
+   * 结构性写入先集中读取一次 asset 与 item，后续只做内存派生
    */
-  private build_file_section_from_asset_records(
-    project_path: string,
-    asset_records: Array<{ path: string; sort_order: number }> = this.get_asset_records(
-      project_path,
-    ),
-  ): Record<string, { rel_path: string; file_type: string; sort_index: number }> {
+  private read_workbench_write_snapshot(project_path: string): WorkbenchWriteSnapshot {
+    const asset_records = this.get_asset_records(project_path);
+    const item_records = this.get_all_items(project_path);
+    const public_items_by_id = this.to_public_items_by_id(item_records);
+    return {
+      asset_records,
+      item_records,
+      public_items_by_id,
+      files: this.build_file_section_from_item_records(asset_records, item_records),
+    };
+  }
+
+  /**
+   * 从调用方给定的 asset 与 item 快照构建预过滤输入中的 files section
+   */
+  private build_file_section_from_item_records(
+    asset_records: WorkbenchAssetRecord[],
+    item_records: Array<MutableJsonRecord | ProjectItemPublicRecord>,
+  ): WorkbenchFileSection {
     const file_type_by_path = new Map<string, string>();
-    for (const item of this.get_all_items(project_path)) {
+    for (const item of item_records) {
       const rel_path = String(item["file_path"] ?? "");
       if (rel_path !== "" && !file_type_by_path.has(rel_path)) {
         file_type_by_path.set(rel_path, String(item["file_type"] ?? "NONE"));
       }
     }
-    const files: Record<string, { rel_path: string; file_type: string; sort_index: number }> = {};
+    const files: WorkbenchFileSection = {};
     for (const record of asset_records) {
       files[record.path] = {
         rel_path: record.path,
@@ -1007,10 +1048,11 @@ export class WorkbenchService {
    * reset-all 提交阶段用最新 item 身份表回填 id，避免解析窗口内旧 id 映射覆盖并发提交
    */
   private bind_reset_all_items_to_current_ids(
-    project_path: string,
+    current_item_records: MutableJsonRecord[],
     item_drafts: TranslationResetParsedItemDraft[],
   ): ProjectItemPublicRecord[] {
-    const current_item_id_by_identity = this.build_current_item_id_by_identity(project_path);
+    const current_item_id_by_identity =
+      this.build_current_item_id_by_identity(current_item_records);
     const seen_identity_keys = new Set<string>();
     const items: ProjectItemPublicRecord[] = [];
     for (const item_draft of item_drafts) {
@@ -1038,9 +1080,9 @@ export class WorkbenchService {
   /**
    * 当前 item 身份由 file_path + row 决定，reset-all 用它绑定重新解析结果
    */
-  private build_current_item_id_by_identity(project_path: string): Map<string, number> {
+  private build_current_item_id_by_identity(items: MutableJsonRecord[]): Map<string, number> {
     const item_id_by_identity = new Map<string, number>();
-    for (const item of this.get_all_items(project_path)) {
+    for (const item of items) {
       const item_id = this.read_number(item["id"], 0);
       const identity_key = this.build_item_identity_key(item);
       if (item_id <= 0 || identity_key === null || item_id_by_identity.has(identity_key)) {
@@ -1307,11 +1349,11 @@ export class WorkbenchService {
   /**
    * 校验工作台路径必须存在，避免删除或重置不存在的 asset
    */
-  private assert_rel_paths_exist(project_path: string, rel_paths: string[]): void {
+  private assert_rel_paths_exist(asset_records: WorkbenchAssetRecord[], rel_paths: string[]): void {
     if (rel_paths.length === 0) {
       throw new AppErrors.RequestValidationError();
     }
-    const existing = new Set(this.get_asset_records(project_path).map((record) => record.path));
+    const existing = new Set(asset_records.map((record) => record.path));
     for (const rel_path of rel_paths) {
       if (!existing.has(rel_path)) {
         throw new AppErrors.FileNotFoundError({
@@ -1355,7 +1397,7 @@ export class WorkbenchService {
   /**
    * 读取 asset 顺序记录，隐藏数据库返回字段名差异
    */
-  private get_asset_records(project_path: string): Array<{ path: string; sort_order: number }> {
+  private get_asset_records(project_path: string): WorkbenchAssetRecord[] {
     const value = this.database.execute(
       this.op("getAllAssetRecords", { projectPath: project_path }),
     );
