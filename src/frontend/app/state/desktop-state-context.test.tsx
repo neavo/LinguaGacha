@@ -30,6 +30,7 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
 type RuntimeSnapshot = {
   workbenchSeq: number;
   workbenchReason: string;
+  workbenchFileFullReplace: boolean;
   proofreadingSeq: number;
   proofreadingReason: string;
   proofreadingMode: "full" | "delta" | "noop";
@@ -128,13 +129,15 @@ function resolve_state_workbench_change_signal(signal: {
   seq: number;
   reason: string;
   updated_sections: string[];
-}): { seq: number; reason: string } | null {
+  results: ReturnType<typeof useDesktopState>["project_change_signal"]["results"];
+}): { seq: number; reason: string; file_full_replace: boolean } | null {
   return signal.updated_sections.some((section) =>
     ["project", "files", "items", "analysis"].includes(section),
   )
     ? {
         seq: signal.seq,
         reason: signal.reason,
+        file_full_replace: signal.results.some((result) => result.fileDelta?.fullReplace === true),
       }
     : null;
 }
@@ -167,6 +170,7 @@ function RuntimeProbe(props: {
     props.onSnapshot({
       workbenchSeq: current_workbench_signal?.seq ?? 0,
       workbenchReason: current_workbench_signal?.reason ?? "",
+      workbenchFileFullReplace: current_workbench_signal?.file_full_replace ?? false,
       proofreadingSeq: current_proofreading_signal?.seq ?? 0,
       proofreadingReason: current_proofreading_signal?.reason ?? "",
       proofreadingMode: current_proofreading_signal?.mode ?? "full",
@@ -1929,6 +1933,72 @@ describe("DesktopStateProvider", () => {
     expect(snapshots.at(-1)).toMatchObject({
       proofreadingReason: "translation_reset",
       proofreadingMode: "full",
+    });
+  });
+
+  it("files section-invalidated 会直接发布文件全量刷新信号", async () => {
+    vi.useFakeTimers();
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
+
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/settings/app") {
+        return { settings: { app_language: "ZH" } };
+      }
+      if (path === "/api/session/project/snapshot") {
+        return { project: { path: "E:/demo/demo.lg", loaded: true } };
+      }
+      if (path === "/api/tasks/snapshot") {
+        return { task: { task_type: "translation", status: "idle", busy: false } };
+      }
+      const project_read_response = create_project_read_response(path);
+      if (project_read_response !== null) {
+        return project_read_response;
+      }
+
+      throw new Error(`未预期的请求：${path}`);
+    });
+
+    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        <DesktopStateProvider>
+          <RuntimeProbe
+            onSnapshot={(snapshot) => {
+              snapshots.push(snapshot);
+            }}
+          />
+        </DesktopStateProvider>,
+      );
+    });
+
+    await wait_for_condition(() => snapshots.at(-1)?.workbenchSeq === 1);
+
+    await act(async () => {
+      event_stream.emit("project.data_changed", {
+        source: "workbench_reorder_files",
+        projectPath: "E:/demo/demo.lg",
+        projectRevision: 2,
+        updatedSections: ["files"],
+        files: {
+          payloadMode: "section-invalidated",
+        },
+        sectionRevisions: { files: 2 },
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await flush_state_refresh_window();
+    await wait_for_condition(() => snapshots.at(-1)?.workbenchSeq === 2);
+
+    expect(snapshots.at(-1)).toMatchObject({
+      workbenchReason: "workbench_reorder_files",
+      workbenchFileFullReplace: true,
     });
   });
 

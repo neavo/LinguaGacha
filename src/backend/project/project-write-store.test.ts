@@ -139,8 +139,8 @@ describe("ProjectWriteStore", () => {
     });
   });
 
-  it("提交工作台结构写入时同事务替换 items、meta 并清理分析事实", async () => {
-    const { database, project_path, store } = create_store("workbench");
+  it("提交工作台结构写入时替换事实并发布轻量失效信号", async () => {
+    const { database, project_path, store, published_changes } = create_store("workbench");
     seed_items(database, project_path);
     database.execute({
       name: "addAssetCompressedBase64",
@@ -184,6 +184,58 @@ describe("ProjectWriteStore", () => {
       "project_runtime_revision.items": 1,
       "project_runtime_revision.analysis": 1,
     });
+    expect(published_changes.at(-1)).toMatchObject({
+      source: "workbench_delete_file",
+      updatedSections: ["files", "items", "analysis"],
+      items: { payloadMode: "section-invalidated" },
+      files: { payloadMode: "section-invalidated" },
+      sections: {
+        analysis: { payloadMode: "canonical-delta" },
+      },
+    });
+  });
+
+  it("文件排序只发布 files 失效信号", async () => {
+    const { database, project_path, store, published_changes } = create_store("reorder");
+    database.execute({
+      name: "addAssetCompressedBase64",
+      args: {
+        projectPath: project_path,
+        path: "a.txt",
+        compressedBase64: ZstdTool.compress(Buffer.from("a")).toString("base64"),
+        originalSize: 1,
+        sortOrder: 0,
+      },
+    });
+    database.execute({
+      name: "addAssetCompressedBase64",
+      args: {
+        projectPath: project_path,
+        path: "b.txt",
+        compressedBase64: ZstdTool.compress(Buffer.from("b")).toString("base64"),
+        originalSize: 1,
+        sortOrder: 1,
+      },
+    });
+
+    await store.reorder_workbench_files({
+      projectPath: project_path,
+      expectedSectionRevisions: { files: 0 },
+      orderedPaths: ["b.txt", "a.txt"],
+    });
+
+    expect(
+      database.execute({ name: "getAllAssetRecords", args: { projectPath: project_path } }),
+    ).toEqual([
+      { path: "b.txt", sort_order: 0 },
+      { path: "a.txt", sort_order: 1 },
+    ]);
+    expect(published_changes.at(-1)).toMatchObject({
+      source: "workbench_reorder_files",
+      updatedSections: ["files"],
+      files: { payloadMode: "section-invalidated" },
+    });
+    expect(published_changes.at(-1)).not.toHaveProperty("sections");
   });
 
   it("提交质量规则和提示词时写入各自 revision", async () => {

@@ -440,6 +440,16 @@ export class ProjectWriteStore {
     sections?: RuntimeCommitRequest["sections"];
     sectionModes?: Partial<Record<ProjectDataSection, ProjectChangePayloadMode>>;
   }): Promise<ProjectWriteResult> {
+    const items_payload =
+      request.itemsPayload ??
+      (request.items !== undefined && request.updatedSections.includes("items")
+        ? { payloadMode: "section-invalidated" as const }
+        : undefined);
+    const files_payload =
+      request.filesPayload ??
+      ((request.assetWrites?.length ?? 0) > 0 && request.updatedSections.includes("files")
+        ? { payloadMode: "section-invalidated" as const }
+        : undefined);
     return await this.commit_runtime_change({
       projectPath: request.projectPath,
       expectedSectionRevisions: request.expectedSectionRevisions,
@@ -447,8 +457,8 @@ export class ProjectWriteStore {
       revisionSections: request.revisionSections,
       source: request.source,
       updatedSections: request.updatedSections,
-      items: request.itemsPayload,
-      files: request.filesPayload,
+      items: items_payload,
+      files: files_payload,
       sections: request.sections,
       sectionModes: request.sectionModes,
       buildOperations: (revision_context) => {
@@ -501,6 +511,7 @@ export class ProjectWriteStore {
       revisionSections: ["files"],
       source: "workbench_reorder_files",
       updatedSections: ["files"],
+      files: { payloadMode: "section-invalidated" },
       buildOperations: (revision_context) => [
         this.op("updateAssetSortOrders", {
           projectPath: request.projectPath,
