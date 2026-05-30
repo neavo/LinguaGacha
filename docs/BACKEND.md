@@ -49,7 +49,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - `ProjectWriteResult = { accepted: true, changes }` 中的 `changes` 与后续 SSE 是同一批后端 canonical `ProjectChangeEvent`。
 - `ProjectChangeEvent` 必须绑定后端确认的 `projectPath`、`projectRevision`、本次更新 section 的 `sectionRevisions` 与 `updatedSections`，非当前 loaded 工程的草稿不能发布。
 - 变更 payload mode 只允许三类：`canonical-delta` 携带后端规范数据，`field-patch` 只表达校对可写字段，`section-invalidated` 只作为页面重新 query 的刷新提示。
-- item / file 删除必须显式表达 tombstone，无法精确表达删除时使用对应 section full replace。
+- `items` / `files` 的全量替换、排序和无法精确表达受影响行的运行态写入默认发布行级 `section-invalidated`，只有后端能精确表达受影响行和删除 tombstone 的小范围变化才发布行级增量。
 - 后端不接收前端计算出的 `items`、task extras、prefilter config 或 analysis extras 作为最终事实，前端只提交用户意图、设置镜像和 revision 依赖。
 - project create/load/unload、migration、默认预设初始化、CLI bootstrap 资源提交和测试 seed 属于生命周期、初始化或夹具写入，不纳入运行态唯一写入口。
 

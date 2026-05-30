@@ -1031,30 +1031,30 @@ export class ProjectWriteCoordinator {
   }
 
   /**
-   * 行级 payload 只表达调用方明确声明的增量，完整 section 交给 sections 规范化 data
+   * 行级 payload 表达调用方明确声明的增量；items/files 缺省全量变更只发布轻量失效信号。
    */
   private build_row_payloads(request: ProjectWriteChangeRequest): {
     items?: ApiJsonValue;
     files?: ApiJsonValue;
   } {
     return {
-      ...(request.items === undefined ? {} : { items: request.items as unknown as ApiJsonValue }),
-      ...(request.files === undefined ? {} : { files: request.files as unknown as ApiJsonValue }),
+      ...this.build_default_row_payload(request, "items"),
+      ...this.build_default_row_payload(request, "files"),
     };
   }
 
   /**
-   * 未提供行级增量的 updated section 默认发布规范化 section；调用方可显式给出轻量 data。
+   * 未提供行级增量的小 section 默认发布规范化 section；items/files 交给行级失效信号。
    */
   private build_section_payloads(request: ProjectWriteChangeRequest): {
     sections?: ApiJsonValue;
   } {
     const sections = { ...request.sections };
     for (const section of request.updatedSections) {
-      if ((section === "items" && request.items !== undefined) || sections[section] !== undefined) {
+      if (this.has_explicit_section_payload(request, section)) {
         continue;
       }
-      if (section === "files" && request.files !== undefined) {
+      if (section === "items" || section === "files") {
         continue;
       }
       sections[section] = { payloadMode: request.sectionModes?.[section] ?? "canonical-delta" };
@@ -1062,6 +1062,37 @@ export class ProjectWriteCoordinator {
     return Object.keys(sections).length === 0
       ? {}
       : { sections: sections as unknown as ApiJsonValue };
+  }
+
+  private build_default_row_payload(
+    request: ProjectWriteChangeRequest,
+    section: "items" | "files",
+  ): { items?: ApiJsonValue; files?: ApiJsonValue } {
+    const explicit_payload = section === "items" ? request.items : request.files;
+    if (explicit_payload !== undefined) {
+      return section === "items"
+        ? { items: explicit_payload as unknown as ApiJsonValue }
+        : { files: explicit_payload as unknown as ApiJsonValue };
+    }
+    if (
+      !request.updatedSections.includes(section) ||
+      this.has_explicit_section_payload(request, section)
+    ) {
+      return {};
+    }
+    return section === "items"
+      ? { items: { payloadMode: "section-invalidated" } }
+      : { files: { payloadMode: "section-invalidated" } };
+  }
+
+  private has_explicit_section_payload(
+    request: ProjectWriteChangeRequest,
+    section: ProjectDataSection,
+  ): boolean {
+    return (
+      request.sections !== undefined &&
+      Object.prototype.hasOwnProperty.call(request.sections, section)
+    );
   }
 
   /**

@@ -810,9 +810,7 @@ describe("ProjectWriteCoordinator", () => {
       targetProjectPath: lg_path,
       source: "translation_reset",
       updatedSections: ["items"],
-      sections: {
-        items: { payloadMode: "canonical-delta" },
-      },
+      items: { payloadMode: "section-invalidated" },
     });
     database.close();
   });
@@ -902,7 +900,7 @@ describe("ProjectWriteCoordinator", () => {
     database.close();
   });
 
-  it("默认把 updated section 发布成 canonical section data 草稿", () => {
+  it("默认把 items/files 发布成轻量失效信号，小 section 保持 canonical 草稿", () => {
     const database = new ProjectDatabase();
     const publisher = create_echo_project_change_publisher();
     const coordinator = new ProjectWriteCoordinator(
@@ -914,14 +912,15 @@ describe("ProjectWriteCoordinator", () => {
     const result = coordinator.publish_project_data_change({
       projectPath: "E:/Project/demo.lg",
       source: "workbench_reset_file",
-      updatedSections: ["items", "analysis"],
+      updatedSections: ["items", "files", "analysis"],
     });
 
     expect(result.changes).toEqual([
       expect.objectContaining({
         source: "workbench_reset_file",
+        items: { payloadMode: "section-invalidated" },
+        files: { payloadMode: "section-invalidated" },
         sections: {
-          items: { payloadMode: "canonical-delta" },
           analysis: { payloadMode: "canonical-delta" },
         },
       }),
@@ -929,11 +928,36 @@ describe("ProjectWriteCoordinator", () => {
     expect(publisher.publish_project_change).toHaveBeenCalledWith({
       targetProjectPath: "E:/Project/demo.lg",
       source: "workbench_reset_file",
-      updatedSections: ["items", "analysis"],
+      updatedSections: ["items", "files", "analysis"],
+      items: { payloadMode: "section-invalidated" },
+      files: { payloadMode: "section-invalidated" },
       sections: {
-        items: { payloadMode: "canonical-delta" },
         analysis: { payloadMode: "canonical-delta" },
       },
+    });
+    database.close();
+  });
+
+  it("files 缺省更新只发布行级失效信号", () => {
+    const database = new ProjectDatabase();
+    const publisher = create_echo_project_change_publisher();
+    const coordinator = new ProjectWriteCoordinator(
+      database,
+      publisher as unknown as ProjectChangePublisher,
+      new ProjectEventBus(),
+    );
+
+    coordinator.publish_project_data_change({
+      projectPath: "E:/Project/demo.lg",
+      source: "workbench_reorder_files",
+      updatedSections: ["files"],
+    });
+
+    expect(publisher.publish_project_change).toHaveBeenCalledWith({
+      targetProjectPath: "E:/Project/demo.lg",
+      source: "workbench_reorder_files",
+      updatedSections: ["files"],
+      files: { payloadMode: "section-invalidated" },
     });
     database.close();
   });

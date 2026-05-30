@@ -314,13 +314,74 @@ describe("WorkbenchService", () => {
       expect.objectContaining({
         targetProjectPath: other_lg_path,
         source: "settings_alignment",
+        updatedSections: ["items", "analysis"],
+        items: { payloadMode: "section-invalidated" },
+        sections: {
+          analysis: { payloadMode: "canonical-delta" },
+        },
       }),
     );
     database.close();
   });
 
+  it("settings alignment 的 prefiltered_items 在当前工程发布 items 失效信号", async () => {
+    const { publish_project_change } = create_static_project_change_publisher({
+      items: 1,
+      analysis: 1,
+    });
+    const { database, service, lg_path } = create_service({
+      publish_project_change,
+    } as unknown as ProjectChangePublisher);
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [create_persistent_item({ src: "旧", file_path: "a.txt", row_number: 0 })],
+      },
+    });
+    const get_all_items_count = count_database_operations(database, "getAllItems");
+
+    const ack = await service.apply_settings_alignment({
+      mode: "prefiltered_items",
+      expected_section_revisions: { items: 0, analysis: 0 },
+      project_settings: {
+        source_language: "ALL",
+        target_language: "ZH",
+        mtool_optimizer_enable: true,
+        skip_duplicate_source_text_enable: true,
+      },
+    });
+
+    expect(ack).toMatchObject({
+      accepted: true,
+      changes: [
+        {
+          source: "settings_alignment",
+          updatedSections: ["items", "analysis"],
+        },
+      ],
+    });
+    expect(get_all_items_count()).toBe(1);
+    expect(publish_project_change).toHaveBeenCalledWith({
+      targetProjectPath: lg_path,
+      source: "settings_alignment",
+      updatedSections: ["items", "analysis"],
+      items: { payloadMode: "section-invalidated" },
+      sections: {
+        analysis: { payloadMode: "canonical-delta" },
+      },
+    });
+    database.close();
+  });
+
   it("提交 translation reset all 时替换 items 并清分析事实", async () => {
-    const { database, service, lg_path } = create_service();
+    const { publish_project_change } = create_static_project_change_publisher({
+      items: 1,
+      analysis: 1,
+    });
+    const { database, service, lg_path } = create_service({
+      publish_project_change,
+    } as unknown as ProjectChangePublisher);
     const source_path = project_path("a.txt");
     fs.writeFileSync(source_path, "新", "utf-8");
     database.execute({
@@ -390,6 +451,15 @@ describe("WorkbenchService", () => {
         args: { projectPath: lg_path },
       }),
     ).toEqual([]);
+    expect(publish_project_change).toHaveBeenCalledWith({
+      targetProjectPath: lg_path,
+      source: "translation_reset",
+      updatedSections: ["items", "analysis"],
+      items: { payloadMode: "section-invalidated" },
+      sections: {
+        analysis: { payloadMode: "canonical-delta" },
+      },
+    });
     database.close();
   });
 
@@ -695,7 +765,14 @@ describe("WorkbenchService", () => {
   });
 
   it("导入同名工作台文件选择替换时保留排序并重建条目", async () => {
-    const { database, service, lg_path } = create_service();
+    const { publish_project_change } = create_static_project_change_publisher({
+      files: 1,
+      items: 1,
+      analysis: 1,
+    });
+    const { database, service, lg_path } = create_service({
+      publish_project_change,
+    } as unknown as ProjectChangePublisher);
     const old_source = project_path("a.txt");
     const replace_source = project_path("a-new.txt");
     fs.writeFileSync(old_source, "旧", "utf-8");
@@ -758,6 +835,16 @@ describe("WorkbenchService", () => {
         args: { projectPath: lg_path },
       }),
     ).toEqual([]);
+    expect(publish_project_change).toHaveBeenCalledWith({
+      targetProjectPath: lg_path,
+      source: "workbench_import_files",
+      updatedSections: ["files", "items", "analysis"],
+      items: { payloadMode: "section-invalidated" },
+      files: { payloadMode: "section-invalidated" },
+      sections: {
+        analysis: { payloadMode: "canonical-delta" },
+      },
+    });
     database.close();
   });
 
@@ -831,9 +918,7 @@ describe("WorkbenchService", () => {
       targetProjectPath: lg_path,
       source: "translation_reset",
       updatedSections: ["items"],
-      sections: {
-        items: { payloadMode: "canonical-delta" },
-      },
+      items: { payloadMode: "section-invalidated" },
     });
     database.close();
   });
@@ -1080,7 +1165,10 @@ describe("WorkbenchService", () => {
   });
 
   it("按完整文件集合重排 assets 并只 bump files section", async () => {
-    const { database, service, lg_path } = create_service();
+    const { publish_project_change } = create_static_project_change_publisher({ files: 1 });
+    const { database, service, lg_path } = create_service({
+      publish_project_change,
+    } as unknown as ProjectChangePublisher);
     const first_source = project_path("a.txt");
     const second_source = project_path("b.txt");
     fs.writeFileSync(first_source, "a", "utf-8");
@@ -1116,11 +1204,23 @@ describe("WorkbenchService", () => {
       { path: "b.txt", sort_order: 0 },
       { path: "a.txt", sort_order: 1 },
     ]);
+    expect(publish_project_change).toHaveBeenCalledWith({
+      targetProjectPath: lg_path,
+      source: "workbench_reorder_files",
+      updatedSections: ["files"],
+      files: { payloadMode: "section-invalidated" },
+    });
     database.close();
   });
 
   it("工作台 reset-file 只写顶层计算 meta 白名单", async () => {
-    const { database, service, lg_path } = create_service();
+    const { publish_project_change } = create_static_project_change_publisher({
+      items: 1,
+      analysis: 1,
+    });
+    const { database, service, lg_path } = create_service({
+      publish_project_change,
+    } as unknown as ProjectChangePublisher);
     const source_path = project_path("a.txt");
     fs.writeFileSync(source_path, "a", "utf-8");
     database.execute({
@@ -1172,11 +1272,27 @@ describe("WorkbenchService", () => {
       mtool_optimizer_enable: true,
       skip_duplicate_source_text_enable: true,
     });
+    expect(publish_project_change).toHaveBeenCalledWith({
+      targetProjectPath: lg_path,
+      source: "workbench_reset_file",
+      updatedSections: ["items", "analysis"],
+      items: { payloadMode: "section-invalidated" },
+      sections: {
+        analysis: { payloadMode: "canonical-delta" },
+      },
+    });
     database.close();
   });
 
   it("删除工作台文件时删除 files 和对应 items 且只读取一次 items", async () => {
-    const { database, service, lg_path } = create_service();
+    const { publish_project_change } = create_static_project_change_publisher({
+      files: 1,
+      items: 1,
+      analysis: 1,
+    });
+    const { database, service, lg_path } = create_service({
+      publish_project_change,
+    } as unknown as ProjectChangePublisher);
     const first_source = project_path("a.txt");
     const second_source = project_path("b.txt");
     fs.writeFileSync(first_source, "a", "utf-8");
@@ -1228,6 +1344,16 @@ describe("WorkbenchService", () => {
     expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
       create_persistent_item({ item_id: 2, src: "保留", file_path: "b.txt", row_number: 0 }),
     ]);
+    expect(publish_project_change).toHaveBeenCalledWith({
+      targetProjectPath: lg_path,
+      source: "workbench_delete_file",
+      updatedSections: ["files", "items", "analysis"],
+      items: { payloadMode: "section-invalidated" },
+      files: { payloadMode: "section-invalidated" },
+      sections: {
+        analysis: { payloadMode: "canonical-delta" },
+      },
+    });
     database.close();
   });
 
