@@ -20,7 +20,7 @@ export { PROJECT_DATA_SECTIONS };
 export type { ProjectDataSection };
 
 /**
- * 统一读取项目 section revision，供读取接口和同步 write 事件共享口径
+ * 统一读取项目 section revision，供读取接口和同步写入事件共享口径
  */
 export function get_section_revision(meta: JsonRecord, section: string): number {
   if (section.startsWith("quality:")) {
@@ -129,7 +129,7 @@ export class ProjectDataReader {
   }
 
   /**
-   * 按需读取 section 时直接返回公开变更可消费形状，避免 renderer 另建解码层
+   * 按需读取 section 时直接返回公开变更可消费形状，避免渲染进程另建解码层
    */
   public build_section_payloads(args: {
     projectState: { loaded: boolean; projectPath: string };
@@ -220,7 +220,7 @@ export class ProjectDataReader {
   }
 
   /**
-   * 行级 canonical delta 只回读指定 item，避免小变更退化成完整 items 替换
+   * 行级规范化增量只回读指定 item，避免小变更退化成完整 items 替换
    */
   public build_item_records_by_ids(project_path: string, item_ids: number[]): ProjectDataRecord[] {
     const value = this.database.execute(
@@ -330,14 +330,14 @@ export class ProjectDataReader {
   }
 
   /**
-   * 公开 section revisions 统一从 meta 解析，避免读取接口与 write result 口径分叉
+   * 公开 section revisions 统一从 meta 解析，避免读取接口与写入结果口径分叉
    */
   public build_section_revisions(meta: ProjectDataJsonRecord): Record<ProjectDataSection, number> {
     return build_section_revisions_from_meta(meta);
   }
 
   /**
-   * 一次读取 item 表并派生文件索引，让 files/items 在同一次组装中自洽
+   * 一次读取 item 表并计算文件索引，让 files/items 在同一次组装中自洽
    */
   public build_runtime_items_snapshot(project_path: string): ProjectDataItemsSnapshot {
     const item_records: ProjectDataRecord[] = [];
@@ -441,7 +441,7 @@ export class ProjectDataReader {
   }
 
   /**
-   * section 读取统一在读取层转成 renderer store 的公开形状
+   * section 读取统一在读取层转成渲染进程 store 的公开形状
    */
   private build_store_section_payload(args: {
     section: ProjectDataSection;

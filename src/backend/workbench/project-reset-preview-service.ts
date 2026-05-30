@@ -17,7 +17,7 @@ type MutableJsonRecord = Record<string, ApiJsonValue>;
  */
 export class ProjectResetPreviewService {
   /**
-   * reset preview 只读数据库，不负责提交真实 reset write
+   * reset preview 只读数据库，不负责提交真实 reset 写入
    */
   public constructor(
     private readonly database: ProjectDatabase,

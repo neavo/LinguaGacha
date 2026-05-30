@@ -11,9 +11,9 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
 import { apply_laboratory_prefilter_write } from "./laboratory-api-client";
 
 describe("laboratory-api-client", () => {
-  it("通过实验室页 write 管线提交设置镜像和 section revision 锁", async () => {
+  it("通过实验室页写入管线提交设置镜像和 section revision 锁", async () => {
     api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/workbench/view") {
+      if (path === "/api/workbench/snapshot") {
         return {
           sectionRevisions: {
             items: 3,
@@ -39,7 +39,7 @@ describe("laboratory-api-client", () => {
       operation: "laboratory.prefilter_settings",
       run: expect.any(Function),
     });
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/workbench/view", {});
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/workbench/snapshot", {});
     expect(api_fetch_mock).toHaveBeenCalledWith("/api/workbench/settings-alignment/apply", {
       mode: "prefiltered_items",
       project_settings: {

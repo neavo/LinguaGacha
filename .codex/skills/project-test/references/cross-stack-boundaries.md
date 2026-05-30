@@ -1,6 +1,6 @@
 # 跨栈边界测试示例
 
-只在任务涉及后端与前端、宿主与 UI、协议、事件流、初始化数据或同步 mutation 契约时读取本文件。
+只在任务涉及后端与前端、宿主与 UI、协议、事件流、初始化数据或同步 write 契约时读取本文件。
 
 ## 判断权威来源
 
@@ -109,7 +109,7 @@ expect(snapshots.at(-1)).toMatchObject({
 | 新增事件 topic | 事件发布 / bridge topic 测试 | 事件流消费与忽略未知 topic 测试 |
 | 修改初始化分片 | 初始化 service 或 serializer 测试 | 状态容器初始化消费测试 |
 | 修改公开 update 操作 | bridge payload 测试 | store merge 与 signal 测试 |
-| 修改同步 mutation 返回 | route / service 测试 | API client 或页面状态 hook 测试 |
+| 修改同步 write 返回 | route / service 测试 | API client 或页面状态 hook 测试 |
 | 修改错误码 | 错误映射测试 | UI 错误状态或展示测试 |
 
 ## 验证建议

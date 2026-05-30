@@ -46,7 +46,7 @@ export type ProjectWriteState = {
 };
 
 export type ProjectItemViewRecord = {
-  item_id: number; // 公开 item 主键，所有局部 write 都以它定位数据库事实
+  item_id: number; // 公开 item 主键，所有局部写入都以它定位数据库事实
   file_path: string; // 项目内相对路径
   row_number: number; // 公开行号
   src: string; // 原文
@@ -73,7 +73,7 @@ export type ProjectAnalysisWriteOutput = {
 
 export type ProjectPrefilterWriteOutput = {
   items: Record<string, ProjectItemPublicRecord>; // 预过滤后的完整公开 item 集合
-  analysis: ProjectAnalysisWriteOutput; // 重置后的分析派生事实
+  analysis: ProjectAnalysisWriteOutput; // 重置后的分析计算事实
   translation_extras: Record<string, unknown>; // 按最终 item 状态重建的翻译进度 meta
   project_settings: {
     source_language: string; // 写回 settings mirror 的源语言
@@ -98,7 +98,7 @@ export type ProjectPrefilterWriteInput = {
   skip_duplicate_source_text_enable: boolean; // 是否启用同文件重复原文过滤
 };
 
-// 外部输入必须先是完整公开 DTO，派生视图只服务局部计算。
+// 外部输入必须先是完整公开 DTO，计算视图只服务局部计算。
 /**
  * 解析当前场景的最终消费值。
  */
@@ -110,7 +110,7 @@ export function derive_project_item_view_record(value: unknown): ProjectItemView
   return derive_project_item_view_record_from_public(item);
 }
 
-// 从已校验公开 DTO 派生可变视图，保留 reset、预过滤和统计需要的字段。
+// 从已校验公开 DTO 计算可变视图，保留 reset、预过滤和统计需要的字段。
 /**
  * 解析当前场景的最终消费值。
  */
@@ -331,7 +331,7 @@ export function build_public_item_map(
   return item_map;
 }
 
-// 把公开 DTO Map 派生为预过滤和进度统计使用的轻量 view Map。
+// 把公开 DTO Map 计算为预过滤和进度统计使用的轻量视图 Map。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -345,7 +345,7 @@ export function build_item_view_map(
   return item_map;
 }
 
-// 后端预过滤核心只接收当前项目事实快照，输出完整可写的派生事实。
+// 后端预过滤核心只接收当前项目事实快照，输出完整可写的计算事实。
 /**
  * 解析当前场景的最终消费值。
  */
@@ -516,7 +516,7 @@ export type ProjectChangeDraftRecord = Record<string, ApiJsonValue> & {
 };
 
 /**
- * 将领域写入结果转换为公开 ProjectChangeEvent，canonical delta 只在当前事务结果上组装
+ * 将领域写入结果转换为公开 ProjectChangeEvent，规范化增量只在当前事务结果上组装
  */
 export class ProjectChangeEventAdapter {
   private readonly session_state: ProjectSessionState; // 当前工程路径只能信任 Gateway 会话状态
@@ -524,7 +524,7 @@ export class ProjectChangeEventAdapter {
   private readonly data_reader: ProjectDataReader; // DB -> API payload 组装集中在无状态服务
 
   /**
-   * 注入会话状态和读取服务，避免任务域或 write 域直接拼公开事件
+   * 注入会话状态和读取服务，避免任务域或写入域直接拼公开事件
    */
   public constructor(
     database: ProjectDatabase,
@@ -744,7 +744,7 @@ export class ProjectChangeEventAdapter {
   }
 
   /**
-   * 从当前 files block 裁剪指定路径；未指定 changedPaths 时返回完整 files delta
+   * 从当前 files block 裁剪指定路径；未指定 changedPaths 时返回完整 files 增量
    */
   private build_file_upsert_payload(
     project_path: string,
@@ -780,7 +780,7 @@ export class ProjectChangeEventAdapter {
   }
 
   /**
-   * item delta 共用正整数 id 归一口径
+   * item 增量共用正整数 id 归一口径
    */
   private normalize_number_list(value: ApiJsonValue | undefined): number[] {
     if (!Array.isArray(value)) {
@@ -796,7 +796,7 @@ export class ProjectChangeEventAdapter {
   }
 
   /**
-   * 路径列表去空并去重，保持 files delta key 稳定
+   * 路径列表去空并去重，保持 files 增量 key 稳定
    */
   private normalize_string_list(value: ApiJsonValue | undefined): string[] {
     if (!Array.isArray(value)) {
@@ -844,7 +844,7 @@ export class ProjectChangePublisher {
   }
 
   /**
-   * 发布项目数据变更，并把同一份 ProjectChangeEvent 返回给 HTTP write 响应
+   * 发布项目数据变更，并把同一份 ProjectChangeEvent 返回给 HTTP 写入响应
    */
   public publish_project_change(payload: ProjectChangeDraftRecord): ProjectChangeEvent | null {
     const event = this.project_change_adapter.adapt_project_change(payload);
@@ -871,7 +871,7 @@ export type ProjectWriteRevisionContext = {
 
 export type ProjectWriteChangeRequest = {
   projectPath: string; // projectPath 已由会话或显式路径校验，publisher 不再猜测目标工程
-  source: string; // source 是 HTTP write 与 SSE 事件共用的行为标签
+  source: string; // source 是 HTTP 写入与 SSE 事件共用的行为标签
   updatedSections: ProjectDataSection[]; // updatedSections 决定前端刷新哪些项目 section
   items?: Pick<
     ProjectChangeItemsPayload,
@@ -893,14 +893,14 @@ export type ProjectWriteCommitRequest = {
 };
 
 /**
- * 统一协调同步项目写入的 revision guard、revision writer 和 canonical 事件草稿
+ * 统一协调同步项目写入的 revision guard、revision writer 和规范化事件草稿
  */
 export class ProjectWriteCoordinator {
   private readonly database: ProjectDatabase; // database workflow 是 revision meta 的唯一读取与写入入口
 
   private readonly project_change_publisher: ProjectChangePublisher | null; // publisher 是写库成功后进入 project.data_changed 的唯一出口
 
-  private readonly project_event_bus: ProjectEventBus; // 内部 committed event 先于公开变更发布，供 Backend cache 维护热数据
+  private readonly project_event_bus: ProjectEventBus; // 内部 committed event 先于公开变更发布，供后端 cache 维护热数据
 
   /**
    * 注入数据库和可选发布器，保持纯测试场景能只验证写库结果
@@ -970,7 +970,7 @@ export class ProjectWriteCoordinator {
   }
 
   /**
-   * 在最终提交点连续完成 revision guard、事务构造、写库和 canonical 事件发布
+   * 在最终提交点连续完成 revision guard、事务构造、写库和规范化事件发布
    */
   public async commit_project_write(
     request: ProjectWriteCommitRequest,
@@ -993,14 +993,14 @@ export class ProjectWriteCoordinator {
   }
 
   /**
-   * 无项目数据变化时仍返回统一 write result，调用方不再保留旧响应分支
+   * 无项目数据变化时仍返回统一写入结果，调用方不再保留旧响应分支
    */
   public empty_project_write_result(): ProjectWriteResult {
     return { accepted: true, changes: [] };
   }
 
   /**
-   * 数据库提交成功后只发布 canonical 变更草稿，HTTP 返回和 SSE 广播共用同一事件
+   * 数据库提交成功后只发布规范化变更草稿，HTTP 返回和 SSE 广播共用同一事件
    */
   public publish_project_data_change(request: ProjectWriteChangeRequest): ProjectWriteResult {
     if (this.project_change_publisher === null || request.updatedSections.length === 0) {
@@ -1031,7 +1031,7 @@ export class ProjectWriteCoordinator {
   }
 
   /**
-   * 行级 payload 只表达调用方明确声明的 delta，完整 section 交给 sections canonical data
+   * 行级 payload 只表达调用方明确声明的增量，完整 section 交给 sections 规范化 data
    */
   private build_row_payloads(request: ProjectWriteChangeRequest): {
     items?: ApiJsonValue;
@@ -1044,7 +1044,7 @@ export class ProjectWriteCoordinator {
   }
 
   /**
-   * 未提供行级 delta 的 updated section 默认发布 canonical section；调用方可显式给出轻量 data。
+   * 未提供行级增量的 updated section 默认发布规范化 section；调用方可显式给出轻量 data。
    */
   private build_section_payloads(request: ProjectWriteChangeRequest): {
     sections?: ApiJsonValue;
@@ -1065,7 +1065,7 @@ export class ProjectWriteCoordinator {
   }
 
   /**
-   * 数据库事务成功后先发布 Backend 内部事件，确保后端 query cache 先于公开 SSE 更新。
+   * 数据库事务成功后先发布后端内部事件，确保后端 query cache 先于公开 SSE 更新。
    */
   public async publish_app_events_for_committed_change(
     request: ProjectWriteChangeRequest,

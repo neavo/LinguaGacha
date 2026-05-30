@@ -15,7 +15,7 @@ describe("proofreading-api-client", () => {
     api_fetch_mock.mockReset();
   });
 
-  it("创建 API 列表 client 并把 hydrate、列表与窗口读取委托给 Backend query reader/state", async () => {
+  it("创建 API 列表 client 并把 sync、列表与窗口读取委托给 Backend query reader/state", async () => {
     const client = createProofreadingApiClient();
     api_fetch_mock.mockImplementation(async (_url: string, body: Record<string, unknown>) => {
       if (body.action === "sync") {

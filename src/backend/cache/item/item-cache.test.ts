@@ -24,7 +24,7 @@ describe("ItemCache", () => {
     ]);
   });
 
-  it("应用 item delta 时维护 upsert、delete、字段补丁和文件索引", () => {
+  it("应用 item 增量时维护 upsert、delete、字段补丁和文件索引", () => {
     const cache = new ItemCache();
     cache.replace([
       { item_id: 1, file_path: "a.txt", src: "A", dst: "" },

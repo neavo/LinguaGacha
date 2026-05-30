@@ -11,7 +11,7 @@ import type {
   ProofreadingListWindowQuery,
   ProofreadingRowIdsRangeQuery,
   ProofreadingRowIndexQuery,
-  ProofreadingHydrationInput,
+  ProofreadingSyncInput,
   ProofreadingSyncState,
   createProofreadingListReader,
 } from "../../../shared/proofreading/proofreading-list-reader";
@@ -114,6 +114,9 @@ export class ProofreadingCache {
     return this.query_current("filter_panel", { action: "filter_panel", query });
   }
 
+  /**
+   * 清理指定项目的校对列表运行态；未传项目时清掉当前身份。
+   */
   public async clearProject(projectPath?: string): Promise<void> {
     const current_key = this.synced_key;
     if (current_key === null) {
@@ -132,6 +135,9 @@ export class ProofreadingCache {
     }
   }
 
+  /**
+   * 根据基础缓存变化维护校对运行态，字段 patch 优先走增量应用。
+   */
   public async applyChange(
     change: CacheChange,
     nextSectionRevisions: ProjectDataSectionRevisions,
@@ -185,6 +191,9 @@ export class ProofreadingCache {
     }
   }
 
+  /**
+   * 查询前确保当前项目身份已完成同步。
+   */
   private async query_current<TAction extends "list">(
     action: TAction,
     input: { action: TAction; query: ProofreadingListViewQuery },
@@ -246,7 +255,7 @@ export class ProofreadingCache {
 
   private async ensure_synced(identity: {
     keyString: string;
-    input: ProofreadingHydrationInput;
+    input: ProofreadingSyncInput;
   }): Promise<ProofreadingSyncState> {
     if (this.synced_key === identity.keyString) {
       if (this.synced_state !== null) {
@@ -260,13 +269,13 @@ export class ProofreadingCache {
     const promise = this.worker_client
       .run(
         {
-          type: "proofreading_hydration",
+          type: "proofreading_sync",
           input: identity.input,
         },
         new AbortController().signal,
       )
       .then((result) => {
-        const sync_state = this.service.hydrate_evaluated_full({
+        const sync_state = this.service.sync_evaluated_full({
           ...result,
           quality: identity.input.quality,
         });
@@ -286,7 +295,7 @@ export class ProofreadingCache {
     key: ProofreadingCacheKey;
     keyString: string;
     sectionRevisions: ProjectDataSectionRevisions;
-    input: ProofreadingHydrationInput;
+    input: ProofreadingSyncInput;
   } {
     const sectionRevisions = this.cache.readSectionRevisions();
     const snapshot = this.cache.snapshot();
@@ -341,6 +350,9 @@ export class ProofreadingCache {
     };
   }
 
+  /**
+   * 从基础缓存构造完整校对 item 输入。
+   */
   private build_items(): ProofreadingItemRecord[] {
     const file_order_by_path = this.build_file_order_by_path(this.cache.files.readFileEntries());
     return this.cache.items
@@ -348,6 +360,9 @@ export class ProofreadingCache {
       .map((item) => this.to_runtime_item(item, file_order_by_path));
   }
 
+  /**
+   * 只为增量变更读取受影响 item，减少大项目重复复制。
+   */
   private build_delta_items(item_ids: number[]): ProofreadingItemRecord[] {
     const file_order_by_path = this.build_file_order_by_path(this.cache.files.readFileEntries());
     return item_ids.flatMap((item_id) => {
@@ -356,6 +371,9 @@ export class ProofreadingCache {
     });
   }
 
+  /**
+   * 构造文件路径到稳定排序值的映射，缺少 sort_index 时使用数组顺序兜底。
+   */
   private build_file_order_by_path(file_entries: CacheFileEntry[]): Map<string, number> {
     return new Map(
       file_entries.map((entry, index) => {
@@ -411,6 +429,9 @@ export class ProofreadingCache {
     };
   }
 
+  /**
+   * 解析已同步身份 key，失败时返回 null 触发保守清理。
+   */
   private parse_key(value: string): ProofreadingCacheKey | null {
     try {
       const parsed = JSON.parse(value) as Partial<ProofreadingCacheKey>;
@@ -420,6 +441,9 @@ export class ProofreadingCache {
     }
   }
 
+  /**
+   * 任一基础事实全量重建都会使校对运行态身份失效。
+   */
   private should_clear_for_full_change(change: CacheChange): boolean {
     return (
       change.fullRebuild ||
@@ -430,6 +454,9 @@ export class ProofreadingCache {
     );
   }
 
+  /**
+   * 文件、质量或倒退 revision 变化需要丢弃当前增量身份。
+   */
   private should_clear_delta_identity(
     current_key: ProofreadingCacheKey,
     next_revisions: ProofreadingCacheKey["revisions"],
@@ -443,6 +470,9 @@ export class ProofreadingCache {
     );
   }
 
+  /**
+   * 将全局 section revision 收窄成校对运行态关心的四个分区。
+   */
   private to_proofreading_revisions(
     sectionRevisions: ProjectDataSectionRevisions,
     current_key: ProofreadingCacheKey,

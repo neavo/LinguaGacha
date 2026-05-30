@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { derive_trans_filter_effect, NoneTransProcessor } from "./trans-processor";
 
 describe("derive_trans_filter_effect", () => {
-  it("自动过滤项带 gold，未过滤项移除派生 gold，混合分区允许参数生成", () => {
+  it("自动过滤项带 gold，未过滤项移除计算 gold，混合分区允许参数生成", () => {
     expect(
       derive_trans_filter_effect({
         block: [true],

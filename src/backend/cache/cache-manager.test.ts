@@ -8,7 +8,7 @@ import { ProjectEventBus } from "../project/project-events";
 import type { BackendWorkerClient } from "../worker/worker-client";
 import {
   evaluateProofreadingSlice,
-  type ProofreadingHydrationInput,
+  type ProofreadingSyncInput,
 } from "../../shared/proofreading/proofreading-list-reader";
 import { CacheManager } from "./cache-manager";
 
@@ -83,8 +83,8 @@ function create_settings(): AppSettingService {
 
 function create_worker(): BackendWorkerClient & { run: ReturnType<typeof vi.fn> } {
   return {
-    run: vi.fn(async (task: { type: string; input: ProofreadingHydrationInput }) => {
-      if (task.type === "proofreading_hydration") {
+    run: vi.fn(async (task: { type: string; input: ProofreadingSyncInput }) => {
+      if (task.type === "proofreading_sync") {
         return evaluateProofreadingSlice(task.input);
       }
       return {};
@@ -289,7 +289,7 @@ describe("CacheManager", () => {
     );
   });
 
-  it("事件订阅统一维护基础缓存并清理受影响派生缓存", async () => {
+  it("事件订阅统一维护基础缓存并清理受影响计算缓存", async () => {
     const database = create_database({
       items: [create_item()],
     });

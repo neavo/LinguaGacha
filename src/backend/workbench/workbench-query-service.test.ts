@@ -27,18 +27,18 @@ function create_item(overrides: Record<string, unknown>): Record<string, unknown
 }
 
 describe("WorkbenchQueryService", () => {
-  it("从 CacheManager 返回工作台 view model 与 revision", async () => {
+  it("从 CacheManager 返回工作台 snapshot 与 revision", async () => {
     const { service } = await create_service([
       create_item({ id: 1, status: "PROCESSED" }),
       create_item({ id: 2, src: "失敗", status: "ERROR" }),
     ]);
 
-    const result = service.read_workbench_view();
+    const result = service.read_workbench_snapshot();
 
     expect(result).toMatchObject({
       projectPath: "E:/Project/demo.lg",
       sectionRevisions: { items: 7 },
-      view: {
+      snapshot: {
         file_count: 1,
         total_items: 2,
         translation_stats: {
@@ -52,7 +52,7 @@ describe("WorkbenchQueryService", () => {
     });
   });
 
-  it("工作台 view model 按 asset sort_order 返回文件顺序", async () => {
+  it("工作台 snapshot 按 asset sort_order 返回文件顺序", async () => {
     const { service } = await create_service(
       [
         create_item({ id: 1, file_path: "a.txt", src: "A" }),
@@ -64,10 +64,10 @@ describe("WorkbenchQueryService", () => {
       ],
     );
 
-    const result = service.read_workbench_view();
+    const result = service.read_workbench_snapshot();
 
     expect(result).toMatchObject({
-      view: {
+      snapshot: {
         entries: [
           { rel_path: "b.txt", sort_index: 0, item_count: 1 },
           { rel_path: "a.txt", sort_index: 1, item_count: 1 },
@@ -76,7 +76,7 @@ describe("WorkbenchQueryService", () => {
     });
   });
 
-  it("工作台 view model 按分析 summary 与跳过项口径计算统计", async () => {
+  it("工作台 snapshot 按分析 summary 与跳过项口径计算统计", async () => {
     const { service } = await create_service(
       [
         create_item({ id: 1, status: "PROCESSED" }),
@@ -95,10 +95,10 @@ describe("WorkbenchQueryService", () => {
       },
     );
 
-    const result = service.read_workbench_view();
+    const result = service.read_workbench_snapshot();
 
     expect(result).toMatchObject({
-      view: {
+      snapshot: {
         translation_stats: {
           total_items: 4,
           completed_count: 1,
@@ -117,16 +117,16 @@ describe("WorkbenchQueryService", () => {
     });
   });
 
-  it("工作台 view model 在旧工程缺少分析进度时按 item 口径回退", async () => {
+  it("工作台 snapshot 在旧工程缺少分析进度时按 item 口径回退", async () => {
     const { service } = await create_service([
       create_item({ id: 1, src: "待分析", status: "NONE" }),
       create_item({ id: 2, src: "已跳过", status: "EXCLUDED" }),
     ]);
 
-    const result = service.read_workbench_view();
+    const result = service.read_workbench_snapshot();
 
     expect(result).toMatchObject({
-      view: {
+      snapshot: {
         analysis_stats: {
           total_items: 2,
           completed_count: 0,
@@ -139,7 +139,7 @@ describe("WorkbenchQueryService", () => {
     });
   });
 
-  it("返回自定义提示词 query view 与 prompts revision", async () => {
+  it("返回自定义提示词查询视图与 prompts revision", async () => {
     const { service } = await create_service([]);
 
     const result = service.read_prompt_view({
@@ -159,7 +159,7 @@ describe("WorkbenchQueryService", () => {
     });
   });
 
-  it("返回质量规则 query view 与规则 revision", async () => {
+  it("返回质量规则查询视图与规则 revision", async () => {
     const { service } = await create_service([]);
 
     const result = service.read_quality_rule_view({

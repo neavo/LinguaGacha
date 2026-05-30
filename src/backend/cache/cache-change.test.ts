@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { create_cache_change } from "./cache-change";
 
 describe("create_cache_change", () => {
-  it("把 items canonical delta 归一成 cache item delta", () => {
+  it("把 items 规范化增量归一成 cache item 增量", () => {
     const change = create_cache_change({
       type: "project.items.changed",
       projectPath: "E:/Project/demo.lg",

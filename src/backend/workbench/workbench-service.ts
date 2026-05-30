@@ -10,7 +10,7 @@ import {
 import { log_source_file_parse_failures } from "../file/source-file-parse-failure-reporter";
 import type { LogManager } from "../log/log-manager";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
-import { ProjectMutationStore, type ProjectAssetMutation } from "../project/project-mutation-store";
+import { ProjectWriteStore, type ProjectAssetWrite } from "../project/project-write-store";
 import type { ProjectOperationGate } from "../project/project-gate";
 import { ProjectSessionState } from "../project/project-session";
 import {
@@ -47,7 +47,7 @@ import { t_main_log } from "../log/log-text";
 type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
-type ProjectWriteSettings = ProjectSettingsSnapshot; // 同步 write 只消费设置领域定义的项目镜像窄字段
+type ProjectWriteSettings = ProjectSettingsSnapshot; // 同步写入只消费设置领域定义的项目镜像窄字段
 
 type WorkbenchImportConflictAction = "skip" | "replace";
 
@@ -62,16 +62,16 @@ type TranslationResetParsedItemDraft = {
 };
 
 /**
- * 承载项目同步 write，把 API Gateway 的业务写入收口到 ProjectDatabase 窄操作
+ * 承载项目同步写入，把 API Gateway 的业务写入收口到 ProjectDatabase 窄操作
  */
 export class WorkbenchService {
   private readonly database: ProjectDatabase; // 所有 .lg 写入必须经由 ProjectDatabase workflow，避免项目域直接碰 SQL
 
-  private readonly project_operation_gate: ProjectOperationGate; // 结构性 write 与任务启动统一经由后端互斥门闩
+  private readonly project_operation_gate: ProjectOperationGate; // 结构性写入与任务启动统一经由后端互斥门闩
 
-  private readonly session_state: ProjectSessionState; // 当前公开工程路径由 API Gateway 会话状态提供，避免同步 write 回读旧缓存
+  private readonly session_state: ProjectSessionState; // 当前公开工程路径由 API Gateway 会话状态提供，避免同步写入回读旧缓存
 
-  private readonly mutation_store: ProjectMutationStore; // 工作台只提交结构性业务意图，事务和事件交给 mutation store
+  private readonly write_store: ProjectWriteStore; // 工作台只提交结构性业务意图，事务和事件交给 ProjectWriteStore
 
   private readonly app_setting_service: AppSettingService | null; // 文件重解析需要当前应用级格式配置；测试可为空并使用稳定默认值
 
@@ -86,7 +86,7 @@ export class WorkbenchService {
     database: ProjectDatabase,
     project_operation_gate: ProjectOperationGate,
     session_state: ProjectSessionState,
-    mutation_store: ProjectMutationStore,
+    write_store: ProjectWriteStore,
     app_setting_service: AppSettingService | null = null,
     native_fs: NativeFs = default_native_fs,
     log_manager: Pick<LogManager, "warning"> | null = null,
@@ -94,7 +94,7 @@ export class WorkbenchService {
     this.database = database;
     this.project_operation_gate = project_operation_gate;
     this.session_state = session_state;
-    this.mutation_store = mutation_store;
+    this.write_store = write_store;
     this.app_setting_service = app_setting_service;
     this.native_fs = native_fs;
     this.log_manager = log_manager;
@@ -220,7 +220,7 @@ export class WorkbenchService {
         });
       }
 
-      const asset_mutations: ProjectAssetMutation[] = imported_files.map((file) =>
+      const asset_writes: ProjectAssetWrite[] = imported_files.map((file) =>
         file.mode === "add"
           ? {
               kind: "add_from_source",
@@ -234,13 +234,13 @@ export class WorkbenchService {
               sourcePath: file.source_path,
             },
       );
-      const write_result = await this.mutation_store.replace_workbench_items_and_files({
+      const write_result = await this.write_store.replace_workbench_items_and_files({
         projectPath: project_path,
         expectedSectionRevisions: request["expected_section_revisions"],
         revisionSections: ["files", "items", "analysis"],
         source: "workbench_import_files",
         updatedSections: ["files", "items", "analysis"],
-        assetMutations: asset_mutations,
+        assetWrites: asset_writes,
         items: this.persistent_items_from_public_record(write_output.items),
         meta: this.build_prefilter_reset_meta(settings, write_output),
         resetAnalysis: true,
@@ -282,7 +282,7 @@ export class WorkbenchService {
         items,
         settings,
       });
-      return await this.mutation_store.replace_workbench_items_and_files({
+      return await this.write_store.replace_workbench_items_and_files({
         projectPath: project_path,
         expectedSectionRevisions: request["expected_section_revisions"],
         revisionSections: ["items", "analysis"],
@@ -328,13 +328,13 @@ export class WorkbenchService {
         items,
         settings,
       });
-      return await this.mutation_store.replace_workbench_items_and_files({
+      return await this.write_store.replace_workbench_items_and_files({
         projectPath: project_path,
         expectedSectionRevisions: request["expected_section_revisions"],
         revisionSections: ["files", "items", "analysis"],
         source: "workbench_delete_file",
         updatedSections: ["files", "items", "analysis"],
-        assetMutations: rel_paths.map((rel_path) => ({ kind: "delete", path: rel_path })),
+        assetWrites: rel_paths.map((rel_path) => ({ kind: "delete", path: rel_path })),
         items: this.persistent_items_from_public_record(write_output.items),
         meta: this.build_prefilter_reset_meta(settings, write_output),
         resetAnalysis: true,
@@ -351,7 +351,7 @@ export class WorkbenchService {
       const ordered_paths = this.normalize_string_list(request["ordered_rel_paths"]);
       const current_paths = this.get_asset_records(project_path).map((record) => record.path);
       this.assert_complete_path_order(current_paths, ordered_paths);
-      return await this.mutation_store.reorder_workbench_files({
+      return await this.write_store.reorder_workbench_files({
         projectPath: project_path,
         expectedSectionRevisions: request["expected_section_revisions"],
         orderedPaths: ordered_paths,
@@ -360,14 +360,14 @@ export class WorkbenchService {
   }
 
   /**
-   * 写入项目设置镜像；prefiltered_items 模式同时替换条目与分析派生状态
+   * 写入项目设置镜像；prefiltered_items 模式同时替换条目与分析计算状态
    */
   public async apply_settings_alignment(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = await this.resolve_project_path(request);
     const mode = String(request["mode"] ?? "").toLowerCase();
     const settings_meta = this.build_project_settings_only_meta(request["project_settings"]);
     if (mode === "settings_only") {
-      return await this.mutation_store.apply_project_settings_meta({
+      return await this.write_store.apply_project_settings_meta({
         projectPath: project_path,
         meta: settings_meta,
       });
@@ -384,7 +384,7 @@ export class WorkbenchService {
         items: this.to_public_item_record(this.get_all_items(project_path)),
         settings,
       });
-      return await this.mutation_store.replace_workbench_items_and_files({
+      return await this.write_store.replace_workbench_items_and_files({
         projectPath: project_path,
         expectedSectionRevisions: request["expected_section_revisions"],
         revisionSections: ["items", "analysis"],
@@ -425,7 +425,7 @@ export class WorkbenchService {
           settings,
           task_snapshot: create_empty_translation_task_snapshot(),
         });
-        return await this.mutation_store.replace_workbench_items_and_files({
+        return await this.write_store.replace_workbench_items_and_files({
           projectPath: project_path,
           expectedSectionRevisions: request["expected_section_revisions"],
           revisionSections: ["items", "analysis"],
@@ -448,7 +448,7 @@ export class WorkbenchService {
           item.retry_count = 0;
         }
         const translation_extras = this.build_translation_extras_for_items(project_path, items);
-        return await this.mutation_store.reset_translation_state({
+        return await this.write_store.reset_translation_state({
           projectPath: project_path,
           expectedSectionRevisions: request["expected_section_revisions"],
           items: this.persistent_items_from_public_record(items),
@@ -471,7 +471,7 @@ export class WorkbenchService {
       if (mode !== "all" && mode !== "failed") {
         throw new AppErrors.RequestValidationError();
       }
-      return await this.mutation_store.reset_analysis_state({
+      return await this.write_store.reset_analysis_state({
         projectPath: project_path,
         expectedSectionRevisions: request["expected_section_revisions"],
         requireExpectedSectionRevisions: true,
@@ -501,12 +501,12 @@ export class WorkbenchService {
       ? ["quality", "analysis"]
       : ["analysis"];
     const consumed_candidate_srcs = this.normalize_string_list(request["consumed_candidate_srcs"]);
-    // 候选数是后端 meta 派生事实，只能根据数据库当前聚合和本次消费列表计算
+    // 候选数是后端 meta 计算事实，只能根据数据库当前聚合和本次消费列表计算
     const analysis_candidate_count = this.count_remaining_analysis_candidates(
       project_path,
       consumed_candidate_srcs,
     );
-    return await this.mutation_store.import_analysis_glossary({
+    return await this.write_store.import_analysis_glossary({
       projectPath: project_path,
       expectedSectionRevisions: request["expected_section_revisions"],
       qualityRule: quality_changed
@@ -537,7 +537,7 @@ export class WorkbenchService {
   }
 
   /**
-   * 工作台导入文件 command 只承载用户意图；解析、id、预过滤和继承都在 Backend 侧完成
+   * 工作台导入文件 command 只承载用户意图；解析、id、预过滤和继承都在后端侧完成
    */
   private normalize_import_file_commands(
     value: ApiJsonValue | undefined,
@@ -575,7 +575,7 @@ export class WorkbenchService {
   }
 
   /**
-   * 所有提交文件都解析失败时阻断 write，避免创建一次无实际文件变化的项目事件。
+   * 所有提交文件都解析失败时阻断写入，避免创建一次无实际文件变化的项目事件。
    */
   private assert_workbench_import_has_parseable_files(result: SourceFileParseResult): void {
     if (result.file_drafts.length > 0 || result.failed_files.length === 0) {
@@ -617,7 +617,7 @@ export class WorkbenchService {
   }
 
   /**
-   * 旧 payload 字段出现时直接拒绝，避免 renderer 事实生成路径继续悄悄可用
+   * 旧 payload 字段出现时直接拒绝，避免渲染进程事实生成路径继续悄悄可用
    */
   private assert_no_legacy_fields(request: JsonRecord, fields: string[]): void {
     for (const field of fields) {
@@ -647,7 +647,7 @@ export class WorkbenchService {
   }
 
   /**
-   * write 计算优先读取请求中的用户设置；缺失时回到项目 meta 镜像
+   * 写入计算优先读取请求中的用户设置；缺失时回到项目 meta 镜像
    */
   private read_project_write_settings(
     project_path: string,
@@ -780,7 +780,7 @@ export class WorkbenchService {
   }
 
   /**
-   * 预过滤输出由后端基于当前数据库事实计算，renderer 不再提交最终 items 或 meta
+   * 预过滤输出由后端基于当前数据库事实计算，渲染进程不再提交最终 items 或 meta
    */
   private compute_prefilter_output(args: {
     project_path: string;
@@ -804,7 +804,7 @@ export class WorkbenchService {
   }
 
   /**
-   * 预过滤类 write 固定重置分析派生事实，并写入当前项目设置镜像
+   * 预过滤类写入固定重置分析计算事实，并写入当前项目设置镜像
    */
   private build_prefilter_reset_meta(
     settings: ProjectWriteSettings,
@@ -1079,7 +1079,7 @@ export class WorkbenchService {
   }
 
   /**
-   * analysis reset 的最终 progress 由当前 items、checkpoint 和既有 meta 派生
+   * 分析重置的最终 progress 由当前 items、checkpoint 和既有 meta 计算
    */
   private build_analysis_reset_extras(project_path: string, mode: string): Record<string, unknown> {
     const status_summary =
@@ -1174,7 +1174,7 @@ export class WorkbenchService {
   }
 
   /**
-   * 当前 loaded 工程是大多数 P2 write 的唯一目标
+   * 当前 loaded 工程是大多数 P2 写入的唯一目标
    */
   private async require_loaded_project_path(): Promise<string> {
     const state = this.session_state.snapshot();
@@ -1279,7 +1279,7 @@ export class WorkbenchService {
   }
 
   /**
-   * 术语导入后的候选数只从数据库候选聚合和共享可导出规则派生，renderer 不参与提交统计
+   * 术语导入后的候选数只从数据库候选聚合和共享可导出规则计算，渲染进程不参与提交统计
    */
   private count_remaining_analysis_candidates(
     project_path: string,
@@ -1293,7 +1293,7 @@ export class WorkbenchService {
   }
 
   /**
-   * 读取分析候选聚合，供后端派生剩余候选数
+   * 读取分析候选聚合，供后端计算剩余候选数
    */
   private get_analysis_candidate_aggregates(project_path: string): MutableJsonRecord[] {
     const value = this.database.execute(

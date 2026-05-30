@@ -1,7 +1,7 @@
 import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
-import { ProjectMutationStore } from "../project/project-mutation-store";
+import { ProjectWriteStore } from "../project/project-write-store";
 import { ProjectSessionState } from "../project/project-session";
 import { Item, type ItemStatus } from "../../domain/item";
 import type {
@@ -25,19 +25,19 @@ const PROOFREADING_MANUAL_STATUS_CODES = [
 type ProofreadingManualStatus = (typeof PROOFREADING_MANUAL_STATUS_CODES)[number];
 
 type ProofreadingItemChange = {
-  current: MutableJsonRecord; // 数据库提交前的行事实，用于派生统计 delta
+  current: MutableJsonRecord; // 数据库提交前的行事实，用于计算统计增量
   next: MutableJsonRecord; // 数据库将要写入的最终行事实
 };
 
 /**
- * 承载校对同步写入口，把 renderer 命令转换为 Electron main 数据库事实
+ * 承载校对同步写入口，把渲染进程命令转换为 Electron main 数据库事实
  */
 export class ProofreadingService {
   private readonly database: ProjectDatabase; // 校对同步保存直接写 .lg，但仍只能通过 ProjectDatabase workflow 触达数据库
 
   private readonly session_state: ProjectSessionState; // 校对同步写入口只以 公开会话状态定位当前工程
 
-  private readonly mutation_store: ProjectMutationStore; // 校对只提交业务 patch，事务和事件统一由 mutation store 完成
+  private readonly write_store: ProjectWriteStore; // 校对只提交业务补丁，事务和事件统一由 ProjectWriteStore 完成
 
   /**
    * 注入数据库与运行时桥，保证写库和读侧缓存同步都可被测试替换
@@ -45,15 +45,15 @@ export class ProofreadingService {
   public constructor(
     database: ProjectDatabase,
     session_state: ProjectSessionState,
-    mutation_store: ProjectMutationStore,
+    write_store: ProjectWriteStore,
   ) {
     this.database = database;
     this.session_state = session_state;
-    this.mutation_store = mutation_store;
+    this.write_store = write_store;
   }
 
   /**
-   * 保存单条校对结果，renderer 只提交 item_id 与目标译文
+   * 保存单条校对结果，渲染进程只提交 item_id 与目标译文
    */
   public async save_item(request: JsonRecord): Promise<ProjectWriteResult> {
     return this.persist_save_item(request);
@@ -106,7 +106,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 批量替换在后端编译文本模式，避免 renderer 提交替换后的最终事实
+   * 批量替换在后端编译文本模式，避免渲染进程提交替换后的最终事实
    */
   private async persist_replace_all(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = await this.require_loaded_project_path();
@@ -217,7 +217,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 校对 write 起手必须先校验 revision，再读取当前数据库事实
+   * 校对写入起手必须先校验 revision，再读取当前数据库事实
    */
   private prepare_write_context(request: JsonRecord): ApiJsonValue | undefined {
     this.assert_no_legacy_fields(request, ["items", "translation_extras"]);
@@ -238,7 +238,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 写入变更 item，并按状态 delta 更新翻译统计，避免校对热路径扫描全量条目。
+   * 写入变更 item，并按状态增量更新翻译统计，避免校对热路径扫描全量条目。
    */
   private async persist_changed_items(
     project_path: string,
@@ -255,7 +255,7 @@ export class ProofreadingService {
     if (args.changes.length === 0) {
       return { accepted: true, changes: [] };
     }
-    return await this.mutation_store.apply_proofreading_bulk_patch({
+    return await this.write_store.apply_proofreading_bulk_patch({
       projectPath: project_path,
       expectedSectionRevisions: expected_section_revisions,
       changes: args.changes,
@@ -279,7 +279,7 @@ export class ProofreadingService {
     if (args.changes.length === 0) {
       return { accepted: true, changes: [] };
     }
-    return await this.mutation_store.apply_proofreading_item_patch({
+    return await this.write_store.apply_proofreading_item_patch({
       projectPath: project_path,
       expectedSectionRevisions: expected_section_revisions,
       changes: args.changes,
@@ -289,7 +289,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 手动写入译文后由后端统一决定 status，不接受 renderer 提交 status 事实
+   * 手动写入译文后由后端统一决定 status，不接受渲染进程提交 status 事实
    */
   private apply_manual_dst(item: MutableJsonRecord, next_dst: string): MutableJsonRecord {
     return {
@@ -463,7 +463,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 人工状态菜单只暴露三种可写状态，其它派生状态不能从校对页直接写入
+   * 人工状态菜单只暴露三种可写状态，其它计算状态不能从校对页直接写入
    */
   private parse_manual_status_or_throw(value: ApiJsonValue | undefined): ProofreadingManualStatus {
     if (

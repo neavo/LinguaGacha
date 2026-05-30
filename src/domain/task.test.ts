@@ -24,7 +24,7 @@ describe("task 基础模型", () => {
     expect(is_task_idle_status("done")).toBe(true);
   });
 
-  it("集中维护运行态派生判断", () => {
+  it("集中维护运行态计算判断", () => {
     expect(is_active_translation_task_status("running")).toBe(true);
     expect(is_active_analysis_task_status("running")).toBe(true);
     expect(is_task_skipped_item_status("RULE_SKIPPED")).toBe(true);

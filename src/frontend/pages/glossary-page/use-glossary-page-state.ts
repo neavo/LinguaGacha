@@ -103,7 +103,7 @@ type GlossaryDuplicateApplyOptions = {
   feedback: "import" | "dialog";
 };
 
-// 术语表页维护自己的 write 诊断名，desktop 层只负责提交和失败恢复。
+// 术语表页维护自己的写入诊断名，desktop 层只负责提交和失败恢复。
 const GLOSSARY_ENTRIES_SAVE_WRITE: ProjectWriteOperation = "glossary.entries_save";
 // GLOSSARY META UPDATE WRITE 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const GLOSSARY_META_UPDATE_WRITE: ProjectWriteOperation = "glossary.meta_update";
@@ -380,7 +380,7 @@ export function buildGlossaryStatisticsState(args: {
 function build_glossary_statistics_state_from_cache(
   statistics_cache: QualityRuleStatisticsCacheSnapshot,
 ): GlossaryStatisticsState {
-  // 页面只从质量统计缓存派生展示状态，不持有也不修改项目质量规则事实。
+  // 页面只从质量统计缓存计算展示状态，不持有也不修改项目质量规则事实。
   return {
     running: isQualityRuleStatisticsCacheRunning(statistics_cache),
     completed_snapshot: statistics_cache.completed_snapshot,
@@ -914,7 +914,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   }, [settings_snapshot]);
 
   useEffect(() => {
-    // 项目身份变化时页面派生视图和 session 表格状态必须一起重置。
+    // 项目身份变化时页面计算视图和 session 表格状态必须一起重置。
     const next_project_identity = project_snapshot.loaded ? project_snapshot.path : "";
     set_result_snapshot(null);
     set_pending_result_refresh(null);

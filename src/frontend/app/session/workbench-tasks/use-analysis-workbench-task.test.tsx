@@ -652,7 +652,7 @@ describe("useAnalysisWorkbenchTask", () => {
           task: runtime_fixture.current.task_snapshot,
         };
       }
-      if (path === "/api/workbench/view") {
+      if (path === "/api/workbench/snapshot") {
         return create_workbench_query_response();
       }
       if (path === "/api/tasks/start") {
@@ -865,7 +865,7 @@ describe("useAnalysisWorkbenchTask", () => {
           task: runtime_fixture.current.task_snapshot,
         };
       }
-      if (path === "/api/workbench/view") {
+      if (path === "/api/workbench/snapshot") {
         return create_workbench_query_response();
       }
       if (path === "/api/analysis/reset") {
@@ -919,14 +919,14 @@ describe("useAnalysisWorkbenchTask", () => {
     expect(runtime_fixture.current.refresh_task).toHaveBeenCalledWith("analysis");
   });
 
-  it("analysis reset failed 失败时由统一 write 管线回传错误", async () => {
+  it("analysis reset failed 失败时由统一写入管线回传错误", async () => {
     api_fetch_mock.mockImplementation(async (path: string) => {
       if (path === "/api/tasks/snapshot") {
         return {
           task: runtime_fixture.current.task_snapshot,
         };
       }
-      if (path === "/api/workbench/view") {
+      if (path === "/api/workbench/snapshot") {
         return create_workbench_query_response();
       }
       if (path === "/api/analysis/reset") {

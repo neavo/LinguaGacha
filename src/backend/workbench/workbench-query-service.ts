@@ -14,7 +14,7 @@ const FAILED_STATUSES = new Set(["ERROR"]);
 const SKIPPED_STATUSES = new Set(["EXCLUDED", "RULE_SKIPPED", "LANGUAGE_SKIPPED", "DUPLICATED"]);
 
 /**
- * 后端 query service 从 cache 门面读取热数据，并返回页面级 view model。
+ * 后端查询服务从 cache 门面读取热数据，并返回页面级快照。
  */
 export class WorkbenchQueryService {
   private readonly session_state: ProjectSessionState;
@@ -29,9 +29,9 @@ export class WorkbenchQueryService {
   }
 
   /**
-   * 工作台 view 只返回文件列表和统计摘要，页面不再接收完整项目 section。
+   * 工作台快照只返回文件列表和统计摘要，页面不再接收完整项目区块。
    */
-  public read_workbench_view(): MutableJsonRecord {
+  public read_workbench_snapshot(): MutableJsonRecord {
     const project_path = this.require_loaded_project_path();
     const items = this.cache.items.readItems();
     const file_entries = this.build_file_entries(items, this.cache.files.readFileEntries());
@@ -40,7 +40,7 @@ export class WorkbenchQueryService {
     return {
       projectPath: project_path,
       sectionRevisions: this.cache.readSectionRevisions() as unknown as ApiJsonValue,
-      view: {
+      snapshot: {
         file_count: file_entries.length,
         total_items: items.length,
         translation_stats: stats,

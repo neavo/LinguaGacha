@@ -33,11 +33,11 @@ interface MetricSeed {
 }
 
 /**
- * TaskPlanner 是后台任务唯一规划器：它复用进程内 token cache，并把精确计数交给 planning worker。
+ * TaskPlanner 是后台任务唯一规划器：它复用进程内 token 缓存，并把精确计数交给 planning worker。
  */
 export class TaskPlanner {
   private readonly planning_worker_pool: PlanningWorkerPool; // planning_worker_pool 只做纯计算，不接触数据库和事件。
-  private readonly metric_cache: TaskTokenMetricCache; // metric_cache 是进程内派生指标缓存，随 BackendServices 生命周期释放。
+  private readonly metric_cache: TaskTokenMetricCache; // metric_cache 是进程内计算指标缓存，随 BackendServices 生命周期释放。
 
   /**
    * 注入 planning worker 和可选 cache，保证规划结果仍由 Backend 主线程解释。

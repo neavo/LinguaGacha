@@ -106,7 +106,7 @@ export function useProjectEventPipeline(
           topic: PROJECT_CHANGE_EVENT_TOPIC,
           ...summarize_project_change_payload_for_diagnostics(payload),
         };
-        // project 面包屑只写事件头摘要，避免崩溃日志记录完整 items/files delta。
+        // project 面包屑只写事件头摘要，避免崩溃日志记录完整 items/files 增量。
         record_renderer_diagnostics_event(triggering_event);
         const change_event = normalizeProjectChangeEvent(payload);
 

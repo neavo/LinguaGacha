@@ -16,6 +16,7 @@ import { ProofreadingCache } from "./proofreading/proofreading-cache";
 import { QualityCache } from "./quality/quality-cache";
 import { QualityStatisticsCache } from "./quality/quality-statistics-cache";
 
+// 这些项目事件会影响 session 热读缓存，其他事件由各领域服务自行处理。
 const CACHE_EVENT_TYPES: ProjectEventType[] = [
   "project.opened_for_cache",
   "project.unloaded",
@@ -26,14 +27,17 @@ const CACHE_EVENT_TYPES: ProjectEventType[] = [
   "project.analysis.changed",
 ];
 
+/**
+ * CacheManager 是 loaded project 的 session 热读缓存组合根。
+ */
 export class CacheManager implements CacheReadPort {
-  private readonly data_reader: ProjectDataReader;
-  private readonly log_manager: Pick<LogManager, "warning" | "error"> | null;
-  private project_path = "";
-  private epoch = 0;
-  private freshness: CacheFreshness = "empty";
-  private section_revisions: ProjectDataSectionRevisions = {};
-  private recoverable_error: unknown = null;
+  private readonly data_reader: ProjectDataReader; // 数据库事实只经由 ProjectDataReader 读取。
+  private readonly log_manager: Pick<LogManager, "warning" | "error"> | null; // 恢复失败只记录诊断。
+  private project_path = ""; // 空字符串表示当前无 loaded project 缓存。
+  private epoch = 0; // 每次完整热机递增，视图缓存用它隔离旧身份。
+  private freshness: CacheFreshness = "empty"; // 读取前用 freshness 判断是否需要恢复。
+  private section_revisions: ProjectDataSectionRevisions = {}; // 对外暴露的 section revision 快照。
+  private recoverable_error: unknown = null; // 保留最近一次可恢复错误，方便未来诊断扩展。
   public readonly items = new ItemCache(() => this.recover_if_needed());
   public readonly files = new FileCache(() => this.recover_if_needed());
   public readonly quality = new QualityCache(() => this.recover_if_needed());
@@ -42,6 +46,9 @@ export class CacheManager implements CacheReadPort {
   public readonly proofreading: ProofreadingCache;
   public readonly qualityStatistics: QualityStatisticsCache;
 
+  /**
+   * 构造所有子缓存，并把可恢复读取钩子下发给轻量 block 缓存。
+   */
   public constructor(options: {
     database: ProjectDatabase;
     logManager: Pick<LogManager, "warning" | "error"> | null;
@@ -62,6 +69,9 @@ export class CacheManager implements CacheReadPort {
     });
   }
 
+  /**
+   * 订阅项目事件总线，缓存只消费会影响热读事实的事件。
+   */
   public subscribe(project_event_bus: ProjectEventBus): void {
     for (const event_type of CACHE_EVENT_TYPES) {
       project_event_bus.subscribe(event_type, async (event) => {
@@ -70,10 +80,16 @@ export class CacheManager implements CacheReadPort {
     }
   }
 
+  /**
+   * 为当前项目执行完整热机，后续 query 可走内存读取。
+   */
   public async warmProject(project_path: string): Promise<void> {
     this.rebuild_full_project_cache(project_path);
   }
 
+  /**
+   * 清理当前项目缓存；传入其它项目路径时忽略迟到卸载事件。
+   */
   public clearProject(project_path?: string): void {
     if (
       project_path !== undefined &&
@@ -94,6 +110,9 @@ export class CacheManager implements CacheReadPort {
     this.recoverable_error = null;
   }
 
+  /**
+   * 将项目事件转换成缓存更新，失败后进入下一次读取前恢复状态。
+   */
   public async handleProjectEvent(event: ProjectEvent): Promise<void> {
     if (event.type === "project.opened_for_cache") {
       await this.warmProject(event.projectPath);
@@ -117,6 +136,9 @@ export class CacheManager implements CacheReadPort {
     }
   }
 
+  /**
+   * 应用内部缓存更新计划，基础缓存和视图缓存共享同一 revision 结果。
+   */
   public async applyChange(change: CacheChange): Promise<void> {
     const next_section_revisions = this.merge_section_revisions(change.sectionRevisions);
     if (change.fullRebuild) {
@@ -129,11 +151,17 @@ export class CacheManager implements CacheReadPort {
     this.section_revisions = next_section_revisions;
   }
 
+  /**
+   * 读取当前缓存掌握的 section revision。
+   */
   public readSectionRevisions(): ProjectDataSectionRevisions {
     this.recover_if_needed();
     return { ...this.section_revisions };
   }
 
+  /**
+   * 返回项目身份、热机世代和 item 数量的轻量快照。
+   */
   public snapshot(): CacheSnapshot {
     return {
       projectPath: this.project_path,
@@ -144,6 +172,9 @@ export class CacheManager implements CacheReadPort {
     };
   }
 
+  /**
+   * 从数据库重建所有基础 block 缓存。
+   */
   private rebuild_full_project_cache(project_path: string): void {
     const meta = this.data_reader.get_all_meta(project_path);
     const items_snapshot = this.data_reader.build_runtime_items_snapshot(project_path);
@@ -164,6 +195,9 @@ export class CacheManager implements CacheReadPort {
     this.recoverable_error = null;
   }
 
+  /**
+   * 若上一轮维护失败，则在下一次读取前用数据库事实重建缓存。
+   */
   private recover_if_needed(): void {
     if (this.freshness !== "recoverable_error") {
       return;
@@ -174,6 +208,9 @@ export class CacheManager implements CacheReadPort {
     this.rebuild_full_project_cache(this.project_path);
   }
 
+  /**
+   * 标记可恢复错误并记录触发事件，避免事件处理链路抛出后中断总线。
+   */
   private mark_recoverable_error(error: unknown, event: ProjectEvent): void {
     this.freshness = "recoverable_error";
     this.recoverable_error = error;
@@ -186,6 +223,9 @@ export class CacheManager implements CacheReadPort {
     });
   }
 
+  /**
+   * 更新 item 和 meta block 这些基础缓存。
+   */
   private apply_base_change(change: CacheChange): void {
     const meta_reader = this.create_meta_reader(change.projectPath);
     if (change.items.mode === "delta") {
@@ -202,6 +242,9 @@ export class CacheManager implements CacheReadPort {
     }
   }
 
+  /**
+   * 更新依赖基础缓存的视图缓存。
+   */
   private async apply_view_change(
     change: CacheChange,
     next_section_revisions: ProjectDataSectionRevisions,
@@ -210,6 +253,9 @@ export class CacheManager implements CacheReadPort {
     this.qualityStatistics.applyChange(change);
   }
 
+  /**
+   * 读取 item 增量所需的完整行；字段 patch 已携带字段值时无需回库。
+   */
   private read_item_delta_records(
     change: CacheChange,
   ): ReturnType<ProjectDataReader["build_item_records_by_ids"]> {
@@ -226,6 +272,9 @@ export class CacheManager implements CacheReadPort {
       : this.data_reader.build_item_records_by_ids(change.projectPath, changed_ids);
   }
 
+  /**
+   * 延迟读取 meta，多个 block 同时重建时只查一次数据库。
+   */
   private create_meta_reader(
     project_path: string,
   ): () => ReturnType<ProjectDataReader["get_all_meta"]> {
@@ -238,6 +287,9 @@ export class CacheManager implements CacheReadPort {
     };
   }
 
+  /**
+   * 将事件中的 section revision 合并到当前缓存快照。
+   */
   private merge_section_revisions(
     section_revisions: ProjectDataSectionRevisions,
   ): ProjectDataSectionRevisions {

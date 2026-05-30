@@ -190,7 +190,7 @@ describe("model 基础模型", () => {
     expect(Model.normalize_thinking_level("bad")).toBe("OFF");
   });
 
-  it("从基础映射派生排序和模板文件", () => {
+  it("从基础映射计算排序和模板文件", () => {
     expect(Model.resolve_type_sort_order("CUSTOM_OPENAI")).toBe(2);
     expect(Model.resolve_type_sort_order("bad")).toBe(99);
     expect(Model.resolve_template_filename("CUSTOM_ANTHROPIC")).toBe(

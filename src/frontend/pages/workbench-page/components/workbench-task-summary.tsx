@@ -4,7 +4,7 @@ import "./workbench-task.css";
 
 import { cn } from "@frontend/styling/classnames";
 import type {
-  WorkbenchTaskSummaryViewModel,
+  WorkbenchTaskSummaryDisplay,
   WorkbenchTaskTone,
 } from "@frontend/pages/workbench-page/types";
 import { Badge } from "@frontend/shadcn/badge";
@@ -13,7 +13,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/toolti
 
 type WorkbenchTaskSummaryProps = {
   class_name?: string;
-  view_model: WorkbenchTaskSummaryViewModel;
+  display: WorkbenchTaskSummaryDisplay;
   can_open: boolean;
   auto_open_key?: string | null;
   on_open: () => void;
@@ -60,13 +60,13 @@ export function WorkbenchTaskSummary(props: WorkbenchTaskSummaryProps): JSX.Elem
         "workbench-task__summary-badge",
         props.class_name,
         props.can_open ? "workbench-task__summary-badge--clickable" : null,
-        resolve_summary_badge_tone_class_name(props.view_model.tone),
+        resolve_summary_badge_tone_class_name(props.display.tone),
       )}
     >
-      {props.view_model.show_spinner ? <Spinner data-icon="inline-start" /> : null}
-      <span>{props.view_model.status_text}</span>
-      {props.view_model.trailing_text !== null ? (
-        <span className="workbench-task__summary-trailing">{props.view_model.trailing_text}</span>
+      {props.display.show_spinner ? <Spinner data-icon="inline-start" /> : null}
+      <span>{props.display.status_text}</span>
+      {props.display.trailing_text !== null ? (
+        <span className="workbench-task__summary-trailing">{props.display.trailing_text}</span>
       ) : null}
     </Badge>
   );
@@ -87,7 +87,7 @@ export function WorkbenchTaskSummary(props: WorkbenchTaskSummaryProps): JSX.Elem
         </button>
       </TooltipTrigger>
       <TooltipContent side="top" sideOffset={8}>
-        <p>{props.view_model.detail_tooltip_text}</p>
+        <p>{props.display.detail_tooltip_text}</p>
       </TooltipContent>
     </Tooltip>
   );

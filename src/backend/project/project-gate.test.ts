@@ -12,10 +12,10 @@ describe("ProjectOperationGate", () => {
     expect(() => gate.assert_task_start_allowed()).toThrow("task.busy");
   });
 
-  it("结构性项目 write lease 运行期间拒绝任务启动和另一段 write", async () => {
+  it("结构性项目写入租约运行期间拒绝任务启动和另一段写入", async () => {
     const gate = new ProjectOperationGate(new TaskRunState());
     let release_write = (): void => {
-      throw new Error("write lease 尚未建立");
+      throw new Error("写入租约尚未建立");
     };
     const running_write = gate.run_exclusive_project_write(
       async () =>

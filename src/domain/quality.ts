@@ -104,7 +104,7 @@ const TEXT_PRESERVE_MODE_SET = new Set<TextPreserveMode>(TEXT_PRESERVE_MODES);
 const QUALITY_RULE_KIND_SET = new Set<QualityRuleKind>(QUALITY_RULE_KINDS);
 
 /**
- * QualityRule 是质量规则槽位实体，统一派生数据库类型、预设目录、meta key 和 store key
+ * QualityRule 是质量规则槽位实体，统一计算数据库类型、预设目录、meta key 和 store key
  */
 export class QualityRule {
   public readonly kind: QualityRuleKind; // 质量规则槽位类型
@@ -146,14 +146,14 @@ export class QualityRule {
   }
 
   /**
-   * rules 表物理类型只从 QualityRule 派生
+   * rules 表物理类型只从 QualityRule 计算
    */
   public get database_type(): QualityRuleDatabaseType {
     return QUALITY_RULE_MODEL[this.kind].database_type;
   }
 
   /**
-   * 预设目录只从 QualityRule 派生，公开 API 不接收物理目录名
+   * 预设目录只从 QualityRule 计算，公开 API 不接收物理目录名
    */
   public get preset_directory(): QualityRulePresetDirectory {
     return QUALITY_RULE_MODEL[this.kind].preset_directory;

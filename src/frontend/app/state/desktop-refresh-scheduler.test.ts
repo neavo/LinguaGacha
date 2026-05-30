@@ -162,7 +162,7 @@ function create_task_snapshot(line: number): TaskSnapshot {
   };
 }
 
-// 构造带 revision 的 item delta，方便断言 project 批次顺序
+// 构造带 revision 的 item 增量，方便断言 project 批次顺序
 function create_project_change(
   projectRevision: number,
   itemIds: number[] = [projectRevision],

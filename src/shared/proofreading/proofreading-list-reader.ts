@@ -43,8 +43,8 @@ export type ProofreadingRevisions = {
   proofreading: number;
 };
 
-// 全量 hydrate 输入包含项目分段 revision、质量规则快照和当前源/目标语言
-export type ProofreadingHydrationInput = {
+// 全量同步输入包含项目分段 revision、质量规则快照和当前源/目标语言
+export type ProofreadingSyncInput = {
   projectId: string;
   revisions: ProofreadingRevisions;
   total_item_count: number;
@@ -64,7 +64,8 @@ export type ProofreadingEvaluatedSlice = {
   evaluatedItems: ProofreadingClientItem[];
 };
 
-export type ProofreadingEvaluatedHydrationInput = {
+// 已评估同步输入由 worker 结果和主线程质量快照组合而成。
+export type ProofreadingEvaluatedSyncInput = {
   projectId: string;
   revisions: ProofreadingRevisions;
   total_item_count: number;
@@ -75,7 +76,7 @@ export type ProofreadingEvaluatedHydrationInput = {
   targetLanguage: string;
 };
 
-// 增量输入只携带变化 item，质量规则和源语言沿用已 hydrate 状态
+// 增量输入只携带变化 item，质量规则和源语言沿用已同步状态
 export type ProofreadingDeltaInput = {
   projectId: string;
   revisions: ProofreadingRevisions;
@@ -144,7 +145,7 @@ export type ProofreadingSyncState = {
   defaultFilters: ProofreadingFilterOptions;
 };
 
-// 列表完整运行态，所有派生筛选计数都从这里维护
+// 列表完整运行态，所有计算筛选计数都从这里维护
 type ProofreadingReaderState = {
   projectId: string;
   revisions: ProofreadingRevisions;
@@ -175,7 +176,7 @@ type ProofreadingListViewCache = {
   view_id: string;
   projectId: string;
   ordered_item_ids: string[];
-  // row_index_by_id 让恢复滚动按 row id O(1) 定位，不需要把完整视图传回 renderer。
+  // row_index_by_id 让恢复滚动按 row id O(1) 定位，不需要把完整视图传回渲染进程。
   row_index_by_id: Map<string, number>;
 };
 
@@ -598,7 +599,7 @@ function build_term_count_entries(args: {
 }
 
 /**
- * 计数 map 支持正负 delta，归零时删除键避免面板出现空值项
+ * 计数 map 支持正负增量，归零时删除键避免面板出现空值项
  */
 function increment_map_count(map: Map<string, number>, key: string, delta: number): void {
   const next_count = (map.get(key) ?? 0) + delta;
@@ -611,7 +612,7 @@ function increment_map_count(map: Map<string, number>, key: string, delta: numbe
 }
 
 /**
- * 增量更新时同步维护所有计数索引，避免每次 delta 都全量重建
+ * 增量更新时同步维护所有计数索引，避免每次变更都全量重建
  */
 function apply_counter_delta(args: {
   state: ProofreadingReaderState;
@@ -690,7 +691,7 @@ function upsert_runtime_item_in_state(
 }
 
 /**
- * 删除也产出同形变更记录，列表缓存不需要关心 delta 来源是 tombstone 还是 upsert。
+ * 删除也产出同形变更记录，列表缓存不需要关心增量来源是 tombstone 还是 upsert。
  */
 function delete_runtime_item_from_state(
   state: ProofreadingReaderState,
@@ -715,7 +716,7 @@ function delete_runtime_item_from_state(
 }
 
 /**
- * 默认筛选从当前可见事实派生，进入页面时只展示最常用的有效范围
+ * 默认筛选从当前可见事实计算，进入页面时只展示最常用的有效范围
  */
 function buildDefaultFiltersFromState(state: ProofreadingReaderState): ProofreadingFilterOptions {
   const available_statuses = [...state.status_count_by_code.keys()].sort(
@@ -802,7 +803,7 @@ function normalize_window_bounds(args: {
 }
 
 /**
- * 根据缓存 row id 切片回读当前窗口，确保排序与筛选只在构建 list view 时发生一次
+ * 根据缓存 row id 切片回读当前窗口，确保排序与筛选只在构建列表视图时发生一次
  */
 function build_window_rows(args: {
   state: ProofreadingReaderState;
@@ -838,9 +839,9 @@ function create_list_view_cache(args: {
 }
 
 /**
- * 全量 hydrate 初始化全部索引和质量上下文，后续 delta 只在这些索引上增量维护
+ * 全量同步初始化全部索引和质量上下文，后续增量更新只在这些索引上维护
  */
-function create_run_state(input: ProofreadingHydrationInput): ProofreadingReaderState {
+function create_run_state(input: ProofreadingSyncInput): ProofreadingReaderState {
   const raw_item_by_id = new Map<string, ProofreadingItemRecord>();
   const evaluated_item_by_id = new Map<string, ProofreadingClientItem>();
   const status_count_by_code = new Map<string, number>();
@@ -884,10 +885,10 @@ function create_run_state(input: ProofreadingHydrationInput): ProofreadingReader
 }
 
 /**
- * 分片 hydrate 只评估自己的 item slice，返回主运行态合并所需的原始行和质量派生行。
+ * 分片同步只评估自己的 item 分片，返回主运行态合并所需的原始行和质量计算行。
  */
 export function evaluateProofreadingSlice(
-  input: ProofreadingHydrationInput,
+  input: ProofreadingSyncInput,
 ): ProofreadingEvaluatedSlice {
   const quality_context = buildQualityCompiledContext(input.quality);
   const sample_rule_cache = new Map<string, TextPreserveRule | null>();
@@ -929,7 +930,7 @@ export function evaluateProofreadingSlice(
  * 主运行态从已评估分片重建唯一完整运行态，筛选统计和列表缓存仍只在这里维护。
  */
 function create_run_state_from_evaluated(
-  input: ProofreadingEvaluatedHydrationInput,
+  input: ProofreadingEvaluatedSyncInput,
 ): ProofreadingReaderState {
   const state: ProofreadingReaderState = {
     projectId: input.projectId,
@@ -1025,7 +1026,7 @@ function collect_visible_items_in_natural_order(args: {
 }
 
 /**
- * item delta 提交后只从当前结果快照剪除 tombstone；字段变化只刷新行内容，不重新执行筛选或排序。
+ * item 增量提交后只从当前结果快照剪除 tombstone；字段变化只刷新行内容，不重新执行筛选或排序。
  * 这保证重翻修复术语命中后，行仍停留在当前筛选结果里供用户检查其它问题。
  */
 function apply_item_changes_to_list_view_cache(args: {
@@ -1054,10 +1055,10 @@ function apply_item_changes_to_list_view_cache(args: {
 }
 
 /**
- * 创建校对列表运行态实例，集中管理项目态、列表缓存和筛选面板派生数据
+ * 创建校对列表运行态实例，集中管理项目态、列表缓存和筛选面板计算数据
  */
 export function createProofreadingListReader() {
-  let state: ProofreadingReaderState | null = null; // 当前项目的完整运行态，dispose 或跨项目 hydrate 前不得泄露给渲染层
+  let state: ProofreadingReaderState | null = null; // 当前项目的完整运行态，dispose 或跨项目同步前不得泄露给渲染层
   let list_view_cache: ProofreadingListViewCache | null = null; // 最近一次列表视图的排序结果缓存，窗口滚动只读取 id 切片
   let next_list_view_id = 0; // 视图 id 单调递增，避免同 revision 下筛选条件变化时复用旧窗口请求
 
@@ -1065,7 +1066,7 @@ export function createProofreadingListReader() {
     /**
      * 接收后端全量快照并重建列表索引，是每个项目进入校对页的起点
      */
-    hydrate_full(input: ProofreadingHydrationInput): ProofreadingSyncState {
+    sync_full(input: ProofreadingSyncInput): ProofreadingSyncState {
       state = create_run_state({
         ...input,
         upsertItems: input.upsertItems.map((item) => {
@@ -1076,15 +1077,15 @@ export function createProofreadingListReader() {
       return build_sync_state(state);
     },
     /**
-     * 评估 hydrate 分片，供未来并行化时复用同一质量派生算法。
+     * 评估同步分片，供未来并行化时复用同一质量计算算法。
      */
-    evaluate_hydration_slice(input: ProofreadingHydrationInput) {
+    evaluate_sync_slice(input: ProofreadingSyncInput) {
       return evaluateProofreadingSlice(input);
     },
     /**
      * 合并已评估分片并重建完整运行态，最终索引仍由主 service 持有。
      */
-    hydrate_evaluated_full(input: ProofreadingEvaluatedHydrationInput): ProofreadingSyncState {
+    sync_evaluated_full(input: ProofreadingEvaluatedSyncInput): ProofreadingSyncState {
       state = create_run_state_from_evaluated(input);
       list_view_cache = null;
       return build_sync_state(state);
@@ -1095,7 +1096,7 @@ export function createProofreadingListReader() {
     apply_item_delta(input: ProofreadingDeltaInput): ProofreadingSyncState {
       if (state === null || state.projectId !== input.projectId) {
         throw new InternalInvariantError({
-          diagnostic_context: { reason: "proofreading_runtime_requires_project_hydrate" },
+          diagnostic_context: { reason: "proofreading_runtime_requires_project_sync" },
         });
       }
 

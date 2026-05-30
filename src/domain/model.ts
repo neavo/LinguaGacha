@@ -237,7 +237,7 @@ export class Model {
   }
 
   /**
-   * 自定义模板路径只由模型类型派生，避免调用点散落文件名
+   * 自定义模板路径只由模型类型计算，避免调用点散落文件名
    */
   public static resolve_template_filename(value: unknown): string | null {
     return Model.is_custom_type(value) ? MODEL_TEMPLATE_FILENAME_BY_TYPE[value] : null;

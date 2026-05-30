@@ -9,7 +9,7 @@ import { CacheManager } from "../../cache/cache-manager";
 import { ProjectEventBus } from "../../project/project-events";
 import { ProjectDatabase } from "../../database/database-operations";
 import type { ProjectChangePublisher } from "../../project/project-changes";
-import { ProjectMutationStore } from "../../project/project-mutation-store";
+import { ProjectWriteStore } from "../../project/project-write-store";
 import { ProjectSessionState } from "../../project/project-session";
 import type { BackendWorkerClient } from "../../worker/worker-client";
 import { TaskRunState } from "../run/task-run-state";
@@ -430,7 +430,7 @@ describe("ProjectTaskStore", () => {
     session_state.mark_loaded(project_path);
     cleanup_callbacks.push(() => fs.rmSync(directory, { recursive: true, force: true }));
     cleanup_callbacks.push(() => database.close());
-    const mutation_store = new ProjectMutationStore(database, project_event_bus, {
+    const write_store = new ProjectWriteStore(database, project_event_bus, {
       publish_project_change: (payload: MutableJsonRecord) => {
         options.on_publish_project_change?.();
         published_changes.push(payload);
@@ -441,13 +441,7 @@ describe("ProjectTaskStore", () => {
       project_path,
       run_state,
       cache_manager,
-      store: new ProjectTaskStore(
-        database,
-        session_state,
-        run_state,
-        cache_manager,
-        mutation_store,
-      ),
+      store: new ProjectTaskStore(database, session_state, run_state, cache_manager, write_store),
       published_changes,
       project_event_bus,
     };

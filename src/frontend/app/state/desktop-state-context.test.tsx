@@ -2104,7 +2104,7 @@ describe("DesktopStateProvider", () => {
     });
   });
 
-  it("项目 session 初始化期间的 write result 与同源 SSE 会在快照后只重放一次", async () => {
+  it("项目 session 初始化期间的写入结果与同源 SSE 会在快照后只重放一次", async () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
     let state_handle: StateHandleRef = null;

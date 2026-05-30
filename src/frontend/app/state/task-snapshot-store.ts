@@ -61,7 +61,7 @@ const DEFAULT_TASK_SNAPSHOT: TaskSnapshot = {
 };
 
 /**
- * 将 Backend task snapshot 响应收窄为 renderer 内部稳定快照
+ * 将后端 task snapshot 响应收窄为渲染进程内部稳定快照
  */
 export function normalize_task_snapshot(payload: { task?: Partial<TaskSnapshot> }): TaskSnapshot {
   const snapshot = payload.task ?? {};
@@ -110,13 +110,13 @@ type TaskSnapshotStore = {
 };
 
 /**
- * 创建 renderer 内唯一任务状态镜像；外部通过 subscribe 读取，不直接改 React state
+ * 创建渲染进程内唯一任务状态镜像；外部通过 subscribe 读取，不直接改 React state
  */
 export function createTaskSnapshotStore(): TaskSnapshotStore {
   let snapshot = DEFAULT_TASK_SNAPSHOT;
   const listeners = new Set<TaskSnapshotStoreListener>();
 
-  // store 内部同步通知订阅者，供 useSyncExternalStore 保持 task_snapshot 派生值一致
+  // 任务快照仓库内部同步通知订阅者，供 useSyncExternalStore 保持 task_snapshot 计算值一致
   function notify(): void {
     for (const listener of listeners) {
       listener();

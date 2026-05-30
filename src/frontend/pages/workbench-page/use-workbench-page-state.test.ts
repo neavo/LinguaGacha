@@ -223,7 +223,7 @@ function create_runtime_fixture(): RuntimeFixture {
   };
 }
 
-// workbench hook 测试只验证请求编排；空 changes 仍经过真实 write result 契约。
+// workbench hook 测试只验证请求编排；空 changes 仍经过真实写入结果契约。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -254,7 +254,7 @@ function setup_api_fetch_mock(): void {
       return typeof responder === "function" ? await responder(body) : responder;
     }
 
-    if (path === "/api/workbench/view") {
+    if (path === "/api/workbench/snapshot") {
       return create_workbench_query_response();
     }
     if (path === "/api/workbench/file/parse") {
@@ -304,7 +304,7 @@ function create_workbench_query_response() {
       items: 2,
       analysis: 3,
     },
-    view: {
+    snapshot: {
       file_count: entries.length,
       total_items: items.length,
       translation_stats: build_workbench_query_stats(items),
@@ -705,7 +705,7 @@ describe("useWorkbenchPageState", () => {
     expect(toast_fixture.current.push_toast).not.toHaveBeenCalled();
   });
 
-  it("运行中翻译统计仍只按后端 query items.status 派生", async () => {
+  it("运行中翻译统计仍只按后端 query items.status 计算", async () => {
     translation_runtime_fixture.current = {
       ...translation_runtime_fixture.current,
       translation_task_metrics: {

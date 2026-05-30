@@ -749,7 +749,7 @@ export function useAnalysisWorkbenchTask(
       return;
     }
 
-    // 为什么：完成/停止提示只认真实状态跃迁，避免 hydration 和后续 refresh 把成功 toast 连续弹多次
+    // 为什么：完成/停止提示只认真实状态跃迁，避免初始状态读取和后续刷新把成功提示连续弹多次
     const feedback_message = resolve_analysis_terminal_feedback_message({
       previous_status,
       next_status,

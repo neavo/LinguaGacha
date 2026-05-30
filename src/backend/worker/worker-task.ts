@@ -4,9 +4,9 @@ import {
   type NameFieldExtractionWorkerTaskResult,
 } from "./tasks/name-field-extraction-worker-task";
 import {
-  run_proofreading_hydration_worker_task,
-  type ProofreadingHydrationWorkerTaskInput,
-} from "./tasks/proofreading-hydration-worker-task";
+  run_proofreading_sync_worker_task,
+  type ProofreadingSyncWorkerTaskInput,
+} from "./tasks/proofreading-sync-worker-task";
 import {
   run_quality_statistics_worker_task,
   type QualityStatisticsWorkerTaskInput,
@@ -22,14 +22,14 @@ export type BackendWorkerTaskInputByType = {
   quality_statistics: QualityStatisticsWorkerTaskInput;
   name_field_extraction: NameFieldExtractionWorkerTaskInput;
   ts_conversion: TsConversionWorkerTaskInput;
-  proofreading_hydration: ProofreadingHydrationWorkerTaskInput;
+  proofreading_sync: ProofreadingSyncWorkerTaskInput;
 };
 
 export type BackendWorkerTaskResultByType = {
   quality_statistics: Record<string, unknown>;
   name_field_extraction: NameFieldExtractionWorkerTaskResult;
   ts_conversion: TsConversionConvertedItem[];
-  proofreading_hydration: ProofreadingEvaluatedSlice;
+  proofreading_sync: ProofreadingEvaluatedSlice;
 };
 
 export type BackendWorkerTaskType = keyof BackendWorkerTaskInputByType;
@@ -54,7 +54,7 @@ export async function run_worker_task<TTask extends BackendWorkerTask>(
       return run_name_field_extraction_worker_task(task.input) as BackendWorkerTaskResult<TTask>;
     case "ts_conversion":
       return run_ts_conversion_worker_task(task.input) as BackendWorkerTaskResult<TTask>;
-    case "proofreading_hydration":
-      return run_proofreading_hydration_worker_task(task.input) as BackendWorkerTaskResult<TTask>;
+    case "proofreading_sync":
+      return run_proofreading_sync_worker_task(task.input) as BackendWorkerTaskResult<TTask>;
   }
 }

@@ -31,7 +31,7 @@ export class TaskService {
 
   private readonly task_run_publisher: TaskRunPublisher; // task_run_publisher 是启动乐观态与失败回滚的唯一出口
 
-  private readonly project_operation_gate: ProjectOperationGate; // project_operation_gate 统一判断任务启动是否会撞上 busy 或结构性 write
+  private readonly project_operation_gate: ProjectOperationGate; // project_operation_gate 统一判断任务启动是否会撞上 busy 或结构性写入
 
   private readonly session_state: ProjectSessionState; // session_state 决定重翻 revision 校验是否能定位当前工程
 
@@ -116,7 +116,7 @@ export class TaskService {
   }
 
   /**
-   * 单条翻译用于页面派生工具，TaskService 先处理空文本和明显无激活模型的情况
+   * 单条翻译用于页面计算工具，TaskService 先处理空文本和明显无激活模型的情况
    */
   public async translate_single(request: JsonRecord): Promise<MutableJsonRecord> {
     const text = String(request["text"] ?? "").trim();

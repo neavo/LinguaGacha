@@ -43,7 +43,7 @@ const TASK_WAVEFORM_DISPLAY_SPIKE_LIMIT = 0.08;
 
 type WorkbenchTaskWaveformObservation = {
   time_seconds: number; // 最近一次采样时间，用来计算滑动窗口吞吐
-  total_output_tokens: number; // 后端累计输出 token，只读事实，不承载页面派生状态
+  total_output_tokens: number; // 后端累计输出 token，只读事实，不承载页面计算状态
 };
 
 export type WorkbenchTaskWaveformState = {

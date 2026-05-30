@@ -60,7 +60,10 @@ export type WorkbenchTaskMetricEntry = {
   unit_text: string;
 };
 
-export type WorkbenchTaskSummaryViewModel = {
+/**
+ * WorkbenchTaskSummaryDisplay 是任务胶囊需要的紧凑展示数据。
+ */
+export type WorkbenchTaskSummaryDisplay = {
   status_text: string;
   trailing_text: string | null;
   tone: WorkbenchTaskTone;
@@ -68,7 +71,10 @@ export type WorkbenchTaskSummaryViewModel = {
   detail_tooltip_text: string;
 };
 
-export type WorkbenchTaskDetailViewModel = {
+/**
+ * WorkbenchTaskDetailDisplay 是详情抽屉消费的完整任务展示数据。
+ */
+export type WorkbenchTaskDetailDisplay = {
   title: string;
   description: string;
   waveform_title: string;
@@ -81,7 +87,10 @@ export type WorkbenchTaskDetailViewModel = {
   waveform_history: number[];
 };
 
-export type WorkbenchTaskConfirmDialogViewModel = {
+/**
+ * WorkbenchTaskConfirmDialogDisplay 描述停止任务确认弹窗的展示状态。
+ */
+export type WorkbenchTaskConfirmDialogDisplay = {
   open: boolean;
   description: string;
   submitting: boolean;

@@ -18,9 +18,9 @@ function create_quality(): QualitySnapshot {
 }
 
 describe("proofreading-list-reader", () => {
-  it("hydrate 后构建带警告、筛选和窗口的列表视图", () => {
+  it("同步后构建带警告、筛选和窗口的列表视图", () => {
     const service = createProofreadingListReader();
-    const sync_state = service.hydrate_full({
+    const sync_state = service.sync_full({
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 2,
@@ -76,7 +76,7 @@ describe("proofreading-list-reader", () => {
 
   it("非法正则返回错误信息且不裁剪列表结果", () => {
     const service = createProofreadingListReader();
-    const sync_state = service.hydrate_full({
+    const sync_state = service.sync_full({
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 1,

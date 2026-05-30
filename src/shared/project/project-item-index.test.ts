@@ -54,7 +54,7 @@ describe("ProjectItemIndex", () => {
     ).toThrow("runtime.internal_invariant");
   });
 
-  it("canonical delta 只变更目标行并保留 clone 边界", () => {
+  it("规范化增量只变更目标行并保留 clone 边界", () => {
     const index = createProjectItemIndex({
       "1": create_test_item({ item_id: 1, dst: "旧译文", status: "NONE" }),
       "2": create_test_item({ item_id: 2, dst: "保留译文", status: "PROCESSED" }),

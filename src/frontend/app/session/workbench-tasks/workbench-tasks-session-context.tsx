@@ -11,7 +11,7 @@ import {
 } from "@frontend/app/session/workbench-tasks/use-translation-workbench-task";
 import type { AnalysisTaskConfirmState } from "@shared/workbench/analysis-task";
 import type { TranslationTaskConfirmState } from "@shared/workbench/translation-task";
-import type { WorkbenchTaskConfirmDialogViewModel } from "@frontend/pages/workbench-page/types";
+import type { WorkbenchTaskConfirmDialogDisplay } from "@frontend/pages/workbench-page/types";
 import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
 import { QualityRuleImportConfirmDialog } from "@frontend/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-dialog";
 
@@ -23,11 +23,11 @@ type WorkbenchTasksSessionContextValue = {
 // WorkbenchTasksSessionContext 保留工作台任务 follow-up 的跨页面运行态。
 const WorkbenchTasksSessionContext = createContext<WorkbenchTasksSessionContextValue | null>(null);
 
-// build_translation_task_confirm_dialog_view_model 构造跨层载荷，保证字段形状在一个入口维护。
-function build_translation_task_confirm_dialog_view_model(
+// build_translation_task_confirm_dialog_display 构造跨层载荷，保证字段形状在一个入口维护。
+function build_translation_task_confirm_dialog_display(
   state: TranslationTaskConfirmState | null,
   t: ReturnType<typeof useI18n>["t"],
-): WorkbenchTaskConfirmDialogViewModel | null {
+): WorkbenchTaskConfirmDialogDisplay | null {
   if (state === null) {
     return null;
   }
@@ -63,11 +63,11 @@ function build_translation_task_confirm_dialog_view_model(
   };
 }
 
-// build_analysis_task_confirm_dialog_view_model 构造跨层载荷，保证字段形状在一个入口维护。
-function build_analysis_task_confirm_dialog_view_model(
+// build_analysis_task_confirm_dialog_display 构造跨层载荷，保证字段形状在一个入口维护。
+function build_analysis_task_confirm_dialog_display(
   state: AnalysisTaskConfirmState | null,
   t: ReturnType<typeof useI18n>["t"],
-): WorkbenchTaskConfirmDialogViewModel | null {
+): WorkbenchTaskConfirmDialogDisplay | null {
   if (state === null) {
     return null;
   }
@@ -107,15 +107,14 @@ function build_analysis_task_confirm_dialog_view_model(
 function WorkbenchTasksFollowupDialogsLayer(): JSX.Element {
   const { t } = useI18n();
   const { translation_workbench_task, analysis_workbench_task } = useWorkbenchTasksSession();
-  const translation_task_confirm_dialog =
-    useMemo<WorkbenchTaskConfirmDialogViewModel | null>(() => {
-      return build_translation_task_confirm_dialog_view_model(
-        translation_workbench_task.task_confirm_state,
-        t,
-      );
-    }, [t, translation_workbench_task.task_confirm_state]);
-  const analysis_task_confirm_dialog = useMemo<WorkbenchTaskConfirmDialogViewModel | null>(() => {
-    return build_analysis_task_confirm_dialog_view_model(
+  const translation_task_confirm_dialog = useMemo<WorkbenchTaskConfirmDialogDisplay | null>(() => {
+    return build_translation_task_confirm_dialog_display(
+      translation_workbench_task.task_confirm_state,
+      t,
+    );
+  }, [t, translation_workbench_task.task_confirm_state]);
+  const analysis_task_confirm_dialog = useMemo<WorkbenchTaskConfirmDialogDisplay | null>(() => {
+    return build_analysis_task_confirm_dialog_display(
       analysis_workbench_task.analysis_confirm_state,
       t,
     );

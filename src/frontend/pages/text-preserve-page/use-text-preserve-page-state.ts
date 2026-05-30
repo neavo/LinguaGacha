@@ -384,7 +384,7 @@ function is_modal_progress_timeout_error(error: unknown): boolean {
 function build_text_preserve_statistics_state_from_cache(
   statistics_cache: QualityRuleStatisticsCacheSnapshot,
 ): TextPreserveStatisticsState {
-  // 页面只从质量统计缓存派生展示状态，不持有也不修改文本保护规则事实。
+  // 页面只从质量统计缓存计算展示状态，不持有也不修改文本保护规则事实。
   return {
     running: isQualityRuleStatisticsCacheRunning(statistics_cache),
     completed_snapshot: statistics_cache.completed_snapshot,
@@ -825,7 +825,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   }, [settings_snapshot]);
 
   useEffect(() => {
-    // 项目身份变化时页面派生视图和 session 表格状态必须一起重置。
+    // 项目身份变化时页面计算视图和 session 表格状态必须一起重置。
     const next_project_identity = project_snapshot.loaded ? project_snapshot.path : "";
     set_result_snapshot(null);
     set_pending_result_refresh(null);

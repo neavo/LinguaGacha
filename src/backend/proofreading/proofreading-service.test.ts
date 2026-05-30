@@ -8,7 +8,7 @@ import { ProjectEventBus } from "../project/project-events";
 import { ProjectDatabase } from "../database/database-operations";
 import type { ApiJsonValue } from "../api/api-types";
 import type { ProjectChangePublisher } from "../project/project-changes";
-import { ProjectMutationStore } from "../project/project-mutation-store";
+import { ProjectWriteStore } from "../project/project-write-store";
 import { get_section_revision } from "../project/project-data";
 import { ProjectSessionState } from "../project/project-session";
 import { ProofreadingService } from "./proofreading-service";
@@ -39,14 +39,14 @@ function create_service(): {
   session_state.mark_loaded(lg_path);
   const publisher = create_test_project_change_publisher(database, lg_path);
   const project_event_bus = new ProjectEventBus();
-  const mutation_store = new ProjectMutationStore(
+  const write_store = new ProjectWriteStore(
     database,
     project_event_bus,
     publisher as unknown as ProjectChangePublisher,
   );
   return {
     database,
-    service: new ProofreadingService(database, session_state, mutation_store),
+    service: new ProofreadingService(database, session_state, write_store),
     session_state,
     lg_path,
     publisher,
@@ -122,7 +122,7 @@ afterEach(() => {
 });
 
 describe("ProofreadingService", () => {
-  it("保存单条校对结果时只提交命令并由后端派生事实", async () => {
+  it("保存单条校对结果时只提交命令并由后端计算事实", async () => {
     const { database, service, lg_path, publisher } = create_service();
     database.execute({
       name: "setItems",
@@ -302,7 +302,7 @@ describe("ProofreadingService", () => {
     });
   });
 
-  it("设置翻译状态拒绝菜单外的派生状态", async () => {
+  it("设置翻译状态拒绝菜单外的计算状态", async () => {
     const { database, service, lg_path, publisher } = create_service();
     database.execute({
       name: "setItems",
@@ -326,7 +326,7 @@ describe("ProofreadingService", () => {
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
   });
 
-  it("不存在的清空译文 item 为 no-op 且不写派生 meta", async () => {
+  it("不存在的清空译文 item 为 no-op 且不写计算 meta", async () => {
     const { database, service, lg_path, publisher } = create_service();
     database.execute({
       name: "setItems",

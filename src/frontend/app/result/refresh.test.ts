@@ -8,7 +8,7 @@ import {
 import { REBUILD_RESULT_REFRESH } from "./snapshot";
 
 describe("project section result refresh", () => {
-  it("从 write result 提取目标项目 section 事实源", () => {
+  it("从写入结果提取目标项目 section 事实源", () => {
     const write_result: ProjectWriteResult = {
       accepted: true,
       changes: [

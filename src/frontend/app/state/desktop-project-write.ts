@@ -34,16 +34,16 @@ export type ProjectWriteCommitRequest<
   TPayload extends ProjectWriteResultPayload = ProjectWriteResultPayload,
 > = {
   operation: ProjectWriteOperation; // operation 是页面业务意图到诊断语义的显式词表
-  task_type?: TaskType; // task_type 仅用于任务相关 write 的诊断归因
-  run: () => Promise<TPayload>; // run 只提交后端 write，运行态负责归一化和回灌
-  prepare?: (args: { payload: TPayload; write_result: ProjectWriteResult }) => void | Promise<void>; // prepare 在回灌前登记页面派生状态，避免依赖 React 调度竞态
+  task_type?: TaskType; // task_type 仅用于任务相关写入的诊断归因
+  run: () => Promise<TPayload>; // run 只提交后端写入，运行态负责归一化和回灌
+  prepare?: (args: { payload: TPayload; write_result: ProjectWriteResult }) => void | Promise<void>; // prepare 在回灌前登记页面计算状态，避免依赖 React 调度竞态
 };
 
 export type ProjectWriteCommitResult<
   TPayload extends ProjectWriteResultPayload = ProjectWriteResultPayload,
 > = {
   payload: TPayload; // payload 保留后端原始响应，供导入流程读取 failed_files 等扩展字段
-  write_result: ProjectWriteResult; // write_result 是已经进入项目事件管线的 canonical changes
+  write_result: ProjectWriteResult; // write_result 是已经进入项目事件管线的规范化 changes
 };
 
 export type ProjectWriteCommitter = <
@@ -61,7 +61,7 @@ type ProjectWriteCommitterOptions = {
 };
 
 /**
- * 同步 write 只能返回后端 canonical changes，任何坏载荷都暴露为运行态协议错误。
+ * 同步写入只能返回后端规范化 changes，任何坏载荷都暴露为运行态协议错误。
  */
 export function normalize_project_write_result(
   payload: ProjectWriteResultPayload,
@@ -74,7 +74,7 @@ export function normalize_project_write_result(
 
   return {
     accepted: true,
-    // write result 是同步 HTTP 的 canonical 事实入口；任何无法规范化的 change 都暴露为协议错误。
+    // 写入结果是同步 HTTP 的规范化事实入口；任何无法规范化的 change 都暴露为协议错误。
     changes: payload.changes.map((change, index) =>
       normalize_project_write_change_event(change, index),
     ),
@@ -82,7 +82,7 @@ export function normalize_project_write_result(
 }
 
 /**
- * 项目 write 的唯一前端入口，集中处理提交、规范化、回灌、诊断和失败恢复。
+ * 项目写入的唯一前端入口，集中处理提交、规范化、回灌、诊断和失败恢复。
  */
 export function useProjectWriteCommitter(
   options: ProjectWriteCommitterOptions,
@@ -160,7 +160,7 @@ function normalize_project_write_change_event(
   return normalized_change;
 }
 
-// write 失败诊断只记录业务操作与变更摘要，避免页面层传入完整业务 payload。
+// 写入失败诊断只记录业务操作与变更摘要，避免页面层传入完整业务 payload。
 /**
  * 解析当前场景的最终消费值。
  */

@@ -6,7 +6,7 @@ import { InternalInvariantError } from "../error";
 import type { ProjectChangeItemFieldPatch, ProjectChangeItemsPayload } from "../project-event";
 
 /**
- * renderer 内共享的 item 只读索引；页面只能通过方法读取当前事实，不能把它当普通对象改写。
+ * 渲染进程内共享的 item 只读索引；页面只能通过方法读取当前事实，不能把它当普通对象改写。
  */
 export type ProjectItemIndex = {
   readonly size: number;
@@ -14,9 +14,9 @@ export type ProjectItemIndex = {
   get: (itemId: number | string) => ProjectItemPublicRecord | undefined;
   /** 判断当前索引是否仍持有指定 item。 */
   has: (itemId: number | string) => boolean;
-  /** 遍历公开 item_id，主要用于测试和派生视图稳定排序。 */
+  /** 遍历公开 item_id，主要用于测试和计算视图稳定排序。 */
   keys: () => IterableIterator<string>;
-  /** 遍历当前公开 DTO，页面派生缓存从这里读取完整事实。 */
+  /** 遍历当前公开 DTO，页面计算缓存从这里读取完整事实。 */
   values: () => IterableIterator<ProjectItemPublicRecord>;
   /** 遍历 item_id 与 DTO 对，供少数快照化边界使用。 */
   entries: () => IterableIterator<[string, ProjectItemPublicRecord]>;
@@ -32,10 +32,10 @@ export type ProjectItemIndexWriteScope = {
 };
 
 /**
- * ProjectItemIndex 的内部实现复用同一份 Map 存储，大项目高频 delta 不再复制完整 items。
+ * ProjectItemIndex 的内部实现复用同一份 Map 存储，大项目高频增量更新不再复制完整 items。
  */
 class MutableProjectItemIndex implements ProjectItemIndex {
-  private readonly records: Map<string, ProjectItemPublicRecord>; // 唯一 item 存储，delta 路径只更新受影响 key
+  private readonly records: Map<string, ProjectItemPublicRecord>; // 唯一 item 存储，增量路径只更新受影响 key
 
   /** 构造器只接收模块内部准备好的 Map，外部不能直接写入索引。 */
   public constructor(records: Map<string, ProjectItemPublicRecord>) {
@@ -77,7 +77,7 @@ class MutableProjectItemIndex implements ProjectItemIndex {
     return Object.fromEntries(this.records.entries());
   }
 
-  /** reset/测试 clone 需要真实分离 Map，避免后续 delta 污染旧边界。 */
+  /** reset/测试 clone 需要真实分离 Map，避免后续增量更新污染旧边界。 */
   public cloneRecords(): Map<string, ProjectItemPublicRecord> {
     return new Map(this.records);
   }
@@ -117,7 +117,7 @@ function clone_index_records(index: ProjectItemIndex): Map<string, ProjectItemPu
 }
 
 /**
- * 为批量 item prepare 创建一次 item 副本，后续 delta 都写入这份 draft。
+ * 为批量 item prepare 创建一次 item 副本，后续增量更新都写入这份 draft。
  */
 export function createProjectItemIndexWriteScope(
   index: ProjectItemIndex,
@@ -142,7 +142,7 @@ export function createProjectItemIndex(
 }
 
 /**
- * 复制索引用于 reset/初始化边界；普通 delta 路径不走这里，避免回到全量复制。
+ * 复制索引用于 reset/初始化边界；普通增量路径不走这里，避免回到全量复制。
  */
 export function cloneProjectItemIndex(index: ProjectItemIndex): ProjectItemIndex {
   if (index instanceof MutableProjectItemIndex) {
@@ -225,7 +225,7 @@ export function applyProjectItemIndexChangeInScope(
 }
 
 /**
- * 单条 delta 也走 prepare 副本，校验失败时不会污染传入索引。
+ * 单条增量更新也走 prepare 副本，校验失败时不会污染传入索引。
  */
 export function applyProjectItemIndexChange(
   index: ProjectItemIndex,

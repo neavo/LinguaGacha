@@ -173,7 +173,7 @@ describe("TaskService", () => {
     const calls: string[] = [];
     const project_operation_gate = create_project_operation_gate();
     let release_write = (): void => {
-      throw new Error("write lease 尚未建立");
+      throw new Error("写入租约尚未建立");
     };
     const running_write = project_operation_gate.run_exclusive_project_write(
       async () =>

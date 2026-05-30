@@ -48,7 +48,7 @@ const PROMPT_MODEL = {
 const PROMPT_KIND_SET = new Set<PromptKind>(PROMPT_KINDS);
 
 /**
- * Prompt 是提示词槽位实体，统一派生目录、rules 表类型、meta key 和项目 query key
+ * Prompt 是提示词槽位实体，统一计算目录、rules 表类型、meta key 和项目 query key
  */
 export class Prompt {
   public readonly kind: PromptKind; // 提示词槽位类型
@@ -104,14 +104,14 @@ export class Prompt {
   }
 
   /**
-   * rules 表物理类型只从 Prompt 派生
+   * rules 表物理类型只从 Prompt 计算
    */
   public get database_type(): PromptDatabaseType {
     return PROMPT_MODEL[this.kind].database_type;
   }
 
   /**
-   * 资源目录名只从 Prompt 派生，worker 和路径服务不再拼接字符串
+   * 资源目录名只从 Prompt 计算，worker 和路径服务不再拼接字符串
    */
   public get directory_name(): string {
     return PROMPT_MODEL[this.kind].directory_name;
@@ -153,7 +153,7 @@ export class Prompt {
   }
 
   /**
-   * 模板文件集合由 Prompt 维护，PromptBuilder 只读取实体派生结果
+   * 模板文件集合由 Prompt 维护，PromptBuilder 只读取实体计算结果
    */
   public get template_files(): readonly ["base.txt", "prefix.txt", "thinking.txt", "suffix.txt"] {
     return PROMPT_MODEL[this.kind].template_files;

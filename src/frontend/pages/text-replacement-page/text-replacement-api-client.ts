@@ -19,7 +19,7 @@ type TextReplacementRevisionsResponse = {
   sectionRevisions?: TextReplacementSectionRevisions;
 };
 
-// 替换规则页只读取当前变体的质量规则 view，write 仍走统一提交管线。
+// 替换规则页只读取当前变体的质量规则视图，写入仍走统一提交管线。
 export async function read_text_replacement_quality_rule(
   rule_type: TextReplacementVariantConfig["rule_type"],
 ): Promise<TextReplacementQualityRuleQueryResponse> {
@@ -30,6 +30,6 @@ export async function read_text_replacement_quality_rule(
 
 // 替换规则页只读取当前页面保存动作所需 revision。
 export async function read_text_replacement_section_revisions(): Promise<TextReplacementSectionRevisions> {
-  const response = await api_fetch<TextReplacementRevisionsResponse>("/api/workbench/view", {});
+  const response = await api_fetch<TextReplacementRevisionsResponse>("/api/workbench/snapshot", {});
   return response.sectionRevisions ?? {};
 }

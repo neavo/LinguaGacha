@@ -1080,7 +1080,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 校对统一字段 write 只需要少量事实，避免为状态设置解析完整 item JSON。
+   * 校对统一字段写入只需要少量事实，避免为状态设置解析完整 item JSON。
    */
   private get_item_write_facts_by_ids(project_path: string, item_ids: number[]): DatabaseJsonValue {
     const normalized_ids = [
@@ -1202,7 +1202,7 @@ export class ProjectDatabase {
   }
 
   /**
-   * 按受限字段批量更新条目，收口校对批量 write
+   * 按受限字段批量更新条目，收口校对批量写入
    */
   private update_batch(
     project_path: string,

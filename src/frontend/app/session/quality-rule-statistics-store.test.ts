@@ -66,7 +66,7 @@ describe("quality rule statistics cache helpers", () => {
     );
   });
 
-  it("用 phase 派生页面可见状态", () => {
+  it("用 phase 计算页面可见状态", () => {
     expect(isQualityRuleStatisticsCacheReady(create_cache_with_phase("current"))).toBe(true);
     expect(isQualityRuleStatisticsCacheReady(create_cache_with_phase("running"))).toBe(false);
     expect(isQualityRuleStatisticsCacheRunning(create_cache_with_phase("running"))).toBe(true);

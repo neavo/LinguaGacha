@@ -40,7 +40,7 @@ interface TranslationWorkUnitRequest extends WorkUnitBaseRequest {
 }
 
 export interface TranslateSingleWorkUnitRequest extends WorkUnitBaseRequest {
-  text: ApiJsonValue; // text 来自公开派生工具调用，不关联任何项目条目
+  text: ApiJsonValue; // text 来自公开计算工具调用，不关联任何项目条目
 }
 
 interface TranslationWorkUnitResult {
@@ -127,7 +127,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 单条翻译不写项目，只返回公开派生工具需要的 `{ success, status, dst }`
+   * 单条翻译不写项目，只返回公开计算工具需要的 `{ success, status, dst }`
    */
   public async translate_single(
     request: TranslateSingleWorkUnitRequest,

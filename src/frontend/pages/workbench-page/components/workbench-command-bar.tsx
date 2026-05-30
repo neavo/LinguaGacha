@@ -8,7 +8,7 @@ import type { AnalysisTaskActionKind } from "@shared/workbench/analysis-task";
 import type { TranslationTaskActionKind } from "@shared/workbench/translation-task";
 import type {
   WorkbenchStats,
-  WorkbenchTaskSummaryViewModel,
+  WorkbenchTaskSummaryDisplay,
   WorkbenchTaskViewState,
 } from "@frontend/pages/workbench-page/types";
 import { AnalysisTaskMenu } from "@frontend/pages/workbench-page/components/analysis-task-menu";
@@ -26,7 +26,7 @@ type WorkbenchCommandBarProps = {
   translation_workbench_task: TranslationWorkbenchTask;
   analysis_workbench_task: AnalysisWorkbenchTask;
   active_workbench_task_view: WorkbenchTaskViewState;
-  active_workbench_task_summary: WorkbenchTaskSummaryViewModel;
+  active_workbench_task_summary: WorkbenchTaskSummaryDisplay;
   translation_stats: WorkbenchStats;
   analysis_stats: WorkbenchStats;
   can_edit_files: boolean;
@@ -172,7 +172,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
       hint={
         <WorkbenchTaskSummary
           class_name="workbench-page__task-summary"
-          view_model={props.active_workbench_task_summary}
+          display={props.active_workbench_task_summary}
           can_open={props.active_workbench_task_view.can_open_detail}
           auto_open_key={task_summary_auto_open_key}
           on_open={handle_open_task_detail}

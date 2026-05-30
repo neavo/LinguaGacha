@@ -16,13 +16,19 @@ import type { QualityRulePresetReader } from "../quality/quality-rule-preset-rea
 
 type JsonRecord = Record<string, ApiJsonValue>;
 
+/**
+ * ToolboxTsConversionExportService 生成繁简转换后的导出文件。
+ */
 export class ToolboxTsConversionExportService {
-  private readonly session_state: ProjectSessionState;
-  private readonly cache: CacheReadPort;
-  private readonly worker_client: BackendWorkerClient;
-  private readonly preset_reader: QualityRulePresetReader;
-  private readonly file_export_service: TranslationFileExportService;
+  private readonly session_state: ProjectSessionState; // session_state 校验当前导出项目身份。
+  private readonly cache: CacheReadPort; // cache 提供 item 与文本保护规则快照。
+  private readonly worker_client: BackendWorkerClient; // worker_client 执行繁简转换计算。
+  private readonly preset_reader: QualityRulePresetReader; // preset_reader 读取内置文本保护规则。
+  private readonly file_export_service: TranslationFileExportService; // file_export_service 负责真实文件写回。
 
+  /**
+   * 注入导出链路依赖，转换服务只编排数据和 worker 计算。
+   */
   public constructor(options: {
     sessionState: ProjectSessionState;
     cache: CacheReadPort;
@@ -37,6 +43,9 @@ export class ToolboxTsConversionExportService {
     this.file_export_service = options.fileExportService;
   }
 
+  /**
+   * 读取当前项目 item，执行繁简转换后交给翻译导出服务写文件。
+   */
   public async export_files(request: JsonRecord): Promise<JsonRecord> {
     this.require_loaded_project_path();
     const direction = this.read_direction(request["direction"]);
@@ -98,6 +107,9 @@ export class ToolboxTsConversionExportService {
     );
   }
 
+  /**
+   * 读取文本保护质量规则切片，缺失时回到 smart 空规则。
+   */
   private read_text_preserve_slice(): {
     mode: string;
     entries: Array<Record<string, unknown>>;
@@ -122,6 +134,9 @@ export class ToolboxTsConversionExportService {
     };
   }
 
+  /**
+   * 按当前项目出现的 text_type 读取内置保护规则。
+   */
   private read_preset_rules_by_text_type(text_types: string[]): Record<string, string[]> {
     return Object.fromEntries(
       text_types.map((text_type) => {
@@ -130,6 +145,9 @@ export class ToolboxTsConversionExportService {
     );
   }
 
+  /**
+   * 校验繁简转换方向，非法值映射为请求参数错误。
+   */
   private read_direction(value: ApiJsonValue | undefined): TsConversionDirection {
     if (value === "s2t" || value === "t2s") {
       return value;
@@ -139,6 +157,9 @@ export class ToolboxTsConversionExportService {
     });
   }
 
+  /**
+   * 导出必须依赖已加载项目，空会话直接抛出项目未加载错误。
+   */
   private require_loaded_project_path(): string {
     const state = this.session_state.snapshot();
     if (!state.loaded || state.projectPath === "") {

@@ -5,7 +5,7 @@ import type { BackendWorkerClient } from "../../worker/worker-client";
 import {
   createProofreadingListReader,
   evaluateProofreadingSlice,
-  type ProofreadingHydrationInput,
+  type ProofreadingSyncInput,
 } from "../../../shared/proofreading/proofreading-list-reader";
 import type { CacheReadPort } from "../cache-types";
 import type { CacheChange } from "../cache-change";
@@ -86,21 +86,21 @@ function create_settings(): AppSettingService {
 }
 
 function create_worker(): BackendWorkerClient & {
-  hydration_inputs: ProofreadingHydrationInput[];
+  sync_inputs: ProofreadingSyncInput[];
 } {
-  const hydration_inputs: ProofreadingHydrationInput[] = [];
+  const sync_inputs: ProofreadingSyncInput[] = [];
   return {
-    hydration_inputs,
-    run: vi.fn(async (task: { type: string; input: ProofreadingHydrationInput }) => {
-      if (task.type !== "proofreading_hydration") {
+    sync_inputs,
+    run: vi.fn(async (task: { type: string; input: ProofreadingSyncInput }) => {
+      if (task.type !== "proofreading_sync") {
         throw new Error(`测试未实现 task：${task.type}`);
       }
-      hydration_inputs.push(task.input);
+      sync_inputs.push(task.input);
       return evaluateProofreadingSlice(task.input);
     }),
     dispose: vi.fn(async () => undefined),
   } as unknown as BackendWorkerClient & {
-    hydration_inputs: ProofreadingHydrationInput[];
+    sync_inputs: ProofreadingSyncInput[];
   };
 }
 
@@ -129,7 +129,7 @@ function create_delta_change(overrides: Partial<CacheChange> = {}): CacheChange 
 }
 
 describe("ProofreadingCache", () => {
-  it("同一工程身份下只执行一次 hydration task 并用本地列表 service 查询", async () => {
+  it("同一工程身份下只执行一次 sync task 并用本地列表 service 查询", async () => {
     const worker = create_worker();
     const cache = new ProofreadingCache({
       cache: create_cache_read_port({}),
@@ -148,7 +148,7 @@ describe("ProofreadingCache", () => {
     });
 
     expect(worker.run).toHaveBeenCalledTimes(1);
-    expect(worker.hydration_inputs[0]).toMatchObject({
+    expect(worker.sync_inputs[0]).toMatchObject({
       projectId: "E:/Project/demo.lg",
       sourceLanguage: "JA",
       targetLanguage: "ZH",
@@ -161,7 +161,7 @@ describe("ProofreadingCache", () => {
     });
   });
 
-  it("revision 或语言变化会生成新的缓存身份并重新执行 hydration task", async () => {
+  it("revision 或语言变化会生成新的缓存身份并重新执行 sync task", async () => {
     const worker = create_worker();
     const first_cache = new ProofreadingCache({
       cache: create_cache_read_port({
@@ -183,7 +183,7 @@ describe("ProofreadingCache", () => {
     await second_cache.sync({ sourceLanguage: "JA", targetLanguage: "EN" });
 
     expect(worker.run).toHaveBeenCalledTimes(2);
-    expect(worker.hydration_inputs.map((input) => input.targetLanguage)).toEqual(["ZH", "EN"]);
+    expect(worker.sync_inputs.map((input) => input.targetLanguage)).toEqual(["ZH", "EN"]);
   });
 
   it("文件 section revision 变化会生成新的校对缓存身份", async () => {
@@ -208,10 +208,10 @@ describe("ProofreadingCache", () => {
     await second_cache.sync({});
 
     expect(worker.run).toHaveBeenCalledTimes(2);
-    expect(worker.hydration_inputs.map((input) => input.revisions.files)).toEqual([1, 2]);
+    expect(worker.sync_inputs.map((input) => input.revisions.files)).toEqual([1, 2]);
   });
 
-  it("项目卸载时只清理本地校对缓存并重新执行 hydration task", async () => {
+  it("项目卸载时只清理本地校对缓存并重新执行 sync task", async () => {
     const worker = create_worker();
     const cache = new ProofreadingCache({
       cache: create_cache_read_port({}),
@@ -243,7 +243,7 @@ describe("ProofreadingCache", () => {
     expect(worker.run).toHaveBeenCalledTimes(2);
   });
 
-  it("已 hydrate 后 item delta 会应用到本地校对列表运行态", async () => {
+  it("已同步后 item 增量会应用到本地校对列表运行态", async () => {
     const worker = create_worker();
     const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
     const items = [
@@ -284,7 +284,7 @@ describe("ProofreadingCache", () => {
     expect(next_sync.data.revisions.items).toBe(2);
   });
 
-  it("quality 或 files 变化会失效已 hydrate 的校对缓存", async () => {
+  it("quality 或 files 变化会失效已同步的校对缓存", async () => {
     const worker = create_worker();
     const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
     const cache = new ProofreadingCache({

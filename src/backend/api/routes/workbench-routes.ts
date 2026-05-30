@@ -6,7 +6,7 @@ export function register_workbench_routes(context: ApiRouteContext): void {
   const preview = context.services.workbench.filePreview;
   const reset_preview = context.services.workbench.resetPreview;
 
-  context.postJson("/api/workbench/view", () => query.read_workbench_view());
+  context.postJson("/api/workbench/snapshot", () => query.read_workbench_snapshot());
   context.postJson("/api/workbench/files/import", (body) => workbench.import_workbench_files(body));
   context.postJson("/api/workbench/file/reset", (body) => workbench.reset_workbench_file(body));
   context.postJson("/api/workbench/file/delete", (body) => workbench.delete_workbench_file(body));

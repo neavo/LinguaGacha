@@ -36,7 +36,10 @@ export type TranslationItemPatch = {
   };
 };
 
-export type ProjectAssetMutation =
+/**
+ * ProjectAssetWrite 表示工作台结构性写入中的 asset 操作。
+ */
+export type ProjectAssetWrite =
   | {
       kind: "add_from_source";
       path: string;
@@ -76,7 +79,10 @@ type RuntimeCommitOptions = {
   publishPublic?: boolean;
 };
 
-export type ProjectMutationSectionAck = {
+/**
+ * ProjectWriteSectionAck 是任务 artifact 写入后回传给 engine 的 revision 确认。
+ */
+export type ProjectWriteSectionAck = {
   changed_item_ids: number[];
   section_revisions: MutableJsonRecord;
 };
@@ -96,7 +102,7 @@ type TranslationProgressCounters = {
 /**
  * loaded project 运行态事实的唯一语义写入口。
  */
-export class ProjectMutationStore {
+export class ProjectWriteStore {
   private readonly database: ProjectDatabase; // database workflow 是项目事实的物理写入边界
 
   private readonly write_coordinator: ProjectWriteCoordinator; // coordinator 统一 revision guard 与 committed event 发布
@@ -121,7 +127,7 @@ export class ProjectMutationStore {
     projectPath: string;
     items: ApiJsonValue | undefined;
     translationExtras: MutableJsonRecord;
-  }): Promise<ProjectMutationSectionAck> {
+  }): Promise<ProjectWriteSectionAck> {
     return await this.apply_task_item_patches({
       projectPath: request.projectPath,
       items: request.items,
@@ -138,7 +144,7 @@ export class ProjectMutationStore {
     projectPath: string;
     items: ApiJsonValue | undefined;
     translationExtras: MutableJsonRecord;
-  }): Promise<ProjectMutationSectionAck> {
+  }): Promise<ProjectWriteSectionAck> {
     return await this.apply_task_item_patches({
       projectPath: request.projectPath,
       items: request.items,
@@ -164,7 +170,7 @@ export class ProjectMutationStore {
   }
 
   /**
-   * 分析 artifact 写入 checkpoint、候选聚合和进度，并发布轻量 analysis delta。
+   * 分析 artifact 写入 checkpoint、候选聚合和进度，并发布轻量 analysis 增量。
    */
   public async commit_analysis_artifacts(request: {
     projectPath: string;
@@ -425,7 +431,7 @@ export class ProjectMutationStore {
     revisionSections: ProjectDataSection[];
     source: string;
     updatedSections: ProjectDataSection[];
-    assetMutations?: ProjectAssetMutation[];
+    assetWrites?: ProjectAssetWrite[];
     items?: MutableJsonRecord[];
     meta?: MutableJsonRecord;
     resetAnalysis?: boolean;
@@ -447,8 +453,8 @@ export class ProjectMutationStore {
       sectionModes: request.sectionModes,
       buildOperations: (revision_context) => {
         const operations: DatabaseOperation[] = [];
-        for (const mutation of request.assetMutations ?? []) {
-          operations.push(this.build_asset_operation(request.projectPath, mutation));
+        for (const write of request.assetWrites ?? []) {
+          operations.push(this.build_asset_operation(request.projectPath, write));
         }
         if (request.items !== undefined) {
           operations.push(
@@ -704,13 +710,16 @@ export class ProjectMutationStore {
     });
   }
 
+  /**
+   * 任务 artifact item patch 共享同一写入链路和进度 meta 更新。
+   */
   private async apply_task_item_patches(request: {
     projectPath: string;
     items: ApiJsonValue | undefined;
     translationExtras: MutableJsonRecord;
     source: string;
     updatedSections: ProjectDataSection[];
-  }): Promise<ProjectMutationSectionAck> {
+  }): Promise<ProjectWriteSectionAck> {
     const patches = this.normalize_translation_item_patches(request.items);
     this.assert_patch_targets_exist(request.projectPath, patches);
     const changed_item_ids = patches.map((patch) => patch.item_id);
@@ -777,32 +786,35 @@ export class ProjectMutationStore {
     return this.write_coordinator.publish_project_data_change(change_request);
   }
 
+  /**
+   * 复用写入协调器的空结果，保持无变化写入响应形状一致。
+   */
   private empty_project_write_result(): ProjectWriteResult {
     return this.write_coordinator.empty_project_write_result();
   }
 
-  private build_asset_operation(
-    project_path: string,
-    mutation: ProjectAssetMutation,
-  ): DatabaseOperation {
-    if (mutation.kind === "add_from_source") {
+  /**
+   * 将工作台 asset 操作转换为数据库 workflow 操作。
+   */
+  private build_asset_operation(project_path: string, write: ProjectAssetWrite): DatabaseOperation {
+    if (write.kind === "add_from_source") {
       return this.op("addAssetFromSource", {
         projectPath: project_path,
-        path: mutation.path,
-        sourcePath: mutation.sourcePath,
-        sortOrder: mutation.sortOrder,
+        path: write.path,
+        sourcePath: write.sourcePath,
+        sortOrder: write.sortOrder,
       });
     }
-    if (mutation.kind === "update_from_source") {
+    if (write.kind === "update_from_source") {
       return this.op("updateAssetFromSource", {
         projectPath: project_path,
-        path: mutation.path,
-        sourcePath: mutation.sourcePath,
+        path: write.path,
+        sourcePath: write.sourcePath,
       });
     }
     return this.op("deleteAsset", {
       projectPath: project_path,
-      path: mutation.path,
+      path: write.path,
     });
   }
 

@@ -38,7 +38,7 @@ function read_store_item(
   return snapshot.items.find((item) => Number(item.item_id) === item_id);
 }
 
-// 校对 write 同时依赖 items 与 proofreading revision。
+// 校对写入同时依赖 items 与 proofreading revision。
 function build_expected_revisions(
   section_revisions: ProjectDataSectionRevisions,
 ): ProjectDataSectionRevisions {
@@ -84,7 +84,7 @@ function replace_all_in_text(args: {
   });
 }
 
-// 单条保存只提交 item_id 和 dst，status 与进度统计由后端派生。
+// 单条保存只提交 item_id 和 dst，status 与进度统计由后端计算。
 export function create_save_item_plan(args: {
   snapshot: ProofreadingCommandSnapshot;
   task_snapshot?: Record<string, unknown>;

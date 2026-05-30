@@ -19,11 +19,11 @@ type ApplyLaboratoryPrefilterWriteArgs = {
   commit_project_write: ProjectWriteCommitter;
 };
 
-// 实验室页拥有自己的预过滤 write 诊断名，desktop state 只接收显式 operation。
+// 实验室页拥有自己的预过滤写入诊断名，desktop state 只接收显式 operation。
 const LABORATORY_PREFILTER_WRITE: ProjectWriteOperation = "laboratory.prefilter_settings";
 
 async function read_laboratory_section_revisions(): Promise<LaboratorySectionRevisions> {
-  const response = await api_fetch<LaboratoryRevisionsResponse>("/api/workbench/view", {});
+  const response = await api_fetch<LaboratoryRevisionsResponse>("/api/workbench/snapshot", {});
   return response.sectionRevisions ?? {};
 }
 

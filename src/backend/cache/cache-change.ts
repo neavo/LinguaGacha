@@ -6,6 +6,9 @@ import type {
   ProjectDataSectionRevisions,
 } from "../../shared/project-event";
 
+/**
+ * CacheItemChange 把项目事件归一成 item 缓存可执行的三种更新模式。
+ */
 export type CacheItemChange =
   | { mode: "keep" }
   | { mode: "full"; reason: "invalidated" | "missing-range" | "full-scope" }
@@ -17,8 +20,14 @@ export type CacheItemChange =
       sourcePayloadMode: "canonical-delta" | "field-patch";
     };
 
+/**
+ * CacheBlockChange 表示 meta block 缓存保留或整体重建。
+ */
 export type CacheBlockChange = { mode: "keep" } | { mode: "full" };
 
+/**
+ * CacheChange 是 CacheManager 对项目事件的内部执行计划。
+ */
 export type CacheChange = {
   eventType: ProjectEventType;
   projectPath: string;
@@ -34,9 +43,14 @@ export type CacheChange = {
   analysis: CacheBlockChange;
 };
 
+// KEEP 表示对应缓存块保持现状。
 const KEEP: CacheBlockChange = { mode: "keep" };
+// FULL 表示对应缓存块需要完整重建。
 const FULL: CacheBlockChange = { mode: "full" };
 
+/**
+ * 将项目事件转换为缓存模块可消费的更新计划。
+ */
 export function create_cache_change(event: ProjectEvent): CacheChange {
   const base = {
     eventType: event.type,
@@ -74,6 +88,9 @@ export function create_cache_change(event: ProjectEvent): CacheChange {
   };
 }
 
+/**
+ * 解析 item 事件载荷，决定可局部更新还是需要完整重建。
+ */
 function resolve_item_change(
   payload: ProjectChangeItemsPayload | undefined,
   scope: "items-partial" | "items-full" | undefined,
@@ -117,14 +134,23 @@ function resolve_item_change(
   };
 }
 
+/**
+ * 判断事件是否影响指定项目数据分区。
+ */
 function affects_section(sections: ProjectDataSection[], section: ProjectDataSection): boolean {
   return sections.includes(section);
 }
 
+/**
+ * 字段 patch 必须至少包含一个可写字段，空 patch 会退回完整重建。
+ */
 function has_item_field_patch(patch: ProjectChangeItemFieldPatch | null): boolean {
   return patch !== null && Object.keys(patch).length > 0;
 }
 
+/**
+ * 将事件中的数字或字符串 id 归一成去重后的正整数列表。
+ */
 function normalize_item_ids(values: Array<number | string>): number[] {
   const ids = new Set<number>();
   for (const value of values) {

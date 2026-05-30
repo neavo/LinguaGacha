@@ -221,7 +221,7 @@ const DEFAULT_PRESET_SETTING_SPECS: DefaultPresetSettingSpec[] = [
 ];
 
 /**
- * 提取路径片段供派生逻辑复用。
+ * 提取路径片段供计算逻辑复用。
  */
 function extract_file_name(file_path: string): string {
   const normalized_segments = file_path.split(/[\\/]+/u);
@@ -229,14 +229,14 @@ function extract_file_name(file_path: string): string {
 }
 
 /**
- * 提取路径片段供派生逻辑复用。
+ * 提取路径片段供计算逻辑复用。
  */
 function extract_stem(file_name: string): string {
   return file_name.replace(/\.[^.]+$/u, "");
 }
 
 /**
- * 提取路径片段供派生逻辑复用。
+ * 提取路径片段供计算逻辑复用。
  */
 function extract_parent_dir(file_path: string): string {
   const normalized_index = Math.max(file_path.lastIndexOf("/"), file_path.lastIndexOf("\\"));
