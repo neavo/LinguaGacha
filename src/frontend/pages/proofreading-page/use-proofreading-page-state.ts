@@ -70,10 +70,10 @@ const PROOFREADING_REQUIRED_SECTIONS: ProjectDataSection[] = [
   "quality",
   "proofreading",
 ];
-// PROOFREADING_SORT_COLUMN_IDS 是 session 恢复排序的白名单，避免旧列 id 进入列表查询。
+// session 恢复排序的白名单，避免旧列 id 进入列表查询。
 const PROOFREADING_SORT_COLUMN_IDS = new Set(["src", "dst", "status"]);
 
-// ProofreadingFilterChoice 区分“跟随后端默认值”和“用户显式选择”，保留跨 sync 的筛选语义。
+// 区分“跟随后端默认值”和“用户显式选择”，保留跨 sync 的筛选语义。
 type ProofreadingFilterChoice<T> =
   | {
       mode: "default";
@@ -83,7 +83,7 @@ type ProofreadingFilterChoice<T> =
       values: T[];
     };
 
-// ProofreadingFilterSelection 保存用户筛选意图，默认模式会随最新 sync 默认筛选展开。
+// 保存用户筛选意图，默认模式会随最新 sync 默认筛选展开。
 type ProofreadingFilterSelection = {
   warning_types: ProofreadingFilterChoice<string>;
   statuses: ProofreadingFilterChoice<string>;
@@ -92,7 +92,7 @@ type ProofreadingFilterSelection = {
   include_without_glossary_miss: boolean;
 };
 
-// ProofreadingViewFilterState 是校对页登记到 session UI state 的轻量查询状态。
+// 校对页登记到 session UI state 的轻量查询状态。
 type ProofreadingViewFilterState = {
   selection: ProofreadingFilterSelection;
   search_keyword: string;
@@ -100,13 +100,13 @@ type ProofreadingViewFilterState = {
   is_regex: boolean;
 };
 
-// ProofreadingListWindowBounds 记录当前预取窗口，供 delta 刷新复用同一视觉范围。
+// 记录当前预取窗口，供 delta 刷新复用同一视觉范围。
 type ProofreadingListWindowBounds = {
   start: number;
   count: number;
 };
 
-// clone_app_table_sort_state 切断 session 快照引用，避免页面排序对象被外部复用。
+// 切断 session 快照引用，避免页面排序对象被外部复用。
 function clone_app_table_sort_state(
   sort_state: AppTableSortState | null,
 ): AppTableSortState | null {
@@ -118,7 +118,7 @@ function clone_app_table_sort_state(
       };
 }
 
-// normalize_proofreading_sort_state 在 session 边界收窄排序状态，坏状态统一回到默认排序。
+// 在 session 边界收窄排序状态，坏状态统一回到默认排序。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -132,14 +132,14 @@ function normalize_proofreading_sort_state(
   return clone_app_table_sort_state(sort_state);
 }
 
-// create_default_filter_choice 表示该维度跟随后端当前 defaultFilters。
+// 该维度跟随后端当前 defaultFilters。
 function create_default_filter_choice<T>(): ProofreadingFilterChoice<T> {
   return {
     mode: "default",
   };
 }
 
-// create_selected_filter_choice 固化用户显式选择，并通过 clone_value 切断外部引用。
+// 固化用户显式选择，并通过 clone_value 切断外部引用。
 function create_selected_filter_choice<T>(
   values: T[],
   clone_value: (value: T) => T,
@@ -150,7 +150,7 @@ function create_selected_filter_choice<T>(
   };
 }
 
-// clone_filter_choice 复制筛选维度意图，避免 session 快照和页面状态共享数组。
+// 复制筛选维度意图，避免 session 快照和页面状态共享数组。
 function clone_filter_choice<T>(
   choice: ProofreadingFilterChoice<T>,
   clone_value: (value: T) => T,
@@ -162,7 +162,7 @@ function clone_filter_choice<T>(
   return create_selected_filter_choice(choice.values, clone_value);
 }
 
-// materialize_filter_choice 把默认或显式选择展开成后端 query 可消费的具体值。
+// 把默认或显式选择展开成后端 query 可消费的具体值。
 function materialize_filter_choice<T>(
   choice: ProofreadingFilterChoice<T>,
   default_values: T[],
@@ -172,12 +172,12 @@ function materialize_filter_choice<T>(
   return source_values.map((value) => clone_value(value));
 }
 
-// clone_glossary_term 复制只读 tuple，避免术语筛选被外部数组改写污染。
+// 复制只读 tuple，避免术语筛选被外部数组改写污染。
 function clone_glossary_term(term: ProofreadingGlossaryTerm): ProofreadingGlossaryTerm {
   return [term[0], term[1]] as const;
 }
 
-// create_default_proofreading_filter_selection 生成随 sync 默认筛选漂移的筛选意图。
+// 生成随 sync 默认筛选漂移的筛选意图。
 function create_default_proofreading_filter_selection(
   default_filters: ProofreadingFilterOptions = create_empty_filter_options(),
 ): ProofreadingFilterSelection {
@@ -190,7 +190,7 @@ function create_default_proofreading_filter_selection(
   };
 }
 
-// create_selected_proofreading_filter_selection 把筛选弹窗确认结果固化为用户显式意图。
+// 把筛选弹窗确认结果固化为用户显式意图。
 function create_selected_proofreading_filter_selection(
   filters: ProofreadingFilterOptions,
 ): ProofreadingFilterSelection {
@@ -203,7 +203,7 @@ function create_selected_proofreading_filter_selection(
   };
 }
 
-// clone_proofreading_filter_selection 复制完整筛选意图，保证 session 恢复不会持有页面引用。
+// 复制完整筛选意图，保证 session 恢复不会持有页面引用。
 function clone_proofreading_filter_selection(
   selection: ProofreadingFilterSelection,
 ): ProofreadingFilterSelection {
@@ -216,7 +216,7 @@ function clone_proofreading_filter_selection(
   };
 }
 
-// materialize_proofreading_filters 在每次 sync 后用最新 defaultFilters 展开当前筛选意图。
+// 在每次 sync 后用最新 defaultFilters 展开当前筛选意图。
 function materialize_proofreading_filters(
   selection: ProofreadingFilterSelection,
   default_filters: ProofreadingFilterOptions,
@@ -244,7 +244,7 @@ function materialize_proofreading_filters(
   };
 }
 
-// create_empty_proofreading_view_filter_state 提供校对页 session UI state 的初始查询状态。
+// 提供校对页 session UI state 的初始查询状态。
 function create_empty_proofreading_view_filter_state(): ProofreadingViewFilterState {
   return {
     selection: create_default_proofreading_filter_selection(),
@@ -254,7 +254,7 @@ function create_empty_proofreading_view_filter_state(): ProofreadingViewFilterSt
   };
 }
 
-// clone_proofreading_view_filter_state 复制 session 查询状态，隔离跨路由恢复快照。
+// 复制 session 查询状态，隔离跨路由恢复快照。
 function clone_proofreading_view_filter_state(
   filter_state: ProofreadingViewFilterState,
 ): ProofreadingViewFilterState {
@@ -266,7 +266,7 @@ function clone_proofreading_view_filter_state(
   };
 }
 
-// create_proofreading_view_filter_state 合并局部 patch 后统一克隆，避免调用点漏切引用。
+// 合并局部 patch 后统一克隆，避免调用点漏切引用。
 function create_proofreading_view_filter_state(args: {
   selection: ProofreadingFilterSelection;
   search_keyword: string;
@@ -368,7 +368,6 @@ function is_stale_proofreading_list_error(_error: unknown): boolean {
   return false;
 }
 
-// create_empty_filter_options 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -382,7 +381,6 @@ function create_empty_filter_options(): ProofreadingFilterOptions {
   };
 }
 
-// create_empty_dialog_state 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -395,7 +393,6 @@ function create_empty_dialog_state(): ProofreadingDialogState {
   };
 }
 
-// serialize_glossary_terms 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function serialize_glossary_terms(glossary_terms: ProofreadingGlossaryTerm[]): string[][] {
   return glossary_terms.map((term) => [term[0], term[1]]);
 }
@@ -453,7 +450,6 @@ function replace_first_visible_match(
   };
 }
 
-// build_filter_signature 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -471,7 +467,7 @@ function build_filter_signature(filters: ProofreadingFilterOptions): string {
   });
 }
 
-// resolve_prefetched_list_window_bounds 按当前可见范围扩展预取窗口，减少滚动边缘二次请求。
+// 按当前可见范围扩展预取窗口，减少滚动边缘二次请求。
 function resolve_prefetched_list_window_bounds(args: {
   range: ProofreadingListWindowBounds;
   row_count: number;
@@ -488,7 +484,7 @@ function resolve_prefetched_list_window_bounds(args: {
   };
 }
 
-// resolve_list_view_window_bounds 记录当前列表窗口，供项目刷新维持同一可见范围。
+// 记录当前列表窗口，供项目刷新维持同一可见范围。
 function resolve_list_view_window_bounds(
   list_view: ProofreadingListView,
 ): ProofreadingListWindowBounds {
@@ -498,7 +494,7 @@ function resolve_list_view_window_bounds(
   };
 }
 
-// build_refreshed_proofreading_list_view 复用旧 view id，只替换 sync 后的行内容和 revision。
+// 复用旧 view id，只替换 sync 后的行内容和 revision。
 function build_refreshed_proofreading_list_view(args: {
   previous_view: ProofreadingListView;
   sync_state: ProofreadingSyncState;
@@ -518,7 +514,7 @@ function build_refreshed_proofreading_list_view(args: {
   };
 }
 
-// is_missing_refreshed_list_window 识别后端旧 view 失效时返回的空窗口，触发完整重建。
+// 识别后端旧 view 失效时返回的空窗口，触发完整重建。
 function is_missing_refreshed_list_window(args: {
   previous_view: ProofreadingListView;
   window: ProofreadingListWindow;
@@ -528,7 +524,6 @@ function is_missing_refreshed_list_window(args: {
   );
 }
 
-// build_sort_signature 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -536,7 +531,6 @@ function build_sort_signature(sort_state: AppTableSortState | null): string {
   return sort_state === null ? "null" : `${sort_state.column_id}:${sort_state.direction}`;
 }
 
-// build_list_query_signature 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -562,7 +556,7 @@ function build_list_query_signature(args: {
   });
 }
 
-// build_sync_list_query_signature 用 sync revision 和查询参数判断旧 view 是否仍匹配当前 UI。
+// 用 sync revision 和查询参数判断旧 view 是否仍匹配当前 UI。
 function build_sync_list_query_signature(args: {
   sync_state: ProofreadingSyncState;
   query: ProofreadingListQueryInput;
@@ -577,7 +571,6 @@ function build_sync_list_query_signature(args: {
   });
 }
 
-// build_filter_panel_signature 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -595,7 +588,6 @@ function build_filter_panel_signature(args: {
   });
 }
 
-// resolve_requested_sync_mode 集中解析运行时决策，避免调用点复制条件判断。
 /**
  * 解析当前场景的最终消费值。
  */
@@ -711,7 +703,6 @@ function normalize_refresh_item_ids(values: Array<number | string>): number[] {
   return [...ids];
 }
 
-// useProofreadingPageState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const { t } = useI18n();
   const { dismiss_toast, push_progress_toast, push_toast } = useDesktopToast();
@@ -735,7 +726,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     clone_filter_state: clone_proofreading_view_filter_state,
     normalize_sort_state: normalize_proofreading_sort_state,
   });
-  // defaultFiltersRef 保存后端当前默认筛选，current_filters 每次渲染按 session 意图即时展开。
+  // 保存后端当前默认筛选，current_filters 每次渲染按 session 意图即时展开。
   const defaultFiltersRef = useRef(create_empty_filter_options());
   const current_filters = materialize_proofreading_filters(
     table_ui_state.filter_state.selection,
@@ -791,9 +782,9 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const filter_dialog_filters_ref = useRef(filter_dialog_filters);
   const sync_state_ref = useRef<ProofreadingSyncState | null>(null);
   const proofreading_runtime_client_ref = useRef(createProofreadingApiClient());
-  // visible_range_ref 记录 AppTable 最新可见范围，delta 刷新优先复用这个窗口。
+  // 记录 AppTable 最新可见范围，delta 刷新优先复用这个窗口。
   const visible_range_ref = useRef<ProofreadingListWindowBounds | null>(null);
-  // list_window_bounds_ref 保存当前已预取窗口，首屏刷新时没有可见范围也能复用。
+  // 保存当前已预取窗口，首屏刷新时没有可见范围也能复用。
   const list_window_bounds_ref = useRef<ProofreadingListWindowBounds>({
     start: 0,
     count: PROOFREADING_INITIAL_WINDOW_ROWS,
@@ -803,33 +794,33 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const replace_cursor_ref = useRef(0);
   const pending_replace_cursor_ref = useRef<number | null>(null);
   const filter_dialog_open_ref = useRef(filter_dialog_open);
-  // preserve_scroll_anchor_revision_ref 给每次刷新锚点发布单调版本，避免 AppTable 重复消费。
+  // 给每次刷新锚点发布单调版本，避免 AppTable 重复消费。
   const preserve_scroll_anchor_revision_ref = useRef(0);
-  // pending_reset_filters_ref 标记项目身份切换后的首轮 sync 需要回到最新默认筛选。
+  // 标记项目身份切换后的首轮 sync 需要回到最新默认筛选。
   const pending_reset_filters_ref = useRef(false);
   const previous_project_loaded_ref = useRef(false);
   const previous_project_path_ref = useRef("");
-  // restored_ui_state_ref 标记本轮进入页面是否来自 session 恢复，决定是否套用默认筛选。
+  // 标记本轮进入页面是否来自 session 恢复，决定是否套用默认筛选。
   const restored_ui_state_ref = useRef(table_ui_state.initial_ui_state !== null);
-  // loading_toast_id_ref 记录当前模态 loading toast，确保刷新结束和卸载时能精确关闭。
+  // 记录当前模态 loading toast，确保刷新结束和卸载时能精确关闭。
   const loading_toast_id_ref = useRef<ReturnType<typeof push_progress_toast> | null>(null);
   const [loading_toast_visible, set_loading_toast_visible] = useState(false);
   // refresh_retry_nonce 用递增信号触发当前过期同步的一次性重试。
   const [refresh_retry_nonce, set_refresh_retry_nonce] = useState(0);
-  // consumed_refresh_retry_nonce_ref 记录已消费的重试信号，避免 effect 因 refresh_snapshot 身份变化重复执行。
+  // 记录已消费的重试信号，避免 effect 因 refresh_snapshot 身份变化重复执行。
   const consumed_refresh_retry_nonce_ref = useRef(0);
   const previous_proofreading_change_seq_ref = useRef(0);
   const proofreading_change_signal = useMemo(
     () => resolve_proofreading_refresh_signal(project_change_signal),
     [project_change_signal],
   );
-  // last_list_query_signature_ref 去重等价列表 query，并在 delta 复用旧 view 时校验查询身份。
+  // 去重等价列表 query，并在 delta 复用旧 view 时校验查询身份。
   const last_list_query_signature_ref = useRef("");
-  // last_filter_panel_signature_ref 避免同一 revision 和筛选参数重复请求筛选面板。
+  // 避免同一 revision 和筛选参数重复请求筛选面板。
   const last_filter_panel_signature_ref = useRef("");
-  // last_visible_range_signature_ref 避免虚拟列表重复读取同一预取窗口。
+  // 避免虚拟列表重复读取同一预取窗口。
   const last_visible_range_signature_ref = useRef("");
-  // list_view_ref 给异步刷新路径读取最新 view，避免闭包里的旧 state 覆盖新列表。
+  // 给异步刷新路径读取最新 view，避免闭包里的旧 state 覆盖新列表。
   const list_view_ref = useRef(list_view);
   const [dialog_item_snapshot, set_dialog_item_snapshot] = useState<ProofreadingItem | null>(null);
 

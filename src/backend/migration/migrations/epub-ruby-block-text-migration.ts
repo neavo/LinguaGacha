@@ -34,7 +34,7 @@ export const epub_ruby_block_text_migration: MigrationDescriptor = {
  * 负责在项目打开期把旧 EPUB ruby item 重建为当前 block_text item，并迁移用户事实。
  */
 export class EpubRubyBlockTextMigration {
-  private readonly ast = new EpubAst(); // ast 使用当前 EPUB reader 契约重建 item，迁移不复制旧解析规则
+  private readonly ast = new EpubAst(); // 使用当前 EPUB reader 契约重建 item，迁移不复制旧解析规则
 
   /**
    * database 是 `.lg` 唯一读写入口；本类只读取快照并生成 operation。

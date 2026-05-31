@@ -1,7 +1,7 @@
-// PROOFREADING_NO_WARNING_CODE 是筛选面板表示“无警告”的虚拟 warning。
+// 筛选面板表示“无警告”的虚拟 warning。
 export const PROOFREADING_NO_WARNING_CODE = "NO_WARNING" as const;
 
-// PROOFREADING_WARNING_CODES 固定警告筛选的默认展示顺序。
+// 固定警告筛选的默认展示顺序。
 export const PROOFREADING_WARNING_CODES = [
   PROOFREADING_NO_WARNING_CODE,
   "KANA",
@@ -14,10 +14,10 @@ export const PROOFREADING_WARNING_CODES = [
 
 const PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES = ["NONE", "PROCESSED", "ERROR"] as const;
 
-// PROOFREADING_MANUAL_STATUS_CODES 是设置翻译状态菜单的唯一状态词表。
+// 设置翻译状态菜单的唯一状态词表。
 export const PROOFREADING_MANUAL_STATUS_CODES = ["NONE", "PROCESSED", "EXCLUDED"] as const;
 
-// PROOFREADING_STATUS_ORDER 同时服务排序和默认状态筛选。
+// 同时服务排序和默认状态筛选。
 export const PROOFREADING_STATUS_ORDER = [
   "NONE",
   "PROCESSED",
@@ -28,7 +28,7 @@ export const PROOFREADING_STATUS_ORDER = [
   "DUPLICATED",
 ] as const;
 
-// PROOFREADING_STATUS_LABEL_KEY_BY_CODE 是状态码到 i18n key 的公开映射。
+// 状态码到 i18n key 的公开映射。
 export const PROOFREADING_STATUS_LABEL_KEY_BY_CODE = {
   NONE: "proofreading_page.status.none",
   PROCESSED: "proofreading_page.status.processed",
@@ -41,7 +41,7 @@ export const PROOFREADING_STATUS_LABEL_KEY_BY_CODE = {
 
 export type ProofreadingManualStatusCode = (typeof PROOFREADING_MANUAL_STATUS_CODES)[number];
 
-// PROOFREADING_WARNING_LABEL_KEY_BY_CODE 是警告码到 i18n key 的公开映射。
+// 警告码到 i18n key 的公开映射。
 export const PROOFREADING_WARNING_LABEL_KEY_BY_CODE = {
   KANA: "proofreading_page.warning.kana",
   HANGEUL: "proofreading_page.warning.hangeul",

@@ -6,12 +6,11 @@ const MAIN_LOG_LEVEL = "MAIN";
 // LOG LEVEL COLUMN WIDTH 是运行时节流或容量阈值，集中保存便于评估性能影响。
 const LOG_LEVEL_COLUMN_WIDTH = 8;
 
-// pad_time_unit 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function pad_time_unit(value: number): string {
   return value.toString().padStart(2, "0");
 }
 
-// format_bootstrap_log 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
+// 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
 export function format_bootstrap_log(message: string, date: Date = new Date()): string {
   const hours = pad_time_unit(date.getHours());
   const minutes = pad_time_unit(date.getMinutes());
@@ -20,7 +19,6 @@ export function format_bootstrap_log(message: string, date: Date = new Date()): 
   return `[${hours}:${minutes}:${seconds}] ${level} ${message}`;
 }
 
-// write_bootstrap_log 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function write_bootstrap_log(message: string): void {
   const log_manager = get_electron_main_log_manager();
   if (log_manager === null) {

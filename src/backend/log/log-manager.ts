@@ -82,7 +82,7 @@ export class LogManager {
   private readonly now: NowProvider;
   private readonly console_writer: ConsoleWriter;
   private readonly file_writer: FileLogWriter;
-  private readonly native_fs: NativeFs; // native_fs 统一日志目录创建、追加和旧日志清理
+  private readonly native_fs: NativeFs; // 统一日志目录创建、追加和旧日志清理
   private readonly events: LogEvent[] = [];
   private readonly details = new Map<string, LogDetail>(); // 详情池只保留当前进程最近窗口容量内的完整正文
   private readonly subscribers = new Set<LogSubscriber>();
@@ -402,7 +402,7 @@ interface DailyLogFileWriterOptions {
 class DailyLogFileWriter implements FileLogWriter {
   private readonly log_dir: string;
   private readonly now: NowProvider;
-  private readonly native_fs: NativeFs; // native_fs 负责当前日志写入和保留策略清理
+  private readonly native_fs: NativeFs; // 负责当前日志写入和保留策略清理
   private last_cleanup_date_key: string | null = null; // 同一天只清理一次旧日志，减少目录扫描
 
   public constructor(options: DailyLogFileWriterOptions) {

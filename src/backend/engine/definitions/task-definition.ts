@@ -7,15 +7,15 @@ import type { MutableJsonRecord } from "../run/task-run-types";
 
 export type TaskPlan = {
   task_type: TaskType; // plan 固定归属任务类型，避免跨任务 unit 混入同一轮执行
-  progress: MutableJsonRecord; // progress 是 Engine 可累积进度初值，不承载任务差异字段
-  units: WorkUnit[]; // units 是 worker execute_unit 的完整输入队列
+  progress: MutableJsonRecord; // Engine 可累积进度初值，不承载任务差异字段
+  units: WorkUnit[]; // worker execute_unit 的完整输入队列
 };
 
 export type WorkerResultInterpretation = {
-  retry_units: WorkUnit[]; // retry_units 只包含可安全重试的原 unit 或拆分 unit
-  artifacts: TaskArtifact[]; // artifacts 是结果事实，不允许夹带数据库操作
-  progress_delta: MutableJsonRecord; // progress_delta 只描述本次 result 对进度的增量
-  terminal_error: Error | null; // terminal_error 表示本任务已无法继续，而不是单 unit 失败
+  retry_units: WorkUnit[]; // 只包含可安全重试的原 unit 或拆分 unit
+  artifacts: TaskArtifact[]; // 结果事实，不允许夹带数据库操作
+  progress_delta: MutableJsonRecord; // 只描述本次 result 对进度的增量
+  terminal_error: Error | null; // 本任务已无法继续，而不是单 unit 失败
 };
 
 /**

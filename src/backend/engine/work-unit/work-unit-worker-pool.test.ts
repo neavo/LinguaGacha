@@ -9,7 +9,7 @@ import { LLMClient } from "../../llm/llm-client";
 import { WorkUnitWorkerPool } from "./work-unit-worker-pool";
 import { RuntimeCancelledError, RuntimeDisposedError } from "../../../shared/error";
 
-const cleanup_roots: string[] = []; // cleanup_roots 记录测试创建的临时 appRoot 和 worker 文件目录
+const cleanup_roots: string[] = []; // 记录测试创建的临时 appRoot 和 worker 文件目录
 
 describe("WorkUnitWorkerPool", () => {
   afterEach(async () => {

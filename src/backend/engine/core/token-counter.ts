@@ -28,8 +28,8 @@ export interface TokenCounterEncoder {
  * 带短文本 LRU 的 token 计数器，缓存生命周期跟随 TaskEngine 运行实例
  */
 export class CachedTokenCounter implements TokenCounter {
-  private readonly encoder: TokenCounterEncoder; // encoder 是唯一真实计数来源，缓存只复用它的历史结果
-  private readonly cache = new Map<string, number>(); // cache 用 Map 插入顺序表达 LRU，不把状态写入 item 对象
+  private readonly encoder: TokenCounterEncoder; // 唯一真实计数来源，缓存只复用它的历史结果
+  private readonly cache = new Map<string, number>(); // 用 Map 插入顺序表达 LRU，不把状态写入 item 对象
 
   /**
    * 注入底层 tokenizer，生产路径使用 o200k_base，测试路径使用可观察假 encoder
@@ -45,12 +45,12 @@ export class CachedTokenCounter implements TokenCounter {
     if (!this.is_cacheable_text(text)) {
       return this.count_uncached(text);
     }
-    const cached_count = this.cache.get(text); // cached_count 使用 undefined 区分未命中，0 token 空字符串仍可缓存
+    const cached_count = this.cache.get(text); // 使用 undefined 区分未命中，0 token 空字符串仍可缓存
     if (cached_count !== undefined) {
       this.refresh_cache_entry(text, cached_count);
       return cached_count;
     }
-    const token_count = this.count_uncached(text); // token_count 是写入 LRU 的唯一值，后续命中不重新编码
+    const token_count = this.count_uncached(text); // 写入 LRU 的唯一值，后续命中不重新编码
     this.cache.set(text, token_count);
     this.evict_overflow();
     return token_count;
@@ -85,7 +85,7 @@ export class CachedTokenCounter implements TokenCounter {
     if (this.cache.size <= TOKEN_COUNTER_CACHE_CAPACITY) {
       return;
     }
-    const oldest_key = this.cache.keys().next().value; // oldest_key 来自 Map 插入顺序，代表当前 LRU 队首
+    const oldest_key = this.cache.keys().next().value; // 来自 Map 插入顺序，代表当前 LRU 队首
     if (oldest_key !== undefined) {
       this.cache.delete(oldest_key);
     }
@@ -96,7 +96,7 @@ export class CachedTokenCounter implements TokenCounter {
  * o200k_base tokenizer 适配器，统一把特殊 token 字面量当作普通源文本处理
  */
 class O200kBaseTokenEncoder implements TokenCounterEncoder {
-  private readonly tokenizer = new Tiktoken(o200k_base); // tokenizer 是生产真实计数器，特殊 token 策略只在本适配器收口
+  private readonly tokenizer = new Tiktoken(o200k_base); // 生产真实计数器，特殊 token 策略只在本适配器收口
 
   /**
    * 禁止特殊 token 解析和禁止列表，让 `<|...|>` 片段按普通文本计数而不是抛错

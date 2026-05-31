@@ -145,7 +145,7 @@ vi.mock("@frontend/pages/workbench-page/components/workbench-task-detail-sheet",
   };
 });
 
-// create_workbench_state_fixture 构造工作台页面壳消费的最小状态和命令句柄。
+// 构造工作台页面壳消费的最小状态和命令句柄。
 function create_workbench_state_fixture(): WorkbenchStateFixture {
   return {
     active_entry_id: null,

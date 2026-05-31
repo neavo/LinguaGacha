@@ -85,7 +85,6 @@ type WorkbenchQueryResponse = {
   snapshot: WorkbenchSnapshot;
 };
 
-// map_snapshot_entries 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function map_snapshot_entries(entries: WorkbenchSnapshotEntry[]): WorkbenchFileEntry[] {
   return entries.map((entry) => ({ ...entry }));
 }
@@ -96,7 +95,6 @@ type WorkbenchSelectionState = {
   anchor_entry_id: string | null;
 };
 
-// create_empty_selection_state 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -108,7 +106,6 @@ function create_empty_selection_state(): WorkbenchSelectionState {
   };
 }
 
-// dedupe_workbench_entry_ids 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -116,7 +113,6 @@ function dedupe_workbench_entry_ids(entry_ids: string[]): string[] {
   return Array.from(new Set(entry_ids));
 }
 
-// are_workbench_entry_ids_equal 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function are_workbench_entry_ids_equal(
   left_entry_ids: string[],
   right_entry_ids: string[],
@@ -130,7 +126,6 @@ function are_workbench_entry_ids_equal(
   });
 }
 
-// select_after_snapshot 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 /**
  * 选择当前场景的目标项。
  */
@@ -163,7 +158,7 @@ function select_after_snapshot(
   return next_entries[0]?.rel_path ?? null;
 }
 
-// normalize_workbench_selection_state 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -195,7 +190,6 @@ function normalize_workbench_selection_state(
   };
 }
 
-// resolve_workbench_selection_after_snapshot 集中解析运行时决策，避免调用点复制条件判断。
 /**
  * 解析当前场景的最终消费值。
  */
@@ -247,7 +241,6 @@ function resolve_workbench_selection_after_snapshot(args: {
   };
 }
 
-// is_workbench_task_kind 集中表达布尔判定口径，避免调用方按局部字段猜测。
 /**
  * 判断当前值是否满足业务条件。
  */
@@ -255,7 +248,6 @@ function is_workbench_task_kind(value: string): value is WorkbenchTaskKind {
   return value === "translation" || value === "analysis";
 }
 
-// resolve_active_workbench_task_kind 集中解析运行时决策，避免调用点复制条件判断。
 /**
  * 解析当前场景的最终消费值。
  */
@@ -295,7 +287,7 @@ function resolve_active_workbench_task_kind(args: {
   return null;
 }
 
-// format_duration_value 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
+// 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
 /**
  * 生成当前场景的展示内容。
  */
@@ -324,7 +316,7 @@ function format_duration_value(
   };
 }
 
-// format_compact_metric_value 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
+// 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
 /**
  * 生成当前场景的展示内容。
  */
@@ -352,7 +344,7 @@ function format_compact_metric_value(
   };
 }
 
-// format_speed_value 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
+// 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
 /**
  * 生成当前场景的展示内容。
  */
@@ -372,7 +364,7 @@ function format_speed_value(
   };
 }
 
-// format_summary_speed 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
+// 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
 /**
  * 生成当前场景的展示内容。
  */
@@ -381,7 +373,6 @@ function format_summary_speed(value: number): string {
   return `${metric_value.value_text} ${metric_value.unit_text}`;
 }
 
-// resolve_task_tone 集中解析运行时决策，避免调用点复制条件判断。
 /**
  * 解析当前场景的最终消费值。
  */
@@ -401,7 +392,6 @@ function resolve_task_tone(args: {
   return "neutral";
 }
 
-// resolve_percent_tone 集中解析运行时决策，避免调用点复制条件判断。
 /**
  * 解析当前场景的最终消费值。
  */
@@ -414,7 +404,6 @@ function resolve_percent_tone(
   });
 }
 
-// build_translation_task_metric_entries 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -456,7 +445,6 @@ function build_translation_task_metric_entries(
   ];
 }
 
-// build_analysis_task_metric_entries 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -503,7 +491,6 @@ function build_analysis_task_metric_entries(
   ];
 }
 
-// build_empty_task_summary_display 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -519,7 +506,6 @@ function build_empty_task_summary_display(
   };
 }
 
-// build_translation_task_summary_display 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -548,7 +534,6 @@ function build_translation_task_summary_display(
   };
 }
 
-// build_analysis_task_summary_display 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -576,7 +561,6 @@ function build_analysis_task_summary_display(
   };
 }
 
-// resolve_task_detail_progress_percent 集中解析运行时决策，避免调用点复制条件判断。
 /**
  * 解析当前场景的最终消费值。
  */
@@ -593,7 +577,6 @@ function resolve_task_detail_progress_percent(args: {
     : args.workbench_stats.completion_percent;
 }
 
-// build_translation_task_detail_display 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -619,7 +602,6 @@ function build_translation_task_detail_display(args: {
   };
 }
 
-// build_analysis_task_detail_display 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -695,7 +677,6 @@ type UseWorkbenchPageStateOptions = {
   analysisWorkbenchTask: AnalysisWorkbenchTask; // 页面只消费任务状态，不拥有任务完成意图
 };
 
-// useWorkbenchPageState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useWorkbenchPageState(
   options: UseWorkbenchPageStateOptions,
 ): UseWorkbenchPageStateResult {
@@ -1272,7 +1253,6 @@ export function useWorkbenchPageState(
     await request_add_files_from_paths(result.paths);
   }
 
-  // notify_add_file_drop_issue 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   /**
    * 触发当前界面反馈行为。
    */
@@ -1283,7 +1263,6 @@ export function useWorkbenchPageState(
     );
   }
 
-  // request_generate_translation 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   function request_generate_translation(): void {
     if (!can_generate_translation) {
       return;
@@ -1297,7 +1276,6 @@ export function useWorkbenchPageState(
     });
   }
 
-  // request_close_project 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   function request_close_project(): void {
     set_dialog_state({
       kind: "close-project",
@@ -1307,7 +1285,6 @@ export function useWorkbenchPageState(
     });
   }
 
-  // request_reset_file 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   function request_reset_file(entry_id: string): void {
     set_dialog_state({
       kind: "reset-file",
@@ -1317,7 +1294,6 @@ export function useWorkbenchPageState(
     });
   }
 
-  // request_delete_selected_files 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   function request_delete_selected_files(): void {
     request_delete_entries(selection_state_ref.current.selected_entry_ids);
   }
@@ -1467,7 +1443,6 @@ export function useWorkbenchPageState(
     set_dialog_state(close_dialog_state());
   }
 
-  // close_dialog 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   /**
    * 切换当前交互状态。
    */

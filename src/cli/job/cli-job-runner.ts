@@ -20,8 +20,8 @@ export async function run_cli_job(
   options: CLIJobRunOptions,
 ): Promise<void> {
   options.statusReporter.emit_started();
-  let temp_project: CLITempProject | null = null; // temp_project 只有成功创建后才需要卸载工程和删目录
-  let transient_overrides_active = false; // transient_overrides_active 防止输入校验失败时写入多余撤销调用
+  let temp_project: CLITempProject | null = null; // 只有成功创建后才需要卸载工程和删目录
+  let transient_overrides_active = false; // 防止输入校验失败时写入多余撤销调用
 
   try {
     assert_existing_inputs(command);
@@ -163,8 +163,8 @@ function create_task_event_waiter(
   task_type: TaskType,
   options: CLIJobRunOptions,
 ): { wait: () => Promise<void>; dispose: () => void } {
-  let resolve_wait: (() => void) | null = null; // resolve_wait 由终态 done 事件触发
-  let reject_wait: ((error: Error) => void) | null = null; // reject_wait 由终态 error 事件触发
+  let resolve_wait: (() => void) | null = null; // 由终态 done 事件触发
+  let reject_wait: ((error: Error) => void) | null = null; // 由终态 error 事件触发
   const wait_promise = new Promise<void>((resolve, reject) => {
     resolve_wait = resolve;
     reject_wait = reject;

@@ -17,7 +17,6 @@ const { api_fetch_mock, push_toast_mock, page_ui_state_store } = vi.hoisted(() =
   };
 });
 
-// create_default_glossary_entries 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -32,7 +31,6 @@ function create_default_glossary_entries(): GlossaryEntry[] {
   ];
 }
 
-// create_test_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -143,7 +141,6 @@ const project_store = {
 
 const project_store_listeners = new Set<() => void>();
 
-// apply_quality_write_result 收口测试中的共享步骤，保证断言只关注当前行为。
 /**
  * 写入当前场景的状态变化。
  */
@@ -256,7 +253,6 @@ let current_statistics_cache: QualityRuleStatisticsCacheSnapshot;
 let task_snapshot: { busy: boolean; status: string };
 let project_change_seq = 0;
 
-// notify_project_store_listeners 收口测试中的共享步骤，保证断言只关注当前行为。
 /**
  * 触发当前界面反馈行为。
  */
@@ -267,7 +263,6 @@ function notify_project_store_listeners(): void {
   }
 }
 
-// create_statistics_cache 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -318,7 +313,6 @@ function create_statistics_cache(
   };
 }
 
-// create_statistics_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -626,7 +620,6 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
   };
 });
 
-// Probe 收口测试中的共享步骤，保证断言只关注当前行为。
 function Probe(props: {
   render_version: number;
   on_ready: (state: ReturnType<typeof useGlossaryPageState>) => void;

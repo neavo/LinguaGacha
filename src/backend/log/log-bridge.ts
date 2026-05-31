@@ -14,12 +14,10 @@ export function set_electron_main_log_manager(log_manager: LogManager | null): v
   active_log_manager = log_manager;
 }
 
-// get_electron_main_log_manager 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function get_electron_main_log_manager(): LogManager | null {
   return active_log_manager;
 }
 
-// write_electron_main_warning 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function write_electron_main_warning(
   message: string,
   payload: { error?: unknown; context?: Record<string, unknown> } = {},
@@ -35,7 +33,6 @@ export function write_electron_main_warning(
   });
 }
 
-// write_electron_main_debug 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function write_electron_main_debug(
   message: string,
   payload: { error?: unknown; context?: Record<string, unknown> } = {},
@@ -51,7 +48,6 @@ export function write_electron_main_debug(
   });
 }
 
-// write_electron_main_error 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function write_electron_main_error(
   message: string,
   payload: { error?: unknown; context?: Record<string, unknown> } = {},
@@ -67,7 +63,6 @@ export function write_electron_main_error(
   });
 }
 
-// write_fallback_console_log 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function write_fallback_console_log(
   level: Extract<LogLevel, "debug" | "warning" | "error">,
   message: string,
@@ -89,7 +84,7 @@ function write_fallback_console_log(
   }
 }
 
-// normalize_fallback_error 保持无 LogManager 时的控制台输出与正式写入口一致。
+// 保持无 LogManager 时的控制台输出与正式写入口一致。
 function normalize_fallback_error(payload: {
   error?: unknown;
   context?: Record<string, unknown>;

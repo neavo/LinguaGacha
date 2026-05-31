@@ -80,7 +80,7 @@ type SelectionBoxState = {
   moved: boolean;
 };
 
-// AppTableScrollAlignment 区分普通键盘滚动和 session 恢复滚动的对齐策略。
+// 区分普通键盘滚动和 session 恢复滚动的对齐策略。
 type AppTableScrollAlignment = "nearest" | "start";
 
 type AppTableSortableRowProps<Row> = {
@@ -107,7 +107,7 @@ type AppTableVisibleRange = {
   count: number;
 };
 
-// PendingScrollAnchor 保存刷新前捕获的视觉偏移，等待下一次提交后按新 row index 回填 scrollTop。
+// 保存刷新前捕获的视觉偏移，等待下一次提交后按新 row index 回填 scrollTop。
 type PendingScrollAnchor = {
   row_id: string;
   offset: number;
@@ -485,19 +485,19 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
   const active_row_index_ref = useRef<number | null>(null);
   const anchor_row_index_ref = useRef<number | null>(null);
   const selection_request_epoch_ref = useRef(0);
-  // restore_scroll_request_epoch_ref 让迟到的异步 row index 结果不能覆盖更新后的恢复目标。
+  // 让迟到的异步 row index 结果不能覆盖更新后的恢复目标。
   const restore_scroll_request_epoch_ref = useRef(0);
-  // restored_scroll_row_id_ref 记录已处理目标，避免同一个恢复目标在重渲染时重复滚动。
+  // 记录已处理目标，避免同一个恢复目标在重渲染时重复滚动。
   const restored_scroll_row_id_ref = useRef<string | null>(null);
-  // preserve_scroll_capture_revision_ref 记录已捕获的刷新锚点版本，避免重复捕获同一轮刷新。
+  // 记录已捕获的刷新锚点版本，避免重复捕获同一轮刷新。
   const preserve_scroll_capture_revision_ref = useRef(0);
-  // preserve_scroll_request_epoch_ref 让迟到的异步锚点解析不能覆盖更新后的刷新锚点。
+  // 让迟到的异步锚点解析不能覆盖更新后的刷新锚点。
   const preserve_scroll_request_epoch_ref = useRef(0);
-  // pending_scroll_anchor_ref 在刷新前后两次 layout commit 之间传递滚动偏移。
+  // 在刷新前后两次 layout commit 之间传递滚动偏移。
   const pending_scroll_anchor_ref = useRef<PendingScrollAnchor | null>(null);
-  // layout_commit_id_ref 区分捕获与恢复是否发生在同一次 layout commit。
+  // 区分捕获与恢复是否发生在同一次 layout commit。
   const layout_commit_id_ref = useRef(0);
-  // row_height 是表格虚拟计算的唯一行高来源，CSS 变量和虚拟定位共用它。
+  // 表格虚拟计算的唯一行高来源，CSS 变量和虚拟定位共用它。
   const row_height = row_height_prop ?? APP_TABLE_DEFAULT_ROW_HEIGHT;
   const [viewport_element, set_viewport_element] = useState<HTMLElement | null>(null);
   const [viewport_height, set_viewport_height] = useState(row_height);
@@ -770,7 +770,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     [],
   );
 
-  // capture_scroll_anchor_offset 优先读取已挂载行的真实偏移，未挂载行退回固定行高估算。
+  // 优先读取已挂载行的真实偏移，未挂载行退回固定行高估算。
   const capture_scroll_anchor_offset = useCallback(
     (row_id: string): number | null => {
       if (viewport_element === null) {
@@ -794,7 +794,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     [row_height, row_model, viewport_element],
   );
 
-  // restore_scroll_anchor_offset 按新索引和旧偏移恢复 scrollTop，并限制在虚拟总高度内。
+  // 按新索引和旧偏移恢复 scrollTop，并限制在虚拟总高度内。
   const restore_scroll_anchor_offset = useCallback(
     (row_index: number, captured_offset: number): void => {
       if (viewport_element === null) {

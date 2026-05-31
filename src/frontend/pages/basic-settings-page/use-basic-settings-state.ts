@@ -34,7 +34,6 @@ type UseBasicSettingsStateResult = {
   update_request_timeout: (next_value: number) => Promise<void>;
 };
 
-// create_pending_state 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -48,7 +47,6 @@ function create_pending_state(): SettingPendingState {
   };
 }
 
-// clamp_request_timeout 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -56,7 +54,6 @@ function clamp_request_timeout(next_value: number): number {
   return Math.min(REQUEST_TIMEOUT_MAX, Math.max(REQUEST_TIMEOUT_MIN, next_value));
 }
 
-// useBasicSettingsState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useBasicSettingsState(): UseBasicSettingsStateResult {
   const {
     settings_snapshot,

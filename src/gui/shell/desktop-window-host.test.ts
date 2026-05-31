@@ -13,7 +13,7 @@ import type { RendererProcessDiagnosticsRegistry } from "./renderer-process-diag
 const electron_mock = vi.hoisted(() => {
   type Listener = (...args: unknown[]) => void;
 
-  // FakeDevToolsContents 模拟外部运行时对象，只保留当前测试会触发的行为面。
+  // 模拟外部运行时对象，只保留当前测试会触发的行为面。
   /**
    * 封装当前测试场景的替身对象行为。
    */
@@ -61,7 +61,7 @@ const electron_mock = vi.hoisted(() => {
     }
   }
 
-  // FakeWebContents 模拟外部运行时对象，只保留当前测试会触发的行为面。
+  // 模拟外部运行时对象，只保留当前测试会触发的行为面。
   /**
    * 封装当前测试场景的替身对象行为。
    */
@@ -133,7 +133,7 @@ const electron_mock = vi.hoisted(() => {
     }
   }
 
-  // FakeBrowserWindow 模拟外部运行时对象，只保留当前测试会触发的行为面。
+  // 模拟外部运行时对象，只保留当前测试会触发的行为面。
   /**
    * 封装当前测试场景的替身对象行为。
    */
@@ -543,7 +543,6 @@ describe("桌面窗口宿主", () => {
   });
 });
 
-// restore_env 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 写入当前场景的状态变化。
  */
@@ -555,7 +554,6 @@ function restore_env(name: string, value: string | undefined): void {
   }
 }
 
-// get_created_window 收口测试中的共享步骤，保证断言只关注当前行为。
 /**
  * 读取当前场景需要的稳定数据。
  */
@@ -569,7 +567,6 @@ function get_created_window(
   return target_window;
 }
 
-// create_renderer_diagnostics_stub 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */

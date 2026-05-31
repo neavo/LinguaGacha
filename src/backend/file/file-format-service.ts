@@ -38,8 +38,8 @@ const SUPPORTED_EXTENSIONS = new Set([
  * Backend 公开文件格式门面；具体格式逻辑按稳定格式处理器拆分
  */
 export class FileFormatService {
-  private readonly config: FileFormatServiceConfig; // config 固定一次解析/导出使用的语言和写回选项
-  private readonly native_fs: NativeFs; // native_fs 是源文件扫描和预览读取的唯一磁盘入口
+  private readonly config: FileFormatServiceConfig; // 固定一次解析/导出使用的语言和写回选项
+  private readonly native_fs: NativeFs; // 源文件扫描和预览读取的唯一磁盘入口
   private readonly txt: TXTFormat;
   private readonly md: MDFormat;
   private readonly ass: ASSFormat;

@@ -7,7 +7,7 @@ import { TaskRunLock } from "./run-lock";
  * RunCoordinator 统一后台任务运行锁、停止请求和终态发布，Engine 主流程只表达业务执行
  */
 export class RunCoordinator {
-  private readonly run_lock = new TaskRunLock(); // run_lock 是并发互斥和取消信号的底层状态拥有者
+  private readonly run_lock = new TaskRunLock(); // 并发互斥和取消信号的底层状态拥有者
 
   /**
    * run_publisher 是任务生命周期状态对外发布的唯一出口

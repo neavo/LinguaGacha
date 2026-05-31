@@ -7,7 +7,6 @@ import {
   createProjectItemIndex,
 } from "./project-item-index";
 
-// create_test_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */

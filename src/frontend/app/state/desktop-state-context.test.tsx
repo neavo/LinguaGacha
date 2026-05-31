@@ -142,7 +142,6 @@ function resolve_state_workbench_change_signal(signal: {
     : null;
 }
 
-// RuntimeProbe 收口测试中的共享步骤，保证断言只关注当前行为。
 function RuntimeProbe(props: {
   onSnapshot: (snapshot: RuntimeSnapshot) => void;
 }): JSX.Element | null {
@@ -201,7 +200,6 @@ function RuntimeProbe(props: {
   return null;
 }
 
-// StateHandleProbe 收口测试中的共享步骤，保证断言只关注当前行为。
 function StateHandleProbe(props: {
   onState: (runtime: StateHandleRef) => void;
 }): JSX.Element | null {
@@ -237,7 +235,6 @@ async function flush_state_refresh_window(): Promise<void> {
   });
 }
 
-// create_event_source_stub 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_event_source_stub(): {
   event_source: EventSource;
   emit: (event_name: string, payload: Record<string, unknown>) => void;
@@ -267,13 +264,11 @@ function create_event_source_stub(): {
   };
 }
 
-// has_event_stream_listener 收口测试中的共享步骤，保证断言只关注当前行为。
 function has_event_stream_listener(event_source: EventSource, event_name: string): boolean {
   const add_event_listener = event_source.addEventListener as unknown as ReturnType<typeof vi.fn>;
   return add_event_listener.mock.calls.some((call) => call[0] === event_name);
 }
 
-// create_project_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_project_item(overrides: Record<string, unknown>): Record<string, unknown> {
   return {
     item_id: 1,
@@ -294,7 +289,6 @@ function create_project_item(overrides: Record<string, unknown>): Record<string,
   };
 }
 
-// create_default_project_sections 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_default_project_sections(
   overrides: Record<string, unknown> = {},
 ): Record<string, unknown> {
@@ -367,7 +361,7 @@ function create_default_project_sections(
   };
 }
 
-// create_project_read_response 构造 manifest 响应夹具，避免每个用例重复铺设环境。
+// 构造 manifest 响应夹具，避免每个用例重复铺设环境。
 function create_project_read_response(
   path: string,
   options: {

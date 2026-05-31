@@ -284,7 +284,7 @@ function create_index_harness(): {
     show_error_boxes: [] as Array<[string, string]>,
   };
 
-  // FakeBackendBootstrap 模拟外部运行时对象，只保留当前测试会触发的行为面。
+  // 模拟外部运行时对象，只保留当前测试会触发的行为面。
   class FakeBackendBootstrap implements BackendBootstrapInstance {
     public readonly options: BackendBootstrapOptions;
     private stopped = false;

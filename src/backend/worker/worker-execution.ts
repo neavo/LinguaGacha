@@ -6,13 +6,13 @@ const WORK_UNIT_WORKER_ENTRY_FILE_NAME = "work-unit-worker-entry.js"; // work un
 const PLANNING_WORKER_ENTRY_FILE_NAME = "planning-worker-entry.js"; // planning worker 入口产物名必须与 Vite main input 保持一致
 const BACKEND_WORKER_ENTRY_FILE_NAME = "backend-worker-entry.js"; // 非 engine Backend worker 入口产物名必须与 Vite main input 保持一致
 
-// BackendWorkerExecution 由产品入口显式注入，避免运行时在底层自行猜测构建产物位置或执行模式。
+// 由产品入口显式注入，避免运行时在底层自行猜测构建产物位置或执行模式。
 export type BackendWorkerExecution =
   | {
       kind: "worker_threads"; // worker_threads 是 GUI / CLI 正式 worker 执行路径
-      workUnitWorkerEntryUrl: URL; // workUnitWorkerEntryUrl 指向构建产物中的 work unit worker 入口文件
-      planningWorkerEntryUrl: URL; // planningWorkerEntryUrl 指向构建产物中的 planning worker 入口文件
-      backendWorkerEntryUrl: URL; // backendWorkerEntryUrl 指向非 engine 通用 worker 入口文件
+      workUnitWorkerEntryUrl: URL; // 指向构建产物中的 work unit worker 入口文件
+      planningWorkerEntryUrl: URL; // 指向构建产物中的 planning worker 入口文件
+      backendWorkerEntryUrl: URL; // 指向非 engine 通用 worker 入口文件
     }
   | {
       // in_process 是测试和源码执行显式选择的同进程模式：不读取构建产物，不作为生产回退或兼容层。

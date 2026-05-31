@@ -52,18 +52,18 @@ interface TaskRunContext {
  * Electron main 的后台任务执行权威，持有生命周期、调度、限流、停止、重试和提交循环
  */
 export class TaskEngine {
-  private readonly app_root: string; // app_root 让 Backend 启动日志和 worker 使用同一套提示词资源
-  private readonly task_store: ProjectTaskStore; // task_store 是后台任务唯一项目数据写入口，TaskEngine 不直接碰 database
-  private readonly artifact_committer: TaskArtifactCommitter; // artifact_committer 是 Engine 写入项目任务事实的唯一出口
-  private readonly task_run_publisher: TaskRunPublisher; // task_run_publisher 同步写运行态并发布完整 snapshot
-  private readonly executor_client: WorkUnitExecutor; // executor_client 屏蔽 worker_threads / in_process runner 差异，主流程只关心 work-unit 结果
-  private readonly task_planner: TaskEngineOptions["taskPlanner"]; // task_planner 是切块与 token cache 复用的唯一规划入口
+  private readonly app_root: string; // 让 Backend 启动日志和 worker 使用同一套提示词资源
+  private readonly task_store: ProjectTaskStore; // 后台任务唯一项目数据写入口，TaskEngine 不直接碰 database
+  private readonly artifact_committer: TaskArtifactCommitter; // Engine 写入项目任务事实的唯一出口
+  private readonly task_run_publisher: TaskRunPublisher; // 同步写运行态并发布完整 snapshot
+  private readonly executor_client: WorkUnitExecutor; // 屏蔽 worker_threads / in_process runner 差异，主流程只关心 work-unit 结果
+  private readonly task_planner: TaskEngineOptions["taskPlanner"]; // 切块与 token cache 复用的唯一规划入口
   private readonly app_setting_service: TaskEngineOptions["AppSettingService"];
-  private readonly run_coordinator: RunCoordinator; // run_coordinator 是整场任务互斥、停止和终态发布的唯一权威
-  private readonly log_replay: TaskLogReplay; // log_replay 统一处理任务生命周期日志和 worker 日志回放
-  private readonly limiter_pool = new LimiterPool(); // limiter_pool 让后台任务和单条翻译共用同一模型节奏入口
-  private readonly model_key_lease_pool = new ModelKeyLeasePool(); // model_key_lease_pool 在主线程维护任务级全局 Key 轮换
-  private request_in_flight_count = 0; // request_in_flight_count 只表达实时网络压力，不落库也不参与恢复
+  private readonly run_coordinator: RunCoordinator; // 整场任务互斥、停止和终态发布的唯一权威
+  private readonly log_replay: TaskLogReplay; // 统一处理任务生命周期日志和 worker 日志回放
+  private readonly limiter_pool = new LimiterPool(); // 让后台任务和单条翻译共用同一模型节奏入口
+  private readonly model_key_lease_pool = new ModelKeyLeasePool(); // 在主线程维护任务级全局 Key 轮换
+  private request_in_flight_count = 0; // 只表达实时网络压力，不落库也不参与恢复
 
   /**
    * 注入任务执行依赖，保证任务数据写入口和 work-unit executor 边界可测试
@@ -139,7 +139,7 @@ export class TaskEngine {
   ): Promise<void> {
     let final_status: "done" | "idle" | "error" = "done";
     let app_language: unknown = "ZH";
-    let release_database_lease: (() => void) | null = null; // release_database_lease 只负责释放本轮任务连接租约，不承载任务状态
+    let release_database_lease: (() => void) | null = null; // 只负责释放本轮任务连接租约，不承载任务状态
     const legacy_mode = this.to_legacy_mode(command.mode);
     const translation_scope = command.scope;
     const retranslate = translation_scope.kind === "items";
@@ -219,7 +219,7 @@ export class TaskEngine {
   private async run_analysis(handle: TaskRunHandle, mode: string): Promise<void> {
     let final_status: "done" | "idle" | "error" = "done";
     let app_language: unknown = "ZH";
-    let release_database_lease: (() => void) | null = null; // release_database_lease 只负责释放本轮任务连接租约，不承载任务状态
+    let release_database_lease: (() => void) | null = null; // 只负责释放本轮任务连接租约，不承载任务状态
     const legacy_mode = this.to_legacy_mode(mode);
     try {
       await this.emit_status(handle.task_type, "running", true);

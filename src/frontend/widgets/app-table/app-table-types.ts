@@ -103,7 +103,7 @@ export type AppTableDataColumn<Row> = AppTableColumnBase & {
 
 export type AppTableColumn<Row> = AppTableDragColumn<Row> | AppTableDataColumn<Row>;
 
-// AppTableScrollAnchor 用 revision 区分每次刷新，row_id 为空时表示显式取消保持滚动。
+// 用 revision 区分每次刷新，row_id 为空时表示显式取消保持滚动。
 export type AppTableScrollAnchor = {
   row_id: string | null;
   revision: number;

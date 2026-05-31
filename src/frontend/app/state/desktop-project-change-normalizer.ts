@@ -80,7 +80,7 @@ export function is_project_change_record(value: unknown): value is Record<string
   return is_record(value);
 }
 
-// normalize_project_change_sections 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -141,7 +141,7 @@ function normalize_project_change_items(value: unknown): ProjectChangeItemsPaylo
   };
 }
 
-// normalize_record_map 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -156,7 +156,7 @@ function normalize_record_map(value: unknown): Record<string, ProjectChangeJsonR
   );
 }
 
-// normalize_number_array 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -173,7 +173,7 @@ function normalize_number_array(value: unknown): number[] {
   ];
 }
 
-// normalize_string_array 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -207,7 +207,6 @@ function normalize_project_change_item_field_patch(
   return Object.keys(patch).length === 0 ? undefined : patch;
 }
 
-// is_record 集中表达布尔判定口径，避免调用方按局部字段猜测。
 /**
  * 判断当前值是否满足业务条件。
  */

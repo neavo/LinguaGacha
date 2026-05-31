@@ -25,7 +25,7 @@ export class AppPathService {
   private readonly app_root: string;
   private readonly platform: NodeJS.Platform;
   private readonly env: NodeJS.ProcessEnv;
-  private readonly native_fs: NativeFs; // native_fs 只服务数据根可写探测，不承载应用文件语义
+  private readonly native_fs: NativeFs; // 只服务数据根可写探测，不承载应用文件语义
   private data_root: string | null = null;
 
   /**

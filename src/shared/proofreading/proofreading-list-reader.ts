@@ -176,7 +176,7 @@ type ProofreadingListViewCache = {
   view_id: string;
   projectId: string;
   ordered_item_ids: string[];
-  // row_index_by_id 让恢复滚动按 row id O(1) 定位，不需要把完整视图传回渲染进程。
+  // 让恢复滚动按 row id O(1) 定位，不需要把完整视图传回渲染进程。
   row_index_by_id: Map<string, number>;
 };
 
@@ -764,7 +764,6 @@ function rebuild_natural_item_ids(state: ProofreadingReaderState): void {
     .map((item) => String(item.item_id));
 }
 
-// build_revision_signature 构造跨层载荷，保证字段形状在一个入口维护。
 function build_revision_signature(revisions: ProofreadingRevisions): string {
   return `${revisions.items.toString()}:${revisions.quality.toString()}:${revisions.proofreading.toString()}`;
 }
@@ -820,7 +819,7 @@ function build_window_rows(args: {
   );
 }
 
-// create_list_view_cache 统一维护有序 id 列表和反向索引，避免增量更新忘记重建索引。
+// 统一维护有序 id 列表和反向索引，避免增量更新忘记重建索引。
 function create_list_view_cache(args: {
   view_id: string;
   projectId: string;

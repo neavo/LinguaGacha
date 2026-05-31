@@ -16,7 +16,6 @@ const { api_fetch_mock, push_toast_mock, page_ui_state_store } = vi.hoisted(() =
   };
 });
 
-// create_test_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -135,7 +134,6 @@ const project_store = {
 
 const project_store_listeners = new Set<() => void>();
 
-// apply_quality_write_result 收口测试中的共享步骤，保证断言只关注当前行为。
 /**
  * 写入当前场景的状态变化。
  */
@@ -241,7 +239,6 @@ function create_pre_replacement_quality(
 let current_statistics_cache: QualityRuleStatisticsCacheSnapshot;
 let project_change_seq = 0;
 
-// create_statistics_cache 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -579,7 +576,6 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
   };
 });
 
-// Probe 收口测试中的共享步骤，保证断言只关注当前行为。
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useTextReplacementPageState>) => void;
 }): JSX.Element | null {

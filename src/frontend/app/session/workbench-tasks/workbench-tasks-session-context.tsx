@@ -20,10 +20,9 @@ type WorkbenchTasksSessionContextValue = {
   analysis_workbench_task: AnalysisWorkbenchTask; // 常驻监听分析任务完成意图
 };
 
-// WorkbenchTasksSessionContext 保留工作台任务 follow-up 的跨页面运行态。
+// 保留工作台任务 follow-up 的跨页面运行态。
 const WorkbenchTasksSessionContext = createContext<WorkbenchTasksSessionContextValue | null>(null);
 
-// build_translation_task_confirm_dialog_display 构造跨层载荷，保证字段形状在一个入口维护。
 function build_translation_task_confirm_dialog_display(
   state: TranslationTaskConfirmState | null,
   t: ReturnType<typeof useI18n>["t"],
@@ -63,7 +62,6 @@ function build_translation_task_confirm_dialog_display(
   };
 }
 
-// build_analysis_task_confirm_dialog_display 构造跨层载荷，保证字段形状在一个入口维护。
 function build_analysis_task_confirm_dialog_display(
   state: AnalysisTaskConfirmState | null,
   t: ReturnType<typeof useI18n>["t"],
@@ -103,7 +101,7 @@ function build_analysis_task_confirm_dialog_display(
   };
 }
 
-// WorkbenchTasksFollowupDialogsLayer 常驻渲染任务完成后的用户确认，不依赖工作台页面是否挂载。
+// 常驻渲染任务完成后的用户确认，不依赖工作台页面是否挂载。
 function WorkbenchTasksFollowupDialogsLayer(): JSX.Element {
   const { t } = useI18n();
   const { translation_workbench_task, analysis_workbench_task } = useWorkbenchTasksSession();
@@ -146,7 +144,7 @@ function WorkbenchTasksFollowupDialogsLayer(): JSX.Element {
   );
 }
 
-// WorkbenchTasksSessionProvider 拥有跨页面任务 follow-up，页面只消费展示与动作能力。
+// 拥有跨页面任务 follow-up，页面只消费展示与动作能力。
 export function WorkbenchTasksSessionProvider(props: { children: ReactNode }): JSX.Element {
   // 翻译任务常驻于 session 内，确保离开工作台后任务完成确认不丢失。
   const translation_workbench_task = useTranslationWorkbenchTask();
@@ -167,7 +165,7 @@ export function WorkbenchTasksSessionProvider(props: { children: ReactNode }): J
   );
 }
 
-// useWorkbenchTasksSession 统一抛出 Provider 缺失错误，调用方不用重复空值分支。
+// 统一抛出 Provider 缺失错误，调用方不用重复空值分支。
 export function useWorkbenchTasksSession(): WorkbenchTasksSessionContextValue {
   const context_value = useContext(WorkbenchTasksSessionContext);
   if (context_value === null) {

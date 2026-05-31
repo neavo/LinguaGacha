@@ -26,7 +26,7 @@ type JsonRecord = Record<string, ApiJsonValue>;
  * 封装 质量规则与提示词 CRUD、预设 IO 和 revision 对齐
  */
 export class QualityService {
-  private readonly paths: AppPathService; // paths 统一解析内置 / 用户预设目录，服务层不在调用点拼接路径
+  private readonly paths: AppPathService; // 统一解析内置 / 用户预设目录，服务层不在调用点拼接路径
 
   private readonly app_setting_service: AppSettingService; // 提示词模板语言跟随应用配置，因此质量服务需要配置读取能力
 
@@ -36,7 +36,7 @@ export class QualityService {
 
   private readonly write_store: ProjectWriteStore; // 工程质量 / 提示词事实统一交由 ProjectWriteStore 提交
 
-  private readonly native_fs: NativeFs; // native_fs 是规则、提示词预设和导入导出的唯一文件 IO 入口
+  private readonly native_fs: NativeFs; // 规则、提示词预设和导入导出的唯一文件 IO 入口
 
   /**
    * 初始化 QualityService 依赖，保持外部写入口清晰

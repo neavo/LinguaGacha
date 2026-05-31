@@ -64,7 +64,7 @@ type ProjectSessionStatus = "idle" | "warming" | "ready";
 type ProjectStateIdentity = {
   path: string; // 后端会话确认的当前项目路径，独立于可能滞后的页面 query
   epoch: number; // 每次项目切换或完整 session 初始化递增，用于丢弃迟到补读和旧快照
-  phase: ProjectSessionStatus; // phase 只表示当前项目 query 刷新阶段，不等同于页面局部状态
+  phase: ProjectSessionStatus; // 只表示当前项目 query 刷新阶段，不等同于页面局部状态
 };
 
 // EMPTY PROJECT STATE IDENTITY 是默认快照事实，调用方只读取副本不临时拼装。
@@ -142,7 +142,7 @@ const DEFAULT_PROJECT_CHANGE_SIGNAL: ProjectChangeSignal = {
  */
 export const DesktopStateContext = createContext<DesktopStateContextValue | null>(null);
 
-// normalize_settings_snapshot 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -150,7 +150,7 @@ export function normalize_settings_snapshot(payload: SettingsSnapshotPayload): S
   return normalize_setting_snapshot(payload.settings);
 }
 
-// normalize_project_snapshot 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -162,7 +162,6 @@ function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSna
   };
 }
 
-// collect_project_apply_result_sections 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 /**
  * 读取当前场景需要的稳定数据。
  */
@@ -172,7 +171,6 @@ function collect_project_apply_result_sections(
   return [...new Set(results.flatMap((result) => result.updatedSections))];
 }
 
-// resolve_project_apply_result_reason 集中解析运行时决策，避免调用点复制条件判断。
 /**
  * 解析当前场景的最终消费值。
  */
@@ -262,7 +260,6 @@ function create_project_change_apply_result(
   return result;
 }
 
-// DesktopStateProvider 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 /**
  * 渲染当前组件的公开界面。
  */

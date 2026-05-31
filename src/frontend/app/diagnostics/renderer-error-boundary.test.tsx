@@ -13,7 +13,6 @@ vi.mock("@frontend/app/diagnostics/renderer-error-reporter", () => {
   };
 });
 
-// BrokenChild 收口测试中的共享步骤，保证断言只关注当前行为。
 function BrokenChild(): JSX.Element {
   throw new Error("render boom");
 }

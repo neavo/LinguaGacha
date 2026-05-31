@@ -14,9 +14,9 @@ type MutableJsonRecord = Record<string, ApiJsonValue>;
  * ToolboxNameFieldExtractionService 从 session 缓存构造名称字段提取查询视图。
  */
 export class ToolboxNameFieldExtractionService {
-  private readonly session_state: ProjectSessionState; // session_state 提供当前 loaded project 身份。
-  private readonly cache: CacheReadPort; // cache 是读取 item 和质量规则快照的唯一入口。
-  private readonly worker_client: BackendWorkerClient; // worker_client 执行名称字段提取计算。
+  private readonly session_state: ProjectSessionState; // 提供当前 loaded project 身份。
+  private readonly cache: CacheReadPort; // 读取 item 和质量规则快照的唯一入口。
+  private readonly worker_client: BackendWorkerClient; // 执行名称字段提取计算。
 
   /**
    * 注入 session、缓存和 worker，服务本身不持有数据库写入口。

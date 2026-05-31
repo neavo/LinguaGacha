@@ -3,7 +3,7 @@ import { create_text_resolver, resolve_i18n_locale, type LocaleKey } from "../..
 
 type AppLanguageReader = () => unknown;
 
-let active_language_reader: AppLanguageReader | null = null; // active_language_reader 由 AppSettingService 注入，启动早期为空时使用默认语言
+let active_language_reader: AppLanguageReader | null = null; // 由 AppSettingService 注入，启动早期为空时使用默认语言
 
 /**
  * 注入日志文案语言读取器，避免日志层直接读取 config.json。

@@ -13,7 +13,7 @@ import type {
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import type { AppTableScrollAnchor } from "@frontend/widgets/app-table/app-table-types";
 
-// CapturedAppTableProps 只声明本测试需要观察的 AppTable 公开载荷。
+// 只声明本测试需要观察的 AppTable 公开载荷。
 type CapturedAppTableProps = {
   preserve_scroll_anchor?: AppTableScrollAnchor;
   restore_scroll_row_id?: string | null;
@@ -52,7 +52,7 @@ vi.mock("@frontend/widgets/app-table/app-table", () => {
   };
 });
 
-// create_item 生成状态单元格和表格行共用的最小校对 item。
+// 生成状态单元格和表格行共用的最小校对 item。
 function create_item(): ProofreadingItem {
   return {
     item_id: 1,
@@ -69,7 +69,7 @@ function create_item(): ProofreadingItem {
   };
 }
 
-// create_visible_item 构造带 row_id 的校对表格行，便于断言 row_model 公开载荷。
+// 构造带 row_id 的校对表格行，便于断言 row_model 公开载荷。
 function create_visible_item(item_id: number): ProofreadingVisibleItem {
   const item = {
     ...create_item(),

@@ -12,13 +12,13 @@ const IDLE_TASK_TYPE = "idle"; // Engine 空闲态统一用 idle 表达，避免
  * API Gateway 内的任务运行态权威
  */
 export class TaskRunState {
-  private status: TaskRunStatus = "idle"; // status 是 Engine 运行态唯一状态机值，renderer 如需展示另行映射
+  private status: TaskRunStatus = "idle"; // Engine 运行态唯一状态机值，renderer 如需展示另行映射
 
-  private busy = false; // busy 是同步写入、reset preview 和任务按钮共享的唯一运行时互斥事实
+  private busy = false; // 同步写入、reset preview 和任务按钮共享的唯一运行时互斥事实
 
-  private active_task_type = IDLE_TASK_TYPE; // active_task_type 表示当前活跃任务；空闲时必须回到 idle，不能停在上一轮任务
+  private active_task_type = IDLE_TASK_TYPE; // 当前活跃任务；空闲时必须回到 idle，不能停在上一轮任务
 
-  private request_in_flight_count = 0; // request_in_flight_count 只表示真实已发出的请求数，不表达队列长度
+  private request_in_flight_count = 0; // 只表示真实已发出的请求数，不表达队列长度
 
   private translation_scope: TranslationScope = { kind: "all" }; // 重翻行级 spinner 只依赖 items scope，不能混入普通翻译任务状态
 

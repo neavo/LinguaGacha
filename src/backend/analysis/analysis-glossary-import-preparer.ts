@@ -21,24 +21,24 @@ import type { ProjectDataRecord } from "../project/project-data";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
 
 type GlossaryEntry = {
-  src: string; // src 是术语匹配和重复检测的主键文本
-  dst: string; // dst 是导入后写回质量规则的目标译文
-  info: string; // info 保留候选来源附加说明
-  regex: boolean; // regex 标记沿用质量规则的匹配模式
-  case_sensitive: boolean; // case_sensitive 参与统计 key，避免大小写口径混淆
+  src: string; // 术语匹配和重复检测的主键文本
+  dst: string; // 导入后写回质量规则的目标译文
+  info: string; // 保留候选来源附加说明
+  regex: boolean; // 标记沿用质量规则的匹配模式
+  case_sensitive: boolean; // 参与统计 key，避免大小写口径混淆
 };
 
 export type PreparedAnalysisGlossaryImport = {
-  duplicate_count: number; // duplicate_count 用于确认弹窗提示重复候选数量
-  duplicate_signature: string; // duplicate_signature 稳定描述重复集合，供 UI 判断弹窗是否需要刷新
-  imported_count: number; // imported_count 是本次实际进入术语表的候选数量
-  consumed_count: number; // consumed_count 是本次从分析候选池移除的 src 数量
-  quality_changed: boolean; // quality_changed 控制是否写入 quality section
-  updated_sections: Array<"quality" | "analysis">; // updated_sections 是后端写入的最小范围
+  duplicate_count: number; // 用于确认弹窗提示重复候选数量
+  duplicate_signature: string; // 稳定描述重复集合，供 UI 判断弹窗是否需要刷新
+  imported_count: number; // 本次实际进入术语表的候选数量
+  consumed_count: number; // 本次从分析候选池移除的 src 数量
+  quality_changed: boolean; // 控制是否写入 quality section
+  updated_sections: Array<"quality" | "analysis">; // 后端写入的最小范围
   request_body: {
-    entries: GlossaryEntry[]; // entries 是完整术语表快照，保持 quality section 单点写入
-    consumed_candidate_srcs: string[]; // consumed_candidate_srcs 显式消费候选池，避免徽标残留
-    expected_section_revisions: Record<string, number>; // expected_section_revisions 保护 quality/analysis 并发写
+    entries: GlossaryEntry[]; // 完整术语表快照，保持 quality section 单点写入
+    consumed_candidate_srcs: string[]; // 显式消费候选池，避免徽标残留
+    expected_section_revisions: Record<string, number>; // 保护 quality/analysis 并发写
   };
 };
 

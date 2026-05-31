@@ -8,7 +8,7 @@ type ModelKeyLeaseRecord = Record<string, ApiJsonValue>;
  * ModelKeyLeasePool 在 TaskEngine 进程内按模型资源签名做全局 round-robin，不让 worker 本地轮换分裂 Key 分布。
  */
 export class ModelKeyLeasePool {
-  private readonly offsets = new Map<string, number>(); // offsets 只记录下一次 key 下标，不保存任何任务状态
+  private readonly offsets = new Map<string, number>(); // 只记录下一次 key 下标，不保存任何任务状态
 
   /**
    * work unit 即将真实进入 in-flight 前调用；返回写入单个租约 key 的模型快照副本。

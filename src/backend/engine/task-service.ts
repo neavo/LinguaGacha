@@ -25,19 +25,19 @@ import {
  * 公开 `/api/tasks/*` 的任务服务，负责校验命令、调用 TaskEngine 并组装回执
  */
 export class TaskService {
-  private readonly task_engine: TaskEngine; // task_engine 是后台任务生命周期、调度和停止的唯一执行权威
+  private readonly task_engine: TaskEngine; // 后台任务生命周期、调度和停止的唯一执行权威
 
-  private readonly snapshot_builder: TaskSnapshotBuilder; // snapshot_builder 是公开任务快照唯一组装口径，启动回执也复用它
+  private readonly snapshot_builder: TaskSnapshotBuilder; // 公开任务快照唯一组装口径，启动回执也复用它
 
-  private readonly task_run_publisher: TaskRunPublisher; // task_run_publisher 是启动乐观态与失败回滚的唯一出口
+  private readonly task_run_publisher: TaskRunPublisher; // 启动乐观态与失败回滚的唯一出口
 
-  private readonly project_operation_gate: ProjectOperationGate; // project_operation_gate 统一判断任务启动是否会撞上 busy 或结构性写入
+  private readonly project_operation_gate: ProjectOperationGate; // 统一判断任务启动是否会撞上 busy 或结构性写入
 
-  private readonly session_state: ProjectSessionState; // session_state 决定重翻 revision 校验是否能定位当前工程
+  private readonly session_state: ProjectSessionState; // 决定重翻 revision 校验是否能定位当前工程
 
-  private readonly app_setting_service: AppSettingService; // app_setting_service 只用于单条翻译前的主动模型可用性检查
+  private readonly app_setting_service: AppSettingService; // 只用于单条翻译前的主动模型可用性检查
 
-  private readonly task_definition_registry = new TaskDefinitionRegistry(); // task_definition_registry 是任务类型差异和 revision 依赖的唯一注册表
+  private readonly task_definition_registry = new TaskDefinitionRegistry(); // 任务类型差异和 revision 依赖的唯一注册表
 
   /**
    * 注入任务命令依赖，保持公开协议、运行态桥和配置读取边界可测试

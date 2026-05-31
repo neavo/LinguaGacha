@@ -65,7 +65,7 @@ export const LANGUAGE_CODES = TARGET_LANGUAGE_CODES;
 
 export type SourceLanguageCode = (typeof SOURCE_LANGUAGE_CODES)[number];
 export type TargetLanguageCode = (typeof TARGET_LANGUAGE_CODES)[number];
-// LanguageCode 额外包含 ALL，用于表示关闭语言限制的配置值
+// 额外包含 ALL，用于表示关闭语言限制的配置值
 export type LanguageCode = typeof ALL_LANGUAGE_CODE | SourceLanguageCode | TargetLanguageCode;
 export type LanguageDisplayLocale = "zh" | "en";
 export type LanguageLabelKey = `app.language.${LanguageCode}`;
@@ -477,7 +477,7 @@ function build_definition(
  * 集中维护当前模块的稳定常量。
  */
 export const LANGUAGE_DEFINITIONS: Record<LanguageCode, LanguageDefinition> = {
-  ALL: build_definition("ALL", false, null, null), // ALL 关闭语言过滤
+  ALL: build_definition("ALL", false, null, null), // 关闭语言过滤
   ZH: build_definition("ZH", true, is_han_character, HAN_TEXT_PATTERN), // 中文只以 Han Script 正文命中
   "ZH-HANT": build_definition("ZH-HANT", true, is_han_character, HAN_TEXT_PATTERN), // 繁中复用 Han Script，不按字符范围区分简繁
   EN: build_definition("EN", false, is_latin_character, LATIN_TEXT_PATTERN), // 英文走 Latin Script 粗过滤

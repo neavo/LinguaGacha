@@ -67,7 +67,6 @@ function find_log_scroll_viewport(): HTMLElement | null {
   );
 }
 
-// LogWindowPage 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function LogWindowPage(): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -297,7 +296,7 @@ export function LogWindowPage(): JSX.Element {
     ];
   }, [t]);
 
-  // handle_selection_change 是事件处理边界，只把外部事件转换为本模块状态更新。
+  // 事件处理边界，只把外部事件转换为本模块状态更新。
   function handle_selection_change(payload: AppTableSelectionChange): void {
     set_selected_row_ids(payload.selected_row_ids);
     set_active_row_id(payload.active_row_id);

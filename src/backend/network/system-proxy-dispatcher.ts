@@ -12,7 +12,7 @@ import { read_config_model_records, type ModelRecord } from "../model/model-conf
 import type { ApiJsonValue } from "../api/api-types";
 
 export interface SystemProxyResolver {
-  resolveProxy: (url: string) => Promise<string>; // resolveProxy 由 Electron session 注入，Backend 不直接导入 Electron
+  resolveProxy: (url: string) => Promise<string>; // 由 Electron session 注入，Backend 不直接导入 Electron
 }
 
 export type SystemProxyRoute =
@@ -21,17 +21,17 @@ export type SystemProxyRoute =
   | { kind: "socks5"; uri: string };
 
 export interface SystemProxySnapshot {
-  routes: Record<string, SystemProxyRoute>; // routes 以请求 origin 为键，供主线程和 worker 共享同一启动期快照
+  routes: Record<string, SystemProxyRoute>; // 以请求 origin 为键，供主线程和 worker 共享同一启动期快照
 }
 
 export interface SystemProxyStartupNotice {
-  detected: boolean; // detected 只表达是否命中系统代理，入口层据此决定是否提示
-  proxiedOriginCount: number; // proxiedOriginCount 是被代理的远端 origin 数，用于测试和诊断摘要
-  proxyDisplay: string | null; // proxyDisplay 是去除凭据和路径后的代理 URL 展示值，供启动提示填充
+  detected: boolean; // 只表达是否命中系统代理，入口层据此决定是否提示
+  proxiedOriginCount: number; // 被代理的远端 origin 数，用于测试和诊断摘要
+  proxyDisplay: string | null; // 去除凭据和路径后的代理 URL 展示值，供启动提示填充
 }
 
 export interface InstalledSystemProxyDispatcher {
-  snapshot: SystemProxySnapshot; // snapshot 是可结构化克隆的代理事实，worker 只消费它而不重新探测系统代理
+  snapshot: SystemProxySnapshot; // 可结构化克隆的代理事实，worker 只消费它而不重新探测系统代理
   dispose: () => Promise<void>;
 }
 
@@ -57,7 +57,7 @@ export function collect_system_proxy_urls(
   config: Record<string, ApiJsonValue>,
   preset_models: ModelRecord[],
 ): string[] {
-  const urls_by_origin = new Map<string, string>(); // urls_by_origin 防止同一服务商 origin 被重复 resolveProxy
+  const urls_by_origin = new Map<string, string>(); // 防止同一服务商 origin 被重复 resolveProxy
   for (const model of [...preset_models, ...read_config_model_records(config)]) {
     const api_format = Model.normalize_api_format(model["api_format"]);
     const api_url = String(model["api_url"] ?? "");
@@ -86,7 +86,7 @@ export async function install_system_proxy_dispatcher(options: {
 export function install_system_proxy_dispatcher_from_snapshot(
   snapshot: SystemProxySnapshot,
 ): InstalledSystemProxyDispatcher {
-  const previous_dispatcher = getGlobalDispatcher(); // previous_dispatcher 用于 stop 时恢复 Node/Electron 原本的出网行为
+  const previous_dispatcher = getGlobalDispatcher(); // 用于 stop 时恢复 Node/Electron 原本的出网行为
   const dispatcher = create_system_proxy_dispatcher(snapshot, previous_dispatcher);
   if (dispatcher !== null) {
     setGlobalDispatcher(dispatcher);
@@ -206,8 +206,8 @@ function create_system_proxy_dispatcher(
  */
 class SystemProxyDispatcher extends Dispatcher {
   private readonly snapshot: SystemProxySnapshot;
-  private readonly fallback_dispatcher: Dispatcher; // fallback_dispatcher 保留本机 API、文件下载等非模型 origin 的既有行为
-  private readonly proxy_dispatchers = new Map<string, Dispatcher>(); // proxy_dispatchers 只缓存本快照创建的代理连接池
+  private readonly fallback_dispatcher: Dispatcher; // 保留本机 API、文件下载等非模型 origin 的既有行为
+  private readonly proxy_dispatchers = new Map<string, Dispatcher>(); // 只缓存本快照创建的代理连接池
 
   /**
    * 保存不可变快照和原始 dispatcher，避免运行期重复解析系统代理。

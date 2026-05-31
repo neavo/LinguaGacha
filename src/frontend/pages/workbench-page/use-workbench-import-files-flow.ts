@@ -23,9 +23,9 @@ import {
 import type { WorkbenchDialogState } from "@frontend/pages/workbench-page/types";
 
 type PendingImportFilesRequest = {
-  parsed_files: WorkbenchFileParsePreview[]; // parsed_files 是 Backend 预解析后的文件草稿，不作为最终项目事实
+  parsed_files: WorkbenchFileParsePreview[]; // Backend 预解析后的文件草稿，不作为最终项目事实
   conflict_action: WorkbenchFileConflictAction | null;
-  conflict_signature: string; // conflict_signature 用于识别对话期间文件视图是否变化
+  conflict_signature: string; // 用于识别对话期间文件视图是否变化
 };
 
 type WorkbenchImportFlowToastKind = "info" | "success" | "warning" | "error";
@@ -271,7 +271,7 @@ export function useWorkbenchImportFilesFlow(
       }
 
       const parsed_files: WorkbenchFileParsePreview[] = [];
-      let parse_failure_toast_shown = false; // parse_failure_toast_shown 防止全失败时再叠加泛错误
+      let parse_failure_toast_shown = false; // 防止全失败时再叠加泛错误
 
       await options.run_modal_progress_toast({
         message: options.t("workbench_page.feedback.add_file_loading_toast"),

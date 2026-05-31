@@ -33,17 +33,17 @@ export type ProjectWriteOperation = string;
 export type ProjectWriteCommitRequest<
   TPayload extends ProjectWriteResultPayload = ProjectWriteResultPayload,
 > = {
-  operation: ProjectWriteOperation; // operation 是页面业务意图到诊断语义的显式词表
-  task_type?: TaskType; // task_type 仅用于任务相关写入的诊断归因
-  run: () => Promise<TPayload>; // run 只提交后端写入，运行态负责归一化和回灌
-  prepare?: (args: { payload: TPayload; write_result: ProjectWriteResult }) => void | Promise<void>; // prepare 在回灌前登记页面计算状态，避免依赖 React 调度竞态
+  operation: ProjectWriteOperation; // 页面业务意图到诊断语义的显式词表
+  task_type?: TaskType; // 仅用于任务相关写入的诊断归因
+  run: () => Promise<TPayload>; // 只提交后端写入，运行态负责归一化和回灌
+  prepare?: (args: { payload: TPayload; write_result: ProjectWriteResult }) => void | Promise<void>; // 在回灌前登记页面计算状态，避免依赖 React 调度竞态
 };
 
 export type ProjectWriteCommitResult<
   TPayload extends ProjectWriteResultPayload = ProjectWriteResultPayload,
 > = {
-  payload: TPayload; // payload 保留后端原始响应，供导入流程读取 failed_files 等扩展字段
-  write_result: ProjectWriteResult; // write_result 是已经进入项目事件管线的规范化 changes
+  payload: TPayload; // 保留后端原始响应，供导入流程读取 failed_files 等扩展字段
+  write_result: ProjectWriteResult; // 已经进入项目事件管线的规范化 changes
 };
 
 export type ProjectWriteCommitter = <
@@ -131,7 +131,7 @@ export function useProjectWriteCommitter(
   );
 }
 
-// normalize_project_write_change_event 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */

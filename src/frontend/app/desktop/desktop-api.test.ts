@@ -41,7 +41,6 @@ class EventSourceStub {
   }
 }
 
-// install_desktop_api_host 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function install_desktop_api_host(base_url: string): void {
   Object.defineProperty(window, "desktopApp", {
     configurable: true,

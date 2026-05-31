@@ -112,7 +112,6 @@ describe("log-bridge", () => {
     });
   });
 
-  // create_memory_file_writer 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_memory_file_writer(lines: string[]): FileLogWriter {
     return {
       write: (text) => lines.push(text),

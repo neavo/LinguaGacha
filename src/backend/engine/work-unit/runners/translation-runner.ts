@@ -23,16 +23,16 @@ import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../
 import { RequestValidationError, type LogError } from "../../../../shared/error";
 
 interface WorkUnitBaseRequest {
-  run_id: string; // run_id 用于隔离一次任务运行，worker 不用它访问项目状态
-  work_unit_id: string; // work_unit_id 是 chunk 级诊断键，迟到响应和日志都围绕它定位
-  model: ApiJsonValue; // model / config_snapshot 均来自任务启动快照，避免执行中读取可变全局配置
+  run_id: string; // 用于隔离一次任务运行，worker 不用它访问项目状态
+  work_unit_id: string; // chunk 级诊断键，迟到响应和日志都围绕它定位
+  model: ApiJsonValue; // / config_snapshot 均来自任务启动快照，避免执行中读取可变全局配置
   config_snapshot: ApiJsonValue;
-  quality_snapshot: ApiJsonValue; // quality_snapshot 是文本后处理与提示词构造的唯一质量规则输入
+  quality_snapshot: ApiJsonValue; // 文本后处理与提示词构造的唯一质量规则输入
 }
 
 interface TranslationWorkUnitRequest extends WorkUnitBaseRequest {
-  items: ApiJsonValue; // items 是本 chunk 的不可变条目快照，worker 修改结果后再回传给 TaskEngine
-  precedings?: ApiJsonValue; // precedings 只用于上下文提示词，不参与当前 chunk 的写回
+  items: ApiJsonValue; // 本 chunk 的不可变条目快照，worker 修改结果后再回传给 TaskEngine
+  precedings?: ApiJsonValue; // 只用于上下文提示词，不参与当前 chunk 的写回
   split_count?: ApiJsonValue; // 以下字段用于调度日志诊断，避免任务诊断信息丢失
   retry_count?: ApiJsonValue;
   token_threshold?: ApiJsonValue;
@@ -40,31 +40,31 @@ interface TranslationWorkUnitRequest extends WorkUnitBaseRequest {
 }
 
 export interface TranslateSingleWorkUnitRequest extends WorkUnitBaseRequest {
-  text: ApiJsonValue; // text 来自公开计算工具调用，不关联任何项目条目
+  text: ApiJsonValue; // 来自公开计算工具调用，不关联任何项目条目
 }
 
 interface TranslationWorkUnitResult {
-  items: TextTaskItemRecord[]; // items 只包含本 work unit 处理后的条目快照，由 TaskEngine 统一提交
-  row_count: number; // row_count 按日志口径表示本次成功覆盖的输入行数
+  items: TextTaskItemRecord[]; // 只包含本 work unit 处理后的条目快照，由 TaskEngine 统一提交
+  row_count: number; // 按日志口径表示本次成功覆盖的输入行数
   input_tokens: number; // token 计数向任务统计累加，不参与业务分支判断
   output_tokens: number;
-  stopped: boolean; // stopped 表示主动取消或 adapter 取消，区别于可重试错误
-  logs?: WorkUnitLogEntry[]; // logs 由主线程统一提交，worker 不直接写日志目标
+  stopped: boolean; // 主动取消或 adapter 取消，区别于可重试错误
+  logs?: WorkUnitLogEntry[]; // 由主线程统一提交，worker 不直接写日志目标
 }
 
 interface TranslateSingleWorkUnitResult {
   success: boolean; // success/status 对齐公开 API 返回，不泄露内部 work unit 状态枚举
   status: string;
-  dst: string; // dst 是单条翻译结果，失败时为空字符串
-  logs?: WorkUnitLogEntry[]; // logs 供调用方展示诊断，不触发项目事件
+  dst: string; // 单条翻译结果，失败时为空字符串
+  logs?: WorkUnitLogEntry[]; // 供调用方展示诊断，不触发项目事件
 }
 
 /**
  * 翻译类 work unit runner，完整执行预处理、prompt、LLM、响应解析和后处理
  */
 export class TranslationWorkUnitRunner {
-  private readonly app_root: string; // app_root 用于读取项目内提示词模板，worker 不依赖当前工作目录
-  private readonly llm_client: LLMClientPort; // llm_client 是 LLM 请求唯一出口，runner 不直接拼供应商协议细节
+  private readonly app_root: string; // 用于读取项目内提示词模板，worker 不依赖当前工作目录
+  private readonly llm_client: LLMClientPort; // LLM 请求唯一出口，runner 不直接拼供应商协议细节
 
   /**
    * app_root 用于读取提示词模板，llm_client 是唯一网络请求出口

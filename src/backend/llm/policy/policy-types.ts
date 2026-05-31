@@ -19,7 +19,7 @@ export interface ModelRequestSnapshot {
 }
 
 export interface ResolvedRequestPolicy {
-  provider: RequestProvider; // provider 决定 official SDK transport，不能再由 transport 二次推断
+  provider: RequestProvider; // 决定 official SDK transport，不能再由 transport 二次推断
   api_format: ModelApiFormat;
   base_url: string;
   model_id: string;

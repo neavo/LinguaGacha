@@ -22,7 +22,7 @@ const DEFAULT_OUTPUT_TOKEN_LIMIT = 4096;
  * LLMClientPolicy 是 LLM client 的请求策略编排器，负责读取快照、选择 provider policy 并产出最终请求事实。
  */
 export class LLMClientPolicy {
-  private readonly user_agent: string; // user_agent 由 AppMetadataService 生成，policy 不读取应用文件
+  private readonly user_agent: string; // 由 AppMetadataService 生成，policy 不读取应用文件
 
   /**
    * 注入最终 User-Agent，保持 LLM policy 只处理请求策略。

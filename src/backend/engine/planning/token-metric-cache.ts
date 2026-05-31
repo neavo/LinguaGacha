@@ -48,8 +48,8 @@ export function build_task_token_metric_cache_key(text: string): string {
  * 进程内 LRU 令牌指标缓存，专供任务规划复用精确 token 计数，不引入持久化计算事实。
  */
 export class TaskTokenMetricCache {
-  private readonly capacity: number; // capacity 是 LRU 上限，避免大型项目反复规划后无限增长。
-  private readonly cache = new Map<string, TaskTokenMetric>(); // cache 使用 Map 插入顺序表达 LRU。
+  private readonly capacity: number; // LRU 上限，避免大型项目反复规划后无限增长。
+  private readonly cache = new Map<string, TaskTokenMetric>(); // 使用 Map 插入顺序表达 LRU。
 
   /**
    * 注入容量便于测试验证驱逐行为，生产默认使用固定上限。

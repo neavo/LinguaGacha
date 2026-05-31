@@ -7,7 +7,7 @@ import { NativeFs, default_native_fs } from "../../native/native-fs";
 export type ModelRecord = Record<string, ApiJsonValue>;
 
 interface ModelPresetPathReader {
-  get_model_preset_dir: () => string; // get_model_preset_dir 让模型服务和 Bootstrap 共用同一内置预设目录事实
+  get_model_preset_dir: () => string; // 让模型服务和 Bootstrap 共用同一内置预设目录事实
 }
 
 /**

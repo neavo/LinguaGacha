@@ -117,14 +117,12 @@ export class DesktopApiError extends Error {
   }
 }
 
-// build_desktop_local_error_message_key 构造跨层载荷，保证字段形状在一个入口维护。
 function build_desktop_local_error_message_key(
   code: DesktopLocalErrorCode,
 ): DesktopLocalErrorMessageKey {
   return `app.error.desktop.${code}.message`;
 }
 
-// build_desktop_api_error 构造跨层载荷，保证字段形状在一个入口维护。
 function build_desktop_api_error<data_type>(
   path: string,
   response: Response,
@@ -154,7 +152,6 @@ async function read_api_envelope<data_type>(
   }
 }
 
-// create_network_error 构造跨层载荷，保证字段形状在一个入口维护。
 function create_network_error(path: string, cause: unknown): DesktopApiError {
   const code: DesktopLocalErrorCode =
     cause instanceof Error && cause.name === "AbortError" ? "timeout" : "network_failed";
@@ -168,7 +165,7 @@ function create_network_error(path: string, cause: unknown): DesktopApiError {
   });
 }
 
-// read_backend_api_base_url 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
+// 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 function read_backend_api_base_url(): string {
   const base_url = normalize_backend_api_base_url(window.desktopApp.backendApi.baseUrl);
 
@@ -179,13 +176,12 @@ function read_backend_api_base_url(): string {
   return base_url;
 }
 
-// build_api_url 构造跨层载荷，保证字段形状在一个入口维护。
 function build_api_url(base_url: string, path: string): string {
   const normalized_path = path.startsWith("/") ? path : `/${path}`;
   return `${base_url}${normalized_path}`;
 }
 
-// parse_event_source_payload 收口外部文本解析，解析失败时由这里决定降级口径。
+// 收口外部文本解析，解析失败时由这里决定降级口径。
 function parse_event_source_payload(event: MessageEvent<string>): Record<string, unknown> {
   try {
     return JsonTool.parseStrict<Record<string, unknown>>(event.data);
@@ -194,7 +190,7 @@ function parse_event_source_payload(event: MessageEvent<string>): Record<string,
   }
 }
 
-// normalize_backend_metadata 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_backend_metadata(payload: HealthPayload): BackendMetadata | null {
   const version = payload.version?.trim();
   if (version === undefined || version === "") {
@@ -204,7 +200,7 @@ function normalize_backend_metadata(payload: HealthPayload): BackendMetadata | n
   return { version };
 }
 
-// parse_semantic_version 收口外部文本解析，解析失败时由这里决定降级口径。
+// 收口外部文本解析，解析失败时由这里决定降级口径。
 function parse_semantic_version(value: string): SemanticVersion | null {
   const version_match = value.match(/(\d+)\.(\d+)\.(\d+)/u);
   if (version_match === null) {
@@ -218,7 +214,6 @@ function parse_semantic_version(value: string): SemanticVersion | null {
   };
 }
 
-// compare_semantic_version 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function compare_semantic_version(left: SemanticVersion, right: SemanticVersion): number {
   if (left.major !== right.major) {
     return left.major - right.major;
@@ -231,7 +226,7 @@ function compare_semantic_version(left: SemanticVersion, right: SemanticVersion)
   return left.patch - right.patch;
 }
 
-// normalize_github_release_update 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_github_release_update(
   payload: GithubReleasePayload,
   current_version: string,
@@ -416,7 +411,6 @@ async function* open_json_event_source_stream(args: {
   let stream_error: Error | null = null;
   let closed = false;
 
-  // push_event 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   function push_event(event: EventSourceJsonEvent): void {
     if (pending_resolve !== null) {
       const resolve = pending_resolve;
@@ -428,7 +422,6 @@ async function* open_json_event_source_stream(args: {
     queue.push(event);
   }
 
-  // close_stream 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   function close_stream(): void {
     if (closed) {
       return;
@@ -443,7 +436,6 @@ async function* open_json_event_source_stream(args: {
     }
   }
 
-  // fail_stream 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   function fail_stream(): void {
     stream_error = DesktopApiError.local("event_stream_failed", 503);
     close_stream();

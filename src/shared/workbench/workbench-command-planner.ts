@@ -34,7 +34,7 @@ type WorkbenchCommandPlanErrorCode =
  * WorkbenchCommandPlanError 只表达 planner 稳定失败原因，页面展示由调用处 fallback 决定。
  */
 export class WorkbenchCommandPlanError extends Error {
-  public readonly code: WorkbenchCommandPlanErrorCode; // code 是工作台 planner 唯一稳定错误分支
+  public readonly code: WorkbenchCommandPlanErrorCode; // 工作台 planner 唯一稳定错误分支
 
   /**
    * message 使用诊断标识而非自然语言，避免本地异常文本进入用户界面。

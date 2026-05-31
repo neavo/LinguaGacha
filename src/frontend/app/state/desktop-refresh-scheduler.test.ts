@@ -136,7 +136,6 @@ describe("DesktopRefreshScheduler", () => {
   });
 });
 
-// noop_flush_error_handler 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function noop_flush_error_handler(): void {}
 
 // 构造最小可用 task snapshot，方便断言调度器只保留最新运行态

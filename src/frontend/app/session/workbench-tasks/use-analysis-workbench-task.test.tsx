@@ -74,7 +74,6 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
   };
 });
 
-// create_task_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -101,7 +100,6 @@ function create_task_snapshot(
   };
 }
 
-// create_runtime_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -132,7 +130,6 @@ function create_runtime_fixture(task_snapshot: Record<string, unknown>): Runtime
   };
 }
 
-// flush_microtasks 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 支撑当前测试场景的专用辅助逻辑。
  */
@@ -142,7 +139,6 @@ function flush_microtasks(): Promise<void> {
   });
 }
 
-// create_prepared_import 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -181,7 +177,6 @@ function create_workbench_query_response(): Record<string, unknown> {
   };
 }
 
-// Probe 收口测试中的共享步骤，保证断言只关注当前行为。
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useAnalysisWorkbenchTask>) => void;
 }): JSX.Element | null {

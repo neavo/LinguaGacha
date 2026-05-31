@@ -27,7 +27,7 @@ type JsonRecord = Record<string, ApiJsonValue>;
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
 export type TranslationItemPatch = {
-  item_id: number; // item_id 是任务 artifact 和公开项目行的唯一主键
+  item_id: number; // 任务 artifact 和公开项目行的唯一主键
   patch: {
     dst?: string;
     name_dst?: ItemName;
@@ -103,7 +103,7 @@ type TranslationProgressCounters = {
  * loaded project 运行态事实的唯一语义写入口。
  */
 export class ProjectWriteStore {
-  private readonly database: ProjectDatabase; // database workflow 是项目事实的物理写入边界
+  private readonly database: ProjectDatabase; // workflow 是项目事实的物理写入边界
 
   private readonly write_coordinator: ProjectWriteCoordinator; // coordinator 统一 revision guard 与 committed event 发布
 

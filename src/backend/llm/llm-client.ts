@@ -19,18 +19,18 @@ import type {
 } from "./transport/transport-types";
 
 interface LLMClientOptions {
-  userAgent: string; // userAgent 由应用元信息层注入，LLMClient 不读取 version.txt
-  policy?: LLMClientPolicy; // policy 注入点只供测试替换请求策略，不改变生产归属
-  clientPool?: ProviderClientResolver; // clientPool 注入点用于验证 SDK client 复用和凭据隔离
-  transports?: Partial<Record<RequestProvider, RequestTransport>>; // transports 只允许按 provider 替换边界实现
+  userAgent: string; // 由应用元信息层注入，LLMClient 不读取 version.txt
+  policy?: LLMClientPolicy; // 注入点只供测试替换请求策略，不改变生产归属
+  clientPool?: ProviderClientResolver; // 注入点用于验证 SDK client 复用和凭据隔离
+  transports?: Partial<Record<RequestProvider, RequestTransport>>; // 只允许按 provider 替换边界实现
 }
 
 /**
  * LLMClient 是 Backend 进程内 LLM 请求入口，负责 policy、超时、取消和错误归一。
  */
 export class LLMClient implements LLMClientPort {
-  private readonly policy: LLMClientPolicy; // policy 是请求快照到最终 provider payload 的唯一入口
-  private readonly transports: Record<RequestProvider, RequestTransport>; // transports 按 provider 分发表层请求，不再改写模型策略
+  private readonly policy: LLMClientPolicy; // 请求快照到最终 provider payload 的唯一入口
+  private readonly transports: Record<RequestProvider, RequestTransport>; // 按 provider 分发表层请求，不再改写模型策略
 
   /**
    * 构造 Backend 进程内 LLM 请求客户端；测试可注入 fake policy、pool 或 transport。
@@ -127,9 +127,9 @@ export class LLMClient implements LLMClientPort {
  * ProviderClientPool 是 LLMClient 私有的 SDK client 生命周期编排器。
  */
 export class ProviderClientPool implements ProviderClientResolver {
-  private readonly clients = new Map<string, unknown>(); // clients 的 key 包含 provider/key/header/timeout，避免跨凭据复用
-  private readonly factory: ProviderClientFactory; // factory 是 SDK client 创建的唯一委托，pool 不理解各 provider 构造参数
-  private create_count = 0; // create_count 只供测试和压测确认 client 复用模型
+  private readonly clients = new Map<string, unknown>(); // 的 key 包含 provider/key/header/timeout，避免跨凭据复用
+  private readonly factory: ProviderClientFactory; // SDK client 创建的唯一委托，pool 不理解各 provider 构造参数
+  private create_count = 0; // 只供测试和压测确认 client 复用模型
 
   /**
    * factory 只供测试注入 fake SDK client，生产路径使用 official SDK factory。

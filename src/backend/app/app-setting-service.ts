@@ -12,11 +12,11 @@ interface AppSettingsStreamPublisher {
  * AppSettingService 是 userdata/config.json 的运行期唯一读写入口。
  */
 export class AppSettingService {
-  private readonly paths: AppPathService; // paths 提供 config.json 的唯一落点
-  private stream_publisher: AppSettingsStreamPublisher | null; // stream_publisher 只广播 settings.changed
-  private readonly native_fs: NativeFs; // native_fs 统一设置文件读写和长路径策略
-  private setting_cache: Setting | null = null; // setting_cache 是运行期配置事实，外部手改不做热加载
-  private transient_overrides: Record<string, ApiJsonValue> | null = null; // transient_overrides 只服务 CLI 单次任务，不写回 config.json
+  private readonly paths: AppPathService; // 提供 config.json 的唯一落点
+  private stream_publisher: AppSettingsStreamPublisher | null; // 只广播 settings.changed
+  private readonly native_fs: NativeFs; // 统一设置文件读写和长路径策略
+  private setting_cache: Setting | null = null; // 运行期配置事实，外部手改不做热加载
+  private transient_overrides: Record<string, ApiJsonValue> | null = null; // 只服务 CLI 单次任务，不写回 config.json
 
   /**
    * 初始化 AppSettingService 依赖，保持配置写入口与事件出口清晰。

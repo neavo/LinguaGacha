@@ -26,7 +26,6 @@ type RecoveryProbeProps = {
   onActions: (actions: DesktopRecoveryActions) => void;
 };
 
-// RecoveryProbe 收口测试中的共享步骤，保证断言只关注当前行为。
 /**
  * 渲染当前组件的公开界面。
  */

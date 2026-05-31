@@ -39,12 +39,12 @@ export type OutputFolderOpener = (output_path: string) => Promise<void>;
  * 文件导出服务承载全部公开文件格式写回和导出目录语义
  */
 export class TranslationFileExportService {
-  private readonly database: ProjectDatabase; // database 是导出读取项目事实和 asset bytes 的唯一入口
-  private readonly app_setting_service: AppSettingService; // app_setting_service 提供导出语言、格式和完成后动作配置
-  private readonly session_state: ProjectSessionState; // session_state 决定当前导出的 .lg 工程
-  private readonly output_folder_opener: OutputFolderOpener; // output_folder_opener 隔离宿主打开目录副作用
-  private readonly log_manager?: FileExportLogManager; // log_manager 只承接导出诊断日志
-  private readonly native_fs: NativeFs; // native_fs 负责导出目录存在性判断和格式写盘策略传递
+  private readonly database: ProjectDatabase; // 导出读取项目事实和 asset bytes 的唯一入口
+  private readonly app_setting_service: AppSettingService; // 提供导出语言、格式和完成后动作配置
+  private readonly session_state: ProjectSessionState; // 决定当前导出的 .lg 工程
+  private readonly output_folder_opener: OutputFolderOpener; // 隔离宿主打开目录副作用
+  private readonly log_manager?: FileExportLogManager; // 只承接导出诊断日志
+  private readonly native_fs: NativeFs; // 负责导出目录存在性判断和格式写盘策略传递
 
   /**
    * 导出服务依赖当前 .lg 数据库、设置和项目会话，不直接读取渲染进程状态

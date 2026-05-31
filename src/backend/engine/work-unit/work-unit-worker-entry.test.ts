@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// WorkUnitWorkerIncomingMessage 复刻入口私有协议，避免测试导出生产私有类型。
+// 复刻入口私有协议，避免测试导出生产私有类型。
 type WorkUnitWorkerIncomingMessage =
   | {
       id: string;
@@ -17,14 +17,14 @@ type WorkUnitWorkerIncomingMessage =
       type: "cancel";
     };
 
-// WorkerPortHarness 保存入口监听器和回包 spy，测试不创建真实 worker。
+// 保存入口监听器和回包 spy，测试不创建真实 worker。
 type WorkerPortHarness = {
   listener: ((message: WorkUnitWorkerIncomingMessage) => void) | null;
   postMessage: ReturnType<typeof vi.fn>;
   emit: (message: WorkUnitWorkerIncomingMessage) => void;
 };
 
-// RunnerMock 是 WorkUnitRunner 的最小行为面，聚焦入口分发和取消语义。
+// WorkUnitRunner 的最小行为面，聚焦入口分发和取消语义。
 type RunnerMock = {
   run: ReturnType<typeof vi.fn>;
   translate_single: ReturnType<typeof vi.fn>;
@@ -66,7 +66,7 @@ function install_worker_threads_mock(worker_data: Record<string, unknown>): Work
 // WorkUnitRunner 是入口唯一业务依赖，mock class 保留 new 调用语义。
 function install_runner_mock(runner: RunnerMock): void {
   vi.doMock("./work-unit-runner", () => {
-    // WorkUnitRunnerMock 模拟外部运行时对象，只保留当前测试会触发的行为面。
+    // 模拟外部运行时对象，只保留当前测试会触发的行为面。
     class WorkUnitRunnerMock {
       public run = runner.run;
       public translate_single = runner.translate_single;

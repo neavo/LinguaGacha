@@ -81,7 +81,6 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
   };
 });
 
-// create_settings_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -115,7 +114,6 @@ function create_settings_snapshot(overrides: Partial<SettingsSnapshot> = {}): Se
   };
 }
 
-// create_runtime_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -153,7 +151,6 @@ function create_runtime_fixture(): RuntimeFixture {
   };
 }
 
-// create_toast_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -166,7 +163,6 @@ function create_toast_fixture(): ToastFixture {
   };
 }
 
-// create_settings_payload 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -199,7 +195,6 @@ describe("useBasicSettingsState", () => {
     vi.mocked(api_fetch).mockReset();
   });
 
-  // BasicSettingsProbe 收口测试中的共享步骤，保证断言只关注当前行为。
   function BasicSettingsProbe(): JSX.Element | null {
     latest_state = useBasicSettingsState();
     return null;

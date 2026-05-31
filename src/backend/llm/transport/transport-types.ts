@@ -5,13 +5,13 @@ import type { LLMRequestResult } from "../llm-types";
  * ProviderClientPoolRequest 是请求编排器和具体 SDK factory 之间的窄边界。
  */
 export interface ProviderClientPoolRequest {
-  provider: RequestProvider; // provider 决定 official SDK factory 的分发目标
-  api_format: string; // api_format 保留接入点协议，避免同 baseUrl 被跨协议复用
-  base_url: string; // base_url 是 client 连接端点，也是缓存 key 的核心组成
-  api_key: string; // api_key 必须参与缓存 key，避免跨凭据复用 client
-  timeout_ms: number; // timeout_ms 参与缓存 key，确保 client 超时语义稳定
-  headers: Record<string, string>; // headers 参与缓存 key，承载自定义鉴权和路由语义
-  auth_mode?: string; // auth_mode 区分 api-key、bearer 等 SDK 鉴权形态
+  provider: RequestProvider; // 决定 official SDK factory 的分发目标
+  api_format: string; // 保留接入点协议，避免同 baseUrl 被跨协议复用
+  base_url: string; // client 连接端点，也是缓存 key 的核心组成
+  api_key: string; // 必须参与缓存 key，避免跨凭据复用 client
+  timeout_ms: number; // 参与缓存 key，确保 client 超时语义稳定
+  headers: Record<string, string>; // 参与缓存 key，承载自定义鉴权和路由语义
+  auth_mode?: string; // 区分 api-key、bearer 等 SDK 鉴权形态
 }
 
 /**

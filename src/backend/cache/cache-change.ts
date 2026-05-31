@@ -43,9 +43,9 @@ export type CacheChange = {
   analysis: CacheBlockChange;
 };
 
-// KEEP 表示对应缓存块保持现状。
+// 对应缓存块保持现状。
 const KEEP: CacheBlockChange = { mode: "keep" };
-// FULL 表示对应缓存块需要完整重建。
+// 对应缓存块需要完整重建。
 const FULL: CacheBlockChange = { mode: "full" };
 
 /**

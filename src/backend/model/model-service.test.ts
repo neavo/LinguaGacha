@@ -798,7 +798,6 @@ async function* create_google_model_pager(
   }
 }
 
-// create_template 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_template(name: string, api_format: string): Record<string, ApiJsonValue> {
   return {
     api_format,
@@ -809,7 +808,6 @@ function create_template(name: string, api_format: string): Record<string, ApiJs
   };
 }
 
-// read_request_model_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function read_request_model_snapshot(response: Record<string, ApiJsonValue>): {
   active_model_id: string;
   models: Array<Record<string, ApiJsonValue>>;
@@ -830,7 +828,6 @@ function read_request_model_snapshot(response: Record<string, ApiJsonValue>): {
   };
 }
 
-// read_request_model_ids_by_type 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function read_request_model_ids_by_type(
   models: Array<Record<string, ApiJsonValue>>,
   model_type: string,
@@ -840,7 +837,6 @@ function read_request_model_ids_by_type(
     .map((model) => String(model["id"] ?? ""));
 }
 
-// stub_random_ids 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function stub_random_ids(...ids: string[]): void {
   const queue = [...ids];
   vi.spyOn(crypto, "randomUUID").mockImplementation(() => {

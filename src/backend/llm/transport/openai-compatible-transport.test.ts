@@ -88,7 +88,6 @@ describe("OpenAICompatibleTransport", () => {
   });
 });
 
-// create_pool 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_pool(
   captured_requests: ProviderClientPoolRequest[],
   chunks: unknown[],
@@ -114,7 +113,6 @@ async function* create_stream(chunks: unknown[]): AsyncGenerator<unknown> {
   }
 }
 
-// create_policy 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_policy(overrides: Partial<ResolvedRequestPolicy> = {}): ResolvedRequestPolicy {
   return {
     provider: "openai-compatible",

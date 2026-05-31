@@ -19,7 +19,7 @@ export type AnalysisWorkUnitOutput = {
 export type WorkUnitExecutionResult = {
   unit_id: string;
   kind: "translation" | "analysis";
-  outcome: "success" | "failed" | "stopped"; // outcome 驱动 Engine 重试、停止和 artifact 提交分支
+  outcome: "success" | "failed" | "stopped"; // 驱动 Engine 重试、停止和 artifact 提交分支
   metrics: {
     input_tokens: number;
     output_tokens: number;

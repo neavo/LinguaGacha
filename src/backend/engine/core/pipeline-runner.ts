@@ -17,11 +17,11 @@ interface TaskPipelineOptions<TContext, TCommit> {
  * Task Engine 通用流水线，负责普通队列、高优重试队列、worker pool 和批量提交
  */
 export class TaskPipeline<TContext, TCommit> {
-  private readonly queue: TContext[] = []; // queue 保存初次 work unit，停止时会被直接清空
+  private readonly queue: TContext[] = []; // 保存初次 work unit，停止时会被直接清空
 
-  private readonly retry_queue: TContext[] = []; // retry_queue 优先级高于普通队列，保证失败拆分能尽快收敛
+  private readonly retry_queue: TContext[] = []; // 优先级高于普通队列，保证失败拆分能尽快收敛
 
-  private readonly commit_queue: TCommit[] = []; // commit_queue 聚合 worker 产物，再按固定窗口批量提交
+  private readonly commit_queue: TCommit[] = []; // 聚合 worker 产物，再按固定窗口批量提交
 
   private readonly worker_count: number;
   private readonly upstream_signal: AbortSignal;

@@ -16,7 +16,7 @@ const YIELD_EVERY_ITEMS = 256; // 大批量计数定期让出事件循环，使 
  */
 class PlanningWorkerEntry {
   private readonly token_counter = create_o200k_base_token_counter(); // 每个 worker 独占 tokenizer，避免跨线程共享不可序列化对象。
-  private readonly cancelled_ids = new Set<string>(); // cancelled_ids 记录已收到取消但尚未结束的消息 id。
+  private readonly cancelled_ids = new Set<string>(); // 记录已收到取消但尚未结束的消息 id。
 
   /**
    * 消息入口只分发 count 与 cancel，业务规划语义留在主线程 TaskPlanner。

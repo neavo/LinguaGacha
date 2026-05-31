@@ -16,15 +16,15 @@ import type {
  * 翻译译前流程产物，显式保存译后恢复需要的每行状态
  */
 export interface TranslationPrePipelineContext {
-  item: TextTaskItemRecord | null; // item 保留当前 work unit 的可写快照，译后流程只回写这份对象
-  source_text: string; // source_text 直接来自 item.src，格式结构组装必须在导入边界完成
-  srcs: string[]; // srcs 是真正送入模型的行，空行和完全保护行不会进入请求
-  samples: string[]; // samples 收集保护段示例，供 PromptBuilder 判断是否补控制字符说明
-  valid_line_indexes: Set<number>; // valid_line_indexes 记录送入模型的源行位置，译后只按这些行回填
-  prefix_codes_by_line: Map<number, string[]>; // prefix_codes_by_line 按行保存前缀保护码，恢复时保持原始左侧位置
-  suffix_codes_by_line: Map<number, string[]>; // suffix_codes_by_line 单独保存后缀保护码，避免恢复时改变原始右侧顺序
-  leading_whitespace_by_line: Map<number, string>; // leading_whitespace_by_line 记录行首空白，避免模型输出破坏原文件排版
-  trailing_whitespace_by_line: Map<number, string>; // trailing_whitespace_by_line 记录行尾空白，保留脚本行末格式
+  item: TextTaskItemRecord | null; // 保留当前 work unit 的可写快照，译后流程只回写这份对象
+  source_text: string; // 直接来自 item.src，格式结构组装必须在导入边界完成
+  srcs: string[]; // 真正送入模型的行，空行和完全保护行不会进入请求
+  samples: string[]; // 收集保护段示例，供 PromptBuilder 判断是否补控制字符说明
+  valid_line_indexes: Set<number>; // 记录送入模型的源行位置，译后只按这些行回填
+  prefix_codes_by_line: Map<number, string[]>; // 按行保存前缀保护码，恢复时保持原始左侧位置
+  suffix_codes_by_line: Map<number, string[]>; // 单独保存后缀保护码，避免恢复时改变原始右侧顺序
+  leading_whitespace_by_line: Map<number, string>; // 记录行首空白，避免模型输出破坏原文件排版
+  trailing_whitespace_by_line: Map<number, string>; // 记录行尾空白，保留脚本行末格式
 }
 
 /**

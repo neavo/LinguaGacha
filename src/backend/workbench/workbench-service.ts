@@ -66,13 +66,13 @@ type WorkbenchWriteSnapshot = {
 type WorkbenchImportConflictAction = "skip" | "replace";
 
 type ImportWorkbenchFileCommand = {
-  source_path: string; // source_path 是用户选中的真实文件路径，只允许慢准备阶段读取
-  target_rel_path: string; // target_rel_path 是写入 .lg asset 的相对路径，提交阶段重新做唯一性校验
+  source_path: string; // 用户选中的真实文件路径，只允许慢准备阶段读取
+  target_rel_path: string; // 写入 .lg asset 的相对路径，提交阶段重新做唯一性校验
 };
 
 type TranslationResetParsedItemDraft = {
-  identity_key: string; // identity_key 只表达解析条目的稳定身份，不绑定当前 item id
-  identity_item: JsonRecord; // identity_item 是重解析后的公开字段底稿，提交阶段再补当前 id
+  identity_key: string; // 只表达解析条目的稳定身份，不绑定当前 item id
+  identity_item: JsonRecord; // 重解析后的公开字段底稿，提交阶段再补当前 id
 };
 
 /**
@@ -89,9 +89,9 @@ export class WorkbenchService {
 
   private readonly app_setting_service: AppSettingService | null; // 文件重解析需要当前应用级格式配置；测试可为空并使用稳定默认值
 
-  private readonly native_fs: NativeFs; // native_fs 只用于显式项目路径存在性校验，.lg 写入仍归 ProjectDatabase
+  private readonly native_fs: NativeFs; // 只用于显式项目路径存在性校验，.lg 写入仍归 ProjectDatabase
 
-  private readonly log_manager: Pick<LogManager, "warning"> | null; // log_manager 记录批量文件解析失败明细，不影响事务边界
+  private readonly log_manager: Pick<LogManager, "warning"> | null; // 记录批量文件解析失败明细，不影响事务边界
 
   /**
    * 注入 database、互斥门闩和会话状态，保持写库边界可测试

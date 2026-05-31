@@ -263,7 +263,7 @@ describe("TaskEngine", () => {
   });
 
   it("翻译切块使用注入 token 计数器而不是字符长度估算", async () => {
-    const executed_batches: number[][] = []; // executed_batches 记录 executor 可见的 chunk 分组，证明长文本仍可被 fake token 预算合并
+    const executed_batches: number[][] = []; // 记录 executor 可见的 chunk 分组，证明长文本仍可被 fake token 预算合并
     const done = create_status_waiter("translation", "done");
     const task_engine = new TaskEngine({
       appRoot: process.cwd(),
@@ -398,7 +398,6 @@ describe("TaskEngine", () => {
     };
   }
 
-  // create_translation_worker_result 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_translation_worker_result(
     items: MutableJsonRecord[],
     row_count: number,
@@ -419,7 +418,6 @@ describe("TaskEngine", () => {
     };
   }
 
-  // create_status_waiter 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_status_waiter(
     task_type: string,
     status: string,
@@ -446,7 +444,6 @@ describe("TaskEngine", () => {
     };
   }
 
-  // create_task_run_publisher 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_task_run_publisher(
     on_publish: (topic: string, payload: MutableJsonRecord) => void = () => undefined,
     on_progress_committed: (task_type: string) => void = () => undefined,
@@ -465,7 +462,6 @@ describe("TaskEngine", () => {
     } as unknown as TaskRunPublisher;
   }
 
-  // create_deferred 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_deferred<T>(): {
     promise: Promise<T>;
     resolve: (value: T) => void;
@@ -522,7 +518,6 @@ describe("TaskEngine", () => {
     } as unknown as AppSettingService;
   }
 
-  // create_template_root 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_template_root(): string {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-engine-"));
     cleanup_paths.push(app_root);
@@ -541,7 +536,6 @@ describe("TaskEngine", () => {
     return app_root;
   }
 
-  // write_template 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function write_template(
     app_root: string,
     task_dir_name: string,
@@ -555,7 +549,6 @@ describe("TaskEngine", () => {
     }
   }
 
-  // create_log_manager 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_log_manager(logs: string[] = []): LogManager {
     return {
       info: (message: string) => {

@@ -24,7 +24,6 @@ type CommitterProbeProps = {
   onCommitter: (committer: ProjectWriteCommitter) => void;
 };
 
-// CommitterProbe 收口测试中的共享步骤，保证断言只关注当前行为。
 function CommitterProbe(props: CommitterProbeProps): JSX.Element | null {
   const committer = useProjectWriteCommitter({
     applyProjectWriteChanges: props.applyProjectWriteChanges,
@@ -41,7 +40,6 @@ function CommitterProbe(props: CommitterProbeProps): JSX.Element | null {
   return null;
 }
 
-// capture_internal_invariant 收口测试中的共享步骤，保证断言只关注当前行为。
 function capture_internal_invariant(operation: () => unknown): InternalInvariantError {
   try {
     operation();

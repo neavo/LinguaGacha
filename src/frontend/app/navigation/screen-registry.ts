@@ -16,31 +16,31 @@ import { TsConversionPage } from "@frontend/pages/ts-conversion-page/page";
 import { WorkbenchPage } from "@frontend/pages/workbench-page/page";
 import type { ScreenComponentProps, ScreenRegistry } from "@frontend/app/navigation/types";
 
-// PreTranslationReplacementScreen 将通用替换页面固定为译前替换入口，供路由表直接消费。
+// 将通用替换页面固定为译前替换入口，供路由表直接消费。
 function PreTranslationReplacementScreen(
   props: ScreenComponentProps,
 ): ReturnType<typeof createElement> {
   return createElement(TextReplacementPage, { ...props, variant: "pre" });
 }
 
-// PostTranslationReplacementScreen 将通用替换页面固定为译后替换入口，避免路由侧散落 variant。
+// 将通用替换页面固定为译后替换入口，避免路由侧散落 variant。
 function PostTranslationReplacementScreen(
   props: ScreenComponentProps,
 ): ReturnType<typeof createElement> {
   return createElement(TextReplacementPage, { ...props, variant: "post" });
 }
 
-// TranslationPromptScreen 将通用提示词页面固定为翻译提示词入口。
+// 将通用提示词页面固定为翻译提示词入口。
 function TranslationPromptScreen(props: ScreenComponentProps): ReturnType<typeof createElement> {
   return createElement(CustomPromptPage, { ...props, variant: "translation" });
 }
 
-// AnalysisPromptScreen 将通用提示词页面固定为分析提示词入口。
+// 将通用提示词页面固定为分析提示词入口。
 function AnalysisPromptScreen(props: ScreenComponentProps): ReturnType<typeof createElement> {
   return createElement(CustomPromptPage, { ...props, variant: "analysis" });
 }
 
-// SCREEN_REGISTRY 是导航 route 到页面组件与标题 key 的唯一映射。
+// 导航 route 到页面组件与标题 key 的唯一映射。
 export const SCREEN_REGISTRY: ScreenRegistry = {
   "project-home": {
     component: ProjectPage,

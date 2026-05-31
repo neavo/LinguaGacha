@@ -43,13 +43,13 @@ interface PlanningWorkerSlot {
  * planning worker 池把精确 token 计数移出 Backend 主线程，线程只计算，不拥有项目事实。
  */
 export class PlanningWorkerPool {
-  private readonly execution: BackendWorkerExecution; // execution 由启动入口显式注入，构建产物路径不在池内猜测。
-  private readonly worker_count: number; // worker_count 控制 CPU 计数并行度，不等同于 LLM 请求并发。
+  private readonly execution: BackendWorkerExecution; // 由启动入口显式注入，构建产物路径不在池内猜测。
+  private readonly worker_count: number; // 控制 CPU 计数并行度，不等同于 LLM 请求并发。
   private readonly queue: PendingPlanningTask[] = [];
   private readonly slots: PlanningWorkerSlot[] = [];
   private readonly in_process_counter: TokenCounter | null = null;
   private readonly in_process_in_flight = new Map<string, PendingPlanningTask>(); // 同进程模式也使用同一取消和释放入口。
-  private disposed = false; // disposed 关闭后拒绝新任务，避免 BackendServices 释放后继续计数。
+  private disposed = false; // 关闭后拒绝新任务，避免 BackendServices 释放后继续计数。
 
   /**
    * 根据 execution 创建 worker_threads 或同进程计数器，产品路径固定走 worker_threads。

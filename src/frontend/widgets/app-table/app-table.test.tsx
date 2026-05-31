@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { build_app_table_reordered_row_ids } from "@frontend/widgets/app-table/app-table-dnd";
 
-// app_table_test_state 收集 DnD 和虚拟器 mock 的观测值，供表格行为断言复用。
+// 收集 DnD 和虚拟器 mock 的观测值，供表格行为断言复用。
 const app_table_test_state = vi.hoisted(() => {
   return {
     current_sortable_items: [] as string[],
@@ -87,7 +87,7 @@ import type {
   AppTableSelectionChange,
 } from "@frontend/widgets/app-table/app-table-types";
 
-// TestRow 是 AppTable 用例的最小业务行，保持 id 与展示文本分离。
+// AppTable 用例的最小业务行，保持 id 与展示文本分离。
 type TestRow = {
   id: string;
   label: string;
@@ -99,14 +99,14 @@ type TestRow = {
   }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
-// TestResizeObserver 覆盖 JSDOM 缺失的 ResizeObserver，表格只需要生命周期方法存在。
+// 覆盖 JSDOM 缺失的 ResizeObserver，表格只需要生命周期方法存在。
 class TestResizeObserver {
   observe(): void {}
   unobserve(): void {}
   disconnect(): void {}
 }
 
-// create_columns 提供普通数据列，作为大多数表格用例的默认列模型。
+// 提供普通数据列，作为大多数表格用例的默认列模型。
 function create_columns(): AppTableColumn<TestRow>[] {
   return [
     {
@@ -120,7 +120,7 @@ function create_columns(): AppTableColumn<TestRow>[] {
   ];
 }
 
-// create_drag_columns 在默认列前追加拖拽列，用于校验 DnD 上下文载荷。
+// 在默认列前追加拖拽列，用于校验 DnD 上下文载荷。
 function create_drag_columns(): AppTableColumn<TestRow>[] {
   return [
     {
@@ -153,7 +153,7 @@ async function render_app_table(
   };
 }
 
-// create_default_props 生成完整 AppTable 元素，调用点只覆盖本用例关心的 props。
+// 生成完整 AppTable 元素，调用点只覆盖本用例关心的 props。
 function create_default_props(
   overrides?: Partial<Parameters<typeof AppTable<TestRow>>[0]>,
 ): JSX.Element {
@@ -181,7 +181,7 @@ function create_default_props(
   );
 }
 
-// create_remote_row_model 模拟远端窗口模型，只让 loaded_indices 对应的行可同步读取。
+// 模拟远端窗口模型，只让 loaded_indices 对应的行可同步读取。
 function create_remote_row_model(args: {
   rows: TestRow[];
   loaded_indices: number[];
@@ -207,7 +207,7 @@ function create_remote_row_model(args: {
   };
 }
 
-// get_table_host 取表格内部滚动宿主，失败时给出面向测试的明确错误。
+// 取表格内部滚动宿主，失败时给出面向测试的明确错误。
 function get_table_host(container: HTMLDivElement): HTMLDivElement {
   const table_host = container.querySelector<HTMLDivElement>(".app-table__scroll-host");
   if (table_host === null) {
@@ -217,7 +217,7 @@ function get_table_host(container: HTMLDivElement): HTMLDivElement {
   return table_host;
 }
 
-// get_table_viewport 取 ScrollArea 视口，供滚动恢复用例直接设置 scrollTop。
+// 取 ScrollArea 视口，供滚动恢复用例直接设置 scrollTop。
 function get_table_viewport(container: HTMLDivElement): HTMLElement {
   const viewport = container.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
   if (viewport === null) {
@@ -227,7 +227,7 @@ function get_table_viewport(container: HTMLDivElement): HTMLElement {
   return viewport;
 }
 
-// create_rows 生成连续 row id，便于虚拟索引和滚动位置相互映射。
+// 生成连续 row id，便于虚拟索引和滚动位置相互映射。
 function create_rows(count: number): TestRow[] {
   return Array.from({ length: count }, (_, index) => {
     const id = `row-${index.toString()}`;
@@ -238,7 +238,7 @@ function create_rows(count: number): TestRow[] {
   });
 }
 
-// mock_element_rect 固定 DOMRect top，用于模拟挂载行相对 viewport 的视觉偏移。
+// 固定 DOMRect top，用于模拟挂载行相对 viewport 的视觉偏移。
 function mock_element_rect(element: Element, rect: Pick<DOMRect, "top">): void {
   element.getBoundingClientRect = () => {
     return {
@@ -255,7 +255,7 @@ function mock_element_rect(element: Element, rect: Pick<DOMRect, "top">): void {
   };
 }
 
-// create_controlled_promise 让远端行范围读取可以由测试主动 resolve 或 reject。
+// 让远端行范围读取可以由测试主动 resolve 或 reject。
 function create_controlled_promise<T>(): {
   promise: Promise<T>;
   resolve: (value: T) => void;

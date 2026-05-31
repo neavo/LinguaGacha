@@ -22,7 +22,6 @@ let container: HTMLDivElement | null = null;
 
 type DesktopEventStreamOptions = Parameters<typeof useDesktopEventStream>[0];
 
-// create_event_source_stub 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_event_source_stub(): {
   event_source: EventSource;
   emit: (event_name: string, payload: Record<string, unknown>) => void;
@@ -69,7 +68,6 @@ async function wait_for_condition(predicate: () => boolean, attempts = 20): Prom
   throw new Error("等待事件流状态收敛失败。");
 }
 
-// EventStreamProbe 收口测试中的共享步骤，保证断言只关注当前行为。
 function EventStreamProbe(props: {
   options: Omit<DesktopEventStreamOptions, "schedulerRef">;
 }): JSX.Element | null {
@@ -81,7 +79,6 @@ function EventStreamProbe(props: {
   return null;
 }
 
-// render_event_stream 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function render_event_stream(options: Omit<DesktopEventStreamOptions, "schedulerRef">): void {
   container = document.createElement("div");
   document.body.append(container);

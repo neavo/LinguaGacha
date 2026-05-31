@@ -4,7 +4,7 @@ import type { ProjectDataRecord } from "../../project/project-data";
  * PromptCache 保存 prompt meta block，避免页面查询反复读取数据库。
  */
 export class PromptCache {
-  private block: ProjectDataRecord = {}; // block 只保存普通 JSON 快照，读取时再浅克隆。
+  private block: ProjectDataRecord = {}; // 只保存普通 JSON 快照，读取时再浅克隆。
 
   /**
    * before_read 由上层缓存管理器提供恢复钩子。

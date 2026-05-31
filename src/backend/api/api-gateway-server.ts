@@ -50,7 +50,7 @@ const CORS_ALLOWED_HEADERS = "Content-Type"; // 公开 Gateway 只接受 JSON �
  */
 export interface ApiGatewayServerOptions {
   publicPort: number; // publicPort 由 API 端口分配器保证唯一，Gateway 只按该端口监听
-  backendServices: BackendServices; // backendServices 是 API、CLI 共用的服务组合根，Gateway 不再自行装配业务依赖
+  backendServices: BackendServices; // API、CLI 共用的服务组合根，Gateway 不再自行装配业务依赖
 }
 
 /**
@@ -59,7 +59,7 @@ export interface ApiGatewayServerOptions {
 export class ApiGatewayServer {
   private readonly options: ApiGatewayServerOptions;
 
-  private server: Server | null = null; // server 只代表公开 Gateway 监听器，Backend 与 Database 生命周期不归这里关闭
+  private server: Server | null = null; // 只代表公开 Gateway 监听器，Backend 与 Database 生命周期不归这里关闭
 
   private readonly server_sockets = new Set<Socket>(); // 退出时 renderer SSE 仍可能保持连接，必须由 Gateway 主动切断
 
