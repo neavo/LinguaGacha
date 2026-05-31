@@ -85,7 +85,9 @@ export function WorkbenchTaskDetailSheet(props: WorkbenchTaskDetailSheetProps): 
                   </div>
                   <div className="workbench-task__metric-main">
                     <span className="workbench-task__metric-value">{entry.value_text}</span>
-                    <span className="workbench-task__metric-unit">{entry.unit_text}</span>
+                    {entry.unit_text === "" ? null : (
+                      <span className="workbench-task__metric-unit">{entry.unit_text}</span>
+                    )}
                   </div>
                 </article>
               ))}

@@ -796,6 +796,43 @@ describe("useWorkbenchPageState", () => {
     });
   });
 
+  it("任务详情时间指标使用时分秒格式且不展示单位", async () => {
+    translation_runtime_fixture.current = {
+      ...translation_runtime_fixture.current,
+      translation_task_metrics: {
+        ...translation_runtime_fixture.current.translation_task_metrics,
+        active: true,
+        elapsed_seconds: 87864.8,
+        remaining_seconds: 3723.2,
+      },
+    };
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      task_snapshot: {
+        busy: true,
+        task_type: "translation",
+        status: "running",
+      },
+    };
+
+    await render_hook();
+
+    expect(latest_state?.active_workbench_task_detail?.metric_entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          key: "elapsed",
+          value_text: "24:24:24",
+          unit_text: "",
+        }),
+        expect.objectContaining({
+          key: "remaining-time",
+          value_text: "01:02:03",
+          unit_text: "",
+        }),
+      ]),
+    );
+  });
+
   it("运行中分析统计按后端 query，详情进度按任务快照展示", async () => {
     analysis_runtime_fixture.current = {
       ...analysis_runtime_fixture.current,
