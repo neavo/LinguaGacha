@@ -36,10 +36,12 @@ import { AppTableDragIndicator } from "@frontend/widgets/app-table/app-table-dra
 import type {
   AppTableColumn,
   AppTableRowModel,
+  AppTableScrollAnchor,
   AppTableSelectionChange,
   AppTableSortState,
 } from "@frontend/widgets/app-table/app-table-types";
 
+// ProofreadingTableProps 收口校对页状态 Hook 给表格层的只读展示和行操作入口。
 type ProofreadingTableProps = {
   items: ProofreadingVisibleItem[];
   visible_row_count: number;
@@ -56,6 +58,7 @@ type ProofreadingTableProps = {
   resolve_row_ids_range: (range: { start: number; count: number }) => Promise<string[]>;
   on_visible_range_change: (range: { start: number; count: number }) => void;
   restore_scroll_row_id: string | null;
+  preserve_scroll_anchor: AppTableScrollAnchor;
   on_sort_change: (next_sort_state: AppTableSortState | null) => void;
   on_selection_change: (payload: AppTableSelectionChange) => void;
   on_selection_error: (error: unknown) => void;
@@ -171,6 +174,8 @@ function resolve_status_icon_tone(status: string): ProofreadingStatusIconTone {
 function build_compact_tooltip(template: string, title: string, content: string): string {
   return template.replace("{TITLE}", title).replace("{STATE}", content);
 }
+
+// ProofreadingStatusCell 只负责状态和 warning 图标展示，批量操作仍由行上下文菜单处理。
 export function ProofreadingStatusCell(props: {
   item: ProofreadingItem;
   retranslating: boolean;
@@ -278,11 +283,15 @@ export function ProofreadingStatusCell(props: {
     </div>
   );
 }
+
+// ProofreadingTable 把校对页远端窗口模型适配给通用 AppTable。
 export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
   const { t } = useI18n();
+  // retranslating_row_id_set 让状态列 O(1) 判断行级重翻状态。
   const retranslating_row_id_set = useMemo(() => {
     return new Set(props.retranslating_row_ids);
   }, [props.retranslating_row_ids]);
+  // row_model 暴露远端窗口读取能力，AppTable 不需要理解校对页 view id。
   const row_model = useMemo<AppTableRowModel<ProofreadingVisibleItem>>(() => {
     return {
       row_count: props.visible_row_count,
@@ -304,6 +313,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
     props.resolve_row_index,
     props.visible_row_count,
   ]);
+  // columns 是校对页表格语义和菜单入口的唯一列配置。
   const columns = useMemo<AppTableColumn<ProofreadingVisibleItem>[]>(() => {
     return [
       {
@@ -413,6 +423,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
           get_row_id={(item) => item.row_id}
           row_model={row_model}
           restore_scroll_row_id={props.restore_scroll_row_id}
+          preserve_scroll_anchor={props.preserve_scroll_anchor}
           on_selection_change={props.on_selection_change}
           on_selection_error={props.on_selection_error}
           on_sort_change={props.on_sort_change}

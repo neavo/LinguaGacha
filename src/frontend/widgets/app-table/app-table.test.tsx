@@ -4,12 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { build_app_table_reordered_row_ids } from "@frontend/widgets/app-table/app-table-dnd";
 
+// app_table_test_state 收集 DnD 和虚拟器 mock 的观测值，供表格行为断言复用。
 const app_table_test_state = vi.hoisted(() => {
   return {
     current_sortable_items: [] as string[],
     virtual_item_indices: null as number[] | null,
+    estimate_sizes: [] as number[],
     measure: vi.fn(),
-    measureElement: vi.fn(),
     scrollToIndex: vi.fn(),
   };
 });
@@ -48,6 +49,7 @@ vi.mock("@tanstack/react-virtual", () => {
       getItemKey?: (index: number) => string | number;
     }) => {
       const row_height = options.estimateSize();
+      app_table_test_state.estimate_sizes.push(row_height);
       const item_indices =
         app_table_test_state.virtual_item_indices ??
         Array.from({ length: options.count }, (_, index) => index);
@@ -65,7 +67,6 @@ vi.mock("@tanstack/react-virtual", () => {
           }),
         getTotalSize: () => options.count * row_height,
         measure: app_table_test_state.measure,
-        measureElement: app_table_test_state.measureElement,
         scrollToIndex: (...args: [number, { align: "auto" | "start" }]) => {
           if (options.getScrollElement() === null) {
             return;
@@ -79,12 +80,14 @@ vi.mock("@tanstack/react-virtual", () => {
 });
 
 import { AppTable } from "@frontend/widgets/app-table/app-table";
+import { APP_TABLE_DEFAULT_ROW_HEIGHT } from "@frontend/widgets/app-table/app-table-virtualization";
 import type {
   AppTableColumn,
   AppTableRowModel,
   AppTableSelectionChange,
 } from "@frontend/widgets/app-table/app-table-types";
 
+// TestRow 是 AppTable 用例的最小业务行，保持 id 与展示文本分离。
 type TestRow = {
   id: string;
   label: string;
@@ -96,12 +99,14 @@ type TestRow = {
   }
 ).IS_REACT_ACT_ENVIRONMENT = true;
 
+// TestResizeObserver 覆盖 JSDOM 缺失的 ResizeObserver，表格只需要生命周期方法存在。
 class TestResizeObserver {
   observe(): void {}
   unobserve(): void {}
   disconnect(): void {}
 }
 
+// create_columns 提供普通数据列，作为大多数表格用例的默认列模型。
 function create_columns(): AppTableColumn<TestRow>[] {
   return [
     {
@@ -115,6 +120,7 @@ function create_columns(): AppTableColumn<TestRow>[] {
   ];
 }
 
+// create_drag_columns 在默认列前追加拖拽列，用于校验 DnD 上下文载荷。
 function create_drag_columns(): AppTableColumn<TestRow>[] {
   return [
     {
@@ -128,6 +134,7 @@ function create_drag_columns(): AppTableColumn<TestRow>[] {
   ];
 }
 
+// render_app_table 挂载真实 React 根并等待一次微任务，确保 layout effect 有机会执行。
 async function render_app_table(
   element: JSX.Element,
 ): Promise<{ container: HTMLDivElement; root: Root }> {
@@ -146,6 +153,7 @@ async function render_app_table(
   };
 }
 
+// create_default_props 生成完整 AppTable 元素，调用点只覆盖本用例关心的 props。
 function create_default_props(
   overrides?: Partial<Parameters<typeof AppTable<TestRow>>[0]>,
 ): JSX.Element {
@@ -173,6 +181,7 @@ function create_default_props(
   );
 }
 
+// create_remote_row_model 模拟远端窗口模型，只让 loaded_indices 对应的行可同步读取。
 function create_remote_row_model(args: {
   rows: TestRow[];
   loaded_indices: number[];
@@ -198,6 +207,7 @@ function create_remote_row_model(args: {
   };
 }
 
+// get_table_host 取表格内部滚动宿主，失败时给出面向测试的明确错误。
 function get_table_host(container: HTMLDivElement): HTMLDivElement {
   const table_host = container.querySelector<HTMLDivElement>(".app-table__scroll-host");
   if (table_host === null) {
@@ -207,6 +217,45 @@ function get_table_host(container: HTMLDivElement): HTMLDivElement {
   return table_host;
 }
 
+// get_table_viewport 取 ScrollArea 视口，供滚动恢复用例直接设置 scrollTop。
+function get_table_viewport(container: HTMLDivElement): HTMLElement {
+  const viewport = container.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
+  if (viewport === null) {
+    throw new Error("缺少表格滚动 viewport。");
+  }
+
+  return viewport;
+}
+
+// create_rows 生成连续 row id，便于虚拟索引和滚动位置相互映射。
+function create_rows(count: number): TestRow[] {
+  return Array.from({ length: count }, (_, index) => {
+    const id = `row-${index.toString()}`;
+    return {
+      id,
+      label: `Row ${index.toString()}`,
+    };
+  });
+}
+
+// mock_element_rect 固定 DOMRect top，用于模拟挂载行相对 viewport 的视觉偏移。
+function mock_element_rect(element: Element, rect: Pick<DOMRect, "top">): void {
+  element.getBoundingClientRect = () => {
+    return {
+      x: 0,
+      y: rect.top,
+      top: rect.top,
+      left: 0,
+      right: 100,
+      bottom: rect.top + 36,
+      width: 100,
+      height: 36,
+      toJSON: () => ({}),
+    } as DOMRect;
+  };
+}
+
+// create_controlled_promise 让远端行范围读取可以由测试主动 resolve 或 reject。
 function create_controlled_promise<T>(): {
   promise: Promise<T>;
   resolve: (value: T) => void;
@@ -226,6 +275,7 @@ function create_controlled_promise<T>(): {
   };
 }
 
+// flush_promises 推进两轮微任务，覆盖 React effect 中串联的异步回调。
 async function flush_promises(): Promise<void> {
   await act(async () => {
     await Promise.resolve();
@@ -241,8 +291,8 @@ describe("AppTable row model", () => {
     vi.stubGlobal("ResizeObserver", TestResizeObserver);
     app_table_test_state.current_sortable_items = [];
     app_table_test_state.virtual_item_indices = null;
+    app_table_test_state.estimate_sizes = [];
     app_table_test_state.measure.mockClear();
-    app_table_test_state.measureElement.mockClear();
     app_table_test_state.scrollToIndex.mockClear();
   });
 
@@ -289,6 +339,31 @@ describe("AppTable row model", () => {
       active_row_id: "a",
       anchor_row_id: "a",
     });
+  });
+
+  it("固定行高会同时驱动虚拟高度和表格 CSS 变量", async () => {
+    const container = await mount(
+      create_default_props({
+        rows: create_rows(2),
+      }),
+    );
+    const table = container.querySelector<HTMLElement>(".app-table");
+
+    expect(app_table_test_state.estimate_sizes.at(-1)).toBe(APP_TABLE_DEFAULT_ROW_HEIGHT);
+    expect(table?.style.getPropertyValue("--app-table-row-height")).toBe("36px");
+  });
+
+  it("传入 row_height 时会用同一高度计算虚拟行和占位行", async () => {
+    const container = await mount(
+      create_default_props({
+        rows: create_rows(1),
+        row_height: 42,
+      }),
+    );
+    const table = container.querySelector<HTMLElement>(".app-table");
+
+    expect(app_table_test_state.estimate_sizes.at(-1)).toBe(42);
+    expect(table?.style.getPropertyValue("--app-table-row-height")).toBe("42px");
   });
 
   it("恢复页面状态时会把本地表格的选中行滚入视口", async () => {
@@ -428,6 +503,150 @@ describe("AppTable row model", () => {
     expect(app_table_test_state.scrollToIndex).not.toHaveBeenCalledWith(2, {
       align: "start",
     });
+  });
+
+  it("刷新锚点会捕获已挂载行偏移并在数据更新后恢复", async () => {
+    app_table_test_state.virtual_item_indices = [10];
+    const rows = create_rows(20);
+    const rendered = await render_app_table(
+      create_default_props({
+        rows,
+        preserve_scroll_anchor: { row_id: null, revision: 0 },
+      }),
+    );
+    mounted_roots.push(rendered.root);
+    mounted_containers.push(rendered.container);
+    const viewport = get_table_viewport(rendered.container);
+    Object.defineProperty(viewport, "clientHeight", { value: 72, configurable: true });
+    viewport.scrollTop = 200;
+    mock_element_rect(viewport, { top: 100 });
+    const anchor_row =
+      rendered.container.querySelector<HTMLTableRowElement>('[data-row-index="10"]');
+    if (anchor_row === null) {
+      throw new Error("缺少测试锚点行。");
+    }
+    mock_element_rect(anchor_row, { top: 112 });
+
+    await act(async () => {
+      rendered.root.render(
+        create_default_props({
+          rows,
+          preserve_scroll_anchor: { row_id: "row-10", revision: 1 },
+        }),
+      );
+      await Promise.resolve();
+    });
+    viewport.scrollTop = 0;
+    await act(async () => {
+      rendered.root.render(
+        create_default_props({
+          rows: rows.map((row) => ({ ...row, label: `${row.label} updated` })),
+          preserve_scroll_anchor: { row_id: "row-10", revision: 1 },
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(viewport.scrollTop).toBe(348);
+  });
+
+  it("刷新锚点行未挂载时会用 row_height 和索引恢复偏移", async () => {
+    app_table_test_state.virtual_item_indices = [0];
+    const rows = create_rows(20);
+    const row_model = create_remote_row_model({
+      rows,
+      loaded_indices: [0, 10],
+    });
+    const rendered = await render_app_table(
+      create_default_props({
+        rows: [],
+        row_model,
+        row_height: 40,
+        preserve_scroll_anchor: { row_id: null, revision: 0 },
+      }),
+    );
+    mounted_roots.push(rendered.root);
+    mounted_containers.push(rendered.container);
+    const viewport = get_table_viewport(rendered.container);
+    Object.defineProperty(viewport, "clientHeight", { value: 100, configurable: true });
+    viewport.scrollTop = 300;
+
+    await act(async () => {
+      rendered.root.render(
+        create_default_props({
+          rows: [],
+          row_model,
+          row_height: 40,
+          preserve_scroll_anchor: { row_id: "row-10", revision: 1 },
+        }),
+      );
+      await Promise.resolve();
+    });
+    viewport.scrollTop = 0;
+    await act(async () => {
+      rendered.root.render(
+        create_default_props({
+          rows: [],
+          row_model,
+          row_height: 40,
+          preserve_scroll_anchor: { row_id: "row-10", revision: 1 },
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(viewport.scrollTop).toBe(300);
+  });
+
+  it("刷新锚点行消失时不会写入错误滚动位置", async () => {
+    app_table_test_state.virtual_item_indices = [0];
+    const rows = create_rows(20);
+    const row_model = create_remote_row_model({
+      rows,
+      loaded_indices: [0, 10],
+    });
+    const rendered = await render_app_table(
+      create_default_props({
+        rows: [],
+        row_model,
+        row_height: 40,
+        preserve_scroll_anchor: { row_id: null, revision: 0 },
+      }),
+    );
+    mounted_roots.push(rendered.root);
+    mounted_containers.push(rendered.container);
+    const viewport = get_table_viewport(rendered.container);
+    Object.defineProperty(viewport, "clientHeight", { value: 100, configurable: true });
+    viewport.scrollTop = 300;
+
+    await act(async () => {
+      rendered.root.render(
+        create_default_props({
+          rows: [],
+          row_model,
+          row_height: 40,
+          preserve_scroll_anchor: { row_id: "row-10", revision: 1 },
+        }),
+      );
+      await Promise.resolve();
+    });
+    viewport.scrollTop = 0;
+    await act(async () => {
+      rendered.root.render(
+        create_default_props({
+          rows: [],
+          row_model: create_remote_row_model({
+            rows,
+            loaded_indices: [0],
+          }),
+          row_height: 40,
+          preserve_scroll_anchor: { row_id: "row-10", revision: 1 },
+        }),
+      );
+      await Promise.resolve();
+    });
+
+    expect(viewport.scrollTop).toBe(0);
   });
 
   it("显式 row_model 会按模型索引读取已加载窗口行并上报可见范围", async () => {

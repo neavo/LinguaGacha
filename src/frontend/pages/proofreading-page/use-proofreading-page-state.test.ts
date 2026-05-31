@@ -3,15 +3,19 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
+import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-context";
 import type { ProjectChangeSignal } from "@frontend/app/state/desktop-state-context";
 import { INPUT_QUERY_DEBOUNCE_MS } from "@frontend/widgets/interactions/use-debounce";
 import type { ProjectItemPublicRecord } from "@domain/item";
 import {
   create_empty_proofreading_filter_panel_state,
   create_empty_proofreading_list_view,
+  type ProofreadingFilterOptions,
+  type ProofreadingGlossaryTerm,
 } from "@frontend/pages/proofreading-page/types";
 import { useProofreadingPageState } from "@frontend/pages/proofreading-page/use-proofreading-page-state";
 
+// RuntimeFixture 模拟 Hook 依赖的桌面运行态、项目变更信号和写入回调。
 type RuntimeFixture = {
   settings_snapshot: {
     source_language: string;
@@ -36,11 +40,13 @@ type RuntimeFixture = {
   refresh_task: ReturnType<typeof vi.fn>;
 };
 
+// NavigationFixture 只保留校对页查找意图，避免页面测试依赖真实导航容器。
 type NavigationFixture = {
   proofreading_lookup_intent: null;
   clear_proofreading_lookup_intent: ReturnType<typeof vi.fn>;
 };
 
+// ProofreadingClientFixture 收口校对页所有远端查询入口，便于单用例替换具体行为。
 type ProofreadingClientFixture = {
   sync_proofreading_cache: ReturnType<typeof vi.fn>;
   build_proofreading_list_view: ReturnType<typeof vi.fn>;
@@ -53,28 +59,21 @@ type ProofreadingClientFixture = {
   dispose: ReturnType<typeof vi.fn>;
 };
 
+// ToastFixture 记录刷新和写入反馈，避免用例挂载真实 toast 宿主。
 type ToastFixture = {
   dismiss_toast: ReturnType<typeof vi.fn>;
   push_progress_toast: ReturnType<typeof vi.fn>;
   push_toast: ReturnType<typeof vi.fn>;
 };
 
+// Deferred 让测试精确控制异步查询完成顺序，覆盖过期请求和竞态路径。
 type Deferred<T> = {
   promise: Promise<T>;
   resolve: (value: T) => void;
   reject: (reason?: unknown) => void;
 };
 
-const { page_ui_state_store } = vi.hoisted(() => {
-  return {
-    page_ui_state_store: new Map<string, unknown>(),
-  };
-});
-
-// create_project_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-/**
- * 构造当前测试场景的标准数据。
- */
+// create_project_item 生成 runtime 查询返回的最小 item 记录，允许用 overrides 聚焦单个字段。
 function create_project_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
     item_id: 1,
@@ -95,10 +94,7 @@ function create_project_item(overrides: Partial<ProjectItemPublicRecord>): Proje
   };
 }
 
-// create_project_change_signal 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-/**
- * 构造当前测试场景的标准数据。
- */
+// create_project_change_signal 按 full、delta、noop 三类刷新场景生成桌面变更信号。
 function create_project_change_signal(
   seq: number,
   options: {
@@ -147,22 +143,22 @@ function create_project_change_signal(
   };
 }
 
-// state fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
+// runtime_fixture 通过 mock useDesktopState 暴露可替换的桌面运行态快照。
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
 };
 
-// navigation fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
+// navigation_fixture 通过 mock useAppNavigation 暴露校对查找意图。
 const navigation_fixture: { current: NavigationFixture } = {
   current: create_navigation_fixture(),
 };
 
-// proofreading client fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
+// proofreading_client_fixture 通过 mock API client 暴露每个用例可覆写的列表查询。
 const proofreading_client_fixture: { current: ProofreadingClientFixture } = {
   current: create_proofreading_client_fixture(),
 };
 
-// toast fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
+// toast_fixture 捕获页面反馈调用，避免测试依赖真实通知生命周期。
 const toast_fixture: { current: ToastFixture } = {
   current: create_toast_fixture(),
 };
@@ -216,55 +212,7 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
   };
 });
 
-vi.mock("@frontend/app/session/project-session-ui-state-context", () => {
-  return {
-    resolve_project_session_table_restore_scroll_row_id: (
-      ui_state: {
-        selected_row_ids: string[];
-        active_row_id: string | null;
-        anchor_row_id: string | null;
-      } | null,
-    ): string | null => {
-      if (ui_state === null) {
-        return null;
-      }
-
-      if (ui_state.selected_row_ids.length > 1) {
-        return ui_state.selected_row_ids[0] ?? ui_state.active_row_id;
-      }
-
-      return ui_state.selected_row_ids[0] ?? ui_state.active_row_id ?? ui_state.anchor_row_id;
-    },
-    useProjectSessionUiState: () => ({
-      get_page_ui_state: <UiState>(key: string): UiState | null => {
-        return (page_ui_state_store.get(key) as UiState | undefined) ?? null;
-      },
-      set_page_ui_state: <UiState>(key: string, ui_state: UiState): void => {
-        page_ui_state_store.set(key, ui_state);
-      },
-      update_page_ui_state: <UiState>(
-        key: string,
-        updater: (previous_ui_state: UiState | null) => UiState | null,
-      ): void => {
-        const previous_ui_state = (page_ui_state_store.get(key) as UiState | undefined) ?? null;
-        const next_ui_state = updater(previous_ui_state);
-        if (next_ui_state === null) {
-          page_ui_state_store.delete(key);
-        } else {
-          page_ui_state_store.set(key, next_ui_state);
-        }
-      },
-      clear_page_ui_state: (key: string): void => {
-        page_ui_state_store.delete(key);
-      },
-    }),
-  };
-});
-
-// create_quality_store_payload 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-/**
- * 构造当前测试场景的标准数据。
- */
+// create_quality_store_payload 提供默认质量配置，支撑校对 sync 的完整 runtime 响应。
 function create_quality_store_payload(): Record<string, unknown> {
   return {
     quality: {
@@ -304,10 +252,7 @@ function create_quality_store_payload(): Record<string, unknown> {
   };
 }
 
-// create_runtime_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-/**
- * 构造当前测试场景的标准数据。
- */
+// create_runtime_fixture 模拟项目已加载的常规状态，并把写入回调结果原样返回给 Hook。
 function create_runtime_fixture(): RuntimeFixture {
   return {
     settings_snapshot: {
@@ -345,10 +290,7 @@ function create_runtime_fixture(): RuntimeFixture {
   };
 }
 
-// create_navigation_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-/**
- * 构造当前测试场景的标准数据。
- */
+// create_navigation_fixture 提供无查找意图的默认导航状态。
 function create_navigation_fixture(): NavigationFixture {
   return {
     proofreading_lookup_intent: null,
@@ -356,11 +298,17 @@ function create_navigation_fixture(): NavigationFixture {
   };
 }
 
-// create_sync_state 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-/**
- * 构造当前测试场景的标准数据。
- */
-function create_sync_state() {
+// create_sync_state 生成校对缓存 sync 结果，并允许用例覆盖默认筛选。
+function create_sync_state(default_filter_patch: Partial<ProofreadingFilterOptions> = {}) {
+  const default_filters: ProofreadingFilterOptions = {
+    warning_types: ["NO_WARNING"],
+    statuses: ["NONE"],
+    file_paths: ["chapter01.txt"],
+    glossary_terms: [],
+    include_without_glossary_miss: true,
+    ...default_filter_patch,
+  };
+
   return {
     projectId: "E:/demo/sample.lg",
     sourceLanguage: "JA",
@@ -370,20 +318,11 @@ function create_sync_state() {
       quality: 0,
       proofreading: 1,
     },
-    defaultFilters: {
-      warning_types: ["NO_WARNING"],
-      statuses: ["NONE"],
-      file_paths: ["chapter01.txt"],
-      glossary_terms: [],
-      include_without_glossary_miss: true,
-    },
+    defaultFilters: default_filters,
   };
 }
 
-// create_deferred 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-/**
- * 构造当前测试场景的标准数据。
- */
+// create_deferred 暴露 promise 控制柄，用于验证异步列表请求的先后顺序。
 function create_deferred<T>(): Deferred<T> {
   let resolve_deferred: (value: T) => void = () => {};
   let reject_deferred: (reason?: unknown) => void = () => {};
@@ -398,10 +337,7 @@ function create_deferred<T>(): Deferred<T> {
   };
 }
 
-// create_client_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-/**
- * 构造当前测试场景的标准数据。
- */
+// create_client_item 生成前端列表行使用的校对 item，row_id 与 item_id 保持同源。
 function create_client_item(item_id: number | string) {
   return {
     item_id,
@@ -420,10 +356,7 @@ function create_client_item(item_id: number | string) {
   };
 }
 
-// create_list_view 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-/**
- * 构造当前测试场景的标准数据。
- */
+// create_list_view 生成包含首屏窗口的默认列表 view，供刷新和窗口读取测试复用。
 function create_list_view() {
   return {
     ...create_empty_proofreading_list_view(),
@@ -447,9 +380,7 @@ function create_list_view() {
   };
 }
 
-/**
- * 构造当前场景的标准初始数据。
- */
+// create_proofreading_runtime_query_response 模拟 renderer 直读 runtime 的 sync 响应。
 function create_proofreading_runtime_query_response() {
   const quality_payload = create_quality_store_payload();
   return {
@@ -477,9 +408,7 @@ function create_proofreading_runtime_query_response() {
   };
 }
 
-/**
- * 配置当前测试场景依赖。
- */
+// install_api_fetch_default_mock 把桌面 API 默认收口到 sync 和按 row_id 读行两类行为。
 function install_api_fetch_default_mock(): void {
   vi.mocked(api_fetch).mockImplementation(async (path: string, body: unknown) => {
     if (path === "/api/proofreading/view") {
@@ -496,10 +425,7 @@ function install_api_fetch_default_mock(): void {
   });
 }
 
-// create_filter_panel 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-/**
- * 构造当前测试场景的标准数据。
- */
+// create_filter_panel 提供校对筛选弹窗的默认可选项和计数。
 function create_filter_panel() {
   return {
     ...create_empty_proofreading_filter_panel_state(),
@@ -521,10 +447,7 @@ function create_filter_panel() {
   };
 }
 
-// create_proofreading_client_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-/**
- * 构造当前测试场景的标准数据。
- */
+// create_proofreading_client_fixture 模拟校对 API client 的常规成功路径。
 function create_proofreading_client_fixture(): ProofreadingClientFixture {
   return {
     sync_proofreading_cache: vi.fn(async () => create_sync_state()),
@@ -548,10 +471,7 @@ function create_proofreading_client_fixture(): ProofreadingClientFixture {
   };
 }
 
-// create_toast_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-/**
- * 构造当前测试场景的标准数据。
- */
+// create_toast_fixture 让页面反馈调用可断言且不创建真实通知节点。
 function create_toast_fixture(): ToastFixture {
   return {
     dismiss_toast: vi.fn(),
@@ -564,6 +484,7 @@ describe("useProofreadingPageState", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
   let latest_state: ReturnType<typeof useProofreadingPageState> | null = null;
+  let render_page = true;
 
   beforeEach(() => {
     install_api_fetch_default_mock();
@@ -580,11 +501,11 @@ describe("useProofreadingPageState", () => {
     container = null;
     root = null;
     latest_state = null;
+    render_page = true;
     runtime_fixture.current = create_runtime_fixture();
     navigation_fixture.current = create_navigation_fixture();
     proofreading_client_fixture.current = create_proofreading_client_fixture();
     toast_fixture.current = create_toast_fixture();
-    page_ui_state_store.clear();
     vi.mocked(api_fetch).mockReset();
     vi.useRealTimers();
   });
@@ -593,6 +514,15 @@ describe("useProofreadingPageState", () => {
   function ProofreadingProbe(): JSX.Element | null {
     latest_state = useProofreadingPageState();
     return null;
+  }
+
+  // ProofreadingShell 保持项目 session provider 常驻，用显隐 Probe 模拟路由切换。
+  function ProofreadingShell(): JSX.Element {
+    return createElement(
+      ProjectSessionUiStateProvider,
+      null,
+      render_page ? createElement(ProofreadingProbe) : null,
+    );
   }
 
   // flush_async_updates 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
@@ -618,8 +548,23 @@ describe("useProofreadingPageState", () => {
       root = createRoot(container);
     }
 
+    render_page = true;
     await act(async () => {
-      root?.render(createElement(ProofreadingProbe));
+      root?.render(createElement(ProofreadingShell));
+    });
+    await flush_async_updates();
+  }
+
+  // unmount_page 只卸载页面 Probe，保留项目 session provider 来模拟跨路由恢复。
+  async function unmount_page(): Promise<void> {
+    if (root === null) {
+      return;
+    }
+
+    render_page = false;
+    latest_state = null;
+    await act(async () => {
+      root?.render(createElement(ProofreadingShell));
     });
     await flush_async_updates();
   }
@@ -642,6 +587,34 @@ describe("useProofreadingPageState", () => {
     expect(proofreading_client_fixture.current.sync_proofreading_cache).toHaveBeenCalledTimes(1);
     expect(latest_state?.cache_status).toBe("ready");
     expect(latest_state?.settled_project_path).toBe("E:/demo/sample.lg");
+  });
+
+  it("首次进入校对页时把默认意图展开为当前默认筛选", async () => {
+    const glossary_term: ProofreadingGlossaryTerm = ["魔法", "Magic"];
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
+      return create_sync_state({
+        statuses: ["NONE", "PROCESSED", "ERROR"],
+        glossary_terms: [glossary_term],
+      });
+    });
+
+    await render_hook();
+
+    expect(latest_state?.current_filters.statuses).toEqual(["NONE", "PROCESSED", "ERROR"]);
+    expect(latest_state?.current_filters.glossary_terms).toEqual([glossary_term]);
+    expect(
+      proofreading_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          statuses: ["NONE", "PROCESSED", "ERROR"],
+          glossary_terms: [glossary_term],
+        }),
+      }),
+      {
+        staleKey: null,
+      },
+    );
   });
 
   it("校对页首刷期间展示不定加载 toast 并在完成后关闭", async () => {
@@ -758,11 +731,17 @@ describe("useProofreadingPageState", () => {
 
     expect(proofreading_client_fixture.current.sync_proofreading_cache).toHaveBeenCalledTimes(2);
     expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledTimes(
-      2,
+      1,
     );
     expect(
       proofreading_client_fixture.current.read_proofreading_list_window,
-    ).not.toHaveBeenCalled();
+    ).toHaveBeenLastCalledWith({
+      view_id: "view-1",
+      start: 0,
+      count: 128,
+    });
+    expect(latest_state?.preserve_scroll_anchor.row_id).toBe("1");
+    expect(latest_state?.preserve_scroll_anchor.revision).toBeGreaterThan(0);
     expect(latest_state?.cache_status).toBe("ready");
     expect(latest_state?.visible_items).toHaveLength(1);
   });
@@ -1192,7 +1171,14 @@ describe("useProofreadingPageState", () => {
           view_id: query.view_id,
           start: query.start,
           row_count: 1000,
-          rows: [],
+          rows: [
+            {
+              row_id: String(query.start),
+              item: create_client_item(query.start),
+              compressed_src: `foo-${query.start}`,
+              compressed_dst: `bar-${query.start}`,
+            },
+          ],
         };
       },
     );
@@ -1224,6 +1210,233 @@ describe("useProofreadingPageState", () => {
       start: 44,
       count: 522,
     });
+  });
+
+  it("项目刷新会保留当前滚动窗口", async () => {
+    proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async (query) => {
+      return {
+        ...create_list_view(),
+        row_count: 1000,
+        window_start: query.window_start,
+        window_rows: [],
+      };
+    });
+    proofreading_client_fixture.current.read_proofreading_list_window = vi.fn(
+      async (query: { view_id: string; start: number; count: number }) => {
+        return {
+          view_id: query.view_id,
+          start: query.start,
+          row_count: 1000,
+          rows: [
+            {
+              row_id: String(query.start),
+              item: create_client_item(query.start),
+              compressed_src: `foo-${query.start}`,
+              compressed_dst: `bar-${query.start}`,
+            },
+          ],
+        };
+      },
+    );
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.read_visible_range({
+        start: 300,
+        count: 10,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      latest_state?.apply_table_selection({
+        selected_row_ids: ["1"],
+        active_row_id: "1",
+        anchor_row_id: "1",
+      });
+    });
+    proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_change_signal: create_project_change_signal(1, {
+        mode: "delta",
+        itemIds: [1],
+        updatedSections: ["items"],
+      }),
+    };
+    await render_hook();
+
+    expect(proofreading_client_fixture.current.build_proofreading_list_view).not.toHaveBeenCalled();
+    expect(
+      proofreading_client_fixture.current.read_proofreading_list_window,
+    ).toHaveBeenLastCalledWith({
+      view_id: "view-1",
+      start: 44,
+      count: 522,
+    });
+    expect(latest_state?.preserve_scroll_anchor.row_id).toBe("44");
+    expect(latest_state?.preserve_scroll_anchor.revision).toBeGreaterThan(0);
+    expect(latest_state?.visible_row_count).toBe(1000);
+  });
+
+  it("项目刷新遇到待执行搜索时会重建当前查询", async () => {
+    vi.useFakeTimers();
+    await render_hook();
+    proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
+    proofreading_client_fixture.current.read_proofreading_list_window.mockClear();
+
+    await act(async () => {
+      latest_state?.update_search_keyword("needle");
+    });
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_change_signal: create_project_change_signal(1, {
+        mode: "delta",
+        itemIds: [1],
+        updatedSections: ["items"],
+      }),
+    };
+    await render_hook();
+
+    expect(
+      proofreading_client_fixture.current.read_proofreading_list_window,
+    ).not.toHaveBeenCalled();
+    expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(
+      proofreading_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        keyword: "needle",
+      }),
+      {
+        staleKey: null,
+      },
+    );
+  });
+
+  it("项目刷新等待期间输入搜索时会重建当前查询", async () => {
+    vi.useFakeTimers();
+    await render_hook();
+    const sync_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(() => {
+      return sync_deferred.promise;
+    });
+    proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
+    proofreading_client_fixture.current.read_proofreading_list_window.mockClear();
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_change_signal: create_project_change_signal(1, {
+        mode: "delta",
+        itemIds: [1],
+        updatedSections: ["items"],
+      }),
+    };
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.update_search_keyword("needle");
+    });
+    await act(async () => {
+      sync_deferred.resolve(create_sync_state());
+    });
+    await flush_async_updates();
+
+    expect(
+      proofreading_client_fixture.current.read_proofreading_list_window,
+    ).not.toHaveBeenCalled();
+    expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(
+      proofreading_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        keyword: "needle",
+      }),
+      {
+        staleKey: null,
+      },
+    );
+  });
+
+  it("项目刷新读到失效旧窗口时会按当前窗口重建列表", async () => {
+    proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async (query) => {
+      return {
+        ...create_list_view(),
+        row_count: 1000,
+        window_start: query.window_start,
+        window_rows: [],
+      };
+    });
+    proofreading_client_fixture.current.read_proofreading_list_window = vi.fn(
+      async (query: { view_id: string; start: number; count: number }) => {
+        return {
+          view_id: query.view_id,
+          start: query.start,
+          row_count: 1000,
+          rows: [],
+        };
+      },
+    );
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.read_visible_range({
+        start: 300,
+        count: 10,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
+    proofreading_client_fixture.current.read_proofreading_list_window = vi.fn(
+      async (query: { view_id: string }) => {
+        return {
+          view_id: query.view_id,
+          start: 0,
+          row_count: 0,
+          rows: [],
+        };
+      },
+    );
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_change_signal: create_project_change_signal(1, {
+        mode: "delta",
+        itemIds: [1],
+        updatedSections: ["items"],
+      }),
+    };
+    await render_hook();
+
+    expect(
+      proofreading_client_fixture.current.read_proofreading_list_window,
+    ).toHaveBeenLastCalledWith({
+      view_id: "view-1",
+      start: 44,
+      count: 522,
+    });
+    expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(
+      proofreading_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        window_start: 44,
+        window_count: 522,
+      }),
+      {
+        staleKey: null,
+      },
+    );
+    expect(latest_state?.visible_row_count).toBe(1000);
   });
 
   it("替换下一个匹配时会按替换扫描块读取列表窗口", async () => {
@@ -1354,6 +1567,124 @@ describe("useProofreadingPageState", () => {
     );
   });
 
+  it("普通项目刷新不会把多选覆盖成单选", async () => {
+    proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async () => {
+      return {
+        ...create_list_view(),
+        row_count: 3,
+        window_start: 0,
+        window_rows: [
+          {
+            row_id: "1",
+            item: create_client_item(1),
+            compressed_src: "foo-1",
+            compressed_dst: "bar-1",
+          },
+          {
+            row_id: "2",
+            item: create_client_item(2),
+            compressed_src: "foo-2",
+            compressed_dst: "bar-2",
+          },
+          {
+            row_id: "3",
+            item: create_client_item(3),
+            compressed_src: "foo-3",
+            compressed_dst: "bar-3",
+          },
+        ],
+      };
+    });
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.apply_table_selection({
+        selected_row_ids: ["1", "3"],
+        active_row_id: "3",
+        anchor_row_id: "1",
+      });
+    });
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_change_signal: create_project_change_signal(1, {
+        mode: "delta",
+        itemIds: [3],
+        updatedSections: ["items"],
+      }),
+    };
+    await render_hook();
+
+    expect(latest_state?.selected_row_ids).toEqual(["1", "3"]);
+    expect(latest_state?.active_row_id).toBe("3");
+    expect(latest_state?.anchor_row_id).toBe("1");
+  });
+
+  it("写入后焦点恢复不会破坏包含目标行的多选", async () => {
+    proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async () => {
+      return {
+        ...create_list_view(),
+        row_count: 3,
+        window_start: 0,
+        window_rows: [
+          {
+            row_id: "1",
+            item: create_client_item(1),
+            compressed_src: "foo-1",
+            compressed_dst: "bar-1",
+          },
+          {
+            row_id: "2",
+            item: create_client_item(2),
+            compressed_src: "foo-2",
+            compressed_dst: "bar-2",
+          },
+          {
+            row_id: "3",
+            item: create_client_item(3),
+            compressed_src: "foo-3",
+            compressed_dst: "bar-3",
+          },
+        ],
+      };
+    });
+    proofreading_client_fixture.current.read_proofreading_items_by_row_ids = vi.fn(
+      async ({ row_ids }: { row_ids: string[] }) => {
+        return row_ids.map((row_id) => create_client_item(row_id));
+      },
+    );
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.apply_table_selection({
+        selected_row_ids: ["1", "3"],
+        active_row_id: "3",
+        anchor_row_id: "1",
+      });
+    });
+
+    vi.mocked(api_fetch).mockResolvedValueOnce({ accepted: true, changes: [] });
+    await act(async () => {
+      latest_state?.request_set_translation_status_row_ids(["1", "3"], "PROCESSED", "3");
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_change_signal: create_project_change_signal(1, {
+        mode: "delta",
+        itemIds: [3],
+        updatedSections: ["items"],
+      }),
+    };
+    await render_hook();
+
+    expect(latest_state?.selected_row_ids).toEqual(["1", "3"]);
+    expect(latest_state?.active_row_id).toBe("3");
+    expect(latest_state?.anchor_row_id).toBe("1");
+  });
+
   it("排序语义变化会清空表格选区", async () => {
     await render_hook();
 
@@ -1385,6 +1716,196 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.selected_row_ids).toEqual([]);
     expect(latest_state?.active_row_id).toBeNull();
     expect(latest_state?.anchor_row_id).toBeNull();
+  });
+
+  it("只保存选区后重新进入会用新的术语缺失默认筛选", async () => {
+    const glossary_term: ProofreadingGlossaryTerm = ["魔法", "Magic"];
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.apply_table_selection({
+        selected_row_ids: ["70"],
+        active_row_id: "70",
+        anchor_row_id: "70",
+      });
+    });
+
+    await unmount_page();
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
+      return create_sync_state({
+        glossary_terms: [glossary_term],
+      });
+    });
+    proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
+
+    await render_hook();
+
+    expect(latest_state?.selected_row_ids).toEqual(["70"]);
+    expect(latest_state?.current_filters.glossary_terms).toEqual([glossary_term]);
+    expect(
+      proofreading_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          glossary_terms: [glossary_term],
+        }),
+      }),
+      {
+        staleKey: null,
+      },
+    );
+  });
+
+  it("用户显式确认空术语筛选后重新进入仍保留空选择", async () => {
+    const glossary_term: ProofreadingGlossaryTerm = ["魔法", "Magic"];
+    const next_glossary_term: ProofreadingGlossaryTerm = ["王国", "Kingdom"];
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
+      return create_sync_state({
+        glossary_terms: [glossary_term],
+      });
+    });
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.open_filter_dialog();
+    });
+    await flush_async_updates();
+
+    await act(async () => {
+      if (latest_state === null) {
+        throw new Error("校对页面状态未准备就绪。");
+      }
+
+      latest_state.update_filter_dialog_filters({
+        ...latest_state.filter_dialog_filters,
+        glossary_terms: [],
+      });
+      await latest_state.confirm_filter_dialog_filters();
+    });
+    await flush_async_updates();
+
+    await unmount_page();
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
+      return create_sync_state({
+        glossary_terms: [glossary_term, next_glossary_term],
+      });
+    });
+    proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
+
+    await render_hook();
+
+    expect(latest_state?.current_filters.glossary_terms).toEqual([]);
+    expect(latest_state?.filter_dialog_filters.glossary_terms).toEqual([]);
+    expect(
+      proofreading_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          glossary_terms: [],
+        }),
+      }),
+      {
+        staleKey: null,
+      },
+    );
+  });
+
+  it("项目身份重置后会重新使用默认筛选意图", async () => {
+    const glossary_term: ProofreadingGlossaryTerm = ["魔法", "Magic"];
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.open_filter_dialog();
+    });
+    await flush_async_updates();
+
+    await act(async () => {
+      if (latest_state === null) {
+        throw new Error("校对页面状态未准备就绪。");
+      }
+
+      latest_state.update_filter_dialog_filters({
+        ...latest_state.filter_dialog_filters,
+        glossary_terms: [],
+      });
+      await latest_state.confirm_filter_dialog_filters();
+    });
+    await flush_async_updates();
+
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
+      return create_sync_state({
+        glossary_terms: [glossary_term],
+      });
+    });
+    proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_snapshot: {
+        loaded: true,
+        path: "E:/demo/another.lg",
+      },
+    };
+    await render_hook();
+
+    expect(latest_state?.current_filters.glossary_terms).toEqual([glossary_term]);
+    expect(
+      proofreading_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          glossary_terms: [glossary_term],
+        }),
+      }),
+      {
+        staleKey: null,
+      },
+    );
+  });
+
+  it("显式筛选意图会克隆术语 tuple", async () => {
+    vi.useFakeTimers();
+    const selected_filters: ProofreadingFilterOptions = {
+      warning_types: ["NO_WARNING"],
+      statuses: ["NONE"],
+      file_paths: ["chapter01.txt"],
+      glossary_terms: [["魔法", "Magic"]],
+      include_without_glossary_miss: true,
+    };
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.open_filter_dialog();
+    });
+    await flush_async_updates();
+
+    await act(async () => {
+      if (latest_state === null) {
+        throw new Error("校对页面状态未准备就绪。");
+      }
+
+      latest_state.update_filter_dialog_filters(selected_filters);
+      await latest_state.confirm_filter_dialog_filters();
+    });
+    await flush_async_updates();
+    selected_filters.glossary_terms[0] = ["污染", "Dirty"];
+    proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
+
+    await act(async () => {
+      latest_state?.update_search_keyword("foo");
+      vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
+    });
+    await flush_async_updates();
+
+    expect(
+      proofreading_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          glossary_terms: [["魔法", "Magic"]],
+        }),
+        keyword: "foo",
+      }),
+    );
   });
 
   it("重新进入校对页时保留搜索排序和选中位置", async () => {
@@ -1421,12 +1942,7 @@ describe("useProofreadingPageState", () => {
       });
     });
 
-    await act(async () => {
-      root?.unmount();
-    });
-    root = null;
-    container?.remove();
-    container = null;
+    await unmount_page();
     proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
 
     await render_hook();
@@ -1465,6 +1981,53 @@ describe("useProofreadingPageState", () => {
         staleKey: null,
       },
     );
+  });
+
+  it("重新进入校对页时保留多选和恢复锚点", async () => {
+    proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async () => {
+      return {
+        ...create_list_view(),
+        row_count: 3,
+        window_rows: [
+          {
+            row_id: "1",
+            item: create_client_item(1),
+            compressed_src: "foo-1",
+            compressed_dst: "bar-1",
+          },
+          {
+            row_id: "2",
+            item: create_client_item(2),
+            compressed_src: "foo-2",
+            compressed_dst: "bar-2",
+          },
+          {
+            row_id: "3",
+            item: create_client_item(3),
+            compressed_src: "foo-3",
+            compressed_dst: "bar-3",
+          },
+        ],
+      };
+    });
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.apply_table_selection({
+        selected_row_ids: ["1", "3"],
+        active_row_id: "3",
+        anchor_row_id: "1",
+      });
+    });
+
+    await unmount_page();
+
+    await render_hook();
+
+    expect(latest_state?.selected_row_ids).toEqual(["1", "3"]);
+    expect(latest_state?.active_row_id).toBe("3");
+    expect(latest_state?.anchor_row_id).toBe("1");
+    expect(latest_state?.restore_scroll_row_id).toBe("1");
   });
 
   it("列表运行态错误会统一收口成刷新失败 toast", async () => {
