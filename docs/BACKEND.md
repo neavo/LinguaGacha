@@ -51,7 +51,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - 变更 payload mode 只允许三类：`canonical-delta` 携带后端规范数据，`field-patch` 只表达校对可写字段，`section-invalidated` 只作为页面重新 query 的刷新提示。
 - `items` / `files` 的全量替换、排序和无法精确表达受影响行的运行态写入默认发布行级 `section-invalidated`，只有后端能精确表达受影响行和删除 tombstone 的小范围变化才发布行级增量。
 - 后端不接收前端计算出的 `items`、task extras、prefilter config 或 analysis extras 作为最终事实，前端只提交用户意图、设置镜像和 revision 依赖。
-- project create/load/unload、migration、默认预设初始化、CLI bootstrap 资源提交和测试 seed 属于生命周期、初始化或夹具写入，不纳入运行态唯一写入口。
+- project create/load/unload、migration、默认预设初始化、CLI bootstrap 资源提交和测试 seed 属于生命周期、初始化或夹具写入，不纳入运行态唯一写入口；若写入 query 直接暴露的项目事实，必须在同一事务内写入对应 revision meta。
 
 ## 4. 任务、worker 与 LLM 边界
 

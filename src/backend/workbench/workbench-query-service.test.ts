@@ -6,6 +6,7 @@ import { ProjectSessionState } from "../project/project-session";
 import type { BackendWorkerClient } from "../worker/worker-client";
 import { WorkbenchQueryService } from "./workbench-query-service";
 
+// query service 测试只关心公开读取结果，item helper 提供稳定的最小项目行。
 function create_item(overrides: Record<string, unknown>): Record<string, unknown> {
   return {
     id: 1,
@@ -159,8 +160,10 @@ describe("WorkbenchQueryService", () => {
     });
   });
 
-  it("返回质量规则查询视图与规则 revision", async () => {
-    const { service } = await create_service([]);
+  it("默认预设事实热机后首次质量规则 query 返回 entries 与 revision", async () => {
+    const { service } = await create_service([], [{ path: "script.txt", sort_order: 0 }], {
+      "quality_rule_revision.glossary": 1,
+    });
 
     const result = service.read_quality_rule_view({
       rule_type: "glossary",
@@ -169,16 +172,17 @@ describe("WorkbenchQueryService", () => {
     expect(result).toMatchObject({
       projectPath: "E:/Project/demo.lg",
       sectionRevisions: {
-        quality: 5,
+        quality: 1,
       },
       qualityRule: {
         enabled: true,
-        revision: 5,
+        revision: 1,
         entries: [{ src: "HP", dst: "生命值" }],
       },
     });
   });
 
+  // 通过 CacheManager 热机后再构造 query service，覆盖首次页面 query 依赖的真实缓存路径。
   async function create_service(
     items: Record<string, unknown>[],
     asset_records: Array<{ path: string; sort_order: number }> = [
@@ -188,6 +192,7 @@ describe("WorkbenchQueryService", () => {
   ): Promise<{
     service: WorkbenchQueryService;
   }> {
+    // database fake 汇总项目 meta、资源、规则和提示词，避免测试绕过 CacheManager。
     const database = {
       execute(operation: { name: string; args?: Record<string, unknown> }) {
         if (operation.name === "getAllMeta") {
