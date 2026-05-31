@@ -223,7 +223,7 @@
 
 .workbench-task__metric-value {
   color: var(--foreground);
-  font-size: 28px;
+  font-size: 24px;
   line-height: 1;
   letter-spacing: 0;
   white-space: nowrap;
@@ -231,7 +231,7 @@
 
 .workbench-task__metric-unit {
   color: color-mix(in srgb, var(--foreground) 88%, var(--muted-foreground) 12%);
-  font-size: 12px;
+  font-size: 10px;
   line-height: 1;
   white-space: nowrap;
 }

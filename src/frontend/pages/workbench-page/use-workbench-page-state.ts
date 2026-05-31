@@ -295,24 +295,17 @@ function format_duration_value(
   seconds: number,
 ): Pick<WorkbenchTaskMetricEntry, "value_text" | "unit_text"> {
   const normalized_seconds = Math.max(0, Math.floor(seconds));
-
-  if (normalized_seconds < 60) {
-    return {
-      value_text: normalized_seconds.toString(),
-      unit_text: "S",
-    };
-  }
-
-  if (normalized_seconds < 60 * 60) {
-    return {
-      value_text: (normalized_seconds / 60).toFixed(2),
-      unit_text: "M",
-    };
-  }
+  const hours = Math.floor(normalized_seconds / 60 / 60);
+  const minutes = Math.floor((normalized_seconds % (60 * 60)) / 60);
+  const remaining_seconds = normalized_seconds % 60;
 
   return {
-    value_text: (normalized_seconds / 60 / 60).toFixed(2),
-    unit_text: "H",
+    value_text: [hours, minutes, remaining_seconds]
+      .map((part) => {
+        return part.toString().padStart(2, "0");
+      })
+      .join(":"),
+    unit_text: "",
   };
 }
 
