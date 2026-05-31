@@ -22,11 +22,11 @@ afterEach(() => {
 });
 
 describe("quality-rule-file-io", () => {
-  it("从 JSON 规则数组读取并归一可写条目", async () => {
+  it("从 JSON 规则数组读取外部可维护字段", async () => {
     const file_path = write_temp_file(
       "rules.json",
       JSON.stringify([
-        { src: " Alice ", dst: " 爱丽丝 ", info: " 人名 ", regex: true },
+        { entry_id: "rule-1", src: " Alice ", dst: " 爱丽丝 ", info: " 人名 ", regex: true },
         { src: "", dst: "空项" },
       ]),
     );
@@ -62,12 +62,19 @@ describe("quality-rule-file-io", () => {
     ]);
   });
 
-  it("导出规则时同时生成 JSON 和 Excel 文件", async () => {
+  it("导出规则时只写外部可维护字段", async () => {
     const root = create_temp_root();
     const base_path = path.join(root, "glossary");
 
     await export_quality_rule_entries_to_files(base_path, [
-      { src: "Alice", dst: "爱丽丝", info: "人名", regex: false, case_sensitive: false },
+      {
+        entry_id: "rule-1",
+        src: "Alice",
+        dst: "爱丽丝",
+        info: "人名",
+        regex: false,
+        case_sensitive: false,
+      },
     ]);
 
     expect(JSON.parse(fs.readFileSync(`${base_path}.json`, "utf-8"))).toEqual([

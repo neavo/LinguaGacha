@@ -2,7 +2,6 @@ import ExcelJS from "exceljs";
 import type { Row } from "exceljs";
 
 import type { ApiJsonValue } from "../api/api-types";
-import { QualityRule } from "../../domain/quality";
 import { NativeFs, default_native_fs, normalize_native_file_bytes } from "../../native/native-fs";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { SpreadsheetTool } from "../../shared/utils/spreadsheet-tool";
@@ -37,14 +36,18 @@ export async function export_quality_rule_entries_to_files(
   entries: QualityRuleFileEntry[],
   native_fs: NativeFs = default_native_fs,
 ): Promise<void> {
-  native_fs.write_file_sync(`${base_path}.json`, JsonTool.stringifyStrict(entries, { indent: 4 }));
+  const export_entries = entries.map((entry) => normalize_external_rule(entry));
+  native_fs.write_file_sync(
+    `${base_path}.json`,
+    JsonTool.stringifyStrict(export_entries, { indent: 4 }),
+  );
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet("rules");
   worksheet.columns = [{ width: 24 }, { width: 24 }, { width: 24 }, { width: 24 }, { width: 24 }];
   ["src", "dst", "info", "regex", "case_sensitive"].forEach((value, index) => {
     SpreadsheetTool.setCellValue(worksheet, 1, index + 1, value, 10);
   });
-  entries.forEach((entry, index) => {
+  export_entries.forEach((entry, index) => {
     const row = index + 2;
     SpreadsheetTool.setCellValue(worksheet, row, 1, entry["src"] ?? "", 10);
     SpreadsheetTool.setCellValue(worksheet, row, 2, entry["dst"] ?? "", 10);
@@ -173,13 +176,23 @@ function push_rpg_actor_name_rules(
 }
 
 /**
- * 规则条目写入前统一走 QualityRule 归一化，避免 GUI 和 CLI 出现字段差异。
+ * 外部规则文件只承载用户可维护字段，内部行身份由页面和统计链路自行补齐。
  */
 function push_normalized_rule(result: QualityRuleFileEntry[], entry: QualityRuleFileEntry): void {
-  const normalized = QualityRule.normalize_entry(entry) as QualityRuleFileEntry;
+  const normalized = normalize_external_rule(entry);
   if (normalized["src"] !== "") {
     result.push(normalized);
   }
+}
+
+function normalize_external_rule(entry: QualityRuleFileEntry): QualityRuleFileEntry {
+  return {
+    src: String(entry["src"] ?? "").trim(),
+    dst: String(entry["dst"] ?? "").trim(),
+    info: String(entry["info"] ?? "").trim(),
+    regex: Boolean(entry["regex"] ?? false),
+    case_sensitive: Boolean(entry["case_sensitive"] ?? false),
+  };
 }
 
 /**
