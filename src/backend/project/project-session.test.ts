@@ -52,6 +52,7 @@ describe("ProjectSessionState", () => {
   });
 });
 
+// 生命周期测试的 fake database 以 JSON 形状模拟真实持久化返回。
 type MutableJsonRecord = Record<string, DatabaseJsonValue>;
 
 describe("ProjectLifecycleService", () => {
@@ -351,6 +352,142 @@ describe("ProjectLifecycleService", () => {
     ]);
   });
 
+  it("create-commit 将默认预设内容、启用态和 revision 写入同一创建事务", async () => {
+    const app_root = create_temp_dir();
+    const project_path = path.join(app_root, "created-with-presets.lg");
+    write_file(
+      path.join(app_root, "resource", "glossary", "preset", "base.json"),
+      '[{"src":"魔力","dst":"Mana"}]',
+    );
+    write_file(
+      path.join(app_root, "resource", "text_preserve", "preset", "base.json"),
+      '[{"src":"\\\\[[^\\\\]]+\\\\]"}]',
+    );
+    write_file(
+      path.join(app_root, "resource", "translation_prompt", "preset", "base.txt"),
+      "翻译提示词",
+    );
+    const transaction_calls: DatabaseOperation[][] = [];
+    const service = create_service({
+      app_root,
+      database: create_database({ transaction_calls, create_project_files: true }),
+      config: {
+        glossary_default_preset: "builtin:base.json",
+        text_preserve_default_preset: "builtin:base.json",
+        translation_custom_prompt_default_preset: "builtin:base.txt",
+      },
+    });
+
+    await expect(
+      service.create_project_commit({
+        source_paths: [],
+        path: project_path,
+        project_settings: {},
+      }),
+    ).resolves.toEqual({ project: { path: project_path, loaded: true } });
+
+    expect(transaction_calls[0]).toEqual(
+      expect.arrayContaining([
+        {
+          name: "setRules",
+          args: {
+            projectPath: project_path,
+            ruleType: "glossary",
+            rules: [{ src: "魔力", dst: "Mana" }],
+          },
+        },
+        {
+          name: "setMeta",
+          args: { projectPath: project_path, key: "glossary_enable", value: true },
+        },
+        {
+          name: "setMeta",
+          args: { projectPath: project_path, key: "quality_rule_revision.glossary", value: 1 },
+        },
+        {
+          name: "setRules",
+          args: {
+            projectPath: project_path,
+            ruleType: "text_preserve",
+            rules: [{ src: "\\[[^\\]]+\\]" }],
+          },
+        },
+        {
+          name: "setMeta",
+          args: { projectPath: project_path, key: "text_preserve_mode", value: "custom" },
+        },
+        {
+          name: "setMeta",
+          args: {
+            projectPath: project_path,
+            key: "quality_rule_revision.text_preserve",
+            value: 1,
+          },
+        },
+        {
+          name: "setRuleText",
+          args: { projectPath: project_path, ruleType: "translation_prompt", text: "翻译提示词" },
+        },
+        {
+          name: "setMeta",
+          args: { projectPath: project_path, key: "translation_prompt_enable", value: true },
+        },
+        {
+          name: "setMeta",
+          args: {
+            projectPath: project_path,
+            key: "quality_prompt_revision.translation",
+            value: 1,
+          },
+        },
+      ]),
+    );
+  });
+
+  it("create-commit 在单个默认预设读取失败时继续创建可用工程", async () => {
+    const app_root = create_temp_dir();
+    const project_path = path.join(app_root, "created-with-missing-preset.lg");
+    const transaction_calls: DatabaseOperation[][] = [];
+    const log_manager = create_log_manager();
+    const service = create_service({
+      app_root,
+      database: create_database({ transaction_calls, create_project_files: true }),
+      log_manager,
+      config: {
+        glossary_default_preset: "builtin:missing.json",
+      },
+    });
+
+    await expect(
+      service.create_project_commit({
+        source_paths: [],
+        path: project_path,
+        project_settings: {},
+      }),
+    ).resolves.toEqual({ project: { path: project_path, loaded: true } });
+
+    expect(transaction_calls[0]).toContainEqual({
+      name: "setMeta",
+      args: { projectPath: project_path, key: "text_preserve_mode", value: "smart" },
+    });
+    expect(transaction_calls[0]).not.toContainEqual(
+      expect.objectContaining({
+        name: "setMeta",
+        args: expect.objectContaining({ key: "quality_rule_revision.glossary" }),
+      }),
+    );
+    expect(log_manager.warning).toHaveBeenCalledWith(
+      "默认质量规则预设加载失败 …",
+      expect.objectContaining({
+        context: expect.objectContaining({
+          preset_directory: "glossary",
+          virtual_id: "builtin:missing.json",
+        }),
+        source: "project-lifecycle",
+      }),
+    );
+  });
+
   it("create-commit 拒绝旧前端最终事实字段", async () => {
     const app_root = create_temp_dir();
     const service = create_service({
@@ -590,18 +727,21 @@ describe("ProjectLifecycleService", () => {
     expect(database.execute).not.toHaveBeenCalled();
   });
 
+  // 每个用例使用独立临时目录，覆盖项目文件存在性判断且不污染工作区。
   function create_temp_dir(): string {
     const temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-project-lifecycle-"));
     cleanup_paths.push(temp_dir);
     return temp_dir;
   }
 
+  // 生命周期服务通过真实文件存在性判断工程路径，测试文件写入集中走这个 helper。
   function write_file(file_path: string, content = "demo"): string {
     fs.mkdirSync(path.dirname(file_path), { recursive: true });
     fs.writeFileSync(file_path, content, "utf-8");
     return file_path;
   }
 
+  // 服务工厂保留真实 AppPathService 和事件总线，只替换数据库、设置与日志边界。
   function create_service(options: {
     app_root?: string;
     database: ProjectDatabase & {
@@ -627,6 +767,7 @@ describe("ProjectLifecycleService", () => {
     );
   }
 
+  // 数据库 fake 同时记录事务操作并提供加载、预览、迁移所需的最小读取面。
   function create_database(
     options: {
       summary?: MutableJsonRecord;
@@ -684,6 +825,7 @@ describe("ProjectLifecycleService", () => {
     };
   }
 
+  // 会话状态 helper 通过公开方法预置 loaded 快照，避免手写内部字段。
   function create_session_state(
     state: { loaded: boolean; projectPath: string } = {
       loaded: false,
@@ -697,6 +839,7 @@ describe("ProjectLifecycleService", () => {
     return session_state;
   }
 
+  // 设置服务 fake 合并项目默认值，确保 create-commit 用例只声明场景差异。
   function create_setting_service(config: MutableJsonRecord) {
     return {
       read_setting: vi.fn(() => ({
@@ -710,6 +853,7 @@ describe("ProjectLifecycleService", () => {
     } as unknown as AppSettingService;
   }
 
+  // 日志 fake 用于断言生命周期诊断，不参与业务状态计算。
   function create_log_manager() {
     return {
       info: vi.fn(),

@@ -9,80 +9,35 @@ import { NativeFs } from "../../native/native-fs";
 import * as AppErrors from "../../shared/error";
 import type { ApiJsonValue } from "../api/api-types";
 import { JsonTool } from "../../shared/utils/json-tool";
+import { Prompt, type PromptKind } from "../../domain/prompt";
+import { QualityRule, type QualityRuleKind, type TextPreserveMode } from "../../domain/quality";
 
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
-interface QualityDefaultPresetSpec {
-  config_key: string; // 对应用户设置里的默认预设虚拟 ID
-  preset_directory: string; // 决定内置和用户预设目录
-  rule_type: string; // rules 表当前物理类型
-  meta_key: string; // 预设成功加载后需要同步开启的工程设置
-  meta_value: DatabaseJsonValue; // 预设启用后的工程设置值
-  display_name: string; // 只用于日志，不进入公开协议
-}
+// 默认预设写入的是新建工程的初始事实，revision 从首个可查询版本开始。
+const INITIAL_PRESET_REVISION = 1;
+// 文本保护默认 mode 的权威在质量规则领域模型，初始化器只消费该项目事实默认值。
+const DEFAULT_TEXT_PRESERVE_MODE = QualityRule.from_json("text_preserve").default_mode;
+// 文本保护默认预设成功加载后，项目事实切换为用户可见的 custom 模式。
+const LOADED_TEXT_PRESERVE_PRESET_MODE = "custom" satisfies TextPreserveMode;
 
-interface PromptDefaultPresetSpec {
-  config_key: string; // 对应翻译或分析提示词默认预设
-  task_type: "translation" | "analysis"; // 由 AppPathService 映射到 prompt 目录
-  rule_type: string; // rules 表当前提示词物理类型
-  meta_key: string; // 控制提示词启用态
-  display_name: string; // 只用于日志，不进入公开协议
-}
+// 领域模型不承载日志展示名，初始化器只保留这层面向日志的映射。
+const QUALITY_DEFAULT_PRESET_DISPLAY_NAMES: Record<QualityRuleKind, string> = {
+  glossary: "术语表",
+  text_preserve: "文本保护",
+  pre_replacement: "译前替换",
+  post_replacement: "译后替换",
+};
 
-// QUALITY DEFAULT PRESET SPECS 是默认快照事实，调用方只读取副本不临时拼装。
-const QUALITY_DEFAULT_PRESET_SPECS: QualityDefaultPresetSpec[] = [
-  {
-    config_key: "glossary_default_preset",
-    preset_directory: "glossary",
-    rule_type: "glossary",
-    meta_key: "glossary_enable",
-    meta_value: true,
-    display_name: "术语表",
-  },
-  {
-    config_key: "text_preserve_default_preset",
-    preset_directory: "text_preserve",
-    rule_type: "text_preserve",
-    meta_key: "text_preserve_mode",
-    meta_value: "custom",
-    display_name: "文本保护",
-  },
-  {
-    config_key: "pre_translation_replacement_default_preset",
-    preset_directory: "pre_translation_replacement",
-    rule_type: "pre_translation_replacement",
-    meta_key: "pre_translation_replacement_enable",
-    meta_value: true,
-    display_name: "译前替换",
-  },
-  {
-    config_key: "post_translation_replacement_default_preset",
-    preset_directory: "post_translation_replacement",
-    rule_type: "post_translation_replacement",
-    meta_key: "post_translation_replacement_enable",
-    meta_value: true,
-    display_name: "译后替换",
-  },
-];
+// 提示词日志名独立于数据库物理类型，避免日志文案反向污染领域模型。
+const PROMPT_DEFAULT_PRESET_DISPLAY_NAMES: Record<PromptKind, string> = {
+  translation: "翻译提示词",
+  analysis: "分析提示词",
+};
 
-// PROMPT DEFAULT PRESET SPECS 是默认快照事实，调用方只读取副本不临时拼装。
-const PROMPT_DEFAULT_PRESET_SPECS: PromptDefaultPresetSpec[] = [
-  {
-    config_key: "translation_custom_prompt_default_preset",
-    task_type: "translation",
-    rule_type: "translation_prompt",
-    meta_key: "translation_prompt_enable",
-    display_name: "翻译提示词",
-  },
-  {
-    config_key: "analysis_custom_prompt_default_preset",
-    task_type: "analysis",
-    rule_type: "analysis_prompt",
-    meta_key: "analysis_prompt_enable",
-    display_name: "分析提示词",
-  },
-];
-
+/**
+ * 初始化结果同时返回数据库操作和成功加载名，调用方据此决定事务写入与日志输出。
+ */
 export type ProjectDefaultPresetInitializationResult = {
   operations: DatabaseOperation[];
   loaded_names: string[];
@@ -118,86 +73,56 @@ export class ProjectDefaultPresetInitializer {
   public build_operations(project_path: string): ProjectDefaultPresetInitializationResult {
     const config = this.app_setting_service.read_setting();
     const operations: DatabaseOperation[] = [
+      // 文本保护 mode 是项目设置事实，即使没有默认预设也要进入创建事务。
       {
         name: "setMeta",
         args: {
           projectPath: project_path,
           key: "text_preserve_mode",
-          value: "smart",
+          value: DEFAULT_TEXT_PRESERVE_MODE,
         },
       },
     ];
     const loaded_names: string[] = [];
 
-    for (const spec of QUALITY_DEFAULT_PRESET_SPECS) {
-      const virtual_id = this.string_value(config[spec.config_key]);
+    // 质量规则从领域模型派生目录、设置 key、物理类型和 revision key，避免第二套词表。
+    for (const rule of QualityRule.all()) {
+      const virtual_id = this.string_value(config[rule.default_preset_setting_key]);
       if (virtual_id === "") {
         continue;
       }
       try {
-        const entries = this.read_quality_rule_preset(spec.preset_directory, virtual_id);
-        operations.push(
-          {
-            name: "setRules",
-            args: {
-              projectPath: project_path,
-              ruleType: spec.rule_type,
-              rules: entries as unknown as DatabaseJsonValue,
-            },
-          },
-          {
-            name: "setMeta",
-            args: {
-              projectPath: project_path,
-              key: spec.meta_key,
-              value: spec.meta_value,
-            },
-          },
-        );
-        loaded_names.push(spec.display_name);
+        const entries = this.read_quality_rule_preset(rule, virtual_id);
+        operations.push(...this.build_quality_rule_operations(project_path, rule, entries));
+        loaded_names.push(QUALITY_DEFAULT_PRESET_DISPLAY_NAMES[rule.kind]);
       } catch (error) {
         this.log_non_blocking_warning(
           t_main_log("app.diagnostic.default_preset.quality_rule_load_failed"),
           error,
           {
-            preset_directory: spec.preset_directory,
+            preset_directory: rule.preset_directory,
             virtual_id,
           },
         );
       }
     }
 
-    for (const spec of PROMPT_DEFAULT_PRESET_SPECS) {
-      const virtual_id = this.string_value(config[spec.config_key]);
+    // 提示词默认预设与质量规则走同一容错策略，单项失败不阻断工程创建。
+    for (const prompt of Prompt.all()) {
+      const virtual_id = this.string_value(config[prompt.default_preset_setting_key]);
       if (virtual_id === "") {
         continue;
       }
       try {
-        operations.push(
-          {
-            name: "setRuleText",
-            args: {
-              projectPath: project_path,
-              ruleType: spec.rule_type,
-              text: this.read_prompt_preset(spec.task_type, virtual_id),
-            },
-          },
-          {
-            name: "setMeta",
-            args: {
-              projectPath: project_path,
-              key: spec.meta_key,
-              value: true,
-            },
-          },
-        );
-        loaded_names.push(spec.display_name);
+        const text = this.read_prompt_preset(prompt, virtual_id);
+        operations.push(...this.build_prompt_operations(project_path, prompt, text));
+        loaded_names.push(PROMPT_DEFAULT_PRESET_DISPLAY_NAMES[prompt.kind]);
       } catch (error) {
         this.log_non_blocking_warning(
           t_main_log("app.diagnostic.default_preset.prompt_load_failed"),
           error,
           {
-            task_type: spec.task_type,
+            task_type: prompt.kind,
             virtual_id,
           },
         );
@@ -225,11 +150,8 @@ export class ProjectDefaultPresetInitializer {
   /**
    * 读取质量规则预设，并把非对象条目过滤掉。
    */
-  private read_quality_rule_preset(
-    preset_directory: string,
-    virtual_id: string,
-  ): MutableJsonRecord[] {
-    const preset_path = this.resolve_quality_rule_preset_path(preset_directory, virtual_id);
+  private read_quality_rule_preset(rule: QualityRule, virtual_id: string): MutableJsonRecord[] {
+    const preset_path = this.resolve_quality_rule_preset_path(rule, virtual_id);
     const data = JsonTool.parseStrict(this.native_fs.read_file(preset_path)) as unknown;
     if (!Array.isArray(data)) {
       throw new AppErrors.RequestValidationError({
@@ -244,8 +166,8 @@ export class ProjectDefaultPresetInitializer {
   /**
    * 读取提示词预设正文，统一去掉 BOM 与首尾空白。
    */
-  private read_prompt_preset(task_type: "translation" | "analysis", virtual_id: string): string {
-    const preset_path = this.resolve_prompt_preset_path(task_type, virtual_id);
+  private read_prompt_preset(prompt: Prompt, virtual_id: string): string {
+    const preset_path = this.resolve_prompt_preset_path(prompt, virtual_id);
     return this.native_fs
       .read_text_file(preset_path)
       .replace(/^\uFEFF/u, "")
@@ -255,28 +177,95 @@ export class ProjectDefaultPresetInitializer {
   /**
    * 解析质量规则预设虚拟 ID 到真实路径。
    */
-  private resolve_quality_rule_preset_path(preset_directory: string, virtual_id: string): string {
-    const { source, file_name } = this.split_virtual_id(virtual_id, ".json");
+  private resolve_quality_rule_preset_path(rule: QualityRule, virtual_id: string): string {
+    const { source, file_name } = this.split_virtual_id(virtual_id, rule.preset_extension);
     const directory =
       source === "builtin"
-        ? this.paths.get_quality_rule_builtin_preset_dir(preset_directory)
-        : this.paths.get_quality_rule_user_preset_dir(preset_directory);
+        ? this.paths.get_quality_rule_builtin_preset_dir(rule.preset_directory)
+        : this.paths.get_quality_rule_user_preset_dir(rule.preset_directory);
     return path.join(directory, file_name);
   }
 
   /**
    * 解析提示词预设虚拟 ID 到真实路径。
    */
-  private resolve_prompt_preset_path(
-    task_type: "translation" | "analysis",
-    virtual_id: string,
-  ): string {
-    const { source, file_name } = this.split_virtual_id(virtual_id, ".txt");
+  private resolve_prompt_preset_path(prompt: Prompt, virtual_id: string): string {
+    const { source, file_name } = this.split_virtual_id(virtual_id, prompt.preset_extension);
     const directory =
       source === "builtin"
-        ? this.paths.get_prompt_builtin_preset_dir(task_type)
-        : this.paths.get_prompt_user_preset_dir(task_type);
+        ? this.paths.get_prompt_builtin_preset_dir(prompt.kind)
+        : this.paths.get_prompt_user_preset_dir(prompt.kind);
     return path.join(directory, file_name);
+  }
+
+  /**
+   * 默认预设成功写入内容后同步写入启用态和 query 依赖的 section revision。
+   */
+  private build_quality_rule_operations(
+    project_path: string,
+    rule: QualityRule,
+    entries: MutableJsonRecord[],
+  ): DatabaseOperation[] {
+    const operations: DatabaseOperation[] = [
+      this.op("setRules", {
+        projectPath: project_path,
+        ruleType: rule.database_type,
+        rules: entries as unknown as DatabaseJsonValue,
+      }),
+    ];
+    if (rule.enabled_meta_key !== null) {
+      operations.push(
+        this.op("setMeta", {
+          projectPath: project_path,
+          key: rule.enabled_meta_key,
+          value: true,
+        }),
+      );
+    }
+    if (rule.mode_meta_key !== null) {
+      operations.push(
+        this.op("setMeta", {
+          projectPath: project_path,
+          key: rule.mode_meta_key,
+          value: LOADED_TEXT_PRESERVE_PRESET_MODE,
+        }),
+      );
+    }
+    operations.push(
+      this.op("setMeta", {
+        projectPath: project_path,
+        key: rule.revision_meta_key,
+        value: INITIAL_PRESET_REVISION,
+      }),
+    );
+    return operations;
+  }
+
+  /**
+   * 默认提示词成功写入正文后同步写入启用态和 query 依赖的 section revision。
+   */
+  private build_prompt_operations(
+    project_path: string,
+    prompt: Prompt,
+    text: string,
+  ): DatabaseOperation[] {
+    return [
+      this.op("setRuleText", {
+        projectPath: project_path,
+        ruleType: prompt.database_type,
+        text,
+      }),
+      this.op("setMeta", {
+        projectPath: project_path,
+        key: prompt.enabled_meta_key,
+        value: true,
+      }),
+      this.op("setMeta", {
+        projectPath: project_path,
+        key: prompt.revision_meta_key,
+        value: INITIAL_PRESET_REVISION,
+      }),
+    ];
   }
 
   /**
@@ -342,5 +331,12 @@ export class ProjectDefaultPresetInitializer {
    */
   private string_value(value: ApiJsonValue | DatabaseJsonValue | undefined): string {
     return typeof value === "string" ? value : String(value ?? "");
+  }
+
+  /**
+   * 创建 database workflow operation，统一限制初始化器可写入的 JSON 参数形状。
+   */
+  private op(name: string, args: Record<string, DatabaseJsonValue>): DatabaseOperation {
+    return { name, args };
   }
 }
