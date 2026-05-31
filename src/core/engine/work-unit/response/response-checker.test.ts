@@ -312,6 +312,7 @@ function create_config(overrides: Partial<TextProcessingConfig> = {}): TextProce
     check_hangeul_residue: true,
     check_similarity: true,
     auto_process_prefix_suffix_preserved_text: true,
+    structured_speaker_context_enable: false,
     ...overrides,
   };
 }

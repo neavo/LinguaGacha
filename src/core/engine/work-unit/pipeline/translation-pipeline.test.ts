@@ -388,6 +388,28 @@ describe("翻译文本 pipeline", () => {
     expect(result).toEqual({ name: null, dst: "hi" });
   });
 
+  it("结构化角色名上下文不把 name_src 注入正文并从结构化响应回写姓名", () => {
+    const item: TextTaskItemRecord = {
+      src: "こんにちは",
+      name_src: ["Alice"],
+      text_type: "TXT",
+    };
+    const pipeline = create_pipeline_pair(
+      create_config({ structured_speaker_context_enable: true }),
+      create_quality_snapshot(),
+    );
+
+    const context = pipeline.pre.process_item(item);
+    const result = pipeline.post.process_item(context, [
+      { speaker_translation: "爱丽丝", text: "你好" },
+    ]);
+
+    expect(context.srcs).toEqual(["こんにちは"]);
+    expect(context.prompt_inputs).toEqual([{ speaker: "Alice", text: "こんにちは" }]);
+    expect(context.use_structured_speaker_context).toBe(true);
+    expect(result).toEqual({ name: "爱丽丝", dst: "你好" });
+  });
+
   it("自动修复在日文源语言下按语言、代码、转义、数字、标点顺序执行", () => {
     const calls: string[] = [];
     vi.spyOn(KanaFixer, "fix").mockImplementation((dst) => {
@@ -499,6 +521,7 @@ function create_config(overrides: Partial<TextProcessingConfig> = {}): TextProce
     check_hangeul_residue: true,
     check_similarity: true,
     auto_process_prefix_suffix_preserved_text: true,
+    structured_speaker_context_enable: false,
     ...overrides,
   };
 }

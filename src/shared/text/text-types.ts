@@ -26,6 +26,7 @@ export interface TextProcessingConfig {
   check_hangeul_residue: boolean;
   check_similarity: boolean;
   auto_process_prefix_suffix_preserved_text: boolean; // 自动保护前后缀开关决定完全保护行是否仍进入翻译流程
+  structured_speaker_context_enable: boolean; // RenPy 姓名上下文开关打开后，prompt 使用 speaker/text 结构而非姓名前缀
 }
 
 /**
@@ -106,6 +107,7 @@ export class TextProcessingConfigTool {
       check_hangeul_residue: snapshot.check_hangeul_residue,
       check_similarity: snapshot.check_similarity,
       auto_process_prefix_suffix_preserved_text: snapshot.auto_process_prefix_suffix_preserved_text,
+      structured_speaker_context_enable: snapshot.structured_speaker_context_enable,
     };
   }
 }

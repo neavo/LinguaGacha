@@ -12,7 +12,7 @@ describe("响应解码器", () => {
 `.trim(),
     );
 
-    expect(decoded.translations).toEqual(["你好"]);
+    expect(decoded.translations).toEqual([{ speaker_translation: null, text: "你好" }]);
     expect(decoded.glossary_entries).toEqual([
       {
         src: "Alice",
@@ -25,7 +25,7 @@ describe("响应解码器", () => {
   it("跳过非字符串翻译值并保留后续翻译", async () => {
     const decoded = await new ResponseDecoder().decode('{"0":100}\n{"1":"ok"}');
 
-    expect(decoded.translations).toEqual(["ok"]);
+    expect(decoded.translations).toEqual([{ speaker_translation: null, text: "ok" }]);
     expect(decoded.glossary_entries).toEqual([]);
   });
 
@@ -34,7 +34,7 @@ describe("响应解码器", () => {
       '\n  \n{"src":"Alice","dst":"爱丽丝","role":"hero"}\n{"a":"A","b":"B"}\n{"0":"你好"}',
     );
 
-    expect(decoded.translations).toEqual(["你好"]);
+    expect(decoded.translations).toEqual([{ speaker_translation: null, text: "你好" }]);
     expect(decoded.glossary_entries).toEqual([]);
   });
 
@@ -46,7 +46,7 @@ describe("响应解码器", () => {
 `.trim(),
     );
 
-    expect(decoded.translations).toEqual(["忽略这条翻译"]);
+    expect(decoded.translations).toEqual([{ speaker_translation: null, text: "忽略这条翻译" }]);
     expect(decoded.glossary_entries).toEqual([
       {
         src: "魔导具",
@@ -79,14 +79,30 @@ describe("响应解码器", () => {
       '{"src":"Alice","dst":"爱丽丝","gender":"female"}',
     );
 
-    expect(decoded.translations).toEqual(["Alice", "爱丽丝", "female"]);
+    expect(decoded.translations).toEqual([
+      { speaker_translation: null, text: "Alice" },
+      { speaker_translation: null, text: "爱丽丝" },
+      { speaker_translation: null, text: "female" },
+    ]);
     expect(decoded.glossary_entries).toEqual([]);
   });
 
   it("行式解析没有翻译时回退整块 JSON 对象", async () => {
     const decoded = await new ResponseDecoder().decode('{"a":"A","b":2,"c":"C"}');
 
-    expect(decoded.translations).toEqual(["A", "C"]);
+    expect(decoded.translations).toEqual([
+      { speaker_translation: null, text: "A" },
+      { speaker_translation: null, text: "C" },
+    ]);
+    expect(decoded.glossary_entries).toEqual([]);
+  });
+
+  it("解码结构化角色名翻译对象", async () => {
+    const decoded = await new ResponseDecoder().decode(
+      '{"0":{"speaker_translation":"爱丽丝","text":"你好"}}',
+    );
+
+    expect(decoded.translations).toEqual([{ speaker_translation: "爱丽丝", text: "你好" }]);
     expect(decoded.glossary_entries).toEqual([]);
   });
 

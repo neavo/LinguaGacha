@@ -285,6 +285,28 @@ describe("PromptBuilder", () => {
     expect(result.console_log).toEqual([]);
   });
 
+  it("结构化角色名上下文使用 speaker/text 输入和 speaker_translation/text 输出", async () => {
+    const app_root = await create_template_root();
+    const builder = new PromptBuilder(
+      app_root,
+      { app_language: "ZH", source_language: "JA", target_language: "ZH" },
+      create_quality_snapshot(),
+    );
+
+    const result = await builder.generate_prompt(
+      [{ speaker: "Alice", text: "こんにちは" }],
+      [],
+      [],
+      true,
+    );
+
+    expect(result.messages[0]?.content).toContain(
+      '{"<序号>":{"speaker_translation":"<说话人译文>","text":"<译文文本>"}}',
+    );
+    expect(result.messages[1]?.content).toContain('{"0":{"speaker":"Alice","text":"こんにちは"}}');
+    expect(result.messages[1]?.content).not.toContain("【Alice】こんにちは");
+  });
+
   it("分析主提示词启用自定义正文时读取分析模板目录", async () => {
     const app_root = await create_template_root();
     const builder = new PromptBuilder(

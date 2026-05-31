@@ -6,6 +6,7 @@ import {
   type TextPreserveRule,
 } from "../../../../shared/text/text-preserve-rules";
 import { apply_text_replacements } from "../../../../shared/text/text-replacement-rules";
+import type { TranslationPromptInput } from "../../../../shared/text/translation-prompt-types";
 import type {
   TextProcessingConfig,
   TextQualitySnapshot,
@@ -19,6 +20,8 @@ export interface TranslationPrePipelineContext {
   item: TextTaskItemRecord | null; // item 保留当前 work unit 的可写快照，译后流程只回写这份对象
   source_text: string; // source_text 直接来自 item.src，格式结构投影必须在导入边界完成
   srcs: string[]; // srcs 是真正送入模型的行，空行和完全保护行不会进入请求
+  prompt_inputs: TranslationPromptInput[]; // prompt_inputs 保留模型输入正文和可选说话人，避免结构化模式污染正文
+  use_structured_speaker_context: boolean; // true 时姓名上下文通过 JSON 对象传递，译后不解析姓名前缀
   samples: string[]; // samples 收集保护段示例，供 PromptBuilder 判断是否补控制字符说明
   valid_line_indexes: Set<number>; // valid_line_indexes 记录送入模型的源行位置，译后只按这些行回填
   prefix_codes_by_line: Map<number, string[]>; // prefix_codes_by_line 按行保存前缀保护码，恢复时保持原始左侧位置
@@ -74,7 +77,17 @@ export class TranslationPrePipeline {
       context.srcs.push(src);
       context.valid_line_indexes.add(line_index);
     }
-    context.srcs = inject_text_name_prefix(context.srcs, this.read_first_name_src(item));
+    const first_name_src = this.read_first_name_src(item);
+    if (this.config.structured_speaker_context_enable && first_name_src !== null) {
+      context.use_structured_speaker_context = true;
+      context.prompt_inputs = context.srcs.map((text) => ({
+        speaker: first_name_src,
+        text,
+      }));
+    } else {
+      context.srcs = inject_text_name_prefix(context.srcs, first_name_src);
+      context.prompt_inputs = context.srcs.map((text) => ({ speaker: null, text }));
+    }
     return context;
   }
 
@@ -86,6 +99,8 @@ export class TranslationPrePipeline {
       item,
       source_text: "",
       srcs: [],
+      prompt_inputs: [],
+      use_structured_speaker_context: false,
       samples: [],
       valid_line_indexes: new Set<number>(),
       prefix_codes_by_line: new Map<number, string[]>(),

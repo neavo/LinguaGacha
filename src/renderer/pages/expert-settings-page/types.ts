@@ -11,7 +11,8 @@ export type ExpertSettingsPendingField =
   | "check_hangeul_residue"
   | "check_similarity"
   | "write_translated_name_fields_to_file"
-  | "auto_process_prefix_suffix_preserved_text";
+  | "auto_process_prefix_suffix_preserved_text"
+  | "structured_speaker_context_enable";
 
 export type ExpertSettingsPendingState = Record<ExpertSettingsPendingField, boolean>;
 
@@ -25,6 +26,7 @@ export type ExpertSettingsSnapshot = Pick<
   | "check_similarity"
   | "write_translated_name_fields_to_file"
   | "auto_process_prefix_suffix_preserved_text"
+  | "structured_speaker_context_enable"
 >;
 
 export function build_expert_settings_snapshot(
@@ -40,5 +42,6 @@ export function build_expert_settings_snapshot(
     write_translated_name_fields_to_file: settings_snapshot.write_translated_name_fields_to_file,
     auto_process_prefix_suffix_preserved_text:
       settings_snapshot.auto_process_prefix_suffix_preserved_text,
+    structured_speaker_context_enable: settings_snapshot.structured_speaker_context_enable,
   };
 }

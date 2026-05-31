@@ -45,6 +45,17 @@ export const zh_cn_expert_settings_page = {
         "\n" +
         "• VNTextPatch 或 SExtractor 导出带 name 字段的游戏文本（.json）",
     },
+    structured_speaker_context_enable: {
+      title: "使用结构化角色名上下文",
+      description:
+        "翻译带姓名字段的文本时，将角色名和正文分开发送给模型，默认禁用" +
+        "\n" +
+        "• 启用后，普通模型会收到 speaker/text 结构，并可返回 speaker_translation/text" +
+        "\n" +
+        "• 禁用后，继续使用旧的姓名前缀兼容格式" +
+        "\n" +
+        "• SakuraLLM 会始终使用旧格式",
+    },
     auto_process_prefix_suffix_preserved_text: {
       title: "自动处理前后缀的保护文本段",
       description:

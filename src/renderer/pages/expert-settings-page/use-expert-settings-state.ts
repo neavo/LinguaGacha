@@ -31,6 +31,7 @@ type UseExpertSettingsStateResult = {
   update_check_similarity: (next_checked: boolean) => Promise<void>;
   update_write_translated_name_fields_to_file: (next_checked: boolean) => Promise<void>;
   update_auto_process_prefix_suffix_preserved_text: (next_checked: boolean) => Promise<void>;
+  update_structured_speaker_context_enable: (next_checked: boolean) => Promise<void>;
 };
 
 function create_pending_state(): ExpertSettingsPendingState {
@@ -43,6 +44,7 @@ function create_pending_state(): ExpertSettingsPendingState {
     check_similarity: false,
     write_translated_name_fields_to_file: false,
     auto_process_prefix_suffix_preserved_text: false,
+    structured_speaker_context_enable: false,
   };
 }
 
@@ -157,6 +159,10 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
           if ("auto_process_prefix_suffix_preserved_text" in request) {
             reverted_snapshot.auto_process_prefix_suffix_preserved_text =
               previous_snapshot.auto_process_prefix_suffix_preserved_text;
+          }
+          if ("structured_speaker_context_enable" in request) {
+            reverted_snapshot.structured_speaker_context_enable =
+              previous_snapshot.structured_speaker_context_enable;
           }
 
           return reverted_snapshot;
@@ -353,6 +359,28 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
     [commit_update],
   );
 
+  const update_structured_speaker_context_enable = useCallback(
+    async (next_checked: boolean): Promise<void> => {
+      const previous_snapshot = snapshot_ref.current;
+
+      if (previous_snapshot.structured_speaker_context_enable === next_checked) {
+        return;
+      }
+
+      await commit_update(
+        "structured_speaker_context_enable",
+        {
+          structured_speaker_context_enable: next_checked,
+        },
+        {
+          ...previous_snapshot,
+          structured_speaker_context_enable: next_checked,
+        },
+      );
+    },
+    [commit_update],
+  );
+
   const value = useMemo<UseExpertSettingsStateResult>(() => {
     return {
       snapshot,
@@ -367,6 +395,7 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
       update_check_similarity,
       update_write_translated_name_fields_to_file,
       update_auto_process_prefix_suffix_preserved_text,
+      update_structured_speaker_context_enable,
     };
   }, [
     is_task_busy,
@@ -381,6 +410,7 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
     update_deduplication_in_bilingual,
     update_preceding_lines_threshold,
     update_write_translated_name_fields_to_file,
+    update_structured_speaker_context_enable,
   ]);
 
   return value;

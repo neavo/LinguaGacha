@@ -2,6 +2,7 @@ import path from "node:path";
 
 import { JsonTool } from "../../../../shared/utils/json-tool";
 import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../../shared/text/text-types";
+import type { TranslationPromptInput } from "../../../../shared/text/translation-prompt-types";
 import type { LLMMessage } from "../../../llm/llm-types";
 import { default_native_fs } from "../../../../native/native-fs";
 import { Prompt } from "../../../../base/prompt";
@@ -73,10 +74,24 @@ export class PromptBuilder {
     srcs: string[],
     samples: string[],
     precedings: TextTaskItemRecord[],
+  ): Promise<PromptBuildResult>;
+  public async generate_prompt(
+    prompt_inputs: TranslationPromptInput[],
+    samples: string[],
+    precedings: TextTaskItemRecord[],
+    use_structured_speaker_context: boolean,
+  ): Promise<PromptBuildResult>;
+  public async generate_prompt(
+    inputs: Array<string | TranslationPromptInput>,
+    samples: string[],
+    precedings: TextTaskItemRecord[],
+    use_structured_speaker_context = false,
   ): Promise<PromptBuildResult> {
+    const prompt_inputs = this.normalize_prompt_inputs(inputs);
     const messages: LLMMessage[] = [];
     const console_log: string[] = [];
-    const instruction_text = await this.build_main();
+    const instruction_text = await this.build_main(use_structured_speaker_context);
+    const srcs = prompt_inputs.map((item) => item.text);
     const user_parts: string[] = [];
 
     const preceding = this.build_preceding(precedings);
@@ -99,9 +114,9 @@ export class PromptBuilder {
       console_log.push(control_samples);
     }
 
-    const inputs = this.build_inputs(srcs);
-    if (inputs !== "") {
-      user_parts.push(inputs);
+    const input_text = this.build_inputs(prompt_inputs, use_structured_speaker_context);
+    if (input_text !== "") {
+      user_parts.push(input_text);
     }
 
     messages.push({ role: "system", content: instruction_text });
@@ -151,7 +166,9 @@ export class PromptBuilder {
   /**
    * 翻译主提示词从自定义快照或资源模板读取
    */
-  public async build_main(): Promise<string> {
+  public async build_main(): Promise<string>;
+  public async build_main(use_structured_speaker_context: boolean): Promise<string>;
+  public async build_main(use_structured_speaker_context = false): Promise<string> {
     const context = this.resolve_prompt_context();
     const prompt = Prompt.translation();
     const prefix = await this.read_prompt_text(
@@ -172,9 +189,18 @@ export class PromptBuilder {
       context.prompt_language,
       "suffix.txt",
     );
-    return this.join_prompt_sections(prefix, base, thinking, suffix)
+    const resolved_suffix = use_structured_speaker_context
+      ? this.strip_translation_output_examples(suffix)
+      : suffix;
+    const structured_suffix = use_structured_speaker_context
+      ? `${this.build_structured_output_format_instruction()}`
+      : "";
+    return `${this.join_prompt_sections(prefix, base, thinking, resolved_suffix)
       .replaceAll("{source_language}", context.source_language)
-      .replaceAll("{target_language}", context.target_language);
+      .replaceAll(
+        "{target_language}",
+        context.target_language,
+      )}${structured_suffix === "" ? "" : `\n\n${structured_suffix}`}`;
   }
 
   /**
@@ -265,11 +291,29 @@ export class PromptBuilder {
   /**
    * 翻译输入固定为 jsonline，响应解码器也按此格式优先解析
    */
-  public build_inputs(srcs: string[]): string {
-    const inputs = srcs
-      .map((line, index) => JsonTool.stringifyStrict({ [String(index)]: line }))
+  public build_inputs(srcs: string[]): string;
+  public build_inputs(
+    prompt_inputs: TranslationPromptInput[],
+    use_structured_speaker_context: boolean,
+  ): string;
+  public build_inputs(
+    inputs: Array<string | TranslationPromptInput>,
+    use_structured_speaker_context = false,
+  ): string {
+    const prompt_inputs = this.normalize_prompt_inputs(inputs);
+    const input_lines = prompt_inputs
+      .map((input, index) =>
+        use_structured_speaker_context
+          ? JsonTool.stringifyStrict({
+              [String(index)]: {
+                speaker: input.speaker,
+                text: input.text,
+              },
+            })
+          : JsonTool.stringifyStrict({ [String(index)]: input.text }),
+      )
       .join("\n");
-    return `${this.t("app.prompt.builder_input")}\n\`\`\`jsonline\n${inputs}\n\`\`\``;
+    return `${this.t("app.prompt.builder_input")}\n\`\`\`jsonline\n${input_lines}\n\`\`\``;
   }
 
   /**
@@ -315,6 +359,46 @@ export class PromptBuilder {
 
   private t(key: LocaleKey, params: Record<string, string> = {}): string {
     return format_i18n_message(resolve_i18n_locale(this.config.app_language), key, params);
+  }
+
+  private normalize_prompt_inputs(
+    inputs: Array<string | TranslationPromptInput>,
+  ): TranslationPromptInput[] {
+    return inputs.map((input) =>
+      typeof input === "string" ? { speaker: null, text: input } : input,
+    );
+  }
+
+  /**
+   * 结构化 speaker 模式使用单独的输出格式说明，避免旧 JSONLINE 示例误导模型
+   */
+  private build_structured_output_format_instruction(): string {
+    if (this.is_prompt_ui_zh()) {
+      return [
+        "然后使用JSONLINE输出翻译结果，无需额外说明或解释：",
+        "```jsonline",
+        '{"<序号>":{"speaker_translation":"<说话人译文>","text":"<译文文本>"}}',
+        "```",
+      ].join("\n");
+    }
+    return [
+      "Then use JSONLINE to output translation results, without extra explanation or clarification:",
+      "```jsonline",
+      '{"<INDEX>":{"speaker_translation":"<Speaker Translation>","text":"<Translated Text>"}}',
+      "```",
+    ].join("\n");
+  }
+
+  /**
+   * 结构化模式下移除 suffix 里历史旧输出示例，只保留语义句子
+   */
+  private strip_translation_output_examples(suffix: string): string {
+    return suffix
+      .replace(
+        /(?:然后使用JSONLINE输出翻译结果，无需额外说明或解释：|Then use JSONLINE to output translation results, without extra explanation or clarification:)\s*\r?\n```jsonline[\s\S]*?```\s*$/u,
+        "",
+      )
+      .trim();
   }
 
   /**

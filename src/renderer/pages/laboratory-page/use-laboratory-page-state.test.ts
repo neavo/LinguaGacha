@@ -113,6 +113,7 @@ function create_settings_snapshot(overrides: Partial<SettingsSnapshot> = {}): Se
     check_similarity: false,
     write_translated_name_fields_to_file: false,
     auto_process_prefix_suffix_preserved_text: false,
+    structured_speaker_context_enable: false,
     mtool_optimizer_enable: false,
     skip_duplicate_source_text_enable: true,
     glossary_default_preset: "",

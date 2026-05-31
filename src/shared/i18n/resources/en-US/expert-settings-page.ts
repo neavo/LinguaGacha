@@ -55,6 +55,17 @@ export const en_us_expert_settings_page = {
         "\n" +
         "• VNTextPatch or SExtractor exported game text with name fields (.json)",
     },
+    structured_speaker_context_enable: {
+      title: "Use Structured Speaker Context",
+      description:
+        "For text with name fields, send the speaker name and text separately to the model, disabled by default" +
+        "\n" +
+        "• Enabled: normal models receive speaker/text and may return speaker_translation/text" +
+        "\n" +
+        "• Disabled: keeps the legacy speaker-name prefix format" +
+        "\n" +
+        "• SakuraLLM always uses the legacy format",
+    },
     auto_process_prefix_suffix_preserved_text: {
       title: "Auto Process Prefix/Suffix Preserved Text",
       description:

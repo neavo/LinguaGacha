@@ -21,6 +21,7 @@ import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
 import { normalize_setting_snapshot } from "../../../../base/setting";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
 import { RequestValidationError, type LogError } from "../../../../shared/error";
+import type { TranslationPromptInput } from "../../../../shared/text/translation-prompt-types";
 
 interface WorkUnitBaseRequest {
   run_id: string; // run_id 用于隔离一次任务运行，worker 不用它访问项目状态
@@ -161,7 +162,8 @@ export class TranslationWorkUnitRunner {
     skip_response_check: boolean,
     signal: AbortSignal,
   ): Promise<TranslationWorkUnitResult> {
-    const config = TextProcessingConfigTool.from_api_value(request.config_snapshot);
+    const api_format = this.read_model_api_format(request.model);
+    const config = this.resolve_text_processing_config(request.config_snapshot, api_format);
     const quality_snapshot = TextQualitySnapshotTool.from_api_value(request.quality_snapshot);
     const prepared = await this.prepare_request_data(
       request,
@@ -226,11 +228,13 @@ export class TranslationWorkUnitRunner {
       }
   > {
     const srcs: string[] = [];
+    const prompt_inputs: TranslationPromptInput[] = [];
     const samples: string[] = [];
     const pre_pipeline = new TranslationPrePipeline(config, quality_snapshot);
     const pipeline_contexts = items.map((item) => pre_pipeline.process_item(item));
     for (const pipeline_context of pipeline_contexts) {
       srcs.push(...pipeline_context.srcs);
+      prompt_inputs.push(...pipeline_context.prompt_inputs);
       samples.push(...pipeline_context.samples);
     }
     if (srcs.length === 0) {
@@ -258,7 +262,12 @@ export class TranslationWorkUnitRunner {
     const prompt_result =
       api_format === "SakuraLLM"
         ? prompt_builder.generate_prompt_sakura(srcs)
-        : await prompt_builder.generate_prompt(srcs, samples, precedings);
+        : await prompt_builder.generate_prompt(
+            prompt_inputs,
+            samples,
+            precedings,
+            prompt_inputs.some((input) => input.speaker !== null),
+          );
     return {
       done: false,
       srcs,
@@ -300,6 +309,10 @@ export class TranslationWorkUnitRunner {
     const dsts =
       context.stream_degraded || context.request_timeout || context.request_error !== undefined
         ? []
+        : decoded.translations.map((line) => line.text);
+    const decoded_lines =
+      context.stream_degraded || context.request_timeout || context.request_error !== undefined
+        ? []
         : decoded.translations;
     const checks = this.build_checks(context, dsts);
     const logs = this.build_translation_logs({
@@ -318,10 +331,10 @@ export class TranslationWorkUnitRunner {
     });
     let updated_count = 0;
     if (checks.some((check) => check === "NONE")) {
-      const dst_queue = [...dsts];
+      const dst_queue = [...decoded_lines];
       const check_queue = [...checks];
       while (dst_queue.length < context.srcs.length) {
-        dst_queue.push("");
+        dst_queue.push({ speaker_translation: null, text: "" });
       }
       while (check_queue.length < context.srcs.length) {
         check_queue.push("NONE");
@@ -622,6 +635,22 @@ export class TranslationWorkUnitRunner {
       source_language: config.source_language,
       target_language: config.target_language,
     };
+  }
+
+  /**
+   * SakuraLLM 保留旧姓名前缀协议，避免专用提示词分支收到结构化 JSON 对象
+   */
+  private resolve_text_processing_config(
+    config_snapshot: ApiJsonValue,
+    api_format: string,
+  ): TextProcessingConfig {
+    const config = TextProcessingConfigTool.from_api_value(config_snapshot);
+    return api_format === "SakuraLLM"
+      ? {
+          ...config,
+          structured_speaker_context_enable: false,
+        }
+      : config;
   }
 
   /**

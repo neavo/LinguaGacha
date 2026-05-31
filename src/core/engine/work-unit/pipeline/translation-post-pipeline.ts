@@ -10,6 +10,7 @@ import {
   type TextPreserveRule,
 } from "../../../../shared/text/text-preserve-rules";
 import { apply_text_replacements } from "../../../../shared/text/text-replacement-rules";
+import type { DecodedTranslationLine } from "../../../../shared/text/translation-prompt-types";
 import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shared/text/text-types";
 import type { TranslationPrePipelineContext } from "./translation-pre-pipeline";
 
@@ -41,12 +42,12 @@ export class TranslationPostPipeline {
    */
   public process_item(
     context: TranslationPrePipelineContext,
-    dsts: string[],
+    dsts: Array<string | DecodedTranslationLine>,
   ): TranslationPostPipelineResult {
     if (context.item === null) {
       return { name: null, dst: "" };
     }
-    const dst_queue = [...dsts];
+    const dst_queue = this.normalize_translation_lines(dsts);
     const extracted = this.extract_name(context, dst_queue);
     const results: string[] = [];
     for (const [line_index, src] of context.source_text.split("\n").entries()) {
@@ -56,7 +57,8 @@ export class TranslationPostPipeline {
       } else if (src.trim() === "" || !context.valid_line_indexes.has(line_index)) {
         dst = src;
       } else {
-        dst = (extracted.dsts.shift() ?? "").trim();
+        const next_line = extracted.dsts.shift() ?? { speaker_translation: null, text: "" };
+        dst = next_line.text.trim();
         dst = this.auto_fix(context, src, dst);
         dst = this.replace_post_translation(dst);
         const prefix_codes = context.prefix_codes_by_line.get(line_index) ?? [];
@@ -76,17 +78,39 @@ export class TranslationPostPipeline {
    */
   private extract_name(
     context: TranslationPrePipelineContext,
-    dsts: string[],
-  ): { name: string | null; dsts: string[] } {
+    dsts: DecodedTranslationLine[],
+  ): { name: string | null; dsts: DecodedTranslationLine[] } {
     if (!this.has_source_name(context)) {
       return { name: null, dsts };
     }
-    const extracted = extract_text_name_prefix(dsts[0] ?? "");
+    if (context.use_structured_speaker_context) {
+      const first_line = dsts[0];
+      if (first_line === undefined || first_line.speaker_translation === null) {
+        return { name: null, dsts };
+      }
+      return { name: first_line.speaker_translation, dsts };
+    }
+    const first_line = dsts[0];
+    if (first_line === undefined) {
+      return { name: null, dsts };
+    }
+    const extracted = extract_text_name_prefix(first_line.text);
     if (extracted.name === null) {
       return { name: null, dsts };
     }
-    dsts[0] = extracted.text;
+    dsts[0] = {
+      speaker_translation: null,
+      text: extracted.text,
+    };
     return { name: extracted.name, dsts };
+  }
+
+  private normalize_translation_lines(
+    dsts: Array<string | DecodedTranslationLine>,
+  ): DecodedTranslationLine[] {
+    return dsts.map((line) =>
+      typeof line === "string" ? { speaker_translation: null, text: line } : line,
+    );
   }
 
   /**
