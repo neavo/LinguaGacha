@@ -3,8 +3,10 @@ import {
   Ban,
   CircleCheck,
   CircleMinus,
+  CopyX,
   Eraser,
   ListChecks,
+  ListX,
   PencilLine,
   RefreshCcw,
   TriangleAlert,
@@ -149,6 +151,12 @@ function resolve_status_icon(status: string): typeof AlertCircle | null {
   }
   if (status === "LANGUAGE_SKIPPED") {
     return CircleMinus;
+  }
+  if (status === "RULE_SKIPPED") {
+    return ListX;
+  }
+  if (status === "DUPLICATED") {
+    return CopyX;
   }
 
   return null;

@@ -53,7 +53,7 @@ vi.mock("@frontend/widgets/app-table/app-table", () => {
 });
 
 // 生成状态单元格和表格行共用的最小校对 item。
-function create_item(): ProofreadingItem {
+function create_item(overrides: Partial<ProofreadingItem> = {}): ProofreadingItem {
   return {
     item_id: 1,
     file_path: "chapter01.txt",
@@ -66,6 +66,7 @@ function create_item(): ProofreadingItem {
     warning_fragments_by_code: {},
     applied_glossary_terms: [],
     failed_glossary_terms: [],
+    ...overrides,
   };
 }
 
@@ -102,7 +103,10 @@ describe("ProofreadingStatusCell", () => {
     root = null;
   });
 
-  async function render_cell(retranslating: boolean): Promise<HTMLDivElement> {
+  async function render_cell(
+    retranslating: boolean,
+    item: ProofreadingItem = create_item(),
+  ): Promise<HTMLDivElement> {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -110,7 +114,7 @@ describe("ProofreadingStatusCell", () => {
     await act(async () => {
       root?.render(
         <TooltipProvider>
-          <ProofreadingStatusCell item={create_item()} retranslating={retranslating} />
+          <ProofreadingStatusCell item={item} retranslating={retranslating} />
         </TooltipProvider>,
       );
     });
@@ -130,6 +134,14 @@ describe("ProofreadingStatusCell", () => {
 
     expect(rendered.querySelector('[role="status"]')).toBeNull();
     expect(rendered.querySelectorAll("svg")).toHaveLength(2);
+  });
+
+  it.each(["RULE_SKIPPED", "DUPLICATED"])("%s 状态渲染中性状态图标", async (status) => {
+    const rendered = await render_cell(false, create_item({ status, warnings: [] }));
+
+    expect(rendered.querySelector('[role="status"]')).toBeNull();
+    expect(rendered.querySelectorAll("svg")).toHaveLength(1);
+    expect(rendered.querySelector(".proofreading-page__status-icon--neutral")).not.toBeNull();
   });
 });
 
