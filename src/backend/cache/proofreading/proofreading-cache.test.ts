@@ -11,6 +11,7 @@ import type { CacheReadPort } from "../cache-types";
 import type { CacheChange } from "../cache-change";
 import { ProofreadingCache } from "./proofreading-cache";
 
+// create_cache_read_port 提供 ProofreadingCache 所需的最小缓存读口，并允许覆盖 revisions 与 items。
 function create_cache_read_port(options: {
   epoch?: number;
   revisions?: Record<string, number>;
@@ -79,12 +80,14 @@ function create_cache_read_port(options: {
   } as CacheReadPort;
 }
 
+// create_settings 固定测试语言设置，避免缓存测试依赖真实 app setting。
 function create_settings(): AppSettingService {
   return {
     read_setting: () => ({ source_language: "JA", target_language: "ZH" }),
   } as unknown as AppSettingService;
 }
 
+// create_worker 记录 proofreading_sync 输入，并用真实 list reader 评估 worker 返回值。
 function create_worker(): BackendWorkerClient & {
   sync_inputs: ProofreadingSyncInput[];
 } {
@@ -104,6 +107,7 @@ function create_worker(): BackendWorkerClient & {
   };
 }
 
+// create_delta_change 生成 items delta 事件，用例只覆盖需要验证的字段。
 function create_delta_change(overrides: Partial<CacheChange> = {}): CacheChange {
   return {
     eventType: "project.items.changed",
@@ -282,6 +286,142 @@ describe("ProofreadingCache", () => {
       }),
     );
     expect(next_sync.data.revisions.items).toBe(2);
+  });
+
+  it("field-patch 增量会更新旧列表窗口内容且不重建排序", async () => {
+    const worker = create_worker();
+    const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
+    const items = [
+      {
+        item_id: 1,
+        file_path: "script.txt",
+        row_number: 1,
+        src: "A",
+        dst: "M",
+        status: "NONE",
+        text_type: "NONE",
+        retry_count: 0,
+      },
+      {
+        item_id: 2,
+        file_path: "script.txt",
+        row_number: 2,
+        src: "B",
+        dst: "Z",
+        status: "NONE",
+        text_type: "NONE",
+        retry_count: 0,
+      },
+    ];
+    const cache = new ProofreadingCache({
+      cache: create_cache_read_port({ revisions, items }),
+      appSettingService: create_settings(),
+      workerClient: worker,
+      service: createProofreadingListReader(),
+    });
+    const sync = await cache.sync({});
+    const view = await cache.list({
+      filters: sync.data.defaultFilters,
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: { column_id: "dst", direction: "ascending" },
+      window_start: 0,
+      window_count: 10,
+    });
+    revisions.items = 2;
+
+    await cache.applyChange(
+      create_delta_change({
+        items: {
+          mode: "delta",
+          changedIds: [2],
+          deleteIds: [],
+          fieldPatch: { dst: "A", status: "PROCESSED" },
+          sourcePayloadMode: "field-patch",
+        },
+      }),
+      revisions,
+    );
+    const window = await cache.window({
+      view_id: view.data.view_id,
+      start: 0,
+      count: 10,
+    });
+
+    expect(worker.run).toHaveBeenCalledTimes(1);
+    expect(window.data.rows.map((row) => row.row_id)).toEqual(["1", "2"]);
+    expect(window.data.rows[1]?.item).toMatchObject({
+      item_id: 2,
+      dst: "A",
+      status: "PROCESSED",
+    });
+  });
+
+  it("删除增量会剪裁旧列表窗口", async () => {
+    const worker = create_worker();
+    const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
+    const items = [
+      {
+        item_id: 1,
+        file_path: "script.txt",
+        row_number: 1,
+        src: "A",
+        dst: "A",
+        status: "NONE",
+        text_type: "NONE",
+        retry_count: 0,
+      },
+      {
+        item_id: 2,
+        file_path: "script.txt",
+        row_number: 2,
+        src: "B",
+        dst: "B",
+        status: "NONE",
+        text_type: "NONE",
+        retry_count: 0,
+      },
+    ];
+    const cache = new ProofreadingCache({
+      cache: create_cache_read_port({ revisions, items }),
+      appSettingService: create_settings(),
+      workerClient: worker,
+      service: createProofreadingListReader(),
+    });
+    const sync = await cache.sync({});
+    const view = await cache.list({
+      filters: sync.data.defaultFilters,
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: null,
+      window_start: 0,
+      window_count: 10,
+    });
+    revisions.items = 2;
+    items.splice(0, 1);
+
+    await cache.applyChange(
+      create_delta_change({
+        items: {
+          mode: "delta",
+          changedIds: [],
+          deleteIds: [1],
+          fieldPatch: null,
+          sourcePayloadMode: "canonical-delta",
+        },
+      }),
+      revisions,
+    );
+    const window = await cache.window({
+      view_id: view.data.view_id,
+      start: 0,
+      count: 10,
+    });
+
+    expect(window.data.row_count).toBe(1);
+    expect(window.data.rows.map((row) => row.row_id)).toEqual(["2"]);
   });
 
   it("quality 或 files 变化会失效已同步的校对缓存", async () => {

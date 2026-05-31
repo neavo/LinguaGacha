@@ -65,7 +65,7 @@ import type {
   AppTableSelectionState,
 } from "@frontend/widgets/app-table/app-table-types";
 import {
-  APP_TABLE_DEFAULT_ESTIMATED_ROW_HEIGHT,
+  APP_TABLE_DEFAULT_ROW_HEIGHT,
   APP_TABLE_DEFAULT_VIRTUAL_OVERSCAN,
   build_app_table_placeholder_fill,
   build_app_table_spacer_heights,
@@ -96,7 +96,6 @@ type AppTableSortableRowProps<Row> = {
   render_row_context_menu?: (payload: AppTableRowEvent<Row>) => ReactNode;
   ignore_row_click_target?: (target_element: HTMLElement) => boolean;
   should_ignore_click: () => boolean;
-  on_measure_row: (row_element: HTMLTableRowElement) => void;
   on_row_click: (row_id: string, row_index: number, event: MouseEvent<HTMLTableRowElement>) => void;
   on_row_context: (row_id: string) => void;
   on_row_double_click?: (payload: AppTableRowEvent<Row>) => void;
@@ -106,6 +105,14 @@ type AppTableSortableRowProps<Row> = {
 type AppTableVisibleRange = {
   start: number;
   count: number;
+};
+
+// PendingScrollAnchor 保存刷新前捕获的视觉偏移，等待下一次提交后按新 row index 回填 scrollTop。
+type PendingScrollAnchor = {
+  row_id: string;
+  offset: number;
+  revision: number;
+  captured_commit: number;
 };
 
 /**
@@ -331,9 +338,6 @@ function AppTableSortableRow<Row>(props: AppTableSortableRowProps<Row>): JSX.Ele
   const set_row_element = (row_element: HTMLTableRowElement | null): void => {
     setNodeRef(row_element);
     props.register_row_element(props.row_id, row_element);
-    if (row_element !== null) {
-      props.on_measure_row(row_element);
-    }
   };
 
   const row_body = (
@@ -449,6 +453,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     get_row_id,
     row_model: row_model_prop,
     restore_scroll_row_id,
+    preserve_scroll_anchor,
     get_row_can_drag,
     on_selection_change,
     on_selection_error,
@@ -460,7 +465,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     ignore_box_select_target,
     box_selection_enabled: box_selection_enabled_prop,
     virtual_overscan,
-    estimated_row_height,
+    row_height: row_height_prop,
     placeholder_row_strategy,
     className,
     table_class_name,
@@ -484,10 +489,18 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
   const restore_scroll_request_epoch_ref = useRef(0);
   // restored_scroll_row_id_ref 记录已处理目标，避免同一个恢复目标在重渲染时重复滚动。
   const restored_scroll_row_id_ref = useRef<string | null>(null);
-  const row_height = estimated_row_height ?? APP_TABLE_DEFAULT_ESTIMATED_ROW_HEIGHT;
+  // preserve_scroll_capture_revision_ref 记录已捕获的刷新锚点版本，避免重复捕获同一轮刷新。
+  const preserve_scroll_capture_revision_ref = useRef(0);
+  // preserve_scroll_request_epoch_ref 让迟到的异步锚点解析不能覆盖更新后的刷新锚点。
+  const preserve_scroll_request_epoch_ref = useRef(0);
+  // pending_scroll_anchor_ref 在刷新前后两次 layout commit 之间传递滚动偏移。
+  const pending_scroll_anchor_ref = useRef<PendingScrollAnchor | null>(null);
+  // layout_commit_id_ref 区分捕获与恢复是否发生在同一次 layout commit。
+  const layout_commit_id_ref = useRef(0);
+  // row_height 是表格虚拟计算的唯一行高来源，CSS 变量和虚拟定位共用它。
+  const row_height = row_height_prop ?? APP_TABLE_DEFAULT_ROW_HEIGHT;
   const [viewport_element, set_viewport_element] = useState<HTMLElement | null>(null);
   const [viewport_height, set_viewport_height] = useState(row_height);
-  const [measured_row_height, set_measured_row_height] = useState(row_height);
   const [active_drag_row_id, set_active_drag_row_id] = useState<string | null>(null);
   const [drag_overlay_width, set_drag_overlay_width] = useState<number | null>(null);
   const [selection_box_active, set_selection_box_active] = useState(false);
@@ -735,7 +748,7 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
   });
   const placeholder_fill =
     placeholder_row_strategy === "fill-viewport" || placeholder_row_strategy === undefined
-      ? build_app_table_placeholder_fill(spacer_heights.viewport_fill_height, measured_row_height)
+      ? build_app_table_placeholder_fill(spacer_heights.viewport_fill_height, row_height)
       : {
           placeholder_row_heights: [],
           residual_spacer_height: spacer_heights.viewport_fill_height,
@@ -744,19 +757,6 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
   const bottom_spacer_height =
     spacer_heights.virtual_bottom_spacer_height + placeholder_fill.residual_spacer_height;
   const show_bottom_spacer = bottom_spacer_height > 0.5;
-  const measure_virtual_row = useCallback(
-    (row_element: HTMLTableRowElement): void => {
-      virtualizer.measureElement(row_element);
-
-      const next_row_height = Math.round(row_element.getBoundingClientRect().height);
-      if (next_row_height > 0) {
-        set_measured_row_height((previous_row_height) => {
-          return next_row_height === previous_row_height ? previous_row_height : next_row_height;
-        });
-      }
-    },
-    [virtualizer],
-  );
 
   const register_row_element = useCallback(
     (row_id: string, row_element: HTMLTableRowElement | null): void => {
@@ -769,6 +769,144 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
     },
     [],
   );
+
+  // capture_scroll_anchor_offset 优先读取已挂载行的真实偏移，未挂载行退回固定行高估算。
+  const capture_scroll_anchor_offset = useCallback(
+    (row_id: string): number | null => {
+      if (viewport_element === null) {
+        return null;
+      }
+
+      const row_element = row_elements_ref.current.get(row_id);
+      if (row_element !== undefined) {
+        const row_rect = row_element.getBoundingClientRect();
+        const viewport_rect = viewport_element.getBoundingClientRect();
+        return row_rect.top - viewport_rect.top;
+      }
+
+      const row_index = row_model.resolve_row_index(row_id);
+      if (row_index === undefined) {
+        return null;
+      }
+
+      return row_index * row_height - viewport_element.scrollTop;
+    },
+    [row_height, row_model, viewport_element],
+  );
+
+  // restore_scroll_anchor_offset 按新索引和旧偏移恢复 scrollTop，并限制在虚拟总高度内。
+  const restore_scroll_anchor_offset = useCallback(
+    (row_index: number, captured_offset: number): void => {
+      if (viewport_element === null) {
+        return;
+      }
+
+      const viewport_client_height =
+        viewport_element.clientHeight > 0 ? viewport_element.clientHeight : viewport_height;
+      const max_scroll_top = Math.max(0, virtualizer.getTotalSize() - viewport_client_height);
+      const next_scroll_top = Math.max(
+        0,
+        Math.min(max_scroll_top, row_index * row_height - captured_offset),
+      );
+      viewport_element.scrollTop = next_scroll_top;
+    },
+    [row_height, viewport_element, viewport_height, virtualizer],
+  );
+
+  // 每次 layout 提交递增编号，让刷新锚点能跨提交恢复滚动。
+  useLayoutEffect(() => {
+    layout_commit_id_ref.current += 1;
+  });
+
+  // preserve_scroll_anchor 变化时先捕获刷新前偏移，等待数据提交后再恢复。
+  useLayoutEffect(() => {
+    if (
+      preserve_scroll_anchor === undefined ||
+      preserve_scroll_anchor.revision <= preserve_scroll_capture_revision_ref.current
+    ) {
+      return;
+    }
+
+    if (preserve_scroll_anchor.row_id === null) {
+      preserve_scroll_capture_revision_ref.current = preserve_scroll_anchor.revision;
+      pending_scroll_anchor_ref.current = null;
+      preserve_scroll_request_epoch_ref.current += 1;
+      return;
+    }
+
+    const captured_offset = capture_scroll_anchor_offset(preserve_scroll_anchor.row_id);
+    preserve_scroll_capture_revision_ref.current = preserve_scroll_anchor.revision;
+    preserve_scroll_request_epoch_ref.current += 1;
+    pending_scroll_anchor_ref.current =
+      captured_offset === null
+        ? null
+        : {
+            row_id: preserve_scroll_anchor.row_id,
+            offset: captured_offset,
+            revision: preserve_scroll_anchor.revision,
+            captured_commit: layout_commit_id_ref.current,
+          };
+  }, [capture_scroll_anchor_offset, preserve_scroll_anchor]);
+
+  // 数据提交后按同步或异步 row index 恢复锚点偏移，过期请求自动失效。
+  useLayoutEffect(() => {
+    const pending_anchor = pending_scroll_anchor_ref.current;
+    if (
+      pending_anchor === null ||
+      pending_anchor.captured_commit === layout_commit_id_ref.current
+    ) {
+      return;
+    }
+
+    const resolved_row_index = row_model.resolve_row_index(pending_anchor.row_id);
+    if (resolved_row_index !== undefined) {
+      restore_scroll_anchor_offset(resolved_row_index, pending_anchor.offset);
+      pending_scroll_anchor_ref.current = null;
+      return;
+    }
+
+    if (row_model.resolve_row_index_async === undefined) {
+      pending_scroll_anchor_ref.current = null;
+      return;
+    }
+
+    const request_epoch = preserve_scroll_request_epoch_ref.current + 1;
+    preserve_scroll_request_epoch_ref.current = request_epoch;
+    let request_active = true;
+
+    void Promise.resolve(row_model.resolve_row_index_async(pending_anchor.row_id))
+      .then((async_row_index) => {
+        const latest_anchor = pending_scroll_anchor_ref.current;
+        if (
+          !request_active ||
+          request_epoch !== preserve_scroll_request_epoch_ref.current ||
+          latest_anchor === null ||
+          latest_anchor.revision !== pending_anchor.revision ||
+          latest_anchor.row_id !== pending_anchor.row_id
+        ) {
+          return;
+        }
+
+        if (async_row_index !== undefined) {
+          restore_scroll_anchor_offset(async_row_index, pending_anchor.offset);
+        }
+        pending_scroll_anchor_ref.current = null;
+      })
+      .catch((error: unknown) => {
+        if (
+          request_active &&
+          request_epoch === preserve_scroll_request_epoch_ref.current &&
+          pending_scroll_anchor_ref.current?.revision === pending_anchor.revision
+        ) {
+          pending_scroll_anchor_ref.current = null;
+          on_selection_error?.(error);
+        }
+      });
+
+    return () => {
+      request_active = false;
+    };
+  }, [on_selection_error, restore_scroll_anchor_offset, row_count, row_model, virtual_rows]);
 
   const focus_table_scroll_host = useCallback((): void => {
     const table_scroll_host_element = table_scroll_host_ref.current;
@@ -1644,9 +1782,12 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
       resolve_row_id_at_index,
     });
   }, [resolve_row_id_at_index, virtual_rows]);
+  const root_style = {
+    "--app-table-row-height": `${row_height.toString()}px`,
+  } as CSSProperties;
 
   return (
-    <div className={cn("app-table", className)}>
+    <div className={cn("app-table", className)} style={root_style}>
       {header}
       <div
         ref={table_scroll_host_ref}
@@ -1701,7 +1842,6 @@ export function AppTable<Row>(props: AppTableProps<Row>): JSX.Element {
                         render_row_context_menu={render_row_context_menu}
                         ignore_row_click_target={ignore_row_click_target}
                         should_ignore_click={should_ignore_click}
-                        on_measure_row={measure_virtual_row}
                         on_row_click={handle_row_click}
                         on_row_context={handle_row_context}
                         on_row_double_click={on_row_double_click}

@@ -25,8 +25,11 @@ const PROOFREADING_SEARCH_SCOPES: ProofreadingSearchScope[] = ["all", "src", "ds
 export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const proofreading_page_state = useProofreadingPageState();
+  // search_disabled 只受只读和写入中约束，刷新期间仍允许继续输入并由状态层重建 query。
   const search_disabled = proofreading_page_state.readonly || proofreading_page_state.is_writing;
+  // table_action_disabled 在刷新期间锁住行操作，避免旧 view 上提交批量动作。
   const table_action_disabled = search_disabled || proofreading_page_state.is_refreshing;
+  // filter_disabled 等待校对 query cache ready 后再开放筛选弹窗。
   const filter_disabled = table_action_disabled || proofreading_page_state.cache_status !== "ready";
   const regex_state_label = proofreading_page_state.is_regex
     ? t("app.toggle.enabled")
@@ -118,6 +121,7 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
           resolve_row_ids_range={proofreading_page_state.resolve_visible_row_ids_range}
           on_visible_range_change={proofreading_page_state.read_visible_range}
           restore_scroll_row_id={proofreading_page_state.restore_scroll_row_id}
+          preserve_scroll_anchor={proofreading_page_state.preserve_scroll_anchor}
           on_sort_change={proofreading_page_state.apply_table_sort_state}
           on_selection_change={proofreading_page_state.apply_table_selection}
           on_selection_error={proofreading_page_state.handle_table_selection_error}

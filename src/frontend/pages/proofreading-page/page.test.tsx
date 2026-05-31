@@ -5,10 +5,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProofreadingPage } from "@frontend/pages/proofreading-page/page";
 
-const { proofreading_state_fixture } = vi.hoisted(() => {
+// proofreading_*_fixture 分别捕获页面状态 Hook 和表格 props，方便验证页面装配边界。
+const { proofreading_state_fixture, proofreading_table_fixture } = vi.hoisted(() => {
   return {
     proofreading_state_fixture: {
       current: null as ReturnType<typeof create_proofreading_state_fixture> | null,
+    },
+    proofreading_table_fixture: {
+      current_props: null as {
+        preserve_scroll_anchor?: { row_id: string | null; revision: number };
+      } | null,
     },
   };
 });
@@ -66,9 +72,15 @@ vi.mock("@frontend/widgets/search-bar/search-bar", () => {
 
 vi.mock("@frontend/pages/proofreading-page/components/proofreading-table", () => {
   return {
-    ProofreadingTable: (props: { readonly: boolean }) => (
-      <div data-readonly={props.readonly ? "true" : "false"} data-testid="proofreading-table" />
-    ),
+    ProofreadingTable: (props: {
+      preserve_scroll_anchor?: { row_id: string | null; revision: number };
+      readonly: boolean;
+    }) => {
+      proofreading_table_fixture.current_props = props;
+      return (
+        <div data-readonly={props.readonly ? "true" : "false"} data-testid="proofreading-table" />
+      );
+    },
   };
 });
 
@@ -93,9 +105,6 @@ vi.mock("@frontend/pages/proofreading-page/components/proofreading-confirm-dialo
 });
 
 // create_proofreading_state_fixture 构造页面壳消费的最小校对页状态。
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_proofreading_state_fixture() {
   return {
     active_row_id: null,
@@ -132,6 +141,10 @@ function create_proofreading_state_fixture() {
     open_edit_dialog: vi.fn(),
     open_filter_dialog: vi.fn(),
     pending_confirmation: null,
+    preserve_scroll_anchor: {
+      row_id: "1",
+      revision: 7,
+    },
     read_visible_range: vi.fn(),
     readonly: false,
     replace_all_visible_matches: vi.fn(),
@@ -144,6 +157,7 @@ function create_proofreading_state_fixture() {
     required_sections: ["project", "items", "quality", "proofreading"],
     resolve_visible_row_ids_range: vi.fn(),
     resolve_visible_row_index: vi.fn(),
+    resolve_visible_row_index_async: vi.fn(),
     retranslating_row_ids: new Set<string>(),
     save_dialog_entry: vi.fn(),
     search_keyword: "",
@@ -210,6 +224,10 @@ describe("ProofreadingPage", () => {
     expect(
       container?.querySelector("[data-testid='proofreading-table']")?.getAttribute("data-readonly"),
     ).toBe("true");
+    expect(proofreading_table_fixture.current_props?.preserve_scroll_anchor).toEqual({
+      row_id: "1",
+      revision: 7,
+    });
     expect(
       container?.querySelector("[data-testid='proofreading-edit']")?.getAttribute("data-readonly"),
     ).toBe("true");

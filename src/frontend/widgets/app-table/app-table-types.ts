@@ -103,6 +103,12 @@ export type AppTableDataColumn<Row> = AppTableColumnBase & {
 
 export type AppTableColumn<Row> = AppTableDragColumn<Row> | AppTableDataColumn<Row>;
 
+// AppTableScrollAnchor 用 revision 区分每次刷新，row_id 为空时表示显式取消保持滚动。
+export type AppTableScrollAnchor = {
+  row_id: string | null;
+  revision: number;
+};
+
 export type AppTableProps<Row> = {
   rows: Row[];
   columns: AppTableColumn<Row>[];
@@ -116,6 +122,8 @@ export type AppTableProps<Row> = {
   row_model?: AppTableRowModel<Row>;
   // restore_scroll_row_id 是外部 session 恢复滚动的目标行，不改变表格选区。
   restore_scroll_row_id?: string | null;
+  // preserve_scroll_anchor 是数据刷新期间保持视觉偏移的滚动锚点。
+  preserve_scroll_anchor?: AppTableScrollAnchor;
   get_row_can_drag?: (row: Row, index: number) => boolean;
   on_selection_change: (payload: AppTableSelectionChange) => void;
   on_selection_error?: (error: unknown) => void;
@@ -127,7 +135,7 @@ export type AppTableProps<Row> = {
   ignore_box_select_target?: (target_element: HTMLElement) => boolean;
   box_selection_enabled?: boolean;
   virtual_overscan?: number;
-  estimated_row_height?: number;
+  row_height?: number;
   placeholder_row_strategy?: "fill-viewport";
   className?: string;
   table_class_name?: string;

@@ -19,6 +19,7 @@
   --app-table-selected-gap-fill: var(--ui-card-default-surface);
   --app-table-hover-state-inset-block: 0px;
   --app-table-selected-state-inset-block: 1px;
+  --app-table-row-height: 36px;
   display: flex;
   min-height: 0;
   flex: 1;
@@ -83,7 +84,7 @@
   table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
-  --table-row-height-current: 36px;
+  --table-row-height-current: var(--app-table-row-height);
   --table-header-bg-current: var(--app-table-header-bg);
   --table-hover-current: var(--app-table-hover);
   --table-selected-current: var(--app-table-selected);
