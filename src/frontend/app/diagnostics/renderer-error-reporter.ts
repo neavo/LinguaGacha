@@ -22,11 +22,11 @@ export type RendererErrorSource =
   | "worker";
 
 export type RendererErrorCaptureOptions = {
-  source: RendererErrorSource; // source 表示 renderer 内部错误来源
-  logError?: LogError; // logError 允许 worker 等边界传入既有结构化错误快照
-  triggeringEvent?: LogErrorContextInput; // triggeringEvent 记录导致异常的事件头
-  context?: RendererErrorContextInput; // context 只允许 renderer error 白名单字段
-  dedupeKey?: string; // dedupeKey 用于调用点覆盖默认去重签名
+  source: RendererErrorSource; // renderer 内部错误来源
+  logError?: LogError; // 允许 worker 等边界传入既有结构化错误快照
+  triggeringEvent?: LogErrorContextInput; // 记录导致异常的事件头
+  context?: RendererErrorContextInput; // 只允许 renderer error 白名单字段
+  dedupeKey?: string; // 用于调用点覆盖默认去重签名
 };
 
 // RECENT ERROR TTL MS 是模块级稳定契约，集中维护避免调用点散落魔术值。
@@ -78,7 +78,7 @@ export function capture_renderer_error(error: unknown, options: RendererErrorCap
  * 根入口注册浏览器级异常监听，覆盖 React 边界之外的未处理 promise 和事件回调错误。
  */
 export function install_renderer_global_error_handlers(): () => void {
-  // handle_error 是事件处理边界，只把外部事件转换为本模块状态更新。
+  // 事件处理边界，只把外部事件转换为本模块状态更新。
   function handle_error(event: ErrorEvent): void {
     capture_renderer_error(event.error ?? event.message, {
       source: "global",
@@ -92,7 +92,7 @@ export function install_renderer_global_error_handlers(): () => void {
     });
   }
 
-  // handle_unhandled_rejection 是事件处理边界，只把外部事件转换为本模块状态更新。
+  // 事件处理边界，只把外部事件转换为本模块状态更新。
   function handle_unhandled_rejection(event: PromiseRejectionEvent): void {
     capture_renderer_error(event.reason, {
       source: "global",
@@ -111,13 +111,11 @@ export function install_renderer_global_error_handlers(): () => void {
   };
 }
 
-// build_error_signature 构造跨层载荷，保证字段形状在一个入口维护。
 function build_error_signature(report: RendererErrorReport): string {
   const stack_head = report.error.stack?.split("\n").slice(0, 3).join("\n") ?? "";
   return [report.source, report.error.message, stack_head, report.route ?? ""].join("|");
 }
 
-// is_recent_error_signature 集中表达布尔判定口径，避免调用方按局部字段猜测。
 function is_recent_error_signature(signature: string): boolean {
   const now = Date.now();
   while (
@@ -137,7 +135,6 @@ function is_recent_error_signature(signature: string): boolean {
   return false;
 }
 
-// pick_renderer_diagnostics_context 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function pick_renderer_diagnostics_context(
   payload: RendererDiagnosticsPayload,
 ): RendererDiagnosticsContext {

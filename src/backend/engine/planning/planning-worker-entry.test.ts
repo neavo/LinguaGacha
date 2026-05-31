@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { PlanningWorkerIncomingMessage } from "./planning-worker-types";
 
-// WorkerPortHarness 保存入口订阅和回包 spy，测试通过 emit 模拟主线程消息。
+// 保存入口订阅和回包 spy，测试通过 emit 模拟主线程消息。
 type WorkerPortHarness = {
   listener: ((message: PlanningWorkerIncomingMessage) => void) | null;
   postMessage: ReturnType<typeof vi.fn>;

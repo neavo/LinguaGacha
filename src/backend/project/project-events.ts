@@ -6,7 +6,7 @@ import type {
   ProjectDataSectionRevisions,
 } from "../../shared/project-event";
 
-// ProjectEventType 是 Backend 内部 committed event 词表，和公开 SSE topic 分离。
+// Backend 内部 committed event 词表，和公开 SSE topic 分离。
 export type ProjectEventType =
   | "project.opened_for_cache"
   | "project.unloaded"
@@ -16,7 +16,7 @@ export type ProjectEventType =
   | "project.settings.changed"
   | "project.analysis.changed";
 
-// ProjectEventSource 标识写入来源，用于缓存诊断和 after-commit 事件追踪。
+// 标识写入来源，用于缓存诊断和 after-commit 事件追踪。
 export type ProjectEventSource =
   | "project_lifecycle"
   | "project_write"
@@ -26,7 +26,7 @@ export type ProjectEventSource =
   | "cli"
   | "settings";
 
-// BaseProjectEvent 固定所有项目事件都必须携带工程身份和后端 section revision。
+// 固定所有项目事件都必须携带工程身份和后端 section revision。
 type BaseProjectEvent<TType extends ProjectEventType> = {
   type: TType;
   projectPath: string;
@@ -36,18 +36,18 @@ type BaseProjectEvent<TType extends ProjectEventType> = {
   reason?: string;
 };
 
-// ProjectOpenedForCacheEvent 表示 loaded 工程缓存可以开始热机。
+// loaded 工程缓存可以开始热机。
 export type ProjectOpenedForCacheEvent = BaseProjectEvent<"project.opened_for_cache"> & {
   affectedSections: ProjectDataSection[];
 };
 
-// ProjectUnloadedEvent 只用于清理当前工程缓存，不携带 section 内容。
+// 只用于清理当前工程缓存，不携带 section 内容。
 export type ProjectUnloadedEvent = BaseProjectEvent<"project.unloaded"> & {
   affectedSections: [];
   sectionRevisions: {};
 };
 
-// ProjectItemsChangedEvent 汇总 item / file 事务提交后的缓存刷新范围。
+// 汇总 item / file 事务提交后的缓存刷新范围。
 export type ProjectItemsChangedEvent = BaseProjectEvent<"project.items.changed"> & {
   affectedSections: ProjectDataSection[];
   items?: ProjectChangeItemsPayload;
@@ -55,34 +55,34 @@ export type ProjectItemsChangedEvent = BaseProjectEvent<"project.items.changed">
   scope?: "items-partial" | "items-full";
 };
 
-// ProjectQualityChangedEvent 汇总质量规则或质量计算缓存的刷新范围。
+// 汇总质量规则或质量计算缓存的刷新范围。
 export type ProjectQualityChangedEvent = BaseProjectEvent<"project.quality.changed"> & {
   affectedSections: ProjectDataSection[];
   ruleTypes?: string[];
   scope?: "quality-partial" | "quality-full";
 };
 
-// ProjectPromptsChangedEvent 汇总提示词规则的刷新范围。
+// 汇总提示词规则的刷新范围。
 export type ProjectPromptsChangedEvent = BaseProjectEvent<"project.prompts.changed"> & {
   affectedSections: ProjectDataSection[];
   promptTypes?: string[];
   scope?: "prompts-partial" | "prompts-full";
 };
 
-// ProjectSettingsChangedEvent 表示项目设置写入影响了后端 query 依赖。
+// 项目设置写入影响了后端 query 依赖。
 export type ProjectSettingsChangedEvent = BaseProjectEvent<"project.settings.changed"> & {
   affectedSections: ProjectDataSection[];
   changedKeys?: string[];
 };
 
-// ProjectAnalysisChangedEvent 汇总分析候选或分析状态的刷新范围。
+// 汇总分析候选或分析状态的刷新范围。
 export type ProjectAnalysisChangedEvent = BaseProjectEvent<"project.analysis.changed"> & {
   affectedSections: ProjectDataSection[];
   sections?: Partial<Record<ProjectDataSection, ProjectChangeSectionPayload>>;
   scope?: "analysis-partial" | "analysis-full";
 };
 
-// ProjectEvent 是 Backend 内部事件总线唯一事件联合类型。
+// Backend 内部事件总线唯一事件联合类型。
 export type ProjectEvent =
   | ProjectOpenedForCacheEvent
   | ProjectUnloadedEvent
@@ -92,7 +92,7 @@ export type ProjectEvent =
   | ProjectSettingsChangedEvent
   | ProjectAnalysisChangedEvent;
 
-// ProjectEventOfType 供订阅者按事件名获得窄化 payload。
+// 供订阅者按事件名获得窄化 payload。
 export type ProjectEventOfType<TType extends ProjectEventType> = Extract<
   ProjectEvent,
   { type: TType }
@@ -136,12 +136,12 @@ export function create_project_unloaded_event(projectPath: string): ProjectUnloa
   };
 }
 
-// ProjectEventHandler 是 Backend 内部 committed event 的订阅入口，按事件类型收窄 payload。
+// Backend 内部 committed event 的订阅入口，按事件类型收窄 payload。
 export type ProjectEventHandler<TType extends ProjectEventType = ProjectEventType> = (
   event: ProjectEventOfType<TType>,
 ) => void | Promise<void>;
 
-// ProjectEventDispatchResult 保留每个订阅者的执行结果，调用方可决定是否阻断后续发布链路。
+// 保留每个订阅者的执行结果，调用方可决定是否阻断后续发布链路。
 export type ProjectEventDispatchResult = {
   type: ProjectEventType;
   handlerIndex: number;
@@ -154,7 +154,7 @@ type ProjectEventHandlerEntry = {
   handler: (event: ProjectEvent) => void | Promise<void>;
 };
 
-// ProjectEventBus 是 Backend 内部事务提交后事件分发器，不直接承担公开 SSE 或 renderer 刷新策略。
+// Backend 内部事务提交后事件分发器，不直接承担公开 SSE 或 renderer 刷新策略。
 export class ProjectEventBus {
   private readonly handlers: ProjectEventHandlerEntry[] = [];
 

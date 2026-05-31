@@ -101,7 +101,7 @@ function create_runner_harness(options: Partial<BackendBootstrapStartResult> = {
   };
 
   class FakeBackendBootstrap {
-    private readonly options: BackendBootstrapOptions; // options 记录 CLI 注入给 BackendBootstrap 的启动契约
+    private readonly options: BackendBootstrapOptions; // 记录 CLI 注入给 BackendBootstrap 的启动契约
 
     public constructor(options: BackendBootstrapOptions) {
       this.options = options;

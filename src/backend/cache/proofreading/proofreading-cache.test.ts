@@ -11,7 +11,7 @@ import type { CacheReadPort } from "../cache-types";
 import type { CacheChange } from "../cache-change";
 import { ProofreadingCache } from "./proofreading-cache";
 
-// create_cache_read_port 提供 ProofreadingCache 所需的最小缓存读口，并允许覆盖 revisions 与 items。
+// 提供 ProofreadingCache 所需的最小缓存读口，并允许覆盖 revisions 与 items。
 function create_cache_read_port(options: {
   epoch?: number;
   revisions?: Record<string, number>;
@@ -80,14 +80,14 @@ function create_cache_read_port(options: {
   } as CacheReadPort;
 }
 
-// create_settings 固定测试语言设置，避免缓存测试依赖真实 app setting。
+// 固定测试语言设置，避免缓存测试依赖真实 app setting。
 function create_settings(): AppSettingService {
   return {
     read_setting: () => ({ source_language: "JA", target_language: "ZH" }),
   } as unknown as AppSettingService;
 }
 
-// create_worker 记录 proofreading_sync 输入，并用真实 list reader 评估 worker 返回值。
+// 记录 proofreading_sync 输入，并用真实 list reader 评估 worker 返回值。
 function create_worker(): BackendWorkerClient & {
   sync_inputs: ProofreadingSyncInput[];
 } {
@@ -107,7 +107,7 @@ function create_worker(): BackendWorkerClient & {
   };
 }
 
-// create_delta_change 生成 items delta 事件，用例只覆盖需要验证的字段。
+// 生成 items delta 事件，用例只覆盖需要验证的字段。
 function create_delta_change(overrides: Partial<CacheChange> = {}): CacheChange {
   return {
     eventType: "project.items.changed",

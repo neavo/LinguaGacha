@@ -15,7 +15,7 @@ import {
 } from "@frontend/pages/proofreading-page/types";
 import { useProofreadingPageState } from "@frontend/pages/proofreading-page/use-proofreading-page-state";
 
-// RuntimeFixture 模拟 Hook 依赖的桌面运行态、项目变更信号和写入回调。
+// 模拟 Hook 依赖的桌面运行态、项目变更信号和写入回调。
 type RuntimeFixture = {
   settings_snapshot: {
     source_language: string;
@@ -40,13 +40,13 @@ type RuntimeFixture = {
   refresh_task: ReturnType<typeof vi.fn>;
 };
 
-// NavigationFixture 只保留校对页查找意图，避免页面测试依赖真实导航容器。
+// 只保留校对页查找意图，避免页面测试依赖真实导航容器。
 type NavigationFixture = {
   proofreading_lookup_intent: null;
   clear_proofreading_lookup_intent: ReturnType<typeof vi.fn>;
 };
 
-// ProofreadingClientFixture 收口校对页所有远端查询入口，便于单用例替换具体行为。
+// 收口校对页所有远端查询入口，便于单用例替换具体行为。
 type ProofreadingClientFixture = {
   sync_proofreading_cache: ReturnType<typeof vi.fn>;
   build_proofreading_list_view: ReturnType<typeof vi.fn>;
@@ -59,21 +59,21 @@ type ProofreadingClientFixture = {
   dispose: ReturnType<typeof vi.fn>;
 };
 
-// ToastFixture 记录刷新和写入反馈，避免用例挂载真实 toast 宿主。
+// 记录刷新和写入反馈，避免用例挂载真实 toast 宿主。
 type ToastFixture = {
   dismiss_toast: ReturnType<typeof vi.fn>;
   push_progress_toast: ReturnType<typeof vi.fn>;
   push_toast: ReturnType<typeof vi.fn>;
 };
 
-// Deferred 让测试精确控制异步查询完成顺序，覆盖过期请求和竞态路径。
+// 让测试精确控制异步查询完成顺序，覆盖过期请求和竞态路径。
 type Deferred<T> = {
   promise: Promise<T>;
   resolve: (value: T) => void;
   reject: (reason?: unknown) => void;
 };
 
-// create_project_item 生成 runtime 查询返回的最小 item 记录，允许用 overrides 聚焦单个字段。
+// 生成 runtime 查询返回的最小 item 记录，允许用 overrides 聚焦单个字段。
 function create_project_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
     item_id: 1,
@@ -94,7 +94,7 @@ function create_project_item(overrides: Partial<ProjectItemPublicRecord>): Proje
   };
 }
 
-// create_project_change_signal 按 full、delta、noop 三类刷新场景生成桌面变更信号。
+// 按 full、delta、noop 三类刷新场景生成桌面变更信号。
 function create_project_change_signal(
   seq: number,
   options: {
@@ -143,22 +143,22 @@ function create_project_change_signal(
   };
 }
 
-// runtime_fixture 通过 mock useDesktopState 暴露可替换的桌面运行态快照。
+// 通过 mock useDesktopState 暴露可替换的桌面运行态快照。
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
 };
 
-// navigation_fixture 通过 mock useAppNavigation 暴露校对查找意图。
+// 通过 mock useAppNavigation 暴露校对查找意图。
 const navigation_fixture: { current: NavigationFixture } = {
   current: create_navigation_fixture(),
 };
 
-// proofreading_client_fixture 通过 mock API client 暴露每个用例可覆写的列表查询。
+// 通过 mock API client 暴露每个用例可覆写的列表查询。
 const proofreading_client_fixture: { current: ProofreadingClientFixture } = {
   current: create_proofreading_client_fixture(),
 };
 
-// toast_fixture 捕获页面反馈调用，避免测试依赖真实通知生命周期。
+// 捕获页面反馈调用，避免测试依赖真实通知生命周期。
 const toast_fixture: { current: ToastFixture } = {
   current: create_toast_fixture(),
 };
@@ -212,7 +212,7 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
   };
 });
 
-// create_quality_store_payload 提供默认质量配置，支撑校对 sync 的完整 runtime 响应。
+// 提供默认质量配置，支撑校对 sync 的完整 runtime 响应。
 function create_quality_store_payload(): Record<string, unknown> {
   return {
     quality: {
@@ -252,7 +252,7 @@ function create_quality_store_payload(): Record<string, unknown> {
   };
 }
 
-// create_runtime_fixture 模拟项目已加载的常规状态，并把写入回调结果原样返回给 Hook。
+// 模拟项目已加载的常规状态，并把写入回调结果原样返回给 Hook。
 function create_runtime_fixture(): RuntimeFixture {
   return {
     settings_snapshot: {
@@ -290,7 +290,7 @@ function create_runtime_fixture(): RuntimeFixture {
   };
 }
 
-// create_navigation_fixture 提供无查找意图的默认导航状态。
+// 提供无查找意图的默认导航状态。
 function create_navigation_fixture(): NavigationFixture {
   return {
     proofreading_lookup_intent: null,
@@ -298,7 +298,7 @@ function create_navigation_fixture(): NavigationFixture {
   };
 }
 
-// create_sync_state 生成校对缓存 sync 结果，并允许用例覆盖默认筛选。
+// 生成校对缓存 sync 结果，并允许用例覆盖默认筛选。
 function create_sync_state(default_filter_patch: Partial<ProofreadingFilterOptions> = {}) {
   const default_filters: ProofreadingFilterOptions = {
     warning_types: ["NO_WARNING"],
@@ -322,7 +322,7 @@ function create_sync_state(default_filter_patch: Partial<ProofreadingFilterOptio
   };
 }
 
-// create_deferred 暴露 promise 控制柄，用于验证异步列表请求的先后顺序。
+// 暴露 promise 控制柄，用于验证异步列表请求的先后顺序。
 function create_deferred<T>(): Deferred<T> {
   let resolve_deferred: (value: T) => void = () => {};
   let reject_deferred: (reason?: unknown) => void = () => {};
@@ -337,7 +337,7 @@ function create_deferred<T>(): Deferred<T> {
   };
 }
 
-// create_client_item 生成前端列表行使用的校对 item，row_id 与 item_id 保持同源。
+// 生成前端列表行使用的校对 item，row_id 与 item_id 保持同源。
 function create_client_item(item_id: number | string) {
   return {
     item_id,
@@ -356,7 +356,7 @@ function create_client_item(item_id: number | string) {
   };
 }
 
-// create_list_view 生成包含首屏窗口的默认列表 view，供刷新和窗口读取测试复用。
+// 生成包含首屏窗口的默认列表 view，供刷新和窗口读取测试复用。
 function create_list_view() {
   return {
     ...create_empty_proofreading_list_view(),
@@ -380,7 +380,7 @@ function create_list_view() {
   };
 }
 
-// create_proofreading_runtime_query_response 模拟 renderer 直读 runtime 的 sync 响应。
+// 模拟 renderer 直读 runtime 的 sync 响应。
 function create_proofreading_runtime_query_response() {
   const quality_payload = create_quality_store_payload();
   return {
@@ -408,7 +408,7 @@ function create_proofreading_runtime_query_response() {
   };
 }
 
-// install_api_fetch_default_mock 把桌面 API 默认收口到 sync 和按 row_id 读行两类行为。
+// 把桌面 API 默认收口到 sync 和按 row_id 读行两类行为。
 function install_api_fetch_default_mock(): void {
   vi.mocked(api_fetch).mockImplementation(async (path: string, body: unknown) => {
     if (path === "/api/proofreading/view") {
@@ -425,7 +425,7 @@ function install_api_fetch_default_mock(): void {
   });
 }
 
-// create_filter_panel 提供校对筛选弹窗的默认可选项和计数。
+// 提供校对筛选弹窗的默认可选项和计数。
 function create_filter_panel() {
   return {
     ...create_empty_proofreading_filter_panel_state(),
@@ -447,7 +447,7 @@ function create_filter_panel() {
   };
 }
 
-// create_proofreading_client_fixture 模拟校对 API client 的常规成功路径。
+// 模拟校对 API client 的常规成功路径。
 function create_proofreading_client_fixture(): ProofreadingClientFixture {
   return {
     sync_proofreading_cache: vi.fn(async () => create_sync_state()),
@@ -471,7 +471,7 @@ function create_proofreading_client_fixture(): ProofreadingClientFixture {
   };
 }
 
-// create_toast_fixture 让页面反馈调用可断言且不创建真实通知节点。
+// 让页面反馈调用可断言且不创建真实通知节点。
 function create_toast_fixture(): ToastFixture {
   return {
     dismiss_toast: vi.fn(),
@@ -510,13 +510,12 @@ describe("useProofreadingPageState", () => {
     vi.useRealTimers();
   });
 
-  // ProofreadingProbe 收口测试中的共享步骤，保证断言只关注当前行为。
   function ProofreadingProbe(): JSX.Element | null {
     latest_state = useProofreadingPageState();
     return null;
   }
 
-  // ProofreadingShell 保持项目 session provider 常驻，用显隐 Probe 模拟路由切换。
+  // 保持项目 session provider 常驻，用显隐 Probe 模拟路由切换。
   function ProofreadingShell(): JSX.Element {
     return createElement(
       ProjectSessionUiStateProvider,

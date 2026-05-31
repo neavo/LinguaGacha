@@ -11,7 +11,7 @@ type ProofreadingLookupQuery = {
   is_regex: boolean;
 };
 
-// cloneEntries 保证页面编辑切片时不会改写 query 返回的原始规则数组。
+// 保证页面编辑切片时不会改写 query 返回的原始规则数组。
 /**
  * 承接当前模块的核心控制分支。
  */
@@ -19,7 +19,7 @@ function cloneEntries(entries: Array<Record<string, unknown>>): Array<Record<str
   return entries.map((entry) => ({ ...entry }));
 }
 
-// cloneQualitySlice 是质量规则 snapshot 的唯一浅克隆入口。
+// 质量规则 snapshot 的唯一浅克隆入口。
 /**
  * 承接当前模块的核心控制分支。
  */
@@ -30,7 +30,7 @@ function cloneQualitySlice(slice: QualitySlice): QualitySlice {
   };
 }
 
-// clonePromptSlice 让提示词切片替换逻辑和质量规则切片保持同一不可变语义。
+// 让提示词切片替换逻辑和质量规则切片保持同一不可变语义。
 /**
  * 承接当前模块的核心控制分支。
  */

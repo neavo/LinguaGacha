@@ -13,8 +13,8 @@ export type StateErrorReportArgs = {
     RendererErrorSource,
     "sse" | "project-write" | "settings" | "scheduler" | "state-recovery"
   >; // source 限定为 state 错误来源
-  triggeringEvent?: LogErrorContextInput; // triggeringEvent 与 renderer error report 同形
-  context?: RendererErrorContextInput; // context 只允许 renderer error 白名单字段
+  triggeringEvent?: LogErrorContextInput; // 与 renderer error report 同形
+  context?: RendererErrorContextInput; // 只允许 renderer error 白名单字段
 };
 
 export type DesktopRecoveryActions = {
@@ -32,15 +32,15 @@ export type DesktopRecoveryActions = {
 };
 
 type DesktopRecoveryOptions = {
-  project_loaded: boolean; // project_loaded 决定项目恢复是否有权访问后端项目主链路
-  project_path: string; // project_path 为空时不尝试项目恢复刷新
-  refresh_project_state: () => Promise<void>; // refresh_project_state 回到 manifest + 页面 query 主链路
-  refresh_task: (task_type?: TaskType) => Promise<TaskSnapshot>; // refresh_task 回到后端 task snapshot 主链路
+  project_loaded: boolean; // 决定项目恢复是否有权访问后端项目主链路
+  project_path: string; // 为空时不尝试项目恢复刷新
+  refresh_project_state: () => Promise<void>; // 回到 manifest + 页面 query 主链路
+  refresh_task: (task_type?: TaskType) => Promise<TaskSnapshot>; // 回到后端 task snapshot 主链路
 };
 
 type ProjectRecoveryJob = {
-  project_path: string; // project_path 是去重身份，项目切换后必须允许新恢复独立启动
-  promise: Promise<void>; // promise 代表当前项目唯一恢复流程，调用方共享完成信号
+  project_path: string; // 去重身份，项目切换后必须允许新恢复独立启动
+  promise: Promise<void>; // 代表当前项目唯一恢复流程，调用方共享完成信号
 };
 
 const DEFAULT_TASK_RECOVERY_KEY = "__default_task__"; // 未指定 task_type 的恢复共享默认快照身份

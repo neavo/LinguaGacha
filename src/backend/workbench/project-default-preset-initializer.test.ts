@@ -133,21 +133,18 @@ describe("ProjectDefaultPresetInitializer", () => {
     );
   });
 
-  // create_temp_dir 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_temp_dir(): string {
     const temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-default-preset-"));
     cleanup_paths.push(temp_dir);
     return temp_dir;
   }
 
-  // write_file 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function write_file(file_path: string, content: string): string {
     fs.mkdirSync(path.dirname(file_path), { recursive: true });
     fs.writeFileSync(file_path, content, "utf-8");
     return file_path;
   }
 
-  // create_initializer 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_initializer(options: {
     app_root: string;
     config: MutableJsonRecord;
@@ -161,14 +158,12 @@ describe("ProjectDefaultPresetInitializer", () => {
     );
   }
 
-  // create_setting_service 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_setting_service(config: MutableJsonRecord): AppSettingService {
     return {
       read_setting: vi.fn(() => config),
     } as unknown as AppSettingService;
   }
 
-  // create_log_manager 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_log_manager(): LogManager & {
     info: ReturnType<typeof vi.fn>;
     warning: ReturnType<typeof vi.fn>;

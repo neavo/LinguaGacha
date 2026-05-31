@@ -83,7 +83,6 @@ class MutableProjectItemIndex implements ProjectItemIndex {
   }
 }
 
-// create_internal_invariant_error 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -93,7 +92,7 @@ function create_internal_invariant_error(reason: string): InternalInvariantError
   });
 }
 
-// normalize_project_item_record 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -105,7 +104,6 @@ function normalize_project_item_record(value: unknown): ProjectItemPublicRecord 
   return normalized_item;
 }
 
-// clone_index_records 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 /**
  * 承接当前模块的核心控制分支。
  */
@@ -151,7 +149,6 @@ export function cloneProjectItemIndex(index: ProjectItemIndex): ProjectItemIndex
   return new MutableProjectItemIndex(new Map(index.entries()));
 }
 
-// apply_item_field_patch 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 /**
  * 写入当前场景的状态变化。
  */

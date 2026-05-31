@@ -178,7 +178,6 @@ describe("useWorkbenchImportFilesFlow", () => {
   }
 });
 
-// HookProbe 收口测试中的共享步骤，保证断言只关注当前行为。
 function HookProbe(props: {
   state: WorkbenchCommandPlanningState;
   run_project_file_write?: (
@@ -226,7 +225,6 @@ function HookProbe(props: {
   return null;
 }
 
-// latest_snapshot 收口测试中的共享步骤，保证断言只关注当前行为。
 function latest_snapshot(snapshots: HookSnapshot[]): HookSnapshot {
   const snapshot = snapshots.at(-1);
   if (snapshot === undefined) {
@@ -235,7 +233,6 @@ function latest_snapshot(snapshots: HookSnapshot[]): HookSnapshot {
   return snapshot;
 }
 
-// create_project_store_state 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_project_store_state(): WorkbenchCommandPlanningState {
   return {
     files: [
@@ -253,7 +250,6 @@ function create_project_store_state(): WorkbenchCommandPlanningState {
   };
 }
 
-// create_task_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_task_snapshot(): TaskSnapshot {
   return {
     run_revision: 0,

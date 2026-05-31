@@ -9,13 +9,13 @@ type LogAppendBufferOptions<TEvent> = {
  * 日志窗口私有 append buffer，只负责降低 append-only 渲染频率
  */
 export class LogAppendBuffer<TEvent> {
-  private readonly interval_ms: number; // interval_ms 固定表达日志渲染批次窗口，不参与任务或项目事实同步
+  private readonly interval_ms: number; // 固定表达日志渲染批次窗口，不参与任务或项目事实同步
 
-  private readonly on_flush: (events: TEvent[]) => void; // on_flush 是页面 setState 的唯一回调
+  private readonly on_flush: (events: TEvent[]) => void; // 页面 setState 的唯一回调
 
-  private readonly events: TEvent[] = []; // events 保存当前窗口内收到的日志事件
+  private readonly events: TEvent[] = []; // 保存当前窗口内收到的日志事件
 
-  private timer: ReturnType<typeof setTimeout> | null = null; // timer 只在存在待刷日志时存活
+  private timer: ReturnType<typeof setTimeout> | null = null; // 只在存在待刷日志时存活
 
   /**
    * 注入日志批处理窗口，默认保持 500ms 刷新节奏

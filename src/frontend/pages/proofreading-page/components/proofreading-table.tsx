@@ -41,7 +41,7 @@ import type {
   AppTableSortState,
 } from "@frontend/widgets/app-table/app-table-types";
 
-// ProofreadingTableProps 收口校对页状态 Hook 给表格层的只读展示和行操作入口。
+// 收口校对页状态 Hook 给表格层的只读展示和行操作入口。
 type ProofreadingTableProps = {
   items: ProofreadingVisibleItem[];
   visible_row_count: number;
@@ -175,7 +175,7 @@ function build_compact_tooltip(template: string, title: string, content: string)
   return template.replace("{TITLE}", title).replace("{STATE}", content);
 }
 
-// ProofreadingStatusCell 只负责状态和 warning 图标展示，批量操作仍由行上下文菜单处理。
+// 只负责状态和 warning 图标展示，批量操作仍由行上下文菜单处理。
 export function ProofreadingStatusCell(props: {
   item: ProofreadingItem;
   retranslating: boolean;
@@ -284,14 +284,14 @@ export function ProofreadingStatusCell(props: {
   );
 }
 
-// ProofreadingTable 把校对页远端窗口模型适配给通用 AppTable。
+// 把校对页远端窗口模型适配给通用 AppTable。
 export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
   const { t } = useI18n();
-  // retranslating_row_id_set 让状态列 O(1) 判断行级重翻状态。
+  // 让状态列 O(1) 判断行级重翻状态。
   const retranslating_row_id_set = useMemo(() => {
     return new Set(props.retranslating_row_ids);
   }, [props.retranslating_row_ids]);
-  // row_model 暴露远端窗口读取能力，AppTable 不需要理解校对页 view id。
+  // 暴露远端窗口读取能力，AppTable 不需要理解校对页 view id。
   const row_model = useMemo<AppTableRowModel<ProofreadingVisibleItem>>(() => {
     return {
       row_count: props.visible_row_count,
@@ -313,7 +313,7 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
     props.resolve_row_index,
     props.visible_row_count,
   ]);
-  // columns 是校对页表格语义和菜单入口的唯一列配置。
+  // 校对页表格语义和菜单入口的唯一列配置。
   const columns = useMemo<AppTableColumn<ProofreadingVisibleItem>[]>(() => {
     return [
       {

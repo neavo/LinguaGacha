@@ -14,11 +14,11 @@ export const TASK_REQUEST_PRESSURE_PUBLISH_INTERVAL_MS = 500; // 请求压力展
  * 任务运行态公开 stream 唯一出口，负责写状态、构建完整快照并发布 SSE
  */
 export class TaskRunPublisher {
-  private readonly api_stream_hub: ApiStreamHub; // api_stream_hub 只负责广播完整快照，不再数据读取 task 局部消息
+  private readonly api_stream_hub: ApiStreamHub; // 只负责广播完整快照，不再数据读取 task 局部消息
 
-  private readonly run_state: TaskRunState; // run_state 是 busy/status/request pressure 的唯一写入目标
+  private readonly run_state: TaskRunState; // busy/status/request pressure 的唯一写入目标
 
-  private readonly snapshot_builder: TaskSnapshotBuilder; // snapshot_builder 统一从运行态和 `.lg` 事实构建公开 task
+  private readonly snapshot_builder: TaskSnapshotBuilder; // 统一从运行态和 `.lg` 事实构建公开 task
 
   private request_pressure_timer: ReturnType<typeof setTimeout> | null = null; // 仅请求压力允许后端 500ms 合并
 

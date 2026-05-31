@@ -139,7 +139,6 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
   };
 });
 
-// create_project_change_signal 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -181,7 +180,6 @@ function create_project_change_signal(
   };
 }
 
-// create_runtime_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -354,7 +352,6 @@ function count_api_calls(path: string): number {
   return vi.mocked(api_fetch).mock.calls.filter((call) => call[0] === path).length;
 }
 
-// create_translation_workbench_task_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -388,7 +385,6 @@ function create_translation_workbench_task_fixture(): TranslationWorkbenchTaskFi
   };
 }
 
-// create_analysis_workbench_task_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -434,7 +430,6 @@ function create_analysis_workbench_task_fixture(): AnalysisWorkbenchTaskFixture 
   };
 }
 
-// create_toast_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -447,7 +442,6 @@ function create_toast_fixture(): ToastFixture {
   };
 }
 
-// create_project_store_state 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -491,7 +485,6 @@ function create_project_store_state(items: Record<string, ProjectItemPublicRecor
   };
 }
 
-// create_project_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -520,7 +513,6 @@ function create_project_item(args: {
   };
 }
 
-// create_analysis_task_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -577,7 +569,6 @@ describe("useWorkbenchPageState", () => {
     api_route_queues.clear();
   });
 
-  // WorkbenchProbe 收口测试中的共享步骤，保证断言只关注当前行为。
   function WorkbenchProbe(): JSX.Element | null {
     latest_state = useWorkbenchPageState({
       translationWorkbenchTask: translation_runtime_fixture.current,

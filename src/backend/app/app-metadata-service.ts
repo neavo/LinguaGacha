@@ -9,10 +9,10 @@ const DEFAULT_VERSION = "0.0.0";
  * AppMetadataService 持有 version.txt 等应用元信息的只读缓存。
  */
 export class AppMetadataService {
-  private readonly paths: AppPathService; // paths 提供 version.txt 唯一路径
-  private readonly native_fs: NativeFs; // native_fs 只负责读取应用元信息文件
-  private cached_version: string | null = null; // cached_version 是严格版本读取缓存
-  private cached_fallback_version: string | null = null; // cached_fallback_version 服务允许缺失版本的调用点
+  private readonly paths: AppPathService; // 提供 version.txt 唯一路径
+  private readonly native_fs: NativeFs; // 只负责读取应用元信息文件
+  private cached_version: string | null = null; // 严格版本读取缓存
+  private cached_fallback_version: string | null = null; // 服务允许缺失版本的调用点
 
   /**
    * 初始化应用元信息读取依赖，保持版本文件语义独立于路径服务。

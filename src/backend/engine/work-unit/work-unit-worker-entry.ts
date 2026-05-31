@@ -36,7 +36,7 @@ type WorkUnitWorkerIncomingMessage =
   | WorkUnitCancelMessage;
 
 interface WorkUnitWorkerData extends WorkUnitRunnerOptions {
-  systemProxySnapshot?: SystemProxySnapshot | null; // systemProxySnapshot 是主线程启动期快照，worker 不重新访问 Electron
+  systemProxySnapshot?: SystemProxySnapshot | null; // 主线程启动期快照，worker 不重新访问 Electron
 }
 
 /**
@@ -44,7 +44,7 @@ interface WorkUnitWorkerData extends WorkUnitRunnerOptions {
  */
 class WorkUnitWorkerEntry {
   private readonly runner: WorkUnitRunner;
-  private readonly controllers = new Map<string, AbortController>(); // controllers 按消息 id 保存，允许主线程只取消指定 work unit
+  private readonly controllers = new Map<string, AbortController>(); // 按消息 id 保存，允许主线程只取消指定 work unit
 
   /**
    * workerData 由 WorkUnitWorkerPool 注入，只包含 work unit 需要的资源根
@@ -90,7 +90,7 @@ class WorkUnitWorkerEntry {
   }
 }
 
-const worker_data = workerData as WorkUnitWorkerData; // worker_data 只包含可结构化克隆的启动事实
+const worker_data = workerData as WorkUnitWorkerData; // 只包含可结构化克隆的启动事实
 if (worker_data.systemProxySnapshot !== null && worker_data.systemProxySnapshot !== undefined) {
   install_system_proxy_dispatcher_from_snapshot(worker_data.systemProxySnapshot);
 }

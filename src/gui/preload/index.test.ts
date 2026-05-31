@@ -43,7 +43,7 @@ vi.mock("electron", () => {
 });
 
 describe("preload desktop bridge", () => {
-  const original_argv = [...process.argv]; // original_argv 用于还原 preload 参数解析上下文
+  const original_argv = [...process.argv]; // 用于还原 preload 参数解析上下文
 
   afterEach(() => {
     process.argv = [...original_argv];

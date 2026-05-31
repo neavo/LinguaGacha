@@ -9,8 +9,8 @@ import { BackendBootstrap } from "./backend-bootstrap";
 import { InternalInvariantError } from "../../shared/error";
 import type { BackendWorkerExecution } from "../worker/worker-execution";
 
-let temp_dir = ""; // temp_dir 承载测试应用根和数据根，避免 bootstrap 日志写入真实工作区
-let original_initial_cwd: string | undefined; // original_initial_cwd 用于恢复 npm 启动目录，避免测试污染后续用例的应用根解析
+let temp_dir = ""; // 承载测试应用根和数据根，避免 bootstrap 日志写入真实工作区
+let original_initial_cwd: string | undefined; // 用于恢复 npm 启动目录，避免测试污染后续用例的应用根解析
 const IN_PROCESS_WORKER_EXECUTION: BackendWorkerExecution = { kind: "in_process" }; // bootstrap 测试只验证启动编排，不启动真实 worker_threads
 
 /**
@@ -160,7 +160,7 @@ describe("BackendBootstrap", () => {
       }),
       "utf-8",
     );
-    const resolved_urls: string[] = []; // resolved_urls 记录启动期 resolveProxy 调用顺序，证明不会按请求反复探测
+    const resolved_urls: string[] = []; // 记录启动期 resolveProxy 调用顺序，证明不会按请求反复探测
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
       exposeApiGateway: false,

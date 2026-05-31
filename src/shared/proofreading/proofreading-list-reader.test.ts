@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createProofreadingListReader } from "./proofreading-list-reader";
 import type { QualitySnapshot } from "../quality/snapshot";
 
-// create_quality 提供含术语表的最小质量快照，用于触发 warning 和筛选路径。
+// 提供含术语表的最小质量快照，用于触发 warning 和筛选路径。
 function create_quality(): QualitySnapshot {
   return {
     glossary: {
@@ -18,7 +18,7 @@ function create_quality(): QualitySnapshot {
   };
 }
 
-// create_item 生成 list reader 使用的 item 记录，默认按 item_id 绑定行号。
+// 生成 list reader 使用的 item 记录，默认按 item_id 绑定行号。
 function create_item(input: {
   item_id: number;
   dst: string;

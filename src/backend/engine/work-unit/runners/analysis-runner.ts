@@ -17,30 +17,30 @@ import { normalize_setting_snapshot } from "../../../../domain/setting";
 import type { LogError } from "../../../../shared/error";
 
 interface AnalysisWorkUnitRequest {
-  run_id: string; // run_id 用于隔离一次任务运行，worker 不用它访问项目状态
-  work_unit_id: string; // work_unit_id 是 chunk 级诊断键，迟到响应和日志都围绕它定位
-  task_type: "analysis"; // task_type 保留 TaskEngine 语义，便于日志与错误回传分类
-  model: ApiJsonValue; // model / config_snapshot 均来自任务启动快照，避免执行中读取可变全局配置
+  run_id: string; // 用于隔离一次任务运行，worker 不用它访问项目状态
+  work_unit_id: string; // chunk 级诊断键，迟到响应和日志都围绕它定位
+  task_type: "analysis"; // 保留 TaskEngine 语义，便于日志与错误回传分类
+  model: ApiJsonValue; // / config_snapshot 均来自任务启动快照，避免执行中读取可变全局配置
   config_snapshot: ApiJsonValue;
-  quality_snapshot: ApiJsonValue; // quality_snapshot 是文本后处理与提示词构造的唯一质量规则输入
-  context: ApiJsonValue; // context 包含分析 chunk 所需候选、语言和术语上下文，worker 只消费快照输入
+  quality_snapshot: ApiJsonValue; // 文本后处理与提示词构造的唯一质量规则输入
+  context: ApiJsonValue; // 包含分析 chunk 所需候选、语言和术语上下文，worker 只消费快照输入
 }
 
 interface AnalysisWorkUnitResult {
-  success: boolean; // success 表示分析解码出了可提交候选或合法空结果
-  stopped: boolean; // stopped 表示主动取消，TaskEngine 不应把它当作失败重试
+  success: boolean; // 分析解码出了可提交候选或合法空结果
+  stopped: boolean; // 主动取消，TaskEngine 不应把它当作失败重试
   input_tokens: number; // token 计数与翻译结果同源，用于任务统计
   output_tokens: number;
-  glossary_entries: Array<Record<string, ApiJsonValue>>; // glossary_entries 是已归一的候选池输入，checkpoint 仍由 TaskEngine 生成
-  logs?: WorkUnitLogEntry[]; // logs 只承载诊断文本，不包含可变业务对象
+  glossary_entries: Array<Record<string, ApiJsonValue>>; // 已归一的候选池输入，checkpoint 仍由 TaskEngine 生成
+  logs?: WorkUnitLogEntry[]; // 只承载诊断文本，不包含可变业务对象
 }
 
 /**
  * 分析 work unit runner，负责 prompt、LLM 请求和候选术语归一
  */
 export class AnalysisWorkUnitRunner {
-  private readonly app_root: string; // app_root 只用于读取分析提示词模板，runner 不依赖进程 cwd
-  private readonly llm_client: LLMClientPort; // llm_client 是分析链路唯一外部调用口，便于取消和错误统一处理
+  private readonly app_root: string; // 只用于读取分析提示词模板，runner 不依赖进程 cwd
+  private readonly llm_client: LLMClientPort; // 分析链路唯一外部调用口，便于取消和错误统一处理
 
   /**
    * 只注入资源根和 LLM 客户端，runner 不接触数据库或事件

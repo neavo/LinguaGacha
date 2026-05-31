@@ -47,17 +47,17 @@ interface WorkerSlot {
  * multiplexed worker_threads 池：少量 worker 线程承载多个 in-flight LLM work unit。
  */
 export class WorkUnitWorkerPool implements WorkUnitExecutor {
-  private readonly app_root: string; // app_root 提供 worker_threads 和同进程 runner 读取资源模板的根目录
-  private readonly execution: BackendWorkerExecution; // execution 由入口层显式决定，池内不做入口探测或模式回退
-  private readonly system_proxy_snapshot: SystemProxySnapshot | null; // system_proxy_snapshot 让 worker 线程复用主线程启动期代理快照
-  private readonly worker_count: number; // worker_count 是 worker_threads 模式下的固定线程数
-  private readonly max_in_flight: number; // max_in_flight 是全池并发上限，不等同于线程数
+  private readonly app_root: string; // 提供 worker_threads 和同进程 runner 读取资源模板的根目录
+  private readonly execution: BackendWorkerExecution; // 由入口层显式决定，池内不做入口探测或模式回退
+  private readonly system_proxy_snapshot: SystemProxySnapshot | null; // 让 worker 线程复用主线程启动期代理快照
+  private readonly worker_count: number; // worker_threads 模式下的固定线程数
+  private readonly max_in_flight: number; // 全池并发上限，不等同于线程数
   private readonly queue: PendingTask[] = [];
   private readonly slots: WorkerSlot[] = [];
   private readonly in_process_runner: WorkUnitRunner | null = null;
   private readonly in_process_in_flight = new Map<string, PendingTask>(); // 同进程测试路径也遵守同一 in-flight 上限
-  private in_flight_count = 0; // in_flight_count 是池内已派发但尚未完成的任务数，不含等待队列
-  private disposed = false; // disposed 关闭入队入口，避免 Gateway stop 后继续派发新任务
+  private in_flight_count = 0; // 池内已派发但尚未完成的任务数，不含等待队列
+  private disposed = false; // 关闭入队入口，避免 Gateway stop 后继续派发新任务
 
   /**
    * 构造共享 worker_threads 容量与独立 in-flight 上限，并按显式执行模式启动。

@@ -141,7 +141,6 @@ function create_request(overrides: Partial<Parameters<ProviderClientPool["get_cl
   };
 }
 
-// create_body 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_body(
   model_overrides: Record<string, ApiJsonValue> = {},
   config_snapshot: ApiJsonValue = { request_timeout: 120 },
@@ -165,7 +164,6 @@ function create_body(
   };
 }
 
-// create_abortable_transport 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_abortable_transport(): RequestTransport {
   return {
     send: async (_policy: ResolvedRequestPolicy, signal: AbortSignal) =>
@@ -179,7 +177,6 @@ function create_abortable_transport(): RequestTransport {
   };
 }
 
-// create_result 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_result(overrides: Partial<LLMRequestResult> = {}): LLMRequestResult {
   return {
     response_think: "",

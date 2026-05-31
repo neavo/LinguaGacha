@@ -11,7 +11,7 @@ import {
   type ProjectSessionTableUiState,
 } from "@frontend/app/session/project-session-ui-state-context";
 
-// RuntimeFixture 只保留 Provider 判断项目身份所需的最小运行态字段。
+// 只保留 Provider 判断项目身份所需的最小运行态字段。
 type RuntimeFixture = {
   project_snapshot: {
     loaded: boolean;
@@ -19,7 +19,7 @@ type RuntimeFixture = {
   };
 };
 
-// TestUiState 使用真实表格状态形状，保证测试覆盖 session 写回的公开契约。
+// 使用真实表格状态形状，保证测试覆盖 session 写回的公开契约。
 type TestUiState = ProjectSessionTableUiState<{ keyword: string }, null>;
 type TestTableSortState = {
   column_id: string | null;
@@ -30,7 +30,7 @@ type TestTableUiStateController = ProjectSessionTableUiStateController<
   TestTableSortState
 >;
 
-// runtime_fixture 是测试级共享夹具，让用例可以模拟项目切换和关闭。
+// 测试级共享夹具，让用例可以模拟项目切换和关闭。
 const runtime_fixture: { current: RuntimeFixture } = {
   current: {
     project_snapshot: {
@@ -78,7 +78,7 @@ describe("ProjectSessionUiStateProvider", () => {
     };
   });
 
-  // Probe 暴露原始 session UI 状态 API，供用例断言项目级读写和清理行为。
+  // 暴露原始 session UI 状态 API，供用例断言项目级读写和清理行为。
   function Probe(): JSX.Element | null {
     const ui_state_api = useProjectSessionUiState();
 
@@ -93,7 +93,7 @@ describe("ProjectSessionUiStateProvider", () => {
     return null;
   }
 
-  // TableProbe 暴露表格适配器，覆盖筛选、排序、选区和恢复滚动的组合写回。
+  // 暴露表格适配器，覆盖筛选、排序、选区和恢复滚动的组合写回。
   function TableProbe(): JSX.Element | null {
     const table_ui_state = useProjectSessionTableUiState<{ keyword: string }, TestTableSortState>({
       key: "quality:text_preserve",
@@ -128,7 +128,7 @@ describe("ProjectSessionUiStateProvider", () => {
     });
   }
 
-  // create_ui_state 构造稳定页面状态快照，避免测试把状态字段散落在断言里。
+  // 构造稳定页面状态快照，避免测试把状态字段散落在断言里。
   function create_ui_state(keyword: string): TestUiState {
     return {
       filter_state: { keyword },

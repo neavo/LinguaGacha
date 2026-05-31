@@ -20,11 +20,11 @@ type JsonRecord = Record<string, ApiJsonValue>;
  * ToolboxTsConversionExportService 生成繁简转换后的导出文件。
  */
 export class ToolboxTsConversionExportService {
-  private readonly session_state: ProjectSessionState; // session_state 校验当前导出项目身份。
-  private readonly cache: CacheReadPort; // cache 提供 item 与文本保护规则快照。
-  private readonly worker_client: BackendWorkerClient; // worker_client 执行繁简转换计算。
-  private readonly preset_reader: QualityRulePresetReader; // preset_reader 读取内置文本保护规则。
-  private readonly file_export_service: TranslationFileExportService; // file_export_service 负责真实文件写回。
+  private readonly session_state: ProjectSessionState; // 校验当前导出项目身份。
+  private readonly cache: CacheReadPort; // 提供 item 与文本保护规则快照。
+  private readonly worker_client: BackendWorkerClient; // 执行繁简转换计算。
+  private readonly preset_reader: QualityRulePresetReader; // 读取内置文本保护规则。
+  private readonly file_export_service: TranslationFileExportService; // 负责真实文件写回。
 
   /**
    * 注入导出链路依赖，转换服务只编排数据和 worker 计算。

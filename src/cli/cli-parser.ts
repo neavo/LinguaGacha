@@ -16,19 +16,19 @@ export type CLIParseResult =
 
 export interface CLICommandOptions {
   command: CLICommandName;
-  inputPaths: string[]; // inputPaths 保留用户输入顺序，文件域会进一步过滤支持格式
-  outputDir: string; // outputDir 是 CLI 唯一输出位置，任务产物会覆盖同名文件
+  inputPaths: string[]; // 保留用户输入顺序，文件域会进一步过滤支持格式
+  outputDir: string; // CLI 唯一输出位置，任务产物会覆盖同名文件
   sourceLanguage: SourceLanguageCode | typeof ALL_LANGUAGE_CODE;
   targetLanguage: TargetLanguageCode;
-  resources: CLICommandResources; // resources 只接受本次 CLI 外部文件，不读取 GUI 默认预设
+  resources: CLICommandResources; // 只接受本次 CLI 外部文件，不读取 GUI 默认预设
 }
 
 export interface CLICommandResources {
-  promptPath: string | null; // promptPath 按命令写入 translation_prompt 或 analysis_prompt
-  glossaryPath: string | null; // glossaryPath 仅服务翻译任务术语表
-  preReplacementPath: string | null; // preReplacementPath 仅服务翻译任务译前替换
-  postReplacementPath: string | null; // postReplacementPath 仅服务翻译任务译后替换
-  textPreservePath: string | null; // textPreservePath 仅服务翻译任务自定义文本保护
+  promptPath: string | null; // 按命令写入 translation_prompt 或 analysis_prompt
+  glossaryPath: string | null; // 仅服务翻译任务术语表
+  preReplacementPath: string | null; // 仅服务翻译任务译前替换
+  postReplacementPath: string | null; // 仅服务翻译任务译后替换
+  textPreservePath: string | null; // 仅服务翻译任务自定义文本保护
 }
 
 /**

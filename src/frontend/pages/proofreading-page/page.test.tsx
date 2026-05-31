@@ -104,7 +104,7 @@ vi.mock("@frontend/pages/proofreading-page/components/proofreading-confirm-dialo
   };
 });
 
-// create_proofreading_state_fixture 构造页面壳消费的最小校对页状态。
+// 构造页面壳消费的最小校对页状态。
 function create_proofreading_state_fixture() {
   return {
     active_row_id: null,

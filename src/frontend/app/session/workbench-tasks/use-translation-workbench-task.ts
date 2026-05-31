@@ -64,7 +64,6 @@ export type TranslationWorkbenchTask = {
   close_task_action_confirmation: () => void;
 };
 
-// create_task_confirm_state 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -76,7 +75,6 @@ function create_task_confirm_state(kind: TranslationTaskActionKind): Translation
   };
 }
 
-// resolve_translation_terminal_feedback_message 集中解析运行时决策，避免调用点复制条件判断。
 /**
  * 解析当前场景的最终消费值。
  */
@@ -104,7 +102,6 @@ function resolve_translation_terminal_feedback_message(args: {
   return null;
 }
 
-// is_translation_terminal_prompt_boundary 集中表达布尔判定口径，避免调用方按局部字段猜测。
 /**
  * 判断当前值是否满足业务条件。
  */
@@ -133,7 +130,6 @@ function resolve_active_translation_completion_scope(args: {
   return { kind: "all" };
 }
 
-// useTranslationWorkbenchTask 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useTranslationWorkbenchTask(
   _options: TranslationWorkbenchTaskOptions = {},
 ): TranslationWorkbenchTask {

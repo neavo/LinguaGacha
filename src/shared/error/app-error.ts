@@ -10,7 +10,7 @@ export type ApiJsonValue =
 
 export type AppErrorSeverity = "expected" | "warning" | "fault";
 
-// AppErrorCode 是跨 API、renderer 和日志的稳定语义码，禁止按调用点另建词表。
+// 跨 API、renderer 和日志的稳定语义码，禁止按调用点另建词表。
 export type AppErrorCode =
   | "request.validation_failed"
   | "request.invalid_json"

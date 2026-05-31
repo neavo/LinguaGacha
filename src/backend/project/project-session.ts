@@ -97,16 +97,16 @@ type MutableJsonRecord = Record<string, ApiJsonValue>;
 type JsonRecordLike = Record<string, ApiJsonValue | DatabaseJsonValue | undefined>;
 
 interface CreateCommitFileRecord {
-  rel_path: string; // rel_path 是 .lg 内 asset 的唯一业务路径，不能用源文件绝对路径替代
-  source_path: string; // source_path 只传给 database workflow 读取 bytes，项目域不理解压缩格式
-  sort_index: number; // sort_index 决定工作台文件顺序，必须随 asset 一起落库
+  rel_path: string; // .lg 内 asset 的唯一业务路径，不能用源文件绝对路径替代
+  source_path: string; // 只传给 database workflow 读取 bytes，项目域不理解压缩格式
+  sort_index: number; // 决定工作台文件顺序，必须随 asset 一起落库
 }
 
 interface CreateCommitParsedDraft {
-  files: CreateCommitFileRecord[]; // files 是后端从 source_paths 解析出的可信 asset 写入清单
-  failed_files: SourceFileParseFailureRecord[]; // failed_files 只记录支持格式但解析失败的源文件
-  file_state: Record<string, unknown>; // file_state 只供后端预过滤算法识别文件类型和相对路径
-  items: Record<string, ProjectItemPublicRecord>; // items 是后端生成的完整公开 DTO 镜像
+  files: CreateCommitFileRecord[]; // 后端从 source_paths 解析出的可信 asset 写入清单
+  failed_files: SourceFileParseFailureRecord[]; // 只记录支持格式但解析失败的源文件
+  file_state: Record<string, unknown>; // 只供后端预过滤算法识别文件类型和相对路径
+  items: Record<string, ProjectItemPublicRecord>; // 后端生成的完整公开 DTO 镜像
 }
 
 type ProjectWriteSettings = ProjectSettingsSnapshot; // 项目生命周期只消费设置领域定义的项目镜像窄字段
@@ -115,19 +115,19 @@ type ProjectWriteSettings = ProjectSettingsSnapshot; // 项目生命周期只消
  * 承载 项目轻生命周期公开接口，公开 loaded/path 与 .lg 写入边界都在这里收口
  */
 export class ProjectLifecycleService {
-  private readonly database: ProjectDatabase; // database 是 .lg 物理事实唯一写入口，项目域只拼受限 operation
+  private readonly database: ProjectDatabase; // .lg 物理事实唯一写入口，项目域只拼受限 operation
 
-  private readonly session_state: ProjectSessionState; // session_state 是渲染进程可见 loaded/path 的唯一权威
+  private readonly session_state: ProjectSessionState; // 渲染进程可见 loaded/path 的唯一权威
 
-  private readonly app_setting_service: AppSettingService; // app_setting_service 提供当前应用设置，用于打开预演与默认预设选择
+  private readonly app_setting_service: AppSettingService; // 提供当前应用设置，用于打开预演与默认预设选择
 
-  private readonly log_manager: LogManager; // log_manager 记录生命周期解析失败和诊断，响应体不扩大公开协议
+  private readonly log_manager: LogManager; // 记录生命周期解析失败和诊断，响应体不扩大公开协议
 
-  private readonly project_event_bus: ProjectEventBus; // project_event_bus 承担 Backend 内部 committed event 分发，热机失败会阻断 loaded
+  private readonly project_event_bus: ProjectEventBus; // 承担 Backend 内部 committed event 分发，热机失败会阻断 loaded
 
-  private readonly native_fs: NativeFs; // native_fs 是项目域读取外部文件和校验 .lg 路径的唯一文件系统门面
+  private readonly native_fs: NativeFs; // 项目域读取外部文件和校验 .lg 路径的唯一文件系统门面
 
-  private readonly default_preset_initializer: ProjectDefaultPresetInitializer; // default_preset_initializer 隔离默认预设文件读取和非阻断日志
+  private readonly default_preset_initializer: ProjectDefaultPresetInitializer; // 隔离默认预设文件读取和非阻断日志
 
   /**
    * 初始化项目生命周期依赖，保持公开路由层只负责装配
@@ -216,13 +216,13 @@ export class ProjectLifecycleService {
     this.assert_no_legacy_create_commit_fields(body);
     const source_paths = this.normalize_source_paths(body["source_paths"]);
     const project_settings = this.read_create_project_settings(body["project_settings"]);
-    // parsed_draft 是后端重新解析源文件得到的唯一可信新建草稿。
+    // 后端重新解析源文件得到的唯一可信新建草稿。
     const parsed_draft = await this.build_create_commit_parsed_draft(
       source_paths,
       project_settings,
     );
     this.assert_create_commit_has_importable_files(parsed_draft);
-    // prefilter_output 是将可信草稿转成持久项目事实的唯一计算结果。
+    // 将可信草稿转成持久项目事实的唯一计算结果。
     const prefilter_output = this.compute_create_project_prefilter_output({
       draft: parsed_draft,
       settings: project_settings,

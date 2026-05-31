@@ -41,8 +41,8 @@ type ProjectWriteFileRecord = {
 };
 
 export type ProjectWriteState = {
-  files: Record<string, unknown>; // files section 镜像，调用方需提供当前完整文件集合
-  items: Record<string, unknown>; // items section 镜像，调用方需提供当前完整公开 DTO 集合
+  files: Record<string, unknown>; // section 镜像，调用方需提供当前完整文件集合
+  items: Record<string, unknown>; // section 镜像，调用方需提供当前完整公开 DTO 集合
 };
 
 export type ProjectItemViewRecord = {
@@ -830,7 +830,7 @@ type ProjectChangeStreamRecord = Record<string, ApiJsonValue>;
 export class ProjectChangePublisher {
   private readonly project_change_adapter: ProjectChangeEventAdapter; // adapter 是领域变更到公开 ProjectChangeEvent 的唯一出口
 
-  private readonly api_stream_hub: ApiStreamHub; // api_stream_hub 只广播已适配的公开 JSON topic
+  private readonly api_stream_hub: ApiStreamHub; // 只广播已适配的公开 JSON topic
 
   /**
    * 注入变更适配器和公开 stream hub，项目域不需要理解 SSE 连接
@@ -865,14 +865,14 @@ type RevisionBackedSection = "files" | "items" | "analysis" | "proofreading";
 
 export type ProjectWriteRevisionContext = {
   project_path: string; // revision guard 与 revision writer 必须使用同一个工程身份
-  meta: JsonRecord; // meta 是本次乐观锁校验和 revision bump 的共同快照
-  sections: ProjectDataSection[]; // sections 是本次乐观锁声明读取或更新的项目数据域
+  meta: JsonRecord; // 本次乐观锁校验和 revision bump 的共同快照
+  sections: ProjectDataSection[]; // 本次乐观锁声明读取或更新的项目数据域
 };
 
 export type ProjectWriteChangeRequest = {
-  projectPath: string; // projectPath 已由会话或显式路径校验，publisher 不再猜测目标工程
-  source: string; // source 是 HTTP 写入与 SSE 事件共用的行为标签
-  updatedSections: ProjectDataSection[]; // updatedSections 决定前端刷新哪些项目 section
+  projectPath: string; // 已由会话或显式路径校验，publisher 不再猜测目标工程
+  source: string; // HTTP 写入与 SSE 事件共用的行为标签
+  updatedSections: ProjectDataSection[]; // 决定前端刷新哪些项目 section
   items?: Pick<
     ProjectChangeItemsPayload,
     "payloadMode" | "changedIds" | "deleteIds" | "fieldPatch"
@@ -885,18 +885,18 @@ export type ProjectWriteChangeRequest = {
 };
 
 export type ProjectWriteCommitRequest = {
-  projectPath: string; // projectPath 是本次 revision guard、事务写入和事件发布的共同工程身份
-  expectedSectionRevisions: ApiJsonValue | undefined; // expectedSectionRevisions 保留 API 原始锁值，在提交点统一收窄
-  sections: ProjectDataSection[]; // sections 是提交阶段必须重新校验的依赖数据域
-  buildOperations: (context: ProjectWriteRevisionContext) => DatabaseOperation[]; // buildOperations 必须同步读取最新事实并构造事务
-  change: Omit<ProjectWriteChangeRequest, "projectPath">; // change 只声明发布草稿，工程路径由协调器补齐
+  projectPath: string; // 本次 revision guard、事务写入和事件发布的共同工程身份
+  expectedSectionRevisions: ApiJsonValue | undefined; // 保留 API 原始锁值，在提交点统一收窄
+  sections: ProjectDataSection[]; // 提交阶段必须重新校验的依赖数据域
+  buildOperations: (context: ProjectWriteRevisionContext) => DatabaseOperation[]; // 必须同步读取最新事实并构造事务
+  change: Omit<ProjectWriteChangeRequest, "projectPath">; // 只声明发布草稿，工程路径由协调器补齐
 };
 
 /**
  * 统一协调同步项目写入的 revision guard、revision writer 和规范化事件草稿
  */
 export class ProjectWriteCoordinator {
-  private readonly database: ProjectDatabase; // database workflow 是 revision meta 的唯一读取与写入入口
+  private readonly database: ProjectDatabase; // workflow 是 revision meta 的唯一读取与写入入口
 
   private readonly project_change_publisher: ProjectChangePublisher | null; // publisher 是写库成功后进入 project.data_changed 的唯一出口
 

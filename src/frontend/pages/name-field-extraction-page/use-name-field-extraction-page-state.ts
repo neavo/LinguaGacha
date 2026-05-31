@@ -79,7 +79,6 @@ const EMPTY_ROW: NameFieldRow = {
   status: "untranslated",
 };
 
-// clone_row 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function clone_row(row: NameFieldRow): NameFieldRow {
   return {
     id: row.id,
@@ -90,7 +89,6 @@ function clone_row(row: NameFieldRow): NameFieldRow {
   };
 }
 
-// create_empty_filter_state 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -102,7 +100,6 @@ function create_empty_filter_state(): NameFieldFilterState {
   };
 }
 
-// create_empty_sort_state 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -113,7 +110,6 @@ function create_empty_sort_state(): NameFieldSortState {
   };
 }
 
-// create_empty_confirm_state 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -127,7 +123,6 @@ function create_empty_confirm_state(): NameFieldConfirmState {
   };
 }
 
-// create_empty_dialog_state 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -140,7 +135,6 @@ function create_empty_dialog_state(): NameFieldDialogState {
   };
 }
 
-// create_empty_run_state 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -151,7 +145,6 @@ function create_empty_run_state(): NameFieldRunState {
   };
 }
 
-// is_name_field_sort_field 集中表达布尔判定口径，避免调用方按局部字段猜测。
 /**
  * 判断当前值是否满足业务条件。
  */
@@ -159,7 +152,7 @@ function is_name_field_sort_field(column_id: string): column_id is NameFieldSort
   return column_id === "src" || column_id === "dst";
 }
 
-// normalize_glossary_entry 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -186,7 +179,6 @@ function normalize_glossary_query_entries(
   );
 }
 
-// useNameFieldExtractionPageState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useNameFieldExtractionPageState() {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();

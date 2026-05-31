@@ -22,7 +22,6 @@ const project_change_event: ProjectChangeEventForState = {
   operations: [],
 };
 
-// create_scheduler_stub 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 function create_scheduler_stub(): DesktopRefreshScheduler {
   return {
     flush: vi.fn(),
@@ -30,7 +29,6 @@ function create_scheduler_stub(): DesktopRefreshScheduler {
   } as unknown as DesktopRefreshScheduler;
 }
 
-// ProjectPipelineProbe 收口测试中的共享步骤，保证断言只关注当前行为。
 function ProjectPipelineProbe(props: {
   normalizeProjectChangeEvent: (
     payload: ProjectChangeEventPayload,

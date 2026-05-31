@@ -71,7 +71,7 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
     });
     schedulerRef.current = refresh_scheduler;
 
-    // handle_task_snapshot_changed 是事件处理边界，只把外部事件转换为本模块状态更新。
+    // 事件处理边界，只把外部事件转换为本模块状态更新。
     /**
      * 承接当前模块的核心控制分支。
      */
@@ -107,7 +107,7 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
       }
     }
 
-    // handle_settings_changed 是事件处理边界，只把外部事件转换为本模块状态更新。
+    // 事件处理边界，只把外部事件转换为本模块状态更新。
     /**
      * 承接当前模块的核心控制分支。
      */
@@ -219,7 +219,7 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
   ]);
 }
 
-// handle_scheduler_flush_error 是事件处理边界，只把外部事件转换为本模块状态更新。
+// 事件处理边界，只把外部事件转换为本模块状态更新。
 /**
  * 承接当前模块的核心控制分支。
  */

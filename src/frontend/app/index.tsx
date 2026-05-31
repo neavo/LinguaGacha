@@ -90,7 +90,6 @@ const ROUTE_IDS_DISABLED_WHEN_PROJECT_UNLOADED: ReadonlySet<RouteId> = new Set([
   "toolbox",
 ]);
 
-// resolve_toggled_app_language 集中解析运行时决策，避免调用点复制条件判断。
 /**
  * 解析当前场景的最终消费值。
  */
@@ -102,7 +101,6 @@ function resolve_toggled_app_language(app_language: "ZH" | "EN"): "ZH" | "EN" {
   return "EN";
 }
 
-// resolve_selectable_route 集中解析运行时决策，避免调用点复制条件判断。
 /**
  * 解析当前场景的最终消费值。
  */
@@ -116,7 +114,6 @@ function resolve_selectable_route(route_id: RouteId): RouteId {
   }
 }
 
-// has_registered_screen 集中表达布尔判定口径，避免调用方按局部字段猜测。
 /**
  * 判断当前值是否满足业务条件。
  */
@@ -124,7 +121,7 @@ function has_registered_screen(route_id: RouteId): boolean {
   return SCREEN_REGISTRY[route_id] !== undefined;
 }
 
-// read_sidebar_state 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
+// 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 /**
  * 读取当前场景需要的稳定数据。
  */
@@ -138,7 +135,7 @@ function read_sidebar_state(): boolean {
   }
 }
 
-// read_theme_mode 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
+// 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 /**
  * 读取当前场景需要的稳定数据。
  */
@@ -158,7 +155,7 @@ function read_theme_mode(): ThemeMode {
   }
 }
 
-// read_lg_base_font_enabled 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
+// 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 /**
  * 读取当前场景需要的稳定数据。
  */
@@ -176,7 +173,6 @@ function read_lg_base_font_enabled(): boolean {
   }
 }
 
-// serialize_lg_base_font_mode 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 /**
  * 承接当前模块的核心控制分支。
  */
@@ -184,7 +180,7 @@ function serialize_lg_base_font_mode(is_enabled: boolean): "enabled" | "disabled
   return is_enabled ? "enabled" : "disabled";
 }
 
-// parse_lg_base_font_mode 收口外部文本解析，解析失败时由这里决定降级口径。
+// 收口外部文本解析，解析失败时由这里决定降级口径。
 /**
  * 解析输入并收窄为业务可用值。
  */
@@ -192,7 +188,6 @@ function parse_lg_base_font_mode(stored_font_mode: string | null): boolean {
   return stored_font_mode !== "disabled";
 }
 
-// is_log_window_mode 集中表达布尔判定口径，避免调用方按局部字段猜测。
 /**
  * 判断当前值是否满足业务条件。
  */
@@ -200,7 +195,7 @@ function is_log_window_mode(): boolean {
   return new URLSearchParams(window.location.search).get("window") === "logs";
 }
 
-// format_app_titlebar_title 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
+// 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
 /**
  * 生成当前场景的展示内容。
  */
@@ -215,7 +210,6 @@ function format_app_titlebar_title(app_name: string, version: string | null): st
   return `${app_name} ${version_label}`;
 }
 
-// useLgBaseFontMode 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 /**
  * 承接当前模块的核心控制分支。
  */
@@ -234,7 +228,7 @@ function useLgBaseFontMode(): [boolean, Dispatch<SetStateAction<boolean>>] {
   }, [is_lg_base_font_enabled]);
 
   useEffect(() => {
-    // handle_storage 是事件处理边界，只把外部事件转换为本模块状态更新。
+    // 事件处理边界，只把外部事件转换为本模块状态更新。
     /**
      * 承接当前模块的核心控制分支。
      */
@@ -267,7 +261,6 @@ type LogWindowSettingsPayload = {
   };
 };
 
-// AppContent 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 /**
  * 渲染当前组件的公开界面。
  */
@@ -511,7 +504,7 @@ function AppContent(props: AppContentProps): JSX.Element {
     });
   }, []);
 
-  // handle_select_route 是事件处理边界，只把外部事件转换为本模块状态更新。
+  // 事件处理边界，只把外部事件转换为本模块状态更新。
   /**
    * 承接当前模块的核心控制分支。
    */
@@ -561,7 +554,7 @@ function AppContent(props: AppContentProps): JSX.Element {
     set_log_badge_visible(true);
   }, [project_snapshot.loaded, project_snapshot.path, project_session_status]);
 
-  // handle_toggle_group 是事件处理边界，只把外部事件转换为本模块状态更新。
+  // 事件处理边界，只把外部事件转换为本模块状态更新。
   /**
    * 承接当前模块的核心控制分支。
    */
@@ -588,7 +581,7 @@ function AppContent(props: AppContentProps): JSX.Element {
     }
   }
 
-  // handle_bottom_action 是事件处理边界，只把外部事件转换为本模块状态更新。
+  // 事件处理边界，只把外部事件转换为本模块状态更新。
   /**
    * 承接当前模块的核心控制分支。
    */
@@ -618,7 +611,7 @@ function AppContent(props: AppContentProps): JSX.Element {
     );
   }
 
-  // handle_appearance_menu_action 是事件处理边界，只把外部事件转换为本模块状态更新。
+  // 事件处理边界，只把外部事件转换为本模块状态更新。
   /**
    * 承接当前模块的核心控制分支。
    */
@@ -634,7 +627,7 @@ function AppContent(props: AppContentProps): JSX.Element {
     }
   }
 
-  // handle_profile_action 是事件处理边界，只把外部事件转换为本模块状态更新。
+  // 事件处理边界，只把外部事件转换为本模块状态更新。
   /**
    * 承接当前模块的核心控制分支。
    */
@@ -746,7 +739,7 @@ function AppContent(props: AppContentProps): JSX.Element {
   );
 }
 
-// normalize_log_window_app_language 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -761,7 +754,7 @@ function normalize_log_window_app_language(value: unknown): "ZH" | "EN" {
   return "ZH";
 }
 
-// read_initial_log_window_app_language 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
+// 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 /**
  * 读取当前场景需要的稳定数据。
  */
@@ -770,7 +763,6 @@ function read_initial_log_window_app_language(): "ZH" | "EN" {
   return normalize_log_window_app_language(stored_language ?? window.navigator.language);
 }
 
-// WindowVisualProviders 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 /**
  * 渲染当前组件的公开界面。
  */
@@ -792,7 +784,6 @@ function WindowVisualProviders({ children }: { children: ReactNode }): JSX.Eleme
   );
 }
 
-// MainWindowLocaleProvider 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 /**
  * 渲染当前组件的公开界面。
  */
@@ -803,7 +794,6 @@ function MainWindowLocaleProvider({ children }: { children: ReactNode }): JSX.El
   return <LocaleProvider app_language={settings_snapshot.app_language}>{children}</LocaleProvider>;
 }
 
-// MainWindowApp 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 /**
  * 渲染当前组件的公开界面。
  */
@@ -824,7 +814,6 @@ function MainWindowApp(props: AppContentProps): JSX.Element {
   );
 }
 
-// LogWindowApp 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 /**
  * 渲染当前组件的公开界面。
  */
@@ -862,7 +851,6 @@ function LogWindowApp(): JSX.Element {
   );
 }
 
-// App 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 /**
  * 渲染当前组件的公开界面。
  */

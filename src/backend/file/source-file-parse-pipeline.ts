@@ -9,30 +9,30 @@ import { FileFormatService } from "../file/file-format-service";
 import type { ParsedFilePreview, ProjectSourceFileEntry } from "../file/formats/file-format-shared";
 
 export type SourceFileParseCommand = {
-  source_path: string; // source_path 是用户选择的真实文件路径，只允许解析流水线读取
-  rel_path: string; // rel_path 是工程或工作台内的目标相对路径
+  source_path: string; // 用户选择的真实文件路径，只允许解析流水线读取
+  rel_path: string; // 工程或工作台内的目标相对路径
 };
 
 export type SourceFileParsedDraft = SourceFileParseCommand & {
-  file_type: ItemFileType; // file_type 只来自格式解析结果，不由调用方猜测
-  parsed_items: Array<Record<string, ApiJsonValue>>; // parsed_items 是已过 Item JSON 边界的公开草稿
+  file_type: ItemFileType; // 只来自格式解析结果，不由调用方猜测
+  parsed_items: Array<Record<string, ApiJsonValue>>; // 已过 Item JSON 边界的公开草稿
 };
 
 export type SourceFileParseResult = {
-  file_drafts: SourceFileParsedDraft[]; // file_drafts 只包含解析成功且可继续提交的文件
-  failed_files: SourceFileParseFailureRecord[]; // failed_files 只包含支持格式候选的读取或解析失败
+  file_drafts: SourceFileParsedDraft[]; // 只包含解析成功且可继续提交的文件
+  failed_files: SourceFileParseFailureRecord[]; // 只包含支持格式候选的读取或解析失败
 };
 
 export type SourceFileProjectDraft = {
-  source_paths: string[]; // source_paths 是格式服务归一后的用户输入路径
+  source_paths: string[]; // 格式服务归一后的用户输入路径
   files: Array<{
     rel_path: string;
     source_path: string;
     file_type: ItemFileType;
     sort_index: number;
   }>; // files 是项目文件 section 和 asset 写库共同使用的草稿
-  items: Array<Record<string, ApiJsonValue>>; // items 已分配临时 id、file_path 和 file_type
-  file_state: Record<string, Record<string, ApiJsonValue>>; // file_state 供预过滤算法消费
+  items: Array<Record<string, ApiJsonValue>>; // 已分配临时 id、file_path 和 file_type
+  file_state: Record<string, Record<string, ApiJsonValue>>; // 供预过滤算法消费
   failed_files: SourceFileParseFailureRecord[];
 };
 
@@ -45,8 +45,8 @@ export type WorkbenchFilePreviewParseResult = {
  * 源文件解析流水线统一承载目录展开、文件读取、格式解析和失败明细归一。
  */
 export class SourceFileParsePipeline {
-  private readonly format_service: FileFormatService; // format_service 是格式分发和相对路径分配的唯一入口
-  private readonly native_fs: NativeFs; // native_fs 是读取用户源文件 bytes 的唯一文件系统门面
+  private readonly format_service: FileFormatService; // 格式分发和相对路径分配的唯一入口
+  private readonly native_fs: NativeFs; // 读取用户源文件 bytes 的唯一文件系统门面
 
   /**
    * 构造时固定格式服务与文件系统，保证一次解析使用同一设置快照。
@@ -67,7 +67,7 @@ export class SourceFileParsePipeline {
     const files: SourceFileProjectDraft["files"] = [];
     const items: SourceFileProjectDraft["items"] = [];
     const file_state: SourceFileProjectDraft["file_state"] = {};
-    let next_item_id = 1; // next_item_id 由后端顺序分配，避免 renderer 伪造数据库主键
+    let next_item_id = 1; // 由后端顺序分配，避免 renderer 伪造数据库主键
 
     for (const [sort_index, draft] of parse_result.file_drafts.entries()) {
       files.push({

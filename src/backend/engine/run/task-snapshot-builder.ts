@@ -29,11 +29,11 @@ const TASK_PROGRESS_FLOAT_FIELDS = ["time", "start_time"] as const; // 时间字
  * 在 API Gateway 内构建公开任务快照，进度读 `.lg`，实时状态读 `TaskRunState`
  */
 export class TaskSnapshotBuilder {
-  private readonly task_run_state: TaskRunState; // task_run_state 是实时 busy / 请求中数量的唯一读源
+  private readonly task_run_state: TaskRunState; // 实时 busy / 请求中数量的唯一读源
 
-  private readonly session_state: ProjectSessionState; // session_state 决定当前公开工程路径
+  private readonly session_state: ProjectSessionState; // 决定当前公开工程路径
 
-  private readonly data_reader: ProjectDataReader; // data_reader 只负责 meta/revision 读取，快照热路径不扫大 section
+  private readonly data_reader: ProjectDataReader; // 只负责 meta/revision 读取，快照热路径不扫大 section
 
   /**
    * 注入公开快照所需的三个权威来源，便于 Gateway 和任务命令共用同一口径

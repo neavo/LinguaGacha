@@ -11,8 +11,8 @@ import {
 } from "./system-proxy-dispatcher";
 
 describe("system-proxy-dispatcher", () => {
-  const original_dispatcher = getGlobalDispatcher(); // original_dispatcher 用于确认测试后全局 dispatcher 被恢复
-  const installed_disposers: Array<() => Promise<void>> = []; // installed_disposers 收尾失败测试中的代理安装
+  const original_dispatcher = getGlobalDispatcher(); // 用于确认测试后全局 dispatcher 被恢复
+  const installed_disposers: Array<() => Promise<void>> = []; // 收尾失败测试中的代理安装
 
   afterEach(async () => {
     while (installed_disposers.length > 0) {

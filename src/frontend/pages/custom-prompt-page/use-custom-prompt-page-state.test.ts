@@ -6,7 +6,7 @@ import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
 import { useCustomPromptPageState } from "@frontend/pages/custom-prompt-page/use-custom-prompt-page-state";
 
-// RuntimeFixture 固定 useDesktopState 对自定义提示词页暴露的状态和写入口。
+// 固定 useDesktopState 对自定义提示词页暴露的状态和写入口。
 type RuntimeFixture = {
   project_snapshot: {
     loaded: boolean;
@@ -25,22 +25,22 @@ type RuntimeFixture = {
   };
 };
 
-// ToastFixture 只保留页面反馈出口，断言 hook 不绕过 toast feedback。
+// 只保留页面反馈出口，断言 hook 不绕过 toast feedback。
 type ToastFixture = {
   push_toast: ReturnType<typeof vi.fn>;
 };
 
-// runtime_fixture 作为 hook 的可替换宿主，允许每个用例单独切换项目和任务状态。
+// 作为 hook 的可替换宿主，允许每个用例单独切换项目和任务状态。
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
 };
 
-// toast_fixture 记录页面反馈，不让测试依赖真实 UI 运行时。
+// 记录页面反馈，不让测试依赖真实 UI 运行时。
 const toast_fixture: { current: ToastFixture } = {
   current: create_toast_fixture(),
 };
 
-// translate 固定返回 key，避免文案资源变化影响状态流断言。
+// 固定返回 key，避免文案资源变化影响状态流断言。
 /**
  * 支撑当前测试场景的专用辅助逻辑。
  */

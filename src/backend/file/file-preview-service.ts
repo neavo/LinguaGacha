@@ -15,9 +15,9 @@ type JsonRecord = Record<string, ApiJsonValue>;
  * 文件解析预演服务；公开源文件草稿只由 Backend 文件域解析
  */
 export class FilePreviewService {
-  private readonly app_setting_service: AppSettingService; // app_setting_service 提供当前语言和导出配置快照
-  private readonly log_manager: Pick<LogManager, "warning"> | null; // log_manager 只记录批量解析失败明细，不影响预览响应
-  private readonly native_fs: NativeFs; // native_fs 统一读取用户选择的源文件
+  private readonly app_setting_service: AppSettingService; // 提供当前语言和导出配置快照
+  private readonly log_manager: Pick<LogManager, "warning"> | null; // 只记录批量解析失败明细，不影响预览响应
+  private readonly native_fs: NativeFs; // 统一读取用户选择的源文件
 
   /**
    * 预演服务只编排配置和 格式处理器，不直接写数据库

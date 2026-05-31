@@ -11,7 +11,6 @@ import {
   sort_log_events_latest_first,
 } from "@frontend/pages/log-window-page/logic";
 
-// build_event 收口测试中的共享步骤，保证断言只关注当前行为。
 function build_event(overrides: Partial<LogEvent>): LogEvent {
   return {
     id: "log-1",

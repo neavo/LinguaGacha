@@ -121,7 +121,6 @@ const DEFAULT_QUALITY_SLICE: GlossaryQualitySlice = {
   section_revision: 0,
 };
 
-// clone_entry 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function clone_entry(entry: GlossaryEntry): GlossaryEntry {
   return {
     entry_id: entry.entry_id,
@@ -132,7 +131,6 @@ function clone_entry(entry: GlossaryEntry): GlossaryEntry {
   };
 }
 
-// create_empty_filter_state 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -144,7 +142,6 @@ function create_empty_filter_state(): GlossaryFilterState {
   };
 }
 
-// create_empty_sort_state 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -155,10 +152,10 @@ function create_empty_sort_state(): GlossarySortState {
   };
 }
 
-// GLOSSARY_SORT_FIELDS 是 session 恢复排序的白名单，防止旧版本或其它页面列 id 泄入本页。
+// session 恢复排序的白名单，防止旧版本或其它页面列 id 泄入本页。
 const GLOSSARY_SORT_FIELDS = new Set(["src", "dst", "info", "rule", "statistics"]);
 
-// normalize_glossary_sort_state 在 session 边界收窄排序状态，坏状态统一回到默认值。
+// 在 session 边界收窄排序状态，坏状态统一回到默认值。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -177,7 +174,7 @@ function normalize_glossary_sort_state(sort_state: GlossarySortState): GlossaryS
   };
 }
 
-// clone_glossary_filter_state 切断 session 快照引用，避免页面编辑直接修改缓存对象。
+// 切断 session 快照引用，避免页面编辑直接修改缓存对象。
 function clone_glossary_filter_state(filter_state: GlossaryFilterState): GlossaryFilterState {
   return {
     keyword: filter_state.keyword,
@@ -186,7 +183,6 @@ function clone_glossary_filter_state(filter_state: GlossaryFilterState): Glossar
   };
 }
 
-// create_empty_dialog_state 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -202,7 +198,6 @@ function create_empty_dialog_state(): GlossaryDialogState {
   };
 }
 
-// create_empty_confirm_state 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -218,7 +213,6 @@ function create_empty_confirm_state(): GlossaryConfirmState {
   };
 }
 
-// create_empty_preset_input_state 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -232,7 +226,7 @@ function create_empty_preset_input_state(): GlossaryPresetInputState {
   };
 }
 
-// normalize_dialog_entry 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -246,7 +240,7 @@ function normalize_dialog_entry(entry: GlossaryEntry): GlossaryEntry {
   };
 }
 
-// normalize_glossary_quality_slice 在后端 query 边界收窄规则事实，页面内部只消费稳定形状。
+// 在后端 query 边界收窄规则事实，页面内部只消费稳定形状。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -270,7 +264,6 @@ function normalize_glossary_quality_slice(
   };
 }
 
-// build_user_preset_virtual_id 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -278,7 +271,7 @@ function build_user_preset_virtual_id(name: string): string {
   return `user:${name}.json`;
 }
 
-// normalize_preset_name 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -286,7 +279,6 @@ function normalize_preset_name(name: string): string {
   return name.trim();
 }
 
-// has_casefold_duplicate_preset 集中表达布尔判定口径，避免调用方按局部字段猜测。
 /**
  * 判断当前值是否满足业务条件。
  */
@@ -310,7 +302,6 @@ function has_casefold_duplicate_preset(
   });
 }
 
-// decorate_preset_items 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function decorate_preset_items(
   builtin_presets: GlossaryPresetItem[],
   user_presets: GlossaryPresetItem[],
@@ -324,7 +315,6 @@ function decorate_preset_items(
   });
 }
 
-// build_statistics_badge_tooltip 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -350,7 +340,6 @@ function build_statistics_badge_tooltip(
   return tooltip_lines.join("\n");
 }
 
-// buildGlossaryStatisticsState 构造跨层载荷，保证字段形状在一个入口维护。
 export function buildGlossaryStatisticsState(args: {
   snapshot: QualityStatisticsDependencySnapshot;
   completed_entry_ids: GlossaryEntryId[];
@@ -373,7 +362,6 @@ export function buildGlossaryStatisticsState(args: {
   };
 }
 
-// build_glossary_statistics_state_from_cache 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -452,7 +440,6 @@ type UseGlossaryPageStateResult = {
   set_preset_menu_open: (next_open: boolean) => void;
 };
 
-// useGlossaryPageState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -509,7 +496,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const statistics_ready = isQualityRuleStatisticsCacheReady(statistics_cache);
   const statistics_sort_available =
     statistics_ready || statistics_state.completed_snapshot !== null;
-  // project_view_identity_ref 区分同组件内项目身份切换，避免把上一项目的表格状态写入新项目。
+  // 区分同组件内项目身份切换，避免把上一项目的表格状态写入新项目。
   const project_view_identity_ref = useRef(project_snapshot.loaded ? project_snapshot.path : "");
 
   const refresh_quality_rule_snapshot = useCallback(async (): Promise<GlossaryQualitySlice> => {

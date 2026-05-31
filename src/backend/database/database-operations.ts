@@ -17,11 +17,11 @@ type DatabaseRow = Record<string, unknown>;
  * 单个 .lg 当前打开连接的生命周期记录，只表达 scoped 使用和显式租约
  */
 interface ProjectDatabaseConnectionRecord {
-  readonly normalized_path: string; // normalized_path 是连接表的唯一键，避免同一 .lg 因相对路径重复打开
+  readonly normalized_path: string; // 连接表的唯一键，避免同一 .lg 因相对路径重复打开
   readonly db: DatabaseSync;
-  lease_count: number; // lease_count 表示任务等长流程正在显式保留连接
-  scoped_use_count: number; // scoped_use_count 表示当前同步 workflow 正在使用连接，归零后才能收尾
-  closed: boolean; // closed 隔离已关闭记录，保证迟到租约释放不会二次操作 SQLite 句柄
+  lease_count: number; // 任务等长流程正在显式保留连接
+  scoped_use_count: number; // 当前同步 workflow 正在使用连接，归零后才能收尾
+  closed: boolean; // 隔离已关闭记录，保证迟到租约释放不会二次操作 SQLite 句柄
 }
 
 const CURRENT_NONE = "NONE";
@@ -89,8 +89,8 @@ export class DatabaseConflictError extends AppErrors.DatabaseConflictError {
  * Backend 内部 .lg 物理读写入口，集中持有 SQLite、事务和 asset 压缩格式
  */
 export class ProjectDatabase {
-  private readonly connection_records = new Map<string, ProjectDatabaseConnectionRecord>(); // connection_records 只保存当前活跃连接，不再表达永久缓存
-  private readonly native_fs: NativeFs; // native_fs 统一 .lg 文件、源 asset 和 SQLite 路径的原生 IO 策略
+  private readonly connection_records = new Map<string, ProjectDatabaseConnectionRecord>(); // 只保存当前活跃连接，不再表达永久缓存
+  private readonly native_fs: NativeFs; // 统一 .lg 文件、源 asset 和 SQLite 路径的原生 IO 策略
 
   /**
    * 初始化 ProjectDatabase 依赖，保持外部写入口清晰

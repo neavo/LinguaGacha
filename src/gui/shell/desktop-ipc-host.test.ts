@@ -341,7 +341,6 @@ async function register_handlers(
   });
 }
 
-// emit_send 收口测试中的共享步骤，保证断言只关注当前行为。
 /**
  * 支撑当前测试场景的专用辅助逻辑。
  */

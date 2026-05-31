@@ -56,10 +56,10 @@ const RENDERER_ERROR_CONTEXT_KEYS = [
   "location",
 ] as const;
 
-// RendererErrorContextKey 是 renderer 实际异常补充上下文的唯一字段词表。
+// renderer 实际异常补充上下文的唯一字段词表。
 export type RendererErrorContextKey = (typeof RENDERER_ERROR_CONTEXT_KEYS)[number];
 
-// RendererErrorContextInput 只允许白名单字段，调用点不能传入自定义业务对象。
+// 只允许白名单字段，调用点不能传入自定义业务对象。
 export type RendererErrorContextInput = Partial<Record<RendererErrorContextKey, unknown>>;
 
 // RENDERER ERROR CONTEXT PATH KEYS 是跨边界路径或地址契约，集中保存避免调用点散落魔术字符串。
@@ -68,13 +68,13 @@ const RENDERER_ERROR_CONTEXT_PATH_KEYS = new Set<RendererErrorContextKey>(["file
 const RENDERER_ERROR_CONTEXT_URL_KEYS = new Set<RendererErrorContextKey>(["location"]);
 
 export type RendererDiagnosticsContext = {
-  route?: string; // route 定位当前 renderer 页面区域
-  project?: LogErrorContext; // project 只保存项目身份和 revision 级摘要
-  task?: LogErrorContext; // task 只保存任务状态和进度级摘要
+  route?: string; // 定位当前 renderer 页面区域
+  project?: LogErrorContext; // 只保存项目身份和 revision 级摘要
+  task?: LogErrorContext; // 只保存任务状态和进度级摘要
 };
 
 export type RendererDiagnosticsPayload = RendererDiagnosticsContext & {
-  event?: LogErrorContext; // event 保存最近触发事件头，禁止完整业务 payload
+  event?: LogErrorContext; // 保存最近触发事件头，禁止完整业务 payload
 };
 
 /**
@@ -128,13 +128,13 @@ export function normalize_renderer_error_context(value: unknown): LogErrorContex
   return Object.keys(context).length === 0 ? undefined : context;
 }
 
-// read_optional_route_field 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
+// 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 function read_optional_route_field(record: Record<string, unknown>): Record<string, string> {
   const route = normalize_renderer_diagnostics_text(record["route"]);
   return route === undefined ? {} : { route };
 }
 
-// read_optional_context_field 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
+// 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 function read_optional_context_field(
   record: Record<string, unknown>,
   field: "project" | "task" | "event",
@@ -144,7 +144,6 @@ function read_optional_context_field(
   return context === undefined ? {} : { [field]: context };
 }
 
-// pick_renderer_diagnostic_context 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function pick_renderer_diagnostic_context(
   value: object,
   key: keyof typeof RENDERER_DIAGNOSTIC_CONTEXT_KEYS,
@@ -161,7 +160,6 @@ function pick_renderer_diagnostic_context(
   );
 }
 
-// summarize_renderer_diagnostic_context_value 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function summarize_renderer_diagnostic_context_value(
   context_key: string,
   record: Record<string, unknown>,
@@ -173,7 +171,6 @@ function summarize_renderer_diagnostic_context_value(
   return value;
 }
 
-// pick_renderer_error_context 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function pick_renderer_error_context(value: object): LogErrorContextInput {
   const record = value as Record<string, unknown>;
   return Object.fromEntries(
@@ -186,7 +183,6 @@ function pick_renderer_error_context(value: object): LogErrorContextInput {
   );
 }
 
-// summarize_renderer_error_context_value 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function summarize_renderer_error_context_value(
   context_key: RendererErrorContextKey,
   record: Record<string, unknown>,
@@ -203,7 +199,6 @@ function summarize_renderer_error_context_value(
   return value;
 }
 
-// trim_renderer_diagnostic_text 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function trim_renderer_diagnostic_text(value: string): string {
   const text = value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
   return text.length > MAX_RENDERER_DIAGNOSTIC_TEXT_LENGTH

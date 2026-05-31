@@ -94,7 +94,7 @@ type ProjectDataItemsSnapshotReader = () => ProjectDataItemsSnapshot;
  * 项目运行态读取服务统一从 `.lg` 事实生成公开 project data block，不持有长期缓存
  */
 export class ProjectDataReader {
-  private readonly database: ProjectDatabase; // database workflow 是 `.lg` 事实唯一读取入口
+  private readonly database: ProjectDatabase; // workflow 是 `.lg` 事实唯一读取入口
 
   /**
    * 只注入 database workflow，调用方决定读取时机和 project path

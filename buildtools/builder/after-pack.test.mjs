@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { build_windows_cli_launcher, install_windows_cli_launcher } from "./after-pack.mjs";
 
-const cleanup_roots = []; // cleanup_roots 收集测试临时目录，避免真实发布目录被触碰
+const cleanup_roots = []; // 收集测试临时目录，避免真实发布目录被触碰
 const WINDOWS_CLI_SOURCE_RELATIVE_DIR = path.join("buildtools", "builder", "win-cli-launcher"); // 测试只关心 Go 模块稳定位置
 const WINDOWS_CLI_OUTPUT_RELATIVE_PATH = path.join(
   "build",

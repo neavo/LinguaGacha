@@ -1,11 +1,11 @@
 import type { LocaleKey, TextResolver } from "./i18n";
 
 export type SourceFileParseFailureRecord = {
-  source_path: string; // source_path 保留真实源路径，日志和调试需要定位原文件
-  rel_path: string; // rel_path 是工程或工作台内的目标相对路径，无法确定时为空串
-  filename: string; // filename 是 Toast 可见定位，不把完整路径塞进页面提示
-  code: string; // code 保留稳定错误码，方便日志和测试按语义断言
-  message_key: LocaleKey; // message_key 让前端和日志按当前语言解析用户可见原因
+  source_path: string; // 保留真实源路径，日志和调试需要定位原文件
+  rel_path: string; // 工程或工作台内的目标相对路径，无法确定时为空串
+  filename: string; // Toast 可见定位，不把完整路径塞进页面提示
+  code: string; // 保留稳定错误码，方便日志和测试按语义断言
+  message_key: LocaleKey; // 让前端和日志按当前语言解析用户可见原因
 };
 
 /**

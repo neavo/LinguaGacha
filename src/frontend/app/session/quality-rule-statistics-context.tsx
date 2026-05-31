@@ -29,8 +29,8 @@ type QualityStatisticsQueryResponse = {
 };
 
 type QualityRuleStatisticsContextValue = {
-  refreshRule: (rule_type: QualityRuleStatisticsRuleType) => void; // refreshRule 从 Backend query 读取 ProjectDataCache 统计结果
-  store: QualityRuleStatisticsStore; // store 只保存后端 query 结果，不再执行 renderer 统计
+  refreshRule: (rule_type: QualityRuleStatisticsRuleType) => void; // 从 Backend query 读取 ProjectDataCache 统计结果
+  store: QualityRuleStatisticsStore; // 只保存后端 query 结果，不再执行 renderer 统计
 };
 
 const QualityRuleStatisticsContext = createContext<QualityRuleStatisticsContextValue | null>(null);
@@ -167,7 +167,7 @@ function normalize_quality_statistics_cache(
   };
 }
 
-// useQualityRuleStatisticsContext 统一抛出 Provider 缺失错误，调用方不用重复空值分支。
+// 统一抛出 Provider 缺失错误，调用方不用重复空值分支。
 function useQualityRuleStatisticsContext(): QualityRuleStatisticsContextValue {
   const context_value = useContext(QualityRuleStatisticsContext);
   if (context_value === null) {

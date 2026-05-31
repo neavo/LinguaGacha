@@ -16,8 +16,8 @@ export const TRANSLATION_SIMILARITY_THRESHOLD = 0.8; // 相似度阈值是 Backe
 export const TRANSLATION_RETRY_REVIEW_THRESHOLD = 2; // 达到该重试次数后交给人工校对，不再继续用任务侧质量检查阻塞提交
 
 export type TranslationResidueFragments = {
-  kana: string[]; // kana 只在源语言为日语时记录译文里的连续假名残留
-  hangeul: string[]; // hangeul 只在源语言为韩语时记录译文里的连续谚文残留
+  kana: string[]; // 只在源语言为日语时记录译文里的连续假名残留
+  hangeul: string[]; // 只在源语言为韩语时记录译文里的连续谚文残留
 };
 
 /**

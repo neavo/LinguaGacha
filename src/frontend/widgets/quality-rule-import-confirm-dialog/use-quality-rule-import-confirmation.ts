@@ -11,15 +11,15 @@ import {
   type QualityRuleImportRuleType,
 } from "@shared/quality/importer";
 
-// QualityRuleImportApplyOptions 是导入完成后页面菜单交互的通用控制项。
+// 导入完成后页面菜单交互的通用控制项。
 export type QualityRuleImportApplyOptions = {
   close_preset_menu: boolean;
 };
 
-// QualityRuleDuplicateResolutionResult 描述一次导入尝试的最终可观察结果。
+// 一次导入尝试的最终可观察结果。
 export type QualityRuleDuplicateResolutionResult = "saved" | "pending" | "failed";
 
-// QualityRuleDuplicateResolutionPlan 保存重复项导入在 skip / overwrite 两种路径下的候选写入结果。
+// 保存重复项导入在 skip / overwrite 两种路径下的候选写入结果。
 export type QualityRuleDuplicateResolutionPlan<TEntry extends JsonRecord> = {
   existing_entries: TEntry[];
   incoming_entries: TEntry[];

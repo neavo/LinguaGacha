@@ -68,7 +68,6 @@ function create_extracted_rows(): NameFieldRow[] {
 
 const project_store_listeners = new Set<() => void>();
 
-// apply_quality_write_result 收口测试中的共享步骤，保证断言只关注当前行为。
 /**
  * 写入当前场景的状态变化。
  */
@@ -250,7 +249,6 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
   };
 });
 
-// Probe 收口测试中的共享步骤，保证断言只关注当前行为。
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useNameFieldExtractionPageState>) => void;
 }): JSX.Element | null {

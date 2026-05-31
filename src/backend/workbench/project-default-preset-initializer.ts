@@ -13,20 +13,20 @@ import { JsonTool } from "../../shared/utils/json-tool";
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
 interface QualityDefaultPresetSpec {
-  config_key: string; // config_key 对应用户设置里的默认预设虚拟 ID
-  preset_directory: string; // preset_directory 决定内置和用户预设目录
-  rule_type: string; // rule_type 是 rules 表当前物理类型
-  meta_key: string; // meta_key 表示预设成功加载后需要同步开启的工程设置
-  meta_value: DatabaseJsonValue; // meta_value 是预设启用后的工程设置值
-  display_name: string; // display_name 只用于日志，不进入公开协议
+  config_key: string; // 对应用户设置里的默认预设虚拟 ID
+  preset_directory: string; // 决定内置和用户预设目录
+  rule_type: string; // rules 表当前物理类型
+  meta_key: string; // 预设成功加载后需要同步开启的工程设置
+  meta_value: DatabaseJsonValue; // 预设启用后的工程设置值
+  display_name: string; // 只用于日志，不进入公开协议
 }
 
 interface PromptDefaultPresetSpec {
-  config_key: string; // config_key 对应翻译或分析提示词默认预设
-  task_type: "translation" | "analysis"; // task_type 由 AppPathService 映射到 prompt 目录
-  rule_type: string; // rule_type 是 rules 表当前提示词物理类型
-  meta_key: string; // meta_key 控制提示词启用态
-  display_name: string; // display_name 只用于日志，不进入公开协议
+  config_key: string; // 对应翻译或分析提示词默认预设
+  task_type: "translation" | "analysis"; // 由 AppPathService 映射到 prompt 目录
+  rule_type: string; // rules 表当前提示词物理类型
+  meta_key: string; // 控制提示词启用态
+  display_name: string; // 只用于日志，不进入公开协议
 }
 
 // QUALITY DEFAULT PRESET SPECS 是默认快照事实，调用方只读取副本不临时拼装。
@@ -92,10 +92,10 @@ export type ProjectDefaultPresetInitializationResult = {
  * 新建工程默认预设初始化器只负责读取预设文件并生成数据库操作。
  */
 export class ProjectDefaultPresetInitializer {
-  private readonly app_setting_service: AppSettingService; // app_setting_service 提供用户选择的默认预设虚拟 ID
-  private readonly paths: AppPathService; // paths 统一解析内置 / 用户预设目录
-  private readonly log_manager: LogManager; // log_manager 只记录预设加载诊断，不扩大公开响应
-  private readonly native_fs: NativeFs; // native_fs 是读取预设文件的唯一磁盘入口
+  private readonly app_setting_service: AppSettingService; // 提供用户选择的默认预设虚拟 ID
+  private readonly paths: AppPathService; // 统一解析内置 / 用户预设目录
+  private readonly log_manager: LogManager; // 只记录预设加载诊断，不扩大公开响应
+  private readonly native_fs: NativeFs; // 读取预设文件的唯一磁盘入口
 
   /**
    * 构造时固定路径、设置和日志依赖，保持生命周期服务只负责装配。

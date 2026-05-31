@@ -21,7 +21,7 @@ export type TextJsonRecord = Record<string, TextJsonValue>;
 export interface TextProcessingConfig {
   source_language: string; // 源/目标语言直接来自项目配置，语言过滤器负责未知值兜底
   target_language: string;
-  clean_ruby: boolean; // clean_ruby 只控制字面文本注音标记，结构化格式组装留在导入器
+  clean_ruby: boolean; // 只控制字面文本注音标记，结构化格式组装留在导入器
   check_kana_residue: boolean; // 残留和相似度检查按开关独立启用，便于旧项目逐步迁移质量规则
   check_hangeul_residue: boolean;
   check_similarity: boolean;
@@ -57,10 +57,10 @@ export type TextTaskItemRecord = TextJsonRecord & {
   name_src?: string | string[] | null;
   name_dst?: string | string[] | null;
   status?: string;
-  text_type?: string; // text_type 决定保护规则分支，retry_count 用于任务调度诊断
+  text_type?: string; // 决定保护规则分支，retry_count 用于任务调度诊断
   retry_count?: number;
   skip_internal_filter?: boolean; // 强制翻译条目绕过规则/语言类内部过滤
-  extra_field?: TextJsonValue; // extra_field 保留格式处理器回写所需的结构化上下文
+  extra_field?: TextJsonValue; // 保留格式处理器回写所需的结构化上下文
 };
 
 /**

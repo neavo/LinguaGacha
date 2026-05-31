@@ -19,22 +19,22 @@ export const TASK_IDLE_STATUSES = new Set<string>(BASE_TASK_IDLE_STATUSES);
  * TaskEngine 依赖都从 Gateway 注入，保证后台任务只通过固定端口读写工程事实
  */
 export interface TaskEngineOptions {
-  appRoot: string; // appRoot 用于任务启动日志读取提示词模板，保持 main 与 worker 资源根一致
-  taskStore: ProjectTaskStore; // taskStore 是任务编排器读写项目任务事实的唯一端口
-  taskRunPublisher: TaskRunPublisher; // taskRunPublisher 是完整 task snapshot 的唯一公开出口
-  executorClient: WorkUnitExecutor; // executorClient 屏蔽 worker_threads 与直接 runner 的传输差异
-  taskPlanner: TaskPlanner; // taskPlanner 是精确 token 切块、cache 复用和后台规划的唯一入口
-  AppSettingService: AppSettingService; // AppSettingService 在每次任务启动时提供设置与模型快照
-  logManager: LogManager; // logManager 统一收敛任务引擎和 worker 回放日志
+  appRoot: string; // 用于任务启动日志读取提示词模板，保持 main 与 worker 资源根一致
+  taskStore: ProjectTaskStore; // 任务编排器读写项目任务事实的唯一端口
+  taskRunPublisher: TaskRunPublisher; // 完整 task snapshot 的唯一公开出口
+  executorClient: WorkUnitExecutor; // 屏蔽 worker_threads 与直接 runner 的传输差异
+  taskPlanner: TaskPlanner; // 精确 token 切块、cache 复用和后台规划的唯一入口
+  AppSettingService: AppSettingService; // 在每次任务启动时提供设置与模型快照
+  logManager: LogManager; // 统一收敛任务引擎和 worker 回放日志
 }
 
 /**
  * Task Engine 内部运行实例，负责把一次后台任务和取消信号绑定在一起
  */
 export interface TaskRunHandle {
-  run_id: string; // run_id 是迟到结果隔离键，所有提交前都必须重新核对
-  task_type: TaskType; // task_type 决定公开事件 topic payload 里的任务身份
-  signal: AbortSignal; // signal 是停止请求向 worker 和 limiter 传播的唯一通道
+  run_id: string; // 迟到结果隔离键，所有提交前都必须重新核对
+  task_type: TaskType; // 决定公开事件 topic payload 里的任务身份
+  signal: AbortSignal; // 停止请求向 worker 和 limiter 传播的唯一通道
 }
 
 /**
@@ -43,7 +43,7 @@ export interface TaskRunHandle {
 export interface TaskProgressSnapshot {
   start_time: number; // start_time/time 延续公开快照字段，前端用它们计算耗时而非重新推断
   time: number;
-  total_line: number; // total_line 是任务启动时的静态目标，line/processed/error 是运行中累加事实
+  total_line: number; // 任务启动时的静态目标，line/processed/error 是运行中累加事实
   line: number;
   processed_line: number;
   error_line: number;
@@ -56,30 +56,30 @@ export interface TaskProgressSnapshot {
  * work-unit executor 返回的翻译类结果
  */
 export interface TranslationWorkUnitResult {
-  items: TaskItemRecord[]; // items 只承载本 chunk 最终写回快照，TaskEngine 决定是否提交
-  row_count: number; // row_count 对齐旧日志口径，表示本 work unit 覆盖行数
+  items: TaskItemRecord[]; // 只承载本 chunk 最终写回快照，TaskEngine 决定是否提交
+  row_count: number; // 对齐旧日志口径，表示本 work unit 覆盖行数
   input_tokens: number; // token 字段用于任务统计累加，不作为成功与否的唯一依据
   output_tokens: number;
-  stopped: boolean; // stopped 表示主动取消，区别于失败后可重试
-  logs?: WorkUnitLogEntry[]; // logs 统一回放到 LogManager，worker 不直接写日志
+  stopped: boolean; // 主动取消，区别于失败后可重试
+  logs?: WorkUnitLogEntry[]; // 统一回放到 LogManager，worker 不直接写日志
 }
 
 /**
  * work-unit executor 返回的分析结果
  */
 export interface AnalysisWorkUnitResult {
-  success: boolean; // success 表示分析结果可进入 checkpoint 提交流程
-  stopped: boolean; // stopped 表示主动取消，不计为分析失败
+  success: boolean; // 分析结果可进入 checkpoint 提交流程
+  stopped: boolean; // 主动取消，不计为分析失败
   input_tokens: number; // token 字段与翻译共享统计口径
   output_tokens: number;
-  glossary_entries: MutableJsonRecord[]; // glossary_entries 是候选快照，去重和 checkpoint 归属由 TaskEngine 处理
-  logs?: WorkUnitLogEntry[]; // logs 只承载结构化诊断文本，不携带数据库对象
+  glossary_entries: MutableJsonRecord[]; // 候选快照，去重和 checkpoint 归属由 TaskEngine 处理
+  logs?: WorkUnitLogEntry[]; // 只承载结构化诊断文本，不携带数据库对象
 }
 
 /**
  * TaskPipeline worker 的返回结构，commit 和 retry 明确分离
  */
 export interface TaskPipelineWorkerResult<TContext, TCommit> {
-  commit_entries: TCommit[]; // commit_entries 是可安全提交的成功结果，提交前仍需核对 run_id
-  retry_contexts: TContext[]; // retry_contexts 保留失败上下文，调度器再按任务类型决定是否重试
+  commit_entries: TCommit[]; // 可安全提交的成功结果，提交前仍需核对 run_id
+  retry_contexts: TContext[]; // 保留失败上下文，调度器再按任务类型决定是否重试
 }

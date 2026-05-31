@@ -10,48 +10,48 @@ export const QUALITY_STATISTICS_RULE_MODES = [
 export type QualityStatisticsRuleMode = (typeof QUALITY_STATISTICS_RULE_MODES)[number];
 
 export type QualityStatisticsRuleInput = {
-  key: string; // key 是统计结果返回给调用方的稳定索引
-  pattern: string; // pattern 是术语、替换规则或文本保护规则的匹配表达式
-  mode: QualityStatisticsRuleMode; // mode 决定匹配原文/译文以及字面量/正则口径
-  regex?: boolean; // regex 仅替换类规则使用，true 时按原始正则编译
-  case_sensitive?: boolean; // case_sensitive 决定是否使用大小写折叠文本视图
+  key: string; // 统计结果返回给调用方的稳定索引
+  pattern: string; // 术语、替换规则或文本保护规则的匹配表达式
+  mode: QualityStatisticsRuleMode; // 决定匹配原文/译文以及字面量/正则口径
+  regex?: boolean; // 仅替换类规则使用，true 时按原始正则编译
+  case_sensitive?: boolean; // 决定是否使用大小写折叠文本视图
 };
 
 export type QualityStatisticsRelationCandidate = {
-  key: string; // key 对应规则结果，用于写回 subset_parents
-  src: string; // src 是参与包含关系判断的源文本
+  key: string; // 对应规则结果，用于写回 subset_parents
+  src: string; // 参与包含关系判断的源文本
 };
 
 export type QualityStatisticsDependencyRuleSnapshot = {
-  key: string; // key 保留规则自身身份，允许同依赖规则映射回原结果
-  dependency_signature: string; // dependency_signature 只表达规则配置，不包含列表位置
-  relation_label: string; // relation_label 是局部关系扩散的可读文本
-  token: string; // token 是去重后的依赖身份，相同配置规则用序号拆分
+  key: string; // 保留规则自身身份，允许同依赖规则映射回原结果
+  dependency_signature: string; // 只表达规则配置，不包含列表位置
+  relation_label: string; // 局部关系扩散的可读文本
+  token: string; // 去重后的依赖身份，相同配置规则用序号拆分
 };
 
 export type QualityStatisticsDependencySnapshot = {
-  text_source: "src" | "dst"; // text_source 变化必须触发全量统计
-  text_signature: string; // text_signature 表示当前项目文本集合
-  dependency_signature: string; // dependency_signature 用于判断统计结果是否仍然可复用
-  snapshot_signature: string; // snapshot_signature 同时包含 key，用于 UI 缓存身份判断
-  rules: QualityStatisticsDependencyRuleSnapshot[]; // rules 是按依赖稳定排序后的规则快照
+  text_source: "src" | "dst"; // 变化必须触发全量统计
+  text_signature: string; // 当前项目文本集合
+  dependency_signature: string; // 用于判断统计结果是否仍然可复用
+  snapshot_signature: string; // 同时包含 key，用于 UI 缓存身份判断
+  rules: QualityStatisticsDependencyRuleSnapshot[]; // 按依赖稳定排序后的规则快照
 };
 
 export type QualityStatisticsTaskInput = {
-  rules: QualityStatisticsRuleInput[]; // rules 是本次需要计算命中数的规则集合
-  srcTexts: string[]; // srcTexts 是按项目条目顺序排列的原文集合
-  dstTexts: string[]; // dstTexts 是按项目条目顺序排列的译文集合
-  relationCandidates: QualityStatisticsRelationCandidate[]; // relationCandidates 是父子关系判断的完整范围
-  relationTargetCandidates?: QualityStatisticsRelationCandidate[]; // relationTargetCandidates 限定局部计划只计算目标关系
+  rules: QualityStatisticsRuleInput[]; // 本次需要计算命中数的规则集合
+  srcTexts: string[]; // 按项目条目顺序排列的原文集合
+  dstTexts: string[]; // 按项目条目顺序排列的译文集合
+  relationCandidates: QualityStatisticsRelationCandidate[]; // 父子关系判断的完整范围
+  relationTargetCandidates?: QualityStatisticsRelationCandidate[]; // 限定局部计划只计算目标关系
 };
 
 type QualityStatisticsTaskResultEntry = {
-  matched_item_count: number; // matched_item_count 统计有至少一次命中的项目条目数量
-  subset_parents: string[]; // subset_parents 记录包含当前术语的更长父级术语
+  matched_item_count: number; // 统计有至少一次命中的项目条目数量
+  subset_parents: string[]; // 记录包含当前术语的更长父级术语
 };
 
 export type QualityStatisticsTaskResult = {
-  results: Record<string, QualityStatisticsTaskResultEntry>; // results 按规则 key 返回统计项
+  results: Record<string, QualityStatisticsTaskResultEntry>; // 按规则 key 返回统计项
 };
 
 // 统计执行器只暴露计算能力，让调度器和测试不用知道 worker 通道细节。
@@ -59,48 +59,48 @@ export type QualityStatisticsTaskExecutor = {
   compute: (input: QualityStatisticsTaskInput) => Promise<QualityStatisticsTaskResult>;
 };
 
-type TextSource = "src" | "dst"; // TextSource 是 worker 内部文本视图选择，不暴露到缓存层
+type TextSource = "src" | "dst"; // worker 内部文本视图选择，不暴露到缓存层
 
 type LiteralRuleBucket = {
-  source: TextSource; // source 决定读取原文还是译文文本数组
-  caseSensitive: boolean; // caseSensitive 决定 pattern 和文本是否走 casefold
-  patternKeys: string[][]; // patternKeys 保存同一 pattern 对应的全部规则 key
-  patterns: string[]; // patterns 是 Aho-Corasick matcher 的去重字面量集合
+  source: TextSource; // 决定读取原文还是译文文本数组
+  caseSensitive: boolean; // 决定 pattern 和文本是否走 casefold
+  patternKeys: string[][]; // 保存同一 pattern 对应的全部规则 key
+  patterns: string[]; // Aho-Corasick matcher 的去重字面量集合
 };
 
 type CompiledRegexRuleBucket = {
-  keys: string[]; // keys 共享同一个已编译正则的规则列表
-  regexp: RegExp; // regexp 是已带 flags 的可执行正则
-  source: TextSource; // source 决定正则作用于原文还是译文
+  keys: string[]; // 共享同一个已编译正则的规则列表
+  regexp: RegExp; // 已带 flags 的可执行正则
+  source: TextSource; // 决定正则作用于原文还是译文
 };
 
 type AhoNode = {
-  next: Map<string, number>; // next 是字符到子节点索引的转移表
-  fail: number; // fail 是失配时回退的节点索引
-  outputs: number[]; // outputs 保存当前节点命中的 pattern 索引
+  next: Map<string, number>; // 字符到子节点索引的转移表
+  fail: number; // 失配时回退的节点索引
+  outputs: number[]; // 保存当前节点命中的 pattern 索引
 };
 
 type AhoMatcher = {
-  nodes: AhoNode[]; // nodes 是紧凑 trie/自动机节点数组
-  patternCount: number; // patternCount 用于分配 per-text 去重数组
+  nodes: AhoNode[]; // 紧凑 trie/自动机节点数组
+  patternCount: number; // 用于分配 per-text 去重数组
 };
 
 type QualityStatisticsTextViews = {
-  getTexts: (source: TextSource, caseSensitive: boolean) => string[]; // getTexts 懒构建大小写折叠文本视图
+  getTexts: (source: TextSource, caseSensitive: boolean) => string[]; // 懒构建大小写折叠文本视图
 };
 
 type RelationSnapshot = {
-  key: string; // key 是 subset_parents 回写目标
-  src: string; // src 保留原始父级术语文本用于 UI 展示
-  srcFold: string; // srcFold 用于大小写无关的包含关系匹配
-  length: number; // length 用于排除自身和更短候选作为父级
-  order: number; // order 保留原始候选顺序，便于未来稳定排序
+  key: string; // subset_parents 回写目标
+  src: string; // 保留原始父级术语文本用于 UI 展示
+  srcFold: string; // 用于大小写无关的包含关系匹配
+  length: number; // 用于排除自身和更短候选作为父级
+  order: number; // 保留原始候选顺序，便于未来稳定排序
 };
 
 type RelationTargetGroup = {
-  pattern: string; // pattern 是按 srcFold 分组后的目标术语文本
-  length: number; // length 是目标术语长度，用来判断父子方向
-  targets: RelationSnapshot[]; // targets 保存同文本的多个规则 key
+  pattern: string; // 按 srcFold 分组后的目标术语文本
+  length: number; // 目标术语长度，用来判断父子方向
+  targets: RelationSnapshot[]; // 保存同文本的多个规则 key
 };
 
 /**

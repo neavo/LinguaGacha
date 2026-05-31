@@ -46,14 +46,14 @@ import { create_text_resolver, resolve_i18n_locale, type TextResolver } from "..
 import type { SystemProxySnapshot } from "../network/system-proxy-dispatcher";
 
 export interface BackendServicesOptions {
-  paths: AppPathService; // paths 是启动阶段解析出的应用根与数据根权威
-  metadata: AppMetadataService; // metadata 只读应用版本和 User-Agent，不参与运行态写入
-  appSettingService: AppSettingService; // appSettingService 是配置文件唯一读写入口
-  database: ProjectDatabase; // database 由 Bootstrap 持有并负责关闭，服务层只组合业务能力
-  logManager: LogManager; // logManager 是 Backend 内部日志和任务日志的唯一汇聚点
-  systemProxySnapshot: SystemProxySnapshot | null; // systemProxySnapshot 是启动期系统代理事实，传给 LLM worker 线程复用
-  openOutputFolder: OutputFolderOpener; // openOutputFolder 是 GUI 专用副作用，CLI 注入空实现
-  workerExecution: BackendWorkerExecution; // workerExecution 是入口层注入的 Backend worker 执行配置
+  paths: AppPathService; // 启动阶段解析出的应用根与数据根权威
+  metadata: AppMetadataService; // 只读应用版本和 User-Agent，不参与运行态写入
+  appSettingService: AppSettingService; // 配置文件唯一读写入口
+  database: ProjectDatabase; // 由 Bootstrap 持有并负责关闭，服务层只组合业务能力
+  logManager: LogManager; // Backend 内部日志和任务日志的唯一汇聚点
+  systemProxySnapshot: SystemProxySnapshot | null; // 启动期系统代理事实，传给 LLM worker 线程复用
+  openOutputFolder: OutputFolderOpener; // GUI 专用副作用，CLI 注入空实现
+  workerExecution: BackendWorkerExecution; // 入口层注入的 Backend worker 执行配置
 }
 
 /**
@@ -157,9 +157,9 @@ export class BackendServices {
   public readonly engine: BackendEngineServices;
   public readonly logs: BackendLogServices;
   public readonly streams: BackendStreamServices;
-  private readonly work_unit_worker_pool: WorkUnitWorkerPool; // work_unit_worker_pool 执行 LLM work unit，生命周期跟随 BackendServices
-  private readonly planning_worker_pool: PlanningWorkerPool; // planning_worker_pool 只承担精确 token 计数，生命周期跟随 BackendServices
-  private started = false; // started 防止事件 hub 被重复 start/stop 打乱订阅者状态
+  private readonly work_unit_worker_pool: WorkUnitWorkerPool; // 执行 LLM work unit，生命周期跟随 BackendServices
+  private readonly planning_worker_pool: PlanningWorkerPool; // 只承担精确 token 计数，生命周期跟随 BackendServices
+  private started = false; // 防止事件 hub 被重复 start/stop 打乱订阅者状态
 
   /**
    * 组合全部 Backend 服务，业务服务之间的依赖只在这里成形。

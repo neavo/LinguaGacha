@@ -59,12 +59,12 @@ export type ProjectChangeSectionPayload = {
   data?: ProjectChangeJsonValue;
 };
 
-// ProjectChangeEvent 是 ApiStreamHub 对 renderer 公开的项目数据变更载荷
+// ApiStreamHub 对 renderer 公开的项目数据变更载荷
 export type ProjectChangeEvent = {
   type: "project.changed";
   eventId: string;
   source: string;
-  projectPath: string; // projectPath 是后端会话确认后的项目身份，renderer 必须用它拦截旧工程事件
+  projectPath: string; // 后端会话确认后的项目身份，renderer 必须用它拦截旧工程事件
   projectRevision: number;
   sectionRevisions: ProjectDataSectionRevisions;
   updatedSections: ProjectDataSection[];

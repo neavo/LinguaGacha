@@ -11,7 +11,7 @@ export type NameFieldExtractionGlossaryQuerySlice = {
   entries?: unknown;
 };
 
-// NameFieldExtractionQueryResponse 只包含提取流程依赖的 item、术语和 revision。
+// 只包含提取流程依赖的 item、术语和 revision。
 export type NameFieldExtractionQueryResponse = {
   projectPath: string;
   sectionRevisions?: NameFieldExtractionSectionRevisions;

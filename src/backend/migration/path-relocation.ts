@@ -10,8 +10,8 @@ import { NativeFs, default_native_fs } from "../../native/native-fs";
  * 不把 `rename` 的平台差异泄露给具体迁移点。
  */
 export class PathRelocation {
-  private readonly log_manager: LogManager; // log_manager 只记录迁移失败诊断
-  private readonly native_fs: NativeFs; // native_fs 统一历史文件复制、删除和目录扫描策略
+  private readonly log_manager: LogManager; // 只记录迁移失败诊断
+  private readonly native_fs: NativeFs; // 统一历史文件复制、删除和目录扫描策略
 
   /**
    * log_manager 只记录迁移失败诊断；调用方仍继续启动，避免旧文件问题阻塞应用。

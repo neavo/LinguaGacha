@@ -38,7 +38,6 @@ const run_modal_progress_toast_mock = vi.fn(
   },
 );
 
-// create_test_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -134,7 +133,6 @@ type TextPreserveRuleEntry = (typeof run_state.quality.text_preserve.entries)[nu
   entry_id?: string;
 };
 
-// apply_quality_write_result 收口测试中的共享步骤，保证断言只关注当前行为。
 /**
  * 写入当前场景的状态变化。
  */
@@ -269,7 +267,6 @@ let current_statistics_cache: QualityRuleStatisticsCacheSnapshot;
 let task_snapshot: { busy: boolean; status: string };
 let project_change_seq = 0;
 
-// create_statistics_cache 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -609,7 +606,6 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
   };
 });
 
-// Probe 收口测试中的共享步骤，保证断言只关注当前行为。
 function Probe(props: {
   on_ready: (state: ReturnType<typeof useTextPreservePageState>) => void;
 }): JSX.Element | null {

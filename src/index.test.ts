@@ -8,7 +8,7 @@ import type { BackendWorkerExecution } from "./backend/worker/worker-execution";
 const original_argv = process.argv;
 const original_exit_code = process.exitCode;
 const original_exec_path_descriptor = Object.getOwnPropertyDescriptor(process, "execPath");
-let exit_codes: Array<string | number | null | undefined> = []; // exit_codes 记录 CLI 分支请求的进程退出码
+let exit_codes: Array<string | number | null | undefined> = []; // 记录 CLI 分支请求的进程退出码
 
 type CLIEntryCall = {
   appRoot: string;

@@ -5,7 +5,7 @@ import * as AppErrors from "../../shared/error";
  * ProjectOperationGate 统一协调任务启动与结构性项目写入的互斥窗口。
  */
 export class ProjectOperationGate {
-  private readonly task_run_state: TaskRunState; // task_run_state 是后台任务 busy 的唯一运行态事实源
+  private readonly task_run_state: TaskRunState; // 后台任务 busy 的唯一运行态事实源
 
   private exclusive_project_write_running = false; // 写入租约覆盖慢准备与提交阶段，避免任务夹入中间态
 

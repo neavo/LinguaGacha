@@ -14,5 +14,5 @@ export type DatabaseJsonValue =
  */
 export interface DatabaseOperation {
   name: string; // 操作名由 服务层固定发出，database 层集中分发和校验
-  args?: Record<string, DatabaseJsonValue>; // args 必须保持值对象形状，避免调用方跨层共享可变数据库对象
+  args?: Record<string, DatabaseJsonValue>; // 必须保持值对象形状，避免调用方跨层共享可变数据库对象
 }

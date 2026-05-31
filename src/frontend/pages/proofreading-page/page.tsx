@@ -18,18 +18,18 @@ const PROOFREADING_SCOPE_LABEL_KEY_BY_SCOPE = {
   dst: "proofreading_page.search.scope.translation",
 } satisfies Record<ProofreadingSearchScope, LocaleKey>;
 
-// PROOFREADING_SEARCH_SCOPES 是搜索栏作用域的稳定顺序，避免菜单渲染散落魔术数组。
+// 搜索栏作用域的稳定顺序，避免菜单渲染散落魔术数组。
 const PROOFREADING_SEARCH_SCOPES: ProofreadingSearchScope[] = ["all", "src", "dst"];
 
-// ProofreadingPage 只组合校对页状态和展示组件，不持有项目事实。
+// 只组合校对页状态和展示组件，不持有项目事实。
 export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const proofreading_page_state = useProofreadingPageState();
-  // search_disabled 只受只读和写入中约束，刷新期间仍允许继续输入并由状态层重建 query。
+  // 只受只读和写入中约束，刷新期间仍允许继续输入并由状态层重建 query。
   const search_disabled = proofreading_page_state.readonly || proofreading_page_state.is_writing;
-  // table_action_disabled 在刷新期间锁住行操作，避免旧 view 上提交批量动作。
+  // 在刷新期间锁住行操作，避免旧 view 上提交批量动作。
   const table_action_disabled = search_disabled || proofreading_page_state.is_refreshing;
-  // filter_disabled 等待校对 query cache ready 后再开放筛选弹窗。
+  // 等待校对 query cache ready 后再开放筛选弹窗。
   const filter_disabled = table_action_disabled || proofreading_page_state.cache_status !== "ready";
   const regex_state_label = proofreading_page_state.is_regex
     ? t("app.toggle.enabled")

@@ -51,7 +51,6 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
   };
 });
 
-// create_project_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -77,7 +76,6 @@ function create_project_item(
   };
 }
 
-// create_task_snapshot 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -108,7 +106,6 @@ function create_task_snapshot(): TaskSnapshot {
   };
 }
 
-// create_hook_fixture 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
 /**
  * 构造当前测试场景的标准数据。
  */
@@ -182,7 +179,6 @@ describe("useProofreadingBatchActions", () => {
     vi.mocked(api_fetch).mockReset();
   });
 
-  // BatchActionProbe 收口测试中的共享步骤，保证断言只关注当前行为。
   function BatchActionProbe(): null {
     latest_state = useProofreadingBatchActions(fixture);
     return null;

@@ -39,7 +39,7 @@ describe("CachedTokenCounter", () => {
   it("长文本不进入 LRU 缓存", () => {
     const { encoder, count_calls } = create_recording_encoder();
     const counter = new CachedTokenCounter(encoder);
-    const long_text = "a".repeat(TOKEN_COUNTER_CACHEABLE_TEXT_MAX_LENGTH + 1); // long_text 刚好越过缓存阈值，证明长文本不会污染 LRU
+    const long_text = "a".repeat(TOKEN_COUNTER_CACHEABLE_TEXT_MAX_LENGTH + 1); // 刚好越过缓存阈值，证明长文本不会污染 LRU
 
     counter.count(long_text);
     counter.count(long_text);
@@ -70,7 +70,7 @@ describe("CachedTokenCounter", () => {
     encoder: TokenCounterEncoder;
     count_calls: (text: string) => number;
   } {
-    const calls: string[] = []; // calls 记录每次真实编码输入，用于验证缓存命中不会再次调用 encoder
+    const calls: string[] = []; // 记录每次真实编码输入，用于验证缓存命中不会再次调用 encoder
     return {
       encoder: {
         encode: (text) => {

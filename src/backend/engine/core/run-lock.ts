@@ -5,9 +5,9 @@ import type { TaskRunHandle } from "./engine-options";
 import * as AppErrors from "../../../shared/error";
 
 interface ActiveRun {
-  run_id: string; // run_id 是当前任务的唯一身份，异步收尾必须凭它判断是否仍然有效
-  task_type: TaskType; // task_type 用于拒绝错误类型的 stop 请求
-  abort_controller: AbortController; // abort_controller 是停止请求向所有等待点传播的唯一对象
+  run_id: string; // 当前任务的唯一身份，异步收尾必须凭它判断是否仍然有效
+  task_type: TaskType; // 用于拒绝错误类型的 stop 请求
+  abort_controller: AbortController; // 停止请求向所有等待点传播的唯一对象
 }
 
 /**

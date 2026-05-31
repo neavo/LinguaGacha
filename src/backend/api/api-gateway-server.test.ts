@@ -27,7 +27,6 @@ describe("ApiGatewayServer", () => {
     }
   });
 
-  // create_project_item 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   function create_project_item(
     overrides: Partial<Record<string, string | number | boolean | null>>,
   ): Record<string, string | number | boolean | null> {

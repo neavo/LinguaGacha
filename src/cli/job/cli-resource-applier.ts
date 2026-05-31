@@ -7,7 +7,7 @@ import { QualityRule, type QualityRuleKind } from "../../domain/quality";
 import type { CLICommandOptions } from "../cli-parser";
 
 type CLIRuleResourceSpec = {
-  resource_path: string | null; // resource_path 为 null 表示该规则在本次 CLI 任务中关闭
+  resource_path: string | null; // 为 null 表示该规则在本次 CLI 任务中关闭
   rule_kind: QualityRuleKind;
   enabled_meta_key: string | null;
   enabled_meta_value: DatabaseJsonValue;

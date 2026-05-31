@@ -13,7 +13,7 @@ type WorkbenchPageProps = {
   is_sidebar_collapsed: boolean;
 };
 
-// WorkbenchPage 只组合工作台页面状态和任务运行态，不创建全局 session 事实。
+// 只组合工作台页面状态和任务运行态，不创建全局 session 事实。
 export function WorkbenchPage(_props: WorkbenchPageProps): JSX.Element {
   const { t } = useI18n();
   const { translation_workbench_task, analysis_workbench_task } = useWorkbenchTasksSession();

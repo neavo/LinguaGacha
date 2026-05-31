@@ -13,12 +13,12 @@ interface TaskLimiterOptions {
 }
 
 export interface TaskLimiterLease {
-  release: () => void; // release 只释放本次 lease，占用方异常重入时保持幂等
-  acquired_at: number; // acquired_at 记录资格发放时刻，供测试和未来诊断读取
-  queued_ms: number; // queued_ms 表达请求在 limiter 内等待了多久，不进入任务运行态
+  release: () => void; // 只释放本次 lease，占用方异常重入时保持幂等
+  acquired_at: number; // 记录资格发放时刻，供测试和未来诊断读取
+  queued_ms: number; // 表达请求在 limiter 内等待了多久，不进入任务运行态
 }
 
-// PendingRequest 是 FIFO 队列中的唯一等待形态，并发等待和 RPM 等待都收敛到这里
+// FIFO 队列中的唯一等待形态，并发等待和 RPM 等待都收敛到这里
 interface PendingRequest {
   resolve: (lease: TaskLimiterLease) => void;
   reject: (error: Error) => void;
@@ -32,29 +32,29 @@ interface PendingRequest {
  * Task Engine 限流器，统一发放 LLM work unit 请求资格并保护外部模型服务节奏。
  */
 export class TaskLimiter {
-  public readonly max_concurrency: number; // max_concurrency 是实际 in-flight LLM work unit 的上限
+  public readonly max_concurrency: number; // 实际 in-flight LLM work unit 的上限
 
-  private readonly rpm_limit: number; // rpm_limit 大于 0 时是唯一请求启动速率来源
+  private readonly rpm_limit: number; // 大于 0 时是唯一请求启动速率来源
 
-  private readonly rpm_permit_interval_ms: number; // rpm_permit_interval_ms 是 RPM 模式下相邻请求资格的最小间隔
+  private readonly rpm_permit_interval_ms: number; // RPM 模式下相邻请求资格的最小间隔
 
-  private readonly hidden_rps_limit: number; // hidden_rps_limit 只在无 RPM 时等于最终并发值，不暴露为配置项
+  private readonly hidden_rps_limit: number; // 只在无 RPM 时等于最终并发值，不暴露为配置项
 
-  private readonly hidden_rps_token_capacity: number; // hidden_rps_token_capacity 允许冷启动填满并发
+  private readonly hidden_rps_token_capacity: number; // 允许冷启动填满并发
 
-  private readonly now_provider: () => number; // now_provider 让限流测试可以注入虚拟时钟
+  private readonly now_provider: () => number; // 让限流测试可以注入虚拟时钟
 
-  private in_use = 0; // in_use 记录已发放但尚未释放的请求资格数量
+  private in_use = 0; // 记录已发放但尚未释放的请求资格数量
 
-  private next_rpm_permit_at: number | null = null; // next_rpm_permit_at 记录下一次 RPM 资格最早可发放时间
+  private next_rpm_permit_at: number | null = null; // 记录下一次 RPM 资格最早可发放时间
 
-  private hidden_rps_tokens: number; // hidden_rps_tokens 是无 RPM 模式下可立即启动的请求资格
+  private hidden_rps_tokens: number; // 无 RPM 模式下可立即启动的请求资格
 
-  private hidden_rps_refilled_at: number; // hidden_rps_refilled_at 是令牌桶最近一次补充时刻
+  private hidden_rps_refilled_at: number; // 令牌桶最近一次补充时刻
 
-  private readonly pending_queue: PendingRequest[] = []; // pending_queue 是所有等待请求的 FIFO 权威队列
+  private readonly pending_queue: PendingRequest[] = []; // 所有等待请求的 FIFO 权威队列
 
-  private rate_timer: ReturnType<typeof setTimeout> | null = null; // rate_timer 是 RPM pacer 与隐藏 RPS 共用的唯一唤醒定时器
+  private rate_timer: ReturnType<typeof setTimeout> | null = null; // RPM pacer 与隐藏 RPS 共用的唯一唤醒定时器
 
   /**
    * 初始化限流参数；TaskLimiter 只接收最终并发值，不再解释 concurrency_limit == 0。
@@ -256,7 +256,7 @@ export class TaskLimiter {
  * LimiterPool 按模型资源键复用 TaskLimiter，让后台任务和单条翻译共享同一外部请求节奏
  */
 export class LimiterPool {
-  private shared_limiter: { key: string; limiter: TaskLimiter } | null = null; // shared_limiter 是当前模型资源池的唯一缓存
+  private shared_limiter: { key: string; limiter: TaskLimiter } | null = null; // 当前模型资源池的唯一缓存
 
   /**
    * 解析当前模型对应 limiter；影响外部资源池的字段变化时自然切换新 limiter
@@ -321,7 +321,7 @@ export function resolve_effective_concurrency_limit(options: {
     return concurrency_limit;
   }
 
-  // rpm_limit 仍由 pacer 控制发起速率；并发等于 RPM 不代表突破每分钟请求数。
+  // 仍由 pacer 控制发起速率；并发等于 RPM 不代表突破每分钟请求数。
   const rpm_limit = Math.trunc(Number(options.rpm_limit ?? 0));
   if (rpm_limit > 0) {
     return rpm_limit;

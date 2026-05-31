@@ -37,16 +37,16 @@ type TransMetadataRecord = Record<string, unknown>;
  * 当前 TRANS writer 需要的稳定行定位，只包含原始 file_key 和行内 row_index。
  */
 export interface TransItemReference {
-  file_key: string; // file_key 对应 .trans project.files 的键
-  row_index: number; // row_index 对应该 file_key 下 data 数组的行号
+  file_key: string; // 对应 .trans project.files 的键
+  row_index: number; // 对应该 file_key 下 data 数组的行号
 }
 
 /**
  * asset 索引内部使用的引用，额外保存旧 item 可匹配的全局行号和源文。
  */
 interface TransAssetRowReference extends TransItemReference {
-  global_row: number; // global_row 对应旧 item.row 的跨文件累计行号
-  src: string; // src 用于确认旧 item 没有被用户改写到其它行
+  global_row: number; // 对应旧 item.row 的跨文件累计行号
+  src: string; // 用于确认旧 item 没有被用户改写到其它行
 }
 
 export const trans_item_metadata_migration: MigrationDescriptor = {

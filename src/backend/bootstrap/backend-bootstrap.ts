@@ -32,15 +32,15 @@ import type {
  * BackendBootstrap 持有 Backend 进程内资源的启动、服务组合和关闭顺序。
  */
 export class BackendBootstrap {
-  private state: BackendBootstrapState = "idle"; // state 防止启动、退出和异常收尾并发重入同一资源链路
-  private readonly options: BackendBootstrapOptions; // options 来自 GUI/CLI 入口层，Bootstrap 只消费宿主注入事实
-  private gateway_server: ApiGatewayServer | null = null; // gateway_server 只在 GUI 模式暴露 `/api/*`
-  private backend_services: BackendServices | null = null; // backend_services 是 API Gateway 与 CLI job 的共享业务组合根
-  private readonly database = new ProjectDatabase(); // database 直接承载 `.lg` 物理 workflow，由 Bootstrap 统一关闭
-  private log_manager: LogManager | null = null; // log_manager 先于服务组合创建，确保启动失败和退出阶段都有统一日志出口
-  private system_proxy_dispatcher: InstalledSystemProxyDispatcher | null = null; // system_proxy_dispatcher 只在入口注入 resolver 时安装
-  private system_proxy_snapshot: SystemProxySnapshot | null = null; // system_proxy_snapshot 会传给 work unit worker 线程复用
-  private system_proxy_startup_notice: SystemProxyStartupNotice = EMPTY_SYSTEM_PROXY_STARTUP_NOTICE; // system_proxy_startup_notice 是给 GUI/CLI 的脱敏启动提示摘要
+  private state: BackendBootstrapState = "idle"; // 防止启动、退出和异常收尾并发重入同一资源链路
+  private readonly options: BackendBootstrapOptions; // 来自 GUI/CLI 入口层，Bootstrap 只消费宿主注入事实
+  private gateway_server: ApiGatewayServer | null = null; // 只在 GUI 模式暴露 `/api/*`
+  private backend_services: BackendServices | null = null; // API Gateway 与 CLI job 的共享业务组合根
+  private readonly database = new ProjectDatabase(); // 直接承载 `.lg` 物理 workflow，由 Bootstrap 统一关闭
+  private log_manager: LogManager | null = null; // 先于服务组合创建，确保启动失败和退出阶段都有统一日志出口
+  private system_proxy_dispatcher: InstalledSystemProxyDispatcher | null = null; // 只在入口注入 resolver 时安装
+  private system_proxy_snapshot: SystemProxySnapshot | null = null; // 会传给 work unit worker 线程复用
+  private system_proxy_startup_notice: SystemProxyStartupNotice = EMPTY_SYSTEM_PROXY_STARTUP_NOTICE; // 给 GUI/CLI 的脱敏启动提示摘要
 
   /**
    * Bootstrap 只接收入口层参数，路径、端口和运行期资源句柄由自身拥有。

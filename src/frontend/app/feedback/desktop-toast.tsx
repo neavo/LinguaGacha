@@ -43,7 +43,7 @@ type DesktopToastApi = {
  * ModalProgressToastTimeoutError 表示模态进度任务超时，页面只按 name/code 做兜底处理。
  */
 export class ModalProgressToastTimeoutError extends Error {
-  public readonly code = "modal_progress_timeout"; // code 是进度 toast 超时的稳定诊断标识
+  public readonly code = "modal_progress_timeout"; // 进度 toast 超时的稳定诊断标识
 
   /**
    * message 使用非展示诊断标识，避免超时异常文本直接进入 toast。

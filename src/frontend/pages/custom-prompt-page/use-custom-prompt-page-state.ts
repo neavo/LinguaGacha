@@ -50,7 +50,6 @@ type PromptQueryPayload = {
 // 自定义提示词页的保存动作固定，任务类型作为独立诊断维度进入提交管线。
 const CUSTOM_PROMPT_SAVE_WRITE: ProjectWriteOperation = "custom-prompt.prompt_save";
 
-// create_empty_prompt_template 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -62,7 +61,6 @@ function create_empty_prompt_template(): CustomPromptTemplate {
   };
 }
 
-// create_empty_confirm_state 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -77,7 +75,6 @@ function create_empty_confirm_state(): CustomPromptConfirmState {
   };
 }
 
-// create_empty_preset_input_state 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -91,7 +88,7 @@ function create_empty_preset_input_state(): CustomPromptPresetInputState {
   };
 }
 
-// normalize_prompt_template 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -105,7 +102,7 @@ function normalize_prompt_template(
   };
 }
 
-// normalize_prompt_text 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -113,7 +110,6 @@ function normalize_prompt_text(text: string): string {
   return text.trim();
 }
 
-// resolve_editor_prompt_text 集中解析运行时决策，避免调用点复制条件判断。
 /**
  * 解析当前场景的最终消费值。
  */
@@ -127,7 +123,6 @@ function resolve_editor_prompt_text(snapshot: PromptSlice, template: CustomPromp
   return normalized_text;
 }
 
-// build_user_preset_virtual_id 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -135,7 +130,7 @@ function build_user_preset_virtual_id(name: string): string {
   return `user:${name}.txt`;
 }
 
-// normalize_preset_name 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
@@ -143,7 +138,6 @@ function normalize_preset_name(name: string): string {
   return name.trim();
 }
 
-// has_casefold_duplicate_preset 集中表达布尔判定口径，避免调用方按局部字段猜测。
 /**
  * 判断当前值是否满足业务条件。
  */
@@ -167,7 +161,6 @@ function has_casefold_duplicate_preset(
   });
 }
 
-// decorate_preset_items 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function decorate_preset_items(
   builtin_presets: CustomPromptPresetItem[],
   user_presets: CustomPromptPresetItem[],
@@ -181,7 +174,6 @@ function decorate_preset_items(
   });
 }
 
-// build_default_preset_update_payload 构造跨层载荷，保证字段形状在一个入口维护。
 /**
  * 构建当前场景的稳定结果。
  */
@@ -194,7 +186,6 @@ function build_default_preset_update_payload(
   };
 }
 
-// useCustomPromptPageState 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export function useCustomPromptPageState(
   variant: CustomPromptVariant,
 ): UseCustomPromptPageStateResult {

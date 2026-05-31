@@ -24,8 +24,8 @@ import {
 } from "./shell/renderer-process-diagnostics";
 
 export interface GuiEntryOptions {
-  desktopBundleDir: string; // desktopBundleDir 是产品入口解析出的桌面 bundle 根目录
-  workerExecution: BackendWorkerExecution; // workerExecution 是 GUI Backend worker 执行配置的唯一入口契约
+  desktopBundleDir: string; // 产品入口解析出的桌面 bundle 根目录
+  workerExecution: BackendWorkerExecution; // GUI Backend worker 执行配置的唯一入口契约
 }
 
 /**

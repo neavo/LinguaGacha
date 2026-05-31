@@ -4,8 +4,8 @@ import type { TaskStartMode, TaskType, TranslationScope } from "../../../domain/
 export type StartTaskCommand =
   | {
       task_type: "translation";
-      mode: TaskStartMode; // mode 只描述本轮启动语义，不参与状态机
-      scope: TranslationScope; // scope 是普通翻译与重翻的唯一分叉
+      mode: TaskStartMode; // 只描述本轮启动语义，不参与状态机
+      scope: TranslationScope; // 普通翻译与重翻的唯一分叉
       expected_section_revisions: Record<string, number>; // revision 锁保护后台任务输入不基于旧快照运行
     }
   | {

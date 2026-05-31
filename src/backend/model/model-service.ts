@@ -51,11 +51,11 @@ const BROWSER_USER_AGENT =
  * 封装模型配置 CRUD；任务执行时由 Task Engine 传入模型快照给本地 LLM adapter
  */
 export class ModelService {
-  private readonly paths: AppPathService; // paths 提供模型内置预设目录
-  private readonly app_setting_service: AppSettingService; // app_setting_service 是模型配置唯一持久化入口
-  private readonly llm_user_agent: string; // llm_user_agent 来自 AppMetadataService，模型测试不再读取 version.txt
-  private readonly log_manager?: Pick<LogManager, "info" | "warning">; // log_manager 只记录模型探测诊断
-  private readonly native_fs: NativeFs; // native_fs 统一读取内置模型预设文件
+  private readonly paths: AppPathService; // 提供模型内置预设目录
+  private readonly app_setting_service: AppSettingService; // 模型配置唯一持久化入口
+  private readonly llm_user_agent: string; // 来自 AppMetadataService，模型测试不再读取 version.txt
+  private readonly log_manager?: Pick<LogManager, "info" | "warning">; // 只记录模型探测诊断
+  private readonly native_fs: NativeFs; // 统一读取内置模型预设文件
 
   /**
    * 初始化 ModelService 依赖，保持外部写入口清晰
