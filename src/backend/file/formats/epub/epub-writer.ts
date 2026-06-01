@@ -21,6 +21,8 @@ const CSS_VERTICAL_WRITING_PATTERN = /[^;\s]*writing-mode\s*:\s*vertical-rl;*/gi
  */
 const EPUB_LEGACY_TAGS = new Set(["p", "h1", "h2", "h3", "h4", "h5", "h6", "div", "li", "td"]);
 
+type EpubDocumentSyntax = "xml" | "html";
+
 /**
  * EPUB 写回器，优先使用 AST 定位，缺少正式 metadata 时回退顺序写回
  */
@@ -236,7 +238,7 @@ export class EpubWriter {
     try {
       const root = this.ast.parse_opf_xml(raw);
       const [applied] = this.apply_items_to_tree(root, name, doc_items, bilingual);
-      const text = applied > 0 ? this.serialize_doc(root) : this.ast.decode_bytes(raw);
+      const text = applied > 0 ? this.serialize_doc(name, root) : this.ast.decode_bytes(raw);
       output_zip.file(name, this.sanitize_opf(text));
     } catch {
       output_zip.file(name, this.sanitize_opf(this.ast.decode_bytes(raw)));
@@ -269,7 +271,7 @@ export class EpubWriter {
           changed = true;
         }
       }
-      output_zip.file(name, changed ? this.serialize_doc(root) : raw);
+      output_zip.file(name, changed ? this.serialize_doc(name, root) : raw);
     } catch {
       output_zip.file(name, raw);
     }
@@ -540,9 +542,12 @@ export class EpubWriter {
       } else if (lower.endsWith(".opf")) {
         output_zip.file(name, this.sanitize_opf(this.ast.decode_bytes(raw)));
       } else if (lower.endsWith(".ncx")) {
-        output_zip.file(name, this.process_legacy_ncx(raw, tag_group.get(name) ?? []));
+        output_zip.file(name, this.process_legacy_ncx(name, raw, tag_group.get(name) ?? []));
       } else if (this.ast.is_html_document_path(name)) {
-        output_zip.file(name, this.process_legacy_html(raw, tag_group.get(name) ?? [], bilingual));
+        output_zip.file(
+          name,
+          this.process_legacy_html(name, raw, tag_group.get(name) ?? [], bilingual),
+        );
       } else {
         output_zip.file(name, raw);
       }
@@ -553,7 +558,7 @@ export class EpubWriter {
   /**
    * NCX 顺序写回按 text 节点顺序消费条目
    */
-  private process_legacy_ncx(raw: Uint8Array, target_items: Item[]): string {
+  private process_legacy_ncx(name: string, raw: Uint8Array, target_items: Item[]): string {
     const root = this.ast.parse_ncx_xml(raw);
     let item_index = 0;
     for (const text_elem of this.ast.find_descendants(root, "text")) {
@@ -566,13 +571,18 @@ export class EpubWriter {
       );
       item_index += 1;
     }
-    return this.serialize_doc(root);
+    return this.serialize_doc(name, root);
   }
 
   /**
    * HTML legacy 写回按块级标签顺序替换，并在双语模式插入原文克隆
    */
-  private process_legacy_html(raw: Uint8Array, target_items: Item[], bilingual: boolean): string {
+  private process_legacy_html(
+    name: string,
+    raw: Uint8Array,
+    target_items: Item[],
+    bilingual: boolean,
+  ): string {
     const root = this.ast.parse_xhtml_or_html(raw);
     const is_nav_page = this.ast.is_nav_page(root);
     let item_index = 0;
@@ -617,7 +627,7 @@ export class EpubWriter {
       }
       item_index += 1;
     }
-    return this.serialize_doc(root);
+    return this.serialize_doc(name, root);
   }
 
   /**
@@ -706,18 +716,121 @@ export class EpubWriter {
   }
 
   /**
-   * 整文档序列化按根节点判断 XML/HTML 模式，避免纯 HTML 被强加 XML 声明
+   * 整文档序列化按 EPUB 内路径和根节点判断 XML/HTML 模式，避免 XHTML 默认命名空间误走 HTML 输出
    */
-  private serialize_doc(root: Element): string {
-    const is_plain_html = root.name.toLowerCase() === "html" && !root.name.includes(":");
-    const rendered = render(root, {
-      decodeEntities: true,
-      emptyAttrs: false,
-      encodeEntities: "utf8",
-      selfClosingTags: true,
-      xmlMode: !is_plain_html,
+  private serialize_doc(name: string, root: Element): string {
+    const syntax = this.resolve_doc_syntax(name, root);
+    const rendered =
+      syntax === "xml"
+        ? this.render_readable_xml_doc(root)
+        : render(root, {
+            decodeEntities: true,
+            emptyAttrs: false,
+            encodeEntities: "utf8",
+            selfClosingTags: true,
+            xmlMode: false,
+          });
+    return syntax === "html" ? rendered : `<?xml version="1.0" encoding="utf-8"?>\n${rendered}`;
+  }
+
+  /**
+   * EPUB 内 XML 扩展名和 XHTML 命名空间都按 XML 输出，普通 HTML 保持 HTML 输出
+   */
+  private resolve_doc_syntax(name: string, root: Element): EpubDocumentSyntax {
+    const lower_name = name.toLowerCase();
+    if (
+      lower_name.endsWith(".opf") ||
+      lower_name.endsWith(".ncx") ||
+      lower_name.endsWith(".xhtml") ||
+      lower_name.endsWith(".xhtm")
+    ) {
+      return "xml";
+    }
+    if (root.attribs["xmlns"] === "http://www.w3.org/1999/xhtml") {
+      return "xml";
+    }
+    if (root.name.includes(":") || (root.name.startsWith("{") && root.name.includes("}"))) {
+      return "xml";
+    }
+    return "html";
+  }
+
+  private render_readable_xml_doc(root: Element): string {
+    const restores: Array<() => void> = [];
+    this.escape_xml_node(root, restores);
+    try {
+      return render(root, {
+        decodeEntities: true,
+        emptyAttrs: false,
+        encodeEntities: false,
+        selfClosingTags: true,
+        xmlMode: true,
+      });
+    } finally {
+      for (const restore of restores.reverse()) {
+        restore();
+      }
+    }
+  }
+
+  private escape_xml_node(node: ChildNode, restores: Array<() => void>): void {
+    if (node instanceof Text) {
+      const original = node.data;
+      const escaped = this.escape_xml_text(original);
+      if (escaped !== original) {
+        node.data = escaped;
+        restores.push(() => {
+          node.data = original;
+        });
+      }
+      return;
+    }
+    if (!(node instanceof Element)) {
+      return;
+    }
+    for (const key of Object.keys(node.attribs)) {
+      const original = node.attribs[key];
+      const escaped = this.escape_xml_attribute(String(original));
+      if (escaped !== original) {
+        node.attribs[key] = escaped;
+        restores.push(() => {
+          node.attribs[key] = original;
+        });
+      }
+    }
+    for (const child of node.children) {
+      this.escape_xml_node(child, restores);
+    }
+  }
+
+  private escape_xml_text(text: string): string {
+    return text.replace(/[&<>\u00a0]/gu, (char) => {
+      if (char === "&") {
+        return "&amp;";
+      }
+      if (char === "<") {
+        return "&lt;";
+      }
+      if (char === ">") {
+        return "&gt;";
+      }
+      return "&#xa0;";
     });
-    return is_plain_html ? rendered : `<?xml version="1.0" encoding="utf-8"?>\n${rendered}`;
+  }
+
+  private escape_xml_attribute(value: string): string {
+    return value.replace(/[&"<\u00a0]/gu, (char) => {
+      if (char === "&") {
+        return "&amp;";
+      }
+      if (char === '"') {
+        return "&quot;";
+      }
+      if (char === "<") {
+        return "&lt;";
+      }
+      return "&#xa0;";
+    });
   }
 
   /**

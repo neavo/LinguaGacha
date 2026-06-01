@@ -101,6 +101,60 @@ async function create_nav_epub_fixture(): Promise<Buffer> {
 }
 
 /**
+ * 构造带真实 NBSP 的 XHTML，覆盖 XML 输出实体合法性
+ */
+async function create_nbsp_xhtml_epub_fixture(): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file(
+    "META-INF/container.xml",
+    `<container><rootfiles><rootfile full-path="OPS/package.opf"/></rootfiles></container>`,
+  );
+  zip.file(
+    "OPS/package.opf",
+    `<package version="3.0" xmlns="http://www.idpf.org/2007/opf">
+      <manifest>
+        <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+      </manifest>
+      <spine>
+        <itemref idref="chapter"/>
+      </spine>
+    </package>`,
+  );
+  zip.file(
+    "OPS/chapter.xhtml",
+    `<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <body><p>\u00a0</p><p>章节</p></body>
+</html>`,
+  );
+  return zip.generateAsync({ compression: "STORE", type: "nodebuffer" });
+}
+
+/**
+ * 构造无 XHTML 命名空间的普通 HTML，覆盖 HTML 输出行为
+ */
+async function create_plain_html_epub_fixture(): Promise<Buffer> {
+  const zip = new JSZip();
+  zip.file(
+    "META-INF/container.xml",
+    `<container><rootfiles><rootfile full-path="OPS/package.opf"/></rootfiles></container>`,
+  );
+  zip.file(
+    "OPS/package.opf",
+    `<package version="3.0">
+      <manifest>
+        <item id="chapter" href="chapter.html" media-type="text/html"/>
+      </manifest>
+      <spine>
+        <itemref idref="chapter"/>
+      </spine>
+    </package>`,
+  );
+  zip.file("OPS/chapter.html", "<html><body><p>章节</p></body></html>");
+  return zip.generateAsync({ compression: "STORE", type: "nodebuffer" });
+}
+
+/**
  * writer 测试只借 AST 生成定位 metadata，断言归属仍聚焦写回产物
  */
 async function create_translated_epub_item(epub_asset: Buffer, dst: string): Promise<Item> {
@@ -110,6 +164,24 @@ async function create_translated_epub_item(epub_asset: Buffer, dst: string): Pro
   }
   return Item.from_json({
     ...item,
+    dst,
+    status: "PROCESSED",
+  });
+}
+
+async function create_translated_epub_item_by_src(
+  epub_asset: Buffer,
+  src: string,
+  dst: string,
+): Promise<Item> {
+  const item = (await new EpubAst().read_from_stream(epub_asset, "book.epub")).find(
+    (candidate) => candidate.src === src,
+  );
+  if (item === undefined) {
+    throw new Error(`EPUB fixture 未生成正文条目：${src}`);
+  }
+  return Item.from_json({
+    ...item.to_json(),
     dst,
     status: "PROCESSED",
   });
@@ -194,6 +266,21 @@ describe("EpubWriter", () => {
     await expect(read_epub_entry_text(fs.readFileSync(out_path))).resolves.toContain("译文😀𠀀");
   });
 
+  it("AST 写回 XHTML 时把真实 NBSP 输出为 XML 合法内容", async () => {
+    const writer = create_writer();
+    const epub_asset = await create_nbsp_xhtml_epub_fixture();
+    const item = await create_translated_epub_item_by_src(epub_asset, "章节", "译文");
+    const out_path = path.join(temp_dir, "nbsp-ast", "book.epub");
+
+    await writer.build_epub(epub_asset, [item], out_path, false);
+
+    const written_text = await read_epub_entry_text(fs.readFileSync(out_path));
+
+    expect(written_text).not.toContain("&nbsp;");
+    expect(written_text).toMatch(/&#x?a0;|&#160;|\u00a0/iu);
+    expect(() => new EpubAst().parse_xml_document(written_text)).not.toThrow();
+  });
+
   it("缺少 AST metadata 时回退 legacy 顺序写回", async () => {
     const writer = create_writer();
     const epub_asset = await create_epub_fixture("章节");
@@ -213,6 +300,43 @@ describe("EpubWriter", () => {
     await writer.build_epub(epub_asset, [legacy_item], out_path, false);
 
     await expect(read_epub_entry_text(fs.readFileSync(out_path))).resolves.toContain("译文");
+  });
+
+  it("legacy 写回 XHTML 时把真实 NBSP 输出为 XML 合法内容", async () => {
+    const writer = create_writer();
+    const epub_asset = await create_nbsp_xhtml_epub_fixture();
+    const out_path = path.join(temp_dir, "nbsp-legacy", "book.epub");
+    const legacy_item = Item.from_json({
+      src: "章节",
+      dst: "译文",
+      row: 0,
+      file_type: "EPUB",
+      file_path: "book.epub",
+      tag: "OPS/chapter.xhtml",
+      status: "PROCESSED",
+    });
+
+    await writer.build_epub(epub_asset, [legacy_item], out_path, false);
+
+    const written_text = await read_epub_entry_text(fs.readFileSync(out_path));
+
+    expect(written_text).not.toContain("&nbsp;");
+    expect(written_text).toMatch(/&#x?a0;|&#160;|\u00a0/iu);
+    expect(() => new EpubAst().parse_xml_document(written_text)).not.toThrow();
+  });
+
+  it("普通 HTML 写回时不强加 XML 声明", async () => {
+    const writer = create_writer();
+    const epub_asset = await create_plain_html_epub_fixture();
+    const item = await create_translated_epub_item_by_src(epub_asset, "章节", "译文");
+    const out_path = path.join(temp_dir, "plain-html", "book.epub");
+
+    await writer.build_epub(epub_asset, [item], out_path, false);
+
+    const written_text = await read_epub_entry_text(fs.readFileSync(out_path), "OPS/chapter.html");
+
+    expect(written_text).toContain("译文");
+    expect(written_text).not.toMatch(/^<\?xml/iu);
   });
 
   it("legacy 写回按字面量保留 replacement 特殊美元序列", async () => {
