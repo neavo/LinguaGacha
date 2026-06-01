@@ -1,13 +1,23 @@
-import { is_hangul_character, is_kana_character, normalize_language_code } from "../language";
+import {
+  is_hangul_character,
+  is_kana_character,
+  normalize_language_code,
+} from "../../domain/language";
 import { check_similarity_by_jaccard } from "../utils/text-tool";
 
-export const TRANSLATION_SIMILARITY_THRESHOLD = 0.8; // 相似度阈值是 Core 响应检查和校对页 warning 的唯一共享事实
+/**
+ * 集中维护当前导出常量，避免调用点散落魔术值。
+ */
+export const TRANSLATION_SIMILARITY_THRESHOLD = 0.8; // 相似度阈值是 Backend 响应检查和校对页 warning 的唯一共享事实
 
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const TRANSLATION_RETRY_REVIEW_THRESHOLD = 2; // 达到该重试次数后交给人工校对，不再继续用任务侧质量检查阻塞提交
 
 export type TranslationResidueFragments = {
-  kana: string[]; // kana 只在源语言为日语时记录译文里的连续假名残留
-  hangeul: string[]; // hangeul 只在源语言为韩语时记录译文里的连续谚文残留
+  kana: string[]; // 只在源语言为日语时记录译文里的连续假名残留
+  hangeul: string[]; // 只在源语言为韩语时记录译文里的连续谚文残留
 };
 
 /**

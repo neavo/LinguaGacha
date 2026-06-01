@@ -51,7 +51,7 @@ docs/
 | Agent 如何协作、编码和交付 | `AGENTS.md` |
 | 系统如何分层、跨层边界、运行时主链路和专题边界地图在哪里 | `docs/ARCHITECTURE.md` |
 | CLI 命令模式、入口分发、命令协议、临时工程、资源注入、输出和平台启动器是什么 | `docs/CLI.md` |
-| 后端公开协议、HTTP / SSE、bootstrap、topic、错误码和 mutation 契约是什么 | `docs/BACKEND.md` |
+| 后端公开协议、HTTP / SSE、bootstrap、topic、错误码和 write 契约是什么 | `docs/BACKEND.md` |
 | 后端领域边界、状态拥有者、唯一写入口、数据库和 `.lg` 物理存储落点是什么 | `docs/BACKEND.md` |
 | Electron、preload、renderer、`ProjectStore`、导航和样式消费边界是什么 | `docs/FRONTEND.md` |
 | 任务起手式、验证矩阵、文档同步和交付自检是什么 | `docs/WORKFLOW.md` |
@@ -95,7 +95,7 @@ docs/
 
 - 保留：后端公开协议、领域边界、状态落点、唯一写入口、数据库与 `.lg` 物理存储规则。
 - 组织：
-  - 公开协议边界：API Gateway、HTTP / SSE、bootstrap、topic、错误码、同步 mutation、响应壳和前端可见事件。
+  - 公开协议边界：API Gateway、HTTP / SSE、bootstrap、topic、错误码、同步 write、响应壳和前端可见事件。
   - 后端领域边界：Electron main 中 project、task、task-engine、task-worker、file、model、service 等领域的职责分界。
   - 状态与写入口：状态拥有者、唯一写入口、跨线程 / 跨模块 / 跨前后端载荷规则。
   - 物理存储落点：SQL、事务、`.lg` asset、migration、Zstd 压缩工具和文件格式分发的固定位置。

@@ -1,18 +1,18 @@
 import type { CLICommandName } from "./cli-parser";
-import type { ApiJsonValue } from "../core/api/api-types";
-import type { TaskRunStatus } from "../core/engine/protocol/task-types";
+import type { ApiJsonValue } from "../backend/api/api-types";
+import type { TaskRunStatus } from "../domain/task";
 import { JsonTool } from "../shared/utils/json-tool";
 
 type NowProvider = () => Date;
 type JsonLineWriter = (line: string) => void;
 
 export interface CLIProgressStats {
-  total: number; // total 是外部协议中的任务总量，不暴露内部 total_line 命名
-  skipped: number; // skipped 保留四卡片形状，CLI 全量任务第一版固定由投影层计算
-  failed: number; // failed 对应任务失败行数
-  completed: number; // completed 对应任务成功处理行数
-  pending: number; // pending 是 total 扣除 skipped / failed / completed 后的剩余量
-  percent: number; // percent 是 completed + skipped 在 total 中的占比，保持 number 而非带百分号文本
+  total: number; // 外部协议中的任务总量，不暴露内部 total_line 命名
+  skipped: number; // 保留四卡片形状，CLI 全量任务第一版固定由读取层计算
+  failed: number; // 对应任务失败行数
+  completed: number; // 对应任务成功处理行数
+  pending: number; // total 扣除 skipped / failed / completed 后的剩余量
+  percent: number; // completed + skipped 在 total 中的占比，保持 number 而非带百分号文本
 }
 
 export interface CLIJsonStatusReporterOptions {
@@ -27,18 +27,18 @@ interface CLIProgressInput {
 }
 
 /**
- * CLI JSONL 状态投影器；它只输出 started / progress / finished 三类机器协议事件。
+ * CLI JSONL 状态状态事件输出器；它只输出 started / progress / finished 三类机器协议事件。
  */
 export class CLIJsonStatusReporter {
-  private readonly command: CLICommandName; // command 是外部协议唯一任务标识，task_type 不再重复输出
-  private readonly now: NowProvider; // now 注入用于测试稳定时间戳，不读取全局时间
-  private readonly write_line: JsonLineWriter; // write_line 是 stdout 的窄写入口，便于 CLI 入口统一替换
-  private started = false; // started 防止异常路径重复写开始事件
-  private finished = false; // finished 保证最终态只写一次，避免任务错误和导出错误双重上报
-  private last_progress_key: string | null = null; // last_progress_key 只记录外部 stats，内部 snapshot revision 不影响协议节流
+  private readonly command: CLICommandName; // 外部协议唯一任务标识，task_type 不再重复输出
+  private readonly now: NowProvider; // 注入用于测试稳定时间戳，不读取全局时间
+  private readonly write_line: JsonLineWriter; // stdout 的窄写入口，便于 CLI 入口统一替换
+  private started = false; // 防止异常路径重复写开始事件
+  private finished = false; // 保证最终态只写一次，避免任务错误和导出错误双重上报
+  private last_progress_key: string | null = null; // 只记录外部 stats，内部 snapshot revision 不影响协议节流
 
   /**
-   * 构造 CLI 状态投影器，调用方负责提供具体输出目标。
+   * 构造 CLI 状态状态事件输出器，调用方负责提供具体输出目标。
    */
   public constructor(options: CLIJsonStatusReporterOptions) {
     this.command = options.command;
@@ -62,7 +62,7 @@ export class CLIJsonStatusReporter {
   }
 
   /**
-   * 从任务快照投影四卡片进度；外部 stats 未变化时不重复刷屏。
+   * 从任务快照组装四卡片进度；外部 stats 未变化时不重复刷屏。
    */
   public emit_progress(snapshot: CLIProgressInput): void {
     const stats = build_cli_progress_stats(snapshot.progress as Record<string, ApiJsonValue>);
@@ -135,7 +135,7 @@ function is_empty_stats(stats: CLIProgressStats): boolean {
 }
 
 /**
- * 将内部 TaskProgress 投影为稳定四卡片 stats；外部字段不跟随内部 total_line 等命名变化。
+ * 将内部 TaskProgress 转换为稳定四卡片 stats；外部字段不跟随内部 total_line 等命名变化。
  */
 export function build_cli_progress_stats(progress: Record<string, ApiJsonValue>): CLIProgressStats {
   const total = Math.max(0, read_progress_count(progress["total_line"]));

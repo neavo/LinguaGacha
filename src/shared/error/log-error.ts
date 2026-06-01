@@ -36,25 +36,25 @@ export interface LogError {
 }
 
 export interface LogErrorPathIdentity extends LogErrorContext {
-  basename: string; // basename 只暴露路径末段，供定位文件类型或工程名
-  pathHash: string; // pathHash 用稳定摘要关联同一路径，不泄露完整目录
-  length: number; // length 辅助判断空路径、截断和路径形态
+  basename: string; // 只暴露路径末段，供定位文件类型或工程名
+  pathHash: string; // 用稳定摘要关联同一路径，不泄露完整目录
+  length: number; // 辅助判断空路径、截断和路径形态
 }
 
 export interface LogErrorUrlIdentity extends LogErrorContext {
-  scheme: string; // scheme 只保留协议类别，不暴露 URL 路径或查询参数
-  hostHash: string; // hostHash 用稳定摘要关联同一宿主，不泄露 host / port 原文
-  pathBasename: string; // pathBasename 只暴露 URL path 的末段
-  hrefHash: string; // hrefHash 用于关联完整 URL 身份，不记录原始 href
-  length: number; // length 辅助判断空 URL、截断和形态变化
+  scheme: string; // 只保留协议类别，不暴露 URL 路径或查询参数
+  hostHash: string; // 用稳定摘要关联同一宿主，不泄露 host / port 原文
+  pathBasename: string; // 只暴露 URL path 的末段
+  hrefHash: string; // 用于关联完整 URL 身份，不记录原始 href
+  length: number; // 辅助判断空 URL、截断和形态变化
 }
 
-export interface AppErrorLogProjection {
+export interface AppErrorLogSnapshot {
   level: Extract<LogLevel, "debug" | "warning" | "error" | "fatal">;
   error: LogError;
 }
 
-export interface AppErrorLogProjectionOptions {
+export interface AppErrorLogSnapshotOptions {
   fatal?: boolean;
   context?: AppErrorDiagnosticContext;
 }
@@ -163,12 +163,12 @@ export function summarize_log_error_url(raw_url: string): LogErrorUrlIdentity {
 }
 
 /**
- * 日志投影保留 AppError 的公开 code/details 与 cause 链，但不依赖 Core LogManager 实例。
+ * 日志快照保留 AppError 的公开 code/details 与 cause 链，但不依赖 Backend LogManager 实例。
  */
-export function to_app_error_log_projection(
+export function to_app_error_log_snapshot(
   error: AppError,
-  options: AppErrorLogProjectionOptions = {},
-): AppErrorLogProjection {
+  options: AppErrorLogSnapshotOptions = {},
+): AppErrorLogSnapshot {
   return {
     level: options.fatal === true ? "fatal" : resolve_app_error_log_level(error),
     error: to_log_error(error, {
@@ -181,12 +181,12 @@ export function to_app_error_log_projection(
   };
 }
 
-// is_log_error_like 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 function is_log_error_like(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// build_log_error_from_error 封装原生 Error 读取顺序，避免被普通对象快照分支提前吞掉 cause 链。
+// 封装原生 Error 读取顺序，避免被普通对象快照分支提前吞掉 cause 链。
 function build_log_error_from_error(error: Error, context: LogErrorContextInput): LogError {
   const split = split_message_and_stack(error.message, error.stack);
   const cause_chain = collect_log_error_cause_chain(error);
@@ -199,7 +199,6 @@ function build_log_error_from_error(error: Error, context: LogErrorContextInput)
   });
 }
 
-// merge_log_error_context 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function merge_log_error_context(error: LogError, context: LogErrorContextInput): LogError {
   const extra_context = sanitize_log_error_context(context);
   if (Object.keys(extra_context).length === 0) {
@@ -214,7 +213,7 @@ function merge_log_error_context(error: LogError, context: LogErrorContextInput)
   });
 }
 
-// normalize_optional_context 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_optional_context(value: unknown): { context?: LogErrorContext } {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return {};
@@ -223,7 +222,6 @@ function normalize_optional_context(value: unknown): { context?: LogErrorContext
   return Object.keys(context).length === 0 ? {} : { context };
 }
 
-// prune_empty_log_error 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function prune_empty_log_error(payload: LogError): LogError {
   const message = payload.message.trim() === "" ? "unknown_error" : payload.message;
   return {
@@ -239,7 +237,6 @@ function prune_empty_log_error(payload: LogError): LogError {
   };
 }
 
-// split_message_and_stack 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function split_message_and_stack(
   message: string,
   stack: string | undefined,
@@ -267,7 +264,6 @@ function split_message_and_stack(
   };
 }
 
-// collect_log_error_cause_chain 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function collect_log_error_cause_chain(error: Error): LogErrorCause[] {
   const chain: LogErrorCause[] = [];
   let current: unknown = error.cause;
@@ -295,7 +291,7 @@ function collect_log_error_cause_chain(error: Error): LogErrorCause[] {
   return chain;
 }
 
-// normalize_cause_chain 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_cause_chain(value: unknown): LogErrorCause[] {
   if (!Array.isArray(value)) {
     return [];
@@ -324,7 +320,6 @@ function normalize_cause_chain(value: unknown): LogErrorCause[] {
   });
 }
 
-// sanitize_json_record 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function sanitize_json_record(record: Record<string, unknown>, depth: number): LogErrorContext {
   const entries = Object.entries(record).slice(0, MAX_LOG_ERROR_OBJECT_KEYS);
   return Object.fromEntries(
@@ -332,7 +327,6 @@ function sanitize_json_record(record: Record<string, unknown>, depth: number): L
   ) as LogErrorContext;
 }
 
-// sanitize_value 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function sanitize_value(value: unknown, depth: number): ApiJsonValue {
   if (value === null) {
     return null;
@@ -361,7 +355,7 @@ function sanitize_value(value: unknown, depth: number): ApiJsonValue {
   return String(value);
 }
 
-// parse_log_error_url 收口外部文本解析，解析失败时由这里决定降级口径。
+// 收口外部文本解析，解析失败时由这里决定降级口径。
 function parse_log_error_url(value: string): URL | null {
   try {
     return new URL(value);
@@ -370,7 +364,6 @@ function parse_log_error_url(value: string): URL | null {
   }
 }
 
-// build_log_error_identity_hash 构造跨层载荷，保证字段形状在一个入口维护。
 function build_log_error_identity_hash(value: string): string {
   let hash = LOG_ERROR_PATH_HASH_OFFSET;
   for (let index = 0; index < value.length; index += 1) {
@@ -380,12 +373,11 @@ function build_log_error_identity_hash(value: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-// normalize_log_error_text 在边界处归一化输入，避免下游再处理坏载荷分支。
+// 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_log_error_text(value: string): string {
   return value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
 }
 
-// trim_log_error_text 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 function trim_log_error_text(value: string, limit: number): string {
   return value.length > limit ? `${value.slice(0, limit)}...` : value;
 }

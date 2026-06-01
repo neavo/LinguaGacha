@@ -801,8 +801,8 @@ async def handle_chat_completions(
         rng = random.Random()
     else:
         digest = hashlib.blake2b(request.body, digest_size=8).digest()
-        derived = seed ^ int.from_bytes(digest, byteorder="big", signed=False)
-        rng = random.Random(derived)
+        rng_seed = seed ^ int.from_bytes(digest, byteorder="big", signed=False)
+        rng = random.Random(rng_seed)
 
     model = str(data.get("model") or "mock-llm")
     messages = data.get("messages")

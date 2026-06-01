@@ -16,11 +16,19 @@ import {
   IPC_CHANNEL_QUIT_APP,
   IPC_CHANNEL_RENDERER_DIAGNOSTICS,
   IPC_CHANNEL_TITLE_BAR_THEME,
-} from "../ipc/ipc-contract";
+  IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS,
+  IPC_CHANNEL_UPDATE_DOWNLOAD_RELEASE,
+  IPC_CHANNEL_UPDATE_LAUNCH_BERSERKER,
+} from "../gui-ipc-contract";
 import { resolve_external_url } from "./external-url-policy";
 import {
   type DesktopPathPickResult,
   type DesktopRendererDiagnosticsPayload,
+  type DesktopUpdateDownloadIpcRequest,
+  type DesktopUpdateDownloadProgress,
+  type DesktopUpdateDownloadResult,
+  type DesktopUpdateLaunchRequest,
+  type DesktopUpdateLaunchResult,
   type ThemeMode,
 } from "../bridge/bridge-types";
 import { type LogWindowHost } from "./log-window-host";
@@ -36,6 +44,14 @@ export type DesktopIpcHandlerOptions = {
     payload: DesktopRendererDiagnosticsPayload,
   ) => void; // 诊断载荷由 main 注册器统一清洗，IPC 层只保持 sender 归属
   readAppLanguage: () => unknown; // 原生系统对话框文案必须跟随当前应用语言
+  updateService: {
+    download_release: (
+      request: DesktopUpdateDownloadIpcRequest,
+      report_progress: (progress: DesktopUpdateDownloadProgress) => void,
+    ) => Promise<DesktopUpdateDownloadResult>;
+    launch_berserker: (request: DesktopUpdateLaunchRequest) => Promise<DesktopUpdateLaunchResult>;
+  };
+  quitAfterBackendShutdown: (exit_code: number) => Promise<void>;
 };
 
 /**
@@ -71,7 +87,27 @@ export function register_desktop_ipc_handlers(options: DesktopIpcHandlerOptions)
     await shell.openExternal(resolve_external_url(url));
   });
 
-  // 新建项目源文件允许多选，具体格式校验留给 Core / renderer 流程
+  // 更新包下载和进度只在 main 执行，renderer 通过 request_id 消费自身那一次进度。
+  ipcMain.handle(
+    IPC_CHANNEL_UPDATE_DOWNLOAD_RELEASE,
+    async (event, request: DesktopUpdateDownloadIpcRequest) => {
+      return await options.updateService.download_release(request, (progress) => {
+        event.sender.send(IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS, progress);
+      });
+    },
+  );
+
+  // 外部更新器启动成功后进入统一 Backend 收尾路径。
+  ipcMain.handle(
+    IPC_CHANNEL_UPDATE_LAUNCH_BERSERKER,
+    async (_event, request: DesktopUpdateLaunchRequest) => {
+      const result = await options.updateService.launch_berserker(request);
+      void options.quitAfterBackendShutdown(0);
+      return result;
+    },
+  );
+
+  // 新建项目源文件允许多选，具体格式校验留给 Backend / renderer 流程
   ipcMain.handle(IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH, async () => {
     return pick_open_path(options.getMainWindow(), {
       properties: ["openFile", "multiSelections"],
@@ -179,7 +215,7 @@ function build_project_file_filters(t: TextResolver): Electron.FileFilter[] {
 }
 
 /**
- * 术语导入只开放当前 Core 能稳定解析的结构化格式。
+ * 术语导入只开放当前 Backend 能稳定解析的结构化格式。
  */
 function build_glossary_import_file_filters(t: TextResolver): Electron.FileFilter[] {
   return [

@@ -3,8 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 // electron mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const electron_mock = vi.hoisted(() => {
   return {
-    crash_reporter_start: vi.fn(), // crash_reporter_start 记录 Crashpad 初始化参数
-    crash_dump_directory: "C:/Users/test/AppData/Roaming/LinguaGacha/Crashpad", // crash_dump_directory 模拟 Electron 本地崩溃目录
+    crash_reporter_start: vi.fn(), // 记录 Crashpad 初始化参数
+    crash_dump_directory: "C:/Users/test/AppData/Roaming/LinguaGacha/Crashpad", // 模拟 Electron 本地崩溃目录
     process_metrics: [
       {
         pid: 4242,
@@ -43,7 +43,7 @@ vi.mock("electron", () => {
   };
 });
 
-type Listener = (...args: unknown[]) => void; // Listener 模拟 BrowserWindow 一次性事件回调
+type Listener = (...args: unknown[]) => void; // 模拟 BrowserWindow 一次性事件回调
 
 /**
  * 模拟 Electron WebContents 的崩溃诊断可读字段。
@@ -84,8 +84,8 @@ class FakeWebContents {
  * 模拟 BrowserWindow 的 webContents 与 closed 一次性事件。
  */
 class FakeBrowserWindow {
-  public readonly webContents: FakeWebContents; // webContents 是诊断注册器读取窗口状态的公开宿主对象
-  private readonly once_listeners = new Map<string, Listener[]>(); // once_listeners 保存 closed 等一次性事件
+  public readonly webContents: FakeWebContents; // 诊断注册器读取窗口状态的公开宿主对象
+  private readonly once_listeners = new Map<string, Listener[]>(); // 保存 closed 等一次性事件
 
   /**
    * 初始化测试窗口和它持有的 webContents。

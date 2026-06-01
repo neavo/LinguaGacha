@@ -1,0 +1,301 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { ProjectDatabase } from "../database/database-operations";
+import type { LogManager } from "../log/log-manager";
+import { default_native_fs } from "../../native/native-fs";
+import type { AppSettingService } from "../app/app-setting-service";
+import { ProjectSessionState } from "../project/project-session";
+import {
+  TranslationFileExportService,
+  type OutputFolderOpener,
+} from "./translation-file-export-service";
+
+let temp_dir = ""; // 每个用例独占导出目录，避免文件写回断言互相污染
+
+beforeEach(() => {
+  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-file-export-"));
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  fs.rmSync(temp_dir, { recursive: true, force: true });
+});
+
+/**
+ * 导出测试使用固定设置，便于断言目标路径和日志语言
+ */
+function create_setting_service(output_folder_open_on_finish = false): AppSettingService {
+  return {
+    read_setting: () => ({
+      source_language: "JA",
+      target_language: "ZH",
+      app_language: "ZH",
+      output_folder_open_on_finish,
+      deduplication_in_bilingual: true,
+      write_translated_name_fields_to_file: true,
+    }),
+  } as unknown as AppSettingService;
+}
+
+interface CollectedLogEntry {
+  level: "info" | "error";
+  message: string;
+  payload: Parameters<LogManager["info"]>[1];
+}
+
+interface LogCollector extends Pick<LogManager, "info" | "error"> {
+  entries: CollectedLogEntry[];
+}
+
+/**
+ * 日志替身只记录公开日志事件，避免测试耦合到 vi mock 调用结构
+ */
+function create_log_collector(): LogCollector {
+  const entries: CollectedLogEntry[] = [];
+  return {
+    entries,
+    info: (message, payload = {}) => {
+      entries.push({ level: "info", message, payload });
+    },
+    error: (message, payload = {}) => {
+      entries.push({ level: "error", message, payload });
+    },
+  };
+}
+
+function create_output_folder_opener(error?: Error): {
+  opened_paths: string[];
+  open: OutputFolderOpener;
+} {
+  const opened_paths: string[] = [];
+  return {
+    opened_paths,
+    open: async (output_path) => {
+      opened_paths.push(output_path);
+      if (error !== undefined) {
+        throw error;
+      }
+    },
+  };
+}
+
+describe("TranslationFileExportService", () => {
+  it("普通导出补齐同文件重复译文并写出 TXT 格式文件", async () => {
+    const project_path = path.join(temp_dir, "demo.lg");
+    const session_state = new ProjectSessionState();
+    session_state.mark_loaded(project_path);
+    const database = {
+      execute: () => [
+        {
+          id: 1,
+          src: "原文",
+          dst: "译文",
+          status: "PROCESSED",
+          file_type: "TXT",
+          file_path: "script.txt",
+          row: 0,
+        },
+        {
+          id: 2,
+          src: "原文",
+          dst: "",
+          status: "DUPLICATED",
+          file_type: "TXT",
+          file_path: "script.txt",
+          row: 1,
+        },
+      ],
+      read_asset_content: () => null,
+    } as unknown as ProjectDatabase;
+    const log_collector = create_log_collector();
+    const output_folder_opener = create_output_folder_opener();
+    const service = new TranslationFileExportService(
+      database,
+      create_setting_service(),
+      session_state,
+      output_folder_opener.open,
+      log_collector,
+    );
+
+    await expect(service.export_files()).resolves.toEqual({
+      accepted: true,
+      output_path: path.join(temp_dir, "demo_译文"),
+    });
+    expect(fs.readFileSync(path.join(temp_dir, "demo_译文", "script.txt"), "utf-8")).toBe(
+      "译文\n译文",
+    );
+    expect(log_collector.entries.map(({ level, message }) => [level, message])).toEqual([
+      ["info", "生成译文中 …"],
+      ["info", ""],
+      ["info", `译文已保存至 ${path.join(temp_dir, "demo_译文")} …`],
+      ["info", ""],
+    ]);
+    expect(output_folder_opener.opened_paths).toEqual([]);
+  });
+
+  it("启用设置后导出成功会打开译文输出目录", async () => {
+    const project_path = path.join(temp_dir, "demo.lg");
+    const session_state = new ProjectSessionState();
+    session_state.mark_loaded(project_path);
+    const database = {
+      execute: () => [
+        {
+          id: 1,
+          src: "原文",
+          dst: "译文",
+          status: "PROCESSED",
+          file_type: "TXT",
+          file_path: "script.txt",
+          row: 0,
+        },
+      ],
+      read_asset_content: () => null,
+    } as unknown as ProjectDatabase;
+    const output_folder_opener = create_output_folder_opener();
+    const service = new TranslationFileExportService(
+      database,
+      create_setting_service(true),
+      session_state,
+      output_folder_opener.open,
+      create_log_collector(),
+    );
+
+    await expect(service.export_files()).resolves.toEqual({
+      accepted: true,
+      output_path: path.join(temp_dir, "demo_译文"),
+    });
+
+    expect(output_folder_opener.opened_paths).toEqual([path.join(temp_dir, "demo_译文")]);
+  });
+
+  it("CLI 导出写入指定 output-dir 并固定生成 bilingual 子目录", async () => {
+    const project_path = path.join(temp_dir, "demo.lg");
+    const output_dir = path.join(temp_dir, "cli-out");
+    const session_state = new ProjectSessionState();
+    session_state.mark_loaded(project_path);
+    const database = {
+      execute: () => [
+        {
+          id: 1,
+          src: "原文",
+          dst: "译文",
+          status: "PROCESSED",
+          file_type: "TXT",
+          file_path: "script.txt",
+          row: 0,
+        },
+      ],
+      read_asset_content: () => null,
+    } as unknown as ProjectDatabase;
+    const output_folder_opener = create_output_folder_opener();
+    const service = new TranslationFileExportService(
+      database,
+      create_setting_service(true),
+      session_state,
+      output_folder_opener.open,
+      create_log_collector(),
+    );
+
+    await expect(service.export_files_to_directory(output_dir)).resolves.toEqual({
+      accepted: true,
+      output_path: output_dir,
+      bilingual_output_path: path.join(output_dir, "bilingual"),
+    });
+
+    expect(fs.readFileSync(path.join(output_dir, "script.txt"), "utf-8")).toBe("译文");
+    expect(fs.existsSync(path.join(output_dir, "bilingual", "script.txt"))).toBe(true);
+    expect(output_folder_opener.opened_paths).toEqual([]);
+  });
+
+  it("打开输出目录失败不改变导出成功结果并记录诊断日志", async () => {
+    const project_path = path.join(temp_dir, "demo.lg");
+    const session_state = new ProjectSessionState();
+    session_state.mark_loaded(project_path);
+    const database = {
+      execute: () => [
+        {
+          id: 1,
+          src: "原文",
+          dst: "译文",
+          status: "PROCESSED",
+          file_type: "TXT",
+          file_path: "script.txt",
+          row: 0,
+        },
+      ],
+      read_asset_content: () => null,
+    } as unknown as ProjectDatabase;
+    const log_collector = create_log_collector();
+    const output_folder_opener = create_output_folder_opener(new Error("open failed"));
+    const service = new TranslationFileExportService(
+      database,
+      create_setting_service(true),
+      session_state,
+      output_folder_opener.open,
+      log_collector,
+    );
+
+    await expect(service.export_files()).resolves.toEqual({
+      accepted: true,
+      output_path: path.join(temp_dir, "demo_译文"),
+    });
+
+    expect(log_collector.entries.map(({ level, message }) => [level, message])).toContainEqual([
+      "error",
+      "打开输出文件夹失败 …",
+    ]);
+    expect(log_collector.entries.at(-1)?.payload).toEqual(
+      expect.objectContaining({
+        source: "file-export",
+        error: expect.objectContaining({ message: "open failed" }),
+      }),
+    );
+  });
+
+  it("写文件失败时按旧导出口径记录文件写入和导出失败日志", async () => {
+    const project_path = path.join(temp_dir, "demo.lg");
+    const session_state = new ProjectSessionState();
+    session_state.mark_loaded(project_path);
+    const database = {
+      execute: () => [
+        {
+          id: 1,
+          src: "原文",
+          dst: "译文",
+          status: "PROCESSED",
+          file_type: "TXT",
+          file_path: "script.txt",
+          row: 0,
+        },
+      ],
+      read_asset_content: () => null,
+    } as unknown as ProjectDatabase;
+    const log_collector = create_log_collector();
+    vi.spyOn(default_native_fs, "write_file").mockRejectedValue(new Error("boom"));
+    const service = new TranslationFileExportService(
+      database,
+      create_setting_service(),
+      session_state,
+      create_output_folder_opener().open,
+      log_collector,
+    );
+
+    await expect(service.export_files()).rejects.toThrow("boom");
+
+    const error_entries = log_collector.entries.filter((entry) => entry.level === "error");
+    expect(error_entries.map(({ message }) => message)).toEqual([
+      "文件写入失败 …",
+      "译文生成失败 …",
+    ]);
+    expect(error_entries[0]?.payload).toEqual(
+      expect.objectContaining({
+        source: "file-export",
+        error: expect.objectContaining({ message: "boom" }),
+      }),
+    );
+  });
+});

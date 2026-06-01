@@ -1,4 +1,4 @@
-import { LANGUAGE_DISPLAY_NAMES } from "../../../language";
+import { LANGUAGE_DISPLAY_NAMES } from "../../../../domain/language";
 
 export const zh_cn_app = {
   aria: {
@@ -45,7 +45,9 @@ export const zh_cn_app = {
     duplicate_description: "检测到 {COUNT} 条重复规则，请选择处理方式 …?",
   },
   update: {
-    toast: "发现新版本，点击左下角更新入口下载新版本 …",
+    confirm_description: "检查到 LinguaGacha v{VERSION}，是否下载更新 …?",
+    restart_confirm: "重启并更新",
+    launching: "处理中 …",
   },
   system_proxy: {
     startup_notice: "检查到系统代理设置 - {PROXY}",
@@ -77,7 +79,7 @@ export const zh_cn_app = {
     status: "Ciallo～(∠・ω< )⌒✮",
     status_tooltip: "打开 GitHub 项目主页",
     update_available: "点击下载新版本 …!",
-    update_available_tooltip: "打开 GitHub Release 页面",
+    update_available_tooltip: "打开更新确认框",
   },
   prompt: {
     builder_control_character_samples: "控制字符示例：",
@@ -210,14 +212,14 @@ export const zh_cn_app = {
       },
     },
     desktop: {
-      missing_core_api_base_url: {
-        message: "Core API 地址未配置 …",
+      missing_backend_api_base_url: {
+        message: "Backend API 地址未配置 …",
       },
-      core_api_unavailable: {
-        message: "Core API 不可用 …",
+      backend_api_unavailable: {
+        message: "Backend API 不可用 …",
       },
-      core_metadata_unavailable: {
-        message: "Core 元信息不可用 …",
+      backend_metadata_unavailable: {
+        message: "Backend 元信息不可用 …",
       },
       event_stream_failed: {
         message: "事件流连接失败 …",
@@ -250,7 +252,7 @@ export const zh_cn_app = {
     },
     lifecycle: {
       app_start_failed: "LinguaGacha 启动失败 …",
-      core_gateway_start_failed: "Core / Gateway 启动失败 …",
+      backend_gateway_start_failed: "Backend / Gateway 启动失败 …",
       main_fatal_uncaught: "Electron main 捕获到未处理致命异常 …",
     },
     migration: {

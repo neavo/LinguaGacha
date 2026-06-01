@@ -15,7 +15,7 @@ describe("检查工具核心", () => {
   it("递归收集文件时跳过构建产物和依赖目录", () => {
     const project_root = create_temp_project();
     try {
-      write_project_file(project_root, "src/core/index.ts", "");
+      write_project_file(project_root, "src/backend/index.ts", "");
       write_project_file(project_root, "build/generated.ts", "");
       write_project_file(project_root, "node_modules/pkg/index.ts", "");
 
@@ -23,7 +23,7 @@ describe("检查工具核心", () => {
         return path.relative(project_root, file_path).replaceAll(path.sep, "/");
       });
 
-      expect(files).toEqual(["src/core/index.ts"]);
+      expect(files).toEqual(["src/backend/index.ts"]);
     } finally {
       rmSync(project_root, { force: true, recursive: true });
     }
@@ -33,17 +33,17 @@ describe("检查工具核心", () => {
     const specifiers = find_import_specifiers(`
       import type { Foo } from "./foo";
       import "./side-effect";
-      const mod = await import("@/module");
+      const mod = await import("@frontend/module");
       export { Bar } from "../bar";
     `).map((entry) => entry.specifier);
 
-    expect(specifiers).toEqual(["./foo", "./side-effect", "@/module", "../bar"]);
+    expect(specifiers).toEqual(["./foo", "./side-effect", "@frontend/module", "../bar"]);
   });
 
   it("执行规则并格式化带行号的错误", () => {
     const project_root = create_temp_project();
     try {
-      write_project_file(project_root, "src/core/index.ts", "bad_call();\n");
+      write_project_file(project_root, "src/backend/index.ts", "bad_call();\n");
 
       const errors = run_boundary_rules({
         project_root,
@@ -63,7 +63,7 @@ describe("检查工具核心", () => {
       });
 
       expect(format_boundary_errors("示例检查", errors)).toContain(
-        "[示例规则] src/core/index.ts:1 命中坏调用",
+        "[示例规则] src/backend/index.ts:1 命中坏调用",
       );
     } finally {
       rmSync(project_root, { force: true, recursive: true });

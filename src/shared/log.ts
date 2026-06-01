@@ -67,7 +67,7 @@ export function is_task_visible_log_level(value: unknown): value is TaskVisibleL
   return TASK_VISIBLE_LOG_LEVEL_SET.has(value as TaskVisibleLogLevel);
 }
 
-// format_log_readable_text 是日志人类可读出口的共享模板。
+// 日志人类可读出口的共享模板。
 export function format_log_readable_text(detail: Pick<LogDetail, "message" | "error">): string {
   return [detail.message, detail.error?.message, detail.error?.stack]
     .filter((value): value is string => value !== undefined && value.trim() !== "")

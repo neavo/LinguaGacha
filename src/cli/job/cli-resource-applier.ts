@@ -1,13 +1,13 @@
-import type { CoreServices } from "../../core/bootstrap/core-services";
-import type { DatabaseJsonValue, DatabaseOperation } from "../../core/database/database-types";
-import { load_quality_rule_entries_from_file } from "../../core/service/quality-rule-file-io";
+import type { BackendServices } from "../../backend/bootstrap/backend-services";
+import type { DatabaseJsonValue, DatabaseOperation } from "../../backend/database/database-types";
+import { load_quality_rule_entries_from_file } from "../../backend/quality/quality-rule-file-io";
 import { default_native_fs } from "../../native/native-fs";
-import { Prompt } from "../../base/prompt";
-import { QualityRule, type QualityRuleKind } from "../../base/quality";
+import { Prompt } from "../../domain/prompt";
+import { QualityRule, type QualityRuleKind } from "../../domain/quality";
 import type { CLICommandOptions } from "../cli-parser";
 
 type CLIRuleResourceSpec = {
-  resource_path: string | null; // resource_path 为 null 表示该规则在本次 CLI 任务中关闭
+  resource_path: string | null; // 为 null 表示该规则在本次 CLI 任务中关闭
   rule_kind: QualityRuleKind;
   enabled_meta_key: string | null;
   enabled_meta_value: DatabaseJsonValue;
@@ -17,7 +17,7 @@ type CLIRuleResourceSpec = {
  * 将 CLI 外部资源写入当前临时工程，保证 CLI 不读取 GUI 默认预设。
  */
 export async function apply_cli_resources(
-  core_services: CoreServices,
+  backend_services: BackendServices,
   command: CLICommandOptions,
   project_path: string,
 ): Promise<void> {
@@ -25,7 +25,7 @@ export async function apply_cli_resources(
   if (operations.length === 0) {
     return;
   }
-  core_services.database.execute_transaction(operations);
+  await backend_services.commit_cli_resource_operations(project_path, operations);
 }
 
 /**

@@ -7,12 +7,12 @@ import {
   RuntimeCapabilityMissingError,
   RevisionConflictError,
   to_api_error_payload,
-  to_app_error_log_projection,
+  to_app_error_log_snapshot,
 } from ".";
 import { create_text_resolver } from "../i18n";
 
 describe("shared/error", () => {
-  it("API 投影只暴露稳定 code、message_key 和安全 details", () => {
+  it("API 公开形状只暴露稳定 code、message_key 和安全 details", () => {
     const error = new RevisionConflictError({
       public_details: {
         section: "items",
@@ -31,38 +31,38 @@ describe("shared/error", () => {
     });
   });
 
-  it("日志投影保留诊断上下文和 cause 链", () => {
+  it("日志快照保留诊断上下文和 cause 链", () => {
     const cause = new Error("底层失败");
     const error = new InternalInvariantError({
       cause,
       public_details: { request: "safe" },
     });
 
-    const projection = to_app_error_log_projection(error, {
+    const snapshot = to_app_error_log_snapshot(error, {
       context: { request_id: "request-1" },
     });
 
-    expect(projection.level).toBe("error");
-    expect(projection.error.context).toMatchObject({
+    expect(snapshot.level).toBe("error");
+    expect(snapshot.error.context).toMatchObject({
       code: "runtime.internal_invariant",
       request_id: "request-1",
       public_details: { request: "safe" },
     });
-    expect(projection.error.cause_chain).toEqual([
+    expect(snapshot.error.cause_chain).toEqual([
       expect.objectContaining({ name: "Error", message: "底层失败" }),
     ]);
   });
 
   it("expected 错误默认只进入 debug 诊断等级", () => {
-    const projection = to_app_error_log_projection(new RequestValidationError());
+    const snapshot = to_app_error_log_snapshot(new RequestValidationError());
 
-    expect(projection.level).toBe("debug");
-    expect(projection.error.context?.["severity"]).toBe("expected");
+    expect(snapshot.level).toBe("debug");
+    expect(snapshot.error.context?.["severity"]).toBe("expected");
   });
 
   it("运行能力错误保留统一诊断上下文", () => {
     const error = new RuntimeCapabilityMissingError({
-      public_details: { capability: "core_api_port" },
+      public_details: { capability: "backend_api_port" },
       diagnostic_context: {
         reason: "exhausted_retryable_ports",
         max_attempts: 2,
@@ -71,7 +71,7 @@ describe("shared/error", () => {
 
     expect(error).toMatchObject({
       code: "runtime.capability_missing",
-      public_details: { capability: "core_api_port" },
+      public_details: { capability: "backend_api_port" },
       diagnostic_context: {
         reason: "exhausted_retryable_ports",
         max_attempts: 2,

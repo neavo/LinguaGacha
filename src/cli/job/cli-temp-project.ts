@@ -6,8 +6,8 @@ import path from "node:path";
  * CLITempProject 管理 CLI 内部临时 .lg 工程目录，避免把项目文件心智暴露给用户。
  */
 export class CLITempProject {
-  public readonly rootDir: string; // rootDir 是临时工程和中间文件的唯一容器
-  public readonly projectPath: string; // projectPath 只供 Core 服务加载和任务执行使用
+  public readonly rootDir: string; // 临时工程和中间文件的唯一容器
+  public readonly projectPath: string; // 只供 Backend 服务加载和任务执行使用
 
   private constructor(root_dir: string) {
     this.rootDir = root_dir;

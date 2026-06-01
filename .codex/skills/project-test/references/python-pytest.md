@@ -92,7 +92,7 @@ def test_publish_public_update_event() -> None:
     service.publish_domain_event(
         "record.saved",
         {
-            "source": "mutation",
+            "source": "write",
             "updatedSections": ["records"],
             "operations": [{"op": "merge_records", "records": [{"id": 1}]}],
             "revision": 9,

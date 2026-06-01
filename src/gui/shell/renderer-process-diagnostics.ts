@@ -40,14 +40,14 @@ type RendererDiagnosticsContext = {
 };
 
 type RendererWindowDiagnosticsState = {
-  windowKind: RendererWindowKind; // windowKind 区分主窗口和日志窗口，避免崩溃归因混淆
-  webContentsId: number; // webContentsId 是 IPC sender 与窗口状态对齐的稳定键
-  createdAt: string; // createdAt 帮助判断崩溃发生在首屏、热重载还是长时间任务后
-  lastSeenAt: string; // lastSeenAt 表示当前诊断上下文的新鲜度
-  lastUrlIdentity: LogErrorContext; // lastUrlIdentity 只保留宿主 URL 摘要，避免日志暴露完整地址
-  osProcessId: number | null; // osProcessId 用于匹配 Electron app metrics 与 Crashpad 文件
-  lastRendererDiagnostics: RendererDiagnosticsContext | null; // lastRendererDiagnostics 保存最新 route/project/task 摘要
-  recentRendererEvents: RendererDiagnosticsBreadcrumb[]; // recentRendererEvents 是固定长度事件面包屑
+  windowKind: RendererWindowKind; // 区分主窗口和日志窗口，避免崩溃归因混淆
+  webContentsId: number; // IPC sender 与窗口状态对齐的稳定键
+  createdAt: string; // 帮助判断崩溃发生在首屏、热重载还是长时间任务后
+  lastSeenAt: string; // 当前诊断上下文的新鲜度
+  lastUrlIdentity: LogErrorContext; // 只保留宿主 URL 摘要，避免日志暴露完整地址
+  osProcessId: number | null; // 用于匹配 Electron app metrics 与 Crashpad 文件
+  lastRendererDiagnostics: RendererDiagnosticsContext | null; // 保存最新 route/project/task 摘要
+  recentRendererEvents: RendererDiagnosticsBreadcrumb[]; // 固定长度事件面包屑
 };
 
 // RECENT RENDERER EVENT LIMIT 是运行时节流或容量阈值，集中保存便于评估性能影响。
@@ -106,7 +106,7 @@ export function create_renderer_process_diagnostics_registry(): RendererProcessD
     }
 
     const diagnostics_payload = normalize_renderer_diagnostics_payload(payload);
-    refresh_window_runtime_state(state, sender);
+    refresh_window_run_state(state, sender);
     if (
       diagnostics_payload.route !== undefined ||
       diagnostics_payload.project !== undefined ||
@@ -164,7 +164,7 @@ export function create_renderer_process_diagnostics_registry(): RendererProcessD
   ): RendererWindowDiagnosticsState {
     const existing_state = windows_by_web_contents_id.get(target_window.webContents.id);
     if (existing_state !== undefined) {
-      refresh_window_runtime_state(existing_state, target_window.webContents);
+      refresh_window_run_state(existing_state, target_window.webContents);
       return existing_state;
     }
 
@@ -202,7 +202,7 @@ function create_window_diagnostics_state(
 /**
  * 从 webContents 刷新宿主侧可直接读取的运行时字段。
  */
-function refresh_window_runtime_state(
+function refresh_window_run_state(
   state: RendererWindowDiagnosticsState,
   web_contents: Electron.WebContents,
 ): void {
@@ -218,7 +218,7 @@ function build_window_context(
   state: RendererWindowDiagnosticsState,
   web_contents: Electron.WebContents,
 ): Record<string, unknown> {
-  refresh_window_runtime_state(state, web_contents);
+  refresh_window_run_state(state, web_contents);
   return {
     windowKind: state.windowKind,
     webContentsId: state.webContentsId,

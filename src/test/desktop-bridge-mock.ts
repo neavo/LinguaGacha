@@ -1,5 +1,5 @@
 import type { DesktopBridgeApi } from "../gui/bridge/bridge-api";
-import type { DesktopCoreApiInfo, DesktopShellInfo } from "../gui/bridge/bridge-types";
+import type { DesktopBackendApiInfo, DesktopShellInfo } from "../gui/bridge/bridge-types";
 import { EMPTY_DESKTOP_SYSTEM_PROXY_STARTUP_NOTICE } from "../gui/bridge/system-proxy-startup-notice";
 import { resolve_desktop_shell_info } from "../gui/shell/shell-contract";
 
@@ -7,8 +7,8 @@ export const DESKTOP_BRIDGE_TEST_BASE_URL = "http://127.0.0.1:38191";
 
 export type DesktopBridgeApiMockOverrides = {
   shell?: Partial<DesktopShellInfo>;
-  coreApi?: Partial<DesktopCoreApiInfo>;
-  methods?: Partial<Omit<DesktopBridgeApi, "shell" | "coreApi">>;
+  backendApi?: Partial<DesktopBackendApiInfo>;
+  methods?: Partial<Omit<DesktopBridgeApi, "shell" | "backendApi">>;
 };
 
 // renderer 测试统一从这里生成 window.desktopApp，避免桥接契约在多个测试里手写漂移
@@ -19,15 +19,15 @@ export function create_desktop_bridge_api_mock(
     ...resolve_desktop_shell_info("win32"),
     ...overrides.shell,
   };
-  const coreApi: DesktopCoreApiInfo = {
+  const backendApi: DesktopBackendApiInfo = {
     baseUrl: DESKTOP_BRIDGE_TEST_BASE_URL,
     systemProxyStartupNotice: EMPTY_DESKTOP_SYSTEM_PROXY_STARTUP_NOTICE,
-    ...overrides.coreApi,
+    ...overrides.backendApi,
   };
 
   return {
     shell,
-    coreApi,
+    backendApi,
     getPathForFile: () => "",
     setTitleBarTheme: () => {},
     quitApp: async () => {},
@@ -37,6 +37,12 @@ export function create_desktop_bridge_api_mock(
     },
     reportRendererDiagnostics: () => {},
     openExternalUrl: async () => {},
+    downloadUpdate: async () => ({
+      status: "fallback_to_release_page",
+      release_url: "https://github.com/neavo/LinguaGacha/releases",
+      reason: "unsupported_platform",
+    }),
+    launchUpdate: async () => ({ status: "launched" }),
     pickProjectSourceFilePath: async () => ({ canceled: true, paths: [] }),
     pickProjectSourceDirectoryPath: async () => ({ canceled: true, paths: [] }),
     pickProjectFilePath: async () => ({ canceled: true, paths: [] }),

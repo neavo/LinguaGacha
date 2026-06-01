@@ -1,11 +1,17 @@
-import { is_non_standalone_language_character } from "../language";
+import { is_non_standalone_language_character } from "../../domain/language";
 import { is_punctuation_character } from "../utils/text-tool";
 
 const LINE_BREAK_PATTERN = /\r\n|\r|\n/gu; // 统一兼容 Windows、Unix 和旧 Mac 换行，确保多行过滤判断稳定
 
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const RULE_PREFILTER_PREFIXES = ["mapdata/", "se/", "bgs", "0=", "bgm/", "ficon/"]; // 前缀、后缀和正则清单集中描述可翻译候选预过滤口径，保持资源路径排除一致
 
 // 资源文件扩展名直接排除，避免图片、音频、字体和存档名进入翻译
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const RULE_PREFILTER_SUFFIXES = [
   ".mp3",
   ".wav",
@@ -36,6 +42,9 @@ export const RULE_PREFILTER_SUFFIXES = [
 ];
 
 // 正则规则覆盖事件编号、RenPy 默认字体和 RenPy 存档时间占位
+/**
+ * 集中维护当前模块的稳定常量。
+ */
 export const RULE_PREFILTER_PATTERNS = [
   /^EV\d+$/iu,
   // RenPy 默认字体名称
@@ -46,6 +55,9 @@ export const RULE_PREFILTER_PATTERNS = [
 ];
 
 // 无正文价值行只允许由空白、数字、标点/符号和非独立语言字符组成
+/**
+ * 判断当前值是否满足业务条件。
+ */
 function is_non_translatable_content_line(line: string): boolean {
   return [...line].every((char) => {
     return (
@@ -86,7 +98,12 @@ function should_skip_rule_prefilter_line(raw_line: string): boolean {
 }
 
 // 返回值 true 表示需要过滤（即需要排除）
+/**
+ * 判断当前值是否满足业务条件。
+ */
 export function should_skip_by_rule_prefilter(text: string): boolean {
-  const lines = text === "" ? [] : text.split(LINE_BREAK_PATTERN);
-  return lines.length > 0 && lines.every(should_skip_rule_prefilter_line);
+  if (text.trim() === "") {
+    return true;
+  }
+  return text.split(LINE_BREAK_PATTERN).every(should_skip_rule_prefilter_line);
 }

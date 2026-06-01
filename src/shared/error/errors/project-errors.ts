@@ -1,7 +1,7 @@
 import { AppError, type AppErrorArgs } from "../app-error";
 
 /**
- * ProjectNotLoadedError 表示当前 Core 会话没有 loaded 工程。
+ * ProjectNotLoadedError 表示当前 Backend 会话没有 loaded 工程。
  */
 export class ProjectNotLoadedError extends AppError {
   /**
