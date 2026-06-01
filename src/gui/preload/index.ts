@@ -15,6 +15,9 @@ import {
   IPC_CHANNEL_OPEN_LOG_WINDOW,
   IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH,
   IPC_CHANNEL_TITLE_BAR_THEME,
+  IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS,
+  IPC_CHANNEL_UPDATE_DOWNLOAD_RELEASE,
+  IPC_CHANNEL_UPDATE_LAUNCH_BERSERKER,
   IPC_CHANNEL_WINDOW_CLOSE_REQUEST,
 } from "../gui-ipc-contract";
 import { resolve_backend_api_base_url_from_argv } from "../../backend/api/api-base-url";
@@ -25,6 +28,11 @@ import type {
   DesktopPathPickResult,
   DesktopPlatform,
   DesktopRendererDiagnosticsPayload,
+  DesktopUpdateDownloadProgress,
+  DesktopUpdateDownloadRequest,
+  DesktopUpdateDownloadResult,
+  DesktopUpdateLaunchRequest,
+  DesktopUpdateLaunchResult,
   ThemeMode,
 } from "../bridge/bridge-types";
 
@@ -36,6 +44,7 @@ const BACKEND_API_BASE_URL = resolve_backend_api_base_url_from_argv(process.argv
 const SYSTEM_PROXY_STARTUP_NOTICE = resolve_desktop_system_proxy_startup_notice_from_argv(
   process.argv,
 ); // 系统代理提示来自 main 启动参数，preload 只转交脱敏摘要给 renderer
+let next_update_download_request_id = 0; // preload 本地递增，避免进度事件在多次下载之间串台
 
 const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
   shell: DESKTOP_SHELL_INFO,
@@ -95,6 +104,38 @@ const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
    */
   async openExternalUrl(url: string): Promise<void> {
     await ipcRenderer.invoke(IPC_CHANNEL_OPEN_EXTERNAL_URL, url);
+  },
+  /**
+   * 下载更新包并把 main 进度事件收口成单次回调
+   */
+  async downloadUpdate(
+    request: DesktopUpdateDownloadRequest,
+    on_progress: (progress: DesktopUpdateDownloadProgress) => void,
+  ): Promise<DesktopUpdateDownloadResult> {
+    const request_id = create_update_download_request_id();
+    const listener = (
+      _event: Electron.IpcRendererEvent,
+      progress: DesktopUpdateDownloadProgress,
+    ) => {
+      if (progress.request_id === request_id) {
+        on_progress(progress);
+      }
+    };
+    ipcRenderer.on(IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS, listener);
+    try {
+      return await ipcRenderer.invoke(IPC_CHANNEL_UPDATE_DOWNLOAD_RELEASE, {
+        ...request,
+        request_id,
+      });
+    } finally {
+      ipcRenderer.removeListener(IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS, listener);
+    }
+  },
+  /**
+   * 请求 main 复制并启动外部更新器
+   */
+  async launchUpdate(request: DesktopUpdateLaunchRequest): Promise<DesktopUpdateLaunchResult> {
+    return ipcRenderer.invoke(IPC_CHANNEL_UPDATE_LAUNCH_BERSERKER, request);
   },
   /**
    * 请求选择源文件，保持原生对话框只在 Electron 主进程打开
@@ -157,5 +198,13 @@ const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
     return ipcRenderer.invoke(IPC_CHANNEL_PICK_PROMPT_EXPORT_FILE_PATH);
   },
 };
+
+/**
+ * 创建单调递增的下载请求 id，避免暴露随机数依赖给 renderer。
+ */
+function create_update_download_request_id(): string {
+  next_update_download_request_id += 1;
+  return `update-download-${next_update_download_request_id.toString()}`;
+}
 
 contextBridge.exposeInMainWorld(DESKTOP_BRIDGE_GLOBAL_NAME, DESKTOP_BRIDGE_API);

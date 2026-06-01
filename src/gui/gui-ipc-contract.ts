@@ -1,6 +1,11 @@
 import type {
   DesktopPathPickResult,
   DesktopRendererDiagnosticsPayload,
+  DesktopUpdateDownloadIpcRequest,
+  DesktopUpdateDownloadProgress,
+  DesktopUpdateDownloadResult,
+  DesktopUpdateLaunchRequest,
+  DesktopUpdateLaunchResult,
   ThemeMode,
 } from "./bridge/bridge-types";
 
@@ -34,6 +39,21 @@ export const IPC_CHANNEL_OPEN_LOG_WINDOW = "window:open-log-window";
  * 集中维护当前模块的稳定常量。
  */
 export const IPC_CHANNEL_OPEN_EXTERNAL_URL = "window:open-external-url";
+// IPC CHANNEL UPDATE DOWNLOAD RELEASE 是 main/preload/renderer 共享 IPC 通道名，必须集中维护避免拼写漂移。
+/**
+ * 集中维护当前模块的稳定常量。
+ */
+export const IPC_CHANNEL_UPDATE_DOWNLOAD_RELEASE = "update:download-release";
+// IPC CHANNEL UPDATE DOWNLOAD PROGRESS 是 main/preload/renderer 共享 IPC 通道名，必须集中维护避免拼写漂移。
+/**
+ * 集中维护当前模块的稳定常量。
+ */
+export const IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS = "update:download-progress";
+// IPC CHANNEL UPDATE LAUNCH BERSERKER 是 main/preload/renderer 共享 IPC 通道名，必须集中维护避免拼写漂移。
+/**
+ * 集中维护当前模块的稳定常量。
+ */
+export const IPC_CHANNEL_UPDATE_LAUNCH_BERSERKER = "update:launch-berserker";
 // IPC CHANNEL PICK PROJECT SOURCE FILE PATH 是 main/preload/renderer 共享 IPC 通道名，必须集中维护避免拼写漂移。
 /**
  * 集中维护当前模块的稳定常量。
@@ -100,6 +120,14 @@ export type DesktopIpcInvokeContract = {
     args: [url: string];
     result: void;
   };
+  [IPC_CHANNEL_UPDATE_DOWNLOAD_RELEASE]: {
+    args: [request: DesktopUpdateDownloadIpcRequest];
+    result: DesktopUpdateDownloadResult;
+  };
+  [IPC_CHANNEL_UPDATE_LAUNCH_BERSERKER]: {
+    args: [request: DesktopUpdateLaunchRequest];
+    result: DesktopUpdateLaunchResult;
+  };
   [IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH]: {
     args: [];
     result: DesktopPathPickResult;
@@ -142,7 +170,7 @@ export type DesktopIpcInvokeContract = {
   };
 };
 
-// send 型 IPC 只用于无返回值通知，当前由 renderer 主题同步、诊断面包屑和 main 关闭请求组成
+// send 型 IPC 只用于无返回值通知，当前由 renderer 主题同步、诊断面包屑、main 关闭请求和更新进度组成
 export type DesktopIpcSendContract = {
   [IPC_CHANNEL_TITLE_BAR_THEME]: {
     args: [theme_mode: ThemeMode];
@@ -152,5 +180,8 @@ export type DesktopIpcSendContract = {
   };
   [IPC_CHANNEL_WINDOW_CLOSE_REQUEST]: {
     args: [];
+  };
+  [IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS]: {
+    args: [progress: DesktopUpdateDownloadProgress];
   };
 };

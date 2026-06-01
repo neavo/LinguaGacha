@@ -48,7 +48,9 @@ export const en_us_app = {
     duplicate_description: "{COUNT} duplicate rules were detected. Choose how to handle them …?",
   },
   update: {
-    toast: "New version is available, click the bottom-left update entry to download it …",
+    confirm_description: "LinguaGacha v{VERSION} is available. Download the update …?",
+    restart_confirm: "Restart and Update",
+    launching: "Processing …",
   },
   system_proxy: {
     startup_notice: "System proxy setting detected - {PROXY}",
@@ -81,7 +83,7 @@ export const en_us_app = {
     status: "Ciallo～(∠・ω< )⌒✮",
     status_tooltip: "Open the GitHub repository",
     update_available: "Download new version …!",
-    update_available_tooltip: "Open the GitHub Release page",
+    update_available_tooltip: "Open the update confirmation dialog",
   },
   prompt: {
     builder_control_character_samples: "Control Characters Samples:",

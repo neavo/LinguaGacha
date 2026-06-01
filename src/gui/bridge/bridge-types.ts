@@ -45,5 +45,49 @@ export type DesktopPathPickResult = {
   paths: string[]; // 经 main 原生对话框确认后返回给 renderer 的路径快照
 };
 
+export type DesktopUpdateDownloadRequest = {
+  latest_version: string; // GitHub release 解析出的三段式版本号
+  release_url: string; // 自动更新不可用时回退打开的发布页
+  windows_x64_zip_url: string | null; // Windows x64 zip asset 下载地址，缺失时由 main 回退发布页
+};
+
+export type DesktopUpdateDownloadIpcRequest = DesktopUpdateDownloadRequest & {
+  request_id: string; // preload 为本次下载生成的进度事件关联 id
+};
+
+export type DesktopUpdateDownloadProgress = {
+  request_id: string; // renderer 只消费同一次下载的进度，避免过期事件串台
+  progress_percent: number; // 0 到 100 的下载进度，未知总长时完成前保持保守值
+  downloaded_bytes: number; // 已写入临时文件的字节数
+  total_bytes: number | null; // 缺少 Content-Length 时为 null
+};
+
+export type DesktopUpdateFallbackReason =
+  | "unsupported_platform"
+  | "missing_windows_x64_zip_url"
+  | "target_dir_not_writable";
+
+export type DesktopUpdateDownloadResult =
+  | {
+      status: "downloaded";
+      latest_version: string;
+      release_url: string;
+      zip_path: string;
+    }
+  | {
+      status: "fallback_to_release_page";
+      release_url: string;
+      reason: DesktopUpdateFallbackReason;
+    };
+
+export type DesktopUpdateLaunchRequest = {
+  latest_version: string; // 用于校验 zip 仍位于当前版本目录
+  zip_path: string; // main 下载完成后返回的本地 zip 路径
+};
+
+export type DesktopUpdateLaunchResult = {
+  status: "launched";
+};
+
 // renderer 黑匣子面包屑复用 shared 诊断载荷，避免 preload / renderer / main 各维护一套裁剪规则
 export type DesktopRendererDiagnosticsPayload = RendererDiagnosticsPayload;

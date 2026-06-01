@@ -41,6 +41,9 @@ class EventSourceStub {
   }
 }
 
+/**
+ * 安装当前测试需要的 desktopApp 桥接宿主。
+ */
 function install_desktop_api_host(base_url: string): void {
   Object.defineProperty(window, "desktopApp", {
     configurable: true,
@@ -346,6 +349,18 @@ describe("desktop-api", () => {
         json: async () => ({
           tag_name: "MANUAL_BUILD_v1.2.4",
           html_url: "https://github.com/neavo/LinguaGacha/releases/tag/MANUAL_BUILD_v1.2.4",
+          assets: [
+            {
+              name: "LinguaGacha_v1.2.4_Windows_x64.zip",
+              browser_download_url:
+                "https://github.com/neavo/LinguaGacha/releases/download/MANUAL_BUILD_v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
+            },
+            {
+              name: "LinguaGacha_v1.2.4_Linux_x64.AppImage",
+              browser_download_url:
+                "https://github.com/neavo/LinguaGacha/releases/download/MANUAL_BUILD_v1.2.4/LinguaGacha_v1.2.4_Linux_x64.AppImage",
+            },
+          ],
         }),
       } as Response;
     });
@@ -364,6 +379,39 @@ describe("desktop-api", () => {
     expect(update).toEqual({
       latest_version: "1.2.4",
       release_url: "https://github.com/neavo/LinguaGacha/releases/tag/MANUAL_BUILD_v1.2.4",
+      windows_x64_zip_url:
+        "https://github.com/neavo/LinguaGacha/releases/download/MANUAL_BUILD_v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
+    });
+  });
+
+  it("check_github_release_update 在新版缺少 Windows x64 zip 时保留发布页回退信息", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            tag_name: "v1.2.4",
+            html_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
+            assets: [
+              {
+                name: "LinguaGacha_v1.2.4_macOS_x64.dmg",
+                browser_download_url:
+                  "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/mac.dmg",
+              },
+            ],
+          }),
+        } as Response;
+      }),
+    );
+
+    const { check_github_release_update } = await import("./desktop-api");
+
+    await expect(check_github_release_update("1.2.3")).resolves.toEqual({
+      latest_version: "1.2.4",
+      release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
+      windows_x64_zip_url: null,
     });
   });
 

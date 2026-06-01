@@ -25,6 +25,12 @@ type HealthPayload = {
 type GithubReleasePayload = {
   tag_name?: unknown;
   html_url?: unknown;
+  assets?: unknown;
+};
+
+type GithubReleaseAssetPayload = {
+  name?: unknown;
+  browser_download_url?: unknown;
 };
 
 export type BackendMetadata = {
@@ -34,6 +40,7 @@ export type BackendMetadata = {
 export type GithubReleaseUpdate = {
   latest_version: string;
   release_url: string;
+  windows_x64_zip_url: string | null;
 };
 
 type EventSourceJsonEvent = {
@@ -117,12 +124,18 @@ export class DesktopApiError extends Error {
   }
 }
 
+/**
+ * 将本地错误码映射成 renderer 可本地化的 message key。
+ */
 function build_desktop_local_error_message_key(
   code: DesktopLocalErrorCode,
 ): DesktopLocalErrorMessageKey {
   return `app.error.desktop.${code}.message`;
 }
 
+/**
+ * 从 Backend 响应壳构造统一 DesktopApiError。
+ */
 function build_desktop_api_error<data_type>(
   path: string,
   response: Response,
@@ -152,6 +165,9 @@ async function read_api_envelope<data_type>(
   }
 }
 
+/**
+ * 把 fetch 抛错归一为本地网络错误或超时错误。
+ */
 function create_network_error(path: string, cause: unknown): DesktopApiError {
   const code: DesktopLocalErrorCode =
     cause instanceof Error && cause.name === "AbortError" ? "timeout" : "network_failed";
@@ -176,6 +192,9 @@ function read_backend_api_base_url(): string {
   return base_url;
 }
 
+/**
+ * 拼接 Backend API 绝对地址，并允许调用方传入有无斜杠的路径。
+ */
 function build_api_url(base_url: string, path: string): string {
   const normalized_path = path.startsWith("/") ? path : `/${path}`;
   return `${base_url}${normalized_path}`;
@@ -214,6 +233,9 @@ function parse_semantic_version(value: string): SemanticVersion | null {
   };
 }
 
+/**
+ * 比较三段式版本号，返回值符号表达 left 相对 right 的新旧关系。
+ */
 function compare_semantic_version(left: SemanticVersion, right: SemanticVersion): number {
   if (left.major !== right.major) {
     return left.major - right.major;
@@ -253,7 +275,49 @@ function normalize_github_release_update(
   return {
     latest_version: `${latest_semantic_version.major}.${latest_semantic_version.minor}.${latest_semantic_version.patch}`,
     release_url,
+    windows_x64_zip_url: select_windows_x64_zip_url(
+      payload.assets,
+      `${latest_semantic_version.major}.${latest_semantic_version.minor}.${latest_semantic_version.patch}`,
+    ),
   };
+}
+
+/**
+ * 从 GitHub release assets 中选择 Windows x64 zip 下载地址。
+ */
+function select_windows_x64_zip_url(assets: unknown, latest_version: string): string | null {
+  if (!Array.isArray(assets)) {
+    return null;
+  }
+
+  const expected_asset_name = `LinguaGacha_v${latest_version}_Windows_x64.zip`;
+  const normalized_assets = assets
+    .map((asset): GithubReleaseAssetPayload => {
+      return asset !== null && typeof asset === "object" ? asset : {};
+    })
+    .filter((asset) => {
+      return typeof asset.name === "string" && typeof asset.browser_download_url === "string";
+    });
+
+  const exact_asset = normalized_assets.find((asset) => {
+    return String(asset.name).trim() === expected_asset_name;
+  });
+  const fallback_asset =
+    exact_asset ??
+    normalized_assets.find((asset) => {
+      const name = String(asset.name).trim();
+      return (
+        name.startsWith("LinguaGacha_") &&
+        name.includes(`v${latest_version}`) &&
+        name.endsWith("_Windows_x64.zip")
+      );
+    });
+  const download_url =
+    typeof fallback_asset?.browser_download_url === "string"
+      ? fallback_asset.browser_download_url.trim()
+      : "";
+
+  return download_url === "" ? null : download_url;
 }
 
 // probe_backend_api_candidate 封装当前模块的共享逻辑，避免重复实现同一维护规则。
@@ -411,6 +475,9 @@ async function* open_json_event_source_stream(args: {
   let stream_error: Error | null = null;
   let closed = false;
 
+  /**
+   * 写入事件队列，若消费方正在等待则直接唤醒。
+   */
   function push_event(event: EventSourceJsonEvent): void {
     if (pending_resolve !== null) {
       const resolve = pending_resolve;
@@ -422,6 +489,9 @@ async function* open_json_event_source_stream(args: {
     queue.push(event);
   }
 
+  /**
+   * 关闭 EventSource，并唤醒可能挂起的异步迭代读取。
+   */
   function close_stream(): void {
     if (closed) {
       return;
@@ -436,6 +506,9 @@ async function* open_json_event_source_stream(args: {
     }
   }
 
+  /**
+   * 标记流错误并复用关闭流程通知消费方。
+   */
   function fail_stream(): void {
     stream_error = DesktopApiError.local("event_stream_failed", 503);
     close_stream();

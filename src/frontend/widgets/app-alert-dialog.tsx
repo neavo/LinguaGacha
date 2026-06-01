@@ -24,6 +24,8 @@ type AppAlertDialogProps = {
   submitting?: boolean;
   size?: AppAlertDialogSize;
   confirmLabel?: string;
+  submittingLabel?: string;
+  submittingIcon?: boolean;
   cancelLabel?: string;
   secondaryLabel?: string;
   onSecondary?: () => void | Promise<void>;
@@ -35,12 +37,21 @@ type AppAlertDialogProps = {
 type ClosableEvent = {
   preventDefault: () => void;
 };
+
+/**
+ * 阻止 Radix 在提交中通过键盘或外部事件关闭确认框。
+ */
 function preventDialogClose(event: ClosableEvent): void {
   event.preventDefault();
 }
+
+/**
+ * 渲染应用统一确认框，集中处理提交态、次要动作和文案兜底。
+ */
 export function AppAlertDialog(props: AppAlertDialogProps): JSX.Element {
   const { t } = useI18n();
   const submitting = props.submitting ?? false;
+  const submitting_icon = props.submittingIcon ?? true;
   const title = props.title ?? t("app.action.confirm");
 
   return (
@@ -103,8 +114,8 @@ export function AppAlertDialog(props: AppAlertDialogProps): JSX.Element {
           >
             {submitting ? (
               <>
-                <Spinner data-icon="inline-start" />
-                {t("app.action.loading")}
+                {submitting_icon ? <Spinner data-icon="inline-start" /> : null}
+                {props.submittingLabel ?? t("app.action.loading")}
               </>
             ) : (
               (props.confirmLabel ?? t("app.action.confirm"))

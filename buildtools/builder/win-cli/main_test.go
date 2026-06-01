@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// TestBuildLauncherPlanForwardsCLIMarkerAndUserArgs 证明启动器只追加 --cli，不改写用户参数。
+// 证明启动器只追加 --cli，不改写用户参数。
 func TestBuildLauncherPlanForwardsCLIMarkerAndUserArgs(t *testing.T) {
 	currentExecutablePath := filepath.Join("install", "cli.exe")
 	userArgs := []string{"translate", "--input", filepath.Join("game files", "script.txt")}
@@ -27,7 +27,7 @@ func TestBuildLauncherPlanForwardsCLIMarkerAndUserArgs(t *testing.T) {
 	}
 }
 
-// TestBuildLauncherPlanRejectsEmptyExecutablePath 证明入口路径缺失时不会构造错误转发计划。
+// 证明入口路径缺失时不会构造错误转发计划。
 func TestBuildLauncherPlanRejectsEmptyExecutablePath(t *testing.T) {
 	_, err := buildLauncherPlan("", []string{"--help"})
 
@@ -36,7 +36,7 @@ func TestBuildLauncherPlanRejectsEmptyExecutablePath(t *testing.T) {
 	}
 }
 
-// TestNormalizeExitResultKeepsSuccess 证明子进程成功时启动器返回 0。
+// 证明子进程成功时启动器返回 0。
 func TestNormalizeExitResultKeepsSuccess(t *testing.T) {
 	exitCode, err := normalizeExitResult(nil)
 
@@ -48,7 +48,7 @@ func TestNormalizeExitResultKeepsSuccess(t *testing.T) {
 	}
 }
 
-// TestNormalizeExitResultReportsLaunchFailure 证明启动失败时启动器返回通用失败码。
+// 证明启动失败时启动器返回通用失败码。
 func TestNormalizeExitResultReportsLaunchFailure(t *testing.T) {
 	launchErr := errors.New("启动失败")
 
@@ -62,7 +62,7 @@ func TestNormalizeExitResultReportsLaunchFailure(t *testing.T) {
 	}
 }
 
-// TestEnsureAppExecutableExistsReportsMissingApp 证明缺少 app.exe 时会给出明确错误。
+// 证明缺少 app.exe 时会给出明确错误。
 func TestEnsureAppExecutableExistsReportsMissingApp(t *testing.T) {
 	tempDir := t.TempDir()
 
@@ -73,7 +73,7 @@ func TestEnsureAppExecutableExistsReportsMissingApp(t *testing.T) {
 	}
 }
 
-// TestEnsureAppExecutableExistsAcceptsExistingApp 证明 app.exe 存在时启动前检查通过。
+// 证明 app.exe 存在时启动前检查通过。
 func TestEnsureAppExecutableExistsAcceptsExistingApp(t *testing.T) {
 	tempDir := t.TempDir()
 	appPath := filepath.Join(tempDir, "app.exe")

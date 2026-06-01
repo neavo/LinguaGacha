@@ -13,6 +13,7 @@ export interface AppPathServiceOptions {
 const HOME_DATA_ROOT_NAME = "LinguaGacha";
 const RESOURCE_DIR_NAME = "resource";
 const USER_DATA_DIR_NAME = "userdata";
+const BERSERKER_DIR_NAME = "berserker";
 const LOG_DIR_NAME = "log";
 const TEMPLATE_DIR_NAME = "template";
 const PRESET_DIR_NAME = "preset";
@@ -81,6 +82,20 @@ export class AppPathService {
    */
   public get_user_data_path(...parts: string[]): string {
     return path.join(this.get_user_data_root_dir(), ...parts);
+  }
+
+  /**
+   * 返回自动更新器工作根目录，避免宿主层自行拼接 userdata 子目录。
+   */
+  public get_berserker_update_root_dir(): string {
+    return this.get_user_data_path(BERSERKER_DIR_NAME);
+  }
+
+  /**
+   * 返回指定版本更新包目录，目录名和启动清理规则共享同一约定。
+   */
+  public get_berserker_version_dir(version: string): string {
+    return path.join(this.get_berserker_update_root_dir(), `v${version}`);
   }
 
   /**
