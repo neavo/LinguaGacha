@@ -18,6 +18,11 @@ type BackendBootstrapInstance = {
   options: BackendBootstrapOptions;
   start: () => Promise<{
     apiBaseUrl: string | null;
+    backendServices: {
+      app: {
+        paths: unknown;
+      };
+    };
     readAppLanguage: () => unknown;
     systemProxyStartupNotice: SystemProxyStartupNotice;
   }>;
@@ -47,8 +52,10 @@ type IpcHandlerOptions = {
   getMainWindow: () => FakeWindow | null;
   getLogWindowHost: () => { close: () => void } | null;
   markRendererConfirmedAppQuit: () => void;
+  quitAfterBackendShutdown: (exit_code: number) => Promise<void>;
   recordRendererDiagnostics: (...args: unknown[]) => void;
   readAppLanguage: () => unknown;
+  updateService: unknown;
 };
 type FatalHandlerOptions = {
   isAppShutdownInProgress: () => boolean;
@@ -66,6 +73,7 @@ const MOCK_MODULES = [
   "electron",
   "./shell/desktop-ipc-host",
   "./shell/desktop-window-host",
+  "./shell/desktop-update-service",
   "./shell/renderer-process-diagnostics",
   "./shell/native-error-dialog",
   "../backend/bootstrap/backend-bootstrap",
@@ -101,6 +109,8 @@ describe("Electron main 入口", () => {
     expect(harness.calls.backend_bootstraps).toHaveLength(1);
     expect(harness.calls.backend_bootstraps[0]?.options.appRoot).toBe(process.cwd());
     expect(harness.calls.backend_bootstraps[0]?.options.exposeApiGateway).toBe(true);
+    expect(harness.calls.update_service_paths).toEqual([harness.backend_paths]);
+    expect(harness.calls.update_cleanup_count).toBe(1);
     await expect(
       harness.calls.backend_bootstraps[0]?.options.systemProxyResolver?.resolveProxy(
         "https://api.example/v1",
@@ -133,6 +143,9 @@ describe("Electron main 入口", () => {
       harness.calls.created_windows[0],
     );
     expect(harness.calls.ipc_handler_options[0]?.readAppLanguage()).toBe("ZH");
+    expect(harness.calls.ipc_handler_options[0]?.updateService).toBe(
+      harness.desktop_update_service,
+    );
     expect(harness.calls.ipc_handler_options[0]?.getLogWindowHost()).toBe(harness.log_window_host);
     expect(harness.calls.ipc_handler_options[0]?.recordRendererDiagnostics).toBe(
       harness.renderer_process_diagnostics.recordRendererDiagnostics,
@@ -142,6 +155,10 @@ describe("Electron main 入口", () => {
     harness.calls.ipc_handler_options[0]?.markRendererConfirmedAppQuit();
 
     expect(harness.calls.main_window_options[0]?.shouldBypassCloseConfirmation()).toBe(true);
+
+    await harness.calls.ipc_handler_options[0]?.quitAfterBackendShutdown(0);
+
+    expect(harness.calls.app_exit_codes).toEqual([0]);
   });
 
   it("before-quit 会阻止直接退出并先关闭 Backend 生命周期", async () => {
@@ -210,6 +227,8 @@ describe("Electron main 入口", () => {
  */
 function create_index_harness(): {
   base_url: string;
+  backend_paths: unknown;
+  desktop_update_service: unknown;
   log_window_host: { close: () => void };
   renderer_process_diagnostics: RendererDiagnosticsRegistry;
   system_proxy_startup_notice: SystemProxyStartupNotice;
@@ -232,6 +251,8 @@ function create_index_harness(): {
     renderer_diagnostics_registry_count: number;
     renderer_public_path_dirs: string[];
     show_error_boxes: Array<[string, string]>;
+    update_cleanup_count: number;
+    update_service_paths: unknown[];
   };
   emit: (event_name: string, ...args: unknown[]) => void;
   import_index: () => Promise<void>;
@@ -240,6 +261,13 @@ function create_index_harness(): {
   set_start_error: (error: Error) => void;
 } {
   const base_url = "http://127.0.0.1:19001";
+  const backend_paths = { id: "backend-paths" };
+  const desktop_update_service = {
+    id: "desktop-update-service",
+    cleanup_berserker_version_dirs: async () => {
+      calls.update_cleanup_count += 1;
+    },
+  };
   const system_proxy_startup_notice: SystemProxyStartupNotice = {
     detected: true,
     proxiedOriginCount: 2,
@@ -282,6 +310,8 @@ function create_index_harness(): {
     renderer_diagnostics_registry_count: 0,
     renderer_public_path_dirs: [] as string[],
     show_error_boxes: [] as Array<[string, string]>,
+    update_cleanup_count: 0,
+    update_service_paths: [] as unknown[],
   };
 
   // 模拟外部运行时对象，只保留当前测试会触发的行为面。
@@ -298,6 +328,11 @@ function create_index_harness(): {
     // start 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
     public async start(): Promise<{
       apiBaseUrl: string;
+      backendServices: {
+        app: {
+          paths: unknown;
+        };
+      };
       readAppLanguage: () => unknown;
       systemProxyStartupNotice: SystemProxyStartupNotice;
     }> {
@@ -307,6 +342,11 @@ function create_index_harness(): {
       }
       return {
         apiBaseUrl: base_url,
+        backendServices: {
+          app: {
+            paths: backend_paths,
+          },
+        },
         readAppLanguage: () => "ZH",
         systemProxyStartupNotice: system_proxy_startup_notice,
       };
@@ -390,6 +430,18 @@ function create_index_harness(): {
     };
   });
 
+  vi.doMock("./shell/desktop-update-service", () => {
+    return {
+      DesktopUpdateService: class {
+        // 构造函数记录入口层传入的路径服务，避免测试启动真实更新服务。
+        public constructor(options: { paths: unknown }) {
+          calls.update_service_paths.push(options.paths);
+          return desktop_update_service;
+        }
+      },
+    };
+  });
+
   vi.doMock("./shell/renderer-process-diagnostics", () => {
     return {
       configure_renderer_crash_reporting: () => {
@@ -440,7 +492,9 @@ function create_index_harness(): {
 
   return {
     base_url,
+    backend_paths,
     calls,
+    desktop_update_service,
     emit: (event_name, ...args) => {
       for (const listener of listeners.get(event_name) ?? []) {
         listener(...args);

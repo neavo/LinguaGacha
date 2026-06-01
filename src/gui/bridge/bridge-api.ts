@@ -3,6 +3,11 @@ import type {
   DesktopPathPickResult,
   DesktopRendererDiagnosticsPayload,
   DesktopShellInfo,
+  DesktopUpdateDownloadProgress,
+  DesktopUpdateDownloadRequest,
+  DesktopUpdateDownloadResult,
+  DesktopUpdateLaunchRequest,
+  DesktopUpdateLaunchResult,
   ThemeMode,
 } from "./bridge-types";
 
@@ -18,6 +23,11 @@ export interface DesktopBridgeApi {
   onWindowCloseRequest: (callback: () => void) => () => void; // 主窗口关闭确认由 renderer 展示 UI，main 只发送请求事件
   reportRendererDiagnostics: (payload: DesktopRendererDiagnosticsPayload) => void; // renderer 崩溃前的轻量黑匣子面包屑留在 main，避免依赖崩溃瞬间 HTTP 上报
   openExternalUrl: (url: string) => Promise<void>; // 外链打开必须经 main 的协议白名单校验后交给系统浏览器
+  downloadUpdate: (
+    request: DesktopUpdateDownloadRequest,
+    on_progress: (progress: DesktopUpdateDownloadProgress) => void,
+  ) => Promise<DesktopUpdateDownloadResult>; // 更新包下载、路径写入和环境判断留在 main，renderer 只接收进度快照
+  launchUpdate: (request: DesktopUpdateLaunchRequest) => Promise<DesktopUpdateLaunchResult>; // 复制并启动更新器后由 main 进入统一退出链路
   pickProjectSourceFilePath: () => Promise<DesktopPathPickResult>; // 项目源文件入口允许多选，格式校验留给后续 Backend / renderer 流程
   pickProjectSourceDirectoryPath: () => Promise<DesktopPathPickResult>; // 项目源目录入口只返回目录路径，和源文件入口保持语义分离
   pickProjectFilePath: () => Promise<DesktopPathPickResult>; // 打开已有工程只通过 main 原生对话框返回受控路径

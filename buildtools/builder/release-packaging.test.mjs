@@ -19,6 +19,7 @@ describe("发布包构建配置", () => {
 
     expect(config.win.target).toEqual(["zip"]);
     expect(config.win.artifactName).toBe("${productName}_v${version}_Windows_${arch}.${ext}");
+    expect(config.afterPack).toBe("buildtools/builder/after-pack.mjs");
     expect(config.mac.target).toEqual(["dmg"]);
     expect(config.linux.target).toEqual(["AppImage"]);
     expect(find_arch_declarations(config)).toEqual([]);

@@ -7,6 +7,12 @@ import type {
   DesktopRendererDiagnosticsPayload,
   DesktopShellInfo,
   DesktopSystemProxyStartupNotice,
+  DesktopUpdateDownloadProgress,
+  DesktopUpdateDownloadRequest,
+  DesktopUpdateDownloadResult,
+  DesktopUpdateFallbackReason,
+  DesktopUpdateLaunchRequest,
+  DesktopUpdateLaunchResult,
   ThemeMode,
   TitleBarControlSide,
 } from "./bridge-types";
@@ -37,6 +43,33 @@ describe("bridge-types", () => {
       canceled: boolean;
       paths: string[];
     }>();
+    expectTypeOf<DesktopUpdateDownloadRequest>().toMatchTypeOf<{
+      latest_version: string;
+      release_url: string;
+      windows_x64_zip_url: string | null;
+    }>();
+    expectTypeOf<DesktopUpdateDownloadProgress>().toMatchTypeOf<{
+      request_id: string;
+      progress_percent: number;
+      downloaded_bytes: number;
+      total_bytes: number | null;
+    }>();
+    expectTypeOf<DesktopUpdateFallbackReason>().toEqualTypeOf<
+      "unsupported_platform" | "missing_windows_x64_zip_url" | "target_dir_not_writable"
+    >();
+    expectTypeOf<DesktopUpdateDownloadResult>().toMatchTypeOf<
+      | { status: "downloaded"; latest_version: string; release_url: string; zip_path: string }
+      | {
+          status: "fallback_to_release_page";
+          release_url: string;
+          reason: DesktopUpdateFallbackReason;
+        }
+    >();
+    expectTypeOf<DesktopUpdateLaunchRequest>().toMatchTypeOf<{
+      latest_version: string;
+      zip_path: string;
+    }>();
+    expectTypeOf<DesktopUpdateLaunchResult>().toMatchTypeOf<{ status: "launched" }>();
     expectTypeOf<DesktopRendererDiagnosticsPayload>().toMatchTypeOf<object>();
   });
 });

@@ -4,15 +4,22 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { build_windows_cli_launcher, install_windows_cli_launcher } from "./after-pack.mjs";
+import {
+  build_windows_berserker,
+  build_windows_cli_launcher,
+  install_windows_berserker,
+  install_windows_cli_launcher,
+} from "./after-pack.mjs";
 
 const cleanup_roots = []; // 收集测试临时目录，避免真实发布目录被触碰
-const WINDOWS_CLI_SOURCE_RELATIVE_DIR = path.join("buildtools", "builder", "win-cli-launcher"); // 测试只关心 Go 模块稳定位置
-const WINDOWS_CLI_OUTPUT_RELATIVE_PATH = path.join(
+const WINDOWS_CLI_SOURCE_RELATIVE_DIR = path.join("buildtools", "builder", "win-cli"); // 测试只关心 Go 模块稳定位置
+const WINDOWS_CLI_OUTPUT_RELATIVE_PATH = path.join("build", "builder", "win-cli", "cli.exe"); // afterPack 对外复制的唯一产物
+const WINDOWS_BERSERKER_SOURCE_RELATIVE_DIR = path.join("buildtools", "builder", "win-berserker"); // 测试只关心 Go 模块稳定位置
+const WINDOWS_BERSERKER_OUTPUT_RELATIVE_PATH = path.join(
   "build",
   "builder",
-  "win-cli-launcher",
-  "cli.exe",
+  "win-berserker",
+  "berserker.exe",
 ); // afterPack 对外复制的唯一产物
 
 afterEach(() => {
@@ -61,6 +68,39 @@ describe("electron-builder afterPack", () => {
     });
   });
 
+  it("Windows 发布目录放入 afterPack 构建出的 berserker.exe", async () => {
+    const project_dir = create_temp_dir();
+    const app_out_dir = create_temp_dir();
+    const commands = [];
+
+    await install_windows_berserker(
+      {
+        appOutDir: app_out_dir,
+        electronPlatformName: "win32",
+        packager: { projectDir: project_dir },
+      },
+      create_go_runner(commands, "go-berserker"),
+    );
+
+    expect(readFileSync(path.join(app_out_dir, "berserker.exe"), "utf-8")).toBe("go-berserker");
+    expect(commands.map((command) => command.command)).toEqual(["go", "go"]);
+    expect(commands.map((command) => command.args)).toEqual([
+      ["test", "./..."],
+      [
+        "build",
+        "-trimpath",
+        "-ldflags",
+        "-s -w -H windowsgui",
+        "-o",
+        path.join(project_dir, WINDOWS_BERSERKER_OUTPUT_RELATIVE_PATH),
+        ".",
+      ],
+    ]);
+    expect(commands[0].options.cwd).toBe(
+      path.join(project_dir, WINDOWS_BERSERKER_SOURCE_RELATIVE_DIR),
+    );
+  });
+
   it("macOS 和 Linux 不运行 Go 构建也不生成额外 cli 文件", async () => {
     const project_dir = create_temp_dir();
     const app_out_dir = create_temp_dir();
@@ -82,9 +122,26 @@ describe("electron-builder afterPack", () => {
       },
       create_go_runner(commands, "go-launcher"),
     );
+    await install_windows_berserker(
+      {
+        appOutDir: app_out_dir,
+        electronPlatformName: "darwin",
+        packager: { projectDir: project_dir },
+      },
+      create_go_runner(commands, "go-berserker"),
+    );
+    await install_windows_berserker(
+      {
+        appOutDir: app_out_dir,
+        electronPlatformName: "linux",
+        packager: { projectDir: project_dir },
+      },
+      create_go_runner(commands, "go-berserker"),
+    );
 
     expect(() => readFileSync(path.join(app_out_dir, "cli"))).toThrow();
     expect(() => readFileSync(path.join(app_out_dir, "cli.exe"))).toThrow();
+    expect(() => readFileSync(path.join(app_out_dir, "berserker.exe"))).toThrow();
     expect(commands).toHaveLength(0);
   });
 
@@ -110,6 +167,9 @@ describe("electron-builder afterPack", () => {
     await expect(
       build_windows_cli_launcher(project_dir, create_missing_go_runner()),
     ).rejects.toThrow("构建 Windows CLI 启动器需要 Go 工具链");
+    await expect(build_windows_berserker(project_dir, create_missing_go_runner())).rejects.toThrow(
+      "构建 Windows 自动更新器需要 Go 工具链",
+    );
   });
 });
 

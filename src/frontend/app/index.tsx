@@ -27,6 +27,7 @@ import {
   check_github_release_update,
   get_backend_metadata,
   open_external_url,
+  type GithubReleaseUpdate,
 } from "@frontend/app/desktop/desktop-api";
 import {
   summarize_project_state_for_diagnostics,
@@ -53,7 +54,11 @@ import { AppSidebar } from "@frontend/app/shell/app-sidebar";
 import { AppTitlebar } from "@frontend/app/shell/app-titlebar";
 import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
 import { LogWindowPage } from "@frontend/pages/log-window-page/page";
-import type { ThemeMode } from "@gui/bridge-types";
+import type {
+  DesktopUpdateDownloadProgress,
+  DesktopUpdateDownloadResult,
+  ThemeMode,
+} from "@gui/bridge-types";
 
 // SIDEBAR STORAGE KEY 是持久化或快捷键契约，集中保存避免调用点散落魔术字符串。
 const SIDEBAR_STORAGE_KEY = "lg-sidebar-collapsed";
@@ -63,6 +68,15 @@ const THEME_STORAGE_KEY = "lg-theme-mode";
 const FONT_FAMILY_STORAGE_KEY = "lg-base-font-mode";
 const LOG_WINDOW_APP_LANGUAGE_STORAGE_KEY = "lg-log-window-app-language"; // 日志窗口不启动主运行态，首屏语言用独立缓存兜底
 const GITHUB_REPOSITORY_URL = "https://github.com/neavo/LinguaGacha";
+
+type UpdateDialogState =
+  | { phase: "idle" }
+  | { phase: "available"; release: GithubReleaseUpdate; zip_path: string | null }
+  | { phase: "confirming"; release: GithubReleaseUpdate }
+  | { phase: "downloading"; release: GithubReleaseUpdate; progress_percent: number }
+  | { phase: "ready_to_restart"; release: GithubReleaseUpdate; zip_path: string }
+  | { phase: "launching"; release: GithubReleaseUpdate; zip_path: string };
+type AppTranslator = ReturnType<typeof useI18n>["t"];
 
 // PROJECT DEPENDENT ROUTE IDS 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const PROJECT_DEPENDENT_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
@@ -99,6 +113,56 @@ function resolve_toggled_app_language(app_language: "ZH" | "EN"): "ZH" | "EN" {
   }
 
   return "EN";
+}
+
+/**
+ * 从更新弹窗状态中读取当前 release，idle 阶段没有可消费版本。
+ */
+function read_update_release(state: UpdateDialogState): GithubReleaseUpdate | null {
+  return state.phase === "idle" ? null : state.release;
+}
+
+/**
+ * 判断更新弹窗当前是否需要保持可见。
+ */
+function is_update_dialog_open(state: UpdateDialogState): boolean {
+  return (
+    state.phase === "confirming" ||
+    state.phase === "downloading" ||
+    state.phase === "ready_to_restart" ||
+    state.phase === "launching"
+  );
+}
+
+/**
+ * 判断更新弹窗是否处于不可关闭的提交阶段。
+ */
+function is_update_dialog_submitting(state: UpdateDialogState): boolean {
+  return state.phase === "downloading" || state.phase === "launching";
+}
+
+/**
+ * 格式化下载进度，避免按钮文本出现越界数值。
+ */
+function format_update_progress_label(progress_percent: number): string {
+  return `${Math.max(0, Math.min(100, progress_percent)).toFixed(2)}%`;
+}
+
+/**
+ * 根据更新状态解析确认按钮展示文本。
+ */
+function resolve_update_confirm_label(state: UpdateDialogState, t: AppTranslator): string {
+  if (state.phase === "ready_to_restart") {
+    return t("app.update.restart_confirm");
+  }
+  if (state.phase === "downloading") {
+    return format_update_progress_label(state.progress_percent);
+  }
+  if (state.phase === "launching") {
+    return t("app.update.launching");
+  }
+
+  return t("app.action.confirm");
 }
 
 /**
@@ -276,7 +340,7 @@ function AppContent(props: AppContentProps): JSX.Element {
     task_snapshot,
     update_app_language,
   } = useDesktopState();
-  const { push_persistent_toast, push_toast } = useDesktopToast();
+  const { push_toast } = useDesktopToast();
   const { t } = useI18n();
   const { resolvedTheme, setTheme } = useTheme();
   const shell_info = window.desktopApp.shell;
@@ -286,20 +350,23 @@ function AppContent(props: AppContentProps): JSX.Element {
     read_sidebar_state(),
   );
   const [app_version, set_app_version] = useState<string | null>(null);
-  const [update_release_url, set_update_release_url] = useState<string | null>(null);
+  const [update_dialog_state, set_update_dialog_state] = useState<UpdateDialogState>({
+    phase: "idle",
+  });
   const [close_confirm_open, set_close_confirm_open] = useState<boolean>(false);
   const [close_confirm_submitting, set_close_confirm_submitting] = useState<boolean>(false);
   const previous_project_loaded_ref = useRef<boolean>(project_snapshot.loaded);
   const previous_project_path_ref = useRef<string>(project_snapshot.path);
   const previous_project_session_status_ref = useRef(project_session_status);
   const log_badge_project_path_ref = useRef<string | null>(null);
-  const update_toast_shown_ref = useRef<boolean>(false);
   const system_proxy_toast_shown_ref = useRef<boolean>(false); // 系统代理提示只展示一次，避免初始状态读取或语言刷新重复打扰用户
   const [log_badge_visible, set_log_badge_visible] = useState<boolean>(false);
   const active_screen = SCREEN_REGISTRY[selected_route] ?? SCREEN_REGISTRY[DEFAULT_ROUTE_ID]!;
   const ScreenComponent = active_screen.component;
   const app_title = t("app.metadata.app_name");
   const app_titlebar_title = format_app_titlebar_title(app_title, app_version);
+  const update_release = read_update_release(update_dialog_state);
+  const update_release_url = update_release?.release_url ?? null;
   const theme_mode: ThemeMode =
     resolvedTheme === "dark" ? "dark" : resolvedTheme === "light" ? "light" : read_theme_mode();
 
@@ -358,7 +425,10 @@ function AppContent(props: AppContentProps): JSX.Element {
 
     void check_github_release_update(app_version).then((release_update) => {
       if (!is_disposed && release_update !== null) {
-        set_update_release_url(release_update.release_url);
+        set_update_dialog_state({
+          phase: "confirming",
+          release: release_update,
+        });
       }
     });
 
@@ -366,15 +436,6 @@ function AppContent(props: AppContentProps): JSX.Element {
       is_disposed = true;
     };
   }, [app_version]);
-
-  useEffect(() => {
-    if (update_release_url === null || update_toast_shown_ref.current) {
-      return;
-    }
-
-    update_toast_shown_ref.current = true;
-    push_persistent_toast("warning", t("app.update.toast"));
-  }, [push_persistent_toast, t, update_release_url]);
 
   useEffect(() => {
     if (!initial_state_ready || system_proxy_toast_shown_ref.current) {
@@ -627,14 +688,169 @@ function AppContent(props: AppContentProps): JSX.Element {
     }
   }
 
+  /**
+   * 关闭更新弹窗时保留已发现版本，便于用户稍后从侧栏重新打开。
+   */
+  function close_update_dialog(): void {
+    set_update_dialog_state((current_state) => {
+      if (current_state.phase === "confirming") {
+        return {
+          phase: "available",
+          release: current_state.release,
+          zip_path: null,
+        };
+      }
+      if (current_state.phase === "ready_to_restart") {
+        return {
+          phase: "available",
+          release: current_state.release,
+          zip_path: current_state.zip_path,
+        };
+      }
+
+      return current_state;
+    });
+  }
+
+  /**
+   * 从侧栏状态入口重新打开更新弹窗，已下载完成时直接进入重启确认。
+   */
+  function reopen_update_dialog(): void {
+    set_update_dialog_state((current_state) => {
+      if (current_state.phase !== "available") {
+        return current_state;
+      }
+      if (current_state.zip_path !== null) {
+        return {
+          phase: "ready_to_restart",
+          release: current_state.release,
+          zip_path: current_state.zip_path,
+        };
+      }
+
+      return {
+        phase: "confirming",
+        release: current_state.release,
+      };
+    });
+  }
+
+  /**
+   * 只在下载阶段接收进度，避免迟到 IPC 事件覆盖其它状态。
+   */
+  function handle_update_download_progress(progress: DesktopUpdateDownloadProgress): void {
+    set_update_dialog_state((current_state) => {
+      if (current_state.phase !== "downloading") {
+        return current_state;
+      }
+
+      return {
+        ...current_state,
+        progress_percent: progress.progress_percent,
+      };
+    });
+  }
+
+  /**
+   * 串起下载、回退发布页和启动更新器三个更新确认分支。
+   */
+  async function handle_confirm_update_dialog(): Promise<void> {
+    if (update_dialog_state.phase === "confirming") {
+      const release = update_dialog_state.release;
+      set_update_dialog_state({
+        phase: "downloading",
+        release,
+        progress_percent: 0,
+      });
+      try {
+        const result = await window.desktopApp.downloadUpdate(
+          {
+            latest_version: release.latest_version,
+            release_url: release.release_url,
+            windows_x64_zip_url: release.windows_x64_zip_url,
+          },
+          handle_update_download_progress,
+        );
+        handle_update_download_result(release, result);
+      } catch (error) {
+        set_update_dialog_state({
+          phase: "confirming",
+          release,
+        });
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("app.feedback.update_failed")),
+        );
+      }
+      return;
+    }
+
+    if (update_dialog_state.phase !== "ready_to_restart") {
+      return;
+    }
+
+    const release = update_dialog_state.release;
+    const zip_path = update_dialog_state.zip_path;
+    set_update_dialog_state({
+      phase: "launching",
+      release,
+      zip_path,
+    });
+    try {
+      await window.desktopApp.launchUpdate({
+        latest_version: release.latest_version,
+        zip_path,
+      });
+    } catch (error) {
+      set_update_dialog_state({
+        phase: "ready_to_restart",
+        release,
+        zip_path,
+      });
+      push_toast("error", resolve_visible_error_message(error, t, t("app.feedback.update_failed")));
+    }
+  }
+
+  /**
+   * 把 main 返回的下载结果转换为 renderer 弹窗状态或发布页回退。
+   */
+  function handle_update_download_result(
+    release: GithubReleaseUpdate,
+    result: DesktopUpdateDownloadResult,
+  ): void {
+    if (result.status === "fallback_to_release_page") {
+      set_update_dialog_state({
+        phase: "available",
+        release,
+        zip_path: null,
+      });
+      void open_external_url(result.release_url).catch((error: unknown) => {
+        push_toast(
+          "error",
+          resolve_visible_error_message(error, t, t("app.feedback.update_failed")),
+        );
+      });
+      return;
+    }
+
+    set_update_dialog_state({
+      phase: "ready_to_restart",
+      release,
+      zip_path: result.zip_path,
+    });
+  }
+
   // 事件处理边界，只把外部事件转换为本模块状态更新。
   /**
    * 承接当前模块的核心控制分支。
    */
   function handle_profile_action(): void {
-    const target_url = update_release_url ?? GITHUB_REPOSITORY_URL;
+    if (update_release !== null) {
+      reopen_update_dialog();
+      return;
+    }
 
-    void open_external_url(target_url).catch((error: unknown) => {
+    void open_external_url(GITHUB_REPOSITORY_URL).catch((error: unknown) => {
       push_toast("error", resolve_visible_error_message(error, t, t("app.feedback.update_failed")));
     });
   }
@@ -725,6 +941,22 @@ function AppContent(props: AppContentProps): JSX.Element {
           </section>
         </main>
       </SidebarProvider>
+
+      <AppAlertDialog
+        open={is_update_dialog_open(update_dialog_state)}
+        description={
+          update_release === null
+            ? ""
+            : t("app.update.confirm_description", { VERSION: update_release.latest_version })
+        }
+        submitting={is_update_dialog_submitting(update_dialog_state)}
+        submittingLabel={resolve_update_confirm_label(update_dialog_state, t)}
+        submittingIcon={update_dialog_state.phase === "launching"}
+        confirmLabel={resolve_update_confirm_label(update_dialog_state, t)}
+        cancelLabel={t("app.action.cancel")}
+        onConfirm={handle_confirm_update_dialog}
+        onClose={close_update_dialog}
+      />
 
       <AppAlertDialog
         open={close_confirm_open}

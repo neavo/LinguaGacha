@@ -5,6 +5,9 @@ import {
   IPC_CHANNEL_QUIT_APP,
   IPC_CHANNEL_RENDERER_DIAGNOSTICS,
   IPC_CHANNEL_TITLE_BAR_THEME,
+  IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS,
+  IPC_CHANNEL_UPDATE_DOWNLOAD_RELEASE,
+  IPC_CHANNEL_UPDATE_LAUNCH_BERSERKER,
   IPC_CHANNEL_WINDOW_CLOSE_REQUEST,
 } from "../gui-ipc-contract";
 import { DESKTOP_BRIDGE_GLOBAL_NAME, type DesktopBridgeApi } from "../bridge/bridge-api";
@@ -74,14 +77,83 @@ describe("preload desktop bridge", () => {
     await bridge.quitApp();
     await bridge.openLogWindow();
     bridge.reportRendererDiagnostics({ route: "workbench" });
+    electron_mock.invoke.mockResolvedValueOnce({ status: "fallback_to_release_page" });
+    await bridge.downloadUpdate(
+      {
+        latest_version: "1.2.4",
+        release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
+        windows_x64_zip_url: null,
+      },
+      vi.fn(),
+    );
+    await bridge.launchUpdate({
+      latest_version: "1.2.4",
+      zip_path: "E:/LinguaGacha/userdata/berserker/v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
+    });
 
     expect(electron_mock.get_path_for_file).toHaveBeenCalledTimes(1);
     expect(electron_mock.send).toHaveBeenCalledWith(IPC_CHANNEL_TITLE_BAR_THEME, "dark");
     expect(electron_mock.invoke).toHaveBeenCalledWith(IPC_CHANNEL_QUIT_APP);
     expect(electron_mock.invoke).toHaveBeenCalledWith(IPC_CHANNEL_OPEN_LOG_WINDOW);
+    expect(electron_mock.invoke).toHaveBeenCalledWith(
+      IPC_CHANNEL_UPDATE_DOWNLOAD_RELEASE,
+      expect.objectContaining({
+        latest_version: "1.2.4",
+        request_id: "update-download-1",
+        windows_x64_zip_url: null,
+      }),
+    );
+    expect(electron_mock.invoke).toHaveBeenCalledWith(IPC_CHANNEL_UPDATE_LAUNCH_BERSERKER, {
+      latest_version: "1.2.4",
+      zip_path: "E:/LinguaGacha/userdata/berserker/v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
+    });
     expect(electron_mock.send).toHaveBeenCalledWith(IPC_CHANNEL_RENDERER_DIAGNOSTICS, {
       route: "workbench",
     });
+  });
+
+  it("下载更新只转发同一 request id 的进度并在完成后解绑监听", async () => {
+    await import_preload_with_backend_api_arg();
+    const bridge = electron_mock.exposed_api;
+    if (bridge === null) {
+      throw new Error("preload 未暴露 desktop bridge。");
+    }
+
+    electron_mock.invoke.mockImplementationOnce(async () => {
+      const listener = electron_mock.on.mock.calls[0]?.[1] as
+        | ((event: unknown, progress: unknown) => void)
+        | undefined;
+      listener?.({}, { request_id: "other-request", progress_percent: 7 });
+      listener?.({}, { request_id: "update-download-1", progress_percent: 45.5 });
+      return {
+        status: "downloaded",
+        latest_version: "1.2.4",
+        release_url: "release",
+        zip_path: "zip",
+      };
+    });
+    const progress_values: number[] = [];
+
+    await bridge.downloadUpdate(
+      {
+        latest_version: "1.2.4",
+        release_url: "release",
+        windows_x64_zip_url: "https://example.com/LinguaGacha_v1.2.4_Windows_x64.zip",
+      },
+      (progress) => {
+        progress_values.push(progress.progress_percent);
+      },
+    );
+
+    expect(progress_values).toEqual([45.5]);
+    expect(electron_mock.on).toHaveBeenCalledWith(
+      IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS,
+      expect.any(Function),
+    );
+    expect(electron_mock.remove_listener).toHaveBeenCalledWith(
+      IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS,
+      expect.any(Function),
+    );
   });
 
   it("关闭请求订阅返回对应解除函数", async () => {

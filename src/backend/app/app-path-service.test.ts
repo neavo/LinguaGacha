@@ -25,6 +25,12 @@ describe("AppPathService", () => {
     expect(service.get_app_root()).toBe(path.resolve(app_root));
     expect(service.get_data_root()).toBe(path.resolve(app_root));
     expect(service.get_config_path()).toBe(path.join(app_root, "userdata", "config.json"));
+    expect(service.get_berserker_update_root_dir()).toBe(
+      path.join(app_root, "userdata", "berserker"),
+    );
+    expect(service.get_berserker_version_dir("1.2.4")).toBe(
+      path.join(app_root, "userdata", "berserker", "v1.2.4"),
+    );
     expect(service.get_version_path()).toBe(path.join(app_root, "version.txt"));
     expect(service.get_log_dir()).toBe(path.join(app_root, "log"));
     expect(service.get_model_preset_dir()).toBe(path.join(app_root, "resource", "model", "preset"));
@@ -72,6 +78,9 @@ describe("AppPathService", () => {
   });
 });
 
+/**
+ * 创建测试临时根目录，避免触碰真实应用目录。
+ */
 function create_temp_root(prefix: string): string {
   const temp_root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
   cleanup_roots.push(temp_root);

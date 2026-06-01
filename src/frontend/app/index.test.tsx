@@ -5,12 +5,45 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "@frontend/app/index";
 import { create_desktop_bridge_api_mock } from "../../test/desktop-bridge-mock";
 
+type AlertDialogRenderProps = {
+  open: boolean;
+  description: string;
+  submitting?: boolean;
+  confirmLabel?: string;
+  submittingLabel?: string;
+  onConfirm: () => void | Promise<void>;
+  onClose: () => void;
+};
+type GithubReleaseUpdateMock = {
+  latest_version: string;
+  release_url: string;
+  windows_x64_zip_url: string | null;
+};
+
 // toast mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const toast_mock = vi.hoisted(() => {
   // toast_mock 让 App 根测试可以观察 toast 类型和文案，而不渲染真实 sonner UI
   return {
     push_persistent_toast: vi.fn(),
     push_toast: vi.fn(),
+  };
+});
+
+const desktop_api_mock = vi.hoisted(() => {
+  return {
+    api_fetch: vi.fn(async () => ({ settings: { app_language: "ZH" } })),
+    check_github_release_update: vi.fn<
+      (_current_version: string) => Promise<GithubReleaseUpdateMock | null>
+    >(async () => null),
+    get_backend_metadata: vi.fn(async () => ({ version: "9.8.7" })),
+    open_external_url: vi.fn(async () => undefined),
+    report_renderer_error: vi.fn(async () => undefined),
+  };
+});
+
+const alert_dialog_mock = vi.hoisted(() => {
+  return {
+    render_props: [] as AlertDialogRenderProps[],
   };
 });
 
@@ -128,13 +161,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
 });
 
 vi.mock("@frontend/app/desktop/desktop-api", () => {
-  return {
-    api_fetch: vi.fn(async () => ({ settings: { app_language: "ZH" } })),
-    check_github_release_update: vi.fn(async () => null),
-    get_backend_metadata: vi.fn(async () => ({ version: "9.8.7" })),
-    open_external_url: vi.fn(async () => undefined),
-    report_renderer_error: vi.fn(async () => undefined),
-  };
+  return desktop_api_mock;
 });
 
 vi.mock("@frontend/app/feedback/desktop-toast", () => {
@@ -192,7 +219,10 @@ vi.mock("@frontend/app/shell/app-titlebar", () => {
 
 vi.mock("@frontend/widgets/app-alert-dialog", () => {
   return {
-    AppAlertDialog: () => null,
+    AppAlertDialog: (props: AlertDialogRenderProps) => {
+      alert_dialog_mock.render_props.push(props);
+      return null;
+    },
   };
 });
 
@@ -234,6 +264,11 @@ describe("App 字体模式同步", () => {
 
   beforeEach(() => {
     install_local_storage_fallback();
+    desktop_api_mock.api_fetch.mockResolvedValue({ settings: { app_language: "ZH" } });
+    desktop_api_mock.check_github_release_update.mockResolvedValue(null);
+    desktop_api_mock.get_backend_metadata.mockResolvedValue({ version: "9.8.7" });
+    desktop_api_mock.open_external_url.mockResolvedValue(undefined);
+    desktop_api_mock.report_renderer_error.mockResolvedValue(undefined);
     Object.defineProperty(window, "desktopApp", {
       configurable: true,
       value: create_desktop_bridge_api_mock(),
@@ -254,9 +289,10 @@ describe("App 字体模式同步", () => {
     document.documentElement.removeAttribute("data-lg-base-font");
     window.history.replaceState(null, "", "/");
     vi.clearAllMocks();
+    alert_dialog_mock.render_props = [];
   });
 
-  // mount_app_at 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+  // 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   /**
    * 挂载当前测试组件并等待渲染完成。
    */
@@ -270,6 +306,27 @@ describe("App 字体模式同步", () => {
     await act(async () => {
       root?.render(<App />);
     });
+  }
+
+  /**
+   * 刷新 App 根组件内连续触发的异步 effect。
+   */
+  async function flush_app_effects(): Promise<void> {
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+  }
+
+  /**
+   * 读取最新打开的确认框 props，帮助测试直接触发公开回调。
+   */
+  function read_latest_open_dialog(): AlertDialogRenderProps {
+    const dialog = alert_dialog_mock.render_props.filter((props) => props.open).at(-1);
+    if (dialog === undefined) {
+      throw new Error("缺少打开中的确认框。");
+    }
+    return dialog;
   }
 
   it("日志窗口启动时会继承已保存的字体模式", async () => {
@@ -331,6 +388,134 @@ describe("App 字体模式同步", () => {
     });
 
     expect(toast_mock.push_toast).toHaveBeenCalledTimes(1);
+  });
+
+  it("检查到新版本后通过确认框下载并进入重启更新状态", async () => {
+    desktop_api_mock.check_github_release_update.mockResolvedValueOnce({
+      latest_version: "1.2.4",
+      release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
+      windows_x64_zip_url:
+        "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
+    });
+    const download_update = vi.fn(async (_request, on_progress) => {
+      on_progress({
+        request_id: "download-1",
+        progress_percent: 45.678,
+        downloaded_bytes: 456,
+        total_bytes: 1000,
+      });
+      return {
+        status: "downloaded" as const,
+        latest_version: "1.2.4",
+        release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
+        zip_path: "E:/LinguaGacha/userdata/berserker/v1.2.4/update.zip",
+      };
+    });
+    Object.defineProperty(window, "desktopApp", {
+      configurable: true,
+      value: create_desktop_bridge_api_mock({
+        methods: {
+          downloadUpdate: download_update,
+        },
+      }),
+    });
+
+    await mount_app_at("/");
+    await flush_app_effects();
+    const confirm_dialog = read_latest_open_dialog();
+
+    expect(confirm_dialog.description).toBe("app.update.confirm_description");
+    expect(confirm_dialog.confirmLabel).toBe("app.action.confirm");
+    expect(toast_mock.push_persistent_toast).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await confirm_dialog.onConfirm();
+    });
+    const ready_dialog = read_latest_open_dialog();
+
+    expect(download_update).toHaveBeenCalledWith(
+      {
+        latest_version: "1.2.4",
+        release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
+        windows_x64_zip_url:
+          "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
+      },
+      expect.any(Function),
+    );
+    expect(ready_dialog.confirmLabel).toBe("app.update.restart_confirm");
+    expect(ready_dialog.submitting).toBe(false);
+  });
+
+  it("自动更新条件不满足时打开发布页回退", async () => {
+    desktop_api_mock.check_github_release_update.mockResolvedValueOnce({
+      latest_version: "1.2.4",
+      release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
+      windows_x64_zip_url: null,
+    });
+    Object.defineProperty(window, "desktopApp", {
+      configurable: true,
+      value: create_desktop_bridge_api_mock({
+        methods: {
+          downloadUpdate: async () => ({
+            status: "fallback_to_release_page",
+            release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
+            reason: "missing_windows_x64_zip_url",
+          }),
+        },
+      }),
+    });
+
+    await mount_app_at("/");
+    await flush_app_effects();
+
+    await act(async () => {
+      await read_latest_open_dialog().onConfirm();
+    });
+
+    expect(desktop_api_mock.open_external_url).toHaveBeenCalledWith(
+      "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
+    );
+  });
+
+  it("下载完成后点击重启并更新会启动更新器并保持处理中状态", async () => {
+    desktop_api_mock.check_github_release_update.mockResolvedValueOnce({
+      latest_version: "1.2.4",
+      release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
+      windows_x64_zip_url:
+        "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
+    });
+    const launch_update = vi.fn(async () => ({ status: "launched" as const }));
+    Object.defineProperty(window, "desktopApp", {
+      configurable: true,
+      value: create_desktop_bridge_api_mock({
+        methods: {
+          downloadUpdate: async () => ({
+            status: "downloaded",
+            latest_version: "1.2.4",
+            release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
+            zip_path: "E:/LinguaGacha/userdata/berserker/v1.2.4/update.zip",
+          }),
+          launchUpdate: launch_update,
+        },
+      }),
+    });
+
+    await mount_app_at("/");
+    await flush_app_effects();
+    await act(async () => {
+      await read_latest_open_dialog().onConfirm();
+    });
+    await act(async () => {
+      await read_latest_open_dialog().onConfirm();
+    });
+    const launching_dialog = read_latest_open_dialog();
+
+    expect(launch_update).toHaveBeenCalledWith({
+      latest_version: "1.2.4",
+      zip_path: "E:/LinguaGacha/userdata/berserker/v1.2.4/update.zip",
+    });
+    expect(launching_dialog.submitting).toBe(true);
+    expect(launching_dialog.submittingLabel).toBe("app.update.launching");
   });
 
   it("主窗口项目 session 内挂载项目 UI 状态 Provider", async () => {

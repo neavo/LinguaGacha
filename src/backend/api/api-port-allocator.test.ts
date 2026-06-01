@@ -10,6 +10,9 @@ import {
   build_backend_api_base_url,
 } from "../api/api-port-allocator";
 
+/**
+ * 监听指定端口，帮助测试制造端口占用场景。
+ */
 async function listen_on_port(port: number): Promise<net.Server> {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -20,6 +23,9 @@ async function listen_on_port(port: number): Promise<net.Server> {
   });
 }
 
+/**
+ * 读取测试服务器实际绑定端口。
+ */
 function read_listening_port(server: net.Server): number {
   const address = server.address();
   if (address === null || typeof address === "string") {
@@ -29,6 +35,9 @@ function read_listening_port(server: net.Server): number {
   return address.port;
 }
 
+/**
+ * 关闭测试服务器并等待释放端口。
+ */
 async function close_server(server: net.Server): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     server.close((error) => {
@@ -41,6 +50,9 @@ async function close_server(server: net.Server): Promise<void> {
   });
 }
 
+/**
+ * 借系统分配一个可用端口后立即释放。
+ */
 async function reserve_then_release_port(): Promise<number> {
   const server = await listen_on_port(0);
   const port = read_listening_port(server);
@@ -92,6 +104,24 @@ describe("api-port-allocator", () => {
     } finally {
       await close_server(occupied_server);
     }
+  });
+
+  it("候选端口被系统拒绝时继续尝试后续端口", async () => {
+    const picked_ports = [64_926, 50_001];
+    const checked_ports: number[] = [];
+
+    const port = await allocate_backend_api_port({
+      pickPort: () => picked_ports.shift() ?? 50_001,
+      assertPortBindable: async (candidate_port) => {
+        checked_ports.push(candidate_port);
+        if (candidate_port === 64_926) {
+          throw Object.assign(new Error("listen EACCES"), { code: "EACCES" });
+        }
+      },
+    });
+
+    expect(port).toBe(50_001);
+    expect(checked_ports).toEqual([64_926, 50_001]);
   });
 
   it("候选次数耗尽时抛出结构化运行能力错误", async () => {

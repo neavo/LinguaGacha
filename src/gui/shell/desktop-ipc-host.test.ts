@@ -16,6 +16,9 @@ import {
   IPC_CHANNEL_QUIT_APP,
   IPC_CHANNEL_RENDERER_DIAGNOSTICS,
   IPC_CHANNEL_TITLE_BAR_THEME,
+  IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS,
+  IPC_CHANNEL_UPDATE_DOWNLOAD_RELEASE,
+  IPC_CHANNEL_UPDATE_LAUNCH_BERSERKER,
 } from "../gui-ipc-contract";
 
 // electron mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
@@ -112,6 +115,87 @@ describe("桌面 IPC 宿主", () => {
     expect(electron_mock.app_quit).toHaveBeenCalledTimes(1);
     expect(log_window_host.toggle).toHaveBeenCalledTimes(1);
     expect(electron_mock.open_external).toHaveBeenCalledWith("https://example.com/docs");
+  });
+
+  it("更新下载 IPC 通过更新服务执行并向当前 renderer 推送进度", async () => {
+    const sender = { send: vi.fn() };
+    const download_release = vi.fn(async (_request, report_progress) => {
+      report_progress({
+        request_id: "download-1",
+        progress_percent: 42.5,
+        downloaded_bytes: 425,
+        total_bytes: 1000,
+      });
+      return {
+        status: "downloaded",
+        latest_version: "1.2.4",
+        release_url: "release",
+        zip_path: "zip",
+      };
+    });
+    await register_handlers({
+      updateService: {
+        download_release,
+      },
+    });
+
+    await expect(
+      invoke(
+        IPC_CHANNEL_UPDATE_DOWNLOAD_RELEASE,
+        {
+          request_id: "download-1",
+          latest_version: "1.2.4",
+          release_url: "release",
+          windows_x64_zip_url: "zip-url",
+        },
+        sender,
+      ),
+    ).resolves.toEqual({
+      status: "downloaded",
+      latest_version: "1.2.4",
+      release_url: "release",
+      zip_path: "zip",
+    });
+
+    expect(download_release).toHaveBeenCalledWith(
+      {
+        request_id: "download-1",
+        latest_version: "1.2.4",
+        release_url: "release",
+        windows_x64_zip_url: "zip-url",
+      },
+      expect.any(Function),
+    );
+    expect(sender.send).toHaveBeenCalledWith(IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS, {
+      request_id: "download-1",
+      progress_percent: 42.5,
+      downloaded_bytes: 425,
+      total_bytes: 1000,
+    });
+  });
+
+  it("更新器启动成功后触发统一 Backend 收尾退出", async () => {
+    const launch_berserker = vi.fn(async () => ({ status: "launched" as const }));
+    const quit_after_backend_shutdown = vi.fn(async () => undefined);
+    await register_handlers({
+      quitAfterBackendShutdown: quit_after_backend_shutdown,
+      updateService: {
+        launch_berserker,
+      },
+    });
+
+    await expect(
+      invoke(IPC_CHANNEL_UPDATE_LAUNCH_BERSERKER, {
+        latest_version: "1.2.4",
+        zip_path: "zip",
+      }),
+    ).resolves.toEqual({ status: "launched" });
+
+    expect(launch_berserker).toHaveBeenCalledWith({
+      latest_version: "1.2.4",
+      zip_path: "zip",
+    });
+    expect(quit_after_backend_shutdown).toHaveBeenCalledWith(0);
   });
 
   it("renderer 诊断 IPC 会按发送方交给诊断注册器", async () => {
@@ -327,8 +411,16 @@ async function register_handlers(
     mainWindow?: unknown | null;
     logWindowHost?: { toggle: () => void } | null;
     markRendererConfirmedAppQuit?: () => void;
+    quitAfterBackendShutdown?: (exit_code: number) => Promise<void>;
     recordRendererDiagnostics?: (sender: unknown, payload: unknown) => void;
     readAppLanguage?: () => unknown;
+    updateService?: {
+      download_release?: (
+        request: unknown,
+        report_progress: (progress: unknown) => void,
+      ) => Promise<unknown>;
+      launch_berserker?: (request: unknown) => Promise<unknown>;
+    };
   } = {},
 ): Promise<void> {
   const { register_desktop_ipc_handlers } = await import("./desktop-ipc-host");
@@ -336,8 +428,15 @@ async function register_handlers(
     getMainWindow: () => (options.mainWindow ?? null) as never,
     getLogWindowHost: () => (options.logWindowHost ?? null) as never,
     markRendererConfirmedAppQuit: options.markRendererConfirmedAppQuit ?? vi.fn(),
+    quitAfterBackendShutdown: options.quitAfterBackendShutdown ?? vi.fn(async () => undefined),
     recordRendererDiagnostics: (options.recordRendererDiagnostics ?? vi.fn()) as never,
     readAppLanguage: options.readAppLanguage ?? (() => "ZH"),
+    updateService: {
+      download_release:
+        options.updateService?.download_release ?? vi.fn(async () => ({ status: "downloaded" })),
+      launch_berserker:
+        options.updateService?.launch_berserker ?? vi.fn(async () => ({ status: "launched" })),
+    } as never,
   });
 }
 
@@ -361,5 +460,10 @@ async function invoke(channel: string, ...args: unknown[]): Promise<unknown> {
   if (handler === undefined) {
     throw new Error(`缺少 invoke 型 IPC 处理器：${channel}`);
   }
-  return await handler({ sender: { id: "renderer" } }, ...args);
+  const maybe_sender = args.at(-1);
+  const sender =
+    maybe_sender !== null && typeof maybe_sender === "object" && "send" in maybe_sender
+      ? args.pop()
+      : { id: "renderer", send: vi.fn() };
+  return await handler({ sender }, ...args);
 }

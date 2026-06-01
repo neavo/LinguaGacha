@@ -22,6 +22,7 @@ import {
   configure_renderer_crash_reporting,
   create_renderer_process_diagnostics_registry,
 } from "./shell/renderer-process-diagnostics";
+import { DesktopUpdateService } from "./shell/desktop-update-service";
 
 export interface GuiEntryOptions {
   desktopBundleDir: string; // 产品入口解析出的桌面 bundle 根目录
@@ -44,6 +45,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   let backend_api_base_url: string | null = null; // Backend API 地址由 Bootstrap 启动结果注入窗口，preload 不再猜测固定端口
   let system_proxy_startup_notice: DesktopSystemProxyStartupNotice =
     EMPTY_DESKTOP_SYSTEM_PROXY_STARTUP_NOTICE; // 启动期代理提示只保存脱敏摘要，窗口重建时复用同一事实
+  let desktop_update_service: DesktopUpdateService | null = null; // 更新下载和启动副作用只在 main 的单一服务入口执行
   let is_app_shutdown_in_progress = false; // 退出流程只允许进入一次，防止 before-quit、fatal 和窗口关闭同时触发重复清理
   let is_renderer_confirmed_app_quit = false; // renderer 已确认退出时，主窗口 close 事件不再反向弹出网页确认流程
 
@@ -105,6 +107,12 @@ export function run_gui_entry(options: GuiEntryOptions): void {
    * 注册 renderer 可调用的桌面宿主桥接能力。
    */
   function register_runtime_ipc_handlers(read_app_language: () => unknown): void {
+    if (desktop_update_service === null) {
+      throw new AppErrors.InternalInvariantError({
+        diagnostic_context: { reason: "desktop_update_service_not_ready" },
+      });
+    }
+
     register_desktop_ipc_handlers({
       getMainWindow: () => {
         return win;
@@ -115,8 +123,10 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       markRendererConfirmedAppQuit: () => {
         is_renderer_confirmed_app_quit = true;
       },
+      quitAfterBackendShutdown: quit_app_after_backend_shutdown,
       recordRendererDiagnostics: renderer_process_diagnostics.recordRendererDiagnostics,
       readAppLanguage: read_app_language,
+      updateService: desktop_update_service,
     });
   }
 
@@ -176,6 +186,10 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       }
       backend_api_base_url = backend_start_result.apiBaseUrl;
       system_proxy_startup_notice = backend_start_result.systemProxyStartupNotice;
+      desktop_update_service = new DesktopUpdateService({
+        paths: backend_start_result.backendServices.app.paths,
+      });
+      await desktop_update_service.cleanup_berserker_version_dirs();
       log_window_host = create_log_window_host({
         desktopBundleDir: desktop_bundle_dir,
         backendApiBaseUrl: backend_start_result.apiBaseUrl,

@@ -37,6 +37,12 @@ export function create_desktop_bridge_api_mock(
     },
     reportRendererDiagnostics: () => {},
     openExternalUrl: async () => {},
+    downloadUpdate: async () => ({
+      status: "fallback_to_release_page",
+      release_url: "https://github.com/neavo/LinguaGacha/releases",
+      reason: "unsupported_platform",
+    }),
+    launchUpdate: async () => ({ status: "launched" }),
     pickProjectSourceFilePath: async () => ({ canceled: true, paths: [] }),
     pickProjectSourceDirectoryPath: async () => ({ canceled: true, paths: [] }),
     pickProjectFilePath: async () => ({ canceled: true, paths: [] }),
