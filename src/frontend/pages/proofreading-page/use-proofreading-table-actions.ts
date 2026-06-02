@@ -16,7 +16,7 @@ import type {
   AppTableSortState,
 } from "@frontend/widgets/app-table/app-table-types";
 import {
-  create_selected_proofreading_filter_selection,
+  resolve_proofreading_filter_selection_from_filters,
   type ProofreadingViewFilterState,
 } from "@frontend/pages/proofreading-page/proofreading-filter-state";
 import type { ProofreadingListQueryInput } from "@frontend/pages/proofreading-page/proofreading-list-query-utils";
@@ -368,20 +368,31 @@ export function useProofreadingTableActions(
   );
 
   const confirm_filter_dialog_filters = useCallback(async (): Promise<void> => {
-    if (!options.project_loaded || options.cache_status !== "ready" || options.is_refreshing) {
+    const sync_state = options.sync_state_ref.current;
+    if (
+      !options.project_loaded ||
+      options.cache_status !== "ready" ||
+      options.is_refreshing ||
+      sync_state === null
+    ) {
       return;
     }
 
     const normalized_filters = clone_proofreading_filter_options(
       options.filter_dialog_filters_ref.current,
     );
+    // 筛选弹窗只编辑物化后的勾选值，确认时要恢复意图，未改动维度继续跟随默认筛选。
+    const next_filter_selection = resolve_proofreading_filter_selection_from_filters({
+      filters: normalized_filters,
+      default_filters: sync_state.defaultFilters,
+    });
     options.preferred_row_id_ref.current = null;
     options.should_select_first_visible_ref.current = false;
     options.visible_range_ref.current = null;
     options.cancel_pending_list_view_query();
     options.filter_panel_query_scheduler.cancel();
     options.set_table_filter_state({
-      selection: create_selected_proofreading_filter_selection(normalized_filters),
+      selection: next_filter_selection,
     });
     options.clear_table_selection();
     options.set_filter_dialog_filters(clone_proofreading_filter_options(normalized_filters));

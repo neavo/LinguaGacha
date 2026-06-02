@@ -70,6 +70,66 @@ function clone_glossary_term(term: ProofreadingGlossaryTerm): ProofreadingGlossa
   return [term[0], term[1]] as const;
 }
 
+/**
+ * 术语二元组比较使用源文和译文共同组成稳定 key，避免数组引用影响意图判断。
+ */
+function build_glossary_term_key(term: ProofreadingGlossaryTerm): string {
+  return `${term[0]}→${term[1]}`;
+}
+
+/**
+ * 普通筛选维度按集合语义比较，筛选面板顺序变化不应把默认意图改成显式选择。
+ */
+function are_string_values_equal(left_values: string[], right_values: string[]): boolean {
+  if (left_values.length !== right_values.length) {
+    return false;
+  }
+
+  const left_signature = [...left_values].sort().join("\n");
+  const right_signature = [...right_values].sort().join("\n");
+  return left_signature === right_signature;
+}
+
+/**
+ * 术语筛选按术语内容比较，保证同一术语 tuple 被克隆后仍能识别默认意图。
+ */
+function are_glossary_terms_equal(
+  left_terms: ProofreadingGlossaryTerm[],
+  right_terms: ProofreadingGlossaryTerm[],
+): boolean {
+  if (left_terms.length !== right_terms.length) {
+    return false;
+  }
+
+  const left_signature = left_terms.map(build_glossary_term_key).sort().join("\n");
+  const right_signature = right_terms.map(build_glossary_term_key).sort().join("\n");
+  return left_signature === right_signature;
+}
+
+/**
+ * 将已物化的普通筛选值恢复成筛选意图，保持未改动维度继续跟随后端默认值。
+ */
+function resolve_string_filter_choice(args: {
+  values: string[];
+  default_values: string[];
+}): ProofreadingFilterChoice<string> {
+  return are_string_values_equal(args.values, args.default_values)
+    ? create_default_filter_choice()
+    : create_selected_filter_choice(args.values, (value) => value);
+}
+
+/**
+ * 将已物化的术语筛选值恢复成筛选意图，用户改动过的术语列表才固化为显式选择。
+ */
+function resolve_glossary_term_filter_choice(args: {
+  values: ProofreadingGlossaryTerm[];
+  default_values: ProofreadingGlossaryTerm[];
+}): ProofreadingFilterChoice<ProofreadingGlossaryTerm> {
+  return are_glossary_terms_equal(args.values, args.default_values)
+    ? create_default_filter_choice()
+    : create_selected_filter_choice(args.values, clone_glossary_term);
+}
+
 export function create_empty_filter_options(): ProofreadingFilterOptions {
   return {
     warning_types: [],
@@ -113,6 +173,34 @@ export function clone_proofreading_filter_selection(
     file_paths: clone_filter_choice(selection.file_paths, (value) => value),
     glossary_terms: clone_filter_choice(selection.glossary_terms, clone_glossary_term),
     include_without_glossary_miss: selection.include_without_glossary_miss,
+  };
+}
+
+/**
+ * 确认筛选弹窗时从最终筛选值反推意图，避免未改动的默认筛选被保存成旧快照。
+ */
+export function resolve_proofreading_filter_selection_from_filters(args: {
+  filters: ProofreadingFilterOptions;
+  default_filters: ProofreadingFilterOptions;
+}): ProofreadingFilterSelection {
+  return {
+    warning_types: resolve_string_filter_choice({
+      values: args.filters.warning_types,
+      default_values: args.default_filters.warning_types,
+    }),
+    statuses: resolve_string_filter_choice({
+      values: args.filters.statuses,
+      default_values: args.default_filters.statuses,
+    }),
+    file_paths: resolve_string_filter_choice({
+      values: args.filters.file_paths,
+      default_values: args.default_filters.file_paths,
+    }),
+    glossary_terms: resolve_glossary_term_filter_choice({
+      values: args.filters.glossary_terms,
+      default_values: args.default_filters.glossary_terms,
+    }),
+    include_without_glossary_miss: args.filters.include_without_glossary_miss,
   };
 }
 
