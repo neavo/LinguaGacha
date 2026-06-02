@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { TextQualitySnapshot } from "../../../shared/text/text-types";
+import type { TranslationActor, TranslationLine } from "./translation-line";
 import { PromptBuilder } from "./work-unit-prompt-builder";
 
 describe("PromptBuilder", () => {
@@ -26,7 +27,12 @@ describe("PromptBuilder", () => {
       }),
     );
 
-    const result = await builder.generate_prompt(["Alice\\n[1]"], ["\\n[1]"], [{ src: "上一句" }]);
+    const result = await builder.generate_prompt(
+      [create_line({ text_src: "Alice\\n[1]" })],
+      "text",
+      ["\\n[1]"],
+      [{ src: "上一句" }],
+    );
 
     expect(result.messages[0]?.content).toContain("日文");
     expect(result.messages[0]?.content).toContain("中文");
@@ -58,7 +64,7 @@ describe("PromptBuilder", () => {
       create_quality_snapshot(),
     );
 
-    const result = await builder.build_main();
+    const result = await builder.build_main("text");
 
     expect(result).toContain("请从 原文 翻译到 中文");
     expect(result).not.toContain("{source_language}");
@@ -111,7 +117,7 @@ describe("PromptBuilder", () => {
       create_quality_snapshot(),
     );
 
-    const result = await builder.build_main();
+    const result = await builder.build_main("text");
 
     expect(result).toContain("Translation prefix");
     expect(result).toContain("Translate from Japanese to Chinese.");
@@ -129,7 +135,7 @@ describe("PromptBuilder", () => {
       create_quality_snapshot(),
     );
 
-    const result = await builder.build_main();
+    const result = await builder.build_main("text");
 
     expect(result).toContain("Translate from Hungarian to Chinese.");
     expect(result).not.toContain("Hungrarian");
@@ -147,7 +153,7 @@ describe("PromptBuilder", () => {
       create_quality_snapshot(),
     );
 
-    const result = await builder.build_main();
+    const result = await builder.build_main("text");
 
     expect(result).toContain("请从 西班牙文 翻译到 中文");
     expect(result).not.toContain("请从 西班牙 翻译到 中文");
@@ -165,7 +171,7 @@ describe("PromptBuilder", () => {
       create_quality_snapshot(),
     );
 
-    const result = await builder.build_main();
+    const result = await builder.build_main("text");
 
     expect(result).toContain("Translate from Source to Chinese.");
   });
@@ -185,9 +191,11 @@ describe("PromptBuilder", () => {
       }),
     );
 
-    const result = await builder.build_main();
+    const result = await builder.build_main("text");
 
-    expect(result).toBe("翻译前缀\n自定义规则：中文\n\n思考过程\n\n输出 JSONLINE");
+    expect(result).toBe(
+      '翻译前缀\n自定义规则：中文\n\n思考过程\n\n输出 JSONLINE\n```jsonline\n{"<序号>":"<译文文本>"}\n```',
+    );
   });
 
   it("术语表匹配时尊重大小写标志并格式化 info 字段", () => {
@@ -202,7 +210,7 @@ describe("PromptBuilder", () => {
       }),
     );
 
-    const result = builder.build_glossary(["abc foo"]);
+    const result = builder.build_glossary([create_line({ text_src: "abc foo" })], "text");
 
     expect(result).toContain("Glossary");
     expect(result).toContain("foo -> 乙 #备注");
@@ -278,7 +286,12 @@ describe("PromptBuilder", () => {
       }),
     );
 
-    const result = await builder.generate_prompt(["HP is low"], [], []);
+    const result = await builder.generate_prompt(
+      [create_line({ text_src: "HP is low" })],
+      "text",
+      [],
+      [],
+    );
 
     expect(result.messages[1]?.content).not.toContain("术语表");
     expect(result.messages[1]?.content).toContain("输入：");
@@ -310,7 +323,7 @@ describe("PromptBuilder", () => {
       create_quality_snapshot(),
     );
 
-    expect(await builder.build_main()).toContain("保留控制字符");
+    expect(await builder.build_main("text")).toContain("保留控制字符");
 
     await write_template(app_root, "translation_prompt", "zh", {
       prefix: "翻译前缀2",
@@ -319,9 +332,60 @@ describe("PromptBuilder", () => {
       suffix: "输出2",
     });
 
-    expect(await builder.build_main()).toContain("保留控制字符");
+    expect(await builder.build_main("text")).toContain("保留控制字符");
     PromptBuilder.reset();
-    expect(await builder.build_main()).toContain("新规则 中文");
+    expect(await builder.build_main("text")).toContain("新规则 中文");
+  });
+
+  it("含姓名请求使用 actor/text 输入输出格式并让术语表扫描姓名", async () => {
+    const app_root = await create_template_root();
+    const builder = new PromptBuilder(
+      app_root,
+      {
+        app_language: "ZH",
+        source_language: "JA",
+        target_language: "ZH",
+      },
+      create_quality_snapshot({
+        glossary_entries: [{ src: "虎鉄", dst: "虎铁", info: "男性人名" }],
+      }),
+    );
+
+    const result = await builder.generate_prompt(
+      [
+        create_line({ request_index: 0, text_src: "こんにちは", actor_src: "虎鉄" }),
+        create_line({ request_index: 1, text_src: "地の文", actor_src: null }),
+      ],
+      "actor_text",
+      [],
+      [],
+    );
+
+    expect(result.messages[0]?.content).toContain(
+      '{"<序号>":{"actor":"<姓名译文或null>","text":"<正文译文>"}}',
+    );
+    expect(result.messages[1]?.content).toContain('{"0":{"actor":"虎鉄","text":"こんにちは"}}');
+    expect(result.messages[1]?.content).toContain('{"1":{"actor":null,"text":"地の文"}}');
+    expect(result.messages[1]?.content).toContain("虎鉄 -> 虎铁 #男性人名");
+  });
+
+  it("纯文本请求保持旧的字符串 JSONL 输入格式", async () => {
+    const app_root = await create_template_root();
+    const builder = new PromptBuilder(
+      app_root,
+      { app_language: "ZH", source_language: "JA", target_language: "ZH" },
+      create_quality_snapshot(),
+    );
+
+    const result = await builder.generate_prompt(
+      [create_line({ request_index: 0, text_src: "こんにちは" })],
+      "text",
+      [],
+      [],
+    );
+
+    expect(result.messages[0]?.content).toContain('{"<序号>":"<译文文本>"}');
+    expect(result.messages[1]?.content).toContain('{"0":"こんにちは"}');
   });
 });
 
@@ -334,7 +398,7 @@ async function create_template_root(): Promise<string> {
     prefix: "翻译前缀",
     base: "请从 {source_language} 翻译到 {target_language}，保留控制字符。",
     thinking: "思考过程",
-    suffix: "输出 JSONLINE",
+    suffix: "输出 JSONLINE\n{translation_output_format}",
   });
   await write_template(app_root, "analysis_prompt", "en", {
     prefix: "Analysis prefix",
@@ -346,7 +410,7 @@ async function create_template_root(): Promise<string> {
     prefix: "Translation prefix",
     base: "Translate from {source_language} to {target_language}.",
     thinking: "",
-    suffix: "Return JSONLINE",
+    suffix: "Return JSONLINE\n{translation_output_format}",
   });
   await write_template(app_root, "analysis_prompt", "zh", {
     prefix: "分析前缀",
@@ -393,5 +457,22 @@ function create_quality_snapshot(
     analysis_prompt_enable: false,
     analysis_prompt: "",
     ...overrides,
+  };
+}
+
+/**
+ * 构造提示词输入行，默认 actor 为空以保持纯文本模式。
+ */
+function create_line(overrides: {
+  request_index?: number;
+  text_src: string;
+  actor_src?: TranslationActor;
+}): TranslationLine {
+  return {
+    request_index: overrides.request_index ?? 0,
+    item_index: 0,
+    line_index: overrides.request_index ?? 0,
+    text_src: overrides.text_src,
+    actor_src: overrides.actor_src ?? null,
   };
 }

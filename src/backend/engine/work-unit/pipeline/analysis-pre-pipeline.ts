@@ -1,4 +1,3 @@
-import { inject_text_name_prefix } from "../../../../shared/text/text-name-prefix";
 import { TextFakenameInjector } from "../../../../shared/text/text-fakename-injector";
 
 /**
@@ -8,7 +7,6 @@ export interface AnalysisItemContext {
   item_id: number;
   file_path: string;
   src_text: string;
-  first_name_src: string | null;
 }
 
 /**
@@ -30,7 +28,7 @@ export interface AnalysisPrePipelineResult {
 }
 
 /**
- * 术语分析译前 pipeline，负责姓名前缀注入和控制码伪名注入
+ * 术语分析译前 pipeline，负责控制码伪名注入
  */
 export class AnalysisPrePipeline {
   /**
@@ -47,7 +45,7 @@ export class AnalysisPrePipeline {
   }
 
   /**
-   * 分析输入沿用翻译姓名前缀注入，但不改变上下文快照
+   * src_text 已由规划期渲染成最终分析输入，这里只负责空行过滤和伪名保护。
    */
   private build_prompt_source_texts(items: AnalysisItemContext[]): string[] {
     const prompt_srcs: string[] = [];
@@ -56,7 +54,7 @@ export class AnalysisPrePipeline {
       if (src_text === "") {
         continue;
       }
-      prompt_srcs.push(...inject_text_name_prefix([src_text], item.first_name_src));
+      prompt_srcs.push(src_text);
     }
     return prompt_srcs;
   }

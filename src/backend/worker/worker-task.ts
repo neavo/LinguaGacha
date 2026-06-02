@@ -1,9 +1,4 @@
 import {
-  run_name_field_extraction_worker_task,
-  type NameFieldExtractionWorkerTaskInput,
-  type NameFieldExtractionWorkerTaskResult,
-} from "./tasks/name-field-extraction-worker-task";
-import {
   run_proofreading_sync_worker_task,
   type ProofreadingSyncWorkerTaskInput,
 } from "./tasks/proofreading-sync-worker-task";
@@ -20,14 +15,12 @@ import type { TsConversionConvertedItem } from "../../shared/toolbox/ts-conversi
 
 export type BackendWorkerTaskInputByType = {
   quality_statistics: QualityStatisticsWorkerTaskInput;
-  name_field_extraction: NameFieldExtractionWorkerTaskInput;
   ts_conversion: TsConversionWorkerTaskInput;
   proofreading_sync: ProofreadingSyncWorkerTaskInput;
 };
 
 export type BackendWorkerTaskResultByType = {
   quality_statistics: Record<string, unknown>;
-  name_field_extraction: NameFieldExtractionWorkerTaskResult;
   ts_conversion: TsConversionConvertedItem[];
   proofreading_sync: ProofreadingEvaluatedSlice;
 };
@@ -50,8 +43,6 @@ export async function run_worker_task<TTask extends BackendWorkerTask>(
   switch (task.type) {
     case "quality_statistics":
       return run_quality_statistics_worker_task(task.input) as BackendWorkerTaskResult<TTask>;
-    case "name_field_extraction":
-      return run_name_field_extraction_worker_task(task.input) as BackendWorkerTaskResult<TTask>;
     case "ts_conversion":
       return run_ts_conversion_worker_task(task.input) as BackendWorkerTaskResult<TTask>;
     case "proofreading_sync":

@@ -1,7 +1,7 @@
 import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
-import { Item, type ItemName, type ItemStatus } from "../../domain/item";
+import { Item, type ItemNameField, type ItemStatus } from "../../domain/item";
 import { is_task_progress_status, TASK_PROGRESS_STATUSES } from "../../domain/task";
 import { count_analysis_glossary_candidates } from "../../shared/analysis-candidate";
 import type {
@@ -13,6 +13,7 @@ import type {
   ProjectWriteResult,
 } from "../../shared/project-event";
 import * as AppErrors from "../../shared/error";
+import { build_project_item_field_patch } from "../../shared/project/project-item-field-patch";
 import { get_section_revision } from "./project-data";
 import {
   create_empty_translation_task_snapshot,
@@ -30,7 +31,7 @@ export type TranslationItemPatch = {
   item_id: number; // 任务 artifact 和公开项目行的唯一主键
   patch: {
     dst?: string;
-    name_dst?: ItemName;
+    name_dst?: ItemNameField;
     status?: ItemStatus;
     retry_count?: number;
   };
@@ -865,7 +866,7 @@ export class ProjectWriteStore {
         patch.dst = raw_item["dst"];
       }
       if (Object.prototype.hasOwnProperty.call(raw_item, "name_dst")) {
-        patch.name_dst = Item.normalize_name(raw_item["name_dst"]);
+        patch.name_dst = Item.normalize_name_field(raw_item["name_dst"]);
       }
       if (Object.prototype.hasOwnProperty.call(raw_item, "status")) {
         patch.status = Item.normalize_status(raw_item["status"]);
@@ -928,25 +929,8 @@ export class ProjectWriteStore {
     current: MutableJsonRecord,
     next: MutableJsonRecord,
   ): TranslationItemPatch["patch"] {
-    const patch: TranslationItemPatch["patch"] = {};
-    if (typeof next["dst"] === "string" && next["dst"] !== current["dst"]) {
-      patch.dst = next["dst"];
-    }
-    if (
-      Object.prototype.hasOwnProperty.call(next, "name_dst") &&
-      next["name_dst"] !== current["name_dst"]
-    ) {
-      patch.name_dst = Item.normalize_name(next["name_dst"]);
-    }
-    const status = Item.normalize_status(next["status"]);
-    if (status !== current["status"]) {
-      patch.status = status;
-    }
-    const retry_count = Number(next["retry_count"]);
-    if (Number.isFinite(retry_count) && retry_count !== Number(current["retry_count"])) {
-      patch.retry_count = Math.max(0, Math.trunc(retry_count));
-    }
-    if (Object.keys(patch).length === 0) {
+    const patch = build_project_item_field_patch(current, next);
+    if (patch === null) {
       throw new AppErrors.RequestValidationError({
         diagnostic_context: { reason: "empty_proofreading_patch" },
       });

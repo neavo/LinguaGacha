@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import os from "node:os";
 import { Worker } from "node:worker_threads";
 
-import type { ApiJsonValue } from "../../api/api-types";
 import type { BackendWorkerExecution } from "../../worker/worker-execution";
 import type { WorkUnit } from "../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
@@ -17,7 +16,6 @@ import {
   to_log_error,
   type LogError,
 } from "../../../shared/error";
-import type { WorkUnitLogEntry } from "../protocol/work-unit";
 import type { SystemProxySnapshot } from "../../network/system-proxy-dispatcher";
 
 interface WorkUnitWorkerPoolOptions {
@@ -30,8 +28,7 @@ interface WorkUnitWorkerPoolOptions {
 
 interface PendingTask {
   id: string;
-  unit: WorkUnit | null;
-  translate_single_body: Record<string, ApiJsonValue> | null;
+  unit: WorkUnit;
   signal: AbortSignal;
   resolve: (value: unknown) => void;
   reject: (error: unknown) => void;
@@ -84,23 +81,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
    * 后台任务 unit 走统一 enqueue，WorkUnitWorkerPool 不读取任务领域状态。
    */
   public async execute_unit(unit: WorkUnit, signal: AbortSignal): Promise<WorkUnitExecutionResult> {
-    return (await this.enqueue(unit, null, signal)) as WorkUnitExecutionResult;
-  }
-
-  /**
-   * 单条翻译复用同一队列和 in-flight 计数，不绕过取消语义。
-   */
-  public async translate_single(
-    body: Record<string, ApiJsonValue>,
-    signal: AbortSignal,
-  ): Promise<
-    Record<string, ApiJsonValue> & {
-      logs?: WorkUnitLogEntry[];
-    }
-  > {
-    return (await this.enqueue(null, body, signal)) as Record<string, ApiJsonValue> & {
-      logs?: WorkUnitLogEntry[];
-    };
+    return (await this.enqueue(unit, signal)) as WorkUnitExecutionResult;
   }
 
   /**
@@ -133,11 +114,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
   /**
    * 统一入队并绑定取消监听；是否直接执行由 drain_queue 决定。
    */
-  private enqueue(
-    unit: WorkUnit | null,
-    translate_single_body: Record<string, ApiJsonValue> | null,
-    signal: AbortSignal,
-  ): Promise<unknown> {
+  private enqueue(unit: WorkUnit, signal: AbortSignal): Promise<unknown> {
     if (this.disposed) {
       return Promise.reject(this.create_disposed_error());
     }
@@ -145,7 +122,6 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
       const task: PendingTask = {
         id: crypto.randomUUID(),
         unit,
-        translate_single_body,
         signal,
         resolve,
         reject,
@@ -189,11 +165,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
   private dispatch_worker_task(slot: WorkerSlot, task: PendingTask): void {
     slot.in_flight.set(task.id, task);
     this.in_flight_count += 1;
-    slot.worker.postMessage(
-      task.unit === null
-        ? { id: task.id, type: "translate_single", body: task.translate_single_body }
-        : { id: task.id, type: "execute", unit: task.unit },
-    );
+    slot.worker.postMessage({ id: task.id, type: "execute", unit: task.unit });
   }
 
   /**
@@ -206,10 +178,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
     }
     this.in_process_in_flight.set(task.id, task);
     this.in_flight_count += 1;
-    const task_promise =
-      task.unit === null
-        ? runner.translate_single(task.translate_single_body ?? {}, task.signal)
-        : runner.run(task.unit, task.signal);
+    const task_promise = runner.run(task.unit, task.signal);
     task_promise.then(
       (value) => this.finish_in_process_task(task.id, { ok: true, data: value }),
       (error: unknown) =>

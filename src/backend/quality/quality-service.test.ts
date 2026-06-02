@@ -88,6 +88,27 @@ describe("QualityService", () => {
     ).toThrow("request.validation_failed");
   });
 
+  it("读取翻译提示词模板时填充输出格式基线示例", () => {
+    const { service, app_root } = create_service();
+    const template_dir = path.join(app_root, "resource", "translation_prompt", "template", "zh");
+    fs.mkdirSync(template_dir, { recursive: true });
+    fs.writeFileSync(path.join(template_dir, "base.txt"), "默认提示词", "utf-8");
+    fs.writeFileSync(path.join(template_dir, "prefix.txt"), "固定前缀", "utf-8");
+    fs.writeFileSync(
+      path.join(template_dir, "suffix.txt"),
+      "输出 JSONLINE\n{translation_output_format}",
+      "utf-8",
+    );
+
+    const result = service.get_prompt_template({ task_type: "translation" });
+    const template = result["template"] as Record<string, string>;
+
+    expect(template["suffix_text"]).toBe(
+      '输出 JSONLINE\n```jsonline\n{"<序号>":"<译文文本>"}\n```',
+    );
+    expect(template["suffix_text"]).not.toContain("{translation_output_format}");
+  });
+
   it("导入外部 JSON 规则时显式修复可恢复的非标 JSON", async () => {
     const { service, app_root } = create_service();
     const file_path = path.join(app_root, "rules.json");
@@ -375,6 +396,9 @@ describe("QualityService", () => {
     expect(workbook.worksheets[0]?.getCell(3, 1).value).toBe("姫");
   });
 
+  /**
+   * 构造只依赖预设文件 IO 的 QualityService，数据库边界在这些用例中不参与。
+   */
   function create_service(): { service: QualityService; app_root: string } {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-quality-test-"));
     cleanup_paths.push(app_root);
@@ -395,6 +419,9 @@ describe("QualityService", () => {
     return { service, app_root };
   }
 
+  /**
+   * 构造带真实 ProjectWriteStore 的质量服务，验证写入和项目变更事件。
+   */
   function create_workbench_service(database: ProjectDatabase): {
     service: QualityService;
     lg_path: string;
@@ -433,6 +460,9 @@ describe("QualityService", () => {
     };
   }
 
+  /**
+   * 用数据库 meta 生成测试用 project change，保持 revision 断言接近运行态。
+   */
   function create_test_project_change_publisher(
     database: ProjectDatabase,
     lg_path: string,

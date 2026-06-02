@@ -46,7 +46,7 @@
   width: 32px;
   height: 32px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--ui-radius-button);
   background: transparent;
   color: var(--foreground);
   transition:

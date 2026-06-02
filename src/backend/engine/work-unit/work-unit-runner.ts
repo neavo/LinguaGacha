@@ -1,14 +1,10 @@
-import type { ApiJsonValue } from "../../api/api-types";
 import type { WorkUnit } from "../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../protocol/work-unit-result";
 import { LLMClient } from "../../llm/llm-client";
 import { AppMetadataService } from "../../app/app-metadata-service";
 import { AppPathService } from "../../app/app-path-service";
 import { AnalysisWorkUnitRunner } from "./runners/analysis-runner";
-import {
-  TranslationWorkUnitRunner,
-  type TranslateSingleWorkUnitRequest,
-} from "./runners/translation-runner";
+import { TranslationWorkUnitRunner } from "./runners/translation-runner";
 
 /**
  * worker 内 runner 的固定依赖，全部由 WorkUnitWorkerPool 传入，避免 worker 自己读取进程环境
@@ -43,18 +39,5 @@ export class WorkUnitRunner {
       return this.translation_runner.execute_unit(unit, signal);
     }
     return this.analysis_runner.execute_unit(unit, signal);
-  }
-
-  /**
-   * 单条翻译是计算工具调用，不进入后台任务 unit
-   */
-  public async translate_single(
-    body: Record<string, ApiJsonValue>,
-    signal: AbortSignal,
-  ): Promise<unknown> {
-    return this.translation_runner.translate_single(
-      body as unknown as TranslateSingleWorkUnitRequest,
-      signal,
-    );
   }
 }

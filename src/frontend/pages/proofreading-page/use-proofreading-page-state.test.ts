@@ -12,7 +12,7 @@ import {
   create_empty_proofreading_list_view,
   type ProofreadingFilterOptions,
   type ProofreadingGlossaryTerm,
-} from "@frontend/pages/proofreading-page/types";
+} from "@shared/proofreading/proofreading-types";
 import { useProofreadingPageState } from "@frontend/pages/proofreading-page/use-proofreading-page-state";
 
 // 模拟 Hook 依赖的桌面运行态、项目变更信号和写入回调。
@@ -346,6 +346,8 @@ function create_client_item(item_id: number | string) {
     row_number: Number(item_id),
     src: `foo-${item_id}`,
     dst: `bar-${item_id}`,
+    name_src: null,
+    name_dst: null,
     status: "NONE",
     warnings: [],
     warning_fragments_by_code: {},
@@ -1480,6 +1482,114 @@ describe("useProofreadingPageState", () => {
     });
   });
 
+  it("替换下一个匹配能提交姓名译文保存命令", async () => {
+    proofreading_client_fixture.current.read_proofreading_list_window = vi.fn(async () => {
+      return {
+        view_id: "view-1",
+        start: 0,
+        row_count: 1,
+        rows: [
+          {
+            row_id: "1",
+            item: {
+              ...create_client_item(1),
+              dst: "正文译文",
+              name_dst: "Name: Alice",
+            },
+            compressed_src: "foo",
+            compressed_dst: "bar",
+          },
+        ],
+      };
+    });
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.update_search_keyword("Name");
+      latest_state?.update_replace_text("Hero");
+    });
+    await flush_async_updates();
+    vi.mocked(api_fetch).mockResolvedValueOnce({ accepted: true, changes: [] });
+
+    await act(async () => {
+      await latest_state?.replace_next_visible_match();
+    });
+
+    expect(api_fetch).toHaveBeenCalledWith("/api/proofreading/item/save", {
+      item_id: 1,
+      name_dst: "Hero: Alice",
+      expected_section_revisions: {
+        items: 7,
+        proofreading: 1,
+      },
+    });
+  });
+
+  it("替换全部会把姓名译文命中的行提交给后端", async () => {
+    vi.useFakeTimers();
+    const target_item = {
+      ...create_client_item(1),
+      dst: "正文译文",
+      name_dst: "Name: Alice",
+    };
+    proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async () => {
+      return {
+        ...create_list_view(),
+        row_count: 1,
+        window_rows: [
+          {
+            row_id: "1",
+            item: target_item,
+            compressed_src: "foo",
+            compressed_dst: "bar",
+          },
+        ],
+      };
+    });
+    proofreading_client_fixture.current.read_proofreading_row_ids_range = vi.fn(async () => ["1"]);
+    proofreading_client_fixture.current.read_proofreading_items_by_row_ids = vi.fn(async () => [
+      target_item,
+    ]);
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.update_search_keyword("Name");
+      latest_state?.update_replace_text("Hero");
+    });
+    await act(async () => {
+      vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
+      await Promise.resolve();
+    });
+    await flush_async_updates();
+    vi.mocked(api_fetch).mockResolvedValueOnce({ accepted: true, changes: [] });
+    expect(latest_state?.search_keyword).toBe("Name");
+    expect(latest_state?.replace_text).toBe("Hero");
+    expect(latest_state?.visible_row_count).toBe(1);
+    proofreading_client_fixture.current.read_proofreading_row_ids_range.mockClear();
+
+    await act(async () => {
+      await latest_state?.replace_all_visible_matches();
+    });
+
+    expect(
+      proofreading_client_fixture.current.read_proofreading_row_ids_range,
+    ).toHaveBeenCalledWith({
+      view_id: "view-1",
+      start: 0,
+      count: 1,
+    });
+    expect(api_fetch).toHaveBeenCalledWith("/api/proofreading/items/replace-all", {
+      item_ids: [1],
+      search_text: "Name",
+      replace_text: "Hero",
+      is_regex: false,
+      expected_section_revisions: {
+        items: 7,
+        proofreading: 1,
+      },
+    });
+  });
+
   it("切换可见窗口不会裁剪窗口外选区", async () => {
     proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async () => {
       return {
@@ -2366,7 +2476,7 @@ describe("useProofreadingPageState", () => {
     vi.mocked(api_fetch).mockResolvedValueOnce({ accepted: true, changes: [] });
 
     await act(async () => {
-      latest_state?.update_dialog_draft("新译文");
+      latest_state?.update_dialog_draft({ dst: "新译文" });
     });
     await act(async () => {
       await latest_state?.save_dialog_entry();

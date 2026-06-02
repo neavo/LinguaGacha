@@ -61,7 +61,7 @@ export class TaskEngine {
   private readonly app_setting_service: TaskEngineOptions["AppSettingService"];
   private readonly run_coordinator: RunCoordinator; // 整场任务互斥、停止和终态发布的唯一权威
   private readonly log_replay: TaskLogReplay; // 统一处理任务生命周期日志和 worker 日志回放
-  private readonly limiter_pool = new LimiterPool(); // 让后台任务和单条翻译共用同一模型节奏入口
+  private readonly limiter_pool = new LimiterPool(); // 后台任务按模型资源键复用请求节奏入口
   private readonly model_key_lease_pool = new ModelKeyLeasePool(); // 在主线程维护任务级全局 Key 轮换
   private request_in_flight_count = 0; // 只表达实时网络压力，不落库也不参与恢复
 
@@ -97,37 +97,6 @@ export class TaskEngine {
    */
   public async stop(command: StopTaskCommand): Promise<boolean> {
     return await this.run_coordinator.request_stop(command.task_type);
-  }
-
-  /**
-   * 单条翻译不占后台全局锁，但仍必须获取模型请求资格后再调用 executor
-   */
-  public async translate_single(text: string): Promise<MutableJsonRecord> {
-    const run_context = this.resolve_task_run_context();
-    const limiter = this.resolve_task_limiter(run_context.model);
-    const controller = new AbortController();
-    const lease = await limiter.acquire(controller.signal);
-    const run_id = crypto.randomUUID();
-    try {
-      const leased_model = this.model_key_lease_pool.lease_model(run_context.model);
-      const response = await this.executor_client.translate_single(
-        {
-          run_id,
-          work_unit_id: "single",
-          task_type: "translate-single",
-          model: leased_model as unknown as ApiJsonValue,
-          config_snapshot: run_context.config_snapshot as unknown as ApiJsonValue,
-          quality_snapshot: null,
-          text,
-        },
-        controller.signal,
-      );
-      this.log_replay.work_unit_logs(response.logs);
-      const { logs: _logs, ...public_response } = response;
-      return public_response;
-    } finally {
-      lease.release();
-    }
   }
 
   /**
@@ -911,7 +880,7 @@ export class TaskEngine {
   }
 
   /**
-   * 解析任务限流器；同一模型配置下后台任务与单条翻译共享并发和 RPM 节奏
+   * 解析任务限流器；同一模型配置下后台任务共享并发和 RPM 节奏
    */
   private resolve_task_limiter(model: MutableJsonRecord): TaskLimiter {
     return this.limiter_pool.resolve(model);

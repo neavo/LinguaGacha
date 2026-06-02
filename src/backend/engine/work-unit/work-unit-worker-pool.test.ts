@@ -89,7 +89,7 @@ describe("WorkUnitWorkerPool", () => {
       worker_path,
       `import { parentPort, workerData } from "node:worker_threads";
 parentPort?.on("message", (message) => {
-  parentPort?.postMessage({ id: message.id, ok: true, data: { type: message.type, from_worker: true, systemProxySnapshot: workerData.systemProxySnapshot } });
+  parentPort?.postMessage({ id: message.id, ok: true, data: { type: message.type, kind: message.unit?.kind, from_worker: true, systemProxySnapshot: workerData.systemProxySnapshot } });
 });
 `,
       "utf-8",
@@ -115,9 +115,13 @@ parentPort?.on("message", (message) => {
 
     try {
       await expect(
-        pool.translate_single({ text: "こんにちは" }, new AbortController().signal),
+        pool.execute_unit(
+          create_translation_unit("worker-thread-unit"),
+          new AbortController().signal,
+        ),
       ).resolves.toEqual({
-        type: "translate_single",
+        type: "execute",
+        kind: "translation",
         from_worker: true,
         systemProxySnapshot: {
           routes: {

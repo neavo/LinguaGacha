@@ -1,6 +1,4 @@
 import type { ApiJsonValue } from "../api/api-types";
-import { AppSettingService } from "../app/app-setting-service";
-import { resolve_active_model } from "../model/model-config-resolver";
 import type { ProjectOperationGate } from "../project/project-gate";
 import { ProjectSessionState } from "../project/project-session";
 import { normalize_project_expected_section_revisions } from "../project/project-changes";
@@ -35,8 +33,6 @@ export class TaskService {
 
   private readonly session_state: ProjectSessionState; // 决定重翻 revision 校验是否能定位当前工程
 
-  private readonly app_setting_service: AppSettingService; // 只用于单条翻译前的主动模型可用性检查
-
   private readonly task_definition_registry = new TaskDefinitionRegistry(); // 任务类型差异和 revision 依赖的唯一注册表
 
   /**
@@ -48,14 +44,12 @@ export class TaskService {
     task_run_publisher: TaskRunPublisher,
     project_operation_gate: ProjectOperationGate,
     session_state: ProjectSessionState,
-    app_setting_service: AppSettingService,
   ) {
     this.task_engine = task_engine;
     this.snapshot_builder = snapshot_builder;
     this.task_run_publisher = task_run_publisher;
     this.project_operation_gate = project_operation_gate;
     this.session_state = session_state;
-    this.app_setting_service = app_setting_service;
     this.task_definition_registry.register(new TranslationTaskDefinition());
     this.task_definition_registry.register(new AnalysisTaskDefinition());
   }
@@ -113,20 +107,6 @@ export class TaskService {
     return {
       task: (await this.snapshot_builder.build_task_snapshot(request)) as unknown as ApiJsonValue,
     };
-  }
-
-  /**
-   * 单条翻译用于页面计算工具，TaskService 先处理空文本和明显无激活模型的情况
-   */
-  public async translate_single(request: JsonRecord): Promise<MutableJsonRecord> {
-    const text = String(request["text"] ?? "").trim();
-    if (text === "") {
-      throw new AppErrors.RequestValidationError();
-    }
-    if (!this.has_active_model()) {
-      return { success: false, status: "NO_ACTIVE_MODEL", dst: "" };
-    }
-    return this.task_engine.translate_single(text);
   }
 
   /**
@@ -211,14 +191,6 @@ export class TaskService {
     value: ApiJsonValue | undefined,
   ): Record<string, number> | null {
     return normalize_project_expected_section_revisions(value);
-  }
-
-  /**
-   * 单条翻译只做基础模型存在性判断；真实请求能力由 work-unit executor 负责
-   */
-  private has_active_model(): boolean {
-    const config = this.app_setting_service.read_setting();
-    return resolve_active_model(config) !== null;
   }
 
   /**

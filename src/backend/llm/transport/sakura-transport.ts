@@ -15,7 +15,9 @@ export class SakuraTransport extends OpenAICompatibleTransport {
     super(pool);
   }
 
-  // send 是跨边界副作用入口，集中处理调用时序和错误载荷组装。
+  /**
+   * 发送请求后只转换成功响应，错误和取消载荷保持父类原样。
+   */
   public override async send(
     policy: ResolvedRequestPolicy,
     signal: AbortSignal,
@@ -28,7 +30,7 @@ export class SakuraTransport extends OpenAICompatibleTransport {
   }
 
   /**
-   * SakuraLLM 纯文本逐行响应要转成 ResponseDecoder 可消费的 JSON map。
+   * SakuraLLM 固定返回纯文本逐行响应，统一转成 ResponseDecoder 可消费的 JSON map。
    */
   private convert_sakura_response(response_result: string): string {
     const rows: Record<string, string> = {};

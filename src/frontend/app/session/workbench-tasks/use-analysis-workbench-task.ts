@@ -4,7 +4,7 @@ import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import {
   create_analysis_reset_all_plan,
   create_analysis_reset_failed_plan,
-} from "@shared/project/reset/analysis-reset-plan";
+} from "@shared/workbench/workbench-command-planner";
 import { type QualityRuleImportAction } from "@shared/quality/importer";
 import {
   create_empty_quality_rule_import_confirm_state,
@@ -569,11 +569,9 @@ export function useAnalysisWorkbenchTask(
         analysis_confirm_state.kind === "reset-all"
           ? create_analysis_reset_all_plan({
               section_revisions,
-              task_snapshot,
             })
           : create_analysis_reset_failed_plan({
               section_revisions,
-              task_snapshot,
             });
       await commit_project_write({
         operation: WORKBENCH_ANALYSIS_RESET_WRITE,
@@ -618,7 +616,6 @@ export function useAnalysisWorkbenchTask(
     refresh_task,
     suppress_next_terminal_prompt,
     sync_runtime_task_snapshot,
-    task_snapshot,
     t,
   ]);
 

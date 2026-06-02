@@ -340,7 +340,7 @@
   min-height: 18px;
   margin: 0 auto;
   padding: 0 4px 0 3px;
-  border-radius: 999px;
+  border-radius: var(--ui-radius-pill);
   background: transparent;
   user-select: none;
   transition:

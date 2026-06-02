@@ -210,13 +210,296 @@ describe("ProofreadingService", () => {
     });
   });
 
-  it("清空译文只清 dst 并保留状态和重试计数", async () => {
+  it("只保存姓名译文时更新 name_dst 并保留正文状态", async () => {
     const { database, service, lg_path, publisher } = create_service();
     database.execute({
       name: "setItems",
       args: {
         projectPath: lg_path,
-        items: [create_project_item({ dst: "旧译文", status: "PROCESSED", retry_count: 5 })],
+        items: [
+          create_project_item({
+            dst: "旧译文",
+            name_src: "Alice",
+            name_dst: "旧译名",
+            status: "ERROR",
+            retry_count: 2,
+          }),
+        ],
+      },
+    });
+
+    const ack = await service.save_item({
+      item_id: 1,
+      name_dst: "新译名",
+      expected_section_revisions: { items: 0, proofreading: 0 },
+    });
+
+    expect(ack).toMatchObject({
+      accepted: true,
+      changes: [
+        {
+          source: "proofreading_save_items",
+          sectionRevisions: { items: 1, proofreading: 1 },
+          updatedSections: ["items", "proofreading"],
+        },
+      ],
+    });
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+      create_project_item({
+        dst: "旧译文",
+        name_src: "Alice",
+        name_dst: "新译名",
+        status: "ERROR",
+        retry_count: 2,
+      }),
+    ]);
+    expect(
+      database.execute({
+        name: "getMeta",
+        args: { projectPath: lg_path, key: "translation_extras", default: null },
+      }),
+    ).toBeNull();
+    expect(publisher.publish_project_change).toHaveBeenCalledWith({
+      targetProjectPath: lg_path,
+      source: "proofreading_save_items",
+      updatedSections: ["items", "proofreading"],
+      items: {
+        payloadMode: "field-patch",
+        changedIds: [1],
+        fieldPatch: {
+          name_dst: "新译名",
+        },
+      },
+      sections: {
+        proofreading: { payloadMode: "canonical-delta" },
+      },
+    });
+  });
+
+  it("保存数组姓名译文时替换第 0 槽并保留后续姓名", async () => {
+    const { database, service, lg_path, publisher } = create_service();
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [
+          create_project_item({
+            dst: "旧译文",
+            name_src: ["Alice", "Bob"],
+            name_dst: ["旧译名", "保留译名"],
+            status: "PROCESSED",
+          }),
+        ],
+      },
+    });
+
+    await service.save_item({
+      item_id: 1,
+      name_dst: "新译名",
+      expected_section_revisions: { items: 0, proofreading: 0 },
+    });
+
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+      create_project_item({
+        dst: "旧译文",
+        name_src: ["Alice", "Bob"],
+        name_dst: ["新译名", "保留译名"],
+        status: "PROCESSED",
+      }),
+    ]);
+    expect(publisher.publish_project_change).toHaveBeenCalledWith(
+      expect.objectContaining({
+        items: expect.objectContaining({
+          fieldPatch: {
+            name_dst: ["新译名", "保留译名"],
+          },
+        }),
+      }),
+    );
+  });
+
+  it("保存前置空槽后的姓名译文时仍只替换第 0 槽", async () => {
+    const { database, service, lg_path, publisher } = create_service();
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [
+          create_project_item({
+            dst: "旧译文",
+            name_src: ["", "Bob"],
+            name_dst: ["", "旧译名"],
+            status: "PROCESSED",
+          }),
+        ],
+      },
+    });
+
+    await service.save_item({
+      item_id: 1,
+      name_dst: "新译名",
+      expected_section_revisions: { items: 0, proofreading: 0 },
+    });
+
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+      create_project_item({
+        dst: "旧译文",
+        name_src: ["", "Bob"],
+        name_dst: ["新译名", "旧译名"],
+        status: "PROCESSED",
+      }),
+    ]);
+    expect(publisher.publish_project_change).toHaveBeenCalledWith(
+      expect.objectContaining({
+        items: expect.objectContaining({
+          fieldPatch: {
+            name_dst: ["新译名", "旧译名"],
+          },
+        }),
+      }),
+    );
+  });
+
+  it("正文和姓名译文同次保存时发布同一个字段 patch", async () => {
+    const { database, service, lg_path, publisher } = create_service();
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [
+          create_project_item({
+            dst: "旧译文",
+            name_dst: "旧译名",
+            status: "NONE",
+          }),
+        ],
+      },
+    });
+
+    await service.save_item({
+      item_id: 1,
+      dst: "新译文",
+      name_dst: "新译名",
+      expected_section_revisions: { items: 0, proofreading: 0 },
+    });
+
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+      create_project_item({
+        dst: "新译文",
+        name_dst: "新译名",
+        status: "PROCESSED",
+      }),
+    ]);
+    expect(publisher.publish_project_change).toHaveBeenCalledWith(
+      expect.objectContaining({
+        items: expect.objectContaining({
+          fieldPatch: {
+            dst: "新译文",
+            name_dst: "新译名",
+            status: "PROCESSED",
+          },
+        }),
+      }),
+    );
+  });
+
+  it("替换全部同时处理正文译文和第 0 槽姓名译文", async () => {
+    const { database, service, lg_path } = create_service();
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [
+          create_project_item({
+            dst: "Name: Alice",
+            name_src: ["Alice", "Bob"],
+            name_dst: ["Name: Alice", "保留译名"],
+            status: "NONE",
+          }),
+        ],
+      },
+    });
+
+    const ack = await service.replace_all({
+      item_ids: [1],
+      search_text: "Name: (.+)",
+      replace_text: "$1",
+      is_regex: true,
+      expected_section_revisions: { items: 0, proofreading: 0 },
+    });
+
+    expect(ack).toMatchObject({
+      accepted: true,
+      changes: [
+        {
+          source: "proofreading_save_items",
+          sectionRevisions: { items: 1, proofreading: 1 },
+          updatedSections: ["items", "proofreading"],
+        },
+      ],
+    });
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+      create_project_item({
+        dst: "Alice",
+        name_src: ["Alice", "Bob"],
+        name_dst: ["Alice", "保留译名"],
+        status: "PROCESSED",
+      }),
+    ]);
+  });
+
+  it("替换全部能只更新第 0 槽姓名译文并保留正文状态", async () => {
+    const { database, service, lg_path } = create_service();
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [
+          create_project_item({
+            dst: "正文译文",
+            name_src: "Alice",
+            name_dst: "Name: Alice",
+            status: "ERROR",
+            retry_count: 2,
+          }),
+        ],
+      },
+    });
+
+    await service.replace_all({
+      item_ids: [1],
+      search_text: "Name: ",
+      replace_text: "",
+      is_regex: false,
+      expected_section_revisions: { items: 0, proofreading: 0 },
+    });
+
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+      create_project_item({
+        dst: "正文译文",
+        name_src: "Alice",
+        name_dst: "Alice",
+        status: "ERROR",
+        retry_count: 2,
+      }),
+    ]);
+  });
+
+  it("清空译文同时清空姓名译文并保留状态和重试计数", async () => {
+    const { database, service, lg_path, publisher } = create_service();
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [
+          create_project_item({
+            dst: "旧译文",
+            name_src: ["Alice", "Bob"],
+            name_dst: ["旧译名", "保留译名"],
+            status: "PROCESSED",
+            retry_count: 5,
+          }),
+        ],
       },
     });
 
@@ -236,7 +519,13 @@ describe("ProofreadingService", () => {
       ],
     });
     expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
-      create_project_item({ dst: "", status: "PROCESSED", retry_count: 5 }),
+      create_project_item({
+        dst: "",
+        name_src: ["Alice", "Bob"],
+        name_dst: null,
+        status: "PROCESSED",
+        retry_count: 5,
+      }),
     ]);
     expect(publisher.publish_project_change).toHaveBeenCalledWith({
       targetProjectPath: lg_path,
@@ -247,12 +536,43 @@ describe("ProofreadingService", () => {
         changedIds: [1],
         fieldPatch: {
           dst: "",
+          name_dst: null,
         },
       },
       sections: {
         proofreading: { payloadMode: "canonical-delta" },
       },
     });
+  });
+
+  it("正文译文已空但姓名译文非空时清空仍会写入", async () => {
+    const { database, service, lg_path, publisher } = create_service();
+    database.execute({
+      name: "setItems",
+      args: {
+        projectPath: lg_path,
+        items: [create_project_item({ dst: "", name_dst: ["", "保留译名"] })],
+      },
+    });
+
+    await service.clear_translations({
+      item_ids: [1],
+      expected_section_revisions: { items: 0, proofreading: 0 },
+    });
+
+    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+      create_project_item({ dst: "", name_dst: null }),
+    ]);
+    expect(publisher.publish_project_change).toHaveBeenCalledWith(
+      expect.objectContaining({
+        items: expect.objectContaining({
+          fieldPatch: {
+            dst: "",
+            name_dst: null,
+          },
+        }),
+      }),
+    );
   });
 
   it("设置翻译状态只改 status 并清除重试计数", async () => {

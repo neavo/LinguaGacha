@@ -8,7 +8,7 @@ type ShadcnButtonProps = React.ComponentProps<typeof Button>;
 type ShadcnButtonSize = NonNullable<ShadcnButtonProps["size"]>;
 type AppButtonSize = ShadcnButtonSize | "toolbar";
 
-const appButtonVariants = cva("rounded-[4px] text-[13px]", {
+const appButtonVariants = cva("rounded-[var(--ui-radius-button)] text-[13px]", {
   variants: {
     variant: {
       default: "hover:bg-primary/90",
@@ -20,15 +20,16 @@ const appButtonVariants = cva("rounded-[4px] text-[13px]", {
     },
     size: {
       default: null,
-      xs: "rounded-[4px] in-data-[slot=button-group]:rounded-[4px]",
-      sm: "rounded-[4px] in-data-[slot=button-group]:rounded-[4px]",
+      xs: "rounded-[var(--ui-radius-button)] in-data-[slot=button-group]:rounded-[var(--ui-radius-button)]",
+      sm: "rounded-[var(--ui-radius-button)] in-data-[slot=button-group]:rounded-[var(--ui-radius-button)]",
       lg: null,
       toolbar:
-        "h-[var(--ui-toolbar-button-height)] gap-2 rounded-[4px] px-[var(--ui-toolbar-button-padding-x)] text-[12px] has-data-[icon=inline-end]:pr-[calc(var(--ui-toolbar-button-padding-x)-2px)] has-data-[icon=inline-start]:pl-[calc(var(--ui-toolbar-button-padding-x)-2px)]",
+        "h-[var(--ui-toolbar-button-height)] gap-2 rounded-[var(--ui-radius-button)] px-[var(--ui-toolbar-button-padding-x)] text-[12px] has-data-[icon=inline-end]:pr-[calc(var(--ui-toolbar-button-padding-x)-2px)] has-data-[icon=inline-start]:pl-[calc(var(--ui-toolbar-button-padding-x)-2px)]",
       icon: null,
       "icon-xs":
-        "rounded-[4px] in-data-[slot=button-group]:rounded-[4px] [&_svg:not([class*='size-'])]:size-3",
-      "icon-sm": "rounded-[4px] in-data-[slot=button-group]:rounded-[4px]",
+        "rounded-[var(--ui-radius-button)] in-data-[slot=button-group]:rounded-[var(--ui-radius-button)] [&_svg:not([class*='size-'])]:size-3",
+      "icon-sm":
+        "rounded-[var(--ui-radius-button)] in-data-[slot=button-group]:rounded-[var(--ui-radius-button)]",
       "icon-lg": null,
     },
   },

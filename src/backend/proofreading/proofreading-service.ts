@@ -9,6 +9,12 @@ import type {
   ProjectChangeItemsPayload,
   ProjectWriteResult,
 } from "../../shared/project-event";
+import {
+  are_item_name_fields_equal,
+  read_item_name_text,
+  write_item_name_text,
+} from "../../shared/item-name";
+import { clear_item_translation_fields } from "../../shared/item-text";
 import { compile_text_pattern, replace_text_pattern } from "../../shared/text/text-pattern";
 import * as AppErrors from "../../shared/error";
 
@@ -81,7 +87,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 单条保存只更新译文、状态和翻译进度 meta
+   * 单条保存统一处理正文译文和当前姓名译文，最终事实仍由后端写入口计算。
    */
   private async persist_save_item(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = await this.require_loaded_project_path();
@@ -93,15 +99,24 @@ export class ProofreadingService {
         diagnostic_context: { reason: "item_not_found", item_id },
       });
     }
-    const next_item = this.apply_manual_dst(item, String(request["dst"] ?? ""));
+    let next_item = item;
+    const changed_fields: Array<keyof ProjectChangeItemFieldPatch> = [];
+    if (Object.prototype.hasOwnProperty.call(request, "dst")) {
+      next_item = this.apply_manual_dst(next_item, String(request["dst"] ?? ""));
+      changed_fields.push("dst", "status");
+    }
+    if (Object.prototype.hasOwnProperty.call(request, "name_dst")) {
+      next_item = this.apply_manual_name_dst(next_item, String(request["name_dst"] ?? ""));
+      changed_fields.push("name_dst");
+    }
     if (this.are_items_equal(item, next_item)) {
       return { accepted: true, changes: [] };
     }
-    const field_patch = this.build_item_field_patch(item, next_item, ["dst", "status"]);
+    const field_patch = this.build_item_field_patch(item, next_item, changed_fields);
     return await this.persist_field_patch_items(project_path, expected_section_revisions, {
       changes: [{ current: item, next: next_item }],
       field_patch,
-      update_translation_extras: true,
+      update_translation_extras: changed_fields.includes("dst"),
     });
   }
 
@@ -129,16 +144,31 @@ export class ProofreadingService {
       if (item === undefined) {
         continue;
       }
-      const replace_result = replace_text_pattern({
+      let next_item = item;
+      const dst_replace_result = replace_text_pattern({
         text: String(item["dst"] ?? ""),
         pattern,
         replacement_text: String(request["replace_text"] ?? ""),
         replacement_syntax: (request["is_regex"] ?? false) ? "javascript" : "literal",
       });
-      if (replace_result.count <= 0 || replace_result.text === item["dst"]) {
+      if (dst_replace_result.count > 0 && dst_replace_result.text !== item["dst"]) {
+        next_item = this.apply_manual_dst(next_item, dst_replace_result.text);
+      }
+
+      const current_name_dst = read_item_name_text(item["name_dst"]);
+      const name_replace_result = replace_text_pattern({
+        text: current_name_dst,
+        pattern,
+        replacement_text: String(request["replace_text"] ?? ""),
+        replacement_syntax: (request["is_regex"] ?? false) ? "javascript" : "literal",
+      });
+      if (name_replace_result.count > 0 && name_replace_result.text !== current_name_dst) {
+        next_item = this.apply_manual_name_dst(next_item, name_replace_result.text);
+      }
+
+      if (this.are_items_equal(item, next_item)) {
         continue;
       }
-      const next_item = this.apply_manual_dst(item, replace_result.text);
       changes.push({ current: item, next: next_item });
     }
     return await this.persist_changed_items(project_path, expected_section_revisions, {
@@ -152,7 +182,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 批量清空译文只改 dst，保留 status 和 retry_count 供用户手动判定
+   * 批量清空译文同时清空正文和姓名译文，保留 status 和 retry_count 供用户手动判定
    */
   private async persist_clear_translations(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = await this.require_loaded_project_path();
@@ -165,10 +195,7 @@ export class ProofreadingService {
       if (item === undefined) {
         continue;
       }
-      const next_item = {
-        ...item,
-        dst: "",
-      };
+      const next_item = clear_item_translation_fields(item);
       if (this.are_items_equal(item, next_item)) {
         continue;
       }
@@ -176,7 +203,7 @@ export class ProofreadingService {
     }
     return await this.persist_field_patch_items(project_path, expected_section_revisions, {
       changes,
-      field_patch: { dst: "" },
+      field_patch: { dst: "", name_dst: null },
       update_translation_extras: false,
     });
   }
@@ -299,6 +326,13 @@ export class ProofreadingService {
     };
   }
 
+  private apply_manual_name_dst(item: MutableJsonRecord, next_name_dst: string): MutableJsonRecord {
+    return Item.from_json({
+      ...item,
+      name_dst: write_item_name_text(item["name_dst"], next_name_dst),
+    }).to_json();
+  }
+
   /**
    * field-patch 只发布本次统一改变的字段；值从后端最终 item 事实提取。
    */
@@ -323,6 +357,13 @@ export class ProofreadingService {
         }
         continue;
       }
+      if (field === "name_dst") {
+        const name_dst = Item.normalize_name_field(next_item["name_dst"]);
+        if (!are_item_name_fields_equal(name_dst, current_item["name_dst"])) {
+          patch.name_dst = name_dst;
+        }
+        continue;
+      }
       const dst = next_item["dst"];
       if (field === "dst" && typeof dst === "string" && dst !== current_item["dst"]) {
         patch.dst = dst;
@@ -337,6 +378,7 @@ export class ProofreadingService {
   private are_items_equal(left: MutableJsonRecord, right: MutableJsonRecord): boolean {
     return (
       String(left["dst"] ?? "") === String(right["dst"] ?? "") &&
+      are_item_name_fields_equal(left["name_dst"], right["name_dst"]) &&
       String(left["status"] ?? "") === String(right["status"] ?? "") &&
       Number(left["retry_count"] ?? 0) === Number(right["retry_count"] ?? 0)
     );
@@ -448,6 +490,7 @@ export class ProofreadingService {
       items_by_id.set(item_id, {
         id: item_id,
         dst: String(item["dst"] ?? ""),
+        name_dst: Item.normalize_name_field(item["name_dst"]),
         status: String(item["status"] ?? ""),
         retry_count: Number(item["retry_count"] ?? 0),
       });

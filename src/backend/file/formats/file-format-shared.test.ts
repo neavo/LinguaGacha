@@ -7,7 +7,6 @@ import {
   build_target_path,
   effective_export_text,
   group_items,
-  prepare_name_fields,
   should_preserve_epub_reading_layout,
   split_text_lines_for_items,
 } from "./file-format-shared";
@@ -41,26 +40,8 @@ describe("file-format-shared", () => {
     expect([...group_items(items, "TXT").keys()]).toEqual(["a.txt"]);
   });
 
-  it("按多数译名准备 name_dst 字段", () => {
-    const [first, second] = prepare_name_fields(
-      [
-        Item.from_json({
-          src: "台词1",
-          name_src: "太郎",
-          name_dst: "塔罗",
-          file_type: "MESSAGEJSON",
-        }),
-        Item.from_json({
-          src: "台词2",
-          name_src: "太郎",
-          name_dst: "太郎译",
-          file_type: "MESSAGEJSON",
-        }),
-      ],
-      { source_language: "JA", target_language: "ZH" },
-    );
-
-    expect([first?.name_dst, second?.name_dst]).toEqual(["塔罗", "塔罗"]);
+  it("空译文导出时回退原文", () => {
     expect(effective_export_text(Item.from_json({ src: "原文", dst: "" }))).toBe("原文");
+    expect(effective_export_text(Item.from_json({ src: "原文", dst: "译文" }))).toBe("译文");
   });
 });

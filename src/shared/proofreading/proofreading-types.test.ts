@@ -10,9 +10,9 @@ import {
   resolve_default_proofreading_statuses,
   resolve_default_proofreading_warning_types,
   resolve_proofreading_status_sort_rank,
-} from "./types";
+} from "./proofreading-types";
 
-describe("proofreading-page types", () => {
+describe("proofreading types", () => {
   it("提供校对列表的稳定展示和排序工具", () => {
     expect(format_proofreading_glossary_term(["魔法", "Magic"])).toBe("魔法 -> Magic");
     expect(compress_proofreading_text("第一行\n第二行")).toBe("第一行 ↵ 第二行");
@@ -34,6 +34,8 @@ describe("proofreading-page types", () => {
           row_number: 1,
           src: "源",
           dst: "",
+          name_src: null,
+          name_dst: null,
           status: "NONE",
           retry_count: 0,
           warnings: [],

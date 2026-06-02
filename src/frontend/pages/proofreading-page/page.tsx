@@ -7,7 +7,7 @@ import { ProofreadingConfirmDialog } from "@frontend/pages/proofreading-page/com
 import { ProofreadingEditDialog } from "@frontend/pages/proofreading-page/components/proofreading-edit-dialog";
 import { ProofreadingFilterDialog } from "@frontend/pages/proofreading-page/components/proofreading-filter-dialog";
 import { ProofreadingTable } from "@frontend/pages/proofreading-page/components/proofreading-table";
-import type { ProofreadingSearchScope } from "@frontend/pages/proofreading-page/types";
+import type { ProofreadingSearchScope } from "@shared/proofreading/proofreading-types";
 import { AppButton } from "@frontend/widgets/app-button";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import { SearchBar, type SearchBarScopeOption } from "@frontend/widgets/search-bar/search-bar";
@@ -149,7 +149,7 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
       <ProofreadingEditDialog
         open={proofreading_page_state.dialog_state.open}
         item={proofreading_page_state.dialog_item}
-        draft_dst={proofreading_page_state.dialog_state.draft_dst}
+        draft_item={proofreading_page_state.dialog_state.draft_item}
         saving={proofreading_page_state.dialog_state.saving}
         readonly={table_action_disabled}
         on_change={proofreading_page_state.update_dialog_draft}

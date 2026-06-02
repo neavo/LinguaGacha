@@ -123,9 +123,13 @@ function create_proofreading_state_fixture() {
     },
     dialog_item: null,
     dialog_state: {
-      draft_dst: "",
+      draft_item: {
+        dst: "",
+        name_dst: "",
+      },
       open: false,
       saving: false,
+      target_row_id: null,
     },
     filter_dialog_filters: {},
     filter_dialog_open: false,

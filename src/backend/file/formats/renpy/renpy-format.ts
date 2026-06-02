@@ -3,7 +3,6 @@ import path from "node:path";
 import { decode_text_content } from "../../../../shared/utils/text-tool";
 import {
   group_items,
-  prepare_name_fields,
   split_text_lines_for_items,
   write_text_file,
   type ExportPaths,
@@ -66,10 +65,10 @@ export class RenPyFormat {
       }
       const lines = split_text_lines_for_items(await decode_text_content(original));
       const normalized_items = build_items_for_writeback(rel_path, lines, group);
-      const prepared_items = prepare_name_fields(normalized_items, this.config).sort(
+      const prepared_items = normalized_items.sort(
         (left, right) => get_item_target_line(left) - get_item_target_line(right),
       );
-      new RenpyWriter().apply_items_to_lines(lines, prepared_items);
+      new RenpyWriter(this.config).apply_items_to_lines(lines, prepared_items);
       await write_text_file(path.join(paths.translated_path, rel_path), lines.join("\n"));
     }
   }

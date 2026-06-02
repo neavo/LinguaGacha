@@ -190,7 +190,7 @@
   align-items: center;
   justify-content: center;
   border: 1px solid color-mix(in srgb, var(--border) 90%, white 10%);
-  border-radius: 999px;
+  border-radius: var(--ui-radius-pill);
   background: color-mix(in srgb, var(--card) 92%, var(--background) 8%);
   color: color-mix(in srgb, var(--foreground) 76%, var(--muted-foreground) 24%);
   font-size: 10px;

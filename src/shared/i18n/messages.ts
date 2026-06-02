@@ -7,7 +7,6 @@ import { en_us_glossary_page } from "./resources/en-US/glossary-page";
 import { en_us_laboratory_page } from "./resources/en-US/laboratory-page";
 import { en_us_log_window_page } from "./resources/en-US/log-window-page";
 import { en_us_model_page } from "./resources/en-US/model-page";
-import { en_us_name_field_extraction_page } from "./resources/en-US/name-field-extraction-page";
 import { en_us_post_translation_replacement_page } from "./resources/en-US/post-translation-replacement-page";
 import { en_us_pre_translation_replacement_page } from "./resources/en-US/pre-translation-replacement-page";
 import { en_us_proofreading_page } from "./resources/en-US/proofreading-page";
@@ -27,7 +26,6 @@ import { zh_cn_glossary_page } from "./resources/zh-CN/glossary-page";
 import { zh_cn_laboratory_page } from "./resources/zh-CN/laboratory-page";
 import { zh_cn_log_window_page } from "./resources/zh-CN/log-window-page";
 import { zh_cn_model_page } from "./resources/zh-CN/model-page";
-import { zh_cn_name_field_extraction_page } from "./resources/zh-CN/name-field-extraction-page";
 import { zh_cn_post_translation_replacement_page } from "./resources/zh-CN/post-translation-replacement-page";
 import { zh_cn_pre_translation_replacement_page } from "./resources/zh-CN/pre-translation-replacement-page";
 import { zh_cn_proofreading_page } from "./resources/zh-CN/proofreading-page";
@@ -50,7 +48,6 @@ export const zh_cn_messages = {
   laboratory_page: zh_cn_laboratory_page,
   log_window_page: zh_cn_log_window_page,
   model_page: zh_cn_model_page,
-  name_field_extraction_page: zh_cn_name_field_extraction_page,
   post_translation_replacement_page: zh_cn_post_translation_replacement_page,
   pre_translation_replacement_page: zh_cn_pre_translation_replacement_page,
   proofreading_page: zh_cn_proofreading_page,
@@ -73,7 +70,6 @@ export const en_us_messages = {
   laboratory_page: en_us_laboratory_page,
   log_window_page: en_us_log_window_page,
   model_page: en_us_model_page,
-  name_field_extraction_page: en_us_name_field_extraction_page,
   post_translation_replacement_page: en_us_post_translation_replacement_page,
   pre_translation_replacement_page: en_us_pre_translation_replacement_page,
   proofreading_page: en_us_proofreading_page,

@@ -36,13 +36,12 @@ export interface TranslationRetryPlan {
 }
 
 /**
- * 分析 item 上下文不传完整 item，防止 work unit 误写非分析字段。
+ * 分析 item 上下文只传已渲染的分析源文本，防止 work unit 误写非分析字段。
  */
 export interface AnalysisItemContext {
   item_id: number;
   file_path: string;
   src_text: string;
-  first_name_src: string | null;
   previous_status: string | null;
 }
 

@@ -16,6 +16,9 @@ import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../
 import { normalize_setting_snapshot } from "../../../../domain/setting";
 import type { LogError } from "../../../../shared/error";
 
+/**
+ * 分析 worker 的不可变请求快照，context 承载本 chunk 候选文本。
+ */
 interface AnalysisWorkUnitRequest {
   run_id: string; // 用于隔离一次任务运行，worker 不用它访问项目状态
   work_unit_id: string; // chunk 级诊断键，迟到响应和日志都围绕它定位
@@ -26,6 +29,9 @@ interface AnalysisWorkUnitRequest {
   context: ApiJsonValue; // 包含分析 chunk 所需候选、语言和术语上下文，worker 只消费快照输入
 }
 
+/**
+ * 分析 runner 回传给 Engine 的候选池结果和诊断日志。
+ */
 interface AnalysisWorkUnitResult {
   success: boolean; // 分析解码出了可提交候选或合法空结果
   stopped: boolean; // 主动取消，TaskEngine 不应把它当作失败重试
@@ -169,10 +175,12 @@ export class AnalysisWorkUnitRunner {
     const normalized_think = ResponseCleaner.normalize_blank_lines(
       llm_result.response_think,
     ).trim();
-    const decoded = await new ResponseDecoder().decode(cleaner_result.cleaned_response_result);
+    const glossary_entries = await new ResponseDecoder().decode_glossary_entries(
+      cleaner_result.cleaned_response_result,
+    );
     const normalized_entries = new AnalysisPostPipeline(
       prepared.fake_name_injector,
-    ).normalize_glossary_entries(decoded.glossary_entries);
+    ).normalize_glossary_entries(glossary_entries);
     if (
       normalized_entries.length === 0 &&
       !ResponseCleaner.has_rule_analysis_block(llm_result.response_result)
@@ -306,17 +314,15 @@ export class AnalysisWorkUnitRunner {
     return rows;
   }
 
-  // read_app_language 封装类内部的非显然分支，避免调用方重复理解同一约束。
   /**
-   * 读取当前场景需要的稳定数据。
+   * 日志本地化只读取任务启动快照，保证同一分析 chunk 文案稳定。
    */
   private read_app_language(config_snapshot: ApiJsonValue): unknown {
     return normalize_setting_snapshot(config_snapshot).app_language;
   }
 
-  // t 封装类内部的非显然分支，避免调用方重复理解同一约束。
   /**
-   * 转换本地化键为当前语言文本。
+   * 分析日志统一走 i18n，避免成功、失败和空结果分支各自拼文案。
    */
   private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
     return format_i18n_message(resolve_i18n_locale(app_language), key, params);
@@ -339,8 +345,6 @@ export class AnalysisWorkUnitRunner {
             item_id: this.read_number(item["item_id"], 0),
             file_path: String(item["file_path"] ?? ""),
             src_text: String(item["src_text"] ?? ""),
-            first_name_src:
-              typeof item["first_name_src"] === "string" ? item["first_name_src"] : null,
           }))
       : [];
     return {

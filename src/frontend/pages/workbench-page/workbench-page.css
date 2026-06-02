@@ -188,7 +188,7 @@
 
 .workbench-page__row-action {
   color: var(--foreground);
-  border-radius: 999px;
+  border-radius: var(--ui-radius-pill);
 }
 
 .workbench-page__row-action[data-slot="button"] {

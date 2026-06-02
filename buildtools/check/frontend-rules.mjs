@@ -24,10 +24,18 @@ const PX_FIRST_SCOPE_PREFIXES = [
   "src/frontend/pages/",
   "src/frontend/widgets/",
 ];
+const RENDERER_RADIUS_SCOPE_PREFIXES = [
+  "src/frontend/app/",
+  "src/frontend/pages/",
+  "src/frontend/widgets/",
+  "src/frontend/shadcn/",
+];
 
 const JSX_VISIBLE_TEXT_PATTERN = />[^<>{]*\p{Script=Han}[^<>{]*</gu;
 const JSX_VISIBLE_PROP_PATTERN =
   /\b(?:title|aria-label|placeholder|alt|label|description)\s*=\s*["'][^"']*\p{Script=Han}[^"']*["']/gu;
+const RENDERER_RADIUS_LITERAL_PATTERN =
+  /\bborder-radius\s*:\s*(?:4px|8px|999px)\b|rounded-(?:4xl|\[(?:4px|8px|999px)\])/g;
 
 // DesktopStateContext 是渲染进程 project change 运行态的唯一落点。
 const DESKTOP_STATE_CONTEXT_RELATIVE_PATH = "src/frontend/app/state/desktop-state-context.tsx";
@@ -46,6 +54,7 @@ export function create_frontend_boundary_rules() {
     create_desktop_runtime_snapshot_write_rule(),
     create_renderer_visible_text_rule(),
     create_renderer_px_first_literal_rule(),
+    create_renderer_radius_literal_rule(),
     create_renderer_token_owner_rule(),
   ];
 }
@@ -280,6 +289,32 @@ function create_renderer_px_first_literal_rule() {
   };
 }
 
+function create_renderer_radius_literal_rule() {
+  return {
+    name: "renderer 圆角语义边界",
+    check: (context) => {
+      const errors = [];
+      for (const file_path of context.files) {
+        const relative_path = context.relative_path(file_path);
+        if (!is_renderer_radius_semantic_scope(relative_path, file_path)) {
+          continue;
+        }
+        const content = context.read_file(file_path);
+        const matches = find_pattern_errors(content, RENDERER_RADIUS_LITERAL_PATTERN, () => {
+          return "违规则使用了圆角语义字面量；请改用 --ui-radius-card、--ui-radius-button 或 --ui-radius-pill";
+        });
+        for (const match of matches) {
+          errors.push({
+            ...match,
+            relative_path,
+          });
+        }
+      }
+      return errors;
+    },
+  };
+}
+
 function create_renderer_token_owner_rule() {
   return {
     name: "renderer 全局 token 边界",
@@ -373,6 +408,14 @@ function is_px_first_literal_scope(relative_path) {
   return (
     relative_path === TOKEN_OWNER_RELATIVE_PATH ||
     PX_FIRST_SCOPE_PREFIXES.some((prefix) => relative_path.startsWith(prefix))
+  );
+}
+
+function is_renderer_radius_semantic_scope(relative_path, file_path) {
+  return (
+    !is_test_file(file_path) &&
+    /\.(css|ts|tsx)$/.test(file_path) &&
+    RENDERER_RADIUS_SCOPE_PREFIXES.some((prefix) => relative_path.startsWith(prefix))
   );
 }
 

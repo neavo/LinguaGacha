@@ -462,22 +462,11 @@ describe("ApiGatewayServer", () => {
     const prompt_response = await post_json(started.baseUrl, "/api/quality/prompts/view", {
       task_type: "translation",
     });
-    const name_fields_response = await post_json(started.baseUrl, "/api/toolbox/name-fields/view", {
-      filter: { keyword: "", scope: "all", is_regex: false },
-      sort: { field: null, direction: null },
-    });
     const prompt_body = (await prompt_response.json()) as {
       ok?: boolean;
       data?: {
         projectPath?: string;
         prompt?: { text?: string };
-      };
-    };
-    const name_fields_body = (await name_fields_response.json()) as {
-      ok?: boolean;
-      data?: {
-        projectPath?: string;
-        view?: { rows?: Array<{ src?: string; context?: string }> };
       };
     };
 
@@ -495,12 +484,6 @@ describe("ApiGatewayServer", () => {
     expect(prompt_body.ok).toBe(true);
     expect(prompt_body.data?.projectPath).toBe(lg_path);
     expect(prompt_body.data?.prompt?.text).toBe("\uD800");
-    expect(name_fields_body.ok).toBe(true);
-    expect(name_fields_body.data?.projectPath).toBe(lg_path);
-    expect(name_fields_body.data?.view?.rows?.[0]).toMatchObject({
-      src: "魔法师",
-      context: "原文",
-    });
   });
 
   it("analysis 候选读取路由只绑定当前 loaded 工程并返回完整候选池", async () => {
@@ -659,6 +642,8 @@ describe("ApiGatewayServer", () => {
       "/api/project/proofreading/save-item",
       "/api/analysis/name-fields/view",
       "/api/translation/files/export-ts-conversion",
+      "/api/toolbox/name-" + "fields/view",
+      "/api/tasks/translate-" + "single",
     ];
 
     for (const legacy_path of legacy_paths) {

@@ -4,6 +4,9 @@ export type WorkbenchPlannerSettings = {
   skip_duplicate_source_text_enable: boolean; // 后端同文件重复原文过滤开关
 };
 
+type WorkbenchCommandSection = "files" | "items" | "analysis";
+type WorkbenchSectionRevisions = Record<string, number | undefined>;
+
 type WorkbenchPlannerFileRecord = {
   rel_path: string; // 后端 query 返回的项目内相对路径
   file_type: string; // 只用于前端路径校验，最终文件类型以后端解析为准
@@ -17,11 +20,11 @@ export type WorkbenchFileConflictAction = "skip" | "replace";
 
 export type WorkbenchCommandPlanningState = {
   files: WorkbenchPlannerFileRecord[]; // 来自后端工作台 query 的当前文件窗口事实
-  section_revisions: Record<string, number>; // 写入乐观锁只读取本次 query 携带的 revision
+  section_revisions: WorkbenchSectionRevisions; // 写入乐观锁只读取本次 query 携带的 revision
 };
 
 export type WorkbenchCommandPlan = {
-  updatedSections: Array<"files" | "items" | "analysis">; // UI 预期受影响 section，真实 revision 以后端事件为准
+  updatedSections: WorkbenchCommandSection[]; // UI 预期受影响 section，真实 revision 以后端事件为准
   requestBody: Record<string, unknown>; // 只包含命令体，不包含渲染进程计算的最终 items/meta
 };
 
@@ -109,15 +112,22 @@ function normalize_target_rel_paths(rel_paths: string[]): string[] {
 }
 
 // 每个 command 只携带它依赖的 section revision，由后端执行乐观锁。
-function build_expected_revisions(
-  state: WorkbenchCommandPlanningState,
-  sections: Array<"files" | "items" | "analysis">,
+function build_expected_section_revisions(
+  section_revisions: WorkbenchSectionRevisions,
+  sections: WorkbenchCommandSection[],
 ): Record<string, number> {
   const expected_section_revisions: Record<string, number> = {};
   for (const section of sections) {
-    expected_section_revisions[section] = state.section_revisions[section] ?? 0;
+    expected_section_revisions[section] = section_revisions[section] ?? 0;
   }
   return expected_section_revisions;
+}
+
+function build_expected_revisions(
+  state: WorkbenchCommandPlanningState,
+  sections: WorkbenchCommandSection[],
+): Record<string, number> {
+  return build_expected_section_revisions(state.section_revisions, sections);
 }
 
 // 项目设置镜像只传后端重算预过滤需要的稳定字段。
@@ -194,6 +204,75 @@ export function create_workbench_reset_file_plan(args: {
       rel_paths: [target_rel_path],
       project_settings: build_project_settings(args.settings),
       expected_section_revisions: build_expected_revisions(args.state, ["items", "analysis"]),
+    },
+  };
+}
+
+// 翻译失败重置只提交 items 乐观锁，后端按当前 ERROR item 重建最终事实。
+export function create_translation_reset_failed_plan(args: {
+  section_revisions: WorkbenchSectionRevisions;
+}): WorkbenchCommandPlan {
+  return {
+    updatedSections: ["items"],
+    requestBody: {
+      mode: "failed",
+      expected_section_revisions: build_expected_section_revisions(args.section_revisions, [
+        "items",
+      ]),
+    },
+  };
+}
+
+// 翻译全量重置只提交设置镜像和依赖 revision，后端重新解析当前 asset 后写入。
+export function create_translation_reset_all_plan(args: {
+  section_revisions: WorkbenchSectionRevisions;
+  source_language: string;
+  mtool_optimizer_enable: boolean;
+  skip_duplicate_source_text_enable: boolean;
+}): WorkbenchCommandPlan {
+  return {
+    updatedSections: ["items", "analysis"],
+    requestBody: {
+      mode: "all",
+      project_settings: build_project_settings({
+        source_language: args.source_language,
+        mtool_optimizer_enable: args.mtool_optimizer_enable,
+        skip_duplicate_source_text_enable: args.skip_duplicate_source_text_enable,
+      }),
+      expected_section_revisions: build_expected_section_revisions(args.section_revisions, [
+        "items",
+        "analysis",
+      ]),
+    },
+  };
+}
+
+// 分析全量重置只提交 mode 和 analysis revision，后端清空 checkpoint 与候选事实。
+export function create_analysis_reset_all_plan(args: {
+  section_revisions: WorkbenchSectionRevisions;
+}): WorkbenchCommandPlan {
+  return {
+    updatedSections: ["analysis"],
+    requestBody: {
+      mode: "all",
+      expected_section_revisions: build_expected_section_revisions(args.section_revisions, [
+        "analysis",
+      ]),
+    },
+  };
+}
+
+// 分析失败重置只提交 mode 和 analysis revision，后端按 ERROR checkpoint 重建进度。
+export function create_analysis_reset_failed_plan(args: {
+  section_revisions: WorkbenchSectionRevisions;
+}): WorkbenchCommandPlan {
+  return {
+    updatedSections: ["analysis"],
+    requestBody: {
+      mode: "failed",
+      expected_section_revisions: build_expected_section_revisions(args.section_revisions, [
+        "analysis",
+      ]),
     },
   };
 }

@@ -5,7 +5,7 @@ import { clone_translation_scope, type TranslationScope } from "@domain/task";
 import {
   create_translation_reset_all_plan,
   create_translation_reset_failed_plan,
-} from "@shared/project/reset/translation-reset-plan";
+} from "@shared/workbench/workbench-command-planner";
 import {
   type ProjectWriteOperation,
   type ProjectWriteResultPayload,
@@ -456,7 +456,6 @@ export function useTranslationWorkbenchTask(
           task_confirm_state.kind === "reset-all"
             ? create_translation_reset_all_plan({
                 section_revisions,
-                task_snapshot,
                 source_language: String(settings_snapshot.source_language ?? "ALL"),
                 mtool_optimizer_enable: Boolean(settings_snapshot.mtool_optimizer_enable),
                 skip_duplicate_source_text_enable: Boolean(
@@ -465,7 +464,6 @@ export function useTranslationWorkbenchTask(
               })
             : create_translation_reset_failed_plan({
                 section_revisions,
-                task_snapshot,
               });
         await commit_project_write({
           operation: WORKBENCH_TRANSLATION_WRITE,
@@ -513,7 +511,6 @@ export function useTranslationWorkbenchTask(
     sync_runtime_task_snapshot,
     t,
     task_confirm_state,
-    task_snapshot,
   ]);
 
   useEffect(() => {

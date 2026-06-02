@@ -63,10 +63,16 @@ import {
 } from "@frontend/app/feedback/project-settings-alignment-feedback";
 import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
 
+/**
+ * 项目页只消费侧栏折叠状态，主体数据来自 DesktopState。
+ */
 type ProjectPageProps = {
   is_sidebar_collapsed: boolean;
 };
 
+/**
+ * 工程预览展示所需的轻量统计快照。
+ */
 type ProjectPreviewStats = {
   file_count: number;
   created_at: string;
@@ -75,12 +81,18 @@ type ProjectPreviewStats = {
   translation_stats: SegmentedProgressStats;
 };
 
+/**
+ * 已选择的 .lg 工程及其可选预览结果。
+ */
 type SelectedProject = {
   path: string;
   name: string;
   preview: ProjectPreviewStats | null;
 };
 
+/**
+ * 已选择的源路径集合，保留首个路径用于推导默认工程名。
+ */
 type SelectedSource = {
   source_paths: string[];
   name: string;
@@ -88,10 +100,16 @@ type SelectedSource = {
   output_name_seed_path: string;
 };
 
+/**
+ * 最近工程缺失时弹窗只需要记住待移除路径。
+ */
 type MissingRecentProjectState = {
   path: string;
 } | null;
 
+/**
+ * 后端工程预览接口返回的宽松载荷，页面在边界处归一。
+ */
 type ProjectPreviewPayload = {
   preview?: {
     path?: string;
@@ -103,14 +121,26 @@ type ProjectPreviewPayload = {
   };
 };
 
+/**
+ * 源路径收集接口返回的可导入文件列表。
+ */
 type ProjectSourceFilesPayload = {
   source_files?: string[];
 };
 
+/**
+ * 新建工程提交后的公开载荷，failed_files 交给专用 formatter 收窄。
+ */
 type ProjectCreateCommitPayload = {
+  project?: {
+    path?: string;
+  };
   failed_files?: unknown;
 };
 
+/**
+ * 打开工程前 settings alignment 预演结果。
+ */
 type ProjectOpenAlignmentPreviewPayload = {
   preview?: {
     action?: string;
@@ -119,6 +149,9 @@ type ProjectOpenAlignmentPreviewPayload = {
   };
 };
 
+/**
+ * 默认预设设置字段白名单，控制新建成功后的提示内容。
+ */
 type DefaultPresetSettingKey =
   | "glossary_default_preset"
   | "text_preserve_default_preset"
@@ -127,11 +160,17 @@ type DefaultPresetSettingKey =
   | "translation_custom_prompt_default_preset"
   | "analysis_custom_prompt_default_preset";
 
+/**
+ * 设置字段到本地化名称的映射，用于汇总已加载默认预设。
+ */
 type DefaultPresetSettingSpec = {
   settings_key: DefaultPresetSettingKey;
   name_key: LocaleKey;
 };
 
+/**
+ * settings 接口在项目页会消费的最小响应形状。
+ */
 type SettingsPayload = {
   settings?: {
     project_save_mode?: string;
@@ -143,6 +182,9 @@ type SettingsPayload = {
   };
 };
 
+/**
+ * 创建和打开两个主面板的标题区配置。
+ */
 type PanelHeaderProps = {
   icon: LucideIcon;
   title: string;
@@ -150,6 +192,9 @@ type PanelHeaderProps = {
   tone: "source" | "project";
 };
 
+/**
+ * 源文件和工程文件拖放区的统一按钮 props。
+ */
 type DropZoneCardProps = Omit<
   ComponentProps<"button">,
   "title" | "onClick" | "onDragOver" | "onDrop"
@@ -165,11 +210,17 @@ type DropZoneCardProps = Omit<
   on_drop?: (event: DragEvent<HTMLButtonElement>) => void;
 };
 
+/**
+ * 支持格式卡片只展示格式名和扩展名集合。
+ */
 type FormatSupportCardProps = {
   title: string;
   extensions: string;
 };
 
+/**
+ * 最近工程列表行的展示文本和操作回调。
+ */
 type RecentProjectRowProps = {
   name: string;
   path: string;
@@ -178,10 +229,16 @@ type RecentProjectRowProps = {
   remove_aria_label: string;
 };
 
+/**
+ * 工程预览面板只依赖已归一的 selected project。
+ */
 type ProjectPreviewPanelProps = {
   project: SelectedProject;
 };
 
+/**
+ * 底部主操作按钮在加载态和可用态之间切换图标与文案。
+ */
 type ProjectActionButtonProps = {
   icon: LucideIcon;
   label: string;
@@ -191,8 +248,14 @@ type ProjectActionButtonProps = {
   on_click: () => void;
 };
 
+/**
+ * 当前正在接收拖拽反馈的区域。
+ */
 type ActiveDropzone = "source" | "project" | null;
 
+/**
+ * 新建成功后需要提示的默认预设字段集合。
+ */
 const DEFAULT_PRESET_SETTING_SPECS: DefaultPresetSettingSpec[] = [
   {
     settings_key: "glossary_default_preset",
@@ -221,7 +284,7 @@ const DEFAULT_PRESET_SETTING_SPECS: DefaultPresetSettingSpec[] = [
 ];
 
 /**
- * 提取路径片段供计算逻辑复用。
+ * 从跨平台路径中提取文件名，供默认工程名和最近工程名复用。
  */
 function extract_file_name(file_path: string): string {
   const normalized_segments = file_path.split(/[\\/]+/u);
@@ -229,14 +292,14 @@ function extract_file_name(file_path: string): string {
 }
 
 /**
- * 提取路径片段供计算逻辑复用。
+ * 从文件名中提取 stem，避免默认工程名继承源文件扩展名。
  */
 function extract_stem(file_name: string): string {
   return file_name.replace(/\.[^.]+$/u, "");
 }
 
 /**
- * 提取路径片段供计算逻辑复用。
+ * 提取父目录，SOURCE 保存模式使用源文件所在目录。
  */
 function extract_parent_dir(file_path: string): string {
   const normalized_index = Math.max(file_path.lastIndexOf("/"), file_path.lastIndexOf("\\"));
@@ -248,7 +311,7 @@ function extract_parent_dir(file_path: string): string {
 }
 
 /**
- * 拼接路径片段并统一展示规则。
+ * 拼接路径片段并沿用输入目录的分隔符风格。
  */
 function join_path(directory_path: string, file_name: string): string {
   if (directory_path === "") {
@@ -261,31 +324,17 @@ function join_path(directory_path: string, file_name: string): string {
 }
 
 /**
- * 构建当前场景的稳定结果。
- */
-function build_timestamp_suffix(): string {
-  const now = new Date();
-  const year = now.getFullYear().toString().padStart(4, "0");
-  const month = (now.getMonth() + 1).toString().padStart(2, "0");
-  const day = now.getDate().toString().padStart(2, "0");
-  const hour = now.getHours().toString().padStart(2, "0");
-  const minute = now.getMinutes().toString().padStart(2, "0");
-  const second = now.getSeconds().toString().padStart(2, "0");
-  return `${year}${month}${day}_${hour}${minute}${second}`;
-}
-
-/**
- * 构建当前场景的稳定结果。
+ * 按源路径生成默认 .lg 文件名，目录输入也能得到稳定名称。
  */
 function build_default_project_file_name(source_path: string): string {
   const file_name = extract_file_name(source_path);
   const has_extension = file_name.lastIndexOf(".") > 0;
   const base_name = has_extension ? extract_stem(file_name) : file_name;
-  return `${base_name}_${build_timestamp_suffix()}.lg`;
+  return `${base_name}.lg`;
 }
 
 /**
- * 格式化当前场景的用户可读文本。
+ * 格式化错误提示，有可见错误详情时填充模板占位。
  */
 function format_project_error_message(args: {
   template: string;
@@ -303,7 +352,7 @@ function format_project_error_message(args: {
 }
 
 /**
- * 追加可选信息并保持输出语义稳定。
+ * 给统计文案追加单位，空单位时保持原文案。
  */
 function append_optional_unit_label(text: string, unit_label: string): string {
   if (unit_label === "") {
@@ -314,7 +363,7 @@ function append_optional_unit_label(text: string, unit_label: string): string {
 }
 
 /**
- * 归一化输入，保证下游消费稳定形状。
+ * 计数字段统一归一为非负整数，保护预览 UI 不显示 NaN。
  */
 function normalize_count(value: unknown): number {
   const numeric_value = Number(value ?? 0);
@@ -326,7 +375,7 @@ function normalize_count(value: unknown): number {
 }
 
 /**
- * 归一化输入，保证下游消费稳定形状。
+ * 百分比字段固定在 0 到 100，保护进度条输入边界。
  */
 function normalize_percent(value: unknown): number {
   const numeric_value = Number(value ?? 0);
@@ -338,7 +387,7 @@ function normalize_percent(value: unknown): number {
 }
 
 /**
- * 构建当前场景的稳定结果。
+ * 提取 settings alignment 需要的项目镜像字段。
  */
 function build_project_prefilter_settings(
   settings_snapshot: SettingsSnapshot,
@@ -352,7 +401,7 @@ function build_project_prefilter_settings(
 }
 
 /**
- * 读取当前场景需要的稳定数据。
+ * 收集非空默认预设名称，用于新建成功后的信息提示。
  */
 function collect_loaded_default_preset_names(
   settings_snapshot: SettingsSnapshot,
@@ -369,7 +418,7 @@ function collect_loaded_default_preset_names(
 }
 
 /**
- * 归一化输入，保证下游消费稳定形状。
+ * 归一工程预览统计，并在旧项目缺 completion_percent 时现场补算。
  */
 function normalize_project_preview_translation_stats(
   preview: NonNullable<ProjectPreviewPayload["preview"]>,
@@ -402,7 +451,7 @@ function normalize_project_preview_translation_stats(
 }
 
 /**
- * 归一化输入，保证下游消费稳定形状。
+ * 将后端预览宽载荷收窄为页面选择态。
  */
 function normalize_project_preview(
   project_path: string,
@@ -427,7 +476,7 @@ function normalize_project_preview(
 }
 
 /**
- * 切换当前交互状态。
+ * 右键菜单入口复用普通点击，保持拖放卡片仍是单个可聚焦按钮。
  */
 function open_context_menu_at_click_position(event: MouseEvent<HTMLButtonElement>): void {
   event.preventDefault();
@@ -443,6 +492,10 @@ function open_context_menu_at_click_position(event: MouseEvent<HTMLButtonElement
     }),
   );
 }
+
+/**
+ * 渲染创建/打开面板标题，tone 只影响局部标记色。
+ */
 function PanelHeader(props: PanelHeaderProps): JSX.Element {
   const Icon = props.icon;
 
@@ -471,7 +524,13 @@ function PanelHeader(props: PanelHeaderProps): JSX.Element {
   );
 }
 
+/**
+ * 统一源文件和工程文件拖放入口，forwardRef 供 context menu trigger 挂载。
+ */
 const DropZoneCard = forwardRef<HTMLButtonElement, DropZoneCardProps>(
+  /**
+   * 渲染可点击可拖放的主入口按钮。
+   */
   function DropZoneCard(props, ref): JSX.Element {
     const {
       icon,
@@ -486,7 +545,7 @@ const DropZoneCard = forwardRef<HTMLButtonElement, DropZoneCardProps>(
       className,
       ...button_props
     } = props;
-    const Icon = icon === "source" ? FilePlus : FileInput; // 让创建与打开入口保留不同图标语义，避免 props 只传不消费导致 lint 失败
+    const Icon = icon === "source" ? FilePlus : FileInput; // 创建与打开入口保留不同图标语义。
 
     return (
       <button
@@ -513,6 +572,10 @@ const DropZoneCard = forwardRef<HTMLButtonElement, DropZoneCardProps>(
     );
   },
 );
+
+/**
+ * 展示单个支持格式条目。
+ */
 function FormatSupportCard(props: FormatSupportCardProps): JSX.Element {
   return (
     <div className="project-home__format-item">
@@ -521,7 +584,14 @@ function FormatSupportCard(props: FormatSupportCardProps): JSX.Element {
     </div>
   );
 }
+
+/**
+ * 最近工程行同时承载选择和移除操作，移除按钮阻止冒泡。
+ */
 function RecentProjectRow(props: RecentProjectRowProps): JSX.Element {
+  /**
+   * 移除最近工程时不触发行选择。
+   */
   function handle_remove_click(event: MouseEvent<HTMLButtonElement>): void {
     event.stopPropagation();
     props.on_remove();
@@ -563,6 +633,10 @@ function RecentProjectRow(props: RecentProjectRowProps): JSX.Element {
     </div>
   );
 }
+
+/**
+ * 最近工程为空时显示紧凑占位。
+ */
 function RecentProjectEmptyState(): JSX.Element {
   const { t } = useI18n();
 
@@ -573,6 +647,10 @@ function RecentProjectEmptyState(): JSX.Element {
     </div>
   );
 }
+
+/**
+ * 工程预览面板展示摘要字段和四段翻译进度。
+ */
 function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
   const { t } = useI18n();
   const preview = props.project.preview;
@@ -650,6 +728,10 @@ function ProjectPreviewPanel(props: ProjectPreviewPanelProps): JSX.Element {
     </div>
   );
 }
+
+/**
+ * 创建和打开两个主操作共享的加载态按钮。
+ */
 function ProjectActionButton(props: ProjectActionButtonProps): JSX.Element {
   const Icon = props.icon;
 
@@ -668,7 +750,7 @@ function ProjectActionButton(props: ProjectActionButtonProps): JSX.Element {
 }
 
 /**
- * 解析当前场景的最终消费值。
+ * 将项目加载阶段映射为模态进度文案。
  */
 function resolve_project_loading_stage_message(
   stage: ProjectStage | null,
@@ -701,6 +783,10 @@ function resolve_project_loading_stage_message(
 
   return null;
 }
+
+/**
+ * 等待下一帧，给加载 Toast 的最后一次阶段更新留出渲染机会。
+ */
 function wait_for_next_animation_frame(): Promise<void> {
   return new Promise((resolve) => {
     window.requestAnimationFrame(() => {
@@ -738,18 +824,22 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   const has_recent_projects = recent_projects.length > 0;
 
   /**
-   * 清理当前场景的数据状态。
+   * 清空打开工程选择，保留源文件选择。
    */
   function clear_selected_project(): void {
     set_selected_project(null);
   }
 
   /**
-   * 清理当前场景的数据状态。
+   * 清空新建工程源文件选择，保留打开工程选择。
    */
   function clear_selected_source(): void {
     set_selected_source(null);
   }
+
+  /**
+   * 刷新最近工程列表，数据来源仍是 settings 快照。
+   */
   async function refresh_recent_projects(): Promise<void> {
     await refresh_settings();
   }
@@ -770,7 +860,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   }, [project_session_stage, t, update_progress_toast]);
 
   /**
-   * 执行当前场景的异步流程。
+   * 包裹创建、打开和预览流程，统一展示可更新的模态进度。
    */
   async function run_project_loading_modal(args: {
     initial_message: string;
@@ -794,7 +884,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
   }
 
   /**
-   * 选择当前场景的目标项。
+   * 选择工程路径并读取预览，最近工程缺失时转入移除确认。
    */
   async function select_project_path(
     project_path: string,
@@ -848,6 +938,10 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       set_is_preview_loading(false);
     }
   }
+
+  /**
+   * 选择一个或多个源路径后，让后端按支持格式收集真实导入文件。
+   */
   async function handle_select_source_paths(source_paths: string[]): Promise<void> {
     const normalized_source_paths = normalize_source_paths(source_paths);
     if (normalized_source_paths.length === 0) {
@@ -890,9 +984,17 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       set_is_source_checking(false);
     }
   }
+
+  /**
+   * 单路径入口复用多路径选择流程。
+   */
   async function handle_select_source_path(source_path: string): Promise<void> {
     await handle_select_source_paths([source_path]);
   }
+
+  /**
+   * 打开系统文件选择器，保留多选结果的完整路径集合。
+   */
   async function handle_select_source_file(): Promise<void> {
     const result = await window.desktopApp.pickProjectSourceFilePath();
     const selected_path = result.paths[0] ?? null;
@@ -902,6 +1004,10 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
     await handle_select_source_paths(result.paths);
   }
+
+  /**
+   * 打开系统目录选择器，目录模式只返回单个根路径。
+   */
   async function handle_select_source_folder(): Promise<void> {
     const result = await window.desktopApp.pickProjectSourceDirectoryPath();
     const selected_path = result.paths[0] ?? null;
@@ -911,6 +1017,10 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
     await handle_select_source_path(selected_path);
   }
+
+  /**
+   * 打开系统工程文件选择器并进入预览流程。
+   */
   async function handle_select_project_file(): Promise<void> {
     const result = await window.desktopApp.pickProjectFilePath();
     const selected_path = result.paths[0] ?? null;
@@ -920,6 +1030,10 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
     await select_project_path(selected_path);
   }
+
+  /**
+   * 拖拽悬停时只接受可解析路径，避免浏览器默认 drop 行为污染页面。
+   */
   function handle_drop_over(
     dropzone: Exclude<ActiveDropzone, null>,
     event: DragEvent<HTMLButtonElement>,
@@ -940,6 +1054,10 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       event.dataTransfer.dropEffect = "none";
     }
   }
+
+  /**
+   * 拖拽离开当前区域时清理激活态。
+   */
   function handle_drop_leave(dropzone: Exclude<ActiveDropzone, null>): void {
     set_active_dropzone((current_dropzone) => {
       if (current_dropzone === dropzone) {
@@ -949,6 +1067,10 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       }
     });
   }
+
+  /**
+   * 解析 drop 事件中的宿主路径，并把多路径与空路径转成可见提示。
+   */
   async function handle_path_drop(
     event: DragEvent<HTMLButtonElement>,
     on_resolved_path: (path: string) => Promise<void>,
@@ -968,15 +1090,23 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
     await on_resolved_path(dropped_path.path);
   }
+
+  /**
+   * 源文件拖放进入新建工程选择流程。
+   */
   async function handle_source_drop(event: DragEvent<HTMLButtonElement>): Promise<void> {
     await handle_path_drop(event, handle_select_source_path);
   }
+
+  /**
+   * 工程文件拖放进入打开工程预览流程。
+   */
   async function handle_project_drop(event: DragEvent<HTMLButtonElement>): Promise<void> {
     await handle_path_drop(event, select_project_path);
   }
 
   /**
-   * 解析当前场景的最终消费值。
+   * 按保存模式解析新建工程输出路径，固定目录缺失时先请求用户选择。
    */
   async function resolve_project_output_path(source_path: string): Promise<string | null> {
     const default_file_name = build_default_project_file_name(source_path);
@@ -1009,6 +1139,10 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
 
     return join_path(fixed_directory, default_file_name);
   }
+
+  /**
+   * 提交新建工程请求，成功后刷新会话、任务和最近工程。
+   */
   async function handle_create_project(): Promise<void> {
     if (selected_source === null || is_creating_project) {
       return;
@@ -1045,11 +1179,16 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
           if (failure_toast !== null) {
             push_toast("warning", failure_toast);
           }
+          const created_project_path =
+            typeof create_payload.project?.path === "string" &&
+            create_payload.project.path.trim() !== ""
+              ? create_payload.project.path
+              : normalized_output_path;
           set_project_session_status("warming");
           await refresh_project_snapshot();
           await api_fetch<SettingsPayload>("/api/settings/recent-projects/add", {
-            path: normalized_output_path,
-            name: extract_stem(extract_file_name(normalized_output_path)),
+            path: created_project_path,
+            name: extract_stem(extract_file_name(created_project_path)),
           });
           await Promise.all([refresh_recent_projects(), refresh_task()]);
         },
@@ -1085,6 +1224,10 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       set_is_creating_project(false);
     }
   }
+
+  /**
+   * 打开既有工程前先执行设置对齐预演，再加载后端会话。
+   */
   async function handle_open_project(): Promise<void> {
     if (selected_project === null || selected_project.preview === null || is_opening_project) {
       return;
@@ -1171,12 +1314,20 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
       set_is_opening_project(false);
     }
   }
+
+  /**
+   * 最近工程点击复用普通工程路径预览，并携带展示名。
+   */
   async function handle_recent_project_select(
     project_path: string,
     project_name: string,
   ): Promise<void> {
     await select_project_path(project_path, project_name);
   }
+
+  /**
+   * 从最近工程列表移除路径后刷新 settings 快照。
+   */
   async function handle_recent_project_remove(project_path: string): Promise<void> {
     try {
       await api_fetch<SettingsPayload>("/api/settings/recent-projects/remove", {

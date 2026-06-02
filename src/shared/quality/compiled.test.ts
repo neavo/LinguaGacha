@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyQualityCompiledReplacements,
+  applyQualityCompiledTextParts,
   buildQualityCompiledContext,
   partitionQualityCompiledGlossaryTerms,
 } from "./compiled";
@@ -71,8 +72,36 @@ describe("quality-compiled", () => {
     expect(
       partitionQualityCompiledGlossaryTerms({
         glossary: context.glossary,
-        src_replaced: "HP + HP",
-        dst_replaced: "生命值不足",
+        source_replaced_parts: [{ field: "src", text: "HP + HP" }],
+        translation_replaced_parts: [{ field: "dst", text: "生命值不足" }],
+      }),
+    ).toEqual({
+      applied_terms: [["HP", "生命值"]],
+      failed_terms: [],
+    });
+  });
+
+  it("术语运行时同时扫描姓名字段并按译侧多段文本判断生效", () => {
+    const context = buildQualityCompiledContext(create_quality_state());
+    const parts = applyQualityCompiledTextParts(
+      {
+        source: [
+          { field: "src", text: "普通正文" },
+          { field: "name_src", text: "HP" },
+        ],
+        translation: [
+          { field: "dst", text: "" },
+          { field: "name_dst", text: "生命值" },
+        ],
+      },
+      context,
+    );
+
+    expect(
+      partitionQualityCompiledGlossaryTerms({
+        glossary: context.glossary,
+        source_replaced_parts: parts.source,
+        translation_replaced_parts: parts.translation,
       }),
     ).toEqual({
       applied_terms: [["HP", "生命值"]],

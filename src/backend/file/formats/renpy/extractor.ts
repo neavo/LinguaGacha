@@ -81,8 +81,9 @@ export class RenpyExtractor {
     const dst = this.get_literal_value(target_stmt, text_slot.lit_index);
     const name_src =
       name_slot === undefined ? null : this.get_literal_value(template_stmt, name_slot.lit_index);
-    const name_dst =
-      name_slot === undefined ? null : this.get_literal_value(target_stmt, name_slot.lit_index);
+    const target_name =
+      name_slot === undefined ? "" : this.get_literal_value(target_stmt, name_slot.lit_index);
+    const name_dst = target_name === "" || target_name === name_src ? null : target_name;
 
     return Item.from_json({
       src,

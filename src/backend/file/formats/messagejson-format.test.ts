@@ -36,6 +36,7 @@ describe("MESSAGEJSONFormat", () => {
 
     expect(items).toHaveLength(3);
     expect(items.map((item) => item.name_src)).toEqual(["Alice", ["Bob", "Carol"], null]);
+    expect(items.map((item) => item.name_dst)).toEqual([null, null, null]);
     expect(items.map((item) => item.src)).toEqual(["msg1", "msg2", "msg3"]);
     expect(items.map((item) => item.dst)).toEqual(["", "", ""]);
     expect(
@@ -75,7 +76,7 @@ describe("MESSAGEJSONFormat", () => {
     ]);
   });
 
-  it("写回时按配置使用多数译名字段", async () => {
+  it("写回时逐条优先使用第 0 槽译名并回退源姓名", async () => {
     const format = new MESSAGEJSONFormat({
       source_language: "JA",
       target_language: "ZH",
@@ -102,7 +103,7 @@ describe("MESSAGEJSONFormat", () => {
         Item.from_json({
           dst: "m2b",
           name_src: "hero",
-          name_dst: "勇者",
+          name_dst: null,
           row: 4,
           file_type: "MESSAGEJSON",
           file_path: "message/a.json",
@@ -110,6 +111,14 @@ describe("MESSAGEJSONFormat", () => {
         Item.from_json({
           dst: "m3",
           row: 3,
+          file_type: "MESSAGEJSON",
+          file_path: "message/a.json",
+        }),
+        Item.from_json({
+          dst: "m4",
+          name_src: ["first", "tail"],
+          name_dst: ["第一译名", "不会写入"],
+          row: 5,
           file_type: "MESSAGEJSON",
           file_path: "message/a.json",
         }),
@@ -121,14 +130,10 @@ describe("MESSAGEJSONFormat", () => {
     );
 
     const result = JSON.parse(fs.readFileSync(path.join(temp_dir, "message", "a.json"), "utf-8"));
-    const hero_entries = result.filter(
-      (value: Record<string, unknown>) => value["name"] !== undefined,
-    );
-    expect(hero_entries.map((value: Record<string, unknown>) => value["name"])).toEqual([
-      "勇者",
-      "勇者",
-      "勇者",
-    ]);
+    expect(result).toContainEqual({ name: "勇者", message: "m1" });
+    expect(result).toContainEqual({ name: "英雄", message: "m2" });
+    expect(result).toContainEqual({ name: "hero", message: "m2b" });
+    expect(result).toContainEqual({ names: ["第一译名", "tail"], message: "m4" });
     expect(result).toContainEqual({ message: "m3" });
   });
 

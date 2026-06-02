@@ -1,5 +1,5 @@
 import { useI18n } from "@frontend/app/locale/locale-provider";
-import { type ProofreadingPendingConfirmation } from "@frontend/pages/proofreading-page/types";
+import { type ProofreadingPendingConfirmation } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
 import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
 
 type ProofreadingConfirmDialogProps = {

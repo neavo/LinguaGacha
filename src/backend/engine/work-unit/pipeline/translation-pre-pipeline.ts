@@ -1,6 +1,5 @@
 import { TextRubyCleaner } from "../../../../shared/text/text-ruby-cleaner";
 import { normalize_text_for_processing } from "../../../../shared/text/text-normalizer";
-import { inject_text_name_prefix } from "../../../../shared/text/text-name-prefix";
 import {
   build_text_preserve_rule,
   type TextPreserveRule,
@@ -11,6 +10,8 @@ import type {
   TextQualitySnapshot,
   TextTaskItemRecord,
 } from "../../../../shared/text/text-types";
+import { read_optional_item_name_text } from "../../../../shared/item-name";
+import type { TranslationLine } from "../translation-line";
 
 /**
  * 翻译译前流程产物，显式保存译后恢复需要的每行状态
@@ -18,7 +19,7 @@ import type {
 export interface TranslationPrePipelineContext {
   item: TextTaskItemRecord | null; // 保留当前 work unit 的可写快照，译后流程只回写这份对象
   source_text: string; // 直接来自 item.src，格式结构组装必须在导入边界完成
-  srcs: string[]; // 真正送入模型的行，空行和完全保护行不会进入请求
+  lines: TranslationLine[]; // 真正送入模型的行，空行和完全保护行不会进入请求
   samples: string[]; // 收集保护段示例，供 PromptBuilder 判断是否补控制字符说明
   valid_line_indexes: Set<number>; // 记录送入模型的源行位置，译后只按这些行回填
   prefix_codes_by_line: Map<number, string[]>; // 按行保存前缀保护码，恢复时保持原始左侧位置
@@ -43,14 +44,19 @@ export class TranslationPrePipeline {
   }
 
   /**
-   * 按固定顺序执行：读取 item.src、归一化、纯文本 ruby、保护、替换、姓名注入
+   * 按固定顺序执行：读取 item.src、归一化、纯文本 ruby、保护、替换
    */
-  public process_item(item: TextTaskItemRecord | null): TranslationPrePipelineContext {
+  public process_item(
+    item: TextTaskItemRecord | null,
+    item_index = 0,
+    request_index_start = 0,
+  ): TranslationPrePipelineContext {
     const context = this.create_empty_context(item);
     if (item === null) {
       return context;
     }
     const text_type = this.read_text_type(item);
+    const actor_src = read_optional_item_name_text(item.name_src);
     context.source_text = String(item.src ?? "");
     for (const [line_index, raw_src] of context.source_text.split("\n").entries()) {
       let src = normalize_text_for_processing(raw_src);
@@ -71,10 +77,15 @@ export class TranslationPrePipeline {
       }
       src = this.replace_pre_translation(src);
       this.collect_samples(context, src, text_type);
-      context.srcs.push(src);
+      context.lines.push({
+        request_index: request_index_start + context.lines.length,
+        item_index,
+        line_index,
+        text_src: src,
+        actor_src,
+      });
       context.valid_line_indexes.add(line_index);
     }
-    context.srcs = inject_text_name_prefix(context.srcs, this.read_first_name_src(item));
     return context;
   }
 
@@ -85,7 +96,7 @@ export class TranslationPrePipeline {
     return {
       item,
       source_text: "",
-      srcs: [],
+      lines: [],
       samples: [],
       valid_line_indexes: new Set<number>(),
       prefix_codes_by_line: new Map<number, string[]>(),
@@ -245,20 +256,5 @@ export class TranslationPrePipeline {
    */
   private read_text_type(item: TextTaskItemRecord): string {
     return String(item.text_type ?? "TXT").toUpperCase();
-  }
-
-  /**
-   * name_src 可以是字符串或数组，worker 只注入第一个非空姓名
-   */
-  private read_first_name_src(item: TextTaskItemRecord): string | null {
-    const name_src = item.name_src;
-    if (typeof name_src === "string" && name_src !== "") {
-      return name_src;
-    }
-    if (Array.isArray(name_src)) {
-      const first = name_src.find((name) => typeof name === "string" && name !== "");
-      return typeof first === "string" ? first : null;
-    }
-    return null;
   }
 }

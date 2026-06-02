@@ -1,4 +1,2 @@
-然后使用JSONLINE输出翻译结果，无需额外说明或解释：
-```jsonline
-{"<序号>":"<译文文本>"}
-```
+然后使用JSONLINE输出翻译结果，无需额外说明或解释，格式如下：
+{translation_output_format}

@@ -38,10 +38,6 @@ vi.mock("@frontend/pages/model-page/page", () => {
   return { ModelPage: () => <div data-page="model" /> };
 });
 
-vi.mock("@frontend/pages/name-field-extraction-page/page", () => {
-  return { NameFieldExtractionPage: () => <div data-page="name-field-extraction" /> };
-});
-
 vi.mock("@frontend/pages/proofreading-page/page", () => {
   return { ProofreadingPage: () => <div data-page="proofreading" /> };
 });

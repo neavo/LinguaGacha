@@ -29,10 +29,13 @@ import {
 } from "./list";
 import { InternalInvariantError } from "../error";
 import type { ProjectChangeItemFieldPatch } from "../project-event";
+import { apply_project_item_field_patch } from "../project/project-item-field-patch";
 import type { TextPreserveRule } from "../text/text-preserve-rules";
 import { create_text_keyword_matcher, type TextKeywordMatcher } from "../text/text-pattern";
 import type { ProofreadingSortState } from "./list";
 import { evaluateProofreadingItem } from "./proofreading-evaluator";
+import { Item } from "../../domain/item";
+import { read_item_source_text_parts, read_item_translation_text_parts } from "../item-text";
 
 export type { ProofreadingItemRecord } from "./proofreading-types";
 
@@ -222,6 +225,8 @@ function normalize_reader_item(record: unknown): ProofreadingItemRecord | null {
     row_number: Number(candidate.row_number ?? candidate.row ?? 0),
     src: String(candidate.src ?? ""),
     dst: String(candidate.dst ?? ""),
+    name_src: Item.normalize_name_field(candidate.name_src),
+    name_dst: Item.normalize_name_field(candidate.name_dst),
     status: String(candidate.status ?? ""),
     text_type: String(candidate.text_type ?? "NONE"),
     retry_count: Number(candidate.retry_count ?? 0),
@@ -231,30 +236,6 @@ function normalize_reader_item(record: unknown): ProofreadingItemRecord | null {
 /**
  * 字段级 patch 只合并后端事件允许的校对字段，保留列表运行态内完整 item 事实。
  */
-function apply_runtime_item_field_patch(
-  item: ProofreadingItemRecord,
-  patch: ProjectChangeItemFieldPatch | null,
-): ProofreadingItemRecord | null {
-  if (patch === null) {
-    return null;
-  }
-  const next_item: ProofreadingItemRecord = { ...item };
-  let touched = false;
-  if (typeof patch.dst === "string" && patch.dst !== item.dst) {
-    next_item.dst = patch.dst;
-    touched = true;
-  }
-  if (patch.status !== undefined && patch.status !== item.status) {
-    next_item.status = patch.status;
-    touched = true;
-  }
-  if (typeof patch.retry_count === "number" && patch.retry_count !== item.retry_count) {
-    next_item.retry_count = patch.retry_count;
-    touched = true;
-  }
-  return touched ? next_item : null;
-}
-
 /**
  * 术语筛选使用稳定 key 表达二元组，避免数组引用参与比较
  */
@@ -439,16 +420,24 @@ function matches_proofreading_search_scope(args: {
   }
 
   if (args.search_context.scope === "src") {
-    return args.search_context.matcher.matches(args.item.src);
+    return read_item_source_text_parts(args.item).some((part) => {
+      return args.search_context.matcher.matches(part.text);
+    });
   }
 
   if (args.search_context.scope === "dst") {
-    return args.search_context.matcher.matches(args.item.dst);
+    return read_item_translation_text_parts(args.item).some((part) => {
+      return args.search_context.matcher.matches(part.text);
+    });
   }
 
   return (
-    args.search_context.matcher.matches(args.item.src) ||
-    args.search_context.matcher.matches(args.item.dst)
+    read_item_source_text_parts(args.item).some((part) => {
+      return args.search_context.matcher.matches(part.text);
+    }) ||
+    read_item_translation_text_parts(args.item).some((part) => {
+      return args.search_context.matcher.matches(part.text);
+    })
   );
 }
 
@@ -1135,7 +1124,7 @@ export function createProofreadingListReader() {
         if (previous_item === undefined) {
           return;
         }
-        const patched_item = apply_runtime_item_field_patch(previous_item, input.fieldPatch);
+        const patched_item = apply_project_item_field_patch(previous_item, input.fieldPatch);
         if (patched_item === null) {
           return;
         }

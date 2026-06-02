@@ -376,6 +376,23 @@ describe("ProjectPage", () => {
     );
   });
 
+  it("新建工程默认提交 stem.lg，并用后端真实路径写入最近工程", async () => {
+    await mount_page();
+
+    await create_project_from_selected_source();
+
+    expect(api_fetch_mock).toHaveBeenCalledWith(
+      "/api/session/project/create",
+      expect.objectContaining({
+        path: "E:\\Source\\demo.lg",
+      }),
+    );
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/settings/recent-projects/add", {
+      path: "E:\\Source\\demo_20260428_120000.lg",
+      name: "demo_20260428_120000",
+    });
+  });
+
   it("多选源文件后使用完整 source_paths 创建工程", async () => {
     const selected_paths = ["E:\\Source\\a.txt", "E:\\Source\\b.md"];
     (
@@ -418,6 +435,7 @@ describe("ProjectPage", () => {
     expect(api_fetch_mock).toHaveBeenCalledWith(
       "/api/session/project/create",
       expect.objectContaining({
+        path: "E:\\Source\\a.lg",
         source_paths: selected_paths,
         project_settings: {
           source_language: "JA",

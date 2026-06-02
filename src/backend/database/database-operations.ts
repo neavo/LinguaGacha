@@ -10,6 +10,7 @@ import { JsonTool } from "../../shared/utils/json-tool";
 import type { DatabaseJsonValue, DatabaseOperation } from "./database-types";
 import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
+import { normalize_project_item_field_patch } from "../../shared/project/project-item-field-patch";
 
 type DatabaseRow = Record<string, unknown>;
 
@@ -1103,6 +1104,8 @@ export class ProjectDatabase {
           `SELECT
              id,
              json_extract(data, '$.dst') AS dst,
+             json_extract(data, '$.name_dst') AS name_dst,
+             json_type(data, '$.name_dst') AS name_dst_type,
              json_extract(data, '$.status') AS status,
              json_extract(data, '$.retry_count') AS retry_count
            FROM items
@@ -1113,6 +1116,7 @@ export class ProjectDatabase {
         rows_by_id.set(item_id, {
           id: item_id,
           dst: row_text(row, "dst"),
+          name_dst: this.read_item_name_value(row, "name_dst", "name_dst_type"),
           status: row_text(row, "status"),
           retry_count: row_number(row, "retry_count"),
         });
@@ -1121,6 +1125,22 @@ export class ProjectDatabase {
     return normalized_ids
       .map((item_id) => rows_by_id.get(item_id))
       .filter((item): item is DatabaseRow => item !== undefined) as DatabaseJsonValue;
+  }
+
+  private read_item_name_value(
+    row: DatabaseRow,
+    value_key: string,
+    type_key: string,
+  ): DatabaseJsonValue {
+    const value_type = row_text(row, type_key);
+    if (value_type === "" || value_type === "null") {
+      return null;
+    }
+    const value = row[value_key];
+    if (value_type === "array") {
+      return json_parse(value);
+    }
+    return typeof value === "string" ? value : String(value ?? "");
   }
 
   /**
@@ -1233,6 +1253,48 @@ export class ProjectDatabase {
     }
   }
 
+  private build_item_field_patch_entries(
+    patch: DatabaseRow,
+    options: { clamp_retry_count: boolean },
+  ): Array<{
+    path: string;
+    value: DatabaseJsonValue;
+    json: boolean;
+  }> {
+    const normalized_patch = normalize_project_item_field_patch(patch);
+    if (normalized_patch === null) {
+      return [];
+    }
+    const patch_entries: Array<{
+      path: string;
+      value: DatabaseJsonValue;
+      json: boolean;
+    }> = [];
+    if (normalized_patch.dst !== undefined) {
+      patch_entries.push({ path: "$.dst", value: normalized_patch.dst, json: false });
+    }
+    if (Object.prototype.hasOwnProperty.call(normalized_patch, "name_dst")) {
+      patch_entries.push({
+        path: "$.name_dst",
+        value: normalized_patch.name_dst as DatabaseJsonValue,
+        json: true,
+      });
+    }
+    if (normalized_patch.status !== undefined) {
+      patch_entries.push({ path: "$.status", value: normalized_patch.status, json: false });
+    }
+    if (normalized_patch.retry_count !== undefined) {
+      patch_entries.push({
+        path: "$.retry_count",
+        value: options.clamp_retry_count
+          ? Math.max(0, normalized_patch.retry_count)
+          : normalized_patch.retry_count,
+        json: false,
+      });
+    }
+    return patch_entries;
+  }
+
   /**
    * 用 SQLite JSON patch 写入同一个字段增量，避免校对批量状态修改重写完整 DTO。
    */
@@ -1251,21 +1313,17 @@ export class ProjectDatabase {
     if (normalized_ids.length === 0) {
       return;
     }
-    const patch_entries: Array<[string, string | number]> = [];
-    if (typeof patch["dst"] === "string") {
-      patch_entries.push(["$.dst", patch["dst"]]);
-    }
-    if (typeof patch["status"] === "string") {
-      patch_entries.push(["$.status", patch["status"]]);
-    }
-    if (typeof patch["retry_count"] === "number") {
-      patch_entries.push(["$.retry_count", Math.trunc(patch["retry_count"])]);
-    }
+    const patch_entries = this.build_item_field_patch_entries(patch, { clamp_retry_count: false });
     if (patch_entries.length === 0) {
       return;
     }
-    const json_set_args = patch_entries.map(() => "?, ?").join(", ");
-    const patch_values = patch_entries.flatMap(([path_key, value]) => [path_key, value]);
+    const json_set_args = patch_entries
+      .map((patch_entry) => (patch_entry.json ? "?, json(?)" : "?, ?"))
+      .join(", ");
+    const patch_values = patch_entries.flatMap((patch_entry) => [
+      patch_entry.path,
+      patch_entry.json ? JsonTool.stringifyStrict(patch_entry.value) : patch_entry.value,
+    ]);
     const db = this.open_project(project_path);
     for (let index = 0; index < normalized_ids.length; index += 500) {
       const chunk = normalized_ids.slice(index, index + 500);
@@ -1290,34 +1348,9 @@ export class ProjectDatabase {
         });
       }
       const patch = this.value_record(entry["patch"]);
-      const patch_entries: Array<{
-        path: string;
-        value: DatabaseJsonValue;
-        json: boolean;
-      }> = [];
-      if (typeof patch["dst"] === "string") {
-        patch_entries.push({ path: "$.dst", value: patch["dst"], json: false });
-      }
-      if (Object.prototype.hasOwnProperty.call(patch, "name_dst")) {
-        const name_dst = patch["name_dst"];
-        if (
-          name_dst === null ||
-          typeof name_dst === "string" ||
-          (Array.isArray(name_dst) && name_dst.every((item) => typeof item === "string"))
-        ) {
-          patch_entries.push({ path: "$.name_dst", value: name_dst, json: true });
-        }
-      }
-      if (typeof patch["status"] === "string") {
-        patch_entries.push({ path: "$.status", value: patch["status"], json: false });
-      }
-      if (typeof patch["retry_count"] === "number") {
-        patch_entries.push({
-          path: "$.retry_count",
-          value: Math.max(0, Math.trunc(patch["retry_count"])),
-          json: false,
-        });
-      }
+      const patch_entries = this.build_item_field_patch_entries(patch, {
+        clamp_retry_count: true,
+      });
       if (patch_entries.length === 0) {
         throw new AppErrors.RequestValidationError({
           diagnostic_context: { reason: "empty_translation_patch" },

@@ -1,5 +1,6 @@
 import { Item, read_json_record } from "../../../../domain/item";
-import { effective_export_text } from "../file-format-shared";
+import { read_item_name_text, resolve_export_item_name } from "../../../../shared/item-name";
+import { effective_export_text, type FileFormatServiceConfig } from "../file-format-shared";
 import {
   build_skeleton,
   escape_renpy_string,
@@ -27,6 +28,13 @@ interface WriterExtra {
  * RenPy 写回器只消费规范 AST extra_field，历史形状必须先由兼容层重建。
  */
 export class RenpyWriter {
+  public constructor(
+    private readonly config: FileFormatServiceConfig = {
+      source_language: "JA",
+      target_language: "ZH",
+    },
+  ) {}
+
   /**
    * 批量写回返回成功与跳过计数，调用方可决定是否记录诊断。
    */
@@ -91,7 +99,7 @@ export class RenpyWriter {
   }
 
   /**
-   * NAME 槽只接受非空字符串姓名，正文槽使用统一有效译文回退策略。
+   * NAME 槽按导出配置解析业务姓名文本，正文槽使用统一有效译文回退策略。
    */
   public build_replacements(item: Item, slots: RenpySlot[]): Map<number, string> {
     const result = new Map<number, string>();
@@ -100,8 +108,14 @@ export class RenpyWriter {
         continue;
       }
       if (slot.role === "NAME") {
-        if (typeof item.name_dst === "string" && item.name_dst !== "") {
-          result.set(slot.lit_index, item.name_dst);
+        const name = resolve_export_item_name({
+          name_src: item.name_src,
+          name_dst: item.name_dst,
+          write_translated_name_fields_to_file: this.config.write_translated_name_fields_to_file,
+        });
+        const name_text = read_item_name_text(name);
+        if (name_text !== "") {
+          result.set(slot.lit_index, name_text);
         }
         continue;
       }

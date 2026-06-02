@@ -352,6 +352,75 @@ describe("ProjectLifecycleService", () => {
     ]);
   });
 
+  it("create-commit 目标工程已存在时追加时间戳写入新路径", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 2, 3, 4, 5));
+    try {
+      const app_root = create_temp_dir();
+      const project_path = write_file(path.join(app_root, "created.lg"), "old-project");
+      const resolved_project_path = path.join(app_root, "created_20260602_030405.lg");
+      const source_path = write_file(path.join(app_root, "source", "script.txt"), "こんにちは");
+      const transaction_calls: DatabaseOperation[][] = [];
+      const service = create_service({
+        app_root,
+        database: create_database({ transaction_calls, create_project_files: true }),
+      });
+
+      await expect(
+        service.create_project_commit({
+          source_paths: [path.dirname(source_path)],
+          path: project_path,
+          project_settings: {},
+        }),
+      ).resolves.toEqual({ project: { path: resolved_project_path, loaded: true } });
+
+      expect(transaction_calls[0]?.[0]).toEqual({
+        name: "createProject",
+        args: { projectPath: resolved_project_path, name: "source" },
+      });
+      expect(fs.readFileSync(project_path, "utf-8")).toBe("old-project");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("create-commit 时间戳路径也存在时追加递增序号", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(2026, 5, 2, 3, 4, 5));
+    try {
+      const app_root = create_temp_dir();
+      const project_path = write_file(path.join(app_root, "created.lg"), "old-project");
+      const timestamped_project_path = write_file(
+        path.join(app_root, "created_20260602_030405.lg"),
+        "old-timestamp",
+      );
+      const resolved_project_path = path.join(app_root, "created_20260602_030405_2.lg");
+      const source_path = write_file(path.join(app_root, "source", "script.txt"), "こんにちは");
+      const transaction_calls: DatabaseOperation[][] = [];
+      const service = create_service({
+        app_root,
+        database: create_database({ transaction_calls, create_project_files: true }),
+      });
+
+      await expect(
+        service.create_project_commit({
+          source_paths: [path.dirname(source_path)],
+          path: project_path,
+          project_settings: {},
+        }),
+      ).resolves.toEqual({ project: { path: resolved_project_path, loaded: true } });
+
+      expect(transaction_calls[0]?.[0]).toEqual({
+        name: "createProject",
+        args: { projectPath: resolved_project_path, name: "source" },
+      });
+      expect(fs.readFileSync(project_path, "utf-8")).toBe("old-project");
+      expect(fs.readFileSync(timestamped_project_path, "utf-8")).toBe("old-timestamp");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("create-commit 将默认预设内容、启用态和 revision 写入同一创建事务", async () => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "created-with-presets.lg");

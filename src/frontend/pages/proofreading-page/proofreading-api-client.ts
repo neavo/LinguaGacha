@@ -13,7 +13,7 @@ import type {
   ProofreadingClientItem,
   ProofreadingFilterPanelState,
   ProofreadingListView,
-} from "@frontend/pages/proofreading-page/types";
+} from "@shared/proofreading/proofreading-types";
 
 type ProofreadingListQueryOptions = {
   staleKey?: string | null;

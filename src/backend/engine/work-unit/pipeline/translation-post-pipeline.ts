@@ -4,21 +4,26 @@ import { HangeulFixer } from "../../../../shared/fixer/hangeul-fixer";
 import { KanaFixer } from "../../../../shared/fixer/kana-fixer";
 import { NumberFixer } from "../../../../shared/fixer/number-fixer";
 import { PunctuationFixer } from "../../../../shared/fixer/punctuation-fixer";
-import { extract_text_name_prefix } from "../../../../shared/text/text-name-prefix";
 import {
   build_text_preserve_rule,
   type TextPreserveRule,
 } from "../../../../shared/text/text-preserve-rules";
 import { apply_text_replacements } from "../../../../shared/text/text-replacement-rules";
 import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shared/text/text-types";
+import {
+  normalize_translation_actor,
+  type TranslationActor,
+  type TranslationDecodedLine,
+  type TranslationPromptMode,
+} from "../translation-line";
 import type { TranslationPrePipelineContext } from "./translation-pre-pipeline";
 
 /**
- * 翻译译后流程输出，包含可回写正文和可选译后姓名
+ * 译后 pipeline 的公开产物，name_dst 只有 actor/text 模式参与写回。
  */
 export interface TranslationPostPipelineResult {
-  name: string | null;
   dst: string;
+  name_dst?: TranslationActor;
 }
 
 /**
@@ -41,13 +46,13 @@ export class TranslationPostPipeline {
    */
   public process_item(
     context: TranslationPrePipelineContext,
-    dsts: string[],
+    decoded_lines: TranslationDecodedLine[],
+    mode: TranslationPromptMode,
   ): TranslationPostPipelineResult {
     if (context.item === null) {
-      return { name: null, dst: "" };
+      return { dst: "" };
     }
-    const dst_queue = [...dsts];
-    const extracted = this.extract_name(context, dst_queue);
+    const dst_queue = decoded_lines.map((line) => line.text_dst);
     const results: string[] = [];
     for (const [line_index, src] of context.source_text.split("\n").entries()) {
       let dst: string;
@@ -56,7 +61,7 @@ export class TranslationPostPipeline {
       } else if (src.trim() === "" || !context.valid_line_indexes.has(line_index)) {
         dst = src;
       } else {
-        dst = (extracted.dsts.shift() ?? "").trim();
+        dst = (dst_queue.shift() ?? "").trim();
         dst = this.auto_fix(context, src, dst);
         dst = this.replace_post_translation(dst);
         const prefix_codes = context.prefix_codes_by_line.get(line_index) ?? [];
@@ -68,25 +73,37 @@ export class TranslationPostPipeline {
       }
       results.push(dst);
     }
-    return { name: extracted.name, dst: results.join("\n") };
+    const dst = results.join("\n");
+    if (mode === "text") {
+      return { dst };
+    }
+    const name_dst = this.read_name_dst(context, decoded_lines);
+    return name_dst === undefined ? { dst } : { dst, name_dst };
   }
 
   /**
-   * 姓名提取只在源 item 确实带 name_src 时启用，避免误吃普通括号文本
+   * 同一个 item 多行都返回姓名时，只从源行带姓名的输出中取第一条有效译名写回。
+   * 没有源姓名行时不产生字段，避免把“未参与姓名翻译”误当成清空译名。
    */
-  private extract_name(
+  private read_name_dst(
     context: TranslationPrePipelineContext,
-    dsts: string[],
-  ): { name: string | null; dsts: string[] } {
-    if (!this.has_source_name(context)) {
-      return { name: null, dsts };
+    decoded_lines: TranslationDecodedLine[],
+  ): TranslationActor | undefined {
+    const actor_src_by_request_index = new Map(
+      context.lines.map((line) => [line.request_index, line.actor_src]),
+    );
+    let has_actor_src = false;
+    for (const line of decoded_lines) {
+      if ((actor_src_by_request_index.get(line.request_index) ?? null) === null) {
+        continue;
+      }
+      has_actor_src = true;
+      const actor = normalize_translation_actor(line.actor_dst);
+      if (actor !== null) {
+        return actor;
+      }
     }
-    const extracted = extract_text_name_prefix(dsts[0] ?? "");
-    if (extracted.name === null) {
-      return { name: null, dsts };
-    }
-    dsts[0] = extracted.text;
-    return { name: extracted.name, dsts };
+    return has_actor_src ? null : undefined;
   }
 
   /**
@@ -119,23 +136,6 @@ export class TranslationPostPipeline {
       return dst;
     }
     return apply_text_replacements(dst, this.quality_snapshot.post_replacement_entries);
-  }
-
-  /**
-   * 判断当前 item 是否带源姓名，数组字段只要存在一个非空姓名即启用提取
-   */
-  private has_source_name(context: TranslationPrePipelineContext): boolean {
-    const item = context.item;
-    if (item === null) {
-      return false;
-    }
-    const name_src = item.name_src;
-    if (typeof name_src === "string") {
-      return name_src !== "";
-    }
-    return (
-      Array.isArray(name_src) && name_src.some((name) => typeof name === "string" && name !== "")
-    );
   }
 
   /**

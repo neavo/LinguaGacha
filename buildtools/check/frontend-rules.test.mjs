@@ -182,6 +182,74 @@ describe("前端边界规则", () => {
       rmSync(project_root, { force: true, recursive: true });
     }
   });
+
+  it("拦截 renderer 圆角语义字面量回潮", () => {
+    const project_root = create_temp_project();
+    try {
+      write_project_file(
+        project_root,
+        "src/frontend/pages/bad-radius.css",
+        `
+          .bad-card {
+            border-radius: 4px;
+          }
+          .bad-button {
+            border-radius: 8px;
+          }
+          .bad-pill {
+            border-radius: 999px;
+          }
+        `,
+      );
+      write_project_file(
+        project_root,
+        "src/frontend/shadcn/bad-radius.tsx",
+        `
+          export const badRadiusClassName = "rounded-4xl rounded-[4px] rounded-[8px] rounded-[999px]";
+        `,
+      );
+      write_project_file(
+        project_root,
+        "src/frontend/widgets/good-radius.css",
+        `
+          .good-card {
+            border-radius: var(--ui-radius-card);
+          }
+          .good-button {
+            border-radius: var(--ui-radius-button);
+          }
+          .good-pill {
+            border-radius: var(--ui-radius-pill);
+          }
+          .good-geometry {
+            border-radius: 2px;
+          }
+        `,
+      );
+
+      const errors = run_frontend_rules(project_root).filter((error) => {
+        return error.rule_name === "renderer 圆角语义边界";
+      });
+
+      expect(errors).toHaveLength(7);
+      expect(new Set(errors.map((error) => error.message))).toEqual(
+        new Set([
+          "违规则使用了圆角语义字面量；请改用 --ui-radius-card、--ui-radius-button 或 --ui-radius-pill",
+        ]),
+      );
+      expect(errors.map((error) => error.relative_path)).toEqual([
+        "src/frontend/pages/bad-radius.css",
+        "src/frontend/pages/bad-radius.css",
+        "src/frontend/pages/bad-radius.css",
+        "src/frontend/shadcn/bad-radius.tsx",
+        "src/frontend/shadcn/bad-radius.tsx",
+        "src/frontend/shadcn/bad-radius.tsx",
+        "src/frontend/shadcn/bad-radius.tsx",
+      ]);
+    } finally {
+      rmSync(project_root, { force: true, recursive: true });
+    }
+  });
 });
 
 function run_frontend_rules(project_root) {

@@ -23,6 +23,8 @@ describe("ts-conversion", () => {
       items: [
         { item_id: 1, dst: "后台[code]", name_dst: "后台", text_type: "RENPY" },
         { item_id: 2, dst: "后台", name_dst: null, text_type: "NONE" },
+        { item_id: 3, dst: "后台", name_dst: ["后台", "后台保留"], text_type: "NONE" },
+        { item_id: 4, dst: "后台", name_dst: ["", "后台保留"], text_type: "NONE" },
       ],
       direction: "s2t",
       convert_name: true,
@@ -38,6 +40,8 @@ describe("ts-conversion", () => {
     expect(converted_items).toEqual([
       { item_id: 1, dst: "後臺[code]", name_dst: "後臺" },
       { item_id: 2, dst: "後臺", name_dst: null },
+      { item_id: 3, dst: "後臺", name_dst: ["後臺", "后台保留"] },
+      { item_id: 4, dst: "後臺", name_dst: ["", "后台保留"] },
     ]);
   });
 });

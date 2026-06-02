@@ -1,4 +1,5 @@
 import {
+  applyQualityCompiledTextParts,
   applyQualityCompiledReplacements,
   collectNonBlankQualityPreservedSegments,
   createQualityTextPreserveRule,
@@ -20,6 +21,11 @@ import {
   has_translation_retry_reached_review_threshold,
   has_translation_similarity_issue,
 } from "../text/translation-quality-rules";
+import {
+  has_item_translation_text,
+  read_item_source_text_parts,
+  read_item_translation_text_parts,
+} from "../item-text";
 
 // 跳过类状态仍要进入筛选统计，但不参与警告计算。
 const PROOFREADING_SKIPPED_WARNING_STATUSES = new Set([
@@ -84,7 +90,10 @@ export function evaluateProofreadingItem(args: {
     args.sample_rule_cache.set(sample_rule_cache_key, sample_rule);
   }
 
-  if (PROOFREADING_SKIPPED_WARNING_STATUSES.has(args.item.status) || args.item.dst === "") {
+  if (
+    PROOFREADING_SKIPPED_WARNING_STATUSES.has(args.item.status) ||
+    !has_item_translation_text(args.item)
+  ) {
     return create_proofreading_client_item({
       item: args.item,
       warnings,
@@ -94,59 +103,70 @@ export function evaluateProofreadingItem(args: {
     });
   }
 
-  const { src_replaced, dst_replaced } = applyQualityCompiledReplacements(
-    args.item,
-    args.quality_context,
-  );
-  const normalized_dst = stripQualityPreservedSegments(args.item.dst, sample_rule);
-  const residue_fragments = collect_translation_residue_fragments({
-    text: normalized_dst,
-    sourceLanguage: args.sourceLanguage,
-  });
-  const kana_fragments = residue_fragments.kana;
-  if (kana_fragments.length > 0) {
-    warnings.push("KANA");
-    warning_fragments_by_code.KANA = kana_fragments;
-  }
-
-  const hangeul_fragments = residue_fragments.hangeul;
-  if (hangeul_fragments.length > 0) {
-    warnings.push("HANGEUL");
-    warning_fragments_by_code.HANGEUL = hangeul_fragments;
-  }
-
-  const source_preserved_segments = collectNonBlankQualityPreservedSegments(
-    src_replaced,
-    sample_rule,
-  );
-  const translation_preserved_segments = collectNonBlankQualityPreservedSegments(
-    dst_replaced,
-    sample_rule,
-  );
-  if (source_preserved_segments.join("\u0000") !== translation_preserved_segments.join("\u0000")) {
-    warnings.push("TEXT_PRESERVE");
-    warning_fragments_by_code.TEXT_PRESERVE = build_text_preserve_failed_fragments({
-      source_segments: source_preserved_segments,
-      translation_segments: translation_preserved_segments,
-    });
-  }
-
-  if (
-    has_translation_similarity_issue({
-      src: stripQualityPreservedSegments(src_replaced, sample_rule),
-      dst: stripQualityPreservedSegments(dst_replaced, sample_rule),
+  if (args.item.dst !== "") {
+    const { src_replaced, dst_replaced } = applyQualityCompiledReplacements(
+      args.item,
+      args.quality_context,
+    );
+    const normalized_dst = stripQualityPreservedSegments(args.item.dst, sample_rule);
+    const residue_fragments = collect_translation_residue_fragments({
+      text: normalized_dst,
       sourceLanguage: args.sourceLanguage,
-      targetLanguage: args.targetLanguage,
-    })
-  ) {
-    warnings.push("SIMILARITY");
+    });
+    const kana_fragments = residue_fragments.kana;
+    if (kana_fragments.length > 0) {
+      warnings.push("KANA");
+      warning_fragments_by_code.KANA = kana_fragments;
+    }
+
+    const hangeul_fragments = residue_fragments.hangeul;
+    if (hangeul_fragments.length > 0) {
+      warnings.push("HANGEUL");
+      warning_fragments_by_code.HANGEUL = hangeul_fragments;
+    }
+
+    const source_preserved_segments = collectNonBlankQualityPreservedSegments(
+      src_replaced,
+      sample_rule,
+    );
+    const translation_preserved_segments = collectNonBlankQualityPreservedSegments(
+      dst_replaced,
+      sample_rule,
+    );
+    if (
+      source_preserved_segments.join("\u0000") !== translation_preserved_segments.join("\u0000")
+    ) {
+      warnings.push("TEXT_PRESERVE");
+      warning_fragments_by_code.TEXT_PRESERVE = build_text_preserve_failed_fragments({
+        source_segments: source_preserved_segments,
+        translation_segments: translation_preserved_segments,
+      });
+    }
+
+    if (
+      has_translation_similarity_issue({
+        src: stripQualityPreservedSegments(src_replaced, sample_rule),
+        dst: stripQualityPreservedSegments(dst_replaced, sample_rule),
+        sourceLanguage: args.sourceLanguage,
+        targetLanguage: args.targetLanguage,
+      })
+    ) {
+      warnings.push("SIMILARITY");
+    }
   }
 
   if (args.quality_context.glossary.entries.length > 0) {
+    const replaced_parts = applyQualityCompiledTextParts(
+      {
+        source: read_item_source_text_parts(args.item),
+        translation: read_item_translation_text_parts(args.item),
+      },
+      args.quality_context,
+    );
     const glossary_result = partitionQualityCompiledGlossaryTerms({
       glossary: args.quality_context.glossary,
-      src_replaced,
-      dst_replaced,
+      source_replaced_parts: replaced_parts.source,
+      translation_replaced_parts: replaced_parts.translation,
     });
     failed_terms.push(...glossary_result.failed_terms);
     applied_terms.push(...glossary_result.applied_terms);

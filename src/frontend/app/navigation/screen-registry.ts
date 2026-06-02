@@ -6,7 +6,6 @@ import { ExpertSettingsPage } from "@frontend/pages/expert-settings-page/page";
 import { GlossaryPage } from "@frontend/pages/glossary-page/page";
 import { LaboratoryPage } from "@frontend/pages/laboratory-page/page";
 import { ModelPage } from "@frontend/pages/model-page/page";
-import { NameFieldExtractionPage } from "@frontend/pages/name-field-extraction-page/page";
 import { ProofreadingPage } from "@frontend/pages/proofreading-page/page";
 import { ProjectPage } from "@frontend/pages/project-page/page";
 import { TextPreservePage } from "@frontend/pages/text-preserve-page/page";
@@ -97,10 +96,6 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
   toolbox: {
     component: ToolboxPage,
     title_key: "toolbox_page.title",
-  },
-  "name-field-extraction": {
-    component: NameFieldExtractionPage,
-    title_key: "name_field_extraction_page.title",
   },
   "ts-conversion": {
     component: TsConversionPage,

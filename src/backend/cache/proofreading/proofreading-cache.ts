@@ -2,6 +2,7 @@ import type { AppSettingService } from "../../app/app-setting-service";
 import type { BackendWorkerClient } from "../../worker/worker-client";
 import type { CacheFileEntry, CacheItem, CacheReadPort } from "../cache-types";
 import * as AppErrors from "../../../shared/error";
+import { Item } from "../../../domain/item";
 import { normalize_setting_snapshot } from "../../../domain/setting";
 import type { ApiJsonValue } from "../../api/api-types";
 import type {
@@ -394,6 +395,8 @@ export class ProofreadingCache {
       row_number: this.read_number(item["row_number"] ?? item["row"], 0),
       src: String(item["src"] ?? ""),
       dst: String(item["dst"] ?? ""),
+      name_src: Item.normalize_name_field(item["name_src"]),
+      name_dst: Item.normalize_name_field(item["name_dst"]),
       status: String(item["status"] ?? "NONE"),
       text_type: String(item["text_type"] ?? "NONE"),
       retry_count: this.read_number(item["retry_count"], 0),
