@@ -40,7 +40,8 @@
     - 添加执行权限后运行 `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
 - 获取一个可靠的 AI 大模型接口，建议选择其一：
   - [ [本地接口](https://github.com/neavo/OneClickLLAMA) ]，免费，需至少 8G 显存的独立显卡，Nvidia 显卡为佳
-  - [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ]，需付费但便宜，速度快，质量高，无显卡要求 `👈👈 推荐`
+  - [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ]，最便宜，速度快，质量高，无显卡要求
+  - [ [VolcEngine](https://github.com/neavo/LinguaGacha/wiki/VolcEngine) ]，贵一点点，**当前最佳翻译模型**，无显卡要求 `👈👈 推荐`
 - 准备要翻译的文本
   - `字幕`、`电子书` 等一般不需要预处理
   - `游戏文本` 需要根据游戏引擎选择合适的工具进行提取
@@ -48,7 +49,8 @@
   - 将 `待翻译的文件` 拖到页面上创建项目
   - 在 `模型管理` 中设置并激活要使用的模型
   - 在 `基础设置` 中设置原文语言、译文语言等必要信息
-  - 在 `工作台` 中执行 `分析` 或 `翻译` 任务
+  - 在 `工作台` 中执行 `分析` 提取术语表
+  - 在 `工作台` 中执行 `翻译` 完成翻译
   - Enjoy!
 
 ## 使用教程 📝
@@ -62,8 +64,7 @@
 - 功能说明
   - [命令行模式](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
   - [术语表](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[文本保护](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)　　[文本替换](https://github.com/neavo/LinguaGacha/wiki/Replacement)　　
-  - [强制思考](https://github.com/neavo/LinguaGacha/wiki/ForceThinking)　　[MTool 优化器](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)
-  - [百宝箱 - 繁简转换](https://github.com/neavo/LinguaGacha/wiki/TSConversion) [百宝箱 - 姓名字段提取](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtraction)
+  - [MTool 优化器](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer) [百宝箱 - 繁简转换](https://github.com/neavo/LinguaGacha/wiki/TSConversion)
 - 你可以在 [Wiki](https://github.com/neavo/LinguaGacha/wiki) 找到各项功能的更详细介绍，也欢迎在 [讨论区](https://github.com/neavo/LinguaGacha/discussions) 投稿你的使用心得
 
 ## 文本格式 🏷️
@@ -81,22 +82,12 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
-- 20260526 v0.101.4
-  - 调整与改进 [#611](https://github.com/neavo/LinguaGacha/issues/611) [#615](https://github.com/neavo/LinguaGacha/issues/615) [#616](https://github.com/neavo/LinguaGacha/issues/#616)
-
-- 20260522 v0.101.3
-  - 调整与改进 [#598](https://github.com/neavo/LinguaGacha/issues/598) [#599](https://github.com/neavo/LinguaGacha/issues/599) [#601](https://github.com/neavo/LinguaGacha/issues/601) [#603](https://github.com/neavo/LinguaGacha/issues/603) [#604](https://github.com/neavo/LinguaGacha/issues/604)
-
-- 20260520 v0.101.2
-  - 调整与改进 [#592](https://github.com/neavo/LinguaGacha/issues/592) [#593](https://github.com/neavo/LinguaGacha/issues/593) [#595](https://github.com/neavo/LinguaGacha/issues/595)
-
-- 20260520 v0.101.1
-  - fix - 任务启动/执行时的卡顿的问题 [#587](https://github.com/neavo/LinguaGacha/issues/587)
-  - fix - MacOS 打包架构不正确的问题 [#588](https://github.com/neavo/LinguaGacha/issues/588)
-
-- 20260519 v0.101.0
-  - feat - [命令行模式](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
-  - fix - 尝试修复页面假死的问题 [#583](https://github.com/neavo/LinguaGacha/issues/583) [#585](https://github.com/neavo/LinguaGacha/issues/585)
+- 20260602 v0.102.0
+  - feat - `姓名字段` 现在是基础属性了
+    - 可以在 `校对页` 修改
+    - 可以在 `分析任务` 中被提取
+    - 可以在 `翻译任务` 中响应术语表
+    - ……
 
 ## 开发指南 🛠️
 - 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]，然后 `npm install`

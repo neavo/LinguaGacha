@@ -41,7 +41,8 @@
     - 実行権限を付与して実行 `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
 - 信頼できるAIモデルインターフェースを取得（以下のいずれかを選択）：
   - [ [Local API](https://github.com/neavo/OneClickLLAMA) ] (無料、8GB以上のVRAM GPUが必要、Nvidia推奨)
-  - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (有料、費用対効果が高い、高速、高品質、GPU不要)　`👈👈 推奨`
+  - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (最安、高速、高品質、NO-GPU)
+  - [ [VolcEngine](https://github.com/neavo/LinguaGacha/wiki/VolcEngine) ] (少し高め、**現在最高の翻訳モデル**、NO-GPU)　`👈👈 推奨`
 - ソーステキストを準備：
   - `字幕`/`電子書籍`は通常、前処理が不要
   - `ゲームテキスト`は特定のゲームエンジンに適したツールを使用して抽出が必要
@@ -49,7 +50,8 @@
   - `翻訳するファイル` をページにドラッグしてプロジェクトを作成
   - `モデル管理` で使用するモデルを設定し、有効化
   - `基本設定` でソース言語、ターゲット言語などの必要な情報を設定
-  - `ワークベンチ` で `分析` または `翻訳` タスクを実行
+  - `ワークベンチ` で `分析` を実行して用語集を抽出
+  - `ワークベンチ` で `翻訳` を実行して翻訳を完了
   - Enjoy!
 
 ## 使い方チュートリアル - English 📝
@@ -62,8 +64,7 @@
 - Feature Description
   - [CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
   - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
-  - [Force Thinking](https://github.com/neavo/LinguaGacha/wiki/ForceThinkingEN)　　[MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)
-  - [TS Conversion](https://github.com/neavo/LinguaGacha/wiki/TSConversionEN) [Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtractionEN)
+  - [MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN) [TS Conversion](https://github.com/neavo/LinguaGacha/wiki/TSConversionEN)
   - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## 対応フォーマット 🏷️

@@ -42,7 +42,8 @@
     - Make it executable and run `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
 - Obtain a reliable AI model interface (choose one):
   - [ [Local API](https://github.com/neavo/OneClickLLAMA) ] (Free, requires ≥8GB VRAM GPU, Nvidia recommended)
-  - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (Paid, cost-effective, fast, high-quality, no GPU required)　`👈👈 Recommended`
+  - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (Cheapest, fast, high-quality, no GPU required)
+  - [ [VolcEngine](https://github.com/neavo/LinguaGacha/wiki/VolcEngine) ] (Little more expensive, **currently the best translation model**, no GPU required)　`👈👈 Recommended`
 - Prepare source text:
   - `Subtitles`/`E-books` typically require no preprocessing
   - `Game texts` need extraction using appropriate tools for specific game engines
@@ -50,7 +51,8 @@
   - Drag the `files to translate` onto the page to create a project
   - Configure and activate the model you want to use in `Model Management`
   - Configure essential information such as source and target languages in `Basic Settings`
-  - Run an `Analysis` or `Translation` task in `Workbench`
+  - Run `Analysis` in `Workbench` to extract the glossary
+  - Run `Translation` in `Workbench` to complete the translation
   - Enjoy!
 
 ## User Guide 📝
@@ -63,8 +65,7 @@
 - Feature Description
   - [CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
   - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
-  - [Force Thinking](https://github.com/neavo/LinguaGacha/wiki/ForceThinkingEN)　　[MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)
-  - [TS Conversion](https://github.com/neavo/LinguaGacha/wiki/TSConversionEN) [Name-Field Extraction](https://github.com/neavo/LinguaGacha/wiki/NameFieldExtractionEN)
+  - [MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN) [TS Conversion](https://github.com/neavo/LinguaGacha/wiki/TSConversionEN)
   - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## Supported Formats 🏷️
@@ -82,22 +83,12 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260526 v0.101.4
-  - Adjust and Improve [#611](https://github.com/neavo/LinguaGacha/issues/611) [#615](https://github.com/neavo/LinguaGacha/issues/615) [#616](https://github.com/neavo/LinguaGacha/issues/#616)
-
-- 20260522 v0.101.3
-  - Adjust and Improve [#598](https://github.com/neavo/LinguaGacha/issues/598) [#599](https://github.com/neavo/LinguaGacha/issues/599) [#601](https://github.com/neavo/LinguaGacha/issues/601) [#603](https://github.com/neavo/LinguaGacha/issues/603) [#604](https://github.com/neavo/LinguaGacha/issues/604)
-
-- 20260520 v0.101.2
-  - Adjust and Improve [#592](https://github.com/neavo/LinguaGacha/issues/592) [#593](https://github.com/neavo/LinguaGacha/issues/593) [#595](https://github.com/neavo/LinguaGacha/issues/595)
-
-- 20260520 v0.101.1
-  - fix - lag during task start/process [#587](https://github.com/neavo/LinguaGacha/issues/587)
-  - fix - incorrect MacOS packaging arch [#588](https://github.com/neavo/LinguaGacha/issues/588)
-
-- 20260519 v0.101.0
-  - feat - [Command Line Mode](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
-  - fix - Attempted to fix page freezing [#583](https://github.com/neavo/LinguaGacha/issues/583) [#585](https://github.com/neavo/LinguaGacha/issues/585)
+- 20260602 v0.102.0
+  - feat - `Name field` is now a basic attribute
+    - Can be modified on the `Proofreading Page`
+    - Can be extracted in `Analysis Tasks`
+    - Can respond to glossaries in `Translation Tasks`
+    - ……
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org), then run `npm install`
