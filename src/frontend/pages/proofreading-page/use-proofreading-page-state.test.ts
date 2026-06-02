@@ -1865,6 +1865,59 @@ describe("useProofreadingPageState", () => {
     );
   });
 
+  // 回归 #625：未改动默认筛选时，页面重新进入后仍应使用最新术语默认范围。
+  it("确认未改动的默认筛选后重新进入会选中新术语缺失", async () => {
+    const glossary_term: ProofreadingGlossaryTerm = ["魔法", "Magic"];
+    const next_glossary_term: ProofreadingGlossaryTerm = ["王国", "Kingdom"];
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
+      return create_sync_state({
+        glossary_terms: [glossary_term],
+      });
+    });
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.open_filter_dialog();
+    });
+    await flush_async_updates();
+
+    await act(async () => {
+      await latest_state?.confirm_filter_dialog_filters();
+    });
+    await flush_async_updates();
+
+    await unmount_page();
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
+      return create_sync_state({
+        glossary_terms: [glossary_term, next_glossary_term],
+      });
+    });
+    proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
+
+    await render_hook();
+
+    expect(latest_state?.current_filters.glossary_terms).toEqual([
+      glossary_term,
+      next_glossary_term,
+    ]);
+    expect(latest_state?.filter_dialog_filters.glossary_terms).toEqual([
+      glossary_term,
+      next_glossary_term,
+    ]);
+    expect(
+      proofreading_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          glossary_terms: [glossary_term, next_glossary_term],
+        }),
+      }),
+      {
+        staleKey: null,
+      },
+    );
+  });
+
   it("用户显式确认空术语筛选后重新进入仍保留空选择", async () => {
     const glossary_term: ProofreadingGlossaryTerm = ["魔法", "Magic"];
     const next_glossary_term: ProofreadingGlossaryTerm = ["王国", "Kingdom"];
