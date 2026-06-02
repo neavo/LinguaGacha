@@ -19,7 +19,6 @@ export type RouteId =
   | "analysis-prompt"
   | "laboratory"
   | "toolbox"
-  | "name-field-extraction"
   | "ts-conversion";
 
 type NavigationNode = {

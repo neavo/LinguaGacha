@@ -15,8 +15,8 @@ import {
 import {
   PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
   type ProofreadingManualStatusCode,
-  type ProofreadingPendingConfirmation,
-} from "@frontend/pages/proofreading-page/types";
+} from "@shared/proofreading/proofreading-types";
+import type { ProofreadingPendingConfirmation } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
 import type { ProjectDataSectionRevisions } from "@shared/project-event";
 
 type LocaleTextResolver = (key: LocaleKey, params?: Record<string, string>) => string;
@@ -222,7 +222,6 @@ export function useProofreadingBatchActions(
             items: await read_items_by_row_ids(row_ids),
             section_revisions,
           },
-          task_snapshot,
           item_ids: target_item_ids,
         }),
         fallback_error_key: "proofreading_page.feedback.clear_translation_failed",
@@ -237,7 +236,7 @@ export function useProofreadingBatchActions(
         empty_warning_message: null,
       });
     },
-    [dialog_open, read_items_by_row_ids, run_project_write, section_revisions, t, task_snapshot],
+    [dialog_open, read_items_by_row_ids, run_project_write, section_revisions, t],
   );
 
   const submit_set_translation_status_row_ids = useCallback(
@@ -259,7 +258,6 @@ export function useProofreadingBatchActions(
             items: await read_items_by_row_ids(row_ids),
             section_revisions,
           },
-          task_snapshot,
           item_ids: target_item_ids,
           status,
         }),
@@ -274,7 +272,7 @@ export function useProofreadingBatchActions(
         empty_warning_message: null,
       });
     },
-    [dialog_open, read_items_by_row_ids, run_project_write, section_revisions, t, task_snapshot],
+    [dialog_open, read_items_by_row_ids, run_project_write, section_revisions, t],
   );
 
   const request_retranslate_row_ids = useCallback(

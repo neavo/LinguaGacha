@@ -58,9 +58,10 @@ describe("TaskPlanner", () => {
   });
 
   it("分析规划只调度未完成且可分析的 item，并携带 checkpoint 状态", async () => {
-    const planner = create_planner(async (items) =>
+    const count_items = vi.fn(async (items: TaskTokenCountInput[]) =>
       items.map((item) => ({ cache_key: item.cache_key, token_count: 1 })),
     );
+    const planner = create_planner(count_items);
 
     const contexts = await planner.build_analysis_contexts(
       [
@@ -84,15 +85,39 @@ describe("TaskPlanner", () => {
       items: [
         {
           item_id: 1,
-          src_text: "需要分析",
-          first_name_src: "艾琳",
+          src_text: "【艾琳】需要分析",
           previous_status: "NONE",
         },
       ],
     });
+    expect(count_items.mock.calls[0]?.[0].map((item) => item.text)).toEqual(["【艾琳】需要分析"]);
   });
 
-  it("单条翻译重试超过限制时由调用方标记错误并返回 forced_error_items", async () => {
+  it("分析规划按第 0 槽姓名渲染 src_text，并保持空正文跳过", async () => {
+    const count_items = vi.fn(async (items: TaskTokenCountInput[]) =>
+      items.map((item) => ({ cache_key: item.cache_key, token_count: 1 })),
+    );
+    const planner = create_planner(count_items);
+
+    const contexts = await planner.build_analysis_contexts(
+      [
+        create_item({ id: 1, src: "台词一", file_path: "a.txt", name_src: "虎鉄" }),
+        create_item({ id: 2, src: "台词二", file_path: "a.txt", name_src: ["虎鉄", "花子"] }),
+        create_item({ id: 3, src: "台词三", file_path: "a.txt", name_src: ["", "花子"] }),
+        create_item({ id: 4, src: "台词四", file_path: "a.txt", name_src: null }),
+        create_item({ id: 5, src: "  ", file_path: "a.txt", name_src: "空正文角色" }),
+      ],
+      [],
+      { threshold: { input_token_limit: 20 } },
+      new AbortController().signal,
+    );
+
+    const src_texts = contexts.flatMap((context) => context.items.map((item) => item.src_text));
+    expect(src_texts).toEqual(["【虎鉄】台词一", "【虎鉄】台词二", "台词三", "台词四"]);
+    expect(count_items.mock.calls[0]?.[0].map((item) => item.text)).toEqual(src_texts);
+  });
+
+  it("翻译条目重试超过限制时由调用方标记错误并返回 forced_error_items", async () => {
     const planner = create_planner(async (items) =>
       items.map((item) => ({ cache_key: item.cache_key, token_count: 1 })),
     );

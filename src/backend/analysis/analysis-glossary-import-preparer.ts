@@ -10,6 +10,10 @@ import {
   type QualityStatisticsRuleInput,
 } from "../../shared/quality/quality-statistics";
 import {
+  read_item_source_text_parts,
+  read_item_translation_text_parts,
+} from "../../shared/item-text";
+import {
   QualityRuleImportRuleTypeValue,
   preview_quality_rule_import,
   type QualityRuleImportAction,
@@ -181,8 +185,8 @@ function filter_import_candidates(args: {
   );
   const merged_entries = import_preview.overwrite_entries as GlossaryEntry[];
   const preview_entries = args.incoming_entries;
-  const src_texts = args.items.map((item) => String(item["src"] ?? ""));
-  const dst_texts = args.items.map((item) => String(item["dst"] ?? ""));
+  const src_text_groups = args.items.map((item) => read_item_source_text_parts(item));
+  const dst_text_groups = args.items.map((item) => read_item_translation_text_parts(item));
   const rules: QualityStatisticsRuleInput[] = merged_entries.map((entry) => {
     return {
       key: build_glossary_stat_key(entry),
@@ -207,8 +211,8 @@ function filter_import_candidates(args: {
   );
   const statistics_result = run_quality_statistics_task_sync({
     rules,
-    srcTexts: src_texts,
-    dstTexts: dst_texts,
+    srcTextGroups: src_text_groups,
+    dstTextGroups: dst_text_groups,
     relationCandidates: relation_candidates,
     relationTargetCandidates: relation_target_candidates,
   });

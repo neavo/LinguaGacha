@@ -1,6 +1,18 @@
 import { describe, expect, it } from "vitest";
 
+import type { ItemTextGroup } from "../item-text";
 import { run_quality_statistics_task } from "./quality-statistics";
+
+function text_groups(groups: string[][]): ItemTextGroup[] {
+  return groups.map((group) => {
+    return group.map((text, index) => {
+      return {
+        field: index === 0 ? "src" : "name_src",
+        text,
+      };
+    });
+  });
+}
 
 describe("run_quality_statistics_task", () => {
   it("对 glossary / pre / post / text_preserve 统一返回命中数", async () => {
@@ -32,8 +44,8 @@ describe("run_quality_statistics_task", () => {
           mode: "text_preserve",
         },
       ],
-      srcTexts: ["苹果真甜", "Hero 登场", "foo42", "none"],
-      dstTexts: ["苹果", "hero", "bar", "foo42"],
+      srcTextGroups: text_groups([["苹果真甜"], ["Hero 登场"], ["foo42"], ["none"]]),
+      dstTextGroups: text_groups([["苹果"], ["hero"], ["bar"], ["foo42"]]),
       relationCandidates: [],
     });
 
@@ -54,8 +66,8 @@ describe("run_quality_statistics_task", () => {
           case_sensitive: false,
         },
       ],
-      srcTexts: ["xxA+Byy", "aab"],
-      dstTexts: [],
+      srcTextGroups: text_groups([["xxA+Byy"], ["aab"]]),
+      dstTextGroups: [],
       relationCandidates: [],
     });
 
@@ -72,8 +84,8 @@ describe("run_quality_statistics_task", () => {
           case_sensitive: false,
         },
       ],
-      srcTexts: ["Die Straße ist lang"],
-      dstTexts: [],
+      srcTextGroups: text_groups([["Die Straße ist lang"]]),
+      dstTextGroups: [],
       relationCandidates: [],
     });
 
@@ -89,8 +101,8 @@ describe("run_quality_statistics_task", () => {
           mode: "text_preserve",
         },
       ],
-      srcTexts: ["foo"],
-      dstTexts: ["bar"],
+      srcTextGroups: text_groups([["foo"]]),
+      dstTextGroups: text_groups([["bar"]]),
       relationCandidates: [],
     });
 
@@ -107,8 +119,8 @@ describe("run_quality_statistics_task", () => {
           case_sensitive: true,
         },
       ],
-      srcTexts: [],
-      dstTexts: [],
+      srcTextGroups: [],
+      dstTextGroups: [],
       relationCandidates: [
         { key: "erin", src: "艾琳" },
         { key: "saint-erin", src: "圣女艾琳" },
@@ -136,8 +148,8 @@ describe("run_quality_statistics_task", () => {
           case_sensitive: true,
         },
       ],
-      srcTexts: ["艾琳", "安娜"],
-      dstTexts: [],
+      srcTextGroups: text_groups([["艾琳"], ["安娜"]]),
+      dstTextGroups: [],
       relationCandidates: [
         { key: "erin", src: "艾琳" },
         { key: "saint-erin", src: "圣女艾琳" },
@@ -149,5 +161,36 @@ describe("run_quality_statistics_task", () => {
 
     expect(result.results.anna?.subset_parents).toEqual(["冰雪女王安娜"]);
     expect(result.results.erin?.subset_parents).toEqual([]);
+  });
+
+  it("同一 item 的正文和姓名同时命中时只计一次", async () => {
+    const result = await run_quality_statistics_task({
+      rules: [
+        {
+          key: "alice",
+          pattern: "Alice",
+          mode: "glossary",
+          case_sensitive: true,
+        },
+        {
+          key: "name-post",
+          pattern: "艾丽丝",
+          mode: "post_replacement",
+          case_sensitive: true,
+        },
+      ],
+      srcTextGroups: text_groups([
+        ["Alice 登场", "Alice"],
+        ["Bob 登场", "Alice"],
+      ]),
+      dstTextGroups: text_groups([
+        ["艾丽丝登场", "艾丽丝"],
+        ["鲍勃登场", ""],
+      ]),
+      relationCandidates: [],
+    });
+
+    expect(result.results.alice?.matched_item_count).toBe(2);
+    expect(result.results["name-post"]?.matched_item_count).toBe(1);
   });
 });

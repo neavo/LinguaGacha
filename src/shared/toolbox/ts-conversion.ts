@@ -1,5 +1,7 @@
 import * as OpenCC from "opencc-js";
 
+import { read_item_name_text, write_item_name_text } from "../item-name";
+
 export type TsConversionDirection = "s2t" | "t2s";
 
 export type TsConversionNameDst = string | string[] | null;
@@ -158,25 +160,18 @@ function convert_name_dst(args: {
   rules: string[];
   preserve_text: boolean;
 }): TsConversionNameDst {
-  if (Array.isArray(args.name_dst)) {
-    return args.name_dst.map((name) =>
-      convert_text_with_optional_preserve({
-        text: name,
-        converter: args.converter,
-        rules: args.rules,
-        preserve_text: args.preserve_text,
-      }),
-    );
+  const name = read_item_name_text(args.name_dst);
+  if (name === "") {
+    return args.name_dst;
   }
-  if (typeof args.name_dst === "string") {
-    return convert_text_with_optional_preserve({
-      text: args.name_dst,
-      converter: args.converter,
-      rules: args.rules,
-      preserve_text: args.preserve_text,
-    });
-  }
-  return args.name_dst;
+
+  const converted_name = convert_text_with_optional_preserve({
+    text: name,
+    converter: args.converter,
+    rules: args.rules,
+    preserve_text: args.preserve_text,
+  });
+  return write_item_name_text(args.name_dst, converted_name);
 }
 
 export function build_ts_conversion_custom_rules(

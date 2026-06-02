@@ -432,7 +432,7 @@
   right: -3px;
   width: 7px;
   height: 7px;
-  border-radius: 999px;
+  border-radius: var(--ui-radius-pill);
   background: var(--ui-failure);
   box-shadow: 0 0 0 2px var(--sidebar);
 }
@@ -480,7 +480,7 @@
   position: relative;
   width: 20px;
   height: 20px;
-  border-radius: 999px;
+  border-radius: var(--ui-radius-pill);
   overflow: visible;
   background: var(--card);
   flex-shrink: 0;
@@ -499,7 +499,7 @@
   right: -1px;
   width: 7px;
   height: 7px;
-  border-radius: 999px;
+  border-radius: var(--ui-radius-pill);
   background: var(--ui-failure);
   box-shadow: 0 0 0 2px var(--sidebar);
 }

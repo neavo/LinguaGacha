@@ -27,7 +27,6 @@ import { ProjectChangeEventAdapter } from "../project/project-changes";
 import { ProjectChangePublisher } from "../project/project-changes";
 import { ProjectWriteStore } from "../project/project-write-store";
 import { ProjectLifecycleService } from "../project/project-session";
-import { ToolboxNameFieldExtractionService } from "../toolbox/toolbox-name-field-extraction-service";
 import { ProjectOperationGate } from "../project/project-gate";
 import { WorkbenchQueryService } from "../workbench/workbench-query-service";
 import { ProofreadingQueryService } from "../proofreading/proofreading-query-service";
@@ -97,7 +96,6 @@ export interface BackendTranslationServices {
 }
 
 export interface BackendToolboxServices {
-  nameFields: ToolboxNameFieldExtractionService;
   tsConversion: ToolboxTsConversionExportService;
 }
 
@@ -130,7 +128,6 @@ export class BackendServices {
   private readonly backend_worker_client: BackendWorkerClient;
   private readonly proofreading_query_service: ProofreadingQueryService;
   private readonly quality_statistics_service: QualityStatisticsService;
-  private readonly name_field_extraction_service: ToolboxNameFieldExtractionService;
   private readonly ts_conversion_service: ToolboxTsConversionExportService;
   private readonly model_service: ModelService;
   private readonly project_lifecycle_service: ProjectLifecycleService;
@@ -207,11 +204,6 @@ export class BackendServices {
       sessionState: this.project_session_state,
       cache: this.cache_manager.qualityStatistics,
     });
-    this.name_field_extraction_service = new ToolboxNameFieldExtractionService({
-      sessionState: this.project_session_state,
-      cache: this.cache_manager,
-      workerClient: this.backend_worker_client,
-    });
     this.model_service = new ModelService(
       this.paths,
       this.app_setting_service,
@@ -284,7 +276,6 @@ export class BackendServices {
       this.task_run_publisher,
       this.project_operation_gate,
       this.project_session_state,
-      this.app_setting_service,
     );
     this.project_reset_preview_service = new ProjectResetPreviewService(
       this.database,
@@ -342,7 +333,6 @@ export class BackendServices {
       files: this.file_export_service,
     };
     this.toolbox = {
-      nameFields: this.name_field_extraction_service,
       tsConversion: this.ts_conversion_service,
     };
     this.engine = { tasks: this.task_service };

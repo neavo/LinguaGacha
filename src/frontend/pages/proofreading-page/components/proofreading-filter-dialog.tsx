@@ -10,7 +10,7 @@ import {
   type ProofreadingFilterOptions,
   type ProofreadingFilterPanelState,
   type ProofreadingGlossaryTerm,
-} from "@frontend/pages/proofreading-page/types";
+} from "@shared/proofreading/proofreading-types";
 import { Badge } from "@frontend/shadcn/badge";
 import { AppButton } from "@frontend/widgets/app-button";
 import { Input } from "@frontend/shadcn/input";

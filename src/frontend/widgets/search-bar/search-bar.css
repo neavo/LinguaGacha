@@ -87,7 +87,7 @@
   width: 16px;
   height: 2px;
   transform: translateX(-50%);
-  border-radius: 999px;
+  border-radius: var(--ui-radius-pill);
   background: color-mix(in srgb, var(--primary) 84%, white 16%);
 }
 
@@ -107,7 +107,7 @@
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  border-radius: 999px;
+  border-radius: var(--ui-radius-pill);
   background: color-mix(in srgb, var(--muted) 68%, var(--card) 32%);
   color: color-mix(in srgb, var(--foreground) 62%, var(--muted-foreground) 38%);
 }

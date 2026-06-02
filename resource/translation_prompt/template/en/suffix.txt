@@ -1,4 +1,2 @@
-Then use JSONLINE to output translation results, without extra explanation or clarification:
-```jsonline
-{"<INDEX>":"<Translated Text>"}
-```
+Then use JSONLINE to output translation results, without extra explanation or clarification, in this format:
+{translation_output_format}

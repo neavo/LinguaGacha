@@ -6,12 +6,12 @@ import type { ApiJsonValue } from "../../api/api-types";
 import {
   effective_export_text,
   group_items,
-  prepare_name_fields,
   write_text_file,
   type ExportPaths,
   type FileFormatServiceConfig,
 } from "./file-format-shared";
 import { Item, read_json_record } from "../../../domain/item";
+import { resolve_export_item_name } from "../../../shared/item-name";
 
 /**
  * message JSON 格式用于 KAG 风格 name/message 数组结构
@@ -45,7 +45,7 @@ export class MESSAGEJSONFormat {
           src: record["message"],
           dst: "",
           name_src: name,
-          name_dst: name,
+          name_dst: null,
           row: items.length,
           file_type: "MESSAGEJSON",
           file_path: rel_path,
@@ -57,16 +57,19 @@ export class MESSAGEJSONFormat {
   }
 
   /**
-   * 写回时按配置整理 name_dst，多数译名会被用于同名角色
+   * 写回时每条 item 独立解析姓名，避免同名角色跨行互相污染
    */
   public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "MESSAGEJSON")) {
-      const normalized = prepare_name_fields(group, this.config);
-      const data = normalized
+      const data = group
         .sort((left, right) => left.row - right.row)
         .map((item) => {
           const message = effective_export_text(item);
-          const name = Item.normalize_name(item.name_dst);
+          const name = resolve_export_item_name({
+            name_src: item.name_src,
+            name_dst: item.name_dst,
+            write_translated_name_fields_to_file: this.config.write_translated_name_fields_to_file,
+          });
           if (typeof name === "string") {
             return { name, message };
           }

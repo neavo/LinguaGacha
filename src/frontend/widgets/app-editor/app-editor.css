@@ -141,3 +141,86 @@
   border-color: color-mix(in srgb, var(--destructive) 82%, var(--ring) 18%);
   background: color-mix(in srgb, var(--destructive) 6%, var(--popover));
 }
+
+.app-editor--field {
+  height: 32px;
+  min-height: 32px;
+  flex: 0 0 32px;
+}
+
+.app-editor--field .cm-editor {
+  height: 100%;
+  font-size: 13px;
+}
+
+.app-editor--field .cm-scroller {
+  height: 100%;
+  min-height: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  line-height: 1.5;
+}
+
+.app-editor--field .cm-content {
+  min-height: 30px;
+  padding: 5px 10px;
+  letter-spacing: 0em;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.app-editor--field .cm-line {
+  height: 20px;
+  line-height: 20px;
+}
+
+.app-text-mark {
+  cursor: help;
+  text-decoration-line: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-skip-ink: none;
+  text-underline-offset: 3px;
+}
+
+.app-text-mark--success {
+  text-decoration-color: color-mix(in srgb, var(--ui-success) 78%, var(--foreground) 22%);
+}
+
+.dark .app-text-mark--success {
+  text-decoration-color: color-mix(in srgb, #86efac 76%, var(--foreground) 24%);
+}
+
+.app-text-mark--warning {
+  text-decoration-color: color-mix(in srgb, var(--ui-warning) 84%, var(--foreground) 16%);
+}
+
+.dark .app-text-mark--warning {
+  text-decoration-color: color-mix(in srgb, #fcd34d 82%, var(--foreground) 18%);
+}
+
+.cm-tooltip:has(.app-text-mark-tooltip) {
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  z-index: 60;
+}
+
+.app-text-mark-tooltip {
+  display: inline-flex;
+  max-width: min(320px, calc(100vw - 64px));
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px;
+  background: var(--foreground);
+  color: var(--background);
+  box-shadow: 0 10px 28px color-mix(in srgb, black 14%, transparent);
+}
+
+.app-text-mark-tooltip__copy {
+  padding: 6px 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+}

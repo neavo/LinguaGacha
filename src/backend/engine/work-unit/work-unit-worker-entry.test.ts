@@ -9,11 +9,6 @@ type WorkUnitWorkerIncomingMessage =
     }
   | {
       id: string;
-      type: "translate_single";
-      body: Record<string, unknown>;
-    }
-  | {
-      id: string;
       type: "cancel";
     };
 
@@ -27,7 +22,6 @@ type WorkerPortHarness = {
 // WorkUnitRunner 的最小行为面，聚焦入口分发和取消语义。
 type RunnerMock = {
   run: ReturnType<typeof vi.fn>;
-  translate_single: ReturnType<typeof vi.fn>;
 };
 
 // harness 固定 workerData 和 parentPort，隔离真实 worker_threads 环境。
@@ -69,7 +63,6 @@ function install_runner_mock(runner: RunnerMock): void {
     // 模拟外部运行时对象，只保留当前测试会触发的行为面。
     class WorkUnitRunnerMock {
       public run = runner.run;
-      public translate_single = runner.translate_single;
     }
 
     return {
@@ -111,7 +104,6 @@ describe("work-unit-worker-entry", () => {
     });
     const runner = {
       run: vi.fn(async () => ({ outcome: "completed" })),
-      translate_single: vi.fn(),
     };
     install_runner_mock(runner);
 
@@ -159,7 +151,6 @@ describe("work-unit-worker-entry", () => {
             run_state.resolve = resolve;
           }),
       ),
-      translate_single: vi.fn(),
     };
     install_runner_mock(runner);
 

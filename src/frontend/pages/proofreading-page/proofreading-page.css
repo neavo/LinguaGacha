@@ -45,10 +45,30 @@
 }
 
 .proofreading-page__table-text {
-  display: block;
+  display: inline-block;
+  min-width: 0;
+  flex: 1 1 auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.proofreading-page__table-text-line {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+
+.proofreading-page__table-name-badge {
+  max-width: min(128px, 36%);
+  flex: 0 0 auto;
+}
+
+.proofreading-page__table-name-badge-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .proofreading-page__status-icons {
@@ -477,6 +497,16 @@
   line-height: 1.2;
 }
 
+.proofreading-page__dialog-name-input {
+  flex: 0 0 32px;
+}
+
+.proofreading-page__dialog-name-tooltip-trigger {
+  display: block;
+  min-width: 0;
+  flex: 0 0 32px;
+}
+
 .proofreading-page__dialog-editor-block {
   display: grid;
   min-height: 0;
@@ -495,57 +525,4 @@
 .proofreading-page__dialog-editor-host {
   min-height: 0;
   flex: 1 1 0;
-}
-
-.proofreading-page__glossary-mark--success {
-  cursor: help;
-  text-decoration-line: underline;
-  text-decoration-thickness: 2px;
-  text-decoration-color: color-mix(in srgb, #22c55e 78%, var(--foreground) 22%);
-  text-decoration-skip-ink: none;
-  text-underline-offset: 3px;
-}
-
-.dark .proofreading-page__glossary-mark--success {
-  text-decoration-color: color-mix(in srgb, #86efac 76%, var(--foreground) 24%);
-}
-
-.proofreading-page__glossary-mark--warning {
-  cursor: help;
-  text-decoration-line: underline;
-  text-decoration-thickness: 2px;
-  text-decoration-color: color-mix(in srgb, #f59e0b 84%, var(--foreground) 16%);
-  text-decoration-skip-ink: none;
-  text-underline-offset: 3px;
-}
-
-.dark .proofreading-page__glossary-mark--warning {
-  text-decoration-color: color-mix(in srgb, #fcd34d 82%, var(--foreground) 18%);
-}
-
-.cm-tooltip:has(.proofreading-page__glossary-hover-tooltip) {
-  border: none;
-  background: transparent;
-  box-shadow: none;
-  z-index: 60;
-}
-
-.proofreading-page__glossary-hover-tooltip {
-  display: inline-flex;
-  max-width: min(320px, calc(100vw - 64px));
-  align-items: center;
-  gap: 6px;
-  border-radius: 6px;
-  background: var(--foreground);
-  color: var(--background);
-  box-shadow: 0 10px 28px color-mix(in srgb, black 14%, transparent);
-}
-
-.proofreading-page__glossary-hover-tooltip-copy {
-  padding: 6px 12px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  color: inherit;
-  font-size: 12px;
-  line-height: 1.5;
 }

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 
-import type { AppSettingService } from "../app/app-setting-service";
 import type { TaskEngine } from "../engine/core/engine";
 import { TaskRunState } from "../engine/run/task-run-state";
 import { ProjectOperationGate } from "../project/project-gate";
@@ -29,7 +28,6 @@ describe("TaskService", () => {
       create_task_run_publisher(),
       create_project_operation_gate(),
       session_state,
-      create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
 
     const result = await service.start_task({
@@ -70,7 +68,6 @@ describe("TaskService", () => {
       create_task_run_publisher({ begin_records }),
       create_project_operation_gate(),
       new ProjectSessionState(),
-      create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
 
     const result = await service.start_task({
@@ -115,7 +112,6 @@ describe("TaskService", () => {
       create_task_run_publisher(),
       create_project_operation_gate(),
       new ProjectSessionState(),
-      create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
 
     const result = await service.start_task({
@@ -154,7 +150,6 @@ describe("TaskService", () => {
       create_task_run_publisher({ previous_state, restored_states }),
       create_project_operation_gate(),
       new ProjectSessionState(),
-      create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
 
     await expect(
@@ -191,7 +186,6 @@ describe("TaskService", () => {
       create_task_run_publisher(),
       project_operation_gate,
       new ProjectSessionState(),
-      create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
 
     await expect(
@@ -205,28 +199,6 @@ describe("TaskService", () => {
     expect(calls).toEqual([]);
     release_write();
     await running_write;
-  });
-
-  it("单条翻译在没有激活模型时直接返回 NO_ACTIVE_MODEL", async () => {
-    let called = false;
-    const service = new TaskService(
-      {
-        translate_single: async () => {
-          called = true;
-          return { success: true, status: "OK", dst: "译文" };
-        },
-      } as unknown as TaskEngine,
-      create_snapshot_builder({}),
-      create_task_run_publisher(),
-      create_project_operation_gate(),
-      new ProjectSessionState(),
-      create_setting_service({ activate_model_id: "", models: [] }),
-    );
-
-    const result = await service.translate_single({ text: "原文" });
-
-    expect(result).toEqual({ success: false, status: "NO_ACTIVE_MODEL", dst: "" });
-    expect(called).toBe(false);
   });
 
   it("停止回包晚于终态时返回当前真实快照", async () => {
@@ -248,7 +220,6 @@ describe("TaskService", () => {
       create_task_run_publisher(),
       create_project_operation_gate(),
       new ProjectSessionState(),
-      create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
 
     const result = await service.stop_task({ task_type: "translation" });
@@ -263,28 +234,6 @@ describe("TaskService", () => {
     });
   });
 
-  it("单条翻译在激活模型失效但仍有模型时沿用首个模型", async () => {
-    const calls: Array<Record<string, unknown>> = [];
-    const service = new TaskService(
-      {
-        translate_single: async (text: string) => {
-          calls.push({ text });
-          return { success: true, status: "OK", dst: "译文" };
-        },
-      } as unknown as TaskEngine,
-      create_snapshot_builder({}),
-      create_task_run_publisher(),
-      create_project_operation_gate(),
-      new ProjectSessionState(),
-      create_setting_service({ activate_model_id: "missing", models: [{ id: "model-1" }] }),
-    );
-
-    const result = await service.translate_single({ text: " 原文 " });
-
-    expect(result).toEqual({ success: true, status: "OK", dst: "译文" });
-    expect(calls).toEqual([{ text: "原文" }]);
-  });
-
   it("revision 冲突时拒绝启动重翻", async () => {
     const session_state = new ProjectSessionState();
     session_state.mark_loaded("E:/Project/demo.lg");
@@ -294,7 +243,6 @@ describe("TaskService", () => {
       create_task_run_publisher(),
       create_project_operation_gate(),
       session_state,
-      create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
 
     await expect(
@@ -321,7 +269,6 @@ describe("TaskService", () => {
       create_task_run_publisher(),
       create_project_operation_gate(),
       session_state,
-      create_setting_service({ activate_model_id: "model-1", models: [{ id: "model-1" }] }),
     );
 
     await expect(service.start_task({ task_type: "translation", mode: "new" })).rejects.toThrow(
@@ -383,11 +330,5 @@ describe("TaskService", () => {
    */
   function create_project_operation_gate(): ProjectOperationGate {
     return new ProjectOperationGate(new TaskRunState());
-  }
-
-  function create_setting_service(config: Record<string, unknown>): AppSettingService {
-    return {
-      read_setting: () => config,
-    } as unknown as AppSettingService;
   }
 });

@@ -22,7 +22,9 @@ export const en_us_proofreading_page = {
     drag: "Drag",
     status: "Status",
     source: "Source",
+    source_name: "Source Name",
     translation: "Translation",
+    translation_name: "Translation Name",
   },
   search: {
     placeholder: "Query …",

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  create_analysis_reset_all_plan,
+  create_analysis_reset_failed_plan,
+  create_translation_reset_all_plan,
+  create_translation_reset_failed_plan,
   create_workbench_delete_files_plan,
   create_workbench_import_files_plan,
   create_workbench_import_files_preview,
@@ -173,6 +177,71 @@ describe("workbench command planner", () => {
       project_settings: SETTINGS,
       expected_section_revisions: {
         items: 2,
+        analysis: 3,
+      },
+    });
+  });
+
+  it("翻译失败重置只提交模式和 items revision", () => {
+    const plan = create_translation_reset_failed_plan({
+      section_revisions: create_state().section_revisions,
+    });
+
+    expect(plan.updatedSections).toEqual(["items"]);
+    expect(plan.requestBody).toEqual({
+      mode: "failed",
+      expected_section_revisions: {
+        items: 2,
+      },
+    });
+  });
+
+  it("翻译全量重置只提交模式、设置和 reset 依赖 revision", () => {
+    const plan = create_translation_reset_all_plan({
+      section_revisions: create_state().section_revisions,
+      source_language: "EN",
+      mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: true,
+    });
+
+    expect(plan.updatedSections).toEqual(["items", "analysis"]);
+    expect(plan.requestBody).toEqual({
+      mode: "all",
+      project_settings: {
+        source_language: "EN",
+        mtool_optimizer_enable: false,
+        skip_duplicate_source_text_enable: true,
+      },
+      expected_section_revisions: {
+        items: 2,
+        analysis: 3,
+      },
+    });
+  });
+
+  it("分析全量重置只提交模式和 analysis revision", () => {
+    const plan = create_analysis_reset_all_plan({
+      section_revisions: create_state().section_revisions,
+    });
+
+    expect(plan.updatedSections).toEqual(["analysis"]);
+    expect(plan.requestBody).toEqual({
+      mode: "all",
+      expected_section_revisions: {
+        analysis: 3,
+      },
+    });
+  });
+
+  it("分析失败重置只提交模式和 analysis revision", () => {
+    const plan = create_analysis_reset_failed_plan({
+      section_revisions: create_state().section_revisions,
+    });
+
+    expect(plan.updatedSections).toEqual(["analysis"]);
+    expect(plan.requestBody).toEqual({
+      mode: "failed",
+      expected_section_revisions: {
         analysis: 3,
       },
     });

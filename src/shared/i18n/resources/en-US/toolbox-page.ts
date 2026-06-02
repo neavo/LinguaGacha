@@ -4,11 +4,6 @@ import type { LocaleMessageSchema } from "../../types";
 export const en_us_toolbox_page = {
   title: "Toolbox",
   entries: {
-    name_field_extraction: {
-      title: "Name-Field Extraction",
-      description:
-        "Extract character name field data from <emphasis>RenPy</emphasis> and <emphasis>GalGame</emphasis> game text, and automatically generate corresponding glossary data to facilitate subsequent translation",
-    },
     ts_conversion: {
       title: "TS Conversion",
       description:

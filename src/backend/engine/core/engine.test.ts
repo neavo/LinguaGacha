@@ -27,43 +27,6 @@ describe("TaskEngine", () => {
     }
   });
 
-  it("公开单条翻译也通过共享 limiter 排队", async () => {
-    const first_response = create_deferred<MutableJsonRecord>();
-    let executor_call_count = 0;
-    const task_engine = new TaskEngine({
-      appRoot: process.cwd(),
-      taskStore: {
-        build_quality_snapshot: () => null,
-      } as unknown as ProjectTaskStore,
-      taskRunPublisher: create_task_run_publisher(),
-      executorClient: {
-        translate_single: async () => {
-          executor_call_count += 1;
-          if (executor_call_count === 1) {
-            return await first_response.promise;
-          }
-          return { text: "第二条" };
-        },
-      } as unknown as WorkUnitExecutor,
-      taskPlanner: create_test_task_planner(),
-      AppSettingService: create_setting_service(1),
-      logManager: create_log_manager(),
-    });
-
-    const first = task_engine.translate_single("第一条");
-    await wait_until(() => executor_call_count === 1);
-    const second = task_engine.translate_single("第二条");
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(executor_call_count).toBe(1);
-
-    first_response.resolve({ text: "第一条", logs: [] });
-    await expect(first).resolves.toEqual({ text: "第一条" });
-    await expect(second).resolves.toEqual({ text: "第二条" });
-    expect(executor_call_count).toBe(2);
-  });
-
   it("翻译单条重试超限后提交 ERROR 且不回填原文", async () => {
     const committed_batches: MutableJsonRecord[] = [];
     const done = create_status_waiter("translation", "done");
@@ -460,17 +423,6 @@ describe("TaskEngine", () => {
       publish_request_pressure: () => undefined,
       flush_request_pressure: async () => undefined,
     } as unknown as TaskRunPublisher;
-  }
-
-  function create_deferred<T>(): {
-    promise: Promise<T>;
-    resolve: (value: T) => void;
-  } {
-    let resolve_deferred: (value: T) => void = () => undefined;
-    const promise = new Promise<T>((resolve) => {
-      resolve_deferred = resolve;
-    });
-    return { promise, resolve: resolve_deferred };
   }
 
   // wait_until 构造测试所需的稳定夹具，避免每个用例重复铺设环境。

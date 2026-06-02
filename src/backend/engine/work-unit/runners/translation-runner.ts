@@ -11,6 +11,15 @@ import {
   type TranslationPrePipelineContext,
 } from "../pipeline/translation-pre-pipeline";
 import { TranslationPostPipeline } from "../pipeline/translation-post-pipeline";
+import {
+  format_translation_actor,
+  read_translation_text_srcs,
+  resolve_translation_prompt_mode,
+  type TranslationActor,
+  type TranslationDecodedLine,
+  type TranslationLine,
+  type TranslationPromptMode,
+} from "../translation-line";
 import { PromptBuilder } from "../work-unit-prompt-builder";
 import { ResponseChecker } from "../response/response-checker";
 import { ResponseCleaner } from "../response/response-cleaner";
@@ -20,8 +29,11 @@ import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-
 import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
 import { normalize_setting_snapshot } from "../../../../domain/setting";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
-import { RequestValidationError, type LogError } from "../../../../shared/error";
+import type { LogError } from "../../../../shared/error";
 
+/**
+ * worker 边界传入的公共请求字段，全部来自任务启动时的不可变快照。
+ */
 interface WorkUnitBaseRequest {
   run_id: string; // 用于隔离一次任务运行，worker 不用它访问项目状态
   work_unit_id: string; // chunk 级诊断键，迟到响应和日志都围绕它定位
@@ -30,6 +42,9 @@ interface WorkUnitBaseRequest {
   quality_snapshot: ApiJsonValue; // 文本后处理与提示词构造的唯一质量规则输入
 }
 
+/**
+ * 批量翻译 chunk 请求，items 是本 work unit 唯一可回写对象。
+ */
 interface TranslationWorkUnitRequest extends WorkUnitBaseRequest {
   items: ApiJsonValue; // 本 chunk 的不可变条目快照，worker 修改结果后再回传给 TaskEngine
   precedings?: ApiJsonValue; // 只用于上下文提示词，不参与当前 chunk 的写回
@@ -39,10 +54,9 @@ interface TranslationWorkUnitRequest extends WorkUnitBaseRequest {
   is_initial?: ApiJsonValue;
 }
 
-export interface TranslateSingleWorkUnitRequest extends WorkUnitBaseRequest {
-  text: ApiJsonValue; // 来自公开计算工具调用，不关联任何项目条目
-}
-
+/**
+ * 翻译 runner 回传给 Engine 的统一结果，提交策略仍由主线程决定。
+ */
 interface TranslationWorkUnitResult {
   items: TextTaskItemRecord[]; // 只包含本 work unit 处理后的条目快照，由 TaskEngine 统一提交
   row_count: number; // 按日志口径表示本次成功覆盖的输入行数
@@ -50,13 +64,6 @@ interface TranslationWorkUnitResult {
   output_tokens: number;
   stopped: boolean; // 主动取消或 adapter 取消，区别于可重试错误
   logs?: WorkUnitLogEntry[]; // 由主线程统一提交，worker 不直接写日志目标
-}
-
-interface TranslateSingleWorkUnitResult {
-  success: boolean; // success/status 对齐公开 API 返回，不泄露内部 work unit 状态枚举
-  status: string;
-  dst: string; // 单条翻译结果，失败时为空字符串
-  logs?: WorkUnitLogEntry[]; // 供调用方展示诊断，不触发项目事件
 }
 
 /**
@@ -123,42 +130,16 @@ export class TranslationWorkUnitRunner {
   ): Promise<TranslationWorkUnitResult> {
     const items = this.read_item_list(request.items);
     const precedings = this.read_item_list(request.precedings);
-    return this.execute_items(request, items, precedings, false, signal);
+    return this.execute_items(request, items, precedings, signal);
   }
 
   /**
-   * 单条翻译不写项目，只返回公开计算工具需要的 `{ success, status, dst }`
-   */
-  public async translate_single(
-    request: TranslateSingleWorkUnitRequest,
-    signal: AbortSignal,
-  ): Promise<TranslateSingleWorkUnitResult> {
-    const text = String(request.text ?? "").trim();
-    if (text === "") {
-      throw new RequestValidationError({
-        public_details: { field: "text" },
-        diagnostic_context: { task_type: "translate-single", reason: "empty_text" },
-      });
-    }
-    const item: TextTaskItemRecord = { src: text, dst: "", status: "NONE", text_type: "TXT" };
-    const result = await this.execute_items(request, [item], [], true, signal);
-    const success = result.row_count > 0;
-    return {
-      success,
-      status: success ? "OK" : "TRANSLATION_FAILED",
-      dst: String(item.dst ?? ""),
-      logs: result.logs,
-    };
-  }
-
-  /**
-   * 翻译共享实现，skip_response_check 只用于低频单条翻译
+   * 翻译共享实现负责预处理、LLM 调用、响应解析和后处理。
    */
   private async execute_items(
-    request: TranslationWorkUnitRequest | TranslateSingleWorkUnitRequest,
+    request: TranslationWorkUnitRequest,
     items: TextTaskItemRecord[],
     precedings: TextTaskItemRecord[],
-    skip_response_check: boolean,
     signal: AbortSignal,
   ): Promise<TranslationWorkUnitResult> {
     const config = TextProcessingConfigTool.from_api_value(request.config_snapshot);
@@ -194,10 +175,10 @@ export class TranslationWorkUnitRunner {
         request,
         start_time,
         console_log: prepared.console_log,
-        srcs: prepared.srcs,
+        lines: prepared.lines,
+        mode: prepared.mode,
         pipeline_contexts: prepared.pipeline_contexts,
         items,
-        skip_response_check,
         stream_degraded: response.degraded,
         request_error: response.request_error,
         request_timeout: response.timeout,
@@ -210,7 +191,7 @@ export class TranslationWorkUnitRunner {
    * 预处理每个 item；无可翻译行时直接把原文标为已处理
    */
   private async prepare_request_data(
-    request: TranslationWorkUnitRequest | TranslateSingleWorkUnitRequest,
+    request: TranslationWorkUnitRequest,
     config: TextProcessingConfig,
     quality_snapshot: TextQualitySnapshot,
     items: TextTaskItemRecord[],
@@ -219,21 +200,27 @@ export class TranslationWorkUnitRunner {
     | { done: true; result: TranslationWorkUnitResult }
     | {
         done: false;
-        srcs: string[];
+        lines: TranslationLine[];
+        mode: TranslationPromptMode;
         messages: Array<{ role: string; content: string }>;
         console_log: string[];
         pipeline_contexts: TranslationPrePipelineContext[];
       }
   > {
-    const srcs: string[] = [];
     const samples: string[] = [];
     const pre_pipeline = new TranslationPrePipeline(config, quality_snapshot);
-    const pipeline_contexts = items.map((item) => pre_pipeline.process_item(item));
+    const pipeline_contexts: TranslationPrePipelineContext[] = [];
+    let request_index_start = 0;
+    for (const [item_index, item] of items.entries()) {
+      const pipeline_context = pre_pipeline.process_item(item, item_index, request_index_start);
+      request_index_start += pipeline_context.lines.length;
+      pipeline_contexts.push(pipeline_context);
+    }
     for (const pipeline_context of pipeline_contexts) {
-      srcs.push(...pipeline_context.srcs);
       samples.push(...pipeline_context.samples);
     }
-    if (srcs.length === 0) {
+    const lines = pipeline_contexts.flatMap((pipeline_context) => pipeline_context.lines);
+    if (lines.length === 0) {
       for (const item of items) {
         item.dst = String(item.src ?? "");
         item.status = "PROCESSED";
@@ -255,13 +242,15 @@ export class TranslationWorkUnitRunner {
       quality_snapshot,
     );
     const api_format = this.resolve_model_api_format(request.model);
+    const mode = api_format === "SakuraLLM" ? "text" : resolve_translation_prompt_mode(lines);
     const prompt_result =
       api_format === "SakuraLLM"
-        ? prompt_builder.generate_prompt_sakura(srcs)
-        : await prompt_builder.generate_prompt(srcs, samples, precedings);
+        ? prompt_builder.generate_prompt_sakura(read_translation_text_srcs(lines))
+        : await prompt_builder.generate_prompt(lines, mode, samples, precedings);
     return {
       done: false,
-      srcs,
+      lines,
+      mode,
       messages: prompt_result.messages,
       console_log: prompt_result.console_log,
       pipeline_contexts,
@@ -275,13 +264,13 @@ export class TranslationWorkUnitRunner {
     context: {
       config: TextProcessingConfig;
       quality_snapshot: TextQualitySnapshot;
-      request: TranslationWorkUnitRequest | TranslateSingleWorkUnitRequest;
+      request: TranslationWorkUnitRequest;
       start_time: number;
       console_log: string[];
-      srcs: string[];
+      lines: TranslationLine[];
+      mode: TranslationPromptMode;
       pipeline_contexts: TranslationPrePipelineContext[];
       items: TextTaskItemRecord[];
-      skip_response_check: boolean;
       stream_degraded: boolean;
       request_error?: LogError;
       request_timeout: boolean;
@@ -295,20 +284,25 @@ export class TranslationWorkUnitRunner {
     const normalized_think = ResponseCleaner.normalize_blank_lines(response.response_think).trim();
     const decoded =
       context.request_error === undefined
-        ? await new ResponseDecoder().decode(cleaner_result.cleaned_response_result)
-        : { translations: [] };
-    const dsts =
+        ? await new ResponseDecoder().decode_translation(
+            cleaner_result.cleaned_response_result,
+            context.mode,
+          )
+        : [];
+    const aligned =
       context.stream_degraded || context.request_timeout || context.request_error !== undefined
-        ? []
-        : decoded.translations;
-    const checks = this.build_checks(context, dsts);
+        ? { decoded_lines: [], dsts: [], actor_dsts: [] }
+        : this.align_decoded_lines(context.lines, decoded);
+    const checks = this.build_checks(context, aligned.dsts);
     const logs = this.build_translation_logs({
       checks,
       start_time: context.start_time,
       input_tokens: response.input_tokens,
       output_tokens: response.output_tokens,
-      srcs: context.srcs,
-      dsts,
+      lines: context.lines,
+      dsts: aligned.dsts,
+      actor_dsts: aligned.actor_dsts,
+      mode: context.mode,
       console_log: context.console_log,
       response_think: normalized_think,
       rule_analysis: cleaner_result.rule_analysis_text,
@@ -318,12 +312,9 @@ export class TranslationWorkUnitRunner {
     });
     let updated_count = 0;
     if (checks.some((check) => check === "NONE")) {
-      const dst_queue = [...dsts];
+      const decoded_queue = [...aligned.decoded_lines];
       const check_queue = [...checks];
-      while (dst_queue.length < context.srcs.length) {
-        dst_queue.push("");
-      }
-      while (check_queue.length < context.srcs.length) {
+      while (check_queue.length < context.lines.length) {
         check_queue.push("NONE");
       }
       const post_pipeline = new TranslationPostPipeline(context.config, context.quality_snapshot);
@@ -333,14 +324,18 @@ export class TranslationWorkUnitRunner {
         if (pipeline_context === undefined || item === undefined) {
           continue;
         }
-        const length = pipeline_context.srcs.length;
-        const item_dsts = dst_queue.splice(0, length);
+        const length = pipeline_context.lines.length;
+        const item_lines = decoded_queue.splice(0, length);
         const item_checks = check_queue.splice(0, length);
         if (item_checks.every((check) => check === "NONE")) {
-          const processed = post_pipeline.process_item(pipeline_context, item_dsts);
-          item.dst = processed.dst;
-          if (processed.name !== null) {
-            item.name_dst = processed.name;
+          const post_result = post_pipeline.process_item(
+            pipeline_context,
+            item_lines,
+            context.mode,
+          );
+          item.dst = post_result.dst;
+          if (Object.prototype.hasOwnProperty.call(post_result, "name_dst")) {
+            item.name_dst = post_result.name_dst ?? null;
           }
           item.status = "PROCESSED";
           updated_count += 1;
@@ -368,40 +363,69 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
+   * 模型响应必须完整覆盖本次请求序号，重复或缺失都交给校验分支处理。
+   */
+  private align_decoded_lines(
+    lines: TranslationLine[],
+    decoded_lines: TranslationDecodedLine[],
+  ): { decoded_lines: TranslationDecodedLine[]; dsts: string[]; actor_dsts: TranslationActor[] } {
+    if (decoded_lines.length !== lines.length) {
+      return { decoded_lines: [], dsts: [], actor_dsts: [] };
+    }
+    const decoded_by_index = new Map<number, TranslationDecodedLine>();
+    for (const decoded_line of decoded_lines) {
+      if (decoded_by_index.has(decoded_line.request_index)) {
+        return { decoded_lines: [], dsts: [], actor_dsts: [] };
+      }
+      decoded_by_index.set(decoded_line.request_index, decoded_line);
+    }
+    const aligned: TranslationDecodedLine[] = [];
+    for (const line of lines) {
+      const decoded_line = decoded_by_index.get(line.request_index);
+      if (decoded_line === undefined) {
+        return { decoded_lines: [], dsts: [], actor_dsts: [] };
+      }
+      aligned.push(decoded_line);
+    }
+    return {
+      decoded_lines: aligned,
+      dsts: aligned.map((line) => line.text_dst),
+      actor_dsts: aligned.map((line) => line.actor_dst),
+    };
+  }
+
+  /**
    * 构造响应检查结果，超时和退化在这里映射成固定错误
    */
   private build_checks(
     context: {
       config: TextProcessingConfig;
       quality_snapshot: TextQualitySnapshot;
-      srcs: string[];
+      lines: TranslationLine[];
       pipeline_contexts: TranslationPrePipelineContext[];
       items: TextTaskItemRecord[];
-      skip_response_check: boolean;
       stream_degraded: boolean;
       request_error?: LogError;
       request_timeout: boolean;
     },
     dsts: string[],
   ): string[] {
+    const srcs = read_translation_text_srcs(context.lines);
     if (context.request_error !== undefined) {
-      return context.srcs.map(() => "FAIL_REQUEST");
+      return srcs.map(() => "FAIL_REQUEST");
     }
     if (context.request_timeout) {
-      return context.srcs.map(() => "FAIL_TIMEOUT");
-    }
-    if (context.skip_response_check) {
-      return dsts.map(() => "NONE");
+      return srcs.map(() => "FAIL_TIMEOUT");
     }
     const first_item = context.items[0];
     const skip_internal_filter_by_line = context.pipeline_contexts.flatMap((pipeline_context) =>
       Array.from(
-        { length: pipeline_context.srcs.length },
+        { length: pipeline_context.lines.length },
         () => pipeline_context.item?.skip_internal_filter === true,
       ),
     );
     return ResponseChecker.check(
-      context.srcs,
+      srcs,
       dsts,
       String(first_item?.text_type ?? "TXT"),
       context.config,
@@ -420,20 +444,23 @@ export class TranslationWorkUnitRunner {
     start_time: number;
     input_tokens: number;
     output_tokens: number;
-    srcs: string[];
+    lines: TranslationLine[];
     dsts: string[];
+    actor_dsts: TranslationActor[];
+    mode: TranslationPromptMode;
     console_log: string[];
     response_think: string;
     rule_analysis: string;
     response_result: string;
     request_error?: LogError;
-    request: TranslationWorkUnitRequest | TranslateSingleWorkUnitRequest;
+    request: TranslationWorkUnitRequest;
   }): WorkUnitLogEntry[] {
     const app_language = this.read_app_language(context.request.config_snapshot);
+    const srcs = read_translation_text_srcs(context.lines);
     const elapsed_seconds = ((Date.now() - context.start_time) / 1000).toFixed(2);
     const stats_info = this.t(app_language, "app.log.engine_task_success", {
       CT: context.output_tokens.toString(),
-      LINES: context.srcs.length.toString(),
+      LINES: srcs.length.toString(),
       PT: context.input_tokens.toString(),
       TIME: elapsed_seconds,
     });
@@ -467,11 +494,21 @@ export class TranslationWorkUnitRunner {
     }
 
     const pair_lines: string[] = [];
-    const max_length = Math.max(context.srcs.length, context.dsts.length);
+    const max_length = Math.max(srcs.length, context.dsts.length);
     for (let index = 0; index < max_length; index += 1) {
       pair_lines.push(`[${String(index + 1)}]`);
-      pair_lines.push(`SRC: ${context.srcs[index] ?? ""}`);
+      pair_lines.push(`SRC: ${srcs[index] ?? ""}`);
+      if (context.mode === "actor_text") {
+        pair_lines.push(
+          `ACTOR_SRC: ${format_translation_actor(context.lines[index]?.actor_src ?? null)}`,
+        );
+      }
       pair_lines.push(`DST: ${context.dsts[index] ?? ""}`);
+      if (context.mode === "actor_text") {
+        pair_lines.push(
+          `ACTOR_DST: ${format_translation_actor(context.actor_dsts[index] ?? null)}`,
+        );
+      }
     }
     if (pair_lines.length > 0) {
       rows.push(pair_lines.join("\n"));
@@ -489,16 +526,13 @@ export class TranslationWorkUnitRunner {
    * 拆分 / 重试信息来自 TaskEngine 传入的不可变上下文，日志里保留旧排障口径
    */
   private build_task_status_info(
-    request: TranslationWorkUnitRequest | TranslateSingleWorkUnitRequest,
+    request: TranslationWorkUnitRequest,
     app_language: unknown,
   ): string {
-    const split_count = this.read_number("split_count" in request ? request.split_count : 0, 0);
-    const retry_count = this.read_number("retry_count" in request ? request.retry_count : 0, 0);
-    const token_threshold = this.read_number(
-      "token_threshold" in request ? request.token_threshold : 0,
-      0,
-    );
-    const is_initial = Boolean("is_initial" in request ? request.is_initial : true);
+    const split_count = this.read_number(request.split_count, 0);
+    const retry_count = this.read_number(request.retry_count, 0);
+    const token_threshold = this.read_number(request.token_threshold, 0);
+    const is_initial = Boolean(request.is_initial ?? true);
     if (is_initial) {
       return "";
     }
@@ -589,9 +623,8 @@ export class TranslationWorkUnitRunner {
     }
   }
 
-  // is_line_error 封装类内部的非显然分支，避免调用方重复理解同一约束。
   /**
-   * 判断当前值是否满足业务条件。
+   * 行级错误会降级为部分失败，整包错误会触发整包重试。
    */
   private is_line_error(check: string): boolean {
     return (
@@ -602,17 +635,15 @@ export class TranslationWorkUnitRunner {
     );
   }
 
-  // read_app_language 封装类内部的非显然分支，避免调用方重复理解同一约束。
   /**
-   * 读取当前场景需要的稳定数据。
+   * 日志本地化只读取任务启动快照，避免执行中语言变更影响同一 work unit。
    */
   private read_app_language(config_snapshot: ApiJsonValue): unknown {
     return normalize_setting_snapshot(config_snapshot).app_language;
   }
 
-  // t 封装类内部的非显然分支，避免调用方重复理解同一约束。
   /**
-   * 转换本地化键为当前语言文本。
+   * worker 内日志使用同一 i18n 入口，保持翻译和分析 runner 文案一致。
    */
   private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
     return format_i18n_message(resolve_i18n_locale(app_language), key, params);

@@ -11,6 +11,7 @@ import {
   type TextReplacementSyntax,
 } from "../text/text-pattern";
 import type { TextJsonRecord } from "../text/text-types";
+import type { ItemTextGroup } from "../item-text";
 
 export type QualityCompiledGlossaryEntry = {
   src: string;
@@ -40,6 +41,11 @@ export type QualityCompiledContext = {
   glossary: QualityCompiledGlossary;
   pre_replacements: QualityCompiledReplacementRule[];
   post_replacements: QualityCompiledReplacementRule[];
+};
+
+export type QualityCompiledTextParts = {
+  source: ItemTextGroup;
+  translation: ItemTextGroup;
 };
 
 export type QualityCompiledRuleType =
@@ -301,6 +307,28 @@ export function applyQualityCompiledReplacements(
   };
 }
 
+export function applyQualityCompiledTextParts(
+  parts: QualityCompiledTextParts,
+  quality_context: QualityCompiledContext,
+): QualityCompiledTextParts {
+  return {
+    source: parts.source.map((part) => {
+      let text = part.text;
+      for (const entry of quality_context.pre_replacements) {
+        text = apply_quality_runtime_replacement(text, entry);
+      }
+      return { ...part, text };
+    }),
+    translation: parts.translation.map((part) => {
+      let text = part.text;
+      for (const entry of quality_context.post_replacements) {
+        text = apply_quality_runtime_replacement(text, entry);
+      }
+      return { ...part, text };
+    }),
+  };
+}
+
 /**
  * 校对质量运行态按任务替换规则执行，避免统计和任务管线解释出两套结果
  */
@@ -321,22 +349,24 @@ function apply_quality_runtime_replacement(
  */
 function collect_matched_glossary_entries(args: {
   glossary: QualityCompiledGlossary;
-  src_replaced: string;
+  source_replaced_parts: ItemTextGroup;
 }): QualityCompiledGlossaryEntry[] {
   if (args.glossary.entries.length === 0) {
     return [];
   }
 
   const matched_entries = new Map<string, QualityCompiledGlossaryEntry>();
-  let node_index = 0;
-  for (const character of Array.from(args.src_replaced)) {
-    while (node_index !== 0 && !args.glossary.aho_nodes[node_index].next.has(character)) {
-      node_index = args.glossary.aho_nodes[node_index].fail;
-    }
+  for (const part of args.source_replaced_parts) {
+    let node_index = 0;
+    for (const character of Array.from(part.text)) {
+      while (node_index !== 0 && !args.glossary.aho_nodes[node_index].next.has(character)) {
+        node_index = args.glossary.aho_nodes[node_index].fail;
+      }
 
-    node_index = args.glossary.aho_nodes[node_index].next.get(character) ?? 0;
-    for (const entry of args.glossary.aho_nodes[node_index].entries) {
-      matched_entries.set(`${entry.src}\u0000${entry.dst}`, entry);
+      node_index = args.glossary.aho_nodes[node_index].next.get(character) ?? 0;
+      for (const entry of args.glossary.aho_nodes[node_index].entries) {
+        matched_entries.set(`${entry.src}\u0000${entry.dst}`, entry);
+      }
     }
   }
 
@@ -348,8 +378,8 @@ function collect_matched_glossary_entries(args: {
  */
 export function partitionQualityCompiledGlossaryTerms(args: {
   glossary: QualityCompiledGlossary;
-  src_replaced: string;
-  dst_replaced: string;
+  source_replaced_parts: ItemTextGroup;
+  translation_replaced_parts: ItemTextGroup;
 }): {
   failed_terms: QualityCompiledGlossaryTerm[];
   applied_terms: QualityCompiledGlossaryTerm[];
@@ -359,10 +389,10 @@ export function partitionQualityCompiledGlossaryTerms(args: {
 
   for (const entry of collect_matched_glossary_entries({
     glossary: args.glossary,
-    src_replaced: args.src_replaced,
+    source_replaced_parts: args.source_replaced_parts,
   })) {
     const term: QualityCompiledGlossaryTerm = [entry.src, entry.dst];
-    if (args.dst_replaced.includes(entry.dst)) {
+    if (args.translation_replaced_parts.some((part) => part.text.includes(entry.dst))) {
       applied_terms.push(term);
     } else {
       failed_terms.push(term);

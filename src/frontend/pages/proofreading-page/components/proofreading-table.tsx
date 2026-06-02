@@ -21,7 +21,8 @@ import {
   type ProofreadingItem,
   type ProofreadingManualStatusCode,
   type ProofreadingVisibleItem,
-} from "@frontend/pages/proofreading-page/types";
+} from "@shared/proofreading/proofreading-types";
+import { Badge } from "@frontend/shadcn/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@frontend/shadcn/card";
 import { Spinner } from "@frontend/shadcn/spinner";
 import {
@@ -35,6 +36,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
 import { AppTableDragIndicator } from "@frontend/widgets/app-table/app-table-drag-indicator";
+import { read_optional_item_name_text } from "@shared/item-name";
 import type {
   AppTableColumn,
   AppTableRowModel,
@@ -181,6 +183,23 @@ function resolve_status_icon_tone(status: string): ProofreadingStatusIconTone {
  */
 function build_compact_tooltip(template: string, title: string, content: string): string {
   return template.replace("{TITLE}", title).replace("{STATE}", content);
+}
+
+function render_name_prefixed_text(args: { name: string | null; text: string }): JSX.Element {
+  return (
+    <span className="proofreading-page__table-text-line">
+      {args.name === null ? null : (
+        <Badge
+          variant="secondary"
+          title={args.name}
+          className="proofreading-page__table-name-badge"
+        >
+          <span className="proofreading-page__table-name-badge-label">{args.name}</span>
+        </Badge>
+      )}
+      <span className="proofreading-page__table-text">{args.text}</span>
+    </span>
+  );
 }
 
 // 只负责状态和 warning 图标展示，批量操作仍由行上下文菜单处理。
@@ -358,9 +377,10 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
         head_class_name: "proofreading-page__table-source-head",
         cell_class_name: "proofreading-page__table-source-cell",
         render_cell: (payload) => {
-          return (
-            <span className="proofreading-page__table-text">{payload.row.compressed_src}</span>
-          );
+          return render_name_prefixed_text({
+            name: read_optional_item_name_text(payload.row.item.name_src),
+            text: payload.row.compressed_src,
+          });
         },
       },
       {
@@ -377,9 +397,10 @@ export function ProofreadingTable(props: ProofreadingTableProps): JSX.Element {
         head_class_name: "proofreading-page__table-translation-head",
         cell_class_name: "proofreading-page__table-translation-cell",
         render_cell: (payload) => {
-          return (
-            <span className="proofreading-page__table-text">{payload.row.compressed_dst}</span>
-          );
+          return render_name_prefixed_text({
+            name: read_optional_item_name_text(payload.row.item.name_dst),
+            text: payload.row.compressed_dst,
+          });
         },
       },
       {

@@ -102,7 +102,7 @@ describe("RenPyFormat", () => {
       expect.objectContaining({
         name_src: "Man",
         src: "Hello there!",
-        name_dst: "Man",
+        name_dst: null,
         dst: "你好啊123！",
       }),
     );
@@ -147,7 +147,7 @@ describe("RenPyFormat", () => {
       expect.objectContaining({
         name_src: "Man",
         src: "Pleasure to meet you.",
-        name_dst: "Man",
+        name_dst: null,
         dst: "",
       }),
     );

@@ -1,4 +1,4 @@
-import type { ItemStatus } from "../domain/item";
+import type { ItemNameField, ItemStatus } from "../domain/item";
 import type { SourceFileParseFailureRecord } from "./source-file-parse-failure";
 
 // 公开项目变更事件只能承载严格 JSON 值，避免跨进程传递可变对象或特殊类型
@@ -32,6 +32,7 @@ export type ProjectDataSectionRevisions = Partial<Record<ProjectDataSection, num
 // item 字段级 patch 只表达后端已提交事实中的少量校对字段，不能替代完整 DTO。
 export type ProjectChangeItemFieldPatch = {
   dst?: string;
+  name_dst?: ItemNameField;
   status?: ItemStatus;
   retry_count?: number;
 };

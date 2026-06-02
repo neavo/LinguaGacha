@@ -1,4 +1,5 @@
 import { escape_text_pattern } from "../text/text-pattern";
+import type { ItemTextGroup } from "../item-text";
 
 export const QUALITY_STATISTICS_RULE_MODES = [
   "glossary",
@@ -39,8 +40,8 @@ export type QualityStatisticsDependencySnapshot = {
 
 export type QualityStatisticsTaskInput = {
   rules: QualityStatisticsRuleInput[]; // 本次需要计算命中数的规则集合
-  srcTexts: string[]; // 按项目条目顺序排列的原文集合
-  dstTexts: string[]; // 按项目条目顺序排列的译文集合
+  srcTextGroups: ItemTextGroup[]; // 按项目条目顺序排列的原文与姓名原文文本组
+  dstTextGroups: ItemTextGroup[]; // 按项目条目顺序排列的译文与姓名译文文本组
   relationCandidates: QualityStatisticsRelationCandidate[]; // 父子关系判断的完整范围
   relationTargetCandidates?: QualityStatisticsRelationCandidate[]; // 限定局部计划只计算目标关系
 };
@@ -86,7 +87,7 @@ type AhoMatcher = {
 };
 
 type QualityStatisticsTextViews = {
-  getTexts: (source: TextSource, caseSensitive: boolean) => string[]; // 懒构建大小写折叠文本视图
+  getTextGroups: (source: TextSource, caseSensitive: boolean) => ItemTextGroup[]; // 懒构建大小写折叠文本视图
 };
 
 type RelationSnapshot = {
@@ -196,28 +197,42 @@ function is_case_sensitive_rule(rule: QualityStatisticsRuleInput): boolean {
 /**
  * 懒构建原文/译文的大小写折叠视图，避免每个 bucket 重复转换大数组。
  */
-function build_text_views(src_texts: string[], dst_texts: string[]): QualityStatisticsTextViews {
-  let folded_src_texts: string[] | null = null;
-  let folded_dst_texts: string[] | null = null;
+function fold_text_groups(text_groups: ItemTextGroup[]): ItemTextGroup[] {
+  return text_groups.map((text_group) => {
+    return text_group.map((part) => {
+      return {
+        ...part,
+        text: casefold_text(part.text),
+      };
+    });
+  });
+}
+
+function build_text_views(
+  src_text_groups: ItemTextGroup[],
+  dst_text_groups: ItemTextGroup[],
+): QualityStatisticsTextViews {
+  let folded_src_text_groups: ItemTextGroup[] | null = null;
+  let folded_dst_text_groups: ItemTextGroup[] | null = null;
 
   return {
-    // getTexts 懒加载大小写折叠数组，保证同一统计任务内可复用。
-    getTexts(source, caseSensitive) {
+    // getTextGroups 懒加载大小写折叠数组，保证同一统计任务内可复用。
+    getTextGroups(source, caseSensitive) {
       if (caseSensitive) {
-        return source === "dst" ? dst_texts : src_texts;
+        return source === "dst" ? dst_text_groups : src_text_groups;
       }
 
       if (source === "dst") {
-        if (folded_dst_texts === null) {
-          folded_dst_texts = dst_texts.map((text) => casefold_text(text));
+        if (folded_dst_text_groups === null) {
+          folded_dst_text_groups = fold_text_groups(dst_text_groups);
         }
-        return folded_dst_texts;
+        return folded_dst_text_groups;
       }
 
-      if (folded_src_texts === null) {
-        folded_src_texts = src_texts.map((text) => casefold_text(text));
+      if (folded_src_text_groups === null) {
+        folded_src_text_groups = fold_text_groups(src_text_groups);
       }
-      return folded_src_texts;
+      return folded_src_text_groups;
     },
   };
 }
@@ -416,9 +431,12 @@ function collect_literal_match_indexes(
 }
 
 /**
- * 统计每个字面量 pattern 命中的项目条目数，而不是总出现次数。
+ * 统计每个字面量 pattern 命中的项目条目数，不统计总出现次数。
  */
-function count_literal_bucket_matches(texts: string[], patterns: string[]): Uint32Array {
+function count_literal_bucket_matches(
+  text_groups: ItemTextGroup[],
+  patterns: string[],
+): Uint32Array {
   const matcher = build_aho_matcher(patterns);
   const matched_counts = new Uint32Array(patterns.length);
   if (matcher === null) {
@@ -427,17 +445,20 @@ function count_literal_bucket_matches(texts: string[], patterns: string[]): Uint
 
   const seen_generation_by_pattern = new Uint32Array(matcher.patternCount);
 
-  texts.forEach((text, index) => {
+  text_groups.forEach((text_group, index) => {
     const generation = index + 1;
-    const matched_indexes = collect_literal_match_indexes(
-      matcher,
-      text,
-      seen_generation_by_pattern,
-      generation,
-    );
 
-    for (const pattern_index of matched_indexes) {
-      matched_counts[pattern_index] += 1;
+    for (const part of text_group) {
+      const matched_indexes = collect_literal_match_indexes(
+        matcher,
+        part.text,
+        seen_generation_by_pattern,
+        generation,
+      );
+
+      for (const pattern_index of matched_indexes) {
+        matched_counts[pattern_index] += 1;
+      }
     }
   });
 
@@ -455,8 +476,8 @@ function assign_literal_rule_counts(args: {
   const buckets = build_literal_rule_buckets(args.rules);
 
   for (const bucket of buckets) {
-    const texts = args.textViews.getTexts(bucket.source, bucket.caseSensitive);
-    const matched_counts = count_literal_bucket_matches(texts, bucket.patterns);
+    const text_groups = args.textViews.getTextGroups(bucket.source, bucket.caseSensitive);
+    const matched_counts = count_literal_bucket_matches(text_groups, bucket.patterns);
 
     bucket.patternKeys.forEach((pattern_keys, pattern_index) => {
       const matched_item_count = matched_counts[pattern_index] ?? 0;
@@ -482,11 +503,11 @@ function assign_regex_rule_counts(args: {
   const regex_buckets = build_regex_rule_buckets(args.rules);
 
   for (const bucket of regex_buckets) {
-    const texts = args.textViews.getTexts(bucket.source, true);
+    const text_groups = args.textViews.getTextGroups(bucket.source, true);
     let matched_item_count = 0;
 
-    for (const text of texts) {
-      if (!bucket.regexp.test(text)) {
+    for (const text_group of text_groups) {
+      if (!text_group.some((part) => bucket.regexp.test(part.text))) {
         continue;
       }
 
@@ -590,7 +611,7 @@ export function run_quality_statistics_task_sync(
     relationTargetCandidates: input.relationTargetCandidates,
   });
   const results: QualityStatisticsTaskResult["results"] = {};
-  const text_views = build_text_views(input.srcTexts, input.dstTexts);
+  const text_views = build_text_views(input.srcTextGroups, input.dstTextGroups);
 
   for (const rule of input.rules) {
     results[rule.key] = {

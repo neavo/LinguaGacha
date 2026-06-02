@@ -13,7 +13,7 @@
 - `--task translation`（默认）：
   - 从请求 JSON 的 messages 中取“最后一个 role=user”的 content 文本。
   - 在该文本中提取“最后一个” ```jsonline 代码块（避免命中提示词里“输出格式示例”的代码块）。
-  - 按输入 JSONLINE 的行数/序号，返回同等行数的随机文本 JSONLINE（放在 assistant.content 内）。
+  - 按输入 JSONLINE value 形状返回同等行数的 JSONLINE：纯文本输入返回字符串，actor/text 输入返回同形对象。
 - `--task analysis`：
   - 从请求 JSON 的 messages 中取“最后一个 role=user”的 content 文本。
   - 提取 `输入：` / `Input:` 之后的纯文本原文。
@@ -92,6 +92,8 @@ from typing import Any
 
 @dataclass(frozen=True)
 class HttpRequest:
+    """保存一次已解析 HTTP 请求的最小字段。"""
+
     method: str
     target: str
     version: str
@@ -99,8 +101,20 @@ class HttpRequest:
     body: bytes
 
 
+@dataclass(frozen=True)
+class TranslationRequestEntry:
+    """保存翻译 JSONLINE 输入的一条 key/value。"""
+
+    key: str
+    value: Any
+
+
 class HttpError(Exception):
+    """携带 HTTP 状态码和公开错误消息的请求异常。"""
+
     def __init__(self, status: int, message: str) -> None:
+        """保存 HTTP 状态码和错误文本，便于路由层统一写响应。"""
+
         super().__init__(message)
         self.status = status
         self.message = message
@@ -111,6 +125,8 @@ class ClientDisconnected(Exception):
 
 
 def is_client_disconnect_error(exc: BaseException) -> bool:
+    """识别常见客户端断开异常，流式取消时不记录为服务端错误。"""
+
     if isinstance(exc, (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)):
         return True
 
@@ -158,6 +174,8 @@ ANALYSIS_CJK_TERM_PATTERN: re.Pattern[str] = re.compile(
 def build_openai_error(
     message: str, *, error_type: str = "invalid_request_error"
 ) -> dict[str, Any]:
+    """按 OpenAI 兼容错误壳生成响应体。"""
+
     return {
         "error": {
             "message": message,
@@ -169,10 +187,14 @@ def build_openai_error(
 
 
 def normalize_header_name(name: str) -> str:
+    """HTTP header 名称统一转小写，便于后续字典读取。"""
+
     return name.strip().lower()
 
 
 def pick_user_prompt_text(messages: Any) -> str:
+    """从 messages 中取最后一个 user 文本，兼容缺失 role 的旧请求。"""
+
     if not isinstance(messages, list):
         return ""
 
@@ -189,6 +211,8 @@ def pick_user_prompt_text(messages: Any) -> str:
 
 
 def coerce_message_text(content: Any) -> str:
+    """把 OpenAI 字符串或多段 text content 收敛成单个文本。"""
+
     if isinstance(content, str):
         return content
 
@@ -247,8 +271,10 @@ def extract_jsonline_block(text: str) -> str:
     return ""
 
 
-def parse_jsonline_keys(jsonline_payload: str) -> list[str]:
-    keys: list[str] = []
+def parse_jsonline_entries(jsonline_payload: str) -> list[TranslationRequestEntry]:
+    """解析单键 JSONLINE 输入，坏行直接跳过以模拟宽容模型服务。"""
+
+    entries: list[TranslationRequestEntry] = []
     for raw_line in jsonline_payload.splitlines():
         line = raw_line.strip()
         if not line:
@@ -258,9 +284,9 @@ def parse_jsonline_keys(jsonline_payload: str) -> list[str]:
         except Exception:
             continue
         if isinstance(obj, dict) and len(obj) == 1:
-            key = next(iter(obj.keys()))
-            keys.append(str(key))
-    return keys
+            key, value = next(iter(obj.items()))
+            entries.append(TranslationRequestEntry(key=str(key), value=value))
+    return entries
 
 
 def extract_analysis_input_text(text: str) -> str:
@@ -304,6 +330,8 @@ def parse_analysis_input_lines(text: str) -> list[str]:
 def generate_random_text(
     rng: random.Random, *, min_words: int = 4, max_words: int = 10
 ) -> str:
+    """生成稳定词表内的随机译文，供压测时制造非空输出。"""
+
     vocabulary = [
         "amber",
         "atlas",
@@ -389,36 +417,74 @@ def build_analysis_term_target(src_text: str, rng: random.Random) -> str:
     return "译" + src_text + "-" + rng.choice(("A", "B", "C"))
 
 
-def build_jsonline_response(keys: list[str], rng: random.Random) -> str:
+def build_translation_actor_target(actor: Any) -> str | list[str] | None:
+    """按 actor/text 协议生成姓名译文，保留空数组槽位语义。"""
+
+    if isinstance(actor, str):
+        actor = actor.strip()
+        return None if not actor else "译名-" + actor
+    if isinstance(actor, list):
+        names = [
+            "译名-" + item.strip() if item.strip() else ""
+            for item in actor
+            if isinstance(item, str)
+        ]
+        return names if any(names) else None
+    return None
+
+
+def build_translation_response_value(value: Any, rng: random.Random) -> Any:
+    """根据输入 value 形状生成同构翻译响应。"""
+
+    if isinstance(value, dict) and "actor" in value and "text" in value:
+        return {
+            "actor": build_translation_actor_target(value.get("actor")),
+            "text": generate_random_text(rng),
+        }
+    return generate_random_text(rng)
+
+
+def build_jsonline_response(
+    entries: list[TranslationRequestEntry], rng: random.Random
+) -> str:
+    """把翻译条目写成 fenced JSONLINE 响应。"""
+
     lines: list[str] = ["```jsonline"]
-    for key in keys:
-        text = generate_random_text(rng)
-        lines.append(json.dumps({key: text}, ensure_ascii=False, separators=(",", ":")))
+    for entry in entries:
+        value = build_translation_response_value(entry.value, rng)
+        lines.append(
+            json.dumps({entry.key: value}, ensure_ascii=False, separators=(",", ":"))
+        )
     lines.append("```")
     return "\n".join(lines) + "\n"
 
 
-def resolve_translation_response_keys(request_text: str) -> list[str]:
-    """翻译模式统一解析输入 key，避免流式与非流式逻辑各维护一份。"""
+def resolve_translation_response_entries(
+    request_text: str,
+) -> list[TranslationRequestEntry]:
+    """翻译模式统一解析输入 key/value，避免流式与非流式逻辑各维护一份。"""
 
     jsonline_payload = extract_jsonline_block(request_text)
-    keys = parse_jsonline_keys(jsonline_payload)
-    if not keys:
+    entries = parse_jsonline_entries(jsonline_payload)
+    if not entries:
         non_empty_lines = [v for v in jsonline_payload.splitlines() if v.strip()]
         if non_empty_lines:
-            keys = [str(i) for i in range(len(non_empty_lines))]
+            entries = [
+                TranslationRequestEntry(key=str(i), value=line)
+                for i, line in enumerate(non_empty_lines)
+            ]
         else:
             # 兜底：没有解析到输入 JSONLINE 时，仍然返回 1 行，避免调用方卡死
-            keys = ["0"]
+            entries = [TranslationRequestEntry(key="0", value="")]
 
-    return keys
+    return entries
 
 
 def build_translation_response_content(request_text: str, rng: random.Random) -> str:
     """翻译模式继续沿用按输入 key 数量回填随机 JSONLINE 的旧语义。"""
 
-    keys = resolve_translation_response_keys(request_text)
-    return build_jsonline_response(keys, rng)
+    entries = resolve_translation_response_entries(request_text)
+    return build_jsonline_response(entries, rng)
 
 
 def build_translation_stream_chunks(
@@ -428,8 +494,8 @@ def build_translation_stream_chunks(
 ) -> list[str]:
     """流式翻译模式保留原有按 JSONLINE 行分块的行为。"""
 
-    keys = resolve_translation_response_keys(request_text)
-    return build_stream_content_chunks(keys, rng, chunk_lines)
+    entries = resolve_translation_response_entries(request_text)
+    return build_stream_content_chunks(entries, rng, chunk_lines)
 
 
 def build_analysis_response_content(request_text: str, rng: random.Random) -> str:
@@ -463,6 +529,8 @@ def build_analysis_response_content(request_text: str, rng: random.Random) -> st
 
 
 def estimate_tokens(text: str) -> int:
+    """用字符长度粗估 token 数，满足 mock usage 统计即可。"""
+
     # 近似估算：对压测/统计够用；避免引入第三方 tokenizer
     stripped = text.strip()
     if not stripped:
@@ -476,6 +544,8 @@ def build_chat_completion_response(
     content: str,
     request_text: str,
 ) -> dict[str, Any]:
+    """构造非流式 Chat Completions 兼容响应。"""
+
     created = int(time.time())
     completion_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
 
@@ -512,6 +582,8 @@ def build_chat_completion_chunk(
     finish_reason: str | None,
     usage: dict[str, int] | None = None,
 ) -> dict[str, Any]:
+    """构造单个 Chat Completions 流式 chunk。"""
+
     payload: dict[str, Any] = {
         "id": completion_id,
         "object": "chat.completion.chunk",
@@ -531,6 +603,8 @@ def build_chat_completion_chunk(
 
 
 def build_final_usage(*, request_text: str, response_text: str) -> dict[str, int]:
+    """构造 include_usage 需要的最终 token 统计。"""
+
     prompt_tokens = estimate_tokens(request_text)
     completion_tokens = estimate_tokens(response_text)
     return {
@@ -541,6 +615,8 @@ def build_final_usage(*, request_text: str, response_text: str) -> dict[str, int
 
 
 def build_cors_headers() -> dict[str, str]:
+    """返回本地联调允许的 CORS header 集合。"""
+
     return {
         "Access-Control-Allow-Origin": "*",
         "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
@@ -555,6 +631,8 @@ def build_response_headers(
     content_length: int | None,
     connection_close: bool,
 ) -> dict[str, str]:
+    """生成普通 HTTP 响应 header，按需切换 keep-alive。"""
+
     headers: dict[str, str] = {
         "Content-Type": content_type,
         **build_cors_headers(),
@@ -574,6 +652,8 @@ async def write_http_response(
     headers: dict[str, str],
     body: bytes,
 ) -> None:
+    """写出完整 HTTP 响应，并把客户端断开归一为 ClientDisconnected。"""
+
     reason = STATUS_REASON.get(status, "")
     header_lines = [f"HTTP/1.1 {status} {reason}\r\n"]
     for k, v in headers.items():
@@ -591,6 +671,8 @@ async def write_http_response(
 
 
 async def write_chunk(writer: asyncio.StreamWriter, data: bytes) -> None:
+    """写出一个 chunked transfer 数据块。"""
+
     size_line = f"{len(data):X}\r\n".encode("ascii")
     try:
         writer.write(size_line)
@@ -610,6 +692,8 @@ async def write_chunked_sse(
     delays_s: list[float],
     headers: dict[str, str],
 ) -> None:
+    """按预设延迟写出 chunked SSE 消息序列。"""
+
     reason = STATUS_REASON.get(200, "")
     header_lines = [f"HTTP/1.1 200 {reason}\r\n"]
     for k, v in headers.items():
@@ -640,6 +724,8 @@ async def write_chunked_sse(
 def split_total_delay(
     total_delay_s: float, parts: int, rng: random.Random
 ) -> list[float]:
+    """把请求总抖动拆到多个 SSE 消息上。"""
+
     if parts <= 0:
         return []
     if total_delay_s <= 0:
@@ -652,6 +738,8 @@ def split_total_delay(
 
 
 def group_lines_for_streaming(lines: list[str], chunk_lines: int) -> list[str]:
+    """按行数把 JSONLINE 响应切成流式内容块。"""
+
     if chunk_lines <= 0:
         chunk_lines = 1
 
@@ -665,13 +753,17 @@ def group_lines_for_streaming(lines: list[str], chunk_lines: int) -> list[str]:
 
 
 def build_stream_content_chunks(
-    keys: list[str], rng: random.Random, chunk_lines: int
+    entries: list[TranslationRequestEntry], rng: random.Random, chunk_lines: int
 ) -> list[str]:
+    """生成翻译流式响应的 fenced JSONLINE 内容块。"""
+
     json_lines = [
         json.dumps(
-            {key: generate_random_text(rng)}, ensure_ascii=False, separators=(",", ":")
+            {entry.key: build_translation_response_value(entry.value, rng)},
+            ensure_ascii=False,
+            separators=(",", ":"),
         )
-        for key in keys
+        for entry in entries
     ]
 
     chunks = ["```jsonline\n"]
@@ -789,6 +881,8 @@ async def handle_chat_completions(
     seed: int | None,
     task: str,
 ) -> None:
+    """处理 Chat Completions 请求并按任务模式生成 mock 响应。"""
+
     if request.method != "POST":
         raise HttpError(405, "Only POST is supported")
 
@@ -884,6 +978,8 @@ async def handle_chat_completions(
 
 
 async def handle_models(request: HttpRequest, writer: asyncio.StreamWriter) -> None:
+    """返回固定 mock 模型列表。"""
+
     if request.method != "GET":
         raise HttpError(405, "Only GET is supported")
 
@@ -908,6 +1004,8 @@ async def handle_models(request: HttpRequest, writer: asyncio.StreamWriter) -> N
 
 
 async def handle_health(request: HttpRequest, writer: asyncio.StreamWriter) -> None:
+    """返回简单健康检查文本。"""
+
     if request.method != "GET":
         raise HttpError(405, "Only GET is supported")
 
@@ -921,6 +1019,8 @@ async def handle_health(request: HttpRequest, writer: asyncio.StreamWriter) -> N
 
 
 async def handle_options(writer: asyncio.StreamWriter) -> None:
+    """处理浏览器预检请求。"""
+
     headers = {
         **build_cors_headers(),
         "Content-Length": "0",
@@ -935,6 +1035,8 @@ async def read_request_head(
     read_timeout_s: float,
     max_header_bytes: int,
 ) -> tuple[str, str, str, dict[str, str]] | None:
+    """读取请求行和 header，并执行大小与超时保护。"""
+
     try:
         request_line_bytes = await asyncio.wait_for(
             reader.readline(), timeout=read_timeout_s
@@ -986,6 +1088,8 @@ async def read_http_request(
     max_header_bytes: int,
     max_body_bytes: int,
 ) -> HttpRequest | None:
+    """读取完整 HTTP 请求体，拒绝 chunked request body。"""
+
     head = await read_request_head(
         reader,
         read_timeout_s=read_timeout_s,
@@ -1035,6 +1139,8 @@ async def read_http_request(
 
 
 def get_path_only(target: str) -> str:
+    """剥离 query string 后返回路由 path。"""
+
     if "?" in target:
         return target.split("?", 1)[0]
     return target
@@ -1053,6 +1159,8 @@ async def handle_connection(
     seed: int | None,
     task: str,
 ) -> None:
+    """处理单个 TCP 连接的读取、路由和收尾。"""
+
     peer = writer.get_extra_info("peername")
 
     try:
@@ -1141,6 +1249,8 @@ async def handle_connection(
 
 
 def parse_args() -> argparse.Namespace:
+    """解析命令行参数并提供本地联调默认值。"""
+
     parser = argparse.ArgumentParser(
         description="Mock OpenAI Chat Completions LLM API server (streaming + non-streaming)"
     )
@@ -1179,6 +1289,8 @@ def parse_args() -> argparse.Namespace:
 
 
 async def run_server(args: argparse.Namespace) -> None:
+    """启动 asyncio TCP server 并保持服务运行。"""
+
     logging.basicConfig(
         level=getattr(logging, args.log_level),
         format="[%(asctime)s] %(levelname)s %(message)s",
@@ -1217,6 +1329,8 @@ async def run_server(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    """脚本入口，解析参数后启动异步服务。"""
+
     args = parse_args()
     asyncio.run(run_server(args))
 

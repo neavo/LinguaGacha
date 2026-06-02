@@ -42,15 +42,15 @@ export const ITEM_TEXT_TYPES = ["NONE", "MD", "KAG", "WOLF", "RENPY", "RPGMAKER"
 export type ItemStatus = (typeof ITEM_STATUSES)[number];
 export type ItemFileType = (typeof ITEM_FILE_TYPES)[number];
 export type ItemTextType = (typeof ITEM_TEXT_TYPES)[number];
-export type ItemName = string | string[] | null;
+export type ItemNameField = string | string[] | null;
 
 // renderer 与公开 API 共享的完整 item DTO，字段名避开数据库内部 id/row
 export type ProjectItemPublicRecord = {
   item_id: number; // 公开 item 主键
   src: string; // 原文
   dst: string; // 译文
-  name_src: ItemName; // 角色姓名原文
-  name_dst: ItemName; // 角色姓名译文
+  name_src: ItemNameField; // 角色姓名原文
+  name_dst: ItemNameField; // 角色姓名译文
   extra_field: JsonValue; // 格式私有扩展字段
   tag: string; // 标签
   row_number: number; // 公开行号
@@ -67,8 +67,8 @@ export type ProjectItemPersistentRecord = JsonRecord & {
   id: number; // 数据库 item 主键
   src: string; // 原文
   dst: string; // 译文
-  name_src: ItemName; // 角色姓名原文
-  name_dst: ItemName; // 角色姓名译文
+  name_src: ItemNameField; // 角色姓名原文
+  name_dst: ItemNameField; // 角色姓名译文
   extra_field: JsonValue; // 格式私有扩展字段
   tag: string; // 标签
   row: number; // 数据库行号
@@ -122,8 +122,8 @@ export class Item {
   public id?: number; // 数据库主键（自增）；跨层 JSON 中允许缺失
   public src = ""; // 原文
   public dst = ""; // 译文；为空时导出逻辑回退原文
-  public name_src: ItemName = null; // 角色姓名原文
-  public name_dst: ItemName = null; // 角色姓名译文
+  public name_src: ItemNameField = null; // 角色姓名原文
+  public name_dst: ItemNameField = null; // 角色姓名译文
   public extra_field: JsonValue = ""; // 额外字段原文；兼容格式私有 JSON
   public tag = ""; // 标签
   public row = 0; // 行号
@@ -154,8 +154,8 @@ export class Item {
     item.id = record["id"] === undefined ? undefined : normalize_item_number(record["id"], 0);
     item.src = src;
     item.dst = String(record["dst"] ?? "");
-    item.name_src = Item.normalize_name(record["name_src"]);
-    item.name_dst = Item.normalize_name(record["name_dst"]);
+    item.name_src = Item.normalize_name_field(record["name_src"]);
+    item.name_dst = Item.normalize_name_field(record["name_dst"]);
     item.extra_field = (record["extra_field"] ?? "") as JsonValue;
     item.tag = String(record["tag"] ?? "");
     item.row = normalize_item_number(record["row"] ?? record["row_number"], 0);
@@ -175,8 +175,8 @@ export class Item {
     const payload: JsonRecord = {
       src: this.src,
       dst: this.dst,
-      name_src: Item.normalize_name(this.name_src) as JsonValue,
-      name_dst: Item.normalize_name(this.name_dst) as JsonValue,
+      name_src: Item.normalize_name_field(this.name_src) as JsonValue,
+      name_dst: Item.normalize_name_field(this.name_dst) as JsonValue,
       extra_field: this.extra_field,
       tag: this.tag,
       row: this.row,
@@ -201,8 +201,8 @@ export class Item {
       item_id: this.id ?? 0,
       src: this.src,
       dst: this.dst,
-      name_src: Item.normalize_name(this.name_src),
-      name_dst: Item.normalize_name(this.name_dst),
+      name_src: Item.normalize_name_field(this.name_src),
+      name_dst: Item.normalize_name_field(this.name_dst),
       extra_field: this.extra_field,
       tag: this.tag,
       row_number: this.row,
@@ -220,31 +220,6 @@ export class Item {
    */
   public effective_dst(): string {
     return this.dst !== "" ? this.dst : this.src;
-  }
-
-  /**
-   * 读取首个原文姓名，单列和多列姓名共享同一口径
-   */
-  public first_name_src(): string {
-    return Item.first_name(this.name_src);
-  }
-
-  /**
-   * 读取首个译文姓名，导出姓名字段时避免调用点判断数组形状
-   */
-  public first_name_dst(): string {
-    return Item.first_name(this.name_dst);
-  }
-
-  /**
-   * 复制 item 并替换首个译文姓名，保持多列姓名数组结构
-   */
-  public with_first_name_dst(name_dst: string): Item {
-    const next = this.to_json();
-    next["name_dst"] = Array.isArray(this.name_dst)
-      ? [name_dst, ...this.name_dst.slice(1)]
-      : name_dst;
-    return Item.from_json(next);
   }
 
   /**
@@ -271,7 +246,7 @@ export class Item {
   /**
    * 名称字段兼容字符串和多列名称数组，非法项在边界处剔除
    */
-  public static normalize_name(value: unknown): ItemName {
+  public static normalize_name_field(value: unknown): ItemNameField {
     if (value === undefined || value === null) {
       return null;
     }
@@ -295,16 +270,6 @@ export class Item {
       return "RENPY";
     }
     return "NONE";
-  }
-
-  /**
-   * 承接当前模块的核心控制分支。
-   */
-  private static first_name(value: ItemName): string {
-    if (Array.isArray(value)) {
-      return value[0] ?? "";
-    }
-    return value ?? "";
   }
 }
 

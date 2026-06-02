@@ -6,6 +6,10 @@ import type { ApiJsonValue } from "../api/api-types";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { JsonTool } from "../../shared/utils/json-tool";
+import {
+  fill_translation_output_format_placeholder,
+  type TranslationPromptLanguage,
+} from "../../shared/text/translation-output-format";
 import { ProjectWriteStore } from "../project/project-write-store";
 import { ProjectSessionState } from "../project/project-session";
 import type { ProjectWriteResult } from "../../shared/project-event";
@@ -20,6 +24,9 @@ import {
   load_quality_rule_entries_from_file,
 } from "./quality-rule-file-io";
 
+/**
+ * 质量服务公开协议使用的 JSON 对象窄类型。
+ */
 type JsonRecord = Record<string, ApiJsonValue>;
 
 /**
@@ -243,15 +250,26 @@ export class QualityService {
     const task_type = Prompt.from_json(request["task_type"]).kind;
     const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
     const language = config.app_language.toLowerCase();
-    const template_dir = this.paths.get_prompt_template_dir(
-      task_type,
-      language === "en" ? "en" : "zh",
-    );
+    const prompt_language: TranslationPromptLanguage = language === "en" ? "en" : "zh";
+    const template_dir = this.paths.get_prompt_template_dir(task_type, prompt_language);
+    const fill_template_section = (text: string): string => {
+      if (task_type !== "translation") {
+        return text;
+      }
+      // 页面模板没有当前 work unit 行信息，展示纯文本基线；运行时仍按请求行切换 actor_text。
+      return fill_translation_output_format_placeholder(text, "text", prompt_language);
+    };
     return {
       template: {
-        default_text: this.read_text_file(path.join(template_dir, "base.txt")),
-        prefix_text: this.read_text_file(path.join(template_dir, "prefix.txt")),
-        suffix_text: this.read_text_file(path.join(template_dir, "suffix.txt")),
+        default_text: fill_template_section(
+          this.read_text_file(path.join(template_dir, "base.txt")),
+        ),
+        prefix_text: fill_template_section(
+          this.read_text_file(path.join(template_dir, "prefix.txt")),
+        ),
+        suffix_text: fill_template_section(
+          this.read_text_file(path.join(template_dir, "suffix.txt")),
+        ),
       },
     };
   }

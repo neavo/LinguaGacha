@@ -3,6 +3,7 @@ import { ApiStreamHub } from "../api/api-stream-hub";
 import { ProjectDatabase } from "../database/database-operations";
 import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import {
+  Item,
   is_item_status,
   normalize_project_item_public_record,
   type ProjectItemPublicRecord,
@@ -732,6 +733,9 @@ export class ProjectChangeEventAdapter {
     const patch: ProjectChangeItemFieldPatch = {};
     if (typeof record["dst"] === "string") {
       patch.dst = record["dst"];
+    }
+    if (Object.prototype.hasOwnProperty.call(record, "name_dst")) {
+      patch.name_dst = Item.normalize_name_field(record["name_dst"]);
     }
     if (is_item_status(record["status"])) {
       patch.status = record["status"];

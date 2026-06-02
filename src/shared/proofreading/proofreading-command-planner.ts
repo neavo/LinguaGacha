@@ -1,4 +1,7 @@
+import type { ItemNameField } from "../../domain/item";
 import type { ProjectDataSectionRevisions } from "../project-event";
+import { read_item_name_text } from "../item-name";
+import { has_item_translation_text, read_translation_name_text } from "../item-text";
 import { compile_text_pattern, replace_text_pattern } from "../text/text-pattern";
 
 export type ProofreadingManualStatusCode = "NONE" | "PROCESSED" | "EXCLUDED";
@@ -7,6 +10,8 @@ export type ProofreadingManualStatusCode = "NONE" | "PROCESSED" | "EXCLUDED";
 export type ProofreadingCommandItemSnapshot = {
   item_id: number | string;
   dst: string;
+  name_src?: ItemNameField;
+  name_dst?: ItemNameField;
   status: string;
   retry_count: number;
 };
@@ -21,6 +26,7 @@ export type ProofreadingCommandPlan = {
   request_body: {
     item_id?: number; // 单条保存目标 item
     dst?: string; // 单条保存目标译文
+    name_dst?: string; // 单条保存目标姓名译文
     item_ids?: number[]; // 批量替换、清空译文或设置状态的目标 item 集合
     status?: ProofreadingManualStatusCode; // 批量设置的人工翻译状态
     search_text?: string; // 批量替换搜索文本，真实替换由后端执行
@@ -84,32 +90,70 @@ function replace_all_in_text(args: {
   });
 }
 
-// 单条保存只提交 item_id 和 dst，status 与进度统计由后端计算。
+function has_replace_all_change(args: {
+  item: ProofreadingCommandItemSnapshot;
+  search_text: string;
+  replace_text: string;
+  is_regex: boolean;
+}): boolean {
+  const dst_replace_result = replace_all_in_text({
+    text: args.item.dst,
+    search_text: args.search_text,
+    replace_text: args.replace_text,
+    is_regex: args.is_regex,
+  });
+  if (dst_replace_result.count > 0 && dst_replace_result.text !== args.item.dst) {
+    return true;
+  }
+
+  const name_dst = read_translation_name_text(args.item.name_dst);
+  const name_replace_result = replace_all_in_text({
+    text: name_dst,
+    search_text: args.search_text,
+    replace_text: args.replace_text,
+    is_regex: args.is_regex,
+  });
+  return name_replace_result.count > 0 && name_replace_result.text !== name_dst;
+}
+
+// 单条保存只提交变化的用户意图，status 与进度统计由后端计算。
 export function create_save_item_plan(args: {
   snapshot: ProofreadingCommandSnapshot;
-  task_snapshot?: Record<string, unknown>;
   item_id: number;
   next_dst: string;
+  next_name_dst?: string;
 }): ProofreadingCommandPlan | null {
   const current_item = read_store_item(args.snapshot, args.item_id);
-  if (current_item === undefined || current_item.dst === args.next_dst) {
+  if (current_item === undefined) {
+    return null;
+  }
+
+  const request_body: ProofreadingCommandPlan["request_body"] = {
+    item_id: args.item_id,
+    expected_section_revisions: build_expected_revisions(args.snapshot.section_revisions),
+  };
+  if (current_item.dst !== args.next_dst) {
+    request_body.dst = args.next_dst;
+  }
+  if (args.next_name_dst !== undefined) {
+    if (read_item_name_text(current_item.name_dst) !== args.next_name_dst) {
+      request_body.name_dst = args.next_name_dst;
+    }
+  }
+
+  if (request_body.dst === undefined && request_body.name_dst === undefined) {
     return null;
   }
 
   return {
     changed_item_ids: [args.item_id],
-    request_body: {
-      item_id: args.item_id,
-      dst: args.next_dst,
-      expected_section_revisions: build_expected_revisions(args.snapshot.section_revisions),
-    },
+    request_body,
   };
 }
 
 // 批量替换只提交搜索命令，前端不提交替换后的最终 item 事实。
 export function create_replace_all_plan(args: {
   snapshot: ProofreadingCommandSnapshot;
-  task_snapshot?: Record<string, unknown>;
   item_ids: number[];
   search_text: string;
   replace_text: string;
@@ -122,13 +166,14 @@ export function create_replace_all_plan(args: {
     if (current_item === undefined) {
       continue;
     }
-    const replace_result = replace_all_in_text({
-      text: current_item.dst,
-      search_text: args.search_text,
-      replace_text: args.replace_text,
-      is_regex: args.is_regex,
-    });
-    if (replace_result.count > 0 && replace_result.text !== current_item.dst) {
+    if (
+      has_replace_all_change({
+        item: current_item,
+        search_text: args.search_text,
+        replace_text: args.replace_text,
+        is_regex: args.is_regex,
+      })
+    ) {
       changed_item_ids.push(item_id);
     }
   }
@@ -152,7 +197,6 @@ export function create_replace_all_plan(args: {
 // 批量清空译文只提交目标 id，后端保留状态和重试计数。
 export function create_clear_translations_plan(args: {
   snapshot: ProofreadingCommandSnapshot;
-  task_snapshot?: Record<string, unknown>;
   item_ids: number[];
 }): ProofreadingCommandPlan | null {
   const changed_item_ids: number[] = [];
@@ -162,7 +206,7 @@ export function create_clear_translations_plan(args: {
     if (current_item === undefined) {
       continue;
     }
-    if (current_item.dst === "") {
+    if (!has_item_translation_text(current_item)) {
       continue;
     }
     changed_item_ids.push(item_id);
@@ -184,7 +228,6 @@ export function create_clear_translations_plan(args: {
 // 批量设置状态提交目标状态；同状态但仍有 retry_count 时也需要提交清理。
 export function create_set_translation_status_plan(args: {
   snapshot: ProofreadingCommandSnapshot;
-  task_snapshot?: Record<string, unknown>;
   item_ids: number[];
   status: ProofreadingManualStatusCode;
 }): ProofreadingCommandPlan | null {

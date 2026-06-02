@@ -1,6 +1,5 @@
 import { parentPort, workerData } from "node:worker_threads";
 
-import type { ApiJsonValue } from "../../api/api-types";
 import {
   install_system_proxy_dispatcher_from_snapshot,
   type SystemProxySnapshot,
@@ -16,13 +15,6 @@ interface WorkUnitExecuteMessage {
   unit: WorkUnit;
 }
 
-// translate_single 是工具调用，不进入后台任务运行态
-interface WorkUnitTranslateSingleMessage {
-  id: string;
-  type: "translate_single";
-  body: Record<string, ApiJsonValue>;
-}
-
 // cancel 消息只携带任务 id，实际中断通过对应 AbortController 传递
 interface WorkUnitCancelMessage {
   id: string;
@@ -30,10 +22,7 @@ interface WorkUnitCancelMessage {
 }
 
 // work unit worker 入口只理解 run/cancel 两种协议，避免任务语义渗进消息层
-type WorkUnitWorkerIncomingMessage =
-  | WorkUnitExecuteMessage
-  | WorkUnitTranslateSingleMessage
-  | WorkUnitCancelMessage;
+type WorkUnitWorkerIncomingMessage = WorkUnitExecuteMessage | WorkUnitCancelMessage;
 
 interface WorkUnitWorkerData extends WorkUnitRunnerOptions {
   systemProxySnapshot?: SystemProxySnapshot | null; // 主线程启动期快照，worker 不重新访问 Electron
@@ -67,16 +56,11 @@ class WorkUnitWorkerEntry {
   /**
    * 每条消息独立 AbortController，迟到结果由 TaskEngine 的 run_id 再隔离
    */
-  private async run_message(
-    message: WorkUnitExecuteMessage | WorkUnitTranslateSingleMessage,
-  ): Promise<void> {
+  private async run_message(message: WorkUnitExecuteMessage): Promise<void> {
     const controller = new AbortController();
     this.controllers.set(message.id, controller);
     try {
-      const data =
-        message.type === "translate_single"
-          ? await this.runner.translate_single(message.body, controller.signal)
-          : await this.runner.run(message.unit, controller.signal);
+      const data = await this.runner.run(message.unit, controller.signal);
       parentPort?.postMessage({ id: message.id, ok: true, data });
     } catch (error) {
       parentPort?.postMessage({

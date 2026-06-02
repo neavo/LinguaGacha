@@ -253,7 +253,7 @@ export class TaskLimiter {
 }
 
 /**
- * LimiterPool 按模型资源键复用 TaskLimiter，让后台任务和单条翻译共享同一外部请求节奏
+ * LimiterPool 按模型资源键复用 TaskLimiter，让后台任务共享同一外部请求节奏
  */
 export class LimiterPool {
   private shared_limiter: { key: string; limiter: TaskLimiter } | null = null; // 当前模型资源池的唯一缓存

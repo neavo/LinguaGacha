@@ -9,12 +9,11 @@ import {
 } from "@frontend/app/state/desktop-event-payload";
 import {
   normalizeProjectChangePayloadMode,
-  type ProjectChangeItemFieldPatch,
   type ProjectChangeItemsPayload,
   type ProjectChangeJsonRecord,
   type ProjectChangePayloadMode,
 } from "@shared/project-event";
-import { is_item_status } from "@domain/item";
+import { normalize_project_item_field_patch } from "@shared/project/project-item-field-patch";
 
 /**
  * 后端 SSE 与同步写入共享的项目变更载荷，入口处必须立即转成运行态事件。
@@ -117,8 +116,8 @@ function normalize_project_change_items(value: unknown): ProjectChangeItemsPaylo
   const delete_ids = normalize_number_array(value.deleteIds);
 
   if (payload_mode === "field-patch") {
-    const field_patch = normalize_project_change_item_field_patch(value.fieldPatch);
-    if (field_patch === undefined) {
+    const field_patch = normalize_project_item_field_patch(value.fieldPatch);
+    if (field_patch === null) {
       return {
         payloadMode: "section-invalidated",
         changedIds: changed_ids,
@@ -182,29 +181,6 @@ function normalize_string_array(value: unknown): string[] {
     return [];
   }
   return [...new Set(value.map((item) => String(item ?? "").trim()).filter((item) => item !== ""))];
-}
-
-/**
- * 字段 patch 只保留后端允许的校对字段，status 必须落在 item 状态唯一词表内。
- */
-function normalize_project_change_item_field_patch(
-  value: unknown,
-): ProjectChangeItemFieldPatch | undefined {
-  if (!is_record(value)) {
-    return undefined;
-  }
-  const patch: ProjectChangeItemFieldPatch = {};
-  if (typeof value.dst === "string") {
-    patch.dst = value.dst;
-  }
-  if (is_item_status(value.status)) {
-    patch.status = value.status;
-  }
-  const retry_count = Number(value.retry_count);
-  if (Number.isFinite(retry_count)) {
-    patch.retry_count = Math.trunc(retry_count);
-  }
-  return Object.keys(patch).length === 0 ? undefined : patch;
 }
 
 /**

@@ -8,7 +8,6 @@ import type { ApiJsonValue } from "../../api/api-types";
 import type { LLMRequestBody, LLMClientPort, LLMRequestResult } from "../../llm/llm-types";
 import { AnalysisWorkUnitRunner } from "./runners/analysis-runner";
 import { TranslationWorkUnitRunner } from "./runners/translation-runner";
-import { WorkUnitRunner } from "./work-unit-runner";
 
 describe("work-unit runner", () => {
   afterEach(() => {
@@ -53,7 +52,113 @@ describe("work-unit runner", () => {
       throw new Error("期望翻译输出");
     }
     expect(result.output.row_count).toBe(1);
+    expect(result.output.items).toEqual([
+      { id: 1, src: "こんにちは", dst: "你好", status: "PROCESSED", text_type: "TXT" },
+    ]);
     expect(captured_requests[0]?.messages[1]?.content).toContain("こんにちは");
+  });
+
+  it("含姓名请求写回正文译文和姓名译文", async () => {
+    const app_root = await create_template_root();
+    const captured_requests: LLMRequestBody[] = [];
+    const runner = new TranslationWorkUnitRunner(
+      app_root,
+      create_llm_client(captured_requests, {
+        response_result:
+          '{"0":{"actor":"虎铁","text":"你好"}}\n{"1":{"actor":null,"text":"旁白译文"}}',
+        input_tokens: 4,
+        output_tokens: 5,
+      }),
+    );
+
+    const result = await runner.execute_unit(
+      {
+        run_id: "run-1",
+        unit_id: "unit-1",
+        kind: "translation",
+        model: { api_format: "OpenAI" },
+        config_snapshot: create_config_payload(),
+        quality_snapshot: create_quality_payload(),
+        payload: {
+          items: [
+            {
+              id: 1,
+              src: "こんにちは",
+              name_src: "虎鉄",
+              dst: "",
+              status: "NONE",
+              text_type: "TXT",
+            },
+            {
+              id: 2,
+              src: "地の文",
+              name_src: null,
+              name_dst: "既有译名",
+              dst: "",
+              status: "NONE",
+              text_type: "TXT",
+            },
+            {
+              id: 3,
+              src: "   ",
+              name_src: null,
+              name_dst: "保留译名",
+              dst: "",
+              status: "NONE",
+              text_type: "TXT",
+            },
+          ],
+          precedings: [],
+        },
+        diagnostics: {
+          token_threshold: 512,
+          split_count: 0,
+          retry_count: 0,
+          is_initial: true,
+        },
+      },
+      new AbortController().signal,
+    );
+
+    if (result.output.kind !== "translation") {
+      throw new Error("期望翻译输出");
+    }
+    expect(result.output.row_count).toBe(3);
+    expect(result.output.items).toEqual([
+      {
+        id: 1,
+        src: "こんにちは",
+        name_src: "虎鉄",
+        name_dst: "虎铁",
+        dst: "你好",
+        status: "PROCESSED",
+        text_type: "TXT",
+      },
+      {
+        id: 2,
+        src: "地の文",
+        name_src: null,
+        name_dst: "既有译名",
+        dst: "旁白译文",
+        status: "PROCESSED",
+        text_type: "TXT",
+      },
+      {
+        id: 3,
+        src: "   ",
+        name_src: null,
+        name_dst: "保留译名",
+        dst: "   ",
+        status: "PROCESSED",
+        text_type: "TXT",
+      },
+    ]);
+    expect(captured_requests[0]?.messages[1]?.content).toContain(
+      '{"0":{"actor":"虎鉄","text":"こんにちは"}}',
+    );
+    expect(captured_requests[0]?.messages[1]?.content).toContain(
+      '{"1":{"actor":null,"text":"地の文"}}',
+    );
   });
 
   it("翻译日志的请求用时覆盖 LLM 等待时间", async () => {
@@ -198,9 +303,10 @@ describe("work-unit runner", () => {
 
   it("分析 runner 归一模型术语候选", async () => {
     const app_root = await create_template_root();
+    const captured_requests: LLMRequestBody[] = [];
     const runner = new AnalysisWorkUnitRunner(
       app_root,
-      create_llm_client([], {
+      create_llm_client(captured_requests, {
         response_result: '{"src":"Alice","dst":"爱丽丝","type":"女性人名"}',
         input_tokens: 2,
         output_tokens: 3,
@@ -221,8 +327,7 @@ describe("work-unit runner", () => {
             {
               item_id: 1,
               file_path: "demo.txt",
-              src_text: "Alice",
-              first_name_src: null,
+              src_text: "【虎鉄】Alice",
             },
           ],
         },
@@ -251,6 +356,7 @@ describe("work-unit runner", () => {
         case_sensitive: false,
       },
     ]);
+    expect(captured_requests[0]?.messages[1]?.content).toContain("【虎鉄】Alice");
   });
 
   it("分析日志按思考过程、规则分析、分析输入和分析结果分段", async () => {
@@ -279,7 +385,6 @@ describe("work-unit runner", () => {
               item_id: 1,
               file_path: "demo.txt",
               src_text: "Alice",
-              first_name_src: null,
             },
           ],
         },
@@ -299,27 +404,6 @@ describe("work-unit runner", () => {
     expect(message).toContain("分析输入：\nSRC: Alice");
     expect(message).toContain("分析结果：\nTERM: Alice -> 爱丽丝 #女性人名");
     expect(message).not.toContain("模型回复内容");
-  });
-
-  it("统一分发器执行单条翻译工具调用", async () => {
-    const runner = new WorkUnitRunner({
-      appRoot: await create_template_root(),
-    });
-
-    await expect(
-      runner.translate_single(
-        {
-          run_id: "run-1",
-          work_unit_id: "single",
-          task_type: "translate-single",
-          model: {},
-          config_snapshot: create_config_payload(),
-          quality_snapshot: create_quality_payload(),
-          text: "",
-        },
-        new AbortController().signal,
-      ),
-    ).rejects.toThrow("request.validation_failed");
   });
 });
 
@@ -407,5 +491,9 @@ async function write_template(
   await writeFile(path.join(dir, "prefix.txt"), "前缀", "utf-8");
   await writeFile(path.join(dir, "base.txt"), "从 {source_language} 到 {target_language}", "utf-8");
   await writeFile(path.join(dir, "thinking.txt"), "", "utf-8");
-  await writeFile(path.join(dir, "suffix.txt"), "输出 JSONLINE", "utf-8");
+  const suffix =
+    task_dir_name === "translation_prompt"
+      ? "输出 JSONLINE\n{translation_output_format}"
+      : "输出 JSONLINE";
+  await writeFile(path.join(dir, "suffix.txt"), suffix, "utf-8");
 }

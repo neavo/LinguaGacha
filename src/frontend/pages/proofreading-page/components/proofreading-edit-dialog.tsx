@@ -2,10 +2,8 @@ import { Eraser, ListChecks, RefreshCcw } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
-import {
-  ProofreadingCodeEditor,
-  type ProofreadingCodeEditorHighlight,
-} from "@frontend/pages/proofreading-page/components/proofreading-code-editor";
+import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
+import type { AppTextMark } from "@frontend/widgets/app-editor/app-editor-code-mirror";
 import {
   format_proofreading_glossary_term,
   PROOFREADING_MANUAL_STATUS_CODES,
@@ -14,12 +12,13 @@ import {
   type ProofreadingGlossaryTerm,
   type ProofreadingItem,
   type ProofreadingManualStatusCode,
-} from "@frontend/pages/proofreading-page/types";
+} from "@shared/proofreading/proofreading-types";
 import { Badge } from "@frontend/shadcn/badge";
 import { AppButton } from "@frontend/widgets/app-button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
+import { read_optional_item_name_text, read_item_name_text } from "@shared/item-name";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,
@@ -31,10 +30,13 @@ import {
 type ProofreadingEditDialogProps = {
   open: boolean;
   item: ProofreadingItem | null;
-  draft_dst: string;
+  draft_item: {
+    dst: string;
+    name_dst: string;
+  };
   saving: boolean;
   readonly: boolean;
-  on_change: (next_draft_dst: string) => void;
+  on_change: (patch: Partial<ProofreadingEditDialogProps["draft_item"]>) => void;
   on_save: () => Promise<void>;
   on_close: () => void;
   on_request_retranslate: (row_ids: string[]) => void;
@@ -46,6 +48,12 @@ type ProofreadingEditDialogProps = {
 };
 
 type ProofreadingBadgeTone = "neutral" | "success" | "warning" | "failure";
+
+type ProofreadingNameGlossaryState = {
+  tone: "neutral" | "success" | "warning";
+  applied_terms: ProofreadingGlossaryTerm[];
+  failed_terms: ProofreadingGlossaryTerm[];
+};
 
 /**
  * 解析当前场景的最终消费值。
@@ -223,8 +231,14 @@ function dedupe_glossary_terms(terms: ProofreadingGlossaryTerm[]): ProofreadingG
 /**
  * 判断当前值是否满足业务条件。
  */
-function is_glossary_term_applied(term: ProofreadingGlossaryTerm, draft_dst: string): boolean {
-  return term[1].trim().length > 0 && draft_dst.includes(term[1]);
+function is_glossary_term_applied(
+  term: ProofreadingGlossaryTerm,
+  draft_item: ProofreadingEditDialogProps["draft_item"],
+): boolean {
+  return (
+    term[1].trim().length > 0 &&
+    (draft_item.dst.includes(term[1]) || draft_item.name_dst.includes(term[1]))
+  );
 }
 
 /**
@@ -232,18 +246,18 @@ function is_glossary_term_applied(term: ProofreadingGlossaryTerm, draft_dst: str
  */
 function partition_glossary_terms(
   item: ProofreadingItem,
-  draft_dst: string,
+  draft_item: ProofreadingEditDialogProps["draft_item"],
 ): {
   applied_terms: ProofreadingGlossaryTerm[];
   failed_terms: ProofreadingGlossaryTerm[];
 } {
-  // 为什么：弹窗里展示的是“当前草稿”的真实状态，术语胶囊和下划线都要跟着 draft_dst 实时刷新
+  // 为什么：弹窗里展示的是“当前草稿”的真实状态，术语胶囊和下划线都要跟着草稿实时刷新
   const all_terms = dedupe_glossary_terms([
     ...item.applied_glossary_terms,
     ...item.failed_glossary_terms,
   ]);
-  const applied_terms = all_terms.filter((term) => is_glossary_term_applied(term, draft_dst));
-  const failed_terms = all_terms.filter((term) => !is_glossary_term_applied(term, draft_dst));
+  const applied_terms = all_terms.filter((term) => is_glossary_term_applied(term, draft_item));
+  const failed_terms = all_terms.filter((term) => !is_glossary_term_applied(term, draft_item));
 
   return {
     applied_terms,
@@ -264,7 +278,7 @@ function normalize_code_editor_match_text(text: string): string {
 export function find_text_match_ranges(
   text: string,
   fragment: string,
-): Array<Pick<ProofreadingCodeEditorHighlight, "start" | "end">> {
+): Array<Pick<AppTextMark, "start" | "end">> {
   const editor_text = normalize_code_editor_match_text(text);
   const editor_fragment = normalize_code_editor_match_text(fragment);
 
@@ -272,7 +286,7 @@ export function find_text_match_ranges(
     return [];
   }
 
-  const ranges: Array<Pick<ProofreadingCodeEditorHighlight, "start" | "end">> = [];
+  const ranges: Array<Pick<AppTextMark, "start" | "end">> = [];
   let search_start = 0;
 
   while (search_start < editor_text.length) {
@@ -297,26 +311,26 @@ export function find_text_match_ranges(
  */
 function build_glossary_highlights(
   item: ProofreadingItem,
-  draft_dst: string,
+  draft_item: ProofreadingEditDialogProps["draft_item"],
   t: ReturnType<typeof useI18n>["t"],
 ): {
-  source_highlights: ProofreadingCodeEditorHighlight[];
-  translation_highlights: ProofreadingCodeEditorHighlight[];
+  source_marks: AppTextMark[];
+  translation_marks: AppTextMark[];
 } {
-  const { applied_terms, failed_terms } = partition_glossary_terms(item, draft_dst); // 为什么：命中的术语要同时标亮原文和译文，未命中的术语只在原文保留警告提示，方便人工补齐
-  const source_highlights: ProofreadingCodeEditorHighlight[] = [];
-  const translation_highlights: ProofreadingCodeEditorHighlight[] = [];
+  const { applied_terms, failed_terms } = partition_glossary_terms(item, draft_item); // 为什么：命中的术语要同时标亮原文和译文，未命中的术语只在原文保留警告提示，方便人工补齐
+  const source_marks: AppTextMark[] = [];
+  const translation_marks: AppTextMark[] = [];
 
   applied_terms.forEach((term) => {
     find_text_match_ranges(item.src, term[0]).forEach((range) => {
-      source_highlights.push({
+      source_marks.push({
         ...range,
         tone: "success",
         tooltip: `${t("proofreading_page.glossary.tooltip_applied")}\n${term[0]} -> ${term[1]}`,
       });
     });
-    find_text_match_ranges(draft_dst, term[1]).forEach((range) => {
-      translation_highlights.push({
+    find_text_match_ranges(draft_item.dst, term[1]).forEach((range) => {
+      translation_marks.push({
         ...range,
         tone: "success",
         tooltip: `${t("proofreading_page.glossary.tooltip_applied")}\n${term[0]} -> ${term[1]}`,
@@ -326,7 +340,7 @@ function build_glossary_highlights(
 
   failed_terms.forEach((term) => {
     find_text_match_ranges(item.src, term[0]).forEach((range) => {
-      source_highlights.push({
+      source_marks.push({
         ...range,
         tone: "warning",
         tooltip: `${t("proofreading_page.glossary.tooltip_failed")}\n${term[0]} -> ${term[1]}`,
@@ -335,9 +349,42 @@ function build_glossary_highlights(
   });
 
   return {
-    source_highlights,
-    translation_highlights,
+    source_marks,
+    translation_marks,
   };
+}
+
+function build_name_glossary_marks(args: {
+  text: string;
+  source_field: boolean;
+  state: ProofreadingNameGlossaryState;
+  t: ReturnType<typeof useI18n>["t"];
+}): AppTextMark[] {
+  const marks: AppTextMark[] = [];
+
+  args.state.applied_terms.forEach((term) => {
+    const fragment = args.source_field ? term[0] : term[1];
+    find_text_match_ranges(args.text, fragment).forEach((range) => {
+      marks.push({
+        ...range,
+        tone: "success",
+        tooltip: `${args.t("proofreading_page.glossary.tooltip_applied")}\n${term[0]} -> ${term[1]}`,
+      });
+    });
+  });
+
+  args.state.failed_terms.forEach((term) => {
+    const fragment = args.source_field ? term[0] : term[1];
+    find_text_match_ranges(args.text, fragment).forEach((range) => {
+      marks.push({
+        ...range,
+        tone: "warning",
+        tooltip: `${args.t("proofreading_page.glossary.tooltip_failed")}\n${term[0]} -> ${term[1]}`,
+      });
+    });
+  });
+
+  return marks;
 }
 
 /**
@@ -345,13 +392,13 @@ function build_glossary_highlights(
  */
 function resolve_glossary_badge_state(
   item: ProofreadingItem,
-  draft_dst: string,
+  draft_item: ProofreadingEditDialogProps["draft_item"],
   t: ReturnType<typeof useI18n>["t"],
 ): {
   label: string;
   tone: ProofreadingBadgeTone;
 } | null {
-  const { applied_terms, failed_terms } = partition_glossary_terms(item, draft_dst);
+  const { applied_terms, failed_terms } = partition_glossary_terms(item, draft_item);
 
   if (applied_terms.length === 0 && failed_terms.length === 0) {
     return null;
@@ -375,6 +422,71 @@ function resolve_glossary_badge_state(
     label: t("proofreading_page.glossary.partial"),
     tone: "warning",
   };
+}
+
+function resolve_source_name_glossary_state(args: {
+  source_name: string;
+  applied_terms: ProofreadingGlossaryTerm[];
+  failed_terms: ProofreadingGlossaryTerm[];
+}): ProofreadingNameGlossaryState {
+  const applied_terms = args.applied_terms.filter((term) => args.source_name.includes(term[0]));
+  const failed_terms = args.failed_terms.filter((term) => args.source_name.includes(term[0]));
+  return {
+    tone: failed_terms.length > 0 ? "warning" : applied_terms.length > 0 ? "success" : "neutral",
+    applied_terms,
+    failed_terms,
+  };
+}
+
+function resolve_translation_name_glossary_state(args: {
+  source_name: string;
+  translation_name: string;
+  applied_terms: ProofreadingGlossaryTerm[];
+  failed_terms: ProofreadingGlossaryTerm[];
+}): ProofreadingNameGlossaryState {
+  const terms = dedupe_glossary_terms([...args.applied_terms, ...args.failed_terms]).filter(
+    (term) => {
+      return args.source_name.includes(term[0]);
+    },
+  );
+  const applied_terms = terms.filter((term) => args.translation_name.includes(term[1]));
+  const failed_terms = terms.filter((term) => !args.translation_name.includes(term[1]));
+  return {
+    tone: failed_terms.length > 0 ? "warning" : applied_terms.length > 0 ? "success" : "neutral",
+    applied_terms,
+    failed_terms,
+  };
+}
+
+function render_name_input_with_glossary_state(args: {
+  input: JSX.Element;
+  state: ProofreadingNameGlossaryState;
+  t: ReturnType<typeof useI18n>["t"];
+}): JSX.Element {
+  const tooltip_content = render_glossary_tooltip_content(
+    args.state.applied_terms,
+    args.state.failed_terms,
+    args.t,
+  );
+  if (tooltip_content === null) {
+    return args.input;
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="proofreading-page__dialog-name-tooltip-trigger">{args.input}</span>
+      </TooltipTrigger>
+      <TooltipContent
+        side="top"
+        align="start"
+        sideOffset={8}
+        className="proofreading-page__dialog-badge-tooltip"
+      >
+        {tooltip_content}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.Element | null {
   const { t } = useI18n();
@@ -400,22 +512,48 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
     ];
   const status_badge_tone = resolve_status_badge_tone(item.status);
   const status_label = status_label_key === undefined ? item.status : t(status_label_key);
-  const glossary_badge_state = resolve_glossary_badge_state(item, props.draft_dst, t);
-  const glossary_terms = partition_glossary_terms(item, props.draft_dst);
+  const glossary_badge_state = resolve_glossary_badge_state(item, props.draft_item, t);
+  const glossary_terms = partition_glossary_terms(item, props.draft_item);
   const glossary_tooltip_content = render_glossary_tooltip_content(
     glossary_terms.applied_terms,
     glossary_terms.failed_terms,
     t,
   );
-  const { source_highlights, translation_highlights } = build_glossary_highlights(
-    item,
-    props.draft_dst,
-    t,
-  );
+  const { source_marks, translation_marks } = build_glossary_highlights(item, props.draft_item, t);
   const visible_warning_codes =
     glossary_badge_state === null
       ? item.warnings
       : item.warnings.filter((warning) => warning !== "GLOSSARY");
+  const source_name = read_item_name_text(item.name_src);
+  const translation_name = props.draft_item.name_dst;
+  const source_name_glossary_state = resolve_source_name_glossary_state({
+    source_name,
+    applied_terms: glossary_terms.applied_terms,
+    failed_terms: glossary_terms.failed_terms,
+  });
+  const translation_name_glossary_state = resolve_translation_name_glossary_state({
+    source_name,
+    translation_name,
+    applied_terms: glossary_terms.applied_terms,
+    failed_terms: glossary_terms.failed_terms,
+  });
+  const show_name_fields =
+    read_optional_item_name_text(item.name_src) !== null ||
+    read_optional_item_name_text(item.name_dst) !== null ||
+    translation_name !== "";
+  const translation_readonly = props.readonly || props.saving;
+  const source_name_marks = build_name_glossary_marks({
+    text: source_name,
+    source_field: true,
+    state: source_name_glossary_state,
+    t,
+  });
+  const translation_name_marks = build_name_glossary_marks({
+    text: translation_name,
+    source_field: false,
+    state: translation_name_glossary_state,
+    t,
+  });
 
   return (
     <AppPageDialog
@@ -515,34 +653,71 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
               </section>
 
               <section className="proofreading-page__dialog-editor-block">
-                <label className="proofreading-page__dialog-editor-section">
+                <section className="proofreading-page__dialog-editor-section">
                   <span className="proofreading-page__dialog-editor-title font-medium">
                     {t("proofreading_page.fields.source")}
                   </span>
-                  <ProofreadingCodeEditor
+                  {show_name_fields
+                    ? render_name_input_with_glossary_state({
+                        input: (
+                          <AppEditor
+                            variant="field"
+                            class_name="proofreading-page__dialog-name-input"
+                            value={source_name}
+                            aria_label={t("proofreading_page.fields.source_name")}
+                            aria_invalid={source_name_glossary_state.tone === "warning"}
+                            marks={source_name_marks}
+                            read_only
+                          />
+                        ),
+                        state: source_name_glossary_state,
+                        t,
+                      })
+                    : null}
+                  <AppEditor
                     value={item.src}
                     aria_label={t("proofreading_page.fields.source")}
-                    read_only
-                    highlights={source_highlights}
+                    read_only={true}
+                    marks={source_marks}
                     class_name="proofreading-page__dialog-editor-host"
                   />
-                </label>
+                </section>
 
-                <label className="proofreading-page__dialog-editor-section">
+                <section className="proofreading-page__dialog-editor-section">
                   <span className="proofreading-page__dialog-editor-title font-medium">
                     {t("proofreading_page.fields.translation")}
                   </span>
-                  <ProofreadingCodeEditor
-                    value={props.draft_dst}
+                  {show_name_fields
+                    ? render_name_input_with_glossary_state({
+                        input: (
+                          <AppEditor
+                            variant="field"
+                            class_name="proofreading-page__dialog-name-input"
+                            value={translation_name}
+                            aria_label={t("proofreading_page.fields.translation_name")}
+                            aria_invalid={translation_name_glossary_state.tone === "warning"}
+                            marks={translation_name_marks}
+                            read_only={translation_readonly}
+                            on_change={(next_value) => {
+                              props.on_change({ name_dst: next_value });
+                            }}
+                          />
+                        ),
+                        state: translation_name_glossary_state,
+                        t,
+                      })
+                    : null}
+                  <AppEditor
+                    value={props.draft_item.dst}
                     aria_label={t("proofreading_page.fields.translation")}
-                    read_only={props.readonly || props.saving}
-                    highlights={translation_highlights}
+                    read_only={translation_readonly}
+                    marks={translation_marks}
                     class_name="proofreading-page__dialog-editor-host"
                     on_change={(next_value) => {
-                      props.on_change(next_value);
+                      props.on_change({ dst: next_value });
                     }}
                   />
-                </label>
+                </section>
               </section>
 
               <section className="proofreading-page__dialog-status-section">

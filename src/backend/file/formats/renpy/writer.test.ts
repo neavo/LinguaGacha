@@ -23,6 +23,24 @@ describe("RenPy 写回器", () => {
     );
   });
 
+  it("禁用姓名译名写回时用源姓名替换 NAME 槽", () => {
+    const writer = new RenpyWriter({
+      source_language: "JA",
+      target_language: "ZH",
+      write_translated_name_fields_to_file: false,
+    });
+    const item = Item.from_json({ dst: "新台词", name_src: "原名", name_dst: "译名" });
+    const replacements = writer.build_replacements(item, [
+      { role: "NAME", lit_index: 0 },
+      { role: "DIALOGUE", lit_index: 1 },
+    ]);
+
+    expect([...replacements.entries()]).toEqual([
+      [0, "原名"],
+      [1, "新台词"],
+    ]);
+  });
+
   it("LABEL 写回使用模板代码并保留 PushMove 尾随字符串", () => {
     const writer = new RenpyWriter();
     const lines = ['    # "Man" "old" with PushMove("x")', '    "Man" "" with PushMove("x")'];

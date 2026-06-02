@@ -74,6 +74,8 @@ export type ProofreadingItem = {
   row_number: number;
   src: string;
   dst: string;
+  name_src: ItemNameField;
+  name_dst: ItemNameField;
   status: string;
   retry_count: number;
   warnings: string[];
@@ -89,6 +91,8 @@ export type ProofreadingItemRecord = {
   row_number: number;
   src: string;
   dst: string;
+  name_src: ItemNameField;
+  name_dst: ItemNameField;
   status: string;
   text_type: string;
   retry_count: number;
@@ -139,23 +143,7 @@ export type ProofreadingFilterPanelState = {
   without_glossary_miss_count: number;
 };
 
-export type ProofreadingDialogState = {
-  open: boolean;
-  target_row_id: string | null;
-  draft_dst: string;
-  saving: boolean;
-};
-
 export type ProofreadingSearchScope = "all" | "src" | "dst";
-
-export type ProofreadingConfirmationKind = "retranslate" | "clear-translations";
-
-export type ProofreadingPendingConfirmation = {
-  kind: ProofreadingConfirmationKind; // 只有高风险操作进入确认流，状态设置走直接提交。
-  target_row_ids: string[];
-  preferred_row_id: string | null;
-  submitting: boolean;
-};
 
 /**
  * row id 是校对列表和后端 item id 的字符串桥接，统一在入口处归一。
@@ -383,3 +371,4 @@ export function create_empty_proofreading_filter_panel_state(): ProofreadingFilt
     without_glossary_miss_count: 0,
   };
 }
+import type { ItemNameField } from "../../domain/item";

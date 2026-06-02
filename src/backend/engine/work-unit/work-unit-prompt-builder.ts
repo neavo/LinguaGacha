@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { JsonTool } from "../../../shared/utils/json-tool";
+import { build_translation_output_format } from "../../../shared/text/translation-output-format";
 import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../shared/text/text-types";
 import type { LLMMessage } from "../../llm/llm-types";
 import { default_native_fs } from "../../../native/native-fs";
@@ -13,6 +14,11 @@ import {
   get_prompt_target_language_name,
   normalize_language_code,
 } from "../../../domain/language";
+import {
+  read_translation_text_srcs,
+  type TranslationLine,
+  type TranslationPromptMode,
+} from "./translation-line";
 
 /**
  * 提示词构造所需的最小配置快照，worker 只读取语言与界面语言
@@ -70,13 +76,14 @@ export class PromptBuilder {
    * 生成普通翻译提示词；system 放稳定指令，user 放本次输入和术语
    */
   public async generate_prompt(
-    srcs: string[],
+    lines: TranslationLine[],
+    mode: TranslationPromptMode,
     samples: string[],
     precedings: TextTaskItemRecord[],
   ): Promise<PromptBuildResult> {
     const messages: LLMMessage[] = [];
     const console_log: string[] = [];
-    const instruction_text = await this.build_main();
+    const instruction_text = await this.build_main(mode);
     const user_parts: string[] = [];
 
     const preceding = this.build_preceding(precedings);
@@ -86,7 +93,7 @@ export class PromptBuilder {
     }
 
     if (this.quality_snapshot.glossary_enable) {
-      const glossary = this.build_glossary(srcs);
+      const glossary = this.build_glossary(lines, mode);
       if (glossary !== "") {
         user_parts.push(glossary);
         console_log.push(glossary);
@@ -99,7 +106,7 @@ export class PromptBuilder {
       console_log.push(control_samples);
     }
 
-    const inputs = this.build_inputs(srcs);
+    const inputs = this.build_inputs(lines, mode);
     if (inputs !== "") {
       user_parts.push(inputs);
     }
@@ -151,7 +158,7 @@ export class PromptBuilder {
   /**
    * 翻译主提示词从自定义快照或资源模板读取
    */
-  public async build_main(): Promise<string> {
+  public async build_main(mode: TranslationPromptMode = "text"): Promise<string> {
     const context = this.resolve_prompt_context();
     const prompt = Prompt.translation();
     const prefix = await this.read_prompt_text(
@@ -174,7 +181,11 @@ export class PromptBuilder {
     );
     return this.join_prompt_sections(prefix, base, thinking, suffix)
       .replaceAll("{source_language}", context.source_language)
-      .replaceAll("{target_language}", context.target_language);
+      .replaceAll("{target_language}", context.target_language)
+      .replaceAll(
+        "{translation_output_format}",
+        build_translation_output_format(mode, context.prompt_language),
+      );
   }
 
   /**
@@ -225,8 +236,8 @@ export class PromptBuilder {
   /**
    * 术语表按当前输入全文命中过滤，未命中时不污染 prompt
    */
-  public build_glossary(srcs: string[]): string {
-    const result = this.build_glossary_lines(srcs, " -> ");
+  public build_glossary(lines: TranslationLine[], mode: TranslationPromptMode): string {
+    const result = this.build_glossary_lines(this.build_glossary_match_texts(lines, mode), " -> ");
     if (result.length === 0) {
       return "";
     }
@@ -265,9 +276,14 @@ export class PromptBuilder {
   /**
    * 翻译输入固定为 jsonline，响应解码器也按此格式优先解析
    */
-  public build_inputs(srcs: string[]): string {
-    const inputs = srcs
-      .map((line, index) => JsonTool.stringifyStrict({ [String(index)]: line }))
+  public build_inputs(lines: TranslationLine[], mode: TranslationPromptMode): string {
+    const inputs = lines
+      .map((line) =>
+        JsonTool.stringifyStrict({
+          [String(line.request_index)]:
+            mode === "actor_text" ? { actor: line.actor_src, text: line.text_src } : line.text_src,
+        }),
+      )
       .join("\n");
     return `${this.t("app.prompt.builder_input")}\n\`\`\`jsonline\n${inputs}\n\`\`\``;
   }
@@ -304,13 +320,6 @@ export class PromptBuilder {
    */
   private get_prompt_ui_language(): "zh" | "en" {
     return this.config.app_language === "EN" ? "en" : "zh";
-  }
-
-  /**
-   * 中文 UI 决定提示词标题和语言名显示口径
-   */
-  private is_prompt_ui_zh(): boolean {
-    return this.get_prompt_ui_language() === "zh";
   }
 
   /**
@@ -386,5 +395,26 @@ export class PromptBuilder {
       result.push(info === "" ? `${src}${separator}${dst}` : `${src}${separator}${dst} #${info}`);
     }
     return result;
+  }
+
+  /**
+   * actor/text 模式下术语表同时扫描正文和姓名，保证人名术语能进入提示词。
+   */
+  private build_glossary_match_texts(
+    lines: TranslationLine[],
+    mode: TranslationPromptMode,
+  ): string[] {
+    if (mode === "text") {
+      return read_translation_text_srcs(lines);
+    }
+    const texts: string[] = [];
+    for (const line of lines) {
+      texts.push(line.text_src);
+      if (line.actor_src === null) {
+        continue;
+      }
+      texts.push(line.actor_src);
+    }
+    return texts;
   }
 }

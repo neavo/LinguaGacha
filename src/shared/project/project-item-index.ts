@@ -3,7 +3,8 @@ import {
   type ProjectItemPublicRecord,
 } from "../../domain/item";
 import { InternalInvariantError } from "../error";
-import type { ProjectChangeItemFieldPatch, ProjectChangeItemsPayload } from "../project-event";
+import type { ProjectChangeItemsPayload } from "../project-event";
+import { apply_project_item_field_patch } from "./project-item-field-patch";
 
 /**
  * 渲染进程内共享的 item 只读索引；页面只能通过方法读取当前事实，不能把它当普通对象改写。
@@ -152,30 +153,6 @@ export function cloneProjectItemIndex(index: ProjectItemIndex): ProjectItemIndex
 /**
  * 写入当前场景的状态变化。
  */
-function apply_item_field_patch(
-  item: ProjectItemPublicRecord,
-  patch: ProjectChangeItemFieldPatch | undefined,
-): ProjectItemPublicRecord | null {
-  if (patch === undefined) {
-    return null;
-  }
-  const next_item: ProjectItemPublicRecord = { ...item };
-  let touched = false;
-  if (typeof patch.dst === "string" && patch.dst !== item.dst) {
-    next_item.dst = patch.dst;
-    touched = true;
-  }
-  if (patch.status !== undefined && patch.status !== item.status) {
-    next_item.status = patch.status;
-    touched = true;
-  }
-  if (typeof patch.retry_count === "number" && patch.retry_count !== item.retry_count) {
-    next_item.retry_count = patch.retry_count;
-    touched = true;
-  }
-  return touched ? next_item : null;
-}
-
 /**
  * item 行级变更先写入调用方传入的 draft，原索引只在调用方提交新包装器后才可见。
  */
@@ -202,7 +179,7 @@ export function applyProjectItemIndexChangeInScope(
       if (current_item === undefined) {
         continue;
       }
-      const patched_item = apply_item_field_patch(current_item, payload.fieldPatch);
+      const patched_item = apply_project_item_field_patch(current_item, payload.fieldPatch);
       if (patched_item === null) {
         continue;
       }

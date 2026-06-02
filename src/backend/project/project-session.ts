@@ -93,15 +93,28 @@ const SUPPORTED_SOURCE_EXTENSIONS = new Set([
   ".trans",
 ]);
 
+/**
+ * 项目生命周期服务内部使用的可写 JSON 记录。
+ */
 type MutableJsonRecord = Record<string, ApiJsonValue>;
+
+/**
+ * database 与 API 读取结果的共同窄化视图。
+ */
 type JsonRecordLike = Record<string, ApiJsonValue | DatabaseJsonValue | undefined>;
 
+/**
+ * 新建工程提交阶段的 asset 写入清单。
+ */
 interface CreateCommitFileRecord {
   rel_path: string; // .lg 内 asset 的唯一业务路径，不能用源文件绝对路径替代
   source_path: string; // 只传给 database workflow 读取 bytes，项目域不理解压缩格式
   sort_index: number; // 决定工作台文件顺序，必须随 asset 一起落库
 }
 
+/**
+ * 源文件解析后的可信新建工程草稿。
+ */
 interface CreateCommitParsedDraft {
   files: CreateCommitFileRecord[]; // 后端从 source_paths 解析出的可信 asset 写入清单
   failed_files: SourceFileParseFailureRecord[]; // 只记录支持格式但解析失败的源文件
@@ -109,7 +122,10 @@ interface CreateCommitParsedDraft {
   items: Record<string, ProjectItemPublicRecord>; // 后端生成的完整公开 DTO 镜像
 }
 
-type ProjectWriteSettings = ProjectSettingsSnapshot; // 项目生命周期只消费设置领域定义的项目镜像窄字段
+/**
+ * 项目生命周期只消费设置领域定义的项目镜像窄字段。
+ */
+type ProjectWriteSettings = ProjectSettingsSnapshot;
 
 /**
  * 承载 项目轻生命周期公开接口，公开 loaded/path 与 .lg 写入边界都在这里收口
@@ -212,7 +228,8 @@ export class ProjectLifecycleService {
   public async create_project_commit(
     body: Record<string, ApiJsonValue>,
   ): Promise<Record<string, ApiJsonValue>> {
-    const project_path = this.require_body_string(body, "path");
+    const requested_project_path = this.require_body_string(body, "path");
+    const project_path = this.resolve_create_project_path(requested_project_path);
     this.assert_no_legacy_create_commit_fields(body);
     const source_paths = this.normalize_source_paths(body["source_paths"]);
     const project_settings = this.read_create_project_settings(body["project_settings"]);
@@ -674,6 +691,68 @@ export class ProjectLifecycleService {
   private build_project_name(source_paths: string[], project_path: string): string {
     const seed_path = source_paths[0] ?? project_path;
     return path.basename(seed_path);
+  }
+
+  /**
+   * 新建工程默认路径若已存在，则追加时间戳生成旁路文件，避免覆盖已有 .lg。
+   */
+  private resolve_create_project_path(project_path: string): string {
+    if (!this.native_fs.exists(project_path)) {
+      return project_path;
+    }
+    const parsed_path = path.parse(project_path);
+    const extension = parsed_path.ext === "" ? ".lg" : parsed_path.ext;
+    const timestamp_suffix = this.build_file_timestamp_suffix();
+    const timestamped_path = path.join(
+      parsed_path.dir,
+      `${parsed_path.name}_${timestamp_suffix}${extension}`,
+    );
+    if (!this.native_fs.exists(timestamped_path)) {
+      return timestamped_path;
+    }
+    let sequence = 2;
+    let sequence_path = this.build_project_sequence_path(
+      parsed_path,
+      timestamp_suffix,
+      extension,
+      sequence,
+    );
+    while (this.native_fs.exists(sequence_path)) {
+      sequence += 1;
+      sequence_path = this.build_project_sequence_path(
+        parsed_path,
+        timestamp_suffix,
+        extension,
+        sequence,
+      );
+    }
+    return sequence_path;
+  }
+
+  /**
+   * 项目文件撞名后缀使用和前端展示一致的本地时间格式。
+   */
+  private build_file_timestamp_suffix(): string {
+    const now = new Date();
+    const pad = (value: number): string => value.toString().padStart(2, "0");
+    return `${now.getFullYear().toString()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(
+      now.getHours(),
+    )}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  }
+
+  /**
+   * 同秒撞名时追加递增序号，保证自动路径不会覆盖已有工程。
+   */
+  private build_project_sequence_path(
+    parsed_path: path.ParsedPath,
+    timestamp_suffix: string,
+    extension: string,
+    sequence: number,
+  ): string {
+    return path.join(
+      parsed_path.dir,
+      `${parsed_path.name}_${timestamp_suffix}_${sequence.toString()}${extension}`,
+    );
   }
 
   /**

@@ -7,6 +7,7 @@ import {
   type ProofreadingWarningFragmentsByCode,
   type ProofreadingGlossaryTerm,
 } from "./proofreading-types";
+import type { ItemNameField } from "../../domain/item";
 
 export type ProofreadingSortState = {
   column_id: string;
@@ -20,6 +21,8 @@ type ProofreadingSortableItemRecord = {
   row_number: number;
   src: string;
   dst: string;
+  name_src: ItemNameField;
+  name_dst: ItemNameField;
   status: string;
   retry_count: number;
 };
@@ -171,6 +174,8 @@ export function create_proofreading_client_item(args: {
     row_number: args.item.row_number,
     src: args.item.src,
     dst: args.item.dst,
+    name_src: clone_item_name(args.item.name_src),
+    name_dst: clone_item_name(args.item.name_dst),
     status: args.item.status,
     retry_count: args.item.retry_count,
     warnings: [...args.warnings],
@@ -195,6 +200,10 @@ export function create_proofreading_client_item(args: {
     compressed_src: compress_proofreading_text(args.item.src),
     compressed_dst: compress_proofreading_text(args.item.dst),
   };
+}
+
+function clone_item_name(value: ItemNameField): ItemNameField {
+  return Array.isArray(value) ? [...value] : value;
 }
 
 /**

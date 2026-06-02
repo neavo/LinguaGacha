@@ -5,7 +5,7 @@ import { AnalysisPostPipeline } from "./analysis-post-pipeline";
 import { AnalysisPrePipeline } from "./analysis-pre-pipeline";
 
 describe("分析 pipeline", () => {
-  it("译前注入姓名前缀并用伪名保护控制码", () => {
+  it("译前消费已渲染的分析文本并用伪名保护控制码", () => {
     const result = new AnalysisPrePipeline().process_context({
       file_path: "a.txt",
       retry_count: 0,
@@ -13,14 +13,13 @@ describe("分析 pipeline", () => {
         {
           item_id: 1,
           file_path: "a.txt",
-          src_text: "\\n[7]こんにちは",
-          first_name_src: "Alice",
+          src_text: "【虎鉄】\\n[7]こんにちは",
         },
       ],
     });
 
-    expect(result.prompt_srcs).toEqual(["【Alice】\\n[7]こんにちは"]);
-    expect(result.request_srcs).toEqual(["【Alice】蓝霁云こんにちは"]);
+    expect(result.prompt_srcs).toEqual(["【虎鉄】\\n[7]こんにちは"]);
+    expect(result.request_srcs).toEqual(["【虎鉄】蓝霁云こんにちは"]);
   });
 
   it("译后还原控制码伪名并拆分复合术语", () => {

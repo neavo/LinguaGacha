@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import type { ApiJsonValue } from "../../api/api-types";
 import type { MutableJsonRecord } from "../run/task-run-types";
 import { is_task_skipped_item_status } from "../../../domain/task";
+import { read_item_name_text } from "../../../shared/item-name";
 import type { PlanningWorkerPool } from "./planning-worker-pool";
 import {
   build_task_token_metric_cache_key,
@@ -374,10 +375,21 @@ export class TaskPlanner {
     return {
       item_id,
       file_path: String(item["file_path"] ?? ""),
-      src_text: String(item["src"] ?? "").trim(),
-      first_name_src: this.read_first_name_src(item),
+      src_text: this.build_analysis_source_text(item),
       previous_status: checkpoint_status_by_id.get(item_id) ?? null,
     };
+  }
+
+  /**
+   * 分析输入在规划期渲染姓名前缀，后续 worker 继续只消费纯文本快照。
+   */
+  private build_analysis_source_text(item: TaskItemRecord): string {
+    const src = String(item["src"] ?? "").trim();
+    if (src === "") {
+      return "";
+    }
+    const name = read_item_name_text(item["name_src"]).trim();
+    return name === "" ? src : `【${name}】${src}`;
   }
 
   /**
@@ -418,20 +430,6 @@ export class TaskPlanner {
   private get_input_token_limit(model: MutableJsonRecord, fallback: number): number {
     const threshold = this.normalize_record(model["threshold"]);
     return Math.max(16, this.read_number(threshold["input_token_limit"], fallback));
-  }
-
-  /**
-   * 姓名字段可能是字符串或数组，分析 prompt 只需要第一个说话人名。
-   */
-  private read_first_name_src(item: TaskItemRecord): string | null {
-    const name_src = item["name_src"];
-    if (typeof name_src === "string" && name_src !== "") {
-      return name_src;
-    }
-    if (Array.isArray(name_src) && typeof name_src[0] === "string" && name_src[0] !== "") {
-      return name_src[0];
-    }
-    return null;
   }
 
   /**

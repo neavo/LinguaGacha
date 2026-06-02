@@ -18,12 +18,6 @@ type ToolboxEntry = {
 
 const TOOLBOX_ENTRIES: readonly ToolboxEntry[] = [
   {
-    id: "name-field-extraction",
-    title_key: "toolbox_page.entries.name_field_extraction.title",
-    description_key: "toolbox_page.entries.name_field_extraction.description",
-    route_id: "name-field-extraction",
-  },
-  {
     id: "ts-conversion",
     title_key: "toolbox_page.entries.ts_conversion.title",
     description_key: "toolbox_page.entries.ts_conversion.description",

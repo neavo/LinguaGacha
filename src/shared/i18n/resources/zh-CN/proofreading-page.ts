@@ -19,7 +19,9 @@ export const zh_cn_proofreading_page = {
     drag: "拖拽",
     status: "状态",
     source: "原文",
+    source_name: "原文姓名",
     translation: "译文",
+    translation_name: "译文姓名",
   },
   search: {
     placeholder: "查询 …",

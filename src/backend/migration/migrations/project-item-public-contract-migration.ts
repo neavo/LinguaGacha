@@ -70,11 +70,17 @@ export class ProjectItemPublicContractMigration {
     changed = assign_contract_field(normalized, "src", src) || changed;
     changed = assign_contract_field(normalized, "dst", read_string(normalized["dst"])) || changed;
     changed =
-      assign_contract_field(normalized, "name_src", Item.normalize_name(normalized["name_src"])) ||
-      changed;
+      assign_contract_field(
+        normalized,
+        "name_src",
+        Item.normalize_name_field(normalized["name_src"]),
+      ) || changed;
     changed =
-      assign_contract_field(normalized, "name_dst", Item.normalize_name(normalized["name_dst"])) ||
-      changed;
+      assign_contract_field(
+        normalized,
+        "name_dst",
+        Item.normalize_name_field(normalized["name_dst"]),
+      ) || changed;
     changed =
       assign_contract_field(
         normalized,

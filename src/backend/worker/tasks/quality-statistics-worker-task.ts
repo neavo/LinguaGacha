@@ -9,6 +9,11 @@ import {
   build_legacy_quality_rule_entry_id,
   normalize_quality_rule_entry_id,
 } from "../../../shared/quality/quality-rule-entry-id";
+import {
+  read_item_source_text_parts,
+  read_item_translation_text_parts,
+  type ItemTextGroup,
+} from "../../../shared/item-text";
 
 export type QualityStatisticsWorkerTaskInput = {
   rule_key: QualityStatisticsRuleMode;
@@ -20,14 +25,14 @@ export function run_quality_statistics_worker_task(
   input: QualityStatisticsWorkerTaskInput,
 ): Record<string, unknown> {
   const rule_key = input.rule_key;
-  const src_texts = input.items.map((item) => String(item["src"] ?? ""));
-  const dst_texts = input.items.map((item) => String(item["dst"] ?? ""));
+  const src_text_groups = input.items.map((item) => read_item_source_text_parts(item));
+  const dst_text_groups = input.items.map((item) => read_item_translation_text_parts(item));
   const rules = build_quality_statistics_rules(rule_key, input.entries);
   const relation_candidates = build_quality_relation_candidates(rules);
   const statistics_result = run_quality_statistics_task_sync({
     rules,
-    srcTexts: src_texts,
-    dstTexts: dst_texts,
+    srcTextGroups: src_text_groups,
+    dstTextGroups: dst_text_groups,
     relationCandidates: relation_candidates,
   });
   const completed_entry_ids = rules.map((rule) => rule.key);
@@ -44,7 +49,7 @@ export function run_quality_statistics_worker_task(
   const completed_snapshot = build_quality_statistics_dependency_snapshot(
     rule_key,
     rules,
-    rule_key === "post_replacement" ? dst_texts : src_texts,
+    rule_key === "post_replacement" ? dst_text_groups : src_text_groups,
   );
   return {
     phase: "current",
@@ -98,9 +103,9 @@ function build_quality_relation_candidates(
 function build_quality_statistics_dependency_snapshot(
   rule_key: QualityStatisticsRuleMode,
   rules: QualityStatisticsRuleInput[],
-  texts: string[],
+  text_groups: ItemTextGroup[],
 ): QualityStatisticsDependencySnapshot {
-  const text_signature = build_quality_text_signature(texts);
+  const text_signature = build_quality_text_signature(text_groups);
   const snapshot_rules = rules.map((rule) => {
     const dependency_signature = JSON.stringify([
       rule.mode,
@@ -133,16 +138,28 @@ function build_quality_statistics_dependency_snapshot(
   };
 }
 
-function build_quality_text_signature(texts: string[]): string {
+function build_quality_text_signature(text_groups: ItemTextGroup[]): string {
   let hash = 2166136261;
-  for (const [index, text] of texts.entries()) {
-    const framed_text = `${index.toString()}:${text.length.toString()}:${text}`;
-    for (let char_index = 0; char_index < framed_text.length; char_index += 1) {
-      hash ^= framed_text.charCodeAt(char_index);
+  for (const [group_index, text_group] of text_groups.entries()) {
+    const group_header = `${group_index.toString()}:${text_group.length.toString()}`;
+    for (let char_index = 0; char_index < group_header.length; char_index += 1) {
+      hash ^= group_header.charCodeAt(char_index);
       hash = Math.imul(hash, 16777619) >>> 0;
     }
+    for (const [part_index, part] of text_group.entries()) {
+      const framed_text = [
+        part_index.toString(),
+        part.field,
+        part.text.length.toString(),
+        part.text,
+      ].join(":");
+      for (let char_index = 0; char_index < framed_text.length; char_index += 1) {
+        hash ^= framed_text.charCodeAt(char_index);
+        hash = Math.imul(hash, 16777619) >>> 0;
+      }
+    }
   }
-  return `${texts.length.toString()}:${hash.toString(36)}`;
+  return `${text_groups.length.toString()}:${hash.toString(36)}`;
 }
 
 function build_quality_entry_id(entry: Record<string, unknown>, index: number): string {

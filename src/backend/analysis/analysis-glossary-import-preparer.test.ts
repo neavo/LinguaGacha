@@ -195,6 +195,26 @@ describe("prepare_analysis_glossary_import_from_cache", () => {
     expect(prepared_import?.request_body.consumed_candidate_srcs).toEqual(["艾琳"]);
   });
 
+  it("候选只出现在姓名字段中时仍保留导入", () => {
+    const prepared_import = prepare_analysis_glossary_import_from_cache(
+      create_prepare_request({
+        items: [create_test_item({ src: "无关正文", name_src: ["艾琳", "隐藏姓名"] })],
+      }),
+    );
+
+    expect(prepared_import).not.toBeNull();
+    expect(prepared_import?.imported_count).toBe(1);
+    expect(prepared_import?.request_body.entries).toEqual([
+      {
+        src: "艾琳",
+        dst: "Erin",
+        info: "角色名",
+        regex: false,
+        case_sensitive: true,
+      },
+    ]);
+  });
+
   it("候选全被静态规则过滤时仍消费候选池", () => {
     const prepared_import = prepare_analysis_glossary_import_from_cache(
       create_prepare_request({

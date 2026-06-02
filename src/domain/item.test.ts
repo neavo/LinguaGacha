@@ -46,7 +46,7 @@ describe("item 基础模型", () => {
 
   it("导出有效译文并规范化 name 与 JSON record", () => {
     expect(Item.from_json({ src: "原文", dst: "", file_type: "TXT" }).effective_dst()).toBe("原文");
-    expect(Item.normalize_name(["名", 1, "别名"])).toEqual(["名", "别名"]);
+    expect(Item.normalize_name_field(["名", 1, "别名"])).toEqual(["名", "别名"]);
     expect(read_json_record({ ok: true })).toEqual({ ok: true });
     expect(read_json_record(["not-record"])).toEqual({});
     expect(Item.normalize_status("BROKEN")).toBe("NONE");
