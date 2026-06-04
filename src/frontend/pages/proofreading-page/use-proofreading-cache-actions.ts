@@ -79,7 +79,8 @@ type UseProofreadingCacheActionsOptions = {
   report_proofreading_list_error: (error: unknown, fallback_message: string) => boolean;
   resolve_current_filters: () => ProofreadingFilterOptions;
   set_cache_status: Dispatch<SetStateAction<"idle" | "refreshing" | "ready" | "error">>;
-  set_consumed_revisions: Dispatch<SetStateAction<ProjectDataSectionRevisions>>;
+  set_list_revisions: Dispatch<SetStateAction<ProjectDataSectionRevisions>>; // 列表内写入锁
+  set_operation_revisions: Dispatch<SetStateAction<ProjectDataSectionRevisions>>; // 任务命令锁
   set_filter_dialog_filters: Dispatch<SetStateAction<ProofreadingFilterOptions>>;
   set_filter_dialog_open: Dispatch<SetStateAction<boolean>>;
   set_filter_panel: Dispatch<SetStateAction<ProofreadingFilterPanelState>>;
@@ -515,10 +516,12 @@ export function useProofreadingCacheActions(
       if (sync_mode === "full") {
         options.sync_state_ref.current = null;
       }
-      sync_state = await options.proofreading_runtime_client_ref.current.sync_proofreading_cache({
-        sourceLanguage: options.source_language,
-        targetLanguage: options.target_language,
-      });
+      const sync_snapshot =
+        await options.proofreading_runtime_client_ref.current.sync_proofreading_cache({
+          sourceLanguage: options.source_language,
+          targetLanguage: options.target_language,
+        });
+      sync_state = sync_snapshot.syncState;
 
       if (request_id !== options.refresh_generation_ref.current || sync_state === null) {
         return;
@@ -638,7 +641,9 @@ export function useProofreadingCacheActions(
         options.warm_filter_panel_query_ref.current(next_current_filters);
       }
       options.set_cache_status("ready");
-      options.set_consumed_revisions(sync_state.revisions);
+      // syncState.revisions 维持列表缓存身份，顶层 sectionRevisions 维持写入和任务命令锁。
+      options.set_list_revisions(sync_state.revisions);
+      options.set_operation_revisions(sync_snapshot.sectionRevisions);
       options.set_settled_project_path(options.project_path);
     } catch (error) {
       if (request_id !== options.refresh_generation_ref.current) {

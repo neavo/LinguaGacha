@@ -27,7 +27,7 @@ type ProofreadingProjectWriteRunner = (args: {
 }) => Promise<void>;
 
 type UseProofreadingDialogActionsOptions = {
-  consumed_revisions: ProjectDataSectionRevisions;
+  list_revisions: ProjectDataSectionRevisions; // 弹窗保存使用列表 query 已消费的 revision 锁
   visible_item_by_id: Map<string, ProofreadingClientItem>;
   read_items_by_row_ids: (row_ids: string[]) => Promise<ProofreadingClientItem[]>;
   run_project_write: ProofreadingProjectWriteRunner;
@@ -56,6 +56,7 @@ export function create_empty_dialog_state(): ProofreadingDialogState {
   };
 }
 
+// 管理校对编辑弹窗的打开、草稿和保存提交。
 export function useProofreadingDialogActions(
   options: UseProofreadingDialogActionsOptions,
 ): UseProofreadingDialogActionsResult {
@@ -147,7 +148,7 @@ export function useProofreadingDialogActions(
         plan: create_save_item_plan({
           snapshot: {
             items: [target_item],
-            section_revisions: options.consumed_revisions,
+            section_revisions: options.list_revisions,
           },
           item_id: Number(target_item.item_id),
           next_dst: dialog_state.draft_item.dst,

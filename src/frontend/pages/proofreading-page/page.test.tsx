@@ -116,7 +116,7 @@ function create_proofreading_state_fixture() {
     cache_status: "ready",
     confirm_filter_dialog_filters: vi.fn(),
     confirm_pending_confirmation: vi.fn(),
-    consumed_revisions: {
+    list_revisions: {
       items: 3,
       proofreading: 2,
       quality: 4,

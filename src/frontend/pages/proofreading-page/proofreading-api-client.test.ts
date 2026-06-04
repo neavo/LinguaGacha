@@ -24,7 +24,7 @@ describe("proofreading-api-client", () => {
             projectId: "E:/Project/demo.lg",
             sourceLanguage: "ja",
             targetLanguage: "zh-CN",
-            revisions: { files: 1, items: 1, quality: 1, proofreading: 1 },
+            revisions: { files: 1, items: 6, quality: 1, proofreading: 1 },
             defaultFilters: {
               warning_types: [],
               statuses: [],
@@ -32,6 +32,12 @@ describe("proofreading-api-client", () => {
               glossary_terms: [],
               include_without_glossary_miss: true,
             },
+          },
+          sectionRevisions: {
+            items: 6,
+            quality: 1,
+            proofreading: 1,
+            prompts: 3,
           },
         };
       }
@@ -83,14 +89,23 @@ describe("proofreading-api-client", () => {
       return {};
     });
 
-    const sync_state = await client.sync_proofreading_cache({
+    const sync_snapshot = await client.sync_proofreading_cache({
       sourceLanguage: "ja",
       targetLanguage: "zh-CN",
     });
+    const sync_state = sync_snapshot.syncState;
 
-    expect(sync_state).toMatchObject({
-      projectId: "E:/Project/demo.lg",
-      revisions: { files: 1, items: 1, quality: 1, proofreading: 1 },
+    expect(sync_snapshot).toMatchObject({
+      syncState: {
+        projectId: "E:/Project/demo.lg",
+        revisions: { files: 1, items: 6, quality: 1, proofreading: 1 },
+      },
+      sectionRevisions: {
+        items: 6,
+        quality: 1,
+        proofreading: 1,
+        prompts: 3,
+      },
     });
 
     const view = await client.build_proofreading_list_view({

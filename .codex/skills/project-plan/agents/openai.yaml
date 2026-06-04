@@ -1,4 +1,0 @@
-interface:
-  display_name: Project Plan
-  short_description: 项目实施计划
-  x_sample_prompt: 使用 $project-plan 创建项目实施计划
