@@ -1,4 +1,5 @@
 import type { RendererDiagnosticsPayload } from "../../shared/error";
+import type { WindowsReleaseZipUrls } from "../../shared/update/windows-update-target";
 
 // 桌面主题只暴露网页壳层和原生标题栏都能稳定消费的明暗两态
 export type ThemeMode = "light" | "dark";
@@ -48,7 +49,7 @@ export type DesktopPathPickResult = {
 export type DesktopUpdateDownloadRequest = {
   latest_version: string; // GitHub release 解析出的三段式版本号
   release_url: string; // 自动更新不可用时回退打开的发布页
-  windows_x64_zip_url: string | null; // Windows x64 zip asset 下载地址，缺失时由 main 回退发布页
+  windows_zip_urls: WindowsReleaseZipUrls; // Windows 各架构 zip asset 下载地址，目标架构由 main 判定
 };
 
 export type DesktopUpdateDownloadIpcRequest = DesktopUpdateDownloadRequest & {
@@ -64,7 +65,8 @@ export type DesktopUpdateDownloadProgress = {
 
 export type DesktopUpdateFallbackReason =
   | "unsupported_platform"
-  | "missing_windows_x64_zip_url"
+  | "unsupported_arch"
+  | "missing_windows_zip_url"
   | "target_dir_not_writable";
 
 export type DesktopUpdateDownloadResult =

@@ -7,6 +7,10 @@ import {
   type AppErrorCode,
   type RendererErrorReport,
 } from "@shared/error";
+import {
+  select_windows_release_zip_urls,
+  type WindowsReleaseZipUrls,
+} from "@shared/update/windows-update-target";
 
 export type { LogDetail, LogEvent, LogLevel };
 
@@ -28,19 +32,14 @@ type GithubReleasePayload = {
   assets?: unknown;
 };
 
-type GithubReleaseAssetPayload = {
-  name?: unknown;
-  browser_download_url?: unknown;
-};
-
 export type BackendMetadata = {
   version: string;
 };
 
 export type GithubReleaseUpdate = {
-  latest_version: string;
-  release_url: string;
-  windows_x64_zip_url: string | null;
+  latest_version: string; // GitHub release tag 归一出的三段式版本号
+  release_url: string; // 自动更新不可用时交给 renderer 打开的发布页
+  windows_zip_urls: WindowsReleaseZipUrls; // renderer 只保存 release 解析结果，目标架构由 main 判定
 };
 
 type EventSourceJsonEvent = {
@@ -275,49 +274,11 @@ function normalize_github_release_update(
   return {
     latest_version: `${latest_semantic_version.major}.${latest_semantic_version.minor}.${latest_semantic_version.patch}`,
     release_url,
-    windows_x64_zip_url: select_windows_x64_zip_url(
+    windows_zip_urls: select_windows_release_zip_urls(
       payload.assets,
       `${latest_semantic_version.major}.${latest_semantic_version.minor}.${latest_semantic_version.patch}`,
     ),
   };
-}
-
-/**
- * 从 GitHub release assets 中选择 Windows x64 zip 下载地址。
- */
-function select_windows_x64_zip_url(assets: unknown, latest_version: string): string | null {
-  if (!Array.isArray(assets)) {
-    return null;
-  }
-
-  const expected_asset_name = `LinguaGacha_v${latest_version}_Windows_x64.zip`;
-  const normalized_assets = assets
-    .map((asset): GithubReleaseAssetPayload => {
-      return asset !== null && typeof asset === "object" ? asset : {};
-    })
-    .filter((asset) => {
-      return typeof asset.name === "string" && typeof asset.browser_download_url === "string";
-    });
-
-  const exact_asset = normalized_assets.find((asset) => {
-    return String(asset.name).trim() === expected_asset_name;
-  });
-  const fallback_asset =
-    exact_asset ??
-    normalized_assets.find((asset) => {
-      const name = String(asset.name).trim();
-      return (
-        name.startsWith("LinguaGacha_") &&
-        name.includes(`v${latest_version}`) &&
-        name.endsWith("_Windows_x64.zip")
-      );
-    });
-  const download_url =
-    typeof fallback_asset?.browser_download_url === "string"
-      ? fallback_asset.browser_download_url.trim()
-      : "";
-
-  return download_url === "" ? null : download_url;
 }
 
 // probe_backend_api_candidate 封装当前模块的共享逻辑，避免重复实现同一维护规则。

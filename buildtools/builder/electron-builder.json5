@@ -4,7 +4,6 @@
   appId: "me.neavo.linguagacha",
   asar: true,
   productName: "LinguaGacha",
-  electronDist: "node_modules/electron/dist",
   directories: {
     buildResources: "public",
     output: "build/release/${version}",

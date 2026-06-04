@@ -35,6 +35,10 @@ jobs:
 
   build-windows:
     needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, arm64]
     runs-on: windows-latest
     permissions:
       contents: write
@@ -64,14 +68,14 @@ jobs:
       - name: Build Electron Zip Package
         shell: bash
         run: |
-          npm run build -- --win zip --x64 --publish never
+          npm run build -- --win zip --${{ matrix.arch }} --publish never
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Windows_x64
+          name: ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Windows_${{ matrix.arch }}
           path: |
-            build/release/${{ needs.prepare.outputs.version }}/LinguaGacha_v${{ needs.prepare.outputs.version }}_Windows_x64.zip
+            build/release/${{ needs.prepare.outputs.version }}/LinguaGacha_v${{ needs.prepare.outputs.version }}_Windows_${{ matrix.arch }}.zip
 
   build-macos:
     needs: prepare
@@ -189,6 +193,7 @@ jobs:
           prerelease: false
           files: |
             ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Windows_x64/LinguaGacha_v${{ needs.prepare.outputs.version }}_Windows_x64.zip
+            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Windows_arm64/LinguaGacha_v${{ needs.prepare.outputs.version }}_Windows_arm64.zip
             ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_macOS_x64/LinguaGacha_v${{ needs.prepare.outputs.version }}_macOS_x64.dmg
             ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_macOS_arm64/LinguaGacha_v${{ needs.prepare.outputs.version }}_macOS_arm64.dmg
             ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Linux_x64/LinguaGacha_v${{ needs.prepare.outputs.version }}_Linux_x86_64.AppImage

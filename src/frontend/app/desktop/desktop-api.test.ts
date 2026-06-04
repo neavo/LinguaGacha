@@ -341,7 +341,7 @@ describe("desktop-api", () => {
     );
   });
 
-  it("check_github_release_update 识别带前缀的新版 release tag", async () => {
+  it("check_github_release_update 解析新版 release 的 Windows x64 与 arm64 zip", async () => {
     const fetch_mock = vi.fn(async () => {
       return {
         ok: true,
@@ -354,6 +354,11 @@ describe("desktop-api", () => {
               name: "LinguaGacha_v1.2.4_Windows_x64.zip",
               browser_download_url:
                 "https://github.com/neavo/LinguaGacha/releases/download/MANUAL_BUILD_v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
+            },
+            {
+              name: "LinguaGacha_v1.2.4_Windows_arm64.zip",
+              browser_download_url:
+                "https://github.com/neavo/LinguaGacha/releases/download/MANUAL_BUILD_v1.2.4/LinguaGacha_v1.2.4_Windows_arm64.zip",
             },
             {
               name: "LinguaGacha_v1.2.4_Linux_x64.AppImage",
@@ -379,12 +384,48 @@ describe("desktop-api", () => {
     expect(update).toEqual({
       latest_version: "1.2.4",
       release_url: "https://github.com/neavo/LinguaGacha/releases/tag/MANUAL_BUILD_v1.2.4",
-      windows_x64_zip_url:
-        "https://github.com/neavo/LinguaGacha/releases/download/MANUAL_BUILD_v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
+      windows_zip_urls: {
+        x64: "https://github.com/neavo/LinguaGacha/releases/download/MANUAL_BUILD_v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
+        arm64:
+          "https://github.com/neavo/LinguaGacha/releases/download/MANUAL_BUILD_v1.2.4/LinguaGacha_v1.2.4_Windows_arm64.zip",
+      },
     });
   });
 
-  it("check_github_release_update 在新版缺少 Windows x64 zip 时保留发布页回退信息", async () => {
+  it("check_github_release_update 在新版只缺一个 Windows 架构时保留另一个架构", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            tag_name: "v1.2.4",
+            html_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
+            assets: [
+              {
+                name: "LinguaGacha_MANUAL_BUILD_v1.2.4_Windows_arm64.zip",
+                browser_download_url:
+                  "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/arm64.zip",
+              },
+            ],
+          }),
+        } as Response;
+      }),
+    );
+
+    const { check_github_release_update } = await import("./desktop-api");
+
+    await expect(check_github_release_update("1.2.3")).resolves.toEqual({
+      latest_version: "1.2.4",
+      release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
+      windows_zip_urls: {
+        arm64: "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/arm64.zip",
+      },
+    });
+  });
+
+  it("check_github_release_update 在新版缺少 Windows zip 时保留发布页回退信息", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
@@ -411,7 +452,7 @@ describe("desktop-api", () => {
     await expect(check_github_release_update("1.2.3")).resolves.toEqual({
       latest_version: "1.2.4",
       release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
-      windows_x64_zip_url: null,
+      windows_zip_urls: {},
     });
   });
 

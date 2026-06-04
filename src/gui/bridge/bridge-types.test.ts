@@ -16,6 +16,7 @@ import type {
   ThemeMode,
   TitleBarControlSide,
 } from "./bridge-types";
+import type { WindowsReleaseZipUrls } from "../../shared/update/windows-update-target";
 
 describe("bridge-types", () => {
   it("桌面桥接契约保持可序列化的 renderer 消费形状", () => {
@@ -46,7 +47,7 @@ describe("bridge-types", () => {
     expectTypeOf<DesktopUpdateDownloadRequest>().toMatchTypeOf<{
       latest_version: string;
       release_url: string;
-      windows_x64_zip_url: string | null;
+      windows_zip_urls: WindowsReleaseZipUrls;
     }>();
     expectTypeOf<DesktopUpdateDownloadProgress>().toMatchTypeOf<{
       request_id: string;
@@ -55,7 +56,10 @@ describe("bridge-types", () => {
       total_bytes: number | null;
     }>();
     expectTypeOf<DesktopUpdateFallbackReason>().toEqualTypeOf<
-      "unsupported_platform" | "missing_windows_x64_zip_url" | "target_dir_not_writable"
+      | "unsupported_platform"
+      | "unsupported_arch"
+      | "missing_windows_zip_url"
+      | "target_dir_not_writable"
     >();
     expectTypeOf<DesktopUpdateDownloadResult>().toMatchTypeOf<
       | { status: "downloaded"; latest_version: string; release_url: string; zip_path: string }

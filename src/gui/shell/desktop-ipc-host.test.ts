@@ -146,7 +146,9 @@ describe("桌面 IPC 宿主", () => {
           request_id: "download-1",
           latest_version: "1.2.4",
           release_url: "release",
-          windows_x64_zip_url: "zip-url",
+          windows_zip_urls: {
+            x64: "zip-url",
+          },
         },
         sender,
       ),
@@ -162,7 +164,9 @@ describe("桌面 IPC 宿主", () => {
         request_id: "download-1",
         latest_version: "1.2.4",
         release_url: "release",
-        windows_x64_zip_url: "zip-url",
+        windows_zip_urls: {
+          x64: "zip-url",
+        },
       },
       expect.any(Function),
     );
