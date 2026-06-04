@@ -40,7 +40,7 @@ type ProofreadingProjectWriteRunner = (args: {
 
 type UseProofreadingReplaceActionsOptions = {
   active_row_id_ref: MutableRefObject<string | null>;
-  consumed_revisions: ProjectDataSectionRevisions;
+  list_revisions: ProjectDataSectionRevisions; // 替换写入使用列表 query 已消费的 revision 锁
   is_refreshing: boolean;
   is_regex: boolean;
   is_writing: boolean;
@@ -62,6 +62,7 @@ type UseProofreadingReplaceActionsResult = {
   replace_all_visible_matches: () => Promise<void>;
 };
 
+// 管理校对页当前匹配和全量可见匹配的替换提交。
 export function useProofreadingReplaceActions(
   options: UseProofreadingReplaceActionsOptions,
 ): UseProofreadingReplaceActionsResult {
@@ -149,7 +150,7 @@ export function useProofreadingReplaceActions(
       plan: create_save_item_plan({
         snapshot: {
           items: [target_item],
-          section_revisions: options.consumed_revisions,
+          section_revisions: options.list_revisions,
         },
         item_id: Number(target_item.item_id),
         next_dst: replaced_result.field === "dst" ? replaced_result.text : target_item.dst,
@@ -209,7 +210,7 @@ export function useProofreadingReplaceActions(
     const replace_plan = create_replace_all_plan({
       snapshot: {
         items: target_items,
-        section_revisions: options.consumed_revisions,
+        section_revisions: options.list_revisions,
       },
       item_ids: target_items.map((item) => Number(item.item_id)),
       search_text: trimmed_keyword,

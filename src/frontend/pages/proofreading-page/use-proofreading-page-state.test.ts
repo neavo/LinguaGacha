@@ -7,6 +7,7 @@ import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-ses
 import type { ProjectChangeSignal } from "@frontend/app/state/desktop-state-context";
 import { INPUT_QUERY_DEBOUNCE_MS } from "@frontend/widgets/interactions/use-debounce";
 import type { ProjectItemPublicRecord } from "@domain/item";
+import type { ProjectDataSectionRevisions } from "@shared/project-event";
 import {
   create_empty_proofreading_filter_panel_state,
   create_empty_proofreading_list_view,
@@ -101,6 +102,7 @@ function create_project_change_signal(
     mode?: "full" | "delta" | "noop";
     itemIds?: Array<number | string>;
     updatedSections?: Array<ProjectChangeSignal["updated_sections"][number] | "task">;
+    sectionRevisions?: ProjectDataSectionRevisions;
   } = {},
 ): ProjectChangeSignal {
   const mode = options.mode ?? "full";
@@ -137,7 +139,7 @@ function create_project_change_signal(
                     },
                   }
                 : {}),
-              sectionRevisions: {},
+              sectionRevisions: options.sectionRevisions ?? {},
             },
           ],
   };
@@ -299,7 +301,10 @@ function create_navigation_fixture(): NavigationFixture {
 }
 
 // 生成校对缓存 sync 结果，并允许用例覆盖默认筛选。
-function create_sync_state(default_filter_patch: Partial<ProofreadingFilterOptions> = {}) {
+function create_sync_state(
+  default_filter_patch: Partial<ProofreadingFilterOptions> = {},
+  section_revisions_patch: ProjectDataSectionRevisions = {},
+) {
   const default_filters: ProofreadingFilterOptions = {
     warning_types: ["NO_WARNING"],
     statuses: ["NONE"],
@@ -309,7 +314,7 @@ function create_sync_state(default_filter_patch: Partial<ProofreadingFilterOptio
     ...default_filter_patch,
   };
 
-  return {
+  const syncState = {
     projectId: "E:/demo/sample.lg",
     sourceLanguage: "JA",
     targetLanguage: "ZH",
@@ -319,6 +324,14 @@ function create_sync_state(default_filter_patch: Partial<ProofreadingFilterOptio
       proofreading: 1,
     },
     defaultFilters: default_filters,
+  };
+  return {
+    syncState,
+    sectionRevisions: {
+      ...syncState.revisions,
+      prompts: 0,
+      ...section_revisions_patch,
+    },
   };
 }
 
@@ -2264,6 +2277,92 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.cache_status).toBe("idle");
     expect(latest_state?.settled_project_path).toBe("");
     expect(proofreading_client_fixture.current.build_proofreading_list_view).not.toHaveBeenCalled();
+  });
+
+  it("sync 顶层 sectionRevisions 会作为重翻的完整操作基线", async () => {
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
+      return create_sync_state({}, { prompts: 3 });
+    });
+    await render_hook();
+    vi.mocked(api_fetch).mockResolvedValueOnce({
+      accepted: true,
+      task: {
+        task_type: "translation",
+        status: "requested",
+        busy: true,
+      },
+    });
+
+    await request_pending_confirmation(() => {
+      latest_state?.request_retranslate_row_ids(["1"]);
+    });
+    await act(async () => {
+      await latest_state?.confirm_pending_confirmation();
+    });
+
+    expect(api_fetch).toHaveBeenCalledWith("/api/tasks/start", {
+      task_type: "translation",
+      mode: "new",
+      scope: { kind: "items", item_ids: [1] },
+      expected_section_revisions: {
+        items: 7,
+        proofreading: 1,
+        quality: 0,
+        prompts: 3,
+      },
+    });
+  });
+
+  it("只含提示词的变更只更新操作基线并让后续重翻使用最新提示词 revision", async () => {
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
+      return create_sync_state({}, { prompts: 3 });
+    });
+    await render_hook();
+    expect(proofreading_client_fixture.current.sync_proofreading_cache).toHaveBeenCalledTimes(1);
+    expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledTimes(
+      1,
+    );
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_change_signal: create_project_change_signal(1, {
+        updatedSections: ["prompts"],
+        sectionRevisions: { prompts: 4 },
+      }),
+    };
+    await render_hook();
+
+    expect(proofreading_client_fixture.current.sync_proofreading_cache).toHaveBeenCalledTimes(1);
+    expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledTimes(
+      1,
+    );
+    vi.mocked(api_fetch).mockResolvedValueOnce({
+      accepted: true,
+      task: {
+        task_type: "translation",
+        status: "requested",
+        busy: true,
+      },
+    });
+
+    await request_pending_confirmation(() => {
+      latest_state?.request_retranslate_row_ids(["1"]);
+    });
+    await act(async () => {
+      await latest_state?.confirm_pending_confirmation();
+    });
+
+    expect(api_fetch).toHaveBeenCalledWith("/api/tasks/start", {
+      task_type: "translation",
+      mode: "new",
+      scope: { kind: "items", item_ids: [1] },
+      expected_section_revisions: {
+        items: 7,
+        proofreading: 1,
+        quality: 0,
+        prompts: 4,
+      },
+    });
   });
 
   it("校对重翻请求收到任务回执后会通过 task snapshot 暴露正在重翻的行 id", async () => {

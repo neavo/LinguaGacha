@@ -26,12 +26,12 @@ type HookFixture = {
   is_refreshing: boolean;
   is_writing: boolean;
   dialog_open: boolean;
-  section_revisions: ProjectDataSectionRevisions;
+  list_revisions: ProjectDataSectionRevisions;
+  operation_revisions: ProjectDataSectionRevisions;
   read_items_by_row_ids: ReturnType<
     typeof vi.fn<(row_ids: string[]) => Promise<ProjectItemPublicRecord[]>>
   >;
   task_snapshot: TaskSnapshot;
-  proofreading_revision: number;
   sync_task_snapshot: ReturnType<typeof vi.fn<(snapshot: TaskSnapshot) => void>>;
   run_project_write: ReturnType<typeof vi.fn<(_args: WriteCall) => Promise<void>>>;
   set_is_writing: ReturnType<typeof vi.fn<(next_is_writing: boolean) => void>>;
@@ -116,7 +116,12 @@ function create_hook_fixture(): HookFixture {
     is_refreshing: false,
     is_writing: false,
     dialog_open: false,
-    section_revisions: {
+    list_revisions: {
+      items: 7,
+      quality: 3,
+      proofreading: 5,
+    },
+    operation_revisions: {
       items: 7,
       quality: 3,
       prompts: 4,
@@ -141,7 +146,6 @@ function create_hook_fixture(): HookFixture {
       });
     }),
     task_snapshot: create_task_snapshot(),
-    proofreading_revision: 5,
     sync_task_snapshot: vi.fn((_snapshot: TaskSnapshot) => undefined),
     run_project_write: vi.fn(async (args: WriteCall) => {
       write_calls.push(args);

@@ -14,16 +14,22 @@ import type {
   ProofreadingFilterPanelState,
   ProofreadingListView,
 } from "@shared/proofreading/proofreading-types";
+import type { ProjectDataSectionRevisions } from "@shared/project-event";
 
 type ProofreadingListQueryOptions = {
   staleKey?: string | null;
+};
+
+export type ProofreadingSyncSnapshot = {
+  syncState: ProofreadingSyncState; // 校对 reader 轻量运行态，只描述列表缓存身份和默认筛选
+  sectionRevisions: ProjectDataSectionRevisions; // query response 顶层完整乐观锁来源
 };
 
 export type ProofreadingApiClient = {
   sync_proofreading_cache: (input: {
     sourceLanguage: string;
     targetLanguage: string;
-  }) => Promise<ProofreadingSyncState>;
+  }) => Promise<ProofreadingSyncSnapshot>;
   build_proofreading_list_view: (
     input: ProofreadingListViewQuery,
     options?: ProofreadingListQueryOptions,
@@ -51,26 +57,30 @@ export function createProofreadingApiClient(): ProofreadingApiClient {
     async sync_proofreading_cache(input) {
       const response = await api_fetch<{
         syncState?: ProofreadingSyncState;
+        sectionRevisions?: ProjectDataSectionRevisions;
       }>("/api/proofreading/view", {
         action: "sync",
         source_language: input.sourceLanguage,
         target_language: input.targetLanguage,
       });
-      return (
-        response.syncState ?? {
-          projectId: "",
-          sourceLanguage: input.sourceLanguage,
-          targetLanguage: input.targetLanguage,
-          revisions: { files: 0, items: 0, quality: 0, proofreading: 0 },
-          defaultFilters: {
-            warning_types: [],
-            statuses: [],
-            file_paths: [],
-            glossary_terms: [],
-            include_without_glossary_miss: true,
-          },
-        }
-      );
+      const syncState = response.syncState ?? {
+        projectId: "",
+        sourceLanguage: input.sourceLanguage,
+        targetLanguage: input.targetLanguage,
+        revisions: { files: 0, items: 0, quality: 0, proofreading: 0 },
+        defaultFilters: {
+          warning_types: [],
+          statuses: [],
+          file_paths: [],
+          glossary_terms: [],
+          include_without_glossary_miss: true,
+        },
+      };
+      return {
+        syncState,
+        // 旧响应没有顶层 sectionRevisions 时降级为空锁，避免前端伪造后端未返回的 revision。
+        sectionRevisions: response.sectionRevisions ?? {},
+      };
     },
     async build_proofreading_list_view(input, _options = {}) {
       const response = await api_fetch<{ view?: ProofreadingListView }>("/api/proofreading/view", {

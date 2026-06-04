@@ -28,7 +28,7 @@
 
 - 前端消费的数据实体和值对象从 `src/domain` 导入，跨运行时纯规则和协议词表从 `src/shared` 导入，最终项目写入计算算法只属于后端，前端不导入或复刻。
 - 页面读取项目事实只能通过本页面目录内 `*-api-client.ts` 包装的功能域 query API，页面状态只保存 query 参数、query 结果、窗口缓存和交互态。
-- query response 的 `sectionRevisions` 是页面写入的乐观锁来源，页面不得从本地缓存、task 状态或时间戳推导 revision。
+- query response 顶层 `sectionRevisions` 是页面写入和任务命令的乐观锁来源，功能域返回的轻量运行态 revision 只服务局部 cache 身份，不能替代操作 revision。
 - 页面写入只能提交用户意图、设置镜像、显式 `operation` 和后端 query 返回的 revision 依赖，不能把计算出的 items、task extras、prefilter config 或 analysis extras 当后端事实提交。
 - 校对页搜索、筛选、排序、窗口、警告和 cache sync 由后端校对 query 提供，前端只保存参数、view id、窗口结果、选择和编辑态。
 - 质量规则统计的全量匹配计算由后端 query 提供，前端共享缓存只保存规则描述、调度阶段、已完成结果和订阅状态。

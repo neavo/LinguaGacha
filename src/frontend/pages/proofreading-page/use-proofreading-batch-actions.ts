@@ -43,10 +43,10 @@ type UseProofreadingBatchActionsOptions = {
   is_refreshing: boolean;
   is_writing: boolean;
   dialog_open: boolean;
-  section_revisions: ProjectDataSectionRevisions;
+  list_revisions: ProjectDataSectionRevisions; // 当前校对列表已经消费的项目、质量和校对事实锁
+  operation_revisions: ProjectDataSectionRevisions; // 任务命令需要但列表 query 不必重建的操作锁
   read_items_by_row_ids: (row_ids: string[]) => Promise<ProofreadingCommandItemSnapshot[]>;
   task_snapshot: TaskSnapshot;
-  proofreading_revision: number;
   sync_task_snapshot: (snapshot: TaskSnapshot) => void;
   run_project_write: ProofreadingProjectWriteRunner;
   set_is_writing: (next_is_writing: boolean) => void;
@@ -131,10 +131,10 @@ export function useProofreadingBatchActions(
     is_refreshing,
     is_writing,
     dialog_open,
-    section_revisions,
+    list_revisions,
+    operation_revisions,
     read_items_by_row_ids,
     task_snapshot,
-    proofreading_revision,
     sync_task_snapshot,
     run_project_write,
     set_is_writing,
@@ -169,10 +169,10 @@ export function useProofreadingBatchActions(
           mode: "new",
           scope: { kind: "items", item_ids },
           expected_section_revisions: {
-            items: section_revisions.items ?? 0,
-            proofreading: proofreading_revision,
-            quality: section_revisions.quality ?? 0,
-            prompts: section_revisions.prompts ?? 0,
+            items: list_revisions.items ?? 0,
+            proofreading: list_revisions.proofreading ?? 0,
+            quality: list_revisions.quality ?? 0,
+            prompts: operation_revisions.prompts ?? 0, // 提示词 revision 影响重翻输入
           },
         });
         sync_task_snapshot(
@@ -195,10 +195,10 @@ export function useProofreadingBatchActions(
       close_edit_dialog,
       dialog_open,
       handle_api_error,
-      proofreading_revision,
-      section_revisions.items,
-      section_revisions.prompts,
-      section_revisions.quality,
+      list_revisions.items,
+      list_revisions.proofreading,
+      list_revisions.quality,
+      operation_revisions.prompts,
       remember_preferred_row_id,
       resolve_preferred_row_id,
       set_is_writing,
@@ -220,7 +220,7 @@ export function useProofreadingBatchActions(
         plan: create_clear_translations_plan({
           snapshot: {
             items: await read_items_by_row_ids(row_ids),
-            section_revisions,
+            section_revisions: list_revisions,
           },
           item_ids: target_item_ids,
         }),
@@ -236,7 +236,7 @@ export function useProofreadingBatchActions(
         empty_warning_message: null,
       });
     },
-    [dialog_open, read_items_by_row_ids, run_project_write, section_revisions, t],
+    [dialog_open, list_revisions, read_items_by_row_ids, run_project_write, t],
   );
 
   const submit_set_translation_status_row_ids = useCallback(
@@ -256,7 +256,7 @@ export function useProofreadingBatchActions(
         plan: create_set_translation_status_plan({
           snapshot: {
             items: await read_items_by_row_ids(row_ids),
-            section_revisions,
+            section_revisions: list_revisions,
           },
           item_ids: target_item_ids,
           status,
@@ -272,7 +272,7 @@ export function useProofreadingBatchActions(
         empty_warning_message: null,
       });
     },
-    [dialog_open, read_items_by_row_ids, run_project_write, section_revisions, t],
+    [dialog_open, list_revisions, read_items_by_row_ids, run_project_write, t],
   );
 
   const request_retranslate_row_ids = useCallback(

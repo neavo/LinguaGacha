@@ -51,7 +51,7 @@ export function normalize_proofreading_sort_state(
 
 export type UseProofreadingPageStateResult = {
   cache_status: "idle" | "refreshing" | "ready" | "error";
-  consumed_revisions: ProjectDataSectionRevisions;
+  list_revisions: ProjectDataSectionRevisions;
   required_sections: ProjectDataSection[];
   settled_project_path: string;
   is_refreshing: boolean;
