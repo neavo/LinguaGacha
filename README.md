@@ -32,12 +32,18 @@
 
 ## 基本流程 🛸
 - 从 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载应用
-  - Windows: 下载 `.zip` 文件，解压后双击 `app.exe` 启动
-  - macOS: 下载 `.dmg` 文件，Intel 选择 `x86_64`，Apple Silicon 选择 `arm64`，拖拽到应用程序文件夹
-    - 首次运行可能提示"无法验证开发者"
-    - 请右键点击应用选择"打开"，或执行 `xattr -cr /Applications/LinguaGacha.app`
-  - Linux: 下载 `.AppImage` 文件
-    - 添加执行权限后运行 `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
+  - Windows:
+    - 根据 CPU 类型下载 `*_Windows_x64.zip` 或 `*_Windows_arm64.zip`
+    - 解压后双击 `app.exe` 启动
+  - macOS:
+    - 根据 CPU 类型下载 `*_macOS_x64.dmg` 或 `*_macOS_arm64.dmg`
+    - 拖拽到应用程序文件夹，先不要启动
+    - 打开终端输入 `sudo xattr -rd com.apple.quarantine /Applications/LinguaGacha.app` 然后回车
+    - 输入系统密码，关闭终端，可以正常运行了
+  - Linux:
+    - 下载 `*_Linux_x86_64.AppImage` 文件
+    - 添加执行权限 `chmod +x LinguaGacha*.AppImage`
+    - 运行 `./LinguaGacha*.AppImage`
 - 获取一个可靠的 AI 大模型接口，建议选择其一：
   - [ [本地接口](https://github.com/neavo/OneClickLLAMA) ]，免费，需至少 8G 显存的独立显卡，Nvidia 显卡为佳
   - [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ]，最便宜，速度快，质量高，无显卡要求
@@ -82,8 +88,12 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20260604 v0.102.1
+  - 增加对 `ARM On Windows` 的打包支持
+  - 调整与改进 [#625](https://github.com/neavo/LinguaGacha/issues/625) [#626](https://github.com/neavo/LinguaGacha/issues/626)
+
 - 20260602 v0.102.0
-  - feat - `姓名字段` 现在是基础属性了
+  - `姓名字段` 现在是基础属性了
     - 可以在 `校对页` 修改
     - 可以在 `分析任务` 中被提取
     - 可以在 `翻译任务` 中响应术语表

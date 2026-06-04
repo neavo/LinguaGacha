@@ -34,12 +34,18 @@
 
 ## Basic Workflow 🛸
 - Download application from [Releases page](https://github.com/neavo/LinguaGacha/releases)
-  - Windows: Download `.zip` file, extract and run `app.exe`
-  - macOS: Download `.dmg` file, choose `x86_64` for Intel or `arm64` for Apple Silicon, drag to Applications folder
-    - On first launch, you may see "unidentified developer" warning
-    - Please right-click the app and select "Open", or run `xattr -cr /Applications/LinguaGacha.app`
-  - Linux: Download `.AppImage` file
-    - Make it executable and run `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
+  - Windows:
+    - Download `*_Windows_x64.zip` or `*_Windows_arm64.zip` according to your CPU type
+    - Extract it and double-click `app.exe` to launch
+  - macOS:
+    - Download `*_macOS_x64.dmg` or `*_macOS_arm64.dmg` according to your CPU type
+    - Drag it to the Applications folder, but do not launch it yet
+    - Open Terminal, enter `sudo xattr -rd com.apple.quarantine /Applications/LinguaGacha.app`, then press Enter
+    - Enter your system password, close Terminal, and you can launch it normally
+  - Linux:
+    - Download the `*_Linux_x86_64.AppImage` file
+    - Add executable permission with `chmod +x LinguaGacha*.AppImage`
+    - Run `./LinguaGacha*.AppImage`
 - Obtain a reliable AI model interface (choose one):
   - [ [Local API](https://github.com/neavo/OneClickLLAMA) ] (Free, requires ≥8GB VRAM GPU, Nvidia recommended)
   - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (Cheapest, fast, high-quality, no GPU required)
@@ -83,8 +89,12 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260604 v0.102.1
+  - Support for `ARM On Windows`
+  - Adjust and Improve [#625](https://github.com/neavo/LinguaGacha/issues/625) [#626](https://github.com/neavo/LinguaGacha/issues/626)
+
 - 20260602 v0.102.0
-  - feat - `Name field` is now a basic attribute
+  - `Name Field` is now a basic attribute
     - Can be modified on the `Proofreading Page`
     - Can be extracted in `Analysis Tasks`
     - Can respond to glossaries in `Translation Tasks`

@@ -33,12 +33,18 @@
 
 ## ワークフロー 🛸
 - [リリースページ](https://github.com/neavo/LinguaGacha/releases) からアプリケーションをダウンロード
-  - Windows: `.zip` ファイルをダウンロードし、解凍して `app.exe` を実行
-  - macOS: `.dmg` ファイルをダウンロード、Intel は `x86_64`、Apple Silicon は `arm64`、アプリケーションフォルダにドラッグ
-    - 初回起動時に「開発元を確認できない」という警告が表示される場合があります
-    - アプリを右クリックして「開く」を選択するか、`xattr -cr /Applications/LinguaGacha.app` を実行してください
-  - Linux: `.AppImage` ファイルをダウンロード
-    - 実行権限を付与して実行 `chmod +x LinguaGacha*.AppImage && ./LinguaGacha*.AppImage`
+  - Windows:
+    - CPU の種類に応じて `*_Windows_x64.zip` または `*_Windows_arm64.zip` をダウンロード
+    - 解凍して `app.exe` をダブルクリックして起動
+  - macOS:
+    - CPU の種類に応じて `*_macOS_x64.dmg` または `*_macOS_arm64.dmg` をダウンロード
+    - アプリケーションフォルダにドラッグし、まだ起動しないでください
+    - ターミナルを開き、`sudo xattr -rd com.apple.quarantine /Applications/LinguaGacha.app` と入力して Enter を押してください
+    - システムパスワードを入力し、ターミナルを閉じると、通常通り起動できます
+  - Linux:
+    - `*_Linux_x86_64.AppImage` ファイルをダウンロード
+    - `chmod +x LinguaGacha*.AppImage` で実行権限を付与
+    - `./LinguaGacha*.AppImage` を実行
 - 信頼できるAIモデルインターフェースを取得（以下のいずれかを選択）：
   - [ [Local API](https://github.com/neavo/OneClickLLAMA) ] (無料、8GB以上のVRAM GPUが必要、Nvidia推奨)
   - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (最安、高速、高品質、NO-GPU)
@@ -80,6 +86,18 @@
   - [Translator++](https://dreamsavior.net/translator-plusplus) エクスポート (.xlsx)
   - [WOLF 公式翻訳ツール](https://silversecond.booth.pm/items/5151747) エクスポート（.xlsx）
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
+
+## 最近の更新 📅
+- 20260604 v0.102.1
+  - `ARM On Windows` のパッケージング対応を追加
+  - 調整と改善 [#625](https://github.com/neavo/LinguaGacha/issues/625) [#626](https://github.com/neavo/LinguaGacha/issues/626)
+
+- 20260602 v0.102.0
+  - `名前フィールド` が基本属性になりました
+    - `校正ページ` で変更可能
+    - `分析タスク` で抽出可能
+    - `翻訳タスク` で用語集に反応可能
+    - ……
 
 ## 開発ガイド 🛠️
 - [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストールし、その後 `npm install` を実行します
