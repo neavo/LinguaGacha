@@ -767,7 +767,7 @@ function AppContent(props: AppContentProps): JSX.Element {
           {
             latest_version: release.latest_version,
             release_url: release.release_url,
-            windows_x64_zip_url: release.windows_x64_zip_url,
+            windows_zip_urls: release.windows_zip_urls,
           },
           handle_update_download_progress,
         );

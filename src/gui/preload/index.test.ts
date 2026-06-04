@@ -82,7 +82,7 @@ describe("preload desktop bridge", () => {
       {
         latest_version: "1.2.4",
         release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
-        windows_x64_zip_url: null,
+        windows_zip_urls: {},
       },
       vi.fn(),
     );
@@ -100,7 +100,7 @@ describe("preload desktop bridge", () => {
       expect.objectContaining({
         latest_version: "1.2.4",
         request_id: "update-download-1",
-        windows_x64_zip_url: null,
+        windows_zip_urls: {},
       }),
     );
     expect(electron_mock.invoke).toHaveBeenCalledWith(IPC_CHANNEL_UPDATE_LAUNCH_BERSERKER, {
@@ -138,7 +138,9 @@ describe("preload desktop bridge", () => {
       {
         latest_version: "1.2.4",
         release_url: "release",
-        windows_x64_zip_url: "https://example.com/LinguaGacha_v1.2.4_Windows_x64.zip",
+        windows_zip_urls: {
+          x64: "https://example.com/LinguaGacha_v1.2.4_Windows_x64.zip",
+        },
       },
       (progress) => {
         progress_values.push(progress.progress_percent);

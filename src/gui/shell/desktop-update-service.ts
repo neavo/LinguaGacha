@@ -4,6 +4,13 @@ import path from "node:path";
 import type { Dirent } from "node:fs";
 
 import type { AppPathService } from "../../backend/app/app-path-service";
+import {
+  build_windows_release_zip_name,
+  is_windows_release_zip_name_for_arch,
+  normalize_windows_release_arch,
+  select_windows_release_zip_url,
+  type WindowsReleaseArch,
+} from "../../shared/update/windows-update-target";
 import type {
   DesktopUpdateDownloadIpcRequest,
   DesktopUpdateDownloadProgress,
@@ -20,9 +27,14 @@ const UPDATE_VERSION_DIR_PREFIX = "v";
 type DesktopUpdateProgressReporter = (progress: DesktopUpdateDownloadProgress) => void;
 type DesktopUpdateFetch = typeof fetch;
 type DesktopUpdateSpawn = typeof child_process.spawn;
+type DesktopUpdateDownloadTarget = {
+  arch: WindowsReleaseArch; // main 根据当前进程架构归一后的更新目标
+  zip_url: string; // 当前架构对应的 release zip 下载地址
+};
 
 export type DesktopUpdateRuntime = {
   platform: NodeJS.Platform;
+  arch: NodeJS.Architecture; // 当前运行包架构，自动更新只能覆盖同架构包
   execPath: string;
   pid: number;
   fetch: DesktopUpdateFetch;
@@ -48,6 +60,7 @@ export class DesktopUpdateService {
     this.paths = options.paths;
     this.runtime = {
       platform: options.runtime?.platform ?? process.platform,
+      arch: options.runtime?.arch ?? process.arch,
       execPath: options.runtime?.execPath ?? process.execPath,
       pid: options.runtime?.pid ?? process.pid,
       fetch: options.runtime?.fetch ?? fetch,
@@ -63,28 +76,23 @@ export class DesktopUpdateService {
   }
 
   /**
-   * 下载 Windows x64 release zip，环境不满足时返回发布页回退结果。
+   * 下载当前 Windows 运行架构的 release zip，环境不满足时返回发布页回退结果。
    */
   public async download_release(
     request: DesktopUpdateDownloadIpcRequest,
     report_progress: DesktopUpdateProgressReporter,
   ): Promise<DesktopUpdateDownloadResult> {
-    const fallback_result = await this.resolve_download_fallback(request);
-    if (fallback_result !== null) {
-      return fallback_result;
-    }
-
-    const zip_url = request.windows_x64_zip_url;
-    if (zip_url === null) {
-      return {
-        status: "fallback_to_release_page",
-        release_url: request.release_url,
-        reason: "missing_windows_x64_zip_url",
-      };
+    const download_target = await this.resolve_download_target(request);
+    if ("status" in download_target) {
+      return download_target;
     }
 
     const version_dir = this.paths.get_berserker_version_dir(request.latest_version);
-    const zip_file_name = resolve_zip_file_name(zip_url, request.latest_version);
+    const zip_file_name = resolve_zip_file_name(
+      download_target.zip_url,
+      request.latest_version,
+      download_target.arch,
+    );
     const zip_path = path.join(version_dir, zip_file_name);
     const temp_zip_path = `${zip_path}${DOWNLOAD_TEMP_SUFFIX}`;
 
@@ -92,7 +100,7 @@ export class DesktopUpdateService {
     await fs.rm(temp_zip_path, { force: true });
 
     try {
-      const response = await this.runtime.fetch(zip_url, { method: "GET" });
+      const response = await this.runtime.fetch(download_target.zip_url, { method: "GET" });
       if (!response.ok) {
         throw new Error(`下载更新包失败：HTTP ${response.status.toString()}`);
       }
@@ -138,6 +146,17 @@ export class DesktopUpdateService {
     if (!is_path_inside(resolved_zip_path, version_dir)) {
       throw new Error("更新包路径不在当前版本目录内");
     }
+    const target_arch = normalize_windows_release_arch(this.runtime.arch);
+    if (
+      target_arch === null ||
+      !is_windows_release_zip_name_for_arch(
+        path.basename(resolved_zip_path),
+        request.latest_version,
+        target_arch,
+      )
+    ) {
+      throw new Error("更新包架构与当前应用不匹配");
+    }
 
     const update_root_dir = this.paths.get_berserker_update_root_dir();
     await fs.mkdir(update_root_dir, { recursive: true });
@@ -160,9 +179,12 @@ export class DesktopUpdateService {
     return { status: "launched" };
   }
 
-  private async resolve_download_fallback(
+  /**
+   * 统一判定当前运行环境能否自动下载，并返回当前架构对应的 release zip。
+   */
+  private async resolve_download_target(
     request: DesktopUpdateDownloadIpcRequest,
-  ): Promise<DesktopUpdateDownloadResult | null> {
+  ): Promise<DesktopUpdateDownloadTarget | DesktopUpdateDownloadResult> {
     if (this.runtime.platform !== WINDOWS_PLATFORM) {
       return {
         status: "fallback_to_release_page",
@@ -170,11 +192,20 @@ export class DesktopUpdateService {
         reason: "unsupported_platform",
       };
     }
-    if (request.windows_x64_zip_url === null) {
+    const target_arch = normalize_windows_release_arch(this.runtime.arch);
+    if (target_arch === null) {
       return {
         status: "fallback_to_release_page",
         release_url: request.release_url,
-        reason: "missing_windows_x64_zip_url",
+        reason: "unsupported_arch",
+      };
+    }
+    const zip_url = select_windows_release_zip_url(request.windows_zip_urls, target_arch);
+    if (zip_url === null) {
+      return {
+        status: "fallback_to_release_page",
+        release_url: request.release_url,
+        reason: "missing_windows_zip_url",
       };
     }
     if (!(await can_write_directory(path.dirname(this.runtime.execPath)))) {
@@ -185,7 +216,10 @@ export class DesktopUpdateService {
       };
     }
 
-    return null;
+    return {
+      arch: target_arch,
+      zip_url,
+    };
   }
 }
 
@@ -301,7 +335,11 @@ async function can_write_directory(directory: string): Promise<boolean> {
 /**
  * 从下载 URL 解析安全 zip 文件名，异常时使用稳定兜底名称。
  */
-function resolve_zip_file_name(zip_url: string, latest_version: string): string {
+function resolve_zip_file_name(
+  zip_url: string,
+  latest_version: string,
+  arch: WindowsReleaseArch,
+): string {
   try {
     const url = new URL(zip_url);
     const file_name = path.basename(decodeURIComponent(url.pathname)).trim();
@@ -312,7 +350,7 @@ function resolve_zip_file_name(zip_url: string, latest_version: string): string 
     // 下面使用稳定文件名兜底。
   }
 
-  return `LinguaGacha_v${latest_version}_Windows_x64.zip`;
+  return build_windows_release_zip_name(latest_version, arch);
 }
 
 /**

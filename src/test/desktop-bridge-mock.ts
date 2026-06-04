@@ -40,7 +40,7 @@ export function create_desktop_bridge_api_mock(
     downloadUpdate: async () => ({
       status: "fallback_to_release_page",
       release_url: "https://github.com/neavo/LinguaGacha/releases",
-      reason: "unsupported_platform",
+      reason: "missing_windows_zip_url",
     }),
     launchUpdate: async () => ({ status: "launched" }),
     pickProjectSourceFilePath: async () => ({ canceled: true, paths: [] }),

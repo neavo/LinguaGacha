@@ -24,7 +24,7 @@ afterEach(() => {
 });
 
 describe("DesktopUpdateService", () => {
-  it("下载 Windows x64 zip 到 userdata berserker 版本目录并回传进度", async () => {
+  it("x64 运行态下载 x64 zip 到 userdata berserker 版本目录并回传进度", async () => {
     const app_root = create_temp_root("linguagacha-update-app-");
     const exec_path = path.join(app_root, "app.exe");
     fs.writeFileSync(exec_path, "app", "utf-8");
@@ -43,8 +43,11 @@ describe("DesktopUpdateService", () => {
         request_id: "download-1",
         latest_version: "1.2.4",
         release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
-        windows_x64_zip_url:
-          "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
+        windows_zip_urls: {
+          x64: "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
+          arm64:
+            "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/LinguaGacha_v1.2.4_Windows_arm64.zip",
+        },
       },
       (progress) => {
         progress_values.push(progress.progress_percent);
@@ -69,15 +72,58 @@ describe("DesktopUpdateService", () => {
     expect(progress_values.at(-1)).toBe(100);
   });
 
-  it("非 Windows、缺 zip 或应用目录不可写时返回发布页回退结果", async () => {
+  it("arm64 运行态下载 arm64 zip", async () => {
+    const app_root = create_temp_root("linguagacha-update-arm64-");
+    const exec_path = path.join(app_root, "app.exe");
+    fs.writeFileSync(exec_path, "app", "utf-8");
+    const fetched_urls: string[] = [];
+    const service = create_service(app_root, {
+      arch: "arm64",
+      execPath: exec_path,
+      fetch: async (url) => {
+        fetched_urls.push(String(url));
+        return new Response(new Blob(["arm update"]), { status: 200 });
+      },
+    });
+
+    const result = await service.download_release(
+      {
+        request_id: "download-1",
+        latest_version: "1.2.4",
+        release_url: "release",
+        windows_zip_urls: {
+          x64: "https://example.com/LinguaGacha_v1.2.4_Windows_x64.zip",
+          arm64: "https://example.com/LinguaGacha_v1.2.4_Windows_arm64.zip",
+        },
+      },
+      vi.fn(),
+    );
+
+    expect(fetched_urls).toEqual(["https://example.com/LinguaGacha_v1.2.4_Windows_arm64.zip"]);
+    expect(result).toMatchObject({
+      status: "downloaded",
+      zip_path: path.join(
+        app_root,
+        "userdata",
+        "berserker",
+        "v1.2.4",
+        "LinguaGacha_v1.2.4_Windows_arm64.zip",
+      ),
+    });
+  });
+
+  it("非 Windows、unsupported arch、缺当前架构 zip 或应用目录不可写时返回发布页回退结果", async () => {
     const app_root = create_temp_root("linguagacha-update-fallback-");
     const base_request = {
       request_id: "download-1",
       latest_version: "1.2.4",
       release_url: "release",
-      windows_x64_zip_url: "zip-url",
+      windows_zip_urls: {
+        x64: "zip-url",
+      },
     };
     const non_windows_service = create_service(app_root, { platform: "linux" });
+    const unsupported_arch_service = create_service(app_root, { arch: "ia32" });
     const missing_zip_service = create_service(app_root);
     const blocked_exec_path = path.join(app_root, "blocked", "app.exe");
     fs.writeFileSync(path.dirname(blocked_exec_path), "blocked", "utf-8");
@@ -88,18 +134,27 @@ describe("DesktopUpdateService", () => {
       release_url: "release",
       reason: "unsupported_platform",
     });
+    await expect(unsupported_arch_service.download_release(base_request, vi.fn())).resolves.toEqual(
+      {
+        status: "fallback_to_release_page",
+        release_url: "release",
+        reason: "unsupported_arch",
+      },
+    );
     await expect(
       missing_zip_service.download_release(
         {
           ...base_request,
-          windows_x64_zip_url: null,
+          windows_zip_urls: {
+            arm64: "arm64-url",
+          },
         },
         vi.fn(),
       ),
     ).resolves.toEqual({
       status: "fallback_to_release_page",
       release_url: "release",
-      reason: "missing_windows_x64_zip_url",
+      reason: "missing_windows_zip_url",
     });
     await expect(blocked_service.download_release(base_request, vi.fn())).resolves.toEqual({
       status: "fallback_to_release_page",
@@ -183,6 +238,69 @@ describe("DesktopUpdateService", () => {
     ]);
   });
 
+  it("arm64 运行态拒绝启动 x64 更新包", async () => {
+    const app_root = create_temp_root("linguagacha-update-launch-arm64-mismatch-");
+    const zip_path = path.join(
+      app_root,
+      "userdata",
+      "berserker",
+      "v1.2.4",
+      "LinguaGacha_v1.2.4_Windows_x64.zip",
+    );
+    fs.mkdirSync(path.dirname(zip_path), { recursive: true });
+    fs.writeFileSync(zip_path, "zip", "utf-8");
+    const service = create_service(app_root, { arch: "arm64" });
+
+    await expect(
+      service.launch_berserker({
+        latest_version: "1.2.4",
+        zip_path,
+      }),
+    ).rejects.toThrow("更新包架构与当前应用不匹配");
+  });
+
+  it("x64 运行态拒绝启动 arm64 更新包", async () => {
+    const app_root = create_temp_root("linguagacha-update-launch-x64-mismatch-");
+    const zip_path = path.join(
+      app_root,
+      "userdata",
+      "berserker",
+      "v1.2.4",
+      "LinguaGacha_v1.2.4_Windows_arm64.zip",
+    );
+    fs.mkdirSync(path.dirname(zip_path), { recursive: true });
+    fs.writeFileSync(zip_path, "zip", "utf-8");
+    const service = create_service(app_root, { arch: "x64" });
+
+    await expect(
+      service.launch_berserker({
+        latest_version: "1.2.4",
+        zip_path,
+      }),
+    ).rejects.toThrow("更新包架构与当前应用不匹配");
+  });
+
+  it("拒绝启动版本不匹配的更新包", async () => {
+    const app_root = create_temp_root("linguagacha-update-launch-version-mismatch-");
+    const zip_path = path.join(
+      app_root,
+      "userdata",
+      "berserker",
+      "v1.2.4",
+      "LinguaGacha_v1.2.5_Windows_x64.zip",
+    );
+    fs.mkdirSync(path.dirname(zip_path), { recursive: true });
+    fs.writeFileSync(zip_path, "zip", "utf-8");
+    const service = create_service(app_root, { arch: "x64" });
+
+    await expect(
+      service.launch_berserker({
+        latest_version: "1.2.4",
+        zip_path,
+      }),
+    ).rejects.toThrow("更新包架构与当前应用不匹配");
+  });
+
   it("拒绝启动当前版本目录外的更新包", async () => {
     const app_root = create_temp_root("linguagacha-update-invalid-");
     const service = create_service(app_root);
@@ -207,6 +325,7 @@ function create_service(
     paths: new AppPathService({ appRoot: app_root, env: {}, platform: "win32" }),
     runtime: {
       platform: "win32",
+      arch: "x64",
       execPath: path.join(app_root, "app.exe"),
       pid: 1,
       fetch: async () => new Response(new Blob(["zip"]), { status: 200 }),

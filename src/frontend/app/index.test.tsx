@@ -17,7 +17,10 @@ type AlertDialogRenderProps = {
 type GithubReleaseUpdateMock = {
   latest_version: string;
   release_url: string;
-  windows_x64_zip_url: string | null;
+  windows_zip_urls: {
+    x64?: string;
+    arm64?: string;
+  };
 };
 
 // toast mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
@@ -394,8 +397,11 @@ describe("App 字体模式同步", () => {
     desktop_api_mock.check_github_release_update.mockResolvedValueOnce({
       latest_version: "1.2.4",
       release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
-      windows_x64_zip_url:
-        "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
+      windows_zip_urls: {
+        x64: "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
+        arm64:
+          "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/LinguaGacha_v1.2.4_Windows_arm64.zip",
+      },
     });
     const download_update = vi.fn(async (_request, on_progress) => {
       on_progress({
@@ -437,8 +443,11 @@ describe("App 字体模式同步", () => {
       {
         latest_version: "1.2.4",
         release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
-        windows_x64_zip_url:
-          "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
+        windows_zip_urls: {
+          x64: "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
+          arm64:
+            "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/LinguaGacha_v1.2.4_Windows_arm64.zip",
+        },
       },
       expect.any(Function),
     );
@@ -450,7 +459,7 @@ describe("App 字体模式同步", () => {
     desktop_api_mock.check_github_release_update.mockResolvedValueOnce({
       latest_version: "1.2.4",
       release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
-      windows_x64_zip_url: null,
+      windows_zip_urls: {},
     });
     Object.defineProperty(window, "desktopApp", {
       configurable: true,
@@ -459,7 +468,7 @@ describe("App 字体模式同步", () => {
           downloadUpdate: async () => ({
             status: "fallback_to_release_page",
             release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
-            reason: "missing_windows_x64_zip_url",
+            reason: "missing_windows_zip_url",
           }),
         },
       }),
@@ -481,8 +490,9 @@ describe("App 字体模式同步", () => {
     desktop_api_mock.check_github_release_update.mockResolvedValueOnce({
       latest_version: "1.2.4",
       release_url: "https://github.com/neavo/LinguaGacha/releases/tag/v1.2.4",
-      windows_x64_zip_url:
-        "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
+      windows_zip_urls: {
+        x64: "https://github.com/neavo/LinguaGacha/releases/download/v1.2.4/LinguaGacha_v1.2.4_Windows_x64.zip",
+      },
     });
     const launch_update = vi.fn(async () => ({ status: "launched" as const }));
     Object.defineProperty(window, "desktopApp", {
