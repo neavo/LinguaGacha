@@ -32,9 +32,7 @@ export function TextPreserveConfirmDialog(props: TextPreserveConfirmDialogProps)
   const description =
     dialog_copy === null
       ? ""
-      : t(dialog_copy.description_key)
-          .replace("{COUNT}", props.state.selection_count.toString())
-          .replace("{NAME}", props.state.preset_name);
+      : t(dialog_copy.description_key).replace("{COUNT}", props.state.selection_count.toString());
 
   return (
     <AppAlertDialog

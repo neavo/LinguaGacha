@@ -26,10 +26,7 @@ const CONFIRM_COPY_BY_KIND: Record<NonNullable<CustomPromptConfirmState["kind"]>
 export function CustomPromptConfirmDialog(props: CustomPromptConfirmDialogProps): JSX.Element {
   const { t } = useI18n();
   const dialog_copy = props.state.kind === null ? null : CONFIRM_COPY_BY_KIND[props.state.kind];
-  const description =
-    dialog_copy === null
-      ? ""
-      : t(dialog_copy.description_key).replace("{NAME}", props.state.preset_name);
+  const description = dialog_copy === null ? "" : t(dialog_copy.description_key);
 
   return (
     <AppAlertDialog
