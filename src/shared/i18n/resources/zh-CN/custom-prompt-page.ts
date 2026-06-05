@@ -30,13 +30,13 @@ export const zh_cn_custom_prompt_page = {
   },
   confirm: {
     delete_preset: {
-      description: "是否确认删除预设“{NAME}” …?",
+      description: "是否确认删除预设 …?",
     },
     reset: {
       description: "是否确认重置数据 …?",
     },
     overwrite_preset: {
-      description: "是否确认覆盖预设“{NAME}” …?",
+      description: "是否确认覆盖预设 …?",
     },
   },
   feedback: {

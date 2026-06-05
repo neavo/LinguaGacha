@@ -33,13 +33,13 @@ export const en_us_custom_prompt_page = {
   },
   confirm: {
     delete_preset: {
-      description: 'Confirm deleting preset "{NAME}" …?',
+      description: "Confirm deleting preset …?",
     },
     reset: {
       description: "Confirm resetting data …?",
     },
     overwrite_preset: {
-      description: 'Confirm overwriting preset "{NAME}" …?',
+      description: "Confirm overwriting preset …?",
     },
   },
   feedback: {

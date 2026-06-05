@@ -77,13 +77,13 @@ export const zh_cn_text_replacement_page = {
       description: "是否确认删除 {COUNT} 条记录 …?",
     },
     delete_preset: {
-      description: "是否确认删除预设“{NAME}” …?",
+      description: "是否确认删除预设 …?",
     },
     reset: {
       description: "是否确认重置数据 …?",
     },
     overwrite_preset: {
-      description: "是否确认覆盖预设“{NAME}” …?",
+      description: "是否确认覆盖预设 …?",
     },
   },
   feedback: {
