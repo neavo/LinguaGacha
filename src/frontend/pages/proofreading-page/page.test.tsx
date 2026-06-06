@@ -51,19 +51,32 @@ vi.mock("@frontend/widgets/app-button", () => {
 vi.mock("@frontend/widgets/search-bar/search-bar", () => {
   return {
     SearchBar: (props: {
-      disabled?: boolean;
       extra_actions?: ReactNode;
       keyword: string;
       on_keyword_change: (keyword: string) => void;
+      on_replace_next: () => void;
+      replace_actions_disabled?: boolean;
+      search_disabled?: boolean;
     }) => (
       <div data-keyword={props.keyword}>
         <button
           type="button"
-          disabled={props.disabled}
+          data-testid="proofreading-search-action"
+          disabled={props.search_disabled}
           onClick={() => {
             props.on_keyword_change("苹果");
           }}
-        />
+        >
+          搜索
+        </button>
+        <button
+          type="button"
+          data-testid="proofreading-replace-action"
+          disabled={props.replace_actions_disabled}
+          onClick={props.on_replace_next}
+        >
+          替换
+        </button>
         {props.extra_actions}
       </div>
     ),
@@ -213,6 +226,30 @@ describe("ProofreadingPage", () => {
     });
   }
 
+  /**
+   * 按测试 id 定位搜索条 mock 暴露的公开动作。
+   */
+  function query_button(test_id: string): HTMLButtonElement {
+    const button = container?.querySelector(`[data-testid='${test_id}']`);
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error(`缺少按钮：${test_id}`);
+    }
+    return button;
+  }
+
+  /**
+   * 筛选按钮来自 SearchBar extra_actions，按可见动作文案定位。
+   */
+  function query_filter_button(): HTMLButtonElement {
+    const filter_button = [...(container?.querySelectorAll("button") ?? [])].find((button) => {
+      return button.textContent?.includes("proofreading_page.action.filter");
+    });
+    if (!(filter_button instanceof HTMLButtonElement)) {
+      throw new Error("缺少筛选按钮。");
+    }
+    return filter_button;
+  }
+
   it("质量缓存未 ready 时保留搜索并锁住筛选和编辑动作", async () => {
     if (proofreading_state_fixture.current === null) {
       throw new Error("缺少校对页状态夹具。");
@@ -222,9 +259,12 @@ describe("ProofreadingPage", () => {
 
     await mount_page();
 
-    const buttons = [...(container?.querySelectorAll("button") ?? [])];
-    expect(buttons[0]?.disabled).toBe(false);
-    expect(buttons[1]?.disabled).toBe(true);
+    const search_button = query_button("proofreading-search-action");
+    const replace_button = query_button("proofreading-replace-action");
+    const filter_button = query_filter_button();
+    expect(search_button.disabled).toBe(false);
+    expect(replace_button.disabled).toBe(true);
+    expect(filter_button.disabled).toBe(true);
     expect(
       container?.querySelector("[data-testid='proofreading-table']")?.getAttribute("data-readonly"),
     ).toBe("true");
@@ -237,10 +277,68 @@ describe("ProofreadingPage", () => {
     ).toBe("true");
 
     await act(async () => {
-      buttons[0]?.click();
-      buttons[1]?.click();
+      search_button.click();
+      replace_button.click();
+      filter_button.click();
     });
     expect(proofreading_state_fixture.current.update_search_keyword).toHaveBeenCalledWith("苹果");
+    expect(proofreading_state_fixture.current.replace_next_visible_match).not.toHaveBeenCalled();
     expect(proofreading_state_fixture.current.open_filter_dialog).not.toHaveBeenCalled();
+  });
+
+  it("任务执行中保留搜索和筛选并锁住替换和表格写入口", async () => {
+    if (proofreading_state_fixture.current === null) {
+      throw new Error("缺少校对页状态夹具。");
+    }
+    proofreading_state_fixture.current.readonly = true;
+    proofreading_state_fixture.current.is_refreshing = false;
+    proofreading_state_fixture.current.is_writing = false;
+    proofreading_state_fixture.current.cache_status = "ready";
+
+    await mount_page();
+
+    const search_button = query_button("proofreading-search-action");
+    const replace_button = query_button("proofreading-replace-action");
+    const filter_button = query_filter_button();
+    expect(search_button.disabled).toBe(false);
+    expect(replace_button.disabled).toBe(true);
+    expect(filter_button.disabled).toBe(false);
+    expect(
+      container?.querySelector("[data-testid='proofreading-table']")?.getAttribute("data-readonly"),
+    ).toBe("true");
+    expect(
+      container?.querySelector("[data-testid='proofreading-edit']")?.getAttribute("data-readonly"),
+    ).toBe("true");
+
+    await act(async () => {
+      search_button.click();
+      replace_button.click();
+      filter_button.click();
+    });
+    expect(proofreading_state_fixture.current.update_search_keyword).toHaveBeenCalledWith("苹果");
+    expect(proofreading_state_fixture.current.open_filter_dialog).toHaveBeenCalledTimes(1);
+    expect(proofreading_state_fixture.current.replace_next_visible_match).not.toHaveBeenCalled();
+  });
+
+  it("本地写入中锁住搜索筛选替换和表格写入口", async () => {
+    if (proofreading_state_fixture.current === null) {
+      throw new Error("缺少校对页状态夹具。");
+    }
+    proofreading_state_fixture.current.readonly = false;
+    proofreading_state_fixture.current.is_refreshing = false;
+    proofreading_state_fixture.current.is_writing = true;
+    proofreading_state_fixture.current.cache_status = "ready";
+
+    await mount_page();
+
+    expect(query_button("proofreading-search-action").disabled).toBe(true);
+    expect(query_button("proofreading-replace-action").disabled).toBe(true);
+    expect(query_filter_button().disabled).toBe(true);
+    expect(
+      container?.querySelector("[data-testid='proofreading-table']")?.getAttribute("data-readonly"),
+    ).toBe("true");
+    expect(
+      container?.querySelector("[data-testid='proofreading-edit']")?.getAttribute("data-readonly"),
+    ).toBe("true");
   });
 });
