@@ -238,6 +238,7 @@ function create_pre_replacement_quality(
 
 let current_statistics_cache: QualityRuleStatisticsCacheSnapshot;
 let project_change_seq = 0;
+let project_change_sections: Array<"items" | "quality"> = ["quality"];
 
 /**
  * 构造当前测试场景的标准数据。
@@ -327,7 +328,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
       project_change_signal: {
         seq: project_change_seq,
         reason: "test",
-        updated_sections: ["quality"],
+        updated_sections: project_change_sections,
         results: [],
       },
       project_store,
@@ -598,6 +599,7 @@ describe("useTextReplacementPageState", () => {
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
     project_change_seq = 0;
+    project_change_sections = ["quality"];
     run_state.task.busy = false;
     run_state.task.status = "idle";
     page_ui_state_store.clear();
@@ -677,6 +679,47 @@ describe("useTextReplacementPageState", () => {
       vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
     });
   }
+
+  it("items 变更后保留当前替换规则表格主体", async () => {
+    await mount_probe();
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["hero"]);
+
+    project_change_sections = ["items"];
+    run_state.quality.pre_replacement.entries = [
+      {
+        entry_id: "villain::0",
+        src: "villain",
+        dst: "魔王",
+        regex: false,
+        case_sensitive: false,
+      },
+    ];
+    run_state.quality.pre_replacement.revision = 3;
+    run_state.revisions.sections.quality = 3;
+    await rerender_probe();
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["hero"]);
+  });
+
+  it("quality 变更后重新读取替换规则表格主体", async () => {
+    await mount_probe();
+
+    project_change_sections = ["quality"];
+    run_state.quality.pre_replacement.entries = [
+      {
+        entry_id: "villain::0",
+        src: "villain",
+        dst: "魔王",
+        regex: false,
+        case_sensitive: false,
+      },
+    ];
+    run_state.quality.pre_replacement.revision = 3;
+    run_state.revisions.sections.quality = 3;
+    await rerender_probe();
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["villain"]);
+  });
 
   it("首次进入页面时直接读取预热后的统计结果", async () => {
     await mount_probe();

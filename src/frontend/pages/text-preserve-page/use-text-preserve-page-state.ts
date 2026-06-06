@@ -25,6 +25,7 @@ import {
 import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
 import { useQualityRuleStatistics } from "@frontend/app/session/quality-rule-statistics-context";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { useProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
 import { is_project_write_locked } from "@frontend/app/state/task-snapshot-store";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
@@ -111,6 +112,8 @@ const DEFAULT_QUALITY_SLICE: TextPreserveQualitySlice = {
   entries: [],
   section_revision: 0,
 };
+// 文本保护规则事实只归 quality section 拥有，items 变化只影响统计和结果视图。
+const QUALITY_RULE_REFRESH_SECTIONS = ["quality"] as const;
 // TEXT PRESERVE MODE REFRESH TIMEOUT MS 是运行时节流或容量阈值，集中保存便于评估性能影响。
 const TEXT_PRESERVE_MODE_REFRESH_TIMEOUT_MS = 15000;
 // TEXT PRESERVE SORT COLUMN IDS 是 session 恢复排序的白名单，避免旧列 id 进入当前表格。
@@ -474,6 +477,12 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     return next_slice;
   }, [project_session_status, project_snapshot.loaded, project_snapshot.path, quality_slice]);
 
+  // 保持规则读取 effect 只响应 quality 变化，翻译批次保留当前规则表格主体。
+  const quality_rule_change_seq = useProjectChangeSeqForSections(
+    project_change_signal,
+    QUALITY_RULE_REFRESH_SECTIONS,
+  );
+
   useEffect(() => {
     if (
       !project_snapshot.loaded ||
@@ -503,7 +512,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       cancelled = true;
     };
   }, [
-    project_change_signal?.seq ?? 0,
+    quality_rule_change_seq,
     project_session_status,
     project_snapshot.loaded,
     project_snapshot.path,

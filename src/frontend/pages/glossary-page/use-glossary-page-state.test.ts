@@ -252,6 +252,7 @@ function create_glossary_quality(
 let current_statistics_cache: QualityRuleStatisticsCacheSnapshot;
 let task_snapshot: { busy: boolean; status: string };
 let project_change_seq = 0;
+let project_change_sections: Array<"items" | "quality"> = ["quality"];
 
 /**
  * 触发当前界面反馈行为。
@@ -371,7 +372,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
       project_change_signal: {
         seq: project_change_seq,
         reason: "test",
-        updated_sections: ["quality"],
+        updated_sections: project_change_sections,
         results: [],
       },
       project_store,
@@ -685,6 +686,7 @@ describe("useGlossaryPageState", () => {
       status: "idle",
     };
     project_change_seq = 0;
+    project_change_sections = ["quality"];
     page_ui_state_store.clear();
     render_version = 0;
   });
@@ -749,6 +751,45 @@ describe("useGlossaryPageState", () => {
       vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
     });
   }
+
+  it("items 变更后保留当前术语规则表格主体", async () => {
+    await mount_probe();
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
+
+    project_change_sections = ["items"];
+    run_state.quality.glossary.entries = [
+      {
+        src: "橘子",
+        dst: "Orange",
+        info: "水果",
+        case_sensitive: false,
+      },
+    ];
+    run_state.quality.glossary.revision = 2;
+    run_state.revisions.sections.quality = 2;
+    await rerender_probe();
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
+  });
+
+  it("quality 变更后重新读取术语规则表格主体", async () => {
+    await mount_probe();
+
+    project_change_sections = ["quality"];
+    run_state.quality.glossary.entries = [
+      {
+        src: "橘子",
+        dst: "Orange",
+        info: "水果",
+        case_sensitive: false,
+      },
+    ];
+    run_state.quality.glossary.revision = 2;
+    run_state.revisions.sections.quality = 2;
+    await rerender_probe();
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["橘子"]);
+  });
 
   it("首次进入页面时直接读取预热后的统计结果", async () => {
     await mount_probe();
