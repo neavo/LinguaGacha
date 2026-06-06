@@ -25,12 +25,17 @@ const PROOFREADING_SEARCH_SCOPES: ProofreadingSearchScope[] = ["all", "src", "ds
 export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const proofreading_page_state = useProofreadingPageState();
-  // 只受只读和写入中约束，刷新期间仍允许继续输入并由状态层重建 query。
-  const search_disabled = proofreading_page_state.readonly || proofreading_page_state.is_writing;
-  // 在刷新期间锁住行操作，避免旧 view 上提交批量动作。
-  const table_action_disabled = search_disabled || proofreading_page_state.is_refreshing;
-  // 等待校对 query cache ready 后再开放筛选弹窗。
-  const filter_disabled = table_action_disabled || proofreading_page_state.cache_status !== "ready";
+  // 搜索控件只在本地写入期间暂停，任务执行和刷新期间仍可重建只读 query。
+  const search_controls_disabled = proofreading_page_state.is_writing;
+  // 写入口统一覆盖替换、表格操作和编辑弹窗，避免旧 view 或任务写回期间提交项目事实。
+  const write_actions_disabled =
+    proofreading_page_state.readonly ||
+    proofreading_page_state.is_refreshing ||
+    proofreading_page_state.is_writing;
+  const filter_disabled =
+    proofreading_page_state.is_refreshing ||
+    proofreading_page_state.is_writing ||
+    proofreading_page_state.cache_status !== "ready";
   const regex_state_label = proofreading_page_state.is_regex
     ? t("app.toggle.enabled")
     : t("app.toggle.disabled");
@@ -63,7 +68,7 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
         placeholder={t("proofreading_page.search.placeholder")}
         clear_label={t("proofreading_page.search.clear")}
         invalid_message={proofreading_page_state.invalid_regex_message}
-        disabled={search_disabled}
+        search_disabled={search_controls_disabled}
         on_keyword_change={proofreading_page_state.update_search_keyword}
         replace_text={proofreading_page_state.replace_text}
         replace_placeholder={t("proofreading_page.search.replace_placeholder")}
@@ -71,6 +76,7 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
         on_replace_text_change={proofreading_page_state.update_replace_text}
         replace_next_label={t("proofreading_page.action.replace")}
         replace_all_label={t("proofreading_page.action.replace_all")}
+        replace_actions_disabled={write_actions_disabled}
         on_replace_next={proofreading_page_state.replace_next_visible_match}
         on_replace_all={proofreading_page_state.replace_all_visible_matches}
         scope={{
@@ -113,7 +119,7 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
           active_row_id={proofreading_page_state.active_row_id}
           anchor_row_id={proofreading_page_state.anchor_row_id}
           retranslating_row_ids={proofreading_page_state.retranslating_row_ids}
-          readonly={table_action_disabled}
+          readonly={write_actions_disabled}
           get_row_at_index={proofreading_page_state.get_visible_row_at_index}
           get_row_id_at_index={proofreading_page_state.get_visible_row_id_at_index}
           resolve_row_index={proofreading_page_state.resolve_visible_row_index}
@@ -151,7 +157,7 @@ export function ProofreadingPage(_props: ScreenComponentProps): JSX.Element {
         item={proofreading_page_state.dialog_item}
         draft_item={proofreading_page_state.dialog_state.draft_item}
         saving={proofreading_page_state.dialog_state.saving}
-        readonly={table_action_disabled}
+        readonly={write_actions_disabled}
         on_change={proofreading_page_state.update_dialog_draft}
         on_save={proofreading_page_state.save_dialog_entry}
         on_close={proofreading_page_state.request_close_dialog}

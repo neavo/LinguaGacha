@@ -31,7 +31,7 @@ type SearchBarSharedProps<scope_value extends string = string> = React.Component
   clear_label: string;
   invalid_message: string | null;
   on_keyword_change: (next_keyword: string) => void;
-  disabled?: boolean;
+  search_disabled?: boolean; // 只锁搜索读控件，不影响替换文本编辑。
   scope: {
     value: scope_value;
     button_label: React.ReactNode;
@@ -65,6 +65,7 @@ type SearchBarReplaceProps<scope_value extends string = string> =
     on_replace_text_change: (next_replace_text: string) => void;
     replace_next_label: string;
     replace_all_label: string;
+    replace_actions_disabled?: boolean; // 只锁会提交项目事实的替换动作。
     on_replace_next: () => void | Promise<void>;
     on_replace_all: () => void | Promise<void>;
   };
@@ -88,7 +89,7 @@ function resolve_search_bar_card_props<scope_value extends string = string>(
       clear_label,
       invalid_message,
       on_keyword_change,
-      disabled,
+      search_disabled,
       scope,
       regex,
       replace_text,
@@ -97,6 +98,7 @@ function resolve_search_bar_card_props<scope_value extends string = string>(
       on_replace_text_change,
       replace_next_label,
       replace_all_label,
+      replace_actions_disabled,
       on_replace_next,
       on_replace_all,
       extra_actions,
@@ -110,7 +112,7 @@ function resolve_search_bar_card_props<scope_value extends string = string>(
     void clear_label;
     void invalid_message;
     void on_keyword_change;
-    void disabled;
+    void search_disabled;
     void scope;
     void regex;
     void replace_text;
@@ -119,6 +121,7 @@ function resolve_search_bar_card_props<scope_value extends string = string>(
     void on_replace_text_change;
     void replace_next_label;
     void replace_all_label;
+    void replace_actions_disabled;
     void on_replace_next;
     void on_replace_all;
     void extra_actions;
@@ -134,7 +137,7 @@ function resolve_search_bar_card_props<scope_value extends string = string>(
     clear_label,
     invalid_message,
     on_keyword_change,
-    disabled,
+    search_disabled,
     scope,
     regex,
     extra_actions,
@@ -148,7 +151,7 @@ function resolve_search_bar_card_props<scope_value extends string = string>(
   void clear_label;
   void invalid_message;
   void on_keyword_change;
-  void disabled;
+  void search_disabled;
   void scope;
   void regex;
   void extra_actions;
@@ -161,10 +164,11 @@ type SearchBarKeywordFieldProps = {
   placeholder: string;
   clear_label: string;
   invalid_message: string | null;
-  disabled?: boolean;
+  search_disabled?: boolean;
   on_keyword_change: (next_keyword: string) => void;
   className?: string;
 };
+// 关键词、清空与正则错误提示同属搜索读控件，共用 search_disabled。
 function SearchBarKeywordField(props: SearchBarKeywordFieldProps): JSX.Element {
   const show_clear_keyword = props.keyword !== "";
   const show_invalid_state = props.invalid_message !== null;
@@ -172,12 +176,12 @@ function SearchBarKeywordField(props: SearchBarKeywordFieldProps): JSX.Element {
 
   return (
     <InputGroup
-      data-disabled={props.disabled ? "true" : undefined}
+      data-disabled={props.search_disabled ? "true" : undefined}
       className={cn("search-bar__input-group", props.className)}
     >
       <InputGroupInput
         value={props.keyword}
-        disabled={props.disabled}
+        disabled={props.search_disabled}
         aria-invalid={show_invalid_state}
         className="search-bar__input"
         placeholder={props.placeholder}
@@ -192,7 +196,7 @@ function SearchBarKeywordField(props: SearchBarKeywordFieldProps): JSX.Element {
               <TooltipTrigger asChild>
                 <InputGroupButton
                   size="icon-xs"
-                  disabled={props.disabled}
+                  disabled={props.search_disabled}
                   aria-label={props.clear_label}
                   className="search-bar__clear-button"
                   onClick={() => {
@@ -230,9 +234,10 @@ function SearchBarKeywordField(props: SearchBarKeywordFieldProps): JSX.Element {
 }
 
 type SearchBarScopeActionProps<scope_value extends string = string> = {
-  disabled?: boolean;
+  search_disabled?: boolean;
   scope: SearchBarSharedProps<scope_value>["scope"];
 };
+// 搜索范围只改变 query 参数，禁用语义跟关键词输入保持一致。
 function SearchBarScopeAction<scope_value extends string = string>(
   props: SearchBarScopeActionProps<scope_value>,
 ): JSX.Element {
@@ -245,7 +250,7 @@ function SearchBarScopeAction<scope_value extends string = string>(
               type="button"
               variant="ghost"
               size="toolbar"
-              disabled={props.disabled}
+              disabled={props.search_disabled}
               className="search-bar__action-trigger"
               data-active={props.scope.value === "all" ? undefined : "true"}
               aria-label={props.scope.aria_label}
@@ -278,9 +283,10 @@ function SearchBarScopeAction<scope_value extends string = string>(
 }
 
 type SearchBarRegexActionProps = {
-  disabled?: boolean;
+  search_disabled?: boolean;
   regex: SearchBarSharedProps["regex"];
 };
+// 正则开关只改变搜索解释方式，跟搜索范围共用读控件锁。
 function SearchBarRegexAction(props: SearchBarRegexActionProps): JSX.Element {
   return (
     <Tooltip>
@@ -289,7 +295,7 @@ function SearchBarRegexAction(props: SearchBarRegexActionProps): JSX.Element {
           type="button"
           variant="ghost"
           size="toolbar"
-          disabled={props.disabled}
+          disabled={props.search_disabled}
           className="search-bar__action-trigger"
           data-active={props.regex.value ? "true" : undefined}
           onClick={() => {
@@ -313,23 +319,24 @@ type SearchBarReplaceFieldProps = {
   replace_clear_label: string;
   replace_next_label: string;
   replace_all_label: string;
-  disabled?: boolean;
-  replace_actions_disabled: boolean;
+  replace_text_disabled?: boolean; // 替换文本是本地输入，独立于搜索读控件锁。
+  replace_submit_disabled: boolean; // 提交锁包含写入口状态和替换前置条件。
   on_replace_text_change: (next_replace_text: string) => void;
   on_replace_next: () => void | Promise<void>;
   on_replace_all: () => void | Promise<void>;
 };
+// 替换输入和替换提交分开消费禁用状态，避免项目写锁影响本地草稿。
 function SearchBarReplaceField(props: SearchBarReplaceFieldProps): JSX.Element {
   const show_clear_replace_text = props.replace_text !== "";
 
   return (
     <InputGroup
-      data-disabled={props.disabled ? "true" : undefined}
+      data-disabled={props.replace_text_disabled ? "true" : undefined}
       className="search-bar__input-group search-bar__input-group--replace"
     >
       <InputGroupInput
         value={props.replace_text}
-        disabled={props.disabled}
+        disabled={props.replace_text_disabled}
         className="search-bar__input"
         placeholder={props.replace_placeholder}
         onChange={(event) => {
@@ -345,7 +352,7 @@ function SearchBarReplaceField(props: SearchBarReplaceFieldProps): JSX.Element {
             <TooltipTrigger asChild>
               <InputGroupButton
                 size="icon-xs"
-                disabled={props.disabled}
+                disabled={props.replace_text_disabled}
                 aria-label={props.replace_clear_label}
                 className="search-bar__clear-button"
                 onClick={() => {
@@ -364,7 +371,7 @@ function SearchBarReplaceField(props: SearchBarReplaceFieldProps): JSX.Element {
           <TooltipTrigger asChild>
             <InputGroupButton
               size="icon-xs"
-              disabled={props.replace_actions_disabled}
+              disabled={props.replace_submit_disabled}
               aria-label={props.replace_next_label}
               className="search-bar__replace-button"
               onClick={() => {
@@ -382,7 +389,7 @@ function SearchBarReplaceField(props: SearchBarReplaceFieldProps): JSX.Element {
           <TooltipTrigger asChild>
             <InputGroupButton
               size="icon-xs"
-              disabled={props.replace_actions_disabled}
+              disabled={props.replace_submit_disabled}
               aria-label={props.replace_all_label}
               className="search-bar__replace-button"
               onClick={() => {
@@ -400,6 +407,7 @@ function SearchBarReplaceField(props: SearchBarReplaceFieldProps): JSX.Element {
     </InputGroup>
   );
 }
+// SearchBar 对外只暴露能力锁，具体提交前置条件由组件内部收口。
 export function SearchBar<scope_value extends string = string>(
   props: SearchBarProps<scope_value>,
 ): JSX.Element {
@@ -411,18 +419,19 @@ export function SearchBar<scope_value extends string = string>(
     clear_label,
     invalid_message,
     on_keyword_change,
-    disabled,
+    search_disabled,
     scope,
     regex,
   } = props;
   const card_props = resolve_search_bar_card_props(props);
-  // 将替换动作的可用性收口在 SearchBar 内，避免页面层重复维护同一组前置条件
-  const replace_actions_disabled =
-    variant !== "replace" ||
-    disabled === true ||
-    keyword === "" ||
-    props.replace_text === "" ||
-    invalid_message !== null;
+  // 替换提交前置条件收口在组件内，页面只声明项目写入口是否锁定。
+  const replace_submit_disabled =
+    variant !== "replace"
+      ? true
+      : props.replace_actions_disabled === true ||
+        keyword.trim() === "" ||
+        props.replace_text === "" ||
+        invalid_message !== null;
 
   return (
     <Card
@@ -445,7 +454,7 @@ export function SearchBar<scope_value extends string = string>(
                 placeholder={placeholder}
                 clear_label={clear_label}
                 invalid_message={invalid_message}
-                disabled={disabled}
+                search_disabled={search_disabled}
                 on_keyword_change={on_keyword_change}
               />
               <div className="search-bar__replace-arrow" aria-hidden="true">
@@ -457,8 +466,7 @@ export function SearchBar<scope_value extends string = string>(
                 replace_clear_label={props.replace_clear_label}
                 replace_next_label={props.replace_next_label}
                 replace_all_label={props.replace_all_label}
-                disabled={disabled}
-                replace_actions_disabled={replace_actions_disabled}
+                replace_submit_disabled={replace_submit_disabled}
                 on_replace_text_change={props.on_replace_text_change}
                 on_replace_next={props.on_replace_next}
                 on_replace_all={props.on_replace_all}
@@ -470,13 +478,13 @@ export function SearchBar<scope_value extends string = string>(
               placeholder={placeholder}
               clear_label={clear_label}
               invalid_message={invalid_message}
-              disabled={disabled}
+              search_disabled={search_disabled}
               on_keyword_change={on_keyword_change}
             />
           )}
           <div className="search-bar__actions">
-            <SearchBarScopeAction disabled={disabled} scope={scope} />
-            <SearchBarRegexAction disabled={disabled} regex={regex} />
+            <SearchBarScopeAction search_disabled={search_disabled} scope={scope} />
+            <SearchBarRegexAction search_disabled={search_disabled} regex={regex} />
             {props.extra_actions}
           </div>
         </div>

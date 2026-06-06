@@ -11,6 +11,7 @@ import {
   useDebouncedCallback,
 } from "@frontend/widgets/interactions/use-debounce";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { is_project_write_locked } from "@frontend/app/state/task-snapshot-store";
 import type { ProjectChangeSignal } from "@frontend/app/state/desktop-state-context";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
@@ -239,7 +240,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       }),
     );
   }, [visible_items]);
-  const readonly = task_snapshot.busy;
+  const readonly = is_project_write_locked(task_snapshot);
   const retranslating_row_ids = useMemo(() => {
     if (
       task_snapshot.task_type !== "translation" ||

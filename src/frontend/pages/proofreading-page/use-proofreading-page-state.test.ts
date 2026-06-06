@@ -603,6 +603,20 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.settled_project_path).toBe("E:/demo/sample.lg");
   });
 
+  it("任务 busy 时会把页面写入口暴露为只读", async () => {
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      task_snapshot: {
+        ...runtime_fixture.current.task_snapshot,
+        busy: true,
+      },
+    };
+
+    await render_hook();
+
+    expect(latest_state?.readonly).toBe(true);
+  });
+
   it("首次进入校对页时把默认意图展开为当前默认筛选", async () => {
     const glossary_term: ProofreadingGlossaryTerm = ["魔法", "Magic"];
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
