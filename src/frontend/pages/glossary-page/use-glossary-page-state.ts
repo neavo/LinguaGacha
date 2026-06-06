@@ -23,6 +23,7 @@ import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-
 import { is_project_write_locked } from "@frontend/app/state/task-snapshot-store";
 import { useQualityRuleStatistics } from "@frontend/app/session/quality-rule-statistics-context";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { useProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
@@ -120,6 +121,8 @@ const DEFAULT_QUALITY_SLICE: GlossaryQualitySlice = {
   entries: [],
   section_revision: 0,
 };
+// 术语表规则事实只归 quality section 拥有，items 变化只影响统计和结果视图。
+const QUALITY_RULE_REFRESH_SECTIONS = ["quality"] as const;
 
 function clone_entry(entry: GlossaryEntry): GlossaryEntry {
   return {
@@ -523,6 +526,12 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     return next_slice;
   }, [project_session_status, project_snapshot.loaded, project_snapshot.path, quality_slice]);
 
+  // 保持规则读取 effect 只响应 quality 变化，翻译批次保留当前规则表格主体。
+  const quality_rule_change_seq = useProjectChangeSeqForSections(
+    project_change_signal,
+    QUALITY_RULE_REFRESH_SECTIONS,
+  );
+
   useEffect(() => {
     if (
       !project_snapshot.loaded ||
@@ -552,7 +561,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       cancelled = true;
     };
   }, [
-    project_change_signal?.seq ?? 0,
+    quality_rule_change_seq,
     project_session_status,
     project_snapshot.loaded,
     project_snapshot.path,
@@ -1051,7 +1060,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       }
 
       const next_filter_state = {
-        // 统计入口要把用户带回一条可解释的筛选路径，而不是偷偷叠加更多隐式条件
+        // 统计入口要把用户带回一条可解释的筛选路径，保持筛选条件完全显式。
         keyword: target_entry.src,
         scope: "src" as const,
         is_regex: false,

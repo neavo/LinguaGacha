@@ -26,6 +26,7 @@ import {
 import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
 import { useQualityRuleStatistics } from "@frontend/app/session/quality-rule-statistics-context";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { useProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
 import { is_project_write_locked } from "@frontend/app/state/task-snapshot-store";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
@@ -185,6 +186,8 @@ const DEFAULT_QUALITY_SLICE: TextReplacementQualitySlice = {
   entries: [],
   section_revision: 0,
 };
+// 替换规则事实只归 quality section 拥有，items 变化只影响统计和结果视图。
+const QUALITY_RULE_REFRESH_SECTIONS = ["quality"] as const;
 
 function clone_entry(entry: TextReplacementEntry): TextReplacementEntry {
   return {
@@ -502,6 +505,12 @@ export function useTextReplacementPageState(
       quality_slice,
     ]);
 
+  // 保持规则读取 effect 只响应 quality 变化，翻译批次保留当前规则表格主体。
+  const quality_rule_change_seq = useProjectChangeSeqForSections(
+    project_change_signal,
+    QUALITY_RULE_REFRESH_SECTIONS,
+  );
+
   useEffect(() => {
     if (
       !project_snapshot.loaded ||
@@ -532,7 +541,7 @@ export function useTextReplacementPageState(
     };
   }, [
     config.rule_type,
-    project_change_signal?.seq ?? 0,
+    quality_rule_change_seq,
     project_session_status,
     project_snapshot.loaded,
     project_snapshot.path,

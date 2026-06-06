@@ -2,6 +2,11 @@ import {
   QUALITY_STATISTICS_RULE_MODES,
   type QualityStatisticsDependencySnapshot,
 } from "@shared/quality/quality-statistics";
+import {
+  resolve_quality_statistics_item_text_change_scope,
+  type QualityStatisticsTextChangeScope,
+} from "@shared/quality/quality-statistics-invalidation";
+import type { ProjectChangeItemFieldPatch, ProjectDataSection } from "@shared/project-event";
 
 // 渲染进程统计调度消费的共享规则词表别名。
 export const QUALITY_RULE_STATISTICS_RULE_TYPES = QUALITY_STATISTICS_RULE_MODES;
@@ -32,6 +37,21 @@ export type QualityRuleStatisticsCacheSnapshot = {
 export type QualityRuleStatisticsStoreSnapshot = {
   project_path: string; // 缓存会话身份，切换项目必须整体 reset
   caches: Record<QualityRuleStatisticsRuleType, QualityRuleStatisticsCacheSnapshot>; // 按规则类型隔离统计结果
+};
+
+export type QualityRuleStatisticsProjectChangeSignal = {
+  seq: number; // 初始空信号不触发统计失效。
+  updated_sections: readonly ProjectDataSection[]; // 顶层 section 决定是否需要进入质量统计判定。
+  results: readonly {
+    source: string; // 后端写入来源用于识别翻译批次和重翻批次。
+    updatedSections: readonly ProjectDataSection[]; // 单个写入结果的真实影响范围。
+    itemDelta?: {
+      upsertItemIds: ReadonlyArray<number | string>; // 只用于判断是否存在 item 变化，不进入统计身份。
+      deleteItemIds: ReadonlyArray<number | string>; // 删除会改变原文类统计覆盖范围。
+      fullReplace: boolean; // 全量替换无法证明文本源范围。
+      fieldPatch?: ProjectChangeItemFieldPatch; // 字段补丁是精确区分原文/译文影响的唯一证据。
+    };
+  }[];
 };
 
 // 渲染进程内存 store 的轻量订阅回调。
@@ -91,6 +111,66 @@ export function shouldRequestQualityRuleStatisticsForeground(
   return cache.phase === "empty" || cache.phase === "scheduled";
 }
 
+/**
+ * 把项目变更信号折叠成需要失效的规则集合，Provider 只消费这个单一判定入口。
+ */
+export function resolveQualityRuleStatisticsRulesToExpire(
+  signal: QualityRuleStatisticsProjectChangeSignal,
+): QualityRuleStatisticsRuleType[] {
+  if (signal.seq === 0) {
+    return [];
+  }
+  if (signal.updated_sections.includes("quality")) {
+    return [...QUALITY_RULE_STATISTICS_RULE_TYPES];
+  }
+  if (!signal.updated_sections.includes("items")) {
+    return [];
+  }
+
+  // 合并窗口里可能混入其它 section，只让真实 item 结果参与文本源判定。
+  const item_results = signal.results.filter((result) => {
+    return result.updatedSections.includes("items") || result.itemDelta !== undefined;
+  });
+  if (item_results.length === 0) {
+    return [...QUALITY_RULE_STATISTICS_RULE_TYPES];
+  }
+
+  // 多个 item result 混合时，任一全量风险立即扩大到全部规则。
+  let should_expire_post_replacement = false;
+  for (const result of item_results) {
+    const scope = resolve_quality_statistics_item_result_expire_scope(result);
+    if (scope === "all") {
+      return [...QUALITY_RULE_STATISTICS_RULE_TYPES];
+    }
+    if (scope === "post_replacement") {
+      should_expire_post_replacement = true;
+    }
+  }
+
+  return should_expire_post_replacement ? ["post_replacement"] : [];
+}
+
+/**
+ * 单个写入结果只负责判定文本源影响范围，最终规则集合由外层合并。
+ */
+function resolve_quality_statistics_item_result_expire_scope(
+  result: QualityRuleStatisticsProjectChangeSignal["results"][number],
+): QualityStatisticsTextChangeScope {
+  const item_delta = result.itemDelta;
+  if (item_delta === undefined) {
+    return "all";
+  }
+  return resolve_quality_statistics_item_text_change_scope({
+    source: result.source,
+    fullReplace: item_delta.fullReplace,
+    deleteCount: item_delta.deleteItemIds.length,
+    fieldPatch: item_delta.fieldPatch,
+  });
+}
+
+/**
+ * 创建项目级统计 store 初始快照，四类规则必须共享同一 phase 结构。
+ */
 function createEmptyQualityRuleStatisticsStoreSnapshot(
   project_path: string,
 ): QualityRuleStatisticsStoreSnapshot {
@@ -126,9 +206,12 @@ export function expireQualityRuleStatisticsCache(
  * 创建渲染进程内存 store；同引用更新不广播，避免无语义刷新触发页面 effect。
  */
 export function createQualityRuleStatisticsStore(): QualityRuleStatisticsStore {
+  // snapshot 是渲染进程内存事实，所有页面订阅都从这里读取同一份缓存。
   let snapshot = createEmptyQualityRuleStatisticsStoreSnapshot("");
+  // listeners 只保存轻量回调，避免页面状态进入共享 store。
   const listeners = new Set<QualityRuleStatisticsStoreListener>();
 
+  // 统一广播入口，保证所有写路径都经过同一批订阅者。
   function emit_change(): void {
     listeners.forEach((listener) => {
       listener();

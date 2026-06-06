@@ -1,16 +1,20 @@
 import { describe, expect, it } from "vitest";
 
+import { prepare_quality_statistics_task_input } from "../../shared/quality/quality-statistics-input";
 import { BackendWorkerClient } from "./worker-client";
 import type { BackendWorkerTask } from "./worker-task";
 
+/**
+ * 构造可真实执行的质量统计任务，队列测试只隔离 worker client 调度行为。
+ */
 function create_quality_task(pattern: string): BackendWorkerTask {
   return {
     type: "quality_statistics",
-    input: {
+    input: prepare_quality_statistics_task_input({
       rule_key: "glossary",
       entries: [{ entry_id: pattern, src: pattern }],
       items: [{ src: `${pattern} appeared`, dst: "" }],
-    },
+    }),
   };
 }
 

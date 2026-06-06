@@ -266,6 +266,7 @@ const project_store = {
 let current_statistics_cache: QualityRuleStatisticsCacheSnapshot;
 let task_snapshot: { busy: boolean; status: string };
 let project_change_seq = 0;
+let project_change_sections: Array<"items" | "quality"> = ["quality"];
 
 /**
  * 构造当前测试场景的标准数据。
@@ -558,7 +559,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
       project_change_signal: {
         seq: project_change_seq,
         reason: "test",
-        updated_sections: ["quality"],
+        updated_sections: project_change_sections,
         results: [],
       },
       project_store,
@@ -626,6 +627,7 @@ describe("useTextPreservePageState", () => {
   beforeEach(() => {
     project_store_listeners.clear();
     current_statistics_cache = create_statistics_cache({});
+    project_change_sections = ["quality"];
     task_snapshot = {
       busy: false,
       status: "idle",
@@ -720,6 +722,63 @@ describe("useTextPreservePageState", () => {
       vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
     });
   }
+
+  it("items 变更后保留当前文本保护规则表格主体", async () => {
+    await mount_probe();
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo"]);
+
+    project_change_sections = ["items"];
+    run_state = {
+      ...run_state,
+      quality: create_text_preserve_quality(
+        [
+          {
+            src: "baz",
+            info: "qux",
+          },
+        ],
+        2,
+      ),
+      revisions: {
+        ...run_state.revisions,
+        sections: {
+          ...run_state.revisions.sections,
+          quality: 2,
+        },
+      },
+    };
+    await rerender_probe();
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo"]);
+  });
+
+  it("quality 变更后重新读取文本保护规则表格主体", async () => {
+    await mount_probe();
+
+    project_change_sections = ["quality"];
+    run_state = {
+      ...run_state,
+      quality: create_text_preserve_quality(
+        [
+          {
+            src: "baz",
+            info: "qux",
+          },
+        ],
+        2,
+      ),
+      revisions: {
+        ...run_state.revisions,
+        sections: {
+          ...run_state.revisions.sections,
+          quality: 2,
+        },
+      },
+    };
+    await rerender_probe();
+
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["baz"]);
+  });
 
   it("模式切换成功后直接收敛到后端已提交模式", async () => {
     api_fetch_mock.mockImplementation(async (path: string) => {

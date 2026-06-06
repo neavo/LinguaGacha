@@ -44,6 +44,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - `/api/session/project/manifest` 只返回项目身份、project revision、section revision 和 counts，不预热大 section。
 - 页面读取项目事实只能走对应功能域 query API，query response 必须携带本次结果依赖的 `sectionRevisions`，页面写入用这些 revision 做乐观锁。
 - `CacheManager` 是当前 session 热读缓存管理根，query service 只能组合 cache、按需数据库读取和 shared 纯算法，不建立第二套长期项目事实缓存。
+- `QualityStatisticsCache` 的缓存身份由规则和实际文本依赖决定；`items` 变化只按可证明的文本源范围清理统计，无法证明范围时全量失效。
 - 运行态事实写入只允许经 `ProjectWriteStore` 提交，领域服务负责校验和语义化写入意图，不直接执行事务、推进 revision 或发布公开事件。
 - 提交顺序固定为 revision guard → 数据库事务 → 内部 committed event → 公开项目变更。内部事件失败时不能继续发布公开 SSE。
 - `ProjectWriteResult = { accepted: true, changes }` 中的 `changes` 与后续 SSE 是同一批后端 canonical `ProjectChangeEvent`。

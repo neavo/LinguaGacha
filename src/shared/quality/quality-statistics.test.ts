@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 
 import type { ItemTextGroup } from "../item-text";
-import { run_quality_statistics_task } from "./quality-statistics";
+import {
+  resolve_quality_statistics_text_source,
+  run_quality_statistics_task,
+} from "./quality-statistics";
 
+/**
+ * 构造原文文本组夹具，第二槽起模拟姓名原文字段。
+ */
 function text_groups(groups: string[][]): ItemTextGroup[] {
   return groups.map((group) => {
     return group.map((text, index) => {
@@ -15,6 +21,13 @@ function text_groups(groups: string[][]): ItemTextGroup[] {
 }
 
 describe("run_quality_statistics_task", () => {
+  it("按规则类型选择统计文本来源", () => {
+    expect(resolve_quality_statistics_text_source("post_replacement")).toBe("dst");
+    expect(resolve_quality_statistics_text_source("glossary")).toBe("src");
+    expect(resolve_quality_statistics_text_source("pre_replacement")).toBe("src");
+    expect(resolve_quality_statistics_text_source("text_preserve")).toBe("src");
+  });
+
   it("对 glossary / pre / post / text_preserve 统一返回命中数", async () => {
     const result = await run_quality_statistics_task({
       rules: [

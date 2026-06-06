@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
+import { prepare_quality_statistics_task_input } from "../../shared/quality/quality-statistics-input";
 import { run_worker_task } from "./worker-task";
 
+/**
+ * 从公开 worker 返回值中读取文本签名，用于证明姓名字段会进入统计依赖。
+ */
 function read_text_signature(result: Record<string, unknown>): string {
   const snapshot = result.current_snapshot;
   if (typeof snapshot !== "object" || snapshot === null) {
@@ -18,14 +22,14 @@ describe("run_worker_task", () => {
   it("执行质量统计 task 并返回匹配计数快照", async () => {
     const result = await run_worker_task({
       type: "quality_statistics",
-      input: {
+      input: prepare_quality_statistics_task_input({
         rule_key: "glossary",
         entries: [{ entry_id: "hp", src: "HP", dst: "生命值" }],
         items: [
           { src: "HP +10", dst: "生命值 +10" },
           { src: "MP +5", dst: "魔力 +5" },
         ],
-      },
+      }),
     });
 
     expect(result).toMatchObject({
@@ -39,14 +43,14 @@ describe("run_worker_task", () => {
   it("质量统计 task 会统计第 0 槽姓名字段并按 item 去重", async () => {
     const result = await run_worker_task({
       type: "quality_statistics",
-      input: {
+      input: prepare_quality_statistics_task_input({
         rule_key: "glossary",
         entries: [{ entry_id: "alice", src: "Alice", dst: "艾丽丝" }],
         items: [
           { src: "Alice 登场", dst: "", name_src: "Alice", name_dst: "" },
           { src: "普通正文", dst: "", name_src: ["", "Alice"], name_dst: "" },
         ],
-      },
+      }),
     });
 
     expect(result).toMatchObject({
@@ -58,11 +62,11 @@ describe("run_worker_task", () => {
     const create_result = async (name_src: string) => {
       return await run_worker_task({
         type: "quality_statistics",
-        input: {
+        input: prepare_quality_statistics_task_input({
           rule_key: "glossary",
           entries: [{ entry_id: "alice", src: "Alice", dst: "艾丽丝" }],
           items: [{ src: "普通正文", dst: "", name_src, name_dst: "" }],
-        },
+        }),
       });
     };
 

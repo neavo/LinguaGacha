@@ -31,6 +31,7 @@ import type { RendererErrorContextInput } from "@shared/error";
 import type { ProjectDataSection, ProjectDataSectionRevisions } from "@shared/project-event";
 import type { TranslationTaskMetrics } from "@shared/workbench/translation-task";
 import type { AppTableSelectionChange } from "@frontend/widgets/app-table/app-table-types";
+import { resolveProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
 import type {
   WorkbenchTaskDetailDisplay,
   WorkbenchDialogState,
@@ -68,6 +69,7 @@ const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
 
 // WORKBENCH REQUIRED SECTIONS 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const WORKBENCH_REQUIRED_SECTIONS: ProjectDataSection[] = ["project", "files", "items", "analysis"];
+// WORKBENCH REFRESH SECTIONS 是工作台列表 query 的项目事实依赖范围。
 const WORKBENCH_REFRESH_SECTIONS: readonly ProjectDataSection[] = [
   "project",
   "files",
@@ -706,11 +708,7 @@ export function useWorkbenchPageState(
   const previous_workbench_change_seq_ref = useRef(0);
   const previous_project_loaded_ref = useRef(false);
   const workbench_change_seq = useMemo(() => {
-    return project_change_signal.updated_sections.some((section) =>
-      WORKBENCH_REFRESH_SECTIONS.includes(section as ProjectDataSection),
-    )
-      ? project_change_signal.seq
-      : null;
+    return resolveProjectChangeSeqForSections(project_change_signal, WORKBENCH_REFRESH_SECTIONS);
   }, [project_change_signal]);
   // 工作台文件写入共享同一份窄设置镜像，避免各入口重复拼命令字段。
   const planner_settings = useMemo(

@@ -10,6 +10,8 @@ export const QUALITY_STATISTICS_RULE_MODES = [
 
 export type QualityStatisticsRuleMode = (typeof QUALITY_STATISTICS_RULE_MODES)[number];
 
+export type QualityStatisticsTextSource = "src" | "dst"; // 统计缓存失效按原文/译文文本源分流。
+
 export type QualityStatisticsRuleInput = {
   key: string; // 统计结果返回给调用方的稳定索引
   pattern: string; // 术语、替换规则或文本保护规则的匹配表达式
@@ -60,7 +62,7 @@ export type QualityStatisticsTaskExecutor = {
   compute: (input: QualityStatisticsTaskInput) => Promise<QualityStatisticsTaskResult>;
 };
 
-type TextSource = "src" | "dst"; // worker 内部文本视图选择，不暴露到缓存层
+type TextSource = QualityStatisticsTextSource;
 
 type LiteralRuleBucket = {
   source: TextSource; // 决定读取原文还是译文文本数组
@@ -172,8 +174,14 @@ function dedupe_relation_scope(scope_snapshots: RelationSnapshot[]): RelationSna
 /**
  * 根据规则类型选择统计文本来源；后置替换检查译文，其它规则检查原文。
  */
-function resolve_rule_source(mode: QualityStatisticsRuleMode): TextSource {
+export function resolve_quality_statistics_text_source(
+  mode: QualityStatisticsRuleMode,
+): QualityStatisticsTextSource {
   return mode === "post_replacement" ? "dst" : "src";
+}
+
+function resolve_rule_source(mode: QualityStatisticsRuleMode): TextSource {
+  return resolve_quality_statistics_text_source(mode);
 }
 
 /**
