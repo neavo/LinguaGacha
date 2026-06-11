@@ -430,7 +430,6 @@ export function SearchBar<scope_value extends string = string>(
       ? true
       : props.replace_actions_disabled === true ||
         keyword.trim() === "" ||
-        props.replace_text === "" ||
         invalid_message !== null;
 
   return (
