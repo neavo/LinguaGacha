@@ -137,9 +137,6 @@ function create_config_payload(): Record<string, ApiJsonValue> {
     source_language: "JA",
     target_language: "ZH",
     clean_ruby: false,
-    check_kana_residue: true,
-    check_hangeul_residue: true,
-    check_similarity: true,
     auto_process_prefix_suffix_preserved_text: true,
   };
 }

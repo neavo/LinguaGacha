@@ -302,8 +302,6 @@ export const zh_cn_app = {
     request_failed_retry: "模型请求失败，将自动重试 …",
     response_checker_fail_timeout: "网络请求超时",
     response_checker_line_error_empty_line: "存在空行",
-    response_checker_line_error_hangeul: "谚文残留",
-    response_checker_line_error_kana: "假名残留",
     response_checker_line_error_similarity: "较高相似度",
     system_closed_dropped: "日志系统已关闭，丢弃新日志：{MESSAGE}",
     translation_response_check_fail: "返回数据错误，将自动重试，原因：{REASON}",

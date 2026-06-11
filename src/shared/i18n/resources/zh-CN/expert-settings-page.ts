@@ -1,16 +1,6 @@
 export const zh_cn_expert_settings_page = {
   title: "专家设置",
   fields: {
-    response_check_settings: {
-      title: "结果检查规则",
-      description: "翻译任务中会根据启用规则检查结果的合法性，默认全部启用",
-      button: "规则设置",
-      options: {
-        kana_residue: "假名残留检查",
-        hangeul_residue: "谚文残留检查",
-        similarity: "相似度检查",
-      },
-    },
     preceding_lines_threshold: {
       title: "参考上文行数阈值",
       description: "每个翻译任务最多可携带的参考上文的行数，默认禁用",

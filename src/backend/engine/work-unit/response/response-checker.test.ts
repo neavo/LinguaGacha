@@ -25,20 +25,12 @@ describe("响应检查器整体检查", () => {
     expect(check_response(["a", "b"], ["1"])).toEqual(["FAIL_LINE_COUNT", "FAIL_LINE_COUNT"]);
   });
 
-  it("整体检查返回逐行检查发现的假名残留", () => {
-    expect(
-      check_response(["こんにちは"], ["テスト"], {
-        config: create_config({ check_similarity: false }),
-      }),
-    ).toEqual(["LINE_ERROR_KANA"]);
+  it("整体检查不会把假名残留作为独立错误", () => {
+    expect(check_response(["こんにちは"], ["テスト"])).toEqual(["NONE"]);
   });
 
   it("逐行检查通过时返回无错误", () => {
-    expect(
-      check_response(["こんにちは"], ["你好"], {
-        config: create_config({ check_similarity: false }),
-      }),
-    ).toEqual(["NONE"]);
+    expect(check_response(["こんにちは"], ["你好"])).toEqual(["NONE"]);
   });
 });
 
@@ -65,50 +57,32 @@ describe("响应检查器逐行规则", () => {
         config: create_config({
           source_language: "JA",
           target_language: "EN",
-          check_kana_residue: false,
         }),
         skip_internal_filter_by_line: [true, true],
       }),
     ).toEqual(["LINE_ERROR_SIMILARITY", "LINE_ERROR_SIMILARITY"]);
   });
 
-  it("检测日文源语言的假名残留", () => {
+  it("日文源语言的假名残留不会独立失败", () => {
     expect(
       check_lines(["こんにちは"], ["テスト"], {
         config: create_config({
           source_language: "JA",
           target_language: "ZH",
-          check_kana_residue: true,
-          check_similarity: false,
-        }),
-      }),
-    ).toEqual(["LINE_ERROR_KANA"]);
-  });
-
-  it("日文非独立字符不会单独触发假名残留", () => {
-    expect(
-      check_lines(["こんにちは"], ["ーー・･゙゚ﾞﾟ"], {
-        config: create_config({
-          source_language: "JA",
-          target_language: "ZH",
-          check_kana_residue: true,
-          check_similarity: false,
         }),
       }),
     ).toEqual(["NONE"]);
   });
 
-  it("检测韩文源语言的谚文残留", () => {
+  it("韩文源语言的谚文残留不会独立失败", () => {
     expect(
       check_lines(["안녕하세요"], ["테스트"], {
         config: create_config({
           source_language: "KO",
           target_language: "ZH",
-          check_hangeul_residue: true,
-          check_similarity: false,
         }),
       }),
-    ).toEqual(["LINE_ERROR_HANGEUL"]);
+    ).toEqual(["NONE"]);
   });
 
   it("通用语言对中原文译文相同会返回相似错误", () => {
@@ -133,7 +107,6 @@ describe("响应检查器逐行规则", () => {
         config: create_config({
           source_language: "JA",
           target_language: "ZH",
-          check_kana_residue: false,
         }),
       }),
     ).toEqual(["NONE"]);
@@ -145,7 +118,6 @@ describe("响应检查器逐行规则", () => {
         config: create_config({
           source_language: "JA",
           target_language: "ZH",
-          check_kana_residue: false,
         }),
       }),
     ).toEqual(["LINE_ERROR_SIMILARITY"]);
@@ -157,7 +129,6 @@ describe("响应检查器逐行规则", () => {
         config: create_config({
           source_language: "KO",
           target_language: "ZH",
-          check_hangeul_residue: false,
         }),
       }),
     ).toEqual(["LINE_ERROR_SIMILARITY"]);
@@ -169,22 +140,20 @@ describe("响应检查器逐行规则", () => {
         config: create_config({
           source_language: "KO",
           target_language: "ZH",
-          check_hangeul_residue: false,
         }),
       }),
     ).toEqual(["NONE"]);
   });
 
-  it("残留检查前会剥离保护片段", () => {
+  it("相似检查前会剥离保护片段", () => {
     expect(
-      check_lines(["こんにちは<かな>"], ["中文<かな>"], {
-        config: create_config({ check_similarity: false }),
+      check_lines(["こんにちは<保護>"], ["こんにちは<保護>"], {
         quality_snapshot: create_quality_snapshot({
           text_preserve_mode: "custom",
           text_preserve_entries: [{ src: "<[^>]+>" }],
         }),
       }),
-    ).toEqual(["NONE"]);
+    ).toEqual(["LINE_ERROR_SIMILARITY"]);
   });
 
   it("保护片段不一致时仍按剥离后的可见文本继续检查", () => {
@@ -195,7 +164,7 @@ describe("响应检查器逐行规则", () => {
           text_preserve_mode: "smart",
         }),
       }),
-    ).toEqual(["LINE_ERROR_KANA"]);
+    ).toEqual(["LINE_ERROR_SIMILARITY"]);
   });
 
   it("保护规则关闭时不会比较保护片段差异", () => {
@@ -204,7 +173,6 @@ describe("响应检查器逐行规则", () => {
         config: create_config({
           source_language: "ZH",
           target_language: "EN",
-          check_similarity: false,
         }),
         quality_snapshot: create_quality_snapshot({
           text_preserve_mode: "off",
@@ -222,9 +190,6 @@ describe("响应检查器任意源语言", () => {
         config: create_config({
           source_language: "ALL",
           target_language: "ZH",
-          check_kana_residue: false,
-          check_hangeul_residue: false,
-          check_similarity: true,
         }),
       }),
     ).toEqual(["LINE_ERROR_SIMILARITY"]);
@@ -236,9 +201,6 @@ describe("响应检查器任意源语言", () => {
         config: create_config({
           source_language: "ALL",
           target_language: "ZH",
-          check_kana_residue: false,
-          check_hangeul_residue: false,
-          check_similarity: true,
         }),
       }),
     ).toEqual(["NONE"]);
@@ -250,9 +212,6 @@ describe("响应检查器任意源语言", () => {
         config: create_config({
           source_language: "ALL",
           target_language: "ZH",
-          check_kana_residue: false,
-          check_hangeul_residue: false,
-          check_similarity: false,
         }),
       }),
     ).toEqual(["LINE_ERROR_EMPTY_LINE"]);
@@ -264,9 +223,6 @@ describe("响应检查器任意源语言", () => {
         config: create_config({
           source_language: "ALL",
           target_language: "ZH",
-          check_kana_residue: false,
-          check_hangeul_residue: false,
-          check_similarity: true,
         }),
       }),
     ).toEqual(["NONE", "NONE"]);
@@ -322,9 +278,6 @@ function create_config(overrides: Partial<TextProcessingConfig> = {}): TextProce
     source_language: "JA",
     target_language: "ZH",
     clean_ruby: false,
-    check_kana_residue: true,
-    check_hangeul_residue: true,
-    check_similarity: true,
     auto_process_prefix_suffix_preserved_text: true,
     ...overrides,
   };

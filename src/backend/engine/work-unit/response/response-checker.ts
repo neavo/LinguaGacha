@@ -6,7 +6,6 @@ import {
   type TextPreserveRule,
 } from "../../../../shared/text/text-preserve-rules";
 import {
-  collect_translation_residue_fragments,
   has_translation_retry_reached_review_threshold,
   has_translation_similarity_issue,
 } from "../../../../shared/text/translation-quality-rules";
@@ -75,7 +74,7 @@ export class ResponseChecker {
   }
 
   /**
-   * 单行检查顺序保持：空译文、规则过滤、语言过滤、保护段剥离、残留和相似度
+   * 单行检查顺序保持：空译文、规则过滤、语言过滤、保护段剥离和相似度
    */
   private static check_line(
     raw_src: string,
@@ -105,18 +104,7 @@ export class ResponseChecker {
       src = preserve_rule.replace(src, "");
       dst = preserve_rule.replace(dst, "");
     }
-    const residue_fragments = collect_translation_residue_fragments({
-      text: dst,
-      sourceLanguage: config.source_language,
-    });
-    if (config.check_kana_residue && residue_fragments.kana.length > 0) {
-      return "LINE_ERROR_KANA";
-    }
-    if (config.check_hangeul_residue && residue_fragments.hangeul.length > 0) {
-      return "LINE_ERROR_HANGEUL";
-    }
     if (
-      config.check_similarity &&
       has_translation_similarity_issue({
         src,
         dst,

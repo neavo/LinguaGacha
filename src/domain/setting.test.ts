@@ -29,6 +29,18 @@ describe("settings 基础模型", () => {
     });
   });
 
+  it("结果检查旧字段不会进入设置快照", () => {
+    const snapshot = normalize_setting_snapshot({
+      check_kana_residue: false,
+      check_hangeul_residue: false,
+      check_similarity: false,
+    });
+
+    expect(snapshot).not.toHaveProperty("check_kana_residue");
+    expect(snapshot).not.toHaveProperty("check_hangeul_residue");
+    expect(snapshot).not.toHaveProperty("check_similarity");
+  });
+
   it("项目设置镜像按请求、项目事实和默认值顺序归一", () => {
     const stored_settings = normalize_project_settings_snapshot({
       source_language: "EN",

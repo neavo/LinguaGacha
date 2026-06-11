@@ -53,6 +53,9 @@ describe("AppSettingService", () => {
       app_language: "ZH",
       activate_model_id: "model-1",
       models: [{ id: "model-1" }],
+      check_kana_residue: false,
+      check_hangeul_residue: false,
+      check_similarity: false,
       unknown_key: "不应保留",
     });
 
@@ -60,6 +63,9 @@ describe("AppSettingService", () => {
       app_language: "en",
       request_timeout: "45",
       project_save_mode: "FIXED",
+      check_kana_residue: true,
+      check_hangeul_residue: true,
+      check_similarity: true,
       unknown_key: "忽略",
     });
     const saved = read_config(config_path);
@@ -77,6 +83,9 @@ describe("AppSettingService", () => {
       models: [{ id: "model-1" }],
     });
     expect(saved).not.toHaveProperty("unknown_key");
+    expect(saved).not.toHaveProperty("check_kana_residue");
+    expect(saved).not.toHaveProperty("check_hangeul_residue");
+    expect(saved).not.toHaveProperty("check_similarity");
     expect(events).toEqual([
       {
         topic: "settings.changed",

@@ -50,18 +50,6 @@ vi.mock("@frontend/widgets/segmented-toggle/segmented-toggle", () => {
   };
 });
 
-vi.mock("@frontend/widgets/app-dropdown-menu", () => {
-  return {
-    AppDropdownMenu: (props: { children: ReactNode }) => <div>{props.children}</div>,
-    AppDropdownMenuCheckboxItem: (props: { children: ReactNode }) => (
-      <button type="button">{props.children}</button>
-    ),
-    AppDropdownMenuContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
-    AppDropdownMenuGroup: (props: { children: ReactNode }) => <div>{props.children}</div>,
-    AppDropdownMenuTrigger: (props: { children: ReactNode }) => <div>{props.children}</div>,
-  };
-});
-
 /**
  * 构造当前场景的标准初始数据。
  */
@@ -71,9 +59,6 @@ function create_expert_settings_state_fixture() {
       preceding_lines_threshold: 0,
       clean_ruby: false,
       deduplication_in_bilingual: false,
-      check_kana_residue: false,
-      check_hangeul_residue: false,
-      check_similarity: false,
       write_translated_name_fields_to_file: false,
       auto_process_prefix_suffix_preserved_text: false,
     },
@@ -81,9 +66,6 @@ function create_expert_settings_state_fixture() {
       preceding_lines_threshold: false,
       clean_ruby: false,
       deduplication_in_bilingual: false,
-      check_kana_residue: false,
-      check_hangeul_residue: false,
-      check_similarity: false,
       write_translated_name_fields_to_file: false,
       auto_process_prefix_suffix_preserved_text: false,
     },
@@ -92,9 +74,6 @@ function create_expert_settings_state_fixture() {
     update_preceding_lines_threshold: vi.fn(async (_next_value: number) => {}),
     update_clean_ruby: vi.fn(async (_next_checked: boolean) => {}),
     update_deduplication_in_bilingual: vi.fn(async (_next_checked: boolean) => {}),
-    update_check_kana_residue: vi.fn(async (_next_checked: boolean) => {}),
-    update_check_hangeul_residue: vi.fn(async (_next_checked: boolean) => {}),
-    update_check_similarity: vi.fn(async (_next_checked: boolean) => {}),
     update_write_translated_name_fields_to_file: vi.fn(async (_next_checked: boolean) => {}),
     update_auto_process_prefix_suffix_preserved_text: vi.fn(async (_next_checked: boolean) => {}),
   };
@@ -173,6 +152,14 @@ describe("ExpertSettingsPage", () => {
 
     return input;
   }
+
+  it("不再渲染结果检查规则入口", async () => {
+    await mount_page();
+
+    expect(
+      container?.textContent?.includes("expert_settings_page.fields.response_check_settings.title"),
+    ).toBe(false);
+  });
 
   it("输入参考上文行数阈值时只更新本地草稿，失焦后再提交", async () => {
     await mount_page();

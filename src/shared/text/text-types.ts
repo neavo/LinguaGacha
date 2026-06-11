@@ -22,9 +22,6 @@ export interface TextProcessingConfig {
   source_language: string; // 源/目标语言直接来自项目配置，语言过滤器负责未知值兜底
   target_language: string;
   clean_ruby: boolean; // 只控制字面文本注音标记，结构化格式组装留在导入器
-  check_kana_residue: boolean; // 残留和相似度检查按开关独立启用，便于旧项目逐步迁移质量规则
-  check_hangeul_residue: boolean;
-  check_similarity: boolean;
   auto_process_prefix_suffix_preserved_text: boolean; // 自动保护前后缀开关决定完全保护行是否仍进入翻译流程
 }
 
@@ -102,9 +99,6 @@ export class TextProcessingConfigTool {
       source_language: snapshot.source_language,
       target_language: snapshot.target_language,
       clean_ruby: snapshot.clean_ruby,
-      check_kana_residue: snapshot.check_kana_residue,
-      check_hangeul_residue: snapshot.check_hangeul_residue,
-      check_similarity: snapshot.check_similarity,
       auto_process_prefix_suffix_preserved_text: snapshot.auto_process_prefix_suffix_preserved_text,
     };
   }
