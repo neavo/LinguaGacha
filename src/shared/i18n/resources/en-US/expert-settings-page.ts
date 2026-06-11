@@ -4,17 +4,6 @@ import type { LocaleMessageSchema } from "../../types";
 export const en_us_expert_settings_page = {
   title: "Expert Settings",
   fields: {
-    response_check_settings: {
-      title: "Result Check Rules",
-      description:
-        "In translation tasks, results is checked based on enabled rules, all enabled by default",
-      button: "Rules",
-      options: {
-        kana_residue: "Kana Residue Check",
-        hangeul_residue: "Hangeul Residue Check",
-        similarity: "Similarity Check",
-      },
-    },
     preceding_lines_threshold: {
       title: "Preceding Lines Threshold",
       description:

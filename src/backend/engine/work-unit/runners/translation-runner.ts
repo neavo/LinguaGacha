@@ -606,10 +606,6 @@ export class TranslationWorkUnitRunner {
         return this.t(app_language, "app.log.response_checker_fail_line_count");
       case "FAIL_TIMEOUT":
         return this.t(app_language, "app.log.response_checker_fail_timeout");
-      case "LINE_ERROR_KANA":
-        return this.t(app_language, "app.log.response_checker_line_error_kana");
-      case "LINE_ERROR_HANGEUL":
-        return this.t(app_language, "app.log.response_checker_line_error_hangeul");
       case "LINE_ERROR_EMPTY_LINE":
         return this.t(app_language, "app.log.response_checker_line_error_empty_line");
       case "LINE_ERROR_SIMILARITY":
@@ -627,12 +623,7 @@ export class TranslationWorkUnitRunner {
    * 行级错误会降级为部分失败，整包错误会触发整包重试。
    */
   private is_line_error(check: string): boolean {
-    return (
-      check === "LINE_ERROR_KANA" ||
-      check === "LINE_ERROR_HANGEUL" ||
-      check === "LINE_ERROR_EMPTY_LINE" ||
-      check === "LINE_ERROR_SIMILARITY"
-    );
+    return check === "LINE_ERROR_EMPTY_LINE" || check === "LINE_ERROR_SIMILARITY";
   }
 
   /**

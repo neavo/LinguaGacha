@@ -26,9 +26,6 @@ type UseExpertSettingsStateResult = {
   update_preceding_lines_threshold: (next_value: number) => Promise<void>;
   update_clean_ruby: (next_checked: boolean) => Promise<void>;
   update_deduplication_in_bilingual: (next_checked: boolean) => Promise<void>;
-  update_check_kana_residue: (next_checked: boolean) => Promise<void>;
-  update_check_hangeul_residue: (next_checked: boolean) => Promise<void>;
-  update_check_similarity: (next_checked: boolean) => Promise<void>;
   update_write_translated_name_fields_to_file: (next_checked: boolean) => Promise<void>;
   update_auto_process_prefix_suffix_preserved_text: (next_checked: boolean) => Promise<void>;
 };
@@ -41,9 +38,6 @@ function create_pending_state(): ExpertSettingsPendingState {
     preceding_lines_threshold: false,
     clean_ruby: false,
     deduplication_in_bilingual: false,
-    check_kana_residue: false,
-    check_hangeul_residue: false,
-    check_similarity: false,
     write_translated_name_fields_to_file: false,
     auto_process_prefix_suffix_preserved_text: false,
   };
@@ -142,15 +136,6 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
             reverted_snapshot.deduplication_in_bilingual =
               previous_snapshot.deduplication_in_bilingual;
           }
-          if ("check_kana_residue" in request) {
-            reverted_snapshot.check_kana_residue = previous_snapshot.check_kana_residue;
-          }
-          if ("check_hangeul_residue" in request) {
-            reverted_snapshot.check_hangeul_residue = previous_snapshot.check_hangeul_residue;
-          }
-          if ("check_similarity" in request) {
-            reverted_snapshot.check_similarity = previous_snapshot.check_similarity;
-          }
           if ("write_translated_name_fields_to_file" in request) {
             reverted_snapshot.write_translated_name_fields_to_file =
               previous_snapshot.write_translated_name_fields_to_file;
@@ -244,72 +229,6 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
     [commit_update],
   );
 
-  const update_check_kana_residue = useCallback(
-    async (next_checked: boolean): Promise<void> => {
-      const previous_snapshot = snapshot_ref.current;
-
-      if (previous_snapshot.check_kana_residue === next_checked) {
-        return;
-      }
-
-      await commit_update(
-        "check_kana_residue",
-        {
-          check_kana_residue: next_checked,
-        },
-        {
-          ...previous_snapshot,
-          check_kana_residue: next_checked,
-        },
-      );
-    },
-    [commit_update],
-  );
-
-  const update_check_hangeul_residue = useCallback(
-    async (next_checked: boolean): Promise<void> => {
-      const previous_snapshot = snapshot_ref.current;
-
-      if (previous_snapshot.check_hangeul_residue === next_checked) {
-        return;
-      }
-
-      await commit_update(
-        "check_hangeul_residue",
-        {
-          check_hangeul_residue: next_checked,
-        },
-        {
-          ...previous_snapshot,
-          check_hangeul_residue: next_checked,
-        },
-      );
-    },
-    [commit_update],
-  );
-
-  const update_check_similarity = useCallback(
-    async (next_checked: boolean): Promise<void> => {
-      const previous_snapshot = snapshot_ref.current;
-
-      if (previous_snapshot.check_similarity === next_checked) {
-        return;
-      }
-
-      await commit_update(
-        "check_similarity",
-        {
-          check_similarity: next_checked,
-        },
-        {
-          ...previous_snapshot,
-          check_similarity: next_checked,
-        },
-      );
-    },
-    [commit_update],
-  );
-
   const update_write_translated_name_fields_to_file = useCallback(
     async (next_checked: boolean): Promise<void> => {
       const previous_snapshot = snapshot_ref.current;
@@ -363,9 +282,6 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
       update_preceding_lines_threshold,
       update_clean_ruby,
       update_deduplication_in_bilingual,
-      update_check_kana_residue,
-      update_check_hangeul_residue,
-      update_check_similarity,
       update_write_translated_name_fields_to_file,
       update_auto_process_prefix_suffix_preserved_text,
     };
@@ -375,9 +291,6 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
     refresh_snapshot,
     snapshot,
     update_auto_process_prefix_suffix_preserved_text,
-    update_check_hangeul_residue,
-    update_check_kana_residue,
-    update_check_similarity,
     update_clean_ruby,
     update_deduplication_in_bilingual,
     update_preceding_lines_threshold,

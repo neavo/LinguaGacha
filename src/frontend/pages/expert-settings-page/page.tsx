@@ -1,4 +1,4 @@
-import { useEffect, useState, type KeyboardEvent, type MouseEvent } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { useI18n } from "@frontend/app/locale/locale-provider";
@@ -8,14 +8,6 @@ import {
   PRECEDING_LINES_THRESHOLD_MAX,
   PRECEDING_LINES_THRESHOLD_MIN,
 } from "@frontend/pages/expert-settings-page/types";
-import { AppButton } from "@frontend/widgets/app-button";
-import {
-  AppDropdownMenu,
-  AppDropdownMenuCheckboxItem,
-  AppDropdownMenuContent,
-  AppDropdownMenuGroup,
-  AppDropdownMenuTrigger,
-} from "@frontend/widgets/app-dropdown-menu";
 import { Input } from "@frontend/shadcn/input";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
 import { SegmentedToggle } from "@frontend/widgets/segmented-toggle/segmented-toggle";
@@ -50,7 +42,6 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
   const expert_settings_state = useExpertSettingsState();
-  const [is_response_check_menu_open, set_is_response_check_menu_open] = useState<boolean>(false);
   const [preceding_lines_threshold_draft, set_preceding_lines_threshold_draft] = useState<string>(
     () => {
       return String(expert_settings_state.snapshot.preceding_lines_threshold);
@@ -103,20 +94,6 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
       />
     );
   }
-  async function handle_response_check_menu_button_click(
-    event: MouseEvent<HTMLButtonElement>,
-  ): Promise<void> {
-    event.preventDefault();
-
-    if (write_locked) {
-      set_is_response_check_menu_open(false);
-    } else if (is_response_check_menu_open) {
-      set_is_response_check_menu_open(false);
-    } else {
-      await expert_settings_state.refresh_snapshot();
-      set_is_response_check_menu_open(true);
-    }
-  }
 
   useEffect(() => {
     if (is_preceding_lines_threshold_editing) {
@@ -164,74 +141,6 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
   return (
     <div className="expert-settings-page page-shell page-shell--full">
       <section className="expert-settings-page__list" aria-label={t("expert_settings_page.title")}>
-        <SettingCardRow
-          title={t("expert_settings_page.fields.response_check_settings.title")}
-          description={t("expert_settings_page.fields.response_check_settings.description")}
-          action={
-            <AppDropdownMenu
-              open={is_response_check_menu_open}
-              onOpenChange={(next_open) => {
-                set_is_response_check_menu_open(next_open);
-              }}
-            >
-              <AppDropdownMenuTrigger asChild>
-                <AppButton
-                  variant="outline"
-                  onClick={(event) => {
-                    void handle_response_check_menu_button_click(event);
-                  }}
-                  disabled={write_locked}
-                >
-                  {t("expert_settings_page.fields.response_check_settings.button")}
-                </AppButton>
-              </AppDropdownMenuTrigger>
-              <AppDropdownMenuContent align="center">
-                <AppDropdownMenuGroup>
-                  <AppDropdownMenuCheckboxItem
-                    checked={expert_settings_state.snapshot.check_kana_residue}
-                    disabled={
-                      write_locked || expert_settings_state.pending_state.check_kana_residue
-                    }
-                    onCheckedChange={(next_checked) => {
-                      if (typeof next_checked === "boolean") {
-                        void expert_settings_state.update_check_kana_residue(next_checked);
-                      }
-                    }}
-                  >
-                    {t("expert_settings_page.fields.response_check_settings.options.kana_residue")}
-                  </AppDropdownMenuCheckboxItem>
-                  <AppDropdownMenuCheckboxItem
-                    checked={expert_settings_state.snapshot.check_hangeul_residue}
-                    disabled={
-                      write_locked || expert_settings_state.pending_state.check_hangeul_residue
-                    }
-                    onCheckedChange={(next_checked) => {
-                      if (typeof next_checked === "boolean") {
-                        void expert_settings_state.update_check_hangeul_residue(next_checked);
-                      }
-                    }}
-                  >
-                    {t(
-                      "expert_settings_page.fields.response_check_settings.options.hangeul_residue",
-                    )}
-                  </AppDropdownMenuCheckboxItem>
-                  <AppDropdownMenuCheckboxItem
-                    checked={expert_settings_state.snapshot.check_similarity}
-                    disabled={write_locked || expert_settings_state.pending_state.check_similarity}
-                    onCheckedChange={(next_checked) => {
-                      if (typeof next_checked === "boolean") {
-                        void expert_settings_state.update_check_similarity(next_checked);
-                      }
-                    }}
-                  >
-                    {t("expert_settings_page.fields.response_check_settings.options.similarity")}
-                  </AppDropdownMenuCheckboxItem>
-                </AppDropdownMenuGroup>
-              </AppDropdownMenuContent>
-            </AppDropdownMenu>
-          }
-        />
-
         <SettingCardRow
           title={t("expert_settings_page.fields.preceding_lines_threshold.title")}
           description={t("expert_settings_page.fields.preceding_lines_threshold.description")}
