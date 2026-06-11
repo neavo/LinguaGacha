@@ -77,6 +77,7 @@ describe("useProofreadingReplaceActions", () => {
     row_id: "2",
     dst: "第二条旧译文",
   });
+  let current_replace_text = "新";
 
   afterEach(async () => {
     if (root !== null) {
@@ -90,6 +91,7 @@ describe("useProofreadingReplaceActions", () => {
     root = null;
     latest_state = null;
     write_calls.length = 0;
+    current_replace_text = "新";
   });
 
   // 暴露 hook 返回值，替换依赖通过 options 的公开边界注入。
@@ -112,7 +114,7 @@ describe("useProofreadingReplaceActions", () => {
       },
       readonly: false,
       replace_cursor_ref: { current: 0 },
-      replace_text: "新",
+      replace_text: current_replace_text,
       search_keyword: "旧",
       push_toast: vi.fn(),
       read_current_view_row_ids: async () => ["1", "2"],
@@ -167,6 +169,27 @@ describe("useProofreadingReplaceActions", () => {
       item_ids: [1, 2],
       search_text: "旧",
       replace_text: "新",
+      is_regex: false,
+      expected_section_revisions: {
+        items: 7,
+        proofreading: 5,
+      },
+    });
+  });
+
+  it("全量替换允许空替换文本用于删除匹配内容", async () => {
+    current_replace_text = "";
+    await render_hook();
+
+    await act(async () => {
+      await latest_state?.replace_all_visible_matches();
+    });
+
+    expect(write_calls).toHaveLength(1);
+    expect(write_calls[0]?.plan?.request_body).toMatchObject({
+      item_ids: [1, 2],
+      search_text: "旧",
+      replace_text: "",
       is_regex: false,
       expected_section_revisions: {
         items: 7,

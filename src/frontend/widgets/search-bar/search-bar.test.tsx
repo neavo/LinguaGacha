@@ -286,7 +286,6 @@ describe("SearchBar", () => {
 
   it.each([
     { name: "空白关键词", keyword: "   ", replace_text: "梨", invalid_message: null },
-    { name: "空替换文本", keyword: "苹果", replace_text: "", invalid_message: null },
     { name: "正则错误", keyword: "(", replace_text: "梨", invalid_message: "正则无效" },
   ])("$name 时禁用替换提交", async (scenario) => {
     await render_search_bar({
@@ -296,6 +295,22 @@ describe("SearchBar", () => {
     });
 
     expect_replace_submit_disabled(true);
+  });
+
+  it("替换文本为空时仍允许提交删除匹配内容", async () => {
+    await render_search_bar({
+      replace_text: "",
+    });
+
+    expect_replace_submit_disabled(false);
+
+    await act(async () => {
+      query_button_by_label("替换当前").click();
+      query_button_by_label("全部替换").click();
+    });
+
+    expect(replace_next_calls).toBe(1);
+    expect(replace_all_calls).toBe(1);
   });
 
   it("搜索可用且替换前置条件满足时触发替换动作", async () => {
