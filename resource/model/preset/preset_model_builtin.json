@@ -40,7 +40,7 @@
         "api_format": "Google",
         "api_url": "https://generativelanguage.googleapis.com",
         "api_key": "no_key_required",
-        "model_id": "gemini-2.0-flash",
+        "model_id": "gemini-3.1-flash-lite",
         "request": {
             "extra_headers": {},
             "extra_body": {},
@@ -74,7 +74,7 @@
         "api_format": "OpenAI",
         "api_url": "https://api.openai.com/v1",
         "api_key": "no_key_required",
-        "model_id": "gpt-4.1-mini",
+        "model_id": "gpt-5.4-mini",
         "request": {
             "extra_headers": {},
             "extra_body": {},
@@ -108,7 +108,7 @@
         "api_format": "OpenAI",
         "api_url": "https://api.deepseek.com",
         "api_key": "no_key_required",
-        "model_id": "deepseek-chat",
+        "model_id": "deepseek-v4-flash",
         "request": {
             "extra_headers": {},
             "extra_body": {},
@@ -142,7 +142,7 @@
         "api_format": "Anthropic",
         "api_url": "https://api.anthropic.com",
         "api_key": "no_key_required",
-        "model_id": "claude-3-5-haiku",
+        "model_id": "claude-haiku-4-5",
         "request": {
             "extra_headers": {},
             "extra_body": {},
@@ -176,7 +176,7 @@
         "api_format": "OpenAI",
         "api_url": "https://open.bigmodel.cn/api/paas/v4",
         "api_key": "no_key_required",
-        "model_id": "glm-4-flash",
+        "model_id": "glm-5.1",
         "request": {
             "extra_headers": {},
             "extra_body": {},
@@ -210,7 +210,7 @@
         "api_format": "OpenAI",
         "api_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "api_key": "no_key_required",
-        "model_id": "qwen-turbo",
+        "model_id": "qwen3.7-plus",
         "request": {
             "extra_headers": {},
             "extra_body": {},
@@ -244,7 +244,7 @@
         "api_format": "OpenAI",
         "api_url": "https://api.moonshot.cn/v1",
         "api_key": "no_key_required",
-        "model_id": "moonshot-v1-8k",
+        "model_id": "kimi-k2.6",
         "request": {
             "extra_headers": {},
             "extra_body": {},
@@ -278,7 +278,7 @@
         "api_format": "OpenAI",
         "api_url": "https://api.siliconflow.cn/v1",
         "api_key": "no_key_required",
-        "model_id": "deepseek-ai/DeepSeek-V3",
+        "model_id": "deepseek-ai/DeepSeek-V4-Flash",
         "request": {
             "extra_headers": {},
             "extra_body": {},
@@ -312,7 +312,7 @@
         "api_format": "OpenAI",
         "api_url": "https://ark.cn-beijing.volces.com/api/v3",
         "api_key": "no_key_required",
-        "model_id": "deepseek-v3-250324",
+        "model_id": "doubao-seed-2-0-lite-260428",
         "request": {
             "extra_headers": {},
             "extra_body": {},
