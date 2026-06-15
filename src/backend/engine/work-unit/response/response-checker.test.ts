@@ -4,25 +4,12 @@ import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shar
 import { ResponseChecker } from "./response-checker";
 
 describe("响应检查器整体检查", () => {
-  it("流式退化时为每行返回退化错误", () => {
-    expect(
-      check_response(["原文1", "原文2"], ["译文1", "译文2"], {
-        stream_degraded: true,
-      }),
-    ).toEqual(["FAIL_DEGRADATION", "FAIL_DEGRADATION"]);
-  });
-
-  it("译文结果为空时为每行返回数据错误", () => {
+  it("已对齐译文结果为空时为每行返回数据错误", () => {
     expect(check_response(["原文1", "原文2"], ["", ""])).toEqual(["FAIL_DATA", "FAIL_DATA"]);
-    expect(check_response(["原文1", "原文2"], [])).toEqual(["FAIL_DATA", "FAIL_DATA"]);
   });
 
   it("单条重试达到阈值时跳过后续校验", () => {
     expect(check_response(["原文"], ["任意内容"], { item_retry_count: 2 })).toEqual(["NONE"]);
-  });
-
-  it("原文和译文行数不一致时为每行返回行数错误", () => {
-    expect(check_response(["a", "b"], ["1"])).toEqual(["FAIL_LINE_COUNT", "FAIL_LINE_COUNT"]);
   });
 
   it("整体检查不会把假名残留作为独立错误", () => {
@@ -237,18 +224,16 @@ function check_response(
     config?: TextProcessingConfig;
     quality_snapshot?: TextQualitySnapshot;
     item_retry_count?: number;
-    stream_degraded?: boolean;
     skip_internal_filter_by_line?: boolean[];
   } = {},
 ): string[] {
-  return ResponseChecker.check(
+  return ResponseChecker.check_aligned(
     srcs,
     dsts,
     options.text_type ?? "NONE",
     options.config ?? create_config(),
     options.quality_snapshot ?? create_quality_snapshot(),
     options.item_retry_count ?? 0,
-    options.stream_degraded ?? false,
     options.skip_internal_filter_by_line ?? [],
   );
 }

@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { ApiJsonValue } from "../../../api/api-types";
 import { TranslationWorkUnitRunner } from "./translation-runner";
-import type { LLMClientPort, LLMRequestBody } from "../../../llm/llm-types";
+import type { LLMClientPort, LLMRequestBody, LLMRequestResult } from "../../../llm/llm-types";
 import type { TranslationWorkUnit } from "../../protocol/work-unit";
 
 /**
@@ -126,6 +126,48 @@ describe("TranslationWorkUnitRunner", () => {
       },
     ]);
   });
+
+  it("完全无法解析译文时记录数据结构错误", async () => {
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client({
+        response_result: "not a json response",
+      }),
+    );
+
+    const result = await runner.execute_unit(
+      create_translation_unit({
+        model: { api_format: "OpenAI" },
+        src: "こんにちは\n世界",
+      }),
+      new AbortController().signal,
+    );
+
+    expect(result.outcome).toBe("failed");
+    expect(String(result.logs[0]?.message ?? "")).toContain("数据结构错误");
+    expect(String(result.logs[0]?.message ?? "")).not.toContain("行数不一致");
+  });
+
+  it("部分合法译文无法覆盖请求行时记录行数不一致", async () => {
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client({
+        response_result: '{"0":"你好"}',
+      }),
+    );
+
+    const result = await runner.execute_unit(
+      create_translation_unit({
+        model: { api_format: "SakuraLLM" },
+        src: "こんにちは\n世界",
+      }),
+      new AbortController().signal,
+    );
+
+    expect(result.outcome).toBe("failed");
+    expect(String(result.logs[0]?.message ?? "")).toContain("行数不一致");
+    expect(String(result.logs[0]?.message ?? "")).not.toContain("数据结构错误");
+  });
 });
 
 /**
@@ -155,6 +197,53 @@ function create_quality_payload(): Record<string, ApiJsonValue> {
     prompts: {
       translation: { enabled: false, text: "" },
       analysis: { enabled: false, text: "" },
+    },
+  };
+}
+
+function create_llm_client(overrides: Partial<LLMRequestResult>): LLMClientPort {
+  return {
+    request: async () => ({
+      response_think: "",
+      response_result: "",
+      input_tokens: 1,
+      output_tokens: 1,
+      cancelled: false,
+      timeout: false,
+      degraded: false,
+      ...overrides,
+    }),
+  };
+}
+
+function create_translation_unit(args: {
+  model: Record<string, ApiJsonValue>;
+  src: string;
+}): TranslationWorkUnit {
+  return {
+    kind: "translation",
+    unit_id: "translation-unit-1",
+    run_id: "run-1",
+    model: args.model,
+    config_snapshot: create_config_payload(),
+    quality_snapshot: create_quality_payload(),
+    payload: {
+      items: [
+        {
+          id: 1,
+          src: args.src,
+          dst: "",
+          status: "NONE",
+          text_type: "TXT",
+        },
+      ],
+      precedings: [],
+    },
+    diagnostics: {
+      token_threshold: 512,
+      split_count: 0,
+      retry_count: 0,
+      is_initial: true,
     },
   };
 }

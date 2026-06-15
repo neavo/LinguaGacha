@@ -16,29 +16,22 @@ import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shar
  */
 export class ResponseChecker {
   /**
-   * 退化、解析失败、行数和逐行问题都收口为固定错误字符串
+   * 已对齐译文的整体和逐行质量检查。
    */
-  public static check(
+  public static check_aligned(
     srcs: string[],
     dsts: string[],
     text_type: string,
     config: TextProcessingConfig,
     quality_snapshot: TextQualitySnapshot,
     item_retry_count: number,
-    stream_degraded: boolean,
     skip_internal_filter_by_line: boolean[] = [],
   ): string[] {
-    if (stream_degraded) {
-      return srcs.map(() => "FAIL_DEGRADATION");
-    }
     if (dsts.every((value) => value === "")) {
       return srcs.map(() => "FAIL_DATA");
     }
     if (has_translation_retry_reached_review_threshold(item_retry_count)) {
       return srcs.map(() => "NONE");
-    }
-    if (srcs.length !== dsts.length) {
-      return srcs.map(() => "FAIL_LINE_COUNT");
     }
     return this.check_lines(
       srcs,
