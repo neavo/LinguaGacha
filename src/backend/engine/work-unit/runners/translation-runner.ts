@@ -66,6 +66,23 @@ interface TranslationWorkUnitResult {
   logs?: WorkUnitLogEntry[]; // 由主线程统一提交，worker 不直接写日志目标
 }
 
+type TranslationAlignmentFailureReason = "no_valid_translation" | "line_count_mismatch";
+
+type TranslationAlignment =
+  | {
+      ok: true;
+      decoded_lines: TranslationDecodedLine[];
+      dsts: string[];
+      actor_dsts: TranslationActor[];
+    }
+  | {
+      ok: false;
+      reason: TranslationAlignmentFailureReason;
+      decoded_lines: TranslationDecodedLine[];
+      dsts: string[];
+      actor_dsts: TranslationActor[];
+    };
+
 /**
  * 翻译类 work unit runner，完整执行预处理、prompt、LLM、响应解析和后处理
  */
@@ -291,9 +308,9 @@ export class TranslationWorkUnitRunner {
         : [];
     const aligned =
       context.stream_degraded || context.request_timeout || context.request_error !== undefined
-        ? { decoded_lines: [], dsts: [], actor_dsts: [] }
+        ? this.empty_alignment("no_valid_translation")
         : this.align_decoded_lines(context.lines, decoded);
-    const checks = this.build_checks(context, aligned.dsts);
+    const checks = this.build_checks(context, aligned);
     const logs = this.build_translation_logs({
       checks,
       start_time: context.start_time,
@@ -368,14 +385,17 @@ export class TranslationWorkUnitRunner {
   private align_decoded_lines(
     lines: TranslationLine[],
     decoded_lines: TranslationDecodedLine[],
-  ): { decoded_lines: TranslationDecodedLine[]; dsts: string[]; actor_dsts: TranslationActor[] } {
+  ): TranslationAlignment {
+    if (decoded_lines.length === 0) {
+      return this.empty_alignment("no_valid_translation");
+    }
     if (decoded_lines.length !== lines.length) {
-      return { decoded_lines: [], dsts: [], actor_dsts: [] };
+      return this.empty_alignment("line_count_mismatch");
     }
     const decoded_by_index = new Map<number, TranslationDecodedLine>();
     for (const decoded_line of decoded_lines) {
       if (decoded_by_index.has(decoded_line.request_index)) {
-        return { decoded_lines: [], dsts: [], actor_dsts: [] };
+        return this.empty_alignment("line_count_mismatch");
       }
       decoded_by_index.set(decoded_line.request_index, decoded_line);
     }
@@ -383,15 +403,20 @@ export class TranslationWorkUnitRunner {
     for (const line of lines) {
       const decoded_line = decoded_by_index.get(line.request_index);
       if (decoded_line === undefined) {
-        return { decoded_lines: [], dsts: [], actor_dsts: [] };
+        return this.empty_alignment("line_count_mismatch");
       }
       aligned.push(decoded_line);
     }
     return {
+      ok: true,
       decoded_lines: aligned,
       dsts: aligned.map((line) => line.text_dst),
       actor_dsts: aligned.map((line) => line.actor_dst),
     };
+  }
+
+  private empty_alignment(reason: TranslationAlignmentFailureReason): TranslationAlignment {
+    return { ok: false, reason, decoded_lines: [], dsts: [], actor_dsts: [] };
   }
 
   /**
@@ -408,7 +433,7 @@ export class TranslationWorkUnitRunner {
       request_error?: LogError;
       request_timeout: boolean;
     },
-    dsts: string[],
+    alignment: TranslationAlignment,
   ): string[] {
     const srcs = read_translation_text_srcs(context.lines);
     if (context.request_error !== undefined) {
@@ -417,6 +442,14 @@ export class TranslationWorkUnitRunner {
     if (context.request_timeout) {
       return srcs.map(() => "FAIL_TIMEOUT");
     }
+    if (context.stream_degraded) {
+      return srcs.map(() => "FAIL_DEGRADATION");
+    }
+    if (!alignment.ok) {
+      return srcs.map(() =>
+        alignment.reason === "no_valid_translation" ? "FAIL_DATA" : "FAIL_LINE_COUNT",
+      );
+    }
     const first_item = context.items[0];
     const skip_internal_filter_by_line = context.pipeline_contexts.flatMap((pipeline_context) =>
       Array.from(
@@ -424,14 +457,13 @@ export class TranslationWorkUnitRunner {
         () => pipeline_context.item?.skip_internal_filter === true,
       ),
     );
-    return ResponseChecker.check(
+    return ResponseChecker.check_aligned(
       srcs,
-      dsts,
+      alignment.dsts,
       String(first_item?.text_type ?? "TXT"),
       context.config,
       context.quality_snapshot,
       context.items.length === 1 ? this.read_number(first_item?.retry_count, 0) : 0,
-      context.stream_degraded,
       skip_internal_filter_by_line,
     );
   }
