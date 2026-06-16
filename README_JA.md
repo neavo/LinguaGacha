@@ -74,17 +74,16 @@
   - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## 対応フォーマット 🏷️
-- 入力フォルダ内のすべての対応ファイル（サブディレクトリを含む）を処理：
-  - 字幕 (.srt .ass)
-  - 電子書籍 (.txt .epub)
-  - Markdown（.md）
-  - [RenPy](https://www.renpy.org) エクスポート (.rpy)
-  - [MTool](https://mtool.app) エクスポート (.json)
-  - [SExtractor](https://github.com/satan53x/SExtractor) エクスポート (.txt .json .xlsx)
-  - [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools) exports (.json)
-  - [Translator++](https://dreamsavior.net/translator-plusplus) プロジェクト (.trans)
-  - [Translator++](https://dreamsavior.net/translator-plusplus) エクスポート (.xlsx)
-  - [WOLF 公式翻訳ツール](https://silversecond.booth.pm/items/5151747) エクスポート（.xlsx）
+- 字幕 (.srt .ass)
+- 電子書籍 (.txt .epub)
+- Markdown（.md）
+- [RenPy](https://www.renpy.org) エクスポート (.rpy)
+- [MTool](https://mtool.app) エクスポート (.json)
+- [SExtractor](https://github.com/satan53x/SExtractor) エクスポート (.txt .json .xlsx)
+- [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools) exports (.json)
+- [Translator++](https://dreamsavior.net/translator-plusplus) プロジェクト (.trans)
+- [Translator++](https://dreamsavior.net/translator-plusplus) エクスポート (.xlsx)
+- [WOLF 公式翻訳ツール](https://silversecond.booth.pm/items/5151747) エクスポート（.xlsx）
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅

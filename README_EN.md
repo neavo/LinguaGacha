@@ -75,20 +75,23 @@
   - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## Supported Formats 🏷️
-- Processes all supported files in input folder (including subdirectories):
-  - Subtitles (.srt .ass)
-  - E-books (.txt .epub)
-  - Markdown（.md）
-  - [RenPy](https://www.renpy.org) exports (.rpy)
-  - [MTool](https://mtool.app) exports (.json)
-  - [SExtractor](https://github.com/satan53x/SExtractor) exports (.txt .json .xlsx)
-  - [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools) exports (.json)
-  - [Translator++](https://dreamsavior.net/translator-plusplus) project (.trans)
-  - [Translator++](https://dreamsavior.net/translator-plusplus) exports (.xlsx)
-  - [WOLF Official Translation Tool](https://silversecond.booth.pm/items/5151747) exports (.xlsx)
+- Subtitles (.srt .ass)
+- E-books (.txt .epub)
+- Markdown（.md）
+- [RenPy](https://www.renpy.org) exports (.rpy)
+- [MTool](https://mtool.app) exports (.json)
+- [SExtractor](https://github.com/satan53x/SExtractor) exports (.txt .json .xlsx)
+- [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools) exports (.json)
+- [Translator++](https://dreamsavior.net/translator-plusplus) project (.trans)
+- [Translator++](https://dreamsavior.net/translator-plusplus) exports (.xlsx)
+- [WOLF Official Translation Tool](https://silversecond.booth.pm/items/5151747) exports (.xlsx)
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260616 v0.102.2
+  - Support for `ARM On Linux`
+  - Adjust and Improve [#630](https://github.com/neavo/LinguaGacha/issues/630) [#631](https://github.com/neavo/LinguaGacha/issues/631) [#636](https://github.com/neavo/LinguaGacha/issues/636) [#637](https://github.com/neavo/LinguaGacha/issues/637) [#638](https://github.com/neavo/LinguaGacha/issues/638)
+
 - 20260604 v0.102.1
   - Support for `ARM On Windows`
   - Adjust and Improve [#625](https://github.com/neavo/LinguaGacha/issues/625) [#626](https://github.com/neavo/LinguaGacha/issues/626)

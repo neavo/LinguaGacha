@@ -74,20 +74,23 @@
 - 你可以在 [Wiki](https://github.com/neavo/LinguaGacha/wiki) 找到各项功能的更详细介绍，也欢迎在 [讨论区](https://github.com/neavo/LinguaGacha/discussions) 投稿你的使用心得
 
 ## 文本格式 🏷️
-- 在任务开始时，应用将读取输入文件夹（及其子目录）内所有支持的文件，包括但是不限于：
-  - 字幕（.srt .ass）
-  - 电子书（.txt .epub）
-  - Markdown（.md）
-  - [RenPy](https://www.renpy.org) 导出游戏文本（.rpy）
-  - [MTool](https://mtool.app) 导出游戏文本（.json）
-  - [SExtractor](https://github.com/satan53x/SExtractor) 导出游戏文本（.txt .json .xlsx）
-  - [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools) 导出游戏文本（.json）
-  - [Translator++](https://dreamsavior.net/translator-plusplus) 项目文件（.trans）
-  - [Translator++](https://dreamsavior.net/translator-plusplus) 导出游戏文本（.xlsx）
-  - [WOLF 官方翻译工具](https://silversecond.booth.pm/items/5151747) 导出游戏文本（.xlsx）
+- 字幕（.srt .ass）
+- 电子书（.txt .epub）
+- Markdown（.md）
+- [RenPy](https://www.renpy.org) 导出游戏文本（.rpy）
+- [MTool](https://mtool.app) 导出游戏文本（.json）
+- [SExtractor](https://github.com/satan53x/SExtractor) 导出游戏文本（.txt .json .xlsx）
+- [VNTextPatch](https://github.com/arcusmaximus/VNTranslationTools) 导出游戏文本（.json）
+- [Translator++](https://dreamsavior.net/translator-plusplus) 项目文件（.trans）
+- [Translator++](https://dreamsavior.net/translator-plusplus) 导出游戏文本（.xlsx）
+- [WOLF 官方翻译工具](https://silversecond.booth.pm/items/5151747) 导出游戏文本（.xlsx）
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20260616 v0.102.2
+  - 增加对 `ARM On Linux` 的打包支持
+  - 调整与改进 [#630](https://github.com/neavo/LinguaGacha/issues/630) [#631](https://github.com/neavo/LinguaGacha/issues/631) [#636](https://github.com/neavo/LinguaGacha/issues/636) [#637](https://github.com/neavo/LinguaGacha/issues/637) [#638](https://github.com/neavo/LinguaGacha/issues/638)
+
 - 20260604 v0.102.1
   - 增加对 `ARM On Windows` 的打包支持
   - 调整与改进 [#625](https://github.com/neavo/LinguaGacha/issues/625) [#626](https://github.com/neavo/LinguaGacha/issues/626)
