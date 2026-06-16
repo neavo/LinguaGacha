@@ -9,7 +9,7 @@ on:
         default: "main"
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     outputs:
       version: ${{ steps.check_version.outputs.version }}
       app_name: ${{ steps.app_meta.outputs.app_name }}
@@ -84,9 +84,9 @@ jobs:
       matrix:
         include:
           - arch: x64
-            runner: macos-15-intel
+            runner: macos-26-intel
           - arch: arm64
-            runner: macos-15
+            runner: macos-26
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: write
@@ -129,7 +129,17 @@ jobs:
 
   build-linux:
     needs: prepare
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-26.04
+            builder_artifact_arch: x86_64
+          - arch: arm64
+            runner: ubuntu-26.04-arm
+            builder_artifact_arch: arm64
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: write
 
@@ -158,18 +168,30 @@ jobs:
       - name: Build Electron AppImage Package
         shell: bash
         run: |
-          npm run build -- --linux AppImage --x64 --publish never
+          npm run build -- --linux AppImage --${{ matrix.arch }} --publish never
+
+      - name: Normalize Linux AppImage Name
+        shell: bash
+        run: |
+          version="${{ needs.prepare.outputs.version }}"
+          release_dir="build/release/$version"
+          source_path="$release_dir/LinguaGacha_v${version}_Linux_${{ matrix.builder_artifact_arch }}.AppImage"
+          target_path="$release_dir/LinguaGacha_v${version}_Linux_${{ matrix.arch }}.AppImage"
+          if [ "$source_path" != "$target_path" ]; then
+            mv "$source_path" "$target_path"
+          fi
+          test -f "$target_path"
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Linux_x64
+          name: ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Linux_${{ matrix.arch }}
           path: |
-            build/release/${{ needs.prepare.outputs.version }}/LinguaGacha_v${{ needs.prepare.outputs.version }}_Linux_x86_64.AppImage
+            build/release/${{ needs.prepare.outputs.version }}/LinguaGacha_v${{ needs.prepare.outputs.version }}_Linux_${{ matrix.arch }}.AppImage
 
   create-release:
     needs: [prepare, build-windows, build-macos, build-linux]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     permissions:
       contents: write
 
@@ -196,4 +218,5 @@ jobs:
             ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Windows_arm64/LinguaGacha_v${{ needs.prepare.outputs.version }}_Windows_arm64.zip
             ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_macOS_x64/LinguaGacha_v${{ needs.prepare.outputs.version }}_macOS_x64.dmg
             ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_macOS_arm64/LinguaGacha_v${{ needs.prepare.outputs.version }}_macOS_arm64.dmg
-            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Linux_x64/LinguaGacha_v${{ needs.prepare.outputs.version }}_Linux_x86_64.AppImage
+            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Linux_x64/LinguaGacha_v${{ needs.prepare.outputs.version }}_Linux_x64.AppImage
+            ./artifacts/${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Linux_arm64/LinguaGacha_v${{ needs.prepare.outputs.version }}_Linux_arm64.AppImage
