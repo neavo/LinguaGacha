@@ -96,7 +96,6 @@ export type AnalysisWorkbenchTask = {
   request_analysis_task_action_confirmation: (kind: AnalysisTaskActionKind) => void;
   confirm_analysis_task_action: () => Promise<void>;
   close_analysis_task_action_confirmation: () => void;
-  request_import_analysis_glossary: () => Promise<void>;
   import_analysis_glossary_duplicate_skip: () => Promise<void>;
   import_analysis_glossary_duplicate_overwrite: () => Promise<void>;
   close_analysis_glossary_import_confirmation: () => void;
@@ -619,34 +618,6 @@ export function useAnalysisWorkbenchTask(
     t,
   ]);
 
-  const request_import_analysis_glossary = useCallback(async (): Promise<void> => {
-    if (analysis_action_blocked) {
-      return;
-    }
-    if (analysis_task_metrics.candidate_count <= 0) {
-      return;
-    }
-
-    try {
-      await execute_analysis_glossary_import("overwrite");
-    } catch (error) {
-      push_toast(
-        "error",
-        resolve_visible_error_message(
-          error,
-          t,
-          t("workbench_page.analysis_task.feedback.import_failed"),
-        ),
-      );
-    }
-  }, [
-    analysis_action_blocked,
-    analysis_task_metrics.candidate_count,
-    execute_analysis_glossary_import,
-    push_toast,
-    t,
-  ]);
-
   const close_analysis_glossary_import_confirmation = useCallback((): void => {
     if (analysis_import_confirm_state.submitting) {
       return;
@@ -836,7 +807,6 @@ export function useAnalysisWorkbenchTask(
       request_analysis_task_action_confirmation,
       confirm_analysis_task_action,
       close_analysis_task_action_confirmation,
-      request_import_analysis_glossary,
       import_analysis_glossary_duplicate_skip,
       import_analysis_glossary_duplicate_overwrite,
       close_analysis_glossary_import_confirmation,
@@ -861,7 +831,6 @@ export function useAnalysisWorkbenchTask(
     open_analysis_detail_sheet,
     refresh_analysis_task_snapshot,
     request_analysis_task_action_confirmation,
-    request_import_analysis_glossary,
     request_start_or_continue_analysis,
   ]);
 }

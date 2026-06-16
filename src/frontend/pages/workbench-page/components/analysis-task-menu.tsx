@@ -19,6 +19,7 @@ import {
   AppDropdownMenuTrigger,
 } from "@frontend/widgets/app-dropdown-menu";
 import { Spinner } from "@frontend/shadcn/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 
 type AnalysisTaskMenuProps = {
   analysis_task_metrics: AnalysisTaskMetrics;
@@ -29,7 +30,6 @@ type AnalysisTaskMenuProps = {
   active_task_action_kind: AnalysisTaskActionKind | null;
   on_start_or_continue: () => Promise<void>;
   on_request_confirmation: (kind: AnalysisTaskActionKind) => void;
-  on_import_glossary: () => Promise<void>;
 };
 export function AnalysisTaskMenu(props: AnalysisTaskMenuProps): JSX.Element {
   const { t } = useI18n();
@@ -42,12 +42,19 @@ export function AnalysisTaskMenu(props: AnalysisTaskMenuProps): JSX.Element {
 
   return (
     <AppDropdownMenu>
-      <AppDropdownMenuTrigger asChild>
-        <AppButton type="button" size="toolbar" variant="ghost" disabled={props.disabled}>
-          {trigger_icon}
-          {t("workbench_page.action.analysis_task")}
-        </AppButton>
-      </AppDropdownMenuTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <AppDropdownMenuTrigger asChild>
+            <AppButton type="button" size="toolbar" variant="ghost" disabled={props.disabled}>
+              {trigger_icon}
+              {t("workbench_page.action.analysis_task")}
+            </AppButton>
+          </AppDropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="top" sideOffset={8}>
+          <p>{t("workbench_page.analysis_task.menu.tooltip")}</p>
+        </TooltipContent>
+      </Tooltip>
 
       <AppDropdownMenuContent align="start" className="workbench-task__menu">
         <div className="workbench-task__menu-progress">
@@ -128,7 +135,7 @@ export function AnalysisTaskMenu(props: AnalysisTaskMenuProps): JSX.Element {
           <AppDropdownMenuItem
             disabled={import_disabled}
             onSelect={() => {
-              void props.on_import_glossary();
+              props.on_request_confirmation("import-glossary");
             }}
           >
             {props.importing ? (

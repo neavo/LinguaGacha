@@ -99,7 +99,6 @@ function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCo
       request_analysis_task_action_confirmation: () => {},
       confirm_analysis_task_action: async () => {},
       close_analysis_task_action_confirmation: () => {},
-      request_import_analysis_glossary: async () => {},
       import_analysis_glossary_duplicate_skip: async () => {},
       import_analysis_glossary_duplicate_overwrite: async () => {},
       close_analysis_glossary_import_confirmation: () => {},

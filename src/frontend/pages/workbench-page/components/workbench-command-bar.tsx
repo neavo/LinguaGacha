@@ -142,7 +142,6 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
               on_request_confirmation={
                 props.analysis_workbench_task.request_analysis_task_action_confirmation
               }
-              on_import_glossary={props.analysis_workbench_task.request_import_analysis_glossary}
             />
           </CommandBarGroup>
           <CommandBarSeparator />

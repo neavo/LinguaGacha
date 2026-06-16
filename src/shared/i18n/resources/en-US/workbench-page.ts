@@ -68,6 +68,7 @@ export const en_us_workbench_page = {
   analysis_task: {
     menu: {
       progress: "Progress",
+      tooltip: "Extract terms from source text",
     },
     summary: {
       empty: "Idle",
@@ -110,6 +111,7 @@ export const en_us_workbench_page = {
   translation_task: {
     menu: {
       progress: "Progress",
+      tooltip: "Translate source text into the target language",
     },
     summary: {
       empty: "Idle",

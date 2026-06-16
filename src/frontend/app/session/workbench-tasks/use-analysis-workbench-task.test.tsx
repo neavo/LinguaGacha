@@ -370,7 +370,12 @@ describe("useAnalysisWorkbenchTask", () => {
     expect(latest_state?.analysis_task_metrics.candidate_count).toBe(2);
 
     await act(async () => {
-      await latest_state?.request_import_analysis_glossary();
+      latest_state?.request_analysis_task_action_confirmation("import-glossary");
+    });
+    await flush_microtasks();
+
+    await act(async () => {
+      await latest_state?.confirm_analysis_task_action();
     });
     await flush_microtasks();
 
@@ -478,7 +483,12 @@ describe("useAnalysisWorkbenchTask", () => {
     await flush_microtasks();
 
     await act(async () => {
-      await latest_state?.request_import_analysis_glossary();
+      latest_state?.request_analysis_task_action_confirmation("import-glossary");
+    });
+    await flush_microtasks();
+
+    await act(async () => {
+      await latest_state?.confirm_analysis_task_action();
     });
     await flush_microtasks();
 
