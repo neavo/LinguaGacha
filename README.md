@@ -41,7 +41,7 @@
     - 打开终端输入 `sudo xattr -rd com.apple.quarantine /Applications/LinguaGacha.app` 然后回车
     - 输入系统密码，关闭终端，可以正常运行了
   - Linux:
-    - 下载 `*_Linux_x86_64.AppImage` 文件
+    - 根据 CPU 类型下载 `*_Linux_x64.AppImage` 或 `*_Linux_arm64.AppImage`
     - 添加执行权限 `chmod +x LinguaGacha*.AppImage`
     - 运行 `./LinguaGacha*.AppImage`
 - 获取一个可靠的 AI 大模型接口，建议选择其一：

@@ -38,7 +38,7 @@ describe("windows-update-target", () => {
           browser_download_url: "https://example.com/arm64.zip",
         },
         {
-          name: "LinguaGacha_v1.2.4_Linux_x86_64.AppImage",
+          name: "LinguaGacha_v1.2.4_Linux_x64.AppImage",
           browser_download_url: "https://example.com/linux.AppImage",
         },
       ],

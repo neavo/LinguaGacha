@@ -42,7 +42,7 @@
     - ターミナルを開き、`sudo xattr -rd com.apple.quarantine /Applications/LinguaGacha.app` と入力して Enter を押してください
     - システムパスワードを入力し、ターミナルを閉じると、通常通り起動できます
   - Linux:
-    - `*_Linux_x86_64.AppImage` ファイルをダウンロード
+    - CPU の種類に応じて `*_Linux_x64.AppImage` または `*_Linux_arm64.AppImage` をダウンロード
     - `chmod +x LinguaGacha*.AppImage` で実行権限を付与
     - `./LinguaGacha*.AppImage` を実行
 - 信頼できるAIモデルインターフェースを取得（以下のいずれかを選択）：

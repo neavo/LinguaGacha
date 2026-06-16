@@ -43,7 +43,7 @@
     - Open Terminal, enter `sudo xattr -rd com.apple.quarantine /Applications/LinguaGacha.app`, then press Enter
     - Enter your system password, close Terminal, and you can launch it normally
   - Linux:
-    - Download the `*_Linux_x86_64.AppImage` file
+    - Download `*_Linux_x64.AppImage` or `*_Linux_arm64.AppImage` according to your CPU type
     - Add executable permission with `chmod +x LinguaGacha*.AppImage`
     - Run `./LinguaGacha*.AppImage`
 - Obtain a reliable AI model interface (choose one):
