@@ -64,6 +64,7 @@ export const zh_cn_workbench_page = {
   analysis_task: {
     menu: {
       progress: "进度",
+      tooltip: "从原文中提取术语",
     },
     summary: {
       empty: "无任务",
@@ -106,6 +107,7 @@ export const zh_cn_workbench_page = {
   translation_task: {
     menu: {
       progress: "进度",
+      tooltip: "将原文翻译为目标语言",
     },
     summary: {
       empty: "无任务",

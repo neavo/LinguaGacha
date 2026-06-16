@@ -18,6 +18,7 @@ import {
   AppDropdownMenuTrigger,
 } from "@frontend/widgets/app-dropdown-menu";
 import { Spinner } from "@frontend/shadcn/spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
 
 type TranslationTaskMenuProps = {
   translation_task_metrics: TranslationTaskMetrics;
@@ -38,12 +39,19 @@ export function TranslationTaskMenu(props: TranslationTaskMenuProps): JSX.Elemen
 
   return (
     <AppDropdownMenu>
-      <AppDropdownMenuTrigger asChild>
-        <AppButton type="button" size="toolbar" variant="ghost" disabled={props.disabled}>
-          {trigger_icon}
-          {t("workbench_page.action.translation_task")}
-        </AppButton>
-      </AppDropdownMenuTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <AppDropdownMenuTrigger asChild>
+            <AppButton type="button" size="toolbar" variant="ghost" disabled={props.disabled}>
+              {trigger_icon}
+              {t("workbench_page.action.translation_task")}
+            </AppButton>
+          </AppDropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="top" sideOffset={8}>
+          <p>{t("workbench_page.translation_task.menu.tooltip")}</p>
+        </TooltipContent>
+      </Tooltip>
 
       <AppDropdownMenuContent align="start" className="workbench-task__menu">
         <div className="workbench-task__menu-progress">

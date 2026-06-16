@@ -422,7 +422,6 @@ function create_analysis_workbench_task_fixture(): AnalysisWorkbenchTaskFixture 
     request_analysis_task_action_confirmation: vi.fn(),
     confirm_analysis_task_action: vi.fn(async () => {}),
     close_analysis_task_action_confirmation: vi.fn(),
-    request_import_analysis_glossary: vi.fn(async () => {}),
     import_analysis_glossary_duplicate_skip: vi.fn(async () => {}),
     import_analysis_glossary_duplicate_overwrite: vi.fn(async () => {}),
     close_analysis_glossary_import_confirmation: vi.fn(),
