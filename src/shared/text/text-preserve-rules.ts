@@ -274,21 +274,12 @@ export class TextPreserveRule {
 }
 
 /**
- * 把配置里常见的 \UXXXXXXXX 写法转换成 JavaScript 正则可识别格式
- */
-function normalize_regex_pattern_for_javascript(pattern: string): string {
-  return pattern.replace(/\\U([0-9a-fA-F]{8})/gu, (_match, hex: string) => {
-    return `\\u{${hex.replace(/^0+/, "") || "0"}}`;
-  });
-}
-
-/**
  * 编译规则定义为运行期可复用的匹配逻辑。
  */
 function compile_text_preserve_pattern_definition(
   definition: TextPreservePatternDefinition,
 ): CompiledTextPreservePatternDefinition[] {
-  const source = normalize_regex_pattern_for_javascript(definition.source);
+  const source = definition.source;
   try {
     return [
       {

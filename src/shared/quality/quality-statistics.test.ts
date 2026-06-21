@@ -68,6 +68,23 @@ describe("run_quality_statistics_task", () => {
     expect(result.results.preserve?.matched_item_count).toBe(1);
   });
 
+  it("text_preserve 规则按 Unicode 属性转义统计原文", async () => {
+    const result = await run_quality_statistics_task({
+      rules: [
+        {
+          key: "han",
+          pattern: "\\p{Script=Han}+",
+          mode: "text_preserve",
+        },
+      ],
+      srcTextGroups: text_groups([["勇者 arrived"], ["plain"]]),
+      dstTextGroups: text_groups([["translated"], ["勇者"]]),
+      relationCandidates: [],
+    });
+
+    expect(result.results.han?.matched_item_count).toBe(1);
+  });
+
   it("在非 regex 且忽略大小写时按转义后的正则统计", async () => {
     const result = await run_quality_statistics_task({
       rules: [
