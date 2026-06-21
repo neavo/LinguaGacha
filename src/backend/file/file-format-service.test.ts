@@ -81,7 +81,7 @@ describe("FileFormatService", () => {
     );
   });
 
-  it("收集源文件时去重输入路径并为重复相对路径生成稳定文件名", () => {
+  it("收集目录源文件时保留入口目录名并去重输入路径", () => {
     const service = create_service();
     const left_dir = path.join(temp_dir, "left");
     const right_dir = path.join(temp_dir, "right");
@@ -99,7 +99,7 @@ describe("FileFormatService", () => {
       service
         .collect_source_file_entries([left_dir, right_dir])
         .map((entry) => entry.rel_path.replace(/\\/gu, "/")),
-    ).toEqual(["script.txt", "script_2.txt"]);
+    ).toEqual(["left/script.txt", "right/script.txt"]);
   });
 
   it("收集单文件路径时使用文件名作为工程相对路径", () => {

@@ -80,19 +80,6 @@ export class ProjectSessionState {
   }
 }
 
-// 公开 source-files 只枚举当前文件域已经支持的格式，避免新建工程误收未知文件
-const SUPPORTED_SOURCE_EXTENSIONS = new Set([
-  ".txt",
-  ".md",
-  ".json",
-  ".xlsx",
-  ".epub",
-  ".ass",
-  ".srt",
-  ".rpy",
-  ".trans",
-]);
-
 /**
  * 项目生命周期服务内部使用的可写 JSON 记录。
  */
@@ -556,18 +543,9 @@ export class ProjectLifecycleService {
    */
   public collect_source_files(body: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
     const source_paths = this.normalize_source_paths(body["source_paths"]);
-    const source_files: string[] = [];
-    const seen_file_keys = new Set<string>();
-    for (const source_path of source_paths) {
-      for (const source_file of this.collect_source_files_from_path(source_path)) {
-        const file_key = this.build_path_identity_key(source_file);
-        if (seen_file_keys.has(file_key)) {
-          continue;
-        }
-        seen_file_keys.add(file_key);
-        source_files.push(source_file);
-      }
-    }
+    const source_files = this.create_format_service(this.build_current_project_settings())
+      .collect_source_file_entries(source_paths)
+      .map((file) => file.source_path);
     return { source_files };
   }
 
@@ -795,49 +773,6 @@ export class ProjectLifecycleService {
       .filter((item): item is string => typeof item === "string")
       .map((item) => item.trim())
       .filter((item) => item !== "");
-  }
-
-  /**
-   * 按文件或目录收集支持格式，目录内按名称稳定排序
-   */
-  private collect_source_files_from_path(source_path: string): string[] {
-    if (!this.native_fs.exists(source_path)) {
-      return [];
-    }
-    const stats = this.native_fs.stat(source_path);
-    if (stats.isFile()) {
-      return this.is_supported_file(source_path) ? [source_path] : [];
-    }
-    if (!stats.isDirectory()) {
-      return [];
-    }
-    return this.collect_source_files_from_directory(source_path);
-  }
-
-  /**
-   * 递归目录时保持确定性顺序，让新建草稿和后续 asset 顺序可重复
-   */
-  private collect_source_files_from_directory(source_path: string): string[] {
-    const source_files: string[] = [];
-    const entries = this.native_fs
-      .read_dirents(source_path)
-      .sort((left, right) => left.name.localeCompare(right.name));
-    for (const entry of entries) {
-      const entry_path = path.join(source_path, entry.name);
-      if (entry.isDirectory()) {
-        source_files.push(...this.collect_source_files_from_directory(entry_path));
-      } else if (entry.isFile() && this.is_supported_file(entry_path)) {
-        source_files.push(entry_path);
-      }
-    }
-    return source_files;
-  }
-
-  /**
-   * 判断文件扩展名是否属于公开文件域支持集合
-   */
-  private is_supported_file(file_path: string): boolean {
-    return SUPPORTED_SOURCE_EXTENSIONS.has(path.extname(file_path).toLowerCase());
   }
 
   /**
