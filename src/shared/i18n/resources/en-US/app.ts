@@ -308,7 +308,6 @@ export const en_us_app = {
     request_failed_retry: "Model request failed, will automatically retry …",
     response_checker_fail_timeout: "Network Request Timeout",
     response_checker_line_error_empty_line: "Empty Line",
-    response_checker_line_error_similarity: "High Similarity",
     system_closed_dropped: "Log system is shut down; dropping new log: {MESSAGE}",
     translation_response_check_fail: "Data error, will automatically retry, Reason: {REASON}",
     translation_response_check_fail_all:

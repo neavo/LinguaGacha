@@ -425,7 +425,6 @@ export class TranslationWorkUnitRunner {
   private build_checks(
     context: {
       config: TextProcessingConfig;
-      quality_snapshot: TextQualitySnapshot;
       lines: TranslationLine[];
       pipeline_contexts: TranslationPrePipelineContext[];
       items: TextTaskItemRecord[];
@@ -460,9 +459,7 @@ export class TranslationWorkUnitRunner {
     return ResponseChecker.check_aligned(
       srcs,
       alignment.dsts,
-      String(first_item?.text_type ?? "TXT"),
       context.config,
-      context.quality_snapshot,
       context.items.length === 1 ? this.read_number(first_item?.retry_count, 0) : 0,
       skip_internal_filter_by_line,
     );
@@ -618,17 +615,17 @@ export class TranslationWorkUnitRunner {
     if (checks.every((check) => check === "FAIL_LINE_COUNT")) {
       return { level: "error", message: fail("app.log.translation_response_check_fail") };
     }
-    if (checks.every((check) => this.is_line_error(check))) {
+    if (checks.every((check) => check === "LINE_ERROR_EMPTY_LINE")) {
       return { level: "error", message: fail("app.log.translation_response_check_fail_all") };
     }
-    if (checks.some((check) => this.is_line_error(check))) {
+    if (checks.some((check) => check === "LINE_ERROR_EMPTY_LINE")) {
       return { level: "warning", message: fail("app.log.translation_response_check_fail_part") };
     }
     return { level: "info", message: "" };
   }
 
   /**
-   * 迁移前 ResponseChecker 的本地化文案在 worker 内压缩为固定中文诊断
+   * worker 内把响应检查错误码转成本地化日志文本
    */
   private get_error_text(check: string, app_language: unknown): string {
     switch (check) {
@@ -640,8 +637,6 @@ export class TranslationWorkUnitRunner {
         return this.t(app_language, "app.log.response_checker_fail_timeout");
       case "LINE_ERROR_EMPTY_LINE":
         return this.t(app_language, "app.log.response_checker_line_error_empty_line");
-      case "LINE_ERROR_SIMILARITY":
-        return this.t(app_language, "app.log.response_checker_line_error_similarity");
       case "FAIL_DEGRADATION":
         return this.t(app_language, "app.log.response_checker_fail_degradation");
       case "FAIL_REQUEST":
@@ -649,13 +644,6 @@ export class TranslationWorkUnitRunner {
       default:
         return check;
     }
-  }
-
-  /**
-   * 行级错误会降级为部分失败，整包错误会触发整包重试。
-   */
-  private is_line_error(check: string): boolean {
-    return check === "LINE_ERROR_EMPTY_LINE" || check === "LINE_ERROR_SIMILARITY";
   }
 
   /**
