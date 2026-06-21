@@ -1,15 +1,7 @@
 import { should_skip_by_language_prefilter } from "../../../../shared/prefilter/language-prefilter";
 import { should_skip_by_rule_prefilter } from "../../../../shared/prefilter/rule-prefilter";
-import {
-  build_text_preserve_rule,
-  normalize_text_preserve_mode,
-  type TextPreserveRule,
-} from "../../../../shared/text/text-preserve-rules";
-import {
-  has_translation_retry_reached_review_threshold,
-  has_translation_similarity_issue,
-} from "../../../../shared/text/translation-quality-rules";
-import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shared/text/text-types";
+import { has_translation_retry_reached_review_threshold } from "../../../../shared/text/translation-quality-rules";
+import type { TextProcessingConfig } from "../../../../shared/text/text-types";
 
 /**
  * 翻译响应行质量检查器，按模型结果决定哪些行可提交
@@ -21,9 +13,7 @@ export class ResponseChecker {
   public static check_aligned(
     srcs: string[],
     dsts: string[],
-    text_type: string,
     config: TextProcessingConfig,
-    quality_snapshot: TextQualitySnapshot,
     item_retry_count: number,
     skip_internal_filter_by_line: boolean[] = [],
   ): string[] {
@@ -33,14 +23,7 @@ export class ResponseChecker {
     if (has_translation_retry_reached_review_threshold(item_retry_count)) {
       return srcs.map(() => "NONE");
     }
-    return this.check_lines(
-      srcs,
-      dsts,
-      text_type,
-      config,
-      quality_snapshot,
-      skip_internal_filter_by_line,
-    );
+    return this.check_lines(srcs, dsts, config, skip_internal_filter_by_line);
   }
 
   /**
@@ -49,36 +32,25 @@ export class ResponseChecker {
   public static check_lines(
     srcs: string[],
     dsts: string[],
-    text_type: string,
     config: TextProcessingConfig,
-    quality_snapshot: TextQualitySnapshot,
     skip_internal_filter_by_line: boolean[] = [],
   ): string[] {
     return srcs.map((src, index) =>
-      this.check_line(
-        src,
-        dsts[index] ?? "",
-        text_type,
-        config,
-        quality_snapshot,
-        skip_internal_filter_by_line[index] === true,
-      ),
+      this.check_line(src, dsts[index] ?? "", config, skip_internal_filter_by_line[index] === true),
     );
   }
 
   /**
-   * 单行检查顺序保持：空译文、规则过滤、语言过滤、保护段剥离和相似度
+   * 单行检查顺序保持：空译文、规则过滤、语言过滤
    */
   private static check_line(
     raw_src: string,
     raw_dst: string,
-    text_type: string,
     config: TextProcessingConfig,
-    quality_snapshot: TextQualitySnapshot,
     skip_internal_filter: boolean,
   ): string {
-    let src = raw_src.trim();
-    let dst = raw_dst.trim();
+    const src = raw_src.trim();
+    const dst = raw_dst.trim();
     if (src !== "" && dst === "") {
       return "LINE_ERROR_EMPTY_LINE";
     }
@@ -89,39 +61,6 @@ export class ResponseChecker {
     ) {
       return "NONE";
     }
-    const preserve_rule =
-      normalize_text_preserve_mode(quality_snapshot.text_preserve_mode) === "off"
-        ? null
-        : this.get_sample_rule(text_type, quality_snapshot);
-    if (preserve_rule !== null) {
-      src = preserve_rule.replace(src, "");
-      dst = preserve_rule.replace(dst, "");
-    }
-    if (
-      has_translation_similarity_issue({
-        src,
-        dst,
-        sourceLanguage: config.source_language,
-        targetLanguage: config.target_language,
-      })
-    ) {
-      return "LINE_ERROR_SIMILARITY";
-    }
     return "NONE";
-  }
-
-  /**
-   * 样例规则只用于剥离保护片段，保持和迁移前响应检查的宽容口径一致
-   */
-  private static get_sample_rule(
-    text_type: string,
-    quality_snapshot: TextQualitySnapshot,
-  ): TextPreserveRule | null {
-    return build_text_preserve_rule({
-      mode: quality_snapshot.text_preserve_mode,
-      text_type,
-      entries: quality_snapshot.text_preserve_entries,
-      kind: "sample",
-    });
   }
 }

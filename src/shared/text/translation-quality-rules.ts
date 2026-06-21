@@ -8,7 +8,7 @@ import { check_similarity_by_jaccard } from "../utils/text-tool";
 /**
  * 集中维护当前导出常量，避免调用点散落魔术值。
  */
-export const TRANSLATION_SIMILARITY_THRESHOLD = 0.8; // 相似度阈值是 Backend 响应检查和校对页 warning 的唯一共享事实
+export const TRANSLATION_SIMILARITY_THRESHOLD = 0.8; // 相似度阈值只服务校对页质量 warning
 
 /**
  * 集中维护当前模块的稳定常量。
