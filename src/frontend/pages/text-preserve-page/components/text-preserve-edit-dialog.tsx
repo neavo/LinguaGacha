@@ -84,6 +84,7 @@ export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.
                   aria_label={t("text_preserve_page.fields.rule")}
                   read_only={props.saving}
                   invalid={props.validation_message !== null}
+                  indent_with_tab={false}
                   on_change={(next_value) => {
                     props.on_change({ src: next_value });
                   }}
@@ -104,6 +105,7 @@ export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.
                   value={props.entry.info}
                   aria_label={t("text_preserve_page.fields.note")}
                   read_only={props.saving}
+                  indent_with_tab={false}
                   on_change={(next_value) => {
                     props.on_change({ info: next_value });
                   }}
