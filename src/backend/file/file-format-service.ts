@@ -247,7 +247,10 @@ export class FileFormatService {
       return [];
     }
     const result: string[] = [];
-    for (const entry of this.native_fs.read_dirents(source_path)) {
+    const entries = this.native_fs
+      .read_dirents(source_path)
+      .sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
       const entry_path = path.join(source_path, entry.name);
       if (entry.isDirectory()) {
         result.push(...this.collect_source_files(entry_path));
@@ -275,13 +278,13 @@ export class FileFormatService {
   }
 
   /**
-   * 目录输入保留目录内相对结构，单文件输入只使用文件名
+   * 目录输入保留入口目录名和内部结构，单文件输入只使用文件名
    */
   private build_source_relative_path(source_root: string, source_file: string): string {
     if (this.native_fs.exists(source_root) && this.native_fs.stat(source_root).isFile()) {
       return path.basename(source_file);
     }
-    return path.relative(source_root, source_file) || path.basename(source_file);
+    return path.relative(path.dirname(source_root), source_file) || path.basename(source_file);
   }
 
   /**

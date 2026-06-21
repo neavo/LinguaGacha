@@ -280,7 +280,7 @@ describe("ProjectLifecycleService", () => {
         name: "addAssetFromSource",
         args: {
           projectPath: project_path,
-          path: "script.txt",
+          path: path.join("source", "script.txt"),
           sourcePath: source_path,
           sortOrder: 0,
         },
@@ -292,7 +292,7 @@ describe("ProjectLifecycleService", () => {
           items: [
             {
               id: 1,
-              file_path: "script.txt",
+              file_path: path.join("source", "script.txt"),
               file_type: "TXT",
               row: 0,
               src: "こんにちは",
@@ -598,7 +598,7 @@ describe("ProjectLifecycleService", () => {
       failed_files: [
         {
           source_path: broken_json,
-          rel_path: "broken.json",
+          rel_path: path.join("source", "broken.json"),
           filename: "broken.json",
           code: "file.parse_failed",
           message_key: "app.error.file.parse_failed.message",
@@ -613,7 +613,7 @@ describe("ProjectLifecycleService", () => {
         name: "addAssetFromSource",
         args: {
           projectPath: project_path,
-          path: "script.txt",
+          path: path.join("source", "script.txt"),
           sourcePath: valid_file,
           sortOrder: 0,
         },
@@ -649,7 +649,7 @@ describe("ProjectLifecycleService", () => {
         failed_files: [
           {
             source_path: broken_json,
-            rel_path: "broken.json",
+            rel_path: path.join("source", "broken.json"),
             filename: "broken.json",
             code: "file.parse_failed",
             message_key: "app.error.file.parse_failed.message",
