@@ -1560,7 +1560,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       }
 
       try {
-        void new RegExp(entry.src, "i");
+        void new RegExp(entry.src, "iu");
         return null;
       } catch (error) {
         const detail = error instanceof Error ? error.message : "";

@@ -981,8 +981,8 @@ describe("useTextPreservePageState", () => {
               info: "bar",
             },
             {
-              entry_id: "qr:baz",
-              src: "baz",
+              entry_id: "qr:han",
+              src: "\\p{Script=Han}+",
               info: "keep",
             },
           ],
@@ -996,7 +996,7 @@ describe("useTextPreservePageState", () => {
     });
     await act(async () => {
       latest_state?.update_dialog_draft({
-        src: "baz",
+        src: "\\p{Script=Han}+",
         info: "keep",
       });
     });
@@ -1004,7 +1004,36 @@ describe("useTextPreservePageState", () => {
       await latest_state?.save_dialog_entry();
     });
 
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo", "baz"]);
+    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual([
+      "foo",
+      "\\p{Script=Han}+",
+    ]);
+  });
+
+  it("新增文本保护规则保存时拒绝 \\UXXXXXXXX 转义", async () => {
+    await mount_probe();
+
+    await act(async () => {
+      latest_state?.open_create_dialog();
+    });
+    await act(async () => {
+      latest_state?.update_dialog_draft({
+        src: "\\U0001F600",
+        info: "旧写法",
+      });
+    });
+    await act(async () => {
+      await latest_state?.save_dialog_entry();
+    });
+
+    expect(latest_state?.dialog_state.validation_message).toContain(
+      "text_preserve_page.feedback.regex_invalid",
+    );
+    expect(push_toast_mock).toHaveBeenCalledWith(
+      "error",
+      expect.stringContaining("text_preserve_page.feedback.regex_invalid"),
+    );
+    expect(api_fetch_mock).not.toHaveBeenCalled();
   });
 
   it("新增文本保护规则保存时若 SSE 先于 HTTP 返回，统一 commit 重放后仍保留新条目", async () => {
