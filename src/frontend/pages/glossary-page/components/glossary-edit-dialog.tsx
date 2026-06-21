@@ -92,6 +92,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                   value={props.entry.src}
                   aria_label={t("glossary_page.fields.source")}
                   read_only={props.saving}
+                  indent_with_tab={false}
                   on_change={(next_value) => {
                     props.on_change({ src: next_value });
                   }}
@@ -107,6 +108,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                   value={props.entry.dst}
                   aria_label={t("glossary_page.fields.translation")}
                   read_only={props.saving}
+                  indent_with_tab={false}
                   on_change={(next_value) => {
                     props.on_change({ dst: next_value });
                   }}
@@ -122,6 +124,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                   value={props.entry.info}
                   aria_label={t("glossary_page.fields.description")}
                   read_only={props.saving}
+                  indent_with_tab={false}
                   on_change={(next_value) => {
                     props.on_change({ info: next_value });
                   }}

@@ -97,6 +97,7 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
                   aria_label={t("text_replacement_page.fields.source")}
                   read_only={props.saving}
                   invalid={props.validation_message !== null}
+                  indent_with_tab={false}
                   on_change={(next_value) => {
                     props.on_change({ src: next_value });
                   }}
@@ -117,6 +118,7 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
                   value={props.entry.dst}
                   aria_label={t("text_replacement_page.fields.replacement")}
                   read_only={props.saving}
+                  indent_with_tab={false}
                   on_change={(next_value) => {
                     props.on_change({ dst: next_value });
                   }}

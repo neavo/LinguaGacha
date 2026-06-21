@@ -35,6 +35,7 @@ type AppEditorProps = {
   aria_invalid?: boolean;
   mode?: AppEditorMode;
   variant?: AppEditorVariant;
+  indent_with_tab?: boolean;
   marks?: readonly AppTextMark[];
   class_name?: string;
   on_change?: (next_value: string) => void;
@@ -44,6 +45,7 @@ const editor_theme_compartment = new Compartment();
 const editor_readonly_compartment = new Compartment();
 const editor_mode_compartment = new Compartment();
 const editor_variant_compartment = new Compartment();
+const editor_keymap_compartment = new Compartment();
 
 function normalize_field_editor_value(value: string): string {
   return value.replace(/\r\n|\r|\n/gu, " ");
@@ -104,6 +106,14 @@ function resolve_app_editor_value(value: string, variant: AppEditorVariant): str
   return value;
 }
 
+function resolve_app_editor_keymap_extension(indent_with_tab: boolean): Extension {
+  return keymap.of([
+    ...(indent_with_tab ? [indentWithTab] : []),
+    ...defaultKeymap,
+    ...historyKeymap,
+  ]);
+}
+
 function clamp_selection_offset(offset: number, max_offset: number): number {
   if (offset < 0) {
     return 0;
@@ -134,6 +144,7 @@ function create_editor_extensions(args: {
   theme_extension: Extension;
   mode_extension: Extension;
   variant_extension: Extension;
+  keymap_extension: Extension;
   read_only: boolean;
   on_change: (next_value: string) => void;
   suppress_change_ref: { current: boolean };
@@ -148,7 +159,7 @@ function create_editor_extensions(args: {
     create_app_editor_text_mark_hover_extension(args.marks_ref),
     drawSelection(),
     history(),
-    keymap.of([indentWithTab, ...defaultKeymap, ...historyKeymap]),
+    args.keymap_extension,
     EditorView.updateListener.of((update) => {
       // 为什么：这是受控编辑器，外部同步 value 时不能再向上触发 on_change 形成回环
       if (!update.docChanged || args.suppress_change_ref.current) {
@@ -164,6 +175,7 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
   const { resolvedTheme } = useTheme();
   const mode = props.mode ?? "plain";
   const variant = props.variant ?? "editor";
+  const indent_with_tab = props.indent_with_tab ?? true;
   const value = resolve_app_editor_value(props.value, variant);
   const host_ref = useRef<HTMLDivElement | null>(null);
   const editor_view_ref = useRef<EditorView | null>(null);
@@ -175,6 +187,7 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
   const initial_read_only_ref = useRef(props.read_only);
   const initial_mode_ref = useRef(mode);
   const initial_variant_ref = useRef(variant);
+  const initial_indent_with_tab_ref = useRef(indent_with_tab);
   const initial_marks_ref = useRef(normalize_app_text_marks(value.length, props.marks ?? []));
   const marks_ref = useRef<readonly AppTextMark[]>(initial_marks_ref.current);
   const initial_theme_extension_ref = useRef(
@@ -196,6 +209,9 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
         theme_extension: initial_theme_extension_ref.current,
         mode_extension: resolve_app_editor_mode_extensions(initial_mode_ref.current),
         variant_extension: resolve_app_editor_variant_extensions(initial_variant_ref.current),
+        keymap_extension: editor_keymap_compartment.of(
+          resolve_app_editor_keymap_extension(initial_indent_with_tab_ref.current),
+        ),
         read_only: initial_read_only_ref.current,
         on_change: (next_value) => {
           on_change_ref.current?.(next_value);
@@ -276,6 +292,19 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
       ),
     });
   }, [variant]);
+
+  useEffect(() => {
+    const editor_view = editor_view_ref.current;
+    if (editor_view === null) {
+      return;
+    }
+
+    editor_view.dispatch({
+      effects: editor_keymap_compartment.reconfigure(
+        resolve_app_editor_keymap_extension(indent_with_tab),
+      ),
+    });
+  }, [indent_with_tab]);
 
   useEffect(() => {
     const editor_view = editor_view_ref.current;
