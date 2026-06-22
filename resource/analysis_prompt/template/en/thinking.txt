@@ -1,6 +1,6 @@
 Before outputting the results, you must first perform **structured thinking** within the <why>...</why> tags according to the following steps:
 <why>
-[Global Context]: Summarize the genre, world-building, and narrative setting of the original text in one sentence, and identify potential fictional settings.
-[Core Constraints]: Reiterate 1-2 "red line" rules most essential for preventing errors in the current text.
+[Global Context]: Summarize the original text's worldview, background setting, and rule system in one sentence.
+[Core Constraints]: Reiterate the 1-2 "red line" rules most likely to go wrong in the current text.
 [Edge Cases]: Pick out 3-5 of the most difficult-to-judge terms, and briefly outline the logic in the format of `Original -> Result (Reason)`.
 </why>
