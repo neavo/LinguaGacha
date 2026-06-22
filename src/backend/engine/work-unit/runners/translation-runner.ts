@@ -30,6 +30,7 @@ import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
 import { normalize_setting_snapshot } from "../../../../domain/setting";
 import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
 import type { LogError } from "../../../../shared/error";
+import { has_translation_retry_reached_review_threshold } from "../../../../shared/text/translation-quality-rules";
 
 /**
  * worker 边界传入的公共请求字段，全部来自任务启动时的不可变快照。
@@ -68,20 +69,36 @@ interface TranslationWorkUnitResult {
 
 type TranslationAlignmentFailureReason = "no_valid_translation" | "line_count_mismatch";
 
+/**
+ * 对齐结果同时服务日志和提交；失败时仍保留可解析输出，供阈值 fallback 裁决。
+ */
 type TranslationAlignment =
   | {
       ok: true;
-      decoded_lines: TranslationDecodedLine[];
-      dsts: string[];
-      actor_dsts: TranslationActor[];
+      decoded_lines: TranslationDecodedLine[]; // 已按请求序号排序，可直接交给译后 pipeline
+      dsts: string[]; // 日志使用的正文译文列表
+      actor_dsts: TranslationActor[]; // actor/text 模式下的日志姓名译文列表
     }
   | {
       ok: false;
-      reason: TranslationAlignmentFailureReason;
-      decoded_lines: TranslationDecodedLine[];
-      dsts: string[];
-      actor_dsts: TranslationActor[];
+      reason: TranslationAlignmentFailureReason; // 区分无可用数据和行数/序号无法覆盖
+      decoded_lines: TranslationDecodedLine[]; // 失败时保留模型可解析结果，不能提前丢弃
+      dsts: string[]; // 日志仍展示模型实际返回内容
+      actor_dsts: TranslationActor[]; // 失败日志中的姓名译文展示数据
     };
+
+/**
+ * 响应裁决把“真实失败原因”和“是否允许提交”拆开，避免日志被阈值放行吞掉。
+ */
+interface TranslationResponseDecision {
+  checks: string[]; // 日志使用的原始检查码
+  submit_checks: string[]; // 写回流程使用的提交检查码
+  decoded_lines: TranslationDecodedLine[]; // 可交给译后 pipeline 的已对齐译文
+  used_fallback: boolean; // true 时只写正文 dst，不走姓名写回
+  fallback_dst: string | null; // 行数不一致达阈值后的单条正文译文
+  dsts: string[]; // 日志展示的正文译文
+  actor_dsts: TranslationActor[]; // 日志展示的姓名译文
+}
 
 /**
  * 翻译类 work unit runner，完整执行预处理、prompt、LLM、响应解析和后处理
@@ -310,15 +327,15 @@ export class TranslationWorkUnitRunner {
       context.stream_degraded || context.request_timeout || context.request_error !== undefined
         ? this.empty_alignment("no_valid_translation")
         : this.align_decoded_lines(context.lines, decoded);
-    const checks = this.build_checks(context, aligned);
+    const decision = this.build_response_decision(context, aligned);
     const logs = this.build_translation_logs({
-      checks,
+      checks: decision.checks,
       start_time: context.start_time,
       input_tokens: response.input_tokens,
       output_tokens: response.output_tokens,
       lines: context.lines,
-      dsts: aligned.dsts,
-      actor_dsts: aligned.actor_dsts,
+      dsts: decision.dsts,
+      actor_dsts: decision.actor_dsts,
       mode: context.mode,
       console_log: context.console_log,
       response_think: normalized_think,
@@ -328,9 +345,16 @@ export class TranslationWorkUnitRunner {
       request: context.request,
     });
     let updated_count = 0;
-    if (checks.some((check) => check === "NONE")) {
-      const decoded_queue = [...aligned.decoded_lines];
-      const check_queue = [...checks];
+    if (decision.used_fallback && decision.fallback_dst !== null) {
+      const item = context.items[0];
+      if (item !== undefined) {
+        item.dst = decision.fallback_dst;
+        item.status = "PROCESSED";
+        updated_count = 1;
+      }
+    } else if (decision.submit_checks.some((check) => check === "NONE")) {
+      const decoded_queue = [...decision.decoded_lines];
+      const check_queue = [...decision.submit_checks];
       while (check_queue.length < context.lines.length) {
         check_queue.push("NONE");
       }
@@ -362,7 +386,7 @@ export class TranslationWorkUnitRunner {
     if (
       updated_count === 0 &&
       context.items.length === 1 &&
-      checks.some((check) => check !== "NONE")
+      decision.checks.some((check) => check !== "NONE")
     ) {
       const item = context.items[0];
       if (item !== undefined) {
@@ -390,12 +414,12 @@ export class TranslationWorkUnitRunner {
       return this.empty_alignment("no_valid_translation");
     }
     if (decoded_lines.length !== lines.length) {
-      return this.empty_alignment("line_count_mismatch");
+      return this.empty_alignment("line_count_mismatch", decoded_lines);
     }
     const decoded_by_index = new Map<number, TranslationDecodedLine>();
     for (const decoded_line of decoded_lines) {
       if (decoded_by_index.has(decoded_line.request_index)) {
-        return this.empty_alignment("line_count_mismatch");
+        return this.empty_alignment("line_count_mismatch", decoded_lines);
       }
       decoded_by_index.set(decoded_line.request_index, decoded_line);
     }
@@ -403,7 +427,7 @@ export class TranslationWorkUnitRunner {
     for (const line of lines) {
       const decoded_line = decoded_by_index.get(line.request_index);
       if (decoded_line === undefined) {
-        return this.empty_alignment("line_count_mismatch");
+        return this.empty_alignment("line_count_mismatch", decoded_lines);
       }
       aligned.push(decoded_line);
     }
@@ -415,8 +439,108 @@ export class TranslationWorkUnitRunner {
     };
   }
 
-  private empty_alignment(reason: TranslationAlignmentFailureReason): TranslationAlignment {
-    return { ok: false, reason, decoded_lines: [], dsts: [], actor_dsts: [] };
+  /**
+   * 构造失败对齐结果；行数不一致时必须保留 decoded_lines 供 fallback 使用。
+   */
+  private empty_alignment(
+    reason: TranslationAlignmentFailureReason,
+    decoded_lines: TranslationDecodedLine[] = [],
+  ): TranslationAlignment {
+    return {
+      ok: false,
+      reason,
+      decoded_lines,
+      dsts: decoded_lines.map((line) => line.text_dst),
+      actor_dsts: decoded_lines.map((line) => line.actor_dst),
+    };
+  }
+
+  /**
+   * runner 是重试阈值裁决入口；日志保留真实检查码，提交只消费 submit_checks。
+   */
+  private build_response_decision(
+    context: {
+      config: TextProcessingConfig;
+      lines: TranslationLine[];
+      pipeline_contexts: TranslationPrePipelineContext[];
+      items: TextTaskItemRecord[];
+      stream_degraded: boolean;
+      request_error?: LogError;
+      request_timeout: boolean;
+    },
+    alignment: TranslationAlignment,
+  ): TranslationResponseDecision {
+    const checks = this.build_checks(context, alignment);
+    const reached_threshold = this.has_single_item_reached_retry_threshold(context.items);
+    const fallback_dst = this.build_line_count_mismatch_fallback(
+      context.items,
+      alignment,
+      reached_threshold,
+    );
+    if (fallback_dst !== null) {
+      return {
+        checks,
+        submit_checks: ["NONE"],
+        decoded_lines: [],
+        used_fallback: true,
+        fallback_dst,
+        dsts: alignment.dsts,
+        actor_dsts: alignment.actor_dsts,
+      };
+    }
+    // 达阈值只改变提交许可，不改日志检查码；全空译文仍按数据错误失败。
+    const release_aligned =
+      alignment.ok &&
+      reached_threshold &&
+      checks.some((check) => check !== "NONE") &&
+      !checks.every((check) => check === "FAIL_DATA");
+    return {
+      checks,
+      submit_checks: release_aligned ? context.lines.map(() => "NONE") : checks,
+      decoded_lines: alignment.decoded_lines,
+      used_fallback: false,
+      fallback_dst: null,
+      dsts: alignment.dsts,
+      actor_dsts: alignment.actor_dsts,
+    };
+  }
+
+  /**
+   * 阈值放行只对单条 item 生效，多条 chunk 不能猜测模型输出归属。
+   */
+  private has_single_item_reached_retry_threshold(items: TextTaskItemRecord[]): boolean {
+    return (
+      items.length === 1 &&
+      has_translation_retry_reached_review_threshold(this.read_number(items[0]?.retry_count, 0))
+    );
+  }
+
+  /**
+   * 行数不一致 fallback 只合并可解析正文，并补齐源 item 展示行数。
+   */
+  private build_line_count_mismatch_fallback(
+    items: TextTaskItemRecord[],
+    alignment: TranslationAlignment,
+    reached_threshold: boolean,
+  ): string | null {
+    if (
+      alignment.ok ||
+      alignment.reason !== "line_count_mismatch" ||
+      !reached_threshold ||
+      items.length !== 1 ||
+      alignment.decoded_lines.length === 0
+    ) {
+      return null;
+    }
+    const text = alignment.decoded_lines
+      .map((line) => line.text_dst.trim())
+      .filter(Boolean)
+      .join(" ");
+    if (text === "") {
+      return null;
+    }
+    const line_count = Math.max(1, String(items[0]?.src ?? "").split(/\r\n|\r|\n/u).length);
+    return [text, ...Array.from({ length: line_count - 1 }, () => "")].join("\n");
   }
 
   /**
@@ -449,7 +573,6 @@ export class TranslationWorkUnitRunner {
         alignment.reason === "no_valid_translation" ? "FAIL_DATA" : "FAIL_LINE_COUNT",
       );
     }
-    const first_item = context.items[0];
     const skip_internal_filter_by_line = context.pipeline_contexts.flatMap((pipeline_context) =>
       Array.from(
         { length: pipeline_context.lines.length },
@@ -460,7 +583,6 @@ export class TranslationWorkUnitRunner {
       srcs,
       alignment.dsts,
       context.config,
-      context.items.length === 1 ? this.read_number(first_item?.retry_count, 0) : 0,
       skip_internal_filter_by_line,
     );
   }
