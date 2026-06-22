@@ -87,6 +87,9 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20260622 v0.102.3
+  - 调整与改进 [#641](https://github.com/neavo/LinguaGacha/issues/641) [#643](https://github.com/neavo/LinguaGacha/issues/643) [#644](https://github.com/neavo/LinguaGacha/issues/644) [#645](https://github.com/neavo/LinguaGacha/issues/645) [#647](https://github.com/neavo/LinguaGacha/issues/647) [#648](https://github.com/neavo/LinguaGacha/issues/648)
+
 - 20260616 v0.102.2
   - 增加对 `ARM On Linux` 的打包支持
   - 调整与改进 [#630](https://github.com/neavo/LinguaGacha/issues/630) [#631](https://github.com/neavo/LinguaGacha/issues/631) [#636](https://github.com/neavo/LinguaGacha/issues/636) [#637](https://github.com/neavo/LinguaGacha/issues/637) [#638](https://github.com/neavo/LinguaGacha/issues/638)

@@ -88,6 +88,9 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260622 v0.102.3
+  - Adjust and Improve [#641](https://github.com/neavo/LinguaGacha/issues/641) [#643](https://github.com/neavo/LinguaGacha/issues/643) [#644](https://github.com/neavo/LinguaGacha/issues/644) [#645](https://github.com/neavo/LinguaGacha/issues/645) [#647](https://github.com/neavo/LinguaGacha/issues/647) [#648](https://github.com/neavo/LinguaGacha/issues/648)
+
 - 20260616 v0.102.2
   - Support for `ARM On Linux`
   - Adjust and Improve [#630](https://github.com/neavo/LinguaGacha/issues/630) [#631](https://github.com/neavo/LinguaGacha/issues/631) [#636](https://github.com/neavo/LinguaGacha/issues/636) [#637](https://github.com/neavo/LinguaGacha/issues/637) [#638](https://github.com/neavo/LinguaGacha/issues/638)
