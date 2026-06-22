@@ -168,6 +168,184 @@ describe("TranslationWorkUnitRunner", () => {
     expect(String(result.logs[0]?.message ?? "")).toContain("行数不一致");
     expect(String(result.logs[0]?.message ?? "")).not.toContain("数据结构错误");
   });
+
+  it("单条行数不一致达重试阈值时写回 fallback 译文并保留真实日志原因", async () => {
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client({
+        response_result: '{"0":" 你好 "}',
+      }),
+    );
+
+    const result = await runner.execute_unit(
+      create_translation_unit({
+        model: { api_format: "SakuraLLM" },
+        src: "こんにちは\n世界",
+        retry_count: 2,
+      }),
+      new AbortController().signal,
+    );
+
+    expect(result.outcome).toBe("success");
+    expect(result.output).toMatchObject({
+      kind: "translation",
+      row_count: 1,
+      items: [
+        {
+          id: 1,
+          src: "こんにちは\n世界",
+          dst: "你好\n",
+          status: "PROCESSED",
+          text_type: "TXT",
+          retry_count: 2,
+        },
+      ],
+    });
+    expect(String(result.logs[0]?.message ?? "")).toContain("行数不一致");
+  });
+
+  it("单条行数不一致未达重试阈值时继续失败并递增重试次数", async () => {
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client({
+        response_result: '{"0":"你好"}',
+      }),
+    );
+
+    const result = await runner.execute_unit(
+      create_translation_unit({
+        model: { api_format: "SakuraLLM" },
+        src: "こんにちは\n世界",
+        retry_count: 1,
+      }),
+      new AbortController().signal,
+    );
+
+    expect(result.outcome).toBe("failed");
+    expect(result.output).toMatchObject({
+      kind: "translation",
+      row_count: 0,
+      items: [
+        {
+          id: 1,
+          dst: "",
+          status: "NONE",
+          retry_count: 2,
+        },
+      ],
+    });
+  });
+
+  it("多条行数不一致达重试阈值时不混写 fallback", async () => {
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client({
+        response_result: '{"0":"你好"}',
+      }),
+    );
+
+    const result = await runner.execute_unit(
+      create_translation_unit({
+        model: { api_format: "SakuraLLM" },
+        items: [
+          {
+            id: 1,
+            src: "こんにちは",
+            dst: "",
+            status: "NONE",
+            text_type: "TXT",
+            retry_count: 2,
+          },
+          {
+            id: 2,
+            src: "世界",
+            dst: "",
+            status: "NONE",
+            text_type: "TXT",
+            retry_count: 2,
+          },
+        ],
+      }),
+      new AbortController().signal,
+    );
+
+    expect(result.outcome).toBe("failed");
+    expect(result.output).toMatchObject({
+      kind: "translation",
+      row_count: 0,
+      items: [
+        { id: 1, dst: "", status: "NONE", retry_count: 2 },
+        { id: 2, dst: "", status: "NONE", retry_count: 2 },
+      ],
+    });
+    expect(String(result.logs[0]?.message ?? "")).toContain("行数不一致");
+  });
+
+  it("完全无法解析译文即使达重试阈值也不写 fallback", async () => {
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client({
+        response_result: "not a json response",
+      }),
+    );
+
+    const result = await runner.execute_unit(
+      create_translation_unit({
+        model: { api_format: "OpenAI" },
+        src: "こんにちは",
+        retry_count: 2,
+      }),
+      new AbortController().signal,
+    );
+
+    expect(result.outcome).toBe("failed");
+    expect(result.output).toMatchObject({
+      kind: "translation",
+      row_count: 0,
+      items: [
+        {
+          id: 1,
+          dst: "",
+          status: "NONE",
+          retry_count: 3,
+        },
+      ],
+    });
+    expect(String(result.logs[0]?.message ?? "")).toContain("数据结构错误");
+  });
+
+  it("已对齐逐行质量失败达重试阈值时提交译文但日志保留空行原因", async () => {
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client({
+        response_result: '{"0":"你好","1":""}',
+      }),
+    );
+
+    const result = await runner.execute_unit(
+      create_translation_unit({
+        model: { api_format: "SakuraLLM" },
+        src: "こんにちは\n世界",
+        retry_count: 2,
+      }),
+      new AbortController().signal,
+    );
+
+    expect(result.outcome).toBe("success");
+    expect(result.output).toMatchObject({
+      kind: "translation",
+      row_count: 1,
+      items: [
+        {
+          id: 1,
+          dst: "你好\n",
+          status: "PROCESSED",
+          retry_count: 2,
+        },
+      ],
+    });
+    expect(String(result.logs[0]?.message ?? "")).toContain("存在空行");
+  });
 });
 
 /**
@@ -201,6 +379,9 @@ function create_quality_payload(): Record<string, ApiJsonValue> {
   };
 }
 
+/**
+ * 构造可覆盖响应字段的 LLM 边界 stub，测试只断言 runner 公开结果。
+ */
 function create_llm_client(overrides: Partial<LLMRequestResult>): LLMClientPort {
   return {
     request: async () => ({
@@ -216,9 +397,14 @@ function create_llm_client(overrides: Partial<LLMRequestResult>): LLMClientPort 
   };
 }
 
+/**
+ * 构造单条或多条翻译 work unit，便于测试 retry_count 和 chunk 形状差异。
+ */
 function create_translation_unit(args: {
   model: Record<string, ApiJsonValue>;
-  src: string;
+  src?: string;
+  retry_count?: number;
+  items?: Array<Record<string, ApiJsonValue>>;
 }): TranslationWorkUnit {
   return {
     kind: "translation",
@@ -228,13 +414,14 @@ function create_translation_unit(args: {
     config_snapshot: create_config_payload(),
     quality_snapshot: create_quality_payload(),
     payload: {
-      items: [
+      items: args.items ?? [
         {
           id: 1,
-          src: args.src,
+          src: args.src ?? "こんにちは",
           dst: "",
           status: "NONE",
           text_type: "TXT",
+          ...(args.retry_count === undefined ? {} : { retry_count: args.retry_count }),
         },
       ],
       precedings: [],
@@ -242,7 +429,7 @@ function create_translation_unit(args: {
     diagnostics: {
       token_threshold: 512,
       split_count: 0,
-      retry_count: 0,
+      retry_count: args.retry_count ?? 0,
       is_initial: true,
     },
   };

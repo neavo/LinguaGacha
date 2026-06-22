@@ -1,6 +1,5 @@
 import { should_skip_by_language_prefilter } from "../../../../shared/prefilter/language-prefilter";
 import { should_skip_by_rule_prefilter } from "../../../../shared/prefilter/rule-prefilter";
-import { has_translation_retry_reached_review_threshold } from "../../../../shared/text/translation-quality-rules";
 import type { TextProcessingConfig } from "../../../../shared/text/text-types";
 
 /**
@@ -14,14 +13,10 @@ export class ResponseChecker {
     srcs: string[],
     dsts: string[],
     config: TextProcessingConfig,
-    item_retry_count: number,
     skip_internal_filter_by_line: boolean[] = [],
   ): string[] {
     if (dsts.every((value) => value === "")) {
       return srcs.map(() => "FAIL_DATA");
-    }
-    if (has_translation_retry_reached_review_threshold(item_retry_count)) {
-      return srcs.map(() => "NONE");
     }
     return this.check_lines(srcs, dsts, config, skip_internal_filter_by_line);
   }

@@ -8,10 +8,6 @@ describe("响应检查器整体检查", () => {
     expect(check_response(["原文1", "原文2"], ["", ""])).toEqual(["FAIL_DATA", "FAIL_DATA"]);
   });
 
-  it("单条重试达到阈值时跳过后续校验", () => {
-    expect(check_response(["原文"], ["任意内容"], { item_retry_count: 2 })).toEqual(["NONE"]);
-  });
-
   it("逐行检查通过时返回无错误", () => {
     expect(check_response(["こんにちは"], ["你好"])).toEqual(["NONE"]);
   });
@@ -100,12 +96,14 @@ describe("响应检查器任意源语言", () => {
   });
 });
 
+/**
+ * 走已对齐响应入口，确认 checker 不再承担重试阈值裁决。
+ */
 function check_response(
   srcs: string[],
   dsts: string[],
   options: {
     config?: TextProcessingConfig;
-    item_retry_count?: number;
     skip_internal_filter_by_line?: boolean[];
   } = {},
 ): string[] {
@@ -113,11 +111,13 @@ function check_response(
     srcs,
     dsts,
     options.config ?? create_config(),
-    options.item_retry_count ?? 0,
     options.skip_internal_filter_by_line ?? [],
   );
 }
 
+/**
+ * 直接测试逐行质量规则，避免整体响应入口掩盖单行分支。
+ */
 function check_lines(
   srcs: string[],
   dsts: string[],
@@ -134,6 +134,9 @@ function check_lines(
   );
 }
 
+/**
+ * 构造最小文本处理配置，测试只覆盖被声明的语言差异。
+ */
 function create_config(overrides: Partial<TextProcessingConfig> = {}): TextProcessingConfig {
   return {
     source_language: "JA",
