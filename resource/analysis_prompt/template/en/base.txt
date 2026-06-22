@@ -1,10 +1,11 @@
-- A term means an original, work-specific proper expression that would produce multiple possible translations if no translation choice is specified
-- Correctly judge term boundaries, and precisely cover the shortest continuous source-text span sufficient to solve translation consistency
-- Each term must be classified as one of the following types:
-  - Male Character, Female Character, Unknown Gender Character, Place, Family, Organization, Special Item, Special Skill, Special Creature, Other
+- A term means a core proper noun that builds a specific worldview, background setting, or rule system
+- Terms are extracted to keep proper-noun translations consistent and attributes correct in later translation, improving translation quality
+- Substring rule: each term must be exactly a substring of the source text
+- Precise boundary rule: correctly and precisely judge term boundaries, and only capture the necessary continuous characters (remove descriptive titles and capture only the core name, e.g. Knight Irene -> Irene)
+- Extracted terms must belong to exactly one of the following categories: Male Character, Female Character, Unknown Gender Character, Place, Family, Organization, Special Item, Special Skill, Special Creature, Other
 - Positive Examples:
-  - Original proper nouns: Winterfell, Order of the Phoenix, Free Planets Alliance
-  - Precise boundary coverage: Knight Irene -> Irene, Kuroki Family -> Kuroki
-- Negative Examples:
-  - Generic vocabulary: sword/magic/castle/carriage/monster/guild, etc. (non-original words)
-  - Generic descriptions: Mr./Ms./Lord/Master/Miss/Aunt/Grandpa/Warrior/Merchant, etc. (non-original descriptions)
+  - Original proper nouns: Winterfell (Place), Order of the Phoenix (Organization), Free Planets Alliance (Organization)
+  - Precise boundary coverage: Knight Irene -> Irene (Female Character), patriarch of the Kuroki Family -> Kuroki Family (Family)
+- Negative Examples (do not extract):
+  - Generic vocabulary: sword, magic, castle, carriage, monster, guild, etc. when they appear alone as non-original words
+  - Generic identity/occupation descriptions: Mr., Ms., Lord, Young Master, Miss, Aunt, Grandpa, warrior, merchant, etc. as non-original titles or occupations
