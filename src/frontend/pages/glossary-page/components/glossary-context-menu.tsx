@@ -14,6 +14,7 @@ import {
 
 type GlossaryContextMenuContentProps = {
   case_sensitive_state: "enabled" | "disabled" | "mixed";
+  readonly: boolean;
   on_open_edit: () => void;
   on_toggle_case_sensitive: (next_value: boolean) => Promise<void>;
 };
@@ -32,7 +33,7 @@ export function GlossaryContextMenuContent(props: GlossaryContextMenuContentProp
           {t("glossary_page.action.edit")}
         </AppContextMenuItem>
         <AppContextMenuSub>
-          <AppContextMenuSubTrigger>
+          <AppContextMenuSubTrigger disabled={props.readonly}>
             <CaseSensitive />
             {t("glossary_page.rule.case_sensitive")}
           </AppContextMenuSubTrigger>

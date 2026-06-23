@@ -14,6 +14,7 @@ type GlossaryEditDialogProps = {
   mode: GlossaryDialogMode;
   entry: GlossaryEntry;
   saving: boolean;
+  readonly: boolean;
   on_change: (patch: Partial<GlossaryEntry>) => void;
   on_save: () => Promise<void>;
   on_close: () => Promise<void>;
@@ -21,6 +22,7 @@ type GlossaryEditDialogProps = {
 export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element {
   const { t } = useI18n();
   const save_label = t("glossary_page.action.save");
+  const disabled = props.readonly || props.saving;
   const boolean_segmented_options = [
     {
       value: "disabled",
@@ -38,7 +40,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
 
   useActionShortcut({
     action: "save",
-    enabled: props.open && !props.saving,
+    enabled: props.open && !disabled,
     on_trigger: () => {
       void props.on_save();
     },
@@ -68,7 +70,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
           <AppButton
             type="button"
             size="sm"
-            disabled={props.saving}
+            disabled={disabled}
             onClick={() => {
               void props.on_save();
             }}
@@ -91,7 +93,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                   class_name="glossary-page__dialog-editor"
                   value={props.entry.src}
                   aria_label={t("glossary_page.fields.source")}
-                  read_only={props.saving}
+                  read_only={disabled}
                   indent_with_tab={false}
                   on_change={(next_value) => {
                     props.on_change({ src: next_value });
@@ -107,7 +109,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                   class_name="glossary-page__dialog-editor"
                   value={props.entry.dst}
                   aria_label={t("glossary_page.fields.translation")}
-                  read_only={props.saving}
+                  read_only={disabled}
                   indent_with_tab={false}
                   on_change={(next_value) => {
                     props.on_change({ dst: next_value });
@@ -123,7 +125,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                   class_name="glossary-page__dialog-editor"
                   value={props.entry.info}
                   aria_label={t("glossary_page.fields.description")}
-                  read_only={props.saving}
+                  read_only={disabled}
                   indent_with_tab={false}
                   on_change={(next_value) => {
                     props.on_change({ info: next_value });
@@ -152,7 +154,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
                 aria_label={t("glossary_page.rule.case_sensitive")}
                 value={props.entry.case_sensitive ? "enabled" : "disabled"}
                 options={boolean_segmented_options}
-                disabled={props.saving}
+                disabled={disabled}
                 size="sm"
                 on_value_change={(next_value) => {
                   props.on_change({

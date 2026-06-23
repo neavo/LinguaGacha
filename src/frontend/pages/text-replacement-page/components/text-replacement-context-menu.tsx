@@ -15,6 +15,7 @@ import {
 type TextReplacementContextMenuContentProps = {
   regex_state: "enabled" | "disabled" | "mixed";
   case_sensitive_state: "enabled" | "disabled" | "mixed";
+  readonly: boolean;
   on_open_edit: () => void;
   on_toggle_regex: (next_value: boolean) => Promise<void>;
   on_toggle_case_sensitive: (next_value: boolean) => Promise<void>;
@@ -32,7 +33,7 @@ export function TextReplacementContextMenuContent(
           {t("text_replacement_page.action.edit")}
         </AppContextMenuItem>
         <AppContextMenuSub>
-          <AppContextMenuSubTrigger>
+          <AppContextMenuSubTrigger disabled={props.readonly}>
             <Regex />
             {t("text_replacement_page.rule.regex")}
           </AppContextMenuSubTrigger>
@@ -57,7 +58,7 @@ export function TextReplacementContextMenuContent(
           </AppContextMenuSubContent>
         </AppContextMenuSub>
         <AppContextMenuSub>
-          <AppContextMenuSubTrigger>
+          <AppContextMenuSubTrigger disabled={props.readonly}>
             <CaseSensitive />
             {t("text_replacement_page.rule.case_sensitive")}
           </AppContextMenuSubTrigger>

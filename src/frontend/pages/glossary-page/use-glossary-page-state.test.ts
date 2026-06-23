@@ -1796,7 +1796,7 @@ describe("useGlossaryPageState", () => {
     expect(latest_state?.filtered_entries).toEqual([]);
   });
 
-  it("任务运行中锁定术语表写入，但保留筛选可用", async () => {
+  it("任务运行中锁定术语表写入，但保留筛选和已有项查看可用", async () => {
     task_snapshot = {
       busy: true,
       status: "running",
@@ -1813,6 +1813,19 @@ describe("useGlossaryPageState", () => {
 
     expect(latest_state?.filter_state.keyword).toBe("苹果");
     expect(latest_state?.dialog_state.open).toBe(false);
+
+    act(() => {
+      latest_state?.open_edit_dialog("苹果::0");
+    });
+    expect(latest_state?.dialog_state.open).toBe(true);
+    expect(latest_state?.dialog_state.mode).toBe("edit");
+
+    await act(async () => {
+      latest_state?.update_dialog_draft({ dst: "Apple readonly" });
+      await latest_state?.save_dialog_entry();
+    });
+
+    expect(latest_state?.dialog_state.open).toBe(true);
 
     await act(async () => {
       await latest_state?.import_entries_from_path("E:/demo/glossary.json");

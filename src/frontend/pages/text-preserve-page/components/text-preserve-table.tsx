@@ -346,17 +346,9 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
             void props.on_reorder(payload.active_row_id, payload.over_row_id);
           }}
           on_row_double_click={(payload) => {
-            if (props.readonly) {
-              return;
-            }
-
             props.on_open_edit(payload.row_id);
           }}
           render_row_context_menu={(payload) => {
-            if (props.readonly) {
-              return null;
-            }
-
             return (
               <TextPreserveContextMenuContent
                 on_open_edit={() => {

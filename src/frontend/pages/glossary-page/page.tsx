@@ -136,6 +136,7 @@ export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
         mode={glossary_page_state.dialog_state.mode}
         entry={glossary_page_state.dialog_state.draft_entry}
         saving={glossary_page_state.dialog_state.saving}
+        readonly={glossary_page_state.readonly}
         on_change={glossary_page_state.update_dialog_draft}
         on_save={glossary_page_state.save_dialog_entry}
         on_close={glossary_page_state.request_close_dialog}

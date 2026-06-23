@@ -17,6 +17,7 @@ type TextReplacementEditDialogProps = {
   mode: TextReplacementDialogMode;
   entry: TextReplacementEntry;
   saving: boolean;
+  readonly: boolean;
   validation_message: string | null;
   on_change: (patch: Partial<TextReplacementEntry>) => void;
   on_save: () => Promise<void>;
@@ -25,6 +26,7 @@ type TextReplacementEditDialogProps = {
 export function TextReplacementEditDialog(props: TextReplacementEditDialogProps): JSX.Element {
   const { t } = useI18n();
   const save_label = t("text_replacement_page.action.save");
+  const disabled = props.readonly || props.saving;
   const boolean_segmented_options = [
     {
       value: "disabled",
@@ -42,7 +44,7 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
 
   useActionShortcut({
     action: "save",
-    enabled: props.open && !props.saving,
+    enabled: props.open && !disabled,
     on_trigger: () => {
       void props.on_save();
     },
@@ -72,7 +74,7 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
           <AppButton
             type="button"
             size="sm"
-            disabled={props.saving}
+            disabled={disabled}
             onClick={() => {
               void props.on_save();
             }}
@@ -95,7 +97,7 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
                   class_name="text-replacement-page__dialog-editor"
                   value={props.entry.src}
                   aria_label={t("text_replacement_page.fields.source")}
-                  read_only={props.saving}
+                  read_only={disabled}
                   invalid={props.validation_message !== null}
                   indent_with_tab={false}
                   on_change={(next_value) => {
@@ -117,7 +119,7 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
                   class_name="text-replacement-page__dialog-editor"
                   value={props.entry.dst}
                   aria_label={t("text_replacement_page.fields.replacement")}
-                  read_only={props.saving}
+                  read_only={disabled}
                   indent_with_tab={false}
                   on_change={(next_value) => {
                     props.on_change({ dst: next_value });
@@ -146,7 +148,7 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
                 aria_label={t("text_replacement_page.rule.regex")}
                 value={props.entry.regex ? "enabled" : "disabled"}
                 options={boolean_segmented_options}
-                disabled={props.saving}
+                disabled={disabled}
                 size="sm"
                 on_value_change={(next_value) => {
                   props.on_change({
@@ -174,7 +176,7 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
                 aria_label={t("text_replacement_page.rule.case_sensitive")}
                 value={props.entry.case_sensitive ? "enabled" : "disabled"}
                 options={boolean_segmented_options}
-                disabled={props.saving}
+                disabled={disabled}
                 size="sm"
                 on_value_change={(next_value) => {
                   props.on_change({
