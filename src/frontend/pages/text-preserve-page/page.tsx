@@ -138,6 +138,7 @@ export function TextPreservePage(_props: ScreenComponentProps): JSX.Element {
         mode={page_state.dialog_state.mode}
         entry={page_state.dialog_state.draft_entry}
         saving={page_state.dialog_state.saving}
+        readonly={page_state.readonly}
         validation_message={page_state.dialog_state.validation_message}
         on_change={page_state.update_dialog_draft}
         on_save={page_state.save_dialog_entry}

@@ -1045,10 +1045,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
   const open_edit_dialog = useCallback(
     (entry_id: TextPreserveEntryId): void => {
-      if (readonly) {
-        return;
-      }
-
       const target_index = entry_index_by_id.get(entry_id);
       const target_entry = target_index === undefined ? null : entries[target_index];
 
@@ -1071,7 +1067,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         validation_message: null,
       });
     },
-    [entries, entry_index_by_id, readonly, set_table_selection_state],
+    [entries, entry_index_by_id, set_table_selection_state],
   );
 
   const update_dialog_draft = useCallback((patch: Partial<TextPreserveEntry>): void => {

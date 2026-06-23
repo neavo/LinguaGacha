@@ -14,6 +14,7 @@ type TextPreserveEditDialogProps = {
   mode: TextPreserveDialogMode;
   entry: TextPreserveEntry;
   saving: boolean;
+  readonly: boolean;
   validation_message: string | null;
   on_change: (patch: Partial<TextPreserveEntry>) => void;
   on_save: () => Promise<void>;
@@ -22,6 +23,7 @@ type TextPreserveEditDialogProps = {
 export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.Element {
   const { t } = useI18n();
   const save_label = t("text_preserve_page.action.save");
+  const disabled = props.readonly || props.saving;
   const title =
     props.mode === "create"
       ? t("text_preserve_page.dialog.create_title")
@@ -29,7 +31,7 @@ export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.
 
   useActionShortcut({
     action: "save",
-    enabled: props.open && !props.saving,
+    enabled: props.open && !disabled,
     on_trigger: () => {
       void props.on_save();
     },
@@ -59,7 +61,7 @@ export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.
           <AppButton
             type="button"
             size="sm"
-            disabled={props.saving}
+            disabled={disabled}
             onClick={() => {
               void props.on_save();
             }}
@@ -82,7 +84,7 @@ export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.
                   class_name="text-preserve-page__dialog-editor"
                   value={props.entry.src}
                   aria_label={t("text_preserve_page.fields.rule")}
-                  read_only={props.saving}
+                  read_only={disabled}
                   invalid={props.validation_message !== null}
                   indent_with_tab={false}
                   on_change={(next_value) => {
@@ -104,7 +106,7 @@ export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.
                   class_name="text-preserve-page__dialog-editor"
                   value={props.entry.info}
                   aria_label={t("text_preserve_page.fields.note")}
-                  read_only={props.saving}
+                  read_only={disabled}
                   indent_with_tab={false}
                   on_change={(next_value) => {
                     props.on_change({ info: next_value });

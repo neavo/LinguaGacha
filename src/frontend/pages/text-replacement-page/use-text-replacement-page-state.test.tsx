@@ -1121,7 +1121,7 @@ describe("useTextReplacementPageState", () => {
     });
   });
 
-  it("任务运行中锁定替换规则 write，但保留筛选可用", async () => {
+  it("任务运行中锁定替换规则 write，但保留筛选和已有项查看可用", async () => {
     run_state.task.busy = true;
     run_state.task.status = "running";
     await mount_probe();
@@ -1137,6 +1137,19 @@ describe("useTextReplacementPageState", () => {
 
     expect(latest_state?.dialog_state.open).toBe(false);
     expect(latest_state?.filter_state.keyword).toBe("hero");
+
+    await act(async () => {
+      latest_state?.open_edit_dialog("hero::0");
+    });
+    expect(latest_state?.dialog_state.open).toBe(true);
+    expect(latest_state?.dialog_state.mode).toBe("edit");
+
+    await act(async () => {
+      latest_state?.update_dialog_draft({ dst: "Hero" });
+      await latest_state?.save_dialog_entry();
+    });
+
+    expect(latest_state?.dialog_state.open).toBe(true);
     expect(api_fetch_mock).not.toHaveBeenCalled();
   });
 

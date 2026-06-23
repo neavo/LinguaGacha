@@ -1300,6 +1300,39 @@ describe("useTextPreservePageState", () => {
     });
   });
 
+  it("任务运行中锁定文本保护 write，但保留筛选和已有项查看可用", async () => {
+    task_snapshot = {
+      busy: true,
+      status: "running",
+    };
+    await mount_probe();
+
+    expect(latest_state?.readonly).toBe(true);
+    expect(latest_state?.drag_disabled).toBe(true);
+
+    act(() => {
+      latest_state?.open_create_dialog();
+      latest_state?.update_filter_keyword("foo");
+    });
+
+    expect(latest_state?.dialog_state.open).toBe(false);
+    expect(latest_state?.filter_state.keyword).toBe("foo");
+
+    await act(async () => {
+      latest_state?.open_edit_dialog("foo::0");
+    });
+    expect(latest_state?.dialog_state.open).toBe(true);
+    expect(latest_state?.dialog_state.mode).toBe("edit");
+
+    await act(async () => {
+      latest_state?.update_dialog_draft({ info: "只读查看" });
+      await latest_state?.save_dialog_entry();
+    });
+
+    expect(latest_state?.dialog_state.open).toBe(true);
+    expect(api_fetch_mock).not.toHaveBeenCalled();
+  });
+
   it("重新进入文本保护页时保留搜索排序和选中位置", async () => {
     run_state = {
       ...run_state,
