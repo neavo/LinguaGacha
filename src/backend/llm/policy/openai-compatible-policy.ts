@@ -74,16 +74,16 @@ function build_openai_model_family_body(
   model_id: string,
   level: ModelThinkingLevel,
 ): Record<string, ApiJsonValue> {
-  if (/gpt-5/iu.test(model_id)) {
+  if (/gpt/iu.test(model_id)) {
     return { reasoning_effort: level === "OFF" ? "none" : level.toLowerCase() };
   }
-  if (/qwen3\.5/iu.test(model_id)) {
+  if (/qwen/iu.test(model_id)) {
     return { enable_thinking: level !== "OFF" };
   }
-  if (/doubao-seed-(?:1-6|1-8|2-0)/iu.test(model_id)) {
+  if (/doubao-seed/iu.test(model_id)) {
     return { reasoning_effort: level === "OFF" ? "minimal" : level.toLowerCase() };
   }
-  if (/deepseek|kimi|glm|mimo-v2/iu.test(model_id)) {
+  if (/deepseek|kimi|glm|mimo/iu.test(model_id)) {
     return { thinking: { type: level === "OFF" ? "disabled" : "enabled" } };
   }
   return {};

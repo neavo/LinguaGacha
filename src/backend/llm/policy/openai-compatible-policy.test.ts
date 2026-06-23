@@ -69,6 +69,56 @@ describe("openai-compatible-policy", () => {
     });
   });
 
+  it("Qwen 3.x 模型写入 enable_thinking", () => {
+    const payload = build_openai_compatible_payload(
+      create_snapshot({
+        model_id: "qwen3.7-plus",
+        thinking_level: "HIGH",
+      }),
+      [{ role: "user", content: "こんにちは" }],
+    );
+
+    expect(payload).toMatchObject({
+      enable_thinking: true,
+    });
+  });
+
+  it("豆包 Seed 2.x 模型写入 reasoning_effort", () => {
+    const payload = build_openai_compatible_payload(
+      create_snapshot({
+        model_id: "doubao-seed-2-1-lite-260428",
+      }),
+      [{ role: "user", content: "こんにちは" }],
+    );
+
+    expect(payload).toMatchObject({
+      reasoning_effort: "minimal",
+    });
+  });
+
+  it("简单族匹配覆盖同名相邻模型", () => {
+    expect(
+      build_openai_compatible_payload(create_snapshot({ model_id: "gpt-4.1-mini" }), [
+        { role: "user", content: "こんにちは" },
+      ]),
+    ).toMatchObject({ reasoning_effort: "none" });
+    expect(
+      build_openai_compatible_payload(create_snapshot({ model_id: "qwen2.5-plus" }), [
+        { role: "user", content: "こんにちは" },
+      ]),
+    ).toMatchObject({ enable_thinking: false });
+    expect(
+      build_openai_compatible_payload(create_snapshot({ model_id: "doubao-seed-1-5" }), [
+        { role: "user", content: "こんにちは" },
+      ]),
+    ).toMatchObject({ reasoning_effort: "minimal" });
+    expect(
+      build_openai_compatible_payload(create_snapshot({ model_id: "mimo-v1-flash" }), [
+        { role: "user", content: "こんにちは" },
+      ]),
+    ).toMatchObject({ thinking: { type: "disabled" } });
+  });
+
   it("空消息在协议边界直接阻断", () => {
     expect(() => normalize_chat_messages([{ role: "user", content: "   " }])).toThrow(
       "request.validation_failed",
