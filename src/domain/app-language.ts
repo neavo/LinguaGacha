@@ -2,7 +2,7 @@ import type { Locale } from "../shared/i18n/types";
 import type { TranslationPromptLanguage } from "../shared/text/translation-output-format";
 import type { LanguageDisplayLocale } from "./language";
 
-export const APP_LANGUAGES = ["ZH", "EN", "DE"] as const; // 顺序同时是设置合法值域和界面循环切换顺序
+export const APP_LANGUAGES = ["ZH", "EN", "DE"] as const;
 
 export type AppLanguage = (typeof APP_LANGUAGES)[number];
 
@@ -62,9 +62,4 @@ export function resolve_app_language_from_locale_tag(locale_tag: unknown): AppLa
       .trim()
       .split("-")[0] ?? "";
   return normalize_app_language(primary_language);
-}
-
-export function resolve_next_app_language(app_language: AppLanguage): AppLanguage {
-  const current_index = APP_LANGUAGES.indexOf(app_language);
-  return APP_LANGUAGES[(current_index + 1) % APP_LANGUAGES.length]!;
 }

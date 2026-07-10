@@ -77,6 +77,11 @@ export const en_us_app = {
     switch_theme: "Switch Theme",
     toggle_lg_base_font: "Switch Font",
     language: "Language",
+    language_option: {
+      ZH: "中文",
+      EN: "English",
+      DE: "Deutsch",
+    },
     logs: "Logs",
   },
   profile: {

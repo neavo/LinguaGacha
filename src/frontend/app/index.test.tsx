@@ -2,6 +2,7 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { AppLanguage } from "@domain/app-language";
 import App from "@frontend/app/index";
 import { create_desktop_bridge_api_mock } from "../../test/desktop-bridge-mock";
 
@@ -61,6 +62,12 @@ const runtime_provider_mock = vi.hoisted(() => {
 const project_session_ui_state_provider_mock = vi.hoisted(() => {
   return {
     render_project_session_ui_state_provider: vi.fn(),
+  };
+});
+
+const desktop_state_mock = vi.hoisted(() => {
+  return {
+    update_app_language: vi.fn(async (_language: AppLanguage) => undefined),
   };
 });
 
@@ -158,7 +165,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
         },
       },
       set_pending_target_route: vi.fn(),
-      update_app_language: vi.fn(),
+      update_app_language: desktop_state_mock.update_app_language,
     }),
   };
 });
@@ -210,7 +217,17 @@ vi.mock("@frontend/shadcn/tooltip", () => {
 
 vi.mock("@frontend/app/shell/app-sidebar", () => {
   return {
-    AppSidebar: () => null,
+    AppSidebar: (props: { on_select_app_language: (language: AppLanguage) => void }) => (
+      <button
+        type="button"
+        data-testid="select-de-language"
+        onClick={() => {
+          props.on_select_app_language("DE");
+        }}
+      >
+        Deutsch
+      </button>
+    ),
   };
 });
 
@@ -261,7 +278,7 @@ function install_local_storage_fallback(): void {
   });
 }
 
-describe("App 字体模式同步", () => {
+describe("App 窗口根行为", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 
@@ -391,6 +408,40 @@ describe("App 字体模式同步", () => {
     });
 
     expect(toast_mock.push_toast).toHaveBeenCalledTimes(1);
+  });
+
+  it("从侧栏选择语言后向设置写入口提交指定语言", async () => {
+    await mount_app_at("/");
+    const select_german_button = container?.querySelector<HTMLButtonElement>(
+      '[data-testid="select-de-language"]',
+    );
+    if (select_german_button === null || select_german_button === undefined) {
+      throw new Error("缺少侧栏德文选择按钮。");
+    }
+
+    await act(async () => {
+      select_german_button.click();
+    });
+
+    expect(desktop_state_mock.update_app_language).toHaveBeenCalledWith("DE");
+  });
+
+  it("界面语言设置失败时显示统一错误反馈", async () => {
+    desktop_state_mock.update_app_language.mockRejectedValueOnce(new Error("network failed"));
+    await mount_app_at("/");
+    const select_german_button = container?.querySelector<HTMLButtonElement>(
+      '[data-testid="select-de-language"]',
+    );
+    if (select_german_button === null || select_german_button === undefined) {
+      throw new Error("缺少侧栏德文选择按钮。");
+    }
+
+    await act(async () => {
+      select_german_button.click();
+      await Promise.resolve();
+    });
+
+    expect(toast_mock.push_toast).toHaveBeenCalledWith("error", "app.feedback.update_failed");
   });
 
   it("检查到新版本后通过确认框下载并进入重启更新状态", async () => {
