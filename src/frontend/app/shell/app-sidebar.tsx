@@ -7,6 +7,7 @@ import type {
   NavigationGroup,
   RouteId,
 } from "@frontend/app/navigation/types";
+import { APP_LANGUAGES, is_app_language, type AppLanguage } from "@domain/app-language";
 import {
   Sidebar,
   SidebarContent,
@@ -29,11 +30,19 @@ import {
   AppDropdownMenuContent,
   AppDropdownMenuGroup,
   AppDropdownMenuItem,
+  AppDropdownMenuRadioGroup,
+  AppDropdownMenuRadioItem,
   AppDropdownMenuTrigger,
 } from "@frontend/widgets/app-dropdown-menu";
 import "@frontend/app/shell/app-sidebar.css";
 
 const SIDEBAR_PROFILE_ICON_URL: string = new URL("icon.png", document.baseURI).toString();
+
+const APP_LANGUAGE_LABEL_KEYS: Readonly<Record<AppLanguage, LocaleKey>> = Object.freeze({
+  ZH: "app.navigation_action.language_option.ZH",
+  EN: "app.navigation_action.language_option.EN",
+  DE: "app.navigation_action.language_option.DE",
+});
 
 type AppSidebarProps = {
   groups: NavigationGroup[];
@@ -43,6 +52,7 @@ type AppSidebarProps = {
   disabled_route_ids: ReadonlySet<RouteId>;
   disabled_bottom_action_ids: ReadonlySet<BottomActionId>;
   badged_bottom_action_ids: ReadonlySet<BottomActionId>;
+  app_language: AppLanguage;
   profile_label_key: LocaleKey;
   profile_tooltip_key: LocaleKey;
   is_profile_update_available: boolean;
@@ -50,6 +60,7 @@ type AppSidebarProps = {
   on_toggle_group: (route_id: RouteId) => void;
   on_bottom_action: (action_id: BottomActionId) => void;
   on_appearance_menu_action: (action_id: AppearanceMenuActionId) => void;
+  on_select_app_language: (language: AppLanguage) => void;
   on_profile_action: () => void;
 };
 export function AppSidebar(props: AppSidebarProps): JSX.Element {
@@ -234,6 +245,47 @@ export function AppSidebar(props: AppSidebarProps): JSX.Element {
                           <span>{t("app.navigation_action.switch_theme")}</span>
                         </AppDropdownMenuItem>
                       </AppDropdownMenuGroup>
+                    </AppDropdownMenuContent>
+                  </AppDropdownMenu>
+                </SidebarMenuItem>
+              );
+            }
+
+            if (action.id === "language") {
+              return (
+                <SidebarMenuItem key={action.id}>
+                  <AppDropdownMenu>
+                    <AppDropdownMenuTrigger asChild>
+                      <SidebarMenuButton
+                        className="sidebar-bottom-button"
+                        disabled={is_action_disabled}
+                        aria-label={t(action.label_key)}
+                      >
+                        <ActionIcon size={16} className="sidebar-bottom-button__icon" />
+                        <span className="sidebar-bottom-button__text">{t(action.label_key)}</span>
+                      </SidebarMenuButton>
+                    </AppDropdownMenuTrigger>
+                    <AppDropdownMenuContent
+                      side={is_collapsed ? "right" : "top"}
+                      align="center"
+                      sideOffset={is_collapsed ? 8 : 4}
+                      matchTriggerWidth={!is_collapsed}
+                      className={cn(!is_collapsed && "w-(--radix-dropdown-menu-trigger-width)")}
+                    >
+                      <AppDropdownMenuRadioGroup
+                        value={props.app_language}
+                        onValueChange={(language) => {
+                          if (is_app_language(language)) {
+                            props.on_select_app_language(language);
+                          }
+                        }}
+                      >
+                        {APP_LANGUAGES.map((language) => (
+                          <AppDropdownMenuRadioItem key={language} value={language}>
+                            <span>{t(APP_LANGUAGE_LABEL_KEYS[language])}</span>
+                          </AppDropdownMenuRadioItem>
+                        ))}
+                      </AppDropdownMenuRadioGroup>
                     </AppDropdownMenuContent>
                   </AppDropdownMenu>
                 </SidebarMenuItem>

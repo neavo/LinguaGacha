@@ -6,7 +6,6 @@ import {
   resolve_app_language_from_locale_tag,
   resolve_app_locale,
   resolve_language_display_locale,
-  resolve_next_app_language,
   resolve_prompt_template_language,
 } from "./app-language";
 
@@ -36,10 +35,7 @@ describe("应用语言", () => {
     expect(resolve_app_language_from_locale_tag("fr-FR")).toBe("ZH");
   });
 
-  it("按公开语言顺序循环切换", () => {
+  it("公开应用支持的界面语言", () => {
     expect(APP_LANGUAGES).toEqual(["ZH", "EN", "DE"]);
-    expect(resolve_next_app_language("ZH")).toBe("EN");
-    expect(resolve_next_app_language("EN")).toBe("DE");
-    expect(resolve_next_app_language("DE")).toBe("ZH");
   });
 });

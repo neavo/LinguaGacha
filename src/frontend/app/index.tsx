@@ -63,7 +63,6 @@ import {
   normalize_app_language,
   resolve_app_language_from_locale_tag,
   resolve_app_locale,
-  resolve_next_app_language,
   type AppLanguage,
 } from "@domain/app-language";
 
@@ -643,29 +642,20 @@ function AppContent(props: AppContentProps): JSX.Element {
    * 承接当前模块的核心控制分支。
    */
   function handle_bottom_action(action_id: BottomActionId): void {
-    if (action_id === "logs") {
-      set_log_badge_visible(false);
-      void window.desktopApp.openLogWindow().catch((error: unknown) => {
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("app.feedback.update_failed")),
-        );
-      });
+    if (action_id !== "logs") {
       return;
     }
 
-    if (action_id !== "language") {
-      return;
-    }
+    set_log_badge_visible(false);
+    void window.desktopApp.openLogWindow().catch((error: unknown) => {
+      push_toast("error", resolve_visible_error_message(error, t, t("app.feedback.update_failed")));
+    });
+  }
 
-    void update_app_language(resolve_next_app_language(settings_snapshot.app_language)).catch(
-      (error: unknown) => {
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("app.feedback.update_failed")),
-        );
-      },
-    );
+  function handle_select_app_language(language: AppLanguage): void {
+    void update_app_language(language).catch((error: unknown) => {
+      push_toast("error", resolve_visible_error_message(error, t, t("app.feedback.update_failed")));
+    });
   }
 
   // 事件处理边界，只把外部事件转换为本模块状态更新。
@@ -901,6 +891,7 @@ function AppContent(props: AppContentProps): JSX.Element {
                 is_app_language_updating ? new Set<BottomActionId>(["language"]) : new Set()
               }
               badged_bottom_action_ids={badged_bottom_action_ids}
+              app_language={settings_snapshot.app_language}
               profile_label_key={
                 update_release_url === null ? "app.profile.status" : "app.profile.update_available"
               }
@@ -914,6 +905,7 @@ function AppContent(props: AppContentProps): JSX.Element {
               on_toggle_group={handle_toggle_group}
               on_bottom_action={handle_bottom_action}
               on_appearance_menu_action={handle_appearance_menu_action}
+              on_select_app_language={handle_select_app_language}
               on_profile_action={handle_profile_action}
             />
 

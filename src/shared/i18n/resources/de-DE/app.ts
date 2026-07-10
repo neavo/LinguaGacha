@@ -78,6 +78,11 @@ export const de_de_app = {
     switch_theme: "Design wechseln",
     toggle_lg_base_font: "Schriftart wechseln",
     language: "Sprache",
+    language_option: {
+      ZH: "中文",
+      EN: "English",
+      DE: "Deutsch",
+    },
     logs: "Protokolle",
   },
   profile: {
