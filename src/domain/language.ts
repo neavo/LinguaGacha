@@ -67,7 +67,7 @@ export type SourceLanguageCode = (typeof SOURCE_LANGUAGE_CODES)[number];
 export type TargetLanguageCode = (typeof TARGET_LANGUAGE_CODES)[number];
 // 额外包含 ALL，用于表示关闭语言限制的配置值
 export type LanguageCode = typeof ALL_LANGUAGE_CODE | SourceLanguageCode | TargetLanguageCode;
-export type LanguageDisplayLocale = "zh" | "en";
+export type LanguageDisplayLocale = "zh" | "en" | "de";
 export type LanguageLabelKey = `app.language.${LanguageCode}`;
 
 // 语言定义集中携带 CJK 标记和正文 matcher，调用方不直接拼 Unicode 规则
@@ -89,78 +89,97 @@ export const LANGUAGE_DISPLAY_NAMES: Record<
   ALL: {
     zh: "全部",
     en: "All",
+    de: "Alle",
   },
   ZH: {
     zh: "中文",
     en: "Chinese",
+    de: "Chinesisch",
   },
   "ZH-HANT": {
     zh: "中文（繁体）",
     en: "Traditional Chinese",
+    de: "Chinesisch (traditionell)",
   },
   EN: {
     zh: "英文",
     en: "English",
+    de: "Englisch",
   },
   JA: {
     zh: "日文",
     en: "Japanese",
+    de: "Japanisch",
   },
   KO: {
     zh: "韩文",
     en: "Korean",
+    de: "Koreanisch",
   },
   RU: {
     zh: "俄文",
     en: "Russian",
+    de: "Russisch",
   },
   AR: {
     zh: "阿拉伯文",
     en: "Arabic",
+    de: "Arabisch",
   },
   DE: {
     zh: "德文",
     en: "German",
+    de: "Deutsch",
   },
   FR: {
     zh: "法文",
     en: "French",
+    de: "Französisch",
   },
   PL: {
     zh: "波兰文",
     en: "Polish",
+    de: "Polnisch",
   },
   ES: {
     zh: "西班牙文",
     en: "Spanish",
+    de: "Spanisch",
   },
   IT: {
     zh: "意大利文",
     en: "Italian",
+    de: "Italienisch",
   },
   PT: {
     zh: "葡萄牙文",
     en: "Portuguese",
+    de: "Portugiesisch",
   },
   HU: {
     zh: "匈牙利文",
     en: "Hungarian",
+    de: "Ungarisch",
   },
   TR: {
     zh: "土耳其文",
     en: "Turkish",
+    de: "Türkisch",
   },
   TH: {
     zh: "泰文",
     en: "Thai",
+    de: "Thailändisch",
   },
   ID: {
     zh: "印尼文",
     en: "Indonesian",
+    de: "Indonesisch",
   },
   VI: {
     zh: "越南文",
     en: "Vietnamese",
+    de: "Vietnamesisch",
   },
 };
 
@@ -170,14 +189,6 @@ export const LANGUAGE_DISPLAY_NAMES: Record<
  */
 export function get_language_label_key(language_code: LanguageCode): LanguageLabelKey {
   return `app.language.${language_code}`;
-}
-
-// 应用语言只影响语言显示名本地化，未知值默认回中文
-/**
- * 读取当前场景需要的稳定数据。
- */
-export function get_language_display_locale(app_language: unknown): LanguageDisplayLocale {
-  return String(app_language).trim().toUpperCase() === "EN" ? "en" : "zh";
 }
 
 // 展示名统一从语言定义表读取，不在调用点重复维护语言名称

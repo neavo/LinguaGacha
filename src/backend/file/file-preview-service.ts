@@ -7,7 +7,8 @@ import type { LogManager } from "../log/log-manager";
 import { SourceFileParsePipeline } from "./source-file-parse-pipeline";
 import { log_source_file_parse_failures } from "./source-file-parse-failure-reporter";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
-import { create_text_resolver, resolve_i18n_locale, type TextResolver } from "../../shared/i18n";
+import { resolve_app_locale } from "../../domain/app-language";
+import { create_text_resolver, type TextResolver } from "../../shared/i18n";
 
 type JsonRecord = Record<string, ApiJsonValue>;
 
@@ -110,7 +111,7 @@ export class FilePreviewService {
    */
   private create_text_resolver(): TextResolver {
     const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
-    return create_text_resolver(resolve_i18n_locale(config.app_language));
+    return create_text_resolver(resolve_app_locale(config.app_language));
   }
 
   /**

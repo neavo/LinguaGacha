@@ -1,7 +1,8 @@
 import type { LogManager } from "../../log/log-manager";
 import type { MutableJsonRecord } from "../run/task-run-types";
 import type { WorkUnitLogEntry } from "../protocol/work-unit";
-import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../shared/i18n";
+import { resolve_app_locale } from "../../../domain/app-language";
+import { format_i18n_message, type LocaleKey } from "../../../shared/i18n";
 
 export type ReplayLogEntry = WorkUnitLogEntry;
 
@@ -103,6 +104,6 @@ export class TaskLogReplay {
 
   // t 封装类内部的非显然分支，避免调用方重复理解同一约束。
   private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
-    return format_i18n_message(resolve_i18n_locale(app_language), key, params);
+    return format_i18n_message(resolve_app_locale(app_language), key, params);
   }
 }

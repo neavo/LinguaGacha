@@ -28,13 +28,18 @@ afterEach(() => {
 /**
  * 导出测试使用固定设置，便于断言目标路径和日志语言
  */
-function create_setting_service(output_folder_open_on_finish = false): AppSettingService {
+function create_setting_service(
+  options: {
+    app_language?: string;
+    output_folder_open_on_finish?: boolean;
+  } = {},
+): AppSettingService {
   return {
     read_setting: () => ({
       source_language: "JA",
       target_language: "ZH",
-      app_language: "ZH",
-      output_folder_open_on_finish,
+      app_language: options.app_language ?? "ZH",
+      output_folder_open_on_finish: options.output_folder_open_on_finish ?? false,
       deduplication_in_bilingual: true,
       write_translated_name_fields_to_file: true,
     }),
@@ -137,6 +142,50 @@ describe("TranslationFileExportService", () => {
     expect(output_folder_opener.opened_paths).toEqual([]);
   });
 
+  it("德语界面使用德语导出目录名和日志", async () => {
+    const project_path = path.join(temp_dir, "demo.lg");
+    const session_state = new ProjectSessionState();
+    session_state.mark_loaded(project_path);
+    const database = {
+      execute: () => [
+        {
+          id: 1,
+          src: "原文",
+          dst: "Übersetzung",
+          status: "PROCESSED",
+          file_type: "TXT",
+          file_path: "script.txt",
+          row: 0,
+        },
+      ],
+      read_asset_content: () => null,
+    } as unknown as ProjectDatabase;
+    const log_collector = create_log_collector();
+    const service = new TranslationFileExportService(
+      database,
+      create_setting_service({ app_language: "DE" }),
+      session_state,
+      create_output_folder_opener().open,
+      log_collector,
+    );
+    const translated_path = path.join(temp_dir, "demo_Übersetzung");
+    const bilingual_path = path.join(temp_dir, "demo_Übersetzung_Zweisprachig");
+
+    await expect(service.export_files()).resolves.toEqual({
+      accepted: true,
+      output_path: translated_path,
+    });
+
+    expect(fs.readFileSync(path.join(translated_path, "script.txt"), "utf-8")).toBe("Übersetzung");
+    expect(fs.existsSync(path.join(bilingual_path, "script.txt"))).toBe(true);
+    expect(log_collector.entries.map(({ level, message }) => [level, message])).toEqual([
+      ["info", "Übersetzungsdateien werden erstellt …"],
+      ["info", ""],
+      ["info", `Übersetzungsdateien gespeichert unter ${translated_path} …`],
+      ["info", ""],
+    ]);
+  });
+
   it("启用设置后导出成功会打开译文输出目录", async () => {
     const project_path = path.join(temp_dir, "demo.lg");
     const session_state = new ProjectSessionState();
@@ -158,7 +207,7 @@ describe("TranslationFileExportService", () => {
     const output_folder_opener = create_output_folder_opener();
     const service = new TranslationFileExportService(
       database,
-      create_setting_service(true),
+      create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
       output_folder_opener.open,
       create_log_collector(),
@@ -194,7 +243,7 @@ describe("TranslationFileExportService", () => {
     const output_folder_opener = create_output_folder_opener();
     const service = new TranslationFileExportService(
       database,
-      create_setting_service(true),
+      create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
       output_folder_opener.open,
       create_log_collector(),
@@ -233,7 +282,7 @@ describe("TranslationFileExportService", () => {
     const output_folder_opener = create_output_folder_opener(new Error("open failed"));
     const service = new TranslationFileExportService(
       database,
-      create_setting_service(true),
+      create_setting_service({ output_folder_open_on_finish: true }),
       session_state,
       output_folder_opener.open,
       log_collector,

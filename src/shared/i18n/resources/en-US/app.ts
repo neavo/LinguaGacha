@@ -91,6 +91,12 @@ export const en_us_app = {
     builder_input: "Input:",
     builder_preceding_context: "Preceding Context:",
   },
+  translation_export: {
+    directory: {
+      translated: "Translated",
+      bilingual: "Translated_Bilingual",
+    },
+  },
   native_file_filter: {
     project: "LinguaGacha Project",
     supported_json_xlsx_files: "Supported files (*.json *.xlsx)",

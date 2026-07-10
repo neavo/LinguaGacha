@@ -1,5 +1,6 @@
 import { DEFAULT_SETTING } from "../../domain/setting";
-import { create_text_resolver, resolve_i18n_locale, type LocaleKey } from "../../shared/i18n";
+import { resolve_app_locale } from "../../domain/app-language";
+import { create_text_resolver, type LocaleKey } from "../../shared/i18n";
 
 type AppLanguageReader = () => unknown;
 
@@ -16,7 +17,7 @@ export function set_main_log_language_reader(reader: AppLanguageReader | null): 
  * 按当前应用语言解析 Electron 主进程日志文案。
  */
 export function t_main_log(key: LocaleKey, params: Record<string, string> = {}): string {
-  const locale = resolve_i18n_locale(read_app_language());
+  const locale = resolve_app_locale(read_app_language());
   return create_text_resolver(locale)(key, params);
 }
 

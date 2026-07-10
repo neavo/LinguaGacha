@@ -87,6 +87,12 @@ export const zh_cn_app = {
     builder_input: "输入：",
     builder_preceding_context: "参考上文：",
   },
+  translation_export: {
+    directory: {
+      translated: "译文",
+      bilingual: "译文_双语对照",
+    },
+  },
   native_file_filter: {
     project: "LinguaGacha Project",
     supported_json_xlsx_files: "支持的文件 (*.json *.xlsx)",

@@ -41,7 +41,8 @@ import { QualityRulePresetReader } from "../quality/quality-rule-preset-reader";
 import { QualityService } from "../quality/quality-service";
 import { TaskService } from "../engine/task-service";
 import { ToolboxTsConversionExportService } from "../toolbox/toolbox-ts-conversion-export-service";
-import { create_text_resolver, resolve_i18n_locale, type TextResolver } from "../../shared/i18n";
+import { resolve_app_locale } from "../../domain/app-language";
+import { create_text_resolver, type TextResolver } from "../../shared/i18n";
 import type { SystemProxySnapshot } from "../network/system-proxy-dispatcher";
 
 export interface BackendServicesOptions {
@@ -371,7 +372,7 @@ export class BackendServices {
    */
   public resolve_api_text(): TextResolver {
     return create_text_resolver(
-      resolve_i18n_locale(this.app_setting_service.read_setting()["app_language"]),
+      resolve_app_locale(this.app_setting_service.read_setting()["app_language"]),
     );
   }
 

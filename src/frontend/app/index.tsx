@@ -59,6 +59,13 @@ import type {
   DesktopUpdateDownloadResult,
   ThemeMode,
 } from "@gui/bridge-types";
+import {
+  normalize_app_language,
+  resolve_app_language_from_locale_tag,
+  resolve_app_locale,
+  resolve_next_app_language,
+  type AppLanguage,
+} from "@domain/app-language";
 
 // SIDEBAR STORAGE KEY 是持久化或快捷键契约，集中保存避免调用点散落魔术字符串。
 const SIDEBAR_STORAGE_KEY = "lg-sidebar-collapsed";
@@ -103,17 +110,6 @@ const ROUTE_IDS_DISABLED_WHEN_PROJECT_UNLOADED: ReadonlySet<RouteId> = new Set([
   "laboratory",
   "toolbox",
 ]);
-
-/**
- * 解析当前场景的最终消费值。
- */
-function resolve_toggled_app_language(app_language: "ZH" | "EN"): "ZH" | "EN" {
-  if (app_language === "EN") {
-    return "ZH";
-  }
-
-  return "EN";
-}
 
 /**
  * 从更新弹窗状态中读取当前 release，idle 阶段没有可消费版本。
@@ -662,7 +658,7 @@ function AppContent(props: AppContentProps): JSX.Element {
       return;
     }
 
-    void update_app_language(resolve_toggled_app_language(settings_snapshot.app_language)).catch(
+    void update_app_language(resolve_next_app_language(settings_snapshot.app_language)).catch(
       (error: unknown) => {
         push_toast(
           "error",
@@ -971,28 +967,15 @@ function AppContent(props: AppContentProps): JSX.Element {
   );
 }
 
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
-function normalize_log_window_app_language(value: unknown): "ZH" | "EN" {
-  const normalized_value = String(value ?? "")
-    .trim()
-    .toUpperCase();
-  if (normalized_value === "EN" || normalized_value.startsWith("EN-")) {
-    return "EN";
-  }
-
-  return "ZH";
-}
-
 // 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 /**
  * 读取当前场景需要的稳定数据。
  */
-function read_initial_log_window_app_language(): "ZH" | "EN" {
+function read_initial_log_window_app_language(): AppLanguage {
   const stored_language = window.localStorage.getItem(LOG_WINDOW_APP_LANGUAGE_STORAGE_KEY);
-  return normalize_log_window_app_language(stored_language ?? window.navigator.language);
+  return stored_language === null
+    ? resolve_app_language_from_locale_tag(window.navigator.language)
+    : normalize_app_language(stored_language);
 }
 
 /**
@@ -1023,7 +1006,11 @@ function MainWindowLocaleProvider({ children }: { children: ReactNode }): JSX.El
   const { settings_snapshot } = useDesktopState();
 
   // 主窗口语言仍跟随 DesktopStateProvider 的 settings 快照，避免页面各自读取设置
-  return <LocaleProvider app_language={settings_snapshot.app_language}>{children}</LocaleProvider>;
+  return (
+    <LocaleProvider locale={resolve_app_locale(settings_snapshot.app_language)}>
+      {children}
+    </LocaleProvider>
+  );
 }
 
 /**
@@ -1050,7 +1037,7 @@ function MainWindowApp(props: AppContentProps): JSX.Element {
  * 渲染当前组件的公开界面。
  */
 function LogWindowApp(): JSX.Element {
-  const [app_language, set_app_language] = useState<"ZH" | "EN">(() =>
+  const [app_language, set_app_language] = useState<AppLanguage>(() =>
     read_initial_log_window_app_language(),
   );
 
@@ -1063,7 +1050,7 @@ function LogWindowApp(): JSX.Element {
         if (is_disposed) {
           return;
         }
-        const next_app_language = normalize_log_window_app_language(payload.settings?.app_language);
+        const next_app_language = normalize_app_language(payload.settings?.app_language);
         window.localStorage.setItem(LOG_WINDOW_APP_LANGUAGE_STORAGE_KEY, next_app_language);
         set_app_language(next_app_language);
       })
@@ -1075,7 +1062,7 @@ function LogWindowApp(): JSX.Element {
   }, []);
 
   return (
-    <LocaleProvider app_language={app_language}>
+    <LocaleProvider locale={resolve_app_locale(app_language)}>
       <WindowVisualProviders>
         <LogWindowPage />
       </WindowVisualProviders>

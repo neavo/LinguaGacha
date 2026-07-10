@@ -33,10 +33,10 @@ import { useProjectEventPipeline } from "@frontend/app/state/project-event-pipel
 import { normalize_project_change_event } from "@frontend/app/state/desktop-project-change-normalizer";
 import {
   normalize_setting_snapshot,
-  type AppLanguage,
   type RecentProjectSetting,
   type SettingSnapshot,
 } from "@domain/setting";
+import type { AppLanguage } from "@domain/app-language";
 import type { TaskType } from "@domain/task";
 import { PROJECT_DATA_SECTIONS } from "@shared/project-event";
 import { InternalInvariantError } from "@shared/error";

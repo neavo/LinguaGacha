@@ -109,6 +109,30 @@ describe("QualityService", () => {
     expect(template["suffix_text"]).not.toContain("{translation_output_format}");
   });
 
+  it("德语界面读取英文提示词模板", () => {
+    const { service, app_root, app_setting_service } = create_service();
+    app_setting_service.set_transient_overrides({ app_language: "DE" });
+    const zh_template_dir = path.join(app_root, "resource", "translation_prompt", "template", "zh");
+    const en_template_dir = path.join(app_root, "resource", "translation_prompt", "template", "en");
+    for (const template_dir of [zh_template_dir, en_template_dir]) {
+      fs.mkdirSync(template_dir, { recursive: true });
+    }
+    fs.writeFileSync(path.join(zh_template_dir, "base.txt"), "ZH_TEMPLATE", "utf-8");
+    fs.writeFileSync(path.join(zh_template_dir, "prefix.txt"), "ZH_PREFIX", "utf-8");
+    fs.writeFileSync(path.join(zh_template_dir, "suffix.txt"), "ZH_SUFFIX", "utf-8");
+    fs.writeFileSync(path.join(en_template_dir, "base.txt"), "EN_TEMPLATE", "utf-8");
+    fs.writeFileSync(path.join(en_template_dir, "prefix.txt"), "EN_PREFIX", "utf-8");
+    fs.writeFileSync(path.join(en_template_dir, "suffix.txt"), "EN_SUFFIX", "utf-8");
+
+    const result = service.get_prompt_template({ task_type: "translation" });
+
+    expect(result["template"]).toEqual({
+      default_text: "EN_TEMPLATE",
+      prefix_text: "EN_PREFIX",
+      suffix_text: "EN_SUFFIX",
+    });
+  });
+
   it("导入外部 JSON 规则时显式修复可恢复的非标 JSON", async () => {
     const { service, app_root } = create_service();
     const file_path = path.join(app_root, "rules.json");
@@ -399,7 +423,11 @@ describe("QualityService", () => {
   /**
    * 构造只依赖预设文件 IO 的 QualityService，数据库边界在这些用例中不参与。
    */
-  function create_service(): { service: QualityService; app_root: string } {
+  function create_service(): {
+    service: QualityService;
+    app_root: string;
+    app_setting_service: AppSettingService;
+  } {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-quality-test-"));
     cleanup_paths.push(app_root);
     const paths = new AppPathService({
@@ -416,7 +444,7 @@ describe("QualityService", () => {
       new ProjectSessionState(),
       new ProjectWriteStore(database, new ProjectEventBus(), null),
     );
-    return { service, app_root };
+    return { service, app_root, app_setting_service };
   }
 
   /**

@@ -6,7 +6,7 @@ import type { AppSettingService } from "../../app/app-setting-service";
 import { translation_prompt_legacy_slot_migration } from "./translation-prompt-legacy-slot-migration";
 
 describe("translation_prompt_legacy_slot_migration", () => {
-  it("当前提示词为空时按界面语言迁移旧提示词槽位并写入完成标记", async () => {
+  it("当前提示词为空时按界面语言迁移旧提示词槽位并写入完成标记", () => {
     const context = create_context({
       config: { app_language: "EN" },
       rule_text_by_name: {
@@ -37,7 +37,38 @@ describe("translation_prompt_legacy_slot_migration", () => {
     ]);
   });
 
-  it("当前提示词已存在时只写入完成标记", async () => {
+  it("德语界面迁移旧提示词时复用英文槽位", () => {
+    const context = create_context({
+      config: { app_language: "DE" },
+      rule_text_by_name: {
+        CUSTOM_PROMPT_ZH: "旧中文提示词",
+        CUSTOM_PROMPT_EN: "legacy English prompt",
+      },
+    });
+
+    expect(
+      translation_prompt_legacy_slot_migration.build_project_open_operations?.(context),
+    ).toEqual([
+      {
+        name: "setRuleText",
+        args: {
+          projectPath: "demo.lg",
+          ruleType: "translation_prompt",
+          text: "legacy English prompt",
+        },
+      },
+      {
+        name: "setMeta",
+        args: {
+          projectPath: "demo.lg",
+          key: "translation_prompt_legacy_migrated",
+          value: true,
+        },
+      },
+    ]);
+  });
+
+  it("当前提示词已存在时只写入完成标记", () => {
     const context = create_context({
       rule_text_by_type: { translation_prompt: "当前提示词" },
       rule_text_by_name: { CUSTOM_PROMPT_ZH: "旧中文提示词" },
@@ -57,7 +88,7 @@ describe("translation_prompt_legacy_slot_migration", () => {
     ]);
   });
 
-  it("迁移标记已存在时不再读取旧槽位", async () => {
+  it("迁移标记已存在时不再读取旧槽位", () => {
     const context = create_context({
       meta: { translation_prompt_legacy_migrated: true },
       rule_text_by_name: { CUSTOM_PROMPT_ZH: "旧中文提示词" },

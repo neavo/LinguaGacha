@@ -1,4 +1,4 @@
-import { normalize_app_language } from "../../../domain/setting";
+import { resolve_prompt_template_language } from "../../../domain/app-language";
 import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
 import type { MigrationDescriptor, ProjectOpenMigrationContext } from "../migration-types";
 
@@ -63,7 +63,7 @@ export const translation_prompt_legacy_slot_migration: MigrationDescriptor = {
 function get_legacy_translation_prompt(context: ProjectOpenMigrationContext): string {
   const config = context.app_setting_service.read_setting();
   const preferred_rule_types =
-    normalize_app_language(config["app_language"]) === "EN"
+    resolve_prompt_template_language(config["app_language"]) === "en"
       ? [LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE, LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE]
       : [LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE, LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE];
   for (const rule_type of preferred_rule_types) {

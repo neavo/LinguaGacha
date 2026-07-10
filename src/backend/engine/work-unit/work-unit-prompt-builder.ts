@@ -1,15 +1,22 @@
 import path from "node:path";
 
 import { JsonTool } from "../../../shared/utils/json-tool";
-import { build_translation_output_format } from "../../../shared/text/translation-output-format";
+import {
+  build_translation_output_format,
+  type TranslationPromptLanguage,
+} from "../../../shared/text/translation-output-format";
 import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../shared/text/text-types";
 import type { LLMMessage } from "../../llm/llm-types";
 import { default_native_fs } from "../../../native/native-fs";
 import { Prompt } from "../../../domain/prompt";
 import { normalize_setting_snapshot } from "../../../domain/setting";
-import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../shared/i18n";
 import {
-  get_language_display_locale,
+  resolve_app_locale,
+  resolve_language_display_locale,
+  resolve_prompt_template_language,
+} from "../../../domain/app-language";
+import { format_i18n_message, type LocaleKey } from "../../../shared/i18n";
+import {
   get_prompt_source_language_name,
   get_prompt_target_language_name,
   normalize_language_code,
@@ -316,29 +323,22 @@ export class PromptBuilder {
   }
 
   /**
-   * UI 语言只支持中英提示词模板，未知值回退中文
-   */
-  private get_prompt_ui_language(): "zh" | "en" {
-    return this.config.app_language === "EN" ? "en" : "zh";
-  }
-
-  /**
    * 转换本地化键为当前语言文本。
    */
   private t(key: LocaleKey, params: Record<string, string> = {}): string {
-    return format_i18n_message(resolve_i18n_locale(this.config.app_language), key, params);
+    return format_i18n_message(resolve_app_locale(this.config.app_language), key, params);
   }
 
   /**
    * 解析提示词语言、源语言占位和目标语言名
    */
   private resolve_prompt_context(): {
-    prompt_language: "zh" | "en";
+    prompt_language: TranslationPromptLanguage;
     source_language: string;
     target_language: string;
   } {
-    const prompt_language = this.get_prompt_ui_language();
-    const display_locale = get_language_display_locale(this.config.app_language);
+    const prompt_language = resolve_prompt_template_language(this.config.app_language);
+    const display_locale = resolve_language_display_locale(this.config.app_language);
     const source_code = normalize_language_code(String(this.config.source_language));
     const target_code = normalize_language_code(String(this.config.target_language));
     return {
@@ -353,7 +353,7 @@ export class PromptBuilder {
    */
   private async read_prompt_text(
     task_dir_name: string,
-    language: "zh" | "en",
+    language: TranslationPromptLanguage,
     file_name: string,
   ): Promise<string> {
     const cache_key = `${this.app_root}\u0000${task_dir_name}\u0000${language}\u0000${file_name}`;

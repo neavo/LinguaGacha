@@ -53,6 +53,10 @@ describe("languages", () => {
     expect(get_language_display_name("ES", "zh")).toBe("西班牙文");
     expect(get_language_display_name("ZH", "en")).toBe("Chinese");
     expect(get_language_display_name("ZH-HANT", "en")).toBe("Traditional Chinese");
+    expect(get_language_display_name("ZH", "de")).toBe("Chinesisch");
+    expect(get_language_display_name("ZH-HANT", "de")).toBe("Chinesisch (traditionell)");
+    expect(get_language_display_name("JA", "de")).toBe("Japanisch");
+    expect(get_language_display_name("EN", "de")).toBe("Englisch");
     expect(get_language_label_key("JA")).toBe("app.language.JA");
     expect(get_language_label_key("ZH-HANT")).toBe("app.language.ZH-HANT");
   });

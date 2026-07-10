@@ -12,7 +12,8 @@ import { ResponseDecoder } from "../response/response-decoder";
 import type { LLMClientPort } from "../../../llm/llm-types";
 import type { AnalysisWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
-import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
+import { resolve_app_locale } from "../../../../domain/app-language";
+import { format_i18n_message, type LocaleKey } from "../../../../shared/i18n";
 import { normalize_setting_snapshot } from "../../../../domain/setting";
 import type { LogError } from "../../../../shared/error";
 
@@ -325,7 +326,7 @@ export class AnalysisWorkUnitRunner {
    * 分析日志统一走 i18n，避免成功、失败和空结果分支各自拼文案。
    */
   private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
-    return format_i18n_message(resolve_i18n_locale(app_language), key, params);
+    return format_i18n_message(resolve_app_locale(app_language), key, params);
   }
 
   /**

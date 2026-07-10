@@ -1,4 +1,5 @@
 import type { JsonValue } from "../shared/utils/json-tool";
+import { normalize_app_language, type AppLanguage } from "./app-language";
 
 export {
   ALL_LANGUAGE_CODE,
@@ -8,7 +9,6 @@ export {
   SOURCE_LANGUAGE_CODES,
   TARGET_LANGUAGE_CODES,
   all_language_characters,
-  get_language_display_locale,
   get_language_display_name,
   get_language_label_key,
   get_prompt_source_language_name,
@@ -27,20 +27,8 @@ export {
 /**
  * 集中维护当前模块的稳定常量。
  */
-export const APP_LANGUAGES = ["ZH", "EN"] as const; // AppLanguage 是设置文件、运行态 settings 和 i18n locale 计算的唯一语言值域
-
-/**
- * 集中维护当前模块的稳定常量。
- */
-export const APP_LOCALES = ["zh-CN", "en-US"] as const; // AppLocale 只服务渲染进程国际化，不替代设置快照中的应用语言
-
-/**
- * 集中维护当前模块的稳定常量。
- */
 export const PROJECT_SAVE_MODES = ["MANUAL", "FIXED", "SOURCE"] as const; // ProjectSaveMode 是项目保存位置策略，页面和设置服务都从这里取合法值
 
-export type AppLanguage = (typeof APP_LANGUAGES)[number];
-export type AppLocale = (typeof APP_LOCALES)[number];
 export type ProjectSaveMode = (typeof PROJECT_SAVE_MODES)[number];
 type SettingJsonRecord = Record<string, JsonValue>;
 
@@ -152,7 +140,6 @@ export const DEFAULT_SETTING: SettingJsonRecord = {
   models: null,
 };
 
-const APP_LANGUAGE_SET = new Set<AppLanguage>(APP_LANGUAGES);
 const PROJECT_SAVE_MODE_SET = new Set<ProjectSaveMode>(PROJECT_SAVE_MODES);
 
 /**
@@ -266,7 +253,7 @@ export class Setting {
    */
   public static normalize_value(key: string, value: JsonValue): JsonValue {
     if (key === "app_language") {
-      return Setting.normalize_app_language(value);
+      return normalize_app_language(value);
     }
     if (key === "project_save_mode") {
       return Setting.normalize_project_save_mode(value);
@@ -287,23 +274,6 @@ export class Setting {
   }
 
   /**
-   * app_language 兼容大小写输入，未知值回退中文界面
-   */
-  public static normalize_app_language(value: unknown): AppLanguage {
-    const language = String(value ?? "")
-      .trim()
-      .toUpperCase();
-    return is_app_language(language) ? language : "ZH";
-  }
-
-  /**
-   * i18n locale 是 app_language 的计算结果，不单独持久化为第二状态源
-   */
-  public static resolve_app_locale(app_language: AppLanguage): AppLocale {
-    return app_language === "EN" ? "en-US" : "zh-CN";
-  }
-
-  /**
    * 缺失或未知保存模式按历史手动保存策略处理
    */
   public static normalize_project_save_mode(value: unknown): ProjectSaveMode {
@@ -320,14 +290,6 @@ export class Setting {
   }
 }
 
-// 设置文件和设置页 payload 统一通过这里确认语言值域
-/**
- * 判断当前值是否满足业务条件。
- */
-export function is_app_language(value: unknown): value is AppLanguage {
-  return APP_LANGUAGE_SET.has(value as AppLanguage);
-}
-
 // 项目保存模式写入设置前先确认合法值，避免页面草稿值落盘
 /**
  * 判断当前值是否满足业务条件。
@@ -342,7 +304,7 @@ export function is_project_save_mode(value: unknown): value is ProjectSaveMode {
 export function normalize_setting_snapshot(value: unknown): SettingSnapshot {
   const record = read_setting_record(value);
   return {
-    app_language: Setting.normalize_app_language(record["app_language"]),
+    app_language: normalize_app_language(record["app_language"]),
     source_language: read_string_setting(record["source_language"], "source_language"),
     target_language: read_string_setting(record["target_language"], "target_language"),
     project_save_mode: Setting.normalize_project_save_mode(record["project_save_mode"]),
@@ -541,14 +503,6 @@ function normalize_recent_project_settings(value: unknown): RecentProjectSetting
     .filter((item) => item.path !== "");
 }
 
-/**
- * 集中维护当前模块的稳定常量。
- */
-export const normalize_app_language = Setting.normalize_app_language;
-/**
- * 集中维护当前模块的稳定常量。
- */
-export const resolve_app_locale = Setting.resolve_app_locale;
 /**
  * 集中维护当前模块的稳定常量。
  */
