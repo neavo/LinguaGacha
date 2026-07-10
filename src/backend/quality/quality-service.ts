@@ -6,16 +6,14 @@ import type { ApiJsonValue } from "../api/api-types";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { JsonTool } from "../../shared/utils/json-tool";
-import {
-  fill_translation_output_format_placeholder,
-  type TranslationPromptLanguage,
-} from "../../shared/text/translation-output-format";
+import { fill_translation_output_format_placeholder } from "../../shared/text/translation-output-format";
 import { ProjectWriteStore } from "../project/project-write-store";
 import { ProjectSessionState } from "../project/project-session";
 import type { ProjectWriteResult } from "../../shared/project-event";
 import { build_analysis_glossary_entry_from_candidate } from "../../shared/analysis-candidate";
 import { QualityRule, type QualityRuleKind } from "../../domain/quality";
 import { Prompt, type PromptKind } from "../../domain/prompt";
+import { resolve_prompt_template_language } from "../../domain/app-language";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
@@ -249,8 +247,7 @@ export class QualityService {
   public get_prompt_template(request: JsonRecord): JsonRecord {
     const task_type = Prompt.from_json(request["task_type"]).kind;
     const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
-    const language = config.app_language.toLowerCase();
-    const prompt_language: TranslationPromptLanguage = language === "en" ? "en" : "zh";
+    const prompt_language = resolve_prompt_template_language(config.app_language);
     const template_dir = this.paths.get_prompt_template_dir(task_type, prompt_language);
     const fill_template_section = (text: string): string => {
       if (task_type !== "translation") {

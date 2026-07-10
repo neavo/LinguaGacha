@@ -33,7 +33,8 @@ import {
 } from "../bridge/bridge-types";
 import { type LogWindowHost } from "./log-window-host";
 import { sync_title_bar_overlay } from "./desktop-window-host";
-import { create_text_resolver, resolve_i18n_locale, type TextResolver } from "../../shared/i18n";
+import { resolve_app_locale } from "../../domain/app-language";
+import { create_text_resolver, type TextResolver } from "../../shared/i18n";
 
 export type DesktopIpcHandlerOptions = {
   getMainWindow: () => BrowserWindow | null;
@@ -199,7 +200,7 @@ export function register_desktop_ipc_handlers(options: DesktopIpcHandlerOptions)
  * 系统文件选择器不经过 renderer，本地化文案在打开瞬间读取当前设置。
  */
 function create_dialog_text_resolver(options: DesktopIpcHandlerOptions): TextResolver {
-  return create_text_resolver(resolve_i18n_locale(options.readAppLanguage()));
+  return create_text_resolver(resolve_app_locale(options.readAppLanguage()));
 }
 
 /**

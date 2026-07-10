@@ -18,7 +18,8 @@ import {
   resolve_active_model_id,
   type ModelRecord,
 } from "./model-config-resolver";
-import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../shared/i18n";
+import { resolve_app_locale } from "../../domain/app-language";
+import { format_i18n_message, type LocaleKey } from "../../shared/i18n";
 import { JsonTool } from "../../shared/utils/json-tool";
 import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
@@ -605,7 +606,7 @@ export class ModelService {
    * 转换本地化键为当前语言文本。
    */
   private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
-    return format_i18n_message(resolve_i18n_locale(app_language), key, params);
+    return format_i18n_message(resolve_app_locale(app_language), key, params);
   }
 
   /**

@@ -5,8 +5,9 @@ import { run_cli_job } from "./job/cli-job-runner";
 import type { CLICommandOptions } from "./cli-parser";
 import type { BackendWorkerExecution } from "../backend/worker/worker-execution";
 import type { BackendBootstrapStartResult } from "../backend/bootstrap/backend-bootstrap-types";
+import { resolve_app_locale } from "../domain/app-language";
 import { CLIJsonStatusReporter } from "./cli-status-reporter";
-import { create_text_resolver, resolve_i18n_locale } from "../shared/i18n";
+import { create_text_resolver } from "../shared/i18n";
 import { write_stderr, write_stdout } from "./cli-output";
 
 /**
@@ -50,7 +51,7 @@ function write_system_proxy_startup_notice(start_result: BackendBootstrapStartRe
     return;
   }
 
-  const t = create_text_resolver(resolve_i18n_locale(start_result.readAppLanguage()));
+  const t = create_text_resolver(resolve_app_locale(start_result.readAppLanguage()));
   write_stderr(
     t("app.system_proxy.startup_notice", {
       PROXY: start_result.systemProxyStartupNotice.proxyDisplay ?? "",

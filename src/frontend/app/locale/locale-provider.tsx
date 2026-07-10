@@ -7,12 +7,7 @@ import {
   type ReactNode,
 } from "react";
 
-import {
-  create_text_resolver,
-  resolve_i18n_locale,
-  type Locale,
-  type LocaleKey,
-} from "@shared/i18n";
+import { create_text_resolver, type Locale, type LocaleKey } from "@shared/i18n";
 
 type LocaleContextValue = {
   locale: Locale;
@@ -22,16 +17,12 @@ type LocaleContextValue = {
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 
 type LocaleProviderProps = {
-  app_language: unknown;
+  locale: Locale;
   children: ReactNode;
 };
 
-export function LocaleProvider({ app_language, children }: LocaleProviderProps): ReactNode {
-  // LocaleProvider 只消费调用方传入的语言值，避免 i18n 反向绑定某一种窗口运行态
-  const locale = useMemo<Locale>(() => {
-    return resolve_i18n_locale(app_language);
-  }, [app_language]);
-
+export function LocaleProvider({ locale, children }: LocaleProviderProps): ReactNode {
+  // LocaleProvider 只消费解析后的 locale，应用语言状态和系统语言标签由各窗口边界负责投影。
   useEffect(() => {
     document.documentElement.lang = locale;
     document.documentElement.setAttribute("data-locale", locale);

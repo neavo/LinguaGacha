@@ -123,6 +123,25 @@ describe("PromptBuilder", () => {
     expect(result).toContain("Translate from Japanese to Chinese.");
   });
 
+  it("德语界面复用英文提示词模板并使用德语语言名称", async () => {
+    const app_root = await create_template_root();
+    const builder = new PromptBuilder(
+      app_root,
+      {
+        app_language: "DE",
+        source_language: "JA",
+        target_language: "DE",
+      },
+      create_quality_snapshot(),
+    );
+
+    const result = await builder.build_main("text");
+
+    expect(result).toContain("Translation prefix");
+    expect(result).toContain("Translate from Japanisch to Deutsch.");
+    expect(result).not.toContain("翻译前缀");
+  });
+
   it("英文提示词中匈牙利文使用正确 Hungarian 拼写", async () => {
     const app_root = await create_template_root();
     const builder = new PromptBuilder(

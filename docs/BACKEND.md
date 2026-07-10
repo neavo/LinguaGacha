@@ -64,7 +64,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - `TaskRunPublisher` 是任务状态唯一公共出口，生命周期和进度提交立即发布完整 `task.snapshot_changed`。只有 `request_in_flight_count` 可 500ms 合并，终态前必须冲刷。
 - `request_in_flight_count` 只表示真实已租约发出的 LLM 请求数量，不表示队列长度或 worker 数量。
 - `TaskEngine` 是后台任务执行权威，全量翻译、行级重翻和分析经全局运行锁、Planner、WorkUnit、Limiter、ModelKeyLease、Pipeline 与 Artifact Committer。
-- work-unit worker 负责提示词构建、runner、pipeline 和响应处理，planning worker 只做规划期 token 计数。worker 数量不等同于 LLM 并发。
+- work-unit worker 负责提示词构建、runner、pipeline 和响应处理，提示词编辑接口、旧槽位迁移与运行时模板选择共用 `src/domain/app-language.ts` 的 prompt language 投影，不在各链路重新解释 `AppLanguage`；planning worker 只做规划期 token 计数。worker 数量不等同于 LLM 并发。
 - 非 engine 的重型计算通过 `BackendWorkerClient` 提交无状态 worker task，worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
 - LLM provider policy、request policy、SDK transport 和请求结果归一归 `src/backend/llm`，任务层不解析供应商异常文本。
 

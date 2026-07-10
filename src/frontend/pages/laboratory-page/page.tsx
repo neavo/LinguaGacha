@@ -1,5 +1,6 @@
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import type { Locale } from "@shared/i18n";
 import "@frontend/pages/laboratory-page/laboratory-page.css";
 import { useLaboratoryPageState } from "@frontend/pages/laboratory-page/use-laboratory-page-state";
 import { SettingHelpButton } from "@frontend/widgets/setting-help-button";
@@ -15,7 +16,10 @@ const HELP_URL_BY_FIELD = {
   "en-US": {
     mtool_optimizer_enable: "https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN",
   },
-} as const satisfies Record<"zh-CN" | "en-US", Record<LaboratoryHelpField, string>>;
+  "de-DE": {
+    mtool_optimizer_enable: "https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN",
+  },
+} as const satisfies Record<Locale, Record<LaboratoryHelpField, string>>;
 
 const HELP_LABEL_KEY_BY_FIELD: Record<LaboratoryHelpField, LocaleKey> = {
   mtool_optimizer_enable: "laboratory_page.fields.mtool_optimizer_enable.help_label",

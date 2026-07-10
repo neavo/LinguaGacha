@@ -7,8 +7,9 @@ import { AppSettingService } from "../app/app-setting-service";
 import { ProjectSessionState } from "../project/project-session";
 import { FileFormatService } from "../file/file-format-service";
 import { Item, type ItemStatus } from "../../domain/item";
+import { resolve_app_locale, type AppLanguage } from "../../domain/app-language";
 import { normalize_setting_snapshot } from "../../domain/setting";
-import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../shared/i18n";
+import { create_text_resolver, format_i18n_message, type LocaleKey } from "../../shared/i18n";
 import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { ExportPaths } from "../file/formats/file-format-shared";
@@ -211,16 +212,15 @@ export class TranslationFileExportService {
   private build_export_paths(
     project_path: string,
     custom_suffix: string,
-    app_language: string,
+    app_language: AppLanguage,
   ): { translated_path: string; bilingual_path: string } {
-    const suffixes =
-      app_language.toUpperCase() === "EN"
-        ? { translated: "Translated", bilingual: "Translated_Bilingual" }
-        : { translated: "译文", bilingual: "译文_双语对照" };
+    const text = create_text_resolver(resolve_app_locale(app_language));
+    const translated_suffix = text("app.translation_export.directory.translated");
+    const bilingual_suffix = text("app.translation_export.directory.bilingual");
     const project_dir = path.dirname(project_path);
     const stem = path.parse(project_path).name;
-    const translated_base = `${stem}_${suffixes.translated}${custom_suffix}`;
-    const bilingual_base = `${stem}_${suffixes.bilingual}${custom_suffix}`;
+    const translated_base = `${stem}_${translated_suffix}${custom_suffix}`;
+    const bilingual_base = `${stem}_${bilingual_suffix}${custom_suffix}`;
     const needs_timestamp =
       this.native_fs.exists(path.join(project_dir, translated_base)) ||
       this.native_fs.exists(path.join(project_dir, bilingual_base));
@@ -319,7 +319,7 @@ export class TranslationFileExportService {
     params: Record<string, string> = {},
   ): string {
     return format_i18n_message(
-      resolve_i18n_locale(normalize_setting_snapshot(config).app_language),
+      resolve_app_locale(normalize_setting_snapshot(config).app_language),
       key,
       params,
     );

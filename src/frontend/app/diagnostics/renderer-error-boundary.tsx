@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { create_text_resolver, type Locale } from "@shared/i18n";
+import { resolve_app_language_from_locale_tag, resolve_app_locale } from "@domain/app-language";
 
 import { capture_renderer_error } from "@frontend/app/diagnostics/renderer-error-reporter";
 import "./renderer-error-boundary.css";
@@ -61,6 +62,5 @@ export class RendererErrorBoundary extends Component<
 
 // 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 function read_error_boundary_locale(): Locale {
-  const language = window.navigator.language.trim().toUpperCase();
-  return language === "EN" || language.startsWith("EN-") ? "en-US" : "zh-CN";
+  return resolve_app_locale(resolve_app_language_from_locale_tag(window.navigator.language));
 }

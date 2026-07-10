@@ -28,7 +28,8 @@ import type { LLMClientPort, LLMRequestResult } from "../../../llm/llm-types";
 import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
 import { normalize_setting_snapshot } from "../../../../domain/setting";
-import { format_i18n_message, resolve_i18n_locale, type LocaleKey } from "../../../../shared/i18n";
+import { resolve_app_locale } from "../../../../domain/app-language";
+import { format_i18n_message, type LocaleKey } from "../../../../shared/i18n";
 import type { LogError } from "../../../../shared/error";
 import { has_translation_retry_reached_review_threshold } from "../../../../shared/text/translation-quality-rules";
 
@@ -779,7 +780,7 @@ export class TranslationWorkUnitRunner {
    * worker 内日志使用同一 i18n 入口，保持翻译和分析 runner 文案一致。
    */
   private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
-    return format_i18n_message(resolve_i18n_locale(app_language), key, params);
+    return format_i18n_message(resolve_app_locale(app_language), key, params);
   }
 
   /**

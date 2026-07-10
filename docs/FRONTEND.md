@@ -11,7 +11,7 @@
 - renderer 异常诊断只能通过 `/api/diagnostics/renderer-error` 写日志，只上报实际抛错摘要、route / project / task / event 轻量上下文和白名单字段，不上报完整 items/files payload、页面自定义对象或原始路径 / URL。
 - 日志窗口只把 `log.appended` 的轻量事件放入列表，完整正文通过 `/api/logs/detail` 按选中行懒加载，不能进入列表筛选、排序或批量渲染路径。
 - 日志窗口是 renderer 内唯一可展开结构化错误和调用栈的诊断视图，普通页面、toast 和空状态不得展示调用栈或原始异常文本。
-- 可见文案从 `src/shared/i18n` 解析，React Provider 与富文本适配在 `src/frontend/app/locale`。
+- 持久化的 `AppLanguage` 只在 `src/domain/app-language.ts` 投影为 renderer `Locale`；可见文案从 `src/shared/i18n` 解析，React Provider 只消费已解析的 `Locale`，富文本适配仍在 `src/frontend/app/locale`。
 
 ## 2. 主窗口运行态
 

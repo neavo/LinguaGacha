@@ -33,6 +33,7 @@ const THINKING_LEVEL_VALUES: readonly ModelThinkingLevel[] = MODEL_THINKING_LEVE
 const THINKING_SUPPORT_URL_BY_LOCALE = {
   "zh-CN": "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupport",
   "en-US": "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN",
+  "de-DE": "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN",
 } as const;
 /**
  * 解析当前场景的最终消费值。
