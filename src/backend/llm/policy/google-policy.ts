@@ -113,7 +113,7 @@ export function build_google_thinking_config(
   if (/gemini-3(?:\.\d+)?-pro/iu.test(model_id)) {
     return { thinkingLevel: level === "HIGH" ? "HIGH" : "LOW", includeThoughts: level !== "OFF" };
   }
-  if (/gemini-3(?:\.1)?-flash/iu.test(model_id)) {
+  if (/gemini-3(?:\.(?:1|5))?-flash/iu.test(model_id)) {
     return {
       thinkingLevel: level === "OFF" ? "MINIMAL" : level,
       includeThoughts: level !== "OFF",
