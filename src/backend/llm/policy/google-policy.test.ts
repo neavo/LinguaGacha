@@ -77,6 +77,18 @@ describe("google-policy", () => {
       build_google_thinking_config({ model_id: "gemini-3-flash-preview", thinking_level: "OFF" }),
     ).toEqual({ thinkingLevel: "MINIMAL", includeThoughts: false });
     expect(
+      build_google_thinking_config({ model_id: "gemini-3.5-flash", thinking_level: "OFF" }),
+    ).toEqual({ thinkingLevel: "MINIMAL", includeThoughts: false });
+    expect(
+      build_google_thinking_config({ model_id: "gemini-3.5-flash", thinking_level: "LOW" }),
+    ).toEqual({ thinkingLevel: "LOW", includeThoughts: true });
+    expect(
+      build_google_thinking_config({ model_id: "gemini-3.5-flash", thinking_level: "MEDIUM" }),
+    ).toEqual({ thinkingLevel: "MEDIUM", includeThoughts: true });
+    expect(
+      build_google_thinking_config({ model_id: "gemini-3.5-flash", thinking_level: "HIGH" }),
+    ).toEqual({ thinkingLevel: "HIGH", includeThoughts: true });
+    expect(
       build_google_thinking_config({ model_id: "gemini-2.5-pro", thinking_level: "OFF" }),
     ).toEqual({ thinkingBudget: 128, includeThoughts: false });
     expect(
