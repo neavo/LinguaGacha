@@ -18,7 +18,6 @@ import {
 import { SCREEN_REGISTRY } from "@frontend/app/navigation/screen-registry";
 import { AppNavigationProvider } from "@frontend/app/navigation/navigation-context";
 import { DesktopStateProvider } from "@frontend/app/state/desktop-state-context";
-import { ProjectSessionProvider } from "@frontend/app/session/project-session-context";
 import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-context";
 import { WorkbenchTasksSessionProvider } from "@frontend/app/session/workbench-tasks/workbench-tasks-session-context";
 import { QualityRuleStatisticsProvider } from "@frontend/app/session/quality-rule-statistics-context";
@@ -914,16 +913,13 @@ function AppContent(props: AppContentProps): JSX.Element {
                 selected_route={selected_route}
                 navigate_to_route={handle_select_route}
               >
-                <ProjectSessionProvider>
-                  {/* 项目 session UI 状态必须位于 session barrier 内，随项目身份清空且不参与缓存门闩。 */}
-                  <ProjectSessionUiStateProvider>
-                    <WorkbenchTasksSessionProvider>
-                      <QualityRuleStatisticsProvider>
-                        <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
-                      </QualityRuleStatisticsProvider>
-                    </WorkbenchTasksSessionProvider>
-                  </ProjectSessionUiStateProvider>
-                </ProjectSessionProvider>
+                <ProjectSessionUiStateProvider>
+                  <WorkbenchTasksSessionProvider>
+                    <QualityRuleStatisticsProvider>
+                      <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
+                    </QualityRuleStatisticsProvider>
+                  </WorkbenchTasksSessionProvider>
+                </ProjectSessionUiStateProvider>
               </AppNavigationProvider>
             </SidebarInset>
           </section>

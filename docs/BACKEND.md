@@ -1,39 +1,37 @@
 # LinguaGacha 后端权威边界
 
-本文统一承载后端公开协议、状态拥有者、唯一写入口、任务链路、数据库与 `.lg` 物理存储规则。字段级细节、局部算法和能从类型定义直接看出的内容留在代码与测试中。
+本文统一承载后端公开协议、状态拥有者、项目写入、任务运行态、数据库与 `.lg` 物理存储规则。字段级细节、完整 schema 和局部算法留在代码与测试中。
 
-## 1. 公开协议边界
+## 1. 公开协议
 
-- `BackendBootstrap` 是 GUI 与 CLI 共享的后端启停入口，它拥有日志、启动期迁移、设置、数据库、`BackendServices` 与可选 Gateway 的生命周期。
-- 启动顺序固定为日志 → 启动期迁移 → 设置 / 系统代理快照 → `BackendServices` → 可选 Gateway，关闭按 Gateway → services / worker pools → 系统代理 → database → log 逆序收尾。
-- `ApiGatewayServer` 是 Electron 运行态公开 `/api/*` 的唯一装配点，路由注册在 `src/backend/api/routes/*.ts`，POST JSON 路由经统一响应壳返回。
-- 业务 URL 按 `/api/{功能域}/{对象?}/{动作}` 命名，当前 loaded 工程由 session 隐式绑定，业务 URL 不携带 project path，renderer 不能指定任意 `.lg` 路径。
-- Gateway 只监听本机地址，CORS 只允许 `Content-Type`，前端不依赖额外私有请求头。
-- 成功响应为 `{ ok: true, data }`，失败响应为 `{ ok: false, error }`。公开错误只暴露安全字段，stack、API key、Authorization header、provider 原始响应和完整异常只进入诊断日志。
-- 公开 SSE topic 固定为 `project.data_changed`、`task.snapshot_changed`、`settings.changed`、`log.appended`，SSE data 使用严格 JSON 序列化。
-- 日志列表只消费轻量 `log.appended`，完整日志正文只保存在当前进程详情池，通过 `/api/logs/detail` 按 ID 读取，不回扫历史日志文件。
-- `/api/diagnostics/renderer-error` 只接收 renderer 实际异常摘要与白名单上下文，写入 `LogManager`，它不改变项目、任务或设置事实。
-- CLI 不启动 Gateway，只通过同进程 `BackendServices` 与 `ApiStreamHub` 复用同一业务链路。
+- `ApiGatewayServer` 是 Electron 运行态公开 `/api/*` 的唯一装配点；路由只消费 `BackendServices`，不自行组装业务依赖。
+- 普通 loaded-project query / write 从 `ProjectSessionState` 取得目标工程；create、open、preview 和打开前 settings alignment 是可以接收显式路径的生命周期例外。
+- Gateway 只监听本机地址，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
+- 成功响应为 `{ ok: true, data }`，失败响应为 `{ ok: false, error }`；公开错误不包含 diagnostic context、cause、stack 或供应商原始异常。
+- 公开 SSE topic 固定为 `project.data_changed`、`task.snapshot_changed`、`settings.changed`、`log.appended`，data 使用严格 JSON 序列化。
+- `log.appended` 只携带轻量预览；完整记录按日志目标落盘，`/api/logs/detail` 只查询当前进程详情池且不回扫历史文件。
+- `/api/diagnostics/renderer-error` 只接收实际 renderer 异常摘要与白名单上下文并写入 `LogManager`，不改变项目、任务或设置事实。
 
 ## 2. 状态拥有者
 
-| 状态 / 事实 | 拥有者 | 唯一写入口 / 出口 |
+| 状态 / 事实 | 拥有者 | 唯一写入口 / 读出口 |
 | --- | --- | --- |
 | 应用设置、最近工程、语言 | `AppSettingService` | 设置 API、CLI transient overrides、`settings.changed` |
 | loaded 工程身份 | `ProjectSessionState` | `ProjectLifecycleService` |
-| loaded 工程热读数据 | `CacheManager` | 工程热机、committed event、各功能 query API |
-| 同步运行态项目写入 | `ProjectWriteStore` | database transaction → internal event → public project change |
+| loaded 工程热读数据 | `CacheManager` | 工程热机、committed event、功能 query |
+| 运行态项目事实 | `ProjectWriteStore` / `ProjectWriteCoordinator` | database transaction、内部 event、按需公开 change |
 | 后端内部 committed event | `ProjectEventBus` | 写侧事务成功后的 after-commit 发布 |
-| 公开项目变更 | `ProjectChangePublisher` | 同一 `ProjectChangeEvent` 返回 HTTP 写入结果并广播 SSE |
-| 任务 busy/status/request pressure | `TaskRunState` | `TaskRunPublisher` |
-| 任务公开快照 | `TaskSnapshotBuilder` | 命令 ack、`/api/tasks/snapshot`、`task.snapshot_changed` |
-| `.lg` 物理 workflow | `ProjectDatabase` | `DatabaseOperation` / `execute_transaction` |
+| 公开项目变更 | `ProjectChangePublisher` | 同一 canonical event 进入 SSE 与 HTTP `changes` |
+| 任务类型、scope、status、busy、`run_revision`、请求压力 | `TaskRunState` / `TaskRunPublisher` | 任务命令与 Engine 生命周期 |
+| 任务 progress / extras | `.lg` meta | `ProjectTaskStore` 经 `ProjectWriteStore` 写入 |
+| 任务公开快照 | `TaskSnapshotBuilder` | 组合内存运行态与 `.lg` meta |
+| `.lg` 物理 workflow | `ProjectDatabase` | `DatabaseOperation`、`execute()`、`execute_transaction()` |
 | 平台 IO 与路径身份 | `NativeFs` / `NativePathPolicy` | `src/native` |
-| 后端日志 | `LogManager` | 文件日志、轻量日志 SSE、当前进程详情池 |
+| 后端日志 | `LogManager` | 文件日志、轻量 SSE、当前进程详情池 |
 
-`ProjectOperationGate` 负责结构性项目写入与后台任务启动互斥，涉及文件集合、reset、settings alignment 或任务启动的改动必须先判断是否参与 gate。
+`ProjectOperationGate` 保护会改变任务输入集合或需要慢准备的结构性项目操作；准备与最终提交必须持有同一 gate lease，避免检查通过后被任务启动插入。
 
-## 3. 项目读取与写入契约
+## 3. 项目读取与写入
 
 项目数据 section 固定为：
 
@@ -41,46 +39,40 @@
 project, files, items, quality, prompts, analysis, proofreading
 ```
 
-- `/api/session/project/manifest` 只返回项目身份、project revision、section revision 和 counts，不预热大 section。
-- 页面读取项目事实只能走对应功能域 query API，query response 必须携带本次结果依赖的 `sectionRevisions`，页面写入用这些 revision 做乐观锁。
-- `CacheManager` 是当前 session 热读缓存管理根，query service 只能组合 cache、按需数据库读取和 shared 纯算法，不建立第二套长期项目事实缓存。
-- `QualityStatisticsCache` 的缓存身份由规则和实际文本依赖决定；`items` 变化只按可证明的文本源范围清理统计，无法证明范围时全量失效。
-- 运行态事实写入只允许经 `ProjectWriteStore` 提交，领域服务负责校验和语义化写入意图，不直接执行事务、推进 revision 或发布公开事件。
-- 提交顺序固定为 revision guard → 数据库事务 → 内部 committed event → 公开项目变更。内部事件失败时不能继续发布公开 SSE。
-- `ProjectWriteResult = { accepted: true, changes }` 中的 `changes` 与后续 SSE 是同一批后端 canonical `ProjectChangeEvent`。
-- `ProjectChangeEvent` 必须绑定后端确认的 `projectPath`、`projectRevision`、本次更新 section 的 `sectionRevisions` 与 `updatedSections`，非当前 loaded 工程的草稿不能发布。
-- 变更 payload mode 只允许三类：`canonical-delta` 携带后端规范数据，`field-patch` 只表达校对可写字段，`section-invalidated` 只作为页面重新 query 的刷新提示。
-- `items` / `files` 的全量替换、排序和无法精确表达受影响行的运行态写入默认发布行级 `section-invalidated`，只有后端能精确表达受影响行和删除 tombstone 的小范围变化才发布行级增量。
-- 后端不接收前端计算出的 `items`、task extras、prefilter config 或 analysis extras 作为最终事实，前端只提交用户意图、设置镜像和 revision 依赖。
-- project create/load/unload、migration、默认预设初始化、CLI bootstrap 资源提交和测试 seed 属于生命周期、初始化或夹具写入，不纳入运行态唯一写入口；若写入 query 直接暴露的项目事实，必须在同一事务内写入对应 revision meta。
+- `/api/session/project/manifest` 只返回项目身份、revision 索引和 counts，不预热大 section。
+- 功能 query 返回其结果依赖的 `sectionRevisions`，用户写入和任务命令以这些 revision 做乐观锁；`projectRevision` 只是所有 section revision 的最大值，不是独立全序或可写锁。
+- `CacheManager` 是当前 session 的热读缓存根；query 只组合 cache、按需数据库读取和 shared 纯规则，不建立第二套项目事实。
+- `QualityStatisticsCache` 的身份由规则和实际文本依赖决定；`items` 变化只在能证明文本源范围时局部失效，否则全量失效。
+- 客户端只提交用户意图、设置镜像和 revision 依赖；canonical items、task extras、prefilter 结果和 analysis 结果由后端计算。
+- 需要乐观锁的用户写入在最终提交点完成 revision guard 与单 `.lg` 事务；任务 artifact 等内部写入可以不带预期 revision，但仍通过 `ProjectWriteStore` 更新事实和 section revision。
+- settings-only alignment 只发布内部 committed event，不发布公开 project change；仅持久化任务 progress 的写入走 task snapshot 通道，不制造项目变更事件。
+- 项目事实事务提交后才发布内部 committed event。未捕获的 handler 失败不会回滚已提交事务，但会令请求失败并阻止公开 change；`CacheManager` 自身的维护失败会标记为可恢复并由后续 query 重建，不阻断其它成功 handler。
+- HTTP `changes` 与 SSE 使用同一 canonical `ProjectChangeEvent`，消费者不得依赖两条通道的网络到达顺序。
+- 公开事件绑定后端确认的 `projectPath`、`projectRevision`、`sectionRevisions` 与 `updatedSections`；payload mode 只允许 `canonical-delta`、`field-patch`、`section-invalidated`。
+- 全量替换、排序或无法精确表达受影响行的写入使用 `section-invalidated`；只有能完整表达受影响行和删除 tombstone 的小范围变化才发布行级增量。
+- create / load / migration / 默认预设初始化与 CLI bootstrap 资源属于生命周期或初始化写入；若它们改变 query 可见事实，必须在同一事务更新对应 revision meta。
 
-## 4. 任务、worker 与 LLM 边界
+## 4. 任务、worker 与 LLM
 
-- `TaskService` 是 `/api/tasks/*` 的公开命令边界，负责 JSON 收窄、任务类型 / mode / scope 归一、section revision 校验、模型基础检查和命令转交。
-- 启动后台任务必须携带任务定义声明的 `expected_section_revisions`，行级重翻还必须定位当前 loaded 工程。
-- 任务通过 gate 后立即写入 `requested` 并发布完整 snapshot，Engine 启动失败时恢复前置状态，避免永久 busy。
-- `stop_task` 的 HTTP 回包必须重新读取当前真实 snapshot，不能把旧 stopping 意图回写给前端。
-- `TaskSnapshot` 公开形状为 `base + progress + extras`，`run_revision` 是前端丢弃旧 snapshot 的唯一排序依据。
-- `TaskRunPublisher` 是任务状态唯一公共出口，生命周期和进度提交立即发布完整 `task.snapshot_changed`。只有 `request_in_flight_count` 可 500ms 合并，终态前必须冲刷。
-- `request_in_flight_count` 只表示真实已租约发出的 LLM 请求数量，不表示队列长度或 worker 数量。
-- `TaskEngine` 是后台任务执行权威，全量翻译、行级重翻和分析经全局运行锁、Planner、WorkUnit、Limiter、ModelKeyLease、Pipeline 与 Artifact Committer。
-- work-unit worker 负责提示词构建、runner、pipeline 和响应处理，提示词编辑接口、旧槽位迁移与运行时模板选择共用 `src/domain/app-language.ts` 的 prompt language 投影，不在各链路重新解释 `AppLanguage`；planning worker 只做规划期 token 计数。worker 数量不等同于 LLM 并发。
-- 非 engine 的重型计算通过 `BackendWorkerClient` 提交无状态 worker task，worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
-- LLM provider policy、request policy、SDK transport 和请求结果归一归 `src/backend/llm`，任务层不解析供应商异常文本。
+- `TaskService` 负责命令 JSON 收窄、task / mode / scope 归一、section revision 校验、gate 接入和 Engine 命令转交；激活模型由 `TaskEngine` 在每轮 run 开始时解析并冻结到运行上下文。
+- 启动任务必须携带任务定义声明的 `expected_section_revisions`；通过 gate 后立即进入 busy，Engine 启动失败时恢复前置状态。
+- 所有任务命令 ack 都通过 `TaskSnapshotBuilder` 重新组合当前事实，避免旧命令意图覆盖更晚的终态。
+- `TaskSnapshot` 由内存中的类型、scope、status、busy、`run_revision`、请求压力与 `.lg` 中的 progress / extras 组成；`run_revision` 是前端丢弃旧 snapshot 的排序依据。
+- 生命周期和进度提交立即发布完整 `task.snapshot_changed`；只有请求压力允许合并，终态前必须冲刷。请求压力只表示已租约发出的 LLM 请求，不表示队列或 worker 数量。
+- `TaskEngine` 拥有全局运行锁、执行编排和 artifact commit；全量翻译与分析经过 Planner，行级重翻直接从目标 items 构造 context，三者共享同一执行与提交边界。
+- work-unit worker 负责提示词构建、runner、pipeline 和响应处理；planning worker 只承担规划期计算。线程数不等于 LLM 并发，实际并发由模型 key lease 与 limiter 决定。
+- 非 engine 的重型计算通过 `BackendWorkerClient` 提交无状态 worker task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
+- provider policy、request policy、SDK transport 和结果归一归 `src/backend/llm`，任务层不解析供应商异常文本。
 
-## 5. 数据库与 `.lg` 物理存储
+## 5. 数据库与 `.lg` 存储
 
-- `ProjectDatabase` 是 `.lg` 物理 workflow 的唯一入口，上层只能发送严格 JSON 的 `DatabaseOperation`，不得直接持有 SQLite 连接。
-- `execute()` 处理单操作，`execute_transaction()` 处理同一工程文件内的批量操作。事务不得跨 `.lg` 文件，`createProject` 特例失败时必须关闭并移除刚创建的文件。
-- SQLite 运行期使用 `node:sqlite` `DatabaseSync`，连接开启 WAL / NORMAL / busy_timeout，普通 workflow 结束且无长租约时 checkpoint 并关闭连接，不手动删除 `-wal` / `-shm`。
-- 长任务通过 project lease 保留连接，租约释放函数幂等，任务持有期间看到 `-wal` / `-shm` 属于正常现象。
-- `.lg` asset 存储在 `assets` 表，内容以 Zstd 压缩 blob 落库，读取 asset 时数据库层返回解压后的 bytes，上层不理解压缩格式。
-- 当前 `.lg` schema 包含 `meta`、`assets`、`items`、`rules`、`analysis_item_checkpoint`、`analysis_candidate_aggregate`，`schema_version` 只表达物理表结构，业务写回迁移用独立记录。
-- 启动期迁移处理 userdata / resource 文件落点，必须早于设置读取，项目数据库迁移在 `.lg` 首次打开时执行，先补 schema，再执行幂等写回迁移。
+- `ProjectDatabase` 是 `.lg` workflow 的唯一入口；上层发送严格 JSON 的 `DatabaseOperation`，不持有 SQLite 连接。
+- `execute()` 处理单操作，`execute_transaction()` 处理同一 `.lg` 内的批量操作；事务不跨文件，`createProject` 失败时关闭并移除刚创建的文件。
+- 运行期使用 WAL；长任务通过 project lease 保留连接，普通 workflow 结束且无租约时统一 checkpoint 并关闭连接，不手动删除 `-wal` / `-shm`。
+- asset 存在 `assets` 表，以 Zstd blob 落库；压缩格式集中在 `src/shared/utils/zstd-tool.ts`，数据库读取向上返回解压后的 bytes。
+- `schema_version` 只描述物理表结构，业务写回迁移单独记账；完整表与 migration 清单以 migration registry 和 schema migration 代码为准。
+- 启动期迁移先处理 userdata / resource 落点，再读取设置；项目迁移在 `.lg` 首次打开时先补 schema，再执行幂等写回迁移。
 
-## 6. 更新触发条件
+## 6. 更新条件
 
-- 改 `/api/*` 路由、响应壳、错误载荷、SSE topic、CORS、Gateway 生命周期或 renderer 诊断，更新本文。
-- 改项目 section、query 结果、payload mode、revision、事件去重、状态拥有者或唯一写入口，更新本文并同步 [`FRONTEND.md`](FRONTEND.md)。
-- 改任务命令、snapshot、状态机、request pressure、worker 模式、LLM policy 或并发租约，更新本文。
-- 改 database operation、事务、schema、migration、asset 压缩、`.lg` 文件格式或 NativeFs 边界，更新本文。
+公开路由、响应壳、错误载荷、SSE、状态所有权、写入/失败语义、任务快照、worker / LLM 边界、数据库 workflow、migration 或 `.lg` 物理格式变化时更新本文；前端消费方式只更新 [`FRONTEND.md`](FRONTEND.md)。
