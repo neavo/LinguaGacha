@@ -1,380 +1,86 @@
 # 测试反模式
 
-## 先看一个总判断
+只在需要定位测试坏味道或整改旧测试时读取本文件。下面的信号用于发现候选项，不是机械删除规则。
 
-如果断言回答的是“内部是不是刚好这样写”，这大概率就是坏味道；如果断言回答的是“用户能看到的结果对不对”，这才是正路。
+## 快速判断
 
-优先断言这些公开结果：
+| 信号 | 风险 | 优先改法 |
+| --- | --- | --- |
+| 测试名只有 `works`、`handles case` | 失败时看不出需求 | 写出输入条件和公开结果 |
+| 只断言非空、长度或对象存在 | 没有证明业务语义 | 断言具体返回值、状态、事件或错误 |
+| 只检查 mock 调用 | 测到协作剧本而非结果 | 先断言结果，再保留必要契约调用 |
+| 读取私有字段或手拼半成品对象 | 与实现强耦合 | 走公开构造和公开观察面 |
+| 深层 mock、连续 mock 多个领域模块 | 测试只验证自己搭出的系统 | 运行真实轻量逻辑，只替换干扰测试目的的边界 |
+| 固定睡眠等待异步结果 | 慢且易抖动 | 等待事件、Promise、队列或状态条件 |
+| 依赖测试顺序或共享可变状态 | 单独运行与并发运行不可靠 | 每个测试创建并清理自己的状态 |
+| 操作真实用户目录或外部服务 | 污染环境且不可重复 | 使用临时目录、测试数据库、fake 服务或测试环境 |
+| 多个用例只换无语义值 | 重复而不增加风险覆盖 | 参数化同一行为，或删除重复 |
+| 为覆盖率制造不可达组合 | 维护成本高且无产品价值 | 回到公开入口、历史缺陷和风险模型 |
 
-- 返回值和异常
-- 最终状态和可读取快照
-- 公开事件和回调载荷
-- 文件内容、数据库记录、持久化结果
-- DOM、Hook/Context 暴露状态、renderer 公开回调
-- API topic、初始化分片、公开更新载荷
+`tmp_path`、`call_args`、`vi.mock` 或参数化本身都不是反模式；只有它们让测试偏离目标行为时才需要调整。
 
-## 命名含糊
+## 白盒断言示例
 
 ```python
-# ❌ 看不出在测什么
-def test_func1(): ...
-def test_it_works(): ...
+# 差：只证明内部方法被调用
+service.save.assert_called_once_with(status="done")
 
-# ✅ 直接写清业务意图
-def test_returns_empty_list_when_input_is_none(): ...
-def test_raises_value_error_for_negative_amount(): ...
+# 好：证明调用方可观察到的结果
+assert repository.read(job_id).status == "done"
 ```
 
 ```ts
-// ❌ 看不出业务含义
-it("works", () => {});
-it("handles state", () => {});
+// 差：只证明内部 setter 收到某个对象
+expect(setState).toHaveBeenCalledWith({ open: true });
 
-// ✅ 直接说明行为
-it("合并服务端更新后推进 records revision", () => {});
-it("点击保存后提交当前表单值", () => {});
+// 好：证明用户可见状态
+expect(dialog).toHaveAttribute("aria-hidden", "false");
 ```
 
-## 测试数据没语义
+调用参数若属于外部协议、计费、安全或幂等契约，可以作为补充断言保留。
+
+## 隔离失真
+
+- `Class.__new__`、`as unknown as` 和手工塞字段常会绕过关键初始化；优先使用公开工厂或最小 builder。
+- `mock_open` 适合极窄的 `open()` 协作测试，不适合证明路径、编码、遍历、移动或权限语义。
+- 内存数据库适合仓储规则；涉及真实数据库方言、迁移或锁时，需要对应集成环境。
+- fake timer 适合调度规则；涉及真实事件循环或进程边界时，需要更接近运行环境的测试。
+
+半成品对象与公开工厂的区别：
 
 ```python
-# ❌ 只是随手凑值
-def test_user():
-    user = create_user("aaa", "bbb", 123)
-    assert user.is_valid()
-
-# ✅ 数据本身就说明场景
-def test_user_accepts_valid_email():
-    user = create_user(name="John Doe", email="john@example.com", age=25)
-    assert user.is_valid()
-
-def test_user_rejects_invalid_email():
-    user = create_user(name="John Doe", email="not-an-email", age=25)
-    assert not user.is_valid()
-```
-
-## 凑数用例
-
-```python
-# ❌ 只是为了让测试文件看起来更满
-def test_misc_1():
-    result = process_order("abc")
-    assert result is not None
-
-# ❌ 孤儿用例：名字和数据都看不出它在证明什么
-def test_misc_2():
-    payload = {"x": 1, "y": 2}
-    assert handler(payload) is True
-
-# ✅ 场景清楚，直接对应业务边界
-def test_rejects_order_without_customer_id():
-    result = process_order({"items": ["book"]})
-    assert result.error_code == "missing_customer_id"
-```
-
-```ts
-// ❌ 随手凑对象，看不出协议语义
-store.applyServerUpdate({ source: "x", updatedSections: ["a"], operations: [] });
-
-// ✅ 数据自己说明场景
-store.applyServerUpdate({
-  source: "record.saved",
-  updatedSections: ["records"],
-  operations: [{ op: "merge_records", records: [{ id: 1, label: "新值" }] }],
-});
-```
-
-## 无意义断言
-
-```python
-# ❌ 证明不了业务
-assert obj is not None
-assert len([1, 2, 3]) == 3
-assert calculate_total([1, 2, 3]) == sum([1, 2, 3])
-
-# ✅ 直接测需求
-def test_returns_zero_for_empty_list():
-    assert calculate_total([]) == 0
-
-def test_handles_negative_values():
-    assert calculate_total([-5, 10]) == 5
-```
-
-```ts
-// ❌ 只证明对象存在
-expect(result).toBeDefined();
-expect(container.querySelector("button")).not.toBeNull();
-
-// ✅ 证明用户可观察行为
-expect(result.status).toBe("queued");
-expect(button?.disabled).toBe(false);
-```
-
-## 控制台噪声
-
-```python
-# ❌ 用 print 代替真正的断言
-def test_parse_config():
-    result = parse_config("app.toml")
-    print(result)
-    assert result is not None
-
-# ✅ 如果输出本身就是被测行为，就把它当作明确结果断言
-def test_cli_prints_summary(capsys):
-    run_cli(["--summary"])
-    captured = capsys.readouterr()
-    assert "summary" in captured.out
-```
-
-测试默认不应该向控制台打印文本。只有当输出本身就是需求，或者确实需要临时定位问题时，才允许留下输出验证。
-
-```ts
-// ❌ 调试输出留在测试里
-console.log(store.getState());
-
-// ✅ 输出是行为时才断言
-expect(messages).toEqual(["保存成功"]);
-```
-
-## 盯内部实现
-
-```python
-# ❌ 看私有缓存
-def test_cache_internal():
-    service = CacheService(source=lambda key: "value")
-    service.get("key")
-    assert "key" in service.cache_dict
-
-# ❌ 只看内部调用细节
-def test_updates_via_mock_call_args():
-    service = MagicMock()
-    run_job(service)
-    assert service.save.call_args.kwargs["status"] == "done"
-
-# ✅ 记录公开结果快照
-def test_records_completed_job():
-    saved_jobs: list[dict[str, str]] = []
-
-    repository = SimpleNamespace(
-        save=lambda **kwargs: saved_jobs.append(kwargs)
-    )
-
-    run_job(repository)
-
-    assert saved_jobs == [{"status": "done", "result": "ok"}]
-```
-
-## 半成品对象
-
-```python
-# ❌ 跳过正常初始化
+# 差：绕过初始化后手工补字段
 service = Service.__new__(Service)
-service.client = MagicMock()
-service.cache = {}
+service.client = fake_client
 
-# ✅ 真实构造对象，只隔离副作用边界
-with patch("module.service.ExternalClient") as mock_client:
-    mock_client.return_value.fetch.return_value = {"status": "ok"}
-    service = Service()
+# 好：通过公开构造边界替换副作用
+service = create_service(client=fake_client)
+assert service.run().status == "done"
 ```
 
-不要用 `Class.__new__(Class)` 或手工塞属性去拼一个“看起来能跑”的实例。优先走真实构造，再 patch 网络、线程、事件订阅这类副作用边界。
+## 组织失焦
 
-```ts
-// ❌ 手工拼半套运行态对象，绕过真实初始化
-const runtime = {
-  project_store: { state: {} },
-  proofreading_change_signal: { seq: 1 },
-} as unknown as DesktopRuntime;
+下面情况值得整理：
 
-// ✅ 通过真实 provider、store 工厂或公开 builder 产生状态
-const store = createSessionStore();
-store.applyInitialSection("records", {
-  records: { 1: { id: 1, status: "DONE" } },
-  revisions: { sections: { records: 1 } },
-});
-```
+- 同一行为在多个文件中重复断言；
+- 一个测试同时证明多个独立失败原因；
+- helper 隐藏关键输入、动作或断言；
+- 单元、集成和端到端测试混在同一命令中且成本不可控；
+- 文件命名与仓库约定不一致，无法从失败定位责任边界。
 
-## Mock 用错地方
+不要为了追求统一外观强制一实现文件一测试文件。按行为、测试层级、执行成本和项目约定组织即可。
 
-```python
-# ❌ patch 在定义点
-@patch("module.utils.helper")
+## 审查搜索
 
-# ✅ patch 在使用点
-@patch("module.service.helper")
-```
-
-```ts
-// ✅ mock UI 对外使用点
-vi.mock("./transport", () => {
-  return { request: requestMock };
-});
-```
-
-## 只看 mock 调用，不看结果
-
-```python
-# ❌ 只证明外部函数被调了
-@patch("module.api.send")
-def test_sends_data(mock_send):
-    process_and_send({"id": 1})
-    mock_send.assert_called_once()
-
-# ✅ 先证明业务结果，再补边界校验
-@patch("module.api.send")
-def test_sends_processed_payload(mock_send):
-    result = process_and_send({"id": 1})
-
-    assert result["status"] == "queued"
-    mock_send.assert_called_once_with({"id": 1, "state": "ready"})
-```
-
-```ts
-// ❌ 只看 mock 有没有被调用
-expect(requestMock).toHaveBeenCalled();
-
-// ✅ 先看公开结果，再补调用约束
-expect(result.settings.language).toBe("ja");
-expect(requestMock).toHaveBeenCalledWith("/settings");
-```
-
-## 测试文件拆散
+可搜索以下候选模式，再逐项阅读上下文：
 
 ```text
-❌ 同一业务文件被多个测试文件覆盖
-src/session-store.ts
-tests/session-store.merge.test.ts
-tests/session-store.error.test.ts
-tests/session-store.mocking.test.ts
-
-✅ 一个业务文件只对应一个测试文件
-src/session-store.ts
-tests/session-store.test.ts
+__new__
+call_args / mock.calls / toHaveBeenCalled
+mock_open / vi.mock
+sleep / setTimeout
+print / console.log
+真实 URL、用户目录或固定数据库地址
 ```
 
-公用夹具、测试工具和数据 builder 可以独立成文件；它们不能承载 `session-store.ts` 的具体行为断言。
-
-## 文件隔离做歪了
-
-```python
-# ❌ 依赖磁盘临时目录
-def test_write(tmp_path):
-    path = tmp_path / "out.txt"
-    save(path)
-
-# ✅ 用 pyfakefs 统一隔离
-def test_write(fs):
-    path = Path("/workspace/out.txt")
-    save(path)
-    assert path.read_text(encoding="utf-8") == "done"
-```
-
-```python
-# ❌ 只 patch open，覆盖不全
-with patch("builtins.open", mock_open(read_data="x")):
-    load()
-
-# ✅ 用 fs 一次接住 Path/open/os/shutil/glob
-def test_load(fs):
-    path = Path("/workspace/data.txt")
-    path.write_text("x", encoding="utf-8")
-    assert load(path) == "x"
-```
-
-新增测试不要再用 `tmp_path`、`tempfile`、`mock_open`。
-
-## React 测试盯实现细节
-
-```tsx
-// ❌ 断言 Hook 内部 setter 或私有字段
-expect(setStateMock).toHaveBeenCalledWith({ open: true });
-
-// ✅ 断言 DOM 或公开回调
-button.click();
-expect(dialog?.getAttribute("data-state")).toBe("open");
-```
-
-```tsx
-// ❌ 固定睡眠等待异步状态
-await new Promise((resolve) => setTimeout(resolve, 200));
-
-// ✅ 等明确条件
-await waitForCondition(() => snapshots.at(-1)?.taskStatus === "DONE");
-```
-
-## 测试互相污染
-
-```python
-# ❌ 依赖执行顺序
-class TestOrdered:
-    shared_state = []
-
-    def test_first(self):
-        self.shared_state.append(1)
-
-    def test_second(self):
-        assert self.shared_state == [1]
-
-# ✅ 每个测试都自给自足
-def test_first():
-    state = [1]
-    assert state == [1]
-```
-
-```python
-# ❌ 返回共享可变对象
-@pytest.fixture
-def shared_list():
-    return global_list
-
-# ✅ 返回新对象
-@pytest.fixture
-def items():
-    return [1, 2, 3]
-```
-
-## 时间相关测试不受控
-
-```python
-# ❌ 靠当前时间碰运气
-def test_expiry():
-    token = create_token()
-    assert not token.is_expired()
-
-# ✅ 显式控制时间
-@patch("module.auth.datetime")
-def test_expiry(mock_datetime):
-    mock_datetime.now.return_value = datetime(2024, 1, 1, 12, 0)
-    token = create_token()
-    assert not token.is_expired()
-```
-
-## 只测快乐路径
-
-```python
-# ❌ 只有快乐路径
-def test_process():
-    assert process(valid_data) == expected
-
-# ✅ 把边界和错误分支补齐
-def test_process_valid():
-    assert process(valid_data) == expected
-
-def test_process_empty():
-    assert process([]) == []
-
-def test_process_invalid_raises():
-    with pytest.raises(ValueError):
-        process(None)
-```
-
-## 旧白盒测试整改顺序
-
-1. 先扫 Python：`__new__`、`call_args`、`call_args_list`、`tmp_path`、`mock_open`、`print\(`
-2. 再扫前端：`toHaveBeenCalled` 滥用、`mock.calls`、宽泛 `vi.mock`、`console.`、固定 `setTimeout`
-3. 说清这个测试到底要证明什么业务行为
-4. 把内部调用断言换成结果快照、事件序列或持久化断言
-5. Python 重复准备逻辑收进最近的 `conftest.py`；前端重复准备逻辑收进同目录 helper 或测试工厂
-6. 合并同一业务文件的平行测试文件，只保留一个对应测试文件
-7. 能用内存数据库、虚拟文件系统、真实 store、EventSource stub，就别再手造假的系统壳
+搜索结果不是问题清单。交付时说明每项为何保留、修改、合并或删除。

@@ -1,128 +1,91 @@
-# 跨栈边界测试示例
+# 跨边界测试
 
-只在任务涉及后端与前端、宿主与 UI、协议、事件流、初始化数据或同步 write 契约时读取本文件。
+只在任务涉及 API、协议、事件流、进程通信、宿主桥接或前后端协作时读取本文件。
 
-## 判断权威来源
+## 先确定契约拥有者
 
-写测试前先确认：
-- 协议字段、错误码和事件 topic 属于协议边界。
-- 领域事实属于后端或核心领域层。
-- UI 运行态事实属于前端状态容器和 selector。
-- 页面局部筛选、弹窗、排序不应被写回协议或全局状态。
-- 单个业务文件的具体断言仍然回到它的唯一对应测试文件；本文件只指导真实跨边界场景。
+写测试前确认：
 
-## 后端侧：发布标准事件
+- 哪一层定义字段、错误码、事件名和兼容规则；
+- 哪一层拥有业务事实，哪一层只缓存或展示；
+- 生产者与消费者如何序列化、传输、重试和处理未知字段；
+- 变更是向后兼容、需要同步发布，还是明确破坏性变更。
 
-```python
-def test_publish_event_creates_standardized_envelope() -> None:
-    service = EventStreamService()
-    subscriber = service.add_subscriber()
+不要从目录名猜测契约。读取类型、schema、路由、序列化器和实际调用链。
 
-    service.publish_domain_event(
-        "job.progress",
-        {"processed": 2, "total": 5},
-    )
+## 测试矩阵
 
-    envelope = subscriber.get_nowait()
-    assert envelope.topic == "job.progress_changed"
-    assert envelope.data == {
-        "processed": 2,
-        "total": 5,
-    }
-```
+| 变更 | 生产者侧 | 消费者侧 | 必要时增加 |
+| --- | --- | --- | --- |
+| 新增字段 | 输出字段和默认语义 | 缺失/存在字段的消费行为 | schema 或兼容性测试 |
+| 修改事件 | 事件名称与载荷 | 订阅、状态更新和未知事件 | 重连、顺序或去重测试 |
+| 修改错误 | 状态码和错误体 | 映射、展示或重试行为 | 日志与遥测契约 |
+| 修改写入 | 输入校验和最终状态 | 请求载荷与成功/失败状态 | 事务、幂等和回滚测试 |
+| 修改初始化 | 分片、顺序和完成信号 | 合并后的公开状态 | 断线恢复或部分失败 |
 
-## 后端侧：领域事件转协议更新
+只选择本次风险真正涉及的单元格，不为矩阵完整度凑测试。
+
+## 生产者示例
 
 ```python
-def test_domain_event_is_translated_to_public_update() -> None:
-    service = EventStreamService(
-        event_bridge=PublicUpdateBridge(
-            snapshot_builder=build_snapshot,
-        )
-    )
-    subscriber = service.add_subscriber()
+def test_publish_job_progress_uses_public_envelope() -> None:
+    stream = EventStream()
+    subscriber = stream.subscribe()
 
-    service.publish_domain_event(
-        "record.saved",
-        {"ids": [1, 2], "revision": 5},
-    )
+    stream.publish("job.progress", {"completed": 2, "total": 5})
 
-    envelope = subscriber.get_nowait()
-    assert envelope.topic == "state.updated"
-    assert envelope.data["source"] == "record.saved"
-    assert envelope.data["updatedSections"] == ["records"]
-    assert envelope.data["operations"][0]["records"][0]["id"] == 1
+    event = subscriber.get_nowait()
+    assert event.topic == "job.progress"
+    assert event.data == {"completed": 2, "total": 5}
 ```
 
-## 前端侧：消费初始化分片
+断言公开 envelope，而不是内部队列类型或桥接函数的调用顺序。
+
+## 消费者示例
 
 ```ts
-it("按 section 独立写入初始化数据", () => {
-  const store = createSessionStore();
+it("收到进度事件后更新公开状态", () => {
+  const store = createJobStore();
 
-  store.applyInitialSection("session", {
-    session: { id: "demo", loaded: true },
-    revisions: { global: 1, sections: { session: 1 } },
-  });
-  store.applyInitialSection("records", {
-    records: { total: 2 },
-    revisions: { sections: { records: 3 } },
-  });
+  store.applyEvent("job.progress", { completed: 2, total: 5 });
 
-  expect(store.getState().session.id).toBe("demo");
-  expect(store.getState().records.total).toBe(2);
-  expect(store.getState().revisions.sections.records).toBe(3);
+  expect(store.getSnapshot()).toMatchObject({
+    status: "running",
+    completed: 2,
+    total: 5,
+  });
 });
 ```
 
-## 前端侧：消费事件流
+生产者和消费者可以分别做快速契约测试；只有序列化、传输或启动顺序本身存在风险时，才增加真实跨进程集成测试。
 
-```ts
-await act(async () => {
-  eventStream.emit("state.updated", {
-    source: "record.saved",
-    revision: 2,
-    updatedSections: ["records"],
-    operations: [
-      {
-        op: "merge_records",
-        records: [{ id: 1, label: "updated", status: "DONE" }],
-      },
-    ],
-  });
-  await Promise.resolve();
-});
+## 是否需要真实集成
 
-await waitForCondition(() => snapshots.at(-1)?.version === 2);
+| 变更场景 | 最小充分测试 |
+| --- | --- |
+| 生产者新增可选字段，消费者已容忍未知字段 | 两侧各自契约测试 |
+| JSON、二进制或日期序列化规则改变 | 增加真实编码与解码 round-trip |
+| 重连、握手、进程启动顺序改变 | 增加对应跨进程 smoke 测试 |
+| 第三方服务没有稳定测试环境 | 保留 fake 契约，并报告真实集成缺口 |
 
-expect(snapshots.at(-1)).toMatchObject({
-  reason: "record.saved",
-  updatedSections: ["records"],
-  recordIds: [1],
-});
-```
+## 边界故障
 
-## 契约变更测试矩阵
+按实际协议考虑：
 
-| 改动 | 后端侧测试 | 前端侧测试 |
-| --- | --- | --- |
-| 新增事件 topic | 事件发布 / bridge topic 测试 | 事件流消费与忽略未知 topic 测试 |
-| 修改初始化分片 | 初始化 service 或 serializer 测试 | 状态容器初始化消费测试 |
-| 修改公开 update 操作 | bridge payload 测试 | store merge 与 signal 测试 |
-| 修改同步 write 返回 | route / service 测试 | API client 或页面状态 hook 测试 |
-| 修改错误码 | 错误映射测试 | UI 错误状态或展示测试 |
+- 缺失、额外或未知字段；
+- 重复、乱序、延迟或断线重连；
+- 部分成功、超时、取消和重试；
+- 事务失败后的回滚与事件补偿；
+- 版本不匹配和兼容窗口。
 
-## 验证建议
+这些不是默认全测清单。只有公开契约、历史缺陷或变更风险支持时才加入。
 
-跨栈契约改动至少执行：
+## 验证
 
-```powershell
-# 后端目标测试
-uv run pytest tests/path/to/contract_test.py -v
+1. 运行生产者目标测试。
+2. 运行消费者目标测试。
+3. 运行共享 schema、生成代码或类型检查。
+4. 仅在边界实现变化时运行对应集成或 smoke 测试。
+5. 报告未覆盖的部署顺序、真实传输或外部系统风险。
 
-# 前端目标测试
-npm run test -- src/path/to/consumer.test.ts
-npm exec -- tsc -p tsconfig.json --noEmit
-```
-
-如果项目不使用这些命令，换成仓库现有的等价测试、lint 和类型检查命令。
+命令来自仓库脚本和 CI 配置，不假设 Python、Node、包管理器或目录结构。

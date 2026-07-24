@@ -115,12 +115,6 @@ vi.mock("@frontend/app/state/desktop-state-context", () => {
   };
 });
 
-vi.mock("@frontend/app/session/project-session-context", () => {
-  return {
-    ProjectSessionProvider: (props: { children: ReactNode }) => <>{props.children}</>,
-  };
-});
-
 vi.mock("@frontend/app/session/project-session-ui-state-context", () => {
   return {
     ProjectSessionUiStateProvider: (props: { children: ReactNode }) => {

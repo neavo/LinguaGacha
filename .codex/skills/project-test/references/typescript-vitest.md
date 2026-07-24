@@ -1,167 +1,93 @@
-# TypeScript / Vitest 示例
+# TypeScript / Vitest
 
-只在任务涉及 TypeScript 纯逻辑、状态容器、selector、异步调度、API 客户端或 `*.test.ts` 时读取本文件。
+只在任务涉及 TypeScript 或 Vitest 时读取本文件。先复用仓库已有脚本、配置和测试工具。
 
 ## 基本形状
 
 ```ts
 import { describe, expect, it } from "vitest";
 
-import { createSessionStore } from "./session-store";
+import { calculateTotal } from "./cart";
 
-describe("createSessionStore", () => {
-  it("合并服务端更新并推进受影响分区 revision", () => {
-    const store = createSessionStore();
+describe("calculateTotal", () => {
+  it("汇总商品金额并应用折扣", () => {
+    const total = calculateTotal(
+      [{ price: 20, quantity: 2 }],
+      { discount: 5 },
+    );
 
-    store.applyServerUpdate({
-      source: "sync",
-      revision: 3,
-      updatedSections: ["records"],
-      operations: [
-        {
-          op: "merge_records",
-          records: [{ id: 1, label: "新值", status: "DONE" }],
-        },
-      ],
-    });
-
-    expect(store.getState().records["1"]).toMatchObject({
-      id: 1,
-      label: "新值",
-      status: "DONE",
-    });
-    expect(store.getState().revisions.sections.records).toBe(1);
+    expect(total).toBe(35);
   });
 });
 ```
 
-规则：
-- 遵守“一业务文件一测试文件”：例如 `session-store.ts` 只对应 `session-store.test.ts`。
-- 测试靠近被测文件或放在项目约定的测试目录；不要为同一业务文件拆出多个平行测试文件。
-- 优先创建真实 store、真实 selector、真实纯函数输入。
-- 只 mock 外部边界，不把同目录业务模块全部 `vi.mock` 掉。
-- 使用显式类型或从被测模块导出的类型，避免为了测试扩大 `any`。
+测试名、数据和断言共同表达业务行为。只有同一种行为的输入矩阵才使用 `it.each`。
 
-## 参数化
+## 状态与异步逻辑
+
+- 创建真实的纯函数、selector 或轻量状态容器。
+- 断言公开快照、返回值、事件或错误，不读取私有字段。
+- 等待明确的 Promise、事件或状态条件，不使用固定 `setTimeout`。
+- 使用 fake timer 后恢复真实 timer。
 
 ```ts
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-describe("normalizeTaskStatus", () => {
-  it.each([
-    ["IDLE", false],
-    ["RUNNING", true],
-    ["DONE", false],
-  ] as const)("把 %s 映射为 busy=%s", (status, expectedBusy) => {
-    expect(normalizeTaskStatus(status).busy).toBe(expectedBusy);
-  });
+afterEach(() => vi.useRealTimers());
+
+it("到达间隔后触发刷新", () => {
+  vi.useFakeTimers();
+  const refresh = vi.fn();
+  const scheduler = createScheduler(refresh, { intervalMs: 1000 });
+
+  scheduler.start();
+  vi.advanceTimersByTime(1000);
+
+  expect(refresh).toHaveBeenCalledTimes(1);
 });
 ```
 
-只在同一行为的输入矩阵上使用 `it.each`。
+此处调用次数就是调度器的公开契约；普通业务测试仍应优先断言结果。
 
-## Mock 使用点
+## Mock 边界
+
+Mock 远程传输、宿主 API、时间或会破坏测试目的的协作者。保持模块 mock 窄小，并在每个测试间重置状态。
 
 ```ts
-import { beforeEach, describe, expect, it, vi } from "vitest";
+const { requestMock } = vi.hoisted(() => ({ requestMock: vi.fn() }));
 
-const { requestMock } = vi.hoisted(() => {
-  return {
-    requestMock: vi.fn(),
-  };
-});
+vi.mock("./transport", () => ({ request: requestMock }));
 
-vi.mock("./transport", () => {
-  return {
-    request: requestMock,
-  };
-});
+beforeEach(() => requestMock.mockReset());
 
-describe("loadSettings", () => {
-  beforeEach(() => {
-    requestMock.mockReset();
-  });
+it("返回服务端设置", async () => {
+  requestMock.mockResolvedValue({ language: "ja" });
 
-  it("返回设置快照", async () => {
-    requestMock.mockResolvedValue({
-      settings: { language: "ja" },
-    });
+  const result = await loadSettings();
 
-    const result = await loadSettings();
-
-    expect(result.language).toBe("ja");
-    expect(requestMock).toHaveBeenCalledWith("/settings");
-  });
+  expect(result).toEqual({ language: "ja" });
+  expect(requestMock).toHaveBeenCalledWith("/settings");
 });
 ```
 
-调用断言只作为补充；主要断言仍然是公开返回值、store 快照或事件结果。
+不要把同一领域的一串模块全部 mock 掉；那通常只会验证测试自己搭出的剧本。
 
-## EventSource stub
+## 文件组织
 
-```ts
-function createEventSourceStub(): {
-  eventSource: EventSource;
-  emit: (eventName: string, payload: Record<string, unknown>) => void;
-} {
-  const listenerMap = new Map<string, EventListener>();
+- 遵循项目现有的同目录或集中测试目录约定。
+- 让测试文件名能定位行为或模块；避免两个文件重复证明同一场景。
+- 单元、契约和集成测试可以按项目约定分开，即使它们触及同一实现文件。
+- helper 放在最小共享范围，不为未来可能复用提前全局化。
 
-  return {
-    eventSource: {
-      addEventListener: vi.fn((eventName: string, listener: EventListener) => {
-        listenerMap.set(eventName, listener);
-      }),
-      close: vi.fn(),
-      onerror: null,
-    } as unknown as EventSource,
-    emit: (eventName: string, payload: Record<string, unknown>) => {
-      const listener = listenerMap.get(eventName);
-      if (listener === undefined) {
-        throw new Error(`缺少事件监听器：${eventName}`);
-      }
+## 验证
 
-      listener({ data: JSON.stringify(payload) } as MessageEvent<string>);
-    },
-  };
-}
+先识别 `package.json` 脚本、锁文件、Vitest 配置和工作区边界，再使用对应包管理器。常见形状仅供匹配现有项目：
+
+```text
+npm test -- path/to/module.test.ts
+pnpm test path/to/module.test.ts
+vitest run path/to/module.test.ts
+tsc -p tsconfig.json --noEmit
 ```
 
-用这个模式测试事件流消费时，断言最终 store、signal 或公开回调，不盯内部 listener map。
-
-## 时间与异步
-
-```ts
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-describe("createScheduler", () => {
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
-  it("到达间隔后触发刷新", () => {
-    vi.useFakeTimers();
-    const refresh = vi.fn();
-    const scheduler = createScheduler(refresh, { intervalMs: 1000 });
-
-    scheduler.start();
-    vi.advanceTimersByTime(1000);
-
-    expect(refresh).toHaveBeenCalledTimes(1);
-  });
-});
-```
-
-fake timers 用完必须恢复。
-
-## 常用验证
-
-```powershell
-npm run test
-npm run test -- src/path/to/session-store.test.ts
-npm run lint
-npm exec -- tsc -p tsconfig.json --noEmit
-```
-
-注意：
-- 从仓库根目录跑定向 Vitest 时，优先使用 `npm run test -- <相对仓库根目录的测试路径>`。
-- 若必须绕过 npm 脚本直接调用 Vitest，也从仓库根目录执行 `npm exec -- vitest run <测试路径>`，确保读取根目录 `vitest.config.ts`。
+不要绕过项目脚本导致读取错误配置。目标测试通过后，再运行受影响套件、lint、类型检查或构建。
