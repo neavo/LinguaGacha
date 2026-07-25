@@ -1,51 +1,31 @@
 import * as React from "react";
-import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@frontend/styling/classnames";
 
-// 通过变体统一卡片视觉，让页面层只负责布局与信息密度
-const cardVariants = cva("card-surface rounded-[var(--card-radius-current)] text-card-foreground", {
-  variants: {
-    variant: {
-      default: "",
-      panel: "",
-      table: "",
-      toolbar: "",
-    },
-  },
-  defaultVariants: {
-    variant: "default",
-  },
-});
-
-// 通过显式标记可交互卡片，把 hover / active 限制在真正可点击的容器上
-function resolve_card_is_interactive(props: React.ComponentProps<"section">): boolean {
-  if (props.onClick !== undefined) {
-    return true;
-  } else if (props.onKeyDown !== undefined || props.onKeyUp !== undefined) {
-    return true;
-  } else if (props.role === "button" || props.role === "link") {
-    return true;
-  } else if (props.tabIndex !== undefined && props.tabIndex >= 0) {
-    return true;
-  } else {
-    return false;
-  }
-}
+type CardVariant = "default" | "panel" | "table" | "toolbar";
 
 function Card({
   className,
   variant = "default",
   ...props
-}: React.ComponentProps<"section"> & VariantProps<typeof cardVariants>) {
-  const is_interactive = resolve_card_is_interactive(props);
+}: React.ComponentProps<"section"> & { variant?: CardVariant }) {
+  const is_interactive =
+    props.onClick !== undefined ||
+    props.onKeyDown !== undefined ||
+    props.onKeyUp !== undefined ||
+    props.role === "button" ||
+    props.role === "link" ||
+    (props.tabIndex !== undefined && props.tabIndex >= 0);
 
   return (
     <section
       data-slot="card"
       data-variant={variant}
       data-interactive={is_interactive ? "true" : undefined}
-      className={cn(cardVariants({ variant }), className)}
+      className={cn(
+        "card-surface rounded-[var(--card-radius-current)] text-card-foreground",
+        className,
+      )}
       {...props}
     />
   );

@@ -5,7 +5,7 @@
   "tsx": true,
   "tailwind": {
     "config": "",
-    "css": "src/renderer/index.css",
+    "css": "src/frontend/index.css",
     "baseColor": "neutral",
     "cssVariables": true,
     "prefix": ""
@@ -13,11 +13,11 @@
   "iconLibrary": "lucide",
   "rtl": false,
   "aliases": {
-    "components": "@/widgets",
-    "utils": "@/lib/utils",
-    "ui": "@/shadcn",
-    "lib": "@/lib",
-    "hooks": "@/hooks"
+    "components": "@frontend/widgets",
+    "utils": "@frontend/styling/classnames",
+    "ui": "@frontend/shadcn",
+    "lib": "@frontend/styling",
+    "hooks": "@frontend/widgets/interactions"
   },
   "menuColor": "default",
   "menuAccent": "subtle",
