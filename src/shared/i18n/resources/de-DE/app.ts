@@ -26,6 +26,9 @@ export const de_de_app = {
     no_valid_data: "Keine gültigen Daten …",
     update_failed: "Aktualisierung fehlgeschlagen …",
     project_settings_aligned: "Projekteinstellungen von aktuellen Einstellungen übernommen …",
+    feature_enabled: "{TITLE} aktiviert …",
+    feature_disabled: "{TITLE} deaktiviert …",
+    feature_state_changed: "{TITLE} auf {STATE} umgestellt …",
   },
   error_boundary: {
     eyebrow: "Renderer-Laufzeit",

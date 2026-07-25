@@ -417,13 +417,22 @@ export function useCustomPromptPageState(
         return false;
       }
 
-      return await persist_prompt_change({
+      const succeeded = await persist_prompt_change({
         nextText: prompt_text,
         nextEnabled: next_enabled,
         failureMessage: t("custom_prompt_page.feedback.save_failed"),
       });
+      if (succeeded) {
+        push_toast(
+          "success",
+          t(next_enabled ? "app.feedback.feature_enabled" : "app.feedback.feature_disabled", {
+            TITLE: t(config.header_title_key),
+          }),
+        );
+      }
+      return succeeded;
     },
-    [persist_prompt_change, prompt_text, readonly, t],
+    [config.header_title_key, persist_prompt_change, prompt_text, push_toast, readonly, t],
   );
 
   const import_prompt_text = useCallback(

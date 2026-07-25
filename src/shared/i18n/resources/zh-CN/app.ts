@@ -24,6 +24,9 @@ export const zh_cn_app = {
     no_valid_data: "没有有效数据 …",
     update_failed: "更新失败 …",
     project_settings_aligned: "已按当前设置更新项目设置 …",
+    feature_enabled: "{TITLE}已启用 …",
+    feature_disabled: "{TITLE}已禁用 …",
+    feature_state_changed: "{TITLE}已切换为{STATE} …",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",

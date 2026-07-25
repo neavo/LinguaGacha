@@ -26,6 +26,9 @@ export const en_us_app = {
     no_valid_data: "No valid data …",
     update_failed: "Update failed …",
     project_settings_aligned: "Project settings updated from current settings …",
+    feature_enabled: "{TITLE} enabled …",
+    feature_disabled: "{TITLE} disabled …",
+    feature_state_changed: "{TITLE} changed to {STATE} …",
   },
   error_boundary: {
     eyebrow: "Renderer Runtime",

@@ -27,6 +27,26 @@ describe("shared i18n", () => {
     expect(en_t("app.system_proxy.startup_notice", { PROXY: "http://127.0.0.1:7890" })).toBe(
       "System proxy setting detected - http://127.0.0.1:7890",
     );
+    expect(zh_t("app.feedback.feature_enabled", { TITLE: "术语表" })).toBe("术语表已启用 …");
+    expect(zh_t("app.feedback.feature_disabled", { TITLE: "术语表" })).toBe("术语表已禁用 …");
+    expect(
+      zh_t("app.feedback.feature_enabled", {
+        TITLE: zh_t("translation_prompt_page.header.title"),
+      }),
+    ).toBe("自定义翻译提示词已启用 …");
+    expect(
+      zh_t("app.feedback.feature_state_changed", {
+        TITLE: "文本保护",
+        STATE: "智能",
+      }),
+    ).toBe("文本保护已切换为智能 …");
+    expect(en_t("app.feedback.feature_enabled", { TITLE: "Glossary" })).toBe("Glossary enabled …");
+    expect(
+      en_t("app.feedback.feature_state_changed", {
+        TITLE: "Text Preserve",
+        STATE: "Smart",
+      }),
+    ).toBe("Text Preserve changed to Smart …");
     expect(zh_t("app.log.system_proxy_startup_detected", { PROXY: "http://127.0.0.1:7890" })).toBe(
       "检查到系统代理设置 - http://127.0.0.1:7890",
     );

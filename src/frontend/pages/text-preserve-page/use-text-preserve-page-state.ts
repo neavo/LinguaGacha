@@ -1002,6 +1002,13 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
             snapshot_committed = true;
           },
         });
+        push_toast(
+          "success",
+          t("app.feedback.feature_state_changed", {
+            TITLE: t("text_preserve_page.title"),
+            STATE: t(`text_preserve_page.mode.options.${next_mode}`),
+          }),
+        );
       } catch (error) {
         if (snapshot_committed && is_modal_progress_timeout_error(error)) {
           push_toast("warning", t("text_preserve_page.feedback.mode_refresh_pending"));

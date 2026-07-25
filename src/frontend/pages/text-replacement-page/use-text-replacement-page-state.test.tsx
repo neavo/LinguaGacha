@@ -728,6 +728,41 @@ describe("useTextReplacementPageState", () => {
     expect(latest_state?.statistics_badge_by_entry_id["hero::0"]?.matched_count).toBe(1);
   });
 
+  it("功能开关写入成功后显示对应状态提醒", async () => {
+    api_fetch_mock.mockResolvedValue(
+      create_quality_write_result({
+        quality: {
+          ...run_state.quality,
+          pre_replacement: {
+            ...run_state.quality.pre_replacement,
+            enabled: false,
+            revision: 3,
+          },
+        },
+        quality_revision: 3,
+      }),
+    );
+    await mount_probe();
+
+    await act(async () => {
+      await latest_state?.update_enabled(false);
+    });
+
+    expect(latest_state?.enabled).toBe(false);
+    expect(push_toast_mock).toHaveBeenCalledWith("success", "app.feedback.feature_disabled");
+  });
+
+  it("功能开关写入失败时不显示成功提醒", async () => {
+    api_fetch_mock.mockRejectedValue(new Error("保存失败"));
+    await mount_probe();
+
+    await act(async () => {
+      await latest_state?.update_enabled(false);
+    });
+
+    expect(push_toast_mock).not.toHaveBeenCalledWith("success", expect.anything());
+  });
+
   it("统计未 ready 时不会启用 statistics 排序", async () => {
     await mount_probe();
 
