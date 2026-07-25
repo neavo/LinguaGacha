@@ -151,4 +151,42 @@ describe("AppEditor", () => {
 
     expect(dispatch_tab_key(get_editor_content(container))).toBe(true);
   });
+
+  it("编辑器失焦时调用最新的 on_blur", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    const first_blur = vi.fn();
+    const latest_blur = vi.fn();
+
+    await act(async () => {
+      root?.render(
+        <AppEditor
+          value="Alpha"
+          aria_label="自动保存编辑器"
+          read_only={false}
+          on_blur={first_blur}
+        />,
+      );
+    });
+    await act(async () => {
+      root?.render(
+        <AppEditor
+          value="Alpha"
+          aria_label="自动保存编辑器"
+          read_only={false}
+          on_blur={latest_blur}
+        />,
+      );
+    });
+
+    await act(async () => {
+      const content = get_editor_content(container!);
+      content.focus();
+      content.blur();
+    });
+
+    expect(first_blur).not.toHaveBeenCalled();
+    expect(latest_blur).toHaveBeenCalledTimes(1);
+  });
 });

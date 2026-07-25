@@ -67,7 +67,7 @@ export type UseCustomPromptPageStateResult = {
   preset_input_state: CustomPromptPresetInputState;
   update_prompt_text: (next_text: string) => void;
   update_enabled: (next_enabled: boolean) => Promise<boolean>;
-  save_prompt_text: () => Promise<void>;
+  flush_prompt_change: () => Promise<boolean>;
   import_prompt_from_picker: () => Promise<void>;
   export_prompt_from_picker: () => Promise<void>;
   open_preset_menu: () => Promise<void>;
