@@ -39,6 +39,9 @@ function clone_app_table_sort_state(
       };
 }
 
+/**
+ * 只恢复当前表格支持的排序列，并切断 session 快照对象引用。
+ */
 export function normalize_proofreading_sort_state(
   sort_state: AppTableSortState | null,
 ): AppTableSortState | null {
@@ -62,7 +65,6 @@ export type UseProofreadingPageStateResult = {
   search_scope: ProofreadingSearchScope;
   is_regex: boolean;
   invalid_regex_message: string | null;
-  current_filters: ProofreadingFilterOptions;
   filter_dialog_filters: ProofreadingFilterOptions;
   filter_panel: ProofreadingFilterPanelState;
   filter_panel_loading: boolean;

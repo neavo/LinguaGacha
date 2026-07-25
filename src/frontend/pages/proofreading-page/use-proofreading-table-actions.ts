@@ -19,7 +19,6 @@ import {
   resolve_proofreading_filter_selection_from_filters,
   type ProofreadingViewFilterState,
 } from "@frontend/pages/proofreading-page/proofreading-filter-state";
-import type { ProofreadingListQueryInput } from "@frontend/pages/proofreading-page/proofreading-list-query-utils";
 
 type LocaleTextResolver = (key: LocaleKey, params?: Record<string, string>) => string;
 
@@ -42,8 +41,6 @@ type UseProofreadingTableActionsOptions = {
   proofreading_runtime_client_ref: MutableRefObject<ProofreadingApiClient>;
   should_select_first_visible_ref: MutableRefObject<boolean>;
   sync_state_ref: MutableRefObject<ProofreadingSyncState | null>;
-  table_filter_state_ref: MutableRefObject<ProofreadingViewFilterState>;
-  table_sort_state_ref: MutableRefObject<AppTableSortState | null>;
   visible_range_ref: MutableRefObject<{ start: number; count: number } | null>;
   cancel_pending_list_view_query: () => void;
   clear_table_selection: () => void;
@@ -51,16 +48,13 @@ type UseProofreadingTableActionsOptions = {
   read_current_view_row_ids: (start: number, count: number) => Promise<string[]>;
   read_list_window: (range: { start: number; count: number }) => Promise<unknown>;
   report_proofreading_list_error: (error: unknown, fallback_message: string) => boolean;
-  resolve_current_filters: () => ProofreadingFilterOptions;
+  materialize_active_filters: () => ProofreadingFilterOptions;
   run_filter_panel_query: (
     filters: ProofreadingFilterOptions,
     options?: { force?: boolean; mark_loading?: boolean },
   ) => Promise<ProofreadingFilterPanelState | null>;
-  run_list_view_query: (
-    args: ProofreadingListQueryInput,
-    options?: { force?: boolean },
-  ) => Promise<ProofreadingListView | null>;
-  schedule_search_list_view_query: (args: ProofreadingListQueryInput) => void;
+  run_list_view_query: (options?: { rebuild?: boolean }) => Promise<ProofreadingListView | null>;
+  schedule_search_list_view_query: () => void;
   set_filter_dialog_filters: (filters: ProofreadingFilterOptions) => void;
   set_filter_dialog_open: (open: boolean) => void;
   set_replace_text: (text: string) => void;
@@ -74,14 +68,6 @@ type UseProofreadingTableActionsOptions = {
     anchor_row_id: string | null;
   }) => void;
   set_table_sort_state: (sort_state: AppTableSortState | null) => void;
-  settle_list_view_and_filter_panel: (args: {
-    filters: ProofreadingFilterOptions;
-    keyword: string;
-    scope: ProofreadingSearchScope;
-    is_regex: boolean;
-    sort_state: AppTableSortState | null;
-    force?: boolean;
-  }) => Promise<boolean>;
   t: LocaleTextResolver;
 };
 
@@ -105,6 +91,9 @@ type UseProofreadingTableActionsResult = {
   confirm_filter_dialog_filters: () => Promise<void>;
 };
 
+/**
+ * 将表格交互写入共享查询意图，并统一触发列表、窗口和筛选面板查询。
+ */
 export function useProofreadingTableActions(
   options: UseProofreadingTableActionsOptions,
 ): UseProofreadingTableActionsResult {
@@ -116,13 +105,7 @@ export function useProofreadingTableActions(
         search_keyword: next_keyword,
       });
       options.clear_table_selection();
-      options.schedule_search_list_view_query({
-        filters: options.resolve_current_filters(),
-        keyword: next_keyword,
-        scope: options.table_filter_state_ref.current.search_scope,
-        is_regex: options.table_filter_state_ref.current.is_regex,
-        sort_state: options.table_sort_state_ref.current,
-      });
+      options.schedule_search_list_view_query();
     },
     [options],
   );
@@ -143,25 +126,12 @@ export function useProofreadingTableActions(
         search_scope: next_scope,
       });
       options.clear_table_selection();
-      void options
-        .run_list_view_query(
-          {
-            filters: options.resolve_current_filters(),
-            keyword: options.table_filter_state_ref.current.search_keyword,
-            scope: next_scope,
-            is_regex: options.table_filter_state_ref.current.is_regex,
-            sort_state: options.table_sort_state_ref.current,
-          },
-          {
-            force: true,
-          },
-        )
-        .catch((error) => {
-          options.report_proofreading_list_error(
-            error,
-            options.t("proofreading_page.feedback.refresh_failed"),
-          );
-        });
+      void options.run_list_view_query().catch((error) => {
+        options.report_proofreading_list_error(
+          error,
+          options.t("proofreading_page.feedback.refresh_failed"),
+        );
+      });
     },
     [options],
   );
@@ -175,25 +145,12 @@ export function useProofreadingTableActions(
         is_regex: next_is_regex,
       });
       options.clear_table_selection();
-      void options
-        .run_list_view_query(
-          {
-            filters: options.resolve_current_filters(),
-            keyword: options.table_filter_state_ref.current.search_keyword,
-            scope: options.table_filter_state_ref.current.search_scope,
-            is_regex: next_is_regex,
-            sort_state: options.table_sort_state_ref.current,
-          },
-          {
-            force: true,
-          },
-        )
-        .catch((error) => {
-          options.report_proofreading_list_error(
-            error,
-            options.t("proofreading_page.feedback.refresh_failed"),
-          );
-        });
+      void options.run_list_view_query().catch((error) => {
+        options.report_proofreading_list_error(
+          error,
+          options.t("proofreading_page.feedback.refresh_failed"),
+        );
+      });
     },
     [options],
   );
@@ -215,25 +172,12 @@ export function useProofreadingTableActions(
       options.visible_range_ref.current = null;
       options.set_table_sort_state(next_sort_state);
       options.clear_table_selection();
-      void options
-        .run_list_view_query(
-          {
-            filters: options.resolve_current_filters(),
-            keyword: options.table_filter_state_ref.current.search_keyword,
-            scope: options.table_filter_state_ref.current.search_scope,
-            is_regex: options.table_filter_state_ref.current.is_regex,
-            sort_state: next_sort_state,
-          },
-          {
-            force: true,
-          },
-        )
-        .catch((error) => {
-          options.report_proofreading_list_error(
-            error,
-            options.t("proofreading_page.feedback.refresh_failed"),
-          );
-        });
+      void options.run_list_view_query().catch((error) => {
+        options.report_proofreading_list_error(
+          error,
+          options.t("proofreading_page.feedback.refresh_failed"),
+        );
+      });
     },
     [options],
   );
@@ -323,7 +267,7 @@ export function useProofreadingTableActions(
       return;
     }
 
-    const next_dialog_filters = options.resolve_current_filters();
+    const next_dialog_filters = options.materialize_active_filters();
     options.set_filter_dialog_filters(next_dialog_filters);
     options.filter_dialog_filters_ref.current = next_dialog_filters;
     options.set_filter_dialog_open(true);
@@ -334,7 +278,7 @@ export function useProofreadingTableActions(
     options.filter_panel_query_scheduler.cancel();
     options.set_filter_dialog_open(false);
     options.filter_dialog_open_ref.current = false;
-    const restored_filters = options.resolve_current_filters();
+    const restored_filters = options.materialize_active_filters();
     options.set_filter_dialog_filters(restored_filters);
     options.filter_dialog_filters_ref.current = restored_filters;
     void options
@@ -400,14 +344,13 @@ export function useProofreadingTableActions(
       clone_proofreading_filter_options(normalized_filters);
 
     try {
-      await options.settle_list_view_and_filter_panel({
-        filters: normalized_filters,
-        keyword: options.table_filter_state_ref.current.search_keyword,
-        scope: options.table_filter_state_ref.current.search_scope,
-        is_regex: options.table_filter_state_ref.current.is_regex,
-        sort_state: options.table_sort_state_ref.current,
-        force: true,
-      });
+      await Promise.all([
+        options.run_list_view_query({ rebuild: true }),
+        options.run_filter_panel_query(normalized_filters, {
+          force: true,
+          mark_loading: false,
+        }),
+      ]);
     } catch (error) {
       options.report_proofreading_list_error(
         error,
