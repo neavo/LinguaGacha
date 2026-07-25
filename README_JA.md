@@ -87,16 +87,9 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
-- 20260604 v0.102.1
-  - `ARM On Windows` のパッケージング対応を追加
-  - 調整と改善 [#625](https://github.com/neavo/LinguaGacha/issues/625) [#626](https://github.com/neavo/LinguaGacha/issues/626)
-
-- 20260602 v0.102.0
-  - `名前フィールド` が基本属性になりました
-    - `校正ページ` で変更可能
-    - `分析タスク` で抽出可能
-    - `翻訳タスク` で用語集に反応可能
-    - ……
+- 20260725 v0.103.0
+  - `ドイツ語` インターフェースを追加 @Errorism1
+  - 調整と改善 [#597](https://github.com/neavo/LinguaGacha/issues/597) [#658](https://github.com/neavo/LinguaGacha/issues/658) [#665](https://github.com/neavo/LinguaGacha/issues/665) [#666](https://github.com/neavo/LinguaGacha/issues/666) [#667](https://github.com/neavo/LinguaGacha/issues/667)
 
 ## 開発ガイド 🛠️
 - [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストールし、その後 `npm install` を実行します

@@ -88,23 +88,9 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260622 v0.102.3
-  - Adjust and Improve [#641](https://github.com/neavo/LinguaGacha/issues/641) [#643](https://github.com/neavo/LinguaGacha/issues/643) [#644](https://github.com/neavo/LinguaGacha/issues/644) [#645](https://github.com/neavo/LinguaGacha/issues/645) [#647](https://github.com/neavo/LinguaGacha/issues/647) [#648](https://github.com/neavo/LinguaGacha/issues/648)
-
-- 20260616 v0.102.2
-  - Support for `ARM On Linux`
-  - Adjust and Improve [#630](https://github.com/neavo/LinguaGacha/issues/630) [#631](https://github.com/neavo/LinguaGacha/issues/631) [#636](https://github.com/neavo/LinguaGacha/issues/636) [#637](https://github.com/neavo/LinguaGacha/issues/637) [#638](https://github.com/neavo/LinguaGacha/issues/638)
-
-- 20260604 v0.102.1
-  - Support for `ARM On Windows`
-  - Adjust and Improve [#625](https://github.com/neavo/LinguaGacha/issues/625) [#626](https://github.com/neavo/LinguaGacha/issues/626)
-
-- 20260602 v0.102.0
-  - `Name Field` is now a basic attribute
-    - Can be modified on the `Proofreading Page`
-    - Can be extracted in `Analysis Tasks`
-    - Can respond to glossaries in `Translation Tasks`
-    - ……
+- 20260725 v0.103.0
+  - Added a `German` interface @Errorism1
+  - Adjustments and improvements [#597](https://github.com/neavo/LinguaGacha/issues/597) [#658](https://github.com/neavo/LinguaGacha/issues/658) [#665](https://github.com/neavo/LinguaGacha/issues/665) [#666](https://github.com/neavo/LinguaGacha/issues/666) [#667](https://github.com/neavo/LinguaGacha/issues/667)
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org), then run `npm install`

@@ -87,23 +87,9 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
-- 20260622 v0.102.3
-  - 调整与改进 [#641](https://github.com/neavo/LinguaGacha/issues/641) [#643](https://github.com/neavo/LinguaGacha/issues/643) [#644](https://github.com/neavo/LinguaGacha/issues/644) [#645](https://github.com/neavo/LinguaGacha/issues/645) [#647](https://github.com/neavo/LinguaGacha/issues/647) [#648](https://github.com/neavo/LinguaGacha/issues/648)
-
-- 20260616 v0.102.2
-  - 增加对 `ARM On Linux` 的打包支持
-  - 调整与改进 [#630](https://github.com/neavo/LinguaGacha/issues/630) [#631](https://github.com/neavo/LinguaGacha/issues/631) [#636](https://github.com/neavo/LinguaGacha/issues/636) [#637](https://github.com/neavo/LinguaGacha/issues/637) [#638](https://github.com/neavo/LinguaGacha/issues/638)
-
-- 20260604 v0.102.1
-  - 增加对 `ARM On Windows` 的打包支持
-  - 调整与改进 [#625](https://github.com/neavo/LinguaGacha/issues/625) [#626](https://github.com/neavo/LinguaGacha/issues/626)
-
-- 20260602 v0.102.0
-  - `姓名字段` 现在是基础属性了
-    - 可以在 `校对页` 修改
-    - 可以在 `分析任务` 中被提取
-    - 可以在 `翻译任务` 中响应术语表
-    - ……
+- 20260725 v0.103.0
+  - 增加 `德语` 界面 @Errorism1
+  - 调整与改进 [#597](https://github.com/neavo/LinguaGacha/issues/597) [#658](https://github.com/neavo/LinguaGacha/issues/658) [#665](https://github.com/neavo/LinguaGacha/issues/665) [#666](https://github.com/neavo/LinguaGacha/issues/666) [#667](https://github.com/neavo/LinguaGacha/issues/667)
 
 ## 开发指南 🛠️
 - 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]，然后 `npm install`
