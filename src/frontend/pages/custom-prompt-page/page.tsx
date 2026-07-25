@@ -96,7 +96,7 @@ export function CustomPromptPage(props: CustomPromptPageProps): JSX.Element {
           enabled={page_state.enabled}
           save_shortcut_enabled={
             !page_state.readonly &&
-            !page_state.confirm_state.open &&
+            page_state.confirm_state.kind === null &&
             !page_state.preset_input_state.open &&
             !page_state.preset_menu_open
           }

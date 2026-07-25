@@ -10,6 +10,7 @@ type CustomPromptConfirmDialogProps = {
 
 type ConfirmCopy = {
   description_key: LocaleKey;
+  confirm_key?: LocaleKey;
 };
 
 const CONFIRM_COPY_BY_KIND: Record<NonNullable<CustomPromptConfirmState["kind"]>, ConfirmCopy> = {
@@ -22,6 +23,10 @@ const CONFIRM_COPY_BY_KIND: Record<NonNullable<CustomPromptConfirmState["kind"]>
   "overwrite-preset": {
     description_key: "custom_prompt_page.confirm.overwrite_preset.description",
   },
+  "enable-after-import": {
+    description_key: "custom_prompt_page.confirm.enable_after_import.description",
+    confirm_key: "app.toggle.enabled",
+  },
 };
 export function CustomPromptConfirmDialog(props: CustomPromptConfirmDialogProps): JSX.Element {
   const { t } = useI18n();
@@ -30,9 +35,11 @@ export function CustomPromptConfirmDialog(props: CustomPromptConfirmDialogProps)
 
   return (
     <AppAlertDialog
-      open={props.state.open}
+      open={props.state.kind !== null}
       description={description}
-      submitting={props.state.submitting}
+      submitting={props.state.kind === null ? false : props.state.submitting}
+      confirmLabel={dialog_copy?.confirm_key === undefined ? undefined : t(dialog_copy.confirm_key)}
+      cancelLabel={t("app.action.cancel")}
       onConfirm={props.on_confirm}
       onClose={props.on_close}
     />

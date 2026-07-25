@@ -45,7 +45,7 @@ type CustomPromptCommandBarProps = {
   preset_items: CustomPromptPresetItem[];
   preset_menu_open: boolean;
   readonly: boolean;
-  on_toggle_enabled: (next_value: boolean) => Promise<void>;
+  on_toggle_enabled: (next_value: boolean) => Promise<boolean>;
   on_save: () => Promise<void>;
   on_import: () => Promise<void>;
   on_export: () => Promise<void>;

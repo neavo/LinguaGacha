@@ -16,20 +16,25 @@ export type CustomPromptPresetItem = {
 
 export type CustomPromptConfirmState =
   | {
-      open: false;
       kind: null;
-      preset_name: string;
-      preset_input_value: string;
-      submitting: boolean;
-      target_virtual_id: string | null;
     }
   | {
-      open: true;
-      kind: "reset" | "delete-preset" | "overwrite-preset";
-      preset_name: string;
+      kind: "reset";
+      submitting: boolean;
+    }
+  | {
+      kind: "delete-preset";
+      target_virtual_id: string;
+      submitting: boolean;
+    }
+  | {
+      kind: "overwrite-preset";
       preset_input_value: string;
       submitting: boolean;
-      target_virtual_id: string | null;
+    }
+  | {
+      kind: "enable-after-import";
+      submitting: boolean;
     };
 
 export type CustomPromptPresetInputState =
@@ -61,7 +66,7 @@ export type UseCustomPromptPageStateResult = {
   confirm_state: CustomPromptConfirmState;
   preset_input_state: CustomPromptPresetInputState;
   update_prompt_text: (next_text: string) => void;
-  update_enabled: (next_enabled: boolean) => Promise<void>;
+  update_enabled: (next_enabled: boolean) => Promise<boolean>;
   save_prompt_text: () => Promise<void>;
   import_prompt_from_picker: () => Promise<void>;
   export_prompt_from_picker: () => Promise<void>;
