@@ -1,11 +1,16 @@
 {
-    "files": [],
-    "references": [
-        {
-            "path": "./tsconfig.renderer.json"
-        },
-        {
-            "path": "./tsconfig.node.json"
-        }
-    ]
+  "compilerOptions": {
+    "paths": {
+      "@frontend/*": ["./src/frontend/*"]
+    }
+  },
+  "files": [],
+  "references": [
+    {
+      "path": "./tsconfig.renderer.json"
+    },
+    {
+      "path": "./tsconfig.node.json"
+    }
+  ]
 }

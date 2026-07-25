@@ -60,6 +60,7 @@ describe("ToolboxPage", () => {
     }
 
     expect(cards).toHaveLength(1);
+    expect(card.dataset.interactive).toBe("true");
     expect(container?.textContent).toContain("繁简转换");
     expect(container?.textContent).toContain("对当前项目的译文或角色名称进行批量繁简转换");
 
