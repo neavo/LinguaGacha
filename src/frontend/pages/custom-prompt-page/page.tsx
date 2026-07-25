@@ -58,6 +58,9 @@ export function CustomPromptPage(props: CustomPromptPageProps): JSX.Element {
           aria_label={t(page_state.header_title_key)}
           read_only={page_state.readonly}
           on_change={page_state.update_prompt_text}
+          on_blur={() => {
+            void page_state.flush_prompt_change();
+          }}
         />
 
         <Tooltip>
@@ -94,17 +97,10 @@ export function CustomPromptPage(props: CustomPromptPageProps): JSX.Element {
           header_title_key={page_state.header_title_key}
           header_description_key={page_state.header_description_key}
           enabled={page_state.enabled}
-          save_shortcut_enabled={
-            !page_state.readonly &&
-            page_state.confirm_state.kind === null &&
-            !page_state.preset_input_state.open &&
-            !page_state.preset_menu_open
-          }
           preset_items={page_state.preset_items}
           preset_menu_open={page_state.preset_menu_open}
           readonly={page_state.readonly}
           on_toggle_enabled={page_state.update_enabled}
-          on_save={page_state.save_prompt_text}
           on_import={page_state.import_prompt_from_picker}
           on_export={page_state.export_prompt_from_picker}
           on_open_preset_menu={page_state.open_preset_menu}

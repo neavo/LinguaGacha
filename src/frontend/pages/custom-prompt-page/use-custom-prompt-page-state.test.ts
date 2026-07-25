@@ -75,8 +75,10 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
   };
 });
 
-vi.mock("@frontend/app/desktop/desktop-api", () => {
+vi.mock("@frontend/app/desktop/desktop-api", async (import_original) => {
+  const actual = await import_original<typeof import("@frontend/app/desktop/desktop-api")>();
   return {
+    ...actual,
     api_fetch: vi.fn(),
   };
 });
@@ -86,6 +88,7 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
  * 构造当前测试场景的标准数据。
  */
 function create_runtime_fixture(): RuntimeFixture {
+  let prompts_revision = 3;
   return {
     project_snapshot: {
       loaded: true,
@@ -98,11 +101,24 @@ function create_runtime_fixture(): RuntimeFixture {
     },
     apply_settings_snapshot: vi.fn((payload: SettingsSnapshotPayload) => payload),
     commit_project_write: vi.fn(async ({ run }: { run: () => Promise<unknown> }) => {
+      const payload = await run();
+      prompts_revision += 1;
       return {
-        payload: await run(),
+        payload,
         write_result: {
           accepted: true,
-          changes: [],
+          changes: [
+            {
+              source: "quality_prompt_save",
+              projectPath: "E:/demo/project.lg",
+              projectRevision: prompts_revision,
+              updatedSections: ["prompts"],
+              operations: [],
+              sectionRevisions: {
+                prompts: prompts_revision,
+              },
+            },
+          ],
         },
       };
     }),
@@ -239,13 +255,6 @@ describe("useCustomPromptPageState", () => {
       if (path === "/api/quality/prompts/view") {
         return create_prompt_query_payload(initial_enabled) as never;
       }
-      if (path === "/api/workbench/snapshot") {
-        return {
-          sectionRevisions: {
-            prompts: 3 + save_index,
-          },
-        } as never;
-      }
       if (path === "/api/quality/prompts/import") {
         if (options.read_failure_source === "file") {
           throw new Error("文件读取失败");
@@ -344,99 +353,6 @@ describe("useCustomPromptPageState", () => {
     });
     expect(latest_state?.prompt_text).toBe("项目提示词");
     expect(latest_state?.enabled).toBe(true);
-  });
-
-  it("保存提示词通过统一写入管线提交 prompts revision", async () => {
-    vi.mocked(api_fetch).mockImplementation(async (path, body = {}) => {
-      if (path === "/api/quality/prompts/template") {
-        return {
-          template: {
-            default_text: "默认提示词",
-          },
-        } as never;
-      }
-      if (path === "/api/quality/prompts/view") {
-        return create_prompt_query_payload() as never;
-      }
-      if (path === "/api/workbench/snapshot") {
-        return {
-          sectionRevisions: {
-            prompts: 3,
-          },
-        } as never;
-      }
-      if (path === "/api/quality/prompts/save") {
-        return {
-          changes: [],
-          ...body,
-        } as never;
-      }
-      throw new Error(`unexpected path: ${path}`);
-    });
-
-    await render_hook();
-
-    await act(async () => {
-      latest_state?.update_prompt_text("  新提示词  ");
-    });
-    await act(async () => {
-      await latest_state?.save_prompt_text();
-    });
-
-    expect(runtime_fixture.current.commit_project_write).toHaveBeenCalledWith(
-      expect.objectContaining({
-        operation: "custom-prompt.prompt_save",
-        task_type: "translation",
-      }),
-    );
-    expect(api_fetch).toHaveBeenLastCalledWith("/api/quality/prompts/save", {
-      task_type: "translation",
-      expected_section_revisions: {
-        prompts: 3,
-      },
-      text: "新提示词",
-      enabled: true,
-    });
-    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
-      "success",
-      "app.feedback.save_success",
-    );
-  });
-
-  it("任务锁定时忽略编辑和保存，不提交后端 write", async () => {
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      task_snapshot: {
-        busy: true,
-        status: "running",
-      },
-    };
-    vi.mocked(api_fetch).mockImplementation(async (path) => {
-      if (path === "/api/quality/prompts/template") {
-        return {
-          template: {
-            default_text: "默认提示词",
-          },
-        } as never;
-      }
-      if (path === "/api/quality/prompts/view") {
-        return create_prompt_query_payload() as never;
-      }
-      throw new Error(`unexpected path: ${path}`);
-    });
-
-    await render_hook();
-
-    await act(async () => {
-      latest_state?.update_prompt_text("不应写入");
-    });
-    await act(async () => {
-      await latest_state?.save_prompt_text();
-    });
-
-    expect(latest_state?.readonly).toBe(true);
-    expect(latest_state?.prompt_text).toBe("项目提示词");
-    expect(runtime_fixture.current.commit_project_write).not.toHaveBeenCalled();
   });
 
   it.each(["file", "preset"] as const)(
@@ -559,6 +475,36 @@ describe("useCustomPromptPageState", () => {
     }
   });
 
+  it("导出前保存失败时不导出旧正文", async () => {
+    install_prompt_api({
+      save_handler: () => {
+        throw new Error("保存失败");
+      },
+    });
+    Object.defineProperty(window, "desktopApp", {
+      configurable: true,
+      value: create_desktop_bridge_api_mock({
+        methods: {
+          pickPromptExportFilePath: async () => ({
+            canceled: false,
+            paths: ["E:/demo/export.txt"],
+          }),
+        },
+      }),
+    });
+    await render_hook();
+    await act(async () => {
+      latest_state?.update_prompt_text("尚未保存的新正文");
+    });
+
+    await act(async () => {
+      await latest_state?.export_prompt_from_picker();
+    });
+
+    expect(get_save_payloads()).toHaveLength(1);
+    expect(api_fetch).not.toHaveBeenCalledWith("/api/quality/prompts/export", expect.anything());
+  });
+
   it("启用失败时保留确认框并允许重试", async () => {
     install_prompt_api({
       save_handler: (_body, save_index) => {
@@ -592,26 +538,6 @@ describe("useCustomPromptPageState", () => {
     ]);
     expect(latest_state?.confirm_state).toEqual({ kind: null });
     expect(latest_state?.enabled).toBe(true);
-  });
-
-  it("功能禁用时仍允许编辑和普通保存", async () => {
-    install_prompt_api();
-    await render_hook();
-
-    await act(async () => {
-      latest_state?.update_prompt_text("  禁用时编辑  ");
-    });
-    await act(async () => {
-      await latest_state?.save_prompt_text();
-    });
-
-    expect(latest_state?.readonly).toBe(false);
-    expect(get_save_payloads()).toEqual([
-      expect.objectContaining({
-        text: "禁用时编辑",
-        enabled: false,
-      }),
-    ]);
   });
 
   it("重置确认保留当前启用态并在成功后关闭预设菜单", async () => {

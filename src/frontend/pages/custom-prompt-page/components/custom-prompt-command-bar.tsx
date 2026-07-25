@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
-import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import type { CustomPromptPresetItem } from "@frontend/pages/custom-prompt-page/types";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
@@ -34,19 +33,15 @@ import {
   CommandBarSeparator,
 } from "@frontend/widgets/command-bar/command-bar";
 import { SegmentedToggle } from "@frontend/widgets/segmented-toggle/segmented-toggle";
-import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
-
 type CustomPromptCommandBarProps = {
   title_key: LocaleKey;
   header_title_key: LocaleKey;
   header_description_key: LocaleKey;
   enabled: boolean;
-  save_shortcut_enabled: boolean;
   preset_items: CustomPromptPresetItem[];
   preset_menu_open: boolean;
   readonly: boolean;
   on_toggle_enabled: (next_value: boolean) => Promise<boolean>;
-  on_save: () => Promise<void>;
   on_import: () => Promise<void>;
   on_export: () => Promise<void>;
   on_open_preset_menu: () => Promise<void>;
@@ -61,7 +56,6 @@ type CustomPromptCommandBarProps = {
 };
 export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.Element {
   const { t } = useI18n();
-  const save_label = t("custom_prompt_page.action.save");
   const boolean_segmented_options = [
     {
       value: "disabled",
@@ -78,14 +72,6 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
   const toggle_tooltip_title = t("custom_prompt_page.toggle.status")
     .replace("{TITLE}", t(props.header_title_key))
     .replace("{STATE}", t(toggle_state_key));
-
-  useActionShortcut({
-    action: "save",
-    enabled: props.save_shortcut_enabled,
-    on_trigger: () => {
-      void props.on_save();
-    },
-  });
 
   return (
     <CommandBar
@@ -115,19 +101,6 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
               {t("custom_prompt_page.action.export")}
             </AppButton>
           </CommandBarGroup>
-          <CommandBarSeparator />
-          <AppButton
-            variant="ghost"
-            size="toolbar"
-            disabled={props.readonly}
-            onClick={() => {
-              void props.on_save();
-            }}
-          >
-            <Save data-icon="inline-start" />
-            {save_label}
-            <ShortcutKbd action="save" />
-          </AppButton>
           <CommandBarSeparator />
           <AppDropdownMenu
             open={props.preset_menu_open}

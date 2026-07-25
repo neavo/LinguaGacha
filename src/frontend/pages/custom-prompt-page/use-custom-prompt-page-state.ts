@@ -1,14 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import {
-  type ProjectWriteOperation,
-  type ProjectWriteResultPayload,
-} from "@frontend/app/state/desktop-project-write";
 import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
-import { read_custom_prompt_section_revisions } from "@frontend/pages/custom-prompt-page/custom-prompt-api-client";
-import { is_project_write_locked } from "@frontend/app/state/task-snapshot-store";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-provider";
@@ -17,17 +11,13 @@ import {
   type CustomPromptVariant,
   type CustomPromptVariantConfig,
 } from "@frontend/pages/custom-prompt-page/config";
+import { useCustomPromptEditorState } from "@frontend/pages/custom-prompt-page/use-custom-prompt-editor-state";
 import type {
   CustomPromptConfirmState,
   CustomPromptPresetInputState,
   CustomPromptPresetItem,
-  CustomPromptTemplate,
   UseCustomPromptPageStateResult,
 } from "@frontend/pages/custom-prompt-page/types";
-
-type PromptTemplatePayload = {
-  template?: Partial<CustomPromptTemplate>;
-};
 
 type PromptPresetPayload = {
   builtin_presets?: CustomPromptPresetItem[];
@@ -37,29 +27,6 @@ type PromptPresetPayload = {
 type PromptImportPayload = {
   text?: string;
 };
-
-type PromptSlice = {
-  text: string;
-  enabled: boolean;
-};
-
-type PromptQueryPayload = {
-  prompt?: Partial<PromptSlice>;
-};
-
-// 自定义提示词页的保存动作固定，任务类型作为独立诊断维度进入提交管线。
-const CUSTOM_PROMPT_SAVE_WRITE: ProjectWriteOperation = "custom-prompt.prompt_save";
-
-/**
- * 构建当前场景的稳定结果。
- */
-function create_empty_prompt_template(): CustomPromptTemplate {
-  return {
-    default_text: "",
-    prefix_text: "",
-    suffix_text: "",
-  };
-}
 
 /**
  * 构建当前场景的稳定结果。
@@ -83,35 +50,8 @@ function create_empty_preset_input_state(): CustomPromptPresetInputState {
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
-function normalize_prompt_template(
-  template: Partial<CustomPromptTemplate> | undefined,
-): CustomPromptTemplate {
-  return {
-    default_text: String(template?.default_text ?? ""),
-    prefix_text: String(template?.prefix_text ?? ""),
-    suffix_text: String(template?.suffix_text ?? ""),
-  };
-}
-
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_prompt_text(text: string): string {
   return text.trim();
-}
-
-/**
- * 解析当前场景的最终消费值。
- */
-function resolve_editor_prompt_text(snapshot: PromptSlice, template: CustomPromptTemplate): string {
-  const normalized_text = normalize_prompt_text(String(snapshot.text ?? ""));
-
-  if (normalized_text === "") {
-    return template.default_text;
-  }
-
-  return normalized_text;
 }
 
 /**
@@ -181,21 +121,19 @@ export function useCustomPromptPageState(
   variant: CustomPromptVariant,
 ): UseCustomPromptPageStateResult {
   const config = CUSTOM_PROMPT_VARIANT_CONFIG[variant];
+  const {
+    template,
+    prompt_text,
+    enabled,
+    readonly,
+    update_prompt_text,
+    update_enabled,
+    replace_prompt_text,
+    flush_prompt_change,
+  } = useCustomPromptEditorState(variant);
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
-  const {
-    project_snapshot,
-    settings_snapshot,
-    apply_settings_snapshot,
-    commit_project_write,
-    task_snapshot,
-  } = useDesktopState();
-
-  const [template, set_template] = useState<CustomPromptTemplate>(() => {
-    return create_empty_prompt_template();
-  });
-  const [prompt_text, set_prompt_text] = useState("");
-  const [enabled, set_enabled] = useState(false);
+  const { project_snapshot, settings_snapshot, apply_settings_snapshot } = useDesktopState();
   const [preset_items, set_preset_items] = useState<CustomPromptPresetItem[]>([]);
   const [preset_menu_open, set_preset_menu_open] = useState(false);
   const [confirm_state, set_confirm_state] =
@@ -205,144 +143,14 @@ export function useCustomPromptPageState(
       return create_empty_preset_input_state();
     },
   );
-  const template_ref = useRef(template);
-  const previous_app_language_ref = useRef(settings_snapshot.app_language);
-  const readonly = is_project_write_locked(task_snapshot);
-
-  useEffect(() => {
-    template_ref.current = template;
-  }, [template]);
-
-  const apply_snapshot = useCallback(
-    (snapshot: PromptSlice, template_override?: CustomPromptTemplate): void => {
-      const resolved_template = template_override ?? template_ref.current;
-
-      set_enabled(snapshot.enabled);
-      set_prompt_text(resolve_editor_prompt_text(snapshot, resolved_template));
-    },
-    [],
-  );
-
-  const fetch_prompt_snapshot = useCallback(async (): Promise<PromptSlice> => {
-    const payload = await api_fetch<PromptQueryPayload>("/api/quality/prompts/view", {
-      task_type: config.task_type,
-    });
-    return {
-      text: String(payload.prompt?.text ?? ""),
-      enabled: Boolean(payload.prompt?.enabled),
-    };
-  }, [config.task_type]);
-
-  const fetch_prompt_template = useCallback(async (): Promise<CustomPromptTemplate> => {
-    const payload = await api_fetch<PromptTemplatePayload>("/api/quality/prompts/template", {
-      task_type: config.task_type,
-    });
-
-    return normalize_prompt_template(payload.template);
-  }, [config.task_type]);
-
-  const persist_prompt_change = useCallback(
-    async (args: {
-      nextText: string;
-      nextEnabled: boolean;
-      failureMessage: string;
-    }): Promise<boolean> => {
-      if (readonly) {
-        return false;
-      }
-
-      const next_prompt_slice = {
-        text: normalize_prompt_text(args.nextText),
-        enabled: args.nextEnabled,
-      };
-
-      try {
-        const section_revisions = await read_custom_prompt_section_revisions();
-        await commit_project_write({
-          operation: CUSTOM_PROMPT_SAVE_WRITE,
-          task_type: config.task_type,
-          run: async () => {
-            return await api_fetch<ProjectWriteResultPayload>("/api/quality/prompts/save", {
-              task_type: config.task_type,
-              expected_section_revisions: {
-                prompts: section_revisions.prompts ?? 0,
-              },
-              text: next_prompt_slice.text,
-              enabled: next_prompt_slice.enabled,
-            });
-          },
-        });
-        apply_snapshot(next_prompt_slice);
-        return true;
-      } catch (error) {
-        push_toast("error", resolve_visible_error_message(error, t, args.failureMessage));
-        return false;
-      }
-    },
-    [apply_snapshot, commit_project_write, config.task_type, push_toast, readonly],
-  );
-
-  const refresh_template = useCallback(async (): Promise<void> => {
-    try {
-      const next_template = await fetch_prompt_template();
-      set_template(next_template);
-    } catch (error) {
-      push_toast(
-        "error",
-        resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.load_failed")),
-      );
-    }
-  }, [fetch_prompt_template, push_toast, t]);
-
   useEffect(() => {
     if (!project_snapshot.loaded) {
-      set_template(create_empty_prompt_template());
-      set_prompt_text("");
-      set_enabled(false);
       set_preset_items([]);
       set_preset_menu_open(false);
       set_confirm_state(CLOSED_CONFIRM_STATE);
       set_preset_input_state(create_empty_preset_input_state());
-    } else {
-      void (async () => {
-        try {
-          const next_template = await fetch_prompt_template();
-          const prompt_slice = await fetch_prompt_snapshot();
-          set_template(next_template);
-          apply_snapshot(prompt_slice, next_template);
-        } catch (error) {
-          push_toast(
-            "error",
-            resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.load_failed")),
-          );
-        }
-      })();
     }
-  }, [
-    apply_snapshot,
-    fetch_prompt_snapshot,
-    fetch_prompt_template,
-    project_snapshot.loaded,
-    project_snapshot.path,
-    push_toast,
-    t,
-  ]);
-
-  useEffect(() => {
-    if (!project_snapshot.loaded) {
-      previous_app_language_ref.current = settings_snapshot.app_language;
-      return;
-    }
-
-    if (previous_app_language_ref.current === settings_snapshot.app_language) {
-      return;
-    }
-
-    previous_app_language_ref.current = settings_snapshot.app_language;
-
-    // 原因：UI 语言切换只需要刷新模板片段，不能顺手重拉快照覆盖用户尚未保存的正文草稿
-    void refresh_template();
-  }, [project_snapshot.loaded, refresh_template, settings_snapshot.app_language]);
+  }, [project_snapshot.loaded, project_snapshot.path]);
 
   const refresh_preset_menu = useCallback(async (): Promise<void> => {
     const preset_payload = await api_fetch<PromptPresetPayload>("/api/quality/prompts/presets", {
@@ -359,36 +167,9 @@ export function useCustomPromptPageState(
     );
   }, [config.default_preset_settings_key, config.task_type, settings_snapshot]);
 
-  const update_prompt_text = useCallback(
-    (next_text: string): void => {
-      if (readonly) {
-        return;
-      }
-
-      set_prompt_text(next_text);
-    },
-    [readonly],
-  );
-
-  const save_prompt_text = useCallback(async (): Promise<void> => {
-    if (readonly) {
-      return;
-    }
-
-    const succeeded = await persist_prompt_change({
-      nextText: prompt_text,
-      nextEnabled: enabled,
-      failureMessage: t("custom_prompt_page.feedback.save_failed"),
-    });
-    if (succeeded) {
-      push_toast("success", t("app.feedback.save_success"));
-    }
-  }, [enabled, persist_prompt_change, prompt_text, push_toast, readonly, t]);
-
   const commit_prompt_text = useCallback(
     async (
       next_text: string,
-      next_enabled: boolean,
       success_message_key:
         | "custom_prompt_page.feedback.import_success"
         | "custom_prompt_page.feedback.reset_success",
@@ -397,42 +178,14 @@ export function useCustomPromptPageState(
         return false;
       }
 
-      const succeeded = await persist_prompt_change({
-        nextText: next_text,
-        nextEnabled: next_enabled,
-        failureMessage: t("custom_prompt_page.feedback.save_failed"),
-      });
+      const succeeded = await replace_prompt_text(next_text);
       if (succeeded) {
         push_toast("success", t(success_message_key));
         return true;
       }
       return false;
     },
-    [persist_prompt_change, push_toast, readonly, t],
-  );
-
-  const update_enabled = useCallback(
-    async (next_enabled: boolean): Promise<boolean> => {
-      if (readonly) {
-        return false;
-      }
-
-      const succeeded = await persist_prompt_change({
-        nextText: prompt_text,
-        nextEnabled: next_enabled,
-        failureMessage: t("custom_prompt_page.feedback.save_failed"),
-      });
-      if (succeeded) {
-        push_toast(
-          "success",
-          t(next_enabled ? "app.feedback.feature_enabled" : "app.feedback.feature_disabled", {
-            TITLE: t(config.header_title_key),
-          }),
-        );
-      }
-      return succeeded;
-    },
-    [config.header_title_key, persist_prompt_change, prompt_text, push_toast, readonly, t],
+    [push_toast, readonly, replace_prompt_text, t],
   );
 
   const import_prompt_text = useCallback(
@@ -440,7 +193,6 @@ export function useCustomPromptPageState(
       const previous_enabled = enabled;
       const succeeded = await commit_prompt_text(
         next_text,
-        previous_enabled,
         "custom_prompt_page.feedback.import_success",
       );
       if (succeeded && !previous_enabled) {
@@ -487,6 +239,10 @@ export function useCustomPromptPageState(
         return;
       }
 
+      if (!(await flush_prompt_change())) {
+        return;
+      }
+
       await api_fetch("/api/quality/prompts/export", {
         task_type: config.task_type,
         path: selected_path,
@@ -498,7 +254,7 @@ export function useCustomPromptPageState(
         resolve_visible_error_message(error, t, t("custom_prompt_page.feedback.export_failed")),
       );
     }
-  }, [config.task_type, push_toast, t]);
+  }, [config.task_type, flush_prompt_change, push_toast, t]);
 
   const open_preset_menu = useCallback(async (): Promise<void> => {
     try {
@@ -842,7 +598,6 @@ export function useCustomPromptPageState(
       case "reset": {
         succeeded = await commit_prompt_text(
           template.default_text,
-          enabled,
           "custom_prompt_page.feedback.reset_success",
         );
         if (succeeded) {
@@ -884,7 +639,6 @@ export function useCustomPromptPageState(
     commit_prompt_text,
     confirm_state,
     delete_preset,
-    enabled,
     readonly,
     save_preset,
     template.default_text,
@@ -905,7 +659,7 @@ export function useCustomPromptPageState(
     preset_input_state,
     update_prompt_text,
     update_enabled,
-    save_prompt_text,
+    flush_prompt_change,
     import_prompt_from_picker,
     export_prompt_from_picker,
     open_preset_menu,

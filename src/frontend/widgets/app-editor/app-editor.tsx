@@ -39,6 +39,7 @@ type AppEditorProps = {
   marks?: readonly AppTextMark[];
   class_name?: string;
   on_change?: (next_value: string) => void;
+  on_blur?: () => void;
 };
 
 const editor_theme_compartment = new Compartment();
@@ -147,6 +148,7 @@ function create_editor_extensions(args: {
   keymap_extension: Extension;
   read_only: boolean;
   on_change: (next_value: string) => void;
+  on_blur: () => void;
   suppress_change_ref: { current: boolean };
   marks_ref: { current: readonly AppTextMark[] };
 }): Extension[] {
@@ -160,6 +162,11 @@ function create_editor_extensions(args: {
     drawSelection(),
     history(),
     args.keymap_extension,
+    EditorView.domEventHandlers({
+      blur: () => {
+        args.on_blur();
+      },
+    }),
     EditorView.updateListener.of((update) => {
       // 为什么：这是受控编辑器，外部同步 value 时不能再向上触发 on_change 形成回环
       if (!update.docChanged || args.suppress_change_ref.current) {
@@ -180,6 +187,7 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
   const host_ref = useRef<HTMLDivElement | null>(null);
   const editor_view_ref = useRef<EditorView | null>(null);
   const on_change_ref = useRef(props.on_change);
+  const on_blur_ref = useRef(props.on_blur);
   const suppress_change_ref = useRef(false);
   const initial_value_ref = useRef(value);
   const initial_aria_label_ref = useRef(props.aria_label);
@@ -199,6 +207,10 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
   }, [props.on_change]);
 
   useEffect(() => {
+    on_blur_ref.current = props.on_blur;
+  }, [props.on_blur]);
+
+  useEffect(() => {
     if (host_ref.current === null) {
       return;
     }
@@ -215,6 +227,9 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
         read_only: initial_read_only_ref.current,
         on_change: (next_value) => {
           on_change_ref.current?.(next_value);
+        },
+        on_blur: () => {
+          on_blur_ref.current?.();
         },
         suppress_change_ref,
         marks_ref,
