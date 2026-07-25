@@ -41,6 +41,9 @@ export const de_de_custom_prompt_page = {
     overwrite_preset: {
       description: "Voreinstellung wirklich überschreiben …?",
     },
+    enable_after_import: {
+      description: "Eigene Prompts aktivieren …?",
+    },
   },
   feedback: {
     load_failed: "Aufgabe fehlgeschlagen …",

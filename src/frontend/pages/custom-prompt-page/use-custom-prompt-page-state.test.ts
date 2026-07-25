@@ -1,10 +1,11 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
 import { useCustomPromptPageState } from "@frontend/pages/custom-prompt-page/use-custom-prompt-page-state";
+import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
 // 固定 useDesktopState 对自定义提示词页暴露的状态和写入口。
 type RuntimeFixture = {
@@ -127,6 +128,13 @@ describe("useCustomPromptPageState", () => {
   let root: Root | null = null;
   let latest_state: ReturnType<typeof useCustomPromptPageState> | null = null;
 
+  beforeEach(() => {
+    Object.defineProperty(window, "desktopApp", {
+      configurable: true,
+      value: create_desktop_bridge_api_mock(),
+    });
+  });
+
   afterEach(async () => {
     if (root !== null) {
       await act(async () => {
@@ -181,16 +189,127 @@ describe("useCustomPromptPageState", () => {
   /**
    * 构造当前测试场景的标准数据。
    */
-  function create_prompt_query_payload(): Record<string, unknown> {
+  function create_prompt_query_payload(
+    enabled = true,
+    text = "  项目提示词  ",
+  ): Record<string, unknown> {
     return {
       prompt: {
-        text: "  项目提示词  ",
-        enabled: true,
+        text,
+        enabled,
       },
       sectionRevisions: {
         prompts: 3,
       },
     };
+  }
+
+  type ImportSource = "file" | "preset";
+
+  type PromptApiOptions = {
+    initial_enabled?: boolean;
+    imported_text?: string;
+    read_failure_source?: ImportSource;
+    save_handler?: (
+      body: Record<string, unknown>,
+      save_index: number,
+    ) => Promise<unknown> | unknown;
+    user_presets?: Array<{
+      name: string;
+      virtual_id: string;
+      type: "user";
+    }>;
+  };
+
+  function install_prompt_api(options: PromptApiOptions = {}): void {
+    const initial_enabled = options.initial_enabled ?? false;
+    const imported_text = options.imported_text ?? "  导入提示词  ";
+    let save_index = 0;
+
+    vi.mocked(api_fetch).mockImplementation(async (path, body = {}) => {
+      if (path === "/api/quality/prompts/template") {
+        return {
+          template: {
+            default_text: "默认提示词",
+            prefix_text: "前缀",
+            suffix_text: "后缀",
+          },
+        } as never;
+      }
+      if (path === "/api/quality/prompts/view") {
+        return create_prompt_query_payload(initial_enabled) as never;
+      }
+      if (path === "/api/workbench/snapshot") {
+        return {
+          sectionRevisions: {
+            prompts: 3 + save_index,
+          },
+        } as never;
+      }
+      if (path === "/api/quality/prompts/import") {
+        if (options.read_failure_source === "file") {
+          throw new Error("文件读取失败");
+        }
+        return { text: imported_text } as never;
+      }
+      if (path === "/api/quality/prompts/presets/read") {
+        if (options.read_failure_source === "preset") {
+          throw new Error("预设读取失败");
+        }
+        return { text: imported_text } as never;
+      }
+      if (path === "/api/quality/prompts/save") {
+        save_index += 1;
+        return (await options.save_handler?.(body as Record<string, unknown>, save_index)) as never;
+      }
+      if (path === "/api/quality/prompts/presets") {
+        return {
+          builtin_presets: [],
+          user_presets: options.user_presets ?? [],
+        } as never;
+      }
+      if (
+        path === "/api/quality/prompts/presets/save" ||
+        path === "/api/quality/prompts/presets/delete"
+      ) {
+        return {} as never;
+      }
+      throw new Error(`unexpected path: ${path}`);
+    });
+  }
+
+  function get_save_payloads(): Record<string, unknown>[] {
+    return vi
+      .mocked(api_fetch)
+      .mock.calls.filter(([path]) => path === "/api/quality/prompts/save")
+      .map(([, body]) => body as Record<string, unknown>);
+  }
+
+  async function trigger_import(source: ImportSource): Promise<void> {
+    if (source === "file") {
+      Object.defineProperty(window, "desktopApp", {
+        configurable: true,
+        value: create_desktop_bridge_api_mock({
+          methods: {
+            pickPromptImportFilePath: async () => ({
+              canceled: false,
+              paths: ["E:/demo/import.txt"],
+            }),
+          },
+        }),
+      });
+      await act(async () => {
+        await latest_state?.import_prompt_from_picker();
+      });
+      return;
+    }
+
+    await act(async () => {
+      latest_state?.set_preset_menu_open(true);
+    });
+    await act(async () => {
+      await latest_state?.apply_preset("builtin:demo.txt");
+    });
   }
 
   it("项目已加载时拉取模板，并用后端提示词覆盖编辑器默认文本", async () => {
@@ -318,5 +437,280 @@ describe("useCustomPromptPageState", () => {
     expect(latest_state?.readonly).toBe(true);
     expect(latest_state?.prompt_text).toBe("项目提示词");
     expect(runtime_fixture.current.commit_project_write).not.toHaveBeenCalled();
+  });
+
+  it.each(["file", "preset"] as const)(
+    "%s 导入前已启用时只保存一次且不打开确认框",
+    async (source) => {
+      install_prompt_api({ initial_enabled: true });
+      await render_hook();
+
+      await trigger_import(source);
+
+      expect(get_save_payloads()).toEqual([
+        expect.objectContaining({
+          text: "导入提示词",
+          enabled: true,
+        }),
+      ]);
+      expect(latest_state?.confirm_state).toEqual({ kind: null });
+      expect(latest_state?.prompt_text).toBe("导入提示词");
+      expect(latest_state?.enabled).toBe(true);
+      if (source === "preset") {
+        expect(latest_state?.preset_menu_open).toBe(false);
+      }
+    },
+  );
+
+  it.each(["file", "preset"] as const)(
+    "%s 导入前未启用时先按禁用保存，确认后以相同正文启用",
+    async (source) => {
+      install_prompt_api();
+      await render_hook();
+
+      await trigger_import(source);
+
+      expect(get_save_payloads()).toEqual([
+        expect.objectContaining({
+          text: "导入提示词",
+          enabled: false,
+        }),
+      ]);
+      expect(latest_state?.confirm_state).toEqual({
+        kind: "enable-after-import",
+        submitting: false,
+      });
+
+      await act(async () => {
+        await latest_state?.confirm_pending_action();
+      });
+
+      expect(get_save_payloads()).toEqual([
+        expect.objectContaining({
+          text: "导入提示词",
+          enabled: false,
+        }),
+        expect.objectContaining({
+          text: "导入提示词",
+          enabled: true,
+        }),
+      ]);
+      expect(latest_state?.confirm_state).toEqual({ kind: null });
+      expect(latest_state?.prompt_text).toBe("导入提示词");
+      expect(latest_state?.enabled).toBe(true);
+      if (source === "preset") {
+        expect(latest_state?.preset_menu_open).toBe(false);
+      }
+    },
+  );
+
+  it.each(["file", "preset"] as const)(
+    "%s 导入后的启用确认取消时保留禁用正文且不再次保存",
+    async (source) => {
+      install_prompt_api();
+      await render_hook();
+
+      await trigger_import(source);
+      await act(async () => {
+        latest_state?.close_confirm_dialog();
+      });
+
+      expect(get_save_payloads()).toHaveLength(1);
+      expect(latest_state?.confirm_state).toEqual({ kind: null });
+      expect(latest_state?.prompt_text).toBe("导入提示词");
+      expect(latest_state?.enabled).toBe(false);
+      if (source === "preset") {
+        expect(latest_state?.preset_menu_open).toBe(false);
+      }
+    },
+  );
+
+  it.each(["file", "preset"] as const)("%s 读取失败时不保存且不打开启用确认", async (source) => {
+    install_prompt_api({ read_failure_source: source });
+    await render_hook();
+
+    await trigger_import(source);
+
+    expect(get_save_payloads()).toHaveLength(0);
+    expect(latest_state?.confirm_state).toEqual({ kind: null });
+    expect(latest_state?.prompt_text).toBe("项目提示词");
+    expect(latest_state?.enabled).toBe(false);
+    if (source === "preset") {
+      expect(latest_state?.preset_menu_open).toBe(true);
+    }
+  });
+
+  it.each(["file", "preset"] as const)("%s 第一次保存失败时不打开启用确认", async (source) => {
+    install_prompt_api({
+      save_handler: () => {
+        throw new Error("保存失败");
+      },
+    });
+    await render_hook();
+
+    await trigger_import(source);
+
+    expect(get_save_payloads()).toHaveLength(1);
+    expect(latest_state?.confirm_state).toEqual({ kind: null });
+    expect(latest_state?.prompt_text).toBe("项目提示词");
+    expect(latest_state?.enabled).toBe(false);
+    if (source === "preset") {
+      expect(latest_state?.preset_menu_open).toBe(true);
+    }
+  });
+
+  it("启用失败时保留确认框并允许重试", async () => {
+    install_prompt_api({
+      save_handler: (_body, save_index) => {
+        if (save_index === 2) {
+          throw new Error("启用失败");
+        }
+        return {};
+      },
+    });
+    await render_hook();
+    await trigger_import("file");
+
+    await act(async () => {
+      await latest_state?.confirm_pending_action();
+    });
+
+    expect(latest_state?.confirm_state).toEqual({
+      kind: "enable-after-import",
+      submitting: false,
+    });
+    expect(latest_state?.enabled).toBe(false);
+
+    await act(async () => {
+      await latest_state?.confirm_pending_action();
+    });
+
+    expect(get_save_payloads()).toEqual([
+      expect.objectContaining({ text: "导入提示词", enabled: false }),
+      expect.objectContaining({ text: "导入提示词", enabled: true }),
+      expect.objectContaining({ text: "导入提示词", enabled: true }),
+    ]);
+    expect(latest_state?.confirm_state).toEqual({ kind: null });
+    expect(latest_state?.enabled).toBe(true);
+  });
+
+  it("功能禁用时仍允许编辑和普通保存", async () => {
+    install_prompt_api();
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.update_prompt_text("  禁用时编辑  ");
+    });
+    await act(async () => {
+      await latest_state?.save_prompt_text();
+    });
+
+    expect(latest_state?.readonly).toBe(false);
+    expect(get_save_payloads()).toEqual([
+      expect.objectContaining({
+        text: "禁用时编辑",
+        enabled: false,
+      }),
+    ]);
+  });
+
+  it("重置确认保留当前启用态并在成功后关闭预设菜单", async () => {
+    install_prompt_api({ initial_enabled: true });
+    await render_hook();
+    await act(async () => {
+      latest_state?.set_preset_menu_open(true);
+      latest_state?.request_reset_prompt();
+    });
+
+    expect(latest_state?.confirm_state).toEqual({
+      kind: "reset",
+      submitting: false,
+    });
+
+    await act(async () => {
+      await latest_state?.confirm_pending_action();
+    });
+
+    expect(get_save_payloads()).toEqual([
+      expect.objectContaining({
+        text: "默认提示词",
+        enabled: true,
+      }),
+    ]);
+    expect(latest_state?.confirm_state).toEqual({ kind: null });
+    expect(latest_state?.preset_menu_open).toBe(false);
+  });
+
+  it("删除预设确认只携带目标 id 并在成功后关闭", async () => {
+    const preset = {
+      name: "待删除",
+      virtual_id: "user:待删除.txt",
+      type: "user" as const,
+    };
+    install_prompt_api({ user_presets: [preset] });
+    await render_hook();
+    await act(async () => {
+      await latest_state?.open_preset_menu();
+    });
+    await act(async () => {
+      latest_state?.request_delete_preset(preset);
+    });
+
+    expect(latest_state?.confirm_state).toEqual({
+      kind: "delete-preset",
+      target_virtual_id: "user:待删除.txt",
+      submitting: false,
+    });
+
+    await act(async () => {
+      await latest_state?.confirm_pending_action();
+    });
+
+    expect(api_fetch).toHaveBeenCalledWith("/api/quality/prompts/presets/delete", {
+      task_type: "translation",
+      virtual_id: "user:待删除.txt",
+    });
+    expect(latest_state?.confirm_state).toEqual({ kind: null });
+  });
+
+  it("覆盖预设确认成功后关闭确认框和预设输入框", async () => {
+    install_prompt_api({
+      user_presets: [
+        {
+          name: "重复",
+          virtual_id: "user:重复.txt",
+          type: "user",
+        },
+      ],
+    });
+    await render_hook();
+    await act(async () => {
+      await latest_state?.open_preset_menu();
+      latest_state?.request_save_preset();
+    });
+    await act(async () => {
+      latest_state?.update_preset_input_value("重复");
+    });
+    await act(async () => {
+      await latest_state?.submit_preset_input();
+    });
+
+    expect(latest_state?.confirm_state).toEqual({
+      kind: "overwrite-preset",
+      preset_input_value: "重复",
+      submitting: false,
+    });
+
+    await act(async () => {
+      await latest_state?.confirm_pending_action();
+    });
+
+    expect(api_fetch).toHaveBeenCalledWith("/api/quality/prompts/presets/save", {
+      task_type: "translation",
+      name: "重复",
+      text: "项目提示词",
+    });
+    expect(latest_state?.confirm_state).toEqual({ kind: null });
+    expect(latest_state?.preset_input_state.open).toBe(false);
   });
 });

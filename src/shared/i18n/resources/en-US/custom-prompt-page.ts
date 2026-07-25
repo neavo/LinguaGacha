@@ -41,6 +41,9 @@ export const en_us_custom_prompt_page = {
     overwrite_preset: {
       description: "Confirm overwriting preset …?",
     },
+    enable_after_import: {
+      description: "Enable custom prompts …?",
+    },
   },
   feedback: {
     load_failed: "Task failed …",
