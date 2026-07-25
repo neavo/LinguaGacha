@@ -1,19 +1,16 @@
 import { useEffect, type MutableRefObject, type SetStateAction } from "react";
 
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
-import type { ProofreadingApiClient } from "@frontend/pages/proofreading-page/proofreading-api-client";
 import type { ProofreadingViewFilterState } from "@frontend/pages/proofreading-page/proofreading-filter-state";
 import {
   resolve_list_view_window_bounds,
-  type ProofreadingListQueryInput,
+  type ProofreadingListSnapshot,
   type ProofreadingListWindowBounds,
   type ProofreadingRefreshSignal,
 } from "@frontend/pages/proofreading-page/proofreading-list-query-utils";
-import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-types";
 import type {
   ProofreadingFilterOptions,
   ProofreadingListView,
-  ProofreadingSearchScope,
 } from "@shared/proofreading/proofreading-types";
 
 type DesktopToastId = string | number;
@@ -38,26 +35,20 @@ type TableSelectionState = {
 };
 
 type UseProofreadingPageEffectsOptions = {
-  current_filter_signature: string;
+  current_query_intent_key: string;
   filter_dialog_filters: ProofreadingFilterOptions;
   filter_dialog_open: boolean;
-  is_regex: boolean;
-  list_view: ProofreadingListView;
+  list_snapshot: ProofreadingListSnapshot;
   loading_toast_visible: boolean;
   project_loaded: boolean;
   project_path: string;
   proofreading_change_signal: ProofreadingRefreshSignal | null;
   proofreading_lookup_intent: ProofreadingLookupIntent | null;
-  refresh_retry_nonce: number;
-  search_keyword: string;
-  search_scope: ProofreadingSearchScope;
-  sort_signature: string;
   visible_row_ids: string[];
-  consumed_refresh_retry_nonce_ref: MutableRefObject<number>;
   filter_dialog_filters_ref: MutableRefObject<ProofreadingFilterOptions>;
   filter_dialog_open_ref: MutableRefObject<boolean>;
   filter_panel_request_id_ref: MutableRefObject<number>;
-  list_view_ref: MutableRefObject<ProofreadingListView>;
+  list_snapshot_ref: MutableRefObject<ProofreadingListSnapshot>;
   list_view_request_id_ref: MutableRefObject<number>;
   list_window_bounds_ref: MutableRefObject<ProofreadingListWindowBounds>;
   list_window_request_id_ref: MutableRefObject<number>;
@@ -68,11 +59,9 @@ type UseProofreadingPageEffectsOptions = {
   previous_project_loaded_ref: MutableRefObject<boolean>;
   previous_project_path_ref: MutableRefObject<string>;
   previous_proofreading_change_seq_ref: MutableRefObject<number>;
-  proofreading_runtime_client_ref: MutableRefObject<ProofreadingApiClient>;
   replace_cursor_ref: MutableRefObject<number>;
   restored_ui_state_ref: MutableRefObject<boolean>;
   should_select_first_visible_ref: MutableRefObject<boolean>;
-  table_sort_state_ref: MutableRefObject<AppTableSortState | null>;
   visible_range_ref: MutableRefObject<ProofreadingListWindowBounds | null>;
   apply_preferred_row_focus: (preferred_row_id: string) => void;
   cancel_pending_list_view_query: () => void;
@@ -84,12 +73,7 @@ type UseProofreadingPageEffectsOptions = {
   push_progress_toast: (options: ProgressToastOptions) => DesktopToastId;
   refresh_snapshot: () => Promise<void>;
   report_proofreading_list_error: (error: unknown, fallback_message: string) => boolean;
-  resolve_current_filters: () => ProofreadingFilterOptions;
-  resolve_disposable_project_id: () => string | null;
-  run_list_view_query: (
-    args: ProofreadingListQueryInput,
-    options?: { force?: boolean },
-  ) => Promise<ProofreadingListView | null>;
+  run_list_view_query: (options?: { rebuild?: boolean }) => Promise<ProofreadingListView | null>;
   set_cache_status: (value: SetStateAction<"idle" | "refreshing" | "ready" | "error">) => void;
   set_table_selection_state: (payload: TableSelectionState) => void;
   update_table_filter_state: (
@@ -99,28 +83,25 @@ type UseProofreadingPageEffectsOptions = {
   t: LocaleTextResolver;
 };
 
+/**
+ * 绑定校对页的项目生命周期、外部变更、导航意图和一次性 UI 恢复副作用。
+ */
 export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOptions): void {
   const {
-    current_filter_signature,
+    current_query_intent_key,
     filter_dialog_filters,
     filter_dialog_open,
-    is_regex,
-    list_view,
+    list_snapshot,
     loading_toast_visible,
     project_loaded,
     project_path,
     proofreading_change_signal,
     proofreading_lookup_intent,
-    refresh_retry_nonce,
-    search_keyword,
-    search_scope,
-    sort_signature,
     visible_row_ids,
-    consumed_refresh_retry_nonce_ref,
     filter_dialog_filters_ref,
     filter_dialog_open_ref,
     filter_panel_request_id_ref,
-    list_view_ref,
+    list_snapshot_ref,
     list_view_request_id_ref,
     list_window_bounds_ref,
     list_window_request_id_ref,
@@ -131,11 +112,9 @@ export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOp
     previous_project_loaded_ref,
     previous_project_path_ref,
     previous_proofreading_change_seq_ref,
-    proofreading_runtime_client_ref,
     replace_cursor_ref,
     restored_ui_state_ref,
     should_select_first_visible_ref,
-    table_sort_state_ref,
     visible_range_ref,
     apply_preferred_row_focus,
     cancel_pending_list_view_query,
@@ -147,8 +126,6 @@ export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOp
     push_progress_toast,
     refresh_snapshot,
     report_proofreading_list_error,
-    resolve_current_filters,
-    resolve_disposable_project_id,
     run_list_view_query,
     set_cache_status,
     set_table_selection_state,
@@ -156,51 +133,30 @@ export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOp
     t,
   } = options;
 
+  // 页面卸载时失效在途请求，防止旧响应回写下一次页面实例。
   useEffect(() => {
-    const proofreading_runtime_client = proofreading_runtime_client_ref.current;
     return () => {
       list_view_request_id_ref.current += 1;
       list_window_request_id_ref.current += 1;
       filter_panel_request_id_ref.current += 1;
-      const project_id = resolve_disposable_project_id();
-      if (project_id !== null) {
-        void proofreading_runtime_client.dispose_project(project_id);
-      }
     };
-  }, [
-    filter_panel_request_id_ref,
-    list_view_request_id_ref,
-    list_window_request_id_ref,
-    proofreading_runtime_client_ref,
-    resolve_disposable_project_id,
-  ]);
+  }, [filter_panel_request_id_ref, list_view_request_id_ref, list_window_request_id_ref]);
 
+  // 异步查询读取 ref；state 提交后同步最新筛选草稿。
   useEffect(() => {
     filter_dialog_filters_ref.current = filter_dialog_filters;
   }, [filter_dialog_filters, filter_dialog_filters_ref]);
 
+  // 异步刷新读取 ref；弹窗开关必须与渲染态保持一致。
   useEffect(() => {
     filter_dialog_open_ref.current = filter_dialog_open;
   }, [filter_dialog_open, filter_dialog_open_ref]);
 
+  // view 与查询意图必须作为同一快照同步，窗口边界也从该快照派生。
   useEffect(() => {
-    list_view_ref.current = list_view;
-    list_window_bounds_ref.current = resolve_list_view_window_bounds(list_view);
-  }, [list_view, list_view_ref, list_window_bounds_ref]);
-
-  // refresh_retry_nonce effect 负责把 catch 分支里的重试信号接回刷新主链路。
-  useEffect(() => {
-    if (
-      refresh_retry_nonce === 0 ||
-      refresh_retry_nonce === consumed_refresh_retry_nonce_ref.current ||
-      !project_loaded
-    ) {
-      return;
-    }
-
-    consumed_refresh_retry_nonce_ref.current = refresh_retry_nonce;
-    void refresh_snapshot();
-  }, [consumed_refresh_retry_nonce_ref, project_loaded, refresh_retry_nonce, refresh_snapshot]);
+    list_snapshot_ref.current = list_snapshot;
+    list_window_bounds_ref.current = resolve_list_view_window_bounds(list_snapshot.view);
+  }, [list_snapshot, list_snapshot_ref, list_window_bounds_ref]);
 
   useEffect(() => {
     // 校对页首刷可能较久，刷新态用模态进度提示阻止用户误以为页面卡死。
@@ -231,6 +187,7 @@ export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOp
     t,
   ]);
 
+  // 独立清理 toast，覆盖页面卸载早于刷新 finally 的路径。
   useEffect(() => {
     return () => {
       const toast_id = loading_toast_id_ref.current;
@@ -243,6 +200,7 @@ export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOp
     };
   }, [dismiss_toast, loading_toast_id_ref]);
 
+  // 项目身份切换负责清空旧缓存；session 恢复时保留用户查询意图。
   useEffect(() => {
     const previous_project_loaded = previous_project_loaded_ref.current;
     const previous_project_path = previous_project_path_ref.current;
@@ -287,6 +245,7 @@ export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOp
     set_cache_status,
   ]);
 
+  // 同一项目内只按单调 change seq 消费刷新信号。
   useEffect(() => {
     const previous_seq = previous_proofreading_change_seq_ref.current;
 
@@ -305,6 +264,7 @@ export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOp
     refresh_snapshot,
   ]);
 
+  // 导航查找意图先写入共享表格状态，再由统一 list query 读取最新 ref。
   useEffect(() => {
     if (proofreading_lookup_intent === null) {
       return;
@@ -319,18 +279,7 @@ export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOp
       is_regex: proofreading_lookup_intent.is_regex,
     });
     clear_table_selection();
-    void run_list_view_query(
-      {
-        filters: resolve_current_filters(),
-        keyword: proofreading_lookup_intent.keyword,
-        scope: "all",
-        is_regex: proofreading_lookup_intent.is_regex,
-        sort_state: table_sort_state_ref.current,
-      },
-      {
-        force: true,
-      },
-    ).catch((error) => {
+    void run_list_view_query().catch((error) => {
       report_proofreading_list_error(error, t("proofreading_page.feedback.refresh_failed"));
     });
     clear_proofreading_lookup_intent();
@@ -340,15 +289,14 @@ export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOp
     clear_table_selection,
     proofreading_lookup_intent,
     report_proofreading_list_error,
-    resolve_current_filters,
     run_list_view_query,
     should_select_first_visible_ref,
-    table_sort_state_ref,
     t,
     update_table_filter_state,
     visible_range_ref,
   ]);
 
+  // 只有用户查询意图改变才重置替换游标；delta 内容刷新继续当前扫描位置。
   useEffect(() => {
     if (pending_replace_cursor_ref.current !== null) {
       replace_cursor_ref.current = pending_replace_cursor_ref.current;
@@ -357,16 +305,9 @@ export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOp
     }
 
     replace_cursor_ref.current = 0;
-  }, [
-    current_filter_signature,
-    is_regex,
-    pending_replace_cursor_ref,
-    replace_cursor_ref,
-    search_keyword,
-    search_scope,
-    sort_signature,
-  ]);
+  }, [current_query_intent_key, pending_replace_cursor_ref, replace_cursor_ref]);
 
+  // 写入恢复焦点优先于“查询后选中首行”，且两者都只消费一次。
   useEffect(() => {
     const preferred_row_id = preferred_row_id_ref.current;
 

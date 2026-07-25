@@ -2,14 +2,17 @@ import { JsonTool } from "@shared/utils/json-tool";
 import type {
   ProofreadingFilterOptions,
   ProofreadingListView,
-  ProofreadingSearchScope,
 } from "@shared/proofreading/proofreading-types";
 import type {
+  ProofreadingListViewQuery,
   ProofreadingListWindow,
   ProofreadingSyncState,
 } from "@shared/proofreading/proofreading-list-reader";
 import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-types";
-import { build_filter_signature } from "@frontend/pages/proofreading-page/proofreading-filter-state";
+import {
+  build_filter_signature,
+  type ProofreadingViewFilterState,
+} from "@frontend/pages/proofreading-page/proofreading-filter-state";
 
 export const PROOFREADING_INITIAL_WINDOW_ROWS = 128;
 export const PROOFREADING_WINDOW_PREFETCH_ROWS = 256;
@@ -19,12 +22,14 @@ export type ProofreadingListWindowBounds = {
   count: number;
 };
 
-export type ProofreadingListQueryInput = {
-  filters: ProofreadingFilterOptions;
-  keyword: string;
-  scope: ProofreadingSearchScope;
-  is_regex: boolean;
-  sort_state: AppTableSortState | null;
+export type ProofreadingResolvedListQuery = {
+  query_intent_key: string; // 只描述用户查询意图，不吸收 revision 或后端默认筛选的具体值
+  query: ProofreadingListViewQuery; // 执行时按最新默认筛选物化出的后端查询
+};
+
+export type ProofreadingListSnapshot = {
+  query_intent_key: string; // 创建当前 view 时使用的用户查询意图
+  view: ProofreadingListView; // 与意图原子发布，避免异步刷新拼接平行 state/ref
 };
 
 export type ProofreadingRefreshSignal = {
@@ -34,6 +39,9 @@ export type ProofreadingRefreshSignal = {
   deleteItemIds: number[];
 };
 
+/**
+ * 把可见范围扩成预取窗口，并限制在当前稳定视图的行数内。
+ */
 export function resolve_prefetched_list_window_bounds(args: {
   range: ProofreadingListWindowBounds;
   row_count: number;
@@ -50,6 +58,9 @@ export function resolve_prefetched_list_window_bounds(args: {
   };
 }
 
+/**
+ * 从当前视图恢复下一次刷新窗口；空窗口也至少读取首屏容量。
+ */
 export function resolve_list_view_window_bounds(
   list_view: ProofreadingListView,
 ): ProofreadingListWindowBounds {
@@ -59,6 +70,9 @@ export function resolve_list_view_window_bounds(
   };
 }
 
+/**
+ * delta 刷新只替换旧视图的 revision 与窗口内容，保留成员身份、排序和 view_id。
+ */
 export function build_refreshed_proofreading_list_view(args: {
   previous_view: ProofreadingListView;
   sync_state: ProofreadingSyncState;
@@ -79,6 +93,9 @@ export function build_refreshed_proofreading_list_view(args: {
   };
 }
 
+/**
+ * 非空旧视图突然返回空窗口表示 view_id 已失效，需要退回完整 list query。
+ */
 export function is_missing_refreshed_list_window(args: {
   previous_view: ProofreadingListView;
   window: ProofreadingListWindow;
@@ -88,46 +105,22 @@ export function is_missing_refreshed_list_window(args: {
   );
 }
 
-export function build_sort_signature(sort_state: AppTableSortState | null): string {
-  return sort_state === null ? "null" : `${sort_state.column_id}:${sort_state.direction}`;
-}
-
-export function build_list_query_signature(args: {
-  revisions: {
-    items: number;
-    quality: number;
-    proofreading: number;
-  };
-  filters: ProofreadingFilterOptions;
-  keyword: string;
-  scope: ProofreadingSearchScope;
-  is_regex: boolean;
+/**
+ * 查询意图键只编码用户可编辑状态；后端默认筛选变化不得让 delta 刷新重算成员。
+ */
+export function build_proofreading_list_query_intent_key(args: {
+  filter_state: ProofreadingViewFilterState;
   sort_state: AppTableSortState | null;
 }): string {
   return JsonTool.stringifyStrict({
-    revisions: args.revisions,
-    filters: build_filter_signature(args.filters),
-    keyword: args.keyword,
-    scope: args.scope,
-    is_regex: args.is_regex,
-    sort: build_sort_signature(args.sort_state),
+    filter_state: args.filter_state,
+    sort_state: args.sort_state,
   });
 }
 
-export function build_sync_list_query_signature(args: {
-  sync_state: ProofreadingSyncState;
-  query: ProofreadingListQueryInput;
-}): string {
-  return build_list_query_signature({
-    revisions: args.sync_state.revisions,
-    filters: args.query.filters,
-    keyword: args.query.keyword,
-    scope: args.query.scope,
-    is_regex: args.query.is_regex,
-    sort_state: args.query.sort_state,
-  });
-}
-
+/**
+ * 筛选面板依赖当前 revision 和物化筛选，任一变化都必须重新统计。
+ */
 export function build_filter_panel_signature(args: {
   revisions: {
     items: number;
@@ -142,6 +135,9 @@ export function build_filter_panel_signature(args: {
   });
 }
 
+/**
+ * 项目、语言或错误态改变缓存身份时强制全量同步，其余情况沿用事件模式。
+ */
 export function resolve_requested_sync_mode(args: {
   cache_status: "idle" | "refreshing" | "ready" | "error";
   sync_state: ProofreadingSyncState | null;
@@ -169,6 +165,9 @@ export function resolve_requested_sync_mode(args: {
   return args.signal_mode;
 }
 
+/**
+ * 只把能精确表达行级变化的公开事件降为 delta，其余相关变化要求全量刷新。
+ */
 export function resolve_proofreading_refresh_signal(signal: {
   seq: number;
   updated_sections: string[];
@@ -239,6 +238,9 @@ export function resolve_proofreading_refresh_signal(signal: {
   return null;
 }
 
+/**
+ * 跨边界 item id 只接受去重后的正整数，避免无效载荷污染 delta 请求。
+ */
 function normalize_refresh_item_ids(values: Array<number | string>): number[] {
   const ids = new Set<number>();
   for (const value of values) {

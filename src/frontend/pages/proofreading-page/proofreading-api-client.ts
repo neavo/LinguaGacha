@@ -16,10 +16,6 @@ import type {
 } from "@shared/proofreading/proofreading-types";
 import type { ProjectDataSectionRevisions } from "@shared/project-event";
 
-type ProofreadingListQueryOptions = {
-  staleKey?: string | null;
-};
-
 export type ProofreadingSyncSnapshot = {
   syncState: ProofreadingSyncState; // 校对 reader 轻量运行态，只描述列表缓存身份和默认筛选
   sectionRevisions: ProjectDataSectionRevisions; // query response 顶层完整乐观锁来源
@@ -30,10 +26,7 @@ export type ProofreadingApiClient = {
     sourceLanguage: string;
     targetLanguage: string;
   }) => Promise<ProofreadingSyncSnapshot>;
-  build_proofreading_list_view: (
-    input: ProofreadingListViewQuery,
-    options?: ProofreadingListQueryOptions,
-  ) => Promise<ProofreadingListView>;
+  build_proofreading_list_view: (input: ProofreadingListViewQuery) => Promise<ProofreadingListView>;
   read_proofreading_list_window: (
     input: ProofreadingListWindowQuery,
   ) => Promise<ProofreadingListWindow>;
@@ -45,8 +38,6 @@ export type ProofreadingApiClient = {
   build_proofreading_filter_panel: (
     input: ProofreadingFilterPanelQuery,
   ) => Promise<ProofreadingFilterPanelState>;
-  dispose_project: (projectId: string) => Promise<void>;
-  dispose: () => void;
 };
 
 /**
@@ -82,7 +73,7 @@ export function createProofreadingApiClient(): ProofreadingApiClient {
         sectionRevisions: response.sectionRevisions ?? {},
       };
     },
-    async build_proofreading_list_view(input, _options = {}) {
+    async build_proofreading_list_view(input) {
       const response = await api_fetch<{ view?: ProofreadingListView }>("/api/proofreading/view", {
         action: "list",
         query: input,
@@ -146,7 +137,5 @@ export function createProofreadingApiClient(): ProofreadingApiClient {
         }
       );
     },
-    async dispose_project(_projectId) {},
-    dispose() {},
   };
 }

@@ -43,7 +43,10 @@ type RuntimeFixture = {
 
 // 只保留校对页查找意图，避免页面测试依赖真实导航容器。
 type NavigationFixture = {
-  proofreading_lookup_intent: null;
+  proofreading_lookup_intent: {
+    keyword: string;
+    is_regex: boolean;
+  } | null;
   clear_proofreading_lookup_intent: ReturnType<typeof vi.fn>;
 };
 
@@ -56,8 +59,6 @@ type ProofreadingClientFixture = {
   resolve_proofreading_row_index: ReturnType<typeof vi.fn>;
   read_proofreading_items_by_row_ids: ReturnType<typeof vi.fn>;
   build_proofreading_filter_panel: ReturnType<typeof vi.fn>;
-  dispose_project: ReturnType<typeof vi.fn>;
-  dispose: ReturnType<typeof vi.fn>;
 };
 
 // 记录刷新和写入反馈，避免用例挂载真实 toast 宿主。
@@ -481,8 +482,6 @@ function create_proofreading_client_fixture(): ProofreadingClientFixture {
       return create_list_view().window_rows.map((row) => row.item);
     }),
     build_proofreading_filter_panel: vi.fn(async () => create_filter_panel()),
-    dispose_project: vi.fn(async () => {}),
-    dispose: vi.fn(),
   };
 }
 
@@ -495,6 +494,7 @@ function create_toast_fixture(): ToastFixture {
   };
 }
 
+// 从页面公开 Hook 覆盖 state、effects 与 table-actions 的真实协作，避免为内部 Hook 复制同一套巨型夹具。
 describe("useProofreadingPageState", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
@@ -603,6 +603,40 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.settled_project_path).toBe("E:/demo/sample.lg");
   });
 
+  it("收到导航查找意图时会更新搜索状态并执行统一列表查询", async () => {
+    await render_hook();
+    proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
+    const clear_proofreading_lookup_intent = vi.fn(() => {
+      navigation_fixture.current = {
+        ...navigation_fixture.current,
+        proofreading_lookup_intent: null,
+      };
+    });
+    navigation_fixture.current = {
+      proofreading_lookup_intent: {
+        keyword: "^foo$",
+        is_regex: true,
+      },
+      clear_proofreading_lookup_intent,
+    };
+
+    await render_hook();
+
+    expect(latest_state?.search_keyword).toBe("^foo$");
+    expect(latest_state?.search_scope).toBe("all");
+    expect(latest_state?.is_regex).toBe(true);
+    expect(
+      proofreading_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        keyword: "^foo$",
+        scope: "all",
+        is_regex: true,
+      }),
+    );
+    expect(clear_proofreading_lookup_intent).toHaveBeenCalledTimes(1);
+  });
+
   it("任务 busy 时会把页面写入口暴露为只读", async () => {
     runtime_fixture.current = {
       ...runtime_fixture.current,
@@ -628,8 +662,6 @@ describe("useProofreadingPageState", () => {
 
     await render_hook();
 
-    expect(latest_state?.current_filters.statuses).toEqual(["NONE", "PROCESSED", "ERROR"]);
-    expect(latest_state?.current_filters.glossary_terms).toEqual([glossary_term]);
     expect(
       proofreading_client_fixture.current.build_proofreading_list_view,
     ).toHaveBeenLastCalledWith(
@@ -639,9 +671,6 @@ describe("useProofreadingPageState", () => {
           glossary_terms: [glossary_term],
         }),
       }),
-      {
-        staleKey: null,
-      },
     );
   });
 
@@ -690,9 +719,6 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.visible_items[0]?.item.warnings).toEqual(["FULL_SYNCED"]);
     expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledWith(
       expect.any(Object),
-      {
-        staleKey: null,
-      },
     );
     expect(toast_fixture.current.dismiss_toast).toHaveBeenCalledWith("proofreading-loading-toast");
   });
@@ -739,9 +765,7 @@ describe("useProofreadingPageState", () => {
     );
     expect(
       proofreading_client_fixture.current.build_proofreading_list_view,
-    ).toHaveBeenLastCalledWith(expect.objectContaining({ window_start: 0, window_count: 128 }), {
-      staleKey: null,
-    });
+    ).toHaveBeenLastCalledWith(expect.objectContaining({ window_start: 0, window_count: 128 }));
     expect(
       proofreading_client_fixture.current.build_proofreading_filter_panel,
     ).toHaveBeenCalledTimes(1);
@@ -772,6 +796,110 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.preserve_scroll_anchor.revision).toBeGreaterThan(0);
     expect(latest_state?.cache_status).toBe("ready");
     expect(latest_state?.visible_items).toHaveLength(1);
+  });
+
+  it("正则搜索中的条目 delta 刷新只更新行内容并保留多选工作集", async () => {
+    vi.useFakeTimers();
+    const glossary_term: ProofreadingGlossaryTerm = ["魔法", "Magic"];
+    const searched_list_view = {
+      ...create_list_view(),
+      row_count: 2,
+      window_rows: [
+        {
+          row_id: "1",
+          item: create_client_item(1),
+          compressed_src: "foo-1",
+          compressed_dst: "bar-1",
+        },
+        {
+          row_id: "2",
+          item: create_client_item(2),
+          compressed_src: "foo-2",
+          compressed_dst: "bar-2",
+        },
+      ],
+    };
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
+      return create_sync_state({
+        glossary_terms: [glossary_term],
+      });
+    });
+    proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async () => {
+      return searched_list_view;
+    });
+    await render_hook();
+
+    await act(async () => {
+      latest_state?.update_regex(true);
+    });
+    await flush_async_updates();
+    await act(async () => {
+      latest_state?.update_search_keyword("foo");
+      vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
+    });
+    await flush_async_updates();
+    await act(async () => {
+      latest_state?.apply_table_selection({
+        selected_row_ids: ["1", "2"],
+        active_row_id: "2",
+        anchor_row_id: "1",
+      });
+    });
+
+    proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async () => {
+      return {
+        ...create_empty_proofreading_list_view(),
+        projectId: "E:/demo/sample.lg",
+        view_id: "rebuilt-empty-view",
+      };
+    });
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
+      return create_sync_state({
+        glossary_terms: [],
+      });
+    });
+    proofreading_client_fixture.current.read_proofreading_list_window = vi.fn(async () => {
+      return {
+        view_id: "view-1",
+        start: 0,
+        row_count: 2,
+        rows: searched_list_view.window_rows.map((row) => {
+          return {
+            ...row,
+            item: {
+              ...row.item,
+              dst: "",
+              compressed_dst: "",
+            },
+            compressed_dst: "",
+          };
+        }),
+      };
+    });
+
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_change_signal: create_project_change_signal(1, {
+        mode: "delta",
+        itemIds: [1, 2],
+        updatedSections: ["items"],
+      }),
+    };
+    await render_hook();
+
+    expect(proofreading_client_fixture.current.build_proofreading_list_view).not.toHaveBeenCalled();
+    expect(
+      proofreading_client_fixture.current.read_proofreading_list_window,
+    ).toHaveBeenLastCalledWith({
+      view_id: "view-1",
+      start: 0,
+      count: 128,
+    });
+    expect(latest_state?.visible_items.map((item) => item.row_id)).toEqual(["1", "2"]);
+    expect(latest_state?.visible_items.map((item) => item.item.dst)).toEqual(["", ""]);
+    expect(latest_state?.selected_row_ids).toEqual(["1", "2"]);
+    expect(latest_state?.active_row_id).toBe("2");
+    expect(latest_state?.anchor_row_id).toBe("1");
   });
 
   it("翻译写回触发 delta 刷新时保留当前列表且不展示模态 loading toast", async () => {
@@ -826,7 +954,6 @@ describe("useProofreadingPageState", () => {
       });
     });
     expect(latest_state?.filter_dialog_open).toBe(true);
-    expect(latest_state?.current_filters.statuses).toEqual(["NONE"]);
     expect(latest_state?.filter_dialog_filters.statuses).toEqual([]);
 
     const sync_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
@@ -851,7 +978,6 @@ describe("useProofreadingPageState", () => {
 
     expect(latest_state?.cache_status).toBe("ready");
     expect(latest_state?.filter_dialog_open).toBe(true);
-    expect(latest_state?.current_filters.statuses).toEqual(["NONE"]);
     expect(latest_state?.filter_dialog_filters.statuses).toEqual([]);
   });
 
@@ -1340,9 +1466,6 @@ describe("useProofreadingPageState", () => {
       expect.objectContaining({
         keyword: "needle",
       }),
-      {
-        staleKey: null,
-      },
     );
   });
 
@@ -1386,9 +1509,6 @@ describe("useProofreadingPageState", () => {
       expect.objectContaining({
         keyword: "needle",
       }),
-      {
-        staleKey: null,
-      },
     );
   });
 
@@ -1460,9 +1580,6 @@ describe("useProofreadingPageState", () => {
         window_start: 44,
         window_count: 522,
       }),
-      {
-        staleKey: null,
-      },
     );
     expect(latest_state?.visible_row_count).toBe(1000);
   });
@@ -1877,7 +1994,6 @@ describe("useProofreadingPageState", () => {
     await render_hook();
 
     expect(latest_state?.selected_row_ids).toEqual(["70"]);
-    expect(latest_state?.current_filters.glossary_terms).toEqual([glossary_term]);
     expect(
       proofreading_client_fixture.current.build_proofreading_list_view,
     ).toHaveBeenLastCalledWith(
@@ -1886,9 +2002,6 @@ describe("useProofreadingPageState", () => {
           glossary_terms: [glossary_term],
         }),
       }),
-      {
-        staleKey: null,
-      },
     );
   });
 
@@ -1923,10 +2036,6 @@ describe("useProofreadingPageState", () => {
 
     await render_hook();
 
-    expect(latest_state?.current_filters.glossary_terms).toEqual([
-      glossary_term,
-      next_glossary_term,
-    ]);
     expect(latest_state?.filter_dialog_filters.glossary_terms).toEqual([
       glossary_term,
       next_glossary_term,
@@ -1939,9 +2048,57 @@ describe("useProofreadingPageState", () => {
           glossary_terms: [glossary_term, next_glossary_term],
         }),
       }),
-      {
-        staleKey: null,
-      },
+    );
+  });
+
+  it("确认未改动的默认筛选时会按同步后的最新默认值重建列表", async () => {
+    const glossary_term: ProofreadingGlossaryTerm = ["魔法", "Magic"];
+    const next_glossary_term: ProofreadingGlossaryTerm = ["王国", "Kingdom"];
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
+      return create_sync_state({
+        glossary_terms: [glossary_term],
+      });
+    });
+    await render_hook();
+
+    proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
+      return create_sync_state({
+        glossary_terms: [glossary_term, next_glossary_term],
+      });
+    });
+    proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      project_change_signal: create_project_change_signal(1, {
+        mode: "delta",
+        itemIds: [1],
+        updatedSections: ["items"],
+      }),
+    };
+    await render_hook();
+
+    expect(proofreading_client_fixture.current.build_proofreading_list_view).not.toHaveBeenCalled();
+
+    await act(async () => {
+      latest_state?.open_filter_dialog();
+    });
+    await flush_async_updates();
+    await act(async () => {
+      await latest_state?.confirm_filter_dialog_filters();
+    });
+    await flush_async_updates();
+
+    expect(proofreading_client_fixture.current.build_proofreading_list_view).toHaveBeenCalledTimes(
+      1,
+    );
+    expect(
+      proofreading_client_fixture.current.build_proofreading_list_view,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        filters: expect.objectContaining({
+          glossary_terms: [glossary_term, next_glossary_term],
+        }),
+      }),
     );
   });
 
@@ -1983,7 +2140,6 @@ describe("useProofreadingPageState", () => {
 
     await render_hook();
 
-    expect(latest_state?.current_filters.glossary_terms).toEqual([]);
     expect(latest_state?.filter_dialog_filters.glossary_terms).toEqual([]);
     expect(
       proofreading_client_fixture.current.build_proofreading_list_view,
@@ -1993,9 +2149,6 @@ describe("useProofreadingPageState", () => {
           glossary_terms: [],
         }),
       }),
-      {
-        staleKey: null,
-      },
     );
   });
 
@@ -2036,7 +2189,6 @@ describe("useProofreadingPageState", () => {
     };
     await render_hook();
 
-    expect(latest_state?.current_filters.glossary_terms).toEqual([glossary_term]);
     expect(
       proofreading_client_fixture.current.build_proofreading_list_view,
     ).toHaveBeenLastCalledWith(
@@ -2045,9 +2197,6 @@ describe("useProofreadingPageState", () => {
           glossary_terms: [glossary_term],
         }),
       }),
-      {
-        staleKey: null,
-      },
     );
   });
 
@@ -2137,7 +2286,6 @@ describe("useProofreadingPageState", () => {
     await render_hook();
 
     expect(latest_state?.search_keyword).toBe("foo");
-    expect(latest_state?.current_filters.statuses).toEqual([]);
     expect(latest_state?.filter_dialog_filters.statuses).toEqual([]);
     expect(latest_state?.sort_state).toEqual({
       column_id: "src",
@@ -2166,9 +2314,6 @@ describe("useProofreadingPageState", () => {
           direction: "descending",
         },
       }),
-      {
-        staleKey: null,
-      },
     );
   });
 
@@ -2244,24 +2389,6 @@ describe("useProofreadingPageState", () => {
     );
   });
 
-  it("未建立列表项目缓存时卸载不会发送空项目释放请求", async () => {
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_snapshot: {
-        loaded: false,
-        path: "",
-      },
-    };
-    await render_hook();
-
-    await act(async () => {
-      root?.unmount();
-    });
-    root = null;
-
-    expect(proofreading_client_fixture.current.dispose_project).not.toHaveBeenCalled();
-  });
-
   it("项目卸载会废弃在途刷新结果", async () => {
     const refresh_deferred = create_deferred<ReturnType<typeof create_sync_state>>();
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(() => {
@@ -2281,7 +2408,6 @@ describe("useProofreadingPageState", () => {
     await render_hook();
 
     expect(latest_state?.cache_status).toBe("idle");
-    expect(proofreading_client_fixture.current.dispose_project).not.toHaveBeenCalled();
 
     await act(async () => {
       refresh_deferred.resolve(create_sync_state());

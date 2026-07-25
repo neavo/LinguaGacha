@@ -41,7 +41,12 @@ describe("useProofreadingCacheActions", () => {
   const set_list_revisions = vi.fn(); // 接收列表 reader revision
   const set_operation_revisions = vi.fn(); // 接收 query 顶层操作 revision
   const sync_state_ref = { current: null }; // 校对 sync 运行态引用
-  const list_view_ref = { current: create_empty_proofreading_list_view() }; // 当前列表视图引用
+  const list_snapshot_ref = {
+    current: {
+      query_intent_key: "",
+      view: create_empty_proofreading_list_view(),
+    },
+  }; // 当前列表视图及其查询意图
 
   afterEach(async () => {
     if (root !== null) {
@@ -57,7 +62,10 @@ describe("useProofreadingCacheActions", () => {
     set_list_revisions.mockReset();
     set_operation_revisions.mockReset();
     sync_state_ref.current = null;
-    list_view_ref.current = create_empty_proofreading_list_view();
+    list_snapshot_ref.current = {
+      query_intent_key: "",
+      view: create_empty_proofreading_list_view(),
+    };
   });
 
   // 暴露 hook 返回值，刷新依赖通过 options 的公开边界注入。
@@ -65,7 +73,6 @@ describe("useProofreadingCacheActions", () => {
     latest_state = useProofreadingCacheActions({
       cache_status: "idle",
       filter_panel: create_empty_proofreading_filter_panel_state(),
-      list_view: create_empty_proofreading_list_view(),
       project_loaded: true,
       project_path: "E:/demo/sample.lg",
       proofreading_change_signal: null,
@@ -76,9 +83,8 @@ describe("useProofreadingCacheActions", () => {
       filter_dialog_open_ref: { current: false },
       filter_panel_request_id_ref: { current: 0 },
       last_filter_panel_signature_ref: { current: "" },
-      last_list_query_signature_ref: { current: "" },
       last_visible_range_signature_ref: { current: "" },
-      list_view_ref,
+      list_snapshot_ref,
       list_view_request_id_ref: { current: 0 },
       list_window_bounds_ref: { current: { start: 0, count: 50 } },
       list_window_request_id_ref: { current: 0 },
@@ -114,8 +120,6 @@ describe("useProofreadingCacheActions", () => {
           read_proofreading_row_ids_range: vi.fn(),
           resolve_proofreading_row_index: vi.fn(),
           read_proofreading_items_by_row_ids: vi.fn(),
-          dispose_project: vi.fn(),
-          dispose: vi.fn(),
         } satisfies ProofreadingApiClient,
       },
       refresh_generation_ref: { current: 0 },
@@ -123,14 +127,26 @@ describe("useProofreadingCacheActions", () => {
       table_filter_state_ref: {
         current: create_empty_proofreading_view_filter_state(),
       },
-      table_sort_state_ref: { current: null },
       visible_range_ref: { current: null },
       clear_cache_state: vi.fn(),
       clear_transient_state_for_new_project: vi.fn(),
       invalidate_cache_bound_queries: vi.fn(),
+      invalidate_list_view_requests: vi.fn(),
       publish_refresh_scroll_anchor: vi.fn(),
       report_proofreading_list_error: vi.fn(() => true),
-      resolve_current_filters: () => create_empty_filter_options(),
+      resolve_current_list_query: () => {
+        const filter_state = create_empty_proofreading_view_filter_state();
+        return {
+          query_intent_key: "default-query",
+          query: {
+            filters: create_empty_filter_options(),
+            keyword: filter_state.search_keyword,
+            scope: filter_state.search_scope,
+            is_regex: filter_state.is_regex,
+            sort_state: null,
+          },
+        };
+      },
       set_cache_status: vi.fn(),
       set_list_revisions,
       set_operation_revisions,
@@ -139,9 +155,8 @@ describe("useProofreadingCacheActions", () => {
       set_filter_panel: vi.fn(),
       set_filter_panel_loading: vi.fn(),
       set_is_refreshing: vi.fn(),
-      set_list_view: vi.fn(),
+      set_list_snapshot: vi.fn(),
       set_loading_toast_visible: vi.fn(),
-      set_refresh_retry_nonce: vi.fn(),
       set_settled_project_path: vi.fn(),
       update_table_filter_state: vi.fn(),
       warm_filter_panel_query_ref: { current: vi.fn() },
