@@ -829,7 +829,31 @@ describe("useTextPreservePageState", () => {
 
     expect(latest_state?.mode).toBe("smart");
     expect(latest_state?.mode_updating).toBe(false);
-    expect(push_toast_mock).not.toHaveBeenCalled();
+    expect(push_toast_mock).toHaveBeenCalledWith("success", "app.feedback.feature_state_changed");
+  });
+
+  it("模式切换失败时不显示成功提醒", async () => {
+    api_fetch_mock.mockImplementation(async (path: string) => {
+      if (path === "/api/workbench/snapshot") {
+        return {
+          sectionRevisions: {
+            quality: 1,
+          },
+        };
+      }
+      throw new Error("保存失败");
+    });
+
+    await mount_probe();
+    if (latest_state === null) {
+      throw new Error("文本保护页面状态未准备就绪。");
+    }
+
+    await act(async () => {
+      await latest_state!.update_mode("smart");
+    });
+
+    expect(push_toast_mock).not.toHaveBeenCalledWith("success", expect.anything());
   });
 
   it("在模式切换进行中忽略后续重复点击", async () => {

@@ -1102,6 +1102,12 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
           },
         });
         await refresh_quality_rule_snapshot();
+        push_toast(
+          "success",
+          t(next_enabled ? "app.feedback.feature_enabled" : "app.feedback.feature_disabled", {
+            TITLE: t("glossary_page.title"),
+          }),
+        );
       } catch (error) {
         push_toast(
           "error",

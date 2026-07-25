@@ -1019,6 +1019,12 @@ export function useTextReplacementPageState(
           },
         });
         await refresh_quality_rule_snapshot();
+        push_toast(
+          "success",
+          t(next_enabled ? "app.feedback.feature_enabled" : "app.feedback.feature_disabled", {
+            TITLE: t(config.title_key),
+          }),
+        );
       } catch (error) {
         push_toast(
           "error",
@@ -1029,6 +1035,7 @@ export function useTextReplacementPageState(
     [
       commit_project_write,
       config.rule_type,
+      config.title_key,
       push_toast,
       readonly,
       refresh_quality_rule_snapshot,
