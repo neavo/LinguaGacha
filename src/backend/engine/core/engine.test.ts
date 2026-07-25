@@ -61,6 +61,7 @@ describe("TaskEngine", () => {
       taskPlanner: create_test_task_planner(),
       AppSettingService: create_setting_service(),
       logManager: create_log_manager(),
+      retryBackoffMs: () => 0,
     });
 
     await task_engine.start({
@@ -210,6 +211,7 @@ describe("TaskEngine", () => {
       taskPlanner: create_test_task_planner(),
       AppSettingService: create_setting_service(2),
       logManager: create_log_manager(),
+      retryBackoffMs: () => 0,
     });
 
     await task_engine.start({

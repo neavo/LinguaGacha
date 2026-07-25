@@ -216,6 +216,7 @@ export class TranslationWorkUnitRunner {
         items,
         stream_degraded: response.degraded,
         request_error: response.request_error,
+        request_error_retryable: response.request_error_retryable ?? true,
         request_timeout: response.timeout,
       },
       response,
@@ -308,6 +309,7 @@ export class TranslationWorkUnitRunner {
       items: TextTaskItemRecord[];
       stream_degraded: boolean;
       request_error?: LogError;
+      request_error_retryable: boolean;
       request_timeout: boolean;
     },
     response: LLMRequestResult,
@@ -345,6 +347,19 @@ export class TranslationWorkUnitRunner {
       request_error: context.request_error,
       request: context.request,
     });
+    if (context.request_error !== undefined && !context.request_error_retryable) {
+      for (const item of context.items) {
+        item.status = "ERROR";
+      }
+      return {
+        items: context.items,
+        row_count: 0,
+        input_tokens: response.input_tokens,
+        output_tokens: response.output_tokens,
+        stopped: false,
+        logs,
+      };
+    }
     let updated_count = 0;
     if (decision.used_fallback && decision.fallback_dst !== null) {
       const item = context.items[0];
@@ -467,6 +482,7 @@ export class TranslationWorkUnitRunner {
       items: TextTaskItemRecord[];
       stream_degraded: boolean;
       request_error?: LogError;
+      request_error_retryable?: boolean;
       request_timeout: boolean;
     },
     alignment: TranslationAlignment,
@@ -555,11 +571,15 @@ export class TranslationWorkUnitRunner {
       items: TextTaskItemRecord[];
       stream_degraded: boolean;
       request_error?: LogError;
+      request_error_retryable?: boolean;
       request_timeout: boolean;
     },
     alignment: TranslationAlignment,
   ): string[] {
     const srcs = read_translation_text_srcs(context.lines);
+    if (context.request_error !== undefined && context.request_error_retryable === false) {
+      return srcs.map(() => "FAIL_REQUEST_PERMANENT");
+    }
     if (context.request_error !== undefined) {
       return srcs.map(() => "FAIL_REQUEST");
     }
@@ -726,6 +746,9 @@ export class TranslationWorkUnitRunner {
         }),
       };
     }
+    if (checks.every((check) => check === "FAIL_REQUEST_PERMANENT")) {
+      return { level: "error", message: this.t(app_language, "app.log.request_failed_permanent") };
+    }
     if (checks.every((check) => check === "FAIL_REQUEST")) {
       return { level: "error", message: this.t(app_language, "app.log.request_failed_retry") };
     }
@@ -763,6 +786,8 @@ export class TranslationWorkUnitRunner {
       case "FAIL_DEGRADATION":
         return this.t(app_language, "app.log.response_checker_fail_degradation");
       case "FAIL_REQUEST":
+        return this.t(app_language, "app.log.response_checker_fail_request");
+      case "FAIL_REQUEST_PERMANENT":
         return this.t(app_language, "app.log.response_checker_fail_request");
       default:
         return check;

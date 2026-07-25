@@ -18,6 +18,28 @@ import type {
   RequestTransport,
 } from "./transport/transport-types";
 
+// 官方 SDK（Google/OpenAI/Anthropic）的 APIError 都在 error.status 上暴露真实 HTTP 状态码
+const NON_RETRYABLE_HTTP_STATUS_CODES = new Set([400, 401, 403, 404, 422]); // 请求参数、鉴权类错误重试没有意义，直接终结避免浪费重试预算
+
+/**
+ * 从 SDK 抛出的原始错误里读取 HTTP 状态码；取不到时保守按可重试处理
+ */
+function read_error_http_status(error: unknown): number | null {
+  if (typeof error !== "object" || error === null) {
+    return null;
+  }
+  const status = (error as { status?: unknown }).status;
+  return typeof status === "number" ? status : null;
+}
+
+/**
+ * 鉴权、参数类永久性错误重试没有意义；状态码缺失（网络错误、超时）时按可重试处理
+ */
+function is_retryable_llm_error(error: unknown): boolean {
+  const status = read_error_http_status(error);
+  return status === null || !NON_RETRYABLE_HTTP_STATUS_CODES.has(status);
+}
+
 interface LLMClientOptions {
   userAgent: string; // 由应用元信息层注入，LLMClient 不读取 version.txt
   policy?: LLMClientPolicy; // 注入点只供测试替换请求策略，不改变生产归属
@@ -88,6 +110,7 @@ export class LLMClient implements LLMClientPort {
           run_id: body.run_id,
           work_unit_id: body.work_unit_id,
         }),
+        request_error_retryable: is_retryable_llm_error(error),
       });
     } finally {
       clearTimeout(timer);

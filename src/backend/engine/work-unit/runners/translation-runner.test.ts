@@ -148,6 +148,52 @@ describe("TranslationWorkUnitRunner", () => {
     expect(String(result.logs[0]?.message ?? "")).not.toContain("行数不一致");
   });
 
+  it("永久性请求错误直接标记条目为 ERROR，不再等待重试", async () => {
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client({
+        request_error: { name: "ApiError", message: "API key not valid" },
+        request_error_retryable: false,
+      }),
+    );
+
+    const result = await runner.execute_unit(
+      create_translation_unit({
+        model: { api_format: "OpenAI" },
+        src: "こんにちは",
+      }),
+      new AbortController().signal,
+    );
+
+    expect(result.outcome).toBe("failed");
+    const items = result.output.kind === "translation" ? result.output.items : [];
+    expect(items).toMatchObject([{ status: "ERROR" }]);
+    expect(String(result.logs[0]?.message ?? "")).toContain("鉴权或参数错误");
+  });
+
+  it("临时性请求错误保留 NONE 状态，交给 Engine 重试", async () => {
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client({
+        request_error: { name: "ApiError", message: "rate limited" },
+        request_error_retryable: true,
+      }),
+    );
+
+    const result = await runner.execute_unit(
+      create_translation_unit({
+        model: { api_format: "OpenAI" },
+        src: "こんにちは",
+      }),
+      new AbortController().signal,
+    );
+
+    expect(result.outcome).toBe("failed");
+    const items = result.output.kind === "translation" ? result.output.items : [];
+    expect(items).toMatchObject([{ status: "NONE" }]);
+    expect(String(result.logs[0]?.message ?? "")).toContain("将自动重试");
+  });
+
   it("部分合法译文无法覆盖请求行时记录行数不一致", async () => {
     const runner = new TranslationWorkUnitRunner(
       await create_template_root(),

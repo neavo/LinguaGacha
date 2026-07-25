@@ -320,6 +320,8 @@ export const en_us_app = {
     response_checker_fail_line_count: "Line Count Mismatch",
     response_checker_fail_request: "Model Request Failed",
     request_failed_retry: "Model request failed, will automatically retry …",
+    request_failed_permanent:
+      "Model request failed (auth or parameter error, retrying is pointless), this item has been terminated …",
     response_checker_fail_timeout: "Network Request Timeout",
     response_checker_line_error_empty_line: "Empty Line",
     system_closed_dropped: "Log system is shut down; dropping new log: {MESSAGE}",
