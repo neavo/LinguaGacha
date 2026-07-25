@@ -26,6 +26,7 @@ export interface TaskEngineOptions {
   taskPlanner: TaskPlanner; // 精确 token 切块、cache 复用和后台规划的唯一入口
   AppSettingService: AppSettingService; // 在每次任务启动时提供设置与模型快照
   logManager: LogManager; // 统一收敛任务引擎和 worker 回放日志
+  retryBackoffMs?: (retryCount: number) => number; // 重试前的退避时长；测试注入恒为 0 以保持快速
 }
 
 /**

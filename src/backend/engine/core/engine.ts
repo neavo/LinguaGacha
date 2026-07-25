@@ -41,6 +41,13 @@ const TRANSLATION_TERMINAL_STATUSES = new Set(["PROCESSED", "ERROR"]); // 翻译
 const TRANSLATION_RETRY_LIMIT = 3; // 翻译重试次数高于分析，因为翻译支持拆分重试，分析只按 chunk 重试
 const ANALYSIS_RETRY_LIMIT = 2; // 分析失败只重发同一 chunk，过多重试会阻塞后续文件 checkpoint
 
+// 重试前固定退避，避免鉴权失效等持续性故障下同一 chunk 被立即重新打满请求
+const DEFAULT_RETRY_BACKOFF_STEP_MS = 500;
+const DEFAULT_RETRY_BACKOFF_MAX_MS = 2000;
+function default_retry_backoff_ms(retry_count: number): number {
+  return Math.min(DEFAULT_RETRY_BACKOFF_STEP_MS * retry_count, DEFAULT_RETRY_BACKOFF_MAX_MS);
+}
+
 const DEFAULT_INPUT_TOKEN_LIMIT = 512; // 模型未配置 token 限制时使用保守默认值，避免一次塞入过长 prompt
 // 一次任务启动时冻结配置和模型，运行中不跟随设置页热变更
 interface TaskRunContext {
@@ -63,6 +70,7 @@ export class TaskEngine {
   private readonly log_replay: TaskLogReplay; // 统一处理任务生命周期日志和 worker 日志回放
   private readonly limiter_pool = new LimiterPool(); // 后台任务按模型资源键复用请求节奏入口
   private readonly model_key_lease_pool = new ModelKeyLeasePool(); // 在主线程维护任务级全局 Key 轮换
+  private readonly retry_backoff_ms: (retryCount: number) => number; // 重试退避时长计算，测试可注入恒 0
   private request_in_flight_count = 0; // 只表达实时网络压力，不落库也不参与恢复
 
   /**
@@ -78,6 +86,7 @@ export class TaskEngine {
     this.app_setting_service = options.AppSettingService;
     this.run_coordinator = new RunCoordinator(options.taskRunPublisher);
     this.log_replay = new TaskLogReplay(options.logManager);
+    this.retry_backoff_ms = options.retryBackoffMs ?? default_retry_backoff_ms;
   }
 
   /**
@@ -261,6 +270,7 @@ export class TaskEngine {
     limiter: TaskLimiter,
     signal: AbortSignal,
   ) {
+    await this.wait_before_retry(context.retry_count, signal);
     const result = await this.call_translation_executor_with_retryable_transport(
       context,
       handle,
@@ -308,6 +318,7 @@ export class TaskEngine {
     limiter: TaskLimiter,
     signal: AbortSignal,
   ) {
+    await this.wait_before_retry(context.retry_count, signal);
     const result = await this.call_with_limiter(handle, limiter, signal, () =>
       this.executor_client
         .execute_unit(
@@ -360,6 +371,27 @@ export class TaskEngine {
         stopped: false,
       };
     }
+  }
+
+  /**
+   * 重试前固定退避；首次尝试（retry_count 为 0）不等待，停止信号触发时立即放弃等待
+   */
+  private async wait_before_retry(retry_count: number, signal: AbortSignal): Promise<void> {
+    const delay_ms = retry_count > 0 ? this.retry_backoff_ms(retry_count) : 0;
+    if (delay_ms <= 0 || signal.aborted) {
+      return;
+    }
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, delay_ms);
+      signal.addEventListener(
+        "abort",
+        () => {
+          clearTimeout(timer);
+          resolve();
+        },
+        { once: true },
+      );
+    });
   }
 
   /**

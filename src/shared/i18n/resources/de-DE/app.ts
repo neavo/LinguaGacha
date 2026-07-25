@@ -333,6 +333,8 @@ export const de_de_app = {
     response_checker_fail_line_count: "Zeilenanzahl stimmt nicht überein",
     response_checker_fail_request: "Modellanfrage fehlgeschlagen",
     request_failed_retry: "Modellanfrage fehlgeschlagen, wird automatisch wiederholt …",
+    request_failed_permanent:
+      "Modellanfrage fehlgeschlagen (Authentifizierungs- oder Parameterfehler, Wiederholung sinnlos), dieser Eintrag wurde abgebrochen …",
     response_checker_fail_timeout: "Netzwerkanfrage-Zeitüberschreitung",
     response_checker_line_error_empty_line: "Leere Zeile",
     system_closed_dropped:

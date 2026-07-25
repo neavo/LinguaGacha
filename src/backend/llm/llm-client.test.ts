@@ -70,6 +70,57 @@ describe("LLMClient", () => {
     expect(result.request_error?.stack).toContain("供应商爆炸");
   });
 
+  it("鉴权类永久性错误标记为不可重试", async () => {
+    const client = new LLMClient({
+      userAgent: TEST_USER_AGENT,
+      transports: {
+        "openai-compatible": {
+          send: async () => {
+            throw Object.assign(new Error("API key not valid"), { status: 401 });
+          },
+        },
+      },
+    });
+
+    const result = await client.request(create_body(), new AbortController().signal);
+
+    expect(result.request_error_retryable).toBe(false);
+  });
+
+  it("限流类临时性错误仍标记为可重试", async () => {
+    const client = new LLMClient({
+      userAgent: TEST_USER_AGENT,
+      transports: {
+        "openai-compatible": {
+          send: async () => {
+            throw Object.assign(new Error("rate limited"), { status: 429 });
+          },
+        },
+      },
+    });
+
+    const result = await client.request(create_body(), new AbortController().signal);
+
+    expect(result.request_error_retryable).toBe(true);
+  });
+
+  it("错误没有携带状态码时保守按可重试处理", async () => {
+    const client = new LLMClient({
+      userAgent: TEST_USER_AGENT,
+      transports: {
+        "openai-compatible": {
+          send: async () => {
+            throw new Error("网络中断");
+          },
+        },
+      },
+    });
+
+    const result = await client.request(create_body(), new AbortController().signal);
+
+    expect(result.request_error_retryable).toBe(true);
+  });
+
   it("外部取消请求时返回 cancelled 结果", async () => {
     const controller = new AbortController();
     const client = new LLMClient({

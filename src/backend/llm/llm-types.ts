@@ -33,6 +33,7 @@ export interface LLMRequestResult {
   timeout: boolean;
   degraded: boolean;
   request_error?: LogError; // 保留供应商或传输异常错误，缺失表示没有请求级失败
+  request_error_retryable?: boolean; // 仅在 request_error 存在时有意义；401/400 等永久性错误为 false，缺失按可重试处理
 }
 
 /**
