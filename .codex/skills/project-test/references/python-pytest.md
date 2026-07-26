@@ -1,6 +1,6 @@
 # Python / pytest
 
-只在任务涉及 Python 或 pytest 时读取本文件。项目现有配置、插件和命名约定优先。
+只在任务涉及 Python 或 pytest 时读取本文件。以下只补充 pytest、Python 文件系统和并发的特有做法。
 
 ## 基本形状
 
@@ -15,7 +15,7 @@ def test_checkout_returns_completed_order() -> None:
     assert result.total == 25
 ```
 
-测试名描述行为；仅在准备过程较复杂时保留 `Arrange / Act / Assert` 注释。
+仅在准备过程较复杂时保留 `Arrange / Act / Assert` 注释。
 
 ## 按测试目的选择边界
 
@@ -28,8 +28,6 @@ def test_checkout_returns_completed_order() -> None:
 | HTTP、云 SDK、消息系统 | fake client 或 patch 使用点，不访问真实服务 |
 | 时间、随机数、ID | 注入来源或 patch 使用点 |
 | 线程、任务队列 | 等待明确完成信号，不依赖固定睡眠 |
-
-不要为了采用某种测试方案新增依赖；先复用项目已安装的插件和 helper。
 
 ## 文件系统
 
@@ -44,7 +42,7 @@ def test_save_summary_writes_json(tmp_path: Path) -> None:
     assert json.loads(output.read_text(encoding="utf-8")) == {"completed": 2}
 ```
 
-如果业务层已有内存适配器，且测试不关心操作系统语义，优先使用它。避免真实用户目录和仓库中的持久文件。
+如果业务层已有内存适配器，且测试不关心操作系统语义，优先使用它。
 
 ## Mock 与 fake
 
@@ -63,11 +61,11 @@ def test_queue_job_returns_public_status() -> None:
     assert result == {"status": "queued", "job_id": "job-1"}
 ```
 
-必须 patch 时 patch 使用点，并在主要结果断言之后补充真正属于契约的调用约束。不要用 mock 调用记录代替业务结果。
+必须 patch 时 patch 使用点，并在主要结果断言之后补充真正属于契约的调用约束。
 
 ## 并发与后台任务
 
-等待明确完成信号并设置超时，不用固定睡眠碰运气：
+对线程和队列使用带超时的完成信号：
 ```python
 def test_worker_publishes_result() -> None:
     results: queue.Queue[str] = queue.Queue()
@@ -80,10 +78,8 @@ def test_worker_publishes_result() -> None:
 
 ## 夹具组织
 
-- 夹具放在能覆盖所有使用者的最小目录层级。
 - 默认使用函数级作用域；只有昂贵且不会泄漏状态的资源才扩大作用域。
-- helper 负责准备数据，不承载具体业务断言。
-- 优先返回新对象，避免测试顺序和共享可变状态。
+- fixture 或工厂为每个测试返回新对象，并把业务断言留在测试正文。
 
 ## 验证
 
@@ -96,4 +92,4 @@ ruff check
 ruff format --check
 ```
 
-定向测试通过后，再按改动风险扩大范围。把 `--fix` 或格式化写入作为实施动作，而不是只读验证。
+把 `--fix` 或格式化写入作为实施动作，而不是只读验证。
