@@ -55,8 +55,8 @@ TypeScript / React / CSS：
 
 ## 5. 文档治理硬约束
 
-- 工程长期文档体系只包含 `docs/` 下的 `ARCHITECTURE.md`、`CLI.md`、`BACKEND.md`、`FRONTEND.md` 和 `WORKFLOW.md`；`AGENTS.md` 是体系外的行动规则。
-- 长期文档只记录未来维护必须知道、且不能轻易从代码表面得出的当前稳定事实；同一工程语义在五份文档内只允许一个权威归宿。
+- 本文件权威定义工程长期文档集合：只包含 `docs/` 下的 `ARCHITECTURE.md`、`CLI.md`、`BACKEND.md`、`FRONTEND.md` 和 `WORKFLOW.md`；专题归宿见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)，`AGENTS.md` 是体系外的行动规则。
+- 长期文档只记录未来维护必须知道、且不能轻易从代码表面得出的当前稳定事实；同一工程语义在上述长期文档内只允许一个权威归宿。
 - Agent 必须始终遵循的关键约束可以在本文件自足表达，不因项目文档已有相近内容而删成仅剩链接。
 - `DESIGN.md` 是 Impeccable 设计流程的可选产物，可能不存在；它与 `PRODUCT.md` 等流程产物都不属于工程长期文档，工程文档不得依赖这些文件存在。
 - 结构性文档任务必须体现删除、合并、迁移或压缩；只新增内容通常不是完成。
