@@ -65,27 +65,40 @@ export const en_us_workbench_page = {
     stop_analysis: "Stop",
     analysis_stopping: "Stopping",
   },
-  analysis_task: {
+  task: {
     menu: {
       progress: "Progress",
-      tooltip: "Extract terms from source text",
     },
     summary: {
       empty: "Idle",
-      running: "Analyzing",
       stopping: "Stopping",
       detail_tooltip: "Click to view details",
+    },
+    detail: {
+      elapsed_time: "Elapsed Time",
+      remaining_time: "Remaining Time",
+      average_speed: "Average Speed",
+      input_tokens: "Input Tokens",
+      output_tokens: "Output Tokens",
+    },
+    feedback: {
+      done: "Completed …",
+      stopped: "Stopped …",
+    },
+  },
+  analysis_task: {
+    menu: {
+      tooltip: "Extract terms from source text",
+    },
+    summary: {
+      running: "Analyzing",
     },
     detail: {
       title: "Analysis Details",
       description: "View live statistics for the current analysis.",
       waveform_title: "Live Speed",
       metrics_title: "Metrics",
-      elapsed_time: "Elapsed Time",
-      remaining_time: "Remaining Time",
-      average_speed: "Average Speed",
-      input_tokens: "Input Tokens",
-      output_tokens: "Output Tokens",
+
       active_requests: "Active Requests",
       candidate_count: "Candidate Terms",
     },
@@ -99,8 +112,7 @@ export const en_us_workbench_page = {
       refresh_failed: "Failed to refresh analysis task state",
       start_failed: "Failed to start analysis task",
       stop_failed: "Failed to stop analysis task",
-      done: "Completed …",
-      stopped: "Stopped …",
+
       reset_all_failed: "Failed to reset all analysis progress",
       reset_failed_failed: "Failed to reset failed analysis progress",
       import_loading_toast: "Importing candidate terms and refreshing proofreading cache …",
@@ -110,25 +122,17 @@ export const en_us_workbench_page = {
   },
   translation_task: {
     menu: {
-      progress: "Progress",
       tooltip: "Translate source text into the target language",
     },
     summary: {
-      empty: "Idle",
       running: "Translating",
-      stopping: "Stopping",
-      detail_tooltip: "Click to view details",
     },
     detail: {
       title: "Translation Details",
       description: "Review current translation statistics.",
       waveform_title: "Real-time Speed",
       metrics_title: "Statistics",
-      elapsed_time: "Elapsed Time",
-      remaining_time: "Remaining Time",
-      average_speed: "Average Speed",
-      input_tokens: "Input Tokens",
-      output_tokens: "Output Tokens",
+
       active_requests: "Real Time Tasks",
     },
     confirm: {
@@ -141,8 +145,7 @@ export const en_us_workbench_page = {
       refresh_failed: "Failed to refresh the translation task.",
       start_failed: "Failed to start the translation task.",
       stop_failed: "Failed to stop the translation task.",
-      done: "Completed …",
-      stopped: "Stopped …",
+
       reset_all_failed: "Failed to reset all translation progress.",
       reset_failed_failed: "Failed to reset failed translation entries.",
       generate_failed: "Failed to generate available translation files.",

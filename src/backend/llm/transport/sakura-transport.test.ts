@@ -72,18 +72,14 @@ function create_policy(overrides: Partial<ResolvedRequestPolicy> = {}): Resolved
     provider: "sakura",
     api_format: "SakuraLLM",
     base_url: "https://sakura.example/v1",
-    model_id: "sakura-v1",
     headers: {},
     api_keys: ["key"],
-    messages: [{ role: "user", content: "こんにちは" }],
     payload: {
       model: "sakura-v1",
       messages: [{ role: "user", content: "こんにちは" }],
       stream: true,
     },
     timeout_ms: 120_000,
-    response_mode: "sakura-lines",
-    diagnostics: {},
     ...overrides,
   };
 }

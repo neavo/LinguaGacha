@@ -4,8 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { INPUT_QUERY_DEBOUNCE_MS } from "@frontend/widgets/interactions/use-debounce";
 import type { QualityRuleStatisticsCacheSnapshot } from "@frontend/app/session/quality-rule-statistics-store";
-import type { ProjectItemPublicRecord } from "@domain/item";
-import { createProjectItemIndex } from "@shared/project/project-item-index";
 import { buildGlossaryStatisticsState, useGlossaryPageState } from "./use-glossary-page-state";
 import type { GlossaryEntry } from "./types";
 
@@ -31,43 +29,12 @@ function create_default_glossary_entries(): GlossaryEntry[] {
   ];
 }
 
-/**
- * 构造当前测试场景的标准数据。
- */
-function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
-  return {
-    item_id: 1,
-    src: "",
-    dst: "",
-    name_src: null,
-    name_dst: null,
-    extra_field: "",
-    tag: "",
-    row_number: 0,
-    file_type: "TXT",
-    file_path: "",
-    text_type: "NONE",
-    status: "NONE",
-    retry_count: 0,
-    skip_internal_filter: false,
-    ...overrides,
-  };
-}
-
 const run_state = {
   project: {
     path: "E:/demo/sample.lg",
     loaded: true,
   },
   files: {},
-  items: createProjectItemIndex({
-    "1": create_test_item({
-      item_id: 1,
-      file_path: "chapter01.txt",
-      src: "苹果真甜",
-      dst: "Apple is sweet",
-    }),
-  }),
   quality: {
     glossary: {
       entries: create_default_glossary_entries(),
@@ -142,7 +109,7 @@ const project_store = {
 const project_store_listeners = new Set<() => void>();
 
 /**
- * 写入当前场景的状态变化。
+ * 模拟后端 change 回流，把权威 quality 切片合并进测试项目仓库。
  */
 function apply_quality_write_result(result: {
   changes?: Array<{
@@ -281,7 +248,6 @@ function create_statistics_cache(
         {
           key: "苹果::0",
           dependency_signature: "苹果",
-          relation_label: "苹果",
           token: "苹果",
         },
       ],
@@ -295,7 +261,6 @@ function create_statistics_cache(
         {
           key: "苹果::0",
           dependency_signature: "苹果",
-          relation_label: "苹果",
           token: "苹果",
         },
       ],
@@ -329,7 +294,6 @@ function create_statistics_snapshot(
       return {
         key: entry_id,
         dependency_signature: entry_id,
-        relation_label: entry_id,
         token: entry_id,
       };
     }),
@@ -343,14 +307,14 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
   };
 });
 
-vi.mock("@frontend/pages/glossary-page/glossary-api-client", () => {
+vi.mock("@frontend/features/quality-rule-editor/quality-rule-api-client", () => {
   return {
-    read_glossary_quality_rule: vi.fn(async () => ({
+    read_quality_rule: vi.fn(async () => ({
       projectPath: run_state.project.path,
       sectionRevisions: { ...run_state.revisions.sections },
       qualityRule: run_state.quality.glossary,
     })),
-    read_glossary_section_revisions: vi.fn(async () => ({
+    read_quality_rule_section_revisions: vi.fn(async () => ({
       ...run_state.revisions.sections,
     })),
   };
@@ -646,7 +610,6 @@ describe("buildGlossaryStatisticsState", () => {
           {
             key: "苹果|1",
             dependency_signature: "苹果",
-            relation_label: "苹果",
             token: "苹果",
           },
         ],
@@ -678,6 +641,7 @@ describe("useGlossaryPageState", () => {
     run_state.project.path = "E:/demo/sample.lg";
     run_state.project.loaded = true;
     run_state.quality.glossary.entries = create_default_glossary_entries();
+    run_state.quality.glossary.enabled = true;
     run_state.quality.glossary.revision = 1;
     run_state.revisions.sections.quality = 1;
     current_statistics_cache = create_statistics_cache({});
@@ -705,10 +669,6 @@ describe("useGlossaryPageState", () => {
     vi.useRealTimers();
   });
 
-  // mount_probe 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-  /**
-   * 挂载当前测试组件并等待渲染完成。
-   */
   async function mount_probe(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -717,10 +677,7 @@ describe("useGlossaryPageState", () => {
     await rerender_probe();
   }
 
-  // rerender_probe 收口测试中的共享步骤，保证断言只关注当前行为。
-  /**
-   * 支撑当前测试场景的专用辅助逻辑。
-   */
+  // 递增项目 change seq，模拟后端事件驱动页面刷新。
   async function rerender_probe(): Promise<void> {
     render_version += 1;
     project_change_seq += 1;
@@ -742,15 +699,69 @@ describe("useGlossaryPageState", () => {
     });
   }
 
-  // flush_filter_debounce 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-  /**
-   * 支撑当前测试场景的专用辅助逻辑。
-   */
   async function flush_filter_debounce(): Promise<void> {
     await act(async () => {
       vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
     });
   }
+
+  it("启用和禁用成功后显示对应状态提醒", async () => {
+    await mount_probe();
+    api_fetch_mock.mockResolvedValueOnce(
+      create_quality_write_result({
+        quality: {
+          ...run_state.quality,
+          glossary: {
+            ...run_state.quality.glossary,
+            enabled: false,
+            revision: 2,
+          },
+        },
+        quality_revision: 2,
+      }),
+    );
+
+    await act(async () => {
+      await latest_state?.update_enabled(false);
+    });
+
+    expect(latest_state?.enabled).toBe(false);
+    expect(push_toast_mock).toHaveBeenLastCalledWith("success", "app.feedback.feature_disabled");
+
+    api_fetch_mock.mockResolvedValueOnce(
+      create_quality_write_result({
+        quality: {
+          ...run_state.quality,
+          glossary: {
+            ...run_state.quality.glossary,
+            enabled: true,
+            revision: 3,
+          },
+        },
+        quality_revision: 3,
+      }),
+    );
+
+    await act(async () => {
+      await latest_state?.update_enabled(true);
+    });
+
+    expect(latest_state?.enabled).toBe(true);
+    expect(push_toast_mock).toHaveBeenLastCalledWith("success", "app.feedback.feature_enabled");
+  });
+
+  it("开关写入失败时不显示成功提醒", async () => {
+    await mount_probe();
+    api_fetch_mock.mockRejectedValueOnce(new Error("保存失败"));
+
+    await act(async () => {
+      await latest_state?.update_enabled(false);
+    });
+
+    expect(latest_state?.enabled).toBe(true);
+    expect(push_toast_mock).not.toHaveBeenCalledWith("success", expect.anything());
+    expect(push_toast_mock).toHaveBeenCalledWith("error", expect.anything());
+  });
 
   it("items 变更后保留当前术语规则表格主体", async () => {
     await mount_probe();

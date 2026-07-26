@@ -11,9 +11,8 @@ import type {
   WorkbenchTaskSummaryDisplay,
   WorkbenchTaskViewState,
 } from "@frontend/pages/workbench-page/types";
-import { AnalysisTaskMenu } from "@frontend/pages/workbench-page/components/analysis-task-menu";
+import { WorkbenchTaskMenu } from "@frontend/pages/workbench-page/components/workbench-task-menu";
 import { WorkbenchTaskSummary } from "@frontend/pages/workbench-page/components/workbench-task-summary";
-import { TranslationTaskMenu } from "@frontend/pages/workbench-page/components/translation-task-menu";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
   CommandBar,
@@ -46,12 +45,17 @@ type CommandAction = {
   disabled: boolean;
   on_click: () => void;
 };
+
+/**
+ * 汇总文件操作与两类常驻任务的入口，不在视图层复制任务状态机。
+ */
 export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Element {
   const { t } = useI18n();
   const active_translation_task_action_kind: TranslationTaskActionKind | null =
     props.translation_workbench_task.task_confirm_state?.kind ?? null;
   const active_analysis_task_action_kind: AnalysisTaskActionKind | null =
     props.analysis_workbench_task.analysis_confirm_state?.kind ?? null;
+  // 摘要卡只认识统一的打开意图，实际详情面板由当前任务会话决定。
   const handle_open_task_detail =
     props.active_workbench_task_view.task_kind === "analysis"
       ? props.analysis_workbench_task.open_analysis_detail_sheet
@@ -116,8 +120,9 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
       actions={
         <>
           <CommandBarGroup>
-            <TranslationTaskMenu
-              translation_task_metrics={props.translation_workbench_task.translation_task_metrics}
+            <WorkbenchTaskMenu
+              task_kind="translation"
+              active={props.translation_workbench_task.translation_task_metrics.active}
               workbench_stats={props.translation_stats}
               disabled={props.translation_workbench_task.translation_task_menu_disabled}
               busy={props.translation_workbench_task.translation_task_menu_busy}
@@ -125,23 +130,31 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
               on_start_or_continue={
                 props.translation_workbench_task.request_start_or_continue_translation
               }
-              on_request_confirmation={
-                props.translation_workbench_task.request_task_action_confirmation
-              }
+              on_request_reset={props.translation_workbench_task.request_task_action_confirmation}
             />
-            <AnalysisTaskMenu
-              analysis_task_metrics={props.analysis_workbench_task.analysis_task_metrics}
+            <WorkbenchTaskMenu
+              task_kind="analysis"
+              active={props.analysis_workbench_task.analysis_task_metrics.active}
               workbench_stats={props.analysis_stats}
               disabled={props.analysis_workbench_task.analysis_task_menu_disabled}
               busy={props.analysis_workbench_task.analysis_task_menu_busy}
-              importing={props.analysis_workbench_task.analysis_importing}
               active_task_action_kind={active_analysis_task_action_kind}
               on_start_or_continue={
                 props.analysis_workbench_task.request_start_or_continue_analysis
               }
-              on_request_confirmation={
+              on_request_reset={
                 props.analysis_workbench_task.request_analysis_task_action_confirmation
               }
+              analysis_import={{
+                candidate_count:
+                  props.analysis_workbench_task.analysis_task_metrics.candidate_count,
+                importing: props.analysis_workbench_task.analysis_importing,
+                on_request: () => {
+                  props.analysis_workbench_task.request_analysis_task_action_confirmation(
+                    "import-glossary",
+                  );
+                },
+              }}
             />
           </CommandBarGroup>
           <CommandBarSeparator />

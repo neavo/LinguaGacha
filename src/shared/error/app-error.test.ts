@@ -2,35 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   InternalInvariantError,
-  FileParseFailedError,
   RequestValidationError,
   RuntimeCapabilityMissingError,
-  RevisionConflictError,
-  to_api_error_payload,
   to_app_error_log_snapshot,
 } from ".";
-import { create_text_resolver } from "../i18n";
 
 describe("shared/error", () => {
-  it("API 公开形状只暴露稳定 code、message_key 和安全 details", () => {
-    const error = new RevisionConflictError({
-      public_details: {
-        section: "items",
-        ignored: (() => undefined) as never,
-      },
-    });
-
-    expect(to_api_error_payload(error, "request-1", create_text_resolver("zh-CN"))).toEqual({
-      code: "data.revision_conflict",
-      details: { section: "items" },
-      message: "数据版本已变化，请刷新后重试 …",
-      message_key: "app.error.data.revision_conflict.message",
-      request_id: "request-1",
-      action: "请刷新当前数据后再次提交 …",
-      action_key: "app.error.data.revision_conflict.action",
-    });
-  });
-
   it("日志快照保留诊断上下文和 cause 链", () => {
     const cause = new Error("底层失败");
     const error = new InternalInvariantError({
@@ -76,22 +53,6 @@ describe("shared/error", () => {
         reason: "exhausted_retryable_ports",
         max_attempts: 2,
       },
-    });
-  });
-
-  it("文件解析失败使用稳定错误码和本地化动作", () => {
-    const error = new FileParseFailedError({
-      public_details: { format: "EPUB", parser: "XML" },
-    });
-
-    expect(to_api_error_payload(error, "request-2", create_text_resolver("zh-CN"))).toEqual({
-      code: "file.parse_failed",
-      details: { format: "EPUB", parser: "XML" },
-      message: "文件内容解析失败 …",
-      message_key: "app.error.file.parse_failed.message",
-      request_id: "request-2",
-      action: "请确认文件内容完整，或换用原始未损坏的文件 …",
-      action_key: "app.error.file.parse_failed.action",
     });
   });
 });

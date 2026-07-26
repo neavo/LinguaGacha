@@ -38,16 +38,11 @@ describe("TaskEngine", () => {
           meta: {},
         }),
         acquire_project_lease: () => () => undefined,
-        commit_artifacts: (request: MutableJsonRecord) => {
-          const artifacts = Array.isArray(request["artifacts"])
-            ? (request["artifacts"] as MutableJsonRecord[])
-            : [];
-          const artifact = artifacts[0] ?? {};
-          committed_batches.push({ ...request });
-          committed_batches[committed_batches.length - 1] = {
-            items: artifact["items"],
-            translation_extras: request["progress_snapshot"],
-          };
+        commit_translation_items: (
+          items: MutableJsonRecord[],
+          translation_extras: MutableJsonRecord,
+        ) => {
+          committed_batches.push({ items, translation_extras });
           return { accepted: true };
         },
         update_translation_progress: () => ({ accepted: true }),
@@ -164,14 +159,8 @@ describe("TaskEngine", () => {
           meta: {},
         }),
         acquire_project_lease: () => () => undefined,
-        commit_artifacts: (request: MutableJsonRecord) => {
-          const artifacts = Array.isArray(request["artifacts"])
-            ? (request["artifacts"] as MutableJsonRecord[])
-            : [];
-          const items = artifacts[0]?.["items"];
-          if (Array.isArray(items)) {
-            committed_items.push(...(items as MutableJsonRecord[]));
-          }
+        commit_translation_items: (items: MutableJsonRecord[]) => {
+          committed_items.push(...items);
           return { accepted: true };
         },
         update_translation_progress: () => ({ accepted: true }),
@@ -239,7 +228,7 @@ describe("TaskEngine", () => {
           meta: {},
         }),
         acquire_project_lease: () => () => undefined,
-        commit_artifacts: () => ({ accepted: true }),
+        commit_translation_items: () => ({ accepted: true }),
         update_translation_progress: () => ({ accepted: true }),
         build_quality_snapshot: () => null,
       } as unknown as ProjectTaskStore,

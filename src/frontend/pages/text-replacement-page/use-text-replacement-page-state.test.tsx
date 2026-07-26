@@ -4,8 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { INPUT_QUERY_DEBOUNCE_MS } from "@frontend/widgets/interactions/use-debounce";
 import type { QualityRuleStatisticsCacheSnapshot } from "@frontend/app/session/quality-rule-statistics-store";
-import type { ProjectItemPublicRecord } from "@domain/item";
-import { createProjectItemIndex } from "@shared/project/project-item-index";
 import { useTextReplacementPageState } from "@frontend/pages/text-replacement-page/use-text-replacement-page-state";
 
 const { api_fetch_mock, push_toast_mock, page_ui_state_store } = vi.hoisted(() => {
@@ -16,43 +14,12 @@ const { api_fetch_mock, push_toast_mock, page_ui_state_store } = vi.hoisted(() =
   };
 });
 
-/**
- * 构造当前测试场景的标准数据。
- */
-function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
-  return {
-    item_id: 1,
-    src: "",
-    dst: "",
-    name_src: null,
-    name_dst: null,
-    extra_field: "",
-    tag: "",
-    row_number: 0,
-    file_type: "TXT",
-    file_path: "",
-    text_type: "NONE",
-    status: "NONE",
-    retry_count: 0,
-    skip_internal_filter: false,
-    ...overrides,
-  };
-}
-
 const run_state = {
   project: {
     path: "E:/demo/sample.lg",
     loaded: true,
   },
   files: {},
-  items: createProjectItemIndex({
-    "1": create_test_item({
-      item_id: 1,
-      file_path: "chapter01.txt",
-      src: "hero appears",
-      dst: "hero 登场",
-    }),
-  }),
   quality: {
     glossary: {
       entries: [],
@@ -135,7 +102,7 @@ const project_store = {
 const project_store_listeners = new Set<() => void>();
 
 /**
- * 写入当前场景的状态变化。
+ * 模拟后端 change 回流，把权威 quality 切片合并进测试项目仓库。
  */
 function apply_quality_write_result(result: {
   changes?: Array<{
@@ -257,7 +224,6 @@ function create_statistics_cache(
         {
           key: "hero::0",
           dependency_signature: "hero",
-          relation_label: "hero",
           token: "hero",
         },
       ],
@@ -271,7 +237,6 @@ function create_statistics_cache(
         {
           key: "hero::0",
           dependency_signature: "hero",
-          relation_label: "hero",
           token: "hero",
         },
       ],
@@ -306,16 +271,14 @@ vi.mock("@frontend/app/navigation/navigation-context", () => {
   };
 });
 
-vi.mock("@frontend/pages/text-replacement-page/text-replacement-api-client", () => {
+vi.mock("@frontend/features/quality-rule-editor/quality-rule-api-client", () => {
   return {
-    read_text_replacement_quality_rule: vi.fn(
-      async (rule_type: keyof typeof run_state.quality) => ({
-        projectPath: run_state.project.path,
-        sectionRevisions: { ...run_state.revisions.sections },
-        qualityRule: run_state.quality[rule_type],
-      }),
-    ),
-    read_text_replacement_section_revisions: vi.fn(async () => ({
+    read_quality_rule: vi.fn(async (rule_type: keyof typeof run_state.quality) => ({
+      projectPath: run_state.project.path,
+      sectionRevisions: { ...run_state.revisions.sections },
+      qualityRule: run_state.quality[rule_type],
+    })),
+    read_quality_rule_section_revisions: vi.fn(async () => ({
       ...run_state.revisions.sections,
     })),
   };
@@ -635,10 +598,6 @@ describe("useTextReplacementPageState", () => {
     vi.useRealTimers();
   });
 
-  // mount_probe 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-  /**
-   * 挂载当前测试组件并等待渲染完成。
-   */
   async function mount_probe(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -647,10 +606,7 @@ describe("useTextReplacementPageState", () => {
     await rerender_probe();
   }
 
-  // rerender_probe 收口测试中的共享步骤，保证断言只关注当前行为。
-  /**
-   * 支撑当前测试场景的专用辅助逻辑。
-   */
+  // 递增项目 change seq，模拟后端事件驱动页面刷新。
   async function rerender_probe(): Promise<void> {
     project_change_seq += 1;
     await act(async () => {
@@ -670,10 +626,6 @@ describe("useTextReplacementPageState", () => {
     });
   }
 
-  // flush_filter_debounce 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-  /**
-   * 支撑当前测试场景的专用辅助逻辑。
-   */
   async function flush_filter_debounce(): Promise<void> {
     await act(async () => {
       vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);

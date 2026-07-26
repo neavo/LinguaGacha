@@ -23,7 +23,6 @@ const TEST_STATISTICS_SNAPSHOT: QualityStatisticsDependencySnapshot = {
     {
       key: "apple::0",
       dependency_signature: "apple",
-      relation_label: "apple",
       token: "apple",
     },
   ],

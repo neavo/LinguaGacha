@@ -22,7 +22,7 @@ type TextPreserveEditDialogProps = {
 };
 export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.Element {
   const { t } = useI18n();
-  const save_label = t("text_preserve_page.action.save");
+  const save_label = t("quality_editor.action.save");
   const disabled = props.readonly || props.saving;
   const title =
     props.mode === "create"
@@ -56,7 +56,7 @@ export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.
               void props.on_close();
             }}
           >
-            {t("text_preserve_page.action.cancel")}
+            {t("quality_editor.action.cancel")}
           </AppButton>
           <AppButton
             type="button"
@@ -78,12 +78,12 @@ export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.
             <div className="text-preserve-page__dialog-main-panel-content">
               <label className="text-preserve-page__dialog-section">
                 <span className="text-preserve-page__dialog-section-title font-medium">
-                  {t("text_preserve_page.fields.rule")}
+                  {t("quality_editor.fields.rule")}
                 </span>
                 <AppEditor
                   class_name="text-preserve-page__dialog-editor"
                   value={props.entry.src}
-                  aria_label={t("text_preserve_page.fields.rule")}
+                  aria_label={t("quality_editor.fields.rule")}
                   read_only={disabled}
                   invalid={props.validation_message !== null}
                   indent_with_tab={false}

@@ -1,5 +1,6 @@
 import type { ResolvedRequestPolicy, RequestProvider } from "../policy/policy-types";
 import type { LLMRequestResult } from "../llm-types";
+import { is_json_record } from "../../../domain/json";
 
 /**
  * ProviderClientPoolRequest 是请求编排器和具体 SDK factory 之间的窄边界。
@@ -33,5 +34,46 @@ export interface ProviderClientResolver {
  * RequestTransport 只消费已解析策略并归一供应商流式响应。
  */
 export interface RequestTransport {
+  /**
+   * 使用已解析策略发起一次可取消请求，并返回统一 LLM 结果。
+   */
   send(policy: ResolvedRequestPolicy, signal: AbortSignal): Promise<LLMRequestResult>;
+}
+
+/**
+ * 供应商无输出、取消、超时和退化分支共用完整默认结果。
+ */
+export function empty_llm_result(overrides: Partial<LLMRequestResult> = {}): LLMRequestResult {
+  return {
+    response_think: "",
+    response_result: "",
+    input_tokens: 0,
+    output_tokens: 0,
+    cancelled: false,
+    timeout: false,
+    degraded: false,
+    ...overrides,
+  };
+}
+
+/**
+ * SDK 流事件只允许普通对象进入字段解析。
+ */
+export function read_transport_record(value: unknown): Record<string, unknown> {
+  return is_json_record(value) ? value : {};
+}
+
+/**
+ * 非字符串 SDK 字段不拼入响应正文或思考文本。
+ */
+export function read_transport_text(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+/**
+ * usage 缺失或非法时保留调用方已有累计值。
+ */
+export function read_transport_number(value: unknown, fallback: number): number {
+  const number_value = Number(value ?? fallback);
+  return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
 }

@@ -44,31 +44,15 @@ export class NumberFixer {
     ) {
       return dst;
     }
-    let result = dst;
-    for (let index = 0; index < src_nums.length; index += 1) {
-      const src_num = src_nums[index] ?? "";
-      const dst_num = dst_nums[index] ?? "";
-      const dst_num_int = Number.parseInt(dst_num, 10);
-      if (!CIRCLED_NUMBERS_ALL.includes(src_num)) {
-        continue;
-      }
-      if (!Number.isFinite(dst_num_int) || CIRCLED_NUMBERS_ALL[dst_num_int] !== src_num) {
-        continue;
-      }
-      result = this.fix_circled_numbers_by_index(result, index, src_num);
-    }
-    return result;
-  }
-
-  /**
-   * 按第 N 个数字位置替换，避免全局替换误伤其它数字
-   */
-  private static fix_circled_numbers_by_index(
-    dst: string,
-    target_index: number,
-    target: string,
-  ): string {
     let index = 0;
-    return dst.replace(ALL_NUMBER_PATTERN, (match) => (index++ === target_index ? target : match));
+    return dst.replace(ALL_NUMBER_PATTERN, (dst_num) => {
+      const src_num = src_nums[index++] ?? "";
+      const dst_num_int = Number.parseInt(dst_num, 10);
+      return CIRCLED_NUMBERS_ALL.includes(src_num) &&
+        Number.isFinite(dst_num_int) &&
+        CIRCLED_NUMBERS_ALL[dst_num_int] === src_num
+        ? src_num
+        : dst_num;
+    });
   }
 }

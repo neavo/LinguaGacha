@@ -8,6 +8,12 @@ import type {
   ProviderClientResolver,
   RequestTransport,
 } from "./transport-types";
+import {
+  empty_llm_result,
+  read_transport_number,
+  read_transport_record,
+  read_transport_text,
+} from "./transport-types";
 
 /**
  * Google client 使用同一 apiKey/baseUrl/header/timeout 组合复用。
@@ -51,28 +57,28 @@ export class GoogleTransport implements RequestTransport {
     let input_tokens = 0;
     let output_tokens = 0;
     for await (const chunk of stream as AsyncIterable<unknown>) {
-      const record = this.as_record(chunk);
-      const text = this.read_text(record["text"]);
+      const record = read_transport_record(chunk);
+      const text = read_transport_text(record["text"]);
       if (text !== "") {
         response_result += text;
         if (detector.feed(text)) {
-          return this.empty_result({ degraded: true });
+          return empty_llm_result({ degraded: true });
         }
       }
       for (const part of this.read_parts(record)) {
-        const part_text = this.read_text(part["text"]);
+        const part_text = read_transport_text(part["text"]);
         if (part["thought"] === true) {
           response_think += part_text;
         } else if (part_text !== "" && text === "") {
           response_result += part_text;
         }
       }
-      const usage = this.as_record(record["usageMetadata"]);
-      input_tokens = this.read_number(usage["promptTokenCount"], input_tokens);
-      output_tokens = this.read_number(usage["candidatesTokenCount"], output_tokens);
+      const usage = read_transport_record(record["usageMetadata"]);
+      input_tokens = read_transport_number(usage["promptTokenCount"], input_tokens);
+      output_tokens = read_transport_number(usage["candidatesTokenCount"], output_tokens);
     }
     if (LLMClientDegradationDetector.has_output_degradation(response_result)) {
-      return this.empty_result({ degraded: true });
+      return empty_llm_result({ degraded: true });
     }
     return {
       response_think: response_think.trim(),
@@ -95,7 +101,7 @@ export class GoogleTransport implements RequestTransport {
     return {
       ...policy.payload,
       config: {
-        ...this.as_record(policy.payload["config"]),
+        ...read_transport_record(policy.payload["config"]),
         abortSignal: signal,
       },
     };
@@ -107,49 +113,9 @@ export class GoogleTransport implements RequestTransport {
   private read_parts(record: Record<string, unknown>): Array<Record<string, unknown>> {
     const candidates = Array.isArray(record["candidates"]) ? record["candidates"] : [];
     return candidates.flatMap((candidate) => {
-      const content = this.as_record(this.as_record(candidate)["content"]);
+      const content = read_transport_record(read_transport_record(candidate)["content"]);
       const parts = content["parts"];
-      return Array.isArray(parts) ? parts.map((part) => this.as_record(part)) : [];
+      return Array.isArray(parts) ? parts.map((part) => read_transport_record(part)) : [];
     });
-  }
-
-  /**
-   * 空结果保持字段完整，便于 LLMClient 统一返回。
-   */
-  private empty_result(overrides: Partial<LLMRequestResult> = {}): LLMRequestResult {
-    return {
-      response_think: "",
-      response_result: "",
-      input_tokens: 0,
-      output_tokens: 0,
-      cancelled: false,
-      timeout: false,
-      degraded: false,
-      ...overrides,
-    };
-  }
-
-  /**
-   * SDK chunk 在读取前统一收窄为普通对象。
-   */
-  private as_record(value: unknown): Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : {};
-  }
-
-  /**
-   * 只拼接字符串文本，其他字段按缺省处理。
-   */
-  private read_text(value: unknown): string {
-    return typeof value === "string" ? value : "";
-  }
-
-  /**
-   * usage 缺失时保留已有累计值。
-   */
-  private read_number(value: unknown, fallback: number): number {
-    const number_value = Number(value ?? fallback);
-    return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
 }

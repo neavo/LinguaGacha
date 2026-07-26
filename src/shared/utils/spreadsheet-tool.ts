@@ -5,13 +5,6 @@ import type { CellValue, Worksheet } from "exceljs";
  */
 export class SpreadsheetTool {
   /**
-   * 读取单元格并转成去除首尾空白的文本，对齐旧版 openpyxl 工具行为
-   */
-  public static getCellValue(sheet: Worksheet, row: number, column: number): string {
-    return this.cellValueToText(sheet.getCell(row, column).value).trim();
-  }
-
-  /**
    * 写入单元格文本并设置默认展示样式，避免 Excel 将用户文本误识别成公式
    */
   public static setCellValue(

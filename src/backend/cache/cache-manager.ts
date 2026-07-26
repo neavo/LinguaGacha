@@ -2,30 +2,17 @@ import type { AppSettingService } from "../app/app-setting-service";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
 import { ProjectDataReader } from "../project/project-data";
-import type { ProjectEvent, ProjectEventBus, ProjectEventType } from "../project/project-events";
+import type { ProjectEvent } from "../project/project-events";
 import type { BackendWorkerClient } from "../worker/worker-client";
 import { createProofreadingListReader } from "../../shared/proofreading/proofreading-list-reader";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
-import { AnalysisCache } from "./analysis/analysis-cache";
 import { create_cache_change, type CacheChange } from "./cache-change";
 import type { CacheFreshness, CacheReadPort, CacheSnapshot } from "./cache-types";
 import { FileCache } from "./file/file-cache";
 import { ItemCache } from "./item/item-cache";
-import { PromptCache } from "./prompt/prompt-cache";
+import { ProjectDataBlockCache } from "./project-data-block-cache";
 import { ProofreadingCache } from "./proofreading/proofreading-cache";
-import { QualityCache } from "./quality/quality-cache";
 import { QualityStatisticsCache } from "./quality/quality-statistics-cache";
-
-// 这些项目事件会影响 session 热读缓存，其他事件由各领域服务自行处理。
-const CACHE_EVENT_TYPES: ProjectEventType[] = [
-  "project.opened_for_cache",
-  "project.unloaded",
-  "project.items.changed",
-  "project.quality.changed",
-  "project.prompts.changed",
-  "project.settings.changed",
-  "project.analysis.changed",
-];
 
 /**
  * CacheManager 是 loaded project 的 session 热读缓存组合根。
@@ -40,9 +27,9 @@ export class CacheManager implements CacheReadPort {
   private recoverable_error: unknown = null; // 保留最近一次可恢复错误，方便未来诊断扩展。
   public readonly items = new ItemCache(() => this.recover_if_needed());
   public readonly files = new FileCache(() => this.recover_if_needed());
-  public readonly quality = new QualityCache(() => this.recover_if_needed());
-  public readonly prompts = new PromptCache(() => this.recover_if_needed());
-  public readonly analysis = new AnalysisCache(() => this.recover_if_needed());
+  public readonly quality = new ProjectDataBlockCache(() => this.recover_if_needed());
+  public readonly prompts = new ProjectDataBlockCache(() => this.recover_if_needed());
+  public readonly analysis = new ProjectDataBlockCache(() => this.recover_if_needed());
   public readonly proofreading: ProofreadingCache;
   public readonly qualityStatistics: QualityStatisticsCache;
 
@@ -67,17 +54,6 @@ export class CacheManager implements CacheReadPort {
       cache: this,
       workerClient: options.workerClient,
     });
-  }
-
-  /**
-   * 订阅项目事件总线，缓存只消费会影响热读事实的事件。
-   */
-  public subscribe(project_event_bus: ProjectEventBus): void {
-    for (const event_type of CACHE_EVENT_TYPES) {
-      project_event_bus.subscribe(event_type, async (event) => {
-        await this.handleProjectEvent(event);
-      });
-    }
   }
 
   /**

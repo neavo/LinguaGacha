@@ -1,31 +1,33 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { apply_basic_settings_prefilter_write } from "@frontend/pages/basic-settings-page/basic-settings-api-client";
-import { format_project_settings_aligned_toast } from "@frontend/app/feedback/project-settings-alignment-feedback";
-import type {
-  SettingsSnapshot,
-  SettingsSnapshotPayload,
-} from "@frontend/app/state/desktop-state-context";
-import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { format_project_settings_aligned_toast } from "@frontend/app/feedback/project-settings-alignment-feedback";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-provider";
+import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
+import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { useSettingsEditor } from "@frontend/features/settings-editor/use-settings-editor";
+import { apply_basic_settings_prefilter_write } from "@frontend/pages/basic-settings-page/basic-settings-api-client";
 import {
   REQUEST_TIMEOUT_MAX,
   REQUEST_TIMEOUT_MIN,
   build_basic_settings_snapshot,
-  type BasicSettingsPendingField,
   type BasicSettingsSnapshot,
   type ProjectSaveMode,
-  type SettingPendingState,
 } from "@frontend/pages/basic-settings-page/types";
 
-type SettingsUpdateRequest = Record<string, unknown>;
+const BASIC_SETTINGS_PENDING_FIELDS = [
+  "source_language",
+  "target_language",
+  "project_save_mode",
+  "output_folder_open_on_finish",
+  "request_timeout",
+] as const;
 
 type UseBasicSettingsStateResult = {
   snapshot: BasicSettingsSnapshot;
-  pending_state: SettingPendingState;
+  pending_state: Record<(typeof BASIC_SETTINGS_PENDING_FIELDS)[number], boolean>;
   is_task_busy: boolean;
   update_source_language: (next_language: string) => Promise<void>;
   update_target_language: (next_language: string) => Promise<void>;
@@ -35,146 +37,29 @@ type UseBasicSettingsStateResult = {
 };
 
 /**
- * 构建当前场景的稳定结果。
- */
-function create_pending_state(): SettingPendingState {
-  return {
-    source_language: false,
-    target_language: false,
-    project_save_mode: false,
-    output_folder_open_on_finish: false,
-    request_timeout: false,
-  };
-}
-
-/**
- * 归一化输入，保证下游消费稳定形状。
+ * 输入框值在页面边界收敛到后端设置允许的区间。
  */
 function clamp_request_timeout(next_value: number): number {
   return Math.min(REQUEST_TIMEOUT_MAX, Math.max(REQUEST_TIMEOUT_MIN, next_value));
 }
 
+/**
+ * 组合通用设置编辑器与项目预过滤对齐流程，页面不直接拥有后端设置事实。
+ */
 export function useBasicSettingsState(): UseBasicSettingsStateResult {
-  const {
-    settings_snapshot,
-    task_snapshot,
-    project_snapshot,
-    apply_settings_snapshot,
-    commit_project_write,
-    refresh_settings,
-  } = useDesktopState();
+  const { settings_snapshot, task_snapshot, project_snapshot, commit_project_write } =
+    useDesktopState();
   const { push_toast, run_modal_progress_toast } = useDesktopToast();
   const { t } = useI18n();
-  const [snapshot, set_snapshot] = useState<BasicSettingsSnapshot>(() => {
-    return build_basic_settings_snapshot(settings_snapshot);
+  const { snapshot, pending_state, commit_update } = useSettingsEditor({
+    select_snapshot: build_basic_settings_snapshot,
+    pending_fields: BASIC_SETTINGS_PENDING_FIELDS,
+    refresh_error_key: "basic_settings_page.feedback.refresh_failed",
+    update_error_key: "basic_settings_page.feedback.update_failed",
   });
-  const [pending_state, set_pending_state] = useState<SettingPendingState>(() => {
-    return create_pending_state();
-  });
-  const snapshot_ref = useRef<BasicSettingsSnapshot>(snapshot);
-  const settings_snapshot_ref = useRef<SettingsSnapshot>(settings_snapshot);
-  const context_snapshot = useMemo(() => {
-    return build_basic_settings_snapshot(settings_snapshot);
-  }, [settings_snapshot]);
-
-  useEffect(() => {
-    snapshot_ref.current = snapshot;
-  }, [snapshot]);
-
-  useEffect(() => {
-    settings_snapshot_ref.current = settings_snapshot;
-  }, [settings_snapshot]);
-
-  useEffect(() => {
-    set_snapshot(context_snapshot);
-  }, [context_snapshot]);
-
   const is_task_busy = task_snapshot.busy;
 
-  const set_pending = useCallback(
-    (field: BasicSettingsPendingField, next_pending: boolean): void => {
-      set_pending_state((previous_state) => {
-        return {
-          ...previous_state,
-          [field]: next_pending,
-        };
-      });
-    },
-    [],
-  );
-
-  const refresh_snapshot = useCallback(async (): Promise<void> => {
-    try {
-      const next_settings_snapshot = await refresh_settings();
-      set_snapshot(build_basic_settings_snapshot(next_settings_snapshot));
-    } catch (error) {
-      push_toast(
-        "error",
-        resolve_visible_error_message(error, t, t("basic_settings_page.feedback.refresh_failed")),
-      );
-    }
-  }, [push_toast, refresh_settings, t]);
-
-  useEffect(() => {
-    void refresh_snapshot();
-  }, [refresh_snapshot]);
-
-  const commit_update = useCallback(
-    async (
-      field: BasicSettingsPendingField,
-      request: SettingsUpdateRequest,
-      next_snapshot: BasicSettingsSnapshot,
-    ): Promise<SettingsSnapshot | null> => {
-      const previous_snapshot = snapshot_ref.current;
-      set_snapshot(next_snapshot);
-      set_pending(field, true);
-
-      try {
-        const payload = await api_fetch<SettingsSnapshotPayload>("/api/settings/update", request);
-        const next_settings_snapshot = apply_settings_snapshot(payload);
-        set_snapshot(build_basic_settings_snapshot(next_settings_snapshot));
-        return next_settings_snapshot;
-      } catch (error) {
-        set_snapshot((current_snapshot) => {
-          const reverted_snapshot = {
-            ...current_snapshot,
-          };
-
-          if ("source_language" in request) {
-            reverted_snapshot.source_language = previous_snapshot.source_language;
-          }
-          if ("target_language" in request) {
-            reverted_snapshot.target_language = previous_snapshot.target_language;
-          }
-          if ("project_save_mode" in request) {
-            reverted_snapshot.project_save_mode = previous_snapshot.project_save_mode;
-          }
-          if ("project_fixed_path" in request) {
-            reverted_snapshot.project_fixed_path = previous_snapshot.project_fixed_path;
-          }
-          if ("output_folder_open_on_finish" in request) {
-            reverted_snapshot.output_folder_open_on_finish =
-              previous_snapshot.output_folder_open_on_finish;
-          }
-          if ("request_timeout" in request) {
-            reverted_snapshot.request_timeout = previous_snapshot.request_timeout;
-          }
-
-          return reverted_snapshot;
-        });
-
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("basic_settings_page.feedback.update_failed")),
-        );
-        return null;
-      } finally {
-        set_pending(field, false);
-      }
-    },
-    [apply_settings_snapshot, push_toast, set_pending, t],
-  );
-
+  // 预过滤写入失败回滚设置后，只恢复项目设置镜像，不再次执行失败的预过滤。
   const apply_project_settings_only_alignment = useCallback(
     async (next_settings_snapshot: SettingsSnapshot): Promise<void> => {
       if (!project_snapshot.loaded) {
@@ -195,6 +80,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     [project_snapshot.loaded],
   );
 
+  // 设置写入成功后再用后端快照刷新项目预过滤，避免提交前端自行推导的事实。
   const apply_prefilter_from_settings = useCallback(
     async (next_settings_snapshot: SettingsSnapshot): Promise<void> => {
       if (!project_snapshot.loaded) {
@@ -212,18 +98,15 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     [commit_project_write, project_snapshot.loaded],
   );
 
+  // source_language 横跨设置与项目预过滤，两步失败时按相反顺序补偿。
   const rollback_source_language_after_prefilter_error = useCallback(
     async (
       previous_snapshot: BasicSettingsSnapshot,
       previous_settings_snapshot: SettingsSnapshot,
     ): Promise<void> => {
-      const rollback_settings_snapshot = await commit_update(
-        "source_language",
-        {
-          source_language: previous_snapshot.source_language,
-        },
-        previous_snapshot,
-      );
+      const rollback_settings_snapshot = await commit_update("source_language", {
+        source_language: previous_snapshot.source_language,
+      });
       if (rollback_settings_snapshot === null) {
         return;
       }
@@ -245,8 +128,8 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
 
   const update_source_language = useCallback(
     async (next_language: string): Promise<void> => {
-      const previous_snapshot = snapshot_ref.current;
-      const previous_settings_snapshot = settings_snapshot_ref.current;
+      const previous_snapshot = snapshot;
+      const previous_settings_snapshot = settings_snapshot;
 
       if (is_task_busy || previous_snapshot.source_language === next_language) {
         return;
@@ -256,17 +139,9 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
         await run_modal_progress_toast({
           message: t("basic_settings_page.feedback.source_language_loading_toast"),
           task: async () => {
-            const next_settings_snapshot = await commit_update(
-              "source_language",
-              {
-                source_language: next_language,
-              },
-              {
-                ...previous_snapshot,
-                source_language: next_language,
-              },
-            );
-
+            const next_settings_snapshot = await commit_update("source_language", {
+              source_language: next_language,
+            });
             if (next_settings_snapshot === null) {
               return;
             }
@@ -304,33 +179,28 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
       commit_update,
       is_task_busy,
       project_snapshot.loaded,
+      push_toast,
       rollback_source_language_after_prefilter_error,
       run_modal_progress_toast,
+      settings_snapshot,
+      snapshot,
       t,
     ],
   );
 
   const update_target_language = useCallback(
     async (next_language: string): Promise<void> => {
-      const previous_snapshot = snapshot_ref.current;
-
-      if (is_task_busy || previous_snapshot.target_language === next_language) {
+      if (is_task_busy || snapshot.target_language === next_language) {
         return;
       }
 
-      const next_settings_snapshot = await commit_update(
-        "target_language",
-        {
-          target_language: next_language,
-        },
-        {
-          ...previous_snapshot,
-          target_language: next_language,
-        },
-      );
+      const next_settings_snapshot = await commit_update("target_language", {
+        target_language: next_language,
+      });
       if (next_settings_snapshot === null) {
         return;
       }
+
       await apply_project_settings_only_alignment(next_settings_snapshot);
       if (project_snapshot.loaded) {
         push_toast(
@@ -357,40 +227,31 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
       is_task_busy,
       project_snapshot.loaded,
       push_toast,
+      snapshot.target_language,
       t,
     ],
   );
 
   const update_project_save_mode = useCallback(
     async (next_mode: ProjectSaveMode): Promise<void> => {
-      const previous_snapshot = snapshot_ref.current;
-
-      if (previous_snapshot.project_save_mode === next_mode) {
+      if (snapshot.project_save_mode === next_mode) {
         return;
       }
 
       if (next_mode === "FIXED") {
         try {
           const result = await window.desktopApp.pickFixedProjectDirectory(
-            previous_snapshot.project_fixed_path,
+            snapshot.project_fixed_path,
           );
           const selected_path = result.paths[0] ?? "";
           if (result.canceled || selected_path === "") {
             return;
           }
 
-          await commit_update(
-            "project_save_mode",
-            {
-              project_save_mode: next_mode,
-              project_fixed_path: selected_path,
-            },
-            {
-              ...previous_snapshot,
-              project_save_mode: next_mode,
-              project_fixed_path: selected_path,
-            },
-          );
+          await commit_update("project_save_mode", {
+            project_save_mode: next_mode,
+            project_fixed_path: selected_path,
+          });
         } catch (error) {
           push_toast(
             "error",
@@ -401,91 +262,51 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
             ),
           );
         }
-      } else {
-        await commit_update(
-          "project_save_mode",
-          {
-            project_save_mode: next_mode,
-          },
-          {
-            ...previous_snapshot,
-            project_save_mode: next_mode,
-          },
-        );
+        return;
       }
+
+      await commit_update("project_save_mode", {
+        project_save_mode: next_mode,
+      });
     },
-    [commit_update, push_toast, t],
+    [commit_update, push_toast, snapshot.project_fixed_path, snapshot.project_save_mode, t],
   );
 
   const update_output_folder_open_on_finish = useCallback(
     async (next_checked: boolean): Promise<void> => {
-      const previous_snapshot = snapshot_ref.current;
-
-      if (previous_snapshot.output_folder_open_on_finish === next_checked) {
+      if (snapshot.output_folder_open_on_finish === next_checked) {
         return;
       }
 
-      await commit_update(
-        "output_folder_open_on_finish",
-        {
-          output_folder_open_on_finish: next_checked,
-        },
-        {
-          ...previous_snapshot,
-          output_folder_open_on_finish: next_checked,
-        },
-      );
+      await commit_update("output_folder_open_on_finish", {
+        output_folder_open_on_finish: next_checked,
+      });
     },
-    [commit_update],
+    [commit_update, snapshot.output_folder_open_on_finish],
   );
 
   const update_request_timeout = useCallback(
     async (next_value: number): Promise<void> => {
-      const previous_snapshot = snapshot_ref.current;
       const normalized_timeout = clamp_request_timeout(next_value);
-
-      if (
-        Number.isNaN(normalized_timeout) ||
-        previous_snapshot.request_timeout === normalized_timeout
-      ) {
+      if (Number.isNaN(normalized_timeout) || snapshot.request_timeout === normalized_timeout) {
         return;
       }
 
-      await commit_update(
-        "request_timeout",
-        {
-          request_timeout: normalized_timeout,
-        },
-        {
-          ...previous_snapshot,
-          request_timeout: normalized_timeout,
-        },
-      );
+      await commit_update("request_timeout", {
+        request_timeout: normalized_timeout,
+      });
     },
-    [commit_update],
+    [commit_update, snapshot.request_timeout],
   );
 
-  const value = useMemo<UseBasicSettingsStateResult>(() => {
-    return {
-      snapshot,
-      pending_state,
-      is_task_busy,
-      update_source_language,
-      update_target_language,
-      update_project_save_mode,
-      update_output_folder_open_on_finish,
-      update_request_timeout,
-    };
-  }, [
-    is_task_busy,
-    pending_state,
+  return {
     snapshot,
-    update_output_folder_open_on_finish,
-    update_project_save_mode,
-    update_request_timeout,
+    pending_state,
+    is_task_busy,
     update_source_language,
     update_target_language,
-  ]);
-
-  return value;
+    update_project_save_mode,
+    update_output_folder_open_on_finish,
+    update_request_timeout,
+  };
 }

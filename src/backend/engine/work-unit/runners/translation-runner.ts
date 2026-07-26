@@ -1,4 +1,5 @@
 import type { ApiJsonValue } from "../../../api/api-types";
+import { is_json_record, read_json_record } from "../../../../domain/json";
 import {
   TextProcessingConfigTool,
   TextQualitySnapshotTool,
@@ -39,8 +40,8 @@ import { has_translation_retry_reached_review_threshold } from "../../../../shar
 interface WorkUnitBaseRequest {
   run_id: string; // 用于隔离一次任务运行，worker 不用它访问项目状态
   work_unit_id: string; // chunk 级诊断键，迟到响应和日志都围绕它定位
-  model: ApiJsonValue; // / config_snapshot 均来自任务启动快照，避免执行中读取可变全局配置
-  config_snapshot: ApiJsonValue;
+  model: ApiJsonValue; // 任务启动时冻结的模型快照
+  config_snapshot: ApiJsonValue; // 任务启动时冻结的应用设置
   quality_snapshot: ApiJsonValue; // 文本后处理与提示词构造的唯一质量规则输入
 }
 
@@ -50,10 +51,10 @@ interface WorkUnitBaseRequest {
 interface TranslationWorkUnitRequest extends WorkUnitBaseRequest {
   items: ApiJsonValue; // 本 chunk 的不可变条目快照，worker 修改结果后再回传给 TaskEngine
   precedings?: ApiJsonValue; // 只用于上下文提示词，不参与当前 chunk 的写回
-  split_count?: ApiJsonValue; // 以下字段用于调度日志诊断，避免任务诊断信息丢失
-  retry_count?: ApiJsonValue;
-  token_threshold?: ApiJsonValue;
-  is_initial?: ApiJsonValue;
+  split_count?: ApiJsonValue; // 当前 chunk 的拆分次数
+  retry_count?: ApiJsonValue; // 当前 chunk 的重试次数
+  token_threshold?: ApiJsonValue; // 本轮规划使用的输入门槛
+  is_initial?: ApiJsonValue; // 区分初次执行与重试上下文
 }
 
 /**
@@ -62,8 +63,8 @@ interface TranslationWorkUnitRequest extends WorkUnitBaseRequest {
 interface TranslationWorkUnitResult {
   items: TextTaskItemRecord[]; // 只包含本 work unit 处理后的条目快照，由 TaskEngine 统一提交
   row_count: number; // 按日志口径表示本次成功覆盖的输入行数
-  input_tokens: number; // token 计数向任务统计累加，不参与业务分支判断
-  output_tokens: number;
+  input_tokens: number; // 请求输入 token，向任务统计累加
+  output_tokens: number; // 请求输出 token，不参与成功分支判断
   stopped: boolean; // 主动取消或 adapter 取消，区别于可重试错误
   logs?: WorkUnitLogEntry[]; // 由主线程统一提交，worker 不直接写日志目标
 }
@@ -117,7 +118,7 @@ export class TranslationWorkUnitRunner {
   }
 
   /**
-   * 执行翻译 unit；提交和重试仍由 TaskDefinition / Engine 决定
+   * 执行翻译 unit；提交和重试由 Engine 决定
    */
   public async execute_unit(
     unit: TranslationWorkUnit,
@@ -802,23 +803,14 @@ export class TranslationWorkUnitRunner {
    * 模型 API 格式缺失时按 OpenAI 处理
    */
   private resolve_model_api_format(model: ApiJsonValue): string {
-    return typeof model === "object" && model !== null && !Array.isArray(model)
-      ? String(model["api_format"] ?? "OpenAI")
-      : "OpenAI";
+    return String(read_json_record(model)["api_format"] ?? "OpenAI");
   }
 
   /**
    * work unit item 数组只保留普通对象，避免跨线程带入奇怪值
    */
   private read_item_list(value: ApiJsonValue | undefined): TextTaskItemRecord[] {
-    return Array.isArray(value)
-      ? value
-          .filter(
-            (item): item is TextTaskItemRecord =>
-              typeof item === "object" && item !== null && !Array.isArray(item),
-          )
-          .map((item) => ({ ...item }))
-      : [];
+    return Array.isArray(value) ? value.filter(is_json_record).map((item) => ({ ...item })) : [];
   }
 
   /**

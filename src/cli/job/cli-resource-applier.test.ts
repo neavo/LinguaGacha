@@ -3,7 +3,14 @@ import { describe, expect, it, vi } from "vitest";
 import type { CLICommandOptions } from "../cli-parser";
 import { apply_cli_resources } from "./cli-resource-applier";
 import type { BackendServices } from "../../backend/bootstrap/backend-services";
+import type {
+  ProjectDatabase,
+  ProjectDatabaseWrite,
+} from "../../backend/database/database-operations";
 
+/**
+ * 资源全部缺省的翻译命令用于验证 CLI 默认关闭策略。
+ */
 function create_translate_command(): CLICommandOptions {
   return {
     command: "translate",
@@ -21,40 +28,38 @@ function create_translate_command(): CLICommandOptions {
   };
 }
 
+/**
+ * 提交桩实际执行类型化写入，让断言落在 ProjectDatabase 可观察调用上。
+ */
 function create_backend_services() {
-  const commit_cli_resource_operations = vi.fn(async () => undefined);
+  const set_meta = vi.fn();
+  const database = {
+    set_meta,
+    set_rules: vi.fn(),
+    set_rule_text: vi.fn(),
+  } as unknown as ProjectDatabase;
+  const commit_cli_resource_writes = vi.fn(
+    async (_project_path: string, writes: ProjectDatabaseWrite[]) => {
+      for (const write of writes) {
+        write(database);
+      }
+    },
+  );
   return {
-    commit_cli_resource_operations,
-  } as unknown as BackendServices & {
-    commit_cli_resource_operations: typeof commit_cli_resource_operations;
+    backend_services: { commit_cli_resource_writes } as unknown as BackendServices,
+    commit_cli_resource_writes,
+    set_meta,
   };
 }
+
 describe("cli-resource-applier", () => {
-  it("写入 CLI 临时工程资源后发布质量和提示词缓存刷新事件", async () => {
-    const backend_services = create_backend_services();
+  it("把 CLI 资源编译为类型化写入并交给后端提交", async () => {
+    const { backend_services, commit_cli_resource_writes, set_meta } = create_backend_services();
 
     await apply_cli_resources(backend_services, create_translate_command(), "E:/Project/tmp.lg");
 
-    expect(backend_services.commit_cli_resource_operations).toHaveBeenCalledWith(
-      "E:/Project/tmp.lg",
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: "setMeta",
-          args: expect.objectContaining({
-            projectPath: "E:/Project/tmp.lg",
-            key: "glossary_enable",
-            value: false,
-          }),
-        }),
-        expect.objectContaining({
-          name: "setMeta",
-          args: expect.objectContaining({
-            projectPath: "E:/Project/tmp.lg",
-            key: "text_preserve_mode",
-            value: "off",
-          }),
-        }),
-      ]),
-    );
+    expect(commit_cli_resource_writes).toHaveBeenCalledWith("E:/Project/tmp.lg", expect.any(Array));
+    expect(set_meta).toHaveBeenCalledWith("E:/Project/tmp.lg", "glossary_enable", false);
+    expect(set_meta).toHaveBeenCalledWith("E:/Project/tmp.lg", "text_preserve_mode", "off");
   });
 });

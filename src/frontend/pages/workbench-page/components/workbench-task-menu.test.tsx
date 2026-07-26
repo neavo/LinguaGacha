@@ -4,61 +4,40 @@ import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { AnalysisTaskMenu } from "@frontend/pages/workbench-page/components/analysis-task-menu";
-import { TranslationTaskMenu } from "@frontend/pages/workbench-page/components/translation-task-menu";
+import { WorkbenchTaskMenu } from "./workbench-task-menu";
 
-(
-  globalThis as typeof globalThis & {
-    IS_REACT_ACT_ENVIRONMENT?: boolean;
-  }
-).IS_REACT_ACT_ENVIRONMENT = true;
+vi.mock("@frontend/app/locale/locale-provider", () => ({
+  useI18n: () => ({
+    t: (key: string) => key,
+  }),
+}));
 
-vi.mock("@frontend/app/locale/locale-provider", () => {
-  return {
-    useI18n: () => ({
-      t: (key: string) => key,
-    }),
-  };
-});
+vi.mock("@frontend/widgets/app-dropdown-menu", () => ({
+  AppDropdownMenu: (props: { children: ReactNode }) => <div>{props.children}</div>,
+  AppDropdownMenuTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
+  AppDropdownMenuContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
+  AppDropdownMenuGroup: (props: { children: ReactNode }) => <div>{props.children}</div>,
+  AppDropdownMenuSeparator: () => <hr />,
+  AppDropdownMenuItem: (props: {
+    children: ReactNode;
+    disabled?: boolean;
+    onSelect?: () => void;
+  }) => (
+    <button type="button" disabled={props.disabled} onClick={props.onSelect}>
+      {props.children}
+    </button>
+  ),
+}));
 
-vi.mock("@frontend/widgets/app-dropdown-menu", () => {
-  return {
-    AppDropdownMenu: (props: { children: ReactNode }) => <div>{props.children}</div>,
-    AppDropdownMenuTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
-    AppDropdownMenuContent: (props: { children: ReactNode }) => <div>{props.children}</div>,
-    AppDropdownMenuGroup: (props: { children: ReactNode }) => <div>{props.children}</div>,
-    AppDropdownMenuSeparator: () => <hr />,
-    AppDropdownMenuItem: (props: {
-      children: ReactNode;
-      disabled?: boolean;
-      onSelect?: () => void;
-    }) => (
-      <button
-        type="button"
-        disabled={props.disabled}
-        onClick={() => {
-          props.onSelect?.();
-        }}
-      >
-        {props.children}
-      </button>
-    ),
-  };
-});
+vi.mock("@frontend/widgets/segmented-progress/segmented-progress", () => ({
+  SegmentedProgress: () => <div data-testid="segmented-progress" />,
+}));
 
-vi.mock("@frontend/widgets/segmented-progress/segmented-progress", () => {
-  return {
-    SegmentedProgress: () => <div data-testid="segmented-progress" />,
-  };
-});
-
-vi.mock("@frontend/shadcn/tooltip", () => {
-  return {
-    Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
-    TooltipTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
-    TooltipContent: (props: { children: ReactNode }) => <div role="tooltip">{props.children}</div>,
-  };
-});
+vi.mock("@frontend/shadcn/tooltip", () => ({
+  Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
+  TooltipTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
+  TooltipContent: (props: { children: ReactNode }) => <div role="tooltip">{props.children}</div>,
+}));
 
 const workbench_stats = {
   total_items: 4,
@@ -69,26 +48,17 @@ const workbench_stats = {
   completion_percent: 25,
 };
 
-const translation_task_metrics = {
+const shared_props = {
   active: false,
-  stopping: false,
-  processed_count: 0,
-  failed_count: 0,
-  elapsed_seconds: 0,
-  remaining_seconds: 0,
-  average_output_speed: 0,
-  input_tokens: 0,
-  output_tokens: 0,
-  request_in_flight_count: 0,
-  completion_percent: 0,
+  workbench_stats,
+  disabled: false,
+  busy: false,
+  active_task_action_kind: null,
+  on_start_or_continue: async () => {},
+  on_request_reset: () => {},
 };
 
-const analysis_task_metrics = {
-  ...translation_task_metrics,
-  candidate_count: 2,
-};
-
-describe("工作台任务菜单", () => {
+describe("WorkbenchTaskMenu", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 
@@ -98,71 +68,123 @@ describe("工作台任务菜单", () => {
         root?.unmount();
       });
     }
-
     container?.remove();
     container = null;
     root = null;
   });
 
-  it("任务菜单触发按钮展示说明提示", () => {
+  function find_button(label: string): HTMLButtonElement {
+    const button = [...(container?.querySelectorAll("button") ?? [])].find((candidate) =>
+      candidate.textContent?.includes(label),
+    );
+    if (button === undefined) {
+      throw new Error(`找不到按钮：${label}`);
+    }
+    return button;
+  }
+
+  async function render_menu(element: ReactNode): Promise<void> {
+    if (container === null) {
+      container = document.createElement("div");
+      document.body.append(container);
+      root = createRoot(container);
+    }
+    await act(async () => {
+      root?.render(element);
+    });
+  }
+
+  it("按任务类型展示菜单说明与共享进度", () => {
     const html = renderToStaticMarkup(
       <>
-        <TranslationTaskMenu
-          translation_task_metrics={translation_task_metrics}
-          workbench_stats={workbench_stats}
-          disabled={false}
-          busy={false}
-          active_task_action_kind={null}
-          on_start_or_continue={async () => {}}
-          on_request_confirmation={() => {}}
-        />
-        <AnalysisTaskMenu
-          analysis_task_metrics={analysis_task_metrics}
-          workbench_stats={workbench_stats}
-          disabled={false}
-          busy={false}
-          importing={false}
-          active_task_action_kind={null}
-          on_start_or_continue={async () => {}}
-          on_request_confirmation={() => {}}
+        <WorkbenchTaskMenu task_kind="translation" {...shared_props} />
+        <WorkbenchTaskMenu
+          task_kind="analysis"
+          {...shared_props}
+          analysis_import={{
+            candidate_count: 2,
+            importing: false,
+            on_request: () => {},
+          }}
         />
       </>,
     );
 
     expect(html).toContain("workbench_page.translation_task.menu.tooltip");
     expect(html).toContain("workbench_page.analysis_task.menu.tooltip");
+    expect(html.match(/workbench_page\.task\.menu\.progress/g)).toHaveLength(2);
   });
 
-  it("导入候选术语先请求分析任务确认", async () => {
-    const on_request_confirmation = vi.fn();
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
+  it("启动与重置动作复用同一条交互路径", async () => {
+    const on_start_or_continue = vi.fn(async () => {});
+    const on_request_reset = vi.fn();
+    await render_menu(
+      <WorkbenchTaskMenu
+        task_kind="translation"
+        {...shared_props}
+        on_start_or_continue={on_start_or_continue}
+        on_request_reset={on_request_reset}
+      />,
+    );
 
     await act(async () => {
-      root?.render(
-        <AnalysisTaskMenu
-          analysis_task_metrics={analysis_task_metrics}
-          workbench_stats={workbench_stats}
-          disabled={false}
-          busy={false}
-          importing={false}
-          active_task_action_kind={null}
-          on_start_or_continue={async () => {}}
-          on_request_confirmation={on_request_confirmation}
-        />,
-      );
+      find_button("workbench_page.action.start_translation").click();
+      find_button("workbench_page.action.reset_translation_all").click();
+      find_button("workbench_page.action.reset_translation_failed").click();
     });
 
-    const import_button = [...container.querySelectorAll("button")].find((button) => {
-      return button.textContent?.includes("workbench_page.action.import_analysis_glossary");
-    });
-    expect(import_button).not.toBeUndefined();
+    expect(on_start_or_continue).toHaveBeenCalledOnce();
+    expect(on_request_reset).toHaveBeenNthCalledWith(1, "reset-all");
+    expect(on_request_reset).toHaveBeenNthCalledWith(2, "reset-failed");
+  });
+
+  it("分析候选数控制导入动作并在提交前请求确认", async () => {
+    const on_request = vi.fn();
+    await render_menu(
+      <WorkbenchTaskMenu
+        task_kind="analysis"
+        {...shared_props}
+        analysis_import={{
+          candidate_count: 2,
+          importing: false,
+          on_request,
+        }}
+      />,
+    );
+
+    const import_button = find_button("workbench_page.action.import_analysis_glossary");
+    expect(import_button.textContent).toContain("2");
+    expect(import_button.disabled).toBe(false);
 
     await act(async () => {
-      import_button?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      import_button.click();
     });
+    expect(on_request).toHaveBeenCalledOnce();
 
-    expect(on_request_confirmation).toHaveBeenCalledWith("import-glossary");
+    await render_menu(
+      <WorkbenchTaskMenu
+        task_kind="analysis"
+        {...shared_props}
+        analysis_import={{
+          candidate_count: 0,
+          importing: false,
+          on_request,
+        }}
+      />,
+    );
+    expect(find_button("workbench_page.action.import_analysis_glossary").disabled).toBe(true);
+
+    await render_menu(
+      <WorkbenchTaskMenu
+        task_kind="analysis"
+        {...shared_props}
+        analysis_import={{
+          candidate_count: 2,
+          importing: true,
+          on_request,
+        }}
+      />,
+    );
+    expect(find_button("workbench_page.action.import_analysis_glossary").disabled).toBe(true);
   });
 });

@@ -7,6 +7,17 @@ import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import {
+  build_user_preset_virtual_id,
+  create_empty_preset_input_state,
+  decorate_preset_items,
+  has_casefold_duplicate_preset,
+  normalize_preset_name,
+} from "@frontend/features/preset-editor/preset-model";
+import type {
+  PresetInputState as CustomPromptPresetInputState,
+  PresetItem as CustomPromptPresetItem,
+} from "@frontend/features/preset-editor/preset-types";
+import {
   CUSTOM_PROMPT_VARIANT_CONFIG,
   type CustomPromptVariant,
   type CustomPromptVariantConfig,
@@ -14,8 +25,6 @@ import {
 import { useCustomPromptEditorState } from "@frontend/pages/custom-prompt-page/use-custom-prompt-editor-state";
 import type {
   CustomPromptConfirmState,
-  CustomPromptPresetInputState,
-  CustomPromptPresetItem,
   UseCustomPromptPageStateResult,
 } from "@frontend/pages/custom-prompt-page/types";
 
@@ -28,85 +37,18 @@ type PromptImportPayload = {
   text?: string;
 };
 
-/**
- * 构建当前场景的稳定结果。
- */
+// 关闭态被冻结后可安全复用，打开态始终创建新对象。
 const CLOSED_CONFIRM_STATE = Object.freeze({ kind: null } as const);
 
 /**
- * 构建当前场景的稳定结果。
- */
-function create_empty_preset_input_state(): CustomPromptPresetInputState {
-  return {
-    open: false,
-    mode: null,
-    value: "",
-    submitting: false,
-    target_virtual_id: null,
-  };
-}
-
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
-/**
- * 归一化输入，保证下游消费稳定形状。
+ * 导入、预设和编辑器保存共用首尾空白归一化规则。
  */
 function normalize_prompt_text(text: string): string {
   return text.trim();
 }
 
 /**
- * 构建当前场景的稳定结果。
- */
-function build_user_preset_virtual_id(name: string): string {
-  return `user:${name}.txt`;
-}
-
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
-function normalize_preset_name(name: string): string {
-  return name.trim();
-}
-
-/**
- * 判断当前值是否满足业务条件。
- */
-function has_casefold_duplicate_preset(
-  preset_items: CustomPromptPresetItem[],
-  target_virtual_id: string,
-  current_virtual_id: string | null,
-): boolean {
-  const target_key = target_virtual_id.toLocaleLowerCase();
-
-  return preset_items.some((item) => {
-    if (item.type !== "user") {
-      return false;
-    }
-
-    if (current_virtual_id !== null && item.virtual_id === current_virtual_id) {
-      return false;
-    }
-
-    return item.virtual_id.toLocaleLowerCase() === target_key;
-  });
-}
-
-function decorate_preset_items(
-  builtin_presets: CustomPromptPresetItem[],
-  user_presets: CustomPromptPresetItem[],
-  default_virtual_id: string,
-): CustomPromptPresetItem[] {
-  return [...builtin_presets, ...user_presets].map((item) => {
-    return {
-      ...item,
-      is_default: item.virtual_id === default_virtual_id,
-    };
-  });
-}
-
-/**
- * 构建当前场景的稳定结果。
+ * 默认预设键由提示词变体配置拥有，调用点只提交值。
  */
 function build_default_preset_update_payload(
   config: CustomPromptVariantConfig,
@@ -117,6 +59,9 @@ function build_default_preset_update_payload(
   };
 }
 
+/**
+ * 拥有单个提示词变体的预设菜单、确认流程与导入导出状态。
+ */
 export function useCustomPromptPageState(
   variant: CustomPromptVariant,
 ): UseCustomPromptPageStateResult {
@@ -171,8 +116,8 @@ export function useCustomPromptPageState(
     async (
       next_text: string,
       success_message_key:
-        | "custom_prompt_page.feedback.import_success"
-        | "custom_prompt_page.feedback.reset_success",
+        | "quality_editor.feedback.import_success"
+        | "quality_editor.feedback.reset_success",
     ): Promise<boolean> => {
       if (readonly) {
         return false;
@@ -193,7 +138,7 @@ export function useCustomPromptPageState(
       const previous_enabled = enabled;
       const succeeded = await commit_prompt_text(
         next_text,
-        "custom_prompt_page.feedback.import_success",
+        "quality_editor.feedback.import_success",
       );
       if (succeeded && !previous_enabled) {
         set_confirm_state({
@@ -247,7 +192,7 @@ export function useCustomPromptPageState(
         task_type: config.task_type,
         path: selected_path,
       });
-      push_toast("success", t("custom_prompt_page.feedback.export_success"));
+      push_toast("success", t("quality_editor.feedback.export_success"));
     } catch (error) {
       push_toast(
         "error",
@@ -357,7 +302,7 @@ export function useCustomPromptPageState(
 
       const normalized_name = normalize_preset_name(name);
       if (normalized_name === "") {
-        push_toast("warning", t("custom_prompt_page.feedback.preset_name_required"));
+        push_toast("warning", t("quality_editor.feedback.preset_name_required"));
         return false;
       }
 
@@ -368,7 +313,7 @@ export function useCustomPromptPageState(
           text: normalize_prompt_text(prompt_text),
         });
         await refresh_preset_menu();
-        push_toast("success", t("custom_prompt_page.feedback.preset_saved"));
+        push_toast("success", t("quality_editor.feedback.preset_saved"));
         return true;
       } catch (error) {
         push_toast(
@@ -389,7 +334,7 @@ export function useCustomPromptPageState(
 
       const normalized_name = normalize_preset_name(name);
       if (normalized_name === "") {
-        push_toast("warning", t("custom_prompt_page.feedback.preset_name_required"));
+        push_toast("warning", t("quality_editor.feedback.preset_name_required"));
         return false;
       }
 
@@ -437,7 +382,7 @@ export function useCustomPromptPageState(
         );
         apply_settings_snapshot(payload);
         await refresh_preset_menu();
-        push_toast("success", t("custom_prompt_page.feedback.default_preset_set"));
+        push_toast("success", t("quality_editor.feedback.default_preset_set"));
       } catch (error) {
         push_toast(
           "error",
@@ -460,7 +405,7 @@ export function useCustomPromptPageState(
       );
       apply_settings_snapshot(payload);
       await refresh_preset_menu();
-      push_toast("success", t("custom_prompt_page.feedback.default_preset_cleared"));
+      push_toast("success", t("quality_editor.feedback.default_preset_cleared"));
     } catch (error) {
       push_toast(
         "error",
@@ -493,11 +438,11 @@ export function useCustomPromptPageState(
 
     const normalized_name = normalize_preset_name(preset_input_state.value);
     if (normalized_name === "") {
-      push_toast("warning", t("custom_prompt_page.feedback.preset_name_required"));
+      push_toast("warning", t("quality_editor.feedback.preset_name_required"));
       return;
     }
 
-    const next_virtual_id = build_user_preset_virtual_id(normalized_name);
+    const next_virtual_id = build_user_preset_virtual_id(normalized_name, "txt");
     if (
       preset_input_state.mode === "save" &&
       has_casefold_duplicate_preset(preset_items, next_virtual_id, null)
@@ -518,7 +463,7 @@ export function useCustomPromptPageState(
         preset_input_state.target_virtual_id,
       )
     ) {
-      push_toast("warning", t("custom_prompt_page.feedback.preset_exists"));
+      push_toast("warning", t("quality_editor.feedback.preset_exists"));
       return;
     }
 
@@ -598,7 +543,7 @@ export function useCustomPromptPageState(
       case "reset": {
         succeeded = await commit_prompt_text(
           template.default_text,
-          "custom_prompt_page.feedback.reset_success",
+          "quality_editor.feedback.reset_success",
         );
         if (succeeded) {
           set_preset_menu_open(false);

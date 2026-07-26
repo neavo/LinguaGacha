@@ -3,7 +3,7 @@ import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { CustomPromptCommandBar } from "@frontend/pages/custom-prompt-page/components/custom-prompt-command-bar";
 import { CustomPromptConfirmDialog } from "@frontend/pages/custom-prompt-page/components/custom-prompt-confirm-dialog";
-import { CustomPromptPresetInputDialog } from "@frontend/pages/custom-prompt-page/components/custom-prompt-preset-input-dialog";
+import { PresetNameDialog } from "@frontend/features/preset-editor/preset-name-dialog";
 import type { CustomPromptVariant } from "@frontend/pages/custom-prompt-page/config";
 import { useCustomPromptPageState } from "@frontend/pages/custom-prompt-page/use-custom-prompt-page-state";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
@@ -123,7 +123,7 @@ export function CustomPromptPage(props: CustomPromptPageProps): JSX.Element {
         on_close={page_state.close_confirm_dialog}
       />
 
-      <CustomPromptPresetInputDialog
+      <PresetNameDialog
         state={page_state.preset_input_state}
         on_change={page_state.update_preset_input_value}
         on_submit={() => {

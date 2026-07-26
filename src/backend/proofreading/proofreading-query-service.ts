@@ -1,4 +1,5 @@
 import type { ApiJsonValue } from "../api/api-types";
+import { read_json_record } from "../../domain/json";
 import type { ProofreadingCache } from "../cache/proofreading/proofreading-cache";
 import type { ProjectSessionState } from "../project/project-session";
 import * as AppErrors from "../../shared/error";
@@ -11,17 +12,26 @@ import type { ProofreadingSortState } from "../../shared/proofreading/list";
 
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
+/**
+ * 将校对页面 action 收窄为当前 loaded 工程的只读缓存查询。
+ */
 export class ProofreadingQueryService {
-  private readonly session_state: ProjectSessionState;
-  private readonly cache: ProofreadingCache;
+  private readonly session_state: ProjectSessionState; // 查询必须绑定当前 loaded 工程
+  private readonly cache: ProofreadingCache; // 大列表计算和窗口身份由后端缓存拥有
 
+  /**
+   * 注入会话守卫和校对缓存，不为查询开放数据库写入口。
+   */
   public constructor(options: { sessionState: ProjectSessionState; cache: ProofreadingCache }) {
     this.session_state = options.sessionState;
     this.cache = options.cache;
   }
 
+  /**
+   * 分发校对页唯一查询入口，未知 action 在协议边界直接拒绝。
+   */
   public async read(request: Record<string, ApiJsonValue>): Promise<MutableJsonRecord> {
-    this.require_loaded_project_path();
+    this.session_state.require_loaded_project_path();
     const action = String(request["action"] ?? "sync");
     if (action === "sync") {
       const result = await this.cache.sync({
@@ -77,6 +87,9 @@ export class ProofreadingQueryService {
     });
   }
 
+  /**
+   * 每个查询响应都携带计算时的工程身份和 section revision。
+   */
   private with_revision(
     result: {
       projectPath: string;
@@ -92,8 +105,11 @@ export class ProofreadingQueryService {
     };
   }
 
+  /**
+   * 将公开 list query 归一为校对列表读取器的完整参数。
+   */
   private read_list_query(value: ApiJsonValue | undefined): ProofreadingListViewQuery {
-    const record = this.read_record(value);
+    const record = read_json_record(value);
     return {
       filters: this.read_filters(record["filters"] as ApiJsonValue | undefined),
       keyword: String(record["keyword"] ?? ""),
@@ -105,8 +121,11 @@ export class ProofreadingQueryService {
     };
   }
 
+  /**
+   * 只接受稳定过滤字段；非法术语元组在边界丢弃。
+   */
   private read_filters(value: ApiJsonValue | undefined): ProofreadingFilterOptions {
-    const record = this.read_record(value);
+    const record = read_json_record(value);
     return {
       warning_types: this.read_string_array(record["warning_types"] as ApiJsonValue | undefined),
       statuses: this.read_string_array(record["statuses"] as ApiJsonValue | undefined),
@@ -122,6 +141,9 @@ export class ProofreadingQueryService {
     };
   }
 
+  /**
+   * 排序必须同时具备合法方向和列 id，否则退回默认顺序。
+   */
   private read_sort_state(value: unknown): ProofreadingSortState | null {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
       return null;
@@ -137,28 +159,23 @@ export class ProofreadingQueryService {
     };
   }
 
+  /**
+   * 搜索范围只允许原文、译文或两者。
+   */
   private read_scope(value: unknown): ProofreadingSearchScope {
     return value === "src" || value === "dst" ? value : "all";
   }
 
-  private require_loaded_project_path(): string {
-    const state = this.session_state.snapshot();
-    if (!state.loaded || state.projectPath === "") {
-      throw new AppErrors.ProjectNotLoadedError();
-    }
-    return state.projectPath;
-  }
-
-  private read_record(value: ApiJsonValue | undefined): Record<string, ApiJsonValue> {
-    return typeof value === "object" && value !== null && !Array.isArray(value)
-      ? (value as Record<string, ApiJsonValue>)
-      : {};
-  }
-
+  /**
+   * 多选过滤统一转换为字符串数组。
+   */
   private read_string_array(value: ApiJsonValue | undefined): string[] {
     return Array.isArray(value) ? value.map((entry) => String(entry)) : [];
   }
 
+  /**
+   * 窗口参数统一截断为非负整数。
+   */
   private read_number(value: unknown, fallback: number): number {
     const parsed = Number(value ?? fallback);
     return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : fallback;

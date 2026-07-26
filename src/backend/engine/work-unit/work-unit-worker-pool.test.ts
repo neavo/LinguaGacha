@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LLMClient } from "../../llm/llm-client";
 import { WorkUnitWorkerPool } from "./work-unit-worker-pool";
-import { RuntimeCancelledError, RuntimeDisposedError } from "../../../shared/error";
+import { RuntimeDisposedError } from "../../../shared/error";
 
 const cleanup_roots: string[] = []; // 记录测试创建的临时 appRoot 和 worker 文件目录
 
@@ -137,61 +137,6 @@ parentPort?.on("message", (message) => {
     }
   });
 
-  it("in_process runner 测试路径遵守 maxInFlight 上限并持续派发队列", async () => {
-    let current = 0;
-    let peak = 0;
-    let request_count = 0;
-    const release_requests: Array<() => void> = [];
-    vi.spyOn(LLMClient.prototype, "request").mockImplementation(async () => {
-      request_count += 1;
-      current += 1;
-      peak = Math.max(peak, current);
-      await new Promise<void>((resolve) => {
-        release_requests.push(resolve);
-      });
-      current -= 1;
-      return {
-        response_think: "",
-        response_result: '{"0":"你好"}',
-        input_tokens: 1,
-        output_tokens: 2,
-        cancelled: false,
-        timeout: false,
-        degraded: false,
-      };
-    });
-    const pool = new WorkUnitWorkerPool({
-      appRoot: await create_template_root(),
-      execution: { kind: "in_process" },
-      maxInFlight: 2,
-      workerCount: 1,
-    });
-
-    const executions = Array.from({ length: 5 }, (_value, index) =>
-      pool.execute_unit(
-        create_translation_unit(`unit-${index.toString()}`),
-        new AbortController().signal,
-      ),
-    );
-    await vi.waitFor(() => {
-      expect(release_requests.length).toBeGreaterThanOrEqual(2);
-    });
-    release_pending_requests(release_requests, 2);
-    await vi.waitFor(() => {
-      expect(release_requests.length).toBeGreaterThanOrEqual(2);
-    });
-    release_pending_requests(release_requests, 2);
-    await vi.waitFor(() => {
-      expect(release_requests.length).toBeGreaterThanOrEqual(1);
-    });
-    release_pending_requests(release_requests, 1);
-    await Promise.all(executions);
-    await pool.dispose();
-
-    expect(request_count).toBe(5);
-    expect(peak).toBe(2);
-  });
-
   it("释放后拒绝新任务并返回结构化运行时错误", async () => {
     const pool = new WorkUnitWorkerPool({
       appRoot: await create_template_root(),
@@ -203,30 +148,6 @@ parentPort?.on("message", (message) => {
     await expect(
       pool.execute_unit(create_translation_unit("unit-disposed"), new AbortController().signal),
     ).rejects.toThrow(RuntimeDisposedError);
-  });
-
-  it("等待队列中的 work unit 被取消时返回结构化取消错误", async () => {
-    vi.spyOn(LLMClient.prototype, "request").mockImplementation(() => new Promise(() => undefined));
-    const pool = new WorkUnitWorkerPool({
-      appRoot: await create_template_root(),
-      execution: { kind: "in_process" },
-      maxInFlight: 1,
-    });
-    const first = pool.execute_unit(
-      create_translation_unit("unit-blocking"),
-      new AbortController().signal,
-    );
-    const queued_controller = new AbortController();
-    const queued = pool.execute_unit(
-      create_translation_unit("unit-cancelled"),
-      queued_controller.signal,
-    );
-
-    queued_controller.abort();
-
-    await expect(queued).rejects.toThrow(RuntimeCancelledError);
-    first.catch(() => undefined);
-    await pool.dispose();
   });
 });
 
@@ -302,14 +223,4 @@ async function write_template(
   await writeFile(path.join(dir, "base.txt"), "从 {source_language} 到 {target_language}", "utf-8");
   await writeFile(path.join(dir, "thinking.txt"), "", "utf-8");
   await writeFile(path.join(dir, "suffix.txt"), "输出 JSONLINE", "utf-8");
-}
-
-/**
- * 释放指定数量的挂起 LLM 请求，用于观察 WorkUnitWorkerPool 是否继续排空等待队列。
- */
-function release_pending_requests(release_requests: Array<() => void>, count: number): void {
-  const pending = release_requests.splice(0, count);
-  for (const release of pending) {
-    release();
-  }
 }

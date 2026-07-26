@@ -1,5 +1,5 @@
 import {
-  get_app_error_definition,
+  APP_ERROR_DEFINITIONS,
   type ApiJsonValue,
   type AppError,
   type AppErrorActionKey,
@@ -56,7 +56,7 @@ export function to_api_error_payload(
 
 // Hono 响应层只消费这里返回的公开 HTTP 状态，业务层不直接判断 code。
 export function resolve_app_error_http_status(error: AppError): AppErrorDefinition["status"] {
-  return get_app_error_definition(error.code).status;
+  return APP_ERROR_DEFINITIONS[error.code].status;
 }
 
 function public_details_to_i18n_params(details: AppErrorPublicDetails): Record<string, string> {

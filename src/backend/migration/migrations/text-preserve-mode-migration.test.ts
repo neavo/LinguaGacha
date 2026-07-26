@@ -1,20 +1,24 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { ProjectDatabase } from "../../database/database-operations";
-import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
+import type { DatabaseJsonValue } from "../../database/database-types";
 import type { AppSettingService } from "../../app/app-setting-service";
 import { text_preserve_mode_migration } from "./text-preserve-mode-migration";
 
 describe("text_preserve_mode_migration", () => {
   it("旧文本保护 bool 开关写回当前 mode 枚举", async () => {
     const context = create_context({ meta: { text_preserve_enable: true } });
+    const writes = (await text_preserve_mode_migration.build_project_open_writes?.(context)) ?? [];
 
-    expect(text_preserve_mode_migration.build_project_open_operations?.(context)).toEqual([
-      {
-        name: "setMeta",
-        args: { projectPath: "demo.lg", key: "text_preserve_mode", value: "custom" },
-      },
-    ]);
+    for (const write of writes) {
+      write(context.database);
+    }
+
+    expect(context.database.set_meta).toHaveBeenCalledWith(
+      "demo.lg",
+      "text_preserve_mode",
+      "custom",
+    );
   });
 
   it("当前 mode 已合法时不写回旧 bool", async () => {
@@ -22,7 +26,7 @@ describe("text_preserve_mode_migration", () => {
       meta: { text_preserve_mode: "smart", text_preserve_enable: true },
     });
 
-    expect(text_preserve_mode_migration.build_project_open_operations?.(context)).toEqual([]);
+    expect(await text_preserve_mode_migration.build_project_open_writes?.(context)).toEqual([]);
   });
 });
 
@@ -31,12 +35,8 @@ describe("text_preserve_mode_migration", () => {
  */
 function create_context(options: { meta?: Record<string, DatabaseJsonValue> }) {
   const database = {
-    execute: vi.fn((operation: DatabaseOperation) => {
-      if (operation.name === "getAllMeta") {
-        return options.meta ?? {};
-      }
-      return null;
-    }),
+    get_all_meta: vi.fn(() => options.meta ?? {}),
+    set_meta: vi.fn(),
   } as unknown as ProjectDatabase;
   return {
     project_path: "demo.lg",

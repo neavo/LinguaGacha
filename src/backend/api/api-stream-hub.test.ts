@@ -5,9 +5,9 @@ import { ApiStreamHub } from "./api-stream-hub";
 describe("ApiStreamHub", () => {
   it("发布公开 stream 消息时同时通知进程内订阅者并保留 SSE 帧", async () => {
     const api_stream_hub = new ApiStreamHub();
-    const local_messages: Array<{ topic: string; payload: Record<string, unknown> }> = [];
-    const unsubscribe = api_stream_hub.subscribe("task.snapshot_changed", (message) => {
-      local_messages.push(message);
+    const local_messages: Array<Record<string, unknown>> = [];
+    const unsubscribe = api_stream_hub.subscribe("task.snapshot_changed", (payload) => {
+      local_messages.push(payload);
     });
     const response = api_stream_hub.create_stream_response();
     const reader = response.body?.getReader();
@@ -28,12 +28,9 @@ describe("ApiStreamHub", () => {
     const frame = new TextDecoder().decode(chunk?.value);
     expect(local_messages).toEqual([
       {
-        topic: "task.snapshot_changed",
-        payload: {
-          task: {
-            task_type: "translation",
-            status: "running",
-          },
+        task: {
+          task_type: "translation",
+          status: "running",
         },
       },
     ]);
@@ -44,8 +41,8 @@ describe("ApiStreamHub", () => {
   it("取消订阅后不再接收后续本地 stream 消息", () => {
     const api_stream_hub = new ApiStreamHub();
     const local_messages: Array<Record<string, unknown>> = [];
-    const unsubscribe = api_stream_hub.subscribe("project.data_changed", (message) => {
-      local_messages.push(message.payload);
+    const unsubscribe = api_stream_hub.subscribe("project.data_changed", (payload) => {
+      local_messages.push(payload);
     });
 
     unsubscribe();

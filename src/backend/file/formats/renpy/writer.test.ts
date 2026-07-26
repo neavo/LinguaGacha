@@ -25,7 +25,6 @@ describe("RenPy 写回器", () => {
 
   it("禁用姓名译名写回时用源姓名替换 NAME 槽", () => {
     const writer = new RenpyWriter({
-      source_language: "JA",
       target_language: "ZH",
       write_translated_name_fields_to_file: false,
     });

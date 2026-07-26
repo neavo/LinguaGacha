@@ -1,15 +1,12 @@
 import type { LogError } from "./error/log-error";
 
-export const LOG_LEVELS = ["debug", "info", "warning", "error", "fatal"] as const; // 日志等级同时进入 main 日志、SSE payload 和日志窗口筛选
-
-export const TASK_VISIBLE_LOG_LEVELS = ["info", "warning", "error"] as const; // worker 回放到用户可见任务日志时只允许这三个等级
+const LOG_LEVELS = ["debug", "info", "warning", "error", "fatal"] as const; // 日志等级同时进入 main 日志、SSE payload 和日志窗口筛选
 
 export const LOG_WINDOW_EVENT_CAPACITY = 8 * 1024; // main replay、详情池与 renderer 日志窗口共享同一实时保留上限
 
 export const LOG_WINDOW_MESSAGE_PREVIEW_LENGTH = 1024; // 日志列表只消费预览，完整正文按需从后端详情池读取
 
 export type LogLevel = (typeof LOG_LEVELS)[number];
-export type TaskVisibleLogLevel = (typeof TASK_VISIBLE_LOG_LEVELS)[number];
 
 export interface LogTargets {
   file: boolean; // 写入日志文件
@@ -50,21 +47,15 @@ export interface LogAppendPayload {
 export type LogSubscriber = (event: LogEvent) => void;
 
 const LOG_LEVEL_SET = new Set<LogLevel>(LOG_LEVELS);
-const TASK_VISIBLE_LOG_LEVEL_SET = new Set<TaskVisibleLogLevel>(TASK_VISIBLE_LOG_LEVELS);
 
 // 边界反序列化先用判定函数收窄，避免未知日志等级进入 UI 筛选
-export function is_log_level(value: unknown): value is LogLevel {
+function is_log_level(value: unknown): value is LogLevel {
   return LOG_LEVEL_SET.has(value as LogLevel);
 }
 
 // 旧配置或外部 payload 的未知日志等级统一降级为 info
 export function normalize_log_level(value: unknown): LogLevel {
   return is_log_level(value) ? value : "info";
-}
-
-// 任务日志只允许用户可见等级，worker 内部 debug/fatal 不直接穿透
-export function is_task_visible_log_level(value: unknown): value is TaskVisibleLogLevel {
-  return TASK_VISIBLE_LOG_LEVEL_SET.has(value as TaskVisibleLogLevel);
 }
 
 // 日志人类可读出口的共享模板。

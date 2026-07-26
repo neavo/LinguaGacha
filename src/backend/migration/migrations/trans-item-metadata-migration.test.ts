@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   TransItemMetadataAssetIndex,
-  TransItemMetadataMigration,
+  normalize_trans_item_metadata,
 } from "./trans-item-metadata-migration";
 
-describe("TransItemMetadataMigration", () => {
+describe("normalize_trans_item_metadata", () => {
   it("把旧 TRANS aqua 标签和确定行定位迁为正式 metadata", () => {
     const item = {
       src: "强制翻译行",
@@ -25,7 +25,7 @@ describe("TransItemMetadataMigration", () => {
       },
     ]);
 
-    const changed = TransItemMetadataMigration.normalize_item_payload(item, "TRANS", asset_index);
+    const changed = normalize_trans_item_metadata(item, "TRANS", asset_index);
 
     expect(changed).toBe(true);
     expect(item).toEqual({
@@ -50,7 +50,7 @@ describe("TransItemMetadataMigration", () => {
       skip_internal_filter: false,
     };
 
-    const changed = TransItemMetadataMigration.normalize_item_payload(
+    const changed = normalize_trans_item_metadata(
       item,
       "TRANS",
       create_asset_index([
@@ -84,7 +84,7 @@ describe("TransItemMetadataMigration", () => {
       skip_internal_filter: "yes",
     };
 
-    const changed = TransItemMetadataMigration.normalize_item_payload(
+    const changed = normalize_trans_item_metadata(
       item,
       "TRANS",
       create_asset_index([
@@ -119,10 +119,8 @@ describe("TransItemMetadataMigration", () => {
       extra_field: { tag: ["aqua"] },
     };
 
-    expect(TransItemMetadataMigration.normalize_item_payload(trans_without_aqua, "TRANS")).toBe(
-      false,
-    );
-    expect(TransItemMetadataMigration.normalize_item_payload(non_trans_aqua, "TXT")).toBe(false);
+    expect(normalize_trans_item_metadata(trans_without_aqua, "TRANS")).toBe(false);
+    expect(normalize_trans_item_metadata(non_trans_aqua, "TXT")).toBe(false);
     expect(trans_without_aqua).toEqual({
       file_type: "TRANS",
       extra_field: { tag: [] },

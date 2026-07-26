@@ -2,55 +2,53 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { LogManager } from "../log/log-manager";
-import { PathRelocation } from "./path-relocation";
+import { relocate_directory_items, relocate_path_if_needed } from "./path-relocation";
 
-let temp_dir = "";
-
-beforeEach(() => {
-  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-path-relocation-"));
-});
-
-afterEach(() => {
-  fs.rmSync(temp_dir, { recursive: true, force: true });
-});
-
-describe("PathRelocation", () => {
+describe("path relocation", () => {
   it("目标不存在时复制旧源并删除旧源", () => {
-    const relocation = new PathRelocation(create_log_manager());
-    const source_path = path.join(temp_dir, "legacy", "demo.txt");
-    const destination_path = path.join(temp_dir, "userdata", "demo.txt");
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-path-relocation-"),
+    );
+    const source_path = path.join(temp_dir.path, "legacy", "demo.txt");
+    const destination_path = path.join(temp_dir.path, "userdata", "demo.txt");
     write_file(source_path, "旧内容");
 
-    relocation.relocate_path_if_needed(source_path, destination_path);
+    relocate_path_if_needed(create_log_manager(), source_path, destination_path);
 
     expect(fs.readFileSync(destination_path, "utf-8")).toBe("旧内容");
     expect(fs.existsSync(source_path)).toBe(false);
   });
 
   it("目标已存在时保留当前事实并清理旧源", () => {
-    const relocation = new PathRelocation(create_log_manager());
-    const source_path = path.join(temp_dir, "legacy", "demo.txt");
-    const destination_path = path.join(temp_dir, "userdata", "demo.txt");
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-path-relocation-"),
+    );
+    const source_path = path.join(temp_dir.path, "legacy", "demo.txt");
+    const destination_path = path.join(temp_dir.path, "userdata", "demo.txt");
     write_file(source_path, "旧内容");
     write_file(destination_path, "当前内容");
 
-    relocation.relocate_path_if_needed(source_path, destination_path);
+    relocate_path_if_needed(create_log_manager(), source_path, destination_path);
 
     expect(fs.readFileSync(destination_path, "utf-8")).toBe("当前内容");
     expect(fs.existsSync(source_path)).toBe(false);
   });
 
   it("只迁移指定扩展名并保留非预设材料", () => {
-    const relocation = new PathRelocation(create_log_manager());
-    const source_dir = path.join(temp_dir, "resource", "preset");
-    const destination_dir = path.join(temp_dir, "userdata", "preset");
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-path-relocation-"),
+    );
+    const source_dir = path.join(temp_dir.path, "resource", "preset");
+    const destination_dir = path.join(temp_dir.path, "userdata", "preset");
     write_file(path.join(source_dir, "story.txt"), "预设");
     write_file(path.join(source_dir, "readme.md"), "说明");
 
-    relocation.relocate_directory_items(source_dir, destination_dir, ".txt", [temp_dir]);
+    relocate_directory_items(create_log_manager(), source_dir, destination_dir, ".txt", [
+      temp_dir.path,
+    ]);
 
     expect(fs.readFileSync(path.join(destination_dir, "story.txt"), "utf-8")).toBe("预设");
     expect(fs.existsSync(path.join(source_dir, "story.txt"))).toBe(false);

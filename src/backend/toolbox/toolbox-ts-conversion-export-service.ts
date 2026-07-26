@@ -4,6 +4,7 @@ import type { TranslationFileExportService } from "../translation/translation-fi
 import type { ProjectSessionState } from "../project/project-session";
 import type { BackendWorkerClient } from "../worker/worker-client";
 import { Item } from "../../domain/item";
+import { is_json_record, read_json_record } from "../../domain/json";
 import { normalize_text_preserve_mode } from "../../domain/quality";
 import * as AppErrors from "../../shared/error";
 import {
@@ -47,7 +48,7 @@ export class ToolboxTsConversionExportService {
    * 读取当前项目 item，执行繁简转换后交给翻译导出服务写文件。
    */
   public async export_files(request: JsonRecord): Promise<JsonRecord> {
-    this.require_loaded_project_path();
+    this.session_state.require_loaded_project_path();
     const direction = this.read_direction(request["direction"]);
     const convert_name = request["convert_name"] !== false;
     const preserve_text = request["preserve_text"] !== false;
@@ -115,17 +116,10 @@ export class ToolboxTsConversionExportService {
     entries: Array<Record<string, unknown>>;
   } {
     const quality_block = this.cache.quality.readBlock();
-    const slice =
-      typeof quality_block["text_preserve"] === "object" &&
-      quality_block["text_preserve"] !== null &&
-      !Array.isArray(quality_block["text_preserve"])
-        ? (quality_block["text_preserve"] as Record<string, unknown>)
-        : {};
+    const slice = read_json_record(quality_block["text_preserve"]);
     const entries = Array.isArray(slice["entries"])
       ? slice["entries"].flatMap((entry) => {
-          return typeof entry === "object" && entry !== null && !Array.isArray(entry)
-            ? [{ ...(entry as Record<string, unknown>) }]
-            : [];
+          return is_json_record(entry) ? [{ ...entry }] : [];
         })
       : [];
     return {
@@ -155,16 +149,5 @@ export class ToolboxTsConversionExportService {
     throw new AppErrors.RequestValidationError({
       diagnostic_context: { reason: "invalid_ts_conversion_direction" },
     });
-  }
-
-  /**
-   * 导出必须依赖已加载项目，空会话直接抛出项目未加载错误。
-   */
-  private require_loaded_project_path(): string {
-    const state = this.session_state.snapshot();
-    if (!state.loaded || state.projectPath === "") {
-      throw new AppErrors.ProjectNotLoadedError();
-    }
-    return state.projectPath;
   }
 }

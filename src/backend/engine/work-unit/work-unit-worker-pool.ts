@@ -18,26 +18,34 @@ import {
 } from "../../../shared/error";
 import type { SystemProxySnapshot } from "../../network/system-proxy-dispatcher";
 
+/**
+ * worker 池只接收宿主已解析的执行模式和容量，不自行读取应用设置。
+ */
 interface WorkUnitWorkerPoolOptions {
-  appRoot: string;
-  execution: BackendWorkerExecution;
-  systemProxySnapshot?: SystemProxySnapshot | null;
-  workerCount?: number;
-  maxInFlight?: number;
+  appRoot: string; // worker 与同进程 runner 共用的资源根
+  execution: BackendWorkerExecution; // 明确选择 worker_threads 或 in_process
+  systemProxySnapshot?: SystemProxySnapshot | null; // 传给新线程的启动期代理快照
+  workerCount?: number; // 只控制线程数，不是 LLM 并发上限
 }
 
+/**
+ * 单个 work unit 在发送到 runner 后保留的 Promise 与取消上下文。
+ */
 interface PendingTask {
-  id: string;
-  unit: WorkUnit;
-  signal: AbortSignal;
-  resolve: (value: unknown) => void;
-  reject: (error: unknown) => void;
-  abort_listener: () => void;
+  id: string; // 跨线程消息与 Promise 的唯一关联键
+  unit: WorkUnit; // 不可变 work-unit 载荷
+  signal: AbortSignal; // 调用方取消信号
+  resolve: (value: unknown) => void; // 完成原 execute_unit Promise
+  reject: (error: unknown) => void; // 归一传输或生命周期失败
+  abort_listener: () => void; // 完成后必须移除，避免监听器泄漏
 }
 
+/**
+ * 每个线程独立维护自己尚未返回的消息集合。
+ */
 interface WorkerSlot {
-  worker: Worker;
-  in_flight: Map<string, PendingTask>;
+  worker: Worker; // 真实 worker_threads 句柄
+  in_flight: Map<string, PendingTask>; // 该线程内 message id 到调用方 Promise 的映射
 }
 
 /**
@@ -48,16 +56,13 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
   private readonly execution: BackendWorkerExecution; // 由入口层显式决定，池内不做入口探测或模式回退
   private readonly system_proxy_snapshot: SystemProxySnapshot | null; // 让 worker 线程复用主线程启动期代理快照
   private readonly worker_count: number; // worker_threads 模式下的固定线程数
-  private readonly max_in_flight: number; // 全池并发上限，不等同于线程数
-  private readonly queue: PendingTask[] = [];
-  private readonly slots: WorkerSlot[] = [];
-  private readonly in_process_runner: WorkUnitRunner | null = null;
-  private readonly in_process_in_flight = new Map<string, PendingTask>(); // 同进程测试路径也遵守同一 in-flight 上限
-  private in_flight_count = 0; // 池内已派发但尚未完成的任务数，不含等待队列
+  private readonly slots: WorkerSlot[] = []; // worker_threads 模式下的固定线程集合
+  private readonly in_process_runner: WorkUnitRunner | null = null; // 测试和源码执行的无跨线程路径
+  private readonly in_process_in_flight = new Map<string, PendingTask>(); // 同进程任务的取消与释放索引
   private disposed = false; // 关闭入队入口，避免 Gateway stop 后继续派发新任务
 
   /**
-   * 构造共享 worker_threads 容量与独立 in-flight 上限，并按显式执行模式启动。
+   * 构造共享 worker_threads 容量，并按显式执行模式启动。
    */
   public constructor(options: WorkUnitWorkerPoolOptions) {
     this.app_root = options.appRoot;
@@ -67,7 +72,6 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
       workerCount: options.workerCount,
       availableParallelism: os.availableParallelism?.() ?? os.cpus().length,
     });
-    this.max_in_flight = Math.max(1, Math.trunc(options.maxInFlight ?? Number.MAX_SAFE_INTEGER));
     if (this.execution.kind === "in_process") {
       this.in_process_runner = new WorkUnitRunner({ appRoot: this.app_root });
       return;
@@ -85,15 +89,10 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
   }
 
   /**
-   * Gateway stop 时拒绝等待队列并终止 worker，防止线程和 Promise 泄漏。
+   * Gateway stop 时拒绝在途任务并终止 worker，防止线程和 Promise 泄漏。
    */
   public async dispose(): Promise<void> {
     this.disposed = true;
-    const queued = this.queue.splice(0, this.queue.length);
-    for (const task of queued) {
-      task.signal.removeEventListener("abort", task.abort_listener);
-      task.reject(this.create_disposed_error());
-    }
     for (const task of this.in_process_in_flight.values()) {
       task.signal.removeEventListener("abort", task.abort_listener);
       task.reject(this.create_disposed_error());
@@ -108,11 +107,10 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
     }
     await Promise.allSettled(this.slots.map((slot) => slot.worker.terminate()));
     this.slots.length = 0;
-    this.in_flight_count = 0;
   }
 
   /**
-   * 统一入队并绑定取消监听；是否直接执行由 drain_queue 决定。
+   * 绑定取消监听并立即交给同进程 runner 或当前负载最小的 worker。
    */
   private enqueue(unit: WorkUnit, signal: AbortSignal): Promise<unknown> {
     if (this.disposed) {
@@ -132,31 +130,18 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
         return;
       }
       signal.addEventListener("abort", task.abort_listener, { once: true });
-      this.queue.push(task);
-      this.drain_queue();
-    });
-  }
-
-  /**
-   * 只要全池 in-flight 未达上限，就持续把队列派发给当前负载最小的 worker。
-   */
-  private drain_queue(): void {
-    while (this.queue.length > 0 && this.in_flight_count < this.max_in_flight) {
-      const task = this.queue.shift();
-      if (task === undefined) {
-        return;
-      }
       if (this.in_process_runner !== null) {
         this.dispatch_in_process_task(task);
-        continue;
+        return;
       }
       const slot = this.pick_least_loaded_slot();
       if (slot === null) {
-        this.queue.unshift(task);
+        this.clear_task_listener(task);
+        reject(this.create_disposed_error());
         return;
       }
       this.dispatch_worker_task(slot, task);
-    }
+    });
   }
 
   /**
@@ -164,12 +149,11 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
    */
   private dispatch_worker_task(slot: WorkerSlot, task: PendingTask): void {
     slot.in_flight.set(task.id, task);
-    this.in_flight_count += 1;
     slot.worker.postMessage({ id: task.id, type: "execute", unit: task.unit });
   }
 
   /**
-   * 同进程 runner 用于测试和源码环境，仍按同一个 in-flight 计数进入执行。
+   * 同进程 runner 用于测试和源码环境。
    */
   private dispatch_in_process_task(task: PendingTask): void {
     const runner = this.in_process_runner;
@@ -177,7 +161,6 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
       return;
     }
     this.in_process_in_flight.set(task.id, task);
-    this.in_flight_count += 1;
     const task_promise = runner.run(task.unit, task.signal);
     task_promise.then(
       (value) => this.finish_in_process_task(task.id, { ok: true, data: value }),
@@ -190,17 +173,9 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
   }
 
   /**
-   * 队列内取消直接拒绝，已派发任务只发送对应 message id 的 cancel。
+   * 已派发 worker 任务发送对应 message id 的 cancel；同进程 runner 直接消费 signal。
    */
   private cancel_task(task: PendingTask): void {
-    const queued_index = this.queue.findIndex((item) => item.id === task.id);
-    if (queued_index >= 0) {
-      this.queue.splice(queued_index, 1);
-      task.signal.removeEventListener("abort", task.abort_listener);
-      task.reject(this.create_cancelled_error());
-      this.drain_queue();
-      return;
-    }
     if (this.in_process_in_flight.has(task.id)) {
       return;
     }
@@ -271,11 +246,10 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
     }
     this.clear_worker_task(slot, task.id);
     this.settle_task(task, message);
-    this.drain_queue();
   }
 
   /**
-   * 同进程 runner 完成后释放全池 in-flight，并继续推进等待队列。
+   * 同进程 runner 完成后按 id 清理监听并结算原 Promise。
    */
   private finish_in_process_task(
     id: string,
@@ -287,9 +261,7 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
     }
     this.in_process_in_flight.delete(id);
     this.clear_task_listener(task);
-    this.in_flight_count = Math.max(0, this.in_flight_count - 1);
     this.settle_task(task, { id, ...message });
-    this.drain_queue();
   }
 
   /**
@@ -298,7 +270,6 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
   private fail_slot(slot: WorkerSlot, error: unknown): void {
     const failed_tasks = [...slot.in_flight.values()];
     slot.in_flight.clear();
-    this.in_flight_count = Math.max(0, this.in_flight_count - failed_tasks.length);
     for (const task of failed_tasks) {
       this.clear_task_listener(task);
       task.reject(
@@ -311,19 +282,17 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
     const index = this.slots.indexOf(slot);
     if (index >= 0 && !this.disposed) {
       this.slots[index] = this.create_slot();
-      this.drain_queue();
     }
   }
 
   /**
-   * 清理 worker slot 中单个任务的 listener 与全池 in-flight 计数。
+   * 清理 worker slot 中单个任务及其 abort listener。
    */
   private clear_worker_task(slot: WorkerSlot, id: string): PendingTask | null {
     const task = slot.in_flight.get(id) ?? null;
     if (task !== null) {
       slot.in_flight.delete(id);
       this.clear_task_listener(task);
-      this.in_flight_count = Math.max(0, this.in_flight_count - 1);
     }
     return task;
   }
@@ -366,8 +335,9 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
     return new RuntimeDisposedError({
       public_details: { resource: "WorkUnitWorkerPool" },
       diagnostic_context: {
-        queue_length: this.queue.length,
-        in_flight_count: this.in_flight_count,
+        in_flight_count:
+          this.in_process_in_flight.size +
+          this.slots.reduce((count, slot) => count + slot.in_flight.size, 0),
       },
     });
   }

@@ -15,7 +15,7 @@ function is_record(value: unknown): value is Record<string, unknown> {
 }
 
 // 候选投票表只接受非空文本和正数票，保证 winner 选择、计数和导出共用同一坏值处理。
-export function normalize_analysis_candidate_vote_map(value: unknown): Record<string, number> {
+function normalize_analysis_candidate_vote_map(value: unknown): Record<string, number> {
   if (!is_record(value)) {
     return {};
   }
@@ -33,7 +33,7 @@ export function normalize_analysis_candidate_vote_map(value: unknown): Record<st
 }
 
 // 同票时保留对象插入顺序，匹配数据库候选聚合和历史导出结果的稳定性。
-export function pick_analysis_candidate_winner(votes: Record<string, number>): string {
+function pick_analysis_candidate_winner(votes: Record<string, number>): string {
   let winner = "";
   let winner_votes = -1;
   for (const [text, count] of Object.entries(votes)) {

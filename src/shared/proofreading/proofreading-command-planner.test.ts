@@ -9,9 +9,6 @@ import {
   type ProofreadingCommandSnapshot,
 } from "./proofreading-command-planner";
 
-/**
- * 构造当前场景的标准初始数据。
- */
 function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
   return {
     item_id: 1,
@@ -32,9 +29,6 @@ function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectI
   };
 }
 
-/**
- * 构造当前场景的标准初始数据。
- */
 function create_test_snapshot(
   items: ProjectItemPublicRecord[] = [
     create_test_item({

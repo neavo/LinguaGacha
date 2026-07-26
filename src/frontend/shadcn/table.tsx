@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 
 function Table({ className, ref, ...props }: React.ComponentProps<"table">) {
   return (

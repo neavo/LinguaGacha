@@ -5,7 +5,7 @@
 ## 1. 宿主与传输
 
 - renderer 只能通过 `window.desktopApp` 接触宿主能力，不直接导入 Electron、Node、`src/native`、preload 或 backend 实现。
-- 后端传输统一收口到 `src/frontend/app/desktop/desktop-api.ts`；页面可以直接调用其 `api_fetch`，也可以在页面目录建立领域适配器，但不直接创建后端 `fetch` 或 `EventSource`。
+- 后端传输统一收口到 `src/frontend/app/desktop/desktop-api.ts`；页面和跨页面 feature 可以直接调用其 `api_fetch`，也可以在各自所有权目录建立领域适配器，但不直接创建后端 `fetch` 或 `EventSource`。
 - `desktop-api.ts` 统一处理 API base URL、health probe、响应壳、SSE、本地网络错误、renderer 诊断、日志详情和 GitHub release 请求。
 - `DesktopApiError` 是 API 与本地网络失败的统一错误；用户可见文案从稳定 `message_key` / `details` 解析，页面只在确有恢复分支时按稳定 `code` 判断，不解析原始异常文本。
 - renderer 诊断只上报实际异常摘要与 route / project / task / event 白名单上下文，不上报完整 items / files、页面自定义对象或原始路径 / URL。
@@ -23,24 +23,25 @@
 - `DesktopRefreshScheduler` 只合并可延迟的 task snapshot 和项目刷新信号；项目切换、设置刷新、写入结果和任务终态先冲刷窗口。
 - flush、SSE 或写入处理失败进入 renderer 诊断，并通过可等待、可去重的权威 query 恢复；当前项目的有效事件不静默丢弃。
 
-## 3. 页面、导航与 session 状态
+## 3. 页面、feature、导航与 session 状态
 
 - 前端实体和值对象从 `src/domain` 导入，跨运行时纯规则和协议词表从 `src/shared` 导入；最终项目事实计算只属于后端。
-- 功能 query 归消费页面所有；页面状态保存 query 参数、结果窗口、缓存身份和交互态，需要全量事实的搜索、统计、排序和写入计算由后端 query / command 提供。
+- 功能 query 的参数、结果窗口和缓存身份归消费页面所有；被多个当前页面复用的领域交互、API 适配与纯规则进入 `src/frontend/features/<capability>`，需要全量事实的搜索、统计、排序和写入计算仍由后端 query / command 提供。
 - query 顶层 `sectionRevisions` 是页面写入和任务命令的乐观锁来源；功能域局部 revision 只服务 cache 身份，不能替代操作 revision。
 - 页面写入只提交用户意图、设置镜像、显式 operation 与 query 返回的 revision，不提交前端计算出的 canonical facts。
 - `SCREEN_REGISTRY` 是页面注册与标题 key 的唯一入口。
 - `ProjectSessionUiStateProvider` 只保存当前项目内可跨路由恢复的轻量 UI 状态，项目切换或关闭时清空，不写入后端事实。
 - `WorkbenchTasksSessionProvider` 保存翻译 / 分析完成后的跨路由 follow-up；页面计算缓存、弹窗、导入和提交中状态默认随页面挂载与卸载。
+- `src/frontend/pages/<page>` 只包含页面入口及该页面的私有实现；页面之间不互相导入，共用能力先迁入 `features`，`features` 不反向依赖 `pages`。
 - `src/frontend/widgets/interactions` 只承接通用交互与快捷键，不依赖 app state、页面领域、桌面桥、后端 API 或 SSE。
-- 新代码按所有者进入 `app`、`pages`、`widgets`、`styling`、`src/shared` 或 `src/domain`，不新建无主的顶层技术工具桶。
+- 新业务能力代码按所有者进入 `app`、`features`、`pages`、`widgets`、`src/shared` 或 `src/domain`，不新建无主的顶层技术工具桶。
 
 ## 4. 样式消费
 
 - 本文不定义视觉风格，只记录工程消费落点；具体方向来自当前任务输入、既有界面证据和适用设计流程，不绑定固定文件名。
-- `src/frontend/index.css` 拥有全局 token 与主题入口，`src/frontend/shadcn` 拥有基础控件，`widgets` 与 `pages` 只组合工作面和局部页面状态。
+- `src/frontend/index.css` 拥有全局 token 与主题入口，`src/frontend/shadcn` 拥有基础控件，`widgets`、`features` 与 `pages` 只消费 token 并组合各自所有权内的界面。
 - `npm run check` 是前端分层、可见文案与样式消费边界的机器门闩，验证选择见 [`WORKFLOW.md`](WORKFLOW.md)。
 
 ## 5. 更新条件
 
-宿主契约、传输入口、共享状态所有权与生命周期、事件恢复、页面 query / 写入边界、导航入口或样式消费落点变化时更新本文；后端协议更新 [`BACKEND.md`](BACKEND.md)，单纯视觉方向变化不触发本文更新。
+宿主契约、传输入口、共享状态所有权与生命周期、事件恢复、feature / 页面 query / 写入边界、导航入口或样式消费落点变化时更新本文；后端协议更新 [`BACKEND.md`](BACKEND.md)，单纯视觉方向变化不触发本文更新。

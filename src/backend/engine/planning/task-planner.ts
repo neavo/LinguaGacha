@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import type { ApiJsonValue } from "../../api/api-types";
 import type { MutableJsonRecord } from "../run/task-run-types";
 import { is_task_skipped_item_status } from "../../../domain/task";
+import { read_json_record } from "../../../domain/json";
 import { read_item_name_text } from "../../../shared/item-name";
 import type { PlanningWorkerPool } from "./planning-worker-pool";
 import {
@@ -26,11 +27,14 @@ const HASH_YIELD_EVERY_ITEMS = 1024; // 主线程计算 hash 时分批让出事�
 
 const END_LINE_PUNCTUATION = new Set([".", "。", "?", "？", "!", "！", "…", "'", '"', "」", "』"]); // chunk 拆分优先在句末标点处分割，减少上下文被硬切断的概率。
 
+/**
+ * 主线程为 planning worker 准备的最小计数输入及其缓存身份。
+ */
 interface MetricSeed {
-  item_id: number;
-  cache_key: string;
-  src: string;
-  line_count: number;
+  item_id: number; // 计数结果回填到原 item 的稳定键
+  cache_key: string; // 模型 tokenizer 与源文共同决定的缓存键
+  src: string; // 交给 worker 精确计数的源文
+  line_count: number; // 主线程即可确定的非空行数
 }
 
 /**
@@ -428,7 +432,7 @@ export class TaskPlanner {
    * 输入 token 阈值读取集中处理，保护模型配置缺字段场景。
    */
   private get_input_token_limit(model: MutableJsonRecord, fallback: number): number {
-    const threshold = this.normalize_record(model["threshold"]);
+    const threshold = { ...read_json_record(model["threshold"]) };
     return Math.max(16, this.read_number(threshold["input_token_limit"], fallback));
   }
 
@@ -444,13 +448,6 @@ export class TaskPlanner {
    */
   private read_status(item: TaskItemRecord): string {
     return String(item["status"] ?? "NONE");
-  }
-
-  /**
-   * JSON 普通对象归一，避免数组和 null 进入业务分支。
-   */
-  private normalize_record(value: ApiJsonValue | undefined): MutableJsonRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value) ? { ...value } : {};
   }
 
   /**

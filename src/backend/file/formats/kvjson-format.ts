@@ -1,11 +1,6 @@
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { decode_text_content } from "../../../shared/utils/text-tool";
-import {
-  effective_export_text,
-  group_items,
-  write_text_file,
-  type ExportPaths,
-} from "./file-format-shared";
+import { group_items, write_text_file, type ExportPaths } from "./file-format-shared";
 import { Item } from "../../../domain/item";
 
 /**
@@ -45,7 +40,7 @@ export class KVJSONFormat {
    */
   public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "KVJSON")) {
-      const data = Object.fromEntries(group.map((item) => [item.src, effective_export_text(item)]));
+      const data = Object.fromEntries(group.map((item) => [item.src, item.effective_dst()]));
       await write_text_file(
         `${paths.translated_path}/${rel_path}`,
         JsonTool.stringifyStrict(data, { indent: 4 }),

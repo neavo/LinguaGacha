@@ -88,34 +88,38 @@ function create_output_folder_opener(error?: Error): {
   };
 }
 
+function create_database(items: Array<Record<string, string | number>>): ProjectDatabase {
+  return {
+    get_all_items: () => items,
+    read_asset_content: () => null,
+  } as unknown as ProjectDatabase;
+}
+
 describe("TranslationFileExportService", () => {
   it("普通导出补齐同文件重复译文并写出 TXT 格式文件", async () => {
     const project_path = path.join(temp_dir, "demo.lg");
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
-    const database = {
-      execute: () => [
-        {
-          id: 1,
-          src: "原文",
-          dst: "译文",
-          status: "PROCESSED",
-          file_type: "TXT",
-          file_path: "script.txt",
-          row: 0,
-        },
-        {
-          id: 2,
-          src: "原文",
-          dst: "",
-          status: "DUPLICATED",
-          file_type: "TXT",
-          file_path: "script.txt",
-          row: 1,
-        },
-      ],
-      read_asset_content: () => null,
-    } as unknown as ProjectDatabase;
+    const database = create_database([
+      {
+        id: 1,
+        src: "原文",
+        dst: "译文",
+        status: "PROCESSED",
+        file_type: "TXT",
+        file_path: "script.txt",
+        row: 0,
+      },
+      {
+        id: 2,
+        src: "原文",
+        dst: "",
+        status: "DUPLICATED",
+        file_type: "TXT",
+        file_path: "script.txt",
+        row: 1,
+      },
+    ]);
     const log_collector = create_log_collector();
     const output_folder_opener = create_output_folder_opener();
     const service = new TranslationFileExportService(
@@ -146,20 +150,17 @@ describe("TranslationFileExportService", () => {
     const project_path = path.join(temp_dir, "demo.lg");
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
-    const database = {
-      execute: () => [
-        {
-          id: 1,
-          src: "原文",
-          dst: "Übersetzung",
-          status: "PROCESSED",
-          file_type: "TXT",
-          file_path: "script.txt",
-          row: 0,
-        },
-      ],
-      read_asset_content: () => null,
-    } as unknown as ProjectDatabase;
+    const database = create_database([
+      {
+        id: 1,
+        src: "原文",
+        dst: "Übersetzung",
+        status: "PROCESSED",
+        file_type: "TXT",
+        file_path: "script.txt",
+        row: 0,
+      },
+    ]);
     const log_collector = create_log_collector();
     const service = new TranslationFileExportService(
       database,
@@ -190,20 +191,17 @@ describe("TranslationFileExportService", () => {
     const project_path = path.join(temp_dir, "demo.lg");
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
-    const database = {
-      execute: () => [
-        {
-          id: 1,
-          src: "原文",
-          dst: "译文",
-          status: "PROCESSED",
-          file_type: "TXT",
-          file_path: "script.txt",
-          row: 0,
-        },
-      ],
-      read_asset_content: () => null,
-    } as unknown as ProjectDatabase;
+    const database = create_database([
+      {
+        id: 1,
+        src: "原文",
+        dst: "译文",
+        status: "PROCESSED",
+        file_type: "TXT",
+        file_path: "script.txt",
+        row: 0,
+      },
+    ]);
     const output_folder_opener = create_output_folder_opener();
     const service = new TranslationFileExportService(
       database,
@@ -226,20 +224,17 @@ describe("TranslationFileExportService", () => {
     const output_dir = path.join(temp_dir, "cli-out");
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
-    const database = {
-      execute: () => [
-        {
-          id: 1,
-          src: "原文",
-          dst: "译文",
-          status: "PROCESSED",
-          file_type: "TXT",
-          file_path: "script.txt",
-          row: 0,
-        },
-      ],
-      read_asset_content: () => null,
-    } as unknown as ProjectDatabase;
+    const database = create_database([
+      {
+        id: 1,
+        src: "原文",
+        dst: "译文",
+        status: "PROCESSED",
+        file_type: "TXT",
+        file_path: "script.txt",
+        row: 0,
+      },
+    ]);
     const output_folder_opener = create_output_folder_opener();
     const service = new TranslationFileExportService(
       database,
@@ -264,20 +259,17 @@ describe("TranslationFileExportService", () => {
     const project_path = path.join(temp_dir, "demo.lg");
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
-    const database = {
-      execute: () => [
-        {
-          id: 1,
-          src: "原文",
-          dst: "译文",
-          status: "PROCESSED",
-          file_type: "TXT",
-          file_path: "script.txt",
-          row: 0,
-        },
-      ],
-      read_asset_content: () => null,
-    } as unknown as ProjectDatabase;
+    const database = create_database([
+      {
+        id: 1,
+        src: "原文",
+        dst: "译文",
+        status: "PROCESSED",
+        file_type: "TXT",
+        file_path: "script.txt",
+        row: 0,
+      },
+    ]);
     const log_collector = create_log_collector();
     const output_folder_opener = create_output_folder_opener(new Error("open failed"));
     const service = new TranslationFileExportService(
@@ -309,20 +301,17 @@ describe("TranslationFileExportService", () => {
     const project_path = path.join(temp_dir, "demo.lg");
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
-    const database = {
-      execute: () => [
-        {
-          id: 1,
-          src: "原文",
-          dst: "译文",
-          status: "PROCESSED",
-          file_type: "TXT",
-          file_path: "script.txt",
-          row: 0,
-        },
-      ],
-      read_asset_content: () => null,
-    } as unknown as ProjectDatabase;
+    const database = create_database([
+      {
+        id: 1,
+        src: "原文",
+        dst: "译文",
+        status: "PROCESSED",
+        file_type: "TXT",
+        file_path: "script.txt",
+        row: 0,
+      },
+    ]);
     const log_collector = create_log_collector();
     vi.spyOn(default_native_fs, "write_file").mockRejectedValue(new Error("boom"));
     const service = new TranslationFileExportService(

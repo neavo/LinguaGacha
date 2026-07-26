@@ -5,7 +5,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type { ProjectWriteResultPayload } from "@frontend/app/state/desktop-project-write";
-import type { TaskSnapshot } from "@frontend/app/state/task-snapshot-store";
 import type {
   WorkbenchCommandPlanningState,
   WorkbenchCommandPlan,
@@ -22,7 +21,6 @@ type HookSnapshot = {
   dialog_state: WorkbenchDialogState;
 };
 
-// api fetch mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const api_fetch_mock = vi.mocked(api_fetch);
 
 vi.mock("@frontend/app/desktop/desktop-api", () => {
@@ -147,7 +145,6 @@ describe("useWorkbenchImportFilesFlow", () => {
     });
   });
 
-  // mount_hook 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function mount_hook(
     options: {
       state?: WorkbenchCommandPlanningState;
@@ -192,7 +189,6 @@ function HookProbe(props: {
     project_identity: "E:/demo/project.lg",
     dialog_state,
     get_planning_state: () => props.state,
-    task_snapshot: create_task_snapshot(),
     planner_settings: {
       source_language: "JA",
       mtool_optimizer_enable: true,
@@ -238,39 +234,12 @@ function create_project_store_state(): WorkbenchCommandPlanningState {
     files: [
       {
         rel_path: "old.txt",
-        file_type: "TXT",
-        sort_index: 0,
       },
     ],
     section_revisions: {
       files: 1,
       items: 2,
       analysis: 3,
-    },
-  };
-}
-
-function create_task_snapshot(): TaskSnapshot {
-  return {
-    run_revision: 0,
-    task_type: "translation",
-    status: "idle",
-    busy: false,
-    request_in_flight_count: 0,
-    progress: {
-      line: 0,
-      total_line: 0,
-      processed_line: 0,
-      error_line: 0,
-      total_tokens: 0,
-      total_output_tokens: 0,
-      total_input_tokens: 0,
-      time: 0,
-      start_time: 0,
-    },
-    extras: {
-      kind: "translation",
-      scope: { kind: "all" },
     },
   };
 }

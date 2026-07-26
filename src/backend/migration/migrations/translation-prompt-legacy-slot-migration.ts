@@ -1,5 +1,6 @@
 import { resolve_prompt_template_language } from "../../../domain/app-language";
-import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
+import type { DatabaseJsonValue } from "../../database/database-types";
+import type { ProjectDatabaseWrite } from "../../database/database-operations";
 import type { MigrationDescriptor, ProjectOpenMigrationContext } from "../migration-types";
 
 type MigrationMetaRecord = Record<string, DatabaseJsonValue>;
@@ -28,32 +29,26 @@ export const translation_prompt_legacy_slot_migration: MigrationDescriptor = {
   /**
    * 当前提示词优先；仅在当前槽位为空且未迁移时从旧语言槽位补写一次。
    */
-  build_project_open_operations(context: ProjectOpenMigrationContext): DatabaseOperation[] {
-    const meta = get_all_meta(context);
+  build_project_open_writes(context: ProjectOpenMigrationContext): ProjectDatabaseWrite[] {
+    const meta = context.database.get_all_meta(context.project_path) as MigrationMetaRecord;
     if (meta[LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY] === true) {
       return [];
     }
 
-    const operations: DatabaseOperation[] = [];
-    const current_prompt = get_rule_text(context, TRANSLATION_PROMPT_RULE_TYPE).trim();
+    const writes: ProjectDatabaseWrite[] = [];
+    const current_prompt = context.database
+      .get_rule_text(context.project_path, TRANSLATION_PROMPT_RULE_TYPE)
+      .trim();
     const legacy_prompt = current_prompt === "" ? get_legacy_translation_prompt(context) : "";
     if (legacy_prompt !== "") {
-      operations.push(
-        op("setRuleText", {
-          projectPath: context.project_path,
-          ruleType: TRANSLATION_PROMPT_RULE_TYPE,
-          text: legacy_prompt,
-        }),
+      writes.push((database) =>
+        database.set_rule_text(context.project_path, TRANSLATION_PROMPT_RULE_TYPE, legacy_prompt),
       );
     }
-    operations.push(
-      op("setMeta", {
-        projectPath: context.project_path,
-        key: LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY,
-        value: true,
-      }),
+    writes.push((database) =>
+      database.set_meta(context.project_path, LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY, true),
     );
-    return operations;
+    return writes;
   },
 };
 
@@ -67,50 +62,10 @@ function get_legacy_translation_prompt(context: ProjectOpenMigrationContext): st
       ? [LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE, LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE]
       : [LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE, LEGACY_TRANSLATION_PROMPT_EN_RULE_TYPE];
   for (const rule_type of preferred_rule_types) {
-    const candidate = get_rule_text_by_name(context, rule_type).trim();
+    const candidate = context.database.get_rule_text(context.project_path, rule_type).trim();
     if (candidate !== "") {
       return candidate;
     }
   }
   return "";
-}
-
-/**
- * 读取 meta 快照用于判断迁移标记，避免旧槽位反复覆盖用户清空后的当前提示词。
- */
-function get_all_meta(context: ProjectOpenMigrationContext): MigrationMetaRecord {
-  return context.database.execute({
-    name: "getAllMeta",
-    args: { projectPath: context.project_path },
-  }) as MigrationMetaRecord;
-}
-
-/**
- * 读取当前物理槽位，用来判断是否还能从旧槽位补写。
- */
-function get_rule_text(context: ProjectOpenMigrationContext, rule_type: string): string {
-  return context.database.execute({
-    name: "getRuleText",
-    args: { projectPath: context.project_path, ruleType: rule_type },
-  }) as string;
-}
-
-/**
- * 按原始规则名读取旧槽位，绕过当前规则类型映射。
- */
-function get_rule_text_by_name(
-  context: ProjectOpenMigrationContext,
-  rule_type_name: string,
-): string {
-  return context.database.execute({
-    name: "getRuleTextByName",
-    args: { projectPath: context.project_path, ruleTypeName: rule_type_name },
-  }) as string;
-}
-
-/**
- * project open hook 只构造 operation，事务边界仍由 ProjectLifecycleService 持有。
- */
-function op(name: string, args: Record<string, DatabaseJsonValue>): DatabaseOperation {
-  return { name, args };
 }

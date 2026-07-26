@@ -92,12 +92,6 @@ export type ProjectEvent =
   | ProjectSettingsChangedEvent
   | ProjectAnalysisChangedEvent;
 
-// 供订阅者按事件名获得窄化 payload。
-export type ProjectEventOfType<TType extends ProjectEventType> = Extract<
-  ProjectEvent,
-  { type: TType }
->;
-
 /**
  * 创建工程热机事件；affectedSections 固定为全量项目 section，避免加载期漏热缓存。
  */
@@ -136,71 +130,4 @@ export function create_project_unloaded_event(projectPath: string): ProjectUnloa
   };
 }
 
-// Backend 内部 committed event 的订阅入口，按事件类型收窄 payload。
-export type ProjectEventHandler<TType extends ProjectEventType = ProjectEventType> = (
-  event: ProjectEventOfType<TType>,
-) => void | Promise<void>;
-
-// 保留每个订阅者的执行结果，调用方可决定是否阻断后续发布链路。
-export type ProjectEventDispatchResult = {
-  type: ProjectEventType;
-  handlerIndex: number;
-  ok: boolean;
-  error?: unknown;
-};
-
-type ProjectEventHandlerEntry = {
-  type: ProjectEventType;
-  handler: (event: ProjectEvent) => void | Promise<void>;
-};
-
-// Backend 内部事务提交后事件分发器，不直接承担公开 SSE 或 renderer 刷新策略。
-export class ProjectEventBus {
-  private readonly handlers: ProjectEventHandlerEntry[] = [];
-
-  /**
-   * 订阅指定 committed event，并返回幂等取消函数。
-   */
-  public subscribe<TType extends ProjectEventType>(
-    type: TType,
-    handler: ProjectEventHandler<TType>,
-  ): () => void {
-    const entry: ProjectEventHandlerEntry = {
-      type,
-      handler: (event) => handler(event as ProjectEventOfType<TType>),
-    };
-    this.handlers.push(entry);
-    return () => {
-      const index = this.handlers.indexOf(entry);
-      if (index >= 0) {
-        this.handlers.splice(index, 1);
-      }
-    };
-  }
-
-  /**
-   * 按订阅顺序等待所有 handler；单个 handler 失败会记录结果并继续分发后续订阅者。
-   */
-  public async publish(event: ProjectEvent): Promise<ProjectEventDispatchResult[]> {
-    const results: ProjectEventDispatchResult[] = [];
-    const handlers = this.handlers.filter((entry) => entry.type === event.type);
-    for (const [handler_index, entry] of handlers.entries()) {
-      try {
-        await entry.handler(event as never);
-        results.push({
-          type: event.type,
-          handlerIndex: handler_index,
-          ok: true,
-        });
-      } catch (error) {
-        results.push({
-          type: event.type,
-          handlerIndex: handler_index,
-          ok: false,
-          error,
-        });
-      }
-    }
-    return results;
-  }
-}
+export type ProjectEventHandler = (event: ProjectEvent) => void | Promise<void>;

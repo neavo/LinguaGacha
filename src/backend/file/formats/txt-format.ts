@@ -1,8 +1,7 @@
+import path from "node:path";
+
 import { decode_text_content } from "../../../shared/utils/text-tool";
 import {
-  effective_export_text,
-  build_bilingual_path,
-  build_target_path,
   group_items,
   split_text_lines_for_items,
   write_text_file,
@@ -42,21 +41,21 @@ export class TXTFormat {
   public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "TXT")) {
       await write_text_file(
-        build_target_path(this.config, paths.translated_path, rel_path),
-        group.map(effective_export_text).join("\n"),
+        path.join(paths.translated_path, rel_path),
+        group.map((item) => item.effective_dst()).join("\n"),
       );
     }
 
     for (const [rel_path, group] of group_items(items, "TXT")) {
       const bilingual = group
         .map((item) => {
-          const item_dst = effective_export_text(item);
+          const item_dst = item.effective_dst();
           return this.config.deduplication_in_bilingual && item.src === item_dst
             ? item_dst
             : `${item.src}\n${item_dst}`;
         })
         .join("\n");
-      await write_text_file(build_bilingual_path(paths.bilingual_path, rel_path), bilingual);
+      await write_text_file(path.join(paths.bilingual_path, rel_path), bilingual);
     }
   }
 }

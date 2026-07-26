@@ -2,7 +2,7 @@ import { CaseSensitive } from "lucide-react";
 import { useMemo } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-provider";
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 import { GlossaryContextMenuContent } from "@frontend/pages/glossary-page/components/glossary-context-menu";
 import type {
   GlossaryEntryId,
@@ -50,15 +50,12 @@ type GlossaryTableProps = {
 
 type GlossaryRuleMenuState = "enabled" | "disabled" | "mixed";
 
-/**
- * 构建当前场景的稳定结果。
- */
 function build_glossary_row_number_label(row_index: number): string {
   return String(row_index + 1);
 }
 
 /**
- * 解析当前场景的最终消费值。
+ * 右键已选行时作用于整组选择；右键未选行时只作用于该行。
  */
 function resolve_glossary_context_target_entry_ids(
   row_id: GlossaryEntryId,
@@ -72,7 +69,7 @@ function resolve_glossary_context_target_entry_ids(
 }
 
 /**
- * 解析当前场景的最终消费值。
+ * 汇总批量目标的布尔规则状态，供菜单呈现选中、未选中或混合态。
  */
 function resolve_glossary_rule_menu_state(args: {
   entry_by_id: Map<GlossaryEntryId, GlossaryVisibleEntry>;
@@ -110,9 +107,7 @@ function resolve_glossary_rule_menu_state(args: {
   return "mixed";
 }
 
-/**
- * 判断当前值是否满足业务条件。
- */
+/** 交互控件和滚动条不应成为框选手势的起点。 */
 function should_ignore_box_selection_target(target_element: HTMLElement): boolean {
   return (
     target_element.closest(
@@ -127,9 +122,7 @@ function should_ignore_box_selection_target(target_element: HTMLElement): boolea
   );
 }
 
-/**
- * 判断当前值是否满足业务条件。
- */
+/** 行内交互控件自行处理点击，不应同时改变行选择。 */
 function should_ignore_row_click_target(target_element: HTMLElement): boolean {
   return (
     target_element.closest(
@@ -306,7 +299,7 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         id: "drag",
         width: 64,
         align: "center",
-        title: t("glossary_page.fields.drag"),
+        title: t("quality_editor.fields.drag"),
         head_class_name: "glossary-page__table-drag-head",
         cell_class_name: "glossary-page__table-drag-cell",
         render_cell: (payload) => {
@@ -324,13 +317,13 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
       {
         kind: "data",
         id: "src",
-        title: t("glossary_page.fields.source"),
+        title: t("quality_editor.fields.source"),
         align: "left",
         sortable: {
           action_labels: {
-            ascending: t("glossary_page.sort.ascending"),
-            descending: t("glossary_page.sort.descending"),
-            clear: t("glossary_page.sort.clear"),
+            ascending: t("quality_editor.sort.ascending"),
+            descending: t("quality_editor.sort.descending"),
+            clear: t("quality_editor.sort.clear"),
           },
         },
         head_class_name: "glossary-page__table-source-head",
@@ -346,9 +339,9 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         align: "left",
         sortable: {
           action_labels: {
-            ascending: t("glossary_page.sort.ascending"),
-            descending: t("glossary_page.sort.descending"),
-            clear: t("glossary_page.sort.clear"),
+            ascending: t("quality_editor.sort.ascending"),
+            descending: t("quality_editor.sort.descending"),
+            clear: t("quality_editor.sort.clear"),
           },
         },
         head_class_name: "glossary-page__table-translation-head",
@@ -364,9 +357,9 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         align: "left",
         sortable: {
           action_labels: {
-            ascending: t("glossary_page.sort.ascending"),
-            descending: t("glossary_page.sort.descending"),
-            clear: t("glossary_page.sort.clear"),
+            ascending: t("quality_editor.sort.ascending"),
+            descending: t("quality_editor.sort.descending"),
+            clear: t("quality_editor.sort.clear"),
           },
         },
         head_class_name: "glossary-page__table-description-head",
@@ -378,20 +371,20 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
       {
         kind: "data",
         id: "rule",
-        title: t("glossary_page.fields.rule"),
+        title: t("quality_editor.fields.rule"),
         width: 96,
         align: "center",
         sortable: {
           action_labels: {
-            ascending: t("glossary_page.sort.ascending"),
-            descending: t("glossary_page.sort.descending"),
-            clear: t("glossary_page.sort.clear"),
+            ascending: t("quality_editor.sort.ascending"),
+            descending: t("quality_editor.sort.descending"),
+            clear: t("quality_editor.sort.clear"),
           },
         },
         head_class_name: "glossary-page__table-rule-head",
         cell_class_name: "glossary-page__table-rule-cell",
         render_cell: (payload) => {
-          const case_tooltip = t("glossary_page.toggle.status")
+          const case_tooltip = t("quality_editor.toggle.status")
             .replace("{TITLE}", t("glossary_page.rule.case_sensitive"))
             .replace(
               "{STATE}",
@@ -412,9 +405,9 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
         sortable: {
           disabled: !props.statistics_sort_available,
           action_labels: {
-            ascending: t("glossary_page.sort.ascending"),
-            descending: t("glossary_page.sort.descending"),
-            clear: t("glossary_page.sort.clear"),
+            ascending: t("quality_editor.sort.ascending"),
+            descending: t("quality_editor.sort.descending"),
+            clear: t("quality_editor.sort.clear"),
           },
         },
         head_class_name: "glossary-page__table-statistics-head",

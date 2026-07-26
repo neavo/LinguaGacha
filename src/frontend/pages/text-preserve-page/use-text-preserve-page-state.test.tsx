@@ -4,8 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { INPUT_QUERY_DEBOUNCE_MS } from "@frontend/widgets/interactions/use-debounce";
 import type { QualityRuleStatisticsCacheSnapshot } from "@frontend/app/session/quality-rule-statistics-store";
-import type { ProjectItemPublicRecord } from "@domain/item";
-import { createProjectItemIndex } from "@shared/project/project-item-index";
 import { useTextPreservePageState } from "./use-text-preserve-page-state";
 
 const { api_fetch_mock, push_toast_mock, page_ui_state_store } = vi.hoisted(() => {
@@ -16,7 +14,6 @@ const { api_fetch_mock, push_toast_mock, page_ui_state_store } = vi.hoisted(() =
   };
 });
 
-// run modal progress toast mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const run_modal_progress_toast_mock = vi.fn(
   async <T,>(args: {
     message: string;
@@ -38,43 +35,12 @@ const run_modal_progress_toast_mock = vi.fn(
   },
 );
 
-/**
- * 构造当前测试场景的标准数据。
- */
-function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectItemPublicRecord {
-  return {
-    item_id: 1,
-    src: "",
-    dst: "",
-    name_src: null,
-    name_dst: null,
-    extra_field: "",
-    tag: "",
-    row_number: 0,
-    file_type: "TXT",
-    file_path: "",
-    text_type: "NONE",
-    status: "NONE",
-    retry_count: 0,
-    skip_internal_filter: false,
-    ...overrides,
-  };
-}
-
 let run_state = {
   project: {
     path: "E:/demo/sample.lg",
     loaded: true,
   },
   files: {},
-  items: createProjectItemIndex({
-    "1": create_test_item({
-      item_id: 1,
-      file_path: "chapter01.txt",
-      src: "foo42",
-      dst: "bar",
-    }),
-  }),
   quality: {
     glossary: { entries: [], enabled: true, mode: "off", revision: 0 },
     pre_replacement: { entries: [], enabled: true, mode: "off", revision: 0 },
@@ -134,7 +100,7 @@ type TextPreserveRuleEntry = (typeof run_state.quality.text_preserve.entries)[nu
 };
 
 /**
- * 写入当前场景的状态变化。
+ * 模拟后端 change 回流，把权威 quality 切片合并进测试项目仓库。
  */
 function apply_quality_write_result(result: {
   changes?: Array<{
@@ -285,7 +251,6 @@ function create_statistics_cache(
         {
           key: "foo::0",
           dependency_signature: "foo",
-          relation_label: "foo",
           token: "foo",
         },
       ],
@@ -299,7 +264,6 @@ function create_statistics_cache(
         {
           key: "foo::0",
           dependency_signature: "foo",
-          relation_label: "foo",
           token: "foo",
         },
       ],
@@ -325,14 +289,14 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
   };
 });
 
-vi.mock("@frontend/pages/text-preserve-page/text-preserve-api-client", () => {
+vi.mock("@frontend/features/quality-rule-editor/quality-rule-api-client", () => {
   return {
-    read_text_preserve_quality_rule: vi.fn(async (rule_type: keyof typeof run_state.quality) => ({
+    read_quality_rule: vi.fn(async (rule_type: keyof typeof run_state.quality) => ({
       projectPath: run_state.project.path,
       sectionRevisions: { ...run_state.revisions.sections },
       qualityRule: run_state.quality[rule_type],
     })),
-    read_text_preserve_section_revisions: vi.fn(async () => ({
+    read_quality_rule_section_revisions: vi.fn(async () => ({
       ...run_state.revisions.sections,
     })),
   };
@@ -678,10 +642,6 @@ describe("useTextPreservePageState", () => {
     vi.useRealTimers();
   });
 
-  // mount_probe 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-  /**
-   * 挂载当前测试组件并等待渲染完成。
-   */
   async function mount_probe(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -690,10 +650,7 @@ describe("useTextPreservePageState", () => {
     await rerender_probe();
   }
 
-  // rerender_probe 收口测试中的共享步骤，保证断言只关注当前行为。
-  /**
-   * 支撑当前测试场景的专用辅助逻辑。
-   */
+  // 递增项目 change seq，模拟后端事件驱动页面刷新。
   async function rerender_probe(): Promise<void> {
     project_change_seq += 1;
     await act(async () => {
@@ -713,10 +670,6 @@ describe("useTextPreservePageState", () => {
     });
   }
 
-  // flush_filter_debounce 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-  /**
-   * 支撑当前测试场景的专用辅助逻辑。
-   */
   async function flush_filter_debounce(): Promise<void> {
     await act(async () => {
       vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
@@ -1051,11 +1004,11 @@ describe("useTextPreservePageState", () => {
     });
 
     expect(latest_state?.dialog_state.validation_message).toContain(
-      "text_preserve_page.feedback.regex_invalid",
+      "quality_editor.feedback.regex_invalid",
     );
     expect(push_toast_mock).toHaveBeenCalledWith(
       "error",
-      expect.stringContaining("text_preserve_page.feedback.regex_invalid"),
+      expect.stringContaining("quality_editor.feedback.regex_invalid"),
     );
     expect(api_fetch_mock).not.toHaveBeenCalled();
   });

@@ -1,53 +1,28 @@
-import {
-  FileDown,
-  FileUp,
-  Folder,
-  FolderHeart,
-  FolderOpen,
-  Heart,
-  HeartOff,
-  PencilLine,
-  Plus,
-  Recycle,
-  Save,
-  Trash2,
-} from "lucide-react";
+import { FileDown, FileUp, Plus, Trash2 } from "lucide-react";
 
-import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
-import type {
-  TextPreserveMode,
-  TextPreservePresetItem,
-} from "@frontend/pages/text-preserve-page/types";
-import { AppButton } from "@frontend/widgets/app-button";
-import {
-  AppDropdownMenu,
-  AppDropdownMenuContent,
-  AppDropdownMenuGroup,
-  AppDropdownMenuItem,
-  AppDropdownMenuSeparator,
-  AppDropdownMenuSub,
-  AppDropdownMenuSubContent,
-  AppDropdownMenuSubTrigger,
-  AppDropdownMenuTrigger,
-} from "@frontend/widgets/app-dropdown-menu";
+import { PresetMenu } from "@frontend/features/preset-editor/preset-menu";
+import type { PresetItem } from "@frontend/features/preset-editor/preset-types";
+import type { TextPreserveMode } from "@frontend/pages/text-preserve-page/types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import { AppButton } from "@frontend/widgets/app-button";
 import {
   CommandBar,
   CommandBarGroup,
   CommandBarSeparator,
 } from "@frontend/widgets/command-bar/command-bar";
+import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
+import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 import {
   SegmentedToggle,
   type SegmentedToggleOption,
 } from "@frontend/widgets/segmented-toggle/segmented-toggle";
-import { ShortcutKbd } from "@frontend/widgets/interactions/shortcut-kbd";
 
 type TextPreserveCommandBarProps = {
   title_key: LocaleKey;
   mode: TextPreserveMode;
   mode_updating: boolean;
-  preset_items: TextPreservePresetItem[];
+  preset_items: PresetItem[];
   preset_menu_open: boolean;
   selected_entry_count: number;
   readonly: boolean;
@@ -60,8 +35,8 @@ type TextPreserveCommandBarProps = {
   on_apply_preset: (virtual_id: string) => Promise<void>;
   on_request_reset: () => void;
   on_request_save_preset: () => void;
-  on_request_rename_preset: (preset_item: TextPreservePresetItem) => void;
-  on_request_delete_preset: (preset_item: TextPreservePresetItem) => void;
+  on_request_rename_preset: (preset_item: PresetItem) => void;
+  on_request_delete_preset: (preset_item: PresetItem) => void;
   on_set_default_preset: (virtual_id: string) => Promise<void>;
   on_cancel_default_preset: () => Promise<void>;
   on_preset_menu_open_change: (next_open: boolean) => void;
@@ -72,6 +47,7 @@ const MODE_LABEL_KEY_BY_MODE: Record<TextPreserveMode, LocaleKey> = {
   smart: "text_preserve_page.mode.options.smart",
   custom: "text_preserve_page.mode.options.custom",
 };
+
 export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.Element {
   const { t } = useI18n();
   const mode_options: readonly SegmentedToggleOption<TextPreserveMode>[] = [
@@ -88,9 +64,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
       label: t("text_preserve_page.mode.options.custom"),
     },
   ];
-  const builtin_preset_items = props.preset_items.filter((item) => item.type === "builtin");
-  const user_preset_items = props.preset_items.filter((item) => item.type === "user");
-  const mode_tooltip_title = t("text_preserve_page.mode.status")
+  const mode_tooltip_title = t("quality_editor.toggle.status")
     .replace("{TITLE}", t("text_preserve_page.mode.label"))
     .replace("{STATE}", t(MODE_LABEL_KEY_BY_MODE[props.mode]));
 
@@ -120,7 +94,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
               onClick={props.on_create}
             >
               <Plus data-icon="inline-start" />
-              {t("text_preserve_page.action.create")}
+              {t("quality_editor.action.create")}
               <ShortcutKbd action="create" />
             </AppButton>
             <AppButton
@@ -132,7 +106,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
               }}
             >
               <Trash2 data-icon="inline-start" />
-              {t("text_preserve_page.action.delete")}
+              {t("quality_editor.action.delete")}
               <ShortcutKbd action="delete" />
             </AppButton>
           </CommandBarGroup>
@@ -147,7 +121,7 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
               }}
             >
               <FileDown data-icon="inline-start" />
-              {t("text_preserve_page.action.import")}
+              {t("quality_editor.action.import")}
             </AppButton>
             <AppButton
               variant="ghost"
@@ -157,155 +131,25 @@ export function TextPreserveCommandBar(props: TextPreserveCommandBarProps): JSX.
               }}
             >
               <FileUp data-icon="inline-start" />
-              {t("text_preserve_page.action.export")}
+              {t("quality_editor.action.export")}
             </AppButton>
           </CommandBarGroup>
           <CommandBarSeparator />
-          <AppDropdownMenu
+          <PresetMenu
+            items={props.preset_items}
             open={props.preset_menu_open}
-            onOpenChange={(next_open) => {
-              props.on_preset_menu_open_change(next_open);
-              if (next_open) {
-                void props.on_open_preset_menu();
-              }
-            }}
-          >
-            <AppDropdownMenuTrigger asChild>
-              <AppButton variant="ghost" size="toolbar">
-                <FolderOpen data-icon="inline-start" />
-                {t("text_preserve_page.action.preset")}
-              </AppButton>
-            </AppDropdownMenuTrigger>
-            <AppDropdownMenuContent align="center">
-              <AppDropdownMenuGroup>
-                <AppDropdownMenuItem disabled={props.readonly} onSelect={props.on_request_reset}>
-                  <Recycle />
-                  {t("app.action.reset")}
-                </AppDropdownMenuItem>
-                <AppDropdownMenuItem
-                  disabled={props.readonly}
-                  onSelect={props.on_request_save_preset}
-                >
-                  <Save />
-                  {t("text_preserve_page.preset.save")}
-                </AppDropdownMenuItem>
-              </AppDropdownMenuGroup>
-              {builtin_preset_items.length > 0 || user_preset_items.length > 0 ? (
-                <AppDropdownMenuSeparator />
-              ) : null}
-              {builtin_preset_items.length > 0 ? (
-                <AppDropdownMenuGroup>
-                  {builtin_preset_items.map((item) => (
-                    <AppDropdownMenuSub key={item.virtual_id}>
-                      <AppDropdownMenuSubTrigger>
-                        {item.is_default ? <FolderHeart /> : <Folder />}
-                        {item.name}
-                      </AppDropdownMenuSubTrigger>
-                      <AppDropdownMenuSubContent>
-                        <AppDropdownMenuItem
-                          disabled={props.readonly}
-                          onSelect={() => {
-                            void props.on_apply_preset(item.virtual_id);
-                          }}
-                        >
-                          <FileDown />
-                          {t("text_preserve_page.preset.apply")}
-                        </AppDropdownMenuItem>
-                        <AppDropdownMenuSeparator />
-                        {item.is_default ? (
-                          <AppDropdownMenuItem
-                            disabled={props.readonly}
-                            onSelect={() => {
-                              void props.on_cancel_default_preset();
-                            }}
-                          >
-                            <HeartOff />
-                            {t("text_preserve_page.preset.cancel_default")}
-                          </AppDropdownMenuItem>
-                        ) : (
-                          <AppDropdownMenuItem
-                            disabled={props.readonly}
-                            onSelect={() => {
-                              void props.on_set_default_preset(item.virtual_id);
-                            }}
-                          >
-                            <Heart />
-                            {t("text_preserve_page.preset.set_default")}
-                          </AppDropdownMenuItem>
-                        )}
-                      </AppDropdownMenuSubContent>
-                    </AppDropdownMenuSub>
-                  ))}
-                </AppDropdownMenuGroup>
-              ) : null}
-              {builtin_preset_items.length > 0 && user_preset_items.length > 0 ? (
-                <AppDropdownMenuSeparator />
-              ) : null}
-              {user_preset_items.length > 0 ? (
-                <AppDropdownMenuGroup>
-                  {user_preset_items.map((item) => (
-                    <AppDropdownMenuSub key={item.virtual_id}>
-                      <AppDropdownMenuSubTrigger>
-                        {item.is_default ? <FolderHeart /> : <Folder />}
-                        {item.name}
-                      </AppDropdownMenuSubTrigger>
-                      <AppDropdownMenuSubContent>
-                        <AppDropdownMenuItem
-                          disabled={props.readonly}
-                          onSelect={() => {
-                            void props.on_apply_preset(item.virtual_id);
-                          }}
-                        >
-                          <FileDown />
-                          {t("text_preserve_page.preset.apply")}
-                        </AppDropdownMenuItem>
-                        <AppDropdownMenuItem
-                          disabled={props.readonly}
-                          onSelect={() => {
-                            props.on_request_rename_preset(item);
-                          }}
-                        >
-                          <PencilLine />
-                          {t("text_preserve_page.preset.rename")}
-                        </AppDropdownMenuItem>
-                        <AppDropdownMenuItem
-                          disabled={props.readonly}
-                          onSelect={() => {
-                            props.on_request_delete_preset(item);
-                          }}
-                        >
-                          <Trash2 />
-                          {t("text_preserve_page.preset.delete")}
-                        </AppDropdownMenuItem>
-                        <AppDropdownMenuSeparator />
-                        {item.is_default ? (
-                          <AppDropdownMenuItem
-                            disabled={props.readonly}
-                            onSelect={() => {
-                              void props.on_cancel_default_preset();
-                            }}
-                          >
-                            <HeartOff />
-                            {t("text_preserve_page.preset.cancel_default")}
-                          </AppDropdownMenuItem>
-                        ) : (
-                          <AppDropdownMenuItem
-                            disabled={props.readonly}
-                            onSelect={() => {
-                              void props.on_set_default_preset(item.virtual_id);
-                            }}
-                          >
-                            <Heart />
-                            {t("text_preserve_page.preset.set_default")}
-                          </AppDropdownMenuItem>
-                        )}
-                      </AppDropdownMenuSubContent>
-                    </AppDropdownMenuSub>
-                  ))}
-                </AppDropdownMenuGroup>
-              ) : null}
-            </AppDropdownMenuContent>
-          </AppDropdownMenu>
+            readonly={props.readonly}
+            trigger_label={t("quality_editor.action.preset")}
+            on_open={props.on_open_preset_menu}
+            on_open_change={props.on_preset_menu_open_change}
+            on_apply={props.on_apply_preset}
+            on_request_reset={props.on_request_reset}
+            on_request_save={props.on_request_save_preset}
+            on_request_rename={props.on_request_rename_preset}
+            on_request_delete={props.on_request_delete_preset}
+            on_set_default={props.on_set_default_preset}
+            on_cancel_default={props.on_cancel_default_preset}
+          />
         </>
       }
       hint={

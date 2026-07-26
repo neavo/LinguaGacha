@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AppSettingService } from "../app/app-setting-service";
 import { AppPathService } from "../app/app-path-service";
+import type { ProjectDatabase, ProjectDatabaseWrite } from "../database/database-operations";
+import type { DatabaseJsonValue } from "../database/database-types";
 import type { LogManager } from "../log/log-manager";
 import { default_native_fs } from "../../native/native-fs";
 import { JsonTool } from "../../shared/utils/json-tool";
@@ -49,10 +51,11 @@ describe("ProjectDefaultPresetInitializer", () => {
       },
     });
 
-    const result = initializer.build_operations("E:/demo/project.lg");
+    const result = initializer.build_writes("E:/demo/project.lg");
+    const operations = execute_writes(result.writes);
     initializer.log_loaded_names(result.loaded_names);
 
-    expect(result.operations).toEqual([
+    expect(operations).toEqual([
       {
         name: "setMeta",
         args: {
@@ -167,9 +170,10 @@ describe("ProjectDefaultPresetInitializer", () => {
       },
     });
 
-    const result = initializer.build_operations("E:/demo/project.lg");
+    const result = initializer.build_writes("E:/demo/project.lg");
+    const operations = execute_writes(result.writes);
 
-    expect(result.operations).toEqual([
+    expect(operations).toEqual([
       {
         name: "setMeta",
         args: {
@@ -265,9 +269,10 @@ describe("ProjectDefaultPresetInitializer", () => {
       },
     });
 
-    const result = initializer.build_operations("E:/demo/project.lg");
+    const result = initializer.build_writes("E:/demo/project.lg");
+    const operations = execute_writes(result.writes);
 
-    expect(result.operations).toEqual([
+    expect(operations).toEqual([
       {
         name: "setMeta",
         args: {
@@ -277,7 +282,7 @@ describe("ProjectDefaultPresetInitializer", () => {
         },
       },
     ]);
-    expect(result.operations).not.toContainEqual(
+    expect(operations).not.toContainEqual(
       expect.objectContaining({
         name: "setMeta",
         args: expect.objectContaining({ key: "quality_rule_revision.glossary" }),
@@ -347,5 +352,24 @@ describe("ProjectDefaultPresetInitializer", () => {
       info: ReturnType<typeof vi.fn>;
       warning: ReturnType<typeof vi.fn>;
     };
+  }
+
+  function execute_writes(writes: ProjectDatabaseWrite[]): MutableJsonRecord[] {
+    const operations: MutableJsonRecord[] = [];
+    const database = {
+      set_meta: (projectPath: string, key: string, value: DatabaseJsonValue) => {
+        operations.push({ name: "setMeta", args: { projectPath, key, value } });
+      },
+      set_rules: (projectPath: string, ruleType: string, rules: DatabaseJsonValue[]) => {
+        operations.push({ name: "setRules", args: { projectPath, ruleType, rules } });
+      },
+      set_rule_text: (projectPath: string, ruleType: string, text: string) => {
+        operations.push({ name: "setRuleText", args: { projectPath, ruleType, text } });
+      },
+    } as unknown as ProjectDatabase;
+    for (const write of writes) {
+      write(database);
+    }
+    return operations;
   }
 });

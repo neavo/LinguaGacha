@@ -1,10 +1,9 @@
 import { AppMetadataService } from "../app/app-metadata-service";
 import { CacheManager } from "../cache/cache-manager";
-import { ProjectEventBus } from "../project/project-events";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
-import { ProjectDatabase } from "../database/database-operations";
-import type { DatabaseOperation } from "../database/database-types";
+import { read_json_record } from "../../domain/json";
+import { ProjectDatabase, type ProjectDatabaseWrite } from "../database/database-operations";
 import { TaskEngine } from "../engine/core/engine";
 import type { BackendWorkerExecution } from "../worker/worker-execution";
 import { PlanningWorkerPool } from "../engine/planning/planning-worker-pool";
@@ -15,7 +14,7 @@ import { TaskRunState } from "../engine/run/task-run-state";
 import { TaskSnapshotBuilder } from "../engine/run/task-snapshot-builder";
 import { ProjectTaskStore } from "../engine/store/project-task-store";
 import { WorkUnitWorkerPool } from "../engine/work-unit/work-unit-worker-pool";
-import { ApiStreamHub } from "../api/api-stream-hub";
+import { ApiStreamHub, type ApiStreamPayload } from "../api/api-stream-hub";
 import {
   TranslationFileExportService,
   type OutputFolderOpener,
@@ -23,8 +22,7 @@ import {
 import { FilePreviewService } from "../file/file-preview-service";
 import { LogManager } from "../log/log-manager";
 import { ModelService } from "../model/model-service";
-import { ProjectChangeEventAdapter } from "../project/project-changes";
-import { ProjectChangePublisher } from "../project/project-changes";
+import { ProjectChangeEventAdapter, type ProjectChangePublisher } from "../project/project-changes";
 import { ProjectWriteStore } from "../project/project-write-store";
 import { ProjectLifecycleService } from "../project/project-session";
 import { ProjectOperationGate } from "../project/project-gate";
@@ -43,6 +41,7 @@ import { TaskService } from "../engine/task-service";
 import { ToolboxTsConversionExportService } from "../toolbox/toolbox-ts-conversion-export-service";
 import { resolve_app_locale } from "../../domain/app-language";
 import { create_text_resolver, type TextResolver } from "../../shared/i18n";
+import { PROJECT_CHANGE_EVENT_TOPIC } from "../../shared/project-event";
 import type { SystemProxySnapshot } from "../network/system-proxy-dispatcher";
 
 export interface BackendServicesOptions {
@@ -57,7 +56,7 @@ export interface BackendServicesOptions {
 }
 
 /**
- * BackendServices 是 GUI API Gateway 与 CLI job 共享的服务组合根。
+ * 应用基础服务分组，供 Gateway 和 CLI 从同一组合根读取路径、元数据与设置。
  */
 export interface BackendAppServices {
   paths: AppPathService;
@@ -111,39 +110,18 @@ export interface BackendLogServices {
 export interface BackendStreamServices {
   api: ApiStreamHub;
 }
+
+/**
+ * GUI API Gateway 与 CLI job 共享的服务组合根，统一装配状态拥有者和跨域依赖。
+ */
 export class BackendServices {
-  private readonly paths: AppPathService;
-  private readonly metadata: AppMetadataService;
   private readonly app_setting_service: AppSettingService;
   private readonly database: ProjectDatabase;
   private readonly log_manager: LogManager;
-  private readonly project_session_state = new ProjectSessionState(); // 当前 loaded 工程会话只在 Backend 内部流转
-  private readonly task_run_state = new TaskRunState(); // 任务运行态供 API 查询、CLI 等待和写入门闩共享
-  private readonly project_data_reader: ProjectDataReader;
   private readonly api_stream_hub = new ApiStreamHub(); // 公开 stream 服务 GUI SSE、CLI task snapshot 与 settings/logs topic
-  private readonly project_event_bus = new ProjectEventBus(); // Backend 内部 committed event 总线，不直接暴露给 renderer
   private readonly cache_manager: CacheManager;
-  private readonly project_change_publisher: ProjectChangePublisher;
-  private readonly project_write_store: ProjectWriteStore;
-  private readonly workbench_query_service: WorkbenchQueryService;
   private readonly backend_worker_client: BackendWorkerClient;
-  private readonly proofreading_query_service: ProofreadingQueryService;
-  private readonly quality_statistics_service: QualityStatisticsService;
-  private readonly ts_conversion_service: ToolboxTsConversionExportService;
-  private readonly model_service: ModelService;
-  private readonly project_lifecycle_service: ProjectLifecycleService;
-  private readonly project_operation_gate: ProjectOperationGate;
-  private readonly workbench_service: WorkbenchService;
-  private readonly proofreading_service: ProofreadingService;
   private readonly task_snapshot_builder: TaskSnapshotBuilder;
-  private readonly task_run_publisher: TaskRunPublisher;
-  private readonly project_task_store: ProjectTaskStore;
-  private readonly task_engine: TaskEngine;
-  private readonly task_service: TaskService;
-  private readonly project_reset_preview_service: ProjectResetPreviewService;
-  private readonly file_preview_service: FilePreviewService;
-  private readonly file_export_service: TranslationFileExportService;
-  private readonly quality_service: QualityService;
   public readonly app: BackendAppServices;
   public readonly models: BackendModelServices;
   public readonly project: BackendProjectServices;
@@ -163,12 +141,14 @@ export class BackendServices {
    * 组合全部 Backend 服务，业务服务之间的依赖只在这里成形。
    */
   public constructor(options: BackendServicesOptions) {
-    this.paths = options.paths;
-    this.metadata = options.metadata;
+    const paths = options.paths;
+    const metadata = options.metadata;
+    const project_session_state = new ProjectSessionState();
+    const task_run_state = new TaskRunState();
     this.app_setting_service = options.appSettingService;
     this.database = options.database;
     this.log_manager = options.logManager;
-    this.project_data_reader = new ProjectDataReader(this.database);
+    const project_data_reader = new ProjectDataReader(this.database);
     this.backend_worker_client = new BackendWorkerClient({
       execution: options.workerExecution,
     });
@@ -178,92 +158,98 @@ export class BackendServices {
       appSettingService: this.app_setting_service,
       workerClient: this.backend_worker_client,
     });
-    this.cache_manager.subscribe(this.project_event_bus);
+    const handle_project_event = this.cache_manager.handleProjectEvent.bind(this.cache_manager);
     const project_change_adapter = new ProjectChangeEventAdapter(
       this.database,
-      this.project_session_state,
-      this.project_data_reader,
+      project_session_state,
+      project_data_reader,
     );
-    this.project_change_publisher = new ProjectChangePublisher(
-      project_change_adapter,
-      this.api_stream_hub,
-    );
-    this.project_write_store = new ProjectWriteStore(
+    const project_change_publisher: ProjectChangePublisher = (payload) => {
+      const event = project_change_adapter.adapt_project_change(payload);
+      if (event !== null) {
+        this.api_stream_hub.publish(
+          PROJECT_CHANGE_EVENT_TOPIC,
+          event as unknown as ApiStreamPayload,
+        );
+      }
+      return event;
+    };
+    const project_write_store = new ProjectWriteStore(
       this.database,
-      this.project_event_bus,
-      this.project_change_publisher,
+      handle_project_event,
+      project_change_publisher,
     );
-    this.workbench_query_service = new WorkbenchQueryService(
-      this.project_session_state,
+    const workbench_query_service = new WorkbenchQueryService(
+      project_session_state,
       this.cache_manager,
     );
-    this.proofreading_query_service = new ProofreadingQueryService({
-      sessionState: this.project_session_state,
+    const proofreading_query_service = new ProofreadingQueryService({
+      sessionState: project_session_state,
       cache: this.cache_manager.proofreading,
     });
-    this.quality_statistics_service = new QualityStatisticsService({
-      sessionState: this.project_session_state,
+    const quality_statistics_service = new QualityStatisticsService({
+      sessionState: project_session_state,
       cache: this.cache_manager.qualityStatistics,
     });
-    this.model_service = new ModelService(
-      this.paths,
+    const model_service = new ModelService(
+      paths,
       this.app_setting_service,
-      this.metadata.build_linguagacha_user_agent(),
+      metadata.build_linguagacha_user_agent(),
       this.log_manager,
     );
-    this.project_lifecycle_service = new ProjectLifecycleService(
+    const project_lifecycle_service = new ProjectLifecycleService(
       this.database,
-      this.project_session_state,
+      project_session_state,
       this.app_setting_service,
-      this.paths,
+      paths,
       this.log_manager,
-      this.project_event_bus,
+      handle_project_event,
     );
-    this.project_operation_gate = new ProjectOperationGate(this.task_run_state);
-    this.workbench_service = new WorkbenchService(
+    const project_operation_gate = new ProjectOperationGate(task_run_state);
+    const workbench_service = new WorkbenchService(
       this.database,
-      this.project_operation_gate,
-      this.project_session_state,
-      this.project_write_store,
+      project_operation_gate,
+      project_session_state,
+      project_write_store,
       this.app_setting_service,
       undefined,
       this.log_manager,
     );
-    this.proofreading_service = new ProofreadingService(
+    const proofreading_service = new ProofreadingService(
       this.database,
-      this.project_session_state,
-      this.project_write_store,
+      project_session_state,
+      project_write_store,
     );
     this.task_snapshot_builder = new TaskSnapshotBuilder(
       this.database,
-      this.task_run_state,
-      this.project_session_state,
-      this.project_data_reader,
+      task_run_state,
+      project_session_state,
+      project_data_reader,
     );
-    this.task_run_publisher = new TaskRunPublisher(
+    const task_run_publisher = new TaskRunPublisher(
       this.api_stream_hub,
-      this.task_run_state,
+      task_run_state,
       this.task_snapshot_builder,
     );
-    this.project_task_store = new ProjectTaskStore(
+    const project_task_store = new ProjectTaskStore(
       this.database,
-      this.project_session_state,
-      this.task_run_state,
+      project_session_state,
+      task_run_state,
       this.cache_manager,
-      this.project_write_store,
+      project_write_store,
     );
     this.work_unit_worker_pool = new WorkUnitWorkerPool({
-      appRoot: this.paths.get_app_root(),
+      appRoot: paths.get_app_root(),
       execution: options.workerExecution,
       systemProxySnapshot: options.systemProxySnapshot,
     });
     this.planning_worker_pool = new PlanningWorkerPool({
       execution: options.workerExecution,
     });
-    this.task_engine = new TaskEngine({
-      appRoot: this.paths.get_app_root(),
-      taskStore: this.project_task_store,
-      taskRunPublisher: this.task_run_publisher,
+    const task_engine = new TaskEngine({
+      appRoot: paths.get_app_root(),
+      taskStore: project_task_store,
+      taskRunPublisher: task_run_publisher,
       executorClient: this.work_unit_worker_pool,
       taskPlanner: new TaskPlanner({
         planningWorkerPool: this.planning_worker_pool,
@@ -271,72 +257,72 @@ export class BackendServices {
       AppSettingService: this.app_setting_service,
       logManager: this.log_manager,
     });
-    this.task_service = new TaskService(
-      this.task_engine,
+    const task_service = new TaskService(
+      task_engine,
       this.task_snapshot_builder,
-      this.task_run_publisher,
-      this.project_operation_gate,
-      this.project_session_state,
+      task_run_publisher,
+      project_operation_gate,
+      project_session_state,
     );
-    this.project_reset_preview_service = new ProjectResetPreviewService(
+    const project_reset_preview_service = new ProjectResetPreviewService(
       this.database,
-      this.task_run_state,
-      this.project_session_state,
+      task_run_state,
+      project_session_state,
     );
-    this.file_preview_service = new FilePreviewService(this.app_setting_service, this.log_manager);
-    this.file_export_service = new TranslationFileExportService(
+    const file_preview_service = new FilePreviewService(this.app_setting_service, this.log_manager);
+    const file_export_service = new TranslationFileExportService(
       this.database,
       this.app_setting_service,
-      this.project_session_state,
+      project_session_state,
       options.openOutputFolder,
       this.log_manager,
     );
-    this.ts_conversion_service = new ToolboxTsConversionExportService({
-      sessionState: this.project_session_state,
+    const ts_conversion_service = new ToolboxTsConversionExportService({
+      sessionState: project_session_state,
       cache: this.cache_manager,
       workerClient: this.backend_worker_client,
-      presetReader: new QualityRulePresetReader(this.paths),
-      fileExportService: this.file_export_service,
+      presetReader: new QualityRulePresetReader(paths),
+      fileExportService: file_export_service,
     });
-    this.quality_service = new QualityService(
-      this.paths,
+    const quality_service = new QualityService(
+      paths,
       this.app_setting_service,
       this.database,
-      this.project_session_state,
-      this.project_write_store,
+      project_session_state,
+      project_write_store,
     );
     this.app = {
-      paths: this.paths,
-      metadata: this.metadata,
+      paths,
+      metadata,
       settings: this.app_setting_service,
     };
-    this.models = { service: this.model_service };
+    this.models = { service: model_service };
     this.project = {
-      lifecycle: this.project_lifecycle_service,
-      data: this.project_data_reader,
-      sessionState: this.project_session_state,
+      lifecycle: project_lifecycle_service,
+      data: project_data_reader,
+      sessionState: project_session_state,
     };
     this.workbench = {
-      query: this.workbench_query_service,
-      commands: this.workbench_service,
-      resetPreview: this.project_reset_preview_service,
-      filePreview: this.file_preview_service,
+      query: workbench_query_service,
+      commands: workbench_service,
+      resetPreview: project_reset_preview_service,
+      filePreview: file_preview_service,
     };
     this.proofreading = {
-      query: this.proofreading_query_service,
-      commands: this.proofreading_service,
+      query: proofreading_query_service,
+      commands: proofreading_service,
     };
     this.quality = {
-      service: this.quality_service,
-      statistics: this.quality_statistics_service,
+      service: quality_service,
+      statistics: quality_statistics_service,
     };
     this.translation = {
-      files: this.file_export_service,
+      files: file_export_service,
     };
     this.toolbox = {
-      tsConversion: this.ts_conversion_service,
+      tsConversion: ts_conversion_service,
     };
-    this.engine = { tasks: this.task_service };
+    this.engine = { tasks: task_service };
     this.logs = { manager: this.log_manager };
     this.streams = { api: this.api_stream_hub };
   }
@@ -349,7 +335,6 @@ export class BackendServices {
       return;
     }
     this.started = true;
-    this.api_stream_hub.start();
     this.app_setting_service.set_stream_publisher(this.api_stream_hub);
   }
 
@@ -390,22 +375,21 @@ export class BackendServices {
   /**
    * CLI 资源写入复用 Backend 内部数据库和 committed event 链路，不向 CLI 暴露底层资源。
    */
-  public async commit_cli_resource_operations(
+  public async commit_cli_resource_writes(
     project_path: string,
-    operations: DatabaseOperation[],
+    writes: ProjectDatabaseWrite[],
   ): Promise<void> {
-    if (operations.length === 0) {
+    if (writes.length === 0) {
       return;
     }
-    this.database.execute_transaction(operations);
-    const meta = this.database.execute({
-      name: "getAllMeta",
-      args: { projectPath: project_path },
+    this.database.transaction(project_path, () => {
+      for (const write of writes) {
+        write(this.database);
+      }
     });
-    const section_revisions = build_section_revisions_from_meta(
-      typeof meta === "object" && meta !== null && !Array.isArray(meta) ? meta : {},
-    );
-    await this.project_event_bus.publish({
+    const meta = this.database.get_all_meta(project_path);
+    const section_revisions = build_section_revisions_from_meta(read_json_record(meta));
+    await this.cache_manager.handleProjectEvent({
       type: "project.quality.changed",
       projectPath: project_path,
       source: "cli",
@@ -413,7 +397,7 @@ export class BackendServices {
       sectionRevisions: section_revisions,
       scope: "quality-full",
     });
-    await this.project_event_bus.publish({
+    await this.cache_manager.handleProjectEvent({
       type: "project.prompts.changed",
       projectPath: project_path,
       source: "cli",

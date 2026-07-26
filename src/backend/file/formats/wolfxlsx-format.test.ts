@@ -3,20 +3,10 @@ import os from "node:os";
 import path from "node:path";
 
 import ExcelJS from "exceljs";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { Item } from "../../../domain/item";
 import { WOLFXLSXFormat } from "./wolfxlsx-format";
-
-let temp_dir = ""; // 每个用例独占工作簿输出目录，避免 WOLF 写回测试共享文件状态
-
-beforeEach(() => {
-  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-wolfxlsx-format-"));
-});
-
-afterEach(() => {
-  fs.rmSync(temp_dir, { recursive: true, force: true });
-});
 
 describe("WOLFXLSXFormat", () => {
   it("按 WOLF 表头、固定列和填充色设置条目状态", async () => {
@@ -145,6 +135,9 @@ describe("WOLFXLSXFormat", () => {
   });
 
   it("写回时复用原始工作簿并更新 WOLF 固定列", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-wolfxlsx-format-"),
+    );
     const original = new ExcelJS.Workbook();
     const sheet = original.addWorksheet("Sheet");
     ["code", "flag", "type", "info"].forEach((label, index) => {
@@ -171,13 +164,13 @@ describe("WOLFXLSXFormat", () => {
         }),
       ],
       {
-        translated_path: temp_dir,
-        bilingual_path: path.join(temp_dir, "bilingual"),
+        translated_path: temp_dir.path,
+        bilingual_path: path.join(temp_dir.path, "bilingual"),
       },
       () => buffer,
     );
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(path.join(temp_dir, "wolf.xlsx"));
+    await workbook.xlsx.readFile(path.join(temp_dir.path, "wolf.xlsx"));
 
     expect(workbook.worksheets[0]?.getCell(2, 6).value).toBe("原文");
     expect(workbook.worksheets[0]?.getCell(2, 7).value).toBe("译文");
@@ -186,6 +179,9 @@ describe("WOLFXLSXFormat", () => {
   });
 
   it("原始资产缺失时新建工作簿并写入固定列", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-wolfxlsx-format-"),
+    );
     const format = new WOLFXLSXFormat();
 
     await format.write_to_path(
@@ -199,13 +195,13 @@ describe("WOLFXLSXFormat", () => {
         }),
       ],
       {
-        translated_path: temp_dir,
-        bilingual_path: path.join(temp_dir, "bilingual"),
+        translated_path: temp_dir.path,
+        bilingual_path: path.join(temp_dir.path, "bilingual"),
       },
       () => null,
     );
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(path.join(temp_dir, "wolf", "game.xlsx"));
+    await workbook.xlsx.readFile(path.join(temp_dir.path, "wolf", "game.xlsx"));
 
     expect(workbook.worksheets[0]?.getColumn(1).width).toBe(64);
     expect(workbook.worksheets[0]?.getColumn(2).width).toBe(64);
@@ -214,6 +210,9 @@ describe("WOLFXLSXFormat", () => {
   });
 
   it("写回时保留空译文为空单元格", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-wolfxlsx-format-"),
+    );
     const format = new WOLFXLSXFormat();
 
     await format.write_to_path(
@@ -227,13 +226,13 @@ describe("WOLFXLSXFormat", () => {
         }),
       ],
       {
-        translated_path: temp_dir,
-        bilingual_path: path.join(temp_dir, "bilingual"),
+        translated_path: temp_dir.path,
+        bilingual_path: path.join(temp_dir.path, "bilingual"),
       },
       () => null,
     );
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(path.join(temp_dir, "wolf", "empty.xlsx"));
+    await workbook.xlsx.readFile(path.join(temp_dir.path, "wolf", "empty.xlsx"));
 
     expect(workbook.worksheets[0]?.getCell(2, 7).value).toBe("");
   });

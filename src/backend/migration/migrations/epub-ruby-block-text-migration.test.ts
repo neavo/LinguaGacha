@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { ProjectDatabase } from "../../database/database-operations";
-import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
+import type { DatabaseJsonValue } from "../../database/database-types";
 import { create_epub_fixture } from "../../../test/epub-fixture";
 import { EpubRubyBlockTextMigration } from "./epub-ruby-block-text-migration";
 
@@ -12,7 +12,7 @@ describe("EpubRubyBlockTextMigration", () => {
     const epub_asset = await create_epub_fixture(
       '<ruby class="calibre3">宝<rt>ほう</rt>條<rt>じょう</rt>直<rt>なお</rt>希<rt>き</rt></ruby>',
     );
-    const migration = create_migration({
+    const { database, migration, write_names } = create_migration({
       items: [
         {
           id: 7,
@@ -52,9 +52,11 @@ describe("EpubRubyBlockTextMigration", () => {
       asset_content_by_path: { "book.epub": epub_asset },
     });
 
-    const operations = await migration.build_operations("demo.lg");
-    const set_items_operation = operations.find((operation) => operation.name === "setItems");
-    const migrated_items = set_items_operation?.args?.["items"];
+    const writes = await migration.build_writes("demo.lg");
+    for (const write of writes) {
+      write(database);
+    }
+    const migrated_items = vi.mocked(database.set_items).mock.calls[0]?.[1];
     const [migrated_item] = migrated_items as MutableJsonRecord[];
     if (migrated_item === undefined) {
       throw new Error("EPUB ruby 迁移未生成 item。");
@@ -79,7 +81,7 @@ describe("EpubRubyBlockTextMigration", () => {
         src_digest: expect.any(String),
       }),
     );
-    expect(operations.map((operation) => operation.name)).toEqual([
+    expect(write_names).toEqual([
       "setItems",
       "deleteAnalysisItemCheckpoints",
       "clearAnalysisCandidateAggregates",
@@ -89,7 +91,7 @@ describe("EpubRubyBlockTextMigration", () => {
   });
 
   it("旧 EPUB asset 缺失时不生成运行时兼容写回", async () => {
-    const migration = create_migration({
+    const { migration } = create_migration({
       items: [
         {
           src: "宝\n條",
@@ -108,27 +110,46 @@ describe("EpubRubyBlockTextMigration", () => {
       ],
     });
 
-    await expect(migration.build_operations("demo.lg")).resolves.toEqual([]);
+    await expect(migration.build_writes("demo.lg")).resolves.toEqual([]);
   });
 });
 
 /**
- * EPUB ruby 测试用内存 database stub 固定 items 与 asset bytes，专注验证 operation 输出。
+ * EPUB ruby 测试用内存 database stub 固定 items 与 asset bytes，专注验证类型化写入输出。
  */
 function create_migration(options: {
   items?: MutableJsonRecord[];
   asset_content_by_path?: Record<string, Buffer>;
-}): EpubRubyBlockTextMigration {
+}): {
+  database: ProjectDatabase;
+  migration: EpubRubyBlockTextMigration;
+  write_names: string[];
+} {
+  const write_names: string[] = [];
   const database = {
-    execute: vi.fn((operation: DatabaseOperation) => {
-      if (operation.name === "getAllItems") {
-        return options.items ?? [];
-      }
-      return null;
-    }),
+    get_all_items: vi.fn(() => options.items ?? []),
     read_asset_content: vi.fn((_project_path: string, asset_path: string) => {
       return options.asset_content_by_path?.[asset_path] ?? null;
     }),
+    set_items: vi.fn(() => {
+      write_names.push("setItems");
+    }),
+    delete_analysis_item_checkpoints: vi.fn(() => {
+      write_names.push("deleteAnalysisItemCheckpoints");
+    }),
+    clear_analysis_candidate_aggregates: vi.fn(() => {
+      write_names.push("clearAnalysisCandidateAggregates");
+    }),
+    upsert_meta_entries: vi.fn(() => {
+      write_names.push("upsertMetaEntries");
+    }),
+    bump_section_revisions: vi.fn(() => {
+      write_names.push("bumpSectionRevisions");
+    }),
   } as unknown as ProjectDatabase;
-  return new EpubRubyBlockTextMigration(database);
+  return {
+    database,
+    migration: new EpubRubyBlockTextMigration(database),
+    write_names,
+  };
 }

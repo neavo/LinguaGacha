@@ -13,12 +13,12 @@ import {
 import type { TextJsonRecord } from "../text/text-types";
 import type { ItemTextGroup } from "../item-text";
 
-export type QualityCompiledGlossaryEntry = {
+type QualityCompiledGlossaryEntry = {
   src: string;
   dst: string;
 };
 
-export type QualityCompiledGlossaryTerm = [string, string];
+type QualityCompiledGlossaryTerm = [string, string];
 
 type QualityCompiledGlossaryAhoNode = {
   next: Map<string, number>;
@@ -26,12 +26,12 @@ type QualityCompiledGlossaryAhoNode = {
   entries: QualityCompiledGlossaryEntry[];
 };
 
-export type QualityCompiledGlossary = {
+type QualityCompiledGlossary = {
   entries: QualityCompiledGlossaryEntry[];
   aho_nodes: QualityCompiledGlossaryAhoNode[];
 };
 
-export type QualityCompiledReplacementRule = {
+type QualityCompiledReplacementRule = {
   pattern: CompiledTextPattern; // 运行态构建阶段预编译，逐条 item 替换时不再重复解释正则
   replace_text: string; // 命中后写入文本，译后替换会回到规则 src
   replacement_syntax: TextReplacementSyntax; // 正则规则使用反斜杠捕获语法，字面量规则保持普通文本
@@ -43,16 +43,10 @@ export type QualityCompiledContext = {
   post_replacements: QualityCompiledReplacementRule[];
 };
 
-export type QualityCompiledTextParts = {
+type QualityCompiledTextParts = {
   source: ItemTextGroup;
   translation: ItemTextGroup;
 };
-
-export type QualityCompiledRuleType =
-  | "glossary"
-  | "pre_replacement"
-  | "post_replacement"
-  | "text_preserve";
 
 /**
  * 校对页只消费文本保护规则的 src 字段，转换后交给共享规则入口解析
@@ -63,23 +57,6 @@ function normalize_text_preserve_entries(
   return entries.map((entry) => {
     return { src: String(entry.src ?? "") };
   });
-}
-
-/**
- * 质量规则依赖签名只记录会改变匹配结果的字段，统计规划和校对缓存共用这个口径
- */
-export function buildQualityRuleDependencyParts(args: {
-  ruleType: QualityCompiledRuleType;
-  entry: Record<string, unknown>;
-}): unknown[] {
-  const src = String(args.entry.src ?? "");
-  if (args.ruleType === "glossary") {
-    return [args.ruleType, src, Boolean(args.entry.case_sensitive)];
-  }
-  if (args.ruleType === "text_preserve") {
-    return [args.ruleType, src];
-  }
-  return [args.ruleType, src, Boolean(args.entry.regex), Boolean(args.entry.case_sensitive)];
 }
 
 /**
@@ -307,6 +284,7 @@ export function applyQualityCompiledReplacements(
   };
 }
 
+// 姓名与正文分 part 执行同一预替换/后替换规则，禁止跨字段匹配。
 export function applyQualityCompiledTextParts(
   parts: QualityCompiledTextParts,
   quality_context: QualityCompiledContext,

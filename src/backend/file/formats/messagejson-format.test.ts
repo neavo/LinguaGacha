@@ -2,24 +2,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { Item } from "../../../domain/item";
 import { MESSAGEJSONFormat } from "./messagejson-format";
 
-let temp_dir = "";
-
-beforeEach(() => {
-  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-messagejson-format-"));
-});
-
-afterEach(() => {
-  fs.rmSync(temp_dir, { recursive: true, force: true });
-});
-
 describe("MESSAGEJSONFormat", () => {
   it("解析 name、names 和纯 message 条目且不预填译文", async () => {
-    const format = new MESSAGEJSONFormat({ source_language: "JA", target_language: "ZH" });
+    const format = new MESSAGEJSONFormat({ target_language: "ZH" });
 
     const items = await format.read_from_stream(
       new TextEncoder().encode(
@@ -45,7 +35,7 @@ describe("MESSAGEJSONFormat", () => {
   });
 
   it("非数组 JSON 不按 MESSAGEJSON 解析", async () => {
-    const format = new MESSAGEJSONFormat({ source_language: "JA", target_language: "ZH" });
+    const format = new MESSAGEJSONFormat({ target_language: "ZH" });
 
     await expect(
       format.read_from_stream(new TextEncoder().encode(JSON.stringify({ a: 1 })), "m.json"),
@@ -53,7 +43,10 @@ describe("MESSAGEJSONFormat", () => {
   });
 
   it("空译文写回时回退原文", async () => {
-    const format = new MESSAGEJSONFormat({ source_language: "JA", target_language: "ZH" });
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-messagejson-format-"),
+    );
+    const format = new MESSAGEJSONFormat({ target_language: "ZH" });
 
     await format.write_to_path(
       [
@@ -66,19 +59,21 @@ describe("MESSAGEJSONFormat", () => {
         }),
       ],
       {
-        translated_path: temp_dir,
-        bilingual_path: path.join(temp_dir, "bilingual"),
+        translated_path: temp_dir.path,
+        bilingual_path: path.join(temp_dir.path, "bilingual"),
       },
     );
 
-    expect(JSON.parse(fs.readFileSync(path.join(temp_dir, "message", "a.json"), "utf-8"))).toEqual([
-      { message: "s1" },
-    ]);
+    expect(
+      JSON.parse(fs.readFileSync(path.join(temp_dir.path, "message", "a.json"), "utf-8")),
+    ).toEqual([{ message: "s1" }]);
   });
 
   it("写回时逐条优先使用第 0 槽译名并回退源姓名", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-messagejson-format-"),
+    );
     const format = new MESSAGEJSONFormat({
-      source_language: "JA",
       target_language: "ZH",
       write_translated_name_fields_to_file: true,
     });
@@ -124,12 +119,14 @@ describe("MESSAGEJSONFormat", () => {
         }),
       ],
       {
-        translated_path: temp_dir,
-        bilingual_path: path.join(temp_dir, "bilingual"),
+        translated_path: temp_dir.path,
+        bilingual_path: path.join(temp_dir.path, "bilingual"),
       },
     );
 
-    const result = JSON.parse(fs.readFileSync(path.join(temp_dir, "message", "a.json"), "utf-8"));
+    const result = JSON.parse(
+      fs.readFileSync(path.join(temp_dir.path, "message", "a.json"), "utf-8"),
+    );
     expect(result).toContainEqual({ name: "勇者", message: "m1" });
     expect(result).toContainEqual({ name: "英雄", message: "m2" });
     expect(result).toContainEqual({ name: "hero", message: "m2b" });
@@ -138,8 +135,10 @@ describe("MESSAGEJSONFormat", () => {
   });
 
   it("禁用译名写回时还原 name_src 并按行号排序", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-messagejson-format-"),
+    );
     const format = new MESSAGEJSONFormat({
-      source_language: "JA",
       target_language: "ZH",
       write_translated_name_fields_to_file: false,
     });
@@ -166,12 +165,14 @@ describe("MESSAGEJSONFormat", () => {
         }),
       ],
       {
-        translated_path: temp_dir,
-        bilingual_path: path.join(temp_dir, "bilingual"),
+        translated_path: temp_dir.path,
+        bilingual_path: path.join(temp_dir.path, "bilingual"),
       },
     );
 
-    expect(JSON.parse(fs.readFileSync(path.join(temp_dir, "message", "a.json"), "utf-8"))).toEqual([
+    expect(
+      JSON.parse(fs.readFileSync(path.join(temp_dir.path, "message", "a.json"), "utf-8")),
+    ).toEqual([
       { names: ["甲", "乙"], message: "new0" },
       { name: "原名", message: "new1" },
     ]);

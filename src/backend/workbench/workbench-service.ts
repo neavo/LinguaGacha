@@ -1,7 +1,6 @@
 import type { ApiJsonValue } from "../api/api-types";
 import type { AppSettingService } from "../app/app-setting-service";
 import { ProjectDatabase } from "../database/database-operations";
-import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import { FileFormatService } from "../file/file-format-service";
 import {
   SourceFileParsePipeline,
@@ -20,6 +19,7 @@ import {
   normalize_project_item_public_record,
   type ProjectItemPublicRecord,
 } from "../../domain/item";
+import { is_json_record, read_json_record } from "../../domain/json";
 import {
   normalize_project_settings_snapshot,
   normalize_setting_snapshot,
@@ -118,7 +118,7 @@ export class WorkbenchService {
    * 导入工作台文件，并按同名策略同步新增或替换文件事实
    */
   public async import_workbench_files(request: JsonRecord): Promise<ProjectWriteResult> {
-    const project_path = await this.require_loaded_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     return this.project_operation_gate.run_exclusive_project_write(async () => {
       this.assert_no_legacy_fields(request, [
         "items",
@@ -268,7 +268,7 @@ export class WorkbenchService {
    * 重置指定工作台文件的条目事实，并清空分析状态
    */
   public async reset_workbench_file(request: JsonRecord): Promise<ProjectWriteResult> {
-    const project_path = await this.require_loaded_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     return this.project_operation_gate.run_exclusive_project_write(async () => {
       this.assert_no_legacy_fields(request, [
         "items",
@@ -317,7 +317,7 @@ export class WorkbenchService {
    * 删除工作台文件与对应条目，并清空分析状态
    */
   public async delete_workbench_file(request: JsonRecord): Promise<ProjectWriteResult> {
-    const project_path = await this.require_loaded_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     return this.project_operation_gate.run_exclusive_project_write(async () => {
       this.assert_no_legacy_fields(request, [
         "items",
@@ -368,7 +368,7 @@ export class WorkbenchService {
    * 持久化完整文件顺序，确保拖拽重排只影响 files section
    */
   public async reorder_workbench_files(request: JsonRecord): Promise<ProjectWriteResult> {
-    const project_path = await this.require_loaded_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     return this.project_operation_gate.run_exclusive_project_write(async () => {
       const ordered_paths = this.normalize_string_list(request["ordered_rel_paths"]);
       const current_paths = this.get_asset_records(project_path).map((record) => record.path);
@@ -427,7 +427,7 @@ export class WorkbenchService {
    * 提交翻译重置结果，保持 all 与 failed 两种旧语义分离
    */
   public async apply_translation_reset(request: JsonRecord): Promise<ProjectWriteResult> {
-    const project_path = await this.require_loaded_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     const mode = String(request["mode"] ?? "").toLowerCase();
     this.assert_no_legacy_fields(request, ["items", "translation_extras", "prefilter_config"]);
     return this.project_operation_gate.run_exclusive_project_write(async () => {
@@ -491,7 +491,7 @@ export class WorkbenchService {
    * 提交分析重置结果，all 清空全部分析事实，failed 只清失败 checkpoint
    */
   public async apply_analysis_reset(request: JsonRecord): Promise<ProjectWriteResult> {
-    const project_path = await this.require_loaded_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     const mode = String(request["mode"] ?? "").toLowerCase();
     this.assert_no_legacy_fields(request, ["analysis_extras"]);
     return this.project_operation_gate.run_exclusive_project_write(async () => {
@@ -515,7 +515,7 @@ export class WorkbenchService {
    * 写入术语导入结果，同时对齐 quality 与 analysis revision
    */
   public async import_analysis_glossary(request: JsonRecord): Promise<ProjectWriteResult> {
-    const project_path = await this.require_loaded_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     this.assert_no_legacy_fields(request, [
       "analysis_candidate_count",
       "expected_glossary_revision",
@@ -574,7 +574,7 @@ export class WorkbenchService {
       return [];
     }
     return value
-      .filter((item): item is JsonRecord => this.is_record(item))
+      .filter((item): item is JsonRecord => is_json_record(item))
       .map((item) => {
         this.assert_no_legacy_fields(item, ["file_record", "parsed_items"]);
         return {
@@ -664,9 +664,7 @@ export class WorkbenchService {
     const config = normalize_setting_snapshot(this.app_setting_service?.read_setting() ?? {});
     return new FileFormatService(
       {
-        source_language: config.source_language,
         target_language: config.target_language,
-        app_language: config.app_language,
         deduplication_in_bilingual: config.deduplication_in_bilingual,
         write_translated_name_fields_to_file: config.write_translated_name_fields_to_file,
       },
@@ -681,9 +679,9 @@ export class WorkbenchService {
     project_path: string,
     value: ApiJsonValue | undefined,
   ): ProjectWriteSettings {
-    const request_settings = this.normalize_object(value);
+    const request_settings = { ...read_json_record(value) };
     const meta = this.get_all_meta(project_path);
-    const prefilter_config = this.normalize_object(meta["prefilter_config"]);
+    const prefilter_config = { ...read_json_record(meta["prefilter_config"]) };
     return normalize_project_settings_snapshot(
       request_settings,
       normalize_project_settings_snapshot(
@@ -872,7 +870,7 @@ export class WorkbenchService {
   private build_translation_task_snapshot_from_meta(project_path: string): Record<string, unknown> {
     return {
       ...create_empty_translation_task_snapshot(),
-      progress: this.normalize_object(this.get_all_meta(project_path)["translation_extras"]),
+      progress: { ...read_json_record(this.get_all_meta(project_path)["translation_extras"]) },
     };
   }
 
@@ -1138,9 +1136,9 @@ export class WorkbenchService {
     const preserved_extras =
       mode === "failed"
         ? this.pick_preserved_analysis_extras(
-            normalize_analysis_progress_snapshot(
-              this.normalize_object(this.get_all_meta(project_path)["analysis_extras"]),
-            ),
+            normalize_analysis_progress_snapshot({
+              ...read_json_record(this.get_all_meta(project_path)["analysis_extras"]),
+            }),
           )
         : {};
     return build_analysis_progress_snapshot({
@@ -1195,15 +1193,13 @@ export class WorkbenchService {
    * 读取分析 checkpoint 状态，过滤掉未知状态避免污染 reset 统计
    */
   private get_analysis_checkpoints(project_path: string): Map<number, string> {
-    const value = this.database.execute(
-      this.op("getAnalysisItemCheckpoints", { projectPath: project_path }),
-    );
+    const value = this.database.get_analysis_item_checkpoints(project_path);
     const checkpoints = new Map<number, string>();
     if (!Array.isArray(value)) {
       return checkpoints;
     }
     for (const row of value) {
-      if (!this.is_record(row)) {
+      if (!is_json_record(row)) {
         continue;
       }
       const item_id = this.read_number(row["item_id"], 0);
@@ -1216,18 +1212,7 @@ export class WorkbenchService {
   }
 
   /**
-   * 当前 loaded 工程是大多数 P2 写入的唯一目标
-   */
-  private async require_loaded_project_path(): Promise<string> {
-    const state = this.session_state.snapshot();
-    if (!state.loaded || state.projectPath === "") {
-      throw new AppErrors.ProjectNotLoadedError();
-    }
-    return state.projectPath;
-  }
-
-  /**
-   * settings alignment 允许显式 path 写未 loaded 项目，其余沿用 loaded 目标
+   * 多数写入绑定 loaded 工程；仅打开前的 settings alignment 允许显式既有 path。
    */
   private async resolve_project_path(request: JsonRecord): Promise<string> {
     const explicit_path = String(request["path"] ?? "").trim();
@@ -1235,7 +1220,7 @@ export class WorkbenchService {
       this.assert_explicit_project_file_exists(explicit_path);
       return explicit_path;
     }
-    return this.require_loaded_project_path();
+    return this.session_state.require_loaded_project_path();
   }
 
   /**
@@ -1266,7 +1251,7 @@ export class WorkbenchService {
       return [];
     }
     return value
-      .filter((entry): entry is JsonRecord => this.is_record(entry))
+      .filter((entry): entry is JsonRecord => is_json_record(entry))
       .map((entry) => ({
         src: String(entry["src"] ?? "").trim(),
         dst: String(entry["dst"] ?? "").trim(),
@@ -1281,14 +1266,7 @@ export class WorkbenchService {
    * 读取当前质量规则条目，供分析导入判断是否需要推进 quality revision
    */
   private get_rule_entries(project_path: string, rule_type: string): MutableJsonRecord[] {
-    return this.normalize_rule_entries(
-      this.database.execute(
-        this.op("getRules", {
-          projectPath: project_path,
-          ruleType: rule_type,
-        }),
-      ),
-    );
+    return this.normalize_rule_entries(this.database.get_rules(project_path, rule_type));
   }
 
   /**
@@ -1338,11 +1316,9 @@ export class WorkbenchService {
    * 读取分析候选聚合，供后端计算剩余候选数
    */
   private get_analysis_candidate_aggregates(project_path: string): MutableJsonRecord[] {
-    const value = this.database.execute(
-      this.op("getAnalysisCandidateAggregates", { projectPath: project_path }),
-    );
+    const value = this.database.get_analysis_candidate_aggregates(project_path);
     return Array.isArray(value)
-      ? value.filter((row): row is JsonRecord => this.is_record(row)).map((row) => ({ ...row }))
+      ? value.filter((row): row is JsonRecord => is_json_record(row)).map((row) => ({ ...row }))
       : [];
   }
 
@@ -1386,10 +1362,10 @@ export class WorkbenchService {
    * 读取全部 item dict，供局部 merge 和工作台 append 使用
    */
   private get_all_items(project_path: string): MutableJsonRecord[] {
-    const value = this.database.execute(this.op("getAllItems", { projectPath: project_path }));
+    const value = this.database.get_all_items(project_path);
     return Array.isArray(value)
       ? value
-          .filter((item): item is JsonRecord => this.is_record(item))
+          .filter((item): item is JsonRecord => is_json_record(item))
           .map((item) => ({ ...item }))
       : [];
   }
@@ -1398,14 +1374,12 @@ export class WorkbenchService {
    * 读取 asset 顺序记录，隐藏数据库返回字段名差异
    */
   private get_asset_records(project_path: string): WorkbenchAssetRecord[] {
-    const value = this.database.execute(
-      this.op("getAllAssetRecords", { projectPath: project_path }),
-    );
+    const value = this.database.get_all_asset_records(project_path);
     if (!Array.isArray(value)) {
       return [];
     }
     return value
-      .filter((item): item is JsonRecord => this.is_record(item))
+      .filter((item): item is JsonRecord => is_json_record(item))
       .map((item) => ({
         path: String(item["path"] ?? ""),
         sort_order: this.read_number(item["sort_order"], 0),
@@ -1416,16 +1390,7 @@ export class WorkbenchService {
    * 读取完整 meta，用于 revision 判断
    */
   private get_all_meta(project_path: string): MutableJsonRecord {
-    return this.normalize_object(
-      this.database.execute(this.op("getAllMeta", { projectPath: project_path })),
-    );
-  }
-
-  /**
-   * 把未知 JSON 收窄为对象，避免深层读取扩散类型断言
-   */
-  private normalize_object(value: ApiJsonValue | undefined): MutableJsonRecord {
-    return this.is_record(value) ? { ...value } : {};
+    return { ...read_json_record(this.database.get_all_meta(project_path)) };
   }
 
   /**
@@ -1443,19 +1408,5 @@ export class WorkbenchService {
   private read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? number_value : fallback;
-  }
-
-  /**
-   * 收窄 JSON 对象，保护数组和 null 不被当作 record
-   */
-  private is_record(value: unknown): value is JsonRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-  }
-
-  /**
-   * 创建 database workflow 操作，避免业务方法重复拼协议壳
-   */
-  private op(name: string, args: Record<string, DatabaseJsonValue>): DatabaseOperation {
-    return { name, args };
   }
 }

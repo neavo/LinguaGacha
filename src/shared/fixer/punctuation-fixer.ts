@@ -41,12 +41,6 @@ const RULE_SAME_COUNT_B: Record<string, readonly string[]> = {
   "\u002d": ["\u2014", "\u2015"], // 破折号互转：\u002d = -，\u2014 = —，\u2015 = ―
 };
 
-// 强制替换规则：译文语言为 CJK 时，把日式钩括号统一成中文弯引号
-const RULE_FORCE_CJK: Record<string, readonly string[]> = {
-  "「": ["“"],
-  "」": ["”"],
-};
-
 /**
  * 标点修复器，按源文数量恢复容易互转的全角/半角与引号
  */
@@ -66,9 +60,7 @@ export class PunctuationFixer {
       result = this.apply_fix_rules(src, result, RULE_SAME_COUNT_B);
     }
     if (is_cjk_language_code(target_language)) {
-      for (const [key, values] of Object.entries(RULE_FORCE_CJK)) {
-        result = this.apply_replace_rules(result, key, values);
-      }
+      result = result.replaceAll("“", "「").replaceAll("”", "」");
     }
     return result;
   }
@@ -107,7 +99,7 @@ export class PunctuationFixer {
   private static apply_replace_rules(dst: string, key: string, values: readonly string[]): string {
     let result = dst;
     for (const value of values) {
-      result = result.split(value).join(key);
+      result = result.replaceAll(value, key);
     }
     return result;
   }

@@ -3,6 +3,7 @@ import type { BackendWorkerClient } from "../../worker/worker-client";
 import type { CacheFileEntry, CacheItem, CacheReadPort } from "../cache-types";
 import * as AppErrors from "../../../shared/error";
 import { Item } from "../../../domain/item";
+import { is_json_record, read_json_record } from "../../../domain/json";
 import { normalize_setting_snapshot } from "../../../domain/setting";
 import type { ApiJsonValue } from "../../api/api-types";
 import type {
@@ -49,15 +50,21 @@ export type ProofreadingCacheResult<TData> = {
   data: TData;
 };
 
+/**
+ * 按工程、会话 epoch、依赖 revision 和语言缓存校对列表运行态。
+ */
 export class ProofreadingCache {
-  private readonly cache: CacheReadPort;
-  private readonly app_setting_service: AppSettingService;
-  private readonly worker_client: BackendWorkerClient;
-  private readonly service: ReturnType<typeof createProofreadingListReader>;
-  private synced_key: string | null = null;
-  private synced_state: ProofreadingSyncState | null = null;
-  private sync_promises = new Map<string, Promise<ProofreadingSyncState>>();
+  private readonly cache: CacheReadPort; // 完整同步输入只来自当前会话缓存快照
+  private readonly app_setting_service: AppSettingService; // 语言缺省值来自当前应用设置
+  private readonly worker_client: BackendWorkerClient; // 质量评估在 worker 中执行
+  private readonly service: ReturnType<typeof createProofreadingListReader>; // 持有列表索引运行态
+  private synced_key: string | null = null; // synced_state 对应的完整身份
+  private synced_state: ProofreadingSyncState | null = null; // 最近一次成功同步的公开摘要
+  private sync_promises = new Map<string, Promise<ProofreadingSyncState>>(); // 合并同身份并发同步
 
+  /**
+   * 注入共享缓存、设置与 worker；本类不读取数据库或写项目事实。
+   */
   public constructor(options: {
     cache: CacheReadPort;
     appSettingService: AppSettingService;
@@ -70,6 +77,9 @@ export class ProofreadingCache {
     this.service = options.service;
   }
 
+  /**
+   * 确保指定语言身份完成全量同步并返回当前 revision。
+   */
   public async sync(input: {
     sourceLanguage?: ApiJsonValue;
     targetLanguage?: ApiJsonValue;
@@ -79,40 +89,58 @@ export class ProofreadingCache {
     return this.with_identity(identity, syncState);
   }
 
+  /**
+   * 基于当前运行态创建筛选、搜索和排序后的列表视图。
+   */
   public async list(
     query: ProofreadingListViewQuery,
   ): Promise<ProofreadingCacheResult<ProofreadingListView>> {
-    return this.query_current("list", { action: "list", query });
+    return this.query_current(() => this.service.read_list_view(query));
   }
 
+  /**
+   * 读取既有列表视图的一段渲染窗口。
+   */
   public async window(
     query: ProofreadingListWindowQuery,
   ): Promise<ProofreadingCacheResult<ProofreadingListWindow>> {
-    return this.query_current("window", { action: "window", query });
+    return this.query_current(() => this.service.read_list_window(query));
   }
 
+  /**
+   * 读取视图窗口对应的稳定 row id。
+   */
   public async rowIdsRange(
     query: ProofreadingRowIdsRangeQuery,
   ): Promise<ProofreadingCacheResult<string[]>> {
-    return this.query_current("row_ids_range", { action: "row_ids_range", query });
+    return this.query_current(() => this.service.read_row_ids_range(query));
   }
 
+  /**
+   * 将 row id 反查为当前视图索引。
+   */
   public async rowIndex(
     query: ProofreadingRowIndexQuery,
   ): Promise<ProofreadingCacheResult<number | null>> {
-    return this.query_current("row_index", { action: "row_index", query });
+    return this.query_current(() => this.service.resolve_row_index(query) ?? null);
   }
 
+  /**
+   * 按 row id 局部读取校对行，避免页面复制完整列表。
+   */
   public async itemsByRowIds(
     query: ProofreadingItemsByRowIdsQuery,
   ): Promise<ProofreadingCacheResult<ProofreadingClientItem[]>> {
-    return this.query_current("items_by_row_ids", { action: "items_by_row_ids", query });
+    return this.query_current(() => this.service.read_items_by_row_ids(query));
   }
 
+  /**
+   * 基于当前运行态生成筛选面板计数。
+   */
   public async filterPanel(
     query: ProofreadingFilterPanelQuery,
   ): Promise<ProofreadingCacheResult<ProofreadingFilterPanelState>> {
-    return this.query_current("filter_panel", { action: "filter_panel", query });
+    return this.query_current(() => this.service.build_filter_panel(query));
   }
 
   /**
@@ -188,6 +216,7 @@ export class ProofreadingCache {
         revisions: next_revisions,
       });
     } catch {
+      // 增量应用失败只丢弃派生运行态，下次查询会从权威缓存快照完整重建。
       await this.clearProject(change.projectPath);
     }
   }
@@ -195,65 +224,15 @@ export class ProofreadingCache {
   /**
    * 查询前确保当前项目身份已完成同步。
    */
-  private async query_current<TAction extends "list">(
-    action: TAction,
-    input: { action: TAction; query: ProofreadingListViewQuery },
-  ): Promise<ProofreadingCacheResult<ProofreadingListView>>;
-  private async query_current<TAction extends "window">(
-    action: TAction,
-    input: { action: TAction; query: ProofreadingListWindowQuery },
-  ): Promise<ProofreadingCacheResult<ProofreadingListWindow>>;
-  private async query_current<TAction extends "row_ids_range">(
-    action: TAction,
-    input: { action: TAction; query: ProofreadingRowIdsRangeQuery },
-  ): Promise<ProofreadingCacheResult<string[]>>;
-  private async query_current<TAction extends "row_index">(
-    action: TAction,
-    input: { action: TAction; query: ProofreadingRowIndexQuery },
-  ): Promise<ProofreadingCacheResult<number | null>>;
-  private async query_current<TAction extends "items_by_row_ids">(
-    action: TAction,
-    input: { action: TAction; query: ProofreadingItemsByRowIdsQuery },
-  ): Promise<ProofreadingCacheResult<ProofreadingClientItem[]>>;
-  private async query_current<TAction extends "filter_panel">(
-    action: TAction,
-    input: { action: TAction; query: ProofreadingFilterPanelQuery },
-  ): Promise<ProofreadingCacheResult<ProofreadingFilterPanelState>>;
-  private async query_current(
-    action: "list" | "window" | "row_ids_range" | "row_index" | "items_by_row_ids" | "filter_panel",
-    input:
-      | { action: "list"; query: ProofreadingListViewQuery }
-      | { action: "window"; query: ProofreadingListWindowQuery }
-      | { action: "row_ids_range"; query: ProofreadingRowIdsRangeQuery }
-      | { action: "row_index"; query: ProofreadingRowIndexQuery }
-      | { action: "items_by_row_ids"; query: ProofreadingItemsByRowIdsQuery }
-      | { action: "filter_panel"; query: ProofreadingFilterPanelQuery },
-  ): Promise<ProofreadingCacheResult<unknown>> {
+  private async query_current<TData>(read: () => TData): Promise<ProofreadingCacheResult<TData>> {
     const identity = this.build_identity({});
     await this.ensure_synced(identity);
-    if (input.action !== action) {
-      throw new AppErrors.InternalInvariantError({
-        diagnostic_context: { reason: "proofreading_query_action_mismatch" },
-      });
-    }
-    if (input.action === "list") {
-      return this.with_identity(identity, this.service.read_list_view(input.query));
-    }
-    if (input.action === "window") {
-      return this.with_identity(identity, this.service.read_list_window(input.query));
-    }
-    if (input.action === "row_ids_range") {
-      return this.with_identity(identity, this.service.read_row_ids_range(input.query));
-    }
-    if (input.action === "row_index") {
-      return this.with_identity(identity, this.service.resolve_row_index(input.query) ?? null);
-    }
-    if (input.action === "items_by_row_ids") {
-      return this.with_identity(identity, this.service.read_items_by_row_ids(input.query));
-    }
-    return this.with_identity(identity, this.service.build_filter_panel(input.query));
+    return this.with_identity(identity, read());
   }
 
+  /**
+   * 同一身份复用进行中的 Promise；未命中时经 worker 和列表读取器完整重建。
+   */
   private async ensure_synced(identity: {
     keyString: string;
     input: ProofreadingSyncInput;
@@ -292,6 +271,9 @@ export class ProofreadingCache {
     }
   }
 
+  /**
+   * 用会话身份、依赖 revision、语言和版本构造同步 key 与完整 worker 输入。
+   */
   private build_identity(input: { sourceLanguage?: ApiJsonValue; targetLanguage?: ApiJsonValue }): {
     key: ProofreadingCacheKey;
     keyString: string;
@@ -337,6 +319,9 @@ export class ProofreadingCache {
     };
   }
 
+  /**
+   * 将派生数据与计算时的工程身份绑定，供 API 检测陈旧结果。
+   */
   private with_identity<TData>(
     identity: {
       key: ProofreadingCacheKey;
@@ -383,6 +368,9 @@ export class ProofreadingCache {
     );
   }
 
+  /**
+   * 将基础 item 缓存收窄为校对列表需要的稳定字段。
+   */
   private to_runtime_item(
     item: CacheItem,
     file_order_by_path: Map<string, number>,
@@ -403,6 +391,9 @@ export class ProofreadingCache {
     };
   }
 
+  /**
+   * 将四类质量规则块归一为 worker 可消费快照。
+   */
   private normalize_quality_state(block: Record<string, unknown>): QualitySnapshot {
     return {
       glossary: this.normalize_quality_slice(block["glossary"], "custom"),
@@ -412,16 +403,14 @@ export class ProofreadingCache {
     };
   }
 
+  /**
+   * 过滤非法规则条目，并补齐启用状态、模式和 revision。
+   */
   private normalize_quality_slice(value: unknown, fallback_mode: string): QualitySlice {
-    const record =
-      typeof value === "object" && value !== null && !Array.isArray(value)
-        ? (value as Record<string, unknown>)
-        : {};
+    const record = read_json_record(value);
     const entries = Array.isArray(record["entries"])
       ? record["entries"].flatMap((entry) => {
-          return typeof entry === "object" && entry !== null && !Array.isArray(entry)
-            ? [{ ...(entry as Record<string, unknown>) }]
-            : [];
+          return is_json_record(entry) ? [{ ...entry }] : [];
         })
       : [];
     return {
@@ -491,6 +480,9 @@ export class ProofreadingCache {
     };
   }
 
+  /**
+   * revision、行号和计数统一收窄为非负整数。
+   */
   private read_number(value: unknown, fallback: number): number {
     const parsed = Number(value ?? fallback);
     return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : fallback;

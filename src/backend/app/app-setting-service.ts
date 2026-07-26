@@ -57,9 +57,7 @@ export class AppSettingService {
   /**
    * 更新应用设置白名单字段，并通过 API stream 广播设置变化
    */
-  public async update_app_settings(
-    request: Record<string, ApiJsonValue>,
-  ): Promise<Record<string, ApiJsonValue>> {
+  public update_app_settings(request: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
     let setting = this.read_setting_entity();
     const changed_keys: string[] = [];
     for (const [key, value] of Object.entries(request)) {
@@ -81,9 +79,7 @@ export class AppSettingService {
   /**
    * 写入最近项目列表，集中去重和数量限制
    */
-  public async add_recent_project(
-    request: Record<string, ApiJsonValue>,
-  ): Promise<Record<string, ApiJsonValue>> {
+  public add_recent_project(request: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
     const project_path = typeof request["path"] === "string" ? request["path"] : "";
     let setting = this.read_setting_entity();
     if (project_path !== "") {
@@ -100,9 +96,9 @@ export class AppSettingService {
   /**
    * 移除最近项目，保持配置文件列表结构稳定
    */
-  public async remove_recent_project(
+  public remove_recent_project(
     request: Record<string, ApiJsonValue>,
-  ): Promise<Record<string, ApiJsonValue>> {
+  ): Record<string, ApiJsonValue> {
     const project_path = typeof request["path"] === "string" ? request["path"] : "";
     let setting = this.read_setting_entity();
     if (project_path !== "") {

@@ -2,26 +2,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { FileFormatService } from "../file/file-format-service";
-
-let temp_dir = "";
-
-beforeEach(() => {
-  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-file-format-service-"));
-});
-
-afterEach(() => {
-  fs.rmSync(temp_dir, { recursive: true, force: true });
-});
 
 /**
  * 测试统一使用显式配置，避免依赖用户本机设置
  */
 function create_service(): FileFormatService {
   return new FileFormatService({
-    source_language: "JA",
     target_language: "ZH",
     deduplication_in_bilingual: true,
     write_translated_name_fields_to_file: true,
@@ -29,14 +18,12 @@ function create_service(): FileFormatService {
 }
 
 describe("FileFormatService", () => {
-  it("按公开支持扩展名识别文件，并单独标记 EPUB 路径", () => {
+  it("按公开支持扩展名识别文件", () => {
     const service = create_service();
 
     expect(service.is_supported_file("script.txt")).toBe(true);
     expect(service.is_supported_file("script.epub")).toBe(true);
     expect(service.is_supported_file("archive.bin")).toBe(false);
-    expect(service.is_epub_path("novel.EPUB")).toBe(true);
-    expect(service.is_epub_path("script.txt")).toBe(false);
   });
 
   it("按扩展名分发解析器，并保持 JSON 的 KV 优先与 MESSAGE fallback", async () => {
@@ -82,9 +69,12 @@ describe("FileFormatService", () => {
   });
 
   it("收集目录源文件时保留入口目录名并去重输入路径", () => {
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-file-format-service-"),
+    );
     const service = create_service();
-    const left_dir = path.join(temp_dir, "left");
-    const right_dir = path.join(temp_dir, "right");
+    const left_dir = path.join(temp_dir.path, "left");
+    const right_dir = path.join(temp_dir.path, "right");
     fs.mkdirSync(left_dir, { recursive: true });
     fs.mkdirSync(right_dir, { recursive: true });
     fs.writeFileSync(path.join(left_dir, "script.txt"), "左", "utf-8");
@@ -103,8 +93,11 @@ describe("FileFormatService", () => {
   });
 
   it("收集单文件路径时使用文件名作为工程相对路径", () => {
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-file-format-service-"),
+    );
     const service = create_service();
-    const source_file = path.join(temp_dir, "nested", "a.MD");
+    const source_file = path.join(temp_dir.path, "nested", "a.MD");
     fs.mkdirSync(path.dirname(source_file), { recursive: true });
     fs.writeFileSync(source_file, "dummy", "utf-8");
 
@@ -113,22 +106,11 @@ describe("FileFormatService", () => {
     ]);
   });
 
-  it("工作台预览替换文件时沿用旧相对目录", async () => {
-    const service = create_service();
-    const source_file = path.join(temp_dir, "new.txt");
-    fs.writeFileSync(source_file, "新文本", "utf-8");
-
-    await expect(service.parse_file_preview(source_file, "old/path/original.txt")).resolves.toEqual(
-      expect.objectContaining({
-        target_rel_path: path.join("old/path", "new.txt"),
-        file_type: "TXT",
-      }),
-    );
-  });
-
   it("RenPy 导出通过 FileFormatService 注入姓名字段配置", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-file-format-service-"),
+    );
     const service = new FileFormatService({
-      source_language: "EN",
       target_language: "ZH",
       deduplication_in_bilingual: true,
       write_translated_name_fields_to_file: false,
@@ -145,10 +127,12 @@ describe("FileFormatService", () => {
 
     await service.write_items(
       [item],
-      { translated_path: temp_dir, bilingual_path: path.join(temp_dir, "bilingual") },
+      { translated_path: temp_dir.path, bilingual_path: path.join(temp_dir.path, "bilingual") },
       () => Buffer.from(text),
     );
 
-    expect(fs.readFileSync(path.join(temp_dir, "script.rpy"), "utf-8")).toContain('"Alice" "你好"');
+    expect(fs.readFileSync(path.join(temp_dir.path, "script.rpy"), "utf-8")).toContain(
+      '"Alice" "你好"',
+    );
   });
 });

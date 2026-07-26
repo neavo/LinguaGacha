@@ -21,7 +21,6 @@ type RuntimeFixture = {
   };
   apply_settings_snapshot: ReturnType<typeof vi.fn>;
   commit_project_write: ReturnType<typeof vi.fn>;
-  refresh_project_state: ReturnType<typeof vi.fn>;
   refresh_settings: ReturnType<typeof vi.fn>;
 };
 
@@ -30,26 +29,15 @@ type ToastFixture = {
   run_modal_progress_toast: ReturnType<typeof vi.fn>;
 };
 
-// state fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
 };
 
-// toast fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const toast_fixture: { current: ToastFixture } = {
   current: create_toast_fixture(),
 };
 
-/**
- * 支撑当前测试场景的专用辅助逻辑。
- */
 const translate = (key: string): string => key;
-
-(
-  globalThis as typeof globalThis & {
-    IS_REACT_ACT_ENVIRONMENT?: boolean;
-  }
-).IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock("@frontend/app/state/use-desktop-state", () => {
   return {
@@ -85,30 +73,17 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
  * 构造当前测试场景的标准数据。
  */
 function create_settings_snapshot(overrides: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
-  return {
-    app_language: "ZH",
-    source_language: "JA",
-    target_language: "ZH",
-    project_save_mode: "MANUAL",
-    project_fixed_path: "",
-    output_folder_open_on_finish: false,
-    request_timeout: 300,
-    preceding_lines_threshold: 0,
-    clean_ruby: false,
-    deduplication_in_bilingual: false,
-    write_translated_name_fields_to_file: false,
-    auto_process_prefix_suffix_preserved_text: false,
-    mtool_optimizer_enable: false,
-    skip_duplicate_source_text_enable: true,
-    glossary_default_preset: "",
-    pre_translation_replacement_default_preset: "",
-    post_translation_replacement_default_preset: "",
-    text_preserve_default_preset: "",
-    translation_custom_prompt_default_preset: "",
-    analysis_custom_prompt_default_preset: "",
-    recent_projects: [],
-    ...overrides,
-  };
+  return normalize_settings_snapshot({
+    settings: {
+      app_language: "ZH",
+      source_language: "JA",
+      target_language: "ZH",
+      request_timeout: 300,
+      mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: true,
+      ...overrides,
+    },
+  });
 }
 
 /**
@@ -143,7 +118,6 @@ function create_runtime_fixture(): RuntimeFixture {
         },
       };
     }),
-    refresh_project_state: vi.fn(async () => {}),
     refresh_settings: vi.fn(async () => runtime_fixture.current.settings_snapshot),
   };
 }
@@ -157,17 +131,6 @@ function create_toast_fixture(): ToastFixture {
     run_modal_progress_toast: vi.fn(async ({ task }: { task: () => Promise<unknown> }) => {
       return await task();
     }),
-  };
-}
-
-/**
- * 构造当前测试场景的标准数据。
- */
-function create_settings_payload(settings_snapshot: SettingsSnapshot): {
-  settings: SettingsSnapshot;
-} {
-  return {
-    settings: settings_snapshot,
   };
 }
 
@@ -197,10 +160,6 @@ describe("useBasicSettingsState", () => {
     return null;
   }
 
-  // flush_async_updates 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-  /**
-   * 支撑当前测试场景的专用辅助逻辑。
-   */
   async function flush_async_updates(): Promise<void> {
     await act(async () => {
       await Promise.resolve();
@@ -209,10 +168,6 @@ describe("useBasicSettingsState", () => {
     });
   }
 
-  // render_hook 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-  /**
-   * 生成当前场景的展示内容。
-   */
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -229,12 +184,12 @@ describe("useBasicSettingsState", () => {
   it("后端预过滤提交失败时会回滚 source_language 并只显示通用失败提示", async () => {
     vi.mocked(api_fetch).mockImplementation(async (path, body = {}) => {
       if (path === "/api/settings/update") {
-        return create_settings_payload(
-          create_settings_snapshot({
+        return {
+          settings: create_settings_snapshot({
             ...runtime_fixture.current.settings_snapshot,
             ...body,
           }),
-        ) as never;
+        } as never;
       }
 
       if (path === "/api/workbench/settings-alignment/apply") {
@@ -303,22 +258,5 @@ describe("useBasicSettingsState", () => {
         },
       ],
     ]);
-  });
-
-  it("刷新失败时保留当前基础设置并弹出错误 toast", async () => {
-    runtime_fixture.current.refresh_settings = vi.fn(async () => {
-      throw new Error("基础设置刷新失败");
-    });
-
-    await render_hook();
-
-    expect(latest_state).not.toBeNull();
-
-    expect(latest_state?.snapshot.request_timeout).toBe(300);
-    expect(toast_fixture.current.push_toast).toHaveBeenCalledTimes(1);
-    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
-      "error",
-      "basic_settings_page.feedback.refresh_failed",
-    );
   });
 });

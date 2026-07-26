@@ -20,7 +20,7 @@
 | 数据库、`.lg`、migration、asset、NativeFs | [`BACKEND.md`](BACKEND.md) | `src/backend/database/`、`src/backend/migration/`、`src/native/` |
 | 任务、worker、LLM | [`BACKEND.md`](BACKEND.md) | `src/backend/engine/`、`src/backend/worker/`、`src/backend/llm/` |
 | Electron / preload / renderer 接入 | [`FRONTEND.md`](FRONTEND.md) | `src/gui/`、`src/frontend/app/desktop/` |
-| 前端共享状态、页面 query、导航、session UI | [`FRONTEND.md`](FRONTEND.md) | `src/frontend/app/state/`、`src/frontend/app/session/`、`src/frontend/pages/` |
+| 前端共享状态、跨页面 feature、页面 query、导航、session UI | [`FRONTEND.md`](FRONTEND.md) | `src/frontend/app/state/`、`src/frontend/app/session/`、`src/frontend/features/`、`src/frontend/pages/` |
 | 前端文案、样式消费、视觉 | [`FRONTEND.md`](FRONTEND.md) | 当前任务设计输入、既有界面证据、`src/frontend/index.css`、相关组件 / 页面 CSS |
 | 长期文档治理 | [`project-doc` 技能](../.codex/skills/project-doc/SKILL.md) | `docs/`、README / 脚本 / 测试中的文档引用 |
 
@@ -40,7 +40,7 @@ npm run format -- --check
 | 改动范围 | 基线后追加验证 |
 | --- | --- |
 | 纯长期文档 | 检查 [`AGENTS.md`](../AGENTS.md) 声明的文档集合、相对链接和 diff；涉及 README、脚本提示、测试断言或技能时全文检索入口 |
-| 单域 TypeScript 行为 | 运行离改动最近的 `*.test.ts(x)` |
+| 单域源码行为 | 运行离改动最近的 `*.test.ts`、`*.test.tsx` 或 `*.test.mjs` |
 | 跨目录、跨前后端或共享契约 | 运行双方相关测试；影响面无法可靠收窄时执行 `npm test` |
 | GUI / preload / native / 桌面集成 | 运行相关单测，必要时 `npm run dev` 走真实主链路 |
 | 前端视觉、CSS、可见文案 | 运行相关页面或组件测试，核对当前设计输入与既有视觉证据，必要时 Electron 真机检查 |

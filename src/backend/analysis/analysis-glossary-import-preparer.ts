@@ -19,6 +19,7 @@ import {
   type QualityRuleImportAction,
   type QualityRuleImportPreview,
 } from "../../shared/quality/importer";
+import { is_json_record } from "../../domain/json";
 import type { ApiJsonValue } from "../api/api-types";
 import type { CacheItem } from "../cache/cache-types";
 import type { ProjectDataRecord } from "../project/project-data";
@@ -54,12 +55,11 @@ export type AnalysisGlossaryImportPrepareRequest = {
   action?: QualityRuleImportAction;
 };
 
-function is_record(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
+/**
+ * 质量规则边界只接受有源文的规范术语；其它字段收敛到稳定默认值。
+ */
 function normalize_glossary_entry(entry: unknown): GlossaryEntry | null {
-  if (!is_record(entry)) {
+  if (!is_json_record(entry)) {
     return null;
   }
   const src = String(entry["src"] ?? "").trim();
@@ -75,8 +75,11 @@ function normalize_glossary_entry(entry: unknown): GlossaryEntry | null {
   };
 }
 
+/**
+ * 从 quality section 的公开形状读取现有术语，并丢弃损坏行。
+ */
 function read_existing_glossary_entries(quality_block: ProjectDataRecord): GlossaryEntry[] {
-  const glossary_slice = is_record(quality_block["glossary"]) ? quality_block["glossary"] : {};
+  const glossary_slice = is_json_record(quality_block["glossary"]) ? quality_block["glossary"] : {};
   const entries = Array.isArray(glossary_slice["entries"]) ? glossary_slice["entries"] : [];
   return entries.flatMap((entry) => {
     const normalized_entry = normalize_glossary_entry(entry);
@@ -84,6 +87,9 @@ function read_existing_glossary_entries(quality_block: ProjectDataRecord): Gloss
   });
 }
 
+/**
+ * 复用质量规则导入器生成覆盖、保留或取消所需的重复预览。
+ */
 function create_glossary_import_preview(
   existing_entries: GlossaryEntry[],
   incoming_entries: GlossaryEntry[],
@@ -95,6 +101,9 @@ function create_glossary_import_preview(
   });
 }
 
+/**
+ * 按持久字段和原顺序比较完整术语表，避免无变化时推进 quality revision。
+ */
 function are_glossary_entries_equal(
   left_entries: GlossaryEntry[],
   right_entries: GlossaryEntry[],
@@ -122,6 +131,9 @@ function are_glossary_entries_equal(
   return true;
 }
 
+/**
+ * 把重复项的定位与处理类型压成稳定签名，供确认请求检测预览漂移。
+ */
 function build_duplicate_signature(preview: QualityRuleImportPreview): string {
   return preview.duplicates
     .map((duplicate) => {
@@ -135,14 +147,23 @@ function build_duplicate_signature(preview: QualityRuleImportPreview): string {
     .join("|");
 }
 
+/**
+ * 统计键同时包含大小写策略，避免同源文的不同匹配规则互相覆盖。
+ */
 function build_glossary_stat_key(entry: GlossaryEntry): string {
   return `${entry.src}|${entry.case_sensitive ? 1 : 0}`;
 }
 
+/**
+ * 候选条目复制为质量规则输入，阻断分析聚合对象的可变引用。
+ */
 function to_glossary_entries(entries: AnalysisCandidateGlossaryEntry[]): GlossaryEntry[] {
   return entries.map((entry) => ({ ...entry }));
 }
 
+/**
+ * 即使没有候选可写入质量规则，也要消费已处理的候选池，避免分析徽标永久残留。
+ */
 function build_candidate_pool_consumption_import(args: {
   existing_glossary_entries: GlossaryEntry[];
   section_revisions: ProjectDataSectionRevisions;
@@ -170,6 +191,9 @@ function build_candidate_pool_consumption_import(args: {
   };
 }
 
+/**
+ * 候选只保留项目正文中真实命中的项；与更长父术语命中集合完全相同时删除子集噪音。
+ */
 function filter_import_candidates(args: {
   existing_entries: GlossaryEntry[];
   incoming_entries: GlossaryEntry[];

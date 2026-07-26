@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
@@ -17,27 +17,9 @@ import {
   migration_orchestrator,
 } from "./migration-orchestrator";
 
-let temp_dir = "";
-let databases: DatabaseSync[] = [];
-
-beforeEach(() => {
-  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-orchestrator-"));
-  databases = [];
-});
-
-afterEach(() => {
-  for (const db of databases) {
-    try {
-      db.close();
-    } catch {
-      // 单个测试可能已经关闭句柄；收尾阶段只保证临时目录可清理
-    }
-  }
-  fs.rmSync(temp_dir, { recursive: true, force: true });
-});
-
 describe("MigrationOrchestrator", () => {
   it("启动期只执行带 startup hook 的迁移", () => {
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-orchestrator-"));
     const calls: string[] = [];
     const orchestrator = new MigrationOrchestrator([
       { id: "b", order: 2, run_startup: () => calls.push("b") },
@@ -46,7 +28,7 @@ describe("MigrationOrchestrator", () => {
     ]);
 
     orchestrator.run_startup_migrations({
-      paths: new AppPathService({ appRoot: temp_dir }),
+      paths: new AppPathService({ appRoot: temp_dir.path }),
       log_manager: { warning(): void {} } as unknown as LogManager,
     });
 
@@ -54,7 +36,8 @@ describe("MigrationOrchestrator", () => {
   });
 
   it("数据库写回迁移按 id 标记，已完成的迁移不会重复执行", () => {
-    const db = open_database("writeback.lg");
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-orchestrator-"));
+    using db = new DatabaseSync(path.join(temp_dir.path, "writeback.lg"));
     const calls: string[] = [];
     const orchestrator = new MigrationOrchestrator([
       {
@@ -82,34 +65,37 @@ describe("MigrationOrchestrator", () => {
     ]);
   });
 
-  it("项目打开 hook 按顺序合并 operation", async () => {
+  it("项目打开 hook 按顺序合并写入", async () => {
+    const calls: string[] = [];
     const orchestrator = new MigrationOrchestrator([
       {
         id: "second",
         order: 2,
-        build_project_open_operations: () => [{ name: "second", args: {} }],
+        build_project_open_writes: () => [() => calls.push("second")],
       },
       {
         id: "first",
         order: 1,
-        build_project_open_operations: () => [{ name: "first", args: {} }],
+        build_project_open_writes: () => [() => calls.push("first")],
       },
     ]);
 
-    await expect(
-      orchestrator.build_project_open_operations({
-        project_path: "demo.lg",
-        database: { execute: vi.fn() } as unknown as ProjectDatabase,
-        app_setting_service: { read_setting: vi.fn() } as unknown as AppSettingService,
-      }),
-    ).resolves.toEqual([
-      { name: "first", args: {} },
-      { name: "second", args: {} },
-    ]);
+    const database = {} as ProjectDatabase;
+    const writes = await orchestrator.build_project_open_writes({
+      project_path: "demo.lg",
+      database,
+      app_setting_service: { read_setting: vi.fn() } as unknown as AppSettingService,
+    });
+    for (const write of writes) {
+      write(database);
+    }
+
+    expect(calls).toEqual(["first", "second"]);
   });
 
   it("默认编排器写入当前写回迁移 id 集合", () => {
-    const db = open_database("default.lg");
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-orchestrator-"));
+    using db = new DatabaseSync(path.join(temp_dir.path, "default.lg"));
 
     migration_orchestrator.run_project_database_migrations(db);
 
@@ -118,15 +104,6 @@ describe("MigrationOrchestrator", () => {
     );
   });
 });
-
-/**
- * 编排器测试使用真实 SQLite 临时库，确保事务和 meta 标记行为可观察。
- */
-function open_database(name: string): DatabaseSync {
-  const db = new DatabaseSync(path.join(temp_dir, name));
-  databases.push(db);
-  return db;
-}
 
 /**
  * meta 值按 database workflow 的 JSON 形状读取，避免测试绕过持久格式。

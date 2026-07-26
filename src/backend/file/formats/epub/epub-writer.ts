@@ -3,7 +3,8 @@ import { Element, isTag, Text, type ChildNode } from "domhandler";
 import JSZip from "jszip";
 
 import type { ApiJsonValue } from "../../../api/api-types";
-import { Item, read_json_record } from "../../../../domain/item";
+import { Item } from "../../../../domain/item";
+import { read_json_record } from "../../../../domain/json";
 import {
   should_preserve_epub_reading_layout,
   write_binary_file,
@@ -755,6 +756,9 @@ export class EpubWriter {
     return "html";
   }
 
+  /**
+   * XML 模式先按节点语义转义再关闭 serializer 实体编码，避免命名实体和 NBSP 被二次改写。
+   */
   private render_readable_xml_doc(root: Element): string {
     const restores: Array<() => void> = [];
     this.escape_xml_node(root, restores);
@@ -773,6 +777,9 @@ export class EpubWriter {
     }
   }
 
+  /**
+   * 递归暂存并转义文本与属性，序列化结束后恢复原 DOM 供同一 EPUB 的其它写回分支复用。
+   */
   private escape_xml_node(node: ChildNode, restores: Array<() => void>): void {
     if (node instanceof Text) {
       const original = node.data;
@@ -803,6 +810,9 @@ export class EpubWriter {
     }
   }
 
+  /**
+   * XML 文本节点转义保留字符，并把 HTML 可读但 XML 未声明的 NBSP 写成数值实体。
+   */
   private escape_xml_text(text: string): string {
     return text.replace(/[&<>\u00a0]/gu, (char) => {
       if (char === "&") {
@@ -818,6 +828,9 @@ export class EpubWriter {
     });
   }
 
+  /**
+   * XML 属性额外转义双引号；大于号在属性中无需处理。
+   */
   private escape_xml_attribute(value: string): string {
     return value.replace(/[&"<\u00a0]/gu, (char) => {
       if (char === "&") {

@@ -1,4 +1,5 @@
 import type { ProjectDataRecord } from "../../project/project-data";
+import { is_json_record } from "../../../domain/json";
 import type { CacheFileEntry } from "../cache-types";
 
 /**
@@ -17,7 +18,7 @@ export class FileCache {
    */
   public replace(files_block: ProjectDataRecord): void {
     this.file_entries = Object.values(files_block).flatMap((value, index) => {
-      if (!this.is_record(value)) {
+      if (!is_json_record(value)) {
         return [];
       }
       const rel_path = String(value["rel_path"] ?? "").trim();
@@ -47,13 +48,6 @@ export class FileCache {
   public readFileEntries(): CacheFileEntry[] {
     this.before_read();
     return this.file_entries.map((entry) => ({ ...entry }));
-  }
-
-  /**
-   * 判断数据库 JSON 值是否为普通记录。
-   */
-  private is_record(value: unknown): value is ProjectDataRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   /**

@@ -192,41 +192,30 @@ describe("WorkbenchQueryService", () => {
   ): Promise<{
     service: WorkbenchQueryService;
   }> {
-    // database fake 汇总项目 meta、资源、规则和提示词，避免测试绕过 CacheManager。
     const database = {
-      execute(operation: { name: string; args?: Record<string, unknown> }) {
-        if (operation.name === "getAllMeta") {
-          return {
-            "project_runtime_revision.items": 7,
-            "project_runtime_revision.prompts": 3,
-            "quality_rule_revision.glossary": 5,
-            glossary_enable: true,
-            text_preserve_mode: "smart",
-            translation_prompt_enable: true,
-            "quality_prompt_revision.translation": 2,
-            ...meta_overrides,
-          };
+      get_all_meta: () => ({
+        "project_runtime_revision.items": 7,
+        "project_runtime_revision.prompts": 3,
+        "quality_rule_revision.glossary": 5,
+        glossary_enable: true,
+        text_preserve_mode: "smart",
+        translation_prompt_enable: true,
+        "quality_prompt_revision.translation": 2,
+        ...meta_overrides,
+      }),
+      get_all_items: () => items,
+      get_all_asset_records: () => asset_records,
+      get_rules: (_project_path: string, rule_type: string) => {
+        if (rule_type === "glossary") {
+          return [{ src: "HP", dst: "生命值" }];
         }
-        if (operation.name === "getAllItems") {
-          return items;
+        if (rule_type === "text_preserve") {
+          return [{ src: "\\[[^\\]]+\\]" }];
         }
-        if (operation.name === "getAllAssetRecords") {
-          return asset_records;
-        }
-        if (operation.name === "getRules") {
-          if (operation.args?.ruleType === "glossary") {
-            return [{ src: "HP", dst: "生命值" }];
-          }
-          if (operation.args?.ruleType === "text_preserve") {
-            return [{ src: "\\[[^\\]]+\\]" }];
-          }
-          return [];
-        }
-        if (operation.name === "getRuleText") {
-          return operation.args?.ruleType === "translation_prompt" ? "翻译提示词" : "";
-        }
-        return null;
+        return [];
       },
+      get_rule_text: (_project_path: string, rule_type: string) =>
+        rule_type === "translation_prompt" ? "翻译提示词" : "",
     } as unknown as ProjectDatabase;
     const cache = new CacheManager({
       database,

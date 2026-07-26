@@ -50,9 +50,6 @@ vi.mock("@frontend/widgets/segmented-toggle/segmented-toggle", () => {
   };
 });
 
-/**
- * 构造当前场景的标准初始数据。
- */
 function create_expert_settings_state_fixture() {
   return {
     snapshot: {
@@ -70,7 +67,6 @@ function create_expert_settings_state_fixture() {
       auto_process_prefix_suffix_preserved_text: false,
     },
     is_task_busy: false,
-    refresh_snapshot: vi.fn(async () => {}),
     update_preceding_lines_threshold: vi.fn(async (_next_value: number) => {}),
     update_clean_ruby: vi.fn(async (_next_checked: boolean) => {}),
     update_deduplication_in_bilingual: vi.fn(async (_next_checked: boolean) => {}),
@@ -79,9 +75,7 @@ function create_expert_settings_state_fixture() {
   };
 }
 
-/**
- * 写入当前测试交互值。
- */
+/** 通过原生 setter 触发 React 受控输入的真实 input 路径。 */
 function set_input_value(input: HTMLInputElement, value: string): void {
   const value_setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
 
@@ -93,9 +87,6 @@ function set_input_value(input: HTMLInputElement, value: string): void {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-/**
- * 获取当前测试场景的公开值。
- */
 function get_current_expert_settings_state(): ReturnType<
   typeof create_expert_settings_state_fixture
 > {
@@ -127,9 +118,6 @@ describe("ExpertSettingsPage", () => {
     push_toast_mock.mockReset();
   });
 
-  /**
-   * 挂载当前测试组件并等待渲染完成。
-   */
   async function mount_page(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -140,9 +128,6 @@ describe("ExpertSettingsPage", () => {
     });
   }
 
-  /**
-   * 读取当前场景需要的稳定数据。
-   */
   function get_preceding_lines_threshold_input(): HTMLInputElement {
     const input = container?.querySelector('input[type="number"]');
 

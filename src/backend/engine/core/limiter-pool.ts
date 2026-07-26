@@ -1,15 +1,19 @@
 import { RuntimeCancelledError } from "../../../shared/error";
+import { read_json_record } from "../../../domain/json";
 
 const DEFAULT_CONCURRENCY_LIMIT = 8; // 用户未设置并发且未设置 RPM 时，默认同时执行 8 个 LLM work unit
 const ONE_MINUTE_MS = 60_000;
 const ONE_SECOND_MS = 1_000;
 type LimiterModelRecord = Record<string, unknown>;
 
+/**
+ * limiter 只接收解析后的容量与可选测试时钟，不读取应用设置。
+ */
 interface TaskLimiterOptions {
-  concurrency_limit?: number;
-  rpm_limit?: number;
-  max_concurrency?: number;
-  now?: () => number;
+  concurrency_limit?: number; // 兼容直接构造时的并发输入
+  rpm_limit?: number; // 大于零时启用请求启动间隔
+  max_concurrency?: number; // 已由模型策略解析的最终并发上限
+  now?: () => number; // 测试注入的可控时钟
 }
 
 export interface TaskLimiterLease {
@@ -20,12 +24,12 @@ export interface TaskLimiterLease {
 
 // FIFO 队列中的唯一等待形态，并发等待和 RPM 等待都收敛到这里
 interface PendingRequest {
-  resolve: (lease: TaskLimiterLease) => void;
-  reject: (error: Error) => void;
-  signal: AbortSignal;
-  abort_listener: () => void;
-  queued_at: number;
-  settled: boolean;
+  resolve: (lease: TaskLimiterLease) => void; // 资格发放后结算 acquire Promise
+  reject: (error: Error) => void; // 取消时回传统一运行时错误
+  signal: AbortSignal; // 调用方取消事实
+  abort_listener: () => void; // 结算后必须移除，避免监听器泄漏
+  queued_at: number; // 计算本次等待耗时
+  settled: boolean; // 防止定时器与取消分支重复结算
 }
 
 /**
@@ -262,7 +266,7 @@ export class LimiterPool {
    * 解析当前模型对应 limiter；影响外部资源池的字段变化时自然切换新 limiter
    */
   public resolve(model: LimiterModelRecord): TaskLimiter {
-    const threshold = this.normalize_record(model["threshold"]);
+    const threshold = read_json_record(model["threshold"]);
     const key = this.build_key(model, threshold);
     if (this.shared_limiter?.key === key) {
       return this.shared_limiter.limiter;
@@ -289,15 +293,6 @@ export class LimiterPool {
       concurrency_limit: this.read_number(threshold["concurrency_limit"], 0),
       rpm_limit: this.read_number(threshold["rpm_limit"] ?? threshold["rpm_threshold"], 0),
     });
-  }
-
-  /**
-   * threshold 必须是普通对象，数组和 null 都按空配置处理
-   */
-  private normalize_record(value: unknown): LimiterModelRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value)
-      ? (value as LimiterModelRecord)
-      : {};
   }
 
   /**

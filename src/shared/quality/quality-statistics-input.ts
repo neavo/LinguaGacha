@@ -34,7 +34,7 @@ type QualityStatisticsPrepareTaskInputArgs = {
 /**
  * 从 quality 条目构造 worker 可直接消费的规则输入，空规则在边界处丢弃。
  */
-export function build_quality_statistics_rules(
+function build_quality_statistics_rules(
   rule_key: QualityStatisticsRuleMode,
   entries: unknown[],
 ): QualityStatisticsRuleInput[] {
@@ -62,7 +62,7 @@ export function build_quality_statistics_rules(
 /**
  * 父子关系只依赖规则 key 与匹配文本，和统计命中结果解耦。
  */
-export function build_quality_relation_candidates(
+function build_quality_relation_candidates(
   rules: QualityStatisticsRuleInput[],
 ): QualityStatisticsRelationCandidate[] {
   return rules.map((rule) => {
@@ -76,7 +76,7 @@ export function build_quality_relation_candidates(
 /**
  * 构造统计缓存依赖快照；dependency_signature 表示可复用性，snapshot_signature 保留 UI key 身份。
  */
-export function build_quality_statistics_dependency_snapshot(
+function build_quality_statistics_dependency_snapshot(
   rule_key: QualityStatisticsRuleMode,
   rules: QualityStatisticsRuleInput[],
   text_groups: ItemTextGroup[],
@@ -97,7 +97,6 @@ export function build_quality_statistics_dependency_snapshot(
     return {
       key: rule.key,
       dependency_signature,
-      relation_label: rule.pattern,
       token: `${dependency_signature}:${occurrence_index.toString()}`,
     };
   });

@@ -33,7 +33,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 import { AppContextMenu, AppContextMenuTrigger } from "@frontend/widgets/app-context-menu";
 import { ScrollArea } from "@frontend/shadcn/scroll-area";
 import { Table, TableBody, TableCell, TableHeader, TableRow } from "@frontend/shadcn/table";

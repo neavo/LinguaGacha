@@ -3,9 +3,8 @@ import crypto from "node:crypto";
 import { resolve_active_model } from "../../model/model-config-resolver";
 import type { ApiJsonValue } from "../../api/api-types";
 import { TaskRunPublisher } from "../run/task-run-publisher";
-import type { JsonRecord, MutableJsonRecord, TaskType } from "../run/task-run-types";
+import type { MutableJsonRecord, TaskType } from "../run/task-run-types";
 import { ProjectTaskStore } from "../store/project-task-store";
-import { TaskArtifactCommitter } from "../store/task-artifact-committer";
 import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
 import { WorkUnitExecutorTransportError } from "../work-unit/work-unit-transport-error";
 import type { StartTaskCommand, StopTaskCommand } from "../protocol/task-command";
@@ -33,6 +32,7 @@ import { TaskProgressSnapshotTool } from "./progress-accumulator";
 import { RunCoordinator } from "./run-coordinator";
 import { TaskLogReplay } from "./log-replay";
 import { is_task_skipped_item_status } from "../../../domain/task";
+import { is_json_record, read_json_record } from "../../../domain/json";
 import { TextQualitySnapshotTool } from "../../../shared/text/text-types";
 import * as AppErrors from "../../../shared/error";
 
@@ -44,8 +44,8 @@ const ANALYSIS_RETRY_LIMIT = 2; // 分析失败只重发同一 chunk，过多重
 const DEFAULT_INPUT_TOKEN_LIMIT = 512; // 模型未配置 token 限制时使用保守默认值，避免一次塞入过长 prompt
 // 一次任务启动时冻结配置和模型，运行中不跟随设置页热变更
 interface TaskRunContext {
-  config_snapshot: MutableJsonRecord;
-  model: MutableJsonRecord;
+  config_snapshot: MutableJsonRecord; // 本轮设置只读快照，提示词和 runner 共用
+  model: MutableJsonRecord; // 本轮激活模型，避免设置热变更切换请求资源
 }
 
 /**
@@ -54,11 +54,10 @@ interface TaskRunContext {
 export class TaskEngine {
   private readonly app_root: string; // 让 Backend 启动日志和 worker 使用同一套提示词资源
   private readonly task_store: ProjectTaskStore; // 后台任务唯一项目数据写入口，TaskEngine 不直接碰 database
-  private readonly artifact_committer: TaskArtifactCommitter; // Engine 写入项目任务事实的唯一出口
   private readonly task_run_publisher: TaskRunPublisher; // 同步写运行态并发布完整 snapshot
   private readonly executor_client: WorkUnitExecutor; // 屏蔽 worker_threads / in_process runner 差异，主流程只关心 work-unit 结果
   private readonly task_planner: TaskEngineOptions["taskPlanner"]; // 切块与 token cache 复用的唯一规划入口
-  private readonly app_setting_service: TaskEngineOptions["AppSettingService"];
+  private readonly app_setting_service: TaskEngineOptions["AppSettingService"]; // 每轮启动时读取一次设置与模型快照
   private readonly run_coordinator: RunCoordinator; // 整场任务互斥、停止和终态发布的唯一权威
   private readonly log_replay: TaskLogReplay; // 统一处理任务生命周期日志和 worker 日志回放
   private readonly limiter_pool = new LimiterPool(); // 后台任务按模型资源键复用请求节奏入口
@@ -71,7 +70,6 @@ export class TaskEngine {
   public constructor(options: TaskEngineOptions) {
     this.app_root = options.appRoot;
     this.task_store = options.taskStore;
-    this.artifact_committer = new TaskArtifactCommitter(options.taskStore);
     this.task_run_publisher = options.taskRunPublisher;
     this.executor_client = options.executorClient;
     this.task_planner = options.taskPlanner;
@@ -100,7 +98,7 @@ export class TaskEngine {
   }
 
   /**
-   * 翻译主流程：普通翻译与重翻共享任务类型，差异只由 scope 与 artifact 提交语义表达
+   * 翻译主流程：普通翻译与重翻共享执行链，scope 只决定输入集合及是否推进校对 revision
    */
   private async run_translation(
     handle: TaskRunHandle,
@@ -128,7 +126,7 @@ export class TaskEngine {
             })
           : this.task_store.get_translation_items({ mode: legacy_mode });
       const all_items = this.normalize_record_list(payload["items"]);
-      const meta = this.normalize_record(payload["meta"]);
+      const meta = { ...read_json_record(payload["meta"]) };
       const contexts = retranslate
         ? all_items.map((item) => this.build_retranslate_context(item))
         : await this.task_planner.build_translation_contexts(
@@ -156,9 +154,7 @@ export class TaskEngine {
             signal,
           ),
         commit: async (entries) => {
-          progress = retranslate
-            ? await this.commit_retranslate_entries(handle, entries, progress)
-            : await this.commit_translation_entries(handle, entries, progress);
+          progress = await this.commit_translation_entries(handle, entries, progress, retranslate);
         },
       });
       await pipeline.run(contexts);
@@ -205,7 +201,7 @@ export class TaskEngine {
       const payload = this.task_store.get_analysis_context({});
       const all_items = this.normalize_record_list(payload["items"]);
       const checkpoints = this.normalize_record_list(payload["checkpoints"]);
-      const meta = this.normalize_record(payload["meta"]);
+      const meta = { ...read_json_record(payload["meta"]) };
       const contexts = await this.task_planner.build_analysis_contexts(
         all_items,
         checkpoints,
@@ -531,6 +527,7 @@ export class TaskEngine {
     handle: TaskRunHandle,
     entries: TranslationCommitEntry[],
     progress: TaskProgressSnapshot,
+    affects_proofreading: boolean,
   ): Promise<TaskProgressSnapshot> {
     if (!this.run_coordinator.is_current(handle.run_id) || entries.length === 0) {
       return progress;
@@ -550,17 +547,10 @@ export class TaskEngine {
       );
     }
     next_progress = TaskProgressSnapshotTool.with_elapsed(next_progress);
-    await this.artifact_committer.commit(
-      "translation",
-      [
-        {
-          kind: "item_updates",
-          source: "translation",
-          items: items as unknown as ApiJsonValue,
-          affects_proofreading: false,
-        },
-      ],
+    await this.task_store.commit_translation_items(
+      items,
       TaskProgressSnapshotTool.to_record(next_progress),
+      affects_proofreading,
     );
     await this.emit_progress(handle.task_type);
     return next_progress;
@@ -590,63 +580,9 @@ export class TaskEngine {
       });
     }
     next_progress = TaskProgressSnapshotTool.with_elapsed(next_progress);
-    await this.artifact_committer.commit(
-      "analysis",
-      [
-        {
-          kind: "analysis_checkpoints",
-          checkpoints: entries.flatMap((entry) => [
-            ...entry.success_checkpoints,
-            ...entry.error_checkpoints,
-          ]) as unknown as ApiJsonValue,
-        },
-        {
-          kind: "analysis_candidates",
-          entries: entries.flatMap((entry) => entry.glossary_entries) as unknown as ApiJsonValue,
-        },
-      ],
-      TaskProgressSnapshotTool.to_record(next_progress),
-    );
-    await this.emit_progress(handle.task_type);
-    return next_progress;
-  }
-
-  /**
-   * 提交重翻结果，ProjectTaskStore 会同步推进 items/proofreading，并回传行级 busy 快照
-   */
-  private async commit_retranslate_entries(
-    handle: TaskRunHandle,
-    entries: TranslationCommitEntry[],
-    progress: TaskProgressSnapshot,
-  ): Promise<TaskProgressSnapshot> {
-    if (!this.run_coordinator.is_current(handle.run_id) || entries.length === 0) {
-      return progress;
-    }
-    const items = entries.flatMap((entry) => entry.items);
-    const processed_delta = items.filter((item) => this.read_status(item) === "PROCESSED").length;
-    const error_delta = items.filter((item) => this.read_status(item) === "ERROR").length;
-    let next_progress = TaskProgressSnapshotTool.with_counts(progress, {
-      processed_line: progress.processed_line + processed_delta,
-      error_line: progress.error_line + error_delta,
-    });
-    for (const entry of entries) {
-      next_progress = TaskProgressSnapshotTool.add_tokens(
-        next_progress,
-        entry.input_tokens,
-        entry.output_tokens,
-      );
-    }
-    next_progress = TaskProgressSnapshotTool.with_elapsed(next_progress);
-    await this.artifact_committer.commit(
-      "translation",
-      [
-        {
-          kind: "item_updates",
-          source: "translation",
-          items: items as unknown as ApiJsonValue,
-          affects_proofreading: true,
-        },
-      ],
+    await this.task_store.commit_analysis_results(
+      entries.flatMap((entry) => [...entry.success_checkpoints, ...entry.error_checkpoints]),
+      entries.flatMap((entry) => entry.glossary_entries),
       TaskProgressSnapshotTool.to_record(next_progress),
     );
     await this.emit_progress(handle.task_type);
@@ -955,18 +891,7 @@ export class TaskEngine {
     if (!Array.isArray(value)) {
       return [];
     }
-    return value
-      .filter((item): item is JsonRecord => {
-        return typeof item === "object" && item !== null && !Array.isArray(item);
-      })
-      .map((item) => ({ ...item }));
-  }
-
-  /**
-   * JSON 普通对象归一，避免数组和 null 进入业务分支
-   */
-  private normalize_record(value: ApiJsonValue | undefined): MutableJsonRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value) ? { ...value } : {};
+    return value.filter(is_json_record).map((item) => ({ ...item }));
   }
 
   /**

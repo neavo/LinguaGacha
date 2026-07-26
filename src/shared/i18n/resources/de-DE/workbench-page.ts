@@ -66,27 +66,40 @@ export const de_de_workbench_page = {
     stop_analysis: "Stopp",
     analysis_stopping: "Wird gestoppt",
   },
-  analysis_task: {
+  task: {
     menu: {
       progress: "Fortschritt",
-      tooltip: "Begriffe aus dem Quelltext extrahieren",
     },
     summary: {
       empty: "Inaktiv",
-      running: "Wird analysiert",
       stopping: "Wird gestoppt",
       detail_tooltip: "Zum Anzeigen der Details klicken",
+    },
+    detail: {
+      elapsed_time: "Verstrichene Zeit",
+      remaining_time: "Verbleibende Zeit",
+      average_speed: "Durchschnittsgeschwindigkeit",
+      input_tokens: "Eingabe-Token",
+      output_tokens: "Ausgabe-Token",
+    },
+    feedback: {
+      done: "Abgeschlossen …",
+      stopped: "Gestoppt …",
+    },
+  },
+  analysis_task: {
+    menu: {
+      tooltip: "Begriffe aus dem Quelltext extrahieren",
+    },
+    summary: {
+      running: "Wird analysiert",
     },
     detail: {
       title: "Analysedetails",
       description: "Live-Statistiken für die aktuelle Analyse anzeigen.",
       waveform_title: "Live-Geschwindigkeit",
       metrics_title: "Metriken",
-      elapsed_time: "Verstrichene Zeit",
-      remaining_time: "Verbleibende Zeit",
-      average_speed: "Durchschnittsgeschwindigkeit",
-      input_tokens: "Eingabe-Token",
-      output_tokens: "Ausgabe-Token",
+
       active_requests: "Aktive Anfragen",
       candidate_count: "Kandidatenbegriffe",
     },
@@ -100,8 +113,7 @@ export const de_de_workbench_page = {
       refresh_failed: "Fehler beim Aktualisieren des Analyseaufgabenstatus",
       start_failed: "Fehler beim Starten der Analyseaufgabe",
       stop_failed: "Fehler beim Stoppen der Analyseaufgabe",
-      done: "Abgeschlossen …",
-      stopped: "Gestoppt …",
+
       reset_all_failed: "Fehler beim Zurücksetzen des gesamten Analysefortschritts",
       reset_failed_failed: "Fehler beim Zurücksetzen des fehlgeschlagenen Analysefortschritts",
       import_loading_toast:
@@ -112,25 +124,17 @@ export const de_de_workbench_page = {
   },
   translation_task: {
     menu: {
-      progress: "Fortschritt",
       tooltip: "Quelltext in die Zielsprache übersetzen",
     },
     summary: {
-      empty: "Inaktiv",
       running: "Wird übersetzt",
-      stopping: "Wird gestoppt",
-      detail_tooltip: "Zum Anzeigen der Details klicken",
     },
     detail: {
       title: "Übersetzungsdetails",
       description: "Aktuelle Übersetzungsstatistiken anzeigen.",
       waveform_title: "Echtzeit-Geschwindigkeit",
       metrics_title: "Statistiken",
-      elapsed_time: "Verstrichene Zeit",
-      remaining_time: "Verbleibende Zeit",
-      average_speed: "Durchschnittsgeschwindigkeit",
-      input_tokens: "Eingabe-Token",
-      output_tokens: "Ausgabe-Token",
+
       active_requests: "Echtzeit-Aufgaben",
     },
     confirm: {
@@ -144,8 +148,7 @@ export const de_de_workbench_page = {
       refresh_failed: "Fehler beim Aktualisieren der Übersetzungsaufgabe.",
       start_failed: "Fehler beim Starten der Übersetzungsaufgabe.",
       stop_failed: "Fehler beim Stoppen der Übersetzungsaufgabe.",
-      done: "Abgeschlossen …",
-      stopped: "Gestoppt …",
+
       reset_all_failed: "Fehler beim Zurücksetzen des gesamten Übersetzungsfortschritts.",
       reset_failed_failed: "Fehler beim Zurücksetzen der fehlgeschlagenen Übersetzungseinträge.",
       generate_failed: "Fehler beim Erstellen verfügbarer Übersetzungsdateien.",

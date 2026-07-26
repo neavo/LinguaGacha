@@ -1,10 +1,9 @@
 import type { ItemNameField } from "../../domain/item";
 import type { ProjectDataSectionRevisions } from "../project-event";
 import { read_item_name_text } from "../item-name";
-import { has_item_translation_text, read_translation_name_text } from "../item-text";
+import { has_item_translation_text } from "../item-text";
 import { compile_text_pattern, replace_text_pattern } from "../text/text-pattern";
-
-export type ProofreadingManualStatusCode = "NONE" | "PROCESSED" | "EXCLUDED";
+import type { ProofreadingManualStatusCode } from "./proofreading-types";
 
 // 校对 planner 只读取当前 query 结果中的轻量 item 快照判断是否需要发命令。
 export type ProofreadingCommandItemSnapshot = {
@@ -106,7 +105,7 @@ function has_replace_all_change(args: {
     return true;
   }
 
-  const name_dst = read_translation_name_text(args.item.name_dst);
+  const name_dst = read_item_name_text(args.item.name_dst);
   const name_replace_result = replace_all_in_text({
     text: name_dst,
     search_text: args.search_text,

@@ -5,18 +5,17 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiJsonValue } from "../api/api-types";
-import { ApiStreamHub } from "../api/api-stream-hub";
 import { ProjectDatabase } from "../database/database-operations";
 import type { ProjectItemPublicRecord } from "../../domain/item";
 import type { ProjectChangeEvent } from "../../shared/project-event";
 import { ProjectDataReader, type ProjectDataJsonRecord } from "./project-data";
-import { ProjectEventBus } from "./project-events";
 import { ProjectSessionState } from "./project-session";
 import {
   compute_project_prefilter_write,
   ProjectWriteCoordinator,
   ProjectChangeEventAdapter,
-  ProjectChangePublisher,
+  type ProjectChangePublisher,
+  type ProjectWriteChangeRequest,
   type ProjectWriteState,
 } from "./project-changes";
 
@@ -358,23 +357,17 @@ describe("ProjectChangeEventAdapter", () => {
     );
 
     const event = adapter.adapt_project_change({
-      targetProjectPath: "E:/Project/demo.lg",
+      projectPath: "E:/Project/demo.lg",
       source: "workbench_import_files",
-      updatedSections: ["items", "files", "analysis", "items", "unknown"],
+      updatedSections: ["items", "files", "analysis"],
       items: {
         payloadMode: "canonical-delta",
-        upsert: {
-          "2": { item_id: 2, src: "调用方伪造" },
-        },
-        changedIds: [2, "3", 2, -1, "坏值"],
-        deleteIds: [8, 8],
+        changedIds: [2, 3],
+        deleteIds: [8],
       },
       files: {
         payloadMode: "canonical-delta",
-        upsert: {
-          "a.txt": { rel_path: "a.txt", file_type: "FAKE", sort_index: 99 },
-        },
-        changedPaths: [" b.txt ", "", "a.txt", "a.txt"],
+        changedPaths: ["b.txt", "a.txt"],
       },
       sections: {
         analysis: { payloadMode: "canonical-delta", data: { candidate_count: 999 } },
@@ -435,16 +428,15 @@ describe("ProjectChangeEventAdapter", () => {
     );
 
     const event = adapter.adapt_project_change({
-      targetProjectPath: "E:/Project/demo.lg",
-      source: null,
-      projectRevision: 3,
+      projectPath: "E:/Project/demo.lg",
+      source: "project_change",
       updatedSections: ["items", "quality"],
       items: {
         payloadMode: "canonical-delta",
         changedIds: [1],
       },
       sections: {
-        quality: { payloadMode: "坏模式" },
+        quality: { payloadMode: "section-invalidated" },
       },
     });
 
@@ -475,7 +467,7 @@ describe("ProjectChangeEventAdapter", () => {
     );
 
     const event = adapter.adapt_project_change({
-      targetProjectPath: "E:/Project/demo.lg",
+      projectPath: "E:/Project/demo.lg",
       source: "workbench_reset_file",
       updatedSections: ["items", "files"],
       sections: {
@@ -529,16 +521,15 @@ describe("ProjectChangeEventAdapter", () => {
     );
 
     const event = adapter.adapt_project_change({
-      targetProjectPath: "E:/Project/demo.lg",
+      projectPath: "E:/Project/demo.lg",
       source: "proofreading_set_status",
       updatedSections: ["items", "proofreading"],
       items: {
         payloadMode: "field-patch",
-        changedIds: [1, "2", 2, -1],
+        changedIds: [1, 2],
         fieldPatch: {
           status: "PROCESSED",
           retry_count: 0,
-          dst: 123,
         },
       },
     });
@@ -595,70 +586,6 @@ describe("ProjectChangeEventAdapter", () => {
   }
 });
 
-describe("ProjectChangePublisher", () => {
-  it("把领域变更草稿适配后广播为 project.data_changed 事件", async () => {
-    const api_stream_hub = new ApiStreamHub();
-    const response = api_stream_hub.create_stream_response();
-    const reader = response.body?.getReader();
-    expect(reader).toBeDefined();
-    const publisher = new ProjectChangePublisher(
-      {
-        adapt_project_change: (payload) => ({
-          type: "project.changed",
-          eventId: "evt-1",
-          source: String(payload["source"] ?? ""),
-          projectPath: String(payload["targetProjectPath"] ?? ""),
-          projectRevision: 2,
-          sectionRevisions: { items: 2 },
-          updatedSections: ["items"],
-        }),
-      } as ProjectChangeEventAdapter,
-      api_stream_hub,
-    );
-
-    publisher.publish_project_change({
-      targetProjectPath: "E:/Project/demo.lg",
-      source: "translation_reset",
-    });
-    const chunk = await reader?.read();
-    await reader?.cancel();
-    api_stream_hub.stop();
-
-    const frame = new TextDecoder().decode(chunk?.value);
-    const event_line = frame.split("\n").find((line) => line.startsWith("event: "));
-    const data_line = frame.split("\n").find((line) => line.startsWith("data: "));
-
-    expect(event_line).toBe("event: project.data_changed");
-    expect(JSON.parse(data_line?.slice("data: ".length) ?? "{}")).toEqual({
-      type: "project.changed",
-      eventId: "evt-1",
-      source: "translation_reset",
-      projectPath: "E:/Project/demo.lg",
-      projectRevision: 2,
-      sectionRevisions: { items: 2 },
-      updatedSections: ["items"],
-    });
-  });
-
-  it("适配器判定无可广播事件时不写入事件流", async () => {
-    const api_stream_hub = new ApiStreamHub();
-    const publisher = new ProjectChangePublisher(
-      {
-        adapt_project_change: () => null,
-      } as unknown as ProjectChangeEventAdapter,
-      api_stream_hub,
-    );
-
-    const event = publisher.publish_project_change({
-      targetProjectPath: "E:/Project/other.lg",
-      source: "settings_alignment",
-    });
-
-    api_stream_hub.stop();
-    expect(event).toBeNull();
-  });
-});
-
 let temp_dir = "";
 
 /**
@@ -671,34 +598,30 @@ function project_path(name: string): string {
 /**
  * 创建只回显草稿的发布器，便于断言 coordinator 生成的规范化 payload
  */
-function create_echo_project_change_publisher(): {
-  publish_project_change: ReturnType<typeof vi.fn>;
-} {
-  return {
-    publish_project_change: vi.fn((payload: Record<string, ApiJsonValue>): ProjectChangeEvent => {
-      const updated_sections = Array.isArray(payload.updatedSections)
-        ? payload.updatedSections.map((section) => String(section))
-        : [];
-      return {
-        type: "project.changed",
-        eventId: `test-${String(payload.source ?? "project_change")}`,
-        source: String(payload.source ?? "project_change"),
-        projectPath: String(payload.targetProjectPath ?? ""),
-        projectRevision: 0,
-        sectionRevisions: {},
-        updatedSections: updated_sections as ProjectChangeEvent["updatedSections"],
-        ...(payload.items === undefined
-          ? {}
-          : { items: payload.items as ProjectChangeEvent["items"] }),
-        ...(payload.files === undefined
-          ? {}
-          : { files: payload.files as ProjectChangeEvent["files"] }),
-        ...(payload.sections === undefined
-          ? {}
-          : { sections: payload.sections as ProjectChangeEvent["sections"] }),
-      };
-    }),
-  };
+function create_echo_project_change_publisher(): ProjectChangePublisher {
+  return vi.fn((payload: ProjectWriteChangeRequest): ProjectChangeEvent => {
+    const updated_sections = Array.isArray(payload.updatedSections)
+      ? payload.updatedSections.map((section) => String(section))
+      : [];
+    return {
+      type: "project.changed",
+      eventId: `test-${String(payload.source ?? "project_change")}`,
+      source: String(payload.source ?? "project_change"),
+      projectPath: payload.projectPath,
+      projectRevision: 0,
+      sectionRevisions: {},
+      updatedSections: updated_sections as ProjectChangeEvent["updatedSections"],
+      ...(payload.items === undefined
+        ? {}
+        : { items: payload.items as ProjectChangeEvent["items"] }),
+      ...(payload.files === undefined
+        ? {}
+        : { files: payload.files as ProjectChangeEvent["files"] }),
+      ...(payload.sections === undefined
+        ? {}
+        : { sections: payload.sections as ProjectChangeEvent["sections"] }),
+    };
+  });
 }
 
 beforeEach(() => {
@@ -713,16 +636,10 @@ describe("ProjectWriteCoordinator", () => {
   it("用同一 meta 快照校验 revision 并生成运行态 bump 操作", () => {
     const database = new ProjectDatabase();
     const lg_path = project_path("demo.lg");
-    database.execute({ name: "createProject", args: { projectPath: lg_path, name: "demo" } });
-    database.execute({
-      name: "setMeta",
-      args: { projectPath: lg_path, key: "project_runtime_revision.items", value: 2 },
-    });
-    database.execute({
-      name: "setMeta",
-      args: { projectPath: lg_path, key: "proofreading_revision.proofreading", value: 3 },
-    });
-    const coordinator = new ProjectWriteCoordinator(database, null, new ProjectEventBus());
+    database.create_project(lg_path, "demo");
+    database.set_meta(lg_path, "project_runtime_revision.items", 2);
+    database.set_meta(lg_path, "proofreading_revision.proofreading", 3);
+    const coordinator = new ProjectWriteCoordinator(database, null, vi.fn());
 
     const context = coordinator.assert_expected_section_revisions(
       lg_path,
@@ -730,167 +647,25 @@ describe("ProjectWriteCoordinator", () => {
       ["items", "proofreading"],
     );
 
-    expect(coordinator.build_section_revision_operations(context)).toEqual([
-      {
-        name: "setMeta",
-        args: { projectPath: lg_path, key: "project_runtime_revision.items", value: 3 },
-      },
-      {
-        name: "setMeta",
-        args: { projectPath: lg_path, key: "proofreading_revision.proofreading", value: 4 },
-      },
-    ]);
-    database.close();
-  });
-
-  it("统一提交方法在 revision 冲突时不构造事务且不发布事件", async () => {
-    const database = new ProjectDatabase();
-    const lg_path = project_path("demo.lg");
-    database.execute({ name: "createProject", args: { projectPath: lg_path, name: "demo" } });
-    database.execute({
-      name: "setMeta",
-      args: { projectPath: lg_path, key: "project_runtime_revision.items", value: 1 },
-    });
-    const publisher = create_echo_project_change_publisher();
-    const coordinator = new ProjectWriteCoordinator(
-      database,
-      publisher as unknown as ProjectChangePublisher,
-      new ProjectEventBus(),
-    );
-    const build_operations = vi.fn(() => []);
-
-    await expect(
-      coordinator.commit_project_write({
-        projectPath: lg_path,
-        expectedSectionRevisions: { items: 0 },
-        sections: ["items"],
-        buildOperations: build_operations,
-        change: { source: "translation_reset", updatedSections: ["items"] },
-      }),
-    ).rejects.toThrow("data.revision_conflict");
-
-    expect(build_operations).not.toHaveBeenCalled();
-    expect(publisher.publish_project_change).not.toHaveBeenCalled();
-    database.close();
-  });
-
-  it("统一提交方法在同一提交点写事务并发布 canonical 草稿", async () => {
-    const database = new ProjectDatabase();
-    const lg_path = project_path("demo.lg");
-    database.execute({ name: "createProject", args: { projectPath: lg_path, name: "demo" } });
-    const publisher = create_echo_project_change_publisher();
-    const coordinator = new ProjectWriteCoordinator(
-      database,
-      publisher as unknown as ProjectChangePublisher,
-      new ProjectEventBus(),
-    );
-
-    const result = await coordinator.commit_project_write({
-      projectPath: lg_path,
-      expectedSectionRevisions: { items: 0 },
-      sections: ["items"],
-      buildOperations: (context) => coordinator.build_section_revision_operations(context),
-      change: { source: "translation_reset", updatedSections: ["items"] },
+    const writes = coordinator.build_section_revision_writes(context);
+    database.transaction(lg_path, () => {
+      for (const write of writes) {
+        write(database);
+      }
     });
 
-    expect(
-      database.execute({
-        name: "getMeta",
-        args: { projectPath: lg_path, key: "project_runtime_revision.items", default: 0 },
-      }),
-    ).toBe(1);
-    expect(result.changes).toEqual([
-      expect.objectContaining({
-        projectPath: lg_path,
-        source: "translation_reset",
-        updatedSections: ["items"],
-      }),
-    ]);
-    expect(publisher.publish_project_change).toHaveBeenCalledWith({
-      targetProjectPath: lg_path,
-      source: "translation_reset",
-      updatedSections: ["items"],
-      items: { payloadMode: "section-invalidated" },
+    expect(database.get_all_meta(lg_path)).toMatchObject({
+      "project_runtime_revision.items": 3,
+      "proofreading_revision.proofreading": 4,
     });
-    database.close();
-  });
-
-  it("事务成功后先发布内部 committed event，再发布公开项目变更", async () => {
-    const database = new ProjectDatabase();
-    const lg_path = project_path("demo.lg");
-    database.execute({ name: "createProject", args: { projectPath: lg_path, name: "demo" } });
-    const calls: string[] = [];
-    const project_event_bus = new ProjectEventBus();
-    project_event_bus.subscribe("project.items.changed", (event) => {
-      calls.push(`internal:${event.sectionRevisions.items ?? 0}`);
-    });
-    const publisher = {
-      publish_project_change: vi.fn(() => {
-        calls.push("public");
-        return {
-          type: "project.changed",
-          eventId: "test-event",
-          source: "translation_reset",
-          projectPath: lg_path,
-          projectRevision: 1,
-          sectionRevisions: { items: 1 },
-          updatedSections: ["items"],
-        } satisfies ProjectChangeEvent;
-      }),
-    };
-    const coordinator = new ProjectWriteCoordinator(
-      database,
-      publisher as unknown as ProjectChangePublisher,
-      project_event_bus,
-    );
-
-    await coordinator.commit_project_write({
-      projectPath: lg_path,
-      expectedSectionRevisions: { items: 0 },
-      sections: ["items"],
-      buildOperations: (context) => coordinator.build_section_revision_operations(context),
-      change: { source: "translation_reset", updatedSections: ["items"] },
-    });
-
-    expect(calls).toEqual(["internal:1", "public"]);
-    database.close();
-  });
-
-  it("内部 committed event 失败时阻断公开项目变更", async () => {
-    const database = new ProjectDatabase();
-    const lg_path = project_path("demo.lg");
-    database.execute({ name: "createProject", args: { projectPath: lg_path, name: "demo" } });
-    const project_event_bus = new ProjectEventBus();
-    const dispatch_error = new Error("cache update failed");
-    project_event_bus.subscribe("project.items.changed", () => {
-      throw dispatch_error;
-    });
-    const publisher = create_echo_project_change_publisher();
-    const coordinator = new ProjectWriteCoordinator(
-      database,
-      publisher as unknown as ProjectChangePublisher,
-      project_event_bus,
-    );
-
-    await expect(
-      coordinator.commit_project_write({
-        projectPath: lg_path,
-        expectedSectionRevisions: { items: 0 },
-        sections: ["items"],
-        buildOperations: (context) => coordinator.build_section_revision_operations(context),
-        change: { source: "translation_reset", updatedSections: ["items"] },
-      }),
-    ).rejects.toBe(dispatch_error);
-
-    expect(publisher.publish_project_change).not.toHaveBeenCalled();
     database.close();
   });
 
   it("拒绝字符串、布尔值和小数 revision，避免旧兼容锁值进入写入口", () => {
     const database = new ProjectDatabase();
     const lg_path = project_path("demo.lg");
-    database.execute({ name: "createProject", args: { projectPath: lg_path, name: "demo" } });
-    const coordinator = new ProjectWriteCoordinator(database, null, new ProjectEventBus());
+    database.create_project(lg_path, "demo");
+    const coordinator = new ProjectWriteCoordinator(database, null, vi.fn());
 
     for (const bad_revision of ["0", true, 1.5] as ApiJsonValue[]) {
       expect(() =>
@@ -903,11 +678,7 @@ describe("ProjectWriteCoordinator", () => {
   it("默认把 items/files 发布成轻量失效信号，小 section 保持 canonical 草稿", () => {
     const database = new ProjectDatabase();
     const publisher = create_echo_project_change_publisher();
-    const coordinator = new ProjectWriteCoordinator(
-      database,
-      publisher as unknown as ProjectChangePublisher,
-      new ProjectEventBus(),
-    );
+    const coordinator = new ProjectWriteCoordinator(database, publisher, vi.fn());
 
     const result = coordinator.publish_project_data_change({
       projectPath: "E:/Project/demo.lg",
@@ -925,8 +696,8 @@ describe("ProjectWriteCoordinator", () => {
         },
       }),
     ]);
-    expect(publisher.publish_project_change).toHaveBeenCalledWith({
-      targetProjectPath: "E:/Project/demo.lg",
+    expect(publisher).toHaveBeenCalledWith({
+      projectPath: "E:/Project/demo.lg",
       source: "workbench_reset_file",
       updatedSections: ["items", "files", "analysis"],
       items: { payloadMode: "section-invalidated" },
@@ -941,11 +712,7 @@ describe("ProjectWriteCoordinator", () => {
   it("files 缺省更新只发布行级失效信号", () => {
     const database = new ProjectDatabase();
     const publisher = create_echo_project_change_publisher();
-    const coordinator = new ProjectWriteCoordinator(
-      database,
-      publisher as unknown as ProjectChangePublisher,
-      new ProjectEventBus(),
-    );
+    const coordinator = new ProjectWriteCoordinator(database, publisher, vi.fn());
 
     coordinator.publish_project_data_change({
       projectPath: "E:/Project/demo.lg",
@@ -953,8 +720,8 @@ describe("ProjectWriteCoordinator", () => {
       updatedSections: ["files"],
     });
 
-    expect(publisher.publish_project_change).toHaveBeenCalledWith({
-      targetProjectPath: "E:/Project/demo.lg",
+    expect(publisher).toHaveBeenCalledWith({
+      projectPath: "E:/Project/demo.lg",
       source: "workbench_reorder_files",
       updatedSections: ["files"],
       files: { payloadMode: "section-invalidated" },
@@ -965,11 +732,7 @@ describe("ProjectWriteCoordinator", () => {
   it("行级 items delta 存在时只为其它 section 生成完整 canonical data", () => {
     const database = new ProjectDatabase();
     const publisher = create_echo_project_change_publisher();
-    const coordinator = new ProjectWriteCoordinator(
-      database,
-      publisher as unknown as ProjectChangePublisher,
-      new ProjectEventBus(),
-    );
+    const coordinator = new ProjectWriteCoordinator(database, publisher, vi.fn());
 
     coordinator.publish_project_data_change({
       projectPath: "E:/Project/demo.lg",
@@ -978,8 +741,8 @@ describe("ProjectWriteCoordinator", () => {
       items: { payloadMode: "canonical-delta", changedIds: [1] },
     });
 
-    expect(publisher.publish_project_change).toHaveBeenCalledWith({
-      targetProjectPath: "E:/Project/demo.lg",
+    expect(publisher).toHaveBeenCalledWith({
+      projectPath: "E:/Project/demo.lg",
       source: "proofreading_save_items",
       updatedSections: ["items", "proofreading"],
       items: { payloadMode: "canonical-delta", changedIds: [1] },

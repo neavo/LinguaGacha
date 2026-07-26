@@ -21,7 +21,7 @@ const LOG_ERROR_PATH_HASH_PRIME = 16777619;
 export type LogErrorContext = Record<string, ApiJsonValue>;
 export type LogErrorContextInput = Record<string, unknown>;
 
-export interface LogErrorCause {
+interface LogErrorCause {
   name?: string;
   message: string;
   stack?: string;
@@ -41,7 +41,7 @@ export interface LogErrorPathIdentity extends LogErrorContext {
   length: number; // 辅助判断空路径、截断和路径形态
 }
 
-export interface LogErrorUrlIdentity extends LogErrorContext {
+interface LogErrorUrlIdentity extends LogErrorContext {
   scheme: string; // 只保留协议类别，不暴露 URL 路径或查询参数
   hostHash: string; // 用稳定摘要关联同一宿主，不泄露 host / port 原文
   pathBasename: string; // 只暴露 URL path 的末段
@@ -49,12 +49,12 @@ export interface LogErrorUrlIdentity extends LogErrorContext {
   length: number; // 辅助判断空 URL、截断和形态变化
 }
 
-export interface AppErrorLogSnapshot {
+interface AppErrorLogSnapshot {
   level: Extract<LogLevel, "debug" | "warning" | "error" | "fatal">;
   error: LogError;
 }
 
-export interface AppErrorLogSnapshotOptions {
+interface AppErrorLogSnapshotOptions {
   fatal?: boolean;
   context?: AppErrorDiagnosticContext;
 }
@@ -181,7 +181,6 @@ export function to_app_error_log_snapshot(
   };
 }
 
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
 function is_log_error_like(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -213,7 +212,6 @@ function merge_log_error_context(error: LogError, context: LogErrorContextInput)
   });
 }
 
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_optional_context(value: unknown): { context?: LogErrorContext } {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return {};
@@ -291,7 +289,6 @@ function collect_log_error_cause_chain(error: Error): LogErrorCause[] {
   return chain;
 }
 
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_cause_chain(value: unknown): LogErrorCause[] {
   if (!Array.isArray(value)) {
     return [];
@@ -373,7 +370,6 @@ function build_log_error_identity_hash(value: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_log_error_text(value: string): string {
   return value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
 }

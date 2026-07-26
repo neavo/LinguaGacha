@@ -28,11 +28,17 @@ function create_database(): ProjectDatabase {
 function create_database_project(name: string): { database: ProjectDatabase; lg_path: string } {
   const database = create_database();
   const lg_path = project_path(`${name}.lg`);
-  database.execute({
-    name: "createProject",
-    args: { projectPath: lg_path, name },
-  });
+  database.create_project(lg_path, name);
   return { database, lg_path };
+}
+
+function read_meta(
+  database: ProjectDatabase,
+  project_path: string,
+  key: string,
+  default_value: unknown,
+): unknown {
+  return (database.get_all_meta(project_path) as Record<string, unknown>)[key] ?? default_value;
 }
 
 function project_sidecar_paths(lg_path: string): string[] {
@@ -60,30 +66,12 @@ describe("ProjectDatabase", () => {
     const database = create_database();
     const lg_path = project_path("demo.lg");
 
-    database.execute({
-      name: "createProject",
-      args: { projectPath: lg_path, name: "demo" },
-    });
-    database.execute({
-      name: "setMeta",
-      args: { projectPath: lg_path, key: "source_language", value: "JA" },
-    });
+    database.create_project(lg_path, "demo");
+    database.set_meta(lg_path, "source_language", "JA");
 
+    expect(read_meta(database, lg_path, "source_language", "")).toBe("JA");
     expect(
-      database.execute({
-        name: "getMeta",
-        args: { projectPath: lg_path, key: "source_language", default: "" },
-      }),
-    ).toBe("JA");
-    expect(
-      database.execute({
-        name: "getMeta",
-        args: {
-          projectPath: lg_path,
-          key: PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY,
-          default: [],
-        },
-      }),
+      read_meta(database, lg_path, PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY, []),
     ).toEqual(PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS);
     expect(has_project_sidecar(lg_path)).toBe(false);
   });
@@ -92,18 +80,9 @@ describe("ProjectDatabase", () => {
     const database = create_database();
     const lg_path = project_path("scoped.lg");
 
-    database.execute({
-      name: "createProject",
-      args: { projectPath: lg_path, name: "scoped" },
-    });
-    database.execute({
-      name: "setMeta",
-      args: { projectPath: lg_path, key: "target_language", value: "ZH" },
-    });
-    database.execute({
-      name: "getMeta",
-      args: { projectPath: lg_path, key: "target_language", default: "" },
-    });
+    database.create_project(lg_path, "scoped");
+    database.set_meta(lg_path, "target_language", "ZH");
+    read_meta(database, lg_path, "target_language", "");
 
     expect(has_project_sidecar(lg_path)).toBe(false);
   });
@@ -112,20 +91,11 @@ describe("ProjectDatabase", () => {
     const database = create_database();
     const lg_path = project_path("lease-close.lg");
 
-    database.execute({
-      name: "createProject",
-      args: { projectPath: lg_path, name: "lease-close" },
-    });
+    database.create_project(lg_path, "lease-close");
     const release = database.acquire_project_lease(lg_path, "test");
-    database.execute({
-      name: "setMeta",
-      args: { projectPath: lg_path, key: "source_language", value: "JA" },
-    });
+    database.set_meta(lg_path, "source_language", "JA");
 
-    database.execute({
-      name: "closeProject",
-      args: { projectPath: lg_path },
-    });
+    database.close_project(lg_path);
 
     expect(() => release()).not.toThrow();
     expect(has_project_sidecar(lg_path)).toBe(false);
@@ -135,15 +105,9 @@ describe("ProjectDatabase", () => {
     const database = create_database();
     const lg_path = project_path("lease.lg");
 
-    database.execute({
-      name: "createProject",
-      args: { projectPath: lg_path, name: "lease" },
-    });
+    database.create_project(lg_path, "lease");
     const release = database.acquire_project_lease(lg_path, "test");
-    database.execute({
-      name: "setMeta",
-      args: { projectPath: lg_path, key: "source_language", value: "JA" },
-    });
+    database.set_meta(lg_path, "source_language", "JA");
 
     expect(has_project_sidecar(lg_path)).toBe(true);
     release();
@@ -158,19 +122,8 @@ describe("ProjectDatabase", () => {
     const source_path = project_path("source.txt");
     fs.writeFileSync(source_path, Buffer.from("hello"));
 
-    database.execute({
-      name: "createProject",
-      args: { projectPath: lg_path, name: "asset" },
-    });
-    database.execute({
-      name: "addAssetFromSource",
-      args: {
-        projectPath: lg_path,
-        path: "source.txt",
-        sourcePath: source_path,
-        sortOrder: 0,
-      },
-    });
+    database.create_project(lg_path, "asset");
+    database.add_asset_from_source(lg_path, "source.txt", source_path, 0);
 
     expect(database.read_asset_content(lg_path, "source.txt")).toEqual(Buffer.from("hello"));
   });
@@ -178,30 +131,16 @@ describe("ProjectDatabase", () => {
   it("事务失败时回滚已排队写入", () => {
     const database = create_database();
     const lg_path = project_path("rollback.lg");
-    database.execute({
-      name: "createProject",
-      args: { projectPath: lg_path, name: "rollback" },
-    });
+    database.create_project(lg_path, "rollback");
 
     expect(() =>
-      database.execute_transaction([
-        {
-          name: "setMeta",
-          args: { projectPath: lg_path, key: "target_language", value: "ZH" },
-        },
-        {
-          name: "missingOperation",
-          args: { projectPath: lg_path },
-        },
-      ]),
-    ).toThrow("runtime.internal_invariant");
-
-    expect(
-      database.execute({
-        name: "getMeta",
-        args: { projectPath: lg_path, key: "target_language", default: "missing" },
+      database.transaction(lg_path, () => {
+        database.set_meta(lg_path, "target_language", "ZH");
+        throw new Error("rollback");
       }),
-    ).toBe("missing");
+    ).toThrow("rollback");
+
+    expect(read_meta(database, lg_path, "target_language", "missing")).toBe("missing");
   });
 
   it("创建工程事务失败时先结束 scoped 连接再删除新文件", () => {
@@ -209,269 +148,101 @@ describe("ProjectDatabase", () => {
     const lg_path = project_path("create-rollback.lg");
 
     expect(() =>
-      database.execute_transaction([
-        {
-          name: "createProject",
-          args: { projectPath: lg_path, name: "create-rollback" },
-        },
-        {
-          name: "setMeta",
-          args: { projectPath: lg_path, key: "target_language", value: "ZH" },
-        },
-        {
-          name: "missingOperation",
-          args: { projectPath: lg_path },
-        },
-      ]),
-    ).toThrow("runtime.internal_invariant");
+      database.create_project(lg_path, "create-rollback", () => {
+        database.set_meta(lg_path, "target_language", "ZH");
+        throw new Error("rollback");
+      }),
+    ).toThrow("rollback");
 
     expect(fs.existsSync(lg_path)).toBe(false);
     expect(has_project_sidecar(lg_path)).toBe(false);
-  });
-
-  it("事务拒绝跨工程写入，避免两个 .lg 出现半提交", () => {
-    const database = create_database();
-    const first_path = project_path("first.lg");
-    const second_path = project_path("second.lg");
-    database.execute({
-      name: "createProject",
-      args: { projectPath: first_path, name: "first" },
-    });
-    database.execute({
-      name: "createProject",
-      args: { projectPath: second_path, name: "second" },
-    });
-
-    expect(() =>
-      database.execute_transaction([
-        {
-          name: "setMeta",
-          args: { projectPath: first_path, key: "source_language", value: "JA" },
-        },
-        {
-          name: "setMeta",
-          args: { projectPath: second_path, key: "target_language", value: "ZH" },
-        },
-      ]),
-    ).toThrow("runtime.internal_invariant");
-
-    expect(
-      database.execute({
-        name: "getMeta",
-        args: { projectPath: first_path, key: "source_language", default: "missing" },
-      }),
-    ).toBe("missing");
-    expect(
-      database.execute({
-        name: "getMeta",
-        args: { projectPath: second_path, key: "target_language", default: "missing" },
-      }),
-    ).toBe("missing");
   });
 
   it("只推进受支持的section revision，并忽略重复 section", () => {
     const { database, lg_path } = create_database_project("section-revision");
 
     expect(
-      database.execute({
-        name: "bumpSectionRevisions",
-        args: {
-          projectPath: lg_path,
-          sections: ["items", "files", "items", "project", "analysis"],
-        },
-      }),
+      database.bump_section_revisions(lg_path, ["items", "files", "items", "project", "analysis"]),
     ).toEqual({ items: 1, files: 1, analysis: 1 });
-    expect(
-      database.execute({
-        name: "bumpSectionRevisions",
-        args: { projectPath: lg_path, sections: ["items"] },
-      }),
-    ).toEqual({ items: 2 });
-    expect(database.execute({ name: "getAllMeta", args: { projectPath: lg_path } })).toMatchObject({
+    expect(database.bump_section_revisions(lg_path, ["items"])).toEqual({ items: 2 });
+    expect(database.get_all_meta(lg_path)).toMatchObject({
       "project_runtime_revision.items": 2,
       "project_runtime_revision.files": 1,
       "project_runtime_revision.analysis": 1,
     });
   });
 
-  it("按排序快照维护 asset 路径、数量和压缩载荷", () => {
+  it("按排序快照维护 asset，并可更新和读取内容", () => {
     const { database, lg_path } = create_database_project("asset-list");
     const alpha_path = project_path("alpha.txt");
     const beta_path = project_path("beta.txt");
+    const cover_path = project_path("cover.bin");
+    const updated_beta_path = project_path("updated-beta.txt");
     fs.writeFileSync(alpha_path, Buffer.from("alpha"));
     fs.writeFileSync(beta_path, Buffer.from("beta"));
+    fs.writeFileSync(cover_path, Buffer.from("cover"));
+    fs.writeFileSync(updated_beta_path, Buffer.from("updated-beta"));
 
-    database.execute({
-      name: "addAssetFromSource",
-      args: { projectPath: lg_path, path: "chapter-b.txt", sourcePath: beta_path, sortOrder: 10 },
-    });
-    database.execute({
-      name: "addAssetFromSource",
-      args: { projectPath: lg_path, path: "chapter-a.txt", sourcePath: alpha_path },
-    });
-    database.execute({
-      name: "addAssetCompressedBase64",
-      args: {
-        projectPath: lg_path,
-        path: "cover.bin",
-        compressedBase64: ZstdTool.compress(Buffer.from("cover")).toString("base64"),
-        originalSize: 5,
-        sortOrder: 0,
-      },
-    });
-    database.execute({
-      name: "updateAssetSortOrders",
-      args: { projectPath: lg_path, orderedPaths: ["chapter-a.txt", "cover.bin", "chapter-b.txt"] },
-    });
-    database.execute({
-      name: "updateAssetPath",
-      args: {
-        projectPath: lg_path,
-        oldPath: "chapter-b.txt",
-        newPath: "chapter-renamed.txt",
-      },
-    });
+    database.add_asset_from_source(lg_path, "chapter-b.txt", beta_path, 10);
+    database.add_asset_from_source(lg_path, "chapter-a.txt", alpha_path);
+    database.add_asset_from_source(lg_path, "cover.bin", cover_path, 0);
+    database.update_asset_sort_orders(lg_path, ["chapter-a.txt", "cover.bin", "chapter-b.txt"]);
+    database.update_asset_from_source(lg_path, "chapter-b.txt", updated_beta_path);
 
-    expect(database.execute({ name: "getAssetCount", args: { projectPath: lg_path } })).toBe(3);
-    expect(database.execute({ name: "getAllAssetPaths", args: { projectPath: lg_path } })).toEqual([
-      "chapter-a.txt",
-      "cover.bin",
-      "chapter-renamed.txt",
-    ]);
-    expect(
-      database.execute({ name: "getAllAssetRecords", args: { projectPath: lg_path } }),
-    ).toEqual([
+    expect(database.get_asset_count(lg_path)).toBe(3);
+    expect(database.get_all_asset_records(lg_path)).toEqual([
       { path: "chapter-a.txt", sort_order: 0 },
       { path: "cover.bin", sort_order: 1 },
-      { path: "chapter-renamed.txt", sort_order: 2 },
+      { path: "chapter-b.txt", sort_order: 2 },
     ]);
-    expect(
-      database.execute({
-        name: "assetPathExists",
-        args: { projectPath: lg_path, path: "chapter-b.txt" },
-      }),
-    ).toBe(false);
-    expect(
-      database.execute({
-        name: "assetPathExists",
-        args: { projectPath: lg_path, path: "chapter-renamed.txt" },
-      }),
-    ).toBe(true);
-
-    const compressed_base64 = database.execute({
-      name: "getAssetCompressedBase64",
-      args: { projectPath: lg_path, path: "chapter-renamed.txt" },
-    });
-    expect(ZstdTool.decompress(Buffer.from(String(compressed_base64), "base64"))).toEqual(
-      Buffer.from("beta"),
+    expect(database.read_asset_content(lg_path, "chapter-b.txt")).toEqual(
+      Buffer.from("updated-beta"),
     );
   });
 
-  it("批量替换 item 后保持回查顺序，并按文件路径删除", () => {
+  it("批量替换 item 后保持回查顺序并支持字段补丁", () => {
     const { database, lg_path } = create_database_project("items");
 
     expect(
-      database.execute({
-        name: "setItems",
-        args: {
-          projectPath: lg_path,
-          items: [
-            { id: 10, file_path: "script-a.txt", src: "おはよう", status: "NONE" },
-            { file_path: "script-b.txt", src: "こんばんは", status: "PROCESSED" },
-          ],
-        },
-      }),
+      database.set_items(lg_path, [
+        { id: 10, file_path: "script-a.txt", src: "おはよう", status: "NONE" },
+        { file_path: "script-b.txt", src: "こんばんは", status: "PROCESSED" },
+      ]),
     ).toEqual([10, 11]);
-    expect(database.execute({ name: "getItemCount", args: { projectPath: lg_path } })).toBe(2);
-    expect(
-      database.execute({
-        name: "setItem",
-        args: {
-          projectPath: lg_path,
-          item: { id: 10, file_path: "script-a.txt", src: "おはよう", status: "PROCESSED" },
-        },
-      }),
-    ).toBe(10);
-    expect(
-      database.execute({
-        name: "getItemsByIds",
-        args: { projectPath: lg_path, itemIds: [11, 10, 11, 999] },
-      }),
-    ).toEqual([
+    expect(database.get_item_count(lg_path)).toBe(2);
+    database.patch_item_fields_by_ids(lg_path, [10], { status: "PROCESSED" });
+    expect(database.get_items_by_ids(lg_path, [11, 10, 11, 999])).toEqual([
       { id: 11, file_path: "script-b.txt", src: "こんばんは", status: "PROCESSED" },
       { id: 10, file_path: "script-a.txt", src: "おはよう", status: "PROCESSED" },
     ]);
-
-    expect(
-      database.execute({
-        name: "deleteItemsByFilePath",
-        args: { projectPath: lg_path, filePath: "script-a.txt" },
-      }),
-    ).toBe(1);
-    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
-      { id: 11, file_path: "script-b.txt", src: "こんばんは", status: "PROCESSED" },
-    ]);
   });
 
-  it("updateBatch 同步写入 item、规则和 meta，并让工程摘要反映当前事实", () => {
+  it("事务同步写入 item、规则和 meta，并让工程摘要反映当前事实", () => {
     const { database, lg_path } = create_database_project("summary");
+    const source_path = project_path("chapter.txt");
+    fs.writeFileSync(source_path, "chapter");
 
-    database.execute({
-      name: "addAssetCompressedBase64",
-      args: {
-        projectPath: lg_path,
-        path: "chapter.txt",
-        compressedBase64: ZstdTool.compress(Buffer.from("chapter")).toString("base64"),
-        originalSize: 7,
-        sortOrder: 0,
-      },
-    });
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: lg_path,
-        items: [
-          { id: 1, src: "完成", status: "PROCESSED" },
-          { id: 2, src: "失败后修复", status: "ERROR" },
-          { id: 3, src: "待处理", status: "NONE" },
-          { id: 4, src: "跳过", status: "SKIPPED" },
-        ],
-      },
-    });
-    database.execute({
-      name: "setRuleText",
-      args: { projectPath: lg_path, ruleType: "prompt.translation", text: "请保持语气" },
-    });
-    database.execute({
-      name: "updateBatch",
-      args: {
-        projectPath: lg_path,
-        items: [{ id: 2, src: "失败后修复", status: "PROCESSED" }],
-        rules: { glossary: [{ src: "姫", dst: "公主" }] },
-        meta: {
-          source_language: "JA",
-          target_language: "ZH_CN",
-          updated_at: "2026-05-16T00:00:00.000Z",
-        },
-      },
+    database.add_asset_from_source(lg_path, "chapter.txt", source_path, 0);
+    database.set_items(lg_path, [
+      { id: 1, src: "完成", status: "PROCESSED" },
+      { id: 2, src: "失败后修复", status: "ERROR" },
+      { id: 3, src: "待处理", status: "NONE" },
+      { id: 4, src: "跳过", status: "SKIPPED" },
+    ]);
+    database.set_rule_text(lg_path, "prompt.translation", "请保持语气");
+    database.transaction(lg_path, () => {
+      database.patch_item_fields_by_ids(lg_path, [2], { status: "PROCESSED" });
+      database.set_rules(lg_path, "glossary", [{ src: "姫", dst: "公主" }]);
+      database.upsert_meta_entries(lg_path, {
+        source_language: "JA",
+        target_language: "ZH_CN",
+        updated_at: "2026-05-16T00:00:00.000Z",
+      });
     });
 
-    expect(
-      database.execute({
-        name: "getRuleText",
-        args: { projectPath: lg_path, ruleType: "prompt.translation" },
-      }),
-    ).toBe("请保持语气");
-    expect(
-      database.execute({
-        name: "getRuleTextByName",
-        args: { projectPath: lg_path, ruleTypeName: "prompt.translation" },
-      }),
-    ).toBe("请保持语气");
-    expect(
-      database.execute({ name: "getRules", args: { projectPath: lg_path, ruleType: "glossary" } }),
-    ).toEqual([{ src: "姫", dst: "公主" }]);
-    expect(database.execute({ name: "getProjectSummary", args: { projectPath: lg_path } })).toEqual(
+    expect(database.get_rule_text(lg_path, "prompt.translation")).toBe("请保持语气");
+    expect(database.get_rules(lg_path, "glossary")).toEqual([{ src: "姫", dst: "公主" }]);
+    expect(database.get_project_summary(lg_path)).toEqual(
       expect.objectContaining({
         name: "summary",
         source_language: "JA",
@@ -493,48 +264,36 @@ describe("ProjectDatabase", () => {
   it("patchItemTranslationFields 只更新译文字段并保留条目持久事实", () => {
     const { database, lg_path } = create_database_project("translation-patch");
 
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: lg_path,
-        items: [
-          {
-            id: 1,
-            src: "原文",
-            dst: "",
-            name_src: "原名",
-            name_dst: null,
-            status: "NONE",
-            retry_count: 2,
-            file_path: "demo.txt",
-            file_type: "TXT",
-            text_type: "TXT",
-            row: 7,
-            extra_field: { speaker: "春" },
-          },
-        ],
+    database.set_items(lg_path, [
+      {
+        id: 1,
+        src: "原文",
+        dst: "",
+        name_src: "原名",
+        name_dst: null,
+        status: "NONE",
+        retry_count: 2,
+        file_path: "demo.txt",
+        file_type: "TXT",
+        text_type: "TXT",
+        row: 7,
+        extra_field: { speaker: "春" },
       },
-    });
+    ]);
 
-    database.execute({
-      name: "patchItemTranslationFields",
-      args: {
-        projectPath: lg_path,
-        patches: [
-          {
-            id: 1,
-            patch: {
-              dst: "译文",
-              name_dst: ["译名"],
-              status: "PROCESSED",
-              retry_count: 0,
-            },
-          },
-        ],
+    database.patch_item_translation_fields(lg_path, [
+      {
+        id: 1,
+        patch: {
+          dst: "译文",
+          name_dst: ["译名"],
+          status: "PROCESSED",
+          retry_count: 0,
+        },
       },
-    });
+    ]);
 
-    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+    expect(database.get_all_items(lg_path)).toEqual([
       {
         id: 1,
         src: "原文",
@@ -555,74 +314,44 @@ describe("ProjectDatabase", () => {
   it("保存分析断点和候选聚合后可按状态与原文读取当前事实", () => {
     const { database, lg_path } = create_database_project("analysis");
 
-    database.execute({
-      name: "upsertAnalysisItemCheckpoints",
-      args: {
-        projectPath: lg_path,
-        checkpoints: [
-          { item_id: 1, status: "pending", updated_at: "2026-05-16T00:00:00.000Z", error_count: 0 },
-          { item_id: 2, status: "failed", updated_at: "2026-05-16T00:01:00.000Z", error_count: 2 },
-        ],
+    database.upsert_analysis_item_checkpoints(lg_path, [
+      { item_id: 1, status: "pending", updated_at: "2026-05-16T00:00:00.000Z", error_count: 0 },
+      { item_id: 2, status: "failed", updated_at: "2026-05-16T00:01:00.000Z", error_count: 2 },
+    ]);
+    database.upsert_analysis_item_checkpoints(lg_path, [
+      { item_id: 2, status: "done", updated_at: "2026-05-16T00:02:00.000Z", error_count: 0 },
+    ]);
+    database.upsert_analysis_candidate_aggregates(lg_path, [
+      {
+        src: "姫",
+        dst_votes: { princess: 2 },
+        info_votes: { name: 1 },
+        observation_count: 2,
+        first_seen_at: "2026-05-16T00:00:00.000Z",
+        last_seen_at: "2026-05-16T00:02:00.000Z",
+        case_sensitive: true,
       },
-    });
-    database.execute({
-      name: "upsertAnalysisItemCheckpoints",
-      args: {
-        projectPath: lg_path,
-        checkpoints: [
-          { item_id: 2, status: "done", updated_at: "2026-05-16T00:02:00.000Z", error_count: 0 },
-        ],
+      {
+        src: "王",
+        dst_votes: { king: 1 },
+        info_votes: {},
+        observation_count: 1,
+        first_seen_at: "2026-05-16T00:03:00.000Z",
+        last_seen_at: "2026-05-16T00:03:00.000Z",
+        case_sensitive: false,
       },
-    });
-    database.execute({
-      name: "upsertAnalysisCandidateAggregates",
-      args: {
-        projectPath: lg_path,
-        aggregates: [
-          {
-            src: "姫",
-            dst_votes: { princess: 2 },
-            info_votes: { name: 1 },
-            observation_count: 2,
-            first_seen_at: "2026-05-16T00:00:00.000Z",
-            last_seen_at: "2026-05-16T00:02:00.000Z",
-            case_sensitive: true,
-          },
-          {
-            src: "王",
-            dst_votes: { king: 1 },
-            info_votes: {},
-            observation_count: 1,
-            first_seen_at: "2026-05-16T00:03:00.000Z",
-            last_seen_at: "2026-05-16T00:03:00.000Z",
-            case_sensitive: false,
-          },
-        ],
-      },
-    });
+    ]);
 
-    expect(
-      database.execute({ name: "getAnalysisItemCheckpoints", args: { projectPath: lg_path } }),
-    ).toEqual([
+    expect(database.get_analysis_item_checkpoints(lg_path)).toEqual([
       { item_id: 1, status: "pending", updated_at: "2026-05-16T00:00:00.000Z", error_count: 0 },
       { item_id: 2, status: "done", updated_at: "2026-05-16T00:02:00.000Z", error_count: 0 },
     ]);
-    expect(
-      database.execute({
-        name: "deleteAnalysisItemCheckpoints",
-        args: { projectPath: lg_path, status: "pending" },
-      }),
-    ).toBe(1);
-    expect(
-      database.execute({ name: "getAnalysisItemCheckpoints", args: { projectPath: lg_path } }),
-    ).toEqual([
+    expect(database.delete_analysis_item_checkpoints(lg_path, "pending")).toBe(1);
+    expect(database.get_analysis_item_checkpoints(lg_path)).toEqual([
       { item_id: 2, status: "done", updated_at: "2026-05-16T00:02:00.000Z", error_count: 0 },
     ]);
     expect(
-      database.execute({
-        name: "getAnalysisCandidateAggregatesBySrcs",
-        args: { projectPath: lg_path, srcs: [" 姫 ", "", "missing"] },
-      }),
+      database.get_analysis_candidate_aggregates_by_srcs(lg_path, [" 姫 ", "", "missing"]),
     ).toEqual([
       {
         src: "姫",
@@ -635,13 +364,8 @@ describe("ProjectDatabase", () => {
       },
     ]);
 
-    database.execute({
-      name: "deleteAnalysisCandidateAggregatesBySrcs",
-      args: { projectPath: lg_path, srcs: [" 姫 ", "", "missing", "姫"] },
-    });
-    expect(
-      database.execute({ name: "getAnalysisCandidateAggregates", args: { projectPath: lg_path } }),
-    ).toEqual([
+    database.delete_analysis_candidate_aggregates_by_srcs(lg_path, [" 姫 ", "", "missing", "姫"]);
+    expect(database.get_analysis_candidate_aggregates(lg_path)).toEqual([
       {
         src: "王",
         dst_votes: { king: 1 },
@@ -653,10 +377,8 @@ describe("ProjectDatabase", () => {
       },
     ]);
 
-    database.execute({ name: "clearAnalysisCandidateAggregates", args: { projectPath: lg_path } });
-    expect(
-      database.execute({ name: "getAnalysisCandidateAggregates", args: { projectPath: lg_path } }),
-    ).toEqual([]);
+    database.clear_analysis_candidate_aggregates(lg_path);
+    expect(database.get_analysis_candidate_aggregates(lg_path)).toEqual([]);
   });
 
   it("兼容读取旧压缩 asset bytes", () => {

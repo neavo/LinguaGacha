@@ -1,18 +1,12 @@
 // 文本模式只区分用户输入的普通文本和显式正则，避免调用点自造第三种解释
-export type TextPatternMode = "literal" | "regex";
+type TextPatternMode = "literal" | "regex";
 
 // 替换语法必须由业务场景声明，防止 `$1` 和 `\1` 在不同入口互相误伤
 export type TextReplacementSyntax = "literal" | "javascript" | "backslash";
 
-export type CompiledTextPattern = {
-  readonly source_text: string; // 归一后的原始模式文本，错误提示和后续判断共用
-  readonly mode: TextPatternMode; // 编译来源，区分普通文本转义和正则直编译
-  readonly case_sensitive: boolean; // false 时统一生成 i flag
-  readonly global: boolean; // true 时用于全部替换和替换计数
-  readonly regexp: RegExp; // 实际执行用正则，使用前会复制以隔离 lastIndex
-};
+export type CompiledTextPattern = RegExp;
 
-export type TextPatternCompileOptions = {
+type TextPatternCompileOptions = {
   readonly source_text: string; // 用户输入或规则 src
   readonly mode: TextPatternMode; // 普通文本或正则
   readonly case_sensitive?: boolean; // 默认大小写不敏感
@@ -21,7 +15,7 @@ export type TextPatternCompileOptions = {
   readonly unicode?: boolean; // 默认启用 u flag；少数旧筛选入口可关闭
 };
 
-export type TextPatternCompileResult = {
+type TextPatternCompileResult = {
   readonly pattern: CompiledTextPattern | null; // 空关键字或非法正则时为空
   readonly invalid_regex_message: string | null; // 只在正则编译失败时写入
 };
@@ -53,24 +47,16 @@ export function compile_text_pattern(
   const case_sensitive = options.case_sensitive === true;
   const global = options.global === true;
   const pattern_source = mode === "regex" ? source_text : escape_text_pattern(source_text);
-  return {
-    source_text,
-    mode,
-    case_sensitive,
-    global,
-    regexp: new RegExp(
-      pattern_source,
-      build_text_pattern_flags({ case_sensitive, global, unicode: options.unicode !== false }),
-    ),
-  };
+  return new RegExp(
+    pattern_source,
+    build_text_pattern_flags({ case_sensitive, global, unicode: options.unicode !== false }),
+  );
 }
 
 /**
  * 页面筛选使用宽返回值承接非法正则，避免 UI 层重复写 try/catch
  */
-export function try_compile_text_pattern(
-  options: TextPatternCompileOptions,
-): TextPatternCompileResult {
+function try_compile_text_pattern(options: TextPatternCompileOptions): TextPatternCompileResult {
   try {
     return {
       pattern: compile_text_pattern(options),
@@ -195,7 +181,7 @@ function build_text_pattern_flags(args: {
  * 每次执行都复制 RegExp，保证全局匹配和多次 test 不共享 lastIndex
  */
 function clone_text_pattern_regexp(pattern: CompiledTextPattern): RegExp {
-  return new RegExp(pattern.regexp.source, pattern.regexp.flags);
+  return new RegExp(pattern);
 }
 
 /**

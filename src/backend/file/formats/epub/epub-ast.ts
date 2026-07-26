@@ -16,29 +16,30 @@ import { decodeHTML } from "entities";
 import JSZip from "jszip";
 
 import type { ApiJsonValue } from "../../../api/api-types";
-import { Item, read_json_record } from "../../../../domain/item";
+import { Item } from "../../../../domain/item";
+import { read_json_record } from "../../../../domain/json";
 import { FileParseFailedError, InvalidFileStructureError } from "../../../../shared/error";
 
 /**
  * EPUB slot 定位引用，path 指向元素，slot 区分元素首段文本和元素后的 tail 文本
  */
 export interface EpubPartRef {
-  slot: "text" | "tail";
-  path: string;
+  slot: "text" | "tail"; // 区分元素正文与相邻尾文本
+  path: string; // 从文档根到目标元素的稳定路径
 }
 
 /**
  * OPF 解析产物集中记录 spine/nav/ncx/title 路径，后续抽取不再重复扫描 manifest
  */
 export interface EpubPackageInfo {
-  opf_path: string;
-  opf_dir: string;
-  opf_version_major: number;
-  spine_paths: string[];
-  nav_path: string | null;
-  ncx_path: string | null;
-  opf_title_path: string | null;
-  opf_title_text: string | null;
+  opf_path: string; // 包清单在 zip 内的规范路径
+  opf_dir: string; // 解析 manifest 相对 href 的根目录
+  opf_version_major: number; // 决定 EPUB2/3 导航处理
+  spine_paths: string[]; // 按阅读顺序排列的正文文档
+  nav_path: string | null; // EPUB3 导航文档
+  ncx_path: string | null; // EPUB2 NCX 导航文档
+  opf_title_path: string | null; // OPF 标题元素路径
+  opf_title_text: string | null; // 标题抽取时的原始文本
 }
 
 /**
@@ -46,8 +47,8 @@ export interface EpubPackageInfo {
  */
 export interface EpubSlotPerLineDocumentUnit {
   mode: "slot_per_line";
-  block_path: string;
-  slots: Array<[EpubPartRef, string]>;
+  block_path: string; // 可翻译块在文档中的路径
+  slots: Array<[EpubPartRef, string]>; // 可逐行写回的定位与文本
 }
 
 /**
@@ -55,8 +56,8 @@ export interface EpubSlotPerLineDocumentUnit {
  */
 export interface EpubBlockTextDocumentUnit {
   mode: "block_text";
-  block_path: string;
-  text: string;
+  block_path: string; // 含 ruby 块在文档中的路径
+  text: string; // 排除注音后组装的可见正文
 }
 
 /**
@@ -68,8 +69,8 @@ export type EpubDocumentUnit = EpubSlotPerLineDocumentUnit | EpubBlockTextDocume
  * 元素路径片段使用本地名和同名序号，规避命名空间前缀变化造成的定位漂移
  */
 interface EpubPathSeg {
-  name: string;
-  pos: number;
+  name: string; // 忽略命名空间前缀后的本地标签名
+  pos: number; // 同名兄弟元素中的一基序号
 }
 
 /**

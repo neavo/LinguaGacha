@@ -3,28 +3,17 @@ import os from "node:os";
 import path from "node:path";
 
 import JSZip from "jszip";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { create_epub_fixture } from "../../../../test/epub-fixture";
 import { Item } from "../../../../domain/item";
 import { EPUBFormat } from "./epub-format";
-
-let temp_dir = ""; // 每个用例独占 EPUB 输出目录，避免门面写回断言共享文件状态
-
-beforeEach(() => {
-  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-epub-format-"));
-});
-
-afterEach(() => {
-  fs.rmSync(temp_dir, { recursive: true, force: true });
-});
 
 /**
  * 测试格式实例使用显式配置，避免依赖应用设置服务
  */
 function create_format(): EPUBFormat {
   return new EPUBFormat({
-    source_language: "JA",
     target_language: "ZH",
     deduplication_in_bilingual: true,
     write_translated_name_fields_to_file: true,
@@ -42,6 +31,7 @@ describe("EPUBFormat", () => {
   });
 
   it("写回 EPUB 时按门面规则生成译文和双语文件", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-epub-format-"));
     const format = create_format();
     const epub_asset = await create_epub_fixture("章节");
     const [parsed_item] = await format.read_from_stream(epub_asset, "book.epub");
@@ -49,8 +39,8 @@ describe("EPUBFormat", () => {
       throw new Error("EPUB fixture 未生成正文条目。");
     }
     const paths = {
-      translated_path: path.join(temp_dir, "translated"),
-      bilingual_path: path.join(temp_dir, "bilingual"),
+      translated_path: path.join(temp_dir.path, "translated"),
+      bilingual_path: path.join(temp_dir.path, "bilingual"),
     };
 
     await format.write_to_path(
@@ -70,6 +60,7 @@ describe("EPUBFormat", () => {
   });
 
   it("回归 EPUB issue：长文件名写回后译文版和双语版都是可读 EPUB", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-epub-format-"));
     const format = create_format();
     const file_name =
       "Stalingradas tragedija prie Volgos -- Joachim Wieder -- Anna Archive sample.epub";
@@ -79,8 +70,8 @@ describe("EPUBFormat", () => {
       throw new Error("EPUB fixture 未生成正文条目。");
     }
     const paths = {
-      translated_path: path.join(temp_dir, "translated-long-name"),
-      bilingual_path: path.join(temp_dir, "bilingual-long-name"),
+      translated_path: path.join(temp_dir.path, "translated-long-name"),
+      bilingual_path: path.join(temp_dir.path, "bilingual-long-name"),
     };
 
     await format.write_to_path(

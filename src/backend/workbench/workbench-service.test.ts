@@ -4,16 +4,14 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ProjectEventBus } from "../project/project-events";
 import { ProjectDatabase } from "../database/database-operations";
-import type { DatabaseOperation } from "../database/database-types";
 import type { ApiJsonValue } from "../api/api-types";
 import { TaskRunState } from "../engine/run/task-run-state";
 import { FileFormatService } from "../file/file-format-service";
 import type { LogManager } from "../log/log-manager";
 import { ProjectOperationGate } from "../project/project-gate";
 import { WorkbenchService } from "./workbench-service";
-import type { ProjectChangePublisher } from "../project/project-changes";
+import type { ProjectChangePublisher, ProjectWriteChangeRequest } from "../project/project-changes";
 import { ProjectWriteStore } from "../project/project-write-store";
 import { get_section_revision } from "../project/project-data";
 import { ProjectSessionState } from "../project/project-session";
@@ -26,6 +24,17 @@ let temp_dir = "";
  */
 function project_path(name: string): string {
   return path.join(temp_dir, name);
+}
+
+function read_meta(
+  database: ProjectDatabase,
+  project_path: string,
+  key: string,
+  default_value: ApiJsonValue,
+): ApiJsonValue {
+  return (
+    (database.get_all_meta(project_path) as Record<string, ApiJsonValue>)[key] ?? default_value
+  );
 }
 
 /**
@@ -44,17 +53,14 @@ function create_service(
   const task_run_state = new TaskRunState();
   const session_state = new ProjectSessionState();
   const lg_path = project_path("demo.lg");
-  database.execute({
-    name: "createProject",
-    args: { projectPath: lg_path, name: "demo" },
-  });
+  database.create_project(lg_path, "demo");
   session_state.mark_loaded(lg_path);
   const publisher =
     project_change_publisher === undefined
       ? create_test_project_change_publisher(database, lg_path)
       : project_change_publisher;
   const project_operation_gate = new ProjectOperationGate(task_run_state);
-  const project_event_bus = new ProjectEventBus();
+  const project_event_bus = vi.fn();
   const write_store = new ProjectWriteStore(database, project_event_bus, publisher);
   return {
     database,
@@ -82,43 +88,36 @@ function create_test_project_change_publisher(
   database: ProjectDatabase,
   lg_path: string,
 ): ProjectChangePublisher {
-  return {
-    publish_project_change: vi.fn((payload: Record<string, ApiJsonValue>): ProjectChangeEvent => {
-      const updated_sections = Array.isArray(payload.updatedSections)
-        ? payload.updatedSections.map((section) => String(section))
-        : [];
-      const meta = database.execute({
-        name: "getAllMeta",
-        args: { projectPath: lg_path },
-      }) as Record<string, ApiJsonValue>;
-      const section_revisions = Object.fromEntries(
-        updated_sections.map((section) => [section, get_section_revision(meta, section)]),
-      );
-      return {
-        type: "project.changed",
-        eventId: `test-${String(payload.source ?? "project_change")}`,
-        source: String(payload.source ?? "project_change"),
-        projectPath: String(payload.targetProjectPath ?? ""),
-        projectRevision: Math.max(...Object.values(section_revisions), 0),
-        sectionRevisions: section_revisions,
-        updatedSections: updated_sections as ProjectChangeEvent["updatedSections"],
-        ...(payload.items === undefined
-          ? {}
-          : { items: payload.items as ProjectChangeEvent["items"] }),
-        ...(payload.files === undefined
-          ? {}
-          : { files: payload.files as ProjectChangeEvent["files"] }),
-        ...(payload.sections === undefined
-          ? {}
-          : { sections: payload.sections as ProjectChangeEvent["sections"] }),
-      };
-    }),
-  } as unknown as ProjectChangePublisher;
+  return vi.fn((payload: ProjectWriteChangeRequest): ProjectChangeEvent => {
+    const updated_sections = Array.isArray(payload.updatedSections)
+      ? payload.updatedSections.map((section) => String(section))
+      : [];
+    const meta = database.get_all_meta(lg_path) as Record<string, ApiJsonValue>;
+    const section_revisions = Object.fromEntries(
+      updated_sections.map((section) => [section, get_section_revision(meta, section)]),
+    );
+    return {
+      type: "project.changed",
+      eventId: `test-${String(payload.source ?? "project_change")}`,
+      source: String(payload.source ?? "project_change"),
+      projectPath: payload.projectPath,
+      projectRevision: Math.max(...Object.values(section_revisions), 0),
+      sectionRevisions: section_revisions,
+      updatedSections: updated_sections as ProjectChangeEvent["updatedSections"],
+      ...(payload.items === undefined
+        ? {}
+        : { items: payload.items as ProjectChangeEvent["items"] }),
+      ...(payload.files === undefined
+        ? {}
+        : { files: payload.files as ProjectChangeEvent["files"] }),
+      ...(payload.sections === undefined
+        ? {}
+        : { sections: payload.sections as ProjectChangeEvent["sections"] }),
+    };
+  });
 }
 
-function create_static_project_change_publisher(section_revisions: Record<string, number>): {
-  publish_project_change: ReturnType<typeof vi.fn>;
-} {
+function create_static_project_change_publisher(section_revisions: Record<string, number>) {
   return {
     publish_project_change: vi.fn((payload: Record<string, ApiJsonValue>): ProjectChangeEvent => {
       const updated_sections = Array.isArray(payload.updatedSections)
@@ -131,7 +130,7 @@ function create_static_project_change_publisher(section_revisions: Record<string
         type: "project.changed",
         eventId: `test-${String(payload.source ?? "project_change")}`,
         source: String(payload.source ?? "project_change"),
-        projectPath: String(payload.targetProjectPath ?? ""),
+        projectPath: String(payload.projectPath ?? ""),
         projectRevision: Math.max(...Object.values(current_section_revisions), 0),
         sectionRevisions: current_section_revisions,
         updatedSections: updated_sections as ProjectChangeEvent["updatedSections"],
@@ -174,14 +173,9 @@ function create_persistent_item(
   };
 }
 
-function count_database_operations(database: ProjectDatabase, name: string): () => number {
-  const original_execute = database.execute.bind(database);
-  const operation_names: string[] = [];
-  vi.spyOn(database, "execute").mockImplementation((operation: DatabaseOperation) => {
-    operation_names.push(operation.name);
-    return original_execute(operation);
-  });
-  return () => operation_names.filter((operation_name) => operation_name === name).length;
+function count_get_all_items_calls(database: ProjectDatabase): () => number {
+  const spy = vi.spyOn(database, "get_all_items");
+  return () => spy.mock.calls.length;
 }
 
 /**
@@ -222,9 +216,7 @@ afterEach(() => {
 describe("WorkbenchService", () => {
   it("写入 settings-only 对齐结果且不 bump 运行态 section", async () => {
     const publish_project_change = vi.fn();
-    const { database, service, lg_path } = create_service({
-      publish_project_change,
-    } as unknown as ProjectChangePublisher);
+    const { database, service, lg_path } = create_service(publish_project_change);
 
     const ack = await service.apply_settings_alignment({
       mode: "settings_only",
@@ -238,12 +230,7 @@ describe("WorkbenchService", () => {
 
     expect(ack).toEqual({ accepted: true, changes: [] });
     expect(publish_project_change).not.toHaveBeenCalled();
-    expect(
-      database.execute({
-        name: "getMeta",
-        args: { projectPath: lg_path, key: "source_language", default: "" },
-      }),
-    ).toBe("JA");
+    expect(read_meta(database, lg_path, "source_language", "")).toBe("JA");
     database.close();
   });
 
@@ -268,33 +255,16 @@ describe("WorkbenchService", () => {
 
   it("显式 path 写入未加载工程时不返回当前会话项目变更", async () => {
     const publish_project_change = vi.fn(() => null);
-    const { database, service } = create_service({
-      publish_project_change,
-    } as unknown as ProjectChangePublisher);
+    const { database, service } = create_service(publish_project_change);
     const other_lg_path = project_path("other.lg");
     const other_source_path = project_path("other.txt");
     fs.writeFileSync(other_source_path, "旧", "utf-8");
-    database.execute({
-      name: "createProject",
-      args: { projectPath: other_lg_path, name: "other" },
-    });
-    database.execute({
-      name: "addAssetFromSource",
-      args: {
-        projectPath: other_lg_path,
-        path: "other.txt",
-        sourcePath: other_source_path,
-        sortOrder: 0,
-      },
-    });
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: other_lg_path,
-        items: [create_persistent_item({ src: "旧", file_path: "other.txt", row_number: 0 })],
-      },
-    });
-    const get_all_items_count = count_database_operations(database, "getAllItems");
+    database.create_project(other_lg_path, "other");
+    database.add_asset_from_source(other_lg_path, "other.txt", other_source_path, 0);
+    database.set_items(other_lg_path, [
+      create_persistent_item({ src: "旧", file_path: "other.txt", row_number: 0 }),
+    ]);
+    const get_all_items_count = count_get_all_items_calls(database);
 
     const ack = await service.apply_settings_alignment({
       path: other_lg_path,
@@ -312,7 +282,7 @@ describe("WorkbenchService", () => {
     expect(get_all_items_count()).toBe(1);
     expect(publish_project_change).toHaveBeenCalledWith(
       expect.objectContaining({
-        targetProjectPath: other_lg_path,
+        projectPath: other_lg_path,
         source: "settings_alignment",
         updatedSections: ["items", "analysis"],
         items: { payloadMode: "section-invalidated" },
@@ -329,17 +299,11 @@ describe("WorkbenchService", () => {
       items: 1,
       analysis: 1,
     });
-    const { database, service, lg_path } = create_service({
-      publish_project_change,
-    } as unknown as ProjectChangePublisher);
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: lg_path,
-        items: [create_persistent_item({ src: "旧", file_path: "a.txt", row_number: 0 })],
-      },
-    });
-    const get_all_items_count = count_database_operations(database, "getAllItems");
+    const { database, service, lg_path } = create_service(publish_project_change);
+    database.set_items(lg_path, [
+      create_persistent_item({ src: "旧", file_path: "a.txt", row_number: 0 }),
+    ]);
+    const get_all_items_count = count_get_all_items_calls(database);
 
     const ack = await service.apply_settings_alignment({
       mode: "prefiltered_items",
@@ -363,7 +327,7 @@ describe("WorkbenchService", () => {
     });
     expect(get_all_items_count()).toBe(1);
     expect(publish_project_change).toHaveBeenCalledWith({
-      targetProjectPath: lg_path,
+      projectPath: lg_path,
       source: "settings_alignment",
       updatedSections: ["items", "analysis"],
       items: { payloadMode: "section-invalidated" },
@@ -379,47 +343,30 @@ describe("WorkbenchService", () => {
       items: 1,
       analysis: 1,
     });
-    const { database, service, lg_path } = create_service({
-      publish_project_change,
-    } as unknown as ProjectChangePublisher);
+    const { database, service, lg_path } = create_service(publish_project_change);
     const source_path = project_path("a.txt");
     fs.writeFileSync(source_path, "新", "utf-8");
-    database.execute({
-      name: "addAssetFromSource",
-      args: { projectPath: lg_path, path: "a.txt", sourcePath: source_path, sortOrder: 0 },
-    });
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: lg_path,
-        items: [
-          create_persistent_item({
-            src: "旧",
-            dst: "old",
-            status: "PROCESSED",
-            row_number: 0,
-          }),
-        ],
+    database.add_asset_from_source(lg_path, "a.txt", source_path, 0);
+    database.set_items(lg_path, [
+      create_persistent_item({
+        src: "旧",
+        dst: "old",
+        status: "PROCESSED",
+        row_number: 0,
+      }),
+    ]);
+    database.upsert_analysis_candidate_aggregates(lg_path, [
+      {
+        src: "旧",
+        dst_votes: {},
+        info_votes: {},
+        observation_count: 1,
+        first_seen_at: "t",
+        last_seen_at: "t",
+        case_sensitive: false,
       },
-    });
-    database.execute({
-      name: "upsertAnalysisCandidateAggregates",
-      args: {
-        projectPath: lg_path,
-        aggregates: [
-          {
-            src: "旧",
-            dst_votes: {},
-            info_votes: {},
-            observation_count: 1,
-            first_seen_at: "t",
-            last_seen_at: "t",
-            case_sensitive: false,
-          },
-        ],
-      },
-    });
-    const get_all_items_count = count_database_operations(database, "getAllItems");
+    ]);
+    const get_all_items_count = count_get_all_items_calls(database);
 
     const ack = await service.apply_translation_reset({
       mode: "all",
@@ -439,20 +386,15 @@ describe("WorkbenchService", () => {
       ],
     });
     expect(get_all_items_count()).toBe(1);
-    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+    expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({
         src: "新",
         row_number: 0,
       }),
     ]);
-    expect(
-      database.execute({
-        name: "getAnalysisCandidateAggregates",
-        args: { projectPath: lg_path },
-      }),
-    ).toEqual([]);
+    expect(database.get_analysis_candidate_aggregates(lg_path)).toEqual([]);
     expect(publish_project_change).toHaveBeenCalledWith({
-      targetProjectPath: lg_path,
+      projectPath: lg_path,
       source: "translation_reset",
       updatedSections: ["items", "analysis"],
       items: { payloadMode: "section-invalidated" },
@@ -465,13 +407,7 @@ describe("WorkbenchService", () => {
 
   it("translation reset 拒绝旧最终事实载荷且不清空既有 items", async () => {
     const { database, service, lg_path } = create_service();
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: lg_path,
-        items: [create_persistent_item({ dst: "old", status: "PROCESSED" })],
-      },
-    });
+    database.set_items(lg_path, [create_persistent_item({ dst: "old", status: "PROCESSED" })]);
 
     await expect(
       service.apply_translation_reset({
@@ -483,7 +419,7 @@ describe("WorkbenchService", () => {
       }),
     ).rejects.toThrow("request.validation_failed");
 
-    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+    expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({ dst: "old", status: "PROCESSED" }),
     ]);
     database.close();
@@ -493,24 +429,15 @@ describe("WorkbenchService", () => {
     const { database, service, lg_path } = create_service();
     const source_path = project_path("a.txt");
     fs.writeFileSync(source_path, "新", "utf-8");
-    database.execute({
-      name: "addAssetFromSource",
-      args: { projectPath: lg_path, path: "a.txt", sourcePath: source_path, sortOrder: 0 },
-    });
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: lg_path,
-        items: [
-          create_persistent_item({
-            src: "新",
-            dst: "old",
-            status: "ERROR",
-            row_number: 0,
-          }),
-        ],
-      },
-    });
+    database.add_asset_from_source(lg_path, "a.txt", source_path, 0);
+    database.set_items(lg_path, [
+      create_persistent_item({
+        src: "新",
+        dst: "old",
+        status: "ERROR",
+        row_number: 0,
+      }),
+    ]);
     const { parse_started, release_parse } = pause_next_parse_asset();
 
     const reset_all_promise = service.apply_translation_reset({
@@ -531,7 +458,7 @@ describe("WorkbenchService", () => {
     }
 
     await expect(reset_all_promise).resolves.toMatchObject({ accepted: true });
-    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+    expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({
         src: "新",
         dst: "",
@@ -544,13 +471,7 @@ describe("WorkbenchService", () => {
 
   it("settings alignment 的 prefiltered_items 拒绝旧最终事实载荷", async () => {
     const { database, service, lg_path } = create_service();
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: lg_path,
-        items: [create_persistent_item()],
-      },
-    });
+    database.set_items(lg_path, [create_persistent_item()]);
 
     await expect(
       service.apply_settings_alignment({
@@ -563,9 +484,7 @@ describe("WorkbenchService", () => {
       }),
     ).rejects.toThrow("request.validation_failed");
 
-    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
-      create_persistent_item(),
-    ]);
+    expect(database.get_all_items(lg_path)).toEqual([create_persistent_item()]);
     database.close();
   });
 
@@ -575,24 +494,15 @@ describe("WorkbenchService", () => {
     const second_source = project_path("b.txt");
     fs.writeFileSync(first_source, "旧", "utf-8");
     fs.writeFileSync(second_source, "新", "utf-8");
-    database.execute({
-      name: "addAssetFromSource",
-      args: { projectPath: lg_path, path: "a.txt", sourcePath: first_source, sortOrder: 0 },
-    });
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: lg_path,
-        items: [
-          create_persistent_item({
-            src: "旧",
-            dst: "old",
-            status: "ERROR",
-            row_number: 0,
-          }),
-        ],
-      },
-    });
+    database.add_asset_from_source(lg_path, "a.txt", first_source, 0);
+    database.set_items(lg_path, [
+      create_persistent_item({
+        src: "旧",
+        dst: "old",
+        status: "ERROR",
+        row_number: 0,
+      }),
+    ]);
     const { parse_started, release_parse } = pause_next_parse_asset();
 
     const import_files_promise = service.import_workbench_files({
@@ -614,13 +524,11 @@ describe("WorkbenchService", () => {
     }
 
     await expect(import_files_promise).resolves.toMatchObject({ accepted: true });
-    expect(
-      database.execute({ name: "getAllAssetRecords", args: { projectPath: lg_path } }),
-    ).toEqual([
+    expect(database.get_all_asset_records(lg_path)).toEqual([
       { path: "a.txt", sort_order: 0 },
       { path: "b.txt", sort_order: 1 },
     ]);
-    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+    expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({
         src: "旧",
         dst: "old",
@@ -645,17 +553,8 @@ describe("WorkbenchService", () => {
     fs.writeFileSync(old_source, "旧", "utf-8");
     fs.writeFileSync(conflict_source, "替换候选", "utf-8");
     fs.writeFileSync(new_source, "新", "utf-8");
-    database.execute({
-      name: "addAssetFromSource",
-      args: { projectPath: lg_path, path: "a.txt", sourcePath: old_source, sortOrder: 0 },
-    });
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: lg_path,
-        items: [create_persistent_item({ src: "旧", dst: "old", row_number: 0 })],
-      },
-    });
+    database.add_asset_from_source(lg_path, "a.txt", old_source, 0);
+    database.set_items(lg_path, [create_persistent_item({ src: "旧", dst: "old", row_number: 0 })]);
 
     await service.import_workbench_files({
       files: [
@@ -667,13 +566,11 @@ describe("WorkbenchService", () => {
       expected_section_revisions: { files: 0, items: 0, analysis: 0 },
     });
 
-    expect(
-      database.execute({ name: "getAllAssetRecords", args: { projectPath: lg_path } }),
-    ).toEqual([
+    expect(database.get_all_asset_records(lg_path)).toEqual([
       { path: "a.txt", sort_order: 0 },
       { path: "b.txt", sort_order: 1 },
     ]);
-    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+    expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({ src: "旧", dst: "old", row_number: 0 }),
       create_persistent_item({ item_id: 2, src: "新", file_path: "b.txt", row_number: 0 }),
     ]);
@@ -688,7 +585,7 @@ describe("WorkbenchService", () => {
     const broken_json = project_path("broken.json");
     fs.writeFileSync(valid_source, "新", "utf-8");
     fs.writeFileSync(broken_json, "{", "utf-8");
-    const get_all_items_count = count_database_operations(database, "getAllItems");
+    const get_all_items_count = count_get_all_items_calls(database);
 
     const ack = await service.import_workbench_files({
       files: [
@@ -713,10 +610,8 @@ describe("WorkbenchService", () => {
       ],
     });
     expect(get_all_items_count()).toBe(1);
-    expect(
-      database.execute({ name: "getAllAssetRecords", args: { projectPath: lg_path } }),
-    ).toEqual([{ path: "valid.txt", sort_order: 0 }]);
-    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+    expect(database.get_all_asset_records(lg_path)).toEqual([{ path: "valid.txt", sort_order: 0 }]);
+    expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({ src: "新", file_path: "valid.txt", row_number: 0 }),
     ]);
     expect(log_manager.warning).toHaveBeenCalledWith(
@@ -754,9 +649,7 @@ describe("WorkbenchService", () => {
       },
     });
 
-    expect(
-      database.execute({ name: "getAllAssetRecords", args: { projectPath: lg_path } }),
-    ).toEqual([]);
+    expect(database.get_all_asset_records(lg_path)).toEqual([]);
     expect(log_manager.warning).toHaveBeenCalledWith(
       "broken.json - 文件内容解析失败 …",
       expect.objectContaining({ source: "workbench-import" }),
@@ -770,41 +663,24 @@ describe("WorkbenchService", () => {
       items: 1,
       analysis: 1,
     });
-    const { database, service, lg_path } = create_service({
-      publish_project_change,
-    } as unknown as ProjectChangePublisher);
+    const { database, service, lg_path } = create_service(publish_project_change);
     const old_source = project_path("a.txt");
     const replace_source = project_path("a-new.txt");
     fs.writeFileSync(old_source, "旧", "utf-8");
     fs.writeFileSync(replace_source, "新", "utf-8");
-    database.execute({
-      name: "addAssetFromSource",
-      args: { projectPath: lg_path, path: "a.txt", sourcePath: old_source, sortOrder: 3 },
-    });
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: lg_path,
-        items: [create_persistent_item({ src: "旧", dst: "old", row_number: 0 })],
+    database.add_asset_from_source(lg_path, "a.txt", old_source, 3);
+    database.set_items(lg_path, [create_persistent_item({ src: "旧", dst: "old", row_number: 0 })]);
+    database.upsert_analysis_candidate_aggregates(lg_path, [
+      {
+        src: "旧",
+        dst_votes: { old: 1 },
+        info_votes: {},
+        observation_count: 1,
+        first_seen_at: "t",
+        last_seen_at: "t",
+        case_sensitive: false,
       },
-    });
-    database.execute({
-      name: "upsertAnalysisCandidateAggregates",
-      args: {
-        projectPath: lg_path,
-        aggregates: [
-          {
-            src: "旧",
-            dst_votes: { old: 1 },
-            info_votes: {},
-            observation_count: 1,
-            first_seen_at: "t",
-            last_seen_at: "t",
-            case_sensitive: false,
-          },
-        ],
-      },
-    });
+    ]);
 
     const ack = await service.import_workbench_files({
       files: [{ source_path: replace_source, target_rel_path: "a.txt" }],
@@ -822,21 +698,14 @@ describe("WorkbenchService", () => {
         },
       ],
     });
-    expect(
-      database.execute({ name: "getAllAssetRecords", args: { projectPath: lg_path } }),
-    ).toEqual([{ path: "a.txt", sort_order: 3 }]);
+    expect(database.get_all_asset_records(lg_path)).toEqual([{ path: "a.txt", sort_order: 3 }]);
     expect(database.read_asset_content(lg_path, "a.txt")?.toString("utf-8")).toBe("新");
-    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+    expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({ item_id: 2, src: "新", file_path: "a.txt", row_number: 0 }),
     ]);
-    expect(
-      database.execute({
-        name: "getAnalysisCandidateAggregates",
-        args: { projectPath: lg_path },
-      }),
-    ).toEqual([]);
+    expect(database.get_analysis_candidate_aggregates(lg_path)).toEqual([]);
     expect(publish_project_change).toHaveBeenCalledWith({
-      targetProjectPath: lg_path,
+      projectPath: lg_path,
       source: "workbench_import_files",
       updatedSections: ["files", "items", "analysis"],
       items: { payloadMode: "section-invalidated" },
@@ -854,25 +723,16 @@ describe("WorkbenchService", () => {
     const replace_source = project_path("a-new.txt");
     fs.writeFileSync(old_source, "同文", "utf-8");
     fs.writeFileSync(replace_source, "同文", "utf-8");
-    database.execute({
-      name: "addAssetFromSource",
-      args: { projectPath: lg_path, path: "a.txt", sourcePath: old_source, sortOrder: 2 },
-    });
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: lg_path,
-        items: [
-          create_persistent_item({
-            src: "同文",
-            dst: "译文",
-            status: "PROCESSED",
-            row_number: 0,
-          }),
-        ],
-      },
-    });
-    const get_all_items_count = count_database_operations(database, "getAllItems");
+    database.add_asset_from_source(lg_path, "a.txt", old_source, 2);
+    database.set_items(lg_path, [
+      create_persistent_item({
+        src: "同文",
+        dst: "译文",
+        status: "PROCESSED",
+        row_number: 0,
+      }),
+    ]);
+    const get_all_items_count = count_get_all_items_calls(database);
 
     await service.import_workbench_files({
       files: [{ source_path: replace_source, target_rel_path: "a.txt" }],
@@ -883,7 +743,7 @@ describe("WorkbenchService", () => {
     });
 
     expect(get_all_items_count()).toBe(1);
-    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+    expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({
         item_id: 2,
         src: "同文",
@@ -898,16 +758,10 @@ describe("WorkbenchService", () => {
 
   it("同步 write 写库成功后发布后端权威项目变更事件", async () => {
     const { publish_project_change } = create_static_project_change_publisher({ items: 1 });
-    const { database, service, lg_path } = create_service({
-      publish_project_change,
-    } as unknown as ProjectChangePublisher);
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: lg_path,
-        items: [create_persistent_item({ src: "旧", dst: "old", status: "ERROR" })],
-      },
-    });
+    const { database, service, lg_path } = create_service(publish_project_change);
+    database.set_items(lg_path, [
+      create_persistent_item({ src: "旧", dst: "old", status: "ERROR" }),
+    ]);
 
     await service.apply_translation_reset({
       mode: "failed",
@@ -915,7 +769,7 @@ describe("WorkbenchService", () => {
     });
 
     expect(publish_project_change).toHaveBeenCalledWith({
-      targetProjectPath: lg_path,
+      projectPath: lg_path,
       source: "translation_reset",
       updatedSections: ["items"],
       items: { payloadMode: "section-invalidated" },
@@ -928,43 +782,30 @@ describe("WorkbenchService", () => {
       quality: 1,
       analysis: 1,
     });
-    const { database, service, lg_path } = create_service({
-      publish_project_change,
-    } as unknown as ProjectChangePublisher);
-    database.execute({
-      name: "setRules",
-      args: {
-        projectPath: lg_path,
-        ruleType: "glossary",
-        rules: [{ src: "艾琳", dst: "Eileen", info: "旧名", regex: false, case_sensitive: true }],
+    const { database, service, lg_path } = create_service(publish_project_change);
+    database.set_rules(lg_path, "glossary", [
+      { src: "艾琳", dst: "Eileen", info: "旧名", regex: false, case_sensitive: true },
+    ]);
+    database.upsert_analysis_candidate_aggregates(lg_path, [
+      {
+        src: "艾琳",
+        dst_votes: { Erin: 1 },
+        info_votes: { 角色名: 1 },
+        observation_count: 1,
+        first_seen_at: "t",
+        last_seen_at: "t",
+        case_sensitive: true,
       },
-    });
-    database.execute({
-      name: "upsertAnalysisCandidateAggregates",
-      args: {
-        projectPath: lg_path,
-        aggregates: [
-          {
-            src: "艾琳",
-            dst_votes: { Erin: 1 },
-            info_votes: { 角色名: 1 },
-            observation_count: 1,
-            first_seen_at: "t",
-            last_seen_at: "t",
-            case_sensitive: true,
-          },
-          {
-            src: "王",
-            dst_votes: { King: 1 },
-            info_votes: { 角色名: 1 },
-            observation_count: 1,
-            first_seen_at: "t",
-            last_seen_at: "t",
-            case_sensitive: false,
-          },
-        ],
+      {
+        src: "王",
+        dst_votes: { King: 1 },
+        info_votes: { 角色名: 1 },
+        observation_count: 1,
+        first_seen_at: "t",
+        last_seen_at: "t",
+        case_sensitive: false,
       },
-    });
+    ]);
 
     const ack = await service.import_analysis_glossary({
       entries: [{ src: "艾琳", dst: "Erin", info: "角色名", regex: false, case_sensitive: true }],
@@ -983,22 +824,16 @@ describe("WorkbenchService", () => {
         },
       ],
     });
-    expect(
-      database.execute({ name: "getRules", args: { projectPath: lg_path, ruleType: "glossary" } }),
-    ).toEqual([{ src: "艾琳", dst: "Erin", info: "角色名", regex: false, case_sensitive: true }]);
-    const remaining_candidates = database.execute({
-      name: "getAnalysisCandidateAggregates",
-      args: { projectPath: lg_path },
-    }) as Array<Record<string, ApiJsonValue>>;
+    expect(database.get_rules(lg_path, "glossary")).toEqual([
+      { src: "艾琳", dst: "Erin", info: "角色名", regex: false, case_sensitive: true },
+    ]);
+    const remaining_candidates = database.get_analysis_candidate_aggregates(lg_path) as Array<
+      Record<string, ApiJsonValue>
+    >;
     expect(remaining_candidates.map((candidate) => candidate["src"])).toEqual(["王"]);
-    expect(
-      database.execute({
-        name: "getMeta",
-        args: { projectPath: lg_path, key: "analysis_candidate_count", default: 0 },
-      }),
-    ).toBe(1);
+    expect(read_meta(database, lg_path, "analysis_candidate_count", 0)).toBe(1);
     expect(publish_project_change).toHaveBeenCalledWith({
-      targetProjectPath: lg_path,
+      projectPath: lg_path,
       source: "analysis_glossary_import",
       updatedSections: ["quality", "analysis"],
       sections: {
@@ -1025,32 +860,26 @@ describe("WorkbenchService", () => {
 
   it("分析候选导入按共享术语口径重算剩余候选数", async () => {
     const { database, service, lg_path } = create_service();
-    database.execute({
-      name: "upsertAnalysisCandidateAggregates",
-      args: {
-        projectPath: lg_path,
-        aggregates: [
-          {
-            src: "艾琳",
-            dst_votes: { Erin: 1 },
-            info_votes: { 角色名: 1 },
-            observation_count: 1,
-            first_seen_at: "t",
-            last_seen_at: "t",
-            case_sensitive: true,
-          },
-          {
-            src: "说明",
-            dst_votes: { Note: 1 },
-            info_votes: { 其他: 1 },
-            observation_count: 1,
-            first_seen_at: "t",
-            last_seen_at: "t",
-            case_sensitive: false,
-          },
-        ],
+    database.upsert_analysis_candidate_aggregates(lg_path, [
+      {
+        src: "艾琳",
+        dst_votes: { Erin: 1 },
+        info_votes: { 角色名: 1 },
+        observation_count: 1,
+        first_seen_at: "t",
+        last_seen_at: "t",
+        case_sensitive: true,
       },
-    });
+      {
+        src: "说明",
+        dst_votes: { Note: 1 },
+        info_votes: { 其他: 1 },
+        observation_count: 1,
+        first_seen_at: "t",
+        last_seen_at: "t",
+        case_sensitive: false,
+      },
+    ]);
 
     await service.import_analysis_glossary({
       entries: [{ src: "艾琳", dst: "Erin", info: "角色名", regex: false, case_sensitive: true }],
@@ -1058,12 +887,7 @@ describe("WorkbenchService", () => {
       expected_section_revisions: { quality: 0, analysis: 0 },
     });
 
-    expect(
-      database.execute({
-        name: "getMeta",
-        args: { projectPath: lg_path, key: "analysis_candidate_count", default: 0 },
-      }),
-    ).toBe(0);
+    expect(read_meta(database, lg_path, "analysis_candidate_count", 0)).toBe(0);
     database.close();
   });
 
@@ -1083,37 +907,22 @@ describe("WorkbenchService", () => {
 
   it("分析候选导入跳过重复术语时只消费候选池和分析 revision", async () => {
     const { publish_project_change } = create_static_project_change_publisher({ analysis: 1 });
-    const { database, service, lg_path } = create_service({
-      publish_project_change,
-    } as unknown as ProjectChangePublisher);
+    const { database, service, lg_path } = create_service(publish_project_change);
     const existing_rules = [
       { src: "艾琳", dst: "Eileen", info: "旧名", regex: false, case_sensitive: true },
     ];
-    database.execute({
-      name: "setRules",
-      args: {
-        projectPath: lg_path,
-        ruleType: "glossary",
-        rules: existing_rules,
+    database.set_rules(lg_path, "glossary", existing_rules);
+    database.upsert_analysis_candidate_aggregates(lg_path, [
+      {
+        src: "艾琳",
+        dst_votes: { Erin: 1 },
+        info_votes: { 角色名: 1 },
+        observation_count: 1,
+        first_seen_at: "t",
+        last_seen_at: "t",
+        case_sensitive: true,
       },
-    });
-    database.execute({
-      name: "upsertAnalysisCandidateAggregates",
-      args: {
-        projectPath: lg_path,
-        aggregates: [
-          {
-            src: "艾琳",
-            dst_votes: { Erin: 1 },
-            info_votes: { 角色名: 1 },
-            observation_count: 1,
-            first_seen_at: "t",
-            last_seen_at: "t",
-            case_sensitive: true,
-          },
-        ],
-      },
-    });
+    ]);
 
     const ack = await service.import_analysis_glossary({
       entries: existing_rules,
@@ -1132,29 +941,12 @@ describe("WorkbenchService", () => {
         },
       ],
     });
-    expect(
-      database.execute({
-        name: "getMeta",
-        args: { projectPath: lg_path, key: "quality_rule_revision.glossary", default: 0 },
-      }),
-    ).toBe(0);
-    expect(
-      database.execute({ name: "getRules", args: { projectPath: lg_path, ruleType: "glossary" } }),
-    ).toEqual(existing_rules);
-    expect(
-      database.execute({
-        name: "getAnalysisCandidateAggregates",
-        args: { projectPath: lg_path },
-      }),
-    ).toEqual([]);
-    expect(
-      database.execute({
-        name: "getMeta",
-        args: { projectPath: lg_path, key: "analysis_candidate_count", default: 0 },
-      }),
-    ).toBe(0);
+    expect(read_meta(database, lg_path, "quality_rule_revision.glossary", 0)).toBe(0);
+    expect(database.get_rules(lg_path, "glossary")).toEqual(existing_rules);
+    expect(database.get_analysis_candidate_aggregates(lg_path)).toEqual([]);
+    expect(read_meta(database, lg_path, "analysis_candidate_count", 0)).toBe(0);
     expect(publish_project_change).toHaveBeenCalledWith({
-      targetProjectPath: lg_path,
+      projectPath: lg_path,
       source: "analysis_glossary_import",
       updatedSections: ["analysis"],
       sections: {
@@ -1166,21 +958,13 @@ describe("WorkbenchService", () => {
 
   it("按完整文件集合重排 assets 并只 bump files section", async () => {
     const { publish_project_change } = create_static_project_change_publisher({ files: 1 });
-    const { database, service, lg_path } = create_service({
-      publish_project_change,
-    } as unknown as ProjectChangePublisher);
+    const { database, service, lg_path } = create_service(publish_project_change);
     const first_source = project_path("a.txt");
     const second_source = project_path("b.txt");
     fs.writeFileSync(first_source, "a", "utf-8");
     fs.writeFileSync(second_source, "b", "utf-8");
-    database.execute({
-      name: "addAssetFromSource",
-      args: { projectPath: lg_path, path: "a.txt", sourcePath: first_source, sortOrder: 0 },
-    });
-    database.execute({
-      name: "addAssetFromSource",
-      args: { projectPath: lg_path, path: "b.txt", sourcePath: second_source, sortOrder: 1 },
-    });
+    database.add_asset_from_source(lg_path, "a.txt", first_source, 0);
+    database.add_asset_from_source(lg_path, "b.txt", second_source, 1);
 
     const ack = await service.reorder_workbench_files({
       ordered_rel_paths: ["b.txt", "a.txt"],
@@ -1198,14 +982,12 @@ describe("WorkbenchService", () => {
         },
       ],
     });
-    expect(
-      database.execute({ name: "getAllAssetRecords", args: { projectPath: lg_path } }),
-    ).toEqual([
+    expect(database.get_all_asset_records(lg_path)).toEqual([
       { path: "b.txt", sort_order: 0 },
       { path: "a.txt", sort_order: 1 },
     ]);
     expect(publish_project_change).toHaveBeenCalledWith({
-      targetProjectPath: lg_path,
+      projectPath: lg_path,
       source: "workbench_reorder_files",
       updatedSections: ["files"],
       files: { payloadMode: "section-invalidated" },
@@ -1218,31 +1000,20 @@ describe("WorkbenchService", () => {
       items: 1,
       analysis: 1,
     });
-    const { database, service, lg_path } = create_service({
-      publish_project_change,
-    } as unknown as ProjectChangePublisher);
+    const { database, service, lg_path } = create_service(publish_project_change);
     const source_path = project_path("a.txt");
     fs.writeFileSync(source_path, "a", "utf-8");
-    database.execute({
-      name: "addAssetFromSource",
-      args: { projectPath: lg_path, path: "a.txt", sourcePath: source_path, sortOrder: 0 },
-    });
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: lg_path,
-        items: [
-          create_persistent_item({
-            src: "旧",
-            dst: "old",
-            file_path: "a.txt",
-            status: "PROCESSED",
-            row_number: 0,
-          }),
-        ],
-      },
-    });
-    const get_all_items_count = count_database_operations(database, "getAllItems");
+    database.add_asset_from_source(lg_path, "a.txt", source_path, 0);
+    database.set_items(lg_path, [
+      create_persistent_item({
+        src: "旧",
+        dst: "old",
+        file_path: "a.txt",
+        status: "PROCESSED",
+        row_number: 0,
+      }),
+    ]);
+    const get_all_items_count = count_get_all_items_calls(database);
 
     await service.reset_workbench_file({
       rel_paths: ["a.txt"],
@@ -1251,29 +1022,19 @@ describe("WorkbenchService", () => {
     });
 
     expect(get_all_items_count()).toBe(1);
-    expect(
-      database.execute({
-        name: "getMeta",
-        args: { projectPath: lg_path, key: "translation_extras", default: {} },
-      }),
-    ).toMatchObject({
+    expect(read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
       processed_line: 0,
       error_line: 0,
       total_line: 1,
       line: 0,
     });
-    expect(
-      database.execute({
-        name: "getMeta",
-        args: { projectPath: lg_path, key: "prefilter_config", default: {} },
-      }),
-    ).toEqual({
+    expect(read_meta(database, lg_path, "prefilter_config", {})).toEqual({
       source_language: "JA",
       mtool_optimizer_enable: true,
       skip_duplicate_source_text_enable: true,
     });
     expect(publish_project_change).toHaveBeenCalledWith({
-      targetProjectPath: lg_path,
+      projectPath: lg_path,
       source: "workbench_reset_file",
       updatedSections: ["items", "analysis"],
       items: { payloadMode: "section-invalidated" },
@@ -1290,37 +1051,23 @@ describe("WorkbenchService", () => {
       items: 1,
       analysis: 1,
     });
-    const { database, service, lg_path } = create_service({
-      publish_project_change,
-    } as unknown as ProjectChangePublisher);
+    const { database, service, lg_path } = create_service(publish_project_change);
     const first_source = project_path("a.txt");
     const second_source = project_path("b.txt");
     fs.writeFileSync(first_source, "a", "utf-8");
     fs.writeFileSync(second_source, "b", "utf-8");
-    database.execute({
-      name: "addAssetFromSource",
-      args: { projectPath: lg_path, path: "a.txt", sourcePath: first_source, sortOrder: 0 },
-    });
-    database.execute({
-      name: "addAssetFromSource",
-      args: { projectPath: lg_path, path: "b.txt", sourcePath: second_source, sortOrder: 1 },
-    });
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: lg_path,
-        items: [
-          create_persistent_item({ src: "删除", file_path: "a.txt", row_number: 0 }),
-          create_persistent_item({
-            item_id: 2,
-            src: "保留",
-            file_path: "b.txt",
-            row_number: 0,
-          }),
-        ],
-      },
-    });
-    const get_all_items_count = count_database_operations(database, "getAllItems");
+    database.add_asset_from_source(lg_path, "a.txt", first_source, 0);
+    database.add_asset_from_source(lg_path, "b.txt", second_source, 1);
+    database.set_items(lg_path, [
+      create_persistent_item({ src: "删除", file_path: "a.txt", row_number: 0 }),
+      create_persistent_item({
+        item_id: 2,
+        src: "保留",
+        file_path: "b.txt",
+        row_number: 0,
+      }),
+    ]);
+    const get_all_items_count = count_get_all_items_calls(database);
 
     const ack = await service.delete_workbench_file({
       rel_paths: ["a.txt"],
@@ -1338,14 +1085,12 @@ describe("WorkbenchService", () => {
       ],
     });
     expect(get_all_items_count()).toBe(1);
-    expect(
-      database.execute({ name: "getAllAssetRecords", args: { projectPath: lg_path } }),
-    ).toEqual([{ path: "b.txt", sort_order: 1 }]);
-    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+    expect(database.get_all_asset_records(lg_path)).toEqual([{ path: "b.txt", sort_order: 1 }]);
+    expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({ item_id: 2, src: "保留", file_path: "b.txt", row_number: 0 }),
     ]);
     expect(publish_project_change).toHaveBeenCalledWith({
-      targetProjectPath: lg_path,
+      projectPath: lg_path,
       source: "workbench_delete_file",
       updatedSections: ["files", "items", "analysis"],
       items: { payloadMode: "section-invalidated" },
@@ -1360,13 +1105,7 @@ describe("WorkbenchService", () => {
   it("任务忙碌时拒绝 translation reset 且不写库", async () => {
     const { database, service, task_run_state, lg_path } = create_service();
     task_run_state.begin_task("translation");
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: lg_path,
-        items: [{ id: 1, src: "旧", dst: "old", status: "PROCESSED" }],
-      },
-    });
+    database.set_items(lg_path, [{ id: 1, src: "旧", dst: "old", status: "PROCESSED" }]);
 
     await expect(
       service.apply_translation_reset({
@@ -1376,7 +1115,7 @@ describe("WorkbenchService", () => {
       }),
     ).rejects.toThrow("task.busy");
 
-    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toEqual([
+    expect(database.get_all_items(lg_path)).toEqual([
       { id: 1, src: "旧", dst: "old", status: "PROCESSED" },
     ]);
     database.close();
@@ -1393,12 +1132,7 @@ describe("WorkbenchService", () => {
       }),
     ).rejects.toThrow("task.busy");
 
-    expect(
-      database.execute({
-        name: "getMeta",
-        args: { projectPath: lg_path, key: "analysis_extras", default: null },
-      }),
-    ).toBeNull();
+    expect(read_meta(database, lg_path, "analysis_extras", null)).toBeNull();
     database.close();
   });
 
@@ -1408,14 +1142,8 @@ describe("WorkbenchService", () => {
     const second_source = project_path("b.txt");
     fs.writeFileSync(first_source, "a", "utf-8");
     fs.writeFileSync(second_source, "b", "utf-8");
-    database.execute({
-      name: "addAssetFromSource",
-      args: { projectPath: lg_path, path: "a.txt", sourcePath: first_source, sortOrder: 0 },
-    });
-    database.execute({
-      name: "addAssetFromSource",
-      args: { projectPath: lg_path, path: "b.txt", sourcePath: second_source, sortOrder: 1 },
-    });
+    database.add_asset_from_source(lg_path, "a.txt", first_source, 0);
+    database.add_asset_from_source(lg_path, "b.txt", second_source, 1);
     task_run_state.begin_task("translation");
 
     await expect(
@@ -1425,9 +1153,7 @@ describe("WorkbenchService", () => {
       }),
     ).rejects.toThrow("task.busy");
 
-    expect(
-      database.execute({ name: "getAllAssetRecords", args: { projectPath: lg_path } }),
-    ).toEqual([
+    expect(database.get_all_asset_records(lg_path)).toEqual([
       { path: "a.txt", sort_order: 0 },
       { path: "b.txt", sort_order: 1 },
     ]);
@@ -1438,14 +1164,10 @@ describe("WorkbenchService", () => {
     const { database, service, lg_path } = create_service();
     const source_path = project_path("a.txt");
     fs.writeFileSync(source_path, "a", "utf-8");
-    database.execute({
-      name: "addAssetFromSource",
-      args: { projectPath: lg_path, path: "a.txt", sourcePath: source_path, sortOrder: 0 },
-    });
-    const original_execute_transaction = database.execute_transaction.bind(database);
-    database.execute_transaction = (): null => {
+    database.add_asset_from_source(lg_path, "a.txt", source_path, 0);
+    const transaction_spy = vi.spyOn(database, "transaction").mockImplementation(() => {
       throw new Error("事务失败");
-    };
+    });
 
     await expect(
       service.reorder_workbench_files({
@@ -1454,7 +1176,7 @@ describe("WorkbenchService", () => {
       }),
     ).rejects.toThrow("事务失败");
 
-    database.execute_transaction = original_execute_transaction;
+    transaction_spy.mockRestore();
     await expect(
       service.reorder_workbench_files({
         ordered_rel_paths: ["a.txt"],
@@ -1476,10 +1198,7 @@ describe("WorkbenchService", () => {
 
   it("revision 冲突时拒绝写入并不触发 state sync", async () => {
     const { database, service, lg_path } = create_service();
-    database.execute({
-      name: "setMeta",
-      args: { projectPath: lg_path, key: "project_runtime_revision.items", value: 2 },
-    });
+    database.set_meta(lg_path, "project_runtime_revision.items", 2);
 
     await expect(
       service.apply_translation_reset({

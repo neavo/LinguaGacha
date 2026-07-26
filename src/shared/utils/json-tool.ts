@@ -3,12 +3,12 @@ export type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json
 /**
  * JSON 工具可接受的文本来源，统一覆盖字符串和二进制读取结果
  */
-export type JsonToolTextInput = string | ArrayBuffer | Uint8Array;
+type JsonToolTextInput = string | ArrayBuffer | Uint8Array;
 
 /**
  * 控制 JSON 写出格式，避免调用方直接散落缩进魔术值
  */
-export interface JsonToolStringifyOptions {
+interface JsonToolStringifyOptions {
   indent?: number;
 }
 
@@ -116,7 +116,7 @@ export class JsonTool {
   /**
    * 解析 JSON，并在严格解析失败时仅兼容 Python 标准库接受的非有限数字
    */
-  public static loads<value_type = unknown>(input: JsonToolTextInput): value_type {
+  public static parseStrict<value_type = unknown>(input: JsonToolTextInput): value_type {
     const text = decode_text(input);
     try {
       return JSON.parse(text) as value_type;
@@ -127,27 +127,6 @@ export class JsonTool {
         throw error;
       }
     }
-  }
-
-  /**
-   * 保留既有严格入口名，实际解析规则与 loads 一致，避免调用点分裂出第二套兼容策略
-   */
-  public static parseStrict<value_type = unknown>(input: JsonToolTextInput): value_type {
-    return this.loads<value_type>(input);
-  }
-
-  /**
-   * 序列化为 JSON 文本，默认使用紧凑格式
-   */
-  public static dumps(value: unknown, options: JsonToolStringifyOptions = {}): string {
-    return this.stringifyStrict(value, options);
-  }
-
-  /**
-   * 序列化为 UTF-8 bytes，便于调用方直接写入二进制文件
-   */
-  public static dumpsBytes(value: unknown, options: JsonToolStringifyOptions = {}): Buffer {
-    return Buffer.from(this.stringifyStrict(value, options), "utf-8");
   }
 
   /**
@@ -174,14 +153,5 @@ export class JsonTool {
       const { jsonrepair } = await import("jsonrepair");
       return this.parseStrict<value_type>(jsonrepair(decode_text(input)));
     }
-  }
-
-  /**
-   * 尝试修复并解析 JSON，保留 Py 侧工具命名的对应入口
-   */
-  public static async repairLoads<value_type = unknown>(
-    input: JsonToolTextInput,
-  ): Promise<value_type> {
-    return await this.repairParse<value_type>(input);
   }
 }

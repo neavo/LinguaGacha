@@ -25,7 +25,7 @@ type TextReplacementEditDialogProps = {
 };
 export function TextReplacementEditDialog(props: TextReplacementEditDialogProps): JSX.Element {
   const { t } = useI18n();
-  const save_label = t("text_replacement_page.action.save");
+  const save_label = t("quality_editor.action.save");
   const disabled = props.readonly || props.saving;
   const boolean_segmented_options = [
     {
@@ -69,7 +69,7 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
               void props.on_close();
             }}
           >
-            {t("text_replacement_page.action.cancel")}
+            {t("quality_editor.action.cancel")}
           </AppButton>
           <AppButton
             type="button"
@@ -91,12 +91,12 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
             <div className="text-replacement-page__dialog-main-panel-content">
               <label className="text-replacement-page__dialog-section">
                 <span className="text-replacement-page__dialog-section-title font-medium">
-                  {t("text_replacement_page.fields.source")}
+                  {t("quality_editor.fields.source")}
                 </span>
                 <AppEditor
                   class_name="text-replacement-page__dialog-editor"
                   value={props.entry.src}
-                  aria_label={t("text_replacement_page.fields.source")}
+                  aria_label={t("quality_editor.fields.source")}
                   read_only={disabled}
                   invalid={props.validation_message !== null}
                   indent_with_tab={false}

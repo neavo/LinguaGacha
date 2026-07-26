@@ -20,7 +20,7 @@ export function TextPreserveContextMenuContent(
       <AppContextMenuGroup>
         <AppContextMenuItem onSelect={props.on_open_edit}>
           <PencilLine />
-          {t("text_preserve_page.action.edit")}
+          {t("quality_editor.action.edit")}
         </AppContextMenuItem>
       </AppContextMenuGroup>
     </AppContextMenuContent>

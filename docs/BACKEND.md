@@ -4,7 +4,7 @@
 
 ## 1. 公开协议
 
-- `ApiGatewayServer` 是 Electron 运行态公开 `/api/*` 的唯一装配点；路由只消费 `BackendServices`，不自行组装业务依赖。
+- `ApiGatewayServer` 是 Electron 运行态公开 `/api/*` 的唯一装配点；`register_api_routes` 在单一注册表中把公开路径绑定到 `BackendServices`，路由不自行组装业务依赖。
 - 普通 loaded-project query / write 从 `ProjectSessionState` 取得目标工程；create、open、preview 和打开前 settings alignment 是可以接收显式路径的生命周期例外。
 - Gateway 只监听本机地址，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
 - 成功响应为 `{ ok: true, data }`，失败响应为 `{ ok: false, error }`；公开错误不包含 diagnostic context、cause、stack 或供应商原始异常。
@@ -20,12 +20,12 @@
 | loaded 工程身份 | `ProjectSessionState` | `ProjectLifecycleService` |
 | loaded 工程热读数据 | `CacheManager` | 工程热机、committed event、功能 query |
 | 运行态项目事实 | `ProjectWriteStore` / `ProjectWriteCoordinator` | database transaction、内部 event、按需公开 change |
-| 后端内部 committed event | `ProjectEventBus` | 写侧事务成功后的 after-commit 发布 |
-| 公开项目变更 | `ProjectChangePublisher` | 同一 canonical event 进入 SSE 与 HTTP `changes` |
+| 后端内部 committed event | `ProjectWriteCoordinator` / `CacheManager` | 写侧事务成功后调用唯一 `ProjectEventHandler` |
+| 公开项目变更 | `ProjectChangeEventAdapter` / `ApiStreamHub` | 类型化 publisher 让同一 canonical event 进入 SSE 与 HTTP `changes` |
 | 任务类型、scope、status、busy、`run_revision`、请求压力 | `TaskRunState` / `TaskRunPublisher` | 任务命令与 Engine 生命周期 |
 | 任务 progress / extras | `.lg` meta | `ProjectTaskStore` 经 `ProjectWriteStore` 写入 |
 | 任务公开快照 | `TaskSnapshotBuilder` | 组合内存运行态与 `.lg` meta |
-| `.lg` 物理 workflow | `ProjectDatabase` | `DatabaseOperation`、`execute()`、`execute_transaction()` |
+| `.lg` 物理 workflow | `ProjectDatabase` | 类型化读写方法、`transaction(projectPath, callback)` |
 | 平台 IO 与路径身份 | `NativeFs` / `NativePathPolicy` | `src/native` |
 | 后端日志 | `LogManager` | 文件日志、轻量 SSE、当前进程详情池 |
 
@@ -46,7 +46,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - 客户端只提交用户意图、设置镜像和 revision 依赖；canonical items、task extras、prefilter 结果和 analysis 结果由后端计算。
 - 需要乐观锁的用户写入在最终提交点完成 revision guard 与单 `.lg` 事务；任务 artifact 等内部写入可以不带预期 revision，但仍通过 `ProjectWriteStore` 更新事实和 section revision。
 - settings-only alignment 只发布内部 committed event，不发布公开 project change；仅持久化任务 progress 的写入走 task snapshot 通道，不制造项目变更事件。
-- 项目事实事务提交后才发布内部 committed event。未捕获的 handler 失败不会回滚已提交事务，但会令请求失败并阻止公开 change；`CacheManager` 自身的维护失败会标记为可恢复并由后续 query 重建，不阻断其它成功 handler。
+- 项目事实事务提交后才把类型化 committed event 交给唯一缓存 handler，缓存完成后再发布公开 change。未捕获的 handler 失败不会回滚已提交事务，但会令请求失败并阻止公开 change；常规增量维护失败由 `CacheManager` 标记为可恢复，并在后续 query 前从数据库重建。
 - HTTP `changes` 与 SSE 使用同一 canonical `ProjectChangeEvent`，消费者不得依赖两条通道的网络到达顺序。
 - 公开事件绑定后端确认的 `projectPath`、`projectRevision`、`sectionRevisions` 与 `updatedSections`；payload mode 只允许 `canonical-delta`、`field-patch`、`section-invalidated`。
 - 全量替换、排序或无法精确表达受影响行的写入使用 `section-invalidated`；只有能完整表达受影响行和删除 tombstone 的小范围变化才发布行级增量。
@@ -55,19 +55,19 @@ project, files, items, quality, prompts, analysis, proofreading
 ## 4. 任务、worker 与 LLM
 
 - `TaskService` 负责命令 JSON 收窄、task / mode / scope 归一、section revision 校验、gate 接入和 Engine 命令转交；激活模型由 `TaskEngine` 在每轮 run 开始时解析并冻结到运行上下文。
-- 启动任务必须携带任务定义声明的 `expected_section_revisions`；通过 gate 后立即进入 busy，Engine 启动失败时恢复前置状态。
+- 启动任务必须携带 `TaskService` 按 task type 与 scope 固定要求的 `expected_section_revisions`；通过 gate 后立即进入 busy，Engine 启动失败时恢复前置状态。
 - 所有任务命令 ack 都通过 `TaskSnapshotBuilder` 重新组合当前事实，避免旧命令意图覆盖更晚的终态。
 - `TaskSnapshot` 由内存中的类型、scope、status、busy、`run_revision`、请求压力与 `.lg` 中的 progress / extras 组成；`run_revision` 是前端丢弃旧 snapshot 的排序依据。
 - 生命周期和进度提交立即发布完整 `task.snapshot_changed`；只有请求压力允许合并，终态前必须冲刷。请求压力只表示已租约发出的 LLM 请求，不表示队列或 worker 数量。
-- `TaskEngine` 拥有全局运行锁、执行编排和 artifact commit；全量翻译与分析经过 Planner，行级重翻直接从目标 items 构造 context，三者共享同一执行与提交边界。
+- `RunCoordinator` 拥有全局运行互斥、停止信号和终态释放；`TaskEngine` 负责编排，任务结果统一经 `ProjectTaskStore` 进入项目写入边界。全量翻译与分析经过 Planner，行级重翻直接从目标 items 构造 context。
 - work-unit worker 负责提示词构建、runner、pipeline 和响应处理；planning worker 只承担规划期计算。线程数不等于 LLM 并发，实际并发由模型 key lease 与 limiter 决定。
 - 非 engine 的重型计算通过 `BackendWorkerClient` 提交无状态 worker task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
 - provider policy、request policy、SDK transport 和结果归一归 `src/backend/llm`，任务层不解析供应商异常文本。
 
 ## 5. 数据库与 `.lg` 存储
 
-- `ProjectDatabase` 是 `.lg` workflow 的唯一入口；上层发送严格 JSON 的 `DatabaseOperation`，不持有 SQLite 连接。
-- `execute()` 处理单操作，`execute_transaction()` 处理同一 `.lg` 内的批量操作；事务不跨文件，`createProject` 失败时关闭并移除刚创建的文件。
+- `ProjectDatabase` 是 `.lg` workflow 的唯一入口；上层调用类型化读写方法，不持有 SQLite 连接，也不拼字符串操作协议。
+- `transaction(projectPath, callback)` 只为该路径的连接建立事务；回调内的类型化方法仍显式接收路径，跨 `.lg` 写入不具备原子性。`create_project` 完成基础建库后在该路径事务内执行可选初始化回调；回调失败时关闭并移除新文件。
 - 运行期使用 WAL；长任务通过 project lease 保留连接，普通 workflow 结束且无租约时统一 checkpoint 并关闭连接，不手动删除 `-wal` / `-shm`。
 - asset 存在 `assets` 表，以 Zstd blob 落库；压缩格式集中在 `src/shared/utils/zstd-tool.ts`，数据库读取向上返回解压后的 bytes。
 - `schema_version` 只描述物理表结构，业务写回迁移单独记账；完整表与 migration 清单以 migration registry 和 schema migration 代码为准。

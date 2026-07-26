@@ -13,7 +13,7 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
 });
 
 describe("GlossaryCommandBar", () => {
-  it("命令栏只展示规则管理操作，不展示独立统计入口", () => {
+  it("命令栏展示规则管理操作", () => {
     const html = renderToStaticMarkup(
       <TooltipProvider>
         <GlossaryCommandBar
@@ -40,10 +40,9 @@ describe("GlossaryCommandBar", () => {
       </TooltipProvider>,
     );
 
-    expect(html).toContain("glossary_page.action.create");
+    expect(html).toContain("quality_editor.action.create");
     expect(html).toContain("Ctrl+N");
     expect(html).toContain("Del");
     expect(html).toContain("glossary_page.action.preset");
-    expect(html).not.toContain("glossary_page.action.statistics");
   });
 });

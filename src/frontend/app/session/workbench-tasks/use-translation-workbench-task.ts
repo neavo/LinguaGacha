@@ -43,7 +43,7 @@ type TranslationTaskCommandPayload = {
   task?: Partial<TranslationTaskSnapshot>;
 };
 
-// 翻译任务状态 拥有翻译提交 operation，任务归因通过 task_type 固定到 translation。
+// 翻译任务写入的诊断名由 renderer 会话拥有，desktop 层只负责提交与互斥。
 const WORKBENCH_TRANSLATION_WRITE: ProjectWriteOperation = "workbench.translation_write";
 
 type TranslationWorkbenchTaskOptions = Record<string, never>;
@@ -65,7 +65,7 @@ export type TranslationWorkbenchTask = {
 };
 
 /**
- * 构建当前场景的稳定结果。
+ * 每次确认都创建独立提交态，避免复用上一次动作的 busy 状态。
  */
 function create_task_confirm_state(kind: TranslationTaskActionKind): TranslationTaskConfirmState {
   return {
@@ -76,7 +76,7 @@ function create_task_confirm_state(kind: TranslationTaskActionKind): Translation
 }
 
 /**
- * 解析当前场景的最终消费值。
+ * 只在任务从活动态离开时生成一次终态反馈，停止流程优先于完成反馈。
  */
 function resolve_translation_terminal_feedback_message(args: {
   previous_status: string;
@@ -85,7 +85,7 @@ function resolve_translation_terminal_feedback_message(args: {
   t: ReturnType<typeof useI18n>["t"];
 }): string | null {
   if (args.previous_status === "stopping" && args.next_status !== "stopping") {
-    return args.t("workbench_page.translation_task.feedback.stopped");
+    return args.t("workbench_page.task.feedback.stopped");
   }
 
   if (
@@ -96,14 +96,14 @@ function resolve_translation_terminal_feedback_message(args: {
   }
 
   if (args.next_status === "done" || (args.next_status === "idle" && args.has_result)) {
-    return args.t("workbench_page.translation_task.feedback.done");
+    return args.t("workbench_page.task.feedback.done");
   }
 
   return null;
 }
 
 /**
- * 判断当前值是否满足业务条件。
+ * 活动态到非活动态是终端提示边界，运行中的状态细分不重复触发。
  */
 function is_translation_terminal_prompt_boundary(args: {
   previous_status: string;
@@ -130,6 +130,9 @@ function resolve_active_translation_completion_scope(args: {
   return { kind: "all" };
 }
 
+/**
+ * 拥有翻译任务菜单、确认框、终态提示和完成范围的 renderer 会话状态。
+ */
 export function useTranslationWorkbenchTask(
   _options: TranslationWorkbenchTaskOptions = {},
 ): TranslationWorkbenchTask {

@@ -3,28 +3,16 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import { AnalysisCheckpointStatusMigration } from "./analysis-checkpoint-status-migration";
+import { run_analysis_checkpoint_status_migration } from "./analysis-checkpoint-status-migration";
 
-let temp_dir = "";
-let databases: DatabaseSync[] = [];
-
-beforeEach(() => {
-  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-checkpoint-migration-"));
-  databases = [];
-});
-
-afterEach(() => {
-  for (const db of databases) {
-    db.close();
-  }
-  fs.rmSync(temp_dir, { recursive: true, force: true });
-});
-
-describe("AnalysisCheckpointStatusMigration", () => {
+describe("run_analysis_checkpoint_status_migration", () => {
   it("把旧分析 checkpoint 状态写回任务进度三态", () => {
-    const db = open_database("checkpoints.lg");
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-checkpoint-migration-"),
+    );
+    using db = new DatabaseSync(path.join(temp_dir.path, "checkpoints.lg"));
     db.exec(`
       CREATE TABLE analysis_item_checkpoint (
         item_id INTEGER PRIMARY KEY,
@@ -40,7 +28,7 @@ describe("AnalysisCheckpointStatusMigration", () => {
       VALUES (3, 'BROKEN', '2026-01-01', 0);
     `);
 
-    AnalysisCheckpointStatusMigration.run(db);
+    run_analysis_checkpoint_status_migration(db);
 
     expect(
       db
@@ -54,12 +42,3 @@ describe("AnalysisCheckpointStatusMigration", () => {
     ]);
   });
 });
-
-/**
- * checkpoint 状态迁移测试用真实表，直接观察 status 列写回结果。
- */
-function open_database(name: string): DatabaseSync {
-  const db = new DatabaseSync(path.join(temp_dir, name));
-  databases.push(db);
-  return db;
-}

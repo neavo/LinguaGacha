@@ -1,7 +1,7 @@
 import { BadgeHelp } from "lucide-react";
 
 import { open_external_url } from "@frontend/app/desktop/desktop-api";
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 import { AppButton } from "@frontend/widgets/app-button";
 
 type SettingHelpButtonProps = {

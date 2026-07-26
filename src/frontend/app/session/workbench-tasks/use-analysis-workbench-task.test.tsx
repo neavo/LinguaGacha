@@ -11,7 +11,6 @@ const { api_fetch_mock, push_toast_mock } = vi.hoisted(() => {
   };
 });
 
-// run modal progress toast mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const run_modal_progress_toast_mock = vi.fn(
   async <T,>(args: { message: string; task: () => Promise<T> }): Promise<T> => {
     return await args.task();
@@ -34,7 +33,6 @@ type RuntimeFixture = {
   refresh_task: ReturnType<typeof vi.fn>;
 };
 
-// state fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(
     create_task_snapshot({
@@ -130,9 +128,6 @@ function create_runtime_fixture(task_snapshot: Record<string, unknown>): Runtime
   };
 }
 
-/**
- * 支撑当前测试场景的专用辅助逻辑。
- */
 function flush_microtasks(): Promise<void> {
   return act(async () => {
     await Promise.resolve();
@@ -164,9 +159,6 @@ function create_prepared_import(
   };
 }
 
-/**
- * 构造当前场景的标准初始数据。
- */
 function create_workbench_query_response(): Record<string, unknown> {
   return {
     sectionRevisions: {
@@ -216,10 +208,6 @@ describe("useAnalysisWorkbenchTask", () => {
     run_modal_progress_toast_mock.mockClear();
   });
 
-  // render_probe 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-  /**
-   * 生成当前场景的展示内容。
-   */
   async function render_probe(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -282,10 +270,7 @@ describe("useAnalysisWorkbenchTask", () => {
       open: true,
       submitting: false,
     });
-    expect(push_toast_mock).toHaveBeenCalledWith(
-      "success",
-      "workbench_page.analysis_task.feedback.done",
-    );
+    expect(push_toast_mock).toHaveBeenCalledWith("success", "workbench_page.task.feedback.done");
   });
 
   it("分析完成但没有候选术语时不自动弹出导入确认框", async () => {
@@ -316,10 +301,7 @@ describe("useAnalysisWorkbenchTask", () => {
     await flush_microtasks();
 
     expect(latest_state?.analysis_confirm_state).toBeNull();
-    expect(push_toast_mock).toHaveBeenCalledWith(
-      "success",
-      "workbench_page.analysis_task.feedback.done",
-    );
+    expect(push_toast_mock).toHaveBeenCalledWith("success", "workbench_page.task.feedback.done");
   });
 
   it("手动导入遇到重复候选时打开重复确认框且不写入", async () => {
@@ -567,10 +549,7 @@ describe("useAnalysisWorkbenchTask", () => {
     await flush_microtasks();
 
     expect(push_toast_mock).toHaveBeenCalledTimes(1);
-    expect(push_toast_mock).toHaveBeenCalledWith(
-      "success",
-      "workbench_page.analysis_task.feedback.stopped",
-    );
+    expect(push_toast_mock).toHaveBeenCalledWith("success", "workbench_page.task.feedback.stopped");
   });
 
   it("停止回包晚于终态时不会把分析运行态写回停止中", async () => {
@@ -859,7 +838,7 @@ describe("useAnalysisWorkbenchTask", () => {
     });
     expect(push_toast_mock).not.toHaveBeenCalledWith(
       "success",
-      "workbench_page.analysis_task.feedback.stopped",
+      "workbench_page.task.feedback.stopped",
     );
   });
 

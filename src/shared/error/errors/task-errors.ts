@@ -1,12 +1,7 @@
 import { AppError, type AppErrorArgs } from "../app-error";
 
-/**
- * TaskBusyError 统一表达后台任务占用导致的写入拒绝。
- */
+/** 后台任务占用导致当前命令或写入被拒绝。 */
 export class TaskBusyError extends AppError {
-  /**
-   * 调用点不重复拼 action，页面统一按 code 决定禁用或提示。
-   */
   public constructor(args: AppErrorArgs = {}) {
     super({ code: "task.busy", ...args });
   }

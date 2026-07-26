@@ -21,7 +21,7 @@ type GlossaryEditDialogProps = {
 };
 export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element {
   const { t } = useI18n();
-  const save_label = t("glossary_page.action.save");
+  const save_label = t("quality_editor.action.save");
   const disabled = props.readonly || props.saving;
   const boolean_segmented_options = [
     {
@@ -65,7 +65,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
               void props.on_close();
             }}
           >
-            {t("glossary_page.action.cancel")}
+            {t("quality_editor.action.cancel")}
           </AppButton>
           <AppButton
             type="button"
@@ -87,12 +87,12 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
             <div className="glossary-page__dialog-main-panel-content">
               <label className="glossary-page__dialog-section">
                 <span className="glossary-page__dialog-section-title font-medium">
-                  {t("glossary_page.fields.source")}
+                  {t("quality_editor.fields.source")}
                 </span>
                 <AppEditor
                   class_name="glossary-page__dialog-editor"
                   value={props.entry.src}
-                  aria_label={t("glossary_page.fields.source")}
+                  aria_label={t("quality_editor.fields.source")}
                   read_only={disabled}
                   indent_with_tab={false}
                   on_change={(next_value) => {

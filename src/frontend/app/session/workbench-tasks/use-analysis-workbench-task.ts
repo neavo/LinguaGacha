@@ -48,9 +48,8 @@ type AnalysisTaskCommandPayload = {
   task?: Partial<AnalysisTaskSnapshot>;
 };
 
-// 分析任务状态 分别标记导入和重置动作，desktop 层不登记任务页面词表。
+// 候选导入和任务重置使用独立诊断名，desktop 写入层不登记页面动作词表。
 const WORKBENCH_ANALYSIS_IMPORT_WRITE: ProjectWriteOperation = "workbench.analysis_import";
-// WORKBENCH ANALYSIS RESET WRITE 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const WORKBENCH_ANALYSIS_RESET_WRITE: ProjectWriteOperation = "workbench.analysis_reset";
 
 type AnalysisCandidatesPayload = {
@@ -103,7 +102,7 @@ export type AnalysisWorkbenchTask = {
 };
 
 /**
- * 构建当前场景的稳定结果。
+ * 每次确认都创建独立提交态，避免复用上一次动作的 busy 状态。
  */
 function create_task_confirm_state(kind: AnalysisTaskActionKind): AnalysisTaskConfirmState {
   return {
@@ -114,7 +113,7 @@ function create_task_confirm_state(kind: AnalysisTaskActionKind): AnalysisTaskCo
 }
 
 /**
- * 解析当前场景的最终消费值。
+ * 只在任务从活动态离开时生成一次终态反馈，停止流程优先于完成反馈。
  */
 function resolve_analysis_terminal_feedback_message(args: {
   previous_status: string;
@@ -123,7 +122,7 @@ function resolve_analysis_terminal_feedback_message(args: {
   t: ReturnType<typeof useI18n>["t"];
 }): string | null {
   if (args.previous_status === "stopping" && args.next_status !== "stopping") {
-    return args.t("workbench_page.analysis_task.feedback.stopped");
+    return args.t("workbench_page.task.feedback.stopped");
   }
 
   if (
@@ -134,14 +133,14 @@ function resolve_analysis_terminal_feedback_message(args: {
   }
 
   if (args.next_status === "done" || (args.next_status === "idle" && args.has_result)) {
-    return args.t("workbench_page.analysis_task.feedback.done");
+    return args.t("workbench_page.task.feedback.done");
   }
 
   return null;
 }
 
 /**
- * 判断当前值是否满足业务条件。
+ * 活动态到非活动态是终端提示边界，运行中的状态细分不重复触发。
  */
 function is_analysis_terminal_prompt_boundary(args: {
   previous_status: string;
@@ -153,6 +152,9 @@ function is_analysis_terminal_prompt_boundary(args: {
   );
 }
 
+/**
+ * 拥有分析任务菜单、确认框、终态提示和候选术语导入的 renderer 会话状态。
+ */
 export function useAnalysisWorkbenchTask(
   _options: AnalysisWorkbenchTaskOptions = {},
 ): AnalysisWorkbenchTask {

@@ -124,18 +124,14 @@ function create_policy(overrides: Partial<ResolvedRequestPolicy> = {}): Resolved
     provider: "google",
     api_format: "Google",
     base_url: "https://example.com",
-    model_id: "gemini-2.5-flash",
     headers: {},
     api_keys: ["key"],
-    messages: [{ role: "user", content: "こんにちは" }],
     payload: {
       model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: "こんにちは" }] }],
       config: {},
     },
     timeout_ms: 120_000,
-    response_mode: "chat-stream",
-    diagnostics: {},
     ...overrides,
   };
 }

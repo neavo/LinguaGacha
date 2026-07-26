@@ -4,7 +4,7 @@ import {
   has_path_drop_payload,
   resolve_dropped_paths,
 } from "@frontend/app/desktop/file-drop-paths";
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 import "@frontend/widgets/file-drop-zone/file-drop-zone.css";
 
 type FileDropIssue = "multiple" | "unavailable";

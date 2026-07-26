@@ -12,7 +12,7 @@ export const PROOFREADING_WARNING_CODES = [
   "RETRY_THRESHOLD",
 ] as const;
 
-const PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES = ["NONE", "PROCESSED", "ERROR"] as const;
+export const PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES = ["NONE", "PROCESSED", "ERROR"] as const;
 
 // 设置翻译状态菜单的唯一状态词表。
 export const PROOFREADING_MANUAL_STATUS_CODES = ["NONE", "PROCESSED", "EXCLUDED"] as const;
@@ -193,28 +193,6 @@ export function clone_proofreading_filter_options(
   };
 }
 
-function resolve_proofreading_filter_source_items(items: ProofreadingItem[]): ProofreadingItem[] {
-  return [...items];
-}
-
-/**
- * 默认状态筛选固定展示可操作状态，只有没有默认集合时才回退到可用状态。
- */
-export function resolve_default_proofreading_statuses(available_statuses: string[]): string[] {
-  const ordered_default_statuses = PROOFREADING_STATUS_ORDER.filter((status) => {
-    return PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES.includes(
-      status as (typeof PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES)[number],
-    );
-  });
-  const extra_default_statuses = PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES.filter((status) => {
-    return !PROOFREADING_STATUS_ORDER.includes(status);
-  });
-
-  return ordered_default_statuses.length > 0 || extra_default_statuses.length > 0
-    ? [...ordered_default_statuses, ...extra_default_statuses]
-    : available_statuses;
-}
-
 /**
  * 默认警告筛选保留已知顺序，同时把运行时出现的新警告稳定追加。
  */
@@ -232,105 +210,8 @@ export function resolve_default_proofreading_warning_types(
   return [...known_warning_types, ...extra_warning_types];
 }
 
-function normalize_glossary_terms(
-  glossary_terms: Array<ProofreadingGlossaryTerm | { src?: string; dst?: string }> | undefined,
-): ProofreadingGlossaryTerm[] {
-  if (!Array.isArray(glossary_terms)) {
-    return [];
-  }
-
-  return glossary_terms
-    .map((term) => {
-      if (Array.isArray(term) && term.length >= 2) {
-        return [String(term[0] ?? ""), String(term[1] ?? "")] as const;
-      }
-
-      if (typeof term === "object" && term !== null && !Array.isArray(term)) {
-        const term_record = term as { src?: string; dst?: string };
-        return [String(term_record.src ?? ""), String(term_record.dst ?? "")] as const;
-      }
-
-      return null;
-    })
-    .filter((term): term is ProofreadingGlossaryTerm => {
-      return term !== null && (term[0] !== "" || term[1] !== "");
-    });
-}
-
 function unique_strings(values: string[]): string[] {
   return [...new Set(values)];
-}
-
-function build_default_proofreading_filter_options(
-  items: ProofreadingItem[],
-): ProofreadingFilterOptions {
-  const source_items = resolve_proofreading_filter_source_items(items);
-  const available_statuses = unique_strings(source_items.map((item) => item.status));
-  const available_warning_types = new Set<string>([PROOFREADING_NO_WARNING_CODE]);
-  const available_file_paths = new Set<string>();
-  const available_glossary_terms = new Map<string, ProofreadingGlossaryTerm>();
-
-  source_items.forEach((item) => {
-    available_file_paths.add(item.file_path);
-
-    if (item.warnings.length === 0) {
-      available_warning_types.add(PROOFREADING_NO_WARNING_CODE);
-    } else {
-      item.warnings.forEach((warning) => {
-        available_warning_types.add(warning);
-      });
-    }
-
-    item.failed_glossary_terms.forEach((term) => {
-      available_glossary_terms.set(`${term[0]}→${term[1]}`, term);
-    });
-  });
-
-  return {
-    warning_types: resolve_default_proofreading_warning_types([...available_warning_types]),
-    statuses: resolve_default_proofreading_statuses(available_statuses),
-    file_paths: [...available_file_paths],
-    glossary_terms: [...available_glossary_terms.values()],
-    include_without_glossary_miss: true,
-  };
-}
-
-/**
- * 归一化页面传入筛选项，缺失字段由当前 item 集合计算默认值。
- */
-export function normalize_proofreading_filter_options(
-  filters: Partial<ProofreadingFilterOptions> | undefined,
-  items: ProofreadingItem[],
-): ProofreadingFilterOptions {
-  const fallback_filters = build_default_proofreading_filter_options(items);
-  const has_warning_types = Array.isArray(filters?.warning_types);
-  const has_statuses = Array.isArray(filters?.statuses);
-  const has_file_paths = Array.isArray(filters?.file_paths);
-  const has_glossary_terms = Array.isArray(filters?.glossary_terms);
-  const has_include_without_glossary_miss =
-    typeof filters?.include_without_glossary_miss === "boolean";
-  const warning_types = has_warning_types
-    ? unique_strings((filters?.warning_types ?? []).map((value) => String(value)))
-    : [];
-  const statuses = has_statuses
-    ? unique_strings((filters?.statuses ?? []).map((value) => String(value)))
-    : [];
-  const file_paths = has_file_paths
-    ? unique_strings((filters?.file_paths ?? []).map((value) => String(value)))
-    : [];
-  const glossary_terms = has_glossary_terms
-    ? normalize_glossary_terms(filters?.glossary_terms)
-    : [];
-
-  return {
-    warning_types: has_warning_types ? warning_types : fallback_filters.warning_types,
-    statuses: has_statuses ? statuses : fallback_filters.statuses,
-    file_paths: has_file_paths ? file_paths : fallback_filters.file_paths,
-    glossary_terms: has_glossary_terms ? glossary_terms : fallback_filters.glossary_terms,
-    include_without_glossary_miss: has_include_without_glossary_miss
-      ? Boolean(filters?.include_without_glossary_miss)
-      : fallback_filters.include_without_glossary_miss,
-  };
 }
 
 /**

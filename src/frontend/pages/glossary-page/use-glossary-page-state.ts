@@ -10,10 +10,10 @@ import { useDebouncedCallback } from "@frontend/widgets/interactions/use-debounc
 import type { QualityStatisticsDependencySnapshot } from "@shared/quality/quality-statistics";
 import { buildProofreadingLookupQuery } from "@shared/quality/state";
 import {
-  read_glossary_quality_rule,
-  read_glossary_section_revisions,
-  type GlossaryQualityRuleQuerySlice,
-} from "@frontend/pages/glossary-page/glossary-api-client";
+  read_quality_rule,
+  read_quality_rule_section_revisions,
+  type QualityRuleQuerySlice,
+} from "@frontend/features/quality-rule-editor/quality-rule-api-client";
 import {
   isQualityRuleStatisticsCacheReady,
   isQualityRuleStatisticsCacheRunning,
@@ -28,10 +28,21 @@ import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
-  build_glossary_filter_result,
-  has_active_glossary_filters,
-  resolve_glossary_statistics_badge_kind,
-} from "@frontend/pages/glossary-page/filtering";
+  build_user_preset_virtual_id,
+  create_empty_preset_input_state,
+  decorate_preset_items,
+  has_casefold_duplicate_preset,
+  normalize_preset_name,
+} from "@frontend/features/preset-editor/preset-model";
+import type {
+  PresetInputState as GlossaryPresetInputState,
+  PresetItem as GlossaryPresetItem,
+} from "@frontend/features/preset-editor/preset-types";
+import {
+  has_active_quality_rule_filters,
+  resolve_quality_rule_statistics_badge_kind,
+} from "@frontend/features/quality-rule-editor/quality-rule-filtering";
+import { build_glossary_filter_result } from "@frontend/pages/glossary-page/filtering";
 import {
   PRESERVE_RESULT_REFRESH,
   REBUILD_RESULT_REFRESH,
@@ -56,10 +67,10 @@ import {
   type ProjectSessionTableSelectionState,
 } from "@frontend/app/session/project-session-ui-state-context";
 import {
-  are_glossary_entry_ids_equal,
-  build_glossary_entry_id,
-  reorder_selected_group,
-} from "@frontend/pages/glossary-page/components/glossary-selection";
+  are_quality_rule_entry_ids_equal,
+  reorder_selected_quality_rule_entries,
+  resolve_quality_rule_entry_id,
+} from "@frontend/features/quality-rule-editor/quality-rule-selection";
 import type {
   AppTableSelectionChange,
   AppTableSortState,
@@ -71,8 +82,6 @@ import type {
   GlossaryEntryId,
   GlossaryFilterScope,
   GlossaryFilterState,
-  GlossaryPresetInputState,
-  GlossaryPresetItem,
   GlossarySortField,
   GlossarySortState,
   GlossaryStatisticsBadgeState,
@@ -106,16 +115,17 @@ type GlossaryDuplicateApplyOptions = {
 
 // 术语表页维护自己的写入诊断名，desktop 层只负责提交和失败恢复。
 const GLOSSARY_ENTRIES_SAVE_WRITE: ProjectWriteOperation = "glossary.entries_save";
-// GLOSSARY META UPDATE WRITE 是模块级稳定契约，集中维护避免调用点散落魔术值。
+// 元信息开关与条目保存使用不同诊断名，便于定位失败的写入意图。
 const GLOSSARY_META_UPDATE_WRITE: ProjectWriteOperation = "glossary.meta_update";
 
-// EMPTY ENTRY 是默认快照事实，调用方只读取副本不临时拼装。
+// 对话框总是克隆该模板，避免复用可变草稿引用。
 const EMPTY_ENTRY: GlossaryEntry = {
   src: "",
   dst: "",
   info: "",
   case_sensitive: false,
 };
+// 首次查询前使用与后端默认语义一致的只读切片。
 const DEFAULT_QUALITY_SLICE: GlossaryQualitySlice = {
   enabled: true,
   entries: [],
@@ -134,9 +144,7 @@ function clone_entry(entry: GlossaryEntry): GlossaryEntry {
   };
 }
 
-/**
- * 构建当前场景的稳定结果。
- */
+/** 新项目或清空筛选时的完整筛选状态。 */
 function create_empty_filter_state(): GlossaryFilterState {
   return {
     keyword: "",
@@ -145,9 +153,7 @@ function create_empty_filter_state(): GlossaryFilterState {
   };
 }
 
-/**
- * 构建当前场景的稳定结果。
- */
+/** 使用成对空值表达“未排序”，避免半有效排序状态。 */
 function create_empty_sort_state(): GlossarySortState {
   return {
     field: null,
@@ -158,9 +164,8 @@ function create_empty_sort_state(): GlossarySortState {
 // session 恢复排序的白名单，防止旧版本或其它页面列 id 泄入本页。
 const GLOSSARY_SORT_FIELDS = new Set(["src", "dst", "info", "rule", "statistics"]);
 
-// 在 session 边界收窄排序状态，坏状态统一回到默认值。
 /**
- * 归一化输入，保证下游消费稳定形状。
+ * 在 session 恢复边界收窄排序状态，旧列或半有效状态统一回到未排序。
  */
 function normalize_glossary_sort_state(sort_state: GlossarySortState): GlossarySortState {
   if (sort_state.field === null || sort_state.direction === null) {
@@ -186,9 +191,7 @@ function clone_glossary_filter_state(filter_state: GlossaryFilterState): Glossar
   };
 }
 
-/**
- * 构建当前场景的稳定结果。
- */
+/** 每次关闭编辑框都重建草稿，避免跨条目残留保存态。 */
 function create_empty_dialog_state(): GlossaryDialogState {
   return {
     open: false,
@@ -201,9 +204,7 @@ function create_empty_dialog_state(): GlossaryDialogState {
   };
 }
 
-/**
- * 构建当前场景的稳定结果。
- */
+/** 统一清空删除、预设和导入确认共用的提交状态。 */
 function create_empty_confirm_state(): GlossaryConfirmState {
   return {
     open: false,
@@ -217,21 +218,7 @@ function create_empty_confirm_state(): GlossaryConfirmState {
 }
 
 /**
- * 构建当前场景的稳定结果。
- */
-function create_empty_preset_input_state(): GlossaryPresetInputState {
-  return {
-    open: false,
-    mode: null,
-    value: "",
-    submitting: false,
-    target_virtual_id: null,
-  };
-}
-
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
-/**
- * 归一化输入，保证下游消费稳定形状。
+ * 在保存边界裁掉文本两端空白，同时保留稳定条目 ID。
  */
 function normalize_dialog_entry(entry: GlossaryEntry): GlossaryEntry {
   return {
@@ -243,12 +230,11 @@ function normalize_dialog_entry(entry: GlossaryEntry): GlossaryEntry {
   };
 }
 
-// 在后端 query 边界收窄规则事实，页面内部只消费稳定形状。
 /**
- * 归一化输入，保证下游消费稳定形状。
+ * 将后端 quality 查询收窄为页面稳定切片，并为旧数据补齐条目 ID。
  */
 function normalize_glossary_quality_slice(
-  slice: GlossaryQualityRuleQuerySlice | undefined,
+  slice: QualityRuleQuerySlice | undefined,
   section_revision: number,
 ): GlossaryQualitySlice {
   const raw_entries = Array.isArray(slice?.entries) ? slice.entries : [];
@@ -268,58 +254,7 @@ function normalize_glossary_quality_slice(
 }
 
 /**
- * 构建当前场景的稳定结果。
- */
-function build_user_preset_virtual_id(name: string): string {
-  return `user:${name}.json`;
-}
-
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
-function normalize_preset_name(name: string): string {
-  return name.trim();
-}
-
-/**
- * 判断当前值是否满足业务条件。
- */
-function has_casefold_duplicate_preset(
-  preset_items: GlossaryPresetItem[],
-  target_virtual_id: string,
-  current_virtual_id: string | null,
-): boolean {
-  const target_key = target_virtual_id.toLocaleLowerCase();
-
-  return preset_items.some((item) => {
-    if (item.type !== "user") {
-      return false;
-    }
-
-    if (current_virtual_id !== null && item.virtual_id === current_virtual_id) {
-      return false;
-    }
-
-    return item.virtual_id.toLocaleLowerCase() === target_key;
-  });
-}
-
-function decorate_preset_items(
-  builtin_presets: GlossaryPresetItem[],
-  user_presets: GlossaryPresetItem[],
-  default_virtual_id: string,
-): GlossaryPresetItem[] {
-  return [...builtin_presets, ...user_presets].map((item) => {
-    return {
-      ...item,
-      is_default: item.virtual_id === default_virtual_id,
-    };
-  });
-}
-
-/**
- * 构建当前场景的稳定结果。
+ * 将命中数和子集父项关系合并成徽章的多行说明。
  */
 function build_statistics_badge_tooltip(
   t: (key: LocaleKey) => string,
@@ -328,11 +263,11 @@ function build_statistics_badge_tooltip(
   subset_parent_labels: string[],
 ): string {
   const tooltip_lines = [
-    t("glossary_page.statistics.hit_count").replace("{COUNT}", matched_count.toString()),
+    t("quality_editor.statistics.hit_count").replace("{COUNT}", matched_count.toString()),
   ];
 
   if (subset_parent_labels.length > 0) {
-    tooltip_lines.push(t("glossary_page.statistics.subset_relations"));
+    tooltip_lines.push(t("quality_editor.statistics.subset_relations"));
     tooltip_lines.push(
       ...subset_parent_labels.map((label) => {
         return `${entry.src} -> ${label}`;
@@ -366,7 +301,7 @@ export function buildGlossaryStatisticsState(args: {
 }
 
 /**
- * 构建当前场景的稳定结果。
+ * 将会话级统计缓存投影为页面只读状态，不复制规则事实。
  */
 function build_glossary_statistics_state_from_cache(
   statistics_cache: QualityRuleStatisticsCacheSnapshot,
@@ -443,6 +378,11 @@ type UseGlossaryPageStateResult = {
   set_preset_menu_open: (next_open: boolean) => void;
 };
 
+/**
+ * 聚合术语表页面的项目快照、筛选状态、统计缓存与唯一写入口。
+ *
+ * 页面组件只消费该 Hook 暴露的快照和意图，避免绕过项目写锁直接修改后端状态。
+ */
 export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -513,7 +453,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       return DEFAULT_QUALITY_SLICE;
     }
 
-    const response = await read_glossary_quality_rule();
+    const response = await read_quality_rule("glossary");
     if (response.projectPath !== project_snapshot.path) {
       return quality_slice;
     }
@@ -544,7 +484,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     }
 
     let cancelled = false;
-    void read_glossary_quality_rule().then((response) => {
+    void read_quality_rule("glossary").then((response) => {
       if (cancelled || response.projectPath !== project_snapshot.path) {
         return;
       }
@@ -577,7 +517,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
   const entry_ids = useMemo<GlossaryEntryId[]>(() => {
     return entries.map((entry, index) => {
-      return build_glossary_entry_id(entry, index);
+      return resolve_quality_rule_entry_id(entry, index);
     });
   }, [entries]);
 
@@ -614,7 +554,6 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         sort_state: next_sort_state,
         statistics_sort_available,
         statistics_state,
-        completed_statistics_entry_id_set,
       });
 
       return create_result_snapshot({
@@ -626,18 +565,12 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         invalid_message: result.invalid_regex_message,
       });
     },
-    [
-      completed_statistics_entry_id_set,
-      entries,
-      entry_ids,
-      statistics_sort_available,
-      statistics_state,
-    ],
+    [entries, entry_ids, statistics_sort_available, statistics_state],
   );
   const build_current_result_snapshot = useCallback(() => {
     return build_result_snapshot(filter_state, sort_state);
   }, [build_result_snapshot, filter_state, sort_state]);
-  const has_active_filters = has_active_glossary_filters(filter_state);
+  const has_active_filters = has_active_quality_rule_filters(filter_state);
   const { result_snapshot, set_result_snapshot, set_pending_result_refresh } =
     useResultSnapshotState({
       project_path: project_snapshot.path,
@@ -661,17 +594,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       sort_state,
       statistics_sort_available,
       statistics_state,
-      completed_statistics_entry_id_set,
     });
-  }, [
-    completed_statistics_entry_id_set,
-    entries,
-    entry_ids,
-    filter_state,
-    sort_state,
-    statistics_sort_available,
-    statistics_state,
-  ]);
+  }, [entries, entry_ids, filter_state, sort_state, statistics_sort_available, statistics_state]);
   const visible_entry_by_id = useMemo(() => {
     return new Map(
       entries.flatMap((entry, source_index) => {
@@ -715,7 +639,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return;
       }
 
-      const kind = resolve_glossary_statistics_badge_kind(
+      const kind = resolve_quality_rule_statistics_badge_kind(
         entry_id,
         statistics_state,
         completed_statistics_entry_id_set,
@@ -763,7 +687,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       );
 
       try {
-        const section_revisions = await read_glossary_section_revisions();
+        const section_revisions = await read_quality_rule_section_revisions();
         await commit_project_write({
           operation: GLOSSARY_ENTRIES_SAVE_WRITE,
           run: async () => {
@@ -811,7 +735,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
       if (options.feedback === "import") {
         clear_selection_state();
-        push_toast("success", t("glossary_page.feedback.import_success"));
+        push_toast("success", t("quality_editor.feedback.import_success"));
       }
 
       if (options.close_preset_menu) {
@@ -845,7 +769,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     (current_dialog_state: GlossaryDialogState, normalized_entry: GlossaryEntry) => {
       const current_entries = read_current_glossary_entries();
       const current_entry_ids = current_entries.map((entry, index) => {
-        return build_glossary_entry_id(entry, index);
+        return resolve_quality_rule_entry_id(entry, index);
       });
       const existing_entries =
         current_dialog_state.mode === "edit"
@@ -938,7 +862,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       selection_anchor_entry_id !== null && visible_entry_id_set.has(selection_anchor_entry_id)
         ? selection_anchor_entry_id
         : null;
-    const selection_changed = !are_glossary_entry_ids_equal(
+    const selection_changed = !are_quality_rule_entry_ids_equal(
       selected_entry_ids,
       next_selected_entry_ids,
     );
@@ -1086,7 +1010,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       }
 
       try {
-        const section_revisions = await read_glossary_section_revisions();
+        const section_revisions = await read_quality_rule_section_revisions();
         await commit_project_write({
           operation: GLOSSARY_META_UPDATE_WRITE,
           run: async () => {
@@ -1261,7 +1185,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return;
       }
 
-      const next_entries = reorder_selected_group(
+      const next_entries = reorder_selected_quality_rule_entries(
         entries,
         entry_ids,
         selected_entry_ids,
@@ -1286,7 +1210,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     };
 
     if (normalized_entry.src === "") {
-      push_toast("error", t("glossary_page.feedback.source_required"));
+      push_toast("error", t("quality_editor.feedback.source_required"));
       return false;
     }
 
@@ -1444,7 +1368,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
           return normalize_dialog_entry(entry);
         }),
       });
-      push_toast("success", t("glossary_page.feedback.export_success"));
+      push_toast("success", t("quality_editor.feedback.export_success"));
     } catch (error) {
       push_toast(
         "error",
@@ -1583,7 +1507,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
       const normalized_name = normalize_preset_name(name);
       if (normalized_name === "") {
-        push_toast("warning", t("glossary_page.feedback.preset_name_required"));
+        push_toast("warning", t("quality_editor.feedback.preset_name_required"));
         return false;
       }
 
@@ -1598,7 +1522,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
             .filter((entry) => entry.src !== ""),
         });
         await refresh_preset_menu();
-        push_toast("success", t("glossary_page.feedback.preset_saved"));
+        push_toast("success", t("quality_editor.feedback.preset_saved"));
         return true;
       } catch (error) {
         push_toast(
@@ -1619,7 +1543,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
       const normalized_name = normalize_preset_name(name);
       if (normalized_name === "") {
-        push_toast("warning", t("glossary_page.feedback.preset_name_required"));
+        push_toast("warning", t("quality_editor.feedback.preset_name_required"));
         return false;
       }
 
@@ -1643,7 +1567,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
           apply_settings_snapshot(settings_payload);
         }
         await refresh_preset_menu();
-        push_toast("success", t("glossary_page.feedback.preset_renamed"));
+        push_toast("success", t("quality_editor.feedback.preset_renamed"));
         return true;
       } catch (error) {
         push_toast(
@@ -1668,7 +1592,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         });
         apply_settings_snapshot(payload);
         await refresh_preset_menu();
-        push_toast("success", t("glossary_page.feedback.default_preset_set"));
+        push_toast("success", t("quality_editor.feedback.default_preset_set"));
       } catch (error) {
         push_toast(
           "error",
@@ -1690,7 +1614,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       });
       apply_settings_snapshot(payload);
       await refresh_preset_menu();
-      push_toast("success", t("glossary_page.feedback.default_preset_cleared"));
+      push_toast("success", t("quality_editor.feedback.default_preset_cleared"));
     } catch (error) {
       push_toast(
         "error",
@@ -1723,7 +1647,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
     const normalized_name = normalize_preset_name(preset_input_state.value);
     if (normalized_name === "") {
-      push_toast("warning", t("glossary_page.feedback.preset_name_required"));
+      push_toast("warning", t("quality_editor.feedback.preset_name_required"));
       return;
     }
 
@@ -1752,7 +1676,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         preset_input_state.target_virtual_id,
       )
     ) {
-      push_toast("warning", t("glossary_page.feedback.preset_exists"));
+      push_toast("warning", t("quality_editor.feedback.preset_exists"));
       return;
     }
 
@@ -1793,7 +1717,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     }
 
     clear_selection_state();
-    push_toast("success", t("glossary_page.feedback.reset_success"));
+    push_toast("success", t("quality_editor.feedback.reset_success"));
     set_preset_menu_open(false);
     return true;
   }, [clear_selection_state, push_toast, readonly, save_entries_snapshot, t]);
@@ -1837,7 +1761,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
             apply_settings_snapshot(settings_payload);
           }
           await refresh_preset_menu();
-          push_toast("success", t("glossary_page.feedback.preset_deleted"));
+          push_toast("success", t("quality_editor.feedback.preset_deleted"));
           succeeded = true;
         }
       } catch (error) {

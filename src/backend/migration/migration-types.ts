@@ -1,7 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import type { ProjectDatabase } from "../database/database-operations";
-import type { DatabaseOperation } from "../database/database-types";
+import type { ProjectDatabase, ProjectDatabaseWrite } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
 import type { AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
@@ -22,10 +21,10 @@ export interface ProjectDatabaseMigrationContext {
 }
 
 /**
- * project open hook 只生成 database operation，由 ProjectLifecycleService 放回同一事务提交。
+ * project open hook 只生成类型化写入，由 ProjectLifecycleService 放回同一事务提交。
  */
 export interface ProjectOpenMigrationContext {
-  project_path: string; // 本次 load_project 的唯一 .lg 目标，operation 不能跨工程
+  project_path: string; // 本次 load_project 的唯一 .lg 目标，类型化写入不能跨工程
   database: ProjectDatabase; // 只用于读取打开瞬间事实或读取 asset，不在 hook 内提交事务
   app_setting_service: AppSettingService; // 只提供当前应用设置，用于旧业务槽位的选择规则
 }
@@ -39,7 +38,8 @@ export interface MigrationDescriptor {
   run_startup?(context: StartupMigrationContext): void; // startup hook 迁移应用级文件，失败诊断由迁移点记录
   run_project_database_schema?(context: ProjectDatabaseMigrationContext): void; // schema hook 只补物理结构，必须幂等
   run_project_database_writeback?(context: ProjectDatabaseMigrationContext): void; // writeback hook 写回业务事实，并由编排器按 id 标记
-  build_project_open_operations?(
+  /** open hook 只返回类型化写入，不自行开启或提交事务。 */
+  build_project_open_writes?(
     context: ProjectOpenMigrationContext,
-  ): Promise<DatabaseOperation[]> | DatabaseOperation[]; // open hook 只返回 operation，不直接提交事务
+  ): Promise<ProjectDatabaseWrite[]> | ProjectDatabaseWrite[];
 }

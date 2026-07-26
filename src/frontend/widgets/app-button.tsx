@@ -1,7 +1,7 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 import { Button } from "@frontend/shadcn/button";
 
 type ShadcnButtonProps = React.ComponentProps<typeof Button>;

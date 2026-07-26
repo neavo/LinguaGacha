@@ -9,6 +9,12 @@ import type {
   ProviderClientResolver,
   RequestTransport,
 } from "./transport-types";
+import {
+  empty_llm_result,
+  read_transport_number,
+  read_transport_record,
+  read_transport_text,
+} from "./transport-types";
 
 /**
  * Anthropic client 使用 x-api-key SDK 配置，不把凭据放进 payload。
@@ -50,26 +56,26 @@ export class AnthropicTransport implements RequestTransport {
     let output_tokens = 0;
     let request_error: LogError | undefined;
     for await (const event of stream as AsyncIterable<unknown>) {
-      const record = this.as_record(event);
+      const record = read_transport_record(event);
       if (record["type"] === "content_block_delta") {
-        const delta = this.as_record(record["delta"]);
-        const text = this.read_text(delta["text"]);
-        const thinking = this.read_text(delta["thinking"]);
+        const delta = read_transport_record(record["delta"]);
+        const text = read_transport_text(delta["text"]);
+        const thinking = read_transport_text(delta["thinking"]);
         if (text !== "") {
           response_result += text;
           if (detector.feed(text)) {
-            return this.empty_result({ degraded: true });
+            return empty_llm_result({ degraded: true });
           }
         }
         if (thinking !== "") {
           response_think += thinking;
         }
       }
-      const message = this.as_record(record["message"]);
-      const usage = this.as_record(message["usage"] ?? record["usage"]);
-      input_tokens = this.read_number(usage["input_tokens"], input_tokens);
-      output_tokens = this.read_number(usage["output_tokens"], output_tokens);
-      const stop_reason = this.read_text(message["stop_reason"] ?? record["stop_reason"]);
+      const message = read_transport_record(record["message"]);
+      const usage = read_transport_record(message["usage"] ?? record["usage"]);
+      input_tokens = read_transport_number(usage["input_tokens"], input_tokens);
+      output_tokens = read_transport_number(usage["output_tokens"], output_tokens);
+      const stop_reason = read_transport_text(message["stop_reason"] ?? record["stop_reason"]);
       if (stop_reason === "max_tokens") {
         request_error = log_error_from_message("供应商返回长度截断。", { stop_reason });
       }
@@ -80,7 +86,7 @@ export class AnthropicTransport implements RequestTransport {
       }
     }
     if (LLMClientDegradationDetector.has_output_degradation(response_result)) {
-      return this.empty_result({ degraded: true });
+      return empty_llm_result({ degraded: true });
     }
     return {
       response_think: response_think.trim(),
@@ -92,45 +98,5 @@ export class AnthropicTransport implements RequestTransport {
       degraded: false,
       ...(request_error === undefined ? {} : { request_error }),
     };
-  }
-
-  /**
-   * 空结果集中保留完整字段，调用点只覆盖真实请求事实。
-   */
-  private empty_result(overrides: Partial<LLMRequestResult> = {}): LLMRequestResult {
-    return {
-      response_think: "",
-      response_result: "",
-      input_tokens: 0,
-      output_tokens: 0,
-      cancelled: false,
-      timeout: false,
-      degraded: false,
-      ...overrides,
-    };
-  }
-
-  /**
-   * SDK event 在读取前统一收窄为普通对象。
-   */
-  private as_record(value: unknown): Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : {};
-  }
-
-  /**
-   * 只拼接字符串文本，避免对象误入日志。
-   */
-  private read_text(value: unknown): string {
-    return typeof value === "string" ? value : "";
-  }
-
-  /**
-   * usage 缺失时保留已有累计值。
-   */
-  private read_number(value: unknown, fallback: number): number {
-    const number_value = Number(value ?? fallback);
-    return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
 }

@@ -6,11 +6,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase } from "../database/database-operations";
-import type { ProjectChangePublisher } from "./project-changes";
+import type { ProjectChangePublisher, ProjectWriteChangeRequest } from "./project-changes";
 import { get_section_revision } from "./project-data";
-import { ProjectEventBus } from "./project-events";
+import type { ProjectEventHandler } from "./project-events";
 import { ProjectWriteStore } from "./project-write-store";
-import { ZstdTool } from "../../shared/utils/zstd-tool";
 import type { ProjectChangeEvent } from "../../shared/project-event";
 
 type MutableJsonRecord = Record<string, ApiJsonValue>;
@@ -67,7 +66,7 @@ describe("ProjectWriteStore", () => {
     });
     expect(published_changes).toEqual([
       expect.objectContaining({
-        targetProjectPath: project_path,
+        projectPath: project_path,
         source: "translation_batch_update",
         updatedSections: ["items"],
         items: { payloadMode: "canonical-delta", changedIds: [1] },
@@ -90,12 +89,8 @@ describe("ProjectWriteStore", () => {
   it("校对字段 patch 会推进 proofreading revision 并更新翻译统计", async () => {
     const { database, project_path, store, published_changes } = create_store("proofreading");
     seed_items(database, project_path);
-    database.execute({
-      name: "upsertMetaEntries",
-      args: {
-        projectPath: project_path,
-        meta: { translation_extras: { total_line: 1, processed_line: 0, error_line: 0, line: 0 } },
-      },
+    database.upsert_meta_entries(project_path, {
+      translation_extras: { total_line: 1, processed_line: 0, error_line: 0, line: 0 },
     });
 
     await store.apply_proofreading_item_patch({
@@ -142,23 +137,10 @@ describe("ProjectWriteStore", () => {
   it("提交工作台结构写入时替换事实并发布轻量失效信号", async () => {
     const { database, project_path, store, published_changes } = create_store("workbench");
     seed_items(database, project_path);
-    database.execute({
-      name: "addAssetCompressedBase64",
-      args: {
-        projectPath: project_path,
-        path: "demo.txt",
-        compressedBase64: ZstdTool.compress(Buffer.from("demo")).toString("base64"),
-        originalSize: 4,
-        sortOrder: 0,
-      },
-    });
-    database.execute({
-      name: "upsertAnalysisItemCheckpoints",
-      args: {
-        projectPath: project_path,
-        checkpoints: [{ item_id: 1, status: "PROCESSED", updated_at: "now", error_count: 0 }],
-      },
-    });
+    add_test_asset(database, project_path, "demo.txt", "demo", 0);
+    database.upsert_analysis_item_checkpoints(project_path, [
+      { item_id: 1, status: "PROCESSED", updated_at: "now", error_count: 0 },
+    ]);
 
     await store.replace_workbench_items_and_files({
       projectPath: project_path,
@@ -172,13 +154,9 @@ describe("ProjectWriteStore", () => {
       resetAnalysis: true,
     });
 
-    expect(database.execute({ name: "getAssetCount", args: { projectPath: project_path } })).toBe(
-      0,
-    );
+    expect(database.get_asset_count(project_path)).toBe(0);
     expect(read_items(database, project_path)).toEqual([]);
-    expect(
-      database.execute({ name: "getAnalysisItemCheckpoints", args: { projectPath: project_path } }),
-    ).toEqual([]);
+    expect(database.get_analysis_item_checkpoints(project_path)).toEqual([]);
     expect(read_meta(database, project_path)).toMatchObject({
       "project_runtime_revision.files": 1,
       "project_runtime_revision.items": 1,
@@ -197,26 +175,8 @@ describe("ProjectWriteStore", () => {
 
   it("文件排序只发布 files 失效信号", async () => {
     const { database, project_path, store, published_changes } = create_store("reorder");
-    database.execute({
-      name: "addAssetCompressedBase64",
-      args: {
-        projectPath: project_path,
-        path: "a.txt",
-        compressedBase64: ZstdTool.compress(Buffer.from("a")).toString("base64"),
-        originalSize: 1,
-        sortOrder: 0,
-      },
-    });
-    database.execute({
-      name: "addAssetCompressedBase64",
-      args: {
-        projectPath: project_path,
-        path: "b.txt",
-        compressedBase64: ZstdTool.compress(Buffer.from("b")).toString("base64"),
-        originalSize: 1,
-        sortOrder: 1,
-      },
-    });
+    add_test_asset(database, project_path, "a.txt", "a", 0);
+    add_test_asset(database, project_path, "b.txt", "b", 1);
 
     await store.reorder_workbench_files({
       projectPath: project_path,
@@ -224,9 +184,7 @@ describe("ProjectWriteStore", () => {
       orderedPaths: ["b.txt", "a.txt"],
     });
 
-    expect(
-      database.execute({ name: "getAllAssetRecords", args: { projectPath: project_path } }),
-    ).toEqual([
+    expect(database.get_all_asset_records(project_path)).toEqual([
       { path: "b.txt", sort_order: 0 },
       { path: "a.txt", sort_order: 1 },
     ]);
@@ -236,6 +194,89 @@ describe("ProjectWriteStore", () => {
       files: { payloadMode: "section-invalidated" },
     });
     expect(published_changes.at(-1)).not.toHaveProperty("sections");
+  });
+
+  it("revision guard 与写入共享同一数据库事务", async () => {
+    const { database, project_path, store } = create_store("transaction-boundary");
+    add_test_asset(database, project_path, "a.txt", "a", 0);
+    add_test_asset(database, project_path, "b.txt", "b", 1);
+    const original_transaction = database.transaction.bind(database);
+    const original_get_all_meta = database.get_all_meta.bind(database);
+    const original_update_asset_sort_orders = database.update_asset_sort_orders.bind(database);
+    const meta_read_transaction_states: boolean[] = [];
+    const write_transaction_states: boolean[] = [];
+    let transaction_active = false;
+    vi.spyOn(database, "transaction").mockImplementation(
+      <T>(target_path: string, callback: () => T): T =>
+        original_transaction(target_path, () => {
+          transaction_active = true;
+          try {
+            return callback();
+          } finally {
+            transaction_active = false;
+          }
+        }),
+    );
+    vi.spyOn(database, "get_all_meta").mockImplementation((target_path) => {
+      meta_read_transaction_states.push(transaction_active);
+      return original_get_all_meta(target_path);
+    });
+    vi.spyOn(database, "update_asset_sort_orders").mockImplementation(
+      (target_path, ordered_paths) => {
+        write_transaction_states.push(transaction_active);
+        return original_update_asset_sort_orders(target_path, ordered_paths);
+      },
+    );
+
+    await store.reorder_workbench_files({
+      projectPath: project_path,
+      expectedSectionRevisions: { files: 0 },
+      orderedPaths: ["b.txt", "a.txt"],
+    });
+
+    expect(meta_read_transaction_states[0]).toBe(true);
+    expect(write_transaction_states).toEqual([true]);
+    expect(read_meta(database, project_path)["project_runtime_revision.files"]).toBe(1);
+  });
+
+  it("数据库提交后先维护内部缓存，再发布公开项目变更", async () => {
+    const calls: string[] = [];
+    const { database, project_path, store } = create_store("event-order", {
+      projectEventHandler: (event) => {
+        calls.push(`internal:${event.sectionRevisions.files ?? 0}`);
+      },
+      onPublish: () => calls.push("public"),
+    });
+    add_test_asset(database, project_path, "a.txt", "a", 0);
+
+    await store.reorder_workbench_files({
+      projectPath: project_path,
+      expectedSectionRevisions: { files: 0 },
+      orderedPaths: ["a.txt"],
+    });
+
+    expect(calls).toEqual(["internal:1", "public"]);
+  });
+
+  it("内部缓存事件失败时阻断公开发布，但保留已提交事实", async () => {
+    const dispatch_error = new Error("cache update failed");
+    const { database, project_path, store, published_changes } = create_store("event-failure", {
+      projectEventHandler: () => {
+        throw dispatch_error;
+      },
+    });
+    add_test_asset(database, project_path, "a.txt", "a", 0);
+
+    await expect(
+      store.reorder_workbench_files({
+        projectPath: project_path,
+        expectedSectionRevisions: { files: 0 },
+        orderedPaths: ["a.txt"],
+      }),
+    ).rejects.toBe(dispatch_error);
+
+    expect(read_meta(database, project_path)["project_runtime_revision.files"]).toBe(1);
+    expect(published_changes).toEqual([]);
   });
 
   it("提交质量规则和提示词时写入各自 revision", async () => {
@@ -261,18 +302,8 @@ describe("ProjectWriteStore", () => {
       enabled: true,
     });
 
-    expect(
-      database.execute({
-        name: "getRules",
-        args: { projectPath: project_path, ruleType: "glossary" },
-      }),
-    ).toEqual([{ src: "姫", dst: "公主" }]);
-    expect(
-      database.execute({
-        name: "getRuleText",
-        args: { projectPath: project_path, ruleType: "translation_prompt" },
-      }),
-    ).toBe("请翻译");
+    expect(database.get_rules(project_path, "glossary")).toEqual([{ src: "姫", dst: "公主" }]);
+    expect(database.get_rule_text(project_path, "translation_prompt")).toBe("请翻译");
     expect(read_meta(database, project_path)).toMatchObject({
       "quality_rule_revision.glossary": 1,
       "quality_prompt_revision.translation": 1,
@@ -301,9 +332,7 @@ describe("ProjectWriteStore", () => {
       analysis_candidate_count: 1,
       section_revisions: { analysis: 1 },
     });
-    expect(
-      database.execute({ name: "getAnalysisItemCheckpoints", args: { projectPath: project_path } }),
-    ).toEqual([
+    expect(database.get_analysis_item_checkpoints(project_path)).toEqual([
       {
         item_id: 1,
         status: "PROCESSED",
@@ -323,7 +352,13 @@ describe("ProjectWriteStore", () => {
     });
   });
 
-  function create_store(name: string): {
+  function create_store(
+    name: string,
+    options: {
+      projectEventHandler?: ProjectEventHandler;
+      onPublish?: () => void;
+    } = {},
+  ): {
     database: ProjectDatabase;
     project_path: string;
     store: ProjectWriteStore;
@@ -332,12 +367,9 @@ describe("ProjectWriteStore", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), `linguagacha-write-${name}-`));
     const project_path = path.join(directory, `${name}.lg`);
     const database = new ProjectDatabase();
-    const event_bus = new ProjectEventBus();
+    const project_event_handler = options.projectEventHandler ?? vi.fn();
     const published_changes: MutableJsonRecord[] = [];
-    database.execute({
-      name: "createProject",
-      args: { projectPath: project_path, name },
-    });
+    database.create_project(project_path, name);
     cleanup_callbacks.push(() => database.close());
     cleanup_callbacks.push(() => fs.rmSync(directory, { recursive: true, force: true }));
     return {
@@ -345,8 +377,13 @@ describe("ProjectWriteStore", () => {
       project_path,
       store: new ProjectWriteStore(
         database,
-        event_bus,
-        create_project_change_publisher(database, project_path, published_changes),
+        project_event_handler,
+        create_project_change_publisher(
+          database,
+          project_path,
+          published_changes,
+          options.onPublish,
+        ),
       ),
       published_changes,
     };
@@ -356,74 +393,74 @@ describe("ProjectWriteStore", () => {
     database: ProjectDatabase,
     project_path: string,
     published_changes: MutableJsonRecord[],
+    on_publish?: () => void,
   ): ProjectChangePublisher {
-    return {
-      publish_project_change: vi.fn((payload: MutableJsonRecord): ProjectChangeEvent => {
-        published_changes.push(payload);
-        const updated_sections = Array.isArray(payload["updatedSections"])
-          ? payload["updatedSections"].map((section) => String(section))
-          : [];
-        const meta = read_meta(database, project_path);
-        const section_revisions = Object.fromEntries(
-          updated_sections.map((section) => [section, get_section_revision(meta, section)]),
-        );
-        return {
-          type: "project.changed",
-          eventId: `test-${String(payload["source"] ?? "project_change")}`,
-          source: String(payload["source"] ?? "project_change"),
-          projectPath: String(payload["targetProjectPath"] ?? ""),
-          projectRevision: Math.max(...Object.values(section_revisions), 0),
-          sectionRevisions: section_revisions,
-          updatedSections: updated_sections as ProjectChangeEvent["updatedSections"],
-          ...(payload["items"] === undefined
-            ? {}
-            : { items: payload["items"] as ProjectChangeEvent["items"] }),
-          ...(payload["files"] === undefined
-            ? {}
-            : { files: payload["files"] as ProjectChangeEvent["files"] }),
-          ...(payload["sections"] === undefined
-            ? {}
-            : { sections: payload["sections"] as ProjectChangeEvent["sections"] }),
-        };
-      }),
-    } as unknown as ProjectChangePublisher;
-  }
-
-  function seed_items(database: ProjectDatabase, project_path: string): void {
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: project_path,
-        items: [
-          {
-            id: 1,
-            src: "原文",
-            dst: "",
-            name_src: "原名",
-            name_dst: null,
-            status: "NONE",
-            retry_count: 2,
-            file_path: "demo.txt",
-            file_type: "TXT",
-            text_type: "TXT",
-            row: 7,
-          },
-        ],
-      },
+    return vi.fn((payload: ProjectWriteChangeRequest): ProjectChangeEvent => {
+      on_publish?.();
+      published_changes.push(payload);
+      const updated_sections = Array.isArray(payload["updatedSections"])
+        ? payload["updatedSections"].map((section) => String(section))
+        : [];
+      const meta = read_meta(database, project_path);
+      const section_revisions = Object.fromEntries(
+        updated_sections.map((section) => [section, get_section_revision(meta, section)]),
+      );
+      return {
+        type: "project.changed",
+        eventId: `test-${String(payload["source"] ?? "project_change")}`,
+        source: String(payload["source"] ?? "project_change"),
+        projectPath: payload.projectPath,
+        projectRevision: Math.max(...Object.values(section_revisions), 0),
+        sectionRevisions: section_revisions,
+        updatedSections: updated_sections as ProjectChangeEvent["updatedSections"],
+        ...(payload["items"] === undefined
+          ? {}
+          : { items: payload["items"] as ProjectChangeEvent["items"] }),
+        ...(payload["files"] === undefined
+          ? {}
+          : { files: payload["files"] as ProjectChangeEvent["files"] }),
+        ...(payload["sections"] === undefined
+          ? {}
+          : { sections: payload["sections"] as ProjectChangeEvent["sections"] }),
+      };
     });
   }
 
+  function seed_items(database: ProjectDatabase, project_path: string): void {
+    database.set_items(project_path, [
+      {
+        id: 1,
+        src: "原文",
+        dst: "",
+        name_src: "原名",
+        name_dst: null,
+        status: "NONE",
+        retry_count: 2,
+        file_path: "demo.txt",
+        file_type: "TXT",
+        text_type: "TXT",
+        row: 7,
+      },
+    ]);
+  }
+
   function read_items(database: ProjectDatabase, project_path: string): MutableJsonRecord[] {
-    return database.execute({
-      name: "getAllItems",
-      args: { projectPath: project_path },
-    }) as unknown as MutableJsonRecord[];
+    return database.get_all_items(project_path) as unknown as MutableJsonRecord[];
   }
 
   function read_meta(database: ProjectDatabase, project_path: string): MutableJsonRecord {
-    return database.execute({
-      name: "getAllMeta",
-      args: { projectPath: project_path },
-    }) as unknown as MutableJsonRecord;
+    return database.get_all_meta(project_path) as unknown as MutableJsonRecord;
+  }
+
+  function add_test_asset(
+    database: ProjectDatabase,
+    project_path: string,
+    asset_path: string,
+    content: string,
+    sort_order: number,
+  ): void {
+    const source_path = path.join(path.dirname(project_path), `source-${asset_path}`);
+    fs.writeFileSync(source_path, content);
+    database.add_asset_from_source(project_path, asset_path, source_path, sort_order);
   }
 });

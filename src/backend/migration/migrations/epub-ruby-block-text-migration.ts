@@ -1,6 +1,7 @@
-import { Item, read_json_record } from "../../../domain/item";
-import type { ProjectDatabase } from "../../database/database-operations";
-import type { DatabaseJsonValue, DatabaseOperation } from "../../database/database-types";
+import { Item } from "../../../domain/item";
+import { read_json_record } from "../../../domain/json";
+import type { ProjectDatabase, ProjectDatabaseWrite } from "../../database/database-operations";
+import type { DatabaseJsonValue } from "../../database/database-types";
 import { EpubAst, read_epub_extra } from "../../file/formats/epub/epub-ast";
 import type { MigrationDescriptor, ProjectOpenMigrationContext } from "../migration-types";
 
@@ -21,12 +22,12 @@ export const epub_ruby_block_text_migration: MigrationDescriptor = {
   id: "epub-ruby-block-text",
   order: 800,
   /**
-   * EPUB ruby 迁移需要读取 asset 并异步解析，因此只在 project open operation hook 中生成写回操作。
+   * EPUB ruby 迁移需要读取 asset 并异步解析，因此只在 project open hook 中生成类型化写入。
    */
-  async build_project_open_operations(
+  async build_project_open_writes(
     context: ProjectOpenMigrationContext,
-  ): Promise<DatabaseOperation[]> {
-    return new EpubRubyBlockTextMigration(context.database).build_operations(context.project_path);
+  ): Promise<ProjectDatabaseWrite[]> {
+    return new EpubRubyBlockTextMigration(context.database).build_writes(context.project_path);
   },
 };
 
@@ -37,14 +38,14 @@ export class EpubRubyBlockTextMigration {
   private readonly ast = new EpubAst(); // 使用当前 EPUB reader 契约重建 item，迁移不复制旧解析规则
 
   /**
-   * database 是 `.lg` 唯一读写入口；本类只读取快照并生成 operation。
+   * database 是 `.lg` 唯一读写入口；本类只读取快照并生成类型化写入。
    */
   public constructor(private readonly database: ProjectDatabase) {}
 
   /**
    * 发现旧 ruby_clean_candidate 后，按原始 EPUB asset 重建当前 item 形状并迁移用户事实。
    */
-  public async build_operations(project_path: string): Promise<DatabaseOperation[]> {
+  public async build_writes(project_path: string): Promise<ProjectDatabaseWrite[]> {
     const current_items = this.read_all_items(project_path);
     const epub_paths = this.collect_legacy_epub_paths(current_items);
     if (epub_paths.size === 0) {
@@ -75,41 +76,17 @@ export class EpubRubyBlockTextMigration {
       return [];
     }
 
+    const items = this.replace_items_by_file(current_items, replacements);
     return [
-      {
-        name: "setItems",
-        args: {
-          projectPath: project_path,
-          items: this.replace_items_by_file(
-            current_items,
-            replacements,
-          ) as unknown as DatabaseJsonValue,
-        },
-      },
-      {
-        name: "deleteAnalysisItemCheckpoints",
-        args: { projectPath: project_path },
-      },
-      {
-        name: "clearAnalysisCandidateAggregates",
-        args: { projectPath: project_path },
-      },
-      {
-        name: "upsertMetaEntries",
-        args: {
-          projectPath: project_path,
-          meta: {
-            analysis_extras: {},
-            analysis_candidate_count: 0,
-          } as unknown as DatabaseJsonValue,
-        },
-      },
-      {
-        name: "bumpSectionRevisions",
-        args: {
-          projectPath: project_path,
-          sections: ["items", "analysis"],
-        },
+      (database) => {
+        database.set_items(project_path, items);
+        database.delete_analysis_item_checkpoints(project_path);
+        database.clear_analysis_candidate_aggregates(project_path);
+        database.upsert_meta_entries(project_path, {
+          analysis_extras: {},
+          analysis_candidate_count: 0,
+        });
+        database.bump_section_revisions(project_path, ["items", "analysis"]);
       },
     ];
   }
@@ -118,10 +95,7 @@ export class EpubRubyBlockTextMigration {
    * 读取当前 items 快照，迁移决策只依赖打开瞬间的持久事实。
    */
   private read_all_items(project_path: string): Item[] {
-    const value = this.database.execute({
-      name: "getAllItems",
-      args: { projectPath: project_path },
-    });
+    const value = this.database.get_all_items(project_path);
     return Array.isArray(value) ? value.map((item) => Item.from_json(item)) : [];
   }
 

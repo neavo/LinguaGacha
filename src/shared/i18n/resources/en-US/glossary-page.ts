@@ -4,32 +4,19 @@ import type { LocaleMessageSchema } from "../../types";
 export const en_us_glossary_page = {
   title: "Glossary",
   action: {
-    create: "Create",
-    import: "Import",
-    export: "Export",
-    statistics: "Statistics",
     preset: "Presets",
-    edit: "Edit",
-    delete: "Delete",
-    save: "Save",
-    cancel: "Cancel",
   },
   toggle: {
-    status: "{TITLE} - {STATE}",
     tooltip:
       "Build a glossary into prompts to guide translation, keep terminology consistent, and correct character attributes.",
   },
   fields: {
-    drag: "Drag",
-    source: "Source",
     translation: "Translation",
     description: "Description",
-    rule: "Rule",
+
     statistics: "Hits",
   },
   statistics: {
-    hit_count: "Matched item count: {COUNT}",
-    subset_relations: "Contains subset relations:",
     action: {
       query_source: "Query source",
       search_relation: "Query subset relations",
@@ -39,73 +26,25 @@ export const en_us_glossary_page = {
     case_sensitive: "Case-sensitive",
   },
   filter: {
-    placeholder: "Query …",
-    clear: "Clear",
-    regex: "Regex",
-    regex_tooltip_label: "Regex Mode",
     scope: {
-      label: "Scope",
-      tooltip_label: "Search Scope",
-      all: "All",
-      source: "Source",
       translation: "Translation",
       description: "Notes",
     },
   },
-  sort: {
-    ascending: "Ascending",
-    descending: "Descending",
-    clear: "Clear",
-  },
+
   dialog: {
     create_title: "Create glossary entry",
     edit_title: "Edit glossary entry",
   },
-  preset: {
-    save: "Save Preset",
-    apply: "Import",
-    rename: "Rename",
-    delete: "Delete Preset",
-    set_default: "Set as Default Preset",
-    cancel_default: "Cancel Default Preset",
-    dialog: {
-      save_title: "Save as Preset",
-      save_confirm: "Save",
-      rename_title: "Rename Preset",
-      rename_confirm: "Rename",
-      name_placeholder: "Enter a preset name …",
-    },
-  },
-  confirm: {
-    delete_selection: {
-      description: "Confirm deleting {COUNT} records …?",
-    },
-    delete_preset: {
-      description: "Confirm deleting preset …?",
-    },
-    reset: {
-      description: "Confirm resetting data …?",
-    },
-    overwrite_preset: {
-      description: "Confirm overwriting preset …?",
-    },
-  },
+
   feedback: {
     save_failed: "Failed to save the glossary.",
     import_failed: "Failed to import the glossary.",
-    import_success: "Data imported …",
+
     export_failed: "Failed to export the glossary.",
-    export_success: "Data exported …",
+
     preset_failed: "Failed to load glossary presets.",
-    preset_saved: "Preset saved …",
-    preset_renamed: "Preset renamed …",
-    preset_deleted: "Preset deleted …",
-    preset_name_required: "Preset name is required.",
-    preset_exists: "File already exists …",
-    default_preset_set: "Default preset set …",
-    default_preset_cleared: "Default preset cancelled …",
+
     query_failed: "Failed to query proofreading.",
-    source_required: "Source text is required.",
-    reset_success: "Reseted …",
   },
 } satisfies LocaleMessageSchema<typeof zh_cn_glossary_page>;

@@ -1,44 +1,23 @@
-import {
-  FileDown,
-  FileUp,
-  Folder,
-  FolderHeart,
-  FolderOpen,
-  Heart,
-  HeartOff,
-  PencilLine,
-  Recycle,
-  Save,
-  Trash2,
-} from "lucide-react";
+import { FileDown, FileUp } from "lucide-react";
 
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
-import type { CustomPromptPresetItem } from "@frontend/pages/custom-prompt-page/types";
-import { AppButton } from "@frontend/widgets/app-button";
-import {
-  AppDropdownMenu,
-  AppDropdownMenuContent,
-  AppDropdownMenuGroup,
-  AppDropdownMenuItem,
-  AppDropdownMenuSeparator,
-  AppDropdownMenuSub,
-  AppDropdownMenuSubContent,
-  AppDropdownMenuSubTrigger,
-  AppDropdownMenuTrigger,
-} from "@frontend/widgets/app-dropdown-menu";
+import { PresetMenu } from "@frontend/features/preset-editor/preset-menu";
+import type { PresetItem } from "@frontend/features/preset-editor/preset-types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import { AppButton } from "@frontend/widgets/app-button";
 import {
   CommandBar,
   CommandBarGroup,
   CommandBarSeparator,
 } from "@frontend/widgets/command-bar/command-bar";
 import { SegmentedToggle } from "@frontend/widgets/segmented-toggle/segmented-toggle";
+
 type CustomPromptCommandBarProps = {
   title_key: LocaleKey;
   header_title_key: LocaleKey;
   header_description_key: LocaleKey;
   enabled: boolean;
-  preset_items: CustomPromptPresetItem[];
+  preset_items: PresetItem[];
   preset_menu_open: boolean;
   readonly: boolean;
   on_toggle_enabled: (next_value: boolean) => Promise<boolean>;
@@ -48,12 +27,13 @@ type CustomPromptCommandBarProps = {
   on_apply_preset: (virtual_id: string) => Promise<void>;
   on_request_reset: () => void;
   on_request_save_preset: () => void;
-  on_request_rename_preset: (preset_item: CustomPromptPresetItem) => void;
-  on_request_delete_preset: (preset_item: CustomPromptPresetItem) => void;
+  on_request_rename_preset: (preset_item: PresetItem) => void;
+  on_request_delete_preset: (preset_item: PresetItem) => void;
   on_set_default_preset: (virtual_id: string) => Promise<void>;
   on_cancel_default_preset: () => Promise<void>;
   on_preset_menu_open_change: (next_open: boolean) => void;
 };
+
 export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.Element {
   const { t } = useI18n();
   const boolean_segmented_options = [
@@ -66,10 +46,8 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
       label: t("app.toggle.enabled"),
     },
   ] as const;
-  const builtin_preset_items = props.preset_items.filter((item) => item.type === "builtin");
-  const user_preset_items = props.preset_items.filter((item) => item.type === "user");
   const toggle_state_key = props.enabled ? "app.toggle.enabled" : "app.toggle.disabled";
-  const toggle_tooltip_title = t("custom_prompt_page.toggle.status")
+  const toggle_tooltip_title = t("quality_editor.toggle.status")
     .replace("{TITLE}", t(props.header_title_key))
     .replace("{STATE}", t(toggle_state_key));
 
@@ -88,7 +66,7 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
               }}
             >
               <FileDown data-icon="inline-start" />
-              {t("custom_prompt_page.action.import")}
+              {t("quality_editor.action.import")}
             </AppButton>
             <AppButton
               variant="ghost"
@@ -98,155 +76,25 @@ export function CustomPromptCommandBar(props: CustomPromptCommandBarProps): JSX.
               }}
             >
               <FileUp data-icon="inline-start" />
-              {t("custom_prompt_page.action.export")}
+              {t("quality_editor.action.export")}
             </AppButton>
           </CommandBarGroup>
           <CommandBarSeparator />
-          <AppDropdownMenu
+          <PresetMenu
+            items={props.preset_items}
             open={props.preset_menu_open}
-            onOpenChange={(next_open) => {
-              props.on_preset_menu_open_change(next_open);
-              if (next_open) {
-                void props.on_open_preset_menu();
-              }
-            }}
-          >
-            <AppDropdownMenuTrigger asChild>
-              <AppButton variant="ghost" size="toolbar">
-                <FolderOpen data-icon="inline-start" />
-                {t("custom_prompt_page.action.preset")}
-              </AppButton>
-            </AppDropdownMenuTrigger>
-            <AppDropdownMenuContent align="center">
-              <AppDropdownMenuGroup>
-                <AppDropdownMenuItem disabled={props.readonly} onSelect={props.on_request_reset}>
-                  <Recycle />
-                  {t("app.action.reset")}
-                </AppDropdownMenuItem>
-                <AppDropdownMenuItem
-                  disabled={props.readonly}
-                  onSelect={props.on_request_save_preset}
-                >
-                  <Save />
-                  {t("custom_prompt_page.preset.save")}
-                </AppDropdownMenuItem>
-              </AppDropdownMenuGroup>
-              {builtin_preset_items.length > 0 || user_preset_items.length > 0 ? (
-                <AppDropdownMenuSeparator />
-              ) : null}
-              {builtin_preset_items.length > 0 ? (
-                <AppDropdownMenuGroup>
-                  {builtin_preset_items.map((item) => (
-                    <AppDropdownMenuSub key={item.virtual_id}>
-                      <AppDropdownMenuSubTrigger>
-                        {item.is_default ? <FolderHeart /> : <Folder />}
-                        {item.name}
-                      </AppDropdownMenuSubTrigger>
-                      <AppDropdownMenuSubContent>
-                        <AppDropdownMenuItem
-                          disabled={props.readonly}
-                          onSelect={() => {
-                            void props.on_apply_preset(item.virtual_id);
-                          }}
-                        >
-                          <FileDown />
-                          {t("custom_prompt_page.preset.apply")}
-                        </AppDropdownMenuItem>
-                        <AppDropdownMenuSeparator />
-                        {item.is_default ? (
-                          <AppDropdownMenuItem
-                            disabled={props.readonly}
-                            onSelect={() => {
-                              void props.on_cancel_default_preset();
-                            }}
-                          >
-                            <HeartOff />
-                            {t("custom_prompt_page.preset.cancel_default")}
-                          </AppDropdownMenuItem>
-                        ) : (
-                          <AppDropdownMenuItem
-                            disabled={props.readonly}
-                            onSelect={() => {
-                              void props.on_set_default_preset(item.virtual_id);
-                            }}
-                          >
-                            <Heart />
-                            {t("custom_prompt_page.preset.set_default")}
-                          </AppDropdownMenuItem>
-                        )}
-                      </AppDropdownMenuSubContent>
-                    </AppDropdownMenuSub>
-                  ))}
-                </AppDropdownMenuGroup>
-              ) : null}
-              {builtin_preset_items.length > 0 && user_preset_items.length > 0 ? (
-                <AppDropdownMenuSeparator />
-              ) : null}
-              {user_preset_items.length > 0 ? (
-                <AppDropdownMenuGroup>
-                  {user_preset_items.map((item) => (
-                    <AppDropdownMenuSub key={item.virtual_id}>
-                      <AppDropdownMenuSubTrigger>
-                        {item.is_default ? <FolderHeart /> : <Folder />}
-                        {item.name}
-                      </AppDropdownMenuSubTrigger>
-                      <AppDropdownMenuSubContent>
-                        <AppDropdownMenuItem
-                          disabled={props.readonly}
-                          onSelect={() => {
-                            void props.on_apply_preset(item.virtual_id);
-                          }}
-                        >
-                          <FileDown />
-                          {t("custom_prompt_page.preset.apply")}
-                        </AppDropdownMenuItem>
-                        <AppDropdownMenuItem
-                          disabled={props.readonly}
-                          onSelect={() => {
-                            props.on_request_rename_preset(item);
-                          }}
-                        >
-                          <PencilLine />
-                          {t("custom_prompt_page.preset.rename")}
-                        </AppDropdownMenuItem>
-                        <AppDropdownMenuItem
-                          disabled={props.readonly}
-                          onSelect={() => {
-                            props.on_request_delete_preset(item);
-                          }}
-                        >
-                          <Trash2 />
-                          {t("custom_prompt_page.preset.delete")}
-                        </AppDropdownMenuItem>
-                        <AppDropdownMenuSeparator />
-                        {item.is_default ? (
-                          <AppDropdownMenuItem
-                            disabled={props.readonly}
-                            onSelect={() => {
-                              void props.on_cancel_default_preset();
-                            }}
-                          >
-                            <HeartOff />
-                            {t("custom_prompt_page.preset.cancel_default")}
-                          </AppDropdownMenuItem>
-                        ) : (
-                          <AppDropdownMenuItem
-                            disabled={props.readonly}
-                            onSelect={() => {
-                              void props.on_set_default_preset(item.virtual_id);
-                            }}
-                          >
-                            <Heart />
-                            {t("custom_prompt_page.preset.set_default")}
-                          </AppDropdownMenuItem>
-                        )}
-                      </AppDropdownMenuSubContent>
-                    </AppDropdownMenuSub>
-                  ))}
-                </AppDropdownMenuGroup>
-              ) : null}
-            </AppDropdownMenuContent>
-          </AppDropdownMenu>
+            readonly={props.readonly}
+            trigger_label={t("quality_editor.action.preset")}
+            on_open={props.on_open_preset_menu}
+            on_open_change={props.on_preset_menu_open_change}
+            on_apply={props.on_apply_preset}
+            on_request_reset={props.on_request_reset}
+            on_request_save={props.on_request_save_preset}
+            on_request_rename={props.on_request_rename_preset}
+            on_request_delete={props.on_request_delete_preset}
+            on_set_default={props.on_set_default_preset}
+            on_cancel_default={props.on_cancel_default_preset}
+          />
         </>
       }
       hint={

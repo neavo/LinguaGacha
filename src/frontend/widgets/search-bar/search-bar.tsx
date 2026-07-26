@@ -2,7 +2,7 @@ import { ArrowRight, ListFilter, Regex, Replace, ReplaceAll, TriangleAlert, X } 
 import * as React from "react";
 
 import "@frontend/widgets/search-bar/search-bar.css";
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 import { AppButton } from "@frontend/widgets/app-button";
 import { Card, CardContent } from "@frontend/shadcn/card";
 import {

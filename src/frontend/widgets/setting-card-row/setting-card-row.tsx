@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import { render_rich_text, type RichTextComponentMap } from "@frontend/app/locale/rich-text";
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 import { Card, CardContent } from "@frontend/shadcn/card";
 import "@frontend/widgets/setting-card-row/setting-card-row.css";
 

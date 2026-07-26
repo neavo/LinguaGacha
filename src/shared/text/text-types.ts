@@ -1,19 +1,14 @@
 import { QualityRuleSnapshotTool } from "../quality/snapshot";
+import type { JsonRecord, JsonValue } from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
 
 // 文本处理层只接受可序列化 JSON 值，避免 worker 与主线程共享可变对象实例
-export type TextJsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | TextJsonValue[]
-  | { [key: string]: TextJsonValue };
+type TextJsonValue = JsonValue;
 
 /**
  * worker 侧可消费的普通 JSON 对象，避免把数据库对象引用传入 worker
  */
-export type TextJsonRecord = Record<string, TextJsonValue>;
+export type TextJsonRecord = JsonRecord;
 
 /**
  * 文本处理只依赖的配置字段，字段名保持配置快照兼容

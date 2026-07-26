@@ -31,7 +31,7 @@ const RENDERER_DIAGNOSTIC_CONTEXT_KEYS = {
   ],
 } as const;
 
-export type RendererDiagnosticsContextKey = keyof typeof RENDERER_DIAGNOSTIC_CONTEXT_KEYS;
+type RendererDiagnosticsContextKey = keyof typeof RENDERER_DIAGNOSTIC_CONTEXT_KEYS;
 
 // renderer 黑匣子边界显式声明哪些字段是路径身份，shared sanitizer 不再按 key 猜测。
 const RENDERER_DIAGNOSTIC_PATH_KEYS = new Set<string>(["path", "projectPath"]);
@@ -57,7 +57,7 @@ const RENDERER_ERROR_CONTEXT_KEYS = [
 ] as const;
 
 // renderer 实际异常补充上下文的唯一字段词表。
-export type RendererErrorContextKey = (typeof RENDERER_ERROR_CONTEXT_KEYS)[number];
+type RendererErrorContextKey = (typeof RENDERER_ERROR_CONTEXT_KEYS)[number];
 
 // 只允许白名单字段，调用点不能传入自定义业务对象。
 export type RendererErrorContextInput = Partial<Record<RendererErrorContextKey, unknown>>;
@@ -128,13 +128,11 @@ export function normalize_renderer_error_context(value: unknown): LogErrorContex
   return Object.keys(context).length === 0 ? undefined : context;
 }
 
-// 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 function read_optional_route_field(record: Record<string, unknown>): Record<string, string> {
   const route = normalize_renderer_diagnostics_text(record["route"]);
   return route === undefined ? {} : { route };
 }
 
-// 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 function read_optional_context_field(
   record: Record<string, unknown>,
   field: "project" | "task" | "event",

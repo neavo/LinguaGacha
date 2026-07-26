@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 import type { Server } from "node:http";
-import type { Socket } from "node:net";
 
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
@@ -11,13 +10,8 @@ import { renderer_error_report_to_log_payload } from "../log/renderer-error-log-
 import type { LogEvent } from "../../shared/log";
 import type { BackendServices } from "../bootstrap/backend-services";
 import { JsonTool } from "../../shared/utils/json-tool";
-import {
-  close_api_gateway_with_connections,
-  track_api_gateway_connections,
-} from "./api-gateway-connections";
 import { BACKEND_API_HOST, build_backend_api_base_url } from "./api-base-url";
 import {
-  ProjectNotLoadedError,
   RouteNotFoundError,
   normalize_renderer_error_report,
   resolve_app_error_http_status,
@@ -26,20 +20,7 @@ import {
 import { type ApiGatewayStartResult, type ApiJsonValue } from "./api-types";
 import { api_error_envelope, normalize_api_error } from "./api-error";
 import { type ApiJsonHandler, register_post_json_route } from "./api-json";
-import { register_analysis_routes } from "./routes/analysis-routes";
-import { register_diagnostics_routes } from "./routes/diagnostics-routes";
-import { register_event_routes } from "./routes/event-routes";
-import { register_translation_routes } from "./routes/translation-routes";
-import { register_health_routes } from "./routes/health-routes";
-import { register_logs_routes } from "./routes/logs-routes";
-import { register_model_routes } from "./routes/model-routes";
-import { register_proofreading_routes } from "./routes/proofreading-routes";
-import { register_quality_routes } from "./routes/quality-routes";
-import { register_settings_routes } from "./routes/settings-routes";
-import { register_task_routes } from "./routes/task-routes";
-import { register_toolbox_routes } from "./routes/toolbox-routes";
-import { register_workbench_routes } from "./routes/workbench-routes";
-import { register_session_routes } from "./routes/session-routes";
+import { register_api_routes } from "./api-routes";
 
 const LOG_STREAM_KEEPALIVE_INTERVAL_MS = 500; // 日志流 keepalive 短间隔用于保持本机窗口实时性，不作为项目事件节奏
 
@@ -49,7 +30,6 @@ const CORS_ALLOWED_HEADERS = "Content-Type"; // 公开 Gateway 只接受 JSON �
  * Gateway 启动参数由 BackendBootstrap 注入，路由层只消费已组装的 BackendServices。
  */
 export interface ApiGatewayServerOptions {
-  publicPort: number; // publicPort 由 API 端口分配器保证唯一，Gateway 只按该端口监听
   backendServices: BackendServices; // API、CLI 共用的服务组合根，Gateway 不再自行装配业务依赖
 }
 
@@ -61,7 +41,7 @@ export class ApiGatewayServer {
 
   private server: Server | null = null; // 只代表公开 Gateway 监听器，Backend 与 Database 生命周期不归这里关闭
 
-  private readonly server_sockets = new Set<Socket>(); // 退出时 renderer SSE 仍可能保持连接，必须由 Gateway 主动切断
+  private public_base_url = ""; // start 成功后固定，重复 start 必须返回同一公开入口
 
   /**
    * Gateway 只接收已组装好的运行期依赖，避免路由层自行解析全局状态
@@ -75,7 +55,7 @@ export class ApiGatewayServer {
    */
   public async start(): Promise<ApiGatewayStartResult> {
     if (this.server !== null) {
-      return { baseUrl: this.base_url() };
+      return { baseUrl: this.public_base_url };
     }
     const app = this.create_app();
     const server = await new Promise<Server>((resolve, reject) => {
@@ -89,19 +69,24 @@ export class ApiGatewayServer {
         {
           fetch: app.fetch,
           hostname: BACKEND_API_HOST,
-          port: this.options.publicPort,
+          port: 0,
         },
         () => {
           pending_server.off("error", handle_start_error);
+          const address = pending_server.address();
+          if (address === null || typeof address === "string") {
+            handle_start_error(new Error("API Gateway 未取得本机监听端口。"));
+            return;
+          }
+          this.public_base_url = build_backend_api_base_url(address.port);
           resolve(pending_server);
         },
       ) as Server;
-      track_api_gateway_connections(pending_server, this.server_sockets);
 
       pending_server.once("error", handle_start_error);
     });
     this.server = server;
-    return { baseUrl: this.base_url() };
+    return { baseUrl: this.public_base_url };
   }
 
   /**
@@ -110,14 +95,24 @@ export class ApiGatewayServer {
   public async stop(): Promise<void> {
     const server = this.server;
     this.server = null;
+    this.public_base_url = "";
     if (server === null) {
       return;
     }
-    await close_api_gateway_with_connections(server, this.server_sockets);
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve();
+        }
+      });
+      server.closeAllConnections();
+    });
   }
 
   /**
-   * Gateway 只装配 HTTP 外壳和功能路由注册器，业务路径分散到 api/routes。
+   * Gateway 只装配 HTTP 外壳，公开业务路径集中由 api-routes.ts 注册。
    */
   private create_app(): Hono {
     const services = this.options.backendServices;
@@ -138,26 +133,14 @@ export class ApiGatewayServer {
       services,
       postJson: (path_name: string, handler: ApiJsonHandler) =>
         this.post_json(app, path_name, handler),
-      requireLoadedProjectPath: () => this.require_loaded_project_path(),
+      requireLoadedProjectPath: () =>
+        this.options.backendServices.project.sessionState.require_loaded_project_path(),
       createLogStreamResponse: () => this.create_log_stream_response(),
       readLogDetail: (body: Record<string, ApiJsonValue>) => this.read_log_detail(body),
       recordRendererError: (body: Record<string, ApiJsonValue>) => this.record_renderer_error(body),
     };
 
-    register_health_routes(route_context);
-    register_logs_routes(route_context);
-    register_diagnostics_routes(route_context);
-    register_session_routes(route_context);
-    register_event_routes(route_context);
-    register_workbench_routes(route_context);
-    register_proofreading_routes(route_context);
-    register_quality_routes(route_context);
-    register_analysis_routes(route_context);
-    register_translation_routes(route_context);
-    register_toolbox_routes(route_context);
-    register_settings_routes(route_context);
-    register_model_routes(route_context);
-    register_task_routes(route_context);
+    register_api_routes(route_context);
 
     app.all("*", (context) => {
       const error = new RouteNotFoundError(context.req.path);
@@ -200,17 +183,6 @@ export class ApiGatewayServer {
   }
 
   /**
-   * 项目数据局部读取必须绑定当前 loaded 工程，避免 renderer 指定任意 .lg 路径。
-   */
-  private require_loaded_project_path(): string {
-    const state = this.options.backendServices.project.sessionState.snapshot();
-    if (!state.loaded || state.projectPath === "") {
-      throw new ProjectNotLoadedError();
-    }
-    return state.projectPath;
-  }
-
-  /**
    * 日志详情只从当前进程内详情池读取；旧日志文件不在 API 层扫描。
    */
   private read_log_detail(body: Record<string, ApiJsonValue>): ApiJsonValue {
@@ -240,6 +212,9 @@ export class ApiGatewayServer {
     return {};
   }
 
+  /**
+   * 错误响应按当前应用语言解析，公开响应壳不携带诊断上下文。
+   */
   private error_to_envelope(error: AppError, request_id: string) {
     return api_error_envelope(error, request_id, this.options.backendServices.resolve_api_text());
   }
@@ -253,13 +228,6 @@ export class ApiGatewayServer {
       "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
       "Access-Control-Allow-Headers": CORS_ALLOWED_HEADERS,
     });
-  }
-
-  /**
-   * renderer 只认公开 Gateway 地址，数据库内部资源不会透出到 preload 边界
-   */
-  private base_url(): string {
-    return build_backend_api_base_url(this.options.publicPort);
   }
 
   /**

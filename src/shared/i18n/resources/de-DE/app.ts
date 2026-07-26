@@ -318,7 +318,7 @@ export const de_de_app = {
     engine_api_name: "API-Name",
     engine_api_url: "API-URL",
     engine_task_done: "Aufgabe abgeschlossen …",
-    engine_task_exception: "Aufgabe fehlgeschlagen …",
+
     engine_task_fail:
       "Aufgabe konnte nicht abgeschlossen werden, einige Daten bleiben unbearbeitet. Bitte überprüfen Sie die Ergebnisse …",
     engine_task_rule_analysis: "Regelanalyse:",

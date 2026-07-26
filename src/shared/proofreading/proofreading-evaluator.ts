@@ -74,7 +74,7 @@ export function evaluateProofreadingItem(args: {
   sourceLanguage: string;
   targetLanguage: string;
   sample_rule_cache: Map<string, TextPreserveRule | null>;
-}): ProofreadingClientItem | null {
+}): ProofreadingClientItem {
   const warnings: string[] = [];
   const warning_fragments_by_code: ProofreadingWarningFragmentsByCode = {};
   const failed_terms: ProofreadingGlossaryTerm[] = [];

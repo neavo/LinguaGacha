@@ -17,6 +17,7 @@ import type {
   ProviderClientResolver,
   RequestTransport,
 } from "./transport/transport-types";
+import { empty_llm_result } from "./transport/transport-types";
 
 interface LLMClientOptions {
   userAgent: string; // 由应用元信息层注入，LLMClient 不读取 version.txt
@@ -66,7 +67,7 @@ export class LLMClient implements LLMClientPort {
     signal.addEventListener("abort", abort_listener, { once: true });
     try {
       if (signal.aborted) {
-        return this.empty_result({ cancelled: true });
+        return empty_llm_result({ cancelled: true });
       }
       return await this.transports[resolved_policy.provider].send(
         resolved_policy,
@@ -74,13 +75,13 @@ export class LLMClient implements LLMClientPort {
       );
     } catch (error) {
       if (timeout) {
-        return this.empty_result({ timeout: true });
+        return empty_llm_result({ timeout: true });
       }
       if (cancelled || signal.aborted) {
-        return this.empty_result({ cancelled: true });
+        return empty_llm_result({ cancelled: true });
       }
       const model_id = this.read_request_model_id(body.model);
-      return this.empty_result({
+      return empty_llm_result({
         request_error: to_log_error(error, {
           api_format: resolved_policy.api_format,
           ...(model_id === "" ? {} : { model_id }),
@@ -93,22 +94,6 @@ export class LLMClient implements LLMClientPort {
       clearTimeout(timer);
       signal.removeEventListener("abort", abort_listener);
     }
-  }
-
-  /**
-   * 空结果集中保留完整请求事实字段，避免调用方理解异常来源。
-   */
-  private empty_result(overrides: Partial<LLMRequestResult> = {}): LLMRequestResult {
-    return {
-      response_think: "",
-      response_result: "",
-      input_tokens: 0,
-      output_tokens: 0,
-      cancelled: false,
-      timeout: false,
-      degraded: false,
-      ...overrides,
-    };
   }
 
   /**
@@ -127,9 +112,8 @@ export class LLMClient implements LLMClientPort {
  * ProviderClientPool 是 LLMClient 私有的 SDK client 生命周期编排器。
  */
 export class ProviderClientPool implements ProviderClientResolver {
-  private readonly clients = new Map<string, unknown>(); // 的 key 包含 provider/key/header/timeout，避免跨凭据复用
+  private readonly clients = new Map<string, unknown>(); // 缓存 key 包含 provider/key/header/timeout，避免跨凭据复用
   private readonly factory: ProviderClientFactory; // SDK client 创建的唯一委托，pool 不理解各 provider 构造参数
-  private create_count = 0; // 只供测试和压测确认 client 复用模型
 
   /**
    * factory 只供测试注入 fake SDK client，生产路径使用 official SDK factory。
@@ -149,15 +133,7 @@ export class ProviderClientPool implements ProviderClientResolver {
     }
     const created = this.factory(request);
     this.clients.set(key, created);
-    this.create_count += 1;
     return created as T;
-  }
-
-  /**
-   * 测试读取 client 创建次数，生产链路不依赖这个计数。
-   */
-  public get_create_count_for_test(): number {
-    return this.create_count;
   }
 
   /**

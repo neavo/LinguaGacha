@@ -14,10 +14,10 @@ import {
 import { useDebouncedCallback } from "@frontend/widgets/interactions/use-debounce";
 import { buildProofreadingLookupQuery } from "@shared/quality/state";
 import {
-  read_text_replacement_quality_rule,
-  read_text_replacement_section_revisions,
-  type TextReplacementQualityRuleQuerySlice,
-} from "@frontend/pages/text-replacement-page/text-replacement-api-client";
+  read_quality_rule,
+  read_quality_rule_section_revisions,
+  type QualityRuleQuerySlice,
+} from "@frontend/features/quality-rule-editor/quality-rule-api-client";
 import {
   isQualityRuleStatisticsCacheReady,
   isQualityRuleStatisticsCacheRunning,
@@ -32,16 +32,29 @@ import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
+  build_user_preset_virtual_id,
+  create_empty_preset_input_state,
+  decorate_preset_items,
+  has_casefold_duplicate_preset,
+  normalize_preset_name,
+} from "@frontend/features/preset-editor/preset-model";
+import type {
+  PresetInputState as TextReplacementPresetInputState,
+  PresetItem as TextReplacementPresetItem,
+} from "@frontend/features/preset-editor/preset-types";
+import {
   TEXT_REPLACEMENT_VARIANT_CONFIG,
   type TextReplacementVariant,
   type TextReplacementVariantConfig,
 } from "@frontend/pages/text-replacement-page/config";
 import {
   build_text_replacement_filter_result,
-  has_active_text_replacement_filters,
-  resolve_text_replacement_statistics_badge_kind,
   sort_text_replacement_entries,
 } from "@frontend/pages/text-replacement-page/filtering";
+import {
+  has_active_quality_rule_filters,
+  resolve_quality_rule_statistics_badge_kind,
+} from "@frontend/features/quality-rule-editor/quality-rule-filtering";
 import {
   PRESERVE_RESULT_REFRESH,
   REBUILD_RESULT_REFRESH,
@@ -61,10 +74,10 @@ import {
   useQualityRuleImportConfirmation,
 } from "@frontend/widgets/quality-rule-import-confirm-dialog/use-quality-rule-import-confirmation";
 import {
-  are_text_replacement_entry_ids_equal,
-  build_text_replacement_entry_id,
-  reorder_text_replacement_selected_group,
-} from "@frontend/pages/text-replacement-page/selection";
+  are_quality_rule_entry_ids_equal,
+  reorder_selected_quality_rule_entries,
+  resolve_quality_rule_entry_id,
+} from "@frontend/features/quality-rule-editor/quality-rule-selection";
 import type {
   TextReplacementConfirmState,
   TextReplacementDialogState,
@@ -72,8 +85,6 @@ import type {
   TextReplacementEntryId,
   TextReplacementFilterScope,
   TextReplacementFilterState,
-  TextReplacementPresetInputState,
-  TextReplacementPresetItem,
   TextReplacementStatisticsBadgeState,
   TextReplacementStatisticsState,
   TextReplacementVisibleEntry,
@@ -104,12 +115,11 @@ type TextReplacementQualitySlice = {
   section_revision: number;
 };
 
-// TEXT REPLACEMENT SORT COLUMN IDS 是 session 恢复排序的白名单，避免跨变体列 id 污染表格。
+// session 恢复排序的白名单，避免跨变体列 ID 污染表格。
 const TEXT_REPLACEMENT_SORT_COLUMN_IDS = new Set(["src", "dst", "rule", "statistics"]);
 
-// 把前后替换页隔离到各自 session UI 状态命名空间。
 /**
- * 构建当前场景的稳定结果。
+ * 将前后替换页隔离到各自的项目 session UI 状态命名空间。
  */
 function create_text_replacement_ui_state_key(
   rule_type: TextReplacementVariantConfig["rule_type"],
@@ -117,9 +127,8 @@ function create_text_replacement_ui_state_key(
   return `quality:${rule_type}`;
 }
 
-// 在 session 边界收窄排序状态，坏状态统一回到默认排序。
 /**
- * 归一化输入，保证下游消费稳定形状。
+ * 在 session 恢复边界收窄排序状态，旧列统一回到未排序。
  */
 function normalize_text_replacement_sort_state(
   sort_state: AppTableSortState | null,
@@ -145,15 +154,14 @@ function clone_text_replacement_filter_state(
   };
 }
 
-// IMPORT RULE TYPE BY PUBLIC RULE TYPE 是模块级稳定契约，集中维护避免调用点散落魔术值。
+// 页面公开规则类型与导入协议枚举的唯一映射。
 const IMPORT_RULE_TYPE_BY_PUBLIC_RULE_TYPE = {
   pre_replacement: QualityRuleImportRuleTypeValue.PRE_REPLACEMENT,
   post_replacement: QualityRuleImportRuleTypeValue.POST_REPLACEMENT,
 } as const satisfies Record<TextReplacementVariantConfig["rule_type"], QualityRuleImportRuleType>;
 
-// 替换规则页把规则类型收窄成固定 operation，避免运行态接收临时拼接诊断名。
 /**
- * 构建当前场景的稳定结果。
+ * 将规则类型收窄为固定的条目保存诊断名，避免运行时拼接 operation。
  */
 function create_quality_rule_entries_save_write(
   rule_type: TextReplacementVariantConfig["rule_type"],
@@ -164,7 +172,7 @@ function create_quality_rule_entries_save_write(
 }
 
 /**
- * 构建当前场景的稳定结果。
+ * 将规则类型收窄为固定的元信息保存诊断名。
  */
 function create_quality_rule_meta_update_write(
   rule_type: TextReplacementVariantConfig["rule_type"],
@@ -174,13 +182,14 @@ function create_quality_rule_meta_update_write(
     : "post_replacement.meta_update";
 }
 
-// EMPTY ENTRY 是默认快照事实，调用方只读取副本不临时拼装。
+// 对话框总是克隆该模板，避免复用可变草稿引用。
 const EMPTY_ENTRY: TextReplacementEntry = {
   src: "",
   dst: "",
   regex: false,
   case_sensitive: false,
 };
+// 首次查询前使用与后端默认语义一致的只读切片。
 const DEFAULT_QUALITY_SLICE: TextReplacementQualitySlice = {
   enabled: true,
   entries: [],
@@ -199,9 +208,7 @@ function clone_entry(entry: TextReplacementEntry): TextReplacementEntry {
   };
 }
 
-/**
- * 构建当前场景的稳定结果。
- */
+/** 新项目或清空筛选时的完整筛选状态。 */
 function create_empty_filter_state(): TextReplacementFilterState {
   return {
     keyword: "",
@@ -210,17 +217,12 @@ function create_empty_filter_state(): TextReplacementFilterState {
   };
 }
 
-// 保持表格排序默认值与 AppTable 的无排序状态一致。
-/**
- * 构建当前场景的稳定结果。
- */
+/** 保持页面默认值与 AppTable 的未排序状态一致。 */
 function create_empty_sort_state(): AppTableSortState | null {
   return null;
 }
 
-/**
- * 构建当前场景的稳定结果。
- */
+/** 每次关闭编辑框都重建草稿，避免跨条目残留保存态。 */
 function create_empty_dialog_state(): TextReplacementDialogState {
   return {
     open: false,
@@ -233,9 +235,7 @@ function create_empty_dialog_state(): TextReplacementDialogState {
   };
 }
 
-/**
- * 构建当前场景的稳定结果。
- */
+/** 统一清空删除、预设和导入确认共用的提交状态。 */
 function create_empty_confirm_state(): TextReplacementConfirmState {
   return {
     open: false,
@@ -249,21 +249,7 @@ function create_empty_confirm_state(): TextReplacementConfirmState {
 }
 
 /**
- * 构建当前场景的稳定结果。
- */
-function create_empty_preset_input_state(): TextReplacementPresetInputState {
-  return {
-    open: false,
-    mode: null,
-    value: "",
-    submitting: false,
-    target_virtual_id: null,
-  };
-}
-
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
-/**
- * 归一化输入，保证下游消费稳定形状。
+ * 在保存边界裁掉文本两端空白，同时保留稳定条目 ID。
  */
 function normalize_entry(entry: TextReplacementEntry): TextReplacementEntry {
   return {
@@ -275,12 +261,11 @@ function normalize_entry(entry: TextReplacementEntry): TextReplacementEntry {
   };
 }
 
-// 在后端 query 边界收窄规则事实，页面内部只消费稳定形状。
 /**
- * 归一化输入，保证下游消费稳定形状。
+ * 将后端 quality 查询收窄为页面稳定切片，并为旧数据补齐条目 ID。
  */
 function normalize_text_replacement_quality_slice(
-  slice: TextReplacementQualityRuleQuerySlice | undefined,
+  slice: QualityRuleQuerySlice | undefined,
   section_revision: number,
 ): TextReplacementQualitySlice {
   const raw_entries = Array.isArray(slice?.entries) ? slice.entries : [];
@@ -300,58 +285,7 @@ function normalize_text_replacement_quality_slice(
 }
 
 /**
- * 构建当前场景的稳定结果。
- */
-function build_user_preset_virtual_id(name: string): string {
-  return `user:${name}.json`;
-}
-
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
-function normalize_preset_name(name: string): string {
-  return name.trim();
-}
-
-/**
- * 判断当前值是否满足业务条件。
- */
-function has_casefold_duplicate_preset(
-  preset_items: TextReplacementPresetItem[],
-  target_virtual_id: string,
-  current_virtual_id: string | null,
-): boolean {
-  const target_key = target_virtual_id.toLocaleLowerCase();
-
-  return preset_items.some((item) => {
-    if (item.type !== "user") {
-      return false;
-    }
-
-    if (current_virtual_id !== null && item.virtual_id === current_virtual_id) {
-      return false;
-    }
-
-    return item.virtual_id.toLocaleLowerCase() === target_key;
-  });
-}
-
-function decorate_preset_items(
-  builtin_presets: TextReplacementPresetItem[],
-  user_presets: TextReplacementPresetItem[],
-  default_virtual_id: string,
-): TextReplacementPresetItem[] {
-  return [...builtin_presets, ...user_presets].map((item) => {
-    return {
-      ...item,
-      is_default: item.virtual_id === default_virtual_id,
-    };
-  });
-}
-
-/**
- * 构建当前场景的稳定结果。
+ * 将命中数和子集父项关系合并成徽章的多行说明。
  */
 function build_statistics_badge_tooltip(
   t: (key: LocaleKey) => string,
@@ -360,14 +294,14 @@ function build_statistics_badge_tooltip(
   subset_parent_labels: string[],
 ): string {
   const tooltip_lines = [
-    t("text_replacement_page.statistics.hit_count").replace("{COUNT}", matched_count.toString()),
+    t("quality_editor.statistics.hit_count").replace("{COUNT}", matched_count.toString()),
   ];
 
   if (subset_parent_labels.length > 0) {
     tooltip_lines.push(t("text_replacement_page.statistics.subset_relations"));
     tooltip_lines.push(
       ...subset_parent_labels.map((label) => {
-        return t("text_replacement_page.statistics.relation_line")
+        return t("quality_editor.statistics.relation_line")
           .replace("{CHILD}", entry.src)
           .replace("{PARENT}", label);
       }),
@@ -378,7 +312,7 @@ function build_statistics_badge_tooltip(
 }
 
 /**
- * 构建当前场景的稳定结果。
+ * 按当前替换变体的设置字段构造默认预设更新载荷。
  */
 function build_default_preset_update_payload(
   config: TextReplacementVariantConfig,
@@ -390,7 +324,7 @@ function build_default_preset_update_payload(
 }
 
 /**
- * 构建当前场景的稳定结果。
+ * 将会话级统计缓存投影为页面只读状态，不复制规则事实。
  */
 function build_text_replacement_statistics_state_from_cache(
   statistics_cache: QualityRuleStatisticsCacheSnapshot,
@@ -405,6 +339,11 @@ function build_text_replacement_statistics_state_from_cache(
   };
 }
 
+/**
+ * 按替换阶段聚合页面快照、筛选状态、统计缓存与唯一写入口。
+ *
+ * variant 只选择对应的项目字段与文案，所有写入仍统一经过项目会话的写锁。
+ */
 export function useTextReplacementPageState(
   variant: TextReplacementVariant,
 ): UseTextReplacementPageStateResult {
@@ -486,7 +425,7 @@ export function useTextReplacementPageState(
         return DEFAULT_QUALITY_SLICE;
       }
 
-      const response = await read_text_replacement_quality_rule(config.rule_type);
+      const response = await read_quality_rule(config.rule_type);
       if (response.projectPath !== project_snapshot.path) {
         return quality_slice;
       }
@@ -523,7 +462,7 @@ export function useTextReplacementPageState(
     }
 
     let cancelled = false;
-    void read_text_replacement_quality_rule(config.rule_type).then((response) => {
+    void read_quality_rule(config.rule_type).then((response) => {
       if (cancelled || response.projectPath !== project_snapshot.path) {
         return;
       }
@@ -557,7 +496,7 @@ export function useTextReplacementPageState(
 
   const entry_ids = useMemo<TextReplacementEntryId[]>(() => {
     return entries.map((entry, index) => {
-      return build_text_replacement_entry_id(entry, index);
+      return resolve_quality_rule_entry_id(entry, index);
     });
   }, [entries]);
 
@@ -614,7 +553,7 @@ export function useTextReplacementPageState(
   const build_current_result_snapshot = useCallback(() => {
     return build_result_snapshot(filter_state, sort_state);
   }, [build_result_snapshot, filter_state, sort_state]);
-  const has_active_filters = has_active_text_replacement_filters(filter_state);
+  const has_active_filters = has_active_quality_rule_filters(filter_state);
   const { result_snapshot, set_result_snapshot, set_pending_result_refresh } =
     useResultSnapshotState({
       project_path: project_snapshot.path,
@@ -699,7 +638,7 @@ export function useTextReplacementPageState(
         return;
       }
 
-      const kind = resolve_text_replacement_statistics_badge_kind(
+      const kind = resolve_quality_rule_statistics_badge_kind(
         entry_id,
         statistics_state,
         completed_statistics_entry_id_set,
@@ -748,7 +687,7 @@ export function useTextReplacementPageState(
       );
 
       try {
-        const section_revisions = await read_text_replacement_section_revisions();
+        const section_revisions = await read_quality_rule_section_revisions();
         await commit_project_write({
           operation: create_quality_rule_entries_save_write(config.rule_type),
           run: async () => {
@@ -808,7 +747,7 @@ export function useTextReplacementPageState(
       }
 
       clear_selection_state();
-      push_toast("success", t("text_replacement_page.feedback.import_success"));
+      push_toast("success", t("quality_editor.feedback.import_success"));
 
       if (options.close_preset_menu) {
         set_preset_menu_open(false);
@@ -890,7 +829,7 @@ export function useTextReplacementPageState(
       selection_anchor_entry_id !== null && visible_entry_id_set.has(selection_anchor_entry_id)
         ? selection_anchor_entry_id
         : null;
-    const selection_changed = !are_text_replacement_entry_ids_equal(
+    const selection_changed = !are_quality_rule_entry_ids_equal(
       selected_entry_ids,
       next_selected_entry_ids,
     );
@@ -1003,7 +942,7 @@ export function useTextReplacementPageState(
       }
 
       try {
-        const section_revisions = await read_text_replacement_section_revisions();
+        const section_revisions = await read_quality_rule_section_revisions();
         await commit_project_write({
           operation: create_quality_rule_meta_update_write(config.rule_type),
           run: async () => {
@@ -1212,7 +1151,7 @@ export function useTextReplacementPageState(
         return;
       }
 
-      const next_entries = reorder_text_replacement_selected_group(
+      const next_entries = reorder_selected_quality_rule_entries(
         entries,
         entry_ids,
         selected_entry_ids,
@@ -1370,7 +1309,7 @@ export function useTextReplacementPageState(
           return normalize_entry(entry);
         }),
       });
-      push_toast("success", t("text_replacement_page.feedback.export_success"));
+      push_toast("success", t("quality_editor.feedback.export_success"));
     } catch (error) {
       push_toast(
         "error",
@@ -1510,7 +1449,7 @@ export function useTextReplacementPageState(
 
       const normalized_name = normalize_preset_name(name);
       if (normalized_name === "") {
-        push_toast("warning", t("text_replacement_page.feedback.preset_name_required"));
+        push_toast("warning", t("quality_editor.feedback.preset_name_required"));
         return false;
       }
 
@@ -1525,7 +1464,7 @@ export function useTextReplacementPageState(
             .filter((entry) => entry.src !== ""),
         });
         await refresh_preset_menu();
-        push_toast("success", t("text_replacement_page.feedback.preset_saved"));
+        push_toast("success", t("quality_editor.feedback.preset_saved"));
         return true;
       } catch (error) {
         push_toast(
@@ -1550,7 +1489,7 @@ export function useTextReplacementPageState(
 
       const normalized_name = normalize_preset_name(name);
       if (normalized_name === "") {
-        push_toast("warning", t("text_replacement_page.feedback.preset_name_required"));
+        push_toast("warning", t("quality_editor.feedback.preset_name_required"));
         return false;
       }
 
@@ -1572,7 +1511,7 @@ export function useTextReplacementPageState(
           apply_settings_snapshot(settings_payload);
         }
         await refresh_preset_menu();
-        push_toast("success", t("text_replacement_page.feedback.preset_renamed"));
+        push_toast("success", t("quality_editor.feedback.preset_renamed"));
         return true;
       } catch (error) {
         push_toast(
@@ -1602,7 +1541,7 @@ export function useTextReplacementPageState(
         );
         apply_settings_snapshot(payload);
         await refresh_preset_menu();
-        push_toast("success", t("text_replacement_page.feedback.default_preset_set"));
+        push_toast("success", t("quality_editor.feedback.default_preset_set"));
       } catch (error) {
         push_toast(
           "error",
@@ -1629,7 +1568,7 @@ export function useTextReplacementPageState(
       );
       apply_settings_snapshot(payload);
       await refresh_preset_menu();
-      push_toast("success", t("text_replacement_page.feedback.default_preset_cleared"));
+      push_toast("success", t("quality_editor.feedback.default_preset_cleared"));
     } catch (error) {
       push_toast(
         "error",
@@ -1641,7 +1580,7 @@ export function useTextReplacementPageState(
   const validate_entry = useCallback(
     (entry: TextReplacementEntry): string | null => {
       if (entry.src === "") {
-        return t("text_replacement_page.feedback.source_required");
+        return t("quality_editor.feedback.source_required");
       }
 
       if (!entry.regex) {
@@ -1653,7 +1592,7 @@ export function useTextReplacementPageState(
         return null;
       } catch (error) {
         const detail = error instanceof Error ? error.message : "";
-        return `${t("text_replacement_page.feedback.regex_invalid")}: ${detail}`;
+        return `${t("quality_editor.feedback.regex_invalid")}: ${detail}`;
       }
     },
     [t],
@@ -1774,7 +1713,7 @@ export function useTextReplacementPageState(
 
     const normalized_name = normalize_preset_name(preset_input_state.value);
     if (normalized_name === "") {
-      push_toast("warning", t("text_replacement_page.feedback.preset_name_required"));
+      push_toast("warning", t("quality_editor.feedback.preset_name_required"));
       return;
     }
 
@@ -1803,7 +1742,7 @@ export function useTextReplacementPageState(
         preset_input_state.target_virtual_id,
       )
     ) {
-      push_toast("warning", t("text_replacement_page.feedback.preset_exists"));
+      push_toast("warning", t("quality_editor.feedback.preset_exists"));
       return;
     }
 
@@ -1886,7 +1825,7 @@ export function useTextReplacementPageState(
             apply_settings_snapshot(settings_payload);
           }
           await refresh_preset_menu();
-          push_toast("success", t("text_replacement_page.feedback.preset_deleted"));
+          push_toast("success", t("quality_editor.feedback.preset_deleted"));
           succeeded = true;
         }
       } catch (error) {

@@ -1,5 +1,3 @@
-import crypto from "node:crypto";
-
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiJsonValue } from "../api/api-types";
@@ -106,23 +104,25 @@ describe("LLMClient", () => {
 
 describe("ProviderClientPool", () => {
   it("相同 key/baseUrl/header 多次请求只创建一次 client", () => {
-    const pool = new ProviderClientPool(() => ({ id: crypto.randomUUID() }));
+    const factory = vi.fn(() => ({}));
+    const pool = new ProviderClientPool(factory);
     const first = pool.get_client(create_request({ api_key: "key-a" }));
     const second = pool.get_client(create_request({ api_key: "key-a" }));
 
     expect(second).toBe(first);
-    expect(pool.get_create_count_for_test()).toBe(1);
+    expect(factory).toHaveBeenCalledTimes(1);
   });
 
   it("不同 apiKey 或 headers 会创建不同 client", () => {
-    const pool = new ProviderClientPool(() => ({ id: crypto.randomUUID() }));
+    const factory = vi.fn(() => ({}));
+    const pool = new ProviderClientPool(factory);
     const first = pool.get_client(create_request({ api_key: "key-a" }));
     const second = pool.get_client(create_request({ api_key: "key-b" }));
     const third = pool.get_client(create_request({ headers: { "X-Test": "yes" } }));
 
     expect(second).not.toBe(first);
     expect(third).not.toBe(first);
-    expect(pool.get_create_count_for_test()).toBe(3);
+    expect(factory).toHaveBeenCalledTimes(3);
   });
 });
 

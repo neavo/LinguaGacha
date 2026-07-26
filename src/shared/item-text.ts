@@ -1,8 +1,8 @@
 import { read_item_name_text } from "./item-name";
 
-export type ItemTextField = "src" | "name_src" | "dst" | "name_dst";
+type ItemTextField = "src" | "name_src" | "dst" | "name_dst";
 
-export type ItemTextPart = {
+type ItemTextPart = {
   field: ItemTextField; // 参与规则计算的原始字段
   text: string; // 规则匹配文本，调用方不得拼接跨字段文本
 };
@@ -21,6 +21,7 @@ function read_name_text_parts(field: "name_src" | "name_dst", value: unknown): I
   return text === "" ? [] : [{ field, text }];
 }
 
+// 原文正文与源姓名保持独立 part，规则不得跨字段拼接命中。
 export function read_item_source_text_parts(item: ItemTextRecord): ItemTextGroup {
   return [
     {
@@ -31,6 +32,7 @@ export function read_item_source_text_parts(item: ItemTextRecord): ItemTextGroup
   ];
 }
 
+// 译文正文与译名保持独立 part，统计和校对共用同一拆分口径。
 export function read_item_translation_text_parts(item: ItemTextRecord): ItemTextGroup {
   return [
     {
@@ -41,10 +43,12 @@ export function read_item_translation_text_parts(item: ItemTextRecord): ItemText
   ];
 }
 
+// 任一译文字段非空即视为条目已有翻译。
 export function has_item_translation_text(item: ItemTextRecord): boolean {
   return read_item_translation_text_parts(item).some((part) => part.text !== "");
 }
 
+// 清空译文时保留其它条目字段，并把译名恢复为领域空值 null。
 export function clear_item_translation_fields<T extends ItemTextRecord>(
   item: T,
 ): T & { dst: string; name_dst: null } {
@@ -53,8 +57,4 @@ export function clear_item_translation_fields<T extends ItemTextRecord>(
     dst: "",
     name_dst: null,
   };
-}
-
-export function read_translation_name_text(value: unknown): string {
-  return read_item_name_text(value);
 }

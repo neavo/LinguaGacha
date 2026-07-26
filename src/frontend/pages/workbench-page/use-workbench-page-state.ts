@@ -47,7 +47,7 @@ import type {
   WorkbenchTaskViewState,
 } from "@frontend/pages/workbench-page/types";
 
-// EMPTY WORKBENCH STATS 是默认快照事实，调用方只读取副本不临时拼装。
+// 缓存尚未就绪时使用零值统计，避免把旧项目进度带入新会话。
 const EMPTY_WORKBENCH_STATS: WorkbenchStats = {
   total_items: 0,
   completed_count: 0,
@@ -67,9 +67,9 @@ const EMPTY_SNAPSHOT: WorkbenchSnapshot = {
   entries: [],
 };
 
-// WORKBENCH REQUIRED SECTIONS 是模块级稳定契约，集中维护避免调用点散落魔术值。
+// 页面缓存只有消费完这些 section revision 才能标记为 ready。
 const WORKBENCH_REQUIRED_SECTIONS: ProjectDataSection[] = ["project", "files", "items", "analysis"];
-// WORKBENCH REFRESH SECTIONS 是工作台列表 query 的项目事实依赖范围。
+// 工作台列表 query 的项目事实依赖范围。
 const WORKBENCH_REFRESH_SECTIONS: readonly ProjectDataSection[] = [
   "project",
   "files",
@@ -97,9 +97,7 @@ type WorkbenchSelectionState = {
   anchor_entry_id: string | null;
 };
 
-/**
- * 构建当前场景的稳定结果。
- */
+/** 同时清空多选、活动行和范围选择锚点。 */
 function create_empty_selection_state(): WorkbenchSelectionState {
   return {
     selected_entry_ids: [],
@@ -108,9 +106,7 @@ function create_empty_selection_state(): WorkbenchSelectionState {
   };
 }
 
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
+/** 去重时保留首次出现顺序，避免改变表格范围选择语义。 */
 function dedupe_workbench_entry_ids(entry_ids: string[]): string[] {
   return Array.from(new Set(entry_ids));
 }
@@ -129,7 +125,7 @@ function are_workbench_entry_ids_equal(
 }
 
 /**
- * 选择当前场景的目标项。
+ * 快照变化后优先保留同一路径；文件被删时选中原索引附近的幸存项。
  */
 function select_after_snapshot(
   previous_entries: WorkbenchFileEntry[],
@@ -160,9 +156,8 @@ function select_after_snapshot(
   return next_entries[0]?.rel_path ?? null;
 }
 
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
 /**
- * 归一化输入，保证下游消费稳定形状。
+ * 按当前快照裁掉已删除文件，并收窄活动行与范围选择锚点。
  */
 function normalize_workbench_selection_state(
   selection_state: WorkbenchSelectionState,
@@ -193,7 +188,7 @@ function normalize_workbench_selection_state(
 }
 
 /**
- * 解析当前场景的最终消费值。
+ * 刷新后保留有效多选；全部失效时按旧活动位置恢复一个稳定单选。
  */
 function resolve_workbench_selection_after_snapshot(args: {
   previous_entries: WorkbenchFileEntry[];
@@ -243,15 +238,13 @@ function resolve_workbench_selection_after_snapshot(args: {
   };
 }
 
-/**
- * 判断当前值是否满足业务条件。
- */
+/** 收窄 session 中恢复出的任务类型字符串。 */
 function is_workbench_task_kind(value: string): value is WorkbenchTaskKind {
   return value === "translation" || value === "analysis";
 }
 
 /**
- * 解析当前场景的最终消费值。
+ * 依次按运行中任务、最近任务、唯一可展示任务和页面回退值选择当前任务。
  */
 function resolve_active_workbench_task_kind(args: {
   running_task_kind: WorkbenchTaskKind | null;
@@ -289,9 +282,8 @@ function resolve_active_workbench_task_kind(args: {
   return null;
 }
 
-// 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
 /**
- * 生成当前场景的展示内容。
+ * 将秒数截断并限制为非负值，统一输出 HH:MM:SS。
  */
 function format_duration_value(
   seconds: number,
@@ -311,9 +303,8 @@ function format_duration_value(
   };
 }
 
-// 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
 /**
- * 生成当前场景的展示内容。
+ * 用 K/M 缩写压缩计数，同时把单位与数值分离给详情布局。
  */
 function format_compact_metric_value(
   value: number,
@@ -339,9 +330,8 @@ function format_compact_metric_value(
   };
 }
 
-// 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
 /**
- * 生成当前场景的展示内容。
+ * 按每秒千 token 阈值统一翻译与分析任务的速度单位。
  */
 function format_speed_value(
   value: number,
@@ -359,17 +349,14 @@ function format_speed_value(
   };
 }
 
-// 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
-/**
- * 生成当前场景的展示内容。
- */
+/** 将详情使用的速度值压平成摘要尾部文案。 */
 function format_summary_speed(value: number): string {
   const metric_value = format_speed_value(value);
   return `${metric_value.value_text} ${metric_value.unit_text}`;
 }
 
 /**
- * 解析当前场景的最终消费值。
+ * 停止中优先显示警告；运行中或被强调的空闲任务显示成功色。
  */
 function resolve_task_tone(args: {
   active: boolean;
@@ -387,9 +374,6 @@ function resolve_task_tone(args: {
   return "neutral";
 }
 
-/**
- * 解析当前场景的最终消费值。
- */
 function resolve_percent_tone(
   metrics: Pick<TranslationTaskMetrics, "active" | "stopping">,
 ): WorkbenchTaskTone {
@@ -400,7 +384,7 @@ function resolve_percent_tone(
 }
 
 /**
- * 构建当前场景的稳定结果。
+ * 按详情面板的固定顺序投影翻译任务指标。
  */
 function build_translation_task_metric_entries(
   metrics: TranslationTaskMetrics,
@@ -409,27 +393,27 @@ function build_translation_task_metric_entries(
   return [
     {
       key: "elapsed",
-      label: t("workbench_page.translation_task.detail.elapsed_time"),
+      label: t("workbench_page.task.detail.elapsed_time"),
       ...format_duration_value(metrics.elapsed_seconds),
     },
     {
       key: "remaining-time",
-      label: t("workbench_page.translation_task.detail.remaining_time"),
+      label: t("workbench_page.task.detail.remaining_time"),
       ...format_duration_value(metrics.remaining_seconds),
     },
     {
       key: "speed",
-      label: t("workbench_page.translation_task.detail.average_speed"),
+      label: t("workbench_page.task.detail.average_speed"),
       ...format_speed_value(metrics.average_output_speed),
     },
     {
       key: "input-tokens",
-      label: t("workbench_page.translation_task.detail.input_tokens"),
+      label: t("workbench_page.task.detail.input_tokens"),
       ...format_compact_metric_value(metrics.input_tokens, "T"),
     },
     {
       key: "output-tokens",
-      label: t("workbench_page.translation_task.detail.output_tokens"),
+      label: t("workbench_page.task.detail.output_tokens"),
       ...format_compact_metric_value(metrics.output_tokens, "T"),
     },
     {
@@ -441,7 +425,7 @@ function build_translation_task_metric_entries(
 }
 
 /**
- * 构建当前场景的稳定结果。
+ * 按详情面板的固定顺序投影分析任务指标，并追加候选词数量。
  */
 function build_analysis_task_metric_entries(
   metrics: AnalysisTaskMetrics,
@@ -450,27 +434,27 @@ function build_analysis_task_metric_entries(
   return [
     {
       key: "elapsed",
-      label: t("workbench_page.analysis_task.detail.elapsed_time"),
+      label: t("workbench_page.task.detail.elapsed_time"),
       ...format_duration_value(metrics.elapsed_seconds),
     },
     {
       key: "remaining-time",
-      label: t("workbench_page.analysis_task.detail.remaining_time"),
+      label: t("workbench_page.task.detail.remaining_time"),
       ...format_duration_value(metrics.remaining_seconds),
     },
     {
       key: "speed",
-      label: t("workbench_page.analysis_task.detail.average_speed"),
+      label: t("workbench_page.task.detail.average_speed"),
       ...format_speed_value(metrics.average_output_speed),
     },
     {
       key: "input-tokens",
-      label: t("workbench_page.analysis_task.detail.input_tokens"),
+      label: t("workbench_page.task.detail.input_tokens"),
       ...format_compact_metric_value(metrics.input_tokens, "T"),
     },
     {
       key: "output-tokens",
-      label: t("workbench_page.analysis_task.detail.output_tokens"),
+      label: t("workbench_page.task.detail.output_tokens"),
       ...format_compact_metric_value(metrics.output_tokens, "T"),
     },
     {
@@ -486,31 +470,29 @@ function build_analysis_task_metric_entries(
   ];
 }
 
-/**
- * 构建当前场景的稳定结果。
- */
+/** 无可展示任务时的摘要占位。 */
 function build_empty_task_summary_display(
   t: ReturnType<typeof useI18n>["t"],
 ): WorkbenchTaskSummaryDisplay {
   return {
-    status_text: t("workbench_page.translation_task.summary.empty"),
+    status_text: t("workbench_page.task.summary.empty"),
     trailing_text: null,
     tone: "neutral",
     show_spinner: false,
-    detail_tooltip_text: t("workbench_page.translation_task.summary.detail_tooltip"),
+    detail_tooltip_text: t("workbench_page.task.summary.detail_tooltip"),
   };
 }
 
 /**
- * 构建当前场景的稳定结果。
+ * 将翻译任务运行态投影为命令栏摘要，空闲时不显示历史速度。
  */
 function build_translation_task_summary_display(
   metrics: TranslationTaskMetrics,
   t: ReturnType<typeof useI18n>["t"],
 ): WorkbenchTaskSummaryDisplay {
-  let status_text = t("workbench_page.translation_task.summary.empty");
+  let status_text = t("workbench_page.task.summary.empty");
   if (metrics.stopping) {
-    status_text = t("workbench_page.translation_task.summary.stopping");
+    status_text = t("workbench_page.task.summary.stopping");
   } else if (metrics.active) {
     status_text = t("workbench_page.translation_task.summary.running");
   }
@@ -525,20 +507,20 @@ function build_translation_task_summary_display(
       stopping: metrics.stopping,
     }),
     show_spinner: show_runtime,
-    detail_tooltip_text: t("workbench_page.translation_task.summary.detail_tooltip"),
+    detail_tooltip_text: t("workbench_page.task.summary.detail_tooltip"),
   };
 }
 
 /**
- * 构建当前场景的稳定结果。
+ * 将分析任务运行态投影为命令栏摘要，空闲时不显示历史速度。
  */
 function build_analysis_task_summary_display(
   metrics: AnalysisTaskMetrics,
   t: ReturnType<typeof useI18n>["t"],
 ): WorkbenchTaskSummaryDisplay {
-  let status_text = t("workbench_page.analysis_task.summary.empty");
+  let status_text = t("workbench_page.task.summary.empty");
   if (metrics.stopping) {
-    status_text = t("workbench_page.analysis_task.summary.stopping");
+    status_text = t("workbench_page.task.summary.stopping");
   } else if (metrics.active) {
     status_text = t("workbench_page.analysis_task.summary.running");
   }
@@ -552,12 +534,12 @@ function build_analysis_task_summary_display(
       stopping: metrics.stopping,
     }),
     show_spinner: show_runtime,
-    detail_tooltip_text: t("workbench_page.analysis_task.summary.detail_tooltip"),
+    detail_tooltip_text: t("workbench_page.task.summary.detail_tooltip"),
   };
 }
 
 /**
- * 解析当前场景的最终消费值。
+ * 运行或停止中信任任务快照；空闲后回落到项目事实统计。
  */
 function resolve_task_detail_progress_percent(args: {
   metrics: Pick<
@@ -573,7 +555,7 @@ function resolve_task_detail_progress_percent(args: {
 }
 
 /**
- * 构建当前场景的稳定结果。
+ * 将翻译任务快照组装成详情面板契约，停止中禁用重复停止。
  */
 function build_translation_task_detail_display(args: {
   metrics: TranslationTaskMetrics;
@@ -598,7 +580,7 @@ function build_translation_task_detail_display(args: {
 }
 
 /**
- * 构建当前场景的稳定结果。
+ * 将分析任务快照组装成详情面板契约，停止中禁用重复停止。
  */
 function build_analysis_task_detail_display(args: {
   metrics: AnalysisTaskMetrics;
@@ -672,6 +654,11 @@ type UseWorkbenchPageStateOptions = {
   analysisWorkbenchTask: AnalysisWorkbenchTask; // 页面只消费任务状态，不拥有任务完成意图
 };
 
+/**
+ * 将项目文件快照、选择状态、文件写入和常驻任务视图整合为工作台页面契约。
+ *
+ * 常驻任务由上层会话持有；此 Hook 只投影展示状态并串行化项目文件写入。
+ */
 export function useWorkbenchPageState(
   options: UseWorkbenchPageStateOptions,
 ): UseWorkbenchPageStateResult {
@@ -767,10 +754,8 @@ export function useWorkbenchPageState(
 
   const get_workbench_planning_state = useCallback((): WorkbenchCommandPlanningState => {
     return {
-      files: entries_ref.current.map((entry, index) => ({
+      files: entries_ref.current.map((entry) => ({
         rel_path: entry.rel_path,
-        file_type: entry.file_type,
-        sort_index: entry.sort_index ?? index,
       })),
       section_revisions: consumed_revisions,
     };
@@ -1161,7 +1146,6 @@ export function useWorkbenchPageState(
     project_identity: project_snapshot.loaded ? project_snapshot.path : "",
     dialog_state,
     get_planning_state: get_workbench_planning_state,
-    task_snapshot,
     planner_settings,
     run_modal_progress_toast,
     run_project_file_write,
@@ -1339,7 +1323,6 @@ export function useWorkbenchPageState(
 
         const reset_plan = create_workbench_reset_file_plan({
           state: get_workbench_planning_state(),
-          task_snapshot,
           rel_path: target_rel_path,
           settings: planner_settings,
         });
@@ -1358,7 +1341,6 @@ export function useWorkbenchPageState(
 
         const delete_plan = create_workbench_delete_files_plan({
           state: get_workbench_planning_state(),
-          task_snapshot,
           rel_paths: current_dialog_state.target_rel_paths,
           settings: planner_settings,
         });

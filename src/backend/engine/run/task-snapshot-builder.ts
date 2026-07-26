@@ -2,6 +2,7 @@ import type { ApiJsonValue } from "../../api/api-types";
 import { ProjectDatabase } from "../../database/database-operations";
 import { ProjectDataReader } from "../../project/project-data";
 import { ProjectSessionState } from "../../project/project-session";
+import { read_json_record } from "../../../domain/json";
 import { TaskRunState } from "./task-run-state";
 import {
   is_task_type,
@@ -73,7 +74,7 @@ export class TaskSnapshotBuilder {
     const progress =
       task_type === "analysis"
         ? this.build_analysis_progress_snapshot(meta)
-        : this.normalize_progress_snapshot(this.normalize_object(meta["translation_extras"]));
+        : this.normalize_progress_snapshot({ ...read_json_record(meta["translation_extras"]) });
     const snapshot: TaskSnapshot = {
       run_revision: engine_state.run_revision,
       task_type,
@@ -102,9 +103,9 @@ export class TaskSnapshotBuilder {
     if (is_task_type(engine_state.active_task_type)) {
       return engine_state.active_task_type;
     }
-    const translation_progress = this.normalize_progress_snapshot(
-      this.normalize_object(meta["translation_extras"]),
-    );
+    const translation_progress = this.normalize_progress_snapshot({
+      ...read_json_record(meta["translation_extras"]),
+    });
     if (this.read_number(translation_progress["line"], 0) > 0) {
       return "translation";
     }
@@ -119,7 +120,7 @@ export class TaskSnapshotBuilder {
    * 分析快照只读取已提交进度 extras，运行中不再为高频 snapshot 扫描 items/checkpoint。
    */
   private build_analysis_progress_snapshot(meta: JsonRecord): MutableJsonRecord {
-    return this.normalize_progress_snapshot(this.normalize_object(meta["analysis_extras"]));
+    return this.normalize_progress_snapshot({ ...read_json_record(meta["analysis_extras"]) });
   }
 
   /**
@@ -152,13 +153,6 @@ export class TaskSnapshotBuilder {
    */
   public get_section_revision(section: string): number {
     return this.data_reader.get_section_revision(this.get_loaded_project_meta(), section);
-  }
-
-  /**
-   * 普通对象才允许作为 JSON record 继续下钻
-   */
-  private normalize_object(value: ApiJsonValue | undefined): MutableJsonRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value) ? { ...value } : {};
   }
 
   /**

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 import { ToggleGroup, ToggleGroupItem } from "@frontend/shadcn/toggle-group";
 import "@frontend/widgets/segmented-toggle/segmented-toggle.css";
 

@@ -67,14 +67,6 @@ export type GlossaryVisibleEntry = {
   source_index: number;
 };
 
-export type GlossaryPresetItem = {
-  name: string;
-  virtual_id: string;
-  type: "builtin" | "user";
-  path?: string;
-  is_default?: boolean;
-};
-
 export type GlossaryConfirmState =
   | {
       open: false;
@@ -91,22 +83,6 @@ export type GlossaryConfirmState =
       selection_count: number;
       preset_name: string;
       preset_input_value: string;
-      submitting: boolean;
-      target_virtual_id: string | null;
-    };
-
-export type GlossaryPresetInputState =
-  | {
-      open: false;
-      mode: null;
-      value: string;
-      submitting: boolean;
-      target_virtual_id: string | null;
-    }
-  | {
-      open: true;
-      mode: "save" | "rename";
-      value: string;
       submitting: boolean;
       target_virtual_id: string | null;
     };

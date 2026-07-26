@@ -1,7 +1,7 @@
 import type { ApiJsonValue } from "../../api/api-types";
 import type { WorkUnitLogEntry } from "./work-unit";
 
-/** 翻译 work unit 输出只表达译文 item 更新，数据库提交由 artifact 层完成 */
+/** 翻译 work unit 输出只表达译文 item 更新，数据库提交由 TaskEngine 统一编排 */
 export type TranslationWorkUnitOutput = {
   kind: "translation";
   items: ApiJsonValue;
@@ -19,7 +19,7 @@ export type AnalysisWorkUnitOutput = {
 export type WorkUnitExecutionResult = {
   unit_id: string;
   kind: "translation" | "analysis";
-  outcome: "success" | "failed" | "stopped"; // 驱动 Engine 重试、停止和 artifact 提交分支
+  outcome: "success" | "failed" | "stopped"; // 驱动 Engine 重试、停止和结果提交分支
   metrics: {
     input_tokens: number;
     output_tokens: number;

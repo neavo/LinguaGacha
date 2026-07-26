@@ -2,20 +2,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { Item } from "../../../domain/item";
 import { KVJSONFormat } from "./kvjson-format";
-
-let temp_dir = "";
-
-beforeEach(() => {
-  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-kvjson-format-"));
-});
-
-afterEach(() => {
-  fs.rmSync(temp_dir, { recursive: true, force: true });
-});
 
 describe("KVJSONFormat", () => {
   it("按 key/value 关系设置 KVJSON 状态", async () => {
@@ -45,6 +35,7 @@ describe("KVJSONFormat", () => {
   });
 
   it("写回 key 到有效译文的 JSON 对象", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-kvjson-format-"));
     const format = new KVJSONFormat();
     await format.write_to_path(
       [
@@ -71,12 +62,14 @@ describe("KVJSONFormat", () => {
         }),
       ],
       {
-        translated_path: temp_dir,
-        bilingual_path: path.join(temp_dir, "bilingual"),
+        translated_path: temp_dir.path,
+        bilingual_path: path.join(temp_dir.path, "bilingual"),
       },
     );
 
-    expect(JSON.parse(fs.readFileSync(path.join(temp_dir, "json", "data.json"), "utf-8"))).toEqual({
+    expect(
+      JSON.parse(fs.readFileSync(path.join(temp_dir.path, "json", "data.json"), "utf-8")),
+    ).toEqual({
       k1: "v1",
       k2: "v2",
       k3: "k3",

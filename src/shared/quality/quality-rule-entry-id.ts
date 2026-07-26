@@ -3,8 +3,7 @@ type QualityRuleEntryWithId = {
   src?: unknown;
 };
 
-let fallback_entry_id_sequence = 0;
-
+// entry_id 去空后为空即视为缺失。
 export function normalize_quality_rule_entry_id(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
@@ -14,16 +13,12 @@ export function normalize_quality_rule_entry_id(value: unknown): string | null {
   return normalized === "" ? null : normalized;
 }
 
+// 新规则使用带领域前缀的随机 UUID，避免与迁移期稳定 ID 混淆。
 export function create_quality_rule_entry_id(): string {
-  const random_id = globalThis.crypto?.randomUUID?.();
-  if (typeof random_id === "string") {
-    return `qr:${random_id}`;
-  }
-
-  fallback_entry_id_sequence += 1;
-  return `qr:fallback:${Date.now().toString(36)}:${fallback_entry_id_sequence.toString(36)}`;
+  return `qr:${crypto.randomUUID()}`;
 }
 
+// 旧规则没有 ID 时用原文和原始位置生成同批次内稳定身份。
 export function build_legacy_quality_rule_entry_id(
   entry: QualityRuleEntryWithId,
   index: number,
@@ -31,7 +26,7 @@ export function build_legacy_quality_rule_entry_id(
   return `${String(entry.src ?? "").trim()}::${index.toString()}`;
 }
 
-export function ensure_quality_rule_entry_id<Entry extends QualityRuleEntryWithId>(
+function ensure_quality_rule_entry_id<Entry extends QualityRuleEntryWithId>(
   entry: Entry,
   index: number,
 ): Entry & { entry_id: string } {
@@ -43,6 +38,7 @@ export function ensure_quality_rule_entry_id<Entry extends QualityRuleEntryWithI
   };
 }
 
+// 批量补 ID 时保留已有合法身份，只为缺失项生成迁移期身份。
 export function ensure_quality_rule_entry_ids<Entry extends QualityRuleEntryWithId>(
   entries: Entry[],
 ): Array<Entry & { entry_id: string }> {

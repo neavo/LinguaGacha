@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState, type Dispatch, type SetStateAction } 
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type { ProjectWriteResultPayload } from "@frontend/app/state/desktop-project-write";
-import type { TaskSnapshot } from "@frontend/app/state/task-snapshot-store";
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { normalize_source_paths } from "@frontend/app/desktop/source-paths";
@@ -35,7 +34,6 @@ type WorkbenchImportFilesFlowOptions = {
   project_identity: string;
   dialog_state: WorkbenchDialogState;
   get_planning_state: () => WorkbenchCommandPlanningState;
-  task_snapshot: TaskSnapshot;
   planner_settings: WorkbenchPlannerSettings; // 导入命令只需要预过滤设置，不依赖完整应用设置快照
   run_modal_progress_toast: <T>(args: {
     message: string;
@@ -79,20 +77,10 @@ export function close_dialog_state(): WorkbenchDialogState {
 function normalize_workbench_file_parse_preview(payload: {
   source_path?: unknown;
   target_rel_path?: unknown;
-  file_type?: unknown;
-  parsed_items?: unknown;
 }): WorkbenchFileParsePreview {
   return {
     source_path: String(payload.source_path ?? ""),
     target_rel_path: String(payload.target_rel_path ?? ""),
-    file_type: String(payload.file_type ?? "NONE"),
-    parsed_items: Array.isArray(payload.parsed_items)
-      ? payload.parsed_items.flatMap((item) => {
-          return typeof item === "object" && item !== null
-            ? [{ ...(item as Record<string, unknown>) }]
-            : [];
-        })
-      : [],
   };
 }
 
@@ -202,7 +190,6 @@ export function useWorkbenchImportFilesFlow(
 
       const import_plan = create_workbench_import_files_plan({
         state,
-        task_snapshot: options.task_snapshot,
         parsed_files: pending_request.parsed_files,
         conflict_action,
         settings: options.planner_settings,

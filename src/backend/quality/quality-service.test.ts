@@ -5,10 +5,8 @@ import path from "node:path";
 import ExcelJS from "exceljs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ProjectEventBus } from "../project/project-events";
 import { ProjectDatabase } from "../database/database-operations";
 import type { ApiJsonValue } from "../api/api-types";
-import type { ProjectChangePublisher } from "../project/project-changes";
 import { ProjectWriteStore } from "../project/project-write-store";
 import { get_section_revision } from "../project/project-data";
 import { ProjectSessionState } from "../project/project-session";
@@ -300,7 +298,7 @@ describe("QualityService", () => {
       ],
     });
     expect(publisher.publish_project_change).toHaveBeenCalledWith({
-      targetProjectPath: lg_path,
+      projectPath: lg_path,
       source: "quality_rule_save_entries",
       updatedSections: ["quality"],
       sections: {
@@ -317,9 +315,9 @@ describe("QualityService", () => {
       }),
     ).rejects.toThrow("data.revision_conflict");
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
-    expect(
-      database.execute({ name: "getRules", args: { projectPath: lg_path, ruleType: "glossary" } }),
-    ).toEqual([{ src: "HP", dst: "生命值", info: "", regex: false, case_sensitive: false }]);
+    expect(database.get_rules(lg_path, "glossary")).toEqual([
+      { src: "HP", dst: "生命值", info: "", regex: false, case_sensitive: false },
+    ]);
   });
 
   it("保存质量规则时保留稳定 entry_id", async () => {
@@ -333,9 +331,7 @@ describe("QualityService", () => {
       entries: [{ entry_id: "rule-1", src: "HP", dst: "生命值" }],
     });
 
-    expect(
-      database.execute({ name: "getRules", args: { projectPath: lg_path, ruleType: "glossary" } }),
-    ).toEqual([
+    expect(database.get_rules(lg_path, "glossary")).toEqual([
       {
         entry_id: "rule-1",
         src: "HP",
@@ -368,41 +364,35 @@ describe("QualityService", () => {
     cleanup_databases.push(database);
     const { service, lg_path } = create_workbench_service(database);
     const output_dir = path.join(path.dirname(lg_path), "analysis-out");
-    database.execute({
-      name: "upsertAnalysisCandidateAggregates",
-      args: {
-        projectPath: lg_path,
-        aggregates: [
-          {
-            src: "姫",
-            dst_votes: { 公主: 1, 姬: 3 },
-            info_votes: { 角色名: 2 },
-            observation_count: 4,
-            first_seen_at: "2026-05-16T00:00:00.000Z",
-            last_seen_at: "2026-05-16T00:02:00.000Z",
-            case_sensitive: true,
-          },
-          {
-            src: "\\N[1]",
-            dst_votes: { "\\N[1]": 1 },
-            info_votes: { 控制码: 1 },
-            observation_count: 1,
-            first_seen_at: "2026-05-16T00:03:00.000Z",
-            last_seen_at: "2026-05-16T00:03:00.000Z",
-            case_sensitive: false,
-          },
-          {
-            src: "王",
-            dst_votes: { 王: 2 },
-            info_votes: { other: 2 },
-            observation_count: 2,
-            first_seen_at: "2026-05-16T00:04:00.000Z",
-            last_seen_at: "2026-05-16T00:04:00.000Z",
-            case_sensitive: false,
-          },
-        ],
+    database.upsert_analysis_candidate_aggregates(lg_path, [
+      {
+        src: "姫",
+        dst_votes: { 公主: 1, 姬: 3 },
+        info_votes: { 角色名: 2 },
+        observation_count: 4,
+        first_seen_at: "2026-05-16T00:00:00.000Z",
+        last_seen_at: "2026-05-16T00:02:00.000Z",
+        case_sensitive: true,
       },
-    });
+      {
+        src: "\\N[1]",
+        dst_votes: { "\\N[1]": 1 },
+        info_votes: { 控制码: 1 },
+        observation_count: 1,
+        first_seen_at: "2026-05-16T00:03:00.000Z",
+        last_seen_at: "2026-05-16T00:03:00.000Z",
+        case_sensitive: false,
+      },
+      {
+        src: "王",
+        dst_votes: { 王: 2 },
+        info_votes: { other: 2 },
+        observation_count: 2,
+        first_seen_at: "2026-05-16T00:04:00.000Z",
+        last_seen_at: "2026-05-16T00:04:00.000Z",
+        case_sensitive: false,
+      },
+    ]);
 
     const result = await service.export_analysis_candidates_to_directory(output_dir);
     const json_path = String(result["json_path"] ?? "");
@@ -442,7 +432,7 @@ describe("QualityService", () => {
       app_setting_service,
       database,
       new ProjectSessionState(),
-      new ProjectWriteStore(database, new ProjectEventBus(), null),
+      new ProjectWriteStore(database, vi.fn(), null),
     );
     return { service, app_root, app_setting_service };
   }
@@ -453,7 +443,7 @@ describe("QualityService", () => {
   function create_workbench_service(database: ProjectDatabase): {
     service: QualityService;
     lg_path: string;
-    publisher: { publish_project_change: ReturnType<typeof vi.fn> };
+    publisher: ReturnType<typeof create_test_project_change_publisher>;
   } {
     const { app_root } = create_service();
     const paths = new AppPathService({
@@ -463,13 +453,10 @@ describe("QualityService", () => {
     });
     const app_setting_service = new AppSettingService(paths);
     const session_state = new ProjectSessionState();
-    const project_event_bus = new ProjectEventBus();
+    const project_event_bus = vi.fn();
     const lg_path = path.join(app_root, "quality.lg");
     const publisher = create_test_project_change_publisher(database, lg_path);
-    database.execute({
-      name: "createProject",
-      args: { projectPath: lg_path, name: "quality" },
-    });
+    database.create_project(lg_path, "quality");
     session_state.mark_loaded(lg_path);
     return {
       service: new QualityService(
@@ -477,11 +464,7 @@ describe("QualityService", () => {
         app_setting_service,
         database,
         session_state,
-        new ProjectWriteStore(
-          database,
-          project_event_bus,
-          publisher as unknown as ProjectChangePublisher,
-        ),
+        new ProjectWriteStore(database, project_event_bus, publisher.publish_project_change),
       ),
       lg_path,
       publisher,
@@ -491,19 +474,13 @@ describe("QualityService", () => {
   /**
    * 用数据库 meta 生成测试用 project change，保持 revision 断言接近运行态。
    */
-  function create_test_project_change_publisher(
-    database: ProjectDatabase,
-    lg_path: string,
-  ): { publish_project_change: ReturnType<typeof vi.fn> } {
+  function create_test_project_change_publisher(database: ProjectDatabase, lg_path: string) {
     return {
       publish_project_change: vi.fn((payload: Record<string, ApiJsonValue>): ProjectChangeEvent => {
         const updated_sections = Array.isArray(payload.updatedSections)
           ? payload.updatedSections.map((section) => String(section))
           : [];
-        const meta = database.execute({
-          name: "getAllMeta",
-          args: { projectPath: lg_path },
-        }) as Record<string, ApiJsonValue>;
+        const meta = database.get_all_meta(lg_path) as Record<string, ApiJsonValue>;
         const section_revisions = Object.fromEntries(
           updated_sections.map((section) => [section, get_section_revision(meta, section)]),
         );
@@ -511,7 +488,7 @@ describe("QualityService", () => {
           type: "project.changed",
           eventId: `test-${String(payload.source ?? "project_change")}`,
           source: String(payload.source ?? "project_change"),
-          projectPath: String(payload.targetProjectPath ?? ""),
+          projectPath: String(payload.projectPath ?? ""),
           projectRevision: Math.max(...Object.values(section_revisions), 0),
           sectionRevisions: section_revisions,
           updatedSections: updated_sections as ProjectChangeEvent["updatedSections"],

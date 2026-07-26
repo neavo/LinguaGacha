@@ -1,8 +1,7 @@
+import path from "node:path";
+
 import { decode_text_content } from "../../../shared/utils/text-tool";
 import {
-  effective_export_text,
-  build_bilingual_path,
-  build_target_path,
   group_items,
   split_text_lines_for_items,
   write_text_file,
@@ -63,21 +62,18 @@ export class ASSFormat {
         .map((item) =>
           String(item.extra_field ?? "").replace(
             "{{CONTENT}}",
-            effective_export_text(item).replace(/\n/gu, "\\N"),
+            item.effective_dst().replace(/\n/gu, "\\N"),
           ),
         )
         .join("\n");
-      await write_text_file(
-        build_target_path(this.config, paths.translated_path, rel_path),
-        translated,
-      );
+      await write_text_file(path.join(paths.translated_path, rel_path), translated);
     }
 
     for (const [rel_path, group] of group_items(items, "ASS")) {
       const bilingual = group
         .map((item) => {
           const extra_field = String(item.extra_field ?? "");
-          const item_dst = effective_export_text(item);
+          const item_dst = item.effective_dst();
           if (this.config.deduplication_in_bilingual && item.src === item_dst) {
             return extra_field.replace("{{CONTENT}}", item_dst.replace(/\n/gu, "\\N"));
           }
@@ -87,7 +83,7 @@ export class ASSFormat {
             .replace("{{CONTENT}}", item_dst.replace(/\n/gu, "\\N"));
         })
         .join("\n");
-      await write_text_file(build_bilingual_path(paths.bilingual_path, rel_path), bilingual);
+      await write_text_file(path.join(paths.bilingual_path, rel_path), bilingual);
     }
   }
 }

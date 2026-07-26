@@ -1,17 +1,8 @@
-import { type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act } from "react";
 
 import { AppAlertDialog } from "./app-alert-dialog";
-
-type DialogMockProps = {
-  children: ReactNode;
-  disabled?: boolean;
-  onClick?: (event: { preventDefault: () => void }) => void;
-  onOpenChange?: (open: boolean) => void;
-  onEscapeKeyDown?: (event: { preventDefault: () => void }) => void;
-};
 
 vi.mock("@frontend/app/locale/locale-provider", () => {
   return {
@@ -24,69 +15,6 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
 vi.mock("@frontend/shadcn/spinner", () => {
   return {
     Spinner: () => <span data-testid="spinner" />,
-  };
-});
-
-vi.mock("@frontend/shadcn/alert-dialog", () => {
-  const click_with_prevent_default = (handler?: DialogMockProps["onClick"]) => {
-    handler?.({ preventDefault: vi.fn() });
-  };
-
-  return {
-    AlertDialog: (props: DialogMockProps & { open: boolean }) => (
-      <div data-testid="dialog-root" data-open={String(props.open)}>
-        <button
-          data-testid="dialog-close-signal"
-          onClick={() => {
-            props.onOpenChange?.(false);
-          }}
-        >
-          close
-        </button>
-        {props.children}
-      </div>
-    ),
-    AlertDialogAction: (props: DialogMockProps) => (
-      <button
-        data-testid="dialog-action"
-        disabled={props.disabled}
-        onClick={() => {
-          click_with_prevent_default(props.onClick);
-        }}
-      >
-        {props.children}
-      </button>
-    ),
-    AlertDialogCancel: (props: DialogMockProps) => (
-      <button
-        data-testid="dialog-cancel"
-        disabled={props.disabled}
-        onClick={() => {
-          click_with_prevent_default(props.onClick);
-        }}
-      >
-        {props.children}
-      </button>
-    ),
-    AlertDialogContent: (props: DialogMockProps) => (
-      <section data-testid="dialog-content">
-        <button
-          data-testid="dialog-escape"
-          onClick={() => {
-            props.onEscapeKeyDown?.({ preventDefault: vi.fn() });
-          }}
-        >
-          escape
-        </button>
-        {props.children}
-      </section>
-    ),
-    AlertDialogDescription: (props: DialogMockProps) => (
-      <p data-testid="dialog-description">{props.children}</p>
-    ),
-    AlertDialogFooter: (props: DialogMockProps) => <footer>{props.children}</footer>,
-    AlertDialogHeader: (props: DialogMockProps) => <header>{props.children}</header>,
-    AlertDialogTitle: (props: DialogMockProps) => <h2>{props.children}</h2>,
   };
 });
 
@@ -119,12 +47,18 @@ describe("AppAlertDialog", () => {
       />,
     );
 
-    expect(container?.querySelector("h2")?.textContent).toBe("app.action.confirm");
-    expect(container?.querySelector('[data-testid="dialog-description"]')?.textContent).toBe(
+    expect(document.body.querySelector('[data-slot="alert-dialog-title"]')?.textContent).toBe(
+      "app.action.confirm",
+    );
+    expect(document.body.querySelector('[data-slot="alert-dialog-description"]')?.textContent).toBe(
       "确认删除项目？",
     );
-    expect(read_buttons_text("dialog-cancel")).toEqual(["app.action.cancel"]);
-    expect(read_buttons_text("dialog-action")).toContain("app.action.confirm");
+    expect(read_buttons_text("alert-dialog-cancel")).toEqual(["app.action.cancel"]);
+    expect(read_buttons_text("alert-dialog-action")).toContain("app.action.confirm");
+
+    click_slot_button("alert-dialog-cancel");
+
+    expect(on_close).toHaveBeenCalledTimes(1);
   });
 
   it("提交中会锁定关闭和按钮，并按配置隐藏加载图标", () => {
@@ -142,14 +76,21 @@ describe("AppAlertDialog", () => {
       />,
     );
 
-    click_test_button("dialog-close-signal");
-    click_test_button("dialog-escape");
+    act(() => {
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          code: "Escape",
+          bubbles: true,
+        }),
+      );
+    });
 
     expect(on_close).not.toHaveBeenCalled();
-    expect(container?.querySelector('[data-testid="spinner"]')).toBeNull();
-    expect(read_buttons_text("dialog-action")).toContain("45.00%");
-    expect(read_first_button("dialog-action")?.disabled).toBe(true);
-    expect(read_first_button("dialog-cancel")?.disabled).toBe(true);
+    expect(document.body.querySelector('[data-testid="spinner"]')).toBeNull();
+    expect(read_buttons_text("alert-dialog-action")).toContain("45.00%");
+    expect(read_first_button("alert-dialog-action")?.disabled).toBe(true);
+    expect(read_first_button("alert-dialog-cancel")?.disabled).toBe(true);
   });
 
   it("确认、取消和次要动作都通过公开回调返回业务层", () => {
@@ -175,17 +116,13 @@ describe("AppAlertDialog", () => {
     click_button_by_text("更新");
     click_button_by_text("稍后");
     click_button_by_text("查看发布页");
-    click_test_button("dialog-close-signal");
 
     expect(on_confirm).toHaveBeenCalledTimes(1);
     expect(on_cancel).toHaveBeenCalledTimes(1);
     expect(on_secondary).toHaveBeenCalledTimes(1);
-    expect(on_close).toHaveBeenCalledTimes(1);
+    expect(on_close).not.toHaveBeenCalled();
   });
 
-  /**
-   * 挂载确认框组件，保持每个用例只描述自身业务动作。
-   */
   function render_dialog(element: JSX.Element): void {
     container = document.createElement("div");
     document.body.append(container);
@@ -196,37 +133,25 @@ describe("AppAlertDialog", () => {
     });
   }
 
-  /**
-   * 读取一类测试按钮的文本快照。
-   */
-  function read_buttons_text(test_id: string): string[] {
+  function read_buttons_text(slot: string): string[] {
     return Array.from(
-      container?.querySelectorAll<HTMLButtonElement>(`[data-testid="${test_id}"]`) ?? [],
+      document.body.querySelectorAll<HTMLButtonElement>(`[data-slot="${slot}"]`),
     ).map((button) => button.textContent ?? "");
   }
 
-  /**
-   * 读取一类测试按钮中的第一个按钮。
-   */
-  function read_first_button(test_id: string): HTMLButtonElement | null {
-    return container?.querySelector<HTMLButtonElement>(`[data-testid="${test_id}"]`) ?? null;
+  function read_first_button(slot: string): HTMLButtonElement | null {
+    return document.body.querySelector<HTMLButtonElement>(`[data-slot="${slot}"]`);
   }
 
-  /**
-   * 按测试 id 点击第一个匹配按钮。
-   */
-  function click_test_button(test_id: string): void {
+  function click_slot_button(slot: string): void {
     act(() => {
-      read_first_button(test_id)?.click();
+      read_first_button(slot)?.click();
     });
   }
 
-  /**
-   * 按按钮文本点击匹配按钮，模拟用户选择具体动作。
-   */
   function click_button_by_text(text: string): void {
     const button =
-      Array.from(container?.querySelectorAll<HTMLButtonElement>("button") ?? []).find(
+      Array.from(document.body.querySelectorAll<HTMLButtonElement>("button")).find(
         (candidate) => candidate.textContent === text,
       ) ?? null;
     act(() => {

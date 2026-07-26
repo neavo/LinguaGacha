@@ -1,4 +1,5 @@
 import type { JsonRecord, JsonValue } from "../shared/utils/json-tool";
+import { read_json_record } from "./json";
 
 // 模型类型是设置文件、模型页分组和服务端模板选择共享的稳定值域
 /**
@@ -272,8 +273,8 @@ export class Model {
     return {
       ...DEFAULT_REQUEST_CONFIG,
       ...record,
-      extra_headers: read_json_record(record["extra_headers"]),
-      extra_body: read_json_record(record["extra_body"]),
+      extra_headers: { ...read_json_record(record["extra_headers"]) },
+      extra_body: { ...read_json_record(record["extra_body"]) },
       extra_headers_custom_enable: Boolean(record["extra_headers_custom_enable"]),
       extra_body_custom_enable: Boolean(record["extra_body_custom_enable"]),
     };
@@ -365,15 +366,6 @@ export function is_model_thinking_level(value: unknown): value is ModelThinkingL
 function read_json_model_record(value: unknown): ModelJsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? { ...(value as ModelJsonRecord) }
-    : {};
-}
-
-/**
- * 读取当前场景需要的稳定数据。
- */
-function read_json_record(value: unknown): JsonRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? { ...(value as JsonRecord) }
     : {};
 }
 

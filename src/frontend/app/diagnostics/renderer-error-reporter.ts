@@ -3,7 +3,6 @@ import {
   create_renderer_error_report,
   normalize_renderer_diagnostics_payload,
   type LogErrorContextInput,
-  type LogError,
   type RendererDiagnosticsContext,
   type RendererDiagnosticsPayload,
   type RendererErrorContextInput,
@@ -23,15 +22,14 @@ export type RendererErrorSource =
 
 export type RendererErrorCaptureOptions = {
   source: RendererErrorSource; // renderer 内部错误来源
-  logError?: LogError; // 允许 worker 等边界传入既有结构化错误快照
   triggeringEvent?: LogErrorContextInput; // 记录导致异常的事件头
   context?: RendererErrorContextInput; // 只允许 renderer error 白名单字段
   dedupeKey?: string; // 用于调用点覆盖默认去重签名
 };
 
-// RECENT ERROR TTL MS 是模块级稳定契约，集中维护避免调用点散落魔术值。
+// 同一错误在一秒窗口内只上报一次，避免渲染循环放大日志故障。
 const RECENT_ERROR_TTL_MS = 1000;
-// RECENT ERROR LIMIT 是运行时节流或容量阈值，集中保存便于评估性能影响。
+// 去重记录只保留最近 16 项，诊断路径不能形成无界 renderer 状态。
 const RECENT_ERROR_LIMIT = 16;
 
 let diagnostics_context: RendererDiagnosticsContext = {};
@@ -60,7 +58,6 @@ export function capture_renderer_error(error: unknown, options: RendererErrorCap
   const report = create_renderer_error_report({
     source: options.source,
     error,
-    logError: options.logError,
     diagnosticsContext: diagnostics_context,
     triggeringEvent: options.triggeringEvent,
     context: options.context,

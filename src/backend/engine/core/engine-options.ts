@@ -1,5 +1,4 @@
 import type { MutableJsonRecord, TaskType } from "../run/task-run-types";
-import { TASK_IDLE_STATUSES as BASE_TASK_IDLE_STATUSES } from "../../../domain/task";
 import type { LogManager } from "../../log/log-manager";
 import type { AppSettingService } from "../../app/app-setting-service";
 import type { TaskRunPublisher } from "../run/task-run-publisher";
@@ -8,12 +7,6 @@ import type { TaskPlanner } from "../planning/task-planner";
 import type { TaskItemRecord } from "../planning/task-plan-types";
 import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
 import type { WorkUnitLogEntry } from "../protocol/work-unit";
-
-// TASK IDLE STATUSES 是领域白名单或配置表，集中维护避免分支散落。
-/**
- * 集中维护当前模块的稳定常量。
- */
-export const TASK_IDLE_STATUSES = new Set<string>(BASE_TASK_IDLE_STATUSES);
 
 /**
  * TaskEngine 依赖都从 Gateway 注入，保证后台任务只通过固定端口读写工程事实
@@ -41,15 +34,15 @@ export interface TaskRunHandle {
  * 翻译和分析共享的进度快照字段，字段名保持公开 task snapshot 兼容
  */
 export interface TaskProgressSnapshot {
-  start_time: number; // start_time/time 延续公开快照字段，前端用它们计算耗时而非重新推断
-  time: number;
-  total_line: number; // 任务启动时的静态目标，line/processed/error 是运行中累加事实
-  line: number;
-  processed_line: number;
-  error_line: number;
-  total_tokens: number; // token 统计由 work unit 汇总，保持总量和输入/输出拆分同时可见
-  total_input_tokens: number;
-  total_output_tokens: number;
+  start_time: number; // 秒级任务启动时间戳
+  time: number; // 由 start_time 计算的累计耗时秒数
+  total_line: number; // 任务启动时冻结的目标行数
+  line: number; // 已成功与最终失败行数之和
+  processed_line: number; // 已成功提交的行数
+  error_line: number; // 最终失败的行数
+  total_tokens: number; // 输入与输出 token 总量
+  total_input_tokens: number; // work unit 汇总的输入 token
+  total_output_tokens: number; // work unit 汇总的输出 token
 }
 
 /**
@@ -58,8 +51,8 @@ export interface TaskProgressSnapshot {
 export interface TranslationWorkUnitResult {
   items: TaskItemRecord[]; // 只承载本 chunk 最终写回快照，TaskEngine 决定是否提交
   row_count: number; // 对齐旧日志口径，表示本 work unit 覆盖行数
-  input_tokens: number; // token 字段用于任务统计累加，不作为成功与否的唯一依据
-  output_tokens: number;
+  input_tokens: number; // 请求输入 token，用于任务统计
+  output_tokens: number; // 请求输出 token，不作为成功与否依据
   stopped: boolean; // 主动取消，区别于失败后可重试
   logs?: WorkUnitLogEntry[]; // 统一回放到 LogManager，worker 不直接写日志
 }
@@ -70,8 +63,8 @@ export interface TranslationWorkUnitResult {
 export interface AnalysisWorkUnitResult {
   success: boolean; // 分析结果可进入 checkpoint 提交流程
   stopped: boolean; // 主动取消，不计为分析失败
-  input_tokens: number; // token 字段与翻译共享统计口径
-  output_tokens: number;
+  input_tokens: number; // 请求输入 token，与翻译共享统计口径
+  output_tokens: number; // 请求输出 token，与输入量分别累计
   glossary_entries: MutableJsonRecord[]; // 候选快照，去重和 checkpoint 归属由 TaskEngine 处理
   logs?: WorkUnitLogEntry[]; // 只承载结构化诊断文本，不携带数据库对象
 }

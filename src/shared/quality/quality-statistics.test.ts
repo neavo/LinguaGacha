@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { ItemTextGroup } from "../item-text";
 import {
   resolve_quality_statistics_text_source,
-  run_quality_statistics_task,
+  run_quality_statistics_task_sync,
 } from "./quality-statistics";
 
 /**
@@ -20,7 +20,7 @@ function text_groups(groups: string[][]): ItemTextGroup[] {
   });
 }
 
-describe("run_quality_statistics_task", () => {
+describe("run_quality_statistics_task_sync", () => {
   it("按规则类型选择统计文本来源", () => {
     expect(resolve_quality_statistics_text_source("post_replacement")).toBe("dst");
     expect(resolve_quality_statistics_text_source("glossary")).toBe("src");
@@ -28,8 +28,8 @@ describe("run_quality_statistics_task", () => {
     expect(resolve_quality_statistics_text_source("text_preserve")).toBe("src");
   });
 
-  it("对 glossary / pre / post / text_preserve 统一返回命中数", async () => {
-    const result = await run_quality_statistics_task({
+  it("对 glossary / pre / post / text_preserve 统一返回命中数", () => {
+    const result = run_quality_statistics_task_sync({
       rules: [
         {
           key: "glossary",
@@ -68,8 +68,8 @@ describe("run_quality_statistics_task", () => {
     expect(result.results.preserve?.matched_item_count).toBe(1);
   });
 
-  it("text_preserve 规则按 Unicode 属性转义统计原文", async () => {
-    const result = await run_quality_statistics_task({
+  it("text_preserve 规则按 Unicode 属性转义统计原文", () => {
+    const result = run_quality_statistics_task_sync({
       rules: [
         {
           key: "han",
@@ -85,8 +85,8 @@ describe("run_quality_statistics_task", () => {
     expect(result.results.han?.matched_item_count).toBe(1);
   });
 
-  it("在非 regex 且忽略大小写时按转义后的正则统计", async () => {
-    const result = await run_quality_statistics_task({
+  it("在非 regex 且忽略大小写时按转义后的正则统计", () => {
+    const result = run_quality_statistics_task_sync({
       rules: [
         {
           key: "literal-regex-safe",
@@ -104,8 +104,8 @@ describe("run_quality_statistics_task", () => {
     expect(result.results["literal-regex-safe"]?.matched_item_count).toBe(1);
   });
 
-  it("对 glossary 保持 casefold 风格的包含关系判断", async () => {
-    const result = await run_quality_statistics_task({
+  it("对 glossary 保持 casefold 风格的包含关系判断", () => {
+    const result = run_quality_statistics_task_sync({
       rules: [
         {
           key: "strasse",
@@ -122,8 +122,8 @@ describe("run_quality_statistics_task", () => {
     expect(result.results.strasse?.matched_item_count).toBe(1);
   });
 
-  it("非法正则按 0 命中处理", async () => {
-    const result = await run_quality_statistics_task({
+  it("非法正则按 0 命中处理", () => {
+    const result = run_quality_statistics_task_sync({
       rules: [
         {
           key: "broken",
@@ -139,8 +139,8 @@ describe("run_quality_statistics_task", () => {
     expect(result.results.broken?.matched_item_count).toBe(0);
   });
 
-  it("subset parents 保持去重与原始顺序", async () => {
-    const result = await run_quality_statistics_task({
+  it("subset parents 保持去重与原始顺序", () => {
+    const result = run_quality_statistics_task_sync({
       rules: [
         {
           key: "erin",
@@ -162,8 +162,8 @@ describe("run_quality_statistics_task", () => {
     expect(result.results.erin?.subset_parents).toEqual(["圣女艾琳", "舰长艾琳"]);
   });
 
-  it("relationTargetCandidates 只为目标候选返回 subset parents", async () => {
-    const result = await run_quality_statistics_task({
+  it("relationTargetCandidates 只为目标候选返回 subset parents", () => {
+    const result = run_quality_statistics_task_sync({
       rules: [
         {
           key: "erin",
@@ -193,8 +193,8 @@ describe("run_quality_statistics_task", () => {
     expect(result.results.erin?.subset_parents).toEqual([]);
   });
 
-  it("同一 item 的正文和姓名同时命中时只计一次", async () => {
-    const result = await run_quality_statistics_task({
+  it("同一 item 的正文和姓名同时命中时只计一次", () => {
+    const result = run_quality_statistics_task_sync({
       rules: [
         {
           key: "alice",

@@ -4,7 +4,6 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
-  are_text_preserve_segments_equal,
   build_text_preserve_rule,
   collect_non_blank_text_preserve_segments,
 } from "./text-preserve-rules";
@@ -116,10 +115,10 @@ describe("text-preserve-rules", () => {
       kind: "suffix",
     });
 
-    expect(prefix?.test("abz")).toBe(true);
-    expect(prefix?.test("zab")).toBe(false);
-    expect(suffix?.test("zab")).toBe(true);
-    expect(suffix?.test("abz")).toBe(false);
+    expect(prefix?.collect("abz")).toEqual(["ab"]);
+    expect(prefix?.collect("zab")).toEqual([]);
+    expect(suffix?.collect("zab")).toEqual(["ab"]);
+    expect(suffix?.collect("abz")).toEqual([]);
   });
 
   it("smart 模式按文本类型使用共享预置规则", () => {
@@ -130,7 +129,7 @@ describe("text-preserve-rules", () => {
       kind: "sample",
     });
 
-    expect(rule?.test("@12こんにちは")).toBe(true);
+    expect(rule?.collect("@12こんにちは")).toContain("@12");
   });
 
   it("RenPy 智能保护段会用共享 CJK Script 规则排除正文", () => {
@@ -141,8 +140,8 @@ describe("text-preserve-rules", () => {
       kind: "sample",
     });
 
-    expect(rule?.test("{player_name}")).toBe(true);
-    expect(rule?.test("{名前}")).toBe(false);
+    expect(rule?.collect("{player_name}")).toEqual(["{player_name}"]);
+    expect(rule?.collect("{名前}")).toEqual([]);
   });
 
   it("收集保护段时会忽略只包含空白的命中", () => {
@@ -157,25 +156,5 @@ describe("text-preserve-rules", () => {
     expect(
       rule === null ? [] : collect_non_blank_text_preserve_segments(" \t[A]\n ", rule),
     ).toEqual(["[A]"]);
-  });
-
-  it("比较保护段时忽略命中内部空白并按序列判断", () => {
-    const rule = build_text_preserve_rule({
-      mode: "CUSTOM",
-      text_type: "NONE",
-      entries: [{ src: "\\[[^\\]]+\\]" }],
-      kind: "sample",
-    });
-
-    expect(rule).not.toBeNull();
-    expect(
-      rule === null ? false : are_text_preserve_segments_equal("[a b] text", "[ab] text", rule),
-    ).toBe(true);
-    expect(
-      rule === null ? false : are_text_preserve_segments_equal("[A] body", "[B] body", rule),
-    ).toBe(false);
-    expect(
-      rule === null ? false : are_text_preserve_segments_equal("x[A]y[B]", "[A][B]xy", rule),
-    ).toBe(true);
   });
 });

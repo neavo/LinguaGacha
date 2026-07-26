@@ -1,5 +1,6 @@
 import { has_language_character } from "./language";
 import type { JsonRecord, JsonValue } from "../shared/utils/json-tool";
+import { read_json_record } from "./json";
 
 // 条目状态
 /**
@@ -295,16 +296,6 @@ export function is_item_file_type(value: unknown): value is ItemFileType {
  */
 export function is_item_text_type(value: unknown): value is ItemTextType {
   return ITEM_TEXT_TYPE_SET.has(value as ItemTextType);
-}
-
-// extra_field 等弱类型 JSON 载荷必须先确认对象形状再读取
-/**
- * 读取当前场景需要的稳定数据。
- */
-export function read_json_record(value: unknown): JsonRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as JsonRecord)
-    : {};
 }
 
 // 完整公开 DTO 必须显式携带所有持久字段；字段缺失只能由 migration 处理

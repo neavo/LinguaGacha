@@ -2,24 +2,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { Item } from "../../../domain/item";
 import { MDFormat } from "./md-format";
 
-let temp_dir = "";
-
-beforeEach(() => {
-  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-md-format-"));
-});
-
-afterEach(() => {
-  fs.rmSync(temp_dir, { recursive: true, force: true });
-});
-
 describe("MDFormat", () => {
   it("标记代码块和图片行为排除状态", async () => {
-    const format = new MDFormat({ source_language: "JA", target_language: "ZH" });
+    const format = new MDFormat();
 
     const items = await format.read_from_stream(
       new TextEncoder().encode("标题\n```python\nprint('hi')\n```\n![img](a.png)\n正文"),
@@ -45,7 +35,8 @@ describe("MDFormat", () => {
   });
 
   it("写出沿用源文件名的 Markdown 译文并忽略其它文件类型", async () => {
-    const format = new MDFormat({ source_language: "JA", target_language: "ZH" });
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-md-format-"));
+    const format = new MDFormat();
     await format.write_to_path(
       [
         Item.from_json({
@@ -71,14 +62,14 @@ describe("MDFormat", () => {
         }),
       ],
       {
-        translated_path: path.join(temp_dir, "translated"),
-        bilingual_path: path.join(temp_dir, "bilingual"),
+        translated_path: path.join(temp_dir.path, "translated"),
+        bilingual_path: path.join(temp_dir.path, "bilingual"),
       },
     );
 
-    expect(fs.readFileSync(path.join(temp_dir, "translated", "docs", "readme.md"), "utf-8")).toBe(
-      "甲\n乙",
-    );
-    expect(fs.existsSync(path.join(temp_dir, "translated", "docs", "other.txt"))).toBe(false);
+    expect(
+      fs.readFileSync(path.join(temp_dir.path, "translated", "docs", "readme.md"), "utf-8"),
+    ).toBe("甲\n乙");
+    expect(fs.existsSync(path.join(temp_dir.path, "translated", "docs", "other.txt"))).toBe(false);
   });
 });

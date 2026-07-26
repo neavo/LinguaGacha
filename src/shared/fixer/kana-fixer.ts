@@ -24,19 +24,13 @@ export class KanaFixer {
    */
   public static fix(dst: string): string {
     const chars = [...dst];
-    const result: string[] = [];
-    for (let index = 0; index < chars.length; index += 1) {
-      const char = chars[index] ?? "";
-      if (!RULE_ONOMATOPOEIA.has(char)) {
-        result.push(char);
-        continue;
-      }
-      const prev_char = chars[index - 1] ?? "";
-      const next_char = chars[index + 1] ?? "";
-      if (is_kana_character(prev_char) || is_kana_character(next_char)) {
-        result.push(char);
-      }
-    }
-    return result.join("");
+    return chars
+      .filter(
+        (char, index) =>
+          !RULE_ONOMATOPOEIA.has(char) ||
+          is_kana_character(chars[index - 1] ?? "") ||
+          is_kana_character(chars[index + 1] ?? ""),
+      )
+      .join("");
   }
 }

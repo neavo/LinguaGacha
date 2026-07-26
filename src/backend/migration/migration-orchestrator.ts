@@ -1,6 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
+import type { DatabaseJsonValue } from "../database/database-types";
+import type { ProjectDatabaseWrite } from "../database/database-operations";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { MIGRATIONS, PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS } from "./migration-registry";
 import type {
@@ -9,6 +10,7 @@ import type {
   ProjectOpenMigrationContext,
   StartupMigrationContext,
 } from "./migration-types";
+import { row_text } from "./migration-row";
 import { PROJECT_DATABASE_SCHEMA_VERSION } from "./migrations/project-schema-migration";
 
 export { PROJECT_DATABASE_SCHEMA_VERSION } from "./migrations/project-schema-migration";
@@ -19,8 +21,6 @@ export { PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS };
  */
 export const PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY =
   "applied_writeback_migrations";
-
-type MetaRow = Record<string, unknown>;
 
 /**
  * 统一迁移编排器只暴露生命周期 hook，具体历史语义留在单场景 migration 文件中。
@@ -50,19 +50,17 @@ export class MigrationOrchestrator {
   }
 
   /**
-   * 项目打开期迁移只收集 operation，调用方负责把它们与 updated_at 放进同一个事务。
+   * 项目打开期迁移只收集类型化写入，调用方负责把它们与 updated_at 放进同一个事务。
    */
-  public async build_project_open_operations(
+  public async build_project_open_writes(
     context: ProjectOpenMigrationContext,
-  ): Promise<DatabaseOperation[]> {
-    const operations: DatabaseOperation[] = [];
-    for (const migration of this.by_order(
-      (item) => item.build_project_open_operations !== undefined,
-    )) {
-      const next_operations = await migration.build_project_open_operations?.(context);
-      operations.push(...(next_operations ?? []));
+  ): Promise<ProjectDatabaseWrite[]> {
+    const writes: ProjectDatabaseWrite[] = [];
+    for (const migration of this.by_order((item) => item.build_project_open_writes !== undefined)) {
+      const next_writes = await migration.build_project_open_writes?.(context);
+      writes.push(...(next_writes ?? []));
     }
-    return operations;
+    return writes;
   }
 
   /**
@@ -172,12 +170,4 @@ export function build_current_project_database_meta(): Record<string, DatabaseJs
     [PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY]:
       PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS,
   };
-}
-
-/**
- * SQLite meta 行可能来自不同底层类型，读取 JSON 前统一收窄为字符串。
- */
-function row_text(row: MetaRow, key: string): string {
-  const value = row[key];
-  return typeof value === "string" ? value : String(value ?? "");
 }
