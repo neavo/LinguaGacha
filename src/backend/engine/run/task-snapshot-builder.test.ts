@@ -65,53 +65,35 @@ describe("TaskSnapshotBuilder", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-task-test-"));
     const project_path = path.join(directory, "task.lg");
     const database = new ProjectDatabase();
-    database.execute({ name: "createProject", args: { projectPath: project_path, name: "task" } });
+    database.create_project(project_path, "task");
     cleanup_callbacks.push(() => fs.rmSync(directory, { force: true, recursive: true }));
     cleanup_callbacks.push(() => database.close());
     return { database, project_path };
   }
 
   function seed_project(database: ProjectDatabase, project_path: string): void {
-    database.execute_transaction([
-      {
-        name: "setItems",
-        args: {
-          projectPath: project_path,
-          items: [
-            create_project_item({ id: 101, src: "原文", status: "NONE" }),
-            create_project_item({ id: 102, src: "失败", status: "NONE" }),
-            create_project_item({ id: 103, src: "跳过", status: "EXCLUDED" }),
-          ],
+    database.transaction(project_path, () => {
+      database.set_items(project_path, [
+        create_project_item({ id: 101, src: "原文", status: "NONE" }),
+        create_project_item({ id: 102, src: "失败", status: "NONE" }),
+        create_project_item({ id: 103, src: "跳过", status: "EXCLUDED" }),
+      ]);
+      database.upsert_meta_entries(project_path, {
+        translation_extras: { line: 5, total_line: 10, total_tokens: 42 },
+        analysis_extras: {
+          total_line: 9,
+          line: 4,
+          processed_line: 4,
+          error_line: 0,
+          total_tokens: 12,
         },
-      },
-      {
-        name: "upsertMetaEntries",
-        args: {
-          projectPath: project_path,
-          meta: {
-            translation_extras: { line: 5, total_line: 10, total_tokens: 42 },
-            analysis_extras: {
-              total_line: 9,
-              line: 4,
-              processed_line: 4,
-              error_line: 0,
-              total_tokens: 12,
-            },
-            analysis_candidate_count: 3,
-          },
-        },
-      },
-      {
-        name: "upsertAnalysisItemCheckpoints",
-        args: {
-          projectPath: project_path,
-          checkpoints: [
-            { item_id: 101, status: "PROCESSED", updated_at: "2026-01-01", error_count: 0 },
-            { item_id: 102, status: "ERROR", updated_at: "2026-01-01", error_count: 1 },
-          ],
-        },
-      },
-    ]);
+        analysis_candidate_count: 3,
+      });
+      database.upsert_analysis_item_checkpoints(project_path, [
+        { item_id: 101, status: "PROCESSED", updated_at: "2026-01-01", error_count: 0 },
+        { item_id: 102, status: "ERROR", updated_at: "2026-01-01", error_count: 1 },
+      ]);
+    });
   }
 
   function create_project_item(

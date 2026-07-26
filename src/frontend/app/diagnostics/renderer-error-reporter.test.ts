@@ -6,7 +6,6 @@ import {
   update_renderer_diagnostics_context,
 } from "@frontend/app/diagnostics/renderer-error-reporter";
 
-// report renderer error mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const report_renderer_error_mock = vi.hoisted(() => vi.fn(async () => undefined));
 
 vi.mock("@frontend/app/desktop/desktop-api", () => {
@@ -121,38 +120,6 @@ describe("renderer error reporter", () => {
       throw new Error("缺少 renderer error 上报。");
     }
     expect(JSON.stringify(last_call[0].context)).not.toContain("secret");
-  });
-
-  it("显式传入 worker 结构化诊断时保留原始失败快照", () => {
-    capture_renderer_error(new Error("project_ui_worker_execution_failed"), {
-      source: "worker",
-      logError: {
-        name: "Error",
-        message: "worker 爆炸",
-        stack: "Error: worker 爆炸\n    at run",
-        context: {
-          worker_message_type: "quality.compute_statistics",
-        },
-      },
-      context: {
-        page: "proofreading",
-      },
-    });
-
-    expect(report_renderer_error_mock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        source: "worker",
-        error: expect.objectContaining({
-          message: "worker 爆炸",
-          context: {
-            worker_message_type: "quality.compute_statistics",
-          },
-        }),
-        context: {
-          page: "proofreading",
-        },
-      }),
-    );
   });
 
   it("诊断上下文更新时同步写入 main 侧黑匣子桥接", () => {

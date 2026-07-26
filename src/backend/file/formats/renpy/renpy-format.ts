@@ -20,7 +20,6 @@ import { RenpyWriter } from "./writer";
  */
 const DEFAULT_SETTING_SNAPSHOT = normalize_setting_snapshot({});
 const DEFAULT_CONFIG: FileFormatServiceConfig = {
-  source_language: DEFAULT_SETTING_SNAPSHOT.source_language,
   target_language: DEFAULT_SETTING_SNAPSHOT.target_language,
   write_translated_name_fields_to_file:
     DEFAULT_SETTING_SNAPSHOT.write_translated_name_fields_to_file,

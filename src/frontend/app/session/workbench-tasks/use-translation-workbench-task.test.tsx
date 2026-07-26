@@ -28,7 +28,6 @@ type RuntimeFixture = {
   refresh_task: ReturnType<typeof vi.fn>;
 };
 
-// state fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
 };
@@ -121,18 +120,12 @@ function create_runtime_fixture(
   };
 }
 
-/**
- * 支撑当前测试场景的专用辅助逻辑。
- */
 function flush_microtasks(): Promise<void> {
   return act(async () => {
     await Promise.resolve();
   });
 }
 
-/**
- * 构造当前场景的标准初始数据。
- */
 function create_workbench_query_response(): Record<string, unknown> {
   return {
     sectionRevisions: {
@@ -177,10 +170,6 @@ describe("useTranslationWorkbenchTask", () => {
     push_toast_mock.mockReset();
   });
 
-  // render_probe 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-  /**
-   * 生成当前场景的展示内容。
-   */
   async function render_probe(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -241,10 +230,7 @@ describe("useTranslationWorkbenchTask", () => {
       open: true,
       submitting: false,
     });
-    expect(push_toast_mock).toHaveBeenCalledWith(
-      "success",
-      "workbench_page.translation_task.feedback.done",
-    );
+    expect(push_toast_mock).toHaveBeenCalledWith("success", "workbench_page.task.feedback.done");
     expect(api_fetch_mock).not.toHaveBeenCalledWith("/api/translation/files/export", {});
   });
 
@@ -286,10 +272,7 @@ describe("useTranslationWorkbenchTask", () => {
     await flush_microtasks();
 
     expect(latest_state?.task_confirm_state).toBeNull();
-    expect(push_toast_mock).toHaveBeenCalledWith(
-      "success",
-      "workbench_page.translation_task.feedback.done",
-    );
+    expect(push_toast_mock).toHaveBeenCalledWith("success", "workbench_page.task.feedback.done");
   });
 
   it("校对页局部重翻的终态回包缺少 scope 时仍不自动弹出生成译文确认框", async () => {
@@ -457,7 +440,7 @@ describe("useTranslationWorkbenchTask", () => {
     expect(latest_state?.task_confirm_state).toBeNull();
     expect(push_toast_mock).not.toHaveBeenCalledWith(
       "success",
-      "workbench_page.translation_task.feedback.done",
+      "workbench_page.task.feedback.done",
     );
   });
 
@@ -496,10 +479,7 @@ describe("useTranslationWorkbenchTask", () => {
     await flush_microtasks();
 
     expect(push_toast_mock).toHaveBeenCalledTimes(1);
-    expect(push_toast_mock).toHaveBeenCalledWith(
-      "success",
-      "workbench_page.translation_task.feedback.stopped",
-    );
+    expect(push_toast_mock).toHaveBeenCalledWith("success", "workbench_page.task.feedback.stopped");
   });
 
   it("停止回包晚于终态时不会把翻译运行态写回停止中", async () => {
@@ -788,7 +768,7 @@ describe("useTranslationWorkbenchTask", () => {
     });
     expect(push_toast_mock).not.toHaveBeenCalledWith(
       "success",
-      "workbench_page.translation_task.feedback.stopped",
+      "workbench_page.task.feedback.stopped",
     );
   });
 

@@ -54,6 +54,7 @@ function normalize_name_dst(value: unknown): TsConversionNameDst {
   return normalize_text(value);
 }
 
+// 外部条目只保留转换所需字段，无有效 item_id 的记录直接丢弃。
 export function normalize_ts_conversion_items(items: Iterable<unknown>): TsConversionItem[] {
   return [...items].flatMap((value) => {
     if (typeof value !== "object" || value === null) {
@@ -115,7 +116,8 @@ function compile_text_preserve_rule(rules: string[]): RegExp | null {
   }
 }
 
-export function convert_text_with_optional_preserve(args: {
+// 保留片段原样拼回，只转换各匹配区间之间的文本，避免简繁转换破坏占位符。
+function convert_text_with_optional_preserve(args: {
   text: string;
   converter: TsConversionTextConverter;
   rules: string[];
@@ -174,16 +176,19 @@ function convert_name_dst(args: {
   return write_item_name_text(args.name_dst, converted_name);
 }
 
+// 自定义保护规则按用户顺序去空保留，正则合法性在编译阶段统一处理。
 export function build_ts_conversion_custom_rules(
   entries: Array<Record<string, unknown>>,
 ): string[] {
   return entries.map((entry) => normalize_text(entry.src).trim()).filter((rule) => rule !== "");
 }
 
+// worker 只需要实际出现的文本类型集合来加载对应预置保护规则。
 export function collect_ts_conversion_text_types(items: TsConversionItem[]): string[] {
   return [...new Set(items.map((item) => item.text_type).filter((text_type) => text_type !== ""))];
 }
 
+// 每个条目按文本类型选择保护规则，正文与姓名共享同一转换器。
 export function build_ts_conversion_converted_items(
   input: BuildConvertedItemsInput,
 ): TsConversionConvertedItem[] {

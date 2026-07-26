@@ -1,6 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 
+import { read_json_record } from "../../../domain/json";
 import { JsonTool } from "../../../shared/utils/json-tool";
+import { row_number, row_text } from "../migration-row";
 import { ZstdTool } from "../../../shared/utils/zstd-tool";
 import type { MigrationDescriptor, ProjectDatabaseMigrationContext } from "../migration-types";
 
@@ -56,7 +58,7 @@ export const trans_item_metadata_migration: MigrationDescriptor = {
    * TRANS 私有 metadata 依赖 item 公共字段和 asset sort_order 已归一。
    */
   run_project_database_writeback(context: ProjectDatabaseMigrationContext): void {
-    TransItemMetadataMigration.run(context.db);
+    run_trans_item_metadata_migration(context.db);
   },
 };
 
@@ -117,171 +119,147 @@ export class TransItemMetadataAssetIndex {
 }
 
 /**
- * 负责写回 TRANS item 的 trans_ref 与 skip_internal_filter，不承担导出期回退逻辑。
+ * 遍历持久 item，并用原始 TRANS asset 的精确索引补齐可证明的 metadata。
  */
-export class TransItemMetadataMigration {
-  /**
-   * 建立 asset 索引后遍历 item 表，仅写回确定可迁的 TRANS metadata。
-   */
-  public static run(db: DatabaseSync): void {
-    const asset_index = this.build_asset_index(db);
-    const rows = db.prepare("SELECT id, data FROM items ORDER BY id").all();
-    const update = db.prepare("UPDATE items SET data = ? WHERE id = ?");
-    for (const row of rows) {
-      const raw = row_text(row, "data");
-      try {
-        const parsed = JsonTool.parseStrict<TransMetadataRecord>(raw);
-        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-          continue;
-        }
-        const file_type = typeof parsed["file_type"] === "string" ? parsed["file_type"] : "NONE";
-        if (this.normalize_item_payload(parsed, file_type, asset_index)) {
-          update.run(JsonTool.stringifyStrict(parsed), row_number(row, "id"));
-        }
-      } catch {
-        // 损坏 item 不阻塞工程打开；无法解析的原文留给后续人工处理
-      }
-    }
-  }
-
-  /**
-   * 从压缩 asset 中读取原始 .trans 内容，损坏 asset 只影响对应旧 item。
-   */
-  public static build_asset_index(db: DatabaseSync): TransItemMetadataAssetIndex {
-    const refs_by_asset_path = new Map<string, TransAssetRowReference[]>();
-    const rows = db.prepare("SELECT path, data FROM assets ORDER BY sort_order ASC, id ASC").all();
-    for (const row of rows) {
-      const asset_path = row_text(row, "path");
-      if (!asset_path.toLowerCase().endsWith(".trans")) {
+export function run_trans_item_metadata_migration(db: DatabaseSync): void {
+  const asset_index = build_trans_item_metadata_asset_index(db);
+  const rows = db.prepare("SELECT id, data FROM items ORDER BY id").all();
+  const update = db.prepare("UPDATE items SET data = ? WHERE id = ?");
+  for (const row of rows) {
+    const raw = row_text(row, "data");
+    try {
+      const parsed = JsonTool.parseStrict<TransMetadataRecord>(raw);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
         continue;
       }
-      try {
-        const original = ZstdTool.decompress(bytes_from_blob(row["data"]));
-        refs_by_asset_path.set(asset_path, this.read_asset_row_refs(original));
-      } catch {
-        // 单个损坏 asset 不阻塞工程打开；对应旧 item 会保持缺失 trans_ref 并在导出时暴露明确错误
+      const file_type = typeof parsed["file_type"] === "string" ? parsed["file_type"] : "NONE";
+      if (normalize_trans_item_metadata(parsed, file_type, asset_index)) {
+        update.run(JsonTool.stringifyStrict(parsed), row_number(row, "id"));
       }
+    } catch {
+      // 损坏 item 不阻塞工程打开；无法解析的原文留给后续人工处理
     }
-    return new TransItemMetadataAssetIndex(refs_by_asset_path);
-  }
-
-  /**
-   * 单个 item 的纯归一逻辑，供数据库迁移和单测复用。
-   */
-  public static normalize_item_payload(
-    item_data: TransMetadataRecord,
-    file_type: string,
-    asset_index: TransItemMetadataAssetIndex = new TransItemMetadataAssetIndex(),
-  ): boolean {
-    let changed = this.normalize_skip_internal_filter(item_data, file_type);
-    if (file_type !== "TRANS" || this.has_valid_trans_ref(item_data["extra_field"])) {
-      return changed;
-    }
-    const resolved_ref = asset_index.resolve(item_data);
-    if (resolved_ref === null) {
-      return changed;
-    }
-    const extra_field = this.to_mutable_extra_field(item_data["extra_field"]);
-    extra_field["trans_ref"] = {
-      file_key: resolved_ref.file_key,
-      row_index: resolved_ref.row_index,
-    };
-    item_data["extra_field"] = extra_field;
-    changed = true;
-    return changed;
-  }
-
-  /**
-   * skip_internal_filter 是当前布尔事实；旧 aqua 标签只在字段缺失时推导 true。
-   */
-  private static normalize_skip_internal_filter(
-    item_data: TransMetadataRecord,
-    file_type: string,
-  ): boolean {
-    const raw_skip_internal_filter = item_data["skip_internal_filter"];
-    if (typeof raw_skip_internal_filter === "boolean") {
-      return false;
-    }
-    if (this.is_trans_aqua_item(item_data, file_type)) {
-      item_data["skip_internal_filter"] = true;
-      return true;
-    }
-    if (raw_skip_internal_filter !== undefined) {
-      delete item_data["skip_internal_filter"];
-      return true;
-    }
-    return false;
-  }
-
-  /**
-   * 解析 .trans project.files，按全局行号建立 file_key/row_index/src 三元定位。
-   */
-  private static read_asset_row_refs(content: Uint8Array): TransAssetRowReference[] {
-    const root = JsonTool.parseStrict<unknown>(content);
-    const project = read_record(read_record(root)["project"]);
-    const files = read_record(project["files"]);
-    const index_original = non_negative_index(project["indexOriginal"], 0);
-    const refs: TransAssetRowReference[] = [];
-    for (const [file_key, entry_raw] of Object.entries(files)) {
-      const entry = read_record(entry_raw);
-      const data_list = Array.isArray(entry["data"]) ? entry["data"] : [];
-      for (const [row_index, data_raw] of data_list.entries()) {
-        const data_row = Array.isArray(data_raw) ? data_raw : [];
-        refs.push({
-          file_key,
-          row_index,
-          global_row: refs.length,
-          src: typeof data_row[index_original] === "string" ? data_row[index_original] : "",
-        });
-      }
-    }
-    return refs;
-  }
-
-  /**
-   * 只有 TRANS 条目且旧 tag 数组包含 aqua，才表示强制跳过内部过滤。
-   */
-  private static is_trans_aqua_item(item_data: TransMetadataRecord, file_type: string): boolean {
-    if (file_type !== "TRANS") {
-      return false;
-    }
-    const extra_field = read_record(item_data["extra_field"]);
-    const tag = extra_field["tag"];
-    return Array.isArray(tag) && tag.some((value) => value === "aqua");
-  }
-
-  /**
-   * 已有合法 trans_ref 是当前项目事实，迁移不能覆盖。
-   */
-  private static has_valid_trans_ref(value: unknown): boolean {
-    const extra_field = read_record(value);
-    const trans_ref = read_record(extra_field["trans_ref"]);
-    const file_key = trans_ref["file_key"];
-    const row_index = trans_ref["row_index"];
-    return (
-      typeof file_key === "string" &&
-      typeof row_index === "number" &&
-      Number.isInteger(row_index) &&
-      row_index >= 0
-    );
-  }
-
-  /**
-   * extra_field 缺失或损坏时从空对象开始补字段，不复用可变外部引用。
-   */
-  private static to_mutable_extra_field(value: unknown): TransMetadataRecord {
-    const record = read_record(value);
-    return { ...record };
   }
 }
 
 /**
- * JSON record 读取统一收窄，数组和 null 都视为空对象。
+ * 按 asset 稳定顺序构建 TRANS 行索引；单个损坏资源不阻塞其它文件迁移。
  */
-function read_record(value: unknown): TransMetadataRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as TransMetadataRecord)
-    : {};
+function build_trans_item_metadata_asset_index(db: DatabaseSync): TransItemMetadataAssetIndex {
+  const refs_by_asset_path = new Map<string, TransAssetRowReference[]>();
+  const rows = db.prepare("SELECT path, data FROM assets ORDER BY sort_order ASC, id ASC").all();
+  for (const row of rows) {
+    const asset_path = row_text(row, "path");
+    if (!asset_path.toLowerCase().endsWith(".trans")) {
+      continue;
+    }
+    try {
+      const original = ZstdTool.decompress(bytes_from_blob(row["data"]));
+      refs_by_asset_path.set(asset_path, read_asset_row_refs(original));
+    } catch {
+      // 单个损坏 asset 不阻塞工程打开；对应旧 item 会保持缺失 trans_ref 并在导出时暴露明确错误
+    }
+  }
+  return new TransItemMetadataAssetIndex(refs_by_asset_path);
+}
+
+/**
+ * 保留已有当前事实，只补 aqua 强制翻译语义和可唯一定位的 trans_ref。
+ */
+export function normalize_trans_item_metadata(
+  item_data: TransMetadataRecord,
+  file_type: string,
+  asset_index: TransItemMetadataAssetIndex = new TransItemMetadataAssetIndex(),
+): boolean {
+  let changed = normalize_skip_internal_filter(item_data, file_type);
+  if (file_type !== "TRANS" || has_valid_trans_ref(item_data["extra_field"])) {
+    return changed;
+  }
+  const resolved_ref = asset_index.resolve(item_data);
+  if (resolved_ref === null) {
+    return changed;
+  }
+  const extra_field = { ...read_json_record(item_data["extra_field"]) };
+  extra_field["trans_ref"] = {
+    file_key: resolved_ref.file_key,
+    row_index: resolved_ref.row_index,
+  };
+  item_data["extra_field"] = extra_field;
+  changed = true;
+  return changed;
+}
+
+/**
+ * 旧 aqua 标签只在 TRANS item 上迁为布尔跳过内部过滤字段。
+ */
+function normalize_skip_internal_filter(
+  item_data: TransMetadataRecord,
+  file_type: string,
+): boolean {
+  const raw_skip_internal_filter = item_data["skip_internal_filter"];
+  if (typeof raw_skip_internal_filter === "boolean") {
+    return false;
+  }
+  if (is_trans_aqua_item(item_data, file_type)) {
+    item_data["skip_internal_filter"] = true;
+    return true;
+  }
+  if (raw_skip_internal_filter !== undefined) {
+    delete item_data["skip_internal_filter"];
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 从原始 `.trans` 的 files/data 顺序生成全局行号与精确文件内定位。
+ */
+function read_asset_row_refs(content: Uint8Array): TransAssetRowReference[] {
+  const root = JsonTool.parseStrict<unknown>(content);
+  const project = read_json_record(read_json_record(root)["project"]);
+  const files = read_json_record(project["files"]);
+  const index_original = non_negative_index(project["indexOriginal"], 0);
+  const refs: TransAssetRowReference[] = [];
+  for (const [file_key, entry_raw] of Object.entries(files)) {
+    const entry = read_json_record(entry_raw);
+    const data_list = Array.isArray(entry["data"]) ? entry["data"] : [];
+    for (const [row_index, data_raw] of data_list.entries()) {
+      const data_row = Array.isArray(data_raw) ? data_raw : [];
+      refs.push({
+        file_key,
+        row_index,
+        global_row: refs.length,
+        src: typeof data_row[index_original] === "string" ? data_row[index_original] : "",
+      });
+    }
+  }
+  return refs;
+}
+
+/**
+ * aqua 是 TRANS 专用强制翻译标签，非 TRANS 文件不能借此改变过滤语义。
+ */
+function is_trans_aqua_item(item_data: TransMetadataRecord, file_type: string): boolean {
+  if (file_type !== "TRANS") {
+    return false;
+  }
+  const tag = read_json_record(item_data["extra_field"])["tag"];
+  return Array.isArray(tag) && tag.some((value) => value === "aqua");
+}
+
+/**
+ * 当前 trans_ref 必须同时含文件键和非负整数行号。
+ */
+function has_valid_trans_ref(value: unknown): boolean {
+  const trans_ref = read_json_record(read_json_record(value)["trans_ref"]);
+  const file_key = trans_ref["file_key"];
+  const row_index = trans_ref["row_index"];
+  return (
+    typeof file_key === "string" &&
+    typeof row_index === "number" &&
+    Number.isInteger(row_index) &&
+    row_index >= 0
+  );
 }
 
 /**
@@ -289,28 +267,6 @@ function read_record(value: unknown): TransMetadataRecord {
  */
 function non_negative_index(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : fallback;
-}
-
-/**
- * SQLite 行文本读取统一收窄，服务 asset path 和 item data 读取。
- */
-function row_text(row: TransMetadataRecord, key: string): string {
-  const value = row[key];
-  return typeof value === "string" ? value : String(value ?? "");
-}
-
-/**
- * SQLite id 写回前统一转 number，兼容 bigint 返回。
- */
-function row_number(row: TransMetadataRecord, key: string): number {
-  const value = row[key];
-  if (typeof value === "number") {
-    return value;
-  }
-  if (typeof value === "bigint") {
-    return Number(value);
-  }
-  return Number(value ?? 0);
 }
 
 /**

@@ -1,6 +1,7 @@
-import { Item, read_json_record } from "../../../../domain/item";
+import { Item } from "../../../../domain/item";
+import { read_json_record } from "../../../../domain/json";
 import { read_item_name_text, resolve_export_item_name } from "../../../../shared/item-name";
-import { effective_export_text, type FileFormatServiceConfig } from "../file-format-shared";
+import type { FileFormatServiceConfig } from "../file-format-shared";
 import {
   build_skeleton,
   escape_renpy_string,
@@ -15,22 +16,24 @@ import type { RenpyBlockKind, RenpySlot, RenpySlotRole } from "./types";
  * WriterExtra 是弱类型 JSON extra_field 在写回边界收窄后的内部结构。
  */
 interface WriterExtra {
-  block_kind: RenpyBlockKind;
-  template_line: number;
-  target_line: number;
-  slots: RenpySlot[];
-  template_raw_sha1: string;
-  target_skeleton_sha1: string;
-  target_string_count: number;
+  block_kind: RenpyBlockKind; // 决定姓名与正文槽位的写回策略
+  template_line: number; // 原文模板的一基行号
+  target_line: number; // translation 块目标行的一基行号
+  slots: RenpySlot[]; // 解析期记录的字符串字面量角色
+  template_raw_sha1: string; // 防止源模板变化后错位写回
+  target_skeleton_sha1: string; // 忽略译文内容后的目标结构摘要
+  target_string_count: number; // 校验目标字面量数量仍与解析期一致
 }
 
 /**
  * RenPy 写回器只消费规范 AST extra_field，历史形状必须先由兼容层重建。
  */
 export class RenpyWriter {
+  /**
+   * 写回器只固定姓名写回策略；未显式注入时沿用当前默认目标语言。
+   */
   public constructor(
     private readonly config: FileFormatServiceConfig = {
-      source_language: "JA",
       target_language: "ZH",
     },
   ) {}
@@ -120,7 +123,7 @@ export class RenpyWriter {
         continue;
       }
       if (slot.role === "DIALOGUE" || slot.role === "STRING") {
-        result.set(slot.lit_index, effective_export_text(item));
+        result.set(slot.lit_index, item.effective_dst());
       }
     }
     return result;

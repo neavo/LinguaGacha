@@ -11,7 +11,7 @@ import {
   lineNumbers,
 } from "@codemirror/view";
 
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 import {
   app_editor_text_mark_field,
   app_editor_whitespace_extension,

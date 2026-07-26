@@ -1,24 +1,17 @@
 import type { ApiJsonValue } from "../api/api-types";
-import { ApiStreamHub } from "../api/api-stream-hub";
-import { ProjectDatabase } from "../database/database-operations";
-import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
+import { ProjectDatabase, type ProjectDatabaseWrite } from "../database/database-operations";
 import {
-  Item,
-  is_item_status,
   normalize_project_item_public_record,
   type ProjectItemPublicRecord,
 } from "../../domain/item";
+import { is_json_record, read_json_record } from "../../domain/json";
 import { is_task_skipped_item_status, TASK_PROGRESS_STATUSES } from "../../domain/task";
 import * as AppErrors from "../../shared/error";
 import { should_skip_by_language_prefilter } from "../../shared/prefilter/language-prefilter";
 import { should_skip_by_rule_prefilter } from "../../shared/prefilter/rule-prefilter";
 import {
-  normalizeProjectChangePayloadMode,
-  normalizeProjectDataSections,
-  PROJECT_CHANGE_EVENT_TOPIC,
   type ProjectChangeEvent,
   type ProjectChangeFilesPayload,
-  type ProjectChangeItemFieldPatch,
   type ProjectChangeItemsPayload,
   type ProjectChangeJsonRecord,
   type ProjectChangePayloadMode,
@@ -31,9 +24,8 @@ import {
   get_section_revision,
   ProjectDataReader,
   type ProjectDataJsonRecord,
-  type ProjectDataRecord,
 } from "./project-data";
-import type { ProjectEvent, ProjectEventBus, ProjectEventDispatchResult } from "./project-events";
+import type { ProjectEvent, ProjectEventHandler } from "./project-events";
 import { ProjectSessionState } from "./project-session";
 
 type ProjectWriteFileRecord = {
@@ -99,9 +91,8 @@ export type ProjectPrefilterWriteInput = {
   skip_duplicate_source_text_enable: boolean; // 是否启用同文件重复原文过滤
 };
 
-// 外部输入必须先是完整公开 DTO，计算视图只服务局部计算。
 /**
- * 解析当前场景的最终消费值。
+ * 将外部输入先归一为完整公开 DTO，再收窄为局部算法需要的计算视图。
  */
 export function derive_project_item_view_record(value: unknown): ProjectItemViewRecord | null {
   const item = normalize_project_item_public_record(value);
@@ -111,9 +102,8 @@ export function derive_project_item_view_record(value: unknown): ProjectItemView
   return derive_project_item_view_record_from_public(item);
 }
 
-// 从已校验公开 DTO 计算可变视图，保留 reset、预过滤和统计需要的字段。
 /**
- * 解析当前场景的最终消费值。
+ * 从已校验公开 DTO 构造 reset、预过滤和统计使用的轻量视图。
  */
 export function derive_project_item_view_record_from_public(
   item: ProjectItemPublicRecord,
@@ -132,9 +122,8 @@ export function derive_project_item_view_record_from_public(
   };
 }
 
-// 局部计算会原地修改视图，复制后再交给调用点避免污染上游缓存。
 /**
- * 承接当前模块的核心控制分支。
+ * 局部算法会修改视图，先复制以免污染上游缓存。
  */
 export function clone_project_item_view_record(item: ProjectItemViewRecord): ProjectItemViewRecord {
   return {
@@ -142,14 +131,13 @@ export function clone_project_item_view_record(item: ProjectItemViewRecord): Pro
   };
 }
 
-// 从任务快照中提取可持久化进度字段，排除任务生命周期专用字段。
 /**
- * 构建当前场景的稳定结果。
+ * 从任务快照提取可持久化进度字段，排除任务生命周期专用字段。
  */
 function build_translation_extras(task_snapshot: Record<string, unknown>): Record<string, unknown> {
   const progress = task_snapshot.progress;
-  if (typeof progress === "object" && progress !== null && !Array.isArray(progress)) {
-    return { ...(progress as Record<string, unknown>) };
+  if (is_json_record(progress)) {
+    return { ...progress };
   }
   const translation_extras: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(task_snapshot)) {
@@ -169,9 +157,8 @@ function build_translation_extras(task_snapshot: Record<string, unknown>): Recor
   return translation_extras;
 }
 
-// 构造空闲翻译任务快照，供后端 reset 或无历史进度时作为统计基底。
 /**
- * 构建当前场景的稳定结果。
+ * 构造空闲翻译任务快照，供 reset 或无历史进度时作为统计基底。
  */
 export function create_empty_translation_task_snapshot(): Record<string, unknown> {
   return {
@@ -194,9 +181,8 @@ export function create_empty_translation_task_snapshot(): Record<string, unknown
   };
 }
 
-// 按最终 item 状态重建翻译进度 meta，task snapshot 运行态由专属任务模块发布。
 /**
- * 构建当前场景的稳定结果。
+ * 按最终 item 状态重建翻译进度 meta；任务生命周期仍由 TaskSnapshot 管理。
  */
 export function build_translation_extras_from_items(args: {
   task_snapshot: Record<string, unknown>;
@@ -227,9 +213,8 @@ export function build_translation_extras_from_items(args: {
   return translation_extras;
 }
 
-// 分析 reset 的默认统计只统计仍需分析的非跳过条目。
 /**
- * 构建当前场景的稳定结果。
+ * 分析 reset 的默认统计只纳入非空、非跳过条目。
  */
 export function build_analysis_status_summary(
   items: Iterable<ProjectItemViewRecord>,
@@ -250,9 +235,8 @@ export function build_analysis_status_summary(
   };
 }
 
-// 分析进度快照只保留稳定数字字段，避免坏 meta 扩散到任务运行态。
 /**
- * 归一化输入，保证下游消费稳定形状。
+ * 只保留分析进度的稳定数字字段，避免坏 meta 扩散到任务运行态。
  */
 export function normalize_analysis_progress_snapshot(
   snapshot: Record<string, unknown>,
@@ -270,9 +254,8 @@ export function normalize_analysis_progress_snapshot(
   };
 }
 
-// 把保留统计和当前状态摘要合成为分析进度 meta。
 /**
- * 构建当前场景的稳定结果。
+ * 将保留的计时、token 统计与当前状态摘要合并为持久进度。
  */
 export function build_analysis_progress_snapshot(args: {
   extras: Record<string, unknown>;
@@ -299,9 +282,8 @@ export function build_analysis_progress_snapshot(args: {
   });
 }
 
-// 从 files section 镜像收窄预过滤需要的文件字段。
 /**
- * 归一化输入，保证下游消费稳定形状。
+ * 从 files section 镜像收窄预过滤需要的路径和格式字段。
  */
 function normalize_file_record(value: unknown): ProjectWriteFileRecord | null {
   if (typeof value !== "object" || value === null) {
@@ -314,9 +296,8 @@ function normalize_file_record(value: unknown): ProjectWriteFileRecord | null {
   };
 }
 
-// 把 record 形状的 item 集合收窄成公开 DTO Map，非法条目在后端算法边界丢弃。
 /**
- * 构建当前场景的稳定结果。
+ * 将 record 形状的 item 集合收窄成公开 DTO Map，边界丢弃非法条目。
  */
 export function build_public_item_map(
   items: Record<string, unknown>,
@@ -332,9 +313,8 @@ export function build_public_item_map(
   return item_map;
 }
 
-// 把公开 DTO Map 计算为预过滤和进度统计使用的轻量视图 Map。
 /**
- * 构建当前场景的稳定结果。
+ * 将公开 DTO Map 转成预过滤和进度统计使用的轻量视图 Map。
  */
 export function build_item_view_map(
   public_items: Map<number, ProjectItemPublicRecord>,
@@ -346,9 +326,8 @@ export function build_item_view_map(
   return item_map;
 }
 
-// 后端预过滤核心只接收当前项目事实快照，输出完整可写的计算事实。
 /**
- * 解析当前场景的最终消费值。
+ * 预过滤核心只接收后端权威项目快照，输出完整可写的计算事实。
  */
 export function compute_project_prefilter_write(
   input: ProjectPrefilterWriteInput,
@@ -510,13 +489,6 @@ export function compute_project_prefilter_write(
 }
 
 /**
- * 项目变更草稿必须绑定实际写入工程，adapter 才能按同一 .lg 回读公开形状
- */
-export type ProjectChangeDraftRecord = Record<string, ApiJsonValue> & {
-  targetProjectPath: string;
-};
-
-/**
  * 将领域写入结果转换为公开 ProjectChangeEvent，规范化增量只在当前事务结果上组装
  */
 export class ProjectChangeEventAdapter {
@@ -539,9 +511,9 @@ export class ProjectChangeEventAdapter {
   /**
    * 输出 ProjectChangeEvent；调用方只声明变更 section、payload mode 和可选 ids
    */
-  public adapt_project_change(payload: ProjectChangeDraftRecord): ProjectChangeEvent | null {
+  public adapt_project_change(payload: ProjectWriteChangeRequest): ProjectChangeEvent | null {
     const state = this.session_state.snapshot();
-    const target_project_path = String(payload.targetProjectPath ?? "").trim();
+    const target_project_path = payload.projectPath.trim();
     if (target_project_path === "") {
       throw new AppErrors.InternalInvariantError({
         diagnostic_context: { reason: "project_change_target_missing" },
@@ -552,24 +524,20 @@ export class ProjectChangeEventAdapter {
     }
     const project_path = target_project_path;
     const meta = this.data_reader.get_all_meta(project_path);
-    const updated_sections = normalizeProjectDataSections(payload["updatedSections"]);
+    const updated_sections = payload.updatedSections;
     const all_section_revisions = this.data_reader.build_section_revisions(meta);
     const section_revisions = this.build_section_revision_payload(meta, updated_sections);
     return {
       type: "project.changed",
       eventId: this.build_event_id(),
-      source: String(payload["source"] ?? "project_change"),
+      source: payload.source,
       projectPath: project_path,
-      projectRevision: Math.max(
-        ...Object.values(all_section_revisions),
-        this.read_number(payload["projectRevision"], 0),
-        0,
-      ),
+      projectRevision: Math.max(...Object.values(all_section_revisions), 0),
       sectionRevisions: section_revisions,
       updatedSections: updated_sections,
-      ...this.build_items_payload(payload["items"], project_path),
-      ...this.build_files_payload(payload["files"], project_path),
-      ...this.build_sections_payload(payload["sections"], {
+      ...this.build_items_payload(payload.items, project_path),
+      ...this.build_files_payload(payload.files, project_path),
+      ...this.build_sections_payload(payload.sections, {
         projectPath: project_path,
         projectState: state,
         updatedSections: updated_sections,
@@ -581,27 +549,26 @@ export class ProjectChangeEventAdapter {
    * item canonical-delta 可只给 changedIds，adapter 会在当前 DB 事实中回读公开行
    */
   private build_items_payload(
-    value: ApiJsonValue | undefined,
+    value: ProjectWriteChangeRequest["items"],
     project_path: string,
   ): { items?: ProjectChangeItemsPayload } {
-    const record = this.normalize_object(value);
-    if (Object.keys(record).length === 0) {
+    if (value === undefined) {
       return {};
     }
-    const payload_mode = normalizeProjectChangePayloadMode(record["payloadMode"]);
-    const changed_ids = this.normalize_number_list(record["changedIds"]);
-    const delete_ids = this.normalize_number_list(record["deleteIds"]);
-    const field_patch =
-      payload_mode === "field-patch" ? this.normalize_item_field_patch(record["fieldPatch"]) : {};
+    const changed_ids = value.changedIds ?? [];
+    const delete_ids = value.deleteIds ?? [];
+    const field_patch = value.payloadMode === "field-patch" ? value.fieldPatch : undefined;
     const upsert =
-      payload_mode === "canonical-delta"
+      value.payloadMode === "canonical-delta"
         ? this.build_item_upsert_payload(project_path, changed_ids)
         : undefined;
     return {
       items: {
-        payloadMode: payload_mode,
+        payloadMode: value.payloadMode,
         ...(upsert === undefined ? {} : { upsert }),
-        ...(Object.keys(field_patch).length === 0 ? {} : { fieldPatch: field_patch }),
+        ...(field_patch === undefined || Object.keys(field_patch).length === 0
+          ? {}
+          : { fieldPatch: field_patch }),
         ...(changed_ids.length === 0 ? {} : { changedIds: changed_ids }),
         ...(delete_ids.length === 0 ? {} : { deleteIds: delete_ids }),
       },
@@ -612,23 +579,21 @@ export class ProjectChangeEventAdapter {
    * files canonical-delta 可按 path 从当前 files block 中裁出，避免调用方理解 asset 组装
    */
   private build_files_payload(
-    value: ApiJsonValue | undefined,
+    value: ProjectWriteChangeRequest["files"],
     project_path: string,
   ): { files?: ProjectChangeFilesPayload } {
-    const record = this.normalize_object(value);
-    if (Object.keys(record).length === 0) {
+    if (value === undefined) {
       return {};
     }
-    const payload_mode = normalizeProjectChangePayloadMode(record["payloadMode"]);
-    const changed_paths = this.normalize_string_list(record["changedPaths"]);
-    const delete_paths = this.normalize_string_list(record["deletePaths"]);
+    const changed_paths = value.changedPaths ?? [];
+    const delete_paths = value.deletePaths ?? [];
     const upsert =
-      payload_mode === "canonical-delta"
+      value.payloadMode === "canonical-delta"
         ? this.build_file_upsert_payload(project_path, changed_paths)
         : undefined;
     return {
       files: {
-        payloadMode: payload_mode,
+        payloadMode: value.payloadMode,
         ...(upsert === undefined ? {} : { upsert }),
         ...(changed_paths.length === 0 ? {} : { changedPaths: changed_paths }),
         ...(delete_paths.length === 0 ? {} : { deletePaths: delete_paths }),
@@ -640,35 +605,33 @@ export class ProjectChangeEventAdapter {
    * section canonical-delta 可携带调用方给出的后端规范 data；缺省时才由读取层补齐完整 section。
    */
   private build_sections_payload(
-    value: ApiJsonValue | undefined,
+    value: ProjectWriteChangeRequest["sections"],
     args: {
       projectPath: string;
       projectState: { loaded: boolean; projectPath: string };
       updatedSections: ProjectDataSection[];
     },
   ): { sections?: Partial<Record<ProjectDataSection, ProjectChangeSectionPayload>> } {
-    const raw_sections = this.normalize_object(value);
     const sections: Partial<Record<ProjectDataSection, ProjectChangeSectionPayload>> = {};
     for (const section of args.updatedSections) {
       const has_explicit_section_payload = Object.prototype.hasOwnProperty.call(
-        raw_sections,
+        value ?? {},
         section,
       );
       if ((section === "items" || section === "files") && !has_explicit_section_payload) {
         continue;
       }
-      const raw_payload = this.normalize_object(raw_sections[section]);
-      const payload_mode = normalizeProjectChangePayloadMode(
-        raw_payload["payloadMode"] ?? "section-invalidated",
-      );
-      const has_explicit_data = Object.prototype.hasOwnProperty.call(raw_payload, "data");
+      const raw_payload = value?.[section];
+      const payload_mode = raw_payload?.payloadMode ?? "section-invalidated";
+      const has_explicit_data =
+        raw_payload !== undefined && Object.prototype.hasOwnProperty.call(raw_payload, "data");
       sections[section] = {
         payloadMode: payload_mode,
         ...(payload_mode !== "canonical-delta"
           ? {}
           : {
               data: has_explicit_data
-                ? (raw_payload["data"] ?? null)
+                ? (raw_payload?.data ?? null)
                 : this.build_section_data(args.projectState, section),
             }),
       };
@@ -701,7 +664,7 @@ export class ProjectChangeEventAdapter {
       projectState: project_state,
       sections: [section],
     });
-    const sections = this.normalize_object(payload["sections"]);
+    const sections = read_json_record(payload["sections"]);
     return sections[section] ?? {};
   }
 
@@ -726,28 +689,6 @@ export class ProjectChangeEventAdapter {
   }
 
   /**
-   * 字段级 item patch 只允许校对页可写字段，保持后端事件仍是窄事实表达。
-   */
-  private normalize_item_field_patch(value: ApiJsonValue | undefined): ProjectChangeItemFieldPatch {
-    const record = this.normalize_object(value);
-    const patch: ProjectChangeItemFieldPatch = {};
-    if (typeof record["dst"] === "string") {
-      patch.dst = record["dst"];
-    }
-    if (Object.prototype.hasOwnProperty.call(record, "name_dst")) {
-      patch.name_dst = Item.normalize_name_field(record["name_dst"]);
-    }
-    if (is_item_status(record["status"])) {
-      patch.status = record["status"];
-    }
-    const retry_count = Number(record["retry_count"]);
-    if (Number.isFinite(retry_count)) {
-      patch.retry_count = Math.trunc(retry_count);
-    }
-    return patch;
-  }
-
-  /**
    * 从当前 files block 裁剪指定路径；未指定 changedPaths 时返回完整 files 增量
    */
   private build_file_upsert_payload(
@@ -761,7 +702,7 @@ export class ProjectChangeEventAdapter {
       if (path_set.size > 0 && !path_set.has(path)) {
         continue;
       }
-      if (this.is_record(record)) {
+      if (is_json_record(record)) {
         upsert[path] = record as ProjectChangeJsonRecord;
       }
     }
@@ -782,86 +723,11 @@ export class ProjectChangeEventAdapter {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
-
-  /**
-   * item 增量共用正整数 id 归一口径
-   */
-  private normalize_number_list(value: ApiJsonValue | undefined): number[] {
-    if (!Array.isArray(value)) {
-      return [];
-    }
-    return [
-      ...new Set(
-        value
-          .map((item) => this.read_number(item, NaN))
-          .filter((item_id) => Number.isFinite(item_id) && item_id > 0),
-      ),
-    ];
-  }
-
-  /**
-   * 路径列表去空并去重，保持 files 增量 key 稳定
-   */
-  private normalize_string_list(value: ApiJsonValue | undefined): string[] {
-    if (!Array.isArray(value)) {
-      return [];
-    }
-    return [
-      ...new Set(value.map((item) => String(item ?? "").trim()).filter((item) => item !== "")),
-    ];
-  }
-
-  /**
-   * JSON record 统一收窄入口
-   */
-  private normalize_object(value: ApiJsonValue | undefined): ProjectDataRecord {
-    return this.is_record(value) ? { ...value } : {};
-  }
-
-  /**
-   * 只把普通对象视为 record，数组和 null 都不是公开 payload block
-   */
-  private is_record(value: unknown): value is ProjectDataJsonRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-  }
 }
 
-type ProjectChangeStreamRecord = Record<string, ApiJsonValue>;
-
-/**
- * 项目数据变更发布器：把领域变更草稿适配为 ProjectChangeEvent 后广播
- */
-export class ProjectChangePublisher {
-  private readonly project_change_adapter: ProjectChangeEventAdapter; // adapter 是领域变更到公开 ProjectChangeEvent 的唯一出口
-
-  private readonly api_stream_hub: ApiStreamHub; // 只广播已适配的公开 JSON topic
-
-  /**
-   * 注入变更适配器和公开 stream hub，项目域不需要理解 SSE 连接
-   */
-  public constructor(
-    project_change_adapter: ProjectChangeEventAdapter,
-    api_stream_hub: ApiStreamHub,
-  ) {
-    this.project_change_adapter = project_change_adapter;
-    this.api_stream_hub = api_stream_hub;
-  }
-
-  /**
-   * 发布项目数据变更，并把同一份 ProjectChangeEvent 返回给 HTTP 写入响应
-   */
-  public publish_project_change(payload: ProjectChangeDraftRecord): ProjectChangeEvent | null {
-    const event = this.project_change_adapter.adapt_project_change(payload);
-    if (event === null) {
-      return null;
-    }
-    this.api_stream_hub.publish(
-      PROJECT_CHANGE_EVENT_TOPIC,
-      event as unknown as ProjectChangeStreamRecord,
-    );
-    return event;
-  }
-}
+export type ProjectChangePublisher = (
+  payload: ProjectWriteChangeRequest,
+) => ProjectChangeEvent | null;
 
 type JsonRecord = Record<string, ApiJsonValue>;
 
@@ -888,14 +754,6 @@ export type ProjectWriteChangeRequest = {
   sectionModes?: Partial<Record<ProjectDataSection, ProjectChangePayloadMode>>;
 };
 
-export type ProjectWriteCommitRequest = {
-  projectPath: string; // 本次 revision guard、事务写入和事件发布的共同工程身份
-  expectedSectionRevisions: ApiJsonValue | undefined; // 保留 API 原始锁值，在提交点统一收窄
-  sections: ProjectDataSection[]; // 提交阶段必须重新校验的依赖数据域
-  buildOperations: (context: ProjectWriteRevisionContext) => DatabaseOperation[]; // 必须同步读取最新事实并构造事务
-  change: Omit<ProjectWriteChangeRequest, "projectPath">; // 只声明发布草稿，工程路径由协调器补齐
-};
-
 /**
  * 统一协调同步项目写入的 revision guard、revision writer 和规范化事件草稿
  */
@@ -904,7 +762,7 @@ export class ProjectWriteCoordinator {
 
   private readonly project_change_publisher: ProjectChangePublisher | null; // publisher 是写库成功后进入 project.data_changed 的唯一出口
 
-  private readonly project_event_bus: ProjectEventBus; // 内部 committed event 先于公开变更发布，供后端 cache 维护热数据
+  private readonly project_event_handler: ProjectEventHandler; // 内部 committed event 先于公开变更发布，供后端 cache 维护热数据
 
   /**
    * 注入数据库和可选发布器，保持纯测试场景能只验证写库结果
@@ -912,11 +770,11 @@ export class ProjectWriteCoordinator {
   public constructor(
     database: ProjectDatabase,
     project_change_publisher: ProjectChangePublisher | null,
-    project_event_bus: ProjectEventBus,
+    project_event_handler: ProjectEventHandler,
   ) {
     this.database = database;
     this.project_change_publisher = project_change_publisher;
-    this.project_event_bus = project_event_bus;
+    this.project_event_handler = project_event_handler;
   }
 
   /**
@@ -960,40 +818,18 @@ export class ProjectWriteCoordinator {
   /**
    * 基于 revision guard 快照生成 bump 操作，确保事务内每个 section 只推进一次
    */
-  public build_section_revision_operations(
+  public build_section_revision_writes(
     context: ProjectWriteRevisionContext,
     sections = filter_revision_backed_sections(context.sections),
-  ): DatabaseOperation[] {
-    return sections.map((section) =>
-      this.op("setMeta", {
-        projectPath: context.project_path,
-        key: resolve_revision_meta_key(section),
-        value: get_section_revision(context.meta, section) + 1,
-      }),
+  ): ProjectDatabaseWrite[] {
+    return sections.map(
+      (section) => (database) =>
+        database.set_meta(
+          context.project_path,
+          resolve_revision_meta_key(section),
+          get_section_revision(context.meta, section) + 1,
+        ),
     );
-  }
-
-  /**
-   * 在最终提交点连续完成 revision guard、事务构造、写库和规范化事件发布
-   */
-  public async commit_project_write(
-    request: ProjectWriteCommitRequest,
-  ): Promise<ProjectWriteResult> {
-    const revision_context = this.assert_expected_section_revisions(
-      request.projectPath,
-      request.expectedSectionRevisions,
-      request.sections,
-    );
-    const operations = request.buildOperations(revision_context);
-    this.database.execute_transaction(operations);
-    await this.publish_app_events_for_committed_change({
-      projectPath: request.projectPath,
-      ...request.change,
-    });
-    return this.publish_project_data_change({
-      projectPath: request.projectPath,
-      ...request.change,
-    });
   }
 
   /**
@@ -1011,14 +847,11 @@ export class ProjectWriteCoordinator {
       return this.empty_project_write_result();
     }
 
-    const change_event: ProjectChangeEvent | null =
-      this.project_change_publisher.publish_project_change({
-        targetProjectPath: request.projectPath,
-        source: request.source,
-        updatedSections: request.updatedSections as unknown as ApiJsonValue,
-        ...this.build_row_payloads(request),
-        ...this.build_section_payloads(request),
-      });
+    const change_event = this.project_change_publisher({
+      ...request,
+      ...this.build_row_payloads(request),
+      ...this.build_section_payloads(request),
+    });
     if (change_event === null || change_event === undefined) {
       return this.empty_project_write_result();
     }
@@ -1029,17 +862,15 @@ export class ProjectWriteCoordinator {
    * 读取完整 meta，revision guard 和质量服务都复用同一读取口径
    */
   public read_project_meta(project_path: string): JsonRecord {
-    return this.normalize_object(
-      this.database.execute(this.op("getAllMeta", { projectPath: project_path })),
-    );
+    return { ...read_json_record(this.database.get_all_meta(project_path)) };
   }
 
   /**
    * 行级 payload 表达调用方明确声明的增量；items/files 缺省全量变更只发布轻量失效信号。
    */
   private build_row_payloads(request: ProjectWriteChangeRequest): {
-    items?: ApiJsonValue;
-    files?: ApiJsonValue;
+    items?: ProjectWriteChangeRequest["items"];
+    files?: ProjectWriteChangeRequest["files"];
   } {
     return {
       ...this.build_default_row_payload(request, "items"),
@@ -1051,7 +882,7 @@ export class ProjectWriteCoordinator {
    * 未提供行级增量的小 section 默认发布规范化 section；items/files 交给行级失效信号。
    */
   private build_section_payloads(request: ProjectWriteChangeRequest): {
-    sections?: ApiJsonValue;
+    sections?: ProjectWriteChangeRequest["sections"];
   } {
     const sections = { ...request.sections };
     for (const section of request.updatedSections) {
@@ -1063,20 +894,22 @@ export class ProjectWriteCoordinator {
       }
       sections[section] = { payloadMode: request.sectionModes?.[section] ?? "canonical-delta" };
     }
-    return Object.keys(sections).length === 0
-      ? {}
-      : { sections: sections as unknown as ApiJsonValue };
+    return Object.keys(sections).length === 0 ? {} : { sections };
   }
 
+  /**
+   * items/files 未显式提供增量时只发布 section-invalidated，避免复制大 section。
+   */
   private build_default_row_payload(
     request: ProjectWriteChangeRequest,
     section: "items" | "files",
-  ): { items?: ApiJsonValue; files?: ApiJsonValue } {
+  ): {
+    items?: ProjectWriteChangeRequest["items"];
+    files?: ProjectWriteChangeRequest["files"];
+  } {
     const explicit_payload = section === "items" ? request.items : request.files;
     if (explicit_payload !== undefined) {
-      return section === "items"
-        ? { items: explicit_payload as unknown as ApiJsonValue }
-        : { files: explicit_payload as unknown as ApiJsonValue };
+      return section === "items" ? { items: request.items } : { files: request.files };
     }
     if (
       !request.updatedSections.includes(section) ||
@@ -1089,6 +922,9 @@ export class ProjectWriteCoordinator {
       : { files: { payloadMode: "section-invalidated" } };
   }
 
+  /**
+   * 区分“调用方未提供 payload”和“显式提供 undefined”，保持事件草稿所有权清晰。
+   */
   private has_explicit_section_payload(
     request: ProjectWriteChangeRequest,
     section: ProjectDataSection,
@@ -1106,29 +942,8 @@ export class ProjectWriteCoordinator {
     request: ProjectWriteChangeRequest,
   ): Promise<void> {
     for (const event of this.build_app_events_after_commit(request)) {
-      this.assert_app_event_dispatch_success(await this.project_event_bus.publish(event));
+      await this.project_event_handler(event);
     }
-  }
-
-  /**
-   * 内部 committed event 维护后端 query cache，失败时不能继续发布公开项目变更。
-   */
-  private assert_app_event_dispatch_success(results: ProjectEventDispatchResult[]): void {
-    const failed_result = results.find((result) => !result.ok);
-    if (failed_result === undefined) {
-      return;
-    }
-    if (failed_result.error instanceof Error) {
-      throw failed_result.error;
-    }
-    throw new AppErrors.InternalInvariantError({
-      diagnostic_context: {
-        source: "project-write",
-        reason: "app_event_dispatch_failed",
-        event_type: failed_result.type,
-        handler_index: failed_result.handlerIndex,
-      },
-    });
   }
 
   /**
@@ -1186,20 +1001,6 @@ export class ProjectWriteCoordinator {
       });
     }
     return events;
-  }
-
-  /**
-   * 把未知 JSON 收窄为对象，避免 meta 读取调用点扩散类型判断
-   */
-  private normalize_object(value: ApiJsonValue | undefined): JsonRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value) ? { ...value } : {};
-  }
-
-  /**
-   * 创建 database workflow 操作对象，避免协调器外部拼接协议壳
-   */
-  private op(name: string, args: Record<string, DatabaseJsonValue>): DatabaseOperation {
-    return { name, args };
   }
 }
 

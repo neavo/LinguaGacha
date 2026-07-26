@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import { default_native_fs } from "../../../native/native-fs";
-import { PathRelocation } from "../path-relocation";
+import { relocate_directory_items } from "../path-relocation";
 import type { MigrationDescriptor, StartupMigrationContext } from "../migration-types";
 
 // 旧提示词预设目录名固定，迁移只把 zh/en 下的 .txt 用户预设合并到当前 userdata。
@@ -30,14 +30,16 @@ export const prompt_user_preset_layout_migration: MigrationDescriptor = {
    * 启动期先创建当前目录，再从旧语言目录迁入 `.txt` 用户预设。
    */
   run_startup(context: StartupMigrationContext): void {
-    const relocation = new PathRelocation(context.log_manager);
     const destination_dir = context.paths.get_prompt_user_preset_dir("translation");
     default_native_fs.make_dir(destination_dir);
     for (const source_dir of get_legacy_prompt_user_preset_dirs(context)) {
-      relocation.relocate_directory_items(source_dir, destination_dir, PROMPT_PRESET_EXTENSION, [
-        context.paths.get_app_root(),
-        context.paths.get_data_root(),
-      ]);
+      relocate_directory_items(
+        context.log_manager,
+        source_dir,
+        destination_dir,
+        PROMPT_PRESET_EXTENSION,
+        [context.paths.get_app_root(), context.paths.get_data_root()],
+      );
     }
   },
 };

@@ -10,7 +10,7 @@ export const QUALITY_STATISTICS_RULE_MODES = [
 
 export type QualityStatisticsRuleMode = (typeof QUALITY_STATISTICS_RULE_MODES)[number];
 
-export type QualityStatisticsTextSource = "src" | "dst"; // 统计缓存失效按原文/译文文本源分流。
+type QualityStatisticsTextSource = "src" | "dst"; // 统计缓存失效按原文/译文文本源分流。
 
 export type QualityStatisticsRuleInput = {
   key: string; // 统计结果返回给调用方的稳定索引
@@ -25,10 +25,9 @@ export type QualityStatisticsRelationCandidate = {
   src: string; // 参与包含关系判断的源文本
 };
 
-export type QualityStatisticsDependencyRuleSnapshot = {
+type QualityStatisticsDependencyRuleSnapshot = {
   key: string; // 保留规则自身身份，允许同依赖规则映射回原结果
   dependency_signature: string; // 只表达规则配置，不包含列表位置
-  relation_label: string; // 局部关系扩散的可读文本
   token: string; // 去重后的依赖身份，相同配置规则用序号拆分
 };
 
@@ -40,7 +39,7 @@ export type QualityStatisticsDependencySnapshot = {
   rules: QualityStatisticsDependencyRuleSnapshot[]; // 按依赖稳定排序后的规则快照
 };
 
-export type QualityStatisticsTaskInput = {
+type QualityStatisticsTaskInput = {
   rules: QualityStatisticsRuleInput[]; // 本次需要计算命中数的规则集合
   srcTextGroups: ItemTextGroup[]; // 按项目条目顺序排列的原文与姓名原文文本组
   dstTextGroups: ItemTextGroup[]; // 按项目条目顺序排列的译文与姓名译文文本组
@@ -53,13 +52,8 @@ type QualityStatisticsTaskResultEntry = {
   subset_parents: string[]; // 记录包含当前术语的更长父级术语
 };
 
-export type QualityStatisticsTaskResult = {
+type QualityStatisticsTaskResult = {
   results: Record<string, QualityStatisticsTaskResultEntry>; // 按规则 key 返回统计项
-};
-
-// 统计执行器只暴露计算能力，让调度器和测试不用知道 worker 通道细节。
-export type QualityStatisticsTaskExecutor = {
-  compute: (input: QualityStatisticsTaskInput) => Promise<QualityStatisticsTaskResult>;
 };
 
 type TextSource = QualityStatisticsTextSource;
@@ -97,7 +91,6 @@ type RelationSnapshot = {
   src: string; // 保留原始父级术语文本用于 UI 展示
   srcFold: string; // 用于大小写无关的包含关系匹配
   length: number; // 用于排除自身和更短候选作为父级
-  order: number; // 保留原始候选顺序，便于未来稳定排序
 };
 
 type RelationTargetGroup = {
@@ -109,7 +102,7 @@ type RelationTargetGroup = {
 /**
  * 统一大小写折叠规则；质量统计和自动规划共享这个文本口径。
  */
-export function casefold_text(text: string): string {
+function casefold_text(text: string): string {
   return text.normalize("NFKC").replaceAll("ẞ", "ss").replaceAll("ß", "ss").toLocaleLowerCase();
 }
 
@@ -132,11 +125,11 @@ function build_relation_snapshots(
 ): RelationSnapshot[] {
   const snapshots: RelationSnapshot[] = [];
 
-  candidates.forEach((candidate, index) => {
+  for (const candidate of candidates) {
     const key = String(candidate.key ?? "").trim();
     const src = String(candidate.src ?? "").trim();
     if (key === "" || src === "") {
-      return;
+      continue;
     }
 
     const src_fold = casefold_text(src);
@@ -145,9 +138,8 @@ function build_relation_snapshots(
       src,
       srcFold: src_fold,
       length: src_fold.length,
-      order: index,
     });
-  });
+  }
 
   return snapshots;
 }
@@ -178,10 +170,6 @@ export function resolve_quality_statistics_text_source(
   mode: QualityStatisticsRuleMode,
 ): QualityStatisticsTextSource {
   return mode === "post_replacement" ? "dst" : "src";
-}
-
-function resolve_rule_source(mode: QualityStatisticsRuleMode): TextSource {
-  return resolve_quality_statistics_text_source(mode);
 }
 
 /**
@@ -264,7 +252,7 @@ function build_literal_rule_buckets(rules: QualityStatisticsRuleInput[]): Litera
       continue;
     }
 
-    const source = resolve_rule_source(rule.mode);
+    const source = resolve_quality_statistics_text_source(rule.mode);
     const case_sensitive = is_case_sensitive_rule(rule);
     const normalized_pattern = case_sensitive ? raw_pattern : casefold_text(raw_pattern);
     const bucket_key = `${source}|${case_sensitive ? "1" : "0"}`;
@@ -308,7 +296,7 @@ function build_regex_rule_buckets(rules: QualityStatisticsRuleInput[]): Compiled
       continue;
     }
 
-    const source = resolve_rule_source(rule.mode);
+    const source = resolve_quality_statistics_text_source(rule.mode);
     const flags = rule.mode === "text_preserve" ? "iu" : is_case_sensitive_rule(rule) ? "u" : "iu";
     const pattern =
       rule.mode === "text_preserve" || rule.regex ? raw_pattern : escape_text_pattern(raw_pattern);
@@ -642,13 +630,4 @@ export function run_quality_statistics_task_sync(
   return {
     results,
   };
-}
-
-/**
- * 异步入口保留给 worker / renderer 调度，当前实现复用同步纯算法。
- */
-export async function run_quality_statistics_task(
-  input: QualityStatisticsTaskInput,
-): Promise<QualityStatisticsTaskResult> {
-  return run_quality_statistics_task_sync(input);
 }

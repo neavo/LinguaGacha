@@ -1,5 +1,4 @@
 import { ApiGatewayServer } from "../api/api-gateway-server";
-import { allocate_backend_api_port } from "../api/api-port-allocator";
 import { AppMetadataService } from "../app/app-metadata-service";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
@@ -143,9 +142,7 @@ export class BackendBootstrap {
    * 启动公开 API Gateway，并返回 renderer/preload 可消费的本机地址。
    */
   private async start_gateway(backend_services: BackendServices): Promise<string> {
-    const public_port = await allocate_backend_api_port();
     const gateway_server = new ApiGatewayServer({
-      publicPort: public_port,
       backendServices: backend_services,
     });
     const gateway_start_result = await gateway_server.start();

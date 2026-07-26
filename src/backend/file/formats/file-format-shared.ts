@@ -1,6 +1,3 @@
-import path from "node:path";
-
-import type { ApiJsonValue } from "../../api/api-types";
 import { default_native_fs, normalize_native_file_bytes } from "../../../native/native-fs";
 import { Item, type ItemFileType } from "../../../domain/item";
 
@@ -8,36 +5,25 @@ import { Item, type ItemFileType } from "../../../domain/item";
  * 文件格式处理器共享配置，来源于应用设置或测试显式注入
  */
 export interface FileFormatServiceConfig {
-  source_language: string;
-  target_language: string;
-  app_language?: string;
-  deduplication_in_bilingual?: boolean;
-  write_translated_name_fields_to_file?: boolean;
-}
-
-/**
- * 工作台单文件预演返回的格式化结果，供 API 层直接包成 JSON
- */
-export interface ParsedFilePreview {
-  target_rel_path: string;
-  file_type: ItemFileType;
-  parsed_items: Record<string, ApiJsonValue>[];
+  target_language: string; // 决定 EPUB 阅读排版等目标语言写回策略
+  deduplication_in_bilingual?: boolean; // 原译文相同时双语文件只写一份
+  write_translated_name_fields_to_file?: boolean; // 姓名字段是否使用译名写回
 }
 
 /**
  * 新建工程预演阶段保存源文件绝对路径与工程内相对路径的映射
  */
 export interface ProjectSourceFileEntry {
-  source_path: string;
-  rel_path: string;
+  source_path: string; // 用户选择或目录扫描得到的真实文件路径
+  rel_path: string; // 导入工程后的稳定资产路径
 }
 
 /**
  * 导出目录成对出现：译文目录和双语对照目录必须由同一规则生成
  */
 export interface ExportPaths {
-  translated_path: string;
-  bilingual_path: string;
+  translated_path: string; // 单语译文根目录
+  bilingual_path: string; // 双语对照根目录
 }
 
 const EPUB_READING_LAYOUT_TARGET_LANGUAGES = new Set(["JA", "ZH-HANT"]); // 日文与繁中导出保留原 EPUB 翻页方向和竖排信息
@@ -61,24 +47,6 @@ export function split_text_lines_for_items(text: string): string[] {
  */
 export function should_preserve_epub_reading_layout(target_language: string): boolean {
   return EPUB_READING_LAYOUT_TARGET_LANGUAGES.has(target_language.trim().toUpperCase());
-}
-
-/**
- * 构造单语译文输出路径，文件名沿用源文件相对路径
- */
-export function build_target_path(
-  _config: FileFormatServiceConfig,
-  base_path: string,
-  rel_path: string,
-): string {
-  return path.join(base_path, rel_path);
-}
-
-/**
- * 构造双语对照输出路径，双语目录已经表达输出语义，文件名沿用源文件相对路径
- */
-export function build_bilingual_path(base_path: string, rel_path: string): string {
-  return path.join(base_path, rel_path);
 }
 
 /**
@@ -106,11 +74,4 @@ export function group_items(items: Item[], file_type: ItemFileType): Map<string,
     group.set(item.file_path, bucket);
   }
   return group;
-}
-
-/**
- * 导出统一使用有效译文，未来若增加状态级策略只需改这里
- */
-export function effective_export_text(item: Item): string {
-  return Item.from_json(item).effective_dst();
 }

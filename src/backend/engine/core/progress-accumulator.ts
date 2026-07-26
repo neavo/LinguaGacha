@@ -1,5 +1,6 @@
 import type { ApiJsonValue } from "../../api/api-types";
-import type { JsonRecord, MutableJsonRecord } from "../run/task-run-types";
+import { read_json_record } from "../../../domain/json";
+import type { MutableJsonRecord } from "../run/task-run-types";
 import type { TaskProgressSnapshot } from "./engine-options";
 
 // 进度字段默认值集中在这里，避免 runner 新增字段时漏写归零逻辑
@@ -30,7 +31,7 @@ export class TaskProgressSnapshotTool {
    * 从数据库 meta 或 executor payload 恢复进度，坏值统一归零
    */
   public static from_record(value: ApiJsonValue | undefined): TaskProgressSnapshot {
-    const record = this.is_record(value) ? value : {};
+    const record = read_json_record(value);
     return {
       start_time: this.read_float(record["start_time"], 0),
       time: this.read_float(record["time"], 0),
@@ -95,13 +96,6 @@ export class TaskProgressSnapshotTool {
    */
   public static to_record(snapshot: TaskProgressSnapshot): MutableJsonRecord {
     return { ...snapshot };
-  }
-
-  /**
-   * record 判断集中处理，避免数组被当成进度对象
-   */
-  private static is_record(value: unknown): value is JsonRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   /**

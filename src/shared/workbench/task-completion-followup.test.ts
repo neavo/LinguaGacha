@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  resolve_translation_completion_scenario,
   should_open_analysis_glossary_import_followup,
   should_open_translation_export_followup,
 } from "./task-completion-followup";
@@ -19,9 +18,6 @@ describe("task-completion-followup", () => {
   });
 
   it("校对页局部重翻完成时不打开生成译文确认", () => {
-    expect(resolve_translation_completion_scenario({ kind: "items", item_ids: [2, 1] })).toBe(
-      "proofreading-retranslation",
-    );
     expect(
       should_open_translation_export_followup({
         previous_status: "running",

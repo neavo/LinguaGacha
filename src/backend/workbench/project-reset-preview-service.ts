@@ -1,8 +1,8 @@
 import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase } from "../database/database-operations";
-import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import { FileFormatService } from "../file/file-format-service";
 import { Item } from "../../domain/item";
+import { is_json_record } from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import { is_task_skipped_item_status } from "../../domain/task";
 import { TaskRunState } from "../engine/run/task-run-state";
@@ -63,7 +63,6 @@ export class ProjectResetPreviewService {
   ): Promise<Array<{ rel_path: string; items: JsonRecord[] }>> {
     const default_settings = normalize_setting_snapshot({});
     const format_service = new FileFormatService({
-      source_language: default_settings.source_language,
       target_language: default_settings.target_language,
     });
     const parsed_files: Array<{ rel_path: string; items: JsonRecord[] }> = [];
@@ -133,14 +132,12 @@ export class ProjectResetPreviewService {
    * 读取 asset 顺序用于复现 create/reset 时的文件排序
    */
   private get_asset_records(project_path: string): Array<{ path: string; sort_order: number }> {
-    const value = this.database.execute(
-      this.op("getAllAssetRecords", { projectPath: project_path }),
-    );
+    const value = this.database.get_all_asset_records(project_path);
     if (!Array.isArray(value)) {
       return [];
     }
     return value
-      .filter((item): item is JsonRecord => this.is_record(item))
+      .filter((item): item is JsonRecord => is_json_record(item))
       .map((item) => ({
         path: String(item["path"] ?? ""),
         sort_order: this.read_number(item["sort_order"], 0),
@@ -153,10 +150,10 @@ export class ProjectResetPreviewService {
    * 分析预演只需要 item 当前事实，读取后复制一份避免误改数据库返回对象
    */
   private get_all_items(project_path: string): MutableJsonRecord[] {
-    const value = this.database.execute(this.op("getAllItems", { projectPath: project_path }));
+    const value = this.database.get_all_items(project_path);
     return Array.isArray(value)
       ? value
-          .filter((item): item is JsonRecord => this.is_record(item))
+          .filter((item): item is JsonRecord => is_json_record(item))
           .map((item) => ({ ...item }))
       : [];
   }
@@ -222,15 +219,13 @@ export class ProjectResetPreviewService {
    * ERROR checkpoint 会在真实 failed reset 中被删除，预演据此计算剩余进度
    */
   private get_analysis_checkpoints(project_path: string): Map<number, string> {
-    const value = this.database.execute(
-      this.op("getAnalysisItemCheckpoints", { projectPath: project_path }),
-    );
+    const value = this.database.get_analysis_item_checkpoints(project_path);
     const checkpoints = new Map<number, string>();
     if (!Array.isArray(value)) {
       return checkpoints;
     }
     for (const row of value) {
-      if (!this.is_record(row)) {
+      if (!is_json_record(row)) {
         continue;
       }
       const item_id = this.read_number(row["item_id"], 0);
@@ -288,19 +283,5 @@ export class ProjectResetPreviewService {
         ...diagnostic_context,
       },
     });
-  }
-
-  /**
-   * 数据库 JSON 返回只允许对象继续进入业务归一化
-   */
-  private is_record(value: unknown): value is JsonRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-  }
-
-  /**
-   * 数据库操作名和参数集中封装，减少调用点重复对象形状
-   */
-  private op(name: string, args: Record<string, DatabaseJsonValue>): DatabaseOperation {
-    return { name, args };
   }
 }

@@ -11,6 +11,7 @@ import { LLMClient } from "../llm/llm-client";
 import type { LLMMessage, LLMRequestResult } from "../llm/llm-types";
 import { LLMClientPolicy } from "../llm/llm-client-policy";
 import { Model, type ModelApiFormat } from "../../domain/model";
+import { read_json_record } from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import {
   read_config_model_preset_records,
@@ -86,9 +87,7 @@ export class ModelService {
   /**
    * 更新模型白名单字段，避免页面写入未知配置
    */
-  public async update_model(
-    request: Record<string, ApiJsonValue>,
-  ): Promise<Record<string, ApiJsonValue>> {
+  public update_model(request: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
     const model_id = String(request["model_id"] ?? "");
     const patch_value = request["patch"];
     if (typeof patch_value !== "object" || patch_value === null || Array.isArray(patch_value)) {
@@ -113,9 +112,7 @@ export class ModelService {
   /**
    * 切换指定分组激活模型，并保持 fallback 规则集中
    */
-  public async activate_model(
-    request: Record<string, ApiJsonValue>,
-  ): Promise<Record<string, ApiJsonValue>> {
+  public activate_model(request: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
     const model_id = String(request["model_id"] ?? "");
     const config = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
@@ -127,9 +124,7 @@ export class ModelService {
   /**
    * 新增自定义模型，避免调用方复制默认字段补齐规则
    */
-  public async add_model(
-    request: Record<string, ApiJsonValue>,
-  ): Promise<Record<string, ApiJsonValue>> {
+  public add_model(request: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
     const model_type = String(request["model_type"] ?? "");
     if (Model.resolve_template_filename(model_type) === null) {
       throw new AppErrors.RequestValidationError({
@@ -146,9 +141,7 @@ export class ModelService {
   /**
    * 删除模型并重选激活项，防止配置留下悬空引用
    */
-  public async delete_model(
-    request: Record<string, ApiJsonValue>,
-  ): Promise<Record<string, ApiJsonValue>> {
+  public delete_model(request: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
     const model_id = String(request["model_id"] ?? "");
     const config = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
@@ -169,9 +162,7 @@ export class ModelService {
   /**
    * 用内置预设重置模型，保持 preset 事实来自资源目录
    */
-  public async reset_preset_model(
-    request: Record<string, ApiJsonValue>,
-  ): Promise<Record<string, ApiJsonValue>> {
+  public reset_preset_model(request: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
     const model_id = String(request["model_id"] ?? "");
     const config = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
@@ -191,9 +182,7 @@ export class ModelService {
   /**
    * 重排同组模型，确保 ordered ids 完整覆盖当前分组
    */
-  public async reorder_model(
-    request: Record<string, ApiJsonValue>,
-  ): Promise<Record<string, ApiJsonValue>> {
+  public reorder_model(request: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
     const ordered_ids_raw = request["ordered_model_ids"];
     if (!Array.isArray(ordered_ids_raw)) {
       throw new AppErrors.RequestValidationError();
@@ -393,13 +382,13 @@ export class ModelService {
    * 读取 HTTP 模型列表数组结构，坏项直接跳过。
    */
   private read_response_model_ids(data: ApiJsonValue, array_key: string, id_key: string): string[] {
-    const record = this.normalize_object(data);
+    const record = { ...read_json_record(data) };
     const items = record[array_key];
     if (!Array.isArray(items)) {
       return [];
     }
     return items
-      .map((item) => this.normalize_object(item)[id_key])
+      .map((item) => ({ ...read_json_record(item) })[id_key])
       .filter((value): value is string => typeof value === "string" && value.trim() !== "");
   }
 
@@ -421,11 +410,11 @@ export class ModelService {
    */
   private build_browser_headers(model: ModelRecord): Record<string, string> {
     const headers: Record<string, string> = { "User-Agent": BROWSER_USER_AGENT };
-    const request_config = this.normalize_object(model["request"]);
+    const request_config = { ...read_json_record(model["request"]) };
     if (request_config["extra_headers_custom_enable"] !== true) {
       return headers;
     }
-    const extra_headers = this.normalize_object(request_config["extra_headers"]);
+    const extra_headers = { ...read_json_record(request_config["extra_headers"]) };
     for (const [key, value] of Object.entries(extra_headers)) {
       headers[key] = String(value);
     }
@@ -462,9 +451,6 @@ export class ModelService {
   }
 
   /**
-   * 把 LLM 原始请求事实转换为模型页测试失败原因
-   */
-  /**
    * 将模型测试请求事实转成单个密钥的失败摘要和结构化诊断。
    */
   private build_model_test_failure(
@@ -492,9 +478,8 @@ export class ModelService {
     return null;
   }
 
-  // log_model_test_key_start 封装类内部的非显然分支，避免调用方重复理解同一约束。
   /**
-   * 记录当前操作的诊断日志。
+   * 每个密钥单独记录脱敏 key 与实际请求消息，便于对应探测结果。
    */
   private log_model_test_key_start(
     app_language: unknown,
@@ -511,9 +496,8 @@ export class ModelService {
     );
   }
 
-  // log_model_test_success 封装类内部的非显然分支，避免调用方重复理解同一约束。
   /**
-   * 记录当前操作的诊断日志。
+   * 成功日志按 thinking 和 answer 分段，并统一记录 token 与耗时。
    */
   private log_model_test_success(
     app_language: unknown,
@@ -556,9 +540,8 @@ export class ModelService {
     });
   }
 
-  // log_model_test_summary 封装类内部的非显然分支，避免调用方重复理解同一约束。
   /**
-   * 记录当前操作的诊断日志。
+   * 汇总全部密钥结果；失败列表只输出脱敏 key。
    */
   private log_model_test_summary(
     app_language: unknown,
@@ -579,9 +562,8 @@ export class ModelService {
     }
   }
 
-  // format_model_test_messages_for_log 封装类内部的非显然分支，避免调用方重复理解同一约束。
   /**
-   * 生成当前场景的展示内容。
+   * 沿用既有 Python repr 日志形状，方便用户复核实际 messages。
    */
   private format_model_test_messages_for_log(messages: LLMMessage[]): string {
     const rows = messages.map(
@@ -593,17 +575,15 @@ export class ModelService {
     return `[${rows.join(", ")}]`;
   }
 
-  // escape_python_repr 封装类内部的非显然分支，避免调用方重复理解同一约束。
   /**
-   * 转义文本以保持日志内容稳定。
+   * 只转义反斜杠和单引号，配合上方 repr 形状。
    */
   private escape_python_repr(value: string): string {
     return value.replaceAll("\\", "\\\\").replaceAll("'", "\\'");
   }
 
-  // t 封装类内部的非显然分支，避免调用方重复理解同一约束。
   /**
-   * 转换本地化键为当前语言文本。
+   * 模型探测日志按当前应用语言解析，后台不固定语言。
    */
   private t(app_language: unknown, key: LocaleKey, params: Record<string, string> = {}): string {
     return format_i18n_message(resolve_app_locale(app_language), key, params);
@@ -645,9 +625,9 @@ export class ModelService {
   /**
    * 保存配置后立即重建快照，保证响应反映持久化结果
    */
-  private async persist_config_and_build_snapshot(
+  private persist_config_and_build_snapshot(
     config: Record<string, ApiJsonValue>,
-  ): Promise<Record<string, ApiJsonValue>> {
+  ): Record<string, ApiJsonValue> {
     config["models"] = this.sort_models(
       read_config_model_records(config),
     ) as unknown as ApiJsonValue;
@@ -708,10 +688,7 @@ export class ModelService {
       Model.resolve_template_filename(model_type) ?? "",
     );
     const template = this.read_json_file(template_path, {});
-    const model =
-      typeof template === "object" && template !== null && !Array.isArray(template)
-        ? { ...template }
-        : {};
+    const model = { ...read_json_record(template) };
     model["id"] = crypto.randomUUID();
     model["type"] = model_type;
     return this.normalize_model(model as ModelRecord);
@@ -727,13 +704,6 @@ export class ModelService {
   }
 
   /**
-   * 收窄未知 JSON 为对象，避免深层读取抛出隐式异常
-   */
-  private normalize_object(value: ApiJsonValue | undefined): Record<string, ApiJsonValue> {
-    return typeof value === "object" && value !== null && !Array.isArray(value) ? { ...value } : {};
-  }
-
-  /**
    * 仅应用允许字段，防止模型配置被任意键污染
    */
   private apply_patch(model: ModelRecord, patch: ModelRecord): ModelRecord {
@@ -746,7 +716,7 @@ export class ModelService {
           });
         }
         result[key] = {
-          ...this.normalize_object(result[key]),
+          ...read_json_record(result[key]),
           ...value,
         };
       } else {

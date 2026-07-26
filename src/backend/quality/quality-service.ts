@@ -1,7 +1,6 @@
 import path from "node:path";
 
 import { ProjectDatabase } from "../database/database-operations";
-import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import type { ApiJsonValue } from "../api/api-types";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
@@ -12,6 +11,7 @@ import { ProjectSessionState } from "../project/project-session";
 import type { ProjectWriteResult } from "../../shared/project-event";
 import { build_analysis_glossary_entry_from_candidate } from "../../shared/analysis-candidate";
 import { QualityRule, type QualityRuleKind } from "../../domain/quality";
+import { is_json_record, read_json_record } from "../../domain/json";
 import { Prompt, type PromptKind } from "../../domain/prompt";
 import { resolve_prompt_template_language } from "../../domain/app-language";
 import { normalize_setting_snapshot } from "../../domain/setting";
@@ -69,7 +69,7 @@ export class QualityService {
     this.assert_no_legacy_fields(request, ["expected_revision"]);
     const rule_type = this.normalize_rule_type(request["rule_type"]);
     const entries = this.normalize_rule_entries(request["entries"]);
-    const project_path = await this.require_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     return await this.write_store.save_quality_rules({
       projectPath: project_path,
       expectedSectionRevisions: request["expected_section_revisions"],
@@ -88,8 +88,8 @@ export class QualityService {
   public async update_rule_meta(request: JsonRecord): Promise<ProjectWriteResult> {
     this.assert_no_legacy_fields(request, ["expected_revision"]);
     const rule_type = this.normalize_rule_type(request["rule_type"]);
-    const project_path = await this.require_project_path();
-    const meta = this.normalize_object(request["meta"]);
+    const project_path = this.session_state.require_loaded_project_path();
+    const meta = { ...read_json_record(request["meta"]) };
     if (Object.keys(meta).length === 0) {
       return { accepted: true, changes: [] };
     }
@@ -131,7 +131,7 @@ export class QualityService {
    * CLI 分析导出直接从当前工程候选池生成 glossary.json 与 glossary.xlsx。
    */
   public async export_analysis_candidates_to_directory(output_dir: string): Promise<JsonRecord> {
-    const project_path = await this.require_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     const output_base_path = path.join(path.resolve(output_dir), "glossary");
     this.native_fs.make_dir(path.dirname(output_base_path));
     const entries = this.build_glossary_entries_from_candidates(
@@ -277,7 +277,7 @@ export class QualityService {
   public async save_prompt(request: JsonRecord): Promise<ProjectWriteResult> {
     this.assert_no_legacy_fields(request, ["expected_revision"]);
     const task_type = Prompt.from_json(request["task_type"]).kind;
-    const project_path = await this.require_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     return await this.write_store.save_quality_prompt({
       projectPath: project_path,
       expectedSectionRevisions: request["expected_section_revisions"],
@@ -311,15 +311,11 @@ export class QualityService {
    */
   public async export_prompt(request: JsonRecord): Promise<JsonRecord> {
     const task_type = Prompt.from_json(request["task_type"]).kind;
-    const project_path = await this.require_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     const output_path = this.ensure_txt_suffix(String(request["path"] ?? ""));
-    const text = String(
-      this.database.execute(
-        this.op("getRuleText", {
-          projectPath: project_path,
-          ruleType: Prompt.from_json(task_type).database_type,
-        }),
-      ) ?? "",
+    const text = this.database.get_rule_text(
+      project_path,
+      Prompt.from_json(task_type).database_type,
     );
     this.native_fs.write_file_sync(output_path, text.trim());
     return { path: output_path.replace(/\\/g, "/") };
@@ -409,17 +405,6 @@ export class QualityService {
   }
 
   /**
-   * 校验工程路径，确保项目级规则写入有明确目标
-   */
-  private async require_project_path(): Promise<string> {
-    const state = this.session_state.snapshot();
-    if (!state.loaded || state.projectPath === "") {
-      throw new AppErrors.ProjectNotLoadedError();
-    }
-    return state.projectPath;
-  }
-
-  /**
    * 生成规则 revision key，避免调用方拼接 meta 名称
    */
   private build_rule_revision_key(rule_type: QualityRuleKind): string {
@@ -465,13 +450,6 @@ export class QualityService {
   }
 
   /**
-   * 创建 database workflow 操作对象，避免各处重复组装协议
-   */
-  private op(name: string, args: Record<string, DatabaseJsonValue>): DatabaseOperation {
-    return { name, args };
-  }
-
-  /**
    * 归一规则类型，保护质量规则接口只接受已知分组
    */
   private normalize_rule_type(value: ApiJsonValue | undefined): QualityRuleKind {
@@ -503,12 +481,10 @@ export class QualityService {
    * 读取分析候选聚合行，保持 CLI 导出不直接拼 SQL。
    */
   private read_analysis_candidate_aggregates(project_path: string): JsonRecord[] {
-    const value = this.database.execute(
-      this.op("getAnalysisCandidateAggregates", { projectPath: project_path }),
-    );
+    const value = this.database.get_analysis_candidate_aggregates(project_path);
     return Array.isArray(value)
       ? value
-          .filter((entry): entry is JsonRecord => this.is_record(entry))
+          .filter((entry): entry is JsonRecord => is_json_record(entry))
           .map((entry) => ({
             ...entry,
           }))
@@ -647,20 +623,6 @@ export class QualityService {
       throw new AppErrors.RequestValidationError();
     }
     return normalized_name;
-  }
-
-  /**
-   * 收窄未知 JSON 为对象，避免深层读取抛出隐式异常
-   */
-  private normalize_object(value: ApiJsonValue | undefined): JsonRecord {
-    return this.is_record(value) ? { ...value } : {};
-  }
-
-  /**
-   * JSON 普通对象收窄集中处理，保护数组和 null 不进入规则解析。
-   */
-  private is_record(value: unknown): value is JsonRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   /**

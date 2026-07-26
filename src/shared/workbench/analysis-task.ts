@@ -1,4 +1,16 @@
-import { is_active_analysis_task_status as is_base_active_analysis_task_status } from "../../domain/task";
+import { is_active_analysis_task_status } from "../../domain/task";
+import {
+  create_empty_workbench_task_snapshot,
+  has_workbench_task_progress,
+  normalize_workbench_task_snapshot_payload,
+  resolve_workbench_task_display_snapshot,
+  resolve_workbench_task_metrics,
+  type WorkbenchTaskMetrics,
+  type WorkbenchTaskSnapshot,
+  type WorkbenchTaskSnapshotPayload,
+} from "./task-model";
+
+export { is_active_analysis_task_status };
 
 export type AnalysisTaskActionKind =
   | "reset-all"
@@ -6,37 +18,13 @@ export type AnalysisTaskActionKind =
   | "import-glossary"
   | "stop-analysis";
 
-export type AnalysisTaskSnapshot = {
-  run_revision: number;
-  task_type: string;
-  status: string;
-  busy: boolean;
-  request_in_flight_count: number;
-  line: number;
-  total_line: number;
-  processed_line: number;
-  error_line: number;
-  total_tokens: number;
-  total_output_tokens: number;
-  total_input_tokens: number;
-  time: number;
-  start_time: number;
+export type AnalysisTaskSnapshot = WorkbenchTaskSnapshot & {
   candidate_count: number;
 };
 
 export type AnalysisTaskPayload = {
-  task?: Partial<AnalysisTaskSnapshot> & {
-    progress?: Partial<
-      Omit<
-        AnalysisTaskSnapshot,
-        | "run_revision"
-        | "task_type"
-        | "status"
-        | "busy"
-        | "request_in_flight_count"
-        | "candidate_count"
-      >
-    >;
+  task?: WorkbenchTaskSnapshotPayload & {
+    candidate_count?: number;
     extras?: { kind?: string; candidate_count?: number };
   };
   imported_count?: number;
@@ -48,225 +36,66 @@ export type AnalysisTaskConfirmState = {
   submitting: boolean;
 };
 
-export type AnalysisTaskMetrics = {
-  active: boolean;
-  stopping: boolean;
-  completion_percent: number;
-  processed_count: number;
-  failed_count: number;
-  elapsed_seconds: number;
-  remaining_seconds: number;
-  average_output_speed: number;
-  input_tokens: number;
-  output_tokens: number;
-  request_in_flight_count: number;
+export type AnalysisTaskMetrics = WorkbenchTaskMetrics & {
   candidate_count: number;
 };
 
-/**
- * 构造当前场景的标准初始数据。
- */
+// 分析任务只在共享运行态上追加候选术语计数。
 export function create_empty_analysis_task_snapshot(): AnalysisTaskSnapshot {
   return {
-    run_revision: 0,
-    task_type: "analysis",
-    status: "idle",
-    busy: false,
-    request_in_flight_count: 0,
-    line: 0,
-    total_line: 0,
-    processed_line: 0,
-    error_line: 0,
-    total_tokens: 0,
-    total_output_tokens: 0,
-    total_input_tokens: 0,
-    time: 0,
-    start_time: 0,
+    ...create_empty_workbench_task_snapshot("analysis"),
     candidate_count: 0,
   };
 }
 
-/**
- * 克隆当前快照，避免共享可变引用。
- */
+// 当前快照只有标量字段，浅复制即可隔离调用方写入。
 export function clone_analysis_task_snapshot(snapshot: AnalysisTaskSnapshot): AnalysisTaskSnapshot {
-  return {
-    run_revision: snapshot.run_revision,
-    task_type: snapshot.task_type,
-    status: snapshot.status,
-    busy: snapshot.busy,
-    request_in_flight_count: snapshot.request_in_flight_count,
-    line: snapshot.line,
-    total_line: snapshot.total_line,
-    processed_line: snapshot.processed_line,
-    error_line: snapshot.error_line,
-    total_tokens: snapshot.total_tokens,
-    total_output_tokens: snapshot.total_output_tokens,
-    total_input_tokens: snapshot.total_input_tokens,
-    time: snapshot.time,
-    start_time: snapshot.start_time,
-    candidate_count: snapshot.candidate_count,
-  };
+  return { ...snapshot };
 }
 
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
+// candidate_count 属于分析 extras，不混入通用 progress 载荷。
 export function normalize_analysis_task_snapshot_payload(
   payload: AnalysisTaskPayload,
 ): AnalysisTaskSnapshot {
   const snapshot = payload.task ?? {};
-  const progress = snapshot.progress ?? snapshot;
-  const extras = snapshot.extras ?? {};
   return {
-    run_revision: Number(snapshot.run_revision ?? 0),
-    task_type: String(snapshot.task_type ?? "analysis"),
-    status: String(snapshot.status ?? "idle").toLowerCase(),
-    busy: Boolean(snapshot.busy),
-    request_in_flight_count: Number(snapshot.request_in_flight_count ?? 0),
-    line: Number(progress.line ?? 0),
-    total_line: Number(progress.total_line ?? 0),
-    processed_line: Number(progress.processed_line ?? 0),
-    error_line: Number(progress.error_line ?? 0),
-    total_tokens: Number(progress.total_tokens ?? 0),
-    total_output_tokens: Number(progress.total_output_tokens ?? 0),
-    total_input_tokens: Number(progress.total_input_tokens ?? 0),
-    time: Number(progress.time ?? 0),
-    start_time: Number(progress.start_time ?? 0),
-    candidate_count: Number(extras.candidate_count ?? 0),
+    ...normalize_workbench_task_snapshot_payload(snapshot, "analysis"),
+    candidate_count: Number(snapshot.extras?.candidate_count ?? 0),
   };
 }
 
-/**
- * 判断当前值是否满足业务条件。
- */
-export function is_active_analysis_task_status(status: string): boolean {
-  return is_base_active_analysis_task_status(status);
-}
-
-/**
- * 判断当前值是否满足业务条件。
- */
+// 分析进度沿用工作台公共运行态口径。
 export function has_analysis_task_progress(snapshot: AnalysisTaskSnapshot | null): boolean {
-  if (snapshot === null) {
-    return false;
-  }
-
-  const processed_count = snapshot.processed_line > 0 ? snapshot.processed_line : snapshot.line;
-
-  return (
-    snapshot.line > 0 ||
-    processed_count > 0 ||
-    snapshot.error_line > 0 ||
-    snapshot.total_output_tokens > 0 ||
-    snapshot.total_input_tokens > 0 ||
-    snapshot.total_tokens > 0
-  );
+  return has_workbench_task_progress(snapshot);
 }
 
-/**
- * 判断当前值是否满足业务条件。
- */
+// 即使行进度为空，待导入候选也必须保留终态展示。
 export function has_analysis_task_display_state(snapshot: AnalysisTaskSnapshot | null): boolean {
-  if (snapshot === null) {
-    return false;
-  }
-
-  return has_analysis_task_progress(snapshot) || snapshot.candidate_count > 0;
+  return has_analysis_task_progress(snapshot) || (snapshot?.candidate_count ?? 0) > 0;
 }
 
-/**
- * 解析当前场景的最终消费值。
- */
+// 分析任务用候选展示口径选择当前或历史终态。
 export function resolve_analysis_task_display_snapshot(args: {
   current_snapshot: AnalysisTaskSnapshot;
   last_snapshot: AnalysisTaskSnapshot | null;
 }): AnalysisTaskSnapshot | null {
-  if (is_active_analysis_task_status(args.current_snapshot.status)) {
-    return args.current_snapshot;
-  }
-
-  if (has_analysis_task_display_state(args.current_snapshot)) {
-    return args.current_snapshot;
-  }
-
-  if (
-    args.last_snapshot !== null &&
-    !is_active_analysis_task_status(args.last_snapshot.status) &&
-    has_analysis_task_display_state(args.last_snapshot)
-  ) {
-    return args.last_snapshot;
-  }
-
-  return null;
+  return resolve_workbench_task_display_snapshot({
+    ...args,
+    is_active: is_active_analysis_task_status,
+    has_display_state: has_analysis_task_display_state,
+  });
 }
 
-/**
- * 解析当前场景的最终消费值。
- */
+// 公共指标之外仅补充非负候选计数。
 export function resolve_analysis_task_metrics(args: {
   snapshot: AnalysisTaskSnapshot | null;
   now_seconds: number;
 }): AnalysisTaskMetrics {
-  if (args.snapshot === null) {
-    return {
-      active: false,
-      stopping: false,
-      completion_percent: 0,
-      processed_count: 0,
-      failed_count: 0,
-      elapsed_seconds: 0,
-      remaining_seconds: 0,
-      average_output_speed: 0,
-      input_tokens: 0,
-      output_tokens: 0,
-      request_in_flight_count: 0,
-      candidate_count: 0,
-    };
-  }
-
-  const active = is_active_analysis_task_status(args.snapshot.status);
-  const stopping = args.snapshot.status === "stopping";
-  const processed_count =
-    args.snapshot.processed_line > 0 ? args.snapshot.processed_line : args.snapshot.line;
-  const failed_count = Math.max(0, args.snapshot.error_line);
-  // 任务快照行号是运行态进度事实源，总量缺失时不借用项目完成度。
-  const completion_ratio =
-    args.snapshot.total_line <= 0
-      ? 0
-      : Math.min(1, Math.max(0, args.snapshot.line / Math.max(1, args.snapshot.total_line)));
-  const elapsed_seconds =
-    active && args.snapshot.start_time > 0
-      ? Math.max(0, args.now_seconds - args.snapshot.start_time)
-      : Math.max(0, args.snapshot.time);
-  const remaining_seconds =
-    args.snapshot.line <= 0
-      ? 0
-      : Math.max(
-          0,
-          (elapsed_seconds / Math.max(1, args.snapshot.line)) *
-            Math.max(0, args.snapshot.total_line - args.snapshot.line),
-        );
-  const input_tokens =
-    args.snapshot.total_input_tokens > 0
-      ? args.snapshot.total_input_tokens
-      : Math.max(0, args.snapshot.total_tokens - args.snapshot.total_output_tokens);
-  const output_tokens = Math.max(0, args.snapshot.total_output_tokens);
-  const average_output_speed =
-    elapsed_seconds <= 0 ? 0 : output_tokens / Math.max(1, elapsed_seconds);
-
   return {
-    active,
-    stopping,
-    completion_percent: completion_ratio * 100,
-    processed_count,
-    failed_count,
-    elapsed_seconds,
-    remaining_seconds,
-    average_output_speed,
-    input_tokens,
-    output_tokens,
-    request_in_flight_count: Math.max(0, args.snapshot.request_in_flight_count),
-    candidate_count: Math.max(0, args.snapshot.candidate_count),
+    ...resolve_workbench_task_metrics({
+      ...args,
+      active: args.snapshot !== null && is_active_analysis_task_status(args.snapshot.status),
+    }),
+    candidate_count: Math.max(0, args.snapshot?.candidate_count ?? 0),
   };
 }

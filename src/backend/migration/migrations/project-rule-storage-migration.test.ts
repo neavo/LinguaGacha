@@ -3,29 +3,17 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { JsonTool } from "../../../shared/utils/json-tool";
-import { ProjectRuleStorageMigration } from "./project-rule-storage-migration";
+import { run_project_rule_storage_migration } from "./project-rule-storage-migration";
 
-let temp_dir = "";
-let databases: DatabaseSync[] = [];
-
-beforeEach(() => {
-  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-rule-migration-"));
-  databases = [];
-});
-
-afterEach(() => {
-  for (const db of databases) {
-    db.close();
-  }
-  fs.rmSync(temp_dir, { recursive: true, force: true });
-});
-
-describe("ProjectRuleStorageMigration", () => {
+describe("run_project_rule_storage_migration", () => {
   it("把旧规则槽位和 payload 写回当前单行形状", () => {
-    const db = open_database("rules.lg");
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-rule-migration-"),
+    );
+    using db = new DatabaseSync(path.join(temp_dir.path, "rules.lg"));
     db.exec(`
       CREATE TABLE rules (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -46,7 +34,7 @@ describe("ProjectRuleStorageMigration", () => {
       JsonTool.stringifyStrict("旧提示词"),
     );
 
-    ProjectRuleStorageMigration.run(db);
+    run_project_rule_storage_migration(db);
 
     expect(read_rule_rows(db)).toEqual([
       {
@@ -57,15 +45,6 @@ describe("ProjectRuleStorageMigration", () => {
     ]);
   });
 });
-
-/**
- * 规则存储迁移测试用真实 rules 表，覆盖类型名和 payload 合并的 SQL 写回。
- */
-function open_database(name: string): DatabaseSync {
-  const db = new DatabaseSync(path.join(temp_dir, name));
-  databases.push(db);
-  return db;
-}
 
 /**
  * 规则 payload 按当前 JSON 形状反序列化后断言，避免测试绑定原始字符串顺序。

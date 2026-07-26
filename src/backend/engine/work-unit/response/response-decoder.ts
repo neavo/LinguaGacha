@@ -1,4 +1,5 @@
 import { JsonTool } from "../../../../shared/utils/json-tool";
+import { is_json_record } from "../../../../domain/json";
 import {
   normalize_translation_actor,
   type TranslationDecodedLine,
@@ -154,9 +155,7 @@ export class ResponseDecoder {
   private async repair_parse_object(text: string): Promise<Record<string, unknown> | null> {
     try {
       const value = await JsonTool.repairParse<unknown>(text);
-      return typeof value === "object" && value !== null && !Array.isArray(value)
-        ? (value as Record<string, unknown>)
-        : null;
+      return is_json_record(value) ? value : null;
     } catch {
       return null;
     }

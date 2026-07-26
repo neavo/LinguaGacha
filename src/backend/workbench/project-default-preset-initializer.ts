@@ -2,7 +2,8 @@ import path from "node:path";
 
 import type { AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
-import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
+import type { ProjectDatabaseWrite } from "../database/database-operations";
+import type { DatabaseJsonValue } from "../database/database-types";
 import type { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
 import { NativeFs } from "../../native/native-fs";
@@ -10,6 +11,7 @@ import * as AppErrors from "../../shared/error";
 import type { ApiJsonValue } from "../api/api-types";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { Prompt, type PromptKind } from "../../domain/prompt";
+import { is_json_record } from "../../domain/json";
 import { QualityRule, type QualityRuleKind, type TextPreserveMode } from "../../domain/quality";
 
 type MutableJsonRecord = Record<string, ApiJsonValue>;
@@ -39,7 +41,7 @@ const PROMPT_DEFAULT_PRESET_DISPLAY_NAMES: Record<PromptKind, string> = {
  * 初始化结果同时返回数据库操作和成功加载名，调用方据此决定事务写入与日志输出。
  */
 export type ProjectDefaultPresetInitializationResult = {
-  operations: DatabaseOperation[];
+  writes: ProjectDatabaseWrite[];
   loaded_names: string[];
 };
 
@@ -70,18 +72,11 @@ export class ProjectDefaultPresetInitializer {
   /**
    * 构建新建工程默认预设初始化操作，单个预设失败只记录日志并继续创建。
    */
-  public build_operations(project_path: string): ProjectDefaultPresetInitializationResult {
+  public build_writes(project_path: string): ProjectDefaultPresetInitializationResult {
     const config = this.app_setting_service.read_setting();
-    const operations: DatabaseOperation[] = [
-      // 文本保护 mode 是项目设置事实，即使没有默认预设也要进入创建事务。
-      {
-        name: "setMeta",
-        args: {
-          projectPath: project_path,
-          key: "text_preserve_mode",
-          value: DEFAULT_TEXT_PRESERVE_MODE,
-        },
-      },
+    const writes: ProjectDatabaseWrite[] = [
+      (database) =>
+        database.set_meta(project_path, "text_preserve_mode", DEFAULT_TEXT_PRESERVE_MODE),
     ];
     const loaded_names: string[] = [];
 
@@ -93,7 +88,7 @@ export class ProjectDefaultPresetInitializer {
       }
       try {
         const entries = this.read_quality_rule_preset(rule, virtual_id);
-        operations.push(...this.build_quality_rule_operations(project_path, rule, entries));
+        writes.push(...this.build_quality_rule_writes(project_path, rule, entries));
         loaded_names.push(QUALITY_DEFAULT_PRESET_DISPLAY_NAMES[rule.kind]);
       } catch (error) {
         this.log_non_blocking_warning(
@@ -115,7 +110,7 @@ export class ProjectDefaultPresetInitializer {
       }
       try {
         const text = this.read_prompt_preset(prompt, virtual_id);
-        operations.push(...this.build_prompt_operations(project_path, prompt, text));
+        writes.push(...this.build_prompt_writes(project_path, prompt, text));
         loaded_names.push(PROMPT_DEFAULT_PRESET_DISPLAY_NAMES[prompt.kind]);
       } catch (error) {
         this.log_non_blocking_warning(
@@ -129,7 +124,7 @@ export class ProjectDefaultPresetInitializer {
       }
     }
 
-    return { operations, loaded_names };
+    return { writes, loaded_names };
   }
 
   /**
@@ -160,7 +155,7 @@ export class ProjectDefaultPresetInitializer {
         },
       });
     }
-    return data.filter((entry): entry is MutableJsonRecord => this.is_record(entry));
+    return data.filter((entry): entry is MutableJsonRecord => is_json_record(entry));
   }
 
   /**
@@ -201,70 +196,52 @@ export class ProjectDefaultPresetInitializer {
   /**
    * 默认预设成功写入内容后同步写入启用态和 query 依赖的 section revision。
    */
-  private build_quality_rule_operations(
+  private build_quality_rule_writes(
     project_path: string,
     rule: QualityRule,
     entries: MutableJsonRecord[],
-  ): DatabaseOperation[] {
-    const operations: DatabaseOperation[] = [
-      this.op("setRules", {
-        projectPath: project_path,
-        ruleType: rule.database_type,
-        rules: entries as unknown as DatabaseJsonValue,
-      }),
+  ): ProjectDatabaseWrite[] {
+    const writes: ProjectDatabaseWrite[] = [
+      (database) =>
+        database.set_rules(
+          project_path,
+          rule.database_type,
+          entries as unknown as DatabaseJsonValue[],
+        ),
     ];
     if (rule.enabled_meta_key !== null) {
-      operations.push(
-        this.op("setMeta", {
-          projectPath: project_path,
-          key: rule.enabled_meta_key,
-          value: true,
-        }),
+      writes.push((database) =>
+        database.set_meta(project_path, rule.enabled_meta_key as string, true),
       );
     }
     if (rule.mode_meta_key !== null) {
-      operations.push(
-        this.op("setMeta", {
-          projectPath: project_path,
-          key: rule.mode_meta_key,
-          value: LOADED_TEXT_PRESERVE_PRESET_MODE,
-        }),
+      writes.push((database) =>
+        database.set_meta(
+          project_path,
+          rule.mode_meta_key as string,
+          LOADED_TEXT_PRESERVE_PRESET_MODE,
+        ),
       );
     }
-    operations.push(
-      this.op("setMeta", {
-        projectPath: project_path,
-        key: rule.revision_meta_key,
-        value: INITIAL_PRESET_REVISION,
-      }),
+    writes.push((database) =>
+      database.set_meta(project_path, rule.revision_meta_key, INITIAL_PRESET_REVISION),
     );
-    return operations;
+    return writes;
   }
 
   /**
    * 默认提示词成功写入正文后同步写入启用态和 query 依赖的 section revision。
    */
-  private build_prompt_operations(
+  private build_prompt_writes(
     project_path: string,
     prompt: Prompt,
     text: string,
-  ): DatabaseOperation[] {
+  ): ProjectDatabaseWrite[] {
     return [
-      this.op("setRuleText", {
-        projectPath: project_path,
-        ruleType: prompt.database_type,
-        text,
-      }),
-      this.op("setMeta", {
-        projectPath: project_path,
-        key: prompt.enabled_meta_key,
-        value: true,
-      }),
-      this.op("setMeta", {
-        projectPath: project_path,
-        key: prompt.revision_meta_key,
-        value: INITIAL_PRESET_REVISION,
-      }),
+      (database) => database.set_rule_text(project_path, prompt.database_type, text),
+      (database) => database.set_meta(project_path, prompt.enabled_meta_key, true),
+      (database) =>
+        database.set_meta(project_path, prompt.revision_meta_key, INITIAL_PRESET_REVISION),
     ];
   }
 
@@ -320,23 +297,9 @@ export class ProjectDefaultPresetInitializer {
   }
 
   /**
-   * 收窄未知 JSON 对象，保护数组和 null 不被当作 record。
-   */
-  private is_record(value: unknown): value is MutableJsonRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-  }
-
-  /**
    * 从未知值读取字符串，保持 null / undefined 统一为空串。
    */
   private string_value(value: ApiJsonValue | DatabaseJsonValue | undefined): string {
     return typeof value === "string" ? value : String(value ?? "");
-  }
-
-  /**
-   * 创建 database workflow operation，统一限制初始化器可写入的 JSON 参数形状。
-   */
-  private op(name: string, args: Record<string, DatabaseJsonValue>): DatabaseOperation {
-    return { name, args };
   }
 }

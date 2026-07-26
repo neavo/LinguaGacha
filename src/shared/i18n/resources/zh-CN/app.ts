@@ -300,7 +300,7 @@ export const zh_cn_app = {
     engine_api_name: "接口名称",
     engine_api_url: "接口地址",
     engine_task_done: "任务已完成 …",
-    engine_task_exception: "任务执行失败 …",
+
     engine_task_fail: "任务未能全部完成，仍有部分数据未处理，请检查处理结果 …",
     engine_task_rule_analysis: "规则分析：",
     engine_task_thinking_process: "思考过程：",

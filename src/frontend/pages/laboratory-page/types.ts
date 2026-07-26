@@ -1,9 +1,5 @@
 import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
 
-export type LaboratoryPendingField = "mtool_optimizer_enable" | "skip_duplicate_source_text_enable";
-
-export type LaboratoryPendingState = Record<LaboratoryPendingField, boolean>;
-
 export type LaboratorySnapshot = Pick<
   SettingsSnapshot,
   "mtool_optimizer_enable" | "skip_duplicate_source_text_enable"

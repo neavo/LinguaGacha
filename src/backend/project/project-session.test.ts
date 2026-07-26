@@ -3,9 +3,9 @@ import { ProjectSessionState } from "../project/project-session";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { ProjectEventBus } from "../project/project-events";
+import type { ProjectEventHandler } from "../project/project-events";
 import type { ProjectDatabase } from "../database/database-operations";
-import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
+import type { DatabaseJsonValue } from "../database/database-types";
 import type { LogManager } from "../log/log-manager";
 import type { AppSettingService } from "../app/app-setting-service";
 import { AppPathService } from "../app/app-path-service";
@@ -54,6 +54,15 @@ describe("ProjectSessionState", () => {
 
 // 生命周期测试的 fake database 以 JSON 形状模拟真实持久化返回。
 type MutableJsonRecord = Record<string, DatabaseJsonValue>;
+interface DatabaseCall {
+  name: string;
+  args: Record<string, DatabaseJsonValue>;
+}
+
+type TestProjectDatabase = ProjectDatabase & {
+  get_project_summary: ReturnType<typeof vi.fn>;
+  close_project: ReturnType<typeof vi.fn>;
+};
 
 describe("ProjectLifecycleService", () => {
   const cleanup_paths: string[] = []; // 生命周期测试会创建真实临时文件，统一登记清理避免污染用户工作区
@@ -83,7 +92,7 @@ describe("ProjectLifecycleService", () => {
 
   it("load 写入打开期迁移并标记 会话", async () => {
     const project_path = write_file(path.join(create_temp_dir(), "legacy.lg"));
-    const transaction_calls: DatabaseOperation[][] = [];
+    const transaction_calls: DatabaseCall[][] = [];
     const database = create_database({
       meta: {
         text_preserve_enable: true,
@@ -136,14 +145,12 @@ describe("ProjectLifecycleService", () => {
   it("load 在内部缓存热机失败时阻断 loaded", async () => {
     const project_path = write_file(path.join(create_temp_dir(), "broken-cache.lg"));
     const session_state = create_session_state();
-    const project_event_bus = new ProjectEventBus();
-    project_event_bus.subscribe("project.opened_for_cache", () => {
-      throw new Error("热机失败");
-    });
     const service = create_service({
       database: create_database(),
       session_state,
-      project_event_bus,
+      project_event_handler: () => {
+        throw new Error("热机失败");
+      },
     });
 
     await expect(service.load_project({ path: project_path })).rejects.toThrow("热机失败");
@@ -242,7 +249,7 @@ describe("ProjectLifecycleService", () => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "created.lg");
     const source_path = write_file(path.join(app_root, "source", "script.txt"), "こんにちは");
-    const transaction_calls: DatabaseOperation[][] = [];
+    const transaction_calls: DatabaseCall[][] = [];
     const service = create_service({
       app_root,
       database: create_database({ transaction_calls, create_project_files: true }),
@@ -360,7 +367,7 @@ describe("ProjectLifecycleService", () => {
       const project_path = write_file(path.join(app_root, "created.lg"), "old-project");
       const resolved_project_path = path.join(app_root, "created_20260602_030405.lg");
       const source_path = write_file(path.join(app_root, "source", "script.txt"), "こんにちは");
-      const transaction_calls: DatabaseOperation[][] = [];
+      const transaction_calls: DatabaseCall[][] = [];
       const service = create_service({
         app_root,
         database: create_database({ transaction_calls, create_project_files: true }),
@@ -396,7 +403,7 @@ describe("ProjectLifecycleService", () => {
       );
       const resolved_project_path = path.join(app_root, "created_20260602_030405_2.lg");
       const source_path = write_file(path.join(app_root, "source", "script.txt"), "こんにちは");
-      const transaction_calls: DatabaseOperation[][] = [];
+      const transaction_calls: DatabaseCall[][] = [];
       const service = create_service({
         app_root,
         database: create_database({ transaction_calls, create_project_files: true }),
@@ -436,7 +443,7 @@ describe("ProjectLifecycleService", () => {
       path.join(app_root, "resource", "translation_prompt", "preset", "base.txt"),
       "翻译提示词",
     );
-    const transaction_calls: DatabaseOperation[][] = [];
+    const transaction_calls: DatabaseCall[][] = [];
     const service = create_service({
       app_root,
       database: create_database({ transaction_calls, create_project_files: true }),
@@ -516,7 +523,7 @@ describe("ProjectLifecycleService", () => {
   it("create-commit 在单个默认预设读取失败时继续创建可用工程", async () => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "created-with-missing-preset.lg");
-    const transaction_calls: DatabaseOperation[][] = [];
+    const transaction_calls: DatabaseCall[][] = [];
     const log_manager = create_log_manager();
     const service = create_service({
       app_root,
@@ -579,7 +586,7 @@ describe("ProjectLifecycleService", () => {
     const source_dir = path.join(app_root, "source");
     const valid_file = write_file(path.join(source_dir, "script.txt"), "こんにちは");
     const broken_json = write_file(path.join(source_dir, "broken.json"), "{");
-    const transaction_calls: DatabaseOperation[][] = [];
+    const transaction_calls: DatabaseCall[][] = [];
     const log_manager = create_log_manager();
     const service = create_service({
       app_root,
@@ -629,7 +636,7 @@ describe("ProjectLifecycleService", () => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "all-failed.lg");
     const broken_json = write_file(path.join(app_root, "source", "broken.json"), "{");
-    const transaction_calls: DatabaseOperation[][] = [];
+    const transaction_calls: DatabaseCall[][] = [];
     const log_manager = create_log_manager();
     const service = create_service({
       app_root,
@@ -728,10 +735,7 @@ describe("ProjectLifecycleService", () => {
         },
       },
     });
-    expect(database.execute).toHaveBeenCalledWith({
-      name: "getProjectSummary",
-      args: { projectPath: project_path },
-    });
+    expect(database.get_project_summary).toHaveBeenCalledWith(project_path);
   });
 
   it("preview 在project.not_found时抛出 ENOENT", () => {
@@ -759,23 +763,18 @@ describe("ProjectLifecycleService", () => {
     });
 
     expect(calls).toEqual(["closeProject"]);
-    expect(database.execute).toHaveBeenCalledWith({
-      name: "closeProject",
-      args: { projectPath: project_path },
-    });
+    expect(database.close_project).toHaveBeenCalledWith(project_path);
   });
 
   it("unload 先发布内部卸载事件，再清理会话和 database 缓存", async () => {
     const calls: string[] = [];
     const project_path = "E:/Project/demo.lg";
-    const project_event_bus = new ProjectEventBus();
-    project_event_bus.subscribe("project.unloaded", () => {
-      calls.push("cache");
-    });
     const database = create_database({ calls });
     const service = create_service({
       database,
-      project_event_bus,
+      project_event_handler: () => {
+        calls.push("cache");
+      },
       session_state: create_session_state({ loaded: true, projectPath: project_path }),
     });
 
@@ -793,7 +792,7 @@ describe("ProjectLifecycleService", () => {
 
     await service.unload_project();
 
-    expect(database.execute).not.toHaveBeenCalled();
+    expect(database.close_project).not.toHaveBeenCalled();
   });
 
   // 每个用例使用独立临时目录，覆盖项目文件存在性判断且不污染工作区。
@@ -810,20 +809,17 @@ describe("ProjectLifecycleService", () => {
     return file_path;
   }
 
-  // 服务工厂保留真实 AppPathService 和事件总线，只替换数据库、设置与日志边界。
+  // 服务工厂保留真实 AppPathService，只替换数据库、设置、日志与事件边界。
   function create_service(options: {
     app_root?: string;
-    database: ProjectDatabase & {
-      execute: ReturnType<typeof vi.fn>;
-      execute_transaction?: ReturnType<typeof vi.fn>;
-    };
+    database: ProjectDatabase;
     session_state?: ProjectSessionState;
     config?: MutableJsonRecord;
     log_manager?: LogManager & {
       info: ReturnType<typeof vi.fn>;
       error: ReturnType<typeof vi.fn>;
     };
-    project_event_bus?: ProjectEventBus;
+    project_event_handler?: ProjectEventHandler;
   }): ProjectLifecycleService {
     const app_root = options.app_root ?? create_temp_dir();
     return new ProjectLifecycleService(
@@ -832,7 +828,7 @@ describe("ProjectLifecycleService", () => {
       create_setting_service(options.config ?? {}),
       new AppPathService({ appRoot: app_root }),
       options.log_manager ?? create_log_manager(),
-      options.project_event_bus ?? new ProjectEventBus(),
+      options.project_event_handler ?? vi.fn(),
     );
   }
 
@@ -845,53 +841,90 @@ describe("ProjectLifecycleService", () => {
       asset_records?: Array<{ path: string; sort_order: number }>;
       rule_text_by_type?: Record<string, string>;
       rule_text_by_name?: Record<string, string>;
-      transaction_calls?: DatabaseOperation[][];
+      transaction_calls?: DatabaseCall[][];
       calls?: string[];
       create_project_files?: boolean;
     } = {},
-  ) {
-    const execute = vi.fn((operation: DatabaseOperation) => {
-      options.calls?.push(operation.name);
-      if (operation.name === "getProjectSummary") {
-        return options.summary ?? {};
+  ): TestProjectDatabase {
+    let active_calls: DatabaseCall[] | null = null;
+    const record = (name: string, args: Record<string, DatabaseJsonValue>): void => {
+      active_calls?.push({ name, args });
+    };
+    const run_transaction = <T>(initial_calls: DatabaseCall[], callback: () => T): T => {
+      const previous_calls = active_calls;
+      active_calls = initial_calls;
+      options.transaction_calls?.push(initial_calls);
+      try {
+        return callback();
+      } finally {
+        active_calls = previous_calls;
       }
-      if (operation.name === "getAllMeta") {
-        return options.meta ?? {};
-      }
-      if (operation.name === "getAllItems") {
-        return options.items ?? [];
-      }
-      if (operation.name === "getAllAssetRecords") {
-        return options.asset_records ?? [];
-      }
-      if (operation.name === "getRuleText") {
-        const rule_type = String(operation.args?.["ruleType"] ?? "");
-        return options.rule_text_by_type?.[rule_type] ?? "";
-      }
-      if (operation.name === "getRuleTextByName") {
-        const rule_type_name = String(operation.args?.["ruleTypeName"] ?? "");
-        return options.rule_text_by_name?.[rule_type_name] ?? "";
-      }
-      return null;
-    });
-    const execute_transaction = vi.fn((operations: DatabaseOperation[]) => {
-      options.transaction_calls?.push(operations);
-      if (options.create_project_files) {
-        const create_project = operations.find((operation) => operation.name === "createProject");
-        const project_path = String(create_project?.args?.["projectPath"] ?? "");
-        if (project_path !== "") {
-          write_file(project_path, "");
-        }
-      }
-      return null;
+    };
+    const get_project_summary = vi.fn(() => options.summary ?? {});
+    const close_project = vi.fn(() => {
+      options.calls?.push("closeProject");
     });
     return {
-      execute,
-      execute_transaction,
-    } as unknown as ProjectDatabase & {
-      execute: ReturnType<typeof vi.fn>;
-      execute_transaction: ReturnType<typeof vi.fn>;
-    };
+      get_project_summary,
+      get_all_meta: vi.fn(() => options.meta ?? {}),
+      get_all_items: vi.fn(() => options.items ?? []),
+      get_all_asset_records: vi.fn(() => options.asset_records ?? []),
+      get_rule_text: vi.fn(
+        (_project_path: string, rule_type: string) =>
+          options.rule_text_by_type?.[rule_type] ?? options.rule_text_by_name?.[rule_type] ?? "",
+      ),
+      transaction: vi.fn((_project_path: string, callback: () => unknown) =>
+        run_transaction([], callback),
+      ),
+      create_project: vi.fn((project_path: string, name: string, initialize?: () => void) => {
+        if (options.create_project_files) {
+          write_file(project_path, "");
+        }
+        run_transaction(
+          [{ name: "createProject", args: { projectPath: project_path, name } }],
+          () => initialize?.(),
+        );
+      }),
+      set_meta: vi.fn((project_path: string, key: string, value: DatabaseJsonValue) =>
+        record("setMeta", { projectPath: project_path, key, value }),
+      ),
+      set_rules: vi.fn((project_path: string, rule_type: string, rules: DatabaseJsonValue[]) =>
+        record("setRules", {
+          projectPath: project_path,
+          ruleType: rule_type,
+          rules,
+        }),
+      ),
+      set_rule_text: vi.fn((project_path: string, rule_type: string, text: string) =>
+        record("setRuleText", {
+          projectPath: project_path,
+          ruleType: rule_type,
+          text,
+        }),
+      ),
+      add_asset_from_source: vi.fn(
+        (
+          project_path: string,
+          asset_path: string,
+          source_path: string,
+          sort_order: number | null,
+        ) =>
+          record("addAssetFromSource", {
+            projectPath: project_path,
+            path: asset_path,
+            sourcePath: source_path,
+            sortOrder: sort_order,
+          }),
+      ),
+      set_items: vi.fn((project_path: string, items: DatabaseJsonValue[]) => {
+        record("setItems", { projectPath: project_path, items });
+        return [];
+      }),
+      upsert_meta_entries: vi.fn((project_path: string, meta: Record<string, DatabaseJsonValue>) =>
+        record("upsertMetaEntries", { projectPath: project_path, meta }),
+      ),
+      close_project,
+    } as unknown as TestProjectDatabase;
   }
 
   // 会话状态 helper 通过公开方法预置 loaded 快照，避免手写内部字段。

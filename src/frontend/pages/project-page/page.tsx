@@ -47,7 +47,7 @@ import {
   format_source_file_parse_failure_error_toast,
   format_source_file_parse_failure_toast,
 } from "@frontend/app/feedback/source-file-parse-failure-feedback";
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 import {
   SegmentedProgress,
   type SegmentedProgressStats,

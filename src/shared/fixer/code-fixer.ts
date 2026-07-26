@@ -13,14 +13,11 @@ export class CodeFixer {
     }
     const src_codes = this.collect_codes(src, rule);
     const dst_codes = this.collect_codes(dst, rule);
-    if (src_codes.join("\u0000") === dst_codes.join("\u0000")) {
-      return dst;
-    }
     if (src_codes.length >= dst_codes.length) {
       return dst;
     }
-    const subset = this.is_ordered_subset(src_codes, dst_codes);
-    if (!subset.ok) {
+    const mismatch_indexes = this.find_extra_indexes(src_codes, dst_codes);
+    if (mismatch_indexes === null) {
       return dst;
     }
     let index = 0;
@@ -28,7 +25,7 @@ export class CodeFixer {
       if (match.trim() === "") {
         return match;
       }
-      return subset.mismatch_indexes.has(index++) ? "" : match;
+      return mismatch_indexes.has(index++) ? "" : match;
     });
   }
 
@@ -42,31 +39,16 @@ export class CodeFixer {
   /**
    * 判断 x 是否是 y 的有序子集，并记录 y 中多余元素索引
    */
-  private static is_ordered_subset(
-    x: string[],
-    y_list: string[],
-  ): { ok: boolean; mismatch_indexes: Set<number> } {
-    const y_copy = [...y_list];
+  private static find_extra_indexes(expected: string[], actual: string[]): Set<number> | null {
     const mismatch_indexes = new Set<number>();
-    let y_index = -1;
-    for (const x_item of x) {
-      let matched = false;
-      while (y_copy.length > 0) {
-        const y_item = y_copy.shift() ?? "";
-        y_index += 1;
-        if (x_item === y_item) {
-          matched = true;
-          break;
-        }
-        mismatch_indexes.add(y_index);
+    let expected_index = 0;
+    actual.forEach((item, index) => {
+      if (item === expected[expected_index]) {
+        expected_index += 1;
+      } else {
+        mismatch_indexes.add(index);
       }
-      if (!matched) {
-        return { ok: false, mismatch_indexes: new Set() };
-      }
-    }
-    for (let index = 0; index < y_copy.length; index += 1) {
-      mismatch_indexes.add(y_index + index + 1);
-    }
-    return { ok: true, mismatch_indexes };
+    });
+    return expected_index === expected.length ? mismatch_indexes : null;
   }
 }

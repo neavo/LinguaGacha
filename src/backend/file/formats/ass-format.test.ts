@@ -2,24 +2,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { Item } from "../../../domain/item";
 import { ASSFormat } from "./ass-format";
 
-let temp_dir = "";
-
-beforeEach(() => {
-  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-ass-format-"));
-});
-
-afterEach(() => {
-  fs.rmSync(temp_dir, { recursive: true, force: true });
-});
-
 describe("ASSFormat", () => {
   it("从 Dialogue 文本列解析字幕正文并保留写回模板", async () => {
-    const format = new ASSFormat({ source_language: "JA", target_language: "ZH" });
+    const format = new ASSFormat({ target_language: "ZH" });
     const content =
       "[Script Info]\n" +
       "Title: Test\n" +
@@ -40,7 +30,7 @@ describe("ASSFormat", () => {
   });
 
   it("缺少 Format 行时仍按历史切片逻辑解析 Dialogue", async () => {
-    const format = new ASSFormat({ source_language: "JA", target_language: "ZH" });
+    const format = new ASSFormat({ target_language: "ZH" });
     const content = "[Events]\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,Text\n";
 
     const items = await format.read_from_stream(new TextEncoder().encode(content), "sub.ass");
@@ -50,8 +40,8 @@ describe("ASSFormat", () => {
   });
 
   it("写回 ASS 译文和未去重双语字幕", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-ass-format-"));
     const format = new ASSFormat({
-      source_language: "JA",
       target_language: "ZH",
       deduplication_in_bilingual: false,
     });
@@ -75,24 +65,28 @@ describe("ASSFormat", () => {
         }),
       ],
       {
-        translated_path: path.join(temp_dir, "translated"),
-        bilingual_path: path.join(temp_dir, "bilingual"),
+        translated_path: path.join(temp_dir.path, "translated"),
+        bilingual_path: path.join(temp_dir.path, "bilingual"),
       },
     );
 
-    expect(fs.readFileSync(path.join(temp_dir, "translated", "anime", "sub.ass"), "utf-8")).toBe(
+    expect(
+      fs.readFileSync(path.join(temp_dir.path, "translated", "anime", "sub.ass"), "utf-8"),
+    ).toBe(
       "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,译文1\n" +
         "Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,译文2",
     );
-    expect(fs.readFileSync(path.join(temp_dir, "bilingual", "anime", "sub.ass"), "utf-8")).toBe(
+    expect(
+      fs.readFileSync(path.join(temp_dir.path, "bilingual", "anime", "sub.ass"), "utf-8"),
+    ).toBe(
       "Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,原文1\\N译文1\n" +
         "Dialogue: 0,0:00:03.00,0:00:04.00,Default,,0,0,0,,原文2\\N译文2",
     );
   });
 
   it("双语去重时原文译文一致只写一份内容", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-ass-format-"));
     const format = new ASSFormat({
-      source_language: "JA",
       target_language: "ZH",
       deduplication_in_bilingual: true,
     });
@@ -108,12 +102,15 @@ describe("ASSFormat", () => {
         }),
       ],
       {
-        translated_path: path.join(temp_dir, "translated"),
-        bilingual_path: path.join(temp_dir, "bilingual"),
+        translated_path: path.join(temp_dir.path, "translated"),
+        bilingual_path: path.join(temp_dir.path, "bilingual"),
       },
     );
 
-    const content = fs.readFileSync(path.join(temp_dir, "bilingual", "anime", "sub.ass"), "utf-8");
+    const content = fs.readFileSync(
+      path.join(temp_dir.path, "bilingual", "anime", "sub.ass"),
+      "utf-8",
+    );
     expect(content).toBe("Dialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,同文");
     expect(content).not.toContain("{{CONTENT}}");
   });

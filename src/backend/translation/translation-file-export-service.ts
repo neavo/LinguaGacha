@@ -7,10 +7,10 @@ import { AppSettingService } from "../app/app-setting-service";
 import { ProjectSessionState } from "../project/project-session";
 import { FileFormatService } from "../file/file-format-service";
 import { Item, type ItemStatus } from "../../domain/item";
+import { is_json_record } from "../../domain/json";
 import { resolve_app_locale, type AppLanguage } from "../../domain/app-language";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import { create_text_resolver, format_i18n_message, type LocaleKey } from "../../shared/i18n";
-import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { ExportPaths } from "../file/formats/file-format-shared";
 
@@ -70,7 +70,7 @@ export class TranslationFileExportService {
    * 生成译文读取项目全部条目，并先补齐重复条目的译文
    */
   public async export_files(): Promise<JsonRecord> {
-    const project_path = this.require_loaded_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     const config = this.app_setting_service.read_setting();
     this.log_export_start(config);
     try {
@@ -89,7 +89,7 @@ export class TranslationFileExportService {
    * CLI 导出直接写入用户指定目录，覆盖既有文件且不触发 GUI 打开目录副作用。
    */
   public async export_files_to_directory(output_dir: string): Promise<JsonRecord> {
-    const project_path = this.require_loaded_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     const config = this.app_setting_service.read_setting();
     this.log_export_start(config);
     try {
@@ -116,7 +116,7 @@ export class TranslationFileExportService {
     items: Item[],
     suffix: "_S2T" | "_T2S",
   ): Promise<JsonRecord> {
-    const project_path = this.require_loaded_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     const config = this.app_setting_service.read_setting();
     this.fill_duplicated_translations(items);
     this.log_export_start(config);
@@ -161,9 +161,7 @@ export class TranslationFileExportService {
     const setting_snapshot = normalize_setting_snapshot(config);
     const format_service = new FileFormatService(
       {
-        source_language: setting_snapshot.source_language,
         target_language: setting_snapshot.target_language,
-        app_language: setting_snapshot.app_language,
         deduplication_in_bilingual: setting_snapshot.deduplication_in_bilingual,
         write_translated_name_fields_to_file: setting_snapshot.write_translated_name_fields_to_file,
       },
@@ -235,19 +233,11 @@ export class TranslationFileExportService {
    * 从数据库读取条目后立即规范化，后续导出逻辑只处理稳定结构
    */
   private read_project_items(project_path: string): Item[] {
-    const raw_items = this.database.execute({
-      name: "getAllItems",
-      args: { projectPath: project_path },
-    });
+    const raw_items = this.database.get_all_items(project_path);
     if (!Array.isArray(raw_items)) {
       return [];
     }
-    return raw_items
-      .filter(
-        (item): item is JsonRecord =>
-          typeof item === "object" && item !== null && !Array.isArray(item),
-      )
-      .map((item) => Item.from_json(item));
+    return raw_items.filter(is_json_record).map((item) => Item.from_json(item));
   }
 
   /**
@@ -286,17 +276,6 @@ export class TranslationFileExportService {
    */
   private file_src_key(file_path: string, src: string): string {
     return `${file_path}\u0000${src}`;
-  }
-
-  /**
-   * 导出必须依赖已加载工程路径，空会话直接报错给 API 层
-   */
-  private require_loaded_project_path(): string {
-    const state = this.session_state.snapshot();
-    if (!state.loaded || state.projectPath === "") {
-      throw new AppErrors.ProjectNotLoadedError();
-    }
-    return state.projectPath;
   }
 
   /**

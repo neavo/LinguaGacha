@@ -2,23 +2,13 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import JSZip from "jszip";
 
 import { write_epub_fixture } from "../../test/epub-fixture";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { LogManager } from "../log/log-manager";
 import { FilePreviewService } from "./file-preview-service";
-
-let temp_dir = "";
-
-beforeEach(() => {
-  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-file-preview-"));
-});
-
-afterEach(() => {
-  fs.rmSync(temp_dir, { recursive: true, force: true });
-});
 
 function create_setting_service(): AppSettingService {
   return {
@@ -34,9 +24,10 @@ function create_setting_service(): AppSettingService {
 
 describe("FilePreviewService", () => {
   it("工作台预解析忽略不支持后缀并返回支持格式的失败文件", async () => {
-    const source_file = path.join(temp_dir, "script.txt");
-    const broken_json = path.join(temp_dir, "broken.json");
-    const ignored_file = path.join(temp_dir, "ignore.bin");
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-file-preview-"));
+    const source_file = path.join(temp_dir.path, "script.txt");
+    const broken_json = path.join(temp_dir.path, "broken.json");
+    const ignored_file = path.join(temp_dir.path, "ignore.bin");
     fs.writeFileSync(source_file, "原文", "utf-8");
     fs.writeFileSync(broken_json, "{", "utf-8");
     fs.writeFileSync(ignored_file, "noise", "utf-8");
@@ -72,7 +63,8 @@ describe("FilePreviewService", () => {
   });
 
   it("工作台预解析 EPUB 时直接返回解析结果", async () => {
-    const epub_file = path.join(temp_dir, "book.epub");
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-file-preview-"));
+    const epub_file = path.join(temp_dir.path, "book.epub");
     await write_epub_fixture(epub_file, "章节");
     const service = new FilePreviewService(create_setting_service());
 
@@ -101,7 +93,8 @@ describe("FilePreviewService", () => {
   });
 
   it("工作台预解析 EPUB 坏内容时返回文件解析错误码", async () => {
-    const epub_file = path.join(temp_dir, "broken.epub");
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-file-preview-"));
+    const epub_file = path.join(temp_dir.path, "broken.epub");
     const zip = new JSZip();
     zip.file(
       "META-INF/container.xml",
@@ -136,8 +129,9 @@ describe("FilePreviewService", () => {
   });
 
   it("新建工程预览合并文本和 EPUB 解析结果", async () => {
-    const txt_file = path.join(temp_dir, "script.txt");
-    const epub_file = path.join(temp_dir, "book.epub");
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-file-preview-"));
+    const txt_file = path.join(temp_dir.path, "script.txt");
+    const epub_file = path.join(temp_dir.path, "book.epub");
     fs.writeFileSync(txt_file, "文本", "utf-8");
     await write_epub_fixture(epub_file, "章节");
     const service = new FilePreviewService(create_setting_service());
@@ -159,8 +153,9 @@ describe("FilePreviewService", () => {
   });
 
   it("新建工程预览跳过解析失败文件并保留成功文件", async () => {
-    const txt_file = path.join(temp_dir, "script.txt");
-    const broken_json = path.join(temp_dir, "broken.json");
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-file-preview-"));
+    const txt_file = path.join(temp_dir.path, "script.txt");
+    const broken_json = path.join(temp_dir.path, "broken.json");
     fs.writeFileSync(txt_file, "文本", "utf-8");
     fs.writeFileSync(broken_json, "{", "utf-8");
     const service = new FilePreviewService(create_setting_service(), create_log_manager());

@@ -118,18 +118,14 @@ function create_policy(overrides: Partial<ResolvedRequestPolicy> = {}): Resolved
     provider: "openai-compatible",
     api_format: "OpenAI",
     base_url: "https://example.com/v1",
-    model_id: "gpt-5-mini",
     headers: {},
     api_keys: ["key"],
-    messages: [{ role: "user", content: "こんにちは" }],
     payload: {
       model: "gpt-5-mini",
       messages: [{ role: "user", content: "こんにちは" }],
       stream: true,
     },
     timeout_ms: 120_000,
-    response_mode: "chat-stream",
-    diagnostics: {},
     ...overrides,
   };
 }

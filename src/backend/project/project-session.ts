@@ -3,8 +3,8 @@ import path from "node:path";
 import type { ApiJsonValue } from "../api/api-types";
 import type { AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
-import type { ProjectDatabase } from "../database/database-operations";
-import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
+import type { ProjectDatabase, ProjectDatabaseWrite } from "../database/database-operations";
+import type { DatabaseJsonValue } from "../database/database-types";
 import { FileFormatService } from "../file/file-format-service";
 import { log_source_file_parse_failures } from "../file/source-file-parse-failure-reporter";
 import { SourceFileParsePipeline } from "../file/source-file-parse-pipeline";
@@ -18,6 +18,7 @@ import {
   normalize_project_item_public_record,
   type ProjectItemPublicRecord,
 } from "../../domain/item";
+import { read_json_record } from "../../domain/json";
 import {
   normalize_project_settings_snapshot,
   normalize_setting_snapshot,
@@ -36,8 +37,7 @@ import { build_section_revisions_from_meta, get_section_revision } from "./proje
 import {
   create_project_opened_for_cache_event,
   create_project_unloaded_event,
-  type ProjectEventBus,
-  type ProjectEventDispatchResult,
+  type ProjectEventHandler,
 } from "./project-events";
 
 /**
@@ -77,6 +77,16 @@ export class ProjectSessionState {
       loaded: this.loaded,
       projectPath: this.loaded ? this.project_path : "",
     };
+  }
+
+  /**
+   * 返回当前 loaded 工程的唯一写入目标，避免空路径意外创建 SQLite 文件。
+   */
+  public require_loaded_project_path(): string {
+    if (!this.loaded || this.project_path === "") {
+      throw new AppErrors.ProjectNotLoadedError();
+    }
+    return this.project_path;
   }
 }
 
@@ -126,7 +136,7 @@ export class ProjectLifecycleService {
 
   private readonly log_manager: LogManager; // 记录生命周期解析失败和诊断，响应体不扩大公开协议
 
-  private readonly project_event_bus: ProjectEventBus; // 承担 Backend 内部 committed event 分发，热机失败会阻断 loaded
+  private readonly project_event_handler: ProjectEventHandler; // 承担 Backend 内部 committed event 分发，热机失败会阻断 loaded
 
   private readonly native_fs: NativeFs; // 项目域读取外部文件和校验 .lg 路径的唯一文件系统门面
 
@@ -141,14 +151,14 @@ export class ProjectLifecycleService {
     app_setting_service: AppSettingService,
     paths: AppPathService,
     log_manager: LogManager,
-    project_event_bus: ProjectEventBus,
+    project_event_handler: ProjectEventHandler,
     native_fs: NativeFs = default_native_fs,
   ) {
     this.database = database;
     this.session_state = session_state;
     this.app_setting_service = app_setting_service;
     this.log_manager = log_manager;
-    this.project_event_bus = project_event_bus;
+    this.project_event_handler = project_event_handler;
     this.native_fs = native_fs;
     this.default_preset_initializer = new ProjectDefaultPresetInitializer(
       app_setting_service,
@@ -180,30 +190,24 @@ export class ProjectLifecycleService {
     const project_path = this.require_body_string(body, "path");
     this.assert_project_file_exists(project_path);
     // 打开期迁移只生成 operation，和 updated_at 一起提交后才暴露 loaded 状态
-    const migration_operations = await migration_orchestrator.build_project_open_operations({
+    const migration_writes = await migration_orchestrator.build_project_open_writes({
       project_path,
       database: this.database,
       app_setting_service: this.app_setting_service,
     });
 
-    this.database.execute_transaction([
-      this.op("setMeta", {
+    this.database.transaction(project_path, () => {
+      this.database.set_meta(project_path, "updated_at", this.build_timestamp());
+      for (const write of migration_writes) {
+        write(this.database);
+      }
+    });
+    const meta = this.to_record(this.database.get_all_meta(project_path) as ApiJsonValue);
+    await this.project_event_handler(
+      create_project_opened_for_cache_event({
         projectPath: project_path,
-        key: "updated_at",
-        value: this.build_timestamp(),
+        sectionRevisions: build_section_revisions_from_meta(meta as MutableJsonRecord),
       }),
-      ...migration_operations,
-    ]);
-    const meta = this.to_record(
-      this.database.execute(this.op("getAllMeta", { projectPath: project_path })) as ApiJsonValue,
-    );
-    this.assert_app_event_dispatch_success(
-      await this.project_event_bus.publish(
-        create_project_opened_for_cache_event({
-          projectPath: project_path,
-          sectionRevisions: build_section_revisions_from_meta(meta as MutableJsonRecord),
-        }),
-      ),
     );
     this.session_state.mark_loaded(project_path);
     return this.build_loaded_project_response(project_path);
@@ -231,27 +235,34 @@ export class ProjectLifecycleService {
       draft: parsed_draft,
       settings: project_settings,
     });
-    const default_preset_result = this.default_preset_initializer.build_operations(project_path);
+    const default_preset_result = this.default_preset_initializer.build_writes(project_path);
+    const writes = [
+      ...default_preset_result.writes,
+      ...this.build_asset_writes(project_path, parsed_draft.files),
+    ];
 
-    this.database.execute_transaction([
-      this.op("createProject", {
-        projectPath: project_path,
-        name: this.build_project_name(source_paths, project_path),
-      }),
-      ...default_preset_result.operations,
-      ...this.build_asset_operations(project_path, parsed_draft.files),
-      this.op("setItems", {
-        projectPath: project_path,
-        items: this.persistent_items_from_public_record(prefilter_output.items),
-      }),
-      this.op("upsertMetaEntries", {
-        projectPath: project_path,
-        meta: this.build_project_settings_meta({
-          project_settings,
-          prefilter_output,
-        }) as unknown as DatabaseJsonValue,
-      }),
-    ]);
+    this.database.create_project(
+      project_path,
+      this.build_project_name(source_paths, project_path),
+      () => {
+        for (const write of writes) {
+          write(this.database);
+        }
+        this.database.set_items(
+          project_path,
+          this.persistent_items_from_public_record(
+            prefilter_output.items,
+          ) as unknown as DatabaseJsonValue[],
+        );
+        this.database.upsert_meta_entries(
+          project_path,
+          this.build_project_settings_meta({
+            project_settings,
+            prefilter_output,
+          }) as unknown as Record<string, DatabaseJsonValue>,
+        );
+      },
+    );
 
     const response = await this.load_project({ path: project_path });
     this.log_create_commit_parse_failures(parsed_draft.failed_files);
@@ -388,9 +399,7 @@ export class ProjectLifecycleService {
     const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
     return new FileFormatService(
       {
-        source_language: project_settings.source_language,
         target_language: project_settings.target_language,
-        app_language: config.app_language,
         deduplication_in_bilingual: config.deduplication_in_bilingual,
         write_translated_name_fields_to_file: config.write_translated_name_fields_to_file,
       },
@@ -446,7 +455,7 @@ export class ProjectLifecycleService {
     this.assert_project_file_exists(project_path);
 
     const meta = this.get_all_meta(project_path);
-    const prefilter_config = this.normalize_object(meta["prefilter_config"] as ApiJsonValue);
+    const prefilter_config = { ...read_json_record(meta["prefilter_config"] as ApiJsonValue) };
     const current_settings = this.build_current_project_settings();
     const project_settings = this.build_stored_project_settings(meta, prefilter_config);
     const changed = {
@@ -493,14 +502,9 @@ export class ProjectLifecycleService {
   public async unload_project(): Promise<Record<string, ApiJsonValue>> {
     const state = this.session_state.snapshot();
     if (state.loaded && state.projectPath !== "") {
-      this.assert_app_event_dispatch_success(
-        await this.project_event_bus.publish(create_project_unloaded_event(state.projectPath)),
-      );
+      await this.project_event_handler(create_project_unloaded_event(state.projectPath));
       this.session_state.clear();
-      this.database.execute({
-        name: "closeProject",
-        args: { projectPath: state.projectPath },
-      });
+      this.database.close_project(state.projectPath);
     } else {
       this.session_state.clear();
     }
@@ -518,12 +522,7 @@ export class ProjectLifecycleService {
   public get_project_preview(body: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
     const project_path = this.require_body_string(body, "path");
     this.assert_project_file_exists(project_path);
-    const summary = this.to_record(
-      this.database.execute({
-        name: "getProjectSummary",
-        args: { projectPath: project_path },
-      }),
-    );
+    const summary = this.to_record(this.database.get_project_summary(project_path));
     return {
       preview: {
         path: project_path,
@@ -552,20 +551,21 @@ export class ProjectLifecycleService {
   /**
    * 构建 asset 写入操作，跳过缺少源文件路径的草稿记录
    */
-  private build_asset_operations(
+  private build_asset_writes(
     project_path: string,
     files: CreateCommitFileRecord[],
-  ): DatabaseOperation[] {
+  ): ProjectDatabaseWrite[] {
     return [...files]
       .sort((left, right) => left.sort_index - right.sort_index)
       .filter((file) => file.rel_path !== "" && file.source_path !== "")
-      .map((file) =>
-        this.op("addAssetFromSource", {
-          projectPath: project_path,
-          path: file.rel_path,
-          sourcePath: file.source_path,
-          sortOrder: file.sort_index,
-        }),
+      .map(
+        (file) => (database) =>
+          database.add_asset_from_source(
+            project_path,
+            file.rel_path,
+            file.source_path,
+            file.sort_index,
+          ),
       );
   }
 
@@ -600,26 +600,6 @@ export class ProjectLifecycleService {
       items: get_section_revision(meta, "items"),
       analysis: get_section_revision(meta, "analysis"),
     };
-  }
-
-  /**
-   * 工程加载必须等内部缓存热机成功；任何订阅者失败都阻断 loaded 标记。
-   */
-  private assert_app_event_dispatch_success(results: ProjectEventDispatchResult[]): void {
-    const failed_result = results.find((result) => !result.ok);
-    if (failed_result === undefined) {
-      return;
-    }
-    if (failed_result.error instanceof Error) {
-      throw failed_result.error;
-    }
-    throw new AppErrors.InternalInvariantError({
-      diagnostic_context: {
-        source: "project-lifecycle",
-        reason: "app_event_dispatch_failed",
-        event_type: failed_result.type,
-      },
-    });
   }
 
   /**
@@ -808,9 +788,7 @@ export class ProjectLifecycleService {
    * 读取全部 meta，用于打开预演、兼容处理和 section revision
    */
   private get_all_meta(project_path: string): MutableJsonRecord {
-    return this.normalize_object(
-      this.database.execute(this.op("getAllMeta", { projectPath: project_path })) as ApiJsonValue,
-    );
+    return { ...read_json_record(this.database.get_all_meta(project_path) as ApiJsonValue) };
   }
 
   /**
@@ -826,20 +804,6 @@ export class ProjectLifecycleService {
       skipped_count: this.number_field(stats, "skipped_count"),
       completion_percent: this.number_field(stats, "completion_percent"),
     };
-  }
-
-  /**
-   * 把未知 JSON 值收窄为对象，避免深层读取扩散类型断言
-   */
-  private normalize_object(value: ApiJsonValue | DatabaseJsonValue | undefined): MutableJsonRecord {
-    return this.is_record(value) ? { ...value } : {};
-  }
-
-  /**
-   * 收窄未知 JSON 对象，保护数组和 null 不被当作 record
-   */
-  private is_record(value: unknown): value is MutableJsonRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   /**
@@ -889,12 +853,5 @@ export class ProjectLifecycleService {
    */
   private build_timestamp(): string {
     return new Date().toISOString();
-  }
-
-  /**
-   * 创建 database workflow 操作，并允许 create-commit 模板稍后补齐 projectPath
-   */
-  private op(name: string, args: Record<string, DatabaseJsonValue>): DatabaseOperation {
-    return { name, args };
   }
 }

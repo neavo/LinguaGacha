@@ -305,7 +305,7 @@ export const en_us_app = {
     engine_api_name: "API Name",
     engine_api_url: "API URL",
     engine_task_done: "Task completed …",
-    engine_task_exception: "Task failed …",
+
     engine_task_fail:
       "Task failed to complete, some data remains unprocessed. Please check the results …",
     engine_task_rule_analysis: "Rule Analysis:",

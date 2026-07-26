@@ -2,7 +2,7 @@ import { Item, is_item_status, type ItemNameField, type ItemStatus } from "../..
 import { are_item_name_fields_equal } from "../item-name";
 import type { ProjectChangeItemFieldPatch } from "../project-event";
 
-export const PROJECT_ITEM_FIELD_PATCH_KEYS = ["dst", "name_dst", "status", "retry_count"] as const;
+const PROJECT_ITEM_FIELD_PATCH_KEYS = ["dst", "name_dst", "status", "retry_count"] as const;
 
 type ProjectItemFieldPatchKey = (typeof PROJECT_ITEM_FIELD_PATCH_KEYS)[number];
 
@@ -24,19 +24,20 @@ function has_own_field(
   value: ProjectItemFieldPatchSource,
   field: ProjectItemFieldPatchKey,
 ): boolean {
-  return Object.prototype.hasOwnProperty.call(value, field);
+  return Object.hasOwn(value, field);
 }
 
 function is_record(value: unknown): value is ProjectItemFieldPatchSource {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function is_project_item_field_patch_empty(
+function is_project_item_field_patch_empty(
   patch: ProjectChangeItemFieldPatch | null | undefined,
 ): boolean {
   return patch === null || patch === undefined || Object.keys(patch).length === 0;
 }
 
+// 外部 patch 只允许四个公开字段，坏值和空 patch 都收敛为 null。
 export function normalize_project_item_field_patch(
   value: unknown,
 ): ProjectChangeItemFieldPatch | null {
@@ -62,6 +63,7 @@ export function normalize_project_item_field_patch(
   return is_project_item_field_patch_empty(patch) ? null : patch;
 }
 
+// 返回新条目或 null，调用方可用 null 区分幂等 patch 与真实状态变化。
 export function apply_project_item_field_patch<TItem extends ProjectItemFieldPatchTarget>(
   item: TItem,
   patch: ProjectChangeItemFieldPatch | null | undefined,
@@ -76,7 +78,7 @@ export function apply_project_item_field_patch<TItem extends ProjectItemFieldPat
     next_item.dst = patch.dst;
     touched = true;
   }
-  if (Object.prototype.hasOwnProperty.call(patch, "name_dst")) {
+  if (Object.hasOwn(patch, "name_dst")) {
     const name_dst = Item.normalize_name_field(patch.name_dst);
     if (!are_item_name_fields_equal(name_dst, item.name_dst)) {
       next_item.name_dst = name_dst;
@@ -95,6 +97,7 @@ export function apply_project_item_field_patch<TItem extends ProjectItemFieldPat
   return touched ? next_item : null;
 }
 
+// 对比当前与下一状态生成最小字段 patch，姓名比较复用领域归一语义。
 export function build_project_item_field_patch(
   current: ProjectItemFieldPatchSource,
   next: ProjectItemFieldPatchSource,

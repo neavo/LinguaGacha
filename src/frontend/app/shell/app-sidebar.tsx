@@ -24,7 +24,7 @@ import {
   useSidebar,
 } from "@frontend/shadcn/sidebar";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 import {
   AppDropdownMenu,
   AppDropdownMenuContent,

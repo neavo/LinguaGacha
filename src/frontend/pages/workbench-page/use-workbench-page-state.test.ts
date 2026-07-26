@@ -9,7 +9,6 @@ import type { AnalysisTaskSnapshot } from "@shared/workbench/analysis-task";
 import type { AnalysisWorkbenchTask } from "@frontend/app/session/workbench-tasks/use-analysis-workbench-task";
 import type { TranslationWorkbenchTask } from "@frontend/app/session/workbench-tasks/use-translation-workbench-task";
 import { useWorkbenchPageState } from "@frontend/pages/workbench-page/use-workbench-page-state";
-import { createProjectItemIndex, type ProjectItemIndex } from "@shared/project/project-item-index";
 import type { DesktopPathPickResult } from "@gui/bridge-types";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
@@ -22,7 +21,7 @@ type RuntimeFixture = {
   project_store: {
     getState: () => {
       files: Record<string, unknown>;
-      items: ProjectItemIndex;
+      items: ReadonlyMap<number, ProjectItemPublicRecord>;
       analysis?: Record<string, unknown>;
       revisions?: {
         sections?: Record<string, number>;
@@ -66,29 +65,31 @@ type WorkbenchQueryStats = {
 
 type ApiRouteResponder = unknown | ((body: Record<string, unknown>) => unknown | Promise<unknown>);
 
-// state fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
+function create_test_items(
+  items: Record<string, ProjectItemPublicRecord> = {},
+): ReadonlyMap<number, ProjectItemPublicRecord> {
+  return new Map(Object.values(items).map((item) => [item.item_id, item]));
+}
+
+// 可变容器让模块级 mock 在不重复注册模块的前提下读取每个用例的运行态。
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
 };
 
-// translation state fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const translation_runtime_fixture: { current: TranslationWorkbenchTaskFixture } = {
   current: create_translation_workbench_task_fixture(),
 };
 
-// analysis state fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const analysis_runtime_fixture: { current: AnalysisWorkbenchTaskFixture } = {
   current: create_analysis_workbench_task_fixture(),
 };
 
-// workbench picker fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const workbench_picker_fixture: { current: WorkbenchPickerFixture } = {
   current: {
     pickWorkbenchFilePath: vi.fn<() => Promise<DesktopPathPickResult>>(),
   },
 };
 
-// toast fixture 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const toast_fixture: { current: ToastFixture } = {
   current: create_toast_fixture(),
 };
@@ -203,7 +204,7 @@ function create_runtime_fixture(): RuntimeFixture {
       getState: () => {
         return {
           files: {},
-          items: createProjectItemIndex(),
+          items: create_test_items(),
         };
       },
     },
@@ -232,18 +233,12 @@ function create_project_write_result() {
   };
 }
 
-/**
- * 支撑当前测试场景的专用辅助逻辑。
- */
 function enqueue_api_response(path: string, responder: ApiRouteResponder): void {
   const queue = api_route_queues.get(path) ?? [];
   queue.push(responder);
   api_route_queues.set(path, queue);
 }
 
-/**
- * 配置当前测试场景依赖。
- */
 function setup_api_fetch_mock(): void {
   vi.mocked(api_fetch).mockImplementation(async (path: string, body = {}) => {
     const queue = api_route_queues.get(path);
@@ -266,7 +261,7 @@ function setup_api_fetch_mock(): void {
 }
 
 /**
- * 构造当前场景的标准初始数据。
+ * 从可变项目仓库派生 mock 快照，使写入后的刷新能观察到新事实。
  */
 function create_workbench_query_response() {
   const state = runtime_fixture.current.project_store.getState();
@@ -312,9 +307,6 @@ function create_workbench_query_response() {
   };
 }
 
-/**
- * 构建当前场景的稳定结果。
- */
 function build_workbench_query_stats(items: ProjectItemPublicRecord[]): WorkbenchQueryStats {
   let completed_count = 0;
   let failed_count = 0;
@@ -345,9 +337,6 @@ function build_workbench_query_stats(items: ProjectItemPublicRecord[]): Workbenc
   };
 }
 
-/**
- * 统计当前测试场景的调用次数。
- */
 function count_api_calls(path: string): number {
   return vi.mocked(api_fetch).mock.calls.filter((call) => call[0] === path).length;
 }
@@ -457,7 +446,7 @@ function create_project_store_state(items: Record<string, ProjectItemPublicRecor
         sort_index: 0,
       },
     },
-    items: createProjectItemIndex(items),
+    items: create_test_items(items),
     quality: {
       glossary: { entries: [], enabled: true, mode: "default", revision: 0 },
       pre_replacement: { entries: [], enabled: true, mode: "default", revision: 0 },
@@ -576,20 +565,12 @@ describe("useWorkbenchPageState", () => {
     return null;
   }
 
-  // flush_async_updates 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-  /**
-   * 支撑当前测试场景的专用辅助逻辑。
-   */
   async function flush_async_updates(): Promise<void> {
     await act(async () => {
       await Promise.resolve();
     });
   }
 
-  // render_hook 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-  /**
-   * 生成当前场景的展示内容。
-   */
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -625,7 +606,7 @@ describe("useWorkbenchPageState", () => {
                 sort_index: 1,
               },
             },
-            items: createProjectItemIndex({
+            items: create_test_items({
               "1": create_project_item({
                 item_id: 1,
                 file_path: "chapter01.txt",
@@ -669,7 +650,7 @@ describe("useWorkbenchPageState", () => {
                 sort_index: 2,
               },
             },
-            items: createProjectItemIndex(),
+            items: create_test_items(),
           };
         },
       },
@@ -728,7 +709,7 @@ describe("useWorkbenchPageState", () => {
                 sort_index: 1,
               },
             },
-            items: createProjectItemIndex({
+            items: create_test_items({
               "1": create_project_item({
                 item_id: 1,
                 file_path: "chapter01.txt",
@@ -866,7 +847,7 @@ describe("useWorkbenchPageState", () => {
                 sort_index: 1,
               },
             },
-            items: createProjectItemIndex({
+            items: create_test_items({
               "1": create_project_item({
                 item_id: 1,
                 file_path: "chapter01.txt",
@@ -958,7 +939,7 @@ describe("useWorkbenchPageState", () => {
                 sort_index: 1,
               },
             },
-            items: createProjectItemIndex({
+            items: create_test_items({
               "1": create_project_item({
                 item_id: 1,
                 file_path: "chapter01.txt",
@@ -1026,7 +1007,7 @@ describe("useWorkbenchPageState", () => {
                 sort_index: 1,
               },
             },
-            items: createProjectItemIndex({
+            items: create_test_items({
               "1": create_project_item({
                 item_id: 1,
                 file_path: "chapter01.txt",

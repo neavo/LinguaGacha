@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 
 import { Item } from "../../../domain/item";
 import { JsonTool } from "../../../shared/utils/json-tool";
+import { row_number, row_text } from "../migration-row";
 import type { MigrationDescriptor, ProjectDatabaseMigrationContext } from "../migration-types";
 
 type ItemContractRow = Record<string, unknown>;
@@ -25,106 +26,100 @@ export const project_item_public_contract_migration: MigrationDescriptor = {
    * 公开 DTO 契约依赖基础 item 和 TRANS 私有 metadata 先完成各自归一。
    */
   run_project_database_writeback(context: ProjectDatabaseMigrationContext): void {
-    ProjectItemPublicContractMigration.run(context.db);
+    run_project_item_public_contract_migration(context.db);
   },
 };
 
 /**
- * 负责把旧 item payload 升级到完整公开 DTO 可生成的持久契约。
+ * 遍历所有可解析 item JSON，损坏行保留原文，不阻塞项目打开。
  */
-export class ProjectItemPublicContractMigration {
-  /**
-   * 遍历所有可解析 item JSON，损坏行保留原文，不阻塞项目打开。
-   */
-  public static run(db: DatabaseSync): void {
-    const rows = db.prepare("SELECT id, data FROM items ORDER BY id").all();
-    const update = db.prepare("UPDATE items SET data = ? WHERE id = ?");
-    for (const row of rows) {
-      const raw = row_text(row, "data");
-      try {
-        const parsed = JsonTool.parseStrict<ItemContractRow>(raw);
-        if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-          continue;
-        }
-        const normalized = this.normalize_item_payload(parsed);
-        if (normalized.changed) {
-          update.run(JsonTool.stringifyStrict(normalized.data), row_number(row, "id"));
-        }
-      } catch {
-        // 旧工程中损坏的单行 item 不阻塞打开；坏数据仍保留原样等待人工处理
+export function run_project_item_public_contract_migration(db: DatabaseSync): void {
+  const rows = db.prepare("SELECT id, data FROM items ORDER BY id").all();
+  const update = db.prepare("UPDATE items SET data = ? WHERE id = ?");
+  for (const row of rows) {
+    const raw = row_text(row, "data");
+    try {
+      const parsed = JsonTool.parseStrict<ItemContractRow>(raw);
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        continue;
       }
+      const normalized = normalize_item_public_contract_payload(parsed);
+      if (normalized.changed) {
+        update.run(JsonTool.stringifyStrict(normalized.data), row_number(row, "id"));
+      }
+    } catch {
+      // 旧工程中损坏的单行 item 不阻塞打开；坏数据仍保留原样等待人工处理
     }
   }
+}
 
-  /**
-   * 补齐公开 DTO 必需字段，同时保留未知格式私有字段和已有 extra_field 内容。
-   */
-  public static normalize_item_payload(item_data: ItemContractRow): {
-    data: ItemContractRow;
-    changed: boolean;
-  } {
-    const normalized: ItemContractPayload = { ...item_data };
-    let changed = false;
+/**
+ * 补齐公开 DTO 固定字段并返回真实变化标记，格式私有字段保持原样。
+ */
+export function normalize_item_public_contract_payload(item_data: ItemContractRow): {
+  data: ItemContractRow;
+  changed: boolean;
+} {
+  const normalized: ItemContractPayload = { ...item_data };
+  let changed = false;
 
-    const src = read_string(normalized["src"]);
-    changed = assign_contract_field(normalized, "src", src) || changed;
-    changed = assign_contract_field(normalized, "dst", read_string(normalized["dst"])) || changed;
-    changed =
-      assign_contract_field(
-        normalized,
-        "name_src",
-        Item.normalize_name_field(normalized["name_src"]),
-      ) || changed;
-    changed =
-      assign_contract_field(
-        normalized,
-        "name_dst",
-        Item.normalize_name_field(normalized["name_dst"]),
-      ) || changed;
-    changed =
-      assign_contract_field(
-        normalized,
-        "extra_field",
-        normalized["extra_field"] === undefined ? "" : normalized["extra_field"],
-      ) || changed;
-    changed = assign_contract_field(normalized, "tag", read_string(normalized["tag"])) || changed;
-    changed =
-      assign_contract_field(
-        normalized,
-        "row",
-        read_number(normalized["row"] ?? normalized["row_number"], 0),
-      ) || changed;
-    if (normalized["row_number"] !== undefined) {
-      delete normalized["row_number"];
-      changed = true;
-    }
-
-    const file_type = Item.normalize_file_type(normalized["file_type"]);
-    changed = assign_contract_field(normalized, "file_type", file_type) || changed;
-    changed =
-      assign_contract_field(normalized, "file_path", read_string(normalized["file_path"])) ||
-      changed;
-    changed =
-      assign_contract_field(
-        normalized,
-        "text_type",
-        normalize_text_type(normalized["text_type"], file_type, src),
-      ) || changed;
-    changed =
-      assign_contract_field(normalized, "status", Item.normalize_status(normalized["status"])) ||
-      changed;
-    changed =
-      assign_contract_field(normalized, "retry_count", read_number(normalized["retry_count"], 0)) ||
-      changed;
-    changed =
-      assign_contract_field(
-        normalized,
-        "skip_internal_filter",
-        normalized["skip_internal_filter"] === true,
-      ) || changed;
-
-    return { data: normalized, changed };
+  const src = read_string(normalized["src"]);
+  changed = assign_contract_field(normalized, "src", src) || changed;
+  changed = assign_contract_field(normalized, "dst", read_string(normalized["dst"])) || changed;
+  changed =
+    assign_contract_field(
+      normalized,
+      "name_src",
+      Item.normalize_name_field(normalized["name_src"]),
+    ) || changed;
+  changed =
+    assign_contract_field(
+      normalized,
+      "name_dst",
+      Item.normalize_name_field(normalized["name_dst"]),
+    ) || changed;
+  changed =
+    assign_contract_field(
+      normalized,
+      "extra_field",
+      normalized["extra_field"] === undefined ? "" : normalized["extra_field"],
+    ) || changed;
+  changed = assign_contract_field(normalized, "tag", read_string(normalized["tag"])) || changed;
+  changed =
+    assign_contract_field(
+      normalized,
+      "row",
+      read_number(normalized["row"] ?? normalized["row_number"], 0),
+    ) || changed;
+  if (normalized["row_number"] !== undefined) {
+    delete normalized["row_number"];
+    changed = true;
   }
+
+  const file_type = Item.normalize_file_type(normalized["file_type"]);
+  changed = assign_contract_field(normalized, "file_type", file_type) || changed;
+  changed =
+    assign_contract_field(normalized, "file_path", read_string(normalized["file_path"])) || changed;
+  changed =
+    assign_contract_field(
+      normalized,
+      "text_type",
+      normalize_text_type(normalized["text_type"], file_type, src),
+    ) || changed;
+  changed =
+    assign_contract_field(normalized, "status", Item.normalize_status(normalized["status"])) ||
+    changed;
+  changed =
+    assign_contract_field(normalized, "retry_count", read_number(normalized["retry_count"], 0)) ||
+    changed;
+  changed =
+    assign_contract_field(
+      normalized,
+      "skip_internal_filter",
+      normalized["skip_internal_filter"] === true,
+    ) || changed;
+
+  return { data: normalized, changed };
 }
 
 /**
@@ -161,28 +156,6 @@ function json_values_equal(left: unknown, right: unknown): boolean {
     return left === right;
   }
   return JsonTool.stringifyStrict(left) === JsonTool.stringifyStrict(right);
-}
-
-/**
- * items 表读取文本统一收窄，损坏 JSON 判断依赖原始字符串。
- */
-function row_text(row: ItemContractRow, key: string): string {
-  const value = row[key];
-  return typeof value === "string" ? value : String(value ?? "");
-}
-
-/**
- * items 表 id 写回前统一转 number，兼容 bigint 返回。
- */
-function row_number(row: ItemContractRow, key: string): number {
-  const value = row[key];
-  if (typeof value === "number") {
-    return value;
-  }
-  if (typeof value === "bigint") {
-    return Number(value);
-  }
-  return Number(value ?? 0);
 }
 
 /**

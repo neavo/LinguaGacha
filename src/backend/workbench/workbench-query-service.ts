@@ -6,6 +6,7 @@ import {
   to_analysis_glossary_import_prepare_payload,
 } from "../analysis/analysis-glossary-import-preparer";
 import * as AppErrors from "../../shared/error";
+import { is_json_record, read_json_record } from "../../domain/json";
 
 type MutableJsonRecord = Record<string, ApiJsonValue>;
 
@@ -32,7 +33,7 @@ export class WorkbenchQueryService {
    * 工作台快照只返回文件列表和统计摘要，页面不再接收完整项目区块。
    */
   public read_workbench_snapshot(): MutableJsonRecord {
-    const project_path = this.require_loaded_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     const items = this.cache.items.readItems();
     const file_entries = this.build_file_entries(items, this.cache.files.readFileEntries());
     const stats = this.build_item_stats(items);
@@ -54,7 +55,7 @@ export class WorkbenchQueryService {
    * 质量规则 query 只读取单个规则切片，避免页面为编辑一个规则加载全部项目事实。
    */
   public read_quality_rule_view(request: Record<string, ApiJsonValue>): MutableJsonRecord {
-    const project_path = this.require_loaded_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     const rule_type = this.read_quality_rule_type(request["rule_type"]);
     const quality_block = this.cache.quality.readBlock();
     return {
@@ -68,7 +69,7 @@ export class WorkbenchQueryService {
    * 自定义提示词页一次只读取当前任务类型对应的 prompt 切片。
    */
   public read_prompt_view(request: Record<string, ApiJsonValue>): MutableJsonRecord {
-    const project_path = this.require_loaded_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     const task_type = this.read_prompt_task_type(request["task_type"]);
     const prompts_block = this.cache.prompts.readBlock();
     return {
@@ -84,14 +85,14 @@ export class WorkbenchQueryService {
   public prepare_analysis_glossary_import(
     request: Record<string, ApiJsonValue>,
   ): MutableJsonRecord {
-    const project_path = this.require_loaded_project_path();
+    const project_path = this.session_state.require_loaded_project_path();
     const action = this.read_quality_import_action(request["action"]);
     const section_revisions = this.cache.readSectionRevisions();
     const prepared_import = prepare_analysis_glossary_import_from_cache({
       quality_block: this.cache.quality.readBlock(),
       items: this.cache.items.readItems(),
       section_revisions,
-      candidate_aggregate: this.read_record(request["candidate_aggregate"]),
+      candidate_aggregate: read_json_record(request["candidate_aggregate"]),
       action,
     });
     return {
@@ -200,7 +201,7 @@ export class WorkbenchQueryService {
     analysis_block: MutableJsonRecord,
   ): MutableJsonRecord {
     const status_summary = analysis_block["status_summary"];
-    if (this.has_explicit_analysis_summary(analysis_block) && this.is_record(status_summary)) {
+    if (this.has_explicit_analysis_summary(analysis_block) && is_json_record(status_summary)) {
       const total_line = this.clamp_count(status_summary["total_line"], 0, items.length);
       const completed_count = this.clamp_count(status_summary["processed_line"], 0, total_line);
       const failed_count = this.clamp_count(
@@ -241,7 +242,7 @@ export class WorkbenchQueryService {
    */
   private has_explicit_analysis_summary(analysis_block: MutableJsonRecord): boolean {
     const extras = analysis_block["extras"];
-    return this.is_record(extras) && Object.hasOwn(extras, "total_line");
+    return is_json_record(extras) && Object.hasOwn(extras, "total_line");
   }
 
   /**
@@ -269,17 +270,6 @@ export class WorkbenchQueryService {
   }
 
   /**
-   * 所有 query 都必须绑定当前 loaded 工程，未加载时返回统一业务错误。
-   */
-  private require_loaded_project_path(): string {
-    const state = this.session_state.snapshot();
-    if (!state.loaded || state.projectPath === "") {
-      throw new AppErrors.ProjectNotLoadedError();
-    }
-    return state.projectPath;
-  }
-
-  /**
    * query 参数里的数值统一非负截断，窗口参数不能传入负索引。
    */
   private read_number(value: ApiJsonValue | undefined, fallback: number): number {
@@ -288,20 +278,10 @@ export class WorkbenchQueryService {
   }
 
   /**
-   * 外部请求里的对象参数进入领域逻辑前先收窄成普通记录。
-   */
-  private read_record(value: ApiJsonValue | undefined): Record<string, unknown> {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      return {};
-    }
-    return value as Record<string, unknown>;
-  }
-
-  /**
    * 缺失或非法规则切片按空记录返回，页面由默认值补齐 UI 状态。
    */
   private normalize_record(value: unknown): MutableJsonRecord {
-    if (!this.is_record(value)) {
+    if (!is_json_record(value)) {
       return {};
     }
     return value as MutableJsonRecord;
@@ -312,13 +292,6 @@ export class WorkbenchQueryService {
    */
   private clamp_count(value: unknown, min_value: number, max_value: number): number {
     return Math.min(max_value, Math.max(min_value, this.read_number(value as ApiJsonValue, 0)));
-  }
-
-  /**
-   * 收窄 query 内部 JSON record，避免 summary 读取把数组当对象。
-   */
-  private is_record(value: unknown): value is MutableJsonRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
   }
 
   /**

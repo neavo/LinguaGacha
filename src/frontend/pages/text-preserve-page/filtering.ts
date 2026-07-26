@@ -2,16 +2,13 @@ import type {
   TextPreserveEntry,
   TextPreserveEntryId,
   TextPreserveFilterState,
-  TextPreserveStatisticsBadgeKind,
   TextPreserveStatisticsState,
   TextPreserveVisibleEntry,
 } from "@frontend/pages/text-preserve-page/types";
-import { create_text_keyword_matcher } from "@shared/text/text-pattern";
-
-const TEXT_PRESERVE_TEXT_SORTER = new Intl.Collator(undefined, {
-  numeric: true,
-  sensitivity: "base",
-});
+import {
+  compare_quality_rule_text_value,
+  create_quality_rule_keyword_matcher,
+} from "@frontend/features/quality-rule-editor/quality-rule-filtering";
 
 type BuildTextPreserveFilterResultOptions = {
   entries: TextPreserveEntry[];
@@ -28,61 +25,18 @@ function build_keyword_matcher(filter_state: TextPreserveFilterState): {
   invalid_regex_message: string | null;
   matches: (entry: TextPreserveEntry) => boolean;
 } {
-  const keyword_matcher = create_text_keyword_matcher({
-    keyword: filter_state.keyword,
-    is_regex: filter_state.is_regex,
-    unicode: false,
+  return create_quality_rule_keyword_matcher(filter_state, (entry: TextPreserveEntry) => {
+    return filter_state.scope === "src"
+      ? entry.src
+      : filter_state.scope === "info"
+        ? entry.info
+        : [entry.src, entry.info].join("\n");
   });
-
-  return {
-    invalid_regex_message: keyword_matcher.invalid_regex_message,
-    matches: (entry: TextPreserveEntry): boolean => {
-      if (keyword_matcher.invalid_regex_message !== null) {
-        return false;
-      }
-
-      const target_value =
-        filter_state.scope === "src"
-          ? entry.src
-          : filter_state.scope === "info"
-            ? entry.info
-            : [entry.src, entry.info].join("\n");
-
-      return keyword_matcher.matches(target_value);
-    },
-  };
 }
 
-function compare_text_preserve_text_value(
-  left_value: string,
-  right_value: string,
-  direction: "ascending" | "descending",
-): number {
-  const normalized_left_value = left_value.trim();
-  const normalized_right_value = right_value.trim();
-  const left_is_empty = normalized_left_value === "";
-  const right_is_empty = normalized_right_value === "";
-
-  if (left_is_empty && right_is_empty) {
-    return 0;
-  }
-
-  if (left_is_empty) {
-    return 1;
-  }
-
-  if (right_is_empty) {
-    return -1;
-  }
-
-  const comparison_result = TEXT_PRESERVE_TEXT_SORTER.compare(
-    normalized_left_value,
-    normalized_right_value,
-  );
-
-  return direction === "ascending" ? comparison_result : comparison_result * -1;
-}
-
+/**
+ * 将保护条目与同索引 ID 组合为只读展示结果；无对应 ID 的脏快照不会进入表格。
+ */
 export function build_text_preserve_filter_result(
   options: BuildTextPreserveFilterResultOptions,
 ): BuildTextPreserveFilterResult {
@@ -107,10 +61,9 @@ export function build_text_preserve_filter_result(
   };
 }
 
-export function has_active_text_preserve_filters(filter_state: TextPreserveFilterState): boolean {
-  return filter_state.keyword.trim() !== "";
-}
-
+/**
+ * 仅排序当前可见副本，并以项目原始顺序稳定处理相同值。
+ */
 export function sort_text_preserve_entries(
   visible_entries: TextPreserveVisibleEntry[],
   sort_state: import("@frontend/widgets/app-table/app-table-types").AppTableSortState | null,
@@ -129,7 +82,7 @@ export function sort_text_preserve_entries(
     let comparison_result = 0;
 
     if (sort_state.column_id === "src" || sort_state.column_id === "info") {
-      comparison_result = compare_text_preserve_text_value(
+      comparison_result = compare_quality_rule_text_value(
         left_entry.entry[sort_state.column_id],
         right_entry.entry[sort_state.column_id],
         sort_state.direction,
@@ -147,27 +100,4 @@ export function sort_text_preserve_entries(
 
     return left_entry.source_index - right_entry.source_index;
   });
-}
-
-export function resolve_text_preserve_statistics_badge_kind(
-  entry_id: TextPreserveEntryId,
-  statistics_state: TextPreserveStatisticsState,
-  completed_statistics_entry_id_set: ReadonlySet<TextPreserveEntryId>,
-): TextPreserveStatisticsBadgeKind | null {
-  if (!completed_statistics_entry_id_set.has(entry_id)) {
-    return null;
-  }
-
-  const matched_count = statistics_state.matched_count_by_entry_id[entry_id] ?? 0;
-  const subset_parent_labels = statistics_state.subset_parent_labels_by_entry_id[entry_id] ?? [];
-
-  if (matched_count === 0) {
-    return "unmatched";
-  }
-
-  if (subset_parent_labels.length > 0) {
-    return "related";
-  }
-
-  return "matched";
 }

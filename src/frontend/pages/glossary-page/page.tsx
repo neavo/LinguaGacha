@@ -5,7 +5,7 @@ import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import { GlossaryCommandBar } from "@frontend/pages/glossary-page/components/glossary-command-bar";
 import { GlossaryConfirmDialog } from "@frontend/pages/glossary-page/components/glossary-confirm-dialog";
 import { GlossaryEditDialog } from "@frontend/pages/glossary-page/components/glossary-edit-dialog";
-import { GlossaryPresetInputDialog } from "@frontend/pages/glossary-page/components/glossary-preset-input-dialog";
+import { PresetNameDialog } from "@frontend/features/preset-editor/preset-name-dialog";
 import type { GlossaryFilterScope } from "@frontend/pages/glossary-page/types";
 import { GlossaryTable } from "@frontend/pages/glossary-page/components/glossary-table";
 import { QualityRuleImportConfirmDialog } from "@frontend/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-dialog";
@@ -14,8 +14,8 @@ import { FileDropZone } from "@frontend/widgets/file-drop-zone/file-drop-zone";
 import { SearchBar, type SearchBarScopeOption } from "@frontend/widgets/search-bar/search-bar";
 
 const GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE = {
-  all: "glossary_page.filter.scope.all",
-  src: "glossary_page.filter.scope.source",
+  all: "quality_editor.filter.scope.all",
+  src: "quality_editor.filter.scope.source",
   dst: "glossary_page.filter.scope.translation",
   info: "glossary_page.filter.scope.description",
 } satisfies Record<GlossaryFilterScope, LocaleKey>;
@@ -30,16 +30,16 @@ export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
     : t("app.toggle.disabled");
   const scope_button_label =
     glossary_page_state.filter_state.scope === "all"
-      ? t("glossary_page.filter.scope.label")
+      ? t("quality_editor.filter.scope.label")
       : t(GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE[glossary_page_state.filter_state.scope]);
   const scope_state_label = t(
     GLOSSARY_SCOPE_LABEL_KEY_BY_SCOPE[glossary_page_state.filter_state.scope],
   );
-  const scope_tooltip = t("glossary_page.toggle.status")
-    .replace("{TITLE}", t("glossary_page.filter.scope.tooltip_label"))
+  const scope_tooltip = t("quality_editor.toggle.status")
+    .replace("{TITLE}", t("quality_editor.filter.scope.tooltip_label"))
     .replace("{STATE}", scope_state_label);
-  const regex_tooltip = t("glossary_page.toggle.status")
-    .replace("{TITLE}", t("glossary_page.filter.regex_tooltip_label"))
+  const regex_tooltip = t("quality_editor.toggle.status")
+    .replace("{TITLE}", t("quality_editor.filter.regex_tooltip_label"))
     .replace("{STATE}", regex_state_label);
   const glossary_scope_options: SearchBarScopeOption<GlossaryFilterScope>[] =
     GLOSSARY_FILTER_SCOPES.map((scope) => {
@@ -54,21 +54,21 @@ export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
       <SearchBar
         variant="filter"
         keyword={glossary_page_state.filter_state.keyword}
-        placeholder={t("glossary_page.filter.placeholder")}
-        clear_label={t("glossary_page.filter.clear")}
+        placeholder={t("quality_editor.filter.placeholder")}
+        clear_label={t("quality_editor.filter.clear")}
         invalid_message={glossary_page_state.invalid_filter_message}
         on_keyword_change={glossary_page_state.update_filter_keyword}
         scope={{
           value: glossary_page_state.filter_state.scope,
           button_label: scope_button_label,
-          aria_label: t("glossary_page.filter.scope.label"),
+          aria_label: t("quality_editor.filter.scope.label"),
           tooltip: scope_tooltip,
           options: glossary_scope_options,
           on_change: glossary_page_state.update_filter_scope,
         }}
         regex={{
           value: glossary_page_state.filter_state.is_regex,
-          label: t("glossary_page.filter.regex"),
+          label: t("quality_editor.filter.regex"),
           tooltip: regex_tooltip,
           enabled_label: t("app.toggle.enabled"),
           disabled_label: t("app.toggle.disabled"),
@@ -154,7 +154,7 @@ export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
         on_overwrite={glossary_page_state.import_duplicate_overwrite}
         on_close={glossary_page_state.close_import_duplicate_confirm}
       />
-      <GlossaryPresetInputDialog
+      <PresetNameDialog
         state={glossary_page_state.preset_input_state}
         on_change={glossary_page_state.update_preset_input_value}
         on_submit={() => {

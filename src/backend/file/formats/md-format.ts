@@ -1,12 +1,11 @@
+import path from "node:path";
+
 import { decode_text_content } from "../../../shared/utils/text-tool";
 import {
-  effective_export_text,
-  build_target_path,
   group_items,
   split_text_lines_for_items,
   write_text_file,
   type ExportPaths,
-  type FileFormatServiceConfig,
 } from "./file-format-shared";
 import { Item } from "../../../domain/item";
 
@@ -16,11 +15,6 @@ const IMAGE_PATTERN = /!\[.*?\]\(.*?\)/u; // 旧实现会直接排除 Markdown �
  * Markdown 格式按行处理，并排除图片和代码块内容
  */
 export class MDFormat {
-  /**
-   * 配置用于输出文件名语言后缀
-   */
-  public constructor(private readonly config: FileFormatServiceConfig) {}
-
   /**
    * 解析时用围栏状态标记代码块，维持旧实现对整行 Markdown 的处理方式
    */
@@ -52,8 +46,8 @@ export class MDFormat {
   public async write_to_path(items: Item[], paths: ExportPaths): Promise<void> {
     for (const [rel_path, group] of group_items(items, "MD")) {
       await write_text_file(
-        build_target_path(this.config, paths.translated_path, rel_path),
-        group.map(effective_export_text).join("\n"),
+        path.join(paths.translated_path, rel_path),
+        group.map((item) => item.effective_dst()).join("\n"),
       );
     }
   }

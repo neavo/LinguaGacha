@@ -43,10 +43,7 @@ function create_backend_services_options(): BackendServicesOptions {
       read_setting: () => ({ app_language: "zh-CN" }),
       set_stream_publisher: vi.fn(),
     },
-    database: {
-      execute: vi.fn(() => ({})),
-      execute_transaction: vi.fn(),
-    },
+    database: {},
     logManager: {
       warning: vi.fn(),
       error: vi.fn(),
@@ -59,7 +56,7 @@ function create_backend_services_options(): BackendServicesOptions {
 }
 
 describe("BackendServices", () => {
-  it("装配 ProjectEventBus、CacheManager 和 WorkbenchQueryService 到同一个组合根", () => {
+  it("装配 ProjectEventHandler、CacheManager 和 WorkbenchQueryService 到同一个组合根", () => {
     const services = new BackendServices(create_backend_services_options());
 
     expect(services.project).toBeDefined();

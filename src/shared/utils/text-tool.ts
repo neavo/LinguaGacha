@@ -28,7 +28,10 @@ function normalize_detected_encoding(encoding: string, add_sig_to_utf8: boolean)
 /**
  * 自动探测二进制内容编码，失败时回退 UTF-8
  */
-async function detect_text_encoding(content: Uint8Array, add_sig_to_utf8: boolean): Promise<string> {
+async function detect_text_encoding(
+  content: Uint8Array,
+  add_sig_to_utf8: boolean,
+): Promise<string> {
   let encoding = "utf-8";
 
   try {
@@ -55,25 +58,9 @@ export function is_punctuation_character(char: string): boolean {
  * 按标点和可选空格切分文本，用于术语分段等前置处理
  */
 export function split_by_punctuation(text: string, split_by_space: boolean): string[] {
-  const result: string[] = [];
-  let current = "";
-  for (const char of text) {
-    if (
-      is_punctuation_character(char) ||
-      (split_by_space && (char === "\u0020" || char === "\u3000"))
-    ) {
-      if (current !== "") {
-        result.push(current);
-        current = "";
-      }
-    } else {
-      current += char;
-    }
-  }
-  if (current !== "") {
-    result.push(current);
-  }
-  return result.filter(Boolean);
+  return text
+    .split(split_by_space ? /[\p{P}\p{S}\u0020\u3000]+/u : /[\p{P}\p{S}]+/u)
+    .filter(Boolean);
 }
 
 /**

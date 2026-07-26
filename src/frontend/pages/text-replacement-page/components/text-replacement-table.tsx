@@ -2,7 +2,7 @@ import { CaseSensitive, Regex } from "lucide-react";
 import { useMemo } from "react";
 
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 import { TextReplacementContextMenuContent } from "@frontend/pages/text-replacement-page/components/text-replacement-context-menu";
 import type {
   TextReplacementEntryId,
@@ -56,15 +56,12 @@ type TextReplacementTableProps = {
 
 type TextReplacementRuleMenuState = "enabled" | "disabled" | "mixed";
 
-/**
- * 构建当前场景的稳定结果。
- */
 function build_row_number_label(row_index: number): string {
   return String(row_index + 1);
 }
 
 /**
- * 解析当前场景的最终消费值。
+ * 右键已选行时作用于整组选择；右键未选行时只作用于该行。
  */
 function resolve_text_replacement_context_target_entry_ids(
   row_id: TextReplacementEntryId,
@@ -78,7 +75,7 @@ function resolve_text_replacement_context_target_entry_ids(
 }
 
 /**
- * 解析当前场景的最终消费值。
+ * 汇总批量目标的布尔规则状态，供菜单呈现选中、未选中或混合态。
  */
 function resolve_text_replacement_rule_menu_state(args: {
   entry_by_id: Map<TextReplacementEntryId, TextReplacementVisibleEntry>;
@@ -116,9 +113,7 @@ function resolve_text_replacement_rule_menu_state(args: {
   return "mixed";
 }
 
-/**
- * 判断当前值是否满足业务条件。
- */
+/** 交互控件和滚动条不应成为框选手势的起点。 */
 function should_ignore_box_selection_target(target_element: HTMLElement): boolean {
   return (
     target_element.closest(
@@ -133,9 +128,7 @@ function should_ignore_box_selection_target(target_element: HTMLElement): boolea
   );
 }
 
-/**
- * 判断当前值是否满足业务条件。
- */
+/** 行内交互控件自行处理点击，不应同时改变行选择。 */
 function should_ignore_row_click_target(target_element: HTMLElement): boolean {
   return (
     target_element.closest(
@@ -295,7 +288,7 @@ function TextReplacementStatisticsBadge(
               void props.on_query_entry_source(props.entry_id);
             }}
           >
-            {t("text_replacement_page.action.query")}
+            {t("quality_editor.action.query")}
           </AppDropdownMenuItem>
           <AppDropdownMenuItem
             onClick={() => {
@@ -326,7 +319,7 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
         id: "drag",
         width: 64,
         align: "center",
-        title: t("text_replacement_page.fields.drag"),
+        title: t("quality_editor.fields.drag"),
         head_class_name: "text-replacement-page__table-drag-head",
         cell_class_name: "text-replacement-page__table-drag-cell",
         render_cell: (payload) => {
@@ -344,13 +337,13 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
       {
         kind: "data",
         id: "src",
-        title: t("text_replacement_page.fields.source"),
+        title: t("quality_editor.fields.source"),
         align: "left",
         sortable: {
           action_labels: {
-            ascending: t("text_replacement_page.sort.ascending"),
-            descending: t("text_replacement_page.sort.descending"),
-            clear: t("text_replacement_page.sort.clear"),
+            ascending: t("quality_editor.sort.ascending"),
+            descending: t("quality_editor.sort.descending"),
+            clear: t("quality_editor.sort.clear"),
           },
         },
         head_class_name: "text-replacement-page__table-source-head",
@@ -366,9 +359,9 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
         align: "left",
         sortable: {
           action_labels: {
-            ascending: t("text_replacement_page.sort.ascending"),
-            descending: t("text_replacement_page.sort.descending"),
-            clear: t("text_replacement_page.sort.clear"),
+            ascending: t("quality_editor.sort.ascending"),
+            descending: t("quality_editor.sort.descending"),
+            clear: t("quality_editor.sort.clear"),
           },
         },
         head_class_name: "text-replacement-page__table-replacement-head",
@@ -380,26 +373,26 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
       {
         kind: "data",
         id: "rule",
-        title: t("text_replacement_page.fields.rule"),
+        title: t("quality_editor.fields.rule"),
         width: 120,
         align: "center",
         sortable: {
           action_labels: {
-            ascending: t("text_replacement_page.sort.ascending"),
-            descending: t("text_replacement_page.sort.descending"),
-            clear: t("text_replacement_page.sort.clear"),
+            ascending: t("quality_editor.sort.ascending"),
+            descending: t("quality_editor.sort.descending"),
+            clear: t("quality_editor.sort.clear"),
           },
         },
         head_class_name: "text-replacement-page__table-rule-head",
         cell_class_name: "text-replacement-page__table-rule-cell",
         render_cell: (payload) => {
-          const regex_tooltip = t("text_replacement_page.toggle.status")
+          const regex_tooltip = t("quality_editor.toggle.status")
             .replace("{TITLE}", t("text_replacement_page.rule.regex"))
             .replace(
               "{STATE}",
               t(payload.row.entry.regex ? "app.toggle.enabled" : "app.toggle.disabled"),
             );
-          const case_tooltip = t("text_replacement_page.toggle.status")
+          const case_tooltip = t("quality_editor.toggle.status")
             .replace("{TITLE}", t("text_replacement_page.rule.case_sensitive"))
             .replace(
               "{STATE}",
@@ -431,9 +424,9 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
         sortable: {
           disabled: !props.statistics_ready,
           action_labels: {
-            ascending: t("text_replacement_page.sort.ascending"),
-            descending: t("text_replacement_page.sort.descending"),
-            clear: t("text_replacement_page.sort.clear"),
+            ascending: t("quality_editor.sort.ascending"),
+            descending: t("quality_editor.sort.descending"),
+            clear: t("quality_editor.sort.clear"),
           },
         },
         head_class_name: "text-replacement-page__table-statistics-head",

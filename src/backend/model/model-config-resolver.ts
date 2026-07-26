@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import type { ApiJsonValue } from "../api/api-types";
+import { is_json_record } from "../../domain/json";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 
@@ -18,11 +19,7 @@ export function read_config_model_records(config: Record<string, ApiJsonValue>):
   if (!Array.isArray(raw_models)) {
     return [];
   }
-  return raw_models
-    .filter((item): item is ModelRecord => {
-      return typeof item === "object" && item !== null && !Array.isArray(item);
-    })
-    .map((item) => ({ ...item }));
+  return raw_models.filter(is_json_record).map((item) => ({ ...item }));
 }
 
 /**
@@ -63,10 +60,5 @@ export function read_config_model_preset_records(
   } catch {
     data = [];
   }
-  return Array.isArray(data)
-    ? data.filter(
-        (item): item is ModelRecord =>
-          typeof item === "object" && item !== null && !Array.isArray(item),
-      )
-    : [];
+  return Array.isArray(data) ? data.filter(is_json_record) : [];
 }

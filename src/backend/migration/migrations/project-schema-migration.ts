@@ -1,9 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 
 import { JsonTool } from "../../../shared/utils/json-tool";
+import { row_number, row_text } from "../migration-row";
 import type { MigrationDescriptor, ProjectDatabaseMigrationContext } from "../migration-types";
-
-type SchemaRow = Record<string, unknown>;
 
 export const PROJECT_DATABASE_SCHEMA_VERSION = 2; // 只表达当前表结构能力，不承载业务写回完成状态
 
@@ -25,28 +24,24 @@ export const project_schema_migration: MigrationDescriptor = {
    * schema hook 每次首次打开都执行，确保空库和旧库都能补齐当前结构。
    */
   run_project_database_schema(context: ProjectDatabaseMigrationContext): void {
-    ProjectSchemaMigration.run(context.db);
+    run_project_schema_migration(context.db);
   },
 };
 
 /**
- * 负责补齐 `.lg` 的物理表结构、索引和 schema_version，是所有项目数据库迁移的前置层。
+ * schema 迁移先建表/索引，再补旧 asset 排序列，最后写 schema_version。
  */
-export class ProjectSchemaMigration {
-  /**
-   * schema 迁移先建表/索引，再补旧 asset 排序列，最后写 schema_version。
-   */
-  public static run(db: DatabaseSync): void {
-    this.ensure_current_schema(db);
-    this.ensure_asset_sort_order_column(db);
-    this.write_meta_version(db, "schema_version", PROJECT_DATABASE_SCHEMA_VERSION);
-  }
+export function run_project_schema_migration(db: DatabaseSync): void {
+  ensure_current_schema(db);
+  ensure_asset_sort_order_column(db);
+  write_meta_version(db, "schema_version", PROJECT_DATABASE_SCHEMA_VERSION);
+}
 
-  /**
-   * 当前 `.lg` 所有表和索引集中在这里创建，避免建表规则散落到 operation 层。
-   */
-  private static ensure_current_schema(db: DatabaseSync): void {
-    db.exec(`
+/**
+ * 当前 `.lg` 所有表和索引集中幂等创建，避免物理结构规则散落到业务写入口。
+ */
+function ensure_current_schema(db: DatabaseSync): void {
+  db.exec(`
       CREATE TABLE IF NOT EXISTS meta (
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
@@ -86,57 +81,34 @@ export class ProjectSchemaMigration {
       CREATE INDEX IF NOT EXISTS idx_assets_path ON assets(path);
       CREATE INDEX IF NOT EXISTS idx_rules_type ON rules(type);
       CREATE INDEX IF NOT EXISTS idx_analysis_item_checkpoint_status ON analysis_item_checkpoint(status);
-    `);
-  }
+  `);
+}
 
-  /**
-   * 旧 assets 表缺少 sort_order 时，用自增 id 顺序还原导入顺序。
-   */
-  private static ensure_asset_sort_order_column(db: DatabaseSync): void {
-    const columns = db
-      .prepare("PRAGMA table_info(assets)")
-      .all()
-      .map((row) => row_text(row, "name"));
-    if (columns.includes("sort_order")) {
-      return;
-    }
-    db.exec("ALTER TABLE assets ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
-    const rows = db.prepare("SELECT id FROM assets ORDER BY id").all();
-    const statement = db.prepare("UPDATE assets SET sort_order = ? WHERE id = ?");
-    for (const [index, row] of rows.entries()) {
-      statement.run(index, row_number(row, "id"));
-    }
+/**
+ * 旧 assets 表缺少 sort_order 时，用自增 id 顺序还原稳定导入顺序。
+ */
+function ensure_asset_sort_order_column(db: DatabaseSync): void {
+  const columns = db
+    .prepare("PRAGMA table_info(assets)")
+    .all()
+    .map((row) => row_text(row, "name"));
+  if (columns.includes("sort_order")) {
+    return;
   }
-
-  /**
-   * schema_version 使用严格 JSON 数字写入 meta，和其它 meta 序列化保持一致。
-   */
-  private static write_meta_version(db: DatabaseSync, key: string, version: number): void {
-    db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(
-      key,
-      JsonTool.stringifyStrict(version),
-    );
+  db.exec("ALTER TABLE assets ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0");
+  const rows = db.prepare("SELECT id FROM assets ORDER BY id").all();
+  const statement = db.prepare("UPDATE assets SET sort_order = ? WHERE id = ?");
+  for (const [index, row] of rows.entries()) {
+    statement.run(index, row_number(row, "id"));
   }
 }
 
 /**
- * PRAGMA / SQLite 行值可能不是字符串，读取列名时统一收窄。
+ * schema_version 使用严格 JSON 数字写入 meta，与其它 meta 序列化保持一致。
  */
-function row_text(row: SchemaRow, key: string): string {
-  const value = row[key];
-  return typeof value === "string" ? value : String(value ?? "");
-}
-
-/**
- * SQLite INTEGER 可能以 number 或 bigint 返回，写回 id 前统一转 number。
- */
-function row_number(row: SchemaRow, key: string): number {
-  const value = row[key];
-  if (typeof value === "number") {
-    return value;
-  }
-  if (typeof value === "bigint") {
-    return Number(value);
-  }
-  return Number(value ?? 0);
+function write_meta_version(db: DatabaseSync, key: string, version: number): void {
+  db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)").run(
+    key,
+    JsonTool.stringifyStrict(version),
+  );
 }

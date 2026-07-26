@@ -1,5 +1,6 @@
 import type { ApiJsonValue } from "../../../api/api-types";
-import { read_json_record, type ItemStatus, type ItemTextType } from "../../../../domain/item";
+import type { ItemStatus, ItemTextType } from "../../../../domain/item";
+import { is_json_record, read_json_record } from "../../../../domain/json";
 
 export type ApiJsonRecord = Record<string, ApiJsonValue>;
 
@@ -7,56 +8,55 @@ export type ApiJsonRecord = Record<string, ApiJsonValue>;
  * TRANS processor.check 的返回结构，保持旧 src/dst/tag/status/skip 顺序语义
  */
 export interface TransCheckResult {
-  src: string;
-  dst: string;
-  tag: string[];
-  status: ItemStatus;
-  skip_internal_filter: boolean;
+  src: string; // 归一后的源文
+  dst: string; // 归一后的已有译文
+  tag: string[]; // 原始 TRANS 标签
+  status: ItemStatus; // 导入后的统一条目状态
+  skip_internal_filter: boolean; // aqua 等强制翻译标记
 }
 
 /**
  * 写回前对 Item 做快照，避免后续补丁逻辑反复读取可变对象
  */
 export interface TransSnapshot {
-  row: number;
-  file_key: string;
-  src: string;
-  dst: string;
-  status: ItemStatus;
-  extra_field: ApiJsonRecord;
+  row: number; // 工程内稳定全局行号
+  file_key: string; // 原始 project.files 键
+  src: string; // 写回前源文快照
+  dst: string; // 写回前译文快照
+  status: ItemStatus; // 决定是否采用译文
+  extra_field: ApiJsonRecord; // 保存精确 trans_ref 与格式私有字段
 }
 
 /**
  * patch writer 定位到原始 .trans project.files[file_key].data[row_index] 的目标
  */
 export interface PatchTarget {
-  snap: TransSnapshot;
-  file_key: string;
-  row_index: number;
+  snap: TransSnapshot; // 待写回条目快照
+  file_key: string; // 目标文件键
+  row_index: number; // 目标 data 数组下标
 }
 
 /**
  * TRANS 过滤计算结果，统一承载标签、状态与分区写回判断
  */
 export interface TransFilterEffect {
-  block: boolean[];
-  tag: string[];
-  status: ItemStatus;
-  is_mixed_partition: boolean;
+  block: boolean[]; // 各内部过滤器命中结果
+  tag: string[]; // 写回条目保留的标签
+  status: ItemStatus; // 过滤后的统一状态
+  is_mixed_partition: boolean; // 是否只跳过混合分区中的部分内容
 }
 
 /**
  * derive_trans_filter_effect 的窄输入，parameter 只用于判断是否允许分区参数
  */
 export interface TransFilterEffectInput {
-  block: boolean[];
-  tag: string[];
-  parameter?: unknown;
+  block: boolean[]; // 原始过滤器布尔数组
+  tag: string[]; // 原始 TRANS 标签
+  parameter?: unknown; // 可选分区参数，只在已知结构下读取
 }
 
-// 扩展名黑名单与旧 NONE.BLACKLIST_EXT 保持一致，只检查文本内容中的资源引用
 /**
- * 集中维护当前模块的稳定常量。
+ * 扩展名黑名单与旧 NONE.BLACKLIST_EXT 保持一致，只检查文本内容中的资源引用。
  */
 export const BLACKLIST_EXTENSIONS = [
   ".mp3", // 音频资源引用
@@ -107,12 +107,7 @@ export function string_array(value: unknown): string[] {
  * 读取参数对象数组，保持 extra_field.parameter 只含普通对象
  */
 export function record_array(value: unknown): ApiJsonRecord[] {
-  return Array.isArray(value)
-    ? value.filter(
-        (item): item is ApiJsonRecord =>
-          typeof item === "object" && item !== null && !Array.isArray(item),
-      )
-    : [];
+  return Array.isArray(value) ? value.filter(is_json_record) : [];
 }
 
 /**
@@ -181,8 +176,7 @@ function can_generate_trans_partition_parameter(parameter: unknown): boolean {
  */
 function has_trans_partition_parameter(parameter_list: unknown[]): boolean {
   return parameter_list.some(
-    (value) =>
-      is_trans_parameter_record(value) && ("contextStr" in value || "translation" in value),
+    (value) => is_json_record(value) && ("contextStr" in value || "translation" in value),
   );
 }
 
@@ -192,16 +186,9 @@ function has_trans_partition_parameter(parameter_list: unknown[]): boolean {
 function has_trans_span_parameter(parameter_list: unknown[]): boolean {
   return parameter_list.some(
     (value) =>
-      is_trans_parameter_record(value) &&
+      is_json_record(value) &&
       ("start" in value || "end" in value || "enclosure" in value || "lineIndent" in value),
   );
-}
-
-/**
- * 参数 schema 探测只接受普通对象，数组与 null 都不能当作参数记录
- */
-function is_trans_parameter_record(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**

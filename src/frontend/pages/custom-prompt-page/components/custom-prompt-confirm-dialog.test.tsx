@@ -63,7 +63,7 @@ describe("CustomPromptConfirmDialog", () => {
 
     expect(alert_dialog_props.current).toMatchObject({
       open: true,
-      description: "custom_prompt_page.confirm.reset.description",
+      description: "quality_editor.confirm.reset.description",
       cancelLabel: "取消",
       submitting: false,
     });

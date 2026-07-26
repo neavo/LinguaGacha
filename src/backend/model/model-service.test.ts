@@ -201,9 +201,7 @@ describe("ModelService 配置管理", () => {
   it("未知模型类型不能新增自定义模型", async () => {
     const { service } = await create_model_service([]);
 
-    await expect(service.add_model({ model_type: "PRESET" })).rejects.toThrow(
-      "request.validation_failed",
-    );
+    expect(() => service.add_model({ model_type: "PRESET" })).toThrow("request.validation_failed");
   });
 
   it("删除激活模型时优先回退到同类型模型", async () => {
@@ -295,9 +293,7 @@ describe("ModelService 配置管理", () => {
 
     expect(snapshot.active_model_id).toBe("openai");
     expect(read_request_model_snapshot(service.get_snapshot()).active_model_id).toBe("openai");
-    await expect(service.activate_model({ model_id: "missing" })).rejects.toThrow(
-      "model.not_found",
-    );
+    expect(() => service.activate_model({ model_id: "missing" })).toThrow("model.not_found");
   });
 
   it("预设模型和不存在的模型不能删除", async () => {
@@ -305,10 +301,8 @@ describe("ModelService 配置管理", () => {
       create_model({ id: "preset", type: "PRESET" }),
     ]);
 
-    await expect(service.delete_model({ model_id: "preset" })).rejects.toThrow(
-      "request.validation_failed",
-    );
-    await expect(service.delete_model({ model_id: "missing" })).rejects.toThrow("model.not_found");
+    expect(() => service.delete_model({ model_id: "preset" })).toThrow("request.validation_failed");
+    expect(() => service.delete_model({ model_id: "missing" })).toThrow("model.not_found");
   });
 
   it("更新模型只应用白名单字段并重建快照", async () => {
@@ -357,15 +351,15 @@ describe("ModelService 配置管理", () => {
       create_model({ id: "custom", type: "CUSTOM_OPENAI" }),
     ]);
 
-    await expect(
+    expect(() =>
       service.update_model({ model_id: "missing", patch: { name: "updated-name" } }),
-    ).rejects.toThrow("model.not_found");
-    await expect(
+    ).toThrow("model.not_found");
+    expect(() =>
       service.update_model({ model_id: "custom", patch: { forbidden: "value" } }),
-    ).rejects.toThrow("request.validation_failed");
-    await expect(
-      service.update_model({ model_id: "custom", patch: { threshold: "bad" } }),
-    ).rejects.toThrow("request.validation_failed");
+    ).toThrow("request.validation_failed");
+    expect(() => service.update_model({ model_id: "custom", patch: { threshold: "bad" } })).toThrow(
+      "request.validation_failed",
+    );
   });
 
   it("重置预设模型时从内置预设重新读取目标条目", async () => {
@@ -400,12 +394,10 @@ describe("ModelService 配置管理", () => {
       create_model({ id: "preset", type: "PRESET" }),
     ]);
 
-    await expect(service.reset_preset_model({ model_id: "custom" })).rejects.toThrow(
+    expect(() => service.reset_preset_model({ model_id: "custom" })).toThrow(
       "request.validation_failed",
     );
-    await expect(service.reset_preset_model({ model_id: "preset" })).rejects.toThrow(
-      "model.not_found",
-    );
+    expect(() => service.reset_preset_model({ model_id: "preset" })).toThrow("model.not_found");
   });
 
   it("重排模型只调整目标分组并保留其他分组成员", async () => {
@@ -438,13 +430,13 @@ describe("ModelService 配置管理", () => {
       create_model({ id: "b", type: "CUSTOM_OPENAI" }),
     ]);
 
-    await expect(service.reorder_model({ ordered_model_ids: [] })).rejects.toThrow(
+    expect(() => service.reorder_model({ ordered_model_ids: [] })).toThrow(
       "request.validation_failed",
     );
-    await expect(service.reorder_model({ ordered_model_ids: ["missing", "b"] })).rejects.toThrow(
+    expect(() => service.reorder_model({ ordered_model_ids: ["missing", "b"] })).toThrow(
       "model.not_found",
     );
-    await expect(service.reorder_model({ ordered_model_ids: ["b", "a"] })).rejects.toThrow(
+    expect(() => service.reorder_model({ ordered_model_ids: ["b", "a"] })).toThrow(
       "request.validation_failed",
     );
   });

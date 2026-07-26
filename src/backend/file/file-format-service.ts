@@ -12,12 +12,10 @@ import { TXTFormat } from "./formats/txt-format";
 import { WOLFXLSXFormat } from "./formats/wolfxlsx-format";
 import { XLSXFormat } from "./formats/xlsx-format";
 import { EPUBFormat } from "./formats/epub/epub-format";
-import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import {
   type ExportPaths,
   type FileFormatServiceConfig,
-  type ParsedFilePreview,
   type ProjectSourceFileEntry,
 } from "../file/formats/file-format-shared";
 
@@ -38,8 +36,8 @@ const SUPPORTED_EXTENSIONS = new Set([
  * Backend 公开文件格式门面；具体格式逻辑按稳定格式处理器拆分
  */
 export class FileFormatService {
-  private readonly config: FileFormatServiceConfig; // 固定一次解析/导出使用的语言和写回选项
   private readonly native_fs: NativeFs; // 源文件扫描和预览读取的唯一磁盘入口
+  // 格式处理器随服务实例固定，解析与写回始终复用同一组配置。
   private readonly txt: TXTFormat;
   private readonly md: MDFormat;
   private readonly ass: ASSFormat;
@@ -56,10 +54,9 @@ export class FileFormatService {
    * 构造时固定各格式处理器，保证一次服务实例内配置一致
    */
   public constructor(config: FileFormatServiceConfig, native_fs: NativeFs = default_native_fs) {
-    this.config = config;
     this.native_fs = native_fs;
     this.txt = new TXTFormat(config);
-    this.md = new MDFormat(config);
+    this.md = new MDFormat();
     this.ass = new ASSFormat(config);
     this.srt = new SRTFormat(config);
     this.kvjson = new KVJSONFormat();
@@ -76,13 +73,6 @@ export class FileFormatService {
    */
   public is_supported_file(file_path: string): boolean {
     return SUPPORTED_EXTENSIONS.has(path.extname(file_path).toLowerCase());
-  }
-
-  /**
-   * 判断当前值是否满足业务条件。
-   */
-  public is_epub_path(file_path: string): boolean {
-    return path.extname(file_path).toLowerCase() === ".epub";
   }
 
   /**
@@ -124,31 +114,6 @@ export class FileFormatService {
       return this.epub.read_from_stream(content, rel_path);
     }
     return [];
-  }
-
-  /**
-   * 工作台替换文件预演会保留旧相对目录，只替换文件名
-   */
-  public async parse_file_preview(
-    file_path: string,
-    current_rel_path?: string,
-  ): Promise<ParsedFilePreview> {
-    if (!this.is_supported_file(file_path)) {
-      throw new AppErrors.UnsupportedFileFormatError();
-    }
-    const target_rel_path =
-      current_rel_path === undefined || current_rel_path === ""
-        ? path.basename(file_path)
-        : this.build_replace_target_rel_path(current_rel_path, file_path);
-    const parsed_items = await this.parse_asset(
-      target_rel_path,
-      this.native_fs.read_file(file_path),
-    );
-    return {
-      target_rel_path,
-      file_type: this.pick_file_type(parsed_items),
-      parsed_items: parsed_items.map((item) => Item.from_json(item).to_json()),
-    };
   }
 
   /**
@@ -259,15 +224,6 @@ export class FileFormatService {
       }
     }
     return result;
-  }
-
-  /**
-   * 工作台替换文件时沿用当前工程相对目录，只把文件名换成新选择项
-   */
-  private build_replace_target_rel_path(old_rel_path: string, new_file_path: string): string {
-    const parent = path.dirname(old_rel_path);
-    const new_name = path.basename(new_file_path);
-    return parent === "." || parent === "" ? new_name : path.join(parent, new_name);
   }
 
   /**

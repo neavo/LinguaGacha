@@ -51,9 +51,7 @@ describe("ApiGatewayServer", () => {
   }
 
   it("由 API Gateway 响应公开健康检查", async () => {
-    const { gateway, database } = await create_gateway();
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
+    const gateway = create_gateway();
 
     const started = await gateway.start();
     const response = await fetch(`${started.baseUrl}/api/health`);
@@ -69,9 +67,7 @@ describe("ApiGatewayServer", () => {
   });
 
   it("预检请求只暴露公开 CORS 头", async () => {
-    const { gateway, database } = await create_gateway();
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
+    const gateway = create_gateway();
 
     const started = await gateway.start();
     const response = await fetch(`${started.baseUrl}/api/session/project/manifest`, {
@@ -86,9 +82,7 @@ describe("ApiGatewayServer", () => {
   });
 
   it("未知 JSON 路由不再代理并返回稳定 request.route_not_found", async () => {
-    const { gateway, database } = await create_gateway();
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
+    const gateway = create_gateway();
 
     const started = await gateway.start();
     const response = await fetch(`${started.baseUrl}/api/proxy-target`, {
@@ -104,9 +98,7 @@ describe("ApiGatewayServer", () => {
   });
 
   it("JSON 解析失败返回稳定 request.invalid_json 和 request_id", async () => {
-    const { gateway, database } = await create_gateway();
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
+    const gateway = create_gateway();
 
     const started = await gateway.start();
     const response = await fetch(`${started.baseUrl}/api/settings/app`, {
@@ -128,14 +120,9 @@ describe("ApiGatewayServer", () => {
   it("项目同步 write 由 API Gateway 直接处理", async () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
-    const gateway = await create_gateway_with_database(app_root, database);
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
+    const gateway = create_gateway_with_database(app_root, database);
     const lg_path = path.join(app_root, "sync-write.lg");
-    database.execute({
-      name: "createProject",
-      args: { projectPath: lg_path, name: "sync-write" },
-    });
+    database.create_project(lg_path, "sync-write");
 
     const started = await gateway.start();
     const response = await fetch(`${started.baseUrl}/api/workbench/settings-alignment/apply`, {
@@ -164,13 +151,8 @@ describe("ApiGatewayServer", () => {
     fs.mkdirSync(source_dir, { recursive: true });
     fs.writeFileSync(path.join(source_dir, "script.txt"), "原文", "utf-8");
     fs.writeFileSync(path.join(source_dir, "ignored.bin"), "bin", "utf-8");
-    database.execute({
-      name: "createProject",
-      args: { projectPath: lg_path, name: "project-lifecycle" },
-    });
-    const gateway = await create_gateway_with_database(app_root, database);
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
+    database.create_project(lg_path, "project-lifecycle");
+    const gateway = create_gateway_with_database(app_root, database);
 
     const started = await gateway.start();
     await post_json(started.baseUrl, "/api/session/project/open", { path: lg_path });
@@ -212,10 +194,8 @@ describe("ApiGatewayServer", () => {
     const lg_path = path.join(app_root, "api-project-route.lg");
     const source_path = path.join(app_root, "source.txt");
     fs.writeFileSync(source_path, "原文", "utf-8");
-    database.execute({ name: "createProject", args: { projectPath: lg_path, name: "route" } });
-    const gateway = await create_gateway_with_database(app_root, database);
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
+    database.create_project(lg_path, "route");
+    const gateway = create_gateway_with_database(app_root, database);
 
     const started = await gateway.start();
     const load_response = await post_json(started.baseUrl, "/api/session/project/open", {
@@ -245,9 +225,7 @@ describe("ApiGatewayServer", () => {
   it("项目 preview 缺失文件时映射为 project.not_found", async () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
-    const gateway = await create_gateway_with_database(app_root, database);
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
+    const gateway = create_gateway_with_database(app_root, database);
 
     const started = await gateway.start();
     const response = await post_json(started.baseUrl, "/api/session/project/preview", {
@@ -264,20 +242,9 @@ describe("ApiGatewayServer", () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
     const lg_path = path.join(app_root, "proofreading-sync-write.lg");
-    const gateway = await create_gateway_with_database(app_root, database);
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
-    database.execute({
-      name: "createProject",
-      args: { projectPath: lg_path, name: "proofreading-sync-write" },
-    });
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: lg_path,
-        items: [create_project_item({ id: 1, src: "原文", dst: "" })],
-      },
-    });
+    const gateway = create_gateway_with_database(app_root, database);
+    database.create_project(lg_path, "proofreading-sync-write");
+    database.set_items(lg_path, [create_project_item({ id: 1, src: "原文", dst: "" })]);
 
     const started = await gateway.start();
     await post_json(started.baseUrl, "/api/session/project/open", { path: lg_path });
@@ -297,9 +264,9 @@ describe("ApiGatewayServer", () => {
     expect(body.ok).toBe(true);
     expect(body.data?.accepted).toBe(true);
     expect(body.data?.changes?.[0]?.sectionRevisions).toEqual({ items: 1, proofreading: 1 });
-    expect(database.execute({ name: "getAllItems", args: { projectPath: lg_path } })).toMatchObject(
-      [{ id: 1, src: "原文", dst: "译文", status: "PROCESSED" }],
-    );
+    expect(database.get_all_items(lg_path)).toMatchObject([
+      { id: 1, src: "原文", dst: "译文", status: "PROCESSED" },
+    ]);
   });
 
   it("由 LogManager 提供轻量日志流和按需详情", async () => {
@@ -308,9 +275,7 @@ describe("ApiGatewayServer", () => {
     const log_manager = create_log_manager(app_root);
     const full_message = `启动完成\n${"完整详情".repeat(400)}\n详情尾部`;
     log_manager.info(full_message, { source: "test" });
-    const gateway = await create_gateway_with_database(app_root, database, log_manager);
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
+    const gateway = create_gateway_with_database(app_root, database, log_manager);
 
     const started = await gateway.start();
     const controller = new AbortController();
@@ -352,9 +317,7 @@ describe("ApiGatewayServer", () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
     const log_manager = create_log_manager(app_root);
-    const gateway = await create_gateway_with_database(app_root, database, log_manager);
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
+    const gateway = create_gateway_with_database(app_root, database, log_manager);
 
     const started = await gateway.start();
     const response = await post_json(started.baseUrl, "/api/diagnostics/renderer-error", {
@@ -404,38 +367,21 @@ describe("ApiGatewayServer", () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
     const lg_path = path.join(app_root, "project-read-api.lg");
-    const gateway = await create_gateway_with_database(app_root, database);
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
-    database.execute({
-      name: "createProject",
-      args: { projectPath: lg_path, name: "project-read" },
+    const gateway = create_gateway_with_database(app_root, database);
+    database.create_project(lg_path, "project-read");
+    database.transaction(lg_path, () => {
+      database.set_items(lg_path, [
+        create_project_item({
+          id: 1,
+          file_path: "a.txt",
+          row: 1,
+          src: "原文",
+          name_src: "魔法师",
+        }),
+      ]);
+      database.set_rule_text(lg_path, "translation_prompt", "\uD800");
+      database.set_meta(lg_path, "quality_prompt_revision.translation", 1);
     });
-    database.execute_transaction([
-      {
-        name: "setItems",
-        args: {
-          projectPath: lg_path,
-          items: [
-            create_project_item({
-              id: 1,
-              file_path: "a.txt",
-              row: 1,
-              src: "原文",
-              name_src: "魔法师",
-            }),
-          ],
-        },
-      },
-      {
-        name: "setRuleText",
-        args: { projectPath: lg_path, ruleType: "translation_prompt", text: "\uD800" },
-      },
-      {
-        name: "setMeta",
-        args: { projectPath: lg_path, key: "quality_prompt_revision.translation", value: 1 },
-      },
-    ]);
 
     const started = await gateway.start();
     await post_json(started.baseUrl, "/api/session/project/open", { path: lg_path });
@@ -490,34 +436,20 @@ describe("ApiGatewayServer", () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
     const lg_path = path.join(app_root, "analysis-candidates.lg");
-    const gateway = await create_gateway_with_database(app_root, database);
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
-    database.execute({
-      name: "createProject",
-      args: { projectPath: lg_path, name: "analysis-candidates" },
-    });
-    database.execute({
-      name: "upsertAnalysisCandidateAggregates",
-      args: {
-        projectPath: lg_path,
-        aggregates: [
-          {
-            src: "魔法",
-            dst_votes: { magic: 2 },
-            info_votes: { 术语: 1 },
-            observation_count: 2,
-            first_seen_at: "2026-01-01T00:00:00.000Z",
-            last_seen_at: "2026-01-02T00:00:00.000Z",
-            case_sensitive: false,
-          },
-        ],
+    const gateway = create_gateway_with_database(app_root, database);
+    database.create_project(lg_path, "analysis-candidates");
+    database.upsert_analysis_candidate_aggregates(lg_path, [
+      {
+        src: "魔法",
+        dst_votes: { magic: 2 },
+        info_votes: { 术语: 1 },
+        observation_count: 2,
+        first_seen_at: "2026-01-01T00:00:00.000Z",
+        last_seen_at: "2026-01-02T00:00:00.000Z",
+        case_sensitive: false,
       },
-    });
-    database.execute({
-      name: "setMeta",
-      args: { projectPath: lg_path, key: "analysis_candidate_count", value: 1 },
-    });
+    ]);
+    database.set_meta(lg_path, "analysis_candidate_count", 1);
 
     const started = await gateway.start();
     await post_json(started.baseUrl, "/api/session/project/open", { path: lg_path });
@@ -538,9 +470,7 @@ describe("ApiGatewayServer", () => {
   });
 
   it("公开任务路由由 API Gateway 直处理", async () => {
-    const { gateway, database } = await create_gateway();
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
+    const gateway = create_gateway();
 
     const started = await gateway.start();
     const response = await post_json(started.baseUrl, "/api/tasks/start", {
@@ -567,30 +497,19 @@ describe("ApiGatewayServer", () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
     const lg_path = path.join(app_root, "generate-route.lg");
-    const gateway = await create_gateway_with_database(app_root, database);
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
-    database.execute({
-      name: "createProject",
-      args: { projectPath: lg_path, name: "generate-route" },
-    });
-    database.execute({
-      name: "setItems",
-      args: {
-        projectPath: lg_path,
-        items: [
-          create_project_item({
-            id: 1,
-            src: "原文",
-            dst: "译文",
-            status: "PROCESSED",
-            file_type: "TXT",
-            file_path: "script.txt",
-            row: 0,
-          }),
-        ],
-      },
-    });
+    const gateway = create_gateway_with_database(app_root, database);
+    database.create_project(lg_path, "generate-route");
+    database.set_items(lg_path, [
+      create_project_item({
+        id: 1,
+        src: "原文",
+        dst: "译文",
+        status: "PROCESSED",
+        file_type: "TXT",
+        file_path: "script.txt",
+        row: 0,
+      }),
+    ]);
 
     const started = await gateway.start();
     await post_json(started.baseUrl, "/api/session/project/open", { path: lg_path });
@@ -631,9 +550,7 @@ describe("ApiGatewayServer", () => {
   });
 
   it("旧 project 业务路径不保留兼容入口", async () => {
-    const { gateway, database } = await create_gateway();
-    cleanup_callbacks.push(() => gateway.stop());
-    cleanup_callbacks.push(() => database.close());
+    const gateway = create_gateway();
 
     const started = await gateway.start();
     const legacy_paths = [
@@ -660,8 +577,7 @@ describe("ApiGatewayServer", () => {
   });
 
   it("长期事件流由事件 hub 提供 keepalive 并在 Gateway 退出时关闭", async () => {
-    const { gateway, database } = await create_gateway();
-    cleanup_callbacks.push(() => database.close());
+    const gateway = create_gateway();
 
     const started = await gateway.start();
     const stream = await read_http_stream_until(
@@ -678,7 +594,6 @@ describe("ApiGatewayServer", () => {
     const dispose = vi.fn(async () => undefined);
     const gateway = new ApiGatewayServer({
       backendServices: { dispose } as unknown as BackendServices,
-      publicPort: 0,
     });
 
     await gateway.stop();
@@ -686,24 +601,27 @@ describe("ApiGatewayServer", () => {
     expect(dispose).not.toHaveBeenCalled();
   });
 
-  it("公开端口监听失败时拒绝启动并保持 stop 幂等", async () => {
+  it("重复启动保持同一本机入口且停止幂等", async () => {
+    const gateway = create_gateway();
+
+    const first = await gateway.start();
+
+    await expect(gateway.start()).resolves.toEqual(first);
+    await expect(gateway.stop()).resolves.toBeUndefined();
+    await expect(gateway.stop()).resolves.toBeUndefined();
+  });
+
+  function create_gateway(): ApiGatewayServer {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
-    const log_manager = create_log_manager(app_root);
-    const occupied_server = http.createServer();
-    await new Promise<void>((resolve, reject) => {
-      occupied_server.once("error", reject);
-      occupied_server.listen(0, "127.0.0.1", () => {
-        occupied_server.off("error", reject);
-        resolve();
-      });
-    });
-    cleanup_callbacks.push(() => close_node_server(occupied_server));
-    cleanup_callbacks.push(() => database.close());
-    const address = occupied_server.address();
-    if (typeof address !== "object" || address === null) {
-      throw new Error("测试占用端口未取得地址。");
-    }
+    return create_gateway_with_database(app_root, database);
+  }
+
+  function create_gateway_with_database(
+    app_root: string,
+    database: ProjectDatabase,
+    log_manager: LogManager = create_log_manager(app_root),
+  ): ApiGatewayServer {
     const paths = new AppPathService({ appRoot: app_root });
     const backend_services = new BackendServices({
       paths,
@@ -718,59 +636,17 @@ describe("ApiGatewayServer", () => {
     backend_services.start();
     const gateway = new ApiGatewayServer({
       backendServices: backend_services,
-      publicPort: address.port,
     });
-
-    await expect(gateway.start()).rejects.toThrow();
-    await expect(gateway.stop()).resolves.toBeUndefined();
-  });
-
-  /**
-   * 创建默认 Gateway 三件套，让常规用例不用重复布置生命周期依赖
-   */
-  async function create_gateway(): Promise<{
-    appRoot: string;
-    database: ProjectDatabase;
-    gateway: ApiGatewayServer;
-  }> {
-    const app_root = create_app_root();
-    const database = new ProjectDatabase();
-    const gateway = await create_gateway_with_database(app_root, database);
-    return { appRoot: app_root, database, gateway };
+    cleanup_callbacks.push(
+      () => database.close(),
+      () => backend_services.dispose(),
+      () => gateway.stop(),
+    );
+    return gateway;
   }
 
-  /**
-   * 按指定 database 构造 Gateway，方便项目写库前后共享同一实例
-   */
-  async function create_gateway_with_database(
-    app_root: string,
-    database: ProjectDatabase,
-    log_manager: LogManager = create_log_manager(app_root),
-  ): Promise<ApiGatewayServer> {
-    const paths = new AppPathService({ appRoot: app_root });
-    const backend_services = new BackendServices({
-      paths,
-      metadata: new AppMetadataService(paths),
-      appSettingService: new AppSettingService(paths),
-      database,
-      logManager: log_manager,
-      systemProxySnapshot: null,
-      openOutputFolder: noop_output_folder,
-      workerExecution: IN_PROCESS_WORKER_EXECUTION,
-    });
-    backend_services.start();
-    return new ApiGatewayServer({
-      backendServices: backend_services,
-      publicPort: await allocate_gateway_test_port(),
-    });
-  }
-
-  // noop_output_folder 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
   async function noop_output_folder(_output_path: string): Promise<void> {}
 
-  /**
-   * 临时 appRoot 提供 version 和资源根，避免测试污染真实用户目录
-   */
   function create_app_root(): string {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-gateway-test-"));
     fs.writeFileSync(path.join(app_root, "version.txt"), "9.8.7", "utf-8");
@@ -778,29 +654,6 @@ describe("ApiGatewayServer", () => {
     return app_root;
   }
 
-  /**
-   * 测试使用 OS 分配的本机端口，避免随机高位端口在 Windows 上命中保留范围
-   */
-  async function allocate_gateway_test_port(): Promise<number> {
-    const server = http.createServer();
-    await new Promise<void>((resolve, reject) => {
-      server.once("error", reject);
-      server.listen(0, "127.0.0.1", () => {
-        server.off("error", reject);
-        resolve();
-      });
-    });
-    const address = server.address();
-    await close_node_server(server);
-    if (typeof address !== "object" || address === null) {
-      throw new Error("测试端口未取得地址。");
-    }
-    return address.port;
-  }
-
-  /**
-   * 使用内存 writer 避免 Gateway 测试把日志落到真实用户目录
-   */
   function create_log_manager(app_root: string): LogManager {
     const log_manager = new LogManager({
       consoleWriter: () => undefined,
@@ -811,9 +664,6 @@ describe("ApiGatewayServer", () => {
     return log_manager;
   }
 
-  /**
-   * fake writer 只验证 LogManager 路由行为，不关心文件系统刷新细节
-   */
   function create_memory_file_writer(): FileLogWriter {
     return {
       write: () => undefined,
@@ -825,9 +675,6 @@ describe("ApiGatewayServer", () => {
     };
   }
 
-  /**
-   * POST JSON helper 固定请求壳，让用例只表达业务路径和 payload
-   */
   async function post_json(
     base_url: string,
     path_name: string,
@@ -841,9 +688,6 @@ describe("ApiGatewayServer", () => {
     });
   }
 
-  /**
-   * 用 Node HTTP 客户端读取公开 SSE，读到目标片段后销毁请求来模拟 renderer 断开
-   */
   async function read_http_stream_until(
     url: string,
     expected_text: string,
@@ -887,21 +731,6 @@ describe("ApiGatewayServer", () => {
         settled = true;
         clearTimeout(timeout_id);
         reject(error);
-      });
-    });
-  }
-
-  /**
-   * Node server close 需要 promise 化，确保端口释放后再启动下一段测试
-   */
-  async function close_node_server(server: http.Server): Promise<void> {
-    await new Promise<void>((resolve, reject) => {
-      server.close((error) => {
-        if (error) {
-          reject(error);
-        } else {
-          resolve();
-        }
       });
     });
   }

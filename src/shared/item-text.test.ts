@@ -5,7 +5,6 @@ import {
   has_item_translation_text,
   read_item_source_text_parts,
   read_item_translation_text_parts,
-  read_translation_name_text,
 } from "./item-text";
 
 describe("item-text", () => {
@@ -66,11 +65,5 @@ describe("item-text", () => {
       name_dst: null,
       status: "PROCESSED",
     });
-  });
-
-  it("姓名译文读取保持第 0 槽语义", () => {
-    expect(read_translation_name_text(["", "鲍勃"])).toBe("");
-    expect(read_translation_name_text(["艾丽丝", "鲍勃"])).toBe("艾丽丝");
-    expect(read_translation_name_text(null)).toBe("");
   });
 });

@@ -21,11 +21,13 @@ const DESKTOP_API_RELATIVE_PATH = "src/frontend/app/desktop/desktop-api.ts";
 const TOKEN_OWNER_RELATIVE_PATH = "src/frontend/index.css";
 const PX_FIRST_SCOPE_PREFIXES = [
   "src/frontend/app/",
+  "src/frontend/features/",
   "src/frontend/pages/",
   "src/frontend/widgets/",
 ];
 const RENDERER_RADIUS_SCOPE_PREFIXES = [
   "src/frontend/app/",
+  "src/frontend/features/",
   "src/frontend/pages/",
   "src/frontend/widgets/",
   "src/frontend/shadcn/",
@@ -49,6 +51,7 @@ export function create_frontend_boundary_rules() {
   return [
     create_legacy_frontend_project_directory_rule(),
     create_renderer_import_boundary_rule(),
+    create_frontend_page_ownership_rule(),
     create_frontend_interactions_boundary_rule(),
     create_desktop_api_boundary_rule(),
     create_desktop_runtime_snapshot_write_rule(),
@@ -69,16 +72,63 @@ function create_legacy_frontend_project_directory_rule() {
         if (relative_path.startsWith("src/frontend/hooks/")) {
           errors.push({
             message:
-              "src/frontend/hooks 是已废弃按技术形态分组目录；请按所有权放入 widgets/interactions、app/state、pages 或 shared",
+              "src/frontend/hooks 是已废弃按技术形态分组目录；请按所有权放入 widgets/interactions、app/state、features、pages 或 shared",
             relative_path,
           });
         }
         if (relative_path.startsWith("src/frontend/lib/")) {
           errors.push({
             message:
-              "src/frontend/lib 是已废弃通用工具桶；请按所有权放入 app、widgets、ui、pages 或 shared",
+              "src/frontend/lib 是已废弃通用工具桶；请按所有权放入 app、features、widgets、ui、pages 或 shared",
             relative_path,
           });
+        }
+      }
+      return errors;
+    },
+  };
+}
+
+/**
+ * 页面只能读取自己的私有实现，features 作为跨页面所有者也不能反向依赖 pages。
+ */
+function create_frontend_page_ownership_rule() {
+  return {
+    name: "frontend page 所有权边界",
+    check: (context) => {
+      const errors = [];
+      for (const file_path of context.files.filter(is_frontend_production_source)) {
+        const relative_path = context.relative_path(file_path);
+        const source_page_owner = resolve_page_owner(context.project_root, file_path);
+        const is_feature = relative_path.startsWith("src/frontend/features/");
+
+        if (source_page_owner === null && !is_feature) {
+          continue;
+        }
+
+        for (const import_entry of find_import_specifiers(context.read_file(file_path))) {
+          const target_page_owner = resolve_imported_page_owner(
+            context.project_root,
+            file_path,
+            import_entry.specifier,
+          );
+          if (target_page_owner === null) {
+            continue;
+          }
+
+          if (is_feature) {
+            errors.push({
+              line: import_entry.line,
+              message: "features 不能反向依赖 pages；跨页面能力只能由页面消费",
+              relative_path,
+            });
+          } else if (target_page_owner !== source_page_owner) {
+            errors.push({
+              line: import_entry.line,
+              message: "页面实现属于当前页面私有；跨页面能力请移入 features",
+              relative_path,
+            });
+          }
         }
       }
       return errors;
@@ -390,6 +440,28 @@ function validate_renderer_import(project_root, file_path, specifier) {
   }
 
   return null;
+}
+
+// 别名和相对导入必须落到同一 page owner 口径，避免换一种路径写法绕过边界。
+function resolve_imported_page_owner(project_root, file_path, specifier) {
+  const alias_prefix = "@frontend/pages/";
+  if (specifier.startsWith(alias_prefix)) {
+    return specifier.slice(alias_prefix.length).split("/")[0] ?? null;
+  }
+
+  const resolved_path = resolve_relative_specifier(file_path, specifier);
+  return resolved_path === null ? null : resolve_page_owner(project_root, resolved_path);
+}
+
+// page owner 是 pages 下第一层目录名；目录外文件没有页面所有权。
+function resolve_page_owner(project_root, file_path) {
+  const pages_root = path.join(project_root, "src/frontend/pages");
+  if (!is_inside(file_path, pages_root)) {
+    return null;
+  }
+
+  const [page_owner] = path.relative(pages_root, file_path).split(path.sep);
+  return page_owner === undefined || page_owner === "" ? null : page_owner;
 }
 
 function is_frontend_production_source(file_path) {

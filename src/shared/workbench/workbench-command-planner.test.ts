@@ -20,8 +20,6 @@ function create_state(): WorkbenchCommandPlanningState {
     files: [
       {
         rel_path: "old.txt",
-        file_type: "TXT",
-        sort_index: 0,
       },
     ],
     section_revisions: {
@@ -36,8 +34,6 @@ function create_parsed_file(): WorkbenchFileParsePreview {
   return {
     source_path: "E:/demo/new.txt",
     target_rel_path: "new.txt",
-    file_type: "TXT",
-    parsed_items: [{ src: "hello", dst: "", row: 1 }],
   };
 }
 

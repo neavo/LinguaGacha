@@ -169,8 +169,8 @@ function create_task_event_waiter(
     resolve_wait = resolve;
     reject_wait = reject;
   });
-  const unsubscribe = backend_services.streams.api.subscribe("task.snapshot_changed", (message) => {
-    const snapshot = normalize_task_snapshot_payload(message.payload);
+  const unsubscribe = backend_services.streams.api.subscribe("task.snapshot_changed", (payload) => {
+    const snapshot = normalize_task_snapshot_payload(payload);
     if (snapshot === null || snapshot.task_type !== task_type) {
       return;
     }

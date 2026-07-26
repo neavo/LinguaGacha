@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import "./workbench-task.css";
 
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 import type {
   WorkbenchTaskSummaryDisplay,
   WorkbenchTaskTone,

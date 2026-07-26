@@ -3,36 +3,27 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { JsonTool } from "../../../shared/utils/json-tool";
-import { ProjectItemPublicContractMigration } from "./project-item-public-contract-migration";
+import {
+  normalize_item_public_contract_payload,
+  run_project_item_public_contract_migration,
+} from "./project-item-public-contract-migration";
 
-let temp_dir = "";
-let databases: DatabaseSync[] = [];
-
-beforeEach(() => {
-  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-item-contract-migration-"));
-  databases = [];
-});
-
-afterEach(() => {
-  for (const db of databases) {
-    db.close();
-  }
-  fs.rmSync(temp_dir, { recursive: true, force: true });
-});
-
-describe("ProjectItemPublicContractMigration", () => {
+describe("run_project_item_public_contract_migration", () => {
   it("补齐完整公开 DTO 依赖字段并保留格式私有字段", () => {
-    const db = open_database("items.lg");
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-item-contract-migration-"),
+    );
+    using db = new DatabaseSync(path.join(temp_dir.path, "items.lg"));
     db.exec(`
       CREATE TABLE items (id INTEGER PRIMARY KEY AUTOINCREMENT, data TEXT NOT NULL);
       INSERT INTO items (data) VALUES ('{"src":"@12 A","name_src":["A",1],"row_number":"7","file_type":"XLSX","status":"BAD","retry_count":"2","skip_internal_filter":"yes","legacy_private":{"keep":true}}');
       INSERT INTO items (data) VALUES ('not-json');
     `);
 
-    ProjectItemPublicContractMigration.run(db);
+    run_project_item_public_contract_migration(db);
 
     expect(read_item_payloads(db)).toEqual([
       {
@@ -72,21 +63,12 @@ describe("ProjectItemPublicContractMigration", () => {
       skip_internal_filter: true,
     };
 
-    expect(ProjectItemPublicContractMigration.normalize_item_payload(item)).toEqual({
+    expect(normalize_item_public_contract_payload(item)).toEqual({
       data: item,
       changed: false,
     });
   });
 });
-
-/**
- * item 公开契约迁移测试用真实 items 表，确保损坏 JSON 行保留原样。
- */
-function open_database(name: string): DatabaseSync {
-  const db = new DatabaseSync(path.join(temp_dir, name));
-  databases.push(db);
-  return db;
-}
 
 /**
  * 可解析 item 按 JSON 断言，损坏 item 保留字符串以验证不丢数据。

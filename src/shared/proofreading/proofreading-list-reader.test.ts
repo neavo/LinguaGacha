@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { createProofreadingListReader } from "./proofreading-list-reader";
+import {
+  createProofreadingListReader,
+  evaluateProofreadingSlice,
+  type ProofreadingSyncInput,
+} from "./proofreading-list-reader";
 import type { QualitySnapshot } from "../quality/snapshot";
 import type { ItemNameField } from "../../domain/item";
 
@@ -44,10 +48,20 @@ function create_item(input: {
   };
 }
 
+function sync_full(
+  service: ReturnType<typeof createProofreadingListReader>,
+  input: ProofreadingSyncInput,
+) {
+  return service.sync_evaluated_full({
+    ...evaluateProofreadingSlice(input),
+    quality: input.quality,
+  });
+}
+
 describe("proofreading-list-reader", () => {
   it("同步后构建带警告、筛选和窗口的列表视图", () => {
     const service = createProofreadingListReader();
-    const sync_state = service.sync_full({
+    const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 2,
@@ -107,7 +121,7 @@ describe("proofreading-list-reader", () => {
 
   it("非法正则返回错误信息且不裁剪列表结果", () => {
     const service = createProofreadingListReader();
-    const sync_state = service.sync_full({
+    const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 1,
@@ -147,7 +161,7 @@ describe("proofreading-list-reader", () => {
 
   it("搜索范围覆盖正文和姓名字段", () => {
     const service = createProofreadingListReader();
-    const sync_state = service.sync_full({
+    const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 2,
@@ -191,7 +205,7 @@ describe("proofreading-list-reader", () => {
 
   it("姓名术语缺失进入 warning 和筛选面板术语计数", () => {
     const service = createProofreadingListReader();
-    const sync_state = service.sync_full({
+    const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 1,
@@ -244,7 +258,7 @@ describe("proofreading-list-reader", () => {
 
   it("字段 patch 更新旧视图内容但保持当前排序快照", () => {
     const service = createProofreadingListReader();
-    const sync_state = service.sync_full({
+    const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 2,
@@ -289,7 +303,7 @@ describe("proofreading-list-reader", () => {
 
   it("字段 patch 更新姓名译文并保留数组后续项", () => {
     const service = createProofreadingListReader();
-    const sync_state = service.sync_full({
+    const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 1,
@@ -338,7 +352,7 @@ describe("proofreading-list-reader", () => {
 
   it("删除 delta 会从旧视图移除对应行并保持剩余索引", () => {
     const service = createProofreadingListReader();
-    const sync_state = service.sync_full({
+    const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 2,
@@ -379,7 +393,7 @@ describe("proofreading-list-reader", () => {
 
   it("新增 item 不会自动插入旧视图", () => {
     const service = createProofreadingListReader();
-    const sync_state = service.sync_full({
+    const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 2,
@@ -419,7 +433,7 @@ describe("proofreading-list-reader", () => {
 
   it("全量同步后旧 view_id 失效", () => {
     const service = createProofreadingListReader();
-    const sync_state = service.sync_full({
+    const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 1,
@@ -438,7 +452,7 @@ describe("proofreading-list-reader", () => {
       window_count: 10,
     });
 
-    service.sync_full({
+    sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 2, quality: 1, proofreading: 0 },
       total_item_count: 1,

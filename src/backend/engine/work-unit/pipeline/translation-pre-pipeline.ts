@@ -32,8 +32,8 @@ export interface TranslationPrePipelineContext {
  * 翻译译前 pipeline，负责把 item 源文本转换成模型输入和显式恢复上下文
  */
 export class TranslationPrePipeline {
-  private readonly config: TextProcessingConfig;
-  private readonly quality_snapshot: TextQualitySnapshot;
+  private readonly config: TextProcessingConfig; // 语言与文本修复策略的任务启动快照
+  private readonly quality_snapshot: TextQualitySnapshot; // 保护与译前替换规则的同轮快照
 
   /**
    * 绑定配置快照和质量快照，pipeline 不读取全局会话缓存
@@ -55,7 +55,7 @@ export class TranslationPrePipeline {
     if (item === null) {
       return context;
     }
-    const text_type = this.read_text_type(item);
+    const text_type = String(item.text_type ?? "TXT").toUpperCase();
     const actor_src = read_optional_item_name_text(item.name_src);
     context.source_text = String(item.src ?? "");
     for (const [line_index, raw_src] of context.source_text.split("\n").entries()) {
@@ -143,13 +143,13 @@ export class TranslationPrePipeline {
       return src;
     }
     let result = src;
-    const prefix_rule = this.get_re_prefix(text_type);
+    const prefix_rule = this.build_preserve_rule("prefix", text_type);
     if (prefix_rule !== null) {
       const extracted = this.extract(prefix_rule, result);
       result = extracted.line;
       context.prefix_codes_by_line.set(line_index, extracted.codes);
     }
-    const suffix_rule = this.get_re_suffix(text_type);
+    const suffix_rule = this.build_preserve_rule("suffix", text_type);
     if (suffix_rule !== null) {
       const extracted = this.extract(suffix_rule, result);
       result = extracted.line;
@@ -162,7 +162,7 @@ export class TranslationPrePipeline {
    * 完全保护行不能送给模型，否则会把代码段翻译成自然语言
    */
   private is_fully_preserved_line(src: string, text_type: string): boolean {
-    const rule = this.get_re_check(text_type);
+    const rule = this.build_preserve_rule("check", text_type);
     if (rule === null) {
       return false;
     }
@@ -187,7 +187,7 @@ export class TranslationPrePipeline {
     src: string,
     text_type: string,
   ): void {
-    const sample_rule = this.get_re_sample(text_type);
+    const sample_rule = this.build_preserve_rule("sample", text_type);
     if (sample_rule !== null) {
       context.samples.push(...sample_rule.collect(src));
     }
@@ -221,40 +221,5 @@ export class TranslationPrePipeline {
       entries: this.quality_snapshot.text_preserve_entries,
       kind,
     });
-  }
-
-  /**
-   * 检查规则入口独立命名，便于和 CHECK 规则对齐
-   */
-  private get_re_check(text_type: string): TextPreserveRule | null {
-    return this.build_preserve_rule("check", text_type);
-  }
-
-  /**
-   * 样例规则用于控制字符示例和响应校验
-   */
-  private get_re_sample(text_type: string): TextPreserveRule | null {
-    return this.build_preserve_rule("sample", text_type);
-  }
-
-  /**
-   * 前缀保护规则只允许从行首抽取
-   */
-  private get_re_prefix(text_type: string): TextPreserveRule | null {
-    return this.build_preserve_rule("prefix", text_type);
-  }
-
-  /**
-   * 后缀保护规则只允许从行尾抽取
-   */
-  private get_re_suffix(text_type: string): TextPreserveRule | null {
-    return this.build_preserve_rule("suffix", text_type);
-  }
-
-  /**
-   * item 文本类型缺失时按 TXT 处理，避免正则规则读取空键
-   */
-  private read_text_type(item: TextTaskItemRecord): string {
-    return String(item.text_type ?? "TXT").toUpperCase();
   }
 }

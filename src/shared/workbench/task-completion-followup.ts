@@ -4,23 +4,14 @@ import {
   type TranslationScope,
 } from "../../domain/task";
 
-export type TranslationCompletionScenario =
-  | "workbench-full-translation"
-  | "proofreading-retranslation";
-
-export function resolve_translation_completion_scenario(
-  scope: TranslationScope,
-): TranslationCompletionScenario {
-  return scope.kind === "items" ? "proofreading-retranslation" : "workbench-full-translation";
-}
-
+// 只有完整翻译从活跃态自然完成且确有结果时才提示导出。
 export function should_open_translation_export_followup(args: {
   previous_status: string;
   next_status: string;
   has_result: boolean;
   scope: TranslationScope;
 }): boolean {
-  if (resolve_translation_completion_scenario(args.scope) !== "workbench-full-translation") {
+  if (args.scope.kind === "items") {
     return false;
   }
 
@@ -38,6 +29,7 @@ export function should_open_translation_export_followup(args: {
   return args.next_status === "idle" && args.has_result;
 }
 
+// 只有分析从活跃态自然完成且产生候选时才提示导入术语。
 export function should_open_analysis_glossary_import_followup(args: {
   previous_status: string;
   next_status: string;

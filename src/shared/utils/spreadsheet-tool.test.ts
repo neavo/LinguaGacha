@@ -4,18 +4,6 @@ import { describe, expect, it } from "vitest";
 import { SpreadsheetTool } from "./spreadsheet-tool";
 
 describe("SpreadsheetTool", () => {
-  it("读取空值、文本和数字时统一转成去空白文本", () => {
-    const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet("Sheet");
-    sheet.getCell(1, 1).value = null;
-    sheet.getCell(1, 2).value = "  hello  ";
-    sheet.getCell(1, 3).value = 123;
-
-    expect(SpreadsheetTool.getCellValue(sheet, 1, 1)).toBe("");
-    expect(SpreadsheetTool.getCellValue(sheet, 1, 2)).toBe("hello");
-    expect(SpreadsheetTool.getCellValue(sheet, 1, 3)).toBe("123");
-  });
-
   it("写入空值并转义等号开头的文本", () => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Sheet");

@@ -1,144 +1,48 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback } from "react";
 
-import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { apply_laboratory_prefilter_write } from "@frontend/pages/laboratory-page/laboratory-api-client";
-import { format_project_settings_aligned_toast } from "@frontend/app/feedback/project-settings-alignment-feedback";
-import type {
-  SettingsSnapshot,
-  SettingsSnapshotPayload,
-} from "@frontend/app/state/desktop-state-context";
-import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
-import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { format_project_settings_aligned_toast } from "@frontend/app/feedback/project-settings-alignment-feedback";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
+import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { useSettingsEditor } from "@frontend/features/settings-editor/use-settings-editor";
+import { apply_laboratory_prefilter_write } from "@frontend/pages/laboratory-page/laboratory-api-client";
 import {
   build_laboratory_snapshot,
-  type LaboratoryPendingField,
-  type LaboratoryPendingState,
   type LaboratorySnapshot,
 } from "@frontend/pages/laboratory-page/types";
 
-type SettingsUpdateRequest = Record<string, unknown>;
+const LABORATORY_PENDING_FIELDS = [
+  "mtool_optimizer_enable",
+  "skip_duplicate_source_text_enable",
+] as const;
+
+type LaboratoryPendingField = (typeof LABORATORY_PENDING_FIELDS)[number];
 
 type UseLaboratoryPageStateResult = {
   snapshot: LaboratorySnapshot;
-  pending_state: LaboratoryPendingState;
+  pending_state: Record<LaboratoryPendingField, boolean>;
   is_task_busy: boolean;
   update_mtool_optimizer_enable: (next_checked: boolean) => Promise<void>;
   update_skip_duplicate_source_text_enable: (next_checked: boolean) => Promise<void>;
 };
 
 /**
- * 构建当前场景的稳定结果。
+ * 组合通用设置编辑器与项目预过滤对齐流程，页面不直接拥有后端设置事实。
  */
-function create_pending_state(): LaboratoryPendingState {
-  return {
-    mtool_optimizer_enable: false,
-    skip_duplicate_source_text_enable: false,
-  };
-}
-
 export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
-  const {
-    settings_snapshot,
-    task_snapshot,
-    project_snapshot,
-    apply_settings_snapshot,
-    commit_project_write,
-    refresh_settings,
-  } = useDesktopState();
+  const { task_snapshot, project_snapshot, commit_project_write } = useDesktopState();
   const { push_toast, run_modal_progress_toast } = useDesktopToast();
   const { t } = useI18n();
-  const [snapshot, set_snapshot] = useState<LaboratorySnapshot>(() => {
-    return build_laboratory_snapshot(settings_snapshot);
+  const { snapshot, pending_state, commit_update } = useSettingsEditor({
+    select_snapshot: build_laboratory_snapshot,
+    pending_fields: LABORATORY_PENDING_FIELDS,
+    refresh_error_key: "laboratory_page.feedback.refresh_failed",
+    update_error_key: "laboratory_page.feedback.update_failed",
   });
-  const [pending_state, set_pending_state] = useState<LaboratoryPendingState>(() => {
-    return create_pending_state();
-  });
-  const snapshot_ref = useRef<LaboratorySnapshot>(snapshot);
-  const context_snapshot = useMemo(() => {
-    return build_laboratory_snapshot(settings_snapshot);
-  }, [settings_snapshot]);
-
-  useEffect(() => {
-    snapshot_ref.current = snapshot;
-  }, [snapshot]);
-
-  useEffect(() => {
-    set_snapshot(context_snapshot);
-  }, [context_snapshot]);
-
   const is_task_busy = task_snapshot.busy;
 
-  const set_pending = useCallback((field: LaboratoryPendingField, next_pending: boolean): void => {
-    set_pending_state((previous_state) => {
-      return {
-        ...previous_state,
-        [field]: next_pending,
-      };
-    });
-  }, []);
-
-  const refresh_snapshot = useCallback(async (): Promise<void> => {
-    try {
-      const next_settings_snapshot = await refresh_settings();
-      set_snapshot(build_laboratory_snapshot(next_settings_snapshot));
-    } catch (error) {
-      push_toast(
-        "error",
-        resolve_visible_error_message(error, t, t("laboratory_page.feedback.refresh_failed")),
-      );
-    }
-  }, [push_toast, refresh_settings, t]);
-
-  useEffect(() => {
-    void refresh_snapshot();
-  }, [refresh_snapshot]);
-
-  const commit_update = useCallback(
-    async (
-      field: LaboratoryPendingField,
-      request: SettingsUpdateRequest,
-      next_snapshot: LaboratorySnapshot,
-    ): Promise<SettingsSnapshot | null> => {
-      const previous_snapshot = snapshot_ref.current;
-      set_snapshot(next_snapshot);
-      set_pending(field, true);
-
-      try {
-        const payload = await api_fetch<SettingsSnapshotPayload>("/api/settings/update", request);
-        const next_settings_snapshot = apply_settings_snapshot(payload);
-        set_snapshot(build_laboratory_snapshot(next_settings_snapshot));
-        return next_settings_snapshot;
-      } catch (error) {
-        set_snapshot((current_snapshot) => {
-          const reverted_snapshot = {
-            ...current_snapshot,
-          };
-
-          if ("mtool_optimizer_enable" in request) {
-            reverted_snapshot.mtool_optimizer_enable = previous_snapshot.mtool_optimizer_enable;
-          }
-          if ("skip_duplicate_source_text_enable" in request) {
-            reverted_snapshot.skip_duplicate_source_text_enable =
-              previous_snapshot.skip_duplicate_source_text_enable;
-          }
-
-          return reverted_snapshot;
-        });
-
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("laboratory_page.feedback.update_failed")),
-        );
-        return null;
-      } finally {
-        set_pending(field, false);
-      }
-    },
-    [apply_settings_snapshot, push_toast, set_pending, t],
-  );
-
+  // 设置写入成功后再以权威快照刷新项目预过滤，避免提交前端临时状态。
   const apply_prefilter_from_settings = useCallback(
     async (next_settings_snapshot: SettingsSnapshot): Promise<void> => {
       if (!project_snapshot.loaded) {
@@ -156,45 +60,25 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     [commit_project_write, project_snapshot.loaded],
   );
 
-  const rollback_prefilter_setting_after_prefilter_error = useCallback(
+  // 两个实验设置共用同一提交/补偿顺序，预过滤失败时把设置恢复到操作前值。
+  const update_prefilter_setting = useCallback(
     async (
       field: LaboratoryPendingField,
-      request: SettingsUpdateRequest,
-      previous_snapshot: LaboratorySnapshot,
+      next_checked: boolean,
+      loading_toast_key: LocaleKey,
     ): Promise<void> => {
-      const rollback_settings_snapshot = await commit_update(field, request, previous_snapshot);
-      if (rollback_settings_snapshot === null) {
-        return;
-      }
-
-      push_toast("error", t("laboratory_page.feedback.update_failed"));
-    },
-    [commit_update, push_toast, t],
-  );
-
-  const update_mtool_optimizer_enable = useCallback(
-    async (next_checked: boolean): Promise<void> => {
-      const previous_snapshot = snapshot_ref.current;
-
-      if (is_task_busy || previous_snapshot.mtool_optimizer_enable === next_checked) {
+      const previous_snapshot = snapshot;
+      if (is_task_busy || previous_snapshot[field] === next_checked) {
         return;
       }
 
       try {
         await run_modal_progress_toast({
-          message: t("laboratory_page.feedback.mtool_optimizer_loading_toast"),
+          message: t(loading_toast_key),
           task: async () => {
-            const next_settings_snapshot = await commit_update(
-              "mtool_optimizer_enable",
-              {
-                mtool_optimizer_enable: next_checked,
-              },
-              {
-                ...previous_snapshot,
-                mtool_optimizer_enable: next_checked,
-              },
-            );
-
+            const next_settings_snapshot = await commit_update(field, {
+              [field]: next_checked,
+            });
             if (next_settings_snapshot === null) {
               return;
             }
@@ -212,7 +96,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
                       next_settings_snapshot.skip_duplicate_source_text_enable,
                   },
                   changed_fields: {
-                    mtool_optimizer_enable: true,
+                    [field]: true,
                   },
                   t,
                 }),
@@ -221,82 +105,12 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
           },
         });
       } catch {
-        await rollback_prefilter_setting_after_prefilter_error(
-          "mtool_optimizer_enable",
-          {
-            mtool_optimizer_enable: previous_snapshot.mtool_optimizer_enable,
-          },
-          previous_snapshot,
-        );
-      }
-    },
-    [
-      apply_prefilter_from_settings,
-      commit_update,
-      is_task_busy,
-      project_snapshot.loaded,
-      rollback_prefilter_setting_after_prefilter_error,
-      run_modal_progress_toast,
-      t,
-    ],
-  );
-
-  const update_skip_duplicate_source_text_enable = useCallback(
-    async (next_checked: boolean): Promise<void> => {
-      const previous_snapshot = snapshot_ref.current;
-
-      if (is_task_busy || previous_snapshot.skip_duplicate_source_text_enable === next_checked) {
-        return;
-      }
-
-      try {
-        await run_modal_progress_toast({
-          message: t("laboratory_page.feedback.skip_duplicate_source_text_loading_toast"),
-          task: async () => {
-            const next_settings_snapshot = await commit_update(
-              "skip_duplicate_source_text_enable",
-              {
-                skip_duplicate_source_text_enable: next_checked,
-              },
-              {
-                ...previous_snapshot,
-                skip_duplicate_source_text_enable: next_checked,
-              },
-            );
-
-            if (next_settings_snapshot === null) {
-              return;
-            }
-
-            await apply_prefilter_from_settings(next_settings_snapshot);
-            if (project_snapshot.loaded) {
-              push_toast(
-                "info",
-                format_project_settings_aligned_toast({
-                  settings: {
-                    source_language: next_settings_snapshot.source_language,
-                    target_language: next_settings_snapshot.target_language,
-                    mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
-                    skip_duplicate_source_text_enable:
-                      next_settings_snapshot.skip_duplicate_source_text_enable,
-                  },
-                  changed_fields: {
-                    skip_duplicate_source_text_enable: true,
-                  },
-                  t,
-                }),
-              );
-            }
-          },
+        const rollback_settings_snapshot = await commit_update(field, {
+          [field]: previous_snapshot[field],
         });
-      } catch {
-        await rollback_prefilter_setting_after_prefilter_error(
-          "skip_duplicate_source_text_enable",
-          {
-            skip_duplicate_source_text_enable: previous_snapshot.skip_duplicate_source_text_enable,
-          },
-          previous_snapshot,
-        );
+        if (rollback_settings_snapshot !== null) {
+          push_toast("error", t("laboratory_page.feedback.update_failed"));
+        }
       }
     },
     [
@@ -305,27 +119,39 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
       is_task_busy,
       project_snapshot.loaded,
       push_toast,
-      rollback_prefilter_setting_after_prefilter_error,
       run_modal_progress_toast,
+      snapshot,
       t,
     ],
   );
 
-  const value = useMemo<UseLaboratoryPageStateResult>(() => {
-    return {
-      snapshot,
-      pending_state,
-      is_task_busy,
-      update_mtool_optimizer_enable,
-      update_skip_duplicate_source_text_enable,
-    };
-  }, [
-    is_task_busy,
-    pending_state,
+  const update_mtool_optimizer_enable = useCallback(
+    async (next_checked: boolean): Promise<void> => {
+      await update_prefilter_setting(
+        "mtool_optimizer_enable",
+        next_checked,
+        "laboratory_page.feedback.mtool_optimizer_loading_toast",
+      );
+    },
+    [update_prefilter_setting],
+  );
+
+  const update_skip_duplicate_source_text_enable = useCallback(
+    async (next_checked: boolean): Promise<void> => {
+      await update_prefilter_setting(
+        "skip_duplicate_source_text_enable",
+        next_checked,
+        "laboratory_page.feedback.skip_duplicate_source_text_loading_toast",
+      );
+    },
+    [update_prefilter_setting],
+  );
+
+  return {
     snapshot,
+    pending_state,
+    is_task_busy,
     update_mtool_optimizer_enable,
     update_skip_duplicate_source_text_enable,
-  ]);
-
-  return value;
+  };
 }

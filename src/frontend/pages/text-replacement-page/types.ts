@@ -3,6 +3,7 @@ import type { QualityRuleImportConfirmState } from "@frontend/widgets/quality-ru
 import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-types";
 
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
+import type { PresetInputState, PresetItem } from "@frontend/features/preset-editor/preset-types";
 
 export type TextReplacementEntry = {
   entry_id?: string;
@@ -57,14 +58,6 @@ export type TextReplacementVisibleEntry = {
   source_index: number;
 };
 
-export type TextReplacementPresetItem = {
-  name: string;
-  virtual_id: string;
-  type: "builtin" | "user";
-  path?: string;
-  is_default?: boolean;
-};
-
 export type TextReplacementConfirmState =
   | {
       open: false;
@@ -85,22 +78,6 @@ export type TextReplacementConfirmState =
       target_virtual_id: string | null;
     };
 
-export type TextReplacementPresetInputState =
-  | {
-      open: false;
-      mode: null;
-      value: string;
-      submitting: boolean;
-      target_virtual_id: string | null;
-    }
-  | {
-      open: true;
-      mode: "save" | "rename";
-      value: string;
-      submitting: boolean;
-      target_virtual_id: string | null;
-    };
-
 type TextReplacementSortState = AppTableSortState | null;
 
 export type UseTextReplacementPageStateResult = {
@@ -116,7 +93,7 @@ export type UseTextReplacementPageStateResult = {
   statistics_state: TextReplacementStatisticsState;
   statistics_ready: boolean;
   statistics_badge_by_entry_id: Record<TextReplacementEntryId, TextReplacementStatisticsBadgeState>;
-  preset_items: TextReplacementPresetItem[];
+  preset_items: PresetItem[];
   selected_entry_ids: TextReplacementEntryId[];
   active_entry_id: TextReplacementEntryId | null;
   selection_anchor_entry_id: TextReplacementEntryId | null;
@@ -125,7 +102,7 @@ export type UseTextReplacementPageStateResult = {
   dialog_state: TextReplacementDialogState;
   confirm_state: TextReplacementConfirmState;
   import_confirm_state: QualityRuleImportConfirmState;
-  preset_input_state: TextReplacementPresetInputState;
+  preset_input_state: PresetInputState;
   update_filter_keyword: (next_keyword: string) => void;
   update_filter_scope: (next_scope: TextReplacementFilterScope) => void;
   update_filter_regex: (next_is_regex: boolean) => void;
@@ -144,8 +121,8 @@ export type UseTextReplacementPageStateResult = {
   apply_preset: (virtual_id: string) => Promise<void>;
   request_reset_entries: () => void;
   request_save_preset: () => void;
-  request_rename_preset: (preset_item: TextReplacementPresetItem) => void;
-  request_delete_preset: (preset_item: TextReplacementPresetItem) => void;
+  request_rename_preset: (preset_item: PresetItem) => void;
+  request_delete_preset: (preset_item: PresetItem) => void;
   set_default_preset: (virtual_id: string) => Promise<void>;
   cancel_default_preset: () => Promise<void>;
   delete_selected_entries: () => Promise<void>;

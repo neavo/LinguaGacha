@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 import { TextPreserveContextMenuContent } from "@frontend/pages/text-preserve-page/components/text-preserve-context-menu";
 import type {
   TextPreserveEntryId,
@@ -51,16 +51,11 @@ type TextPreserveTableProps = {
   on_search_entry_relations: (entry_id: TextPreserveEntryId) => void;
 };
 
-/**
- * 构建当前场景的稳定结果。
- */
 function build_row_number_label(row_index: number): string {
   return String(row_index + 1);
 }
 
-/**
- * 判断当前值是否满足业务条件。
- */
+/** 交互控件和滚动条不应成为框选手势的起点。 */
 function should_ignore_box_selection_target(target_element: HTMLElement): boolean {
   return (
     target_element.closest(
@@ -75,9 +70,7 @@ function should_ignore_box_selection_target(target_element: HTMLElement): boolea
   );
 }
 
-/**
- * 判断当前值是否满足业务条件。
- */
+/** 行内交互控件自行处理点击，不应同时改变行选择。 */
 function should_ignore_row_click_target(target_element: HTMLElement): boolean {
   return (
     target_element.closest(
@@ -206,7 +199,7 @@ function TextPreserveStatisticsBadge(props: TextPreserveStatisticsBadgeProps): J
               void props.on_query_entry_source(props.entry_id);
             }}
           >
-            {t("text_preserve_page.action.query")}
+            {t("quality_editor.action.query")}
           </AppDropdownMenuItem>
           <AppDropdownMenuItem
             onClick={() => {
@@ -230,7 +223,7 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
         id: "drag",
         width: 64,
         align: "center",
-        title: t("text_preserve_page.fields.drag"),
+        title: t("quality_editor.fields.drag"),
         head_class_name: "text-preserve-page__table-drag-head",
         cell_class_name: "text-preserve-page__table-drag-cell",
         render_cell: (payload) => {
@@ -248,13 +241,13 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
       {
         kind: "data",
         id: "src",
-        title: t("text_preserve_page.fields.rule"),
+        title: t("quality_editor.fields.rule"),
         align: "left",
         sortable: {
           action_labels: {
-            ascending: t("text_preserve_page.sort.ascending"),
-            descending: t("text_preserve_page.sort.descending"),
-            clear: t("text_preserve_page.sort.clear"),
+            ascending: t("quality_editor.sort.ascending"),
+            descending: t("quality_editor.sort.descending"),
+            clear: t("quality_editor.sort.clear"),
           },
         },
         head_class_name: "text-preserve-page__table-rule-head",
@@ -270,9 +263,9 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
         align: "left",
         sortable: {
           action_labels: {
-            ascending: t("text_preserve_page.sort.ascending"),
-            descending: t("text_preserve_page.sort.descending"),
-            clear: t("text_preserve_page.sort.clear"),
+            ascending: t("quality_editor.sort.ascending"),
+            descending: t("quality_editor.sort.descending"),
+            clear: t("quality_editor.sort.clear"),
           },
         },
         head_class_name: "text-preserve-page__table-note-head",
@@ -290,9 +283,9 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
         sortable: {
           disabled: !props.statistics_ready,
           action_labels: {
-            ascending: t("text_preserve_page.sort.ascending"),
-            descending: t("text_preserve_page.sort.descending"),
-            clear: t("text_preserve_page.sort.clear"),
+            ascending: t("quality_editor.sort.ascending"),
+            descending: t("quality_editor.sort.descending"),
+            clear: t("quality_editor.sort.clear"),
           },
         },
         head_class_name: "text-preserve-page__table-statistics-head",

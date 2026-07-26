@@ -4,10 +4,13 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ProjectEventBus } from "../../backend/project/project-events";
 import type { BackendServices } from "../../backend/bootstrap/backend-services";
 import { ApiStreamHub } from "../../backend/api/api-stream-hub";
-import type { DatabaseOperation } from "../../backend/database/database-types";
+import type {
+  ProjectDatabase,
+  ProjectDatabaseWrite,
+} from "../../backend/database/database-operations";
+import type { DatabaseJsonValue } from "../../backend/database/database-types";
 import type { CLICommandResources } from "../cli-parser";
 import { CLIJsonStatusReporter } from "../cli-status-reporter";
 import { run_cli_job } from "./cli-job-runner";
@@ -67,7 +70,7 @@ describe("run_cli_job", () => {
       }),
     );
     expect(harness.export_files_to_directory).toHaveBeenCalledWith(output_dir);
-    expect(harness.execute_transaction).toHaveBeenCalledWith(
+    expect(harness.resource_calls).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           name: "setMeta",
@@ -268,10 +271,7 @@ describe("run_cli_job", () => {
       { statusReporter: create_status_reporter("translate", status_lines) },
     );
 
-    const operations = harness.execute_transaction.mock.calls[0]?.[0] as
-      | DatabaseOperation[]
-      | undefined;
-    expect(operations).toEqual(
+    expect(harness.resource_calls).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           name: "setRuleText",
@@ -327,10 +327,7 @@ describe("run_cli_job", () => {
       { statusReporter: create_status_reporter("analyze", status_lines) },
     );
 
-    const operations = harness.execute_transaction.mock.calls[0]?.[0] as
-      | DatabaseOperation[]
-      | undefined;
-    expect(operations).toEqual(
+    expect(harness.resource_calls).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           name: "setRuleText",
@@ -356,23 +353,54 @@ type HarnessTaskSnapshot = {
   progress?: Record<string, number>;
 };
 
+/**
+ * 测试数据库把类型化写入转成可读调用记录，避免断言函数引用内部实现。
+ */
+interface DatabaseCall {
+  name: string;
+  args: Record<string, DatabaseJsonValue>;
+}
+
+/**
+ * 组装 CLI job 所需最窄后端门面，并用真实 stream hub 驱动任务终态。
+ */
 function create_backend_services_harness(snapshots: HarnessTaskSnapshot[]): {
   backend_services: BackendServices;
   create_project_commit: ReturnType<typeof vi.fn>;
   export_files_to_directory: ReturnType<typeof vi.fn>;
-  execute_transaction: ReturnType<typeof vi.fn>;
+  resource_calls: DatabaseCall[];
   set_transient_overrides: ReturnType<typeof vi.fn>;
   start_task: ReturnType<typeof vi.fn>;
   unload_project: ReturnType<typeof vi.fn>;
 } {
   const api_stream_hub = new ApiStreamHub();
-  const project_event_bus = new ProjectEventBus();
   const set_transient_overrides = vi.fn();
-  const execute = vi.fn(() => ({}));
-  const execute_transaction = vi.fn();
-  const commit_cli_resource_operations = vi.fn(
-    async (_project_path: string, operations: DatabaseOperation[]) => {
-      execute_transaction(operations);
+  const resource_calls: DatabaseCall[] = [];
+  const database = {
+    set_meta: (project_path: string, key: string, value: DatabaseJsonValue) => {
+      resource_calls.push({
+        name: "setMeta",
+        args: { projectPath: project_path, key, value },
+      });
+    },
+    set_rules: (project_path: string, rule_type: string, rules: DatabaseJsonValue[]) => {
+      resource_calls.push({
+        name: "setRules",
+        args: { projectPath: project_path, ruleType: rule_type, rules },
+      });
+    },
+    set_rule_text: (project_path: string, rule_type: string, text: string) => {
+      resource_calls.push({
+        name: "setRuleText",
+        args: { projectPath: project_path, ruleType: rule_type, text },
+      });
+    },
+  } as unknown as ProjectDatabase;
+  const commit_cli_resource_writes = vi.fn(
+    async (_project_path: string, writes: ProjectDatabaseWrite[]) => {
+      for (const write of writes) {
+        write(database);
+      }
     },
   );
   const create_project_commit = vi.fn(async () => undefined);
@@ -447,13 +475,10 @@ function create_backend_services_harness(snapshots: HarnessTaskSnapshot[]): {
         api: api_stream_hub,
       },
       build_expected_section_revisions: () => ({ quality: 0, prompts: 0 }),
-      commit_cli_resource_operations,
-      project_event_bus,
-      api_stream_hub,
-      database: { execute, execute_transaction },
+      commit_cli_resource_writes,
     } as unknown as BackendServices,
     create_project_commit,
-    execute_transaction,
+    resource_calls,
     export_files_to_directory,
     set_transient_overrides,
     start_task,
@@ -461,6 +486,9 @@ function create_backend_services_harness(snapshots: HarnessTaskSnapshot[]): {
   };
 }
 
+/**
+ * 固定时钟并收集 JSON 行，避免状态协议断言受真实时间影响。
+ */
 function create_status_reporter(
   command: "translate" | "analyze",
   lines: string[],
@@ -472,6 +500,9 @@ function create_status_reporter(
   });
 }
 
+/**
+ * 每个用例创建独立输入与输出根，交由 afterEach 统一回收。
+ */
 function create_cli_paths(): { input_path: string; output_dir: string; root: string } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-cli-job-"));
   cleanup_roots.push(root);
@@ -481,6 +512,9 @@ function create_cli_paths(): { input_path: string; output_dir: string; root: str
   return { input_path, output_dir, root };
 }
 
+/**
+ * 返回全部关闭的资源参数，单个测试只覆盖自己关心的槽位。
+ */
 function create_empty_resources(): CLICommandResources {
   return {
     promptPath: null,

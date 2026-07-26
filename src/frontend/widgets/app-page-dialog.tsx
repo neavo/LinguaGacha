@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
+import { Dialog as DialogPrimitive } from "radix-ui";
 
 import { useI18n } from "@frontend/app/locale/locale-provider";
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 import { AppButton } from "@frontend/widgets/app-button";
-import { Dialog, DialogContent, DialogTitle } from "@frontend/shadcn/dialog";
 
 type AppPageDialogSize = "sm" | "md" | "lg" | "xl";
 type AppPageDialogDismissBehavior = "default" | "blocked";
@@ -38,13 +38,19 @@ const DEFAULT_HEIGHT_CLASS_NAME_BY_SIZE: Record<AppPageDialogSize, string> = {
   lg: "h-[640px]",
   xl: "h-[640px]",
 };
+
+/** 在不可取消流程中同时拦截 Esc 与点击遮罩关闭。 */
 function preventDialogClose(event: ClosableEvent): void {
   event.preventDefault();
 }
+
+/**
+ * 页面级内容对话框：统一尺寸、默认页脚，并显式支持不可取消流程。
+ */
 export function AppPageDialog(props: AppPageDialogProps): JSX.Element {
   const { t } = useI18n();
-  const dismiss_behavior = props.dismissBehavior ?? "default";
-  const is_blocked = dismiss_behavior === "blocked";
+  const size = props.size ?? "md";
+  const is_blocked = (props.dismissBehavior ?? "default") === "blocked";
   const footer_content =
     props.footer === undefined ? (
       <AppButton
@@ -62,7 +68,8 @@ export function AppPageDialog(props: AppPageDialogProps): JSX.Element {
     );
 
   return (
-    <Dialog
+    <DialogPrimitive.Root
+      data-slot="dialog"
       open={props.open}
       onOpenChange={(next_open) => {
         if (!next_open && !is_blocked) {
@@ -70,39 +77,50 @@ export function AppPageDialog(props: AppPageDialogProps): JSX.Element {
         }
       }}
     >
-      <DialogContent
-        showCloseButton={false}
-        className={cn(
-          "flex max-h-[calc(100vh-48px)] w-[calc(100vw-48px)] max-w-[calc(100vw-48px)] flex-col gap-0 overflow-hidden p-0 text-foreground",
-          SIZE_CLASS_NAME_BY_VALUE[props.size ?? "md"],
-          DEFAULT_HEIGHT_CLASS_NAME_BY_SIZE[props.size ?? "md"],
-          props.contentClassName,
-        )}
-        onEscapeKeyDown={is_blocked ? preventDialogClose : undefined}
-        onPointerDownOutside={is_blocked ? preventDialogClose : undefined}
-      >
-        <DialogTitle className="sr-only">{props.title}</DialogTitle>
-
-        <div
+      <DialogPrimitive.Portal data-slot="dialog-portal">
+        <DialogPrimitive.Overlay
+          data-slot="dialog-overlay"
+          className="fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0"
+        />
+        <DialogPrimitive.Content
+          data-slot="dialog-content"
           className={cn(
-            "flex min-h-0 flex-1 flex-col overflow-auto px-6 py-6",
-            props.bodyClassName,
+            "fixed top-1/2 left-1/2 z-50 flex max-h-[calc(100vh-48px)] w-[calc(100vw-48px)] max-w-[calc(100vw-48px)] -translate-x-1/2 -translate-y-1/2 flex-col gap-0 overflow-hidden rounded-xl bg-popover p-0 text-sm text-foreground ring-1 ring-foreground/10 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95",
+            SIZE_CLASS_NAME_BY_VALUE[size],
+            DEFAULT_HEIGHT_CLASS_NAME_BY_SIZE[size],
+            props.contentClassName,
           )}
+          onEscapeKeyDown={is_blocked ? preventDialogClose : undefined}
+          onPointerDownOutside={is_blocked ? preventDialogClose : undefined}
         >
-          {props.children}
-        </div>
+          <DialogPrimitive.Title
+            data-slot="dialog-title"
+            className="font-heading sr-only text-base leading-none font-medium"
+          >
+            {props.title}
+          </DialogPrimitive.Title>
 
-        {footer_content === null ? null : (
           <div
             className={cn(
-              "flex flex-col-reverse gap-2 border-t bg-muted/50 px-6 py-4 sm:flex-row sm:justify-end",
-              props.footerClassName,
+              "flex min-h-0 flex-1 flex-col overflow-auto px-6 py-6",
+              props.bodyClassName,
             )}
           >
-            {footer_content}
+            {props.children}
           </div>
-        )}
-      </DialogContent>
-    </Dialog>
+
+          {footer_content === null ? null : (
+            <div
+              className={cn(
+                "flex flex-col-reverse gap-2 border-t bg-muted/50 px-6 py-4 sm:flex-row sm:justify-end",
+                props.footerClassName,
+              )}
+            >
+              {footer_content}
+            </div>
+          )}
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }

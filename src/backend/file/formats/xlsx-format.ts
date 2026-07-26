@@ -67,14 +67,17 @@ export class XLSXFormat {
 /**
  * ExcelJS 只负责生成工作簿 bytes，真实落盘统一走 NativeFs 长路径策略。
  */
-async function write_xlsx_workbook(workbook: ExcelJS.Workbook, target_path: string): Promise<void> {
+export async function write_xlsx_workbook(
+  workbook: ExcelJS.Workbook,
+  target_path: string,
+): Promise<void> {
   await write_binary_file(target_path, await workbook.xlsx.writeBuffer());
 }
 
 /**
  * ExcelJS 的 load 签名比实际可接收类型更窄，这里把二进制载荷固定转成 Buffer
  */
-async function load_xlsx_workbook(content: Uint8Array): Promise<ExcelJS.Workbook> {
+export async function load_xlsx_workbook(content: Uint8Array): Promise<ExcelJS.Workbook> {
   const workbook = new ExcelJS.Workbook();
   await (workbook.xlsx.load as (data: unknown) => Promise<ExcelJS.Workbook>)(Buffer.from(content));
   return workbook;
@@ -83,7 +86,7 @@ async function load_xlsx_workbook(content: Uint8Array): Promise<ExcelJS.Workbook
 /**
  * 普通 XLSX 解析器必须主动避开 WOLF 表头，让 WOLFXLSXFormat 保留专用列语义
  */
-function is_wolf_xlsx_sheet(sheet: ExcelJS.Worksheet): boolean {
+export function is_wolf_xlsx_sheet(sheet: ExcelJS.Worksheet): boolean {
   const expected = new Map([
     [1, "code"],
     [2, "flag"],

@@ -2,8 +2,6 @@ import path from "node:path";
 
 import type { Item } from "../../../../domain/item";
 import {
-  build_bilingual_path,
-  build_target_path,
   group_items as group_file_items,
   type ExportPaths,
   type FileFormatServiceConfig,
@@ -28,7 +26,7 @@ export class EPUBFormat {
   /**
    * 构造时绑定文件格式配置，保证译文/双语路径和去重策略在一次导出中一致
    */
-  public constructor(private readonly config: FileFormatServiceConfig) {
+  public constructor(config: FileFormatServiceConfig) {
     this.writer = new EpubWriter(config);
   }
 
@@ -55,13 +53,13 @@ export class EPUBFormat {
       await this.writer.build_epub(
         original_content,
         file_items,
-        build_target_path(this.config, paths.translated_path, rel_path),
+        path.join(paths.translated_path, rel_path),
         false,
       );
       await this.writer.build_epub(
         original_content,
         file_items,
-        build_bilingual_path(paths.bilingual_path, rel_path),
+        path.join(paths.bilingual_path, rel_path),
         true,
       );
     }

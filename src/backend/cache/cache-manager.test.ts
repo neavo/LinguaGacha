@@ -2,9 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ProjectDatabase } from "../database/database-operations";
-import type { DatabaseOperation } from "../database/database-types";
 import type { LogManager } from "../log/log-manager";
-import { ProjectEventBus } from "../project/project-events";
 import type { BackendWorkerClient } from "../worker/worker-client";
 import {
   evaluateProofreadingSlice,
@@ -41,38 +39,41 @@ function create_database(
     rules?: Record<string, MutableRecord[]>;
     throw_on_get_all_items?: boolean;
   } = {},
-): ProjectDatabase & { execute: ReturnType<typeof vi.fn> } {
-  const execute = vi.fn((operation: DatabaseOperation) => {
-    if (operation.name === "getAllMeta") {
-      return options.meta ?? {};
+): ProjectDatabase & {
+  get_all_items: ReturnType<typeof vi.fn>;
+  get_items_by_ids: ReturnType<typeof vi.fn>;
+  get_rules: ReturnType<typeof vi.fn>;
+  get_rule_text: ReturnType<typeof vi.fn>;
+} {
+  const get_all_items = vi.fn(() => {
+    if (options.throw_on_get_all_items) {
+      throw new Error("items 读取失败");
     }
-    if (operation.name === "getAllItems") {
-      if (options.throw_on_get_all_items) {
-        throw new Error("items 读取失败");
-      }
-      return options.items ?? [];
-    }
-    if (operation.name === "getItemsByIds") {
-      const item_ids = Array.isArray(operation.args?.["itemIds"])
-        ? new Set(operation.args["itemIds"].map((item_id) => Number(item_id)))
-        : new Set<number>();
-      return (options.items ?? []).filter((item) => {
-        return item_ids.has(Number(item["id"] ?? item["item_id"] ?? 0));
-      });
-    }
-    if (operation.name === "getAllAssetRecords") {
-      return [{ path: "script.txt", sort_order: 0 }];
-    }
-    if (operation.name === "getRules") {
-      const rule_type = String(operation.args?.["ruleType"] ?? "");
-      return options.rules?.[rule_type] ?? [];
-    }
-    if (operation.name === "getRuleText") {
-      return "";
-    }
-    return null;
+    return options.items ?? [];
   });
-  return { execute } as unknown as ProjectDatabase & { execute: ReturnType<typeof vi.fn> };
+  const get_items_by_ids = vi.fn((_project_path: string, item_ids: number[]) => {
+    const ids = new Set(item_ids);
+    return (options.items ?? []).filter((item) =>
+      ids.has(Number(item["id"] ?? item["item_id"] ?? 0)),
+    );
+  });
+  const get_rules = vi.fn((_project_path: string, rule_type: string) => {
+    return options.rules?.[rule_type] ?? [];
+  });
+  const get_rule_text = vi.fn(() => "");
+  return {
+    get_all_meta: vi.fn(() => options.meta ?? {}),
+    get_all_items,
+    get_items_by_ids,
+    get_all_asset_records: vi.fn(() => [{ path: "script.txt", sort_order: 0 }]),
+    get_rules,
+    get_rule_text,
+  } as unknown as ProjectDatabase & {
+    get_all_items: ReturnType<typeof vi.fn>;
+    get_items_by_ids: ReturnType<typeof vi.fn>;
+    get_rules: ReturnType<typeof vi.fn>;
+    get_rule_text: ReturnType<typeof vi.fn>;
+  };
 }
 
 function create_settings(): AppSettingService {
@@ -176,20 +177,8 @@ describe("CacheManager", () => {
     const log_manager = { warning: vi.fn(), error: vi.fn() };
     const cache = create_cache({ database, logManager: log_manager });
     await cache.warmProject("E:/Project/demo.lg");
-    database.execute.mockImplementation((operation: DatabaseOperation) => {
-      if (operation.name === "getAllItems") {
-        throw new Error("items 读取失败");
-      }
-      if (operation.name === "getAllAssetRecords") {
-        return [{ path: "script.txt", sort_order: 0 }];
-      }
-      if (operation.name === "getRules") {
-        return [];
-      }
-      if (operation.name === "getRuleText") {
-        return "";
-      }
-      return {};
+    database.get_all_items.mockImplementation(() => {
+      throw new Error("items 读取失败");
     });
 
     await cache.handleProjectEvent({
@@ -204,21 +193,7 @@ describe("CacheManager", () => {
     expect(cache.snapshot().freshness).toBe("recoverable_error");
     expect(log_manager.warning).toHaveBeenCalled();
 
-    database.execute.mockImplementation((operation: DatabaseOperation) => {
-      if (operation.name === "getAllItems") {
-        return [create_item({ id: 2, src: "こんばんは" })];
-      }
-      if (operation.name === "getAllAssetRecords") {
-        return [{ path: "script.txt", sort_order: 0 }];
-      }
-      if (operation.name === "getRules") {
-        return [];
-      }
-      if (operation.name === "getRuleText") {
-        return "";
-      }
-      return { "project_runtime_revision.items": 2 };
-    });
+    database.get_all_items.mockReturnValue([create_item({ id: 2, src: "こんばんは" })]);
 
     expect(cache.items.readItem(2)).toEqual(expect.objectContaining({ src: "こんばんは" }));
     expect(cache.snapshot()).toMatchObject({ freshness: "fresh", itemCount: 1 });
@@ -254,7 +229,10 @@ describe("CacheManager", () => {
     });
     const cache = create_cache({ database });
     await cache.warmProject("E:/Project/demo.lg");
-    database.execute.mockClear();
+    database.get_all_items.mockClear();
+    database.get_items_by_ids.mockClear();
+    database.get_rules.mockClear();
+    database.get_rule_text.mockClear();
     items[0] = create_item({ id: 1, src: "こんにちは", dst: "你好" });
 
     await cache.handleProjectEvent({
@@ -274,32 +252,21 @@ describe("CacheManager", () => {
     });
     expect(cache.items.readItem(1)).toEqual(expect.objectContaining({ dst: "你好" }));
     expect(cache.items.readItem(2)).toEqual(expect.objectContaining({ src: "こんばんは" }));
-    expect(database.execute).toHaveBeenCalledWith({
-      name: "getItemsByIds",
-      args: { projectPath: "E:/Project/demo.lg", itemIds: [1] },
-    });
-    expect(database.execute).not.toHaveBeenCalledWith(
-      expect.objectContaining({ name: "getAllItems" }),
-    );
-    expect(database.execute).not.toHaveBeenCalledWith(
-      expect.objectContaining({ name: "getRules" }),
-    );
-    expect(database.execute).not.toHaveBeenCalledWith(
-      expect.objectContaining({ name: "getRuleText" }),
-    );
+    expect(database.get_items_by_ids).toHaveBeenCalledWith("E:/Project/demo.lg", [1]);
+    expect(database.get_all_items).not.toHaveBeenCalled();
+    expect(database.get_rules).not.toHaveBeenCalled();
+    expect(database.get_rule_text).not.toHaveBeenCalled();
   });
 
-  it("事件订阅统一维护基础缓存并清理受影响计算缓存", async () => {
+  it("事件处理统一维护基础缓存并清理受影响计算缓存", async () => {
     const database = create_database({
       items: [create_item()],
     });
     const cache = create_cache({ database });
-    const event_bus = new ProjectEventBus();
     const proofreading_clear = vi.spyOn(cache.proofreading, "clearProject");
     const statistics_clear = vi.spyOn(cache.qualityStatistics, "clear");
 
-    cache.subscribe(event_bus);
-    await event_bus.publish({
+    await cache.handleProjectEvent({
       type: "project.opened_for_cache",
       projectPath: "E:/Project/demo.lg",
       source: "project_lifecycle",
@@ -323,7 +290,7 @@ describe("CacheManager", () => {
     expect(proofreading_clear).toHaveBeenCalledWith();
     expect(statistics_clear).toHaveBeenCalledTimes(1);
 
-    await event_bus.publish({
+    await cache.handleProjectEvent({
       type: "project.prompts.changed",
       projectPath: "E:/Project/demo.lg",
       source: "project_write",

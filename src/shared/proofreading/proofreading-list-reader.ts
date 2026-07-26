@@ -2,13 +2,12 @@ import type { QualitySnapshot } from "../quality/snapshot";
 import { buildQualityCompiledContext, type QualityCompiledContext } from "../quality/compiled";
 import {
   PROOFREADING_NO_WARNING_CODE,
+  PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES,
   PROOFREADING_STATUS_ORDER,
   PROOFREADING_WARNING_CODES,
   clone_proofreading_filter_options,
   create_empty_proofreading_filter_panel_state,
   create_empty_proofreading_list_view,
-  normalize_proofreading_filter_options,
-  resolve_default_proofreading_statuses,
   resolve_default_proofreading_warning_types,
   resolve_proofreading_status_sort_rank,
   type ProofreadingClientItem,
@@ -39,7 +38,7 @@ import { read_item_source_text_parts, read_item_translation_text_parts } from ".
 
 export type { ProofreadingItemRecord } from "./proofreading-types";
 
-export type ProofreadingRevisions = {
+type ProofreadingRevisions = {
   files: number;
   items: number;
   quality: number;
@@ -68,7 +67,7 @@ export type ProofreadingEvaluatedSlice = {
 };
 
 // 已评估同步输入由 worker 结果和主线程质量快照组合而成。
-export type ProofreadingEvaluatedSyncInput = {
+type ProofreadingEvaluatedSyncInput = {
   projectId: string;
   revisions: ProofreadingRevisions;
   total_item_count: number;
@@ -80,7 +79,7 @@ export type ProofreadingEvaluatedSyncInput = {
 };
 
 // 增量输入只携带变化 item，质量规则和源语言沿用已同步状态
-export type ProofreadingDeltaInput = {
+type ProofreadingDeltaInput = {
   projectId: string;
   revisions: ProofreadingRevisions;
   total_item_count: number;
@@ -664,14 +663,12 @@ function upsert_runtime_item_in_state(
     targetLanguage: state.targetLanguage,
     sample_rule_cache: state.sample_rule_cache,
   });
-  if (next_evaluated_item !== null) {
-    state.evaluated_item_by_id.set(item_key, next_evaluated_item);
-    apply_counter_delta({
-      state,
-      item: next_evaluated_item,
-      delta: 1,
-    });
-  }
+  state.evaluated_item_by_id.set(item_key, next_evaluated_item);
+  apply_counter_delta({
+    state,
+    item: next_evaluated_item,
+    delta: 1,
+  });
   return {
     item_id: item_key,
     removed_from_runtime: false,
@@ -708,17 +705,6 @@ function delete_runtime_item_from_state(
  * 默认筛选从当前可见事实计算，进入页面时只展示最常用的有效范围
  */
 function buildDefaultFiltersFromState(state: ProofreadingReaderState): ProofreadingFilterOptions {
-  const available_statuses = [...state.status_count_by_code.keys()].sort(
-    (left_status, right_status) => {
-      const left_rank = resolve_proofreading_status_sort_rank(left_status);
-      const right_rank = resolve_proofreading_status_sort_rank(right_status);
-      if (left_rank !== right_rank) {
-        return left_rank - right_rank;
-      }
-
-      return compare_proofreading_text(left_status, right_status);
-    },
-  );
   const warning_type_set = new Set<string>([PROOFREADING_NO_WARNING_CODE]);
   for (const warning of state.warning_count_by_code.keys()) {
     warning_type_set.add(warning);
@@ -737,7 +723,7 @@ function buildDefaultFiltersFromState(state: ProofreadingReaderState): Proofread
 
   return {
     warning_types,
-    statuses: resolve_default_proofreading_statuses(available_statuses),
+    statuses: [...PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES],
     file_paths,
     glossary_terms,
     include_without_glossary_miss: true,
@@ -767,6 +753,16 @@ function build_sync_state(state: ProofreadingReaderState): ProofreadingSyncState
     targetLanguage: state.targetLanguage,
     revisions: { ...state.revisions },
     defaultFilters: clone_proofreading_filter_options(state.defaultFilters),
+  };
+}
+
+function create_empty_filter_options(): ProofreadingFilterOptions {
+  return {
+    warning_types: [],
+    statuses: [],
+    file_paths: [],
+    glossary_terms: [],
+    include_without_glossary_miss: true,
   };
 }
 
@@ -827,52 +823,6 @@ function create_list_view_cache(args: {
 }
 
 /**
- * 全量同步初始化全部索引和质量上下文，后续增量更新只在这些索引上维护
- */
-function create_run_state(input: ProofreadingSyncInput): ProofreadingReaderState {
-  const raw_item_by_id = new Map<string, ProofreadingItemRecord>();
-  const evaluated_item_by_id = new Map<string, ProofreadingClientItem>();
-  const status_count_by_code = new Map<string, number>();
-  const warning_count_by_code = new Map<string, number>();
-  const file_count_by_path = new Map<string, number>();
-  const glossary_term_count_map = new Map<string, ProofreadingFilterPanelTermEntry>();
-  const quality_context = buildQualityCompiledContext(input.quality);
-  const sample_rule_cache = new Map<string, TextPreserveRule | null>();
-
-  const state: ProofreadingReaderState = {
-    projectId: input.projectId,
-    revisions: { ...input.revisions },
-    total_item_count: input.total_item_count,
-    quality: input.quality,
-    sourceLanguage: input.sourceLanguage,
-    targetLanguage: input.targetLanguage,
-    quality_context,
-    sample_rule_cache,
-    raw_item_by_id,
-    natural_item_ids: [],
-    evaluated_item_by_id,
-    status_count_by_code,
-    warning_count_by_code,
-    file_count_by_path,
-    glossary_term_count_map,
-    defaultFilters: normalize_proofreading_filter_options(undefined, []),
-  };
-
-  input.upsertItems.forEach((raw_item) => {
-    const normalized_item = normalize_reader_item(raw_item);
-    if (normalized_item === null) {
-      return;
-    }
-
-    upsert_runtime_item_in_state(state, normalized_item);
-  });
-
-  rebuild_natural_item_ids(state);
-  state.defaultFilters = buildDefaultFiltersFromState(state);
-  return state;
-}
-
-/**
  * 分片同步只评估自己的 item 分片，返回主运行态合并所需的原始行和质量计算行。
  */
 export function evaluateProofreadingSlice(
@@ -898,9 +848,7 @@ export function evaluateProofreadingSlice(
       targetLanguage: input.targetLanguage,
       sample_rule_cache,
     });
-    if (evaluated_item !== null) {
-      evaluatedItems.push(evaluated_item);
-    }
+    evaluatedItems.push(evaluated_item);
   });
 
   return {
@@ -936,7 +884,7 @@ function create_run_state_from_evaluated(
     warning_count_by_code: new Map(),
     file_count_by_path: new Map(),
     glossary_term_count_map: new Map(),
-    defaultFilters: normalize_proofreading_filter_options(undefined, []),
+    defaultFilters: create_empty_filter_options(),
   };
   const evaluated_item_by_id = new Map(
     input.evaluatedItems.map((item) => {
@@ -1051,25 +999,6 @@ export function createProofreadingListReader() {
   let next_list_view_id = 0; // 视图 id 单调递增，避免同 revision 下筛选条件变化时复用旧窗口请求
 
   return {
-    /**
-     * 接收后端全量快照并重建列表索引，是每个项目进入校对页的起点
-     */
-    sync_full(input: ProofreadingSyncInput): ProofreadingSyncState {
-      state = create_run_state({
-        ...input,
-        upsertItems: input.upsertItems.map((item) => {
-          return normalize_reader_item(item) ?? item;
-        }),
-      });
-      list_view_cache = null;
-      return build_sync_state(state);
-    },
-    /**
-     * 评估同步分片，供未来并行化时复用同一质量计算算法。
-     */
-    evaluate_sync_slice(input: ProofreadingSyncInput) {
-      return evaluateProofreadingSlice(input);
-    },
     /**
      * 合并已评估分片并重建完整运行态，最终索引仍由主 service 持有。
      */

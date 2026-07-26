@@ -2,56 +2,38 @@ import { describe, expect, it } from "vitest";
 
 import {
   create_empty_analysis_task_snapshot,
+  normalize_analysis_task_snapshot_payload,
   resolve_analysis_task_display_snapshot,
   resolve_analysis_task_metrics,
 } from "./analysis-task";
 
 describe("analysis-task-model", () => {
-  it("终态当前快照不会被历史停止中快照覆盖", () => {
-    const current_snapshot = {
-      ...create_empty_analysis_task_snapshot(),
-      status: "idle",
-      busy: false,
-      line: 1,
-      total_line: 2,
-      candidate_count: 3,
-      time: 6,
-    };
-    const stale_stopping_snapshot = {
-      ...create_empty_analysis_task_snapshot(),
-      status: "stopping",
-      busy: true,
-      line: 1,
-      total_line: 2,
-      candidate_count: 3,
-      start_time: 100,
-    };
-
-    const display_snapshot = resolve_analysis_task_display_snapshot({
-      current_snapshot,
-      last_snapshot: stale_stopping_snapshot,
+  it("从 extras 读取候选计数并保留候选终态展示", () => {
+    const snapshot = normalize_analysis_task_snapshot_payload({
+      task: {
+        status: "done",
+        extras: { candidate_count: 3 },
+      },
     });
 
-    expect(display_snapshot).toMatchObject({
-      status: "idle",
-      busy: false,
-      line: 1,
-      total_line: 2,
-    });
+    expect(snapshot.candidate_count).toBe(3);
+    expect(
+      resolve_analysis_task_display_snapshot({
+        current_snapshot: snapshot,
+        last_snapshot: null,
+      }),
+    ).toBe(snapshot);
   });
 
-  it("从任务快照计算运行中百分比", () => {
+  it("分析指标把异常候选计数收敛为非负值", () => {
     const metrics = resolve_analysis_task_metrics({
       snapshot: {
         ...create_empty_analysis_task_snapshot(),
-        status: "running",
-        busy: true,
-        line: 3,
-        total_line: 4,
+        candidate_count: -1,
       },
       now_seconds: 10,
     });
 
-    expect(metrics.completion_percent).toBe(75);
+    expect(metrics.candidate_count).toBe(0);
   });
 });

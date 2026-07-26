@@ -1,30 +1,21 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  has_prefilter_language_character,
-  should_skip_by_language_prefilter,
-} from "./language-prefilter";
+import { should_skip_by_language_prefilter } from "./language-prefilter";
 import { is_app_error } from "../error";
 
 describe("language-prefilter", () => {
   it("ALL 不由预过滤主动跳过", () => {
-    expect(has_prefilter_language_character("plain english line", "ALL")).toBe(true);
     expect(should_skip_by_language_prefilter("plain english line", "ALL")).toBe(false);
   });
 
   it("未知语言会显式报错，避免损坏配置静默漏过滤", () => {
-    for (const action of [
-      () => has_prefilter_language_character("plain english line", "XX"),
-      () => should_skip_by_language_prefilter("plain english line", "XX"),
-    ]) {
-      let code: string | null = null;
-      try {
-        action();
-      } catch (error) {
-        code = is_app_error(error) ? error.code : null;
-      }
-      expect(code).toBe("language.unknown_source_language_code");
+    let code: string | null = null;
+    try {
+      should_skip_by_language_prefilter("plain english line", "XX");
+    } catch (error) {
+      code = is_app_error(error) ? error.code : null;
     }
+    expect(code).toBe("language.unknown_source_language_code");
   });
 
   it("中文源语言包含 CJK 字符则不过滤，否则过滤", () => {

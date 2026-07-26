@@ -6,7 +6,7 @@ import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import { build_source_file_parse_failure } from "./source-file-parse-failure-reporter";
 import { FileFormatService } from "../file/file-format-service";
-import type { ParsedFilePreview, ProjectSourceFileEntry } from "../file/formats/file-format-shared";
+import type { ProjectSourceFileEntry } from "../file/formats/file-format-shared";
 
 export type SourceFileParseCommand = {
   source_path: string; // 用户选择的真实文件路径，只允许解析流水线读取
@@ -175,48 +175,30 @@ export class SourceFileParsePipeline {
     source_paths: string[],
     current_rel_path: string,
   ): Promise<WorkbenchFilePreviewParseResult> {
-    const files: Array<Record<string, ApiJsonValue>> = [];
-    const failed_files: SourceFileParseFailureRecord[] = [];
-    for (const source_path of this.collect_supported_single_files(source_paths)) {
-      try {
-        const preview = await this.format_service.parse_file_preview(source_path, current_rel_path);
-        files.push(this.build_preview_payload(source_path, preview));
-      } catch (error) {
-        failed_files.push(
-          this.build_failure(
-            {
-              source_path,
-              rel_path: path.basename(source_path),
-            },
-            error,
-          ),
-        );
-      }
-    }
-    return { files, failed_files };
-  }
-
-  /**
-   * 替换文件入口只接受显式文件路径，不展开目录，保持旧文件替换意图明确。
-   */
-  private collect_supported_single_files(source_paths: string[]): string[] {
-    return this.format_service
-      .normalize_source_paths(source_paths)
-      .filter((source_path) => this.format_service.is_supported_file(source_path));
-  }
-
-  /**
-   * 工作台预览响应保留 source_path，其他字段来自格式服务公开预览结果。
-   */
-  private build_preview_payload(
-    source_path: string,
-    preview: ParsedFilePreview,
-  ): Record<string, ApiJsonValue> {
+    const parent = path.dirname(current_rel_path);
+    const parse_result = await this.parse_source_entries(
+      this.format_service
+        .normalize_source_paths(source_paths)
+        .filter((source_path) => this.format_service.is_supported_file(source_path))
+        .map((source_path) => ({
+          source_path,
+          rel_path:
+            current_rel_path === "" || parent === "."
+              ? path.basename(source_path)
+              : path.join(parent, path.basename(source_path)),
+        })),
+    );
     return {
-      source_path,
-      target_rel_path: preview.target_rel_path,
-      file_type: preview.file_type,
-      parsed_items: preview.parsed_items as unknown as ApiJsonValue,
+      files: parse_result.file_drafts.map((draft) => ({
+        source_path: draft.source_path,
+        target_rel_path: draft.rel_path,
+        file_type: draft.file_type,
+        parsed_items: draft.parsed_items,
+      })),
+      failed_files: parse_result.failed_files.map((failure) => ({
+        ...failure,
+        rel_path: path.basename(failure.source_path),
+      })),
     };
   }
 

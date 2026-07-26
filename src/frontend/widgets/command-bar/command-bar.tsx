@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 import "@frontend/widgets/command-bar/command-bar.css";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@frontend/shadcn/card";
 import { Separator } from "@frontend/shadcn/separator";

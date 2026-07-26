@@ -2,7 +2,7 @@ import { ArrowLeftRight } from "lucide-react";
 import { useState, type FocusEvent, type MouseEvent } from "react";
 
 import { Card, CardContent, CardTitle } from "@frontend/shadcn/card";
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 import { tooltipContentClassName } from "@frontend/shadcn/tooltip";
 
 type WorkbenchStatCardProps = {

@@ -13,10 +13,10 @@ import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import { useDebouncedCallback } from "@frontend/widgets/interactions/use-debounce";
 import { buildProofreadingLookupQuery } from "@shared/quality/state";
 import {
-  read_text_preserve_quality_rule,
-  read_text_preserve_section_revisions,
-  type TextPreserveQualityRuleQuerySlice,
-} from "@frontend/pages/text-preserve-page/text-preserve-api-client";
+  read_quality_rule,
+  read_quality_rule_section_revisions,
+  type QualityRuleQuerySlice,
+} from "@frontend/features/quality-rule-editor/quality-rule-api-client";
 import {
   isQualityRuleStatisticsCacheReady,
   isQualityRuleStatisticsCacheRunning,
@@ -31,11 +31,24 @@ import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
+  build_user_preset_virtual_id,
+  create_empty_preset_input_state,
+  decorate_preset_items,
+  has_casefold_duplicate_preset,
+  normalize_preset_name,
+} from "@frontend/features/preset-editor/preset-model";
+import type {
+  PresetInputState as TextPreservePresetInputState,
+  PresetItem as TextPreservePresetItem,
+} from "@frontend/features/preset-editor/preset-types";
+import {
   build_text_preserve_filter_result,
-  has_active_text_preserve_filters,
-  resolve_text_preserve_statistics_badge_kind,
   sort_text_preserve_entries,
 } from "@frontend/pages/text-preserve-page/filtering";
+import {
+  has_active_quality_rule_filters,
+  resolve_quality_rule_statistics_badge_kind,
+} from "@frontend/features/quality-rule-editor/quality-rule-filtering";
 import {
   PRESERVE_RESULT_REFRESH,
   REBUILD_RESULT_REFRESH,
@@ -55,10 +68,10 @@ import {
   useQualityRuleImportConfirmation,
 } from "@frontend/widgets/quality-rule-import-confirm-dialog/use-quality-rule-import-confirmation";
 import {
-  are_text_preserve_entry_ids_equal,
-  build_text_preserve_entry_id,
-  reorder_text_preserve_selected_group,
-} from "@frontend/pages/text-preserve-page/selection";
+  are_quality_rule_entry_ids_equal,
+  reorder_selected_quality_rule_entries,
+  resolve_quality_rule_entry_id,
+} from "@frontend/features/quality-rule-editor/quality-rule-selection";
 import type {
   TextPreserveConfirmState,
   TextPreserveDialogState,
@@ -67,8 +80,6 @@ import type {
   TextPreserveFilterScope,
   TextPreserveFilterState,
   TextPreserveMode,
-  TextPreservePresetInputState,
-  TextPreservePresetItem,
   TextPreserveStatisticsBadgeState,
   TextPreserveStatisticsState,
   TextPreserveVisibleEntry,
@@ -97,16 +108,16 @@ type TextPreserveQualitySlice = {
   section_revision: number;
 };
 
-// TEXT PRESERVE DEFAULT PRESET SETTINGS KEY 是持久化或快捷键契约，集中保存避免调用点散落魔术字符串。
+// 设置协议中的文本保护默认预设字段。
 const TEXT_PRESERVE_DEFAULT_PRESET_SETTINGS_KEY = "text_preserve_default_preset";
-// TEXT PRESERVE RULE TYPE 是模块级稳定契约，集中维护避免调用点散落魔术值。
+// 后端质量规则 API 与统计缓存共用的规则类型。
 const TEXT_PRESERVE_RULE_TYPE = "text_preserve";
-// TEXT PRESERVE TITLE KEY 是持久化或快捷键契约，集中保存避免调用点散落魔术字符串。
 const TEXT_PRESERVE_TITLE_KEY: LocaleKey = "text_preserve_page.title";
-// TEXT PRESERVE EXPORT FILE NAME 是模块级稳定契约，集中维护避免调用点散落魔术值。
+// 导出接口展示给系统保存框的默认文件名。
 const TEXT_PRESERVE_EXPORT_FILE_NAME = "text_preserve.json";
-// DEFAULT MODE 是默认快照事实，调用方只读取副本不临时拼装。
+// 查询完成前与坏载荷统一回落为关闭模式。
 const DEFAULT_MODE: TextPreserveMode = "off";
+// 首次查询前使用与后端默认语义一致的只读切片。
 const DEFAULT_QUALITY_SLICE: TextPreserveQualitySlice = {
   mode: DEFAULT_MODE,
   entries: [],
@@ -114,14 +125,13 @@ const DEFAULT_QUALITY_SLICE: TextPreserveQualitySlice = {
 };
 // 文本保护规则事实只归 quality section 拥有，items 变化只影响统计和结果视图。
 const QUALITY_RULE_REFRESH_SECTIONS = ["quality"] as const;
-// TEXT PRESERVE MODE REFRESH TIMEOUT MS 是运行时节流或容量阈值，集中保存便于评估性能影响。
+// 模式切换必须等项目事件回流，超时后由补偿刷新恢复权威快照。
 const TEXT_PRESERVE_MODE_REFRESH_TIMEOUT_MS = 15000;
-// TEXT PRESERVE SORT COLUMN IDS 是 session 恢复排序的白名单，避免旧列 id 进入当前表格。
+// session 恢复排序的白名单，避免旧列 ID 进入当前表格。
 const TEXT_PRESERVE_SORT_COLUMN_IDS = new Set(["src", "info", "statistics"]);
 
-// 在 session 边界收窄排序状态，坏状态统一回到默认排序。
 /**
- * 归一化输入，保证下游消费稳定形状。
+ * 在 session 恢复边界收窄排序状态，旧列统一回到未排序。
  */
 function normalize_text_preserve_sort_state(
   sort_state: AppTableSortState | null,
@@ -147,14 +157,13 @@ function clone_text_preserve_filter_state(
   };
 }
 
-// MODAL PROGRESS TIMEOUT MESSAGE 是运行时节流或容量阈值，集中保存便于评估性能影响。
+// 仅该内部哨兵错误由调用方静默补偿，真实请求错误仍需反馈给用户。
 const MODAL_PROGRESS_TIMEOUT_MESSAGE = "模态进度通知等待超时。";
 // 保留文本页分别标记条目保存和模式保存，诊断名由页面领域拥有。
 const TEXT_PRESERVE_ENTRIES_SAVE_WRITE: ProjectWriteOperation = "text_preserve.entries_save";
-// TEXT PRESERVE MODE UPDATE WRITE 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const TEXT_PRESERVE_MODE_UPDATE_WRITE: ProjectWriteOperation = "text_preserve.mode_update";
 
-// EMPTY ENTRY 是默认快照事实，调用方只读取副本不临时拼装。
+// 对话框总是克隆该模板，避免复用可变草稿引用。
 const EMPTY_ENTRY: TextPreserveEntry = {
   src: "",
   info: "",
@@ -168,9 +177,8 @@ function clone_entry(entry: TextPreserveEntry): TextPreserveEntry {
   };
 }
 
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
 /**
- * 归一化输入，保证下游消费稳定形状。
+ * 在保存边界裁掉文本两端空白，同时保留稳定条目 ID。
  */
 function normalize_entry(entry: Partial<TextPreserveEntry>): TextPreserveEntry {
   return {
@@ -180,9 +188,8 @@ function normalize_entry(entry: Partial<TextPreserveEntry>): TextPreserveEntry {
   };
 }
 
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
 /**
- * 归一化输入，保证下游消费稳定形状。
+ * 导入数据不信任外部 ID，只提取可写业务字段。
  */
 function normalize_imported_entry(entry: Record<string, unknown>): TextPreserveEntry {
   return normalize_entry({
@@ -191,12 +198,11 @@ function normalize_imported_entry(entry: Record<string, unknown>): TextPreserveE
   });
 }
 
-// 在后端 query 边界收窄规则事实，页面内部只消费稳定形状。
 /**
- * 归一化输入，保证下游消费稳定形状。
+ * 将后端 quality 查询收窄为页面稳定切片，并为旧数据补齐条目 ID。
  */
 function normalize_text_preserve_quality_slice(
-  slice: TextPreserveQualityRuleQuerySlice | undefined,
+  slice: QualityRuleQuerySlice | undefined,
   section_revision: number,
 ): TextPreserveQualitySlice {
   const raw_entries = Array.isArray(slice?.entries) ? slice.entries : [];
@@ -213,9 +219,7 @@ function normalize_text_preserve_quality_slice(
   };
 }
 
-/**
- * 构建当前场景的稳定结果。
- */
+/** 新项目或清空筛选时的完整筛选状态。 */
 function create_empty_filter_state(): TextPreserveFilterState {
   return {
     keyword: "",
@@ -224,17 +228,12 @@ function create_empty_filter_state(): TextPreserveFilterState {
   };
 }
 
-// 保持表格排序默认值与 AppTable 的无排序状态一致。
-/**
- * 构建当前场景的稳定结果。
- */
+/** 保持页面默认值与 AppTable 的未排序状态一致。 */
 function create_empty_sort_state(): AppTableSortState | null {
   return null;
 }
 
-/**
- * 构建当前场景的稳定结果。
- */
+/** 每次关闭编辑框都重建草稿，避免跨条目残留保存态。 */
 function create_empty_dialog_state(): TextPreserveDialogState {
   return {
     open: false,
@@ -247,9 +246,7 @@ function create_empty_dialog_state(): TextPreserveDialogState {
   };
 }
 
-/**
- * 构建当前场景的稳定结果。
- */
+/** 统一清空删除、预设和导入确认共用的提交状态。 */
 function create_empty_confirm_state(): TextPreserveConfirmState {
   return {
     open: false,
@@ -263,71 +260,7 @@ function create_empty_confirm_state(): TextPreserveConfirmState {
 }
 
 /**
- * 构建当前场景的稳定结果。
- */
-function create_empty_preset_input_state(): TextPreservePresetInputState {
-  return {
-    open: false,
-    mode: null,
-    value: "",
-    submitting: false,
-    target_virtual_id: null,
-  };
-}
-
-/**
- * 构建当前场景的稳定结果。
- */
-function build_user_preset_virtual_id(name: string): string {
-  return `user:${name}.json`;
-}
-
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
-function normalize_preset_name(name: string): string {
-  return name.trim();
-}
-
-/**
- * 判断当前值是否满足业务条件。
- */
-function has_casefold_duplicate_preset(
-  preset_items: TextPreservePresetItem[],
-  target_virtual_id: string,
-  current_virtual_id: string | null,
-): boolean {
-  const target_key = target_virtual_id.toLocaleLowerCase();
-
-  return preset_items.some((item) => {
-    if (item.type !== "user") {
-      return false;
-    }
-
-    if (current_virtual_id !== null && item.virtual_id === current_virtual_id) {
-      return false;
-    }
-
-    return item.virtual_id.toLocaleLowerCase() === target_key;
-  });
-}
-
-function decorate_preset_items(
-  builtin_presets: TextPreservePresetItem[],
-  user_presets: TextPreservePresetItem[],
-  default_virtual_id: string,
-): TextPreservePresetItem[] {
-  return [...builtin_presets, ...user_presets].map((item) => {
-    return {
-      ...item,
-      is_default: item.virtual_id === default_virtual_id,
-    };
-  });
-}
-
-/**
- * 构建当前场景的稳定结果。
+ * 将命中数和子集父项关系合并成徽章的多行说明。
  */
 function build_statistics_badge_tooltip(
   t: (key: LocaleKey) => string,
@@ -340,10 +273,10 @@ function build_statistics_badge_tooltip(
   ];
 
   if (subset_parent_labels.length > 0) {
-    tooltip_lines.push(t("text_preserve_page.statistics.subset_relations"));
+    tooltip_lines.push(t("quality_editor.statistics.subset_relations"));
     tooltip_lines.push(
       ...subset_parent_labels.map((label) => {
-        return t("text_preserve_page.statistics.relation_line")
+        return t("quality_editor.statistics.relation_line")
           .replace("{CHILD}", entry.src)
           .replace("{PARENT}", label);
       }),
@@ -353,24 +286,20 @@ function build_statistics_badge_tooltip(
   return tooltip_lines.join("\n");
 }
 
-/**
- * 构建当前场景的稳定结果。
- */
+/** 以设置协议字段名构造默认预设更新载荷。 */
 function build_default_preset_update_payload(value: string): Record<string, string> {
   return {
     [TEXT_PRESERVE_DEFAULT_PRESET_SETTINGS_KEY]: value,
   };
 }
 
-/**
- * 判断当前值是否满足业务条件。
- */
+/** 识别等待事件回流的内部超时，不吞掉真实后端错误。 */
 function is_modal_progress_timeout_error(error: unknown): boolean {
   return error instanceof Error && error.message === MODAL_PROGRESS_TIMEOUT_MESSAGE;
 }
 
 /**
- * 构建当前场景的稳定结果。
+ * 将会话级统计缓存投影为页面只读状态，不复制规则事实。
  */
 function build_text_preserve_statistics_state_from_cache(
   statistics_cache: QualityRuleStatisticsCacheSnapshot,
@@ -385,6 +314,11 @@ function build_text_preserve_statistics_state_from_cache(
   };
 }
 
+/**
+ * 聚合文本保护页面的项目快照、筛选状态、统计缓存与唯一写入口。
+ *
+ * 页面组件只消费该 Hook 暴露的快照和意图，避免绕过项目写锁直接修改后端状态。
+ */
 export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const { t } = useI18n();
   const { push_toast, run_modal_progress_toast } = useDesktopToast();
@@ -464,7 +398,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       return DEFAULT_QUALITY_SLICE;
     }
 
-    const response = await read_text_preserve_quality_rule(TEXT_PRESERVE_RULE_TYPE);
+    const response = await read_quality_rule(TEXT_PRESERVE_RULE_TYPE);
     if (response.projectPath !== project_snapshot.path) {
       return quality_slice;
     }
@@ -495,7 +429,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     }
 
     let cancelled = false;
-    void read_text_preserve_quality_rule(TEXT_PRESERVE_RULE_TYPE).then((response) => {
+    void read_quality_rule(TEXT_PRESERVE_RULE_TYPE).then((response) => {
       if (cancelled || response.projectPath !== project_snapshot.path) {
         return;
       }
@@ -532,7 +466,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
   const entry_ids = useMemo<TextPreserveEntryId[]>(() => {
     return entries.map((entry, index) => {
-      return build_text_preserve_entry_id(entry, index);
+      return resolve_quality_rule_entry_id(entry, index);
     });
   }, [entries]);
 
@@ -589,7 +523,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const build_current_result_snapshot = useCallback(() => {
     return build_result_snapshot(filter_state, sort_state);
   }, [build_result_snapshot, filter_state, sort_state]);
-  const has_active_filters = has_active_text_preserve_filters(filter_state);
+  const has_active_filters = has_active_quality_rule_filters(filter_state);
   const { result_snapshot, set_result_snapshot, set_pending_result_refresh } =
     useResultSnapshotState({
       project_path: project_snapshot.path,
@@ -672,7 +606,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         return;
       }
 
-      const kind = resolve_text_preserve_statistics_badge_kind(
+      const kind = resolve_quality_rule_statistics_badge_kind(
         entry_id,
         statistics_state,
         completed_statistics_entry_id_set,
@@ -728,7 +662,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       );
 
       try {
-        const section_revisions = await read_text_preserve_section_revisions();
+        const section_revisions = await read_quality_rule_section_revisions();
         await commit_project_write({
           operation: TEXT_PRESERVE_ENTRIES_SAVE_WRITE,
           run: async () => {
@@ -774,7 +708,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       }
 
       clear_selection_state();
-      push_toast("success", t("text_preserve_page.feedback.import_success"));
+      push_toast("success", t("quality_editor.feedback.import_success"));
 
       if (options.close_preset_menu) {
         set_preset_menu_open(false);
@@ -858,7 +792,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       selection_anchor_entry_id !== null && visible_entry_id_set.has(selection_anchor_entry_id)
         ? selection_anchor_entry_id
         : null;
-    const selection_changed = !are_text_preserve_entry_ids_equal(
+    const selection_changed = !are_quality_rule_entry_ids_equal(
       selected_entry_ids,
       next_selected_entry_ids,
     );
@@ -980,7 +914,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           message: t("text_preserve_page.mode.loading_toast"),
           timeout_ms: TEXT_PRESERVE_MODE_REFRESH_TIMEOUT_MS,
           task: async () => {
-            const section_revisions = await read_text_preserve_section_revisions();
+            const section_revisions = await read_quality_rule_section_revisions();
             await commit_project_write({
               operation: TEXT_PRESERVE_MODE_UPDATE_WRITE,
               run: async () => {
@@ -1154,7 +1088,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         return;
       }
 
-      const next_entries = reorder_text_preserve_selected_group(
+      const next_entries = reorder_selected_quality_rule_entries(
         entries,
         entry_ids,
         selected_entry_ids,
@@ -1302,7 +1236,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           return normalize_entry(entry);
         }),
       });
-      push_toast("success", t("text_preserve_page.feedback.export_success"));
+      push_toast("success", t("quality_editor.feedback.export_success"));
     } catch (error) {
       push_action_error_toast(error);
     }
@@ -1445,7 +1379,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
             .filter((entry) => entry.src !== ""),
         });
         await refresh_preset_menu();
-        push_toast("success", t("text_preserve_page.feedback.preset_saved"));
+        push_toast("success", t("quality_editor.feedback.preset_saved"));
         return true;
       } catch (error) {
         push_action_error_toast(error);
@@ -1485,7 +1419,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           apply_settings_snapshot(settings_payload);
         }
         await refresh_preset_menu();
-        push_toast("success", t("text_preserve_page.feedback.preset_renamed"));
+        push_toast("success", t("quality_editor.feedback.preset_renamed"));
         return true;
       } catch (error) {
         push_action_error_toast(error);
@@ -1516,7 +1450,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         );
         apply_settings_snapshot(payload);
         await refresh_preset_menu();
-        push_toast("success", t("text_preserve_page.feedback.default_preset_set"));
+        push_toast("success", t("quality_editor.feedback.default_preset_set"));
       } catch (error) {
         push_action_error_toast(error);
       }
@@ -1567,7 +1501,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         return null;
       } catch (error) {
         const detail = error instanceof Error ? error.message : "";
-        return `${t("text_preserve_page.feedback.regex_invalid")}: ${detail}`;
+        return `${t("quality_editor.feedback.regex_invalid")}: ${detail}`;
       }
     },
     [t],
@@ -1717,7 +1651,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         preset_input_state.target_virtual_id,
       )
     ) {
-      push_toast("warning", t("text_preserve_page.feedback.preset_exists"));
+      push_toast("warning", t("quality_editor.feedback.preset_exists"));
       return;
     }
 
@@ -1800,7 +1734,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
             apply_settings_snapshot(settings_payload);
           }
           await refresh_preset_menu();
-          push_toast("success", t("text_preserve_page.feedback.preset_deleted"));
+          push_toast("success", t("quality_editor.feedback.preset_deleted"));
           succeeded = true;
         }
       } catch (error) {

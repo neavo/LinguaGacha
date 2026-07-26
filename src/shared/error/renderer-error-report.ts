@@ -23,10 +23,9 @@ export interface RendererErrorReport extends Record<string, unknown> {
   context?: LogErrorContext; // 记录调用点补充的轻量业务上下文
 }
 
-export interface RendererErrorReportInput {
+interface RendererErrorReportInput {
   source: string; // 由调用点选择稳定词表
   error: unknown; // 当前捕获到的 JS 异常或 fallback 值
-  logError?: LogError; // 用于保留 worker 等边界已生成的异常快照
   diagnosticsContext?: RendererDiagnosticsContext; // 最近 route / project / task 快照
   triggeringEvent?: Record<string, unknown>; // 由事件消费方传入事件头摘要
   context?: RendererErrorContextInput; // 只允许 renderer error 白名单字段
@@ -36,10 +35,9 @@ export interface RendererErrorReportInput {
  * renderer 异常报告只通过结构化 error 进入 Gateway，避免 message / stack / context 多套契约并存。
  */
 export function create_renderer_error_report(input: RendererErrorReportInput): RendererErrorReport {
-  const error = input.logError ?? to_log_error(input.error);
   return normalize_renderer_error_report({
     source: input.source,
-    error,
+    error: to_log_error(input.error),
     route: input.diagnosticsContext?.route,
     project: input.diagnosticsContext?.project,
     task: input.diagnosticsContext?.task,
@@ -70,13 +68,11 @@ export function normalize_renderer_error_report(value: unknown): RendererErrorRe
   };
 }
 
-// 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 function read_optional_route_field(record: Record<string, unknown>): Record<string, string> {
   const route = normalize_renderer_diagnostics_text(record["route"]);
   return route === undefined ? {} : { route };
 }
 
-// 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 function read_renderer_diagnostics_context_field(
   record: Record<string, unknown>,
   field: "project" | "task" | "triggeringEvent",
@@ -86,7 +82,6 @@ function read_renderer_diagnostics_context_field(
   return context === undefined ? {} : { [field]: context };
 }
 
-// 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 function read_optional_report_context_field(
   record: Record<string, unknown>,
 ): Record<string, LogErrorContext> {
@@ -94,7 +89,6 @@ function read_optional_report_context_field(
   return context === undefined ? {} : { context };
 }
 
-// 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 function read_renderer_error_source(value: unknown): string {
   return normalize_renderer_diagnostics_text(value) ?? "renderer";
 }

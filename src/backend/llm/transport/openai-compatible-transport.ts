@@ -10,6 +10,12 @@ import type {
   ProviderClientResolver,
   RequestTransport,
 } from "./transport-types";
+import {
+  empty_llm_result,
+  read_transport_number,
+  read_transport_record,
+  read_transport_text,
+} from "./transport-types";
 
 /**
  * OpenAI-compatible 与 Sakura 共用 openai SDK client。
@@ -58,31 +64,31 @@ export class OpenAICompatibleTransport implements RequestTransport {
     let output_tokens = 0;
     let request_error: LogError | undefined;
     for await (const chunk of stream) {
-      const record = this.as_record(chunk);
+      const record = read_transport_record(chunk);
       const choices = Array.isArray(record["choices"]) ? record["choices"] : [];
-      const first_choice = this.as_record(choices[0]);
-      const delta = this.as_record(first_choice["delta"]);
-      const content = this.read_text(delta["content"]);
-      const thinking = this.read_text(delta["reasoning_content"] ?? delta["reasoning"]);
+      const first_choice = read_transport_record(choices[0]);
+      const delta = read_transport_record(first_choice["delta"]);
+      const content = read_transport_text(delta["content"]);
+      const thinking = read_transport_text(delta["reasoning_content"] ?? delta["reasoning"]);
       if (content !== "") {
         response_result += content;
         if (detector.feed(content)) {
-          return this.empty_result({ degraded: true });
+          return empty_llm_result({ degraded: true });
         }
       }
       if (thinking !== "") {
         response_think += thinking;
       }
-      const usage = this.as_record(record["usage"]);
-      input_tokens = this.read_number(
+      const usage = read_transport_record(record["usage"]);
+      input_tokens = read_transport_number(
         usage["prompt_tokens"] ?? usage["input_tokens"],
         input_tokens,
       );
-      output_tokens = this.read_number(
+      output_tokens = read_transport_number(
         usage["completion_tokens"] ?? usage["output_tokens"],
         output_tokens,
       );
-      const finish_reason = this.read_text(first_choice["finish_reason"]);
+      const finish_reason = read_transport_text(first_choice["finish_reason"]);
       if (finish_reason === "length") {
         request_error = log_error_from_message("供应商返回长度截断。", { finish_reason });
       }
@@ -93,7 +99,7 @@ export class OpenAICompatibleTransport implements RequestTransport {
       }
     }
     if (LLMClientDegradationDetector.has_output_degradation(response_result)) {
-      return this.empty_result({ degraded: true });
+      return empty_llm_result({ degraded: true });
     }
     return {
       response_think: response_think.trim(),
@@ -105,45 +111,5 @@ export class OpenAICompatibleTransport implements RequestTransport {
       degraded: false,
       ...(request_error === undefined ? {} : { request_error }),
     };
-  }
-
-  /**
-   * 空结果集中保留完整字段，调用点只覆盖真实请求事实。
-   */
-  protected empty_result(overrides: Partial<LLMRequestResult> = {}): LLMRequestResult {
-    return {
-      response_think: "",
-      response_result: "",
-      input_tokens: 0,
-      output_tokens: 0,
-      cancelled: false,
-      timeout: false,
-      degraded: false,
-      ...overrides,
-    };
-  }
-
-  /**
-   * SDK chunk 是 unknown，读取前统一收窄为普通对象。
-   */
-  protected as_record(value: unknown): Record<string, unknown> {
-    return typeof value === "object" && value !== null && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : {};
-  }
-
-  /**
-   * 非字符串字段不参与拼接，避免对象误进响应正文。
-   */
-  protected read_text(value: unknown): string {
-    return typeof value === "string" ? value : "";
-  }
-
-  /**
-   * usage 数字缺失时沿用当前累计值。
-   */
-  protected read_number(value: unknown, fallback: number): number {
-    const number_value = Number(value ?? fallback);
-    return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
 }

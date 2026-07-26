@@ -1,27 +1,26 @@
 import type { ItemNameField, ItemStatus } from "../domain/item";
+import type { JsonRecord, JsonValue } from "../domain/json";
 import type { SourceFileParseFailureRecord } from "./source-file-parse-failure";
 
 // 公开项目变更事件只能承载严格 JSON 值，避免跨进程传递可变对象或特殊类型
-export type ProjectChangeJsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | ProjectChangeJsonValue[]
-  | { [key: string]: ProjectChangeJsonValue };
+type ProjectChangeJsonValue = JsonValue;
 
 // 事件内部的对象块统一用 JSON record 表示，调用方必须先在边界收窄
-export type ProjectChangeJsonRecord = Record<string, ProjectChangeJsonValue>;
+export type ProjectChangeJsonRecord = JsonRecord;
+
+// section 顺序同时约束 manifest、项目变更和 renderer 初始化刷新顺序
+export const PROJECT_DATA_SECTIONS = [
+  "project",
+  "files",
+  "items",
+  "quality",
+  "prompts",
+  "analysis",
+  "proofreading",
+] as const;
 
 // renderer 可订阅的项目数据 section；任务运行态不属于项目数据
-export type ProjectDataSection =
-  | "project"
-  | "files"
-  | "items"
-  | "quality"
-  | "prompts"
-  | "analysis"
-  | "proofreading";
+export type ProjectDataSection = (typeof PROJECT_DATA_SECTIONS)[number];
 
 // 变更事件的 payload mode 决定 renderer 是直接合并、字段 patch 还是整段补读
 export type ProjectChangePayloadMode = "canonical-delta" | "field-patch" | "section-invalidated";
@@ -81,38 +80,18 @@ export type ProjectWriteResult = {
   failed_files?: SourceFileParseFailureRecord[];
 };
 
-// section 顺序同时约束 manifest、项目变更和 renderer 初始化刷新顺序
-/**
- * 集中维护当前模块的稳定常量。
- */
-export const PROJECT_DATA_SECTIONS: readonly ProjectDataSection[] = [
-  "project",
-  "files",
-  "items",
-  "quality",
-  "prompts",
-  "analysis",
-  "proofreading",
-] as const;
-
 // 公开 SSE topic；所有项目数据变更必须从这个 topic 进入 renderer
-/**
- * 集中维护当前模块的稳定常量。
- */
+
 export const PROJECT_CHANGE_EVENT_TOPIC = "project.data_changed";
 
 // 字符串 section 的唯一窄化入口，防止调用点散落并行合法值判断
-/**
- * 判断当前值是否满足业务条件。
- */
+
 export function isProjectDataSection(value: string): value is ProjectDataSection {
   return (PROJECT_DATA_SECTIONS as readonly string[]).includes(value);
 }
 
 // 外部 payload 的 section 列表在边界去重，保持后续 revision 和补读逻辑稳定
-/**
- * 承接当前模块的核心控制分支。
- */
+
 export function normalizeProjectDataSections(value: unknown): ProjectDataSection[] {
   if (!Array.isArray(value)) {
     return [];
@@ -127,9 +106,7 @@ export function normalizeProjectDataSections(value: unknown): ProjectDataSection
 }
 
 // 坏值默认降级为 section-invalidated，让前端走补读而不是误合并
-/**
- * 承接当前模块的核心控制分支。
- */
+
 export function normalizeProjectChangePayloadMode(value: unknown): ProjectChangePayloadMode {
   if (value === "canonical-delta" || value === "field-patch" || value === "section-invalidated") {
     return value;

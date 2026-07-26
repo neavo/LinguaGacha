@@ -7,10 +7,8 @@ import { TaskRunPublisher } from "../engine/run/task-run-publisher";
 import { TaskSnapshotBuilder } from "../engine/run/task-snapshot-builder";
 import { type JsonRecord, type MutableJsonRecord } from "../engine/run/task-run-types";
 import type { StartTaskCommand, StopTaskCommand } from "../engine/protocol/task-command";
-import { AnalysisTaskDefinition } from "../engine/definitions/analysis/analysis-task-definition";
-import { TaskDefinitionRegistry } from "../engine/definitions/registry";
-import { TranslationTaskDefinition } from "../engine/definitions/translation/translation-task-definition";
 import * as AppErrors from "../../shared/error";
+import { is_json_record } from "../../domain/json";
 import {
   is_task_start_mode,
   is_task_type,
@@ -33,8 +31,6 @@ export class TaskService {
 
   private readonly session_state: ProjectSessionState; // 决定重翻 revision 校验是否能定位当前工程
 
-  private readonly task_definition_registry = new TaskDefinitionRegistry(); // 任务类型差异和 revision 依赖的唯一注册表
-
   /**
    * 注入任务命令依赖，保持公开协议、运行态桥和配置读取边界可测试
    */
@@ -50,8 +46,6 @@ export class TaskService {
     this.task_run_publisher = task_run_publisher;
     this.project_operation_gate = project_operation_gate;
     this.session_state = session_state;
-    this.task_definition_registry.register(new TranslationTaskDefinition());
-    this.task_definition_registry.register(new AnalysisTaskDefinition());
   }
 
   /**
@@ -107,17 +101,6 @@ export class TaskService {
     return {
       task: (await this.snapshot_builder.build_task_snapshot(request)) as unknown as ApiJsonValue,
     };
-  }
-
-  /**
-   * 当前 loaded 工程是带 item scope 命令的唯一 revision 校验目标
-   */
-  private require_loaded_project_path(): string {
-    const state = this.session_state.snapshot();
-    if (!state.loaded || state.projectPath === "") {
-      throw new AppErrors.ProjectNotLoadedError();
-    }
-    return state.projectPath;
   }
 
   /**
@@ -207,14 +190,7 @@ export class TaskService {
   }
 
   /**
-   * JSON record 收窄集中处理，保护数组和 null 不进入业务判断
-   */
-  private is_record(value: unknown): value is JsonRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-  }
-
-  /**
-   * 统一 start 请求收窄为 Engine 命令，revision 依赖只由命令语义决定
+   * 统一 start 请求收窄为 Engine 命令
    */
   private normalize_start_command(request: JsonRecord): StartTaskCommand {
     const task_type = this.require_task_type(request["task_type"]);
@@ -228,12 +204,8 @@ export class TaskService {
         mode,
         expected_section_revisions: expected_section_revisions ?? {},
       };
-      const definition = this.task_definition_registry.get(command);
-      this.assert_expected_section_revisions(
-        expected_section_revisions,
-        definition.revision_dependencies(command),
-      );
-      return definition.normalize_command(command);
+      this.assert_expected_section_revisions(expected_section_revisions, ["quality", "prompts"]);
+      return command;
     }
     const scope = this.normalize_translation_scope(request);
     const command: StartTaskCommand = {
@@ -242,15 +214,16 @@ export class TaskService {
       scope,
       expected_section_revisions: expected_section_revisions ?? {},
     };
-    const definition = this.task_definition_registry.get(command);
     if (scope.kind === "items") {
-      this.require_loaded_project_path();
+      this.session_state.require_loaded_project_path();
     }
     this.assert_expected_section_revisions(
       expected_section_revisions,
-      definition.revision_dependencies(command),
+      scope.kind === "items"
+        ? ["items", "proofreading", "quality", "prompts"]
+        : ["quality", "prompts"],
     );
-    return definition.normalize_command(command);
+    return command;
   }
 
   /**
@@ -285,7 +258,7 @@ export class TaskService {
    * scope 是普通翻译与重翻的唯一语义源；items scope 必须携带非空 item_ids
    */
   private normalize_translation_scope(request: JsonRecord): TranslationScope {
-    const scope = this.is_record(request["scope"]) ? request["scope"] : {};
+    const scope = is_json_record(request["scope"]) ? request["scope"] : {};
     const scope_kind = String(scope["kind"] ?? "all");
     if (scope_kind === "all") {
       return { kind: "all" };

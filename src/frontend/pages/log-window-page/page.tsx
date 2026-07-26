@@ -11,7 +11,7 @@ import {
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import { useDebouncedValue } from "@frontend/widgets/interactions/use-debounce";
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 import {
   append_log_events,
   compress_log_message_text,

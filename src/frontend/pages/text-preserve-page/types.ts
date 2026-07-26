@@ -4,6 +4,7 @@ import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-ty
 
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
 import type { TextPreserveMode } from "@domain/quality";
+import type { PresetInputState, PresetItem } from "@frontend/features/preset-editor/preset-types";
 
 export type { TextPreserveMode };
 
@@ -58,14 +59,6 @@ export type TextPreserveVisibleEntry = {
   source_index: number;
 };
 
-export type TextPreservePresetItem = {
-  name: string;
-  virtual_id: string;
-  type: "builtin" | "user";
-  path?: string;
-  is_default?: boolean;
-};
-
 export type TextPreserveConfirmState =
   | {
       open: false;
@@ -86,22 +79,6 @@ export type TextPreserveConfirmState =
       target_virtual_id: string | null;
     };
 
-export type TextPreservePresetInputState =
-  | {
-      open: false;
-      mode: null;
-      value: string;
-      submitting: boolean;
-      target_virtual_id: string | null;
-    }
-  | {
-      open: true;
-      mode: "save" | "rename";
-      value: string;
-      submitting: boolean;
-      target_virtual_id: string | null;
-    };
-
 type TextPreserveSortState = AppTableSortState | null;
 
 export type UseTextPreservePageStateResult = {
@@ -117,7 +94,7 @@ export type UseTextPreservePageStateResult = {
   statistics_state: TextPreserveStatisticsState;
   statistics_ready: boolean;
   statistics_badge_by_entry_id: Record<TextPreserveEntryId, TextPreserveStatisticsBadgeState>;
-  preset_items: TextPreservePresetItem[];
+  preset_items: PresetItem[];
   selected_entry_ids: TextPreserveEntryId[];
   active_entry_id: TextPreserveEntryId | null;
   selection_anchor_entry_id: TextPreserveEntryId | null;
@@ -126,7 +103,7 @@ export type UseTextPreservePageStateResult = {
   dialog_state: TextPreserveDialogState;
   confirm_state: TextPreserveConfirmState;
   import_confirm_state: QualityRuleImportConfirmState;
-  preset_input_state: TextPreservePresetInputState;
+  preset_input_state: PresetInputState;
   update_filter_keyword: (next_keyword: string) => void;
   update_filter_scope: (next_scope: TextPreserveFilterScope) => void;
   update_filter_regex: (next_is_regex: boolean) => void;
@@ -145,8 +122,8 @@ export type UseTextPreservePageStateResult = {
   apply_preset: (virtual_id: string) => Promise<void>;
   request_reset_entries: () => void;
   request_save_preset: () => void;
-  request_rename_preset: (preset_item: TextPreservePresetItem) => void;
-  request_delete_preset: (preset_item: TextPreservePresetItem) => void;
+  request_rename_preset: (preset_item: PresetItem) => void;
+  request_delete_preset: (preset_item: PresetItem) => void;
   set_default_preset: (virtual_id: string) => Promise<void>;
   cancel_default_preset: () => Promise<void>;
   delete_selected_entries: () => Promise<void>;

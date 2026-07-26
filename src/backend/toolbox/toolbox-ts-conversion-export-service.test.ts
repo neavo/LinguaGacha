@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { Item } from "../../domain/item";
 import type { CacheReadPort } from "../cache/cache-types";
-import type { ProjectSessionState } from "../project/project-session";
+import { ProjectSessionState } from "../project/project-session";
 import type { QualityRulePresetReader } from "../quality/quality-rule-preset-reader";
 import type { TranslationFileExportService } from "../translation/translation-file-export-service";
 import type { BackendWorkerClient } from "../worker/worker-client";
@@ -86,7 +86,7 @@ describe("ToolboxTsConversionExportService", () => {
 });
 
 function create_loaded_session_state(): ProjectSessionState {
-  return {
-    snapshot: () => ({ loaded: true, projectPath: "E:/Project/demo.lg" }),
-  } as unknown as ProjectSessionState;
+  const session_state = new ProjectSessionState();
+  session_state.mark_loaded("E:/Project/demo.lg");
+  return session_state;
 }

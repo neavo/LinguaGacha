@@ -1,6 +1,6 @@
 import { Model, type ModelApiFormat } from "../../domain/model";
+import { read_json_record } from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
-import { JsonTool } from "../../shared/utils/json-tool";
 import type { ApiJsonValue } from "../api/api-types";
 import { build_anthropic_payload } from "./policy/anthropic-policy";
 import { build_google_payload, normalize_google_sdk_base_url } from "./policy/google-policy";
@@ -41,18 +41,10 @@ export class LLMClientPolicy {
       provider: snapshot.provider,
       api_format: snapshot.api_format,
       base_url: snapshot.base_url,
-      model_id: snapshot.model_id,
       headers: snapshot.headers,
       api_keys: snapshot.api_keys,
-      messages: body.messages.map((message) => ({ ...message })),
       payload,
       timeout_ms: this.read_request_timeout_ms(body.config_snapshot),
-      response_mode: snapshot.api_format === "SakuraLLM" ? "sakura-lines" : "chat-stream",
-      diagnostics: {
-        run_id: body.run_id,
-        work_unit_id: body.work_unit_id,
-        policy_signature: this.build_policy_signature(snapshot),
-      },
     };
   }
 
@@ -113,12 +105,12 @@ export class LLMClientPolicy {
    * 从任务模型 JSON 快照读取 policy 所需字段，避免 transport 直接碰原始配置。
    */
   private read_request_model_snapshot(model: ApiJsonValue): ModelRequestSnapshot {
-    const record = this.read_record(model);
+    const record = read_json_record(model);
     const api_format = Model.normalize_api_format(record["api_format"]);
     const provider = this.resolve_provider(api_format);
-    const request = this.read_record(record["request"]);
-    const threshold = this.read_record(record["threshold"]);
-    const thinking = this.read_record(record["thinking"]);
+    const request = read_json_record(record["request"]);
+    const threshold = read_json_record(record["threshold"]);
+    const thinking = read_json_record(record["thinking"]);
     const output_token_limit = this.read_number(
       threshold["output_token_limit"],
       DEFAULT_OUTPUT_TOKEN_LIMIT,
@@ -131,7 +123,7 @@ export class LLMClientPolicy {
       model_id: String(record["model_id"] ?? ""),
       headers: this.read_extra_headers(request),
       extra_body: this.read_enabled_record(request, "extra_body", "extra_body_custom_enable"),
-      generation: this.read_record(record["generation"]),
+      generation: read_json_record(record["generation"]),
       output_token_limit,
       thinking_level: Model.normalize_thinking_level(thinking["level"]),
     };
@@ -190,14 +182,7 @@ export class LLMClientPolicy {
     if (record[enabled_key] !== true) {
       return {};
     }
-    return this.read_record(record[value_key]);
-  }
-
-  /**
-   * JSON 边界只接受普通对象，数组和 null 都按空对象处理。
-   */
-  private read_record(value: ApiJsonValue | undefined): Record<string, ApiJsonValue> {
-    return typeof value === "object" && value !== null && !Array.isArray(value) ? { ...value } : {};
+    return read_json_record(record[value_key]);
   }
 
   /**
@@ -206,19 +191,6 @@ export class LLMClientPolicy {
   private read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
-  }
-
-  /**
-   * 诊断签名只包含会影响传输与请求策略的字段。
-   */
-  private build_policy_signature(snapshot: ModelRequestSnapshot): string {
-    return JsonTool.stringifyStrict({
-      provider: snapshot.provider,
-      api_format: snapshot.api_format,
-      base_url: snapshot.base_url,
-      model_id: snapshot.model_id,
-      headers: snapshot.headers,
-    });
   }
 }
 

@@ -1,6 +1,6 @@
 import type { JsonRecord } from "../utils/json-tool";
 
-export const QUALITY_RULE_IMPORT_RULE_TYPES = [
+const QUALITY_RULE_IMPORT_RULE_TYPES = [
   "GLOSSARY",
   "PRE_REPLACEMENT",
   "POST_REPLACEMENT",
@@ -19,14 +19,14 @@ export const QualityRuleImportRuleTypeValue = {
 export type QualityRuleImportAction = "skip" | "overwrite";
 
 // 重复分类只描述 src 已撞 key 后的目标字段关系，供 UI 或测试判断风险语义
-export type QualityRuleImportDuplicateKind =
+type QualityRuleImportDuplicateKind =
   | "same-target"
   | "existing-target-empty"
   | "incoming-target-empty"
   | "different-target";
 
 // incoming_index 指向本次导入条目，existing_indexes 指向当前项目中被撞到的旧规则
-export type QualityRuleImportDuplicate = {
+type QualityRuleImportDuplicate = {
   incoming_index: number;
   existing_indexes: number[];
   key: string;
@@ -45,35 +45,23 @@ export type QualityRuleImportPreview = {
 };
 
 type QualityRuleImportItem = {
-  entry: JsonRecord;
-  src_norm: string;
-  src_fold: string;
-  case_sensitive: boolean;
-  order: number;
-};
-
-type DuplicateIndexItem = {
   index: number;
   entry: JsonRecord;
   src_norm: string;
   src_fold: string;
   case_sensitive: boolean;
+  order: number;
 };
 
 type DuplicateKeyGroup = {
   key: string;
-  existing_items: DuplicateIndexItem[];
-  incoming_items: DuplicateIndexItem[];
+  existing_items: QualityRuleImportItem[];
+  incoming_items: QualityRuleImportItem[];
 };
 
 type QualityRuleKeptEntry = {
   order: number;
-  key: string;
   entry: JsonRecord;
-};
-
-type QualityRuleImportMergeSnapshot = {
-  merged_entries: JsonRecord[];
 };
 
 /**
@@ -105,8 +93,8 @@ export function preview_quality_rule_import(args: {
     non_duplicate_count: Math.max(0, args.incoming.length - duplicates.length),
     skipped_duplicate_count: duplicates.length,
     duplicates,
-    skip_entries: skip_result.merged_entries,
-    overwrite_entries: overwrite_result.merged_entries,
+    skip_entries: skip_result,
+    overwrite_entries: overwrite_result,
   };
 }
 
@@ -114,7 +102,7 @@ function merge_quality_rule_import_entries(args: {
   rule_type: QualityRuleImportRuleType;
   existing: JsonRecord[];
   incoming: JsonRecord[];
-}): QualityRuleImportMergeSnapshot {
+}): JsonRecord[] {
   const existing_items = ingest_import_rows(args.existing, {
     order_offset: 0,
   });
@@ -125,11 +113,10 @@ function merge_quality_rule_import_entries(args: {
   const kept_entries = merge_grouped_import_entries(args, grouped_items);
   kept_entries.sort((left, right) => left.order - right.order);
 
-  return {
-    merged_entries: kept_entries.map((entry) => ({ ...entry.entry })),
-  };
+  return kept_entries.map((entry) => ({ ...entry.entry }));
 }
 
+// 同一归一化入口同时保留原数组索引和合并顺序，预览与最终快照共用。
 function ingest_import_rows(
   rows: JsonRecord[],
   options: { order_offset: number },
@@ -147,6 +134,7 @@ function ingest_import_rows(
 
     return [
       {
+        index,
         entry,
         src_norm,
         src_fold: fold_quality_rule_import_src(src_norm),
@@ -172,25 +160,21 @@ function group_import_items_by_fold(
   return grouped_items;
 }
 
+// 大小写不敏感规则按 fold 合并；全敏感规则只合并完全相同的 src。
 function merge_grouped_import_entries(
   args: { rule_type: QualityRuleImportRuleType },
   grouped_items: Map<string, QualityRuleImportItem[]>,
 ): QualityRuleKeptEntry[] {
   const kept_entries: QualityRuleKeptEntry[] = [];
-  for (const [src_fold, raw_items] of grouped_items) {
+  for (const raw_items of grouped_items.values()) {
     const items = [...raw_items].sort((left, right) => left.order - right.order);
     if (should_use_fold_only_key(args.rule_type, items)) {
       const base = { ...items[0].entry };
       for (const item of items.slice(1)) {
-        merge_import_entry_into_base({
-          rule_type: args.rule_type,
-          base,
-          other: item.entry,
-        });
+        overwrite_import_entry_into_base(args.rule_type, base, item.entry);
       }
       kept_entries.push({
         order: items[0].order,
-        key: src_fold,
         entry: base,
       });
       continue;
@@ -206,18 +190,13 @@ function merge_grouped_import_entries(
       }
     }
 
-    for (const [src_norm, norm_items] of by_norm) {
+    for (const norm_items of by_norm.values()) {
       const base = { ...norm_items[0].entry };
       for (const item of norm_items.slice(1)) {
-        merge_import_entry_into_base({
-          rule_type: args.rule_type,
-          base,
-          other: item.entry,
-        });
+        overwrite_import_entry_into_base(args.rule_type, base, item.entry);
       }
       kept_entries.push({
         order: norm_items[0].order,
-        key: build_norm_key(src_fold, src_norm),
         entry: base,
       });
     }
@@ -225,24 +204,15 @@ function merge_grouped_import_entries(
   return kept_entries;
 }
 
-function merge_import_entry_into_base(args: {
-  rule_type: QualityRuleImportRuleType;
-  base: JsonRecord;
-  other: JsonRecord;
-}): boolean {
-  return overwrite_import_entry_into_base(args.rule_type, args.base, args.other);
-}
-
+// 覆盖动作只写当前规则类型允许的目标字段，避免携带未知导入元数据。
 function overwrite_import_entry_into_base(
   rule_type: QualityRuleImportRuleType,
   base: JsonRecord,
   other: JsonRecord,
-): boolean {
-  let changed = false;
+): void {
   const other_src = normalize_quality_rule_import_src(other["src"]);
   if (other_src !== "" && base["src"] !== other_src) {
     base["src"] = other_src;
-    changed = true;
   }
 
   for (const field of get_overwrite_fields(rule_type)) {
@@ -250,7 +220,6 @@ function overwrite_import_entry_into_base(
       const next_value = read_text(other, field);
       if (read_text(base, field) !== next_value) {
         base[field] = next_value;
-        changed = true;
       }
       continue;
     }
@@ -258,29 +227,19 @@ function overwrite_import_entry_into_base(
     const next_value = read_flag(other, field);
     if (read_flag(base, field) !== next_value) {
       base[field] = next_value;
-      changed = true;
     }
   }
-  return changed;
 }
 
+// 判重键必须与实际合并键完全一致，否则预览计数会与确认后的结果分叉。
 function build_duplicate_key_groups(args: {
   rule_type: QualityRuleImportRuleType;
   existing: JsonRecord[];
   incoming: JsonRecord[];
 }): DuplicateKeyGroup[] {
-  const existing_items = normalize_duplicate_index_items(args.existing);
-  const incoming_items = normalize_duplicate_index_items(args.incoming);
-  const groups_by_fold = new Map<string, DuplicateIndexItem[]>();
-
-  for (const item of [...existing_items, ...incoming_items]) {
-    const group = groups_by_fold.get(item.src_fold);
-    if (group === undefined) {
-      groups_by_fold.set(item.src_fold, [item]);
-    } else {
-      group.push(item);
-    }
-  }
+  const existing_items = ingest_import_rows(args.existing, { order_offset: 0 });
+  const incoming_items = ingest_import_rows(args.incoming, { order_offset: 0 });
+  const groups_by_fold = group_import_items_by_fold([...existing_items, ...incoming_items]);
 
   const groups: DuplicateKeyGroup[] = [];
   for (const [src_fold, folded_items] of groups_by_fold) {
@@ -311,30 +270,6 @@ function build_duplicate_key_groups(args: {
   return groups;
 }
 
-function normalize_duplicate_index_items(entries: JsonRecord[]): DuplicateIndexItem[] {
-  return entries.flatMap((raw_entry, index) => {
-    if (!is_record(raw_entry)) {
-      return [];
-    }
-
-    const entry = normalize_quality_rule_import_entry(raw_entry);
-    const src_norm = normalize_quality_rule_import_src(entry["src"]);
-    if (src_norm === "") {
-      return [];
-    }
-
-    return [
-      {
-        index,
-        entry,
-        src_norm,
-        src_fold: fold_quality_rule_import_src(src_norm),
-        case_sensitive: Boolean(entry["case_sensitive"] ?? false),
-      },
-    ];
-  });
-}
-
 function collect_duplicate_entries(
   rule_type: QualityRuleImportRuleType,
   groups: DuplicateKeyGroup[],
@@ -359,7 +294,7 @@ function collect_duplicate_entries(
 
 function classify_duplicate_kind(
   rule_type: QualityRuleImportRuleType,
-  existing_items: DuplicateIndexItem[],
+  existing_items: QualityRuleImportItem[],
   incoming_entry: JsonRecord,
 ): QualityRuleImportDuplicateKind {
   const incoming_target = read_target_text(rule_type, incoming_entry);

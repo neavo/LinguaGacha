@@ -11,6 +11,7 @@ import { de_de_post_translation_replacement_page } from "./resources/de-DE/post-
 import { de_de_pre_translation_replacement_page } from "./resources/de-DE/pre-translation-replacement-page";
 import { de_de_proofreading_page } from "./resources/de-DE/proofreading-page";
 import { de_de_project_page } from "./resources/de-DE/project-page";
+import { de_de_quality_editor } from "./resources/de-DE/quality-editor";
 import { de_de_text_preserve_page } from "./resources/de-DE/text-preserve-page";
 import { de_de_text_replacement_page } from "./resources/de-DE/text-replacement-page";
 import { de_de_toolbox_page } from "./resources/de-DE/toolbox-page";
@@ -30,6 +31,7 @@ import { en_us_post_translation_replacement_page } from "./resources/en-US/post-
 import { en_us_pre_translation_replacement_page } from "./resources/en-US/pre-translation-replacement-page";
 import { en_us_proofreading_page } from "./resources/en-US/proofreading-page";
 import { en_us_project_page } from "./resources/en-US/project-page";
+import { en_us_quality_editor } from "./resources/en-US/quality-editor";
 import { en_us_text_preserve_page } from "./resources/en-US/text-preserve-page";
 import { en_us_text_replacement_page } from "./resources/en-US/text-replacement-page";
 import { en_us_toolbox_page } from "./resources/en-US/toolbox-page";
@@ -49,6 +51,7 @@ import { zh_cn_post_translation_replacement_page } from "./resources/zh-CN/post-
 import { zh_cn_pre_translation_replacement_page } from "./resources/zh-CN/pre-translation-replacement-page";
 import { zh_cn_proofreading_page } from "./resources/zh-CN/proofreading-page";
 import { zh_cn_project_page } from "./resources/zh-CN/project-page";
+import { zh_cn_quality_editor } from "./resources/zh-CN/quality-editor";
 import { zh_cn_text_preserve_page } from "./resources/zh-CN/text-preserve-page";
 import { zh_cn_text_replacement_page } from "./resources/zh-CN/text-replacement-page";
 import { zh_cn_toolbox_page } from "./resources/zh-CN/toolbox-page";
@@ -71,6 +74,7 @@ export const zh_cn_messages = {
   pre_translation_replacement_page: zh_cn_pre_translation_replacement_page,
   proofreading_page: zh_cn_proofreading_page,
   project_page: zh_cn_project_page,
+  quality_editor: zh_cn_quality_editor,
   text_preserve_page: zh_cn_text_preserve_page,
   text_replacement_page: zh_cn_text_replacement_page,
   toolbox_page: zh_cn_toolbox_page,
@@ -93,6 +97,7 @@ export const en_us_messages = {
   pre_translation_replacement_page: en_us_pre_translation_replacement_page,
   proofreading_page: en_us_proofreading_page,
   project_page: en_us_project_page,
+  quality_editor: en_us_quality_editor,
   text_preserve_page: en_us_text_preserve_page,
   text_replacement_page: en_us_text_replacement_page,
   toolbox_page: en_us_toolbox_page,
@@ -115,6 +120,7 @@ export const de_de_messages = {
   pre_translation_replacement_page: de_de_pre_translation_replacement_page,
   proofreading_page: de_de_proofreading_page,
   project_page: de_de_project_page,
+  quality_editor: de_de_quality_editor,
   text_preserve_page: de_de_text_preserve_page,
   text_replacement_page: de_de_text_replacement_page,
   toolbox_page: de_de_toolbox_page,

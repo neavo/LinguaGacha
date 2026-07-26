@@ -7,12 +7,15 @@ import {
 } from "../migration/migration-orchestrator";
 import { ZstdTool } from "../../shared/utils/zstd-tool";
 import { JsonTool } from "../../shared/utils/json-tool";
-import type { DatabaseJsonValue, DatabaseOperation } from "./database-types";
+import type { DatabaseJsonValue } from "./database-types";
 import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import { normalize_project_item_field_patch } from "../../shared/project/project-item-field-patch";
+import { read_json_record } from "../../domain/json";
 
 type DatabaseRow = Record<string, unknown>;
+
+export type ProjectDatabaseWrite = (database: ProjectDatabase) => void;
 
 /**
  * 单个 .lg 当前打开连接的生命周期记录，只表达 scoped 使用和显式租约
@@ -27,6 +30,9 @@ interface ProjectDatabaseConnectionRecord {
 
 const CURRENT_NONE = "NONE";
 
+/**
+ * 将 SQLite 文本列按严格 JSON 协议解析，非文本空值统一为 null。
+ */
 function json_parse(raw_value: unknown): DatabaseJsonValue {
   if (typeof raw_value !== "string") {
     return null;
@@ -34,15 +40,24 @@ function json_parse(raw_value: unknown): DatabaseJsonValue {
   return JsonTool.parseStrict<DatabaseJsonValue>(raw_value);
 }
 
+/**
+ * 所有 database JSON 写入共享严格序列化策略。
+ */
 function json_stringify(value: DatabaseJsonValue): string {
   return JsonTool.stringifyStrict(value);
 }
 
+/**
+ * 将 SQLite 行字段收窄为稳定文本。
+ */
 function row_text(row: DatabaseRow, key: string): string {
   const value = row[key];
   return typeof value === "string" ? value : String(value ?? "");
 }
 
+/**
+ * 将 SQLite number、bigint 或文本数字统一为 JavaScript number。
+ */
 function row_number(row: DatabaseRow, key: string): number {
   const value = row[key];
   if (typeof value === "number") {
@@ -54,6 +69,9 @@ function row_number(row: DatabaseRow, key: string): number {
   return Number(value ?? 0);
 }
 
+/**
+ * 将 SQLite blob 复制为 Buffer，异常值返回空字节。
+ */
 function bytes_from_blob(value: unknown): Buffer {
   if (Buffer.isBuffer(value)) {
     return value;
@@ -64,10 +82,10 @@ function bytes_from_blob(value: unknown): Buffer {
   return Buffer.alloc(0);
 }
 
+/**
+ * 在创建数据库门面时提前确认 asset 压缩运行时可用。
+ */
 function ensure_database_runtime_available(): void {
-  if (typeof DatabaseSync !== "function") {
-    throw new AppErrors.RuntimeCapabilityMissingError();
-  }
   if (!ZstdTool.isRuntimeAvailable()) {
     throw new AppErrors.RuntimeCapabilityMissingError();
   }
@@ -111,293 +129,249 @@ export class ProjectDatabase {
   }
 
   /**
-   * 执行受支持的数据库操作名，保持调用方只能走窄 workflow
+   * 重建目标 .lg，并让可选领域初始化在同一连接的事务内完成；领域初始化失败时清理半成品。
    */
-  public execute(operation: DatabaseOperation): DatabaseJsonValue {
-    const args = this.normalize_args(operation.args); // 服务层只发送窄操作名，database 侧集中校验参数并保护 SQL 边界
-    if (operation.name === "closeProject") {
-      this.close_project(this.require_string(args, "projectPath"));
-      return null;
-    }
-    if (operation.name === "createProject") {
-      const project_path = this.require_string(args, "projectPath");
-      try {
-        return this.create_project(project_path, this.require_string(args, "name"));
-      } finally {
-        this.close_connection_if_idle_path(project_path);
-      }
-    }
-    const project_path = this.require_string(args, "projectPath");
-    return this.with_project_connection(project_path, () =>
-      this.execute_operation(operation, args),
-    );
-  }
-
-  /**
-   * 操作分发只处理业务语义；连接生命周期由 execute / execute_transaction 外层持有
-   */
-  private execute_operation(
-    operation: DatabaseOperation,
-    args: Record<string, DatabaseJsonValue>,
-  ): DatabaseJsonValue {
-    switch (operation.name) {
-      case "closeProject":
-        this.close_project(this.require_string(args, "projectPath"));
-        return null;
-      case "createProject":
-        return this.create_project(
-          this.require_string(args, "projectPath"),
-          this.require_string(args, "name"),
-        );
-      case "getMeta":
-        return this.get_meta(
-          this.require_string(args, "projectPath"),
-          this.require_string(args, "key"),
-          args["default"] ?? null,
-        );
-      case "setMeta":
-        this.set_meta(
-          this.require_string(args, "projectPath"),
-          this.require_string(args, "key"),
-          args["value"] ?? null,
-        );
-        return null;
-      case "upsertMetaEntries":
-        this.upsert_meta_entries(
-          this.require_string(args, "projectPath"),
-          this.require_record(args, "meta"),
-        );
-        return null;
-      case "getAllMeta":
-        return this.get_all_meta(this.require_string(args, "projectPath"));
-      case "bumpSectionRevisions":
-        return this.bump_section_revisions(
-          this.require_string(args, "projectPath"),
-          this.require_string_array(args, "sections"),
-        );
-      case "getAnalysisItemCheckpoints":
-        return this.get_analysis_item_checkpoints(this.require_string(args, "projectPath"));
-      case "upsertAnalysisItemCheckpoints":
-        this.upsert_analysis_item_checkpoints(
-          this.require_string(args, "projectPath"),
-          this.require_array(args, "checkpoints"),
-        );
-        return null;
-      case "deleteAnalysisItemCheckpoints":
-        return this.delete_analysis_item_checkpoints(
-          this.require_string(args, "projectPath"),
-          this.optional_string(args, "status"),
-        );
-      case "getAnalysisCandidateAggregates":
-        return this.get_analysis_candidate_aggregates(this.require_string(args, "projectPath"));
-      case "getAnalysisCandidateAggregatesBySrcs":
-        return this.get_analysis_candidate_aggregates_by_srcs(
-          this.require_string(args, "projectPath"),
-          this.require_string_array(args, "srcs"),
-        );
-      case "upsertAnalysisCandidateAggregates":
-        this.upsert_analysis_candidate_aggregates(
-          this.require_string(args, "projectPath"),
-          this.require_array(args, "aggregates"),
-        );
-        return null;
-      case "deleteAnalysisCandidateAggregatesBySrcs":
-        this.delete_analysis_candidate_aggregates_by_srcs(
-          this.require_string(args, "projectPath"),
-          this.require_string_array(args, "srcs"),
-        );
-        return null;
-      case "clearAnalysisCandidateAggregates":
-        this.clear_analysis_candidate_aggregates(this.require_string(args, "projectPath"));
-        return null;
-      case "addAssetFromSource":
-        this.add_asset_from_source(
-          this.require_string(args, "projectPath"),
-          this.require_string(args, "path"),
-          this.require_string(args, "sourcePath"),
-          this.optional_number(args, "sortOrder"),
-        );
-        return null;
-      case "addAssetCompressedBase64":
-        this.add_asset_compressed_base64(
-          this.require_string(args, "projectPath"),
-          this.require_string(args, "path"),
-          this.require_string(args, "compressedBase64"),
-          this.require_number(args, "originalSize"),
-          this.optional_number(args, "sortOrder"),
-        );
-        return null;
-      case "updateAssetFromSource":
-        this.update_asset_from_source(
-          this.require_string(args, "projectPath"),
-          this.require_string(args, "path"),
-          this.require_string(args, "sourcePath"),
-        );
-        return null;
-      case "updateAssetPath":
-        this.update_asset_path(
-          this.require_string(args, "projectPath"),
-          this.require_string(args, "oldPath"),
-          this.require_string(args, "newPath"),
-        );
-        return null;
-      case "getAssetCompressedBase64":
-        return this.get_asset_compressed_base64(
-          this.require_string(args, "projectPath"),
-          this.require_string(args, "path"),
-        );
-      case "deleteAsset":
-        this.delete_asset(
-          this.require_string(args, "projectPath"),
-          this.require_string(args, "path"),
-        );
-        return null;
-      case "assetPathExists":
-        return this.asset_path_exists(
-          this.require_string(args, "projectPath"),
-          this.require_string(args, "path"),
-        );
-      case "getAllAssetPaths":
-        return this.get_all_asset_paths(this.require_string(args, "projectPath"));
-      case "getAllAssetRecords":
-        return this.get_all_asset_records(this.require_string(args, "projectPath"));
-      case "getAssetCount":
-        return this.get_asset_count(this.require_string(args, "projectPath"));
-      case "updateAssetSortOrders":
-        this.update_asset_sort_orders(
-          this.require_string(args, "projectPath"),
-          this.require_string_array(args, "orderedPaths"),
-        );
-        return null;
-      case "getAllItems":
-        return this.get_all_items(this.require_string(args, "projectPath"));
-      case "getItemCount":
-        return this.get_item_count(this.require_string(args, "projectPath"));
-      case "getItemStatusSummary":
-        return this.get_item_status_summary(this.require_string(args, "projectPath"));
-      case "getItemsByIds":
-        return this.get_items_by_ids(
-          this.require_string(args, "projectPath"),
-          this.require_number_array(args, "itemIds"),
-        );
-      case "getItemWriteFactsByIds":
-        return this.get_item_write_facts_by_ids(
-          this.require_string(args, "projectPath"),
-          this.require_number_array(args, "itemIds"),
-        );
-      case "deleteItemsByFilePath":
-        return this.delete_items_by_file_path(
-          this.require_string(args, "projectPath"),
-          this.require_string(args, "filePath"),
-        );
-      case "setItem":
-        return this.set_item(
-          this.require_string(args, "projectPath"),
-          this.require_record(args, "item"),
-        );
-      case "setItems":
-        return this.set_items(
-          this.require_string(args, "projectPath"),
-          this.require_array(args, "items"),
-        ) as DatabaseJsonValue;
-      case "updateBatch":
-        this.update_batch(
-          this.require_string(args, "projectPath"),
-          this.optional_array(args, "items"),
-          this.optional_record(args, "rules"),
-          this.optional_record(args, "meta"),
-        );
-        return null;
-      case "patchItemFieldsByIds":
-        this.patch_item_fields_by_ids(
-          this.require_string(args, "projectPath"),
-          this.require_number_array(args, "itemIds"),
-          this.require_record(args, "patch"),
-        );
-        return null;
-      case "patchItemTranslationFields":
-        this.patch_item_translation_fields(
-          this.require_string(args, "projectPath"),
-          this.require_array(args, "patches"),
-        );
-        return null;
-      case "getRules":
-        return this.get_rules(
-          this.require_string(args, "projectPath"),
-          this.require_string(args, "ruleType"),
-        );
-      case "setRules":
-        this.set_rules(
-          this.require_string(args, "projectPath"),
-          this.require_string(args, "ruleType"),
-          this.require_array(args, "rules"),
-        );
-        return null;
-      case "getRuleText":
-        return this.get_rule_text(
-          this.require_string(args, "projectPath"),
-          this.require_string(args, "ruleType"),
-        );
-      case "getRuleTextByName":
-        return this.get_rule_text_by_name(
-          this.require_string(args, "projectPath"),
-          this.require_string(args, "ruleTypeName"),
-        );
-      case "setRuleText":
-        this.set_rule_text(
-          this.require_string(args, "projectPath"),
-          this.require_string(args, "ruleType"),
-          this.require_string(args, "text"),
-        );
-        return null;
-      case "getProjectSummary":
-        return this.get_project_summary(this.require_string(args, "projectPath"));
-      default:
-        throw new AppErrors.InternalInvariantError();
-    }
-  }
-
-  /**
-   * 在单个 SQLite 事务内执行批量操作，保证跨步骤写入原子性
-   */
-  public execute_transaction(operations: DatabaseOperation[]): null {
-    if (operations.length === 0) {
-      return null;
-    }
-    const first_args = this.normalize_args(operations[0]?.args); // 单个事务只允许绑定一个工程文件，避免跨 .lg 写入出现半提交语义
-    const project_path = this.require_string(first_args, "projectPath");
-    const transaction_operations = [...operations];
-    let should_remove_created_project_on_failure = false;
-    if (transaction_operations[0]?.name === "createProject") {
-      // createProject 需要关闭现有句柄并重建文件，必须先完成文件级初始化，再把后续写入包进事务
-      this.execute(transaction_operations.shift() as DatabaseOperation);
-      should_remove_created_project_on_failure = true;
-      if (transaction_operations.length === 0) {
-        return null;
-      }
-    }
-    this.validate_transaction_project_paths(project_path, transaction_operations);
+  public create_project(project_path: string, name: string, initialize?: () => void): void {
+    let initialized = false;
     try {
-      return this.with_project_connection(project_path, (db) => {
-        db.exec("BEGIN IMMEDIATE");
-        try {
-          for (const operation of transaction_operations) {
-            this.execute_operation(operation, this.normalize_args(operation.args));
-          }
-          db.exec("COMMIT");
-        } catch (error) {
-          db.exec("ROLLBACK");
-          throw error;
-        }
-        return null;
-      });
+      this.initialize_project(project_path, name);
+      initialized = true;
+      if (initialize !== undefined) {
+        this.transaction(project_path, initialize);
+      }
     } catch (error) {
-      if (should_remove_created_project_on_failure) {
-        this.close_project(project_path);
+      if (initialized) {
+        this.close_project_connection(project_path);
         this.native_fs.remove(project_path, { force: true });
       }
       throw error;
+    } finally {
+      this.close_connection_if_idle_path(project_path);
     }
+  }
+
+  /**
+   * 工程卸载时强制释放该路径的连接与租约。
+   */
+  public close_project(project_path: string): void {
+    this.close_project_connection(project_path);
+  }
+
+  /**
+   * 以 BEGIN IMMEDIATE 执行同步回调；回调内的 typed 方法复用当前 scoped 连接。
+   */
+  public transaction<T>(project_path: string, callback: () => T): T {
+    return this.with_project_connection(project_path, (db) => {
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const result = callback();
+        db.exec("COMMIT");
+        return result;
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * 以下公开 typed 方法只负责 scoped 连接复用；SQL 语义集中在对应私有读写实现。
+   */
+  public set_meta(project_path: string, key: string, value: DatabaseJsonValue): void {
+    this.with_project_connection(project_path, () => this.write_meta(project_path, key, value));
+  }
+
+  public upsert_meta_entries(project_path: string, meta: Record<string, DatabaseJsonValue>): void {
+    this.with_project_connection(project_path, () => this.write_meta_entries(project_path, meta));
+  }
+
+  public get_all_meta(project_path: string): DatabaseJsonValue {
+    return this.with_project_connection(project_path, () => this.read_all_meta(project_path));
+  }
+
+  public bump_section_revisions(project_path: string, sections: string[]): DatabaseJsonValue {
+    return this.with_project_connection(project_path, () =>
+      this.advance_section_revisions(project_path, sections),
+    );
+  }
+
+  public get_analysis_item_checkpoints(project_path: string): DatabaseJsonValue {
+    return this.with_project_connection(project_path, () =>
+      this.read_analysis_item_checkpoints(project_path),
+    );
+  }
+
+  public upsert_analysis_item_checkpoints(
+    project_path: string,
+    checkpoints: DatabaseJsonValue[],
+  ): void {
+    this.with_project_connection(project_path, () =>
+      this.write_analysis_item_checkpoints(project_path, checkpoints),
+    );
+  }
+
+  public delete_analysis_item_checkpoints(
+    project_path: string,
+    status: string | null = null,
+  ): number {
+    return this.with_project_connection(project_path, () =>
+      this.remove_analysis_item_checkpoints(project_path, status),
+    );
+  }
+
+  public get_analysis_candidate_aggregates(project_path: string): DatabaseJsonValue {
+    return this.with_project_connection(project_path, () =>
+      this.read_analysis_candidate_aggregates(project_path),
+    );
+  }
+
+  public get_analysis_candidate_aggregates_by_srcs(
+    project_path: string,
+    srcs: string[],
+  ): DatabaseJsonValue {
+    return this.with_project_connection(project_path, () =>
+      this.read_analysis_candidate_aggregates_by_srcs(project_path, srcs),
+    );
+  }
+
+  public upsert_analysis_candidate_aggregates(
+    project_path: string,
+    aggregates: DatabaseJsonValue[],
+  ): void {
+    this.with_project_connection(project_path, () =>
+      this.write_analysis_candidate_aggregates(project_path, aggregates),
+    );
+  }
+
+  public delete_analysis_candidate_aggregates_by_srcs(project_path: string, srcs: string[]): void {
+    this.with_project_connection(project_path, () =>
+      this.remove_analysis_candidate_aggregates_by_srcs(project_path, srcs),
+    );
+  }
+
+  public clear_analysis_candidate_aggregates(project_path: string): void {
+    this.with_project_connection(project_path, () =>
+      this.remove_all_analysis_candidate_aggregates(project_path),
+    );
+  }
+
+  public add_asset_from_source(
+    project_path: string,
+    asset_path: string,
+    source_path: string,
+    sort_order: number | null = null,
+  ): void {
+    this.with_project_connection(project_path, () =>
+      this.insert_asset_from_source(project_path, asset_path, source_path, sort_order),
+    );
+  }
+
+  public update_asset_from_source(
+    project_path: string,
+    asset_path: string,
+    source_path: string,
+  ): void {
+    this.with_project_connection(project_path, () =>
+      this.replace_asset_from_source(project_path, asset_path, source_path),
+    );
+  }
+
+  public delete_asset(project_path: string, asset_path: string): void {
+    this.with_project_connection(project_path, () => this.remove_asset(project_path, asset_path));
+  }
+
+  public get_all_asset_records(project_path: string): DatabaseJsonValue {
+    return this.with_project_connection(project_path, () =>
+      this.read_all_asset_records(project_path),
+    );
+  }
+
+  public get_asset_count(project_path: string): number {
+    return this.with_project_connection(project_path, () => this.read_asset_count(project_path));
+  }
+
+  public update_asset_sort_orders(project_path: string, ordered_paths: string[]): void {
+    this.with_project_connection(project_path, () =>
+      this.write_asset_sort_orders(project_path, ordered_paths),
+    );
+  }
+
+  public get_all_items(project_path: string): DatabaseJsonValue {
+    return this.with_project_connection(project_path, () => this.read_all_items(project_path));
+  }
+
+  public get_item_count(project_path: string): number {
+    return this.with_project_connection(project_path, () => this.read_item_count(project_path));
+  }
+
+  public get_item_status_summary(project_path: string): DatabaseJsonValue {
+    return this.with_project_connection(project_path, () =>
+      this.read_item_status_summary(project_path),
+    );
+  }
+
+  public get_items_by_ids(project_path: string, item_ids: number[]): DatabaseJsonValue {
+    return this.with_project_connection(project_path, () =>
+      this.read_items_by_ids(project_path, item_ids),
+    );
+  }
+
+  public get_item_write_facts_by_ids(project_path: string, item_ids: number[]): DatabaseJsonValue {
+    return this.with_project_connection(project_path, () =>
+      this.read_item_write_facts_by_ids(project_path, item_ids),
+    );
+  }
+
+  public set_items(project_path: string, items: DatabaseJsonValue[]): number[] {
+    return this.with_project_connection(project_path, () =>
+      this.replace_items(project_path, items),
+    );
+  }
+
+  public patch_item_fields_by_ids(
+    project_path: string,
+    item_ids: number[],
+    patch: Record<string, DatabaseJsonValue>,
+  ): void {
+    this.with_project_connection(project_path, () =>
+      this.write_item_fields_by_ids(project_path, item_ids, patch),
+    );
+  }
+
+  public patch_item_translation_fields(project_path: string, patches: DatabaseJsonValue[]): void {
+    this.with_project_connection(project_path, () =>
+      this.write_item_translation_fields(project_path, patches),
+    );
+  }
+
+  public get_rules(project_path: string, rule_type: string): DatabaseJsonValue {
+    return this.with_project_connection(project_path, () =>
+      this.read_rules(project_path, rule_type),
+    );
+  }
+
+  public set_rules(project_path: string, rule_type: string, rules: DatabaseJsonValue[]): void {
+    this.with_project_connection(project_path, () =>
+      this.write_rules(project_path, rule_type, rules),
+    );
+  }
+
+  public get_rule_text(project_path: string, rule_type: string): string {
+    return this.with_project_connection(project_path, () =>
+      this.read_rule_text(project_path, rule_type),
+    );
+  }
+
+  public set_rule_text(project_path: string, rule_type: string, text: string): void {
+    this.with_project_connection(project_path, () =>
+      this.write_rule_text(project_path, rule_type, text),
+    );
+  }
+
+  public get_project_summary(project_path: string): DatabaseJsonValue {
+    return this.with_project_connection(project_path, () =>
+      this.read_project_summary(project_path),
+    );
   }
 
   /**
@@ -428,15 +402,6 @@ export class ProjectDatabase {
       record.lease_count = Math.max(0, record.lease_count - 1);
       this.close_connection_if_idle(record);
     };
-  }
-
-  /**
-   * 把外部参数归一为对象，避免每个操作重复兜底
-   */
-  private normalize_args(
-    args: Record<string, DatabaseJsonValue> | undefined,
-  ): Record<string, DatabaseJsonValue> {
-    return args ?? {};
   }
 
   /**
@@ -475,7 +440,7 @@ export class ProjectDatabase {
   /**
    * 关闭指定工程连接并清空租约计数，用于工程卸载和文件重建收尾
    */
-  private close_project(project_path: string): void {
+  private close_project_connection(project_path: string): void {
     const normalized_path = path.resolve(project_path);
     const record = this.connection_records.get(normalized_path);
     if (record === undefined) {
@@ -497,26 +462,6 @@ export class ProjectDatabase {
     } finally {
       record.scoped_use_count -= 1;
       this.close_connection_if_idle(record);
-    }
-  }
-
-  /**
-   * 事务只能覆盖一个工程文件，防止不同 .lg 在同一批操作内出现半提交
-   */
-  private validate_transaction_project_paths(
-    project_path: string,
-    operations: DatabaseOperation[],
-  ): void {
-    const normalized_path = path.resolve(project_path);
-    for (const operation of operations) {
-      if (operation.name === "createProject" || operation.name === "closeProject") {
-        throw new AppErrors.InternalInvariantError();
-      }
-      const args = this.normalize_args(operation.args);
-      const operation_path = path.resolve(this.require_string(args, "projectPath"));
-      if (operation_path !== normalized_path) {
-        throw new AppErrors.InternalInvariantError();
-      }
     }
   }
 
@@ -562,7 +507,7 @@ export class ProjectDatabase {
   /**
    * 创建新 .lg 数据库并初始化 schema，作为工程落盘入口
    */
-  private create_project(project_path: string, name: string): null {
+  private initialize_project(project_path: string, name: string): null {
     const normalized_path = path.resolve(project_path);
     this.close_project(normalized_path);
     if (this.native_fs.exists(normalized_path)) {
@@ -595,14 +540,14 @@ export class ProjectDatabase {
   /**
    * 写入单个 meta 值，维持 meta 更新的统一序列化方式
    */
-  private set_meta(project_path: string, key: string, value: DatabaseJsonValue): void {
+  private write_meta(project_path: string, key: string, value: DatabaseJsonValue): void {
     this.upsert_meta_entries(project_path, { [key]: value });
   }
 
   /**
    * 批量写入 meta 项，减少跨边界多次 database workflow
    */
-  private upsert_meta_entries(project_path: string, meta: DatabaseRow): void {
+  private write_meta_entries(project_path: string, meta: DatabaseRow): void {
     this.upsert_meta_entries_with_db(this.open_project(project_path), meta);
   }
 
@@ -619,7 +564,7 @@ export class ProjectDatabase {
   /**
    * 读取完整 meta 快照，供运行态编码一次性构建事实
    */
-  private get_all_meta(project_path: string): DatabaseJsonValue {
+  private read_all_meta(project_path: string): DatabaseJsonValue {
     const db = this.open_project(project_path);
     const result: Record<string, DatabaseJsonValue> = {};
     for (const row of db.prepare("SELECT key, value FROM meta").all()) {
@@ -631,7 +576,7 @@ export class ProjectDatabase {
   /**
    * 由内部任务数据路由调用的窄 revision 推进入口；公开读取和 ack 仍由 项目域计算
    */
-  private bump_section_revisions(project_path: string, sections: string[]): DatabaseJsonValue {
+  private advance_section_revisions(project_path: string, sections: string[]): DatabaseJsonValue {
     const db = this.open_project(project_path);
     const supported_sections = new Set(["files", "items", "analysis"]);
     const next_revisions: Record<string, number> = {};
@@ -648,6 +593,9 @@ export class ProjectDatabase {
     return next_revisions;
   }
 
+  /**
+   * 在调用方已持有的事务连接内读取单个 meta，避免重新取得 scoped 连接。
+   */
   private get_meta_from_db(
     db: DatabaseSync,
     key: string,
@@ -657,6 +605,9 @@ export class ProjectDatabase {
     return row === undefined ? default_value : json_parse(row["value"]);
   }
 
+  /**
+   * 将旧 revision meta 归一为非负整数基线。
+   */
   private normalize_revision_value(value: DatabaseJsonValue): number {
     const revision = Number(value ?? 0);
     return Number.isFinite(revision) && revision > 0 ? Math.trunc(revision) : 0;
@@ -665,7 +616,7 @@ export class ProjectDatabase {
   /**
    * 读取分析 checkpoint，保持断点续跑只依赖持久事实
    */
-  private get_analysis_item_checkpoints(project_path: string): DatabaseJsonValue {
+  private read_analysis_item_checkpoints(project_path: string): DatabaseJsonValue {
     const db = this.open_project(project_path);
     return db
       .prepare(
@@ -685,7 +636,7 @@ export class ProjectDatabase {
   /**
    * 批量保存分析 checkpoint，保证任务提交进度可恢复
    */
-  private upsert_analysis_item_checkpoints(
+  private write_analysis_item_checkpoints(
     project_path: string,
     checkpoints: DatabaseJsonValue[],
   ): void {
@@ -712,7 +663,7 @@ export class ProjectDatabase {
   /**
    * 删除指定 checkpoint，避免重置后残留分析状态
    */
-  private delete_analysis_item_checkpoints(project_path: string, status: string | null): number {
+  private remove_analysis_item_checkpoints(project_path: string, status: string | null): number {
     const db = this.open_project(project_path);
     if (status === null) {
       return Number(db.prepare("DELETE FROM analysis_item_checkpoint").run().changes);
@@ -740,7 +691,7 @@ export class ProjectDatabase {
   /**
    * 读取分析候选聚合，供术语导入预演复用
    */
-  private get_analysis_candidate_aggregates(project_path: string): DatabaseJsonValue {
+  private read_analysis_candidate_aggregates(project_path: string): DatabaseJsonValue {
     const db = this.open_project(project_path);
     return this.normalize_candidate_rows(
       db
@@ -756,7 +707,7 @@ export class ProjectDatabase {
   /**
    * 按原文批量读取候选聚合，减少分析辅助查询次数
    */
-  private get_analysis_candidate_aggregates_by_srcs(
+  private read_analysis_candidate_aggregates_by_srcs(
     project_path: string,
     srcs: string[],
   ): DatabaseJsonValue {
@@ -781,7 +732,7 @@ export class ProjectDatabase {
   /**
    * 批量写入候选聚合，保持分析结果提交原子化
    */
-  private upsert_analysis_candidate_aggregates(
+  private write_analysis_candidate_aggregates(
     project_path: string,
     aggregates: DatabaseJsonValue[],
   ): void {
@@ -814,14 +765,14 @@ export class ProjectDatabase {
   /**
    * 清空候选聚合，确保分析重置不混入残留候选
    */
-  private clear_analysis_candidate_aggregates(project_path: string): void {
+  private remove_all_analysis_candidate_aggregates(project_path: string): void {
     this.open_project(project_path).prepare("DELETE FROM analysis_candidate_aggregate").run();
   }
 
   /**
    * 候选导入确认后按 src 消费候选池，避免已处理候选在下一次导入继续弹出
    */
-  private delete_analysis_candidate_aggregates_by_srcs(project_path: string, srcs: string[]): void {
+  private remove_analysis_candidate_aggregates_by_srcs(project_path: string, srcs: string[]): void {
     const normalized_srcs = [...new Set(srcs.map((src) => src.trim()).filter((src) => src !== ""))];
     if (normalized_srcs.length === 0) {
       return;
@@ -845,7 +796,7 @@ export class ProjectDatabase {
   /**
    * 从源文件导入 asset，统一压缩和排序字段写入
    */
-  private add_asset_from_source(
+  private insert_asset_from_source(
     project_path: string,
     asset_path: string,
     source_path: string,
@@ -858,25 +809,6 @@ export class ProjectDatabase {
       asset_path,
       compressed,
       original_data.byteLength,
-      sort_order,
-    );
-  }
-
-  /**
-   * 导入已压缩 asset，避免跨边界传输二进制细节
-   */
-  private add_asset_compressed_base64(
-    project_path: string,
-    asset_path: string,
-    compressed_base64: string,
-    original_size: number,
-    sort_order: number | null,
-  ): void {
-    this.add_asset_buffer(
-      project_path,
-      asset_path,
-      Buffer.from(compressed_base64, "base64"),
-      original_size,
       sort_order,
     );
   }
@@ -902,7 +834,7 @@ export class ProjectDatabase {
   /**
    * 用源文件更新 asset 内容，保持路径记录不被调用方重建
    */
-  private update_asset_from_source(
+  private replace_asset_from_source(
     project_path: string,
     asset_path: string,
     source_path: string,
@@ -922,58 +854,16 @@ export class ProjectDatabase {
   }
 
   /**
-   * 更新 asset 路径，保护路径唯一性由数据库入口维护
-   */
-  private update_asset_path(project_path: string, old_path: string, new_path: string): void {
-    const result = this.open_project(project_path)
-      .prepare("UPDATE assets SET path = ? WHERE path = ?")
-      .run(new_path, old_path);
-    if (Number(result.changes) === 0) {
-      throw new DatabaseConflictError("资产不存在，无法重命名。");
-    }
-  }
-
-  /**
-   * 读取压缩 asset 文本，供需要原始压缩载荷的接口兼容
-   */
-  private get_asset_compressed_base64(project_path: string, asset_path: string): DatabaseJsonValue {
-    const row = this.open_project(project_path)
-      .prepare("SELECT data FROM assets WHERE path = ?")
-      .get(asset_path);
-    return row === undefined ? null : bytes_from_blob(row["data"]).toString("base64");
-  }
-
-  /**
    * 删除 asset 记录，保持文件移除只走存储入口
    */
-  private delete_asset(project_path: string, asset_path: string): void {
+  private remove_asset(project_path: string, asset_path: string): void {
     this.open_project(project_path).prepare("DELETE FROM assets WHERE path = ?").run(asset_path);
-  }
-
-  /**
-   * 检查 asset 路径是否占用，供导入链路生成稳定唯一名
-   */
-  private asset_path_exists(project_path: string, asset_path: string): boolean {
-    const row = this.open_project(project_path)
-      .prepare("SELECT 1 FROM assets WHERE path = ? LIMIT 1")
-      .get(asset_path);
-    return row !== undefined;
-  }
-
-  /**
-   * 读取所有 asset 路径，供工作台文件集合重建
-   */
-  private get_all_asset_paths(project_path: string): DatabaseJsonValue {
-    return this.open_project(project_path)
-      .prepare("SELECT path FROM assets ORDER BY sort_order ASC, id ASC")
-      .all()
-      .map((row) => row_text(row, "path"));
   }
 
   /**
    * 读取 asset 记录快照，供运行态排序与导出使用
    */
-  private get_all_asset_records(project_path: string): DatabaseJsonValue {
+  private read_all_asset_records(project_path: string): DatabaseJsonValue {
     return this.open_project(project_path)
       .prepare("SELECT path, sort_order FROM assets ORDER BY sort_order ASC, id ASC")
       .all()
@@ -983,7 +873,7 @@ export class ProjectDatabase {
   /**
    * 文件数量直接由 SQL 聚合读取，manifest 不为计数预热 files section
    */
-  private get_asset_count(project_path: string): number {
+  private read_asset_count(project_path: string): number {
     const row = this.open_project(project_path)
       .prepare("SELECT COUNT(*) AS count FROM assets")
       .get();
@@ -993,7 +883,7 @@ export class ProjectDatabase {
   /**
    * 批量更新 asset 顺序，保证文件重排一次事务完成
    */
-  private update_asset_sort_orders(project_path: string, ordered_paths: string[]): void {
+  private write_asset_sort_orders(project_path: string, ordered_paths: string[]): void {
     const statement = this.open_project(project_path).prepare(
       "UPDATE assets SET sort_order = ? WHERE path = ?",
     );
@@ -1005,7 +895,7 @@ export class ProjectDatabase {
   /**
    * 读取全部条目事实，供项目数据读取和任务快照重建
    */
-  private get_all_items(project_path: string): DatabaseJsonValue {
+  private read_all_items(project_path: string): DatabaseJsonValue {
     return this.open_project(project_path)
       .prepare("SELECT id, data FROM items ORDER BY id")
       .all()
@@ -1015,7 +905,7 @@ export class ProjectDatabase {
   /**
    * 条目数量直接由 SQL 聚合读取，manifest 不为计数扫描完整 item payload
    */
-  private get_item_count(project_path: string): number {
+  private read_item_count(project_path: string): number {
     const row = this.open_project(project_path)
       .prepare("SELECT COUNT(*) AS count FROM items")
       .get();
@@ -1025,7 +915,7 @@ export class ProjectDatabase {
   /**
    * 翻译统计口径由 status 决定，SQL 聚合为缺失 meta 的校对保存提供低成本基线。
    */
-  private get_item_status_summary(project_path: string): DatabaseJsonValue {
+  private read_item_status_summary(project_path: string): DatabaseJsonValue {
     const row = this.open_project(project_path)
       .prepare(
         `SELECT
@@ -1054,7 +944,7 @@ export class ProjectDatabase {
   /**
    * 按 id 读取条目，减少校对和任务提交后的回查范围
    */
-  private get_items_by_ids(project_path: string, item_ids: number[]): DatabaseJsonValue {
+  private read_items_by_ids(project_path: string, item_ids: number[]): DatabaseJsonValue {
     const normalized_ids = [
       ...new Set(
         item_ids.map((item_id) => Number(item_id)).filter((item_id) => Number.isFinite(item_id)),
@@ -1083,7 +973,10 @@ export class ProjectDatabase {
   /**
    * 校对统一字段写入只需要少量事实，避免为状态设置解析完整 item JSON。
    */
-  private get_item_write_facts_by_ids(project_path: string, item_ids: number[]): DatabaseJsonValue {
+  private read_item_write_facts_by_ids(
+    project_path: string,
+    item_ids: number[],
+  ): DatabaseJsonValue {
     const normalized_ids = [
       ...new Set(
         item_ids
@@ -1127,6 +1020,9 @@ export class ProjectDatabase {
       .filter((item): item is DatabaseRow => item !== undefined) as DatabaseJsonValue;
   }
 
+  /**
+   * 根据 SQLite json_type 恢复 name 字段的 null、string 或 array 形状。
+   */
   private read_item_name_value(
     row: DatabaseRow,
     value_key: string,
@@ -1144,63 +1040,9 @@ export class ProjectDatabase {
   }
 
   /**
-   * 按文件删除条目，保证文件移除同步清理条目事实
-   */
-  private delete_items_by_file_path(project_path: string, file_path: string): number {
-    const db = this.open_project(project_path);
-    try {
-      return Number(
-        db.prepare("DELETE FROM items WHERE json_extract(data, '$.file_path') = ?").run(file_path)
-          .changes,
-      );
-    } catch (error) {
-      if (!(error instanceof Error) || !error.message.includes("json_extract")) {
-        throw error;
-      }
-      const ids: number[] = []; // 某些运行时可能没有 JSON1，退回逐行解析以保持删除语义可用
-      for (const row of db.prepare("SELECT id, data FROM items").all()) {
-        const data = this.value_record(json_parse(row["data"]));
-        if (data["file_path"] === file_path) {
-          ids.push(row_number(row, "id"));
-        }
-      }
-      let deleted = 0;
-      for (let index = 0; index < ids.length; index += 500) {
-        const chunk = ids.slice(index, index + 500);
-        const placeholders = chunk.map(() => "?").join(",");
-        deleted += Number(
-          db.prepare(`DELETE FROM items WHERE id IN (${placeholders})`).run(...chunk).changes,
-        );
-      }
-      return deleted;
-    }
-  }
-
-  /**
-   * 写入单条条目事实，统一 item payload 序列化规则
-   */
-  private set_item(project_path: string, item: DatabaseRow): number {
-    const db = this.open_project(project_path);
-    const item_id = item["id"];
-    const data = { ...item };
-    delete data["id"];
-    if (item_id === undefined || item_id === null || item_id === "") {
-      return Number(
-        db.prepare("INSERT INTO items (data) VALUES (?)").run(JsonTool.stringifyStrict(data))
-          .lastInsertRowid,
-      );
-    }
-    db.prepare("UPDATE items SET data = ? WHERE id = ?").run(
-      JsonTool.stringifyStrict(data),
-      Number(item_id),
-    );
-    return Number(item_id);
-  }
-
-  /**
    * 批量写入条目事实，确保导入和重置链路高效落盘
    */
-  private set_items(project_path: string, items: DatabaseJsonValue[]): number[] {
+  private replace_items(project_path: string, items: DatabaseJsonValue[]): number[] {
     const db = this.open_project(project_path);
     db.prepare("DELETE FROM items").run();
     const insert_with_id = db.prepare("INSERT INTO items (id, data) VALUES (?, ?)");
@@ -1222,37 +1064,8 @@ export class ProjectDatabase {
   }
 
   /**
-   * 按受限字段批量更新条目，收口校对批量写入
+   * 将公开 item 字段 patch 编译为 SQLite json_set 路径和值。
    */
-  private update_batch(
-    project_path: string,
-    items: DatabaseJsonValue[] | null,
-    rules: DatabaseRow | null,
-    meta: DatabaseRow | null,
-  ): void {
-    const db = this.open_project(project_path);
-    if (items !== null) {
-      const update_item = db.prepare("UPDATE items SET data = ? WHERE id = ?");
-      for (const raw_item of items) {
-        const item = this.value_record(raw_item);
-        if (typeof item["id"] !== "number") {
-          continue;
-        }
-        const data = { ...item };
-        delete data["id"];
-        update_item.run(JsonTool.stringifyStrict(data), item["id"]);
-      }
-    }
-    if (rules !== null) {
-      for (const [rule_type, rule_data] of Object.entries(rules)) {
-        this.set_rules_with_db(db, rule_type, Array.isArray(rule_data) ? rule_data : []);
-      }
-    }
-    if (meta !== null) {
-      this.upsert_meta_entries_with_db(db, meta);
-    }
-  }
-
   private build_item_field_patch_entries(
     patch: DatabaseRow,
     options: { clamp_retry_count: boolean },
@@ -1298,7 +1111,7 @@ export class ProjectDatabase {
   /**
    * 用 SQLite JSON patch 写入同一个字段增量，避免校对批量状态修改重写完整 DTO。
    */
-  private patch_item_fields_by_ids(
+  private write_item_fields_by_ids(
     project_path: string,
     item_ids: number[],
     patch: DatabaseRow,
@@ -1322,7 +1135,13 @@ export class ProjectDatabase {
       .join(", ");
     const patch_values = patch_entries.flatMap((patch_entry) => [
       patch_entry.path,
-      patch_entry.json ? JsonTool.stringifyStrict(patch_entry.value) : patch_entry.value,
+      patch_entry.json || typeof patch_entry.value !== "number"
+        ? String(
+            patch_entry.json
+              ? JsonTool.stringifyStrict(patch_entry.value)
+              : (patch_entry.value ?? ""),
+          )
+        : patch_entry.value,
     ]);
     const db = this.open_project(project_path);
     for (let index = 0; index < normalized_ids.length; index += 500) {
@@ -1337,7 +1156,7 @@ export class ProjectDatabase {
   /**
    * 按 item 逐条局部更新翻译字段，任务结果不能覆盖完整持久 item。
    */
-  private patch_item_translation_fields(project_path: string, patches: DatabaseJsonValue[]): void {
+  private write_item_translation_fields(project_path: string, patches: DatabaseJsonValue[]): void {
     const db = this.open_project(project_path);
     for (const raw_patch of patches) {
       const entry = this.value_record(raw_patch);
@@ -1361,7 +1180,13 @@ export class ProjectDatabase {
         .join(", ");
       const patch_values = patch_entries.flatMap((patch_entry) => [
         patch_entry.path,
-        patch_entry.json ? JsonTool.stringifyStrict(patch_entry.value) : patch_entry.value,
+        patch_entry.json || typeof patch_entry.value !== "number"
+          ? String(
+              patch_entry.json
+                ? JsonTool.stringifyStrict(patch_entry.value)
+                : (patch_entry.value ?? ""),
+            )
+          : patch_entry.value,
       ]);
       const result = db
         .prepare(`UPDATE items SET data = json_set(data, ${json_set_args}) WHERE id = ?`)
@@ -1377,7 +1202,7 @@ export class ProjectDatabase {
   /**
    * 读取指定规则集合，保持质量规则运行时只看数据库事实
    */
-  private get_rules(project_path: string, rule_type: string): DatabaseJsonValue {
+  private read_rules(project_path: string, rule_type: string): DatabaseJsonValue {
     const row = this.open_project(project_path)
       .prepare("SELECT data FROM rules WHERE type = ? ORDER BY id")
       .get(rule_type);
@@ -1395,7 +1220,7 @@ export class ProjectDatabase {
   /**
    * 写入指定规则集合，统一 revision 与 payload 维护
    */
-  private set_rules(project_path: string, rule_type: string, rules: DatabaseJsonValue[]): void {
+  private write_rules(project_path: string, rule_type: string, rules: DatabaseJsonValue[]): void {
     this.set_rules_with_db(this.open_project(project_path), rule_type, rules);
   }
 
@@ -1413,17 +1238,10 @@ export class ProjectDatabase {
   /**
    * 读取提示词或规则文本，统一文本规则落点
    */
-  private get_rule_text(project_path: string, rule_type: string): string {
-    return this.get_rule_text_by_name(project_path, rule_type);
-  }
-
-  /**
-   * 按规则名读取文本，兼容命名入口
-   */
-  private get_rule_text_by_name(project_path: string, rule_type_name: string): string {
+  private read_rule_text(project_path: string, rule_type: string): string {
     const row = this.open_project(project_path)
       .prepare("SELECT data FROM rules WHERE type = ? LIMIT 1")
-      .get(rule_type_name);
+      .get(rule_type);
     if (row === undefined) {
       return "";
     }
@@ -1433,7 +1251,7 @@ export class ProjectDatabase {
   /**
    * 保存文本规则内容，保持 prompt 与规则文本写入一致
    */
-  private set_rule_text(project_path: string, rule_type: string, text: string): void {
+  private write_rule_text(project_path: string, rule_type: string, text: string): void {
     const db = this.open_project(project_path);
     db.prepare("DELETE FROM rules WHERE type = ?").run(rule_type);
     db.prepare("INSERT INTO rules (type, data) VALUES (?, ?)").run(
@@ -1447,21 +1265,17 @@ export class ProjectDatabase {
    */
   private deserialize_rule_text_payload(raw_data: string): string {
     try {
-      const data = JsonTool.parseStrict(raw_data) as unknown;
-      if (typeof data === "object" && data !== null && !Array.isArray(data)) {
-        const text = (data as DatabaseRow)["text"];
-        return typeof text === "string" ? text : String(text ?? "");
-      }
+      const text = read_json_record(JsonTool.parseStrict(raw_data))["text"];
+      return typeof text === "string" ? text : String(text ?? "");
     } catch {
       return "";
     }
-    return "";
   }
 
   /**
    * 读取工程摘要，供打开预览和运行态快速判断使用
    */
-  private get_project_summary(project_path: string): DatabaseJsonValue {
+  private read_project_summary(project_path: string): DatabaseJsonValue {
     const meta = this.value_record(this.get_all_meta(project_path));
     const db = this.open_project(project_path);
     const file_count_row = db.prepare("SELECT COUNT(*) AS count FROM assets").get();
@@ -1506,101 +1320,6 @@ export class ProjectDatabase {
           total_items > 0 ? ((completed_count + skipped_count) / total_items) * 100 : 0,
       },
     };
-  }
-
-  /**
-   * 校验必填字符串，避免脏载荷进入数据库层
-   */
-  private require_string(args: Record<string, DatabaseJsonValue>, key: string): string {
-    const value = args[key];
-    if (typeof value !== "string" || value === "") {
-      throw new AppErrors.RequestValidationError();
-    }
-    return value;
-  }
-
-  /**
-   * 校验可选字符串，统一空值和类型错误语义
-   */
-  private optional_string(args: Record<string, DatabaseJsonValue>, key: string): string | null {
-    const value = args[key];
-    return typeof value === "string" && value !== "" ? value : null;
-  }
-
-  /**
-   * 校验必填数字，避免调用点散落类型断言
-   */
-  private require_number(args: Record<string, DatabaseJsonValue>, key: string): number {
-    const value = args[key];
-    if (typeof value !== "number") {
-      throw new AppErrors.RequestValidationError();
-    }
-    return value;
-  }
-
-  /**
-   * 校验可选数字，统一空值和类型错误语义
-   */
-  private optional_number(args: Record<string, DatabaseJsonValue>, key: string): number | null {
-    const value = args[key];
-    return typeof value === "number" ? value : null;
-  }
-
-  /**
-   * 校验必填对象，保证 workflow 参数形状稳定
-   */
-  private require_record(args: Record<string, DatabaseJsonValue>, key: string): DatabaseRow {
-    return this.value_record(args[key]);
-  }
-
-  /**
-   * 校验可选对象，减少调用点重复防御
-   */
-  private optional_record(
-    args: Record<string, DatabaseJsonValue>,
-    key: string,
-  ): DatabaseRow | null {
-    const value = args[key];
-    if (value === undefined || value === null) {
-      return null;
-    }
-    return this.value_record(value);
-  }
-
-  /**
-   * 校验必填数组，避免数据库操作接收非数组载荷
-   */
-  private require_array(args: Record<string, DatabaseJsonValue>, key: string): DatabaseJsonValue[] {
-    const value = args[key];
-    if (!Array.isArray(value)) {
-      throw new AppErrors.RequestValidationError();
-    }
-    return value;
-  }
-
-  /**
-   * 校验可选数组，统一空载荷处理
-   */
-  private optional_array(
-    args: Record<string, DatabaseJsonValue>,
-    key: string,
-  ): DatabaseJsonValue[] | null {
-    const value = args[key];
-    return Array.isArray(value) ? value : null;
-  }
-
-  /**
-   * 校验字符串数组，保护批量路径和 id 操作
-   */
-  private require_string_array(args: Record<string, DatabaseJsonValue>, key: string): string[] {
-    return this.require_array(args, key).map((value) => String(value));
-  }
-
-  /**
-   * 校验数字数组，保护批量序号操作
-   */
-  private require_number_array(args: Record<string, DatabaseJsonValue>, key: string): number[] {
-    return this.require_array(args, key).map((value) => Number(value));
   }
 
   /**

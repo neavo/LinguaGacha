@@ -9,8 +9,6 @@ type WorkbenchSectionRevisions = Record<string, number | undefined>;
 
 type WorkbenchPlannerFileRecord = {
   rel_path: string; // 后端 query 返回的项目内相对路径
-  file_type: string; // 只用于前端路径校验，最终文件类型以后端解析为准
-  sort_index: number; // 当前文件排序序号，重排命令用完整路径列表表达顺序
 };
 
 // 继承模式只表达用户意图，候选选择和最终译文继承由后端完成。
@@ -36,7 +34,7 @@ type WorkbenchCommandPlanErrorCode =
 /**
  * WorkbenchCommandPlanError 只表达 planner 稳定失败原因，页面展示由调用处 fallback 决定。
  */
-export class WorkbenchCommandPlanError extends Error {
+class WorkbenchCommandPlanError extends Error {
   public readonly code: WorkbenchCommandPlanErrorCode; // 工作台 planner 唯一稳定错误分支
 
   /**
@@ -64,8 +62,6 @@ function normalize_file_record(value: unknown): WorkbenchPlannerFileRecord | nul
 
   return {
     rel_path: String((value as WorkbenchPlannerFileRecord).rel_path ?? "").trim(),
-    file_type: String((value as WorkbenchPlannerFileRecord).file_type ?? "NONE"),
-    sort_index: Number((value as WorkbenchPlannerFileRecord).sort_index ?? 0),
   };
 }
 
@@ -97,14 +93,9 @@ function build_casefold_file_map(
 
 // 用户选择的目标路径去空去重，保证命令体路径集合稳定。
 function normalize_target_rel_paths(rel_paths: string[]): string[] {
-  const normalized_rel_paths: string[] = [];
-  for (const rel_path of rel_paths) {
-    const normalized_rel_path = String(rel_path).trim();
-    if (normalized_rel_path === "" || normalized_rel_paths.includes(normalized_rel_path)) {
-      continue;
-    }
-    normalized_rel_paths.push(normalized_rel_path);
-  }
+  const normalized_rel_paths = [
+    ...new Set(rel_paths.map((rel_path) => String(rel_path).trim()).filter(Boolean)),
+  ];
   if (normalized_rel_paths.length === 0) {
     throw create_workbench_plan_error("invalid_file_path");
   }
@@ -128,15 +119,6 @@ function build_expected_revisions(
   sections: WorkbenchCommandSection[],
 ): Record<string, number> {
   return build_expected_section_revisions(state.section_revisions, sections);
-}
-
-// 项目设置镜像只传后端重算预过滤需要的稳定字段。
-function build_project_settings(settings: WorkbenchPlannerSettings): Record<string, unknown> {
-  return {
-    source_language: settings.source_language,
-    mtool_optimizer_enable: settings.mtool_optimizer_enable,
-    skip_duplicate_source_text_enable: settings.skip_duplicate_source_text_enable,
-  };
 }
 
 // 从完整运行态设置提取出工作台 planner 可消费的命令设置。
@@ -185,7 +167,6 @@ export function create_workbench_reorder_plan(args: {
 // 重置文件只提交目标路径和设置镜像，items 与计算元数据由后端重算。
 export function create_workbench_reset_file_plan(args: {
   state: WorkbenchCommandPlanningState;
-  task_snapshot?: Record<string, unknown>;
   rel_path: string;
   settings: WorkbenchPlannerSettings;
 }): WorkbenchCommandPlan {
@@ -202,7 +183,7 @@ export function create_workbench_reset_file_plan(args: {
     updatedSections: ["items", "analysis"],
     requestBody: {
       rel_paths: [target_rel_path],
-      project_settings: build_project_settings(args.settings),
+      project_settings: create_workbench_planner_settings(args.settings),
       expected_section_revisions: build_expected_revisions(args.state, ["items", "analysis"]),
     },
   };
@@ -234,7 +215,7 @@ export function create_translation_reset_all_plan(args: {
     updatedSections: ["items", "analysis"],
     requestBody: {
       mode: "all",
-      project_settings: build_project_settings({
+      project_settings: create_workbench_planner_settings({
         source_language: args.source_language,
         mtool_optimizer_enable: args.mtool_optimizer_enable,
         skip_duplicate_source_text_enable: args.skip_duplicate_source_text_enable,
@@ -280,7 +261,6 @@ export function create_analysis_reset_failed_plan(args: {
 // 删除文件只提交目标路径集合，文件删除、items 过滤和分析重置由后端事务完成。
 export function create_workbench_delete_files_plan(args: {
   state: WorkbenchCommandPlanningState;
-  task_snapshot?: Record<string, unknown>;
   rel_paths: string[];
   settings: WorkbenchPlannerSettings;
 }): WorkbenchCommandPlan {
@@ -294,7 +274,7 @@ export function create_workbench_delete_files_plan(args: {
     updatedSections: ["files", "items", "analysis"],
     requestBody: {
       rel_paths: target_rel_paths,
-      project_settings: build_project_settings(args.settings),
+      project_settings: create_workbench_planner_settings(args.settings),
       expected_section_revisions: build_expected_revisions(args.state, [
         "files",
         "items",
@@ -307,8 +287,6 @@ export function create_workbench_delete_files_plan(args: {
 export type WorkbenchFileParsePreview = {
   source_path: string; // 用户选择的源文件路径，提交时作为 import-files 命令输入
   target_rel_path: string; // UI 预览得到的项目内目标路径
-  file_type: string; // UI 预览展示字段，提交时不把它作为最终事实
-  parsed_items: Array<Record<string, unknown>>; // UI 预览展示字段，提交时不提交解析后的 item
 };
 
 export type WorkbenchImportFilesPreview = {
@@ -415,7 +393,6 @@ function select_import_files(
 // 文件导入提交源路径、目标路径、同名策略和继承模式；id 分配、解析、继承和预过滤都在后端。
 export function create_workbench_import_files_plan(args: {
   state: WorkbenchCommandPlanningState;
-  task_snapshot?: Record<string, unknown>;
   parsed_files: WorkbenchFileParsePreview[];
   conflict_action: WorkbenchFileConflictAction;
   settings: WorkbenchPlannerSettings;
@@ -443,7 +420,7 @@ export function create_workbench_import_files_plan(args: {
       files,
       conflict_action: args.conflict_action,
       inheritance_mode: args.inheritance_mode ?? "none",
-      project_settings: build_project_settings(args.settings),
+      project_settings: create_workbench_planner_settings(args.settings),
       expected_section_revisions: build_expected_revisions(args.state, [
         "files",
         "items",

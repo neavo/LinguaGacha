@@ -3,20 +3,10 @@ import os from "node:os";
 import path from "node:path";
 
 import ExcelJS from "exceljs";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { Item } from "../../../domain/item";
 import { XLSXFormat } from "./xlsx-format";
-
-let temp_dir = ""; // 每个用例独占工作簿输出目录，避免 ExcelJS 文件写回互相影响
-
-beforeEach(() => {
-  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-xlsx-format-"));
-});
-
-afterEach(() => {
-  fs.rmSync(temp_dir, { recursive: true, force: true });
-});
 
 describe("XLSXFormat", () => {
   it("读取普通双列表并按源文译文关系设置状态", async () => {
@@ -100,6 +90,7 @@ describe("XLSXFormat", () => {
   });
 
   it("写回普通双列表工作簿并按行号排序", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-xlsx-format-"));
     const format = new XLSXFormat();
     await format.write_to_path(
       [
@@ -119,12 +110,12 @@ describe("XLSXFormat", () => {
         }),
       ],
       {
-        translated_path: temp_dir,
-        bilingual_path: path.join(temp_dir, "bilingual"),
+        translated_path: temp_dir.path,
+        bilingual_path: path.join(temp_dir.path, "bilingual"),
       },
     );
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(path.join(temp_dir, "excel", "a.xlsx"));
+    await workbook.xlsx.readFile(path.join(temp_dir.path, "excel", "a.xlsx"));
 
     expect(workbook.worksheets[0]?.getCell(1, 1).value).toBe("row1-src");
     expect(workbook.worksheets[0]?.getCell(1, 2).value).toBe("row1-dst");
@@ -135,6 +126,7 @@ describe("XLSXFormat", () => {
   });
 
   it("写回时保留空译文为空单元格", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-xlsx-format-"));
     const format = new XLSXFormat();
 
     await format.write_to_path(
@@ -148,17 +140,18 @@ describe("XLSXFormat", () => {
         }),
       ],
       {
-        translated_path: temp_dir,
-        bilingual_path: path.join(temp_dir, "bilingual"),
+        translated_path: temp_dir.path,
+        bilingual_path: path.join(temp_dir.path, "bilingual"),
       },
     );
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(path.join(temp_dir, "excel", "empty.xlsx"));
+    await workbook.xlsx.readFile(path.join(temp_dir.path, "excel", "empty.xlsx"));
 
     expect(workbook.worksheets[0]?.getCell(1, 2).value).toBe("");
   });
 
   it("写回公式样文本时按文本保存", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-xlsx-format-"));
     const format = new XLSXFormat();
     await format.write_to_path(
       [
@@ -171,12 +164,12 @@ describe("XLSXFormat", () => {
         }),
       ],
       {
-        translated_path: temp_dir,
-        bilingual_path: path.join(temp_dir, "bilingual"),
+        translated_path: temp_dir.path,
+        bilingual_path: path.join(temp_dir.path, "bilingual"),
       },
     );
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(path.join(temp_dir, "formula.xlsx"));
+    await workbook.xlsx.readFile(path.join(temp_dir.path, "formula.xlsx"));
 
     expect(workbook.worksheets[0]?.getCell(1, 1).value).toBe("'=SUM(A1:A2)");
     expect(workbook.worksheets[0]?.getCell(1, 1).font.size).toBe(9);

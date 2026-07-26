@@ -2,19 +2,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { RenPyFormat } from "./renpy-format";
-
-let temp_dir = "";
-
-beforeEach(() => {
-  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-renpy-format-"));
-});
-
-afterEach(() => {
-  fs.rmSync(temp_dir, { recursive: true, force: true });
-});
 
 describe("RenPyFormat", () => {
   it("解析 strings 块 old/new 文本并识别已处理译文", () => {
@@ -154,6 +144,7 @@ describe("RenPyFormat", () => {
   });
 
   it("写回 strings 块时按 STRING 槽位替换 new 行文本", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-renpy-format-"));
     const format = new RenPyFormat();
     const text = 'translate schinese strings:\n\n    old "START"\n    new ""\n';
     const [item] = format.parse_text("script.rpy", text);
@@ -164,14 +155,17 @@ describe("RenPyFormat", () => {
 
     await format.write_to_path(
       [item],
-      { translated_path: temp_dir, bilingual_path: path.join(temp_dir, "bilingual") },
+      { translated_path: temp_dir.path, bilingual_path: path.join(temp_dir.path, "bilingual") },
       () => Buffer.from(text),
     );
 
-    expect(fs.readFileSync(path.join(temp_dir, "script.rpy"), "utf-8")).toContain('new "开始"');
+    expect(fs.readFileSync(path.join(temp_dir.path, "script.rpy"), "utf-8")).toContain(
+      'new "开始"',
+    );
   });
 
   it("写回路人格式时只替换对白槽位", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-renpy-format-"));
     const format = new RenPyFormat();
     const text = [
       "translate schinese shop_569:",
@@ -187,16 +181,17 @@ describe("RenPyFormat", () => {
 
     await format.write_to_path(
       [item],
-      { translated_path: temp_dir, bilingual_path: path.join(temp_dir, "bilingual") },
+      { translated_path: temp_dir.path, bilingual_path: path.join(temp_dir.path, "bilingual") },
       () => Buffer.from(text),
     );
 
-    expect(fs.readFileSync(path.join(temp_dir, "shop.rpy"), "utf-8")).toContain(
+    expect(fs.readFileSync(path.join(temp_dir.path, "shop.rpy"), "utf-8")).toContain(
       '"Shopkeeper" "欢迎光临。"',
     );
   });
 
   it("写回 Character 调用时保留姓名参数并替换对白", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-renpy-format-"));
     const format = new RenPyFormat();
     const text = [
       "translate schinese chapter_5_d8798af6:",
@@ -212,16 +207,17 @@ describe("RenPyFormat", () => {
 
     await format.write_to_path(
       [item],
-      { translated_path: temp_dir, bilingual_path: path.join(temp_dir, "bilingual") },
+      { translated_path: temp_dir.path, bilingual_path: path.join(temp_dir.path, "bilingual") },
       () => Buffer.from(text),
     );
 
-    expect(fs.readFileSync(path.join(temp_dir, "chapter.rpy"), "utf-8")).toContain(
+    expect(fs.readFileSync(path.join(temp_dir.path, "chapter.rpy"), "utf-8")).toContain(
       'Character("Man") "你好啊！"',
     );
   });
 
   it("写回对白时不改动尾随函数参数字符串", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-renpy-format-"));
     const format = new RenPyFormat();
     const text = [
       "translate schinese chapter_5_79f2f130:",
@@ -237,18 +233,18 @@ describe("RenPyFormat", () => {
 
     await format.write_to_path(
       [item],
-      { translated_path: temp_dir, bilingual_path: path.join(temp_dir, "bilingual") },
+      { translated_path: temp_dir.path, bilingual_path: path.join(temp_dir.path, "bilingual") },
       () => Buffer.from(text),
     );
 
-    expect(fs.readFileSync(path.join(temp_dir, "pushmove.rpy"), "utf-8")).toContain(
+    expect(fs.readFileSync(path.join(temp_dir.path, "pushmove.rpy"), "utf-8")).toContain(
       '"Man" "很高兴见到你。" with PushMove("x")',
     );
   });
 
   it("姓名字段写回遵守 RenPyFormat 配置", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-renpy-format-"));
     const format = new RenPyFormat({
-      source_language: "EN",
       target_language: "ZH",
       write_translated_name_fields_to_file: false,
     });
@@ -264,10 +260,12 @@ describe("RenPyFormat", () => {
 
     await format.write_to_path(
       [item],
-      { translated_path: temp_dir, bilingual_path: path.join(temp_dir, "bilingual") },
+      { translated_path: temp_dir.path, bilingual_path: path.join(temp_dir.path, "bilingual") },
       () => Buffer.from(text),
     );
 
-    expect(fs.readFileSync(path.join(temp_dir, "name.rpy"), "utf-8")).toContain('"Alice" "你好"');
+    expect(fs.readFileSync(path.join(temp_dir.path, "name.rpy"), "utf-8")).toContain(
+      '"Alice" "你好"',
+    );
   });
 });

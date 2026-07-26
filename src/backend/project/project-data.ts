@@ -1,12 +1,12 @@
 import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase } from "../database/database-operations";
-import type { DatabaseJsonValue, DatabaseOperation } from "../database/database-types";
 import { Prompt } from "../../domain/prompt";
 import { QualityRule, type QualityRuleKind } from "../../domain/quality";
 import {
   collect_project_item_missing_public_fields,
   normalize_project_item_public_record,
 } from "../../domain/item";
+import { is_json_record, read_json_record } from "../../domain/json";
 import {
   isProjectDataSection,
   PROJECT_DATA_SECTIONS,
@@ -51,7 +51,7 @@ export function get_section_revision(meta: JsonRecord, section: string): number 
 }
 
 /**
- * 构建当前场景的稳定结果。
+ * 从一次 meta 快照构建全部公开 section revision，供 manifest 和事件共用。
  */
 export function build_section_revisions_from_meta(
   meta: JsonRecord,
@@ -63,7 +63,7 @@ export function build_section_revisions_from_meta(
 }
 
 /**
- * 读取当前值并屏蔽异常输入形状。
+ * 将旧项目或损坏 meta 归一为稳定的非负整数 revision。
  */
 function read_revision_meta(value: ApiJsonValue | undefined): number {
   const number_value = Number(value ?? 0);
@@ -223,12 +223,10 @@ export class ProjectDataReader {
    * 行级规范化增量只回读指定 item，避免小变更退化成完整 items 替换
    */
   public build_item_records_by_ids(project_path: string, item_ids: number[]): ProjectDataRecord[] {
-    const value = this.database.execute(
-      this.op("getItemsByIds", { projectPath: project_path, itemIds: item_ids }),
-    );
+    const value = this.database.get_items_by_ids(project_path, item_ids);
     return Array.isArray(value)
       ? value
-          .filter((item): item is ProjectDataJsonRecord => this.is_record(item))
+          .filter((item): item is ProjectDataJsonRecord => is_json_record(item))
           .map((item) => this.normalize_item_record(item))
       : [];
   }
@@ -286,7 +284,7 @@ export class ProjectDataReader {
    * analysis block 只公开轻量运行态；候选明细由按需 API 读取，避免常规刷新扫描大候选池。
    */
   public build_analysis_block(meta: ProjectDataJsonRecord): ProjectDataRecord {
-    const extras = this.normalize_object(meta["analysis_extras"]);
+    const extras = { ...read_json_record(meta["analysis_extras"]) };
     return {
       extras,
       candidate_count: this.read_number(meta["analysis_candidate_count"], 0),
@@ -383,9 +381,7 @@ export class ProjectDataReader {
    * meta 是 revision 与运行态 extras 的共同来源，读取后只在本次请求内复用
    */
   public get_all_meta(project_path: string): ProjectDataRecord {
-    return this.normalize_object(
-      this.database.execute(this.op("getAllMeta", { projectPath: project_path })),
-    );
+    return { ...read_json_record(this.database.get_all_meta(project_path)) };
   }
 
   /**
@@ -416,8 +412,8 @@ export class ProjectDataReader {
    * manifest counts 只用于项目页概览，不替代真实 section payload
    */
   private build_manifest_counts(project_path: string): ProjectDataRecord {
-    const asset_count = this.read_count_operation(project_path, "getAssetCount");
-    const item_count = this.read_count_operation(project_path, "getItemCount");
+    const asset_count = this.database.get_asset_count(project_path);
+    const item_count = this.database.get_item_count(project_path);
     return {
       files:
         asset_count > 0
@@ -425,19 +421,6 @@ export class ProjectDataReader {
           : this.build_runtime_items_snapshot(project_path).records_by_path.size,
       items: item_count,
     };
-  }
-
-  /**
-   * manifest 计数优先走 SQL 聚合；坏返回值归零，避免为概览读取完整 payload
-   */
-  private read_count_operation(
-    project_path: string,
-    name: "getAssetCount" | "getItemCount",
-  ): number {
-    return Math.max(
-      0,
-      this.read_number(this.database.execute(this.op(name, { projectPath: project_path })), 0),
-    );
   }
 
   /**
@@ -507,9 +490,7 @@ export class ProjectDataReader {
    * 候选聚合以 src 为 key 输出公开快照
    */
   private build_candidate_aggregate(project_path: string): ProjectDataRecord {
-    const rows = this.database.execute(
-      this.op("getAnalysisCandidateAggregates", { projectPath: project_path }),
-    );
+    const rows = this.database.get_analysis_candidate_aggregates(project_path);
     if (!Array.isArray(rows)) {
       return {};
     }
@@ -527,7 +508,7 @@ export class ProjectDataReader {
    * 候选池单项要过滤空 src 和无译文票数项，避免导入术语预演看到不可用候选
    */
   private normalize_candidate_aggregate_entry(value: ApiJsonValue): ProjectDataRecord | null {
-    if (!this.is_record(value)) {
+    if (!is_json_record(value)) {
       return null;
     }
     const src = String(value["src"] ?? "").trim();
@@ -560,7 +541,7 @@ export class ProjectDataReader {
    * 票数 map 合并重复 key 并剔除非正票数，保持候选池排序和 winner 选择稳定
    */
   private normalize_vote_map(value: ApiJsonValue | undefined): ProjectDataRecord {
-    if (!this.is_record(value)) {
+    if (!is_json_record(value)) {
       return {};
     }
     const votes: ProjectDataRecord = {};
@@ -578,10 +559,10 @@ export class ProjectDataReader {
    * 读取全部 item 仍只通过 ProjectDatabase workflow，保持 SQL 落点集中
    */
   private get_all_items(project_path: string): ProjectDataRecord[] {
-    const value = this.database.execute(this.op("getAllItems", { projectPath: project_path }));
+    const value = this.database.get_all_items(project_path);
     return Array.isArray(value)
       ? value
-          .filter((item): item is ProjectDataJsonRecord => this.is_record(item))
+          .filter((item): item is ProjectDataJsonRecord => is_json_record(item))
           .map((item) => ({ ...item }))
       : [];
   }
@@ -590,16 +571,14 @@ export class ProjectDataReader {
    * asset 顺序来自 database workflow，读取层只读取当前 path/sort_order 字段
    */
   private get_asset_records(project_path: string): Array<{ rel_path: string; sort_index: number }> {
-    const value = this.database.execute(
-      this.op("getAllAssetRecords", { projectPath: project_path }),
-    );
+    const value = this.database.get_all_asset_records(project_path);
     if (!Array.isArray(value)) {
       return [];
     }
     const records: Array<{ rel_path: string; sort_index: number }> = [];
     const seen_rel_paths = new Set<string>();
     for (const raw_record of value) {
-      if (!this.is_record(raw_record)) {
+      if (!is_json_record(raw_record)) {
         continue;
       }
       const rel_path = String(raw_record["path"] ?? "").trim();
@@ -619,24 +598,18 @@ export class ProjectDataReader {
    * 规则 entries 允许非对象项，统一包装成可序列化记录
    */
   private get_rule_entries(project_path: string, rule_type: string): ProjectDataRecord[] {
-    const value = this.database.execute(
-      this.op("getRules", { projectPath: project_path, ruleType: rule_type }),
-    );
+    const value = this.database.get_rules(project_path, rule_type);
     if (!Array.isArray(value)) {
       return [];
     }
-    return value.map((entry) => (this.is_record(entry) ? { ...entry } : { value: entry }));
+    return value.map((entry) => (is_json_record(entry) ? { ...entry } : { value: entry }));
   }
 
   /**
    * 提示词文本走规则文本 workflow，避免读取层知道 rules 表物理细节
    */
   private get_rule_text(project_path: string, rule_type: string): string {
-    return String(
-      this.database.execute(
-        this.op("getRuleText", { projectPath: project_path, ruleType: rule_type }),
-      ) ?? "",
-    );
+    return this.database.get_rule_text(project_path, rule_type);
   }
 
   /**
@@ -645,26 +618,5 @@ export class ProjectDataReader {
   private read_number(value: ApiJsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
-  }
-
-  /**
-   * 只把普通对象当作 JSON record，避免数组或 null 被误当 meta / row
-   */
-  private normalize_object(value: ApiJsonValue | undefined): ProjectDataRecord {
-    return this.is_record(value) ? { ...value } : {};
-  }
-
-  /**
-   * 类型收窄集中在一个入口，减少各 builder 里重复写对象判断
-   */
-  private is_record(value: unknown): value is ProjectDataJsonRecord {
-    return typeof value === "object" && value !== null && !Array.isArray(value);
-  }
-
-  /**
-   * database operation 在读取层统一创建，避免操作名和参数形状散落
-   */
-  private op(name: string, args: Record<string, DatabaseJsonValue>): DatabaseOperation {
-    return { name, args };
   }
 }

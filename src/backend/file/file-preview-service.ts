@@ -96,9 +96,7 @@ export class FilePreviewService {
     const config = normalize_setting_snapshot(this.app_setting_service.read_setting());
     return new FileFormatService(
       {
-        source_language: config.source_language,
         target_language: config.target_language,
-        app_language: config.app_language,
         deduplication_in_bilingual: config.deduplication_in_bilingual,
         write_translated_name_fields_to_file: config.write_translated_name_fields_to_file,
       },

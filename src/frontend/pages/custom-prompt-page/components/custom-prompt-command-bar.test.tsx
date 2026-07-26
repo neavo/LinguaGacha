@@ -40,10 +40,10 @@ describe("CustomPromptCommandBar", () => {
       </TooltipProvider>,
     );
 
-    expect(html).toContain("custom_prompt_page.action.import");
-    expect(html).toContain("custom_prompt_page.action.export");
-    expect(html).toContain("custom_prompt_page.action.preset");
-    expect(html).not.toContain("custom_prompt_page.action.save");
+    expect(html).toContain("quality_editor.action.import");
+    expect(html).toContain("quality_editor.action.export");
+    expect(html).toContain("quality_editor.action.preset");
+    expect(html).not.toContain("quality_editor.action.save");
     expect(html).not.toContain("Ctrl+S");
   });
 });

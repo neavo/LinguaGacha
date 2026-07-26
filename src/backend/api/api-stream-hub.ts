@@ -6,12 +6,7 @@ const KEEPALIVE_INTERVAL_MS = 500; // 公开 API stream keepalive 仍由服务�
 // 公开 SSE data 的 JSON 对象形状，所有 topic 共享同一窄边界
 export type ApiStreamPayload = Record<string, ApiJsonValue>;
 
-export interface ApiStreamMessage {
-  topic: string; // 与 SSE event 字段值完全一致，避免本地订阅和公开 stream 分叉
-  payload: ApiStreamPayload; // 已经适配好的公开 JSON 载荷，订阅者不能读取领域对象
-}
-
-export type ApiStreamListener = (message: ApiStreamMessage) => void;
+export type ApiStreamListener = (payload: ApiStreamPayload) => void;
 
 interface HubSubscriber {
   enqueue: (text: string) => void; // 单个 SSE 连接的写入口
@@ -25,18 +20,6 @@ export class ApiStreamHub {
   private readonly subscribers = new Set<HubSubscriber>(); // 只保存当前公开 SSE 连接的写入口，断连清理由订阅者内部完成
 
   private readonly local_subscribers = new Map<string, Set<ApiStreamListener>>(); // 让 CLI 等同进程入口复用公开 stream 事实源
-
-  private started = false; // 防止 Gateway 重复 start 时重入初始化
-
-  /**
-   * 标记 API stream 已启动；公开消息来源统一由服务层主动 publish
-   */
-  public start(): void {
-    if (this.started) {
-      return;
-    }
-    this.started = true;
-  }
 
   /**
    * Gateway 停止时主动中断订阅者，避免测试或重启泄漏长连接
@@ -164,9 +147,8 @@ export class ApiStreamHub {
     if (listeners === undefined) {
       return;
     }
-    const message: ApiStreamMessage = { topic, payload };
     for (const listener of Array.from(listeners)) {
-      listener(message);
+      listener(payload);
     }
   }
 

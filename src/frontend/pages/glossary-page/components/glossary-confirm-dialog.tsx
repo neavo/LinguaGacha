@@ -14,16 +14,16 @@ type ConfirmCopy = {
 
 const CONFIRM_COPY_BY_KIND: Record<NonNullable<GlossaryConfirmState["kind"]>, ConfirmCopy> = {
   "delete-selection": {
-    description_key: "glossary_page.confirm.delete_selection.description",
+    description_key: "quality_editor.confirm.delete_selection.description",
   },
   "delete-preset": {
-    description_key: "glossary_page.confirm.delete_preset.description",
+    description_key: "quality_editor.confirm.delete_preset.description",
   },
   reset: {
-    description_key: "glossary_page.confirm.reset.description",
+    description_key: "quality_editor.confirm.reset.description",
   },
   "overwrite-preset": {
-    description_key: "glossary_page.confirm.overwrite_preset.description",
+    description_key: "quality_editor.confirm.overwrite_preset.description",
   },
 };
 export function GlossaryConfirmDialog(props: GlossaryConfirmDialogProps): JSX.Element {

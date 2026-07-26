@@ -1,5 +1,6 @@
 import type { BackendServices } from "../../backend/bootstrap/backend-services";
-import type { DatabaseJsonValue, DatabaseOperation } from "../../backend/database/database-types";
+import type { ProjectDatabaseWrite } from "../../backend/database/database-operations";
+import type { DatabaseJsonValue } from "../../backend/database/database-types";
 import { load_quality_rule_entries_from_file } from "../../backend/quality/quality-rule-file-io";
 import { default_native_fs } from "../../native/native-fs";
 import { Prompt } from "../../domain/prompt";
@@ -21,76 +22,61 @@ export async function apply_cli_resources(
   command: CLICommandOptions,
   project_path: string,
 ): Promise<void> {
-  const operations = await build_cli_resource_operations(command, project_path);
-  if (operations.length === 0) {
+  const writes = await build_cli_resource_writes(command, project_path);
+  if (writes.length === 0) {
     return;
   }
-  await backend_services.commit_cli_resource_operations(project_path, operations);
+  await backend_services.commit_cli_resource_writes(project_path, writes);
 }
 
 /**
- * 构造 CLI 资源写库操作；默认关闭所有可选规则，再按显式文件覆盖启用。
+ * 构造 CLI 资源类型化写入；默认关闭所有可选规则，再按显式文件覆盖启用。
  */
-async function build_cli_resource_operations(
+async function build_cli_resource_writes(
   command: CLICommandOptions,
   project_path: string,
-): Promise<DatabaseOperation[]> {
-  const operations: DatabaseOperation[] = [
-    ...build_disabled_quality_operations(project_path),
-    ...build_disabled_prompt_operations(project_path),
+): Promise<ProjectDatabaseWrite[]> {
+  const writes: ProjectDatabaseWrite[] = [
+    ...build_disabled_quality_writes(project_path),
+    ...build_disabled_prompt_writes(project_path),
   ];
-  operations.push(...(await build_rule_resource_operations(project_path, command)));
-  const prompt_operations = read_prompt_resource_operations(project_path, command);
-  if (prompt_operations.length > 0) {
-    operations.push(...prompt_operations);
-  }
-  operations.push(...build_revision_operations(project_path, command));
-  return operations;
+  writes.push(...(await build_rule_resource_writes(project_path, command)));
+  writes.push(...read_prompt_resource_writes(project_path, command));
+  writes.push(...build_revision_writes(project_path, command));
+  return writes;
 }
 
 /**
  * 质量规则默认关闭，避免 CLI 临时工程继承 GUI 默认预设或文本保护 smart 模式。
  */
-function build_disabled_quality_operations(project_path: string): DatabaseOperation[] {
+function build_disabled_quality_writes(project_path: string): ProjectDatabaseWrite[] {
   return [
-    op("setMeta", { projectPath: project_path, key: "glossary_enable", value: false }),
-    op("setMeta", {
-      projectPath: project_path,
-      key: "pre_translation_replacement_enable",
-      value: false,
-    }),
-    op("setMeta", {
-      projectPath: project_path,
-      key: "post_translation_replacement_enable",
-      value: false,
-    }),
-    op("setMeta", { projectPath: project_path, key: "text_preserve_mode", value: "off" }),
+    (database) => database.set_meta(project_path, "glossary_enable", false),
+    (database) => database.set_meta(project_path, "pre_translation_replacement_enable", false),
+    (database) => database.set_meta(project_path, "post_translation_replacement_enable", false),
+    (database) => database.set_meta(project_path, "text_preserve_mode", "off"),
   ];
 }
 
 /**
  * 自定义提示词默认关闭；未传 --prompt 时仍使用内置任务模板。
  */
-function build_disabled_prompt_operations(project_path: string): DatabaseOperation[] {
-  return Prompt.all().map((prompt) =>
-    op("setMeta", {
-      projectPath: project_path,
-      key: prompt.enabled_meta_key,
-      value: false,
-    }),
+function build_disabled_prompt_writes(project_path: string): ProjectDatabaseWrite[] {
+  return Prompt.all().map(
+    (prompt) => (database) => database.set_meta(project_path, prompt.enabled_meta_key, false),
   );
 }
 
 /**
  * 翻译任务四类质量规则按外部文件启用，分析任务不会调用这些规则输入。
  */
-async function build_rule_resource_operations(
+async function build_rule_resource_writes(
   project_path: string,
   command: CLICommandOptions,
-): Promise<DatabaseOperation[]> {
-  const operations: DatabaseOperation[] = [];
+): Promise<ProjectDatabaseWrite[]> {
+  const writes: ProjectDatabaseWrite[] = [];
   if (command.command !== "translate") {
-    return operations;
+    return writes;
   }
   for (const spec of build_rule_resource_specs(command)) {
     if (spec.resource_path === null) {
@@ -98,24 +84,21 @@ async function build_rule_resource_operations(
     }
     const rule = QualityRule.from_json(spec.rule_kind);
     const entries = await load_quality_rule_entries_from_file(spec.resource_path);
-    operations.push(
-      op("setRules", {
-        projectPath: project_path,
-        ruleType: rule.database_type,
-        rules: entries as unknown as DatabaseJsonValue,
-      }),
+    writes.push((database) =>
+      database.set_rules(
+        project_path,
+        rule.database_type,
+        entries as unknown as DatabaseJsonValue[],
+      ),
     );
     if (spec.enabled_meta_key !== null) {
-      operations.push(
-        op("setMeta", {
-          projectPath: project_path,
-          key: spec.enabled_meta_key,
-          value: spec.enabled_meta_value,
-        }),
+      const enabled_meta_key = spec.enabled_meta_key;
+      writes.push((database) =>
+        database.set_meta(project_path, enabled_meta_key, spec.enabled_meta_value),
       );
     }
   }
-  return operations;
+  return writes;
 }
 
 /**
@@ -153,10 +136,10 @@ function build_rule_resource_specs(command: CLICommandOptions): CLIRuleResourceS
 /**
  * --prompt 根据命令类型写入对应提示词槽位，翻译和分析不共享同一个物理规则。
  */
-function read_prompt_resource_operations(
+function read_prompt_resource_writes(
   project_path: string,
   command: CLICommandOptions,
-): DatabaseOperation[] {
+): ProjectDatabaseWrite[] {
   if (command.resources.promptPath === null) {
     return [];
   }
@@ -166,52 +149,33 @@ function read_prompt_resource_operations(
     .replace(/^\uFEFF/u, "")
     .trim();
   return [
-    op("setRuleText", {
-      projectPath: project_path,
-      ruleType: prompt.database_type,
-      text,
-    }),
-    op("setMeta", {
-      projectPath: project_path,
-      key: prompt.enabled_meta_key,
-      value: true,
-    }),
+    (database) => database.set_rule_text(project_path, prompt.database_type, text),
+    (database) => database.set_meta(project_path, prompt.enabled_meta_key, true),
   ];
 }
 
 /**
  * CLI 资源直接改写临时工程事实，需要推进质量和提示词 revision 供任务启动校验读取。
  */
-function build_revision_operations(
+function build_revision_writes(
   project_path: string,
   command: CLICommandOptions,
-): DatabaseOperation[] {
-  const quality_revisions = QualityRule.all().map((rule) =>
-    op("setMeta", {
-      projectPath: project_path,
-      key: rule.revision_meta_key,
-      value: 1,
-    }),
+): ProjectDatabaseWrite[] {
+  const quality_revisions: ProjectDatabaseWrite[] = QualityRule.all().map(
+    (rule) => (database) => database.set_meta(project_path, rule.revision_meta_key, 1),
   );
-  const prompt_revisions =
+  const prompt_revisions: ProjectDatabaseWrite[] =
     command.resources.promptPath === null
       ? []
       : [
-          op("setMeta", {
-            projectPath: project_path,
-            key:
+          (database) =>
+            database.set_meta(
+              project_path,
               command.command === "translate"
                 ? Prompt.translation().revision_meta_key
                 : Prompt.analysis().revision_meta_key,
-            value: 1,
-          }),
+              1,
+            ),
         ];
   return [...quality_revisions, ...prompt_revisions];
-}
-
-/**
- * 创建 database workflow 操作，保持 CLI 资源写入仍走 ProjectDatabase 窄协议。
- */
-function op(name: string, args: Record<string, DatabaseJsonValue>): DatabaseOperation {
-  return { name, args };
 }

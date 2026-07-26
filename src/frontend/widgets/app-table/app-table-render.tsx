@@ -1,7 +1,7 @@
 import { ArrowDown, ArrowUp, ArrowUpDown } from "lucide-react";
 import type { CSSProperties } from "react";
 
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 import { AppButton } from "@frontend/widgets/app-button";
 import { TableCell, TableHead, TableRow } from "@frontend/shadcn/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";

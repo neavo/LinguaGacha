@@ -1,14 +1,9 @@
 import type { LocaleKey } from "../i18n";
+import type { JsonValue } from "../../domain/json";
 
-export type ApiJsonValue =
-  | null
-  | boolean
-  | number
-  | string
-  | ApiJsonValue[]
-  | { [key: string]: ApiJsonValue };
+export type ApiJsonValue = JsonValue;
 
-export type AppErrorSeverity = "expected" | "warning" | "fault";
+type AppErrorSeverity = "expected" | "warning" | "fault";
 
 // 跨 API、renderer 和日志的稳定语义码，禁止按调用点另建词表。
 export type AppErrorCode =
@@ -174,7 +169,7 @@ export const APP_ERROR_DEFINITIONS: Readonly<Record<AppErrorCode, AppErrorDefini
   },
 };
 
-export interface AppErrorOptions {
+interface AppErrorOptions {
   code: AppErrorCode;
   public_details?: AppErrorPublicDetails;
   diagnostic_context?: AppErrorDiagnosticContext;
@@ -200,34 +195,19 @@ export class AppError extends Error {
   public constructor(options: AppErrorOptions) {
     const definition = APP_ERROR_DEFINITIONS[options.code];
     super(options.code, options.cause === undefined ? undefined : { cause: options.cause });
-    if (options.cause !== undefined && this.cause === undefined) {
-      Object.defineProperty(this, "cause", {
-        value: options.cause,
-        configurable: true,
-        writable: true,
-      });
-    }
     this.name = new.target.name;
     this.code = options.code;
     this.severity = definition.severity;
-    this.message_key = build_app_error_message_key(options.code);
+    this.message_key = `app.error.${options.code}.message` as AppErrorMessageKey;
     this.action_key = definition.action_key;
     this.public_details = sanitize_app_error_public_details(options.public_details ?? {});
     this.diagnostic_context = { ...options.diagnostic_context };
   }
 }
 
+// 跨 realm 不做结构猜测，只有统一基类实例才属于受控应用错误。
 export function is_app_error(error: unknown): error is AppError {
   return error instanceof AppError;
-}
-
-// 读取定义时集中收口，避免 API / 日志快照直接触碰定义表形状。
-export function get_app_error_definition(code: AppErrorCode): AppErrorDefinition {
-  return APP_ERROR_DEFINITIONS[code];
-}
-
-export function build_app_error_message_key(code: AppErrorCode): AppErrorMessageKey {
-  return `app.error.${code}.message` as AppErrorMessageKey;
 }
 
 /**

@@ -91,10 +91,8 @@ function create_policy(overrides: Partial<ResolvedRequestPolicy> = {}): Resolved
     provider: "anthropic",
     api_format: "Anthropic",
     base_url: "https://api.anthropic.com",
-    model_id: "claude-sonnet-4-5",
     headers: {},
     api_keys: ["key"],
-    messages: [{ role: "user", content: "こんにちは" }],
     payload: {
       model: "claude-sonnet-4-5",
       messages: [{ role: "user", content: "こんにちは" }],
@@ -102,8 +100,6 @@ function create_policy(overrides: Partial<ResolvedRequestPolicy> = {}): Resolved
       max_tokens: 4096,
     },
     timeout_ms: 120_000,
-    response_mode: "chat-stream",
-    diagnostics: {},
     ...overrides,
   };
 }

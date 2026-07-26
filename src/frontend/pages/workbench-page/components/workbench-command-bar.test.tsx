@@ -15,15 +15,11 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
   };
 });
 
-vi.mock("@frontend/pages/workbench-page/components/translation-task-menu", () => {
+vi.mock("@frontend/pages/workbench-page/components/workbench-task-menu", () => {
   return {
-    TranslationTaskMenu: () => <button type="button">translation-task</button>,
-  };
-});
-
-vi.mock("@frontend/pages/workbench-page/components/analysis-task-menu", () => {
-  return {
-    AnalysisTaskMenu: () => <button type="button">analysis-task</button>,
+    WorkbenchTaskMenu: (props: { task_kind: "translation" | "analysis" }) => (
+      <button type="button">{props.task_kind}-task</button>
+    ),
   };
 });
 

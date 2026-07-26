@@ -3,36 +3,22 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { JsonTool } from "../../../shared/utils/json-tool";
 import {
   PROJECT_DATABASE_SCHEMA_VERSION,
-  ProjectSchemaMigration,
+  run_project_schema_migration,
 } from "./project-schema-migration";
 
-let temp_dir = "";
-let databases: DatabaseSync[] = [];
-
-beforeEach(() => {
-  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-schema-migration-"));
-  databases = [];
-});
-
-afterEach(() => {
-  for (const db of databases) {
-    try {
-      db.close();
-    } catch {}
-  }
-  fs.rmSync(temp_dir, { recursive: true, force: true });
-});
-
-describe("ProjectSchemaMigration", () => {
+describe("run_project_schema_migration", () => {
   it("为空数据库补齐当前 schema、索引和 schema_version", () => {
-    const db = open_database("schema.lg");
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-schema-migration-"),
+    );
+    using db = new DatabaseSync(path.join(temp_dir.path, "schema.lg"));
 
-    ProjectSchemaMigration.run(db);
+    run_project_schema_migration(db);
 
     expect(read_table_names(db)).toEqual([
       "analysis_candidate_aggregate",
@@ -47,7 +33,10 @@ describe("ProjectSchemaMigration", () => {
   });
 
   it("旧 assets 缺少 sort_order 时按 id 顺序补齐稳定文件顺序", () => {
-    const db = open_database("legacy-assets.lg");
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-schema-migration-"),
+    );
+    using db = new DatabaseSync(path.join(temp_dir.path, "legacy-assets.lg"));
     db.exec(`
       CREATE TABLE assets (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,7 +53,7 @@ describe("ProjectSchemaMigration", () => {
       "INSERT INTO assets (path, data, original_size, compressed_size) VALUES (?, ?, ?, ?)",
     ).run("a.txt", Buffer.from("a"), 1, 1);
 
-    ProjectSchemaMigration.run(db);
+    run_project_schema_migration(db);
 
     expect(
       db
@@ -77,15 +66,6 @@ describe("ProjectSchemaMigration", () => {
     ]);
   });
 });
-
-/**
- * schema 测试使用真实 SQLite 文件，覆盖 PRAGMA table_info 和 ALTER TABLE 行为。
- */
-function open_database(name: string): DatabaseSync {
-  const db = new DatabaseSync(path.join(temp_dir, name));
-  databases.push(db);
-  return db;
-}
 
 /**
  * 读取 sqlite_master 只用于断言 schema 迁移产生的公开表集合。

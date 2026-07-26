@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   are_item_name_fields_equal,
-  has_item_name_text,
   read_optional_item_name_text,
   read_item_name_text,
   resolve_export_item_name,
@@ -21,8 +20,6 @@ describe("item-name", () => {
   it("按第 0 槽是否为空读取可见姓名", () => {
     expect(read_optional_item_name_text("Alice")).toBe("Alice");
     expect(read_optional_item_name_text("")).toBeNull();
-    expect(has_item_name_text(["Alice", "Bob"])).toBe(true);
-    expect(has_item_name_text(["", "Bob"])).toBe(false);
   });
 
   it("只写入数组第 0 槽并保留后续槽位", () => {

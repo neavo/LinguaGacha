@@ -4,13 +4,13 @@ import { JsonTool } from "../../../shared/utils/json-tool";
 import { decode_text_content } from "../../../shared/utils/text-tool";
 import type { ApiJsonValue } from "../../api/api-types";
 import {
-  effective_export_text,
   group_items,
   write_text_file,
   type ExportPaths,
   type FileFormatServiceConfig,
 } from "./file-format-shared";
-import { Item, read_json_record } from "../../../domain/item";
+import { Item } from "../../../domain/item";
+import { read_json_record } from "../../../domain/json";
 import { resolve_export_item_name } from "../../../shared/item-name";
 
 /**
@@ -64,7 +64,7 @@ export class MESSAGEJSONFormat {
       const data = group
         .sort((left, right) => left.row - right.row)
         .map((item) => {
-          const message = effective_export_text(item);
+          const message = item.effective_dst();
           const name = resolve_export_item_name({
             name_src: item.name_src,
             name_dst: item.name_dst,

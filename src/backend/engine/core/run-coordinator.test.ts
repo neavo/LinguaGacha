@@ -4,6 +4,19 @@ import type { TaskRunPublisher } from "../run/task-run-publisher";
 import { RunCoordinator } from "./run-coordinator";
 
 describe("RunCoordinator", () => {
+  it("同一时间只允许一个后台任务占用", async () => {
+    const coordinator = new RunCoordinator({
+      publish_status: async () => undefined,
+    } as unknown as TaskRunPublisher);
+    const first = coordinator.begin("translation");
+
+    expect(() => coordinator.begin("analysis")).toThrow("task.busy");
+    expect(coordinator.is_current(first.run_id)).toBe(true);
+
+    await coordinator.finish(first, "done");
+    expect(() => coordinator.begin("analysis")).not.toThrow();
+  });
+
   it("停止请求未命中当前 run 时不发布 stopping", async () => {
     const published_statuses: PublishedStatus[] = [];
     const coordinator = new RunCoordinator({

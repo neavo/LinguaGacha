@@ -15,6 +15,7 @@ import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
 import { resolve_app_locale } from "../../../../domain/app-language";
 import { format_i18n_message, type LocaleKey } from "../../../../shared/i18n";
 import { normalize_setting_snapshot } from "../../../../domain/setting";
+import { is_json_record, read_json_record } from "../../../../domain/json";
 import type { LogError } from "../../../../shared/error";
 
 /**
@@ -24,8 +25,8 @@ interface AnalysisWorkUnitRequest {
   run_id: string; // 用于隔离一次任务运行，worker 不用它访问项目状态
   work_unit_id: string; // chunk 级诊断键，迟到响应和日志都围绕它定位
   task_type: "analysis"; // 保留 TaskEngine 语义，便于日志与错误回传分类
-  model: ApiJsonValue; // / config_snapshot 均来自任务启动快照，避免执行中读取可变全局配置
-  config_snapshot: ApiJsonValue;
+  model: ApiJsonValue; // 任务启动时冻结的模型快照
+  config_snapshot: ApiJsonValue; // 任务启动时冻结的应用设置
   quality_snapshot: ApiJsonValue; // 文本后处理与提示词构造的唯一质量规则输入
   context: ApiJsonValue; // 包含分析 chunk 所需候选、语言和术语上下文，worker 只消费快照输入
 }
@@ -36,8 +37,8 @@ interface AnalysisWorkUnitRequest {
 interface AnalysisWorkUnitResult {
   success: boolean; // 分析解码出了可提交候选或合法空结果
   stopped: boolean; // 主动取消，TaskEngine 不应把它当作失败重试
-  input_tokens: number; // token 计数与翻译结果同源，用于任务统计
-  output_tokens: number;
+  input_tokens: number; // 请求输入 token，用于任务统计
+  output_tokens: number; // 请求输出 token，与输入量分别累计
   glossary_entries: Array<Record<string, ApiJsonValue>>; // 已归一的候选池输入，checkpoint 仍由 TaskEngine 生成
   logs?: WorkUnitLogEntry[]; // 只承载诊断文本，不包含可变业务对象
 }
@@ -58,7 +59,7 @@ export class AnalysisWorkUnitRunner {
   }
 
   /**
-   * 执行分析 unit；checkpoint 状态由 TaskDefinition / Engine 根据 output 生成
+   * 执行分析 unit；checkpoint 状态由 Engine 根据 output 生成
    */
   public async execute_unit(
     unit: AnalysisWorkUnit,
@@ -333,20 +334,14 @@ export class AnalysisWorkUnitRunner {
    * 上游 context 是 JSON，worker 在边界处归一成只读值对象
    */
   private read_context(value: ApiJsonValue | undefined): AnalysisTaskContext {
-    const record =
-      typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
+    const record = read_json_record(value);
     const items_value = record["items"];
     const items: AnalysisItemContext[] = Array.isArray(items_value)
-      ? items_value
-          .filter(
-            (item): item is Record<string, ApiJsonValue> =>
-              typeof item === "object" && item !== null && !Array.isArray(item),
-          )
-          .map((item) => ({
-            item_id: this.read_number(item["item_id"], 0),
-            file_path: String(item["file_path"] ?? ""),
-            src_text: String(item["src_text"] ?? ""),
-          }))
+      ? items_value.filter(is_json_record).map((item) => ({
+          item_id: this.read_number(item["item_id"], 0),
+          file_path: String(item["file_path"] ?? ""),
+          src_text: String(item["src_text"] ?? ""),
+        }))
       : [];
     return {
       file_path: String(record["file_path"] ?? ""),

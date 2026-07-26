@@ -118,9 +118,11 @@ export class TextFakenameInjector {
    * 构造时收集整批文本控制码，保证同一批次映射稳定
    */
   public constructor(source_texts: readonly string[]) {
-    const control_codes = this.collect_control_codes(source_texts);
-    for (const [index, control_code] of control_codes.entries()) {
-      const fake_name = this.build_fake_name(index);
+    const control_codes = new Set(
+      source_texts.flatMap((text) => text.match(CONTROL_CODE_PATTERN) ?? []),
+    );
+    for (const [index, control_code] of [...control_codes].entries()) {
+      const fake_name = DEFAULT_FAKE_NAMES[index] ?? `伪名${String(index + 1).padStart(4, "0")}`;
       this.source_to_fake_name.set(control_code, fake_name);
       this.fake_name_to_source.set(fake_name, control_code);
     }
@@ -144,8 +146,14 @@ export class TextFakenameInjector {
    * 术语候选入池前还原伪名；纯控制码自映射单独放行
    */
   public restore_glossary_entry(src: string, dst: string): [string, string] | null {
-    const [restored_src, injected] = this.restore_text(src);
-    if (!injected) {
+    if (this.fake_name_pattern === null || src === "") {
+      return [src, dst];
+    }
+    const restored_src = src.replace(
+      this.fake_name_pattern,
+      (match) => this.fake_name_to_source.get(match) ?? match,
+    );
+    if (restored_src === src) {
       return [src, dst];
     }
     if (!TextFakenameInjector.is_control_code_text(restored_src)) {
@@ -175,9 +183,7 @@ export class TextFakenameInjector {
     if (normalized_text === "") {
       return false;
     }
-    CONTROL_CODE_PATTERN.lastIndex = 0;
     const matched = normalized_text.match(CONTROL_CODE_PATTERN);
-    CONTROL_CODE_PATTERN.lastIndex = 0;
     return matched?.length === 1 && matched[0] === normalized_text;
   }
 
@@ -185,54 +191,9 @@ export class TextFakenameInjector {
    * 单条文本注入伪名，未命中时原样返回
    */
   private inject_text(source_text: string): string {
-    CONTROL_CODE_PATTERN.lastIndex = 0;
-    const result = source_text.replace(
+    return source_text.replace(
       CONTROL_CODE_PATTERN,
       (match) => this.source_to_fake_name.get(match) ?? match,
     );
-    CONTROL_CODE_PATTERN.lastIndex = 0;
-    return result;
-  }
-
-  /**
-   * 按首次出现顺序去重收集控制码
-   */
-  private collect_control_codes(source_texts: readonly string[]): string[] {
-    const result: string[] = [];
-    const seen = new Set<string>();
-    for (const source_text of source_texts) {
-      CONTROL_CODE_PATTERN.lastIndex = 0;
-      for (const match of source_text.matchAll(CONTROL_CODE_PATTERN)) {
-        const control_code = match[0] ?? "";
-        if (seen.has(control_code)) {
-          continue;
-        }
-        seen.add(control_code);
-        result.push(control_code);
-      }
-    }
-    CONTROL_CODE_PATTERN.lastIndex = 0;
-    return result;
-  }
-
-  /**
-   * 默认伪名不够时用固定编号扩展，避免回退到原控制码
-   */
-  private build_fake_name(index: number): string {
-    return DEFAULT_FAKE_NAMES[index] ?? `伪名${String(index + 1).padStart(4, "0")}`;
-  }
-
-  /**
-   * 还原候选术语里的伪名，并返回是否发生替换
-   */
-  private restore_text(text: string): [string, boolean] {
-    if (this.fake_name_pattern === null || text === "") {
-      return [text, false];
-    }
-    const restored = text.replace(
-      this.fake_name_pattern,
-      (match) => this.fake_name_to_source.get(match) ?? match,
-    );
-    return [restored, restored !== text];
   }
 }

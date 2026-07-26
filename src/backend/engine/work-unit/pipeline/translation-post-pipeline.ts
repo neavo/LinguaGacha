@@ -4,10 +4,7 @@ import { HangeulFixer } from "../../../../shared/fixer/hangeul-fixer";
 import { KanaFixer } from "../../../../shared/fixer/kana-fixer";
 import { NumberFixer } from "../../../../shared/fixer/number-fixer";
 import { PunctuationFixer } from "../../../../shared/fixer/punctuation-fixer";
-import {
-  build_text_preserve_rule,
-  type TextPreserveRule,
-} from "../../../../shared/text/text-preserve-rules";
+import { build_text_preserve_rule } from "../../../../shared/text/text-preserve-rules";
 import { apply_text_replacements } from "../../../../shared/text/text-replacement-rules";
 import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shared/text/text-types";
 import {
@@ -22,16 +19,16 @@ import type { TranslationPrePipelineContext } from "./translation-pre-pipeline";
  * 译后 pipeline 的公开产物，name_dst 只有 actor/text 模式参与写回。
  */
 export interface TranslationPostPipelineResult {
-  dst: string;
-  name_dst?: TranslationActor;
+  dst: string; // 恢复格式后的最终正文
+  name_dst?: TranslationActor; // actor/text 模式下独立写回的姓名译文
 }
 
 /**
  * 翻译译后 pipeline，负责校正模型输出并按译前上下文重建 item 文本
  */
 export class TranslationPostPipeline {
-  private readonly config: TextProcessingConfig;
-  private readonly quality_snapshot: TextQualitySnapshot;
+  private readonly config: TextProcessingConfig; // 自动修复与语言策略的任务启动快照
+  private readonly quality_snapshot: TextQualitySnapshot; // 与译前处理同轮的保护和替换规则
 
   /**
    * 绑定配置快照和质量快照，确保译后修复与译前规则使用同一批快照
@@ -116,7 +113,17 @@ export class TranslationPostPipeline {
     } else if (this.config.source_language === "KO") {
       result = HangeulFixer.fix(result);
     }
-    result = CodeFixer.fix(src, result, this.get_re_sample(context));
+    // 代码修复必须复用译前 SAMPLE 规则，否则控制码收集与写回校验会使用两套口径。
+    result = CodeFixer.fix(
+      src,
+      result,
+      build_text_preserve_rule({
+        mode: this.quality_snapshot.text_preserve_mode,
+        text_type: String(context.item?.text_type ?? "TXT").toUpperCase(),
+        entries: this.quality_snapshot.text_preserve_entries,
+        kind: "sample",
+      }),
+    );
     result = EscapeFixer.fix(src, result);
     result = NumberFixer.fix(src, result);
     result = PunctuationFixer.fix(
@@ -136,24 +143,5 @@ export class TranslationPostPipeline {
       return dst;
     }
     return apply_text_replacements(dst, this.quality_snapshot.post_replacement_entries);
-  }
-
-  /**
-   * 样例规则用于代码修复，必须和译前样例收集使用同一条规则
-   */
-  private get_re_sample(context: TranslationPrePipelineContext): TextPreserveRule | null {
-    return build_text_preserve_rule({
-      mode: this.quality_snapshot.text_preserve_mode,
-      text_type: this.read_text_type(context),
-      entries: this.quality_snapshot.text_preserve_entries,
-      kind: "sample",
-    });
-  }
-
-  /**
-   * item 文本类型缺失时按 TXT 处理，避免代码修复读取空规则
-   */
-  private read_text_type(context: TranslationPrePipelineContext): string {
-    return String(context.item?.text_type ?? "TXT").toUpperCase();
   }
 }

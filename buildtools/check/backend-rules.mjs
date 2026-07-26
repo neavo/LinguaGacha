@@ -8,7 +8,7 @@ import {
 } from "./core.mjs";
 
 const API_GATEWAY_RELATIVE_PATH = "src/backend/api/api-gateway-server.ts";
-const API_ROUTES_RELATIVE_PREFIX = "src/backend/api/routes/";
+const API_ROUTES_RELATIVE_PATH = "src/backend/api/api-routes.ts";
 const NATIVE_FS_RELATIVE_PATH = "src/native/native-fs.ts";
 const APP_ERROR_RELATIVE_PATH = "src/shared/error/app-error.ts";
 
@@ -39,7 +39,7 @@ function create_api_registration_boundary_rule() {
             content,
             /\bapp\.(?:get|post|put|delete|all)\s*\(\s*["']\/api\//g,
             () => {
-              return "/api/* 路由只能在 api-gateway-server.ts 或 api/routes 注册";
+              return "/api/* 路由只能在 api-gateway-server.ts 或 api-routes.ts 注册";
             },
           );
           errors.push(...matches.map((match) => ({ ...match, relative_path })));
@@ -169,10 +169,7 @@ function is_backend_production_source(file_path) {
 }
 
 function is_api_registration_path(relative_path) {
-  return (
-    relative_path === API_GATEWAY_RELATIVE_PATH ||
-    relative_path.startsWith(API_ROUTES_RELATIVE_PREFIX)
-  );
+  return relative_path === API_GATEWAY_RELATIVE_PATH || relative_path === API_ROUTES_RELATIVE_PATH;
 }
 
 function is_database_or_migration_path(relative_path) {

@@ -1,8 +1,7 @@
+import path from "node:path";
+
 import { decode_text_content } from "../../../shared/utils/text-tool";
 import {
-  effective_export_text,
-  build_bilingual_path,
-  build_target_path,
   group_items,
   split_text_lines_for_items,
   write_text_file,
@@ -68,7 +67,7 @@ export class SRTFormat {
       for (const item of group) {
         const row = String(item.row);
         const time_code = String(item.extra_field ?? "");
-        const item_dst = effective_export_text(item);
+        const item_dst = item.effective_dst();
         translated += `${row}\n${time_code}\n${item_dst}\n\n`;
         const content =
           this.config.deduplication_in_bilingual && item.src === item_dst
@@ -76,11 +75,8 @@ export class SRTFormat {
             : `${item.src}\n${item_dst}`;
         bilingual += `${row}\n${time_code}\n${content}\n\n`;
       }
-      await write_text_file(
-        build_target_path(this.config, paths.translated_path, rel_path),
-        translated,
-      );
-      await write_text_file(build_bilingual_path(paths.bilingual_path, rel_path), bilingual);
+      await write_text_file(path.join(paths.translated_path, rel_path), translated);
+      await write_text_file(path.join(paths.bilingual_path, rel_path), bilingual);
     }
   }
 }

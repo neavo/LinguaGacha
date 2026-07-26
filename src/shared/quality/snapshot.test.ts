@@ -51,23 +51,6 @@ describe("quality rule snapshot", () => {
     expect(snapshot.analysis_prompt_revision).toBe(5);
   });
 
-  it("get_glossary_entries 返回快照副本", () => {
-    const snapshot = QualityRuleSnapshotTool.from_json({
-      quality: {
-        glossary: {
-          enabled: true,
-          entries: [{ src: "HP", dst: "生命值" }],
-        },
-      },
-    });
-
-    const entries = QualityRuleSnapshotTool.get_glossary_entries(snapshot);
-
-    expect(entries).toEqual([{ src: "HP", dst: "生命值" }]);
-    snapshot.glossary_entries.push({ src: "MP", dst: "魔力" });
-    expect(entries).toEqual([{ src: "HP", dst: "生命值" }]);
-  });
-
   it("缺少质量规则 meta 时使用统一领域默认值", () => {
     const snapshot = QualityRuleSnapshotTool.from_json({
       quality: {

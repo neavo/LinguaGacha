@@ -2,26 +2,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { FileFormatService } from "../file/file-format-service";
 import { SourceFileParsePipeline } from "./source-file-parse-pipeline";
 
-let temp_dir = "";
-
-beforeEach(() => {
-  temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-source-file-pipeline-"));
-});
-
-afterEach(() => {
-  fs.rmSync(temp_dir, { recursive: true, force: true });
-});
-
 function create_format_service(): FileFormatService {
   return new FileFormatService({
-    source_language: "JA",
     target_language: "ZH",
-    app_language: "ZH",
     deduplication_in_bilingual: true,
     write_translated_name_fields_to_file: true,
   });
@@ -29,9 +17,12 @@ function create_format_service(): FileFormatService {
 
 describe("SourceFileParsePipeline", () => {
   it("新建工程草稿跳过不支持格式，并保留支持格式解析失败明细", async () => {
-    const source_file = path.join(temp_dir, "script.txt");
-    const broken_json = path.join(temp_dir, "broken.json");
-    const ignored_file = path.join(temp_dir, "noise.bin");
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-source-file-pipeline-"),
+    );
+    const source_file = path.join(temp_dir.path, "script.txt");
+    const broken_json = path.join(temp_dir.path, "broken.json");
+    const ignored_file = path.join(temp_dir.path, "noise.bin");
     fs.writeFileSync(source_file, "原文", "utf-8");
     fs.writeFileSync(broken_json, "{", "utf-8");
     fs.writeFileSync(ignored_file, "noise", "utf-8");
@@ -74,7 +65,10 @@ describe("SourceFileParsePipeline", () => {
   });
 
   it("工作台导入命令只按调用方目标路径解析，不重新推导相对路径", async () => {
-    const source_file = path.join(temp_dir, "script.txt");
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-source-file-pipeline-"),
+    );
+    const source_file = path.join(temp_dir.path, "script.txt");
     fs.writeFileSync(source_file, "原文", "utf-8");
     const pipeline = new SourceFileParsePipeline(create_format_service());
 
@@ -97,5 +91,30 @@ describe("SourceFileParsePipeline", () => {
         ],
       }),
     ]);
+  });
+
+  it("工作台替换预览沿用旧相对目录", async () => {
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-source-file-pipeline-"),
+    );
+    const source_file = path.join(temp_dir.path, "new.txt");
+    fs.writeFileSync(source_file, "新文本", "utf-8");
+    const pipeline = new SourceFileParsePipeline(create_format_service());
+
+    await expect(
+      pipeline.parse_workbench_preview({
+        source_paths: [source_file],
+        current_rel_path: "old/path/original.txt",
+      }),
+    ).resolves.toEqual({
+      files: [
+        expect.objectContaining({
+          source_path: source_file,
+          target_rel_path: path.join("old/path", "new.txt"),
+          file_type: "TXT",
+        }),
+      ],
+      failed_files: [],
+    });
   });
 });

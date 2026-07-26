@@ -36,7 +36,7 @@ export type CacheFileEntry = {
  */
 export interface CacheReadPort {
   readonly items: {
-    readItems(query?: { filePath?: string }): CacheItem[];
+    readItems(): CacheItem[];
     readItem(itemId: number): CacheItem | null;
   };
   readonly files: {

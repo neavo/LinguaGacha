@@ -1,6 +1,6 @@
 import * as React from "react";
 
-import { cn } from "@frontend/styling/classnames";
+import { cn } from "@frontend/shadcn/classnames";
 
 function Input({ className, spellCheck = false, type, ...props }: React.ComponentProps<"input">) {
   return (
