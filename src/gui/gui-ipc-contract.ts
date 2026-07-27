@@ -1,4 +1,5 @@
 import type {
+  DesktopPathPickIpcRequest,
   DesktopPathPickResult,
   DesktopRendererDiagnosticsPayload,
   DesktopUpdateDownloadIpcRequest,
@@ -54,57 +55,11 @@ export const IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS = "update:download-progress";
  * 集中维护当前模块的稳定常量。
  */
 export const IPC_CHANNEL_UPDATE_LAUNCH_BERSERKER = "update:launch-berserker";
-// IPC CHANNEL PICK PROJECT SOURCE FILE PATH 是 main/preload/renderer 共享 IPC 通道名，必须集中维护避免拼写漂移。
+// 所有原生路径选择共用一个判别联合请求，避免 main / preload 为每种用途复制通道。
 /**
  * 集中维护当前模块的稳定常量。
  */
-export const IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH = "dialog:pick-project-source-file-path";
-// IPC CHANNEL PICK PROJECT SOURCE DIRECTORY PATH 是 main/preload/renderer 共享 IPC 通道名，必须集中维护避免拼写漂移。
-/**
- * 集中维护当前模块的稳定常量。
- */
-export const IPC_CHANNEL_PICK_PROJECT_SOURCE_DIRECTORY_PATH =
-  "dialog:pick-project-source-directory-path";
-// IPC CHANNEL PICK PROJECT FILE PATH 是 main/preload/renderer 共享 IPC 通道名，必须集中维护避免拼写漂移。
-/**
- * 集中维护当前模块的稳定常量。
- */
-export const IPC_CHANNEL_PICK_PROJECT_FILE_PATH = "dialog:pick-project-file-path";
-// IPC CHANNEL PICK PROJECT SAVE PATH 是 main/preload/renderer 共享 IPC 通道名，必须集中维护避免拼写漂移。
-/**
- * 集中维护当前模块的稳定常量。
- */
-export const IPC_CHANNEL_PICK_PROJECT_SAVE_PATH = "dialog:pick-project-save-path";
-// IPC CHANNEL PICK WORKBENCH FILE PATH 是 main/preload/renderer 共享 IPC 通道名，必须集中维护避免拼写漂移。
-/**
- * 集中维护当前模块的稳定常量。
- */
-export const IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH = "dialog:pick-workbench-file-path";
-// IPC CHANNEL PICK FIXED PROJECT DIRECTORY 是 main/preload/renderer 共享 IPC 通道名，必须集中维护避免拼写漂移。
-/**
- * 集中维护当前模块的稳定常量。
- */
-export const IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY = "dialog:pick-fixed-project-directory";
-// IPC CHANNEL PICK GLOSSARY IMPORT FILE PATH 是 main/preload/renderer 共享 IPC 通道名，必须集中维护避免拼写漂移。
-/**
- * 集中维护当前模块的稳定常量。
- */
-export const IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH = "dialog:pick-glossary-import-file-path";
-// IPC CHANNEL PICK GLOSSARY EXPORT PATH 是 main/preload/renderer 共享 IPC 通道名，必须集中维护避免拼写漂移。
-/**
- * 集中维护当前模块的稳定常量。
- */
-export const IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH = "dialog:pick-glossary-export-path";
-// IPC CHANNEL PICK PROMPT IMPORT FILE PATH 是 main/preload/renderer 共享 IPC 通道名，必须集中维护避免拼写漂移。
-/**
- * 集中维护当前模块的稳定常量。
- */
-export const IPC_CHANNEL_PICK_PROMPT_IMPORT_FILE_PATH = "dialog:pick-prompt-import-file-path";
-// IPC CHANNEL PICK PROMPT EXPORT FILE PATH 是 main/preload/renderer 共享 IPC 通道名，必须集中维护避免拼写漂移。
-/**
- * 集中维护当前模块的稳定常量。
- */
-export const IPC_CHANNEL_PICK_PROMPT_EXPORT_FILE_PATH = "dialog:pick-prompt-export-file-path";
+export const IPC_CHANNEL_PICK_PATH = "dialog:pick-path";
 
 // invoke 型 IPC 的参数和返回值集中在契约层，避免 main / preload 各写一份隐式形状
 export type DesktopIpcInvokeContract = {
@@ -128,44 +83,8 @@ export type DesktopIpcInvokeContract = {
     args: [request: DesktopUpdateLaunchRequest];
     result: DesktopUpdateLaunchResult;
   };
-  [IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH]: {
-    args: [];
-    result: DesktopPathPickResult;
-  };
-  [IPC_CHANNEL_PICK_PROJECT_SOURCE_DIRECTORY_PATH]: {
-    args: [];
-    result: DesktopPathPickResult;
-  };
-  [IPC_CHANNEL_PICK_PROJECT_FILE_PATH]: {
-    args: [];
-    result: DesktopPathPickResult;
-  };
-  [IPC_CHANNEL_PICK_PROJECT_SAVE_PATH]: {
-    args: [default_name: string];
-    result: DesktopPathPickResult;
-  };
-  [IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH]: {
-    args: [];
-    result: DesktopPathPickResult;
-  };
-  [IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY]: {
-    args: [default_path?: string];
-    result: DesktopPathPickResult;
-  };
-  [IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH]: {
-    args: [];
-    result: DesktopPathPickResult;
-  };
-  [IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH]: {
-    args: [default_name: string];
-    result: DesktopPathPickResult;
-  };
-  [IPC_CHANNEL_PICK_PROMPT_IMPORT_FILE_PATH]: {
-    args: [];
-    result: DesktopPathPickResult;
-  };
-  [IPC_CHANNEL_PICK_PROMPT_EXPORT_FILE_PATH]: {
-    args: [];
+  [IPC_CHANNEL_PICK_PATH]: {
+    args: [request: DesktopPathPickIpcRequest];
     result: DesktopPathPickResult;
   };
 };

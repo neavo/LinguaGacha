@@ -1,18 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
+import path from "node:path";
 
 import {
   IPC_CHANNEL_OPEN_EXTERNAL_URL,
   IPC_CHANNEL_OPEN_LOG_WINDOW,
-  IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY,
-  IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH,
-  IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH,
-  IPC_CHANNEL_PICK_PROJECT_FILE_PATH,
-  IPC_CHANNEL_PICK_PROJECT_SAVE_PATH,
-  IPC_CHANNEL_PICK_PROJECT_SOURCE_DIRECTORY_PATH,
-  IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH,
-  IPC_CHANNEL_PICK_PROMPT_EXPORT_FILE_PATH,
-  IPC_CHANNEL_PICK_PROMPT_IMPORT_FILE_PATH,
-  IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH,
+  IPC_CHANNEL_PICK_PATH,
   IPC_CHANNEL_QUIT_APP,
   IPC_CHANNEL_RENDERER_DIAGNOSTICS,
   IPC_CHANNEL_TITLE_BAR_THEME,
@@ -22,6 +14,7 @@ import {
 } from "../gui-ipc-contract";
 import { resolve_external_url } from "./external-url-policy";
 import {
+  type DesktopPathPickIpcRequest,
   type DesktopPathPickResult,
   type DesktopRendererDiagnosticsPayload,
   type DesktopUpdateDownloadIpcRequest,
@@ -108,91 +101,8 @@ export function register_desktop_ipc_handlers(options: DesktopIpcHandlerOptions)
     },
   );
 
-  // 新建项目源文件允许多选，具体格式校验留给 Backend / renderer 流程
-  ipcMain.handle(IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH, async () => {
-    return pick_open_path(options.getMainWindow(), {
-      properties: ["openFile", "multiSelections"],
-    });
-  });
-
-  // 新建项目源目录只选择目录，保持文件和目录入口在 UI 上可区分
-  ipcMain.handle(IPC_CHANNEL_PICK_PROJECT_SOURCE_DIRECTORY_PATH, async () => {
-    return pick_open_path(options.getMainWindow(), {
-      properties: ["openDirectory"],
-    });
-  });
-
-  // 打开已有项目只允许选择 .lg 文件
-  ipcMain.handle(IPC_CHANNEL_PICK_PROJECT_FILE_PATH, async () => {
-    const t = create_dialog_text_resolver(options);
-    return pick_open_path(options.getMainWindow(), {
-      properties: ["openFile"],
-      filters: build_project_file_filters(t),
-    });
-  });
-
-  // 保存项目时沿用 .lg 文件过滤器，默认文件名由 renderer 按项目语义生成
-  ipcMain.handle(IPC_CHANNEL_PICK_PROJECT_SAVE_PATH, async (_event, default_name: string) => {
-    return pick_save_path(
-      options.getMainWindow(),
-      default_name,
-      build_project_file_filters(create_dialog_text_resolver(options)),
-    );
-  });
-
-  // 工作台追加文件允许多选，后续去重和解析由项目流程处理
-  ipcMain.handle(IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH, async () => {
-    return pick_open_path(options.getMainWindow(), {
-      properties: ["openFile", "multiSelections"],
-    });
-  });
-
-  // 固定工程目录允许创建目录，便于用户直接在选择器里补齐目标位置
-  ipcMain.handle(
-    IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY,
-    async (_event, default_path?: string) => {
-      return pick_open_path(options.getMainWindow(), {
-        defaultPath:
-          typeof default_path === "string" && default_path !== "" ? default_path : undefined,
-        properties: ["openDirectory", "createDirectory"],
-      });
-    },
-  );
-
-  // 术语导入只选择单个结构化文件，批量合并语义不放在原生选择层
-  ipcMain.handle(IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH, async () => {
-    const t = create_dialog_text_resolver(options);
-    return pick_open_path(options.getMainWindow(), {
-      properties: ["openFile"],
-      filters: build_glossary_import_file_filters(t),
-    });
-  });
-
-  // 术语导出通过保存对话框决定路径，实际序列化格式由后续流程根据后缀处理
-  ipcMain.handle(IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH, async (_event, default_name: string) => {
-    return pick_save_path(
-      options.getMainWindow(),
-      default_name,
-      build_glossary_export_file_filters(create_dialog_text_resolver(options)),
-    );
-  });
-
-  // Prompt 导入只读纯文本文件，避免主进程承担格式转换
-  ipcMain.handle(IPC_CHANNEL_PICK_PROMPT_IMPORT_FILE_PATH, async () => {
-    const t = create_dialog_text_resolver(options);
-    return pick_open_path(options.getMainWindow(), {
-      properties: ["openFile"],
-      filters: build_prompt_file_filters(t),
-    });
-  });
-
-  // Prompt 导出不预设文件名，由 renderer 或系统保存面板提供最终命名
-  ipcMain.handle(IPC_CHANNEL_PICK_PROMPT_EXPORT_FILE_PATH, async () => {
-    return pick_save_path(
-      options.getMainWindow(),
-      "",
-      build_prompt_file_filters(create_dialog_text_resolver(options)),
-    );
+  ipcMain.handle(IPC_CHANNEL_PICK_PATH, async (_event, request: DesktopPathPickIpcRequest) => {
+    return pick_path(options, request);
   });
 }
 
@@ -260,16 +170,91 @@ function build_prompt_file_filters(t: TextResolver): Electron.FileFilter[] {
 }
 
 /**
+ * 把 renderer 的路径选择意图集中翻译为 Electron 原生对话框参数。
+ */
+async function pick_path(
+  options: DesktopIpcHandlerOptions,
+  request: DesktopPathPickIpcRequest,
+): Promise<DesktopPathPickResult> {
+  const main_window = options.getMainWindow();
+  switch (request.kind) {
+    case "project-source-files":
+      return pick_open_path(main_window, request.default_directory, {
+        properties: ["openFile", "multiSelections"],
+      });
+    case "project-source-directory":
+      return pick_open_path(main_window, request.default_directory, {
+        properties: ["openDirectory"],
+      });
+    case "project-file":
+      return pick_open_path(main_window, request.default_directory, {
+        properties: ["openFile"],
+        filters: build_project_file_filters(create_dialog_text_resolver(options)),
+      });
+    case "project-save":
+      return pick_save_path(
+        main_window,
+        request.default_directory,
+        request.default_name,
+        build_project_file_filters(create_dialog_text_resolver(options)),
+      );
+    case "workbench-files":
+      return pick_open_path(main_window, request.default_directory, {
+        properties: ["openFile", "multiSelections"],
+      });
+    case "fixed-project-directory":
+      return pick_open_path(
+        main_window,
+        typeof request.default_path === "string" && request.default_path !== ""
+          ? request.default_path
+          : request.default_directory,
+        { properties: ["openDirectory", "createDirectory"] },
+      );
+    case "glossary-import":
+      return pick_open_path(main_window, request.default_directory, {
+        properties: ["openFile"],
+        filters: build_glossary_import_file_filters(create_dialog_text_resolver(options)),
+      });
+    case "glossary-export":
+      return pick_save_path(
+        main_window,
+        request.default_directory,
+        request.default_name,
+        build_glossary_export_file_filters(create_dialog_text_resolver(options)),
+      );
+    case "prompt-import":
+      return pick_open_path(main_window, request.default_directory, {
+        properties: ["openFile"],
+        filters: build_prompt_file_filters(create_dialog_text_resolver(options)),
+      });
+    case "prompt-export":
+      return pick_save_path(
+        main_window,
+        request.default_directory,
+        "",
+        build_prompt_file_filters(create_dialog_text_resolver(options)),
+      );
+    default:
+      throw new TypeError("Unsupported desktop path picker kind.");
+  }
+}
+
+/**
  * 打开文件或目录选择框，统一返回 preload 能安全传递的轻量结果对象
  */
 async function pick_open_path(
   main_window: BrowserWindow | null,
+  default_path: string | null,
   options: Electron.OpenDialogOptions,
 ): Promise<DesktopPathPickResult> {
+  const dialog_options =
+    default_path === null || default_path === ""
+      ? options
+      : { ...options, defaultPath: default_path };
   const result =
     main_window === null
-      ? await dialog.showOpenDialog(options)
-      : await dialog.showOpenDialog(main_window, options);
+      ? await dialog.showOpenDialog(dialog_options)
+      : await dialog.showOpenDialog(main_window, dialog_options);
   return {
     canceled: result.canceled || result.filePaths.length === 0,
     paths: result.filePaths,
@@ -281,13 +266,17 @@ async function pick_open_path(
  */
 async function pick_save_path(
   main_window: BrowserWindow | null,
+  default_directory: string | null,
   default_name: string,
   filters: Electron.FileFilter[],
 ): Promise<DesktopPathPickResult> {
   const dialog_options: Electron.SaveDialogOptions = {
     filters,
   };
-  if (default_name !== "") {
+  if (default_directory !== null && default_directory !== "") {
+    dialog_options.defaultPath =
+      default_name === "" ? default_directory : path.join(default_directory, default_name);
+  } else if (default_name !== "") {
     dialog_options.defaultPath = default_name;
   }
   const result =

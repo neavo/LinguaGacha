@@ -1,6 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import {
+  IPC_CHANNEL_PICK_PATH,
   IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS,
   IPC_CHANNEL_UPDATE_DOWNLOAD_RELEASE,
   IPC_CHANNEL_UPDATE_LAUNCH_BERSERKER,
@@ -8,6 +9,8 @@ import {
   type DesktopIpcSendContract,
 } from "./gui-ipc-contract";
 import type {
+  DesktopPathPickIpcRequest,
+  DesktopPathPickResult,
   DesktopUpdateDownloadIpcRequest,
   DesktopUpdateDownloadProgress,
   DesktopUpdateDownloadResult,
@@ -39,6 +42,14 @@ describe("gui-ipc-contract", () => {
       DesktopIpcSendContract[typeof IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS]
     >().toEqualTypeOf<{
       args: [progress: DesktopUpdateDownloadProgress];
+    }>();
+  });
+
+  it("所有原生路径选择共用一个强类型 invoke 契约", () => {
+    expect(IPC_CHANNEL_PICK_PATH).toBe("dialog:pick-path");
+    expectTypeOf<DesktopIpcInvokeContract[typeof IPC_CHANNEL_PICK_PATH]>().toEqualTypeOf<{
+      args: [request: DesktopPathPickIpcRequest];
+      result: DesktopPathPickResult;
     }>();
   });
 });
