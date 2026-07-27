@@ -31,7 +31,7 @@
 - 未被上述覆盖的模型、并发、预过滤和导出相关设置沿用当前应用设置，CLI 不是全量配置隔离环境。
 - 显式资源经正常项目写链进入临时工程，任务使用写入后的 section revision 启动。
 - `translate` 启动全量翻译后复用译文导出服务；`analyze` 启动全量分析后从候选池导出术语文件。
-- job 只订阅同进程 `ApiStreamHub` 的 `task.snapshot_changed` 等待终态，不建立轮询或第二套任务生命周期。
+- job 通过 `TaskService.subscribe` 订阅同进程完整任务快照并等待终态，不依赖 API stream、轮询或第二套任务生命周期。
 
 ## 4. 输出协议
 

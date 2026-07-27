@@ -1,4 +1,4 @@
-import type { ProjectDataRecord } from "../project/project-data";
+import type { JsonRecord } from "../../domain/json";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
 
 /**
@@ -20,7 +20,7 @@ export type CacheSnapshot = {
 /**
  * CacheItem 保持数据库 item 行的普通 JSON 形状。
  */
-export type CacheItem = ProjectDataRecord;
+export type CacheItem = JsonRecord;
 
 /**
  * CacheFileEntry 是前端和校对列表需要的轻量文件事实。
@@ -43,13 +43,13 @@ export interface CacheReadPort {
     readFileEntries(): CacheFileEntry[];
   };
   readonly quality: {
-    readBlock(): ProjectDataRecord;
+    readBlock(): JsonRecord;
   };
   readonly prompts: {
-    readBlock(): ProjectDataRecord;
+    readBlock(): JsonRecord;
   };
   readonly analysis: {
-    readBlock(): ProjectDataRecord;
+    readBlock(): JsonRecord;
   };
   readSectionRevisions(): ProjectDataSectionRevisions;
   snapshot(): CacheSnapshot;

@@ -1,5 +1,5 @@
 import { has_cjk_language_character } from "../../domain/language";
-import type { TextJsonRecord } from "./text-types";
+import type { JsonRecord } from "../../domain/json";
 export { normalize_text_preserve_mode, type TextPreserveMode } from "../../domain/quality";
 import { normalize_text_preserve_mode } from "../../domain/quality";
 
@@ -264,9 +264,7 @@ function compile_text_preserve_pattern_definition(
   }
 }
 
-function create_custom_pattern_definitions(
-  entries: TextJsonRecord[],
-): TextPreservePatternDefinition[] {
+function create_custom_pattern_definitions(entries: JsonRecord[]): TextPreservePatternDefinition[] {
   return entries
     .map((entry) => entry["src"])
     .filter((src): src is string => typeof src === "string")
@@ -283,7 +281,7 @@ function create_custom_pattern_definitions(
 function resolve_text_preserve_pattern_definitions(args: {
   mode: string;
   text_type: string;
-  entries: TextJsonRecord[];
+  entries: JsonRecord[];
 }): TextPreservePatternDefinition[] {
   const mode = normalize_text_preserve_mode(args.mode);
   if (mode === "off") {
@@ -307,7 +305,7 @@ function resolve_text_preserve_pattern_definitions(args: {
 export function build_text_preserve_rule(args: {
   mode: string;
   text_type: string;
-  entries: TextJsonRecord[];
+  entries: JsonRecord[];
   kind: TextPreserveRuleKind;
 }): TextPreserveRule | null {
   const definitions = resolve_text_preserve_pattern_definitions(args);

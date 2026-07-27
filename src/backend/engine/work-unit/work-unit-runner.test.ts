@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ApiJsonValue } from "../../api/api-types";
+import type { JsonRecord } from "../../../domain/json";
 import type { LLMRequestBody, LLMClientPort, LLMRequestResult } from "../../llm/llm-types";
 import { AnalysisWorkUnitRunner } from "./runners/analysis-runner";
 import { TranslationWorkUnitRunner } from "./runners/translation-runner";
@@ -434,9 +434,7 @@ function create_llm_client(
 /**
  * 生成 work unit 使用的最小配置快照，用例通过 overrides 调整单点行为
  */
-function create_config_payload(
-  overrides: Record<string, ApiJsonValue> = {},
-): Record<string, ApiJsonValue> {
+function create_config_payload(overrides: JsonRecord = {}): JsonRecord {
   return {
     app_language: "ZH",
     source_language: "JA",
@@ -450,7 +448,7 @@ function create_config_payload(
 /**
  * 生成默认关闭质量规则的运行态 payload，避免无关规则影响 runner 断言
  */
-function create_quality_payload(): Record<string, ApiJsonValue> {
+function create_quality_payload(): JsonRecord {
   return {
     quality: {
       glossary: { enabled: false, entries: [] },

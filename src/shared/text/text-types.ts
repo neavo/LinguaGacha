@@ -1,14 +1,6 @@
-import { QualityRuleSnapshotTool } from "../quality/snapshot";
+import { QualityRuleSnapshotTool } from "../quality/quality-rule-snapshot";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
-
-// 文本处理层只接受可序列化 JSON 值，避免 worker 与主线程共享可变对象实例
-type TextJsonValue = JsonValue;
-
-/**
- * worker 侧可消费的普通 JSON 对象，避免把数据库对象引用传入 worker
- */
-export type TextJsonRecord = JsonRecord;
 
 /**
  * 文本处理只依赖的配置字段，字段名保持配置快照兼容
@@ -25,13 +17,13 @@ export interface TextProcessingConfig {
  */
 export interface TextQualitySnapshot {
   glossary_enable: boolean; // glossary 与 replacement 规则均为运行时快照，worker 不回读数据库
-  glossary_entries: TextJsonRecord[];
+  glossary_entries: JsonRecord[];
   text_preserve_mode: string;
-  text_preserve_entries: TextJsonRecord[];
+  text_preserve_entries: JsonRecord[];
   pre_replacement_enable: boolean;
-  pre_replacement_entries: TextJsonRecord[];
+  pre_replacement_entries: JsonRecord[];
   post_replacement_enable: boolean;
-  post_replacement_entries: TextJsonRecord[];
+  post_replacement_entries: JsonRecord[];
   translation_prompt_enable: boolean; // prompt 字段来自提示词设置页，PromptBuilder 负责与资源模板合并
   translation_prompt: string;
   analysis_prompt_enable: boolean;
@@ -41,7 +33,7 @@ export interface TextQualitySnapshot {
 /**
  * 任务 item 的最小形状，runner 只按这些字段读写翻译事实
  */
-export type TextTaskItemRecord = TextJsonRecord & {
+export type TextTaskItemRecord = JsonRecord & {
   id?: number; // id/item_id 同时兼容数据库行和前端运行态条目
   item_id?: number;
   src?: string; // src/dst/status 是翻译提交的核心事实，其余字段只辅助处理
@@ -52,7 +44,7 @@ export type TextTaskItemRecord = TextJsonRecord & {
   text_type?: string; // 决定保护规则分支，retry_count 用于任务调度诊断
   retry_count?: number;
   skip_internal_filter?: boolean; // 强制翻译条目绕过规则/语言类内部过滤
-  extra_field?: TextJsonValue; // 保留格式处理器回写所需的结构化上下文
+  extra_field?: JsonValue; // 保留格式处理器回写所需的结构化上下文
 };
 
 /**
@@ -62,7 +54,7 @@ export class TextQualitySnapshotTool {
   /**
    * 从 API JSON 恢复成不可变值对象；缺失字段按质量规则领域默认值处理
    */
-  public static from_api_value(value: TextJsonValue | undefined): TextQualitySnapshot {
+  public static from_api_value(value: JsonValue | undefined): TextQualitySnapshot {
     const snapshot = QualityRuleSnapshotTool.from_json(value);
     return {
       glossary_enable: snapshot.glossary_enable,
@@ -88,7 +80,7 @@ export class TextProcessingConfigTool {
   /**
    * 从完整 config 快照抽取文本处理配置，缺失时使用设置领域默认值
    */
-  public static from_api_value(value: TextJsonValue | undefined): TextProcessingConfig {
+  public static from_api_value(value: JsonValue | undefined): TextProcessingConfig {
     const snapshot = normalize_setting_snapshot(value);
     return {
       source_language: snapshot.source_language,

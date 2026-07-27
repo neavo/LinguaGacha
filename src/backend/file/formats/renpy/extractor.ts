@@ -1,5 +1,5 @@
-import type { ApiJsonValue } from "../../../api/api-types";
 import { Item } from "../../../../domain/item";
+import type { JsonValue } from "../../../../domain/json";
 import { is_translatable_text, looks_like_resource_path, sha1_hex } from "./lexer";
 import {
   find_character_name_lit_index,
@@ -174,7 +174,7 @@ export class RenpyExtractor {
     template_stmt: RenpyStatementNode,
     target_stmt: RenpyStatementNode,
     slots: RenpySlot[],
-  ): ApiJsonValue {
+  ): JsonValue {
     return {
       renpy: {
         v: RENPY_EXTRA_VERSION,

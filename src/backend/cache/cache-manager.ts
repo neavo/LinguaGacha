@@ -1,18 +1,40 @@
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
-import { ProjectDataReader } from "../project/project-data";
+import { ProjectDataReader } from "../project/project-data-reader";
 import type { ProjectEvent } from "../project/project-events";
 import type { BackendWorkerClient } from "../worker/worker-client";
+import type { JsonRecord } from "../../domain/json";
 import { createProofreadingListReader } from "../../shared/proofreading/proofreading-list-reader";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
 import { create_cache_change, type CacheChange } from "./cache-change";
 import type { CacheFreshness, CacheReadPort, CacheSnapshot } from "./cache-types";
-import { FileCache } from "./file/file-cache";
-import { ItemCache } from "./item/item-cache";
-import { ProjectDataBlockCache } from "./project-data-block-cache";
-import { ProofreadingCache } from "./proofreading/proofreading-cache";
-import { QualityStatisticsCache } from "./quality/quality-statistics-cache";
+import { FileCache } from "./file-cache";
+import { ItemCache } from "./item-cache";
+import { ProofreadingCache } from "./proofreading-cache";
+import { QualityStatisticsCache } from "./quality-statistics-cache";
+
+/**
+ * CacheManager 内部的小型数据块缓存；只隔离顶层对象，嵌套 JSON 按不可变值使用。
+ */
+class ProjectDataBlockCache {
+  private block: JsonRecord = {};
+
+  public constructor(private readonly before_read: () => void) {}
+
+  public replace(block: JsonRecord): void {
+    this.block = { ...block };
+  }
+
+  public clear(): void {
+    this.block = {};
+  }
+
+  public readBlock(): JsonRecord {
+    this.before_read();
+    return { ...this.block };
+  }
+}
 
 /**
  * CacheManager 是 loaded project 的 session 热读缓存组合根。

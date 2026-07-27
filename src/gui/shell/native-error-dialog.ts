@@ -8,12 +8,12 @@ export function show_native_error_dialog(title: string, message: string): void {
 }
 
 /**
- * fatal 退出路径使用容错提示，原生弹窗失败不能覆盖原始崩溃原因。
+ * 退出路径使用容错提示，原生弹窗失败不能覆盖原始错误或阻断资源关闭。
  */
 export function try_show_native_error_dialog(title: string, message: string): void {
   try {
     show_native_error_dialog(title, message);
   } catch {
-    // fatal 兜底已经处于退出路径，原生对话框失败不能覆盖原始崩溃原因。
+    // 调用方已经处于退出路径，原生对话框失败不能覆盖原始错误或阻断资源关闭。
   }
 }

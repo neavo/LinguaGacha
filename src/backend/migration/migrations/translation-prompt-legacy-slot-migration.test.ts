@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { JsonRecord } from "../../../domain/json";
 import type { ProjectDatabase } from "../../database/database-operations";
-import type { DatabaseJsonValue } from "../../database/database-types";
 import type { AppSettingService } from "../../app/app-setting-service";
 import type { ProjectOpenMigrationContext } from "../migration-types";
 import { translation_prompt_legacy_slot_migration } from "./translation-prompt-legacy-slot-migration";
@@ -82,8 +82,8 @@ describe("translation_prompt_legacy_slot_migration", () => {
  * 翻译提示词迁移需要同时模拟 meta、当前槽位、旧槽位和应用语言。
  */
 function create_context(options: {
-  meta?: Record<string, DatabaseJsonValue>;
-  config?: Record<string, DatabaseJsonValue>;
+  meta?: JsonRecord;
+  config?: JsonRecord;
   rule_text?: Record<string, string>;
 }) {
   const database = {

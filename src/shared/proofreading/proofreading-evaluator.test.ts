@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { buildQualityCompiledContext } from "../quality/compiled";
-import type { QualitySnapshot } from "../quality/snapshot";
+import { buildQualityCompiledContext } from "../quality/quality-rule-compiled-context";
+import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
 import { evaluateProofreadingItem } from "./proofreading-evaluator";
 import type { ItemNameField } from "../../domain/item";
 

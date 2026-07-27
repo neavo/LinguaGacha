@@ -2,7 +2,7 @@ import { StrictMode, act, useEffect, useMemo, useRef } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { QualitySnapshot } from "@shared/quality/snapshot";
+import type { QualitySnapshot } from "@shared/quality/quality-rule-snapshot";
 import {
   DesktopStateProvider,
   normalize_settings_snapshot,

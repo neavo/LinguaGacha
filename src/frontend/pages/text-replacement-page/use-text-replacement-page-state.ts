@@ -12,7 +12,7 @@ import {
   type ProjectSessionUiStateKey,
 } from "@frontend/app/session/project-session-ui-state-context";
 import { useDebouncedCallback } from "@frontend/widgets/interactions/use-debounce";
-import { buildProofreadingLookupQuery } from "@shared/quality/state";
+import { buildProofreadingLookupQuery } from "@shared/quality/quality-rule-proofreading-query";
 import {
   read_quality_rule,
   read_quality_rule_section_revisions,
@@ -97,7 +97,7 @@ import type {
 import {
   QualityRuleImportRuleTypeValue,
   type QualityRuleImportRuleType,
-} from "@shared/quality/importer";
+} from "@shared/quality/quality-rule-import";
 
 type TextReplacementPresetPayload = {
   builtin_presets: TextReplacementPresetItem[];

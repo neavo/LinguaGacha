@@ -1,6 +1,5 @@
 import {
   APP_ERROR_DEFINITIONS,
-  type ApiJsonValue,
   type AppError,
   type AppErrorActionKey,
   type AppErrorCode,
@@ -8,6 +7,7 @@ import {
   type AppErrorMessageKey,
   type AppErrorPublicDetails,
 } from "./app-error";
+import type { JsonValue } from "../../domain/json";
 import type { TextResolver } from "../i18n";
 
 export interface ApiErrorPayload {
@@ -27,7 +27,7 @@ export type ApiErrorEnvelope = {
 
 export type ApiSuccessEnvelope = {
   ok: true;
-  data: ApiJsonValue;
+  data: JsonValue;
 };
 
 export type ApiEnvelope = ApiSuccessEnvelope | ApiErrorEnvelope;
@@ -65,7 +65,7 @@ function public_details_to_i18n_params(details: AppErrorPublicDetails): Record<s
   );
 }
 
-function api_json_to_string(value: ApiJsonValue): string {
+function api_json_to_string(value: JsonValue): string {
   if (value === null) {
     return "";
   }

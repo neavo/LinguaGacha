@@ -48,7 +48,7 @@ function handle_main_fatal_error(
   },
 ): void {
   if (is_fatal_handling) {
-    process.stderr.write(`[fatal] duplicate ${args.kind}: ${format_unknown_reason(reason)}\n`);
+    try_write_fatal_stderr(`[fatal] duplicate ${args.kind}: ${format_unknown_reason(reason)}\n`);
     process.exit(1);
   }
   is_fatal_handling = true;
@@ -61,15 +61,21 @@ function handle_main_fatal_error(
   };
   const log_manager = get_electron_main_log_manager();
   if (log_manager === null) {
-    process.stderr.write(`[fatal] ${args.kind}: ${format_unknown_reason(reason)}\n`);
+    try_write_fatal_stderr(`[fatal] ${args.kind}: ${format_unknown_reason(reason)}\n`);
   } else {
-    record_app_error(error, {
-      logManager: log_manager,
-      message: t_main_log("app.diagnostic.lifecycle.main_fatal_uncaught"),
-      source: "electron-main",
-      context,
-      fatal: true,
-    });
+    try {
+      record_app_error(error, {
+        logManager: log_manager,
+        message: t_main_log("app.diagnostic.lifecycle.main_fatal_uncaught"),
+        source: "electron-main",
+        context,
+        fatal: true,
+      });
+    } catch (diagnostic_error) {
+      try_write_fatal_stderr(
+        `[fatal] ${args.kind}: ${format_unknown_reason(reason)}\n[fatal] diagnostic: ${format_unknown_reason(diagnostic_error)}\n`,
+      );
+    }
   }
 
   try_show_native_error_dialog("LinguaGacha 已遇到致命错误", "已写入诊断日志，应用将退出。");
@@ -77,6 +83,17 @@ function handle_main_fatal_error(
   void args.options.quitAfterBackendShutdown(1).catch(() => {
     process.exit(1);
   });
+}
+
+/**
+ * fatal 诊断只能尽力写 stderr，输出失败也不能阻断 Backend 关闭入口。
+ */
+function try_write_fatal_stderr(text: string): void {
+  try {
+    process.stderr.write(text);
+  } catch {
+    // fatal 路径没有更低层的可靠日志目标，继续进入统一关闭比再次抛错更重要。
+  }
 }
 
 function format_unknown_reason(reason: unknown): string {

@@ -2,12 +2,6 @@ import type { ItemNameField, ItemStatus } from "../domain/item";
 import type { JsonRecord, JsonValue } from "../domain/json";
 import type { SourceFileParseFailureRecord } from "./source-file-parse-failure";
 
-// 公开项目变更事件只能承载严格 JSON 值，避免跨进程传递可变对象或特殊类型
-type ProjectChangeJsonValue = JsonValue;
-
-// 事件内部的对象块统一用 JSON record 表示，调用方必须先在边界收窄
-export type ProjectChangeJsonRecord = JsonRecord;
-
 // section 顺序同时约束 manifest、项目变更和 renderer 初始化刷新顺序
 export const PROJECT_DATA_SECTIONS = [
   "project",
@@ -39,7 +33,7 @@ export type ProjectChangeItemFieldPatch = {
 // items 支持 canonical upsert、field-patch 和 tombstone 删除三种行级表达
 export type ProjectChangeItemsPayload = {
   payloadMode: ProjectChangePayloadMode;
-  upsert?: Record<string, ProjectChangeJsonRecord>;
+  upsert?: Record<string, JsonRecord>;
   fieldPatch?: ProjectChangeItemFieldPatch;
   changedIds?: number[];
   deleteIds?: number[];
@@ -48,7 +42,7 @@ export type ProjectChangeItemsPayload = {
 // files 以相对路径为稳定 key，删除必须显式走 deletePaths tombstone
 export type ProjectChangeFilesPayload = {
   payloadMode: ProjectChangePayloadMode;
-  upsert?: Record<string, ProjectChangeJsonRecord>;
+  upsert?: Record<string, JsonRecord>;
   changedPaths?: string[];
   deletePaths?: string[];
 };
@@ -56,7 +50,7 @@ export type ProjectChangeFilesPayload = {
 // section canonical-delta 携带后端规范 data；analysis 高频事件可只携带轻量进度块
 export type ProjectChangeSectionPayload = {
   payloadMode: ProjectChangePayloadMode;
-  data?: ProjectChangeJsonValue;
+  data?: JsonValue;
 };
 
 // ApiStreamHub 对 renderer 公开的项目数据变更载荷

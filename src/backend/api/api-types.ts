@@ -1,19 +1,13 @@
-import type { ApiErrorPayload, ApiJsonValue, ApiSuccessEnvelope } from "../../shared/error";
+import type { JsonValue } from "../../domain/json";
+import type { ApiErrorEnvelope, ApiSuccessEnvelope } from "../../shared/error";
 
-export type { ApiJsonValue, ApiSuccessEnvelope } from "../../shared/error";
-
-export interface ApiErrorEnvelope {
-  ok: false;
-  error: ApiErrorPayload;
-}
-
-export type ApiEnvelope = ApiSuccessEnvelope | ApiErrorEnvelope;
+export type { ApiEnvelope, ApiErrorEnvelope, ApiSuccessEnvelope } from "../../shared/error";
 
 export interface ApiGatewayStartResult {
   baseUrl: string;
 }
 
-export function ok(data: ApiJsonValue): ApiSuccessEnvelope {
+export function ok(data: JsonValue): ApiSuccessEnvelope {
   return { ok: true, data };
 }
 

@@ -56,6 +56,18 @@ export type TaskStartMode = (typeof TASK_START_MODES)[number];
 export type TaskIdleStatus = (typeof TASK_IDLE_STATUSES)[number];
 export type TaskProgressStatus = (typeof TASK_PROGRESS_STATUSES)[number];
 
+export type TaskProgressSnapshot = {
+  start_time: number; // 秒级任务启动时间戳
+  time: number; // 由 start_time 计算的累计耗时秒数
+  total_line: number; // 任务启动时冻结的目标行数
+  line: number; // 已成功与最终失败行数之和
+  processed_line: number; // 已成功提交的行数
+  error_line: number; // 最终失败的行数
+  total_tokens: number; // 输入与输出 token 总量
+  total_input_tokens: number; // work unit 汇总的输入 token
+  total_output_tokens: number; // work unit 汇总的输出 token
+};
+
 export type TranslationScope =
   | { kind: "all" } // all 表示普通翻译读取当前工程可运行全集
   | { kind: "items"; item_ids: number[] }; // items 表示重翻等窄域翻译，只能携带不可变 id 列表
@@ -127,6 +139,34 @@ export function is_active_analysis_task_status(value: unknown): boolean {
 /** normalize_task_type 只用于读取侧兜底，不承担命令校验职责 */
 export function normalize_task_type(value: unknown, fallback: TaskType = "translation"): TaskType {
   return is_task_type(value) ? value : fallback;
+}
+
+/** 任务进度只保留固定数值字段；坏值、负数和非有限数统一归零。 */
+export function normalize_task_progress_snapshot(value: unknown): TaskProgressSnapshot {
+  const record =
+    typeof value === "object" && value !== null && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : {};
+  return {
+    start_time: read_non_negative_number(record["start_time"]),
+    time: read_non_negative_number(record["time"]),
+    total_line: read_non_negative_integer(record["total_line"]),
+    line: read_non_negative_integer(record["line"]),
+    processed_line: read_non_negative_integer(record["processed_line"]),
+    error_line: read_non_negative_integer(record["error_line"]),
+    total_tokens: read_non_negative_integer(record["total_tokens"]),
+    total_input_tokens: read_non_negative_integer(record["total_input_tokens"]),
+    total_output_tokens: read_non_negative_integer(record["total_output_tokens"]),
+  };
+}
+
+function read_non_negative_number(value: unknown): number {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+}
+
+function read_non_negative_integer(value: unknown): number {
+  return Math.trunc(read_non_negative_number(value));
 }
 
 function normalize_translation_item_ids(value: unknown): number[] {

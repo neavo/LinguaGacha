@@ -102,8 +102,16 @@ export class PlanningWorkerPool {
         slot.task = null;
       }
     }
-    await Promise.allSettled(this.slots.map((slot) => slot.worker.terminate()));
+    const terminate_results = await Promise.allSettled(
+      this.slots.map((slot) => slot.worker.terminate()),
+    );
     this.slots.length = 0;
+    const terminate_errors = terminate_results
+      .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+      .map((result) => result.reason);
+    if (terminate_errors.length > 0) {
+      throw new AggregateError(terminate_errors, "PlanningWorkerPool worker 终止失败");
+    }
   }
 
   /**

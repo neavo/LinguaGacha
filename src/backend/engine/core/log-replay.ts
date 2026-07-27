@@ -1,7 +1,7 @@
 import type { LogManager } from "../../log/log-manager";
-import type { MutableJsonRecord } from "../run/task-run-types";
 import type { WorkUnitLogEntry } from "../protocol/work-unit";
 import { resolve_app_locale } from "../../../domain/app-language";
+import type { MutableJsonRecord } from "../../../domain/json";
 import { format_i18n_message, type LocaleKey } from "../../../shared/i18n";
 
 export type ReplayLogEntry = WorkUnitLogEntry;

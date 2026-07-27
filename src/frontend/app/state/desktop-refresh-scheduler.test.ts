@@ -12,7 +12,7 @@ describe("DesktopRefreshScheduler", () => {
     vi.useRealTimers();
   });
 
-  it("同一窗口内只应用最后一份 task snapshot", async () => {
+  it("同一窗口内旧 task snapshot 后到也只应用最高 revision", async () => {
     vi.useFakeTimers();
     const applied_tasks: TaskSnapshot[] = [];
     const scheduler = new DesktopRefreshScheduler({
@@ -23,8 +23,8 @@ describe("DesktopRefreshScheduler", () => {
       onFlushError: noop_flush_error_handler,
     });
 
-    scheduler.enqueue_task_snapshot(create_task_snapshot(1));
     scheduler.enqueue_task_snapshot(create_task_snapshot(2));
+    scheduler.enqueue_task_snapshot(create_task_snapshot(1));
 
     await vi.advanceTimersByTimeAsync(DESKTOP_RUNTIME_REFRESH_INTERVAL_MS - 1);
     expect(applied_tasks).toEqual([]);

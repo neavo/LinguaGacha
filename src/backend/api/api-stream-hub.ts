@@ -1,12 +1,10 @@
-import type { ApiJsonValue } from "./api-types";
+import type { JsonRecord } from "../../domain/json";
 import { JsonTool } from "../../shared/utils/json-tool";
 
 const KEEPALIVE_INTERVAL_MS = 500; // 公开 API stream keepalive 仍由服务端发出，renderer 不需要感知上游是否短暂重连
 
 // 公开 SSE data 的 JSON 对象形状，所有 topic 共享同一窄边界
-export type ApiStreamPayload = Record<string, ApiJsonValue>;
-
-export type ApiStreamListener = (payload: ApiStreamPayload) => void;
+export type ApiStreamPayload = JsonRecord;
 
 interface HubSubscriber {
   enqueue: (text: string) => void; // 单个 SSE 连接的写入口
@@ -14,12 +12,10 @@ interface HubSubscriber {
 }
 
 /**
- * 公开 API stream hub，负责同进程 topic 订阅与 `/api/events/stream` SSE 连接
+ * 公开 API stream hub，只负责 `/api/events/stream` 的 SSE 连接与广播。
  */
 export class ApiStreamHub {
   private readonly subscribers = new Set<HubSubscriber>(); // 只保存当前公开 SSE 连接的写入口，断连清理由订阅者内部完成
-
-  private readonly local_subscribers = new Map<string, Set<ApiStreamListener>>(); // 让 CLI 等同进程入口复用公开 stream 事实源
 
   /**
    * Gateway 停止时主动中断订阅者，避免测试或重启泄漏长连接
@@ -29,37 +25,13 @@ export class ApiStreamHub {
       subscriber.close();
     }
     this.subscribers.clear();
-    this.local_subscribers.clear();
   }
 
   /**
    * 发布公开运行期 stream 消息；领域状态必须在调用方写好，hub 只负责广播
    */
   public publish(topic: string, payload: ApiStreamPayload): void {
-    this.dispatch_local_message(topic, payload);
     this.broadcast(this.build_sse_frame(topic, payload));
-  }
-
-  /**
-   * 订阅同进程公开 stream；订阅者只接收指定 topic，取消函数必须由调用方在任务结束时执行。
-   */
-  public subscribe(topic: string, listener: ApiStreamListener): () => void {
-    let listeners = this.local_subscribers.get(topic);
-    if (listeners === undefined) {
-      listeners = new Set<ApiStreamListener>();
-      this.local_subscribers.set(topic, listeners);
-    }
-    listeners.add(listener);
-    return () => {
-      const current_listeners = this.local_subscribers.get(topic);
-      if (current_listeners === undefined) {
-        return;
-      }
-      current_listeners.delete(listener);
-      if (current_listeners.size === 0) {
-        this.local_subscribers.delete(topic);
-      }
-    };
   }
 
   /**
@@ -136,19 +108,6 @@ export class ApiStreamHub {
   private broadcast(frame: string): void {
     for (const subscriber of this.subscribers) {
       subscriber.enqueue(frame);
-    }
-  }
-
-  /**
-   * 本地订阅者使用公开 stream message，不允许反向接触领域对象；复制 Set 避免取消订阅影响本轮派发。
-   */
-  private dispatch_local_message(topic: string, payload: ApiStreamPayload): void {
-    const listeners = this.local_subscribers.get(topic);
-    if (listeners === undefined) {
-      return;
-    }
-    for (const listener of Array.from(listeners)) {
-      listener(payload);
     }
   }
 

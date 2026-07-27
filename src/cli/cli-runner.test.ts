@@ -74,12 +74,36 @@ describe("run_cli_command", () => {
     expect(harness.calls.stderr_lines).toEqual(["检查到系统代理设置 - http://127.0.0.1:7890"]);
     expect(harness.calls.stdout_lines).toEqual([]);
   });
+
+  it("CLI job 与 Backend 收尾同时失败时保留两个异常和原始顺序", async () => {
+    const job_failure = new Error("job failed");
+    const stop_failure = new Error("stop failed");
+    const harness = create_runner_harness(
+      {},
+      { jobFailure: job_failure, stopFailure: stop_failure },
+    );
+    const { run_cli_command } = await import("./cli-runner");
+    let command_error: unknown;
+
+    try {
+      await run_cli_command("E:/App", create_translate_command(), { kind: "in_process" });
+    } catch (error) {
+      command_error = error;
+    }
+
+    expect(harness.calls.events).toEqual(["ready", "bootstrap", "start", "job", "stop"]);
+    expect(command_error).toBeInstanceOf(AggregateError);
+    expect((command_error as AggregateError).errors).toEqual([job_failure, stop_failure]);
+  });
 });
 
 /**
  * 搭建 CLI runner 测试夹具，用假的 Electron、BackendBootstrap 和 job 观察入口编排。
  */
-function create_runner_harness(options: Partial<BackendBootstrapStartResult> = {}): {
+function create_runner_harness(
+  options: Partial<BackendBootstrapStartResult> = {},
+  failures: { jobFailure?: Error; stopFailure?: Error } = {},
+): {
   backend_services: FakeBackendServices;
   calls: {
     backend_bootstrap_options: BackendBootstrapOptions[];
@@ -133,6 +157,9 @@ function create_runner_harness(options: Partial<BackendBootstrapStartResult> = {
      */
     public async stop(): Promise<void> {
       calls.events.push("stop");
+      if (failures.stopFailure !== undefined) {
+        throw failures.stopFailure;
+      }
     }
   }
 
@@ -169,6 +196,9 @@ function create_runner_harness(options: Partial<BackendBootstrapStartResult> = {
       ) => {
         calls.events.push("job");
         calls.run_cli_jobs.push({ backendServices, command, options });
+        if (failures.jobFailure !== undefined) {
+          throw failures.jobFailure;
+        }
       },
     };
   });

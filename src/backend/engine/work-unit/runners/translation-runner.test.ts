@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 
 import { describe, expect, it, vi } from "vitest";
 
-import type { ApiJsonValue } from "../../../api/api-types";
+import type { JsonRecord } from "../../../../domain/json";
 import { TranslationWorkUnitRunner } from "./translation-runner";
 import type { LLMClientPort, LLMRequestBody, LLMRequestResult } from "../../../llm/llm-types";
 import type { TranslationWorkUnit } from "../../protocol/work-unit";
@@ -351,7 +351,7 @@ describe("TranslationWorkUnitRunner", () => {
 /**
  * 构造 runner 所需配置快照，字段名对齐任务启动载荷。
  */
-function create_config_payload(): Record<string, ApiJsonValue> {
+function create_config_payload(): JsonRecord {
   return {
     app_language: "ZH",
     source_language: "JA",
@@ -364,7 +364,7 @@ function create_config_payload(): Record<string, ApiJsonValue> {
 /**
  * 构造关闭高级规则的质量快照，避免单测依赖真实项目质量设置。
  */
-function create_quality_payload(): Record<string, ApiJsonValue> {
+function create_quality_payload(): JsonRecord {
   return {
     quality: {
       glossary: { enabled: false, entries: [] },
@@ -401,10 +401,10 @@ function create_llm_client(overrides: Partial<LLMRequestResult>): LLMClientPort 
  * 构造单条或多条翻译 work unit，便于测试 retry_count 和 chunk 形状差异。
  */
 function create_translation_unit(args: {
-  model: Record<string, ApiJsonValue>;
+  model: JsonRecord;
   src?: string;
   retry_count?: number;
-  items?: Array<Record<string, ApiJsonValue>>;
+  items?: Array<JsonRecord>;
 }): TranslationWorkUnit {
   return {
     kind: "translation",

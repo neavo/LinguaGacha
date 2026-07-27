@@ -1,4 +1,4 @@
-import type { ApiJsonValue } from "../../../api/api-types";
+import type { JsonRecord, JsonValue } from "../../../../domain/json";
 import { TextQualitySnapshotTool } from "../../../../shared/text/text-types";
 import { AnalysisPostPipeline } from "../pipeline/analysis-post-pipeline";
 import {
@@ -25,10 +25,10 @@ interface AnalysisWorkUnitRequest {
   run_id: string; // 用于隔离一次任务运行，worker 不用它访问项目状态
   work_unit_id: string; // chunk 级诊断键，迟到响应和日志都围绕它定位
   task_type: "analysis"; // 保留 TaskEngine 语义，便于日志与错误回传分类
-  model: ApiJsonValue; // 任务启动时冻结的模型快照
-  config_snapshot: ApiJsonValue; // 任务启动时冻结的应用设置
-  quality_snapshot: ApiJsonValue; // 文本后处理与提示词构造的唯一质量规则输入
-  context: ApiJsonValue; // 包含分析 chunk 所需候选、语言和术语上下文，worker 只消费快照输入
+  model: JsonValue; // 任务启动时冻结的模型快照
+  config_snapshot: JsonValue; // 任务启动时冻结的应用设置
+  quality_snapshot: JsonValue; // 文本后处理与提示词构造的唯一质量规则输入
+  context: JsonValue; // 包含分析 chunk 所需候选、语言和术语上下文，worker 只消费快照输入
 }
 
 /**
@@ -39,7 +39,7 @@ interface AnalysisWorkUnitResult {
   stopped: boolean; // 主动取消，TaskEngine 不应把它当作失败重试
   input_tokens: number; // 请求输入 token，用于任务统计
   output_tokens: number; // 请求输出 token，与输入量分别累计
-  glossary_entries: Array<Record<string, ApiJsonValue>>; // 已归一的候选池输入，checkpoint 仍由 TaskEngine 生成
+  glossary_entries: Array<JsonRecord>; // 已归一的候选池输入，checkpoint 仍由 TaskEngine 生成
   logs?: WorkUnitLogEntry[]; // 只承载诊断文本，不包含可变业务对象
 }
 
@@ -91,7 +91,7 @@ export class AnalysisWorkUnitRunner {
       },
       output: {
         kind: "analysis",
-        glossary_entries: result.glossary_entries as ApiJsonValue,
+        glossary_entries: result.glossary_entries as JsonValue,
         valid_empty_result: result.success && result.glossary_entries.length === 0,
       },
       logs: result.logs ?? [],
@@ -215,7 +215,7 @@ export class AnalysisWorkUnitRunner {
       stopped: false,
       input_tokens: llm_result.input_tokens,
       output_tokens: llm_result.output_tokens,
-      glossary_entries: normalized_entries as Array<Record<string, ApiJsonValue>>,
+      glossary_entries: normalized_entries as Array<JsonRecord>,
       logs: this.build_analysis_logs({
         start_time,
         input_tokens: llm_result.input_tokens,
@@ -239,7 +239,7 @@ export class AnalysisWorkUnitRunner {
     input_tokens: number;
     output_tokens: number;
     srcs: string[];
-    glossary_entries: Array<Record<string, ApiJsonValue>>;
+    glossary_entries: Array<JsonRecord>;
     response_think: string;
     rule_analysis: string;
     status_text: string;
@@ -302,7 +302,7 @@ export class AnalysisWorkUnitRunner {
   /**
    * 术语展示文本统一收口，避免文件日志和控制台展示内容跑偏
    */
-  private build_glossary_log_lines(entries: Array<Record<string, ApiJsonValue>>): string[] {
+  private build_glossary_log_lines(entries: Array<JsonRecord>): string[] {
     const rows: string[] = [];
     for (const entry of entries) {
       const src = String(entry["src"] ?? "").trim();
@@ -319,7 +319,7 @@ export class AnalysisWorkUnitRunner {
   /**
    * 日志本地化只读取任务启动快照，保证同一分析 chunk 文案稳定。
    */
-  private read_app_language(config_snapshot: ApiJsonValue): unknown {
+  private read_app_language(config_snapshot: JsonValue): unknown {
     return normalize_setting_snapshot(config_snapshot).app_language;
   }
 
@@ -333,7 +333,7 @@ export class AnalysisWorkUnitRunner {
   /**
    * 上游 context 是 JSON，worker 在边界处归一成只读值对象
    */
-  private read_context(value: ApiJsonValue | undefined): AnalysisTaskContext {
+  private read_context(value: JsonValue | undefined): AnalysisTaskContext {
     const record = read_json_record(value);
     const items_value = record["items"];
     const items: AnalysisItemContext[] = Array.isArray(items_value)
@@ -353,7 +353,7 @@ export class AnalysisWorkUnitRunner {
   /**
    * PromptBuilder 只需要语言字段，缺失时使用默认值
    */
-  private config_to_prompt_config(raw_config: ApiJsonValue): {
+  private config_to_prompt_config(raw_config: JsonValue): {
     app_language?: string;
     source_language?: string;
     target_language?: string;
@@ -369,7 +369,7 @@ export class AnalysisWorkUnitRunner {
   /**
    * 数字读取按整数兜底，避免坏 JSON 打断整个 worker
    */
-  private read_number(value: ApiJsonValue | undefined, fallback: number): number {
+  private read_number(value: JsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }

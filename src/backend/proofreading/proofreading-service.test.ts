@@ -5,10 +5,11 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectDatabase } from "../database/database-operations";
-import type { ApiJsonValue } from "../api/api-types";
+import type { JsonRecord, JsonValue } from "../../domain/json";
 import { ProjectWriteStore } from "../project/project-write-store";
-import { get_section_revision } from "../project/project-data";
-import { ProjectSessionState } from "../project/project-session";
+import { ProjectOperationGate } from "../project/project-operation-gate";
+import { get_section_revision } from "../project/project-data-reader";
+import { ProjectSessionState } from "../project/project-session-state";
 import { ProofreadingService } from "./proofreading-service";
 import type { ProjectChangeEvent } from "../../shared/project-event";
 
@@ -23,14 +24,12 @@ function read_meta(
   database: ProjectDatabase,
   project_path: string,
   key: string,
-  default_value: ApiJsonValue,
-): ApiJsonValue {
-  return (
-    (database.get_all_meta(project_path) as Record<string, ApiJsonValue>)[key] ?? default_value
-  );
+  default_value: JsonValue,
+): JsonValue {
+  return (database.get_all_meta(project_path) as JsonRecord)[key] ?? default_value;
 }
 
-function create_service(): {
+function create_service(task_busy = false): {
   database: ProjectDatabase;
   service: ProofreadingService;
   session_state: ProjectSessionState;
@@ -52,7 +51,12 @@ function create_service(): {
   );
   return {
     database,
-    service: new ProofreadingService(database, session_state, write_store),
+    service: new ProofreadingService(
+      database,
+      new ProjectOperationGate(() => task_busy),
+      session_state,
+      write_store,
+    ),
     session_state,
     lg_path,
     publisher,
@@ -61,11 +65,11 @@ function create_service(): {
 
 function create_test_project_change_publisher(database: ProjectDatabase, lg_path: string) {
   return {
-    publish_project_change: vi.fn((payload: Record<string, ApiJsonValue>): ProjectChangeEvent => {
+    publish_project_change: vi.fn((payload: JsonRecord): ProjectChangeEvent => {
       const updated_sections = Array.isArray(payload.updatedSections)
         ? payload.updatedSections.map((section) => String(section))
         : [];
-      const meta = database.get_all_meta(lg_path) as Record<string, ApiJsonValue>;
+      const meta = database.get_all_meta(lg_path) as JsonRecord;
       const section_revisions = Object.fromEntries(
         updated_sections.map((section) => [section, get_section_revision(meta, section)]),
       );
@@ -88,9 +92,7 @@ function create_test_project_change_publisher(database: ProjectDatabase, lg_path
   };
 }
 
-function create_project_item(
-  overrides: Record<string, ApiJsonValue> = {},
-): Record<string, ApiJsonValue> {
+function create_project_item(overrides: JsonRecord = {}): JsonRecord {
   return {
     id: 1,
     file_path: "a.txt",
@@ -122,6 +124,19 @@ afterEach(() => {
 });
 
 describe("ProofreadingService", () => {
+  it("任务 busy 时拒绝全部人工校对写入口", async () => {
+    const { service } = create_service(true);
+
+    for (const operation of [
+      async () => await service.save_item({}),
+      async () => await service.replace_all({}),
+      async () => await service.clear_translations({}),
+      async () => await service.set_translation_status({}),
+    ]) {
+      await expect(operation()).rejects.toThrow("task.busy");
+    }
+  });
+
   it("保存单条校对结果时只提交命令并由后端计算事实", async () => {
     const { database, service, lg_path, publisher } = create_service();
     database.set_items(lg_path, [
@@ -187,9 +202,6 @@ describe("ProofreadingService", () => {
           status: "PROCESSED",
         },
       },
-      sections: {
-        proofreading: { payloadMode: "canonical-delta" },
-      },
     });
   });
 
@@ -241,9 +253,6 @@ describe("ProofreadingService", () => {
         fieldPatch: {
           name_dst: "新译名",
         },
-      },
-      sections: {
-        proofreading: { payloadMode: "canonical-delta" },
       },
     });
   });
@@ -475,9 +484,6 @@ describe("ProofreadingService", () => {
           name_dst: null,
         },
       },
-      sections: {
-        proofreading: { payloadMode: "canonical-delta" },
-      },
     });
   });
 
@@ -528,7 +534,11 @@ describe("ProofreadingService", () => {
       ],
     });
     expect(database.get_all_items(lg_path)).toEqual([
-      create_project_item({ dst: "保留译文", status: "PROCESSED", retry_count: 0 }),
+      create_project_item({
+        dst: "保留译文",
+        status: "PROCESSED",
+        retry_count: 0,
+      }),
     ]);
     expect(publisher.publish_project_change).toHaveBeenCalledWith({
       projectPath: lg_path,
@@ -541,9 +551,6 @@ describe("ProofreadingService", () => {
           status: "PROCESSED",
           retry_count: 0,
         },
-      },
-      sections: {
-        proofreading: { payloadMode: "canonical-delta" },
       },
     });
   });

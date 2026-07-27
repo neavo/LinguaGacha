@@ -1,5 +1,5 @@
 import type { CLICommandName } from "./cli-parser";
-import type { ApiJsonValue } from "../backend/api/api-types";
+import type { JsonRecord, JsonValue } from "../domain/json";
 import type { TaskRunStatus } from "../domain/task";
 import { JsonTool } from "../shared/utils/json-tool";
 
@@ -23,7 +23,7 @@ export interface CLIJsonStatusReporterOptions {
 
 interface CLIProgressInput {
   status: string;
-  progress: Record<string, ApiJsonValue>;
+  progress: JsonRecord;
 }
 
 /**
@@ -65,7 +65,7 @@ export class CLIJsonStatusReporter {
    * 从任务快照组装四卡片进度；外部 stats 未变化时不重复刷屏。
    */
   public emit_progress(snapshot: CLIProgressInput): void {
-    const stats = build_cli_progress_stats(snapshot.progress as Record<string, ApiJsonValue>);
+    const stats = build_cli_progress_stats(snapshot.progress);
     if (this.last_progress_key === null && is_empty_stats(stats)) {
       return;
     }
@@ -137,7 +137,7 @@ function is_empty_stats(stats: CLIProgressStats): boolean {
 /**
  * 将内部 TaskProgress 转换为稳定四卡片 stats；外部字段不跟随内部 total_line 等命名变化。
  */
-export function build_cli_progress_stats(progress: Record<string, ApiJsonValue>): CLIProgressStats {
+export function build_cli_progress_stats(progress: JsonRecord): CLIProgressStats {
   const total = Math.max(0, read_progress_count(progress["total_line"]));
   const completed = clamp_count(
     read_progress_count(progress["processed_line"]) > 0
@@ -156,7 +156,7 @@ export function build_cli_progress_stats(progress: Record<string, ApiJsonValue>)
 /**
  * 进度计数只接受有限数字并向下取整，避免 NaN 或小数进入外部协议。
  */
-function read_progress_count(value: ApiJsonValue | undefined): number {
+function read_progress_count(value: JsonValue | undefined): number {
   const number_value = Number(value ?? 0);
   return Number.isFinite(number_value) ? Math.floor(number_value) : 0;
 }

@@ -7,11 +7,15 @@ import {
 } from "../migration/migration-orchestrator";
 import { ZstdTool } from "../../shared/utils/zstd-tool";
 import { JsonTool } from "../../shared/utils/json-tool";
-import type { DatabaseJsonValue } from "./database-types";
 import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import { normalize_project_item_field_patch } from "../../shared/project/project-item-field-patch";
-import { read_json_record } from "../../domain/json";
+import {
+  read_json_record,
+  type JsonRecord,
+  type JsonValue,
+  type MutableJsonRecord,
+} from "../../domain/json";
 
 type DatabaseRow = Record<string, unknown>;
 
@@ -33,17 +37,17 @@ const CURRENT_NONE = "NONE";
 /**
  * 将 SQLite 文本列按严格 JSON 协议解析，非文本空值统一为 null。
  */
-function json_parse(raw_value: unknown): DatabaseJsonValue {
+function json_parse(raw_value: unknown): JsonValue {
   if (typeof raw_value !== "string") {
     return null;
   }
-  return JsonTool.parseStrict<DatabaseJsonValue>(raw_value);
+  return JsonTool.parseStrict<JsonValue>(raw_value);
 }
 
 /**
  * 所有 database JSON 写入共享严格序列化策略。
  */
-function json_stringify(value: DatabaseJsonValue): string {
+function json_stringify(value: JsonValue): string {
   return JsonTool.stringifyStrict(value);
 }
 
@@ -92,19 +96,6 @@ function ensure_database_runtime_available(): void {
 }
 
 /**
- * 用独立错误类型标记可恢复的 database 冲突，避免调用方把它当成未知崩溃
- */
-export class DatabaseConflictError extends AppErrors.DatabaseConflictError {
-  /**
-   * 复用 shared AppError 语义，同时保留数据库层可读的类名。
-   */
-  public constructor(message: string) {
-    super({ diagnostic_context: { reason: message } });
-    this.name = "DatabaseConflictError";
-  }
-}
-
-/**
  * Backend 内部 .lg 物理读写入口，集中持有 SQLite、事务和 asset 压缩格式
  */
 export class ProjectDatabase {
@@ -123,8 +114,18 @@ export class ProjectDatabase {
    * 关闭底层资源，确保数据库句柄不会跨工程泄漏
    */
   public close(): void {
-    for (const record of this.connection_records.values()) {
-      this.close_connection_record(record);
+    const records = [...this.connection_records.values()];
+    this.connection_records.clear();
+    const errors: unknown[] = [];
+    for (const record of records) {
+      try {
+        this.close_connection_record(record);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length > 0) {
+      throw new AggregateError(errors, "项目数据库连接关闭失败");
     }
   }
 
@@ -177,34 +178,31 @@ export class ProjectDatabase {
   /**
    * 以下公开 typed 方法只负责 scoped 连接复用；SQL 语义集中在对应私有读写实现。
    */
-  public set_meta(project_path: string, key: string, value: DatabaseJsonValue): void {
+  public set_meta(project_path: string, key: string, value: JsonValue): void {
     this.with_project_connection(project_path, () => this.write_meta(project_path, key, value));
   }
 
-  public upsert_meta_entries(project_path: string, meta: Record<string, DatabaseJsonValue>): void {
+  public upsert_meta_entries(project_path: string, meta: JsonRecord): void {
     this.with_project_connection(project_path, () => this.write_meta_entries(project_path, meta));
   }
 
-  public get_all_meta(project_path: string): DatabaseJsonValue {
+  public get_all_meta(project_path: string): JsonValue {
     return this.with_project_connection(project_path, () => this.read_all_meta(project_path));
   }
 
-  public bump_section_revisions(project_path: string, sections: string[]): DatabaseJsonValue {
+  public bump_section_revisions(project_path: string, sections: string[]): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.advance_section_revisions(project_path, sections),
     );
   }
 
-  public get_analysis_item_checkpoints(project_path: string): DatabaseJsonValue {
+  public get_analysis_item_checkpoints(project_path: string): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_analysis_item_checkpoints(project_path),
     );
   }
 
-  public upsert_analysis_item_checkpoints(
-    project_path: string,
-    checkpoints: DatabaseJsonValue[],
-  ): void {
+  public upsert_analysis_item_checkpoints(project_path: string, checkpoints: JsonValue[]): void {
     this.with_project_connection(project_path, () =>
       this.write_analysis_item_checkpoints(project_path, checkpoints),
     );
@@ -219,7 +217,7 @@ export class ProjectDatabase {
     );
   }
 
-  public get_analysis_candidate_aggregates(project_path: string): DatabaseJsonValue {
+  public get_analysis_candidate_aggregates(project_path: string): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_analysis_candidate_aggregates(project_path),
     );
@@ -228,16 +226,13 @@ export class ProjectDatabase {
   public get_analysis_candidate_aggregates_by_srcs(
     project_path: string,
     srcs: string[],
-  ): DatabaseJsonValue {
+  ): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_analysis_candidate_aggregates_by_srcs(project_path, srcs),
     );
   }
 
-  public upsert_analysis_candidate_aggregates(
-    project_path: string,
-    aggregates: DatabaseJsonValue[],
-  ): void {
+  public upsert_analysis_candidate_aggregates(project_path: string, aggregates: JsonValue[]): void {
     this.with_project_connection(project_path, () =>
       this.write_analysis_candidate_aggregates(project_path, aggregates),
     );
@@ -280,7 +275,7 @@ export class ProjectDatabase {
     this.with_project_connection(project_path, () => this.remove_asset(project_path, asset_path));
   }
 
-  public get_all_asset_records(project_path: string): DatabaseJsonValue {
+  public get_all_asset_records(project_path: string): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_all_asset_records(project_path),
     );
@@ -296,7 +291,7 @@ export class ProjectDatabase {
     );
   }
 
-  public get_all_items(project_path: string): DatabaseJsonValue {
+  public get_all_items(project_path: string): JsonValue {
     return this.with_project_connection(project_path, () => this.read_all_items(project_path));
   }
 
@@ -304,25 +299,25 @@ export class ProjectDatabase {
     return this.with_project_connection(project_path, () => this.read_item_count(project_path));
   }
 
-  public get_item_status_summary(project_path: string): DatabaseJsonValue {
+  public get_item_status_summary(project_path: string): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_item_status_summary(project_path),
     );
   }
 
-  public get_items_by_ids(project_path: string, item_ids: number[]): DatabaseJsonValue {
+  public get_items_by_ids(project_path: string, item_ids: number[]): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_items_by_ids(project_path, item_ids),
     );
   }
 
-  public get_item_write_facts_by_ids(project_path: string, item_ids: number[]): DatabaseJsonValue {
+  public get_item_write_facts_by_ids(project_path: string, item_ids: number[]): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_item_write_facts_by_ids(project_path, item_ids),
     );
   }
 
-  public set_items(project_path: string, items: DatabaseJsonValue[]): number[] {
+  public set_items(project_path: string, items: JsonValue[]): number[] {
     return this.with_project_connection(project_path, () =>
       this.replace_items(project_path, items),
     );
@@ -331,26 +326,26 @@ export class ProjectDatabase {
   public patch_item_fields_by_ids(
     project_path: string,
     item_ids: number[],
-    patch: Record<string, DatabaseJsonValue>,
+    patch: JsonRecord,
   ): void {
     this.with_project_connection(project_path, () =>
       this.write_item_fields_by_ids(project_path, item_ids, patch),
     );
   }
 
-  public patch_item_translation_fields(project_path: string, patches: DatabaseJsonValue[]): void {
+  public patch_item_translation_fields(project_path: string, patches: JsonValue[]): void {
     this.with_project_connection(project_path, () =>
       this.write_item_translation_fields(project_path, patches),
     );
   }
 
-  public get_rules(project_path: string, rule_type: string): DatabaseJsonValue {
+  public get_rules(project_path: string, rule_type: string): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_rules(project_path, rule_type),
     );
   }
 
-  public set_rules(project_path: string, rule_type: string, rules: DatabaseJsonValue[]): void {
+  public set_rules(project_path: string, rule_type: string, rules: JsonValue[]): void {
     this.with_project_connection(project_path, () =>
       this.write_rules(project_path, rule_type, rules),
     );
@@ -368,7 +363,7 @@ export class ProjectDatabase {
     );
   }
 
-  public get_project_summary(project_path: string): DatabaseJsonValue {
+  public get_project_summary(project_path: string): JsonValue {
     return this.with_project_connection(project_path, () =>
       this.read_project_summary(project_path),
     );
@@ -421,11 +416,20 @@ export class ProjectDatabase {
     }
     this.native_fs.make_dir(path.dirname(normalized_path));
     const db = new DatabaseSync(this.native_fs.to_native_path(normalized_path));
-    db.exec("PRAGMA journal_mode=WAL");
-    db.exec("PRAGMA synchronous=NORMAL");
-    db.exec("PRAGMA busy_timeout=5000");
-    // 每次首次打开都先跑 schema/writeback 迁移，让业务读写只面对当前 .lg 物理契约
-    migration_orchestrator.run_project_database_migrations(db);
+    try {
+      db.exec("PRAGMA journal_mode=WAL");
+      db.exec("PRAGMA synchronous=NORMAL");
+      db.exec("PRAGMA busy_timeout=5000");
+      // 每次首次打开都先跑 schema/writeback 迁移，让业务读写只面对当前 .lg 物理契约
+      migration_orchestrator.run_project_database_migrations(db);
+    } catch (open_error) {
+      try {
+        db.close();
+      } catch (close_error) {
+        throw new AggregateError([open_error, close_error], "项目数据库初始化失败且连接关闭失败");
+      }
+      throw open_error;
+    }
     const record: ProjectDatabaseConnectionRecord = {
       normalized_path,
       db,
@@ -496,11 +500,23 @@ export class ProjectDatabase {
       return;
     }
     record.closed = true;
+    this.connection_records.delete(record.normalized_path);
+    const errors: unknown[] = [];
     try {
       record.db.exec("PRAGMA wal_checkpoint(TRUNCATE)");
-    } finally {
+    } catch (error) {
+      errors.push(error);
+    }
+    try {
       record.db.close();
-      this.connection_records.delete(record.normalized_path);
+    } catch (error) {
+      errors.push(error);
+    }
+    if (errors.length === 1) {
+      throw errors[0];
+    }
+    if (errors.length > 1) {
+      throw new AggregateError(errors, "项目数据库单连接关闭失败");
     }
   }
 
@@ -527,11 +543,7 @@ export class ProjectDatabase {
   /**
    * 读取单个 meta 值，保持调用方不直接触碰 SQL
    */
-  private get_meta(
-    project_path: string,
-    key: string,
-    default_value: DatabaseJsonValue,
-  ): DatabaseJsonValue {
+  private get_meta(project_path: string, key: string, default_value: JsonValue): JsonValue {
     const db = this.open_project(project_path);
     const row = db.prepare("SELECT value FROM meta WHERE key = ?").get(key);
     return row === undefined ? default_value : json_parse(row["value"]);
@@ -540,7 +552,7 @@ export class ProjectDatabase {
   /**
    * 写入单个 meta 值，维持 meta 更新的统一序列化方式
    */
-  private write_meta(project_path: string, key: string, value: DatabaseJsonValue): void {
+  private write_meta(project_path: string, key: string, value: JsonValue): void {
     this.upsert_meta_entries(project_path, { [key]: value });
   }
 
@@ -564,9 +576,9 @@ export class ProjectDatabase {
   /**
    * 读取完整 meta 快照，供运行态编码一次性构建事实
    */
-  private read_all_meta(project_path: string): DatabaseJsonValue {
+  private read_all_meta(project_path: string): JsonValue {
     const db = this.open_project(project_path);
-    const result: Record<string, DatabaseJsonValue> = {};
+    const result: MutableJsonRecord = {};
     for (const row of db.prepare("SELECT key, value FROM meta").all()) {
       result[row_text(row, "key")] = json_parse(row["value"]);
     }
@@ -576,7 +588,7 @@ export class ProjectDatabase {
   /**
    * 由内部任务数据路由调用的窄 revision 推进入口；公开读取和 ack 仍由 项目域计算
    */
-  private advance_section_revisions(project_path: string, sections: string[]): DatabaseJsonValue {
+  private advance_section_revisions(project_path: string, sections: string[]): JsonValue {
     const db = this.open_project(project_path);
     const supported_sections = new Set(["files", "items", "analysis"]);
     const next_revisions: Record<string, number> = {};
@@ -596,11 +608,7 @@ export class ProjectDatabase {
   /**
    * 在调用方已持有的事务连接内读取单个 meta，避免重新取得 scoped 连接。
    */
-  private get_meta_from_db(
-    db: DatabaseSync,
-    key: string,
-    default_value: DatabaseJsonValue,
-  ): DatabaseJsonValue {
+  private get_meta_from_db(db: DatabaseSync, key: string, default_value: JsonValue): JsonValue {
     const row = db.prepare("SELECT value FROM meta WHERE key = ?").get(key);
     return row === undefined ? default_value : json_parse(row["value"]);
   }
@@ -608,7 +616,7 @@ export class ProjectDatabase {
   /**
    * 将旧 revision meta 归一为非负整数基线。
    */
-  private normalize_revision_value(value: DatabaseJsonValue): number {
+  private normalize_revision_value(value: JsonValue): number {
     const revision = Number(value ?? 0);
     return Number.isFinite(revision) && revision > 0 ? Math.trunc(revision) : 0;
   }
@@ -616,7 +624,7 @@ export class ProjectDatabase {
   /**
    * 读取分析 checkpoint，保持断点续跑只依赖持久事实
    */
-  private read_analysis_item_checkpoints(project_path: string): DatabaseJsonValue {
+  private read_analysis_item_checkpoints(project_path: string): JsonValue {
     const db = this.open_project(project_path);
     return db
       .prepare(
@@ -636,10 +644,7 @@ export class ProjectDatabase {
   /**
    * 批量保存分析 checkpoint，保证任务提交进度可恢复
    */
-  private write_analysis_item_checkpoints(
-    project_path: string,
-    checkpoints: DatabaseJsonValue[],
-  ): void {
+  private write_analysis_item_checkpoints(project_path: string, checkpoints: JsonValue[]): void {
     const db = this.open_project(project_path);
     const statement = db.prepare(
       `INSERT INTO analysis_item_checkpoint (item_id, status, updated_at, error_count)
@@ -676,7 +681,7 @@ export class ProjectDatabase {
   /**
    * 归一候选聚合行，确保不同写入来源共用同一返回形状
    */
-  private normalize_candidate_rows(rows: DatabaseRow[]): DatabaseJsonValue {
+  private normalize_candidate_rows(rows: DatabaseRow[]): JsonValue {
     return rows.map((row) => ({
       src: row_text(row, "src"),
       dst_votes: json_parse(row["dst_votes"]),
@@ -691,7 +696,7 @@ export class ProjectDatabase {
   /**
    * 读取分析候选聚合，供术语导入预演复用
    */
-  private read_analysis_candidate_aggregates(project_path: string): DatabaseJsonValue {
+  private read_analysis_candidate_aggregates(project_path: string): JsonValue {
     const db = this.open_project(project_path);
     return this.normalize_candidate_rows(
       db
@@ -710,7 +715,7 @@ export class ProjectDatabase {
   private read_analysis_candidate_aggregates_by_srcs(
     project_path: string,
     srcs: string[],
-  ): DatabaseJsonValue {
+  ): JsonValue {
     const normalized_srcs = srcs.map((src) => src.trim()).filter((src) => src !== "");
     if (normalized_srcs.length === 0) {
       return [];
@@ -732,10 +737,7 @@ export class ProjectDatabase {
   /**
    * 批量写入候选聚合，保持分析结果提交原子化
    */
-  private write_analysis_candidate_aggregates(
-    project_path: string,
-    aggregates: DatabaseJsonValue[],
-  ): void {
+  private write_analysis_candidate_aggregates(project_path: string, aggregates: JsonValue[]): void {
     const db = this.open_project(project_path);
     const statement = db.prepare(
       `INSERT INTO analysis_candidate_aggregate (
@@ -752,8 +754,8 @@ export class ProjectDatabase {
       const row = this.value_record(aggregate);
       statement.run(
         String(row["src"] ?? ""),
-        json_stringify((row["dst_votes"] ?? {}) as DatabaseJsonValue),
-        json_stringify((row["info_votes"] ?? {}) as DatabaseJsonValue),
+        json_stringify((row["dst_votes"] ?? {}) as JsonValue),
+        json_stringify((row["info_votes"] ?? {}) as JsonValue),
         Number(row["observation_count"] ?? 0),
         String(row["first_seen_at"] ?? ""),
         String(row["last_seen_at"] ?? ""),
@@ -849,7 +851,9 @@ export class ProjectDatabase {
       )
       .run(compressed, original_data.byteLength, compressed.byteLength, asset_path);
     if (Number(result.changes) === 0) {
-      throw new DatabaseConflictError("资产不存在，无法更新。");
+      throw new AppErrors.DatabaseConflictError({
+        diagnostic_context: { reason: "资产不存在，无法更新。" },
+      });
     }
   }
 
@@ -863,7 +867,7 @@ export class ProjectDatabase {
   /**
    * 读取 asset 记录快照，供运行态排序与导出使用
    */
-  private read_all_asset_records(project_path: string): DatabaseJsonValue {
+  private read_all_asset_records(project_path: string): JsonValue {
     return this.open_project(project_path)
       .prepare("SELECT path, sort_order FROM assets ORDER BY sort_order ASC, id ASC")
       .all()
@@ -895,7 +899,7 @@ export class ProjectDatabase {
   /**
    * 读取全部条目事实，供项目数据读取和任务快照重建
    */
-  private read_all_items(project_path: string): DatabaseJsonValue {
+  private read_all_items(project_path: string): JsonValue {
     return this.open_project(project_path)
       .prepare("SELECT id, data FROM items ORDER BY id")
       .all()
@@ -915,7 +919,7 @@ export class ProjectDatabase {
   /**
    * 翻译统计口径由 status 决定，SQL 聚合为缺失 meta 的校对保存提供低成本基线。
    */
-  private read_item_status_summary(project_path: string): DatabaseJsonValue {
+  private read_item_status_summary(project_path: string): JsonValue {
     const row = this.open_project(project_path)
       .prepare(
         `SELECT
@@ -944,7 +948,7 @@ export class ProjectDatabase {
   /**
    * 按 id 读取条目，减少校对和任务提交后的回查范围
    */
-  private read_items_by_ids(project_path: string, item_ids: number[]): DatabaseJsonValue {
+  private read_items_by_ids(project_path: string, item_ids: number[]): JsonValue {
     const normalized_ids = [
       ...new Set(
         item_ids.map((item_id) => Number(item_id)).filter((item_id) => Number.isFinite(item_id)),
@@ -967,16 +971,13 @@ export class ProjectDatabase {
     }
     return normalized_ids
       .map((item_id) => rows_by_id.get(item_id))
-      .filter((item): item is DatabaseRow => item !== undefined) as DatabaseJsonValue;
+      .filter((item): item is DatabaseRow => item !== undefined) as JsonValue;
   }
 
   /**
    * 校对统一字段写入只需要少量事实，避免为状态设置解析完整 item JSON。
    */
-  private read_item_write_facts_by_ids(
-    project_path: string,
-    item_ids: number[],
-  ): DatabaseJsonValue {
+  private read_item_write_facts_by_ids(project_path: string, item_ids: number[]): JsonValue {
     const normalized_ids = [
       ...new Set(
         item_ids
@@ -1017,17 +1018,13 @@ export class ProjectDatabase {
     }
     return normalized_ids
       .map((item_id) => rows_by_id.get(item_id))
-      .filter((item): item is DatabaseRow => item !== undefined) as DatabaseJsonValue;
+      .filter((item): item is DatabaseRow => item !== undefined) as JsonValue;
   }
 
   /**
    * 根据 SQLite json_type 恢复 name 字段的 null、string 或 array 形状。
    */
-  private read_item_name_value(
-    row: DatabaseRow,
-    value_key: string,
-    type_key: string,
-  ): DatabaseJsonValue {
+  private read_item_name_value(row: DatabaseRow, value_key: string, type_key: string): JsonValue {
     const value_type = row_text(row, type_key);
     if (value_type === "" || value_type === "null") {
       return null;
@@ -1042,7 +1039,7 @@ export class ProjectDatabase {
   /**
    * 批量写入条目事实，确保导入和重置链路高效落盘
    */
-  private replace_items(project_path: string, items: DatabaseJsonValue[]): number[] {
+  private replace_items(project_path: string, items: JsonValue[]): number[] {
     const db = this.open_project(project_path);
     db.prepare("DELETE FROM items").run();
     const insert_with_id = db.prepare("INSERT INTO items (id, data) VALUES (?, ?)");
@@ -1071,7 +1068,7 @@ export class ProjectDatabase {
     options: { clamp_retry_count: boolean },
   ): Array<{
     path: string;
-    value: DatabaseJsonValue;
+    value: JsonValue;
     json: boolean;
   }> {
     const normalized_patch = normalize_project_item_field_patch(patch);
@@ -1080,7 +1077,7 @@ export class ProjectDatabase {
     }
     const patch_entries: Array<{
       path: string;
-      value: DatabaseJsonValue;
+      value: JsonValue;
       json: boolean;
     }> = [];
     if (normalized_patch.dst !== undefined) {
@@ -1089,7 +1086,7 @@ export class ProjectDatabase {
     if (Object.prototype.hasOwnProperty.call(normalized_patch, "name_dst")) {
       patch_entries.push({
         path: "$.name_dst",
-        value: normalized_patch.name_dst as DatabaseJsonValue,
+        value: normalized_patch.name_dst as JsonValue,
         json: true,
       });
     }
@@ -1156,7 +1153,7 @@ export class ProjectDatabase {
   /**
    * 按 item 逐条局部更新翻译字段，任务结果不能覆盖完整持久 item。
    */
-  private write_item_translation_fields(project_path: string, patches: DatabaseJsonValue[]): void {
+  private write_item_translation_fields(project_path: string, patches: JsonValue[]): void {
     const db = this.open_project(project_path);
     for (const raw_patch of patches) {
       const entry = this.value_record(raw_patch);
@@ -1202,7 +1199,7 @@ export class ProjectDatabase {
   /**
    * 读取指定规则集合，保持质量规则运行时只看数据库事实
    */
-  private read_rules(project_path: string, rule_type: string): DatabaseJsonValue {
+  private read_rules(project_path: string, rule_type: string): JsonValue {
     const row = this.open_project(project_path)
       .prepare("SELECT data FROM rules WHERE type = ? ORDER BY id")
       .get(rule_type);
@@ -1220,14 +1217,14 @@ export class ProjectDatabase {
   /**
    * 写入指定规则集合，统一 revision 与 payload 维护
    */
-  private write_rules(project_path: string, rule_type: string, rules: DatabaseJsonValue[]): void {
+  private write_rules(project_path: string, rule_type: string, rules: JsonValue[]): void {
     this.set_rules_with_db(this.open_project(project_path), rule_type, rules);
   }
 
   /**
    * 在既有事务连接内写入规则，避免规则和 meta 分离提交
    */
-  private set_rules_with_db(db: DatabaseSync, rule_type: string, rules: DatabaseJsonValue[]): void {
+  private set_rules_with_db(db: DatabaseSync, rule_type: string, rules: JsonValue[]): void {
     db.prepare("DELETE FROM rules WHERE type = ?").run(rule_type);
     db.prepare("INSERT INTO rules (type, data) VALUES (?, ?)").run(
       rule_type,
@@ -1275,7 +1272,7 @@ export class ProjectDatabase {
   /**
    * 读取工程摘要，供打开预览和运行态快速判断使用
    */
-  private read_project_summary(project_path: string): DatabaseJsonValue {
+  private read_project_summary(project_path: string): JsonValue {
     const meta = this.value_record(this.get_all_meta(project_path));
     const db = this.open_project(project_path);
     const file_count_row = db.prepare("SELECT COUNT(*) AS count FROM assets").get();
@@ -1325,7 +1322,7 @@ export class ProjectDatabase {
   /**
    * 把 JSON 值收窄为对象，保留数据库 payload 的类型边界
    */
-  private value_record(value: DatabaseJsonValue | unknown): DatabaseRow {
+  private value_record(value: JsonValue | unknown): DatabaseRow {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
       return {};
     }

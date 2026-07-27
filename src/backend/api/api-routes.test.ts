@@ -12,22 +12,26 @@ describe("register_api_routes", () => {
     const start_task = vi.fn(() => ({ accepted: true }));
     const services = {
       app: { metadata: {}, settings: {} },
-      project: { lifecycle: {}, data: {}, sessionState: {} },
-      workbench: { filePreview: {}, query: {}, commands: {}, resetPreview: {} },
+      project: {
+        lifecycle: {},
+        data: {},
+        sessionState: {},
+        summary: {},
+        content: {},
+        resetPreview: {},
+      },
       proofreading: { query: {}, commands: {} },
-      quality: { statistics: {}, service: {} },
-      translation: { files: {} },
-      toolbox: { tsConversion: {} },
-      models: { service: {} },
-      engine: { tasks: { start_task } },
-      streams: { api: {} },
+      quality: { statistics: {}, rules: {}, prompts: {} },
+      files: { preview: {}, translationExport: {}, tsConversionExport: {} },
+      model: {},
+      tasks: { start_task },
+      create_event_stream_response: vi.fn(),
     } as unknown as BackendServices;
 
     register_api_routes({
       app: { get } as unknown as Hono,
       services,
       postJson: post_json,
-      requireLoadedProjectPath: vi.fn(),
       createLogStreamResponse: vi.fn(),
       readLogDetail: vi.fn(),
       recordRendererError: vi.fn(),

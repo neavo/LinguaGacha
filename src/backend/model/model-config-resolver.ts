@@ -1,11 +1,8 @@
 import path from "node:path";
 
-import type { ApiJsonValue } from "../api/api-types";
-import { is_json_record } from "../../domain/json";
+import { is_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
-
-export type ModelRecord = Record<string, ApiJsonValue>;
 
 interface ModelPresetPathReader {
   get_model_preset_dir: () => string; // 让模型服务和 Bootstrap 共用同一内置预设目录事实
@@ -14,7 +11,7 @@ interface ModelPresetPathReader {
 /**
  * 读取配置中的模型列表，集中保护旧配置或坏配置里混入的非对象项
  */
-export function read_config_model_records(config: Record<string, ApiJsonValue>): ModelRecord[] {
+export function read_config_model_records(config: JsonRecord): JsonRecord[] {
   const raw_models = config["models"];
   if (!Array.isArray(raw_models)) {
     return [];
@@ -25,7 +22,7 @@ export function read_config_model_records(config: Record<string, ApiJsonValue>):
 /**
  * 复刻历史设置文件中的激活模型选择规则，避免服务端出现第二套口径
  */
-export function resolve_active_model(config: Record<string, ApiJsonValue>): ModelRecord | null {
+export function resolve_active_model(config: JsonRecord): JsonRecord | null {
   const models = read_config_model_records(config);
   const active_model_id = String(config["activate_model_id"] ?? "").trim();
   if (active_model_id !== "") {
@@ -42,7 +39,7 @@ export function resolve_active_model(config: Record<string, ApiJsonValue>): Mode
 /**
  * 返回运行时实际会采用的模型 id，供页面快照和任务预检共享
  */
-export function resolve_active_model_id(config: Record<string, ApiJsonValue>): string {
+export function resolve_active_model_id(config: JsonRecord): string {
   return String(resolve_active_model(config)?.["id"] ?? "");
 }
 
@@ -52,11 +49,11 @@ export function resolve_active_model_id(config: Record<string, ApiJsonValue>): s
 export function read_config_model_preset_records(
   paths: ModelPresetPathReader,
   native_fs: NativeFs = default_native_fs,
-): ModelRecord[] {
+): JsonRecord[] {
   const preset_path = path.join(paths.get_model_preset_dir(), "preset_model_builtin.json");
-  let data: ApiJsonValue = [];
+  let data: JsonValue = [];
   try {
-    data = JsonTool.parseStrict<ApiJsonValue>(native_fs.read_file(preset_path));
+    data = JsonTool.parseStrict<JsonValue>(native_fs.read_file(preset_path));
   } catch {
     data = [];
   }

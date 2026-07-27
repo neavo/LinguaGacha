@@ -1,5 +1,5 @@
 import { has_language_character } from "./language";
-import type { JsonRecord, JsonValue } from "../shared/utils/json-tool";
+import type { JsonRecord, JsonValue } from "./json";
 import { read_json_record } from "./json";
 
 // 条目状态
@@ -345,15 +345,22 @@ export function normalize_project_item_public_record(
 
 // 全量写库入口统一把公开 DTO 转回持久字段，避免页面层手写 id/row 映射
 /**
- * 归一化输入，保证下游消费稳定形状。
+ * 按公开 item 主键稳定排序并转换成数据库字段。
  */
-export function normalize_project_item_persistent_record(
-  value: unknown,
-): ProjectItemPersistentRecord | null {
-  const public_record = normalize_project_item_public_record(value);
-  if (public_record === null) {
-    return null;
-  }
+export function build_project_item_persistent_records(
+  items: Record<string, ProjectItemPublicRecord>,
+): ProjectItemPersistentRecord[] {
+  return Object.values(items)
+    .sort((left, right) => left.item_id - right.item_id)
+    .map(build_project_item_persistent_record);
+}
+
+/**
+ * 已通过公开 DTO 边界的单条 item 只负责字段名转换。
+ */
+function build_project_item_persistent_record(
+  public_record: ProjectItemPublicRecord,
+): ProjectItemPersistentRecord {
   const item = Item.from_json({
     id: public_record.item_id,
     src: public_record.src,

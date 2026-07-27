@@ -1,7 +1,6 @@
 import { Item } from "../../../domain/item";
-import { read_json_record } from "../../../domain/json";
+import { read_json_record, type JsonValue } from "../../../domain/json";
 import type { ProjectDatabase, ProjectDatabaseWrite } from "../../database/database-operations";
-import type { DatabaseJsonValue } from "../../database/database-types";
 import { EpubAst, read_epub_extra } from "../../file/formats/epub/epub-ast";
 import type { MigrationDescriptor, ProjectOpenMigrationContext } from "../migration-types";
 
@@ -171,23 +170,21 @@ export class EpubRubyBlockTextMigration {
   private replace_items_by_file(
     current_items: Item[],
     replacements: Map<string, Item[]>,
-  ): DatabaseJsonValue[] {
+  ): JsonValue[] {
     const emitted_files = new Set<string>();
-    const next_items: DatabaseJsonValue[] = [];
+    const next_items: JsonValue[] = [];
     for (const item of current_items) {
       const replacement = replacements.get(item.file_path);
       if (item.file_type === "EPUB" && replacement !== undefined) {
         if (!emitted_files.has(item.file_path)) {
           next_items.push(
-            ...(replacement.map((next_item) =>
-              next_item.to_json(),
-            ) as unknown as DatabaseJsonValue[]),
+            ...(replacement.map((next_item) => next_item.to_json()) as unknown as JsonValue[]),
           );
           emitted_files.add(item.file_path);
         }
         continue;
       }
-      next_items.push(item.to_json() as unknown as DatabaseJsonValue);
+      next_items.push(item.to_json() as unknown as JsonValue);
     }
     return next_items;
   }

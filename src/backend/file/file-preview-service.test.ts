@@ -23,7 +23,7 @@ function create_setting_service(): AppSettingService {
 }
 
 describe("FilePreviewService", () => {
-  it("工作台预解析忽略不支持后缀并返回支持格式的失败文件", async () => {
+  it("项目文件预解析忽略不支持后缀并返回支持格式的失败文件", async () => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-file-preview-"));
     const source_file = path.join(temp_dir.path, "script.txt");
     const broken_json = path.join(temp_dir.path, "broken.json");
@@ -35,7 +35,7 @@ describe("FilePreviewService", () => {
     const service = new FilePreviewService(create_setting_service(), log_manager);
 
     await expect(
-      service.parse_workbench_file({
+      service.parse_project_file({
         source_paths: [source_file, broken_json, ignored_file],
       }),
     ).resolves.toEqual({
@@ -62,14 +62,14 @@ describe("FilePreviewService", () => {
     );
   });
 
-  it("工作台预解析 EPUB 时直接返回解析结果", async () => {
+  it("项目文件预解析 EPUB 时直接返回解析结果", async () => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-file-preview-"));
     const epub_file = path.join(temp_dir.path, "book.epub");
     await write_epub_fixture(epub_file, "章节");
     const service = new FilePreviewService(create_setting_service());
 
     await expect(
-      service.parse_workbench_file({
+      service.parse_project_file({
         source_paths: [epub_file],
         current_rel_path: "old/original.epub",
       }),
@@ -92,7 +92,7 @@ describe("FilePreviewService", () => {
     });
   });
 
-  it("工作台预解析 EPUB 坏内容时返回文件解析错误码", async () => {
+  it("项目文件预解析 EPUB 坏内容时返回文件解析错误码", async () => {
     using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-file-preview-"));
     const epub_file = path.join(temp_dir.path, "broken.epub");
     const zip = new JSZip();
@@ -114,7 +114,7 @@ describe("FilePreviewService", () => {
     );
     const service = new FilePreviewService(create_setting_service());
 
-    await expect(service.parse_workbench_file({ source_paths: [epub_file] })).resolves.toEqual({
+    await expect(service.parse_project_file({ source_paths: [epub_file] })).resolves.toEqual({
       files: [],
       failed_files: [
         {

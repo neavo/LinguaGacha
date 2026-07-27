@@ -1,5 +1,6 @@
 import type { LogLevel } from "../log";
-import type { ApiJsonValue, AppError, AppErrorDiagnosticContext } from "./app-error";
+import type { JsonRecord, JsonValue } from "../../domain/json";
+import type { AppError, AppErrorDiagnosticContext } from "./app-error";
 
 // MAX LOG ERROR DEPTH 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const MAX_LOG_ERROR_DEPTH = 4;
@@ -18,7 +19,7 @@ const LOG_ERROR_PATH_HASH_OFFSET = 2166136261;
 // LOG ERROR PATH HASH PRIME 是跨边界路径或地址契约，集中保存避免调用点散落魔术字符串。
 const LOG_ERROR_PATH_HASH_PRIME = 16777619;
 
-export type LogErrorContext = Record<string, ApiJsonValue>;
+export type LogErrorContext = JsonRecord;
 export type LogErrorContextInput = Record<string, unknown>;
 
 interface LogErrorCause {
@@ -324,7 +325,7 @@ function sanitize_json_record(record: Record<string, unknown>, depth: number): L
   ) as LogErrorContext;
 }
 
-function sanitize_value(value: unknown, depth: number): ApiJsonValue {
+function sanitize_value(value: unknown, depth: number): JsonValue {
   if (value === null) {
     return null;
   }

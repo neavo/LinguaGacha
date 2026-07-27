@@ -4,7 +4,7 @@ import type { LogTargets } from "../../shared/log";
 import type {
   SystemProxyResolver,
   SystemProxyStartupNotice,
-} from "../network/system-proxy-dispatcher";
+} from "../llm/llm-system-proxy-dispatcher";
 
 export type BackendBootstrapState =
   | "idle"

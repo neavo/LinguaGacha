@@ -3,10 +3,6 @@ import { describe, expect, it, vi } from "vitest";
 import type { CLICommandOptions } from "../cli-parser";
 import { apply_cli_resources } from "./cli-resource-applier";
 import type { BackendServices } from "../../backend/bootstrap/backend-services";
-import type {
-  ProjectDatabase,
-  ProjectDatabaseWrite,
-} from "../../backend/database/database-operations";
 
 /**
  * 资源全部缺省的翻译命令用于验证 CLI 默认关闭策略。
@@ -29,37 +25,35 @@ function create_translate_command(): CLICommandOptions {
 }
 
 /**
- * 提交桩实际执行类型化写入，让断言落在 ProjectDatabase 可观察调用上。
+ * 组合根桩只暴露项目领域入口，防止测试重新依赖数据库写闭包。
  */
 function create_backend_services() {
-  const set_meta = vi.fn();
-  const database = {
-    set_meta,
-    set_rules: vi.fn(),
-    set_rule_text: vi.fn(),
-  } as unknown as ProjectDatabase;
-  const commit_cli_resource_writes = vi.fn(
-    async (_project_path: string, writes: ProjectDatabaseWrite[]) => {
-      for (const write of writes) {
-        write(database);
-      }
-    },
-  );
+  const apply_task_input = vi.fn().mockResolvedValue({ accepted: true, changes: [] });
   return {
-    backend_services: { commit_cli_resource_writes } as unknown as BackendServices,
-    commit_cli_resource_writes,
-    set_meta,
+    backend_services: {
+      project: { lifecycle: { apply_task_input } },
+    } as unknown as BackendServices,
+    apply_task_input,
   };
 }
 
 describe("cli-resource-applier", () => {
-  it("把 CLI 资源编译为类型化写入并交给后端提交", async () => {
-    const { backend_services, commit_cli_resource_writes, set_meta } = create_backend_services();
+  it("把缺省 CLI 资源编译为全部关闭的项目任务输入", async () => {
+    const { backend_services, apply_task_input } = create_backend_services();
 
-    await apply_cli_resources(backend_services, create_translate_command(), "E:/Project/tmp.lg");
+    await apply_cli_resources(backend_services, create_translate_command());
 
-    expect(commit_cli_resource_writes).toHaveBeenCalledWith("E:/Project/tmp.lg", expect.any(Array));
-    expect(set_meta).toHaveBeenCalledWith("E:/Project/tmp.lg", "glossary_enable", false);
-    expect(set_meta).toHaveBeenCalledWith("E:/Project/tmp.lg", "text_preserve_mode", "off");
+    expect(apply_task_input).toHaveBeenCalledWith({
+      quality_rules: [
+        { kind: "glossary", entries: [], enabled: false, mode: null },
+        { kind: "text_preserve", entries: [], enabled: null, mode: "off" },
+        { kind: "pre_replacement", entries: [], enabled: false, mode: null },
+        { kind: "post_replacement", entries: [], enabled: false, mode: null },
+      ],
+      prompts: [
+        { kind: "translation", text: "", enabled: false },
+        { kind: "analysis", text: "", enabled: false },
+      ],
+    });
   });
 });

@@ -1,19 +1,12 @@
-import type { ApiJsonValue } from "../../api/api-types";
-import type { TaskRunStatus, TaskType, TranslationScope } from "../../../domain/task";
+import type {
+  TaskProgressSnapshot,
+  TaskRunStatus,
+  TaskType,
+  TranslationScope,
+} from "../../../domain/task";
 
 /** progress 只承载可累加的执行进度，任务差异字段必须放进 extras */
-export type TaskProgress = {
-  line: number;
-  total_line: number;
-  processed_line: number;
-  error_line: number;
-  total_tokens: number;
-  total_output_tokens: number;
-  total_input_tokens: number;
-  time: number;
-  start_time: number;
-  [key: string]: ApiJsonValue;
-};
+export type TaskProgress = TaskProgressSnapshot;
 
 /** translation extras 承载翻译专属语义，重翻条目不再作为顶层快照字段 */
 export type TranslationExtras = {
@@ -37,3 +30,5 @@ export type TaskSnapshot = {
   progress: TaskProgress;
   extras: TranslationExtras | AnalysisExtras;
 };
+
+export type TaskSnapshotListener = (snapshot: Readonly<TaskSnapshot>) => void | Promise<void>;

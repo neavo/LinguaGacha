@@ -1,4 +1,4 @@
-import type { ApiJsonValue } from "../api/api-types";
+import type { JsonRecord, JsonValue } from "../../domain/json";
 import type { LogError } from "../../shared/error";
 
 /**
@@ -15,10 +15,10 @@ export interface LLMMessage {
 export interface LLMRequestBody {
   run_id: string; // / work_unit_id 只用于诊断与迟到结果隔离，不代表 client 持有任务状态
   work_unit_id: string;
-  model: ApiJsonValue; // 保留任务启动快照形状，policy 在边界处收窄供应商字段
-  config_snapshot: ApiJsonValue; // 与任务启动时一致，确保重试不读取后续 UI 修改
+  model: JsonValue; // 保留任务启动快照形状，policy 在边界处收窄供应商字段
+  config_snapshot: JsonValue; // 与任务启动时一致，确保重试不读取后续 UI 修改
   messages: LLMMessage[]; // 已由 PromptBuilder 拼好，policy 只做协议转换
-  request_options?: Record<string, ApiJsonValue>; // 只允许低频传输覆盖，不承载业务状态
+  request_options?: JsonRecord; // 只允许低频传输覆盖，不承载业务状态
 }
 
 /**

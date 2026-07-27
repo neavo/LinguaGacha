@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { JsonRecord } from "../../../domain/json";
 import type { ProjectDatabase } from "../../database/database-operations";
-import type { DatabaseJsonValue } from "../../database/database-types";
 import type { AppSettingService } from "../../app/app-setting-service";
 import { text_preserve_mode_migration } from "./text-preserve-mode-migration";
 
@@ -33,7 +33,7 @@ describe("text_preserve_mode_migration", () => {
 /**
  * text_preserve 迁移只依赖 meta 快照，测试 context 固定为最小 ProjectOpenMigrationContext。
  */
-function create_context(options: { meta?: Record<string, DatabaseJsonValue> }) {
+function create_context(options: { meta?: JsonRecord }) {
   const database = {
     get_all_meta: vi.fn(() => options.meta ?? {}),
     set_meta: vi.fn(),

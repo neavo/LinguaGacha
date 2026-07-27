@@ -8,7 +8,7 @@ import {
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import { useDebouncedCallback } from "@frontend/widgets/interactions/use-debounce";
 import type { QualityStatisticsDependencySnapshot } from "@shared/quality/quality-statistics";
-import { buildProofreadingLookupQuery } from "@shared/quality/state";
+import { buildProofreadingLookupQuery } from "@shared/quality/quality-rule-proofreading-query";
 import {
   read_quality_rule,
   read_quality_rule_section_revisions,
@@ -89,7 +89,7 @@ import type {
   GlossaryVisibleEntry,
 } from "@frontend/pages/glossary-page/types";
 
-import { QualityRuleImportRuleTypeValue } from "@shared/quality/importer";
+import { QualityRuleImportRuleTypeValue } from "@shared/quality/quality-rule-import";
 
 type GlossaryPresetPayload = {
   builtin_presets: GlossaryPresetItem[];

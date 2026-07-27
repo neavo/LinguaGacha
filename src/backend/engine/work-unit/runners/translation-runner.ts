@@ -1,4 +1,4 @@
-import type { ApiJsonValue } from "../../../api/api-types";
+import type { JsonValue } from "../../../../domain/json";
 import { is_json_record, read_json_record } from "../../../../domain/json";
 import {
   TextProcessingConfigTool,
@@ -40,21 +40,21 @@ import { has_translation_retry_reached_review_threshold } from "../../../../shar
 interface WorkUnitBaseRequest {
   run_id: string; // 用于隔离一次任务运行，worker 不用它访问项目状态
   work_unit_id: string; // chunk 级诊断键，迟到响应和日志都围绕它定位
-  model: ApiJsonValue; // 任务启动时冻结的模型快照
-  config_snapshot: ApiJsonValue; // 任务启动时冻结的应用设置
-  quality_snapshot: ApiJsonValue; // 文本后处理与提示词构造的唯一质量规则输入
+  model: JsonValue; // 任务启动时冻结的模型快照
+  config_snapshot: JsonValue; // 任务启动时冻结的应用设置
+  quality_snapshot: JsonValue; // 文本后处理与提示词构造的唯一质量规则输入
 }
 
 /**
  * 批量翻译 chunk 请求，items 是本 work unit 唯一可回写对象。
  */
 interface TranslationWorkUnitRequest extends WorkUnitBaseRequest {
-  items: ApiJsonValue; // 本 chunk 的不可变条目快照，worker 修改结果后再回传给 TaskEngine
-  precedings?: ApiJsonValue; // 只用于上下文提示词，不参与当前 chunk 的写回
-  split_count?: ApiJsonValue; // 当前 chunk 的拆分次数
-  retry_count?: ApiJsonValue; // 当前 chunk 的重试次数
-  token_threshold?: ApiJsonValue; // 本轮规划使用的输入门槛
-  is_initial?: ApiJsonValue; // 区分初次执行与重试上下文
+  items: JsonValue; // 本 chunk 的不可变条目快照，worker 修改结果后再回传给 TaskEngine
+  precedings?: JsonValue; // 只用于上下文提示词，不参与当前 chunk 的写回
+  split_count?: JsonValue; // 当前 chunk 的拆分次数
+  retry_count?: JsonValue; // 当前 chunk 的重试次数
+  token_threshold?: JsonValue; // 本轮规划使用的输入门槛
+  is_initial?: JsonValue; // 区分初次执行与重试上下文
 }
 
 /**
@@ -150,7 +150,7 @@ export class TranslationWorkUnitRunner {
       },
       output: {
         kind: "translation",
-        items: result.items as unknown as ApiJsonValue,
+        items: result.items as unknown as JsonValue,
         row_count: result.row_count,
       },
       logs: result.logs ?? [],
@@ -773,7 +773,7 @@ export class TranslationWorkUnitRunner {
   /**
    * 日志本地化只读取任务启动快照，避免执行中语言变更影响同一 work unit。
    */
-  private read_app_language(config_snapshot: ApiJsonValue): unknown {
+  private read_app_language(config_snapshot: JsonValue): unknown {
     return normalize_setting_snapshot(config_snapshot).app_language;
   }
 
@@ -789,7 +789,7 @@ export class TranslationWorkUnitRunner {
    */
   private config_to_prompt_config(
     config: TextProcessingConfig,
-    raw_config: ApiJsonValue,
+    raw_config: JsonValue,
   ): { app_language?: string; source_language: string; target_language: string } {
     const setting_snapshot = normalize_setting_snapshot(raw_config);
     return {
@@ -802,14 +802,14 @@ export class TranslationWorkUnitRunner {
   /**
    * 模型 API 格式缺失时按 OpenAI 处理
    */
-  private resolve_model_api_format(model: ApiJsonValue): string {
+  private resolve_model_api_format(model: JsonValue): string {
     return String(read_json_record(model)["api_format"] ?? "OpenAI");
   }
 
   /**
    * work unit item 数组只保留普通对象，避免跨线程带入奇怪值
    */
-  private read_item_list(value: ApiJsonValue | undefined): TextTaskItemRecord[] {
+  private read_item_list(value: JsonValue | undefined): TextTaskItemRecord[] {
     return Array.isArray(value) ? value.filter(is_json_record).map((item) => ({ ...item })) : [];
   }
 

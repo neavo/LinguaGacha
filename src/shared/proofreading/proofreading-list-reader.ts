@@ -1,5 +1,8 @@
-import type { QualitySnapshot } from "../quality/snapshot";
-import { buildQualityCompiledContext, type QualityCompiledContext } from "../quality/compiled";
+import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
+import {
+  buildQualityCompiledContext,
+  type QualityCompiledContext,
+} from "../quality/quality-rule-compiled-context";
 import {
   PROOFREADING_NO_WARNING_CODE,
   PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES,

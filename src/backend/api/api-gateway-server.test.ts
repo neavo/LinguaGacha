@@ -470,9 +470,14 @@ describe("ApiGatewayServer", () => {
   });
 
   it("公开任务路由由 API Gateway 直处理", async () => {
-    const gateway = create_gateway();
+    const app_root = create_app_root();
+    const database = new ProjectDatabase();
+    const lg_path = path.join(app_root, "task-route.lg");
+    database.create_project(lg_path, "task-route");
+    const gateway = create_gateway_with_database(app_root, database);
 
     const started = await gateway.start();
+    await post_json(started.baseUrl, "/api/session/project/open", { path: lg_path });
     const response = await post_json(started.baseUrl, "/api/tasks/start", {
       task_type: "translation",
       mode: "new",
@@ -590,6 +595,52 @@ describe("ApiGatewayServer", () => {
     await expect(gateway.stop()).resolves.toBeUndefined();
   });
 
+  it("Gateway stop 断开连接后仍等待已进入业务层的 POST handler", async () => {
+    const console_error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const stderr_write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    cleanup_callbacks.push(
+      () => stderr_write.mockRestore(),
+      () => console_error.mockRestore(),
+    );
+    const fixture = create_gateway_fixture(create_app_root(), new ProjectDatabase());
+    let mark_handler_started: () => void = () => undefined;
+    const handler_started = new Promise<void>((resolve) => {
+      mark_handler_started = resolve;
+    });
+    let release_handler: () => void = () => undefined;
+    const handler_block = new Promise<void>((resolve) => {
+      release_handler = resolve;
+    });
+    vi.spyOn(fixture.backend_services.model, "list_available_models").mockImplementation(
+      async () => {
+        mark_handler_started();
+        await handler_block;
+        return { models: [] };
+      },
+    );
+    const started = await fixture.gateway.start();
+    const request = post_json(started.baseUrl, "/api/models/list-available", {
+      model_id: "blocked",
+    }).then(
+      () => undefined,
+      () => undefined,
+    );
+    await handler_started;
+
+    let stop_completed = false;
+    const stopping = fixture.gateway.stop().then(() => {
+      stop_completed = true;
+    });
+    await request;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(stop_completed).toBe(false);
+
+    release_handler();
+    await stopping;
+    expect(stop_completed).toBe(true);
+  });
+
   it("Gateway stop 只释放公开监听器，不越界释放 BackendServices", async () => {
     const dispose = vi.fn(async () => undefined);
     const gateway = new ApiGatewayServer({
@@ -622,6 +673,17 @@ describe("ApiGatewayServer", () => {
     database: ProjectDatabase,
     log_manager: LogManager = create_log_manager(app_root),
   ): ApiGatewayServer {
+    return create_gateway_fixture(app_root, database, log_manager).gateway;
+  }
+
+  function create_gateway_fixture(
+    app_root: string,
+    database: ProjectDatabase,
+    log_manager: LogManager = create_log_manager(app_root),
+  ): {
+    gateway: ApiGatewayServer;
+    backend_services: BackendServices;
+  } {
     const paths = new AppPathService({ appRoot: app_root });
     const backend_services = new BackendServices({
       paths,
@@ -642,7 +704,7 @@ describe("ApiGatewayServer", () => {
       () => backend_services.dispose(),
       () => gateway.stop(),
     );
-    return gateway;
+    return { gateway, backend_services };
   }
 
   async function noop_output_folder(_output_path: string): Promise<void> {}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { Item } from "./item";
+import { build_project_item_persistent_records, Item } from "./item";
 
 describe("item 基础模型", () => {
   it("规范化缺失字段并只接受当前状态域", () => {
@@ -54,5 +54,34 @@ describe("item 基础模型", () => {
     expect(Item.from_json({ src: "{i}Start{/i}", file_type: "KVJSON" }).text_type).toBe("RENPY");
     expect(Item.from_json({ src: "{中文正文}", file_type: "KVJSON" }).text_type).toBe("NONE");
     expect(Item.from_json({ src: "@12 你好", file_type: "XLSX" }).text_type).toBe("WOLF");
+  });
+
+  it("把公开条目集合按主键排序并转换成数据库字段", () => {
+    const first = Item.from_json({
+      id: 1,
+      src: "第一行",
+      row: 10,
+      file_type: "TXT",
+      file_path: "script.txt",
+    }).to_public_json();
+    const second = Item.from_json({
+      id: 2,
+      src: "第二行",
+      row: 20,
+      file_type: "TXT",
+      file_path: "script.txt",
+    }).to_public_json();
+
+    const records = build_project_item_persistent_records({
+      "2": second,
+      "1": first,
+    });
+
+    expect(records.map((record) => [record.id, record.row])).toEqual([
+      [1, 10],
+      [2, 20],
+    ]);
+    expect(records[0]).not.toHaveProperty("item_id");
+    expect(records[0]).not.toHaveProperty("row_number");
   });
 });

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 
+import type { MutableJsonRecord } from "../../../../domain/json";
 import { InvalidFileStructureError } from "../../../../shared/error";
 import { RPGMakerTransProcessor } from "./processors/rpgmaker-processor";
 import { WolfTransProcessor } from "./processors/wolf-processor";
-import type { ApiJsonRecord, PatchTarget, TransSnapshot } from "./trans-processor";
+import type { PatchTarget, TransSnapshot } from "./trans-processor";
 import { collect_patch_targets, patch_trans_row } from "./trans-patch-writer";
 
 describe("collect_patch_targets", () => {
@@ -20,7 +21,7 @@ describe("collect_patch_targets", () => {
 
 describe("patch_trans_row", () => {
   it("按 trans_ref 最小补丁更新 PROCESSED 译文列", () => {
-    const files: ApiJsonRecord = {
+    const files: MutableJsonRecord = {
       "/demo.map": {
         data: [["原文", ""]],
         tags: [[]],
@@ -44,7 +45,7 @@ describe("patch_trans_row", () => {
   });
 
   it("混合分区生成参数但不污染 span schema", () => {
-    const files: ApiJsonRecord = {
+    const files: MutableJsonRecord = {
       "common/1.json": {
         data: [
           ["混合", ""],
@@ -104,7 +105,7 @@ describe("patch_trans_row", () => {
   });
 
   it("全过滤行补充 gold 但不生成分区参数", () => {
-    const files: ApiJsonRecord = {
+    const files: MutableJsonRecord = {
       "data/CommonEvents.json": {
         data: [["ShowMessage", ""]],
         tags: [[]],

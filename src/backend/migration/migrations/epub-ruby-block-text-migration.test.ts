@@ -1,11 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
+import type { MutableJsonRecord } from "../../../domain/json";
 import type { ProjectDatabase } from "../../database/database-operations";
-import type { DatabaseJsonValue } from "../../database/database-types";
 import { create_epub_fixture } from "../../../test/epub-fixture";
 import { EpubRubyBlockTextMigration } from "./epub-ruby-block-text-migration";
-
-type MutableJsonRecord = Record<string, DatabaseJsonValue>;
 
 describe("EpubRubyBlockTextMigration", () => {
   it("打开旧 EPUB ruby 项目时一次性迁移为 block_text item", async () => {

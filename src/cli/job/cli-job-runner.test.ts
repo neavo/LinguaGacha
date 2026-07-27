@@ -5,12 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { BackendServices } from "../../backend/bootstrap/backend-services";
-import { ApiStreamHub } from "../../backend/api/api-stream-hub";
-import type {
-  ProjectDatabase,
-  ProjectDatabaseWrite,
-} from "../../backend/database/database-operations";
-import type { DatabaseJsonValue } from "../../backend/database/database-types";
+import type { TaskSnapshot } from "../../backend/engine/protocol/task-snapshot";
 import type { CLICommandResources } from "../cli-parser";
 import { CLIJsonStatusReporter } from "../cli-status-reporter";
 import { run_cli_job } from "./cli-job-runner";
@@ -70,17 +65,13 @@ describe("run_cli_job", () => {
       }),
     );
     expect(harness.export_files_to_directory).toHaveBeenCalledWith(output_dir);
-    expect(harness.resource_calls).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: "setMeta",
-          args: expect.objectContaining({ key: "glossary_enable", value: false }),
-        }),
-        expect.objectContaining({
-          name: "setMeta",
-          args: expect.objectContaining({ key: "text_preserve_mode", value: "off" }),
-        }),
-      ]),
+    expect(harness.apply_task_input).toHaveBeenCalledWith(
+      expect.objectContaining({
+        quality_rules: expect.arrayContaining([
+          expect.objectContaining({ kind: "glossary", enabled: false }),
+          expect.objectContaining({ kind: "text_preserve", mode: "off" }),
+        ]),
+      }),
     );
     expect(harness.set_transient_overrides.mock.calls).toEqual([
       [
@@ -271,37 +262,38 @@ describe("run_cli_job", () => {
       { statusReporter: create_status_reporter("translate", status_lines) },
     );
 
-    expect(harness.resource_calls).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: "setRuleText",
-          args: expect.objectContaining({
-            ruleType: "translation_prompt",
-            text: "自定义翻译提示词",
-          }),
-        }),
-        expect.objectContaining({
-          name: "setRules",
-          args: expect.objectContaining({ ruleType: "glossary" }),
-        }),
-        expect.objectContaining({
-          name: "setRules",
-          args: expect.objectContaining({ ruleType: "pre_translation_replacement" }),
-        }),
-        expect.objectContaining({
-          name: "setRules",
-          args: expect.objectContaining({ ruleType: "post_translation_replacement" }),
-        }),
-        expect.objectContaining({
-          name: "setRules",
-          args: expect.objectContaining({ ruleType: "text_preserve" }),
-        }),
-        expect.objectContaining({
-          name: "setMeta",
-          args: expect.objectContaining({ key: "text_preserve_mode", value: "custom" }),
-        }),
-      ]),
-    );
+    expect(harness.apply_task_input).toHaveBeenCalledWith({
+      quality_rules: [
+        {
+          kind: "glossary",
+          entries: [{ src: "Alice", dst: "爱丽丝", info: "", regex: false, case_sensitive: false }],
+          enabled: true,
+          mode: null,
+        },
+        {
+          kind: "text_preserve",
+          entries: [{ src: "<[^>]+>", dst: "", info: "", regex: true, case_sensitive: false }],
+          enabled: null,
+          mode: "custom",
+        },
+        {
+          kind: "pre_replacement",
+          entries: [{ src: "foo", dst: "bar", info: "", regex: false, case_sensitive: false }],
+          enabled: true,
+          mode: null,
+        },
+        {
+          kind: "post_replacement",
+          entries: [{ src: "旧", dst: "新", info: "", regex: false, case_sensitive: false }],
+          enabled: true,
+          mode: null,
+        },
+      ],
+      prompts: [
+        { kind: "translation", text: "自定义翻译提示词", enabled: true },
+        { kind: "analysis", text: "", enabled: false },
+      ],
+    });
     expect(harness.start_task).toHaveBeenCalledWith(
       expect.objectContaining({ task_type: "translation" }),
     );
@@ -327,20 +319,13 @@ describe("run_cli_job", () => {
       { statusReporter: create_status_reporter("analyze", status_lines) },
     );
 
-    expect(harness.resource_calls).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          name: "setRuleText",
-          args: expect.objectContaining({
-            ruleType: "analysis_prompt",
-            text: "自定义分析提示词",
-          }),
-        }),
-        expect.objectContaining({
-          name: "setMeta",
-          args: expect.objectContaining({ key: "analysis_prompt_enable", value: true }),
-        }),
-      ]),
+    expect(harness.apply_task_input).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompts: [
+          { kind: "translation", text: "", enabled: false },
+          { kind: "analysis", text: "自定义分析提示词", enabled: true },
+        ],
+      }),
     );
     expect(harness.start_task).toHaveBeenCalledWith(
       expect.objectContaining({ task_type: "analysis" }),
@@ -354,86 +339,72 @@ type HarnessTaskSnapshot = {
 };
 
 /**
- * 测试数据库把类型化写入转成可读调用记录，避免断言函数引用内部实现。
- */
-interface DatabaseCall {
-  name: string;
-  args: Record<string, DatabaseJsonValue>;
-}
-
-/**
- * 组装 CLI job 所需最窄后端门面，并用真实 stream hub 驱动任务终态。
+ * 组装 CLI job 所需最窄后端门面，并用类型化任务订阅驱动终态。
  */
 function create_backend_services_harness(snapshots: HarnessTaskSnapshot[]): {
   backend_services: BackendServices;
+  apply_task_input: ReturnType<typeof vi.fn>;
   create_project_commit: ReturnType<typeof vi.fn>;
   export_files_to_directory: ReturnType<typeof vi.fn>;
-  resource_calls: DatabaseCall[];
   set_transient_overrides: ReturnType<typeof vi.fn>;
   start_task: ReturnType<typeof vi.fn>;
   unload_project: ReturnType<typeof vi.fn>;
 } {
-  const api_stream_hub = new ApiStreamHub();
+  const task_listeners = new Set<(snapshot: Readonly<TaskSnapshot>) => void | Promise<void>>();
   const set_transient_overrides = vi.fn();
-  const resource_calls: DatabaseCall[] = [];
-  const database = {
-    set_meta: (project_path: string, key: string, value: DatabaseJsonValue) => {
-      resource_calls.push({
-        name: "setMeta",
-        args: { projectPath: project_path, key, value },
-      });
-    },
-    set_rules: (project_path: string, rule_type: string, rules: DatabaseJsonValue[]) => {
-      resource_calls.push({
-        name: "setRules",
-        args: { projectPath: project_path, ruleType: rule_type, rules },
-      });
-    },
-    set_rule_text: (project_path: string, rule_type: string, text: string) => {
-      resource_calls.push({
-        name: "setRuleText",
-        args: { projectPath: project_path, ruleType: rule_type, text },
-      });
-    },
-  } as unknown as ProjectDatabase;
-  const commit_cli_resource_writes = vi.fn(
-    async (_project_path: string, writes: ProjectDatabaseWrite[]) => {
-      for (const write of writes) {
-        write(database);
-      }
-    },
-  );
+  const apply_task_input = vi.fn(async () => ({ accepted: true, changes: [] }));
   const create_project_commit = vi.fn(async () => undefined);
   const unload_project = vi.fn(async () => undefined);
-  const start_task = vi.fn(async (request: { task_type?: string }) => {
-    const task_type = String(request.task_type ?? "translation");
+  const start_task = vi.fn(async (request: { task_type: "translation" | "analysis" }) => {
+    const task_type = request.task_type;
     for (const snapshot of snapshots.length > 0 ? snapshots : [{ status: "done" }]) {
-      api_stream_hub.publish("task.snapshot_changed", {
-        task: {
-          run_revision: 1,
-          task_type,
-          status: snapshot.status,
-          busy: snapshot.status !== "done" && snapshot.status !== "error",
-          request_in_flight_count: 0,
-          progress: {
-            line: 0,
-            total_line: 0,
-            processed_line: 0,
-            error_line: 0,
-            total_tokens: 0,
-            total_output_tokens: 0,
-            total_input_tokens: 0,
-            time: 0,
-            start_time: 0,
-            ...snapshot.progress,
-          },
-          extras:
-            task_type === "analysis"
-              ? { kind: "analysis", candidate_count: 0 }
-              : { kind: "translation", scope: { kind: "all" } },
+      const task_snapshot = {
+        run_revision: 1,
+        task_type,
+        status: snapshot.status,
+        busy: snapshot.status !== "done" && snapshot.status !== "error",
+        request_in_flight_count: 0,
+        progress: {
+          line: 0,
+          total_line: 0,
+          processed_line: 0,
+          error_line: 0,
+          total_tokens: 0,
+          total_output_tokens: 0,
+          total_input_tokens: 0,
+          time: 0,
+          start_time: 0,
+          ...snapshot.progress,
         },
-      });
+        extras:
+          task_type === "analysis"
+            ? { kind: "analysis", candidate_count: 0 }
+            : { kind: "translation", scope: { kind: "all" } },
+      } as TaskSnapshot;
+      await Promise.all([...task_listeners].map(async (listener) => await listener(task_snapshot)));
     }
+    return {
+      run_revision: 1,
+      task_type,
+      status: "requested",
+      busy: true,
+      request_in_flight_count: 0,
+      progress: {
+        line: 0,
+        total_line: 0,
+        processed_line: 0,
+        error_line: 0,
+        total_tokens: 0,
+        total_output_tokens: 0,
+        total_input_tokens: 0,
+        time: 0,
+        start_time: 0,
+      },
+      extras:
+        task_type === "analysis"
+          ? { kind: "analysis", candidate_count: 0 }
+          : { kind: "translation", scope: { kind: "all" } },
+    } as TaskSnapshot;
   });
   const export_files_to_directory = vi.fn(async (output_dir: string) => ({
     output_path: path.join(output_dir, "translated"),
@@ -458,27 +429,27 @@ function create_backend_services_harness(snapshots: HarnessTaskSnapshot[]): {
       },
       project: {
         lifecycle: {
+          apply_task_input,
           create_project_commit,
           unload_project,
         },
       },
-      translation: {
-        files: { export_files_to_directory },
+      files: {
+        translationExport: { export_files_to_directory },
       },
       quality: {
-        service: { export_analysis_candidates_to_directory },
+        rules: { export_analysis_candidates_to_directory },
       },
-      engine: {
-        tasks: { start_task },
+      tasks: {
+        start_current_project_task: start_task,
+        subscribe: (listener: (snapshot: Readonly<TaskSnapshot>) => void | Promise<void>) => {
+          task_listeners.add(listener);
+          return () => task_listeners.delete(listener);
+        },
       },
-      streams: {
-        api: api_stream_hub,
-      },
-      build_expected_section_revisions: () => ({ quality: 0, prompts: 0 }),
-      commit_cli_resource_writes,
     } as unknown as BackendServices,
+    apply_task_input,
     create_project_commit,
-    resource_calls,
     export_files_to_directory,
     set_transient_overrides,
     start_task,

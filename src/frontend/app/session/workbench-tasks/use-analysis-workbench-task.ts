@@ -5,7 +5,7 @@ import {
   create_analysis_reset_all_plan,
   create_analysis_reset_failed_plan,
 } from "@shared/workbench/workbench-command-planner";
-import { type QualityRuleImportAction } from "@shared/quality/importer";
+import { type QualityRuleImportAction } from "@shared/quality/quality-rule-import";
 import {
   create_empty_quality_rule_import_confirm_state,
   type QualityRuleImportConfirmState,

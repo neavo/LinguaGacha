@@ -1,11 +1,9 @@
 import fs from "node:fs";
 
-import type { ApiJsonValue } from "../../backend/api/api-types";
 import type { BackendServices } from "../../backend/bootstrap/backend-services";
-import type { ApiStreamPayload } from "../../backend/api/api-stream-hub";
 import { normalize_project_settings_snapshot } from "../../domain/setting";
-import type { TaskSnapshot } from "../../backend/engine/protocol/task-snapshot";
-import { is_task_run_status, is_task_type, type TaskType } from "../../domain/task";
+import type { JsonRecord, JsonValue } from "../../domain/json";
+import type { TaskType } from "../../domain/task";
 import type { CLICommandOptions } from "../cli-parser";
 import type { CLIJobRunOptions } from "./cli-job-types";
 import { CLITempProject } from "./cli-temp-project";
@@ -36,24 +34,19 @@ export async function run_cli_job(
     transient_overrides_active = true;
     await backend_services.project.lifecycle.create_project_commit({
       path: temp_project.projectPath,
-      source_paths: command.inputPaths as unknown as ApiJsonValue,
-      project_settings: build_project_settings(
-        backend_services,
-        command,
-      ) as unknown as ApiJsonValue,
+      source_paths: command.inputPaths,
+      project_settings: build_project_settings(backend_services, command) as JsonValue,
     });
-    await apply_cli_resources(backend_services, command, temp_project.projectPath);
+    await apply_cli_resources(backend_services, command);
     if (command.command === "translate") {
       await start_and_wait_for_task(backend_services, "translation", options);
-      await backend_services.translation.files.export_files_to_directory(command.outputDir);
+      await backend_services.files.translationExport.export_files_to_directory(command.outputDir);
       options.statusReporter.emit_finished("done");
       return;
     }
 
     await start_and_wait_for_task(backend_services, "analysis", options);
-    await backend_services.quality.service.export_analysis_candidates_to_directory(
-      command.outputDir,
-    );
+    await backend_services.quality.rules.export_analysis_candidates_to_directory(command.outputDir);
     options.statusReporter.emit_finished("done");
   } catch (error) {
     options.statusReporter.emit_finished("error", error);
@@ -76,7 +69,7 @@ export async function run_cli_job(
 /**
  * CLI 不继承 GUI 默认预设；外部资源只由本次命令参数显式写入临时工程。
  */
-function build_cli_default_preset_overrides(): Record<string, ApiJsonValue> {
+function build_cli_default_preset_overrides(): JsonRecord {
   return {
     glossary_default_preset: "",
     text_preserve_default_preset: "",
@@ -93,12 +86,12 @@ function build_cli_default_preset_overrides(): Record<string, ApiJsonValue> {
 function build_project_settings(
   backend_services: BackendServices,
   command: CLICommandOptions,
-): Record<string, ApiJsonValue> {
+): JsonRecord {
   return normalize_project_settings_snapshot({
     ...backend_services.app.settings.read_setting(),
     source_language: command.sourceLanguage,
     target_language: command.targetLanguage,
-  }) as unknown as Record<string, ApiJsonValue>;
+  }) as unknown as JsonRecord;
 }
 
 /**
@@ -140,15 +133,11 @@ async function start_and_wait_for_task(
 ): Promise<void> {
   const task_waiter = create_task_event_waiter(backend_services, task_type, options);
   try {
-    await backend_services.engine.tasks.start_task({
-      task_type,
-      mode: "new",
-      scope: { kind: "all" } as unknown as ApiJsonValue,
-      expected_section_revisions: backend_services.build_expected_section_revisions([
-        "quality",
-        "prompts",
-      ]) as unknown as ApiJsonValue,
-    });
+    await backend_services.tasks.start_current_project_task(
+      task_type === "translation"
+        ? { task_type, mode: "new", scope: { kind: "all" } }
+        : { task_type, mode: "new" },
+    );
     await task_waiter.wait();
   } finally {
     task_waiter.dispose();
@@ -156,7 +145,7 @@ async function start_and_wait_for_task(
 }
 
 /**
- * 订阅公开任务 stream 直到 done/error；CLI 与 GUI 共享同一条 TaskSnapshot 事实链路。
+ * 订阅类型化任务快照直到 done/error；CLI 与 GUI 共享同一个 TaskRuntime 事实源。
  */
 function create_task_event_waiter(
   backend_services: BackendServices,
@@ -169,9 +158,8 @@ function create_task_event_waiter(
     resolve_wait = resolve;
     reject_wait = reject;
   });
-  const unsubscribe = backend_services.streams.api.subscribe("task.snapshot_changed", (payload) => {
-    const snapshot = normalize_task_snapshot_payload(payload);
-    if (snapshot === null || snapshot.task_type !== task_type) {
+  const unsubscribe = backend_services.tasks.subscribe((snapshot) => {
+    if (snapshot.task_type !== task_type) {
       return;
     }
     options.statusReporter.emit_progress(snapshot);
@@ -186,40 +174,5 @@ function create_task_event_waiter(
   return {
     wait: () => wait_promise,
     dispose: unsubscribe,
-  };
-}
-
-/**
- * task.snapshot_changed 载荷只在 CLI 边界做窄化；非法 payload 被忽略，避免污染 stdout 协议。
- */
-function normalize_task_snapshot_payload(payload: ApiStreamPayload): TaskSnapshot | null {
-  const task = payload["task"];
-  if (typeof task !== "object" || task === null || Array.isArray(task)) {
-    return null;
-  }
-  const record = task as Record<string, ApiJsonValue>;
-  const task_type = String(record["task_type"] ?? "");
-  const status = String(record["status"] ?? "");
-  const progress = record["progress"];
-  if (
-    !is_task_type(task_type) ||
-    !is_task_run_status(status) ||
-    typeof progress !== "object" ||
-    progress === null ||
-    Array.isArray(progress)
-  ) {
-    return null;
-  }
-  return {
-    run_revision: Number(record["run_revision"] ?? 0),
-    task_type,
-    status,
-    busy: Boolean(record["busy"]),
-    request_in_flight_count: Number(record["request_in_flight_count"] ?? 0),
-    progress: progress as TaskSnapshot["progress"],
-    extras:
-      task_type === "analysis"
-        ? { kind: "analysis", candidate_count: 0 }
-        : { kind: "translation", scope: { kind: "all" } },
   };
 }

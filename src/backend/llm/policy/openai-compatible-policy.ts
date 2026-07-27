@@ -2,9 +2,9 @@ import {
   patch_generation_fields,
   patch_temperature,
   resolve_max_tokens_for_request,
-} from "../llm-client-policy";
+} from "./policy-shared";
 import type { ModelThinkingLevel } from "../../../domain/model";
-import type { ApiJsonValue } from "../../api/api-types";
+import type { JsonRecord } from "../../../domain/json";
 import { RequestValidationError } from "../../../shared/error";
 import type { ModelRequestSnapshot } from "./policy-types";
 import type { LLMMessage } from "../llm-types";
@@ -70,10 +70,7 @@ export function normalize_chat_messages(
 /**
  * OpenAI-compatible 模型族差异统一收敛为最终请求字段。
  */
-function build_openai_model_family_body(
-  model_id: string,
-  level: ModelThinkingLevel,
-): Record<string, ApiJsonValue> {
+function build_openai_model_family_body(model_id: string, level: ModelThinkingLevel): JsonRecord {
   if (/gpt/iu.test(model_id)) {
     return { reasoning_effort: level === "OFF" ? "none" : level.toLowerCase() };
   }

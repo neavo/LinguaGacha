@@ -11,7 +11,7 @@ import {
   type TsConversionWorkerTaskInput,
 } from "./tasks/ts-conversion-worker-task";
 import type { ProofreadingEvaluatedSlice } from "../../shared/proofreading/proofreading-list-reader";
-import type { TsConversionConvertedItem } from "../../shared/toolbox/ts-conversion";
+import type { TsConversionConvertedItem } from "../../shared/text/ts-conversion";
 
 export type BackendWorkerTaskInputByType = {
   quality_statistics: QualityStatisticsWorkerTaskInput;

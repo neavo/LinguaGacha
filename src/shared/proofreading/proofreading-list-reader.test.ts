@@ -5,7 +5,7 @@ import {
   evaluateProofreadingSlice,
   type ProofreadingSyncInput,
 } from "./proofreading-list-reader";
-import type { QualitySnapshot } from "../quality/snapshot";
+import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
 import type { ItemNameField } from "../../domain/item";
 
 // 提供含术语表的最小质量快照，用于触发 warning 和筛选路径。

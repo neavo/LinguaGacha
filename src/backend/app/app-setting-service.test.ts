@@ -4,14 +4,14 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ApiJsonValue } from "../api/api-types";
+import type { JsonRecord } from "../../domain/json";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { AppPathService } from "./app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 
 type SettingsStreamMessage = {
   topic: string;
-  payload: Record<string, ApiJsonValue>;
+  payload: JsonRecord;
 };
 
 const cleanup_roots: string[] = [];
@@ -207,14 +207,11 @@ function create_service(): {
   return { service, config_path: paths.get_config_path(), events };
 }
 
-function read_config(config_path: string): Record<string, ApiJsonValue> {
-  return JsonTool.parseStrict(fs.readFileSync(config_path, "utf-8")) as Record<
-    string,
-    ApiJsonValue
-  >;
+function read_config(config_path: string): JsonRecord {
+  return JsonTool.parseStrict(fs.readFileSync(config_path, "utf-8")) as JsonRecord;
 }
 
-function write_config(config_path: string, payload: Record<string, ApiJsonValue>): void {
+function write_config(config_path: string, payload: JsonRecord): void {
   fs.mkdirSync(path.dirname(config_path), { recursive: true });
   fs.writeFileSync(config_path, JsonTool.stringifyStrict(payload), "utf-8");
 }

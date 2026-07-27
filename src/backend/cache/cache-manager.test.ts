@@ -142,6 +142,9 @@ describe("CacheManager", () => {
     expect(cache.prompts.readBlock()).toHaveProperty("translation");
     expect(cache.quality.readBlock()).toHaveProperty("glossary");
     expect(cache.analysis.readBlock()).toHaveProperty("status_summary");
+    const quality_snapshot = cache.quality.readBlock();
+    quality_snapshot["changed"] = true;
+    expect(cache.quality.readBlock()).not.toHaveProperty("changed");
     expect(cache.files.readFileEntries()).toEqual([
       {
         rel_path: "script.txt",
@@ -168,6 +171,7 @@ describe("CacheManager", () => {
       freshness: "empty",
       itemCount: 0,
     });
+    expect(cache.quality.readBlock()).toEqual({});
   });
 
   it("已提交 write 后缓存维护失败会进入可恢复状态，后续读取重新热机", async () => {

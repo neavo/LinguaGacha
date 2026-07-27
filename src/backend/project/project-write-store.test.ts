@@ -4,15 +4,16 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ApiJsonValue } from "../api/api-types";
+import type { MutableJsonRecord } from "../../domain/json";
 import { ProjectDatabase } from "../database/database-operations";
-import type { ProjectChangePublisher, ProjectWriteChangeRequest } from "./project-changes";
-import { get_section_revision } from "./project-data";
+import type {
+  ProjectChangePublisher,
+  ProjectWriteChangeRequest,
+} from "./project-write-event-adapter";
+import { get_section_revision } from "./project-data-reader";
 import type { ProjectEventHandler } from "./project-events";
 import { ProjectWriteStore } from "./project-write-store";
 import type { ProjectChangeEvent } from "../../shared/project-event";
-
-type MutableJsonRecord = Record<string, ApiJsonValue>;
 
 describe("ProjectWriteStore", () => {
   const cleanup_callbacks: Array<() => void> = [];
@@ -32,10 +33,12 @@ describe("ProjectWriteStore", () => {
       items: [
         {
           item_id: 1,
-          dst: "译文",
-          name_dst: ["译名"],
-          status: "PROCESSED",
-          retry_count: 0,
+          patch: {
+            dst: "译文",
+            name_dst: ["译名"],
+            status: "PROCESSED",
+            retry_count: 0,
+          },
         },
       ],
       translationExtras: { processed_line: 1, total_line: 1 },
@@ -74,13 +77,13 @@ describe("ProjectWriteStore", () => {
     ]);
   });
 
-  it("拒绝缺少 item_id 的任务 patch", async () => {
+  it("拒绝指向不存在 item 的 typed patch", async () => {
     const { project_path, store } = create_store("invalid-patch");
 
     await expect(
       store.apply_translation_item_patches({
         projectPath: project_path,
-        items: [{ id: 1, dst: "旧契约" }],
+        items: [{ item_id: 99, patch: { dst: "不存在" } }],
         translationExtras: {},
       }),
     ).rejects.toThrow("runtime.internal_invariant");
@@ -135,18 +138,18 @@ describe("ProjectWriteStore", () => {
   });
 
   it("提交工作台结构写入时替换事实并发布轻量失效信号", async () => {
-    const { database, project_path, store, published_changes } = create_store("workbench");
+    const { database, project_path, store, published_changes } = create_store("project-content");
     seed_items(database, project_path);
     add_test_asset(database, project_path, "demo.txt", "demo", 0);
     database.upsert_analysis_item_checkpoints(project_path, [
       { item_id: 1, status: "PROCESSED", updated_at: "now", error_count: 0 },
     ]);
 
-    await store.replace_workbench_items_and_files({
+    await store.replace_project_items_and_files({
       projectPath: project_path,
       expectedSectionRevisions: { files: 0, items: 0, analysis: 0 },
       revisionSections: ["files", "items", "analysis"],
-      source: "workbench_delete_file",
+      source: "project_delete_files",
       updatedSections: ["files", "items", "analysis"],
       assetWrites: [{ kind: "delete", path: "demo.txt" }],
       items: [],
@@ -163,13 +166,10 @@ describe("ProjectWriteStore", () => {
       "project_runtime_revision.analysis": 1,
     });
     expect(published_changes.at(-1)).toMatchObject({
-      source: "workbench_delete_file",
+      source: "project_delete_files",
       updatedSections: ["files", "items", "analysis"],
       items: { payloadMode: "section-invalidated" },
       files: { payloadMode: "section-invalidated" },
-      sections: {
-        analysis: { payloadMode: "canonical-delta" },
-      },
     });
   });
 
@@ -178,7 +178,7 @@ describe("ProjectWriteStore", () => {
     add_test_asset(database, project_path, "a.txt", "a", 0);
     add_test_asset(database, project_path, "b.txt", "b", 1);
 
-    await store.reorder_workbench_files({
+    await store.reorder_project_files({
       projectPath: project_path,
       expectedSectionRevisions: { files: 0 },
       orderedPaths: ["b.txt", "a.txt"],
@@ -189,7 +189,7 @@ describe("ProjectWriteStore", () => {
       { path: "a.txt", sort_order: 1 },
     ]);
     expect(published_changes.at(-1)).toMatchObject({
-      source: "workbench_reorder_files",
+      source: "project_reorder_files",
       updatedSections: ["files"],
       files: { payloadMode: "section-invalidated" },
     });
@@ -228,7 +228,7 @@ describe("ProjectWriteStore", () => {
       },
     );
 
-    await store.reorder_workbench_files({
+    await store.reorder_project_files({
       projectPath: project_path,
       expectedSectionRevisions: { files: 0 },
       orderedPaths: ["b.txt", "a.txt"],
@@ -249,7 +249,7 @@ describe("ProjectWriteStore", () => {
     });
     add_test_asset(database, project_path, "a.txt", "a", 0);
 
-    await store.reorder_workbench_files({
+    await store.reorder_project_files({
       projectPath: project_path,
       expectedSectionRevisions: { files: 0 },
       orderedPaths: ["a.txt"],
@@ -268,7 +268,7 @@ describe("ProjectWriteStore", () => {
     add_test_asset(database, project_path, "a.txt", "a", 0);
 
     await expect(
-      store.reorder_workbench_files({
+      store.reorder_project_files({
         projectPath: project_path,
         expectedSectionRevisions: { files: 0 },
         orderedPaths: ["a.txt"],
@@ -292,7 +292,7 @@ describe("ProjectWriteStore", () => {
       },
       revisionKey: "quality_rule_revision.glossary",
     });
-    await store.save_quality_prompt({
+    await store.save_prompt({
       projectPath: project_path,
       expectedSectionRevisions: { prompts: 0 },
       promptRuleType: "translation_prompt",
@@ -320,11 +320,26 @@ describe("ProjectWriteStore", () => {
     const ack = await store.commit_analysis_artifacts({
       projectPath: project_path,
       successCheckpoints: [
-        { item_id: 1, status: "PROCESSED", updated_at: "2026-01-01T00:00:00.000Z" },
+        {
+          item_id: 1,
+          status: "PROCESSED",
+          updated_at: "2026-01-01T00:00:00.000Z",
+          error_count: 0,
+        },
       ],
       errorCheckpoints: [],
       glossaryEntries: [{ src: "魔法", dst: "magic", info: "术语", case_sensitive: true }],
-      progressSnapshot: { total_line: 1, line: 1, processed_line: 1 },
+      progressSnapshot: {
+        start_time: 0,
+        time: 0,
+        total_line: 1,
+        line: 1,
+        processed_line: 1,
+        error_line: 0,
+        total_tokens: 0,
+        total_input_tokens: 0,
+        total_output_tokens: 0,
+      },
     });
 
     expect(ack).toMatchObject({
@@ -349,6 +364,59 @@ describe("ProjectWriteStore", () => {
           data: expect.objectContaining({ candidate_count: 1 }),
         },
       },
+    });
+  });
+
+  it("一次性应用领域任务输入并发布 quality / prompts 提交事件", async () => {
+    const project_event_handler = vi.fn();
+    const { database, project_path, store, published_changes } = create_store("task-input", {
+      projectEventHandler: project_event_handler,
+    });
+
+    const result = await store.apply_task_input({
+      projectPath: project_path,
+      expectedSectionRevisions: { quality: 0, prompts: 0 },
+      input: {
+        quality_rules: [
+          {
+            kind: "glossary",
+            entries: [{ src: "HP", dst: "生命值" }],
+            enabled: true,
+            mode: null,
+          },
+        ],
+        prompts: [
+          {
+            kind: "translation",
+            text: "翻译提示词",
+            enabled: true,
+          },
+        ],
+      },
+    });
+
+    expect(result).toMatchObject({
+      accepted: true,
+      changes: [{ updatedSections: ["quality", "prompts"] }],
+    });
+    expect(database.get_rules(project_path, "glossary")).toEqual([{ src: "HP", dst: "生命值" }]);
+    expect(database.get_rule_text(project_path, "translation_prompt")).toBe("翻译提示词");
+    expect(read_meta(database, project_path)).toMatchObject({
+      glossary_enable: true,
+      translation_prompt_enable: true,
+      "quality_rule_revision.glossary": 1,
+      "quality_prompt_revision.translation": 1,
+    });
+    expect(project_event_handler).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "project.quality.changed" }),
+    );
+    expect(project_event_handler).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "project.prompts.changed" }),
+    );
+    expect(published_changes.at(-1)).toEqual({
+      projectPath: project_path,
+      source: "project_task_input_apply",
+      updatedSections: ["quality", "prompts"],
     });
   });
 

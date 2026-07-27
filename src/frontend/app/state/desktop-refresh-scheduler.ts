@@ -34,7 +34,7 @@ export class DesktopRefreshScheduler {
     context: DesktopRefreshSchedulerErrorContext,
   ) => void;
 
-  private pending_task_snapshot: TaskSnapshot | null = null; // task snapshot 是覆盖式事实，同一窗口只保留最后一份
+  private pending_task_snapshot: TaskSnapshot | null = null; // 同一窗口保留最高 revision；相同 revision 仍允许后到的按类型查询覆盖
 
   private readonly pending_project_changes: ProjectChangeEventForState[] = []; // project change 必须按到达顺序批量发布
 
@@ -59,7 +59,12 @@ export class DesktopRefreshScheduler {
     if (this.disposed) {
       return;
     }
-    this.pending_task_snapshot = snapshot;
+    if (
+      this.pending_task_snapshot === null ||
+      snapshot.run_revision >= this.pending_task_snapshot.run_revision
+    ) {
+      this.pending_task_snapshot = snapshot;
+    }
     this.ensure_timer();
   }
 

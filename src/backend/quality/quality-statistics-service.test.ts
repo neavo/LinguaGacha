@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { QualityStatisticsCache } from "../cache/quality/quality-statistics-cache";
-import { ProjectSessionState } from "../project/project-session";
+import type { QualityStatisticsCache } from "../cache/quality-statistics-cache";
+import { ProjectSessionState } from "../project/project-session-state";
 import * as AppErrors from "../../shared/error";
 import { QualityStatisticsService } from "./quality-statistics-service";
 

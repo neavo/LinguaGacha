@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { MutableJsonRecord } from "../run/task-run-types";
+import type { MutableJsonRecord } from "../../../domain/json";
 import { TaskPlanner } from "./task-planner";
 import { TaskTokenMetricCache, type TaskTokenCountInput } from "./token-metric-cache";
-import type { TaskItemRecord, TranslationContext } from "./task-plan-types";
+import type { TranslationContext } from "./task-plan-types";
 
 describe("TaskPlanner", () => {
   it("翻译规划按文本 cache key 去重，并在下一次规划复用进程内 token 指标", async () => {
@@ -161,7 +161,7 @@ describe("TaskPlanner", () => {
     });
   }
 
-  function create_item(overrides: Partial<MutableJsonRecord>): TaskItemRecord {
+  function create_item(overrides: Partial<MutableJsonRecord>): MutableJsonRecord {
     return {
       id: 1,
       src: "",
