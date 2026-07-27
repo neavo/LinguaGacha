@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   IPC_CHANNEL_OPEN_LOG_WINDOW,
+  IPC_CHANNEL_PICK_PATH,
   IPC_CHANNEL_QUIT_APP,
   IPC_CHANNEL_RENDERER_DIAGNOSTICS,
   IPC_CHANNEL_TITLE_BAR_THEME,
@@ -11,6 +12,8 @@ import {
   IPC_CHANNEL_WINDOW_CLOSE_REQUEST,
 } from "../gui-ipc-contract";
 import { DESKTOP_BRIDGE_GLOBAL_NAME, type DesktopBridgeApi } from "../bridge/bridge-api";
+
+const LAST_DIALOG_DIRECTORY_STORAGE_KEY = "linguagacha:dialog:last-directory-workaround";
 
 // electron mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const electron_mock = vi.hoisted(() => {
@@ -52,6 +55,8 @@ describe("preload desktop bridge", () => {
     process.argv = [...original_argv];
     electron_mock.exposed_name = "";
     electron_mock.exposed_api = null;
+    vi.restoreAllMocks();
+    localStorage.clear();
     vi.clearAllMocks();
     vi.resetModules();
   });
@@ -109,6 +114,62 @@ describe("preload desktop bridge", () => {
     });
     expect(electron_mock.send).toHaveBeenCalledWith(IPC_CHANNEL_RENDERER_DIAGNOSTICS, {
       route: "workbench",
+    });
+  });
+
+  it("所有路径选择共用浏览器本地最近目录且取消时不覆盖", async () => {
+    await import_preload_with_backend_api_arg();
+    const bridge = electron_mock.exposed_api;
+    if (bridge === null) {
+      throw new Error("preload 未暴露 desktop bridge。");
+    }
+    electron_mock.invoke
+      .mockResolvedValueOnce({ canceled: false, paths: ["E:/novel/a.txt"] })
+      .mockResolvedValueOnce({ canceled: false, paths: ["D:/projects"] })
+      .mockResolvedValueOnce({ canceled: true, paths: [] });
+
+    await bridge.pickProjectSourceFilePath();
+    expect(electron_mock.invoke).toHaveBeenNthCalledWith(1, IPC_CHANNEL_PICK_PATH, {
+      kind: "project-source-files",
+      default_directory: null,
+    });
+    expect(localStorage.getItem(LAST_DIALOG_DIRECTORY_STORAGE_KEY)).toBe("E:/novel");
+
+    await bridge.pickProjectSourceDirectoryPath();
+    expect(electron_mock.invoke).toHaveBeenNthCalledWith(2, IPC_CHANNEL_PICK_PATH, {
+      kind: "project-source-directory",
+      default_directory: "E:/novel",
+    });
+    expect(localStorage.getItem(LAST_DIALOG_DIRECTORY_STORAGE_KEY)).toBe("D:/projects");
+
+    await bridge.pickPromptImportFilePath();
+    expect(localStorage.getItem(LAST_DIALOG_DIRECTORY_STORAGE_KEY)).toBe("D:/projects");
+  });
+
+  it("浏览器本地存储不可用时仍正常完成路径选择", async () => {
+    await import_preload_with_backend_api_arg();
+    const bridge = electron_mock.exposed_api;
+    if (bridge === null) {
+      throw new Error("preload 未暴露 desktop bridge。");
+    }
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("storage unavailable");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("storage unavailable");
+    });
+    electron_mock.invoke.mockResolvedValueOnce({
+      canceled: false,
+      paths: ["E:/project/demo.lg"],
+    });
+
+    await expect(bridge.pickProjectFilePath()).resolves.toEqual({
+      canceled: false,
+      paths: ["E:/project/demo.lg"],
+    });
+    expect(electron_mock.invoke).toHaveBeenCalledWith(IPC_CHANNEL_PICK_PATH, {
+      kind: "project-file",
+      default_directory: null,
     });
   });
 

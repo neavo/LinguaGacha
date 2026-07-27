@@ -46,6 +46,22 @@ export type DesktopPathPickResult = {
   paths: string[]; // 经 main 原生对话框确认后返回给 renderer 的路径快照
 };
 
+export type DesktopPathPickIntent =
+  | { kind: "project-source-files" }
+  | { kind: "project-source-directory" }
+  | { kind: "project-file" }
+  | { kind: "project-save"; default_name: string }
+  | { kind: "workbench-files" }
+  | { kind: "fixed-project-directory"; default_path?: string }
+  | { kind: "glossary-import" }
+  | { kind: "glossary-export"; default_name: string }
+  | { kind: "prompt-import" }
+  | { kind: "prompt-export" };
+
+export type DesktopPathPickIpcRequest = DesktopPathPickIntent & {
+  default_directory: string | null; // Electron 43 期间由 preload 注入浏览器本地保存的全局最近目录
+};
+
 export type DesktopUpdateDownloadRequest = {
   latest_version: string; // GitHub release 解析出的三段式版本号
   release_url: string; // 自动更新不可用时回退打开的发布页

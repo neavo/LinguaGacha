@@ -1,18 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import path from "node:path";
 
 import {
   IPC_CHANNEL_OPEN_EXTERNAL_URL,
   IPC_CHANNEL_OPEN_LOG_WINDOW,
-  IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY,
-  IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH,
-  IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH,
-  IPC_CHANNEL_PICK_PROJECT_FILE_PATH,
-  IPC_CHANNEL_PICK_PROJECT_SAVE_PATH,
-  IPC_CHANNEL_PICK_PROJECT_SOURCE_DIRECTORY_PATH,
-  IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH,
-  IPC_CHANNEL_PICK_PROMPT_EXPORT_FILE_PATH,
-  IPC_CHANNEL_PICK_PROMPT_IMPORT_FILE_PATH,
-  IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH,
+  IPC_CHANNEL_PICK_PATH,
   IPC_CHANNEL_QUIT_APP,
   IPC_CHANNEL_RENDERER_DIAGNOSTICS,
   IPC_CHANNEL_TITLE_BAR_THEME,
@@ -242,36 +234,61 @@ describe("桌面 IPC 宿主", () => {
       .mockResolvedValueOnce({ canceled: false, filePaths: ["C:/glossary.xlsx"] })
       .mockResolvedValueOnce({ canceled: false, filePaths: ["C:/prompt.txt"] });
 
-    await expect(invoke(IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH)).resolves.toEqual({
+    await expect(
+      invoke(IPC_CHANNEL_PICK_PATH, {
+        kind: "project-source-files",
+        default_directory: "D:/recent",
+      }),
+    ).resolves.toEqual({
       canceled: false,
       paths: ["C:/novel/a.txt", "C:/novel/b.txt"],
     });
-    await expect(invoke(IPC_CHANNEL_PICK_PROJECT_SOURCE_DIRECTORY_PATH)).resolves.toEqual({
+    await expect(
+      invoke(IPC_CHANNEL_PICK_PATH, {
+        kind: "project-source-directory",
+        default_directory: null,
+      }),
+    ).resolves.toEqual({
       canceled: false,
       paths: ["C:/novel"],
     });
-    await expect(invoke(IPC_CHANNEL_PICK_PROJECT_FILE_PATH)).resolves.toEqual({
+    await expect(
+      invoke(IPC_CHANNEL_PICK_PATH, { kind: "project-file", default_directory: null }),
+    ).resolves.toEqual({
       canceled: false,
       paths: ["C:/project/demo.lg"],
     });
-    await expect(invoke(IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH)).resolves.toEqual({
+    await expect(
+      invoke(IPC_CHANNEL_PICK_PATH, { kind: "workbench-files", default_directory: null }),
+    ).resolves.toEqual({
       canceled: false,
       paths: ["C:/project/new.txt"],
     });
-    await expect(invoke(IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY, "C:/fixed")).resolves.toEqual({
+    await expect(
+      invoke(IPC_CHANNEL_PICK_PATH, {
+        kind: "fixed-project-directory",
+        default_path: "C:/fixed",
+        default_directory: "D:/recent",
+      }),
+    ).resolves.toEqual({
       canceled: false,
       paths: ["C:/fixed"],
     });
-    await expect(invoke(IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH)).resolves.toEqual({
+    await expect(
+      invoke(IPC_CHANNEL_PICK_PATH, { kind: "glossary-import", default_directory: null }),
+    ).resolves.toEqual({
       canceled: false,
       paths: ["C:/glossary.xlsx"],
     });
-    await expect(invoke(IPC_CHANNEL_PICK_PROMPT_IMPORT_FILE_PATH)).resolves.toEqual({
+    await expect(
+      invoke(IPC_CHANNEL_PICK_PATH, { kind: "prompt-import", default_directory: null }),
+    ).resolves.toEqual({
       canceled: false,
       paths: ["C:/prompt.txt"],
     });
 
     expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(1, main_window, {
+      defaultPath: "D:/recent",
       properties: ["openFile", "multiSelections"],
     });
     expect(electron_mock.show_open_dialog).toHaveBeenNthCalledWith(2, main_window, {
@@ -311,25 +328,48 @@ describe("桌面 IPC 宿主", () => {
       .mockResolvedValueOnce({ canceled: false, filePath: "C:/prompt.txt" })
       .mockResolvedValueOnce({ canceled: true });
 
-    await expect(invoke(IPC_CHANNEL_PICK_PROJECT_SAVE_PATH, "demo.lg")).resolves.toEqual({
+    await expect(
+      invoke(IPC_CHANNEL_PICK_PATH, {
+        kind: "project-save",
+        default_name: "demo.lg",
+        default_directory: "D:/recent",
+      }),
+    ).resolves.toEqual({
       canceled: false,
       paths: ["C:/project/demo.lg"],
     });
-    await expect(invoke(IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH, "glossary.json")).resolves.toEqual({
+    await expect(
+      invoke(IPC_CHANNEL_PICK_PATH, {
+        kind: "glossary-export",
+        default_name: "glossary.json",
+        default_directory: null,
+      }),
+    ).resolves.toEqual({
       canceled: false,
       paths: ["C:/glossary.json"],
     });
-    await expect(invoke(IPC_CHANNEL_PICK_PROMPT_EXPORT_FILE_PATH)).resolves.toEqual({
+    await expect(
+      invoke(IPC_CHANNEL_PICK_PATH, {
+        kind: "prompt-export",
+        default_directory: "D:/recent",
+      }),
+    ).resolves.toEqual({
       canceled: false,
       paths: ["C:/prompt.txt"],
     });
-    await expect(invoke(IPC_CHANNEL_PICK_PROJECT_SAVE_PATH, "cancel.lg")).resolves.toEqual({
+    await expect(
+      invoke(IPC_CHANNEL_PICK_PATH, {
+        kind: "project-save",
+        default_name: "cancel.lg",
+        default_directory: null,
+      }),
+    ).resolves.toEqual({
       canceled: true,
       paths: [],
     });
 
     expect(electron_mock.show_save_dialog).toHaveBeenNthCalledWith(1, main_window, {
-      defaultPath: "demo.lg",
+      defaultPath: path.join("D:/recent", "demo.lg"),
       filters: [{ name: "LinguaGacha Project", extensions: ["lg"] }],
     });
     expect(electron_mock.show_save_dialog).toHaveBeenNthCalledWith(2, main_window, {
@@ -337,6 +377,7 @@ describe("桌面 IPC 宿主", () => {
       filters: [{ name: "支持的文件 (*.json *.xlsx)", extensions: ["json", "xlsx"] }],
     });
     expect(electron_mock.show_save_dialog).toHaveBeenNthCalledWith(3, main_window, {
+      defaultPath: "D:/recent",
       filters: [{ name: "支持的文件 (*.txt)", extensions: ["txt"] }],
     });
     expect(electron_mock.show_save_dialog).toHaveBeenNthCalledWith(4, main_window, {
@@ -350,11 +391,18 @@ describe("桌面 IPC 宿主", () => {
     electron_mock.show_open_dialog.mockResolvedValueOnce({ canceled: false, filePaths: [] });
     electron_mock.show_save_dialog.mockResolvedValueOnce({ canceled: true });
 
-    await expect(invoke(IPC_CHANNEL_PICK_PROJECT_SOURCE_DIRECTORY_PATH)).resolves.toEqual({
+    await expect(
+      invoke(IPC_CHANNEL_PICK_PATH, {
+        kind: "project-source-directory",
+        default_directory: null,
+      }),
+    ).resolves.toEqual({
       canceled: true,
       paths: [],
     });
-    await expect(invoke(IPC_CHANNEL_PICK_PROMPT_EXPORT_FILE_PATH)).resolves.toEqual({
+    await expect(
+      invoke(IPC_CHANNEL_PICK_PATH, { kind: "prompt-export", default_directory: null }),
+    ).resolves.toEqual({
       canceled: true,
       paths: [],
     });
@@ -381,12 +429,20 @@ describe("桌面 IPC 宿主", () => {
       filePath: "C:/glossary.xlsx",
     });
 
-    await expect(invoke(IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH)).resolves.toEqual({
+    await expect(
+      invoke(IPC_CHANNEL_PICK_PATH, { kind: "glossary-import", default_directory: null }),
+    ).resolves.toEqual({
       canceled: false,
       paths: ["C:/glossary.json"],
     });
     app_language = "ZH";
-    await expect(invoke(IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH, "glossary.xlsx")).resolves.toEqual({
+    await expect(
+      invoke(IPC_CHANNEL_PICK_PATH, {
+        kind: "glossary-export",
+        default_name: "glossary.xlsx",
+        default_directory: null,
+      }),
+    ).resolves.toEqual({
       canceled: false,
       paths: ["C:/glossary.xlsx"],
     });

@@ -1,19 +1,12 @@
 import { ipcRenderer, contextBridge, webUtils } from "electron";
+import path from "node:path";
+
 import {
   IPC_CHANNEL_OPEN_EXTERNAL_URL,
-  IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY,
-  IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH,
-  IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH,
-  IPC_CHANNEL_PICK_PROMPT_EXPORT_FILE_PATH,
-  IPC_CHANNEL_PICK_PROMPT_IMPORT_FILE_PATH,
-  IPC_CHANNEL_PICK_PROJECT_FILE_PATH,
-  IPC_CHANNEL_PICK_PROJECT_SAVE_PATH,
-  IPC_CHANNEL_PICK_PROJECT_SOURCE_DIRECTORY_PATH,
-  IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH,
+  IPC_CHANNEL_PICK_PATH,
   IPC_CHANNEL_QUIT_APP,
   IPC_CHANNEL_RENDERER_DIAGNOSTICS,
   IPC_CHANNEL_OPEN_LOG_WINDOW,
-  IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH,
   IPC_CHANNEL_TITLE_BAR_THEME,
   IPC_CHANNEL_UPDATE_DOWNLOAD_PROGRESS,
   IPC_CHANNEL_UPDATE_DOWNLOAD_RELEASE,
@@ -25,6 +18,8 @@ import { resolve_desktop_shell_info } from "../shell/shell-contract";
 import { DESKTOP_BRIDGE_GLOBAL_NAME, type DesktopBridgeApi } from "../bridge/bridge-api";
 import { resolve_desktop_system_proxy_startup_notice_from_argv } from "../bridge/system-proxy-startup-notice";
 import type {
+  DesktopPathPickIntent,
+  DesktopPathPickIpcRequest,
   DesktopPathPickResult,
   DesktopPlatform,
   DesktopRendererDiagnosticsPayload,
@@ -45,6 +40,7 @@ const SYSTEM_PROXY_STARTUP_NOTICE = resolve_desktop_system_proxy_startup_notice_
   process.argv,
 ); // 系统代理提示来自 main 启动参数，preload 只转交脱敏摘要给 renderer
 let next_update_download_request_id = 0; // preload 本地递增，避免进度事件在多次下载之间串台
+const LAST_DIALOG_DIRECTORY_STORAGE_KEY = "linguagacha:dialog:last-directory-workaround"; // Electron 43 上游修复落地后连同读写逻辑一起删除
 
 const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
   shell: DESKTOP_SHELL_INFO,
@@ -137,67 +133,76 @@ const DESKTOP_BRIDGE_API: DesktopBridgeApi = {
   async launchUpdate(request: DesktopUpdateLaunchRequest): Promise<DesktopUpdateLaunchResult> {
     return ipcRenderer.invoke(IPC_CHANNEL_UPDATE_LAUNCH_BERSERKER, request);
   },
-  /**
-   * 请求选择源文件，保持原生对话框只在 Electron 主进程打开
-   */
   async pickProjectSourceFilePath(): Promise<DesktopPathPickResult> {
-    return ipcRenderer.invoke(IPC_CHANNEL_PICK_PROJECT_SOURCE_FILE_PATH);
+    return invoke_path_picker({ kind: "project-source-files" });
   },
-  /**
-   * 请求选择源目录，保持目录权限和返回值在 preload 边界内
-   */
   async pickProjectSourceDirectoryPath(): Promise<DesktopPathPickResult> {
-    return ipcRenderer.invoke(IPC_CHANNEL_PICK_PROJECT_SOURCE_DIRECTORY_PATH);
+    return invoke_path_picker({ kind: "project-source-directory" });
   },
-  /**
-   * 请求选择工程文件，避免 renderer 直接读取文件系统
-   */
   async pickProjectFilePath(): Promise<DesktopPathPickResult> {
-    return ipcRenderer.invoke(IPC_CHANNEL_PICK_PROJECT_FILE_PATH);
+    return invoke_path_picker({ kind: "project-file" });
   },
-  /**
-   * 请求选择工程保存路径，保持保存对话框集中
-   */
   async pickProjectSavePath(default_name: string): Promise<DesktopPathPickResult> {
-    return ipcRenderer.invoke(IPC_CHANNEL_PICK_PROJECT_SAVE_PATH, default_name);
+    return invoke_path_picker({ kind: "project-save", default_name });
   },
-  /**
-   * 请求选择工作台文件，统一文件筛选和路径返回
-   */
   async pickWorkbenchFilePath(): Promise<DesktopPathPickResult> {
-    return ipcRenderer.invoke(IPC_CHANNEL_PICK_WORKBENCH_FILE_PATH);
+    return invoke_path_picker({ kind: "workbench-files" });
   },
-  /**
-   * 请求选择固定工程目录，保持目录选择语义集中
-   */
   async pickFixedProjectDirectory(default_path?: string): Promise<DesktopPathPickResult> {
-    return ipcRenderer.invoke(IPC_CHANNEL_PICK_FIXED_PROJECT_DIRECTORY, default_path);
+    return invoke_path_picker({ kind: "fixed-project-directory", default_path });
   },
-  /**
-   * 请求选择术语导入文件，避免 renderer 触碰本地路径
-   */
   async pickGlossaryImportFilePath(): Promise<DesktopPathPickResult> {
-    return ipcRenderer.invoke(IPC_CHANNEL_PICK_GLOSSARY_IMPORT_FILE_PATH);
+    return invoke_path_picker({ kind: "glossary-import" });
   },
-  /**
-   * 请求选择术语导出路径，保持写出位置由 main 确认
-   */
   async pickGlossaryExportPath(default_name: string): Promise<DesktopPathPickResult> {
-    return ipcRenderer.invoke(IPC_CHANNEL_PICK_GLOSSARY_EXPORT_PATH, default_name);
+    return invoke_path_picker({ kind: "glossary-export", default_name });
   },
-  /**
-   * 请求选择提示词导入文件，保持文件访问留在宿主边界
-   */
   async pickPromptImportFilePath(): Promise<DesktopPathPickResult> {
-    return ipcRenderer.invoke(IPC_CHANNEL_PICK_PROMPT_IMPORT_FILE_PATH);
+    return invoke_path_picker({ kind: "prompt-import" });
   },
-  /**
-   * 请求选择提示词导出路径，保持导出路径由原生对话框确认
-   */
   async pickPromptExportFilePath(): Promise<DesktopPathPickResult> {
-    return ipcRenderer.invoke(IPC_CHANNEL_PICK_PROMPT_EXPORT_FILE_PATH);
+    return invoke_path_picker({ kind: "prompt-export" });
   },
 };
+
+/**
+ * 所有路径选择在 preload 汇入同一 IPC，并在成功后更新浏览器本地最近目录。
+ */
+async function invoke_path_picker(intent: DesktopPathPickIntent): Promise<DesktopPathPickResult> {
+  const request: DesktopPathPickIpcRequest = {
+    ...intent,
+    default_directory: read_last_dialog_directory(),
+  };
+  const result = await ipcRenderer.invoke(IPC_CHANNEL_PICK_PATH, request);
+  const selected_path = result.paths[0];
+  if (!result.canceled && selected_path !== undefined && selected_path !== "") {
+    write_last_dialog_directory(
+      is_directory_pick(intent) ? selected_path : path.dirname(selected_path),
+    );
+  }
+  return result;
+}
+
+function is_directory_pick(intent: DesktopPathPickIntent): boolean {
+  return intent.kind === "project-source-directory" || intent.kind === "fixed-project-directory";
+}
+
+function read_last_dialog_directory(): string | null {
+  try {
+    const directory = localStorage.getItem(LAST_DIALOG_DIRECTORY_STORAGE_KEY);
+    return directory === "" ? null : directory;
+  } catch {
+    return null; // 本地存储不可用不应阻断原生文件选择
+  }
+}
+
+function write_last_dialog_directory(directory: string): void {
+  try {
+    localStorage.setItem(LAST_DIALOG_DIRECTORY_STORAGE_KEY, directory);
+  } catch {
+    // 最近目录只是 Electron 43 兼容状态，写入失败不影响本次选择结果
+  }
+}
 
 /**
  * 创建单调递增的下载请求 id，避免暴露随机数依赖给 renderer。
