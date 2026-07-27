@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { ProofreadingCache } from "../cache/proofreading/proofreading-cache";
-import { ProjectSessionState } from "../project/project-session";
+import type { ProofreadingCache } from "../cache/proofreading-cache";
+import { ProjectSessionState } from "../project/project-session-state";
 import { ProofreadingQueryService } from "./proofreading-query-service";
 
 function create_cache(): ProofreadingCache {

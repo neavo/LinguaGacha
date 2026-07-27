@@ -42,6 +42,38 @@ describe("install_main_fatal_error_handler", () => {
     expect(quit_after_backend_shutdown).toHaveBeenCalledWith(1);
   });
 
+  it("结构化 fatal 日志写入失败时仍进入 Backend 收尾退出路径", async () => {
+    const diagnostic_failure = new Error("fatal log failed");
+    const stderr_write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const quit_after_backend_shutdown = vi.fn().mockResolvedValue(undefined);
+    const fatal = vi.fn(() => {
+      throw diagnostic_failure;
+    });
+    const { set_electron_main_log_manager } = await import("../../backend/log/log-bridge");
+    set_electron_main_log_manager({
+      debug: vi.fn(),
+      error: vi.fn(),
+      fatal,
+      warning: vi.fn(),
+    } as never);
+    const { install_main_fatal_error_handler } = await import("./main-fatal-error-handler");
+
+    try {
+      install_main_fatal_error_handler({
+        isAppShutdownInProgress: () => false,
+        quitAfterBackendShutdown: quit_after_backend_shutdown,
+      });
+      process.emit("unhandledRejection", "boom", Promise.resolve());
+      await Promise.resolve();
+    } finally {
+      set_electron_main_log_manager(null);
+    }
+
+    expect(fatal).toHaveBeenCalledTimes(1);
+    expect(stderr_write).toHaveBeenCalledWith(expect.stringContaining("fatal log failed"));
+    expect(quit_after_backend_shutdown).toHaveBeenCalledWith(1);
+  });
+
   function restore_listeners(
     event_name: "unhandledRejection" | "uncaughtException",
     listeners: ProcessListener[],

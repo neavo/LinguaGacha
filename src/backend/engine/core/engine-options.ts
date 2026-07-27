@@ -1,10 +1,10 @@
-import type { MutableJsonRecord, TaskType } from "../run/task-run-types";
 import type { LogManager } from "../../log/log-manager";
 import type { AppSettingService } from "../../app/app-setting-service";
-import type { TaskRunPublisher } from "../run/task-run-publisher";
-import type { ProjectTaskStore } from "../store/project-task-store";
+import type { MutableJsonRecord } from "../../../domain/json";
+import type { TaskProgressSnapshot as DomainTaskProgressSnapshot } from "../../../domain/task";
+import type { TaskRuntime } from "../task-runtime";
+import type { TaskProjectStore } from "../task-project-store";
 import type { TaskPlanner } from "../planning/task-planner";
-import type { TaskItemRecord } from "../planning/task-plan-types";
 import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
 import type { WorkUnitLogEntry } from "../protocol/work-unit";
 
@@ -13,8 +13,8 @@ import type { WorkUnitLogEntry } from "../protocol/work-unit";
  */
 export interface TaskEngineOptions {
   appRoot: string; // 用于任务启动日志读取提示词模板，保持 main 与 worker 资源根一致
-  taskStore: ProjectTaskStore; // 任务编排器读写项目任务事实的唯一端口
-  taskRunPublisher: TaskRunPublisher; // 完整 task snapshot 的唯一公开出口
+  taskStore: TaskProjectStore; // 任务编排器读写项目任务事实的唯一端口
+  taskRuntime: TaskRuntime; // 任务锁、取消、快照和请求压力的唯一所有者
   executorClient: WorkUnitExecutor; // 屏蔽 worker_threads 与直接 runner 的传输差异
   taskPlanner: TaskPlanner; // 精确 token 切块、cache 复用和后台规划的唯一入口
   AppSettingService: AppSettingService; // 在每次任务启动时提供设置与模型快照
@@ -22,34 +22,15 @@ export interface TaskEngineOptions {
 }
 
 /**
- * Task Engine 内部运行实例，负责把一次后台任务和取消信号绑定在一起
- */
-export interface TaskRunHandle {
-  run_id: string; // 迟到结果隔离键，所有提交前都必须重新核对
-  task_type: TaskType; // 决定公开事件 topic payload 里的任务身份
-  signal: AbortSignal; // 停止请求向 worker 和 limiter 传播的唯一通道
-}
-
-/**
  * 翻译和分析共享的进度快照字段，字段名保持公开 task snapshot 兼容
  */
-export interface TaskProgressSnapshot {
-  start_time: number; // 秒级任务启动时间戳
-  time: number; // 由 start_time 计算的累计耗时秒数
-  total_line: number; // 任务启动时冻结的目标行数
-  line: number; // 已成功与最终失败行数之和
-  processed_line: number; // 已成功提交的行数
-  error_line: number; // 最终失败的行数
-  total_tokens: number; // 输入与输出 token 总量
-  total_input_tokens: number; // work unit 汇总的输入 token
-  total_output_tokens: number; // work unit 汇总的输出 token
-}
+export type TaskProgressSnapshot = DomainTaskProgressSnapshot;
 
 /**
  * work-unit executor 返回的翻译类结果
  */
 export interface TranslationWorkUnitResult {
-  items: TaskItemRecord[]; // 只承载本 chunk 最终写回快照，TaskEngine 决定是否提交
+  items: MutableJsonRecord[]; // 只承载本 chunk 最终写回快照，TaskEngine 决定是否提交
   row_count: number; // 对齐旧日志口径，表示本 work unit 覆盖行数
   input_tokens: number; // 请求输入 token，用于任务统计
   output_tokens: number; // 请求输出 token，不作为成功与否依据

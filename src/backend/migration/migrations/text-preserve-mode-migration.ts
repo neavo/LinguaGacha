@@ -1,9 +1,7 @@
 import { is_text_preserve_mode } from "../../../domain/quality";
-import type { DatabaseJsonValue } from "../../database/database-types";
+import type { JsonRecord } from "../../../domain/json";
 import type { ProjectDatabaseWrite } from "../../database/database-operations";
 import type { MigrationDescriptor, ProjectOpenMigrationContext } from "../migration-types";
-
-type MigrationMetaRecord = Record<string, DatabaseJsonValue>;
 
 /**
  * 迁移背景：
@@ -23,7 +21,7 @@ export const text_preserve_mode_migration: MigrationDescriptor = {
    * 只在 mode 缺失或非法时生成 meta 写入，当前合法值不被旧 bool 覆盖。
    */
   build_project_open_writes(context: ProjectOpenMigrationContext): ProjectDatabaseWrite[] {
-    const meta = context.database.get_all_meta(context.project_path) as MigrationMetaRecord;
+    const meta = context.database.get_all_meta(context.project_path) as JsonRecord;
     const raw_text_preserve_mode =
       typeof meta["text_preserve_mode"] === "string" ? meta["text_preserve_mode"] : "";
     if (is_text_preserve_mode(raw_text_preserve_mode)) {

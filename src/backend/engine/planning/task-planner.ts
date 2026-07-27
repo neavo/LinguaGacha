@@ -1,9 +1,8 @@
 import crypto from "node:crypto";
 
-import type { ApiJsonValue } from "../../api/api-types";
-import type { MutableJsonRecord } from "../run/task-run-types";
+import type { JsonValue } from "../../../domain/json";
 import { is_task_skipped_item_status } from "../../../domain/task";
-import { read_json_record } from "../../../domain/json";
+import { read_json_record, type MutableJsonRecord } from "../../../domain/json";
 import { read_item_name_text } from "../../../shared/item-name";
 import type { PlanningWorkerPool } from "./planning-worker-pool";
 import {
@@ -16,7 +15,6 @@ import {
 import type {
   AnalysisContext,
   AnalysisItemContext,
-  TaskItemRecord,
   TranslationContext,
   TranslationRetryPlan,
 } from "./task-plan-types";
@@ -59,7 +57,7 @@ export class TaskPlanner {
    * 构建翻译初始上下文，切块使用精确 token 指标并保持旧 preceding 规则。
    */
   public async build_translation_contexts(
-    items: TaskItemRecord[],
+    items: MutableJsonRecord[],
     config: MutableJsonRecord,
     model: MutableJsonRecord,
     signal: AbortSignal,
@@ -87,9 +85,9 @@ export class TaskPlanner {
    */
   public async build_translation_retry_plan(
     context: TranslationContext,
-    returned_items: TaskItemRecord[],
+    returned_items: MutableJsonRecord[],
     retry_limit: number,
-    mark_error: (item: TaskItemRecord) => void,
+    mark_error: (item: MutableJsonRecord) => void,
     signal: AbortSignal,
   ): Promise<TranslationRetryPlan> {
     const pending_items = returned_items.filter((item) => this.read_status(item) === "NONE");
@@ -97,7 +95,7 @@ export class TaskPlanner {
       return { retry_contexts: [], forced_error_items: [] };
     }
     if (pending_items.length === 1) {
-      const item = pending_items[0] as TaskItemRecord;
+      const item = pending_items[0] as MutableJsonRecord;
       if (context.retry_count < retry_limit) {
         return {
           retry_contexts: [
@@ -139,7 +137,7 @@ export class TaskPlanner {
    * 构建分析上下文，checkpoint 已完成或错误的条目不会重复调度。
    */
   public async build_analysis_contexts(
-    items: TaskItemRecord[],
+    items: MutableJsonRecord[],
     checkpoints: MutableJsonRecord[],
     model: MutableJsonRecord,
     signal: AbortSignal,
@@ -181,18 +179,18 @@ export class TaskPlanner {
    * 共享切块实现，只依赖 item 快照和已解析 token 指标，不在主线程执行 tokenizer。
    */
   private async generate_item_chunks(
-    items: TaskItemRecord[],
+    items: MutableJsonRecord[],
     input_token_threshold: number,
     preceding_lines_threshold: number,
     signal: AbortSignal,
-  ): Promise<Array<{ chunk_items: TaskItemRecord[]; precedings: TaskItemRecord[] }>> {
+  ): Promise<Array<{ chunk_items: MutableJsonRecord[]; precedings: MutableJsonRecord[] }>> {
     const metric_by_id = await this.resolve_item_metrics(items, signal);
     const line_limit = Math.max(8, Math.trunc(input_token_threshold / 16));
-    const chunks: Array<{ chunk_items: TaskItemRecord[]; precedings: TaskItemRecord[] }> = [];
+    const chunks: Array<{ chunk_items: MutableJsonRecord[]; precedings: MutableJsonRecord[] }> = [];
     let skipped_count = 0;
     let line_length = 0;
     let token_length = 0;
-    let chunk: TaskItemRecord[] = [];
+    let chunk: MutableJsonRecord[] = [];
     for (const [index, item] of items.entries()) {
       this.throw_if_aborted(signal);
       if (this.read_status(item) !== "NONE") {
@@ -248,7 +246,7 @@ export class TaskPlanner {
    * 为当前 item 快照解析 token/行数指标，cache 命中直接复用，缺失才调用 worker。
    */
   private async resolve_item_metrics(
-    items: TaskItemRecord[],
+    items: MutableJsonRecord[],
     signal: AbortSignal,
   ): Promise<Map<number, TaskTokenMetric>> {
     const seeds = await this.build_metric_seeds(items, signal);
@@ -299,7 +297,7 @@ export class TaskPlanner {
    * 构建 cache 校验种子；hash 计算留在主线程但分批让出，避免大项目启动阶段长卡顿。
    */
   private async build_metric_seeds(
-    items: TaskItemRecord[],
+    items: MutableJsonRecord[],
     signal: AbortSignal,
   ): Promise<MetricSeed[]> {
     const seeds: MetricSeed[] = [];
@@ -332,13 +330,13 @@ export class TaskPlanner {
    * 生成翻译上文块，边界跟随文件路径和句末标点。
    */
   private generate_preceding_chunk(
-    items: TaskItemRecord[],
-    chunk: TaskItemRecord[],
+    items: MutableJsonRecord[],
+    chunk: MutableJsonRecord[],
     start: number,
     skipped_count: number,
     preceding_lines_threshold: number,
-  ): TaskItemRecord[] {
-    const result: TaskItemRecord[] = [];
+  ): MutableJsonRecord[] {
+    const result: MutableJsonRecord[] = [];
     const current_file_path = String(chunk[chunk.length - 1]?.["file_path"] ?? "");
     for (let index = start - skipped_count - chunk.length - 1; index >= 0; index -= 1) {
       const item = items[index];
@@ -366,7 +364,7 @@ export class TaskPlanner {
    * 从 item 和 checkpoint map 构建不可变分析输入快照。
    */
   private build_analysis_item_context(
-    item: TaskItemRecord,
+    item: MutableJsonRecord,
     checkpoint_status_by_id: Map<number, string>,
   ): AnalysisItemContext | null {
     if (!this.is_analyzable_item(item)) {
@@ -387,7 +385,7 @@ export class TaskPlanner {
   /**
    * 分析输入在规划期渲染姓名前缀，后续 worker 继续只消费纯文本快照。
    */
-  private build_analysis_source_text(item: TaskItemRecord): string {
+  private build_analysis_source_text(item: MutableJsonRecord): string {
     const src = String(item["src"] ?? "").trim();
     if (src === "") {
       return "";
@@ -414,7 +412,7 @@ export class TaskPlanner {
   /**
    * 分析跳过规则保持稳定语义。
    */
-  private is_analyzable_item(item: TaskItemRecord): boolean {
+  private is_analyzable_item(item: MutableJsonRecord): boolean {
     return (
       !is_task_skipped_item_status(this.read_status(item)) &&
       String(item["src"] ?? "").trim() !== ""
@@ -439,21 +437,21 @@ export class TaskPlanner {
   /**
    * item id 同时兼容数据库内部 id 和公开 item_id。
    */
-  private read_item_id(item: TaskItemRecord): number {
+  private read_item_id(item: MutableJsonRecord): number {
     return this.read_number(item["id"] ?? item["item_id"], 0);
   }
 
   /**
    * 读取 item 当前状态事实。
    */
-  private read_status(item: TaskItemRecord): string {
+  private read_status(item: MutableJsonRecord): string {
     return String(item["status"] ?? "NONE");
   }
 
   /**
    * 数字字段统一截断，坏值回退到调用方默认值。
    */
-  private read_number(value: ApiJsonValue | undefined, fallback: number): number {
+  private read_number(value: JsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }

@@ -10,9 +10,9 @@ import {
 import {
   normalizeProjectChangePayloadMode,
   type ProjectChangeItemsPayload,
-  type ProjectChangeJsonRecord,
   type ProjectChangePayloadMode,
 } from "@shared/project-event";
+import type { JsonRecord } from "@domain/json";
 import { normalize_project_item_field_patch } from "@shared/project/project-item-field-patch";
 
 /**
@@ -144,14 +144,14 @@ function normalize_project_change_items(value: unknown): ProjectChangeItemsPaylo
 /**
  * 归一化输入，保证下游消费稳定形状。
  */
-function normalize_record_map(value: unknown): Record<string, ProjectChangeJsonRecord> {
+function normalize_record_map(value: unknown): Record<string, JsonRecord> {
   if (!is_record(value)) {
     return {};
   }
   return Object.fromEntries(
     Object.entries(value)
       .filter((entry): entry is [string, Record<string, unknown>] => is_record(entry[1]))
-      .map(([key, record]) => [key, { ...record } as ProjectChangeJsonRecord]),
+      .map(([key, record]) => [key, { ...record } as JsonRecord]),
   );
 }
 

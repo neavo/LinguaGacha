@@ -2,9 +2,8 @@ import render from "dom-serializer";
 import { Element, isTag, Text, type ChildNode } from "domhandler";
 import JSZip from "jszip";
 
-import type { ApiJsonValue } from "../../../api/api-types";
 import { Item } from "../../../../domain/item";
-import { read_json_record } from "../../../../domain/json";
+import { read_json_record, type JsonRecord } from "../../../../domain/json";
 import {
   should_preserve_epub_reading_layout,
   write_binary_file,
@@ -431,7 +430,7 @@ export class EpubWriter {
   private apply_block_text_item_to_tree(
     root: Element,
     elem_by_path: Map<string, Element>,
-    epub: Record<string, ApiJsonValue>,
+    epub: JsonRecord,
     item: Item,
     item_dst: string,
     allow_bilingual_insert: boolean,

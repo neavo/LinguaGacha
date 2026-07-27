@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import type { ApiJsonValue } from "../api/api-types";
+import type { JsonRecord } from "../../domain/json";
 import { Item, type ItemFileType } from "../../domain/item";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
@@ -10,12 +10,12 @@ import type { ProjectSourceFileEntry } from "../file/formats/file-format-shared"
 
 export type SourceFileParseCommand = {
   source_path: string; // 用户选择的真实文件路径，只允许解析流水线读取
-  rel_path: string; // 工程或工作台内的目标相对路径
+  rel_path: string; // 项目内的目标相对路径
 };
 
 export type SourceFileParsedDraft = SourceFileParseCommand & {
   file_type: ItemFileType; // 只来自格式解析结果，不由调用方猜测
-  parsed_items: Array<Record<string, ApiJsonValue>>; // 已过 Item JSON 边界的公开草稿
+  parsed_items: Array<JsonRecord>; // 已过 Item JSON 边界的公开草稿
 };
 
 export type SourceFileParseResult = {
@@ -31,13 +31,13 @@ export type SourceFileProjectDraft = {
     file_type: ItemFileType;
     sort_index: number;
   }>; // files 是项目文件 section 和 asset 写库共同使用的草稿
-  items: Array<Record<string, ApiJsonValue>>; // 已分配临时 id、file_path 和 file_type
-  file_state: Record<string, Record<string, ApiJsonValue>>; // 供预过滤算法消费
+  items: Array<JsonRecord>; // 已分配临时 id、file_path 和 file_type
+  file_state: Record<string, JsonRecord>; // 供预过滤算法消费
   failed_files: SourceFileParseFailureRecord[];
 };
 
-export type WorkbenchFilePreviewParseResult = {
-  files: Array<Record<string, ApiJsonValue>>;
+export type ProjectFilePreviewParseResult = {
+  files: Array<JsonRecord>;
   failed_files: SourceFileParseFailureRecord[];
 };
 
@@ -103,7 +103,7 @@ export class SourceFileParsePipeline {
   }
 
   /**
-   * 工作台导入提交只消费源路径和目标路径；解析失败不阻断同批成功文件。
+   * 项目文件导入只消费源路径和目标路径；解析失败不阻断同批成功文件。
    */
   public async parse_import_commands(
     commands: SourceFileParseCommand[],
@@ -117,14 +117,14 @@ export class SourceFileParsePipeline {
   }
 
   /**
-   * 工作台预览同时支持新增目录展开和替换单文件路径计算。
+   * 项目文件预览同时支持新增目录展开和替换单文件路径计算。
    */
-  public async parse_workbench_preview(args: {
+  public async parse_project_file_preview(args: {
     source_paths: string[];
     current_rel_path?: string;
-  }): Promise<WorkbenchFilePreviewParseResult> {
+  }): Promise<ProjectFilePreviewParseResult> {
     if (args.current_rel_path !== undefined) {
-      return this.parse_workbench_replace_preview(args.source_paths, args.current_rel_path);
+      return this.parse_project_file_replace_preview(args.source_paths, args.current_rel_path);
     }
 
     const parse_result = await this.parse_source_entries(
@@ -169,12 +169,12 @@ export class SourceFileParsePipeline {
   }
 
   /**
-   * 工作台替换预览保留格式服务的目标路径规则，不重新实现目录拼接。
+   * 项目文件替换预览保留格式服务的目标路径规则，不重新实现目录拼接。
    */
-  private async parse_workbench_replace_preview(
+  private async parse_project_file_replace_preview(
     source_paths: string[],
     current_rel_path: string,
-  ): Promise<WorkbenchFilePreviewParseResult> {
+  ): Promise<ProjectFilePreviewParseResult> {
     const parent = path.dirname(current_rel_path);
     const parse_result = await this.parse_source_entries(
       this.format_service

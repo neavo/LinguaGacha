@@ -1,4 +1,4 @@
-import type { ApiJsonValue } from "../../api/api-types";
+import type { JsonRecord, JsonValue } from "../../../domain/json";
 import type { LogError } from "../../../shared/error";
 
 /** work unit 日志只允许可序列化摘要，避免 worker 线程回传 Error 引用 */
@@ -6,7 +6,7 @@ export type WorkUnitLogEntry = {
   level: "info" | "warning" | "error";
   message: string;
   error?: LogError;
-  context?: Record<string, ApiJsonValue>;
+  context?: JsonRecord;
 };
 
 /** 翻译 work unit 是 Engine 发给 worker 的不可变执行载荷 */
@@ -14,12 +14,12 @@ export type TranslationWorkUnit = {
   unit_id: string;
   run_id: string;
   kind: "translation";
-  model: ApiJsonValue;
-  config_snapshot: ApiJsonValue;
-  quality_snapshot: ApiJsonValue;
+  model: JsonValue;
+  config_snapshot: JsonValue;
+  quality_snapshot: JsonValue;
   payload: {
-    items: ApiJsonValue;
-    precedings: ApiJsonValue;
+    items: JsonValue;
+    precedings: JsonValue;
   };
   diagnostics: {
     token_threshold: number;
@@ -34,12 +34,12 @@ export type AnalysisWorkUnit = {
   unit_id: string;
   run_id: string;
   kind: "analysis";
-  model: ApiJsonValue;
-  config_snapshot: ApiJsonValue;
-  quality_snapshot: ApiJsonValue;
+  model: JsonValue;
+  config_snapshot: JsonValue;
+  quality_snapshot: JsonValue;
   payload: {
     file_path: string;
-    items: ApiJsonValue;
+    items: JsonValue;
   };
   diagnostics: {
     retry_count: number;

@@ -1,11 +1,11 @@
 import type { ItemTextType } from "../../../../../domain/item";
+import type { MutableJsonRecord } from "../../../../../domain/json";
 import {
   BLACKLIST_EXTENSIONS,
   has_color_block_tag,
   NoneTransProcessor,
   string_array,
   to_mutable_record,
-  type ApiJsonRecord,
 } from "../trans-processor";
 
 /**
@@ -95,7 +95,7 @@ export class WolfTransProcessor extends NoneTransProcessor {
   /**
    * 从 WOLF 数据库 stringArgs 非 0 项收集应屏蔽文本，对齐旧 generate_block_text
    */
-  private generate_block_text(project: ApiJsonRecord): Set<string> {
+  private generate_block_text(project: MutableJsonRecord): Set<string> {
     const result = new Set<string>();
     const files = to_mutable_record(project["files"]);
     for (const entry_raw of Object.values(files)) {

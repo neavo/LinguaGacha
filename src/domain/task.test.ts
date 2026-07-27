@@ -8,6 +8,7 @@ import {
   is_task_skipped_item_status,
   is_task_start_mode,
   is_task_type,
+  normalize_task_progress_snapshot,
   normalize_task_type,
 } from "./task";
 
@@ -28,5 +29,32 @@ describe("task 基础模型", () => {
     expect(is_active_translation_task_status("running")).toBe(true);
     expect(is_active_analysis_task_status("running")).toBe(true);
     expect(is_task_skipped_item_status("RULE_SKIPPED")).toBe(true);
+  });
+
+  it("进度归一化拒绝 NaN、Infinity、负数和额外字段", () => {
+    expect(
+      normalize_task_progress_snapshot({
+        start_time: 1.5,
+        time: Number.NaN,
+        total_line: "4.9",
+        line: Number.POSITIVE_INFINITY,
+        processed_line: -2,
+        error_line: 1.8,
+        total_tokens: 7,
+        total_input_tokens: 3,
+        total_output_tokens: 4,
+        extra: 99,
+      }),
+    ).toEqual({
+      start_time: 1.5,
+      time: 0,
+      total_line: 4,
+      line: 0,
+      processed_line: 0,
+      error_line: 1,
+      total_tokens: 7,
+      total_input_tokens: 3,
+      total_output_tokens: 4,
+    });
   });
 });

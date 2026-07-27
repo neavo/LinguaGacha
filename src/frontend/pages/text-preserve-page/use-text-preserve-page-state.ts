@@ -11,7 +11,7 @@ import {
 } from "@frontend/app/session/project-session-ui-state-context";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import { useDebouncedCallback } from "@frontend/widgets/interactions/use-debounce";
-import { buildProofreadingLookupQuery } from "@shared/quality/state";
+import { buildProofreadingLookupQuery } from "@shared/quality/quality-rule-proofreading-query";
 import {
   read_quality_rule,
   read_quality_rule_section_revisions,
@@ -90,7 +90,7 @@ import type {
   AppTableSortState,
 } from "@frontend/widgets/app-table/app-table-types";
 import { normalize_text_preserve_mode } from "@domain/quality";
-import { QualityRuleImportRuleTypeValue } from "@shared/quality/importer";
+import { QualityRuleImportRuleTypeValue } from "@shared/quality/quality-rule-import";
 
 type TextPreservePresetPayload = {
   builtin_presets: TextPreservePresetItem[];

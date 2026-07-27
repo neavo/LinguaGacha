@@ -16,7 +16,7 @@ import {
   to_log_error,
   type LogError,
 } from "../../../shared/error";
-import type { SystemProxySnapshot } from "../../network/system-proxy-dispatcher";
+import type { SystemProxySnapshot } from "../../llm/llm-system-proxy-dispatcher";
 
 /**
  * worker 池只接收宿主已解析的执行模式和容量，不自行读取应用设置。
@@ -105,8 +105,16 @@ export class WorkUnitWorkerPool implements WorkUnitExecutor {
       }
       slot.in_flight.clear();
     }
-    await Promise.allSettled(this.slots.map((slot) => slot.worker.terminate()));
+    const terminate_results = await Promise.allSettled(
+      this.slots.map((slot) => slot.worker.terminate()),
+    );
     this.slots.length = 0;
+    const terminate_errors = terminate_results
+      .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+      .map((result) => result.reason);
+    if (terminate_errors.length > 0) {
+      throw new AggregateError(terminate_errors, "WorkUnitWorkerPool worker 终止失败");
+    }
   }
 
   /**

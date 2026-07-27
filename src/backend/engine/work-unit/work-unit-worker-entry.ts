@@ -3,7 +3,7 @@ import { parentPort, workerData } from "node:worker_threads";
 import {
   install_system_proxy_dispatcher_from_snapshot,
   type SystemProxySnapshot,
-} from "../../network/system-proxy-dispatcher";
+} from "../../llm/llm-system-proxy-dispatcher";
 import { to_log_error } from "../../../shared/error";
 import type { WorkUnit } from "../protocol/work-unit";
 import { WorkUnitRunner, type WorkUnitRunnerOptions } from "./work-unit-runner";

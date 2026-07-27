@@ -1,11 +1,11 @@
-import type { ApiJsonValue } from "../api/api-types";
+import type { JsonRecord, JsonValue } from "../../domain/json";
 import { AppPathService } from "./app-path-service";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { Setting } from "../../domain/setting";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 
 interface AppSettingsStreamPublisher {
-  publish: (topic: string, payload: Record<string, ApiJsonValue>) => void; // settings.changed 走公开 stream topic，避免设置更新绕回旧运行态同步链路
+  publish: (topic: string, payload: JsonRecord) => void; // settings.changed 走公开 stream topic，避免设置更新绕回旧运行态同步链路
 }
 
 /**
@@ -16,7 +16,7 @@ export class AppSettingService {
   private stream_publisher: AppSettingsStreamPublisher | null; // 只广播 settings.changed
   private readonly native_fs: NativeFs; // 统一设置文件读写和长路径策略
   private setting_cache: Setting | null = null; // 运行期配置事实，外部手改不做热加载
-  private transient_overrides: Record<string, ApiJsonValue> | null = null; // 只服务 CLI 单次任务，不写回 config.json
+  private transient_overrides: JsonRecord | null = null; // 只服务 CLI 单次任务，不写回 config.json
 
   /**
    * 初始化 AppSettingService 依赖，保持配置写入口与事件出口清晰。
@@ -41,23 +41,23 @@ export class AppSettingService {
   /**
    * 设置同进程入口的临时覆盖值；CLI 语言参数需要影响任务快照，但不能改写 GUI 配置文件。
    */
-  public set_transient_overrides(overrides: Record<string, ApiJsonValue> | null): void {
+  public set_transient_overrides(overrides: JsonRecord | null): void {
     this.transient_overrides = overrides === null ? null : { ...overrides };
   }
 
   /**
    * 读取应用设置快照，保持 UI 只消费白名单字段
    */
-  public get_app_settings(): Record<string, ApiJsonValue> {
+  public get_app_settings(): JsonRecord {
     const setting = this.read_setting_entity();
-    this.save_setting(setting.to_json() as Record<string, ApiJsonValue>);
-    return { settings: setting.to_snapshot() as Record<string, ApiJsonValue> };
+    this.save_setting(setting.to_json() as JsonRecord);
+    return { settings: setting.to_snapshot() as JsonRecord };
   }
 
   /**
    * 更新应用设置白名单字段，并通过 API stream 广播设置变化
    */
-  public update_app_settings(request: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
+  public update_app_settings(request: JsonRecord): JsonRecord {
     let setting = this.read_setting_entity();
     const changed_keys: string[] = [];
     for (const [key, value] of Object.entries(request)) {
@@ -67,56 +67,45 @@ export class AppSettingService {
       changed_keys.push(key);
     }
     if (changed_keys.length > 0) {
-      this.save_setting(setting.to_json() as Record<string, ApiJsonValue>);
-      this.publish_settings_changed(
-        changed_keys,
-        setting.to_json() as Record<string, ApiJsonValue>,
-      );
+      this.save_setting(setting.to_json() as JsonRecord);
+      this.publish_settings_changed(changed_keys, setting.to_json() as JsonRecord);
     }
-    return { settings: setting.to_snapshot() as Record<string, ApiJsonValue> };
+    return { settings: setting.to_snapshot() as JsonRecord };
   }
 
   /**
    * 写入最近项目列表，集中去重和数量限制
    */
-  public add_recent_project(request: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
+  public add_recent_project(request: JsonRecord): JsonRecord {
     const project_path = typeof request["path"] === "string" ? request["path"] : "";
     let setting = this.read_setting_entity();
     if (project_path !== "") {
       setting = setting.with_recent_project_added(project_path, this.build_local_iso_timestamp());
-      this.save_setting(setting.to_json() as Record<string, ApiJsonValue>);
-      this.publish_settings_changed(
-        ["recent_projects"],
-        setting.to_json() as Record<string, ApiJsonValue>,
-      );
+      this.save_setting(setting.to_json() as JsonRecord);
+      this.publish_settings_changed(["recent_projects"], setting.to_json() as JsonRecord);
     }
-    return { settings: setting.to_snapshot() as Record<string, ApiJsonValue> };
+    return { settings: setting.to_snapshot() as JsonRecord };
   }
 
   /**
    * 移除最近项目，保持配置文件列表结构稳定
    */
-  public remove_recent_project(
-    request: Record<string, ApiJsonValue>,
-  ): Record<string, ApiJsonValue> {
+  public remove_recent_project(request: JsonRecord): JsonRecord {
     const project_path = typeof request["path"] === "string" ? request["path"] : "";
     let setting = this.read_setting_entity();
     if (project_path !== "") {
       setting = setting.with_recent_project_removed(project_path);
-      this.save_setting(setting.to_json() as Record<string, ApiJsonValue>);
-      this.publish_settings_changed(
-        ["recent_projects"],
-        setting.to_json() as Record<string, ApiJsonValue>,
-      );
+      this.save_setting(setting.to_json() as JsonRecord);
+      this.publish_settings_changed(["recent_projects"], setting.to_json() as JsonRecord);
     }
-    return { settings: setting.to_snapshot() as Record<string, ApiJsonValue> };
+    return { settings: setting.to_snapshot() as JsonRecord };
   }
 
   /**
    * 读取完整设置对象副本，业务服务不能直接触碰 config.json。
    */
-  public read_setting(): Record<string, ApiJsonValue> {
-    const setting = this.read_setting_entity().to_json() as Record<string, ApiJsonValue>;
+  public read_setting(): JsonRecord {
+    const setting = this.read_setting_entity().to_json() as JsonRecord;
     if (this.transient_overrides === null) {
       return setting;
     }
@@ -126,7 +115,7 @@ export class AppSettingService {
   /**
    * 持久化完整设置对象，并同步刷新运行期缓存。
    */
-  public save_setting(setting: Record<string, ApiJsonValue>): void {
+  public save_setting(setting: JsonRecord): void {
     const config_path = this.paths.get_config_path();
     const normalized_setting = Setting.from_json(setting);
     this.native_fs.write_file_sync(
@@ -139,16 +128,14 @@ export class AppSettingService {
   /**
    * 构建设置响应快照，隔离 config.json 内部形状
    */
-  public build_setting_snapshot(
-    setting: Record<string, ApiJsonValue>,
-  ): Record<string, ApiJsonValue> {
-    return Setting.from_json(setting).to_snapshot() as Record<string, ApiJsonValue>;
+  public build_setting_snapshot(setting: JsonRecord): JsonRecord {
+    return Setting.from_json(setting).to_snapshot() as JsonRecord;
   }
 
   /**
    * 读取当前应用语言，日志和错误文案只消费这个窄入口。
    */
-  public read_app_language(): ApiJsonValue {
+  public read_app_language(): JsonValue {
     return this.read_setting_entity().to_json()["app_language"] ?? "ZH";
   }
 
@@ -171,12 +158,9 @@ export class AppSettingService {
   /**
    * 设置广播直接接发布，后续任务读取服务缓存即可看到最新值。
    */
-  private publish_settings_changed(
-    changed_keys: string[],
-    setting: Record<string, ApiJsonValue>,
-  ): void {
+  private publish_settings_changed(changed_keys: string[], setting: JsonRecord): void {
     this.stream_publisher?.publish("settings.changed", {
-      keys: changed_keys as unknown as ApiJsonValue,
+      keys: changed_keys as unknown as JsonValue,
       settings: this.build_setting_snapshot(setting),
     });
   }

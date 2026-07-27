@@ -1,17 +1,17 @@
-import type { ApiJsonValue } from "../../api/api-types";
+import type { JsonValue } from "../../../domain/json";
 import type { WorkUnitLogEntry } from "./work-unit";
 
 /** 翻译 work unit 输出只表达译文 item 更新，数据库提交由 TaskEngine 统一编排 */
 export type TranslationWorkUnitOutput = {
   kind: "translation";
-  items: ApiJsonValue;
+  items: JsonValue;
   row_count: number;
 };
 
 /** 分析 work unit 输出只表达候选术语原始结果，checkpoint 由 Engine 解释 */
 export type AnalysisWorkUnitOutput = {
   kind: "analysis";
-  glossary_entries: ApiJsonValue;
+  glossary_entries: JsonValue;
   valid_empty_result: boolean;
 };
 

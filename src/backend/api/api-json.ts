@@ -2,12 +2,11 @@ import crypto from "node:crypto";
 
 import type { Hono } from "hono";
 
+import type { JsonRecord, JsonValue } from "../../domain/json";
 import { InvalidJsonError } from "../../shared/error";
-import { ok, type ApiJsonValue } from "./api-types";
+import { ok } from "./api-types";
 
-export type ApiJsonHandler = (
-  body: Record<string, ApiJsonValue>,
-) => ApiJsonValue | Promise<ApiJsonValue>;
+export type ApiJsonHandler = (body: JsonRecord) => JsonValue | Promise<JsonValue>;
 
 export type ApiJsonErrorResponder = (
   error: unknown,
@@ -31,7 +30,7 @@ export function register_post_json_route(
     try {
       const body = (await context.req.json().catch((error: unknown) => {
         throw new InvalidJsonError(error);
-      })) as Record<string, ApiJsonValue>;
+      })) as JsonRecord;
       const data = await handler(body);
       return context.json(ok(data));
     } catch (error) {

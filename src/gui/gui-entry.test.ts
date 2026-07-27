@@ -206,6 +206,47 @@ describe("Electron main 入口", () => {
       },
     ]);
     expect(harness.calls.show_error_boxes).toEqual([["LinguaGacha 启动失败", "端口不可用"]]);
+    expect(harness.calls.backend_stop_count).toBe(1);
+    expect(harness.calls.app_exit_codes).toEqual([1]);
+  });
+
+  it("启动失败诊断日志写入失败时仍关闭 Backend 并退出应用", async () => {
+    const harness = create_index_harness();
+    const start_error = new Error("端口不可用");
+    const diagnostic_error = new Error("诊断日志写入失败");
+    const stderr_write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    harness.set_start_error(start_error);
+    harness.set_main_error_failure(diagnostic_error);
+
+    await harness.import_index();
+    harness.resolve_ready();
+    await flush_promises();
+
+    expect(stderr_write).toHaveBeenCalledWith("[startup] 诊断日志写入失败\n");
+    expect(harness.calls.show_error_boxes).toEqual([["LinguaGacha 启动失败", "端口不可用"]]);
+    expect(harness.calls.backend_stop_count).toBe(1);
+    expect(harness.calls.app_exit_codes).toEqual([1]);
+  });
+
+  it("Backend 启动后桌面服务初始化失败时仍关闭 Backend 再退出应用", async () => {
+    const harness = create_index_harness();
+    const cleanup_error = new Error("更新目录清理失败");
+    harness.set_update_cleanup_error(cleanup_error);
+
+    await harness.import_index();
+    harness.resolve_ready();
+    await flush_promises();
+
+    expect(harness.calls.backend_start_count).toBe(1);
+    expect(harness.calls.update_cleanup_count).toBe(1);
+    expect(harness.calls.backend_stop_count).toBe(1);
+    expect(harness.calls.main_errors).toEqual([
+      {
+        message: "log:app.diagnostic.lifecycle.app_start_failed",
+        context: { error: cleanup_error },
+      },
+    ]);
+    expect(harness.calls.show_error_boxes).toEqual([["LinguaGacha 启动失败", "更新目录清理失败"]]);
     expect(harness.calls.app_exit_codes).toEqual([1]);
   });
 
@@ -258,14 +299,20 @@ function create_index_harness(): {
   import_index: () => Promise<void>;
   resolve_ready: ReadyResolver;
   set_open_path_result: (result: string) => void;
+  set_main_error_failure: (error: Error) => void;
   set_start_error: (error: Error) => void;
+  set_update_cleanup_error: (error: Error) => void;
 } {
   const base_url = "http://127.0.0.1:19001";
   const backend_paths = { id: "backend-paths" };
+  let update_cleanup_error: Error | null = null;
   const desktop_update_service = {
     id: "desktop-update-service",
     cleanup_berserker_version_dirs: async () => {
       calls.update_cleanup_count += 1;
+      if (update_cleanup_error !== null) {
+        throw update_cleanup_error;
+      }
     },
   };
   const system_proxy_startup_notice: SystemProxyStartupNotice = {
@@ -279,6 +326,7 @@ function create_index_harness(): {
     resolve_ready = resolve;
   });
   let open_path_result = "";
+  let main_error_failure: Error | null = null;
   let start_error: Error | null = null;
   const log_window_host = {
     close: () => {
@@ -456,7 +504,7 @@ function create_index_harness(): {
 
   vi.doMock("./shell/native-error-dialog", () => {
     return {
-      show_native_error_dialog: (title: string, message: string) => {
+      try_show_native_error_dialog: (title: string, message: string) => {
         calls.show_error_boxes.push([title, message]);
       },
     };
@@ -479,6 +527,9 @@ function create_index_harness(): {
   vi.doMock("../backend/log/log-bridge", () => {
     return {
       write_electron_main_error: (message: string, context: Record<string, unknown>) => {
+        if (main_error_failure !== null) {
+          throw main_error_failure;
+        }
         calls.main_errors.push({ message, context });
       },
     };
@@ -514,8 +565,14 @@ function create_index_harness(): {
     set_open_path_result: (result) => {
       open_path_result = result;
     },
+    set_main_error_failure: (error) => {
+      main_error_failure = error;
+    },
     set_start_error: (error) => {
       start_error = error;
+    },
+    set_update_cleanup_error: (error) => {
+      update_cleanup_error = error;
     },
   };
 }

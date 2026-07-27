@@ -1,7 +1,7 @@
-import type { ApiJsonValue } from "../api/api-types";
+import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
 import { read_json_record } from "../../domain/json";
-import type { ProofreadingCache } from "../cache/proofreading/proofreading-cache";
-import type { ProjectSessionState } from "../project/project-session";
+import type { ProofreadingCache } from "../cache/proofreading-cache";
+import type { ProjectSessionState } from "../project/project-session-state";
 import * as AppErrors from "../../shared/error";
 import type {
   ProofreadingFilterOptions,
@@ -9,8 +9,6 @@ import type {
 } from "../../shared/proofreading/proofreading-types";
 import type { ProofreadingListViewQuery } from "../../shared/proofreading/proofreading-list-reader";
 import type { ProofreadingSortState } from "../../shared/proofreading/list";
-
-type MutableJsonRecord = Record<string, ApiJsonValue>;
 
 /**
  * 将校对页面 action 收窄为当前 loaded 工程的只读缓存查询。
@@ -30,7 +28,7 @@ export class ProofreadingQueryService {
   /**
    * 分发校对页唯一查询入口，未知 action 在协议边界直接拒绝。
    */
-  public async read(request: Record<string, ApiJsonValue>): Promise<MutableJsonRecord> {
+  public async read(request: JsonRecord): Promise<MutableJsonRecord> {
     this.session_state.require_loaded_project_path();
     const action = String(request["action"] ?? "sync");
     if (action === "sync") {
@@ -39,13 +37,13 @@ export class ProofreadingQueryService {
         targetLanguage: request["target_language"],
       });
       return this.with_revision(result, {
-        syncState: result.data as unknown as ApiJsonValue,
-        defaultFilters: result.data.defaultFilters as unknown as ApiJsonValue,
+        syncState: result.data as unknown as JsonValue,
+        defaultFilters: result.data.defaultFilters as unknown as JsonValue,
       });
     }
     if (action === "list") {
       const result = await this.cache.list(this.read_list_query(request["query"]));
-      return this.with_revision(result, { view: result.data as unknown as ApiJsonValue });
+      return this.with_revision(result, { view: result.data as unknown as JsonValue });
     }
     if (action === "window") {
       const result = await this.cache.window({
@@ -53,7 +51,7 @@ export class ProofreadingQueryService {
         start: this.read_number(request["start"], 0),
         count: this.read_number(request["count"], 160),
       });
-      return this.with_revision(result, { window: result.data as unknown as ApiJsonValue });
+      return this.with_revision(result, { window: result.data as unknown as JsonValue });
     }
     if (action === "row_ids_range") {
       const result = await this.cache.rowIdsRange({
@@ -61,7 +59,7 @@ export class ProofreadingQueryService {
         start: this.read_number(request["start"], 0),
         count: this.read_number(request["count"], 160),
       });
-      return this.with_revision(result, { row_ids: result.data as unknown as ApiJsonValue });
+      return this.with_revision(result, { row_ids: result.data as unknown as JsonValue });
     }
     if (action === "row_index") {
       const result = await this.cache.rowIndex({
@@ -74,13 +72,13 @@ export class ProofreadingQueryService {
       const result = await this.cache.itemsByRowIds({
         row_ids: this.read_string_array(request["row_ids"]),
       });
-      return this.with_revision(result, { rows: result.data as unknown as ApiJsonValue });
+      return this.with_revision(result, { rows: result.data as unknown as JsonValue });
     }
     if (action === "filter_panel") {
       const result = await this.cache.filterPanel({
         filters: this.read_filters(request["filters"]),
       });
-      return this.with_revision(result, { filterPanel: result.data as unknown as ApiJsonValue });
+      return this.with_revision(result, { filterPanel: result.data as unknown as JsonValue });
     }
     throw new AppErrors.RequestValidationError({
       diagnostic_context: { reason: "invalid_proofreading_query_action", action },
@@ -100,7 +98,7 @@ export class ProofreadingQueryService {
   ): MutableJsonRecord {
     return {
       projectPath: result.projectPath,
-      sectionRevisions: result.sectionRevisions as unknown as ApiJsonValue,
+      sectionRevisions: result.sectionRevisions as unknown as JsonValue,
       ...data,
     };
   }
@@ -108,10 +106,10 @@ export class ProofreadingQueryService {
   /**
    * 将公开 list query 归一为校对列表读取器的完整参数。
    */
-  private read_list_query(value: ApiJsonValue | undefined): ProofreadingListViewQuery {
+  private read_list_query(value: JsonValue | undefined): ProofreadingListViewQuery {
     const record = read_json_record(value);
     return {
-      filters: this.read_filters(record["filters"] as ApiJsonValue | undefined),
+      filters: this.read_filters(record["filters"] as JsonValue | undefined),
       keyword: String(record["keyword"] ?? ""),
       scope: this.read_scope(record["scope"]),
       is_regex: record["is_regex"] === true,
@@ -124,12 +122,12 @@ export class ProofreadingQueryService {
   /**
    * 只接受稳定过滤字段；非法术语元组在边界丢弃。
    */
-  private read_filters(value: ApiJsonValue | undefined): ProofreadingFilterOptions {
+  private read_filters(value: JsonValue | undefined): ProofreadingFilterOptions {
     const record = read_json_record(value);
     return {
-      warning_types: this.read_string_array(record["warning_types"] as ApiJsonValue | undefined),
-      statuses: this.read_string_array(record["statuses"] as ApiJsonValue | undefined),
-      file_paths: this.read_string_array(record["file_paths"] as ApiJsonValue | undefined),
+      warning_types: this.read_string_array(record["warning_types"] as JsonValue | undefined),
+      statuses: this.read_string_array(record["statuses"] as JsonValue | undefined),
+      file_paths: this.read_string_array(record["file_paths"] as JsonValue | undefined),
       glossary_terms: Array.isArray(record["glossary_terms"])
         ? record["glossary_terms"].flatMap((term) => {
             return Array.isArray(term) && term.length >= 2
@@ -169,7 +167,7 @@ export class ProofreadingQueryService {
   /**
    * 多选过滤统一转换为字符串数组。
    */
-  private read_string_array(value: ApiJsonValue | undefined): string[] {
+  private read_string_array(value: JsonValue | undefined): string[] {
     return Array.isArray(value) ? value.map((entry) => String(entry)) : [];
   }
 

@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import type { ApiJsonValue } from "../../api/api-types";
+import type { JsonRecord } from "../../../domain/json";
 import { t_main_log } from "../../log/log-text";
 import { default_native_fs } from "../../../native/native-fs";
 import { InternalInvariantError } from "../../../shared/error";
@@ -8,7 +8,6 @@ import { JsonTool } from "../../../shared/utils/json-tool";
 import { relocate_directory_items } from "../path-relocation";
 import type { MigrationDescriptor, StartupMigrationContext } from "../migration-types";
 
-type SettingFileRecord = Record<string, ApiJsonValue>;
 type PresetSource = "builtin" | "user";
 
 // 历史资源布局的固定目录片段，只在本迁移中用于识别旧路径。
@@ -67,8 +66,8 @@ export function run_quality_rule_preset_layout_migration(context: StartupMigrati
  */
 export function normalize_quality_rule_preset_setting_payload(
   context: StartupMigrationContext,
-  setting_data: SettingFileRecord,
-): [SettingFileRecord, boolean] {
+  setting_data: JsonRecord,
+): [JsonRecord, boolean] {
   const normalized = { ...setting_data };
   let changed = false;
   for (const [setting_key, preset_directory] of Object.entries(QUALITY_RULE_PRESET_SETTING_KEYS)) {
@@ -170,7 +169,7 @@ function normalize_default_preset_config_values(context: StartupMigrationContext
     }
     const [normalized_config, changed] = normalize_quality_rule_preset_setting_payload(
       context,
-      setting_data as SettingFileRecord,
+      setting_data as JsonRecord,
     );
     if (!changed) {
       return;

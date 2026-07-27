@@ -1,6 +1,6 @@
 import { JsonTool } from "../../shared/utils/json-tool";
 import { to_log_error } from "../../shared/error";
-import type { ApiJsonValue } from "../api/api-types";
+import type { JsonValue } from "../../domain/json";
 import { LLMClientPolicy } from "./llm-client-policy";
 import type { RequestProvider } from "./policy/policy-types";
 import type { LLMRequestBody, LLMClientPort, LLMRequestResult } from "./llm-types";
@@ -99,7 +99,7 @@ export class LLMClient implements LLMClientPort {
   /**
    * 模型 ID 是安全诊断值；缺失时不向错误 context 写空字段。
    */
-  private read_request_model_id(value: ApiJsonValue): string {
+  private read_request_model_id(value: JsonValue): string {
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
       return "";
     }

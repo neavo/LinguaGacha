@@ -16,9 +16,10 @@
 
 - `src/index.ts` 是唯一产品入口，只按显式 `--cli` 分发 GUI 或 CLI；入口层只解析应用根、桌面 bundle 根和 `BackendWorkerExecution`，不持有业务服务、命令协议或窗口状态。
 - GUI 与后端能力层同在 Electron 主进程，当前没有独立 backend 子进程或 database HTTP 服务。
-- GUI 与 CLI 都通过 `BackendBootstrap` 组装同一 `BackendServices`；GUI 开启本机 Gateway，CLI 关闭 Gateway 并直接消费服务与同进程事件流。
+- GUI 与 CLI 都通过 `BackendBootstrap` 组装同一 `BackendServices`；GUI 开启本机 Gateway，CLI 关闭 Gateway 并直接消费类型化服务与任务快照订阅。
 - 发布态后端 worker 由产品入口配置为 `worker_threads`；`in_process` 只允许测试或源码运行显式选择，不作为失败回退。
 - `BackendServices` 是 Gateway、CLI job 与任务引擎共用的组合根，运行期服务只在这里装配。
+- `BackendBootstrap` 是进程资源生命周期权威：start / stop 串行，GUI、CLI 的正常退出与首个错误退出统一等待同一 stop；关闭顺序固定为 Gateway 停止接入并排空请求 → `BackendServices` 等待任务和 worker → 系统代理 → `ProjectDatabase` → `LogManager`，单项失败不跳过后续释放。
 
 ```mermaid
 flowchart LR

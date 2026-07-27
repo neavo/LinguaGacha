@@ -1,23 +1,25 @@
 import crypto from "node:crypto";
 import path from "node:path";
 
-import { GoogleGenAI, type Model as GoogleSdkModel } from "@google/genai";
-
-import type { ApiJsonValue } from "../api/api-types";
 import type { LogManager } from "../log/log-manager";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { LLMClient } from "../llm/llm-client";
+import { list_available_models } from "../llm/llm-model-catalog";
 import type { LLMMessage, LLMRequestResult } from "../llm/llm-types";
 import { LLMClientPolicy } from "../llm/llm-client-policy";
-import { Model, type ModelApiFormat } from "../../domain/model";
-import { read_json_record } from "../../domain/json";
+import { Model } from "../../domain/model";
+import {
+  read_json_record,
+  type JsonRecord,
+  type JsonValue,
+  type MutableJsonRecord,
+} from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import {
   read_config_model_preset_records,
   read_config_model_records,
   resolve_active_model_id,
-  type ModelRecord,
 } from "./model-config-resolver";
 import { resolve_app_locale } from "../../domain/app-language";
 import { format_i18n_message, type LocaleKey } from "../../shared/i18n";
@@ -44,10 +46,6 @@ type ModelTestFailure = {
 
 // 嵌套配置字段采用浅合并，保留未出现在 patch 中的历史配置项
 const PATCH_OBJECT_KEYS = new Set(["thinking", "threshold", "generation", "request"]);
-
-// 模型列表探测沿用浏览器 UA，减少部分服务商对 Node 默认 UA 的拒绝概率
-const BROWSER_USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
 
 /**
  * 封装模型配置 CRUD；任务执行时由 Task Engine 传入模型快照给本地 LLM adapter
@@ -79,7 +77,7 @@ export class ModelService {
   /**
    * 读取模型页完整快照，供 UI 一次性恢复配置状态
    */
-  public get_snapshot(): Record<string, ApiJsonValue> {
+  public get_snapshot(): JsonRecord {
     const config = this.load_setting_with_models(true);
     return this.build_snapshot_response(config);
   }
@@ -87,13 +85,13 @@ export class ModelService {
   /**
    * 更新模型白名单字段，避免页面写入未知配置
    */
-  public update_model(request: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
+  public update_model(request: JsonRecord): JsonRecord {
     const model_id = String(request["model_id"] ?? "");
     const patch_value = request["patch"];
     if (typeof patch_value !== "object" || patch_value === null || Array.isArray(patch_value)) {
       throw new AppErrors.RequestValidationError();
     }
-    const patch = patch_value as ModelRecord;
+    const patch = patch_value as JsonRecord;
     for (const key of Object.keys(patch)) {
       if (!PATCH_ALLOWED_KEYS.has(key)) {
         throw new AppErrors.RequestValidationError({
@@ -105,14 +103,14 @@ export class ModelService {
     const models = read_config_model_records(config);
     const index = this.find_model_index_or_raise(models, model_id);
     models[index] = this.apply_patch(models[index] ?? {}, patch);
-    config["models"] = models as unknown as ApiJsonValue;
+    config["models"] = models as unknown as JsonValue;
     return this.persist_config_and_build_snapshot(config);
   }
 
   /**
    * 切换指定分组激活模型，并保持 fallback 规则集中
    */
-  public activate_model(request: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
+  public activate_model(request: JsonRecord): JsonRecord {
     const model_id = String(request["model_id"] ?? "");
     const config = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
@@ -124,7 +122,7 @@ export class ModelService {
   /**
    * 新增自定义模型，避免调用方复制默认字段补齐规则
    */
-  public add_model(request: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
+  public add_model(request: JsonRecord): JsonRecord {
     const model_type = String(request["model_type"] ?? "");
     if (Model.resolve_template_filename(model_type) === null) {
       throw new AppErrors.RequestValidationError({
@@ -134,14 +132,14 @@ export class ModelService {
     const config = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
     models.push(this.build_custom_model(model_type));
-    config["models"] = models as unknown as ApiJsonValue;
+    config["models"] = models as unknown as JsonValue;
     return this.persist_config_and_build_snapshot(config);
   }
 
   /**
    * 删除模型并重选激活项，防止配置留下悬空引用
    */
-  public delete_model(request: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
+  public delete_model(request: JsonRecord): JsonRecord {
     const model_id = String(request["model_id"] ?? "");
     const config = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
@@ -155,14 +153,14 @@ export class ModelService {
       const fallback = this.pick_active_fallback(models, String(target_model["type"] ?? ""));
       config["activate_model_id"] = String(fallback?.["id"] ?? "");
     }
-    config["models"] = models as unknown as ApiJsonValue;
+    config["models"] = models as unknown as JsonValue;
     return this.persist_config_and_build_snapshot(config);
   }
 
   /**
    * 用内置预设重置模型，保持 preset 事实来自资源目录
    */
-  public reset_preset_model(request: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
+  public reset_preset_model(request: JsonRecord): JsonRecord {
     const model_id = String(request["model_id"] ?? "");
     const config = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
@@ -175,14 +173,14 @@ export class ModelService {
       throw new AppErrors.ModelNotFoundError();
     }
     models[index] = this.normalize_model(preset);
-    config["models"] = models as unknown as ApiJsonValue;
+    config["models"] = models as unknown as JsonValue;
     return this.persist_config_and_build_snapshot(config);
   }
 
   /**
    * 重排同组模型，确保 ordered ids 完整覆盖当前分组
    */
-  public reorder_model(request: Record<string, ApiJsonValue>): Record<string, ApiJsonValue> {
+  public reorder_model(request: JsonRecord): JsonRecord {
     const ordered_ids_raw = request["ordered_model_ids"];
     if (!Array.isArray(ordered_ids_raw)) {
       throw new AppErrors.RequestValidationError();
@@ -207,33 +205,29 @@ export class ModelService {
       throw new AppErrors.RequestValidationError();
     }
     const reordered = this.reorder_group(models, model_type, ordered_ids);
-    config["models"] = reordered as unknown as ApiJsonValue;
+    config["models"] = reordered as unknown as JsonValue;
     return this.persist_config_and_build_snapshot(config);
   }
 
   /**
    * 查询远端实时模型列表；任务级 Key 轮换不参与模型列表探测。
    */
-  public async list_available_models(
-    request: Record<string, ApiJsonValue>,
-  ): Promise<Record<string, ApiJsonValue>> {
+  public async list_available_models(request: JsonRecord): Promise<JsonRecord> {
     const config = this.load_setting_with_models(false);
     const model = this.get_model_from_request(config, request);
-    const models = await this.fetch_available_models(model);
-    return { models: models as unknown as ApiJsonValue };
+    const models = await list_available_models(model);
+    return { models: models as unknown as JsonValue };
   }
 
   /**
    * 模型连通性测试复用同一 LLM request client，确保模型页和任务请求走同一策略。
    */
-  public async test_model(
-    request: Record<string, ApiJsonValue>,
-  ): Promise<Record<string, ApiJsonValue>> {
+  public async test_model(request: JsonRecord): Promise<JsonRecord> {
     const config = this.load_setting_with_models(false);
     const model = this.get_model_from_request(config, request);
     const keys = LLMClientPolicy.collect_api_keys(String(model["api_key"] ?? ""));
     const client = new LLMClient({ userAgent: this.llm_user_agent });
-    const key_results: Array<Record<string, ApiJsonValue>> = [];
+    const key_results: Array<JsonRecord> = [];
     const app_language = config["app_language"];
     const messages = this.build_model_test_messages(String(model["api_format"] ?? "OpenAI"));
     for (const api_key of keys) {
@@ -245,8 +239,8 @@ export class ModelService {
         {
           run_id: crypto.randomUUID(),
           work_unit_id: "model-test",
-          model: model_for_test as unknown as ApiJsonValue,
-          config_snapshot: config as unknown as ApiJsonValue,
+          model: model_for_test as unknown as JsonValue,
+          config_snapshot: config as unknown as JsonValue,
           messages,
         },
         new AbortController().signal,
@@ -285,140 +279,18 @@ export class ModelService {
         (sum, item) => sum + this.read_response_time_ms(item["response_time_ms"]),
         0,
       ),
-      key_results: key_results as unknown as ApiJsonValue,
+      key_results: key_results as unknown as JsonValue,
     };
   }
 
   /**
    * 请求中的 model_id 只作为配置索引，不直接信任页面传入完整模型
    */
-  private get_model_from_request(
-    config: Record<string, ApiJsonValue>,
-    request: Record<string, ApiJsonValue>,
-  ): ModelRecord {
+  private get_model_from_request(config: JsonRecord, request: JsonRecord): JsonRecord {
     const model_id = String(request["model_id"] ?? "");
     const models = read_config_model_records(config);
     const index = this.find_model_index_or_raise(models, model_id);
     return models[index] ?? {};
-  }
-
-  /**
-   * 按旧模型探测语义查询远端 live list，错误统一转换为模型页可展示文案
-   */
-  private async fetch_available_models(model: ModelRecord): Promise<string[]> {
-    try {
-      const api_format = this.resolve_model_api_format(model);
-      if (api_format === "Google") {
-        return await this.fetch_google_available_models(model);
-      }
-      if (api_format === "Anthropic") {
-        return await this.fetch_anthropic_available_models(model);
-      }
-      return await this.fetch_openai_available_models(model, api_format);
-    } catch (error) {
-      throw new AppErrors.ModelProviderFailedError({ cause: error });
-    }
-  }
-
-  /**
-   * OpenAI-compatible 与 Sakura 都复用 `/models` 列表语义
-   */
-  private async fetch_openai_available_models(
-    model: ModelRecord,
-    api_format: ModelApiFormat,
-  ): Promise<string[]> {
-    const api_url = LLMClientPolicy.normalize_api_url(String(model["api_url"] ?? ""), api_format);
-    const data = await this.fetch_json(`${api_url}/models`, {
-      Authorization: `Bearer ${LLMClientPolicy.get_primary_api_key(String(model["api_key"] ?? ""))}`,
-      ...this.build_browser_headers(model),
-    });
-    return this.read_response_model_ids(data, "data", "id");
-  }
-
-  /**
-   * Google 模型列表走 @google/genai，让 SDK 统一拼接 apiVersion 与 list 路径。
-   */
-  private async fetch_google_available_models(model: ModelRecord): Promise<string[]> {
-    const api_url = LLMClientPolicy.normalize_api_url(String(model["api_url"] ?? ""), "Google");
-    const client = new GoogleGenAI({
-      apiKey: LLMClientPolicy.get_primary_api_key(String(model["api_key"] ?? "")),
-      httpOptions: {
-        baseUrl: api_url === "" ? undefined : api_url,
-        headers: this.build_browser_headers(model),
-      },
-    } as ConstructorParameters<typeof GoogleGenAI>[0]);
-    return await this.read_google_model_names(await client.models.list());
-  }
-
-  /**
-   * Anthropic models.list 使用 `/v1/models` 与 x-api-key header
-   */
-  private async fetch_anthropic_available_models(model: ModelRecord): Promise<string[]> {
-    const api_url = LLMClientPolicy.normalize_api_url(String(model["api_url"] ?? ""), "Anthropic");
-    const base_url = api_url === "" ? "https://api.anthropic.com" : api_url;
-    const data = await this.fetch_json(`${base_url}/v1/models`, {
-      "anthropic-version": "2023-06-01",
-      "x-api-key": LLMClientPolicy.get_primary_api_key(String(model["api_key"] ?? "")),
-      ...this.build_browser_headers(model),
-    });
-    return this.read_response_model_ids(data, "data", "id");
-  }
-
-  /**
-   * fetch 只负责 HTTP 细节，模型列表字段解释留在调用点
-   */
-  private async fetch_json(url: string, headers: Record<string, string>): Promise<ApiJsonValue> {
-    const response = await fetch(url, { headers, method: "GET" });
-    if (!response.ok) {
-      throw new AppErrors.ModelProviderFailedError({
-        public_details: { status: response.status },
-        cause: response,
-      });
-    }
-    return (await response.json()) as ApiJsonValue;
-  }
-
-  /**
-   * 读取 HTTP 模型列表数组结构，坏项直接跳过。
-   */
-  private read_response_model_ids(data: ApiJsonValue, array_key: string, id_key: string): string[] {
-    const record = { ...read_json_record(data) };
-    const items = record[array_key];
-    if (!Array.isArray(items)) {
-      return [];
-    }
-    return items
-      .map((item) => ({ ...read_json_record(item) })[id_key])
-      .filter((value): value is string => typeof value === "string" && value.trim() !== "");
-  }
-
-  /**
-   * Google SDK pager 会自动跨页，模型名缺失的条目不进入页面候选列表。
-   */
-  private async read_google_model_names(pager: AsyncIterable<GoogleSdkModel>): Promise<string[]> {
-    const names: string[] = [];
-    for await (const item of pager) {
-      if (typeof item.name === "string" && item.name.trim() !== "") {
-        names.push(item.name);
-      }
-    }
-    return names;
-  }
-
-  /**
-   * 模型列表沿用浏览器 UA，并合并用户自定义额外 header
-   */
-  private build_browser_headers(model: ModelRecord): Record<string, string> {
-    const headers: Record<string, string> = { "User-Agent": BROWSER_USER_AGENT };
-    const request_config = { ...read_json_record(model["request"]) };
-    if (request_config["extra_headers_custom_enable"] !== true) {
-      return headers;
-    }
-    const extra_headers = { ...read_json_record(request_config["extra_headers"]) };
-    for (const [key, value] of Object.entries(extra_headers)) {
-      headers[key] = String(value);
-    }
-    return headers;
   }
 
   /**
@@ -455,7 +327,7 @@ export class ModelService {
    */
   private build_model_test_failure(
     result: LLMRequestResult,
-    config: Record<string, ApiJsonValue>,
+    config: JsonRecord,
   ): ModelTestFailure | null {
     if (result.cancelled) {
       return { reason: "请求已取消。" };
@@ -546,7 +418,7 @@ export class ModelService {
   private log_model_test_summary(
     app_language: unknown,
     result_msg: string,
-    key_results: Array<Record<string, ApiJsonValue>>,
+    key_results: Array<JsonRecord>,
   ): void {
     this.log_manager?.info("", { source: "model" });
     this.log_manager?.info(result_msg, { source: "model" });
@@ -590,14 +462,6 @@ export class ModelService {
   }
 
   /**
-   * API 格式缺失时按 OpenAI-compatible 处理
-   */
-  private resolve_model_api_format(model: ModelRecord): ModelApiFormat {
-    const value = String(model["api_format"] ?? "OpenAI");
-    return Model.normalize_api_format(value);
-  }
-
-  /**
    * API Key 日志与响应只展示脱敏结果，避免页面 toast 泄露密钥
    */
   private mask_api_key(key: string): string {
@@ -617,7 +481,7 @@ export class ModelService {
   /**
    * 测试耗时来自本地计时，仍在边界处收窄一次以防响应结构被误改
    */
-  private read_response_time_ms(value: ApiJsonValue | undefined): number {
+  private read_response_time_ms(value: JsonValue | undefined): number {
     const number_value = Number(value ?? 0);
     return Number.isFinite(number_value) ? Math.max(0, Math.trunc(number_value)) : 0;
   }
@@ -625,12 +489,8 @@ export class ModelService {
   /**
    * 保存配置后立即重建快照，保证响应反映持久化结果
    */
-  private persist_config_and_build_snapshot(
-    config: Record<string, ApiJsonValue>,
-  ): Record<string, ApiJsonValue> {
-    config["models"] = this.sort_models(
-      read_config_model_records(config),
-    ) as unknown as ApiJsonValue;
+  private persist_config_and_build_snapshot(config: MutableJsonRecord): JsonRecord {
+    config["models"] = this.sort_models(read_config_model_records(config)) as unknown as JsonValue;
     this.app_setting_service.save_setting(config);
     return this.build_snapshot_response(config);
   }
@@ -638,11 +498,11 @@ export class ModelService {
   /**
    * 读取配置并补齐模型列表，兼容缺失或旧格式配置
    */
-  private load_setting_with_models(persist_defaults: boolean): Record<string, ApiJsonValue> {
+  private load_setting_with_models(persist_defaults: boolean): MutableJsonRecord {
     const config = this.app_setting_service.read_setting();
     config["models"] = this.initialize_models(
       read_config_model_records(config),
-    ) as unknown as ApiJsonValue;
+    ) as unknown as JsonValue;
     const active_model_id = resolve_active_model_id(config);
     if (String(config["activate_model_id"] ?? "") === "" && active_model_id !== "") {
       config["activate_model_id"] = active_model_id;
@@ -656,7 +516,7 @@ export class ModelService {
   /**
    * 初始化模型集合，合并用户配置和内置预设
    */
-  private initialize_models(existing_models: ModelRecord[]): ModelRecord[] {
+  private initialize_models(existing_models: JsonRecord[]): JsonRecord[] {
     const models = existing_models.map((model) => this.normalize_model(model));
     const existing_ids = new Set(models.map((model) => String(model["id"] ?? "")));
     for (const preset of this.load_preset_models()) {
@@ -675,14 +535,14 @@ export class ModelService {
   /**
    * 读取内置模型预设，保持 UI 语言不影响模型集合
    */
-  private load_preset_models(): ModelRecord[] {
+  private load_preset_models(): JsonRecord[] {
     return read_config_model_preset_records(this.paths, this.native_fs);
   }
 
   /**
    * 构造自定义模型默认值，避免新增入口散落字段定义
    */
-  private build_custom_model(model_type: string): ModelRecord {
+  private build_custom_model(model_type: string): JsonRecord {
     const template_path = path.join(
       this.paths.get_model_preset_dir(),
       Model.resolve_template_filename(model_type) ?? "",
@@ -691,22 +551,22 @@ export class ModelService {
     const model = { ...read_json_record(template) };
     model["id"] = crypto.randomUUID();
     model["type"] = model_type;
-    return this.normalize_model(model as ModelRecord);
+    return this.normalize_model(model as JsonRecord);
   }
 
   /**
    * 归一模型对象，保护配置文件旧字段和缺省字段；已有 ID 不重新取 UUID，避免初始化消耗新增模型的确定 ID
    */
-  private normalize_model(model: ModelRecord): ModelRecord {
+  private normalize_model(model: JsonRecord): JsonRecord {
     const existing_id = String(model["id"] ?? "").trim();
     const fallback_id = existing_id === "" ? crypto.randomUUID() : existing_id;
-    return Model.from_json(model, fallback_id).to_json() as ModelRecord;
+    return Model.from_json(model, fallback_id).to_json() as JsonRecord;
   }
 
   /**
    * 仅应用允许字段，防止模型配置被任意键污染
    */
-  private apply_patch(model: ModelRecord, patch: ModelRecord): ModelRecord {
+  private apply_patch(model: JsonRecord, patch: JsonRecord): JsonRecord {
     const result = { ...model };
     for (const [key, value] of Object.entries(patch)) {
       if (PATCH_OBJECT_KEYS.has(key)) {
@@ -729,7 +589,7 @@ export class ModelService {
   /**
    * 按 sort_index 排序模型，保持配置和页面顺序一致
    */
-  private sort_models(models: ModelRecord[]): ModelRecord[] {
+  private sort_models(models: JsonRecord[]): JsonRecord[] {
     return [...models].sort((a, b) => {
       return Model.resolve_type_sort_order(a["type"]) - Model.resolve_type_sort_order(b["type"]);
     });
@@ -738,7 +598,7 @@ export class ModelService {
   /**
    * 查找模型位置并给出业务错误，避免静默错写
    */
-  private find_model_index_or_raise(models: ModelRecord[], model_id: string): number {
+  private find_model_index_or_raise(models: JsonRecord[], model_id: string): number {
     const index = models.findIndex((model) => String(model["id"] ?? "") === model_id);
     if (index < 0) {
       throw new AppErrors.ModelNotFoundError();
@@ -749,7 +609,7 @@ export class ModelService {
   /**
    * 选择激活模型兜底，避免删除后留下不可用分组
    */
-  private pick_active_fallback(models: ModelRecord[], target_type: string): ModelRecord | null {
+  private pick_active_fallback(models: JsonRecord[], target_type: string): JsonRecord | null {
     return (
       models.find((model) => String(model["type"] ?? "") === target_type) ??
       models.find((model) => String(model["type"] ?? "") === "PRESET") ??
@@ -762,10 +622,10 @@ export class ModelService {
    * 重排单个模型分组，集中校验完整性和 sort_index
    */
   private reorder_group(
-    models: ModelRecord[],
+    models: JsonRecord[],
     model_type: string,
     ordered_ids: string[],
-  ): ModelRecord[] {
+  ): JsonRecord[] {
     const by_id = new Map(models.map((model) => [String(model["id"] ?? ""), model] as const));
     let group_index = 0;
     return models.map((model) => {
@@ -781,14 +641,12 @@ export class ModelService {
   /**
    * 生成模型页响应快照，隔离配置内部结构
    */
-  private build_snapshot_response(
-    config: Record<string, ApiJsonValue>,
-  ): Record<string, ApiJsonValue> {
+  private build_snapshot_response(config: JsonRecord): JsonRecord {
     const models = read_config_model_records(config);
     return {
       snapshot: {
         active_model_id: resolve_active_model_id(config),
-        models: models as unknown as ApiJsonValue,
+        models: models as unknown as JsonValue,
       },
     };
   }
@@ -796,9 +654,9 @@ export class ModelService {
   /**
    * 读取 JSON 文件并转换为对象，统一坏文件兜底
    */
-  private read_json_file(file_path: string, fallback: ApiJsonValue): ApiJsonValue {
+  private read_json_file(file_path: string, fallback: JsonValue): JsonValue {
     try {
-      return JsonTool.parseStrict<ApiJsonValue>(this.native_fs.read_file(file_path));
+      return JsonTool.parseStrict<JsonValue>(this.native_fs.read_file(file_path));
     } catch {
       return fallback;
     }

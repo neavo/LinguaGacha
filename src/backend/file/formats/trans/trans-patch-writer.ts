@@ -1,10 +1,9 @@
-import type { ApiJsonValue } from "../../../api/api-types";
+import type { JsonValue, MutableJsonRecord } from "../../../../domain/json";
 import { InvalidFileStructureError } from "../../../../shared/error";
 import {
   derive_trans_filter_effect,
   string_array,
   to_mutable_record,
-  type ApiJsonRecord,
   type PatchTarget,
   type TransSnapshot,
   type NoneTransProcessor,
@@ -15,7 +14,7 @@ import {
  */
 export function collect_patch_targets(
   snapshots: TransSnapshot[],
-  files: ApiJsonRecord,
+  files: MutableJsonRecord,
 ): PatchTarget[] {
   const targets: PatchTarget[] = [];
   for (const snap of snapshots) {
@@ -49,7 +48,7 @@ export function collect_patch_targets(
  * 对单行执行最小补丁：必要时更新 tags/parameters，PROCESSED 才写译文列
  */
 export function patch_trans_row(
-  files: ApiJsonRecord,
+  files: MutableJsonRecord,
   target: PatchTarget,
   processor: NoneTransProcessor,
   index_translation: number,
@@ -108,7 +107,7 @@ export function patch_trans_row(
 /**
  * 从行级二维字段读取字符串数组，缺失行直接为空
  */
-function read_row_string_array(value: ApiJsonValue | undefined, row_index: number): string[] {
+function read_row_string_array(value: JsonValue | undefined, row_index: number): string[] {
   const rows = Array.isArray(value) ? value : [];
   return string_array(rows[row_index]);
 }
@@ -116,10 +115,7 @@ function read_row_string_array(value: ApiJsonValue | undefined, row_index: numbe
 /**
  * 从行级二维字段读取原始 JSON 值，供参数 schema 探测使用
  */
-function read_row_value(
-  value: ApiJsonValue | undefined,
-  row_index: number,
-): ApiJsonValue | undefined {
+function read_row_value(value: JsonValue | undefined, row_index: number): JsonValue | undefined {
   const rows = Array.isArray(value) ? value : [];
   return rows[row_index];
 }
@@ -127,12 +123,12 @@ function read_row_value(
 /**
  * 写回可选数组字段时就地补齐字段，保持原始 JSON 对象最小变更
  */
-function ensure_array_field(record: ApiJsonRecord, field: string): ApiJsonValue[] {
+function ensure_array_field(record: MutableJsonRecord, field: string): JsonValue[] {
   const value = record[field];
   if (Array.isArray(value)) {
     return value;
   }
-  const replacement: ApiJsonValue[] = [];
+  const replacement: JsonValue[] = [];
   record[field] = replacement;
   return replacement;
 }

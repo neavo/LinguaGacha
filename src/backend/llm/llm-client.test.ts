@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ApiJsonValue } from "../api/api-types";
+import type { JsonRecord, JsonValue } from "../../domain/json";
 import { LLMClient, ProviderClientPool } from "./llm-client";
 import type { LLMRequestBody, LLMRequestResult } from "./llm-types";
 import type { ResolvedRequestPolicy } from "./policy/policy-types";
@@ -142,8 +142,8 @@ function create_request(overrides: Partial<Parameters<ProviderClientPool["get_cl
 }
 
 function create_body(
-  model_overrides: Record<string, ApiJsonValue> = {},
-  config_snapshot: ApiJsonValue = { request_timeout: 120 },
+  model_overrides: JsonRecord = {},
+  config_snapshot: JsonValue = { request_timeout: 120 },
 ): LLMRequestBody {
   return {
     run_id: "run-1",

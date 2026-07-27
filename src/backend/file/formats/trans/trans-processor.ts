@@ -1,8 +1,5 @@
-import type { ApiJsonValue } from "../../../api/api-types";
 import type { ItemStatus, ItemTextType } from "../../../../domain/item";
-import { is_json_record, read_json_record } from "../../../../domain/json";
-
-export type ApiJsonRecord = Record<string, ApiJsonValue>;
+import { is_json_record, read_json_record, type MutableJsonRecord } from "../../../../domain/json";
 
 /**
  * TRANS processor.check 的返回结构，保持旧 src/dst/tag/status/skip 顺序语义
@@ -24,7 +21,7 @@ export interface TransSnapshot {
   src: string; // 写回前源文快照
   dst: string; // 写回前译文快照
   status: ItemStatus; // 决定是否采用译文
-  extra_field: ApiJsonRecord; // 保存精确 trans_ref 与格式私有字段
+  extra_field: MutableJsonRecord; // 保存精确 trans_ref 与格式私有字段
 }
 
 /**
@@ -106,22 +103,24 @@ export function string_array(value: unknown): string[] {
 /**
  * 读取参数对象数组，保持 extra_field.parameter 只含普通对象
  */
-export function record_array(value: unknown): ApiJsonRecord[] {
+export function record_array(value: unknown): MutableJsonRecord[] {
   return Array.isArray(value) ? value.filter(is_json_record) : [];
 }
 
 /**
  * 分区参数生成需要浅拷贝对象，避免就地污染原始 extra_field 引用
  */
-export function trans_record_array(value: unknown): ApiJsonRecord[] {
-  return Array.isArray(value) ? value.map((item) => read_json_record(item) as ApiJsonRecord) : [];
+export function trans_record_array(value: unknown): MutableJsonRecord[] {
+  return Array.isArray(value)
+    ? value.map((item) => read_json_record(item) as MutableJsonRecord)
+    : [];
 }
 
 /**
  * 写回原始 JSON 时需要可变对象视图，非对象统一当作空对象处理
  */
-export function to_mutable_record(value: unknown): ApiJsonRecord {
-  return read_json_record(value) as ApiJsonRecord;
+export function to_mutable_record(value: unknown): MutableJsonRecord {
+  return read_json_record(value) as MutableJsonRecord;
 }
 
 /**
@@ -195,12 +194,13 @@ function has_trans_span_parameter(parameter_list: unknown[]): boolean {
  * TRANS 默认处理器，对齐旧 NONE：只按资源扩展名和颜色标签过滤
  */
 export class NoneTransProcessor {
-  public readonly text_type: ItemTextType = "NONE";
-
   /**
-   * project 保存完整 .trans 工程对象，供子类生成过滤缓存
+   * project 保存完整 .trans 工程对象；仅复用默认过滤规则时可直接指定文本类型。
    */
-  public constructor(protected readonly project: ApiJsonRecord) {}
+  public constructor(
+    protected readonly project: MutableJsonRecord,
+    public readonly text_type: ItemTextType = "NONE",
+  ) {}
 
   /**
    * 默认处理器无需预处理；子类可构建缓存
@@ -267,7 +267,7 @@ export class NoneTransProcessor {
     context: string[],
     parameter: unknown,
     block: boolean[],
-  ): ApiJsonRecord[] {
+  ): MutableJsonRecord[] {
     if (block.every((value) => value === true) || block.every((value) => value === false)) {
       return record_array(parameter);
     }

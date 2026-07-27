@@ -1,7 +1,5 @@
 import type { LocaleKey } from "../i18n";
-import type { JsonValue } from "../../domain/json";
-
-export type ApiJsonValue = JsonValue;
+import type { JsonRecord, JsonValue } from "../../domain/json";
 
 type AppErrorSeverity = "expected" | "warning" | "fault";
 
@@ -35,7 +33,7 @@ export type AppErrorCode =
   | "quality.unsupported_rule_meta"
   | "prompt.unknown_prompt_type";
 
-export type AppErrorPublicDetails = Record<string, ApiJsonValue>;
+export type AppErrorPublicDetails = JsonRecord;
 export type AppErrorDiagnosticContext = Record<string, unknown>;
 export type AppErrorMessageKey = Extract<LocaleKey, `app.error.${AppErrorCode}.message`>;
 export type AppErrorActionKey = Extract<LocaleKey, `app.error.${AppErrorCode}.action`>;
@@ -215,11 +213,11 @@ export function is_app_error(error: unknown): error is AppError {
  */
 function sanitize_app_error_public_details(details: AppErrorPublicDetails): AppErrorPublicDetails {
   return Object.fromEntries(
-    Object.entries(details).filter(([, value]) => is_safe_api_json_value(value)),
+    Object.entries(details).filter(([, value]) => is_safe_json_value(value)),
   );
 }
 
-function is_safe_api_json_value(value: ApiJsonValue): boolean {
+function is_safe_json_value(value: JsonValue): boolean {
   if (value === null) {
     return true;
   }
@@ -227,10 +225,10 @@ function is_safe_api_json_value(value: ApiJsonValue): boolean {
     return true;
   }
   if (Array.isArray(value)) {
-    return value.every((item) => is_safe_api_json_value(item));
+    return value.every((item) => is_safe_json_value(item));
   }
   if (typeof value !== "object") {
     return false;
   }
-  return Object.values(value).every((item) => is_safe_api_json_value(item));
+  return Object.values(value).every((item) => is_safe_json_value(item));
 }

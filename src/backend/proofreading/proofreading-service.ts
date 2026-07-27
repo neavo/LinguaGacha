@@ -1,7 +1,12 @@
-import type { ApiJsonValue } from "../api/api-types";
+import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
 import { ProjectDatabase } from "../database/database-operations";
 import { ProjectWriteStore } from "../project/project-write-store";
-import { ProjectSessionState } from "../project/project-session";
+import type { ProjectOperationGate } from "../project/project-operation-gate";
+import { ProjectSessionState } from "../project/project-session-state";
+import {
+  require_project_expected_section_revisions,
+  type ProjectExpectedSectionRevisions,
+} from "../project/project-write-request";
 import { Item, type ItemStatus } from "../../domain/item";
 import { is_json_record } from "../../domain/json";
 import type {
@@ -22,9 +27,6 @@ import {
 } from "../../shared/proofreading/proofreading-types";
 import * as AppErrors from "../../shared/error";
 
-type JsonRecord = Record<string, ApiJsonValue>;
-type MutableJsonRecord = Record<string, ApiJsonValue>;
-
 type ProofreadingItemChange = {
   current: MutableJsonRecord; // 数据库提交前的行事实，用于计算统计增量
   next: MutableJsonRecord; // 数据库将要写入的最终行事实
@@ -36,6 +38,8 @@ type ProofreadingItemChange = {
 export class ProofreadingService {
   private readonly database: ProjectDatabase; // 校对同步保存直接写 .lg，但仍只能通过 ProjectDatabase workflow 触达数据库
 
+  private readonly project_operation_gate: ProjectOperationGate; // 人工校对与翻译任务不能同时改写 item
+
   private readonly session_state: ProjectSessionState; // 校对同步写入口只以 公开会话状态定位当前工程
 
   private readonly write_store: ProjectWriteStore; // 校对只提交业务补丁，事务和事件统一由 ProjectWriteStore 完成
@@ -45,10 +49,12 @@ export class ProofreadingService {
    */
   public constructor(
     database: ProjectDatabase,
+    project_operation_gate: ProjectOperationGate,
     session_state: ProjectSessionState,
     write_store: ProjectWriteStore,
   ) {
     this.database = database;
+    this.project_operation_gate = project_operation_gate;
     this.session_state = session_state;
     this.write_store = write_store;
   }
@@ -57,6 +63,12 @@ export class ProofreadingService {
    * 单条保存统一处理正文译文和当前姓名译文，最终事实仍由后端写入口计算。
    */
   public async save_item(request: JsonRecord): Promise<ProjectWriteResult> {
+    return await this.project_operation_gate.run_exclusive_project_write(
+      async () => await this.save_item_under_lease(request),
+    );
+  }
+
+  private async save_item_under_lease(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
     const expected_section_revisions = this.prepare_write_context(request);
     const item_id = this.parse_integer_or_throw(request["item_id"]);
@@ -91,6 +103,12 @@ export class ProofreadingService {
    * 批量替换在后端编译文本模式，避免渲染进程提交替换后的最终事实
    */
   public async replace_all(request: JsonRecord): Promise<ProjectWriteResult> {
+    return await this.project_operation_gate.run_exclusive_project_write(
+      async () => await this.replace_all_under_lease(request),
+    );
+  }
+
+  private async replace_all_under_lease(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
     const expected_section_revisions = this.prepare_write_context(request);
     const item_ids = this.normalize_item_ids(request["item_ids"]);
@@ -152,6 +170,12 @@ export class ProofreadingService {
    * 批量清空译文同时清空正文和姓名译文，保留 status 和 retry_count 供用户手动判定
    */
   public async clear_translations(request: JsonRecord): Promise<ProjectWriteResult> {
+    return await this.project_operation_gate.run_exclusive_project_write(
+      async () => await this.clear_translations_under_lease(request),
+    );
+  }
+
+  private async clear_translations_under_lease(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
     const expected_section_revisions = this.prepare_write_context(request);
     const item_ids = this.normalize_item_ids(request["item_ids"]);
@@ -179,6 +203,14 @@ export class ProofreadingService {
    * 批量设置状态只接受人工可写状态集合，并把旧重试计数从新状态事实中清掉
    */
   public async set_translation_status(request: JsonRecord): Promise<ProjectWriteResult> {
+    return await this.project_operation_gate.run_exclusive_project_write(
+      async () => await this.set_translation_status_under_lease(request),
+    );
+  }
+
+  private async set_translation_status_under_lease(
+    request: JsonRecord,
+  ): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
     const expected_section_revisions = this.prepare_write_context(request);
     const next_status = this.parse_manual_status_or_throw(request["status"]);
@@ -213,9 +245,9 @@ export class ProofreadingService {
   /**
    * 校对写入起手必须先校验 revision，再读取当前数据库事实
    */
-  private prepare_write_context(request: JsonRecord): ApiJsonValue | undefined {
+  private prepare_write_context(request: JsonRecord): ProjectExpectedSectionRevisions {
     this.assert_no_legacy_fields(request, ["items", "translation_extras"]);
-    return request["expected_section_revisions"];
+    return require_project_expected_section_revisions(request["expected_section_revisions"]);
   }
 
   /**
@@ -236,7 +268,7 @@ export class ProofreadingService {
    */
   private async persist_changed_items(
     project_path: string,
-    expected_section_revisions: ApiJsonValue | undefined,
+    expected_section_revisions: ProjectExpectedSectionRevisions,
     args: {
       changes: ProofreadingItemChange[];
       items_payload: Pick<
@@ -263,7 +295,7 @@ export class ProofreadingService {
    */
   private async persist_field_patch_items(
     project_path: string,
-    expected_section_revisions: ApiJsonValue | undefined,
+    expected_section_revisions: ProjectExpectedSectionRevisions,
     args: {
       changes: ProofreadingItemChange[];
       field_patch: ProjectChangeItemFieldPatch;
@@ -374,7 +406,7 @@ export class ProofreadingService {
   /**
    * 公开 item_ids 去重并保持顺序，坏 id 在命令边界丢弃
    */
-  private normalize_item_ids(value: ApiJsonValue | undefined): number[] {
+  private normalize_item_ids(value: JsonValue | undefined): number[] {
     if (!Array.isArray(value)) {
       return [];
     }
@@ -450,16 +482,14 @@ export class ProofreadingService {
   /**
    * 校对写入口只接受当前状态域，非法值按未处理状态兜底
    */
-  private normalize_item_status(value: ApiJsonValue | undefined): ItemStatus {
+  private normalize_item_status(value: JsonValue | undefined): ItemStatus {
     return Item.normalize_status(value);
   }
 
   /**
    * 人工状态菜单只暴露三种可写状态，其它计算状态不能从校对页直接写入
    */
-  private parse_manual_status_or_throw(
-    value: ApiJsonValue | undefined,
-  ): ProofreadingManualStatusCode {
+  private parse_manual_status_or_throw(value: JsonValue | undefined): ProofreadingManualStatusCode {
     if (
       typeof value === "string" &&
       (PROOFREADING_MANUAL_STATUS_CODES as readonly string[]).includes(value)
@@ -468,14 +498,17 @@ export class ProofreadingService {
     }
 
     throw new AppErrors.RequestValidationError({
-      diagnostic_context: { reason: "invalid_proofreading_manual_status", status: value },
+      diagnostic_context: {
+        reason: "invalid_proofreading_manual_status",
+        status: value,
+      },
     });
   }
 
   /**
    * item_id 命令字段使用严格转换，转换失败时保持请求失败语义
    */
-  private parse_integer_or_throw(value: ApiJsonValue | undefined): number {
+  private parse_integer_or_throw(value: JsonValue | undefined): number {
     const parsed = this.parse_integer_like(value);
     if (parsed === null) {
       throw new AppErrors.RequestValidationError();
@@ -486,7 +519,7 @@ export class ProofreadingService {
   /**
    * item_id 只接受整数数字或整数字符串，拒绝布尔值和小数兼容
    */
-  private parse_integer_like(value: ApiJsonValue | undefined): number | null {
+  private parse_integer_like(value: JsonValue | undefined): number | null {
     if (typeof value === "number") {
       return Number.isInteger(value) ? value : null;
     }

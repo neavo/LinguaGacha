@@ -87,7 +87,7 @@ describe("work-unit-worker-entry", () => {
     vi.resetModules();
     vi.doUnmock("node:worker_threads");
     vi.doUnmock("./work-unit-runner");
-    vi.doUnmock("../../network/system-proxy-dispatcher");
+    vi.doUnmock("../../llm/llm-system-proxy-dispatcher");
   });
 
   it("加载时安装代理快照，并把 execute 结果按消息 id 回传", async () => {
@@ -97,7 +97,7 @@ describe("work-unit-worker-entry", () => {
       systemProxySnapshot: system_proxy_snapshot,
     });
     const install_proxy_snapshot = vi.fn();
-    vi.doMock("../../network/system-proxy-dispatcher", () => {
+    vi.doMock("../../llm/llm-system-proxy-dispatcher", () => {
       return {
         install_system_proxy_dispatcher_from_snapshot: install_proxy_snapshot,
       };
@@ -130,7 +130,7 @@ describe("work-unit-worker-entry", () => {
       appRoot: "E:/Project/LinguaGacha",
       systemProxySnapshot: null,
     });
-    vi.doMock("../../network/system-proxy-dispatcher", () => {
+    vi.doMock("../../llm/llm-system-proxy-dispatcher", () => {
       return {
         install_system_proxy_dispatcher_from_snapshot: vi.fn(),
       };

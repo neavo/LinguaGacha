@@ -1,6 +1,6 @@
-import type { ApiJsonValue } from "../../api/api-types";
-import { read_json_record } from "../../../domain/json";
-import type { MutableJsonRecord } from "../run/task-run-types";
+import type { JsonValue } from "../../../domain/json";
+import type { MutableJsonRecord } from "../../../domain/json";
+import { normalize_task_progress_snapshot } from "../../../domain/task";
 import type { TaskProgressSnapshot } from "./engine-options";
 
 // 进度字段默认值集中在这里，避免 runner 新增字段时漏写归零逻辑
@@ -30,19 +30,8 @@ export class TaskProgressSnapshotTool {
   /**
    * 从数据库 meta 或 executor payload 恢复进度，坏值统一归零
    */
-  public static from_record(value: ApiJsonValue | undefined): TaskProgressSnapshot {
-    const record = read_json_record(value);
-    return {
-      start_time: this.read_float(record["start_time"], 0),
-      time: this.read_float(record["time"], 0),
-      total_line: this.read_number(record["total_line"], 0),
-      line: this.read_number(record["line"], 0),
-      processed_line: this.read_number(record["processed_line"], 0),
-      error_line: this.read_number(record["error_line"], 0),
-      total_tokens: this.read_number(record["total_tokens"], 0),
-      total_input_tokens: this.read_number(record["total_input_tokens"], 0),
-      total_output_tokens: this.read_number(record["total_output_tokens"], 0),
-    };
+  public static from_record(value: JsonValue | undefined): TaskProgressSnapshot {
+    return normalize_task_progress_snapshot(value);
   }
 
   /**
@@ -52,7 +41,10 @@ export class TaskProgressSnapshotTool {
     if (snapshot.start_time <= 0) {
       return { ...snapshot, time: 0 };
     }
-    return { ...snapshot, time: Math.max(0, Date.now() / 1000 - snapshot.start_time) };
+    return {
+      ...snapshot,
+      time: Math.max(0, Date.now() / 1000 - snapshot.start_time),
+    };
   }
 
   /**
@@ -96,21 +88,5 @@ export class TaskProgressSnapshotTool {
    */
   public static to_record(snapshot: TaskProgressSnapshot): MutableJsonRecord {
     return { ...snapshot };
-  }
-
-  /**
-   * 整数字段保持历史 int 语义，非法值走 fallback
-   */
-  private static read_number(value: ApiJsonValue | undefined, fallback: number): number {
-    const number_value = Number(value ?? fallback);
-    return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
-  }
-
-  /**
-   * 时间字段允许小数，避免耗时显示被截断
-   */
-  private static read_float(value: ApiJsonValue | undefined, fallback: number): number {
-    const number_value = Number(value ?? fallback);
-    return Number.isFinite(number_value) ? number_value : fallback;
   }
 }

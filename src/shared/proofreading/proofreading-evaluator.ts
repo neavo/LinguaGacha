@@ -6,8 +6,8 @@ import {
   partitionQualityCompiledGlossaryTerms,
   stripQualityPreservedSegments,
   type QualityCompiledContext,
-} from "../quality/compiled";
-import type { QualitySnapshot } from "../quality/snapshot";
+} from "../quality/quality-rule-compiled-context";
+import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
 import type {
   ProofreadingClientItem,
   ProofreadingGlossaryTerm,

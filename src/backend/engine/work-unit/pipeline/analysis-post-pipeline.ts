@@ -1,4 +1,4 @@
-import type { ApiJsonValue } from "../../../api/api-types";
+import type { JsonRecord } from "../../../../domain/json";
 import { split_by_punctuation } from "../../../../shared/utils/text-tool";
 import { TextFakenameInjector } from "../../../../shared/text/text-fakename-injector";
 
@@ -20,8 +20,8 @@ export class AnalysisPostPipeline {
    */
   public normalize_glossary_entries(
     glossary_entries: Array<Record<string, string>>,
-  ): Array<Record<string, ApiJsonValue>> {
-    const normalized: Array<Record<string, ApiJsonValue>> = [];
+  ): Array<JsonRecord> {
+    const normalized: Array<JsonRecord> = [];
     for (const raw of glossary_entries) {
       let src = String(raw.src ?? "").trim();
       let dst = String(raw.dst ?? "").trim();
@@ -65,11 +65,7 @@ export class AnalysisPostPipeline {
   /**
    * 候选术语结构统一在这里生成
    */
-  private build_glossary_entry(
-    src: string,
-    dst: string,
-    info: string,
-  ): Record<string, ApiJsonValue> {
+  private build_glossary_entry(src: string, dst: string, info: string): JsonRecord {
     return { src, dst, info, case_sensitive: false };
   }
 }

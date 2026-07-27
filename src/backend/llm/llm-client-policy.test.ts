@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { ApiJsonValue } from "../api/api-types";
+import type { JsonRecord } from "../../domain/json";
 import { LLMClientPolicy } from "./llm-client-policy";
 
 const TEST_USER_AGENT = "LinguaGacha/v1.2.3 (https://github.com/neavo/LinguaGacha)";
@@ -171,7 +171,7 @@ describe("LLMClientPolicy", () => {
 /**
  * 构造 policy 测试请求体，模型差异只通过 overrides 表达。
  */
-function create_body(model_overrides: Record<string, ApiJsonValue>) {
+function create_body(model_overrides: JsonRecord) {
   return {
     run_id: "run-1",
     work_unit_id: "unit-1",

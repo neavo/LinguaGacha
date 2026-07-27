@@ -7,8 +7,11 @@ import { LogManager } from "../log/log-manager";
 import { set_electron_main_log_manager } from "../log/log-bridge";
 import { set_main_log_language_reader, t_main_log } from "../log/log-text";
 import { migration_orchestrator } from "../migration/migration-orchestrator";
-import { read_config_model_preset_records } from "../model/model-config-resolver";
-import { InternalInvariantError } from "../../shared/error";
+import {
+  read_config_model_preset_records,
+  read_config_model_records,
+} from "../model/model-config-resolver";
+import { InternalInvariantError, RuntimeDisposedError } from "../../shared/error";
 import { resolve_app_root } from "../app/app-root-resolver";
 import { write_bootstrap_error, write_bootstrap_log } from "./bootstrap-log";
 import { BackendServices } from "./backend-services";
@@ -20,7 +23,7 @@ import {
   type InstalledSystemProxyDispatcher,
   type SystemProxySnapshot,
   type SystemProxyStartupNotice,
-} from "../network/system-proxy-dispatcher";
+} from "../llm/llm-system-proxy-dispatcher";
 import type {
   BackendBootstrapOptions,
   BackendBootstrapStartResult,
@@ -40,6 +43,8 @@ export class BackendBootstrap {
   private system_proxy_dispatcher: InstalledSystemProxyDispatcher | null = null; // 只在入口注入 resolver 时安装
   private system_proxy_snapshot: SystemProxySnapshot | null = null; // 会传给 work unit worker 线程复用
   private system_proxy_startup_notice: SystemProxyStartupNotice = EMPTY_SYSTEM_PROXY_STARTUP_NOTICE; // 给 GUI/CLI 的脱敏启动提示摘要
+  private start_promise: Promise<BackendBootstrapStartResult> | null = null; // stop 必须等待启动链发布完资源后再逆序释放
+  private stop_promise: Promise<void> | null = null; // 所有退出入口 join 同一次关闭，不能把 stopping 当成已完成
 
   /**
    * Bootstrap 只接收入口层参数，路径、端口和运行期资源句柄由自身拥有。
@@ -59,15 +64,41 @@ export class BackendBootstrap {
    * 启动顺序固定为 LogManager -> ProjectDatabase -> BackendServices -> 可选 API Gateway。
    */
   public async start(): Promise<BackendBootstrapStartResult> {
-    if (this.state !== "idle" && this.state !== "stopped") {
+    const stop_in_progress = this.stop_promise !== null;
+    if ((this.state !== "idle" && this.state !== "stopped") || stop_in_progress) {
       throw new InternalInvariantError({
         diagnostic_context: {
           reason: "backend_bootstrap_start_invalid_state",
           state: this.state,
+          stop_in_progress,
         },
       });
     }
+    const starting = this.start_services();
+    this.start_promise = starting;
+    try {
+      const result = await starting;
+      const stopping = this.stop_promise;
+      if (stopping !== null) {
+        await stopping;
+        throw new RuntimeDisposedError({
+          diagnostic_context: {
+            reason: "backend_bootstrap_stopped_during_start",
+          },
+        });
+      }
+      return result;
+    } finally {
+      if (this.start_promise === starting) {
+        this.start_promise = null;
+      }
+    }
+  }
 
+  /**
+   * 单次启动实现与公开 Promise 分离，让 stop 能等待完整启动或失败收尾。
+   */
+  private async start_services(): Promise<BackendBootstrapStartResult> {
     this.state = "starting";
     const app_root = this.resolve_app_root();
     const paths = new AppPathService({ appRoot: app_root });
@@ -111,11 +142,23 @@ export class BackendBootstrap {
         systemProxyStartupNotice: this.system_proxy_startup_notice,
       };
     } catch (error) {
-      write_bootstrap_error(t_main_log("app.diagnostic.lifecycle.backend_gateway_start_failed"), {
-        error,
-      });
       this.state = "failed";
-      await this.stop_services();
+      const failures: unknown[] = [error];
+      try {
+        write_bootstrap_error(t_main_log("app.diagnostic.lifecycle.backend_gateway_start_failed"), {
+          error,
+        });
+      } catch (log_error) {
+        failures.push(log_error);
+      }
+      try {
+        await this.stop_services();
+      } catch (cleanup_error) {
+        failures.push(cleanup_error);
+      }
+      if (failures.length > 1) {
+        throw new AggregateError(failures, "Backend 启动失败且诊断或资源收尾失败");
+      }
       throw error;
     }
   }
@@ -124,7 +167,25 @@ export class BackendBootstrap {
    * 退出请求统一汇入 stop，避免 GUI 事件和 CLI job 各自清理 Backend 资源。
    */
   public async stop(): Promise<void> {
-    await this.stop_services();
+    if (this.stop_promise !== null) {
+      await this.stop_promise;
+      return;
+    }
+    const starting = this.start_promise;
+    const stopping = (async () => {
+      if (starting !== null) {
+        await starting.catch(() => undefined);
+      }
+      await this.stop_services();
+    })();
+    this.stop_promise = stopping;
+    try {
+      await stopping;
+    } finally {
+      if (this.stop_promise === stopping) {
+        this.stop_promise = null;
+      }
+    }
   }
 
   /**
@@ -167,10 +228,10 @@ export class BackendBootstrap {
       this.system_proxy_startup_notice = EMPTY_SYSTEM_PROXY_STARTUP_NOTICE;
       return;
     }
-    const urls = collect_system_proxy_urls(
-      app_setting_service.read_setting(),
-      read_config_model_preset_records(paths),
-    );
+    const urls = collect_system_proxy_urls([
+      ...read_config_model_preset_records(paths),
+      ...read_config_model_records(app_setting_service.read_setting()),
+    ]);
     this.system_proxy_dispatcher = await install_system_proxy_dispatcher({ resolver, urls });
     this.system_proxy_snapshot = this.system_proxy_dispatcher.snapshot;
     this.system_proxy_startup_notice = build_system_proxy_startup_notice(
@@ -189,23 +250,43 @@ export class BackendBootstrap {
    * Gateway、BackendServices、系统代理、ProjectDatabase 与日志必须逆序关闭，确保收尾阶段不丢日志。
    */
   private async stop_services(): Promise<void> {
-    if (this.state === "stopping") {
+    if (this.state === "stopped") {
       return;
     }
     this.state = "stopping";
-    await this.gateway_server?.stop();
+    const errors: unknown[] = [];
+    const attempt = async (dispose: () => void | Promise<void>): Promise<void> => {
+      try {
+        await dispose();
+      } catch (error) {
+        errors.push(error);
+      }
+    };
+
+    const gateway_server = this.gateway_server;
     this.gateway_server = null;
-    await this.backend_services?.dispose();
+    await attempt(async () => await gateway_server?.stop());
+
+    const backend_services = this.backend_services;
     this.backend_services = null;
-    await this.system_proxy_dispatcher?.dispose();
+    await attempt(async () => await backend_services?.dispose());
+
+    const system_proxy_dispatcher = this.system_proxy_dispatcher;
     this.system_proxy_dispatcher = null;
     this.system_proxy_snapshot = null;
     this.system_proxy_startup_notice = EMPTY_SYSTEM_PROXY_STARTUP_NOTICE;
-    this.database.close();
-    await this.log_manager?.shutdown();
+    await attempt(async () => await system_proxy_dispatcher?.dispose());
+
+    await attempt(() => this.database.close());
+
+    const log_manager = this.log_manager;
     this.log_manager = null;
+    await attempt(async () => await log_manager?.shutdown());
     set_electron_main_log_manager(null);
     set_main_log_language_reader(null);
     this.state = "stopped";
+    if (errors.length > 0) {
+      throw new AggregateError(errors, "Backend 资源关闭失败");
+    }
   }
 }

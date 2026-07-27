@@ -1,8 +1,9 @@
 import type { Hono } from "hono";
 
+import type { JsonRecord, JsonValue } from "../../domain/json";
 import type { BackendServices } from "../bootstrap/backend-services";
 import type { ApiPostJsonRoute } from "./api-json";
-import { ok, type ApiJsonValue } from "./api-types";
+import { ok } from "./api-types";
 
 /**
  * 公开路由只消费组合根和 Gateway 提供的传输适配器，不自行创建领域依赖。
@@ -11,10 +12,9 @@ export interface ApiRouteContext {
   app: Hono;
   services: BackendServices;
   postJson: ApiPostJsonRoute;
-  requireLoadedProjectPath: () => string;
   createLogStreamResponse: () => Response;
-  readLogDetail: (body: Record<string, ApiJsonValue>) => ApiJsonValue;
-  recordRendererError: (body: Record<string, ApiJsonValue>) => ApiJsonValue;
+  readLogDetail: (body: JsonRecord) => JsonValue;
+  recordRendererError: (body: JsonRecord) => JsonValue;
 }
 
 /**
@@ -37,11 +37,8 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/diagnostics/renderer-error", (body) => context.recordRendererError(body));
 
   const lifecycle = services.project.lifecycle;
-  const project_data = services.project.data;
-  const file_preview = services.workbench.filePreview;
-  context.postJson("/api/session/project/manifest", () =>
-    project_data.build_manifest(services.project.sessionState.snapshot()),
-  );
+  const file_preview = services.files.preview;
+  context.postJson("/api/session/project/manifest", () => services.project.readManifest());
   context.postJson("/api/session/project/snapshot", () => lifecycle.get_project_snapshot());
   context.postJson("/api/session/project/close", () => lifecycle.unload_project());
   context.postJson("/api/session/project/preview", (body) => lifecycle.get_project_preview(body));
@@ -57,24 +54,21 @@ export function register_api_routes(context: ApiRouteContext): void {
     lifecycle.get_open_alignment_preview(body),
   );
 
-  context.app.get("/api/events/stream", () => services.streams.api.create_stream_response());
+  context.app.get("/api/events/stream", () => services.create_event_stream_response());
 
-  const workbench_query = services.workbench.query;
-  const workbench = services.workbench.commands;
-  const reset_preview = services.workbench.resetPreview;
-  context.postJson("/api/workbench/snapshot", () => workbench_query.read_workbench_snapshot());
-  context.postJson("/api/workbench/files/import", (body) => workbench.import_workbench_files(body));
-  context.postJson("/api/workbench/file/reset", (body) => workbench.reset_workbench_file(body));
-  context.postJson("/api/workbench/file/delete", (body) => workbench.delete_workbench_file(body));
-  context.postJson("/api/workbench/files/reorder", (body) =>
-    workbench.reorder_workbench_files(body),
-  );
-  context.postJson("/api/workbench/file/parse", (body) => file_preview.parse_workbench_file(body));
+  const project_content = services.project.content;
+  const reset_preview = services.project.resetPreview;
+  context.postJson("/api/workbench/snapshot", () => services.project.summary.read());
+  context.postJson("/api/workbench/files/import", (body) => project_content.import_files(body));
+  context.postJson("/api/workbench/file/reset", (body) => project_content.reset_files(body));
+  context.postJson("/api/workbench/file/delete", (body) => project_content.delete_files(body));
+  context.postJson("/api/workbench/files/reorder", (body) => project_content.reorder_files(body));
+  context.postJson("/api/workbench/file/parse", (body) => file_preview.parse_project_file(body));
   context.postJson("/api/workbench/settings-alignment/apply", (body) =>
-    workbench.apply_settings_alignment(body),
+    project_content.align_settings(body),
   );
   context.postJson("/api/workbench/translation/reset", (body) =>
-    workbench.apply_translation_reset(body),
+    project_content.reset_translation(body),
   );
   context.postJson("/api/workbench/translation/reset-preview", (body) =>
     reset_preview.preview_translation_reset(body),
@@ -93,54 +87,61 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/proofreading/items/replace-all", (body) => proofreading.replace_all(body));
 
   const quality_statistics = services.quality.statistics;
-  const quality = services.quality.service;
+  const quality_rules = services.quality.rules;
+  const prompts = services.quality.prompts;
   context.postJson("/api/quality/statistics/view", (body) => quality_statistics.read(body));
-  context.postJson("/api/quality/rules/view", (body) =>
-    workbench_query.read_quality_rule_view(body),
+  context.postJson("/api/quality/rules/view", (body) => quality_rules.read(body));
+  context.postJson("/api/quality/prompts/view", (body) => prompts.read(body));
+  context.postJson("/api/quality/rules/save-entries", (body) =>
+    quality_rules.save_rule_entries(body),
   );
-  context.postJson("/api/quality/prompts/view", (body) => workbench_query.read_prompt_view(body));
-  context.postJson("/api/quality/rules/save-entries", (body) => quality.save_rule_entries(body));
-  context.postJson("/api/quality/rules/update-meta", (body) => quality.update_rule_meta(body));
-  context.postJson("/api/quality/rules/import", (body) => quality.import_rules(body));
-  context.postJson("/api/quality/rules/export", (body) => quality.export_rules(body));
-  context.postJson("/api/quality/rules/presets", (body) => quality.list_rule_presets(body));
-  context.postJson("/api/quality/rules/presets/read", (body) => quality.read_rule_preset(body));
-  context.postJson("/api/quality/rules/presets/save", (body) => quality.save_rule_preset(body));
-  context.postJson("/api/quality/rules/presets/rename", (body) => quality.rename_rule_preset(body));
-  context.postJson("/api/quality/rules/presets/delete", (body) => quality.delete_rule_preset(body));
-  context.postJson("/api/quality/prompts/template", (body) => quality.get_prompt_template(body));
-  context.postJson("/api/quality/prompts/save", (body) => quality.save_prompt(body));
-  context.postJson("/api/quality/prompts/import", (body) => quality.read_prompt_import_text(body));
-  context.postJson("/api/quality/prompts/export", (body) => quality.export_prompt(body));
-  context.postJson("/api/quality/prompts/presets", (body) => quality.list_prompt_presets(body));
-  context.postJson("/api/quality/prompts/presets/read", (body) => quality.read_prompt_preset(body));
-  context.postJson("/api/quality/prompts/presets/save", (body) => quality.save_prompt_preset(body));
-  context.postJson("/api/quality/prompts/presets/rename", (body) =>
-    quality.rename_prompt_preset(body),
+  context.postJson("/api/quality/rules/update-meta", (body) =>
+    quality_rules.update_rule_meta(body),
   );
-  context.postJson("/api/quality/prompts/presets/delete", (body) =>
-    quality.delete_prompt_preset(body),
+  context.postJson("/api/quality/rules/import", (body) => quality_rules.import_rules(body));
+  context.postJson("/api/quality/rules/export", (body) => quality_rules.export_rules(body));
+  context.postJson("/api/quality/rules/presets", (body) => quality_rules.list_rule_presets(body));
+  context.postJson("/api/quality/rules/presets/read", (body) =>
+    quality_rules.read_rule_preset(body),
   );
+  context.postJson("/api/quality/rules/presets/save", (body) =>
+    quality_rules.save_rule_preset(body),
+  );
+  context.postJson("/api/quality/rules/presets/rename", (body) =>
+    quality_rules.rename_rule_preset(body),
+  );
+  context.postJson("/api/quality/rules/presets/delete", (body) =>
+    quality_rules.delete_rule_preset(body),
+  );
+  context.postJson("/api/quality/prompts/template", (body) => prompts.get_template(body));
+  context.postJson("/api/quality/prompts/save", (body) => prompts.save(body));
+  context.postJson("/api/quality/prompts/import", (body) => prompts.read_import_text(body));
+  context.postJson("/api/quality/prompts/export", (body) => prompts.export(body));
+  context.postJson("/api/quality/prompts/presets", (body) => prompts.list_presets(body));
+  context.postJson("/api/quality/prompts/presets/read", (body) => prompts.read_preset(body));
+  context.postJson("/api/quality/prompts/presets/save", (body) => prompts.save_preset(body));
+  context.postJson("/api/quality/prompts/presets/rename", (body) => prompts.rename_preset(body));
+  context.postJson("/api/quality/prompts/presets/delete", (body) => prompts.delete_preset(body));
 
   context.postJson("/api/analysis/glossary-import/preview", (body) =>
-    workbench_query.prepare_analysis_glossary_import(body),
+    quality_rules.prepare_analysis_glossary_import(body),
   );
-  context.postJson("/api/analysis/reset", (body) => workbench.apply_analysis_reset(body));
+  context.postJson("/api/analysis/reset", (body) => project_content.reset_analysis(body));
   context.postJson("/api/analysis/reset-preview", (body) =>
     reset_preview.preview_analysis_reset(body),
   );
   context.postJson("/api/analysis/candidates/list", () =>
-    project_data.build_analysis_candidate_payload(context.requireLoadedProjectPath()),
+    services.project.readAnalysisCandidates(),
   );
   context.postJson("/api/analysis/glossary/import", (body) =>
-    workbench.import_analysis_glossary(body),
+    quality_rules.import_analysis_glossary(body),
   );
 
   context.postJson("/api/translation/files/export", () =>
-    services.translation.files.export_files(),
+    services.files.translationExport.export_files(),
   );
   context.postJson("/api/toolbox/ts-conversion/files/export", (body) =>
-    services.toolbox.tsConversion.export_files(body),
+    services.files.tsConversionExport.export_files(body),
   );
 
   const settings = services.app.settings;
@@ -153,7 +154,7 @@ export function register_api_routes(context: ApiRouteContext): void {
     settings.remove_recent_project(body),
   );
 
-  const models = services.models.service;
+  const models = services.model;
   context.postJson("/api/models/snapshot", () => models.get_snapshot());
   context.postJson("/api/models/update", (body) => models.update_model(body));
   context.postJson("/api/models/activate", (body) => models.activate_model(body));
@@ -164,7 +165,7 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/models/list-available", (body) => models.list_available_models(body));
   context.postJson("/api/models/test", (body) => models.test_model(body));
 
-  const tasks = services.engine.tasks;
+  const tasks = services.tasks;
   context.postJson("/api/tasks/start", (body) => tasks.start_task(body));
   context.postJson("/api/tasks/stop", (body) => tasks.stop_task(body));
   context.postJson("/api/tasks/snapshot", (body) => tasks.get_task_snapshot(body));

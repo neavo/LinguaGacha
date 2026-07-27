@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { AppPathService } from "./app-path-service";
+import { AppPathService, resolve_preset_file } from "./app-path-service";
 
 const cleanup_roots: string[] = [];
 
@@ -75,6 +75,66 @@ describe("AppPathService", () => {
     expect(() => service.get_prompt_template_dir("proofreading", "zh")).toThrow(
       "runtime.internal_invariant",
     );
+  });
+});
+
+describe("resolve_preset_file", () => {
+  it("按虚拟来源解析受控根目录并显式兼容旧 JSON 命名空间", () => {
+    const builtin_directory = path.join("resource", "glossary", "preset");
+    const user_directory = path.join("userdata", "glossary");
+
+    expect(
+      resolve_preset_file({
+        virtual_id: "user:demo.json",
+        extension: ".json",
+        builtin_directory,
+        user_directory,
+      }),
+    ).toEqual({
+      source: "user",
+      file_name: "demo.json",
+      file_path: path.join(user_directory, "demo.json"),
+    });
+    expect(
+      resolve_preset_file({
+        virtual_id: "builtin:glossary:demo.json",
+        extension: ".json",
+        builtin_directory,
+        user_directory,
+        allow_legacy_namespace: true,
+      }),
+    ).toEqual({
+      source: "builtin",
+      file_name: "demo.json",
+      file_path: path.join(builtin_directory, "demo.json"),
+    });
+    expect(() =>
+      resolve_preset_file({
+        virtual_id: "builtin:glossary:demo.json",
+        extension: ".json",
+        builtin_directory,
+        user_directory,
+      }),
+    ).toThrow("request.validation_failed");
+  });
+
+  it.each([
+    "builtin:../demo.txt",
+    "builtin:folder/demo.txt",
+    "builtin:folder\\demo.txt",
+    "builtin:/demo.txt",
+    "builtin:C:\\demo.txt",
+    "external:demo.txt",
+    "builtin:demo.json",
+  ])("拒绝逃逸、绝对路径、未知来源或错误扩展名：%s", (virtual_id) => {
+    expect(() =>
+      resolve_preset_file({
+        virtual_id,
+        extension: ".txt",
+        builtin_directory: "builtin-root",
+        user_directory: "user-root",
+      }),
+    ).toThrow("request.validation_failed");
   });
 });
 

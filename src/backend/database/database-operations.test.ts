@@ -3,9 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ZstdTool } from "../../shared/utils/zstd-tool";
+import { migration_orchestrator } from "../migration/migration-orchestrator";
 import {
   PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY,
   PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS,
@@ -58,6 +59,7 @@ afterEach(() => {
   for (const database of cleanup_databases.splice(0)) {
     database.close();
   }
+  vi.restoreAllMocks();
   fs.rmSync(temp_dir, { recursive: true, force: true });
 });
 
@@ -114,6 +116,105 @@ describe("ProjectDatabase", () => {
     release();
 
     expect(has_project_sidecar(lg_path)).toBe(false);
+  });
+
+  it("一条连接关闭失败时仍释放其它连接并清空连接所有权", () => {
+    const database = create_database();
+    const first_path = project_path("first-close.lg");
+    const second_path = project_path("second-close.lg");
+    database.create_project(first_path, "first");
+    database.create_project(second_path, "second");
+    const release_first = database.acquire_project_lease(first_path, "test");
+    const release_second = database.acquire_project_lease(second_path, "test");
+    const connection_records = (
+      database as unknown as {
+        connection_records: Map<string, { db: DatabaseSync }>;
+      }
+    ).connection_records;
+    const records = [...connection_records.values()];
+    const checkpoint_failure = new Error("checkpoint failed");
+    vi.spyOn(records[0]!.db, "exec").mockImplementationOnce(() => {
+      throw checkpoint_failure;
+    });
+    const second_close = vi.spyOn(records[1]!.db, "close");
+    let close_error: unknown;
+
+    try {
+      database.close();
+    } catch (error) {
+      close_error = error;
+    }
+
+    expect(close_error).toBeInstanceOf(AggregateError);
+    expect((close_error as AggregateError).errors).toEqual([checkpoint_failure]);
+    expect(second_close).toHaveBeenCalledTimes(1);
+    expect(connection_records.size).toBe(0);
+    expect(() => release_first()).not.toThrow();
+    expect(() => release_second()).not.toThrow();
+  });
+
+  it("项目数据库初始化失败时立即关闭未登记连接", () => {
+    const database = create_database();
+    const lg_path = project_path("open-failed.lg");
+    const open_failure = new Error("migration failed");
+    let connection_close: ReturnType<typeof vi.spyOn> | null = null;
+    vi.spyOn(migration_orchestrator, "run_project_database_migrations").mockImplementationOnce(
+      (db) => {
+        connection_close = vi.spyOn(db, "close");
+        throw open_failure;
+      },
+    );
+
+    expect(() => database.get_all_meta(lg_path)).toThrow(open_failure);
+
+    expect(connection_close).not.toBeNull();
+    expect(connection_close).toHaveBeenCalledTimes(1);
+    expect(
+      (
+        database as unknown as {
+          connection_records: Map<string, unknown>;
+        }
+      ).connection_records.size,
+    ).toBe(0);
+  });
+
+  it("项目数据库初始化与连接关闭同时失败时保留两个异常", () => {
+    const database = create_database();
+    const lg_path = project_path("open-and-close-failed.lg");
+    const open_failure = new Error("migration failed");
+    const close_failure = new Error("close failed");
+    let failed_connection: DatabaseSync | null = null;
+    vi.spyOn(migration_orchestrator, "run_project_database_migrations").mockImplementationOnce(
+      (db) => {
+        failed_connection = db;
+        vi.spyOn(db, "close").mockImplementationOnce(() => {
+          throw close_failure;
+        });
+        throw open_failure;
+      },
+    );
+    let database_error: unknown;
+
+    try {
+      try {
+        database.get_all_meta(lg_path);
+      } catch (error) {
+        database_error = error;
+      }
+
+      expect(database_error).toBeInstanceOf(AggregateError);
+      expect((database_error as AggregateError).errors).toEqual([open_failure, close_failure]);
+      expect(
+        (
+          database as unknown as {
+            connection_records: Map<string, unknown>;
+          }
+        ).connection_records.size,
+      ).toBe(0);
+    } finally {
+      const connection_to_close = failed_connection as DatabaseSync | null;
+      connection_to_close?.close();
+    }
   });
 
   it("由 服务层读取源文件、压缩 asset，并通过 ProjectDatabase 返回原始 bytes", () => {

@@ -18,6 +18,7 @@ run_check_cli([
     project_root,
     roots: [
       path.join(project_root, "src", "backend"),
+      path.join(project_root, "src", "cli"),
       path.join(project_root, "src", "native"),
       path.join(project_root, "src", "shared", "error"),
     ],

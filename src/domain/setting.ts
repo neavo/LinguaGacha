@@ -1,4 +1,4 @@
-import type { JsonValue } from "../shared/utils/json-tool";
+import type { JsonRecord, JsonValue } from "./json";
 import { normalize_app_language, type AppLanguage } from "./app-language";
 
 export {
@@ -30,8 +30,6 @@ export {
 export const PROJECT_SAVE_MODES = ["MANUAL", "FIXED", "SOURCE"] as const; // ProjectSaveMode 是项目保存位置策略，页面和设置服务都从这里取合法值
 
 export type ProjectSaveMode = (typeof PROJECT_SAVE_MODES)[number];
-type SettingJsonRecord = Record<string, JsonValue>;
-
 export type RecentProjectSetting = {
   path: string; // 最近工程路径
   name: string; // 最近工程展示名
@@ -114,7 +112,7 @@ const NUMBER_SETTING_KEYS = new Set(["request_timeout", "preceding_lines_thresho
 /**
  * 集中维护当前模块的稳定常量。
  */
-export const DEFAULT_SETTING: SettingJsonRecord = {
+export const DEFAULT_SETTING: JsonRecord = {
   app_language: "ZH",
   source_language: "JA",
   target_language: "ZH",
@@ -146,12 +144,12 @@ const PROJECT_SAVE_MODE_SET = new Set<ProjectSaveMode>(PROJECT_SAVE_MODES);
  * Setting 是 userdata/config.json 的业务实体；文件名保留 config.json，但领域语义统一为设置
  */
 export class Setting {
-  public readonly data: SettingJsonRecord; // 完整设置文件形状；设置快照只从白名单计算
+  public readonly data: JsonRecord; // 完整设置文件形状；设置快照只从白名单计算
 
   /**
    * 初始化当前实例的内部状态。
    */
-  private constructor(data: SettingJsonRecord) {
+  private constructor(data: JsonRecord) {
     this.data = data;
   }
 
@@ -161,7 +159,7 @@ export class Setting {
   public static from_json(payload: unknown): Setting {
     const setting = { ...DEFAULT_SETTING };
     if (typeof payload === "object" && payload !== null && !Array.isArray(payload)) {
-      for (const [key, value] of Object.entries(payload as SettingJsonRecord)) {
+      for (const [key, value] of Object.entries(payload as JsonRecord)) {
         if (key in DEFAULT_SETTING) {
           setting[key] = Setting.normalize_value(key, value);
         }
@@ -173,7 +171,7 @@ export class Setting {
   /**
    * 输出完整设置文件形状，模型配置等非设置快照字段仍保留在同一落盘对象内
    */
-  public to_json(): SettingJsonRecord {
+  public to_json(): JsonRecord {
     return { ...this.data };
   }
 
@@ -237,7 +235,7 @@ export class Setting {
       return [];
     }
     return raw_items
-      .filter((item): item is SettingJsonRecord => {
+      .filter((item): item is JsonRecord => {
         return typeof item === "object" && item !== null && !Array.isArray(item);
       })
       .map((item) => ({
@@ -413,9 +411,9 @@ export function normalize_project_settings_snapshot(
 /**
  * 读取当前场景需要的稳定数据。
  */
-function read_setting_record(value: unknown): SettingJsonRecord {
+function read_setting_record(value: unknown): JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as SettingJsonRecord)
+    ? (value as JsonRecord)
     : {};
 }
 
@@ -492,7 +490,7 @@ function normalize_recent_project_settings(value: unknown): RecentProjectSetting
     return [];
   }
   return value
-    .filter((item): item is SettingJsonRecord => {
+    .filter((item): item is JsonRecord => {
       return typeof item === "object" && item !== null && !Array.isArray(item);
     })
     .map((item) => ({

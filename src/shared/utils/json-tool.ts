@@ -1,5 +1,3 @@
-export type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
-
 /**
  * JSON 工具可接受的文本来源，统一覆盖字符串和二进制读取结果
  */

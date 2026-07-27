@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 
-import type { DatabaseJsonValue } from "../database/database-types";
+import type { JsonRecord } from "../../domain/json";
 import type { ProjectDatabaseWrite } from "../database/database-operations";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { MIGRATIONS, PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS } from "./migration-registry";
@@ -164,7 +164,7 @@ export const migration_orchestrator = new MigrationOrchestrator(); // 生产态�
 /**
  * 新建工程的 meta 必须与当前 registry 对齐，避免新工程再次执行旧写回迁移。
  */
-export function build_current_project_database_meta(): Record<string, DatabaseJsonValue> {
+export function build_current_project_database_meta(): JsonRecord {
   return {
     schema_version: PROJECT_DATABASE_SCHEMA_VERSION,
     [PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY]:

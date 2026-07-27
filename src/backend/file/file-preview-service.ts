@@ -1,4 +1,4 @@
-import type { ApiJsonValue } from "../api/api-types";
+import type { JsonRecord, JsonValue } from "../../domain/json";
 import { AppSettingService } from "../app/app-setting-service";
 import { FileFormatService } from "../file/file-format-service";
 import { normalize_setting_snapshot } from "../../domain/setting";
@@ -9,8 +9,6 @@ import { log_source_file_parse_failures } from "./source-file-parse-failure-repo
 import type { SourceFileParseFailureRecord } from "../../shared/source-file-parse-failure";
 import { resolve_app_locale } from "../../domain/app-language";
 import { create_text_resolver, type TextResolver } from "../../shared/i18n";
-
-type JsonRecord = Record<string, ApiJsonValue>;
 
 /**
  * 文件解析预演服务；公开源文件草稿只由 Backend 文件域解析
@@ -34,21 +32,21 @@ export class FilePreviewService {
   }
 
   /**
-   * 工作台单文件预解析返回成功与失败清单，避免批量输入失败被静默吞掉
+   * 项目文件预解析返回成功与失败清单，避免批量输入失败被静默吞掉
    */
-  public async parse_workbench_file(request: JsonRecord): Promise<JsonRecord> {
+  public async parse_project_file(request: JsonRecord): Promise<JsonRecord> {
     const source_paths = this.normalize_string_list(request["source_paths"]);
     const current_rel_path =
       typeof request["current_rel_path"] === "string" ? request["current_rel_path"] : undefined;
     const pipeline = this.create_parse_pipeline();
-    const result = await pipeline.parse_workbench_preview({
+    const result = await pipeline.parse_project_file_preview({
       source_paths,
       current_rel_path,
     });
     this.log_parse_failures(result.failed_files);
     return {
-      files: result.files as unknown as ApiJsonValue,
-      failed_files: result.failed_files as unknown as ApiJsonValue,
+      files: result.files as unknown as JsonValue,
+      failed_files: result.failed_files as unknown as JsonValue,
     };
   }
 
@@ -66,7 +64,7 @@ export class FilePreviewService {
         items: draft.items,
         section_revisions: { files: 0, items: 0, analysis: 0 },
       },
-      failed_files: draft.failed_files as unknown as ApiJsonValue,
+      failed_files: draft.failed_files as unknown as JsonValue,
     };
   }
 
@@ -115,7 +113,7 @@ export class FilePreviewService {
   /**
    * API 入参只接受非空字符串路径，其他值直接丢弃
    */
-  private normalize_string_list(value: ApiJsonValue | undefined): string[] {
+  private normalize_string_list(value: JsonValue | undefined): string[] {
     return Array.isArray(value)
       ? value.filter((item): item is string => typeof item === "string" && item.trim() !== "")
       : [];

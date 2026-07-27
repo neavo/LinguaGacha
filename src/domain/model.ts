@@ -1,4 +1,4 @@
-import type { JsonRecord, JsonValue } from "../shared/utils/json-tool";
+import type { JsonRecord, JsonValue } from "./json";
 import { read_json_record } from "./json";
 
 // 模型类型是设置文件、模型页分组和服务端模板选择共享的稳定值域
@@ -25,8 +25,6 @@ export const MODEL_THINKING_LEVELS = ["OFF", "LOW", "MEDIUM", "HIGH"] as const; 
 export type ModelType = (typeof MODEL_TYPES)[number];
 export type ModelApiFormat = (typeof MODEL_API_FORMATS)[number];
 export type ModelThinkingLevel = (typeof MODEL_THINKING_LEVELS)[number];
-type ModelJsonRecord = Record<string, JsonValue>;
-
 type ModelRequestConfig = {
   extra_headers: JsonRecord; // 请求层额外 headers
   extra_headers_custom_enable: boolean; // 是否启用自定义 headers
@@ -172,7 +170,7 @@ export class Model {
   /**
    * 输出模型设置 JSON，跨进程和任务 worker 都只消费普通对象
    */
-  public to_json(): ModelJsonRecord {
+  public to_json(): JsonRecord {
     return {
       id: this.id,
       type: this.type,
@@ -363,9 +361,9 @@ export function is_model_thinking_level(value: unknown): value is ModelThinkingL
 /**
  * 读取当前场景需要的稳定数据。
  */
-function read_json_model_record(value: unknown): ModelJsonRecord {
+function read_json_model_record(value: unknown): JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? { ...(value as ModelJsonRecord) }
+    ? { ...(value as JsonRecord) }
     : {};
 }
 

@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ApiJsonValue } from "../api/api-types";
+import type { JsonRecord, JsonValue } from "../../domain/json";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { LLMClient } from "../llm/llm-client";
@@ -29,10 +29,8 @@ vi.mock("@google/genai", () => ({
 }));
 
 type ModelPresetFiles = {
-  builtin_models?: Array<Record<string, ApiJsonValue>>;
-  templates?: Partial<
-    Record<"CUSTOM_GOOGLE" | "CUSTOM_OPENAI" | "CUSTOM_ANTHROPIC", Record<string, ApiJsonValue>>
-  >;
+  builtin_models?: Array<JsonRecord>;
+  templates?: Partial<Record<"CUSTOM_GOOGLE" | "CUSTOM_OPENAI" | "CUSTOM_ANTHROPIC", JsonRecord>>;
 };
 
 type ModelServiceFixture = {
@@ -681,7 +679,7 @@ describe("ModelService 远端模型能力", () => {
  * 构造带最小资源目录的 ModelService，避免用例读取真实预设文件
  */
 async function create_model_service(
-  models: Array<Record<string, ApiJsonValue>>,
+  models: Array<JsonRecord>,
   presets: ModelPresetFiles = {},
   log_entries?: LogEntry[],
 ): Promise<ModelServiceFixture> {
@@ -691,7 +689,7 @@ async function create_model_service(
   const app_setting_service = new AppSettingService(paths);
   app_setting_service.save_setting({
     activate_model_id: models[0]?.["id"] ?? "",
-    models: models as unknown as ApiJsonValue,
+    models: models as unknown as JsonValue,
   });
   const log_manager =
     log_entries === undefined
@@ -717,9 +715,7 @@ async function create_model_service(
 /**
  * 生成默认模型记录，测试只覆盖被 overrides 指定的差异字段
  */
-function create_model(
-  overrides: Partial<Record<string, ApiJsonValue>>,
-): Record<string, ApiJsonValue> {
+function create_model(overrides: Partial<JsonRecord>): JsonRecord {
   return {
     api_format: "OpenAI",
     api_key: "key",
@@ -790,7 +786,7 @@ async function* create_google_model_pager(
   }
 }
 
-function create_template(name: string, api_format: string): Record<string, ApiJsonValue> {
+function create_template(name: string, api_format: string): JsonRecord {
   return {
     api_format,
     api_key: "k",
@@ -800,9 +796,9 @@ function create_template(name: string, api_format: string): Record<string, ApiJs
   };
 }
 
-function read_request_model_snapshot(response: Record<string, ApiJsonValue>): {
+function read_request_model_snapshot(response: JsonRecord): {
   active_model_id: string;
-  models: Array<Record<string, ApiJsonValue>>;
+  models: Array<JsonRecord>;
 } {
   const snapshot = response["snapshot"];
   if (typeof snapshot !== "object" || snapshot === null || Array.isArray(snapshot)) {
@@ -813,17 +809,14 @@ function read_request_model_snapshot(response: Record<string, ApiJsonValue>): {
     active_model_id: String(snapshot["active_model_id"] ?? ""),
     models: Array.isArray(models)
       ? models.filter(
-          (model): model is Record<string, ApiJsonValue> =>
+          (model): model is JsonRecord =>
             typeof model === "object" && model !== null && !Array.isArray(model),
         )
       : [],
   };
 }
 
-function read_request_model_ids_by_type(
-  models: Array<Record<string, ApiJsonValue>>,
-  model_type: string,
-): string[] {
+function read_request_model_ids_by_type(models: Array<JsonRecord>, model_type: string): string[] {
   return models
     .filter((model) => String(model["type"] ?? "") === model_type)
     .map((model) => String(model["id"] ?? ""));

@@ -1,9 +1,12 @@
-import type { ApiJsonValue } from "../api/api-types";
 import { ProjectDatabase, type ProjectDatabaseWrite } from "../database/database-operations";
-import type { DatabaseJsonValue } from "../database/database-types";
-import { Item, type ItemNameField, type ItemStatus } from "../../domain/item";
-import { is_json_record, read_json_record } from "../../domain/json";
-import { is_task_progress_status, TASK_PROGRESS_STATUSES } from "../../domain/task";
+import {
+  is_json_record,
+  read_json_record,
+  type JsonRecord,
+  type JsonValue,
+  type MutableJsonRecord,
+} from "../../domain/json";
+import { is_task_progress_status } from "../../domain/task";
 import { count_analysis_glossary_candidates } from "../../shared/analysis-candidate";
 import type {
   ProjectChangeFilesPayload,
@@ -15,27 +18,34 @@ import type {
 } from "../../shared/project-event";
 import * as AppErrors from "../../shared/error";
 import { build_project_item_field_patch } from "../../shared/project/project-item-field-patch";
-import { get_section_revision } from "./project-data";
+import { build_section_revisions_from_meta, get_section_revision } from "./project-data-reader";
 import {
+  build_analysis_section_delta,
   create_empty_translation_task_snapshot,
-  ProjectWriteCoordinator,
-  type ProjectWriteChangeRequest,
-  type ProjectWriteRevisionContext,
-} from "./project-changes";
-import type { ProjectChangePublisher } from "./project-changes";
-import type { ProjectEventHandler } from "./project-events";
+} from "./project-write-state";
+import type {
+  ProjectChangePublisher,
+  ProjectWriteChangeRequest,
+} from "./project-write-event-adapter";
+import type { ProjectExpectedSectionRevisions } from "./project-write-request";
+import type {
+  AnalysisCheckpointWrite,
+  AnalysisGlossaryWrite,
+  AnalysisProgressWrite,
+  TranslationItemPatch,
+} from "./project-write-request";
+import {
+  resolve_project_prompt_storage,
+  resolve_project_quality_rule_storage,
+  type ProjectTaskInput,
+} from "./project-task-input";
+import type { ProjectEvent, ProjectEventHandler } from "./project-events";
 
-type JsonRecord = Record<string, ApiJsonValue>;
-type MutableJsonRecord = Record<string, ApiJsonValue>;
-
-export type TranslationItemPatch = {
-  item_id: number; // 任务 artifact 和公开项目行的唯一主键
-  patch: {
-    dst?: string;
-    name_dst?: ItemNameField;
-    status?: ItemStatus;
-    retry_count?: number;
-  };
+type RevisionBackedSection = "files" | "items" | "analysis" | "proofreading";
+type ProjectWriteRevisionContext = {
+  project_path: string;
+  meta: MutableJsonRecord;
+  sections: ProjectDataSection[];
 };
 
 /**
@@ -60,7 +70,7 @@ export type ProjectAssetWrite =
 
 type RuntimeCommitRequest = {
   projectPath: string;
-  expectedSectionRevisions?: ApiJsonValue;
+  expectedSectionRevisions?: ProjectExpectedSectionRevisions;
   requireExpectedSectionRevisions: boolean;
   revisionSections: ProjectDataSection[];
   source: string;
@@ -72,7 +82,7 @@ type RuntimeCommitRequest = {
   >;
   files?: Pick<ProjectChangeFilesPayload, "payloadMode" | "changedPaths" | "deletePaths">;
   sections?: Partial<
-    Record<ProjectDataSection, { payloadMode: ProjectChangePayloadMode; data?: ApiJsonValue }>
+    Record<ProjectDataSection, { payloadMode: ProjectChangePayloadMode; data?: JsonValue }>
   >;
   sectionModes?: Partial<Record<ProjectDataSection, ProjectChangePayloadMode>>;
 };
@@ -107,7 +117,9 @@ type TranslationProgressCounters = {
 export class ProjectWriteStore {
   private readonly database: ProjectDatabase; // workflow 是项目事实的物理写入边界
 
-  private readonly write_coordinator: ProjectWriteCoordinator; // coordinator 统一 revision guard 与 committed event 发布
+  private readonly project_event_handler: ProjectEventHandler; // 提交后先维护内部 cache 事实
+
+  private readonly project_change_publisher: ProjectChangePublisher | null; // 内部事件成功后再生成公开变更
 
   /**
    * 注入唯一数据库写入口、内部 cache 事件处理器和可选公开变更发布器。
@@ -118,11 +130,8 @@ export class ProjectWriteStore {
     project_change_publisher: ProjectChangePublisher | null,
   ) {
     this.database = database;
-    this.write_coordinator = new ProjectWriteCoordinator(
-      database,
-      project_change_publisher,
-      project_event_handler,
-    );
+    this.project_event_handler = project_event_handler;
+    this.project_change_publisher = project_change_publisher;
   }
 
   /**
@@ -130,7 +139,7 @@ export class ProjectWriteStore {
    */
   public async apply_translation_item_patches(request: {
     projectPath: string;
-    items: ApiJsonValue | undefined;
+    items: TranslationItemPatch[];
     translationExtras: MutableJsonRecord;
   }): Promise<ProjectWriteSectionAck> {
     return await this.apply_task_item_patches({
@@ -147,7 +156,7 @@ export class ProjectWriteStore {
    */
   public async apply_retranslation_item_patches(request: {
     projectPath: string;
-    items: ApiJsonValue | undefined;
+    items: TranslationItemPatch[];
     translationExtras: MutableJsonRecord;
   }): Promise<ProjectWriteSectionAck> {
     return await this.apply_task_item_patches({
@@ -166,10 +175,7 @@ export class ProjectWriteStore {
     projectPath: string;
     meta: MutableJsonRecord;
   }): void {
-    this.database.upsert_meta_entries(
-      request.projectPath,
-      request.meta as unknown as Record<string, DatabaseJsonValue>,
-    );
+    this.database.upsert_meta_entries(request.projectPath, request.meta as unknown as JsonRecord);
   }
 
   /**
@@ -177,19 +183,20 @@ export class ProjectWriteStore {
    */
   public async commit_analysis_artifacts(request: {
     projectPath: string;
-    successCheckpoints: ApiJsonValue | undefined;
-    errorCheckpoints: ApiJsonValue | undefined;
-    glossaryEntries: ApiJsonValue | undefined;
-    progressSnapshot: ApiJsonValue | undefined;
+    successCheckpoints: AnalysisCheckpointWrite[];
+    errorCheckpoints: AnalysisCheckpointWrite[];
+    glossaryEntries: AnalysisGlossaryWrite[];
+    progressSnapshot: AnalysisProgressWrite | null;
   }): Promise<MutableJsonRecord> {
     const project_path = request.projectPath;
-    const success_checkpoints = this.normalize_checkpoint_rows(request.successCheckpoints);
-    const error_checkpoints = this.normalize_error_checkpoint_rows(
+    const success_checkpoints = request.successCheckpoints;
+    const error_checkpoints = this.build_error_checkpoint_rows(
       project_path,
       request.errorCheckpoints,
     );
-    const glossary_entries = this.normalize_glossary_entries(request.glossaryEntries);
-    const progress_snapshot = this.normalize_nullable_progress_snapshot(request.progressSnapshot);
+    const glossary_entries = request.glossaryEntries;
+    const progress_snapshot: MutableJsonRecord | null =
+      request.progressSnapshot === null ? null : { ...request.progressSnapshot };
     const meta = this.read_project_meta(project_path);
     const candidate_result = this.build_next_candidate_rows(
       project_path,
@@ -205,10 +212,12 @@ export class ProjectWriteStore {
       sections: {
         analysis: {
           payloadMode: "canonical-delta",
-          data: this.build_analysis_section_delta(
-            progress_snapshot ?? { ...read_json_record(meta["analysis_extras"]) },
+          data: build_analysis_section_delta(
+            progress_snapshot ?? {
+              ...read_json_record(meta["analysis_extras"]),
+            },
             candidate_result.count,
-          ) as unknown as ApiJsonValue,
+          ) as unknown as JsonValue,
         },
       },
       buildWrites: (revision_context) => {
@@ -218,14 +227,14 @@ export class ProjectWriteStore {
             database.upsert_analysis_item_checkpoints(project_path, [
               ...success_checkpoints,
               ...error_checkpoints,
-            ] as unknown as DatabaseJsonValue[]),
+            ] as unknown as JsonValue[]),
           );
         }
         if (candidate_result.rows.length > 0) {
           writes.push((database) =>
             database.upsert_analysis_candidate_aggregates(
               project_path,
-              candidate_result.rows as unknown as DatabaseJsonValue[],
+              candidate_result.rows as unknown as JsonValue[],
             ),
           );
         }
@@ -234,8 +243,8 @@ export class ProjectWriteStore {
             database.upsert_meta_entries(project_path, {
               ...(progress_snapshot === null ? {} : { analysis_extras: progress_snapshot }),
               analysis_candidate_count: candidate_result.count,
-            } as unknown as Record<string, DatabaseJsonValue>),
-          ...this.write_coordinator.build_section_revision_writes(revision_context),
+            } as unknown as JsonRecord),
+          ...this.build_section_revision_writes(revision_context),
         );
         return writes;
       },
@@ -252,7 +261,7 @@ export class ProjectWriteStore {
    */
   public async reset_analysis_state(request: {
     projectPath: string;
-    expectedSectionRevisions?: ApiJsonValue;
+    expectedSectionRevisions?: ProjectExpectedSectionRevisions;
     requireExpectedSectionRevisions: boolean;
     source: string;
     mode: "all" | "failed";
@@ -261,7 +270,7 @@ export class ProjectWriteStore {
     sectionData?: MutableJsonRecord;
   }): Promise<ProjectWriteResult> {
     const meta: MutableJsonRecord = {
-      analysis_extras: request.analysisExtras as unknown as ApiJsonValue,
+      analysis_extras: request.analysisExtras as unknown as JsonValue,
     };
     if (request.analysisCandidateCount !== undefined) {
       meta["analysis_candidate_count"] = Math.max(0, Math.trunc(request.analysisCandidateCount));
@@ -279,16 +288,13 @@ export class ProjectWriteStore {
           : {
               analysis: {
                 payloadMode: "canonical-delta",
-                data: request.sectionData as unknown as ApiJsonValue,
+                data: request.sectionData as unknown as JsonValue,
               },
             },
       buildWrites: (revision_context) => {
         const writes: ProjectDatabaseWrite[] = [
           (database) =>
-            database.upsert_meta_entries(
-              request.projectPath,
-              meta as unknown as Record<string, DatabaseJsonValue>,
-            ),
+            database.upsert_meta_entries(request.projectPath, meta as unknown as JsonRecord),
         ];
         if (request.mode === "all") {
           writes.push(
@@ -300,7 +306,7 @@ export class ProjectWriteStore {
             database.delete_analysis_item_checkpoints(request.projectPath, "ERROR"),
           );
         }
-        writes.push(...this.write_coordinator.build_section_revision_writes(revision_context));
+        writes.push(...this.build_section_revision_writes(revision_context));
         return writes;
       },
     });
@@ -311,7 +317,7 @@ export class ProjectWriteStore {
    */
   public async apply_proofreading_item_patch(request: {
     projectPath: string;
-    expectedSectionRevisions: ApiJsonValue | undefined;
+    expectedSectionRevisions: ProjectExpectedSectionRevisions;
     changes: ProofreadingItemChange[];
     fieldPatch: ProjectChangeItemFieldPatch;
     updateTranslationExtras: boolean;
@@ -345,17 +351,17 @@ export class ProjectWriteStore {
             database.patch_item_fields_by_ids(
               request.projectPath,
               changed_item_ids,
-              request.fieldPatch as unknown as Record<string, DatabaseJsonValue>,
+              request.fieldPatch as unknown as JsonRecord,
             ),
         ];
         if (translation_extras !== null) {
           writes.push((database) =>
             database.upsert_meta_entries(request.projectPath, {
-              translation_extras: translation_extras as unknown as ApiJsonValue,
-            } as unknown as Record<string, DatabaseJsonValue>),
+              translation_extras: translation_extras as unknown as JsonValue,
+            } as unknown as JsonRecord),
           );
         }
-        writes.push(...this.write_coordinator.build_section_revision_writes(revision_context));
+        writes.push(...this.build_section_revision_writes(revision_context));
         return writes;
       },
     });
@@ -366,7 +372,7 @@ export class ProjectWriteStore {
    */
   public async apply_proofreading_bulk_patch(request: {
     projectPath: string;
-    expectedSectionRevisions: ApiJsonValue | undefined;
+    expectedSectionRevisions: ProjectExpectedSectionRevisions;
     changes: ProofreadingItemChange[];
     itemsPayload: Pick<ProjectChangeItemsPayload, "payloadMode" | "changedIds" | "deleteIds">;
     updateTranslationExtras: boolean;
@@ -404,11 +410,11 @@ export class ProjectWriteStore {
         if (translation_extras !== null) {
           writes.push((database) =>
             database.upsert_meta_entries(request.projectPath, {
-              translation_extras: translation_extras as unknown as ApiJsonValue,
-            } as unknown as Record<string, DatabaseJsonValue>),
+              translation_extras: translation_extras as unknown as JsonValue,
+            } as unknown as JsonRecord),
           );
         }
-        writes.push(...this.write_coordinator.build_section_revision_writes(revision_context));
+        writes.push(...this.build_section_revision_writes(revision_context));
         return writes;
       },
     });
@@ -417,9 +423,9 @@ export class ProjectWriteStore {
   /**
    * 工作台结构性写入集中提交 asset、items、meta 与分析清理。
    */
-  public async replace_workbench_items_and_files(request: {
+  public async replace_project_items_and_files(request: {
     projectPath: string;
-    expectedSectionRevisions: ApiJsonValue | undefined;
+    expectedSectionRevisions: ProjectExpectedSectionRevisions;
     revisionSections: ProjectDataSection[];
     source: string;
     updatedSections: ProjectDataSection[];
@@ -460,17 +466,14 @@ export class ProjectWriteStore {
         }
         if (request.items !== undefined) {
           writes.push((database) =>
-            database.set_items(
-              request.projectPath,
-              request.items as unknown as DatabaseJsonValue[],
-            ),
+            database.set_items(request.projectPath, request.items as unknown as JsonValue[]),
           );
         }
         if (request.meta !== undefined && Object.keys(request.meta).length > 0) {
           writes.push((database) =>
             database.upsert_meta_entries(
               request.projectPath,
-              request.meta as unknown as Record<string, DatabaseJsonValue>,
+              request.meta as unknown as JsonRecord,
             ),
           );
         }
@@ -480,7 +483,7 @@ export class ProjectWriteStore {
             (database) => database.clear_analysis_candidate_aggregates(request.projectPath),
           );
         }
-        writes.push(...this.write_coordinator.build_section_revision_writes(revision_context));
+        writes.push(...this.build_section_revision_writes(revision_context));
         return writes;
       },
     });
@@ -489,9 +492,9 @@ export class ProjectWriteStore {
   /**
    * 文件排序只触碰 asset sort_order 和 files revision。
    */
-  public async reorder_workbench_files(request: {
+  public async reorder_project_files(request: {
     projectPath: string;
-    expectedSectionRevisions: ApiJsonValue | undefined;
+    expectedSectionRevisions: ProjectExpectedSectionRevisions;
     orderedPaths: string[];
   }): Promise<ProjectWriteResult> {
     return await this.commit_runtime_change({
@@ -499,12 +502,12 @@ export class ProjectWriteStore {
       expectedSectionRevisions: request.expectedSectionRevisions,
       requireExpectedSectionRevisions: true,
       revisionSections: ["files"],
-      source: "workbench_reorder_files",
+      source: "project_reorder_files",
       updatedSections: ["files"],
       files: { payloadMode: "section-invalidated" },
       buildWrites: (revision_context) => [
         (database) => database.update_asset_sort_orders(request.projectPath, request.orderedPaths),
-        ...this.write_coordinator.build_section_revision_writes(revision_context),
+        ...this.build_section_revision_writes(revision_context),
       ],
     });
   }
@@ -527,7 +530,7 @@ export class ProjectWriteStore {
           (database) =>
             database.upsert_meta_entries(
               request.projectPath,
-              request.meta as unknown as Record<string, DatabaseJsonValue>,
+              request.meta as unknown as JsonRecord,
             ),
         ],
       },
@@ -540,11 +543,11 @@ export class ProjectWriteStore {
    */
   public async reset_translation_state(request: {
     projectPath: string;
-    expectedSectionRevisions: ApiJsonValue | undefined;
+    expectedSectionRevisions: ProjectExpectedSectionRevisions;
     items: MutableJsonRecord[];
     translationExtras: MutableJsonRecord;
   }): Promise<ProjectWriteResult> {
-    return await this.replace_workbench_items_and_files({
+    return await this.replace_project_items_and_files({
       projectPath: request.projectPath,
       expectedSectionRevisions: request.expectedSectionRevisions,
       revisionSections: ["items"],
@@ -552,7 +555,7 @@ export class ProjectWriteStore {
       updatedSections: ["items"],
       items: request.items,
       meta: {
-        translation_extras: request.translationExtras as unknown as ApiJsonValue,
+        translation_extras: request.translationExtras as unknown as JsonValue,
       },
     });
   }
@@ -562,7 +565,7 @@ export class ProjectWriteStore {
    */
   public async import_analysis_glossary(request: {
     projectPath: string;
-    expectedSectionRevisions: ApiJsonValue | undefined;
+    expectedSectionRevisions: ProjectExpectedSectionRevisions;
     qualityRule: {
       databaseType: string;
       entries: MutableJsonRecord[];
@@ -588,7 +591,7 @@ export class ProjectWriteStore {
               database.set_rules(
                 request.projectPath,
                 quality_rule.databaseType,
-                quality_rule.entries as unknown as DatabaseJsonValue[],
+                quality_rule.entries as unknown as JsonValue[],
               ),
             (database) =>
               database.set_meta(
@@ -610,7 +613,7 @@ export class ProjectWriteStore {
               "analysis_candidate_count",
               request.analysisCandidateCount,
             ),
-          ...this.write_coordinator.build_section_revision_writes(revision_context, ["analysis"]),
+          ...this.build_section_revision_writes(revision_context, ["analysis"]),
         );
         return writes;
       },
@@ -622,7 +625,7 @@ export class ProjectWriteStore {
    */
   public async save_quality_rules(request: {
     projectPath: string;
-    expectedSectionRevisions: ApiJsonValue | undefined;
+    expectedSectionRevisions: ProjectExpectedSectionRevisions;
     source: string;
     rule?:
       | {
@@ -648,13 +651,13 @@ export class ProjectWriteStore {
             database.set_rules(
               request.projectPath,
               rule.databaseType,
-              rule.entries as unknown as DatabaseJsonValue[],
+              rule.entries as unknown as JsonValue[],
             ),
           );
         }
         for (const [key, value] of Object.entries(request.metaEntries ?? {})) {
           writes.push((database) =>
-            database.set_meta(request.projectPath, key, value as unknown as DatabaseJsonValue),
+            database.set_meta(request.projectPath, key, value as unknown as JsonValue),
           );
         }
         writes.push((database) =>
@@ -672,9 +675,9 @@ export class ProjectWriteStore {
   /**
    * 工程提示词写入由 prompts section 独立提交。
    */
-  public async save_quality_prompt(request: {
+  public async save_prompt(request: {
     projectPath: string;
-    expectedSectionRevisions: ApiJsonValue | undefined;
+    expectedSectionRevisions: ProjectExpectedSectionRevisions;
     promptRuleType: string;
     text: string;
     revisionKey: string;
@@ -712,16 +715,86 @@ export class ProjectWriteStore {
   }
 
   /**
+   * 一次性应用领域任务输入；物理规则类型、meta key 与 revision 都留在 project 内部。
+   */
+  public async apply_task_input(request: {
+    projectPath: string;
+    expectedSectionRevisions: ProjectExpectedSectionRevisions;
+    input: ProjectTaskInput;
+  }): Promise<ProjectWriteResult> {
+    const updated_sections: ProjectDataSection[] = [];
+    if (request.input.quality_rules.length > 0) {
+      updated_sections.push("quality");
+    }
+    if (request.input.prompts.length > 0) {
+      updated_sections.push("prompts");
+    }
+    if (updated_sections.length === 0) {
+      return this.empty_project_write_result();
+    }
+    return await this.commit_runtime_change({
+      projectPath: request.projectPath,
+      expectedSectionRevisions: request.expectedSectionRevisions,
+      requireExpectedSectionRevisions: true,
+      revisionSections: updated_sections,
+      source: "project_task_input_apply",
+      updatedSections: updated_sections,
+      buildWrites: (revision_context) => {
+        const writes: ProjectDatabaseWrite[] = [];
+        const quality_revision = get_section_revision(revision_context.meta, "quality") + 1;
+        for (const rule of request.input.quality_rules) {
+          const storage = resolve_project_quality_rule_storage(rule.kind);
+          writes.push((database) =>
+            database.set_rules(
+              request.projectPath,
+              storage.database_type,
+              rule.entries as unknown as JsonValue[],
+            ),
+          );
+          const enabled_meta_key = storage.enabled_meta_key;
+          if (enabled_meta_key !== null && rule.enabled !== null) {
+            writes.push((database) =>
+              database.set_meta(request.projectPath, enabled_meta_key, rule.enabled),
+            );
+          }
+          const mode_meta_key = storage.mode_meta_key;
+          if (mode_meta_key !== null && rule.mode !== null) {
+            writes.push((database) =>
+              database.set_meta(request.projectPath, mode_meta_key, rule.mode),
+            );
+          }
+          writes.push((database) =>
+            database.set_meta(request.projectPath, storage.revision_meta_key, quality_revision),
+          );
+        }
+        const prompt_revision = get_section_revision(revision_context.meta, "prompts") + 1;
+        for (const prompt of request.input.prompts) {
+          const storage = resolve_project_prompt_storage(prompt.kind);
+          writes.push(
+            (database) =>
+              database.set_rule_text(request.projectPath, storage.database_type, prompt.text),
+            (database) =>
+              database.set_meta(request.projectPath, storage.enabled_meta_key, prompt.enabled),
+            (database) =>
+              database.set_meta(request.projectPath, storage.revision_meta_key, prompt_revision),
+          );
+        }
+        return writes;
+      },
+    });
+  }
+
+  /**
    * 任务 artifact item patch 共享同一写入链路和进度 meta 更新。
    */
   private async apply_task_item_patches(request: {
     projectPath: string;
-    items: ApiJsonValue | undefined;
+    items: TranslationItemPatch[];
     translationExtras: MutableJsonRecord;
     source: string;
     updatedSections: ProjectDataSection[];
   }): Promise<ProjectWriteSectionAck> {
-    const patches = this.normalize_translation_item_patches(request.items);
+    const patches = request.items;
     this.assert_patch_targets_exist(request.projectPath, patches);
     const changed_item_ids = patches.map((patch) => patch.item_id);
     await this.commit_runtime_change({
@@ -742,9 +815,9 @@ export class ProjectWriteStore {
           ),
         (database) =>
           database.upsert_meta_entries(request.projectPath, {
-            translation_extras: request.translationExtras as unknown as ApiJsonValue,
-          } as unknown as Record<string, DatabaseJsonValue>),
-        ...this.write_coordinator.build_section_revision_writes(revision_context),
+            translation_extras: request.translationExtras as unknown as JsonValue,
+          } as unknown as JsonRecord),
+        ...this.build_section_revision_writes(revision_context),
       ],
     });
     return {
@@ -763,7 +836,7 @@ export class ProjectWriteStore {
     this.database.transaction(request.projectPath, () => {
       // guard、快照和写入必须共享同一个 BEGIN IMMEDIATE，不能给并发提交留下检查后窗口。
       const revision_context = request.requireExpectedSectionRevisions
-        ? this.write_coordinator.assert_expected_section_revisions(
+        ? this.assert_expected_section_revisions(
             request.projectPath,
             request.expectedSectionRevisions,
             request.revisionSections,
@@ -787,22 +860,165 @@ export class ProjectWriteStore {
       ...(request.sections === undefined ? {} : { sections: request.sections }),
       ...(request.sectionModes === undefined ? {} : { sectionModes: request.sectionModes }),
     };
-    await this.write_coordinator.publish_app_events_for_committed_change(change_request);
+    await this.publish_app_events_for_committed_change(change_request);
     if (options.publishPublic === false) {
       return this.empty_project_write_result();
     }
-    return this.write_coordinator.publish_project_data_change(change_request);
+    return this.publish_project_data_change(change_request);
   }
 
   /**
-   * 复用写入协调器的空结果，保持无变化写入响应形状一致。
+   * 无变化写入仍返回统一响应形状。
    */
   private empty_project_write_result(): ProjectWriteResult {
-    return this.write_coordinator.empty_project_write_result();
+    return { accepted: true, changes: [] };
   }
 
   /**
-   * 将工作台 asset 操作转换为数据库 workflow 操作。
+   * 在当前事务中校验 section revision，并返回后续写入复用的 meta 快照。
+   */
+  private assert_expected_section_revisions(
+    project_path: string,
+    expected_section_revisions: ProjectExpectedSectionRevisions | undefined,
+    sections: ProjectDataSection[],
+  ): ProjectWriteRevisionContext {
+    if (expected_section_revisions === undefined) {
+      throw new AppErrors.RequestValidationError();
+    }
+    const meta = this.read_project_meta(project_path);
+    for (const section of sections) {
+      if (!Object.prototype.hasOwnProperty.call(expected_section_revisions, section)) {
+        throw new AppErrors.RequestValidationError({
+          public_details: { section },
+        });
+      }
+      const current_revision = get_section_revision(meta, section);
+      const expected_revision = expected_section_revisions[section] ?? 0;
+      if (current_revision !== expected_revision) {
+        throw new AppErrors.RevisionConflictError({
+          public_details: { current_revision, expected_revision, section },
+        });
+      }
+    }
+    return { project_path, meta, sections: [...sections] };
+  }
+
+  /**
+   * 基于 guard 的同一 meta 快照推进 section revision。
+   */
+  private build_section_revision_writes(
+    context: ProjectWriteRevisionContext,
+    sections = this.filter_revision_backed_sections(context.sections),
+  ): ProjectDatabaseWrite[] {
+    return sections.map(
+      (section) => (database) =>
+        database.set_meta(
+          context.project_path,
+          this.resolve_revision_meta_key(section),
+          get_section_revision(context.meta, section) + 1,
+        ),
+    );
+  }
+
+  /** 只推进具备独立 revision meta 的 section。 */
+  private filter_revision_backed_sections(sections: ProjectDataSection[]): RevisionBackedSection[] {
+    return sections.filter(
+      (section): section is RevisionBackedSection =>
+        section === "files" ||
+        section === "items" ||
+        section === "analysis" ||
+        section === "proofreading",
+    );
+  }
+
+  /** proofreading 与 runtime section 使用不同 meta key。 */
+  private resolve_revision_meta_key(section: RevisionBackedSection): string {
+    return section === "proofreading"
+      ? "proofreading_revision.proofreading"
+      : `project_runtime_revision.${section}`;
+  }
+
+  /**
+   * 内部 cache 事件完成后才允许生成公开变更响应。
+   */
+  private publish_project_data_change(request: ProjectWriteChangeRequest): ProjectWriteResult {
+    if (this.project_change_publisher === null || request.updatedSections.length === 0) {
+      return this.empty_project_write_result();
+    }
+    const change_event = this.project_change_publisher(request);
+    return change_event === null || change_event === undefined
+      ? this.empty_project_write_result()
+      : { accepted: true, changes: [change_event] };
+  }
+
+  /**
+   * 事务成功后串行通知内部 cache handler。
+   */
+  private async publish_app_events_for_committed_change(
+    request: ProjectWriteChangeRequest,
+  ): Promise<void> {
+    for (const event of this.build_app_events_after_commit(request)) {
+      await this.project_event_handler(event);
+    }
+  }
+
+  /**
+   * 将提交结果拆成 cache 消费的内部领域事件。
+   */
+  private build_app_events_after_commit(request: ProjectWriteChangeRequest): ProjectEvent[] {
+    const section_revisions = build_section_revisions_from_meta(
+      this.read_project_meta(request.projectPath),
+    );
+    const common = {
+      projectPath: request.projectPath,
+      source: request.source,
+      affectedSections: request.updatedSections,
+      sectionRevisions: section_revisions,
+    };
+    const events: ProjectEvent[] = [];
+    if (
+      request.updatedSections.some(
+        (section) => section === "items" || section === "files" || section === "proofreading",
+      )
+    ) {
+      events.push({
+        ...common,
+        type: "project.items.changed",
+        items: request.items,
+        files: request.files,
+        scope: request.items?.changedIds === undefined ? "items-full" : "items-partial",
+      });
+    }
+    if (request.updatedSections.includes("quality")) {
+      events.push({
+        ...common,
+        type: "project.quality.changed",
+        scope: "quality-full",
+      });
+    }
+    if (request.updatedSections.includes("prompts")) {
+      events.push({
+        ...common,
+        type: "project.prompts.changed",
+        scope: "prompts-full",
+      });
+    }
+    if (request.updatedSections.includes("analysis")) {
+      events.push({
+        ...common,
+        type: "project.analysis.changed",
+        sections: request.sections,
+        scope: "analysis-full",
+      });
+    }
+    if (request.updatedSections.includes("project")) {
+      events.push({ ...common, type: "project.settings.changed" });
+    }
+    return events;
+  }
+
+  /**
+   * 将项目 asset 操作转换为数据库 workflow 操作。
    */
   private build_asset_write(project_path: string, write: ProjectAssetWrite): ProjectDatabaseWrite {
     if (write.kind === "add_from_source") {
@@ -814,67 +1030,6 @@ export class ProjectWriteStore {
         database.update_asset_from_source(project_path, write.path, write.sourcePath);
     }
     return (database) => database.delete_asset(project_path, write.path);
-  }
-
-  /**
-   * 将任务 artifact 收窄为允许的翻译字段 patch，并拒绝重复、空或非法条目。
-   */
-  private normalize_translation_item_patches(
-    value: ApiJsonValue | undefined,
-  ): TranslationItemPatch[] {
-    if (!Array.isArray(value) || value.length === 0) {
-      throw new AppErrors.InternalInvariantError({
-        diagnostic_context: { reason: "empty_translation_item_patch" },
-      });
-    }
-    const patches: TranslationItemPatch[] = [];
-    const seen = new Set<number>();
-    for (const raw_item of value) {
-      if (!is_json_record(raw_item)) {
-        throw new AppErrors.InternalInvariantError({
-          diagnostic_context: { reason: "invalid_translation_item_patch" },
-        });
-      }
-      const item_id = this.read_positive_item_id(
-        raw_item["item_id"],
-        "invalid_translation_item_id",
-      );
-      if (seen.has(item_id)) {
-        throw new AppErrors.InternalInvariantError({
-          diagnostic_context: { reason: "duplicate_translation_item_patch", item_id },
-        });
-      }
-      seen.add(item_id);
-      const patch: TranslationItemPatch["patch"] = {};
-      if (Object.prototype.hasOwnProperty.call(raw_item, "dst")) {
-        if (typeof raw_item["dst"] !== "string") {
-          throw new AppErrors.InternalInvariantError({
-            diagnostic_context: { reason: "invalid_translation_dst", item_id },
-          });
-        }
-        patch.dst = raw_item["dst"];
-      }
-      if (Object.prototype.hasOwnProperty.call(raw_item, "name_dst")) {
-        patch.name_dst = Item.normalize_name_field(raw_item["name_dst"]);
-      }
-      if (Object.prototype.hasOwnProperty.call(raw_item, "status")) {
-        patch.status = Item.normalize_status(raw_item["status"]);
-      }
-      if (Object.prototype.hasOwnProperty.call(raw_item, "retry_count")) {
-        patch.retry_count = this.read_non_negative_integer_or_throw(
-          raw_item["retry_count"],
-          "invalid_translation_retry_count",
-          item_id,
-        );
-      }
-      if (Object.keys(patch).length === 0) {
-        throw new AppErrors.InternalInvariantError({
-          diagnostic_context: { reason: "empty_translation_item_patch", item_id },
-        });
-      }
-      patches.push({ item_id, patch });
-    }
-    return patches;
   }
 
   /**
@@ -911,11 +1066,11 @@ export class ProjectWriteStore {
   /**
    * 将领域 patch 包装为 database 批量写入口的物理 JSON 形状。
    */
-  private to_database_translation_patches(patches: TranslationItemPatch[]): DatabaseJsonValue[] {
+  private to_database_translation_patches(patches: TranslationItemPatch[]): JsonValue[] {
     return patches.map((patch) => ({
       id: patch.item_id,
-      patch: patch.patch as unknown as DatabaseJsonValue,
-    })) as unknown as DatabaseJsonValue[];
+      patch: patch.patch as unknown as JsonValue,
+    })) as unknown as JsonValue[];
   }
 
   /**
@@ -959,7 +1114,9 @@ export class ProjectWriteStore {
     revision_context: ProjectWriteRevisionContext,
     changes: ProofreadingItemChange[],
   ): Record<string, unknown> {
-    const stored_progress = { ...read_json_record(revision_context.meta["translation_extras"]) };
+    const stored_progress = {
+      ...read_json_record(revision_context.meta["translation_extras"]),
+    };
     const progress = this.read_translation_progress(revision_context.meta);
     const counters = this.has_translation_progress_counters(stored_progress)
       ? this.read_translation_progress_counters(progress)
@@ -977,7 +1134,7 @@ export class ProjectWriteStore {
   private read_translation_progress(meta: JsonRecord): Record<string, unknown> {
     const empty_snapshot = create_empty_translation_task_snapshot();
     return {
-      ...read_json_record(empty_snapshot["progress"] as ApiJsonValue),
+      ...read_json_record(empty_snapshot["progress"] as JsonValue),
       ...read_json_record(meta["translation_extras"]),
     };
   }
@@ -1013,7 +1170,9 @@ export class ProjectWriteStore {
    * 旧项目缺少持久计数时从 item 状态聚合一次完整基线。
    */
   private get_translation_status_summary(project_path: string): TranslationProgressCounters {
-    const summary = { ...read_json_record(this.database.get_item_status_summary(project_path)) };
+    const summary = {
+      ...read_json_record(this.database.get_item_status_summary(project_path)),
+    };
     const processed_line = this.read_non_negative_integer(summary["processed_line"]);
     const error_line = this.read_non_negative_integer(summary["error_line"]);
     return {
@@ -1054,7 +1213,7 @@ export class ProjectWriteStore {
   /**
    * 将单个状态映射为翻译进度的四项计数贡献。
    */
-  private count_translation_status(value: ApiJsonValue | undefined): TranslationProgressCounters {
+  private count_translation_status(value: JsonValue | undefined): TranslationProgressCounters {
     const status = String(value ?? "");
     const is_progress_status = is_task_progress_status(status);
     const processed_line = status === "PROCESSED" ? 1 : 0;
@@ -1072,20 +1231,18 @@ export class ProjectWriteStore {
    */
   private build_next_candidate_rows(
     project_path: string,
-    glossary_entries: MutableJsonRecord[],
+    glossary_entries: AnalysisGlossaryWrite[],
     current_count: number,
   ): { rows: MutableJsonRecord[]; count: number } {
     const normalized_entries = glossary_entries.filter((entry) => {
-      const src = String(entry["src"] ?? "").trim();
-      const dst = String(entry["dst"] ?? "").trim();
+      const src = entry.src.trim();
+      const dst = entry.dst.trim();
       return src !== "" && dst !== "";
     });
     if (normalized_entries.length === 0) {
       return { rows: [], count: Math.max(0, current_count) };
     }
-    const touched_srcs = [
-      ...new Set(normalized_entries.map((entry) => String(entry["src"] ?? "").trim())),
-    ];
+    const touched_srcs = [...new Set(normalized_entries.map((entry) => entry.src.trim()))];
     const aggregate = new Map<string, MutableJsonRecord>();
     for (const row of this.get_candidate_aggregate_by_srcs(project_path, touched_srcs)) {
       const src = String(row["src"] ?? "").trim();
@@ -1100,8 +1257,8 @@ export class ProjectWriteStore {
     const previous_touched_count = this.count_candidate_entries([...aggregate.values()]);
     const now = new Date().toISOString();
     for (const entry of normalized_entries) {
-      const src = String(entry["src"] ?? "").trim();
-      const dst = String(entry["dst"] ?? "").trim();
+      const src = entry.src.trim();
+      const dst = entry.dst.trim();
       if (src === "" || dst === "") {
         continue;
       }
@@ -1114,21 +1271,20 @@ export class ProjectWriteStore {
           observation_count: 0,
           first_seen_at: now,
           last_seen_at: now,
-          case_sensitive: Boolean(entry["case_sensitive"] ?? false),
+          case_sensitive: entry.case_sensitive,
         } as MutableJsonRecord);
       const dst_votes = this.normalize_vote_map(current["dst_votes"]);
       const info_votes = this.normalize_vote_map(current["info_votes"]);
-      const info = String(entry["info"] ?? "").trim();
-      dst_votes[dst] = this.read_number(dst_votes[dst] as ApiJsonValue, 0) + 1;
+      const info = entry.info.trim();
+      dst_votes[dst] = this.read_number(dst_votes[dst] as JsonValue, 0) + 1;
       if (info !== "") {
-        info_votes[info] = this.read_number(info_votes[info] as ApiJsonValue, 0) + 1;
+        info_votes[info] = this.read_number(info_votes[info] as JsonValue, 0) + 1;
       }
-      current["dst_votes"] = dst_votes as unknown as ApiJsonValue;
-      current["info_votes"] = info_votes as unknown as ApiJsonValue;
+      current["dst_votes"] = dst_votes as unknown as JsonValue;
+      current["info_votes"] = info_votes as unknown as JsonValue;
       current["observation_count"] = this.read_number(current["observation_count"], 0) + 1;
       current["last_seen_at"] = now;
-      current["case_sensitive"] =
-        Boolean(current["case_sensitive"]) || Boolean(entry["case_sensitive"]);
+      current["case_sensitive"] = Boolean(current["case_sensitive"]) || entry.case_sensitive;
       aggregate.set(src, current);
     }
     const rows = [...aggregate.values()];
@@ -1149,7 +1305,7 @@ export class ProjectWriteStore {
   /**
    * 丢弃空文本和非正票数，并合并归一化后的同名票项。
    */
-  private normalize_vote_map(value: ApiJsonValue | undefined): Record<string, number> {
+  private normalize_vote_map(value: JsonValue | undefined): Record<string, number> {
     if (!is_json_record(value)) {
       return {};
     }
@@ -1165,46 +1321,19 @@ export class ProjectWriteStore {
   }
 
   /**
-   * 将任务 checkpoint 收窄为合法 item、进度状态、时间和错误计数。
-   */
-  private normalize_checkpoint_rows(value: ApiJsonValue | undefined): MutableJsonRecord[] {
-    if (!Array.isArray(value)) {
-      return [];
-    }
-    const rows: MutableJsonRecord[] = [];
-    for (const raw_row of value) {
-      if (!is_json_record(raw_row)) {
-        continue;
-      }
-      const item_id = this.read_number(raw_row["item_id"], 0);
-      const status = String(raw_row["status"] ?? "");
-      if (item_id <= 0 || !(TASK_PROGRESS_STATUSES as readonly string[]).includes(status)) {
-        continue;
-      }
-      rows.push({
-        item_id,
-        status,
-        updated_at: String(raw_row["updated_at"] ?? new Date().toISOString()),
-        error_count: this.read_number(raw_row["error_count"], 0),
-      });
-    }
-    return rows;
-  }
-
-  /**
    * 错误 checkpoint 基于旧 ERROR 记录递增 error_count，并刷新提交时间。
    */
-  private normalize_error_checkpoint_rows(
+  private build_error_checkpoint_rows(
     project_path: string,
-    value: ApiJsonValue | undefined,
+    rows: AnalysisCheckpointWrite[],
   ): MutableJsonRecord[] {
     const existing = new Map<number, MutableJsonRecord>();
     for (const row of this.get_analysis_checkpoints(project_path)) {
       existing.set(this.read_number(row["item_id"], 0), row);
     }
     const now = new Date().toISOString();
-    return this.normalize_checkpoint_rows(value).map((row) => {
-      const item_id = this.read_number(row["item_id"], 0);
+    return rows.map((row) => {
+      const item_id = row.item_id;
       const previous = existing.get(item_id);
       const previous_error_count =
         previous?.["status"] === "ERROR" ? this.read_number(previous["error_count"], 0) : 0;
@@ -1215,82 +1344,6 @@ export class ProjectWriteStore {
         error_count: previous_error_count + 1,
       };
     });
-  }
-
-  /**
-   * 过滤空术语并按完整语义键稳定去重。
-   */
-  private normalize_glossary_entries(value: ApiJsonValue | undefined): MutableJsonRecord[] {
-    if (!Array.isArray(value)) {
-      return [];
-    }
-    const entries: MutableJsonRecord[] = [];
-    const seen = new Set<string>();
-    for (const raw_entry of value) {
-      if (!is_json_record(raw_entry)) {
-        continue;
-      }
-      const src = String(raw_entry["src"] ?? "").trim();
-      const dst = String(raw_entry["dst"] ?? "").trim();
-      const info = String(raw_entry["info"] ?? "").trim();
-      const case_sensitive = Boolean(raw_entry["case_sensitive"] ?? false);
-      const key = `${src}\u0000${dst}\u0000${info}\u0000${case_sensitive ? "1" : "0"}`;
-      if (src === "" || dst === "" || seen.has(key)) {
-        continue;
-      }
-      seen.add(key);
-      entries.push({ src, dst, info, case_sensitive });
-    }
-    return entries;
-  }
-
-  /**
-   * 缺少分析进度时保留 null，避免把未上报误写成全零进度。
-   */
-  private normalize_nullable_progress_snapshot(
-    value: ApiJsonValue | undefined,
-  ): MutableJsonRecord | null {
-    if (!is_json_record(value)) {
-      return null;
-    }
-    return this.normalize_progress_snapshot(value);
-  }
-
-  /**
-   * 将分析进度的计数、token 和耗时字段收窄为有限数字。
-   */
-  private normalize_progress_snapshot(value: JsonRecord): MutableJsonRecord {
-    return {
-      start_time: this.read_float(value["start_time"], 0),
-      time: this.read_float(value["time"], 0),
-      total_line: this.read_number(value["total_line"], 0),
-      line: this.read_number(value["line"], 0),
-      processed_line: this.read_number(value["processed_line"], 0),
-      error_line: this.read_number(value["error_line"], 0),
-      total_tokens: this.read_number(value["total_tokens"], 0),
-      total_input_tokens: this.read_number(value["total_input_tokens"], 0),
-      total_output_tokens: this.read_number(value["total_output_tokens"], 0),
-    };
-  }
-
-  /**
-   * 构造公开 analysis canonical delta，候选数和状态摘要都来自提交后事实。
-   */
-  private build_analysis_section_delta(
-    analysis_extras: MutableJsonRecord,
-    candidate_count: number,
-  ): MutableJsonRecord {
-    const snapshot = this.normalize_progress_snapshot(analysis_extras);
-    return {
-      extras: snapshot,
-      candidate_count: Math.max(0, Math.trunc(candidate_count)),
-      status_summary: {
-        total_line: this.read_number(snapshot["total_line"], 0),
-        processed_line: this.read_number(snapshot["processed_line"], 0),
-        error_line: this.read_number(snapshot["error_line"], 0),
-        line: this.read_number(snapshot["line"], 0),
-      },
-    };
   }
 
   /**
@@ -1341,7 +1394,7 @@ export class ProjectWriteStore {
   /**
    * 任务 artifact 的 item id 必须是正整数，否则视为内部契约破坏。
    */
-  private read_positive_item_id(value: ApiJsonValue | undefined, reason: string): number {
+  private read_positive_item_id(value: JsonValue | undefined, reason: string): number {
     const item_id = this.read_number(value, 0);
     if (!Number.isInteger(item_id) || item_id <= 0) {
       throw new AppErrors.InternalInvariantError({
@@ -1349,22 +1402,6 @@ export class ProjectWriteStore {
       });
     }
     return item_id;
-  }
-
-  /**
-   * 严格读取任务 artifact 非负整数，不兼容字符串数字。
-   */
-  private read_non_negative_integer_or_throw(
-    value: ApiJsonValue | undefined,
-    reason: string,
-    item_id: number,
-  ): number {
-    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-      throw new AppErrors.InternalInvariantError({
-        diagnostic_context: { reason, item_id },
-      });
-    }
-    return Math.trunc(value);
   }
 
   /**
@@ -1388,16 +1425,8 @@ export class ProjectWriteStore {
   /**
    * 读取有限整数，保留调用方提供的失败回退值。
    */
-  private read_number(value: ApiJsonValue | undefined, fallback: number): number {
+  private read_number(value: JsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
-  }
-
-  /**
-   * 读取有限浮点数，用于分析计时字段。
-   */
-  private read_float(value: ApiJsonValue | undefined, fallback: number): number {
-    const number_value = Number(value ?? fallback);
-    return Number.isFinite(number_value) ? number_value : fallback;
   }
 }

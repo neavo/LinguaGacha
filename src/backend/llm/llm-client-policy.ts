@@ -1,7 +1,6 @@
 import { Model, type ModelApiFormat } from "../../domain/model";
-import { read_json_record } from "../../domain/json";
+import { read_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
-import type { ApiJsonValue } from "../api/api-types";
 import { build_anthropic_payload } from "./policy/anthropic-policy";
 import { build_google_payload, normalize_google_sdk_base_url } from "./policy/google-policy";
 import {
@@ -104,7 +103,7 @@ export class LLMClientPolicy {
   /**
    * 从任务模型 JSON 快照读取 policy 所需字段，避免 transport 直接碰原始配置。
    */
-  private read_request_model_snapshot(model: ApiJsonValue): ModelRequestSnapshot {
+  private read_request_model_snapshot(model: JsonValue): ModelRequestSnapshot {
     const record = read_json_record(model);
     const api_format = Model.normalize_api_format(record["api_format"]);
     const provider = this.resolve_provider(api_format);
@@ -148,7 +147,7 @@ export class LLMClientPolicy {
   /**
    * 自定义 header 只有显式开启才合并，默认始终带 LinguaGacha User-Agent。
    */
-  private read_extra_headers(request: Record<string, ApiJsonValue>): Record<string, string> {
+  private read_extra_headers(request: JsonRecord): Record<string, string> {
     const headers: Record<string, string> = {
       "User-Agent": this.user_agent,
     };
@@ -166,7 +165,7 @@ export class LLMClientPolicy {
   /**
    * 请求超时来自任务启动快照，运行中设置变更不影响已启动请求。
    */
-  private read_request_timeout_ms(config_snapshot: ApiJsonValue): number {
+  private read_request_timeout_ms(config_snapshot: JsonValue): number {
     const seconds = normalize_setting_snapshot(config_snapshot).request_timeout;
     return Math.max(1_000, Math.trunc(seconds * 1000));
   }
@@ -175,10 +174,10 @@ export class LLMClientPolicy {
    * 读取带 custom_enable 的对象字段，关闭时返回空对象。
    */
   private read_enabled_record(
-    record: Record<string, ApiJsonValue>,
+    record: JsonRecord,
     value_key: string,
     enabled_key: string,
-  ): Record<string, ApiJsonValue> {
+  ): JsonRecord {
     if (record[enabled_key] !== true) {
       return {};
     }
@@ -188,76 +187,8 @@ export class LLMClientPolicy {
   /**
    * 数字字段在请求边界取整，坏值回退调用点默认值。
    */
-  private read_number(value: ApiJsonValue | undefined, fallback: number): number {
+  private read_number(value: JsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
-}
-
-/**
- * 自定义数值只有开关为 true 才生效，避免默认 UI 值误入 payload。
- */
-export function read_custom_number(
-  generation: Record<string, ApiJsonValue>,
-  key: string,
-): number | null {
-  if (generation[`${key}_custom_enable`] !== true) {
-    return null;
-  }
-  const value = Number(generation[key]);
-  return Number.isFinite(value) ? value : null;
-}
-
-/**
- * generation 字段按 provider 字段名映射，未启用的用户字段不进入 payload。
- */
-export function patch_generation_fields(
-  payload: Record<string, unknown>,
-  generation: Record<string, ApiJsonValue>,
-  field_map: Record<string, string>,
-): void {
-  for (const [source_key, target_key] of Object.entries(field_map)) {
-    const value = read_custom_number(generation, source_key);
-    if (value !== null) {
-      payload[target_key] = value;
-    }
-  }
-}
-
-/**
- * temperature 只在用户显式启用且 provider 规则允许时发送。
- */
-export function patch_temperature(
-  payload: Record<string, unknown>,
-  snapshot: ModelRequestSnapshot,
-  options: { allow_thinking_temperature?: boolean } = {},
-): void {
-  const temperature = read_custom_number(snapshot.generation, "temperature");
-  if (temperature === null) {
-    return;
-  }
-  if (options.allow_thinking_temperature !== true && snapshot.thinking_level !== "OFF") {
-    return;
-  }
-  payload["temperature"] = temperature;
-}
-
-/**
- * 输出 token 自动值不发送给 OpenAI/Google，Anthropic 保留可用下限。
- */
-export function resolve_max_tokens_for_request(
-  snapshot: ModelRequestSnapshot,
-  options: { auto_value?: number | null } = {},
-): number | null {
-  if (!is_output_token_limit_auto(snapshot.output_token_limit)) {
-    return Math.max(1, snapshot.output_token_limit);
-  }
-  return options.auto_value ?? null;
-}
-
-/**
- * 0 和 -1 都表示输出 token 交给供应商默认策略。
- */
-export function is_output_token_limit_auto(value: number): boolean {
-  return value === 0 || value === -1;
 }

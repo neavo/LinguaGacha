@@ -149,6 +149,55 @@ parentPort?.on("message", (message) => {
       pool.execute_unit(create_translation_unit("unit-disposed"), new AbortController().signal),
     ).rejects.toThrow(RuntimeDisposedError);
   });
+
+  it("终止一个 worker 失败时仍等待其余 worker 并在清空 slots 后抛出聚合错误", async () => {
+    const pool = new WorkUnitWorkerPool({
+      appRoot: "",
+      execution: { kind: "in_process" },
+    });
+    const slots = (
+      pool as unknown as {
+        slots: Array<{
+          worker: { terminate: () => Promise<number> };
+          in_flight: Map<string, never>;
+        }>;
+      }
+    ).slots;
+    const termination_failure = new Error("work unit worker terminate failed");
+    let release_second_termination: () => void = () => undefined;
+    const second_termination = new Promise<number>((resolve) => {
+      release_second_termination = () => resolve(0);
+    });
+    const first_terminate = vi.fn(() => Promise.reject(termination_failure));
+    const second_terminate = vi.fn(() => second_termination);
+    slots.push(
+      { worker: { terminate: first_terminate }, in_flight: new Map<string, never>() },
+      { worker: { terminate: second_terminate }, in_flight: new Map<string, never>() },
+    );
+    let dispose_settled = false;
+    const disposing = pool.dispose().then(
+      () => {
+        dispose_settled = true;
+        return null;
+      },
+      (error: unknown) => {
+        dispose_settled = true;
+        return error;
+      },
+    );
+
+    await Promise.resolve();
+    expect(first_terminate).toHaveBeenCalledTimes(1);
+    expect(second_terminate).toHaveBeenCalledTimes(1);
+    expect(dispose_settled).toBe(false);
+
+    release_second_termination();
+    const error = await disposing;
+
+    expect(error).toBeInstanceOf(AggregateError);
+    expect((error as AggregateError).errors).toEqual([termination_failure]);
+    expect(slots).toHaveLength(0);
+  });
 });
 
 /**

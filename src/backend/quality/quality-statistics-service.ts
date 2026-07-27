@@ -1,10 +1,8 @@
-import type { ApiJsonValue } from "../api/api-types";
-import type { QualityStatisticsCache } from "../cache/quality/quality-statistics-cache";
-import type { ProjectSessionState } from "../project/project-session";
+import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
+import type { QualityStatisticsCache } from "../cache/quality-statistics-cache";
+import type { ProjectSessionState } from "../project/project-session-state";
 import * as AppErrors from "../../shared/error";
 import type { QualityStatisticsRuleMode } from "../../shared/quality/quality-statistics";
-
-type MutableJsonRecord = Record<string, ApiJsonValue>;
 
 // 公开统计入口只允许这四类规则，内部 revision key 不得由请求透传。
 const QUALITY_STATISTICS_RULE_KEYS = new Set<string>([
@@ -35,21 +33,21 @@ export class QualityStatisticsService {
   /**
    * 返回统计结果及其对应的工程身份和 section revision。
    */
-  public async read(request: Record<string, ApiJsonValue>): Promise<MutableJsonRecord> {
+  public async read(request: JsonRecord): Promise<MutableJsonRecord> {
     this.session_state.require_loaded_project_path();
     const rule_key = this.read_rule_key(request["rule_key"]);
     const result = await this.cache.read(rule_key);
     return {
       projectPath: result.projectPath,
-      sectionRevisions: result.sectionRevisions as unknown as ApiJsonValue,
-      statistics: result.statistics as unknown as ApiJsonValue,
+      sectionRevisions: result.sectionRevisions as unknown as JsonValue,
+      statistics: result.statistics as unknown as JsonValue,
     };
   }
 
   /**
    * 将公开 rule_key 收窄为统计模块支持的稳定枚举。
    */
-  private read_rule_key(value: ApiJsonValue | undefined): QualityStatisticsRuleMode {
+  private read_rule_key(value: JsonValue | undefined): QualityStatisticsRuleMode {
     const rule_key = String(value ?? "");
     if (QUALITY_STATISTICS_RULE_KEYS.has(rule_key)) {
       return rule_key as QualityStatisticsRuleMode;

@@ -2,7 +2,7 @@ import {
   patch_generation_fields,
   patch_temperature,
   resolve_max_tokens_for_request,
-} from "../llm-client-policy";
+} from "./policy-shared";
 import { RequestValidationError } from "../../../shared/error";
 import type { ModelRequestSnapshot } from "./policy-types";
 import type { LLMMessage } from "../llm-types";

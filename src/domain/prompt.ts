@@ -1,4 +1,4 @@
-import type { JsonRecord } from "../shared/utils/json-tool";
+import type { JsonRecord } from "./json";
 import { UnknownPromptTypeError } from "../shared/error";
 
 /**

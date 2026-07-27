@@ -1,9 +1,7 @@
 import { resolve_prompt_template_language } from "../../../domain/app-language";
-import type { DatabaseJsonValue } from "../../database/database-types";
+import type { JsonRecord } from "../../../domain/json";
 import type { ProjectDatabaseWrite } from "../../database/database-operations";
 import type { MigrationDescriptor, ProjectOpenMigrationContext } from "../migration-types";
-
-type MigrationMetaRecord = Record<string, DatabaseJsonValue>;
 
 // 旧语言槽位、当前统一槽位和一次性完成标记都写在这里，避免跨文件隐藏迁移契约。
 const LEGACY_TRANSLATION_PROMPT_ZH_RULE_TYPE = "CUSTOM_PROMPT_ZH";
@@ -30,7 +28,7 @@ export const translation_prompt_legacy_slot_migration: MigrationDescriptor = {
    * 当前提示词优先；仅在当前槽位为空且未迁移时从旧语言槽位补写一次。
    */
   build_project_open_writes(context: ProjectOpenMigrationContext): ProjectDatabaseWrite[] {
-    const meta = context.database.get_all_meta(context.project_path) as MigrationMetaRecord;
+    const meta = context.database.get_all_meta(context.project_path) as JsonRecord;
     if (meta[LEGACY_TRANSLATION_PROMPT_MIGRATED_META_KEY] === true) {
       return [];
     }

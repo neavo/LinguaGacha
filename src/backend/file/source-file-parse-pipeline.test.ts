@@ -64,7 +64,7 @@ describe("SourceFileParsePipeline", () => {
     ]);
   });
 
-  it("工作台导入命令只按调用方目标路径解析，不重新推导相对路径", async () => {
+  it("项目文件导入命令只按调用方目标路径解析，不重新推导相对路径", async () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-source-file-pipeline-"),
     );
@@ -93,7 +93,7 @@ describe("SourceFileParsePipeline", () => {
     ]);
   });
 
-  it("工作台替换预览沿用旧相对目录", async () => {
+  it("项目文件替换预览沿用旧相对目录", async () => {
     using temp_dir = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-source-file-pipeline-"),
     );
@@ -102,7 +102,7 @@ describe("SourceFileParsePipeline", () => {
     const pipeline = new SourceFileParsePipeline(create_format_service());
 
     await expect(
-      pipeline.parse_workbench_preview({
+      pipeline.parse_project_file_preview({
         source_paths: [source_file],
         current_rel_path: "old/path/original.txt",
       }),

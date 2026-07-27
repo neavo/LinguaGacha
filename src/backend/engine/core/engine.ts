@@ -1,10 +1,8 @@
 import crypto from "node:crypto";
 
 import { resolve_active_model } from "../../model/model-config-resolver";
-import type { ApiJsonValue } from "../../api/api-types";
-import { TaskRunPublisher } from "../run/task-run-publisher";
-import type { MutableJsonRecord, TaskType } from "../run/task-run-types";
-import { ProjectTaskStore } from "../store/project-task-store";
+import { TaskProjectStore } from "../task-project-store";
+import { TaskRuntime, type TaskRunHandle } from "../task-runtime";
 import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
 import { WorkUnitExecutorTransportError } from "../work-unit/work-unit-transport-error";
 import type { StartTaskCommand, StopTaskCommand } from "../protocol/task-command";
@@ -14,14 +12,12 @@ import { PromptBuilder } from "../work-unit/work-unit-prompt-builder";
 import type {
   AnalysisWorkUnitResult,
   TaskProgressSnapshot,
-  TaskRunHandle,
   TranslationWorkUnitResult,
   TaskEngineOptions,
 } from "./engine-options";
 import type {
   AnalysisCommitEntry,
   AnalysisContext,
-  TaskItemRecord,
   TranslationCommitEntry,
   TranslationContext,
 } from "../planning/task-plan-types";
@@ -29,10 +25,14 @@ import { LimiterPool, TaskLimiter } from "./limiter-pool";
 import { ModelKeyLeasePool } from "./model-key-lease-pool";
 import { TaskPipeline } from "./pipeline-runner";
 import { TaskProgressSnapshotTool } from "./progress-accumulator";
-import { RunCoordinator } from "./run-coordinator";
 import { TaskLogReplay } from "./log-replay";
-import { is_task_skipped_item_status } from "../../../domain/task";
-import { is_json_record, read_json_record } from "../../../domain/json";
+import { is_task_skipped_item_status, type TaskType } from "../../../domain/task";
+import {
+  is_json_record,
+  read_json_record,
+  type JsonValue,
+  type MutableJsonRecord,
+} from "../../../domain/json";
 import { TextQualitySnapshotTool } from "../../../shared/text/text-types";
 import * as AppErrors from "../../../shared/error";
 
@@ -53,48 +53,46 @@ interface TaskRunContext {
  */
 export class TaskEngine {
   private readonly app_root: string; // 让 Backend 启动日志和 worker 使用同一套提示词资源
-  private readonly task_store: ProjectTaskStore; // 后台任务唯一项目数据写入口，TaskEngine 不直接碰 database
-  private readonly task_run_publisher: TaskRunPublisher; // 同步写运行态并发布完整 snapshot
+  private readonly task_store: TaskProjectStore; // 后台任务唯一项目数据写入口，TaskEngine 不直接碰 database
+  private readonly task_runtime: TaskRuntime; // 任务锁、取消、快照与请求压力的唯一运行态
   private readonly executor_client: WorkUnitExecutor; // 屏蔽 worker_threads / in_process runner 差异，主流程只关心 work-unit 结果
   private readonly task_planner: TaskEngineOptions["taskPlanner"]; // 切块与 token cache 复用的唯一规划入口
   private readonly app_setting_service: TaskEngineOptions["AppSettingService"]; // 每轮启动时读取一次设置与模型快照
-  private readonly run_coordinator: RunCoordinator; // 整场任务互斥、停止和终态发布的唯一权威
   private readonly log_replay: TaskLogReplay; // 统一处理任务生命周期日志和 worker 日志回放
   private readonly limiter_pool = new LimiterPool(); // 后台任务按模型资源键复用请求节奏入口
   private readonly model_key_lease_pool = new ModelKeyLeasePool(); // 在主线程维护任务级全局 Key 轮换
-  private request_in_flight_count = 0; // 只表达实时网络压力，不落库也不参与恢复
-
   /**
    * 注入任务执行依赖，保证任务数据写入口和 work-unit executor 边界可测试
    */
   public constructor(options: TaskEngineOptions) {
     this.app_root = options.appRoot;
     this.task_store = options.taskStore;
-    this.task_run_publisher = options.taskRunPublisher;
+    this.task_runtime = options.taskRuntime;
     this.executor_client = options.executorClient;
     this.task_planner = options.taskPlanner;
     this.app_setting_service = options.AppSettingService;
-    this.run_coordinator = new RunCoordinator(options.taskRunPublisher);
     this.log_replay = new TaskLogReplay(options.logManager);
   }
 
   /**
-   * 启动后台任务；Engine 只按 TaskType 获取运行锁，业务差异留在任务命令和后续计划内解释
+   * 启动已经预约的后台任务；运行句柄由 TaskRuntime 生成并校验当前性。
    */
-  public async start(command: StartTaskCommand): Promise<void> {
-    const handle = this.run_coordinator.begin(command.task_type);
-    if (command.task_type === "translation") {
-      void this.run_translation(handle, command);
-      return;
+  public async start(handle: TaskRunHandle, command: StartTaskCommand): Promise<void> {
+    if (!this.task_runtime.is_current(handle.run_id) || handle.task_type !== command.task_type) {
+      throw new AppErrors.TaskBusyError();
     }
-    void this.run_analysis(handle, command.mode);
+    const completion =
+      command.task_type === "translation"
+        ? this.run_translation(handle, command)
+        : this.run_analysis(handle, command.mode);
+    this.task_runtime.bind_completion(handle, completion);
   }
 
   /**
    * 请求停止后台任务；返回值表示命令是否命中当前 run
    */
   public async stop(command: StopTaskCommand): Promise<boolean> {
-    return await this.run_coordinator.request_stop(command.task_type);
+    return await this.task_runtime.request_stop(command.task_type);
   }
 
   /**
@@ -111,7 +109,7 @@ export class TaskEngine {
     const translation_scope = command.scope;
     const retranslate = translation_scope.kind === "items";
     try {
-      await this.emit_status(handle.task_type, "running", true);
+      await this.emit_status(handle, "running");
       release_database_lease = this.task_store.acquire_project_lease(
         `task:${handle.run_id}:translation`,
       );
@@ -122,7 +120,7 @@ export class TaskEngine {
       const payload =
         translation_scope.kind === "items"
           ? this.task_store.get_translation_items_by_scope({
-              item_ids: translation_scope.item_ids as unknown as ApiJsonValue,
+              item_ids: translation_scope.item_ids as unknown as JsonValue,
             })
           : this.task_store.get_translation_items({ mode: legacy_mode });
       const all_items = this.normalize_record_list(payload["items"]);
@@ -139,7 +137,7 @@ export class TaskEngine {
         ? this.build_retranslate_progress(all_items, meta)
         : this.build_translation_progress(legacy_mode, all_items, meta);
       await this.update_translation_progress_if_current(handle, progress);
-      await this.emit_progress(handle.task_type);
+      await this.emit_progress(handle);
       const limiter = this.resolve_task_limiter(run_context.model);
       const pipeline = new TaskPipeline<TranslationContext, TranslationCommitEntry>({
         worker_count: limiter.max_concurrency,
@@ -172,9 +170,18 @@ export class TaskEngine {
         );
       }
     } finally {
-      this.log_replay.task_run_finish(final_status, app_language);
-      await this.finish_run(handle, final_status);
-      release_database_lease?.();
+      try {
+        release_database_lease?.();
+      } catch (error) {
+        final_status = "error";
+        this.log_replay.task_error("翻译任务工程连接租约释放失败。", error);
+      }
+      try {
+        this.log_replay.task_run_finish(final_status, app_language);
+        await this.finish_run(handle, final_status);
+      } catch (error) {
+        this.log_replay.task_error("翻译任务终态快照发布失败。", error);
+      }
     }
   }
 
@@ -187,7 +194,7 @@ export class TaskEngine {
     let release_database_lease: (() => void) | null = null; // 只负责释放本轮任务连接租约，不承载任务状态
     const legacy_mode = this.to_legacy_mode(mode);
     try {
-      await this.emit_status(handle.task_type, "running", true);
+      await this.emit_status(handle, "running");
       release_database_lease = this.task_store.acquire_project_lease(
         `task:${handle.run_id}:analysis`,
       );
@@ -210,7 +217,7 @@ export class TaskEngine {
       );
       let progress = this.build_analysis_progress(legacy_mode, all_items, checkpoints, meta);
       await this.update_analysis_progress_if_current(handle, progress);
-      await this.emit_progress(handle.task_type);
+      await this.emit_progress(handle);
       const limiter = this.resolve_task_limiter(run_context.model);
       const pipeline = new TaskPipeline<AnalysisContext, AnalysisCommitEntry>({
         worker_count: limiter.max_concurrency,
@@ -240,9 +247,18 @@ export class TaskEngine {
         this.log_replay.task_error("分析任务执行失败。", error);
       }
     } finally {
-      this.log_replay.task_run_finish(final_status, app_language);
-      await this.finish_run(handle, final_status);
-      release_database_lease?.();
+      try {
+        release_database_lease?.();
+      } catch (error) {
+        final_status = "error";
+        this.log_replay.task_error("分析任务工程连接租约释放失败。", error);
+      }
+      try {
+        this.log_replay.task_run_finish(final_status, app_language);
+        await this.finish_run(handle, final_status);
+      } catch (error) {
+        this.log_replay.task_error("分析任务终态快照发布失败。", error);
+      }
     }
   }
 
@@ -253,7 +269,7 @@ export class TaskEngine {
     handle: TaskRunHandle,
     context: TranslationContext,
     run_context: TaskRunContext,
-    quality_snapshot: ApiJsonValue,
+    quality_snapshot: JsonValue,
     limiter: TaskLimiter,
     signal: AbortSignal,
   ) {
@@ -271,12 +287,12 @@ export class TaskEngine {
               kind: "translation",
               model: this.model_key_lease_pool.lease_model(
                 run_context.model,
-              ) as unknown as ApiJsonValue,
-              config_snapshot: run_context.config_snapshot as unknown as ApiJsonValue,
+              ) as unknown as JsonValue,
+              config_snapshot: run_context.config_snapshot as unknown as JsonValue,
               quality_snapshot,
               payload: {
-                items: context.items as unknown as ApiJsonValue,
-                precedings: context.precedings as unknown as ApiJsonValue,
+                items: context.items as unknown as JsonValue,
+                precedings: context.precedings as unknown as JsonValue,
               },
               diagnostics: {
                 split_count: context.split_count,
@@ -300,7 +316,7 @@ export class TaskEngine {
     handle: TaskRunHandle,
     context: AnalysisContext,
     run_context: TaskRunContext,
-    quality_snapshot: ApiJsonValue,
+    quality_snapshot: JsonValue,
     limiter: TaskLimiter,
     signal: AbortSignal,
   ) {
@@ -311,14 +327,12 @@ export class TaskEngine {
             run_id: handle.run_id,
             unit_id: context.work_unit_id,
             kind: "analysis",
-            model: this.model_key_lease_pool.lease_model(
-              run_context.model,
-            ) as unknown as ApiJsonValue,
-            config_snapshot: run_context.config_snapshot as unknown as ApiJsonValue,
+            model: this.model_key_lease_pool.lease_model(run_context.model) as unknown as JsonValue,
+            config_snapshot: run_context.config_snapshot as unknown as JsonValue,
             quality_snapshot,
             payload: {
               file_path: context.file_path,
-              items: context.items as unknown as ApiJsonValue,
+              items: context.items as unknown as JsonValue,
             },
             diagnostics: {
               retry_count: context.retry_count,
@@ -368,11 +382,11 @@ export class TaskEngine {
     callback: () => Promise<T>,
   ): Promise<T> {
     const lease = await limiter.acquire(signal);
-    await this.change_request_in_flight_count(handle.task_type, 1);
+    this.change_request_in_flight_count(handle, 1);
     try {
       return await callback();
     } finally {
-      await this.change_request_in_flight_count(handle.task_type, -1);
+      this.change_request_in_flight_count(handle, -1);
       lease.release();
     }
   }
@@ -500,7 +514,11 @@ export class TaskEngine {
           },
         ],
         retry_contexts: [
-          { ...context, work_unit_id: crypto.randomUUID(), retry_count: context.retry_count + 1 },
+          {
+            ...context,
+            work_unit_id: crypto.randomUUID(),
+            retry_count: context.retry_count + 1,
+          },
         ],
       };
     }
@@ -529,7 +547,7 @@ export class TaskEngine {
     progress: TaskProgressSnapshot,
     affects_proofreading: boolean,
   ): Promise<TaskProgressSnapshot> {
-    if (!this.run_coordinator.is_current(handle.run_id) || entries.length === 0) {
+    if (!this.task_runtime.is_current(handle.run_id) || entries.length === 0) {
       return progress;
     }
     const items = entries.flatMap((entry) => entry.items);
@@ -547,24 +565,24 @@ export class TaskEngine {
       );
     }
     next_progress = TaskProgressSnapshotTool.with_elapsed(next_progress);
-    await this.task_store.commit_translation_items(
+    const ack = await this.task_store.commit_translation_items(
       items,
       TaskProgressSnapshotTool.to_record(next_progress),
       affects_proofreading,
     );
-    await this.emit_progress(handle.task_type);
+    await this.emit_progress(handle, ack.changed_item_ids);
     return next_progress;
   }
 
   /**
-   * 提交分析批次，候选聚合和 checkpoint 写入仍走 ProjectTaskStore
+   * 提交分析批次，候选聚合和 checkpoint 写入仍走 TaskProjectStore
    */
   private async commit_analysis_entries(
     handle: TaskRunHandle,
     entries: AnalysisCommitEntry[],
     progress: TaskProgressSnapshot,
   ): Promise<TaskProgressSnapshot> {
-    if (!this.run_coordinator.is_current(handle.run_id) || entries.length === 0) {
+    if (!this.task_runtime.is_current(handle.run_id) || entries.length === 0) {
       return progress;
     }
     let next_progress = progress;
@@ -581,18 +599,19 @@ export class TaskEngine {
     }
     next_progress = TaskProgressSnapshotTool.with_elapsed(next_progress);
     await this.task_store.commit_analysis_results(
-      entries.flatMap((entry) => [...entry.success_checkpoints, ...entry.error_checkpoints]),
+      entries.flatMap((entry) => entry.success_checkpoints),
+      entries.flatMap((entry) => entry.error_checkpoints),
       entries.flatMap((entry) => entry.glossary_entries),
       TaskProgressSnapshotTool.to_record(next_progress),
     );
-    await this.emit_progress(handle.task_type);
+    await this.emit_progress(handle);
     return next_progress;
   }
 
   /**
    * 重翻每个 item 独立执行，保持行级 busy 状态能逐条收敛
    */
-  private build_retranslate_context(item: TaskItemRecord): TranslationContext {
+  private build_retranslate_context(item: MutableJsonRecord): TranslationContext {
     return {
       work_unit_id: crypto.randomUUID(),
       items: [item],
@@ -609,7 +628,7 @@ export class TaskEngine {
    */
   private build_translation_progress(
     mode: string,
-    items: TaskItemRecord[],
+    items: MutableJsonRecord[],
     meta: MutableJsonRecord,
   ): TaskProgressSnapshot {
     const total_line = items.filter(
@@ -638,7 +657,7 @@ export class TaskEngine {
    */
   private build_analysis_progress(
     mode: string,
-    items: TaskItemRecord[],
+    items: MutableJsonRecord[],
     checkpoints: MutableJsonRecord[],
     meta: MutableJsonRecord,
   ): TaskProgressSnapshot {
@@ -670,7 +689,7 @@ export class TaskEngine {
    * 重翻进度复用 translation_extras 的 token 累计，但本轮行数只看选中条目
    */
   private build_retranslate_progress(
-    items: TaskItemRecord[],
+    items: MutableJsonRecord[],
     meta: MutableJsonRecord,
   ): TaskProgressSnapshot {
     const previous = TaskProgressSnapshotTool.from_record(meta["translation_extras"]);
@@ -681,14 +700,13 @@ export class TaskEngine {
   }
 
   /**
-   * 运行结束后只发布任务终态；项目数据变更由 ProjectTaskStore 的项目事件承担
+   * 运行结束后只发布任务终态；项目数据变更由 TaskProjectStore 的项目事件承担
    */
   private async finish_run(
     handle: TaskRunHandle,
     status: "idle" | "done" | "error",
   ): Promise<void> {
-    this.request_in_flight_count = 0;
-    await this.run_coordinator.finish(handle, status);
+    await this.task_runtime.finish(handle, status);
   }
 
   /**
@@ -698,11 +716,11 @@ export class TaskEngine {
     handle: TaskRunHandle,
     progress: TaskProgressSnapshot,
   ): Promise<void> {
-    if (!this.run_coordinator.is_current(handle.run_id)) {
+    if (!this.task_runtime.is_current(handle.run_id)) {
       return;
     }
     this.task_store.update_translation_progress({
-      translation_extras: TaskProgressSnapshotTool.to_record(progress) as unknown as ApiJsonValue,
+      translation_extras: TaskProgressSnapshotTool.to_record(progress) as unknown as JsonValue,
     });
   }
 
@@ -713,38 +731,33 @@ export class TaskEngine {
     handle: TaskRunHandle,
     progress: TaskProgressSnapshot,
   ): Promise<void> {
-    if (!this.run_coordinator.is_current(handle.run_id)) {
+    if (!this.task_runtime.is_current(handle.run_id)) {
       return;
     }
     this.task_store.update_analysis_progress({
-      analysis_extras: TaskProgressSnapshotTool.to_record(progress) as unknown as ApiJsonValue,
+      analysis_extras: TaskProgressSnapshotTool.to_record(progress) as unknown as JsonValue,
     });
   }
 
   /**
    * 发布完整 task.snapshot_changed，生命周期状态先写入运行态
    */
-  private async emit_status(
-    task_type: TaskType,
-    status: "idle" | "requested" | "running" | "stopping" | "done" | "error",
-    busy: boolean,
-  ): Promise<void> {
-    await this.task_run_publisher.publish_status(task_type, status, busy);
+  private async emit_status(handle: TaskRunHandle, status: "running" | "stopping"): Promise<void> {
+    await this.task_runtime.publish_status(handle, status);
   }
 
   /**
    * 任务进度已提交后发布完整 snapshot；进度字段由 `.lg` meta 读取
    */
-  private emit_progress(task_type: TaskType): Promise<void> {
-    return this.task_run_publisher.publish_progress_committed(task_type);
+  private emit_progress(handle: TaskRunHandle, committed_item_ids: number[] = []): Promise<void> {
+    return this.task_runtime.publish_progress(handle, committed_item_ids);
   }
 
   /**
    * 请求数变化只更新运行态，公开 snapshot 由后端 500ms 窗口合并发布
    */
-  private async change_request_in_flight_count(task_type: TaskType, delta: number): Promise<void> {
-    this.request_in_flight_count = Math.max(0, this.request_in_flight_count + delta);
-    this.task_run_publisher.publish_request_pressure(task_type, this.request_in_flight_count);
+  private change_request_in_flight_count(handle: TaskRunHandle, delta: number): void {
+    this.task_runtime.change_request_in_flight_count(handle, delta);
   }
 
   /**
@@ -765,7 +778,7 @@ export class TaskEngine {
   private async log_task_run_start(
     task_type: TaskType,
     run_context: TaskRunContext,
-    quality_snapshot: ApiJsonValue,
+    quality_snapshot: JsonValue,
     app_language: unknown,
   ): Promise<void> {
     const prompt_text = await this.build_task_start_prompt(
@@ -782,7 +795,7 @@ export class TaskEngine {
   private async build_task_start_prompt(
     task_type: TaskType,
     run_context: TaskRunContext,
-    quality_snapshot: ApiJsonValue,
+    quality_snapshot: JsonValue,
   ): Promise<string | null> {
     if (String(run_context.model["api_format"] ?? "") === "SakuraLLM") {
       return null;
@@ -802,7 +815,7 @@ export class TaskEngine {
   }
 
   /**
-   * ProjectTaskStore 仍使用历史大写 mode 字段读写 `.lg` 事实，Engine 边界只接受小写命令
+   * TaskProjectStore 仍使用历史大写 mode 字段读写 `.lg` 事实，Engine 边界只接受小写命令
    */
   private to_legacy_mode(mode: TaskStartMode | string): string {
     switch (mode) {
@@ -825,7 +838,7 @@ export class TaskEngine {
   /**
    * 重试超限后只标记 ERROR，译文字段继续只承载真实译文
    */
-  private mark_translation_item_error(item: TaskItemRecord): void {
+  private mark_translation_item_error(item: MutableJsonRecord): void {
     item["status"] = "ERROR";
   }
 
@@ -863,7 +876,7 @@ export class TaskEngine {
   /**
    * 分析跳过规则保持稳定语义
    */
-  private is_analyzable_item(item: TaskItemRecord): boolean {
+  private is_analyzable_item(item: MutableJsonRecord): boolean {
     return (
       !is_task_skipped_item_status(this.read_status(item)) &&
       String(item["src"] ?? "").trim() !== ""
@@ -873,21 +886,21 @@ export class TaskEngine {
   /**
    * item id 同时兼容数据库内部 id 和公开 item_id
    */
-  private read_item_id(item: TaskItemRecord): number {
+  private read_item_id(item: MutableJsonRecord): number {
     return this.read_number(item["id"] ?? item["item_id"], 0);
   }
 
   /**
    * 读取 item 当前状态事实
    */
-  private read_status(item: TaskItemRecord): string {
+  private read_status(item: MutableJsonRecord): string {
     return String(item["status"] ?? "NONE");
   }
 
   /**
    * JSON 普通对象数组归一，保护 task-data 返回值边界
    */
-  private normalize_record_list(value: ApiJsonValue | undefined): MutableJsonRecord[] {
+  private normalize_record_list(value: JsonValue | undefined): MutableJsonRecord[] {
     if (!Array.isArray(value)) {
       return [];
     }
@@ -897,7 +910,7 @@ export class TaskEngine {
   /**
    * 数字字段统一截断，坏值回退到调用方默认值
    */
-  private read_number(value: ApiJsonValue | undefined, fallback: number): number {
+  private read_number(value: JsonValue | undefined, fallback: number): number {
     const number_value = Number(value ?? fallback);
     return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
@@ -905,7 +918,7 @@ export class TaskEngine {
   /**
    * 提示词构造只接受字符串配置，缺失值交给 PromptBuilder 默认口径处理
    */
-  private read_optional_string(value: ApiJsonValue | undefined): string | undefined {
+  private read_optional_string(value: JsonValue | undefined): string | undefined {
     return typeof value === "string" ? value : undefined;
   }
 }

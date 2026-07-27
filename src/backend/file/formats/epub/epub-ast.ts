@@ -15,9 +15,8 @@ import {
 import { decodeHTML } from "entities";
 import JSZip from "jszip";
 
-import type { ApiJsonValue } from "../../../api/api-types";
 import { Item } from "../../../../domain/item";
-import { read_json_record } from "../../../../domain/json";
+import { read_json_record, type JsonRecord, type JsonValue } from "../../../../domain/json";
 import { FileParseFailedError, InvalidFileStructureError } from "../../../../shared/error";
 
 /**
@@ -532,7 +531,7 @@ export class EpubAst {
           is_opf_metadata: true,
           metadata_tag: "dc:title",
         },
-      } as ApiJsonValue,
+      } as JsonValue,
     });
   }
 
@@ -846,7 +845,7 @@ export class EpubAst {
               src_digest: this.sha1_hex(text),
               is_ncx: true,
             },
-          } as ApiJsonValue,
+          } as JsonValue,
         }),
       );
       unit_index += 1;
@@ -880,11 +879,11 @@ export class EpubAst {
       return null;
     }
 
-    const epub_extra: Record<string, ApiJsonValue> = {
+    const epub_extra: JsonRecord = {
       mode: "slot_per_line",
       doc_path,
       block_path,
-      parts: part_defs as unknown as ApiJsonValue,
+      parts: part_defs as unknown as JsonValue,
       src_digest: this.sha1_hex_with_null_separator(part_texts),
       is_nav,
     };
@@ -896,7 +895,7 @@ export class EpubAst {
       row: spine_index * ROW_MULTIPLIER + unit_index,
       file_type: "EPUB",
       file_path: rel_path,
-      extra_field: { epub: epub_extra } as ApiJsonValue,
+      extra_field: { epub: epub_extra } as JsonValue,
     });
   }
 
@@ -931,7 +930,7 @@ export class EpubAst {
           src_digest: this.sha1_hex(src),
           is_nav,
         },
-      } as ApiJsonValue,
+      } as JsonValue,
     });
   }
 
@@ -1232,11 +1231,11 @@ export class EpubAst {
 /**
  * 从通用 extra_field 中读取 EPUB metadata，非对象或数组都视为无 AST 信息
  */
-export function read_epub_extra(item: Item): Record<string, ApiJsonValue> | null {
+export function read_epub_extra(item: Item): JsonRecord | null {
   const extra = read_json_record(item.extra_field);
   const epub = extra["epub"];
   return typeof epub === "object" && epub !== null && !Array.isArray(epub)
-    ? (epub as Record<string, ApiJsonValue>)
+    ? (epub as JsonRecord)
     : null;
 }
 

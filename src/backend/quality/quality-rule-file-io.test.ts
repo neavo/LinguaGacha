@@ -5,9 +5,11 @@ import path from "node:path";
 import ExcelJS from "exceljs";
 import { afterEach, describe, expect, it } from "vitest";
 
+import type { AppPathService } from "../app/app-path-service";
 import {
   export_quality_rule_entries_to_files,
   load_quality_rule_entries_from_file,
+  read_builtin_text_preserve_rule_sources,
 } from "./quality-rule-file-io";
 
 const cleanup_roots: string[] = [];
@@ -81,6 +83,20 @@ describe("quality-rule-file-io", () => {
       { src: "Alice", dst: "爱丽丝", info: "人名", regex: false, case_sensitive: false },
     ]);
     expect(fs.existsSync(`${base_path}.xlsx`)).toBe(true);
+  });
+
+  it("读取指定文本类型的内置保护源文本", () => {
+    const root = create_temp_root();
+    fs.writeFileSync(
+      path.join(root, "kag.json"),
+      JSON.stringify([{ src: "<keep>" }, { src: " " }, null]),
+      "utf-8",
+    );
+    const paths = {
+      get_quality_rule_builtin_preset_dir: () => root,
+    } as unknown as AppPathService;
+
+    expect(read_builtin_text_preserve_rule_sources(paths, "KAG")).toEqual(["<keep>"]);
   });
 });
 

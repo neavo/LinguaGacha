@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { decode_text_content } from "../../../shared/utils/text-tool";
-import type { ApiJsonValue } from "../../api/api-types";
+import type { JsonValue } from "../../../domain/json";
 import {
   group_items,
   write_text_file,
@@ -80,7 +80,7 @@ export class MESSAGEJSONFormat {
         });
       await write_text_file(
         path.join(paths.translated_path, rel_path),
-        JsonTool.stringifyStrict(data as unknown as ApiJsonValue, { indent: 4 }),
+        JsonTool.stringifyStrict(data as unknown as JsonValue, { indent: 4 }),
       );
     }
   }

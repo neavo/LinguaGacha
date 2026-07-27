@@ -14,6 +14,20 @@ export type StartTaskCommand =
       expected_section_revisions: Record<string, number>;
     };
 
+/**
+ * CLI 等同进程入口只描述当前工程上的任务意图，revision 由 TaskService 读取。
+ */
+export type CurrentProjectTaskStartCommand =
+  | {
+      task_type: "translation";
+      mode: TaskStartMode;
+      scope: TranslationScope;
+    }
+  | {
+      task_type: "analysis";
+      mode: TaskStartMode;
+    };
+
 /** StopTaskCommand 只按 TaskType 停止；items scope 重翻停止归入 translation */
 export type StopTaskCommand = {
   task_type: TaskType;

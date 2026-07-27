@@ -17,7 +17,7 @@ import {
 } from "./shell/desktop-window-host";
 import { type LogWindowHost } from "./shell/log-window-host";
 import { install_main_fatal_error_handler } from "./shell/main-fatal-error-handler";
-import { show_native_error_dialog } from "./shell/native-error-dialog";
+import { try_show_native_error_dialog } from "./shell/native-error-dialog";
 import {
   configure_renderer_crash_reporting,
   create_renderer_process_diagnostics_registry,
@@ -199,10 +199,25 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       register_runtime_ipc_handlers(backend_start_result.readAppLanguage);
       create_main_window_for_runtime();
     } catch (error) {
-      write_electron_main_error(t_main_log("app.diagnostic.lifecycle.app_start_failed"), { error });
-      const message = error instanceof Error ? error.message : "Backend 启动失败。";
-      show_native_error_dialog("LinguaGacha 启动失败", message);
-      app.exit(1);
+      try {
+        write_electron_main_error(t_main_log("app.diagnostic.lifecycle.app_start_failed"), {
+          error,
+        });
+      } catch (diagnostic_error) {
+        try {
+          process.stderr.write(
+            `[startup] ${diagnostic_error instanceof Error ? diagnostic_error.message : String(diagnostic_error)}\n`,
+          );
+        } catch {
+          // 启动失败已进入退出路径，stderr 不可用时也必须继续关闭 Backend。
+        }
+      }
+      try {
+        const message = error instanceof Error ? error.message : "Backend 启动失败。";
+        try_show_native_error_dialog("LinguaGacha 启动失败", message);
+      } finally {
+        await quit_app_after_backend_shutdown(1);
+      }
     }
   });
 }

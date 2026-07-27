@@ -1,14 +1,21 @@
-import type { ApiJsonValue } from "../api/api-types";
-import type { ProjectOperationGate } from "../project/project-gate";
-import { ProjectSessionState } from "../project/project-session";
-import { normalize_project_expected_section_revisions } from "../project/project-changes";
-import { TaskEngine } from "../engine/core/engine";
-import { TaskRunPublisher } from "../engine/run/task-run-publisher";
-import { TaskSnapshotBuilder } from "../engine/run/task-snapshot-builder";
-import { type JsonRecord, type MutableJsonRecord } from "../engine/run/task-run-types";
-import type { StartTaskCommand, StopTaskCommand } from "../engine/protocol/task-command";
+import type { ProjectOperationGate } from "../project/project-operation-gate";
+import type { ProjectSessionState } from "../project/project-session-state";
+import { normalize_project_expected_section_revisions } from "../project/project-write-request";
+import type { TaskEngine } from "./core/engine";
+import type {
+  CurrentProjectTaskStartCommand,
+  StartTaskCommand,
+  StopTaskCommand,
+} from "./protocol/task-command";
+import type { TaskSnapshot, TaskSnapshotListener } from "./protocol/task-snapshot";
+import type { TaskRuntime } from "./task-runtime";
 import * as AppErrors from "../../shared/error";
-import { is_json_record } from "../../domain/json";
+import {
+  is_json_record,
+  type JsonRecord,
+  type JsonValue,
+  type MutableJsonRecord,
+} from "../../domain/json";
 import {
   is_task_start_mode,
   is_task_type,
@@ -18,14 +25,12 @@ import {
 } from "../../domain/task";
 
 /**
- * 公开 `/api/tasks/*` 的任务服务，负责校验命令、调用 TaskEngine 并组装回执
+ * 任务命令服务，统一承接 HTTP 与同进程入口并调用 TaskEngine。
  */
 export class TaskService {
   private readonly task_engine: TaskEngine; // 后台任务生命周期、调度和停止的唯一执行权威
 
-  private readonly snapshot_builder: TaskSnapshotBuilder; // 公开任务快照唯一组装口径，启动回执也复用它
-
-  private readonly task_run_publisher: TaskRunPublisher; // 启动乐观态与失败回滚的唯一出口
+  private readonly task_runtime: TaskRuntime; // 任务锁、快照、取消和失败恢复的唯一所有者
 
   private readonly project_operation_gate: ProjectOperationGate; // 统一判断任务启动是否会撞上 busy 或结构性写入
 
@@ -36,16 +41,21 @@ export class TaskService {
    */
   public constructor(
     task_engine: TaskEngine,
-    snapshot_builder: TaskSnapshotBuilder,
-    task_run_publisher: TaskRunPublisher,
+    task_runtime: TaskRuntime,
     project_operation_gate: ProjectOperationGate,
     session_state: ProjectSessionState,
   ) {
     this.task_engine = task_engine;
-    this.snapshot_builder = snapshot_builder;
-    this.task_run_publisher = task_run_publisher;
+    this.task_runtime = task_runtime;
     this.project_operation_gate = project_operation_gate;
     this.session_state = session_state;
+  }
+
+  /**
+   * 同进程消费者通过 TaskService 订阅快照，不直接持有 TaskRuntime。
+   */
+  public subscribe(listener: TaskSnapshotListener): () => void {
+    return this.task_runtime.subscribe(listener);
   }
 
   /**
@@ -53,25 +63,57 @@ export class TaskService {
    */
   public async start_task(request: JsonRecord): Promise<MutableJsonRecord> {
     const command = this.normalize_start_command(request);
-    const previous_state = this.task_run_publisher.snapshot_state();
-    // assert_task_start_allowed 与 begin_task 之间不能插入 await，保证通过 gate 后立即写入 busy。
+    const snapshot = await this.start_command(command);
+    return {
+      accepted: true,
+      task: snapshot as unknown as JsonValue,
+    };
+  }
+
+  /**
+   * 当前工程入口读取最新 revision 后复用同一启动流程，供 CLI 等同进程调用方使用。
+   */
+  public async start_current_project_task(
+    command: CurrentProjectTaskStartCommand,
+  ): Promise<TaskSnapshot> {
+    const sections = this.resolve_required_sections(
+      command.task_type,
+      command.task_type === "translation" ? command.scope : { kind: "all" },
+    );
+    const expected_section_revisions = Object.fromEntries(
+      sections.map((section) => [section, this.task_runtime.get_section_revision(section)]),
+    );
+    const start_command: StartTaskCommand = {
+      ...command,
+      expected_section_revisions,
+    };
+    return await this.start_command(start_command);
+  }
+
+  /**
+   * HTTP 与同进程入口汇入这里后共享门禁、预约、失败恢复和真实回包快照。
+   */
+  private async start_command(command: StartTaskCommand): Promise<TaskSnapshot> {
+    // assert 与 begin 调用之间不能插入 await；begin 会在首次 await 前同步占用运行态。
+    this.session_state.require_loaded_project_path();
     this.project_operation_gate.assert_task_start_allowed();
-    await this.task_run_publisher.begin_task(
+    const handle = await this.task_runtime.begin(
       command.task_type,
       command.task_type === "translation" ? command.scope : { kind: "all" },
     );
     try {
-      await this.task_engine.start(command);
+      await this.task_engine.start(handle, command);
     } catch (error) {
-      await this.task_run_publisher.restore(previous_state);
+      try {
+        await this.task_runtime.cancel_start(handle);
+      } catch (restore_error) {
+        throw new AggregateError([error, restore_error], "任务启动失败且恢复快照发布失败");
+      }
       throw error;
     }
-    return {
-      accepted: true,
-      task: (await this.snapshot_builder.build_task_snapshot({
-        task_type: command.task_type,
-      })) as unknown as ApiJsonValue,
-    };
+    return await this.task_runtime.build_snapshot({
+      task_type: command.task_type,
+    });
   }
 
   /**
@@ -79,18 +121,12 @@ export class TaskService {
    */
   public async stop_task(request: JsonRecord): Promise<MutableJsonRecord> {
     const command = this.normalize_stop_command(request);
-    const previous_state = this.task_run_publisher.snapshot_state();
-    try {
-      await this.task_engine.stop(command);
-    } catch (error) {
-      await this.task_run_publisher.restore(previous_state);
-      throw error;
-    }
+    const accepted = await this.task_engine.stop(command);
     return {
-      accepted: true,
-      task: (await this.snapshot_builder.build_task_snapshot({
-        task_type: command.task_type,
-      })) as unknown as ApiJsonValue,
+      accepted,
+      task: (await this.task_runtime.build_snapshot(
+        accepted ? { task_type: command.task_type } : {},
+      )) as unknown as JsonValue,
     };
   }
 
@@ -99,7 +135,7 @@ export class TaskService {
    */
   public async get_task_snapshot(request: JsonRecord): Promise<MutableJsonRecord> {
     return {
-      task: (await this.snapshot_builder.build_task_snapshot(request)) as unknown as ApiJsonValue,
+      task: (await this.task_runtime.build_snapshot(request)) as unknown as JsonValue,
     };
   }
 
@@ -122,7 +158,7 @@ export class TaskService {
       this.assert_expected_revision(
         section,
         expected,
-        this.snapshot_builder.get_section_revision(section),
+        this.task_runtime.get_section_revision(section),
       );
     }
   }
@@ -150,7 +186,7 @@ export class TaskService {
   /**
    * item_ids 在公开边界去重并保留顺序，避免 Engine 收到重复重翻条目
    */
-  private normalize_item_ids(value: ApiJsonValue | undefined): number[] {
+  private normalize_item_ids(value: JsonValue | undefined): number[] {
     if (!Array.isArray(value)) {
       return [];
     }
@@ -171,7 +207,7 @@ export class TaskService {
    * expected_section_revisions 必须是对象；锁值只接受 JSON number 整数
    */
   private normalize_expected_section_revisions(
-    value: ApiJsonValue | undefined,
+    value: JsonValue | undefined,
   ): Record<string, number> | null {
     return normalize_project_expected_section_revisions(value);
   }
@@ -179,7 +215,7 @@ export class TaskService {
   /**
    * item_id 只接受整数数字或整数字符串，拒绝布尔值和小数兼容
    */
-  private parse_integer_like(value: ApiJsonValue | undefined): number | null {
+  private parse_integer_like(value: JsonValue | undefined): number | null {
     if (typeof value === "number") {
       return Number.isInteger(value) ? value : null;
     }
@@ -204,7 +240,10 @@ export class TaskService {
         mode,
         expected_section_revisions: expected_section_revisions ?? {},
       };
-      this.assert_expected_section_revisions(expected_section_revisions, ["quality", "prompts"]);
+      this.assert_expected_section_revisions(
+        expected_section_revisions,
+        this.resolve_required_sections(task_type, { kind: "all" }),
+      );
       return command;
     }
     const scope = this.normalize_translation_scope(request);
@@ -214,16 +253,22 @@ export class TaskService {
       scope,
       expected_section_revisions: expected_section_revisions ?? {},
     };
-    if (scope.kind === "items") {
-      this.session_state.require_loaded_project_path();
-    }
     this.assert_expected_section_revisions(
       expected_section_revisions,
-      scope.kind === "items"
-        ? ["items", "proofreading", "quality", "prompts"]
-        : ["quality", "prompts"],
+      this.resolve_required_sections(task_type, scope),
     );
     return command;
+  }
+
+  /**
+   * 两类启动入口共用 section 依赖集合，避免 CLI 绕过新增的输入事实。
+   */
+  private resolve_required_sections(task_type: TaskType, scope: TranslationScope): string[] {
+    if (task_type === "translation" && scope.kind === "items") {
+      this.session_state.require_loaded_project_path();
+      return ["items", "proofreading", "quality", "prompts"];
+    }
+    return ["quality", "prompts"];
   }
 
   /**
@@ -236,7 +281,7 @@ export class TaskService {
   /**
    * task_type 是公开命令分发根，不能接受 retranslate 作为任务类型
    */
-  private require_task_type(value: ApiJsonValue | undefined): TaskType {
+  private require_task_type(value: JsonValue | undefined): TaskType {
     if (is_task_type(value)) {
       return value;
     }
@@ -246,7 +291,7 @@ export class TaskService {
   /**
    * mode 在公开边界兼收大小写输入，进入 Engine 后固定为小写枚举
    */
-  private normalize_mode(value: ApiJsonValue | undefined): TaskStartMode {
+  private normalize_mode(value: JsonValue | undefined): TaskStartMode {
     const mode = String(value ?? "new").toLowerCase();
     if (!is_task_start_mode(mode)) {
       throw new AppErrors.RequestValidationError();

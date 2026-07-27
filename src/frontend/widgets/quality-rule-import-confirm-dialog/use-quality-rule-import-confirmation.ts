@@ -4,12 +4,12 @@ import {
   create_empty_quality_rule_import_confirm_state,
   type QualityRuleImportConfirmState,
 } from "@frontend/widgets/quality-rule-import-confirm-dialog/quality-rule-import-confirm-state";
-import type { JsonRecord } from "@shared/utils/json-tool";
+import type { JsonRecord } from "@domain/json";
 import {
   preview_quality_rule_import,
   type QualityRuleImportAction,
   type QualityRuleImportRuleType,
-} from "@shared/quality/importer";
+} from "@shared/quality/quality-rule-import";
 
 // 导入完成后页面菜单交互的通用控制项。
 export type QualityRuleImportApplyOptions = {

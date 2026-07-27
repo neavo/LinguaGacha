@@ -38,9 +38,18 @@ export async function run_cli_command(
         writeLine: write_stdout,
       }),
     });
-  } finally {
-    await bootstrap.stop();
+  } catch (operation_error) {
+    try {
+      await bootstrap.stop();
+    } catch (stop_error) {
+      throw new AggregateError(
+        [operation_error, stop_error],
+        "CLI 执行失败且 Backend 资源收尾失败",
+      );
+    }
+    throw operation_error;
   }
+  await bootstrap.stop();
 }
 
 /**
