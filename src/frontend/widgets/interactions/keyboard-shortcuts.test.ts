@@ -32,13 +32,15 @@ function create_shortcut_event(input: ShortcutEventInput): KeyboardEvent {
 describe("keyboard shortcuts", () => {
   it("按平台生成动作标签", () => {
     expect(
-      (["save", "create", "delete"] as const).map((action) =>
+      (["save", "create", "delete", "cancel"] as const).map((action) =>
         get_shortcut_label(action, "default"),
       ),
-    ).toEqual(["Ctrl+S", "Ctrl+N", "Del"]);
+    ).toEqual(["Ctrl+S", "Ctrl+N", "Del", "Esc"]);
     expect(
-      (["save", "create", "delete"] as const).map((action) => get_shortcut_label(action, "mac")),
-    ).toEqual(["⌘S", "⌘N", "⌘⌫"]);
+      (["save", "create", "delete", "cancel"] as const).map((action) =>
+        get_shortcut_label(action, "mac"),
+      ),
+    ).toEqual(["⌘S", "⌘N", "⌘⌫", "Esc"]);
   });
 
   it.each([

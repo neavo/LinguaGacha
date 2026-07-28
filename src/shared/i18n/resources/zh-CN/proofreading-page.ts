@@ -11,6 +11,9 @@ export const zh_cn_proofreading_page = {
     save: "保存",
     cancel: "取消",
     confirm: "确认",
+    view_context: "查看上下文",
+    back: "返回",
+    retry: "重试",
   },
   toggle: {
     status: "{TITLE} - {STATE}",
@@ -89,6 +92,11 @@ export const zh_cn_proofreading_page = {
   },
   dialog: {
     edit_title: "编辑条目",
+  },
+  context: {
+    title: "上下文",
+    loading: "正在读取上下文 …",
+    load_failed: "无法读取上下文",
   },
   confirm: {
     retranslate_description: "是否确认重新翻译 {COUNT} 个条目 …?",

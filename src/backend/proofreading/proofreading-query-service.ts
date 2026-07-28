@@ -74,6 +74,12 @@ export class ProofreadingQueryService {
       });
       return this.with_revision(result, { rows: result.data as unknown as JsonValue });
     }
+    if (action === "context") {
+      const result = await this.cache.context({
+        row_id: String(request["row_id"] ?? ""),
+      });
+      return this.with_revision(result, { rows: result.data as unknown as JsonValue });
+    }
     if (action === "filter_panel") {
       const result = await this.cache.filterPanel({
         filters: this.read_filters(request["filters"]),

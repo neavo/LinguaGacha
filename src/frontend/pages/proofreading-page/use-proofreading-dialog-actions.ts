@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
@@ -8,6 +8,7 @@ import {
 import { read_item_name_text } from "@shared/item-name";
 import type {
   ProofreadingClientItem,
+  ProofreadingContextItem,
   ProofreadingItem,
 } from "@shared/proofreading/proofreading-types";
 import type { ProjectDataSectionRevisions } from "@shared/project-event";
@@ -30,6 +31,7 @@ type UseProofreadingDialogActionsOptions = {
   list_revisions: ProjectDataSectionRevisions; // 弹窗保存使用列表 query 已消费的 revision 锁
   visible_item_by_id: Map<string, ProofreadingClientItem>;
   read_items_by_row_ids: (row_ids: string[]) => Promise<ProofreadingClientItem[]>;
+  read_context: (row_id: string) => Promise<ProofreadingContextItem[]>;
   run_project_write: ProofreadingProjectWriteRunner;
   push_toast: ProofreadingToastPusher;
   t: LocaleTextResolver;
@@ -41,9 +43,12 @@ type UseProofreadingDialogActionsResult = {
   reset_dialog: () => void;
   open_edit_dialog: (row_id: string) => Promise<void>;
   update_dialog_draft: (patch: Partial<ProofreadingDialogState["draft_item"]>) => void;
+  open_dialog_context: () => Promise<void>;
+  close_dialog_context: () => void;
   save_dialog_entry: () => Promise<void>;
 };
 
+/** 创建未打开且没有异步上下文残留的弹窗状态。 */
 export function create_empty_dialog_state(): ProofreadingDialogState {
   return {
     open: false,
@@ -53,10 +58,13 @@ export function create_empty_dialog_state(): ProofreadingDialogState {
       name_dst: "",
     },
     saving: false,
+    context: {
+      status: "idle",
+    },
   };
 }
 
-// 管理校对编辑弹窗的打开、草稿和保存提交。
+/** 管理校对编辑弹窗的打开、草稿、上下文读取和保存提交。 */
 export function useProofreadingDialogActions(
   options: UseProofreadingDialogActionsOptions,
 ): UseProofreadingDialogActionsResult {
@@ -64,6 +72,7 @@ export function useProofreadingDialogActions(
     return create_empty_dialog_state();
   });
   const [dialog_item_snapshot, set_dialog_item_snapshot] = useState<ProofreadingItem | null>(null);
+  const dialog_request_id_ref = useRef(0); // 弹窗关闭或重开时，旧的条目与上下文响应都不得回写
 
   const dialog_item = useMemo(() => {
     return dialog_state.target_row_id === null
@@ -72,14 +81,17 @@ export function useProofreadingDialogActions(
   }, [dialog_item_snapshot, dialog_state.target_row_id, options.visible_item_by_id]);
 
   const reset_dialog = useCallback((): void => {
+    dialog_request_id_ref.current += 1;
     set_dialog_state(create_empty_dialog_state());
     set_dialog_item_snapshot(null);
   }, []);
 
   const open_edit_dialog = useCallback(
     async (row_id: string): Promise<void> => {
+      const request_id = dialog_request_id_ref.current + 1;
+      dialog_request_id_ref.current = request_id;
       const target_item = (await options.read_items_by_row_ids([row_id]))[0];
-      if (target_item === undefined) {
+      if (target_item === undefined || dialog_request_id_ref.current !== request_id) {
         return;
       }
 
@@ -92,6 +104,9 @@ export function useProofreadingDialogActions(
           name_dst: read_item_name_text(target_item.name_dst),
         },
         saving: false,
+        context: {
+          status: "idle",
+        },
       });
     },
     [options],
@@ -111,6 +126,53 @@ export function useProofreadingDialogActions(
     },
     [],
   );
+
+  const close_dialog_context = useCallback((): void => {
+    dialog_request_id_ref.current += 1;
+    set_dialog_state((previous_state) => {
+      return {
+        ...previous_state,
+        context: {
+          status: "idle",
+        },
+      };
+    });
+  }, []);
+
+  const open_dialog_context = useCallback(async (): Promise<void> => {
+    const target_row_id = dialog_state.target_row_id;
+    if (target_row_id === null || dialog_state.saving) {
+      return;
+    }
+    const request_id = dialog_request_id_ref.current + 1;
+    dialog_request_id_ref.current = request_id;
+
+    set_dialog_state((previous_state) => {
+      return {
+        ...previous_state,
+        context: {
+          status: "loading",
+        },
+      };
+    });
+
+    // 请求失败与空响应统一进入可重试错误态，不需要保留供应商异常。
+    const items = await options.read_context(target_row_id).catch(() => []);
+    const has_target = items.some((item) => item.row_id === target_row_id);
+    set_dialog_state((previous_state) => {
+      if (
+        dialog_request_id_ref.current !== request_id ||
+        previous_state.target_row_id !== target_row_id ||
+        previous_state.context.status !== "loading"
+      ) {
+        return previous_state;
+      }
+      return {
+        ...previous_state,
+        context: has_target ? { status: "ready", items } : { status: "error" },
+      };
+    });
+  }, [dialog_state.saving, dialog_state.target_row_id, options]);
 
   const save_dialog_entry = useCallback(async (): Promise<void> => {
     if (dialog_state.target_row_id === null) {
@@ -179,6 +241,8 @@ export function useProofreadingDialogActions(
     reset_dialog,
     open_edit_dialog,
     update_dialog_draft,
+    open_dialog_context,
+    close_dialog_context,
     save_dialog_entry,
   };
 }

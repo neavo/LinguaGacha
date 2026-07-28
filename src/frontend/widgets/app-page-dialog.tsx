@@ -6,7 +6,7 @@ import { cn } from "@frontend/shadcn/classnames";
 import { AppButton } from "@frontend/widgets/app-button";
 
 type AppPageDialogSize = "sm" | "md" | "lg" | "xl";
-type AppPageDialogDismissBehavior = "default" | "blocked";
+type AppPageDialogDismissBehavior = "default" | "escape-only" | "blocked";
 
 type AppPageDialogProps = {
   open: boolean;
@@ -39,18 +39,20 @@ const DEFAULT_HEIGHT_CLASS_NAME_BY_SIZE: Record<AppPageDialogSize, string> = {
   xl: "h-[640px]",
 };
 
-/** 在不可取消流程中同时拦截 Esc 与点击遮罩关闭。 */
+/** 按弹窗关闭策略拦截 Esc 或点击遮罩关闭。 */
 function preventDialogClose(event: ClosableEvent): void {
   event.preventDefault();
 }
 
 /**
- * 页面级内容对话框：统一尺寸、默认页脚，并显式支持不可取消流程。
+ * 页面级内容对话框：统一尺寸、默认页脚，并显式区分默认、仅 Esc 和不可取消流程。
  */
 export function AppPageDialog(props: AppPageDialogProps): JSX.Element {
   const { t } = useI18n();
   const size = props.size ?? "md";
-  const is_blocked = (props.dismissBehavior ?? "default") === "blocked";
+  const dismiss_behavior = props.dismissBehavior ?? "default";
+  const blocks_escape = dismiss_behavior === "blocked";
+  const blocks_pointer = dismiss_behavior !== "default";
   const footer_content =
     props.footer === undefined ? (
       <AppButton
@@ -72,7 +74,7 @@ export function AppPageDialog(props: AppPageDialogProps): JSX.Element {
       data-slot="dialog"
       open={props.open}
       onOpenChange={(next_open) => {
-        if (!next_open && !is_blocked) {
+        if (!next_open && !blocks_escape) {
           void props.onClose();
         }
       }}
@@ -90,8 +92,8 @@ export function AppPageDialog(props: AppPageDialogProps): JSX.Element {
             DEFAULT_HEIGHT_CLASS_NAME_BY_SIZE[size],
             props.contentClassName,
           )}
-          onEscapeKeyDown={is_blocked ? preventDialogClose : undefined}
-          onPointerDownOutside={is_blocked ? preventDialogClose : undefined}
+          onEscapeKeyDown={blocks_escape ? preventDialogClose : undefined}
+          onPointerDownOutside={blocks_pointer ? preventDialogClose : undefined}
         >
           <DialogPrimitive.Title
             data-slot="dialog-title"

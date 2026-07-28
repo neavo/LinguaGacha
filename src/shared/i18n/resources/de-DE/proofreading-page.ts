@@ -14,6 +14,9 @@ export const de_de_proofreading_page = {
     save: "Speichern",
     cancel: "Abbrechen",
     confirm: "Bestätigen",
+    view_context: "Kontext anzeigen",
+    back: "Zurück",
+    retry: "Erneut versuchen",
   },
   toggle: {
     status: "{TITLE} - {STATE}",
@@ -92,6 +95,11 @@ export const de_de_proofreading_page = {
   },
   dialog: {
     edit_title: "Eintrag bearbeiten",
+  },
+  context: {
+    title: "Kontext",
+    loading: "Kontext wird geladen …",
+    load_failed: "Kontext konnte nicht geladen werden",
   },
   confirm: {
     retranslate_description: "{COUNT} Einträge wirklich neu übersetzen …?",

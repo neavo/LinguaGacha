@@ -14,6 +14,7 @@ import {
   resolve_default_proofreading_warning_types,
   resolve_proofreading_status_sort_rank,
   type ProofreadingClientItem,
+  type ProofreadingContextItem,
   type ProofreadingFilterOptions,
   type ProofreadingFilterPanelState,
   type ProofreadingFilterPanelTermEntry,
@@ -133,6 +134,11 @@ export type ProofreadingItemsByRowIdsQuery = {
   row_ids: string[];
 };
 
+// 上下文查询固定读取同文件自然顺序邻项，不接收当前列表 view_id。
+export type ProofreadingContextQuery = {
+  row_id: string;
+};
+
 // 列表窗口响应保持轻量，只返回当前窗口内的可见行
 export type ProofreadingListWindow = {
   view_id: string;
@@ -205,6 +211,7 @@ type ProofreadingSearchContext = {
 };
 
 const PROOFREADING_DEFAULT_WINDOW_COUNT = 160; // 默认窗口大小控制每次返回量，防止大项目一次复制全量行
+const PROOFREADING_CONTEXT_RADIUS = 2; // 固定前后各两条，避免 UI 与 reader 各自维护窗口语义
 
 /**
  * 列表运行态接收后端 query 结果，需要先归一成稳定 item 行
@@ -1232,6 +1239,69 @@ export function createProofreadingListReader() {
       return query.row_ids.flatMap((row_id) => {
         const item = current_state.evaluated_item_by_id.get(row_id);
         return item === undefined ? [] : [item];
+      });
+    },
+    /**
+     * 从原始自然顺序读取同文件上下文，不创建或替换当前筛选列表视图。
+     */
+    read_context_items(query: ProofreadingContextQuery): ProofreadingContextItem[] {
+      if (state === null) {
+        return [];
+      }
+
+      const current_state = state;
+      const target_index = current_state.natural_item_ids.indexOf(query.row_id);
+      const target_item = current_state.raw_item_by_id.get(query.row_id);
+      if (target_index < 0 || target_item === undefined) {
+        return [];
+      }
+
+      const context_item_ids = [query.row_id];
+      for (const direction of [-1, 1] as const) {
+        let found_count = 0;
+        for (
+          let index = target_index + direction;
+          index >= 0 &&
+          index < current_state.natural_item_ids.length &&
+          found_count < PROOFREADING_CONTEXT_RADIUS;
+          index += direction
+        ) {
+          const item_id = current_state.natural_item_ids[index];
+          const item = current_state.raw_item_by_id.get(item_id);
+          if (item === undefined) {
+            continue;
+          }
+          if (item.file_path !== target_item.file_path) {
+            break;
+          }
+          if (item.src.trim() === "") {
+            continue;
+          }
+
+          if (direction < 0) {
+            context_item_ids.unshift(item_id);
+          } else {
+            context_item_ids.push(item_id);
+          }
+          found_count += 1;
+        }
+      }
+
+      return context_item_ids.flatMap((item_id) => {
+        const item = current_state.raw_item_by_id.get(item_id);
+        if (item === undefined) {
+          return [];
+        }
+        return [
+          {
+            row_id: String(item.item_id),
+            row_number: item.row_number,
+            src: item.src,
+            dst: item.dst,
+            name_src: Item.normalize_name_field(item.name_src),
+            name_dst: Item.normalize_name_field(item.name_dst),
+          },
+        ];
       });
     },
     /**

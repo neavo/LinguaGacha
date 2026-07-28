@@ -384,22 +384,204 @@
 .proofreading-page__dialog-file-card {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 0;
+  padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--ui-radius-card);
   background: color-mix(in srgb, var(--muted) 58%, var(--popover));
-  padding: 10px 12px;
 }
 
-.proofreading-page__dialog-file-path {
+.proofreading-page__dialog-file-path,
+.proofreading-page__context-file-path {
   min-width: 0;
   flex: 1;
   overflow: hidden;
   color: var(--muted-foreground);
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.35;
+}
+
+.proofreading-page__dialog-file-path {
+  padding: 10px 12px;
+}
+
+.proofreading-page__dialog-file-card .proofreading-page__dialog-context-trigger {
+  height: auto;
+  align-self: stretch;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-radius: 0 var(--ui-radius-card) var(--ui-radius-card) 0;
+}
+
+.proofreading-page__context-view {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.proofreading-page__context-header {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
+}
+
+.proofreading-page__context-items {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-card);
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--muted) 24%, var(--ui-card-default-surface) 76%) 0 50%,
+    color-mix(in srgb, var(--primary) 5%, var(--ui-card-default-surface) 95%) 50% 100%
+  );
+  list-style: none;
+}
+
+.proofreading-page__context-item {
+  position: relative;
+  border-top: 1px solid var(--border);
+}
+
+.proofreading-page__context-item:first-child {
+  border-top: 0;
+}
+
+.proofreading-page__context-item[aria-current="true"] {
+  background: color-mix(in srgb, var(--primary) 6%, var(--popover));
+}
+
+.proofreading-page__context-item[aria-current="true"]::before {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: var(--ui-selection-rail-width);
+  background: var(--primary);
+  content: "";
+}
+
+.proofreading-page__context-item-meta {
+  position: absolute;
+  z-index: 1;
+  top: 8px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.proofreading-page__context-row-number {
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+
+.proofreading-page__context-pair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.proofreading-page__context-field {
+  min-width: 0;
+  padding: 8px 76px 10px 12px;
+}
+
+.proofreading-page__context-field--translation {
+  border-left: 1px solid var(--border);
+}
+
+.proofreading-page__context-field dt {
+  margin-bottom: 4px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.proofreading-page__context-text {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  cursor: text;
+  font-size: 13px;
+  line-height: 1.7;
+  user-select: text;
+}
+
+.proofreading-page__context-whitespace--space {
+  color: transparent;
+  background-image: radial-gradient(
+    circle at 50% 58%,
+    color-mix(in srgb, var(--muted-foreground) 34%, transparent) 0,
+    color-mix(in srgb, var(--muted-foreground) 34%, transparent) 1.4px,
+    transparent 1.6px
+  );
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 1em 1em;
+}
+
+.proofreading-page__context-whitespace--fullwidth-space {
+  color: transparent;
+  border-radius: var(--ui-radius-button);
+  background: color-mix(in srgb, var(--muted-foreground) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--muted-foreground) 52%, transparent);
+}
+
+.proofreading-page__context-whitespace--tab {
+  position: relative;
+  display: inline-block;
+  width: 2em;
+  color: transparent;
+}
+
+.proofreading-page__context-whitespace--tab::after {
+  position: absolute;
+  right: 0;
+  left: 0;
+  color: color-mix(in srgb, var(--muted-foreground) 44%, transparent);
+  text-align: center;
+  content: "→";
+  opacity: 0.58;
+}
+
+.proofreading-page__context-name {
+  max-width: min(128px, 36%);
+  margin-right: 8px;
+  font-size: inherit;
+  vertical-align: baseline;
+}
+
+.proofreading-page__context-name-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.proofreading-page__context-state {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--muted-foreground);
 }
 
 .proofreading-page__dialog-status-section {

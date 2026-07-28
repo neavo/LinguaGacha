@@ -14,6 +14,9 @@ export const en_us_proofreading_page = {
     save: "Save",
     cancel: "Cancel",
     confirm: "Confirm",
+    view_context: "View Context",
+    back: "Back",
+    retry: "Retry",
   },
   toggle: {
     status: "{TITLE} - {STATE}",
@@ -92,6 +95,11 @@ export const en_us_proofreading_page = {
   },
   dialog: {
     edit_title: "Edit Entry",
+  },
+  context: {
+    title: "Context",
+    loading: "Loading context …",
+    load_failed: "Failed to load context",
   },
   confirm: {
     retranslate_description: "Confirm retranslating {COUNT} entries …?",

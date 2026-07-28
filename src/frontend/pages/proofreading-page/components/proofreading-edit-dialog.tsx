@@ -1,6 +1,9 @@
-import { Eraser, ListChecks, RefreshCcw } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { ArrowLeft, BookOpenText, Eraser, ListChecks, RefreshCcw } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-provider";
+import { ProofreadingContextView } from "@frontend/pages/proofreading-page/components/proofreading-context-view";
+import type { ProofreadingDialogState } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
 import { useActionShortcut } from "@frontend/widgets/interactions/use-action-shortcut";
 import { AppEditor } from "@frontend/widgets/app-editor/app-editor";
 import type { AppTextMark } from "@frontend/widgets/app-editor/app-editor-code-mirror";
@@ -28,17 +31,14 @@ import {
 } from "@frontend/widgets/app-dropdown-menu";
 
 type ProofreadingEditDialogProps = {
-  open: boolean;
+  state: ProofreadingDialogState;
   item: ProofreadingItem | null;
-  draft_item: {
-    dst: string;
-    name_dst: string;
-  };
-  saving: boolean;
   readonly: boolean;
-  on_change: (patch: Partial<ProofreadingEditDialogProps["draft_item"]>) => void;
+  on_change: (patch: Partial<ProofreadingDialogState["draft_item"]>) => void;
   on_save: () => Promise<void>;
   on_close: () => void;
+  on_open_context: () => Promise<void>;
+  on_close_context: () => void;
   on_request_retranslate: (row_ids: string[]) => void;
   on_request_clear_translation: (row_ids: string[]) => void;
   on_request_set_translation_status: (
@@ -199,7 +199,7 @@ function dedupe_glossary_terms(terms: ProofreadingGlossaryTerm[]): ProofreadingG
 
 function is_glossary_term_applied(
   term: ProofreadingGlossaryTerm,
-  draft_item: ProofreadingEditDialogProps["draft_item"],
+  draft_item: ProofreadingDialogState["draft_item"],
 ): boolean {
   return (
     term[1].trim().length > 0 &&
@@ -209,7 +209,7 @@ function is_glossary_term_applied(
 
 function partition_glossary_terms(
   item: ProofreadingItem,
-  draft_item: ProofreadingEditDialogProps["draft_item"],
+  draft_item: ProofreadingDialogState["draft_item"],
 ): {
   applied_terms: ProofreadingGlossaryTerm[];
   failed_terms: ProofreadingGlossaryTerm[];
@@ -266,7 +266,7 @@ export function find_text_match_ranges(
 /** 命中术语标亮双语文本，缺失译文的术语只警示原文。 */
 function build_glossary_highlights(
   item: ProofreadingItem,
-  draft_item: ProofreadingEditDialogProps["draft_item"],
+  draft_item: ProofreadingDialogState["draft_item"],
   t: ReturnType<typeof useI18n>["t"],
 ): {
   source_marks: AppTextMark[];
@@ -344,7 +344,7 @@ function build_name_glossary_marks(args: {
 
 function resolve_glossary_badge_state(
   item: ProofreadingItem,
-  draft_item: ProofreadingEditDialogProps["draft_item"],
+  draft_item: ProofreadingDialogState["draft_item"],
   t: ReturnType<typeof useI18n>["t"],
 ): {
   label: string;
@@ -443,12 +443,23 @@ function render_name_input_with_glossary_state(args: {
 export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.Element | null {
   const { t } = useI18n();
   const item = props.item;
+  const { context, draft_item, open, saving } = props.state;
+  const context_open = context.status !== "idle";
+  const context_trigger_ref = useRef<HTMLButtonElement>(null);
+  const previous_context_open_ref = useRef(false);
   const save_label = t("proofreading_page.action.save");
-  const save_disabled = props.readonly || props.saving;
+  const save_disabled = props.readonly || saving;
+
+  useEffect(() => {
+    if (previous_context_open_ref.current && !context_open && open) {
+      context_trigger_ref.current?.focus();
+    }
+    previous_context_open_ref.current = context_open;
+  }, [context_open, open]);
 
   useActionShortcut({
     action: "save",
-    enabled: props.open && !save_disabled,
+    enabled: open && !context_open && !save_disabled,
     on_trigger: () => {
       void props.on_save();
     },
@@ -464,20 +475,20 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
     ];
   const status_badge_tone = resolve_status_badge_tone(item.status);
   const status_label = status_label_key === undefined ? item.status : t(status_label_key);
-  const glossary_badge_state = resolve_glossary_badge_state(item, props.draft_item, t);
-  const glossary_terms = partition_glossary_terms(item, props.draft_item);
+  const glossary_badge_state = resolve_glossary_badge_state(item, draft_item, t);
+  const glossary_terms = partition_glossary_terms(item, draft_item);
   const glossary_tooltip_content = render_glossary_tooltip_content(
     glossary_terms.applied_terms,
     glossary_terms.failed_terms,
     t,
   );
-  const { source_marks, translation_marks } = build_glossary_highlights(item, props.draft_item, t);
+  const { source_marks, translation_marks } = build_glossary_highlights(item, draft_item, t);
   const visible_warning_codes =
     glossary_badge_state === null
       ? item.warnings
       : item.warnings.filter((warning) => warning !== "GLOSSARY");
   const source_name = read_item_name_text(item.name_src);
-  const translation_name = props.draft_item.name_dst;
+  const translation_name = draft_item.name_dst;
   const source_name_glossary_state = resolve_source_name_glossary_state({
     source_name,
     applied_terms: glossary_terms.applied_terms,
@@ -493,7 +504,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
     read_optional_item_name_text(item.name_src) !== null ||
     read_optional_item_name_text(item.name_dst) !== null ||
     translation_name !== "";
-  const translation_readonly = props.readonly || props.saving;
+  const translation_readonly = props.readonly || saving;
   const source_name_marks = build_name_glossary_marks({
     text: source_name,
     source_field: true,
@@ -509,99 +520,141 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
 
   return (
     <AppPageDialog
-      open={props.open}
-      title={t("proofreading_page.dialog.edit_title")}
+      open={open}
+      title={t(
+        context_open ? "proofreading_page.context.title" : "proofreading_page.dialog.edit_title",
+      )}
       size="lg"
-      dismissBehavior="blocked"
-      onClose={props.on_close}
+      dismissBehavior={context_open ? "default" : saving ? "blocked" : "escape-only"}
+      onClose={context_open ? props.on_close_context : props.on_close}
       bodyClassName="overflow-hidden p-0"
-      footerClassName="sm:justify-between"
+      footerClassName={context_open ? undefined : "sm:justify-between"}
       footer={
-        <>
-          <div className="flex flex-wrap items-center gap-2">
-            <AppButton
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={props.readonly || props.saving}
-              onClick={() => {
-                props.on_request_retranslate([String(item.item_id)]);
-              }}
-            >
-              <RefreshCcw data-icon="inline-start" />
-              {t("proofreading_page.action.retranslate")}
-            </AppButton>
-            <AppButton
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={props.readonly || props.saving}
-              onClick={() => {
-                props.on_request_clear_translation([String(item.item_id)]);
-              }}
-            >
-              <Eraser data-icon="inline-start" />
-              {t("proofreading_page.action.clear_translation")}
-            </AppButton>
-            <AppDropdownMenu>
-              <AppDropdownMenuTrigger asChild>
-                <AppButton
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={props.readonly || props.saving}
-                >
-                  <ListChecks data-icon="inline-start" />
-                  {t("proofreading_page.action.set_translation_status")}
-                </AppButton>
-              </AppDropdownMenuTrigger>
-              <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
-                <AppDropdownMenuGroup>
-                  {PROOFREADING_MANUAL_STATUS_CODES.map((status) => (
-                    <AppDropdownMenuItem
-                      key={status}
-                      onSelect={() => {
-                        props.on_request_set_translation_status([String(item.item_id)], status);
-                      }}
-                    >
-                      {t(PROOFREADING_STATUS_LABEL_KEY_BY_CODE[status])}
-                    </AppDropdownMenuItem>
-                  ))}
-                </AppDropdownMenuGroup>
-              </AppDropdownMenuContent>
-            </AppDropdownMenu>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <AppButton
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={props.saving}
-              onClick={props.on_close}
-            >
-              {t("proofreading_page.action.cancel")}
-            </AppButton>
-            <AppButton
-              type="button"
-              size="sm"
-              disabled={save_disabled}
-              onClick={() => {
-                void props.on_save();
-              }}
-            >
-              {save_label}
-              <ShortcutKbd action="save" className="bg-background/18 text-primary-foreground" />
-            </AppButton>
-          </div>
-        </>
+        context_open ? (
+          <AppButton
+            type="button"
+            variant="outline"
+            size="sm"
+            autoFocus
+            onClick={props.on_close_context}
+          >
+            <ArrowLeft data-icon="inline-start" />
+            {t("proofreading_page.action.back")}
+            <ShortcutKbd action="cancel" />
+          </AppButton>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <AppButton
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={props.readonly || saving}
+                onClick={() => {
+                  props.on_request_retranslate([String(item.item_id)]);
+                }}
+              >
+                <RefreshCcw data-icon="inline-start" />
+                {t("proofreading_page.action.retranslate")}
+              </AppButton>
+              <AppButton
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={props.readonly || saving}
+                onClick={() => {
+                  props.on_request_clear_translation([String(item.item_id)]);
+                }}
+              >
+                <Eraser data-icon="inline-start" />
+                {t("proofreading_page.action.clear_translation")}
+              </AppButton>
+              <AppDropdownMenu>
+                <AppDropdownMenuTrigger asChild>
+                  <AppButton
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={props.readonly || saving}
+                  >
+                    <ListChecks data-icon="inline-start" />
+                    {t("proofreading_page.action.set_translation_status")}
+                  </AppButton>
+                </AppDropdownMenuTrigger>
+                <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
+                  <AppDropdownMenuGroup>
+                    {PROOFREADING_MANUAL_STATUS_CODES.map((status) => (
+                      <AppDropdownMenuItem
+                        key={status}
+                        onSelect={() => {
+                          props.on_request_set_translation_status([String(item.item_id)], status);
+                        }}
+                      >
+                        {t(PROOFREADING_STATUS_LABEL_KEY_BY_CODE[status])}
+                      </AppDropdownMenuItem>
+                    ))}
+                  </AppDropdownMenuGroup>
+                </AppDropdownMenuContent>
+              </AppDropdownMenu>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <AppButton
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={saving}
+                onClick={props.on_close}
+              >
+                {t("proofreading_page.action.cancel")}
+                <ShortcutKbd action="cancel" />
+              </AppButton>
+              <AppButton
+                type="button"
+                size="sm"
+                disabled={save_disabled}
+                onClick={() => {
+                  void props.on_save();
+                }}
+              >
+                {save_label}
+                <ShortcutKbd action="save" className="bg-background/18 text-primary-foreground" />
+              </AppButton>
+            </div>
+          </>
+        )
       }
     >
       <div className="proofreading-page__dialog-scroll">
-        <div className="proofreading-page__dialog-form">
+        {context_open ? (
+          <ProofreadingContextView
+            state={context}
+            target_row_id={String(item.item_id)}
+            file_path={item.file_path}
+            draft_item={draft_item}
+            on_retry={() => {
+              void props.on_open_context();
+            }}
+          />
+        ) : null}
+        <div className="proofreading-page__dialog-form" hidden={context_open}>
           <div className="proofreading-page__dialog-main-panel">
             <div className="proofreading-page__dialog-main-panel-content">
               <section className="proofreading-page__dialog-file-card">
                 <span className="proofreading-page__dialog-file-path">{item.file_path}</span>
+                <AppButton
+                  ref={context_trigger_ref}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="proofreading-page__dialog-context-trigger"
+                  disabled={saving}
+                  onClick={() => {
+                    void props.on_open_context();
+                  }}
+                >
+                  <BookOpenText data-icon="inline-start" />
+                  {t("proofreading_page.action.view_context")}
+                </AppButton>
               </section>
 
               <section className="proofreading-page__dialog-editor-block">
@@ -660,7 +713,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                       })
                     : null}
                   <AppEditor
-                    value={props.draft_item.dst}
+                    value={draft_item.dst}
                     aria_label={t("proofreading_page.fields.translation")}
                     read_only={translation_readonly}
                     marks={translation_marks}

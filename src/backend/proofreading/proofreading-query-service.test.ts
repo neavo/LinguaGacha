@@ -45,6 +45,19 @@ function create_cache(): ProofreadingCache {
       ...base_result,
       data: [{ item_id: 1, src: "原文", dst: "译文" }],
     })),
+    context: vi.fn(async () => ({
+      ...base_result,
+      data: [
+        {
+          row_id: "1",
+          row_number: 1,
+          src: "原文",
+          dst: "译文",
+          name_src: null,
+          name_dst: null,
+        },
+      ],
+    })),
     filterPanel: vi.fn(),
     clearProject: vi.fn(),
   } as unknown as ProofreadingCache;
@@ -84,6 +97,7 @@ describe("ProofreadingQueryService", () => {
 
     const view = await service.read({ action: "list", query: { keyword: "原文" } });
     const rows = await service.read({ action: "items_by_row_ids", row_ids: ["1"] });
+    const context = await service.read({ action: "context", row_id: "1" });
 
     expect(view).toMatchObject({
       projectPath: "E:/Project/demo.lg",
@@ -93,5 +107,10 @@ describe("ProofreadingQueryService", () => {
       projectPath: "E:/Project/demo.lg",
       rows: [{ item_id: 1, src: "原文", dst: "译文" }],
     });
+    expect(context).toMatchObject({
+      projectPath: "E:/Project/demo.lg",
+      rows: [{ row_id: "1", row_number: 1, src: "原文", dst: "译文" }],
+    });
+    expect(cache.context).toHaveBeenCalledWith({ row_id: "1" });
   });
 });

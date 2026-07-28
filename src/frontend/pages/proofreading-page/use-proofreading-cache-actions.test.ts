@@ -120,6 +120,7 @@ describe("useProofreadingCacheActions", () => {
           read_proofreading_row_ids_range: vi.fn(),
           resolve_proofreading_row_index: vi.fn(),
           read_proofreading_items_by_row_ids: vi.fn(),
+          read_proofreading_context: vi.fn(),
         } satisfies ProofreadingApiClient,
       },
       refresh_generation_ref: { current: 0 },

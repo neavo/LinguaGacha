@@ -53,10 +53,19 @@ describe("AppPageDialog", () => {
     expect(on_close).toHaveBeenCalledOnce();
   });
 
-  it("blocked 模式阻止 Escape 关闭", () => {
+  it.each([
+    ["blocked", 0],
+    ["escape-only", 1],
+  ] as const)("%s 模式的 Escape 关闭次数为 %i", (dismiss_behavior, expected_close_count) => {
     const on_close = vi.fn();
     render_dialog(
-      <AppPageDialog open title="提交中" dismissBehavior="blocked" footer={null} onClose={on_close}>
+      <AppPageDialog
+        open
+        title="编辑内容"
+        dismissBehavior={dismiss_behavior}
+        footer={null}
+        onClose={on_close}
+      >
         正文
       </AppPageDialog>,
     );
@@ -71,7 +80,7 @@ describe("AppPageDialog", () => {
       );
     });
 
-    expect(on_close).not.toHaveBeenCalled();
+    expect(on_close).toHaveBeenCalledTimes(expected_close_count);
     expect(document.body.querySelector("button")).toBeNull();
   });
 });

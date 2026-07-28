@@ -58,6 +58,7 @@ import {
   create_empty_proofreading_filter_panel_state,
   create_empty_proofreading_list_view,
   type ProofreadingClientItem,
+  type ProofreadingContextItem,
   type ProofreadingFilterOptions,
 } from "@shared/proofreading/proofreading-types";
 
@@ -457,11 +458,14 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     async (_row_ids: string[]): Promise<ProofreadingClientItem[]> => [],
   );
   const read_items_by_row_ids_for_batch = useCallback(
-    async (row_ids: string[]): Promise<ProofreadingClientItem[]> => {
-      return await read_items_by_row_ids_ref.current(row_ids);
+    (row_ids: string[]): Promise<ProofreadingClientItem[]> => {
+      return read_items_by_row_ids_ref.current(row_ids);
     },
     [],
   );
+  const read_dialog_context = useCallback((row_id: string): Promise<ProofreadingContextItem[]> => {
+    return proofreading_runtime_client_ref.current.read_proofreading_context({ row_id });
+  }, []);
 
   const {
     dialog_state,
@@ -469,11 +473,14 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     reset_dialog,
     open_edit_dialog,
     update_dialog_draft,
+    open_dialog_context,
+    close_dialog_context,
     save_dialog_entry,
   } = useProofreadingDialogActions({
     list_revisions,
     visible_item_by_id,
     read_items_by_row_ids: read_items_by_row_ids_for_batch,
+    read_context: read_dialog_context,
     run_project_write,
     push_toast,
     t,
@@ -852,6 +859,8 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       open_edit_dialog,
       request_close_dialog: reset_dialog,
       update_dialog_draft,
+      open_dialog_context,
+      close_dialog_context,
       save_dialog_entry,
       replace_next_visible_match,
       replace_all_visible_matches,
@@ -869,6 +878,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     cache_status,
     list_revisions,
     close_filter_dialog,
+    close_dialog_context,
     close_pending_confirmation,
     confirm_filter_dialog_filters,
     confirm_pending_confirmation,
@@ -886,6 +896,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     is_refreshing,
     is_regex,
     open_edit_dialog,
+    open_dialog_context,
     open_filter_dialog,
     pending_confirmation,
     preserve_scroll_anchor,
