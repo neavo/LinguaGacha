@@ -28,21 +28,20 @@ describe("TaskRuntime", () => {
       item_ids: [3, 3, 0, 2.9, 4],
     } as unknown as TranslationScope);
 
-    const snapshot = runtime.snapshot_state();
+    const snapshot = await runtime.build_snapshot({ task_type: "translation" });
     expect(snapshot).toMatchObject({
+      task_type: "translation",
       status: "requested",
       busy: true,
-      active_task_type: "translation",
-      translation_scope: { kind: "items", item_ids: [3, 4] },
+      extras: { kind: "translation", scope: { kind: "items", item_ids: [3, 4] } },
     });
-    if (snapshot.translation_scope.kind !== "items") {
+    if (snapshot.extras.kind !== "translation" || snapshot.extras.scope.kind !== "items") {
       throw new Error("期望重翻 items scope");
     }
-    snapshot.translation_scope.item_ids.push(99);
+    snapshot.extras.scope.item_ids.push(99);
 
-    expect(runtime.snapshot_state().translation_scope).toEqual({
-      kind: "items",
-      item_ids: [3, 4],
+    await expect(runtime.build_snapshot({ task_type: "translation" })).resolves.toMatchObject({
+      extras: { kind: "translation", scope: { kind: "items", item_ids: [3, 4] } },
     });
     await expect(runtime.begin("analysis")).rejects.toThrow("task.busy");
     await runtime.finish(handle, "done");
@@ -167,9 +166,9 @@ describe("TaskRuntime", () => {
     expect(unloaded_snapshot?.run_revision).toBeGreaterThan(b_snapshot?.run_revision ?? 0);
 
     await runtime.dispose();
-    const revision_after_dispose = runtime.snapshot_state().run_revision;
+    const revision_after_dispose = (await runtime.build_snapshot()).run_revision;
     await session_state.mark_loaded("E:/Project/a.lg");
-    expect(runtime.snapshot_state().run_revision).toBe(revision_after_dispose);
+    expect((await runtime.build_snapshot()).run_revision).toBe(revision_after_dispose);
   });
 
   it("请求压力只按固定窗口发布一次完整快照", async () => {
@@ -298,10 +297,9 @@ describe("TaskRuntime", () => {
 
     await expect(runtime.begin("translation")).rejects.toThrow("listener failed");
 
-    expect(runtime.snapshot_state()).toMatchObject({
+    await expect(runtime.build_snapshot({ task_type: "translation" })).resolves.toMatchObject({
       status: "idle",
       busy: false,
-      active_task_type: "idle",
     });
     unsubscribe();
     await expect(runtime.begin("analysis")).resolves.toMatchObject({
@@ -321,11 +319,7 @@ describe("TaskRuntime", () => {
 
     await expect(runtime.begin("translation")).rejects.toThrow("任务启动失败且恢复快照发布失败");
 
-    expect(runtime.snapshot_state()).toMatchObject({
-      status: "idle",
-      busy: false,
-      active_task_type: "idle",
-    });
+    expect(runtime.is_busy()).toBe(false);
     await expect(runtime.begin("analysis")).rejects.not.toThrow("task.busy");
   });
 
@@ -340,10 +334,9 @@ describe("TaskRuntime", () => {
 
     await expect(runtime.finish(handle, "done")).rejects.toThrow("terminal listener failed");
 
-    expect(runtime.snapshot_state()).toMatchObject({
+    await expect(runtime.build_snapshot({ task_type: "translation" })).resolves.toMatchObject({
       status: "done",
       busy: false,
-      active_task_type: "idle",
     });
     unsubscribe();
     await expect(runtime.begin("analysis")).resolves.toMatchObject({
@@ -369,12 +362,11 @@ describe("TaskRuntime", () => {
 
     await expect(runtime.finish(handle, "done")).rejects.toThrow("terminal snapshot failed");
 
-    expect(runtime.snapshot_state()).toMatchObject({
+    snapshot_failed = false;
+    await expect(runtime.build_snapshot({ task_type: "translation" })).resolves.toMatchObject({
       status: "done",
       busy: false,
-      active_task_type: "idle",
     });
-    snapshot_failed = false;
     await expect(runtime.begin("analysis")).resolves.toMatchObject({
       task_type: "analysis",
     });
@@ -388,15 +380,13 @@ describe("TaskRuntime", () => {
     });
 
     await runtime.publish_progress(handle, [2, 3.8, -1]);
-    expect(runtime.snapshot_state().translation_scope).toEqual({
-      kind: "items",
-      item_ids: [1, 3],
+    await expect(runtime.build_snapshot({ task_type: "translation" })).resolves.toMatchObject({
+      extras: { kind: "translation", scope: { kind: "items", item_ids: [1, 3] } },
     });
 
     await runtime.publish_progress(handle, [1, 3]);
-    expect(runtime.snapshot_state().translation_scope).toEqual({
-      kind: "items",
-      item_ids: [],
+    await expect(runtime.build_snapshot({ task_type: "translation" })).resolves.toMatchObject({
+      extras: { kind: "translation", scope: { kind: "items", item_ids: [] } },
     });
     await runtime.finish(handle, "done");
   });
@@ -409,10 +399,9 @@ describe("TaskRuntime", () => {
     await expect(runtime.request_stop("translation")).resolves.toBe(true);
 
     expect(handle.signal.aborted).toBe(true);
-    expect(runtime.snapshot_state()).toMatchObject({
+    await expect(runtime.build_snapshot({ task_type: "translation" })).resolves.toMatchObject({
       status: "stopping",
       busy: true,
-      active_task_type: "translation",
     });
     await runtime.finish(handle, "idle");
   });

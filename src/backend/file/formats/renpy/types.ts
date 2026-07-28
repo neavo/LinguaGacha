@@ -2,16 +2,13 @@
 export const RENPY_EXTRA_VERSION = 1;
 
 // translate 块类型集中定义，避免解析器、抽取器、写回器各自散落字符串。
-export const RENPY_BLOCK_KINDS = ["LABEL", "STRINGS", "PYTHON", "OTHER"] as const;
-export type RenpyBlockKind = (typeof RENPY_BLOCK_KINDS)[number];
+export type RenpyBlockKind = "LABEL" | "STRINGS" | "PYTHON" | "OTHER";
 
 // 语句类型只表达 AST 阶段语义，不映射到任何公开 API 字段。
-export const RENPY_STATEMENT_KINDS = ["TEMPLATE", "TARGET", "META", "BLANK", "OTHER"] as const;
-export type RenpyStatementKind = (typeof RENPY_STATEMENT_KINDS)[number];
+export type RenpyStatementKind = "TEMPLATE" | "TARGET" | "META" | "BLANK" | "OTHER";
 
 // 槽位角色是写回器的唯一写入意图来源。
-export const RENPY_SLOT_ROLES = ["DIALOGUE", "NAME", "STRING"] as const;
-export type RenpySlotRole = (typeof RENPY_SLOT_ROLES)[number];
+export type RenpySlotRole = "DIALOGUE" | "NAME" | "STRING";
 
 /**
  * RenPy 双引号字面量必须保留列号，写回时才能精准替换目标槽位。

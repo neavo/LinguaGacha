@@ -122,9 +122,6 @@ const EMPTY_SNAPSHOT: ModelPageSnapshot = {
   models: [],
 };
 
-/**
- * 关闭当前交互状态并重置相关上下文。
- */
 function close_dialog_state(): ModelDialogState {
   return {
     kind: null,
@@ -132,9 +129,6 @@ function close_dialog_state(): ModelDialogState {
   };
 }
 
-/**
- * 关闭当前交互状态并重置相关上下文。
- */
 function close_confirm_state(): ModelConfirmState {
   return {
     kind: null,
@@ -142,9 +136,6 @@ function close_confirm_state(): ModelConfirmState {
   };
 }
 
-/**
- * 构造当前场景的标准初始数据。
- */
 function create_selector_state(): ModelSelectorState {
   return {
     open: false,
@@ -167,9 +158,6 @@ function read_number(candidate: unknown, fallback_value: number): number {
   }
 }
 
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_request_snapshot(candidate: unknown): ModelRequestSnapshot {
   const source =
     typeof candidate === "object" && candidate !== null
@@ -196,9 +184,6 @@ function normalize_request_snapshot(candidate: unknown): ModelRequestSnapshot {
   };
 }
 
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_threshold_snapshot(candidate: unknown): ModelThresholdSnapshot {
   const source =
     typeof candidate === "object" && candidate !== null
@@ -222,9 +207,6 @@ function normalize_threshold_snapshot(candidate: unknown): ModelThresholdSnapsho
   };
 }
 
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_thinking_snapshot(candidate: unknown): ModelThinkingSnapshot {
   const source =
     typeof candidate === "object" && candidate !== null
@@ -236,9 +218,6 @@ function normalize_thinking_snapshot(candidate: unknown): ModelThinkingSnapshot 
   };
 }
 
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_generation_snapshot(candidate: unknown): ModelGenerationSnapshot {
   const source =
     typeof candidate === "object" && candidate !== null
@@ -263,9 +242,6 @@ function normalize_generation_snapshot(candidate: unknown): ModelGenerationSnaps
   };
 }
 
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_model_entry(
   candidate: Partial<ModelEntrySnapshot> | undefined,
 ): ModelEntrySnapshot {
@@ -289,9 +265,6 @@ function normalize_model_entry(
   };
 }
 
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_model_page_snapshot(payload: ModelPageSnapshotPayload): ModelPageSnapshot {
   const snapshot = payload.snapshot ?? {};
   const models = Array.isArray(snapshot.models)
@@ -307,9 +280,6 @@ function normalize_model_page_snapshot(payload: ModelPageSnapshotPayload): Model
   };
 }
 
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_model_test_result(payload: ModelTestPayload): ModelTestResult {
   return {
     success: Boolean(payload.success),
@@ -317,9 +287,6 @@ function normalize_model_test_result(payload: ModelTestPayload): ModelTestResult
   };
 }
 
-/**
- * 读取当前场景需要的稳定数据。
- */
 function find_model(
   snapshot: ModelPageSnapshot,
   model_id: string | null,
@@ -693,9 +660,6 @@ export function useModelPageState(): UseModelPageStateResult {
     [push_toast, readonly, t],
   );
 
-  /**
-   * 切换当前交互状态。
-   */
   function open_dialog(kind: Exclude<ModelDialogState["kind"], null>, model_id: string): void {
     set_dialog_state({
       kind,
@@ -703,9 +667,6 @@ export function useModelPageState(): UseModelPageStateResult {
     });
   }
 
-  /**
-   * 切换当前交互状态。
-   */
   function close_dialog(): void {
     set_dialog_state(close_dialog_state());
   }
@@ -749,16 +710,10 @@ export function useModelPageState(): UseModelPageStateResult {
     }
   }, [confirm_state, dialog_state.model_id, push_toast, readonly, t]);
 
-  /**
-   * 切换当前交互状态。
-   */
   function close_confirm(): void {
     set_confirm_state(close_confirm_state());
   }
 
-  /**
-   * 切换当前交互状态。
-   */
   function open_selector_dialog(model_id: string): void {
     set_selector_state((previous_state) => {
       return {
@@ -770,9 +725,6 @@ export function useModelPageState(): UseModelPageStateResult {
     });
   }
 
-  /**
-   * 切换当前交互状态。
-   */
   function close_selector_dialog(): void {
     set_selector_state((previous_state) => {
       return {
@@ -784,9 +736,6 @@ export function useModelPageState(): UseModelPageStateResult {
     });
   }
 
-  /**
-   * 写入当前场景的状态变化。
-   */
   function set_selector_filter_text(next_text: string): void {
     set_selector_state((previous_state) => {
       return {

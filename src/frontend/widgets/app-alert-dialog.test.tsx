@@ -31,7 +31,6 @@ describe("AppAlertDialog", () => {
     container?.remove();
     container = null;
     root = null;
-    vi.clearAllMocks();
   });
 
   it("默认确认和取消文案来自应用 i18n", () => {

@@ -63,7 +63,7 @@ describe("PresetMenu", () => {
     return button;
   }
 
-  it("保留打开、内置预设和用户预设的全部动作", async () => {
+  it("菜单动作携带对应预设标识", async () => {
     const callbacks = {
       on_open: vi.fn(async () => {}),
       on_open_change: vi.fn(),

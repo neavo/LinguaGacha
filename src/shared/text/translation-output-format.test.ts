@@ -6,22 +6,21 @@ import {
 } from "./translation-output-format";
 
 describe("翻译输出格式提示", () => {
-  it("纯文本模式生成对应语言的 JSONLINE 字符串示例", () => {
-    expect(build_translation_output_format("text", "zh")).toBe(
-      '```jsonline\n{"<序号>":"<译文文本>"}\n```',
-    );
-    expect(build_translation_output_format("text", "en")).toBe(
-      '```jsonline\n{"<INDEX>":"<Translated Text>"}\n```',
-    );
-  });
-
-  it("actor/text 模式生成姓名与正文对象示例", () => {
-    expect(build_translation_output_format("actor_text", "zh")).toBe(
+  it.each([
+    ["text", "zh", '```jsonline\n{"<序号>":"<译文文本>"}\n```'],
+    ["text", "en", '```jsonline\n{"<INDEX>":"<Translated Text>"}\n```'],
+    [
+      "actor_text",
+      "zh",
       '```jsonline\n{"<序号>":{"actor":"<姓名译文或null>","text":"<正文译文>"}}\n```',
-    );
-    expect(build_translation_output_format("actor_text", "en")).toBe(
+    ],
+    [
+      "actor_text",
+      "en",
       '```jsonline\n{"<INDEX>":{"actor":"<Translated Actor or null>","text":"<Translated Text>"}}\n```',
-    );
+    ],
+  ] as const)("%s 模式生成 %s JSONLINE 协议示例", (mode, language, expected) => {
+    expect(build_translation_output_format(mode, language)).toBe(expected);
   });
 
   it("填充模板时只替换翻译输出格式占位符", () => {

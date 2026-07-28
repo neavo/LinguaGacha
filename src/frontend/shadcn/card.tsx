@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Slot } from "radix-ui";
 
 import { cn } from "@frontend/shadcn/classnames";
 
@@ -7,8 +8,10 @@ type CardVariant = "default" | "panel" | "table" | "toolbar";
 function Card({
   className,
   variant = "default",
+  asChild = false,
   ...props
-}: React.ComponentProps<"section"> & { variant?: CardVariant }) {
+}: React.ComponentProps<"section"> & { variant?: CardVariant; asChild?: boolean }) {
+  const Comp = asChild ? Slot.Root : "section"; // Slot 保留卡片视觉契约，同时让调用方选择原生交互语义
   const is_interactive =
     props.onClick !== undefined ||
     props.onKeyDown !== undefined ||
@@ -18,7 +21,7 @@ function Card({
     (props.tabIndex !== undefined && props.tabIndex >= 0);
 
   return (
-    <section
+    <Comp
       data-slot="card"
       data-variant={variant}
       data-interactive={is_interactive ? "true" : undefined}

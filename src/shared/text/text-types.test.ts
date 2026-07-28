@@ -20,27 +20,38 @@ describe("text worker snapshots", () => {
     });
   });
 
-  it("从嵌套质量载荷生成 worker 快照并过滤空规则", () => {
+  it("从嵌套质量载荷精确投影 worker 所需字段", () => {
     expect(
       TextQualitySnapshotTool.from_api_value({
         quality: {
           glossary: {
             enabled: true,
             entries: [{ src: "HP", dst: "生命值" }, { src: " " }],
+            revision: 9,
           },
         },
         prompts: {
           translation: {
             enabled: true,
             text: "翻译提示",
+            revision: 7,
           },
         },
+        unrelated: "ignored",
       }),
-    ).toMatchObject({
+    ).toEqual({
       glossary_enable: true,
       glossary_entries: [{ src: "HP", dst: "生命值" }],
+      text_preserve_mode: "smart",
+      text_preserve_entries: [],
+      pre_replacement_enable: false,
+      pre_replacement_entries: [],
+      post_replacement_enable: false,
+      post_replacement_entries: [],
       translation_prompt_enable: true,
       translation_prompt: "翻译提示",
+      analysis_prompt_enable: false,
+      analysis_prompt: "",
     });
   });
 });

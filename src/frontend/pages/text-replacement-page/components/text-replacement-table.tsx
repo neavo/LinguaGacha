@@ -56,10 +56,6 @@ type TextReplacementTableProps = {
 
 type TextReplacementRuleMenuState = "enabled" | "disabled" | "mixed";
 
-function build_row_number_label(row_index: number): string {
-  return String(row_index + 1);
-}
-
 /**
  * 右键已选行时作用于整组选择；右键未选行时只作用于该行。
  */
@@ -325,7 +321,7 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
         render_cell: (payload) => {
           return (
             <AppTableDragIndicator
-              row_number={build_row_number_label(payload.row_index)}
+              row_number={String(payload.row_index + 1)}
               can_drag={payload.can_drag}
               dragging={payload.dragging}
               drag_handle={payload.drag_handle}

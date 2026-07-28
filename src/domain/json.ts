@@ -32,3 +32,11 @@ export function is_json_record(value: unknown): value is JsonRecord {
 export function read_json_record(value: unknown): JsonRecord {
   return is_json_record(value) ? value : {};
 }
+
+/**
+ * 将边界数字收窄为有限整数；空值或非法值保留调用方给出的回退。
+ */
+export function read_json_integer(value: unknown, fallback: number): number {
+  const number_value = Number(value ?? fallback);
+  return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
+}

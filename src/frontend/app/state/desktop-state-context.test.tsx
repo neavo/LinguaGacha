@@ -1,4 +1,4 @@
-import { StrictMode, act, useEffect, useMemo, useRef } from "react";
+import { StrictMode, act, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -7,7 +7,6 @@ import {
   DesktopStateProvider,
   normalize_settings_snapshot,
 } from "@frontend/app/state/desktop-state-context";
-import type { ProjectWriteCommitter } from "@frontend/app/state/desktop-project-write";
 import { DESKTOP_RUNTIME_REFRESH_INTERVAL_MS } from "@frontend/app/state/desktop-refresh-scheduler";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 
@@ -46,14 +45,18 @@ type RuntimeSnapshot = {
   sourceLanguage: string;
 };
 
-type StateHandle = {
-  refresh_project_snapshot: () => Promise<{ path: string; loaded: boolean }>;
-  refresh_project_state: () => Promise<void>;
-  refresh_task: (task_type?: "translation" | "analysis") => Promise<unknown>;
-  commit_project_write: ProjectWriteCommitter;
-};
+type StateHandle = Pick<
+  ReturnType<typeof useDesktopState>,
+  "refresh_project_snapshot" | "refresh_project_state" | "refresh_task" | "commit_project_write"
+>;
 
 type StateHandleRef = StateHandle | null;
+
+type EventSourceStub = {
+  addEventListener: ReturnType<typeof vi.fn<(event_name: string, listener: EventListener) => void>>;
+  close: ReturnType<typeof vi.fn<() => void>>;
+  onerror: null;
+};
 
 type ProofreadingSignalSnapshot = {
   seq: number;
@@ -206,7 +209,7 @@ function StateHandleProbe(props: {
   const state = useDesktopState();
 
   useEffect(() => {
-    props.onState(state as unknown as StateHandle);
+    props.onState(state);
   }, [props, state]);
 
   return null;
@@ -236,7 +239,7 @@ async function flush_state_refresh_window(): Promise<void> {
 }
 
 function create_event_source_stub(): {
-  event_source: EventSource;
+  event_source: EventSourceStub;
   emit: (event_name: string, payload: Record<string, unknown>) => void;
 } {
   const listener_map = new Map<string, EventListener>();
@@ -250,7 +253,7 @@ function create_event_source_stub(): {
         listener_map.clear();
       }),
       onerror: null,
-    } as unknown as EventSource,
+    },
     emit: (event_name: string, payload: Record<string, unknown>) => {
       const listener = listener_map.get(event_name);
       if (listener === undefined) {
@@ -264,9 +267,8 @@ function create_event_source_stub(): {
   };
 }
 
-function has_event_stream_listener(event_source: EventSource, event_name: string): boolean {
-  const add_event_listener = event_source.addEventListener as unknown as ReturnType<typeof vi.fn>;
-  return add_event_listener.mock.calls.some((call) => call[0] === event_name);
+function has_event_stream_listener(event_source: EventSourceStub, event_name: string): boolean {
+  return event_source.addEventListener.mock.calls.some((call) => call[0] === event_name);
 }
 
 function create_project_item(overrides: Record<string, unknown>): Record<string, unknown> {
@@ -392,6 +394,46 @@ function create_project_read_response(
   return null;
 }
 
+type RuntimeApiMockOptions = {
+  settings?: Record<string, unknown>;
+  project_path?: string;
+  task?: Record<string, unknown>;
+  project_read?: {
+    projectRevision?: number;
+    sectionRevisions?: Record<string, number>;
+    sections?: Record<string, unknown>;
+  };
+};
+
+function install_runtime_api_mock(options: RuntimeApiMockOptions = {}): void {
+  const project_path = options.project_path ?? "E:/demo/demo.lg";
+  api_fetch_mock.mockImplementation(
+    async (path: string, body?: Record<string, unknown>): Promise<Record<string, unknown>> => {
+      if (path === "/api/settings/app") {
+        return { settings: { app_language: "ZH", ...options.settings } };
+      }
+      if (path === "/api/session/project/snapshot") {
+        return { project: { path: project_path, loaded: true } };
+      }
+      if (path === "/api/tasks/snapshot") {
+        return {
+          task: options.task ?? {
+            task_type: body?.["task_type"] ?? "translation",
+            status: "idle",
+            busy: false,
+          },
+        };
+      }
+
+      const project_read_response = create_project_read_response(path, options.project_read);
+      if (project_read_response !== null) {
+        return project_read_response;
+      }
+      throw new Error(`未预期的请求：${path}`);
+    },
+  );
+}
+
 describe("设置快照归一", () => {
   it("缺字段 settings payload 使用 base 设置领域默认值", () => {
     expect(normalize_settings_snapshot({ settings: {} })).toMatchObject({
@@ -423,63 +465,32 @@ describe("DesktopStateProvider", () => {
     vi.useRealTimers();
   });
 
+  async function mount_runtime(
+    event_source: EventSourceStub,
+    children: ReactNode,
+    strict = false,
+  ): Promise<void> {
+    open_event_stream_mock.mockResolvedValue(event_source);
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    const provider = <DesktopStateProvider>{children}</DesktopStateProvider>;
+
+    await act(async () => {
+      root?.render(strict ? <StrictMode>{provider}</StrictMode> : provider);
+    });
+  }
+
   it("完成项目数据读取后补发工作台与校对页刷新信号", async () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/settings/app") {
-        return {
-          settings: {
-            app_language: "ZH",
-          },
-        };
-      }
+    install_runtime_api_mock();
 
-      if (path === "/api/session/project/snapshot") {
-        return {
-          project: {
-            path: "E:/demo/demo.lg",
-            loaded: true,
-          },
-        };
-      }
-
-      if (path === "/api/tasks/snapshot") {
-        return {
-          task: {
-            task_type: "translation",
-            status: "idle",
-            busy: false,
-          },
-        };
-      }
-
-      const project_read_response = create_project_read_response(path);
-      if (project_read_response !== null) {
-        return project_read_response;
-      }
-
-      throw new Error(`未预期的请求：${path}`);
-    });
-
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
-
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <DesktopStateProvider>
-          <RuntimeProbe
-            onSnapshot={(snapshot) => {
-              snapshots.push(snapshot);
-            }}
-          />
-        </DesktopStateProvider>,
-      );
-    });
+    await mount_runtime(
+      event_stream.event_source,
+      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
+    );
 
     await wait_for_condition(() => {
       const latest_snapshot = snapshots.at(-1);
@@ -513,59 +524,15 @@ describe("DesktopStateProvider", () => {
     const event_stream = create_event_source_stub();
     let state_handle: StateHandleRef = null;
 
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/settings/app") {
-        return { settings: { app_language: "ZH" } };
-      }
+    install_runtime_api_mock();
 
-      if (path === "/api/session/project/snapshot") {
-        return {
-          project: {
-            path: "E:/demo/demo.lg",
-            loaded: true,
-          },
-        };
-      }
-
-      if (path === "/api/tasks/snapshot") {
-        return {
-          task: {
-            task_type: "translation",
-            status: "idle",
-            busy: false,
-          },
-        };
-      }
-
-      const project_read_response = create_project_read_response(path);
-      if (project_read_response !== null) {
-        return project_read_response;
-      }
-
-      throw new Error(`未预期的请求：${path}`);
-    });
-
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <DesktopStateProvider>
-          <RuntimeProbe
-            onSnapshot={(snapshot) => {
-              snapshots.push(snapshot);
-            }}
-          />
-          <StateHandleProbe
-            onState={(state) => {
-              state_handle = state;
-            }}
-          />
-        </DesktopStateProvider>,
-      );
-    });
+    await mount_runtime(
+      event_stream.event_source,
+      <>
+        <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />
+        <StateHandleProbe onState={(state) => (state_handle = state)} />
+      </>,
+    );
 
     await wait_for_condition(() => {
       return state_handle !== null && snapshots.at(-1)?.proofreadingSeq === 1;
@@ -632,54 +599,12 @@ describe("DesktopStateProvider", () => {
     let state_handle: StateHandleRef = null;
     const event_stream = create_event_source_stub();
 
-    api_fetch_mock.mockImplementation(async (path: string, body?: Record<string, unknown>) => {
-      if (path === "/api/settings/app") {
-        return { settings: { app_language: "ZH" } };
-      }
+    install_runtime_api_mock();
 
-      if (path === "/api/session/project/snapshot") {
-        return {
-          project: {
-            path: "E:/demo/demo.lg",
-            loaded: true,
-          },
-        };
-      }
-
-      if (path === "/api/tasks/snapshot") {
-        return {
-          task: {
-            task_type: body?.["task_type"] ?? "translation",
-            status: "idle",
-            busy: false,
-          },
-        };
-      }
-
-      const project_read_response = create_project_read_response(path);
-      if (project_read_response !== null) {
-        return project_read_response;
-      }
-
-      throw new Error(`未预期的请求：${path}`);
-    });
-
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <DesktopStateProvider>
-          <StateHandleProbe
-            onState={(state) => {
-              state_handle = state;
-            }}
-          />
-        </DesktopStateProvider>,
-      );
-    });
+    await mount_runtime(
+      event_stream.event_source,
+      <StateHandleProbe onState={(state) => (state_handle = state)} />,
+    );
 
     await wait_for_condition(() => state_handle !== null);
 
@@ -699,59 +624,12 @@ describe("DesktopStateProvider", () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/settings/app") {
-        return {
-          settings: {
-            app_language: "ZH",
-            source_language: "JA",
-          },
-        };
-      }
+    install_runtime_api_mock({ settings: { source_language: "JA" } });
 
-      if (path === "/api/session/project/snapshot") {
-        return {
-          project: {
-            path: "E:/demo/demo.lg",
-            loaded: true,
-          },
-        };
-      }
-
-      if (path === "/api/tasks/snapshot") {
-        return {
-          task: {
-            task_type: "translation",
-            status: "idle",
-            busy: false,
-          },
-        };
-      }
-
-      const project_read_response = create_project_read_response(path);
-      if (project_read_response !== null) {
-        return project_read_response;
-      }
-
-      throw new Error(`未预期的请求：${path}`);
-    });
-
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <DesktopStateProvider>
-          <RuntimeProbe
-            onSnapshot={(snapshot) => {
-              snapshots.push(snapshot);
-            }}
-          />
-        </DesktopStateProvider>,
-      );
-    });
+    await mount_runtime(
+      event_stream.event_source,
+      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
+    );
 
     await wait_for_condition(() => {
       const latest_snapshot = snapshots.at(-1);
@@ -789,73 +667,29 @@ describe("DesktopStateProvider", () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/settings/app") {
-        return {
-          settings: {
-            app_language: "ZH",
-          },
-        };
-      }
-
-      if (path === "/api/session/project/snapshot") {
-        return {
-          project: {
-            path: "E:/demo/demo.lg",
-            loaded: true,
-          },
-        };
-      }
-
-      if (path === "/api/tasks/snapshot") {
-        return {
-          task: {
-            task_type: "translation",
-            status: "running",
-            busy: true,
-            progress: {
-              line: 0,
-              total_line: 5,
-            },
-            extras: { kind: "translation", scope: { kind: "all" } },
-          },
-        };
-      }
-
-      const project_read_response = create_project_read_response(path);
-      if (project_read_response !== null) {
-        return project_read_response;
-      }
-
-      throw new Error(`未预期的请求：${path}`);
+    install_runtime_api_mock({
+      task: {
+        task_type: "translation",
+        status: "running",
+        busy: true,
+        progress: { line: 0, total_line: 5 },
+        extras: { kind: "translation", scope: { kind: "all" } },
+      },
     });
 
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <StrictMode>
-          <DesktopStateProvider>
-            <RuntimeProbe
-              onSnapshot={(snapshot) => {
-                snapshots.push(snapshot);
-              }}
-            />
-          </DesktopStateProvider>
-        </StrictMode>,
-      );
-    });
+    await mount_runtime(
+      event_stream.event_source,
+      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
+      true,
+    );
 
     await wait_for_condition(() => {
       return snapshots.at(-1)?.taskStatus === "running";
     });
     await wait_for_condition(() => {
-      return (
-        event_stream.event_source.addEventListener as unknown as ReturnType<typeof vi.fn>
-      ).mock.calls.some((call) => call[0] === "task.snapshot_changed");
+      return event_stream.event_source.addEventListener.mock.calls.some(
+        (call) => call[0] === "task.snapshot_changed",
+      );
     });
 
     await act(async () => {
@@ -923,63 +757,15 @@ describe("DesktopStateProvider", () => {
     const event_stream = create_event_source_stub();
     let state_handle: StateHandleRef = null;
 
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/settings/app") {
-        return {
-          settings: {
-            app_language: "ZH",
-          },
-        };
-      }
+    install_runtime_api_mock();
 
-      if (path === "/api/session/project/snapshot") {
-        return {
-          project: {
-            path: "E:/demo/demo.lg",
-            loaded: true,
-          },
-        };
-      }
-
-      if (path === "/api/tasks/snapshot") {
-        return {
-          task: {
-            task_type: "translation",
-            status: "idle",
-            busy: false,
-          },
-        };
-      }
-
-      const project_read_response = create_project_read_response(path);
-      if (project_read_response !== null) {
-        return project_read_response;
-      }
-
-      throw new Error(`未预期的请求：${path}`);
-    });
-
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <DesktopStateProvider>
-          <RuntimeProbe
-            onSnapshot={(snapshot) => {
-              snapshots.push(snapshot);
-            }}
-          />
-          <StateHandleProbe
-            onState={(state) => {
-              state_handle = state;
-            }}
-          />
-        </DesktopStateProvider>,
-      );
-    });
+    await mount_runtime(
+      event_stream.event_source,
+      <>
+        <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />
+        <StateHandleProbe onState={(state) => (state_handle = state)} />
+      </>,
+    );
 
     await wait_for_condition(() => {
       return state_handle !== null && snapshots.at(-1)?.proofreadingSeq === 1;
@@ -1054,58 +840,14 @@ describe("DesktopStateProvider", () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/settings/app") {
-        return {
-          settings: {
-            app_language: "ZH",
-          },
-        };
-      }
-
-      if (path === "/api/session/project/snapshot") {
-        return {
-          project: {
-            path: "E:/demo/demo.lg",
-            loaded: true,
-          },
-        };
-      }
-
-      if (path === "/api/tasks/snapshot") {
-        return {
-          task: {
-            task_type: "analysis",
-            status: "idle",
-            busy: false,
-          },
-        };
-      }
-
-      const project_read_response = create_project_read_response(path);
-      if (project_read_response !== null) {
-        return project_read_response;
-      }
-
-      throw new Error(`未预期的请求：${path}`);
+    install_runtime_api_mock({
+      task: { task_type: "analysis", status: "idle", busy: false },
     });
 
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <DesktopStateProvider>
-          <RuntimeProbe
-            onSnapshot={(snapshot) => {
-              snapshots.push(snapshot);
-            }}
-          />
-        </DesktopStateProvider>,
-      );
-    });
+    await mount_runtime(
+      event_stream.event_source,
+      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
+    );
 
     await wait_for_condition(() => {
       return snapshots.at(-1)?.workbenchSeq === 1;
@@ -1160,63 +902,17 @@ describe("DesktopStateProvider", () => {
     const event_stream = create_event_source_stub();
     let state_handle: StateHandleRef = null;
 
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/settings/app") {
-        return {
-          settings: {
-            app_language: "ZH",
-          },
-        };
-      }
-
-      if (path === "/api/session/project/snapshot") {
-        return {
-          project: {
-            path: "E:/demo/demo.lg",
-            loaded: true,
-          },
-        };
-      }
-
-      if (path === "/api/tasks/snapshot") {
-        return {
-          task: {
-            task_type: "analysis",
-            status: "idle",
-            busy: false,
-          },
-        };
-      }
-
-      const project_read_response = create_project_read_response(path);
-      if (project_read_response !== null) {
-        return project_read_response;
-      }
-
-      throw new Error(`未预期的请求：${path}`);
+    install_runtime_api_mock({
+      task: { task_type: "analysis", status: "idle", busy: false },
     });
 
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <DesktopStateProvider>
-          <RuntimeProbe
-            onSnapshot={(snapshot) => {
-              snapshots.push(snapshot);
-            }}
-          />
-          <StateHandleProbe
-            onState={(state) => {
-              state_handle = state;
-            }}
-          />
-        </DesktopStateProvider>,
-      );
-    });
+    await mount_runtime(
+      event_stream.event_source,
+      <>
+        <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />
+        <StateHandleProbe onState={(state) => (state_handle = state)} />
+      </>,
+    );
 
     await wait_for_condition(() => {
       return state_handle !== null && snapshots.at(-1)?.workbenchSeq === 1;
@@ -1277,58 +973,12 @@ describe("DesktopStateProvider", () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/settings/app") {
-        return {
-          settings: {
-            app_language: "ZH",
-          },
-        };
-      }
+    install_runtime_api_mock();
 
-      if (path === "/api/session/project/snapshot") {
-        return {
-          project: {
-            path: "E:/demo/demo.lg",
-            loaded: true,
-          },
-        };
-      }
-
-      if (path === "/api/tasks/snapshot") {
-        return {
-          task: {
-            task_type: "translation",
-            status: "idle",
-            busy: false,
-          },
-        };
-      }
-
-      const project_read_response = create_project_read_response(path);
-      if (project_read_response !== null) {
-        return project_read_response;
-      }
-
-      throw new Error(`未预期的请求：${path}`);
-    });
-
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <DesktopStateProvider>
-          <RuntimeProbe
-            onSnapshot={(snapshot) => {
-              snapshots.push(snapshot);
-            }}
-          />
-        </DesktopStateProvider>,
-      );
-    });
+    await mount_runtime(
+      event_stream.event_source,
+      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
+    );
 
     await wait_for_condition(() => {
       return snapshots.at(-1)?.proofreadingSeq === 1;
@@ -1498,41 +1148,12 @@ describe("DesktopStateProvider", () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/settings/app") {
-        return { settings: { app_language: "ZH" } };
-      }
-      if (path === "/api/session/project/snapshot") {
-        return { project: { path: "E:/demo/demo.lg", loaded: true } };
-      }
-      if (path === "/api/tasks/snapshot") {
-        return { task: { task_type: "translation", status: "idle", busy: false } };
-      }
+    install_runtime_api_mock();
 
-      const project_read_response = create_project_read_response(path);
-      if (project_read_response !== null) {
-        return project_read_response;
-      }
-
-      throw new Error(`未预期的请求：${path}`);
-    });
-
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <DesktopStateProvider>
-          <RuntimeProbe
-            onSnapshot={(snapshot) => {
-              snapshots.push(snapshot);
-            }}
-          />
-        </DesktopStateProvider>,
-      );
-    });
+    await mount_runtime(
+      event_stream.event_source,
+      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
+    );
 
     await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
 
@@ -1569,41 +1190,12 @@ describe("DesktopStateProvider", () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/settings/app") {
-        return { settings: { app_language: "ZH" } };
-      }
-      if (path === "/api/session/project/snapshot") {
-        return { project: { path: "E:/demo/demo.lg", loaded: true } };
-      }
-      if (path === "/api/tasks/snapshot") {
-        return { task: { task_type: "translation", status: "idle", busy: false } };
-      }
+    install_runtime_api_mock();
 
-      const project_read_response = create_project_read_response(path);
-      if (project_read_response !== null) {
-        return project_read_response;
-      }
-
-      throw new Error(`未预期的请求：${path}`);
-    });
-
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <DesktopStateProvider>
-          <RuntimeProbe
-            onSnapshot={(snapshot) => {
-              snapshots.push(snapshot);
-            }}
-          />
-        </DesktopStateProvider>,
-      );
-    });
+    await mount_runtime(
+      event_stream.event_source,
+      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
+    );
 
     await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
 
@@ -1668,44 +1260,14 @@ describe("DesktopStateProvider", () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/settings/app") {
-        return { settings: { app_language: "ZH" } };
-      }
-      if (path === "/api/session/project/snapshot") {
-        return { project: { path: "E:/demo/demo.lg", loaded: true } };
-      }
-      if (path === "/api/tasks/snapshot") {
-        return { task: { task_type: "translation", status: "idle", busy: false } };
-      }
-
-      const project_read_response = create_project_read_response(path, {
-        projectRevision: 6,
-        sectionRevisions: { items: 6 },
-      });
-      if (project_read_response !== null) {
-        return project_read_response;
-      }
-
-      throw new Error(`未预期的请求：${path}`);
+    install_runtime_api_mock({
+      project_read: { projectRevision: 6, sectionRevisions: { items: 6 } },
     });
 
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <DesktopStateProvider>
-          <RuntimeProbe
-            onSnapshot={(snapshot) => {
-              snapshots.push(snapshot);
-            }}
-          />
-        </DesktopStateProvider>,
-      );
-    });
+    await mount_runtime(
+      event_stream.event_source,
+      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
+    );
 
     await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
 
@@ -1765,44 +1327,14 @@ describe("DesktopStateProvider", () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/settings/app") {
-        return { settings: { app_language: "ZH" } };
-      }
-      if (path === "/api/session/project/snapshot") {
-        return { project: { path: "E:/demo/demo.lg", loaded: true } };
-      }
-      if (path === "/api/tasks/snapshot") {
-        return { task: { task_type: "translation", status: "idle", busy: false } };
-      }
-
-      const project_read_response = create_project_read_response(path, {
-        projectRevision: 5,
-        sectionRevisions: { items: 5 },
-      });
-      if (project_read_response !== null) {
-        return project_read_response;
-      }
-
-      throw new Error(`未预期的请求：${path}`);
+    install_runtime_api_mock({
+      project_read: { projectRevision: 5, sectionRevisions: { items: 5 } },
     });
 
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <DesktopStateProvider>
-          <RuntimeProbe
-            onSnapshot={(snapshot) => {
-              snapshots.push(snapshot);
-            }}
-          />
-        </DesktopStateProvider>,
-      );
-    });
+    await mount_runtime(
+      event_stream.event_source,
+      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
+    );
 
     await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
 
@@ -1869,40 +1401,12 @@ describe("DesktopStateProvider", () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/settings/app") {
-        return { settings: { app_language: "ZH" } };
-      }
-      if (path === "/api/session/project/snapshot") {
-        return { project: { path: "E:/demo/demo.lg", loaded: true } };
-      }
-      if (path === "/api/tasks/snapshot") {
-        return { task: { task_type: "translation", status: "idle", busy: false } };
-      }
-      const project_read_response = create_project_read_response(path);
-      if (project_read_response !== null) {
-        return project_read_response;
-      }
+    install_runtime_api_mock();
 
-      throw new Error(`未预期的请求：${path}`);
-    });
-
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <DesktopStateProvider>
-          <RuntimeProbe
-            onSnapshot={(snapshot) => {
-              snapshots.push(snapshot);
-            }}
-          />
-        </DesktopStateProvider>,
-      );
-    });
+    await mount_runtime(
+      event_stream.event_source,
+      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
+    );
 
     await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
 
@@ -1935,40 +1439,12 @@ describe("DesktopStateProvider", () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/settings/app") {
-        return { settings: { app_language: "ZH" } };
-      }
-      if (path === "/api/session/project/snapshot") {
-        return { project: { path: "E:/demo/demo.lg", loaded: true } };
-      }
-      if (path === "/api/tasks/snapshot") {
-        return { task: { task_type: "translation", status: "idle", busy: false } };
-      }
-      const project_read_response = create_project_read_response(path);
-      if (project_read_response !== null) {
-        return project_read_response;
-      }
+    install_runtime_api_mock();
 
-      throw new Error(`未预期的请求：${path}`);
-    });
-
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <DesktopStateProvider>
-          <RuntimeProbe
-            onSnapshot={(snapshot) => {
-              snapshots.push(snapshot);
-            }}
-          />
-        </DesktopStateProvider>,
-      );
-    });
+    await mount_runtime(
+      event_stream.event_source,
+      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
+    );
 
     await wait_for_condition(() => snapshots.at(-1)?.workbenchSeq === 1);
 
@@ -2001,43 +1477,14 @@ describe("DesktopStateProvider", () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/settings/app") {
-        return { settings: { app_language: "ZH" } };
-      }
-      if (path === "/api/session/project/snapshot") {
-        return { project: { path: "E:/demo/demo.lg", loaded: true } };
-      }
-      if (path === "/api/tasks/snapshot") {
-        return { task: { task_type: "translation", status: "idle", busy: false } };
-      }
-      const project_read_response = create_project_read_response(path, {
-        projectRevision: 5,
-        sectionRevisions: { items: 5 },
-      });
-      if (project_read_response !== null) {
-        return project_read_response;
-      }
-
-      throw new Error(`未预期的请求：${path}`);
+    install_runtime_api_mock({
+      project_read: { projectRevision: 5, sectionRevisions: { items: 5 } },
     });
 
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <DesktopStateProvider>
-          <RuntimeProbe
-            onSnapshot={(snapshot) => {
-              snapshots.push(snapshot);
-            }}
-          />
-        </DesktopStateProvider>,
-      );
-    });
+    await mount_runtime(
+      event_stream.event_source,
+      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
+    );
 
     await wait_for_condition(() => snapshots.at(-1)?.proofreadingSeq === 1);
 
@@ -2117,27 +1564,13 @@ describe("DesktopStateProvider", () => {
       throw new Error(`未预期的请求：${path}`);
     });
 
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <DesktopStateProvider>
-          <RuntimeProbe
-            onSnapshot={(snapshot) => {
-              snapshots.push(snapshot);
-            }}
-          />
-          <StateHandleProbe
-            onState={(state) => {
-              state_handle = state;
-            }}
-          />
-        </DesktopStateProvider>,
-      );
-    });
+    await mount_runtime(
+      event_stream.event_source,
+      <>
+        <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />
+        <StateHandleProbe onState={(state) => (state_handle = state)} />
+      </>,
+    );
 
     await wait_for_condition(() => snapshots.at(-1)?.projectPath === "E:/demo/old.lg");
 
@@ -2173,46 +1606,20 @@ describe("DesktopStateProvider", () => {
     const event_stream = create_event_source_stub();
     let state_handle: StateHandleRef = null;
 
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/settings/app") {
-        return { settings: { app_language: "ZH" } };
-      }
-      if (path === "/api/session/project/snapshot") {
-        return { project: { path: "E:/demo/demo.lg", loaded: true } };
-      }
-      if (path === "/api/tasks/snapshot") {
-        return { task: { task_type: "translation", status: "idle", busy: false } };
-      }
-      if (path === "/api/session/project/manifest") {
-        return create_project_read_response(path, {
-          projectRevision: 1,
-          sectionRevisions: { project: 1, files: 1, items: 1, analysis: 1 },
-        });
-      }
-      throw new Error(`未预期的请求：${path}`);
+    install_runtime_api_mock({
+      project_read: {
+        projectRevision: 1,
+        sectionRevisions: { project: 1, files: 1, items: 1, analysis: 1 },
+      },
     });
 
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <DesktopStateProvider>
-          <RuntimeProbe
-            onSnapshot={(snapshot) => {
-              snapshots.push(snapshot);
-            }}
-          />
-          <StateHandleProbe
-            onState={(state) => {
-              state_handle = state;
-            }}
-          />
-        </DesktopStateProvider>,
-      );
-    });
+    await mount_runtime(
+      event_stream.event_source,
+      <>
+        <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />
+        <StateHandleProbe onState={(state) => (state_handle = state)} />
+      </>,
+    );
 
     await wait_for_condition(() => state_handle !== null);
     await wait_for_condition(() =>
@@ -2266,58 +1673,12 @@ describe("DesktopStateProvider", () => {
     const snapshots: RuntimeSnapshot[] = [];
     const event_stream = create_event_source_stub();
 
-    api_fetch_mock.mockImplementation(async (path: string) => {
-      if (path === "/api/settings/app") {
-        return {
-          settings: {
-            app_language: "ZH",
-          },
-        };
-      }
+    install_runtime_api_mock();
 
-      if (path === "/api/session/project/snapshot") {
-        return {
-          project: {
-            path: "E:/demo/demo.lg",
-            loaded: true,
-          },
-        };
-      }
-
-      if (path === "/api/tasks/snapshot") {
-        return {
-          task: {
-            task_type: "translation",
-            status: "idle",
-            busy: false,
-          },
-        };
-      }
-
-      const project_read_response = create_project_read_response(path);
-      if (project_read_response !== null) {
-        return project_read_response;
-      }
-
-      throw new Error(`未预期的请求：${path}`);
-    });
-
-    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-
-    await act(async () => {
-      root?.render(
-        <DesktopStateProvider>
-          <RuntimeProbe
-            onSnapshot={(snapshot) => {
-              snapshots.push(snapshot);
-            }}
-          />
-        </DesktopStateProvider>,
-      );
-    });
+    await mount_runtime(
+      event_stream.event_source,
+      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
+    );
 
     await wait_for_condition(() => {
       return snapshots.at(-1)?.proofreadingSeq === 1;

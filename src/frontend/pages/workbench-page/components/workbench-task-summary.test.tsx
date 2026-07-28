@@ -6,12 +6,6 @@ import { WorkbenchTaskSummary } from "@frontend/pages/workbench-page/components/
 import type { WorkbenchTaskSummaryDisplay } from "@frontend/pages/workbench-page/types";
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 
-(
-  globalThis as typeof globalThis & {
-    IS_REACT_ACT_ENVIRONMENT?: boolean;
-  }
-).IS_REACT_ACT_ENVIRONMENT = true;
-
 const running_display: WorkbenchTaskSummaryDisplay = {
   status_text: "翻译中",
   trailing_text: "12 Line/s",

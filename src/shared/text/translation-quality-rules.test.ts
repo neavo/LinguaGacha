@@ -45,63 +45,23 @@ describe("translation-quality-rules", () => {
     expect(has_translation_retry_reached_review_threshold(2)).toBe(true);
   });
 
-  it("相似文本使用包含关系和字符集合 Jaccard 判断", () => {
+  it("非空文本包含或高度重叠时判为相似，空文本或低重叠文本不相似", () => {
     expect(is_translation_text_similar("alpha", "alpha!")).toBe(true);
-    expect(is_translation_text_similar("abc", "xyz")).toBe(false);
+    expect(is_translation_text_similar("abcdefghij", "abcdefghik")).toBe(true);
+    expect(is_translation_text_similar("abc", "abd")).toBe(false);
     expect(is_translation_text_similar("", "alpha")).toBe(false);
   });
 
-  it("日韩译中文时相似 issue 必须伴随对应残留", () => {
-    expect(
-      has_translation_similarity_issue({
-        src: "東京",
-        dst: "東京",
-        sourceLanguage: "JA",
-        targetLanguage: "ZH",
-      }),
-    ).toBe(false);
-    expect(
-      has_translation_similarity_issue({
-        src: "東京",
-        dst: "東京あ",
-        sourceLanguage: "JA",
-        targetLanguage: "ZH-HANT",
-      }),
-    ).toBe(true);
-    expect(
-      has_translation_similarity_issue({
-        src: "韓國",
-        dst: "韓國",
-        sourceLanguage: "KO",
-        targetLanguage: "ZH",
-      }),
-    ).toBe(false);
-    expect(
-      has_translation_similarity_issue({
-        src: "韓國",
-        dst: "韓國한",
-        sourceLanguage: "KO",
-        targetLanguage: "ZH",
-      }),
-    ).toBe(true);
-  });
-
-  it("非日韩译中文场景只要相似即可返回 issue", () => {
-    expect(
-      has_translation_similarity_issue({
-        src: "same text",
-        dst: "same text",
-        sourceLanguage: "EN",
-        targetLanguage: "ZH",
-      }),
-    ).toBe(true);
-    expect(
-      has_translation_similarity_issue({
-        src: "東京",
-        dst: "東京",
-        sourceLanguage: "JA",
-        targetLanguage: "EN",
-      }),
-    ).toBe(true);
+  it.each([
+    ["日译中无假名残留时不报告", "東京", "東京", "JA", "ZH", false],
+    ["日译中有假名残留时报告", "東京", "東京あ", "JA", "ZH-HANT", true],
+    ["韩译中无谚文残留时不报告", "韓國", "韓國", "KO", "ZH", false],
+    ["韩译中有谚文残留时报告", "韓國", "韓國한", "KO", "ZH", true],
+    ["非日韩译中时相似即报告", "same text", "same text", "EN", "ZH", true],
+    ["日韩译非中文时相似即报告", "東京", "東京", "JA", "EN", true],
+  ] as const)("%s", (_name, src, dst, sourceLanguage, targetLanguage, expected) => {
+    expect(has_translation_similarity_issue({ src, dst, sourceLanguage, targetLanguage })).toBe(
+      expected,
+    );
   });
 });

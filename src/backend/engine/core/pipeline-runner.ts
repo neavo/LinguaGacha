@@ -10,7 +10,6 @@ interface TaskPipelineOptions<TContext, TCommit> {
     signal: AbortSignal,
   ) => Promise<TaskPipelineWorkerResult<TContext, TCommit>>;
   commit: (entries: TCommit[]) => Promise<void>;
-  commit_interval_ms?: number;
 }
 
 /**
@@ -32,7 +31,6 @@ export class TaskPipeline<TContext, TCommit> {
     signal: AbortSignal,
   ) => Promise<TaskPipelineWorkerResult<TContext, TCommit>>;
   private readonly commit: (entries: TCommit[]) => Promise<void>;
-  private readonly commit_interval_ms: number;
   private readonly upstream_abort_listener: () => void;
   private commit_timer: ReturnType<typeof setTimeout> | null = null;
   private commit_promise: Promise<void> = Promise.resolve();
@@ -49,7 +47,6 @@ export class TaskPipeline<TContext, TCommit> {
     this.signal = this.abort_controller.signal;
     this.execute = options.execute;
     this.commit = options.commit;
-    this.commit_interval_ms = options.commit_interval_ms ?? TASK_PIPELINE_COMMIT_INTERVAL_MS;
     this.upstream_abort_listener = () => {
       this.abort_pipeline();
     };
@@ -135,7 +132,7 @@ export class TaskPipeline<TContext, TCommit> {
           this.commit_error = error;
           this.abort_pipeline(error);
         });
-    }, this.commit_interval_ms);
+    }, TASK_PIPELINE_COMMIT_INTERVAL_MS);
   }
 
   /**

@@ -15,7 +15,7 @@ import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
 import { resolve_app_locale } from "../../../../domain/app-language";
 import { format_i18n_message, type LocaleKey } from "../../../../shared/i18n";
 import { normalize_setting_snapshot } from "../../../../domain/setting";
-import { is_json_record, read_json_record } from "../../../../domain/json";
+import { is_json_record, read_json_integer, read_json_record } from "../../../../domain/json";
 import type { LogError } from "../../../../shared/error";
 
 /**
@@ -338,14 +338,14 @@ export class AnalysisWorkUnitRunner {
     const items_value = record["items"];
     const items: AnalysisItemContext[] = Array.isArray(items_value)
       ? items_value.filter(is_json_record).map((item) => ({
-          item_id: this.read_number(item["item_id"], 0),
+          item_id: read_json_integer(item["item_id"], 0),
           file_path: String(item["file_path"] ?? ""),
           src_text: String(item["src_text"] ?? ""),
         }))
       : [];
     return {
       file_path: String(record["file_path"] ?? ""),
-      retry_count: this.read_number(record["retry_count"], 0),
+      retry_count: read_json_integer(record["retry_count"], 0),
       items,
     };
   }
@@ -364,13 +364,5 @@ export class AnalysisWorkUnitRunner {
       source_language: config.source_language,
       target_language: config.target_language,
     };
-  }
-
-  /**
-   * 数字读取按整数兜底，避免坏 JSON 打断整个 worker
-   */
-  private read_number(value: JsonValue | undefined, fallback: number): number {
-    const number_value = Number(value ?? fallback);
-    return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
 }

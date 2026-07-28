@@ -5,8 +5,7 @@ import {
   is_action_shortcut_event,
   resolve_shortcut_platform,
   should_ignore_action_shortcut_event,
-  type ShortcutPlatform,
-} from "@frontend/widgets/interactions/keyboard-shortcuts";
+} from "./keyboard-shortcuts";
 
 type ShortcutEventInput = {
   key: string;
@@ -30,181 +29,81 @@ function create_shortcut_event(input: ShortcutEventInput): KeyboardEvent {
   } as KeyboardEvent;
 }
 
-describe("keyboard-shortcuts", () => {
-  it("根据平台生成保存、新增和删除快捷键标签", () => {
-    expect(get_shortcut_label("save", "default")).toBe("Ctrl+S");
-    expect(get_shortcut_label("create", "default")).toBe("Ctrl+N");
-    expect(get_shortcut_label("delete", "default")).toBe("Del");
-
-    expect(get_shortcut_label("save", "mac")).toBe("⌘S");
-    expect(get_shortcut_label("create", "mac")).toBe("⌘N");
-    expect(get_shortcut_label("delete", "mac")).toBe("⌘⌫");
+describe("keyboard shortcuts", () => {
+  it("按平台生成动作标签", () => {
+    expect(
+      (["save", "create", "delete"] as const).map((action) =>
+        get_shortcut_label(action, "default"),
+      ),
+    ).toEqual(["Ctrl+S", "Ctrl+N", "Del"]);
+    expect(
+      (["save", "create", "delete"] as const).map((action) => get_shortcut_label(action, "mac")),
+    ).toEqual(["⌘S", "⌘N", "⌘⌫"]);
   });
 
   it.each([
     ["MacIntel", "mac"],
     ["Win32", "default"],
     ["Linux x86_64", "default"],
-  ] as const)("把 %s 识别为 %s 快捷键平台", (platform, expected_platform) => {
-    expect(resolve_shortcut_platform({ platform })).toBe(expected_platform);
+  ] as const)("把 %s 识别为 %s 平台", (platform, expected) => {
+    expect(resolve_shortcut_platform({ platform })).toBe(expected);
   });
 
-  it("Windows/Linux 只响应 Ctrl+S、Ctrl+N 和裸 Delete", () => {
-    const platform: ShortcutPlatform = "default";
-
-    expect(
-      is_action_shortcut_event(
-        create_shortcut_event({ key: "s", ctrlKey: true }),
-        "save",
-        platform,
-      ),
-    ).toBe(true);
-    expect(
-      is_action_shortcut_event(
-        create_shortcut_event({ key: "n", ctrlKey: true }),
-        "create",
-        platform,
-      ),
-    ).toBe(true);
-    expect(
-      is_action_shortcut_event(create_shortcut_event({ key: "Delete" }), "delete", platform),
-    ).toBe(true);
-
-    expect(
-      is_action_shortcut_event(
-        create_shortcut_event({ key: "s", metaKey: true }),
-        "save",
-        platform,
-      ),
-    ).toBe(false);
-    expect(
-      is_action_shortcut_event(
-        create_shortcut_event({ key: "n", metaKey: true }),
-        "create",
-        platform,
-      ),
-    ).toBe(false);
-    expect(
-      is_action_shortcut_event(create_shortcut_event({ key: "Backspace" }), "delete", platform),
-    ).toBe(false);
+  it.each([
+    ["default", "save", { key: "s", ctrlKey: true }, true],
+    ["default", "create", { key: "n", ctrlKey: true }, true],
+    ["default", "delete", { key: "Delete" }, true],
+    ["default", "save", { key: "s", metaKey: true }, false],
+    ["default", "delete", { key: "Backspace" }, false],
+    ["mac", "save", { key: "s", metaKey: true }, true],
+    ["mac", "create", { key: "n", metaKey: true }, true],
+    ["mac", "delete", { key: "Backspace", metaKey: true }, true],
+    ["mac", "save", { key: "s", ctrlKey: true }, false],
+    ["mac", "delete", { key: "Backspace" }, false],
+    ["default", "save", { key: "s", ctrlKey: true, isComposing: true }, false],
+    ["default", "create", { key: "n", ctrlKey: true, altKey: true }, false],
+    ["default", "create", { key: "n", ctrlKey: true, shiftKey: true }, false],
+  ] as const)("%s 平台的 %s 快捷键（%o）匹配结果为 %s", (platform, action, input, expected) => {
+    expect(is_action_shortcut_event(create_shortcut_event(input), action, platform)).toBe(expected);
   });
 
-  it("macOS 只响应 Command+S、Command+N 和 Command+Backspace", () => {
-    const platform: ShortcutPlatform = "mac";
-
-    expect(
-      is_action_shortcut_event(
-        create_shortcut_event({ key: "s", metaKey: true }),
-        "save",
-        platform,
-      ),
-    ).toBe(true);
-    expect(
-      is_action_shortcut_event(
-        create_shortcut_event({ key: "n", metaKey: true }),
-        "create",
-        platform,
-      ),
-    ).toBe(true);
-    expect(
-      is_action_shortcut_event(
-        create_shortcut_event({ key: "Backspace", metaKey: true }),
-        "delete",
-        platform,
-      ),
-    ).toBe(true);
-
-    expect(
-      is_action_shortcut_event(
-        create_shortcut_event({ key: "s", ctrlKey: true }),
-        "save",
-        platform,
-      ),
-    ).toBe(false);
-    expect(
-      is_action_shortcut_event(
-        create_shortcut_event({ key: "n", ctrlKey: true }),
-        "create",
-        platform,
-      ),
-    ).toBe(false);
-    expect(
-      is_action_shortcut_event(create_shortcut_event({ key: "Backspace" }), "delete", platform),
-    ).toBe(false);
-  });
-
-  it("组合输入、Alt 和 Shift 会阻止保存与新增快捷键", () => {
-    expect(
-      is_action_shortcut_event(
-        create_shortcut_event({ key: "s", ctrlKey: true, isComposing: true }),
-        "save",
-        "default",
-      ),
-    ).toBe(false);
-    expect(
-      is_action_shortcut_event(
-        create_shortcut_event({ key: "n", ctrlKey: true, altKey: true }),
-        "create",
-        "default",
-      ),
-    ).toBe(false);
-    expect(
-      is_action_shortcut_event(
-        create_shortcut_event({ key: "n", ctrlKey: true, shiftKey: true }),
-        "create",
-        "default",
-      ),
-    ).toBe(false);
-  });
-
-  it("页面级新增和删除快捷键会避开文本编辑区域和弹窗内容", () => {
+  it("页面级新增和删除避开输入框、编辑器与弹窗", () => {
     const input = document.createElement("input");
     const editor = document.createElement("div");
-    const dialog_content = document.createElement("div");
-
+    const editor_child = document.createElement("span");
+    const dialog = document.createElement("div");
+    const dialog_child = document.createElement("button");
     editor.className = "cm-editor";
-    dialog_content.setAttribute("data-slot", "dialog-content");
-    document.body.append(input, editor, dialog_content);
+    editor.append(editor_child);
+    dialog.setAttribute("data-slot", "dialog-content");
+    dialog.append(dialog_child);
+    document.body.append(input, editor, dialog);
 
-    expect(
-      should_ignore_action_shortcut_event(
-        create_shortcut_event({ key: "Delete", target: input }),
-        "delete",
-      ),
-    ).toBe(true);
-    expect(
-      should_ignore_action_shortcut_event(
-        create_shortcut_event({ key: "Delete", target: editor }),
-        "delete",
-      ),
-    ).toBe(true);
-    expect(
-      should_ignore_action_shortcut_event(
-        create_shortcut_event({ key: "Delete", target: dialog_content }),
-        "delete",
-      ),
-    ).toBe(true);
-    expect(
-      should_ignore_action_shortcut_event(
-        create_shortcut_event({ key: "n", target: input }),
-        "create",
-      ),
-    ).toBe(true);
-    expect(
-      should_ignore_action_shortcut_event(
-        create_shortcut_event({ key: "n", target: dialog_content }),
-        "create",
-      ),
-    ).toBe(true);
-    expect(
-      should_ignore_action_shortcut_event(
-        create_shortcut_event({ key: "s", target: input }),
-        "save",
-      ),
-    ).toBe(false);
-
-    input.remove();
-    editor.remove();
-    dialog_content.remove();
+    try {
+      expect(
+        [input, editor_child, dialog_child].map((target) =>
+          should_ignore_action_shortcut_event(
+            create_shortcut_event({ key: "Delete", target }),
+            "delete",
+          ),
+        ),
+      ).toEqual([true, true, true]);
+      expect(
+        should_ignore_action_shortcut_event(
+          create_shortcut_event({ key: "n", target: dialog_child }),
+          "create",
+        ),
+      ).toBe(true);
+      expect(
+        should_ignore_action_shortcut_event(
+          create_shortcut_event({ key: "s", target: input }),
+          "save",
+        ),
+      ).toBe(false);
+    } finally {
+      input.remove();
+      editor.remove();
+      dialog.remove();
+    }
   });
 });

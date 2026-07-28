@@ -153,7 +153,6 @@ function build_desktop_api_error<data_type>(
   });
 }
 
-// read_api_envelope 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 async function read_api_envelope<data_type>(
   response: Response,
 ): Promise<ApiEnvelope<data_type> | null> {
@@ -180,7 +179,6 @@ function create_network_error(path: string, cause: unknown): DesktopApiError {
   });
 }
 
-// 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 function read_backend_api_base_url(): string {
   const base_url = normalize_backend_api_base_url(window.desktopApp.backendApi.baseUrl);
 
@@ -199,7 +197,6 @@ function build_api_url(base_url: string, path: string): string {
   return `${base_url}${normalized_path}`;
 }
 
-// 收口外部文本解析，解析失败时由这里决定降级口径。
 function parse_event_source_payload(event: MessageEvent<string>): Record<string, unknown> {
   try {
     return JsonTool.parseStrict<Record<string, unknown>>(event.data);
@@ -208,7 +205,6 @@ function parse_event_source_payload(event: MessageEvent<string>): Record<string,
   }
 }
 
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_backend_metadata(payload: HealthPayload): BackendMetadata | null {
   const version = payload.version?.trim();
   if (version === undefined || version === "") {
@@ -218,7 +214,6 @@ function normalize_backend_metadata(payload: HealthPayload): BackendMetadata | n
   return { version };
 }
 
-// 收口外部文本解析，解析失败时由这里决定降级口径。
 function parse_semantic_version(value: string): SemanticVersion | null {
   const version_match = value.match(/(\d+)\.(\d+)\.(\d+)/u);
   if (version_match === null) {
@@ -247,7 +242,6 @@ function compare_semantic_version(left: SemanticVersion, right: SemanticVersion)
   return left.patch - right.patch;
 }
 
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
 function normalize_github_release_update(
   payload: GithubReleasePayload,
   current_version: string,
@@ -281,7 +275,6 @@ function normalize_github_release_update(
   };
 }
 
-// probe_backend_api_candidate 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 async function probe_backend_api_candidate(base_url: string): Promise<BackendMetadata | null> {
   const abort_controller = new AbortController();
   const timeout_id = window.setTimeout(() => {
@@ -347,7 +340,6 @@ async function resolve_backend_api_base_url(): Promise<string> {
   }
 }
 
-// get_backend_metadata 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export async function get_backend_metadata(): Promise<BackendMetadata> {
   await resolve_backend_api_base_url();
   if (cached_backend_metadata === null) {
@@ -357,7 +349,6 @@ export async function get_backend_metadata(): Promise<BackendMetadata> {
   return cached_backend_metadata;
 }
 
-// check_github_release_update 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export async function check_github_release_update(
   current_version: string,
 ): Promise<GithubReleaseUpdate | null> {
@@ -379,7 +370,6 @@ export async function check_github_release_update(
   }
 }
 
-// api_fetch 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export async function api_fetch<data_type>(
   path: string,
   body: Record<string, unknown> = {},
@@ -413,18 +403,15 @@ export async function report_renderer_error(report: RendererErrorReport): Promis
   await api_fetch<Record<string, never>>("/api/diagnostics/renderer-error", report);
 }
 
-// open_event_source_at_path 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 async function open_event_source_at_path(path: string): Promise<EventSource> {
   const base_url = await resolve_backend_api_base_url();
   return new EventSource(build_api_url(base_url, path));
 }
 
-// open_event_stream 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export async function open_event_stream(): Promise<EventSource> {
   return open_event_source_at_path("/api/events/stream");
 }
 
-// open_json_event_source_stream 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 async function* open_json_event_source_stream(args: {
   path: string;
   event_types: string[];
@@ -605,7 +592,6 @@ function normalize_log_detail(payload: unknown): LogDetail | null {
   };
 }
 
-// open_log_stream 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export async function* open_log_stream(): AsyncIterable<LogEvent> {
   for await (const event of open_json_event_source_stream({
     path: "/api/logs/stream",
@@ -626,7 +612,6 @@ export async function read_log_detail(id: string): Promise<LogDetail | null> {
   return normalize_log_detail(payload.detail);
 }
 
-// open_external_url 封装当前模块的共享逻辑，避免重复实现同一维护规则。
 export async function open_external_url(url: string): Promise<void> {
   const normalized_url = url.trim();
 

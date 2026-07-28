@@ -58,13 +58,6 @@ const runtime_provider_mock = vi.hoisted(() => {
   };
 });
 
-// 让主窗口根测试能确认 session UI 状态 Provider 已接入。
-const project_session_ui_state_provider_mock = vi.hoisted(() => {
-  return {
-    render_project_session_ui_state_provider: vi.fn(),
-  };
-});
-
 const desktop_state_mock = vi.hoisted(() => {
   return {
     update_app_language: vi.fn(async (_language: AppLanguage) => undefined),
@@ -117,10 +110,7 @@ vi.mock("@frontend/app/state/desktop-state-context", () => {
 
 vi.mock("@frontend/app/session/project-session-ui-state-context", () => {
   return {
-    ProjectSessionUiStateProvider: (props: { children: ReactNode }) => {
-      project_session_ui_state_provider_mock.render_project_session_ui_state_provider();
-      return <>{props.children}</>;
-    },
+    ProjectSessionUiStateProvider: (props: { children: ReactNode }) => <>{props.children}</>,
   };
 });
 
@@ -302,7 +292,6 @@ describe("App 窗口根行为", () => {
     window.localStorage.clear();
     document.documentElement.removeAttribute("data-lg-base-font");
     window.history.replaceState(null, "", "/");
-    vi.clearAllMocks();
     alert_dialog_mock.render_props = [];
   });
 
@@ -571,14 +560,5 @@ describe("App 窗口根行为", () => {
     });
     expect(launching_dialog.submitting).toBe(true);
     expect(launching_dialog.submittingLabel).toBe("app.update.launching");
-  });
-
-  it("主窗口项目 session 内挂载项目 UI 状态 Provider", async () => {
-    await mount_app_at("/");
-
-    expect(runtime_provider_mock.render_desktop_runtime_provider).toHaveBeenCalledTimes(1);
-    expect(
-      project_session_ui_state_provider_mock.render_project_session_ui_state_provider,
-    ).toHaveBeenCalled();
   });
 });

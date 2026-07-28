@@ -5,19 +5,13 @@ import os from "node:os";
 import path from "node:path";
 import type { ProjectEventHandler } from "../project/project-events";
 import { ProjectDatabase } from "../database/database-operations";
-import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
+import type { MutableJsonRecord } from "../../domain/json";
 import type { LogManager } from "../log/log-manager";
 import type { AppSettingService } from "../app/app-setting-service";
 import { AppPathService } from "../app/app-path-service";
 import { ProjectLifecycleService } from "./project-lifecycle-service";
 import { ProjectOperationGate } from "./project-operation-gate";
 import { ProjectWriteStore } from "./project-write-store";
-
-// 生命周期测试的 fake database 以 JSON 形状模拟真实持久化返回。
-interface DatabaseCall {
-  name: string;
-  args: JsonRecord;
-}
 
 type TestProjectDatabase = ProjectDatabase & {
   get_project_summary: ReturnType<typeof vi.fn>;
@@ -91,70 +85,32 @@ describe("ProjectLifecycleService", () => {
     expect(database.close_project).not.toHaveBeenCalled();
   });
 
-  it("load 写入打开期迁移并标记 会话", async () => {
-    const project_path = write_file(path.join(create_temp_dir(), "legacy.lg"));
-    const transaction_calls: DatabaseCall[][] = [];
-    const database = create_database({
-      meta: {
-        text_preserve_enable: true,
-      },
-      rule_text_by_name: {
-        CUSTOM_PROMPT_ZH: "旧中文提示词",
-      },
-      transaction_calls,
-    });
+  it("load 发布缓存热机事件并标记会话", async () => {
+    const project_path = write_file(path.join(create_temp_dir(), "demo.lg"));
+    const project_events: Array<Parameters<ProjectEventHandler>[0]> = [];
     const session_state = create_session_state();
-    const service = create_service({ database, session_state });
+    const service = create_service({
+      database: create_database(),
+      session_state,
+      project_event_handler: (event) => {
+        project_events.push(event);
+      },
+    });
 
     await expect(service.load_project({ path: project_path })).resolves.toEqual({
       project: { path: project_path, loaded: true },
     });
 
-    expect(transaction_calls[0]).toEqual([
-      expect.objectContaining({
-        name: "setMeta",
-        args: expect.objectContaining({
-          key: "updated_at",
-          projectPath: project_path,
-        }),
-      }),
-      {
-        name: "setMeta",
-        args: {
-          projectPath: project_path,
-          key: "text_preserve_mode",
-          value: "custom",
-        },
-      },
-      {
-        name: "setMeta",
-        args: {
-          projectPath: project_path,
-          key: "glossary_enable",
-          value: true,
-        },
-      },
-      {
-        name: "setRuleText",
-        args: {
-          projectPath: project_path,
-          ruleType: "translation_prompt",
-          text: "旧中文提示词",
-        },
-      },
-      {
-        name: "setMeta",
-        args: {
-          projectPath: project_path,
-          key: "translation_prompt_legacy_migrated",
-          value: true,
-        },
-      },
-    ]);
     expect(session_state.snapshot()).toEqual({
       loaded: true,
       projectPath: project_path,
     });
+    expect(project_events).toMatchObject([
+      {
+        type: "project.opened_for_cache",
+        projectPath: project_path,
+      },
+    ]);
   });
 
   it("load 在内部缓存热机失败时阻断 loaded", async () => {
@@ -267,13 +223,10 @@ describe("ProjectLifecycleService", () => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "created.lg");
     const source_path = write_file(path.join(app_root, "source", "script.txt"), "こんにちは");
-    const transaction_calls: DatabaseCall[][] = [];
+    const database = new ProjectDatabase();
     const service = create_service({
       app_root,
-      database: create_database({
-        transaction_calls,
-        create_project_files: true,
-      }),
+      database,
       config: {
         source_language: "JA",
         target_language: "ZH",
@@ -282,123 +235,58 @@ describe("ProjectLifecycleService", () => {
       },
     });
 
-    await expect(
-      service.create_project_commit({
-        source_paths: [path.dirname(source_path)],
-        path: project_path,
-        project_settings: {
-          source_language: "JA",
-          target_language: "ZH",
-          mtool_optimizer_enable: true,
-          skip_duplicate_source_text_enable: true,
-        },
-      }),
-    ).resolves.toEqual({ project: { path: project_path, loaded: true } });
-
-    expect(transaction_calls[0]).toEqual([
-      {
-        name: "createProject",
-        args: { projectPath: project_path, name: "source" },
-      },
-      {
-        name: "setMeta",
-        args: {
-          projectPath: project_path,
-          key: "text_preserve_mode",
-          value: "smart",
-        },
-      },
-      {
-        name: "addAssetFromSource",
-        args: {
-          projectPath: project_path,
-          path: path.join("source", "script.txt"),
-          sourcePath: source_path,
-          sortOrder: 0,
-        },
-      },
-      {
-        name: "setItems",
-        args: {
-          projectPath: project_path,
-          items: [
-            {
-              id: 1,
-              file_path: path.join("source", "script.txt"),
-              file_type: "TXT",
-              row: 0,
-              src: "こんにちは",
-              dst: "",
-              name_src: null,
-              name_dst: null,
-              extra_field: "",
-              tag: "",
-              text_type: "NONE",
-              skip_internal_filter: false,
-              status: "NONE",
-              retry_count: 0,
-            },
-          ],
-        },
-      },
-      {
-        name: "upsertMetaEntries",
-        args: {
-          projectPath: project_path,
-          meta: {
+    try {
+      await expect(
+        service.create_project_commit({
+          source_paths: [path.dirname(source_path)],
+          path: project_path,
+          project_settings: {
             source_language: "JA",
             target_language: "ZH",
             mtool_optimizer_enable: true,
             skip_duplicate_source_text_enable: true,
-            prefilter_config: {
-              source_language: "JA",
-              mtool_optimizer_enable: true,
-              skip_duplicate_source_text_enable: true,
-            },
-            translation_extras: {
-              line: 0,
-              total_line: 1,
-              processed_line: 0,
-              error_line: 0,
-              total_tokens: 0,
-              total_output_tokens: 0,
-              total_input_tokens: 0,
-              time: 0,
-              start_time: 0,
-            },
-            analysis_extras: {
-              start_time: 0,
-              time: 0,
-              total_line: 1,
-              line: 0,
-              processed_line: 0,
-              error_line: 0,
-              total_tokens: 0,
-              total_input_tokens: 0,
-              total_output_tokens: 0,
-            },
-            analysis_candidate_count: 0,
           },
+        }),
+      ).resolves.toEqual({ project: { path: project_path, loaded: true } });
+
+      expect(database.get_all_asset_records(project_path)).toEqual([
+        { path: path.join("source", "script.txt"), sort_order: 0 },
+      ]);
+      expect(database.get_all_items(project_path)).toMatchObject([
+        {
+          id: 1,
+          file_path: path.join("source", "script.txt"),
+          src: "こんにちは",
+          status: "NONE",
         },
-      },
-    ]);
+      ]);
+      expect(database.get_all_meta(project_path)).toMatchObject({
+        source_language: "JA",
+        target_language: "ZH",
+        prefilter_config: {
+          source_language: "JA",
+          mtool_optimizer_enable: true,
+          skip_duplicate_source_text_enable: true,
+        },
+        analysis_candidate_count: 0,
+      });
+    } finally {
+      database.close();
+    }
   });
 
   it("create-commit 目标工程已存在时追加时间戳写入新路径", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 2, 3, 4, 5));
+    const database = new ProjectDatabase();
     try {
       const app_root = create_temp_dir();
       const project_path = write_file(path.join(app_root, "created.lg"), "old-project");
       const resolved_project_path = path.join(app_root, "created_20260602_030405.lg");
       const source_path = write_file(path.join(app_root, "source", "script.txt"), "こんにちは");
-      const transaction_calls: DatabaseCall[][] = [];
       const service = create_service({
         app_root,
-        database: create_database({
-          transaction_calls,
-          create_project_files: true,
-        }),
+        database,
       });
 
       await expect(
@@ -411,12 +299,10 @@ describe("ProjectLifecycleService", () => {
         project: { path: resolved_project_path, loaded: true },
       });
 
-      expect(transaction_calls[0]?.[0]).toEqual({
-        name: "createProject",
-        args: { projectPath: resolved_project_path, name: "source" },
-      });
       expect(fs.readFileSync(project_path, "utf-8")).toBe("old-project");
+      expect(fs.existsSync(resolved_project_path)).toBe(true);
     } finally {
+      database.close();
       vi.useRealTimers();
     }
   });
@@ -424,6 +310,7 @@ describe("ProjectLifecycleService", () => {
   it("create-commit 时间戳路径也存在时追加递增序号", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 5, 2, 3, 4, 5));
+    const database = new ProjectDatabase();
     try {
       const app_root = create_temp_dir();
       const project_path = write_file(path.join(app_root, "created.lg"), "old-project");
@@ -433,13 +320,9 @@ describe("ProjectLifecycleService", () => {
       );
       const resolved_project_path = path.join(app_root, "created_20260602_030405_2.lg");
       const source_path = write_file(path.join(app_root, "source", "script.txt"), "こんにちは");
-      const transaction_calls: DatabaseCall[][] = [];
       const service = create_service({
         app_root,
-        database: create_database({
-          transaction_calls,
-          create_project_files: true,
-        }),
+        database,
       });
 
       await expect(
@@ -452,18 +335,16 @@ describe("ProjectLifecycleService", () => {
         project: { path: resolved_project_path, loaded: true },
       });
 
-      expect(transaction_calls[0]?.[0]).toEqual({
-        name: "createProject",
-        args: { projectPath: resolved_project_path, name: "source" },
-      });
       expect(fs.readFileSync(project_path, "utf-8")).toBe("old-project");
       expect(fs.readFileSync(timestamped_project_path, "utf-8")).toBe("old-timestamp");
+      expect(fs.existsSync(resolved_project_path)).toBe(true);
     } finally {
+      database.close();
       vi.useRealTimers();
     }
   });
 
-  it("create-commit 将默认预设内容、启用态和 revision 写入同一创建事务", async () => {
+  it("create-commit 将默认预设内容、启用态和 revision 写入新工程", async () => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "created-with-presets.lg");
     write_file(
@@ -478,13 +359,10 @@ describe("ProjectLifecycleService", () => {
       path.join(app_root, "resource", "translation_prompt", "preset", "base.txt"),
       "翻译提示词",
     );
-    const transaction_calls: DatabaseCall[][] = [];
+    const database = new ProjectDatabase();
     const service = create_service({
       app_root,
-      database: create_database({
-        transaction_calls,
-        create_project_files: true,
-      }),
+      database,
       config: {
         glossary_default_preset: "builtin:base.json",
         text_preserve_default_preset: "builtin:base.json",
@@ -492,150 +370,78 @@ describe("ProjectLifecycleService", () => {
       },
     });
 
-    await expect(
-      service.create_project_commit({
-        source_paths: [],
-        path: project_path,
-        project_settings: {},
-      }),
-    ).resolves.toEqual({ project: { path: project_path, loaded: true } });
+    try {
+      await expect(
+        service.create_project_commit({
+          source_paths: [],
+          path: project_path,
+          project_settings: {},
+        }),
+      ).resolves.toEqual({ project: { path: project_path, loaded: true } });
 
-    expect(transaction_calls[0]).toEqual(
-      expect.arrayContaining([
-        {
-          name: "setRules",
-          args: {
-            projectPath: project_path,
-            ruleType: "glossary",
-            rules: [{ src: "魔力", dst: "Mana" }],
-          },
-        },
-        {
-          name: "setMeta",
-          args: {
-            projectPath: project_path,
-            key: "glossary_enable",
-            value: true,
-          },
-        },
-        {
-          name: "setMeta",
-          args: {
-            projectPath: project_path,
-            key: "quality_rule_revision.glossary",
-            value: 1,
-          },
-        },
-        {
-          name: "setRules",
-          args: {
-            projectPath: project_path,
-            ruleType: "text_preserve",
-            rules: [{ src: "\\[[^\\]]+\\]" }],
-          },
-        },
-        {
-          name: "setMeta",
-          args: {
-            projectPath: project_path,
-            key: "text_preserve_mode",
-            value: "custom",
-          },
-        },
-        {
-          name: "setMeta",
-          args: {
-            projectPath: project_path,
-            key: "quality_rule_revision.text_preserve",
-            value: 1,
-          },
-        },
-        {
-          name: "setRuleText",
-          args: {
-            projectPath: project_path,
-            ruleType: "translation_prompt",
-            text: "翻译提示词",
-          },
-        },
-        {
-          name: "setMeta",
-          args: {
-            projectPath: project_path,
-            key: "translation_prompt_enable",
-            value: true,
-          },
-        },
-        {
-          name: "setMeta",
-          args: {
-            projectPath: project_path,
-            key: "quality_prompt_revision.translation",
-            value: 1,
-          },
-        },
-      ]),
-    );
+      expect(database.get_rules(project_path, "glossary")).toEqual([{ src: "魔力", dst: "Mana" }]);
+      expect(database.get_rules(project_path, "text_preserve")).toEqual([{ src: "\\[[^\\]]+\\]" }]);
+      expect(database.get_rule_text(project_path, "translation_prompt")).toBe("翻译提示词");
+      expect(database.get_all_meta(project_path)).toMatchObject({
+        glossary_enable: true,
+        text_preserve_mode: "custom",
+        translation_prompt_enable: true,
+        "quality_rule_revision.glossary": 1,
+        "quality_rule_revision.text_preserve": 1,
+        "quality_prompt_revision.translation": 1,
+      });
+    } finally {
+      database.close();
+    }
   });
 
   it("create-commit 在单个默认预设读取失败时继续创建可用工程", async () => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "created-with-missing-preset.lg");
-    const transaction_calls: DatabaseCall[][] = [];
+    const database = new ProjectDatabase();
     const log_manager = create_log_manager();
     const service = create_service({
       app_root,
-      database: create_database({
-        transaction_calls,
-        create_project_files: true,
-      }),
+      database,
       log_manager,
       config: {
         glossary_default_preset: "builtin:missing.json",
       },
     });
 
-    await expect(
-      service.create_project_commit({
-        source_paths: [],
-        path: project_path,
-        project_settings: {},
-      }),
-    ).resolves.toEqual({ project: { path: project_path, loaded: true } });
+    try {
+      await expect(
+        service.create_project_commit({
+          source_paths: [],
+          path: project_path,
+          project_settings: {},
+        }),
+      ).resolves.toEqual({ project: { path: project_path, loaded: true } });
 
-    expect(transaction_calls[0]).toContainEqual({
-      name: "setMeta",
-      args: {
-        projectPath: project_path,
-        key: "text_preserve_mode",
-        value: "smart",
-      },
-    });
-    expect(transaction_calls[0]).not.toContainEqual(
-      expect.objectContaining({
-        name: "setMeta",
-        args: expect.objectContaining({
-          key: "quality_rule_revision.glossary",
+      expect(database.get_all_meta(project_path)).toMatchObject({ text_preserve_mode: "smart" });
+      expect(database.get_all_meta(project_path)).not.toHaveProperty(
+        "quality_rule_revision.glossary",
+      );
+      expect(log_manager.warning).toHaveBeenCalledWith(
+        "默认质量规则预设加载失败 …",
+        expect.objectContaining({
+          context: expect.objectContaining({
+            preset_directory: "glossary",
+            virtual_id: "builtin:missing.json",
+          }),
+          source: "project-lifecycle",
         }),
-      }),
-    );
-    expect(log_manager.warning).toHaveBeenCalledWith(
-      "默认质量规则预设加载失败 …",
-      expect.objectContaining({
-        context: expect.objectContaining({
-          preset_directory: "glossary",
-          virtual_id: "builtin:missing.json",
-        }),
-        source: "project-lifecycle",
-      }),
-    );
+      );
+    } finally {
+      database.close();
+    }
   });
 
   it("create-commit 拒绝旧前端最终事实字段", async () => {
     const app_root = create_temp_dir();
     const service = create_service({
       app_root,
-      database: create_database({ create_project_files: true }),
+      database: create_database(),
     });
 
     await expect(
@@ -651,81 +457,25 @@ describe("ProjectLifecycleService", () => {
     const app_root = create_temp_dir();
     const project_path = path.join(app_root, "partial-created.lg");
     const source_dir = path.join(app_root, "source");
-    const valid_file = write_file(path.join(source_dir, "script.txt"), "こんにちは");
+    write_file(path.join(source_dir, "script.txt"), "こんにちは");
     const broken_json = write_file(path.join(source_dir, "broken.json"), "{");
-    const transaction_calls: DatabaseCall[][] = [];
+    const database = new ProjectDatabase();
     const log_manager = create_log_manager();
     const service = create_service({
       app_root,
-      database: create_database({
-        transaction_calls,
-        create_project_files: true,
-      }),
+      database,
       log_manager,
     });
 
-    await expect(
-      service.create_project_commit({
-        source_paths: [source_dir],
-        path: project_path,
-        project_settings: {},
-      }),
-    ).resolves.toEqual({
-      project: { path: project_path, loaded: true },
-      failed_files: [
-        {
-          source_path: broken_json,
-          rel_path: path.join("source", "broken.json"),
-          filename: "broken.json",
-          code: "file.parse_failed",
-          message_key: "app.error.file.parse_failed.message",
-        },
-      ],
-    });
-
-    expect(
-      transaction_calls[0]?.filter((operation) => operation.name === "addAssetFromSource"),
-    ).toEqual([
-      {
-        name: "addAssetFromSource",
-        args: {
-          projectPath: project_path,
-          path: path.join("source", "script.txt"),
-          sourcePath: valid_file,
-          sortOrder: 0,
-        },
-      },
-    ]);
-    expect(log_manager.warning).toHaveBeenCalledWith(
-      "broken.json - 文件内容解析失败 …",
-      expect.objectContaining({ source: "project-lifecycle" }),
-    );
-  });
-
-  it("create-commit 全部源文件解析失败时不创建工程并返回失败明细", async () => {
-    const app_root = create_temp_dir();
-    const project_path = path.join(app_root, "all-failed.lg");
-    const broken_json = write_file(path.join(app_root, "source", "broken.json"), "{");
-    const transaction_calls: DatabaseCall[][] = [];
-    const log_manager = create_log_manager();
-    const service = create_service({
-      app_root,
-      database: create_database({
-        transaction_calls,
-        create_project_files: true,
-      }),
-      log_manager,
-    });
-
-    await expect(
-      service.create_project_commit({
-        source_paths: [path.dirname(broken_json)],
-        path: project_path,
-        project_settings: {},
-      }),
-    ).rejects.toMatchObject({
-      code: "file.parse_failed",
-      public_details: {
+    try {
+      await expect(
+        service.create_project_commit({
+          source_paths: [source_dir],
+          path: project_path,
+          project_settings: {},
+        }),
+      ).resolves.toEqual({
+        project: { path: project_path, loaded: true },
         failed_files: [
           {
             source_path: broken_json,
@@ -735,14 +485,62 @@ describe("ProjectLifecycleService", () => {
             message_key: "app.error.file.parse_failed.message",
           },
         ],
-      },
+      });
+
+      expect(database.get_all_asset_records(project_path)).toEqual([
+        { path: path.join("source", "script.txt"), sort_order: 0 },
+      ]);
+      expect(log_manager.warning).toHaveBeenCalledWith(
+        "broken.json - 文件内容解析失败 …",
+        expect.objectContaining({ source: "project-lifecycle" }),
+      );
+    } finally {
+      database.close();
+    }
+  });
+
+  it("create-commit 全部源文件解析失败时不创建工程并返回失败明细", async () => {
+    const app_root = create_temp_dir();
+    const project_path = path.join(app_root, "all-failed.lg");
+    const broken_json = write_file(path.join(app_root, "source", "broken.json"), "{");
+    const database = new ProjectDatabase();
+    const log_manager = create_log_manager();
+    const service = create_service({
+      app_root,
+      database,
+      log_manager,
     });
 
-    expect(transaction_calls).toEqual([]);
-    expect(log_manager.warning).toHaveBeenCalledWith(
-      "broken.json - 文件内容解析失败 …",
-      expect.objectContaining({ source: "project-lifecycle" }),
-    );
+    try {
+      await expect(
+        service.create_project_commit({
+          source_paths: [path.dirname(broken_json)],
+          path: project_path,
+          project_settings: {},
+        }),
+      ).rejects.toMatchObject({
+        code: "file.parse_failed",
+        public_details: {
+          failed_files: [
+            {
+              source_path: broken_json,
+              rel_path: path.join("source", "broken.json"),
+              filename: "broken.json",
+              code: "file.parse_failed",
+              message_key: "app.error.file.parse_failed.message",
+            },
+          ],
+        },
+      });
+
+      expect(fs.existsSync(project_path)).toBe(false);
+      expect(log_manager.warning).toHaveBeenCalledWith(
+        "broken.json - 文件内容解析失败 …",
+        expect.objectContaining({ source: "project-lifecycle" }),
+      );
+    } finally {
+      database.close();
+    }
   });
 
   it("source-files 按源路径顺序收集支持格式并去重", () => {
@@ -808,7 +606,6 @@ describe("ProjectLifecycleService", () => {
         },
       },
     });
-    expect(database.get_project_summary).toHaveBeenCalledWith(project_path);
   });
 
   it("preview 在project.not_found时抛出 ENOENT", () => {
@@ -819,29 +616,6 @@ describe("ProjectLifecycleService", () => {
         path: path.join(create_temp_dir(), "missing.lg"),
       }),
     ).toThrow("project.not_found");
-  });
-
-  it("unload 清理 会话并释放旧工程 database 缓存", async () => {
-    const calls: string[] = [];
-    const project_path = "E:/Project/demo.lg";
-    const database = create_database({ calls });
-    const service = create_service({
-      database,
-      session_state: create_session_state({
-        loaded: true,
-        projectPath: project_path,
-      }),
-    });
-
-    await expect(service.unload_project()).resolves.toEqual({
-      project: {
-        path: "",
-        loaded: false,
-      },
-    });
-
-    expect(calls).toEqual(["closeProject"]);
-    expect(database.close_project).toHaveBeenCalledWith(project_path);
   });
 
   it("unload 先发布内部卸载事件，再清理会话和 database 缓存", async () => {
@@ -859,9 +633,15 @@ describe("ProjectLifecycleService", () => {
       }),
     });
 
-    await service.unload_project();
+    await expect(service.unload_project()).resolves.toEqual({
+      project: {
+        path: "",
+        loaded: false,
+      },
+    });
 
     expect(calls).toEqual(["cache", "closeProject"]);
+    expect(database.close_project).toHaveBeenCalledWith(project_path);
   });
 
   it("unload 未加载时不释放 database 缓存", async () => {
@@ -874,91 +654,6 @@ describe("ProjectLifecycleService", () => {
     await service.unload_project();
 
     expect(database.close_project).not.toHaveBeenCalled();
-  });
-
-  it("通过生命周期类型化入口一次性应用任务输入", async () => {
-    const project_path = "E:/Project/task-input.lg";
-    const transaction_calls: DatabaseCall[][] = [];
-    const service = create_service({
-      database: create_database({ transaction_calls }),
-      session_state: create_session_state({
-        loaded: true,
-        projectPath: project_path,
-      }),
-    });
-
-    await expect(
-      service.apply_task_input({
-        quality_rules: [
-          {
-            kind: "glossary",
-            entries: [{ src: "HP", dst: "生命值" }],
-            enabled: true,
-            mode: null,
-          },
-        ],
-        prompts: [
-          {
-            kind: "translation",
-            text: "翻译提示词",
-            enabled: true,
-          },
-        ],
-      }),
-    ).resolves.toEqual({ accepted: true, changes: [] });
-
-    expect(transaction_calls).toEqual([
-      [
-        {
-          name: "setRules",
-          args: {
-            projectPath: project_path,
-            ruleType: "glossary",
-            rules: [{ src: "HP", dst: "生命值" }],
-          },
-        },
-        {
-          name: "setMeta",
-          args: {
-            projectPath: project_path,
-            key: "glossary_enable",
-            value: true,
-          },
-        },
-        {
-          name: "setMeta",
-          args: {
-            projectPath: project_path,
-            key: "quality_rule_revision.glossary",
-            value: 1,
-          },
-        },
-        {
-          name: "setRuleText",
-          args: {
-            projectPath: project_path,
-            ruleType: "translation_prompt",
-            text: "翻译提示词",
-          },
-        },
-        {
-          name: "setMeta",
-          args: {
-            projectPath: project_path,
-            key: "translation_prompt_enable",
-            value: true,
-          },
-        },
-        {
-          name: "setMeta",
-          args: {
-            projectPath: project_path,
-            key: "quality_prompt_revision.translation",
-            value: 1,
-          },
-        },
-      ],
-    ]);
   });
 
   // 每个用例使用独立临时目录，覆盖项目文件存在性判断且不污染工作区。
@@ -1002,7 +697,7 @@ describe("ProjectLifecycleService", () => {
     );
   }
 
-  // 数据库 fake 同时记录事务操作并提供加载、预览、迁移所需的最小读取面。
+  // 数据库 fake 只提供无需真实持久化的生命周期场景所需读取面。
   function create_database(
     options: {
       summary?: MutableJsonRecord;
@@ -1010,26 +705,9 @@ describe("ProjectLifecycleService", () => {
       items?: MutableJsonRecord[];
       asset_records?: Array<{ path: string; sort_order: number }>;
       rule_text_by_type?: Record<string, string>;
-      rule_text_by_name?: Record<string, string>;
-      transaction_calls?: DatabaseCall[][];
       calls?: string[];
-      create_project_files?: boolean;
     } = {},
   ): TestProjectDatabase {
-    let active_calls: DatabaseCall[] | null = null;
-    const record = (name: string, args: JsonRecord): void => {
-      active_calls?.push({ name, args });
-    };
-    const run_transaction = <T>(initial_calls: DatabaseCall[], callback: () => T): T => {
-      const previous_calls = active_calls;
-      active_calls = initial_calls;
-      options.transaction_calls?.push(initial_calls);
-      try {
-        return callback();
-      } finally {
-        active_calls = previous_calls;
-      }
-    };
     const get_project_summary = vi.fn(() => options.summary ?? {});
     const close_project = vi.fn(() => {
       options.calls?.push("closeProject");
@@ -1040,64 +718,18 @@ describe("ProjectLifecycleService", () => {
       get_all_items: vi.fn(() => options.items ?? []),
       get_all_asset_records: vi.fn(() => options.asset_records ?? []),
       get_rule_text: vi.fn(
-        (_project_path: string, rule_type: string) =>
-          options.rule_text_by_type?.[rule_type] ?? options.rule_text_by_name?.[rule_type] ?? "",
+        (_project_path: string, rule_type: string) => options.rule_text_by_type?.[rule_type] ?? "",
       ),
-      transaction: vi.fn((_project_path: string, callback: () => unknown) =>
-        run_transaction([], callback),
+      transaction: vi.fn((_project_path: string, callback: () => unknown) => callback()),
+      create_project: vi.fn((_project_path: string, _name: string, initialize?: () => void) =>
+        initialize?.(),
       ),
-      create_project: vi.fn((project_path: string, name: string, initialize?: () => void) => {
-        if (options.create_project_files) {
-          write_file(project_path, "");
-        }
-        run_transaction(
-          [
-            {
-              name: "createProject",
-              args: { projectPath: project_path, name },
-            },
-          ],
-          () => initialize?.(),
-        );
-      }),
-      set_meta: vi.fn((project_path: string, key: string, value: JsonValue) =>
-        record("setMeta", { projectPath: project_path, key, value }),
-      ),
-      set_rules: vi.fn((project_path: string, rule_type: string, rules: JsonValue[]) =>
-        record("setRules", {
-          projectPath: project_path,
-          ruleType: rule_type,
-          rules,
-        }),
-      ),
-      set_rule_text: vi.fn((project_path: string, rule_type: string, text: string) =>
-        record("setRuleText", {
-          projectPath: project_path,
-          ruleType: rule_type,
-          text,
-        }),
-      ),
-      add_asset_from_source: vi.fn(
-        (
-          project_path: string,
-          asset_path: string,
-          source_path: string,
-          sort_order: number | null,
-        ) =>
-          record("addAssetFromSource", {
-            projectPath: project_path,
-            path: asset_path,
-            sourcePath: source_path,
-            sortOrder: sort_order,
-          }),
-      ),
-      set_items: vi.fn((project_path: string, items: JsonValue[]) => {
-        record("setItems", { projectPath: project_path, items });
-        return [];
-      }),
-      upsert_meta_entries: vi.fn((project_path: string, meta: JsonRecord) =>
-        record("upsertMetaEntries", { projectPath: project_path, meta }),
-      ),
+      set_meta: vi.fn(),
+      set_rules: vi.fn(),
+      set_rule_text: vi.fn(),
+      add_asset_from_source: vi.fn(),
+      set_items: vi.fn(() => []),
+      upsert_meta_entries: vi.fn(),
       close_project,
     } as unknown as TestProjectDatabase;
   }

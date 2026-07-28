@@ -1,4 +1,3 @@
-import type { BackendServices } from "../../backend/bootstrap/backend-services";
 import type {
   ProjectPromptInput,
   ProjectQualityRuleInput,
@@ -13,17 +12,7 @@ import type { CLICommandOptions } from "../cli-parser";
 /**
  * 将 CLI 外部资源解析成项目领域输入；CLI 不接触数据库、meta key 或 revision。
  */
-export async function apply_cli_resources(
-  backend_services: BackendServices,
-  command: CLICommandOptions,
-): Promise<void> {
-  await backend_services.project.lifecycle.apply_task_input(await build_cli_task_input(command));
-}
-
-/**
- * CLI 临时工程只启用命令显式传入的规则和提示词。
- */
-async function build_cli_task_input(command: CLICommandOptions): Promise<ProjectTaskInput> {
+export async function build_cli_task_input(command: CLICommandOptions): Promise<ProjectTaskInput> {
   return {
     quality_rules: await Promise.all(
       QualityRule.all().map(async (rule) => {

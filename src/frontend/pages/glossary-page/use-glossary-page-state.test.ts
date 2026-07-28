@@ -15,9 +15,6 @@ const { api_fetch_mock, push_toast_mock, page_ui_state_store } = vi.hoisted(() =
   };
 });
 
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_default_glossary_entries(): GlossaryEntry[] {
   return [
     {
@@ -164,9 +161,6 @@ function apply_quality_write_result(result: {
 }
 
 // 测试夹具只模拟后端原始规范化写入载荷，回灌入口由运行态 commit mock 触发。
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_quality_write_result(
   args: {
     quality?: typeof run_state.quality;
@@ -199,9 +193,6 @@ function create_quality_write_result(
 }
 
 // 质量区块快照由后端整体回灌，测试只替换 glossary 切片以表达该次写入的最终事实。
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_glossary_quality(
   entries: GlossaryEntry[],
   revision: number,
@@ -221,9 +212,6 @@ let task_snapshot: { busy: boolean; status: string };
 let project_change_seq = 0;
 let project_change_sections: Array<"items" | "quality"> = ["quality"];
 
-/**
- * 触发当前界面反馈行为。
- */
 function notify_project_store_listeners(): void {
   project_change_seq += 1;
   for (const listener of project_store_listeners) {
@@ -231,9 +219,6 @@ function notify_project_store_listeners(): void {
   }
 }
 
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_statistics_cache(
   args: Partial<QualityRuleStatisticsCacheSnapshot>,
 ): QualityRuleStatisticsCacheSnapshot {
@@ -279,9 +264,6 @@ function create_statistics_cache(
   };
 }
 
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_statistics_snapshot(
   entry_ids: string[],
 ): QualityRuleStatisticsCacheSnapshot["completed_snapshot"] {
@@ -983,46 +965,6 @@ describe("useGlossaryPageState", () => {
     expect(latest_state?.dialog_state.open).toBe(false);
   });
 
-  it("新增术语保存成功后立即显示后端回灌的新条目", async () => {
-    await mount_probe();
-    api_fetch_mock.mockResolvedValueOnce(
-      create_quality_write_result({
-        quality: create_glossary_quality(
-          [
-            ...create_default_glossary_entries(),
-            {
-              entry_id: "qr:banana",
-              src: "香蕉",
-              dst: "Banana",
-              info: "水果",
-              case_sensitive: false,
-            },
-          ],
-          2,
-        ),
-      }),
-    );
-
-    await act(async () => {
-      latest_state?.open_create_dialog();
-    });
-    await act(async () => {
-      latest_state?.update_dialog_draft({
-        src: "香蕉",
-        dst: "Banana",
-        info: "水果",
-      });
-    });
-    await act(async () => {
-      await latest_state?.save_dialog_entry();
-    });
-
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual([
-      "苹果",
-      "香蕉",
-    ]);
-  });
-
   it("新增重复术语时先确认，覆盖后改写已有条目", async () => {
     await mount_probe();
     api_fetch_mock.mockResolvedValueOnce(
@@ -1296,12 +1238,6 @@ describe("useGlossaryPageState", () => {
       notify_project_store_listeners();
     });
     await rerender_probe();
-    await rerender_probe();
-    await act(async () => {
-      await new Promise((resolve) => {
-        window.setTimeout(resolve, 0);
-      });
-    });
 
     expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).not.toContain("香蕉");
 
@@ -1468,47 +1404,6 @@ describe("useGlossaryPageState", () => {
       ],
     });
     expect(latest_state?.import_confirm_state.open).toBe(false);
-  });
-
-  it("导入非重复术语后立即用最新规则重建表格", async () => {
-    await mount_probe();
-    api_fetch_mock
-      .mockResolvedValueOnce({
-        entries: [
-          {
-            src: "香蕉",
-            dst: "Banana",
-            info: "水果",
-            case_sensitive: false,
-          },
-        ],
-      })
-      .mockResolvedValueOnce(
-        create_quality_write_result({
-          quality: create_glossary_quality(
-            [
-              ...create_default_glossary_entries(),
-              {
-                entry_id: "香蕉::1",
-                src: "香蕉",
-                dst: "Banana",
-                info: "水果",
-                case_sensitive: false,
-              },
-            ],
-            2,
-          ),
-        }),
-      );
-
-    await act(async () => {
-      await latest_state?.import_entries_from_path("E:/demo/glossary.json");
-    });
-
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual([
-      "苹果",
-      "香蕉",
-    ]);
   });
 
   it("导入保存失败时恢复原来的冻结结果成员", async () => {

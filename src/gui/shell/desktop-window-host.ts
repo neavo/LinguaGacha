@@ -161,7 +161,7 @@ export function sync_title_bar_overlay(
     return;
   }
 
-  target_window.setTitleBarOverlay(build_title_bar_overlay(theme_mode));
+  target_window.setTitleBarOverlay(resolve_title_bar_overlay_theme(theme_mode));
 }
 
 /**
@@ -392,13 +392,6 @@ function register_window_runtime_events(
 }
 
 /**
- * 根据当前主题生成原生标题栏 Overlay 配色，保证系统按钮和网页壳层视觉一致
- */
-function build_title_bar_overlay(theme_mode: ThemeMode): Electron.TitleBarOverlay {
-  return resolve_title_bar_overlay_theme(theme_mode);
-}
-
-/**
  * 加载同一份 renderer 入口；日志窗口通过 query 进入独立页面模式
  */
 function load_renderer_entry(
@@ -459,7 +452,7 @@ function create_window_options(
   } else if (uses_title_bar_overlay(process.platform as DesktopPlatform)) {
     // Windows 和 Linux 通过 Overlay 把原生控制按钮保留下来，避免沦为纯网页外壳
     window_options.titleBarStyle = "hidden";
-    window_options.titleBarOverlay = build_title_bar_overlay(
+    window_options.titleBarOverlay = resolve_title_bar_overlay_theme(
       nativeTheme.shouldUseDarkColors ? "dark" : "light",
     );
   } else {

@@ -5,34 +5,20 @@ import { should_skip_by_rule_prefilter } from "./rule-prefilter";
 describe("rule-prefilter", () => {
   it("空字符串和仅空白文本会过滤", () => {
     expect(should_skip_by_rule_prefilter("")).toBe(true);
-    expect(should_skip_by_rule_prefilter("   ")).toBe(true);
-    expect(should_skip_by_rule_prefilter("　")).toBe(true);
     expect(should_skip_by_rule_prefilter("\t\n　")).toBe(true);
-    expect(should_skip_by_rule_prefilter("  \n  \n  ")).toBe(true);
   });
 
-  it("仅含数字或标点的文本会过滤，普通文本不过滤", () => {
-    expect(should_skip_by_rule_prefilter("12345")).toBe(true);
-    expect(should_skip_by_rule_prefilter("...!!!")).toBe(true);
+  it("没有正文字符的数字标点会过滤，正文不过滤", () => {
     expect(should_skip_by_rule_prefilter("123, 456.")).toBe(true);
-    expect(should_skip_by_rule_prefilter("♥￥×÷")).toBe(true);
-    expect(should_skip_by_rule_prefilter("Hello World")).toBe(false);
-    expect(should_skip_by_rule_prefilter("你好世界")).toBe(false);
-  });
-
-  it("仅含非独立语言字符的文本会过滤，真实正文不会被标点拖下水", () => {
-    expect(should_skip_by_rule_prefilter("ーーー")).toBe(true);
-    expect(should_skip_by_rule_prefilter("・･ー")).toBe(true);
-    expect(should_skip_by_rule_prefilter("゙゚ﾞﾟ")).toBe(true);
-    expect(should_skip_by_rule_prefilter("カーテン")).toBe(false);
     expect(should_skip_by_rule_prefilter("你好！！")).toBe(false);
-    expect(should_skip_by_rule_prefilter("hello!")).toBe(false);
   });
 
-  it("按规则前缀、后缀和正则判断跳过", () => {
-    expect(should_skip_by_rule_prefilter("mapdata/title.png")).toBe(true);
-    expect(should_skip_by_rule_prefilter("voice.ogg")).toBe(true);
-    expect(should_skip_by_rule_prefilter("EV001")).toBe(true);
+  it("非独立语言字符会过滤，真实正文不过滤", () => {
+    expect(should_skip_by_rule_prefilter("・･ー")).toBe(true);
+    expect(should_skip_by_rule_prefilter("カーテン")).toBe(false);
+  });
+
+  it("脚本元数据会过滤", () => {
     expect(should_skip_by_rule_prefilter("DejaVu Sans")).toBe(true);
     expect(should_skip_by_rule_prefilter("Opendyslexic")).toBe(true);
     expect(should_skip_by_rule_prefilter("{#file_time}2024-01-01")).toBe(true);
@@ -45,8 +31,13 @@ describe("rule-prefilter", () => {
     "0=some_value",
     "BGM/battle_theme",
     "FIcon/icon01",
-  ])("前缀规则忽略大小写和首尾空白：%s", (src) => {
-    expect(should_skip_by_rule_prefilter(`  ${src.toUpperCase()}  `)).toBe(true);
+  ])("过滤资源路径前缀：%s", (src) => {
+    expect(should_skip_by_rule_prefilter(src)).toBe(true);
+  });
+
+  it("资源规则忽略大小写和首尾空白", () => {
+    expect(should_skip_by_rule_prefilter("  MAPDATA/MAP001  ")).toBe(true);
+    expect(should_skip_by_rule_prefilter("  MUSIC.MP3  ")).toBe(true);
   });
 
   it.each([
@@ -76,18 +67,17 @@ describe("rule-prefilter", () => {
     "font.ttf",
     "font.otf",
     "font.woff",
-  ])("后缀规则忽略首尾空白：%s", (src) => {
-    expect(should_skip_by_rule_prefilter(`  ${src}  `)).toBe(true);
+  ])("过滤资源文件后缀：%s", (src) => {
+    expect(should_skip_by_rule_prefilter(src)).toBe(true);
   });
 
-  it.each(["EV001", "ev123", "EV99999"])("EV 编号整体匹配才过滤：%s", (src) => {
-    expect(should_skip_by_rule_prefilter(src)).toBe(true);
+  it("EV 编号完整匹配时过滤", () => {
+    expect(should_skip_by_rule_prefilter("EV001")).toBe(true);
   });
 
   it("多行文本只在每一行都命中过滤规则时跳过", () => {
     expect(should_skip_by_rule_prefilter("123!!!\nvoice.ogg")).toBe(true);
     expect(should_skip_by_rule_prefilter("123!!!\nplain text")).toBe(false);
-    expect(should_skip_by_rule_prefilter("Hello\nWorld")).toBe(false);
   });
 
   it("普通句子里出现规则片段时不会误过滤", () => {

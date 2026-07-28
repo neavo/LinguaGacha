@@ -51,10 +51,6 @@ type TextPreserveTableProps = {
   on_search_entry_relations: (entry_id: TextPreserveEntryId) => void;
 };
 
-function build_row_number_label(row_index: number): string {
-  return String(row_index + 1);
-}
-
 /** 交互控件和滚动条不应成为框选手势的起点。 */
 function should_ignore_box_selection_target(target_element: HTMLElement): boolean {
   return (
@@ -229,7 +225,7 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
         render_cell: (payload) => {
           return (
             <AppTableDragIndicator
-              row_number={build_row_number_label(payload.row_index)}
+              row_number={String(payload.row_index + 1)}
               can_drag={payload.can_drag}
               dragging={payload.dragging}
               drag_handle={payload.drag_handle}

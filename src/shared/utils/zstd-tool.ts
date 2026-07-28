@@ -10,11 +10,6 @@ const COMPRESSION_LEVEL = 3;
  */
 export class ZstdTool {
   /**
-   * 对外暴露当前压缩等级，便于迁移和测试确认物理格式参数
-   */
-  public static readonly COMPRESSION_LEVEL = COMPRESSION_LEVEL;
-
-  /**
    * 检查当前 Node 运行时是否具备 Zstd 压缩能力
    */
   public static isRuntimeAvailable(): boolean {
@@ -31,7 +26,7 @@ export class ZstdTool {
   public static compress(data: Buffer): Buffer {
     return zstdCompressSync(data, {
       params: {
-        [constants.ZSTD_c_compressionLevel]: this.COMPRESSION_LEVEL,
+        [constants.ZSTD_c_compressionLevel]: COMPRESSION_LEVEL,
       },
     });
   }

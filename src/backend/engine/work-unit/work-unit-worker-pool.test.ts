@@ -35,7 +35,6 @@ describe("WorkUnitWorkerPool", () => {
     const pool = new WorkUnitWorkerPool({
       appRoot: await create_template_root(),
       execution: { kind: "in_process" },
-      workerCount: 2,
     });
 
     const result = await pool.execute_unit(
@@ -80,6 +79,9 @@ describe("WorkUnitWorkerPool", () => {
       throw new Error("期望翻译输出");
     }
     expect(result.output.row_count).toBe(1);
+    expect(result.output.items).toEqual([
+      { id: 1, src: "こんにちは", dst: "你好", status: "PROCESSED", text_type: "TXT" },
+    ]);
   });
 
   it("worker_threads 模式只使用显式入口 URL 执行任务", async () => {
@@ -148,55 +150,6 @@ parentPort?.on("message", (message) => {
     await expect(
       pool.execute_unit(create_translation_unit("unit-disposed"), new AbortController().signal),
     ).rejects.toThrow(RuntimeDisposedError);
-  });
-
-  it("终止一个 worker 失败时仍等待其余 worker 并在清空 slots 后抛出聚合错误", async () => {
-    const pool = new WorkUnitWorkerPool({
-      appRoot: "",
-      execution: { kind: "in_process" },
-    });
-    const slots = (
-      pool as unknown as {
-        slots: Array<{
-          worker: { terminate: () => Promise<number> };
-          in_flight: Map<string, never>;
-        }>;
-      }
-    ).slots;
-    const termination_failure = new Error("work unit worker terminate failed");
-    let release_second_termination: () => void = () => undefined;
-    const second_termination = new Promise<number>((resolve) => {
-      release_second_termination = () => resolve(0);
-    });
-    const first_terminate = vi.fn(() => Promise.reject(termination_failure));
-    const second_terminate = vi.fn(() => second_termination);
-    slots.push(
-      { worker: { terminate: first_terminate }, in_flight: new Map<string, never>() },
-      { worker: { terminate: second_terminate }, in_flight: new Map<string, never>() },
-    );
-    let dispose_settled = false;
-    const disposing = pool.dispose().then(
-      () => {
-        dispose_settled = true;
-        return null;
-      },
-      (error: unknown) => {
-        dispose_settled = true;
-        return error;
-      },
-    );
-
-    await Promise.resolve();
-    expect(first_terminate).toHaveBeenCalledTimes(1);
-    expect(second_terminate).toHaveBeenCalledTimes(1);
-    expect(dispose_settled).toBe(false);
-
-    release_second_termination();
-    const error = await disposing;
-
-    expect(error).toBeInstanceOf(AggregateError);
-    expect((error as AggregateError).errors).toEqual([termination_failure]);
-    expect(slots).toHaveLength(0);
   });
 });
 

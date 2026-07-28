@@ -80,7 +80,6 @@ vi.mock("./desktop-window-host", () => {
 describe("桌面 IPC 宿主", () => {
   afterEach(() => {
     electron_mock.reset();
-    vi.clearAllMocks();
     vi.resetModules();
   });
 

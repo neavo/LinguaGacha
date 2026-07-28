@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 // electron mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const electron_mock = vi.hoisted(() => {
@@ -115,10 +115,6 @@ class FakeBrowserWindow {
 }
 
 describe("renderer process diagnostics", () => {
-  afterEach(() => {
-    vi.clearAllMocks();
-  });
-
   it("启动本地 Crashpad 收集且关闭上传", async () => {
     const { configure_renderer_crash_reporting } = await import("./renderer-process-diagnostics");
 

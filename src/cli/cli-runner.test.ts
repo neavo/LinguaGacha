@@ -1,226 +1,162 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { BackendBootstrapOptions } from "../backend/bootstrap/backend-bootstrap-types";
 import type { BackendBootstrapStartResult } from "../backend/bootstrap/backend-bootstrap-types";
 import type { BackendWorkerExecution } from "../backend/worker/worker-execution";
 import type { CLICommandOptions } from "./cli-parser";
 
-type FakeBackendServices = { marker: "backend-services" };
-type RunCliJobCall = {
-  backendServices: FakeBackendServices;
-  command: CLICommandOptions;
-  options: Record<string, unknown>;
-};
+const mocks = vi.hoisted(() => ({
+  backend_bootstrap_options: [] as unknown[],
+  backend_services: { marker: "backend-services" },
+  events: [] as string[],
+  start_result: undefined as unknown,
+  when_ready: vi.fn(),
+  resolve_proxy: vi.fn(),
+  start: vi.fn(),
+  stop: vi.fn(),
+  run_cli_job: vi.fn(),
+  write_stderr: vi.fn(),
+  write_stdout: vi.fn(),
+}));
 
-const MOCK_MODULES = [
-  "electron",
-  "../backend/bootstrap/backend-bootstrap",
-  "./job/cli-job-runner",
-  "./cli-output",
-] as const;
+vi.mock("electron", () => ({
+  app: { whenReady: mocks.when_ready },
+  session: { defaultSession: { resolveProxy: mocks.resolve_proxy } },
+}));
+
+vi.mock("../backend/bootstrap/backend-bootstrap", () => ({
+  BackendBootstrap: class {
+    public constructor(options: unknown) {
+      mocks.events.push("bootstrap");
+      mocks.backend_bootstrap_options.push(options);
+    }
+
+    public async start(): Promise<unknown> {
+      return await mocks.start();
+    }
+
+    public async stop(): Promise<void> {
+      await mocks.stop();
+    }
+  },
+}));
+
+vi.mock("./job/cli-job-runner", () => ({ run_cli_job: mocks.run_cli_job }));
+vi.mock("./cli-output", () => ({
+  write_stderr: mocks.write_stderr,
+  write_stdout: mocks.write_stdout,
+}));
+
+import { run_cli_command } from "./cli-runner";
 
 beforeEach(() => {
-  vi.resetModules();
-});
-
-afterEach(() => {
-  for (const module_id of MOCK_MODULES) {
-    vi.doUnmock(module_id);
-  }
-  vi.restoreAllMocks();
-  vi.resetModules();
+  mocks.backend_bootstrap_options.length = 0;
+  mocks.events.length = 0;
+  mocks.start_result = create_start_result();
+  mocks.when_ready.mockImplementation(async () => {
+    mocks.events.push("ready");
+  });
+  mocks.resolve_proxy.mockImplementation(async () => "DIRECT");
+  mocks.start.mockImplementation(async () => {
+    mocks.events.push("start");
+    return mocks.start_result;
+  });
+  mocks.stop.mockImplementation(async () => {
+    mocks.events.push("stop");
+  });
+  mocks.run_cli_job.mockImplementation(async (_backend, _command, status_reporter) => {
+    mocks.events.push("job");
+    (status_reporter as { emit_started: () => void }).emit_started();
+  });
+  mocks.write_stderr.mockImplementation((_line: string) => {
+    mocks.events.push("stderr");
+  });
 });
 
 describe("run_cli_command", () => {
-  it("等待 Electron ready 后注入系统代理解析器并执行 CLI job", async () => {
-    const harness = create_runner_harness();
-    const { run_cli_command } = await import("./cli-runner");
+  it("等待 Electron ready 后以无 Gateway 配置执行 CLI job", async () => {
+    const command = create_translate_command();
 
-    await run_cli_command("E:/App", create_translate_command(), { kind: "in_process" });
+    await run_cli_command("E:/App", command, { kind: "in_process" });
 
-    expect(harness.calls.events).toEqual(["ready", "bootstrap", "start", "job", "stop"]);
-    expect(harness.calls.backend_bootstrap_options).toHaveLength(1);
-    expect(harness.calls.backend_bootstrap_options[0]).toMatchObject({
+    expect(mocks.events).toEqual(["ready", "bootstrap", "start", "job", "stop"]);
+    const bootstrap_options = mocks.backend_bootstrap_options[0] as
+      | BackendBootstrapOptions
+      | undefined;
+    expect(bootstrap_options).toBeDefined();
+    expect(bootstrap_options).toMatchObject({
       appRoot: "E:/App",
       exposeApiGateway: false,
       logTargets: { console: false, window: false },
       workerExecution: { kind: "in_process" } satisfies BackendWorkerExecution,
     });
     await expect(
-      harness.calls.backend_bootstrap_options[0]?.systemProxyResolver?.resolveProxy(
-        "https://api.example/v1",
-      ),
+      bootstrap_options?.systemProxyResolver?.resolveProxy("https://api.example/v1"),
     ).resolves.toBe("DIRECT");
-    expect(harness.calls.proxy_resolve_urls).toEqual(["https://api.example/v1"]);
-    expect(harness.calls.run_cli_jobs).toHaveLength(1);
-    expect(harness.calls.run_cli_jobs[0]?.backendServices).toBe(harness.backend_services);
-    expect(harness.calls.run_cli_jobs[0]?.command.command).toBe("translate");
-    expect(harness.calls.stderr_lines).toEqual([]);
+    expect(mocks.resolve_proxy).toHaveBeenCalledWith("https://api.example/v1");
+    expect(mocks.run_cli_job).toHaveBeenCalledWith(
+      mocks.backend_services,
+      command,
+      expect.any(Object),
+    );
+    expect(mocks.write_stdout).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(mocks.write_stdout.mock.calls[0]?.[0]))).toMatchObject({
+      type: "started",
+      command: "translate",
+    });
   });
 
   it("检测到系统代理时只向 stderr 输出启动提示", async () => {
-    const harness = create_runner_harness({
+    mocks.start_result = create_start_result({
       systemProxyStartupNotice: {
         detected: true,
         proxiedOriginCount: 1,
         proxyDisplay: "http://127.0.0.1:7890",
       },
     });
-    const { run_cli_command } = await import("./cli-runner");
 
     await run_cli_command("E:/App", create_translate_command(), { kind: "in_process" });
 
-    expect(harness.calls.events).toEqual(["ready", "bootstrap", "start", "stderr", "job", "stop"]);
-    expect(harness.calls.stderr_lines).toEqual(["检查到系统代理设置 - http://127.0.0.1:7890"]);
-    expect(harness.calls.stdout_lines).toEqual([]);
+    expect(mocks.write_stderr).toHaveBeenCalledWith("检查到系统代理设置 - http://127.0.0.1:7890");
+    expect(mocks.write_stdout).toHaveBeenCalledOnce();
+    expect(JSON.parse(String(mocks.write_stdout.mock.calls[0]?.[0]))).toMatchObject({
+      type: "started",
+      command: "translate",
+    });
   });
 
   it("CLI job 与 Backend 收尾同时失败时保留两个异常和原始顺序", async () => {
     const job_failure = new Error("job failed");
     const stop_failure = new Error("stop failed");
-    const harness = create_runner_harness(
-      {},
-      { jobFailure: job_failure, stopFailure: stop_failure },
-    );
-    const { run_cli_command } = await import("./cli-runner");
-    let command_error: unknown;
+    mocks.run_cli_job.mockRejectedValue(job_failure);
+    mocks.stop.mockRejectedValue(stop_failure);
 
-    try {
-      await run_cli_command("E:/App", create_translate_command(), { kind: "in_process" });
-    } catch (error) {
-      command_error = error;
-    }
+    const command_error = await run_cli_command("E:/App", create_translate_command(), {
+      kind: "in_process",
+    }).catch((error: unknown) => error);
 
-    expect(harness.calls.events).toEqual(["ready", "bootstrap", "start", "job", "stop"]);
     expect(command_error).toBeInstanceOf(AggregateError);
     expect((command_error as AggregateError).errors).toEqual([job_failure, stop_failure]);
   });
 });
 
-/**
- * 搭建 CLI runner 测试夹具，用假的 Electron、BackendBootstrap 和 job 观察入口编排。
- */
-function create_runner_harness(
-  options: Partial<BackendBootstrapStartResult> = {},
-  failures: { jobFailure?: Error; stopFailure?: Error } = {},
-): {
-  backend_services: FakeBackendServices;
-  calls: {
-    backend_bootstrap_options: BackendBootstrapOptions[];
-    events: string[];
-    proxy_resolve_urls: string[];
-    run_cli_jobs: RunCliJobCall[];
-    stderr_lines: string[];
-    stdout_lines: string[];
+function create_start_result(
+  overrides: Partial<BackendBootstrapStartResult> = {},
+): BackendBootstrapStartResult {
+  return {
+    apiBaseUrl: null,
+    backendServices:
+      mocks.backend_services as unknown as BackendBootstrapStartResult["backendServices"],
+    readAppLanguage: () => "ZH",
+    systemProxyStartupNotice: {
+      detected: false,
+      proxiedOriginCount: 0,
+      proxyDisplay: null,
+    },
+    ...overrides,
   };
-} {
-  const backend_services: FakeBackendServices = { marker: "backend-services" };
-  const calls = {
-    backend_bootstrap_options: [] as BackendBootstrapOptions[],
-    events: [] as string[],
-    proxy_resolve_urls: [] as string[],
-    run_cli_jobs: [] as RunCliJobCall[],
-    stderr_lines: [] as string[],
-    stdout_lines: [] as string[],
-  };
-
-  class FakeBackendBootstrap {
-    private readonly options: BackendBootstrapOptions; // 记录 CLI 注入给 BackendBootstrap 的启动契约
-
-    public constructor(options: BackendBootstrapOptions) {
-      this.options = options;
-      calls.events.push("bootstrap");
-      calls.backend_bootstrap_options.push(options);
-    }
-
-    /**
-     * start 返回同进程 job 需要的 BackendServices 句柄。
-     */
-    public async start(): Promise<BackendBootstrapStartResult> {
-      calls.events.push("start");
-      return {
-        apiBaseUrl: null,
-        backendServices:
-          backend_services as unknown as BackendBootstrapStartResult["backendServices"],
-        readAppLanguage: () => "ZH",
-        systemProxyStartupNotice: {
-          detected: false,
-          proxiedOriginCount: 0,
-          proxyDisplay: null,
-        },
-        ...options,
-      };
-    }
-
-    /**
-     * stop 只记录收尾顺序，真实资源释放由 BackendBootstrap 单元测试覆盖。
-     */
-    public async stop(): Promise<void> {
-      calls.events.push("stop");
-      if (failures.stopFailure !== undefined) {
-        throw failures.stopFailure;
-      }
-    }
-  }
-
-  vi.doMock("electron", () => {
-    return {
-      app: {
-        whenReady: async () => {
-          calls.events.push("ready");
-        },
-      },
-      session: {
-        defaultSession: {
-          resolveProxy: async (url: string) => {
-            calls.proxy_resolve_urls.push(url);
-            return "DIRECT";
-          },
-        },
-      },
-    };
-  });
-
-  vi.doMock("../backend/bootstrap/backend-bootstrap", () => {
-    return {
-      BackendBootstrap: FakeBackendBootstrap,
-    };
-  });
-
-  vi.doMock("./job/cli-job-runner", () => {
-    return {
-      run_cli_job: async (
-        backendServices: FakeBackendServices,
-        command: CLICommandOptions,
-        options: Record<string, unknown>,
-      ) => {
-        calls.events.push("job");
-        calls.run_cli_jobs.push({ backendServices, command, options });
-        if (failures.jobFailure !== undefined) {
-          throw failures.jobFailure;
-        }
-      },
-    };
-  });
-
-  vi.doMock("./cli-output", () => {
-    return {
-      write_stderr: (line: string) => {
-        calls.events.push("stderr");
-        calls.stderr_lines.push(line);
-      },
-      write_stdout: (line: string) => {
-        calls.stdout_lines.push(line);
-      },
-    };
-  });
-
-  return { calls, backend_services };
 }
 
-/**
- * 构造最小 translate 命令，测试关注 runner 编排而非 parser。
- */
 function create_translate_command(): CLICommandOptions {
   return {
     command: "translate",

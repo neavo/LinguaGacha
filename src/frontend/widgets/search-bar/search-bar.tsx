@@ -74,9 +74,6 @@ type SearchBarProps<scope_value extends string = string> =
   | SearchBarFilterProps<scope_value>
   | SearchBarReplaceProps<scope_value>;
 
-/**
- * 解析当前场景的最终消费值。
- */
 function resolve_search_bar_card_props<scope_value extends string = string>(
   props: SearchBarProps<scope_value>,
 ): React.ComponentProps<"section"> {

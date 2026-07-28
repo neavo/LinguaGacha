@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { TaskEngine } from "./core/engine";
-import type { TaskSnapshot } from "./protocol/task-snapshot";
 import { TaskService } from "./task-service";
-import { TaskRuntime, type TaskRunHandle } from "./task-runtime";
+import { TaskRuntime } from "./task-runtime";
 import type { ProjectDataReader } from "../project/project-data-reader";
 import { ProjectOperationGate } from "../project/project-operation-gate";
 import { ProjectSessionState } from "../project/project-session-state";
@@ -170,44 +169,6 @@ describe("TaskService", () => {
     });
   });
 
-  it("TaskService 提供类型化快照订阅并支持取消", async () => {
-    const session_state = new ProjectSessionState();
-    session_state.mark_loaded("E:/Project/demo.lg");
-    const runtime = create_runtime({ quality: 1, prompts: 2 }, session_state);
-    let handle: TaskRunHandle | null = null;
-    const service = create_service(
-      {
-        start: async (next_handle: TaskRunHandle) => {
-          handle = next_handle;
-        },
-      } as unknown as TaskEngine,
-      runtime,
-      session_state,
-    );
-    const snapshots: Array<Readonly<TaskSnapshot>> = [];
-    const unsubscribe = service.subscribe((snapshot) => {
-      snapshots.push(snapshot);
-    });
-
-    await service.start_current_project_task({
-      task_type: "analysis",
-      mode: "new",
-    });
-
-    expect(snapshots).toHaveLength(1);
-    expect(snapshots[0]).toMatchObject({
-      task_type: "analysis",
-      status: "requested",
-      busy: true,
-    });
-    unsubscribe();
-    if (handle === null) {
-      throw new Error("期望 Engine 收到任务运行句柄");
-    }
-    await runtime.finish(handle, "done");
-    expect(snapshots).toHaveLength(1);
-  });
-
   it("启动回包晚于瞬时终态时返回当前真实快照", async () => {
     const session_state = new ProjectSessionState();
     session_state.mark_loaded("E:/Project/demo.lg");
@@ -267,11 +228,8 @@ describe("TaskService", () => {
       }),
     ).rejects.toThrow("任务启动失败且恢复快照发布失败");
 
-    expect(runtime.snapshot_state()).toMatchObject({
-      status: "idle",
-      busy: false,
-      active_task_type: "idle",
-    });
+    expect(runtime.is_busy()).toBe(false);
+    await expect(runtime.begin("analysis")).resolves.toMatchObject({ task_type: "analysis" });
   });
 
   it("结构性项目 write 正在运行时拒绝启动任务", async () => {
@@ -359,10 +317,7 @@ describe("TaskService", () => {
     }
 
     expect(calls).toEqual([]);
-    expect(runtime.snapshot_state()).toMatchObject({
-      status: "idle",
-      busy: false,
-    });
+    expect(runtime.is_busy()).toBe(false);
   });
 
   it("停止回包晚于终态时返回当前真实快照", async () => {
@@ -423,11 +378,6 @@ describe("TaskService", () => {
         status: "requested",
         busy: true,
       },
-    });
-    expect(runtime.snapshot_state()).toMatchObject({
-      active_task_type: "translation",
-      status: "requested",
-      busy: true,
     });
   });
 

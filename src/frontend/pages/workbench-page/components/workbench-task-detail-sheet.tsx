@@ -23,9 +23,6 @@ type WorkbenchTaskDetailSheetProps = {
   on_request_stop_confirmation: () => void;
 };
 
-/**
- * 解析当前场景的最终消费值。
- */
 function resolve_percent_pill_tone_class_name(tone: WorkbenchTaskTone): string {
   if (tone === "warning") {
     return "workbench-task__percent-pill--warning";

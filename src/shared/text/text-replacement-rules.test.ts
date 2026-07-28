@@ -16,30 +16,20 @@ describe("apply_text_replacements", () => {
     ).toBe("\\c \\c");
   });
 
-  it("正则替换支持大小写不敏感匹配", () => {
+  it.each([
+    ["忽略大小写", "ABbb aB", "ab+", false, "x x"],
+    ["区分大小写", "aa AA A", "A+", true, "aa x x"],
+  ] as const)("正则替换%s", (_name, text, src, case_sensitive, expected) => {
     expect(
-      apply_text_replacements("ABbb aB", [
+      apply_text_replacements(text, [
         {
-          src: "ab+",
+          src,
           dst: "x",
           regex: true,
-          case_sensitive: false,
+          case_sensitive,
         },
       ]),
-    ).toBe("x x");
-  });
-
-  it("正则替换支持大小写敏感匹配", () => {
-    expect(
-      apply_text_replacements("aa AA A", [
-        {
-          src: "A+",
-          dst: "x",
-          regex: true,
-          case_sensitive: true,
-        },
-      ]),
-    ).toBe("aa x x");
+    ).toBe(expected);
   });
 
   it("正则替换使用规则型反斜杠捕获并保留美元符号字面量", () => {

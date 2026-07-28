@@ -2,52 +2,41 @@ import { describe, expect, it } from "vitest";
 
 import { build_project_item_persistent_records, Item } from "./item";
 
-describe("item 基础模型", () => {
-  it("规范化缺失字段并只接受当前状态域", () => {
+describe("Item", () => {
+  it("从持久记录归一字段并序列化完整记录", () => {
     const item = Item.from_json({
-      src: 123 as unknown as string,
+      id: 5,
+      src: 123,
+      name_src: ["名", 1, "别名"],
       file_type: "KVJSON",
-      status: "PROCESSED",
+      file_path: "script.json",
+      status: "BROKEN",
       row: 1.8,
     });
 
-    expect(item).toEqual(
-      expect.objectContaining({
-        src: "123",
-        dst: "",
-        file_type: "KVJSON",
-        text_type: "NONE",
-        status: "PROCESSED",
-        row: 1,
-        retry_count: 0,
-      }),
-    );
-  });
-
-  it("把 Item 转回公开 JSON 字段并保留可选 id", () => {
-    const item = Item.from_json({
+    expect(item.to_json()).toEqual({
       id: 5,
-      src: "原文",
-      dst: "译文",
-      file_type: "TXT",
-      file_path: "script.txt",
+      src: "123",
+      dst: "",
+      name_src: ["名", "别名"],
+      name_dst: null,
+      extra_field: "",
+      tag: "",
+      row: 1,
+      file_type: "KVJSON",
+      file_path: "script.json",
+      text_type: "NONE",
+      status: "NONE",
+      retry_count: 0,
+      skip_internal_filter: false,
     });
-
-    expect(item.to_json()).toEqual(
-      expect.objectContaining({
-        id: 5,
-        src: "原文",
-        dst: "译文",
-        file_type: "TXT",
-        file_path: "script.txt",
-      }),
-    );
   });
 
-  it("导出有效译文并规范化 name 与状态", () => {
+  it("译文为空时导出原文，否则导出译文", () => {
     expect(Item.from_json({ src: "原文", dst: "", file_type: "TXT" }).effective_dst()).toBe("原文");
-    expect(Item.normalize_name_field(["名", 1, "别名"])).toEqual(["名", "别名"]);
-    expect(Item.normalize_status("BROKEN")).toBe("NONE");
+    expect(Item.from_json({ src: "原文", dst: "译文", file_type: "TXT" }).effective_dst()).toBe(
+      "译文",
+    );
   });
 
   it("通用表格和 JSON 条目缺少 text_type 时复用共享引擎类型推断", () => {

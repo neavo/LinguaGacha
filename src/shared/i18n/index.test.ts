@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { LOCALES, MESSAGE_MAP_BY_LOCALE } from "./index";
+import { create_text_resolver, format_i18n_message, LOCALES, MESSAGE_MAP_BY_LOCALE } from "./index";
 
 describe("shared i18n", () => {
   it("所有 locale 保持相同消息 key 和插值参数", () => {
@@ -16,6 +16,15 @@ describe("shared i18n", () => {
         );
       }
     }
+  });
+
+  it("按 locale 解析消息并替换参数", () => {
+    expect(format_i18n_message("zh-CN", "app.feedback.feature_enabled", { TITLE: "术语表" })).toBe(
+      "术语表已启用 …",
+    );
+    expect(
+      create_text_resolver("de-DE")("app.feedback.feature_enabled", { TITLE: "Glossar" }),
+    ).toBe("Glossar aktiviert …");
   });
 });
 

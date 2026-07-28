@@ -1,13 +1,18 @@
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import type { BackendServices } from "../../backend/bootstrap/backend-services";
 import { normalize_project_settings_snapshot } from "../../domain/setting";
 import type { JsonRecord, JsonValue } from "../../domain/json";
-import type { TaskType } from "../../domain/task";
 import type { CLICommandOptions } from "../cli-parser";
-import type { CLIJobRunOptions } from "./cli-job-types";
-import { CLITempProject } from "./cli-temp-project";
-import { apply_cli_resources } from "./cli-resource-applier";
+import type { CLIJsonStatusReporter } from "../cli-status-reporter";
+import { build_cli_task_input } from "./cli-task-input";
+
+type CLIJobStatusReporter = Pick<
+  CLIJsonStatusReporter,
+  "emit_started" | "emit_progress" | "emit_finished"
+>;
 
 /**
  * 执行文件进出型 CLI job，并隐藏内部临时 .lg 工程。
@@ -15,16 +20,18 @@ import { apply_cli_resources } from "./cli-resource-applier";
 export async function run_cli_job(
   backend_services: BackendServices,
   command: CLICommandOptions,
-  options: CLIJobRunOptions,
+  status_reporter: CLIJobStatusReporter,
 ): Promise<void> {
-  options.statusReporter.emit_started();
-  let temp_project: CLITempProject | null = null; // 只有成功创建后才需要卸载工程和删目录
+  status_reporter.emit_started();
+  let temp_root: string | null = null; // 只有成功创建后才需要卸载工程和删目录
   let transient_overrides_active = false; // 防止输入校验失败时写入多余撤销调用
+  const failures: unknown[] = []; // 按发生顺序保留业务与收尾错误，同时继续后续清理
 
   try {
     assert_existing_inputs(command);
     fs.mkdirSync(command.outputDir, { recursive: true });
-    temp_project = await CLITempProject.create();
+    temp_root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "linguagacha-cli-"));
+    const project_path = path.join(temp_root, "cli-job.lg");
     backend_services.app.settings.set_transient_overrides({
       ...build_cli_default_preset_overrides(),
       output_folder_open_on_finish: false,
@@ -33,37 +40,55 @@ export async function run_cli_job(
     });
     transient_overrides_active = true;
     await backend_services.project.lifecycle.create_project_commit({
-      path: temp_project.projectPath,
+      path: project_path,
       source_paths: command.inputPaths,
       project_settings: build_project_settings(backend_services, command) as JsonValue,
     });
-    await apply_cli_resources(backend_services, command);
-    if (command.command === "translate") {
-      await start_and_wait_for_task(backend_services, "translation", options);
-      await backend_services.files.translationExport.export_files_to_directory(command.outputDir);
-      options.statusReporter.emit_finished("done");
-      return;
-    }
+    await backend_services.project.lifecycle.apply_task_input(await build_cli_task_input(command));
 
-    await start_and_wait_for_task(backend_services, "analysis", options);
-    await backend_services.quality.rules.export_analysis_candidates_to_directory(command.outputDir);
-    options.statusReporter.emit_finished("done");
-  } catch (error) {
-    options.statusReporter.emit_finished("error", error);
-    throw error;
-  } finally {
-    if (transient_overrides_active) {
-      backend_services.app.settings.set_transient_overrides(null);
+    if (command.command === "translate") {
+      await start_and_wait_for_task(backend_services, "translation", status_reporter);
+      await backend_services.files.translationExport.export_files_to_directory(command.outputDir);
+    } else {
+      await start_and_wait_for_task(backend_services, "analysis", status_reporter);
+      await backend_services.quality.rules.export_analysis_candidates_to_directory(
+        command.outputDir,
+      );
     }
-    if (temp_project !== null) {
-      try {
-        await backend_services.project.lifecycle.unload_project();
-      } finally {
-        // 卸载失败也必须删除临时目录，避免 CLI 批处理留下内部工程残片。
-        await temp_project.cleanup();
-      }
+  } catch (error) {
+    failures.push(error);
+  }
+
+  if (transient_overrides_active) {
+    try {
+      backend_services.app.settings.set_transient_overrides(null);
+    } catch (error) {
+      failures.push(error);
     }
   }
+  if (temp_root !== null) {
+    try {
+      await backend_services.project.lifecycle.unload_project();
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      await fs.promises.rm(temp_root, { recursive: true, force: true });
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+
+  if (failures.length > 0) {
+    const error =
+      failures.length === 1
+        ? failures[0]
+        : new AggregateError(failures, "CLI 任务执行或临时资源收尾失败");
+    status_reporter.emit_finished("error", error);
+    throw error;
+  }
+
+  status_reporter.emit_finished("done");
 }
 
 /**
@@ -124,36 +149,15 @@ function collect_resource_paths(command: CLICommandOptions): string[] {
 }
 
 /**
- * 启动任务并同步等待终态；任务失败时把 Backend 快照状态转成 CLI 错误。
+ * 启动任务并订阅同一运行时快照直到终态，退出时始终撤销订阅。
  */
 async function start_and_wait_for_task(
   backend_services: BackendServices,
   task_type: "translation" | "analysis",
-  options: CLIJobRunOptions,
+  status_reporter: CLIJobStatusReporter,
 ): Promise<void> {
-  const task_waiter = create_task_event_waiter(backend_services, task_type, options);
-  try {
-    await backend_services.tasks.start_current_project_task(
-      task_type === "translation"
-        ? { task_type, mode: "new", scope: { kind: "all" } }
-        : { task_type, mode: "new" },
-    );
-    await task_waiter.wait();
-  } finally {
-    task_waiter.dispose();
-  }
-}
-
-/**
- * 订阅类型化任务快照直到 done/error；CLI 与 GUI 共享同一个 TaskRuntime 事实源。
- */
-function create_task_event_waiter(
-  backend_services: BackendServices,
-  task_type: TaskType,
-  options: CLIJobRunOptions,
-): { wait: () => Promise<void>; dispose: () => void } {
-  let resolve_wait: (() => void) | null = null; // 由终态 done 事件触发
-  let reject_wait: ((error: Error) => void) | null = null; // 由终态 error 事件触发
+  let resolve_wait: (() => void) | null = null;
+  let reject_wait: ((error: Error) => void) | null = null;
   const wait_promise = new Promise<void>((resolve, reject) => {
     resolve_wait = resolve;
     reject_wait = reject;
@@ -162,7 +166,7 @@ function create_task_event_waiter(
     if (snapshot.task_type !== task_type) {
       return;
     }
-    options.statusReporter.emit_progress(snapshot);
+    status_reporter.emit_progress(snapshot);
     if (snapshot.status === "done") {
       resolve_wait?.();
     } else if (snapshot.status === "error") {
@@ -171,8 +175,15 @@ function create_task_event_waiter(
       );
     }
   });
-  return {
-    wait: () => wait_promise,
-    dispose: unsubscribe,
-  };
+
+  try {
+    await backend_services.tasks.start_current_project_task(
+      task_type === "translation"
+        ? { task_type, mode: "new", scope: { kind: "all" } }
+        : { task_type, mode: "new" },
+    );
+    await wait_promise;
+  } finally {
+    unsubscribe();
+  }
 }

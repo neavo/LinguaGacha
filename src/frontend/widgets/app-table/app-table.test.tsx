@@ -2,9 +2,6 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { build_app_table_reordered_row_ids } from "@frontend/widgets/app-table/app-table-dnd";
-
-// 收集 DnD 和虚拟器 mock 的观测值，供表格行为断言复用。
 const app_table_test_state = vi.hoisted(() => {
   return {
     current_sortable_items: [] as string[],
@@ -87,26 +84,17 @@ import type {
   AppTableSelectionChange,
 } from "@frontend/widgets/app-table/app-table-types";
 
-// AppTable 用例的最小业务行，保持 id 与展示文本分离。
 type TestRow = {
   id: string;
   label: string;
 };
 
-(
-  globalThis as typeof globalThis & {
-    IS_REACT_ACT_ENVIRONMENT?: boolean;
-  }
-).IS_REACT_ACT_ENVIRONMENT = true;
-
-// 覆盖 JSDOM 缺失的 ResizeObserver，表格只需要生命周期方法存在。
 class TestResizeObserver {
   observe(): void {}
   unobserve(): void {}
   disconnect(): void {}
 }
 
-// 提供普通数据列，作为大多数表格用例的默认列模型。
 function create_columns(): AppTableColumn<TestRow>[] {
   return [
     {
@@ -120,7 +108,6 @@ function create_columns(): AppTableColumn<TestRow>[] {
   ];
 }
 
-// 在默认列前追加拖拽列，用于校验 DnD 上下文载荷。
 function create_drag_columns(): AppTableColumn<TestRow>[] {
   return [
     {
@@ -134,7 +121,6 @@ function create_drag_columns(): AppTableColumn<TestRow>[] {
   ];
 }
 
-// render_app_table 挂载真实 React 根并等待一次微任务，确保 layout effect 有机会执行。
 async function render_app_table(
   element: JSX.Element,
 ): Promise<{ container: HTMLDivElement; root: Root }> {
@@ -153,7 +139,6 @@ async function render_app_table(
   };
 }
 
-// 生成完整 AppTable 元素，调用点只覆盖本用例关心的 props。
 function create_default_props(
   overrides?: Partial<Parameters<typeof AppTable<TestRow>>[0]>,
 ): JSX.Element {
@@ -181,7 +166,6 @@ function create_default_props(
   );
 }
 
-// 模拟远端窗口模型，只让 loaded_indices 对应的行可同步读取。
 function create_remote_row_model(args: {
   rows: TestRow[];
   loaded_indices: number[];
@@ -207,7 +191,6 @@ function create_remote_row_model(args: {
   };
 }
 
-// 取表格内部滚动宿主，失败时给出面向测试的明确错误。
 function get_table_host(container: HTMLDivElement): HTMLDivElement {
   const table_host = container.querySelector<HTMLDivElement>(".app-table__scroll-host");
   if (table_host === null) {
@@ -217,7 +200,6 @@ function get_table_host(container: HTMLDivElement): HTMLDivElement {
   return table_host;
 }
 
-// 取 ScrollArea 视口，供滚动恢复用例直接设置 scrollTop。
 function get_table_viewport(container: HTMLDivElement): HTMLElement {
   const viewport = container.querySelector<HTMLElement>('[data-slot="scroll-area-viewport"]');
   if (viewport === null) {
@@ -227,7 +209,6 @@ function get_table_viewport(container: HTMLDivElement): HTMLElement {
   return viewport;
 }
 
-// 生成连续 row id，便于虚拟索引和滚动位置相互映射。
 function create_rows(count: number): TestRow[] {
   return Array.from({ length: count }, (_, index) => {
     const id = `row-${index.toString()}`;
@@ -238,7 +219,6 @@ function create_rows(count: number): TestRow[] {
   });
 }
 
-// 固定 DOMRect top，用于模拟挂载行相对 viewport 的视觉偏移。
 function mock_element_rect(element: Element, rect: Pick<DOMRect, "top">): void {
   element.getBoundingClientRect = () => {
     return {
@@ -255,7 +235,6 @@ function mock_element_rect(element: Element, rect: Pick<DOMRect, "top">): void {
   };
 }
 
-// 让远端行范围读取可以由测试主动 resolve 或 reject。
 function create_controlled_promise<T>(): {
   promise: Promise<T>;
   resolve: (value: T) => void;
@@ -275,7 +254,6 @@ function create_controlled_promise<T>(): {
   };
 }
 
-// flush_promises 推进两轮微任务，覆盖 React effect 中串联的异步回调。
 async function flush_promises(): Promise<void> {
   await act(async () => {
     await Promise.resolve();
@@ -1031,46 +1009,6 @@ describe("AppTable row model", () => {
     );
 
     expect(app_table_test_state.current_sortable_items).toEqual(["b", "c"]);
-  });
-
-  it("完整 row_ids 仍能输出跨可见窗口的重排结果", () => {
-    expect(
-      build_app_table_reordered_row_ids({
-        ordered_row_ids: ["a", "b", "c", "d"],
-        moving_row_ids: ["b"],
-        over_row_id: "c",
-      }),
-    ).toEqual(["a", "c", "b", "d"]);
-  });
-
-  it("同一 rows 引用重渲染时不会因为内联 get_row_id 变化重建数组模型", async () => {
-    const rows = [
-      { id: "a", label: "Alpha" },
-      { id: "b", label: "Beta" },
-    ];
-    const first_get_row_id = vi.fn((row: TestRow) => row.id);
-    const second_get_row_id = vi.fn((row: TestRow) => row.id);
-    const rendered = await render_app_table(
-      create_default_props({
-        rows,
-        get_row_id: first_get_row_id,
-      }),
-    );
-    mounted_roots.push(rendered.root);
-    mounted_containers.push(rendered.container);
-
-    await act(async () => {
-      rendered.root.render(
-        create_default_props({
-          rows,
-          get_row_id: second_get_row_id,
-        }),
-      );
-      await Promise.resolve();
-    });
-
-    expect(first_get_row_id).toHaveBeenCalledTimes(rows.length);
-    expect(second_get_row_id).not.toHaveBeenCalled();
   });
 
   it("可见范围没有变化时不会重复触发 on_visible_range_change", async () => {

@@ -1,11 +1,10 @@
-import type { ComponentProps } from "react";
+import { act, type ComponentProps } from "react";
+import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import { WorkbenchCommandBar } from "./workbench-command-bar";
-
-const task_runtime_summary_mock = vi.hoisted(() => vi.fn());
 
 vi.mock("@frontend/app/locale/locale-provider", () => {
   return {
@@ -20,15 +19,6 @@ vi.mock("@frontend/pages/workbench-page/components/workbench-task-menu", () => {
     WorkbenchTaskMenu: (props: { task_kind: "translation" | "analysis" }) => (
       <button type="button">{props.task_kind}-task</button>
     ),
-  };
-});
-
-vi.mock("@frontend/pages/workbench-page/components/workbench-task-summary", () => {
-  return {
-    WorkbenchTaskSummary: (props: unknown) => {
-      task_runtime_summary_mock(props);
-      return <span>task-summary</span>;
-    },
   };
 });
 
@@ -125,8 +115,16 @@ function create_workbench_command_bar_props(): ComponentProps<typeof WorkbenchCo
 }
 
 describe("WorkbenchCommandBar", () => {
-  afterEach(() => {
-    task_runtime_summary_mock.mockClear();
+  let container: HTMLDivElement | null = null;
+  let root: Root | null = null;
+
+  afterEach(async () => {
+    if (root !== null) {
+      await act(async () => root?.unmount());
+    }
+    container?.remove();
+    container = null;
+    root = null;
   });
 
   it("添加与删除文件按钮展示平台化快捷键提示", () => {
@@ -142,46 +140,6 @@ describe("WorkbenchCommandBar", () => {
     expect(html).toContain("Del");
   });
 
-  it("翻译任务运行时向任务胶囊传递自动打开键", () => {
-    const props = create_workbench_command_bar_props();
-
-    renderToStaticMarkup(
-      <TooltipProvider>
-        <WorkbenchCommandBar
-          {...props}
-          active_workbench_task_view={{
-            task_kind: "translation",
-            can_open_detail: true,
-          }}
-          active_workbench_task_summary={{
-            ...props.active_workbench_task_summary,
-            show_spinner: true,
-          }}
-        />
-      </TooltipProvider>,
-    );
-
-    expect(task_runtime_summary_mock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        auto_open_key: "translation",
-      }),
-    );
-  });
-
-  it("空闲态不向任务胶囊传递自动打开键", () => {
-    renderToStaticMarkup(
-      <TooltipProvider>
-        <WorkbenchCommandBar {...create_workbench_command_bar_props()} />
-      </TooltipProvider>,
-    );
-
-    expect(task_runtime_summary_mock).toHaveBeenCalledWith(
-      expect.objectContaining({
-        auto_open_key: null,
-      }),
-    );
-  });
-
   it("删除按钮只消费上游删除权限", () => {
     const html = renderToStaticMarkup(
       <TooltipProvider>
@@ -193,7 +151,38 @@ describe("WorkbenchCommandBar", () => {
       </TooltipProvider>,
     );
 
-    expect(html).toContain("workbench_page.action.delete_file");
-    expect(html).toContain("disabled");
+    const container = document.createElement("div");
+    container.innerHTML = html;
+    const delete_button = [...container.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes("workbench_page.action.delete_file"),
+    );
+
+    expect(delete_button).toBeInstanceOf(HTMLButtonElement);
+    expect(delete_button?.disabled).toBe(true);
+  });
+
+  it("运行中的翻译任务会自动展示详情提示", async () => {
+    const props = create_workbench_command_bar_props();
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(
+        <TooltipProvider>
+          <WorkbenchCommandBar
+            {...props}
+            active_workbench_task_view={{ task_kind: "translation", can_open_detail: true }}
+            active_workbench_task_summary={{
+              ...props.active_workbench_task_summary,
+              show_spinner: true,
+              detail_tooltip_text: "translation-running-detail",
+            }}
+          />
+        </TooltipProvider>,
+      );
+    });
+
+    expect(document.body.textContent).toContain("translation-running-detail");
   });
 });

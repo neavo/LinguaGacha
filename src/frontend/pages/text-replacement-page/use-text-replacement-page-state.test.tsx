@@ -152,9 +152,6 @@ function apply_quality_write_result(result: {
 }
 
 // 测试夹具只模拟后端原始规范化写入载荷，回灌入口由运行态 commit mock 触发。
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_quality_write_result(
   args: {
     quality?: typeof run_state.quality;
@@ -186,9 +183,6 @@ function create_quality_write_result(
 }
 
 // 质量区块快照由后端整体回灌，测试只替换 pre_replacement 切片以表达保存后的事实。
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_pre_replacement_quality(
   entries: typeof run_state.quality.pre_replacement.entries,
   revision: number,
@@ -207,9 +201,6 @@ let current_statistics_cache: QualityRuleStatisticsCacheSnapshot;
 let project_change_seq = 0;
 let project_change_sections: Array<"items" | "quality"> = ["quality"];
 
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_statistics_cache(
   args: Partial<QualityRuleStatisticsCacheSnapshot>,
 ): QualityRuleStatisticsCacheSnapshot {
@@ -768,52 +759,6 @@ describe("useTextReplacementPageState", () => {
     expect(latest_state?.dialog_state.open).toBe(false);
   });
 
-  it("新增替换规则保存成功后立即显示后端回灌的新条目", async () => {
-    await mount_probe();
-    api_fetch_mock.mockResolvedValueOnce(
-      create_quality_write_result({
-        quality: create_pre_replacement_quality(
-          [
-            {
-              entry_id: "hero::0",
-              src: "hero",
-              dst: "勇者",
-              regex: false,
-              case_sensitive: false,
-            },
-            {
-              entry_id: "qr:mage",
-              src: "mage",
-              dst: "法师",
-              regex: false,
-              case_sensitive: false,
-            },
-          ],
-          3,
-        ),
-        quality_revision: 3,
-      }),
-    );
-
-    await act(async () => {
-      latest_state?.open_create_dialog();
-    });
-    await act(async () => {
-      latest_state?.update_dialog_draft({
-        src: "mage",
-        dst: "法师",
-      });
-    });
-    await act(async () => {
-      await latest_state?.save_dialog_entry();
-    });
-
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual([
-      "hero",
-      "mage",
-    ]);
-  });
-
   it("新增替换规则保存时若 SSE 先于 HTTP 返回，最终仍由统一 commit 回灌新条目", async () => {
     await mount_probe();
     const write_result = create_quality_write_result({
@@ -953,54 +898,6 @@ describe("useTextReplacementPageState", () => {
         },
       ],
     });
-  });
-
-  it("导入非重复替换规则后立即用最新规则重建表格", async () => {
-    await mount_probe();
-    api_fetch_mock
-      .mockResolvedValueOnce({
-        entries: [
-          {
-            src: "mage",
-            dst: "法师",
-            regex: false,
-            case_sensitive: false,
-          },
-        ],
-      })
-      .mockResolvedValueOnce(
-        create_quality_write_result({
-          quality: create_pre_replacement_quality(
-            [
-              {
-                entry_id: "hero::0",
-                src: "hero",
-                dst: "勇者",
-                regex: false,
-                case_sensitive: false,
-              },
-              {
-                entry_id: "mage::1",
-                src: "mage",
-                dst: "法师",
-                regex: false,
-                case_sensitive: false,
-              },
-            ],
-            3,
-          ),
-          quality_revision: 3,
-        }),
-      );
-
-    await act(async () => {
-      await latest_state?.import_entries_from_path("E:/demo/replacement.json");
-    });
-
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual([
-      "hero",
-      "mage",
-    ]);
   });
 
   it("导入保存失败时恢复原来的冻结结果成员", async () => {

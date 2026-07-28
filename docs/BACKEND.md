@@ -14,16 +14,14 @@
 
 ## 2. 状态拥有者
 
-| 状态 / 事实 | 拥有者 | 唯一写入口 / 读出口 |
+| 状态 / 边界 | 拥有者 | 唯一写入口 / 读出口 |
 | --- | --- | --- |
 | 应用设置、最近工程、语言 | `AppSettingService` | 设置 API、CLI transient overrides、`settings.changed` |
 | loaded 工程身份 | `ProjectSessionState` | `ProjectLifecycleService` |
 | loaded 工程热读数据 | `CacheManager` | 工程热机、committed event、功能 query |
-| 运行态项目事实 | `ProjectWriteStore` | database transaction、内部 event、按需公开 change |
-| 后端内部 committed event | `ProjectWriteStore` / `CacheManager` | 写侧事务成功后调用唯一 `ProjectEventHandler` |
-| 公开项目变更 | `ProjectWriteEventAdapter` / `ApiStreamHub` | 类型化 publisher 让同一 canonical event 进入 SSE 与 HTTP `changes` |
-| 任务类型、scope、status、busy、`run_revision`、请求压力 | `TaskRuntime` | 任务命令、Engine 生命周期、项目会话切换 |
-| 任务 progress / extras | `.lg` meta | `TaskProjectStore` 经 `ProjectWriteStore` 写入 |
+| 项目事实提交 | `ProjectWriteStore` | 单 `.lg` 事务、唯一 `ProjectEventHandler`、`adapt_project_change` |
+| 活动任务类型、translation scope、status、busy、`run_revision`、请求压力 | `TaskRuntime` | 任务命令、Engine 生命周期、项目会话切换 |
+| 任务 progress / analysis candidate count | `.lg` meta | `TaskProjectStore` 经 `ProjectWriteStore` 写入 |
 | 任务公开快照 | `TaskRuntime.build_snapshot` | 组合内存运行态与 `.lg` meta |
 | `.lg` 物理 workflow | `ProjectDatabase` | 类型化读写方法、`transaction(projectPath, callback)` |
 | 平台 IO 与路径身份 | `NativeFs` / `NativePathPolicy` | `src/native` |
@@ -57,7 +55,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - `TaskService` 负责命令 JSON 收窄、task / mode / scope 归一、section revision 校验、gate 接入和 Engine 命令转交；激活模型由 `TaskEngine` 在每轮 run 开始时解析并冻结到运行上下文。
 - 启动任务必须携带 `TaskService` 按 task type 与 scope 固定要求的 `expected_section_revisions`；通过 gate 后立即进入 busy，Engine 启动失败时恢复前置状态。
 - 所有任务命令 ack 都通过 `TaskRuntime.build_snapshot` 重新读取当前事实，避免旧命令意图覆盖更晚的终态。
-- `TaskSnapshot` 由内存中的类型、scope、status、busy、`run_revision`、请求压力与 `.lg` 中的 progress / extras 组成；`run_revision` 是前端丢弃旧 snapshot 的排序依据。
+- `TaskRuntime.build_snapshot` 组合内存中的 status、busy、`run_revision`、请求压力与 translation scope，以及 `.lg` 中的 progress / analysis candidate count；`run_revision` 是前端丢弃旧 snapshot 的排序依据。
 - 每次成功 load / unload 都推进 `ProjectSessionState` 的内部会话世代；生命周期返回前，`TaskRuntime` 重置为新会话的 idle、推进 `run_revision` 并发布快照，因此旧工程迟到帧严格早于新工程事实。
 - 生命周期和进度提交立即发布完整 `task.snapshot_changed`；只有请求压力允许合并，终态前必须冲刷。请求压力只表示已租约发出的 LLM 请求，不表示队列或 worker 数量。
 - `TaskRuntime` 拥有全局运行互斥、取消、终态和 Engine completion；`TaskEngine` 只负责编排，任务结果统一经 `TaskProjectStore` 进入项目写入边界。全量翻译与分析经过 Planner，行级重翻直接从目标 items 构造 context。

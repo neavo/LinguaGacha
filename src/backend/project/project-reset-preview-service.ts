@@ -2,7 +2,7 @@ import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json
 import { ProjectDatabase } from "../database/database-operations";
 import { FileFormatService } from "../file/file-format-service";
 import { Item } from "../../domain/item";
-import { is_json_record } from "../../domain/json";
+import { is_json_record, read_json_integer } from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import { is_task_skipped_item_status } from "../../domain/task";
 import * as AppErrors from "../../shared/error";
@@ -91,7 +91,7 @@ export class ProjectResetPreviewService {
       if (is_task_skipped_item_status(status)) {
         continue;
       }
-      const item_id = this.read_number(item["id"], 0);
+      const item_id = read_json_integer(item["id"], 0);
       if (item_id <= 0 || String(item["src"] ?? "").trim() === "") {
         continue;
       }
@@ -136,7 +136,7 @@ export class ProjectResetPreviewService {
       .filter((item): item is JsonRecord => is_json_record(item))
       .map((item) => ({
         path: String(item["path"] ?? ""),
-        sort_order: this.read_number(item["sort_order"], 0),
+        sort_order: read_json_integer(item["sort_order"], 0),
       }))
       .filter((item) => item.path !== "")
       .sort((left, right) => left.sort_order - right.sort_order);
@@ -160,7 +160,7 @@ export class ProjectResetPreviewService {
   private build_current_item_id_by_identity(project_path: string): Map<string, number> {
     const item_id_by_identity = new Map<string, number>();
     for (const item of this.get_all_items(project_path)) {
-      const item_id = this.read_number(item["id"], 0);
+      const item_id = read_json_integer(item["id"], 0);
       const identity_key = this.build_item_identity_key(item);
       if (item_id <= 0 || identity_key === null || item_id_by_identity.has(identity_key)) {
         this.throw_translation_reset_identity_error("current_item_identity_invalid");
@@ -204,7 +204,7 @@ export class ProjectResetPreviewService {
    */
   private build_item_identity_key(item: JsonRecord): string | null {
     const file_path = String(item["file_path"] ?? "").trim();
-    const row = this.read_number(item["row"] ?? item["row_number"], NaN);
+    const row = read_json_integer(item["row"] ?? item["row_number"], NaN);
     if (file_path === "" || !Number.isInteger(row) || row < 0) {
       return null;
     }
@@ -224,7 +224,7 @@ export class ProjectResetPreviewService {
       if (!is_json_record(row)) {
         continue;
       }
-      const item_id = this.read_number(row["item_id"], 0);
+      const item_id = read_json_integer(row["item_id"], 0);
       const status = String(row["status"] ?? "");
       if (item_id > 0 && (status === "PROCESSED" || status === "ERROR")) {
         checkpoints.set(item_id, status);
@@ -241,12 +241,12 @@ export class ProjectResetPreviewService {
       ...item,
       src: String(item["src"] ?? ""),
       dst: String(item["dst"] ?? ""),
-      row: this.read_number(item["row"] ?? item["row_number"], 0),
+      row: read_json_integer(item["row"] ?? item["row_number"], 0),
       file_path: String(item["file_path"] ?? fallback_file_path),
       file_type: String(item["file_type"] ?? "NONE"),
       text_type: String(item["text_type"] ?? "NONE"),
       status: this.normalize_item_status(item["status"]),
-      retry_count: this.read_number(item["retry_count"], 0),
+      retry_count: read_json_integer(item["retry_count"], 0),
       skip_internal_filter: item["skip_internal_filter"] === true,
     };
   }
@@ -256,14 +256,6 @@ export class ProjectResetPreviewService {
    */
   private normalize_item_status(value: JsonValue | undefined): string {
     return Item.normalize_status(value);
-  }
-
-  /**
-   * SQLite/JSON 数字统一截断为整数，避免 id 和 row 出现小数
-   */
-  private read_number(value: JsonValue | undefined, fallback: number): number {
-    const number_value = Number(value ?? fallback);
-    return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
 
   /**

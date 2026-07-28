@@ -115,10 +115,6 @@ export function LogWindowPage(): JSX.Element {
     let disposed = false;
     const iterator = open_log_stream()[Symbol.asyncIterator]();
 
-    // run_stream 封装当前模块的共享逻辑，避免重复实现同一维护规则。
-    /**
-     * 执行当前场景的异步流程。
-     */
     async function run_stream(): Promise<void> {
       try {
         while (!disposed) {
@@ -296,7 +292,6 @@ export function LogWindowPage(): JSX.Element {
     ];
   }, [t]);
 
-  // 事件处理边界，只把外部事件转换为本模块状态更新。
   function handle_selection_change(payload: AppTableSelectionChange): void {
     set_selected_row_ids(payload.selected_row_ids);
     set_active_row_id(payload.active_row_id);

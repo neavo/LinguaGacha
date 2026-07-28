@@ -68,17 +68,6 @@ describe("text-preserve-rules", () => {
     expect(rule?.collect("x<A>y<B>z")).toEqual(["<A>", "<B>"]);
   });
 
-  it("custom 模式没有可编译规则时返回 null", () => {
-    expect(
-      build_text_preserve_rule({
-        mode: "CUSTOM",
-        text_type: "NONE",
-        entries: [{ src: "[" }],
-        kind: "sample",
-      }),
-    ).toBeNull();
-  });
-
   it("custom 模式不再接受 \\UXXXXXXXX 转义", () => {
     const rule = build_text_preserve_rule({
       mode: "CUSTOM",

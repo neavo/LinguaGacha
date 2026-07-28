@@ -1,11 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-
-import { CodeFixer } from "../../../../shared/fixer/code-fixer";
-import { EscapeFixer } from "../../../../shared/fixer/escape-fixer";
-import { HangeulFixer } from "../../../../shared/fixer/hangeul-fixer";
-import { KanaFixer } from "../../../../shared/fixer/kana-fixer";
-import { NumberFixer } from "../../../../shared/fixer/number-fixer";
-import { PunctuationFixer } from "../../../../shared/fixer/punctuation-fixer";
+import { describe, expect, it } from "vitest";
 import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shared/text/text-types";
 import type { TranslationDecodedLine } from "../translation-line";
 import { TranslationPostPipeline } from "./translation-post-pipeline";
@@ -15,10 +8,6 @@ import {
 } from "./translation-pre-pipeline";
 
 describe("TranslationPostPipeline", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
   it("按译前上下文恢复保护前后缀和原始空白", () => {
     const { pre, post } = create_pipeline_pair(
       create_config(),
@@ -190,92 +179,35 @@ describe("TranslationPostPipeline", () => {
     expect(result).toEqual({ dst: "hi", name_dst: null });
   });
 
-  it("自动修复在日文源语言下按语言、代码、转义、数字、标点顺序执行", () => {
-    const calls: string[] = [];
-    vi.spyOn(KanaFixer, "fix").mockImplementation((dst) => {
-      calls.push("kana");
-      return `${dst}-k`;
-    });
-    vi.spyOn(HangeulFixer, "fix").mockImplementation((dst) => {
-      throw new Error(`不应调用韩文修复：${dst}`);
-    });
-    vi.spyOn(CodeFixer, "fix").mockImplementation((src, dst) => {
-      calls.push("code");
-      expect(src).toBe("src");
-      expect(dst).toBe("dst-k");
-      return `${dst}-c`;
-    });
-    vi.spyOn(EscapeFixer, "fix").mockImplementation((src, dst) => {
-      calls.push("escape");
-      expect(src).toBe("src");
-      return `${dst}-e`;
-    });
-    vi.spyOn(NumberFixer, "fix").mockImplementation((src, dst) => {
-      calls.push("number");
-      expect(src).toBe("src");
-      return `${dst}-n`;
-    });
-    vi.spyOn(PunctuationFixer, "fix").mockImplementation(
-      (src, dst, source_language, target_language) => {
-        calls.push("punctuation");
-        expect(src).toBe("src");
-        expect(source_language).toBe("JA");
-        expect(target_language).toBe("ZH");
-        return `${dst}-p`;
-      },
-    );
-
+  it("组合应用代码和数字修复后返回最终译文", () => {
     const { pre, post } = create_pipeline_pair(
-      create_config({ source_language: "JA", target_language: "ZH" }),
-      create_quality_snapshot({ text_preserve_mode: "OFF" }),
+      create_config(),
+      create_quality_snapshot({
+        text_preserve_mode: "CUSTOM",
+        text_preserve_entries: [{ src: "<[^>]+>" }],
+      }),
     );
-    const context = pre.process_item({ src: "src", text_type: "TXT" });
-    const result = process_text(post, context, ["dst"]);
+    const context = pre.process_item({ src: "A<1>①", text_type: "TXT" });
 
-    expect(result).toBe("dst-k-c-e-n-p");
-    expect(calls).toEqual(["kana", "code", "escape", "number", "punctuation"]);
+    expect(process_text(post, context, ["B<x><1>1"])).toBe("B<1>①");
   });
 
-  it("自动修复在韩文源语言下使用谚文修复路径", () => {
-    vi.spyOn(KanaFixer, "fix").mockImplementation((dst) => {
-      throw new Error(`不应调用日文修复：${dst}`);
-    });
-    vi.spyOn(HangeulFixer, "fix").mockImplementation((dst) => `${dst}-h`);
-    vi.spyOn(CodeFixer, "fix").mockImplementation((_src, dst) => dst);
-    vi.spyOn(EscapeFixer, "fix").mockImplementation((_src, dst) => dst);
-    vi.spyOn(NumberFixer, "fix").mockImplementation((_src, dst) => dst);
-    vi.spyOn(PunctuationFixer, "fix").mockImplementation((_src, dst) => dst);
+  it("按源语言选择日文、韩文或无语言残留修复", () => {
+    const cases = [
+      { source_language: "JA", dst: "AっB", expected: "AB" },
+      { source_language: "KO", dst: "A뿅B", expected: "AB" },
+      { source_language: "EN", dst: "AっB뿅C", expected: "AっB뿅C" },
+    ] as const;
 
-    const { pre, post } = create_pipeline_pair(
-      create_config({ source_language: "KO", target_language: "ZH" }),
-      create_quality_snapshot({ text_preserve_mode: "OFF" }),
-    );
-    const context = pre.process_item({ src: "src", text_type: "TXT" });
-    const result = process_text(post, context, ["dst"]);
+    for (const { source_language, dst, expected } of cases) {
+      const { pre, post } = create_pipeline_pair(
+        create_config({ source_language }),
+        create_quality_snapshot(),
+      );
+      const context = pre.process_item({ src: "source", text_type: "TXT" });
 
-    expect(result).toBe("dst-h");
-  });
-
-  it("自动修复在其它源语言下跳过语言残留专用修复", () => {
-    vi.spyOn(KanaFixer, "fix").mockImplementation((dst) => {
-      throw new Error(`不应调用日文修复：${dst}`);
-    });
-    vi.spyOn(HangeulFixer, "fix").mockImplementation((dst) => {
-      throw new Error(`不应调用韩文修复：${dst}`);
-    });
-    vi.spyOn(CodeFixer, "fix").mockImplementation((_src, dst) => `${dst}-c`);
-    vi.spyOn(EscapeFixer, "fix").mockImplementation((_src, dst) => `${dst}-e`);
-    vi.spyOn(NumberFixer, "fix").mockImplementation((_src, dst) => `${dst}-n`);
-    vi.spyOn(PunctuationFixer, "fix").mockImplementation((_src, dst) => `${dst}-p`);
-
-    const { pre, post } = create_pipeline_pair(
-      create_config({ source_language: "ZH", target_language: "EN" }),
-      create_quality_snapshot({ text_preserve_mode: "OFF" }),
-    );
-    const context = pre.process_item({ src: "src", text_type: "TXT" });
-    const result = process_text(post, context, ["dst"]);
-
-    expect(result).toBe("dst-c-e-n-p");
+      expect(process_text(post, context, [dst])).toBe(expected);
+    }
   });
 });
 

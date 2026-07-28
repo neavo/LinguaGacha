@@ -51,9 +51,6 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
   };
 });
 
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_project_item(
   overrides: Partial<ProjectItemPublicRecord> = {},
 ): ProjectItemPublicRecord {
@@ -76,9 +73,6 @@ function create_project_item(
   };
 }
 
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_task_snapshot(): TaskSnapshot {
   return {
     run_revision: 3,
@@ -106,9 +100,6 @@ function create_task_snapshot(): TaskSnapshot {
   };
 }
 
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_hook_fixture(): HookFixture {
   const write_calls: WriteCall[] = [];
   return {
@@ -188,10 +179,6 @@ describe("useProofreadingBatchActions", () => {
     return null;
   }
 
-  // render_hook 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-  /**
-   * 生成当前场景的展示内容。
-   */
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -204,10 +191,6 @@ describe("useProofreadingBatchActions", () => {
     });
   }
 
-  // flush_async_updates 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-  /**
-   * 支撑当前测试场景的专用辅助逻辑。
-   */
   async function flush_async_updates(): Promise<void> {
     await act(async () => {
       await Promise.resolve();

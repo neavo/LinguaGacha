@@ -13,7 +13,6 @@ describe("TaskPipeline", () => {
     const pipeline = new TaskPipeline<number, number>({
       worker_count: 1,
       signal: new AbortController().signal,
-      commit_interval_ms: 1,
       execute: async (context) => {
         executed.push(context);
         if (context === 1) {
@@ -39,7 +38,6 @@ describe("TaskPipeline", () => {
     const pipeline = new TaskPipeline<number, number>({
       worker_count: 1,
       signal: new AbortController().signal,
-      commit_interval_ms: 1,
       execute: async (context) => {
         if (context === 2) {
           second_context_started = true;
@@ -58,7 +56,7 @@ describe("TaskPipeline", () => {
 
     const run_promise = pipeline.run([1, 2]);
     await wait_until(() => second_context_started);
-    await vi.advanceTimersByTimeAsync(1);
+    await vi.advanceTimersByTimeAsync(TASK_PIPELINE_COMMIT_INTERVAL_MS);
 
     release_second_context();
 
@@ -74,7 +72,6 @@ describe("TaskPipeline", () => {
     const pipeline = new TaskPipeline<number, number>({
       worker_count: 2,
       signal: new AbortController().signal,
-      commit_interval_ms: 1,
       execute: async (context, signal) => {
         executed.push(context);
         if (context === 1) {

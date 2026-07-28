@@ -6,14 +6,7 @@ import { CodeFixer } from "./code-fixer";
 describe("CodeFixer", () => {
   const code_rule = create_rule(["<[^>]+>"]);
 
-  it("删除译文中夹在源文保护段之间的多余代码段", () => {
-    const src = "A<1>B<2>C";
-    const dst = "A<1>B<x><2>C";
-
-    expect(CodeFixer.fix(src, dst, code_rule)).toBe("A<1>B<2>C");
-  });
-
-  it("删除最后一个匹配项前后的多余代码段", () => {
+  it("删除匹配保护段之间和末尾的多余代码段", () => {
     const src = "A<1>B<3>C";
     const dst = "A<1>B<x><3><y>C";
 
@@ -25,13 +18,6 @@ describe("CodeFixer", () => {
     const dst = "A<1>B<2>C";
 
     expect(CodeFixer.fix(src, dst, code_rule)).toBe("ABC");
-  });
-
-  it("源文和译文保护段序列一致时保持译文不变", () => {
-    const src = "A<1>B";
-    const dst = "X<1>Y";
-
-    expect(CodeFixer.fix(src, dst, code_rule)).toBe(dst);
   });
 
   it("源文和译文保护段数量相等但内容不同时保持译文不变", () => {

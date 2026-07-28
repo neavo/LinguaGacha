@@ -84,21 +84,6 @@ export function isProjectDataSection(value: string): value is ProjectDataSection
   return (PROJECT_DATA_SECTIONS as readonly string[]).includes(value);
 }
 
-// 外部 payload 的 section 列表在边界去重，保持后续 revision 和补读逻辑稳定
-
-export function normalizeProjectDataSections(value: unknown): ProjectDataSection[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  const sections: ProjectDataSection[] = [];
-  for (const section of value) {
-    if (typeof section === "string" && isProjectDataSection(section)) {
-      sections.push(section);
-    }
-  }
-  return [...new Set(sections)];
-}
-
 // 坏值默认降级为 section-invalidated，让前端走补读而不是误合并
 
 export function normalizeProjectChangePayloadMode(value: unknown): ProjectChangePayloadMode {

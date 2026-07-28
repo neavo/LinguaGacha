@@ -5,19 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProofreadingPage } from "@frontend/pages/proofreading-page/page";
 
-// proofreading_*_fixture 分别捕获页面状态 Hook 和表格 props，方便验证页面装配边界。
-const { proofreading_state_fixture, proofreading_table_fixture } = vi.hoisted(() => {
-  return {
-    proofreading_state_fixture: {
-      current: null as ReturnType<typeof create_proofreading_state_fixture> | null,
-    },
-    proofreading_table_fixture: {
-      current_props: null as {
-        preserve_scroll_anchor?: { row_id: string | null; revision: number };
-      } | null,
-    },
-  };
-});
+const proofreading_state_fixture = vi.hoisted(() => ({
+  current: null as ReturnType<typeof create_proofreading_state_fixture> | null,
+}));
 
 vi.mock("@frontend/app/locale/locale-provider", () => {
   return {
@@ -85,15 +75,9 @@ vi.mock("@frontend/widgets/search-bar/search-bar", () => {
 
 vi.mock("@frontend/pages/proofreading-page/components/proofreading-table", () => {
   return {
-    ProofreadingTable: (props: {
-      preserve_scroll_anchor?: { row_id: string | null; revision: number };
-      readonly: boolean;
-    }) => {
-      proofreading_table_fixture.current_props = props;
-      return (
-        <div data-readonly={props.readonly ? "true" : "false"} data-testid="proofreading-table" />
-      );
-    },
+    ProofreadingTable: (props: { readonly: boolean }) => (
+      <div data-readonly={props.readonly ? "true" : "false"} data-testid="proofreading-table" />
+    ),
   };
 });
 
@@ -268,10 +252,6 @@ describe("ProofreadingPage", () => {
     expect(
       container?.querySelector("[data-testid='proofreading-table']")?.getAttribute("data-readonly"),
     ).toBe("true");
-    expect(proofreading_table_fixture.current_props?.preserve_scroll_anchor).toEqual({
-      row_id: "1",
-      revision: 7,
-    });
     expect(
       container?.querySelector("[data-testid='proofreading-edit']")?.getAttribute("data-readonly"),
     ).toBe("true");

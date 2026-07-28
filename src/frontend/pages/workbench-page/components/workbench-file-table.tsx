@@ -30,13 +30,6 @@ type WorkbenchFileTableProps = {
 };
 
 /**
- * 构建当前场景的稳定结果。
- */
-function build_workbench_row_number_label(row_index: number): string {
-  return String(row_index + 1);
-}
-
-/**
  * 排序当前列表并保持展示稳定。
  */
 function sort_workbench_entries(
@@ -75,9 +68,6 @@ function sort_workbench_entries(
   return sorted_entries;
 }
 
-/**
- * 判断当前值是否满足业务条件。
- */
 function should_ignore_workbench_row_click(target_element: HTMLElement): boolean {
   return (
     target_element.closest(
@@ -88,9 +78,6 @@ function should_ignore_workbench_row_click(target_element: HTMLElement): boolean
   );
 }
 
-/**
- * 判断当前值是否满足业务条件。
- */
 function should_ignore_workbench_box_selection_target(target_element: HTMLElement): boolean {
   return (
     target_element.closest(
@@ -132,7 +119,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
         render_cell: (payload) => {
           return (
             <AppTableDragIndicator
-              row_number={build_workbench_row_number_label(payload.row_index)}
+              row_number={String(payload.row_index + 1)}
               can_drag={payload.can_drag}
               dragging={payload.dragging}
               drag_handle={payload.drag_handle}

@@ -65,9 +65,6 @@ vi.mock("@frontend/shadcn/select", () => {
   };
 });
 
-/**
- * 构造当前场景的标准初始数据。
- */
 function create_basic_settings_state_fixture() {
   return {
     snapshot: {
@@ -94,9 +91,6 @@ function create_basic_settings_state_fixture() {
   };
 }
 
-/**
- * 写入当前测试交互值。
- */
 function set_input_value(input: HTMLInputElement, value: string): void {
   const value_setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
 
@@ -108,9 +102,6 @@ function set_input_value(input: HTMLInputElement, value: string): void {
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
-/**
- * 获取当前测试场景的公开值。
- */
 function get_current_basic_settings_state(): ReturnType<
   typeof create_basic_settings_state_fixture
 > {
@@ -142,9 +133,6 @@ describe("BasicSettingsPage", () => {
     push_toast_mock.mockReset();
   });
 
-  /**
-   * 挂载当前测试组件并等待渲染完成。
-   */
   async function mount_page(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -155,9 +143,6 @@ describe("BasicSettingsPage", () => {
     });
   }
 
-  /**
-   * 读取当前场景需要的稳定数据。
-   */
   function get_request_timeout_input(): HTMLInputElement {
     const input = container?.querySelector('input[type="number"]');
 

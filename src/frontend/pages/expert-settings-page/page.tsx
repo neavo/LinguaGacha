@@ -16,9 +16,6 @@ type ExpertSettingsPageProps = {
   is_sidebar_collapsed: boolean;
 };
 
-/**
- * 解析输入并收窄为业务可用值。
- */
 function parse_number_draft(
   input_value: string,
   min_value: number,
@@ -67,9 +64,6 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
     },
   ] as const;
 
-  /**
-   * 生成当前场景的展示内容。
-   */
   function render_boolean_toggle(options: {
     title_key:
       | "expert_settings_page.fields.clean_ruby.title"
@@ -108,9 +102,6 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
     is_preceding_lines_threshold_editing,
   ]);
 
-  /**
-   * 提交当前场景的数据变化。
-   */
   async function commit_preceding_lines_threshold_draft(): Promise<void> {
     if (parsed_preceding_lines_threshold === null) {
       push_toast("error", t("expert_settings_page.feedback.preceding_lines_threshold_invalid"));

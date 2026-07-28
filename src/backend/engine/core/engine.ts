@@ -1,8 +1,7 @@
 import crypto from "node:crypto";
 
 import { resolve_active_model } from "../../model/model-config-resolver";
-import { TaskProjectStore } from "../task-project-store";
-import { TaskRuntime, type TaskRunHandle } from "../task-runtime";
+import type { TaskRunHandle } from "../task-runtime";
 import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
 import { WorkUnitExecutorTransportError } from "../work-unit/work-unit-transport-error";
 import type { StartTaskCommand, StopTaskCommand } from "../protocol/task-command";
@@ -29,6 +28,7 @@ import { TaskLogReplay } from "./log-replay";
 import { is_task_skipped_item_status, type TaskType } from "../../../domain/task";
 import {
   is_json_record,
+  read_json_integer,
   read_json_record,
   type JsonValue,
   type MutableJsonRecord,
@@ -53,8 +53,8 @@ interface TaskRunContext {
  */
 export class TaskEngine {
   private readonly app_root: string; // 让 Backend 启动日志和 worker 使用同一套提示词资源
-  private readonly task_store: TaskProjectStore; // 后台任务唯一项目数据写入口，TaskEngine 不直接碰 database
-  private readonly task_runtime: TaskRuntime; // 任务锁、取消、快照与请求压力的唯一运行态
+  private readonly task_store: TaskEngineOptions["taskStore"]; // 后台任务唯一项目数据写入口，TaskEngine 不直接碰 database
+  private readonly task_runtime: TaskEngineOptions["taskRuntime"]; // 任务锁、取消、快照与请求压力的最小运行态能力
   private readonly executor_client: WorkUnitExecutor; // 屏蔽 worker_threads / in_process runner 差异，主流程只关心 work-unit 结果
   private readonly task_planner: TaskEngineOptions["taskPlanner"]; // 切块与 token cache 复用的唯一规划入口
   private readonly app_setting_service: TaskEngineOptions["AppSettingService"]; // 每轮启动时读取一次设置与模型快照
@@ -864,7 +864,7 @@ export class TaskEngine {
   private build_checkpoint_status_map(checkpoints: MutableJsonRecord[]): Map<number, string> {
     const result = new Map<number, string>();
     for (const checkpoint of checkpoints) {
-      const item_id = this.read_number(checkpoint["item_id"], 0);
+      const item_id = read_json_integer(checkpoint["item_id"], 0);
       const status = String(checkpoint["status"] ?? "");
       if (item_id > 0 && (status === "NONE" || status === "PROCESSED" || status === "ERROR")) {
         result.set(item_id, status);
@@ -887,7 +887,7 @@ export class TaskEngine {
    * item id 同时兼容数据库内部 id 和公开 item_id
    */
   private read_item_id(item: MutableJsonRecord): number {
-    return this.read_number(item["id"] ?? item["item_id"], 0);
+    return read_json_integer(item["id"] ?? item["item_id"], 0);
   }
 
   /**
@@ -905,14 +905,6 @@ export class TaskEngine {
       return [];
     }
     return value.filter(is_json_record).map((item) => ({ ...item }));
-  }
-
-  /**
-   * 数字字段统一截断，坏值回退到调用方默认值
-   */
-  private read_number(value: JsonValue | undefined, fallback: number): number {
-    const number_value = Number(value ?? fallback);
-    return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
 
   /**

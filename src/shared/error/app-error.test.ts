@@ -1,58 +1,37 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  InternalInvariantError,
-  RequestValidationError,
-  RuntimeCapabilityMissingError,
-  to_app_error_log_snapshot,
-} from ".";
+import { AppError, is_app_error } from "./app-error";
 
-describe("shared/error", () => {
-  it("日志快照保留诊断上下文和 cause 链", () => {
+describe("AppError", () => {
+  it("构造稳定错误事实并过滤非 JSON 公开详情", () => {
     const cause = new Error("底层失败");
-    const error = new InternalInvariantError({
-      cause,
-      public_details: { request: "safe" },
-    });
-
-    const snapshot = to_app_error_log_snapshot(error, {
-      context: { request_id: "request-1" },
-    });
-
-    expect(snapshot.level).toBe("error");
-    expect(snapshot.error.context).toMatchObject({
+    const error = new AppError({
       code: "runtime.internal_invariant",
-      request_id: "request-1",
-      public_details: { request: "safe" },
-    });
-    expect(snapshot.error.cause_chain).toEqual([
-      expect.objectContaining({ name: "Error", message: "底层失败" }),
-    ]);
-  });
-
-  it("expected 错误默认只进入 debug 诊断等级", () => {
-    const snapshot = to_app_error_log_snapshot(new RequestValidationError());
-
-    expect(snapshot.level).toBe("debug");
-    expect(snapshot.error.context?.["severity"]).toBe("expected");
-  });
-
-  it("运行能力错误保留统一诊断上下文", () => {
-    const error = new RuntimeCapabilityMissingError({
-      public_details: { capability: "backend_api_port" },
-      diagnostic_context: {
-        reason: "exhausted_retryable_ports",
-        max_attempts: 2,
+      public_details: {
+        request: "safe",
+        nested: { retry_count: 2 },
+        ignored: (() => undefined) as never,
       },
+      diagnostic_context: { stage: "commit" },
+      cause,
     });
 
     expect(error).toMatchObject({
-      code: "runtime.capability_missing",
-      public_details: { capability: "backend_api_port" },
-      diagnostic_context: {
-        reason: "exhausted_retryable_ports",
-        max_attempts: 2,
+      code: "runtime.internal_invariant",
+      severity: "fault",
+      message_key: "app.error.runtime.internal_invariant.message",
+      public_details: {
+        request: "safe",
+        nested: { retry_count: 2 },
       },
+      diagnostic_context: { stage: "commit" },
     });
+    expect(error.cause).toBe(cause);
+  });
+
+  it("只将统一基类实例识别为受控应用错误", () => {
+    expect(is_app_error(new AppError({ code: "request.validation_failed" }))).toBe(true);
+    expect(is_app_error(new Error("boom"))).toBe(false);
+    expect(is_app_error({ code: "request.validation_failed" })).toBe(false);
   });
 });

@@ -12,6 +12,7 @@ describe("renderer diagnostics payload", () => {
       project: {
         path: "E:/secret/project/demo.lg",
         sessionStatus: "ready",
+        items: { "1": { dst: "不应进入日志" } },
       },
       event: {
         topic: "project.data_changed",
@@ -38,6 +39,7 @@ describe("renderer diagnostics payload", () => {
         },
       },
     });
+    expect(payload.project).not.toHaveProperty("items");
   });
 
   it("renderer error context 只保留白名单字段并摘要敏感身份", () => {

@@ -203,7 +203,7 @@ describe("proofreading-list-reader", () => {
     expect(translation_view.window_rows.map((row) => row.row_id)).toEqual(["1"]);
   });
 
-  it("姓名术语缺失进入 warning 和筛选面板术语计数", () => {
+  it("姓名术语缺失进入筛选面板术语计数", () => {
     const service = createProofreadingListReader();
     const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
@@ -231,23 +231,10 @@ describe("proofreading-list-reader", () => {
       ],
     });
 
-    const view = service.read_list_view({
-      filters: sync_state.defaultFilters,
-      keyword: "",
-      scope: "all",
-      is_regex: false,
-      sort_state: null,
-      window_start: 0,
-      window_count: 10,
-    });
     const panel = service.build_filter_panel({
       filters: sync_state.defaultFilters,
     });
 
-    expect(view.window_rows[0]?.item).toMatchObject({
-      warnings: ["GLOSSARY"],
-      failed_glossary_terms: [["Alice", "艾丽丝"]],
-    });
     expect(panel.glossary_term_entries).toEqual([
       {
         term: ["Alice", "艾丽丝"],

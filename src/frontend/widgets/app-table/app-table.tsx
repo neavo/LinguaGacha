@@ -115,9 +115,6 @@ type PendingScrollAnchor = {
   captured_commit: number;
 };
 
-/**
- * 构造当前场景的标准初始数据。
- */
 function create_array_row_model<Row>(
   rows: Row[],
   get_row_id: (row: Row, index: number) => string,
@@ -152,9 +149,6 @@ function use_array_row_model<Row>(
   }, [rows]);
 }
 
-/**
- * 解析当前场景的最终消费值。
- */
 function resolve_visible_sortable_row_ids(args: {
   virtual_rows: Array<VirtualItem>;
   resolve_row_id_at_index: (index: number) => string | undefined;
@@ -165,9 +159,6 @@ function resolve_visible_sortable_row_ids(args: {
   });
 }
 
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_visible_range(virtual_rows: Array<VirtualItem>): AppTableVisibleRange | null {
   if (virtual_rows.length === 0) {
     return null;
@@ -181,9 +172,6 @@ function normalize_visible_range(virtual_rows: Array<VirtualItem>): AppTableVisi
   };
 }
 
-/**
- * 构建当前场景的稳定结果。
- */
 function build_selection_box_rect(selection_box: SelectionBoxState): DOMRect {
   return new DOMRect(
     Math.min(selection_box.origin_x, selection_box.current_x),
@@ -207,9 +195,6 @@ function intersects_selection_box(
   );
 }
 
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_selection_box_style(
   host_element: HTMLDivElement | null,
   selection_box: SelectionBoxState | null,
@@ -232,9 +217,6 @@ function normalize_selection_box_style(
   };
 }
 
-/**
- * 写入当前场景的状态变化。
- */
 function sync_selection_box_element_style(args: {
   host_element: HTMLDivElement | null;
   selection_box_element: HTMLDivElement | null;
@@ -257,16 +239,10 @@ function sync_selection_box_element_style(args: {
   args.selection_box_element.style.height = `${String(next_style.height ?? 0)}px`;
 }
 
-/**
- * 判断当前值是否满足业务条件。
- */
 function has_primary_keyboard_modifier(event: Pick<KeyboardEvent, "ctrlKey" | "metaKey">): boolean {
   return event.ctrlKey || event.metaKey;
 }
 
-/**
- * 判断当前值是否满足业务条件。
- */
 function should_handle_table_keydown(event: ReactKeyboardEvent<HTMLDivElement>): boolean {
   if (event.nativeEvent.isComposing) {
     return false;
@@ -277,9 +253,6 @@ function should_handle_table_keydown(event: ReactKeyboardEvent<HTMLDivElement>):
 
 type AppTableKeyboardNavigationAction = "previous" | "next" | "first" | "last";
 
-/**
- * 解析当前场景的最终消费值。
- */
 function resolve_keyboard_target_index(args: {
   row_count: number;
   current_index: number | null;
@@ -300,9 +273,6 @@ function resolve_keyboard_target_index(args: {
   }
 }
 
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_row_range(
   row_count: number,
   start: number,

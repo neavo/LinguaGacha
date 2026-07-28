@@ -28,25 +28,16 @@ type ProofreadingFilterDialogProps = {
   on_close: () => void;
 };
 
-/**
- * 构建当前场景的稳定结果。
- */
 function build_term_key(term: ProofreadingGlossaryTerm): string {
   return format_proofreading_glossary_term(term);
 }
 
-/**
- * 切换当前交互状态。
- */
 function toggle_string(values: string[], target_value: string): string[] {
   return values.includes(target_value)
     ? values.filter((value) => value !== target_value)
     : [...values, target_value];
 }
 
-/**
- * 切换当前交互状态。
- */
 function toggle_term(
   glossary_terms: ProofreadingGlossaryTerm[],
   target_term: ProofreadingGlossaryTerm,

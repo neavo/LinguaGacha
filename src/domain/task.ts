@@ -1,11 +1,5 @@
-/**
- * 集中维护当前模块的稳定常量。
- */
 export const TASK_TYPES = ["translation", "analysis"] as const; // 任务类型权威；重翻由 translation scope 表达
 
-/**
- * 集中维护当前模块的稳定常量。
- */
 export const TASK_RUN_STATUSES = [
   "idle",
   "requested",
@@ -15,34 +9,16 @@ export const TASK_RUN_STATUSES = [
   "error",
 ] as const; // Engine 运行态状态机唯一值域
 
-/**
- * 集中维护当前模块的稳定常量。
- */
 export const TASK_START_MODES = ["new", "continue", "reset"] as const; // 后台任务启动模式，公开命令进入核心前统一小写
 
-/**
- * 集中维护当前模块的稳定常量。
- */
 export const TRANSLATION_TASK_ACTIVE_STATUSES = ["requested", "running", "stopping"] as const; // 翻译活跃态供 renderer 折叠快照使用
-/**
- * 集中维护当前模块的稳定常量。
- */
 export const ANALYSIS_TASK_ACTIVE_STATUSES = ["requested", "running", "stopping"] as const; // 分析活跃态供 renderer 折叠快照使用
 
-/**
- * 集中维护当前模块的稳定常量。
- */
 export const TASK_IDLE_STATUSES = ["done", "error", "idle"] as const; // 空闲状态集合用于任务启动互斥和页面按钮可用性判断
 
-/**
- * 集中维护当前模块的稳定常量。
- */
 export const TASK_PROGRESS_STATUSES = ["NONE", "PROCESSED", "ERROR"] as const; // 进度状态是 item 统计口径，不等同于任务生命周期状态
 
 // 这些 item 状态不会进入翻译或分析任务进度统计
-/**
- * 集中维护当前模块的稳定常量。
- */
 export const TASK_SKIPPED_ITEM_STATUSES = [
   "EXCLUDED",
   "RULE_SKIPPED",
@@ -97,41 +73,26 @@ export function is_task_start_mode(value: unknown): value is TaskStartMode {
 }
 
 // 空闲性判断接受公开空闲状态，供互斥检查复用
-/**
- * 判断当前值是否满足业务条件。
- */
 export function is_task_idle_status(value: unknown): value is TaskIdleStatus {
   return TASK_IDLE_STATUS_SET.has(String(value));
 }
 
 // 进度统计只接受 item 级别三态，避免生命周期状态污染统计
-/**
- * 判断当前值是否满足业务条件。
- */
 export function is_task_progress_status(value: unknown): value is TaskProgressStatus {
   return TASK_PROGRESS_STATUS_SET.has(value as TaskProgressStatus);
 }
 
 // 被规则跳过的 item 不计入待处理量，这里集中维护统计豁免口径
-/**
- * 判断当前值是否满足业务条件。
- */
 export function is_task_skipped_item_status(value: unknown): boolean {
   return TASK_SKIPPED_ITEM_STATUS_SET.has(String(value));
 }
 
 // 翻译活跃态统一供快照折叠使用
-/**
- * 判断当前值是否满足业务条件。
- */
 export function is_active_translation_task_status(value: unknown): boolean {
   return TRANSLATION_TASK_ACTIVE_STATUS_SET.has(String(value));
 }
 
 // 分析活跃态统一供快照折叠使用
-/**
- * 判断当前值是否满足业务条件。
- */
 export function is_active_analysis_task_status(value: unknown): boolean {
   return ANALYSIS_TASK_ACTIVE_STATUS_SET.has(String(value));
 }

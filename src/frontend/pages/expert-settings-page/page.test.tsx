@@ -138,14 +138,6 @@ describe("ExpertSettingsPage", () => {
     return input;
   }
 
-  it("不再渲染结果检查规则入口", async () => {
-    await mount_page();
-
-    expect(
-      container?.textContent?.includes("expert_settings_page.fields.response_check_settings.title"),
-    ).toBe(false);
-  });
-
   it("输入参考上文行数阈值时只更新本地草稿，失焦后再提交", async () => {
     await mount_page();
     const input = get_preceding_lines_threshold_input();

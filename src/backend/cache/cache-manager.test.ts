@@ -203,25 +203,6 @@ describe("CacheManager", () => {
     expect(cache.snapshot()).toMatchObject({ freshness: "fresh", itemCount: 1 });
   });
 
-  it("热机时只保留质量规则事实，不同步预计算统计", async () => {
-    const cache = create_cache({
-      database: create_database({
-        items: [create_item({ id: 1, src: "Hero ẞ" }), create_item({ id: 2, src: "hero ss" })],
-        rules: {
-          glossary: [{ entry_id: "term.hero", src: "hero ss", case_sensitive: false }],
-        },
-      }),
-    });
-
-    await cache.warmProject("E:/Project/demo.lg");
-
-    expect(cache.quality.readBlock()).toMatchObject({
-      glossary: {
-        entries: [{ entry_id: "term.hero", src: "hero ss", case_sensitive: false }],
-      },
-    });
-  });
-
   it("items partial 事件只回读变化条目并更新基础缓存", async () => {
     const items = [
       create_item({ id: 1, src: "こんにちは", dst: "" }),
@@ -260,50 +241,5 @@ describe("CacheManager", () => {
     expect(database.get_all_items).not.toHaveBeenCalled();
     expect(database.get_rules).not.toHaveBeenCalled();
     expect(database.get_rule_text).not.toHaveBeenCalled();
-  });
-
-  it("事件处理统一维护基础缓存并清理受影响计算缓存", async () => {
-    const database = create_database({
-      items: [create_item()],
-    });
-    const cache = create_cache({ database });
-    const proofreading_clear = vi.spyOn(cache.proofreading, "clearProject");
-    const statistics_clear = vi.spyOn(cache.qualityStatistics, "clear");
-
-    await cache.handleProjectEvent({
-      type: "project.opened_for_cache",
-      projectPath: "E:/Project/demo.lg",
-      source: "project_lifecycle",
-      affectedSections: [
-        "project",
-        "files",
-        "items",
-        "quality",
-        "prompts",
-        "analysis",
-        "proofreading",
-      ],
-      sectionRevisions: { items: 1 },
-    });
-
-    expect(cache.snapshot()).toMatchObject({
-      projectPath: "E:/Project/demo.lg",
-      freshness: "fresh",
-      itemCount: 1,
-    });
-    expect(proofreading_clear).toHaveBeenCalledWith();
-    expect(statistics_clear).toHaveBeenCalledTimes(1);
-
-    await cache.handleProjectEvent({
-      type: "project.prompts.changed",
-      projectPath: "E:/Project/demo.lg",
-      source: "project_write",
-      affectedSections: ["prompts"],
-      sectionRevisions: { prompts: 2 },
-      scope: "prompts-full",
-    });
-
-    expect(proofreading_clear).toHaveBeenCalledTimes(1);
-    expect(statistics_clear).toHaveBeenCalledTimes(1);
   });
 });

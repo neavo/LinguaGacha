@@ -25,6 +25,21 @@ describe("analysis-task-model", () => {
     ).toBe(snapshot);
   });
 
+  it("已有行进度的分析终态会保留展示", () => {
+    const snapshot = {
+      ...create_empty_analysis_task_snapshot(),
+      status: "done",
+      line: 1,
+    };
+
+    expect(
+      resolve_analysis_task_display_snapshot({
+        current_snapshot: snapshot,
+        last_snapshot: null,
+      }),
+    ).toBe(snapshot);
+  });
+
   it("分析指标把异常候选计数收敛为非负值", () => {
     const metrics = resolve_analysis_task_metrics({
       snapshot: {

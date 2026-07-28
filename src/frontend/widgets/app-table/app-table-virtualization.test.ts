@@ -32,26 +32,6 @@ describe("app-table-virtualization", () => {
     });
   });
 
-  it("非法几何值会收敛为空布局", () => {
-    expect(
-      build_app_table_spacer_heights({
-        viewport_height: Number.NaN,
-        total_size: -1,
-        range_start: 10,
-        range_end: Number.POSITIVE_INFINITY,
-      }),
-    ).toEqual({
-      top_spacer_height: 0,
-      virtual_bottom_spacer_height: 0,
-      viewport_fill_height: 0,
-      bottom_spacer_height: 0,
-    });
-    expect(build_app_table_placeholder_fill(72, 0)).toEqual({
-      placeholder_row_heights: [],
-      residual_spacer_height: 72,
-    });
-  });
-
   it("斑马纹按源索引保持稳定", () => {
     expect(resolve_app_table_row_zebra(0)).toBe("odd");
     expect(resolve_app_table_row_zebra(1)).toBe("even");

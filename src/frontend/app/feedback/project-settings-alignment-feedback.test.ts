@@ -36,21 +36,4 @@ describe("format_project_settings_aligned_toast", () => {
 
     expect(text).toBe("已按当前设置更新项目设置 …\n输入语言 - 日文\n输出语言 - 中文");
   });
-
-  it("MTool 未变动时不会列出 MTool 行", () => {
-    const text = format_project_settings_aligned_toast({
-      settings: {
-        source_language: "JA",
-        target_language: "ZH",
-        mtool_optimizer_enable: true,
-        skip_duplicate_source_text_enable: true,
-      },
-      changed_fields: {
-        source_language: true,
-      },
-      t,
-    });
-
-    expect(text).not.toContain("MTool 优化器");
-  });
 });

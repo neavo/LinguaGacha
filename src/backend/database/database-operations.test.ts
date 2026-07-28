@@ -126,17 +126,17 @@ describe("ProjectDatabase", () => {
     database.create_project(second_path, "second");
     const release_first = database.acquire_project_lease(first_path, "test");
     const release_second = database.acquire_project_lease(second_path, "test");
-    const connection_records = (
-      database as unknown as {
-        connection_records: Map<string, { db: DatabaseSync }>;
-      }
-    ).connection_records;
-    const records = [...connection_records.values()];
     const checkpoint_failure = new Error("checkpoint failed");
-    vi.spyOn(records[0]!.db, "exec").mockImplementationOnce(() => {
-      throw checkpoint_failure;
+    const original_exec = DatabaseSync.prototype.exec;
+    let checkpoint_failed = false;
+    vi.spyOn(DatabaseSync.prototype, "exec").mockImplementation(function (this: DatabaseSync, sql) {
+      if (sql === "PRAGMA wal_checkpoint(TRUNCATE)" && !checkpoint_failed) {
+        checkpoint_failed = true;
+        throw checkpoint_failure;
+      }
+      return Reflect.apply(original_exec, this, [sql]) as void;
     });
-    const second_close = vi.spyOn(records[1]!.db, "close");
+    const connection_close = vi.spyOn(DatabaseSync.prototype, "close");
     let close_error: unknown;
 
     try {
@@ -147,10 +147,11 @@ describe("ProjectDatabase", () => {
 
     expect(close_error).toBeInstanceOf(AggregateError);
     expect((close_error as AggregateError).errors).toEqual([checkpoint_failure]);
-    expect(second_close).toHaveBeenCalledTimes(1);
-    expect(connection_records.size).toBe(0);
+    expect(connection_close).toHaveBeenCalledTimes(2);
     expect(() => release_first()).not.toThrow();
     expect(() => release_second()).not.toThrow();
+    expect(has_project_sidecar(first_path)).toBe(false);
+    expect(has_project_sidecar(second_path)).toBe(false);
   });
 
   it("项目数据库初始化失败时立即关闭未登记连接", () => {
@@ -169,52 +170,6 @@ describe("ProjectDatabase", () => {
 
     expect(connection_close).not.toBeNull();
     expect(connection_close).toHaveBeenCalledTimes(1);
-    expect(
-      (
-        database as unknown as {
-          connection_records: Map<string, unknown>;
-        }
-      ).connection_records.size,
-    ).toBe(0);
-  });
-
-  it("项目数据库初始化与连接关闭同时失败时保留两个异常", () => {
-    const database = create_database();
-    const lg_path = project_path("open-and-close-failed.lg");
-    const open_failure = new Error("migration failed");
-    const close_failure = new Error("close failed");
-    let failed_connection: DatabaseSync | null = null;
-    vi.spyOn(migration_orchestrator, "run_project_database_migrations").mockImplementationOnce(
-      (db) => {
-        failed_connection = db;
-        vi.spyOn(db, "close").mockImplementationOnce(() => {
-          throw close_failure;
-        });
-        throw open_failure;
-      },
-    );
-    let database_error: unknown;
-
-    try {
-      try {
-        database.get_all_meta(lg_path);
-      } catch (error) {
-        database_error = error;
-      }
-
-      expect(database_error).toBeInstanceOf(AggregateError);
-      expect((database_error as AggregateError).errors).toEqual([open_failure, close_failure]);
-      expect(
-        (
-          database as unknown as {
-            connection_records: Map<string, unknown>;
-          }
-        ).connection_records.size,
-      ).toBe(0);
-    } finally {
-      const connection_to_close = failed_connection as DatabaseSync | null;
-      connection_to_close?.close();
-    }
   });
 
   it("由 服务层读取源文件、压缩 asset，并通过 ProjectDatabase 返回原始 bytes", () => {

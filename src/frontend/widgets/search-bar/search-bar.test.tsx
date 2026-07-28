@@ -134,7 +134,6 @@ type RenderSearchBarOptions = {
   search_disabled?: boolean;
 };
 
-// 组件外壳在本测试中只提供 DOM 载体，断言集中在 SearchBar 的能力锁语义。
 describe("SearchBar", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
@@ -155,9 +154,6 @@ describe("SearchBar", () => {
     replace_all_calls = 0;
   });
 
-  /**
-   * 挂载替换模式搜索条，允许单个用例只覆写要验证的能力状态。
-   */
   async function render_search_bar(options: RenderSearchBarOptions = {}): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -213,9 +209,6 @@ describe("SearchBar", () => {
     });
   }
 
-  /**
-   * 按占位文案定位公开输入框，避免测试依赖组件内部 class。
-   */
   function query_input(placeholder: string): HTMLInputElement {
     const input = container?.querySelector(`input[placeholder='${placeholder}']`);
     if (!(input instanceof HTMLInputElement)) {
@@ -224,9 +217,6 @@ describe("SearchBar", () => {
     return input;
   }
 
-  /**
-   * 按无障碍标签定位工具按钮，验证用户可触达的禁用状态。
-   */
   function query_button_by_label(label: string): HTMLButtonElement {
     const button = container?.querySelector(`button[aria-label='${label}']`);
     if (!(button instanceof HTMLButtonElement)) {
@@ -235,9 +225,6 @@ describe("SearchBar", () => {
     return button;
   }
 
-  /**
-   * 按按钮文本定位带可见文案的搜索动作。
-   */
   function query_button_by_text(text: string): HTMLButtonElement {
     const button = [...(container?.querySelectorAll("button") ?? [])].find((candidate) => {
       return candidate.textContent?.includes(text);
@@ -248,9 +235,6 @@ describe("SearchBar", () => {
     return button;
   }
 
-  /**
-   * 替换当前项和全部替换共享提交锁，测试中统一断言两者一致。
-   */
   function expect_replace_submit_disabled(disabled: boolean): void {
     expect(query_button_by_label("替换当前").disabled).toBe(disabled);
     expect(query_button_by_label("全部替换").disabled).toBe(disabled);
@@ -301,20 +285,6 @@ describe("SearchBar", () => {
     await render_search_bar({
       replace_text: "",
     });
-
-    expect_replace_submit_disabled(false);
-
-    await act(async () => {
-      query_button_by_label("替换当前").click();
-      query_button_by_label("全部替换").click();
-    });
-
-    expect(replace_next_calls).toBe(1);
-    expect(replace_all_calls).toBe(1);
-  });
-
-  it("搜索可用且替换前置条件满足时触发替换动作", async () => {
-    await render_search_bar();
 
     expect_replace_submit_disabled(false);
 

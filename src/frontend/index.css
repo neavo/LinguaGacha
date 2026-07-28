@@ -424,6 +424,11 @@ a,
     transform: translateY(1px);
   }
 
+  [data-slot="card"][data-interactive="true"]:focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
   [data-slot="card-header"] {
     display: flex;
     flex-direction: column;

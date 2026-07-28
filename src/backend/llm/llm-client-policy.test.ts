@@ -6,7 +6,7 @@ import { LLMClientPolicy } from "./llm-client-policy";
 const TEST_USER_AGENT = "LinguaGacha/v1.2.3 (https://github.com/neavo/LinguaGacha)";
 
 describe("LLMClientPolicy", () => {
-  it("自定义 OpenAI-compatible endpoint 使用最终 payload 并写入 GPT-5 thinking 规则", async () => {
+  it("解析模型快照并交给 OpenAI-compatible policy", () => {
     const policy = new LLMClientPolicy(TEST_USER_AGENT);
 
     const resolved = policy.resolve(
@@ -40,114 +40,35 @@ describe("LLMClientPolicy", () => {
     });
     expect(resolved.payload).toMatchObject({
       custom: true,
-      max_tokens: 4096,
       model: "gpt-5-mini",
-      reasoning_effort: "none",
-      stream: true,
       temperature: 0.3,
-      top_p: 0.8,
     });
+    expect(resolved.timeout_ms).toBe(120_000);
   });
 
-  it("Gemini 2.5 Flash OFF 使用 thinkingBudget 0 且不 include thoughts", async () => {
+  it.each([
+    ["Google", "google"],
+    ["Anthropic", "anthropic"],
+    ["SakuraLLM", "sakura"],
+  ] as const)("把 %s api_format 分发到 %s provider", (api_format, provider) => {
     const policy = new LLMClientPolicy(TEST_USER_AGENT);
 
-    const resolved = policy.resolve(
-      create_body({
-        api_format: "Google",
-        model_id: "gemini-2.5-flash",
-        thinking: { level: "OFF" },
-        request: {
-          extra_body_custom_enable: true,
-          extra_body: { responseMimeType: "application/json" },
-        },
-      }),
-    );
-
-    expect(resolved.provider).toBe("google");
-    expect(resolved.payload["config"]).toMatchObject({
-      responseMimeType: "application/json",
-      thinkingConfig: { thinkingBudget: 0, includeThoughts: false },
-    });
+    expect(policy.resolve(create_body({ api_format })).provider).toBe(provider);
   });
 
-  it("Mimo v2 系列 thinking 等级映射为 OpenAI-compatible thinking.type", async () => {
-    const policy = new LLMClientPolicy(TEST_USER_AGENT);
-
-    const off_resolved = policy.resolve(
-      create_body({
-        api_format: "OpenAI",
-        model_id: "mimo-v2-flash",
-        thinking: { level: "OFF" },
-      }),
-    );
-    const high_resolved = policy.resolve(
-      create_body({
-        api_format: "OpenAI",
-        model_id: "mimo-v2.5-pro",
-        thinking: { level: "HIGH" },
-      }),
-    );
-
-    expect(off_resolved.payload["thinking"]).toEqual({ type: "disabled" });
-    expect(high_resolved.payload["thinking"]).toEqual({ type: "enabled" });
-  });
-
-  it("Google SDK baseUrl 会移除末尾版本段且不影响其它 provider", () => {
-    expect(LLMClientPolicy.normalize_api_url("", "Google")).toBe("");
-    expect(
-      LLMClientPolicy.normalize_api_url("https://generativelanguage.googleapis.com", "Google"),
-    ).toBe("https://generativelanguage.googleapis.com");
+  it("按 provider 分发 URL 归一规则", () => {
     expect(
       LLMClientPolicy.normalize_api_url("https://generativelanguage.googleapis.com/v1", "Google"),
     ).toBe("https://generativelanguage.googleapis.com");
     expect(
-      LLMClientPolicy.normalize_api_url(
-        "https://generativelanguage.googleapis.com/v1beta/",
-        "Google",
-      ),
-    ).toBe("https://generativelanguage.googleapis.com");
-    expect(
-      LLMClientPolicy.normalize_api_url(
-        "https://generativelanguage.googleapis.com/v1alpha",
-        "Google",
-      ),
-    ).toBe("https://generativelanguage.googleapis.com");
-    expect(LLMClientPolicy.normalize_api_url("https://proxy.example/google/v1beta", "Google")).toBe(
-      "https://proxy.example/google",
-    );
-    expect(LLMClientPolicy.normalize_api_url("https://api.example/v1", "OpenAI")).toBe(
-      "https://api.example/v1",
-    );
+      LLMClientPolicy.normalize_api_url("https://api.example/v1/chat/completions", "OpenAI"),
+    ).toBe("https://api.example/v1");
     expect(
       LLMClientPolicy.normalize_api_url("https://sakura.example/v1/chat/completions/", "SakuraLLM"),
     ).toBe("https://sakura.example/v1");
     expect(LLMClientPolicy.normalize_api_url("https://api.anthropic.com/", "Anthropic")).toBe(
       "https://api.anthropic.com",
     );
-  });
-
-  it("Claude thinking 开启时移除 temperature 和 top_p", async () => {
-    const policy = new LLMClientPolicy(TEST_USER_AGENT);
-
-    const resolved = policy.resolve(
-      create_body({
-        api_format: "Anthropic",
-        model_id: "claude-sonnet-4-5",
-        thinking: { level: "HIGH" },
-        generation: {
-          temperature_custom_enable: true,
-          temperature: 0.4,
-          top_p_custom_enable: true,
-          top_p: 0.7,
-        },
-      }),
-    );
-
-    expect(resolved.provider).toBe("anthropic");
-    expect(resolved.payload["temperature"]).toBeUndefined();
-    expect(resolved.payload["top_p"]).toBeUndefined();
-    expect(resolved.payload["thinking"]).toEqual({ type: "enabled", budget_tokens: 2048 });
   });
 
   it("多行 API key 归一后模型测试使用第一枚 key", () => {

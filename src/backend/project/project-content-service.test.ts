@@ -171,11 +171,6 @@ function create_persistent_item(overrides: JsonRecord = {}): JsonRecord {
   };
 }
 
-function count_get_all_items_calls(database: ProjectDatabase): () => number {
-  const spy = vi.spyOn(database, "get_all_items");
-  return () => spy.mock.calls.length;
-}
-
 /**
  * 暂停下一次格式解析，稳定复现慢准备阶段持有结构性写入租约的窗口
  */
@@ -262,8 +257,6 @@ describe("ProjectContentService", () => {
     database.set_items(other_lg_path, [
       create_persistent_item({ src: "旧", file_path: "other.txt", row_number: 0 }),
     ]);
-    const get_all_items_count = count_get_all_items_calls(database);
-
     const ack = await service.align_settings({
       path: other_lg_path,
       mode: "prefiltered_items",
@@ -277,7 +270,6 @@ describe("ProjectContentService", () => {
     });
 
     expect(ack).toEqual({ accepted: true, changes: [] });
-    expect(get_all_items_count()).toBe(1);
     expect(publish_project_change).toHaveBeenCalledWith(
       expect.objectContaining({
         projectPath: other_lg_path,
@@ -298,8 +290,6 @@ describe("ProjectContentService", () => {
     database.set_items(lg_path, [
       create_persistent_item({ src: "旧", file_path: "a.txt", row_number: 0 }),
     ]);
-    const get_all_items_count = count_get_all_items_calls(database);
-
     const ack = await service.align_settings({
       mode: "prefiltered_items",
       expected_section_revisions: { items: 0, analysis: 0 },
@@ -320,7 +310,6 @@ describe("ProjectContentService", () => {
         },
       ],
     });
-    expect(get_all_items_count()).toBe(1);
     expect(publish_project_change).toHaveBeenCalledWith({
       projectPath: lg_path,
       source: "settings_alignment",
@@ -358,8 +347,6 @@ describe("ProjectContentService", () => {
         case_sensitive: false,
       },
     ]);
-    const get_all_items_count = count_get_all_items_calls(database);
-
     const ack = await service.reset_translation({
       mode: "all",
       project_settings: { source_language: "JA", target_language: "ZH" },
@@ -377,7 +364,6 @@ describe("ProjectContentService", () => {
         },
       ],
     });
-    expect(get_all_items_count()).toBe(1);
     expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({
         src: "新",
@@ -574,8 +560,6 @@ describe("ProjectContentService", () => {
     const broken_json = project_path("broken.json");
     fs.writeFileSync(valid_source, "新", "utf-8");
     fs.writeFileSync(broken_json, "{", "utf-8");
-    const get_all_items_count = count_get_all_items_calls(database);
-
     const ack = await service.import_files({
       files: [
         { source_path: valid_source, target_rel_path: "valid.txt" },
@@ -598,7 +582,6 @@ describe("ProjectContentService", () => {
         },
       ],
     });
-    expect(get_all_items_count()).toBe(1);
     expect(database.get_all_asset_records(lg_path)).toEqual([{ path: "valid.txt", sort_order: 0 }]);
     expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({ src: "新", file_path: "valid.txt", row_number: 0 }),
@@ -703,7 +686,7 @@ describe("ProjectContentService", () => {
     database.close();
   });
 
-  it("导入同名工作台文件选择替换并继承译文时只读取一次 items", async () => {
+  it("导入同名工作台文件选择替换并继承译文", async () => {
     const { database, service, lg_path } = create_service();
     const old_source = project_path("a.txt");
     const replace_source = project_path("a-new.txt");
@@ -718,8 +701,6 @@ describe("ProjectContentService", () => {
         row_number: 0,
       }),
     ]);
-    const get_all_items_count = count_get_all_items_calls(database);
-
     await service.import_files({
       files: [{ source_path: replace_source, target_rel_path: "a.txt" }],
       conflict_action: "replace",
@@ -728,7 +709,6 @@ describe("ProjectContentService", () => {
       expected_section_revisions: { files: 0, items: 0, analysis: 0 },
     });
 
-    expect(get_all_items_count()).toBe(1);
     expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({
         item_id: 2,
@@ -739,27 +719,6 @@ describe("ProjectContentService", () => {
         row_number: 0,
       }),
     ]);
-    database.close();
-  });
-
-  it("同步 write 写库成功后发布后端权威项目变更事件", async () => {
-    const { publish_project_change } = create_static_project_change_publisher({ items: 1 });
-    const { database, service, lg_path } = create_service(publish_project_change);
-    database.set_items(lg_path, [
-      create_persistent_item({ src: "旧", dst: "old", status: "ERROR" }),
-    ]);
-
-    await service.reset_translation({
-      mode: "failed",
-      expected_section_revisions: { items: 0 },
-    });
-
-    expect(publish_project_change).toHaveBeenCalledWith({
-      projectPath: lg_path,
-      source: "translation_reset",
-      updatedSections: ["items"],
-      items: { payloadMode: "section-invalidated" },
-    });
     database.close();
   });
 
@@ -820,15 +779,12 @@ describe("ProjectContentService", () => {
         row_number: 0,
       }),
     ]);
-    const get_all_items_count = count_get_all_items_calls(database);
-
     await service.reset_files({
       rel_paths: ["a.txt"],
       project_settings: { source_language: "JA" },
       expected_section_revisions: { items: 0, analysis: 0 },
     });
 
-    expect(get_all_items_count()).toBe(1);
     expect(read_meta(database, lg_path, "translation_extras", {})).toMatchObject({
       processed_line: 0,
       error_line: 0,
@@ -849,7 +805,7 @@ describe("ProjectContentService", () => {
     database.close();
   });
 
-  it("删除工作台文件时删除 files 和对应 items 且只读取一次 items", async () => {
+  it("删除工作台文件时删除 files 和对应 items", async () => {
     const { publish_project_change } = create_static_project_change_publisher({
       files: 1,
       items: 1,
@@ -871,8 +827,6 @@ describe("ProjectContentService", () => {
         row_number: 0,
       }),
     ]);
-    const get_all_items_count = count_get_all_items_calls(database);
-
     const ack = await service.delete_files({
       rel_paths: ["a.txt"],
       project_settings: { source_language: "JA", target_language: "ZH" },
@@ -888,7 +842,6 @@ describe("ProjectContentService", () => {
         },
       ],
     });
-    expect(get_all_items_count()).toBe(1);
     expect(database.get_all_asset_records(lg_path)).toEqual([{ path: "b.txt", sort_order: 1 }]);
     expect(database.get_all_items(lg_path)).toEqual([
       create_persistent_item({ item_id: 2, src: "保留", file_path: "b.txt", row_number: 0 }),

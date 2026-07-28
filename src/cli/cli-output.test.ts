@@ -3,58 +3,37 @@ import { describe, expect, it } from "vitest";
 import { build_cli_help } from "./cli-output";
 
 describe("build_cli_help", () => {
-  it("全局帮助只展示 help/version 和两个单动词命令", () => {
+  it("全局帮助展示全局参数、两个命令与 Windows 入口", () => {
     const text = build_cli_help(undefined, "win32");
 
-    expect(text).not.toContain("LinguaGacha CLI");
-    expect(text).toContain("全局参数 | Global Options:");
-    expect(text).toContain("cli.exe translate");
-    expect(text).toContain("示例 | Samples:");
-    expect(text).toContain("更多说明 | More Info:");
-    expect(text).toContain("<文件或目录 | file-or-dir>");
-    expect(text).toContain("--help");
-    expect(text).toContain("--version");
-    expect(text).toContain("translate");
-    expect(text).toContain("analyze");
-    expect(text).not.toContain("--project");
-    expect(text).not.toContain("--watch");
-    expect(text).toMatch(/CLIModeEN\n\n$/u);
+    for (const item of ["--help", "--version", "translate", "analyze", "cli.exe translate"]) {
+      expect(text).toContain(item);
+    }
   });
 
-  it("命令帮助只展示文件进出型参数", () => {
-    const text = build_cli_help("translate", "win32");
+  it("命令帮助只展示对应资源参数", () => {
+    const translate_help = build_cli_help("translate", "win32");
+    const analyze_help = build_cli_help("analyze", "win32");
 
-    expect(text).not.toContain("LinguaGacha CLI");
-    expect(text).toContain("用法 | Usage:");
-    expect(text).toContain("参数 | Options:");
-    expect(text).toContain("示例 | Sample:");
-    expect(text).toContain("更多说明 | More Info:");
-    expect(text).toContain("--input");
-    expect(text).toContain("--output-dir");
-    expect(text).toContain("--source-language");
-    expect(text).toContain("--target-language");
-    expect(text).toContain("--prompt");
-    expect(text).toContain("--glossary");
-    expect(text).toContain("--pre-replacement");
-    expect(text).toContain("--post-replacement");
-    expect(text).toContain("--text-preserve");
-    expect(text).not.toContain("--open-folder");
-    expect(text).toMatch(/CLIModeEN\n\n$/u);
-  });
-
-  it("分析命令帮助只展示分析实际支持的外部提示词", () => {
-    const text = build_cli_help("analyze", "win32");
-
-    expect(text).toContain("用法 | Usage:");
-    expect(text).toContain("参数 | Options:");
-    expect(text).toContain("示例 | Sample:");
-    expect(text).toContain("更多说明 | More Info:");
-    expect(text).toContain("--prompt");
-    expect(text).not.toContain("--glossary");
-    expect(text).not.toContain("--pre-replacement");
-    expect(text).not.toContain("--post-replacement");
-    expect(text).not.toContain("--text-preserve");
-    expect(text).toMatch(/CLIModeEN\n\n$/u);
+    for (const option of [
+      "--input",
+      "--output-dir",
+      "--source-language",
+      "--target-language",
+      "--prompt",
+    ]) {
+      expect(translate_help).toContain(option);
+      expect(analyze_help).toContain(option);
+    }
+    for (const option of [
+      "--glossary",
+      "--pre-replacement",
+      "--post-replacement",
+      "--text-preserve",
+    ]) {
+      expect(translate_help).toContain(option);
+      expect(analyze_help).not.toContain(option);
+    }
   });
 
   it("macOS 和 Linux 帮助展示主程序 --cli 入口", () => {

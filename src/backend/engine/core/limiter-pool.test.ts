@@ -15,16 +15,11 @@ describe("TaskLimiter", () => {
     expect(resolve_effective_concurrency_limit({ concurrency_limit: 0, rpm_limit: 0 })).toBe(8);
   });
 
-  it("TaskLimiter 只接收最终并发值", () => {
-    expect(new TaskLimiter({ max_concurrency: 1, rpm_limit: 60 }).max_concurrency).toBe(1);
-    expect(new TaskLimiter({ max_concurrency: 3 }).max_concurrency).toBe(3);
-  });
-
   it("无 RPM 时先填满并发，后续请求按隐藏 RPS 补充启动资格", async () => {
     vi.useFakeTimers();
     try {
-      let now = 0;
-      const limiter = new TaskLimiter({ concurrency_limit: 2, rpm_limit: 0, now: () => now });
+      vi.setSystemTime(0);
+      const limiter = new TaskLimiter({ max_concurrency: 2, rpm_limit: 0 });
       const controller = new AbortController();
       const first = await limiter.acquire(controller.signal);
       const second = await limiter.acquire(controller.signal);
@@ -39,11 +34,9 @@ describe("TaskLimiter", () => {
       await Promise.resolve();
       expect(third_acquired).toBe(false);
 
-      now = 499;
       await vi.advanceTimersByTimeAsync(499);
       expect(third_acquired).toBe(false);
 
-      now = 500;
       await vi.advanceTimersByTimeAsync(1);
       const third_lease = await third;
       expect(third_lease.queued_ms).toBe(500);
@@ -56,8 +49,8 @@ describe("TaskLimiter", () => {
   it("并发槽释放后才允许后续请求进入", async () => {
     vi.useFakeTimers();
     try {
-      let now = 0;
-      const limiter = new TaskLimiter({ concurrency_limit: 1, now: () => now });
+      vi.setSystemTime(0);
+      const limiter = new TaskLimiter({ max_concurrency: 1 });
       const controller = new AbortController();
       const first = await limiter.acquire(controller.signal);
       let second_acquired = false;
@@ -70,7 +63,6 @@ describe("TaskLimiter", () => {
       expect(second_acquired).toBe(false);
 
       first.release();
-      now = 1_000;
       await vi.advanceTimersByTimeAsync(1_000);
       await second;
       expect(second_acquired).toBe(true);
@@ -82,8 +74,8 @@ describe("TaskLimiter", () => {
   it("有 RPM 时只按 RPM 平滑发放请求资格", async () => {
     vi.useFakeTimers();
     try {
-      let now = 0;
-      const limiter = new TaskLimiter({ concurrency_limit: 2, rpm_limit: 60, now: () => now });
+      vi.setSystemTime(0);
+      const limiter = new TaskLimiter({ max_concurrency: 2, rpm_limit: 60 });
       const controller = new AbortController();
       const first = await limiter.acquire(controller.signal);
       let second_acquired = false;
@@ -95,11 +87,9 @@ describe("TaskLimiter", () => {
       await Promise.resolve();
       expect(second_acquired).toBe(false);
 
-      now = 999;
       await vi.advanceTimersByTimeAsync(999);
       expect(second_acquired).toBe(false);
 
-      now = 1_000;
       await vi.advanceTimersByTimeAsync(1);
       const second_lease = await second;
       expect(second_lease.queued_ms).toBe(1_000);
@@ -113,8 +103,8 @@ describe("TaskLimiter", () => {
   it("多个等待请求按 FIFO 顺序获得 lease", async () => {
     vi.useFakeTimers();
     try {
-      let now = 0;
-      const limiter = new TaskLimiter({ concurrency_limit: 1, now: () => now });
+      vi.setSystemTime(0);
+      const limiter = new TaskLimiter({ max_concurrency: 1 });
       const controller = new AbortController();
       const first = await limiter.acquire(controller.signal);
       const acquired_order: number[] = [];
@@ -131,7 +121,6 @@ describe("TaskLimiter", () => {
       expect(acquired_order).toEqual([]);
 
       first.release();
-      now = 1_000;
       await vi.advanceTimersByTimeAsync(1_000);
       const second_lease = await second;
       expect(acquired_order).toEqual([2]);
@@ -140,7 +129,6 @@ describe("TaskLimiter", () => {
       expect(acquired_order).toEqual([2]);
 
       second_lease.release();
-      now = 2_000;
       await vi.advanceTimersByTimeAsync(1_000);
       const third_lease = await third;
       expect(acquired_order).toEqual([2, 3]);
@@ -153,8 +141,8 @@ describe("TaskLimiter", () => {
   it("排队请求 abort 后会清理队列且不影响后续请求", async () => {
     vi.useFakeTimers();
     try {
-      let now = 0;
-      const limiter = new TaskLimiter({ concurrency_limit: 1, now: () => now });
+      vi.setSystemTime(0);
+      const limiter = new TaskLimiter({ max_concurrency: 1 });
       const first_controller = new AbortController();
       const queued_controller = new AbortController();
       const later_controller = new AbortController();
@@ -169,7 +157,6 @@ describe("TaskLimiter", () => {
 
       first.release();
       const later_promise = limiter.acquire(later_controller.signal);
-      now = 1_000;
       await vi.advanceTimersByTimeAsync(1_000);
       const later = await later_promise;
       later.release();
@@ -181,8 +168,8 @@ describe("TaskLimiter", () => {
   it("lease 重复 release 不会多发放并发槽", async () => {
     vi.useFakeTimers();
     try {
-      let now = 0;
-      const limiter = new TaskLimiter({ concurrency_limit: 1, now: () => now });
+      vi.setSystemTime(0);
+      const limiter = new TaskLimiter({ max_concurrency: 1 });
       const controller = new AbortController();
       const first = await limiter.acquire(controller.signal);
       const acquired_order: number[] = [];
@@ -197,7 +184,6 @@ describe("TaskLimiter", () => {
 
       first.release();
       first.release();
-      now = 1_000;
       await vi.advanceTimersByTimeAsync(1_000);
       const second_lease = await second;
       expect(acquired_order).toEqual([2]);
@@ -206,7 +192,6 @@ describe("TaskLimiter", () => {
       expect(acquired_order).toEqual([2]);
 
       second_lease.release();
-      now = 2_000;
       await vi.advanceTimersByTimeAsync(1_000);
       const third_lease = await third;
       expect(acquired_order).toEqual([2, 3]);

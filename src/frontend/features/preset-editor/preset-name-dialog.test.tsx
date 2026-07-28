@@ -1,11 +1,10 @@
 import type { ReactNode } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
-  useI18n: () => ({
-    t: (key: string) => key,
-  }),
+  useI18n: () => ({ t: (key: string) => key }),
 }));
 
 vi.mock("@frontend/widgets/interactions/use-action-shortcut", () => ({
@@ -24,41 +23,63 @@ vi.mock("@frontend/widgets/app-page-dialog", () => ({
 
 import { PresetNameDialog } from "./preset-name-dialog";
 
-const save_state = {
-  open: true,
-  mode: "save",
-  value: "",
-  submitting: false,
-  target_virtual_id: null,
-} as const;
-
 describe("PresetNameDialog", () => {
-  it("保留页面既有的占位文案与快捷键样式变体", () => {
-    const outlined_html = renderToStaticMarkup(
-      <PresetNameDialog
-        state={save_state}
-        name_placeholder_key="text_preserve_page.preset.dialog.name_placeholder"
-        save_shortcut_variant="outlined"
-        on_change={() => {}}
-        on_submit={() => {}}
-        on_close={() => {}}
-      />,
-    );
-    const default_html = renderToStaticMarkup(
-      <PresetNameDialog
-        state={save_state}
-        on_change={() => {}}
-        on_submit={() => {}}
-        on_close={() => {}}
-      />,
-    );
+  let container: HTMLDivElement | null = null;
+  let root: Root | null = null;
 
-    expect(outlined_html).toContain(
-      'placeholder="text_preserve_page.preset.dialog.name_placeholder"',
-    );
-    expect(outlined_html).toContain("border-primary-foreground/16");
-    expect(default_html).toContain('placeholder="quality_editor.preset.dialog.name_placeholder"');
-    expect(default_html).toContain("bg-background/18");
-    expect(default_html).not.toContain("border-primary-foreground/16");
+  afterEach(async () => {
+    if (root !== null) {
+      await act(async () => root?.unmount());
+    }
+    container?.remove();
+    container = null;
+    root = null;
+  });
+
+  it("编辑名称并用 Enter 或保存按钮提交", async () => {
+    const on_change = vi.fn();
+    const on_submit = vi.fn();
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(
+        <PresetNameDialog
+          state={{
+            open: true,
+            mode: "save",
+            value: "",
+            submitting: false,
+            target_virtual_id: null,
+          }}
+          name_placeholder_key="text_preserve_page.preset.dialog.name_placeholder"
+          on_change={on_change}
+          on_submit={on_submit}
+          on_close={() => {}}
+        />,
+      );
+    });
+
+    const input = container.querySelector("input");
+    if (!(input instanceof HTMLInputElement)) {
+      throw new Error("缺少预设名称输入框。");
+    }
+    expect(input.placeholder).toBe("text_preserve_page.preset.dialog.name_placeholder");
+
+    await act(async () => {
+      const value_setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "value",
+      )?.set;
+      value_setter?.call(input, "新预设");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      [...container!.querySelectorAll("button")]
+        .find((button) => button.textContent?.includes("quality_editor.preset.dialog.save_confirm"))
+        ?.click();
+    });
+
+    expect(on_change).toHaveBeenCalledWith("新预设");
+    expect(on_submit).toHaveBeenCalledTimes(2);
   });
 });

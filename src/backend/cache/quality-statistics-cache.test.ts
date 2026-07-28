@@ -153,6 +153,20 @@ describe("QualityStatisticsCache", () => {
     expect(worker.run).toHaveBeenCalledTimes(1);
   });
 
+  it("worker 失败后同一依赖签名可以重新计算", async () => {
+    const cache_port = create_cache_read_port();
+    const worker = create_worker();
+    worker.run.mockRejectedValueOnce(new Error("worker failed"));
+    const cache = new QualityStatisticsCache({ cache: cache_port, workerClient: worker });
+
+    await expect(cache.read("glossary")).rejects.toThrow("worker failed");
+    await expect(cache.read("glossary")).resolves.toMatchObject({
+      statistics: { rule_key: "glossary" },
+    });
+
+    expect(worker.run).toHaveBeenCalledTimes(2);
+  });
+
   it("只改译文后读取 glossary 时不重新执行 worker", async () => {
     const cache_port = create_cache_read_port();
     const worker = create_worker();

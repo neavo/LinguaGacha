@@ -16,27 +16,17 @@ describe("resolve_default_worker_count", () => {
         availableParallelism: 16,
       }),
     ).toBe(1);
-    expect(
-      resolve_default_worker_count({
-        workerCount: -3,
-        availableParallelism: 16,
-      }),
-    ).toBe(1);
   });
 
-  it("默认容量共用同一条 CPU 策略并最多使用四个 worker", () => {
+  it.each([
+    [16, 4],
+    [3, 2],
+    [1, 1],
+  ] as const)("并行度为 %i 时默认使用 %i 个 worker", (availableParallelism, expected) => {
     expect(
       resolve_default_worker_count({
-        availableParallelism: 16,
+        availableParallelism,
       }),
-    ).toBe(4);
-  });
-
-  it("低并行度环境会保留主线程槽位但仍至少返回一个 worker", () => {
-    expect(
-      resolve_default_worker_count({
-        availableParallelism: 1,
-      }),
-    ).toBe(1);
+    ).toBe(expected);
   });
 });

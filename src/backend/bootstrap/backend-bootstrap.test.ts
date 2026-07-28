@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { getGlobalDispatcher } from "undici";
 
 import { ApiGatewayServer } from "../api/api-gateway-server";
 import { NPM_INITIAL_CWD_ENV_NAME } from "../app/app-root-resolver";
@@ -535,6 +536,7 @@ describe("BackendBootstrap", () => {
       }),
       "utf-8",
     );
+    const original_dispatcher = getGlobalDispatcher();
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
       exposeApiGateway: false,
@@ -548,6 +550,7 @@ describe("BackendBootstrap", () => {
 
     const start_result = await manager.start();
     try {
+      expect(getGlobalDispatcher()).not.toBe(original_dispatcher);
       expect(start_result.systemProxyStartupNotice).toEqual({
         detected: true,
         proxiedOriginCount: 4,
@@ -560,6 +563,7 @@ describe("BackendBootstrap", () => {
     } finally {
       await manager.stop();
     }
+    expect(getGlobalDispatcher()).toBe(original_dispatcher);
   });
 });
 

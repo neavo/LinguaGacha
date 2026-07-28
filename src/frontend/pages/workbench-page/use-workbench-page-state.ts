@@ -1215,7 +1215,6 @@ export function useWorkbenchPageState(
   const request_add_files_from_paths = import_files_flow.request_add_files_from_paths;
   const request_add_file_from_path = import_files_flow.request_add_file_from_path;
 
-  // request_add_file 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   async function request_add_file(): Promise<void> {
     if (readonly) {
       return;
@@ -1301,7 +1300,6 @@ export function useWorkbenchPageState(
     [entries.length, get_workbench_planning_state, push_toast, readonly, run_project_file_write, t],
   );
 
-  // confirm_dialog 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   async function confirm_dialog(): Promise<void> {
     const current_dialog_state = dialog_state;
     if (current_dialog_state.kind === null || current_dialog_state.submitting) {
@@ -1397,12 +1395,10 @@ export function useWorkbenchPageState(
     }
   }
 
-  // secondary_dialog 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   async function secondary_dialog(): Promise<void> {
     await import_files_flow.secondary_dialog();
   }
 
-  // cancel_dialog 封装当前模块的共享逻辑，避免重复实现同一维护规则。
   async function cancel_dialog(): Promise<void> {
     const current_dialog_state = dialog_state;
     if (await import_files_flow.cancel_dialog()) {
@@ -1416,9 +1412,6 @@ export function useWorkbenchPageState(
     set_dialog_state(close_dialog_state());
   }
 
-  /**
-   * 切换当前交互状态。
-   */
   function close_dialog(): void {
     if (import_files_flow.close_dialog()) {
       return;

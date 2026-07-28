@@ -7,9 +7,7 @@ import {
 } from "./policy-shared";
 import type { ModelRequestSnapshot } from "./policy-types";
 
-function create_snapshot(
-  overrides: Partial<ModelRequestSnapshot> = {},
-): ModelRequestSnapshot {
+function create_snapshot(overrides: Partial<ModelRequestSnapshot> = {}): ModelRequestSnapshot {
   return {
     provider: "openai-compatible",
     api_format: "OpenAI",
@@ -18,12 +16,11 @@ function create_snapshot(
     model_id: "m",
     headers: {},
     extra_body: {},
-    generation: {},
     output_token_limit: 0,
     thinking_level: "OFF",
     ...overrides,
     generation: {
-      ...(overrides.generation ?? {}),
+      ...overrides.generation,
     },
   };
 }

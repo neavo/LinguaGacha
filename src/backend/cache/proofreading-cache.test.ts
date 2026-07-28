@@ -167,55 +167,30 @@ describe("ProofreadingCache", () => {
 
   it("revision 或语言变化会生成新的缓存身份并重新执行 sync task", async () => {
     const worker = create_worker();
-    const first_cache = new ProofreadingCache({
-      cache: create_cache_read_port({
-        revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
-      }),
+    const revisions = { files: 1, items: 1, quality: 1, proofreading: 0 };
+    const cache = new ProofreadingCache({
+      cache: create_cache_read_port({ revisions }),
       appSettingService: create_settings(),
       workerClient: worker,
       service: createProofreadingListReader(),
     });
-    await first_cache.sync({ sourceLanguage: "JA", targetLanguage: "ZH" });
-    const second_cache = new ProofreadingCache({
-      cache: create_cache_read_port({
-        revisions: { files: 1, items: 2, quality: 1, proofreading: 0 },
-      }),
-      appSettingService: create_settings(),
-      workerClient: worker,
-      service: createProofreadingListReader(),
-    });
-    await second_cache.sync({ sourceLanguage: "JA", targetLanguage: "EN" });
 
-    expect(worker.run).toHaveBeenCalledTimes(2);
-    expect(worker.sync_inputs.map((input) => input.targetLanguage)).toEqual(["ZH", "EN"]);
+    await cache.sync({ sourceLanguage: "JA", targetLanguage: "ZH" });
+    revisions.files = 2;
+    await cache.sync({ sourceLanguage: "JA", targetLanguage: "ZH" });
+    await cache.sync({ sourceLanguage: "JA", targetLanguage: "EN" });
+
+    expect(worker.run).toHaveBeenCalledTimes(3);
+    expect(
+      worker.sync_inputs.map((input) => [input.revisions.files, input.targetLanguage]),
+    ).toEqual([
+      [1, "ZH"],
+      [2, "ZH"],
+      [2, "EN"],
+    ]);
   });
 
-  it("文件 section revision 变化会生成新的校对缓存身份", async () => {
-    const worker = create_worker();
-    const first_cache = new ProofreadingCache({
-      cache: create_cache_read_port({
-        revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
-      }),
-      appSettingService: create_settings(),
-      workerClient: worker,
-      service: createProofreadingListReader(),
-    });
-    await first_cache.sync({});
-    const second_cache = new ProofreadingCache({
-      cache: create_cache_read_port({
-        revisions: { files: 2, items: 1, quality: 1, proofreading: 0 },
-      }),
-      appSettingService: create_settings(),
-      workerClient: worker,
-      service: createProofreadingListReader(),
-    });
-    await second_cache.sync({});
-
-    expect(worker.run).toHaveBeenCalledTimes(2);
-    expect(worker.sync_inputs.map((input) => input.revisions.files)).toEqual([1, 2]);
-  });
-
-  it("项目卸载时只清理本地校对缓存并重新执行 sync task", async () => {
+  it("只清理匹配工程或当前校对缓存", async () => {
     const worker = create_worker();
     const cache = new ProofreadingCache({
       cache: create_cache_read_port({}),
@@ -225,26 +200,14 @@ describe("ProofreadingCache", () => {
     });
     await cache.sync({});
 
+    await cache.clearProject("E:/Project/other.lg");
+    await cache.sync({});
     await cache.clearProject("E:/Project/demo.lg");
     await cache.sync({});
-
-    expect(worker.run).toHaveBeenCalledTimes(2);
-  });
-
-  it("项目切换热机时允许无路径清理旧校对缓存", async () => {
-    const worker = create_worker();
-    const cache = new ProofreadingCache({
-      cache: create_cache_read_port({}),
-      appSettingService: create_settings(),
-      workerClient: worker,
-      service: createProofreadingListReader(),
-    });
-    await cache.sync({});
-
     await cache.clearProject();
     await cache.sync({});
 
-    expect(worker.run).toHaveBeenCalledTimes(2);
+    expect(worker.run).toHaveBeenCalledTimes(3);
   });
 
   it("已同步后 item 增量会应用到本地校对列表运行态", async () => {
@@ -262,13 +225,11 @@ describe("ProofreadingCache", () => {
         retry_count: 0,
       },
     ];
-    const service = createProofreadingListReader();
-    const apply_delta = vi.spyOn(service, "apply_item_delta");
     const cache = new ProofreadingCache({
       cache: create_cache_read_port({ revisions, items }),
       appSettingService: create_settings(),
       workerClient: worker,
-      service,
+      service: createProofreadingListReader(),
     });
     await cache.sync({});
     revisions.items = 2;
@@ -276,16 +237,11 @@ describe("ProofreadingCache", () => {
 
     await cache.applyChange(create_delta_change(), revisions);
     const next_sync = await cache.sync({});
+    const rows = await cache.itemsByRowIds({ row_ids: ["1"] });
 
     expect(worker.run).toHaveBeenCalledTimes(1);
-    expect(apply_delta).toHaveBeenCalledWith(
-      expect.objectContaining({
-        projectId: "E:/Project/demo.lg",
-        revisions: { files: 1, items: 2, quality: 1, proofreading: 0 },
-        upsertItems: [expect.objectContaining({ item_id: 1, dst: "生命值" })],
-      }),
-    );
     expect(next_sync.data.revisions.items).toBe(2);
+    expect(rows.data).toMatchObject([{ item_id: 1, dst: "生命值" }]);
   });
 
   it("field-patch 增量会更新旧列表窗口内容且不重建排序", async () => {

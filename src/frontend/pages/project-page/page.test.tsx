@@ -183,9 +183,6 @@ vi.mock("@frontend/widgets/app-alert-dialog", () => {
   };
 });
 
-/**
- * 构造当前场景的标准初始数据。
- */
 function create_settings_snapshot(overrides: Record<string, unknown> = {}) {
   return {
     app_language: "ZH",
@@ -213,9 +210,6 @@ function create_settings_snapshot(overrides: Record<string, unknown> = {}) {
   };
 }
 
-/**
- * 构造当前场景的标准初始数据。
- */
 function create_desktop_runtime_fixture(settings_overrides: Record<string, unknown> = {}) {
   return {
     project_session_stage: null,
@@ -227,9 +221,6 @@ function create_desktop_runtime_fixture(settings_overrides: Record<string, unkno
   };
 }
 
-/**
- * 配置当前测试场景依赖。
- */
 function install_desktop_app_fixture(): void {
   Object.defineProperty(window, "desktopApp", {
     configurable: true,
@@ -250,18 +241,12 @@ function install_desktop_app_fixture(): void {
   });
 }
 
-/**
- * 支撑当前测试场景的专用辅助逻辑。
- */
 async function flush_async_updates(): Promise<void> {
   for (let index = 0; index < 6; index += 1) {
     await Promise.resolve();
   }
 }
 
-/**
- * 获取当前测试场景的公开值。
- */
 function get_button_by_text(container: HTMLElement, text: string): HTMLButtonElement {
   const button = Array.from(container.querySelectorAll("button")).find((element) => {
     return element.textContent?.includes(text) ?? false;
@@ -317,9 +302,6 @@ describe("ProjectPage", () => {
     update_progress_toast_mock.mockReset();
   });
 
-  /**
-   * 挂载当前测试组件并等待渲染完成。
-   */
   async function mount_page(): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
@@ -330,9 +312,6 @@ describe("ProjectPage", () => {
     });
   }
 
-  /**
-   * 构造当前测试场景的标准数据。
-   */
   async function create_project_from_selected_source(): Promise<void> {
     if (container === null) {
       throw new Error("项目页尚未挂载。");
@@ -392,9 +371,7 @@ describe("ProjectPage", () => {
 
   it("多选源文件后使用完整 source_paths 创建工程", async () => {
     const selected_paths = ["E:\\Source\\a.txt", "E:\\Source\\b.md"];
-    (
-      window.desktopApp.pickProjectSourceFilePath as unknown as ReturnType<typeof vi.fn>
-    ).mockResolvedValueOnce({
+    vi.mocked(window.desktopApp.pickProjectSourceFilePath).mockResolvedValueOnce({
       canceled: false,
       paths: [...selected_paths, "E:\\Source\\a.txt", " "],
     });
@@ -418,7 +395,6 @@ describe("ProjectPage", () => {
       await flush_async_updates();
     });
 
-    expect(container?.textContent).toContain("已选择 2 个源文件");
     expect(container?.textContent).toContain("已选择 2 个源文件");
 
     await act(async () => {

@@ -6,7 +6,7 @@ import {
   collect_project_item_missing_public_fields,
   normalize_project_item_public_record,
 } from "../../domain/item";
-import { is_json_record, read_json_record } from "../../domain/json";
+import { is_json_record, read_json_integer, read_json_record } from "../../domain/json";
 import {
   isProjectDataSection,
   PROJECT_DATA_SECTIONS,
@@ -279,7 +279,7 @@ export class ProjectDataReader {
     const extras = { ...read_json_record(meta["analysis_extras"]) };
     return {
       extras,
-      candidate_count: this.read_number(meta["analysis_candidate_count"], 0),
+      candidate_count: read_json_integer(meta["analysis_candidate_count"], 0),
       status_summary: this.build_analysis_status_summary_from_extras(extras),
     };
   }
@@ -292,7 +292,7 @@ export class ProjectDataReader {
     const section_revisions = this.build_section_revisions(meta);
     return {
       projectPath: project_path,
-      candidate_count: this.read_number(meta["analysis_candidate_count"], 0),
+      candidate_count: read_json_integer(meta["analysis_candidate_count"], 0),
       candidate_aggregate: this.build_candidate_aggregate(project_path),
       projectRevision: Math.max(...Object.values(section_revisions), 0),
       sectionRevisions: section_revisions as unknown as JsonValue,
@@ -357,13 +357,13 @@ export class ProjectDataReader {
    * 分析覆盖率来自任务提交的 analysis_extras，读取层不在读取路径重新扫描 item 表。
    */
   public build_analysis_status_summary_from_extras(extras: JsonRecord): JsonRecord {
-    const processed_line = this.read_number(extras["processed_line"], 0);
-    const error_line = this.read_number(extras["error_line"], 0);
+    const processed_line = read_json_integer(extras["processed_line"], 0);
+    const error_line = read_json_integer(extras["error_line"], 0);
     return {
-      total_line: this.read_number(extras["total_line"], 0),
+      total_line: read_json_integer(extras["total_line"], 0),
       processed_line,
       error_line,
-      line: this.read_number(extras["line"], processed_line + error_line),
+      line: read_json_integer(extras["line"], processed_line + error_line),
     };
   }
 
@@ -391,7 +391,7 @@ export class ProjectDataReader {
         diagnostic_context: {
           source: "project-data-reader",
           missing_fields: collect_project_item_missing_public_fields(item),
-          item_id: this.read_number(item["id"] ?? item["item_id"], 0),
+          item_id: read_json_integer(item["id"] ?? item["item_id"], 0),
         },
       });
     }
@@ -508,7 +508,7 @@ export class ProjectDataReader {
     }
     const info_votes = this.normalize_vote_map(value["info_votes"]);
     const observation_vote_count = Object.values(dst_votes).reduce<number>(
-      (sum, count) => sum + this.read_number(count, 0),
+      (sum, count) => sum + read_json_integer(count, 0),
       0,
     );
     return {
@@ -516,14 +516,14 @@ export class ProjectDataReader {
       dst_votes,
       info_votes,
       observation_count: Math.max(
-        this.read_number(value["observation_count"], 0),
+        read_json_integer(value["observation_count"], 0),
         observation_vote_count,
         1,
       ),
       first_seen_at: String(value["first_seen_at"] ?? ""),
       last_seen_at: String(value["last_seen_at"] ?? ""),
       case_sensitive: Boolean(value["case_sensitive"] ?? false),
-      first_seen_index: this.read_number(value["first_seen_index"], 0),
+      first_seen_index: read_json_integer(value["first_seen_index"], 0),
     };
   }
 
@@ -537,9 +537,9 @@ export class ProjectDataReader {
     const votes: JsonRecord = {};
     for (const [raw_key, raw_value] of Object.entries(value)) {
       const key = raw_key.trim();
-      const count = this.read_number(raw_value, 0);
+      const count = read_json_integer(raw_value, 0);
       if (key !== "" && count > 0) {
-        votes[key] = count + this.read_number(votes[key], 0);
+        votes[key] = count + read_json_integer(votes[key], 0);
       }
     }
     return votes;
@@ -578,7 +578,7 @@ export class ProjectDataReader {
       seen_rel_paths.add(rel_path);
       records.push({
         rel_path,
-        sort_index: Math.max(0, this.read_number(raw_record["sort_order"], 0)),
+        sort_index: Math.max(0, read_json_integer(raw_record["sort_order"], 0)),
       });
     }
     return records;
@@ -600,13 +600,5 @@ export class ProjectDataReader {
    */
   private get_rule_text(project_path: string, rule_type: string): string {
     return this.database.get_rule_text(project_path, rule_type);
-  }
-
-  /**
-   * 运行态数字坏值回退到调用方给定默认值，避免 NaN 进入 SSE payload
-   */
-  private read_number(value: JsonValue | undefined, fallback: number): number {
-    const number_value = Number(value ?? fallback);
-    return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
 }

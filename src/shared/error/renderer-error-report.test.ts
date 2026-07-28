@@ -1,97 +1,45 @@
 import { describe, expect, it } from "vitest";
 
-import { normalize_renderer_error_report } from "./renderer-error-report";
-import { summarize_log_error_path } from "./log-error";
+import {
+  create_renderer_error_report,
+  normalize_renderer_error_report,
+} from "./renderer-error-report";
 
 describe("renderer error report", () => {
-  it("收窄 renderer 异常报告并保留显式路径摘要", () => {
-    const report = normalize_renderer_error_report({
-      source: "worker",
-      error: {
-        name: "Error",
-        message: "worker 爆炸",
-        context: {
-          output_path: summarize_log_error_path("E:/secret/out/result.txt"),
-        },
-      },
-      project: {
-        path: "E:/secret/project/demo.lg",
-        items: {
-          "1": {
-            dst: "不应进入日志",
-          },
-        },
-      },
-      task: {
-        status: "running",
-        extra_payload: {
-          hidden: true,
-        },
+  it("从异常和诊断快照创建唯一公开报告形状", () => {
+    const report = create_renderer_error_report({
+      source: "task_snapshot",
+      error: new Error("worker 爆炸"),
+      diagnosticsContext: {
+        route: "workbench",
+        project: { projectRevision: 3 },
+        task: { status: "running" },
       },
       triggeringEvent: {
         topic: "project.data_changed",
-        projectPath: "E:/secret/project/demo.lg",
-        items: {
-          changedIds: [1],
-        },
+        items: { changedIds: [1] },
       },
       context: {
-        stage: "commit_project_write",
-        filename: "E:/secret/renderer.js",
-        location: "file:///E:/secret/index.html?token=hidden",
-        projectPath: "E:/secret/project/demo.lg",
+        stage: "handle_task_snapshot_changed",
       },
     });
 
     expect(report).toMatchObject({
-      source: "worker",
-      error: {
-        name: "Error",
-        message: "worker 爆炸",
-        context: {
-          output_path: {
-            basename: "result.txt",
-            pathHash: expect.any(String),
-            length: 24,
-          },
-        },
-      },
-      project: {
-        path: {
-          basename: "demo.lg",
-          pathHash: expect.any(String),
-          length: 25,
-        },
-      },
-      task: {
-        status: "running",
-      },
-      triggeringEvent: {
-        topic: "project.data_changed",
-        projectPath: {
-          basename: "demo.lg",
-          pathHash: expect.any(String),
-          length: 25,
-        },
-      },
-      context: {
-        stage: "commit_project_write",
-        filename: {
-          basename: "renderer.js",
-          pathHash: expect.any(String),
-          length: 21,
-        },
-        location: {
-          scheme: "file",
-          hrefHash: expect.any(String),
-          pathBasename: "index.html",
-        },
-      },
+      source: "task_snapshot",
+      error: { name: "Error", message: "worker 爆炸" },
+      route: "workbench",
+      project: { projectRevision: 3 },
+      task: { status: "running" },
+      triggeringEvent: { topic: "project.data_changed" },
+      context: { stage: "handle_task_snapshot_changed" },
     });
-    expect(report.project).not.toHaveProperty("items");
-    expect(report.task).not.toHaveProperty("extra_payload");
     expect(report.triggeringEvent).not.toHaveProperty("items");
-    expect(report.context).not.toHaveProperty("projectPath");
-    expect(JSON.stringify(report.context)).not.toContain("secret");
+  });
+
+  it("把坏载荷收窄为稳定 fallback 报告", () => {
+    expect(normalize_renderer_error_report(null)).toEqual({
+      source: "renderer",
+      error: { message: "unknown_renderer_error" },
+    });
   });
 });

@@ -1,5 +1,5 @@
 import type { JsonValue } from "../../../../domain/json";
-import { is_json_record, read_json_record } from "../../../../domain/json";
+import { is_json_record, read_json_integer, read_json_record } from "../../../../domain/json";
 import {
   TextProcessingConfigTool,
   TextQualitySnapshotTool,
@@ -392,7 +392,7 @@ export class TranslationWorkUnitRunner {
     ) {
       const item = context.items[0];
       if (item !== undefined) {
-        item.retry_count = this.read_number(item.retry_count, 0) + 1;
+        item.retry_count = read_json_integer(item.retry_count, 0) + 1;
       }
     }
     return {
@@ -513,7 +513,7 @@ export class TranslationWorkUnitRunner {
   private has_single_item_reached_retry_threshold(items: TextTaskItemRecord[]): boolean {
     return (
       items.length === 1 &&
-      has_translation_retry_reached_review_threshold(this.read_number(items[0]?.retry_count, 0))
+      has_translation_retry_reached_review_threshold(read_json_integer(items[0]?.retry_count, 0))
     );
   }
 
@@ -584,7 +584,7 @@ export class TranslationWorkUnitRunner {
     return ResponseChecker.check_aligned(
       srcs,
       alignment.dsts,
-      context.config,
+      context.config.source_language,
       skip_internal_filter_by_line,
     );
   }
@@ -682,9 +682,9 @@ export class TranslationWorkUnitRunner {
     request: TranslationWorkUnitRequest,
     app_language: unknown,
   ): string {
-    const split_count = this.read_number(request.split_count, 0);
-    const retry_count = this.read_number(request.retry_count, 0);
-    const token_threshold = this.read_number(request.token_threshold, 0);
+    const split_count = read_json_integer(request.split_count, 0);
+    const retry_count = read_json_integer(request.retry_count, 0);
+    const token_threshold = read_json_integer(request.token_threshold, 0);
     const is_initial = Boolean(request.is_initial ?? true);
     if (is_initial) {
       return "";
@@ -811,14 +811,6 @@ export class TranslationWorkUnitRunner {
    */
   private read_item_list(value: JsonValue | undefined): TextTaskItemRecord[] {
     return Array.isArray(value) ? value.filter(is_json_record).map((item) => ({ ...item })) : [];
-  }
-
-  /**
-   * 数字字段保持整数语义，坏值回退默认值
-   */
-  private read_number(value: unknown, fallback: number): number {
-    const number_value = Number(value ?? fallback);
-    return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
 
   /**

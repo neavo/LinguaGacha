@@ -4,18 +4,14 @@ import type { Stream } from "openai/streaming";
 import type { ResolvedRequestPolicy } from "../policy/policy-types";
 import type { LLMRequestResult } from "../llm-types";
 import { LLMClientDegradationDetector } from "../llm-client-degradation-detector";
+import { read_json_integer } from "../../../domain/json";
 import { log_error_from_message, type LogError } from "../../../shared/error";
 import type {
   ProviderClientPoolRequest,
   ProviderClientResolver,
   RequestTransport,
 } from "./transport-types";
-import {
-  empty_llm_result,
-  read_transport_number,
-  read_transport_record,
-  read_transport_text,
-} from "./transport-types";
+import { empty_llm_result, read_transport_record, read_transport_text } from "./transport-types";
 
 /**
  * OpenAI-compatible 与 Sakura 共用 openai SDK client。
@@ -39,7 +35,6 @@ export class OpenAICompatibleTransport implements RequestTransport {
    */
   public constructor(private readonly pool: ProviderClientResolver) {}
 
-  // send 是跨边界副作用入口，集中处理调用时序和错误载荷组装。
   public async send(policy: ResolvedRequestPolicy, signal: AbortSignal): Promise<LLMRequestResult> {
     const client = this.pool.get_client<{ chat: { completions: { create: Function } } }>({
       provider: policy.provider,
@@ -80,11 +75,11 @@ export class OpenAICompatibleTransport implements RequestTransport {
         response_think += thinking;
       }
       const usage = read_transport_record(record["usage"]);
-      input_tokens = read_transport_number(
+      input_tokens = read_json_integer(
         usage["prompt_tokens"] ?? usage["input_tokens"],
         input_tokens,
       );
-      output_tokens = read_transport_number(
+      output_tokens = read_json_integer(
         usage["completion_tokens"] ?? usage["output_tokens"],
         output_tokens,
       );

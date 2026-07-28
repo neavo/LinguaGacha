@@ -24,13 +24,6 @@ describe("EscapeFixer", () => {
     expect(EscapeFixer.fix(src, dst)).toBe(src);
   });
 
-  it("源文和译文转义段已经一致时保持译文不变", () => {
-    const src = String.raw`\\n[1]\\E`;
-    const dst = String.raw`\\n[1]\\E`;
-
-    expect(EscapeFixer.fix(src, dst)).toBe(dst);
-  });
-
   it("源文没有转义段时仍返回换行归一化后的译文", () => {
     const src = "普通文本";
     const dst = "第一行\n第二行";

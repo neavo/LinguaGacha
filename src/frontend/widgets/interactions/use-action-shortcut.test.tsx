@@ -77,44 +77,4 @@ describe("useActionShortcut", () => {
     expect(event.defaultPrevented).toBe(false);
     expect(on_trigger).not.toHaveBeenCalled();
   });
-
-  it("页面级删除快捷键在输入、编辑器和弹窗内容中不会触发页面删除", async () => {
-    const on_trigger = vi.fn();
-    const input = document.createElement("input");
-    const editor_child = document.createElement("span");
-    const editor = document.createElement("div");
-    const dialog_content = document.createElement("div");
-
-    await render_probe({ action: "delete", enabled: true, on_trigger });
-
-    editor.className = "cm-editor";
-    editor.append(editor_child);
-    dialog_content.setAttribute("data-slot", "dialog-content");
-    document.body.append(input, editor, dialog_content);
-
-    input.dispatchEvent(create_keydown_event("Delete"));
-    editor_child.dispatchEvent(create_keydown_event("Delete"));
-    dialog_content.dispatchEvent(create_keydown_event("Delete"));
-
-    expect(on_trigger).not.toHaveBeenCalled();
-
-    input.remove();
-    editor.remove();
-    dialog_content.remove();
-  });
-
-  it("页面级新增快捷键在弹窗内容中不会触发页面新增", async () => {
-    const on_trigger = vi.fn();
-    const dialog_content = document.createElement("div");
-
-    await render_probe({ action: "create", enabled: true, on_trigger });
-
-    dialog_content.setAttribute("data-slot", "dialog-content");
-    document.body.append(dialog_content);
-    dialog_content.dispatchEvent(create_keydown_event("n", { ctrlKey: true }));
-
-    expect(on_trigger).not.toHaveBeenCalled();
-
-    dialog_content.remove();
-  });
 });

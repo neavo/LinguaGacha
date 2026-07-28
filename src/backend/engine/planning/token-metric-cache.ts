@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 // 进程内令牌指标缓存的 tokenizer 身份，变更 tokenizer 时 cache key 自动隔离。
 export const TASK_PLANNER_TOKENIZER_ID = "o200k_base";
 // 覆盖大型项目常见重复短句，同时限制进程内内存增长。
-export const TASK_TOKEN_METRIC_CACHE_CAPACITY = 32768;
+const TASK_TOKEN_METRIC_CACHE_CAPACITY = 32768;
 
 /**
  * 单条源文本的规划指标；这些指标只存在内存中，不写回 `.lg` 项目事实。
@@ -81,13 +81,6 @@ export class TaskTokenMetricCache {
       line_count: Math.max(0, Math.trunc(metric.line_count)),
     });
     this.evict_overflow();
-  }
-
-  /**
-   * 测试与诊断可观察当前 cache 大小，生产逻辑不依赖它。
-   */
-  public size(): number {
-    return this.cache.size;
   }
 
   /**

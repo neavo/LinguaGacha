@@ -78,7 +78,7 @@ describe("preview_quality_rule_import", () => {
     });
   });
 
-  it("大小写敏感规则沿用 src normalize 与大小写折叠口径", () => {
+  it("同折叠组出现大小写不敏感规则时统一按大小写无关判重", () => {
     const preview = preview_quality_rule_import({
       rule_type: QualityRuleImportRuleTypeValue.PRE_REPLACEMENT,
       existing: [{ src: "Name", dst: "A", regex: false, case_sensitive: true }],
@@ -103,7 +103,7 @@ describe("preview_quality_rule_import", () => {
     expect(preview.overwrite_entries.map((entry) => entry.src)).toEqual(["HP", "hp"]);
   });
 
-  it("混合大小写敏感时折叠为单条并覆盖行为字段", () => {
+  it("大小写敏感与不敏感规则冲突时合并为一条并覆盖行为字段", () => {
     const preview = preview_quality_rule_import({
       rule_type: QualityRuleImportRuleTypeValue.GLOSSARY,
       existing: [{ src: "HP", dst: "生命值", case_sensitive: true }],
@@ -134,7 +134,7 @@ describe("preview_quality_rule_import", () => {
     });
   });
 
-  it("文本保护按 fold 去重并使用 info 作为目标字段", () => {
+  it("文本保护不区分大小写判重并使用 info 作为目标字段", () => {
     const preview = preview_quality_rule_import({
       rule_type: QualityRuleImportRuleTypeValue.TEXT_PRESERVE,
       existing: [{ src: "{name}", info: "旧说明" }],
@@ -181,7 +181,7 @@ describe("preview_quality_rule_import", () => {
     ]);
   });
 
-  it("覆盖会更新同 src_norm 分组中的后续条目", () => {
+  it("已有同源规则在预览结果中保留最后一条目标字段", () => {
     const preview = preview_quality_rule_import({
       rule_type: QualityRuleImportRuleTypeValue.GLOSSARY,
       existing: [

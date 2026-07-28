@@ -29,7 +29,7 @@
 - 每个 job 独占一个临时 `.lg`；无论成功、任务失败还是导出失败，都撤销 transient 设置、卸载工程并删除临时目录。
 - CLI 显式覆盖源语言、目标语言、完成后打开目录行为，并关闭术语表、文本保护、译前替换、译后替换、翻译提示词和分析提示词的默认预设；只有命令行资源写入本次工程。
 - 未被上述覆盖的模型、并发、预过滤和导出相关设置沿用当前应用设置，CLI 不是全量配置隔离环境。
-- 显式资源经正常项目写链进入临时工程，任务使用写入后的 section revision 启动。
+- `build_cli_task_input` 只把显式资源解析成项目领域输入，统一由 `ProjectLifecycleService.apply_task_input` 写入；CLI 不接触 database、meta 或 revision，任务随后从当前工程读取 section revision 启动。
 - `translate` 启动全量翻译后复用译文导出服务；`analyze` 启动全量分析后从候选池导出术语文件。
 - job 通过 `TaskService.subscribe` 订阅同进程完整任务快照并等待终态，不依赖 API stream、轮询或第二套任务生命周期。
 

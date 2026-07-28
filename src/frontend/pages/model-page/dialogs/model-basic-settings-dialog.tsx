@@ -35,9 +35,6 @@ const THINKING_SUPPORT_URL_BY_LOCALE = {
   "en-US": "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN",
   "de-DE": "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN",
 } as const;
-/**
- * 解析当前场景的最终消费值。
- */
 function resolve_thinking_label(
   t: ReturnType<typeof useI18n>["t"],
   thinking_level: ModelThinkingLevel,
@@ -53,16 +50,10 @@ function resolve_thinking_label(
   }
 }
 
-/**
- * 判断当前值是否满足业务条件。
- */
 function should_show_connection_fields(api_format: string): boolean {
   return Model.normalize_api_format(api_format) === api_format;
 }
 
-/**
- * 判断当前值是否满足业务条件。
- */
 function should_show_thinking_field(api_format: string): boolean {
   const normalized_api_format = Model.normalize_api_format(api_format);
   return (
@@ -104,9 +95,6 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
   const show_connection_fields = should_show_connection_fields(model.api_format);
   const show_thinking_field = should_show_thinking_field(model.api_format);
 
-  /**
-   * 提交当前场景的数据变化。
-   */
   async function commit_model_id_input(): Promise<void> {
     await props.onPatch({
       model_id: model_id_input_value.trim(),

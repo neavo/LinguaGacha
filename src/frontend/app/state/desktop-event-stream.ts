@@ -71,10 +71,6 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
     });
     schedulerRef.current = refresh_scheduler;
 
-    // 事件处理边界，只把外部事件转换为本模块状态更新。
-    /**
-     * 承接当前模块的核心控制分支。
-     */
     function handle_task_snapshot_changed(event: MessageEvent<string>): void {
       let payload: Record<string, unknown> = {};
       try {
@@ -107,10 +103,6 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
       }
     }
 
-    // 事件处理边界，只把外部事件转换为本模块状态更新。
-    /**
-     * 承接当前模块的核心控制分支。
-     */
     function handle_settings_changed(event: MessageEvent<string>): void {
       let payload: SettingsChangedEventPayload = {};
       try {
@@ -138,10 +130,6 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
       }
     }
 
-    // handle_project_data_changed 是事件处理边界，只把外部事件转换为本模块状态更新。
-    /**
-     * 承接当前模块的核心控制分支。
-     */
     async function handle_project_data_changed(event: MessageEvent<string>): Promise<void> {
       let payload: ProjectChangeEventPayload = {};
       try {
@@ -166,10 +154,6 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
       }
     }
 
-    // attach_event_stream 封装当前模块的共享逻辑，避免重复实现同一维护规则。
-    /**
-     * 承接当前模块的核心控制分支。
-     */
     async function attach_event_stream(): Promise<void> {
       try {
         const next_event_source = await open_event_stream();
@@ -219,10 +203,6 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
   ]);
 }
 
-// 事件处理边界，只把外部事件转换为本模块状态更新。
-/**
- * 承接当前模块的核心控制分支。
- */
 function handle_scheduler_flush_error(
   error: unknown,
   context: DesktopRefreshSchedulerErrorContext,
@@ -251,9 +231,6 @@ function handle_scheduler_flush_error(
 }
 
 // 终态快照必须解除交互等待，不能被普通 500ms 合帧窗口延迟
-/**
- * 判断当前值是否满足业务条件。
- */
 function should_apply_task_snapshot_immediately(snapshot: TaskSnapshot): boolean {
   return (
     !snapshot.busy ||

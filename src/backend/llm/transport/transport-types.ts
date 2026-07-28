@@ -69,11 +69,3 @@ export function read_transport_record(value: unknown): Record<string, unknown> {
 export function read_transport_text(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
-
-/**
- * usage 缺失或非法时保留调用方已有累计值。
- */
-export function read_transport_number(value: unknown, fallback: number): number {
-  const number_value = Number(value ?? fallback);
-  return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
-}

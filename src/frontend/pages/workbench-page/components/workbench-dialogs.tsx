@@ -42,9 +42,6 @@ const DIALOG_COPY_BY_KIND: Record<NonNullable<WorkbenchDialogState["kind"]>, Dia
   },
 };
 
-/**
- * 解析当前场景的最终消费值。
- */
 function resolve_dialog_copy(dialog_state: WorkbenchDialogState): DialogCopy | null {
   if (dialog_state.kind === null) {
     return null;

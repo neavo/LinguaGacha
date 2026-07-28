@@ -13,7 +13,9 @@ export class TaskLogReplay {
   /**
    * log_manager 是日志文件、控制台和日志窗口的唯一写入口
    */
-  public constructor(private readonly log_manager: LogManager) {}
+  public constructor(
+    private readonly log_manager: Pick<LogManager, "info" | "warning" | "error">,
+  ) {}
 
   /**
    * 任务启动日志输出“API 名称 / 地址 / 模型”三行诊断
@@ -90,12 +92,8 @@ export class TaskLogReplay {
     });
   }
 
-  /**
-   * 测试桩可能只实现部分日志方法；生产环境仍会走完整 LogManager
-   */
   private append(entry: ReplayLogEntry, source: string): void {
-    const log_manager = this.log_manager as Partial<Pick<LogManager, "info" | "warning" | "error">>;
-    log_manager[entry.level]?.(entry.message, {
+    this.log_manager[entry.level](entry.message, {
       source,
       error: entry.error,
       context: entry.context,

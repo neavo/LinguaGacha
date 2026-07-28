@@ -13,12 +13,36 @@ import type { WorkUnitLogEntry } from "../protocol/work-unit";
  */
 export interface TaskEngineOptions {
   appRoot: string; // 用于任务启动日志读取提示词模板，保持 main 与 worker 资源根一致
-  taskStore: TaskProjectStore; // 任务编排器读写项目任务事实的唯一端口
-  taskRuntime: TaskRuntime; // 任务锁、取消、快照和请求压力的唯一所有者
+  taskStore: Pick<
+    TaskProjectStore,
+    | "acquire_project_lease"
+    | "build_quality_snapshot"
+    | "commit_analysis_results"
+    | "commit_translation_items"
+    | "get_analysis_context"
+    | "get_translation_items"
+    | "get_translation_items_by_scope"
+    | "reset_analysis_progress"
+    | "update_analysis_progress"
+    | "update_translation_progress"
+  >; // 任务编排器只依赖项目任务事实的公开能力
+  taskRuntime: Pick<
+    TaskRuntime,
+    | "bind_completion"
+    | "change_request_in_flight_count"
+    | "finish"
+    | "is_current"
+    | "publish_progress"
+    | "publish_status"
+    | "request_stop"
+  >; // 任务锁、取消、快照和请求压力的最小能力集合
   executorClient: WorkUnitExecutor; // 屏蔽 worker_threads 与直接 runner 的传输差异
-  taskPlanner: TaskPlanner; // 精确 token 切块、cache 复用和后台规划的唯一入口
-  AppSettingService: AppSettingService; // 在每次任务启动时提供设置与模型快照
-  logManager: LogManager; // 统一收敛任务引擎和 worker 回放日志
+  taskPlanner: Pick<
+    TaskPlanner,
+    "build_analysis_contexts" | "build_translation_contexts" | "build_translation_retry_plan"
+  >; // 精确 token 切块、cache 复用和后台规划的最小能力集合
+  AppSettingService: Pick<AppSettingService, "read_setting">; // 每次任务启动只读取设置与模型快照
+  logManager: Pick<LogManager, "info" | "warning" | "error">; // 统一收敛任务引擎和 worker 回放日志
 }
 
 /**

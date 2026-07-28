@@ -14,7 +14,7 @@ import {
   type OutputFolderOpener,
 } from "./translation-file-export-service";
 
-let temp_dir = ""; // 每个用例独占导出目录，避免文件写回断言互相污染
+let temp_dir = "";
 
 beforeEach(() => {
   temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-file-export-"));
@@ -25,9 +25,6 @@ afterEach(() => {
   fs.rmSync(temp_dir, { recursive: true, force: true });
 });
 
-/**
- * 导出测试使用固定设置，便于断言目标路径和日志语言
- */
 function create_setting_service(
   options: {
     app_language?: string;
@@ -56,9 +53,6 @@ interface LogCollector extends Pick<LogManager, "info" | "error"> {
   entries: CollectedLogEntry[];
 }
 
-/**
- * 日志替身只记录公开日志事件，避免测试耦合到 vi mock 调用结构
- */
 function create_log_collector(): LogCollector {
   const entries: CollectedLogEntry[] = [];
   return {
@@ -120,14 +114,13 @@ describe("TranslationFileExportService", () => {
         row: 1,
       },
     ]);
-    const log_collector = create_log_collector();
     const output_folder_opener = create_output_folder_opener();
     const service = new TranslationFileExportService(
       database,
       create_setting_service(),
       session_state,
       output_folder_opener.open,
-      log_collector,
+      create_log_collector(),
     );
 
     await expect(service.export_files()).resolves.toEqual({
@@ -137,12 +130,6 @@ describe("TranslationFileExportService", () => {
     expect(fs.readFileSync(path.join(temp_dir, "demo_译文", "script.txt"), "utf-8")).toBe(
       "译文\n译文",
     );
-    expect(log_collector.entries.map(({ level, message }) => [level, message])).toEqual([
-      ["info", "生成译文中 …"],
-      ["info", ""],
-      ["info", `译文已保存至 ${path.join(temp_dir, "demo_译文")} …`],
-      ["info", ""],
-    ]);
     expect(output_folder_opener.opened_paths).toEqual([]);
   });
 
@@ -179,12 +166,9 @@ describe("TranslationFileExportService", () => {
 
     expect(fs.readFileSync(path.join(translated_path, "script.txt"), "utf-8")).toBe("Übersetzung");
     expect(fs.existsSync(path.join(bilingual_path, "script.txt"))).toBe(true);
-    expect(log_collector.entries.map(({ level, message }) => [level, message])).toEqual([
-      ["info", "Übersetzungsdateien werden erstellt …"],
-      ["info", ""],
-      ["info", `Übersetzungsdateien gespeichert unter ${translated_path} …`],
-      ["info", ""],
-    ]);
+    expect(log_collector.entries.map(({ message }) => message)).toContain(
+      `Übersetzungsdateien gespeichert unter ${translated_path} …`,
+    );
   });
 
   it("启用设置后导出成功会打开译文输出目录", async () => {

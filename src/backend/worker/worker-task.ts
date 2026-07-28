@@ -1,22 +1,33 @@
 import {
-  run_proofreading_sync_worker_task,
-  type ProofreadingSyncWorkerTaskInput,
-} from "./tasks/proofreading-sync-worker-task";
+  evaluateProofreadingSlice,
+  type ProofreadingEvaluatedSlice,
+  type ProofreadingSyncInput,
+} from "../../shared/proofreading/proofreading-list-reader";
+import {
+  build_ts_conversion_converted_items,
+  type TsConversionConvertedItem,
+  type TsConversionDirection,
+  type TsConversionItem,
+} from "../../shared/text/ts-conversion";
 import {
   run_quality_statistics_worker_task,
   type QualityStatisticsWorkerTaskInput,
 } from "./tasks/quality-statistics-worker-task";
-import {
-  run_ts_conversion_worker_task,
-  type TsConversionWorkerTaskInput,
-} from "./tasks/ts-conversion-worker-task";
-import type { ProofreadingEvaluatedSlice } from "../../shared/proofreading/proofreading-list-reader";
-import type { TsConversionConvertedItem } from "../../shared/text/ts-conversion";
+
+type TsConversionWorkerTaskInput = {
+  items: TsConversionItem[];
+  direction: TsConversionDirection;
+  convert_name: boolean;
+  preserve_text: boolean;
+  text_preserve_mode: string;
+  custom_rules: string[];
+  preset_rules_by_text_type: Record<string, string[]>;
+};
 
 export type BackendWorkerTaskInputByType = {
   quality_statistics: QualityStatisticsWorkerTaskInput;
   ts_conversion: TsConversionWorkerTaskInput;
-  proofreading_sync: ProofreadingSyncWorkerTaskInput;
+  proofreading_sync: ProofreadingSyncInput;
 };
 
 export type BackendWorkerTaskResultByType = {
@@ -44,8 +55,8 @@ export async function run_worker_task<TTask extends BackendWorkerTask>(
     case "quality_statistics":
       return run_quality_statistics_worker_task(task.input) as BackendWorkerTaskResult<TTask>;
     case "ts_conversion":
-      return run_ts_conversion_worker_task(task.input) as BackendWorkerTaskResult<TTask>;
+      return build_ts_conversion_converted_items(task.input) as BackendWorkerTaskResult<TTask>;
     case "proofreading_sync":
-      return run_proofreading_sync_worker_task(task.input) as BackendWorkerTaskResult<TTask>;
+      return evaluateProofreadingSlice(task.input) as BackendWorkerTaskResult<TTask>;
   }
 }

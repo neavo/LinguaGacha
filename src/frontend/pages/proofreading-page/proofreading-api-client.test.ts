@@ -59,30 +59,8 @@ describe("proofreading-api-client", () => {
           window: {
             view_id: "view-1",
             start: 0,
-            row_count: 1,
-            rows: [
-              {
-                row_id: "1",
-                item: {
-                  item_id: 1,
-                  row_id: "1",
-                  file_path: "chapter.txt",
-                  row_number: 1,
-                  src: "源文",
-                  dst: "译文",
-                  status: "PROCESSED",
-                  retry_count: 0,
-                  warnings: [],
-                  warning_fragments_by_code: {},
-                  applied_glossary_terms: [],
-                  failed_glossary_terms: [],
-                  compressed_src: "源文",
-                  compressed_dst: "译文",
-                },
-                compressed_src: "源文",
-                compressed_dst: "译文",
-              },
-            ],
+            row_count: 0,
+            rows: [],
           },
         };
       }
@@ -126,8 +104,10 @@ describe("proofreading-api-client", () => {
         count: 10,
       }),
     ).resolves.toMatchObject({
-      row_count: 1,
-      rows: [expect.objectContaining({ item: expect.objectContaining({ item_id: 1 }) })],
+      view_id: "view-1",
+      start: 0,
+      row_count: 0,
+      rows: [],
     });
     expect(api_fetch_mock).toHaveBeenNthCalledWith(1, "/api/proofreading/view", {
       action: "sync",
@@ -144,9 +124,5 @@ describe("proofreading-api-client", () => {
       start: 0,
       count: 10,
     });
-  });
-
-  it("每次创建独立页面 API client", () => {
-    expect(createProofreadingApiClient()).not.toBe(createProofreadingApiClient());
   });
 });

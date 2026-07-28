@@ -57,7 +57,6 @@ describe("preload desktop bridge", () => {
     electron_mock.exposed_api = null;
     vi.restoreAllMocks();
     localStorage.clear();
-    vi.clearAllMocks();
     vi.resetModules();
   });
 

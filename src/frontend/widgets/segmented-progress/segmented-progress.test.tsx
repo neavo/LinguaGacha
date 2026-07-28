@@ -16,12 +16,6 @@ const labels = {
   total: "总计",
 };
 
-(
-  globalThis as typeof globalThis & {
-    IS_REACT_ACT_ENVIRONMENT?: boolean;
-  }
-).IS_REACT_ACT_ENVIRONMENT = true;
-
 describe("SegmentedProgress", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
