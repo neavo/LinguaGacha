@@ -9,7 +9,7 @@ import type { TextQualitySnapshot, TextTaskItemRecord } from "../../../shared/te
 import type { LLMMessage } from "../../llm/llm-types";
 import { default_native_fs } from "../../../native/native-fs";
 import { Prompt } from "../../../domain/prompt";
-import { normalize_setting_snapshot } from "../../../domain/setting";
+import { normalize_setting_snapshot, type SettingSnapshot } from "../../../domain/setting";
 import {
   resolve_app_locale,
   resolve_language_display_locale,
@@ -28,13 +28,12 @@ import {
 } from "./translation-line";
 
 /**
- * 提示词构造所需的最小配置快照，worker 只读取语言与界面语言
+ * 提示词构造所需的最小配置快照，worker 只读取语言与提示词增强开关
  */
-export interface PromptBuilderConfig {
-  app_language?: string;
-  source_language?: string;
-  target_language?: string;
-}
+export type PromptBuilderConfig = Pick<
+  SettingSnapshot,
+  "app_language" | "source_language" | "target_language" | "prompt_enhancement_enable"
+>;
 
 /**
  * PromptBuilder 输出给 LLM adapter 的消息和本地日志展示文本
@@ -59,7 +58,7 @@ export class PromptBuilder {
    */
   public constructor(
     app_root: string,
-    config: PromptBuilderConfig,
+    config: Partial<PromptBuilderConfig>,
     quality_snapshot: TextQualitySnapshot,
   ) {
     const setting_snapshot = normalize_setting_snapshot(config);
@@ -68,6 +67,7 @@ export class PromptBuilder {
       app_language: setting_snapshot.app_language,
       source_language: setting_snapshot.source_language,
       target_language: setting_snapshot.target_language,
+      prompt_enhancement_enable: setting_snapshot.prompt_enhancement_enable,
     };
     this.quality_snapshot = quality_snapshot;
   }
@@ -169,10 +169,9 @@ export class PromptBuilder {
     const base = this.quality_snapshot.translation_prompt_enable
       ? this.quality_snapshot.translation_prompt
       : await this.read_prompt_text(prompt.directory_name, context.prompt_language, "base.txt");
-    const thinking = await this.read_prompt_text(
+    const thinking = await this.read_prompt_enhancement(
       prompt.directory_name,
       context.prompt_language,
-      "thinking.txt",
     );
     const suffix = await this.read_prompt_text(
       prompt.directory_name,
@@ -202,10 +201,9 @@ export class PromptBuilder {
     const base = this.quality_snapshot.analysis_prompt_enable
       ? this.quality_snapshot.analysis_prompt
       : await this.read_prompt_text(prompt.directory_name, context.prompt_language, "base.txt");
-    const thinking = await this.read_prompt_text(
+    const thinking = await this.read_prompt_enhancement(
       prompt.directory_name,
       context.prompt_language,
-      "thinking.txt",
     );
     const suffix = await this.read_prompt_text(
       prompt.directory_name,
@@ -339,6 +337,18 @@ export class PromptBuilder {
       source_language: get_prompt_source_language_name(source_code, display_locale),
       target_language: get_prompt_target_language_name(target_code, display_locale),
     };
+  }
+
+  /**
+   * 翻译与分析共用同一增强策略；SakuraLLM 不经过此入口。
+   */
+  private async read_prompt_enhancement(
+    task_dir_name: string,
+    language: TranslationPromptLanguage,
+  ): Promise<string> {
+    return this.config.prompt_enhancement_enable
+      ? await this.read_prompt_text(task_dir_name, language, "thinking.txt")
+      : "";
   }
 
   /**

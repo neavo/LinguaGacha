@@ -1,0 +1,158 @@
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { LaboratoryPage } from "@frontend/pages/laboratory-page/page";
+import { de_de_laboratory_page } from "@shared/i18n/resources/de-DE/laboratory-page";
+import { en_us_laboratory_page } from "@shared/i18n/resources/en-US/laboratory-page";
+import { zh_cn_laboratory_page } from "@shared/i18n/resources/zh-CN/laboratory-page";
+
+const { laboratory_state_fixture } = vi.hoisted(() => ({
+  laboratory_state_fixture: {
+    current: null as ReturnType<typeof create_laboratory_state_fixture> | null,
+  },
+}));
+
+vi.mock("@frontend/app/locale/locale-provider", () => ({
+  useI18n: () => ({
+    locale: "zh-CN",
+    t: (key: string) => {
+      if (key === "laboratory_page.fields.prompt_enhancement_enable.title") {
+        return "提示词增强";
+      }
+      if (key === "laboratory_page.fields.prompt_enhancement_enable.description") {
+        return (
+          "通过模拟思维链强化 AI 对指令的遵循" +
+          "\n" +
+          "关闭此功能可以略微减少 Token 消耗，但是会显著降低 AI 的智能水平，默认启用"
+        );
+      }
+      if (key === "laboratory_page.fields.mtool_optimizer_enable.title") {
+        return "MTool 优化器";
+      }
+      if (key === "laboratory_page.fields.skip_duplicate_source_text_enable.title") {
+        return "跳过重复原文";
+      }
+      return key;
+    },
+  }),
+}));
+
+vi.mock("@frontend/pages/laboratory-page/use-laboratory-page-state", () => ({
+  useLaboratoryPageState: () => laboratory_state_fixture.current,
+}));
+
+vi.mock("@frontend/widgets/setting-help-button", () => ({
+  SettingHelpButton: () => null,
+}));
+
+vi.mock("@frontend/widgets/segmented-toggle/segmented-toggle", () => ({
+  SegmentedToggle: (props: {
+    aria_label: string;
+    value: "disabled" | "enabled";
+    disabled: boolean;
+    on_value_change: (value: "disabled" | "enabled") => void;
+  }) => (
+    <button
+      type="button"
+      aria-label={props.aria_label}
+      data-value={props.value}
+      disabled={props.disabled}
+      onClick={() => props.on_value_change(props.value === "enabled" ? "disabled" : "enabled")}
+    />
+  ),
+}));
+
+function create_laboratory_state_fixture() {
+  return {
+    snapshot: {
+      prompt_enhancement_enable: true,
+      mtool_optimizer_enable: true,
+      skip_duplicate_source_text_enable: true,
+    },
+    pending_state: {
+      prompt_enhancement_enable: false,
+      mtool_optimizer_enable: false,
+      skip_duplicate_source_text_enable: false,
+    },
+    is_task_busy: false,
+    update_prompt_enhancement_enable: vi.fn(async (_next_value: boolean) => {}),
+    update_mtool_optimizer_enable: vi.fn(async (_next_value: boolean) => {}),
+    update_skip_duplicate_source_text_enable: vi.fn(async (_next_value: boolean) => {}),
+  };
+}
+
+describe("LaboratoryPage", () => {
+  let container: HTMLDivElement | null = null;
+  let root: Root | null = null;
+
+  beforeEach(() => {
+    laboratory_state_fixture.current = create_laboratory_state_fixture();
+  });
+
+  afterEach(async () => {
+    if (root !== null) {
+      await act(async () => root?.unmount());
+    }
+    container?.remove();
+    container = null;
+    root = null;
+    laboratory_state_fixture.current = null;
+  });
+
+  async function mount_page(): Promise<void> {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(<LaboratoryPage is_sidebar_collapsed={false} />);
+    });
+  }
+
+  it("展示提示词增强开关并按设置值提交", async () => {
+    await mount_page();
+    const toggle = container?.querySelector('button[aria-label="提示词增强"]');
+    const description = [
+      ...(container?.querySelectorAll(".setting-card-row__description") ?? []),
+    ].find((element) => element.textContent?.includes("通过模拟思维链强化 AI 对指令的遵循"));
+
+    expect(toggle?.getAttribute("data-value")).toBe("enabled");
+    expect(description?.querySelectorAll("br")).toHaveLength(1);
+    expect(
+      [...(container?.querySelectorAll(".setting-card-row__title") ?? [])].map(
+        (element) => element.textContent,
+      ),
+    ).toEqual(["MTool 优化器", "跳过重复原文", "提示词增强"]);
+    await act(async () => {
+      (toggle as HTMLButtonElement | undefined)?.click();
+    });
+    expect(laboratory_state_fixture.current?.update_prompt_enhancement_enable).toHaveBeenCalledWith(
+      false,
+    );
+  });
+
+  it("任务运行中禁用提示词增强开关", async () => {
+    laboratory_state_fixture.current = {
+      ...create_laboratory_state_fixture(),
+      is_task_busy: true,
+    };
+    await mount_page();
+
+    const toggle = container?.querySelector('button[aria-label="提示词增强"]');
+    expect((toggle as HTMLButtonElement | null)?.disabled).toBe(true);
+  });
+
+  it("三个 locale 的提示词增强文案固定为两行且行尾无句号", () => {
+    const descriptions = [
+      zh_cn_laboratory_page.fields.prompt_enhancement_enable.description,
+      en_us_laboratory_page.fields.prompt_enhancement_enable.description,
+      de_de_laboratory_page.fields.prompt_enhancement_enable.description,
+    ];
+
+    for (const description of descriptions) {
+      const lines = description.split("\n");
+      expect(lines).toHaveLength(2);
+      expect(lines.every((line) => !/[。.\s]$/u.test(line))).toBe(true);
+    }
+  });
+});

@@ -1,6 +1,13 @@
 export const zh_cn_laboratory_page = {
   title: "实验室",
   fields: {
+    prompt_enhancement_enable: {
+      title: "提示词增强",
+      description:
+        "通过模拟思维链强化 AI 对指令的遵循" +
+        "\n" +
+        "关闭此功能可以略微减少 Token 消耗，但是会显著降低 AI 的智能水平，默认启用",
+    },
     mtool_optimizer_enable: {
       title: "MTool 优化器",
       description:

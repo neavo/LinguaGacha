@@ -12,17 +12,24 @@ import {
   type LaboratorySnapshot,
 } from "@frontend/pages/laboratory-page/types";
 
-const LABORATORY_PENDING_FIELDS = [
+const LABORATORY_PREFILTER_FIELDS = [
   "mtool_optimizer_enable",
   "skip_duplicate_source_text_enable",
 ] as const;
 
+const LABORATORY_PENDING_FIELDS = [
+  "prompt_enhancement_enable",
+  ...LABORATORY_PREFILTER_FIELDS,
+] as const;
+
+type LaboratoryPrefilterField = (typeof LABORATORY_PREFILTER_FIELDS)[number];
 type LaboratoryPendingField = (typeof LABORATORY_PENDING_FIELDS)[number];
 
 type UseLaboratoryPageStateResult = {
   snapshot: LaboratorySnapshot;
   pending_state: Record<LaboratoryPendingField, boolean>;
   is_task_busy: boolean;
+  update_prompt_enhancement_enable: (next_checked: boolean) => Promise<void>;
   update_mtool_optimizer_enable: (next_checked: boolean) => Promise<void>;
   update_skip_duplicate_source_text_enable: (next_checked: boolean) => Promise<void>;
 };
@@ -63,7 +70,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
   // 两个实验设置共用同一提交/补偿顺序，预过滤失败时把设置恢复到操作前值。
   const update_prefilter_setting = useCallback(
     async (
-      field: LaboratoryPendingField,
+      field: LaboratoryPrefilterField,
       next_checked: boolean,
       loading_toast_key: LocaleKey,
     ): Promise<void> => {
@@ -125,6 +132,18 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     ],
   );
 
+  const update_prompt_enhancement_enable = useCallback(
+    async (next_checked: boolean): Promise<void> => {
+      if (is_task_busy || snapshot.prompt_enhancement_enable === next_checked) {
+        return;
+      }
+      await commit_update("prompt_enhancement_enable", {
+        prompt_enhancement_enable: next_checked,
+      });
+    },
+    [commit_update, is_task_busy, snapshot.prompt_enhancement_enable],
+  );
+
   const update_mtool_optimizer_enable = useCallback(
     async (next_checked: boolean): Promise<void> => {
       await update_prefilter_setting(
@@ -151,6 +170,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     snapshot,
     pending_state,
     is_task_busy,
+    update_prompt_enhancement_enable,
     update_mtool_optimizer_enable,
     update_skip_duplicate_source_text_enable,
   };

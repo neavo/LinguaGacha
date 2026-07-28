@@ -395,7 +395,9 @@ describe("TaskEngine", () => {
       taskRuntime: task_runtime,
       executorClient: create_unused_executor(),
       taskPlanner: create_test_task_planner(),
-      AppSettingService: create_setting_service(),
+      AppSettingService: create_setting_service(1, 512, {
+        prompt_enhancement_enable: false,
+      }),
       logManager: create_log_manager(logs),
     });
 
@@ -407,7 +409,8 @@ describe("TaskEngine", () => {
     });
     await done.promise;
 
-    expect(logs.join("\n")).toContain("翻译前缀\n翻译正文 中文\n\n翻译思考\n\n翻译后缀");
+    expect(logs.join("\n")).toContain("翻译前缀\n翻译正文 中文\n\n翻译后缀");
+    expect(logs.join("\n")).not.toContain("翻译思考");
   });
 
   it("分析任务启动时对齐旧实现打印分析主提示词", async () => {
@@ -427,7 +430,9 @@ describe("TaskEngine", () => {
       taskRuntime: task_runtime,
       executorClient: create_unused_executor(),
       taskPlanner: create_test_task_planner(),
-      AppSettingService: create_setting_service(),
+      AppSettingService: create_setting_service(1, 512, {
+        prompt_enhancement_enable: false,
+      }),
       logManager: create_log_manager(logs),
     });
 
@@ -438,7 +443,8 @@ describe("TaskEngine", () => {
     });
     await done.promise;
 
-    expect(logs.join("\n")).toContain("分析前缀\n分析正文 中文\n\n分析思考\n\n分析后缀");
+    expect(logs.join("\n")).toContain("分析前缀\n分析正文 中文\n\n分析后缀");
+    expect(logs.join("\n")).not.toContain("分析思考");
   });
 
   it("关闭运行态会等待任务终态与项目 lease 释放", async () => {
@@ -657,6 +663,7 @@ describe("TaskEngine", () => {
   function create_setting_service(
     concurrency_limit = 1,
     input_token_limit = 512,
+    setting_overrides: JsonRecord = {},
   ): TaskEngineOptions["AppSettingService"] {
     const model = {
       id: "model-1",
@@ -667,6 +674,7 @@ describe("TaskEngine", () => {
     };
     return {
       read_setting: () => ({
+        ...setting_overrides,
         activate_model_id: "model-1",
         models: [model],
       }),

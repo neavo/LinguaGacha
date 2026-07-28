@@ -21,7 +21,7 @@ import {
   type TranslationLine,
   type TranslationPromptMode,
 } from "../translation-line";
-import { PromptBuilder } from "../work-unit-prompt-builder";
+import { PromptBuilder, type PromptBuilderConfig } from "../work-unit-prompt-builder";
 import { ResponseChecker } from "../response/response-checker";
 import { ResponseCleaner } from "../response/response-cleaner";
 import { ResponseDecoder } from "../response/response-decoder";
@@ -790,12 +790,13 @@ export class TranslationWorkUnitRunner {
   private config_to_prompt_config(
     config: TextProcessingConfig,
     raw_config: JsonValue,
-  ): { app_language?: string; source_language: string; target_language: string } {
+  ): PromptBuilderConfig {
     const setting_snapshot = normalize_setting_snapshot(raw_config);
     return {
       app_language: setting_snapshot.app_language,
       source_language: config.source_language,
       target_language: config.target_language,
+      prompt_enhancement_enable: setting_snapshot.prompt_enhancement_enable,
     };
   }
 

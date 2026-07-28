@@ -34,6 +34,7 @@ import {
   type MutableJsonRecord,
 } from "../../../domain/json";
 import { TextQualitySnapshotTool } from "../../../shared/text/text-types";
+import { normalize_setting_snapshot } from "../../../domain/setting";
 import * as AppErrors from "../../../shared/error";
 
 const TRANSLATION_TERMINAL_STATUSES = new Set(["PROCESSED", "ERROR"]); // 翻译终态只认已处理和错误，跳过类状态不参与重试终结判断
@@ -802,11 +803,7 @@ export class TaskEngine {
     }
     const builder = new PromptBuilder(
       this.app_root,
-      {
-        app_language: this.read_optional_string(run_context.config_snapshot["app_language"]),
-        source_language: this.read_optional_string(run_context.config_snapshot["source_language"]),
-        target_language: this.read_optional_string(run_context.config_snapshot["target_language"]),
-      },
+      normalize_setting_snapshot(run_context.config_snapshot),
       TextQualitySnapshotTool.from_api_value(quality_snapshot),
     );
     return task_type === "analysis"
@@ -905,12 +902,5 @@ export class TaskEngine {
       return [];
     }
     return value.filter(is_json_record).map((item) => ({ ...item }));
-  }
-
-  /**
-   * 提示词构造只接受字符串配置，缺失值交给 PromptBuilder 默认口径处理
-   */
-  private read_optional_string(value: JsonValue | undefined): string | undefined {
-    return typeof value === "string" ? value : undefined;
   }
 }

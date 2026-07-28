@@ -63,6 +63,7 @@ describe("AppSettingService", () => {
       app_language: "en",
       request_timeout: "45",
       project_save_mode: "FIXED",
+      prompt_enhancement_enable: false,
       check_kana_residue: true,
       check_hangeul_residue: true,
       check_similarity: true,
@@ -74,11 +75,13 @@ describe("AppSettingService", () => {
       app_language: "EN",
       request_timeout: 45,
       project_save_mode: "FIXED",
+      prompt_enhancement_enable: false,
     });
     expect(saved).toMatchObject({
       app_language: "EN",
       request_timeout: 45,
       project_save_mode: "FIXED",
+      prompt_enhancement_enable: false,
       activate_model_id: "model-1",
       models: [{ id: "model-1" }],
     });
@@ -90,11 +93,17 @@ describe("AppSettingService", () => {
       {
         topic: "settings.changed",
         payload: {
-          keys: ["app_language", "request_timeout", "project_save_mode"],
+          keys: [
+            "app_language",
+            "request_timeout",
+            "project_save_mode",
+            "prompt_enhancement_enable",
+          ],
           settings: expect.objectContaining({
             app_language: "EN",
             request_timeout: 45,
             project_save_mode: "FIXED",
+            prompt_enhancement_enable: false,
           }),
         },
       },
@@ -120,6 +129,7 @@ describe("AppSettingService", () => {
       source_language: "JA",
       target_language: "ZH",
       output_folder_open_on_finish: true,
+      prompt_enhancement_enable: false,
     });
 
     service.set_transient_overrides({
@@ -132,11 +142,13 @@ describe("AppSettingService", () => {
       source_language: "ALL",
       target_language: "EN",
       output_folder_open_on_finish: false,
+      prompt_enhancement_enable: false,
     });
     expect(read_config(config_path)).toMatchObject({
       source_language: "JA",
       target_language: "ZH",
       output_folder_open_on_finish: true,
+      prompt_enhancement_enable: false,
     });
 
     service.set_transient_overrides(null);
@@ -145,6 +157,7 @@ describe("AppSettingService", () => {
       source_language: "JA",
       target_language: "ZH",
       output_folder_open_on_finish: true,
+      prompt_enhancement_enable: false,
     });
   });
 

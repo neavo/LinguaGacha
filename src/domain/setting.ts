@@ -46,6 +46,7 @@ export type SettingSnapshot = {
   deduplication_in_bilingual: boolean;
   write_translated_name_fields_to_file: boolean;
   auto_process_prefix_suffix_preserved_text: boolean;
+  prompt_enhancement_enable: boolean;
   mtool_optimizer_enable: boolean;
   skip_duplicate_source_text_enable: boolean;
   glossary_default_preset: string;
@@ -78,6 +79,7 @@ export const SETTING_KEYS = [
   "deduplication_in_bilingual",
   "write_translated_name_fields_to_file",
   "auto_process_prefix_suffix_preserved_text",
+  "prompt_enhancement_enable",
   "mtool_optimizer_enable",
   "skip_duplicate_source_text_enable",
   "glossary_default_preset",
@@ -97,6 +99,7 @@ const BOOLEAN_SETTING_KEYS = new Set([
   "deduplication_in_bilingual",
   "write_translated_name_fields_to_file",
   "auto_process_prefix_suffix_preserved_text",
+  "prompt_enhancement_enable",
   "mtool_optimizer_enable",
   "skip_duplicate_source_text_enable",
 ]);
@@ -116,6 +119,7 @@ export const DEFAULT_SETTING: JsonRecord = {
   deduplication_in_bilingual: true,
   write_translated_name_fields_to_file: true,
   auto_process_prefix_suffix_preserved_text: true,
+  prompt_enhancement_enable: true,
   mtool_optimizer_enable: true,
   skip_duplicate_source_text_enable: true,
   glossary_default_preset: "",
@@ -312,6 +316,10 @@ export function normalize_setting_snapshot(value: unknown): SettingSnapshot {
     auto_process_prefix_suffix_preserved_text: read_boolean_setting(
       record["auto_process_prefix_suffix_preserved_text"],
       "auto_process_prefix_suffix_preserved_text",
+    ),
+    prompt_enhancement_enable: read_boolean_setting(
+      record["prompt_enhancement_enable"],
+      "prompt_enhancement_enable",
     ),
     mtool_optimizer_enable: read_boolean_setting(
       record["mtool_optimizer_enable"],

@@ -92,6 +92,7 @@ describe("AnalysisWorkUnitRunner", () => {
           app_language: "ZH",
           source_language: "EN",
           target_language: "ZH",
+          prompt_enhancement_enable: false,
         },
         quality_snapshot: {},
         payload: {
@@ -114,6 +115,7 @@ describe("AnalysisWorkUnitRunner", () => {
       },
     });
     expect(captured_requests[0]?.messages[1]?.content).toContain("【虎鉄】Alice");
+    expect(captured_requests[0]?.messages[0]?.content).not.toContain("提示词增强");
     const message = String(result.logs[0]?.message ?? "");
     expect(message.indexOf("思考过程：")).toBeLessThan(message.indexOf("规则分析："));
     expect(message.indexOf("规则分析：")).toBeLessThan(message.indexOf("分析输入："));
@@ -129,7 +131,7 @@ async function create_template_root(): Promise<string> {
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, "prefix.txt"), "前缀", "utf-8");
   await writeFile(path.join(dir, "base.txt"), "提取 {target_language} 术语", "utf-8");
-  await writeFile(path.join(dir, "thinking.txt"), "", "utf-8");
+  await writeFile(path.join(dir, "thinking.txt"), "提示词增强", "utf-8");
   await writeFile(path.join(dir, "suffix.txt"), "输出 JSONLINE", "utf-8");
   return app_root;
 }

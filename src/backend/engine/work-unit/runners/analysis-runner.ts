@@ -119,7 +119,7 @@ export class AnalysisWorkUnitRunner {
     }
     const prompt_builder = new PromptBuilder(
       this.app_root,
-      this.config_to_prompt_config(request.config_snapshot),
+      normalize_setting_snapshot(request.config_snapshot),
       quality_snapshot,
     );
     const prompt_result = await prompt_builder.generate_glossary_prompt(prepared.request_srcs);
@@ -347,22 +347,6 @@ export class AnalysisWorkUnitRunner {
       file_path: String(record["file_path"] ?? ""),
       retry_count: read_json_integer(record["retry_count"], 0),
       items,
-    };
-  }
-
-  /**
-   * PromptBuilder 只需要语言字段，缺失时使用默认值
-   */
-  private config_to_prompt_config(raw_config: JsonValue): {
-    app_language?: string;
-    source_language?: string;
-    target_language?: string;
-  } {
-    const config = normalize_setting_snapshot(raw_config);
-    return {
-      app_language: config.app_language,
-      source_language: config.source_language,
-      target_language: config.target_language,
     };
   }
 }

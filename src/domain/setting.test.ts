@@ -9,6 +9,7 @@ describe("设置快照", () => {
       target_language: "ZH",
       output_folder_open_on_finish: false,
       request_timeout: 120,
+      prompt_enhancement_enable: true,
       mtool_optimizer_enable: true,
       skip_duplicate_source_text_enable: true,
     });
