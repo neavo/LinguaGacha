@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { ArrowLeft, BookOpenText, Eraser, ListChecks, RefreshCcw } from "lucide-react";
+import { BookOpenText, Eraser, ListChecks, RefreshCcw } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { ProofreadingContextView } from "@frontend/pages/proofreading-page/components/proofreading-context-view";
@@ -66,14 +66,6 @@ function resolve_status_badge_tone(status: string): ProofreadingBadgeTone {
   return "neutral";
 }
 
-function resolve_warning_badge_tone(): ProofreadingBadgeTone {
-  return "warning";
-}
-
-function resolve_badge_tone_class_name(tone: ProofreadingBadgeTone): string {
-  return `proofreading-page__dialog-status-badge--tone-${tone}`;
-}
-
 function render_fragment_section(title: string, fragments: string[]): JSX.Element | null {
   if (fragments.length === 0) {
     return null;
@@ -116,6 +108,7 @@ function render_glossary_tooltip_content(
   );
 }
 
+/** 将有具体片段的警告映射为可复制的 tooltip 内容。 */
 function render_warning_tooltip_content(
   item: ProofreadingItem,
   warning: string,
@@ -162,7 +155,7 @@ function render_status_badge(args: {
 }): JSX.Element {
   const class_name = [
     "proofreading-page__dialog-status-badge",
-    resolve_badge_tone_class_name(args.tone),
+    `proofreading-page__dialog-status-badge--tone-${args.tone}`,
   ].join(" ");
   const badge = (
     <Badge variant="outline" className={class_name}>
@@ -189,6 +182,7 @@ function render_status_badge(args: {
   );
 }
 
+/** 以用户可见术语对为身份去重，保持最后一份条目事实。 */
 function dedupe_glossary_terms(terms: ProofreadingGlossaryTerm[]): ProofreadingGlossaryTerm[] {
   const term_map = new Map<string, ProofreadingGlossaryTerm>();
   terms.forEach((term) => {
@@ -197,6 +191,7 @@ function dedupe_glossary_terms(terms: ProofreadingGlossaryTerm[]): ProofreadingG
   return [...term_map.values()];
 }
 
+/** 译文正文或姓名任一处包含目标词即可视为当前草稿已应用术语。 */
 function is_glossary_term_applied(
   term: ProofreadingGlossaryTerm,
   draft_item: ProofreadingDialogState["draft_item"],
@@ -207,6 +202,7 @@ function is_glossary_term_applied(
   );
 }
 
+/** 按当前草稿重算术语状态，使胶囊和标亮随编辑实时刷新。 */
 function partition_glossary_terms(
   item: ProofreadingItem,
   draft_item: ProofreadingDialogState["draft_item"],
@@ -214,7 +210,6 @@ function partition_glossary_terms(
   applied_terms: ProofreadingGlossaryTerm[];
   failed_terms: ProofreadingGlossaryTerm[];
 } {
-  // 为什么：弹窗里展示的是“当前草稿”的真实状态，术语胶囊和下划线都要跟着草稿实时刷新
   const all_terms = dedupe_glossary_terms([
     ...item.applied_glossary_terms,
     ...item.failed_glossary_terms,
@@ -232,6 +227,7 @@ function normalize_code_editor_match_text(text: string): string {
   return text.replace(/\r\n|\r/gu, "\n");
 }
 
+/** 将 CRLF 坐标归一到 CodeMirror 文本后查找全部不重叠片段。 */
 export function find_text_match_ranges(
   text: string,
   fragment: string,
@@ -309,6 +305,7 @@ function build_glossary_highlights(
   };
 }
 
+/** 按姓名字段所在语言选择术语侧，生成与正文一致的标亮语义。 */
 function build_name_glossary_marks(args: {
   text: string;
   source_field: boolean;
@@ -342,6 +339,7 @@ function build_name_glossary_marks(args: {
   return marks;
 }
 
+/** 将当前草稿术语命中情况归纳为成功、部分或失败胶囊。 */
 function resolve_glossary_badge_state(
   item: ProofreadingItem,
   draft_item: ProofreadingDialogState["draft_item"],
@@ -376,6 +374,7 @@ function resolve_glossary_badge_state(
   };
 }
 
+/** 原文姓名只消费源词命中，避免正文中的同词污染姓名状态。 */
 function resolve_source_name_glossary_state(args: {
   source_name: string;
   applied_terms: ProofreadingGlossaryTerm[];
@@ -390,6 +389,7 @@ function resolve_source_name_glossary_state(args: {
   };
 }
 
+/** 译文姓名以原文姓名涉及的术语为全集，再按当前译名判定命中。 */
 function resolve_translation_name_glossary_state(args: {
   source_name: string;
   translation_name: string;
@@ -440,6 +440,8 @@ function render_name_input_with_glossary_state(args: {
     </Tooltip>
   );
 }
+
+/** 校对编辑弹窗组合文件详情、双栏编辑、状态操作与同文件上下文。 */
 export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.Element | null {
   const { t } = useI18n();
   const item = props.item;
@@ -489,6 +491,10 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
       : item.warnings.filter((warning) => warning !== "GLOSSARY");
   const source_name = read_item_name_text(item.name_src);
   const translation_name = draft_item.name_dst;
+  const file_path_label =
+    item.internal_file_path === undefined
+      ? item.file_path
+      : `${item.file_path} | ${item.internal_file_path}`;
   const source_name_glossary_state = resolve_source_name_glossary_state({
     source_name,
     applied_terms: glossary_terms.applied_terms,
@@ -538,7 +544,6 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
             autoFocus
             onClick={props.on_close_context}
           >
-            <ArrowLeft data-icon="inline-start" />
             {t("proofreading_page.action.back")}
             <ShortcutKbd action="cancel" />
           </AppButton>
@@ -637,134 +642,128 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
           />
         ) : null}
         <div className="proofreading-page__dialog-form" hidden={context_open}>
-          <div className="proofreading-page__dialog-main-panel">
-            <div className="proofreading-page__dialog-main-panel-content">
-              <section className="proofreading-page__dialog-file-card">
-                <span className="proofreading-page__dialog-file-path">{item.file_path}</span>
-                <AppButton
-                  ref={context_trigger_ref}
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="proofreading-page__dialog-context-trigger"
-                  disabled={saving}
-                  onClick={() => {
-                    void props.on_open_context();
-                  }}
-                >
-                  <BookOpenText data-icon="inline-start" />
-                  {t("proofreading_page.action.view_context")}
-                </AppButton>
-              </section>
+          <section className="proofreading-page__dialog-file-card">
+            <span className="proofreading-page__dialog-file-path" title={file_path_label}>
+              {file_path_label}
+            </span>
+            <AppButton
+              ref={context_trigger_ref}
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="proofreading-page__dialog-context-trigger"
+              disabled={saving}
+              onClick={() => {
+                void props.on_open_context();
+              }}
+            >
+              <BookOpenText data-icon="inline-start" />
+              {t("proofreading_page.action.view_context")}
+            </AppButton>
+          </section>
 
-              <section className="proofreading-page__dialog-editor-block">
-                <section className="proofreading-page__dialog-editor-section">
-                  <span className="proofreading-page__dialog-editor-title font-medium">
-                    {t("proofreading_page.fields.source")}
-                  </span>
-                  {show_name_fields
-                    ? render_name_input_with_glossary_state({
-                        input: (
-                          <AppEditor
-                            variant="field"
-                            class_name="proofreading-page__dialog-name-input"
-                            value={source_name}
-                            aria_label={t("proofreading_page.fields.source_name")}
-                            aria_invalid={source_name_glossary_state.tone === "warning"}
-                            marks={source_name_marks}
-                            read_only
-                          />
-                        ),
-                        state: source_name_glossary_state,
-                        t,
-                      })
-                    : null}
-                  <AppEditor
-                    value={item.src}
-                    aria_label={t("proofreading_page.fields.source")}
-                    read_only={true}
-                    marks={source_marks}
-                    class_name="proofreading-page__dialog-editor-host"
-                  />
-                </section>
+          <section className="proofreading-page__dialog-editor-block">
+            <section className="proofreading-page__dialog-editor-section">
+              <span className="proofreading-page__dialog-editor-title font-medium">
+                {t("proofreading_page.fields.source")}
+              </span>
+              {show_name_fields
+                ? render_name_input_with_glossary_state({
+                    input: (
+                      <AppEditor
+                        variant="field"
+                        class_name="proofreading-page__dialog-name-input"
+                        value={source_name}
+                        aria_label={t("proofreading_page.fields.source_name")}
+                        aria_invalid={source_name_glossary_state.tone === "warning"}
+                        marks={source_name_marks}
+                        read_only
+                      />
+                    ),
+                    state: source_name_glossary_state,
+                    t,
+                  })
+                : null}
+              <AppEditor
+                value={item.src}
+                aria_label={t("proofreading_page.fields.source")}
+                read_only={true}
+                marks={source_marks}
+                class_name="proofreading-page__dialog-editor-host"
+              />
+            </section>
 
-                <section className="proofreading-page__dialog-editor-section">
-                  <span className="proofreading-page__dialog-editor-title font-medium">
-                    {t("proofreading_page.fields.translation")}
-                  </span>
-                  {show_name_fields
-                    ? render_name_input_with_glossary_state({
-                        input: (
-                          <AppEditor
-                            variant="field"
-                            class_name="proofreading-page__dialog-name-input"
-                            value={translation_name}
-                            aria_label={t("proofreading_page.fields.translation_name")}
-                            aria_invalid={translation_name_glossary_state.tone === "warning"}
-                            marks={translation_name_marks}
-                            read_only={translation_readonly}
-                            on_change={(next_value) => {
-                              props.on_change({ name_dst: next_value });
-                            }}
-                          />
-                        ),
-                        state: translation_name_glossary_state,
-                        t,
-                      })
-                    : null}
-                  <AppEditor
-                    value={draft_item.dst}
-                    aria_label={t("proofreading_page.fields.translation")}
-                    read_only={translation_readonly}
-                    marks={translation_marks}
-                    class_name="proofreading-page__dialog-editor-host"
-                    on_change={(next_value) => {
-                      props.on_change({ dst: next_value });
-                    }}
-                  />
-                </section>
-              </section>
+            <section className="proofreading-page__dialog-editor-section">
+              <span className="proofreading-page__dialog-editor-title font-medium">
+                {t("proofreading_page.fields.translation")}
+              </span>
+              {show_name_fields
+                ? render_name_input_with_glossary_state({
+                    input: (
+                      <AppEditor
+                        variant="field"
+                        class_name="proofreading-page__dialog-name-input"
+                        value={translation_name}
+                        aria_label={t("proofreading_page.fields.translation_name")}
+                        aria_invalid={translation_name_glossary_state.tone === "warning"}
+                        marks={translation_name_marks}
+                        read_only={translation_readonly}
+                        on_change={(next_value) => {
+                          props.on_change({ name_dst: next_value });
+                        }}
+                      />
+                    ),
+                    state: translation_name_glossary_state,
+                    t,
+                  })
+                : null}
+              <AppEditor
+                value={draft_item.dst}
+                aria_label={t("proofreading_page.fields.translation")}
+                read_only={translation_readonly}
+                marks={translation_marks}
+                class_name="proofreading-page__dialog-editor-host"
+                on_change={(next_value) => {
+                  props.on_change({ dst: next_value });
+                }}
+              />
+            </section>
+          </section>
 
-              <section className="proofreading-page__dialog-status-section">
-                <h3 className="proofreading-page__dialog-status-title font-medium">
-                  {t("proofreading_page.fields.status")}
-                </h3>
-                <div className="proofreading-page__dialog-status-strip">
-                  {render_status_badge({
-                    label: status_label,
-                    tone: status_badge_tone,
+          <section className="proofreading-page__dialog-status-section">
+            <h3 className="proofreading-page__dialog-status-title font-medium">
+              {t("proofreading_page.fields.status")}
+            </h3>
+            <div className="proofreading-page__dialog-status-strip">
+              {render_status_badge({
+                label: status_label,
+                tone: status_badge_tone,
+              })}
+              {glossary_badge_state === null
+                ? null
+                : render_status_badge({
+                    label: glossary_badge_state.label,
+                    tone: glossary_badge_state.tone,
+                    tooltip_content: glossary_tooltip_content,
                   })}
-                  {glossary_badge_state === null
-                    ? null
-                    : render_status_badge({
-                        label: glossary_badge_state.label,
-                        tone: glossary_badge_state.tone,
-                        tooltip_content: glossary_tooltip_content,
-                      })}
-                  {visible_warning_codes.map((warning) => {
-                    const label_key =
-                      PROOFREADING_WARNING_LABEL_KEY_BY_CODE[
-                        warning as keyof typeof PROOFREADING_WARNING_LABEL_KEY_BY_CODE
-                      ];
-                    const warning_tooltip_content = render_warning_tooltip_content(
-                      item,
-                      warning,
-                      t,
-                    );
-                    return (
-                      <span key={warning} className="proofreading-page__dialog-status-badge-wrap">
-                        {render_status_badge({
-                          label: label_key === undefined ? warning : t(label_key),
-                          tone: resolve_warning_badge_tone(),
-                          tooltip_content: warning_tooltip_content,
-                        })}
-                      </span>
-                    );
-                  })}
-                </div>
-              </section>
+              {visible_warning_codes.map((warning) => {
+                const label_key =
+                  PROOFREADING_WARNING_LABEL_KEY_BY_CODE[
+                    warning as keyof typeof PROOFREADING_WARNING_LABEL_KEY_BY_CODE
+                  ];
+                const warning_tooltip_content = render_warning_tooltip_content(item, warning, t);
+                return (
+                  <span key={warning} className="proofreading-page__dialog-status-badge-wrap">
+                    {render_status_badge({
+                      label: label_key === undefined ? warning : t(label_key),
+                      tone: "warning",
+                      tooltip_content: warning_tooltip_content,
+                    })}
+                  </span>
+                );
+              })}
             </div>
-          </div>
+          </section>
         </div>
       </div>
     </AppPageDialog>

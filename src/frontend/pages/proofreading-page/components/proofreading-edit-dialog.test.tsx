@@ -254,6 +254,20 @@ describe("ProofreadingEditDialog", () => {
     ).toEqual(["2", "1"]);
   });
 
+  it("文件栏按需显示 TRANS 内部路径", async () => {
+    const rendered = await render_dialog({
+      item: {
+        ...create_proofreading_item(),
+        file_path: "game.trans",
+        internal_file_path: "data/Actors.json",
+      },
+    });
+    const file_path = rendered.querySelector(".proofreading-page__dialog-file-path");
+
+    expect(file_path?.textContent).toBe("game.trans | data/Actors.json");
+    expect(file_path?.getAttribute("title")).toBe("game.trans | data/Actors.json");
+  });
+
   it("有姓名字段时显示原文姓名并提交译文姓名草稿", async () => {
     const on_change = vi.fn();
 
