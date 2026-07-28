@@ -9,6 +9,7 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
 });
 
 import { createProofreadingApiClient } from "./proofreading-api-client";
+import type { ProofreadingContextItem } from "@shared/proofreading/proofreading-types";
 
 describe("proofreading-api-client", () => {
   beforeEach(() => {
@@ -123,6 +124,28 @@ describe("proofreading-api-client", () => {
       view_id: "view-1",
       start: 0,
       count: 10,
+    });
+  });
+
+  it("按 row id 读取窄上下文载荷", async () => {
+    const client = createProofreadingApiClient();
+    const context: ProofreadingContextItem[] = [
+      {
+        row_id: "1",
+        row_number: 1,
+        src: "原文",
+        dst: "译文",
+        name_src: null,
+        name_dst: null,
+      },
+    ];
+    api_fetch_mock.mockResolvedValue({ rows: context });
+
+    await expect(client.read_proofreading_context({ row_id: "1" })).resolves.toEqual(context);
+    expect(api_fetch_mock).toHaveBeenCalledOnce();
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/proofreading/view", {
+      action: "context",
+      row_id: "1",
     });
   });
 });

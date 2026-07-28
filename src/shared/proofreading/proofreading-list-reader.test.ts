@@ -26,8 +26,10 @@ function create_quality(): QualitySnapshot {
 // 生成 list reader 使用的 item 记录，默认按 item_id 绑定行号。
 function create_item(input: {
   item_id: number;
+  src?: string;
   dst: string;
   status?: string;
+  file_path?: string;
   file_order?: number;
   row_number?: number;
   name_src?: ItemNameField;
@@ -35,10 +37,10 @@ function create_item(input: {
 }) {
   return {
     item_id: input.item_id,
-    file_path: "script.txt",
+    file_path: input.file_path ?? "script.txt",
     file_order: input.file_order ?? 0,
     row_number: input.row_number ?? input.item_id,
-    src: `原文 ${input.item_id.toString()}`,
+    src: input.src ?? `原文 ${input.item_id.toString()}`,
     dst: input.dst,
     name_src: input.name_src ?? null,
     name_dst: input.name_dst ?? null,
@@ -117,6 +119,63 @@ describe("proofreading-list-reader", () => {
     expect(service.read_row_ids_range({ view_id: view.view_id, start: 0, count: 1 })).toEqual([
       "1",
     ]);
+  });
+
+  it("上下文跳过空行并按同文件自然顺序读取前后各两条且不替换当前列表视图", () => {
+    const service = createProofreadingListReader();
+    const items = [
+      create_item({ item_id: 1, file_path: "before.txt", file_order: 0, dst: "前文件" }),
+      create_item({ item_id: 9, file_path: "script.txt", file_order: 1, dst: "译文 9" }),
+      create_item({ item_id: 10, file_path: "script.txt", file_order: 1, src: "  ", dst: "" }),
+      create_item({ item_id: 11, file_path: "script.txt", file_order: 1, dst: "译文 11" }),
+      create_item({ item_id: 12, file_path: "script.txt", file_order: 1, dst: "译文 12" }),
+      create_item({ item_id: 13, file_path: "script.txt", file_order: 1, src: "\t　", dst: "" }),
+      create_item({ item_id: 14, file_path: "script.txt", file_order: 1, dst: "译文 14" }),
+      create_item({ item_id: 15, file_path: "script.txt", file_order: 1, dst: "译文 15" }),
+      create_item({ item_id: 20, file_path: "after.txt", file_order: 2, dst: "后文件" }),
+    ];
+    const sync_state = sync_full(service, {
+      projectId: "E:/demo/sample.lg",
+      revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
+      total_item_count: items.length,
+      sourceLanguage: "ja",
+      targetLanguage: "zh-CN",
+      quality: create_quality(),
+      upsertItems: items,
+    });
+    const view = service.read_list_view({
+      filters: sync_state.defaultFilters,
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: { column_id: "src", direction: "descending" },
+      window_start: 0,
+      window_count: 10,
+    });
+    const context = service.read_context_items({ row_id: "12" });
+
+    expect(context.map((item) => item.row_id)).toEqual(["9", "11", "12", "14", "15"]);
+    expect(context[2]).toMatchObject({
+      row_id: "12",
+      row_number: 12,
+      src: "原文 12",
+      dst: "译文 12",
+    });
+    expect(service.read_list_window({ view_id: view.view_id, start: 0, count: 10 })).toMatchObject({
+      view_id: view.view_id,
+      rows: view.window_rows,
+    });
+    expect(service.read_context_items({ row_id: "9" }).map((item) => item.row_id)).toEqual([
+      "9",
+      "11",
+      "12",
+    ]);
+    expect(service.read_context_items({ row_id: "15" }).map((item) => item.row_id)).toEqual([
+      "12",
+      "14",
+      "15",
+    ]);
+    expect(service.read_context_items({ row_id: "missing" })).toEqual([]);
   });
 
   it("非法正则返回错误信息且不裁剪列表结果", () => {

@@ -7,6 +7,7 @@ import {
   ProofreadingEditDialog,
 } from "@frontend/pages/proofreading-page/components/proofreading-edit-dialog";
 import type { ProofreadingItem } from "@shared/proofreading/proofreading-types";
+import type { ProofreadingDialogState } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
 
 vi.mock("@frontend/app/locale/locale-provider", () => {
   return {
@@ -19,7 +20,10 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
             "proofreading_page.action.retranslate": "重新翻译",
             "proofreading_page.action.set_translation_status": "设置翻译状态",
             "proofreading_page.action.save": "保存",
+            "proofreading_page.action.view_context": "查看上下文",
+            "proofreading_page.action.back": "返回",
             "proofreading_page.dialog.edit_title": "编辑条目",
+            "proofreading_page.context.title": "上下文",
             "proofreading_page.fields.source": "原文",
             "proofreading_page.fields.source_name": "原文姓名",
             "proofreading_page.fields.status": "状态",
@@ -102,16 +106,21 @@ vi.mock("@frontend/widgets/app-page-dialog", () => {
       title: string;
       children: ReactNode;
       footer?: ReactNode;
+      dismissBehavior?: "default" | "escape-only" | "blocked";
+      onClose: () => void;
     }) => {
       if (!props.open) {
         return null;
       }
 
       return (
-        <div>
+        <div data-dismiss-behavior={props.dismissBehavior}>
           <h1>{props.title}</h1>
           <main>{props.children}</main>
           <footer>{props.footer}</footer>
+          <button type="button" data-dialog-close-probe onClick={props.onClose}>
+            dialog-close-probe
+          </button>
         </div>
       );
     },
@@ -154,6 +163,20 @@ function create_proofreading_item(): ProofreadingItem {
     warning_fragments_by_code: {},
     applied_glossary_terms: [["魔法", "Magic"]],
     failed_glossary_terms: [["美優", "美优"]],
+  };
+}
+
+// 构造弹窗公开状态，让用例只覆写当前行为需要的字段。
+function create_dialog_state(
+  overrides: Partial<ProofreadingDialogState> = {},
+): ProofreadingDialogState {
+  return {
+    open: true,
+    target_row_id: "1",
+    draft_item: { dst: "Magic 和美1优", name_dst: "" },
+    saving: false,
+    context: { status: "idle" },
+    ...overrides,
   };
 }
 
@@ -201,14 +224,14 @@ describe("ProofreadingEditDialog", () => {
     await act(async () => {
       root?.render(
         <ProofreadingEditDialog
-          open
+          state={create_dialog_state()}
           item={create_proofreading_item()}
-          draft_item={{ dst: "Magic 和美1优", name_dst: "" }}
-          saving={false}
           readonly={false}
           on_change={() => {}}
           on_save={async () => {}}
           on_close={() => {}}
+          on_open_context={async () => {}}
+          on_close_context={() => {}}
           on_request_retranslate={() => {}}
           on_request_clear_translation={() => {}}
           on_request_set_translation_status={() => {}}
@@ -240,7 +263,9 @@ describe("ProofreadingEditDialog", () => {
         name_src: ["Alice", "Bob"],
         name_dst: ["旧译名", "保留译名"],
       },
-      draft_item: { dst: "Magic 和美1优", name_dst: "旧译名" },
+      state: create_dialog_state({
+        draft_item: { dst: "Magic 和美1优", name_dst: "旧译名" },
+      }),
       on_change,
     });
 
@@ -293,7 +318,9 @@ describe("ProofreadingEditDialog", () => {
         name_src: "Alice",
         name_dst: "旧译名",
       },
-      draft_item: { dst: "Magic 和美1优", name_dst: "旧译名" },
+      state: create_dialog_state({
+        draft_item: { dst: "Magic 和美1优", name_dst: "旧译名" },
+      }),
       readonly: true,
     });
 
@@ -320,7 +347,10 @@ describe("ProofreadingEditDialog", () => {
       failed_glossary_terms: [["Alice", "艾丽丝"]],
     };
 
-    const rendered = await render_dialog({ item, draft_item: { dst: "", name_dst: "" } });
+    const rendered = await render_dialog({
+      item,
+      state: create_dialog_state({ draft_item: { dst: "", name_dst: "" } }),
+    });
 
     const source_input = rendered.querySelector<HTMLTextAreaElement>(
       "textarea[aria-label='原文姓名']",
@@ -344,7 +374,10 @@ describe("ProofreadingEditDialog", () => {
     expect(translation_root.querySelector(".app-text-mark[data-tone='warning']")).toBeNull();
     expect(rendered.textContent).toContain("术语全部失效");
 
-    await render_dialog({ item, draft_item: { dst: "", name_dst: "艾丽丝" } });
+    await render_dialog({
+      item,
+      state: create_dialog_state({ draft_item: { dst: "", name_dst: "艾丽丝" } }),
+    });
 
     const next_source_input = rendered.querySelector<HTMLTextAreaElement>(
       "textarea[aria-label='原文姓名']",
@@ -369,5 +402,78 @@ describe("ProofreadingEditDialog", () => {
       next_translation_root.querySelector(".app-text-mark[data-tone='success']")?.textContent,
     ).toBe("艾丽丝");
     expect(rendered.textContent).toContain("术语全部生效");
+  });
+
+  it("只读时仍可查看上下文且保存中禁用入口", async () => {
+    const on_open_context = vi.fn(async () => {});
+    const rendered = await render_dialog({ readonly: true, on_open_context });
+    const trigger = [...rendered.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes("查看上下文"),
+    );
+    expect(trigger?.disabled).toBe(false);
+    await act(async () => trigger?.click());
+    expect(on_open_context).toHaveBeenCalledOnce();
+
+    await render_dialog({
+      state: create_dialog_state({ saving: true }),
+      on_open_context,
+    });
+    const saving_trigger = [...rendered.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes("查看上下文"),
+    );
+    expect(saving_trigger?.disabled).toBe(true);
+  });
+
+  it("编辑态取消按钮显示 Esc 且保存中阻止快捷关闭", async () => {
+    const rendered = await render_dialog();
+    const cancel_button = [...rendered.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes("取消"),
+    );
+
+    expect(rendered.querySelector("[data-dismiss-behavior='escape-only']")).not.toBeNull();
+    expect(cancel_button?.querySelector("[data-slot='kbd']")?.textContent).toBe("Esc");
+
+    await render_dialog({ state: create_dialog_state({ saving: true }) });
+    expect(rendered.querySelector("[data-dismiss-behavior='blocked']")).not.toBeNull();
+  });
+
+  it("上下文状态复用当前模态关闭语义并保留隐藏的编辑器", async () => {
+    const on_close = vi.fn();
+    const on_close_context = vi.fn();
+    const rendered = await render_dialog({
+      state: create_dialog_state({
+        context: {
+          status: "ready",
+          items: [
+            {
+              row_id: "1",
+              row_number: 1,
+              src: "魔法と美優",
+              dst: "旧译文",
+              name_src: null,
+              name_dst: null,
+            },
+          ],
+        },
+      }),
+      on_close,
+      on_close_context,
+    });
+
+    expect(rendered.querySelector("[data-dismiss-behavior='default']")).not.toBeNull();
+    const back_button = [...rendered.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes("返回"),
+    );
+    expect(back_button?.textContent).not.toContain("返回编辑");
+    expect(back_button?.querySelector("[data-slot='kbd']")?.textContent).toBe("Esc");
+    expect(rendered.querySelector(".proofreading-page__dialog-form")?.hasAttribute("hidden")).toBe(
+      true,
+    );
+    expect(rendered.querySelector("textarea[aria-label='译文']")).not.toBeNull();
+    act(() => {
+      rendered.querySelector<HTMLButtonElement>("[data-dialog-close-probe]")?.click();
+    });
+    expect(on_close_context).toHaveBeenCalledOnce();
+    expect(on_close).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,6 @@
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type {
+  ProofreadingContextQuery,
   ProofreadingFilterPanelQuery,
   ProofreadingItemsByRowIdsQuery,
   ProofreadingListViewQuery,
@@ -11,6 +12,7 @@ import type {
 } from "@shared/proofreading/proofreading-list-reader";
 import type {
   ProofreadingClientItem,
+  ProofreadingContextItem,
   ProofreadingFilterPanelState,
   ProofreadingListView,
 } from "@shared/proofreading/proofreading-types";
@@ -35,6 +37,9 @@ export type ProofreadingApiClient = {
   read_proofreading_items_by_row_ids: (
     input: ProofreadingItemsByRowIdsQuery,
   ) => Promise<ProofreadingClientItem[]>;
+  read_proofreading_context: (
+    input: ProofreadingContextQuery,
+  ) => Promise<ProofreadingContextItem[]>;
   build_proofreading_filter_panel: (
     input: ProofreadingFilterPanelQuery,
   ) => Promise<ProofreadingFilterPanelState>;
@@ -115,6 +120,13 @@ export function createProofreadingApiClient(): ProofreadingApiClient {
       const response = await api_fetch<{ rows?: ProofreadingClientItem[] }>(
         "/api/proofreading/view",
         { action: "items_by_row_ids", row_ids: input.row_ids },
+      );
+      return Array.isArray(response.rows) ? response.rows : [];
+    },
+    async read_proofreading_context(input) {
+      const response = await api_fetch<{ rows?: ProofreadingContextItem[] }>(
+        "/api/proofreading/view",
+        { action: "context", row_id: input.row_id },
       );
       return Array.isArray(response.rows) ? response.rows : [];
     },

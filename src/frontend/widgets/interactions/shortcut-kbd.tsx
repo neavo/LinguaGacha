@@ -1,11 +1,11 @@
 import {
   get_shortcut_label,
-  type ShortcutAction,
+  type ShortcutLabel,
 } from "@frontend/widgets/interactions/keyboard-shortcuts";
 import { Kbd } from "@frontend/shadcn/kbd";
 
 type ShortcutKbdProps = {
-  action: ShortcutAction;
+  action: ShortcutLabel;
   className?: string;
 };
 export function ShortcutKbd(props: ShortcutKbdProps): JSX.Element {

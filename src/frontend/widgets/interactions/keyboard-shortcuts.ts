@@ -1,4 +1,5 @@
 export type ShortcutAction = "save" | "create" | "delete";
+export type ShortcutLabel = ShortcutAction | "cancel";
 
 export type ShortcutPlatform = "mac" | "default";
 
@@ -20,13 +21,15 @@ const SHORTCUT_LABELS = {
     save: "⌘S",
     create: "⌘N",
     delete: "⌘⌫",
+    cancel: "Esc",
   },
   default: {
     save: "Ctrl+S",
     create: "Ctrl+N",
     delete: "Del",
+    cancel: "Esc",
   },
-} satisfies Record<ShortcutPlatform, Record<ShortcutAction, string>>;
+} satisfies Record<ShortcutPlatform, Record<ShortcutLabel, string>>;
 
 function get_runtime_navigator(): NavigatorLike | undefined {
   if (typeof navigator === "undefined") {
@@ -51,7 +54,7 @@ export function resolve_shortcut_platform(
 }
 
 export function get_shortcut_label(
-  action: ShortcutAction,
+  action: ShortcutLabel,
   platform: ShortcutPlatform = resolve_shortcut_platform(),
 ): string {
   return SHORTCUT_LABELS[platform][action];

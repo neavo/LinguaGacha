@@ -98,6 +98,16 @@ export type ProofreadingItemRecord = {
   retry_count: number;
 };
 
+// 上下文视图只跨层传输连续阅读需要的字段，不携带列表警告和压缩投影。
+export type ProofreadingContextItem = {
+  row_id: string;
+  row_number: number;
+  src: string;
+  dst: string;
+  name_src: ItemNameField;
+  name_dst: ItemNameField;
+};
+
 export type ProofreadingClientItem = ProofreadingItem & {
   row_id: string;
   compressed_src: string;

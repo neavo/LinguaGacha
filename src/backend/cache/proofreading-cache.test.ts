@@ -150,6 +150,7 @@ describe("ProofreadingCache", () => {
       is_regex: false,
       sort_state: null,
     });
+    const context = await cache.context({ row_id: "1" });
 
     expect(worker.run).toHaveBeenCalledTimes(1);
     expect(worker.sync_inputs[0]).toMatchObject({
@@ -162,6 +163,11 @@ describe("ProofreadingCache", () => {
       projectPath: "E:/Project/demo.lg",
       sectionRevisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       data: { row_count: 1 },
+    });
+    expect(context).toMatchObject({
+      projectPath: "E:/Project/demo.lg",
+      sectionRevisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
+      data: [{ row_id: "1" }],
     });
   });
 

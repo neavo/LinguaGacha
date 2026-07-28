@@ -51,7 +51,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
       open={props.open}
       title={title}
       size="lg"
-      dismissBehavior="blocked"
+      dismissBehavior={props.saving ? "blocked" : "escape-only"}
       onClose={props.on_close}
       bodyClassName="overflow-hidden p-0"
       footer={
@@ -66,6 +66,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
             }}
           >
             {t("quality_editor.action.cancel")}
+            <ShortcutKbd action="cancel" />
           </AppButton>
           <AppButton
             type="button"

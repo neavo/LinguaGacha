@@ -6,6 +6,7 @@ import { Item } from "../../domain/item";
 import { is_json_record, read_json_record, type JsonValue } from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import type {
+  ProofreadingContextQuery,
   ProofreadingFilterPanelQuery,
   ProofreadingItemsByRowIdsQuery,
   ProofreadingListViewQuery,
@@ -18,6 +19,7 @@ import type {
 } from "../../shared/proofreading/proofreading-list-reader";
 import type {
   ProofreadingClientItem,
+  ProofreadingContextItem,
   ProofreadingFilterPanelState,
   ProofreadingListView,
   ProofreadingItemRecord,
@@ -131,6 +133,15 @@ export class ProofreadingCache {
     query: ProofreadingItemsByRowIdsQuery,
   ): Promise<ProofreadingCacheResult<ProofreadingClientItem[]>> {
     return this.query_current(() => this.service.read_items_by_row_ids(query));
+  }
+
+  /**
+   * 读取目标条目在同文件自然顺序中的上下文，不改变当前列表视图。
+   */
+  public async context(
+    query: ProofreadingContextQuery,
+  ): Promise<ProofreadingCacheResult<ProofreadingContextItem[]>> {
+    return this.query_current(() => this.service.read_context_items(query));
   }
 
   /**

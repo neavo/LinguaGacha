@@ -3,7 +3,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ProofreadingCommandPlan } from "@shared/proofreading/proofreading-command-planner";
-import type { ProofreadingClientItem } from "@shared/proofreading/proofreading-types";
+import type {
+  ProofreadingClientItem,
+  ProofreadingContextItem,
+} from "@shared/proofreading/proofreading-types";
 import { useProofreadingDialogActions } from "@frontend/pages/proofreading-page/use-proofreading-dialog-actions";
 
 type DialogActionState = ReturnType<typeof useProofreadingDialogActions>;
@@ -42,12 +45,28 @@ function create_client_item(
   };
 }
 
+// 构造上下文读取结果，竞态用例只覆盖需要区分的新旧译文。
+function create_context_item(
+  overrides: Partial<ProofreadingContextItem> = {},
+): ProofreadingContextItem {
+  return {
+    row_id: "1",
+    row_number: 1,
+    src: "原文",
+    dst: "旧译文",
+    name_src: null,
+    name_dst: "旧姓名",
+    ...overrides,
+  };
+}
+
 describe("useProofreadingDialogActions", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
   let latest_state: DialogActionState | null = null;
   const target_item = create_client_item(); // 当前弹窗编辑目标
   const write_calls: WriteCall[] = []; // 记录公开写入请求，避免断言 hook 内部状态
+  const read_context = vi.fn<(row_id: string) => Promise<ProofreadingContextItem[]>>();
 
   afterEach(async () => {
     if (root !== null) {
@@ -61,6 +80,7 @@ describe("useProofreadingDialogActions", () => {
     root = null;
     latest_state = null;
     write_calls.length = 0;
+    read_context.mockReset();
   });
 
   // 暴露 hook 返回值，测试只通过公开动作驱动弹窗状态。
@@ -75,6 +95,7 @@ describe("useProofreadingDialogActions", () => {
       read_items_by_row_ids: async (row_ids) => {
         return row_ids.includes("1") ? [target_item] : [];
       },
+      read_context,
       run_project_write: vi.fn(async (args: WriteCall) => {
         write_calls.push(args);
       }),
@@ -129,5 +150,79 @@ describe("useProofreadingDialogActions", () => {
         proofreading: 5,
       },
     });
+  });
+
+  it("读取上下文失败后可重试并返回编辑状态", async () => {
+    const context_item = create_context_item();
+    read_context.mockRejectedValueOnce(new Error("failed")).mockResolvedValueOnce([context_item]);
+    await render_hook();
+    await act(async () => {
+      await latest_state?.open_edit_dialog("1");
+    });
+    await act(async () => {
+      await latest_state?.open_dialog_context();
+    });
+    expect(latest_state?.dialog_state.context.status).toBe("error");
+
+    await act(async () => {
+      await latest_state?.open_dialog_context();
+    });
+    expect(latest_state?.dialog_state.context).toEqual({
+      status: "ready",
+      items: [context_item],
+    });
+
+    act(() => {
+      latest_state?.close_dialog_context();
+    });
+    expect(latest_state?.dialog_state.context).toEqual({ status: "idle" });
+  });
+
+  it("返回编辑并重开同一条目后忽略旧上下文结果", async () => {
+    const stale_item = create_context_item({ dst: "旧请求" });
+    const current_item = create_context_item({ dst: "新请求" });
+    let resolve_stale: ((items: ProofreadingContextItem[]) => void) | undefined;
+    let resolve_current: ((items: ProofreadingContextItem[]) => void) | undefined;
+    read_context
+      .mockImplementationOnce(() => {
+        return new Promise((resolve) => {
+          resolve_stale = resolve;
+        });
+      })
+      .mockImplementationOnce(() => {
+        return new Promise((resolve) => {
+          resolve_current = resolve;
+        });
+      });
+    await render_hook();
+    await act(async () => {
+      await latest_state?.open_edit_dialog("1");
+    });
+
+    let stale_request: Promise<void> | undefined;
+    act(() => {
+      stale_request = latest_state?.open_dialog_context();
+    });
+    expect(latest_state?.dialog_state.context.status).toBe("loading");
+    act(() => {
+      latest_state?.close_dialog_context();
+    });
+    let current_request: Promise<void> | undefined;
+    act(() => {
+      current_request = latest_state?.open_dialog_context();
+    });
+
+    resolve_stale?.([stale_item]);
+    await act(async () => {
+      await stale_request;
+    });
+    expect(latest_state?.dialog_state.context.status).toBe("loading");
+
+    resolve_current?.([current_item]);
+    await act(async () => {
+      await current_request;
+    });
+
+    expect(latest_state?.dialog_state.context).toEqual({ status: "ready", items: [current_item] });
   });
 });
