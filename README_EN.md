@@ -71,8 +71,10 @@
 - Feature Description
   - [CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
   - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
-  - [MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN) [TS Conversion](https://github.com/neavo/LinguaGacha/wiki/TSConversionEN)
-  - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
+  - [MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)　　[TS Conversion](https://github.com/neavo/LinguaGacha/wiki/TSConversionEN)
+- Companion Skills
+  - [Automated Glossary Review](https://github.com/neavo/LinguaGacha/blob/main/.codex/skills/lg-glossary-audit/SKILL.md)
+- You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## Supported Formats 🏷️
 - Subtitles (.srt .ass)
@@ -88,6 +90,11 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260728 v0.104.0
+  - Redesigned the task log style
+  - Added source context lookup to the proofreading editor
+  - Adjustments and improvements [#657](https://github.com/neavo/LinguaGacha/issues/657) [#669](https://github.com/neavo/LinguaGacha/issues/669) [#671](https://github.com/neavo/LinguaGacha/issues/671)
+
 - 20260725 v0.103.0
   - Added a `German` interface @Errorism1
   - Adjustments and improvements [#597](https://github.com/neavo/LinguaGacha/issues/597) [#658](https://github.com/neavo/LinguaGacha/issues/658) [#665](https://github.com/neavo/LinguaGacha/issues/665) [#666](https://github.com/neavo/LinguaGacha/issues/666) [#667](https://github.com/neavo/LinguaGacha/issues/667)
@@ -104,13 +111,3 @@
 - Please attach relevant logs when reporting issues
 - You can also join our groups for discussion and feedback:
   - Discord - https://discord.gg/pyMRBGse75
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=neavo%2FLinguaGacha&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=neavo/LinguaGacha&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=neavo/LinguaGacha&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=neavo/LinguaGacha&type=date&legend=top-left" />
- </picture>
-</a>

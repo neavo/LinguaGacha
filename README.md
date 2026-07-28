@@ -70,7 +70,9 @@
 - 功能说明
   - [命令行模式](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
   - [术语表](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[文本保护](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)　　[文本替换](https://github.com/neavo/LinguaGacha/wiki/Replacement)　　
-  - [MTool 优化器](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer) [百宝箱 - 繁简转换](https://github.com/neavo/LinguaGacha/wiki/TSConversion)
+  - [MTool 优化器](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)　　[百宝箱 - 繁简转换](https://github.com/neavo/LinguaGacha/wiki/TSConversion)
+- 配套 Skill
+  - [术语表自动审校](https://github.com/neavo/LinguaGacha/blob/main/.codex/skills/lg-glossary-audit/SKILL.md)
 - 你可以在 [Wiki](https://github.com/neavo/LinguaGacha/wiki) 找到各项功能的更详细介绍，也欢迎在 [讨论区](https://github.com/neavo/LinguaGacha/discussions) 投稿你的使用心得
 
 ## 文本格式 🏷️
@@ -87,6 +89,11 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20260728 v0.104.0
+  - 重新设计了任务日志的样式
+  - 校对编辑窗口中支持查询出处上下文
+  - 调整与改进 [#657](https://github.com/neavo/LinguaGacha/issues/657) [#669](https://github.com/neavo/LinguaGacha/issues/669) [#671](https://github.com/neavo/LinguaGacha/issues/671)
+
 - 20260725 v0.103.0
   - 增加 `德语` 界面 @Errorism1
   - 调整与改进 [#597](https://github.com/neavo/LinguaGacha/issues/597) [#658](https://github.com/neavo/LinguaGacha/issues/658) [#665](https://github.com/neavo/LinguaGacha/issues/665) [#666](https://github.com/neavo/LinguaGacha/issues/666) [#667](https://github.com/neavo/LinguaGacha/issues/667)
@@ -104,13 +111,3 @@
 - 你也可以来群组讨论与反馈
   - QQ - 41763231⑥
   - Discord - https://discord.gg/pyMRBGse75
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=neavo%2FLinguaGacha&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=neavo/LinguaGacha&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=neavo/LinguaGacha&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=neavo/LinguaGacha&type=date&legend=top-left" />
- </picture>
-</a>
