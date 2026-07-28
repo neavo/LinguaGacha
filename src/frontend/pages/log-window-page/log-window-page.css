@@ -176,11 +176,11 @@
   gap: 6px;
 }
 
-.log-window-page__detail-resize {
+.log-window-page__detail-action {
   color: var(--muted-foreground);
 }
 
-.log-window-page__detail-resize:hover {
+.log-window-page__detail-action:hover {
   color: var(--foreground);
 }
 

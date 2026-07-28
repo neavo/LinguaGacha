@@ -1,5 +1,5 @@
-import type { LogDetail, LogEvent, LogLevel } from "@frontend/app/desktop/desktop-api";
-import { LOG_WINDOW_EVENT_CAPACITY, format_log_readable_text } from "@shared/log";
+import type { LogEvent, LogLevel } from "@frontend/app/desktop/desktop-api";
+import { LOG_WINDOW_EVENT_CAPACITY } from "@shared/log";
 
 export type LogLevelFilter = "all" | LogLevel;
 
@@ -58,11 +58,6 @@ export function compress_log_message_text(message: string): string {
   }
 
   return message.replace(/\r\n|\r|\n/gu, " ↵ ");
-}
-
-// 详情视图才把结构化异常字段拼回可读文本，列表仍只消费轻量 message_preview。
-export function format_log_detail_text(detail: Pick<LogDetail, "message" | "error">): string {
-  return format_log_readable_text(detail);
 }
 
 // 筛选只搜索轻量事件字段，避免完整日志正文进入 React 列表热路径

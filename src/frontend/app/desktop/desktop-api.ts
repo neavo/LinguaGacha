@@ -1,6 +1,12 @@
 import { JsonTool } from "../../../shared/utils/json-tool";
 import { normalize_backend_api_base_url } from "@backend/api/api-base-url";
-import { normalize_log_level, type LogDetail, type LogEvent, type LogLevel } from "@shared/log";
+import {
+  normalize_log_level,
+  read_log_content,
+  type LogDetail,
+  type LogEvent,
+  type LogLevel,
+} from "@shared/log";
 import {
   normalize_log_error,
   type ApiErrorPayload,
@@ -553,19 +559,20 @@ function normalize_log_event(payload: EventSourceJsonEvent): LogEvent | null {
 }
 
 /**
- * 日志详情是按需读取的完整正文，边界归一后才交给页面编辑器显示
+ * 日志详情是按需读取的结构化正文，边界归一后才交给页面显示
  */
 function normalize_log_detail(payload: unknown): LogDetail | null {
   if (typeof payload !== "object" || payload === null || Array.isArray(payload)) {
     return null;
   }
   const detail = payload as Record<string, unknown>;
+  const content = read_log_content(detail["content"]);
   if (
     typeof detail["id"] !== "string" ||
     typeof detail["sequence"] !== "number" ||
     typeof detail["created_at"] !== "string" ||
     typeof detail["source"] !== "string" ||
-    typeof detail["message"] !== "string"
+    content === null
   ) {
     return null;
   }
@@ -576,7 +583,7 @@ function normalize_log_detail(payload: unknown): LogDetail | null {
     created_at: detail["created_at"],
     level: normalize_log_level(detail["level"]),
     source: detail["source"],
-    message: detail["message"],
+    content,
     error:
       typeof detail["error"] === "object" &&
       detail["error"] !== null &&

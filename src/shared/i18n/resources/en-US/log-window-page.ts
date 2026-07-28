@@ -17,7 +17,7 @@ export const en_us_log_window_page = {
     message: "Message",
   },
   action: {
-    autoscroll: "Auto Scroll",
+    return_to_top: "Back to Top",
   },
   search: {
     placeholder: "Query …",
@@ -32,6 +32,8 @@ export const en_us_log_window_page = {
   },
   detail: {
     title: "Detail",
+    previous: "Previous Entry",
+    next: "Next Entry",
     maximize: "Maximize",
     minimize: "Minimize",
     empty: "Select a log entry to view details.",
@@ -39,6 +41,14 @@ export const en_us_log_window_page = {
     unavailable:
       "Log detail has been released from current process memory. Please check the log file.",
     failed: "Failed to load log detail.",
+    content: {
+      source_text: "Source",
+      translated_text: "Translation",
+      source_term: "Source Term",
+      translated_term: "Translated Term",
+      term_info: "Note",
+      error: "Error Details",
+    },
   },
   feedback: {
     stream_failed: "Log stream connection failed.",

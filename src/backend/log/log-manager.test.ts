@@ -5,7 +5,7 @@ import process from "node:process";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { LOG_WINDOW_EVENT_CAPACITY } from "../../shared/log";
+import { LOG_WINDOW_EVENT_CAPACITY, type LogContent } from "../../shared/log";
 import { format_log_date_key, type FileLogWriter, LogManager } from "./log-manager";
 
 describe("LogManager", () => {
@@ -65,7 +65,7 @@ describe("LogManager", () => {
       "三",
     ]);
     expect(log_manager.read_detail("log-1")).toBeNull();
-    expect(log_manager.read_detail("log-2")?.message).toBe("二");
+    expect(log_manager.read_detail("log-2")?.content).toEqual({ kind: "text", text: "二" });
   });
 
   it("订阅取消后不再接收新的窗口日志", () => {
@@ -108,13 +108,61 @@ describe("LogManager", () => {
     expect(snapshot_event?.message_preview.length).toBeLessThan(full_message.length);
     expect(detail).toMatchObject({
       id: "log-1",
-      message: full_message,
+      content: { kind: "text", text: full_message },
       error: {
         message: "boom",
         stack: "Error: boom",
         context: { route: "/api/demo" },
       },
     });
+  });
+
+  it("结构化详情只在输出目标生成纯文本投影", () => {
+    const console_lines: string[] = [];
+    const file_lines: string[] = [];
+    const log_manager = create_log_manager(
+      console_lines,
+      LOG_WINDOW_EVENT_CAPACITY,
+      undefined,
+      file_lines,
+    );
+
+    const content: LogContent = {
+      kind: "translation_result",
+      summary: ["任务完成"],
+      sections: [],
+      pairs: [{ src: "こんにちは", dst: "你好" }],
+    };
+    const event = log_manager.append({
+      level: "info",
+      source: "engine-worker",
+      content,
+    });
+    content.pairs[0]!.dst = "调用方污染";
+
+    expect(event?.message_preview).toContain("任务完成");
+    if (event === null) {
+      throw new Error("期望发布窗口日志事件");
+    }
+    expect(event).not.toHaveProperty("content");
+    const detail = log_manager.read_detail(event.id);
+    expect(detail?.content).toMatchObject({
+      kind: "translation_result",
+      pairs: [{ src: "こんにちは", dst: "你好" }],
+    });
+    if (detail?.content.kind !== "translation_result") {
+      throw new Error("期望读取翻译结构化详情");
+    }
+    detail.content.pairs[0]!.dst = "读取方污染";
+    expect(log_manager.read_detail(event.id)?.content).toMatchObject({
+      kind: "translation_result",
+      pairs: [{ src: "こんにちは", dst: "你好" }],
+    });
+    expect(JSON.parse(file_lines[0] ?? "{}")).toMatchObject({
+      message: expect.stringContaining("SRC: こんにちは\nDST: 你好"),
+    });
+    expect(console_lines[0]).toContain("こんにちは");
+    expect(console_lines[0]).toContain("你好");
   });
 
   it("fatal 日志会尽力同步刷新文件输出", () => {
@@ -152,7 +200,10 @@ describe("LogManager", () => {
     expect(log_manager.snapshot_events().map((event) => event.message_preview)).toEqual([
       "关闭前日志",
     ]);
-    expect(log_manager.read_detail("log-1")?.message).toBe("关闭前日志");
+    expect(log_manager.read_detail("log-1")?.content).toEqual({
+      kind: "text",
+      text: "关闭前日志",
+    });
     expect(stderr_write).toHaveBeenCalledWith(
       expect.stringContaining("日志系统已关闭，丢弃新日志：关闭后日志"),
     );

@@ -17,7 +17,7 @@ export const de_de_log_window_page = {
     message: "Nachricht",
   },
   action: {
-    autoscroll: "Auto-Scroll",
+    return_to_top: "Nach oben",
   },
   search: {
     placeholder: "Abfrage …",
@@ -32,6 +32,8 @@ export const de_de_log_window_page = {
   },
   detail: {
     title: "Detail",
+    previous: "Vorheriger Eintrag",
+    next: "Nächster Eintrag",
     maximize: "Maximieren",
     minimize: "Minimieren",
     empty: "Wählen Sie einen Protokolleintrag aus, um Details anzuzeigen.",
@@ -39,6 +41,14 @@ export const de_de_log_window_page = {
     unavailable:
       "Das Protokolldetail wurde aus dem aktuellen Prozessspeicher entfernt. Bitte überprüfen Sie die Protokolldatei.",
     failed: "Fehler beim Laden des Protokolldetails.",
+    content: {
+      source_text: "Ausgangstext",
+      translated_text: "Übersetzung",
+      source_term: "Ausgangsbegriff",
+      translated_term: "Übersetzter Begriff",
+      term_info: "Anmerkung",
+      error: "Fehlerdetails",
+    },
   },
   feedback: {
     stream_failed: "Verbindung zum Protokollstream fehlgeschlagen.",

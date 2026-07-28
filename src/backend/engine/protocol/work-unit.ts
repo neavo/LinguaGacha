@@ -1,12 +1,15 @@
-import type { JsonRecord, JsonValue } from "../../../domain/json";
+import type { JsonValue } from "../../../domain/json";
 import type { LogError } from "../../../shared/error";
+import type { LogContent } from "../../../shared/log";
+
+/** worker 只回传任务结果日志，普通生命周期文本由主线程生成。 */
+type WorkUnitLogContent = Extract<LogContent, { kind: "translation_result" | "analysis_result" }>;
 
 /** work unit 日志只允许可序列化摘要，避免 worker 线程回传 Error 引用 */
 export type WorkUnitLogEntry = {
-  level: "info" | "warning" | "error";
-  message: string;
-  error?: LogError;
-  context?: JsonRecord;
+  level: "info" | "warning" | "error"; // 主线程回放时使用的公开日志等级
+  content: WorkUnitLogContent; // 跨线程传输的结构化任务结果
+  error?: LogError; // 已在 worker 边界收窄的可序列化错误
 };
 
 /** 翻译 work unit 是 Engine 发给 worker 的不可变执行载荷 */

@@ -7,9 +7,24 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JsonRecord } from "../../../../domain/json";
 import { TranslationWorkUnitRunner } from "./translation-runner";
 import type { LLMClientPort, LLMRequestBody, LLMRequestResult } from "../../../llm/llm-types";
-import type { TranslationWorkUnit } from "../../protocol/work-unit";
+import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 
 const cleanup_roots: string[] = [];
+
+/** 日志状态断言只读取用户可见摘要，不依赖纯文本投影格式。 */
+function read_log_summary(entry: WorkUnitLogEntry | undefined): string {
+  return entry?.content.summary.join("\n") ?? "";
+}
+
+/** 收窄翻译日志判别联合，测试随后只断言公开结构化结果。 */
+function read_translation_log(
+  entry: WorkUnitLogEntry | undefined,
+): Extract<WorkUnitLogEntry["content"], { kind: "translation_result" }> {
+  if (entry?.content.kind !== "translation_result") {
+    throw new Error("期望翻译结果日志");
+  }
+  return entry.content;
+}
 
 /**
  * 构造无条目的翻译 work unit，验证 runner 不会为无效 chunk 请求模型。
@@ -186,6 +201,10 @@ describe("TranslationWorkUnitRunner", () => {
         { id: 2, dst: "旁白译文", name_dst: "既有译名", status: "PROCESSED" },
       ],
     });
+    expect(read_translation_log(result.logs[0]).pairs).toEqual([
+      { src: "こんにちは", dst: "你好", actor_src: "虎鉄", actor_dst: "虎铁" },
+      { src: "地の文", dst: "旁白译文", actor_src: null, actor_dst: null },
+    ]);
     expect(captured_requests[0]?.messages[1]?.content).toContain(
       '{"0":{"actor":"虎鉄","text":"こんにちは"}}',
     );
@@ -218,7 +237,7 @@ describe("TranslationWorkUnitRunner", () => {
       new AbortController().signal,
     );
 
-    expect(result.logs[0]?.message).toContain(
+    expect(read_log_summary(result.logs[0])).toContain(
       "任务耗时 2.50 秒，文本行数 1 行，输入消耗 4 Tokens，输出消耗 5 Tokens",
     );
   });
@@ -237,10 +256,11 @@ describe("TranslationWorkUnitRunner", () => {
       new AbortController().signal,
     );
 
-    const message = String(result.logs[0]?.message ?? "");
-    expect(message).toContain("思考过程：\n真实思考链");
-    expect(message).toContain("规则分析：\n[核心约束]：保持行数");
-    expect(message).toContain('翻译结果：\n{"0":"你好"}');
+    expect(read_translation_log(result.logs[0]).sections).toEqual([
+      { title: "思考过程：", text: "真实思考链" },
+      { title: "规则分析：", text: "[核心约束]：保持行数" },
+      { title: "翻译结果：", text: '{"0":"你好"}' },
+    ]);
   });
 
   it("LLM 请求失败时只在结构化日志字段保留调用栈", async () => {
@@ -271,7 +291,7 @@ describe("TranslationWorkUnitRunner", () => {
         context: { provider: "openai-compatible" },
       },
     });
-    expect(result.logs[0]?.message).not.toContain("ProviderError: 供应商爆炸");
+    expect(read_log_summary(result.logs[0])).not.toContain("ProviderError: 供应商爆炸");
   });
 
   it("完全无法解析译文时记录数据结构错误", async () => {
@@ -291,8 +311,8 @@ describe("TranslationWorkUnitRunner", () => {
     );
 
     expect(result.outcome).toBe("failed");
-    expect(String(result.logs[0]?.message ?? "")).toContain("数据结构错误");
-    expect(String(result.logs[0]?.message ?? "")).not.toContain("行数不一致");
+    expect(read_log_summary(result.logs[0])).toContain("数据结构错误");
+    expect(read_log_summary(result.logs[0])).not.toContain("行数不一致");
   });
 
   it("部分合法译文无法覆盖请求行时记录行数不一致", async () => {
@@ -312,8 +332,8 @@ describe("TranslationWorkUnitRunner", () => {
     );
 
     expect(result.outcome).toBe("failed");
-    expect(String(result.logs[0]?.message ?? "")).toContain("行数不一致");
-    expect(String(result.logs[0]?.message ?? "")).not.toContain("数据结构错误");
+    expect(read_log_summary(result.logs[0])).toContain("行数不一致");
+    expect(read_log_summary(result.logs[0])).not.toContain("数据结构错误");
   });
 
   it("单条行数不一致达重试阈值时写回 fallback 译文并保留真实日志原因", async () => {
@@ -348,7 +368,7 @@ describe("TranslationWorkUnitRunner", () => {
         },
       ],
     });
-    expect(String(result.logs[0]?.message ?? "")).toContain("行数不一致");
+    expect(read_log_summary(result.logs[0])).toContain("行数不一致");
   });
 
   it("单条行数不一致未达重试阈值时继续失败并递增重试次数", async () => {
@@ -425,7 +445,7 @@ describe("TranslationWorkUnitRunner", () => {
         { id: 2, dst: "", status: "NONE", retry_count: 2 },
       ],
     });
-    expect(String(result.logs[0]?.message ?? "")).toContain("行数不一致");
+    expect(read_log_summary(result.logs[0])).toContain("行数不一致");
   });
 
   it("完全无法解析译文即使达重试阈值也不写 fallback", async () => {
@@ -458,7 +478,7 @@ describe("TranslationWorkUnitRunner", () => {
         },
       ],
     });
-    expect(String(result.logs[0]?.message ?? "")).toContain("数据结构错误");
+    expect(read_log_summary(result.logs[0])).toContain("数据结构错误");
   });
 
   it("已对齐逐行质量失败达重试阈值时提交译文但日志保留空行原因", async () => {
@@ -491,7 +511,7 @@ describe("TranslationWorkUnitRunner", () => {
         },
       ],
     });
-    expect(String(result.logs[0]?.message ?? "")).toContain("存在空行");
+    expect(read_log_summary(result.logs[0])).toContain("存在空行");
   });
 });
 

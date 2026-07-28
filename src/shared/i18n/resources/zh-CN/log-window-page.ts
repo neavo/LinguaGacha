@@ -14,7 +14,7 @@ export const zh_cn_log_window_page = {
     message: "消息",
   },
   action: {
-    autoscroll: "自动滚动",
+    return_to_top: "回到顶部",
   },
   search: {
     placeholder: "查询 …",
@@ -29,12 +29,22 @@ export const zh_cn_log_window_page = {
   },
   detail: {
     title: "详情",
+    previous: "上一条",
+    next: "下一条",
     maximize: "最大化",
     minimize: "最小化",
     empty: "请选择一条日志查看详情。",
     loading: "正在读取日志详情 …",
     unavailable: "日志详情已从当前进程内存释放，请查看日志文件。",
     failed: "日志详情读取失败。",
+    content: {
+      source_text: "原文",
+      translated_text: "译文",
+      source_term: "原词",
+      translated_term: "译词",
+      term_info: "备注",
+      error: "错误详情",
+    },
   },
   feedback: {
     stream_failed: "日志流连接失败。",

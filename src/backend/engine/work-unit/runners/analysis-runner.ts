@@ -248,7 +248,7 @@ export class AnalysisWorkUnitRunner {
     level: WorkUnitLogEntry["level"];
   }): WorkUnitLogEntry[] {
     const elapsed_seconds = ((Date.now() - context.start_time) / 1000).toFixed(2);
-    const rows = [
+    const summary = [
       this.t(context.app_language, "app.log.engine_task_success", {
         CT: context.output_tokens.toString(),
         LINES: context.srcs.length.toString(),
@@ -257,63 +257,49 @@ export class AnalysisWorkUnitRunner {
       }),
     ];
     if (context.status_text !== "") {
-      rows.push(context.status_text);
+      summary.push(context.status_text);
     }
     const response_think_log = ResponseCleaner.normalize_blank_lines(context.response_think).trim();
     const rule_analysis_log = ResponseCleaner.normalize_blank_lines(context.rule_analysis).trim();
+    const sections: Array<{ title: string; text: string }> = [];
     if (response_think_log !== "") {
-      rows.push(
-        `${this.t(context.app_language, "app.log.engine_task_thinking_process")}\n${response_think_log}`,
-      );
+      sections.push({
+        title: this.t(context.app_language, "app.log.engine_task_thinking_process"),
+        text: response_think_log,
+      });
     }
     if (rule_analysis_log !== "") {
-      rows.push(
-        `${this.t(context.app_language, "app.log.engine_task_rule_analysis")}\n${rule_analysis_log}`,
-      );
+      sections.push({
+        title: this.t(context.app_language, "app.log.engine_task_rule_analysis"),
+        text: rule_analysis_log,
+      });
     }
 
-    const source_lines = context.srcs
-      .map((text) => text.trim())
-      .filter(Boolean)
-      .map((text) => `SRC: ${text}`);
-    if (source_lines.length > 0) {
-      rows.push(
-        `${this.t(context.app_language, "app.log.analysis_task_source_texts")}\n${source_lines.join("\n")}`,
-      );
-    }
-
-    const term_lines = this.build_glossary_log_lines(context.glossary_entries);
-    rows.push(
-      `${this.t(context.app_language, "app.log.analysis_task_result")}\n${
-        term_lines.length > 0
-          ? term_lines.join("\n")
-          : this.t(context.app_language, "app.log.analysis_task_no_terms")
-      }`,
-    );
+    const srcs = context.srcs.map((text) => text.trim()).filter(Boolean);
+    const terms = context.glossary_entries.flatMap((entry) => {
+      const src = String(entry["src"] ?? "").trim();
+      const dst = String(entry["dst"] ?? "").trim();
+      if (src === "" || dst === "") {
+        return [];
+      }
+      return [{ src, dst, info: String(entry["info"] ?? "").trim() }];
+    });
     return [
       {
         level: context.level,
-        message: `${rows.filter(Boolean).join("\n\n")}\n`,
+        content: {
+          kind: "analysis_result",
+          summary,
+          sections,
+          src_title: this.t(context.app_language, "app.log.analysis_task_source_texts"),
+          srcs,
+          result_title: this.t(context.app_language, "app.log.analysis_task_result"),
+          empty_result_text: this.t(context.app_language, "app.log.analysis_task_no_terms"),
+          terms,
+        },
         ...(context.request_error === undefined ? {} : { error: context.request_error }),
       },
     ];
-  }
-
-  /**
-   * 术语展示文本统一收口，避免文件日志和控制台展示内容跑偏
-   */
-  private build_glossary_log_lines(entries: Array<JsonRecord>): string[] {
-    const rows: string[] = [];
-    for (const entry of entries) {
-      const src = String(entry["src"] ?? "").trim();
-      const dst = String(entry["dst"] ?? "").trim();
-      const info = String(entry["info"] ?? "").trim();
-      if (src === "" || dst === "") {
-        continue;
-      }
-      rows.push(info === "" ? `TERM: ${src} -> ${dst}` : `TERM: ${src} -> ${dst} #${info}`);
-    }
-    return rows;
   }
 
   /**

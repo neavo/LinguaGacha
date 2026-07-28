@@ -42,7 +42,7 @@ export interface TaskEngineOptions {
     "build_analysis_contexts" | "build_translation_contexts" | "build_translation_retry_plan"
   >; // 精确 token 切块、cache 复用和后台规划的最小能力集合
   AppSettingService: Pick<AppSettingService, "read_setting">; // 每次任务启动只读取设置与模型快照
-  logManager: Pick<LogManager, "info" | "warning" | "error">; // 统一收敛任务引擎和 worker 回放日志
+  logManager: Pick<LogManager, "append" | "info" | "warning" | "error">; // append 承接结构化 worker 日志，其余入口承接普通任务日志
 }
 
 /**

@@ -245,7 +245,12 @@ describe("desktop-api", () => {
               created_at: "2026-04-26T00:00:00.000+00:00",
               level: "error",
               source: "engine-worker",
-              message: "完整日志正文",
+              content: {
+                kind: "translation_result",
+                summary: ["任务失败"],
+                sections: [],
+                pairs: [{ src: "原文", dst: "译文" }],
+              },
               error: {
                 message: "boom",
                 stack: "Error: boom",
@@ -266,7 +271,12 @@ describe("desktop-api", () => {
       id: "log-1",
       level: "error",
       source: "engine-worker",
-      message: "完整日志正文",
+      content: {
+        kind: "translation_result",
+        summary: ["任务失败"],
+        sections: [],
+        pairs: [{ src: "原文", dst: "译文" }],
+      },
       error: {
         message: "boom",
         stack: "Error: boom",
@@ -279,6 +289,43 @@ describe("desktop-api", () => {
         method: "POST",
       }),
     );
+  });
+
+  it("read_log_detail 拒绝旧 message 详情载荷", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const is_health = String(input).endsWith("/api/health");
+        return {
+          ok: true,
+          status: 200,
+          json: async () =>
+            is_health
+              ? {
+                  ok: true,
+                  data: { status: "ok", service: "linguagacha-backend", version: "9.9.9" },
+                }
+              : {
+                  ok: true,
+                  data: {
+                    detail: {
+                      id: "log-legacy",
+                      sequence: 1,
+                      created_at: "2026-04-26T00:00:00.000+00:00",
+                      level: "info",
+                      source: "test",
+                      message: "旧正文",
+                    },
+                  },
+                },
+        } as Response;
+      }),
+    );
+    install_desktop_api_host("http://127.0.0.1:38191/");
+
+    const { read_log_detail } = await import("./desktop-api");
+
+    await expect(read_log_detail("log-legacy")).resolves.toBeNull();
   });
 
   it("report_renderer_error 通过诊断 API 写入前端异常快照", async () => {

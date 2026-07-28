@@ -3,9 +3,11 @@ import process from "node:process";
 
 import { format_console_log } from "./log-console-formatter";
 import {
+  format_log_content_text,
   LOG_WINDOW_EVENT_CAPACITY,
   LOG_WINDOW_MESSAGE_PREVIEW_LENGTH,
   type LogAppendPayload,
+  type LogContent,
   type LogDetail,
   type LogEvent,
   type LogLevel,
@@ -66,7 +68,8 @@ interface FileLogRecord {
 
 interface NormalizedLogAppendPayload {
   level: LogLevel;
-  message: string;
+  content: LogContent; // 写入前克隆的结构化正文事实
+  message: string; // 从 content 生成的文件、控制台和列表纯文本投影
   source: string;
   error?: LogError;
   context?: LogErrorContext;
@@ -106,36 +109,36 @@ export class LogManager {
   /**
    * debug 入口只标记等级，真实写入统一交给 append 分流
    */
-  public debug(message: string, payload: Omit<LogAppendPayload, "level" | "message"> = {}): void {
-    this.append({ ...payload, level: "debug", message });
+  public debug(message: string, payload: Omit<LogAppendPayload, "level" | "content"> = {}): void {
+    this.append({ ...payload, level: "debug", content: { kind: "text", text: message } });
   }
 
   /**
    * info 入口只标记等级，真实写入统一交给 append 分流
    */
-  public info(message: string, payload: Omit<LogAppendPayload, "level" | "message"> = {}): void {
-    this.append({ ...payload, level: "info", message });
+  public info(message: string, payload: Omit<LogAppendPayload, "level" | "content"> = {}): void {
+    this.append({ ...payload, level: "info", content: { kind: "text", text: message } });
   }
 
   /**
    * warning 入口只标记等级，真实写入统一交给 append 分流
    */
-  public warning(message: string, payload: Omit<LogAppendPayload, "level" | "message"> = {}): void {
-    this.append({ ...payload, level: "warning", message });
+  public warning(message: string, payload: Omit<LogAppendPayload, "level" | "content"> = {}): void {
+    this.append({ ...payload, level: "warning", content: { kind: "text", text: message } });
   }
 
   /**
    * error 入口只标记等级，真实写入统一交给 append 分流
    */
-  public error(message: string, payload: Omit<LogAppendPayload, "level" | "message"> = {}): void {
-    this.append({ ...payload, level: "error", message });
+  public error(message: string, payload: Omit<LogAppendPayload, "level" | "content"> = {}): void {
+    this.append({ ...payload, level: "error", content: { kind: "text", text: message } });
   }
 
   /**
    * 崩溃日志入口会尽力同步刷盘，减少退出前丢尾部诊断的概率
    */
-  public fatal(message: string, payload: Omit<LogAppendPayload, "level" | "message"> = {}): void {
-    this.append({ ...payload, level: "fatal", message });
+  public fatal(message: string, payload: Omit<LogAppendPayload, "level" | "content"> = {}): void {
+    this.append({ ...payload, level: "fatal", content: { kind: "text", text: message } });
     this.flush();
   }
 
@@ -145,7 +148,9 @@ export class LogManager {
   public append(payload: LogAppendPayload): LogEvent | null {
     if (this.shutdown_complete) {
       default_console_writer(
-        t_main_log("app.log.system_closed_dropped", { MESSAGE: payload.message }),
+        t_main_log("app.log.system_closed_dropped", {
+          MESSAGE: format_log_content_text(payload.content),
+        }),
         payload.level === "fatal" ? "fatal" : "error",
       );
       return null;
@@ -190,7 +195,8 @@ export class LogManager {
   }
 
   /**
-   * 读取当前进程内完整日志详情；历史日志不扫描文件，淘汰后由调用方展示不可用状态
+   * 读取当前进程内完整日志详情；返回深拷贝，结构化正文不会泄露详情池引用
+   * 历史日志不扫描文件，淘汰后由调用方展示不可用状态
    */
   public read_detail(id: string): LogDetail | null {
     const detail = this.details.get(id);
@@ -198,11 +204,7 @@ export class LogManager {
       return null;
     }
 
-    return {
-      ...detail,
-      error: detail.error === undefined ? undefined : { ...detail.error },
-      context: detail.context === undefined ? undefined : { ...detail.context },
-    };
+    return structuredClone(detail);
   }
 
   /**
@@ -312,7 +314,7 @@ export class LogManager {
       created_at: created_at_text,
       level: payload.level,
       source,
-      message: payload.message,
+      content: payload.content,
     };
     if (payload.error !== undefined) {
       detail.error = payload.error;
@@ -331,14 +333,16 @@ export class LogManager {
   }
 
   /**
-   * 写入口统一把原始错误和上下文收窄成可序列化日志事实。
+   * 写入口复制结构化正文，并把原始错误和上下文收窄成可序列化日志事实。
    */
   private normalize_payload(payload: LogAppendPayload): NormalizedLogAppendPayload {
-    const message = normalize_log_message(payload.message);
+    const content = structuredClone(payload.content);
+    const message = normalize_log_message(format_log_content_text(content));
     const source = payload.source ?? "electron-main";
     if (payload.error !== undefined) {
       return {
         level: payload.level,
+        content,
         message,
         source,
         error: to_log_error(payload.error, payload.context ?? {}),
@@ -348,6 +352,7 @@ export class LogManager {
       payload.context === undefined ? undefined : sanitize_log_error_context(payload.context);
     return {
       level: payload.level,
+      content,
       message,
       source,
       ...(context === undefined || Object.keys(context).length === 0 ? {} : { context }),

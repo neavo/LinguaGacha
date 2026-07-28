@@ -78,7 +78,7 @@ const { open_log_stream_mock, push_toast_mock, read_log_detail_mock, stream_cont
         created_at: "2026-04-26T00:00:00.000+00:00",
         level: "info",
         source: "test",
-        message: `完整详情：${id}`,
+        content: { kind: "text", text: `完整详情：${id}` },
       })),
       stream_controllers: controllers,
     };
@@ -203,6 +203,9 @@ vi.mock("@frontend/widgets/app-table/app-table", () => {
         }) => ReactNode;
       }>;
       get_row_id: (row: LogEvent, index: number) => string;
+      selected_row_ids: string[];
+      active_row_id: string | null;
+      table_class_name?: string;
       on_selection_change?: (payload: {
         selected_row_ids: string[];
         active_row_id: string | null;
@@ -210,42 +213,51 @@ vi.mock("@frontend/widgets/app-table/app-table", () => {
       }) => void;
       on_row_double_click?: (payload: { row: LogEvent; row_id: string; row_index: number }) => void;
     }) => (
-      <div>
-        {props.rows.map((event, index) => {
-          const row_id = props.get_row_id(event, index);
-          return (
-            <div
-              key={row_id}
-              data-log-row-id={row_id}
-              onClick={() => {
-                props.on_selection_change?.({
-                  selected_row_ids: [row_id],
-                  active_row_id: row_id,
-                  anchor_row_id: row_id,
-                });
-              }}
-              onDoubleClick={() => {
-                props.on_row_double_click?.({ row: event, row_id, row_index: index });
-              }}
-            >
-              {props.columns.map((column) => (
-                <span key={column.id}>
-                  {column.render_cell({
-                    row: event,
-                    row_id,
-                    row_index: index,
-                    active: false,
-                    selected: false,
-                    dragging: false,
-                    can_drag: false,
-                    presentation: "body",
-                  })}
-                </span>
-              ))}
-            </div>
-          );
-        })}
-      </div>
+      <>
+        <div className={props.table_class_name} data-table-part="header" />
+        <div data-slot="scroll-area-viewport">
+          <div className={props.table_class_name} data-table-part="body">
+            {props.rows.map((event, index) => {
+              const row_id = props.get_row_id(event, index);
+              const active = props.active_row_id === row_id;
+              const selected = props.selected_row_ids.includes(row_id);
+              return (
+                <div
+                  key={row_id}
+                  data-log-row-id={row_id}
+                  data-active={active ? "true" : undefined}
+                  data-selected={selected ? "true" : undefined}
+                  onClick={() => {
+                    props.on_selection_change?.({
+                      selected_row_ids: [row_id],
+                      active_row_id: row_id,
+                      anchor_row_id: row_id,
+                    });
+                  }}
+                  onDoubleClick={() => {
+                    props.on_row_double_click?.({ row: event, row_id, row_index: index });
+                  }}
+                >
+                  {props.columns.map((column) => (
+                    <span key={column.id}>
+                      {column.render_cell({
+                        row: event,
+                        row_id,
+                        row_index: index,
+                        active,
+                        selected,
+                        dragging: false,
+                        can_drag: false,
+                        presentation: "body",
+                      })}
+                    </span>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </>
     ),
   };
 });
@@ -275,6 +287,26 @@ function change_input_value(input: HTMLInputElement, value: string): void {
   const value_descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
   value_descriptor?.set?.call(input, value);
   input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+/** 通过真实流控制器发送事件并冲刷页面缓冲。 */
+async function emit_logs(...events: LogEvent[]): Promise<void> {
+  await act(async () => {
+    for (const event of events) {
+      get_active_stream().emit(event);
+      await Promise.resolve();
+    }
+    vi.advanceTimersByTime(500);
+  });
+}
+
+/** 构造最新在前的三条日志，供按钮和方向键共享同一导航基线。 */
+async function emit_navigation_logs(): Promise<void> {
+  await emit_logs(
+    build_log_event("第一条", { id: "log-1", sequence: 1 }),
+    build_log_event("第二条", { id: "log-2", sequence: 2 }),
+    build_log_event("第三条", { id: "log-3", sequence: 3 }),
+  );
 }
 
 describe("LogWindowPage", () => {
@@ -321,6 +353,26 @@ describe("LogWindowPage", () => {
     });
   }
 
+  /** 返回页面实际滚动视口，验证回顶行为而不读取组件私有状态。 */
+  function get_log_viewport(): HTMLElement {
+    const viewport = container?.querySelector('[data-slot="scroll-area-viewport"]');
+    if (!(viewport instanceof HTMLElement)) {
+      throw new Error("日志滚动视口未挂载。");
+    }
+    return viewport;
+  }
+
+  /** 按用户可见文案定位回顶按钮。 */
+  function get_return_to_top_button(): HTMLButtonElement {
+    const button = Array.from(container?.querySelectorAll("button") ?? []).find((candidate) => {
+      return candidate.textContent?.includes("log_window_page.action.return_to_top") === true;
+    });
+    if (!(button instanceof HTMLButtonElement)) {
+      throw new Error("回到顶部按钮未挂载。");
+    }
+    return button;
+  }
+
   it("在 StrictMode 重新挂载 effect 后仍会接收日志事件", async () => {
     await mount_page();
 
@@ -346,6 +398,87 @@ describe("LogWindowPage", () => {
 
     const page_text = container?.textContent ?? "";
     expect(page_text.indexOf("较新日志")).toBeLessThan(page_text.indexOf("较早日志"));
+  });
+
+  it("回到顶部按钮在空列表禁用，点击后滚动并选中最新日志", async () => {
+    await mount_page();
+
+    const button = get_return_to_top_button();
+    expect(button.disabled).toBe(true);
+
+    await emit_logs(
+      build_log_event("第一条", { id: "log-1", sequence: 1 }),
+      build_log_event("第二条", { id: "log-2", sequence: 2 }),
+    );
+    expect(button.disabled).toBe(false);
+
+    const viewport = get_log_viewport();
+    viewport.scrollTop = 240;
+    await act(async () => {
+      button.click();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(viewport.scrollTop).toBe(0);
+    expect(
+      container?.querySelector('[data-log-row-id="log-2"][data-active="true"]'),
+    ).not.toBeNull();
+    expect(container?.textContent).toContain("完整详情：log-2");
+  });
+
+  it("没有选中日志时在列表长度不变后仍跟随最新日志", async () => {
+    await mount_page();
+    await emit_logs(build_log_event("", { id: "log-1", sequence: 1 }));
+
+    const viewport = get_log_viewport();
+    viewport.scrollTop = 240;
+    await emit_logs(build_log_event("", { id: "log-2", sequence: 2 }));
+
+    expect(viewport.scrollTop).toBe(0);
+    expect(container?.querySelector('[data-log-row-id="log-1"]')).toBeNull();
+    expect(container?.querySelector('[data-log-row-id="log-2"]')).not.toBeNull();
+    expect(read_log_detail_mock).not.toHaveBeenCalled();
+  });
+
+  it("选中最新日志时继续跟随，主动选择旧日志后暂停", async () => {
+    await mount_page();
+    await emit_logs(
+      build_log_event("第一条", { id: "log-1", sequence: 1 }),
+      build_log_event("第二条", { id: "log-2", sequence: 2 }),
+    );
+
+    const latest_row = container?.querySelector('[data-log-row-id="log-2"]');
+    await act(async () => {
+      latest_row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const viewport = get_log_viewport();
+    viewport.scrollTop = 240;
+    await emit_logs(build_log_event("第三条", { id: "log-3", sequence: 3 }));
+
+    expect(viewport.scrollTop).toBe(0);
+    expect(
+      container?.querySelector('[data-log-row-id="log-3"][data-active="true"]'),
+    ).not.toBeNull();
+    expect(container?.textContent).toContain("完整详情：log-3");
+
+    const old_row = container?.querySelector('[data-log-row-id="log-1"]');
+    await act(async () => {
+      old_row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    viewport.scrollTop = 240;
+    await emit_logs(build_log_event("第四条", { id: "log-4", sequence: 4 }));
+
+    expect(viewport.scrollTop).toBe(240);
+    expect(
+      container?.querySelector('[data-log-row-id="log-1"][data-active="true"]'),
+    ).not.toBeNull();
+    expect(container?.textContent).toContain("完整详情：log-1");
+    expect(read_log_detail_mock).toHaveBeenLastCalledWith("log-1");
   });
 
   it("在消息列内显示带颜色挂钩的级别前缀", async () => {
@@ -421,6 +554,88 @@ describe("LogWindowPage", () => {
     expect(container?.querySelector(".log-window-page__content--detail-expanded")).not.toBeNull();
   });
 
+  it("详情按钮按可见顺序切换上一条和下一条日志", async () => {
+    await mount_page();
+    await emit_navigation_logs();
+
+    const middle_row = container?.querySelector('[data-log-row-id="log-2"]');
+    await act(async () => {
+      middle_row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    const previous_button = container?.querySelector(
+      'button[aria-label="log_window_page.detail.previous"]',
+    );
+    const next_button = container?.querySelector(
+      'button[aria-label="log_window_page.detail.next"]',
+    );
+    if (
+      !(previous_button instanceof HTMLButtonElement) ||
+      !(next_button instanceof HTMLButtonElement)
+    ) {
+      throw new Error("日志前后导航按钮未挂载。");
+    }
+
+    expect(previous_button.disabled).toBe(false);
+    expect(next_button.disabled).toBe(false);
+
+    await act(async () => {
+      previous_button.click();
+      await Promise.resolve();
+    });
+    expect(read_log_detail_mock).toHaveBeenLastCalledWith("log-3");
+    expect(previous_button.disabled).toBe(true);
+
+    await act(async () => {
+      next_button.click();
+      await Promise.resolve();
+    });
+    expect(read_log_detail_mock).toHaveBeenLastCalledWith("log-2");
+
+    await act(async () => {
+      next_button.click();
+      await Promise.resolve();
+    });
+    expect(read_log_detail_mock).toHaveBeenLastCalledWith("log-1");
+    expect(next_button.disabled).toBe(true);
+  });
+
+  it("收起和展开详情时四个方向键都能切换相邻日志", async () => {
+    await mount_page();
+    await emit_navigation_logs();
+
+    const middle_row = container?.querySelector('[data-log-row-id="log-2"]');
+    await act(async () => {
+      middle_row?.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await Promise.resolve();
+    });
+
+    /** 发送一个导航键并验证公开详情读取目标。 */
+    async function press_and_expect(key: string, expected_event_id: string): Promise<void> {
+      await act(async () => {
+        window.dispatchEvent(new KeyboardEvent("keydown", { key }));
+        await Promise.resolve();
+      });
+      expect(read_log_detail_mock).toHaveBeenLastCalledWith(expected_event_id);
+    }
+
+    await press_and_expect("ArrowUp", "log-3");
+    await press_and_expect("ArrowDown", "log-2");
+    await press_and_expect("ArrowRight", "log-1");
+    await press_and_expect("ArrowLeft", "log-2");
+
+    await act(async () => {
+      middle_row?.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
+    });
+    expect(container?.querySelector(".log-window-page__content--detail-expanded")).not.toBeNull();
+
+    await press_and_expect("ArrowUp", "log-3");
+    await press_and_expect("ArrowDown", "log-2");
+    await press_and_expect("ArrowRight", "log-1");
+    await press_and_expect("ArrowLeft", "log-2");
+  });
+
   it("选中日志行后按需读取完整详情", async () => {
     await mount_page();
 
@@ -451,7 +666,7 @@ describe("LogWindowPage", () => {
         created_at: "2026-04-26T00:00:00.000+00:00",
         level: "info",
         source: "test",
-        message: `完整详情：${id}`,
+        content: { kind: "text", text: `完整详情：${id}` },
       });
     });
     await mount_page();
