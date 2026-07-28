@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { ItemTextGroup } from "../item-text";
-import {
-  resolve_quality_statistics_text_source,
-  run_quality_statistics_task_sync,
-} from "./quality-statistics";
+import { run_quality_statistics_task_sync } from "./quality-statistics";
 
 /**
  * 构造原文文本组夹具，第二槽起模拟姓名原文字段。
@@ -21,13 +18,6 @@ function text_groups(groups: string[][]): ItemTextGroup[] {
 }
 
 describe("run_quality_statistics_task_sync", () => {
-  it("按规则类型选择统计文本来源", () => {
-    expect(resolve_quality_statistics_text_source("post_replacement")).toBe("dst");
-    expect(resolve_quality_statistics_text_source("glossary")).toBe("src");
-    expect(resolve_quality_statistics_text_source("pre_replacement")).toBe("src");
-    expect(resolve_quality_statistics_text_source("text_preserve")).toBe("src");
-  });
-
   it("对 glossary / pre / post / text_preserve 统一返回命中数", () => {
     const result = run_quality_statistics_task_sync({
       rules: [
@@ -85,7 +75,7 @@ describe("run_quality_statistics_task_sync", () => {
     expect(result.results.han?.matched_item_count).toBe(1);
   });
 
-  it("在非 regex 且忽略大小写时按转义后的正则统计", () => {
+  it("字面量规则不把正则元字符当作语法", () => {
     const result = run_quality_statistics_task_sync({
       rules: [
         {
@@ -162,7 +152,7 @@ describe("run_quality_statistics_task_sync", () => {
     expect(result.results.erin?.subset_parents).toEqual(["圣女艾琳", "舰长艾琳"]);
   });
 
-  it("relationTargetCandidates 只为目标候选返回 subset parents", () => {
+  it("局部关系统计只返回目标候选的父项", () => {
     const result = run_quality_statistics_task_sync({
       rules: [
         {

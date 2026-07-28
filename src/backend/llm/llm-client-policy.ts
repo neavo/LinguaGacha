@@ -1,5 +1,10 @@
 import { Model, type ModelApiFormat } from "../../domain/model";
-import { read_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
+import {
+  read_json_integer,
+  read_json_record,
+  type JsonRecord,
+  type JsonValue,
+} from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
 import { build_anthropic_payload } from "./policy/anthropic-policy";
 import { build_google_payload, normalize_google_sdk_base_url } from "./policy/google-policy";
@@ -110,7 +115,7 @@ export class LLMClientPolicy {
     const request = read_json_record(record["request"]);
     const threshold = read_json_record(record["threshold"]);
     const thinking = read_json_record(record["thinking"]);
-    const output_token_limit = this.read_number(
+    const output_token_limit = read_json_integer(
       threshold["output_token_limit"],
       DEFAULT_OUTPUT_TOKEN_LIMIT,
     );
@@ -182,13 +187,5 @@ export class LLMClientPolicy {
       return {};
     }
     return read_json_record(record[value_key]);
-  }
-
-  /**
-   * 数字字段在请求边界取整，坏值回退调用点默认值。
-   */
-  private read_number(value: JsonValue | undefined, fallback: number): number {
-    const number_value = Number(value ?? fallback);
-    return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
 }

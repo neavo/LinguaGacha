@@ -14,6 +14,7 @@ import {
 import { QualityRuleSnapshotTool } from "../../shared/quality/quality-rule-snapshot";
 import {
   is_json_record,
+  read_json_integer,
   read_json_record,
   type JsonRecord,
   type MutableJsonRecord,
@@ -204,7 +205,7 @@ export class TaskProjectStore {
     const meta = this.get_all_meta(project_path);
     return {
       analysis_extras: snapshot,
-      analysis_candidate_count: this.read_number(meta["analysis_candidate_count"], 0),
+      analysis_candidate_count: read_json_integer(meta["analysis_candidate_count"], 0),
     };
   }
 
@@ -271,17 +272,9 @@ export class TaskProjectStore {
     return [
       ...new Set(
         value
-          .map((item) => this.read_number(item, NaN))
+          .map((item) => read_json_integer(item, NaN))
           .filter((item_id) => Number.isFinite(item_id) && item_id > 0),
       ),
     ];
-  }
-
-  /**
-   * 整数读取用于行号、token 和计数字段，坏值回退到调用方默认值
-   */
-  private read_number(value: JsonValue | undefined, fallback: number): number {
-    const number_value = Number(value ?? fallback);
-    return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
 }

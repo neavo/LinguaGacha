@@ -34,9 +34,6 @@ function replace_placeholder(template: string, value: string): string {
   return template.replace("{PATH}", value);
 }
 
-/**
- * 解析输入并收窄为业务可用值。
- */
 function parse_number_draft(
   input_value: string,
   min_value: number,
@@ -133,9 +130,6 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
     set_request_timeout_draft(String(basic_settings_state.snapshot.request_timeout));
   }, [basic_settings_state.snapshot.request_timeout, is_request_timeout_editing]);
 
-  /**
-   * 提交当前场景的数据变化。
-   */
   async function commit_request_timeout_draft(): Promise<void> {
     if (parsed_request_timeout === null) {
       push_toast("error", t("basic_settings_page.feedback.request_timeout_invalid"));

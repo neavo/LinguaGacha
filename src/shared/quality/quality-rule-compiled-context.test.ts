@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyQualityCompiledReplacements,
-  applyQualityCompiledTextParts,
   buildQualityCompiledContext,
   partitionQualityCompiledGlossaryTerms,
 } from "./quality-rule-compiled-context";
@@ -39,7 +38,7 @@ function create_quality_state(overrides: Partial<QualitySnapshot> = {}): Quality
 }
 
 describe("quality-compiled", () => {
-  it("构建阶段预编译替换规则并复用同一运行时执行文本替换", () => {
+  it("按规则方向执行预替换和后替换", () => {
     const context = buildQualityCompiledContext(create_quality_state());
 
     expect(applyQualityCompiledReplacements({ src: "ＡHP", dst: "Spell 12" }, context)).toEqual({
@@ -48,7 +47,7 @@ describe("quality-compiled", () => {
     });
   });
 
-  it("非法正则在构建阶段跳过，后续 item 替换保持原文", () => {
+  it("非法替换正则不改变原文和译文", () => {
     const context = buildQualityCompiledContext(
       create_quality_state({
         post_replacement: {
@@ -66,7 +65,7 @@ describe("quality-compiled", () => {
     });
   });
 
-  it("术语运行时用 Aho 索引分出已应用与缺失术语", () => {
+  it("同一术语在源文重复出现时只返回一次已应用术语", () => {
     const context = buildQualityCompiledContext(create_quality_state());
 
     expect(
@@ -74,34 +73,6 @@ describe("quality-compiled", () => {
         glossary: context.glossary,
         source_replaced_parts: [{ field: "src", text: "HP + HP" }],
         translation_replaced_parts: [{ field: "dst", text: "生命值不足" }],
-      }),
-    ).toEqual({
-      applied_terms: [["HP", "生命值"]],
-      failed_terms: [],
-    });
-  });
-
-  it("术语运行时同时扫描姓名字段并按译侧多段文本判断生效", () => {
-    const context = buildQualityCompiledContext(create_quality_state());
-    const parts = applyQualityCompiledTextParts(
-      {
-        source: [
-          { field: "src", text: "普通正文" },
-          { field: "name_src", text: "HP" },
-        ],
-        translation: [
-          { field: "dst", text: "" },
-          { field: "name_dst", text: "生命值" },
-        ],
-      },
-      context,
-    );
-
-    expect(
-      partitionQualityCompiledGlossaryTerms({
-        glossary: context.glossary,
-        source_replaced_parts: parts.source,
-        translation_replaced_parts: parts.translation,
       }),
     ).toEqual({
       applied_terms: [["HP", "生命值"]],

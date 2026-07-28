@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { MutableJsonRecord } from "../../../domain/json";
 import { TaskPlanner } from "./task-planner";
-import { TaskTokenMetricCache, type TaskTokenCountInput } from "./token-metric-cache";
+import type { TaskTokenCountInput } from "./token-metric-cache";
 import type { TranslationContext } from "./task-plan-types";
 
 describe("TaskPlanner", () => {
@@ -65,7 +65,7 @@ describe("TaskPlanner", () => {
 
     const contexts = await planner.build_analysis_contexts(
       [
-        create_item({ id: 1, src: "需要分析", file_path: "a.txt", name_src: ["艾琳"] }),
+        create_item({ id: 1, src: "需要分析", file_path: "a.txt" }),
         create_item({ id: 2, src: "已完成", file_path: "a.txt" }),
         create_item({ id: 3, src: "跳过", file_path: "a.txt", status: "EXCLUDED" }),
         create_item({ id: 4, src: "  ", file_path: "a.txt" }),
@@ -85,12 +85,11 @@ describe("TaskPlanner", () => {
       items: [
         {
           item_id: 1,
-          src_text: "【艾琳】需要分析",
+          src_text: "需要分析",
           previous_status: "NONE",
         },
       ],
     });
-    expect(count_items.mock.calls[0]?.[0].map((item) => item.text)).toEqual(["【艾琳】需要分析"]);
   });
 
   it("分析规划按第 0 槽姓名渲染 src_text，并保持空正文跳过", async () => {
@@ -114,7 +113,6 @@ describe("TaskPlanner", () => {
 
     const src_texts = contexts.flatMap((context) => context.items.map((item) => item.src_text));
     expect(src_texts).toEqual(["【虎鉄】台词一", "【虎鉄】台词二", "台词三", "台词四"]);
-    expect(count_items.mock.calls[0]?.[0].map((item) => item.text)).toEqual(src_texts);
   });
 
   it("翻译条目重试超过限制时由调用方标记错误并返回 forced_error_items", async () => {
@@ -154,7 +152,6 @@ describe("TaskPlanner", () => {
     ) => Promise<Array<{ cache_key: string; token_count: number }>>,
   ): TaskPlanner {
     return new TaskPlanner({
-      metricCache: new TaskTokenMetricCache(),
       planningWorkerPool: {
         count_items,
       } as unknown as ConstructorParameters<typeof TaskPlanner>[0]["planningWorkerPool"],

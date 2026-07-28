@@ -12,9 +12,7 @@ import type { AppSettingService } from "../app/app-setting-service";
 import { JsonTool } from "../../shared/utils/json-tool";
 import {
   PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY,
-  PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS,
   MigrationOrchestrator,
-  migration_orchestrator,
 } from "./migration-orchestrator";
 
 describe("MigrationOrchestrator", () => {
@@ -91,17 +89,6 @@ describe("MigrationOrchestrator", () => {
     }
 
     expect(calls).toEqual(["first", "second"]);
-  });
-
-  it("默认编排器写入当前写回迁移 id 集合", () => {
-    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-orchestrator-"));
-    using db = new DatabaseSync(path.join(temp_dir.path, "default.lg"));
-
-    migration_orchestrator.run_project_database_migrations(db);
-
-    expect(read_meta(db, PROJECT_DATABASE_APPLIED_WRITEBACK_MIGRATIONS_META_KEY)).toEqual(
-      PROJECT_DATABASE_WRITEBACK_MIGRATION_IDS,
-    );
   });
 });
 

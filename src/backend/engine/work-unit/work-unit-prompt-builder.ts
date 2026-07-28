@@ -73,13 +73,6 @@ export class PromptBuilder {
   }
 
   /**
-   * 清空模板缓存，测试和资源热更新后可重新读取磁盘内容
-   */
-  public static reset(): void {
-    this.template_cache.clear();
-  }
-
-  /**
    * 生成普通翻译提示词；system 放稳定指令，user 放本次输入和术语
    */
   public async generate_prompt(
@@ -228,7 +221,7 @@ export class PromptBuilder {
   /**
    * 参考上文只放 user prompt，避免系统指令随上下文变化
    */
-  public build_preceding(precedings: TextTaskItemRecord[]): string {
+  private build_preceding(precedings: TextTaskItemRecord[]): string {
     if (precedings.length === 0) {
       return "";
     }
@@ -243,7 +236,7 @@ export class PromptBuilder {
   /**
    * 术语表按当前输入全文命中过滤，未命中时不污染 prompt
    */
-  public build_glossary(lines: TranslationLine[], mode: TranslationPromptMode): string {
+  private build_glossary(lines: TranslationLine[], mode: TranslationPromptMode): string {
     const result = this.build_glossary_lines(this.build_glossary_match_texts(lines, mode), " -> ");
     if (result.length === 0) {
       return "";
@@ -254,14 +247,14 @@ export class PromptBuilder {
   /**
    * SakuraLLM 术语格式不带空格，保持旧提示词格式
    */
-  public build_glossary_sakura(srcs: string[]): string {
+  private build_glossary_sakura(srcs: string[]): string {
     return this.build_glossary_lines(srcs, "->").join("\n");
   }
 
   /**
    * 控制字符示例只在系统提示词明确要求控制符时加入
    */
-  public build_control_characters_samples(main: string, samples: string[]): string {
+  private build_control_characters_samples(main: string, samples: string[]): string {
     const unique_samples = [...new Set(samples.map((sample) => sample.trim()).filter(Boolean))];
     if (unique_samples.length === 0) {
       return "";
@@ -283,7 +276,7 @@ export class PromptBuilder {
   /**
    * 翻译输入固定为 jsonline，响应解码器也按此格式优先解析
    */
-  public build_inputs(lines: TranslationLine[], mode: TranslationPromptMode): string {
+  private build_inputs(lines: TranslationLine[], mode: TranslationPromptMode): string {
     const inputs = lines
       .map((line) =>
         JsonTool.stringifyStrict({
@@ -298,7 +291,7 @@ export class PromptBuilder {
   /**
    * 分析输入保持纯文本，减少模型把 JSON key 当作术语
    */
-  public build_analysis_inputs(srcs: string[]): string {
+  private build_analysis_inputs(srcs: string[]): string {
     if (srcs.length === 0) {
       return "";
     }
@@ -308,7 +301,7 @@ export class PromptBuilder {
   /**
    * 模板段落拼接统一在这里处理，保证输出约束始终位于最后
    */
-  public join_prompt_sections(
+  private join_prompt_sections(
     prefix: string,
     base: string,
     thinking: string,

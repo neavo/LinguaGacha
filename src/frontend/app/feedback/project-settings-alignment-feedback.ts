@@ -17,9 +17,6 @@ export type ProjectSettingsAlignmentChangedFields = Partial<{
   skip_duplicate_source_text_enable: boolean;
 }>;
 
-/**
- * 格式化当前场景的用户可读文本。
- */
 function format_language_label(language: string, t: Translate): string {
   const normalized_language = language.trim().toUpperCase();
   const language_code = normalize_language_code(normalized_language);
@@ -35,9 +32,6 @@ function format_language_label(language: string, t: Translate): string {
   return language_label;
 }
 
-/**
- * 格式化当前场景的用户可读文本。
- */
 export function format_project_settings_aligned_toast(args: {
   settings: ProjectSettingsAlignmentSettings;
   changed_fields: ProjectSettingsAlignmentChangedFields;

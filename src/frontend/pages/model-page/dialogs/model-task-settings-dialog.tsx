@@ -15,9 +15,6 @@ type ModelTaskSettingsDialogProps = {
 const THRESHOLD_INPUT_MIN = 0;
 const THRESHOLD_INPUT_MAX = 9_999_999;
 
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_number_input(value: string): number {
   const parsed_value = Number(value);
   if (Number.isFinite(parsed_value)) {

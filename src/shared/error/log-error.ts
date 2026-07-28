@@ -353,7 +353,6 @@ function sanitize_value(value: unknown, depth: number): JsonValue {
   return String(value);
 }
 
-// 收口外部文本解析，解析失败时由这里决定降级口径。
 function parse_log_error_url(value: string): URL | null {
   try {
     return new URL(value);

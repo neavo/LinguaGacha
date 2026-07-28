@@ -9,6 +9,7 @@ import {
   create_workbench_import_files_plan,
   create_workbench_import_files_preview,
   create_workbench_planner_settings,
+  create_workbench_reorder_plan,
   create_workbench_reset_file_plan,
   type WorkbenchFileParsePreview,
   type WorkbenchCommandPlanningState,
@@ -52,6 +53,35 @@ describe("workbench command planner", () => {
     };
 
     expect(create_workbench_planner_settings(runtime_settings)).toEqual(SETTINGS);
+  });
+
+  it("重排只接受当前文件完整集合并提交 files revision", () => {
+    const state = {
+      ...create_state(),
+      files: [{ rel_path: "old.txt" }, { rel_path: "new.txt" }],
+    };
+
+    expect(
+      create_workbench_reorder_plan({
+        state,
+        ordered_rel_paths: ["new.txt", "old.txt"],
+      }),
+    ).toEqual({
+      updatedSections: ["files"],
+      requestBody: {
+        ordered_rel_paths: ["new.txt", "old.txt"],
+        expected_section_revisions: { files: 1 },
+      },
+    });
+    expect(() => {
+      create_workbench_reorder_plan({ state, ordered_rel_paths: ["old.txt"] });
+    }).toThrow("workbench_command.invalid_file_order");
+    expect(() => {
+      create_workbench_reorder_plan({
+        state,
+        ordered_rel_paths: ["old.txt", "unknown.txt"],
+      });
+    }).toThrow("workbench_command.invalid_file_order");
   });
 
   it("导入新文件只提交源路径、目标路径、同名策略、继承模式和 revision 锁", () => {

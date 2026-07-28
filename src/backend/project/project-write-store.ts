@@ -1,6 +1,7 @@
 import { ProjectDatabase, type ProjectDatabaseWrite } from "../database/database-operations";
 import {
   is_json_record,
+  read_json_integer,
   read_json_record,
   type JsonRecord,
   type JsonValue,
@@ -201,7 +202,7 @@ export class ProjectWriteStore {
     const candidate_result = this.build_next_candidate_rows(
       project_path,
       glossary_entries,
-      this.read_number(meta["analysis_candidate_count"], 0),
+      read_json_integer(meta["analysis_candidate_count"], 0),
     );
     await this.commit_runtime_change({
       projectPath: project_path,
@@ -1044,7 +1045,7 @@ export class ProjectWriteStore {
     if (Array.isArray(rows)) {
       for (const row of rows) {
         if (is_json_record(row)) {
-          const item_id = this.read_number(row["id"], 0);
+          const item_id = read_json_integer(row["id"], 0);
           if (item_id > 0) {
             existing_ids.add(item_id);
           }
@@ -1096,7 +1097,7 @@ export class ProjectWriteStore {
     const item_ids: number[] = [];
     const seen = new Set<number>();
     for (const change of changes) {
-      const item_id = this.read_number(change.next["id"], 0);
+      const item_id = read_json_integer(change.next["id"], 0);
       if (item_id <= 0 || seen.has(item_id)) {
         continue;
       }
@@ -1276,13 +1277,13 @@ export class ProjectWriteStore {
       const dst_votes = this.normalize_vote_map(current["dst_votes"]);
       const info_votes = this.normalize_vote_map(current["info_votes"]);
       const info = entry.info.trim();
-      dst_votes[dst] = this.read_number(dst_votes[dst] as JsonValue, 0) + 1;
+      dst_votes[dst] = read_json_integer(dst_votes[dst] as JsonValue, 0) + 1;
       if (info !== "") {
-        info_votes[info] = this.read_number(info_votes[info] as JsonValue, 0) + 1;
+        info_votes[info] = read_json_integer(info_votes[info] as JsonValue, 0) + 1;
       }
       current["dst_votes"] = dst_votes as unknown as JsonValue;
       current["info_votes"] = info_votes as unknown as JsonValue;
-      current["observation_count"] = this.read_number(current["observation_count"], 0) + 1;
+      current["observation_count"] = read_json_integer(current["observation_count"], 0) + 1;
       current["last_seen_at"] = now;
       current["case_sensitive"] = Boolean(current["case_sensitive"]) || entry.case_sensitive;
       aggregate.set(src, current);
@@ -1312,7 +1313,7 @@ export class ProjectWriteStore {
     const result: Record<string, number> = {};
     for (const [key, raw_votes] of Object.entries(value)) {
       const text = String(key).trim();
-      const votes = this.read_number(raw_votes, 0);
+      const votes = read_json_integer(raw_votes, 0);
       if (text !== "" && votes > 0) {
         result[text] = (result[text] ?? 0) + votes;
       }
@@ -1329,14 +1330,14 @@ export class ProjectWriteStore {
   ): MutableJsonRecord[] {
     const existing = new Map<number, MutableJsonRecord>();
     for (const row of this.get_analysis_checkpoints(project_path)) {
-      existing.set(this.read_number(row["item_id"], 0), row);
+      existing.set(read_json_integer(row["item_id"], 0), row);
     }
     const now = new Date().toISOString();
     return rows.map((row) => {
       const item_id = row.item_id;
       const previous = existing.get(item_id);
       const previous_error_count =
-        previous?.["status"] === "ERROR" ? this.read_number(previous["error_count"], 0) : 0;
+        previous?.["status"] === "ERROR" ? read_json_integer(previous["error_count"], 0) : 0;
       return {
         ...row,
         status: "ERROR",
@@ -1395,7 +1396,7 @@ export class ProjectWriteStore {
    * 任务 artifact 的 item id 必须是正整数，否则视为内部契约破坏。
    */
   private read_positive_item_id(value: JsonValue | undefined, reason: string): number {
-    const item_id = this.read_number(value, 0);
+    const item_id = read_json_integer(value, 0);
     if (!Number.isInteger(item_id) || item_id <= 0) {
       throw new AppErrors.InternalInvariantError({
         diagnostic_context: { reason },
@@ -1420,13 +1421,5 @@ export class ProjectWriteStore {
       return 0;
     }
     return Math.max(0, Math.trunc(number_value));
-  }
-
-  /**
-   * 读取有限整数，保留调用方提供的失败回退值。
-   */
-  private read_number(value: JsonValue | undefined, fallback: number): number {
-    const number_value = Number(value ?? fallback);
-    return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
 }

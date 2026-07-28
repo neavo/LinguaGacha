@@ -11,9 +11,6 @@ import type {
   AppTableSortDirection,
 } from "@frontend/widgets/app-table/app-table-types";
 
-/**
- * 解析当前场景的最终消费值。
- */
 function resolve_sort_action_label(args: {
   direction: AppTableSortDirection | null;
   column: AppTableDataColumn<unknown>;

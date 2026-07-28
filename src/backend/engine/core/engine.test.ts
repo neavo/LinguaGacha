@@ -4,12 +4,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { JsonValue } from "../../../domain/json";
-import type { LogManager } from "../../log/log-manager";
-import type { AppSettingService } from "../../app/app-setting-service";
 import type { ProjectDataReader } from "../../project/project-data-reader";
 import { ProjectSessionState } from "../../project/project-session-state";
-import type { TaskProjectStore } from "../task-project-store";
 import { TaskRuntime } from "../task-runtime";
 import type { StartTaskCommand } from "../protocol/task-command";
 import type { TaskSnapshot } from "../protocol/task-snapshot";
@@ -19,6 +15,7 @@ import type { TaskTokenCountInput } from "../planning/token-metric-cache";
 import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
 import { WorkUnitExecutorTransportError } from "../work-unit/work-unit-transport-error";
 import { TaskEngine } from "./engine";
+import type { TaskEngineOptions } from "./engine-options";
 import type { PlanningWorkerPool } from "../planning/planning-worker-pool";
 import { TaskPlanner } from "../planning/task-planner";
 import { log_error_from_message } from "../../../shared/error";
@@ -39,27 +36,24 @@ describe("TaskEngine", () => {
     const task_runtime = create_task_runtime(done.listener);
     const task_engine = new TaskEngine({
       appRoot: process.cwd(),
-      taskStore: {
+      taskStore: create_task_store({
         get_translation_items: () => ({
-          items: [create_pending_item()] as unknown as JsonValue,
+          items: [create_pending_item()],
           meta: {},
         }),
-        acquire_project_lease: () => () => undefined,
-        commit_translation_items: (
+        commit_translation_items: async (
           items: MutableJsonRecord[],
           translation_extras: MutableJsonRecord,
         ) => {
           committed_batches.push({ items, translation_extras });
-          return { accepted: true };
+          return { changed_item_ids: [], section_revisions: {} };
         },
-        update_translation_progress: () => ({ accepted: true }),
-        build_quality_snapshot: () => null,
-      } as unknown as TaskProjectStore,
+      }),
       taskRuntime: task_runtime,
       executorClient: {
         execute_unit: async () =>
           create_translation_worker_result([create_pending_item()], 0, 1, 2),
-      } as unknown as WorkUnitExecutor,
+      },
       taskPlanner: create_test_task_planner(),
       AppSettingService: create_setting_service(),
       logManager: create_log_manager(),
@@ -103,31 +97,27 @@ describe("TaskEngine", () => {
     const task_runtime = create_task_runtime(done.listener);
     const task_engine = new TaskEngine({
       appRoot: create_template_root(),
-      taskStore: {
-        acquire_project_lease: () => () => undefined,
-        reset_analysis_progress: () => ({ accepted: true }),
+      taskStore: create_task_store({
         get_analysis_context: () => ({
-          items: [create_pending_item()] as unknown as JsonValue,
-          checkpoints: [] as unknown as JsonValue,
+          items: [create_pending_item()],
+          checkpoints: [],
           meta: {},
         }),
-        commit_analysis_results: (
+        commit_analysis_results: async (
           success_checkpoints: MutableJsonRecord[],
           error_checkpoints: MutableJsonRecord[],
         ) => {
           commits.push({ success_checkpoints, error_checkpoints });
           return { accepted: true };
         },
-        update_analysis_progress: () => ({ accepted: true }),
-        build_quality_snapshot: () => null,
-      } as unknown as TaskProjectStore,
+      }),
       taskRuntime: task_runtime,
       executorClient: {
         execute_unit: async () => {
           execution_count += 1;
           return create_analysis_worker_result(false);
         },
-      } as unknown as WorkUnitExecutor,
+      },
       taskPlanner: create_test_task_planner(),
       AppSettingService: create_setting_service(),
       logManager: create_log_manager(),
@@ -175,12 +165,12 @@ describe("TaskEngine", () => {
     });
     const task_engine = new TaskEngine({
       appRoot: process.cwd(),
-      taskStore: {
+      taskStore: create_task_store({
         acquire_project_lease: () => () => {
           lease_release_count += 1;
         },
         get_translation_items: () => ({
-          items: [] as unknown as JsonValue,
+          items: [],
           meta: {
             translation_extras,
           },
@@ -191,10 +181,9 @@ describe("TaskEngine", () => {
           };
           return { accepted: true };
         },
-        build_quality_snapshot: () => null,
-      } as unknown as TaskProjectStore,
+      }),
       taskRuntime: task_runtime,
-      executorClient: {} as unknown as WorkUnitExecutor,
+      executorClient: create_unused_executor(),
       taskPlanner: create_test_task_planner(),
       AppSettingService: create_setting_service(),
       logManager: create_log_manager(),
@@ -236,20 +225,18 @@ describe("TaskEngine", () => {
     });
     const task_engine = new TaskEngine({
       appRoot: process.cwd(),
-      taskStore: {
+      taskStore: create_task_store({
         acquire_project_lease: () => () => {
           lease_release_count += 1;
           resolve_lease_release();
         },
         get_translation_items: () => ({
-          items: [] as unknown as JsonValue,
+          items: [],
           meta: {},
         }),
-        update_translation_progress: () => ({ accepted: true }),
-        build_quality_snapshot: () => null,
-      } as unknown as TaskProjectStore,
+      }),
       taskRuntime: task_runtime,
-      executorClient: {} as unknown as WorkUnitExecutor,
+      executorClient: create_unused_executor(),
       taskPlanner: create_test_task_planner(),
       AppSettingService: create_setting_service(),
       logManager: create_log_manager(),
@@ -262,13 +249,12 @@ describe("TaskEngine", () => {
       expected_section_revisions: {},
     });
     await lease_released;
-    await wait_until(() => !task_runtime.snapshot_state().busy);
+    await wait_until(() => !task_runtime.is_busy());
 
     expect(lease_release_count).toBe(1);
-    expect(task_runtime.snapshot_state()).toMatchObject({
+    await expect(task_runtime.build_snapshot({ task_type: "translation" })).resolves.toMatchObject({
       status: "done",
       busy: false,
-      active_task_type: "idle",
     });
     await expect(task_runtime.begin("analysis")).resolves.toMatchObject({
       task_type: "analysis",
@@ -282,22 +268,16 @@ describe("TaskEngine", () => {
     const task_runtime = create_task_runtime(done.listener);
     const task_engine = new TaskEngine({
       appRoot: process.cwd(),
-      taskStore: {
+      taskStore: create_task_store({
         get_translation_items: () => ({
-          items: [
-            create_pending_item(1, "a.txt"),
-            create_pending_item(2, "b.txt"),
-          ] as unknown as JsonValue,
+          items: [create_pending_item(1, "a.txt"), create_pending_item(2, "b.txt")],
           meta: {},
         }),
-        acquire_project_lease: () => () => undefined,
-        commit_translation_items: (items: MutableJsonRecord[]) => {
+        commit_translation_items: async (items: MutableJsonRecord[]) => {
           committed_items.push(...items);
-          return { accepted: true };
+          return { changed_item_ids: [], section_revisions: {} };
         },
-        update_translation_progress: () => ({ accepted: true }),
-        build_quality_snapshot: () => null,
-      } as unknown as TaskProjectStore,
+      }),
       taskRuntime: task_runtime,
       executorClient: {
         execute_unit: async (unit: MutableJsonRecord) => {
@@ -327,7 +307,7 @@ describe("TaskEngine", () => {
             1,
           );
         },
-      } as unknown as WorkUnitExecutor,
+      },
       taskPlanner: create_test_task_planner(),
       AppSettingService: create_setting_service(2),
       logManager: create_log_manager(),
@@ -352,19 +332,15 @@ describe("TaskEngine", () => {
     const task_runtime = create_task_runtime(done.listener);
     const task_engine = new TaskEngine({
       appRoot: process.cwd(),
-      taskStore: {
+      taskStore: create_task_store({
         get_translation_items: () => ({
           items: [
             create_pending_item(1, "demo.txt", "很长的第一条原文".repeat(20)),
             create_pending_item(2, "demo.txt", "很长的第二条原文".repeat(20)),
-          ] as unknown as JsonValue,
+          ],
           meta: {},
         }),
-        acquire_project_lease: () => () => undefined,
-        commit_translation_items: () => ({ accepted: true }),
-        update_translation_progress: () => ({ accepted: true }),
-        build_quality_snapshot: () => null,
-      } as unknown as TaskProjectStore,
+      }),
       taskRuntime: task_runtime,
       executorClient: {
         execute_unit: async (unit: MutableJsonRecord) => {
@@ -386,7 +362,7 @@ describe("TaskEngine", () => {
             1,
           );
         },
-      } as unknown as WorkUnitExecutor,
+      },
       taskPlanner: create_test_task_planner(1),
       AppSettingService: create_setting_service(1, 16),
       logManager: create_log_manager(),
@@ -410,17 +386,14 @@ describe("TaskEngine", () => {
     const task_runtime = create_task_runtime(done.listener);
     const task_engine = new TaskEngine({
       appRoot: app_root,
-      taskStore: {
-        acquire_project_lease: () => () => undefined,
+      taskStore: create_task_store({
         get_translation_items: () => ({
-          items: [] as unknown as JsonValue,
+          items: [],
           meta: {},
         }),
-        update_translation_progress: () => ({ accepted: true }),
-        build_quality_snapshot: () => null,
-      } as unknown as TaskProjectStore,
+      }),
       taskRuntime: task_runtime,
-      executorClient: {} as unknown as WorkUnitExecutor,
+      executorClient: create_unused_executor(),
       taskPlanner: create_test_task_planner(),
       AppSettingService: create_setting_service(),
       logManager: create_log_manager(logs),
@@ -444,19 +417,15 @@ describe("TaskEngine", () => {
     const task_runtime = create_task_runtime(done.listener);
     const task_engine = new TaskEngine({
       appRoot: app_root,
-      taskStore: {
-        acquire_project_lease: () => () => undefined,
-        reset_analysis_progress: () => ({ accepted: true }),
+      taskStore: create_task_store({
         get_analysis_context: () => ({
-          items: [] as unknown as JsonValue,
-          checkpoints: [] as unknown as JsonValue,
+          items: [],
+          checkpoints: [],
           meta: {},
         }),
-        update_analysis_progress: () => ({ accepted: true }),
-        build_quality_snapshot: () => null,
-      } as unknown as TaskProjectStore,
+      }),
       taskRuntime: task_runtime,
-      executorClient: {} as unknown as WorkUnitExecutor,
+      executorClient: create_unused_executor(),
       taskPlanner: create_test_task_planner(),
       AppSettingService: create_setting_service(),
       logManager: create_log_manager(logs),
@@ -486,17 +455,15 @@ describe("TaskEngine", () => {
     const task_runtime = create_task_runtime();
     const task_engine = new TaskEngine({
       appRoot: process.cwd(),
-      taskStore: {
+      taskStore: create_task_store({
         acquire_project_lease: () => () => {
           lease_release_count += 1;
         },
         get_translation_items: () => ({
-          items: [create_pending_item()] as unknown as JsonValue,
+          items: [create_pending_item()],
           meta: {},
         }),
-        update_translation_progress: () => ({ accepted: true }),
-        build_quality_snapshot: () => null,
-      } as unknown as TaskProjectStore,
+      }),
       taskRuntime: task_runtime,
       executorClient: {
         execute_unit: async (_unit: WorkUnit, signal: AbortSignal) => {
@@ -504,7 +471,7 @@ describe("TaskEngine", () => {
           mark_execution_started();
           return await execution;
         },
-      } as unknown as WorkUnitExecutor,
+      },
       taskPlanner: create_test_task_planner(),
       AppSettingService: create_setting_service(),
       logManager: create_log_manager(),
@@ -528,14 +495,7 @@ describe("TaskEngine", () => {
     expect(dispose_completed).toBe(false);
     expect(lease_release_count).toBe(0);
 
-    release_execution(
-      create_translation_worker_result(
-        [create_pending_item()],
-        1,
-        1,
-        1,
-      ) as unknown as WorkUnitExecutionResult,
-    );
+    release_execution(create_translation_worker_result([create_pending_item()], 1, 1, 1));
     await disposing;
 
     expect(dispose_completed).toBe(true);
@@ -560,7 +520,7 @@ describe("TaskEngine", () => {
     row_count: number,
     input_tokens: number,
     output_tokens: number,
-  ): MutableJsonRecord {
+  ): WorkUnitExecutionResult {
     return {
       unit_id: "unit-1",
       kind: "translation",
@@ -568,7 +528,7 @@ describe("TaskEngine", () => {
       metrics: { input_tokens, output_tokens },
       output: {
         kind: "translation",
-        items: items as unknown as JsonValue,
+        items,
         row_count,
       },
       logs: [],
@@ -651,6 +611,35 @@ describe("TaskEngine", () => {
   }
 
   /**
+   * 提供 TaskEngine 必需的完整项目端口；用例只覆盖与目标分支相关的方法。
+   */
+  function create_task_store(
+    overrides: Partial<TaskEngineOptions["taskStore"]> = {},
+  ): TaskEngineOptions["taskStore"] {
+    return {
+      acquire_project_lease: () => () => undefined,
+      build_quality_snapshot: () => null,
+      commit_analysis_results: async () => ({ accepted: true }),
+      commit_translation_items: async () => ({ changed_item_ids: [], section_revisions: {} }),
+      get_analysis_context: () => ({ items: [], checkpoints: [], meta: {} }),
+      get_translation_items: () => ({ items: [], meta: {} }),
+      get_translation_items_by_scope: () => ({ items: [], meta: {} }),
+      reset_analysis_progress: async () => ({ accepted: true }),
+      update_analysis_progress: () => ({ accepted: true }),
+      update_translation_progress: () => ({ accepted: true }),
+      ...overrides,
+    };
+  }
+
+  function create_unused_executor(): WorkUnitExecutor {
+    return {
+      execute_unit: async () => {
+        throw new Error("本用例不应执行 work unit。");
+      },
+    };
+  }
+
+  /**
    * 注入稳定 planning worker，隔离 tokenizer 细节后只验证 TaskEngine 是否消费规划边界。
    */
   function create_test_task_planner(token_count = 1): TaskPlanner {
@@ -668,7 +657,7 @@ describe("TaskEngine", () => {
   function create_setting_service(
     concurrency_limit = 1,
     input_token_limit = 512,
-  ): AppSettingService {
+  ): TaskEngineOptions["AppSettingService"] {
     const model = {
       id: "model-1",
       threshold: {
@@ -681,7 +670,7 @@ describe("TaskEngine", () => {
         activate_model_id: "model-1",
         models: [model],
       }),
-    } as unknown as AppSettingService;
+    };
   }
 
   function create_template_root(): string {
@@ -715,7 +704,7 @@ describe("TaskEngine", () => {
     }
   }
 
-  function create_log_manager(logs: string[] = []): LogManager {
+  function create_log_manager(logs: string[] = []): TaskEngineOptions["logManager"] {
     return {
       info: (message: string) => {
         logs.push(message);
@@ -724,6 +713,6 @@ describe("TaskEngine", () => {
         logs.push(message);
       },
       error: () => undefined,
-    } as unknown as LogManager;
+    };
   }
 });

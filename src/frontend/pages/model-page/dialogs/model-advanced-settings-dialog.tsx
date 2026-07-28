@@ -89,9 +89,6 @@ const SLIDER_FIELD_CONFIGS: SliderFieldConfig[] = [
   },
 ];
 
-/**
- * 解析输入并收窄为业务可用值。
- */
 function parse_request_json_text(value: string): JsonParseResult {
   const trimmed_value = value.trim();
   if (trimmed_value === "") {
@@ -120,9 +117,6 @@ function parse_request_json_text(value: string): JsonParseResult {
   }
 }
 
-/**
- * 格式化当前场景的用户可读文本。
- */
 function format_request_json_text(value: Record<string, unknown>): string {
   if (Object.keys(value).length === 0) {
     return "";
@@ -131,9 +125,6 @@ function format_request_json_text(value: Record<string, unknown>): string {
   }
 }
 
-/**
- * 构造当前场景的标准初始数据。
- */
 function create_slider_value_state(
   model: ModelEntrySnapshot | null,
 ): Record<SliderFieldName, number> {
@@ -154,9 +145,6 @@ function create_slider_value_state(
   }
 }
 
-/**
- * 构造当前场景的标准初始数据。
- */
 function create_slider_text_state(
   model: ModelEntrySnapshot | null,
 ): Record<SliderFieldName, string> {
@@ -170,9 +158,6 @@ function create_slider_text_state(
   };
 }
 
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_slider_value(field_config: SliderFieldConfig, raw_value: number): number {
   const clamped_value = Math.min(field_config.max, Math.max(field_config.min, raw_value));
   const step_count = Math.round((clamped_value - field_config.min) / field_config.step);

@@ -15,9 +15,6 @@ type TsConversionConfirmState = {
 };
 
 // 确认弹窗状态保持独立构造，避免关闭和初始化分支各自拼对象
-/**
- * 构建当前场景的稳定结果。
- */
 function create_empty_confirm_state(): TsConversionConfirmState {
   return {
     open: false,
@@ -25,9 +22,6 @@ function create_empty_confirm_state(): TsConversionConfirmState {
 }
 
 // 导出后缀沿用 旧写出链路的既有命名约定，页面只按方向选择
-/**
- * 解析当前场景的最终消费值。
- */
 // 页面状态只编排确认、进度和导出请求；实际转换规则留在纯逻辑模块
 export function useTsConversionPageState() {
   const { t } = useI18n();

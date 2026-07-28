@@ -8,7 +8,7 @@ import {
 } from "./preset-model";
 
 describe("preset model", () => {
-  it("保持 JSON 与文本预设的既有虚拟路径规则", () => {
+  it("生成 JSON/TXT 虚拟路径并裁剪名称空白", () => {
     expect(build_user_preset_virtual_id("示例")).toBe("user:示例.json");
     expect(build_user_preset_virtual_id("示例", "txt")).toBe("user:示例.txt");
     expect(normalize_preset_name("  示例  ")).toBe("示例");

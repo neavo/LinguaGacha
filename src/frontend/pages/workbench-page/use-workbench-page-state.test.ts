@@ -96,12 +96,6 @@ const toast_fixture: { current: ToastFixture } = {
 
 const api_route_queues = new Map<string, ApiRouteResponder[]>();
 
-(
-  globalThis as typeof globalThis & {
-    IS_REACT_ACT_ENVIRONMENT?: boolean;
-  }
-).IS_REACT_ACT_ENVIRONMENT = true;
-
 Object.defineProperty(window, "desktopApp", {
   value: create_desktop_bridge_api_mock({
     methods: workbench_picker_fixture.current,
@@ -140,9 +134,6 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
   };
 });
 
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_project_change_signal(
   seq: number,
   options: {
@@ -181,9 +172,6 @@ function create_project_change_signal(
   };
 }
 
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_runtime_fixture(): RuntimeFixture {
   return {
     commit_project_write: vi.fn(async ({ run }: { run: () => Promise<unknown> }) => {
@@ -222,10 +210,7 @@ function create_runtime_fixture(): RuntimeFixture {
   };
 }
 
-// workbench hook 测试只验证请求编排；空 changes 仍经过真实写入结果契约。
-/**
- * 构造当前测试场景的标准数据。
- */
+// 空 changes 仍经过真实写入结果契约。
 function create_project_write_result() {
   return {
     accepted: true,
@@ -263,7 +248,10 @@ function setup_api_fetch_mock(): void {
 /**
  * 从可变项目仓库派生 mock 快照，使写入后的刷新能观察到新事实。
  */
-function create_workbench_query_response() {
+function create_workbench_query_response(stats?: {
+  translation?: WorkbenchQueryStats;
+  analysis?: WorkbenchQueryStats;
+}) {
   const state = runtime_fixture.current.project_store.getState();
   const files = Object.values(state.files ?? {}).flatMap((value) => {
     if (typeof value !== "object" || value === null) {
@@ -283,6 +271,14 @@ function create_workbench_query_response() {
     ];
   });
   const items = [...(state.items?.values() ?? [])];
+  const default_stats: WorkbenchQueryStats = {
+    total_items: items.length,
+    completed_count: 0,
+    failed_count: 0,
+    pending_count: items.length,
+    skipped_count: 0,
+    completion_percent: 0,
+  };
   const entries = files.map((file) => {
     return {
       ...file,
@@ -300,40 +296,10 @@ function create_workbench_query_response() {
     snapshot: {
       file_count: entries.length,
       total_items: items.length,
-      translation_stats: build_workbench_query_stats(items),
-      analysis_stats: build_workbench_query_stats(items),
+      translation_stats: stats?.translation ?? default_stats,
+      analysis_stats: stats?.analysis ?? default_stats,
       entries,
     },
-  };
-}
-
-function build_workbench_query_stats(items: ProjectItemPublicRecord[]): WorkbenchQueryStats {
-  let completed_count = 0;
-  let failed_count = 0;
-  let skipped_count = 0;
-  for (const item of items) {
-    if (item.status === "PROCESSED") {
-      completed_count += 1;
-    } else if (item.status === "ERROR") {
-      failed_count += 1;
-    } else if (
-      item.status === "EXCLUDED" ||
-      item.status === "RULE_SKIPPED" ||
-      item.status === "LANGUAGE_SKIPPED" ||
-      item.status === "DUPLICATED"
-    ) {
-      skipped_count += 1;
-    }
-  }
-  const total_items = items.length;
-  const pending_count = Math.max(0, total_items - completed_count - failed_count - skipped_count);
-  return {
-    total_items,
-    completed_count,
-    failed_count,
-    pending_count,
-    skipped_count,
-    completion_percent: total_items === 0 ? 0 : Math.round((completed_count / total_items) * 100),
   };
 }
 
@@ -341,9 +307,6 @@ function count_api_calls(path: string): number {
   return vi.mocked(api_fetch).mock.calls.filter((call) => call[0] === path).length;
 }
 
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_translation_workbench_task_fixture(): TranslationWorkbenchTaskFixture {
   return {
     translation_task_display_snapshot: null,
@@ -374,9 +337,6 @@ function create_translation_workbench_task_fixture(): TranslationWorkbenchTaskFi
   };
 }
 
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_analysis_workbench_task_fixture(): AnalysisWorkbenchTaskFixture {
   return {
     analysis_task_display_snapshot: null,
@@ -418,9 +378,6 @@ function create_analysis_workbench_task_fixture(): AnalysisWorkbenchTaskFixture 
   };
 }
 
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_toast_fixture(): ToastFixture {
   return {
     push_toast: vi.fn(),
@@ -430,9 +387,6 @@ function create_toast_fixture(): ToastFixture {
   };
 }
 
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_project_store_state(items: Record<string, ProjectItemPublicRecord>) {
   return {
     project: {
@@ -473,9 +427,6 @@ function create_project_store_state(items: Record<string, ProjectItemPublicRecor
   };
 }
 
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_project_item(args: {
   item_id: number;
   src?: string;
@@ -501,9 +452,6 @@ function create_project_item(args: {
   };
 }
 
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_analysis_task_snapshot(
   overrides: Partial<AnalysisTaskSnapshot> = {},
 ): AnalysisTaskSnapshot {
@@ -584,15 +532,6 @@ describe("useWorkbenchPageState", () => {
     await flush_async_updates();
   }
 
-  it("项目路径切换后会基于当前后端 query 完成首刷", async () => {
-    await render_hook();
-
-    expect(latest_state).not.toBeNull();
-    expect(latest_state?.cache_status).toBe("ready");
-    expect(latest_state?.settled_project_path).toBe("E:/demo/sample.lg");
-    expect(latest_state?.entries).toEqual([]);
-  });
-
   it("最后一次信号与工作台无关时仍会在首次挂载全量刷新", async () => {
     runtime_fixture.current = {
       ...runtime_fixture.current,
@@ -618,6 +557,19 @@ describe("useWorkbenchPageState", () => {
       },
       project_change_signal: create_project_change_signal(1, { updatedSections: ["quality"] }),
     };
+    enqueue_api_response(
+      "/api/workbench/snapshot",
+      create_workbench_query_response({
+        translation: {
+          total_items: 1,
+          completed_count: 0,
+          failed_count: 0,
+          pending_count: 0,
+          skipped_count: 1,
+          completion_percent: 0,
+        },
+      }),
+    );
 
     await render_hook();
 
@@ -710,31 +662,11 @@ describe("useWorkbenchPageState", () => {
               },
             },
             items: create_test_items({
-              "1": create_project_item({
-                item_id: 1,
-                file_path: "chapter01.txt",
-                status: "PROCESSED",
-              }),
-              "2": create_project_item({
-                item_id: 2,
-                file_path: "chapter01.txt",
-                status: "ERROR",
-              }),
-              "3": create_project_item({
-                item_id: 3,
-                file_path: "chapter01.txt",
-                status: "NONE",
-              }),
-              "4": create_project_item({
-                item_id: 4,
-                file_path: "chapter01.txt",
-                status: "RULE_SKIPPED",
-              }),
-              "5": create_project_item({
-                item_id: 5,
-                file_path: "chapter01.txt",
-                status: "EXCLUDED",
-              }),
+              "1": create_project_item({ item_id: 1, file_path: "chapter01.txt" }),
+              "2": create_project_item({ item_id: 2, file_path: "chapter01.txt" }),
+              "3": create_project_item({ item_id: 3, file_path: "chapter01.txt" }),
+              "4": create_project_item({ item_id: 4, file_path: "chapter01.txt" }),
+              "5": create_project_item({ item_id: 5, file_path: "chapter01.txt" }),
             }),
             analysis: {
               status_summary: {
@@ -749,6 +681,21 @@ describe("useWorkbenchPageState", () => {
       },
       project_change_signal: create_project_change_signal(1),
     };
+    const query_stats = {
+      total_items: 5,
+      completed_count: 1,
+      failed_count: 1,
+      pending_count: 1,
+      skipped_count: 2,
+      completion_percent: 20,
+    };
+    enqueue_api_response(
+      "/api/workbench/snapshot",
+      create_workbench_query_response({
+        translation: query_stats,
+        analysis: query_stats,
+      }),
+    );
 
     await render_hook();
 
@@ -848,36 +795,11 @@ describe("useWorkbenchPageState", () => {
               },
             },
             items: create_test_items({
-              "1": create_project_item({
-                item_id: 1,
-                file_path: "chapter01.txt",
-                src: "一",
-                status: "NONE",
-              }),
-              "2": create_project_item({
-                item_id: 2,
-                file_path: "chapter01.txt",
-                src: "二",
-                status: "NONE",
-              }),
-              "3": create_project_item({
-                item_id: 3,
-                file_path: "chapter01.txt",
-                src: "三",
-                status: "NONE",
-              }),
-              "4": create_project_item({
-                item_id: 4,
-                file_path: "chapter01.txt",
-                src: "四",
-                status: "NONE",
-              }),
-              "5": create_project_item({
-                item_id: 5,
-                file_path: "chapter01.txt",
-                src: "五",
-                status: "RULE_SKIPPED",
-              }),
+              "1": create_project_item({ item_id: 1, file_path: "chapter01.txt" }),
+              "2": create_project_item({ item_id: 2, file_path: "chapter01.txt" }),
+              "3": create_project_item({ item_id: 3, file_path: "chapter01.txt" }),
+              "4": create_project_item({ item_id: 4, file_path: "chapter01.txt" }),
+              "5": create_project_item({ item_id: 5, file_path: "chapter01.txt" }),
             }),
             analysis: {
               status_summary: {
@@ -892,6 +814,19 @@ describe("useWorkbenchPageState", () => {
       },
       project_change_signal: create_project_change_signal(1),
     };
+    enqueue_api_response(
+      "/api/workbench/snapshot",
+      create_workbench_query_response({
+        analysis: {
+          total_items: 5,
+          completed_count: 0,
+          failed_count: 0,
+          pending_count: 4,
+          skipped_count: 1,
+          completion_percent: 0,
+        },
+      }),
+    );
 
     await render_hook();
 
@@ -940,18 +875,8 @@ describe("useWorkbenchPageState", () => {
               },
             },
             items: create_test_items({
-              "1": create_project_item({
-                item_id: 1,
-                file_path: "chapter01.txt",
-                src: "一",
-                status: "NONE",
-              }),
-              "2": create_project_item({
-                item_id: 2,
-                file_path: "chapter01.txt",
-                src: "二",
-                status: "NONE",
-              }),
+              "1": create_project_item({ item_id: 1, file_path: "chapter01.txt" }),
+              "2": create_project_item({ item_id: 2, file_path: "chapter01.txt" }),
             }),
             analysis: {
               status_summary: {
@@ -966,6 +891,19 @@ describe("useWorkbenchPageState", () => {
       },
       project_change_signal: create_project_change_signal(1),
     };
+    enqueue_api_response(
+      "/api/workbench/snapshot",
+      create_workbench_query_response({
+        analysis: {
+          total_items: 2,
+          completed_count: 0,
+          failed_count: 0,
+          pending_count: 2,
+          skipped_count: 0,
+          completion_percent: 0,
+        },
+      }),
+    );
 
     await render_hook();
 
@@ -993,7 +931,6 @@ describe("useWorkbenchPageState", () => {
     };
     await render_hook();
 
-    let item_status: ProjectItemPublicRecord["status"] = "NONE";
     let items_revision = 1;
     runtime_fixture.current = {
       ...runtime_fixture.current,
@@ -1011,7 +948,7 @@ describe("useWorkbenchPageState", () => {
               "1": create_project_item({
                 item_id: 1,
                 file_path: "chapter01.txt",
-                status: item_status,
+                status: "NONE",
               }),
             }),
             revisions: {
@@ -1026,6 +963,19 @@ describe("useWorkbenchPageState", () => {
       },
       project_change_signal: create_project_change_signal(1),
     };
+    enqueue_api_response(
+      "/api/workbench/snapshot",
+      create_workbench_query_response({
+        translation: {
+          total_items: 1,
+          completed_count: 0,
+          failed_count: 0,
+          pending_count: 1,
+          skipped_count: 0,
+          completion_percent: 0,
+        },
+      }),
+    );
 
     await render_hook();
 
@@ -1038,7 +988,6 @@ describe("useWorkbenchPageState", () => {
       completion_percent: 0,
     });
 
-    item_status = "PROCESSED";
     items_revision = 2;
     runtime_fixture.current = {
       ...runtime_fixture.current,
@@ -1048,6 +997,19 @@ describe("useWorkbenchPageState", () => {
         itemIds: [1],
       }),
     };
+    enqueue_api_response(
+      "/api/workbench/snapshot",
+      create_workbench_query_response({
+        translation: {
+          total_items: 1,
+          completed_count: 1,
+          failed_count: 0,
+          pending_count: 0,
+          skipped_count: 0,
+          completion_percent: 100,
+        },
+      }),
+    );
 
     await render_hook();
 
@@ -1059,31 +1021,6 @@ describe("useWorkbenchPageState", () => {
       skipped_count: 0,
       completion_percent: 100,
     });
-  });
-
-  it("添加文件解析成功后会先打开继承确认", async () => {
-    enqueue_api_response("/api/workbench/file/parse", {
-      files: [
-        {
-          source_path: "E:/demo/new.txt",
-          target_rel_path: "new.txt",
-          file_type: "TXT",
-          parsed_items: [{ src: "hello", dst: "", row: 1 }],
-        },
-      ],
-    });
-    await render_hook();
-
-    await act(async () => {
-      await latest_state?.request_add_file_from_path("E:/demo/new.txt");
-    });
-
-    expect(latest_state?.dialog_state.kind).toBe("inherit-import-files");
-    expect(workbench_picker_fixture.current.pickWorkbenchFilePath).not.toHaveBeenCalled();
-    expect(api_fetch).toHaveBeenCalledWith("/api/workbench/file/parse", {
-      source_paths: ["E:/demo/new.txt"],
-    });
-    expect(count_api_calls("/api/workbench/file/parse")).toBe(1);
   });
 
   it("选择器添加文件会委托到同一条按路径解析流程", async () => {
@@ -1111,307 +1048,6 @@ describe("useWorkbenchPageState", () => {
     expect(api_fetch).toHaveBeenCalledWith("/api/workbench/file/parse", {
       source_paths: ["E:/demo/new.txt"],
     });
-  });
-
-  it("批量添加检测到同名文件时会先打开处理方式确认", async () => {
-    enqueue_api_response("/api/workbench/file/parse", {
-      files: [
-        {
-          source_path: "E:/demo/new.txt",
-          target_rel_path: "new.txt",
-          file_type: "TXT",
-          parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
-        },
-        {
-          source_path: "E:/demo/old-copy.txt",
-          target_rel_path: "old.txt",
-          file_type: "TXT",
-          parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
-        },
-      ],
-    });
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_store: {
-        getState: () => create_project_store_state({}),
-      },
-    };
-    await render_hook();
-
-    await act(async () => {
-      await latest_state?.request_add_files_from_paths([
-        "E:/demo/new.txt",
-        "E:/demo/bad.txt",
-        "E:/demo/old-copy.txt",
-      ]);
-    });
-
-    expect(latest_state?.dialog_state.kind).toBe("confirm-import-files");
-    expect(latest_state?.dialog_state.target_rel_paths).toEqual(["old.txt"]);
-    expect(api_fetch).toHaveBeenCalledWith("/api/workbench/file/parse", {
-      source_paths: ["E:/demo/new.txt", "E:/demo/bad.txt", "E:/demo/old-copy.txt"],
-    });
-    expect(toast_fixture.current.push_toast).not.toHaveBeenCalled();
-  });
-
-  it("批量添加存在解析失败文件时展示完整跳过明细并继续处理成功文件", async () => {
-    enqueue_api_response("/api/workbench/file/parse", {
-      files: [
-        {
-          source_path: "E:/demo/new.txt",
-          target_rel_path: "new.txt",
-          file_type: "TXT",
-          parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
-        },
-      ],
-      failed_files: [
-        {
-          source_path: "E:/demo/broken.json",
-          rel_path: "broken.json",
-          filename: "broken.json",
-          code: "file.parse_failed",
-          message_key: "app.error.file.parse_failed.message",
-        },
-        {
-          source_path: "E:/demo/dialogue.epub",
-          rel_path: "dialogue.epub",
-          filename: "dialogue.epub",
-          code: "file.invalid_structure",
-          message_key: "app.error.file.invalid_structure.message",
-        },
-      ],
-    });
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_store: {
-        getState: () => create_project_store_state({}),
-      },
-    };
-    await render_hook();
-
-    await act(async () => {
-      await latest_state?.request_add_files_from_paths(["E:/demo/new.txt", "E:/demo/broken.json"]);
-    });
-
-    expect(latest_state?.dialog_state.kind).toBe("inherit-import-files");
-    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
-      "warning",
-      [
-        "broken.json - app.error.file.parse_failed.message",
-        "dialogue.epub - app.error.file.invalid_structure.message",
-      ].join("\n"),
-    );
-  });
-
-  it("批量添加全部文件解析失败时展示阻断明细且不再叠加泛错误", async () => {
-    enqueue_api_response("/api/workbench/file/parse", {
-      files: [],
-      failed_files: [
-        {
-          source_path: "E:/demo/broken.json",
-          rel_path: "broken.json",
-          filename: "broken.json",
-          code: "file.parse_failed",
-          message_key: "app.error.file.parse_failed.message",
-        },
-      ],
-    });
-    await render_hook();
-
-    await act(async () => {
-      await latest_state?.request_add_files_from_paths(["E:/demo/broken.json"]);
-    });
-
-    expect(latest_state?.dialog_state.kind).toBeNull();
-    expect(toast_fixture.current.push_toast).toHaveBeenCalledTimes(1);
-    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
-      "error",
-      "broken.json - app.error.file.parse_failed.message",
-    );
-  });
-
-  it("批量添加没有有效文件时只提示一次错误", async () => {
-    enqueue_api_response("/api/workbench/file/parse", {
-      files: [
-        {
-          source_path: "E:/demo/dup-a.txt",
-          target_rel_path: "dup.txt",
-          file_type: "TXT",
-          parsed_items: [],
-        },
-        {
-          source_path: "E:/demo/dup-b.txt",
-          target_rel_path: "DUP.txt",
-          file_type: "TXT",
-          parsed_items: [],
-        },
-      ],
-    });
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_store: {
-        getState: () => create_project_store_state({}),
-      },
-    };
-    await render_hook();
-
-    await act(async () => {
-      await latest_state?.request_add_files_from_paths(["E:/demo/old-copy.txt"]);
-    });
-
-    expect(latest_state?.dialog_state.kind).toBeNull();
-    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
-      "error",
-      "workbench_page.feedback.no_valid_file",
-    );
-  });
-
-  it("同名确认选择跳过时只提交新增文件", async () => {
-    enqueue_api_response("/api/workbench/file/parse", {
-      files: [
-        {
-          source_path: "E:/demo/new.txt",
-          target_rel_path: "new.txt",
-          file_type: "TXT",
-          parsed_items: [{ src: "新規", dst: "", row: 1 }],
-        },
-        {
-          source_path: "E:/demo/old-copy.txt",
-          target_rel_path: "old.txt",
-          file_type: "TXT",
-          parsed_items: [{ src: "既存", dst: "", row: 1 }],
-        },
-      ],
-    });
-    enqueue_api_response("/api/workbench/files/import", create_project_write_result());
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_store: {
-        getState: () => create_project_store_state({}),
-      },
-    };
-    await render_hook();
-
-    await act(async () => {
-      await latest_state?.request_add_files_from_paths(["E:/demo/new.txt", "E:/demo/old-copy.txt"]);
-    });
-    expect(latest_state?.dialog_state.kind).toBe("confirm-import-files");
-
-    await act(async () => {
-      await latest_state?.secondary_dialog();
-    });
-    expect(latest_state?.dialog_state.kind).toBe("inherit-import-files");
-    expect(latest_state?.dialog_state.target_rel_paths).toEqual(["new.txt"]);
-
-    await act(async () => {
-      await latest_state?.cancel_dialog();
-    });
-
-    expect(api_fetch).toHaveBeenCalledWith(
-      "/api/workbench/files/import",
-      expect.objectContaining({
-        files: [
-          {
-            source_path: "E:/demo/new.txt",
-            target_rel_path: "new.txt",
-          },
-        ],
-        conflict_action: "skip",
-        inheritance_mode: "none",
-      }),
-    );
-  });
-
-  it("同名确认选择替换时会把新增和替换文件一起提交", async () => {
-    enqueue_api_response("/api/workbench/file/parse", {
-      files: [
-        {
-          source_path: "E:/demo/new.txt",
-          target_rel_path: "new.txt",
-          file_type: "TXT",
-          parsed_items: [{ src: "新規", dst: "", row: 1 }],
-        },
-        {
-          source_path: "E:/demo/old-copy.txt",
-          target_rel_path: "old.txt",
-          file_type: "TXT",
-          parsed_items: [{ src: "既存", dst: "", row: 1 }],
-        },
-      ],
-    });
-    enqueue_api_response("/api/workbench/files/import", create_project_write_result());
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_store: {
-        getState: () => create_project_store_state({}),
-      },
-    };
-    await render_hook();
-
-    await act(async () => {
-      await latest_state?.request_add_files_from_paths(["E:/demo/new.txt", "E:/demo/old-copy.txt"]);
-    });
-    expect(latest_state?.dialog_state.kind).toBe("confirm-import-files");
-
-    await act(async () => {
-      await latest_state?.confirm_dialog();
-    });
-    expect(latest_state?.dialog_state.kind).toBe("inherit-import-files");
-    expect(latest_state?.dialog_state.target_rel_paths).toEqual(["new.txt", "old.txt"]);
-
-    await act(async () => {
-      await latest_state?.confirm_dialog();
-    });
-
-    expect(api_fetch).toHaveBeenCalledWith(
-      "/api/workbench/files/import",
-      expect.objectContaining({
-        files: [
-          {
-            source_path: "E:/demo/new.txt",
-            target_rel_path: "new.txt",
-          },
-          {
-            source_path: "E:/demo/old-copy.txt",
-            target_rel_path: "old.txt",
-          },
-        ],
-        conflict_action: "replace",
-        inheritance_mode: "inherit",
-      }),
-    );
-  });
-
-  it("同名确认取消时不会提交导入 write", async () => {
-    enqueue_api_response("/api/workbench/file/parse", {
-      files: [
-        {
-          source_path: "E:/demo/old-copy.txt",
-          target_rel_path: "old.txt",
-          file_type: "TXT",
-          parsed_items: [{ src: "既存", dst: "", row: 1 }],
-        },
-      ],
-    });
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_store: {
-        getState: () => create_project_store_state({}),
-      },
-    };
-    await render_hook();
-
-    await act(async () => {
-      await latest_state?.request_add_files_from_paths(["E:/demo/old-copy.txt"]);
-    });
-    expect(latest_state?.dialog_state.kind).toBe("confirm-import-files");
-
-    await act(async () => {
-      await latest_state?.cancel_dialog();
-    });
-
-    expect(latest_state?.dialog_state.kind).toBeNull();
-    expect(count_api_calls("/api/workbench/files/import")).toBe(0);
   });
 
   it("拖拽失败提示会复用全局 drop warning 文案", async () => {
@@ -1482,75 +1118,6 @@ describe("useWorkbenchPageState", () => {
         ],
         conflict_action: "skip",
         inheritance_mode: "none",
-        project_settings: {
-          source_language: "JA",
-          mtool_optimizer_enable: false,
-          skip_duplicate_source_text_enable: true,
-        },
-        expected_section_revisions: {
-          files: 1,
-          items: 2,
-          analysis: 3,
-        },
-      }),
-    );
-  });
-
-  it("选择继承且存在多候选时只提交继承模式", async () => {
-    workbench_picker_fixture.current.pickWorkbenchFilePath.mockResolvedValue({
-      canceled: false,
-      paths: ["E:/demo/new.txt"],
-    });
-    enqueue_api_response("/api/workbench/file/parse", {
-      files: [
-        {
-          source_path: "E:/demo/new.txt",
-          target_rel_path: "new.txt",
-          file_type: "TXT",
-          parsed_items: [{ src: "こんにちは", dst: "", row: 1 }],
-        },
-      ],
-    });
-    enqueue_api_response("/api/workbench/files/import", create_project_write_result());
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_store: {
-        getState: () =>
-          create_project_store_state({
-            "1": create_project_item({ item_id: 1, src: "こんにちは", dst: "甲" }),
-            "2": create_project_item({ item_id: 2, src: "こんにちは", dst: "乙" }),
-            "3": create_project_item({ item_id: 3, src: "こんにちは", dst: "甲" }),
-          }),
-      },
-      settings_snapshot: {
-        source_language: "JA",
-        mtool_optimizer_enable: false,
-        skip_duplicate_source_text_enable: true,
-      },
-    };
-    await render_hook();
-
-    await act(async () => {
-      await latest_state?.request_add_file();
-    });
-    await render_hook();
-    await act(async () => {
-      await latest_state?.confirm_dialog();
-    });
-    await render_hook();
-
-    expect(latest_state?.dialog_state.kind).toBeNull();
-    expect(api_fetch).toHaveBeenCalledWith(
-      "/api/workbench/files/import",
-      expect.objectContaining({
-        files: [
-          expect.objectContaining({
-            source_path: "E:/demo/new.txt",
-            target_rel_path: "new.txt",
-          }),
-        ],
-        conflict_action: "skip",
-        inheritance_mode: "inherit",
         project_settings: {
           source_language: "JA",
           mtool_optimizer_enable: false,

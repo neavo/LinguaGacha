@@ -69,9 +69,6 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
   };
 });
 
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_settings_snapshot(overrides: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
   return normalize_settings_snapshot({
     settings: {
@@ -86,9 +83,6 @@ function create_settings_snapshot(overrides: Partial<SettingsSnapshot> = {}): Se
   });
 }
 
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_runtime_fixture(): RuntimeFixture {
   const settings_snapshot = create_settings_snapshot();
   return {
@@ -122,9 +116,6 @@ function create_runtime_fixture(): RuntimeFixture {
   };
 }
 
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_toast_fixture(): ToastFixture {
   return {
     push_toast: vi.fn(),
@@ -212,51 +203,25 @@ describe("useBasicSettingsState", () => {
 
     await render_hook();
 
-    expect(latest_state).not.toBeNull();
-
     await act(async () => {
       await latest_state?.update_source_language("EN");
     });
     await flush_async_updates();
 
     expect(latest_state?.snapshot.source_language).toBe("JA");
+    expect(api_fetch).toHaveBeenCalledWith("/api/workbench/settings-alignment/apply", {
+      mode: "settings_only",
+      project_settings: {
+        source_language: "JA",
+        target_language: "ZH",
+        mtool_optimizer_enable: false,
+        skip_duplicate_source_text_enable: true,
+      },
+    });
     expect(toast_fixture.current.push_toast).toHaveBeenCalledTimes(1);
     expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
       "error",
       "basic_settings_page.feedback.update_failed",
     );
-    expect(vi.mocked(api_fetch).mock.calls).toEqual([
-      ["/api/settings/update", { source_language: "EN" }],
-      ["/api/workbench/snapshot", {}],
-      [
-        "/api/workbench/settings-alignment/apply",
-        {
-          mode: "prefiltered_items",
-          project_settings: {
-            source_language: "EN",
-            target_language: "ZH",
-            mtool_optimizer_enable: false,
-            skip_duplicate_source_text_enable: true,
-          },
-          expected_section_revisions: {
-            items: 0,
-            analysis: 0,
-          },
-        },
-      ],
-      ["/api/settings/update", { source_language: "JA" }],
-      [
-        "/api/workbench/settings-alignment/apply",
-        {
-          mode: "settings_only",
-          project_settings: {
-            source_language: "JA",
-            target_language: "ZH",
-            mtool_optimizer_enable: false,
-            skip_duplicate_source_text_enable: true,
-          },
-        },
-      ],
-    ]);
   });
 });

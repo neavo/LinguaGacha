@@ -18,17 +18,7 @@ import type {
   AppTableScrollAnchor,
 } from "@frontend/widgets/app-table/app-table-types";
 
-// 只声明本测试需要观察的 AppTable 公开载荷。
 type CapturedAppTableProps = AppTableProps<ProofreadingVisibleItem>;
-
-// app_table_fixture 保存最近一次 AppTable props，避免测试读取真实表格 DOM 细节。
-const { app_table_fixture } = vi.hoisted(() => {
-  return {
-    app_table_fixture: {
-      current_props: null as CapturedAppTableProps | null,
-    },
-  };
-});
 
 vi.mock("@frontend/app/locale/locale-provider", () => {
   return {
@@ -43,9 +33,23 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
 vi.mock("@frontend/widgets/app-table/app-table", () => {
   return {
     AppTable: (props: CapturedAppTableProps) => {
-      app_table_fixture.current_props = props;
+      const row_model = props.row_model;
       return (
-        <div data-testid="app-table">
+        <div
+          data-testid="app-table"
+          data-row-count={row_model?.row_count}
+          data-loaded-row-ids={row_model?.loaded_row_ids.join(",")}
+          data-restore-scroll-row-id={props.restore_scroll_row_id ?? ""}
+          data-preserve-scroll-row-id={props.preserve_scroll_anchor?.row_id ?? ""}
+          data-preserve-scroll-revision={props.preserve_scroll_anchor?.revision}
+        >
+          <button
+            type="button"
+            data-testid="app-table-visible-range"
+            onClick={() => row_model?.on_visible_range_change?.({ start: 2, count: 5 })}
+          >
+            发布可见范围
+          </button>
           {props.rows.map((row, row_index) => {
             const row_id = props.get_row_id(row, row_index);
             return (
@@ -196,14 +200,17 @@ describe("ProofreadingTable", () => {
     container?.remove();
     container = null;
     root = null;
-    app_table_fixture.current_props = null;
   });
 
-  /**
-   * 挂载校对表格并记录传给 AppTable 的公开 props。
-   */
-  async function render_table(anchor: AppTableScrollAnchor): Promise<() => void> {
-    const on_visible_range_change = vi.fn<(range: { start: number; count: number }) => void>();
+  async function render_table(
+    item: ProofreadingVisibleItem,
+    options: {
+      visible_row_count?: number;
+      on_visible_range_change?: (range: { start: number; count: number }) => void;
+      restore_scroll_row_id?: string | null;
+      preserve_scroll_anchor?: AppTableScrollAnchor;
+    } = {},
+  ): Promise<void> {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -212,8 +219,8 @@ describe("ProofreadingTable", () => {
       root?.render(
         <TooltipProvider>
           <ProofreadingTable
-            items={[create_visible_item(1)]}
-            visible_row_count={10}
+            items={[item]}
+            visible_row_count={options.visible_row_count ?? 1}
             sort_state={null}
             selected_row_ids={[]}
             active_row_id={null}
@@ -225,9 +232,9 @@ describe("ProofreadingTable", () => {
             resolve_row_index={() => undefined}
             resolve_row_index_async={async () => undefined}
             resolve_row_ids_range={async () => []}
-            on_visible_range_change={on_visible_range_change}
-            restore_scroll_row_id="1"
-            preserve_scroll_anchor={anchor}
+            on_visible_range_change={options.on_visible_range_change ?? (() => {})}
+            restore_scroll_row_id={options.restore_scroll_row_id ?? "1"}
+            preserve_scroll_anchor={options.preserve_scroll_anchor ?? { row_id: "1", revision: 3 }}
             on_sort_change={() => {}}
             on_selection_change={() => {}}
             on_selection_error={() => {}}
@@ -239,81 +246,42 @@ describe("ProofreadingTable", () => {
         </TooltipProvider>,
       );
     });
-
-    return () => {
-      app_table_fixture.current_props?.row_model?.on_visible_range_change?.({
-        start: 2,
-        count: 5,
-      });
-      expect(on_visible_range_change).toHaveBeenCalledWith({
-        start: 2,
-        count: 5,
-      });
-    };
   }
 
-  it("向 AppTable 透传滚动恢复锚点和远端窗口模型", async () => {
-    const anchor = {
-      row_id: "1",
-      revision: 3,
-    };
-    const assert_visible_range_change = await render_table(anchor);
+  it("向 AppTable 透传远端行模型与滚动锚点，并回流可见范围", async () => {
+    const on_visible_range_change = vi.fn();
+    await render_table(create_visible_item(1), {
+      visible_row_count: 10,
+      on_visible_range_change,
+      restore_scroll_row_id: "8",
+      preserve_scroll_anchor: { row_id: "7", revision: 4 },
+    });
 
-    expect(app_table_fixture.current_props?.preserve_scroll_anchor).toEqual(anchor);
-    expect(app_table_fixture.current_props?.restore_scroll_row_id).toBe("1");
-    expect(app_table_fixture.current_props?.row_model?.row_count).toBe(10);
-    expect(app_table_fixture.current_props?.row_model?.loaded_row_ids).toEqual(["1"]);
-    assert_visible_range_change();
+    const table = container?.querySelector('[data-testid="app-table"]');
+    expect(table?.getAttribute("data-row-count")).toBe("10");
+    expect(table?.getAttribute("data-loaded-row-ids")).toBe("1");
+    expect(table?.getAttribute("data-restore-scroll-row-id")).toBe("8");
+    expect(table?.getAttribute("data-preserve-scroll-row-id")).toBe("7");
+    expect(table?.getAttribute("data-preserve-scroll-revision")).toBe("4");
+
+    await act(async () => {
+      container
+        ?.querySelector<HTMLButtonElement>('[data-testid="app-table-visible-range"]')
+        ?.click();
+    });
+    expect(on_visible_range_change).toHaveBeenCalledWith({ start: 2, count: 5 });
   });
 
   it("有姓名字段时在原文和译文前展示中性姓名胶囊", async () => {
-    const anchor = {
-      row_id: "1",
-      revision: 3,
-    };
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
+    await render_table(
+      create_visible_item(1, {
+        name_src: ["虎铁", "保留原名"],
+        name_dst: "虎铁译",
+      }),
+    );
 
-    await act(async () => {
-      root?.render(
-        <TooltipProvider>
-          <ProofreadingTable
-            items={[
-              create_visible_item(1, {
-                name_src: ["虎铁", "保留原名"],
-                name_dst: "虎铁译",
-              }),
-            ]}
-            visible_row_count={1}
-            sort_state={null}
-            selected_row_ids={[]}
-            active_row_id={null}
-            anchor_row_id={null}
-            retranslating_row_ids={[]}
-            readonly={false}
-            get_row_at_index={() => undefined}
-            get_row_id_at_index={() => undefined}
-            resolve_row_index={() => undefined}
-            resolve_row_index_async={async () => undefined}
-            resolve_row_ids_range={async () => []}
-            on_visible_range_change={() => {}}
-            restore_scroll_row_id="1"
-            preserve_scroll_anchor={anchor}
-            on_sort_change={() => {}}
-            on_selection_change={() => {}}
-            on_selection_error={() => {}}
-            on_open_edit={() => {}}
-            on_request_retranslate_row_ids={() => {}}
-            on_request_clear_translation_row_ids={() => {}}
-            on_request_set_translation_status_row_ids={() => {}}
-          />
-        </TooltipProvider>,
-      );
-    });
-
-    const source_cell = container.querySelector('[data-testid="app-table-cell-src"]');
-    const translation_cell = container.querySelector('[data-testid="app-table-cell-dst"]');
+    const source_cell = container?.querySelector('[data-testid="app-table-cell-src"]');
+    const translation_cell = container?.querySelector('[data-testid="app-table-cell-dst"]');
     const source_badge = source_cell?.querySelector(".proofreading-page__table-name-badge");
     const translation_badge = translation_cell?.querySelector(
       ".proofreading-page__table-name-badge",
@@ -333,53 +301,15 @@ describe("ProofreadingTable", () => {
   });
 
   it("姓名数组首项为空时不展示后续槽位姓名", async () => {
-    const anchor = {
-      row_id: "1",
-      revision: 3,
-    };
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
+    await render_table(
+      create_visible_item(1, {
+        name_src: ["", "Bob"],
+        name_dst: ["", "鲍勃"],
+      }),
+    );
 
-    await act(async () => {
-      root?.render(
-        <TooltipProvider>
-          <ProofreadingTable
-            items={[
-              create_visible_item(1, {
-                name_src: ["", "Bob"],
-                name_dst: ["", "鲍勃"],
-              }),
-            ]}
-            visible_row_count={1}
-            sort_state={null}
-            selected_row_ids={[]}
-            active_row_id={null}
-            anchor_row_id={null}
-            retranslating_row_ids={[]}
-            readonly={false}
-            get_row_at_index={() => undefined}
-            get_row_id_at_index={() => undefined}
-            resolve_row_index={() => undefined}
-            resolve_row_index_async={async () => undefined}
-            resolve_row_ids_range={async () => []}
-            on_visible_range_change={() => {}}
-            restore_scroll_row_id="1"
-            preserve_scroll_anchor={anchor}
-            on_sort_change={() => {}}
-            on_selection_change={() => {}}
-            on_selection_error={() => {}}
-            on_open_edit={() => {}}
-            on_request_retranslate_row_ids={() => {}}
-            on_request_clear_translation_row_ids={() => {}}
-            on_request_set_translation_status_row_ids={() => {}}
-          />
-        </TooltipProvider>,
-      );
-    });
-
-    const source_cell = container.querySelector('[data-testid="app-table-cell-src"]');
-    const translation_cell = container.querySelector('[data-testid="app-table-cell-dst"]');
+    const source_cell = container?.querySelector('[data-testid="app-table-cell-src"]');
+    const translation_cell = container?.querySelector('[data-testid="app-table-cell-dst"]');
 
     expect(source_cell?.querySelector(".proofreading-page__table-name-badge")).toBeNull();
     expect(translation_cell?.querySelector(".proofreading-page__table-name-badge")).toBeNull();

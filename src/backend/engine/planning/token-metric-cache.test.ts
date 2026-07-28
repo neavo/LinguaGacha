@@ -30,7 +30,6 @@ describe("token-metric-cache", () => {
     expect(cache.get("a")).toEqual({ token_count: 1, line_count: 2 });
     cache.set("c", { token_count: 5, line_count: 6 });
 
-    expect(cache.size()).toBe(2);
     expect(cache.get("b")).toBeNull();
     expect(cache.get("a")).toEqual({ token_count: 1, line_count: 2 });
     expect(cache.get("c")).toEqual({ token_count: 5, line_count: 6 });

@@ -7,7 +7,6 @@ import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-
 import { useCustomPromptPageState } from "@frontend/pages/custom-prompt-page/use-custom-prompt-page-state";
 import { create_desktop_bridge_api_mock } from "../../../test/desktop-bridge-mock";
 
-// 固定 useDesktopState 对自定义提示词页暴露的状态和写入口。
 type RuntimeFixture = {
   project_snapshot: {
     loaded: boolean;
@@ -26,32 +25,19 @@ type RuntimeFixture = {
   };
 };
 
-// 只保留页面反馈出口，断言 hook 不绕过 toast feedback。
 type ToastFixture = {
   push_toast: ReturnType<typeof vi.fn>;
 };
 
-// 作为 hook 的可替换宿主，允许每个用例单独切换项目和任务状态。
 const runtime_fixture: { current: RuntimeFixture } = {
   current: create_runtime_fixture(),
 };
 
-// 记录页面反馈，不让测试依赖真实 UI 运行时。
 const toast_fixture: { current: ToastFixture } = {
   current: create_toast_fixture(),
 };
 
-// 固定返回 key，避免文案资源变化影响状态流断言。
-/**
- * 支撑当前测试场景的专用辅助逻辑。
- */
 const translate = (key: string): string => key;
-
-(
-  globalThis as typeof globalThis & {
-    IS_REACT_ACT_ENVIRONMENT?: boolean;
-  }
-).IS_REACT_ACT_ENVIRONMENT = true;
 
 vi.mock("@frontend/app/state/use-desktop-state", () => {
   return {
@@ -83,10 +69,6 @@ vi.mock("@frontend/app/desktop/desktop-api", async (import_original) => {
   };
 });
 
-// state fixture 模拟 DesktopStateProvider 对页面暴露的最小稳定契约。
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_runtime_fixture(): RuntimeFixture {
   let prompts_revision = 3;
   return {
@@ -129,10 +111,6 @@ function create_runtime_fixture(): RuntimeFixture {
   };
 }
 
-// toast fixture 只记录调用参数，错误和成功路径都由 hook 自己收口。
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_toast_fixture(): ToastFixture {
   return {
     push_toast: vi.fn(),
@@ -167,16 +145,11 @@ describe("useCustomPromptPageState", () => {
     vi.mocked(api_fetch).mockReset();
   });
 
-  // Probe 把 hook 返回值提升到测试作用域，不引入额外组件行为。
   function CustomPromptProbe(): null {
     latest_state = useCustomPromptPageState("translation");
     return null;
   }
 
-  // React effect 与异步模板读取连续排队，三次 tick 覆盖当前 hook 的更新链。
-  /**
-   * 支撑当前测试场景的专用辅助逻辑。
-   */
   async function flush_async_updates(): Promise<void> {
     await act(async () => {
       await Promise.resolve();
@@ -185,10 +158,6 @@ describe("useCustomPromptPageState", () => {
     });
   }
 
-  // render_hook 复用同一个 root，贴近页面生命周期中的重复渲染方式。
-  /**
-   * 生成当前场景的展示内容。
-   */
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -202,9 +171,6 @@ describe("useCustomPromptPageState", () => {
     await flush_async_updates();
   }
 
-  /**
-   * 构造当前测试场景的标准数据。
-   */
   function create_prompt_query_payload(
     enabled = true,
     text = "  项目提示词  ",

@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ProofreadingCommandPlan } from "@shared/proofreading/proofreading-command-planner";
-import type { ProofreadingApiClient } from "@frontend/pages/proofreading-page/proofreading-api-client";
+import { createProofreadingApiClient } from "@frontend/pages/proofreading-page/proofreading-api-client";
 import type {
   ProofreadingClientItem,
   ProofreadingListView,
@@ -71,13 +71,15 @@ describe("useProofreadingReplaceActions", () => {
   let root: Root | null = null;
   let latest_state: ReplaceActionState | null = null;
   const write_calls: WriteCall[] = []; // 记录公开写入请求，证明替换动作提交的最终意图
-  const first_item = create_client_item(); // 第一条可替换记录
-  const second_item = create_client_item({
+  let first_item = create_client_item();
+  let second_item = create_client_item({
     item_id: 2,
     row_id: "2",
     dst: "第二条旧译文",
   });
+  let runtime_client = createProofreadingApiClient();
   let current_replace_text = "新";
+  let current_search_keyword = "旧";
 
   afterEach(async () => {
     if (root !== null) {
@@ -91,7 +93,15 @@ describe("useProofreadingReplaceActions", () => {
     root = null;
     latest_state = null;
     write_calls.length = 0;
+    first_item = create_client_item();
+    second_item = create_client_item({
+      item_id: 2,
+      row_id: "2",
+      dst: "第二条旧译文",
+    });
+    runtime_client = createProofreadingApiClient();
     current_replace_text = "新";
+    current_search_keyword = "旧";
   });
 
   // 暴露 hook 返回值，替换依赖通过 options 的公开边界注入。
@@ -108,14 +118,12 @@ describe("useProofreadingReplaceActions", () => {
       is_writing: false,
       list_view: create_list_view(),
       proofreading_runtime_client_ref: {
-        current: {
-          read_proofreading_list_window: vi.fn(),
-        } as unknown as ProofreadingApiClient,
+        current: runtime_client,
       },
       readonly: false,
       replace_cursor_ref: { current: 0 },
       replace_text: current_replace_text,
-      search_keyword: "旧",
+      search_keyword: current_search_keyword,
       push_toast: vi.fn(),
       read_current_view_row_ids: async () => ["1", "2"],
       read_items_by_row_ids: async (row_ids) => {
@@ -191,6 +199,47 @@ describe("useProofreadingReplaceActions", () => {
       search_text: "旧",
       replace_text: "",
       is_regex: false,
+      expected_section_revisions: {
+        items: 7,
+        proofreading: 5,
+      },
+    });
+  });
+
+  it("替换下一个匹配时保存姓名译文", async () => {
+    current_search_keyword = "Name";
+    current_replace_text = "Hero";
+    const target_item = create_client_item({ dst: "正文译文", name_dst: "Name: Alice" });
+    runtime_client = {
+      ...runtime_client,
+      read_proofreading_list_window: vi.fn(async () => ({
+        view_id: "proofreading-view",
+        start: 0,
+        row_count: 1,
+        rows: [
+          {
+            row_id: "1",
+            item: target_item,
+            compressed_src: target_item.compressed_src,
+            compressed_dst: target_item.compressed_dst,
+          },
+        ],
+      })),
+    };
+    await render_hook();
+
+    await act(async () => {
+      await latest_state?.replace_next_visible_match();
+    });
+
+    expect(write_calls[0]).toMatchObject({
+      path: "/api/proofreading/item/save",
+      preferred_row_id: "1",
+      pending_replace_cursor: 1,
+    });
+    expect(write_calls[0]?.plan?.request_body).toMatchObject({
+      item_id: 1,
+      name_dst: "Hero: Alice",
       expected_section_revisions: {
         items: 7,
         proofreading: 5,

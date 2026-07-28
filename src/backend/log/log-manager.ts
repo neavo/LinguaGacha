@@ -399,6 +399,7 @@ interface DailyLogFileWriterOptions {
   nativeFs: NativeFs;
 }
 
+/** 同步追加按日文件，并把保留策略限制在命名匹配的最近日志。 */
 class DailyLogFileWriter implements FileLogWriter {
   private readonly log_dir: string;
   private readonly now: NowProvider;

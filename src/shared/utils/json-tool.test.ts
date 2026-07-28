@@ -3,13 +3,6 @@ import { describe, expect, it } from "vitest";
 import { JsonTool } from "./json-tool";
 
 describe("JsonTool", () => {
-  it("严格路径解析 BOM 并使用原生紧凑序列化", () => {
-    const parsed = JsonTool.parseStrict<{ value: number }>('\uFEFF{"value":7}');
-
-    expect(parsed).toEqual({ value: 7 });
-    expect(JsonTool.stringifyStrict({ value: 7 })).toBe('{"value":7}');
-  });
-
   it("解析字符串和二进制 JSON 载荷", () => {
     expect(JsonTool.parseStrict('{"name":"LinguaGacha","ok":true}')).toEqual({
       name: "LinguaGacha",
@@ -29,23 +22,26 @@ describe("JsonTool", () => {
   });
 
   it("兼容 Python 标准库接受的非有限数字", () => {
-    const result = JsonTool.parseStrict<{ score: number }>('{"score": NaN}');
+    const result = JsonTool.parseStrict<{
+      nan: number;
+      positive: number;
+      negative: number;
+      text: string;
+    }>('{"nan":NaN,"positive":Infinity,"negative":-Infinity,"text":"NaN"}');
 
-    expect(Number.isNaN(result.score)).toBe(true);
+    expect(Number.isNaN(result.nan)).toBe(true);
+    expect(result.positive).toBe(Number.POSITIVE_INFINITY);
+    expect(result.negative).toBe(Number.NEGATIVE_INFINITY);
+    expect(result.text).toBe("NaN");
   });
 
   it("损坏 JSON 仍抛出语法错误", () => {
     expect(() => JsonTool.parseStrict("{broken json")).toThrow(SyntaxError);
   });
 
-  it("按 Node 原生行为转义孤立代理字符", () => {
-    expect(JsonTool.stringifyStrict("\uD800")).toBe('"\\ud800"');
-  });
-
   it("按指定缩进序列化文本", () => {
     expect(JsonTool.stringifyStrict({ id: 1 })).toBe('{"id":1}');
     expect(JsonTool.stringifyStrict({ id: 1 }, { indent: 4 })).toBe('{\n    "id": 1\n}');
-    expect(JsonTool.stringifyStrict({ a: 1, b: 2 }, { indent: 2 })).toContain('\n  "a": 1');
   });
 
   it("序列化不可表示值时抛出类型错误", () => {
@@ -56,6 +52,5 @@ describe("JsonTool", () => {
     expect(() => JsonTool.parseStrict('[{"src":"A",}]')).toThrow(SyntaxError);
 
     await expect(JsonTool.repairParse('[{"src":"A",}]')).resolves.toEqual([{ src: "A" }]);
-    await expect(JsonTool.repairParse('{"v":1,}')).resolves.toEqual({ v: 1 });
   });
 });

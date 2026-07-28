@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildProofreadingLookupQuery } from "./quality-rule-proofreading-query";
 
-describe("quality-state", () => {
+describe("buildProofreadingLookupQuery", () => {
   it("构造校对查找 query 时让文本保护规则使用正则语义", () => {
     expect(
       buildProofreadingLookupQuery({

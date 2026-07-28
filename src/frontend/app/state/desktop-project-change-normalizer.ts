@@ -79,10 +79,6 @@ export function is_project_change_record(value: unknown): value is Record<string
   return is_record(value);
 }
 
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_project_change_sections(
   value: unknown,
 ): Partial<Record<ProjectStage, { payloadMode: ProjectChangePayloadMode; data: unknown }>> {
@@ -140,10 +136,6 @@ function normalize_project_change_items(value: unknown): ProjectChangeItemsPaylo
   };
 }
 
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_record_map(value: unknown): Record<string, JsonRecord> {
   if (!is_record(value)) {
     return {};
@@ -155,10 +147,6 @@ function normalize_record_map(value: unknown): Record<string, JsonRecord> {
   );
 }
 
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_number_array(value: unknown): number[] {
   if (!Array.isArray(value)) {
     return [];
@@ -172,10 +160,6 @@ function normalize_number_array(value: unknown): number[] {
   ];
 }
 
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_string_array(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -183,9 +167,6 @@ function normalize_string_array(value: unknown): string[] {
   return [...new Set(value.map((item) => String(item ?? "").trim()).filter((item) => item !== ""))];
 }
 
-/**
- * 判断当前值是否满足业务条件。
- */
 function is_record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

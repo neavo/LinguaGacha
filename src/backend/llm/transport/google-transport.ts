@@ -3,17 +3,13 @@ import { GoogleGenAI } from "@google/genai";
 import type { ResolvedRequestPolicy } from "../policy/policy-types";
 import type { LLMRequestResult } from "../llm-types";
 import { LLMClientDegradationDetector } from "../llm-client-degradation-detector";
+import { read_json_integer } from "../../../domain/json";
 import type {
   ProviderClientPoolRequest,
   ProviderClientResolver,
   RequestTransport,
 } from "./transport-types";
-import {
-  empty_llm_result,
-  read_transport_number,
-  read_transport_record,
-  read_transport_text,
-} from "./transport-types";
+import { empty_llm_result, read_transport_record, read_transport_text } from "./transport-types";
 
 /**
  * Google client 使用同一 apiKey/baseUrl/header/timeout 组合复用。
@@ -38,7 +34,6 @@ export class GoogleTransport implements RequestTransport {
    */
   public constructor(private readonly pool: ProviderClientResolver) {}
 
-  // send 是跨边界副作用入口，集中处理调用时序和错误载荷组装。
   public async send(policy: ResolvedRequestPolicy, signal: AbortSignal): Promise<LLMRequestResult> {
     const client = this.pool.get_client<{ models: { generateContentStream: Function } }>({
       provider: policy.provider,
@@ -74,8 +69,8 @@ export class GoogleTransport implements RequestTransport {
         }
       }
       const usage = read_transport_record(record["usageMetadata"]);
-      input_tokens = read_transport_number(usage["promptTokenCount"], input_tokens);
-      output_tokens = read_transport_number(usage["candidatesTokenCount"], output_tokens);
+      input_tokens = read_json_integer(usage["promptTokenCount"], input_tokens);
+      output_tokens = read_json_integer(usage["candidatesTokenCount"], output_tokens);
     }
     if (LLMClientDegradationDetector.has_output_degradation(response_result)) {
       return empty_llm_result({ degraded: true });

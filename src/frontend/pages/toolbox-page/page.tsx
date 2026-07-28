@@ -40,22 +40,25 @@ export function ToolboxPage(_props: ScreenComponentProps): JSX.Element {
       <section className="toolbox-page__grid" aria-label={t("toolbox_page.title")}>
         {TOOLBOX_ENTRIES.map((entry) => (
           <Card
+            asChild
             key={entry.id}
             className="toolbox-page__card"
             onClick={() => {
               navigate_to_route(entry.route_id);
             }}
           >
-            <CardHeader className="toolbox-page__card-header">
-              <CardTitle className="toolbox-page__card-title">{t(entry.title_key)}</CardTitle>
-              <ChevronRight className="toolbox-page__card-icon" aria-hidden="true" />
-            </CardHeader>
-            <Separator className="toolbox-page__separator" />
-            <CardContent className="toolbox-page__card-content">
-              <p className="toolbox-page__description">
-                {render_rich_text(t(entry.description_key), DESCRIPTION_COMPONENT_MAP)}
-              </p>
-            </CardContent>
+            <button type="button">
+              <CardHeader className="toolbox-page__card-header">
+                <CardTitle className="toolbox-page__card-title">{t(entry.title_key)}</CardTitle>
+                <ChevronRight className="toolbox-page__card-icon" aria-hidden="true" />
+              </CardHeader>
+              <Separator className="toolbox-page__separator" />
+              <CardContent className="toolbox-page__card-content">
+                <p className="toolbox-page__description">
+                  {render_rich_text(t(entry.description_key), DESCRIPTION_COMPONENT_MAP)}
+                </p>
+              </CardContent>
+            </button>
           </Card>
         ))}
       </section>

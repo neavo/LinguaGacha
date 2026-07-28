@@ -1,7 +1,7 @@
 /**
  * JSON 工具可接受的文本来源，统一覆盖字符串和二进制读取结果
  */
-type JsonToolTextInput = string | ArrayBuffer | Uint8Array;
+type JsonToolTextInput = string | Uint8Array;
 
 /**
  * 控制 JSON 写出格式，避免调用方直接散落缩进魔术值
@@ -19,12 +19,7 @@ const UTF8_BOM = "\uFEFF";
  * 将字符串或二进制输入解码为无 BOM 文本，保持后续 JSON 解析入口纯净
  */
 function decode_text(input: JsonToolTextInput): string {
-  const text =
-    typeof input === "string"
-      ? input
-      : input instanceof ArrayBuffer
-        ? new TextDecoder("utf-8").decode(new Uint8Array(input))
-        : new TextDecoder("utf-8").decode(input);
+  const text = typeof input === "string" ? input : new TextDecoder("utf-8").decode(input);
   return text.startsWith(UTF8_BOM) ? text.slice(1) : text;
 }
 

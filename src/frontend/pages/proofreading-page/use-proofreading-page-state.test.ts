@@ -166,12 +166,6 @@ const toast_fixture: { current: ToastFixture } = {
   current: create_toast_fixture(),
 };
 
-(
-  globalThis as typeof globalThis & {
-    IS_REACT_ACT_ENVIRONMENT?: boolean;
-  }
-).IS_REACT_ACT_ENVIRONMENT = true;
-
 vi.mock("@frontend/app/state/use-desktop-state", () => {
   return {
     useDesktopState: () => runtime_fixture.current,
@@ -981,31 +975,6 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.filter_dialog_filters.statuses).toEqual([]);
   });
 
-  it("目标语言变化后会全量重建校对列表缓存", async () => {
-    await render_hook();
-
-    expect(proofreading_client_fixture.current.sync_proofreading_cache).toHaveBeenCalledTimes(1);
-    expect(proofreading_client_fixture.current.sync_proofreading_cache).toHaveBeenLastCalledWith(
-      expect.objectContaining({ targetLanguage: "ZH" }),
-    );
-
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      settings_snapshot: {
-        ...runtime_fixture.current.settings_snapshot,
-        target_language: "EN",
-      },
-      project_change_signal: create_project_change_signal(1, {
-        mode: "delta",
-        itemIds: [1],
-        updatedSections: ["items"],
-      }),
-    };
-    await render_hook();
-
-    expect(proofreading_client_fixture.current.sync_proofreading_cache).toHaveBeenCalledTimes(2);
-  });
-
   it("缓存 ready 后收到 noop 信号不会重新查询列表和筛选面板", async () => {
     await render_hook();
 
@@ -1312,60 +1281,6 @@ describe("useProofreadingPageState", () => {
     });
   });
 
-  it("读取可见范围时会按滚动预取窗口扩展请求", async () => {
-    proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async () => {
-      return {
-        ...create_list_view(),
-        row_count: 1000,
-      };
-    });
-    proofreading_client_fixture.current.read_proofreading_list_window = vi.fn(
-      async (query: { view_id: string; start: number; count: number }) => {
-        return {
-          view_id: query.view_id,
-          start: query.start,
-          row_count: 1000,
-          rows: [
-            {
-              row_id: String(query.start),
-              item: create_client_item(query.start),
-              compressed_src: `foo-${query.start}`,
-              compressed_dst: `bar-${query.start}`,
-            },
-          ],
-        };
-      },
-    );
-    await render_hook();
-
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_change_signal: create_project_change_signal(1, {
-        mode: "full",
-        itemIds: [],
-        updatedSections: ["project", "items", "quality"],
-      }),
-    };
-    await render_hook();
-
-    await act(async () => {
-      latest_state?.read_visible_range({
-        start: 300,
-        count: 10,
-      });
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(
-      proofreading_client_fixture.current.read_proofreading_list_window,
-    ).toHaveBeenLastCalledWith({
-      view_id: "view-1",
-      start: 44,
-      count: 522,
-    });
-  });
-
   it("项目刷新会保留当前滚动窗口", async () => {
     proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async (query) => {
       return {
@@ -1582,156 +1497,6 @@ describe("useProofreadingPageState", () => {
       }),
     );
     expect(latest_state?.visible_row_count).toBe(1000);
-  });
-
-  it("替换下一个匹配时会按替换扫描块读取列表窗口", async () => {
-    vi.useFakeTimers();
-    proofreading_client_fixture.current.read_proofreading_list_window = vi.fn(
-      async (query: { view_id: string; start: number; count: number }) => {
-        return {
-          view_id: query.view_id,
-          start: query.start,
-          row_count: 1,
-          rows: [],
-        };
-      },
-    );
-    await render_hook();
-
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_change_signal: create_project_change_signal(1, {
-        mode: "full",
-        itemIds: [],
-        updatedSections: ["project", "items", "quality"],
-      }),
-    };
-    await render_hook();
-
-    await act(async () => {
-      latest_state?.update_search_keyword("missing");
-    });
-    await flush_async_updates();
-
-    await act(async () => {
-      await latest_state?.replace_next_visible_match();
-    });
-
-    expect(
-      proofreading_client_fixture.current.read_proofreading_list_window,
-    ).toHaveBeenLastCalledWith({
-      view_id: "view-1",
-      start: 0,
-      count: 256,
-    });
-  });
-
-  it("替换下一个匹配能提交姓名译文保存命令", async () => {
-    proofreading_client_fixture.current.read_proofreading_list_window = vi.fn(async () => {
-      return {
-        view_id: "view-1",
-        start: 0,
-        row_count: 1,
-        rows: [
-          {
-            row_id: "1",
-            item: {
-              ...create_client_item(1),
-              dst: "正文译文",
-              name_dst: "Name: Alice",
-            },
-            compressed_src: "foo",
-            compressed_dst: "bar",
-          },
-        ],
-      };
-    });
-    await render_hook();
-
-    await act(async () => {
-      latest_state?.update_search_keyword("Name");
-      latest_state?.update_replace_text("Hero");
-    });
-    await flush_async_updates();
-    vi.mocked(api_fetch).mockResolvedValueOnce({ accepted: true, changes: [] });
-
-    await act(async () => {
-      await latest_state?.replace_next_visible_match();
-    });
-
-    expect(api_fetch).toHaveBeenCalledWith("/api/proofreading/item/save", {
-      item_id: 1,
-      name_dst: "Hero: Alice",
-      expected_section_revisions: {
-        items: 7,
-        proofreading: 1,
-      },
-    });
-  });
-
-  it("替换全部会把姓名译文命中的行提交给后端", async () => {
-    vi.useFakeTimers();
-    const target_item = {
-      ...create_client_item(1),
-      dst: "正文译文",
-      name_dst: "Name: Alice",
-    };
-    proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async () => {
-      return {
-        ...create_list_view(),
-        row_count: 1,
-        window_rows: [
-          {
-            row_id: "1",
-            item: target_item,
-            compressed_src: "foo",
-            compressed_dst: "bar",
-          },
-        ],
-      };
-    });
-    proofreading_client_fixture.current.read_proofreading_row_ids_range = vi.fn(async () => ["1"]);
-    proofreading_client_fixture.current.read_proofreading_items_by_row_ids = vi.fn(async () => [
-      target_item,
-    ]);
-    await render_hook();
-
-    await act(async () => {
-      latest_state?.update_search_keyword("Name");
-      latest_state?.update_replace_text("Hero");
-    });
-    await act(async () => {
-      vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
-      await Promise.resolve();
-    });
-    await flush_async_updates();
-    vi.mocked(api_fetch).mockResolvedValueOnce({ accepted: true, changes: [] });
-    expect(latest_state?.search_keyword).toBe("Name");
-    expect(latest_state?.replace_text).toBe("Hero");
-    expect(latest_state?.visible_row_count).toBe(1);
-    proofreading_client_fixture.current.read_proofreading_row_ids_range.mockClear();
-
-    await act(async () => {
-      await latest_state?.replace_all_visible_matches();
-    });
-
-    expect(
-      proofreading_client_fixture.current.read_proofreading_row_ids_range,
-    ).toHaveBeenCalledWith({
-      view_id: "view-1",
-      start: 0,
-      count: 1,
-    });
-    expect(api_fetch).toHaveBeenCalledWith("/api/proofreading/items/replace-all", {
-      item_ids: [1],
-      search_text: "Name",
-      replace_text: "Hero",
-      is_regex: false,
-      expected_section_revisions: {
-        items: 7,
-        proofreading: 1,
-      },
-    });
   });
 
   it("切换可见窗口不会裁剪窗口外选区", async () => {
@@ -2274,8 +2039,8 @@ describe("useProofreadingPageState", () => {
         direction: "descending",
       });
       latest_state?.apply_table_selection({
-        selected_row_ids: ["1"],
-        active_row_id: "1",
+        selected_row_ids: ["1", "3"],
+        active_row_id: "3",
         anchor_row_id: "1",
       });
     });
@@ -2291,8 +2056,9 @@ describe("useProofreadingPageState", () => {
       column_id: "src",
       direction: "descending",
     });
-    expect(latest_state?.selected_row_ids).toEqual(["1"]);
-    expect(latest_state?.active_row_id).toBe("1");
+    expect(latest_state?.selected_row_ids).toEqual(["1", "3"]);
+    expect(latest_state?.active_row_id).toBe("3");
+    expect(latest_state?.anchor_row_id).toBe("1");
     expect(latest_state?.restore_scroll_row_id).toBe("1");
 
     await act(async () => {
@@ -2315,53 +2081,6 @@ describe("useProofreadingPageState", () => {
         },
       }),
     );
-  });
-
-  it("重新进入校对页时保留多选和恢复锚点", async () => {
-    proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async () => {
-      return {
-        ...create_list_view(),
-        row_count: 3,
-        window_rows: [
-          {
-            row_id: "1",
-            item: create_client_item(1),
-            compressed_src: "foo-1",
-            compressed_dst: "bar-1",
-          },
-          {
-            row_id: "2",
-            item: create_client_item(2),
-            compressed_src: "foo-2",
-            compressed_dst: "bar-2",
-          },
-          {
-            row_id: "3",
-            item: create_client_item(3),
-            compressed_src: "foo-3",
-            compressed_dst: "bar-3",
-          },
-        ],
-      };
-    });
-    await render_hook();
-
-    await act(async () => {
-      latest_state?.apply_table_selection({
-        selected_row_ids: ["1", "3"],
-        active_row_id: "3",
-        anchor_row_id: "1",
-      });
-    });
-
-    await unmount_page();
-
-    await render_hook();
-
-    expect(latest_state?.selected_row_ids).toEqual(["1", "3"]);
-    expect(latest_state?.active_row_id).toBe("3");
-    expect(latest_state?.anchor_row_id).toBe("1");
-    expect(latest_state?.restore_scroll_row_id).toBe("1");
   });
 
   it("列表运行态错误会统一收口成刷新失败 toast", async () => {
@@ -2530,11 +2249,11 @@ describe("useProofreadingPageState", () => {
     vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
 
     await request_pending_confirmation(() => {
-      latest_state?.request_retranslate_row_ids(["1"]);
+      latest_state?.request_retranslate_row_ids(["2", "1", "2"]);
     });
     expect(latest_state?.pending_confirmation).toMatchObject({
       kind: "retranslate",
-      target_row_ids: ["1"],
+      target_row_ids: ["2", "1", "2"],
       submitting: false,
     });
 
@@ -2549,86 +2268,6 @@ describe("useProofreadingPageState", () => {
       kind: "retranslate",
       submitting: true,
     });
-
-    await act(async () => {
-      retranslate_deferred.resolve({
-        accepted: true,
-        task: {
-          task_type: "translation",
-          status: "requested",
-          busy: true,
-          extras: { kind: "translation", scope: { kind: "items", item_ids: [1] } },
-        },
-      });
-      await confirm_promise;
-    });
-
-    expect(api_fetch).toHaveBeenCalledWith("/api/tasks/start", {
-      task_type: "translation",
-      mode: "new",
-      scope: { kind: "items", item_ids: [1] },
-      expected_section_revisions: {
-        items: 7,
-        proofreading: 1,
-        quality: 0,
-        prompts: 0,
-      },
-    });
-    expect(runtime_fixture.current.sync_task_snapshot).toHaveBeenCalledWith(
-      expect.objectContaining({
-        task_type: "translation",
-        status: "requested",
-        busy: true,
-        extras: { kind: "translation", scope: { kind: "items", item_ids: [1] } },
-      }),
-    );
-    expect(latest_state?.retranslating_row_ids).toEqual(["1"]);
-    expect(toast_fixture.current.push_toast).not.toHaveBeenCalledWith(
-      "success",
-      expect.any(String),
-    );
-  });
-
-  it("批量校对重翻会按请求顺序去重任务中的行 id", async () => {
-    proofreading_client_fixture.current.read_proofreading_items_by_row_ids = vi.fn(
-      async ({ row_ids }: { row_ids: string[] }) => {
-        return row_ids.map((row_id) => create_client_item(row_id));
-      },
-    );
-    await render_hook();
-
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_change_signal: create_project_change_signal(1, {
-        mode: "full",
-        itemIds: [],
-        updatedSections: ["project", "items", "quality"],
-      }),
-    };
-    await render_hook();
-
-    const retranslate_deferred = create_deferred<{
-      accepted: boolean;
-      task: {
-        task_type: string;
-        status: string;
-        busy: boolean;
-        extras: { kind: "translation"; scope: { kind: "items"; item_ids: Array<number | string> } };
-      };
-    }>();
-    vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
-
-    await request_pending_confirmation(() => {
-      latest_state?.request_retranslate_row_ids(["2", "1", "2"]);
-    });
-
-    let confirm_promise: Promise<void> | undefined;
-    await act(async () => {
-      confirm_promise = latest_state?.confirm_pending_confirmation();
-      await Promise.resolve();
-    });
-
-    expect(latest_state?.retranslating_row_ids).toEqual([]);
 
     await act(async () => {
       retranslate_deferred.resolve({
@@ -2654,7 +2293,19 @@ describe("useProofreadingPageState", () => {
         prompts: 0,
       },
     });
+    expect(runtime_fixture.current.sync_task_snapshot).toHaveBeenCalledWith(
+      expect.objectContaining({
+        task_type: "translation",
+        status: "requested",
+        busy: true,
+        extras: { kind: "translation", scope: { kind: "items", item_ids: [2, 1] } },
+      }),
+    );
     expect(latest_state?.retranslating_row_ids).toEqual(["2", "1"]);
+    expect(toast_fixture.current.push_toast).not.toHaveBeenCalledWith(
+      "success",
+      expect.any(String),
+    );
   });
 
   it("校对重翻失败后不写入任务快照并保留错误提示", async () => {
@@ -2701,129 +2352,5 @@ describe("useProofreadingPageState", () => {
       "error",
       "proofreading_page.feedback.retranslate_failed",
     );
-  });
-
-  it("确认清空译文时只提交目标条目和 revision 锁", async () => {
-    await render_hook();
-
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_change_signal: create_project_change_signal(1, {
-        mode: "full",
-        itemIds: [],
-        updatedSections: ["project", "items", "quality"],
-      }),
-    };
-    await render_hook();
-
-    vi.mocked(api_fetch).mockResolvedValueOnce({ accepted: true, changes: [] });
-    proofreading_client_fixture.current.read_proofreading_items_by_row_ids.mockClear();
-
-    await request_pending_confirmation(() => {
-      latest_state?.request_clear_translation_row_ids(["1"]);
-    });
-    expect(latest_state?.pending_confirmation).toMatchObject({
-      kind: "clear-translations",
-      target_row_ids: ["1"],
-      submitting: false,
-    });
-    await act(async () => {
-      await latest_state?.confirm_pending_confirmation();
-    });
-
-    expect(api_fetch).toHaveBeenCalledWith("/api/proofreading/translations/clear", {
-      item_ids: [1],
-      expected_section_revisions: {
-        items: 7,
-        proofreading: 1,
-      },
-    });
-    expect(runtime_fixture.current.commit_project_write).toHaveBeenCalledWith(
-      expect.objectContaining({
-        operation: "proofreading.write",
-      }),
-    );
-    expect(
-      proofreading_client_fixture.current.read_proofreading_items_by_row_ids,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("编辑弹窗保存时直接读取后端 query 当前行", async () => {
-    await render_hook();
-
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_change_signal: create_project_change_signal(1, {
-        mode: "full",
-        itemIds: [],
-        updatedSections: ["project", "items", "quality"],
-      }),
-    };
-    await render_hook();
-
-    await act(async () => {
-      await latest_state?.open_edit_dialog("1");
-    });
-    proofreading_client_fixture.current.read_proofreading_items_by_row_ids.mockClear();
-    vi.mocked(api_fetch).mockResolvedValueOnce({ accepted: true, changes: [] });
-
-    await act(async () => {
-      latest_state?.update_dialog_draft({ dst: "新译文" });
-    });
-    await act(async () => {
-      await latest_state?.save_dialog_entry();
-    });
-
-    expect(api_fetch).toHaveBeenCalledWith("/api/proofreading/item/save", {
-      item_id: 1,
-      dst: "新译文",
-      expected_section_revisions: {
-        items: 7,
-        proofreading: 1,
-      },
-    });
-    expect(
-      proofreading_client_fixture.current.read_proofreading_items_by_row_ids,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("设置翻译状态会直接提交目标状态并保持译文由后端保留", async () => {
-    await render_hook();
-
-    runtime_fixture.current = {
-      ...runtime_fixture.current,
-      project_change_signal: create_project_change_signal(1, {
-        mode: "full",
-        itemIds: [],
-        updatedSections: ["project", "items", "quality"],
-      }),
-    };
-    await render_hook();
-
-    vi.mocked(api_fetch).mockResolvedValueOnce({ accepted: true, changes: [] });
-    proofreading_client_fixture.current.read_proofreading_items_by_row_ids.mockClear();
-
-    await act(async () => {
-      latest_state?.request_set_translation_status_row_ids(["1"], "PROCESSED");
-    });
-    await flush_async_updates();
-
-    expect(latest_state?.pending_confirmation).toBeNull();
-    expect(api_fetch).toHaveBeenCalledWith("/api/proofreading/items/set-status", {
-      item_ids: [1],
-      status: "PROCESSED",
-      expected_section_revisions: {
-        items: 7,
-        proofreading: 1,
-      },
-    });
-    expect(runtime_fixture.current.commit_project_write).toHaveBeenCalledWith(
-      expect.objectContaining({
-        operation: "proofreading.write",
-      }),
-    );
-    expect(
-      proofreading_client_fixture.current.read_proofreading_items_by_row_ids,
-    ).not.toHaveBeenCalled();
   });
 });

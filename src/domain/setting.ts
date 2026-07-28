@@ -24,9 +24,6 @@ export {
   type TargetLanguageCode,
 } from "./language";
 
-/**
- * 集中维护当前模块的稳定常量。
- */
 export const PROJECT_SAVE_MODES = ["MANUAL", "FIXED", "SOURCE"] as const; // ProjectSaveMode 是项目保存位置策略，页面和设置服务都从这里取合法值
 
 export type ProjectSaveMode = (typeof PROJECT_SAVE_MODES)[number];
@@ -68,9 +65,6 @@ export type ProjectSettingsSnapshot = Pick<
   | "skip_duplicate_source_text_enable"
 >;
 
-/**
- * 集中维护当前模块的稳定常量。
- */
 export const SETTING_KEYS = [
   "app_language",
   "source_language",
@@ -109,9 +103,6 @@ const BOOLEAN_SETTING_KEYS = new Set([
 
 const NUMBER_SETTING_KEYS = new Set(["request_timeout", "preceding_lines_threshold"]);
 
-/**
- * 集中维护当前模块的稳定常量。
- */
 export const DEFAULT_SETTING: JsonRecord = {
   app_language: "ZH",
   source_language: "JA",
@@ -146,9 +137,6 @@ const PROJECT_SAVE_MODE_SET = new Set<ProjectSaveMode>(PROJECT_SAVE_MODES);
 export class Setting {
   public readonly data: JsonRecord; // 完整设置文件形状；设置快照只从白名单计算
 
-  /**
-   * 初始化当前实例的内部状态。
-   */
   private constructor(data: JsonRecord) {
     this.data = data;
   }
@@ -278,9 +266,6 @@ export class Setting {
     return is_project_save_mode(value) ? value : "MANUAL";
   }
 
-  /**
-   * 构建当前场景的稳定结果。
-   */
   private static build_recent_project_display_name(project_path: string): string {
     const base = project_path.replace(/\\/g, "/").split("/").filter(Boolean).at(-1) ?? "";
     const dot_index = base.lastIndexOf(".");
@@ -289,9 +274,6 @@ export class Setting {
 }
 
 // 项目保存模式写入设置前先确认合法值，避免页面草稿值落盘
-/**
- * 判断当前值是否满足业务条件。
- */
 export function is_project_save_mode(value: unknown): value is ProjectSaveMode {
   return PROJECT_SAVE_MODE_SET.has(value as ProjectSaveMode);
 }
@@ -408,18 +390,12 @@ export function normalize_project_settings_snapshot(
   };
 }
 
-/**
- * 读取当前场景需要的稳定数据。
- */
 function read_setting_record(value: unknown): JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as JsonRecord)
     : {};
 }
 
-/**
- * 读取当前场景需要的稳定数据。
- */
 function read_string_setting(
   value: JsonValue | undefined,
   key: SettingKey,
@@ -430,24 +406,15 @@ function read_string_setting(
   return options.preserve_case === true ? raw_value : raw_value.toUpperCase();
 }
 
-/**
- * 读取当前场景需要的稳定数据。
- */
 function read_project_string_setting(value: JsonValue | undefined, fallback: string): string {
   const text = String(value ?? "").trim();
   return text === "" ? fallback : text.toUpperCase();
 }
 
-/**
- * 读取当前场景需要的稳定数据。
- */
 function read_boolean_setting(value: JsonValue | undefined, key: SettingKey): boolean {
   return normalize_boolean_setting(value, Boolean(DEFAULT_SETTING[key]));
 }
 
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_boolean_setting(value: unknown, fallback: boolean): boolean {
   if (typeof value === "boolean") {
     return value;
@@ -467,24 +434,15 @@ function normalize_boolean_setting(value: unknown, fallback: boolean): boolean {
   return fallback;
 }
 
-/**
- * 读取当前场景需要的稳定数据。
- */
 function read_number_setting(value: JsonValue | undefined, key: SettingKey): number {
   return normalize_number_setting(value, Number(DEFAULT_SETTING[key] ?? 0));
 }
 
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_number_setting(value: unknown, fallback: number): number {
   const number_value = Number(value ?? fallback);
   return Number.isFinite(number_value) ? number_value : fallback;
 }
 
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_recent_project_settings(value: unknown): RecentProjectSetting[] {
   if (!Array.isArray(value)) {
     return [];
@@ -501,7 +459,4 @@ function normalize_recent_project_settings(value: unknown): RecentProjectSetting
     .filter((item) => item.path !== "");
 }
 
-/**
- * 集中维护当前模块的稳定常量。
- */
 export const normalize_project_save_mode = Setting.normalize_project_save_mode;

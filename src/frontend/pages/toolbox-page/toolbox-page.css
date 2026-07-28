@@ -13,6 +13,7 @@
 .toolbox-page__card {
   width: 300px;
   min-height: 128px;
+  text-align: start;
 }
 
 .toolbox-page__card-header {

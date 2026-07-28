@@ -17,7 +17,7 @@ function create_log_manager_stub(): Pick<LogManager, "info" | "warning" | "error
 describe("TaskLogReplay", () => {
   it("输出任务启动和结束日志到统一 LogManager", () => {
     const log_manager = create_log_manager_stub();
-    const replay = new TaskLogReplay(log_manager as LogManager);
+    const replay = new TaskLogReplay(log_manager);
 
     replay.task_run_start(
       {
@@ -50,7 +50,7 @@ describe("TaskLogReplay", () => {
 
   it("回放 worker 日志并保留结构化错误字段", () => {
     const log_manager = create_log_manager_stub();
-    const replay = new TaskLogReplay(log_manager as LogManager);
+    const replay = new TaskLogReplay(log_manager);
 
     replay.work_unit_logs([
       {
@@ -80,7 +80,7 @@ describe("TaskLogReplay", () => {
 
   it("任务异常写入诊断字段而不是拼进 message", () => {
     const log_manager = create_log_manager_stub();
-    const replay = new TaskLogReplay(log_manager as LogManager);
+    const replay = new TaskLogReplay(log_manager);
 
     replay.task_error("任务执行失败", new Error("provider timeout"));
 

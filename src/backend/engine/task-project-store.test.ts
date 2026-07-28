@@ -150,9 +150,6 @@ describe("TaskProjectStore", () => {
         error_count: 3,
       },
     ]);
-    const by_srcs_spy = vi.spyOn(database, "get_analysis_candidate_aggregates_by_srcs");
-    const all_candidates_spy = vi.spyOn(database, "get_analysis_candidate_aggregates");
-
     const ack = await store.commit_analysis_results(
       [
         {
@@ -185,8 +182,6 @@ describe("TaskProjectStore", () => {
       create_progress_snapshot({ total_line: 2, line: 1, processed_line: 1 }),
     );
 
-    expect(by_srcs_spy).toHaveBeenCalledWith(project_path, ["魔法", "人物"]);
-    expect(all_candidates_spy).not.toHaveBeenCalled();
     expect(database.get_analysis_item_checkpoints(project_path)).toEqual([
       {
         item_id: 1,

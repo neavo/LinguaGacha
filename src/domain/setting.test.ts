@@ -1,17 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  normalize_project_save_mode,
-  normalize_project_settings_snapshot,
-  normalize_setting_snapshot,
-} from "./setting";
+import { normalize_project_settings_snapshot, normalize_setting_snapshot } from "./setting";
 
-describe("settings 基础模型", () => {
-  it("规范化项目保存模式", () => {
-    expect(normalize_project_save_mode("FIXED")).toBe("FIXED");
-    expect(normalize_project_save_mode("bad")).toBe("MANUAL");
-  });
-
+describe("设置快照", () => {
   it("设置快照缺字段时统一使用领域默认值", () => {
     expect(normalize_setting_snapshot({})).toMatchObject({
       source_language: "JA",

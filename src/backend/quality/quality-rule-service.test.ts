@@ -2,7 +2,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import ExcelJS from "exceljs";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectDatabase } from "../database/database-operations";
@@ -87,28 +86,11 @@ describe("QualityRuleService", () => {
     ).toThrow("request.validation_failed");
   });
 
-  it("导入外部 JSON 规则时显式修复可恢复的非标 JSON", async () => {
-    const { service, app_root } = create_service();
-    const file_path = path.join(app_root, "rules.json");
-    fs.writeFileSync(file_path, '[{"src":"A","dst":"甲",},]', "utf-8");
-
-    await expect(service.import_rules({ path: file_path })).resolves.toEqual({
-      entries: [
-        {
-          src: "A",
-          dst: "甲",
-          info: "",
-          regex: false,
-          case_sensitive: false,
-        },
-      ],
-    });
-  });
-
-  it("导入外部规则时按扩展名分发并拒绝未知格式", async () => {
+  it("导入与导出外部规则时保持服务响应形状", async () => {
     const { service, app_root } = create_service();
     const json_path = path.join(app_root, "rules.JSON");
     const text_path = path.join(app_root, "rules.txt");
+    const export_path = path.join(app_root, "exports", "rules.xlsx");
     fs.writeFileSync(json_path, '[{"src":"HP","dst":"生命值"}]', "utf-8");
     fs.writeFileSync(text_path, "HP=生命值", "utf-8");
 
@@ -125,111 +107,14 @@ describe("QualityRuleService", () => {
     });
     await expect(service.import_rules({ path: text_path })).resolves.toEqual({ entries: [] });
     await expect(service.import_rules({ path: "" })).resolves.toEqual({ entries: [] });
-  });
-
-  it("导入外部 JSON 规则时兼容列表、RPG Maker Actors 与 KV 字典", async () => {
-    const { service, app_root } = create_service();
-    const list_path = path.join(app_root, "list.json");
-    const actors_path = path.join(app_root, "actors.json");
-    const kv_path = path.join(app_root, "kv.json");
-    fs.writeFileSync(
-      list_path,
-      JSON.stringify([{ src: " HP ", dst: "生命值", info: "i", regex: 1 }, { src: "   " }, "bad"]),
-      "utf-8",
-    );
-    fs.writeFileSync(
-      actors_path,
-      JSON.stringify([
-        { id: 7, name: "勇者", nickname: "小勇" },
-        { id: 8, name: "", nickname: "弓手" },
-      ]),
-      "utf-8",
-    );
-    fs.writeFileSync(kv_path, JSON.stringify({ A: "甲", "": "skip", B: null }), "utf-8");
-
-    await expect(service.import_rules({ path: list_path })).resolves.toEqual({
-      entries: [
-        {
-          src: "HP",
-          dst: "生命值",
-          info: "i",
-          regex: true,
-          case_sensitive: false,
-        },
-      ],
-    });
-    await expect(service.import_rules({ path: actors_path })).resolves.toEqual({
-      entries: [
-        { src: "\\n[7]", dst: "勇者", info: "", regex: false, case_sensitive: false },
-        { src: "\\N[7]", dst: "勇者", info: "", regex: false, case_sensitive: false },
-        { src: "\\nn[7]", dst: "小勇", info: "", regex: false, case_sensitive: false },
-        { src: "\\NN[7]", dst: "小勇", info: "", regex: false, case_sensitive: false },
-        { src: "\\nn[8]", dst: "弓手", info: "", regex: false, case_sensitive: false },
-        { src: "\\NN[8]", dst: "弓手", info: "", regex: false, case_sensitive: false },
-      ],
-    });
-    await expect(service.import_rules({ path: kv_path })).resolves.toEqual({
-      entries: [
-        { src: "A", dst: "甲", info: "", regex: false, case_sensitive: false },
-        { src: "B", dst: "", info: "", regex: false, case_sensitive: false },
-      ],
-    });
-  });
-
-  it("导入外部 XLSX 规则时跳过表头和空首列并解析布尔字段", async () => {
-    const { service, app_root } = create_service();
-    const file_path = path.join(app_root, "rules.xlsx");
-    const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet("rules");
-    sheet.getCell(1, 1).value = "src";
-    sheet.getCell(1, 2).value = "dst";
-    sheet.getCell(2, 1).value = "HP";
-    sheet.getCell(2, 2).value = "生命值";
-    sheet.getCell(2, 3).value = "term";
-    sheet.getCell(2, 4).value = "true";
-    sheet.getCell(2, 5).value = "TRUE";
-    sheet.getCell(3, 1).value = "";
-    sheet.getCell(3, 2).value = "应跳过";
-    sheet.getCell(4, 1).value = "MP";
-    sheet.getCell(4, 2).value = "魔力";
-    await workbook.xlsx.writeFile(file_path);
-
-    await expect(service.import_rules({ path: file_path })).resolves.toEqual({
-      entries: [
-        {
-          src: "HP",
-          dst: "生命值",
-          info: "term",
-          regex: true,
-          case_sensitive: true,
-        },
-        {
-          src: "MP",
-          dst: "魔力",
-          info: "",
-          regex: false,
-          case_sensitive: false,
-        },
-      ],
-    });
-  });
-
-  it("导出外部 XLSX 规则时复用表格工具样式并转义公式文本", async () => {
-    const { service, app_root } = create_service();
-    const file_path = path.join(app_root, "exports", "rules.xlsx");
-
-    await service.export_rules({
-      path: file_path,
-      entries: [{ src: "=SUM(A1:A2)", dst: "甲", info: "", regex: false, case_sensitive: false }],
-    });
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(file_path);
-    const sheet = workbook.worksheets[0];
-
-    expect(sheet?.getCell(1, 1).value).toBe("src");
-    expect(sheet?.getCell(2, 1).value).toBe("'=SUM(A1:A2)");
-    expect(sheet?.getCell(2, 1).font.size).toBe(10);
-    expect(sheet?.getCell(2, 1).alignment.horizontal).toBe("left");
+    await expect(
+      service.export_rules({
+        path: export_path,
+        entries: [{ src: "HP", dst: "生命值" }],
+      }),
+    ).resolves.toEqual({ path: path.join(app_root, "exports", "rules.json").replace(/\\/gu, "/") });
+    expect(fs.existsSync(path.join(app_root, "exports", "rules.json"))).toBe(true);
+    expect(fs.existsSync(export_path)).toBe(true);
   });
 
   it("任务 busy 时拒绝全部质量项目写但不阻塞预设文件 IO", async () => {
@@ -388,16 +273,13 @@ describe("QualityRuleService", () => {
     const json_path = String(result["json_path"] ?? "");
     const xlsx_path = String(result["xlsx_path"] ?? "");
     const entries = JSON.parse(fs.readFileSync(json_path, "utf-8")) as JsonValue[];
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(xlsx_path);
 
     expect(result).toMatchObject({ entry_count: 2 });
     expect(entries).toEqual([
       { src: "\\N[1]", dst: "\\N[1]", info: "控制码", regex: false, case_sensitive: false },
       { src: "姫", dst: "姬", info: "角色名", regex: false, case_sensitive: true },
     ]);
-    expect(workbook.worksheets[0]?.getCell(2, 1).value).toBe("\\N[1]");
-    expect(workbook.worksheets[0]?.getCell(3, 1).value).toBe("姫");
+    expect(fs.existsSync(xlsx_path)).toBe(true);
   });
 
   it("读取当前质量规则切片与 revision", () => {

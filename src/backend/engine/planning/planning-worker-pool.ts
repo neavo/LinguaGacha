@@ -22,7 +22,6 @@ const IN_PROCESS_YIELD_EVERY_ITEMS = 256; // 同进程计数每处理一批主�
 
 interface PlanningWorkerPoolOptions {
   execution: BackendWorkerExecution;
-  workerCount?: number;
 }
 
 interface PendingPlanningTask {
@@ -57,7 +56,6 @@ export class PlanningWorkerPool {
   public constructor(options: PlanningWorkerPoolOptions) {
     this.execution = options.execution;
     this.worker_count = resolve_default_worker_count({
-      workerCount: options.workerCount,
       availableParallelism: os.availableParallelism?.() ?? os.cpus().length,
     });
     if (this.execution.kind === "in_process") {

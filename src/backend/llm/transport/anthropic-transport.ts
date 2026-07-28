@@ -3,18 +3,14 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { ResolvedRequestPolicy } from "../policy/policy-types";
 import type { LLMRequestResult } from "../llm-types";
 import { LLMClientDegradationDetector } from "../llm-client-degradation-detector";
+import { read_json_integer } from "../../../domain/json";
 import { log_error_from_message, type LogError } from "../../../shared/error";
 import type {
   ProviderClientPoolRequest,
   ProviderClientResolver,
   RequestTransport,
 } from "./transport-types";
-import {
-  empty_llm_result,
-  read_transport_number,
-  read_transport_record,
-  read_transport_text,
-} from "./transport-types";
+import { empty_llm_result, read_transport_record, read_transport_text } from "./transport-types";
 
 /**
  * Anthropic client 使用 x-api-key SDK 配置，不把凭据放进 payload。
@@ -38,7 +34,6 @@ export class AnthropicTransport implements RequestTransport {
    */
   public constructor(private readonly pool: ProviderClientResolver) {}
 
-  // send 是跨边界副作用入口，集中处理调用时序和错误载荷组装。
   public async send(policy: ResolvedRequestPolicy, signal: AbortSignal): Promise<LLMRequestResult> {
     const client = this.pool.get_client<{ messages: { create: Function } }>({
       provider: policy.provider,
@@ -73,8 +68,8 @@ export class AnthropicTransport implements RequestTransport {
       }
       const message = read_transport_record(record["message"]);
       const usage = read_transport_record(message["usage"] ?? record["usage"]);
-      input_tokens = read_transport_number(usage["input_tokens"], input_tokens);
-      output_tokens = read_transport_number(usage["output_tokens"], output_tokens);
+      input_tokens = read_json_integer(usage["input_tokens"], input_tokens);
+      output_tokens = read_json_integer(usage["output_tokens"], output_tokens);
       const stop_reason = read_transport_text(message["stop_reason"] ?? record["stop_reason"]);
       if (stop_reason === "max_tokens") {
         request_error = log_error_from_message("供应商返回长度截断。", { stop_reason });

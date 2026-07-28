@@ -31,6 +31,7 @@ import { BackendServices } from "./backend-services";
 import type { BackendServicesOptions } from "./backend-services";
 import { TaskService } from "../engine/task-service";
 import { TaskRuntime } from "../engine/task-runtime";
+import { BackendWorkerClient } from "../worker/worker-client";
 
 function create_backend_services_options(): BackendServicesOptions {
   return {
@@ -63,25 +64,9 @@ describe("BackendServices", () => {
     planning_dispose_mock.mockClear();
   });
 
-  it("按业务能力装配组合根且不保留单服务包装层", () => {
-    const services = new BackendServices(create_backend_services_options());
-
-    expect(services.project.summary).toBeDefined();
-    expect(services.project.content).toBeDefined();
-    expect(services.proofreading).toBeDefined();
-    expect(services.quality.rules).toBeDefined();
-    expect(services.quality.prompts).toBeDefined();
-    expect(services.files.translationExport).toBeDefined();
-    expect(services.files.tsConversionExport).toBeDefined();
-    expect(services.model).toBeDefined();
-    expect(services.tasks).toBeDefined();
-    expect(services.logManager).toBeDefined();
-    expect("workbench" in services).toBe(false);
-    expect("streams" in services).toBe(false);
-  });
-
   it("启动和释放时只管理组合根拥有的运行期资源", async () => {
     const options = create_backend_services_options();
+    const backend_worker_dispose = vi.spyOn(BackendWorkerClient.prototype, "dispose");
     const services = new BackendServices(options);
 
     services.start();
@@ -89,8 +74,11 @@ describe("BackendServices", () => {
     await services.dispose();
 
     expect(options.appSettingService.set_stream_publisher).toHaveBeenCalledTimes(2);
+    expect(options.appSettingService.set_stream_publisher).toHaveBeenLastCalledWith(null);
     expect(work_unit_dispose_mock).toHaveBeenCalledTimes(1);
     expect(planning_dispose_mock).toHaveBeenCalledTimes(1);
+    expect(backend_worker_dispose).toHaveBeenCalledTimes(1);
+    backend_worker_dispose.mockRestore();
   });
 
   it("把任务快照按公开 SSE envelope 发布", async () => {

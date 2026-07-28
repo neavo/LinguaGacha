@@ -5,6 +5,26 @@ import {
   find_first_translation_replace,
   matches_translation_replace_target,
 } from "./proofreading-search-replace";
+import type { ProofreadingItem } from "@shared/proofreading/proofreading-types";
+
+function create_item(overrides: Partial<ProofreadingItem> = {}): ProofreadingItem {
+  return {
+    item_id: 1,
+    file_path: "chapter.txt",
+    row_number: 1,
+    src: "source",
+    dst: "正文译文",
+    name_src: null,
+    name_dst: null,
+    status: "NONE",
+    retry_count: 0,
+    warnings: [],
+    warning_fragments_by_code: {},
+    applied_glossary_terms: [],
+    failed_glossary_terms: [],
+    ...overrides,
+  };
+}
 
 describe("proofreading search replace", () => {
   it("按字面量替换正文中的首个可见命中", () => {
@@ -15,21 +35,7 @@ describe("proofreading search replace", () => {
 
     expect(
       find_first_translation_replace({
-        item: {
-          item_id: 1,
-          file_path: "chapter.txt",
-          row_number: 1,
-          src: "source",
-          dst: "Magic 和 Magic",
-          name_src: null,
-          name_dst: null,
-          status: "NONE",
-          retry_count: 0,
-          warnings: [],
-          warning_fragments_by_code: {},
-          applied_glossary_terms: [],
-          failed_glossary_terms: [],
-        },
+        item: create_item({ dst: "Magic 和 Magic" }),
         search_pattern: pattern,
         replacement: "魔法",
         is_regex: false,
@@ -45,21 +51,7 @@ describe("proofreading search replace", () => {
 
     expect(
       find_first_translation_replace({
-        item: {
-          item_id: 1,
-          file_path: "chapter.txt",
-          row_number: 1,
-          src: "source",
-          dst: "正文译文",
-          name_src: null,
-          name_dst: ["Name: Alice", "保留译名"],
-          status: "PROCESSED",
-          retry_count: 0,
-          warnings: [],
-          warning_fragments_by_code: {},
-          applied_glossary_terms: [],
-          failed_glossary_terms: [],
-        },
+        item: create_item({ name_dst: ["Name: Alice", "保留译名"], status: "PROCESSED" }),
         search_pattern: pattern,
         replacement: "$1",
         is_regex: true,
@@ -72,21 +64,7 @@ describe("proofreading search replace", () => {
 
     expect(
       matches_translation_replace_target({
-        item: {
-          item_id: 1,
-          file_path: "chapter.txt",
-          row_number: 1,
-          src: "source",
-          dst: "正文译文",
-          name_src: null,
-          name_dst: ["Alice", "保留译名"],
-          status: "NONE",
-          retry_count: 0,
-          warnings: [],
-          warning_fragments_by_code: {},
-          applied_glossary_terms: [],
-          failed_glossary_terms: [],
-        },
+        item: create_item({ name_dst: ["Alice", "保留译名"] }),
         search_pattern: pattern,
         keyword: "Alice",
       }),

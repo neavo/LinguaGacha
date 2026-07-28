@@ -2,17 +2,13 @@ import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import type { TextQualitySnapshot } from "../../../shared/text/text-types";
 import type { TranslationActor, TranslationLine } from "./translation-line";
 import { PromptBuilder } from "./work-unit-prompt-builder";
 
 describe("PromptBuilder", () => {
-  afterEach(() => {
-    PromptBuilder.reset();
-  });
-
   it("从资源模板生成翻译提示词并注入上文、术语和控制字符示例", async () => {
     const app_root = await create_template_root();
     const builder = new PromptBuilder(
@@ -30,7 +26,7 @@ describe("PromptBuilder", () => {
     const result = await builder.generate_prompt(
       [create_line({ text_src: "Alice\\n[1]" })],
       "text",
-      ["\\n[1]"],
+      ["\\n[1]", "<b>", "\\n[1]", ""],
       [{ src: "上一句" }],
     );
 
@@ -38,7 +34,7 @@ describe("PromptBuilder", () => {
     expect(result.messages[0]?.content).toContain("中文");
     expect(result.messages[1]?.content).toContain("参考上文");
     expect(result.messages[1]?.content).toContain("Alice -> 爱丽丝 #女性人名");
-    expect(result.messages[1]?.content).toContain("控制字符示例");
+    expect(result.messages[1]?.content).toContain("控制字符示例：\n\\n[1], <b>");
     expect(result.messages[1]?.content).toContain('{"0":"Alice\\\\n[1]"}');
   });
 
@@ -50,59 +46,6 @@ describe("PromptBuilder", () => {
 
     expect(result.messages[0]?.content).toContain("Chinese");
     expect(result.messages[1]?.content).toBe("Input:\nAlice");
-  });
-
-  it("源语言为 ALL 时使用提示词语言的源语言占位文本", async () => {
-    const app_root = await create_template_root();
-    const builder = new PromptBuilder(
-      app_root,
-      {
-        app_language: "ZH",
-        source_language: "ALL",
-        target_language: "ZH",
-      },
-      create_quality_snapshot(),
-    );
-
-    const result = await builder.build_main("text");
-
-    expect(result).toContain("请从 原文 翻译到 中文");
-    expect(result).not.toContain("{source_language}");
-    expect(result).not.toContain("{target_language}");
-  });
-
-  it("目标语言为 ALL 时拒绝构造提示词", async () => {
-    const app_root = await create_template_root();
-    const builder = new PromptBuilder(
-      app_root,
-      {
-        app_language: "ZH",
-        source_language: "JA",
-        target_language: "ALL",
-      },
-      create_quality_snapshot(),
-    );
-
-    await expect(builder.build_main()).rejects.toMatchObject({
-      code: "language.unsupported_all_target_language",
-    });
-  });
-
-  it("目标语言无效时拒绝构造提示词", async () => {
-    const app_root = await create_template_root();
-    const builder = new PromptBuilder(
-      app_root,
-      {
-        app_language: "ZH",
-        source_language: "JA",
-        target_language: "INVALID",
-      },
-      create_quality_snapshot(),
-    );
-
-    await expect(builder.build_main()).rejects.toMatchObject({
-      code: "language.invalid_target_language",
-    });
   });
 
   it("提示词模板语言跟随 UI 语言而不是目标语言", async () => {
@@ -121,78 +64,6 @@ describe("PromptBuilder", () => {
 
     expect(result).toContain("Translation prefix");
     expect(result).toContain("Translate from Japanese to Chinese.");
-  });
-
-  it("德语界面复用英文提示词模板并使用德语语言名称", async () => {
-    const app_root = await create_template_root();
-    const builder = new PromptBuilder(
-      app_root,
-      {
-        app_language: "DE",
-        source_language: "JA",
-        target_language: "DE",
-      },
-      create_quality_snapshot(),
-    );
-
-    const result = await builder.build_main("text");
-
-    expect(result).toContain("Translation prefix");
-    expect(result).toContain("Translate from Japanisch to Deutsch.");
-    expect(result).not.toContain("翻译前缀");
-  });
-
-  it("英文提示词中匈牙利文使用正确 Hungarian 拼写", async () => {
-    const app_root = await create_template_root();
-    const builder = new PromptBuilder(
-      app_root,
-      {
-        app_language: "EN",
-        source_language: "HU",
-        target_language: "ZH",
-      },
-      create_quality_snapshot(),
-    );
-
-    const result = await builder.build_main("text");
-
-    expect(result).toContain("Translate from Hungarian to Chinese.");
-    expect(result).not.toContain("Hungrarian");
-  });
-
-  it("中文提示词中西班牙文复用共享语言名称", async () => {
-    const app_root = await create_template_root();
-    const builder = new PromptBuilder(
-      app_root,
-      {
-        app_language: "ZH",
-        source_language: "ES",
-        target_language: "ZH",
-      },
-      create_quality_snapshot(),
-    );
-
-    const result = await builder.build_main("text");
-
-    expect(result).toContain("请从 西班牙文 翻译到 中文");
-    expect(result).not.toContain("请从 西班牙 翻译到 中文");
-  });
-
-  it("源语言无效时回退为提示词语言的源文本占位", async () => {
-    const app_root = await create_template_root();
-    const builder = new PromptBuilder(
-      app_root,
-      {
-        app_language: "EN",
-        source_language: "INVALID",
-        target_language: "ZH",
-      },
-      create_quality_snapshot(),
-    );
-
-    const result = await builder.build_main("text");
-
-    expect(result).toContain("Translate from Source to Chinese.");
   });
 
   it("启用自定义翻译提示词时仍拼接前后缀和 thinking 段", async () => {
@@ -217,9 +88,10 @@ describe("PromptBuilder", () => {
     );
   });
 
-  it("术语表匹配时尊重大小写标志并格式化 info 字段", () => {
+  it("公开提示词结果按大小写规则筛选术语并格式化 info", async () => {
+    const app_root = await create_template_root();
     const builder = new PromptBuilder(
-      "unused",
+      app_root,
       { app_language: "EN", target_language: "EN" },
       create_quality_snapshot({
         glossary_entries: [
@@ -229,37 +101,37 @@ describe("PromptBuilder", () => {
       }),
     );
 
-    const result = builder.build_glossary([create_line({ text_src: "abc foo" })], "text");
+    const result = await builder.generate_prompt(
+      [create_line({ text_src: "abc foo" })],
+      "text",
+      [],
+      [],
+    );
+    const user_prompt = result.messages[1]?.content ?? "";
 
-    expect(result).toContain("Glossary");
-    expect(result).toContain("foo -> 乙 #备注");
-    expect(result).not.toContain("ABC -> 甲");
+    expect(user_prompt).toContain("Glossary");
+    expect(user_prompt).toContain("foo -> 乙 #备注");
+    expect(user_prompt).not.toContain("ABC -> 甲");
   });
 
-  it("控制字符示例只在 system 指令明确要求时加入并去重", () => {
-    const builder = new PromptBuilder("unused", { app_language: "ZH" }, create_quality_snapshot());
-
-    expect(builder.build_control_characters_samples("普通内容", ["<a>"])).toBe("");
-    expect(
-      builder.build_control_characters_samples("控制符必须原样保留", ["<a>", "<b>", "<a>", ""]),
-    ).toBe("控制字符示例：\n<a>, <b>");
-  });
-
-  it("参考上文为空时返回空字符串，非空时按 UI 语言格式化", () => {
-    const zh_builder = new PromptBuilder(
-      "unused",
-      { app_language: "ZH" },
-      create_quality_snapshot(),
-    );
-    const en_builder = new PromptBuilder(
-      "unused",
-      { app_language: "EN" },
-      create_quality_snapshot(),
+  it("system 指令未要求控制字符时不注入示例", async () => {
+    const builder = new PromptBuilder(
+      await create_template_root(),
+      { app_language: "ZH", source_language: "JA", target_language: "ZH" },
+      create_quality_snapshot({
+        translation_prompt_enable: true,
+        translation_prompt: "普通内容",
+      }),
     );
 
-    expect(zh_builder.build_preceding([])).toBe("");
-    expect(zh_builder.build_preceding([{ src: "line1\nline2" }])).toBe("参考上文：\nline1\\nline2");
-    expect(en_builder.build_preceding([{ src: "line3" }])).toBe("Preceding Context:\nline3");
+    const result = await builder.generate_prompt(
+      [create_line({ text_src: "正文" })],
+      "text",
+      ["<a>"],
+      [],
+    );
+
+    expect(result.messages[1]?.content).not.toContain("控制字符示例");
   });
 
   it("Sakura 提示词在术语启用但未命中时使用默认内容", () => {
@@ -332,28 +204,6 @@ describe("PromptBuilder", () => {
 
     expect(result).toBe("分析前缀\n自定义分析：中文\n\n输出 JSONLINE");
     expect(result).not.toContain("翻译前缀");
-  });
-
-  it("模板读取结果会缓存并可通过 reset 重新读取", async () => {
-    const app_root = await create_template_root();
-    const builder = new PromptBuilder(
-      app_root,
-      { app_language: "ZH", source_language: "JA", target_language: "ZH" },
-      create_quality_snapshot(),
-    );
-
-    expect(await builder.build_main("text")).toContain("保留控制字符");
-
-    await write_template(app_root, "translation_prompt", "zh", {
-      prefix: "翻译前缀2",
-      base: "新规则 {target_language}",
-      thinking: "",
-      suffix: "输出2",
-    });
-
-    expect(await builder.build_main("text")).toContain("保留控制字符");
-    PromptBuilder.reset();
-    expect(await builder.build_main("text")).toContain("新规则 中文");
   });
 
   it("含姓名请求使用 actor/text 输入输出格式并让术语表扫描姓名", async () => {

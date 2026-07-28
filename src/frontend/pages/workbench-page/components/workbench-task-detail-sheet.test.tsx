@@ -5,12 +5,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkbenchTaskDetailSheet } from "@frontend/pages/workbench-page/components/workbench-task-detail-sheet";
 import type { WorkbenchTaskDetailDisplay } from "@frontend/pages/workbench-page/types";
 
-(
-  globalThis as typeof globalThis & {
-    IS_REACT_ACT_ENVIRONMENT?: boolean;
-  }
-).IS_REACT_ACT_ENVIRONMENT = true;
-
 const running_display: WorkbenchTaskDetailDisplay = {
   title: "翻译任务",
   description: "正在处理当前项目",
@@ -63,7 +57,6 @@ describe("WorkbenchTaskDetailSheet", () => {
     container?.remove();
     container = null;
     root = null;
-    document.body.replaceChildren();
   });
 
   it("按 display 渲染详情指标和停止入口", async () => {

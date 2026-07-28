@@ -20,7 +20,7 @@ type BackendWorkerClientOptions = {
 };
 
 type PendingTask = {
-  id: string;
+  id: string; // 隔离迟到的 worker 响应，只有当前任务 id 可以结算
   task: BackendWorkerTask;
   signal: AbortSignal;
   resolve: (value: unknown) => void;
@@ -28,12 +28,15 @@ type PendingTask = {
   abort_listener: () => void;
 };
 
+/**
+ * Backend worker 的单飞 FIFO 门面；线程与进程内执行共享同一取消、结算和销毁语义。
+ */
 export class BackendWorkerClient {
   private readonly execution: BackendWorkerExecution;
   private readonly queue: PendingTask[] = [];
   private worker: Worker | null = null;
-  private active_task: PendingTask | null = null;
-  private disposed = false;
+  private active_task: PendingTask | null = null; // 单飞所有者，后续任务必须等待它结算
+  private disposed = false; // 销毁后拒绝新任务，也禁止异常退出时重建 worker
 
   public constructor(options: BackendWorkerClientOptions) {
     this.execution = options.execution;
@@ -80,6 +83,7 @@ export class BackendWorkerClient {
     this.worker = null;
   }
 
+  /** 每次只派发一个任务，使两种执行模式维持相同顺序。 */
   private drain_queue(): void {
     if (this.active_task !== null) {
       return;
@@ -112,6 +116,7 @@ export class BackendWorkerClient {
     }
   }
 
+  /** 排队任务本地移除；活动线程任务发 cancel，并让迟到结果因 id 不匹配而失效。 */
   private cancel_task(task: PendingTask): void {
     const queued_index = this.queue.findIndex((item) => item.id === task.id);
     if (queued_index >= 0) {
@@ -170,6 +175,7 @@ export class BackendWorkerClient {
     }
   }
 
+  /** 只结算当前任务，隔离取消、线程重建或旧 worker 产生的迟到消息。 */
   private finish_task(id: string, data: unknown, error: unknown): void {
     const task = this.active_task;
     if (task === null || task.id !== id) {
@@ -185,6 +191,7 @@ export class BackendWorkerClient {
     this.drain_queue();
   }
 
+  /** 当前线程失败时拒绝活动任务并重建；旧线程事件不能影响新实例。 */
   private fail_worker(worker: Worker, error: unknown): void {
     if (this.worker !== worker) {
       return;

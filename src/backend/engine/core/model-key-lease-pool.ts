@@ -20,11 +20,6 @@ export class ModelKeyLeasePool {
     return { ...model, api_key: selected_key };
   }
 
-  public get_offset_for_test(model: JsonRecord): number {
-    const keys = LLMClientPolicy.collect_api_keys(String(model["api_key"] ?? ""));
-    return this.offsets.get(this.build_signature(model, keys)) ?? 0;
-  }
-
   /**
    * 签名包含规范化 key 列表，保证同一模型资源池共享一个轮换游标。
    */

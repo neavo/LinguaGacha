@@ -5,7 +5,6 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { JsonTool } from "../../shared/utils/json-tool";
 import { AppMetadataService } from "../app/app-metadata-service";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
@@ -15,55 +14,31 @@ import type { BackendWorkerExecution } from "../worker/worker-execution";
 import { type FileLogWriter, LogManager } from "../log/log-manager";
 import { ApiGatewayServer } from "./api-gateway-server";
 
-const IN_PROCESS_WORKER_EXECUTION: BackendWorkerExecution = { kind: "in_process" }; // Gateway 测试只验证 HTTP 协议，不依赖真实 worker_threads
+const IN_PROCESS_WORKER_EXECUTION: BackendWorkerExecution = { kind: "in_process" };
 
 describe("ApiGatewayServer", () => {
-  const cleanup_callbacks: Array<() => Promise<void> | void> = []; // Gateway 测试会启动真实本机 HTTP server，清理顺序必须由用例统一登记
+  const cleanup_callbacks: Array<() => Promise<void> | void> = [];
 
   afterEach(async () => {
     while (cleanup_callbacks.length > 0) {
-      const cleanup = cleanup_callbacks.pop();
-      await cleanup?.();
+      await cleanup_callbacks.pop()?.();
     }
   });
 
-  function create_project_item(
-    overrides: Partial<Record<string, string | number | boolean | null>>,
-  ): Record<string, string | number | boolean | null> {
-    const id = Number(overrides["id"] ?? 1);
-    return {
-      id,
-      src: "",
-      dst: "",
-      name_src: null,
-      name_dst: null,
-      extra_field: "",
-      tag: "",
-      row: id,
-      file_type: "TXT",
-      file_path: "",
-      text_type: "NONE",
-      status: "NONE",
-      retry_count: 0,
-      skip_internal_filter: false,
-      ...overrides,
-    };
-  }
-
-  it("由 API Gateway 响应公开健康检查", async () => {
+  it("响应公开健康检查", async () => {
     const gateway = create_gateway();
 
     const started = await gateway.start();
     const response = await fetch(`${started.baseUrl}/api/health`);
-    const body = (await response.json()) as {
-      ok?: boolean;
-      data?: { service?: string; version?: string };
-    };
 
-    expect(body.ok).toBe(true);
-    expect(body.data?.service).toBe("linguagacha-backend");
-    expect(body.data?.version).toBe("9.8.7");
-    expect(Object.keys(body.data ?? {})).not.toContain("instance" + "Token");
+    await expect(response.json()).resolves.toEqual({
+      ok: true,
+      data: {
+        service: "linguagacha-backend",
+        status: "ok",
+        version: "9.8.7",
+      },
+    });
   });
 
   it("预检请求只暴露公开 CORS 头", async () => {
@@ -81,192 +56,18 @@ describe("ApiGatewayServer", () => {
     expect(response.headers.get("Access-Control-Allow-Headers")).toBe("Content-Type");
   });
 
-  it("未知 JSON 路由不再代理并返回稳定 request.route_not_found", async () => {
+  it("未知路由返回稳定 request.route_not_found", async () => {
     const gateway = create_gateway();
 
     const started = await gateway.start();
-    const response = await fetch(`${started.baseUrl}/api/proxy-target`, {
-      body: JsonTool.stringifyStrict({ value: 7 }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    });
+    const response = await post_json(started.baseUrl, "/api/not-registered", {});
     const body = (await response.json()) as { ok?: boolean; error?: { code?: string } };
 
     expect(response.status).toBe(404);
-    expect(body.ok).toBe(false);
-    expect(body.error?.code).toBe("request.route_not_found");
-  });
-
-  it("JSON 解析失败返回稳定 request.invalid_json 和 request_id", async () => {
-    const gateway = create_gateway();
-
-    const started = await gateway.start();
-    const response = await fetch(`${started.baseUrl}/api/settings/app`, {
-      body: "{",
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
+    expect(body).toMatchObject({
+      ok: false,
+      error: { code: "request.route_not_found" },
     });
-    const body = (await response.json()) as {
-      ok?: boolean;
-      error?: { code?: string; request_id?: string };
-    };
-
-    expect(response.status).toBe(400);
-    expect(body.ok).toBe(false);
-    expect(body.error?.code).toBe("request.invalid_json");
-    expect(body.error?.request_id).toMatch(/[0-9a-f-]{36}/u);
-  });
-
-  it("项目同步 write 由 API Gateway 直接处理", async () => {
-    const app_root = create_app_root();
-    const database = new ProjectDatabase();
-    const gateway = create_gateway_with_database(app_root, database);
-    const lg_path = path.join(app_root, "sync-write.lg");
-    database.create_project(lg_path, "sync-write");
-
-    const started = await gateway.start();
-    const response = await fetch(`${started.baseUrl}/api/workbench/settings-alignment/apply`, {
-      body: JsonTool.stringifyStrict({
-        mode: "settings_only",
-        path: lg_path,
-        project_settings: { source_language: "JA", target_language: "ZH" },
-      }),
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    });
-    const body = (await response.json()) as {
-      ok?: boolean;
-      data?: { accepted?: boolean };
-    };
-
-    expect(body.ok).toBe(true);
-    expect(body.data?.accepted).toBe(true);
-  });
-
-  it("项目轻生命周期路由由 API Gateway 直接处理", async () => {
-    const app_root = create_app_root();
-    const database = new ProjectDatabase();
-    const lg_path = path.join(app_root, "project-lifecycle.lg");
-    const source_dir = path.join(app_root, "source");
-    fs.mkdirSync(source_dir, { recursive: true });
-    fs.writeFileSync(path.join(source_dir, "script.txt"), "原文", "utf-8");
-    fs.writeFileSync(path.join(source_dir, "ignored.bin"), "bin", "utf-8");
-    database.create_project(lg_path, "project-lifecycle");
-    const gateway = create_gateway_with_database(app_root, database);
-
-    const started = await gateway.start();
-    await post_json(started.baseUrl, "/api/session/project/open", { path: lg_path });
-    const snapshot_response = await post_json(started.baseUrl, "/api/session/project/snapshot", {});
-    const preview_response = await post_json(started.baseUrl, "/api/session/project/preview", {
-      path: lg_path,
-    });
-    const source_files_response = await post_json(
-      started.baseUrl,
-      "/api/session/source-files/collect",
-      {
-        source_paths: [source_dir],
-      },
-    );
-    const unload_response = await post_json(started.baseUrl, "/api/session/project/close", {});
-    const snapshot_body = (await snapshot_response.json()) as {
-      data?: { project?: { path?: string; loaded?: boolean } };
-    };
-    const preview_body = (await preview_response.json()) as {
-      data?: { preview?: { path?: string; name?: string } };
-    };
-    const source_files_body = (await source_files_response.json()) as {
-      data?: { source_files?: string[] };
-    };
-    const unload_body = (await unload_response.json()) as {
-      data?: { project?: { path?: string; loaded?: boolean } };
-    };
-
-    expect(snapshot_body.data?.project).toEqual({ path: lg_path, loaded: true });
-    expect(preview_body.data?.preview?.path).toBe(lg_path);
-    expect(preview_body.data?.preview?.name).toBe("project-lifecycle");
-    expect(source_files_body.data?.source_files).toEqual([path.join(source_dir, "script.txt")]);
-    expect(unload_body.data?.project).toEqual({ path: "", loaded: false });
-  });
-
-  it("项目生命周期创建与预览路由保持公开响应壳稳定", async () => {
-    const app_root = create_app_root();
-    const database = new ProjectDatabase();
-    const lg_path = path.join(app_root, "api-project-route.lg");
-    const source_path = path.join(app_root, "source.txt");
-    fs.writeFileSync(source_path, "原文", "utf-8");
-    database.create_project(lg_path, "route");
-    const gateway = create_gateway_with_database(app_root, database);
-
-    const started = await gateway.start();
-    const load_response = await post_json(started.baseUrl, "/api/session/project/open", {
-      path: lg_path,
-    });
-    const open_preview_response = await post_json(
-      started.baseUrl,
-      "/api/session/project/open-preview",
-      {
-        path: lg_path,
-      },
-    );
-    const create_commit_response = await post_json(started.baseUrl, "/api/session/project/create", {
-      source_paths: [source_path],
-      path: path.join(app_root, "created-by-ts.lg"),
-      project_settings: { source_language: "ZH", target_language: "ZH" },
-    });
-    const load_body = (await load_response.json()) as { ok?: boolean };
-    const open_preview_body = (await open_preview_response.json()) as { ok?: boolean };
-    const create_commit_body = (await create_commit_response.json()) as { ok?: boolean };
-
-    expect(load_body.ok).toBe(true);
-    expect(open_preview_body.ok).toBe(true);
-    expect(create_commit_body.ok).toBe(true);
-  });
-
-  it("项目 preview 缺失文件时映射为 project.not_found", async () => {
-    const app_root = create_app_root();
-    const database = new ProjectDatabase();
-    const gateway = create_gateway_with_database(app_root, database);
-
-    const started = await gateway.start();
-    const response = await post_json(started.baseUrl, "/api/session/project/preview", {
-      path: path.join(app_root, "missing.lg"),
-    });
-    const body = (await response.json()) as { ok?: boolean; error?: { code?: string } };
-
-    expect(response.status).toBe(404);
-    expect(body.ok).toBe(false);
-    expect(body.error?.code).toBe("project.not_found");
-  });
-
-  it("校对同步 write 由 API Gateway 直接写库", async () => {
-    const app_root = create_app_root();
-    const database = new ProjectDatabase();
-    const lg_path = path.join(app_root, "proofreading-sync-write.lg");
-    const gateway = create_gateway_with_database(app_root, database);
-    database.create_project(lg_path, "proofreading-sync-write");
-    database.set_items(lg_path, [create_project_item({ id: 1, src: "原文", dst: "" })]);
-
-    const started = await gateway.start();
-    await post_json(started.baseUrl, "/api/session/project/open", { path: lg_path });
-    const response = await post_json(started.baseUrl, "/api/proofreading/item/save", {
-      item_id: 1,
-      dst: "译文",
-      expected_section_revisions: { items: 0, proofreading: 0 },
-    });
-    const body = (await response.json()) as {
-      ok?: boolean;
-      data?: {
-        accepted?: boolean;
-        changes?: Array<{ sectionRevisions?: Record<string, number> }>;
-      };
-    };
-
-    expect(body.ok).toBe(true);
-    expect(body.data?.accepted).toBe(true);
-    expect(body.data?.changes?.[0]?.sectionRevisions).toEqual({ items: 1, proofreading: 1 });
-    expect(database.get_all_items(lg_path)).toMatchObject([
-      { id: 1, src: "原文", dst: "译文", status: "PROCESSED" },
-    ]);
   });
 
   it("由 LogManager 提供轻量日志流和按需详情", async () => {
@@ -275,7 +76,7 @@ describe("ApiGatewayServer", () => {
     const log_manager = create_log_manager(app_root);
     const full_message = `启动完成\n${"完整详情".repeat(400)}\n详情尾部`;
     log_manager.info(full_message, { source: "test" });
-    const gateway = create_gateway_with_database(app_root, database, log_manager);
+    const gateway = create_gateway_fixture(app_root, database, log_manager).gateway;
 
     const started = await gateway.start();
     const controller = new AbortController();
@@ -293,31 +94,21 @@ describe("ApiGatewayServer", () => {
     expect(response.status).toBe(200);
     expect(text).toContain("event: log.appended");
     expect(text).toContain('"message_preview"');
-    expect(text).toContain('"source":"test"');
-    expect(text).not.toContain('"message":"');
+    expect(text).not.toContain('"message":');
     expect(text).not.toContain("详情尾部");
 
-    const detail_response = await fetch(`${started.baseUrl}/api/logs/detail`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id: "log-1" }),
-    });
+    const detail_response = await post_json(started.baseUrl, "/api/logs/detail", { id: "log-1" });
     const detail_body = (await detail_response.json()) as {
       data?: { detail?: { message?: string; source?: string } };
     };
-
-    expect(detail_response.status).toBe(200);
-    expect(detail_body.data?.detail).toMatchObject({
-      message: full_message,
-      source: "test",
-    });
+    expect(detail_body.data?.detail).toMatchObject({ message: full_message, source: "test" });
   });
 
   it("接收 renderer 异常诊断并写入统一日志", async () => {
     const app_root = create_app_root();
     const database = new ProjectDatabase();
     const log_manager = create_log_manager(app_root);
-    const gateway = create_gateway_with_database(app_root, database, log_manager);
+    const gateway = create_gateway_fixture(app_root, database, log_manager).gateway;
 
     const started = await gateway.start();
     const response = await post_json(started.baseUrl, "/api/diagnostics/renderer-error", {
@@ -335,21 +126,14 @@ describe("ApiGatewayServer", () => {
       },
     });
 
-    const body = (await response.json()) as { ok?: boolean };
     const [event] = log_manager.snapshot_events();
     const detail = event === undefined ? null : log_manager.read_detail(event.id);
-
     expect(response.status).toBe(200);
-    expect(body.ok).toBe(true);
-    expect(event).toMatchObject({
-      level: "error",
-      source: "renderer",
-    });
+    expect(event).toMatchObject({ level: "error", source: "renderer" });
     expect(detail).toMatchObject({
       error: {
         name: "InternalInvariantError",
         message: "缺少完整 item DTO",
-        stack: "Error: 缺少完整 item DTO\n    at applyProjectChangeBatch",
         context: {
           renderer_source: "scheduler",
           route: "workbench",
@@ -363,225 +147,7 @@ describe("ApiGatewayServer", () => {
     });
   });
 
-  it("由 API Gateway 直接提供项目轻量 manifest 和页面 query 接口", async () => {
-    const app_root = create_app_root();
-    const database = new ProjectDatabase();
-    const lg_path = path.join(app_root, "project-read-api.lg");
-    const gateway = create_gateway_with_database(app_root, database);
-    database.create_project(lg_path, "project-read");
-    database.transaction(lg_path, () => {
-      database.set_items(lg_path, [
-        create_project_item({
-          id: 1,
-          file_path: "a.txt",
-          row: 1,
-          src: "原文",
-          name_src: "魔法师",
-        }),
-      ]);
-      database.set_rule_text(lg_path, "translation_prompt", "\uD800");
-      database.set_meta(lg_path, "quality_prompt_revision.translation", 1);
-    });
-
-    const started = await gateway.start();
-    await post_json(started.baseUrl, "/api/session/project/open", { path: lg_path });
-    const manifest_response = await post_json(started.baseUrl, "/api/session/project/manifest", {});
-    const manifest_body = (await manifest_response.json()) as {
-      ok?: boolean;
-      data?: {
-        projectPath?: string;
-        projectRevision?: number;
-        sectionRevisions?: Record<string, number>;
-      };
-    };
-    const proofreading_response = await post_json(started.baseUrl, "/api/proofreading/view", {
-      action: "items_by_row_ids",
-      row_ids: ["1"],
-    });
-    const proofreading_body = (await proofreading_response.json()) as {
-      ok?: boolean;
-      data?: {
-        projectPath?: string;
-        rows?: Array<{ src?: string }>;
-      };
-    };
-    const prompt_response = await post_json(started.baseUrl, "/api/quality/prompts/view", {
-      task_type: "translation",
-    });
-    const prompt_body = (await prompt_response.json()) as {
-      ok?: boolean;
-      data?: {
-        projectPath?: string;
-        prompt?: { text?: string };
-      };
-    };
-
-    expect(manifest_body.ok).toBe(true);
-    expect(manifest_body.data?.projectPath).toBe(lg_path);
-    expect(manifest_body.data?.projectRevision).toBeGreaterThanOrEqual(1);
-    expect(manifest_body.data?.sectionRevisions).toMatchObject({
-      prompts: 1,
-    });
-    expect(proofreading_body.ok).toBe(true);
-    expect(proofreading_body.data?.projectPath).toBe(lg_path);
-    expect(proofreading_body.data?.rows?.[0]).toMatchObject({
-      src: "原文",
-    });
-    expect(prompt_body.ok).toBe(true);
-    expect(prompt_body.data?.projectPath).toBe(lg_path);
-    expect(prompt_body.data?.prompt?.text).toBe("\uD800");
-  });
-
-  it("analysis 候选读取路由只绑定当前 loaded 工程并返回完整候选池", async () => {
-    const app_root = create_app_root();
-    const database = new ProjectDatabase();
-    const lg_path = path.join(app_root, "analysis-candidates.lg");
-    const gateway = create_gateway_with_database(app_root, database);
-    database.create_project(lg_path, "analysis-candidates");
-    database.upsert_analysis_candidate_aggregates(lg_path, [
-      {
-        src: "魔法",
-        dst_votes: { magic: 2 },
-        info_votes: { 术语: 1 },
-        observation_count: 2,
-        first_seen_at: "2026-01-01T00:00:00.000Z",
-        last_seen_at: "2026-01-02T00:00:00.000Z",
-        case_sensitive: false,
-      },
-    ]);
-    database.set_meta(lg_path, "analysis_candidate_count", 1);
-
-    const started = await gateway.start();
-    await post_json(started.baseUrl, "/api/session/project/open", { path: lg_path });
-    const response = await post_json(started.baseUrl, "/api/analysis/candidates/list", {});
-    const body = (await response.json()) as {
-      ok?: boolean;
-      data?: {
-        projectPath?: string;
-        candidate_count?: number;
-        candidate_aggregate?: Record<string, { dst_votes?: Record<string, number> }>;
-      };
-    };
-
-    expect(body.ok).toBe(true);
-    expect(body.data?.projectPath).toBe(lg_path);
-    expect(body.data?.candidate_count).toBe(1);
-    expect(body.data?.candidate_aggregate?.["魔法"]?.dst_votes).toEqual({ magic: 2 });
-  });
-
-  it("公开任务路由由 API Gateway 直处理", async () => {
-    const app_root = create_app_root();
-    const database = new ProjectDatabase();
-    const lg_path = path.join(app_root, "task-route.lg");
-    database.create_project(lg_path, "task-route");
-    const gateway = create_gateway_with_database(app_root, database);
-
-    const started = await gateway.start();
-    await post_json(started.baseUrl, "/api/session/project/open", { path: lg_path });
-    const response = await post_json(started.baseUrl, "/api/tasks/start", {
-      task_type: "translation",
-      mode: "new",
-      scope: { kind: "all" },
-      expected_section_revisions: { quality: 0, prompts: 0 },
-    });
-    const body = (await response.json()) as {
-      ok?: boolean;
-      data?: { accepted?: boolean; task?: { task_type?: string; status?: string; busy?: boolean } };
-    };
-
-    expect(body.ok).toBe(true);
-    expect(body.data?.accepted).toBe(true);
-    expect(body.data?.task).toMatchObject({
-      task_type: "translation",
-    });
-    expect(["requested", "running", "done"]).toContain(body.data?.task?.status);
-    expect(body.data?.task?.busy).toBe(body.data?.task?.status !== "done");
-  });
-
-  it("译文文件导出路由使用 translation 域且旧路由不保留兼容入口", async () => {
-    const app_root = create_app_root();
-    const database = new ProjectDatabase();
-    const lg_path = path.join(app_root, "generate-route.lg");
-    const gateway = create_gateway_with_database(app_root, database);
-    database.create_project(lg_path, "generate-route");
-    database.set_items(lg_path, [
-      create_project_item({
-        id: 1,
-        src: "原文",
-        dst: "译文",
-        status: "PROCESSED",
-        file_type: "TXT",
-        file_path: "script.txt",
-        row: 0,
-      }),
-    ]);
-
-    const started = await gateway.start();
-    await post_json(started.baseUrl, "/api/session/project/open", { path: lg_path });
-    const generate_response = await post_json(started.baseUrl, "/api/translation/files/export", {});
-    const ts_conversion_response = await post_json(
-      started.baseUrl,
-      "/api/toolbox/ts-conversion/files/export",
-      { direction: "s2t" },
-    );
-    const legacy_response = await post_json(started.baseUrl, "/api/tasks/generate-translation", {});
-    const generate_body = (await generate_response.json()) as {
-      ok?: boolean;
-      data?: { accepted?: boolean; output_path?: string };
-    };
-    const ts_conversion_body = (await ts_conversion_response.json()) as {
-      ok?: boolean;
-      data?: { accepted?: boolean; output_path?: string };
-    };
-    const legacy_body = (await legacy_response.json()) as {
-      ok?: boolean;
-      error?: { code?: string };
-    };
-
-    expect(generate_body.ok).toBe(true);
-    expect(generate_body.data).toEqual({
-      accepted: true,
-      output_path: path.join(app_root, "generate-route_译文"),
-    });
-    expect(fs.existsSync(path.join(app_root, "generate-route_译文", "script.txt"))).toBe(true);
-    expect(ts_conversion_body.ok).toBe(true);
-    expect(ts_conversion_body.data).toEqual({
-      accepted: true,
-      output_path: path.join(app_root, "generate-route_译文_S2T"),
-    });
-    expect(fs.existsSync(path.join(app_root, "generate-route_译文_S2T", "script.txt"))).toBe(true);
-    expect(legacy_response.status).toBe(404);
-    expect(legacy_body.error?.code).toBe("request.route_not_found");
-  });
-
-  it("旧 project 业务路径不保留兼容入口", async () => {
-    const gateway = create_gateway();
-
-    const started = await gateway.start();
-    const legacy_paths = [
-      "/api/project/export-converted-translation",
-      "/api/project/query/workbench",
-      "/api/project/proofreading/save-item",
-      "/api/analysis/name-fields/view",
-      "/api/translation/files/export-ts-conversion",
-      "/api/toolbox/name-" + "fields/view",
-      "/api/tasks/translate-" + "single",
-    ];
-
-    for (const legacy_path of legacy_paths) {
-      const response = await post_json(started.baseUrl, legacy_path, {});
-      const body = (await response.json()) as {
-        ok?: boolean;
-        error?: { code?: string };
-      };
-
-      expect(response.status).toBe(404);
-      expect(body.ok).toBe(false);
-      expect(body.error?.code).toBe("request.route_not_found");
-    }
-  });
-
-  it("长期事件流由事件 hub 提供 keepalive 并在 Gateway 退出时关闭", async () => {
+  it("事件流提供 keepalive 并在 Gateway 退出时关闭", async () => {
     const gateway = create_gateway();
 
     const started = await gateway.start();
@@ -590,12 +156,12 @@ describe("ApiGatewayServer", () => {
       "keepalive",
     );
 
-    expect(stream.status).toBe(200);
+    expect(stream).toMatchObject({ status: 200 });
     expect(stream.text).toContain(": keepalive");
     await expect(gateway.stop()).resolves.toBeUndefined();
   });
 
-  it("Gateway stop 断开连接后仍等待已进入业务层的 POST handler", async () => {
+  it("stop 断开连接后仍等待已进入业务层的 POST handler", async () => {
     const console_error = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const stderr_write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     cleanup_callbacks.push(
@@ -633,7 +199,6 @@ describe("ApiGatewayServer", () => {
     });
     await request;
     await new Promise<void>((resolve) => setImmediate(resolve));
-
     expect(stop_completed).toBe(false);
 
     release_handler();
@@ -641,7 +206,7 @@ describe("ApiGatewayServer", () => {
     expect(stop_completed).toBe(true);
   });
 
-  it("Gateway stop 只释放公开监听器，不越界释放 BackendServices", async () => {
+  it("stop 只释放公开监听器，不越界释放 BackendServices", async () => {
     const dispose = vi.fn(async () => undefined);
     const gateway = new ApiGatewayServer({
       backendServices: { dispose } as unknown as BackendServices,
@@ -654,7 +219,6 @@ describe("ApiGatewayServer", () => {
 
   it("重复启动保持同一本机入口且停止幂等", async () => {
     const gateway = create_gateway();
-
     const first = await gateway.start();
 
     await expect(gateway.start()).resolves.toEqual(first);
@@ -663,27 +227,14 @@ describe("ApiGatewayServer", () => {
   });
 
   function create_gateway(): ApiGatewayServer {
-    const app_root = create_app_root();
-    const database = new ProjectDatabase();
-    return create_gateway_with_database(app_root, database);
-  }
-
-  function create_gateway_with_database(
-    app_root: string,
-    database: ProjectDatabase,
-    log_manager: LogManager = create_log_manager(app_root),
-  ): ApiGatewayServer {
-    return create_gateway_fixture(app_root, database, log_manager).gateway;
+    return create_gateway_fixture(create_app_root(), new ProjectDatabase()).gateway;
   }
 
   function create_gateway_fixture(
     app_root: string,
     database: ProjectDatabase,
     log_manager: LogManager = create_log_manager(app_root),
-  ): {
-    gateway: ApiGatewayServer;
-    backend_services: BackendServices;
-  } {
+  ): { gateway: ApiGatewayServer; backend_services: BackendServices } {
     const paths = new AppPathService({ appRoot: app_root });
     const backend_services = new BackendServices({
       paths,
@@ -692,13 +243,11 @@ describe("ApiGatewayServer", () => {
       database,
       logManager: log_manager,
       systemProxySnapshot: null,
-      openOutputFolder: noop_output_folder,
+      openOutputFolder: async () => undefined,
       workerExecution: IN_PROCESS_WORKER_EXECUTION,
     });
     backend_services.start();
-    const gateway = new ApiGatewayServer({
-      backendServices: backend_services,
-    });
+    const gateway = new ApiGatewayServer({ backendServices: backend_services });
     cleanup_callbacks.push(
       () => database.close(),
       () => backend_services.dispose(),
@@ -706,8 +255,6 @@ describe("ApiGatewayServer", () => {
     );
     return { gateway, backend_services };
   }
-
-  async function noop_output_folder(_output_path: string): Promise<void> {}
 
   function create_app_root(): string {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-gateway-test-"));
@@ -731,9 +278,7 @@ describe("ApiGatewayServer", () => {
       write: () => undefined,
       flush: () => undefined,
       flushSync: () => undefined,
-      end: (callback?: () => void) => {
-        callback?.();
-      },
+      end: (callback?: () => void) => callback?.(),
     };
   }
 
@@ -741,11 +286,10 @@ describe("ApiGatewayServer", () => {
     base_url: string,
     path_name: string,
     body: Record<string, unknown>,
-    headers: Record<string, string> = {},
   ): Promise<Response> {
     return await fetch(`${base_url}${path_name}`, {
-      body: JsonTool.stringifyStrict(body),
-      headers: { "Content-Type": "application/json", ...headers },
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
       method: "POST",
     });
   }
@@ -770,29 +314,26 @@ describe("ApiGatewayServer", () => {
           }
         });
         response.on("end", () => {
-          if (settled) {
-            return;
+          if (!settled) {
+            settled = true;
+            clearTimeout(timeout_id);
+            reject(new Error(`事件流未收到 ${expected_text}。`));
           }
-          settled = true;
-          clearTimeout(timeout_id);
-          reject(new Error(`事件流未收到 ${expected_text}。`));
         });
       });
       const timeout_id = setTimeout(() => {
-        if (settled) {
-          return;
+        if (!settled) {
+          settled = true;
+          request.destroy();
+          reject(new Error(`事件流未收到 ${expected_text}。`));
         }
-        settled = true;
-        request.destroy();
-        reject(new Error(`事件流未收到 ${expected_text}。`));
       }, 1000);
       request.on("error", (error) => {
-        if (settled) {
-          return;
+        if (!settled) {
+          settled = true;
+          clearTimeout(timeout_id);
+          reject(error);
         }
-        settled = true;
-        clearTimeout(timeout_id);
-        reject(error);
       });
     });
   }

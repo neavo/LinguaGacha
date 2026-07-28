@@ -3,9 +3,6 @@ import type { JsonRecord, JsonValue } from "./json";
 import { read_json_record } from "./json";
 
 // 条目状态
-/**
- * 集中维护当前模块的稳定常量。
- */
 export const ITEM_STATUSES = [
   "NONE",
   "PROCESSED",
@@ -17,9 +14,6 @@ export const ITEM_STATUSES = [
 ] as const;
 
 // 文件的类型
-/**
- * 集中维护当前模块的稳定常量。
- */
 export const ITEM_FILE_TYPES = [
   "NONE",
   "MD",
@@ -35,9 +29,6 @@ export const ITEM_FILE_TYPES = [
   "MESSAGEJSON",
 ] as const;
 
-/**
- * 集中维护当前模块的稳定常量。
- */
 export const ITEM_TEXT_TYPES = ["NONE", "MD", "KAG", "WOLF", "RENPY", "RPGMAKER"] as const; // 文本的实际类型
 
 export type ItemStatus = (typeof ITEM_STATUSES)[number];
@@ -135,9 +126,6 @@ export class Item {
   public retry_count = 0; // 重试次数，当前只有单独重试的时候才增加此计数
   public skip_internal_filter = false; // 强制翻译条目绕过规则/语言类内部过滤
 
-  /**
-   * 初始化当前实例的内部状态。
-   */
   private constructor() {}
 
   /**
@@ -275,33 +263,21 @@ export class Item {
 }
 
 // item 状态从数据库、API 和任务进度多处流入，先判定再统计
-/**
- * 判断当前值是否满足业务条件。
- */
 export function is_item_status(value: unknown): value is ItemStatus {
   return ITEM_STATUS_SET.has(value as ItemStatus);
 }
 
 // 文件格式只表示解析来源，不能用它替代文本规则语义
-/**
- * 判断当前值是否满足业务条件。
- */
 export function is_item_file_type(value: unknown): value is ItemFileType {
   return ITEM_FILE_TYPE_SET.has(value as ItemFileType);
 }
 
 // 文本规则语义用于过滤和保护规则，来源于格式处理器或兜底推断
-/**
- * 判断当前值是否满足业务条件。
- */
 export function is_item_text_type(value: unknown): value is ItemTextType {
   return ITEM_TEXT_TYPE_SET.has(value as ItemTextType);
 }
 
 // 完整公开 DTO 必须显式携带所有持久字段；字段缺失只能由 migration 处理
-/**
- * 读取当前场景需要的稳定数据。
- */
 export function collect_project_item_missing_public_fields(value: unknown): string[] {
   const record = read_json_record(value);
   const missing_fields: string[] = [];
@@ -320,9 +296,6 @@ export function collect_project_item_missing_public_fields(value: unknown): stri
 }
 
 // API 和项目 query 只使用 item_id/row_number，id/row 只在边界转换时短暂出现
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 export function normalize_project_item_public_record(
   value: unknown,
 ): ProjectItemPublicRecord | null {
@@ -381,18 +354,12 @@ function build_project_item_persistent_record(
 }
 
 // 数值字段来自 JSON 和 SQLite，统一截断为整数并保留调用方回退值
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_item_number(value: unknown, fallback: number): number {
   const parsed = Number(value ?? fallback);
   return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
 }
 
 // Ren'Py 控制标签内不含日韩文本时才视为语法标签，避免误判正文括号
-/**
- * 判断当前值是否满足业务条件。
- */
 function has_renpy_control_tag(src: string): boolean {
   RENPY_CONTROL_TAG_PATTERN.lastIndex = 0;
   for (const match of src.matchAll(RENPY_CONTROL_TAG_PATTERN)) {

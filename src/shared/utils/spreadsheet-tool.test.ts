@@ -15,25 +15,31 @@ describe("SpreadsheetTool", () => {
     expect(sheet.getCell(1, 2).value).toBe("'=SUM(A1:A2)");
   });
 
-  it("写入普通文本并应用默认字号", () => {
+  it("写入文本并应用默认或指定样式", () => {
     const workbook = new ExcelJS.Workbook();
     const sheet = workbook.addWorksheet("Sheet");
 
     SpreadsheetTool.setCellValue(sheet, 2, 1, "plain text");
+    SpreadsheetTool.setCellValue(sheet, 2, 2, "custom text", 11);
 
     expect(sheet.getCell(2, 1).value).toBe("plain text");
     expect(sheet.getCell(2, 1).font.size).toBe(9);
+    expect(sheet.getCell(2, 2).font.size).toBe(11);
+    expect(sheet.getCell(2, 2).alignment).toMatchObject({
+      wrapText: true,
+      vertical: "middle",
+      horizontal: "left",
+    });
   });
 
-  it("写入时应用字号和对齐样式", () => {
-    const workbook = new ExcelJS.Workbook();
-    const sheet = workbook.addWorksheet("Sheet");
-
-    SpreadsheetTool.setCellValue(sheet, 1, 1, "value", 11);
-
-    expect(sheet.getCell(1, 1).font.size).toBe(11);
-    expect(sheet.getCell(1, 1).alignment.wrapText).toBe(true);
-    expect(sheet.getCell(1, 1).alignment.vertical).toBe("middle");
-    expect(sheet.getCell(1, 1).alignment.horizontal).toBe("left");
+  it("读取 ExcelJS 包装值中的用户可见文本", () => {
+    expect(SpreadsheetTool.cellValueToText(null)).toBe("");
+    expect(
+      SpreadsheetTool.cellValueToText({ text: "文档", hyperlink: "https://example.com" }),
+    ).toBe("文档");
+    expect(SpreadsheetTool.cellValueToText({ richText: [{ text: "富" }, { text: "文本" }] })).toBe(
+      "富文本",
+    );
+    expect(SpreadsheetTool.cellValueToText({ formula: "1+1", result: 2 })).toBe("2");
   });
 });

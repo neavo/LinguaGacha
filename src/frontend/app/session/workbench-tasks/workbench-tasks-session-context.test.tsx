@@ -214,7 +214,6 @@ describe("WorkbenchTasksSessionProvider", () => {
     root = null;
     task_runtime_mock.translation_workbench_task = null;
     task_runtime_mock.analysis_workbench_task = null;
-    vi.clearAllMocks();
   });
 
   async function render_provider(children: ReactNode): Promise<void> {

@@ -131,10 +131,6 @@ export function useProjectWriteCommitter(
   );
 }
 
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_project_write_change_event(
   change: unknown,
   index: number,
@@ -161,9 +157,6 @@ function normalize_project_write_change_event(
 }
 
 // 写入失败诊断只记录业务操作与变更摘要，避免页面层传入完整业务 payload。
-/**
- * 解析当前场景的最终消费值。
- */
 function summarize_project_write_trigger_for_diagnostics(
   operation: ProjectWriteOperation,
   write_result: ProjectWriteResult | null,
@@ -189,9 +182,6 @@ function summarize_project_write_trigger_for_diagnostics(
 }
 
 // recovery context 描述统一管线的失败阶段，页面只提供业务操作名和轻量补充上下文。
-/**
- * 构建当前场景的稳定结果。
- */
 function build_project_write_recovery_context(
   request: {
     operation: ProjectWriteOperation;

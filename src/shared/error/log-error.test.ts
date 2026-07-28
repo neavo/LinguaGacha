@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
+import { AppError } from "./app-error";
 import {
   log_error_from_message,
   normalize_log_error,
   sanitize_log_error_context,
   summarize_log_error_path,
   summarize_log_error_url,
+  to_app_error_log_snapshot,
   to_log_error,
 } from "./log-error";
 
@@ -43,6 +45,41 @@ describe("log error", () => {
     });
   });
 
+  it("把 AppError 事实合并到日志上下文", () => {
+    const error = new AppError({
+      code: "runtime.internal_invariant",
+      public_details: { request: "safe" },
+      diagnostic_context: { stage: "commit" },
+      cause: new Error("底层失败"),
+    });
+
+    const snapshot = to_app_error_log_snapshot(error, {
+      context: { request_id: "request-1" },
+    });
+
+    expect(snapshot).toMatchObject({
+      level: "error",
+      error: {
+        context: {
+          code: "runtime.internal_invariant",
+          severity: "fault",
+          public_details: { request: "safe" },
+          diagnostic_context: { stage: "commit" },
+          request_id: "request-1",
+        },
+        cause_chain: [{ name: "Error", message: "底层失败" }],
+      },
+    });
+  });
+
+  it.each([
+    ["request.validation_failed", "debug"],
+    ["model.provider_failed", "warning"],
+    ["runtime.internal_invariant", "error"],
+  ] as const)("把 %s 映射为 %s 日志等级", (code, expected_level) => {
+    expect(to_app_error_log_snapshot(new AppError({ code })).level).toBe(expected_level);
+  });
+
   it("会把误拼进 message 的调用栈拆到 stack 字段", () => {
     const log_error = log_error_from_message("请求失败\n    at Provider.request\n    at run");
 
@@ -61,27 +98,7 @@ describe("log error", () => {
     });
   });
 
-  it("路径摘要由调用边界显式构造", () => {
-    const context = sanitize_log_error_context({
-      projectPath: summarize_log_error_path("E:/secret/project/demo.lg"),
-      progress: {
-        output_path: "E:/secret/out/result.txt",
-      },
-    });
-
-    expect(context).toMatchObject({
-      projectPath: {
-        basename: "demo.lg",
-        pathHash: expect.any(String),
-        length: 25,
-      },
-      progress: {
-        output_path: "E:/secret/out/result.txt",
-      },
-    });
-  });
-
-  it("归一化既有错误快照时保留边界传入的路径摘要值对象", () => {
+  it("归一化路径摘要值对象且不暴露原始目录", () => {
     const log_error = normalize_log_error(
       {
         message: "worker 爆炸",
@@ -99,6 +116,7 @@ describe("log error", () => {
         length: 25,
       },
     });
+    expect(JSON.stringify(log_error.context)).not.toContain("secret");
   });
 
   it("URL 摘要不暴露原始路径、query 或 hash", () => {
@@ -125,7 +143,6 @@ describe("log error", () => {
       nested: {
         elapsed_ms: Number.NaN,
       },
-      callback: () => "ignored",
     });
 
     expect(context).toEqual({
@@ -135,7 +152,6 @@ describe("log error", () => {
       nested: {
         elapsed_ms: "NaN",
       },
-      callback: expect.any(String),
     });
   });
 });

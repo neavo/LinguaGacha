@@ -60,7 +60,6 @@ export class RendererErrorBoundary extends Component<
   }
 }
 
-// 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
 function read_error_boundary_locale(): Locale {
   return resolve_app_locale(resolve_app_language_from_locale_tag(window.navigator.language));
 }

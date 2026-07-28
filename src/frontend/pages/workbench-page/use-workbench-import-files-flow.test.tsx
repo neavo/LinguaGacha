@@ -29,12 +29,6 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
   };
 });
 
-(
-  globalThis as typeof globalThis & {
-    IS_REACT_ACT_ENVIRONMENT?: boolean;
-  }
-).IS_REACT_ACT_ENVIRONMENT = true;
-
 describe("useWorkbenchImportFilesFlow", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
@@ -111,21 +105,38 @@ describe("useWorkbenchImportFilesFlow", () => {
     expect(latest_snapshot(snapshots).dialog_state.kind).toBeNull();
   });
 
-  it("同名文件先进入冲突确认，确认替换后再进入继承确认", async () => {
-    api_fetch_mock.mockResolvedValueOnce({
-      files: [
-        {
-          source_path: "C:/source/old.txt",
-          target_rel_path: "old.txt",
-          file_type: "TXT",
-          parsed_items: [{ src: "替换文本" }],
-        },
-      ],
+  it("新增与同名文件混合导入时，确认替换后两者一起提交", async () => {
+    api_fetch_mock
+      .mockResolvedValueOnce({
+        files: [
+          {
+            source_path: "C:/source/new.txt",
+            target_rel_path: "new.txt",
+            file_type: "TXT",
+            parsed_items: [{ src: "新增文本" }],
+          },
+          {
+            source_path: "C:/source/old.txt",
+            target_rel_path: "old.txt",
+            file_type: "TXT",
+            parsed_items: [{ src: "替换文本" }],
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ accepted: true, changes: [] });
+    const write_payloads: Record<string, unknown>[] = [];
+    const snapshots = await mount_hook({
+      run_project_file_write: async (plan, request) => {
+        write_payloads.push(plan.requestBody);
+        return await request(plan.requestBody);
+      },
     });
-    const snapshots = await mount_hook();
 
     await act(async () => {
-      await latest_snapshot(snapshots).flow.request_add_files_from_paths(["C:/source/old.txt"]);
+      await latest_snapshot(snapshots).flow.request_add_files_from_paths([
+        "C:/source/new.txt",
+        "C:/source/old.txt",
+      ]);
     });
 
     expect(latest_snapshot(snapshots).dialog_state).toMatchObject({
@@ -140,9 +151,136 @@ describe("useWorkbenchImportFilesFlow", () => {
 
     expect(latest_snapshot(snapshots).dialog_state).toMatchObject({
       kind: "inherit-import-files",
-      target_rel_paths: ["old.txt"],
-      pending_path: "C:/source/old.txt",
+      target_rel_paths: ["new.txt", "old.txt"],
+      pending_path: "C:/source/new.txt",
     });
+
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.confirm_dialog();
+    });
+
+    expect(write_payloads[0]).toMatchObject({
+      files: [
+        { source_path: "C:/source/new.txt", target_rel_path: "new.txt" },
+        { source_path: "C:/source/old.txt", target_rel_path: "old.txt" },
+      ],
+      conflict_action: "replace",
+      inheritance_mode: "inherit",
+    });
+    expect(latest_snapshot(snapshots).dialog_state.kind).toBeNull();
+  });
+
+  it("跳过同名文件时只导入新增文件", async () => {
+    api_fetch_mock
+      .mockResolvedValueOnce({
+        files: [
+          { source_path: "C:/source/new.txt", target_rel_path: "new.txt" },
+          { source_path: "C:/source/old-copy.txt", target_rel_path: "old.txt" },
+        ],
+      })
+      .mockResolvedValueOnce({ accepted: true, changes: [] });
+    const write_payloads: Record<string, unknown>[] = [];
+    const snapshots = await mount_hook({
+      run_project_file_write: async (plan, request) => {
+        write_payloads.push(plan.requestBody);
+        return await request(plan.requestBody);
+      },
+    });
+
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.request_add_files_from_paths([
+        "C:/source/new.txt",
+        "C:/source/old-copy.txt",
+      ]);
+    });
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.secondary_dialog();
+    });
+    expect(latest_snapshot(snapshots).dialog_state).toMatchObject({
+      kind: "inherit-import-files",
+      target_rel_paths: ["new.txt"],
+    });
+
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.cancel_dialog();
+    });
+
+    expect(write_payloads[0]).toMatchObject({
+      files: [{ source_path: "C:/source/new.txt", target_rel_path: "new.txt" }],
+      conflict_action: "skip",
+      inheritance_mode: "none",
+    });
+  });
+
+  it("取消同名确认时不提交导入", async () => {
+    api_fetch_mock.mockResolvedValueOnce({
+      files: [{ source_path: "C:/source/old-copy.txt", target_rel_path: "old.txt" }],
+    });
+    const snapshots = await mount_hook();
+
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.request_add_file_from_path("C:/source/old-copy.txt");
+    });
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.cancel_dialog();
+    });
+
+    expect(latest_snapshot(snapshots).dialog_state.kind).toBeNull();
+    expect(api_fetch_mock).toHaveBeenCalledOnce();
+  });
+
+  it("部分文件解析失败时提示跳过并继续有效文件", async () => {
+    api_fetch_mock.mockResolvedValueOnce({
+      files: [{ source_path: "C:/source/new.txt", target_rel_path: "new.txt" }],
+      failed_files: [
+        {
+          filename: "broken.json",
+          code: "file.parse_failed",
+          message_key: "app.error.file.parse_failed.message",
+        },
+      ],
+    });
+    const push_toast = vi.fn();
+    const snapshots = await mount_hook({ push_toast });
+
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.request_add_files_from_paths([
+        "C:/source/new.txt",
+        "C:/source/broken.json",
+      ]);
+    });
+
+    expect(latest_snapshot(snapshots).dialog_state.kind).toBe("inherit-import-files");
+    expect(push_toast).toHaveBeenCalledWith(
+      "warning",
+      "broken.json - app.error.file.parse_failed.message",
+    );
+  });
+
+  it("全部文件解析失败时只展示一次阻断错误", async () => {
+    api_fetch_mock.mockResolvedValueOnce({
+      files: [],
+      failed_files: [
+        {
+          filename: "broken.json",
+          code: "file.parse_failed",
+          message_key: "app.error.file.parse_failed.message",
+        },
+      ],
+    });
+    const push_toast = vi.fn();
+    const snapshots = await mount_hook({ push_toast });
+
+    await act(async () => {
+      await latest_snapshot(snapshots).flow.request_add_files_from_paths(["C:/source/broken.json"]);
+    });
+
+    expect(latest_snapshot(snapshots).dialog_state.kind).toBeNull();
+    expect(push_toast).toHaveBeenCalledOnce();
+    expect(push_toast).toHaveBeenCalledWith(
+      "error",
+      "broken.json - app.error.file.parse_failed.message",
+    );
   });
 
   async function mount_hook(
@@ -152,6 +290,7 @@ describe("useWorkbenchImportFilesFlow", () => {
         plan: WorkbenchCommandPlan,
         request: (body: Record<string, unknown>) => Promise<ProjectWriteResultPayload>,
       ) => Promise<ProjectWriteResultPayload>;
+      push_toast?: (kind: "info" | "success" | "warning" | "error", message: string) => unknown;
     } = {},
   ): Promise<HookSnapshot[]> {
     const snapshots: HookSnapshot[] = [];
@@ -164,6 +303,7 @@ describe("useWorkbenchImportFilesFlow", () => {
         <HookProbe
           state={options.state ?? create_project_store_state()}
           run_project_file_write={options.run_project_file_write}
+          push_toast={options.push_toast}
           onSnapshot={(snapshot) => {
             snapshots.push(snapshot);
           }}
@@ -181,6 +321,7 @@ function HookProbe(props: {
     plan: WorkbenchCommandPlan,
     request: (body: Record<string, unknown>) => Promise<ProjectWriteResultPayload>,
   ) => Promise<ProjectWriteResultPayload>;
+  push_toast?: (kind: "info" | "success" | "warning" | "error", message: string) => unknown;
   onSnapshot: (snapshot: HookSnapshot) => void;
 }): null {
   const [dialog_state, set_dialog_state] = useState<WorkbenchDialogState>(close_dialog_state());
@@ -210,7 +351,7 @@ function HookProbe(props: {
           : { ...previous_state, submitting: next_submitting };
       });
     },
-    push_toast: vi.fn(),
+    push_toast: props.push_toast ?? vi.fn(),
     t: (key) => key,
   });
 

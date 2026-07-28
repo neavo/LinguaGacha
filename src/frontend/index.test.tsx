@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type React from "react";
 
-// 入口测试只关心挂载顺序，ReactDOM mock 保留 createRoot/render 的真实调用边界。
 const renderer_entry_mocks = vi.hoisted(() => {
   return {
     render: vi.fn(),
@@ -69,5 +68,8 @@ describe("renderer index", () => {
     expect(renderer_entry_mocks.install_renderer_global_error_handlers).toHaveBeenCalledOnce();
     expect(renderer_entry_mocks.createRoot).toHaveBeenCalledWith(root_element);
     expect(renderer_entry_mocks.render).toHaveBeenCalledOnce();
+    expect(
+      renderer_entry_mocks.install_renderer_global_error_handlers.mock.invocationCallOrder[0],
+    ).toBeLessThan(renderer_entry_mocks.createRoot.mock.invocationCallOrder[0]!);
   });
 });

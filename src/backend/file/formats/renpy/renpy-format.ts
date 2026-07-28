@@ -16,7 +16,7 @@ import { parse_document } from "./parser";
 import { RenpyWriter } from "./writer";
 
 /**
- * 直接构造 RenPyFormat 的测试默认开启姓名写回，FileFormatService 会注入真实配置。
+ * 直接构造 RenPyFormat 的测试默认启用姓名写回，FileFormatService 会注入真实配置。
  */
 const DEFAULT_SETTING_SNAPSHOT = normalize_setting_snapshot({});
 const DEFAULT_CONFIG: FileFormatServiceConfig = {

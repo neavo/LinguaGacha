@@ -1,142 +1,138 @@
 import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import {
+  DesktopProgressToastModalLayer,
+  ModalProgressToastTimeoutError,
+  useDesktopToast,
+} from "@frontend/app/feedback/desktop-toast";
 
 const sonner_mock = vi.hoisted(() => {
-  const toast = vi.fn(() => "progress-toast-id") as unknown as {
-    (message: string, options?: unknown): string;
-    success: ReturnType<typeof vi.fn>;
-    info: ReturnType<typeof vi.fn>;
-    warning: ReturnType<typeof vi.fn>;
-    error: ReturnType<typeof vi.fn>;
-    dismiss: ReturnType<typeof vi.fn>;
-  };
-  toast.success = vi.fn(() => "success-toast-id");
-  toast.info = vi.fn(() => "info-toast-id");
-  toast.warning = vi.fn(() => "warning-toast-id");
-  toast.error = vi.fn(() => "error-toast-id");
-  toast.dismiss = vi.fn();
+  const toast = Object.assign(
+    vi.fn(() => "progress-toast-id"),
+    {
+      success: vi.fn(() => "success-toast-id"),
+      info: vi.fn(() => "info-toast-id"),
+      warning: vi.fn(() => "warning-toast-id"),
+      error: vi.fn(() => "error-toast-id"),
+      dismiss: vi.fn(),
+    },
+  );
   return { toast };
 });
 
-vi.mock("sonner", () => {
-  return {
-    toast: sonner_mock.toast,
-  };
-});
-
-vi.mock("@frontend/widgets/progress-toast-ring/progress-toast-ring", () => {
-  return {
-    ProgressToastRing: () => null,
-  };
-});
+vi.mock("sonner", () => sonner_mock);
+vi.mock("@frontend/widgets/progress-toast-ring/progress-toast-ring", () => ({
+  ProgressToastRing: () => null,
+}));
 
 type DesktopToastApi = ReturnType<typeof useDesktopToast>;
 
-type ToastProbeProps = {
-  on_ready: (api: DesktopToastApi) => void;
-};
-
-/**
- * 渲染当前组件的公开界面。
- */
-function ToastProbe(props: ToastProbeProps): JSX.Element | null {
+function ToastProbe(props: { on_ready: (api: DesktopToastApi) => void }): JSX.Element {
   const toast_api = useDesktopToast();
 
   useEffect(() => {
     props.on_ready(toast_api);
   }, [props, toast_api]);
 
-  return null;
+  return <DesktopProgressToastModalLayer />;
 }
 
 describe("useDesktopToast", () => {
-  let container: HTMLDivElement | null = null;
-  let root: Root | null = null;
-  let toast_api: DesktopToastApi | null = null;
+  let container: HTMLDivElement;
+  let root: Root;
+  let toast_api: DesktopToastApi | null;
 
-  /**
-   * 读取当前场景需要的稳定数据。
-   */
-  function read_toast_api(): DesktopToastApi {
-    if (toast_api === null) {
-      throw new Error("toast_api 尚未初始化。");
-    }
-    return toast_api;
-  }
-
-  /**
-   * 生成当前场景的展示内容。
-   */
-  async function render_probe(): Promise<void> {
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    toast_api = null;
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
 
     await act(async () => {
-      root?.render(
-        <ToastProbe
-          on_ready={(api) => {
-            toast_api = api;
-          }}
-        />,
-      );
+      root.render(<ToastProbe on_ready={(api) => (toast_api = api)} />);
     });
-  }
+  });
 
   afterEach(async () => {
-    if (root !== null) {
-      await act(async () => {
-        root?.unmount();
-      });
+    await act(async () => root.unmount());
+    container.remove();
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  function read_toast_api(): DesktopToastApi {
+    if (toast_api === null) {
+      throw new Error("toast API 尚未初始化");
     }
+    return toast_api;
+  }
 
-    container?.remove();
-    container = null;
-    root = null;
-    toast_api = null;
-    vi.clearAllMocks();
+  it("普通和常驻通知按 kind 分派，并固定常驻选项", () => {
+    read_toast_api().push_toast("info", "普通通知");
+    read_toast_api().push_persistent_toast("warning", "常驻通知");
+
+    expect(sonner_mock.toast.info).toHaveBeenCalledWith("普通通知");
+    expect(sonner_mock.toast.warning).toHaveBeenCalledWith("常驻通知", {
+      duration: Number.POSITIVE_INFINITY,
+      closeButton: true,
+    });
   });
 
-  it("普通通知会保留消息里的显式换行", async () => {
-    await render_probe();
-
-    read_toast_api().push_toast("info", "已按当前设置更新项目设置 …\n输入语言 - 日文");
-
-    expect(sonner_mock.toast.info).toHaveBeenCalledWith(
-      "已按当前设置更新项目设置 …\n输入语言 - 日文",
-    );
-  });
-
-  it("常驻通知会保留消息里的显式换行", async () => {
-    await render_probe();
-
-    read_toast_api().push_persistent_toast("warning", "第一行\r\n第二行");
-
-    expect(sonner_mock.toast.warning).toHaveBeenCalledWith(
-      "第一行\r\n第二行",
-      expect.objectContaining({
-        closeButton: true,
-        duration: Number.POSITIVE_INFINITY,
-      }),
-    );
-  });
-
-  it("进度通知会保留消息里的显式换行", async () => {
-    await render_probe();
-
-    read_toast_api().push_progress_toast({
-      message: "正在处理\n请稍候",
-      progress_percent: 25,
+  it("只允许当前进度通知 owner 更新和关闭", async () => {
+    let first_id: string | number;
+    let current_id: string | number;
+    await act(async () => {
+      first_id = read_toast_api().push_progress_toast({
+        message: "第一项",
+        progress_percent: 10,
+      });
+      current_id = read_toast_api().push_progress_toast({
+        message: "第二项",
+        progress_percent: 20,
+      });
     });
 
+    read_toast_api().update_progress_toast(first_id!, {
+      message: "过期更新",
+      progress_percent: 80,
+    });
+    expect(sonner_mock.toast).not.toHaveBeenCalledWith("过期更新", expect.anything());
+
+    await act(async () => {
+      read_toast_api().update_progress_toast(current_id!, {
+        message: "当前更新",
+        progress_percent: 80,
+      });
+      read_toast_api().dismiss_toast(current_id!);
+    });
     expect(sonner_mock.toast).toHaveBeenCalledWith(
-      "正在处理\n请稍候",
-      expect.objectContaining({
-        id: "desktop-progress-toast",
-      }),
+      "当前更新",
+      expect.objectContaining({ id: "desktop-progress-toast" }),
     );
+
+    await act(async () => vi.advanceTimersByTimeAsync(1500));
+    expect(sonner_mock.toast.dismiss).toHaveBeenCalledWith("desktop-progress-toast");
+  });
+
+  it("模态任务超时后抛出稳定错误并解除遮罩", async () => {
+    let pending_task: Promise<never>;
+    await act(async () => {
+      pending_task = read_toast_api().run_modal_progress_toast({
+        message: "处理中",
+        task: () => new Promise<never>(() => undefined),
+        timeout_ms: 100,
+      });
+    });
+
+    expect(container.querySelector(".cn-progress-toast-modal-layer")).not.toBeNull();
+
+    const rejection = expect(pending_task!).rejects.toBeInstanceOf(ModalProgressToastTimeoutError);
+    await act(async () => vi.advanceTimersByTimeAsync(100));
+    await rejection;
+    expect(container.querySelector(".cn-progress-toast-modal-layer")).toBeNull();
+    expect(sonner_mock.toast.dismiss).toHaveBeenCalledWith("desktop-progress-toast");
   });
 });

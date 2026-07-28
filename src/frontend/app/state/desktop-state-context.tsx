@@ -137,23 +137,12 @@ const DEFAULT_PROJECT_CHANGE_SIGNAL: ProjectChangeSignal = {
 };
 
 // Desktop Runtime Context 是模块级稳定契约，集中维护避免调用点散落魔术值。
-/**
- * 集中维护当前模块的稳定常量。
- */
 export const DesktopStateContext = createContext<DesktopStateContextValue | null>(null);
 
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 export function normalize_settings_snapshot(payload: SettingsSnapshotPayload): SettingsSnapshot {
   return normalize_setting_snapshot(payload.settings);
 }
 
-// 在边界处归一化输入，避免下游再处理坏载荷分支。
-/**
- * 归一化输入，保证下游消费稳定形状。
- */
 function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSnapshot {
   const snapshot = payload.project ?? {};
   return {
@@ -162,26 +151,18 @@ function normalize_project_snapshot(payload: ProjectSnapshotPayload): ProjectSna
   };
 }
 
-/**
- * 读取当前场景需要的稳定数据。
- */
 function collect_project_apply_result_sections(
   results: readonly ProjectChangeApplyResult[],
 ): ProjectStage[] {
   return [...new Set(results.flatMap((result) => result.updatedSections))];
 }
 
-/**
- * 解析当前场景的最终消费值。
- */
 function resolve_project_apply_result_reason(results: readonly ProjectChangeApplyResult[]): string {
   const reasons = [...new Set(results.map((result) => result.source || "project_change"))];
   return reasons.length === 1 ? (reasons[0] ?? "project_change") : "project_change_batch";
 }
 
-/**
- * 构造当前场景的标准初始数据。
- */
+/** 将同一事件的多条 operation 合并成 renderer 增量；任一失效标记优先于局部 id。 */
 function create_project_change_apply_result(
   event: ProjectChangeEventForState,
 ): ProjectChangeApplyResult {
@@ -260,9 +241,6 @@ function create_project_change_apply_result(
   return result;
 }
 
-/**
- * 渲染当前组件的公开界面。
- */
 export function DesktopStateProvider(props: { children: ReactNode }): JSX.Element {
   const [initial_state_ready, set_initial_state_ready] = useState(false);
   const [initial_state_error, set_initial_state_error] = useState<string | null>(null);
@@ -703,10 +681,6 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
   useEffect(() => {
     let cancelled = false;
 
-    // load_initial_state 封装当前模块的共享逻辑，避免重复实现同一维护规则。
-    /**
-     * 承接当前模块的核心控制分支。
-     */
     async function load_initial_state(): Promise<void> {
       try {
         // Backend API 状态是共享权威源，渲染层启动或热更新时不能通过卸载工程去“重置会话”，否则开发态的 StrictMode、Fast Refresh 或整页重载都会把外部手动打开的旧应用状态一起清空
@@ -755,10 +729,6 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
 
     let cancelled = false;
 
-    // refresh_loaded_project_state 封装当前模块的共享逻辑，避免重复实现同一维护规则。
-    /**
-     * 承接当前模块的核心控制分支。
-     */
     async function refresh_loaded_project_state(): Promise<void> {
       try {
         await refresh_project_state();

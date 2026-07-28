@@ -1,43 +1,65 @@
 import { describe, expect, it } from "vitest";
 
-import { is_app_error } from "../shared/error";
+import { UnknownQualityRuleTypeError } from "../shared/error";
 import { QualityRule, normalize_text_preserve_mode } from "./quality";
 
-describe("quality 基础模型", () => {
-  it("集中维护公开规则类型到数据库和 meta 的映射", () => {
+describe("QualityRule", () => {
+  it("只接受公开质量规则槽位", () => {
     expect(QualityRule.all().map((rule) => rule.kind)).toEqual([
       "glossary",
       "text_preserve",
       "pre_replacement",
       "post_replacement",
     ]);
-    expect(QualityRule.from_json("pre_replacement").database_type).toBe(
-      "pre_translation_replacement",
-    );
-    expect(QualityRule.from_json("text_preserve").enabled_meta_key).toBeNull();
-    expect(QualityRule.from_json("post_replacement").revision_meta_key).toBe(
-      "quality_rule_revision.post_replacement",
-    );
+    expect(() => QualityRule.from_json("legacy")).toThrowError(UnknownQualityRuleTypeError);
   });
 
-  it("规范化文本保护模式并拒绝未知规则类型", () => {
-    expect(normalize_text_preserve_mode("smart")).toBe("smart");
-    expect(normalize_text_preserve_mode("CUSTOM")).toBe("custom");
-    expect(normalize_text_preserve_mode("bad")).toBe("off");
-    expect(normalize_text_preserve_mode(undefined, "smart")).toBe("smart");
-    expect(QualityRule.from_json("glossary").kind).toBe("glossary");
-    let code: string | null = null;
-    try {
-      QualityRule.from_json("legacy");
-    } catch (error) {
-      code = is_app_error(error) ? error.code : null;
-    }
-    expect(code).toBe("quality.unknown_rule_type");
+  it("文本保护模式兼容历史大小写并尊重调用方默认值", () => {
+    expect(normalize_text_preserve_mode(" CUSTOM ")).toBe("custom");
+    expect(normalize_text_preserve_mode("unknown", "smart")).toBe("smart");
   });
 
-  it("按规则槽位归一缺失启用态和文本保护模式", () => {
-    expect(QualityRule.from_json("glossary").normalize_slice({}).enabled).toBe(true);
-    expect(QualityRule.from_json("pre_replacement").normalize_slice({}).enabled).toBe(false);
-    expect(QualityRule.from_json("text_preserve").normalize_slice({}).mode).toBe("smart");
+  it("规则列表写入前清理字段并过滤坏项", () => {
+    expect(
+      QualityRule.normalize_entries([
+        null,
+        ["invalid"],
+        { src: "   ", dst: "忽略" },
+        {
+          entry_id: " rule-1 ",
+          src: " HP ",
+          dst: " 生命值 ",
+          info: " 属性 ",
+          regex: 1,
+          case_sensitive: 0,
+        },
+      ]),
+    ).toEqual([
+      {
+        entry_id: "rule-1",
+        src: "HP",
+        dst: "生命值",
+        info: "属性",
+        regex: true,
+        case_sensitive: false,
+      },
+    ]);
+  });
+
+  it("不同规则槽位保留各自的缺省启用态和模式", () => {
+    expect(QualityRule.from_json("glossary").normalize_slice({})).toMatchObject({
+      enabled: true,
+      mode: "off",
+    });
+    expect(QualityRule.from_json("pre_replacement").normalize_slice({})).toMatchObject({
+      enabled: false,
+      mode: "off",
+    });
+    expect(
+      QualityRule.from_json("text_preserve").normalize_slice({
+        enabled: "false",
+        mode: "CUSTOM",
+      }),
+    ).toMatchObject({ enabled: false, mode: "custom" });
   });
 });

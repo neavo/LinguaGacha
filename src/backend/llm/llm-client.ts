@@ -21,8 +21,6 @@ import { empty_llm_result } from "./transport/transport-types";
 
 interface LLMClientOptions {
   userAgent: string; // 由应用元信息层注入，LLMClient 不读取 version.txt
-  policy?: LLMClientPolicy; // 注入点只供测试替换请求策略，不改变生产归属
-  clientPool?: ProviderClientResolver; // 注入点用于验证 SDK client 复用和凭据隔离
   transports?: Partial<Record<RequestProvider, RequestTransport>>; // 只允许按 provider 替换边界实现
 }
 
@@ -34,11 +32,11 @@ export class LLMClient implements LLMClientPort {
   private readonly transports: Record<RequestProvider, RequestTransport>; // 按 provider 分发表层请求，不再改写模型策略
 
   /**
-   * 构造 Backend 进程内 LLM 请求客户端；测试可注入 fake policy、pool 或 transport。
+   * 构造 Backend 进程内 LLM 请求客户端；测试只替换远程 transport 边界。
    */
   public constructor(options: LLMClientOptions) {
-    const client_pool = options.clientPool ?? new ProviderClientPool();
-    this.policy = options.policy ?? new LLMClientPolicy(options.userAgent);
+    const client_pool = new ProviderClientPool();
+    this.policy = new LLMClientPolicy(options.userAgent);
     this.transports = {
       "openai-compatible":
         options.transports?.["openai-compatible"] ?? new OpenAICompatibleTransport(client_pool),

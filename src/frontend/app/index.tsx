@@ -159,9 +159,6 @@ function resolve_update_confirm_label(state: UpdateDialogState, t: AppTranslator
   return t("app.action.confirm");
 }
 
-/**
- * 解析当前场景的最终消费值。
- */
 function resolve_selectable_route(route_id: RouteId): RouteId {
   if (route_id === "text-replacement") {
     return "pre-translation-replacement";
@@ -172,17 +169,10 @@ function resolve_selectable_route(route_id: RouteId): RouteId {
   }
 }
 
-/**
- * 判断当前值是否满足业务条件。
- */
 function has_registered_screen(route_id: RouteId): boolean {
   return SCREEN_REGISTRY[route_id] !== undefined;
 }
 
-// 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
-/**
- * 读取当前场景需要的稳定数据。
- */
 function read_sidebar_state(): boolean {
   const stored_sidebar_state = window.localStorage.getItem(SIDEBAR_STORAGE_KEY);
 
@@ -193,10 +183,6 @@ function read_sidebar_state(): boolean {
   }
 }
 
-// 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
-/**
- * 读取当前场景需要的稳定数据。
- */
 function read_theme_mode(): ThemeMode {
   if (typeof window === "undefined") {
     return "light";
@@ -213,10 +199,6 @@ function read_theme_mode(): ThemeMode {
   }
 }
 
-// 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
-/**
- * 读取当前场景需要的稳定数据。
- */
 function read_lg_base_font_enabled(): boolean {
   if (typeof window === "undefined") {
     return true;
@@ -231,32 +213,18 @@ function read_lg_base_font_enabled(): boolean {
   }
 }
 
-/**
- * 承接当前模块的核心控制分支。
- */
 function serialize_lg_base_font_mode(is_enabled: boolean): "enabled" | "disabled" {
   return is_enabled ? "enabled" : "disabled";
 }
 
-// 收口外部文本解析，解析失败时由这里决定降级口径。
-/**
- * 解析输入并收窄为业务可用值。
- */
 function parse_lg_base_font_mode(stored_font_mode: string | null): boolean {
   return stored_font_mode !== "disabled";
 }
 
-/**
- * 判断当前值是否满足业务条件。
- */
 function is_log_window_mode(): boolean {
   return new URLSearchParams(window.location.search).get("window") === "logs";
 }
 
-// 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
-/**
- * 生成当前场景的展示内容。
- */
 function format_app_titlebar_title(app_name: string, version: string | null): string {
   const normalized_version = version?.trim();
   if (normalized_version === undefined || normalized_version === "") {
@@ -268,9 +236,6 @@ function format_app_titlebar_title(app_name: string, version: string | null): st
   return `${app_name} ${version_label}`;
 }
 
-/**
- * 承接当前模块的核心控制分支。
- */
 function useLgBaseFontMode(): [boolean, Dispatch<SetStateAction<boolean>>] {
   const [is_lg_base_font_enabled, set_is_lg_base_font_enabled] = useState<boolean>(() =>
     read_lg_base_font_enabled(),
@@ -286,10 +251,6 @@ function useLgBaseFontMode(): [boolean, Dispatch<SetStateAction<boolean>>] {
   }, [is_lg_base_font_enabled]);
 
   useEffect(() => {
-    // 事件处理边界，只把外部事件转换为本模块状态更新。
-    /**
-     * 承接当前模块的核心控制分支。
-     */
     function handle_storage(event: StorageEvent): void {
       if (event.key !== FONT_FAMILY_STORAGE_KEY) {
         return;
@@ -319,9 +280,6 @@ type LogWindowSettingsPayload = {
   };
 };
 
-/**
- * 渲染当前组件的公开界面。
- */
 function AppContent(props: AppContentProps): JSX.Element {
   const {
     initial_state_ready,
@@ -559,10 +517,6 @@ function AppContent(props: AppContentProps): JSX.Element {
     });
   }, []);
 
-  // 事件处理边界，只把外部事件转换为本模块状态更新。
-  /**
-   * 承接当前模块的核心控制分支。
-   */
   function handle_select_route(route_id: RouteId): void {
     const next_route = resolve_selectable_route(route_id);
 
@@ -609,10 +563,6 @@ function AppContent(props: AppContentProps): JSX.Element {
     set_log_badge_visible(true);
   }, [project_snapshot.loaded, project_snapshot.path, project_session_status]);
 
-  // 事件处理边界，只把外部事件转换为本模块状态更新。
-  /**
-   * 承接当前模块的核心控制分支。
-   */
   function handle_toggle_group(route_id: RouteId): void {
     if (is_sidebar_collapsed) {
       set_is_sidebar_collapsed(false);
@@ -636,10 +586,6 @@ function AppContent(props: AppContentProps): JSX.Element {
     }
   }
 
-  // 事件处理边界，只把外部事件转换为本模块状态更新。
-  /**
-   * 承接当前模块的核心控制分支。
-   */
   function handle_bottom_action(action_id: BottomActionId): void {
     if (action_id !== "logs") {
       return;
@@ -657,10 +603,6 @@ function AppContent(props: AppContentProps): JSX.Element {
     });
   }
 
-  // 事件处理边界，只把外部事件转换为本模块状态更新。
-  /**
-   * 承接当前模块的核心控制分支。
-   */
   function handle_appearance_menu_action(action_id: AppearanceMenuActionId): void {
     if (action_id === "theme-mode") {
       if (theme_mode === "light") {
@@ -825,10 +767,6 @@ function AppContent(props: AppContentProps): JSX.Element {
     });
   }
 
-  // 事件处理边界，只把外部事件转换为本模块状态更新。
-  /**
-   * 承接当前模块的核心控制分支。
-   */
   function handle_profile_action(): void {
     if (update_release !== null) {
       reopen_update_dialog();
@@ -840,10 +778,6 @@ function AppContent(props: AppContentProps): JSX.Element {
     });
   }
 
-  // handle_confirm_window_close 是事件处理边界，只把外部事件转换为本模块状态更新。
-  /**
-   * 承接当前模块的核心控制分支。
-   */
   async function handle_confirm_window_close(): Promise<void> {
     set_close_confirm_submitting(true);
     try {
@@ -955,10 +889,6 @@ function AppContent(props: AppContentProps): JSX.Element {
   );
 }
 
-// 只读取边界事实并返回稳定快照，不在读取阶段产生写入副作用。
-/**
- * 读取当前场景需要的稳定数据。
- */
 function read_initial_log_window_app_language(): AppLanguage {
   const stored_language = window.localStorage.getItem(LOG_WINDOW_APP_LANGUAGE_STORAGE_KEY);
   return stored_language === null
@@ -966,9 +896,6 @@ function read_initial_log_window_app_language(): AppLanguage {
     : normalize_app_language(stored_language);
 }
 
-/**
- * 渲染当前组件的公开界面。
- */
 function WindowVisualProviders({ children }: { children: ReactNode }): JSX.Element {
   // 多窗口共享的视觉壳层只承载主题、tooltip 和提示，不读取项目或任务运行态
   return (
@@ -987,9 +914,6 @@ function WindowVisualProviders({ children }: { children: ReactNode }): JSX.Eleme
   );
 }
 
-/**
- * 渲染当前组件的公开界面。
- */
 function MainWindowLocaleProvider({ children }: { children: ReactNode }): JSX.Element {
   const { settings_snapshot } = useDesktopState();
 
@@ -1001,9 +925,6 @@ function MainWindowLocaleProvider({ children }: { children: ReactNode }): JSX.El
   );
 }
 
-/**
- * 渲染当前组件的公开界面。
- */
 function MainWindowApp(props: AppContentProps): JSX.Element {
   // 只有主窗口拥有项目、任务、设置和主事件流运行态
   return (
@@ -1021,9 +942,6 @@ function MainWindowApp(props: AppContentProps): JSX.Element {
   );
 }
 
-/**
- * 渲染当前组件的公开界面。
- */
 function LogWindowApp(): JSX.Element {
   const [app_language, set_app_language] = useState<AppLanguage>(() =>
     read_initial_log_window_app_language(),
@@ -1058,9 +976,6 @@ function LogWindowApp(): JSX.Element {
   );
 }
 
-/**
- * 渲染当前组件的公开界面。
- */
 function App(): JSX.Element {
   const [is_lg_base_font_enabled, set_is_lg_base_font_enabled] = useLgBaseFontMode();
 

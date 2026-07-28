@@ -1,5 +1,5 @@
 import { RuntimeCancelledError } from "../../../shared/error";
-import { read_json_record } from "../../../domain/json";
+import { read_json_integer, read_json_record } from "../../../domain/json";
 
 const DEFAULT_CONCURRENCY_LIMIT = 8; // 用户未设置并发且未设置 RPM 时，默认同时执行 8 个 LLM work unit
 const ONE_MINUTE_MS = 60_000;
@@ -7,18 +7,15 @@ const ONE_SECOND_MS = 1_000;
 type LimiterModelRecord = Record<string, unknown>;
 
 /**
- * limiter 只接收解析后的容量与可选测试时钟，不读取应用设置。
+ * limiter 只接收解析后的容量，不读取应用设置。
  */
 interface TaskLimiterOptions {
-  concurrency_limit?: number; // 兼容直接构造时的并发输入
   rpm_limit?: number; // 大于零时启用请求启动间隔
-  max_concurrency?: number; // 已由模型策略解析的最终并发上限
-  now?: () => number; // 测试注入的可控时钟
+  max_concurrency: number; // 已由模型策略解析的最终并发上限
 }
 
 export interface TaskLimiterLease {
   release: () => void; // 只释放本次 lease，占用方异常重入时保持幂等
-  acquired_at: number; // 记录资格发放时刻，供测试和未来诊断读取
   queued_ms: number; // 表达请求在 limiter 内等待了多久，不进入任务运行态
 }
 
@@ -46,8 +43,6 @@ export class TaskLimiter {
 
   private readonly hidden_rps_token_capacity: number; // 允许冷启动填满并发
 
-  private readonly now_provider: () => number; // 让限流测试可以注入虚拟时钟
-
   private in_use = 0; // 记录已发放但尚未释放的请求资格数量
 
   private next_rpm_permit_at: number | null = null; // 记录下一次 RPM 资格最早可发放时间
@@ -63,18 +58,15 @@ export class TaskLimiter {
   /**
    * 初始化限流参数；TaskLimiter 只接收最终并发值，不再解释 concurrency_limit == 0。
    */
-  public constructor(options: TaskLimiterOptions = {}) {
-    const raw_concurrency = Math.trunc(
-      Number(options.max_concurrency ?? options.concurrency_limit ?? DEFAULT_CONCURRENCY_LIMIT),
-    );
+  public constructor(options: TaskLimiterOptions) {
+    const raw_concurrency = Math.trunc(Number(options.max_concurrency));
     this.max_concurrency = raw_concurrency > 0 ? raw_concurrency : DEFAULT_CONCURRENCY_LIMIT;
     this.rpm_limit = Math.max(0, Math.trunc(Number(options.rpm_limit ?? 0)));
     this.rpm_permit_interval_ms = this.rpm_limit > 0 ? ONE_MINUTE_MS / this.rpm_limit : 0;
     this.hidden_rps_limit = this.rpm_limit > 0 ? 0 : this.max_concurrency;
     this.hidden_rps_token_capacity = this.hidden_rps_limit;
     this.hidden_rps_tokens = this.hidden_rps_token_capacity;
-    this.now_provider = options.now ?? (() => Date.now());
-    this.hidden_rps_refilled_at = this.now_provider();
+    this.hidden_rps_refilled_at = Date.now();
   }
 
   /**
@@ -90,7 +82,7 @@ export class TaskLimiter {
         reject,
         signal,
         abort_listener: () => this.cancel_pending_request(request),
-        queued_at: this.now_provider(),
+        queued_at: Date.now(),
         settled: false,
       };
       signal.addEventListener("abort", request.abort_listener, { once: true });
@@ -128,11 +120,10 @@ export class TaskLimiter {
     request.settled = true;
     request.signal.removeEventListener("abort", request.abort_listener);
     this.in_use += 1;
-    const acquired_at = this.now_provider();
+    const acquired_at = Date.now();
     this.consume_dispatch_permit(acquired_at);
     let released = false;
     request.resolve({
-      acquired_at,
       queued_ms: Math.max(0, acquired_at - request.queued_at),
       release: () => {
         if (released) {
@@ -178,9 +169,9 @@ export class TaskLimiter {
       if (this.next_rpm_permit_at === null) {
         return 0;
       }
-      return Math.max(0, this.next_rpm_permit_at - this.now_provider());
+      return Math.max(0, this.next_rpm_permit_at - Date.now());
     }
-    this.refill_hidden_rps_tokens(this.now_provider());
+    this.refill_hidden_rps_tokens(Date.now());
     if (this.hidden_rps_tokens >= 1) {
       return 0;
     }
@@ -273,10 +264,10 @@ export class LimiterPool {
     }
     const limiter = new TaskLimiter({
       max_concurrency: resolve_effective_concurrency_limit({
-        concurrency_limit: this.read_number(threshold["concurrency_limit"], 0),
-        rpm_limit: this.read_number(threshold["rpm_limit"] ?? threshold["rpm_threshold"], 0),
+        concurrency_limit: read_json_integer(threshold["concurrency_limit"], 0),
+        rpm_limit: read_json_integer(threshold["rpm_limit"] ?? threshold["rpm_threshold"], 0),
       }),
-      rpm_limit: this.read_number(threshold["rpm_limit"] ?? threshold["rpm_threshold"], 0),
+      rpm_limit: read_json_integer(threshold["rpm_limit"] ?? threshold["rpm_threshold"], 0),
     });
     this.shared_limiter = { key, limiter };
     return limiter;
@@ -290,17 +281,9 @@ export class LimiterPool {
       id: String(model["id"] ?? ""),
       api_url: String(model["api_url"] ?? ""),
       model_id: String(model["model_id"] ?? ""),
-      concurrency_limit: this.read_number(threshold["concurrency_limit"], 0),
-      rpm_limit: this.read_number(threshold["rpm_limit"] ?? threshold["rpm_threshold"], 0),
+      concurrency_limit: read_json_integer(threshold["concurrency_limit"], 0),
+      rpm_limit: read_json_integer(threshold["rpm_limit"] ?? threshold["rpm_threshold"], 0),
     });
-  }
-
-  /**
-   * 限流配置保持整数语义，坏值回退到调用方默认值
-   */
-  private read_number(value: unknown, fallback: number): number {
-    const number_value = Number(value ?? fallback);
-    return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
 }
 

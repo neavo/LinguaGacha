@@ -75,7 +75,6 @@ export function capture_renderer_error(error: unknown, options: RendererErrorCap
  * 根入口注册浏览器级异常监听，覆盖 React 边界之外的未处理 promise 和事件回调错误。
  */
 export function install_renderer_global_error_handlers(): () => void {
-  // 事件处理边界，只把外部事件转换为本模块状态更新。
   function handle_error(event: ErrorEvent): void {
     capture_renderer_error(event.error ?? event.message, {
       source: "global",
@@ -89,7 +88,6 @@ export function install_renderer_global_error_handlers(): () => void {
     });
   }
 
-  // 事件处理边界，只把外部事件转换为本模块状态更新。
   function handle_unhandled_rejection(event: PromiseRejectionEvent): void {
     capture_renderer_error(event.reason, {
       source: "global",

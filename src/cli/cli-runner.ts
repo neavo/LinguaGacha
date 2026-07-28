@@ -32,12 +32,14 @@ export async function run_cli_command(
   try {
     const start_result = await bootstrap.start();
     write_system_proxy_startup_notice(start_result);
-    await run_cli_job(start_result.backendServices, command, {
-      statusReporter: new CLIJsonStatusReporter({
+    await run_cli_job(
+      start_result.backendServices,
+      command,
+      new CLIJsonStatusReporter({
         command: command.command,
         writeLine: write_stdout,
       }),
-    });
+    );
   } catch (operation_error) {
     try {
       await bootstrap.stop();

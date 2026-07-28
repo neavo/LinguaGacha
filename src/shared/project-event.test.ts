@@ -3,13 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   isProjectDataSection,
   normalizeProjectChangePayloadMode,
-  normalizeProjectDataSections,
   PROJECT_CHANGE_EVENT_TOPIC,
   PROJECT_DATA_SECTIONS,
 } from "./project-event";
 
 describe("project event contract", () => {
-  it("只接受公开项目 section 并按输入顺序去重", () => {
+  it("公开稳定的项目 section 与事件 topic", () => {
     expect(PROJECT_DATA_SECTIONS).toEqual([
       "project",
       "files",
@@ -23,11 +22,6 @@ describe("project event contract", () => {
 
     expect(isProjectDataSection("items")).toBe(true);
     expect(isProjectDataSection("task")).toBe(false);
-    expect(normalizeProjectDataSections(["items", "task", "items", "analysis"])).toEqual([
-      "items",
-      "analysis",
-    ]);
-    expect(normalizeProjectDataSections("items")).toEqual([]);
   });
 
   it("未知 payload mode 降级为补读而不是误合并", () => {

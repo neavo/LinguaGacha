@@ -183,12 +183,7 @@ function expect_worker_threads_backend_worker_execution(
  * 等待顶层异步入口完成动态 import 和 mock 调用。
  */
 async function wait_for_entry(is_ready: () => boolean): Promise<void> {
-  for (let index = 0; index < 20; index += 1) {
-    if (is_ready()) {
-      return;
-    }
-    await new Promise((resolve) => {
-      setTimeout(resolve, 0);
-    });
-  }
+  await vi.waitFor(() => {
+    expect(is_ready()).toBe(true);
+  });
 }

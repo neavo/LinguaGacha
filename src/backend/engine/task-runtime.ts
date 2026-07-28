@@ -12,9 +12,9 @@ import {
   type TranslationScope,
 } from "../../domain/task";
 import {
+  read_json_integer,
   read_json_record,
   type JsonRecord,
-  type JsonValue,
   type MutableJsonRecord,
 } from "../../domain/json";
 import * as AppErrors from "../../shared/error";
@@ -99,7 +99,7 @@ export class TaskRuntime {
   /**
    * 返回运行态值快照，调用方不能借数组引用改写内部 scope。
    */
-  public snapshot_state(): TaskRuntimeStateSnapshot {
+  private snapshot_state(): TaskRuntimeStateSnapshot {
     return {
       run_revision: this.run_revision,
       status: this.status,
@@ -279,7 +279,7 @@ export class TaskRuntime {
     }
     this.request_in_flight_count = Math.max(
       0,
-      this.request_in_flight_count + this.read_number(delta, 0),
+      this.request_in_flight_count + read_json_integer(delta, 0),
     );
     this.active_task_type = handle.task_type;
     this.pending_request_pressure = {
@@ -301,7 +301,7 @@ export class TaskRuntime {
   /**
    * 终态前冲刷压力帧；失败会交给 finish 汇总，但不会污染后续 flush 链。
    */
-  public async flush_request_pressure(): Promise<void> {
+  private async flush_request_pressure(): Promise<void> {
     this.cancel_pending_request_pressure_timer();
     const pending = this.pending_request_pressure;
     this.pending_request_pressure = null;
@@ -378,7 +378,7 @@ export class TaskRuntime {
         task_type === "analysis"
           ? {
               kind: "analysis",
-              candidate_count: this.read_number(meta["analysis_candidate_count"], 0),
+              candidate_count: read_json_integer(meta["analysis_candidate_count"], 0),
             }
           : {
               kind: "translation",
@@ -505,13 +505,13 @@ export class TaskRuntime {
     const translation_progress = normalize_task_progress_snapshot({
       ...read_json_record(meta["translation_extras"]),
     });
-    if (this.read_number(translation_progress["line"], 0) > 0) {
+    if (read_json_integer(translation_progress["line"], 0) > 0) {
       return "translation";
     }
     const analysis_progress = normalize_task_progress_snapshot({
       ...read_json_record(meta["analysis_extras"]),
     });
-    return this.read_number(analysis_progress["line"], 0) > 0 ? "analysis" : "translation";
+    return read_json_integer(analysis_progress["line"], 0) > 0 ? "analysis" : "translation";
   }
 
   /** 只接受当前 active run 的 run_id。 */
@@ -562,11 +562,5 @@ export class TaskRuntime {
       throw errors[0];
     }
     throw new AggregateError(errors, message);
-  }
-
-  /** meta 数字字段的容错读取。 */
-  private read_number(value: JsonValue | undefined, fallback: number): number {
-    const number_value = Number(value ?? fallback);
-    return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
 }

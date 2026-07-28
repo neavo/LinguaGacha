@@ -1,8 +1,7 @@
 import crypto from "node:crypto";
 
-import type { JsonValue } from "../../../domain/json";
 import { is_task_skipped_item_status } from "../../../domain/task";
-import { read_json_record, type MutableJsonRecord } from "../../../domain/json";
+import { read_json_integer, read_json_record, type MutableJsonRecord } from "../../../domain/json";
 import { read_item_name_text } from "../../../shared/item-name";
 import type { PlanningWorkerPool } from "./planning-worker-pool";
 import {
@@ -43,14 +42,11 @@ export class TaskPlanner {
   private readonly metric_cache: TaskTokenMetricCache; // 进程内计算指标缓存，随 BackendServices 生命周期释放。
 
   /**
-   * 注入 planning worker 和可选 cache，保证规划结果仍由 Backend 主线程解释。
+   * 注入 planning worker，规划缓存由 planner 自己持有。
    */
-  public constructor(options: {
-    planningWorkerPool: PlanningWorkerPool;
-    metricCache?: TaskTokenMetricCache;
-  }) {
+  public constructor(options: { planningWorkerPool: PlanningWorkerPool }) {
     this.planning_worker_pool = options.planningWorkerPool;
-    this.metric_cache = options.metricCache ?? new TaskTokenMetricCache();
+    this.metric_cache = new TaskTokenMetricCache();
   }
 
   /**
@@ -66,7 +62,7 @@ export class TaskPlanner {
     const chunks = await this.generate_item_chunks(
       items,
       threshold,
-      this.read_number(config["preceding_lines_threshold"], 0),
+      read_json_integer(config["preceding_lines_threshold"], 0),
       signal,
     );
     return chunks.map(({ chunk_items, precedings }) => ({
@@ -400,7 +396,7 @@ export class TaskPlanner {
   private build_checkpoint_status_map(checkpoints: MutableJsonRecord[]): Map<number, string> {
     const result = new Map<number, string>();
     for (const checkpoint of checkpoints) {
-      const item_id = this.read_number(checkpoint["item_id"], 0);
+      const item_id = read_json_integer(checkpoint["item_id"], 0);
       const status = String(checkpoint["status"] ?? "");
       if (item_id > 0 && (status === "NONE" || status === "PROCESSED" || status === "ERROR")) {
         result.set(item_id, status);
@@ -431,14 +427,14 @@ export class TaskPlanner {
    */
   private get_input_token_limit(model: MutableJsonRecord, fallback: number): number {
     const threshold = { ...read_json_record(model["threshold"]) };
-    return Math.max(16, this.read_number(threshold["input_token_limit"], fallback));
+    return Math.max(16, read_json_integer(threshold["input_token_limit"], fallback));
   }
 
   /**
    * item id 同时兼容数据库内部 id 和公开 item_id。
    */
   private read_item_id(item: MutableJsonRecord): number {
-    return this.read_number(item["id"] ?? item["item_id"], 0);
+    return read_json_integer(item["id"] ?? item["item_id"], 0);
   }
 
   /**
@@ -446,14 +442,6 @@ export class TaskPlanner {
    */
   private read_status(item: MutableJsonRecord): string {
     return String(item["status"] ?? "NONE");
-  }
-
-  /**
-   * 数字字段统一截断，坏值回退到调用方默认值。
-   */
-  private read_number(value: JsonValue | undefined, fallback: number): number {
-    const number_value = Number(value ?? fallback);
-    return Number.isFinite(number_value) ? Math.trunc(number_value) : fallback;
   }
 
   /**

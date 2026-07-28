@@ -295,7 +295,6 @@ describe("桌面窗口宿主", () => {
     restore_env("VITE_PUBLIC", original_vite_public);
     electron_mock.FakeBrowserWindow.created_windows.length = 0;
     electron_mock.native_theme.shouldUseDarkColors = false;
-    vi.clearAllMocks();
     vi.resetModules();
   });
 

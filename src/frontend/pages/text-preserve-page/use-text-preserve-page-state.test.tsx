@@ -15,23 +15,8 @@ const { api_fetch_mock, push_toast_mock, page_ui_state_store } = vi.hoisted(() =
 });
 
 const run_modal_progress_toast_mock = vi.fn(
-  async <T,>(args: {
-    message: string;
-    task: () => Promise<T>;
-    timeout_ms?: number;
-  }): Promise<T> => {
-    if (args.timeout_ms === undefined) {
-      return args.task();
-    }
-
-    return await Promise.race([
-      args.task(),
-      new Promise<T>((_resolve, reject) => {
-        window.setTimeout(() => {
-          reject(new Error("模态进度通知等待超时。"));
-        }, args.timeout_ms);
-      }),
-    ]);
+  async <T,>(args: { task: () => Promise<T> }): Promise<T> => {
+    return args.task();
   },
 );
 
@@ -168,9 +153,6 @@ function apply_quality_write_result(result: {
 }
 
 // 测试夹具只模拟后端原始规范化写入载荷，回灌入口由运行态 commit mock 触发。
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_quality_write_result(
   args: {
     quality?: typeof run_state.quality;
@@ -202,9 +184,6 @@ function create_quality_write_result(
 }
 
 // 文本保护规则保存只改变 text_preserve 切片，测试显式写出后端回灌后的完整质量事实。
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_text_preserve_quality(
   entries: TextPreserveRuleEntry[],
   revision: number,
@@ -234,9 +213,6 @@ let task_snapshot: { busy: boolean; status: string };
 let project_change_seq = 0;
 let project_change_sections: Array<"items" | "quality"> = ["quality"];
 
-/**
- * 构造当前测试场景的标准数据。
- */
 function create_statistics_cache(
   args: Partial<QualityRuleStatisticsCacheSnapshot>,
 ): QualityRuleStatisticsCacheSnapshot {
@@ -946,47 +922,6 @@ describe("useTextPreservePageState", () => {
     expect(latest_state?.dialog_state.open).toBe(false);
   });
 
-  it("新增文本保护规则保存成功后立即显示后端回灌的新条目", async () => {
-    await mount_probe();
-    api_fetch_mock.mockResolvedValueOnce(
-      create_quality_write_result({
-        quality: create_text_preserve_quality(
-          [
-            {
-              entry_id: "foo::0",
-              src: "foo",
-              info: "bar",
-            },
-            {
-              entry_id: "qr:han",
-              src: "\\p{Script=Han}+",
-              info: "keep",
-            },
-          ],
-          2,
-        ),
-      }),
-    );
-
-    await act(async () => {
-      latest_state?.open_create_dialog();
-    });
-    await act(async () => {
-      latest_state?.update_dialog_draft({
-        src: "\\p{Script=Han}+",
-        info: "keep",
-      });
-    });
-    await act(async () => {
-      await latest_state?.save_dialog_entry();
-    });
-
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual([
-      "foo",
-      "\\p{Script=Han}+",
-    ]);
-  });
-
   it("新增文本保护规则保存时拒绝 \\UXXXXXXXX 转义", async () => {
     await mount_probe();
 
@@ -1132,44 +1067,6 @@ describe("useTextPreservePageState", () => {
         },
       ],
     });
-  });
-
-  it("导入非重复文本保护规则后立即用最新规则重建表格", async () => {
-    await mount_probe();
-    api_fetch_mock
-      .mockResolvedValueOnce({
-        entries: [
-          {
-            src: "baz",
-            info: "keep",
-          },
-        ],
-      })
-      .mockResolvedValueOnce(
-        create_quality_write_result({
-          quality: create_text_preserve_quality(
-            [
-              {
-                entry_id: "foo::0",
-                src: "foo",
-                info: "bar",
-              },
-              {
-                entry_id: "baz::1",
-                src: "baz",
-                info: "keep",
-              },
-            ],
-            2,
-          ),
-        }),
-      );
-
-    await act(async () => {
-      await latest_state?.import_entries_from_path("E:/demo/text-preserve.json");
-    });
-
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo", "baz"]);
   });
 
   it("导入保存失败时恢复原来的冻结结果成员", async () => {

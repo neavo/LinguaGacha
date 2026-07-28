@@ -6,73 +6,74 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { BackendServices } from "../../backend/bootstrap/backend-services";
 import type { TaskSnapshot } from "../../backend/engine/protocol/task-snapshot";
-import type { CLICommandResources } from "../cli-parser";
-import { CLIJsonStatusReporter } from "../cli-status-reporter";
+import type { CLICommandName, CLICommandOptions, CLICommandResources } from "../cli-parser";
 import { run_cli_job } from "./cli-job-runner";
+import { build_cli_task_input } from "./cli-task-input";
 
 const cleanup_roots: string[] = [];
+const RESOURCE_KEYS = [
+  "promptPath",
+  "glossaryPath",
+  "preReplacementPath",
+  "postReplacementPath",
+  "textPreservePath",
+] as const satisfies readonly (keyof CLICommandResources)[];
 
 afterEach(() => {
-  while (cleanup_roots.length > 0) {
-    const root = cleanup_roots.pop();
-    if (root !== undefined) {
-      fs.rmSync(root, { force: true, recursive: true });
-    }
+  for (const root of cleanup_roots.splice(0)) {
+    fs.rmSync(root, { force: true, recursive: true });
   }
 });
 
 describe("run_cli_job", () => {
-  it("翻译命令创建临时工程、同步等待任务并导出到 output-dir", async () => {
-    const { input_path, output_dir } = create_cli_paths();
-    const status_lines: string[] = [];
-    const harness = create_backend_services_harness([
-      {
-        status: "running",
-        progress: { total_line: 4, line: 2, processed_line: 2, error_line: 1 },
-      },
-      {
-        status: "done",
-        progress: { total_line: 4, line: 4, processed_line: 3, error_line: 1 },
-      },
-    ]);
+  it("等待翻译终态后按顺序应用资源、导出并清理", async () => {
+    const paths = create_cli_paths();
+    const harness = create_backend_services_harness();
+    const command = create_command(paths);
+    const run_promise = run_cli_job(harness.backend_services, command, harness.status_reporter);
 
-    await expect(
-      run_cli_job(
-        harness.backend_services,
-        {
-          command: "translate",
-          inputPaths: [input_path],
-          outputDir: output_dir,
-          sourceLanguage: "JA",
-          targetLanguage: "ZH",
-          resources: create_empty_resources(),
-        },
-        { statusReporter: create_status_reporter("translate", status_lines) },
-      ),
-    ).resolves.toBeUndefined();
+    await wait_for_task_start(harness, run_promise);
+    await Promise.resolve();
+    expect(harness.export_files_to_directory).not.toHaveBeenCalled();
 
+    await harness.emit_snapshot("running", {
+      total_line: 4,
+      line: 2,
+      processed_line: 2,
+      error_line: 1,
+    });
+    expect(harness.export_files_to_directory).not.toHaveBeenCalled();
+
+    await harness.emit_snapshot("done", {
+      total_line: 4,
+      line: 4,
+      processed_line: 3,
+      error_line: 1,
+    });
+    await expect(run_promise).resolves.toBeUndefined();
+
+    expect(harness.start_task).toHaveBeenCalledWith({
+      task_type: "translation",
+      mode: "new",
+      scope: { kind: "all" },
+    });
     expect(harness.create_project_commit).toHaveBeenCalledWith(
       expect.objectContaining({
         path: expect.stringMatching(/cli-job\.lg$/u),
-        source_paths: [input_path],
+        source_paths: [paths.input_path],
+        project_settings: expect.objectContaining({
+          source_language: "JA",
+          target_language: "ZH",
+        }),
       }),
     );
-    expect(harness.start_task).toHaveBeenCalledWith(
-      expect.objectContaining({
-        task_type: "translation",
-        mode: "new",
-        scope: { kind: "all" },
-      }),
-    );
-    expect(harness.export_files_to_directory).toHaveBeenCalledWith(output_dir);
-    expect(harness.apply_task_input).toHaveBeenCalledWith(
-      expect.objectContaining({
-        quality_rules: expect.arrayContaining([
-          expect.objectContaining({ kind: "glossary", enabled: false }),
-          expect.objectContaining({ kind: "text_preserve", mode: "off" }),
-        ]),
-      }),
-    );
+    expect(harness.apply_task_input).toHaveBeenCalledWith(await build_cli_task_input(command));
+    expect(harness.export_files_to_directory).toHaveBeenCalledWith(paths.output_dir);
+    expect(
+      harness.events.filter((event) =>
+        ["apply", "start", "translation_export", "unload", "finished:done"].includes(event),
+      ),
+    ).toEqual(["apply", "start", "translation_export", "unload", "finished:done"]);
     expect(harness.set_transient_overrides.mock.calls).toEqual([
       [
         {
@@ -89,331 +90,192 @@ describe("run_cli_job", () => {
       ],
       [null],
     ]);
-    expect(harness.unload_project).toHaveBeenCalledTimes(1);
-    expect(status_lines.map((line) => JSON.parse(line) as unknown)).toEqual([
-      {
-        type: "started",
-        command: "translate",
-        timestamp: "2026-05-19T10:00:00.000Z",
-      },
-      {
-        type: "progress",
-        command: "translate",
-        status: "running",
-        timestamp: "2026-05-19T10:00:00.000Z",
-        stats: {
-          total: 4,
-          skipped: 0,
-          failed: 1,
-          completed: 2,
-          pending: 1,
-          percent: 50,
-        },
-      },
-      {
-        type: "progress",
-        command: "translate",
-        status: "done",
-        timestamp: "2026-05-19T10:00:00.000Z",
-        stats: {
-          total: 4,
-          skipped: 0,
-          failed: 1,
-          completed: 3,
-          pending: 0,
-          percent: 75,
-        },
-      },
-      {
-        type: "finished",
-        command: "translate",
-        status: "done",
-        timestamp: "2026-05-19T10:00:00.000Z",
-      },
-    ]);
-  });
-
-  it("任务失败时清理临时工程并撤销临时设置覆盖", async () => {
-    const { input_path, output_dir } = create_cli_paths();
-    const status_lines: string[] = [];
-    const harness = create_backend_services_harness([{ status: "error" }]);
-
-    await expect(
-      run_cli_job(
-        harness.backend_services,
-        {
-          command: "analyze",
-          inputPaths: [input_path],
-          outputDir: output_dir,
-          sourceLanguage: "ALL",
-          targetLanguage: "ZH",
-          resources: create_empty_resources(),
-        },
-        { statusReporter: create_status_reporter("analyze", status_lines) },
-      ),
-    ).rejects.toThrow("Analysis task failed");
-
-    const create_request = harness.create_project_commit.mock.calls[0]?.[0] as
-      | { path?: string }
-      | undefined;
-    expect(create_request?.path).toBeDefined();
-    expect(fs.existsSync(path.dirname(String(create_request?.path)))).toBe(false);
-    expect(harness.set_transient_overrides.mock.calls.at(-1)).toEqual([null]);
-    expect(harness.unload_project).toHaveBeenCalledTimes(1);
     expect(
-      status_lines.map((line) => JSON.parse(line) as { type: string; status?: string }),
-    ).toEqual([
-      expect.objectContaining({ type: "started" }),
-      expect.objectContaining({ type: "finished", status: "error" }),
-    ]);
+      harness.events.filter(
+        (event) => event === "started" || event === "progress" || event.startsWith("finished:"),
+      ),
+    ).toEqual(["started", "progress", "progress", "finished:done"]);
+    expect(
+      harness.status_reporter.emit_progress.mock.calls.map(
+        ([snapshot]) => (snapshot as TaskSnapshot).status,
+      ),
+    ).toEqual(["running", "done"]);
+    expect(harness.subscriber_count()).toBe(0);
+    expect_temp_project_removed(harness.created_project_paths);
   });
 
-  it("输入路径不存在时拒绝创建临时工程", async () => {
-    const { output_dir } = create_cli_paths();
-    const status_lines: string[] = [];
-    const harness = create_backend_services_harness([{ status: "done" }]);
+  it("分析终态触发分析任务与术语导出", async () => {
+    const paths = create_cli_paths();
+    const harness = create_backend_services_harness();
+    const run_promise = run_cli_job(
+      harness.backend_services,
+      create_command(paths, { command: "analyze" }),
+      harness.status_reporter,
+    );
+
+    await wait_for_task_start(harness, run_promise);
+    await harness.emit_snapshot("done");
+    await expect(run_promise).resolves.toBeUndefined();
+
+    expect(harness.start_task).toHaveBeenCalledWith({ task_type: "analysis", mode: "new" });
+    expect(harness.export_analysis_candidates).toHaveBeenCalledWith(paths.output_dir);
+    expect(harness.export_files_to_directory).not.toHaveBeenCalled();
+  });
+
+  it("任务失败时撤销订阅、设置覆盖与非空临时工程", async () => {
+    const paths = create_cli_paths();
+    const harness = create_backend_services_harness();
+    const run_promise = run_cli_job(
+      harness.backend_services,
+      create_command(paths, { command: "analyze" }),
+      harness.status_reporter,
+    );
+    const rejection = expect(run_promise).rejects.toThrow("Analysis task failed");
+
+    await wait_for_task_start(harness, run_promise);
+    await harness.emit_snapshot("error");
+    await rejection;
+
+    expect(harness.set_transient_overrides).toHaveBeenLastCalledWith(null);
+    expect(harness.unload_project).toHaveBeenCalledOnce();
+    expect(harness.subscriber_count()).toBe(0);
+    expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith(
+      "error",
+      expect.objectContaining({ message: "Analysis task failed" }),
+    );
+    expect_temp_project_removed(harness.created_project_paths);
+  });
+
+  it("输入不存在时在任何工程副作用前失败", async () => {
+    const paths = create_cli_paths();
+    const harness = create_backend_services_harness();
+    const command = create_command(paths);
+    command.inputPaths = [path.join(paths.root, "missing.txt")];
 
     await expect(
-      run_cli_job(
-        harness.backend_services,
-        {
-          command: "translate",
-          inputPaths: [path.join(output_dir, "missing.txt")],
-          outputDir: output_dir,
-          sourceLanguage: "JA",
-          targetLanguage: "ZH",
-          resources: create_empty_resources(),
-        },
-        { statusReporter: create_status_reporter("translate", status_lines) },
-      ),
+      run_cli_job(harness.backend_services, command, harness.status_reporter),
     ).rejects.toThrow("Input path does not exist");
 
     expect(harness.create_project_commit).not.toHaveBeenCalled();
     expect(harness.set_transient_overrides).not.toHaveBeenCalled();
-    expect(
-      status_lines.map((line) => JSON.parse(line) as { type: string; status?: string }),
-    ).toEqual([
-      expect.objectContaining({ type: "started" }),
-      expect.objectContaining({ type: "finished", status: "error" }),
-    ]);
+    expect(fs.existsSync(paths.output_dir)).toBe(false);
   });
 
-  it("资源文件不存在时拒绝创建临时工程", async () => {
-    const { input_path, output_dir } = create_cli_paths();
-    const status_lines: string[] = [];
-    const harness = create_backend_services_harness([{ status: "done" }]);
+  it.each(RESOURCE_KEYS)("%s 不存在时在创建工程前失败", async (resource_key) => {
+    const paths = create_cli_paths();
+    const harness = create_backend_services_harness();
+    const command = create_command(paths, {
+      resources: { [resource_key]: path.join(paths.root, `missing-${resource_key}`) },
+    });
 
     await expect(
-      run_cli_job(
-        harness.backend_services,
-        {
-          command: "translate",
-          inputPaths: [input_path],
-          outputDir: output_dir,
-          sourceLanguage: "JA",
-          targetLanguage: "ZH",
-          resources: { ...create_empty_resources(), glossaryPath: path.join(output_dir, "g.json") },
-        },
-        { statusReporter: create_status_reporter("translate", status_lines) },
-      ),
+      run_cli_job(harness.backend_services, command, harness.status_reporter),
     ).rejects.toThrow("Resource file does not exist");
 
     expect(harness.create_project_commit).not.toHaveBeenCalled();
     expect(harness.set_transient_overrides).not.toHaveBeenCalled();
-    expect(
-      status_lines.map((line) => JSON.parse(line) as { type: string; status?: string }),
-    ).toEqual([
-      expect.objectContaining({ type: "started" }),
-      expect.objectContaining({ type: "finished", status: "error" }),
+  });
+
+  it("卸载失败时仍删除非空临时工程并上报错误终态", async () => {
+    const paths = create_cli_paths();
+    const unload_failure = new Error("unload failed");
+    const harness = create_backend_services_harness({ unloadFailure: unload_failure });
+    const run_promise = run_cli_job(
+      harness.backend_services,
+      create_command(paths),
+      harness.status_reporter,
+    );
+    const rejection = expect(run_promise).rejects.toThrow("unload failed");
+
+    await wait_for_task_start(harness, run_promise);
+    await harness.emit_snapshot("done");
+    await rejection;
+
+    expect(harness.status_reporter.emit_finished).toHaveBeenCalledOnce();
+    expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith("error", unload_failure);
+    expect_temp_project_removed(harness.created_project_paths);
+  });
+
+  it("任务与卸载同时失败时按原始顺序保留两个异常", async () => {
+    const paths = create_cli_paths();
+    const unload_failure = new Error("unload failed");
+    const harness = create_backend_services_harness({ unloadFailure: unload_failure });
+    const run_promise = run_cli_job(
+      harness.backend_services,
+      create_command(paths, { command: "analyze" }),
+      harness.status_reporter,
+    );
+    const command_error_promise = run_promise.catch((error: unknown) => error);
+
+    await wait_for_task_start(harness, run_promise);
+    await harness.emit_snapshot("error");
+    const command_error = await command_error_promise;
+
+    expect(command_error).toBeInstanceOf(AggregateError);
+    expect((command_error as AggregateError).errors).toEqual([
+      expect.objectContaining({ message: "Analysis task failed" }),
+      unload_failure,
     ]);
-  });
-
-  it("翻译命令把外部提示词和规则文件写入临时工程后再启动任务", async () => {
-    const { input_path, output_dir, root } = create_cli_paths();
-    const prompt_path = path.join(root, "prompt.txt");
-    const glossary_path = path.join(root, "glossary.json");
-    const pre_path = path.join(root, "pre.json");
-    const post_path = path.join(root, "post.json");
-    const preserve_path = path.join(root, "preserve.json");
-    fs.writeFileSync(prompt_path, "\uFEFF自定义翻译提示词\n", "utf-8");
-    fs.writeFileSync(glossary_path, JSON.stringify([{ src: "Alice", dst: "爱丽丝" }]), "utf-8");
-    fs.writeFileSync(pre_path, JSON.stringify([{ src: "foo", dst: "bar" }]), "utf-8");
-    fs.writeFileSync(post_path, JSON.stringify([{ src: "旧", dst: "新" }]), "utf-8");
-    fs.writeFileSync(preserve_path, JSON.stringify([{ src: "<[^>]+>", regex: true }]), "utf-8");
-    const status_lines: string[] = [];
-    const harness = create_backend_services_harness([{ status: "done" }]);
-
-    await run_cli_job(
-      harness.backend_services,
-      {
-        command: "translate",
-        inputPaths: [input_path],
-        outputDir: output_dir,
-        sourceLanguage: "JA",
-        targetLanguage: "ZH",
-        resources: {
-          promptPath: prompt_path,
-          glossaryPath: glossary_path,
-          preReplacementPath: pre_path,
-          postReplacementPath: post_path,
-          textPreservePath: preserve_path,
-        },
-      },
-      { statusReporter: create_status_reporter("translate", status_lines) },
-    );
-
-    expect(harness.apply_task_input).toHaveBeenCalledWith({
-      quality_rules: [
-        {
-          kind: "glossary",
-          entries: [{ src: "Alice", dst: "爱丽丝", info: "", regex: false, case_sensitive: false }],
-          enabled: true,
-          mode: null,
-        },
-        {
-          kind: "text_preserve",
-          entries: [{ src: "<[^>]+>", dst: "", info: "", regex: true, case_sensitive: false }],
-          enabled: null,
-          mode: "custom",
-        },
-        {
-          kind: "pre_replacement",
-          entries: [{ src: "foo", dst: "bar", info: "", regex: false, case_sensitive: false }],
-          enabled: true,
-          mode: null,
-        },
-        {
-          kind: "post_replacement",
-          entries: [{ src: "旧", dst: "新", info: "", regex: false, case_sensitive: false }],
-          enabled: true,
-          mode: null,
-        },
-      ],
-      prompts: [
-        { kind: "translation", text: "自定义翻译提示词", enabled: true },
-        { kind: "analysis", text: "", enabled: false },
-      ],
-    });
-    expect(harness.start_task).toHaveBeenCalledWith(
-      expect.objectContaining({ task_type: "translation" }),
-    );
-  });
-
-  it("分析命令把外部提示词写入分析提示词槽位", async () => {
-    const { input_path, output_dir, root } = create_cli_paths();
-    const prompt_path = path.join(root, "analysis-prompt.txt");
-    fs.writeFileSync(prompt_path, "自定义分析提示词", "utf-8");
-    const status_lines: string[] = [];
-    const harness = create_backend_services_harness([{ status: "done" }]);
-
-    await run_cli_job(
-      harness.backend_services,
-      {
-        command: "analyze",
-        inputPaths: [input_path],
-        outputDir: output_dir,
-        sourceLanguage: "ALL",
-        targetLanguage: "ZH",
-        resources: { ...create_empty_resources(), promptPath: prompt_path },
-      },
-      { statusReporter: create_status_reporter("analyze", status_lines) },
-    );
-
-    expect(harness.apply_task_input).toHaveBeenCalledWith(
-      expect.objectContaining({
-        prompts: [
-          { kind: "translation", text: "", enabled: false },
-          { kind: "analysis", text: "自定义分析提示词", enabled: true },
-        ],
-      }),
-    );
-    expect(harness.start_task).toHaveBeenCalledWith(
-      expect.objectContaining({ task_type: "analysis" }),
-    );
+    expect(harness.status_reporter.emit_finished).toHaveBeenCalledWith("error", command_error);
+    expect_temp_project_removed(harness.created_project_paths);
   });
 });
 
-type HarnessTaskSnapshot = {
-  status: string;
-  progress?: Record<string, number>;
-};
-
-/**
- * 组装 CLI job 所需最窄后端门面，并用类型化任务订阅驱动终态。
- */
-function create_backend_services_harness(snapshots: HarnessTaskSnapshot[]): {
-  backend_services: BackendServices;
-  apply_task_input: ReturnType<typeof vi.fn>;
-  create_project_commit: ReturnType<typeof vi.fn>;
-  export_files_to_directory: ReturnType<typeof vi.fn>;
-  set_transient_overrides: ReturnType<typeof vi.fn>;
-  start_task: ReturnType<typeof vi.fn>;
-  unload_project: ReturnType<typeof vi.fn>;
-} {
+function create_backend_services_harness(failures: { unloadFailure?: Error } = {}) {
+  const events: string[] = [];
+  const created_project_paths: string[] = [];
   const task_listeners = new Set<(snapshot: Readonly<TaskSnapshot>) => void | Promise<void>>();
-  const set_transient_overrides = vi.fn();
-  const apply_task_input = vi.fn(async () => ({ accepted: true, changes: [] }));
-  const create_project_commit = vi.fn(async () => undefined);
-  const unload_project = vi.fn(async () => undefined);
-  const start_task = vi.fn(async (request: { task_type: "translation" | "analysis" }) => {
-    const task_type = request.task_type;
-    for (const snapshot of snapshots.length > 0 ? snapshots : [{ status: "done" }]) {
-      const task_snapshot = {
-        run_revision: 1,
-        task_type,
-        status: snapshot.status,
-        busy: snapshot.status !== "done" && snapshot.status !== "error",
-        request_in_flight_count: 0,
-        progress: {
-          line: 0,
-          total_line: 0,
-          processed_line: 0,
-          error_line: 0,
-          total_tokens: 0,
-          total_output_tokens: 0,
-          total_input_tokens: 0,
-          time: 0,
-          start_time: 0,
-          ...snapshot.progress,
-        },
-        extras:
-          task_type === "analysis"
-            ? { kind: "analysis", candidate_count: 0 }
-            : { kind: "translation", scope: { kind: "all" } },
-      } as TaskSnapshot;
-      await Promise.all([...task_listeners].map(async (listener) => await listener(task_snapshot)));
-    }
-    return {
-      run_revision: 1,
-      task_type,
-      status: "requested",
-      busy: true,
-      request_in_flight_count: 0,
-      progress: {
-        line: 0,
-        total_line: 0,
-        processed_line: 0,
-        error_line: 0,
-        total_tokens: 0,
-        total_output_tokens: 0,
-        total_input_tokens: 0,
-        time: 0,
-        start_time: 0,
-      },
-      extras:
-        task_type === "analysis"
-          ? { kind: "analysis", candidate_count: 0 }
-          : { kind: "translation", scope: { kind: "all" } },
-    } as TaskSnapshot;
+  let active_task_type: "translation" | "analysis" | null = null;
+  let resolve_task_started: () => void = () => undefined;
+  const task_started = new Promise<void>((resolve) => {
+    resolve_task_started = resolve;
   });
-  const export_files_to_directory = vi.fn(async (output_dir: string) => ({
-    output_path: path.join(output_dir, "translated"),
-    bilingual_output_path: path.join(output_dir, "bilingual"),
-  }));
-  const export_analysis_candidates_to_directory = vi.fn(async (output_dir: string) => ({
-    json_path: path.join(output_dir, "glossary.json"),
-    xlsx_path: path.join(output_dir, "glossary.xlsx"),
-  }));
+  const status_reporter = {
+    emit_started: vi.fn(() => events.push("started")),
+    emit_progress: vi.fn((_snapshot: unknown) => events.push("progress")),
+    emit_finished: vi.fn((status: unknown, _error?: unknown) =>
+      events.push(`finished:${String(status)}`),
+    ),
+  };
+  const set_transient_overrides = vi.fn((value: unknown) => {
+    events.push(value === null ? "settings_reset" : "settings");
+  });
+  const create_project_commit = vi.fn(async (request: { path: string }) => {
+    events.push("create");
+    created_project_paths.push(request.path);
+    cleanup_roots.push(path.dirname(request.path));
+    fs.writeFileSync(request.path, "临时工程哨兵", "utf-8");
+  });
+  const apply_task_input = vi.fn(async () => {
+    events.push("apply");
+    return { accepted: true, changes: [] };
+  });
+  const unload_project = vi.fn(async () => {
+    events.push("unload");
+    if (failures.unloadFailure !== undefined) {
+      throw failures.unloadFailure;
+    }
+  });
+  const start_task = vi.fn(async (request: { task_type: "translation" | "analysis" }) => {
+    events.push("start");
+    active_task_type = request.task_type;
+    resolve_task_started();
+    return create_task_snapshot(request.task_type, "requested");
+  });
+  const export_files_to_directory = vi.fn(async (output_dir: string) => {
+    events.push("translation_export");
+    return {
+      output_path: path.join(output_dir, "translated"),
+      bilingual_output_path: path.join(output_dir, "bilingual"),
+    };
+  });
+  const export_analysis_candidates = vi.fn(async (output_dir: string) => {
+    events.push("analysis_export");
+    return {
+      json_path: path.join(output_dir, "glossary.json"),
+      xlsx_path: path.join(output_dir, "glossary.xlsx"),
+    };
+  });
 
   return {
     backend_services: {
@@ -428,52 +290,114 @@ function create_backend_services_harness(snapshots: HarnessTaskSnapshot[]): {
         },
       },
       project: {
-        lifecycle: {
-          apply_task_input,
-          create_project_commit,
-          unload_project,
-        },
+        lifecycle: { apply_task_input, create_project_commit, unload_project },
       },
-      files: {
-        translationExport: { export_files_to_directory },
-      },
-      quality: {
-        rules: { export_analysis_candidates_to_directory },
-      },
+      files: { translationExport: { export_files_to_directory } },
+      quality: { rules: { export_analysis_candidates_to_directory: export_analysis_candidates } },
       tasks: {
         start_current_project_task: start_task,
         subscribe: (listener: (snapshot: Readonly<TaskSnapshot>) => void | Promise<void>) => {
+          events.push("subscribe");
           task_listeners.add(listener);
-          return () => task_listeners.delete(listener);
+          return () => {
+            events.push("unsubscribe");
+            task_listeners.delete(listener);
+          };
         },
       },
     } as unknown as BackendServices,
     apply_task_input,
+    created_project_paths,
     create_project_commit,
+    events,
+    export_analysis_candidates,
     export_files_to_directory,
     set_transient_overrides,
     start_task,
+    status_reporter,
+    subscriber_count: () => task_listeners.size,
+    task_started,
     unload_project,
+    emit_snapshot: async (
+      status: TaskSnapshot["status"],
+      progress: Partial<TaskSnapshot["progress"]> = {},
+    ): Promise<void> => {
+      if (active_task_type === null) {
+        throw new Error("任务尚未启动");
+      }
+      const snapshot = create_task_snapshot(active_task_type, status, progress);
+      await Promise.all([...task_listeners].map(async (listener) => await listener(snapshot)));
+    },
   };
 }
 
-/**
- * 固定时钟并收集 JSON 行，避免状态协议断言受真实时间影响。
- */
-function create_status_reporter(
-  command: "translate" | "analyze",
-  lines: string[],
-): CLIJsonStatusReporter {
-  return new CLIJsonStatusReporter({
-    command,
-    now: () => new Date("2026-05-19T10:00:00.000Z"),
-    writeLine: (line) => lines.push(line),
-  });
+async function wait_for_task_start(
+  harness: ReturnType<typeof create_backend_services_harness>,
+  run_promise: Promise<unknown>,
+): Promise<void> {
+  await Promise.race([
+    harness.task_started,
+    run_promise.then(() => {
+      throw new Error("CLI job 未启动任务就已结束");
+    }),
+  ]);
 }
 
-/**
- * 每个用例创建独立输入与输出根，交由 afterEach 统一回收。
- */
+function create_task_snapshot(
+  task_type: "translation" | "analysis",
+  status: TaskSnapshot["status"],
+  progress: Partial<TaskSnapshot["progress"]> = {},
+): TaskSnapshot {
+  return {
+    run_revision: 1,
+    task_type,
+    status,
+    busy: status !== "done" && status !== "error",
+    request_in_flight_count: 0,
+    progress: {
+      line: 0,
+      total_line: 0,
+      processed_line: 0,
+      error_line: 0,
+      total_tokens: 0,
+      total_output_tokens: 0,
+      total_input_tokens: 0,
+      time: 0,
+      start_time: 0,
+      ...progress,
+    },
+    extras:
+      task_type === "analysis"
+        ? { kind: "analysis", candidate_count: 0 }
+        : { kind: "translation", scope: { kind: "all" } },
+  };
+}
+
+function create_command(
+  paths: ReturnType<typeof create_cli_paths>,
+  options: {
+    command?: CLICommandName;
+    resources?: Partial<CLICommandResources>;
+  } = {},
+): CLICommandOptions {
+  const command = options.command ?? "translate";
+  return {
+    command,
+    inputPaths: [paths.input_path],
+    outputDir: paths.output_dir,
+    sourceLanguage: command === "translate" ? "JA" : "ALL",
+    targetLanguage: "ZH",
+    resources: {
+      promptPath: null,
+      glossaryPath: null,
+      preReplacementPath: null,
+      postReplacementPath: null,
+      textPreservePath: null,
+      ...options.resources,
+    },
+  };
+}
+
 function create_cli_paths(): { input_path: string; output_dir: string; root: string } {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-cli-job-"));
   cleanup_roots.push(root);
@@ -483,15 +407,10 @@ function create_cli_paths(): { input_path: string; output_dir: string; root: str
   return { input_path, output_dir, root };
 }
 
-/**
- * 返回全部关闭的资源参数，单个测试只覆盖自己关心的槽位。
- */
-function create_empty_resources(): CLICommandResources {
-  return {
-    promptPath: null,
-    glossaryPath: null,
-    preReplacementPath: null,
-    postReplacementPath: null,
-    textPreservePath: null,
-  };
+function expect_temp_project_removed(project_paths: string[]): void {
+  const project_path = project_paths[0];
+  expect(project_path).toBeDefined();
+  if (project_path !== undefined) {
+    expect(fs.existsSync(path.dirname(project_path))).toBe(false);
+  }
 }

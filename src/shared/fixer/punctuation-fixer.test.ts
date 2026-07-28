@@ -3,39 +3,20 @@ import { describe, expect, it } from "vitest";
 import { PunctuationFixer } from "./punctuation-fixer";
 
 describe("PunctuationFixer", () => {
-  it("按源文边界恢复日式钩括号", () => {
-    const src = "「你好」";
-    const dst = '"你好"';
-
-    expect(PunctuationFixer.fix(src, dst, "JA", "JA")).toBe("「你好」");
+  it.each([
+    ["源文日式钩括号恢复到译文边界", "「你好」", '"你好"', "JA", "JA", "「你好」"],
+    ["CJK 目标把源文弯引号归一为日式钩括号", "“你好”", '"你好"', "ZH", "ZH", "「你好」"],
+    ["CJK 目标把译文弯引号归一为日式钩括号", "「hello」", "“hello”", "JA", "ZH", "「hello」"],
+  ] as const)("%s", (_name, src, dst, source_language, target_language, expected) => {
+    expect(PunctuationFixer.fix(src, dst, source_language, target_language)).toBe(expected);
   });
 
-  it("非 CJK 到 CJK 时只应用规则 A", () => {
-    const src = "A:B";
-    const dst = "A：B";
-
-    expect(PunctuationFixer.fix(src, dst, "EN", "ZH")).toBe("A：B");
-  });
-
-  it("非 CJK 到非 CJK 时应用规则 B", () => {
-    const src = "A:B";
-    const dst = "A：B";
-
-    expect(PunctuationFixer.fix(src, dst, "EN", "EN")).toBe("A:B");
-  });
-
-  it("CJK 到非 CJK 时应用规则 A 和规则 B", () => {
-    const src = "A：B";
-    const dst = "A:B";
-
-    expect(PunctuationFixer.fix(src, dst, "JA", "EN")).toBe("A：B");
-  });
-
-  it("CJK 目标语言会把中文弯引号归一成日式钩括号", () => {
-    const src = "“你好”";
-    const dst = '"你好"';
-
-    expect(PunctuationFixer.fix(src, dst, "ZH", "ZH")).toBe("「你好」");
+  it.each([
+    ["非 CJK 译为 CJK 时保留译文全角标点", "A:B", "A：B", "EN", "ZH", "A：B"],
+    ["非 CJK 互译时恢复源文半角标点", "A:B", "A：B", "EN", "EN", "A:B"],
+    ["CJK 译为非 CJK 时恢复源文全角标点", "A：B", "A:B", "JA", "EN", "A：B"],
+  ] as const)("%s", (_name, src, dst, source_language, target_language, expected) => {
+    expect(PunctuationFixer.fix(src, dst, source_language, target_language)).toBe(expected);
   });
 
   it("源文没有引号时保留译文边界引号", () => {
@@ -43,12 +24,5 @@ describe("PunctuationFixer", () => {
     const dst = '"你好"';
 
     expect(PunctuationFixer.fix(src, dst, "ZH", "ZH")).toBe('"你好"');
-  });
-
-  it("CJK 目标语言强制把弯引号转成钩括号", () => {
-    const src = "\u300chello\u300d";
-    const dst = "\u201chello\u201d";
-
-    expect(PunctuationFixer.fix(src, dst, "JA", "ZH")).toBe("\u300chello\u300d");
   });
 });

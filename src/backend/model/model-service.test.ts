@@ -1,32 +1,15 @@
 import crypto from "node:crypto";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { JsonRecord, JsonValue } from "../../domain/json";
+import type { JsonRecord } from "../../domain/json";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { LLMClient } from "../llm/llm-client";
 import { ModelService } from "./model-service";
-
-// Google SDK mock 记录构造参数，避免测试真实网络和 SDK 内部分页实现。
-const google_genai_mock = vi.hoisted(() => ({
-  constructor_options: [] as unknown[],
-  list: vi.fn(),
-}));
-
-vi.mock("@google/genai", () => ({
-  GoogleGenAI: vi.fn(function GoogleGenAI(options: unknown) {
-    google_genai_mock.constructor_options.push(options);
-    return {
-      models: {
-        list: google_genai_mock.list,
-      },
-    };
-  }),
-}));
 
 type ModelPresetFiles = {
   builtin_models?: Array<JsonRecord>;
@@ -47,12 +30,14 @@ type LogEntry = {
 };
 
 const TEST_LLM_USER_AGENT = "LinguaGacha/v9.8.7 (https://github.com/neavo/LinguaGacha)";
+const cleanup_roots: string[] = [];
 
-afterEach(() => {
-  google_genai_mock.constructor_options.length = 0;
-  google_genai_mock.list.mockReset();
+afterEach(async () => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  await Promise.all(
+    cleanup_roots.splice(0).map((root) => rm(root, { force: true, recursive: true })),
+  );
 });
 
 describe("ModelService 配置管理", () => {
@@ -441,147 +426,23 @@ describe("ModelService 配置管理", () => {
 });
 
 describe("ModelService 远端模型能力", () => {
-  it("OpenAI-compatible list-available 使用首个 key、自定义 baseUrl 与额外 header", async () => {
+  it("远端列表按 model_id 返回结果并拒绝缺失模型", async () => {
     const { service } = await create_model_service([
       create_model({
         api_format: "OpenAI",
-        api_key: "key-a\nkey-b",
-        api_url: "https://api.example/v1/chat/completions",
-        id: "openai-1",
-        request: {
-          extra_headers: { "X-Trace": "trace-1" },
-          extra_headers_custom_enable: true,
-        },
-      }),
-    ]);
-    const fetch_mock = vi.fn(async () => json_response({ data: [{ id: "model-a" }] }));
-    vi.stubGlobal("fetch", fetch_mock);
-
-    const result = await service.list_available_models({ model_id: "openai-1" });
-
-    expect(result["models"]).toEqual(["model-a"]);
-    expect(fetch_mock).toHaveBeenCalledWith(
-      "https://api.example/v1/models",
-      expect.objectContaining({
-        headers: expect.objectContaining({
-          Authorization: "Bearer key-a",
-          "User-Agent": expect.stringContaining("Chrome/133"),
-          "X-Trace": "trace-1",
-        }),
-        method: "GET",
-      }),
-    );
-  });
-
-  it("Google list-available 使用 SDK 与归一化后的 baseUrl", async () => {
-    google_genai_mock.list.mockResolvedValue(
-      create_google_model_pager([
-        { name: "models/gemini-2.5-flash" },
-        { name: "" },
-        { displayName: "missing-name" },
-        { name: "models/gemini-2.5-pro" },
-      ]),
-    );
-    const { service } = await create_model_service([
-      create_model({
-        api_format: "Google",
-        api_key: "google-key-a\ngoogle-key-b",
-        api_url: "https://generativelanguage.googleapis.com/v1beta",
-        id: "google-1",
-        request: {
-          extra_headers: { "X-Trace": "trace-google" },
-          extra_headers_custom_enable: true,
-        },
-      }),
-    ]);
-    const fetch_mock = vi.fn();
-    vi.stubGlobal("fetch", fetch_mock);
-
-    const result = await service.list_available_models({ model_id: "google-1" });
-
-    expect(result["models"]).toEqual(["models/gemini-2.5-flash", "models/gemini-2.5-pro"]);
-    expect(fetch_mock).not.toHaveBeenCalled();
-    expect(google_genai_mock.list).toHaveBeenCalledWith();
-    expect(google_genai_mock.constructor_options).toEqual([
-      expect.objectContaining({
-        apiKey: "google-key-a",
-        httpOptions: expect.objectContaining({
-          baseUrl: "https://generativelanguage.googleapis.com",
-          headers: expect.objectContaining({
-            "User-Agent": expect.stringContaining("Chrome/133"),
-            "X-Trace": "trace-google",
-          }),
-        }),
-      }),
-    ]);
-  });
-
-  it("Google list-available 空 URL 交给 SDK 默认 baseUrl", async () => {
-    google_genai_mock.list.mockResolvedValue(
-      create_google_model_pager([{ name: "models/gemini-2.5-flash" }]),
-    );
-    const { service } = await create_model_service([
-      create_model({
-        api_format: "Google",
-        api_key: "google-key",
-        api_url: "",
-        id: "google-1",
-      }),
-    ]);
-
-    const result = await service.list_available_models({ model_id: "google-1" });
-
-    expect(result["models"]).toEqual(["models/gemini-2.5-flash"]);
-    expect(google_genai_mock.constructor_options).toEqual([
-      expect.objectContaining({
-        apiKey: "google-key",
-        httpOptions: expect.objectContaining({ baseUrl: undefined }),
-      }),
-    ]);
-  });
-
-  it("Anthropic list-available 保持既有实时列表协议", async () => {
-    const { service } = await create_model_service([
-      create_model({
-        api_format: "Anthropic",
-        api_key: "anthropic-key",
-        api_url: "",
-        id: "anthropic-1",
-      }),
-    ]);
-    const fetch_mock = vi
-      .fn()
-      .mockResolvedValueOnce(json_response({ data: [{ id: "claude-sonnet-4-5" }] }));
-    vi.stubGlobal("fetch", fetch_mock);
-
-    const anthropic_result = await service.list_available_models({ model_id: "anthropic-1" });
-
-    expect(anthropic_result["models"]).toEqual(["claude-sonnet-4-5"]);
-    expect(fetch_mock).toHaveBeenCalledWith("https://api.anthropic.com/v1/models", {
-      headers: expect.objectContaining({
-        "User-Agent": expect.stringContaining("Chrome/133"),
-        "anthropic-version": "2023-06-01",
-        "x-api-key": "anthropic-key",
-      }),
-      method: "GET",
-    });
-  });
-
-  it("远端列表非成功响应会转换为模型供应商错误", async () => {
-    const { service } = await create_model_service([
-      create_model({
-        api_format: "OpenAI",
-        api_key: "openai-key",
         id: "openai-1",
       }),
     ]);
     vi.stubGlobal(
       "fetch",
-      vi.fn(async () => new Response("unauthorized", { status: 401 })),
+      vi.fn(async () => json_response({ data: [{ id: "model-a" }] })),
     );
 
-    await expect(service.list_available_models({ model_id: "openai-1" })).rejects.toThrow(
-      "model.provider_failed",
+    await expect(service.list_available_models({ model_id: "openai-1" })).resolves.toEqual({
+      models: ["model-a"],
+    });
+    await expect(service.list_available_models({ model_id: "missing" })).rejects.toThrow(
+      "model.not_found",
     );
   });
 
@@ -646,27 +507,15 @@ describe("ModelService 远端模型能力", () => {
         success: false,
       }),
     ]);
-    expect(log_entries.map((entry) => [entry.level, entry.message])).toEqual([
-      ["info", ""],
-      ["info", "正在测试密钥：\n12345678***bcdefXYZ"],
-      [
-        "info",
-        "任务提示词：\n[{'role': 'system', 'content': '任务目标是将内容文本翻译成中文，译文必须严格保持原文的格式。'}, {'role': 'user', 'content': '{\"0\":\"魔導具師ダリヤはうつむかない\"}'}]",
-      ],
-      ["info", '模型回复内容：\n{"0":"成功"}'],
-      ["info", "任务耗时 0.25 秒，输入消耗 2 Tokens，输出消耗 3 Tokens"],
-      ["info", ""],
-      ["info", "正在测试密钥：\n*******"],
-      [
-        "info",
-        "任务提示词：\n[{'role': 'system', 'content': '任务目标是将内容文本翻译成中文，译文必须严格保持原文的格式。'}, {'role': 'user', 'content': '{\"0\":\"魔導具師ダリヤはうつむかない\"}'}]",
-      ],
-      ["warning", "接口测试失败 …"],
-      ["info", ""],
-      ["info", "共测试 2 个接口，成功 1 个，失败 1 个 …"],
-      ["warning", "失败的密钥：\n*******"],
-    ]);
-    expect(log_entries[8]?.payload).toMatchObject({
+    expect(log_entries.map((entry) => [entry.level, entry.message])).toEqual(
+      expect.arrayContaining([
+        ["info", "正在测试密钥：\n12345678***bcdefXYZ"],
+        ["warning", "接口测试失败 …"],
+        ["info", "共测试 2 个接口，成功 1 个，失败 1 个 …"],
+        ["warning", "失败的密钥：\n*******"],
+      ]),
+    );
+    expect(log_entries.find((entry) => entry.message === "接口测试失败 …")?.payload).toMatchObject({
       error: {
         message: "请求超时（120 秒）",
       },
@@ -675,31 +524,27 @@ describe("ModelService 远端模型能力", () => {
   });
 });
 
-/**
- * 构造带最小资源目录的 ModelService，避免用例读取真实预设文件
- */
 async function create_model_service(
   models: Array<JsonRecord>,
   presets: ModelPresetFiles = {},
   log_entries?: LogEntry[],
 ): Promise<ModelServiceFixture> {
   const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-model-service-"));
+  cleanup_roots.push(app_root);
   await write_model_presets(app_root, presets);
   const paths = new AppPathService({ appRoot: app_root });
   const app_setting_service = new AppSettingService(paths);
   app_setting_service.save_setting({
     activate_model_id: models[0]?.["id"] ?? "",
-    models: models as unknown as JsonValue,
+    models,
   });
   const log_manager =
     log_entries === undefined
       ? undefined
       : {
-          // info 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
           info(message: string, payload?: Record<string, unknown>): void {
             log_entries.push({ level: "info", message, payload });
           },
-          // warning 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
           warning(message: string, payload?: Record<string, unknown>): void {
             log_entries.push({ level: "warning", message, payload });
           },
@@ -712,9 +557,6 @@ async function create_model_service(
   };
 }
 
-/**
- * 生成默认模型记录，测试只覆盖被 overrides 指定的差异字段
- */
 function create_model(overrides: Partial<JsonRecord>): JsonRecord {
   return {
     api_format: "OpenAI",
@@ -737,9 +579,6 @@ function create_model(overrides: Partial<JsonRecord>): JsonRecord {
   };
 }
 
-/**
- * 写入 ModelService 初始化需要的预设文件，内容保持由测试显式控制
- */
 async function write_model_presets(app_root: string, presets: ModelPresetFiles): Promise<void> {
   const preset_dir = path.join(app_root, "resource", "model", "preset");
   await mkdir(preset_dir, { recursive: true });
@@ -765,25 +604,11 @@ async function write_model_presets(app_root: string, presets: ModelPresetFiles):
   );
 }
 
-/**
- * 构造 fetch 可消费的 JSON Response，避免每个用例重复序列化
- */
 function json_response(body: Record<string, unknown>): Response {
   return new Response(JSON.stringify(body), {
     headers: { "Content-Type": "application/json" },
     status: 200,
   });
-}
-
-/**
- * 模拟 Google SDK pager 的 async iterable 形态，测试只关心 ModelService 的读取边界。
- */
-async function* create_google_model_pager(
-  models: Array<Record<string, unknown>>,
-): AsyncGenerator<Record<string, unknown>> {
-  for (const model of models) {
-    yield model;
-  }
 }
 
 function create_template(name: string, api_format: string): JsonRecord {

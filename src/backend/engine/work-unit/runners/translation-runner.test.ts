@@ -1,13 +1,15 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord } from "../../../../domain/json";
 import { TranslationWorkUnitRunner } from "./translation-runner";
 import type { LLMClientPort, LLMRequestBody, LLMRequestResult } from "../../../llm/llm-types";
 import type { TranslationWorkUnit } from "../../protocol/work-unit";
+
+const cleanup_roots: string[] = [];
 
 /**
  * 构造无条目的翻译 work unit，验证 runner 不会为无效 chunk 请求模型。
@@ -34,6 +36,13 @@ function create_empty_translation_unit(): TranslationWorkUnit {
 }
 
 describe("TranslationWorkUnitRunner", () => {
+  afterEach(async () => {
+    vi.useRealTimers();
+    while (cleanup_roots.length > 0) {
+      await rm(cleanup_roots.pop()!, { force: true, recursive: true });
+    }
+  });
+
   it("没有可翻译条目时返回 failed 空结果且不请求 LLM", async () => {
     const llm_client: LLMClientPort = {
       request: vi.fn(),
@@ -125,6 +134,142 @@ describe("TranslationWorkUnitRunner", () => {
         text_type: "TXT",
       },
     ]);
+  });
+
+  it("含姓名请求走完整 pipeline 并分别写回正文和姓名", async () => {
+    const captured_requests: LLMRequestBody[] = [];
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client(
+        {
+          response_result:
+            '{"0":{"actor":"虎铁","text":"你好"}}\n{"1":{"actor":null,"text":"旁白译文"}}',
+          input_tokens: 4,
+          output_tokens: 5,
+        },
+        captured_requests,
+      ),
+    );
+
+    const result = await runner.execute_unit(
+      create_translation_unit({
+        model: { api_format: "OpenAI" },
+        items: [
+          {
+            id: 1,
+            src: "こんにちは",
+            name_src: "虎鉄",
+            dst: "",
+            status: "NONE",
+            text_type: "TXT",
+          },
+          {
+            id: 2,
+            src: "地の文",
+            name_src: null,
+            name_dst: "既有译名",
+            dst: "",
+            status: "NONE",
+            text_type: "TXT",
+          },
+        ],
+      }),
+      new AbortController().signal,
+    );
+
+    expect(result.output).toMatchObject({
+      kind: "translation",
+      row_count: 2,
+      items: [
+        { id: 1, dst: "你好", name_dst: "虎铁", status: "PROCESSED" },
+        { id: 2, dst: "旁白译文", name_dst: "既有译名", status: "PROCESSED" },
+      ],
+    });
+    expect(captured_requests[0]?.messages[1]?.content).toContain(
+      '{"0":{"actor":"虎鉄","text":"こんにちは"}}',
+    );
+    expect(captured_requests[0]?.messages[1]?.content).toContain(
+      '{"1":{"actor":null,"text":"地の文"}}',
+    );
+  });
+
+  it("翻译日志的请求用时覆盖 LLM 等待时间", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(1000));
+    const runner = new TranslationWorkUnitRunner(await create_template_root(), {
+      request: async () => {
+        vi.setSystemTime(new Date(3500));
+        return {
+          response_think: "",
+          response_result: '{"0":"你好"}',
+          input_tokens: 4,
+          output_tokens: 5,
+          cancelled: false,
+          timeout: false,
+          degraded: false,
+        };
+      },
+    });
+
+    const result = await runner.execute_unit(
+      create_translation_unit({ model: { api_format: "OpenAI" } }),
+      new AbortController().signal,
+    );
+
+    expect(result.logs[0]?.message).toContain(
+      "任务耗时 2.50 秒，文本行数 1 行，输入消耗 4 Tokens，输出消耗 5 Tokens",
+    );
+  });
+
+  it("翻译日志分离模型思考、规则分析和译文", async () => {
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client({
+        response_think: "真实思考链",
+        response_result: '<why>[核心约束]：保持行数</why>\n{"0":"你好"}',
+      }),
+    );
+
+    const result = await runner.execute_unit(
+      create_translation_unit({ model: { api_format: "OpenAI" } }),
+      new AbortController().signal,
+    );
+
+    const message = String(result.logs[0]?.message ?? "");
+    expect(message).toContain("思考过程：\n真实思考链");
+    expect(message).toContain("规则分析：\n[核心约束]：保持行数");
+    expect(message).toContain('翻译结果：\n{"0":"你好"}');
+  });
+
+  it("LLM 请求失败时只在结构化日志字段保留调用栈", async () => {
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client({
+        request_error: {
+          name: "ProviderError",
+          message: "供应商爆炸",
+          stack: "ProviderError: 供应商爆炸\n    at request",
+          context: { provider: "openai-compatible" },
+        },
+      }),
+    );
+
+    const result = await runner.execute_unit(
+      create_translation_unit({ model: { api_format: "OpenAI" } }),
+      new AbortController().signal,
+    );
+
+    expect(result.outcome).toBe("failed");
+    expect(result.logs[0]).toMatchObject({
+      level: "error",
+      error: {
+        name: "ProviderError",
+        message: "供应商爆炸",
+        stack: "ProviderError: 供应商爆炸\n    at request",
+        context: { provider: "openai-compatible" },
+      },
+    });
+    expect(result.logs[0]?.message).not.toContain("ProviderError: 供应商爆炸");
   });
 
   it("完全无法解析译文时记录数据结构错误", async () => {
@@ -382,18 +527,24 @@ function create_quality_payload(): JsonRecord {
 /**
  * 构造可覆盖响应字段的 LLM 边界 stub，测试只断言 runner 公开结果。
  */
-function create_llm_client(overrides: Partial<LLMRequestResult>): LLMClientPort {
+function create_llm_client(
+  overrides: Partial<LLMRequestResult>,
+  captured_requests: LLMRequestBody[] = [],
+): LLMClientPort {
   return {
-    request: async () => ({
-      response_think: "",
-      response_result: "",
-      input_tokens: 1,
-      output_tokens: 1,
-      cancelled: false,
-      timeout: false,
-      degraded: false,
-      ...overrides,
-    }),
+    request: async (body) => {
+      captured_requests.push(body);
+      return {
+        response_think: "",
+        response_result: "",
+        input_tokens: 1,
+        output_tokens: 1,
+        cancelled: false,
+        timeout: false,
+        degraded: false,
+        ...overrides,
+      };
+    },
   };
 }
 
@@ -440,6 +591,7 @@ function create_translation_unit(args: {
  */
 async function create_template_root(): Promise<string> {
   const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-translation-runner-"));
+  cleanup_roots.push(app_root);
   const dir = path.join(app_root, "resource", "translation_prompt", "template", "zh");
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, "prefix.txt"), "前缀", "utf-8");

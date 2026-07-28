@@ -10,7 +10,6 @@ function pad_time_unit(value: number): string {
   return value.toString().padStart(2, "0");
 }
 
-// 统一生成日志或 UI 展示文本，避免多处拼接造成口径漂移。
 export function format_bootstrap_log(message: string, date: Date = new Date()): string {
   const hours = pad_time_unit(date.getHours());
   const minutes = pad_time_unit(date.getMinutes());
