@@ -53,7 +53,7 @@ export function format_console_log(
   const level_text = payload.level.toUpperCase().padEnd(CONSOLE_LEVEL_COLUMN_WIDTH, " ");
   const prefix = build_console_prefix(time_text, payload.level, level_text);
   const message = format_log_readable_text({
-    message: payload.message,
+    content: { kind: "text", text: payload.message },
     error: payload.error,
   });
   const message_text = format_console_message_lines(message, resolve_console_columns(options));

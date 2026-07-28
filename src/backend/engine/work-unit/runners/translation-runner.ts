@@ -13,7 +13,6 @@ import {
 } from "../pipeline/translation-pre-pipeline";
 import { TranslationPostPipeline } from "../pipeline/translation-post-pipeline";
 import {
-  format_translation_actor,
   read_translation_text_srcs,
   resolve_translation_prompt_mode,
   type TranslationActor,
@@ -619,57 +618,57 @@ export class TranslationWorkUnitRunner {
     });
     const log_decision = this.resolve_translation_log_decision(context.checks, app_language);
     const status_info = this.build_task_status_info(context.request, app_language);
-    const rows = [stats_info];
+    const summary = [stats_info];
     if (log_decision.message !== stats_info) {
-      rows.push(log_decision.message);
+      summary.push(log_decision.message);
     }
     if (status_info !== "") {
-      rows.push(status_info);
+      summary.push(status_info);
     }
-    rows.push(...context.console_log.map((text) => text.trim()).filter(Boolean));
+    summary.push(...context.console_log.map((text) => text.trim()).filter(Boolean));
     const response_think_log = context.response_think.trim();
     const rule_analysis_log = ResponseCleaner.normalize_blank_lines(context.rule_analysis).trim();
     const response_result_log = context.response_result.trim();
+    const sections: Array<{ title: string; text: string }> = [];
     if (response_think_log !== "") {
-      rows.push(
-        `${this.t(app_language, "app.log.engine_task_thinking_process")}\n${response_think_log}`,
-      );
+      sections.push({
+        title: this.t(app_language, "app.log.engine_task_thinking_process"),
+        text: response_think_log,
+      });
     }
     if (rule_analysis_log !== "") {
-      rows.push(
-        `${this.t(app_language, "app.log.engine_task_rule_analysis")}\n${rule_analysis_log}`,
-      );
+      sections.push({
+        title: this.t(app_language, "app.log.engine_task_rule_analysis"),
+        text: rule_analysis_log,
+      });
     }
     if (response_result_log !== "") {
-      rows.push(
-        `${this.t(app_language, "app.log.translation_task_result")}\n${response_result_log}`,
-      );
+      sections.push({
+        title: this.t(app_language, "app.log.translation_task_result"),
+        text: response_result_log,
+      });
     }
 
-    const pair_lines: string[] = [];
     const max_length = Math.max(srcs.length, context.dsts.length);
-    for (let index = 0; index < max_length; index += 1) {
-      pair_lines.push(`[${String(index + 1)}]`);
-      pair_lines.push(`SRC: ${srcs[index] ?? ""}`);
-      if (context.mode === "actor_text") {
-        pair_lines.push(
-          `ACTOR_SRC: ${format_translation_actor(context.lines[index]?.actor_src ?? null)}`,
-        );
-      }
-      pair_lines.push(`DST: ${context.dsts[index] ?? ""}`);
-      if (context.mode === "actor_text") {
-        pair_lines.push(
-          `ACTOR_DST: ${format_translation_actor(context.actor_dsts[index] ?? null)}`,
-        );
-      }
-    }
-    if (pair_lines.length > 0) {
-      rows.push(pair_lines.join("\n"));
-    }
+    const pairs = Array.from({ length: max_length }, (_, index) => ({
+      src: srcs[index] ?? "",
+      dst: context.dsts[index] ?? "",
+      ...(context.mode === "actor_text"
+        ? {
+            actor_src: context.lines[index]?.actor_src ?? null,
+            actor_dst: context.actor_dsts[index] ?? null,
+          }
+        : {}),
+    }));
     return [
       {
         level: log_decision.level,
-        message: `${rows.filter(Boolean).join("\n\n")}\n`,
+        content: {
+          kind: "translation_result",
+          summary,
+          sections,
+          pairs,
+        },
         ...(context.request_error === undefined ? {} : { error: context.request_error }),
       },
     ];

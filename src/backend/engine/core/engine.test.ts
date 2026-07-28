@@ -19,6 +19,7 @@ import type { TaskEngineOptions } from "./engine-options";
 import type { PlanningWorkerPool } from "../planning/planning-worker-pool";
 import { TaskPlanner } from "../planning/task-planner";
 import { log_error_from_message } from "../../../shared/error";
+import { format_log_content_text } from "../../../shared/log";
 import type { JsonRecord, MutableJsonRecord } from "../../../domain/json";
 
 describe("TaskEngine", () => {
@@ -714,6 +715,10 @@ describe("TaskEngine", () => {
 
   function create_log_manager(logs: string[] = []): TaskEngineOptions["logManager"] {
     return {
+      append: (payload) => {
+        logs.push(format_log_content_text(payload.content));
+        return null;
+      },
       info: (message: string) => {
         logs.push(message);
       },

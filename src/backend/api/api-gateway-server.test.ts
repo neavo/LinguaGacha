@@ -99,9 +99,12 @@ describe("ApiGatewayServer", () => {
 
     const detail_response = await post_json(started.baseUrl, "/api/logs/detail", { id: "log-1" });
     const detail_body = (await detail_response.json()) as {
-      data?: { detail?: { message?: string; source?: string } };
+      data?: { detail?: { content?: { kind?: string; text?: string }; source?: string } };
     };
-    expect(detail_body.data?.detail).toMatchObject({ message: full_message, source: "test" });
+    expect(detail_body.data?.detail).toMatchObject({
+      content: { kind: "text", text: full_message },
+      source: "test",
+    });
   });
 
   it("接收 renderer 异常诊断并写入统一日志", async () => {

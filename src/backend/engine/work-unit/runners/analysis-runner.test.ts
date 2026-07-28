@@ -116,11 +116,20 @@ describe("AnalysisWorkUnitRunner", () => {
     });
     expect(captured_requests[0]?.messages[1]?.content).toContain("【虎鉄】Alice");
     expect(captured_requests[0]?.messages[0]?.content).not.toContain("提示词增强");
-    const message = String(result.logs[0]?.message ?? "");
-    expect(message.indexOf("思考过程：")).toBeLessThan(message.indexOf("规则分析："));
-    expect(message.indexOf("规则分析：")).toBeLessThan(message.indexOf("分析输入："));
-    expect(message.indexOf("分析输入：")).toBeLessThan(message.indexOf("分析结果："));
-    expect(message).toContain("TERM: Alice -> 爱丽丝 #女性人名");
+    const content = result.logs[0]?.content;
+    if (content?.kind !== "analysis_result") {
+      throw new Error("期望分析结果日志");
+    }
+    expect(content.sections).toEqual([
+      { title: "思考过程：", text: "分析思考链" },
+      { title: "规则分析：", text: "[难点处理]：Alice -> 女性人名" },
+    ]);
+    expect(content).toMatchObject({
+      src_title: "分析输入：",
+      srcs: ["【虎鉄】Alice"],
+      result_title: "分析结果：",
+      terms: [{ src: "Alice", dst: "爱丽丝", info: "女性人名" }],
+    });
   });
 });
 

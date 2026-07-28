@@ -6,11 +6,9 @@ import type { LogManager } from "../../log/log-manager";
 /**
  * 构造只含日志写入口的 LogManager 替身，避免测试碰真实文件日志。
  */
-function create_log_manager_stub(): Pick<LogManager, "info" | "warning" | "error"> {
+function create_log_manager_stub(): Pick<LogManager, "append"> {
   return {
-    info: vi.fn(),
-    warning: vi.fn(),
-    error: vi.fn(),
+    append: vi.fn(() => null),
   };
 }
 
@@ -30,21 +28,30 @@ describe("TaskLogReplay", () => {
     );
     replay.task_run_finish("done", "zh-CN");
 
-    expect(log_manager.info).toHaveBeenCalledWith(
-      "",
-      expect.objectContaining({ source: "engine" }),
+    expect(log_manager.append).toHaveBeenCalledWith(
+      expect.objectContaining({
+        level: "info",
+        content: { kind: "text", text: "" },
+        source: "engine",
+      }),
     );
-    expect(log_manager.info).toHaveBeenCalledWith(
-      expect.stringContaining("OpenAI"),
-      expect.objectContaining({ source: "engine" }),
+    expect(log_manager.append).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: { kind: "text", text: expect.stringContaining("OpenAI") },
+        source: "engine",
+      }),
     );
-    expect(log_manager.info).toHaveBeenCalledWith(
-      "system prompt",
-      expect.objectContaining({ source: "engine" }),
+    expect(log_manager.append).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: { kind: "text", text: "system prompt" },
+        source: "engine",
+      }),
     );
-    expect(log_manager.info).toHaveBeenCalledWith(
-      expect.stringContaining("已完成"),
-      expect.objectContaining({ source: "engine" }),
+    expect(log_manager.append).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: { kind: "text", text: expect.stringContaining("已完成") },
+        source: "engine",
+      }),
     );
   });
 
@@ -55,25 +62,31 @@ describe("TaskLogReplay", () => {
     replay.work_unit_logs([
       {
         level: "warning",
-        message: "worker warning",
+        content: {
+          kind: "translation_result",
+          summary: ["worker warning"],
+          sections: [],
+          pairs: [{ src: "原文", dst: "译文" }],
+        },
         error: {
           message: "provider failed",
           stack: "stack",
         },
-        context: {
-          unit: "unit-1",
-        },
       },
     ]);
 
-    expect(log_manager.warning).toHaveBeenCalledWith("worker warning", {
+    expect(log_manager.append).toHaveBeenCalledWith({
+      level: "warning",
+      content: {
+        kind: "translation_result",
+        summary: ["worker warning"],
+        sections: [],
+        pairs: [{ src: "原文", dst: "译文" }],
+      },
       source: "engine-worker",
       error: {
         message: "provider failed",
         stack: "stack",
-      },
-      context: {
-        unit: "unit-1",
       },
     });
   });
@@ -84,9 +97,10 @@ describe("TaskLogReplay", () => {
 
     replay.task_error("任务执行失败", new Error("provider timeout"));
 
-    expect(log_manager.error).toHaveBeenCalledWith(
-      "任务执行失败",
+    expect(log_manager.append).toHaveBeenCalledWith(
       expect.objectContaining({
+        level: "error",
+        content: { kind: "text", text: "任务执行失败" },
         source: "engine",
         error: expect.objectContaining({
           message: "provider timeout",

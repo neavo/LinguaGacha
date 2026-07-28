@@ -13,9 +13,7 @@ export class TaskLogReplay {
   /**
    * log_manager 是日志文件、控制台和日志窗口的唯一写入口
    */
-  public constructor(
-    private readonly log_manager: Pick<LogManager, "info" | "warning" | "error">,
-  ) {}
+  public constructor(private readonly log_manager: Pick<LogManager, "append">) {}
 
   /**
    * 任务启动日志输出“API 名称 / 地址 / 模型”三行诊断
@@ -25,33 +23,27 @@ export class TaskLogReplay {
     app_language: unknown,
     prompt_text: string | null = null,
   ): void {
-    this.append({ level: "info", message: "" }, "engine");
-    this.append(
-      {
-        level: "info",
-        message: `${this.t(app_language, "app.log.engine_api_name")} - ${String(model["name"] ?? "")}`,
-      },
+    this.append_text("info", "", "engine");
+    this.append_text(
+      "info",
+      `${this.t(app_language, "app.log.engine_api_name")} - ${String(model["name"] ?? "")}`,
       "engine",
     );
-    this.append(
-      {
-        level: "info",
-        message: `${this.t(app_language, "app.log.engine_api_url")} - ${String(model["api_url"] ?? "")}`,
-      },
+    this.append_text(
+      "info",
+      `${this.t(app_language, "app.log.engine_api_url")} - ${String(model["api_url"] ?? "")}`,
       "engine",
     );
-    this.append(
-      {
-        level: "info",
-        message: `${this.t(app_language, "app.log.engine_api_model")} - ${String(model["model_id"] ?? "")}`,
-      },
+    this.append_text(
+      "info",
+      `${this.t(app_language, "app.log.engine_api_model")} - ${String(model["model_id"] ?? "")}`,
       "engine",
     );
-    this.append({ level: "info", message: "" }, "engine");
+    this.append_text("info", "", "engine");
     const normalized_prompt_text = prompt_text?.trim() ?? "";
     if (normalized_prompt_text !== "") {
-      this.append({ level: "info", message: normalized_prompt_text }, "engine");
-      this.append({ level: "info", message: "" }, "engine");
+      this.append_text("info", normalized_prompt_text, "engine");
+      this.append_text("info", "", "engine");
     }
   }
 
@@ -65,9 +57,9 @@ export class TaskLogReplay {
         : status === "idle"
           ? this.t(app_language, "app.log.engine_task_stop")
           : this.t(app_language, "app.log.engine_task_fail");
-    this.append({ level: "info", message: "" }, "engine");
-    this.append({ level: status === "error" ? "warning" : "info", message }, "engine");
-    this.append({ level: "info", message: "" }, "engine");
+    this.append_text("info", "", "engine");
+    this.append_text(status === "error" ? "warning" : "info", message, "engine");
+    this.append_text("info", "", "engine");
   }
 
   /**
@@ -78,7 +70,12 @@ export class TaskLogReplay {
       return;
     }
     for (const entry of logs) {
-      this.append(entry, "engine-worker");
+      this.log_manager.append({
+        level: entry.level,
+        content: entry.content,
+        source: "engine-worker",
+        error: entry.error,
+      });
     }
   }
 
@@ -86,17 +83,20 @@ export class TaskLogReplay {
    * 任务异常统一写入应用日志，便于和 work-unit 日志并排排查
    */
   public task_error(message: string, error: unknown): void {
-    this.log_manager.error(message, {
+    this.log_manager.append({
+      level: "error",
+      content: { kind: "text", text: message },
       source: "engine",
       error,
     });
   }
 
-  private append(entry: ReplayLogEntry, source: string): void {
-    this.log_manager[entry.level](entry.message, {
+  /** 普通生命周期日志统一包装成 text content，避免调用点重复协议形状。 */
+  private append_text(level: "info" | "warning" | "error", message: string, source: string): void {
+    this.log_manager.append({
+      level,
+      content: { kind: "text", text: message },
       source,
-      error: entry.error,
-      context: entry.context,
     });
   }
 
