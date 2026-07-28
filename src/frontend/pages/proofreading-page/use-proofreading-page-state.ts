@@ -463,6 +463,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     },
     [],
   );
+  // 弹窗需要格式私有详情，不能复用只含列表字段的可见窗口。
+  const read_dialog_items = useCallback((row_ids: string[]): Promise<ProofreadingClientItem[]> => {
+    return proofreading_runtime_client_ref.current.read_proofreading_items_by_row_ids({
+      row_ids,
+    });
+  }, []);
   const read_dialog_context = useCallback((row_id: string): Promise<ProofreadingContextItem[]> => {
     return proofreading_runtime_client_ref.current.read_proofreading_context({ row_id });
   }, []);
@@ -479,7 +485,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   } = useProofreadingDialogActions({
     list_revisions,
     visible_item_by_id,
-    read_items_by_row_ids: read_items_by_row_ids_for_batch,
+    read_items_by_row_ids: read_dialog_items,
     read_context: read_dialog_context,
     run_project_write,
     push_toast,

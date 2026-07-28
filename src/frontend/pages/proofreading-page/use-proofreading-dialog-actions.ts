@@ -75,9 +75,15 @@ export function useProofreadingDialogActions(
   const dialog_request_id_ref = useRef(0); // 弹窗关闭或重开时，旧的条目与上下文响应都不得回写
 
   const dialog_item = useMemo(() => {
-    return dialog_state.target_row_id === null
-      ? null
-      : (options.visible_item_by_id.get(dialog_state.target_row_id) ?? dialog_item_snapshot);
+    if (dialog_state.target_row_id === null) {
+      return null;
+    }
+    const visible_item = options.visible_item_by_id.get(dialog_state.target_row_id);
+    if (visible_item === undefined || dialog_item_snapshot === null) {
+      return visible_item ?? dialog_item_snapshot;
+    }
+    // 详情快照提供按需字段，列表窗口只覆盖它实际携带的最新行事实。
+    return { ...dialog_item_snapshot, ...visible_item };
   }, [dialog_item_snapshot, dialog_state.target_row_id, options.visible_item_by_id]);
 
   const reset_dialog = useCallback((): void => {

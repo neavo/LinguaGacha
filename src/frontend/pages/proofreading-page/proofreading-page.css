@@ -353,32 +353,22 @@
 }
 
 .proofreading-page__dialog-form {
-  display: grid;
+  display: flex;
   width: 100%;
   min-height: 100%;
   min-width: 0;
   height: 100%;
   flex: 1;
-  grid-template-rows: minmax(0, 1fr);
-  gap: 12px;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.proofreading-page__dialog-main-panel {
-  display: flex;
-  min-height: 0;
-  flex-direction: column;
+.proofreading-page__dialog-file-card,
+.proofreading-page__dialog-editor-block,
+.proofreading-page__dialog-status-section {
   border: 1px solid var(--border);
   border-radius: var(--ui-radius-card);
   background: color-mix(in srgb, var(--muted) 58%, var(--popover));
-}
-
-.proofreading-page__dialog-main-panel-content {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  gap: 16px;
-  padding: 16px;
 }
 
 .proofreading-page__dialog-file-card {
@@ -386,9 +376,6 @@
   align-items: center;
   gap: 0;
   padding: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--ui-radius-card);
-  background: color-mix(in srgb, var(--muted) 58%, var(--popover));
 }
 
 .proofreading-page__dialog-file-path,
@@ -435,32 +422,33 @@
 }
 
 .proofreading-page__context-items {
+  display: flex;
   min-height: 0;
   flex: 1;
+  flex-direction: column;
   overflow: auto;
   margin: 0;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--ui-radius-card);
-  background: linear-gradient(
-    to right,
-    color-mix(in srgb, var(--muted) 24%, var(--ui-card-default-surface) 76%) 0 50%,
-    color-mix(in srgb, var(--primary) 5%, var(--ui-card-default-surface) 95%) 50% 100%
-  );
+  background: var(--ui-card-default-surface);
   list-style: none;
 }
 
 .proofreading-page__context-item {
   position: relative;
+  display: flex;
+  flex: 0 0 auto;
   border-top: 1px solid var(--border);
+}
+
+/* 最后一行只吸收剩余高度；内容溢出时各行不收缩，避免横向分隔线重叠。 */
+.proofreading-page__context-item:last-child {
+  flex-grow: 1;
 }
 
 .proofreading-page__context-item:first-child {
   border-top: 0;
-}
-
-.proofreading-page__context-item[aria-current="true"] {
-  background: color-mix(in srgb, var(--primary) 6%, var(--popover));
 }
 
 .proofreading-page__context-item[aria-current="true"]::before {
@@ -492,6 +480,7 @@
 
 .proofreading-page__context-pair {
   display: grid;
+  flex: 1;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 0;
 }
@@ -499,10 +488,16 @@
 .proofreading-page__context-field {
   min-width: 0;
   padding: 8px 76px 10px 12px;
+  background: color-mix(in srgb, var(--muted) 24%, var(--ui-card-default-surface) 76%);
 }
 
 .proofreading-page__context-field--translation {
   border-left: 1px solid var(--border);
+  background: color-mix(in srgb, var(--primary) 5%, var(--ui-card-default-surface) 95%);
+}
+
+.proofreading-page__context-item[aria-current="true"] .proofreading-page__context-field {
+  background: color-mix(in srgb, var(--primary) 6%, var(--popover));
 }
 
 .proofreading-page__context-field dt {
@@ -588,6 +583,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding: 12px 16px;
 }
 
 .proofreading-page__dialog-status-title {
@@ -695,6 +691,7 @@
   flex: 1;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  padding: 16px;
 }
 
 .proofreading-page__dialog-editor-section {

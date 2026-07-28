@@ -11,6 +11,7 @@ import type { ProjectDataSectionRevisions } from "@shared/project-event";
 import {
   create_empty_proofreading_filter_panel_state,
   create_empty_proofreading_list_view,
+  type ProofreadingClientItem,
   type ProofreadingFilterOptions,
   type ProofreadingGlossaryTerm,
 } from "@shared/proofreading/proofreading-types";
@@ -346,7 +347,10 @@ function create_deferred<T>(): Deferred<T> {
 }
 
 // 生成前端列表行使用的校对 item，row_id 与 item_id 保持同源。
-function create_client_item(item_id: number | string) {
+function create_client_item(
+  item_id: number | string,
+  overrides: Partial<ProofreadingClientItem> = {},
+): ProofreadingClientItem {
   return {
     item_id,
     row_id: String(item_id),
@@ -357,12 +361,14 @@ function create_client_item(item_id: number | string) {
     name_src: null,
     name_dst: null,
     status: "NONE",
+    retry_count: 0,
     warnings: [],
     warning_fragments_by_code: {},
     applied_glossary_terms: [],
     failed_glossary_terms: [],
     compressed_src: `foo-${item_id}`,
     compressed_dst: `bar-${item_id}`,
+    ...overrides,
   };
 }
 
@@ -533,10 +539,7 @@ describe("useProofreadingPageState", () => {
     );
   }
 
-  // flush_async_updates 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-  /**
-   * 支撑当前测试场景的专用辅助逻辑。
-   */
+  // 统一冲刷页面 Promise，避免每个用例重复铺设等待细节。
   async function flush_async_updates(): Promise<void> {
     await act(async () => {
       await Promise.resolve();
@@ -545,10 +548,7 @@ describe("useProofreadingPageState", () => {
     });
   }
 
-  // render_hook 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-  /**
-   * 生成当前场景的展示内容。
-   */
+  // 复用同一 root 渲染页面并等待首次查询稳定。
   async function render_hook(): Promise<void> {
     if (container === null) {
       container = document.createElement("div");
@@ -578,9 +578,6 @@ describe("useProofreadingPageState", () => {
   }
 
   // request_pending_confirmation 收口测试中的共享步骤，保证断言只关注当前行为。
-  /**
-   * 支撑当前测试场景的专用辅助逻辑。
-   */
   async function request_pending_confirmation(action: () => void): Promise<void> {
     await act(async () => {
       action();
@@ -595,6 +592,19 @@ describe("useProofreadingPageState", () => {
     expect(proofreading_client_fixture.current.sync_proofreading_cache).toHaveBeenCalledTimes(1);
     expect(latest_state?.cache_status).toBe("ready");
     expect(latest_state?.settled_project_path).toBe("E:/demo/sample.lg");
+  });
+
+  it("打开可见行编辑弹窗时仍读取按需详情", async () => {
+    proofreading_client_fixture.current.read_proofreading_items_by_row_ids.mockResolvedValueOnce([
+      create_client_item(1, { internal_file_path: "data/Actors.json" }),
+    ]);
+    await render_hook();
+
+    await act(async () => {
+      await latest_state?.open_edit_dialog("1");
+    });
+
+    expect(latest_state?.dialog_item?.internal_file_path).toBe("data/Actors.json");
   });
 
   it("收到导航查找意图时会更新搜索状态并执行统一列表查询", async () => {

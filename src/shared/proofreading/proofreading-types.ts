@@ -71,6 +71,7 @@ export type ProofreadingFilterOptions = {
 export type ProofreadingItem = {
   item_id: number | string;
   file_path: string;
+  internal_file_path?: string; // 详情查询按需返回格式内部路径，列表窗口不携带
   row_number: number;
   src: string;
   dst: string;

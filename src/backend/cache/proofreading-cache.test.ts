@@ -17,43 +17,31 @@ function create_cache_read_port(options: {
   revisions?: Record<string, number>;
   items?: Array<Record<string, unknown>>;
 }): CacheReadPort {
+  const revisions = options.revisions ?? { files: 1, items: 1, quality: 1, proofreading: 0 };
+  const items = options.items ?? [
+    {
+      id: 1,
+      file_path: "script.txt",
+      row: 1,
+      src: "HP",
+      dst: "HP",
+      status: "PROCESSED",
+      text_type: "NONE",
+      retry_count: 0,
+    },
+  ];
   return {
     snapshot: () => ({
       projectPath: "E:/Project/demo.lg",
       epoch: options.epoch ?? 1,
       freshness: "fresh",
-      sectionRevisions: options.revisions ?? { files: 1, items: 1, quality: 1, proofreading: 0 },
-      itemCount: options.items?.length ?? 1,
+      sectionRevisions: revisions,
+      itemCount: items.length,
     }),
-    readSectionRevisions: () =>
-      options.revisions ?? { files: 1, items: 1, quality: 1, proofreading: 0 },
+    readSectionRevisions: () => revisions,
     items: {
-      readItems: () =>
-        options.items ?? [
-          {
-            id: 1,
-            file_path: "script.txt",
-            row: 1,
-            src: "HP",
-            dst: "HP",
-            status: "PROCESSED",
-            text_type: "NONE",
-            retry_count: 0,
-          },
-        ],
+      readItems: () => items,
       readItem: (itemId: number) => {
-        const items = options.items ?? [
-          {
-            id: 1,
-            file_path: "script.txt",
-            row: 1,
-            src: "HP",
-            dst: "HP",
-            status: "PROCESSED",
-            text_type: "NONE",
-            retry_count: 0,
-          },
-        ];
         const item = items.find((entry) => Number(entry["item_id"] ?? entry["id"] ?? 0) === itemId);
         return item === undefined ? null : { ...item };
       },
@@ -168,6 +156,38 @@ describe("ProofreadingCache", () => {
       projectPath: "E:/Project/demo.lg",
       sectionRevisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       data: [{ row_id: "1" }],
+    });
+  });
+
+  it("按 row id 查询时只从热缓存补 TRANS 内部路径", async () => {
+    const worker = create_worker();
+    const items = [
+      {
+        id: 1,
+        file_path: "game.trans",
+        file_type: "TRANS",
+        row: 1,
+        src: "A",
+        dst: "甲",
+        status: "PROCESSED",
+        text_type: "NONE",
+        retry_count: 0,
+        extra_field: { trans_ref: { file_key: "data/Actors.json", row_index: 0 } },
+      },
+    ];
+    const cache = new ProofreadingCache({
+      cache: create_cache_read_port({ items }),
+      appSettingService: create_settings(),
+      workerClient: worker,
+      service: createProofreadingListReader(),
+    });
+
+    const rows = await cache.itemsByRowIds({ row_ids: ["1"] });
+
+    expect(worker.sync_inputs[0]?.upsertItems[0]).not.toHaveProperty("internal_file_path");
+    expect(rows.data[0]).toMatchObject({
+      item_id: 1,
+      internal_file_path: "data/Actors.json",
     });
   });
 

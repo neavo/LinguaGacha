@@ -127,12 +127,25 @@ export class ProofreadingCache {
   }
 
   /**
-   * 按 row id 局部读取校对行，避免页面复制完整列表。
+   * 按 row id 局部读取校对行，并只为返回行从热缓存补 TRANS 内部路径，避免进入全量 worker。
    */
   public async itemsByRowIds(
     query: ProofreadingItemsByRowIdsQuery,
   ): Promise<ProofreadingCacheResult<ProofreadingClientItem[]>> {
-    return this.query_current(() => this.service.read_items_by_row_ids(query));
+    return this.query_current(() => {
+      return this.service.read_items_by_row_ids(query).map((item) => {
+        const cached_item = this.cache.items.readItem(Number(item.item_id));
+        if (cached_item === null || String(cached_item["file_type"] ?? "") !== "TRANS") {
+          return item;
+        }
+        const extra_field = read_json_record(cached_item["extra_field"]);
+        const trans_ref = read_json_record(extra_field["trans_ref"]);
+        const internal_file_path = trans_ref["file_key"];
+        return typeof internal_file_path === "string" && internal_file_path !== ""
+          ? { ...item, internal_file_path }
+          : item;
+      });
+    });
   }
 
   /**
