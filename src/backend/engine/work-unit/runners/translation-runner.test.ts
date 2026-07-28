@@ -93,7 +93,7 @@ describe("TranslationWorkUnitRunner", () => {
         unit_id: "translation-unit-1",
         run_id: "run-1",
         model: { api_format: "SakuraLLM" },
-        config_snapshot: create_config_payload(),
+        config_snapshot: create_config_payload({ prompt_enhancement_enable: false }),
         quality_snapshot: create_quality_payload(),
         payload: {
           items: [
@@ -154,6 +154,7 @@ describe("TranslationWorkUnitRunner", () => {
     const result = await runner.execute_unit(
       create_translation_unit({
         model: { api_format: "OpenAI" },
+        config_overrides: { prompt_enhancement_enable: false },
         items: [
           {
             id: 1,
@@ -191,6 +192,7 @@ describe("TranslationWorkUnitRunner", () => {
     expect(captured_requests[0]?.messages[1]?.content).toContain(
       '{"1":{"actor":null,"text":"地の文"}}',
     );
+    expect(captured_requests[0]?.messages[0]?.content).not.toContain("提示词增强");
   });
 
   it("翻译日志的请求用时覆盖 LLM 等待时间", async () => {
@@ -496,13 +498,14 @@ describe("TranslationWorkUnitRunner", () => {
 /**
  * 构造 runner 所需配置快照，字段名对齐任务启动载荷。
  */
-function create_config_payload(): JsonRecord {
+function create_config_payload(overrides: JsonRecord = {}): JsonRecord {
   return {
     app_language: "ZH",
     source_language: "JA",
     target_language: "ZH",
     clean_ruby: false,
     auto_process_prefix_suffix_preserved_text: true,
+    ...overrides,
   };
 }
 
@@ -556,13 +559,14 @@ function create_translation_unit(args: {
   src?: string;
   retry_count?: number;
   items?: Array<JsonRecord>;
+  config_overrides?: JsonRecord;
 }): TranslationWorkUnit {
   return {
     kind: "translation",
     unit_id: "translation-unit-1",
     run_id: "run-1",
     model: args.model,
-    config_snapshot: create_config_payload(),
+    config_snapshot: create_config_payload(args.config_overrides),
     quality_snapshot: create_quality_payload(),
     payload: {
       items: args.items ?? [
@@ -596,7 +600,7 @@ async function create_template_root(): Promise<string> {
   await mkdir(dir, { recursive: true });
   await writeFile(path.join(dir, "prefix.txt"), "前缀", "utf-8");
   await writeFile(path.join(dir, "base.txt"), "从 {source_language} 到 {target_language}", "utf-8");
-  await writeFile(path.join(dir, "thinking.txt"), "", "utf-8");
+  await writeFile(path.join(dir, "thinking.txt"), "提示词增强", "utf-8");
   await writeFile(
     path.join(dir, "suffix.txt"),
     "输出 JSONLINE\n{translation_output_format}",

@@ -4,6 +4,13 @@ import type { LocaleMessageSchema } from "../../types";
 export const en_us_laboratory_page = {
   title: "Laboratory",
   fields: {
+    prompt_enhancement_enable: {
+      title: "Prompt Enhancement",
+      description:
+        "Strengthens the AI's instruction following by simulating chain-of-thought reasoning" +
+        "\n" +
+        "Disabling slightly reduces token usage but significantly reduces AI intelligence, enabled by default",
+    },
     mtool_optimizer_enable: {
       title: "MTool Optimizer",
       description:
@@ -11,7 +18,7 @@ export const en_us_laboratory_page = {
       help_label: "View the MTool Optimizer guide",
     },
     skip_duplicate_source_text_enable: {
-      title: "Skip duplicate source text",
+      title: "Skip Duplicate Source Text",
       description:
         "In one file, translate identical source text once, <emphasis>duplicates reuse the translated text</emphasis>, enabled by default",
     },

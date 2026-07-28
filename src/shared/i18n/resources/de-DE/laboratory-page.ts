@@ -4,6 +4,13 @@ import type { LocaleMessageSchema } from "../../types";
 export const de_de_laboratory_page = {
   title: "Labor",
   fields: {
+    prompt_enhancement_enable: {
+      title: "Prompt-Verbesserung",
+      description:
+        "Verbessert die Befolgung von Anweisungen durch die KI, indem eine Gedankenkette simuliert wird" +
+        "\n" +
+        "Deaktivieren senkt den Token-Verbrauch leicht, aber die KI-Intelligenz deutlich, standardmäßig aktiviert",
+    },
     mtool_optimizer_enable: {
       title: "MTool-Optimierer",
       description:

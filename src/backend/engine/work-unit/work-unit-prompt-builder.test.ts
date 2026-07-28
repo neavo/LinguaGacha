@@ -88,6 +88,26 @@ describe("PromptBuilder", () => {
     );
   });
 
+  it("关闭提示词增强时翻译和分析都只保留前缀、正文与后缀", async () => {
+    const builder = new PromptBuilder(
+      await create_template_root(),
+      {
+        app_language: "ZH",
+        source_language: "JA",
+        target_language: "ZH",
+        prompt_enhancement_enable: false,
+      },
+      create_quality_snapshot(),
+    );
+
+    await expect(builder.build_main("text")).resolves.toBe(
+      '翻译前缀\n请从 日文 翻译到 中文，保留控制字符。\n\n输出 JSONLINE\n```jsonline\n{"<序号>":"<译文文本>"}\n```',
+    );
+    await expect(builder.build_glossary_analysis_main()).resolves.toBe(
+      "分析前缀\n提取 中文 术语。\n\n输出 JSONLINE",
+    );
+  });
+
   it("公开提示词结果按大小写规则筛选术语并格式化 info", async () => {
     const app_root = await create_template_root();
     const builder = new PromptBuilder(
@@ -137,7 +157,7 @@ describe("PromptBuilder", () => {
   it("Sakura 提示词在术语启用但未命中时使用默认内容", () => {
     const builder = new PromptBuilder(
       "unused",
-      { app_language: "ZH", target_language: "ZH" },
+      { app_language: "ZH", target_language: "ZH", prompt_enhancement_enable: false },
       create_quality_snapshot({
         glossary_enable: true,
         glossary_entries: [{ src: "HP", dst: "生命值", case_sensitive: true }],
@@ -202,7 +222,7 @@ describe("PromptBuilder", () => {
 
     const result = await builder.build_glossary_analysis_main();
 
-    expect(result).toBe("分析前缀\n自定义分析：中文\n\n输出 JSONLINE");
+    expect(result).toBe("分析前缀\n自定义分析：中文\n\n分析思考\n\n输出 JSONLINE");
     expect(result).not.toContain("翻译前缀");
   });
 
@@ -284,7 +304,7 @@ async function create_template_root(): Promise<string> {
   await write_template(app_root, "analysis_prompt", "zh", {
     prefix: "分析前缀",
     base: "提取 {target_language} 术语。",
-    thinking: "",
+    thinking: "分析思考",
     suffix: "输出 JSONLINE",
   });
   return app_root;

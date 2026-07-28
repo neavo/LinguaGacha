@@ -74,6 +74,7 @@ function create_settings_snapshot(overrides: Partial<SettingsSnapshot> = {}): Se
       source_language: "JA",
       target_language: "ZH",
       request_timeout: 300,
+      prompt_enhancement_enable: true,
       mtool_optimizer_enable: false,
       skip_duplicate_source_text_enable: true,
       ...overrides,
@@ -168,6 +169,46 @@ describe("useLaboratoryPageState", () => {
     });
     await flush_async_updates();
   }
+
+  it("提示词增强只更新应用设置，不触发项目预过滤对齐", async () => {
+    vi.mocked(api_fetch).mockImplementation(async (path, body = {}) => {
+      if (path !== "/api/settings/update") {
+        throw new Error(`unexpected path: ${path}`);
+      }
+      return {
+        settings: create_settings_snapshot({
+          ...runtime_fixture.current.settings_snapshot,
+          ...body,
+        }),
+      } as never;
+    });
+
+    await render_hook();
+    await act(async () => {
+      await latest_state?.update_prompt_enhancement_enable(false);
+    });
+    await flush_async_updates();
+
+    expect(latest_state?.snapshot.prompt_enhancement_enable).toBe(false);
+    expect(vi.mocked(api_fetch).mock.calls).toEqual([
+      ["/api/settings/update", { prompt_enhancement_enable: false }],
+    ]);
+    expect(runtime_fixture.current.commit_project_write).not.toHaveBeenCalled();
+  });
+
+  it("任务运行中不提交提示词增强设置", async () => {
+    runtime_fixture.current = {
+      ...runtime_fixture.current,
+      task_snapshot: { busy: true },
+    };
+    await render_hook();
+
+    await act(async () => {
+      await latest_state?.update_prompt_enhancement_enable(false);
+    });
+
+    expect(api_fetch).not.toHaveBeenCalled();
+  });
 
   it("后端预过滤提交失败时会回滚 mtool_optimizer_enable 并只显示通用失败提示", async () => {
     vi.mocked(api_fetch).mockImplementation(async (path, body = {}) => {
