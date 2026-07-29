@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { ItemTextGroup } from "../item-text";
-import { run_quality_statistics_task_sync } from "./quality-statistics";
+import {
+  collect_quality_literal_match_indexes,
+  count_quality_literal_matches,
+  run_quality_statistics_task_sync,
+} from "./quality-statistics";
 
 /**
  * 构造原文文本组夹具，第二槽起模拟姓名原文字段。
@@ -16,6 +20,15 @@ function text_groups(groups: string[][]): ItemTextGroup[] {
     });
   });
 }
+
+describe("Agent 字面量统计出口", () => {
+  it("共享大小写折叠口径并保留重叠出现次数", () => {
+    const args = { patterns: ["aa", "B"], texts: ["aaa b"], case_sensitive: false };
+
+    expect(collect_quality_literal_match_indexes(args)).toEqual([[0, 1]]);
+    expect(count_quality_literal_matches(args)).toEqual([[2, 1]]);
+  });
+});
 
 describe("run_quality_statistics_task_sync", () => {
   it("对 glossary / pre / post / text_preserve 统一返回命中数", () => {

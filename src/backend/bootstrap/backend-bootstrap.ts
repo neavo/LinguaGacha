@@ -128,6 +128,7 @@ export class BackendBootstrap {
         openOutputFolder: this.options.openOutputFolder,
         workerExecution: this.options.workerExecution,
       });
+      await backend_services.agent.load_skills();
       backend_services.start();
       this.backend_services = backend_services;
       const api_base_url = this.options.exposeApiGateway

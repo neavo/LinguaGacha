@@ -376,20 +376,35 @@ export async function check_github_release_update(
   }
 }
 
+/**
+ * 通过统一 JSON envelope 提交 Backend POST 命令。
+ */
 export async function api_fetch<data_type>(
   path: string,
   body: Record<string, unknown> = {},
 ): Promise<data_type> {
+  return api_request<data_type>(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JsonTool.stringifyStrict(body),
+  });
+}
+
+/**
+ * 通过同一错误映射读取 Backend GET query。
+ */
+export async function api_get<data_type>(path: string): Promise<data_type> {
+  return api_request<data_type>(path, { method: "GET" });
+}
+
+/**
+ * 收口 Backend 请求、网络异常与公开错误 envelope，调用方只接收 data。
+ */
+async function api_request<data_type>(path: string, init: RequestInit): Promise<data_type> {
   const base_url = await resolve_backend_api_base_url();
   let response: Response;
   try {
-    response = await fetch(build_api_url(base_url, path), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JsonTool.stringifyStrict(body),
-    });
+    response = await fetch(build_api_url(base_url, path), init);
   } catch (error) {
     throw create_network_error(path, error);
   }

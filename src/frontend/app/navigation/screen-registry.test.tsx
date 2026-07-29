@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 vi.mock("@frontend/pages/basic-settings-page/page", () => ({
   BasicSettingsPage: () => null,
 }));
+vi.mock("@frontend/pages/agent-page/page", () => ({ AgentPage: () => null }));
 vi.mock("@frontend/pages/custom-prompt-page/page", () => ({
   CustomPromptPage: (props: { variant: string }) => <div data-variant={props.variant} />,
 }));

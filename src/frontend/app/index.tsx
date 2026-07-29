@@ -85,6 +85,7 @@ type AppTranslator = ReturnType<typeof useI18n>["t"];
 
 // PROJECT DEPENDENT ROUTE IDS 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const PROJECT_DEPENDENT_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
+  "agent",
   "proofreading",
   "workbench",
   "glossary",
@@ -99,6 +100,7 @@ const PROJECT_DEPENDENT_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
 
 // ROUTE IDS DISABLED WHEN PROJECT UNLOADED 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const ROUTE_IDS_DISABLED_WHEN_PROJECT_UNLOADED: ReadonlySet<RouteId> = new Set([
+  "agent",
   "glossary",
   "text-preserve",
   "pre-translation-replacement",

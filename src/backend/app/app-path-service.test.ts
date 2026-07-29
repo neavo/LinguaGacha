@@ -34,6 +34,12 @@ describe("AppPathService", () => {
     expect(service.get_version_path()).toBe(path.join(app_root, "version.txt"));
     expect(service.get_log_dir()).toBe(path.join(app_root, "log"));
     expect(service.get_model_preset_dir()).toBe(path.join(app_root, "resource", "model", "preset"));
+    expect(service.get_agent_builtin_skill_dir()).toBe(
+      path.join(app_root, "resource", "agent", "skill"),
+    );
+    expect(service.get_agent_user_skill_dir()).toBe(
+      path.join(app_root, "userdata", "agent", "skill"),
+    );
     expect(service.get_quality_rule_builtin_preset_dir("glossary")).toBe(
       path.join(app_root, "resource", "glossary", "preset"),
     );

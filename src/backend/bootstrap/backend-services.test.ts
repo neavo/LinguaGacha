@@ -29,6 +29,7 @@ vi.mock("../engine/planning/planning-worker-pool", () => {
 
 import { BackendServices } from "./backend-services";
 import type { BackendServicesOptions } from "./backend-services";
+import { AgentService } from "../agent/agent-service";
 import { TaskService } from "../engine/task-service";
 import { TaskRuntime } from "../engine/task-runtime";
 import { BackendWorkerClient } from "../worker/worker-client";
@@ -67,6 +68,7 @@ describe("BackendServices", () => {
   it("启动和释放时只管理组合根拥有的运行期资源", async () => {
     const options = create_backend_services_options();
     const backend_worker_dispose = vi.spyOn(BackendWorkerClient.prototype, "dispose");
+    const agent_dispose = vi.spyOn(AgentService.prototype, "dispose");
     const services = new BackendServices(options);
 
     services.start();
@@ -78,7 +80,9 @@ describe("BackendServices", () => {
     expect(work_unit_dispose_mock).toHaveBeenCalledTimes(1);
     expect(planning_dispose_mock).toHaveBeenCalledTimes(1);
     expect(backend_worker_dispose).toHaveBeenCalledTimes(1);
+    expect(agent_dispose).toHaveBeenCalledTimes(1);
     backend_worker_dispose.mockRestore();
+    agent_dispose.mockRestore();
   });
 
   it("把任务快照按公开 SSE envelope 发布", async () => {

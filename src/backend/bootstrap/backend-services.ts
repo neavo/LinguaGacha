@@ -1,6 +1,7 @@
 import { AppMetadataService } from "../app/app-metadata-service";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
+import { AgentService } from "../agent/agent-service";
 import { ApiStreamHub } from "../api/api-stream-hub";
 import { CacheManager } from "../cache/cache-manager";
 import { ProjectDatabase } from "../database/database-operations";
@@ -105,6 +106,7 @@ export class BackendServices {
   public readonly quality: BackendQualityServices;
   public readonly files: BackendFileServices;
   public readonly model: ModelService;
+  public readonly agent: AgentService;
   public readonly tasks: TaskService;
   public readonly logManager: LogManager;
 
@@ -133,6 +135,7 @@ export class BackendServices {
     const publish_project_change = (request: Parameters<typeof adapt_project_change>[0]) => {
       const event = adapt_project_change(request);
       if (event !== null) {
+        this.agent?.handle_project_change(event);
         this.api_stream_hub.publish(PROJECT_CHANGE_EVENT_TOPIC, event as unknown as JsonRecord);
       }
       return event;
@@ -221,15 +224,16 @@ export class BackendServices {
       }),
       commands: new ProofreadingService(options.database, project_gate, session_state, write_store),
     };
+    const quality_rules = new QualityRuleService(
+      paths,
+      options.database,
+      session_state,
+      write_store,
+      project_gate,
+      this.cache_manager,
+    );
     this.quality = {
-      rules: new QualityRuleService(
-        paths,
-        options.database,
-        session_state,
-        write_store,
-        project_gate,
-        this.cache_manager,
-      ),
+      rules: quality_rules,
       prompts: new QualityPromptService(
         paths,
         this.app_setting_service,
@@ -262,6 +266,15 @@ export class BackendServices {
       metadata.build_linguagacha_user_agent(),
       this.logManager,
     );
+    this.agent = new AgentService({
+      paths,
+      settings: this.app_setting_service,
+      sessionState: session_state,
+      cache: this.cache_manager,
+      qualityRules: quality_rules,
+      logManager: this.logManager,
+      publish: (topic, payload) => this.api_stream_hub.publish(topic, payload),
+    });
     this.tasks = new TaskService(task_engine, this.task_runtime, project_gate, session_state);
     this.task_stream_unsubscribe = this.tasks.subscribe((snapshot) => {
       this.api_stream_hub.publish(TASK_SNAPSHOT_EVENT_TOPIC, {
@@ -295,8 +308,13 @@ export class BackendServices {
     this.app_setting_service.set_stream_publisher(null);
     this.task_stream_unsubscribe?.();
     this.task_stream_unsubscribe = null;
-    this.api_stream_hub.stop();
     const errors: unknown[] = [];
+    try {
+      await this.agent.dispose();
+    } catch (error) {
+      errors.push(error);
+    }
+    this.api_stream_hub.stop();
     try {
       await this.task_runtime.dispose();
     } catch (error) {

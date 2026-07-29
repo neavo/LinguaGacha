@@ -6,7 +6,7 @@ import type { ApiJsonHandler } from "./api-json";
 import { register_api_routes } from "./api-routes";
 
 describe("register_api_routes", () => {
-  it("集中注册完整且无重复的公开路径，并把任务请求转交组合根", () => {
+  it("集中注册完整且无重复的公开路径，并把任务与 Agent 请求转交组合根", () => {
     const get = vi.fn();
     const post_json = vi.fn();
     const start_task = vi.fn(() => ({ accepted: true }));
@@ -24,6 +24,12 @@ describe("register_api_routes", () => {
       quality: { statistics: {}, rules: {}, prompts: {} },
       files: { preview: {}, translationExport: {}, tsConversionExport: {} },
       model: {},
+      agent: {
+        get_snapshot: vi.fn(() => ({ state: "idle", messages: [], toolStatuses: [], skills: [] })),
+        send_message: vi.fn(() => ({ state: "running" })),
+        stop: vi.fn(() => ({ state: "idle" })),
+        reset: vi.fn(() => ({ state: "idle", messages: [] })),
+      },
       tasks: { start_task },
       create_event_stream_response: vi.fn(),
     } as unknown as BackendServices;
@@ -40,12 +46,20 @@ describe("register_api_routes", () => {
     const get_paths = get.mock.calls.map(([route_path]) => String(route_path));
     const post_paths = post_json.mock.calls.map(([route_path]) => String(route_path));
     const all_paths = [...get_paths, ...post_paths];
-    expect(get_paths).toEqual(["/api/health", "/api/logs/stream", "/api/events/stream"]);
+    expect(get_paths).toEqual([
+      "/api/health",
+      "/api/logs/stream",
+      "/api/events/stream",
+      "/api/agent/snapshot",
+    ]);
     expect(new Set(all_paths).size).toBe(all_paths.length);
     expect(new Set(post_paths)).toEqual(
       new Set([
         "/api/logs/detail",
         "/api/diagnostics/renderer-error",
+        "/api/agent/message",
+        "/api/agent/stop",
+        "/api/agent/reset",
         "/api/session/project/manifest",
         "/api/session/project/snapshot",
         "/api/session/project/close",
@@ -121,5 +135,19 @@ describe("register_api_routes", () => {
     )?.[1] as ApiJsonHandler | undefined;
     expect(start_task_handler?.({ task_type: "translation" })).toEqual({ accepted: true });
     expect(start_task).toHaveBeenCalledWith({ task_type: "translation" });
+
+    const snapshot_handler = get.mock.calls.find(
+      ([route_path]) => route_path === "/api/agent/snapshot",
+    )?.[1] as ((context: { json: (value: unknown) => unknown }) => unknown) | undefined;
+    expect(snapshot_handler?.({ json: (value) => value })).toEqual({
+      ok: true,
+      data: { state: "idle", messages: [], toolStatuses: [], skills: [] },
+    });
+
+    const message_handler = post_json.mock.calls.find(
+      ([route_path]) => route_path === "/api/agent/message",
+    )?.[1] as ApiJsonHandler | undefined;
+    expect(message_handler?.({ text: "审校" })).toEqual({ state: "running" });
+    expect(services.agent.send_message).toHaveBeenCalledWith({ text: "审校" });
   });
 });

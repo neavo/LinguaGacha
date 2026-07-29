@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { QualityRuleImportRuleTypeValue, preview_quality_rule_import } from "./quality-rule-import";
+import {
+  collect_quality_rule_duplicate_groups,
+  QualityRuleImportRuleTypeValue,
+  preview_quality_rule_import,
+} from "./quality-rule-import";
 import type { JsonRecord } from "../../domain/json";
 
 describe("preview_quality_rule_import", () => {
@@ -193,5 +197,20 @@ describe("preview_quality_rule_import", () => {
 
     expect(preview.overwrite_entries).toHaveLength(1);
     expect(preview.overwrite_entries[0]?.dst).toBe("新值");
+  });
+});
+
+describe("collect_quality_rule_duplicate_groups", () => {
+  it("只返回现有规则内部按 GUI key 判定的重复组", () => {
+    expect(
+      collect_quality_rule_duplicate_groups({
+        rule_type: QualityRuleImportRuleTypeValue.GLOSSARY,
+        entries: [
+          { src: "Alpha", dst: "A", case_sensitive: false },
+          { src: "alpha", dst: "B", case_sensitive: true },
+          { src: "Beta", dst: "C", case_sensitive: false },
+        ],
+      }),
+    ).toEqual([{ key: "alpha", indexes: [0, 1] }]);
   });
 });

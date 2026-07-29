@@ -1,4 +1,5 @@
 import { de_de_analysis_prompt_page } from "./resources/de-DE/analysis-prompt-page";
+import { de_de_agent_page } from "./resources/de-DE/agent-page";
 import { de_de_app } from "./resources/de-DE/app";
 import { de_de_basic_settings_page } from "./resources/de-DE/basic-settings-page";
 import { de_de_custom_prompt_page } from "./resources/de-DE/custom-prompt-page";
@@ -19,6 +20,7 @@ import { de_de_ts_conversion_page } from "./resources/de-DE/ts-conversion-page";
 import { de_de_translation_prompt_page } from "./resources/de-DE/translation-prompt-page";
 import { de_de_workbench_page } from "./resources/de-DE/workbench-page";
 import { en_us_analysis_prompt_page } from "./resources/en-US/analysis-prompt-page";
+import { en_us_agent_page } from "./resources/en-US/agent-page";
 import { en_us_app } from "./resources/en-US/app";
 import { en_us_basic_settings_page } from "./resources/en-US/basic-settings-page";
 import { en_us_custom_prompt_page } from "./resources/en-US/custom-prompt-page";
@@ -39,6 +41,7 @@ import { en_us_ts_conversion_page } from "./resources/en-US/ts-conversion-page";
 import { en_us_translation_prompt_page } from "./resources/en-US/translation-prompt-page";
 import { en_us_workbench_page } from "./resources/en-US/workbench-page";
 import { zh_cn_analysis_prompt_page } from "./resources/zh-CN/analysis-prompt-page";
+import { zh_cn_agent_page } from "./resources/zh-CN/agent-page";
 import { zh_cn_app } from "./resources/zh-CN/app";
 import { zh_cn_basic_settings_page } from "./resources/zh-CN/basic-settings-page";
 import { zh_cn_custom_prompt_page } from "./resources/zh-CN/custom-prompt-page";
@@ -61,6 +64,7 @@ import { zh_cn_workbench_page } from "./resources/zh-CN/workbench-page";
 import type { LocaleMessageSchema } from "./types";
 
 export const zh_cn_messages = {
+  agent_page: zh_cn_agent_page,
   app: zh_cn_app,
   analysis_prompt_page: zh_cn_analysis_prompt_page,
   basic_settings_page: zh_cn_basic_settings_page,
@@ -84,6 +88,7 @@ export const zh_cn_messages = {
 } as const;
 
 export const en_us_messages = {
+  agent_page: en_us_agent_page,
   app: en_us_app,
   analysis_prompt_page: en_us_analysis_prompt_page,
   basic_settings_page: en_us_basic_settings_page,
@@ -107,6 +112,7 @@ export const en_us_messages = {
 } satisfies LocaleMessageSchema<typeof zh_cn_messages>;
 
 export const de_de_messages = {
+  agent_page: de_de_agent_page,
   app: de_de_app,
   analysis_prompt_page: de_de_analysis_prompt_page,
   basic_settings_page: de_de_basic_settings_page,

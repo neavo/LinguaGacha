@@ -52,6 +52,13 @@ afterEach(() => {
 
 describe("BackendBootstrap", () => {
   it("直接注入 ProjectDatabase 并只启动公开 API Gateway", async () => {
+    const skill_dir = path.join(temp_dir, "resource", "agent", "skill", "test-skill");
+    fs.mkdirSync(skill_dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(skill_dir, "SKILL.md"),
+      "---\nname: test-skill\ndescription: 启动期能力\n---\n\n执行测试任务。",
+      "utf-8",
+    );
     const manager = new BackendBootstrap({
       appRoot: temp_dir,
       exposeApiGateway: true,
@@ -73,6 +80,9 @@ describe("BackendBootstrap", () => {
         },
       });
       expect(start_result.readAppLanguage()).toBe("ZH");
+      expect(start_result.backendServices.agent.get_snapshot().skills).toEqual([
+        { name: "test-skill", description: "启动期能力" },
+      ]);
 
       const log_text = read_log_text(path.join(temp_dir, "log"));
       expect(log_text.indexOf('"message":""')).toBeLessThan(
