@@ -1,17 +1,25 @@
-import { Agent, uuidv7, type AgentEvent } from "@earendil-works/pi-agent-core";
+import {
+  Agent,
+  formatSkillInvocation,
+  uuidv7,
+  type AgentEvent,
+} from "@earendil-works/pi-agent-core";
 import { contentText, type AssistantMessage } from "@earendil-works/pi-ai";
 
 import type { JsonRecord } from "../../domain/json";
 import {
   AGENT_SESSION_EVENT_TOPIC,
-  type AgentMessageSnapshot,
+  format_agent_user_message_text,
+  normalize_agent_user_message_parts,
+  type AgentEntry,
   type AgentSessionEvent,
   type AgentSessionSnapshot,
   type AgentSessionState,
-  type AgentToolStatus,
+  type AgentUserMessagePart,
 } from "../../shared/agent";
 import * as AppErrors from "../../shared/error";
 import type { ProjectChangeEvent } from "../../shared/project-event";
+import type { AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { CacheReadPort } from "../cache/cache-types";
 import type { LogManager } from "../log/log-manager";
@@ -22,11 +30,7 @@ import { create_agent_glossary_tools } from "./agent-glossary-tools";
 import { resolve_agent_model } from "./agent-model";
 import { create_skill_reference_tools } from "./agent-skill-reference-tools";
 import { load_agent_skills, type AgentSkillDefinition } from "./agent-skills";
-
-const BASE_SYSTEM_PROMPT = `
-你是 LinguaGacha 内置 Agent，只能使用提供的领域工具处理当前工程。不得访问文件系统、Shell 或其它外部能力。
-始终用用户当前使用的语言回复。读操作可以直接执行；写术语前必须先展示精确方案，并根据完整对话语义确认用户明确批准当前方案，模糊表达不算批准。工具失败时解释原因并给出可重试方案，不声称未完成的写入已经成功。
-`.trim();
+import { load_agent_system_prompt } from "./agent-system-prompt";
 
 type AgentBinding = {
   projectPath: string; // loaded 工程身份
@@ -37,7 +41,6 @@ type AgentBinding = {
 type AgentRuntime = {
   agent: Agent;
   binding: AgentBinding;
-  skill: AgentSkillDefinition | null;
   unsubscribe: () => void;
 };
 
@@ -45,8 +48,16 @@ type AgentServiceCache = Pick<CacheReadPort, "snapshot"> & {
   readonly items: Pick<CacheReadPort["items"], "readItems">;
 };
 
+type AgentServicePaths = Pick<
+  AppPathService,
+  | "get_app_root"
+  | "get_agent_builtin_skill_dir"
+  | "get_agent_user_skill_dir"
+  | "get_agent_system_prompt_path"
+>;
+
 type AgentServiceOptions = {
-  paths: Parameters<typeof load_agent_skills>[0];
+  paths: AgentServicePaths;
   settings: Pick<AppSettingService, "read_setting">;
   sessionState: ProjectSessionState;
   cache: AgentServiceCache;
@@ -67,12 +78,11 @@ export class AgentService {
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
   private readonly unsubscribe_project_session: () => void;
-  private runtime: AgentRuntime | null = null; // 模型状态只绑定当前工程世代和当前 skill
+  private runtime: AgentRuntime | null = null; // 模型状态只绑定当前工程世代
   private state: AgentSessionState = "idle";
-  private messages: AgentMessageSnapshot[] = [];
-  private tool_statuses: AgentToolStatus[] = [];
+  private entries: AgentEntry[] = [];
   private skills: AgentSkillDefinition[] = [];
-  private streaming_assistant_message_id: string | null = null;
+  private system_prompt: string | null = null;
   private own_write = false; // 质量写入口同步发布自身事件时，只推进 binding 而不中断当前模型回合
   private disposed = false;
 
@@ -95,58 +105,66 @@ export class AgentService {
   public get_snapshot(): AgentSessionSnapshot {
     return {
       state: this.state,
-      messages: this.messages.map((message) => ({ ...message })),
-      toolStatuses: this.tool_statuses.map((status) => ({ ...status })),
+      entries: structuredClone(this.entries),
       skills: this.skills.map(({ name, description }) => ({ name, description })),
     };
   }
 
-  /**
-   * Skill 只在启动期加载一次；单个坏文件记录诊断但不阻断基础对话。
-   */
-  public async load_skills(): Promise<void> {
-    this.skills = await load_agent_skills(this.paths, this.log_manager);
+  /** 启动期原子加载必需的基础 Prompt 和可降级的 skill 清单。 */
+  public async load_resources(): Promise<void> {
+    const system_prompt = load_agent_system_prompt(this.paths);
+    const skills = await load_agent_skills(this.paths, this.log_manager);
+    this.system_prompt = system_prompt;
+    this.skills = skills;
   }
 
   /**
-   * 校验消息和可选 skill 后异步启动模型回合，HTTP 只等待命令受理。
+   * 完整校验结构化消息后异步启动模型回合，HTTP 只等待命令受理。
    */
   public send_message(request: JsonRecord): AgentSessionSnapshot {
     this.assert_not_disposed();
+    const system_prompt = this.require_system_prompt();
     this.session_state.require_loaded_project_path();
-    const text = String(request["text"] ?? "").trim();
-    if (text === "") {
+    const parts = normalize_agent_user_message_parts(request["parts"]);
+    if (parts === null || !parts.some((part) => part.kind === "skill" || part.text.trim() !== "")) {
       throw new AppErrors.RequestValidationError({
         diagnostic_context: { reason: "empty_agent_message" },
       });
     }
-    const skill_value = request["skill"];
-    const skill =
-      typeof skill_value === "string"
-        ? (this.skills.find((candidate) => candidate.name === skill_value) ?? null)
-        : null;
-    if (skill_value !== undefined && skill === null) {
-      throw new AppErrors.RequestValidationError({
-        diagnostic_context: { reason: "invalid_agent_skill", skill: skill_value },
-      });
+    const selected_skills: AgentSkillDefinition[] = [];
+    const selected_skill_names = new Set<string>();
+    for (const part of parts) {
+      if (part.kind !== "skill") continue;
+      if (selected_skill_names.has(part.name)) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: { reason: "duplicate_agent_skill", skill: part.name },
+        });
+      }
+      const skill = this.skills.find((candidate) => candidate.name === part.name);
+      if (skill === undefined) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: { reason: "invalid_agent_skill", skill: part.name },
+        });
+      }
+      selected_skill_names.add(part.name);
+      selected_skills.push(skill);
     }
 
-    const runtime = this.ensure_runtime(skill);
+    const runtime = this.ensure_runtime(system_prompt);
     if (runtime.agent.state.isStreaming) {
       throw new AppErrors.RequestValidationError({
         diagnostic_context: { reason: "agent_already_running" },
       });
     }
 
-    this.append_public_message({
+    this.upsert_entry({
+      kind: "user_message",
       id: uuidv7(),
-      role: "user",
-      text,
+      parts,
       createdAt: Date.now(),
-      complete: true,
     });
     this.set_state("running");
-    void this.run_prompt(runtime, text);
+    void this.run_prompt(runtime, build_agent_prompt(parts, selected_skills));
     return this.get_snapshot();
   }
 
@@ -157,14 +175,6 @@ export class AgentService {
     this.runtime?.agent.abort();
     this.own_write = false;
     this.set_state("idle");
-    return this.get_snapshot();
-  }
-
-  /**
-   * 丢弃当前工程绑定的对话和运行时，skill 启动清单继续保留。
-   */
-  public reset(): AgentSessionSnapshot {
-    this.invalidate_session();
     return this.get_snapshot();
   }
 
@@ -197,18 +207,15 @@ export class AgentService {
   }
 
   /**
-   * 复用同一工程绑定的运行时；工程或 skill 变化时只保留仍然有效的会话事实。
+   * 复用同一工程绑定的运行时；工程事实失效时清空整段会话。
    */
-  private ensure_runtime(skill: AgentSkillDefinition | null): AgentRuntime {
+  private ensure_runtime(system_prompt: string): AgentRuntime {
     const binding = this.read_binding();
     if (this.runtime !== null && !bindings_equal(this.runtime.binding, binding)) {
       this.invalidate_session();
     }
     if (this.runtime === null) {
-      this.runtime = this.create_runtime(binding, skill);
-    } else if (this.runtime.skill?.name !== skill?.name) {
-      this.runtime.skill = skill;
-      this.runtime.agent.state.systemPrompt = build_system_prompt(skill);
+      this.runtime = this.create_runtime(binding, system_prompt);
     }
     return this.runtime;
   }
@@ -216,12 +223,12 @@ export class AgentService {
   /**
    * 创建单个 pi Agent，并把领域工具和事件订阅收口在同一生命周期对象中。
    */
-  private create_runtime(binding: AgentBinding, skill: AgentSkillDefinition | null): AgentRuntime {
+  private create_runtime(binding: AgentBinding, system_prompt: string): AgentRuntime {
     const resolved_model = resolve_agent_model(this.settings.read_setting());
     const runtime = {} as AgentRuntime;
     const agent = new Agent({
       initialState: {
-        systemPrompt: build_system_prompt(skill),
+        systemPrompt: system_prompt,
         model: resolved_model.model,
         thinkingLevel: resolved_model.thinkingLevel,
         tools: [
@@ -232,7 +239,7 @@ export class AgentService {
             endWrite: () => this.end_write(),
           }),
           ...create_agent_corpus_tools(this.cache),
-          ...create_skill_reference_tools(() => this.runtime?.skill ?? null),
+          ...create_skill_reference_tools((name) => this.resolve_invoked_skill(name)),
         ],
         messages: [],
       },
@@ -241,7 +248,6 @@ export class AgentService {
     });
     runtime.agent = agent;
     runtime.binding = binding;
-    runtime.skill = skill;
     runtime.unsubscribe = agent.subscribe((event) => {
       if (this.runtime === runtime) {
         this.handle_agent_event(event);
@@ -269,11 +275,17 @@ export class AgentService {
   }
 
   /**
-   * 将第三方 AgentEvent 收窄为本项目公开的消息与工具状态协议。
+   * 将第三方 AgentEvent 收窄为按真实事件顺序追加的公开时间线。
    */
   private handle_agent_event(event: AgentEvent): void {
     if (event.type === "message_start" && event.message.role === "assistant") {
-      this.streaming_assistant_message_id = uuidv7();
+      this.upsert_entry({
+        kind: "assistant_message",
+        id: uuidv7(),
+        text: "",
+        complete: false,
+        createdAt: event.message.timestamp,
+      });
       return;
     }
     if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
@@ -287,93 +299,68 @@ export class AgentService {
       return;
     }
     if (event.type === "tool_execution_start") {
-      this.update_tool_status({
-        toolCallId: event.toolCallId,
+      this.upsert_entry({
+        kind: "tool_call",
+        id: event.toolCallId,
         toolName: event.toolName,
         status: "running",
+        output: null,
+        createdAt: Date.now(),
       });
       return;
     }
     if (event.type === "tool_execution_end") {
-      this.update_tool_status({
-        toolCallId: event.toolCallId,
-        toolName: event.toolName,
+      const running_entry = this.entries.find(
+        (entry) => entry.kind === "tool_call" && entry.id === event.toolCallId,
+      );
+      if (running_entry?.kind !== "tool_call") {
+        throw new Error(`工具调用缺少开始事件：${event.toolCallId}`);
+      }
+      this.upsert_entry({
+        ...running_entry,
         status: event.isError ? "error" : "success",
+        output: contentText(event.result.content, ""),
       });
     }
   }
 
-  /**
-   * 追加连续文本增量并发布其写入前 offset，供 renderer 幂等合并。
-   */
+  /** 追加连续文本并重新发布完整条目，renderer 只需按 id 覆盖。 */
   private append_assistant_delta(delta: string): void {
-    const message_id = this.streaming_assistant_message_id ?? uuidv7();
-    this.streaming_assistant_message_id = message_id;
-    const existing = this.messages.find((message) => message.id === message_id);
-    const offset = existing?.text.length ?? 0;
+    const existing = this.find_open_assistant_entry();
     if (existing === undefined) {
-      this.messages.push({
-        id: message_id,
-        role: "assistant",
+      this.upsert_entry({
+        kind: "assistant_message",
+        id: uuidv7(),
         text: delta,
         createdAt: Date.now(),
         complete: false,
       });
     } else {
-      existing.text += delta;
+      this.upsert_entry({ ...existing, text: existing.text + delta });
     }
-    this.publish_event({
-      type: "message_delta",
-      messageId: message_id,
-      role: "assistant",
-      delta,
-      offset,
-      createdAt: existing?.createdAt ?? Date.now(),
-      complete: false,
-    });
   }
 
-  /**
-   * 以供应商终帧校正累计正文；出现差异时用完整 seed 恢复两端一致。
-   */
+  /** 以供应商终帧校正累计正文并结束当前 assistant 条目。 */
   private complete_assistant_message(message: AssistantMessage): void {
-    const message_id = this.streaming_assistant_message_id ?? uuidv7();
     const text = contentText(message.content, "");
-    const existing = this.messages.find((item) => item.id === message_id);
-    if (existing === undefined && text !== "") {
-      this.messages.push({
-        id: message_id,
-        role: "assistant",
+    const existing = this.find_open_assistant_entry();
+    if (existing === undefined) {
+      // 纯 toolCall assistant 仍需占住真实事件位置；无文本、无工具的空帧才可丢弃。
+      if (text === "" && !message.content.some((content) => content.type === "toolCall")) return;
+      this.upsert_entry({
+        kind: "assistant_message",
+        id: uuidv7(),
         text,
         createdAt: message.timestamp,
         complete: true,
       });
-      this.publish_event({
-        type: "message_delta",
-        messageId: message_id,
-        role: "assistant",
-        delta: text,
-        offset: 0,
-        createdAt: message.timestamp,
-        complete: true,
-      });
-    } else if (existing !== undefined) {
-      if (text !== "" && text !== existing.text) {
-        existing.text = text;
-        this.publish_seed();
-      }
-      existing.complete = true;
-      this.publish_event({
-        type: "message_delta",
-        messageId: message_id,
-        role: "assistant",
-        delta: "",
-        offset: existing.text.length,
-        createdAt: existing.createdAt,
-        complete: true,
-      });
+      return;
     }
-    this.streaming_assistant_message_id = null;
+    this.upsert_entry({
+      ...existing,
+      text: text === "" ? existing.text : text,
+      complete: true,
+    });
   }
 
   private begin_write(): void {
@@ -384,24 +371,33 @@ export class AgentService {
     this.own_write = false;
   }
 
-  private append_public_message(message: AgentMessageSnapshot): void {
-    this.messages.push({ ...message });
-    this.publish_event({
-      type: "message_delta",
-      messageId: message.id,
-      role: message.role,
-      delta: message.text,
-      offset: 0,
-      createdAt: message.createdAt,
-      complete: message.complete,
-    });
+  /** reference 工具授权直接由当前公开会话中的显式 skill part 推导。 */
+  private resolve_invoked_skill(name: string): AgentSkillDefinition | null {
+    const invoked = this.entries.some(
+      (entry) =>
+        entry.kind === "user_message" &&
+        entry.parts.some((part) => part.kind === "skill" && part.name === name),
+    );
+    return invoked ? (this.skills.find((skill) => skill.name === name) ?? null) : null;
   }
 
-  private update_tool_status(status: AgentToolStatus): void {
-    const index = this.tool_statuses.findIndex((item) => item.toolCallId === status.toolCallId);
-    if (index < 0) this.tool_statuses.push(status);
-    else this.tool_statuses[index] = status;
-    this.publish_event({ type: "tool_status", ...status });
+  /** 同 id 只替换原位置，确保工具终帧不会改变后端确认的时间线顺序。 */
+  private upsert_entry(entry: AgentEntry): void {
+    const next = structuredClone(entry);
+    const index = this.entries.findIndex((item) => item.id === entry.id);
+    if (index < 0) this.entries.push(next);
+    else this.entries[index] = next;
+    this.publish_event({ type: "entry_upsert", entry: structuredClone(next) });
+  }
+
+  /** 流式增量只归入最后一个尚未终结的 assistant 条目。 */
+  private find_open_assistant_entry():
+    | Extract<AgentEntry, { kind: "assistant_message" }>
+    | undefined {
+    return this.entries.findLast(
+      (entry): entry is Extract<AgentEntry, { kind: "assistant_message" }> =>
+        entry.kind === "assistant_message" && !entry.complete,
+    );
   }
 
   private set_state(state: AgentSessionState): void {
@@ -414,12 +410,8 @@ export class AgentService {
     this.publish(AGENT_SESSION_EVENT_TOPIC, event);
   }
 
-  private publish_seed(): void {
-    this.publish_event({ type: "snapshot_seed", snapshot: this.get_snapshot() });
-  }
-
   /**
-   * 原子失效模型订阅、公开消息和工具状态，并向已挂载页面发送空 seed。
+   * 原子失效模型订阅和公开时间线，并向已挂载页面发送空 seed。
    */
   private invalidate_session(): void {
     const runtime = this.runtime;
@@ -427,11 +419,9 @@ export class AgentService {
     runtime?.agent.abort();
     runtime?.unsubscribe();
     this.state = "idle";
-    this.messages = [];
-    this.tool_statuses = [];
-    this.streaming_assistant_message_id = null;
+    this.entries = [];
     this.own_write = false;
-    this.publish_seed();
+    this.publish_event({ type: "snapshot_seed", snapshot: this.get_snapshot() });
   }
 
   /**
@@ -447,6 +437,15 @@ export class AgentService {
     };
   }
 
+  private require_system_prompt(): string {
+    if (this.system_prompt === null) {
+      throw new AppErrors.InternalInvariantError({
+        diagnostic_context: { reason: "agent_resources_not_loaded" },
+      });
+    }
+    return this.system_prompt;
+  }
+
   private assert_not_disposed(): void {
     if (this.disposed) {
       throw new AppErrors.RuntimeDisposedError();
@@ -454,13 +453,17 @@ export class AgentService {
   }
 }
 
-function build_system_prompt(skill: AgentSkillDefinition | null): string {
-  if (skill === null) return BASE_SYSTEM_PROMPT;
-  const skill_block =
-    skill.reference_index === ""
-      ? skill.essentials
-      : `${skill.essentials}\n\n${skill.reference_index}`;
-  return `${BASE_SYSTEM_PROMPT}\n\n${skill_block}`;
+/** skill 指令块按首次出现顺序置前，可见用户文本保持原 parts 顺序随后进入历史。 */
+function build_agent_prompt(
+  parts: readonly AgentUserMessagePart[],
+  skills: readonly AgentSkillDefinition[],
+): string {
+  if (skills.length === 0) return format_agent_user_message_text(parts);
+  const blocks = skills.map((skill) => formatSkillInvocation(skill));
+  if (parts.some((part) => part.kind === "text" && part.text.trim() !== "")) {
+    blocks.push(format_agent_user_message_text(parts));
+  }
+  return blocks.join("\n\n");
 }
 
 function bindings_equal(left: AgentBinding | null, right: AgentBinding): boolean {

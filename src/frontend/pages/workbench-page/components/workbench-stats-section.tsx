@@ -29,7 +29,7 @@ export function WorkbenchStatsSection(props: WorkbenchStatsSectionProps): JSX.El
   const toggle_tooltip = t("workbench_page.stats.toggle_tooltip");
 
   return (
-    <section className="workbench-page__stats-grid" aria-label={t("workbench_page.section.stats")}>
+    <section className="workbench-page__stats-grid" aria-label={t("workbench_page.title")}>
       <WorkbenchStatCard
         title={skipped_title}
         value={props.stats.skipped_count}

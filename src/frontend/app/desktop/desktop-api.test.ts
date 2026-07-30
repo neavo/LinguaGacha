@@ -563,7 +563,7 @@ describe("desktop-api", () => {
     const fetch_mock = vi.fn(async (url: string) => {
       const data = url.endsWith("/api/health")
         ? { status: "ok", service: "linguagacha-backend", version: "9.9.9" }
-        : { state: "idle", messages: [], toolStatuses: [], skills: [] };
+        : { state: "idle", entries: [], skills: [] };
       return {
         ok: true,
         status: 200,

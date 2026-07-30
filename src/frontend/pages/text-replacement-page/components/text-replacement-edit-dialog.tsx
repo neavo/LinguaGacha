@@ -38,9 +38,7 @@ export function TextReplacementEditDialog(props: TextReplacementEditDialogProps)
     },
   ] as const;
   const title =
-    props.mode === "create"
-      ? t("text_replacement_page.dialog.create_title")
-      : t("text_replacement_page.dialog.edit_title");
+    props.mode === "create" ? t("quality_editor.action.create") : t("quality_editor.action.edit");
 
   useActionShortcut({
     action: "save",

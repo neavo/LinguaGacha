@@ -88,7 +88,6 @@ export const en_us_model_page = {
       title: "Thinking Level",
       description:
         "Configure thinking level which will affect time and cost, click question icon for supported models",
-      help_label: "Open thinking level support documentation",
     },
     input_token_limit: {
       title: "Input Token Limit",

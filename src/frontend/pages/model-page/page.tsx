@@ -142,7 +142,7 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                   model={model}
                   active={model.id === model_page_state.snapshot.active_model_id}
                   drag_disabled={model_page_state.readonly}
-                  drag_aria_label={t("workbench_page.table.drag_handle_aria")}
+                  drag_aria_label={t("workbench_page.table.drag_handle")}
                   menu={
                     <AppDropdownMenuContent align="center">
                       <AppDropdownMenuGroup>

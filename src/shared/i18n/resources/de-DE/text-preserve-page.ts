@@ -33,10 +33,6 @@ export const de_de_text_preserve_page = {
     },
   },
 
-  dialog: {
-    create_title: "Textschutz-Regel erstellen",
-    edit_title: "Textschutz-Regel bearbeiten",
-  },
   preset: {
     dialog: {
       name_placeholder: "Bitte Namen der Voreinstellung eingeben …",
@@ -45,7 +41,6 @@ export const de_de_text_preserve_page = {
   statistics: {
     hit_count: "Anzahl übereinstimmender Einträge: {COUNT}",
 
-    running: "Wird berechnet",
     action: {
       search_relation: "Enthalten-Beziehung suchen",
     },

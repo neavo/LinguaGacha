@@ -24,15 +24,9 @@ export const en_us_text_replacement_page = {
     },
   },
 
-  dialog: {
-    create_title: "Create Replacement Rule",
-    edit_title: "Edit Replacement Rule",
-  },
-
   statistics: {
     subset_relations: "Subset relations:",
 
-    running: "Running",
     action: {
       search_relation: "Search relation",
     },

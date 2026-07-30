@@ -3,11 +3,6 @@ import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_workbench_page = {
   title: "Workbench",
-  section: {
-    stats: "Workbench Stats",
-    file_list: "File List",
-    command_bar: "Workbench Command Bar",
-  },
   unit: {
     line: "Line",
   },
@@ -25,11 +20,9 @@ export const en_us_workbench_page = {
   },
   table: {
     drag_handle: "Drag",
-    drag_handle_aria: "Drag to reorder",
     file_name: "File Name",
     line_count: "Lines",
     actions: "Actions",
-    open_actions: "Open actions menu",
   },
   sort: {
     ascending: "Sort ascending",
@@ -150,9 +143,6 @@ export const en_us_workbench_page = {
       reset_failed_failed: "Failed to reset failed translation entries.",
       generate_failed: "Failed to generate available translation files.",
     },
-  },
-  command: {
-    description: "The workbench command bar carries project-level quick actions.",
   },
   reorder: {
     failed: "Failed to save the file order. Please try again later.",

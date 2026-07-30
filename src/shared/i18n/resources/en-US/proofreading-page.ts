@@ -25,9 +25,7 @@ export const en_us_proofreading_page = {
     drag: "Drag",
     status: "Status",
     source: "Source",
-    source_name: "Source Name",
     translation: "Translation",
-    translation_name: "Translation Name",
   },
   search: {
     placeholder: "Query …",
@@ -93,11 +91,7 @@ export const en_us_proofreading_page = {
     no_warning: "No Warning",
     no_glossary_error: "No valid data …",
   },
-  dialog: {
-    edit_title: "Edit Entry",
-  },
   context: {
-    title: "Context",
     loading: "Loading context …",
     load_failed: "Failed to load context",
   },

@@ -11,7 +11,7 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
         "proofreading_page.action.retry": "重试",
         "proofreading_page.context.load_failed": "无法读取上下文",
         "proofreading_page.context.loading": "正在读取上下文 …",
-        "proofreading_page.context.title": "上下文",
+        "proofreading_page.title": "校对",
         "proofreading_page.fields.source": "原文",
         "proofreading_page.fields.translation": "译文",
       })[key] ?? key,

@@ -10,36 +10,52 @@ const skill_loader = vi.hoisted(() =>
     {
       name: "glossary-audit",
       description: "审校术语",
-      essentials: "执行术语审校。",
-      reference_index: "## 参考资源\n- audit-standard.md: 审校标准",
+      content: "执行术语审校。",
+      filePath: "E:/skills/glossary-audit/SKILL.md",
       references: [
         {
-          file_name: "audit-standard.md",
-          summary: "审校标准",
+          path: "references/audit-standard.md",
           content: "# 审校标准\n\n完整正文。",
         },
       ],
     },
+    {
+      name: "corpus-search",
+      description: "检索语料",
+      content: "执行语料检索。",
+      filePath: "E:/skills/corpus-search/SKILL.md",
+      references: [],
+    },
   ]),
 );
+const system_prompt_loader = vi.hoisted(() => vi.fn(() => "基础系统指令。"));
 
 const fake_agent_state = vi.hoisted(() => ({
-  mode: "complete" as "complete" | "write" | "failure" | "pending",
+  mode: "complete" as "complete" | "write" | "failure" | "pending" | "tools",
   abort_count: 0,
   id: 0,
   system_prompts: [] as string[],
+  prompts: [] as string[],
+  tools: [] as AgentTool[],
   release_pending: null as (() => void) | null,
 }));
 
 vi.mock("./agent-skills", () => ({ load_agent_skills: skill_loader }));
+vi.mock("./agent-system-prompt", () => ({
+  load_agent_system_prompt: system_prompt_loader,
+}));
 
-vi.mock("@earendil-works/pi-agent-core", () => {
+vi.mock("@earendil-works/pi-agent-core", async (import_original) => {
+  const actual = await import_original<typeof import("@earendil-works/pi-agent-core")>();
+
+  /** 只替换远程模型运行时，同时按真实 Pi 事件顺序驱动 AgentService 的公开观察面。 */
   class FakeAgent {
     public readonly state: Record<string, unknown> = { isStreaming: false };
     private listener: ((event: Record<string, unknown>) => void) | null = null;
 
     public constructor(private readonly options: Record<string, unknown>) {
       Object.assign(this.state, options["initialState"]);
+      fake_agent_state.tools = this.state["tools"] as AgentTool[];
     }
 
     public subscribe(listener: (event: Record<string, unknown>) => void): () => void {
@@ -49,9 +65,10 @@ vi.mock("@earendil-works/pi-agent-core", () => {
       };
     }
 
-    public async prompt(): Promise<void> {
+    public async prompt(prompt: string): Promise<void> {
       this.state["isStreaming"] = true;
       fake_agent_state.system_prompts.push(String(this.state["systemPrompt"] ?? ""));
+      fake_agent_state.prompts.push(prompt);
       if (fake_agent_state.mode === "pending") {
         await new Promise<void>((resolve) => {
           fake_agent_state.release_pending = resolve;
@@ -70,6 +87,8 @@ vi.mock("@earendil-works/pi-agent-core", () => {
           changes: [],
           expected_section_revisions: { quality: 3 },
         });
+      } else if (fake_agent_state.mode === "tools") {
+        this.emit_tool_round();
       } else {
         this.emit_assistant("已完成");
       }
@@ -86,9 +105,20 @@ vi.mock("@earendil-works/pi-agent-core", () => {
     public async waitForIdle(): Promise<void> {}
 
     private emit_assistant(text: string): void {
-      const message = {
+      const message = this.create_assistant_message([{ type: "text", text }]);
+      this.listener?.({ type: "message_start", message });
+      this.listener?.({
+        type: "message_update",
+        message,
+        assistantMessageEvent: { type: "text_delta", delta: text, partial: message },
+      });
+      this.listener?.({ type: "message_end", message });
+    }
+
+    private create_assistant_message(content: JsonRecord[]): JsonRecord {
+      return {
         role: "assistant",
-        content: [{ type: "text", text }],
+        content,
         api: "openai-completions",
         provider: "openai",
         model: "test",
@@ -103,17 +133,52 @@ vi.mock("@earendil-works/pi-agent-core", () => {
         stopReason: "stop",
         timestamp: Date.now(),
       };
-      this.listener?.({ type: "message_start", message });
+    }
+
+    private emit_tool_round(): void {
+      this.emit_assistant("准备查询");
       this.listener?.({
-        type: "message_update",
-        message,
-        assistantMessageEvent: { type: "text_delta", delta: text, partial: message },
+        type: "tool_execution_start",
+        toolCallId: "tool-1",
+        toolName: "search_corpus",
+        args: { patterns: ["Alice", "Bob"] },
       });
-      this.listener?.({ type: "message_end", message });
+      this.listener?.({
+        type: "tool_execution_end",
+        toolCallId: "tool-1",
+        toolName: "search_corpus",
+        result: {
+          content: [{ type: "text", text: '{"results":[{"total_matches":2}]}' }],
+          details: { results: [{ total_matches: 2 }, { total_matches: 5 }] },
+        },
+        isError: false,
+      });
+      this.listener?.({
+        type: "tool_execution_start",
+        toolCallId: "tool-2",
+        toolName: "read_skill_reference",
+        args: { skill: "glossary-audit", path: "references/audit-standard.md" },
+      });
+      this.listener?.({
+        type: "tool_execution_end",
+        toolCallId: "tool-2",
+        toolName: "read_skill_reference",
+        result: {
+          content: [{ type: "text", text: '{"content":"完整正文"}' }],
+          details: {
+            skill: "glossary-audit",
+            path: "references/audit-standard.md",
+            content: "完整正文",
+          },
+        },
+        isError: false,
+      });
+      this.emit_assistant("查询完成");
     }
   }
 
   return {
+    ...actual,
     Agent: FakeAgent,
     uuidv7: () => `message-${(fake_agent_state.id += 1).toString()}`,
   };
@@ -129,62 +194,171 @@ describe("AgentService", () => {
     fake_agent_state.abort_count = 0;
     fake_agent_state.id = 0;
     fake_agent_state.system_prompts = [];
+    fake_agent_state.prompts = [];
+    fake_agent_state.tools = [];
     fake_agent_state.release_pending = null;
     skill_loader.mockClear();
+    system_prompt_loader.mockClear();
   });
 
   afterEach(async () => {
     await Promise.all(services.splice(0).map(async (service) => await service.dispose()));
   });
 
-  it("快照下发启动期 skill 清单，未知 skill 被拒绝", async () => {
+  it("快照下发启动期 skill 清单，旧协议、未知和重复 skill 均在变更状态前拒绝", async () => {
     const fixture = await create_service();
 
     expect(fixture.service.get_snapshot().skills).toEqual([
       { name: "glossary-audit", description: "审校术语" },
+      { name: "corpus-search", description: "检索语料" },
     ]);
-    expect(() => fixture.service.send_message({ text: "执行", skill: "missing" })).toThrow(
+    expect(() => fixture.service.send_message({ text: "旧协议" })).toThrow(
       "request.validation_failed",
     );
-
-    fixture.service.send_message({ text: "执行", skill: "glossary-audit" });
-    await wait_for_complete(fixture.service);
-    expect(fake_agent_state.system_prompts.at(-1)).toContain("执行术语审校。");
+    expect(() =>
+      fixture.service.send_message({ parts: [{ kind: "skill", name: "missing" }] }),
+    ).toThrow("request.validation_failed");
+    expect(() =>
+      fixture.service.send_message({
+        parts: [
+          { kind: "skill", name: "glossary-audit" },
+          { kind: "skill", name: "glossary-audit" },
+        ],
+      }),
+    ).toThrow("request.validation_failed");
+    expect(fixture.service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
   });
 
-  it("systemPrompt 只注入 essentials 与 reference_index，不含 references 正文", async () => {
+  it("按引用顺序展开多个 skill，并把混排可见文本追加到模型用户消息", async () => {
     const fixture = await create_service();
 
-    fixture.service.send_message({ text: "执行", skill: "glossary-audit" });
+    fixture.service.send_message({
+      parts: [
+        { kind: "text", text: "先用 " },
+        { kind: "skill", name: "corpus-search" },
+        { kind: "text", text: "，再用 " },
+        { kind: "skill", name: "glossary-audit" },
+        { kind: "text", text: "。" },
+      ],
+    });
     await wait_for_complete(fixture.service);
-    const prompt = fake_agent_state.system_prompts.at(-1) ?? "";
+    const prompt = fake_agent_state.prompts.at(-1) ?? "";
 
-    expect(prompt).toContain("执行术语审校。");
-    expect(prompt).toContain("audit-standard.md: 审校标准");
+    expect(prompt.indexOf('name="corpus-search"')).toBeLessThan(
+      prompt.indexOf('name="glossary-audit"'),
+    );
+    expect(prompt).toContain("先用 @corpus-search，再用 @glossary-audit。");
+    expect(fake_agent_state.system_prompts.at(-1)).toBe("基础系统指令。");
     expect(prompt).not.toContain("完整正文。");
+  });
+
+  it("仅含 skill 的消息只发送 skill block，不补通用用户指令", async () => {
+    const fixture = await create_service();
+
+    fixture.service.send_message({ parts: [{ kind: "skill", name: "glossary-audit" }] });
+    await wait_for_complete(fixture.service);
+
+    expect(fake_agent_state.prompts.at(-1)).toMatch(/^<skill name="glossary-audit"/u);
+    expect(fake_agent_state.prompts.at(-1)).not.toContain("@glossary-audit");
   });
 
   it("模型回合只经历 running 到 complete", async () => {
     const { service } = await create_service();
 
-    service.send_message({ text: "开始" });
+    service.send_message({ parts: [{ kind: "text", text: "开始" }] });
     expect(service.get_snapshot().state).toBe("running");
     await wait_for_complete(service);
 
+    expect(fake_agent_state.system_prompts.at(-1)).toBe("基础系统指令。");
     expect(service.get_snapshot()).toMatchObject({
       state: "complete",
-      messages: [
-        { role: "user", text: "开始" },
-        { role: "assistant", text: "已完成", complete: true },
+      entries: [
+        { kind: "user_message", parts: [{ kind: "text", text: "开始" }] },
+        { kind: "assistant_message", text: "已完成", complete: true },
       ],
     });
+  });
+
+  it("模型回合按 user、assistant、tool_call、assistant 的真实时序追加条目", async () => {
+    const { service, publish } = await create_service();
+    fake_agent_state.mode = "tools";
+
+    service.send_message({ parts: [{ kind: "text", text: "查询" }] });
+    await wait_for_complete(service);
+    const snapshot = service.get_snapshot();
+
+    expect(publish).toHaveBeenCalledWith(
+      "agent.session_event",
+      expect.objectContaining({
+        type: "entry_upsert",
+        entry: expect.objectContaining({
+          kind: "tool_call",
+          id: "tool-1",
+          status: "running",
+          toolName: "search_corpus",
+          output: null,
+        }),
+      }),
+    );
+    expect(snapshot.entries).toEqual([
+      {
+        kind: "user_message",
+        id: "message-1",
+        parts: [{ kind: "text", text: "查询" }],
+        createdAt: expect.any(Number),
+      },
+      {
+        kind: "assistant_message",
+        id: "message-2",
+        text: "准备查询",
+        createdAt: expect.any(Number),
+        complete: true,
+      },
+      {
+        kind: "tool_call",
+        id: "tool-1",
+        toolName: "search_corpus",
+        status: "success",
+        output: '{"results":[{"total_matches":2}]}',
+        createdAt: expect.any(Number),
+      },
+      {
+        kind: "tool_call",
+        id: "tool-2",
+        toolName: "read_skill_reference",
+        status: "success",
+        output: '{"content":"完整正文"}',
+        createdAt: expect.any(Number),
+      },
+      {
+        kind: "assistant_message",
+        id: "message-3",
+        text: "查询完成",
+        createdAt: expect.any(Number),
+        complete: true,
+      },
+    ]);
+    const published_tool_entries = publish.mock.calls
+      .flatMap(([, payload]) => {
+        const entry = payload["entry"];
+        return typeof entry === "object" && entry !== null && !Array.isArray(entry)
+          ? [entry as JsonRecord]
+          : [];
+      })
+      .filter((entry) => entry["kind"] === "tool_call");
+    expect(published_tool_entries).toHaveLength(4);
+    expect(
+      published_tool_entries.every(
+        (entry) => !("args" in entry) && !("details" in entry) && "output" in entry,
+      ),
+    ).toBe(true);
   });
 
   it("请求失败发布 typed event 并结束回合，不在后端拼用户文案", async () => {
     const { service, publish, log_error } = await create_service();
     fake_agent_state.mode = "failure";
 
-    service.send_message({ text: "开始" });
+    service.send_message({ parts: [{ kind: "text", text: "开始" }] });
     await wait_for_complete(service);
 
     expect(publish).toHaveBeenCalledWith("agent.session_event", { type: "request_failed" });
@@ -194,7 +368,7 @@ describe("AgentService", () => {
     );
     expect(service.get_snapshot()).toMatchObject({
       state: "complete",
-      messages: [{ role: "user", text: "开始" }],
+      entries: [{ kind: "user_message", parts: [{ kind: "text", text: "开始" }] }],
     });
   });
 
@@ -202,41 +376,91 @@ describe("AgentService", () => {
     const { service } = await create_service();
     fake_agent_state.mode = "write";
 
-    service.send_message({ text: "写入", skill: "glossary-audit" });
+    service.send_message({
+      parts: [
+        { kind: "skill", name: "glossary-audit" },
+        { kind: "text", text: "写入" },
+      ],
+    });
     await wait_for_complete(service);
-    expect(service.get_snapshot().messages).toHaveLength(1);
+    expect(service.get_snapshot().entries).toHaveLength(1);
 
     service.handle_project_change(project_change(5));
     expect(service.get_snapshot()).toEqual({
       state: "idle",
-      messages: [],
-      toolStatuses: [],
-      skills: [{ name: "glossary-audit", description: "审校术语" }],
+      entries: [],
+      skills: [
+        { name: "glossary-audit", description: "审校术语" },
+        { name: "corpus-search", description: "检索语料" },
+      ],
     });
   });
 
   it("停止会中断当前回合并回到 idle", async () => {
     const { service } = await create_service();
     fake_agent_state.mode = "pending";
-    service.send_message({ text: "开始" });
+    service.send_message({ parts: [{ kind: "text", text: "开始" }] });
 
     expect(service.stop().state).toBe("idle");
     expect(fake_agent_state.abort_count).toBe(1);
   });
 
-  it("清除 skill 后恢复基础 system prompt", async () => {
+  it("skill 进入消息历史后，后续普通回合仍使用稳定基础 system prompt", async () => {
     const { service } = await create_service();
 
-    service.send_message({ text: "审校", skill: "glossary-audit" });
+    service.send_message({
+      parts: [
+        { kind: "skill", name: "glossary-audit" },
+        { kind: "text", text: "审校" },
+      ],
+    });
     await wait_for_complete(service);
-    service.send_message({ text: "普通对话" });
+    service.send_message({ parts: [{ kind: "text", text: "普通对话" }] });
     await wait_for_complete(service);
 
-    expect(fake_agent_state.system_prompts.at(-2)).toContain("执行术语审校。");
-    expect(fake_agent_state.system_prompts.at(-1)).not.toContain("执行术语审校。");
+    expect(fake_agent_state.system_prompts.at(-2)).toBe("基础系统指令。");
+    expect(fake_agent_state.system_prompts.at(-1)).toBe("基础系统指令。");
+    expect(fake_agent_state.prompts.at(-2)).toContain("执行术语审校。");
+    expect(fake_agent_state.prompts.at(-1)).toBe("普通对话");
   });
 
-  async function create_service(): Promise<{
+  it("reference 工具只读取当前会话已显式引用 skill 的白名单正文", async () => {
+    const { service } = await create_service();
+
+    service.send_message({ parts: [{ kind: "text", text: "普通对话" }] });
+    await wait_for_complete(service);
+    const reference_tool = fake_agent_state.tools.find(
+      (candidate) => candidate.name === "read_skill_reference",
+    );
+    if (reference_tool === undefined) throw new Error("缺少 read_skill_reference");
+    await expect(
+      reference_tool.execute("reference-1", {
+        skill: "glossary-audit",
+        path: "references/audit-standard.md",
+      }),
+    ).rejects.toThrow("能力未在当前会话显式引用");
+
+    service.send_message({ parts: [{ kind: "skill", name: "glossary-audit" }] });
+    await wait_for_complete(service);
+    await expect(
+      reference_tool.execute("reference-2", {
+        skill: "glossary-audit",
+        path: "references/audit-standard.md",
+      }),
+    ).resolves.toMatchObject({
+      details: { content: "# 审校标准\n\n完整正文。" },
+    });
+  });
+
+  it("资源未加载时拒绝启动模型回合", async () => {
+    const { service } = await create_service(false);
+
+    expect(() => service.send_message({ parts: [{ kind: "text", text: "开始" }] })).toThrow(
+      "runtime.internal_invariant",
+    );
+  });
+
+  async function create_service(load_resources = true): Promise<{
     service: AgentService;
     publish: ReturnType<typeof vi.fn>;
     log_error: ReturnType<typeof vi.fn>;
@@ -289,6 +513,8 @@ describe("AgentService", () => {
         get_app_root: () => "E:/Project/LinguaGacha",
         get_agent_builtin_skill_dir: () => "E:/Project/LinguaGacha/resource/agent/skill",
         get_agent_user_skill_dir: () => "E:/Project/LinguaGacha/userdata/agent/skill",
+        get_agent_system_prompt_path: () =>
+          "E:/Project/LinguaGacha/resource/agent/system_prompt.md",
       },
       settings,
       sessionState: session_state,
@@ -297,7 +523,7 @@ describe("AgentService", () => {
       logManager: { error: log_error, warning: vi.fn() },
       publish,
     });
-    await service.load_skills();
+    if (load_resources) await service.load_resources();
     services.push(service);
     return { service, publish, log_error };
   }

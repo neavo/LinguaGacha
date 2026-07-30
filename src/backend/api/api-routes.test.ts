@@ -1,6 +1,7 @@
 import type { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 
+import type { JsonRecord } from "../../domain/json";
 import type { BackendServices } from "../bootstrap/backend-services";
 import type { ApiJsonHandler } from "./api-json";
 import { register_api_routes } from "./api-routes";
@@ -25,10 +26,9 @@ describe("register_api_routes", () => {
       files: { preview: {}, translationExport: {}, tsConversionExport: {} },
       model: {},
       agent: {
-        get_snapshot: vi.fn(() => ({ state: "idle", messages: [], toolStatuses: [], skills: [] })),
+        get_snapshot: vi.fn(() => ({ state: "idle", entries: [], skills: [] })),
         send_message: vi.fn(() => ({ state: "running" })),
         stop: vi.fn(() => ({ state: "idle" })),
-        reset: vi.fn(() => ({ state: "idle", messages: [] })),
       },
       tasks: { start_task },
       create_event_stream_response: vi.fn(),
@@ -59,7 +59,6 @@ describe("register_api_routes", () => {
         "/api/diagnostics/renderer-error",
         "/api/agent/message",
         "/api/agent/stop",
-        "/api/agent/reset",
         "/api/session/project/manifest",
         "/api/session/project/snapshot",
         "/api/session/project/close",
@@ -141,13 +140,19 @@ describe("register_api_routes", () => {
     )?.[1] as ((context: { json: (value: unknown) => unknown }) => unknown) | undefined;
     expect(snapshot_handler?.({ json: (value) => value })).toEqual({
       ok: true,
-      data: { state: "idle", messages: [], toolStatuses: [], skills: [] },
+      data: { state: "idle", entries: [], skills: [] },
     });
 
     const message_handler = post_json.mock.calls.find(
       ([route_path]) => route_path === "/api/agent/message",
     )?.[1] as ApiJsonHandler | undefined;
-    expect(message_handler?.({ text: "审校" })).toEqual({ state: "running" });
-    expect(services.agent.send_message).toHaveBeenCalledWith({ text: "审校" });
+    const message: JsonRecord = {
+      parts: [
+        { kind: "skill", name: "glossary-audit" },
+        { kind: "text", text: "审校" },
+      ],
+    };
+    expect(message_handler?.(message)).toEqual({ state: "running" });
+    expect(services.agent.send_message).toHaveBeenCalledWith(message);
   });
 });

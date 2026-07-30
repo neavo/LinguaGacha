@@ -3,9 +3,6 @@ import { LANGUAGE_DISPLAY_NAMES } from "../../../../domain/language";
 import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_app = {
-  aria: {
-    toggle_navigation: "Toggle navigation",
-  },
   metadata: {
     app_name: "LinguaGacha",
   },

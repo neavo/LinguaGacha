@@ -171,6 +171,13 @@ export class AppPathService {
   }
 
   /**
+   * 返回必需的内置 Agent system prompt 路径。
+   */
+  public get_agent_system_prompt_path(): string {
+    return this.get_resource_path("agent", "system_prompt.md");
+  }
+
+  /**
    * 返回内置 Agent skill 根目录，供启动期协议加载统一使用。
    */
   public get_agent_builtin_skill_dir(): string {

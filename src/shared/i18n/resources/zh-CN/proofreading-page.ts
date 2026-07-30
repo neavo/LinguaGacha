@@ -22,9 +22,7 @@ export const zh_cn_proofreading_page = {
     drag: "拖拽",
     status: "状态",
     source: "原文",
-    source_name: "原文姓名",
     translation: "译文",
-    translation_name: "译文姓名",
   },
   search: {
     placeholder: "查询 …",
@@ -90,11 +88,7 @@ export const zh_cn_proofreading_page = {
     no_warning: "无警告",
     no_glossary_error: "没有有效数据 …",
   },
-  dialog: {
-    edit_title: "编辑条目",
-  },
   context: {
-    title: "上下文",
     loading: "正在读取上下文 …",
     load_failed: "无法读取上下文",
   },

@@ -28,11 +28,6 @@ export const zh_cn_glossary_page = {
     },
   },
 
-  dialog: {
-    create_title: "新增术语",
-    edit_title: "编辑术语",
-  },
-
   feedback: {
     save_failed: "术语表保存失败",
     import_failed: "术语表导入失败",

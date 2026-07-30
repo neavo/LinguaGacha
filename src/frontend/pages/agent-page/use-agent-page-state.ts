@@ -1,40 +1,32 @@
 import { useEffect, useRef, useState } from "react";
 
 import type {
-  AgentMessageSnapshot,
+  AgentEntry,
   AgentSessionEvent,
   AgentSessionSnapshot,
   AgentSessionState,
   AgentSkillSnapshot,
-  AgentToolStatus,
+  AgentToolEntry,
+  AgentUserMessagePart,
 } from "@shared/agent";
-import { AGENT_SESSION_EVENT_TOPIC } from "@shared/agent";
-import { is_json_record, read_json_integer, read_json_record } from "@domain/json";
+import { AGENT_SESSION_EVENT_TOPIC, normalize_agent_user_message_parts } from "@shared/agent";
+import { is_json_record, read_json_record, type JsonRecord } from "@domain/json";
 import { api_fetch, api_get, open_event_stream } from "@frontend/app/desktop/desktop-api";
 
 const EMPTY_SNAPSHOT: AgentSessionSnapshot = {
   state: "idle",
-  messages: [],
-  toolStatuses: [],
+  entries: [],
   skills: [],
 };
 
 type UseAgentPageState = {
   state: AgentSessionState;
-  messages: AgentMessageSnapshot[];
-  tool_statuses: AgentToolStatus[];
+  entries: AgentEntry[];
   skills: AgentSkillSnapshot[];
-  input: string;
-  selected_skill: string | null;
-  skill_menu_open: boolean;
   loading: boolean;
   error: boolean;
-  update_input: (value: string) => void;
-  select_skill: (name: string) => void;
-  clear_skill: () => void;
-  send: (default_skill_prompt: string) => Promise<void>;
+  send: (parts: readonly AgentUserMessagePart[]) => Promise<boolean>;
   stop: () => Promise<void>;
-  reset: () => Promise<void>;
 };
 
 /**
@@ -42,13 +34,9 @@ type UseAgentPageState = {
  */
 export function useAgentPageState(): UseAgentPageState {
   const [snapshot, set_snapshot] = useState<AgentSessionSnapshot>(EMPTY_SNAPSHOT);
-  const [input, set_input] = useState("");
-  const [selected_skill, set_selected_skill] = useState<string | null>(null);
   const [loading, set_loading] = useState(true);
   const [error, set_error] = useState(false);
   const request_failed_ref = useRef(false); // 重连只清除传输错误，不能吞掉尚未重试的命令失败
-  const skill_menu_open =
-    snapshot.skills.length > 0 && selected_skill === null && /(^|\s)@[^\s@]*$/u.test(input);
 
   useEffect(() => {
     let disposed = false;
@@ -121,36 +109,20 @@ export function useAgentPageState(): UseAgentPageState {
     };
   }, []);
 
-  const update_input = (value: string): void => {
-    set_input(value);
-  };
-
-  const select_skill = (name: string): void => {
-    set_selected_skill(name);
-    set_input((current) => current.replace(/(^|\s)@[^\s@]*$/u, "$1").trimStart());
-  };
-
-  const clear_skill = (): void => {
-    set_selected_skill(null);
-  };
-
-  const send = async (default_skill_prompt: string): Promise<void> => {
-    if (snapshot.state === "running") return;
-    const text = input.trim() || (selected_skill === null ? "" : default_skill_prompt.trim());
-    if (text === "") return;
+  const send = async (parts: readonly AgentUserMessagePart[]): Promise<boolean> => {
+    if (snapshot.state === "running") return false;
     request_failed_ref.current = false;
     set_error(false);
-    set_input("");
     try {
       const next = await api_fetch<AgentSessionSnapshot>("/api/agent/message", {
-        text,
-        ...(selected_skill === null ? {} : { skill: selected_skill }),
+        parts,
       });
       set_snapshot(normalize_snapshot(next));
+      return true;
     } catch {
       request_failed_ref.current = true;
-      set_input(text);
       set_error(true);
+      return false;
     }
   };
 
@@ -165,42 +137,18 @@ export function useAgentPageState(): UseAgentPageState {
     }
   };
 
-  const reset = async (): Promise<void> => {
-    try {
-      const next = await api_fetch<AgentSessionSnapshot>("/api/agent/reset");
-      set_snapshot(normalize_snapshot(next));
-      set_selected_skill(null);
-      set_input("");
-      request_failed_ref.current = false;
-      set_error(false);
-    } catch {
-      request_failed_ref.current = true;
-      set_error(true);
-    }
-  };
-
   return {
     state: snapshot.state,
-    messages: snapshot.messages,
-    tool_statuses: snapshot.toolStatuses,
+    entries: snapshot.entries,
     skills: snapshot.skills,
-    input,
-    selected_skill,
-    skill_menu_open,
     loading,
     error,
-    update_input,
-    select_skill,
-    clear_skill,
     send,
     stop,
-    reset,
   };
 }
 
-/**
- * 以 offset 幂等合并单个 Agent 事件；缺帧或重复帧保持当前快照等待下一次权威恢复。
- */
+/** 以完整条目按 id 覆盖；首次出现的位置就是后端确认的真实时序。 */
 export function apply_agent_event(
   snapshot: AgentSessionSnapshot,
   event: AgentSessionEvent,
@@ -208,52 +156,12 @@ export function apply_agent_event(
   if (event.type === "snapshot_seed") return normalize_snapshot(event.snapshot);
   if (event.type === "request_failed") return snapshot;
   if (event.type === "session_state") return { ...snapshot, state: event.state };
-  if (event.type === "tool_status") {
-    const tool_statuses = snapshot.toolStatuses.filter(
-      (status) => status.toolCallId !== event.toolCallId,
-    );
-    tool_statuses.push({
-      toolCallId: event.toolCallId,
-      toolName: event.toolName,
-      status: event.status,
-    });
-    return { ...snapshot, toolStatuses: tool_statuses };
-  }
-
-  const existing = snapshot.messages.find((message) => message.id === event.messageId);
-  const messages = snapshot.messages.map((message) => ({ ...message }));
-  if (existing === undefined) {
-    if (event.offset !== 0) return snapshot;
-    messages.push({
-      id: event.messageId,
-      role: event.role,
-      text: event.delta,
-      createdAt: event.createdAt,
-      complete: event.complete,
-    });
-  } else {
-    const index = messages.findIndex((message) => message.id === event.messageId);
-    const current = messages[index];
-    if (current !== undefined) {
-      if (event.offset < current.text.length) {
-        return event.complete && !current.complete
-          ? {
-              ...snapshot,
-              messages: messages.map((message) =>
-                message.id === event.messageId ? { ...message, complete: true } : message,
-              ),
-            }
-          : snapshot;
-      }
-      if (event.offset > current.text.length) return snapshot;
-      messages[index] = {
-        ...current,
-        text: current.text + event.delta,
-        complete: event.complete,
-      };
-    }
-  }
-  return { ...snapshot, messages };
+  const entries = [...snapshot.entries];
+  const entry = structuredClone(event.entry);
+  const index = entries.findIndex((entry) => entry.id === event.entry.id);
+  if (index < 0) entries.push(entry);
+  else entries[index] = entry;
+  return { ...snapshot, entries };
 }
 
 /**
@@ -262,14 +170,11 @@ export function apply_agent_event(
 function normalize_snapshot(value: unknown): AgentSessionSnapshot {
   const record = read_json_record(value);
   const state = normalize_state(record["state"]);
-  const messages = Array.isArray(record["messages"])
-    ? record["messages"].flatMap(normalize_message)
-    : [];
-  const tool_statuses = Array.isArray(record["toolStatuses"])
-    ? record["toolStatuses"].flatMap(normalize_tool_status)
+  const entries = Array.isArray(record["entries"])
+    ? record["entries"].flatMap(normalize_entry)
     : [];
   const skills = Array.isArray(record["skills"]) ? record["skills"].flatMap(normalize_skill) : [];
-  return { state, messages, toolStatuses: tool_statuses, skills };
+  return { state, entries, skills };
 }
 
 function normalize_agent_event(value: unknown): AgentSessionEvent | null {
@@ -281,66 +186,66 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
   if (record["type"] === "session_state") {
     return { type: "session_state", state: normalize_state(record["state"]) };
   }
-  if (record["type"] === "tool_status") {
-    const normalized = normalize_tool_status(record);
-    return normalized.length === 0 ? null : { type: "tool_status", ...normalized[0]! };
-  }
-  if (
-    record["type"] === "message_delta" &&
-    typeof record["messageId"] === "string" &&
-    (record["role"] === "user" || record["role"] === "assistant") &&
-    typeof record["delta"] === "string" &&
-    typeof record["offset"] === "number" &&
-    Number.isInteger(record["offset"]) &&
-    record["offset"] >= 0
-  ) {
-    return {
-      type: "message_delta",
-      messageId: record["messageId"],
-      role: record["role"],
-      delta: record["delta"],
-      offset: record["offset"],
-      createdAt: read_json_integer(record["createdAt"], Date.now()),
-      complete: record["complete"] === true,
-    };
+  if (record["type"] === "entry_upsert") {
+    const entry = normalize_entry(record["entry"])[0];
+    return entry === undefined ? null : { type: "entry_upsert", entry };
   }
   return null;
 }
 
-function normalize_message(value: unknown): AgentMessageSnapshot[] {
+function normalize_entry(value: unknown): AgentEntry[] {
   if (
     !is_json_record(value) ||
     typeof value["id"] !== "string" ||
-    (value["role"] !== "user" && value["role"] !== "assistant") ||
-    typeof value["text"] !== "string"
+    typeof value["createdAt"] !== "number" ||
+    !Number.isInteger(value["createdAt"])
   ) {
     return [];
   }
-  return [
-    {
-      id: value["id"],
-      role: value["role"],
-      text: value["text"],
-      createdAt: read_json_integer(value["createdAt"], Date.now()),
-      complete: value["complete"] === true,
-    },
-  ];
+  if (value["kind"] === "user_message") {
+    const parts = normalize_agent_user_message_parts(value["parts"]);
+    if (parts === null || parts.length === 0) return [];
+    return [
+      {
+        kind: "user_message",
+        id: value["id"],
+        parts,
+        createdAt: value["createdAt"],
+      },
+    ];
+  }
+  if (value["kind"] === "assistant_message" && typeof value["text"] === "string") {
+    return [
+      {
+        kind: "assistant_message",
+        id: value["id"],
+        text: value["text"],
+        complete: value["complete"] === true,
+        createdAt: value["createdAt"],
+      },
+    ];
+  }
+  if (value["kind"] === "tool_call") return normalize_tool_entry(value);
+  return [];
 }
 
-function normalize_tool_status(value: unknown): AgentToolStatus[] {
+function normalize_tool_entry(value: JsonRecord): AgentToolEntry[] {
+  const status_value = value["status"];
   if (
-    !is_json_record(value) ||
-    typeof value["toolCallId"] !== "string" ||
+    (status_value !== "running" && status_value !== "success" && status_value !== "error") ||
     typeof value["toolName"] !== "string" ||
-    (value["status"] !== "running" && value["status"] !== "success" && value["status"] !== "error")
+    (value["output"] !== null && typeof value["output"] !== "string")
   ) {
     return [];
   }
   return [
     {
-      toolCallId: value["toolCallId"],
+      kind: "tool_call",
+      id: value["id"] as string,
       toolName: value["toolName"],
-      status: value["status"],
+      status: status_value,
+      output: value["output"],
+      createdAt: value["createdAt"] as number,
     },
   ];
 }

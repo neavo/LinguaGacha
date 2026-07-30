@@ -65,9 +65,7 @@ export const en_us_quality_editor = {
     dialog: {
       name_placeholder: "Enter a preset name …",
       rename_confirm: "Rename",
-      rename_title: "Rename Preset",
       save_confirm: "Save",
-      save_title: "Save as Preset",
     },
     rename: "Rename",
     save: "Save Preset",

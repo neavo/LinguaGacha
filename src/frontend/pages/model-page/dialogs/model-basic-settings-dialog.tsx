@@ -226,7 +226,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
                 title_suffix={
                   <SettingHelpButton
                     url={THINKING_SUPPORT_URL_BY_LOCALE[locale]}
-                    aria_label={t("model_page.fields.thinking.help_label")}
+                    aria_label={t("model_page.fields.thinking.title")}
                   />
                 }
                 description={t("model_page.fields.thinking.description")}

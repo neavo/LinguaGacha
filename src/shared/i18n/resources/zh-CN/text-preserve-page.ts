@@ -30,10 +30,6 @@ export const zh_cn_text_preserve_page = {
     },
   },
 
-  dialog: {
-    create_title: "新增文本保护规则",
-    edit_title: "编辑文本保护规则",
-  },
   preset: {
     dialog: {
       name_placeholder: "请输入预设名称 …",
@@ -42,7 +38,6 @@ export const zh_cn_text_preserve_page = {
   statistics: {
     hit_count: "命中条目数：{COUNT}",
 
-    running: "统计中",
     action: {
       search_relation: "查询包含关系",
     },

@@ -24,15 +24,9 @@ export const de_de_text_replacement_page = {
     },
   },
 
-  dialog: {
-    create_title: "Ersetzungsregel erstellen",
-    edit_title: "Ersetzungsregel bearbeiten",
-  },
-
   statistics: {
     subset_relations: "Teilmengenbeziehungen:",
 
-    running: "Wird ausgeführt",
     action: {
       search_relation: "Beziehung suchen",
     },

@@ -16,16 +16,11 @@ type PresetNameDialogProps = {
   on_close: () => void;
 };
 
-const COPY_BY_MODE: Record<
-  NonNullable<PresetInputState["mode"]>,
-  { title_key: LocaleKey; confirm_key: LocaleKey }
-> = {
+const COPY_BY_MODE: Record<NonNullable<PresetInputState["mode"]>, { confirm_key: LocaleKey }> = {
   save: {
-    title_key: "quality_editor.preset.dialog.save_title",
     confirm_key: "quality_editor.preset.dialog.save_confirm",
   },
   rename: {
-    title_key: "quality_editor.preset.dialog.rename_title",
     confirm_key: "quality_editor.preset.dialog.rename_confirm",
   },
 };
@@ -48,7 +43,7 @@ export function PresetNameDialog(props: PresetNameDialogProps): JSX.Element {
   return (
     <AppPageDialog
       open={props.state.open}
-      title={dialog_copy === null ? "" : t(dialog_copy.title_key)}
+      title={confirm_label}
       size="sm"
       onClose={props.on_close}
       footer={

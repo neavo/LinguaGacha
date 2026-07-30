@@ -93,7 +93,6 @@ export const de_de_model_page = {
       title: "Denkstufe",
       description:
         "Konfigurieren Sie die Denkstufe, die Zeit und Kosten beeinflusst, klicken Sie auf das Fragezeichen für unterstützte Modelle",
-      help_label: "Dokumentation zur Denkstufen-Unterstützung öffnen",
     },
     input_token_limit: {
       title: "Eingabe-Token-Limit",

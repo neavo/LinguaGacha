@@ -20,15 +20,12 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
             "proofreading_page.action.retranslate": "重新翻译",
             "proofreading_page.action.set_translation_status": "设置翻译状态",
             "proofreading_page.action.save": "保存",
+            "proofreading_page.action.edit": "编辑",
             "proofreading_page.action.view_context": "查看上下文",
             "proofreading_page.action.back": "返回",
-            "proofreading_page.dialog.edit_title": "编辑条目",
-            "proofreading_page.context.title": "上下文",
             "proofreading_page.fields.source": "原文",
-            "proofreading_page.fields.source_name": "原文姓名",
             "proofreading_page.fields.status": "状态",
             "proofreading_page.fields.translation": "译文",
-            "proofreading_page.fields.translation_name": "译文姓名",
             "proofreading_page.glossary.miss": "术语全部失效",
             "proofreading_page.glossary.ok": "术语全部生效",
             "proofreading_page.glossary.partial": "术语部分生效",
@@ -195,6 +192,14 @@ describe("find_text_match_ranges", () => {
   });
 });
 
+function get_field_editor(container: HTMLElement, value: string): HTMLTextAreaElement {
+  const editor = [
+    ...container.querySelectorAll<HTMLTextAreaElement>(".app-editor--field textarea"),
+  ].find((candidate) => candidate.value === value);
+  if (editor === undefined) throw new Error(`缺少字段编辑器：${value}`);
+  return editor;
+}
+
 describe("ProofreadingEditDialog", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
@@ -283,15 +288,8 @@ describe("ProofreadingEditDialog", () => {
       on_change,
     });
 
-    const source_input = rendered.querySelector<HTMLTextAreaElement>(
-      "textarea[aria-label='原文姓名']",
-    );
-    const translation_input = rendered.querySelector<HTMLTextAreaElement>(
-      "textarea[aria-label='译文姓名']",
-    );
-    if (source_input === null || translation_input === null) {
-      throw new Error("缺少姓名输入框。");
-    }
+    const source_input = get_field_editor(rendered, "Alice");
+    const translation_input = get_field_editor(rendered, "旧译名");
     expect(source_input.value).toBe("Alice");
     expect(source_input.readOnly).toBe(true);
     expect(source_input.getAttribute("data-readonly")).toBe("true");
@@ -321,8 +319,7 @@ describe("ProofreadingEditDialog", () => {
       },
     });
 
-    expect(rendered.querySelector("textarea[aria-label='原文姓名']")).toBeNull();
-    expect(rendered.querySelector("textarea[aria-label='译文姓名']")).toBeNull();
+    expect(rendered.querySelectorAll(".app-editor--field textarea")).toHaveLength(0);
   });
 
   it("译文姓名输入框跟随译文框只读态且保持可聚焦", async () => {
@@ -338,12 +335,7 @@ describe("ProofreadingEditDialog", () => {
       readonly: true,
     });
 
-    const translation_input = rendered.querySelector<HTMLTextAreaElement>(
-      "textarea[aria-label='译文姓名']",
-    );
-    if (translation_input === null) {
-      throw new Error("缺少译文姓名输入框。");
-    }
+    const translation_input = get_field_editor(rendered, "旧译名");
 
     expect(translation_input.readOnly).toBe(true);
     expect(translation_input.disabled).toBe(false);
@@ -366,15 +358,8 @@ describe("ProofreadingEditDialog", () => {
       state: create_dialog_state({ draft_item: { dst: "", name_dst: "" } }),
     });
 
-    const source_input = rendered.querySelector<HTMLTextAreaElement>(
-      "textarea[aria-label='原文姓名']",
-    );
-    const translation_input = rendered.querySelector<HTMLTextAreaElement>(
-      "textarea[aria-label='译文姓名']",
-    );
-    if (source_input === null || translation_input === null) {
-      throw new Error("缺少姓名输入框。");
-    }
+    const source_input = get_field_editor(rendered, "Alice");
+    const translation_input = get_field_editor(rendered, "");
     const source_root = source_input.closest(".app-editor--field");
     const translation_root = translation_input.closest(".app-editor--field");
     if (source_root === null || translation_root === null) {
@@ -393,15 +378,8 @@ describe("ProofreadingEditDialog", () => {
       state: create_dialog_state({ draft_item: { dst: "", name_dst: "艾丽丝" } }),
     });
 
-    const next_source_input = rendered.querySelector<HTMLTextAreaElement>(
-      "textarea[aria-label='原文姓名']",
-    );
-    const next_translation_input = rendered.querySelector<HTMLTextAreaElement>(
-      "textarea[aria-label='译文姓名']",
-    );
-    if (next_source_input === null || next_translation_input === null) {
-      throw new Error("缺少姓名输入框。");
-    }
+    const next_source_input = get_field_editor(rendered, "Alice");
+    const next_translation_input = get_field_editor(rendered, "艾丽丝");
     const next_source_root = next_source_input.closest(".app-editor--field");
     const next_translation_root = next_translation_input.closest(".app-editor--field");
     if (next_source_root === null || next_translation_root === null) {

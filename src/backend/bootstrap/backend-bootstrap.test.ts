@@ -5,12 +5,17 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getGlobalDispatcher } from "undici";
 
+import {
+  FileIoFailedError,
+  InternalInvariantError,
+  RuntimeDisposedError,
+} from "../../shared/error";
+import { AgentService } from "../agent/agent-service";
 import { ApiGatewayServer } from "../api/api-gateway-server";
 import { NPM_INITIAL_CWD_ENV_NAME } from "../app/app-root-resolver";
 import { ProjectDatabase } from "../database/database-operations";
 import { LogManager } from "../log/log-manager";
 import { BackendBootstrap } from "./backend-bootstrap";
-import { InternalInvariantError, RuntimeDisposedError } from "../../shared/error";
 import type { BackendWorkerExecution } from "../worker/worker-execution";
 
 let temp_dir = ""; // 承载测试应用根和数据根，避免 bootstrap 日志写入真实工作区
@@ -33,7 +38,9 @@ function read_log_text(log_dir: string): string {
 
 beforeEach(() => {
   temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-lifecycle-"));
-  fs.mkdirSync(path.join(temp_dir, "resource"), { recursive: true });
+  const agent_resource_dir = path.join(temp_dir, "resource", "agent");
+  fs.mkdirSync(agent_resource_dir, { recursive: true });
+  fs.writeFileSync(path.join(agent_resource_dir, "system_prompt.md"), "基础系统指令。", "utf-8");
   fs.writeFileSync(path.join(temp_dir, "version.txt"), "9.8.7", "utf-8");
   original_initial_cwd = process.env[NPM_INITIAL_CWD_ENV_NAME];
   process.env[NPM_INITIAL_CWD_ENV_NAME] = temp_dir;
@@ -51,6 +58,28 @@ afterEach(() => {
 });
 
 describe("BackendBootstrap", () => {
+  it("基础 system prompt 缺失时启动失败并释放已创建资源", async () => {
+    fs.rmSync(path.join(temp_dir, "resource", "agent", "system_prompt.md"));
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const agent_dispose = vi.spyOn(AgentService.prototype, "dispose");
+    const database_close = vi.spyOn(ProjectDatabase.prototype, "close");
+    const log_shutdown = vi.spyOn(LogManager.prototype, "shutdown");
+    const manager = new BackendBootstrap({
+      appRoot: temp_dir,
+      exposeApiGateway: false,
+      openOutputFolder: noop_output_folder,
+      workerExecution: IN_PROCESS_WORKER_EXECUTION,
+    });
+
+    await expect(manager.start()).rejects.toBeInstanceOf(FileIoFailedError);
+
+    expect(agent_dispose).toHaveBeenCalledTimes(1);
+    expect(database_close).toHaveBeenCalledTimes(1);
+    expect(log_shutdown).toHaveBeenCalledTimes(1);
+    expect(manager.isStopped()).toBe(true);
+  });
+
   it("直接注入 ProjectDatabase 并只启动公开 API Gateway", async () => {
     const skill_dir = path.join(temp_dir, "resource", "agent", "skill", "test-skill");
     fs.mkdirSync(skill_dir, { recursive: true });

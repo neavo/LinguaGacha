@@ -21,7 +21,7 @@ description: 基于当前工程的完整术语表与全量原文语境，给出�
 
 ### 1. 阅读审校标准
 
-首次执行本技能时，用 `read_skill_reference` 完整阅读 `audit-standard.md`。后续所有保留 / 修改 / 删除 / 新增判断都以其中的七步审查顺序、同根词全局处理优先级、语境证据要求和决策示例为准。
+首次执行本技能时，用 `read_skill_reference` 按 `skill=glossary-audit`、`path=references/audit-standard.md` 完整阅读审校标准。后续所有保留 / 修改 / 删除 / 新增判断都以其中的七步审查顺序、同根词全局处理优先级、语境证据要求和决策示例为准。
 
 ### 2. 建立只读事实快照
 

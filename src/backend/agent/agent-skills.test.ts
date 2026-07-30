@@ -44,8 +44,8 @@ describe("Agent skill 加载", () => {
       {
         name: "valid",
         description: "合法能力",
-        essentials: "执行合法任务。",
-        reference_index: "",
+        content: "执行合法任务。",
+        filePath: expect.stringMatching(/\/valid\/SKILL\.md$/u),
         references: [],
       },
     ]);
@@ -60,7 +60,7 @@ describe("Agent skill 加载", () => {
     expect(read_text_file).toHaveBeenCalled();
   });
 
-  it("加载带 references 的技能，只在索引中暴露排序后的摘要", async () => {
+  it("递归加载排序后的 Markdown references，并忽略其它文件和符号链接", async () => {
     const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-skills-ref-"));
     cleanup_roots.push(app_root);
     const paths = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
@@ -69,26 +69,25 @@ describe("Agent skill 加载", () => {
       path.join(skill_dir, "SKILL.md"),
       "---\nname: glossary-audit\ndescription: 审校术语\n---\n\n执行术语审校。",
     );
-    write_skill(path.join(skill_dir, "references", "b-standard.md"), "# 标准\n\n第二份正文。");
+    write_skill(
+      path.join(skill_dir, "references", "nested", "b-standard.md"),
+      "# 标准\n\n第二份正文。",
+    );
     write_skill(path.join(skill_dir, "references", "a-first.md"), "# 第一份\n\n首份正文。");
     write_skill(path.join(skill_dir, "references", "ignore.txt"), "不应加载");
+    const linked_dir = path.join(app_root, "linked-references");
+    write_skill(path.join(linked_dir, "secret.md"), "不应跟随符号链接");
+    fs.symlinkSync(linked_dir, path.join(skill_dir, "references", "linked"), "junction");
     const log_manager = { warning: vi.fn(), error: vi.fn() };
 
     const skills = await load_agent_skills(paths, log_manager);
 
     expect(skills).toHaveLength(1);
     const skill = skills[0];
-    expect(skill?.essentials).toBe("执行术语审校。");
-    // reference_index 按文件名排序，含两份 .md 摘要，不含 .txt。
-    expect(skill?.reference_index).toContain("a-first.md: 第一份");
-    expect(skill?.reference_index).toContain("b-standard.md: 标准");
-    expect(skill?.reference_index).not.toContain("ignore.txt");
-    expect(skill?.reference_index.indexOf("a-first.md")).toBeLessThan(
-      skill?.reference_index.indexOf("b-standard.md") ?? 0,
-    );
-    expect(skill?.references.map((reference) => reference.file_name)).toEqual([
-      "a-first.md",
-      "b-standard.md",
+    expect(skill?.content).toBe("执行术语审校。");
+    expect(skill?.references).toEqual([
+      { path: "references/a-first.md", content: "# 第一份\n\n首份正文。" },
+      { path: "references/nested/b-standard.md", content: "# 标准\n\n第二份正文。" },
     ]);
   });
 });

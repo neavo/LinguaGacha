@@ -528,7 +528,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
     <AppPageDialog
       open={open}
       title={t(
-        context_open ? "proofreading_page.context.title" : "proofreading_page.dialog.edit_title",
+        context_open ? "proofreading_page.action.view_context" : "proofreading_page.action.edit",
       )}
       size="lg"
       dismissBehavior={context_open ? "default" : saving ? "blocked" : "escape-only"}
@@ -674,7 +674,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                         variant="field"
                         class_name="proofreading-page__dialog-name-input"
                         value={source_name}
-                        aria_label={t("proofreading_page.fields.source_name")}
+                        aria_label={t("proofreading_page.fields.source")}
                         aria_invalid={source_name_glossary_state.tone === "warning"}
                         marks={source_name_marks}
                         read_only
@@ -704,7 +704,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
                         variant="field"
                         class_name="proofreading-page__dialog-name-input"
                         value={translation_name}
-                        aria_label={t("proofreading_page.fields.translation_name")}
+                        aria_label={t("proofreading_page.fields.translation")}
                         aria_invalid={translation_name_glossary_state.tone === "warning"}
                         marks={translation_name_marks}
                         read_only={translation_readonly}

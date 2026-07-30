@@ -10,10 +10,6 @@ const sidebar_mock = vi.hoisted(() => ({
   toggle_sidebar: vi.fn(),
 }));
 
-vi.mock("@frontend/app/locale/locale-provider", () => ({
-  useI18n: () => ({ t: (key: string) => key }),
-}));
-
 vi.mock("@frontend/shadcn/sidebar", () => ({
   useSidebar: () => ({
     state: sidebar_mock.state,
@@ -43,7 +39,7 @@ describe("AppTitlebar", () => {
     root = null;
   });
 
-  it("展示宿主标题栏方位，并由可访问按钮切换侧栏", async () => {
+  it("展示宿主标题栏方位，并由菜单按钮切换侧栏", async () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -54,9 +50,7 @@ describe("AppTitlebar", () => {
 
     expect(container.querySelector("header")?.dataset.titlebarControlSide).toBe("right");
     expect(container.querySelector("strong")?.textContent).toBe("LinguaGacha");
-    const toggle_button = container.querySelector<HTMLButtonElement>(
-      'button[aria-label="app.aria.toggle_navigation"]',
-    );
+    const toggle_button = container.querySelector<HTMLButtonElement>("button");
     if (toggle_button === null) {
       throw new Error("缺少侧栏切换按钮。");
     }

@@ -22,26 +22,19 @@ const REFERENCES_DIR_NAME = "references";
 const REFERENCE_EXTENSION = ".md";
 
 export type AgentSkillReference = {
-  file_name: string; // 仅文件名（不含目录），白名单读取的 key
-  summary: string; // 首行非空文本，供模型判断是否需要加载正文
-  content: string; // 完整正文，只在 read_skill_reference 时下发
+  path: string; // 相对 skill 根目录的 POSIX 路径，同时也是工具白名单 key
+  content: string; // 启动期固定的完整正文，只在 read_skill_reference 时下发
 };
 
-/**
- * 技能渐进加载契约：system prompt 只注入 essentials + reference_index；
- * references 正文只由模型按需通过 read_skill_reference 拉取。
- */
+/** skill 元数据供 UI 使用，正文与受控 references 只在显式引用后进入模型上下文。 */
 export type AgentSkillDefinition = AgentSkillSnapshot & {
-  essentials: string; // SKILL.md 正文（去掉 frontmatter）
-  reference_index: string; // references 单层清单，无 references 时为空串
-  references: AgentSkillReference[]; // 受控资源，read_skill_reference 白名单数据源
+  content: string; // SKILL.md 正文（去掉 frontmatter）
+  filePath: string; // formatSkillInvocation 的模型可见位置
+  references: AgentSkillReference[];
 };
 
 type AgentSkillLog = Pick<LogManager, "error" | "warning">;
-type AgentSkillNativeFs = Pick<
-  NativeFs,
-  "read_dir_names" | "read_dirents" | "read_text_file" | "stat"
->;
+type AgentSkillNativeFs = Pick<NativeFs, "read_dirents" | "read_text_file" | "stat">;
 type AgentSkillPaths = Pick<
   AppPathService,
   "get_agent_builtin_skill_dir" | "get_agent_user_skill_dir" | "get_app_root"
@@ -70,15 +63,12 @@ export async function load_agent_skills(
     const skills = new Map<string, AgentSkillDefinition>(); // 输入目录顺序就是同名 skill 的覆盖优先级
     for (const skill of result.skills) {
       if (invalid_paths.has(skill.filePath)) continue;
-      const references = load_skill_references(skill.filePath, log_manager, native_fs);
-      const essentials = skill.content;
-      const reference_index = build_reference_index(references);
       skills.set(skill.name, {
         name: skill.name,
         description: skill.description,
-        essentials,
-        reference_index,
-        references,
+        content: skill.content,
+        filePath: skill.filePath,
+        references: load_skill_references(skill.filePath, log_manager, native_fs),
       });
     }
     return [...skills.values()];
@@ -89,60 +79,65 @@ export async function load_agent_skills(
 }
 
 /**
- * 读取技能 references 目录单层 *.md，按文件名排序；目录不存在或读取失败降级为空清单，不阻断技能加载。
+ * 递归读取 references 目录下的 Markdown 并形成进程内快照；符号链接与其它文件不进入白名单。
  */
 function load_skill_references(
   skill_file_path: string,
   log_manager: AgentSkillLog,
   native_fs: AgentSkillNativeFs,
 ): AgentSkillReference[] {
-  const references_dir = path.join(path.dirname(skill_file_path), REFERENCES_DIR_NAME);
-  let entries: string[];
+  const skill_dir = path.dirname(skill_file_path);
+  const references: AgentSkillReference[] = [];
+  collect_skill_references(
+    skill_dir,
+    path.join(skill_dir, REFERENCES_DIR_NAME),
+    references,
+    log_manager,
+    native_fs,
+  );
+  return references.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+/** 深度遍历受控 references 根；失败文件降级为诊断，不污染其它 skill。 */
+function collect_skill_references(
+  skill_dir: string,
+  directory: string,
+  references: AgentSkillReference[],
+  log_manager: AgentSkillLog,
+  native_fs: AgentSkillNativeFs,
+): void {
+  let entries: ReturnType<AgentSkillNativeFs["read_dirents"]>;
   try {
-    entries = native_fs.read_dir_names(references_dir);
+    entries = native_fs.read_dirents(directory);
   } catch (error) {
     if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
       log_manager.warning("Agent skill references 目录读取失败", {
         source: "agent",
-        context: { path: references_dir, error: String(error) },
+        context: { path: directory, error: String(error) },
       });
     }
-    return []; // 无 references 目录是正常情形
+    return;
   }
-  const file_names = entries
-    .filter((name) => name.toLowerCase().endsWith(REFERENCE_EXTENSION))
-    .sort((left, right) => left.localeCompare(right));
-  const references: AgentSkillReference[] = [];
-  for (const file_name of file_names) {
+  for (const entry of entries) {
+    if (entry.isSymbolicLink()) continue;
+    const entry_path = path.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      collect_skill_references(skill_dir, entry_path, references, log_manager, native_fs);
+      continue;
+    }
+    if (!entry.isFile() || !entry.name.toLowerCase().endsWith(REFERENCE_EXTENSION)) continue;
     try {
-      const content = native_fs.read_text_file(path.join(references_dir, file_name));
       references.push({
-        file_name,
-        summary: read_first_non_empty_line(content),
-        content,
+        path: normalize_path(path.relative(skill_dir, entry_path)),
+        content: native_fs.read_text_file(entry_path),
       });
     } catch (error) {
-      log_manager.warning(`Agent skill reference 读取失败：${file_name}`, {
+      log_manager.warning(`Agent skill reference 读取失败：${entry.name}`, {
         source: "agent",
-        context: { path: path.join(references_dir, file_name), error: String(error) },
+        context: { path: entry_path, error: String(error) },
       });
     }
   }
-  return references;
-}
-
-function build_reference_index(references: AgentSkillReference[]): string {
-  if (references.length === 0) return "";
-  const lines = references.map((reference) => `- ${reference.file_name}: ${reference.summary}`);
-  return `## 参考资源（按需用 read_skill_reference 读取正文）\n${lines.join("\n")}`;
-}
-
-function read_first_non_empty_line(content: string): string {
-  for (const line of content.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (trimmed !== "") return trimmed.replace(/^#+\s*/, "");
-  }
-  return "";
 }
 
 /**
@@ -157,6 +152,7 @@ class AgentSkillExecutionEnv extends NodeExecutionEnv {
     super(options);
   }
 
+  /** 第三方 loader 只拿 Result，真实读取仍统一经过 NativeFs。 */
   public override async readTextFile(
     file_path: string,
     abort_signal?: AbortSignal,
@@ -170,6 +166,7 @@ class AgentSkillExecutionEnv extends NodeExecutionEnv {
     }
   }
 
+  /** 只向 skill walker 暴露普通文件和目录，阻断其它平台文件类型。 */
   public override async fileInfo(file_path: string): Promise<Result<FileInfo, FileError>> {
     const resolved_path = this.resolve_path(file_path);
     try {
@@ -190,6 +187,7 @@ class AgentSkillExecutionEnv extends NodeExecutionEnv {
     }
   }
 
+  /** 目录枚举在进入递归前过滤符号链接，避免越过受控 skill 根。 */
   public override async listDir(
     directory: string,
     abort_signal?: AbortSignal,
@@ -210,6 +208,7 @@ class AgentSkillExecutionEnv extends NodeExecutionEnv {
     }
   }
 
+  /** Pi 使用 POSIX 路径比较；所有绝对化结果在适配器边界统一转换。 */
   private resolve_path(file_path: string): string {
     return normalize_path(
       path.isAbsolute(file_path) ? file_path : path.resolve(this.cwd, file_path),
@@ -221,6 +220,7 @@ function normalize_path(file_path: string): string {
   return file_path.replaceAll("\\", "/");
 }
 
+/** 把 Node IO 错误收窄为 Pi loader 的稳定错误码，同时保留原始 cause。 */
 function to_file_error(error: unknown, file_path: string): FileError {
   const code = error instanceof Error && "code" in error ? String(error.code) : "";
   const mapped_code: FileErrorCode =
