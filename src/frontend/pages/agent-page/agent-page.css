@@ -73,6 +73,12 @@
   padding: 8px 12px;
 }
 
+.agent-message--assistant {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .dark .agent-message--user {
   background: color-mix(in srgb, var(--primary) 22%, var(--card));
 }
@@ -133,6 +139,47 @@
   padding: 0;
 }
 
+.agent-message__image-alt {
+  color: var(--muted-foreground);
+  font-style: italic;
+}
+
+.agent-message__diagram {
+  max-width: 100%;
+  margin: 8px 0;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--ui-radius-button);
+  background: var(--popover);
+  padding: 12px;
+}
+
+.agent-message__diagram:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+
+.agent-message__diagram svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+}
+
+.agent-message__diagram-error {
+  margin: 8px 0;
+}
+
+.agent-message__diagram-error > p {
+  margin: 0 0 6px;
+  color: var(--ui-failure);
+  font-size: 12px;
+}
+
+.agent-message__diagram-error pre {
+  margin: 0;
+}
+
 .agent-message__markdown table {
   width: 100%;
   border-collapse: collapse;
@@ -155,7 +202,7 @@
   vertical-align: -2px;
 }
 
-.agent-tool-entry {
+.agent-detail-entry {
   overflow: hidden;
   border-radius: var(--ui-radius-button);
   background: var(--muted);
@@ -163,7 +210,7 @@
   font-size: 12px;
 }
 
-.agent-tool-entry summary {
+.agent-detail-entry summary {
   display: grid;
   min-height: 34px;
   width: 100%;
@@ -175,11 +222,11 @@
   list-style: none;
 }
 
-.agent-tool-entry summary::-webkit-details-marker {
+.agent-detail-entry summary::-webkit-details-marker {
   display: none;
 }
 
-.agent-tool-entry summary::before {
+.agent-detail-entry summary::before {
   width: 0;
   height: 0;
   border-top: 4px solid transparent;
@@ -189,23 +236,23 @@
   transition: transform 160ms ease;
 }
 
-.agent-tool-entry[open] summary::before {
+.agent-detail-entry[open] summary::before {
   transform: rotate(90deg);
 }
 
-.agent-tool-entry summary:hover {
+.agent-detail-entry summary:hover {
   background: var(--accent);
   color: var(--foreground);
 }
 
-.agent-tool-entry summary:focus-visible {
+.agent-detail-entry summary:focus-visible {
   background: var(--accent);
   color: var(--foreground);
   outline: 1px solid var(--ring);
   outline-offset: -1px;
 }
 
-.agent-tool-entry__name {
+.agent-detail-entry__label {
   min-width: 0;
   overflow: hidden;
   color: var(--foreground);
@@ -214,7 +261,7 @@
   white-space: nowrap;
 }
 
-.agent-tool-entry__status {
+.agent-detail-entry__status {
   width: 7px;
   height: 7px;
   flex: 0 0 auto;
@@ -222,20 +269,20 @@
   background: var(--muted-foreground);
 }
 
-.agent-tool-entry__status--running {
+.agent-detail-entry__status--running {
   background: var(--ui-success);
-  animation: agent-tool-pulse 1.2s ease-in-out infinite;
+  animation: agent-detail-pulse 1.2s ease-in-out infinite;
 }
 
-.agent-tool-entry__status--success {
+.agent-detail-entry__status--success {
   background: var(--ui-success);
 }
 
-.agent-tool-entry__status--error {
+.agent-detail-entry__status--error {
   background: var(--ui-failure);
 }
 
-.agent-tool-entry pre {
+.agent-detail-entry pre {
   max-height: 240px;
   margin: 0;
   overflow: auto;
@@ -246,6 +293,11 @@
   font: inherit;
   line-height: 1.55;
   white-space: pre;
+}
+
+.agent-detail-entry--thinking pre {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }
 
 .agent-round-header {
@@ -264,6 +316,8 @@
 
 .agent-round-header small {
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .agent-composer {
@@ -311,6 +365,7 @@
   min-height: 44px;
   padding: 6px 2px 3px;
   caret-color: var(--primary);
+  user-select: text;
 }
 
 .agent-composer__input .cm-focused {
@@ -402,7 +457,7 @@
 .agent-page__messages,
 .agent-message__markdown,
 .agent-message__user-text,
-.agent-tool-entry,
+.agent-detail-entry,
 .agent-skill-menu,
 .agent-round-header {
   user-select: text;
@@ -414,7 +469,7 @@
   }
 }
 
-@keyframes agent-tool-pulse {
+@keyframes agent-detail-pulse {
   50% {
     opacity: 0.3;
   }
@@ -422,12 +477,12 @@
 
 @media (prefers-reduced-motion: reduce) {
   .agent-message__cursor,
-  .agent-tool-entry__status--running {
+  .agent-detail-entry__status--running {
     animation: none;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-success) 30%, transparent);
   }
 
-  .agent-tool-entry summary::before,
+  .agent-detail-entry summary::before,
   .agent-composer {
     transition: none;
   }

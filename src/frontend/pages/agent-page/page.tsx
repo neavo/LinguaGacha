@@ -1,18 +1,26 @@
-import { useEffect, useRef, type ReactNode, type UIEvent } from "react";
+import { useEffect, useRef, useState, type ReactNode, type UIEvent } from "react";
 import { Bot } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 import type { AgentEntry, AgentSessionState, AgentUserMessagePart } from "@shared/agent";
-import { open_external_url } from "@frontend/app/desktop/desktop-api";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { AgentComposer } from "./agent-composer";
+import { AgentMarkdown } from "./agent-markdown";
 import { useAgentPageState } from "./use-agent-page-state";
 import "./agent-page.css";
 
 type Translate = ReturnType<typeof useI18n>["t"];
+type UserEntry = Extract<AgentEntry, { kind: "user_message" }>;
+type AssistantEntry = Extract<AgentEntry, { kind: "assistant_message" }>;
 type ToolEntry = Extract<AgentEntry, { kind: "tool_call" }>;
+type DetailStatus = ToolEntry["status"];
+
+type AgentDetailEntryProps = {
+  kind: "tool" | "thinking";
+  label: string;
+  status: DetailStatus;
+  content: string | null;
+};
 
 /** 渲染 Agent 对话、能力选择与命令输入；会话事实由 useAgentPageState 统一提供。 */
 export function AgentPage(_props: ScreenComponentProps): JSX.Element {
@@ -79,15 +87,21 @@ function render_conversation(
   t: Translate,
 ): ReactNode[] {
   const nodes: ReactNode[] = [];
-  for (let index = 0; index < entries.length; index += 1) {
-    const entry = entries[index];
-    if (entry === undefined) continue;
+  for (const entry of entries) {
     if (entry.kind === "tool_call") {
-      nodes.push(render_tool_entry(entry));
+      nodes.push(
+        <AgentDetailEntry
+          key={entry.id}
+          kind="tool"
+          label={entry.toolName}
+          status={entry.status}
+          content={entry.output === null ? null : format_tool_output(entry.output)}
+        />,
+      );
       continue;
     }
     if (entry.kind === "user_message") {
-      nodes.push(render_round_header(entries, index, state, t));
+      nodes.push(<AgentRoundHeader key={`round-${entry.id}`} user={entry} t={t} />);
       nodes.push(
         <article className="agent-message agent-message--user" key={entry.id}>
           <p className="agent-message__user-text">
@@ -105,79 +119,87 @@ function render_conversation(
       );
       continue;
     }
-    if (entry.text === "" && entry.complete) continue;
-    nodes.push(
-      <article className="agent-message agent-message--assistant" key={entry.id}>
-        <div className="agent-message__markdown">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              a: ({ href, children }) => (
-                <a
-                  href={href}
-                  onClick={(event) => {
-                    event.preventDefault();
-                    if (href !== undefined) void open_external_url(href);
-                  }}
-                >
-                  {children}
-                </a>
-              ),
-            }}
-          >
-            {entry.text}
-          </ReactMarkdown>
-          {!entry.complete && state === "running" && <span className="agent-message__cursor" />}
-        </div>
-      </article>,
-    );
+    nodes.push(render_assistant_entry(entry, state, t));
   }
   return nodes;
 }
 
-/** 每个 user 条目开启一轮；完成态用该轮最后条目的时间计算可见耗时。 */
-function render_round_header(
-  entries: AgentEntry[],
-  user_index: number,
+/** 保持 text / thinking 的供应商顺序，并只把流式状态标到最后一个开放 part。 */
+function render_assistant_entry(
+  entry: AssistantEntry,
   state: AgentSessionState,
   t: Translate,
 ): ReactNode {
-  const user = entries[user_index];
-  if (user?.kind !== "user_message") return null;
-  const next_user_offset = entries
-    .slice(user_index + 1)
-    .findIndex((entry) => entry.kind === "user_message");
-  const next_user_index = next_user_offset < 0 ? -1 : user_index + next_user_offset + 1;
-  const end =
-    next_user_index >= 0
-      ? entries[next_user_index - 1]
-      : state === "complete"
-        ? entries.at(-1)
-        : undefined;
-  const duration = end === undefined ? "…" : format_elapsed(end.createdAt - user.createdAt);
+  if (entry.parts.length === 0) return null;
   return (
-    <div className="agent-round-header" key={`round-${user.id}`}>
+    <article className="agent-message agent-message--assistant" key={entry.id}>
+      {entry.parts.map((part, part_index) => {
+        const key = `${entry.id}-${part_index.toString()}`;
+        const is_last = part_index === entry.parts.length - 1;
+        if (part.kind === "thinking") {
+          return (
+            <AgentDetailEntry
+              key={key}
+              kind="thinking"
+              label={t("agent_page.thinking")}
+              status={!entry.complete && is_last ? "running" : "success"}
+              content={part.text}
+            />
+          );
+        }
+        return (
+          <div className="agent-message__markdown" key={key}>
+            <AgentMarkdown text={part.text} complete={entry.complete} />
+            {!entry.complete && state === "running" && is_last && (
+              <span className="agent-message__cursor" />
+            )}
+          </div>
+        );
+      })}
+    </article>
+  );
+}
+
+/** 每轮只在未结束时持有一个本地时钟；结束时间始终以后端 user 条目为准。 */
+function AgentRoundHeader({ user, t }: { user: UserEntry; t: Translate }): JSX.Element {
+  const [now, set_now] = useState(Date.now);
+
+  useEffect(() => {
+    if (user.endedAt !== null) return;
+    const timer = window.setInterval(() => set_now(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [user.endedAt]);
+
+  const duration = format_elapsed((user.endedAt ?? now) - user.createdAt);
+  return (
+    <div className="agent-round-header">
       <span aria-hidden="true" />
-      <small>{t("agent_page.round.elapsed", { duration })}</small>
+      <small role="timer" aria-live="off">
+        {t(user.endedAt === null ? "agent_page.round.running" : "agent_page.round.ended", {
+          duration,
+        })}
+      </small>
     </div>
   );
 }
 
-function render_tool_entry(tool: ToolEntry): ReactNode {
+/** 工具输出与思考过程共享折叠交互，但保留各自的语义 class。 */
+function AgentDetailEntry(props: AgentDetailEntryProps): JSX.Element {
   return (
-    <details className="agent-tool-entry" key={tool.id}>
+    <details className={`agent-detail-entry agent-detail-entry--${props.kind}`}>
       <summary>
-        <span className="agent-tool-entry__name">{tool.toolName}</span>
+        <span className="agent-detail-entry__label">{props.label}</span>
         <span
-          className={`agent-tool-entry__status agent-tool-entry__status--${tool.status}`}
+          className={`agent-detail-entry__status agent-detail-entry__status--${props.status}`}
           aria-hidden="true"
         />
       </summary>
-      {tool.output !== null && <pre tabIndex={0}>{format_tool_output(tool.output)}</pre>}
+      {props.content !== null && <pre tabIndex={0}>{props.content}</pre>}
     </details>
   );
 }
 
+/** JSON 工具结果便于人工检查，非 JSON 正文保持模型实际收到的原文。 */
 function format_tool_output(output: string): string {
   try {
     return JSON.stringify(JSON.parse(output) as unknown, null, 2) ?? output;
@@ -186,10 +208,16 @@ function format_tool_output(output: string): string {
   }
 }
 
+/** 轮次耗时使用固定紧凑格式，跨语言文案只负责包裹该稳定数值。 */
 function format_elapsed(milliseconds: number): string {
-  const seconds = Math.max(0, Math.round(milliseconds / 1000));
-  const minutes = Math.floor(seconds / 60);
-  return minutes === 0
-    ? `${seconds.toString()}s`
-    : `${minutes.toString()}m ${(seconds % 60).toString()}s`;
+  const total_seconds = Math.max(0, Math.floor(milliseconds / 1_000));
+  const hours = Math.floor(total_seconds / 3_600);
+  const minutes = Math.floor((total_seconds % 3_600) / 60);
+  const seconds = total_seconds % 60;
+  if (hours > 0) {
+    return `${hours.toString()}h ${minutes.toString().padStart(2, "0")}m ${seconds.toString().padStart(2, "0")}s`;
+  }
+  return minutes > 0
+    ? `${minutes.toString()}m ${seconds.toString().padStart(2, "0")}s`
+    : `${seconds.toString()}s`;
 }

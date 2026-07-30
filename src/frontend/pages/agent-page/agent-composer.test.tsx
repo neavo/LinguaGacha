@@ -136,6 +136,24 @@ describe("AgentComposer", () => {
     expect(on_stop).toHaveBeenCalledOnce();
   });
 
+  it("运行态立即切换为可聚焦只读 DOM，并在停止后原地恢复编辑", async () => {
+    const view = await render_composer(
+      vi.fn(async () => true),
+      true,
+    );
+    const content = get_editor(view).contentDOM;
+
+    expect(content.getAttribute("contenteditable")).toBe("false");
+
+    await render_composer(
+      vi.fn(async () => true),
+      false,
+    );
+
+    expect(get_editor(view).contentDOM).toBe(content);
+    expect(content.getAttribute("contenteditable")).toBe("true");
+  });
+
   it("Escape 只关闭菜单并保留查询，继续输入后重新打开", async () => {
     const view = await render_composer();
     const editor = get_editor(view);

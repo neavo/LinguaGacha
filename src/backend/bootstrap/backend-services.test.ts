@@ -41,7 +41,7 @@ function create_backend_services_options(): BackendServicesOptions {
       get_user_data_dir: () => "E:/UserData",
     },
     metadata: {
-      build_linguagacha_user_agent: () => "LinguaGacha/Test",
+      build_linguagacha_user_agent: vi.fn(() => "LinguaGacha/Test"),
     },
     appSettingService: {
       read_setting: () => ({ app_language: "zh-CN" }),
@@ -81,6 +81,7 @@ describe("BackendServices", () => {
     expect(planning_dispose_mock).toHaveBeenCalledTimes(1);
     expect(backend_worker_dispose).toHaveBeenCalledTimes(1);
     expect(agent_dispose).toHaveBeenCalledTimes(1);
+    expect(options.metadata.build_linguagacha_user_agent).toHaveBeenCalledTimes(1);
     backend_worker_dispose.mockRestore();
     agent_dispose.mockRestore();
   });

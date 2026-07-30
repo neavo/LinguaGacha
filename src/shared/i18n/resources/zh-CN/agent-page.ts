@@ -1,5 +1,8 @@
 export const zh_cn_agent_page = {
   title: "Agent",
+  thinking: "思考过程",
+  diagram: { label: "图表", render_failed: "图表渲染失败，已显示 Mermaid 源码。" },
+  image: { omitted: "图片已省略" },
   loading: "正在恢复会话 …",
   empty: {
     message: "「搭档」，我们接下来做点什么呢  ( •̀ ᗜ •́ )つ▱",
@@ -9,6 +12,6 @@ export const zh_cn_agent_page = {
     hint: "Enter 发送 · Shift + Enter 换行",
   },
   action: { send: "发送", stop: "停止" },
-  round: { elapsed: "已处理 {duration}" },
+  round: { running: "处理中 {duration}", ended: "耗时 {duration}" },
   error: "请求失败，请重试。",
 } as const;

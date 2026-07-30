@@ -2,7 +2,13 @@ import { tags } from "@lezer/highlight";
 
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
-import { RangeSetBuilder, StateEffect, StateField, type Extension } from "@codemirror/state";
+import {
+  EditorState,
+  RangeSetBuilder,
+  StateEffect,
+  StateField,
+  type Extension,
+} from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -48,6 +54,7 @@ type EditorPalette = {
   markdown: MarkdownPalette;
 };
 
+// CodeMirror 主题不读取 DOM token，明暗 palette 在扩展创建时冻结并随主题重配。
 const light_editor_palette: EditorPalette = {
   background: "#ffffff",
   foreground: "#1f2328",
@@ -98,6 +105,7 @@ const warning_text_mark_decoration = Decoration.mark({
   class: "app-text-mark app-text-mark--warning",
 });
 
+/** 受控 marks 进入 CodeMirror 状态的唯一替换入口。 */
 export const set_app_editor_text_marks_effect = StateEffect.define<readonly AppTextMark[]>();
 
 const fullwidth_space_matcher = new MatchDecorator({
@@ -105,6 +113,7 @@ const fullwidth_space_matcher = new MatchDecorator({
   decoration: fullwidth_space_decoration,
 });
 
+/** 增量维护全角空格标记，避免每次视图更新手工扫描完整文档。 */
 const fullwidth_space_highlight_extension = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet;
@@ -124,6 +133,7 @@ const fullwidth_space_highlight_extension = ViewPlugin.fromClass(
   },
 );
 
+/** 把外部标记裁剪到文档范围并建立稳定顺序。 */
 export function normalize_app_text_marks(
   text_length: number,
   marks: readonly AppTextMark[],
@@ -149,6 +159,7 @@ export function normalize_app_text_marks(
     });
 }
 
+/** 合并同一最小文本片段上的非空提示，避免重复文案。 */
 function resolve_segment_tooltip(marks: readonly AppTextMark[]): string | undefined {
   const tooltip_lines = [
     ...new Set(marks.map((mark) => mark.tooltip ?? "").filter((tooltip) => tooltip.length > 0)),
@@ -161,6 +172,7 @@ function resolve_segment_tooltip(marks: readonly AppTextMark[]): string | undefi
   return tooltip_lines.join("\n\n");
 }
 
+/** 把归一后的业务标记投影为 CodeMirror DecorationSet。 */
 function build_app_text_mark_decorations(
   text_length: number,
   marks: readonly AppTextMark[],
@@ -181,6 +193,7 @@ function build_app_text_mark_decorations(
   return builder.finish();
 }
 
+/** 文档变化时映射旧标记，显式 effect 到达时整体替换业务标记。 */
 export const app_editor_text_mark_field = StateField.define<DecorationSet>({
   create() {
     return Decoration.none;
@@ -201,6 +214,7 @@ export const app_editor_text_mark_field = StateField.define<DecorationSet>({
   },
 });
 
+/** 命中重叠标记时只返回最短片段，避免父级提示遮蔽精确提示。 */
 function resolve_hovered_app_text_marks(
   marks: readonly AppTextMark[],
   pos: number,
@@ -226,6 +240,7 @@ function resolve_hovered_app_text_marks(
   return containing_marks.filter((mark) => mark.end - mark.start === shortest_length);
 }
 
+/** 从可变 marks 引用生成跟随最新受控值的悬浮提示扩展。 */
 export function create_app_editor_text_mark_hover_extension(marks_ref: {
   current: readonly AppTextMark[];
 }): Extension {
@@ -270,6 +285,7 @@ export function create_app_editor_text_mark_hover_extension(marks_ref: {
   ];
 }
 
+/** 生成只包含 CodeMirror 运行色的明暗主题，布局仍由组件 CSS 拥有。 */
 function create_editor_theme(palette: EditorPalette, dark: boolean): Extension {
   return EditorView.theme(
     {
@@ -298,6 +314,7 @@ function create_editor_theme(palette: EditorPalette, dark: boolean): Extension {
   );
 }
 
+/** 按统一 palette 生成 Markdown 语义高亮。 */
 function create_markdown_highlight_extension(palette: EditorPalette): Extension {
   return syntaxHighlighting(
     HighlightStyle.define([
@@ -354,6 +371,7 @@ function create_markdown_highlight_extension(palette: EditorPalette): Extension 
   );
 }
 
+/** 普通模式只返回基础主题，Markdown 模式再叠加语义高亮。 */
 export function resolve_app_editor_theme_extensions(
   resolved_theme: string | undefined,
   mode: AppEditorMode,
@@ -368,15 +386,27 @@ export function resolve_app_editor_theme_extensions(
   return base_theme;
 }
 
+/**
+ * 同步 CodeMirror 的写入保护与 DOM 编辑语义，让 Electron 能区分编辑菜单和只读复制。
+ */
+export function resolve_app_editor_readonly_extensions(read_only: boolean): Extension[] {
+  return [
+    EditorState.readOnly.of(read_only),
+    EditorView.editable.of(!read_only),
+    EditorView.contentAttributes.of(read_only ? { tabindex: "0" } : {}),
+  ];
+}
+
+/** 空白字符扩展集中组合，确保普通编辑器共享同一可视规则。 */
 export const app_editor_whitespace_extension: Extension = [
   highlightSpecialChars(),
   highlightWhitespace(),
   fullwidth_space_highlight_extension,
 ];
 
+/** 仅 Markdown 模式启用语言解析与稳定高亮，纯文本模式不承担额外语法成本。 */
 export function resolve_app_editor_mode_extensions(mode: AppEditorMode): Extension {
   if (mode === "markdown") {
-    // 为什么：提示词编辑器里常见的标题、链接、删除线都依赖 Markdown 语言扩展才能得到稳定高亮
     return markdown({ base: markdownLanguage });
   }
 

@@ -50,6 +50,7 @@ type SliderFieldConfig = {
   step: number;
 };
 
+/** 四个生成参数共用同一渲染与归一流程，差异只保留在字段配置。 */
 const SLIDER_FIELD_CONFIGS: SliderFieldConfig[] = [
   {
     field_name: "top_p",
@@ -89,6 +90,7 @@ const SLIDER_FIELD_CONFIGS: SliderFieldConfig[] = [
   },
 ];
 
+/** 把用户输入收窄为 JSON object；空文本等价于空配置。 */
 function parse_request_json_text(value: string): JsonParseResult {
   const trimmed_value = value.trim();
   if (trimmed_value === "") {
@@ -117,6 +119,7 @@ function parse_request_json_text(value: string): JsonParseResult {
   }
 }
 
+/** 只在非空配置时展示格式化 JSON，避免空对象噪声。 */
 function format_request_json_text(value: Record<string, unknown>): string {
   if (Object.keys(value).length === 0) {
     return "";
@@ -125,6 +128,7 @@ function format_request_json_text(value: Record<string, unknown>): string {
   }
 }
 
+/** 从当前模型构造所有滑块的数值状态。 */
 function create_slider_value_state(
   model: ModelEntrySnapshot | null,
 ): Record<SliderFieldName, number> {
@@ -145,6 +149,7 @@ function create_slider_value_state(
   }
 }
 
+/** 为允许临时无效输入的数字框构造独立文本状态。 */
 function create_slider_text_state(
   model: ModelEntrySnapshot | null,
 ): Record<SliderFieldName, string> {
@@ -158,11 +163,14 @@ function create_slider_text_state(
   };
 }
 
+/** 按字段边界和步长归一用户输入。 */
 function normalize_slider_value(field_config: SliderFieldConfig, raw_value: number): number {
   const clamped_value = Math.min(field_config.max, Math.max(field_config.min, raw_value));
   const step_count = Math.round((clamped_value - field_config.min) / field_config.step);
   return Number((field_config.min + step_count * field_config.step).toFixed(2));
 }
+
+/** 编辑生成参数与 OpenAI compatible 自定义请求字段。 */
 export function ModelAdvancedSettingsDialog(
   props: ModelAdvancedSettingsDialogProps,
 ): JSX.Element | null {
@@ -207,6 +215,25 @@ export function ModelAdvancedSettingsDialog(
   }
 
   const model = props.model;
+  // 关闭自定义字段或项目锁定时仍允许选择复制，但不允许编辑和失焦提交。
+  const headers_read_only = props.readonly || !model.request.extra_headers_custom_enable;
+  const body_read_only = props.readonly || !model.request.extra_body_custom_enable;
+
+  /** 两个 JSON 编辑器共用同一解析、错误和提交语义。 */
+  function commit_request_json(
+    value: string,
+    field: "extra_headers" | "extra_body",
+    set_error: (next_error: boolean) => void,
+  ): void {
+    const parsed_result = parse_request_json_text(value);
+    set_error(!parsed_result.ok);
+    if (!parsed_result.ok) {
+      props.onJsonFormatError();
+      return;
+    }
+
+    void props.onPatch({ request: { [field]: parsed_result.value } });
+  }
 
   return (
     <AppPageDialog
@@ -350,26 +377,19 @@ export function ModelAdvancedSettingsDialog(
                 <Textarea
                   className="model-page__textarea"
                   value={headers_text}
-                  disabled={props.readonly || !model.request.extra_headers_custom_enable}
+                  readOnly={headers_read_only}
                   aria-invalid={headers_error || undefined}
                   placeholder={t("model_page.fields.extra_headers.placeholder")}
                   onChange={(event) => {
                     set_headers_text(event.target.value);
                   }}
-                  onBlur={() => {
-                    const parsed_result = parse_request_json_text(headers_text);
-                    if (parsed_result.ok) {
-                      set_headers_error(false);
-                      void props.onPatch({
-                        request: {
-                          extra_headers: parsed_result.value,
-                        },
-                      });
-                    } else {
-                      set_headers_error(true);
-                      props.onJsonFormatError();
-                    }
-                  }}
+                  onBlur={
+                    headers_read_only
+                      ? undefined
+                      : () => {
+                          commit_request_json(headers_text, "extra_headers", set_headers_error);
+                        }
+                  }
                 />
               </div>
             </CardContent>
@@ -407,26 +427,19 @@ export function ModelAdvancedSettingsDialog(
                 <Textarea
                   className="model-page__textarea"
                   value={body_text}
-                  disabled={props.readonly || !model.request.extra_body_custom_enable}
+                  readOnly={body_read_only}
                   aria-invalid={body_error || undefined}
                   placeholder={t("model_page.fields.extra_body.placeholder")}
                   onChange={(event) => {
                     set_body_text(event.target.value);
                   }}
-                  onBlur={() => {
-                    const parsed_result = parse_request_json_text(body_text);
-                    if (parsed_result.ok) {
-                      set_body_error(false);
-                      void props.onPatch({
-                        request: {
-                          extra_body: parsed_result.value,
-                        },
-                      });
-                    } else {
-                      set_body_error(true);
-                      props.onJsonFormatError();
-                    }
-                  }}
+                  onBlur={
+                    body_read_only
+                      ? undefined
+                      : () => {
+                          commit_request_json(body_text, "extra_body", set_body_error);
+                        }
+                  }
                 />
               </div>
             </CardContent>

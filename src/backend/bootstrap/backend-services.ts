@@ -260,15 +260,12 @@ export class BackendServices {
         fileExportService: translation_export,
       }),
     };
-    this.model = new ModelService(
-      paths,
-      this.app_setting_service,
-      metadata.build_linguagacha_user_agent(),
-      this.logManager,
-    );
+    const user_agent = metadata.build_linguagacha_user_agent();
+    this.model = new ModelService(paths, this.app_setting_service, user_agent, this.logManager);
     this.agent = new AgentService({
       paths,
       settings: this.app_setting_service,
+      userAgent: user_agent,
       sessionState: session_state,
       cache: this.cache_manager,
       qualityRules: quality_rules,

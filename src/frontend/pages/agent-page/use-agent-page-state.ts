@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type {
+  AgentAssistantMessagePart,
   AgentEntry,
   AgentSessionEvent,
   AgentSessionSnapshot,
@@ -177,6 +178,7 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
   return { state, entries, skills };
 }
 
+/** SSE 顶层判别失败时丢弃单帧，重连仍会读取权威 snapshot。 */
 function normalize_agent_event(value: unknown): AgentSessionEvent | null {
   const record = read_json_record(value);
   if (record["type"] === "request_failed") return { type: "request_failed" };
@@ -193,6 +195,7 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
   return null;
 }
 
+/** 单条协议记录必须完整通过所属 kind 的字段校验，否则整条丢弃。 */
 function normalize_entry(value: unknown): AgentEntry[] {
   if (
     !is_json_record(value) ||
@@ -203,6 +206,10 @@ function normalize_entry(value: unknown): AgentEntry[] {
     return [];
   }
   if (value["kind"] === "user_message") {
+    const ended_at = value["endedAt"];
+    if (ended_at !== null && (typeof ended_at !== "number" || !Number.isInteger(ended_at))) {
+      return [];
+    }
     const parts = normalize_agent_user_message_parts(value["parts"]);
     if (parts === null || parts.length === 0) return [];
     return [
@@ -211,15 +218,18 @@ function normalize_entry(value: unknown): AgentEntry[] {
         id: value["id"],
         parts,
         createdAt: value["createdAt"],
+        endedAt: ended_at,
       },
     ];
   }
-  if (value["kind"] === "assistant_message" && typeof value["text"] === "string") {
+  if (value["kind"] === "assistant_message") {
+    const parts = normalize_assistant_message_parts(value["parts"]);
+    if (parts === null) return [];
     return [
       {
         kind: "assistant_message",
         id: value["id"],
-        text: value["text"],
+        parts,
         complete: value["complete"] === true,
         createdAt: value["createdAt"],
       },
@@ -229,6 +239,36 @@ function normalize_entry(value: unknown): AgentEntry[] {
   return [];
 }
 
+/** Assistant parts 去空并合并相邻同类块，维持与后端相同的规范形状。 */
+function normalize_assistant_message_parts(value: unknown): AgentAssistantMessagePart[] | null {
+  if (!Array.isArray(value)) return null;
+  const parts: AgentAssistantMessagePart[] = [];
+  for (const value_part of value) {
+    if (
+      !is_json_record(value_part) ||
+      (value_part["kind"] !== "text" && value_part["kind"] !== "thinking") ||
+      typeof value_part["text"] !== "string"
+    ) {
+      return null;
+    }
+    if (
+      value_part["text"] === "" ||
+      (value_part["kind"] === "thinking" && value_part["text"].trim() === "")
+    ) {
+      continue;
+    }
+    const part: AgentAssistantMessagePart =
+      value_part["kind"] === "text"
+        ? { kind: "text", text: value_part["text"] }
+        : { kind: "thinking", text: value_part["text"] };
+    const previous = parts.at(-1);
+    if (previous?.kind === part.kind) previous.text += part.text;
+    else parts.push(part);
+  }
+  return parts;
+}
+
+/** 工具条目只接纳公开状态和值域，不兼容旧 detail 载荷。 */
 function normalize_tool_entry(value: JsonRecord): AgentToolEntry[] {
   const status_value = value["status"];
   if (
@@ -250,10 +290,12 @@ function normalize_tool_entry(value: JsonRecord): AgentToolEntry[] {
   ];
 }
 
+/** 未知会话状态安全降级为 idle。 */
 function normalize_state(value: unknown): AgentSessionState {
   return value === "running" || value === "complete" ? value : "idle";
 }
 
+/** skill snapshot 只保留能力选择所需的名称与描述。 */
 function normalize_skill(value: unknown): AgentSkillSnapshot[] {
   if (
     !is_json_record(value) ||

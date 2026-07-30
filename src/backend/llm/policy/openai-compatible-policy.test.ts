@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ModelRequestSnapshot } from "./policy-types";
 import {
+  apply_openai_request_overrides,
   build_openai_compatible_payload,
   normalize_chat_messages,
   normalize_openai_compatible_sdk_base_url,
@@ -94,6 +95,65 @@ describe("openai-compatible-policy", () => {
     expect(payload).toMatchObject({
       reasoning_effort: "minimal",
     });
+  });
+
+  it.each([
+    ["OFF", "low"],
+    ["LOW", "low"],
+    ["MEDIUM", "low"],
+    ["HIGH", "high"],
+  ] as const)("Kimi K3 将 %s 挡映射到 reasoning_effort=%s", (thinking_level, effort) => {
+    const payload = build_openai_compatible_payload(
+      create_snapshot({ model_id: "kimi-k3", thinking_level }),
+      [{ role: "user", content: "こんにちは" }],
+    );
+
+    expect(payload).toMatchObject({ reasoning_effort: effort });
+    expect(payload).not.toHaveProperty("thinking");
+  });
+
+  it("共享覆盖规则清除 Pi 思考字段并允许 extra_body 最终覆盖", () => {
+    const source = {
+      messages: [{ role: "user", content: "こんにちは" }],
+      reasoning_effort: "medium",
+      reasoning: { effort: "medium" },
+      thinking: { type: "enabled" },
+      enable_thinking: true,
+      chat_template_kwargs: { enable_thinking: true },
+    };
+
+    const payload = apply_openai_request_overrides(
+      source,
+      create_snapshot({
+        model_id: "kimi-k3",
+        thinking_level: "MEDIUM",
+        extra_body: { reasoning_effort: "high", custom_flag: true },
+      }),
+    );
+
+    expect(payload).toMatchObject({
+      messages: source.messages,
+      reasoning_effort: "high",
+      custom_flag: true,
+    });
+    expect(payload).not.toHaveProperty("reasoning");
+    expect(payload).not.toHaveProperty("thinking");
+    expect(payload).not.toHaveProperty("enable_thinking");
+    expect(payload).not.toHaveProperty("chat_template_kwargs");
+    expect(source).toHaveProperty("reasoning_effort", "medium");
+  });
+
+  it.each([
+    ["OFF", "disabled"],
+    ["HIGH", "enabled"],
+  ] as const)("Kimi K2.6 保持 %s 挡的 thinking.type=%s", (thinking_level, type) => {
+    const payload = build_openai_compatible_payload(
+      create_snapshot({ model_id: "kimi-k2.6", thinking_level }),
+      [{ role: "user", content: "こんにちは" }],
+    );
+
+    expect(payload).toMatchObject({ thinking: { type } });
+    expect(payload).not.toHaveProperty("reasoning_effort");
   });
 
   it("简单族匹配覆盖同名相邻模型", () => {

@@ -31,7 +31,14 @@ const skill_loader = vi.hoisted(() =>
 const system_prompt_loader = vi.hoisted(() => vi.fn(() => "基础系统指令。"));
 
 const fake_agent_state = vi.hoisted(() => ({
-  mode: "complete" as "complete" | "write" | "failure" | "pending" | "tools",
+  mode: "complete" as
+    | "complete"
+    | "write"
+    | "failure"
+    | "pending"
+    | "thinking"
+    | "tool_only"
+    | "tools",
   abort_count: 0,
   id: 0,
   system_prompts: [] as string[],
@@ -89,6 +96,10 @@ vi.mock("@earendil-works/pi-agent-core", async (import_original) => {
         });
       } else if (fake_agent_state.mode === "tools") {
         this.emit_tool_round();
+      } else if (fake_agent_state.mode === "thinking") {
+        this.emit_thinking_assistant();
+      } else if (fake_agent_state.mode === "tool_only") {
+        this.emit_tool_only_round();
       } else {
         this.emit_assistant("已完成");
       }
@@ -113,6 +124,47 @@ vi.mock("@earendil-works/pi-agent-core", async (import_original) => {
         assistantMessageEvent: { type: "text_delta", delta: text, partial: message },
       });
       this.listener?.({ type: "message_end", message });
+    }
+
+    /** 驱动 thinking 增量、相邻块合并、脱敏块过滤和最终正文顺序。 */
+    private emit_thinking_assistant(): void {
+      const started = this.create_assistant_message([]);
+      const thinking = this.create_assistant_message([
+        { type: "thinking", thinking: "检查术语\n", thinkingSignature: "private-visible" },
+      ]);
+      const complete = this.create_assistant_message([
+        { type: "thinking", thinking: "检查术语\n", thinkingSignature: "private-visible" },
+        { type: "thinking", thinking: "逐项核对" },
+        {
+          type: "thinking",
+          thinking: "",
+          thinkingSignature: "private-redacted",
+          redacted: true,
+        },
+        { type: "text", text: "已完成" },
+      ]);
+      this.listener?.({ type: "message_start", message: started });
+      this.listener?.({
+        type: "message_update",
+        message: thinking,
+        assistantMessageEvent: {
+          type: "thinking_delta",
+          contentIndex: 0,
+          delta: "检查术语\n",
+          partial: thinking,
+        },
+      });
+      this.listener?.({
+        type: "message_update",
+        message: complete,
+        assistantMessageEvent: {
+          type: "text_delta",
+          contentIndex: 3,
+          delta: "已完成",
+          partial: complete,
+        },
+      });
+      this.listener?.({ type: "message_end", message: complete });
     }
 
     private create_assistant_message(content: JsonRecord[]): JsonRecord {
@@ -175,6 +227,33 @@ vi.mock("@earendil-works/pi-agent-core", async (import_original) => {
       });
       this.emit_assistant("查询完成");
     }
+
+    /** 驱动只有 toolCall 的 assistant 帧，验证公开时间线不会产生空消息。 */
+    private emit_tool_only_round(): void {
+      const message = this.create_assistant_message([
+        {
+          type: "toolCall",
+          id: "tool-only",
+          name: "search_corpus",
+          arguments: { patterns: ["Alice"] },
+        },
+      ]);
+      this.listener?.({ type: "message_start", message });
+      this.listener?.({ type: "message_end", message });
+      this.listener?.({
+        type: "tool_execution_start",
+        toolCallId: "tool-only",
+        toolName: "search_corpus",
+        args: { patterns: ["Alice"] },
+      });
+      this.listener?.({
+        type: "tool_execution_end",
+        toolCallId: "tool-only",
+        toolName: "search_corpus",
+        result: { content: [{ type: "text", text: '{"results":[]}' }], details: {} },
+        isError: false,
+      });
+    }
   }
 
   return {
@@ -202,6 +281,7 @@ describe("AgentService", () => {
   });
 
   afterEach(async () => {
+    vi.useRealTimers();
     await Promise.all(services.splice(0).map(async (service) => await service.dispose()));
   });
 
@@ -263,20 +343,92 @@ describe("AgentService", () => {
   });
 
   it("模型回合只经历 running 到 complete", async () => {
-    const { service } = await create_service();
+    const { service, publish } = await create_service();
 
     service.send_message({ parts: [{ kind: "text", text: "开始" }] });
     expect(service.get_snapshot().state).toBe("running");
+    expect(service.get_snapshot().entries[0]).toMatchObject({
+      kind: "user_message",
+      endedAt: null,
+    });
     await wait_for_complete(service);
 
     expect(fake_agent_state.system_prompts.at(-1)).toBe("基础系统指令。");
     expect(service.get_snapshot()).toMatchObject({
       state: "complete",
       entries: [
-        { kind: "user_message", parts: [{ kind: "text", text: "开始" }] },
-        { kind: "assistant_message", text: "已完成", complete: true },
+        {
+          kind: "user_message",
+          parts: [{ kind: "text", text: "开始" }],
+          endedAt: expect.any(Number),
+        },
+        {
+          kind: "assistant_message",
+          parts: [{ kind: "text", text: "已完成" }],
+          complete: true,
+        },
       ],
     });
+    const round_end_index = publish.mock.calls.findIndex(([, event]) => {
+      const entry = event["entry"];
+      return (
+        event["type"] === "entry_upsert" &&
+        typeof entry === "object" &&
+        entry !== null &&
+        !Array.isArray(entry) &&
+        (entry as JsonRecord)["kind"] === "user_message" &&
+        typeof (entry as JsonRecord)["endedAt"] === "number"
+      );
+    });
+    const complete_index = publish.mock.calls.findIndex(
+      ([, event]) => event["type"] === "session_state" && event["state"] === "complete",
+    );
+    expect(round_end_index).toBeGreaterThan(-1);
+    expect(complete_index).toBeGreaterThan(round_end_index);
+  });
+
+  it("按上游顺序流式公开思考与正文，并隔离脱敏内容和签名", async () => {
+    const { service, publish } = await create_service();
+    fake_agent_state.mode = "thinking";
+
+    service.send_message({ parts: [{ kind: "text", text: "开始" }] });
+    await wait_for_complete(service);
+    const snapshot = service.get_snapshot();
+
+    expect(snapshot.entries.at(-1)).toMatchObject({
+      kind: "assistant_message",
+      parts: [
+        { kind: "thinking", text: "检查术语\n逐项核对" },
+        { kind: "text", text: "已完成" },
+      ],
+      complete: true,
+    });
+    expect(publish).toHaveBeenCalledWith(
+      "agent.session_event",
+      expect.objectContaining({
+        type: "entry_upsert",
+        entry: expect.objectContaining({
+          kind: "assistant_message",
+          parts: [{ kind: "thinking", text: "检查术语\n" }],
+          complete: false,
+        }),
+      }),
+    );
+    expect(JSON.stringify(snapshot)).not.toContain("private-visible");
+    expect(JSON.stringify(snapshot)).not.toContain("private-redacted");
+  });
+
+  it("纯工具调用消息不产生空 assistant 条目", async () => {
+    const { service } = await create_service();
+    fake_agent_state.mode = "tool_only";
+
+    service.send_message({ parts: [{ kind: "text", text: "查询" }] });
+    await wait_for_complete(service);
+
+    expect(service.get_snapshot().entries.map((entry) => entry.kind)).toEqual([
+      "user_message",
+      "tool_call",
+    ]);
   });
 
   it("模型回合按 user、assistant、tool_call、assistant 的真实时序追加条目", async () => {
@@ -306,11 +458,12 @@ describe("AgentService", () => {
         id: "message-1",
         parts: [{ kind: "text", text: "查询" }],
         createdAt: expect.any(Number),
+        endedAt: expect.any(Number),
       },
       {
         kind: "assistant_message",
         id: "message-2",
-        text: "准备查询",
+        parts: [{ kind: "text", text: "准备查询" }],
         createdAt: expect.any(Number),
         complete: true,
       },
@@ -333,7 +486,7 @@ describe("AgentService", () => {
       {
         kind: "assistant_message",
         id: "message-3",
-        text: "查询完成",
+        parts: [{ kind: "text", text: "查询完成" }],
         createdAt: expect.any(Number),
         complete: true,
       },
@@ -368,7 +521,13 @@ describe("AgentService", () => {
     );
     expect(service.get_snapshot()).toMatchObject({
       state: "complete",
-      entries: [{ kind: "user_message", parts: [{ kind: "text", text: "开始" }] }],
+      entries: [
+        {
+          kind: "user_message",
+          parts: [{ kind: "text", text: "开始" }],
+          endedAt: expect.any(Number),
+        },
+      ],
     });
   });
 
@@ -397,11 +556,17 @@ describe("AgentService", () => {
   });
 
   it("停止会中断当前回合并回到 idle", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
     const { service } = await create_service();
     fake_agent_state.mode = "pending";
     service.send_message({ parts: [{ kind: "text", text: "开始" }] });
 
-    expect(service.stop().state).toBe("idle");
+    vi.setSystemTime(13_500);
+    expect(service.stop()).toMatchObject({
+      state: "idle",
+      entries: [{ kind: "user_message", createdAt: 1_000, endedAt: 13_500 }],
+    });
     expect(fake_agent_state.abort_count).toBe(1);
   });
 
@@ -517,6 +682,7 @@ describe("AgentService", () => {
           "E:/Project/LinguaGacha/resource/agent/system_prompt.md",
       },
       settings,
+      userAgent: "LinguaGacha/Test",
       sessionState: session_state,
       cache,
       qualityRules: quality_rules,

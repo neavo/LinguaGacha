@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { ModelRequestSnapshot } from "./policy-types";
-import { build_sakura_payload, normalize_sakura_sdk_base_url } from "./sakura-policy";
+import {
+  apply_sakura_request_overrides,
+  build_sakura_payload,
+  normalize_sakura_sdk_base_url,
+} from "./sakura-policy";
 
 describe("sakura-policy", () => {
   it("SakuraLLM baseUrl 去掉 chat completions 路径并保留接口根路径", () => {
@@ -46,6 +50,21 @@ describe("sakura-policy", () => {
     expect(() =>
       build_sakura_payload(create_snapshot(), [{ role: "user", content: "   " }]),
     ).toThrow("request.validation_failed");
+  });
+
+  it("共享覆盖规则保留 Pi payload 并追加 extra_body", () => {
+    const source = {
+      messages: [{ role: "user", content: "こんにちは" }],
+      tools: [{ type: "function", function: { name: "search" } }],
+    };
+
+    const payload = apply_sakura_request_overrides(
+      source,
+      create_snapshot({ extra_body: { custom_flag: true } }),
+    );
+
+    expect(payload).toEqual({ ...source, custom_flag: true });
+    expect(source).not.toHaveProperty("custom_flag");
   });
 });
 

@@ -1,0 +1,81 @@
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { ModelAdvancedSettingsDialog } from "./model-advanced-settings-dialog";
+import { create_model_snapshot } from "./model-dialog-test-fixture";
+
+vi.mock("@frontend/app/locale/locale-provider", () => ({
+  useI18n: () => ({ locale: "zh-CN", t: (key: string) => key }),
+}));
+
+/** 通过原生 value setter 触发 React 受控 textarea 的 input 事件。 */
+function change_textarea_value(textarea: HTMLTextAreaElement, value: string): void {
+  const value_descriptor = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value");
+  value_descriptor?.set?.call(textarea, value);
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+describe("ModelAdvancedSettingsDialog", () => {
+  let container: HTMLDivElement | null = null;
+  let root: Root | null = null;
+
+  afterEach(async () => {
+    if (root !== null) await act(async () => root?.unmount());
+    container?.remove();
+    container = null;
+    root = null;
+  });
+
+  it("自定义 JSON 关闭时只读且不提交，启用后在失焦时提交", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    const on_patch = vi.fn(async () => {});
+    const base_model = create_model_snapshot();
+    const render_dialog = async (custom_enabled: boolean): Promise<void> => {
+      await act(async () => {
+        root?.render(
+          <ModelAdvancedSettingsDialog
+            open
+            model={create_model_snapshot({
+              request: {
+                ...base_model.request,
+                extra_headers_custom_enable: custom_enabled,
+                extra_body_custom_enable: custom_enabled,
+              },
+            })}
+            readonly={false}
+            onPatch={on_patch}
+            onJsonFormatError={() => {}}
+            onClose={() => {}}
+          />,
+        );
+      });
+    };
+
+    await render_dialog(false);
+    const readonly_json_fields = document.querySelectorAll("textarea[readonly]");
+    expect(readonly_json_fields).toHaveLength(2);
+    for (const field of readonly_json_fields) {
+      expect(field).toHaveProperty("disabled", false);
+      field.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    }
+    expect(on_patch).not.toHaveBeenCalled();
+
+    await render_dialog(true);
+    const headers = document.querySelector(
+      'textarea[placeholder="model_page.fields.extra_headers.placeholder"]',
+    );
+    if (!(headers instanceof HTMLTextAreaElement)) {
+      throw new Error("自定义请求头输入框未挂载。");
+    }
+    expect(headers.readOnly).toBe(false);
+    await act(async () => change_textarea_value(headers, '{"X-Test":"ok"}'));
+    await act(async () => headers.dispatchEvent(new FocusEvent("focusout", { bubbles: true })));
+
+    expect(on_patch).toHaveBeenCalledWith({
+      request: { extra_headers: { "X-Test": "ok" } },
+    });
+  });
+});

@@ -17,7 +17,10 @@ import type { AgentSkillSnapshot, AgentUserMessagePart } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { cn } from "@frontend/shadcn/classnames";
 import { AppButton } from "@frontend/widgets/app-button";
-import { resolve_app_editor_theme_extensions } from "@frontend/widgets/app-editor/app-editor-code-mirror";
+import {
+  resolve_app_editor_readonly_extensions,
+  resolve_app_editor_theme_extensions,
+} from "@frontend/widgets/app-editor/app-editor-code-mirror";
 
 /** 光标前尚未确认的 @ 查询范围；确认后会被替换为 Decoration。 */
 type SkillQuery = {
@@ -137,6 +140,8 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     !props.running &&
     !submitting &&
     snapshot.parts.some((part) => part.kind === "skill" || part.text.trim() !== "");
+  // 编辑器只创建一次，首次运行态必须在首帧扩展中生效，不能等待后续 effect。
+  const initial_read_only_ref = useRef(read_only);
 
   menu_open_ref.current = menu_open;
   matching_skills_ref.current = matching_skills;
@@ -163,7 +168,9 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       state: EditorState.create({
         extensions: [
           theme_compartment.of(resolve_app_editor_theme_extensions(resolvedTheme, "plain")),
-          read_only_compartment.of(EditorState.readOnly.of(false)),
+          read_only_compartment.of(
+            resolve_app_editor_readonly_extensions(initial_read_only_ref.current),
+          ),
           placeholder_compartment.of(placeholder(input_text)),
           skill_token_extension,
           history(),
@@ -231,7 +238,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     const view = view_ref.current;
     if (view === null) return;
     view.dispatch({
-      effects: read_only_compartment.reconfigure(EditorState.readOnly.of(read_only)),
+      effects: read_only_compartment.reconfigure(resolve_app_editor_readonly_extensions(read_only)),
     });
   }, [read_only]);
 
@@ -356,6 +363,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     </form>
   );
 
+  /** 菜单打开时循环选择候选；关闭时把方向键交还 CodeMirror。 */
   function navigate_menu(delta: 1 | -1): boolean {
     if (!menu_open_ref.current || matching_skills_ref.current.length === 0) return false;
     set_menu_index(
@@ -412,10 +420,12 @@ function find_skill_query(state: EditorState): SkillQuery | null {
   return { from, to, text: match[2] ?? "" };
 }
 
+/** 创建不可拆分的 skill DOM 标记，名称保存在 decoration spec 中。 */
 function create_skill_token_decoration(name: string): Decoration {
   return Decoration.mark({ class: "agent-skill-token", skill_name: name });
 }
 
+/** 从 decoration spec 安全读取 skill 名，拒绝非字符串的外部值。 */
 function read_skill_token_name(decoration: Decoration): string | null {
   const name = (decoration.spec as { skill_name?: unknown }).skill_name;
   return typeof name === "string" ? name : null;

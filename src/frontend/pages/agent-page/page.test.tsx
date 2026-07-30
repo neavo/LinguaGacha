@@ -2,13 +2,12 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { AgentToolEntry } from "@shared/agent";
+import type { AgentAssistantMessagePart, AgentToolEntry } from "@shared/agent";
 import type { useAgentPageState as UseAgentPageStateFunction } from "./use-agent-page-state";
 
 type AgentPageState = ReturnType<typeof UseAgentPageStateFunction>;
 
 const page_state = vi.hoisted(() => ({ current: {} as AgentPageState }));
-const desktop_api_mocks = vi.hoisted(() => ({ open_external_url: vi.fn() }));
 
 vi.mock("./use-agent-page-state", () => ({ useAgentPageState: () => page_state.current }));
 vi.mock("@frontend/app/locale/locale-provider", () => ({
@@ -17,7 +16,6 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       params === undefined ? key : `${key}:${Object.values(params).join(",")}`,
   }),
 }));
-vi.mock("@frontend/app/desktop/desktop-api", () => desktop_api_mocks);
 vi.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
 
 import { AgentPage } from "./page";
@@ -28,10 +26,10 @@ describe("AgentPage", () => {
 
   afterEach(async () => {
     if (root !== null) await act(async () => root?.unmount());
+    vi.useRealTimers();
     container?.remove();
     root = null;
     container = null;
-    desktop_api_mocks.open_external_url.mockReset();
   });
 
   async function render_page(overrides: Partial<AgentPageState> = {}): Promise<HTMLDivElement> {
@@ -51,17 +49,6 @@ describe("AgentPage", () => {
 
     expect(empty?.querySelector("h2")).toBeNull();
     expect(empty?.querySelectorAll("p")).toHaveLength(1);
-  });
-
-  it("把 Markdown 链接交给宿主外链入口", async () => {
-    const view = await render_page({
-      entries: [assistant_entry("assistant-1", "[证据](https://example.com)", true, 1)],
-    });
-    const link = view.querySelector<HTMLAnchorElement>('a[href="https://example.com"]');
-    if (link === null) throw new Error("缺少 Markdown 链接");
-
-    await act(async () => link.click());
-    expect(desktop_api_mocks.open_external_url).toHaveBeenCalledWith("https://example.com");
   });
 
   it("用户离开消息底部后不被流式输出抢回滚动位置", async () => {
@@ -91,6 +78,97 @@ describe("AgentPage", () => {
     expect(view.querySelector(".agent-message__cursor")).not.toBeNull();
   });
 
+  it("运行中逐秒更新长耗时，结束后冻结且不动态播报", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(45_295_000);
+    const view = await render_page({
+      state: "running",
+      entries: [user_entry("user-1", [{ kind: "text", text: "开始" }], 0, null)],
+    });
+    const timer = view.querySelector<HTMLElement>('[role="timer"]');
+    if (timer === null) throw new Error("缺少轮次计时器");
+
+    expect(timer.textContent).toBe("agent_page.round.running:12h 34m 55s");
+    expect(timer.getAttribute("aria-live")).toBe("off");
+    await act(async () => vi.advanceTimersByTime(1_000));
+    expect(timer.textContent).toBe("agent_page.round.running:12h 34m 56s");
+
+    await render_page({
+      state: "complete",
+      entries: [user_entry("user-1", [{ kind: "text", text: "开始" }], 0, 45_296_000)],
+    });
+    expect(timer.textContent).toBe("agent_page.round.ended:12h 34m 56s");
+    await act(async () => vi.advanceTimersByTime(3_600_000));
+    expect(timer.textContent).toBe("agent_page.round.ended:12h 34m 56s");
+  });
+
+  it("按秒、分钟分档格式化已结束轮次", async () => {
+    const view = await render_page({
+      state: "complete",
+      entries: [
+        user_entry("user-1", [{ kind: "text", text: "短任务" }], 0, 8_000),
+        user_entry("user-2", [{ kind: "text", text: "长任务" }], 10_000, 738_000),
+      ],
+    });
+
+    expect(
+      [...view.querySelectorAll<HTMLElement>('[role="timer"]')].map((timer) => timer.textContent),
+    ).toEqual(["agent_page.round.ended:8s", "agent_page.round.ended:12m 08s"]);
+  });
+
+  it("默认折叠流式思考，展开状态在正文到达后保持", async () => {
+    const view = await render_page({
+      state: "running",
+      entries: [
+        assistant_parts_entry(
+          "assistant-1",
+          [{ kind: "thinking", text: "检查术语\n逐项核对" }],
+          false,
+          1,
+        ),
+      ],
+    });
+    const thinking = view.querySelector<HTMLDetailsElement>(".agent-detail-entry--thinking");
+    if (thinking === null) throw new Error("缺少思考块");
+
+    expect(thinking.open).toBe(false);
+    expect(thinking.querySelector("summary")?.textContent).toBe("agent_page.thinking");
+    expect(thinking.querySelector("pre")?.textContent).toBe("检查术语\n逐项核对");
+    expect(thinking.querySelector("pre")?.tabIndex).toBe(0);
+    expect(thinking.querySelector(".agent-detail-entry__status--running")).not.toBeNull();
+    await act(async () => thinking.querySelector("summary")?.click());
+
+    await render_page({
+      state: "running",
+      entries: [
+        assistant_parts_entry(
+          "assistant-1",
+          [
+            { kind: "thinking", text: "检查术语\n逐项核对完成" },
+            { kind: "text", text: "**结论**" },
+          ],
+          false,
+          1,
+        ),
+      ],
+    });
+    const updated = view.querySelector<HTMLDetailsElement>(".agent-detail-entry--thinking");
+    expect(updated?.open).toBe(true);
+    expect(updated?.querySelector("pre")?.textContent).toBe("检查术语\n逐项核对完成");
+    expect(updated?.querySelector(".agent-detail-entry__status--success")).not.toBeNull();
+    expect(view.querySelector("strong")?.textContent).toBe("结论");
+    expect(view.querySelector(".agent-message__cursor")).not.toBeNull();
+  });
+
+  it("空 assistant parts 不产生思考或正文块", async () => {
+    const view = await render_page({
+      entries: [assistant_parts_entry("assistant-1", [], true, 1)],
+    });
+
+    expect(view.querySelector(".agent-detail-entry--thinking")).toBeNull();
+    expect(view.querySelector(".agent-message--assistant")).toBeNull();
+  });
+
   it("按后端顺序交错渲染独立工具记录，并默认折叠完整输出", async () => {
     const view = await render_page({
       state: "complete",
@@ -103,6 +181,7 @@ describe("AgentPage", () => {
             { kind: "text", text: "\n查询" },
           ],
           0,
+          2_000,
         ),
         assistant_entry("assistant-1", "准备查询", true, 1000),
         tool_entry(
@@ -126,12 +205,12 @@ describe("AgentPage", () => {
     expect(visible_text.indexOf("read_skill_reference")).toBeLessThan(
       visible_text.indexOf("查询完成"),
     );
-    const tools = view.querySelectorAll<HTMLDetailsElement>(".agent-tool-entry");
+    const tools = view.querySelectorAll<HTMLDetailsElement>(".agent-detail-entry--tool");
     expect(tools).toHaveLength(2);
     expect([...tools].every((tool) => !tool.open)).toBe(true);
     expect(tools[0]?.querySelector("summary")?.textContent).toBe("search_corpus");
     expect(tools[1]?.querySelector("summary")?.textContent).toBe("read_skill_reference");
-    const success_light = tools[0]?.querySelector(".agent-tool-entry__status--success");
+    const success_light = tools[0]?.querySelector(".agent-detail-entry__status--success");
     expect(success_light).toBe(tools[0]?.querySelector("summary")?.lastElementChild);
     expect(tools[0]?.querySelector("summary")?.textContent).not.toContain("Alice");
     await act(async () => tools[0]?.querySelector("summary")?.click());
@@ -159,13 +238,13 @@ describe("AgentPage", () => {
         tool_entry("tool-2", "missing_tool", "error", "工具不存在", 2),
       ],
     });
-    const tools = view.querySelectorAll<HTMLDetailsElement>(".agent-tool-entry");
+    const tools = view.querySelectorAll<HTMLDetailsElement>(".agent-detail-entry--tool");
     expect(tools[0]?.querySelector("summary")?.textContent).toBe("custom_reader");
-    const running_light = tools[0]?.querySelector(".agent-tool-entry__status--running");
+    const running_light = tools[0]?.querySelector(".agent-detail-entry__status--running");
     expect(running_light).toBe(tools[0]?.querySelector("summary")?.lastElementChild);
     expect(tools[0]?.querySelector("pre")).toBeNull();
     expect(tools[1]?.querySelector("summary")?.textContent).toBe("missing_tool");
-    const error_light = tools[1]?.querySelector(".agent-tool-entry__status--error");
+    const error_light = tools[1]?.querySelector(".agent-detail-entry__status--error");
     expect(error_light).toBe(tools[1]?.querySelector("summary")?.lastElementChild);
     expect(tools[1]?.querySelector("pre")?.textContent).toBe("工具不存在");
   });
@@ -200,12 +279,22 @@ function user_entry(
   id: string,
   parts: Array<{ kind: "text"; text: string } | { kind: "skill"; name: string }>,
   createdAt: number,
+  endedAt: number | null,
 ) {
-  return { kind: "user_message" as const, id, parts, createdAt };
+  return { kind: "user_message" as const, id, parts, createdAt, endedAt };
 }
 
 function assistant_entry(id: string, text: string, complete: boolean, createdAt: number) {
-  return { kind: "assistant_message" as const, id, text, complete, createdAt };
+  return assistant_parts_entry(id, [{ kind: "text", text }], complete, createdAt);
+}
+
+function assistant_parts_entry(
+  id: string,
+  parts: AgentAssistantMessagePart[],
+  complete: boolean,
+  createdAt: number,
+) {
+  return { kind: "assistant_message" as const, id, parts, complete, createdAt };
 }
 
 function tool_entry(

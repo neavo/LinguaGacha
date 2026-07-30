@@ -13,6 +13,10 @@ export type AgentSkillSnapshot = JsonRecord & {
 export type AgentUserMessagePart = JsonRecord &
   ({ kind: "text"; text: string } | { kind: "skill"; name: string });
 
+/** Assistant 可见正文保持供应商确认的 text / thinking 顺序，不公开思考签名。 */
+export type AgentAssistantMessagePart = JsonRecord &
+  ({ kind: "text"; text: string } | { kind: "thinking"; text: string });
+
 /** 单会话终态保留 complete，和用户主动 stop 后的 idle 区分。 */
 export type AgentSessionState = "idle" | "running" | "complete";
 
@@ -34,11 +38,12 @@ export type AgentEntry = JsonRecord &
         id: string;
         parts: AgentUserMessagePart[];
         createdAt: number;
+        endedAt: number | null; // null 表示当前轮仍在运行，终止时由 AgentService 原位封口
       }
     | {
         kind: "assistant_message";
         id: string;
-        text: string;
+        parts: AgentAssistantMessagePart[];
         complete: boolean;
         createdAt: number;
       }

@@ -11,6 +11,7 @@ import {
   AGENT_SESSION_EVENT_TOPIC,
   format_agent_user_message_text,
   normalize_agent_user_message_parts,
+  type AgentAssistantMessagePart,
   type AgentEntry,
   type AgentSessionEvent,
   type AgentSessionSnapshot,
@@ -59,6 +60,7 @@ type AgentServicePaths = Pick<
 type AgentServiceOptions = {
   paths: AgentServicePaths;
   settings: Pick<AppSettingService, "read_setting">;
+  userAgent: string;
   sessionState: ProjectSessionState;
   cache: AgentServiceCache;
   qualityRules: Pick<QualityRuleService, "read" | "save_rule_entries">;
@@ -72,6 +74,7 @@ type AgentServiceOptions = {
 export class AgentService {
   private readonly paths: AgentServiceOptions["paths"];
   private readonly settings: AgentServiceOptions["settings"];
+  private readonly user_agent: string;
   private readonly session_state: ProjectSessionState;
   private readonly cache: AgentServiceOptions["cache"];
   private readonly quality_rules: AgentServiceOptions["qualityRules"];
@@ -86,9 +89,11 @@ export class AgentService {
   private own_write = false; // 质量写入口同步发布自身事件时，只推进 binding 而不中断当前模型回合
   private disposed = false;
 
+  /** 捕获组合根依赖，并让工程会话切换直接失效当前 Agent 运行时。 */
   public constructor(options: AgentServiceOptions) {
     this.paths = options.paths;
     this.settings = options.settings;
+    this.user_agent = options.userAgent;
     this.session_state = options.sessionState;
     this.cache = options.cache;
     this.quality_rules = options.qualityRules;
@@ -162,6 +167,7 @@ export class AgentService {
       id: uuidv7(),
       parts,
       createdAt: Date.now(),
+      endedAt: null,
     });
     this.set_state("running");
     void this.run_prompt(runtime, build_agent_prompt(parts, selected_skills));
@@ -174,6 +180,7 @@ export class AgentService {
   public stop(): AgentSessionSnapshot {
     this.runtime?.agent.abort();
     this.own_write = false;
+    this.end_current_round();
     this.set_state("idle");
     return this.get_snapshot();
   }
@@ -224,7 +231,7 @@ export class AgentService {
    * 创建单个 pi Agent，并把领域工具和事件订阅收口在同一生命周期对象中。
    */
   private create_runtime(binding: AgentBinding, system_prompt: string): AgentRuntime {
-    const resolved_model = resolve_agent_model(this.settings.read_setting());
+    const resolved_model = resolve_agent_model(this.settings.read_setting(), this.user_agent);
     const runtime = {} as AgentRuntime;
     const agent = new Agent({
       initialState: {
@@ -269,6 +276,7 @@ export class AgentService {
       }
     } finally {
       if (this.runtime === runtime && this.state !== "idle") {
+        this.end_current_round();
         this.set_state("complete");
       }
     }
@@ -278,24 +286,16 @@ export class AgentService {
    * 将第三方 AgentEvent 收窄为按真实事件顺序追加的公开时间线。
    */
   private handle_agent_event(event: AgentEvent): void {
-    if (event.type === "message_start" && event.message.role === "assistant") {
-      this.upsert_entry({
-        kind: "assistant_message",
-        id: uuidv7(),
-        text: "",
-        complete: false,
-        createdAt: event.message.timestamp,
-      });
-      return;
-    }
-    if (event.type === "message_update" && event.assistantMessageEvent.type === "text_delta") {
-      const delta = event.assistantMessageEvent.delta;
-      if (delta === "") return;
-      this.append_assistant_delta(delta);
+    if (
+      event.type === "message_update" &&
+      (event.assistantMessageEvent.type === "text_delta" ||
+        event.assistantMessageEvent.type === "thinking_delta")
+    ) {
+      this.upsert_assistant_message(event.assistantMessageEvent.partial, false);
       return;
     }
     if (event.type === "message_end" && event.message.role === "assistant") {
-      this.complete_assistant_message(event.message);
+      this.upsert_assistant_message(event.message, true);
       return;
     }
     if (event.type === "tool_execution_start") {
@@ -324,49 +324,30 @@ export class AgentService {
     }
   }
 
-  /** 追加连续文本并重新发布完整条目，renderer 只需按 id 覆盖。 */
-  private append_assistant_delta(delta: string): void {
+  /** 以 Pi 的完整 partial / final 消息校正公开 parts，同一模型消息始终原位覆盖。 */
+  private upsert_assistant_message(message: AssistantMessage, complete: boolean): void {
+    const parts = project_assistant_message_parts(message);
     const existing = this.find_open_assistant_entry();
     if (existing === undefined) {
+      if (parts.length === 0) return;
       this.upsert_entry({
         kind: "assistant_message",
         id: uuidv7(),
-        text: delta,
-        createdAt: Date.now(),
-        complete: false,
+        parts,
+        createdAt: message.timestamp,
+        complete,
       });
     } else {
-      this.upsert_entry({ ...existing, text: existing.text + delta });
+      this.upsert_entry({ ...existing, parts, complete });
     }
   }
 
-  /** 以供应商终帧校正累计正文并结束当前 assistant 条目。 */
-  private complete_assistant_message(message: AssistantMessage): void {
-    const text = contentText(message.content, "");
-    const existing = this.find_open_assistant_entry();
-    if (existing === undefined) {
-      // 纯 toolCall assistant 仍需占住真实事件位置；无文本、无工具的空帧才可丢弃。
-      if (text === "" && !message.content.some((content) => content.type === "toolCall")) return;
-      this.upsert_entry({
-        kind: "assistant_message",
-        id: uuidv7(),
-        text,
-        createdAt: message.timestamp,
-        complete: true,
-      });
-      return;
-    }
-    this.upsert_entry({
-      ...existing,
-      text: text === "" ? existing.text : text,
-      complete: true,
-    });
-  }
-
+  /** 自写窗口内的 quality change 只推进 binding，不能把发起写入的回合清空。 */
   private begin_write(): void {
     this.own_write = true;
   }
 
+  /** 工具写入结束后立即恢复外部 quality change 的失效语义。 */
   private end_write(): void {
     this.own_write = false;
   }
@@ -400,12 +381,23 @@ export class AgentService {
     );
   }
 
+  /** 轮次由 user 条目拥有；所有终止路径在状态切换前通过同一时间戳封口。 */
+  private end_current_round(): void {
+    const user = this.entries.findLast(
+      (entry): entry is Extract<AgentEntry, { kind: "user_message" }> =>
+        entry.kind === "user_message" && entry.endedAt === null,
+    );
+    if (user !== undefined) this.upsert_entry({ ...user, endedAt: Date.now() });
+  }
+
+  /** 状态未变化时不发布重复 SSE。 */
   private set_state(state: AgentSessionState): void {
     if (this.state === state) return;
     this.state = state;
     this.publish_event({ type: "session_state", state });
   }
 
+  /** AgentService 的所有增量统一复用单一公开 topic。 */
   private publish_event(event: AgentSessionEvent): void {
     this.publish(AGENT_SESSION_EVENT_TOPIC, event);
   }
@@ -437,6 +429,7 @@ export class AgentService {
     };
   }
 
+  /** 资源加载是发送消息的硬前置，不能用空 prompt 降级启动。 */
   private require_system_prompt(): string {
     if (this.system_prompt === null) {
       throw new AppErrors.InternalInvariantError({
@@ -446,6 +439,7 @@ export class AgentService {
     return this.system_prompt;
   }
 
+  /** dispose 后的命令必须失败，避免重新创建已脱离订阅的运行时。 */
   private assert_not_disposed(): void {
     if (this.disposed) {
       throw new AppErrors.RuntimeDisposedError();
@@ -466,6 +460,25 @@ function build_agent_prompt(
   return blocks.join("\n\n");
 }
 
+/** 将 Pi 内容投影成唯一公开形状；相邻同类块合并，脱敏思考和连续性元数据不外泄。 */
+function project_assistant_message_parts(message: AssistantMessage): AgentAssistantMessagePart[] {
+  const parts: AgentAssistantMessagePart[] = [];
+  for (const content of message.content) {
+    const part =
+      content.type === "text" && content.text !== ""
+        ? ({ kind: "text", text: content.text } as const)
+        : content.type === "thinking" && !content.redacted && content.thinking.trim() !== ""
+          ? ({ kind: "thinking", text: content.thinking } as const)
+          : null;
+    if (part === null) continue;
+    const previous = parts.at(-1);
+    if (previous?.kind === part.kind) previous.text += part.text;
+    else parts.push(part);
+  }
+  return parts;
+}
+
+/** 工程路径、世代和 quality revision 任一变化都会令旧上下文失效。 */
 function bindings_equal(left: AgentBinding | null, right: AgentBinding): boolean {
   return (
     left !== null &&

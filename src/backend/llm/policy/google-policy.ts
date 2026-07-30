@@ -54,16 +54,27 @@ export function build_google_payload(
     { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
     { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
   ];
-  const thinking_config = build_google_thinking_config(snapshot);
-  if (thinking_config !== null) {
-    config["thinkingConfig"] = thinking_config;
-  }
-  Object.assign(config, snapshot.extra_body);
   return {
     model: snapshot.model_id,
     contents: build_google_contents(messages),
-    config,
+    config: apply_google_request_overrides(config, snapshot),
   };
+}
+
+/**
+ * 统一覆盖 OneShot 与 Pi 的 Google config，extra_body 保持最终优先级。
+ */
+export function apply_google_request_overrides(
+  config: Record<string, unknown>,
+  snapshot: ModelRequestSnapshot,
+): Record<string, unknown> {
+  const result = { ...config };
+  delete result["thinkingConfig"];
+  const thinking_config = build_google_thinking_config(snapshot);
+  if (thinking_config !== null) {
+    result["thinkingConfig"] = thinking_config;
+  }
+  return Object.assign(result, snapshot.extra_body);
 }
 
 /**

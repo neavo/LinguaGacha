@@ -74,13 +74,25 @@ describe("useAgentPageState", () => {
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "entry_upsert",
-        entry: assistant_entry("assistant-2", "第一段第二段", true, 2),
+        entry: {
+          kind: "assistant_message",
+          id: "assistant-2",
+          parts: [
+            { kind: "thinking", text: "检查" },
+            { kind: "text", text: "第一段第二段" },
+          ],
+          complete: true,
+          createdAt: 2,
+        },
       });
     });
 
     expect(latest.entries.map((entry) => entry.id)).toEqual(["assistant-1", "assistant-2"]);
     expect(latest.entries.at(-1)).toMatchObject({
-      text: "第一段第二段",
+      parts: [
+        { kind: "thinking", text: "检查" },
+        { kind: "text", text: "第一段第二段" },
+      ],
       complete: true,
     });
   });
@@ -130,19 +142,66 @@ describe("useAgentPageState", () => {
           createdAt: 5,
         },
         {
+          kind: "assistant_message",
+          id: "assistant-new",
+          parts: [
+            { kind: "thinking", text: "检查" },
+            { kind: "thinking", text: "\n完成" },
+            { kind: "text", text: "结论" },
+          ],
+          complete: true,
+          createdAt: 6,
+        },
+        {
+          kind: "assistant_message",
+          id: "assistant-legacy",
+          text: "旧协议不得兼容",
+          complete: true,
+          createdAt: 7,
+        },
+        {
+          kind: "assistant_message",
+          id: "assistant-unknown",
+          parts: [{ kind: "reasoning", text: "未知类型" }],
+          complete: true,
+          createdAt: 8,
+        },
+        {
+          kind: "assistant_message",
+          id: "assistant-invalid-text",
+          parts: [{ kind: "thinking", text: { value: "非法正文" } }],
+          complete: true,
+          createdAt: 9,
+        },
+        {
           kind: "user_message",
           id: "user-new",
           parts: [
             { kind: "skill", name: "glossary-audit" },
             { kind: "text", text: "审校" },
           ],
-          createdAt: 6,
+          createdAt: 10,
+          endedAt: 12,
         },
         {
           kind: "user_message",
-          id: "user-legacy",
-          text: "旧协议不得兼容",
-          createdAt: 7,
+          id: "user-missing-ended-at",
+          parts: [{ kind: "text", text: "旧协议不得兼容" }],
+          createdAt: 11,
+        },
+        {
+          kind: "user_message",
+          id: "user-invalid-ended-at",
+          parts: [{ kind: "text", text: "非法结束时间" }],
+          createdAt: 12,
+          endedAt: "13",
+        },
+        {
+          kind: "user_message",
+          id: "user-float-ended-at",
+          parts: [{ kind: "text", text: "浮点结束时间" }],
+          createdAt: 13,
+          endedAt: 13.5,
         },
       ],
       skills: [],
@@ -179,13 +238,24 @@ describe("useAgentPageState", () => {
         createdAt: 3,
       },
       {
+        kind: "assistant_message",
+        id: "assistant-new",
+        parts: [
+          { kind: "thinking", text: "检查\n完成" },
+          { kind: "text", text: "结论" },
+        ],
+        complete: true,
+        createdAt: 6,
+      },
+      {
         kind: "user_message",
         id: "user-new",
         parts: [
           { kind: "skill", name: "glossary-audit" },
           { kind: "text", text: "审校" },
         ],
-        createdAt: 6,
+        createdAt: 10,
+        endedAt: 12,
       },
     ]);
   });
@@ -211,7 +281,14 @@ describe("useAgentPageState", () => {
       const state = useAgentPageState();
       useEffect(() => {
         const entry = state.entries.at(-1);
-        texts.push(entry?.kind === "assistant_message" ? entry.text : "");
+        texts.push(
+          entry?.kind === "assistant_message"
+            ? entry.parts
+                .filter((part) => part.kind === "text")
+                .map((part) => part.text)
+                .join("")
+            : "",
+        );
       }, [state.entries]);
     });
     await wait_for(() => expect(desktop_api_mocks.open_event_stream).toHaveBeenCalledOnce());
@@ -296,7 +373,13 @@ describe("useAgentPageState", () => {
 });
 
 function assistant_entry(id: string, text: string, complete: boolean, createdAt: number) {
-  return { kind: "assistant_message", id, text, complete, createdAt };
+  return {
+    kind: "assistant_message",
+    id,
+    parts: [{ kind: "text", text }],
+    complete,
+    createdAt,
+  };
 }
 
 async function wait_for(assertion: () => void): Promise<void> {

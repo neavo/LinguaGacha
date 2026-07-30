@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ModelRequestSnapshot } from "./policy-types";
 import {
+  apply_google_request_overrides,
   build_google_payload,
   build_google_thinking_config,
   normalize_google_sdk_base_url,
@@ -100,6 +101,32 @@ describe("google-policy", () => {
     expect(
       build_google_thinking_config({ model_id: "gemini-2.5-flash", thinking_level: "HIGH" }),
     ).toEqual({ thinkingBudget: 1024, includeThoughts: true });
+  });
+
+  it("共享覆盖规则只替换 config thinking 并保留 Pi 结构字段", () => {
+    const source = {
+      systemInstruction: { parts: [{ text: "系统" }] },
+      tools: [{ functionDeclarations: [{ name: "search" }] }],
+      toolConfig: { functionCallingConfig: { mode: "AUTO" } },
+      thinkingConfig: { thinkingLevel: "HIGH" },
+    };
+
+    const config = apply_google_request_overrides(
+      source,
+      create_snapshot({
+        thinking_level: "LOW",
+        extra_body: { thinkingConfig: { thinkingBudget: 777 }, customFlag: true },
+      }),
+    );
+
+    expect(config).toMatchObject({
+      systemInstruction: source.systemInstruction,
+      tools: source.tools,
+      toolConfig: source.toolConfig,
+      thinkingConfig: { thinkingBudget: 777 },
+      customFlag: true,
+    });
+    expect(source).toHaveProperty("thinkingConfig.thinkingLevel", "HIGH");
   });
 
   it("空 Gemini contents 在协议边界直接阻断", () => {

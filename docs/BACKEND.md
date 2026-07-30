@@ -9,7 +9,8 @@
 - Gateway 只监听本机地址，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
 - 成功响应为 `{ ok: true, data }`，失败响应为 `{ ok: false, error }`；公开错误不包含 diagnostic context、cause、stack 或供应商原始异常。
 - 公开 SSE topic 固定为 `project.data_changed`、`task.snapshot_changed`、`agent.session_event`、`settings.changed`、`log.appended`，data 使用严格 JSON 序列化。
-- Agent 公开入口固定为 `GET /api/agent/snapshot` 与 `POST /api/agent/message|stop`；消息请求和 user 条目保留有序 text / skill parts，只有 skill part 会触发能力。snapshot 提供恢复与启动期 skill 清单，后续 user / assistant / tool_call 条目经 `agent.session_event` 下发 `entry_upsert`，同 id 只原位覆盖。工具条目只公开名称、状态和模型实际收到的文本输出（运行中为 `null`），不公开参数或第三方结果包装。
+- Agent 公开入口固定为 `GET /api/agent/snapshot` 与 `POST /api/agent/message|stop`；请求与 `user_message` 保留有序 text / skill parts，只有 skill part 触发能力。snapshot 提供恢复事实与启动期 skill 清单，后续条目经 `agent.session_event` 以同 id `entry_upsert` 原位覆盖。
+- `user_message` 的 `createdAt` / `endedAt` 是轮次起止事实，运行中 `endedAt` 为 `null`，任一终止路径都原位封口；`assistant_message` 保留有序 text / thinking parts，但不公开空白或脱敏思考、签名和供应商连续性元数据；`tool_call` 只公开名称、状态和模型实际收到的文本输出（运行中为 `null`），不公开参数或第三方结果包装。
 - `LogManager` 以 `LogContent` 判别联合保存单一正文事实：文件和控制台从它生成纯文本投影，`log.appended` 只携带轻量预览，`/api/logs/detail` 只查询当前进程结构化详情池且不回扫历史文件。
 - `/api/diagnostics/renderer-error` 只接收实际 renderer 异常摘要与白名单上下文并写入 `LogManager`，不改变项目、任务或设置事实。
 
@@ -64,7 +65,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - `TaskRuntime` 拥有全局运行互斥、取消、终态和 Engine completion；`TaskEngine` 只负责编排，任务结果统一经 `TaskProjectStore` 进入项目写入边界。全量翻译与分析经过 Planner，行级重翻直接从目标 items 构造 context。
 - work-unit worker 负责提示词构建、runner、pipeline 和响应处理；planning worker 只承担规划期计算。线程数不等于 LLM 并发，实际并发由模型 key lease 与 limiter 决定。
 - 非 engine 的重型计算通过 `BackendWorkerClient` 提交无状态 worker task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
-- provider policy、request policy、SDK transport 和结果归一归 `src/backend/llm`，任务层不解析供应商异常文本。
+- 模型请求快照、provider policy、SDK transport 和结果归一归 `src/backend/llm`，任务层不解析供应商异常文本；OneShot 拥有完整任务 payload，Pi 只拥有 Agent 的消息、工具和流式结构，两条路径发送前复用同一思考与扩展规则。模型页 generation 和输入/输出 token 设置只作用于 OneShot，Agent 固定使用 256K 上下文与 64K 最大输出。
 - Agent 基础 system prompt 的唯一资源为 `resource/agent/system_prompt.md`，与内置、用户 skill 一并在启动期加载并固定；基础资源缺失、不可读或为空会令启动失败，坏 skill 只进入诊断。显式 skill part 按首次出现顺序通过 Pi invocation 进入该轮用户消息；`references` Markdown 在启动期递归形成白名单，工具只可读取当前会话已引用 skill 的完整相对路径。
 - Agent 是否获得当前写入方案的明确批准由模型按完整对话语义判断，后端不维护批准状态机；`write_glossary` 只以 `expected_section_revisions` 防止并发覆盖。Agent 自己的写入事件只推进当前工程绑定，外部 quality 变更仍会令会话失效。
 

@@ -5,18 +5,21 @@ import { googleGenerativeAIApi } from "@earendil-works/pi-ai/api/google-generati
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
 
 import type { JsonRecord } from "../../domain/json";
-import { Model } from "../../domain/model";
+import type { ModelApiFormat } from "../../domain/model";
 import * as AppErrors from "../../shared/error";
 import { LLMClientPolicy } from "../llm/llm-client-policy";
 import { resolve_active_model } from "../model/model-config-resolver";
 
-const AGENT_DEFAULT_MAX_TOKENS = 8192;
-const AGENT_CONTEXT_WINDOW = 128_000;
+const AGENT_CONTEXT_WINDOW = 256_000;
+const AGENT_MAX_OUTPUT_TOKENS = 64_000;
 
 /**
- * 把当前激活模型投影到 pi-agent-core 的运行契约，模型配置仍由既有领域对象解释。
+ * 把统一请求快照投影到 pi-agent-core，供应商字段继续由 LLM policy 解释。
  */
-export function resolve_agent_model(config: JsonRecord): {
+export function resolve_agent_model(
+  config: JsonRecord,
+  user_agent: string,
+): {
   model: PiModel<any>;
   thinkingLevel: "off" | "low" | "medium" | "high";
   stream: StreamFn;
@@ -24,44 +27,32 @@ export function resolve_agent_model(config: JsonRecord): {
   const raw_model = resolve_active_model(config);
   if (raw_model === null) throw new AppErrors.ModelNotFoundError();
 
-  const model = Model.from_json(raw_model, "agent-model");
-  const api = resolve_pi_api(model.api_format);
-  const headers = model.request.extra_headers_custom_enable
-    ? Object.fromEntries(
-        Object.entries(model.request.extra_headers).flatMap(([key, value]) =>
-          typeof value === "string" ? [[key, value]] : [],
-        ),
-      )
-    : {};
-  const configured_max_tokens = model.threshold.output_token_limit;
-  const model_max_tokens =
-    configured_max_tokens > 0 ? configured_max_tokens : AGENT_DEFAULT_MAX_TOKENS;
+  const policy = new LLMClientPolicy(user_agent);
+  const snapshot = policy.read_model_snapshot(raw_model);
+  const api = resolve_pi_api(snapshot.api_format);
+  const configured_name = String(raw_model["name"] ?? "").trim();
   const pi_model: PiModel<any> = {
-    id: model.model_id,
-    name: model.name || model.model_id,
+    id: snapshot.model_id,
+    name: configured_name || snapshot.model_id,
     api: api.api,
-    // SakuraLLM 与既有 sakura transport 使用同一 OpenAI compatible 口径。
-    provider: model.api_format === "SakuraLLM" ? "openai-compatible" : api.provider,
-    baseUrl: LLMClientPolicy.normalize_api_url(model.api_url, model.api_format),
-    reasoning: model.thinking.level !== "OFF",
+    provider: api.provider,
+    baseUrl: snapshot.base_url,
+    reasoning: policy.supports_thinking(snapshot),
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: Math.max(AGENT_CONTEXT_WINDOW, model_max_tokens),
-    maxTokens: model_max_tokens,
-    headers,
+    // 模型页 generation 与 token threshold 只属于 OneShot；Agent 使用独立固定容量。
+    contextWindow: AGENT_CONTEXT_WINDOW,
+    maxTokens: AGENT_MAX_OUTPUT_TOKENS,
+    headers: snapshot.headers,
   };
   return {
     model: pi_model,
-    thinkingLevel: model.thinking.level.toLocaleLowerCase() as "off" | "low" | "medium" | "high",
+    thinkingLevel: snapshot.thinking_level.toLowerCase() as "off" | "low" | "medium" | "high",
     stream: (active_model, context, options) =>
       api.stream.streamSimple(active_model, context, {
         ...options,
-        apiKey: model.api_key,
-        headers: { ...headers, ...options?.headers },
-        ...(configured_max_tokens > 0 ? { maxTokens: configured_max_tokens } : {}),
-        ...(model.generation.temperature_custom_enable
-          ? { temperature: model.generation.temperature }
-          : {}),
+        apiKey: snapshot.api_keys[0],
+        onPayload: (payload) => policy.apply_request_overrides(snapshot, payload),
       }),
   };
 }
@@ -69,11 +60,18 @@ export function resolve_agent_model(config: JsonRecord): {
 /**
  * 将 LinguaGacha 的供应商枚举映射到 pi-ai 的惰性 API 实现。
  */
-export function resolve_pi_api(api_format: Model["api_format"]): {
-  provider: "openai" | "anthropic" | "google";
+export function resolve_pi_api(api_format: ModelApiFormat): {
+  provider: "openai" | "openai-compatible" | "anthropic" | "google";
   api: "openai-completions" | "anthropic-messages" | "google-generative-ai";
   stream: { streamSimple: StreamFn };
 } {
+  if (api_format === "SakuraLLM") {
+    return {
+      provider: "openai-compatible",
+      api: "openai-completions",
+      stream: openAICompletionsApi(),
+    };
+  }
   if (api_format === "Anthropic") {
     return { provider: "anthropic", api: "anthropic-messages", stream: anthropicMessagesApi() };
   }

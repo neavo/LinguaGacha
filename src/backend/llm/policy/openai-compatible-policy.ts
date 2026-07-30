@@ -41,12 +41,31 @@ export function build_openai_compatible_payload(
   if (max_tokens !== null) {
     payload["max_tokens"] = max_tokens;
   }
-  Object.assign(
-    payload,
-    build_openai_model_family_body(snapshot.model_id, snapshot.thinking_level),
-    snapshot.extra_body,
-  );
-  return payload;
+  return apply_openai_request_overrides(payload, snapshot);
+}
+
+/**
+ * 统一覆盖 OneShot 与 Pi payload 中的模型族字段，extra_body 保持最终优先级。
+ */
+export function apply_openai_request_overrides(
+  payload: Record<string, unknown>,
+  snapshot: ModelRequestSnapshot,
+): Record<string, unknown> {
+  const result = { ...payload };
+  for (const field of [
+    "reasoning_effort",
+    "reasoning",
+    "thinking",
+    "enable_thinking",
+    "chat_template_kwargs",
+  ]) {
+    delete result[field];
+  }
+  const thinking = build_openai_thinking_payload(snapshot.model_id, snapshot.thinking_level);
+  if (thinking !== null) {
+    Object.assign(result, thinking);
+  }
+  return Object.assign(result, snapshot.extra_body);
 }
 
 /**
@@ -70,7 +89,10 @@ export function normalize_chat_messages(
 /**
  * OpenAI-compatible 模型族差异统一收敛为最终请求字段。
  */
-function build_openai_model_family_body(model_id: string, level: ModelThinkingLevel): JsonRecord {
+export function build_openai_thinking_payload(
+  model_id: string,
+  level: ModelThinkingLevel,
+): JsonRecord | null {
   if (/gpt/iu.test(model_id)) {
     return { reasoning_effort: level === "OFF" ? "none" : level.toLowerCase() };
   }
@@ -80,8 +102,12 @@ function build_openai_model_family_body(model_id: string, level: ModelThinkingLe
   if (/doubao-seed/iu.test(model_id)) {
     return { reasoning_effort: level === "OFF" ? "minimal" : level.toLowerCase() };
   }
+  // https://platform.kimi.com/docs/guide/use-thinking-models
+  if (/kimi-k3/iu.test(model_id)) {
+    return { reasoning_effort: level === "HIGH" ? "high" : "low" };
+  }
   if (/deepseek|kimi|glm|mimo/iu.test(model_id)) {
     return { thinking: { type: level === "OFF" ? "disabled" : "enabled" } };
   }
-  return {};
+  return null;
 }
