@@ -215,7 +215,7 @@
   min-height: 34px;
   width: 100%;
   align-items: center;
-  grid-template-columns: 5px minmax(0, 1fr) 7px;
+  grid-template-columns: 5px minmax(0, 1fr) 8px;
   gap: 8px;
   padding: 6px 8px;
   cursor: pointer;
@@ -262,16 +262,15 @@
 }
 
 .agent-detail-entry__status {
-  width: 7px;
-  height: 7px;
-  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
   border-radius: var(--ui-radius-pill);
   background: var(--muted-foreground);
 }
 
 .agent-detail-entry__status--running {
-  background: var(--ui-success);
-  animation: agent-detail-pulse 1.2s ease-in-out infinite;
+  background: var(--primary);
+  animation: agent-detail-running-pulse 1s ease-out infinite;
 }
 
 .agent-detail-entry__status--success {
@@ -389,14 +388,38 @@
 }
 
 .agent-composer__meta {
+  display: flex;
   min-height: 18px;
-  padding: 1px 40px 0 4px;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 1px 40px 0 0;
   color: var(--muted-foreground);
   font-size: 12px;
 }
 
+.agent-composer__model-trigger {
+  max-width: min(45%, 280px);
+  min-width: 0;
+  height: 24px;
+  flex: 0 1 auto;
+  padding-inline: 4px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.agent-composer__model-trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .agent-composer__error {
+  min-width: 0;
   color: var(--ui-failure);
+  text-align: end;
 }
 
 .agent-skill-token {
@@ -469,9 +492,14 @@
   }
 }
 
-@keyframes agent-detail-pulse {
-  50% {
-    opacity: 0.3;
+@keyframes agent-detail-running-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 55%, transparent);
+  }
+
+  70%,
+  100% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 0%, transparent);
   }
 }
 
@@ -479,7 +507,7 @@
   .agent-message__cursor,
   .agent-detail-entry__status--running {
     animation: none;
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-success) 30%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
   }
 
   .agent-detail-entry summary::before,

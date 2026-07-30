@@ -1,12 +1,4 @@
-import {
-  GraduationCap,
-  ListTodo,
-  MousePointerClick,
-  Plus,
-  Recycle,
-  SlidersHorizontal,
-  Trash2,
-} from "lucide-react";
+import { GraduationCap, ListTodo, Plus, Recycle, SlidersHorizontal, Trash2 } from "lucide-react";
 
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import "@frontend/pages/model-page/model-page.css";
@@ -30,6 +22,8 @@ import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
 type ModelPageProps = {
   is_sidebar_collapsed: boolean;
 };
+
+/** 管理模型配置与排序；具体任务使用哪个模型由各任务入口选择。 */
 export function ModelPage(_props: ModelPageProps): JSX.Element {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -140,21 +134,11 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
                 <ModelItemChip
                   key={model.id}
                   model={model}
-                  active={model.id === model_page_state.snapshot.active_model_id}
                   drag_disabled={model_page_state.readonly}
                   drag_aria_label={t("workbench_page.table.drag_handle")}
                   menu={
                     <AppDropdownMenuContent align="center">
                       <AppDropdownMenuGroup>
-                        <AppDropdownMenuItem
-                          onSelect={() => {
-                            void model_page_state.request_activate_model(model.id);
-                          }}
-                        >
-                          <MousePointerClick />
-                          {t("model_page.action.activate")}
-                        </AppDropdownMenuItem>
-                        <AppDropdownMenuSeparator />
                         <AppDropdownMenuItem
                           onSelect={() => {
                             model_page_state.open_dialog("basic", model.id);

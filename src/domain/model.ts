@@ -9,11 +9,17 @@ export const MODEL_TYPES = [
   "CUSTOM_ANTHROPIC",
 ] as const;
 
+/** 配置、API 与运行时共用的模型执行用途。 */
+export const MODEL_USAGES = ["translation", "analysis", "agent"] as const;
+
 export const MODEL_API_FORMATS = ["OpenAI", "SakuraLLM", "Google", "Anthropic"] as const; // API 格式同时影响连通性测试、LLM adapter 和请求 payload 兼容策略
 
 export const MODEL_THINKING_LEVELS = ["OFF", "LOW", "MEDIUM", "HIGH"] as const; // thinking 档位只在支持推理的模型上生效，但快照值域保持统一
 
 export type ModelType = (typeof MODEL_TYPES)[number];
+export type ModelUsage = (typeof MODEL_USAGES)[number];
+/** 每种执行用途当前选择的模型 ID。 */
+export type ModelSelection = Record<ModelUsage, string>;
 export type ModelApiFormat = (typeof MODEL_API_FORMATS)[number];
 export type ModelThinkingLevel = (typeof MODEL_THINKING_LEVELS)[number];
 type ModelRequestConfig = {
@@ -314,6 +320,16 @@ export function is_model_type(value: unknown): value is ModelType {
   return MODEL_TYPE_SET.has(value as ModelType);
 }
 
+/** 配置、API 与执行解析共用同一模型用途形状，未知键不会进入运行时。 */
+export function normalize_model_selection(value: unknown): ModelSelection {
+  const record = read_json_record(value);
+  return {
+    translation: read_model_selection_id(record["translation"]),
+    analysis: read_model_selection_id(record["analysis"]),
+    agent: read_model_selection_id(record["agent"]),
+  };
+}
+
 export function is_model_api_format(value: unknown): value is ModelApiFormat {
   return MODEL_API_FORMAT_SET.has(value as ModelApiFormat);
 }
@@ -331,4 +347,8 @@ function read_json_model_record(value: unknown): JsonRecord {
 function read_json_model_number(value: unknown, fallback: number): number {
   const number_value = Number(value ?? fallback);
   return Number.isFinite(number_value) ? number_value : fallback;
+}
+
+function read_model_selection_id(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }

@@ -5,24 +5,19 @@ export const en_us_model_page = {
   title: "Model Management",
   category: {
     preset: {
-      title: "Preset Models",
       description: "Built-in preset models of the application",
     },
     custom_google: {
-      title: "Custom Google Models",
       description: "Custom models compatible with Google Gemini API format",
     },
     custom_openai: {
-      title: "Custom OpenAI Models",
       description: "Custom models compatible with OpenAI API format",
     },
     custom_anthropic: {
-      title: "Custom Anthropic Models",
       description: "Custom models compatible with Anthropic Claude API format",
     },
   },
   action: {
-    activate: "Activate",
     basic_settings: "Basic Settings",
     task_settings: "Task Settings",
     advanced_settings: "Advanced Settings",

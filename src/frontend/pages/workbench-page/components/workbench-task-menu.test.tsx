@@ -12,6 +12,14 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
   }),
 }));
 
+vi.mock("@frontend/features/model-selection/model-selection-menu", () => ({
+  ModelSelectionMenu: (props: { usage: string; disabled?: boolean }) => (
+    <button type="button" data-testid={`model-selection-${props.usage}`} disabled={props.disabled}>
+      model-selection-{props.usage}
+    </button>
+  ),
+}));
+
 vi.mock("@frontend/widgets/app-dropdown-menu", () => ({
   AppDropdownMenu: (props: { children: ReactNode }) => <div>{props.children}</div>,
   AppDropdownMenuTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
@@ -53,6 +61,15 @@ const shared_props = {
   workbench_stats,
   disabled: false,
   busy: false,
+  model_selection: {
+    snapshot: {
+      model_selection: { translation: "", analysis: "", agent: "" },
+      models: [],
+    },
+    loading: false,
+    updating: false,
+    select_model: vi.fn(async () => undefined),
+  },
   active_task_action_kind: null,
   on_start_or_continue: async () => {},
   on_request_reset: () => {},
@@ -136,6 +153,29 @@ describe("WorkbenchTaskMenu", () => {
     expect(on_start_or_continue).toHaveBeenCalledOnce();
     expect(on_request_reset).toHaveBeenNthCalledWith(1, "reset-all");
     expect(on_request_reset).toHaveBeenNthCalledWith(2, "reset-failed");
+  });
+
+  it("开始、模型选择与重置按固定顺序呈现，并继承任务禁用态", async () => {
+    await render_menu(<WorkbenchTaskMenu task_kind="translation" {...shared_props} />);
+
+    const text = container?.textContent ?? "";
+    expect(text.indexOf("workbench_page.action.start_translation")).toBeLessThan(
+      text.indexOf("model-selection-translation"),
+    );
+    expect(text.indexOf("model-selection-translation")).toBeLessThan(
+      text.indexOf("workbench_page.action.reset_translation_all"),
+    );
+
+    await render_menu(
+      <WorkbenchTaskMenu
+        task_kind="analysis"
+        {...shared_props}
+        busy
+        analysis_import={{ candidate_count: 0, importing: false, on_request: () => {} }}
+      />,
+    );
+    expect(find_button("workbench_page.action.start_analysis").disabled).toBe(true);
+    expect(find_button("model-selection-analysis").disabled).toBe(true);
   });
 
   it("分析候选数控制导入动作并在提交前请求确认", async () => {

@@ -143,6 +143,62 @@ describe("TaskEngine", () => {
     });
   });
 
+  it("翻译与分析分别冻结对应用途选择的模型", async () => {
+    const resolved_model_ids: string[] = [];
+    const task_planner = {
+      build_translation_contexts: async (_items: unknown, _config: unknown, model: JsonRecord) => {
+        resolved_model_ids.push(String(model["id"] ?? ""));
+        return [];
+      },
+      build_analysis_contexts: async (
+        _items: unknown,
+        _checkpoints: unknown,
+        model: JsonRecord,
+      ) => {
+        resolved_model_ids.push(String(model["id"] ?? ""));
+        return [];
+      },
+    } as unknown as TaskPlanner;
+    const setting_service = create_setting_service(1, 512, {
+      model_selection: {
+        translation: "translation-model",
+        analysis: "analysis-model",
+        agent: "translation-model",
+      },
+      models: [
+        { id: "translation-model", threshold: { concurrency_limit: 1 } },
+        { id: "analysis-model", threshold: { concurrency_limit: 1 } },
+      ],
+    });
+
+    for (const task_type of ["translation", "analysis"] as const) {
+      const done = create_status_waiter(task_type, "done");
+      const task_runtime = create_task_runtime(done.listener);
+      const task_engine = new TaskEngine({
+        appRoot: create_template_root(),
+        taskStore: create_task_store(),
+        taskRuntime: task_runtime,
+        executorClient: create_unused_executor(),
+        taskPlanner: task_planner,
+        AppSettingService: setting_service,
+        logManager: create_log_manager(),
+      });
+      const command: StartTaskCommand =
+        task_type === "translation"
+          ? {
+              task_type,
+              mode: "new",
+              scope: { kind: "all" },
+              expected_section_revisions: {},
+            }
+          : { task_type, mode: "new", expected_section_revisions: {} };
+      await start_task(task_engine, task_runtime, command);
+      await done.promise;
+    }
+
+    expect(resolved_model_ids).toEqual(["translation-model", "analysis-model"]);
+  });
+
   it("翻译启动后首次进度快照使用本轮初始进度而不是旧 meta", async () => {
     let translation_extras: MutableJsonRecord = {
       line: 8,
@@ -675,9 +731,13 @@ describe("TaskEngine", () => {
     };
     return {
       read_setting: () => ({
-        ...setting_overrides,
-        activate_model_id: "model-1",
+        model_selection: {
+          translation: "model-1",
+          analysis: "model-1",
+          agent: "model-1",
+        },
         models: [model],
+        ...setting_overrides,
       }),
     };
   }

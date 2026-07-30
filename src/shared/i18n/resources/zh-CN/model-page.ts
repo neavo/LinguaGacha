@@ -2,24 +2,19 @@ export const zh_cn_model_page = {
   title: "模型管理",
   category: {
     preset: {
-      title: "预设模型",
       description: "应用内置的预设模型",
     },
     custom_google: {
-      title: "自定义 Google 模型",
       description: "兼容 Google Gemini API 格式的自定义模型",
     },
     custom_openai: {
-      title: "自定义 OpenAI 模型",
       description: "兼容 OpenAI API 格式的自定义模型",
     },
     custom_anthropic: {
-      title: "自定义 Anthropic 模型",
       description: "兼容 Anthropic Claude API 格式的自定义模型",
     },
   },
   action: {
-    activate: "激活",
     basic_settings: "基础设置",
     task_settings: "任务设置",
     advanced_settings: "高级设置",

@@ -7,45 +7,48 @@ import { describe, expect, it } from "vitest";
 import {
   read_config_model_preset_records,
   read_config_model_records,
-  resolve_active_model,
-  resolve_active_model_id,
+  resolve_model_for_usage,
 } from "./model-config-resolver";
 
 describe("model-config-resolver", () => {
-  it("优先使用命中的激活模型", () => {
+  it("三个用途分别解析命中的模型", () => {
     const config = {
-      activate_model_id: "model-2",
-      models: [{ id: "model-1" }, { id: "model-2" }],
+      model_selection: {
+        translation: "model-1",
+        analysis: "model-2",
+        agent: "model-3",
+      },
+      models: [{ id: "model-1" }, { id: "model-2" }, { id: "model-3" }],
     };
 
-    expect(resolve_active_model(config)).toMatchObject({ id: "model-2" });
-    expect(resolve_active_model_id(config)).toBe("model-2");
+    expect(resolve_model_for_usage(config, "translation")?.["id"]).toBe("model-1");
+    expect(resolve_model_for_usage(config, "analysis")?.["id"]).toBe("model-2");
+    expect(resolve_model_for_usage(config, "agent")?.["id"]).toBe("model-3");
   });
 
-  it("激活模型缺失或失效时回退到首个可用模型", () => {
+  it("用途选择缺失或失效时回退到首个可用模型", () => {
     const config = {
-      activate_model_id: "missing",
+      model_selection: { translation: "missing", analysis: "", agent: "model-2" },
       models: [{ id: "model-1" }, { id: "model-2" }],
     };
 
-    expect(resolve_active_model(config)).toMatchObject({ id: "model-1" });
-    expect(resolve_active_model_id({ ...config, activate_model_id: "" })).toBe("model-1");
+    expect(resolve_model_for_usage(config, "translation")).toMatchObject({ id: "model-1" });
+    expect(resolve_model_for_usage(config, "analysis")?.["id"]).toBe("model-1");
+    expect(resolve_model_for_usage(config, "agent")?.["id"]).toBe("model-2");
   });
 
   it("过滤坏模型项并在没有可用模型时返回空结果", () => {
     expect(
       read_config_model_records({
-        activate_model_id: "",
         models: [null, "bad", ["bad"], { id: "model-1" }],
       }),
     ).toEqual([{ id: "model-1" }]);
-    expect(resolve_active_model_id({ activate_model_id: "", models: [] })).toBe("");
+    expect(resolve_model_for_usage({ models: [] }, "translation")).toBeNull();
   });
 
   it("读取模型列表返回副本，避免调用方污染原始配置", () => {
     const model = { id: "model-1", name: "原始模型" };
     const config = {
-      activate_model_id: "model-1",
       models: [model],
     };
 

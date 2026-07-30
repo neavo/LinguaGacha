@@ -43,6 +43,8 @@ const fake_agent_state = vi.hoisted(() => ({
   id: 0,
   system_prompts: [] as string[],
   prompts: [] as string[],
+  model_ids: [] as string[],
+  agent_instances: 0,
   tools: [] as AgentTool[],
   release_pending: null as (() => void) | null,
 }));
@@ -58,10 +60,13 @@ vi.mock("@earendil-works/pi-agent-core", async (import_original) => {
   /** 只替换远程模型运行时，同时按真实 Pi 事件顺序驱动 AgentService 的公开观察面。 */
   class FakeAgent {
     public readonly state: Record<string, unknown> = { isStreaming: false };
+    public streamFunction: unknown;
     private listener: ((event: Record<string, unknown>) => void) | null = null;
 
     public constructor(private readonly options: Record<string, unknown>) {
+      fake_agent_state.agent_instances += 1;
       Object.assign(this.state, options["initialState"]);
+      this.streamFunction = options["streamFn"];
       fake_agent_state.tools = this.state["tools"] as AgentTool[];
     }
 
@@ -76,6 +81,9 @@ vi.mock("@earendil-works/pi-agent-core", async (import_original) => {
       this.state["isStreaming"] = true;
       fake_agent_state.system_prompts.push(String(this.state["systemPrompt"] ?? ""));
       fake_agent_state.prompts.push(prompt);
+      fake_agent_state.model_ids.push(
+        String((this.state["model"] as Record<string, unknown> | undefined)?.["id"] ?? ""),
+      );
       if (fake_agent_state.mode === "pending") {
         await new Promise<void>((resolve) => {
           fake_agent_state.release_pending = resolve;
@@ -274,6 +282,8 @@ describe("AgentService", () => {
     fake_agent_state.id = 0;
     fake_agent_state.system_prompts = [];
     fake_agent_state.prompts = [];
+    fake_agent_state.model_ids = [];
+    fake_agent_state.agent_instances = 0;
     fake_agent_state.tools = [];
     fake_agent_state.release_pending = null;
     skill_loader.mockClear();
@@ -589,6 +599,34 @@ describe("AgentService", () => {
     expect(fake_agent_state.prompts.at(-1)).toBe("普通对话");
   });
 
+  it("空闲回合之间重绑定 Agent 模型并复用同一运行时和历史", async () => {
+    const { service, select_agent_model } = await create_service();
+
+    service.send_message({ parts: [{ kind: "text", text: "第一轮" }] });
+    await wait_for_complete(service);
+    select_agent_model("next");
+    service.send_message({ parts: [{ kind: "text", text: "第二轮" }] });
+    await wait_for_complete(service);
+
+    expect(fake_agent_state.agent_instances).toBe(1);
+    expect(fake_agent_state.model_ids).toEqual(["test-model", "next-model"]);
+    expect(
+      service.get_snapshot().entries.filter((entry) => entry.kind === "user_message"),
+    ).toHaveLength(2);
+  });
+
+  it("运行中重复消息在读取新模型前被拒绝", async () => {
+    const { service, read_setting_count } = await create_service();
+    fake_agent_state.mode = "pending";
+    service.send_message({ parts: [{ kind: "text", text: "第一轮" }] });
+
+    expect(() => service.send_message({ parts: [{ kind: "text", text: "第二轮" }] })).toThrow(
+      "request.validation_failed",
+    );
+    expect(read_setting_count()).toBe(1);
+    service.stop();
+  });
+
   it("reference 工具只读取当前会话已显式引用 skill 的白名单正文", async () => {
     const { service } = await create_service();
 
@@ -629,6 +667,8 @@ describe("AgentService", () => {
     service: AgentService;
     publish: ReturnType<typeof vi.fn>;
     log_error: ReturnType<typeof vi.fn>;
+    select_agent_model: (model_id: "active" | "next") => void;
+    read_setting_count: () => number;
   }> {
     const session_state = new ProjectSessionState();
     await session_state.mark_loaded("test.lg");
@@ -644,21 +684,35 @@ describe("AgentService", () => {
       }),
       items: { readItems: () => [] },
     };
+    let agent_model_id: "active" | "next" = "active";
+    let setting_read_count = 0;
     const settings = {
-      read_setting: () => ({
-        activate_model_id: "active",
-        models: [
-          {
-            id: "active",
-            name: "Test",
-            api_format: "OpenAI",
-            api_url: "https://example.test/v1",
-            api_key: "secret",
-            model_id: "test-model",
-            threshold: { input_token_limit: 4096, output_token_limit: 1024 },
-          },
-        ],
-      }),
+      read_setting: () => {
+        setting_read_count += 1;
+        return {
+          model_selection: { translation: "active", analysis: "active", agent: agent_model_id },
+          models: [
+            {
+              id: "active",
+              name: "Test",
+              api_format: "OpenAI",
+              api_url: "https://example.test/v1",
+              api_key: "secret",
+              model_id: "test-model",
+              threshold: { input_token_limit: 4096, output_token_limit: 1024 },
+            },
+            {
+              id: "next",
+              name: "Next",
+              api_format: "OpenAI",
+              api_url: "https://example.test/v1",
+              api_key: "next-secret",
+              model_id: "next-model",
+              threshold: { input_token_limit: 4096, output_token_limit: 1024 },
+            },
+          ],
+        };
+      },
     };
     const quality_rules = {
       read: () => ({
@@ -691,7 +745,15 @@ describe("AgentService", () => {
     });
     if (load_resources) await service.load_resources();
     services.push(service);
-    return { service, publish, log_error };
+    return {
+      service,
+      publish,
+      log_error,
+      select_agent_model: (model_id) => {
+        agent_model_id = model_id;
+      },
+      read_setting_count: () => setting_read_count,
+    };
   }
 });
 

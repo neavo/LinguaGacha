@@ -160,9 +160,12 @@ export function register_api_routes(context: ApiRouteContext): void {
   );
 
   const models = services.model;
+  context.app.get("/api/models/selection", (hono_context) =>
+    hono_context.json(ok(models.get_selection_snapshot())),
+  );
   context.postJson("/api/models/snapshot", () => models.get_snapshot());
   context.postJson("/api/models/update", (body) => models.update_model(body));
-  context.postJson("/api/models/activate", (body) => models.activate_model(body));
+  context.postJson("/api/models/select", (body) => models.select_model(body));
   context.postJson("/api/models/add", (body) => models.add_model(body));
   context.postJson("/api/models/delete", (body) => models.delete_model(body));
   context.postJson("/api/models/reset-preset", (body) => models.reset_preset_model(body));

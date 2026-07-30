@@ -24,7 +24,12 @@ describe("register_api_routes", () => {
       proofreading: { query: {}, commands: {} },
       quality: { statistics: {}, rules: {}, prompts: {} },
       files: { preview: {}, translationExport: {}, tsConversionExport: {} },
-      model: {},
+      model: {
+        get_selection_snapshot: vi.fn(() => ({
+          model_selection: { translation: "a", analysis: "b", agent: "c" },
+          models: [],
+        })),
+      },
       agent: {
         get_snapshot: vi.fn(() => ({ state: "idle", entries: [], skills: [] })),
         send_message: vi.fn(() => ({ state: "running" })),
@@ -51,6 +56,7 @@ describe("register_api_routes", () => {
       "/api/logs/stream",
       "/api/events/stream",
       "/api/agent/snapshot",
+      "/api/models/selection",
     ]);
     expect(new Set(all_paths).size).toBe(all_paths.length);
     expect(new Set(post_paths)).toEqual(
@@ -116,7 +122,7 @@ describe("register_api_routes", () => {
         "/api/settings/recent-projects/remove",
         "/api/models/snapshot",
         "/api/models/update",
-        "/api/models/activate",
+        "/api/models/select",
         "/api/models/add",
         "/api/models/delete",
         "/api/models/reset-preset",
@@ -141,6 +147,17 @@ describe("register_api_routes", () => {
     expect(snapshot_handler?.({ json: (value) => value })).toEqual({
       ok: true,
       data: { state: "idle", entries: [], skills: [] },
+    });
+
+    const selection_handler = get.mock.calls.find(
+      ([route_path]) => route_path === "/api/models/selection",
+    )?.[1] as ((context: { json: (value: unknown) => unknown }) => unknown) | undefined;
+    expect(selection_handler?.({ json: (value) => value })).toEqual({
+      ok: true,
+      data: {
+        model_selection: { translation: "a", analysis: "b", agent: "c" },
+        models: [],
+      },
     });
 
     const message_handler = post_json.mock.calls.find(

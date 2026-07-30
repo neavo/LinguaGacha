@@ -9,11 +9,12 @@ import { AppDropdownMenu, AppDropdownMenuTrigger } from "@frontend/widgets/app-d
 
 type ModelItemChipProps = {
   model: ModelEntrySnapshot;
-  active: boolean;
   drag_disabled: boolean;
   drag_aria_label: string;
   menu: ReactNode;
 };
+
+/** 单个模型条目只承接拖拽与配置菜单，不表达任务用途选择。 */
 export function ModelItemChip(props: ModelItemChipProps): JSX.Element {
   const { attributes, isDragging, listeners, setNodeRef, transform, transition } = useSortable({
     id: props.model.id,
@@ -29,7 +30,6 @@ export function ModelItemChip(props: ModelItemChipProps): JSX.Element {
     <div
       ref={setNodeRef}
       className="model-page__item-chip"
-      data-active={props.active ? "true" : undefined}
       data-dragging={isDragging ? "true" : undefined}
       style={item_style}
     >
@@ -51,11 +51,7 @@ export function ModelItemChip(props: ModelItemChipProps): JSX.Element {
 
       <AppDropdownMenu>
         <AppDropdownMenuTrigger asChild>
-          <AppButton
-            type="button"
-            variant={props.active ? "default" : "outline"}
-            className="model-page__name-trigger"
-          >
+          <AppButton type="button" variant="outline" className="model-page__name-trigger">
             <span className="model-page__name-text">{props.model.name}</span>
             <ChevronDown data-icon="inline-end" />
           </AppButton>

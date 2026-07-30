@@ -32,6 +32,7 @@
 - query 顶层 `sectionRevisions` 是页面写入和任务命令的乐观锁来源；功能域局部 revision 只服务 cache 身份，不能替代操作 revision。
 - 页面写入只提交用户意图、设置镜像、显式 operation 与 query 返回的 revision，不提交前端计算出的 canonical facts。
 - `SCREEN_REGISTRY` 是页面注册与标题 key 的唯一入口。
+- 跨页面模型选择由 `features/model-selection` 归一协议并持有页面生命周期 query / command；它不进入 `DesktopStateProvider`，也不通过 SSE 同步。
 - Agent 页面从后端 snapshot 恢复结构化私有会话并消费统一 SSE 增量，不进入 `DesktopStateProvider` 或项目 session UI 缓存；composer 草稿归页面私有状态，发送时投影为有序 parts，后端受理后整体清空。
 - `ProjectSessionUiStateProvider` 只保存当前项目内可跨路由恢复的轻量 UI 状态，项目切换或关闭时清空，不写入后端事实。
 - `WorkbenchTasksSessionProvider` 保存翻译 / 分析完成后的跨路由 follow-up；页面计算缓存、弹窗、导入和提交中状态默认随页面挂载与卸载。

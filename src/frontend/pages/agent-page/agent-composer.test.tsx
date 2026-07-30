@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -15,8 +15,20 @@ import { EditorView } from "@codemirror/view";
 import { AgentComposer } from "./agent-composer";
 
 vi.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
+vi.mock("@frontend/shadcn/tooltip", () => ({
+  Tooltip: (props: { children: ReactNode }) => <>{props.children}</>,
+  TooltipTrigger: (props: { children: ReactNode }) => <>{props.children}</>,
+  TooltipContent: (props: { children: ReactNode }) => <div role="tooltip">{props.children}</div>,
+}));
 vi.mock("@frontend/app/locale/locale-provider", () => ({
-  useI18n: () => ({ t: (key: string) => key }),
+  useI18n: () => ({
+    t: (key: string) =>
+      key === "agent_page.input.placeholder"
+        ? "描述任务，或输入 @ 选择能力 …"
+        : key === "agent_page.input.hint"
+          ? "Enter 发送 · Shift + Enter 换行"
+          : key,
+  }),
 }));
 
 const skills = [
@@ -184,10 +196,36 @@ describe("AgentComposer", () => {
     expect(on_send).not.toHaveBeenCalled();
   });
 
+  it("快捷键只在 shadcn 发送按钮提示显示，更新期间保持编辑但禁止发送", async () => {
+    const view = await render_composer(
+      vi.fn(async () => true),
+      false,
+      vi.fn(async () => undefined),
+      { updating: true },
+    );
+    const meta = view.querySelector(".agent-composer__meta");
+    const model_trigger = view.querySelector<HTMLButtonElement>(".agent-composer__model-trigger");
+    const placeholder = view.querySelector(".cm-placeholder");
+    const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
+    const tooltip = view.querySelector('[role="tooltip"]');
+
+    expect(meta?.firstElementChild).toBe(model_trigger);
+    expect(model_trigger?.textContent).toContain("Agent Model");
+    expect(model_trigger?.disabled).toBe(true);
+    expect(placeholder?.textContent).toBe("描述任务，或输入 @ 选择能力 …");
+    expect(submit?.title).toBe("");
+    expect(submit?.parentElement?.classList.contains("inline-flex")).toBe(true);
+    expect(tooltip?.textContent).toBe("Enter 发送 · Shift + Enter 换行");
+    expect(meta?.querySelector(":scope > span")).toBeNull();
+    expect(get_editor(view).contentDOM.getAttribute("contenteditable")).toBe("true");
+    expect(submit?.disabled).toBe(true);
+  });
+
   async function render_composer(
     on_send = vi.fn(async () => true),
     running = false,
     on_stop = vi.fn(async () => undefined),
+    model_selection_overrides: { loading?: boolean; updating?: boolean } = {},
   ): Promise<HTMLDivElement> {
     if (container === null) {
       container = document.createElement("div");
@@ -200,6 +238,16 @@ describe("AgentComposer", () => {
           skills={skills}
           running={running}
           error={false}
+          model_selection={{
+            snapshot: {
+              model_selection: { translation: "preset", analysis: "preset", agent: "agent" },
+              models: [{ id: "agent", type: "CUSTOM_OPENAI", name: "Agent Model" }],
+            },
+            loading: false,
+            updating: false,
+            select_model: vi.fn(async () => undefined),
+            ...model_selection_overrides,
+          }}
           on_send={on_send}
           on_stop={on_stop}
         />,

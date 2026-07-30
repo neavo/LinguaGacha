@@ -155,12 +155,12 @@ export class AgentService {
       selected_skills.push(skill);
     }
 
-    const runtime = this.ensure_runtime(system_prompt);
-    if (runtime.agent.state.isStreaming) {
+    if (this.runtime?.agent.state.isStreaming) {
       throw new AppErrors.RequestValidationError({
         diagnostic_context: { reason: "agent_already_running" },
       });
     }
+    const runtime = this.ensure_runtime(system_prompt);
 
     this.upsert_entry({
       kind: "user_message",
@@ -223,6 +223,12 @@ export class AgentService {
     }
     if (this.runtime === null) {
       this.runtime = this.create_runtime(binding, system_prompt);
+    } else {
+      // 空闲回合只替换模型请求能力，消息、工具、公开条目和工程绑定继续复用。
+      const resolved_model = resolve_agent_model(this.settings.read_setting(), this.user_agent);
+      this.runtime.agent.state.model = resolved_model.model;
+      this.runtime.agent.state.thinkingLevel = resolved_model.thinkingLevel;
+      this.runtime.agent.streamFunction = resolved_model.stream;
     }
     return this.runtime;
   }

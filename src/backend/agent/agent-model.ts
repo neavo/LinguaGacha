@@ -8,7 +8,7 @@ import type { JsonRecord } from "../../domain/json";
 import type { ModelApiFormat } from "../../domain/model";
 import * as AppErrors from "../../shared/error";
 import { LLMClientPolicy } from "../llm/llm-client-policy";
-import { resolve_active_model } from "../model/model-config-resolver";
+import { resolve_model_for_usage } from "../model/model-config-resolver";
 
 const AGENT_CONTEXT_WINDOW = 256_000;
 const AGENT_MAX_OUTPUT_TOKENS = 64_000;
@@ -24,7 +24,7 @@ export function resolve_agent_model(
   thinkingLevel: "off" | "low" | "medium" | "high";
   stream: StreamFn;
 } {
-  const raw_model = resolve_active_model(config);
+  const raw_model = resolve_model_for_usage(config, "agent");
   if (raw_model === null) throw new AppErrors.ModelNotFoundError();
 
   const policy = new LLMClientPolicy(user_agent);

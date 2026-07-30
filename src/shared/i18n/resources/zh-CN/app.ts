@@ -4,6 +4,21 @@ export const zh_cn_app = {
   metadata: {
     app_name: "LinguaGacha",
   },
+  model: {
+    type: {
+      preset: "预设模型",
+      google: "自定义 Google 模型",
+      openai: "自定义 OpenAI 模型",
+      anthropic: "自定义 Anthropic 模型",
+    },
+    selection: {
+      label: "选择模型",
+      unavailable: "暂无可用模型",
+      current_category: "当前模型分类",
+      load_failed: "模型选择加载失败，请稍后重试 …",
+      update_failed: "模型选择保存失败，请稍后重试 …",
+    },
+  },
   action: {
     cancel: "取消",
     confirm: "确认",

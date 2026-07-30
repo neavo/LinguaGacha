@@ -99,6 +99,7 @@ describe("ModelService 配置管理", () => {
     });
 
     const snapshot = read_request_model_snapshot(service.get_snapshot());
+    const selection = read_selection_snapshot(service.get_selection_snapshot());
 
     expect(snapshot.models.map((model) => model["id"]).slice(0, 2)).toEqual([
       "preset-1",
@@ -109,6 +110,11 @@ describe("ModelService 配置管理", () => {
       "CUSTOM_OPENAI",
       "CUSTOM_ANTHROPIC",
     ]);
+    expect(selection.model_selection).toEqual({
+      translation: "preset-1",
+      analysis: "preset-1",
+      agent: "preset-1",
+    });
   });
 
   it("初始化不会重复追加已经存在的内置预设", async () => {
@@ -187,96 +193,83 @@ describe("ModelService 配置管理", () => {
     expect(() => service.add_model({ model_type: "PRESET" })).toThrow("request.validation_failed");
   });
 
-  it("删除激活模型时优先回退到同类型模型", async () => {
+  it("选择单个用途不会改变另外两个用途，且公开快照不含敏感配置", async () => {
     const { service } = await create_model_service([
       create_model({ id: "preset", type: "PRESET" }),
       create_model({ id: "openai-a", type: "CUSTOM_OPENAI" }),
       create_model({ id: "openai-b", type: "CUSTOM_OPENAI" }),
     ]);
-    await service.activate_model({ model_id: "openai-a" });
 
-    const snapshot = read_request_model_snapshot(
-      await service.delete_model({ model_id: "openai-a" }),
+    const snapshot = read_selection_snapshot(
+      service.select_model({ usage: "analysis", model_id: "openai-a" }),
     );
 
-    expect(snapshot.active_model_id).toBe("openai-b");
-    expect(snapshot.models.map((model) => model["id"])).not.toContain("openai-a");
+    expect(snapshot.model_selection).toEqual({
+      translation: "preset",
+      analysis: "openai-a",
+      agent: "preset",
+    });
+    expect(snapshot.models[0]).toEqual({ id: "preset", type: "PRESET", name: "模型" });
+    expect(snapshot.models[0]).not.toHaveProperty("api_key");
   });
 
-  it("删除激活模型时没有同类型则回退到预设模型", async () => {
-    const { service } = await create_model_service([
-      create_model({ id: "preset", type: "PRESET" }),
-      create_model({ id: "google", type: "CUSTOM_GOOGLE", api_format: "Google" }),
-    ]);
-    await service.activate_model({ model_id: "google" });
-
-    const snapshot = read_request_model_snapshot(
-      await service.delete_model({ model_id: "google" }),
-    );
-
-    expect(snapshot.active_model_id).toBe("preset");
-  });
-
-  it("删除激活模型时没有预设则回退到列表第一个模型", async () => {
-    const { service } = await create_model_service([
-      create_model({ id: "google", type: "CUSTOM_GOOGLE", api_format: "Google" }),
-      create_model({ id: "openai", type: "CUSTOM_OPENAI" }),
-    ]);
-    await service.activate_model({ model_id: "google" });
-
-    const snapshot = read_request_model_snapshot(
-      await service.delete_model({ model_id: "google" }),
-    );
-
-    expect(snapshot.active_model_id).toBe("openai");
-  });
-
-  it("删除唯一已配置模型前会先补齐默认类型并回退到默认模型", async () => {
-    stub_random_ids("00000000-0000-4000-8000-000000000041", "00000000-0000-4000-8000-000000000042");
-    const { service } = await create_model_service([
-      create_model({ id: "google", type: "CUSTOM_GOOGLE", api_format: "Google" }),
-    ]);
-    await service.activate_model({ model_id: "google" });
-
-    const snapshot = read_request_model_snapshot(
-      await service.delete_model({ model_id: "google" }),
-    );
-
-    expect(snapshot.models.map((model) => model["type"])).toEqual([
-      "CUSTOM_OPENAI",
-      "CUSTOM_ANTHROPIC",
-    ]);
-    expect(snapshot.active_model_id).toBe("00000000-0000-4000-8000-000000000041");
-  });
-
-  it("删除非激活模型不会改变当前激活 ID", async () => {
-    const { service } = await create_model_service([
-      create_model({ id: "preset", type: "PRESET" }),
-      create_model({ id: "google", type: "CUSTOM_GOOGLE", api_format: "Google" }),
-      create_model({ id: "openai", type: "CUSTOM_OPENAI" }),
-    ]);
-    await service.activate_model({ model_id: "openai" });
-
-    const snapshot = read_request_model_snapshot(
-      await service.delete_model({ model_id: "google" }),
-    );
-
-    expect(snapshot.active_model_id).toBe("openai");
-  });
-
-  it("激活模型会持久化命中的模型 ID 并拒绝缺失模型", async () => {
+  it("非法用途和缺失模型均不落盘", async () => {
     const { service } = await create_model_service([
       create_model({ id: "preset", type: "PRESET" }),
       create_model({ id: "openai", type: "CUSTOM_OPENAI" }),
     ]);
+    const before = service.get_selection_snapshot();
 
-    const snapshot = read_request_model_snapshot(
-      await service.activate_model({ model_id: "openai" }),
+    expect(() => service.select_model({ usage: "unknown", model_id: "openai" })).toThrow(
+      "request.validation_failed",
+    );
+    expect(() => service.select_model({ usage: "analysis", model_id: "missing" })).toThrow(
+      "model.not_found",
     );
 
-    expect(snapshot.active_model_id).toBe("openai");
-    expect(read_request_model_snapshot(service.get_snapshot()).active_model_id).toBe("openai");
-    expect(() => service.activate_model({ model_id: "missing" })).toThrow("model.not_found");
+    expect(service.get_selection_snapshot()).toEqual(before);
+  });
+
+  it("删除被多个用途引用的模型时统一优先回退同类型模型", async () => {
+    const { service } = await create_model_service([
+      create_model({ id: "preset", type: "PRESET" }),
+      create_model({ id: "openai-a", type: "CUSTOM_OPENAI" }),
+      create_model({ id: "openai-b", type: "CUSTOM_OPENAI" }),
+    ]);
+    service.select_model({ usage: "translation", model_id: "openai-a" });
+    service.select_model({ usage: "analysis", model_id: "openai-a" });
+    service.select_model({ usage: "agent", model_id: "preset" });
+
+    const management_snapshot = read_request_model_snapshot(
+      service.delete_model({ model_id: "openai-a" }),
+    );
+    const selection = read_selection_snapshot(service.get_selection_snapshot());
+
+    expect(selection.model_selection).toEqual({
+      translation: "openai-b",
+      analysis: "openai-b",
+      agent: "preset",
+    });
+    expect(management_snapshot.models.map((model) => model["id"])).not.toContain("openai-a");
+  });
+
+  it("删除已选模型时没有同类型则回退预设，未引用用途保持不变", async () => {
+    const { service } = await create_model_service([
+      create_model({ id: "preset", type: "PRESET" }),
+      create_model({ id: "google", type: "CUSTOM_GOOGLE", api_format: "Google" }),
+      create_model({ id: "openai", type: "CUSTOM_OPENAI" }),
+    ]);
+    service.select_model({ usage: "translation", model_id: "google" });
+    service.select_model({ usage: "analysis", model_id: "openai" });
+
+    service.delete_model({ model_id: "google" });
+    const selection = read_selection_snapshot(service.get_selection_snapshot());
+
+    expect(selection.model_selection).toEqual({
+      translation: "preset",
+      analysis: "openai",
+      agent: "preset",
+    });
   });
 
   it("预设模型和不存在的模型不能删除", async () => {
@@ -535,7 +528,6 @@ async function create_model_service(
   const paths = new AppPathService({ appRoot: app_root });
   const app_setting_service = new AppSettingService(paths);
   app_setting_service.save_setting({
-    activate_model_id: models[0]?.["id"] ?? "",
     models,
   });
   const log_manager =
@@ -622,7 +614,6 @@ function create_template(name: string, api_format: string): JsonRecord {
 }
 
 function read_request_model_snapshot(response: JsonRecord): {
-  active_model_id: string;
   models: Array<JsonRecord>;
 } {
   const snapshot = response["snapshot"];
@@ -631,7 +622,30 @@ function read_request_model_snapshot(response: JsonRecord): {
   }
   const models = snapshot["models"];
   return {
-    active_model_id: String(snapshot["active_model_id"] ?? ""),
+    models: Array.isArray(models)
+      ? models.filter(
+          (model): model is JsonRecord =>
+            typeof model === "object" && model !== null && !Array.isArray(model),
+        )
+      : [],
+  };
+}
+
+function read_selection_snapshot(response: JsonRecord): {
+  model_selection: { translation: string; analysis: string; agent: string };
+  models: Array<JsonRecord>;
+} {
+  const selection = response["model_selection"];
+  const models = response["models"];
+  if (typeof selection !== "object" || selection === null || Array.isArray(selection)) {
+    throw new Error("测试夹具缺少模型选择");
+  }
+  return {
+    model_selection: {
+      translation: String(selection["translation"] ?? ""),
+      analysis: String(selection["analysis"] ?? ""),
+      agent: String(selection["agent"] ?? ""),
+    },
     models: Array.isArray(models)
       ? models.filter(
           (model): model is JsonRecord =>

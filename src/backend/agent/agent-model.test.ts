@@ -110,6 +110,24 @@ describe("Agent 模型桥接", () => {
       baseUrl: "https://example.test/v1",
     });
   });
+
+  it("Agent 只读取 agent 用途选择", () => {
+    const config = build_config("OpenAI");
+    const models = config["models"];
+    if (!Array.isArray(models)) throw new Error("测试配置缺少模型");
+    config["models"] = [
+      {
+        id: "task-model",
+        api_format: "OpenAI",
+        api_url: "https://task.example/v1",
+        api_key: "task-key",
+        model_id: "task-only",
+      },
+      ...models,
+    ];
+
+    expect(resolve_agent_model(config, TEST_USER_AGENT).model.id).toBe("test-model");
+  });
 });
 
 type ResolvedAgentModel = ReturnType<typeof resolve_agent_model>;
@@ -126,7 +144,7 @@ function read_stream_options(resolved: ResolvedAgentModel): SimpleStreamOptions 
 /** 构造只包含 Agent 模型解析所需字段的设置快照。 */
 function build_config(api_format: string, overrides: JsonRecord = {}): JsonRecord {
   return {
-    activate_model_id: "active",
+    model_selection: { translation: "translation", analysis: "analysis", agent: "active" },
     models: [
       {
         id: "active",

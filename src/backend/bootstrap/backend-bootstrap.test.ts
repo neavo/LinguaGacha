@@ -486,7 +486,11 @@ describe("BackendBootstrap", () => {
     fs.writeFileSync(
       path.join(temp_dir, "userdata", "config.json"),
       JSON.stringify({
-        activate_model_id: "openai-custom",
+        model_selection: {
+          translation: "openai-custom",
+          analysis: "openai-custom",
+          agent: "openai-custom",
+        },
         models: [
           {
             id: "openai-custom",

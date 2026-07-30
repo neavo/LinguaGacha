@@ -3,6 +3,7 @@ import { Bot } from "lucide-react";
 
 import type { AgentEntry, AgentSessionState, AgentUserMessagePart } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useModelSelection } from "@frontend/features/model-selection/use-model-selection";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { AgentComposer } from "./agent-composer";
 import { AgentMarkdown } from "./agent-markdown";
@@ -26,6 +27,7 @@ type AgentDetailEntryProps = {
 export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const agent = useAgentPageState();
+  const model_selection = useModelSelection();
   const message_end_ref = useRef<HTMLDivElement | null>(null);
   const auto_follow_ref = useRef(true); // 用户主动离开底部后，流式增量不得抢回滚动位置
   const is_running = agent.state === "running";
@@ -73,6 +75,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         skills={agent.skills}
         running={is_running}
         error={agent.error}
+        model_selection={model_selection}
         on_send={send}
         on_stop={agent.stop}
       />

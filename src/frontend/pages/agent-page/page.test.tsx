@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import type { AgentAssistantMessagePart, AgentToolEntry } from "@shared/agent";
 import type { useAgentPageState as UseAgentPageStateFunction } from "./use-agent-page-state";
 
@@ -10,6 +11,24 @@ type AgentPageState = ReturnType<typeof UseAgentPageStateFunction>;
 const page_state = vi.hoisted(() => ({ current: {} as AgentPageState }));
 
 vi.mock("./use-agent-page-state", () => ({ useAgentPageState: () => page_state.current }));
+vi.mock("@frontend/features/model-selection/use-model-selection", async (import_original) => {
+  const actual =
+    await import_original<
+      typeof import("@frontend/features/model-selection/use-model-selection")
+    >();
+  return {
+    ...actual,
+    useModelSelection: () => ({
+      snapshot: {
+        model_selection: { translation: "preset", analysis: "preset", agent: "agent" },
+        models: [{ id: "agent", type: "CUSTOM_OPENAI", name: "Agent Model" }],
+      },
+      loading: false,
+      updating: false,
+      select_model: vi.fn(async () => undefined),
+    }),
+  };
+});
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
     t: (key: string, params?: Record<string, string>) =>
@@ -39,7 +58,13 @@ describe("AgentPage", () => {
       document.body.append(container);
       root = createRoot(container);
     }
-    await act(async () => root?.render(<AgentPage is_sidebar_collapsed={false} />));
+    await act(async () =>
+      root?.render(
+        <TooltipProvider>
+          <AgentPage is_sidebar_collapsed={false} />
+        </TooltipProvider>,
+      ),
+    );
     return container;
   }
 
@@ -49,6 +74,9 @@ describe("AgentPage", () => {
 
     expect(empty?.querySelector("h2")).toBeNull();
     expect(empty?.querySelectorAll("p")).toHaveLength(1);
+    expect(view.querySelector(".agent-composer__model-trigger")?.textContent).toContain(
+      "Agent Model",
+    );
   });
 
   it("用户离开消息底部后不被流式输出抢回滚动位置", async () => {

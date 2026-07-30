@@ -42,7 +42,7 @@ describe("AppSettingService", () => {
     expect(result["settings"]).not.toHaveProperty("models");
     expect(saved).toMatchObject({
       app_language: "ZH",
-      activate_model_id: "",
+      model_selection: { translation: "", analysis: "", agent: "" },
       models: null,
     });
   });
@@ -51,7 +51,7 @@ describe("AppSettingService", () => {
     const { service, config_path, events } = create_service();
     write_config(config_path, {
       app_language: "ZH",
-      activate_model_id: "model-1",
+      model_selection: { translation: "model-1", analysis: "model-2", agent: "model-3" },
       models: [{ id: "model-1" }],
       check_kana_residue: false,
       check_hangeul_residue: false,
@@ -82,7 +82,7 @@ describe("AppSettingService", () => {
       request_timeout: 45,
       project_save_mode: "FIXED",
       prompt_enhancement_enable: false,
-      activate_model_id: "model-1",
+      model_selection: { translation: "model-1", analysis: "model-2", agent: "model-3" },
       models: [{ id: "model-1" }],
     });
     expect(saved).not.toHaveProperty("unknown_key");

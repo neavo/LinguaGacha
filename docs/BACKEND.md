@@ -10,6 +10,7 @@
 - 成功响应为 `{ ok: true, data }`，失败响应为 `{ ok: false, error }`；公开错误不包含 diagnostic context、cause、stack 或供应商原始异常。
 - 公开 SSE topic 固定为 `project.data_changed`、`task.snapshot_changed`、`agent.session_event`、`settings.changed`、`log.appended`，data 使用严格 JSON 序列化。
 - Agent 公开入口固定为 `GET /api/agent/snapshot` 与 `POST /api/agent/message|stop`；请求与 `user_message` 保留有序 text / skill parts，只有 skill part 触发能力。snapshot 提供恢复事实与启动期 skill 清单，后续条目经 `agent.session_event` 以同 id `entry_upsert` 原位覆盖。
+- 模型管理 API 只负责配置 CRUD；任务入口通过 `GET /api/models/selection` 读取窄选项，通过 `POST /api/models/select` 按 `translation`、`analysis` 或 `agent` 用途更新单项选择，不公开密钥、请求覆盖或生成参数。
 - `user_message` 的 `createdAt` / `endedAt` 是轮次起止事实，运行中 `endedAt` 为 `null`，任一终止路径都原位封口；`assistant_message` 保留有序 text / thinking parts，但不公开空白或脱敏思考、签名和供应商连续性元数据；`tool_call` 只公开名称、状态和模型实际收到的文本输出（运行中为 `null`），不公开参数或第三方结果包装。
 - `LogManager` 以 `LogContent` 判别联合保存单一正文事实：文件和控制台从它生成纯文本投影，`log.appended` 只携带轻量预览，`/api/logs/detail` 只查询当前进程结构化详情池且不回扫历史文件。
 - `/api/diagnostics/renderer-error` 只接收实际 renderer 异常摘要与白名单上下文并写入 `LogManager`，不改变项目、任务或设置事实。
@@ -19,6 +20,7 @@
 | 状态 / 边界 | 拥有者 | 唯一写入口 / 读出口 |
 | --- | --- | --- |
 | 应用设置、最近工程、语言 | `AppSettingService` | 设置 API、CLI transient overrides、`settings.changed` |
+| 模型集合与按用途选择 | `ModelService` | 模型 API；经 `AppSettingService` 持久化到应用设置 |
 | loaded 工程身份 | `ProjectSessionState` | `ProjectLifecycleService` |
 | loaded 工程热读数据 | `CacheManager` | 工程热机、committed event、功能 query |
 | 项目事实提交 | `ProjectWriteStore` | 单 `.lg` 事务、唯一 `ProjectEventHandler`、`adapt_project_change` |
@@ -56,7 +58,7 @@ project, files, items, quality, prompts, analysis, proofreading
 
 ## 4. 任务、worker 与 LLM
 
-- `TaskService` 负责命令 JSON 收窄、task / mode / scope 归一、section revision 校验、gate 接入和 Engine 命令转交；激活模型由 `TaskEngine` 在每轮 run 开始时解析并冻结到运行上下文。
+- `TaskService` 负责命令 JSON 收窄、task / mode / scope 归一、section revision 校验、gate 接入和 Engine 命令转交；`TaskEngine` 在每轮 run 开始时按 translation / analysis 用途解析模型，并与限流、提示词配置一起冻结到运行上下文。行级重翻和 CLI 复用同一任务入口，不另建模型选择旁路。
 - 启动任务必须携带 `TaskService` 按 task type 与 scope 固定要求的 `expected_section_revisions`；通过 gate 后立即进入 busy，Engine 启动失败时恢复前置状态。
 - 所有任务命令 ack 都通过 `TaskRuntime.build_snapshot` 重新读取当前事实，避免旧命令意图覆盖更晚的终态。
 - `TaskRuntime.build_snapshot` 组合内存中的 status、busy、`run_revision`、请求压力与 translation scope，以及 `.lg` 中的 progress / analysis candidate count；`run_revision` 是前端丢弃旧 snapshot 的排序依据。
@@ -65,7 +67,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - `TaskRuntime` 拥有全局运行互斥、取消、终态和 Engine completion；`TaskEngine` 只负责编排，任务结果统一经 `TaskProjectStore` 进入项目写入边界。全量翻译与分析经过 Planner，行级重翻直接从目标 items 构造 context。
 - work-unit worker 负责提示词构建、runner、pipeline 和响应处理；planning worker 只承担规划期计算。线程数不等于 LLM 并发，实际并发由模型 key lease 与 limiter 决定。
 - 非 engine 的重型计算通过 `BackendWorkerClient` 提交无状态 worker task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
-- 模型请求快照、provider policy、SDK transport 和结果归一归 `src/backend/llm`，任务层不解析供应商异常文本；OneShot 拥有完整任务 payload，Pi 只拥有 Agent 的消息、工具和流式结构，两条路径发送前复用同一思考与扩展规则。模型页 generation 和输入/输出 token 设置只作用于 OneShot，Agent 固定使用 256K 上下文与 64K 最大输出。
+- 模型请求快照、provider policy、SDK transport 和结果归一归 `src/backend/llm`，任务层不解析供应商异常文本；OneShot 拥有完整任务 payload，Pi 只拥有 Agent 的消息、工具和流式结构，两条路径发送前复用同一思考与扩展规则。模型页 generation 和输入/输出 token 设置只作用于 OneShot，Agent 固定使用 256K 上下文与 64K 最大输出。Agent 在每个空闲回合前重新解析 agent 用途选择，只替换 Pi runtime 的模型、思考等级和流函数；消息历史、工具、公开条目与工程绑定保持不变，运行中变化只影响下一轮。
 - Agent 基础 system prompt 的唯一资源为 `resource/agent/system_prompt.md`，与内置、用户 skill 一并在启动期加载并固定；基础资源缺失、不可读或为空会令启动失败，坏 skill 只进入诊断。显式 skill part 按首次出现顺序通过 Pi invocation 进入该轮用户消息；`references` Markdown 在启动期递归形成白名单，工具只可读取当前会话已引用 skill 的完整相对路径。
 - Agent 是否获得当前写入方案的明确批准由模型按完整对话语义判断，后端不维护批准状态机；`write_glossary` 只以 `expected_section_revisions` 防止并发覆盖。Agent 自己的写入事件只推进当前工程绑定，外部 quality 变更仍会令会话失效。
 
