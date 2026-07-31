@@ -87,6 +87,32 @@ describe("LLMClientPolicy", () => {
 
     expect(resolved.timeout_ms).toBe(120_000);
   });
+
+  it("拒绝不符合 Pi provider 契约的 payload", () => {
+    const policy = new LLMClientPolicy(TEST_USER_AGENT);
+    const openai = policy.read_model_snapshot(create_body({}).model);
+    const google = policy.read_model_snapshot(create_body({ api_format: "Google" }).model);
+
+    expect(() => policy.apply_request_overrides(openai, null)).toThrow(
+      "runtime.internal_invariant",
+    );
+    expect(() => policy.apply_request_overrides(google, { contents: [] })).toThrow(
+      "runtime.internal_invariant",
+    );
+  });
+
+  it.each([
+    ["OpenAI", "kimi-k3", true],
+    ["OpenAI", "unknown-model", false],
+    ["Anthropic", "claude-sonnet-4-5", true],
+    ["Google", "gemini-2.5-flash", true],
+    ["SakuraLLM", "sakura-v1", false],
+  ] as const)("从 %s/%s 的模型族规则判断思考能力", (api_format, model_id, expected) => {
+    const policy = new LLMClientPolicy(TEST_USER_AGENT);
+    const snapshot = policy.read_model_snapshot(create_body({ api_format, model_id }).model);
+
+    expect(policy.supports_thinking(snapshot)).toBe(expected);
+  });
 });
 
 /**

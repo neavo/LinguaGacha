@@ -21,21 +21,16 @@ export const zh_cn_text_replacement_page = {
     },
   },
 
-  dialog: {
-    create_title: "新增替换规则",
-    edit_title: "编辑替换规则",
-  },
-
   statistics: {
     subset_relations: "存在包含关系：",
 
-    running: "统计中",
     action: {
       search_relation: "查询包含关系",
     },
   },
 
   feedback: {
+    load_failed: "替换规则加载失败，请稍后重试。",
     save_failed: "替换页保存失败",
     import_failed: "替换页导入失败",
 

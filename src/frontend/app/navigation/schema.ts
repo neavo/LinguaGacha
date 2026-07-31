@@ -1,6 +1,7 @@
 import {
   BetweenVerticalEnd,
   BetweenVerticalStart,
+  Bot,
   BookA,
   BookOpenCheck,
   Boxes,
@@ -37,6 +38,11 @@ export const NAVIGATION_GROUPS: NavigationGroup[] = [
   {
     id: "task",
     items: [
+      {
+        id: "agent",
+        icon: Bot,
+        title_key: "agent_page.title",
+      },
       {
         id: "proofreading",
         icon: Grid2x2Check,

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { INPUT_QUERY_DEBOUNCE_MS } from "@frontend/widgets/interactions/use-debounce";
 import { ModelSelectorDialog } from "@frontend/pages/model-page/dialogs/model-selector-dialog";
-import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
+import { create_model_snapshot } from "./model-dialog-test-fixture";
 
 vi.mock("@frontend/app/locale/locale-provider", () => {
   return {
@@ -51,43 +51,6 @@ vi.mock("@frontend/widgets/app-page-dialog", () => {
     },
   };
 });
-
-function create_model_snapshot(): ModelEntrySnapshot {
-  return {
-    id: "model-1",
-    type: "PRESET",
-    name: "默认模型",
-    api_format: "OpenAI",
-    api_url: "",
-    api_key: "",
-    model_id: "alpha-model",
-    request: {
-      extra_headers: {},
-      extra_headers_custom_enable: false,
-      extra_body: {},
-      extra_body_custom_enable: false,
-    },
-    threshold: {
-      input_token_limit: 0,
-      output_token_limit: 0,
-      rpm_limit: 0,
-      concurrency_limit: 0,
-    },
-    thinking: {
-      level: "OFF",
-    },
-    generation: {
-      temperature: 1,
-      temperature_custom_enable: false,
-      top_p: 1,
-      top_p_custom_enable: false,
-      presence_penalty: 0,
-      presence_penalty_custom_enable: false,
-      frequency_penalty: 0,
-      frequency_penalty_custom_enable: false,
-    },
-  };
-}
 
 function change_input_value(input: HTMLInputElement, value: string): void {
   const value_descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");

@@ -86,10 +86,7 @@ export function ProofreadingContextView(props: ProofreadingContextViewProps): JS
   }
 
   return (
-    <section
-      className="proofreading-page__context-view"
-      aria-label={t("proofreading_page.context.title")}
-    >
+    <section className="proofreading-page__context-view" aria-label={t("proofreading_page.title")}>
       <header className="proofreading-page__context-header">
         <span className="proofreading-page__context-file-path" title={props.file_path}>
           {props.file_path}

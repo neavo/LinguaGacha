@@ -62,9 +62,7 @@ export const zh_cn_quality_editor = {
     dialog: {
       name_placeholder: "请输入预设名称 …",
       rename_confirm: "重命名",
-      rename_title: "重命名预设",
       save_confirm: "保存",
-      save_title: "保存为预设",
     },
     rename: "重命名",
     save: "保存预设",

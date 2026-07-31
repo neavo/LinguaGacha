@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { is_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
+import { normalize_model_selection, type ModelUsage } from "../../domain/model";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 
@@ -20,27 +21,20 @@ export function read_config_model_records(config: JsonRecord): JsonRecord[] {
 }
 
 /**
- * 复刻历史设置文件中的激活模型选择规则，避免服务端出现第二套口径
+ * 按执行用途解析模型；失效选择统一回退当前排序后的首项
  */
-export function resolve_active_model(config: JsonRecord): JsonRecord | null {
+export function resolve_model_for_usage(config: JsonRecord, usage: ModelUsage): JsonRecord | null {
   const models = read_config_model_records(config);
-  const active_model_id = String(config["activate_model_id"] ?? "").trim();
-  if (active_model_id !== "") {
-    const active_model = models.find((model) => {
-      return String(model["id"] ?? "") === active_model_id;
+  const selected_model_id = normalize_model_selection(config["model_selection"])[usage];
+  if (selected_model_id !== "") {
+    const selected_model = models.find((model) => {
+      return String(model["id"] ?? "") === selected_model_id;
     });
-    if (active_model !== undefined) {
-      return active_model;
+    if (selected_model !== undefined) {
+      return selected_model;
     }
   }
   return models[0] ?? null;
-}
-
-/**
- * 返回运行时实际会采用的模型 id，供页面快照和任务预检共享
- */
-export function resolve_active_model_id(config: JsonRecord): string {
-  return String(resolve_active_model(config)?.["id"] ?? "");
 }
 
 /**

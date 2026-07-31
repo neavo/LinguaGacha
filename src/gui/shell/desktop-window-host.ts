@@ -23,6 +23,7 @@ import {
 } from "../../backend/log/log-bridge";
 import { t_main_log } from "../../backend/log/log-text";
 import type { RendererProcessDiagnosticsRegistry } from "./renderer-process-diagnostics";
+import { register_text_context_menu } from "./text-context-menu";
 
 const WINDOW_STANDARD_WIDTH = 1280; // 与旧桌面版 AppFluentWindow 对齐，后续 Electron UI 也以 1280 x 800 作为标准开发基线
 const WINDOW_STANDARD_HEIGHT = 800;
@@ -96,7 +97,7 @@ export function create_log_window_host(options: LogWindowHostFactoryOptions): Lo
     registerWindow: (target_window) => {
       options.rendererDiagnostics.registerWindow(target_window, "log");
       register_development_devtools_shortcut(target_window);
-      register_window_runtime_events(target_window, {
+      register_window_events(target_window, {
         confirmOnClose: false,
         rendererDiagnostics: options.rendererDiagnostics,
         shouldBypassCloseConfirmation: () => true,
@@ -123,7 +124,7 @@ export function create_main_window(options: MainWindowHostOptions): BrowserWindo
   );
   options.rendererDiagnostics.registerWindow(main_window, "main");
   register_development_devtools_shortcut(main_window);
-  register_window_runtime_events(main_window, {
+  register_window_events(main_window, {
     confirmOnClose: true,
     rendererDiagnostics: options.rendererDiagnostics,
     shouldBypassCloseConfirmation: options.shouldBypassCloseConfirmation,
@@ -314,9 +315,9 @@ function show_window_if_hidden(target_window: BrowserWindow): void {
 }
 
 /**
- * 注册窗口运行期保护事件，把关闭确认、加载失败和渲染进程异常都收口到主进程
+ * 注册窗口通用交互与运行期保护事件，供主窗口和日志窗口复用
  */
-function register_window_runtime_events(
+function register_window_events(
   target_window: BrowserWindow,
   options: {
     confirmOnClose: boolean;
@@ -324,6 +325,8 @@ function register_window_runtime_events(
     shouldBypassCloseConfirmation: () => boolean;
   },
 ): void {
+  register_text_context_menu(target_window);
+
   target_window.on("close", (event) => {
     // 日志窗口和退出中的应用不能进入主窗口的网页关闭确认流程
     if (!options.confirmOnClose) {

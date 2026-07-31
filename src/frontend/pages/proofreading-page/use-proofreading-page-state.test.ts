@@ -4,6 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-context";
+import {
+  normalize_project_write_result,
+  type ProjectWriteResultPayload,
+} from "@frontend/app/state/desktop-project-write";
 import type { ProjectChangeSignal } from "@frontend/app/state/desktop-state-context";
 import { INPUT_QUERY_DEBOUNCE_MS } from "@frontend/widgets/interactions/use-debounce";
 import type { ProjectItemPublicRecord } from "@domain/item";
@@ -191,7 +195,10 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
   return {
     useI18n: () => {
       return {
-        t: (key: string) => key,
+        t: (key: string) =>
+          key === "proofreading_page.feedback.clear_translation_success"
+            ? "已清空 {COUNT} 条译文"
+            : key,
       };
     },
   };
@@ -273,16 +280,15 @@ function create_runtime_fixture(): RuntimeFixture {
       };
     }),
     project_change_signal: create_project_change_signal(0, { updatedSections: [] }),
-    commit_project_write: vi.fn(async ({ run }: { run: () => Promise<unknown> }) => {
-      const payload = await run();
-      return {
-        payload,
-        write_result: {
-          accepted: true,
-          changes: [],
-        },
-      };
-    }),
+    commit_project_write: vi.fn(
+      async ({ run }: { run: () => Promise<ProjectWriteResultPayload> }) => {
+        const payload = await run();
+        return {
+          payload,
+          write_result: normalize_project_write_result(payload),
+        };
+      },
+    ),
     refresh_project_state: vi.fn(async () => {}),
     refresh_task: vi.fn(async () => runtime_fixture.current.task_snapshot),
   };
@@ -427,7 +433,7 @@ function create_proofreading_runtime_query_response() {
 // 把桌面 API 默认收口到 sync 和按 row_id 读行两类行为。
 function install_api_fetch_default_mock(): void {
   vi.mocked(api_fetch).mockImplementation(async (path: string, body: unknown) => {
-    if (path === "/api/proofreading/view") {
+    if (path === "/api/proofreading/query") {
       const request = body as { action?: string; row_ids?: string[] };
       if (request.action === "sync") {
         return create_proofreading_runtime_query_response();
@@ -1712,6 +1718,54 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.active_row_id).toBe("3");
     expect(latest_state?.anchor_row_id).toBe("1");
   });
+
+  it.each([
+    { case_name: "部分变化", changed_item_ids: [2], expected_count: 1 },
+    { case_name: "完全无变化", changed_item_ids: [], expected_count: 0 },
+  ])(
+    "清空译文$case_name时成功数量来自后端实际变更",
+    async ({ changed_item_ids, expected_count }) => {
+      await render_hook();
+      vi.mocked(api_fetch).mockResolvedValueOnce({
+        accepted: true,
+        changes:
+          changed_item_ids.length === 0
+            ? []
+            : [
+                {
+                  type: "project.changed",
+                  eventId: "clear-write-1",
+                  source: "proofreading_update_items",
+                  projectPath: "E:/demo/sample.lg",
+                  projectRevision: 1,
+                  sectionRevisions: { items: 8, proofreading: 2 },
+                  updatedSections: ["items", "proofreading"],
+                  items: {
+                    payloadMode: "field-patch",
+                    changedIds: changed_item_ids,
+                    fieldPatch: { dst: "", name_dst: null },
+                  },
+                },
+              ],
+      });
+
+      await request_pending_confirmation(() => {
+        latest_state?.request_clear_translation_row_ids(["1", "2"]);
+      });
+      await act(async () => {
+        await latest_state?.confirm_pending_confirmation();
+      });
+
+      expect(api_fetch).toHaveBeenCalledWith("/api/proofreading/translations/clear", {
+        item_ids: [1, 2],
+        expected_section_revisions: { items: 7, proofreading: 1 },
+      });
+      expect(toast_fixture.current.push_toast).toHaveBeenCalledWith(
+        "success",
+        `已清空 ${expected_count.toString()} 条译文`,
+      );
+    },
+  );
 
   it("排序语义变化会清空表格选区", async () => {
     await render_hook();

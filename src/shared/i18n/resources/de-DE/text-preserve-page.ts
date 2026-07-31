@@ -33,10 +33,6 @@ export const de_de_text_preserve_page = {
     },
   },
 
-  dialog: {
-    create_title: "Textschutz-Regel erstellen",
-    edit_title: "Textschutz-Regel bearbeiten",
-  },
   preset: {
     dialog: {
       name_placeholder: "Bitte Namen der Voreinstellung eingeben …",
@@ -45,13 +41,14 @@ export const de_de_text_preserve_page = {
   statistics: {
     hit_count: "Anzahl übereinstimmender Einträge: {COUNT}",
 
-    running: "Wird berechnet",
     action: {
       search_relation: "Enthalten-Beziehung suchen",
     },
   },
 
   feedback: {
+    load_failed:
+      "Texterhaltungsregeln konnten nicht geladen werden. Bitte später erneut versuchen.",
     preset_name_required: "Name der Voreinstellung darf nicht leer sein",
 
     default_preset_cleared: "Standard-Voreinstellung gelöscht …",

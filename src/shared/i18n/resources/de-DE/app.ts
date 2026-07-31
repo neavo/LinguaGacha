@@ -9,6 +9,21 @@ export const de_de_app = {
   metadata: {
     app_name: "LinguaGacha",
   },
+  model: {
+    type: {
+      preset: "Voreingestellte Modelle",
+      google: "Benutzerdefinierte Google-Modelle",
+      openai: "Benutzerdefinierte OpenAI-Modelle",
+      anthropic: "Benutzerdefinierte Anthropic-Modelle",
+    },
+    selection: {
+      label: "Modell auswählen",
+      unavailable: "Kein Modell verfügbar",
+      current_category: "Aktuelle Modellkategorie",
+      load_failed: "Modellauswahl konnte nicht geladen werden. Bitte erneut versuchen …",
+      update_failed: "Modellauswahl konnte nicht gespeichert werden. Bitte erneut versuchen …",
+    },
+  },
   action: {
     cancel: "Abbrechen",
     confirm: "Bestätigen",

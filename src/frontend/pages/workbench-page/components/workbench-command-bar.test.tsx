@@ -16,8 +16,13 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
 
 vi.mock("@frontend/pages/workbench-page/components/workbench-task-menu", () => {
   return {
-    WorkbenchTaskMenu: (props: { task_kind: "translation" | "analysis" }) => (
-      <button type="button">{props.task_kind}-task</button>
+    WorkbenchTaskMenu: (props: {
+      task_kind: "translation" | "analysis";
+      model_selection: unknown;
+    }) => (
+      <button type="button" data-model-selection={props.model_selection !== undefined}>
+        {props.task_kind}-task
+      </button>
     ),
   };
 });
@@ -134,10 +139,12 @@ describe("WorkbenchCommandBar", () => {
       </TooltipProvider>,
     );
 
+    expect(html).toContain("workbench_page.section.command_bar");
     expect(html).toContain("workbench_page.action.add_file");
     expect(html).toContain("Ctrl+N");
     expect(html).toContain("workbench_page.action.delete_file");
     expect(html).toContain("Del");
+    expect(html.match(/data-model-selection="true"/g)).toHaveLength(2);
   });
 
   it("删除按钮只消费上游删除权限", () => {

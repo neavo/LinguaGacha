@@ -34,9 +34,7 @@ export function GlossaryEditDialog(props: GlossaryEditDialogProps): JSX.Element 
     },
   ] as const;
   const title =
-    props.mode === "create"
-      ? t("glossary_page.dialog.create_title")
-      : t("glossary_page.dialog.edit_title");
+    props.mode === "create" ? t("quality_editor.action.create") : t("quality_editor.action.edit");
 
   useActionShortcut({
     action: "save",

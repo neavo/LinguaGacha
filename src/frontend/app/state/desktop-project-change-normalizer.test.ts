@@ -6,7 +6,7 @@ describe("desktop project change normalizer", () => {
   it("收窄合法 field-patch，并把 status 固定到 item 状态词表", () => {
     const event = normalize_project_change_event({
       eventId: "event-1",
-      source: "proofreading_save_items",
+      source: "proofreading_update_items",
       projectPath: "E:/demo/demo.lg",
       projectRevision: 2,
       updatedSections: ["items"],

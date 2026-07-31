@@ -528,7 +528,7 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
     <AppPageDialog
       open={open}
       title={t(
-        context_open ? "proofreading_page.context.title" : "proofreading_page.dialog.edit_title",
+        context_open ? "proofreading_page.action.view_context" : "proofreading_page.action.edit",
       )}
       size="lg"
       dismissBehavior={context_open ? "default" : saving ? "blocked" : "escape-only"}

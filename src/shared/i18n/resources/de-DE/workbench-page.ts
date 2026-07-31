@@ -25,11 +25,9 @@ export const de_de_workbench_page = {
   },
   table: {
     drag_handle: "Ziehen",
-    drag_handle_aria: "Zum Neuanordnen ziehen",
     file_name: "Dateiname",
     line_count: "Zeilen",
     actions: "Aktionen",
-    open_actions: "Aktionsmenü öffnen",
   },
   sort: {
     ascending: "Aufsteigend sortieren",
@@ -153,9 +151,6 @@ export const de_de_workbench_page = {
       reset_failed_failed: "Fehler beim Zurücksetzen der fehlgeschlagenen Übersetzungseinträge.",
       generate_failed: "Fehler beim Erstellen verfügbarer Übersetzungsdateien.",
     },
-  },
-  command: {
-    description: "Die Werkbank-Befehlsleiste enthält Schnellaktionen auf Projektebene.",
   },
   reorder: {
     failed: "Fehler beim Speichern der Dateireihenfolge. Bitte versuchen Sie es später erneut.",

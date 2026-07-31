@@ -39,8 +39,15 @@ export function build_sakura_payload(
   if (max_tokens !== null) {
     payload["max_tokens"] = max_tokens;
   }
-  Object.assign(payload, snapshot.extra_body);
-  return payload;
+  return apply_sakura_request_overrides(payload, snapshot);
+}
+
+/** Sakura 与 Pi OpenAI transport 共享结构，只追加项目启用的 extra_body。 */
+export function apply_sakura_request_overrides(
+  payload: Record<string, unknown>,
+  snapshot: ModelRequestSnapshot,
+): Record<string, unknown> {
+  return Object.assign({ ...payload }, snapshot.extra_body);
 }
 
 /**

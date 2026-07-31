@@ -37,7 +37,6 @@ export const en_us_project_page = {
     failed: "Failed to load project: {ERROR}",
     failed_generic: "Failed to load project",
     action: "Open Project",
-    remove_recent_project: "Remove recent project entry",
     remove_unavailable:
       "Unable to remove this recent project entry right now. Please try again later.",
     missing_file_description: "The project file is invalid. Remove it from the list …?",

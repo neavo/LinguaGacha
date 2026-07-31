@@ -559,6 +559,28 @@ describe("desktop-api", () => {
     await expect(check_github_release_update("1.2.3")).resolves.toBeNull();
   });
 
+  it("api_get 通过统一 envelope 读取 Backend query", async () => {
+    const fetch_mock = vi.fn(async (url: string) => {
+      const data = url.endsWith("/api/health")
+        ? { status: "ok", service: "linguagacha-backend", version: "9.9.9" }
+        : { state: "idle", entries: [], skills: [] };
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ ok: true, data }),
+      } as Response;
+    });
+    vi.stubGlobal("fetch", fetch_mock);
+    install_desktop_api_host("http://127.0.0.1:38191/");
+
+    const { api_get } = await import("./desktop-api");
+
+    await expect(api_get("/api/agent/snapshot")).resolves.toMatchObject({ state: "idle" });
+    expect(fetch_mock).toHaveBeenLastCalledWith("http://127.0.0.1:38191/api/agent/snapshot", {
+      method: "GET",
+    });
+  });
+
   it("api_fetch 保留 Backend 错误 code、details 和 request_id", async () => {
     vi.stubGlobal(
       "fetch",

@@ -100,7 +100,7 @@ function TextPreserveStatisticsBadge(props: TextPreserveStatisticsBadgeProps): J
           className="preserve-page__statistics-badge preserve-page__statistics-badge--running [&>svg]:!size-[10px]"
         >
           <Spinner data-icon="inline-start" />
-          <span className="sr-only">{t("text_preserve_page.statistics.running")}</span>
+          <span className="sr-only">{t("app.action.loading")}</span>
         </Badge>
       </span>
     );

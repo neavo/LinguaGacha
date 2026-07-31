@@ -32,12 +32,8 @@ export const de_de_glossary_page = {
     },
   },
 
-  dialog: {
-    create_title: "Glossareintrag erstellen",
-    edit_title: "Glossareintrag bearbeiten",
-  },
-
   feedback: {
+    load_failed: "Glossar konnte nicht geladen werden. Bitte später erneut versuchen.",
     save_failed: "Fehler beim Speichern des Glossars.",
     import_failed: "Fehler beim Importieren des Glossars.",
 

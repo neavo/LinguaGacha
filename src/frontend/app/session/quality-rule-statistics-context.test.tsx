@@ -341,7 +341,7 @@ describe("QualityRuleStatisticsProvider", () => {
 
     current_project_change_signal = create_project_change_signal({
       seq: 1,
-      reason: "quality_rule_save_entries",
+      reason: "quality_rule_update",
       updated_sections: ["quality"],
     });
     await render_provider("glossary");

@@ -83,10 +83,15 @@ type UpdateDialogState =
   | { phase: "launching"; release: GithubReleaseUpdate; zip_path: string };
 type AppTranslator = ReturnType<typeof useI18n>["t"];
 
-// PROJECT DEPENDENT ROUTE IDS 是模块级稳定契约，集中维护避免调用点散落魔术值。
-const PROJECT_DEPENDENT_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
+// 未加载工程时仍可点击，并通过项目页恢复目标路由的加载入口。
+const PROJECT_LOAD_ENTRY_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
+  "agent",
   "proofreading",
   "workbench",
+]);
+
+// 必须已有 ready 工程才能进入的项目功能页。
+const PROJECT_LOADED_ONLY_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
   "glossary",
   "text-preserve",
   "pre-translation-replacement",
@@ -97,17 +102,10 @@ const PROJECT_DEPENDENT_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
   "toolbox",
 ]);
 
-// ROUTE IDS DISABLED WHEN PROJECT UNLOADED 是模块级稳定契约，集中维护避免调用点散落魔术值。
-const ROUTE_IDS_DISABLED_WHEN_PROJECT_UNLOADED: ReadonlySet<RouteId> = new Set([
-  "glossary",
-  "text-preserve",
-  "pre-translation-replacement",
-  "post-translation-replacement",
-  "translation-prompt",
-  "analysis-prompt",
-  "laboratory",
-  "toolbox",
-]);
+// 加载入口和 loaded-only 页面都依赖项目 session，但未加载时的可选性不同。
+function is_project_dependent_route(route_id: RouteId): boolean {
+  return PROJECT_LOAD_ENTRY_ROUTE_IDS.has(route_id) || PROJECT_LOADED_ONLY_ROUTE_IDS.has(route_id);
+}
 
 /**
  * 从更新弹窗状态中读取当前 release，idle 阶段没有可消费版本。
@@ -468,14 +466,14 @@ function AppContent(props: AppContentProps): JSX.Element {
 
   const disabled_route_ids = useMemo<ReadonlySet<RouteId>>(() => {
     if (!project_snapshot.loaded) {
-      return new Set(ROUTE_IDS_DISABLED_WHEN_PROJECT_UNLOADED);
+      return new Set(PROJECT_LOADED_ONLY_ROUTE_IDS);
     }
 
     if (project_session_status === "ready") {
       return new Set();
     }
 
-    return new Set(PROJECT_DEPENDENT_ROUTE_IDS);
+    return new Set([...PROJECT_LOAD_ENTRY_ROUTE_IDS, ...PROJECT_LOADED_ONLY_ROUTE_IDS]);
   }, [project_snapshot.loaded, project_session_status]);
   const badged_bottom_action_ids = useMemo<ReadonlySet<BottomActionId>>(() => {
     return log_badge_visible ? new Set<BottomActionId>(["logs"]) : new Set();
@@ -520,7 +518,7 @@ function AppContent(props: AppContentProps): JSX.Element {
   function handle_select_route(route_id: RouteId): void {
     const next_route = resolve_selectable_route(route_id);
 
-    if (!project_snapshot.loaded && PROJECT_DEPENDENT_ROUTE_IDS.has(next_route)) {
+    if (!project_snapshot.loaded && is_project_dependent_route(next_route)) {
       set_pending_target_route(next_route);
       set_selected_route(DEFAULT_ROUTE_ID);
       return;
@@ -529,14 +527,14 @@ function AppContent(props: AppContentProps): JSX.Element {
     if (
       project_snapshot.loaded &&
       project_session_status !== "ready" &&
-      PROJECT_DEPENDENT_ROUTE_IDS.has(next_route)
+      is_project_dependent_route(next_route)
     ) {
       set_pending_target_route(next_route);
       set_selected_route(DEFAULT_ROUTE_ID);
       return;
     }
 
-    if (!PROJECT_DEPENDENT_ROUTE_IDS.has(next_route)) {
+    if (!is_project_dependent_route(next_route)) {
       set_pending_target_route(null);
     }
 

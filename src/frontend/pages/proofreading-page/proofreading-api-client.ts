@@ -54,7 +54,7 @@ export function createProofreadingApiClient(): ProofreadingApiClient {
       const response = await api_fetch<{
         syncState?: ProofreadingSyncState;
         sectionRevisions?: ProjectDataSectionRevisions;
-      }>("/api/proofreading/view", {
+      }>("/api/proofreading/query", {
         action: "sync",
         source_language: input.sourceLanguage,
         target_language: input.targetLanguage,
@@ -79,7 +79,7 @@ export function createProofreadingApiClient(): ProofreadingApiClient {
       };
     },
     async build_proofreading_list_view(input) {
-      const response = await api_fetch<{ view?: ProofreadingListView }>("/api/proofreading/view", {
+      const response = await api_fetch<{ view?: ProofreadingListView }>("/api/proofreading/query", {
         action: "list",
         query: input,
       });
@@ -97,20 +97,20 @@ export function createProofreadingApiClient(): ProofreadingApiClient {
     },
     async read_proofreading_list_window(input) {
       const response = await api_fetch<{ window?: ProofreadingListWindow }>(
-        "/api/proofreading/view",
+        "/api/proofreading/query",
         { action: "window", ...input },
       );
       return response.window ?? { view_id: input.view_id, start: 0, row_count: 0, rows: [] };
     },
     async read_proofreading_row_ids_range(input) {
-      const response = await api_fetch<{ row_ids?: string[] }>("/api/proofreading/view", {
+      const response = await api_fetch<{ row_ids?: string[] }>("/api/proofreading/query", {
         action: "row_ids_range",
         ...input,
       });
       return Array.isArray(response.row_ids) ? response.row_ids : [];
     },
     async resolve_proofreading_row_index(input) {
-      const response = await api_fetch<{ row_index?: number | null }>("/api/proofreading/view", {
+      const response = await api_fetch<{ row_index?: number | null }>("/api/proofreading/query", {
         action: "row_index",
         ...input,
       });
@@ -118,21 +118,21 @@ export function createProofreadingApiClient(): ProofreadingApiClient {
     },
     async read_proofreading_items_by_row_ids(input) {
       const response = await api_fetch<{ rows?: ProofreadingClientItem[] }>(
-        "/api/proofreading/view",
+        "/api/proofreading/query",
         { action: "items_by_row_ids", row_ids: input.row_ids },
       );
       return Array.isArray(response.rows) ? response.rows : [];
     },
     async read_proofreading_context(input) {
       const response = await api_fetch<{ rows?: ProofreadingContextItem[] }>(
-        "/api/proofreading/view",
+        "/api/proofreading/query",
         { action: "context", row_id: input.row_id },
       );
       return Array.isArray(response.rows) ? response.rows : [];
     },
     async build_proofreading_filter_panel(input) {
       const response = await api_fetch<{ filterPanel?: ProofreadingFilterPanelState }>(
-        "/api/proofreading/view",
+        "/api/proofreading/query",
         { action: "filter_panel", filters: input.filters },
       );
       return (

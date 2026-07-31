@@ -70,7 +70,7 @@ describe("ProofreadingQueryService", () => {
     const cache = create_cache();
     const service = new ProofreadingQueryService({ sessionState: session_state, cache });
 
-    const result = await service.read({
+    const result = await service.query({
       action: "sync",
       source_language: "JA",
       target_language: "ZH",
@@ -95,9 +95,9 @@ describe("ProofreadingQueryService", () => {
     const cache = create_cache();
     const service = new ProofreadingQueryService({ sessionState: session_state, cache });
 
-    const view = await service.read({ action: "list", query: { keyword: "原文" } });
-    const rows = await service.read({ action: "items_by_row_ids", row_ids: ["1"] });
-    const context = await service.read({ action: "context", row_id: "1" });
+    const view = await service.query({ action: "list", query: { keyword: "原文" } });
+    const rows = await service.query({ action: "items_by_row_ids", row_ids: ["1"] });
+    const context = await service.query({ action: "context", row_id: "1" });
 
     expect(view).toMatchObject({
       projectPath: "E:/Project/demo.lg",

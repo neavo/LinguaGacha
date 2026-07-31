@@ -1,6 +1,7 @@
 import { createElement } from "react";
 
 import { BasicSettingsPage } from "@frontend/pages/basic-settings-page/page";
+import { AgentPage } from "@frontend/pages/agent-page/page";
 import { CustomPromptPage } from "@frontend/pages/custom-prompt-page/page";
 import { ExpertSettingsPage } from "@frontend/pages/expert-settings-page/page";
 import { GlossaryPage } from "@frontend/pages/glossary-page/page";
@@ -48,6 +49,10 @@ export const SCREEN_REGISTRY: ScreenRegistry = {
   model: {
     component: ModelPage,
     title_key: "model_page.title",
+  },
+  agent: {
+    component: AgentPage,
+    title_key: "agent_page.title",
   },
   proofreading: {
     component: ProofreadingPage,

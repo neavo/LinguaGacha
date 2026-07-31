@@ -233,13 +233,12 @@ describe("useProofreadingReplaceActions", () => {
     });
 
     expect(write_calls[0]).toMatchObject({
-      path: "/api/proofreading/item/save",
+      path: "/api/proofreading/items/update",
       preferred_row_id: "1",
       pending_replace_cursor: 1,
     });
     expect(write_calls[0]?.plan?.request_body).toMatchObject({
-      item_id: 1,
-      name_dst: "Hero: Alice",
+      changes: [{ item_id: 1, name_dst: "Hero: Alice" }],
       expected_section_revisions: {
         items: 7,
         proofreading: 5,

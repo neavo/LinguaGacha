@@ -110,16 +110,16 @@ describe("proofreading-api-client", () => {
       row_count: 0,
       rows: [],
     });
-    expect(api_fetch_mock).toHaveBeenNthCalledWith(1, "/api/proofreading/view", {
+    expect(api_fetch_mock).toHaveBeenNthCalledWith(1, "/api/proofreading/query", {
       action: "sync",
       source_language: "ja",
       target_language: "zh-CN",
     });
-    expect(api_fetch_mock).toHaveBeenNthCalledWith(2, "/api/proofreading/view", {
+    expect(api_fetch_mock).toHaveBeenNthCalledWith(2, "/api/proofreading/query", {
       action: "list",
       query: expect.objectContaining({ scope: "all" }),
     });
-    expect(api_fetch_mock).toHaveBeenNthCalledWith(3, "/api/proofreading/view", {
+    expect(api_fetch_mock).toHaveBeenNthCalledWith(3, "/api/proofreading/query", {
       action: "window",
       view_id: "view-1",
       start: 0,
@@ -143,7 +143,7 @@ describe("proofreading-api-client", () => {
 
     await expect(client.read_proofreading_context({ row_id: "1" })).resolves.toEqual(context);
     expect(api_fetch_mock).toHaveBeenCalledOnce();
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/proofreading/view", {
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/proofreading/query", {
       action: "context",
       row_id: "1",
     });

@@ -8,7 +8,12 @@ import { LLMClient } from "../llm/llm-client";
 import { list_available_models } from "../llm/llm-model-catalog";
 import type { LLMMessage, LLMRequestResult } from "../llm/llm-types";
 import { LLMClientPolicy } from "../llm/llm-client-policy";
-import { Model } from "../../domain/model";
+import {
+  MODEL_USAGES,
+  Model,
+  normalize_model_selection,
+  type ModelSelection,
+} from "../../domain/model";
 import {
   read_json_record,
   type JsonRecord,
@@ -19,7 +24,6 @@ import { normalize_setting_snapshot } from "../../domain/setting";
 import {
   read_config_model_preset_records,
   read_config_model_records,
-  resolve_active_model_id,
 } from "./model-config-resolver";
 import { resolve_app_locale } from "../../domain/app-language";
 import { format_i18n_message, type LocaleKey } from "../../shared/i18n";
@@ -48,7 +52,7 @@ type ModelTestFailure = {
 const PATCH_OBJECT_KEYS = new Set(["thinking", "threshold", "generation", "request"]);
 
 /**
- * 封装模型配置 CRUD；任务执行时由 Task Engine 传入模型快照给本地 LLM adapter
+ * 封装模型配置 CRUD 与按用途选择；任务执行时由调用方解析不可变模型快照
  */
 export class ModelService {
   private readonly paths: AppPathService; // 提供模型内置预设目录
@@ -82,6 +86,11 @@ export class ModelService {
     return this.build_snapshot_response(config);
   }
 
+  /** 读取任务入口需要的窄模型选项，不公开密钥、请求覆盖或生成参数。 */
+  public get_selection_snapshot(): JsonRecord {
+    return this.build_selection_snapshot(this.load_setting_with_models(true));
+  }
+
   /**
    * 更新模型白名单字段，避免页面写入未知配置
    */
@@ -108,15 +117,23 @@ export class ModelService {
   }
 
   /**
-   * 切换指定分组激活模型，并保持 fallback 规则集中
+   * 只更新一个任务用途的模型选择，另外两个用途保持不变
    */
-  public activate_model(request: JsonRecord): JsonRecord {
-    const model_id = String(request["model_id"] ?? "");
+  public select_model(request: JsonRecord): JsonRecord {
+    const usage = MODEL_USAGES.find((candidate) => candidate === request["usage"]);
+    if (usage === undefined) {
+      throw new AppErrors.RequestValidationError({
+        public_details: { field: "usage" },
+      });
+    }
+    const model_id = typeof request["model_id"] === "string" ? request["model_id"].trim() : "";
     const config = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
     this.find_model_index_or_raise(models, model_id);
-    config["activate_model_id"] = model_id;
-    return this.persist_config_and_build_snapshot(config);
+    const selection = normalize_model_selection(config["model_selection"]);
+    selection[usage] = model_id;
+    config["model_selection"] = selection;
+    return this.build_selection_snapshot(this.persist_config(config));
   }
 
   /**
@@ -137,7 +154,7 @@ export class ModelService {
   }
 
   /**
-   * 删除模型并重选激活项，防止配置留下悬空引用
+   * 删除模型并为所有引用该模型的用途重选，防止配置留下悬空引用
    */
   public delete_model(request: JsonRecord): JsonRecord {
     const model_id = String(request["model_id"] ?? "");
@@ -149,10 +166,14 @@ export class ModelService {
       throw new AppErrors.RequestValidationError();
     }
     models.splice(index, 1);
-    if (String(config["activate_model_id"] ?? "") === model_id) {
-      const fallback = this.pick_active_fallback(models, String(target_model["type"] ?? ""));
-      config["activate_model_id"] = String(fallback?.["id"] ?? "");
+    const selection = normalize_model_selection(config["model_selection"]);
+    const fallback = this.pick_selection_fallback(models, String(target_model["type"] ?? ""));
+    for (const usage of MODEL_USAGES) {
+      if (selection[usage] === model_id) {
+        selection[usage] = String(fallback?.["id"] ?? "");
+      }
     }
+    config["model_selection"] = selection;
     config["models"] = models as unknown as JsonValue;
     return this.persist_config_and_build_snapshot(config);
   }
@@ -490,23 +511,26 @@ export class ModelService {
    * 保存配置后立即重建快照，保证响应反映持久化结果
    */
   private persist_config_and_build_snapshot(config: MutableJsonRecord): JsonRecord {
-    config["models"] = this.sort_models(read_config_model_records(config)) as unknown as JsonValue;
+    return this.build_snapshot_response(this.persist_config(config));
+  }
+
+  /** 保存前统一排序模型并修复悬空选择，所有配置写入共享这一出口。 */
+  private persist_config(config: MutableJsonRecord): MutableJsonRecord {
+    const models = this.sort_models(read_config_model_records(config));
+    config["models"] = models as unknown as JsonValue;
+    config["model_selection"] = this.normalize_selection_for_models(config, models);
     this.app_setting_service.save_setting(config);
-    return this.build_snapshot_response(config);
+    return config;
   }
 
   /**
-   * 读取配置并补齐模型列表，兼容缺失或旧格式配置
+   * 读取配置后统一完成模型初始化、排序和三用途选择归一
    */
   private load_setting_with_models(persist_defaults: boolean): MutableJsonRecord {
     const config = this.app_setting_service.read_setting();
-    config["models"] = this.initialize_models(
-      read_config_model_records(config),
-    ) as unknown as JsonValue;
-    const active_model_id = resolve_active_model_id(config);
-    if (String(config["activate_model_id"] ?? "") === "" && active_model_id !== "") {
-      config["activate_model_id"] = active_model_id;
-    }
+    const models = this.sort_models(this.initialize_models(read_config_model_records(config)));
+    config["models"] = models as unknown as JsonValue;
+    config["model_selection"] = this.normalize_selection_for_models(config, models);
     if (persist_defaults) {
       this.app_setting_service.save_setting(config);
     }
@@ -607,15 +631,28 @@ export class ModelService {
   }
 
   /**
-   * 选择激活模型兜底，避免删除后留下不可用分组
+   * 删除已选模型时按同类型、预设、列表首项的顺序重选
    */
-  private pick_active_fallback(models: JsonRecord[], target_type: string): JsonRecord | null {
+  private pick_selection_fallback(models: JsonRecord[], target_type: string): JsonRecord | null {
     return (
       models.find((model) => String(model["type"] ?? "") === target_type) ??
       models.find((model) => String(model["type"] ?? "") === "PRESET") ??
       models[0] ??
       null
     );
+  }
+
+  /** 只保留仍存在的模型 ID，失效用途统一回退排序后的首项。 */
+  private normalize_selection_for_models(config: JsonRecord, models: JsonRecord[]): ModelSelection {
+    const selection = normalize_model_selection(config["model_selection"]);
+    const available_ids = new Set(models.map((model) => String(model["id"] ?? "")));
+    const fallback_id = String(models[0]?.["id"] ?? "");
+    for (const usage of MODEL_USAGES) {
+      if (!available_ids.has(selection[usage])) {
+        selection[usage] = fallback_id;
+      }
+    }
+    return selection;
   }
 
   /**
@@ -639,15 +676,26 @@ export class ModelService {
   }
 
   /**
-   * 生成模型页响应快照，隔离配置内部结构
+   * 生成模型页管理快照，隔离配置内部结构
    */
   private build_snapshot_response(config: JsonRecord): JsonRecord {
     const models = read_config_model_records(config);
     return {
       snapshot: {
-        active_model_id: resolve_active_model_id(config),
         models: models as unknown as JsonValue,
       },
+    };
+  }
+
+  /** 生成任务入口需要的窄快照，不暴露密钥和生成参数。 */
+  private build_selection_snapshot(config: JsonRecord): JsonRecord {
+    return {
+      model_selection: normalize_model_selection(config["model_selection"]),
+      models: read_config_model_records(config).map((model) => ({
+        id: String(model["id"] ?? ""),
+        type: String(model["type"] ?? ""),
+        name: String(model["name"] ?? ""),
+      })),
     };
   }
 

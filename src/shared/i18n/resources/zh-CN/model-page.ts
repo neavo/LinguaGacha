@@ -2,24 +2,19 @@ export const zh_cn_model_page = {
   title: "模型管理",
   category: {
     preset: {
-      title: "预设模型",
       description: "应用内置的预设模型",
     },
     custom_google: {
-      title: "自定义 Google 模型",
       description: "兼容 Google Gemini API 格式的自定义模型",
     },
     custom_openai: {
-      title: "自定义 OpenAI 模型",
       description: "兼容 OpenAI API 格式的自定义模型",
     },
     custom_anthropic: {
-      title: "自定义 Anthropic 模型",
       description: "兼容 Anthropic Claude API 格式的自定义模型",
     },
   },
   action: {
-    activate: "激活",
     basic_settings: "基础设置",
     task_settings: "任务设置",
     advanced_settings: "高级设置",
@@ -84,7 +79,6 @@ export const zh_cn_model_page = {
     thinking: {
       title: "思考等级",
       description: "设置模型的思考行为，会影响思考的时间和消耗，点击问号图标查看支持的模型列表",
-      help_label: "查看思考等级支持说明",
     },
     input_token_limit: {
       title: "输入 Token 限制",

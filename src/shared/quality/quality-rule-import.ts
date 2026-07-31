@@ -44,6 +44,30 @@ export type QualityRuleImportPreview = {
   overwrite_entries: JsonRecord[];
 };
 
+export type QualityRuleDuplicateGroup = {
+  key: string;
+  indexes: number[];
+};
+
+/**
+ * 按导入/GUI 的同一 key 规则找出现有列表内部重复项，供只读结构分析复用。
+ */
+export function collect_quality_rule_duplicate_groups(args: {
+  rule_type: QualityRuleImportRuleType;
+  entries: JsonRecord[];
+}): QualityRuleDuplicateGroup[] {
+  return build_duplicate_key_groups({
+    rule_type: args.rule_type,
+    existing: args.entries,
+    incoming: [],
+  })
+    .filter((group) => group.existing_items.length > 1)
+    .map((group) => ({
+      key: group.key,
+      indexes: group.existing_items.map((item) => item.index),
+    }));
+}
+
 type QualityRuleImportItem = {
   index: number;
   entry: JsonRecord;

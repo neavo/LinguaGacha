@@ -46,7 +46,6 @@ export type ModelEntrySnapshot = {
 };
 
 export type ModelPageSnapshot = {
-  active_model_id: string;
   models: ModelEntrySnapshot[];
 };
 

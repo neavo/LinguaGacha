@@ -13,6 +13,7 @@ import type {
 } from "@frontend/pages/workbench-page/types";
 import { WorkbenchTaskMenu } from "@frontend/pages/workbench-page/components/workbench-task-menu";
 import { WorkbenchTaskSummary } from "@frontend/pages/workbench-page/components/workbench-task-summary";
+import { useModelSelection } from "@frontend/features/model-selection/use-model-selection";
 import { AppButton } from "@frontend/widgets/app-button";
 import {
   CommandBar,
@@ -51,6 +52,7 @@ type CommandAction = {
  */
 export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Element {
   const { t } = useI18n();
+  const model_selection = useModelSelection();
   const active_translation_task_action_kind: TranslationTaskActionKind | null =
     props.translation_workbench_task.task_confirm_state?.kind ?? null;
   const active_analysis_task_action_kind: AnalysisTaskActionKind | null =
@@ -116,7 +118,6 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
     <CommandBar
       className="workbench-page__task-command-bar"
       title={t("workbench_page.section.command_bar")}
-      description={t("workbench_page.command.description")}
       actions={
         <>
           <CommandBarGroup>
@@ -126,6 +127,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
               workbench_stats={props.translation_stats}
               disabled={props.translation_workbench_task.translation_task_menu_disabled}
               busy={props.translation_workbench_task.translation_task_menu_busy}
+              model_selection={model_selection}
               active_task_action_kind={active_translation_task_action_kind}
               on_start_or_continue={
                 props.translation_workbench_task.request_start_or_continue_translation
@@ -138,6 +140,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
               workbench_stats={props.analysis_stats}
               disabled={props.analysis_workbench_task.analysis_task_menu_disabled}
               busy={props.analysis_workbench_task.analysis_task_menu_busy}
+              model_selection={model_selection}
               active_task_action_kind={active_analysis_task_action_kind}
               on_start_or_continue={
                 props.analysis_workbench_task.request_start_or_continue_analysis

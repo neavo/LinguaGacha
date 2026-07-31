@@ -27,6 +27,8 @@ import {
   to_analysis_glossary_import_prepare_payload,
 } from "./quality-rule-analysis-glossary-import";
 
+const DEFAULT_QUALITY_RULE_UPDATE_SOURCE = "quality_rule_update";
+
 /**
  * 封装质量规则 CRUD、分析术语导入、预设 IO 和 revision 对齐。
  */
@@ -69,7 +71,7 @@ export class QualityRuleService {
   /**
    * 读取单个质量规则切片。
    */
-  public read(request: JsonRecord): JsonRecord {
+  public query(request: JsonRecord): JsonRecord {
     const project_path = this.session_state.require_loaded_project_path();
     const rule_type = this.normalize_rule_type(request["rule_type"]);
     const quality_block = this.cache.quality.readBlock();
@@ -144,40 +146,23 @@ export class QualityRuleService {
   }
 
   /**
-   * 保存规则条目并返回后端规范化写入结果
+   * 原子更新规则条目与 meta；entries 缺失表示不改条目，空数组表示清空条目。
    */
-  public async save_rule_entries(request: JsonRecord): Promise<ProjectWriteResult> {
-    return await this.project_operation_gate.run_exclusive_project_write(async () => {
-      this.assert_no_legacy_fields(request, ["expected_revision"]);
-      const rule_type = this.normalize_rule_type(request["rule_type"]);
-      const entries = this.normalize_rule_entries(request["entries"]);
-      const project_path = this.session_state.require_loaded_project_path();
-      return await this.write_store.save_quality_rules({
-        projectPath: project_path,
-        expectedSectionRevisions: require_project_expected_section_revisions(
-          request["expected_section_revisions"],
-        ),
-        source: "quality_rule_save_entries",
-        rule: {
-          databaseType: QualityRule.from_json(rule_type).database_type,
-          entries,
-        },
-        revisionKey: this.build_rule_revision_key(rule_type),
-      });
-    });
-  }
-
-  /**
-   * 更新规则 meta 并返回后端规范化写入结果
-   */
-  public async update_rule_meta(request: JsonRecord): Promise<ProjectWriteResult> {
+  public async update(
+    request: JsonRecord,
+    source = DEFAULT_QUALITY_RULE_UPDATE_SOURCE,
+  ): Promise<ProjectWriteResult> {
     return await this.project_operation_gate.run_exclusive_project_write(async () => {
       this.assert_no_legacy_fields(request, ["expected_revision"]);
       const rule_type = this.normalize_rule_type(request["rule_type"]);
       const project_path = this.session_state.require_loaded_project_path();
+      const has_entries = Object.prototype.hasOwnProperty.call(request, "entries");
+      const entries = has_entries ? this.normalize_rule_entries(request["entries"]) : undefined;
       const meta = { ...read_json_record(request["meta"]) };
-      if (Object.keys(meta).length === 0) {
-        return { accepted: true, changes: [] };
+      if (!has_entries && Object.keys(meta).length === 0) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: { reason: "empty_quality_rule_update" },
+        });
       }
       const meta_entries: JsonRecord = {};
       for (const [key, value] of Object.entries(meta)) {
@@ -190,7 +175,14 @@ export class QualityRuleService {
         expectedSectionRevisions: require_project_expected_section_revisions(
           request["expected_section_revisions"],
         ),
-        source: "quality_rule_update_meta",
+        source,
+        rule:
+          entries === undefined
+            ? undefined
+            : {
+                databaseType: QualityRule.from_json(rule_type).database_type,
+                entries,
+              },
         metaEntries: meta_entries,
         revisionKey: this.build_rule_revision_key(rule_type),
       });

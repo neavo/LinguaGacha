@@ -289,7 +289,7 @@ describe("normalize_project_write_result", () => {
       changes: [
         {
           eventId: "write-quality-1",
-          source: "quality_rule_save_entries",
+          source: "quality_rule_update",
           projectPath: "E:/demo/demo.lg",
           projectRevision: 2,
           updatedSections: ["quality"],
@@ -318,7 +318,7 @@ describe("normalize_project_write_result", () => {
       changes: [
         {
           eventId: "write-quality-1",
-          source: "quality_rule_save_entries",
+          source: "quality_rule_update",
           projectPath: "E:/demo/demo.lg",
           projectRevision: 2,
           updatedSections: ["quality"],

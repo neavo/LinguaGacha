@@ -5,24 +5,19 @@ export const de_de_model_page = {
   title: "Modellverwaltung",
   category: {
     preset: {
-      title: "Voreingestellte Modelle",
       description: "Integrierte voreingestellte Modelle der Anwendung",
     },
     custom_google: {
-      title: "Benutzerdefinierte Google-Modelle",
       description: "Benutzerdefinierte Modelle, kompatibel mit dem Google Gemini API-Format",
     },
     custom_openai: {
-      title: "Benutzerdefinierte OpenAI-Modelle",
       description: "Benutzerdefinierte Modelle, kompatibel mit dem OpenAI API-Format",
     },
     custom_anthropic: {
-      title: "Benutzerdefinierte Anthropic-Modelle",
       description: "Benutzerdefinierte Modelle, kompatibel mit dem Anthropic Claude API-Format",
     },
   },
   action: {
-    activate: "Aktivieren",
     basic_settings: "Grundeinstellungen",
     task_settings: "Aufgabeneinstellungen",
     advanced_settings: "Erweiterte Einstellungen",
@@ -93,7 +88,6 @@ export const de_de_model_page = {
       title: "Denkstufe",
       description:
         "Konfigurieren Sie die Denkstufe, die Zeit und Kosten beeinflusst, klicken Sie auf das Fragezeichen für unterstützte Modelle",
-      help_label: "Dokumentation zur Denkstufen-Unterstützung öffnen",
     },
     input_token_limit: {
       title: "Eingabe-Token-Limit",

@@ -37,7 +37,6 @@ export const de_de_project_page = {
     failed: "Fehler beim Laden des Projekts: {ERROR}",
     failed_generic: "Fehler beim Laden des Projekts",
     action: "Projekt öffnen",
-    remove_recent_project: "Letzten Projekteintrag entfernen",
     remove_unavailable:
       "Dieser letzte Projekteintrag kann derzeit nicht entfernt werden. Bitte versuchen Sie es später erneut.",
     missing_file_description: "Die Projektdatei ist ungültig. Aus der Liste entfernen …?",

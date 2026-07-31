@@ -15,7 +15,6 @@ export const de_de_laboratory_page = {
       title: "MTool-Optimierer",
       description:
         "Für MTool-Text <emphasis>reduziert dies die Übersetzungszeit und Token um bis zu 40%</emphasis>, standardmäßig aktiviert",
-      help_label: "MTool-Optimierer-Anleitung anzeigen",
     },
     skip_duplicate_source_text_enable: {
       title: "Doppelten Quelltext überspringen",
