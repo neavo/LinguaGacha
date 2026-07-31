@@ -82,7 +82,7 @@ describe("useDesktopRecovery", () => {
       await state_actions.refresh_project_state_after_error(
         "entries_save",
         {
-          source: "quality_rule_save_entries",
+          source: "quality_rule_update",
         },
         {
           page: "glossary",
@@ -96,7 +96,7 @@ describe("useDesktopRecovery", () => {
       expect.objectContaining({
         source: "state-recovery",
         triggeringEvent: {
-          source: "quality_rule_save_entries",
+          source: "quality_rule_update",
         },
         context: expect.objectContaining({
           reason: "entries_save",

@@ -13,8 +13,8 @@ import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import { useDebouncedCallback } from "@frontend/widgets/interactions/use-debounce";
 import { buildProofreadingLookupQuery } from "@shared/quality/quality-rule-proofreading-query";
 import {
-  read_quality_rule,
-  read_quality_rule_section_revisions,
+  query_quality_rules,
+  query_quality_rule_section_revisions,
   type QualityRuleQuerySlice,
 } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
 import {
@@ -398,7 +398,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       return DEFAULT_QUALITY_SLICE;
     }
 
-    const response = await read_quality_rule(TEXT_PRESERVE_RULE_TYPE);
+    const response = await query_quality_rules(TEXT_PRESERVE_RULE_TYPE);
     if (response.projectPath !== project_snapshot.path) {
       return quality_slice;
     }
@@ -429,7 +429,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     }
 
     let cancelled = false;
-    void read_quality_rule(TEXT_PRESERVE_RULE_TYPE).then((response) => {
+    void query_quality_rules(TEXT_PRESERVE_RULE_TYPE).then((response) => {
       if (cancelled || response.projectPath !== project_snapshot.path) {
         return;
       }
@@ -662,11 +662,11 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       );
 
       try {
-        const section_revisions = await read_quality_rule_section_revisions();
+        const section_revisions = await query_quality_rule_section_revisions();
         await commit_project_write({
           operation: TEXT_PRESERVE_ENTRIES_SAVE_WRITE,
           run: async () => {
-            return await api_fetch<ProjectWriteResultPayload>("/api/quality/rules/save-entries", {
+            return await api_fetch<ProjectWriteResultPayload>("/api/quality/rules/update", {
               rule_type: TEXT_PRESERVE_RULE_TYPE,
               expected_section_revisions: {
                 quality: section_revisions.quality ?? 0,
@@ -914,22 +914,19 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           message: t("text_preserve_page.mode.loading_toast"),
           timeout_ms: TEXT_PRESERVE_MODE_REFRESH_TIMEOUT_MS,
           task: async () => {
-            const section_revisions = await read_quality_rule_section_revisions();
+            const section_revisions = await query_quality_rule_section_revisions();
             await commit_project_write({
               operation: TEXT_PRESERVE_MODE_UPDATE_WRITE,
               run: async () => {
-                return await api_fetch<ProjectWriteResultPayload>(
-                  "/api/quality/rules/update-meta",
-                  {
-                    rule_type: TEXT_PRESERVE_RULE_TYPE,
-                    expected_section_revisions: {
-                      quality: section_revisions.quality ?? 0,
-                    },
-                    meta: {
-                      mode: next_mode,
-                    },
+                return await api_fetch<ProjectWriteResultPayload>("/api/quality/rules/update", {
+                  rule_type: TEXT_PRESERVE_RULE_TYPE,
+                  expected_section_revisions: {
+                    quality: section_revisions.quality ?? 0,
                   },
-                );
+                  meta: {
+                    mode: next_mode,
+                  },
+                });
               },
             });
             await refresh_quality_rule_snapshot();

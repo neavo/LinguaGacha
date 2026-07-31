@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
-import type { AgentAssistantMessagePart, AgentToolEntry } from "@shared/agent";
+import type { AgentAssistantMessagePart, AgentEntry, AgentToolEntry } from "@shared/agent";
 import type { useAgentPageState as UseAgentPageStateFunction } from "./use-agent-page-state";
 
 type AgentPageState = ReturnType<typeof UseAgentPageStateFunction>;
@@ -31,8 +31,14 @@ vi.mock("@frontend/features/model-selection/use-model-selection", async (import_
 });
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
-    t: (key: string, params?: Record<string, string>) =>
-      params === undefined ? key : `${key}:${Object.values(params).join(",")}`,
+    t: (key: string, params?: Record<string, string>) => {
+      if (key === "agent_page.action.new_task") return "新任务";
+      if (key === "agent_page.confirm.new_task") return "是否确认开始新的对话任务 …?";
+      if (key === "agent_page.status.running") return "正在处理";
+      if (key === "agent_page.status.success") return "已完成";
+      if (key === "agent_page.status.error") return "失败";
+      return params === undefined ? key : `${key}:${Object.values(params).join(",")}`;
+    },
   }),
 }));
 vi.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
@@ -77,6 +83,7 @@ describe("AgentPage", () => {
     expect(view.querySelector(".agent-composer__model-trigger")?.textContent).toContain(
       "Agent Model",
     );
+    expect(view.querySelector<HTMLButtonElement>(".agent-composer__reset")?.disabled).toBe(true);
   });
 
   it("用户离开消息底部后不被流式输出抢回滚动位置", async () => {
@@ -99,11 +106,46 @@ describe("AgentPage", () => {
     expect(scroll_into_view).not.toHaveBeenCalled();
   });
 
-  it("渲染模型流式 Markdown 与光标", async () => {
+  it("渲染模型流式 Markdown 与统一状态灯", async () => {
     const view = await render_page({ state: "running" });
 
     expect(view.querySelector("strong")?.textContent).toBe("变更方案");
-    expect(view.querySelector(".agent-message__cursor")).not.toBeNull();
+    const active_light = view.querySelector<HTMLElement>(".agent-status-light--active");
+    expect(active_light?.classList.contains("agent-status-light--running")).toBe(true);
+    expect(active_light?.getAttribute("aria-label")).toBe("正在处理");
+    expect(view.querySelector(".agent-message__cursor")).toBeNull();
+  });
+
+  it("任务运行期间始终显示底部活动灯", async () => {
+    const scenarios: AgentEntry[][] = [
+      [user_entry("user-1", [{ kind: "text", text: "开始" }], 0, null)],
+      [tool_entry("tool-success", "query_project_items", "success", "{}", 1)],
+      [tool_entry("tool-error", "query_project_items", "error", "失败", 1)],
+      [assistant_parts_entry("assistant-empty", [], false, 1)],
+    ];
+
+    for (const entries of scenarios) {
+      const view = await render_page({ state: "running", entries });
+      const active_lights = view.querySelectorAll(".agent-status-light--active");
+      expect(active_lights).toHaveLength(1);
+      expect(active_lights[0]?.parentElement?.classList.contains("agent-message__activity")).toBe(
+        true,
+      );
+    }
+  });
+
+  it("运行工具在自身位置和文本区底部同时显示活动灯", async () => {
+    const view = await render_page({
+      state: "running",
+      entries: [tool_entry("tool-1", "query_project_items", "running", null, 1)],
+    });
+    const active_lights = view.querySelectorAll(".agent-status-light--active");
+
+    expect(active_lights).toHaveLength(2);
+    expect(active_lights[0]?.closest("summary")).not.toBeNull();
+    expect(
+      view.querySelector(".agent-message__activity .agent-status-light--active"),
+    ).not.toBeNull();
   });
 
   it("运行中逐秒更新长耗时，结束后冻结且不动态播报", async () => {
@@ -163,7 +205,7 @@ describe("AgentPage", () => {
     expect(thinking.querySelector("summary")?.textContent).toBe("agent_page.thinking");
     expect(thinking.querySelector("pre")?.textContent).toBe("检查术语\n逐项核对");
     expect(thinking.querySelector("pre")?.tabIndex).toBe(0);
-    expect(thinking.querySelector(".agent-detail-entry__status--running")).not.toBeNull();
+    expect(thinking.querySelector(".agent-status-light--active")).not.toBeNull();
     await act(async () => thinking.querySelector("summary")?.click());
 
     await render_page({
@@ -183,9 +225,12 @@ describe("AgentPage", () => {
     const updated = view.querySelector<HTMLDetailsElement>(".agent-detail-entry--thinking");
     expect(updated?.open).toBe(true);
     expect(updated?.querySelector("pre")?.textContent).toBe("检查术语\n逐项核对完成");
-    expect(updated?.querySelector(".agent-detail-entry__status--success")).not.toBeNull();
+    expect(updated?.querySelector(".agent-status-light--success")).not.toBeNull();
     expect(view.querySelector("strong")?.textContent).toBe("结论");
-    expect(view.querySelector(".agent-message__cursor")).not.toBeNull();
+    expect(view.querySelectorAll(".agent-status-light--active")).toHaveLength(1);
+    expect(
+      view.querySelector(".agent-message__activity .agent-status-light--active"),
+    ).not.toBeNull();
   });
 
   it("空 assistant parts 不产生思考或正文块", async () => {
@@ -214,32 +259,33 @@ describe("AgentPage", () => {
         assistant_entry("assistant-1", "准备查询", true, 1000),
         tool_entry(
           "tool-1",
-          "search_corpus",
+          "query_project_items",
           "success",
           '{"results":[{"pattern":"Alice","contexts":[]}]}',
           1500,
         ),
-        tool_entry("tool-2", "read_skill_reference", "success", "# 审校标准\n\n完整正文", 1800),
+        tool_entry("tool-2", "read_skill", "success", "# 审校标准\n\n完整正文", 1800),
         assistant_entry("assistant-2", "查询完成", true, 2000),
       ],
     });
 
     const visible_text = view.textContent ?? "";
     expect(visible_text.indexOf("请用")).toBeLessThan(visible_text.indexOf("准备查询"));
-    expect(visible_text.indexOf("准备查询")).toBeLessThan(visible_text.indexOf("search_corpus"));
-    expect(visible_text.indexOf("search_corpus")).toBeLessThan(
-      visible_text.indexOf("read_skill_reference"),
+    expect(visible_text.indexOf("准备查询")).toBeLessThan(
+      visible_text.indexOf("query_project_items"),
     );
-    expect(visible_text.indexOf("read_skill_reference")).toBeLessThan(
-      visible_text.indexOf("查询完成"),
+    expect(visible_text.indexOf("query_project_items")).toBeLessThan(
+      visible_text.indexOf("read_skill"),
     );
+    expect(visible_text.indexOf("read_skill")).toBeLessThan(visible_text.indexOf("查询完成"));
     const tools = view.querySelectorAll<HTMLDetailsElement>(".agent-detail-entry--tool");
     expect(tools).toHaveLength(2);
     expect([...tools].every((tool) => !tool.open)).toBe(true);
-    expect(tools[0]?.querySelector("summary")?.textContent).toBe("search_corpus");
-    expect(tools[1]?.querySelector("summary")?.textContent).toBe("read_skill_reference");
-    const success_light = tools[0]?.querySelector(".agent-detail-entry__status--success");
+    expect(tools[0]?.querySelector("summary")?.textContent).toBe("query_project_items");
+    expect(tools[1]?.querySelector("summary")?.textContent).toBe("read_skill");
+    const success_light = tools[0]?.querySelector(".agent-status-light--success");
     expect(success_light).toBe(tools[0]?.querySelector("summary")?.lastElementChild);
+    expect(success_light?.getAttribute("aria-label")).toBe("已完成");
     expect(tools[0]?.querySelector("summary")?.textContent).not.toContain("Alice");
     await act(async () => tools[0]?.querySelector("summary")?.click());
     expect(tools[0]?.open).toBe(true);
@@ -257,9 +303,10 @@ describe("AgentPage", () => {
       "@glossary-audit",
     );
     expect(view.querySelector(".agent-round-header")?.textContent).toContain("2s");
+    expect(view.querySelector(".agent-status-light--active")).toBeNull();
   });
 
-  it("用右侧状态灯区分运行中和失败，不显示状态文字", async () => {
+  it("用右侧状态灯区分运行中和失败，并提供可访问名称", async () => {
     const view = await render_page({
       entries: [
         tool_entry("tool-1", "custom_reader", "running", null, 1),
@@ -268,12 +315,14 @@ describe("AgentPage", () => {
     });
     const tools = view.querySelectorAll<HTMLDetailsElement>(".agent-detail-entry--tool");
     expect(tools[0]?.querySelector("summary")?.textContent).toBe("custom_reader");
-    const running_light = tools[0]?.querySelector(".agent-detail-entry__status--running");
+    const running_light = tools[0]?.querySelector(".agent-status-light--running");
     expect(running_light).toBe(tools[0]?.querySelector("summary")?.lastElementChild);
+    expect(running_light?.getAttribute("aria-label")).toBe("正在处理");
     expect(tools[0]?.querySelector("pre")).toBeNull();
     expect(tools[1]?.querySelector("summary")?.textContent).toBe("missing_tool");
-    const error_light = tools[1]?.querySelector(".agent-detail-entry__status--error");
+    const error_light = tools[1]?.querySelector(".agent-status-light--error");
     expect(error_light).toBe(tools[1]?.querySelector("summary")?.lastElementChild);
+    expect(error_light?.getAttribute("aria-label")).toBe("失败");
     expect(tools[1]?.querySelector("pre")?.textContent).toBe("工具不存在");
   });
 
@@ -283,6 +332,59 @@ describe("AgentPage", () => {
     const stop_button = get_button_by_label(view, "agent_page.action.stop");
     await act(async () => stop_button.click());
     expect(stop).toHaveBeenCalledOnce();
+  });
+
+  it("新任务先确认，取消不调用，确认期间锁定并在成功后关闭", async () => {
+    let resolve_reset!: (accepted: boolean) => void;
+    const reset = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolve_reset = resolve;
+        }),
+    );
+    const view = await render_page({ reset });
+    const reset_button = view.querySelector<HTMLButtonElement>(".agent-composer__reset");
+    if (reset_button === null) throw new Error("缺少新任务按钮");
+
+    await act(async () => reset_button.click());
+    expect(document.body.querySelector('[data-slot="alert-dialog-description"]')?.textContent).toBe(
+      "是否确认开始新的对话任务 …?",
+    );
+    const cancel = get_portal_button("app.action.cancel");
+    await act(async () => cancel.click());
+    expect(reset).not.toHaveBeenCalled();
+    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
+
+    await act(async () => reset_button.click());
+    const confirm = get_portal_button("app.action.confirm");
+    await act(async () => {
+      confirm.click();
+      await Promise.resolve();
+    });
+    expect(reset).toHaveBeenCalledOnce();
+    await render_page({ reset, resetting: true });
+    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
+    expect(get_portal_button("app.action.cancel").disabled).toBe(true);
+
+    await act(async () => resolve_reset(true));
+    await act(async () =>
+      vi.waitFor(() =>
+        expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull(),
+      ),
+    );
+  });
+
+  it("重置失败后保留确认框供取消或重试", async () => {
+    const reset = vi.fn(async () => false);
+    const view = await render_page({ reset });
+    const reset_button = view.querySelector<HTMLButtonElement>(".agent-composer__reset");
+    if (reset_button === null) throw new Error("缺少新任务按钮");
+
+    await act(async () => reset_button.click());
+    await act(async () => get_portal_button("app.action.confirm").click());
+
+    expect(reset).toHaveBeenCalledOnce();
+    expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
   });
 });
 
@@ -297,8 +399,10 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     skills,
     loading: false,
     error: false,
+    resetting: false,
     send: vi.fn(async () => true),
     stop: vi.fn(),
+    reset: vi.fn(async () => true),
     ...overrides,
   };
 }
@@ -345,5 +449,14 @@ function tool_entry(
 function get_button_by_label(container: HTMLElement, label: string): HTMLButtonElement {
   const button = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
   if (button === null) throw new Error(`缺少按钮：${label}`);
+  return button;
+}
+
+function get_portal_button(label: string): HTMLButtonElement {
+  const dialog = document.body.querySelector('[data-slot="alert-dialog-content"]');
+  const button = [...(dialog?.querySelectorAll<HTMLButtonElement>("button") ?? [])].find(
+    (candidate) => candidate.textContent === label,
+  );
+  if (button === undefined) throw new Error(`缺少弹窗按钮：${label}`);
   return button;
 }

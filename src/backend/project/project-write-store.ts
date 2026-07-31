@@ -319,6 +319,7 @@ export class ProjectWriteStore {
   public async apply_proofreading_item_patch(request: {
     projectPath: string;
     expectedSectionRevisions: ProjectExpectedSectionRevisions;
+    source: string;
     changes: ProofreadingItemChange[];
     fieldPatch: ProjectChangeItemFieldPatch;
     updateTranslationExtras: boolean;
@@ -332,7 +333,7 @@ export class ProjectWriteStore {
       expectedSectionRevisions: request.expectedSectionRevisions,
       requireExpectedSectionRevisions: true,
       revisionSections: ["items", "proofreading"],
-      source: "proofreading_save_items",
+      source: request.source,
       updatedSections: ["items", "proofreading"],
       items: {
         payloadMode: "field-patch",
@@ -374,6 +375,7 @@ export class ProjectWriteStore {
   public async apply_proofreading_bulk_patch(request: {
     projectPath: string;
     expectedSectionRevisions: ProjectExpectedSectionRevisions;
+    source: string;
     changes: ProofreadingItemChange[];
     itemsPayload: Pick<ProjectChangeItemsPayload, "payloadMode" | "changedIds" | "deleteIds">;
     updateTranslationExtras: boolean;
@@ -390,7 +392,7 @@ export class ProjectWriteStore {
       expectedSectionRevisions: request.expectedSectionRevisions,
       requireExpectedSectionRevisions: true,
       revisionSections: ["items", "proofreading"],
-      source: "proofreading_save_items",
+      source: request.source,
       updatedSections: ["items", "proofreading"],
       items: request.itemsPayload,
       buildWrites: (revision_context) => {

@@ -106,6 +106,15 @@ export function build_openai_thinking_payload(
   if (/kimi-k3/iu.test(model_id)) {
     return { reasoning_effort: level === "HIGH" ? "high" : "low" };
   }
+  // https://api-docs.deepseek.com/zh-cn/guides/thinking_mode
+  if (/deepseek-v4-flash/iu.test(model_id)) {
+    return level === "OFF"
+      ? { thinking: { type: "disabled" } }
+      : {
+          thinking: { type: "enabled" },
+          reasoning_effort: level === "HIGH" ? "high" : "low",
+        };
+  }
   if (/deepseek|kimi|glm|mimo/iu.test(model_id)) {
     return { thinking: { type: level === "OFF" ? "disabled" : "enabled" } };
   }

@@ -11,7 +11,9 @@ export const zh_cn_agent_page = {
     placeholder: "描述任务，或输入 @ 选择能力 …",
     hint: "Enter 发送 · Shift + Enter 换行",
   },
-  action: { send: "发送", stop: "停止" },
+  action: { send: "发送", stop: "停止", new_task: "新任务" },
+  confirm: { new_task: "是否确认开始新的对话任务 …?" },
+  status: { running: "正在处理", success: "已完成", error: "失败" },
   round: { running: "处理中 {duration}", ended: "耗时 {duration}" },
   error: "请求失败，请重试。",
 } as const;

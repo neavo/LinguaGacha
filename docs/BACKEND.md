@@ -9,7 +9,8 @@
 - Gateway 只监听本机地址，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
 - 成功响应为 `{ ok: true, data }`，失败响应为 `{ ok: false, error }`；公开错误不包含 diagnostic context、cause、stack 或供应商原始异常。
 - 公开 SSE topic 固定为 `project.data_changed`、`task.snapshot_changed`、`agent.session_event`、`settings.changed`、`log.appended`，data 使用严格 JSON 序列化。
-- Agent 公开入口固定为 `GET /api/agent/snapshot` 与 `POST /api/agent/message|stop`；请求与 `user_message` 保留有序 text / skill parts，只有 skill part 触发能力。snapshot 提供恢复事实与启动期 skill 清单，后续条目经 `agent.session_event` 以同 id `entry_upsert` 原位覆盖。
+- Agent 公开入口固定为 `GET /api/agent/snapshot` 与 `POST /api/agent/message|stop|reset`；消息保留有序 text / skill parts，snapshot 与 `agent.session_event` 共同恢复会话，增量按同 id 原位覆盖，整段清空使用 `snapshot_seed`。
+- 质量规则统一通过 `POST /api/quality/rules/query|update` 读写；校对正文通过 `POST /api/proofreading/query` 查询，通过 `POST /api/proofreading/items/update` 批量更新 `dst` / `name_dst`。
 - 模型管理 API 只负责配置 CRUD；任务入口通过 `GET /api/models/selection` 读取窄选项，通过 `POST /api/models/select` 按 `translation`、`analysis` 或 `agent` 用途更新单项选择，不公开密钥、请求覆盖或生成参数。
 - `user_message` 的 `createdAt` / `endedAt` 是轮次起止事实，运行中 `endedAt` 为 `null`，任一终止路径都原位封口；`assistant_message` 保留有序 text / thinking parts，但不公开空白或脱敏思考、签名和供应商连续性元数据；`tool_call` 只公开名称、状态和模型实际收到的文本输出（运行中为 `null`），不公开参数或第三方结果包装。
 - `LogManager` 以 `LogContent` 判别联合保存单一正文事实：文件和控制台从它生成纯文本投影，`log.appended` 只携带轻量预览，`/api/logs/detail` 只查询当前进程结构化详情池且不回扫历史文件。
@@ -27,7 +28,7 @@
 | 活动任务类型、translation scope、status、busy、`run_revision`、请求压力 | `TaskRuntime` | 任务命令、Engine 生命周期、项目会话切换 |
 | 任务 progress / analysis candidate count | `.lg` meta | `TaskProjectStore` 经 `ProjectWriteStore` 写入 |
 | 任务公开快照 | `TaskRuntime.build_snapshot` | 组合内存运行态与 `.lg` meta |
-| Agent 单会话、工程绑定与启动期资源 | `AgentService` | Agent API、`agent.session_event`；术语写入仍委托 `QualityRuleService.save_rule_entries` |
+| Agent 单会话、工程绑定与启动期资源 | `AgentService` | Agent API、`agent.session_event`；规则写入委托 `QualityRuleService.update`，译文写入委托 `ProofreadingService.update_items` |
 | `.lg` 物理 workflow | `ProjectDatabase` | 类型化读写方法、`transaction(projectPath, callback)` |
 | 平台 IO 与路径身份 | `NativeFs` / `NativePathPolicy` | `src/native` |
 | 后端日志 | `LogManager` | 文件日志、轻量 SSE、当前进程详情池 |
@@ -48,6 +49,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - 校对 reader 同时维护原始自然顺序和单个列表视图：`view_id` 表示稳定结果快照，条目字段增量只刷新旧视图中的行内容，删除 tombstone 从旧视图移除成员，成员与排序只由新的 list query 重算；上下文读取不创建或替换当前列表视图。
 - `QualityStatisticsCache` 的身份由规则和实际文本依赖决定；`items` 变化只在能证明文本源范围时局部失效，否则全量失效。
 - 客户端只提交用户意图、设置镜像和 revision 依赖；canonical items、task extras、prefilter 结果和 analysis 结果由后端计算。
+- `QualityRuleService.query / update` 是质量规则统一边界；`ProofreadingQueryService.query` 与 `ProofreadingService.update_items` 是校对读写边界。写服务只接收用户意图和 revision，由后端计算最终事实并经 `ProjectWriteStore` 在单事务中推进 revision、发布一次变更。
 - 需要乐观锁的用户写入在最终提交点完成 revision guard 与单 `.lg` 事务；任务 artifact 等内部写入可以不带预期 revision，但仍通过 `ProjectWriteStore` 更新事实和 section revision。
 - settings-only alignment 只发布内部 committed event，不发布公开 project change；仅持久化任务 progress 的写入走 task snapshot 通道，不制造项目变更事件。
 - 项目事实事务提交后才把类型化 committed event 交给唯一缓存 handler，缓存完成后再发布公开 change。未捕获的 handler 失败不会回滚已提交事务，但会令请求失败并阻止公开 change；常规增量维护失败由 `CacheManager` 标记为可恢复，并在后续 query 前从数据库重建。
@@ -68,8 +70,9 @@ project, files, items, quality, prompts, analysis, proofreading
 - work-unit worker 负责提示词构建、runner、pipeline 和响应处理；planning worker 只承担规划期计算。线程数不等于 LLM 并发，实际并发由模型 key lease 与 limiter 决定。
 - 非 engine 的重型计算通过 `BackendWorkerClient` 提交无状态 worker task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
 - 模型请求快照、provider policy、SDK transport 和结果归一归 `src/backend/llm`，任务层不解析供应商异常文本；OneShot 拥有完整任务 payload，Pi 只拥有 Agent 的消息、工具和流式结构，两条路径发送前复用同一思考与扩展规则。模型页 generation 和输入/输出 token 设置只作用于 OneShot，Agent 固定使用 256K 上下文与 64K 最大输出。Agent 在每个空闲回合前重新解析 agent 用途选择，只替换 Pi runtime 的模型、思考等级和流函数；消息历史、工具、公开条目与工程绑定保持不变，运行中变化只影响下一轮。
-- Agent 基础 system prompt 的唯一资源为 `resource/agent/system_prompt.md`，与内置、用户 skill 一并在启动期加载并固定；基础资源缺失、不可读或为空会令启动失败，坏 skill 只进入诊断。显式 skill part 按首次出现顺序通过 Pi invocation 进入该轮用户消息；`references` Markdown 在启动期递归形成白名单，工具只可读取当前会话已引用 skill 的完整相对路径。
-- Agent 是否获得当前写入方案的明确批准由模型按完整对话语义判断，后端不维护批准状态机；`write_glossary` 只以 `expected_section_revisions` 防止并发覆盖。Agent 自己的写入事件只推进当前工程绑定，外部 quality 变更仍会令会话失效。
+- Agent 基础 system prompt 的唯一资源为 `resource/agent/system_prompt.md`，与内置、用户 skill 一并在启动期固定；基础资源失败会阻止启动，坏 skill 只进入诊断。Pi 目录只公开可自动调用的 skill；manual-only skill 必须由显式 skill part 授权，`read_skill` 只读取启动期形成的 `SKILL.md` 与 references 白名单，不访问运行期文件系统。
+- Agent 不拥有第二套项目状态或持久化入口。写入批准由模型按完整对话判断，后端只用 section revision 防止并发覆盖；冲突后必须重新查询和批准。
+- Agent 上下文绑定工程 epoch 与 `quality` / `items` / `proofreading` revision。用户 reset、工程切换和外部相关变更共用会话重置屏障；Agent 自身写入由专用事件 source 识别，只推进绑定，不中断当前回合。
 
 ## 5. 数据库与 `.lg` 存储
 

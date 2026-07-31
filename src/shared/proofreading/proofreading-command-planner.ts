@@ -23,9 +23,7 @@ export type ProofreadingCommandSnapshot = {
 export type ProofreadingCommandPlan = {
   changed_item_ids: number[]; // UI 用于计数和乐观反馈，不作为最终写库事实
   request_body: {
-    item_id?: number; // 单条保存目标 item
-    dst?: string; // 单条保存目标译文
-    name_dst?: string; // 单条保存目标姓名译文
+    changes?: Array<{ item_id: number; dst?: string; name_dst?: string }>; // 窄译文批量更新
     item_ids?: number[]; // 批量替换、清空译文或设置状态的目标 item 集合
     status?: ProofreadingManualStatusCode; // 批量设置的人工翻译状态
     search_text?: string; // 批量替换搜索文本，真实替换由后端执行
@@ -89,6 +87,7 @@ function replace_all_in_text(args: {
   });
 }
 
+// 正文或姓名译文任一字段实际变化即可纳入批量命令。
 function has_replace_all_change(args: {
   item: ProofreadingCommandItemSnapshot;
   search_text: string;
@@ -115,8 +114,8 @@ function has_replace_all_change(args: {
   return name_replace_result.count > 0 && name_replace_result.text !== name_dst;
 }
 
-// 单条保存只提交变化的用户意图，status 与进度统计由后端计算。
-export function create_save_item_plan(args: {
+// 单条编辑投影为批量更新命令，status 与进度统计由后端计算。
+export function create_update_items_plan(args: {
   snapshot: ProofreadingCommandSnapshot;
   item_id: number;
   next_dst: string;
@@ -127,26 +126,28 @@ export function create_save_item_plan(args: {
     return null;
   }
 
-  const request_body: ProofreadingCommandPlan["request_body"] = {
+  const change: NonNullable<ProofreadingCommandPlan["request_body"]["changes"]>[number] = {
     item_id: args.item_id,
-    expected_section_revisions: build_expected_revisions(args.snapshot.section_revisions),
   };
   if (current_item.dst !== args.next_dst) {
-    request_body.dst = args.next_dst;
+    change.dst = args.next_dst;
   }
   if (args.next_name_dst !== undefined) {
     if (read_item_name_text(current_item.name_dst) !== args.next_name_dst) {
-      request_body.name_dst = args.next_name_dst;
+      change.name_dst = args.next_name_dst;
     }
   }
 
-  if (request_body.dst === undefined && request_body.name_dst === undefined) {
+  if (change.dst === undefined && change.name_dst === undefined) {
     return null;
   }
 
   return {
     changed_item_ids: [args.item_id],
-    request_body,
+    request_body: {
+      changes: [change],
+      expected_section_revisions: build_expected_revisions(args.snapshot.section_revisions),
+    },
   };
 }
 

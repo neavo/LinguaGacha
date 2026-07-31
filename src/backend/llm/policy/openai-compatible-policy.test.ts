@@ -4,6 +4,7 @@ import type { ModelRequestSnapshot } from "./policy-types";
 import {
   apply_openai_request_overrides,
   build_openai_compatible_payload,
+  build_openai_thinking_payload,
   normalize_chat_messages,
   normalize_openai_compatible_sdk_base_url,
 } from "./openai-compatible-policy";
@@ -111,6 +112,35 @@ describe("openai-compatible-policy", () => {
     expect(payload).toMatchObject({ reasoning_effort: effort });
     expect(payload).not.toHaveProperty("thinking");
   });
+
+  it.each([
+    ["OFF", { thinking: { type: "disabled" } }, { thinking: { type: "disabled" } }],
+    [
+      "LOW",
+      { thinking: { type: "enabled" }, reasoning_effort: "low" },
+      { thinking: { type: "enabled" } },
+    ],
+    [
+      "MEDIUM",
+      { thinking: { type: "enabled" }, reasoning_effort: "low" },
+      { thinking: { type: "enabled" } },
+    ],
+    [
+      "HIGH",
+      { thinking: { type: "enabled" }, reasoning_effort: "high" },
+      { thinking: { type: "enabled" } },
+    ],
+  ] as const)(
+    "DeepSeek V4 Flash / Pro 分别将 %s 挡映射到官方思考参数",
+    (thinking_level, flash_expected, pro_expected) => {
+      expect(build_openai_thinking_payload("deepseek-v4-flash", thinking_level)).toEqual(
+        flash_expected,
+      );
+      expect(build_openai_thinking_payload("deepseek-v4-pro", thinking_level)).toEqual(
+        pro_expected,
+      );
+    },
+  );
 
   it("共享覆盖规则清除 Pi 思考字段并允许 extra_body 最终覆盖", () => {
     const source = {

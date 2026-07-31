@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AppLanguage } from "@domain/app-language";
 import App from "@frontend/app/index";
+import type { RouteId } from "@frontend/app/navigation/types";
 import { create_desktop_bridge_api_mock } from "../../test/desktop-bridge-mock";
 
 type AlertDialogRenderProps = {
@@ -60,6 +61,12 @@ const runtime_provider_mock = vi.hoisted(() => {
 
 const desktop_state_mock = vi.hoisted(() => {
   return {
+    pending_target_route: null as RouteId | null,
+    project_snapshot: { loaded: false, path: "" },
+    project_session_status: "idle" as "idle" | "loading" | "ready" | "error",
+    set_pending_target_route: vi.fn((route_id: RouteId | null) => {
+      desktop_state_mock.pending_target_route = route_id;
+    }),
     update_app_language: vi.fn(async (_language: AppLanguage) => undefined),
   };
 });
@@ -78,7 +85,18 @@ vi.mock("@frontend/app/navigation/schema", () => {
   return {
     DEFAULT_ROUTE_ID: "project-home",
     BOTTOM_ACTIONS: [],
-    NAVIGATION_GROUPS: [],
+    NAVIGATION_GROUPS: [
+      {
+        id: "task",
+        items: [
+          { id: "model" },
+          { id: "agent" },
+          { id: "proofreading" },
+          { id: "workbench" },
+          { id: "glossary" },
+        ],
+      },
+    ],
   };
 });
 
@@ -87,7 +105,27 @@ vi.mock("@frontend/app/navigation/screen-registry", () => {
     SCREEN_REGISTRY: {
       "project-home": {
         title_key: "app.metadata.app_name",
-        component: () => null,
+        component: () => <div data-testid="screen-project-home" />,
+      },
+      agent: {
+        title_key: "app.metadata.app_name",
+        component: () => <div data-testid="screen-agent" />,
+      },
+      model: {
+        title_key: "app.metadata.app_name",
+        component: () => <div data-testid="screen-model" />,
+      },
+      proofreading: {
+        title_key: "app.metadata.app_name",
+        component: () => <div data-testid="screen-proofreading" />,
+      },
+      workbench: {
+        title_key: "app.metadata.app_name",
+        component: () => <div data-testid="screen-workbench" />,
+      },
+      glossary: {
+        title_key: "app.metadata.app_name",
+        component: () => <div data-testid="screen-glossary" />,
       },
     },
   };
@@ -130,10 +168,10 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
   return {
     useDesktopState: () => ({
       initial_state_ready: true,
-      pending_target_route: null,
+      pending_target_route: desktop_state_mock.pending_target_route,
       is_app_language_updating: false,
-      project_snapshot: { loaded: false, path: "" },
-      project_session_status: "idle",
+      project_snapshot: desktop_state_mock.project_snapshot,
+      project_session_status: desktop_state_mock.project_session_status,
       settings_snapshot: { app_language: "ZH" },
       task_snapshot: {
         run_revision: 0,
@@ -148,7 +186,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
           error_line: 0,
         },
       },
-      set_pending_target_route: vi.fn(),
+      set_pending_target_route: desktop_state_mock.set_pending_target_route,
       update_app_language: desktop_state_mock.update_app_language,
     }),
   };
@@ -201,16 +239,38 @@ vi.mock("@frontend/shadcn/tooltip", () => {
 
 vi.mock("@frontend/app/shell/app-sidebar", () => {
   return {
-    AppSidebar: (props: { on_select_app_language: (language: AppLanguage) => void }) => (
-      <button
-        type="button"
-        data-testid="select-de-language"
-        onClick={() => {
-          props.on_select_app_language("DE");
-        }}
-      >
-        Deutsch
-      </button>
+    AppSidebar: (props: {
+      groups: Array<{ items: Array<{ id: RouteId }> }>;
+      disabled_route_ids: ReadonlySet<RouteId>;
+      on_select_route: (route_id: RouteId) => void;
+      on_select_app_language: (language: AppLanguage) => void;
+    }) => (
+      <>
+        {props.groups
+          .flatMap((group) => group.items)
+          .map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              data-testid={`route-${item.id}`}
+              disabled={props.disabled_route_ids.has(item.id)}
+              onClick={() => {
+                props.on_select_route(item.id);
+              }}
+            >
+              {item.id}
+            </button>
+          ))}
+        <button
+          type="button"
+          data-testid="select-de-language"
+          onClick={() => {
+            props.on_select_app_language("DE");
+          }}
+        >
+          Deutsch
+        </button>
+      </>
     ),
   };
 });
@@ -268,6 +328,11 @@ describe("App 窗口根行为", () => {
 
   beforeEach(() => {
     install_local_storage_fallback();
+    desktop_state_mock.pending_target_route = null;
+    desktop_state_mock.project_snapshot.loaded = false;
+    desktop_state_mock.project_snapshot.path = "";
+    desktop_state_mock.project_session_status = "idle";
+    desktop_state_mock.set_pending_target_route.mockClear();
     desktop_api_mock.api_fetch.mockResolvedValue({ settings: { app_language: "ZH" } });
     desktop_api_mock.check_github_release_update.mockResolvedValue(null);
     desktop_api_mock.get_backend_metadata.mockResolvedValue({ version: "9.8.7" });
@@ -407,6 +472,64 @@ describe("App 窗口根行为", () => {
     });
 
     expect(desktop_state_mock.update_app_language).toHaveBeenCalledWith("DE");
+  });
+
+  it("未加载项目时允许三个加载入口，并在项目就绪后恢复 Agent", async () => {
+    await mount_app_at("/");
+
+    const model_button = container?.querySelector<HTMLButtonElement>('[data-testid="route-model"]');
+    const agent_button = container?.querySelector<HTMLButtonElement>('[data-testid="route-agent"]');
+    const proofreading_button = container?.querySelector<HTMLButtonElement>(
+      '[data-testid="route-proofreading"]',
+    );
+    const workbench_button = container?.querySelector<HTMLButtonElement>(
+      '[data-testid="route-workbench"]',
+    );
+    const glossary_button = container?.querySelector<HTMLButtonElement>(
+      '[data-testid="route-glossary"]',
+    );
+    if (
+      model_button === null ||
+      model_button === undefined ||
+      agent_button === null ||
+      agent_button === undefined ||
+      proofreading_button === null ||
+      proofreading_button === undefined ||
+      workbench_button === null ||
+      workbench_button === undefined ||
+      glossary_button === null ||
+      glossary_button === undefined
+    ) {
+      throw new Error("缺少项目路由测试按钮。");
+    }
+
+    expect(agent_button.disabled).toBe(false);
+    expect(proofreading_button.disabled).toBe(false);
+    expect(workbench_button.disabled).toBe(false);
+    expect(glossary_button.disabled).toBe(true);
+
+    await act(async () => {
+      model_button.click();
+    });
+    expect(container?.querySelector('[data-testid="screen-model"]')).not.toBeNull();
+
+    await act(async () => {
+      agent_button.click();
+    });
+
+    expect(desktop_state_mock.set_pending_target_route).toHaveBeenLastCalledWith("agent");
+    expect(container?.querySelector('[data-testid="screen-project-home"]')).not.toBeNull();
+
+    desktop_state_mock.project_snapshot.loaded = true;
+    desktop_state_mock.project_snapshot.path = "E:/Project/Demo";
+    desktop_state_mock.project_session_status = "ready";
+    await act(async () => {
+      root?.render(<App />);
+    });
+
+    expect(container?.querySelector('[data-testid="screen-agent"]')).not.toBeNull();
+    expect(desktop_state_mock.set_pending_target_route).toHaveBeenLastCalledWith(null);
+    expect(desktop_state_mock.pending_target_route).toBeNull();
   });
 
   it("界面语言设置失败时显示统一错误反馈", async () => {

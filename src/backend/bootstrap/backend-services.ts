@@ -269,6 +269,7 @@ export class BackendServices {
       sessionState: session_state,
       cache: this.cache_manager,
       qualityRules: quality_rules,
+      proofreading: this.proofreading.commands,
       logManager: this.logManager,
       publish: (topic, payload) => this.api_stream_hub.publish(topic, payload),
     });

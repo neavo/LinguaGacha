@@ -26,8 +26,10 @@ type UseAgentPageState = {
   skills: AgentSkillSnapshot[];
   loading: boolean;
   error: boolean;
+  resetting: boolean;
   send: (parts: readonly AgentUserMessagePart[]) => Promise<boolean>;
   stop: () => Promise<void>;
+  reset: () => Promise<boolean>;
 };
 
 /**
@@ -37,6 +39,7 @@ export function useAgentPageState(): UseAgentPageState {
   const [snapshot, set_snapshot] = useState<AgentSessionSnapshot>(EMPTY_SNAPSHOT);
   const [loading, set_loading] = useState(true);
   const [error, set_error] = useState(false);
+  const [resetting, set_resetting] = useState(false);
   const request_failed_ref = useRef(false); // 重连只清除传输错误，不能吞掉尚未重试的命令失败
 
   useEffect(() => {
@@ -138,14 +141,33 @@ export function useAgentPageState(): UseAgentPageState {
     }
   };
 
+  const reset = async (): Promise<boolean> => {
+    request_failed_ref.current = false;
+    set_error(false);
+    set_resetting(true);
+    try {
+      const next = await api_fetch<AgentSessionSnapshot>("/api/agent/reset");
+      set_snapshot(normalize_snapshot(next));
+      return true;
+    } catch {
+      request_failed_ref.current = true;
+      set_error(true);
+      return false;
+    } finally {
+      set_resetting(false);
+    }
+  };
+
   return {
     state: snapshot.state,
     entries: snapshot.entries,
     skills: snapshot.skills,
     loading,
     error,
+    resetting,
     send,
     stop,
+    reset,
   };
 }
 

@@ -60,6 +60,7 @@ export function register_api_routes(context: ApiRouteContext): void {
   );
   context.postJson("/api/agent/message", (body) => services.agent.send_message(body));
   context.postJson("/api/agent/stop", () => services.agent.stop());
+  context.postJson("/api/agent/reset", () => services.agent.reset());
 
   const project_content = services.project.content;
   const reset_preview = services.project.resetPreview;
@@ -81,8 +82,8 @@ export function register_api_routes(context: ApiRouteContext): void {
 
   const proofreading_query = services.proofreading.query;
   const proofreading = services.proofreading.commands;
-  context.postJson("/api/proofreading/view", (body) => proofreading_query.read(body));
-  context.postJson("/api/proofreading/item/save", (body) => proofreading.save_item(body));
+  context.postJson("/api/proofreading/query", (body) => proofreading_query.query(body));
+  context.postJson("/api/proofreading/items/update", (body) => proofreading.update_items(body));
   context.postJson("/api/proofreading/translations/clear", (body) =>
     proofreading.clear_translations(body),
   );
@@ -95,14 +96,9 @@ export function register_api_routes(context: ApiRouteContext): void {
   const quality_rules = services.quality.rules;
   const prompts = services.quality.prompts;
   context.postJson("/api/quality/statistics/view", (body) => quality_statistics.read(body));
-  context.postJson("/api/quality/rules/view", (body) => quality_rules.read(body));
+  context.postJson("/api/quality/rules/query", (body) => quality_rules.query(body));
   context.postJson("/api/quality/prompts/view", (body) => prompts.read(body));
-  context.postJson("/api/quality/rules/save-entries", (body) =>
-    quality_rules.save_rule_entries(body),
-  );
-  context.postJson("/api/quality/rules/update-meta", (body) =>
-    quality_rules.update_rule_meta(body),
-  );
+  context.postJson("/api/quality/rules/update", (body) => quality_rules.update(body));
   context.postJson("/api/quality/rules/import", (body) => quality_rules.import_rules(body));
   context.postJson("/api/quality/rules/export", (body) => quality_rules.export_rules(body));
   context.postJson("/api/quality/rules/presets", (body) => quality_rules.list_rule_presets(body));

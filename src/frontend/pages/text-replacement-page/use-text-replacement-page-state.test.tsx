@@ -164,7 +164,7 @@ function create_quality_write_result(
     accepted: true,
     changes: [
       {
-        source: "quality_rule_save_entries",
+        source: "quality_rule_update",
         projectPath: "E:/demo/sample.lg",
         projectRevision: project_revision,
         updatedSections: ["quality"],
@@ -264,12 +264,12 @@ vi.mock("@frontend/app/navigation/navigation-context", () => {
 
 vi.mock("@frontend/features/quality-rule-editor/quality-rule-api-client", () => {
   return {
-    read_quality_rule: vi.fn(async (rule_type: keyof typeof run_state.quality) => ({
+    query_quality_rules: vi.fn(async (rule_type: keyof typeof run_state.quality) => ({
       projectPath: run_state.project.path,
       sectionRevisions: { ...run_state.revisions.sections },
       qualityRule: run_state.quality[rule_type],
     })),
-    read_quality_rule_section_revisions: vi.fn(async () => ({
+    query_quality_rule_section_revisions: vi.fn(async () => ({
       ...run_state.revisions.sections,
     })),
   };
@@ -878,7 +878,7 @@ describe("useTextReplacementPageState", () => {
       await latest_state?.import_duplicate_skip();
     });
 
-    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
+    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/update", {
       rule_type: "pre_replacement",
       expected_section_revisions: { quality: 2 },
       entries: [
@@ -990,7 +990,7 @@ describe("useTextReplacementPageState", () => {
       await latest_state?.import_duplicate_overwrite();
     });
 
-    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
+    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/update", {
       rule_type: "pre_replacement",
       expected_section_revisions: { quality: 2 },
       entries: [

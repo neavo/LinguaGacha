@@ -785,7 +785,7 @@ describe("DesktopStateProvider", () => {
           changes: [
             {
               eventId: "quality-write-1",
-              source: "quality_rule_save_entries",
+              source: "quality_rule_update",
               projectPath: "E:/demo/demo.lg",
               projectRevision: 2,
               updatedSections: ["quality"],
@@ -830,7 +830,7 @@ describe("DesktopStateProvider", () => {
     expect(snapshots.at(-1)).toMatchObject({
       workbenchSeq: 1,
       proofreadingSeq: 2,
-      proofreadingReason: "quality_rule_save_entries",
+      proofreadingReason: "quality_rule_update",
       proofreadingMode: "full",
       taskStatus: "idle",
     });
@@ -986,7 +986,7 @@ describe("DesktopStateProvider", () => {
 
     await act(async () => {
       event_stream.emit("project.data_changed", {
-        source: "proofreading_save_item",
+        source: "proofreading_update_items",
         projectPath: "E:/demo/demo.lg",
         projectRevision: 2,
         updatedSections: ["items", "proofreading"],
@@ -1015,7 +1015,7 @@ describe("DesktopStateProvider", () => {
         },
       });
       event_stream.emit("project.data_changed", {
-        source: "proofreading_save_item",
+        source: "proofreading_update_items",
         projectPath: "E:/demo/demo.lg",
         projectRevision: 3,
         updatedSections: ["items", "proofreading"],
@@ -1054,7 +1054,7 @@ describe("DesktopStateProvider", () => {
 
     expect(snapshots.at(-1)).toMatchObject({
       proofreadingSeq: 2,
-      proofreadingReason: "proofreading_save_item",
+      proofreadingReason: "proofreading_update_items",
       proofreadingMode: "delta",
       proofreadingUpdatedSections: ["items", "proofreading"],
       proofreadingItemIds: [1, 2],

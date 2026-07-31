@@ -27,7 +27,13 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
         ? "描述任务，或输入 @ 选择能力 …"
         : key === "agent_page.input.hint"
           ? "Enter 发送 · Shift + Enter 换行"
-          : key,
+          : key === "agent_page.action.send"
+            ? "发送"
+            : key === "agent_page.action.stop"
+              ? "停止"
+              : key === "agent_page.error"
+                ? "请求失败，请重试。"
+                : key,
   }),
 }));
 
@@ -117,15 +123,40 @@ describe("AgentComposer", () => {
     const on_send = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
     const view = await render_composer(on_send);
     const editor = get_editor(view);
-    await set_document(editor, "@glossary-audit", "@glossary-audit".length);
+    const draft = "  \n@glossary-audit \n ";
+    await set_document(editor, draft, draft.length);
     expect(view.querySelector(".agent-skill-token")).toBeNull();
 
     await click_send(view);
     expect(on_send).toHaveBeenLastCalledWith([{ kind: "text", text: "@glossary-audit" }]);
-    expect(editor.state.doc.toString()).toBe("@glossary-audit");
+    expect(editor.state.doc.toString()).toBe(draft);
 
     await click_send(view);
     expect(editor.state.doc.toString()).toBe("");
+  });
+
+  it("含 skill 的消息只裁剪组合外缘并保留 token 内侧空白", async () => {
+    const on_send = vi.fn(async () => false);
+    const view = await render_composer(on_send);
+    const editor = get_editor(view);
+    await select_skill(view, editor, "glossary-audit");
+    const token_length = editor.state.doc.length;
+    await act(async () => {
+      editor.dispatch({
+        changes: [
+          { from: 0, insert: " \n " },
+          { from: token_length, insert: " 说明  " },
+        ],
+      });
+    });
+
+    await click_send(view);
+
+    expect(on_send).toHaveBeenCalledWith([
+      { kind: "skill", name: "glossary-audit" },
+      { kind: "text", text: " 说明" },
+    ]);
+    expect(editor.state.doc.toString()).toBe(" \n @glossary-audit 说明  ");
   });
 
   it("Enter 选择菜单项，Shift+Enter 换行，运行时切换为停止按钮", async () => {
@@ -196,29 +227,130 @@ describe("AgentComposer", () => {
     expect(on_send).not.toHaveBeenCalled();
   });
 
-  it("快捷键只在 shadcn 发送按钮提示显示，更新期间保持编辑但禁止发送", async () => {
+  it("快捷键提示位于模型右侧，发送按钮缩入底栏且只提示动作", async () => {
     const view = await render_composer(
       vi.fn(async () => true),
       false,
       vi.fn(async () => undefined),
       { updating: true },
+      { error: true },
     );
-    const meta = view.querySelector(".agent-composer__meta");
+    const footer = view.querySelector(".agent-composer__footer");
+    const actions = view.querySelector(".agent-composer__footer-actions");
+    const footer_end = view.querySelector(".agent-composer__footer-end");
+    const reset = view.querySelector<HTMLButtonElement>(".agent-composer__reset");
     const model_trigger = view.querySelector<HTMLButtonElement>(".agent-composer__model-trigger");
+    const hint = view.querySelector(".agent-composer__hint");
+    const error = view.querySelector(".agent-composer__error");
     const placeholder = view.querySelector(".cm-placeholder");
     const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
     const tooltip = view.querySelector('[role="tooltip"]');
 
-    expect(meta?.firstElementChild).toBe(model_trigger);
+    expect(footer?.firstElementChild).toBe(actions);
+    expect(actions?.firstElementChild).toBe(reset);
+    expect(reset?.nextElementSibling).toBe(model_trigger);
+    expect(model_trigger?.nextElementSibling).toBe(hint);
+    expect(hint?.textContent).toBe("Enter 发送 · Shift + Enter 换行");
+    expect(footer?.lastElementChild).toBe(footer_end);
+    expect(error?.nextElementSibling).toBe(submit?.parentElement);
+    expect(footer_end?.contains(submit ?? null)).toBe(true);
     expect(model_trigger?.textContent).toContain("Agent Model");
     expect(model_trigger?.disabled).toBe(true);
     expect(placeholder?.textContent).toBe("描述任务，或输入 @ 选择能力 …");
     expect(submit?.title).toBe("");
-    expect(submit?.parentElement?.classList.contains("inline-flex")).toBe(true);
-    expect(tooltip?.textContent).toBe("Enter 发送 · Shift + Enter 换行");
-    expect(meta?.querySelector(":scope > span")).toBeNull();
+    expect(submit?.dataset.size).toBe("icon-xs");
+    expect(submit?.parentElement?.classList.contains("agent-composer__submit-shell")).toBe(true);
+    expect(tooltip?.textContent).toBe("发送");
+    expect(view.querySelector(".agent-composer__editor .agent-composer__submit")).toBeNull();
+    expect(view.querySelector(".agent-composer__meta")).toBeNull();
+    expect(view.querySelector(".agent-composer__controls")).toBeNull();
     expect(get_editor(view).contentDOM.getAttribute("contenteditable")).toBe("true");
     expect(submit?.disabled).toBe(true);
+  });
+
+  it("新任务按钮固定在模型左侧，并按会话、重置和提交状态禁用", async () => {
+    const on_reset = vi.fn();
+    const view = await render_composer(
+      vi.fn(async () => true),
+      false,
+      vi.fn(async () => undefined),
+      {},
+      { can_reset: false, on_reset },
+    );
+    const reset = view.querySelector<HTMLButtonElement>(".agent-composer__reset");
+    const model = view.querySelector<HTMLButtonElement>(".agent-composer__model-trigger");
+    expect(reset?.disabled).toBe(true);
+    expect(reset?.nextElementSibling).toBe(model);
+
+    await render_composer(
+      vi.fn(async () => true),
+      true,
+      vi.fn(async () => undefined),
+      {},
+      { can_reset: true, on_reset },
+    );
+    expect(reset?.disabled).toBe(false);
+    await act(async () => reset?.click());
+    expect(on_reset).toHaveBeenCalledOnce();
+
+    await render_composer(
+      vi.fn(async () => true),
+      false,
+      vi.fn(async () => undefined),
+      {},
+      { can_reset: true, resetting: true, on_reset },
+    );
+    expect(reset?.disabled).toBe(true);
+    expect(model?.disabled).toBe(true);
+    expect(view.querySelector<HTMLButtonElement>(".agent-composer__submit")?.disabled).toBe(true);
+
+    let resolve_send!: (accepted: boolean) => void;
+    await render_composer(
+      vi.fn(
+        () =>
+          new Promise<boolean>((resolve) => {
+            resolve_send = resolve;
+          }),
+      ),
+      false,
+      vi.fn(async () => undefined),
+      {},
+      { can_reset: true, on_reset },
+    );
+    await set_document(get_editor(view), "提交中", 3);
+    await act(async () => {
+      view.querySelector<HTMLButtonElement>(".agent-composer__submit")?.click();
+      await Promise.resolve();
+    });
+    expect(reset?.disabled).toBe(true);
+    await act(async () => resolve_send(false));
+  });
+
+  it("resetting 前后复用 EditorView，并保留正文与 skill token 草稿", async () => {
+    const view = await render_composer();
+    const editor = get_editor(view);
+    await select_skill(view, editor, "glossary-audit");
+    await act(async () => {
+      editor.dispatch({ changes: { from: editor.state.doc.length, insert: " 待处理" } });
+    });
+
+    await render_composer(
+      vi.fn(async () => true),
+      false,
+      vi.fn(async () => undefined),
+      {},
+      { resetting: true },
+    );
+    expect(get_editor(view)).toBe(editor);
+    expect(editor.contentDOM.getAttribute("contenteditable")).toBe("false");
+    expect(editor.state.doc.toString()).toBe("@glossary-audit 待处理");
+    expect(view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
+
+    await render_composer();
+    expect(get_editor(view)).toBe(editor);
+    expect(editor.contentDOM.getAttribute("contenteditable")).toBe("true");
+    expect(editor.state.doc.toString()).toBe("@glossary-audit 待处理");
+    expect(view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
   });
 
   async function render_composer(
@@ -226,6 +358,12 @@ describe("AgentComposer", () => {
     running = false,
     on_stop = vi.fn(async () => undefined),
     model_selection_overrides: { loading?: boolean; updating?: boolean } = {},
+    composer_overrides: {
+      can_reset?: boolean;
+      resetting?: boolean;
+      on_reset?: () => void;
+      error?: boolean;
+    } = {},
   ): Promise<HTMLDivElement> {
     if (container === null) {
       container = document.createElement("div");
@@ -237,7 +375,9 @@ describe("AgentComposer", () => {
         <AgentComposer
           skills={skills}
           running={running}
-          error={false}
+          error={composer_overrides.error ?? false}
+          can_reset={composer_overrides.can_reset ?? true}
+          resetting={composer_overrides.resetting ?? false}
           model_selection={{
             snapshot: {
               model_selection: { translation: "preset", analysis: "preset", agent: "agent" },
@@ -250,6 +390,7 @@ describe("AgentComposer", () => {
           }}
           on_send={on_send}
           on_stop={on_stop}
+          on_reset={composer_overrides.on_reset ?? vi.fn()}
         />,
       );
     });

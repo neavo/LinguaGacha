@@ -32,6 +32,15 @@ type ProofreadingItemChange = {
   next: MutableJsonRecord; // 数据库将要写入的最终行事实
 };
 
+type ProofreadingItemUpdate = {
+  item_id: number;
+  dst?: string;
+  name_dst?: string;
+};
+
+const MAX_PROOFREADING_ITEM_UPDATES = 500;
+const DEFAULT_PROOFREADING_UPDATE_SOURCE = "proofreading_update_items";
+
 /**
  * 承载校对同步写入口，把渲染进程命令转换为 Electron main 数据库事实
  */
@@ -60,43 +69,64 @@ export class ProofreadingService {
   }
 
   /**
-   * 单条保存统一处理正文译文和当前姓名译文，最终事实仍由后端写入口计算。
+   * 批量更新正文与姓名译文，整批事实在同一项目写租约和事务内提交。
    */
-  public async save_item(request: JsonRecord): Promise<ProjectWriteResult> {
+  public async update_items(
+    request: JsonRecord,
+    source = DEFAULT_PROOFREADING_UPDATE_SOURCE,
+  ): Promise<ProjectWriteResult> {
     return await this.project_operation_gate.run_exclusive_project_write(
-      async () => await this.save_item_under_lease(request),
+      async () => await this.update_items_under_lease(request, source),
     );
   }
 
-  private async save_item_under_lease(request: JsonRecord): Promise<ProjectWriteResult> {
+  /** 在项目写租约内构造最终 item 事实，并保留调用方来源到提交事件。 */
+  private async update_items_under_lease(
+    request: JsonRecord,
+    source: string,
+  ): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
     const expected_section_revisions = this.prepare_write_context(request);
-    const item_id = this.parse_integer_or_throw(request["item_id"]);
-    const item = this.get_item_write_facts_by_ids(project_path, [item_id]).get(item_id);
-    if (item === undefined) {
-      throw new AppErrors.RequestValidationError({
-        diagnostic_context: { reason: "item_not_found", item_id },
-      });
+    const updates = this.normalize_item_updates(request["changes"]);
+    const current_by_id = this.get_item_write_facts_by_ids(
+      project_path,
+      updates.map((update) => update.item_id),
+    );
+    const changes: ProofreadingItemChange[] = [];
+    let update_translation_extras = false;
+    for (const update of updates) {
+      const current = current_by_id.get(update.item_id);
+      if (current === undefined) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: { reason: "item_not_found", item_id: update.item_id },
+        });
+      }
+      let next = current;
+      if (update.dst !== undefined) {
+        next = this.apply_manual_dst(next, update.dst);
+        update_translation_extras ||=
+          String(current["dst"] ?? "") !== update.dst || current["status"] !== next["status"];
+      }
+      if (update.name_dst !== undefined) {
+        next = this.apply_manual_name_dst(next, update.name_dst);
+      }
+      if (!this.are_items_equal(current, next)) {
+        changes.push({ current, next });
+      }
     }
-    let next_item = item;
-    const changed_fields: Array<keyof ProjectChangeItemFieldPatch> = [];
-    if (Object.prototype.hasOwnProperty.call(request, "dst")) {
-      next_item = this.apply_manual_dst(next_item, String(request["dst"] ?? ""));
-      changed_fields.push("dst", "status");
-    }
-    if (Object.prototype.hasOwnProperty.call(request, "name_dst")) {
-      next_item = this.apply_manual_name_dst(next_item, String(request["name_dst"] ?? ""));
-      changed_fields.push("name_dst");
-    }
-    if (this.are_items_equal(item, next_item)) {
-      return { accepted: true, changes: [] };
-    }
-    const field_patch = this.build_item_field_patch(item, next_item, changed_fields);
-    return await this.persist_field_patch_items(project_path, expected_section_revisions, {
-      changes: [{ current: item, next: next_item }],
-      field_patch,
-      update_translation_extras: changed_fields.includes("dst"),
-    });
+    return await this.persist_changed_items(
+      project_path,
+      expected_section_revisions,
+      {
+        changes,
+        items_payload: {
+          payloadMode: "canonical-delta",
+          changedIds: this.collect_item_ids(changes.map((change) => change.next)),
+        },
+        update_translation_extras,
+      },
+      source,
+    );
   }
 
   /**
@@ -108,6 +138,7 @@ export class ProofreadingService {
     );
   }
 
+  /** 在项目写租约内按后端当前事实执行批量替换。 */
   private async replace_all_under_lease(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
     const expected_section_revisions = this.prepare_write_context(request);
@@ -175,6 +206,7 @@ export class ProofreadingService {
     );
   }
 
+  /** 在项目写租约内筛出实际含译文的目标并提交统一字段补丁。 */
   private async clear_translations_under_lease(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
     const expected_section_revisions = this.prepare_write_context(request);
@@ -208,6 +240,7 @@ export class ProofreadingService {
     );
   }
 
+  /** 在项目写租约内归一人工状态，并同步清除旧重试计数。 */
   private async set_translation_status_under_lease(
     request: JsonRecord,
   ): Promise<ProjectWriteResult> {
@@ -277,6 +310,7 @@ export class ProofreadingService {
       >;
       update_translation_extras: boolean;
     },
+    source = DEFAULT_PROOFREADING_UPDATE_SOURCE,
   ): Promise<ProjectWriteResult> {
     if (args.changes.length === 0) {
       return { accepted: true, changes: [] };
@@ -284,6 +318,7 @@ export class ProofreadingService {
     return await this.write_store.apply_proofreading_bulk_patch({
       projectPath: project_path,
       expectedSectionRevisions: expected_section_revisions,
+      source,
       changes: args.changes,
       itemsPayload: args.items_payload,
       updateTranslationExtras: args.update_translation_extras,
@@ -308,6 +343,7 @@ export class ProofreadingService {
     return await this.write_store.apply_proofreading_item_patch({
       projectPath: project_path,
       expectedSectionRevisions: expected_section_revisions,
+      source: DEFAULT_PROOFREADING_UPDATE_SOURCE,
       changes: args.changes,
       fieldPatch: args.field_patch,
       updateTranslationExtras: args.update_translation_extras,
@@ -333,45 +369,6 @@ export class ProofreadingService {
       ...item,
       name_dst: write_item_name_text(item["name_dst"], next_name_dst),
     }).to_json();
-  }
-
-  /**
-   * field-patch 只发布本次统一改变的字段；值从后端最终 item 事实提取。
-   */
-  private build_item_field_patch(
-    current_item: MutableJsonRecord,
-    next_item: MutableJsonRecord,
-    fields: Array<keyof ProjectChangeItemFieldPatch>,
-  ): ProjectChangeItemFieldPatch {
-    const patch: ProjectChangeItemFieldPatch = {};
-    for (const field of fields) {
-      if (field === "retry_count") {
-        const retry_count = Number(next_item["retry_count"]);
-        if (Number.isFinite(retry_count) && retry_count !== Number(current_item["retry_count"])) {
-          patch.retry_count = Math.trunc(retry_count);
-        }
-        continue;
-      }
-      if (field === "status") {
-        const status = Item.normalize_status(next_item["status"]);
-        if (status !== current_item["status"]) {
-          patch.status = status;
-        }
-        continue;
-      }
-      if (field === "name_dst") {
-        const name_dst = Item.normalize_name_field(next_item["name_dst"]);
-        if (!are_item_name_fields_equal(name_dst, current_item["name_dst"])) {
-          patch.name_dst = name_dst;
-        }
-        continue;
-      }
-      const dst = next_item["dst"];
-      if (field === "dst" && typeof dst === "string" && dst !== current_item["dst"]) {
-        patch.dst = dst;
-      }
-    }
-    return patch;
   }
 
   /**
@@ -421,6 +418,58 @@ export class ProofreadingService {
       item_ids.push(item_id);
     }
     return item_ids;
+  }
+
+  /**
+   * 译文更新命令必须非空、ID 唯一且每项至少包含一个可写字段。
+   */
+  private normalize_item_updates(value: JsonValue | undefined): ProofreadingItemUpdate[] {
+    if (
+      !Array.isArray(value) ||
+      value.length === 0 ||
+      value.length > MAX_PROOFREADING_ITEM_UPDATES
+    ) {
+      throw new AppErrors.RequestValidationError({
+        diagnostic_context: { reason: "invalid_proofreading_item_updates" },
+      });
+    }
+    const updates: ProofreadingItemUpdate[] = [];
+    const item_ids = new Set<number>();
+    for (const raw_update of value) {
+      if (!is_json_record(raw_update)) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: { reason: "invalid_proofreading_item_update" },
+        });
+      }
+      const item_id = this.parse_integer_or_throw(raw_update["item_id"]);
+      if (item_id <= 0 || item_ids.has(item_id)) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: { reason: "duplicate_or_invalid_item_id", item_id },
+        });
+      }
+      const has_dst = Object.prototype.hasOwnProperty.call(raw_update, "dst");
+      const has_name_dst = Object.prototype.hasOwnProperty.call(raw_update, "name_dst");
+      if (!has_dst && !has_name_dst) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: { reason: "empty_proofreading_item_update", item_id },
+        });
+      }
+      if (
+        (has_dst && typeof raw_update["dst"] !== "string") ||
+        (has_name_dst && typeof raw_update["name_dst"] !== "string")
+      ) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: { reason: "invalid_proofreading_translation_field", item_id },
+        });
+      }
+      item_ids.add(item_id);
+      updates.push({
+        item_id,
+        ...(has_dst ? { dst: raw_update["dst"] as string } : {}),
+        ...(has_name_dst ? { name_dst: raw_update["name_dst"] as string } : {}),
+      });
+    }
+    return updates;
   }
 
   /**

@@ -4,7 +4,7 @@ import type { ProjectItemPublicRecord } from "../../domain/item";
 import {
   create_clear_translations_plan,
   create_replace_all_plan,
-  create_save_item_plan,
+  create_update_items_plan,
   create_set_translation_status_plan,
   type ProofreadingCommandSnapshot,
 } from "./proofreading-command-planner";
@@ -55,7 +55,7 @@ function create_test_snapshot(
 
 describe("proofreading command planner", () => {
   it("保存译文只提交 item_id、变化字段与 revision 锁", () => {
-    const plan = create_save_item_plan({
+    const plan = create_update_items_plan({
       snapshot: create_test_snapshot(),
       item_id: 1,
       next_dst: "译文",
@@ -63,8 +63,7 @@ describe("proofreading command planner", () => {
     });
 
     expect(plan?.request_body).toEqual({
-      item_id: 1,
-      dst: "译文",
+      changes: [{ item_id: 1, dst: "译文" }],
       expected_section_revisions: {
         items: 4,
         proofreading: 2,
@@ -73,7 +72,7 @@ describe("proofreading command planner", () => {
   });
 
   it("保存姓名译文时只提交第 0 槽姓名字段", () => {
-    const plan = create_save_item_plan({
+    const plan = create_update_items_plan({
       snapshot: create_test_snapshot([
         create_test_item({
           item_id: 1,
@@ -87,8 +86,7 @@ describe("proofreading command planner", () => {
     });
 
     expect(plan?.request_body).toEqual({
-      item_id: 1,
-      name_dst: "新译名",
+      changes: [{ item_id: 1, name_dst: "新译名" }],
       expected_section_revisions: {
         items: 4,
         proofreading: 2,
@@ -97,7 +95,7 @@ describe("proofreading command planner", () => {
   });
 
   it("姓名数组第 0 槽为空时仍只比较第 0 槽", () => {
-    const plan = create_save_item_plan({
+    const plan = create_update_items_plan({
       snapshot: create_test_snapshot([
         create_test_item({
           item_id: 1,
@@ -112,8 +110,7 @@ describe("proofreading command planner", () => {
     });
 
     expect(plan?.request_body).toEqual({
-      item_id: 1,
-      name_dst: "新译名",
+      changes: [{ item_id: 1, name_dst: "新译名" }],
       expected_section_revisions: {
         items: 4,
         proofreading: 2,
@@ -122,7 +119,7 @@ describe("proofreading command planner", () => {
   });
 
   it("正文和姓名译文同时变化时放入同一保存命令", () => {
-    const plan = create_save_item_plan({
+    const plan = create_update_items_plan({
       snapshot: create_test_snapshot([
         create_test_item({
           item_id: 1,
@@ -136,14 +133,12 @@ describe("proofreading command planner", () => {
     });
 
     expect(plan?.request_body).toMatchObject({
-      item_id: 1,
-      dst: "新正文",
-      name_dst: "新译名",
+      changes: [{ item_id: 1, dst: "新正文", name_dst: "新译名" }],
     });
   });
 
   it("正文和姓名译文都未变化时不提交保存命令", () => {
-    const plan = create_save_item_plan({
+    const plan = create_update_items_plan({
       snapshot: create_test_snapshot([
         create_test_item({
           item_id: 1,
@@ -160,7 +155,7 @@ describe("proofreading command planner", () => {
   });
 
   it("清空第 0 槽姓名译文时提交空字符串", () => {
-    const plan = create_save_item_plan({
+    const plan = create_update_items_plan({
       snapshot: create_test_snapshot([
         create_test_item({
           item_id: 1,
@@ -175,8 +170,7 @@ describe("proofreading command planner", () => {
     });
 
     expect(plan?.request_body).toEqual({
-      item_id: 1,
-      name_dst: "",
+      changes: [{ item_id: 1, name_dst: "" }],
       expected_section_revisions: {
         items: 4,
         proofreading: 2,

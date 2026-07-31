@@ -104,7 +104,7 @@ describe("useAgentPageState", () => {
         {
           kind: "tool_call",
           id: "running",
-          toolName: "read_skill_reference",
+          toolName: "read_skill",
           status: "running",
           output: null,
           createdAt: 1,
@@ -112,7 +112,7 @@ describe("useAgentPageState", () => {
         {
           kind: "tool_call",
           id: "complete",
-          toolName: "search_corpus",
+          toolName: "query_project_items",
           status: "success",
           output: '{"results":[]}',
           createdAt: 2,
@@ -128,7 +128,7 @@ describe("useAgentPageState", () => {
         {
           kind: "tool_call",
           id: "legacy",
-          toolName: "search_corpus",
+          toolName: "query_project_items",
           status: "success",
           detail: "旧协议不得兼容",
           createdAt: 4,
@@ -136,7 +136,7 @@ describe("useAgentPageState", () => {
         {
           kind: "tool_call",
           id: "invalid",
-          toolName: "read_glossary",
+          toolName: "query_quality_rules",
           status: "success",
           output: { entries: [] },
           createdAt: 5,
@@ -216,7 +216,7 @@ describe("useAgentPageState", () => {
       {
         kind: "tool_call",
         id: "running",
-        toolName: "read_skill_reference",
+        toolName: "read_skill",
         status: "running",
         output: null,
         createdAt: 1,
@@ -224,7 +224,7 @@ describe("useAgentPageState", () => {
       {
         kind: "tool_call",
         id: "complete",
-        toolName: "search_corpus",
+        toolName: "query_project_items",
         status: "success",
         output: '{"results":[]}',
         createdAt: 2,
@@ -358,6 +358,71 @@ describe("useAgentPageState", () => {
     });
     expect(accepted).toBe(false);
     expect(latest.error).toBe(true);
+  });
+
+  it("重置期间清除旧错误，并在成功后归一应用权威空快照", async () => {
+    let resolve_reset!: (value: unknown) => void;
+    desktop_api_mocks.api_fetch.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolve_reset = resolve;
+        }),
+    );
+    let latest!: ReturnType<typeof useAgentPageState>;
+    await render_probe(() => {
+      latest = useAgentPageState();
+    });
+    await wait_for(() => expect(latest.loading).toBe(false));
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "request_failed" });
+    });
+
+    let result!: Promise<boolean>;
+    await act(async () => {
+      result = latest.reset();
+      await Promise.resolve();
+    });
+    expect(latest.resetting).toBe(true);
+    expect(latest.error).toBe(false);
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/reset");
+
+    let accepted = false;
+    await act(async () => {
+      resolve_reset({
+        state: "unknown",
+        entries: [{ kind: "legacy" }],
+        skills: [{ name: "glossary-audit", description: "审校术语" }],
+      });
+      accepted = await result;
+    });
+    expect(accepted).toBe(true);
+    expect(latest).toMatchObject({
+      state: "idle",
+      entries: [],
+      skills: [{ name: "glossary-audit", description: "审校术语" }],
+      error: false,
+      resetting: false,
+    });
+  });
+
+  it("重置失败保留当前快照并恢复可操作错误态", async () => {
+    desktop_api_mocks.api_fetch.mockRejectedValue(new Error("offline"));
+    let latest!: ReturnType<typeof useAgentPageState>;
+    await render_probe(() => {
+      latest = useAgentPageState();
+    });
+    await wait_for(() => expect(latest.loading).toBe(false));
+    const previous_entries = latest.entries;
+
+    let accepted = true;
+    await act(async () => {
+      accepted = await latest.reset();
+    });
+
+    expect(accepted).toBe(false);
+    expect(latest.entries).toEqual(previous_entries);
+    expect(latest.error).toBe(true);
+    expect(latest.resetting).toBe(false);
   });
 
   async function render_probe(use_probe: () => void): Promise<void> {

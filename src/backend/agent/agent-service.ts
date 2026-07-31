@@ -1,6 +1,7 @@
 import {
   Agent,
   formatSkillInvocation,
+  formatSkillsForSystemPrompt,
   uuidv7,
   type AgentEvent,
 } from "@earendil-works/pi-agent-core";
@@ -19,24 +20,35 @@ import {
   type AgentUserMessagePart,
 } from "../../shared/agent";
 import * as AppErrors from "../../shared/error";
-import type { ProjectChangeEvent } from "../../shared/project-event";
+import type { ProjectChangeEvent, ProjectDataSection } from "../../shared/project-event";
 import type { AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { CacheReadPort } from "../cache/cache-types";
 import type { LogManager } from "../log/log-manager";
 import type { ProjectSessionState } from "../project/project-session-state";
+import type { ProofreadingService } from "../proofreading/proofreading-service";
 import type { QualityRuleService } from "../quality/quality-rule-service";
-import { create_agent_corpus_tools } from "./agent-corpus-tools";
-import { create_agent_glossary_tools } from "./agent-glossary-tools";
+import { AGENT_PROOFREADING_UPDATE_SOURCE, create_agent_item_tools } from "./agent-item-tools";
 import { resolve_agent_model } from "./agent-model";
-import { create_skill_reference_tools } from "./agent-skill-reference-tools";
+import {
+  AGENT_QUALITY_RULE_UPDATE_SOURCE,
+  create_agent_quality_tools,
+} from "./agent-quality-tools";
+import { create_agent_skill_tools } from "./agent-skill-tools";
 import { load_agent_skills, type AgentSkillDefinition } from "./agent-skills";
 import { load_agent_system_prompt } from "./agent-system-prompt";
+
+/** 任一工具事实 section 变化都会令旧模型上下文失效。 */
+const AGENT_PROJECT_SECTIONS = [
+  "quality",
+  "items",
+  "proofreading",
+] as const satisfies readonly ProjectDataSection[];
 
 type AgentBinding = {
   projectPath: string; // loaded 工程身份
   epoch: number; // 同路径重新加载也必须失效旧会话
-  qualityRevision: number; // 外部术语写入后拒绝继续消费旧上下文
+  sectionRevisions: Record<(typeof AGENT_PROJECT_SECTIONS)[number], number>; // 工具事实依赖的 revision
 };
 
 type AgentRuntime = {
@@ -63,7 +75,8 @@ type AgentServiceOptions = {
   userAgent: string;
   sessionState: ProjectSessionState;
   cache: AgentServiceCache;
-  qualityRules: Pick<QualityRuleService, "read" | "save_rule_entries">;
+  qualityRules: Pick<QualityRuleService, "query" | "update">;
+  proofreading: Pick<ProofreadingService, "update_items">;
   logManager: Pick<LogManager, "error" | "warning">;
   publish: (topic: string, payload: JsonRecord) => void;
 };
@@ -78,15 +91,16 @@ export class AgentService {
   private readonly session_state: ProjectSessionState;
   private readonly cache: AgentServiceOptions["cache"];
   private readonly quality_rules: AgentServiceOptions["qualityRules"];
+  private readonly proofreading: AgentServiceOptions["proofreading"];
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
   private readonly unsubscribe_project_session: () => void;
   private runtime: AgentRuntime | null = null; // 模型状态只绑定当前工程世代
+  private session_reset: Promise<void> | null = null; // 旧运行时退出前阻止新消息跨会话并发
   private state: AgentSessionState = "idle";
   private entries: AgentEntry[] = [];
   private skills: AgentSkillDefinition[] = [];
   private system_prompt: string | null = null;
-  private own_write = false; // 质量写入口同步发布自身事件时，只推进 binding 而不中断当前模型回合
   private disposed = false;
 
   /** 捕获组合根依赖，并让工程会话切换直接失效当前 Agent 运行时。 */
@@ -97,10 +111,11 @@ export class AgentService {
     this.session_state = options.sessionState;
     this.cache = options.cache;
     this.quality_rules = options.qualityRules;
+    this.proofreading = options.proofreading;
     this.log_manager = options.logManager;
     this.publish = options.publish;
     this.unsubscribe_project_session = this.session_state.subscribe_change(() =>
-      this.invalidate_session(),
+      this.reset_session(),
     );
   }
 
@@ -119,7 +134,9 @@ export class AgentService {
   public async load_resources(): Promise<void> {
     const system_prompt = load_agent_system_prompt(this.paths);
     const skills = await load_agent_skills(this.paths, this.log_manager);
-    this.system_prompt = system_prompt;
+    const skills_prompt = formatSkillsForSystemPrompt(skills);
+    this.system_prompt =
+      skills_prompt === "" ? system_prompt : `${system_prompt}\n\n${skills_prompt}`;
     this.skills = skills;
   }
 
@@ -128,6 +145,11 @@ export class AgentService {
    */
   public send_message(request: JsonRecord): AgentSessionSnapshot {
     this.assert_not_disposed();
+    if (this.session_reset !== null) {
+      throw new AppErrors.RequestValidationError({
+        diagnostic_context: { reason: "agent_session_resetting" },
+      });
+    }
     const system_prompt = this.require_system_prompt();
     this.session_state.require_loaded_project_path();
     const parts = normalize_agent_user_message_parts(request["parts"]);
@@ -174,29 +196,43 @@ export class AgentService {
     return this.get_snapshot();
   }
 
+  /** 清空当前对话，并在旧模型回合完全退出后返回最终空快照。 */
+  public async reset(): Promise<AgentSessionSnapshot> {
+    this.assert_not_disposed();
+    await this.reset_session();
+    return this.get_snapshot();
+  }
+
   /**
    * 中断当前模型回合；迟到的完成回调因状态已回到 idle 不再覆盖公开状态。
    */
   public stop(): AgentSessionSnapshot {
     this.runtime?.agent.abort();
-    this.own_write = false;
     this.end_current_round();
     this.set_state("idle");
     return this.get_snapshot();
   }
 
   /**
-   * 项目写入发布后同步核对 quality；Agent 自己的原子写入只推进 binding，不自毁当前复核回合。
+   * 相关项目事实变化令旧上下文失效；Agent 自己的原子写入只推进 binding。
    */
   public handle_project_change(event: ProjectChangeEvent): void {
-    if (!event.updatedSections.includes("quality") || this.runtime === null) {
+    if (
+      this.runtime === null ||
+      !event.updatedSections.some((section) =>
+        (AGENT_PROJECT_SECTIONS as readonly ProjectDataSection[]).includes(section),
+      )
+    ) {
       return;
     }
-    if (this.own_write) {
+    if (
+      event.source === AGENT_QUALITY_RULE_UPDATE_SOURCE ||
+      event.source === AGENT_PROOFREADING_UPDATE_SOURCE
+    ) {
       this.runtime.binding = this.read_binding();
       return;
     }
-    this.invalidate_session();
+    void this.reset_session();
   }
 
   /**
@@ -207,10 +243,11 @@ export class AgentService {
     this.disposed = true;
     this.unsubscribe_project_session();
     const runtime = this.runtime;
+    const session_reset = this.session_reset;
     this.runtime = null;
     runtime?.agent.abort();
     runtime?.unsubscribe();
-    await runtime?.agent.waitForIdle();
+    await Promise.all([runtime?.agent.waitForIdle(), session_reset]);
   }
 
   /**
@@ -219,7 +256,7 @@ export class AgentService {
   private ensure_runtime(system_prompt: string): AgentRuntime {
     const binding = this.read_binding();
     if (this.runtime !== null && !bindings_equal(this.runtime.binding, binding)) {
-      this.invalidate_session();
+      void this.reset_session();
     }
     if (this.runtime === null) {
       this.runtime = this.create_runtime(binding, system_prompt);
@@ -245,14 +282,17 @@ export class AgentService {
         model: resolved_model.model,
         thinkingLevel: resolved_model.thinkingLevel,
         tools: [
-          ...create_agent_glossary_tools({
+          ...create_agent_quality_tools({
             qualityRules: this.quality_rules,
             cache: this.cache,
-            beginWrite: () => this.begin_write(),
-            endWrite: () => this.end_write(),
           }),
-          ...create_agent_corpus_tools(this.cache),
-          ...create_skill_reference_tools((name) => this.resolve_invoked_skill(name)),
+          ...create_agent_item_tools({
+            cache: this.cache,
+            proofreading: this.proofreading,
+          }),
+          ...create_agent_skill_tools(this.skills, (name) =>
+            this.is_skill_explicitly_invoked(name),
+          ),
         ],
         messages: [],
       },
@@ -348,24 +388,13 @@ export class AgentService {
     }
   }
 
-  /** 自写窗口内的 quality change 只推进 binding，不能把发起写入的回合清空。 */
-  private begin_write(): void {
-    this.own_write = true;
-  }
-
-  /** 工具写入结束后立即恢复外部 quality change 的失效语义。 */
-  private end_write(): void {
-    this.own_write = false;
-  }
-
-  /** reference 工具授权直接由当前公开会话中的显式 skill part 推导。 */
-  private resolve_invoked_skill(name: string): AgentSkillDefinition | null {
-    const invoked = this.entries.some(
+  /** manual-only skill 的读取授权直接由当前公开会话中的显式 skill part 推导。 */
+  private is_skill_explicitly_invoked(name: string): boolean {
+    return this.entries.some(
       (entry) =>
         entry.kind === "user_message" &&
         entry.parts.some((part) => part.kind === "skill" && part.name === name),
     );
-    return invoked ? (this.skills.find((skill) => skill.name === name) ?? null) : null;
   }
 
   /** 同 id 只替换原位置，确保工具终帧不会改变后端确认的时间线顺序。 */
@@ -409,21 +438,29 @@ export class AgentService {
   }
 
   /**
-   * 原子失效模型订阅和公开时间线，并向已挂载页面发送空 seed。
+   * 隔离旧运行时并原子清空公开时间线；流式回合完全退出前共享同一收尾屏障。
    */
-  private invalidate_session(): void {
+  private reset_session(): Promise<void> {
+    if (this.session_reset !== null) return this.session_reset;
     const runtime = this.runtime;
+    const was_streaming = runtime?.agent.state.isStreaming === true;
     this.runtime = null;
-    runtime?.agent.abort();
     runtime?.unsubscribe();
+    runtime?.agent.abort();
+    if (runtime !== null && was_streaming) {
+      const reset = runtime.agent.waitForIdle().finally(() => {
+        if (this.session_reset === reset) this.session_reset = null;
+      });
+      this.session_reset = reset;
+    }
     this.state = "idle";
     this.entries = [];
-    this.own_write = false;
     this.publish_event({ type: "snapshot_seed", snapshot: this.get_snapshot() });
+    return this.session_reset ?? Promise.resolve();
   }
 
   /**
-   * 会话绑定同时读取工程世代和 quality revision，不能只比较路径。
+   * 会话绑定同时读取工程世代与工具依赖 section revision，不能只比较路径。
    */
   private read_binding(): AgentBinding {
     const project_path = this.session_state.require_loaded_project_path();
@@ -431,7 +468,11 @@ export class AgentService {
     return {
       projectPath: project_path,
       epoch: snapshot.epoch,
-      qualityRevision: snapshot.sectionRevisions.quality ?? 0,
+      sectionRevisions: {
+        quality: snapshot.sectionRevisions.quality ?? 0,
+        items: snapshot.sectionRevisions.items ?? 0,
+        proofreading: snapshot.sectionRevisions.proofreading ?? 0,
+      },
     };
   }
 
@@ -484,12 +525,14 @@ function project_assistant_message_parts(message: AssistantMessage): AgentAssist
   return parts;
 }
 
-/** 工程路径、世代和 quality revision 任一变化都会令旧上下文失效。 */
+/** 工程路径、世代和任一工具依赖 revision 变化都会令旧上下文失效。 */
 function bindings_equal(left: AgentBinding | null, right: AgentBinding): boolean {
   return (
     left !== null &&
     left.projectPath === right.projectPath &&
     left.epoch === right.epoch &&
-    left.qualityRevision === right.qualityRevision
+    AGENT_PROJECT_SECTIONS.every(
+      (section) => left.sectionRevisions[section] === right.sectionRevisions[section],
+    )
   );
 }

@@ -123,13 +123,13 @@ describe("QualityRuleService", () => {
     const { service } = create_workbench_service(database, () => true);
     const project_writes = [
       () =>
-        service.save_rule_entries({
+        service.update({
           rule_type: "glossary",
           entries: [],
           expected_section_revisions: { quality: 0 },
         }),
       () =>
-        service.update_rule_meta({
+        service.update({
           rule_type: "glossary",
           meta: { enabled: false },
           expected_section_revisions: { quality: 0 },
@@ -154,22 +154,23 @@ describe("QualityRuleService", () => {
     ).not.toThrow();
   });
 
-  it("保存质量规则后发布 project.data_changed，失败时不发布", async () => {
+  it("规则条目与 meta 同一事务提交且只发布一次 project.data_changed", async () => {
     const database = new ProjectDatabase();
     cleanup_databases.push(database);
     const { service, lg_path, publisher } = create_workbench_service(database);
 
     await expect(
-      service.save_rule_entries({
+      service.update({
         rule_type: "glossary",
         expected_section_revisions: { quality: 0 },
         entries: [{ src: "HP", dst: "生命值" }],
+        meta: { enabled: false },
       }),
     ).resolves.toMatchObject({
       accepted: true,
       changes: [
         {
-          source: "quality_rule_save_entries",
+          source: "quality_rule_update",
           sectionRevisions: { quality: 1 },
           updatedSections: ["quality"],
         },
@@ -177,13 +178,37 @@ describe("QualityRuleService", () => {
     });
     expect(publisher.publish_project_change).toHaveBeenCalledWith({
       projectPath: lg_path,
-      source: "quality_rule_save_entries",
+      source: "quality_rule_update",
+      updatedSections: ["quality"],
+    });
+    expect(publisher.publish_project_change).toHaveBeenCalledTimes(1);
+    expect(database.get_all_meta(lg_path)).toMatchObject({
+      glossary_enable: false,
+      "quality_rule_revision.glossary": 1,
+    });
+
+    publisher.publish_project_change.mockClear();
+    await expect(
+      service.update(
+        {
+          rule_type: "glossary",
+          expected_section_revisions: { quality: 1 },
+          meta: { enabled: true },
+        },
+        "agent_quality_rule_update",
+      ),
+    ).resolves.toMatchObject({
+      changes: [{ source: "agent_quality_rule_update", sectionRevisions: { quality: 2 } }],
+    });
+    expect(publisher.publish_project_change).toHaveBeenCalledWith({
+      projectPath: lg_path,
+      source: "agent_quality_rule_update",
       updatedSections: ["quality"],
     });
 
     publisher.publish_project_change.mockClear();
     await expect(
-      service.save_rule_entries({
+      service.update({
         rule_type: "glossary",
         expected_section_revisions: { quality: 0 },
         entries: [],
@@ -200,7 +225,7 @@ describe("QualityRuleService", () => {
     cleanup_databases.push(database);
     const { service, lg_path } = create_workbench_service(database);
 
-    await service.save_rule_entries({
+    await service.update({
       rule_type: "glossary",
       expected_section_revisions: { quality: 0 },
       entries: [{ entry_id: "rule-1", src: "HP", dst: "生命值" }],
@@ -224,7 +249,7 @@ describe("QualityRuleService", () => {
     const { service, publisher } = create_workbench_service(database);
 
     await expect(
-      service.save_rule_entries({
+      service.update({
         rule_type: "glossary",
         expected_revision: 0,
         expected_section_revisions: { quality: 0 },
@@ -287,7 +312,7 @@ describe("QualityRuleService", () => {
     cleanup_databases.push(database);
     const { service } = create_workbench_service(database);
 
-    expect(service.read({ rule_type: "glossary" })).toMatchObject({
+    expect(service.query({ rule_type: "glossary" })).toMatchObject({
       qualityRule: {
         enabled: true,
         entries: [{ src: "HP", dst: "生命值" }],

@@ -9,7 +9,7 @@ export type AgentSkillSnapshot = JsonRecord & {
   description: string;
 };
 
-/** 用户可见消息的唯一正文形状；只有 skill part 才会触发能力展开。 */
+/** 用户可见消息的唯一正文形状；skill part 表示用户显式强制调用能力。 */
 export type AgentUserMessagePart = JsonRecord &
   ({ kind: "text"; text: string } | { kind: "skill"; name: string });
 

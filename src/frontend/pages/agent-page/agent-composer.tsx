@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "next-themes";
-import { ArrowUp, ChevronDown, Cpu, Square } from "lucide-react";
+import { ArrowUp, ChevronDown, Cpu, MessageSquarePlus, Square } from "lucide-react";
 
 import { defaultKeymap, history, historyKeymap, invertedEffects } from "@codemirror/commands";
 import {
@@ -50,9 +50,12 @@ type AgentComposerProps = {
   skills: readonly AgentSkillSnapshot[];
   running: boolean;
   error: boolean;
+  can_reset: boolean;
+  resetting: boolean;
   model_selection: ModelSelectionController;
   on_send: (parts: readonly AgentUserMessagePart[]) => Promise<boolean>;
   on_stop: () => Promise<void>;
+  on_reset: () => void;
 };
 
 const EMPTY_EDITOR_SNAPSHOT: EditorSnapshot = {
@@ -122,7 +125,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const { resolvedTheme } = useTheme();
   const placeholder_text = t("agent_page.input.placeholder");
   const submit_label = t(props.running ? "agent_page.action.stop" : "agent_page.action.send");
-  const submit_tooltip = props.running ? submit_label : t("agent_page.input.hint");
+  const submit_tooltip = submit_label;
   const host_ref = useRef<HTMLDivElement | null>(null);
   const view_ref = useRef<EditorView | null>(null);
   const submit_ref = useRef<() => void>(() => undefined);
@@ -145,11 +148,12 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             !snapshot.selected_skill_names.has(skill.name) &&
             `${skill.name}\n${skill.description}`.toLocaleLowerCase().includes(query_text),
         );
-  const read_only = props.running || submitting;
+  const read_only = props.running || props.resetting || submitting;
   const menu_open = !read_only && !menu_suppressed && matching_skills.length > 0;
   const menu_index = Math.max(0, Math.min(menu_index_value, matching_skills.length - 1));
   const can_send =
     !props.running &&
+    !props.resetting &&
     !submitting &&
     !props.model_selection.updating &&
     snapshot.parts.some((part) => part.kind === "skill" || part.text.trim() !== "");
@@ -359,55 +363,74 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       )}
       <div className="agent-composer__editor">
         <div ref={host_ref} className="agent-composer__input" />
-        <Tooltip>
-          {/* 外层触发器在按钮禁用 pointer events 时仍可承接悬停。 */}
-          <TooltipTrigger asChild>
-            <span className="inline-flex">
-              <AppButton
-                className="agent-composer__submit"
-                type={props.running ? "button" : "submit"}
-                size="icon"
-                onClick={props.running ? () => void props.on_stop() : undefined}
-                disabled={!props.running && !can_send}
-                aria-label={submit_label}
-              >
-                {props.running ? <Square aria-hidden="true" /> : <ArrowUp aria-hidden="true" />}
-              </AppButton>
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="top" sideOffset={8}>
-            <p>{submit_tooltip}</p>
-          </TooltipContent>
-        </Tooltip>
       </div>
-      <div className="agent-composer__meta">
-        <AppDropdownMenu>
-          <AppDropdownMenuTrigger asChild>
-            <AppButton
-              type="button"
-              size="xs"
-              variant="ghost"
-              className="agent-composer__model-trigger"
-              disabled={
-                props.running || props.model_selection.loading || props.model_selection.updating
-              }
-              aria-label={t("app.model.selection.label")}
-              title={selected_model_name}
-            >
-              <Cpu aria-hidden="true" />
-              <span>{selected_model_name}</span>
-              <ChevronDown aria-hidden="true" />
-            </AppButton>
-          </AppDropdownMenuTrigger>
-          <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
-            <ModelSelectionCategories
-              controller={props.model_selection}
-              usage="agent"
-              disabled={props.running}
-            />
-          </AppDropdownMenuContent>
-        </AppDropdownMenu>
-        {props.error && <span className="agent-composer__error">{t("agent_page.error")}</span>}
+      <div className="agent-composer__footer">
+        <div className="agent-composer__footer-actions">
+          <AppButton
+            type="button"
+            size="xs"
+            variant="ghost"
+            className="agent-composer__reset"
+            disabled={!props.can_reset || props.resetting || submitting}
+            onClick={props.on_reset}
+          >
+            <MessageSquarePlus aria-hidden="true" />
+            <span>{t("agent_page.action.new_task")}</span>
+          </AppButton>
+          <AppDropdownMenu>
+            <AppDropdownMenuTrigger asChild>
+              <AppButton
+                type="button"
+                size="xs"
+                variant="ghost"
+                className="agent-composer__model-trigger"
+                disabled={
+                  props.running ||
+                  props.resetting ||
+                  props.model_selection.loading ||
+                  props.model_selection.updating
+                }
+                aria-label={t("app.model.selection.label")}
+                title={selected_model_name}
+              >
+                <Cpu aria-hidden="true" />
+                <span>{selected_model_name}</span>
+                <ChevronDown aria-hidden="true" />
+              </AppButton>
+            </AppDropdownMenuTrigger>
+            <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
+              <ModelSelectionCategories
+                controller={props.model_selection}
+                usage="agent"
+                disabled={props.running || props.resetting}
+              />
+            </AppDropdownMenuContent>
+          </AppDropdownMenu>
+          <span className="agent-composer__hint">{t("agent_page.input.hint")}</span>
+        </div>
+        <div className="agent-composer__footer-end">
+          {props.error && <span className="agent-composer__error">{t("agent_page.error")}</span>}
+          <Tooltip>
+            {/* 外层触发器在按钮禁用 pointer events 时仍可承接悬停。 */}
+            <TooltipTrigger asChild>
+              <span className="agent-composer__submit-shell">
+                <AppButton
+                  className="agent-composer__submit"
+                  type={props.running ? "button" : "submit"}
+                  size="icon-xs"
+                  onClick={props.running ? () => void props.on_stop() : undefined}
+                  disabled={props.resetting || (!props.running && !can_send)}
+                  aria-label={submit_label}
+                >
+                  {props.running ? <Square aria-hidden="true" /> : <ArrowUp aria-hidden="true" />}
+                </AppButton>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="top" sideOffset={8}>
+              <p>{submit_tooltip}</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
       </div>
     </form>
   );
@@ -423,7 +446,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   }
 }
 
-/** 按 DecorationSet 的文档顺序投影 text / skill parts；普通输入的 @name 永远保留为 text。 */
+/** 按 DecorationSet 投影 parts，并只裁剪整条组合消息的文本外缘。 */
 function read_agent_message_parts(state: EditorState): AgentUserMessagePart[] {
   const parts: AgentUserMessagePart[] = [];
   let cursor = 0;
@@ -439,7 +462,11 @@ function read_agent_message_parts(state: EditorState): AgentUserMessagePart[] {
   if (cursor < state.doc.length) {
     parts.push({ kind: "text", text: state.doc.sliceString(cursor) });
   }
-  return parts;
+  const first = parts[0];
+  if (first?.kind === "text") first.text = first.text.trimStart();
+  const last = parts.at(-1);
+  if (last?.kind === "text") last.text = last.text.trimEnd();
+  return parts.filter((part) => part.kind === "skill" || part.text !== "");
 }
 
 /** 单次读取编辑器派生视图，避免 React 再维护一份可写草稿事实。 */

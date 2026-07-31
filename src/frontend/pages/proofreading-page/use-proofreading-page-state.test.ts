@@ -427,7 +427,7 @@ function create_proofreading_runtime_query_response() {
 // 把桌面 API 默认收口到 sync 和按 row_id 读行两类行为。
 function install_api_fetch_default_mock(): void {
   vi.mocked(api_fetch).mockImplementation(async (path: string, body: unknown) => {
-    if (path === "/api/proofreading/view") {
+    if (path === "/api/proofreading/query") {
       const request = body as { action?: string; row_ids?: string[] };
       if (request.action === "sync") {
         return create_proofreading_runtime_query_response();

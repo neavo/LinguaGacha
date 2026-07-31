@@ -14,8 +14,8 @@ import {
 import { useDebouncedCallback } from "@frontend/widgets/interactions/use-debounce";
 import { buildProofreadingLookupQuery } from "@shared/quality/quality-rule-proofreading-query";
 import {
-  read_quality_rule,
-  read_quality_rule_section_revisions,
+  query_quality_rules,
+  query_quality_rule_section_revisions,
   type QualityRuleQuerySlice,
 } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
 import {
@@ -425,7 +425,7 @@ export function useTextReplacementPageState(
         return DEFAULT_QUALITY_SLICE;
       }
 
-      const response = await read_quality_rule(config.rule_type);
+      const response = await query_quality_rules(config.rule_type);
       if (response.projectPath !== project_snapshot.path) {
         return quality_slice;
       }
@@ -462,7 +462,7 @@ export function useTextReplacementPageState(
     }
 
     let cancelled = false;
-    void read_quality_rule(config.rule_type).then((response) => {
+    void query_quality_rules(config.rule_type).then((response) => {
       if (cancelled || response.projectPath !== project_snapshot.path) {
         return;
       }
@@ -687,11 +687,11 @@ export function useTextReplacementPageState(
       );
 
       try {
-        const section_revisions = await read_quality_rule_section_revisions();
+        const section_revisions = await query_quality_rule_section_revisions();
         await commit_project_write({
           operation: create_quality_rule_entries_save_write(config.rule_type),
           run: async () => {
-            return await api_fetch<ProjectWriteResultPayload>("/api/quality/rules/save-entries", {
+            return await api_fetch<ProjectWriteResultPayload>("/api/quality/rules/update", {
               rule_type: config.rule_type,
               expected_section_revisions: {
                 quality: section_revisions.quality ?? 0,
@@ -942,11 +942,11 @@ export function useTextReplacementPageState(
       }
 
       try {
-        const section_revisions = await read_quality_rule_section_revisions();
+        const section_revisions = await query_quality_rule_section_revisions();
         await commit_project_write({
           operation: create_quality_rule_meta_update_write(config.rule_type),
           run: async () => {
-            return await api_fetch<ProjectWriteResultPayload>("/api/quality/rules/update-meta", {
+            return await api_fetch<ProjectWriteResultPayload>("/api/quality/rules/update", {
               rule_type: config.rule_type,
               expected_section_revisions: {
                 quality: section_revisions.quality ?? 0,

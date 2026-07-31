@@ -7,7 +7,7 @@ import type { ApiJsonHandler } from "./api-json";
 import { register_api_routes } from "./api-routes";
 
 describe("register_api_routes", () => {
-  it("集中注册完整且无重复的公开路径，并把任务与 Agent 请求转交组合根", () => {
+  it("集中注册完整且无重复的公开路径，并把任务与 Agent 请求转交组合根", async () => {
     const get = vi.fn();
     const post_json = vi.fn();
     const start_task = vi.fn(() => ({ accepted: true }));
@@ -34,6 +34,7 @@ describe("register_api_routes", () => {
         get_snapshot: vi.fn(() => ({ state: "idle", entries: [], skills: [] })),
         send_message: vi.fn(() => ({ state: "running" })),
         stop: vi.fn(() => ({ state: "idle" })),
+        reset: vi.fn(async () => ({ state: "idle", entries: [], skills: [] })),
       },
       tasks: { start_task },
       create_event_stream_response: vi.fn(),
@@ -65,6 +66,7 @@ describe("register_api_routes", () => {
         "/api/diagnostics/renderer-error",
         "/api/agent/message",
         "/api/agent/stop",
+        "/api/agent/reset",
         "/api/session/project/manifest",
         "/api/session/project/snapshot",
         "/api/session/project/close",
@@ -83,16 +85,15 @@ describe("register_api_routes", () => {
         "/api/workbench/settings-alignment/apply",
         "/api/workbench/translation/reset",
         "/api/workbench/translation/reset-preview",
-        "/api/proofreading/view",
-        "/api/proofreading/item/save",
+        "/api/proofreading/query",
+        "/api/proofreading/items/update",
         "/api/proofreading/translations/clear",
         "/api/proofreading/items/set-status",
         "/api/proofreading/items/replace-all",
         "/api/quality/statistics/view",
-        "/api/quality/rules/view",
+        "/api/quality/rules/query",
         "/api/quality/prompts/view",
-        "/api/quality/rules/save-entries",
-        "/api/quality/rules/update-meta",
+        "/api/quality/rules/update",
         "/api/quality/rules/import",
         "/api/quality/rules/export",
         "/api/quality/rules/presets",
@@ -171,5 +172,15 @@ describe("register_api_routes", () => {
     };
     expect(message_handler?.(message)).toEqual({ state: "running" });
     expect(services.agent.send_message).toHaveBeenCalledWith(message);
+
+    const reset_handler = post_json.mock.calls.find(
+      ([route_path]) => route_path === "/api/agent/reset",
+    )?.[1] as ApiJsonHandler | undefined;
+    await expect(reset_handler?.({})).resolves.toEqual({
+      state: "idle",
+      entries: [],
+      skills: [],
+    });
+    expect(services.agent.reset).toHaveBeenCalledWith();
   });
 });

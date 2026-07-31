@@ -34,6 +34,10 @@ describe("Agent skill 加载", () => {
       path.join(paths.get_agent_user_skill_dir(), "folder-name", "SKILL.md"),
       "---\nname: other-name\ndescription: 名称错位\n---\n\n不应加载。",
     );
+    write_skill(
+      path.join(paths.get_agent_user_skill_dir(), "manual", "SKILL.md"),
+      "---\nname: manual\ndescription: 手动能力\ndisable-model-invocation: true\n---\n\n执行手动任务。",
+    );
     const warning = vi.fn();
     const log_manager = { warning, error: vi.fn() };
     const native_fs = new NativeFs();
@@ -46,6 +50,15 @@ describe("Agent skill 加载", () => {
         description: "合法能力",
         content: "执行合法任务。",
         filePath: expect.stringMatching(/\/valid\/SKILL\.md$/u),
+        disableModelInvocation: false,
+        references: [],
+      },
+      {
+        name: "manual",
+        description: "手动能力",
+        content: "执行手动任务。",
+        filePath: expect.stringMatching(/\/manual\/SKILL\.md$/u),
+        disableModelInvocation: true,
         references: [],
       },
     ]);
@@ -86,8 +99,16 @@ describe("Agent skill 加载", () => {
     const skill = skills[0];
     expect(skill?.content).toBe("执行术语审校。");
     expect(skill?.references).toEqual([
-      { path: "references/a-first.md", content: "# 第一份\n\n首份正文。" },
-      { path: "references/nested/b-standard.md", content: "# 标准\n\n第二份正文。" },
+      {
+        path: "references/a-first.md",
+        filePath: expect.stringMatching(/\/references\/a-first\.md$/u),
+        content: "# 第一份\n\n首份正文。",
+      },
+      {
+        path: "references/nested/b-standard.md",
+        filePath: expect.stringMatching(/\/references\/nested\/b-standard\.md$/u),
+        content: "# 标准\n\n第二份正文。",
+      },
     ]);
   });
 });

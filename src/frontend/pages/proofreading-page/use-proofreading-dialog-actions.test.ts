@@ -136,15 +136,13 @@ describe("useProofreadingDialogActions", () => {
 
     expect(write_calls).toHaveLength(1);
     expect(write_calls[0]).toMatchObject({
-      path: "/api/proofreading/item/save",
+      path: "/api/proofreading/items/update",
       fallback_error_key: "proofreading_page.feedback.save_failed",
       preferred_row_id: "1",
       close_dialog: true,
     });
     expect(write_calls[0]?.plan?.request_body).toMatchObject({
-      item_id: 1,
-      dst: "新译文",
-      name_dst: "新姓名",
+      changes: [{ item_id: 1, dst: "新译文", name_dst: "新姓名" }],
       expected_section_revisions: {
         items: 7,
         proofreading: 5,

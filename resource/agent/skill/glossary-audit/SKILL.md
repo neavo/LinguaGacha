@@ -1,6 +1,6 @@
 ---
 name: glossary-audit
-description: 基于当前工程的完整术语表与全量原文语境，给出可核验的审校方案并在用户明确批准后原子写入。
+description: 用于审查、整理、修正、去重、优化或维护当前工程术语表；基于完整术语表与全量原文语境给出可核验方案，并仅在用户明确批准后原子写入。不用于一般翻译问答。
 ---
 
 # 术语表审校
@@ -21,17 +21,17 @@ description: 基于当前工程的完整术语表与全量原文语境，给出�
 
 ### 1. 阅读审校标准
 
-首次执行本技能时，用 `read_skill_reference` 按 `skill=glossary-audit`、`path=references/audit-standard.md` 完整阅读审校标准。后续所有保留 / 修改 / 删除 / 新增判断都以其中的七步审查顺序、同根词全局处理优先级、语境证据要求和决策示例为准。
+首次执行本技能时，根据当前 `SKILL.md` 的绝对路径，用 `read_skill` 读取同目录下 `references/audit-standard.md` 的绝对路径和完整正文。后续所有保留 / 修改 / 删除 / 新增判断都以其中的七步审查顺序、同根词全局处理优先级、语境证据要求和决策示例为准。
 
 ### 2. 建立只读事实快照
 
-调用 `read_glossary` 读取：完整术语表、每条的 `exact_occurrences` 与 `fact_violations`、`structure` 的 `duplicate_src_groups` / `containment_candidates` / `root_candidates` 三组，以及 `sectionRevisions`。
+调用 `query_quality_rules` 并指定 `rule_type: glossary`，读取完整术语表、每条的 `exact_occurrences` 与 `fact_violations`、`structure` 的 `duplicate_src_groups` / `containment_candidates` / `root_candidates` 三组，以及 `sectionRevisions`。
 
 据此识别候选问题：零出现词、空译文、正则条目、重复源词、包含关系和共享词根。这些是事实信号，不替代语义判断。
 
 ### 3. 逐条基于语境审校
 
-对每条术语用 `search_corpus` 查看所有不同原文行：批量提交 patterns 并翻页直到 `complete=true`；重复的完全相同行可合并，但不得跳过不同语境。
+对每条术语用 `query_project_items` 的 `search` 模式和 `scope: src` 查看所有不同原文行：批量提交 patterns 并翻页直到 `complete=true`；重复的完全相同行可合并，但不得跳过不同语境。
 
 按 `audit-standard.md` 的七步审查顺序逐项决定保留、修改或删除；跨条目按同根词 5 优先级全局重组整张词表，先定全局结构再定单项结果。任何无法由出处证明的判断列为未决，不擅自写入。
 
@@ -54,7 +54,7 @@ description: 基于当前工程的完整术语表与全量原文语境，给出�
 
 ### 6. 批准后原子写入并复核
 
-获得明确批准后调用一次 `write_glossary`，提交完整 changes 和方案对应的 `expected_section_revisions`。
+获得明确批准后调用一次 `update_quality_rules`，指定 `rule_type: glossary`，提交完整 changes 和方案对应的 `expected_section_revisions`。
 
-- 出现 `RevisionConflictError` 时不得覆盖或强写：重新 `read_glossary`，基于新快照生成新方案，回到第 5 步再次等待批准。
+- 出现 `RevisionConflictError` 时不得覆盖或强写：重新 `query_quality_rules`，基于新快照生成新方案，回到第 5 步再次等待批准。
 - 写入成功后复读返回结果，向用户报告新 revision、变更及最终数量、以及未执行或未决项；只报告已确认事实。
