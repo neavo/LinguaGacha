@@ -12,9 +12,7 @@ import { useBasicSettingsState } from "@frontend/pages/basic-settings-page/use-b
 
 type RuntimeFixture = {
   settings_snapshot: SettingsSnapshot;
-  task_snapshot: {
-    busy: boolean;
-  };
+  runtime_snapshot: { revision: number; owner: "task" | "agent" | null };
   project_snapshot: {
     loaded: boolean;
     path: string;
@@ -87,9 +85,7 @@ function create_runtime_fixture(): RuntimeFixture {
   const settings_snapshot = create_settings_snapshot();
   return {
     settings_snapshot,
-    task_snapshot: {
-      busy: false,
-    },
+    runtime_snapshot: { revision: 0, owner: null },
     project_snapshot: {
       loaded: true,
       path: "E:/demo/sample.lg",

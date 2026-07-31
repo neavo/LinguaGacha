@@ -85,13 +85,6 @@ const run_state = {
   proofreading: {
     revision: 0,
   },
-  task: {
-    task_type: null,
-    status: "idle",
-    busy: false,
-    progress: {},
-    extras: { kind: "analysis", candidate_count: 0 },
-  },
   revisions: {
     projectRevision: 1,
     sections: {
@@ -216,7 +209,7 @@ function create_glossary_quality(
 }
 
 let current_statistics_cache: QualityRuleStatisticsCacheSnapshot;
-let task_snapshot: { busy: boolean; status: string };
+let runtime_snapshot: { revision: number; owner: "task" | "agent" | null };
 let project_change_seq = 0;
 let project_change_sections: Array<"items" | "quality"> = ["quality"];
 
@@ -339,7 +332,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
         };
       }),
       refresh_project_state: vi.fn(async () => {}),
-      task_snapshot,
+      runtime_snapshot,
     }),
   };
 });
@@ -634,10 +627,7 @@ describe("useGlossaryPageState", () => {
     run_state.quality.glossary.revision = 1;
     run_state.revisions.sections.quality = 1;
     current_statistics_cache = create_statistics_cache({});
-    task_snapshot = {
-      busy: false,
-      status: "idle",
-    };
+    runtime_snapshot = { revision: 0, owner: null };
     project_change_seq = 0;
     project_change_sections = ["quality"];
     page_ui_state_store.clear();
@@ -1745,11 +1735,8 @@ describe("useGlossaryPageState", () => {
     expect(latest_state?.filtered_entries).toEqual([]);
   });
 
-  it("任务运行中锁定术语表写入，但保留筛选和已有项查看可用", async () => {
-    task_snapshot = {
-      busy: true,
-      status: "running",
-    };
+  it("Agent 运行中锁定术语表写入，但保留筛选和已有项查看可用", async () => {
+    runtime_snapshot = { revision: 1, owner: "agent" };
     await mount_probe();
 
     expect(latest_state?.readonly).toBe(true);

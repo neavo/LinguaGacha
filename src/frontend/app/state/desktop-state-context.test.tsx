@@ -42,6 +42,7 @@ type RuntimeSnapshot = {
   taskProcessedLine: number;
   taskOutputTokens: number;
   taskRequestInFlightCount: number;
+  runtimeOwner: "task" | "agent" | null;
   sourceLanguage: string;
 };
 
@@ -185,6 +186,7 @@ function RuntimeProbe(props: {
       taskProcessedLine: state.task_snapshot.progress.processed_line,
       taskOutputTokens: state.task_snapshot.progress.total_output_tokens,
       taskRequestInFlightCount: state.task_snapshot.request_in_flight_count,
+      runtimeOwner: state.runtime_snapshot.owner,
       sourceLanguage: state.settings_snapshot.source_language,
     });
   }, [
@@ -194,6 +196,7 @@ function RuntimeProbe(props: {
     state.task_snapshot.progress.line,
     state.task_snapshot.progress.processed_line,
     state.task_snapshot.request_in_flight_count,
+    state.runtime_snapshot.owner,
     state.task_snapshot.status,
     state.task_snapshot.progress.total_output_tokens,
     state.project_snapshot.path,
@@ -398,6 +401,7 @@ type RuntimeApiMockOptions = {
   settings?: Record<string, unknown>;
   project_path?: string;
   task?: Record<string, unknown>;
+  runtime_owner?: "task" | "agent" | null;
   project_read?: {
     projectRevision?: number;
     sectionRevisions?: Record<string, number>;
@@ -423,6 +427,9 @@ function install_runtime_api_mock(options: RuntimeApiMockOptions = {}): void {
             busy: false,
           },
         };
+      }
+      if (path === "/api/runtime/snapshot") {
+        return { runtime: { revision: 0, owner: options.runtime_owner ?? null } };
       }
 
       const project_read_response = create_project_read_response(path, options.project_read);
@@ -480,6 +487,23 @@ describe("DesktopStateProvider", () => {
       root?.render(strict ? <StrictMode>{provider}</StrictMode> : provider);
     });
   }
+
+  it("初始状态直接采用后端运行时 owner，不从任务快照推导", async () => {
+    const snapshots: RuntimeSnapshot[] = [];
+    const event_stream = create_event_source_stub();
+    install_runtime_api_mock({
+      runtime_owner: "agent",
+      task: { task_type: "translation", status: "idle", busy: false },
+    });
+
+    await mount_runtime(
+      event_stream.event_source,
+      <RuntimeProbe onSnapshot={(snapshot) => snapshots.push(snapshot)} />,
+    );
+    await wait_for_condition(() => snapshots.at(-1)?.runtimeOwner === "agent");
+
+    expect(snapshots.at(-1)).toMatchObject({ runtimeOwner: "agent", taskStatus: "idle" });
+  });
 
   it("完成项目数据读取后补发工作台与校对页刷新信号", async () => {
     const snapshots: RuntimeSnapshot[] = [];
@@ -1525,6 +1549,9 @@ describe("DesktopStateProvider", () => {
       }
       if (path === "/api/tasks/snapshot") {
         return { task: { task_type: "translation", status: "idle", busy: false } };
+      }
+      if (path === "/api/runtime/snapshot") {
+        return { runtime: { revision: 0, owner: null } };
       }
       if (project_path === "E:/demo/next.lg") {
         const project_read_response = create_project_read_response(path, {

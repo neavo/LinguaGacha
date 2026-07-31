@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { capture_renderer_error } from "@frontend/app/diagnostics/renderer-error-reporter";
 import { is_task_stopping } from "@frontend/app/state/task-snapshot-store";
+import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import {
   create_workbench_delete_files_plan,
@@ -674,6 +675,7 @@ export function useWorkbenchPageState(
     refresh_project_snapshot,
     settings_snapshot,
     task_snapshot,
+    runtime_snapshot,
   } = useDesktopState();
   const [snapshot, set_snapshot] = useState<WorkbenchSnapshot>(EMPTY_SNAPSHOT);
   const [entries, set_entries] = useState<WorkbenchFileEntry[]>([]);
@@ -1076,7 +1078,10 @@ export function useWorkbenchPageState(
   ]);
 
   const readonly =
-    !project_snapshot.loaded || task_snapshot.busy || file_op_running || is_write_running;
+    !project_snapshot.loaded ||
+    is_runtime_busy(runtime_snapshot) ||
+    file_op_running ||
+    is_write_running;
   const can_edit_files = !readonly;
   // 删除权限以当前可见工作台文件为准，避免全选或陈旧选择绕过最后文件保护
   const selected_delete_target_rel_paths = useMemo(() => {
@@ -1098,7 +1103,8 @@ export function useWorkbenchPageState(
     !is_write_running &&
     !generate_translation_submitting &&
     !is_task_stopping(task_snapshot);
-  const can_close_project = project_snapshot.loaded && !task_snapshot.busy && !is_write_running;
+  const can_close_project =
+    project_snapshot.loaded && !is_runtime_busy(runtime_snapshot) && !is_write_running;
 
   const set_dialog_submitting = useCallback((next_submitting: boolean): void => {
     set_dialog_state((previous_state) => {

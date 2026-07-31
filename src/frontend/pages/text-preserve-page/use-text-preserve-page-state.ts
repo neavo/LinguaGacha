@@ -25,7 +25,7 @@ import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-
 import { useQualityRuleStatistics } from "@frontend/app/session/quality-rule-statistics-context";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { useProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
-import { is_project_write_locked } from "@frontend/app/state/task-snapshot-store";
+import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
@@ -329,7 +329,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     settings_snapshot,
     apply_settings_snapshot,
     commit_project_write,
-    task_snapshot,
+    runtime_snapshot,
   } = useDesktopState();
   const [quality_slice, set_quality_slice] =
     useState<TextPreserveQualitySlice>(DEFAULT_QUALITY_SLICE);
@@ -598,7 +598,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     return new Set(visible_entry_ids);
   }, [visible_entry_ids]);
 
-  const readonly = is_project_write_locked(task_snapshot);
+  const readonly = is_runtime_busy(runtime_snapshot);
   const drag_disabled = readonly || has_active_filters || sort_state !== null;
 
   const statistics_badge_by_entry_id = useMemo<

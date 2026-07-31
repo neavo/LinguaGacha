@@ -22,7 +22,7 @@ describe("Agent 质量规则工具", () => {
     const tools = create_agent_quality_tools({
       qualityRules: {
         query: () => ({}),
-        update: async () => ({ accepted: true, changes: [] }),
+        update_from_agent: async () => ({ accepted: true, changes: [] }),
       },
       cache: create_cache(),
     });
@@ -64,7 +64,7 @@ describe("Agent 质量规则工具", () => {
           sectionRevisions: { quality: 4 },
           qualityRule: rules[String(rule_type)],
         }),
-        update: vi.fn(),
+        update_from_agent: vi.fn(),
       },
       cache: create_cache([{ item_id: 1, src: "白之城骑士守护白之城", name_src: "白之城" }]),
     };
@@ -144,7 +144,7 @@ describe("Agent 质量规则工具", () => {
           sectionRevisions: { quality: 1 },
           qualityRule: { enabled: true, entries: [stored_entry("a", "Alpha", "甲")] },
         }),
-        update,
+        update_from_agent: update,
       },
       cache: create_cache([{ src: "Alpha Beta" }]),
     });
@@ -222,7 +222,7 @@ describe("Agent 质量规则工具", () => {
           sectionRevisions: { quality: revision },
           qualityRule: { enabled, entries },
         }),
-        update,
+        update_from_agent: update,
       },
       cache: create_cache([{ src: "Alpha" }]),
     });

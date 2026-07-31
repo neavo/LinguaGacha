@@ -16,10 +16,11 @@
 
 ## 2. 主窗口运行态
 
-- `DesktopStateProvider` 是主窗口项目身份、任务、设置、事件流和写入结果的共享状态入口；日志窗口不启动该运行态，只读取语言并消费日志流。
-- 初始状态并行读取设置、项目 snapshot 与任务 snapshot；renderer 启动、热更新或整页重载不通过关闭工程重置后端会话。
+- `DesktopStateProvider` 是主窗口项目身份、任务、模型运行活动、设置、事件流和写入结果的共享状态入口；日志窗口不启动该运行态，只读取语言并消费日志流。
+- 初始状态并行读取设置、项目 snapshot、任务 snapshot 与 runtime snapshot；renderer 启动、热更新或整页重载不通过关闭工程重置后端会话。
 - 项目身份由 `path + epoch + phase` 守护；项目切换、同路径重新初始化、迟到事件和首刷期间暂存事件都经过同一身份闸门。
 - `TaskSnapshotStore` 只缓存后端完整 task snapshot，并用 `run_revision` 丢弃旧值；`DesktopRefreshScheduler` 合帧时也只保留最高 revision，相同 revision 才允许后到的按类型快照覆盖。task 不进入项目 query 或页面计算缓存。
+- `RuntimeActivityStore` 只缓存 `revision + owner`，用 revision 丢弃 HTTP / SSE 乱序旧值；项目写入、设置、模型配置、任务启动和 Agent 发送入口统一按 `owner !== null` 锁定。task snapshot 的 `busy` 只服务任务进度、停止与终态展示，不充当全局写锁。
 - settings 只由后端设置载荷同步，task 只由后端 snapshot 或命令 ack 同步，project identity 只由后端项目载荷同步。
 - HTTP 写入结果与 `project.data_changed` SSE 共用同一事件入口、去重窗口和恢复策略；共享层只生成轻量 `ProjectChangeSignal`，页面根据目标 section 重新 query。
 - `DesktopRefreshScheduler` 只合并可延迟的 task snapshot 和项目刷新信号；项目切换、设置刷新、写入结果和任务终态先冲刷窗口。
@@ -33,8 +34,8 @@
 - 页面写入只提交用户意图、设置镜像、显式 operation 与 query 返回的 revision，不提交前端计算出的 canonical facts。
 - `SCREEN_REGISTRY` 是页面注册与标题 key 的唯一入口。
 - Agent、工作台与校对可在未加载工程时发起项目选择，并在 session ready 后恢复 pending route；其它项目功能页在工程未加载或 session 未 ready 时禁用。
-- 跨页面模型选择由 `features/model-selection` 归一协议并持有页面生命周期 query / command；它不进入 `DesktopStateProvider`，也不通过 SSE 同步。
-- Agent 页面从后端 snapshot 恢复私有会话并消费统一 SSE，不进入 `DesktopStateProvider` 或项目 session UI 缓存；composer 草稿由页面拥有，发送经后端受理后清空，会话 reset 保留未发送草稿与 skill token。
+- 跨页面模型选择由 `features/model-selection` 归一协议并持有页面生命周期 query / command；模型数据不进入 `DesktopStateProvider`，也不通过 SSE 同步，但选择和配置写入消费共享 runtime 锁。
+- Agent 页面从后端 snapshot 恢复私有会话并消费统一 Agent SSE，不把会话内容放入 `DesktopStateProvider` 或项目 session UI 缓存；页面只消费共享 runtime 锁来禁用发送、reset 与模型选择，stop 始终保留。composer 草稿由页面拥有，发送经后端受理后清空，会话 reset 保留未发送草稿与 skill token。
 - `ProjectSessionUiStateProvider` 只保存当前项目内可跨路由恢复的轻量 UI 状态，项目切换或关闭时清空，不写入后端事实。
 - `WorkbenchTasksSessionProvider` 保存翻译 / 分析完成后的跨路由 follow-up；页面计算缓存、弹窗、导入和提交中状态默认随页面挂载与卸载。
 - `src/frontend/pages/<page>` 只包含页面入口及该页面的私有实现；页面之间不互相导入，共用能力先迁入 `features`，`features` 不反向依赖 `pages`。

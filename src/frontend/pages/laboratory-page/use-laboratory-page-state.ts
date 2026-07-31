@@ -5,6 +5,7 @@ import { format_project_settings_aligned_toast } from "@frontend/app/feedback/pr
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useSettingsEditor } from "@frontend/features/settings-editor/use-settings-editor";
 import { apply_laboratory_prefilter_write } from "@frontend/pages/laboratory-page/laboratory-api-client";
 import {
@@ -28,7 +29,7 @@ type LaboratoryPendingField = (typeof LABORATORY_PENDING_FIELDS)[number];
 type UseLaboratoryPageStateResult = {
   snapshot: LaboratorySnapshot;
   pending_state: Record<LaboratoryPendingField, boolean>;
-  is_task_busy: boolean;
+  runtime_locked: boolean;
   update_prompt_enhancement_enable: (next_checked: boolean) => Promise<void>;
   update_mtool_optimizer_enable: (next_checked: boolean) => Promise<void>;
   update_skip_duplicate_source_text_enable: (next_checked: boolean) => Promise<void>;
@@ -38,7 +39,7 @@ type UseLaboratoryPageStateResult = {
  * 组合通用设置编辑器与项目预过滤对齐流程，页面不直接拥有后端设置事实。
  */
 export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
-  const { task_snapshot, project_snapshot, commit_project_write } = useDesktopState();
+  const { runtime_snapshot, project_snapshot, commit_project_write } = useDesktopState();
   const { push_toast, run_modal_progress_toast } = useDesktopToast();
   const { t } = useI18n();
   const { snapshot, pending_state, commit_update } = useSettingsEditor({
@@ -47,7 +48,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     refresh_error_key: "laboratory_page.feedback.refresh_failed",
     update_error_key: "laboratory_page.feedback.update_failed",
   });
-  const is_task_busy = task_snapshot.busy;
+  const runtime_locked = is_runtime_busy(runtime_snapshot);
 
   // 设置写入成功后再以权威快照刷新项目预过滤，避免提交前端临时状态。
   const apply_prefilter_from_settings = useCallback(
@@ -75,7 +76,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
       loading_toast_key: LocaleKey,
     ): Promise<void> => {
       const previous_snapshot = snapshot;
-      if (is_task_busy || previous_snapshot[field] === next_checked) {
+      if (runtime_locked || previous_snapshot[field] === next_checked) {
         return;
       }
 
@@ -123,7 +124,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
     [
       apply_prefilter_from_settings,
       commit_update,
-      is_task_busy,
+      runtime_locked,
       project_snapshot.loaded,
       push_toast,
       run_modal_progress_toast,
@@ -134,14 +135,14 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
 
   const update_prompt_enhancement_enable = useCallback(
     async (next_checked: boolean): Promise<void> => {
-      if (is_task_busy || snapshot.prompt_enhancement_enable === next_checked) {
+      if (runtime_locked || snapshot.prompt_enhancement_enable === next_checked) {
         return;
       }
       await commit_update("prompt_enhancement_enable", {
         prompt_enhancement_enable: next_checked,
       });
     },
-    [commit_update, is_task_busy, snapshot.prompt_enhancement_enable],
+    [commit_update, runtime_locked, snapshot.prompt_enhancement_enable],
   );
 
   const update_mtool_optimizer_enable = useCallback(
@@ -169,7 +170,7 @@ export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
   return {
     snapshot,
     pending_state,
-    is_task_busy,
+    runtime_locked,
     update_prompt_enhancement_enable,
     update_mtool_optimizer_enable,
     update_skip_duplicate_source_text_enable,

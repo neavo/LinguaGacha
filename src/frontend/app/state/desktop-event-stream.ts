@@ -19,10 +19,15 @@ import {
   normalize_task_snapshot,
   type TaskSnapshot,
 } from "@frontend/app/state/task-snapshot-store";
+import { normalize_runtime_activity_snapshot } from "@frontend/app/state/runtime-activity-store";
 import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
 import { record_renderer_diagnostics_event } from "@frontend/app/diagnostics/renderer-error-reporter";
 import { parse_event_payload } from "@frontend/app/state/desktop-event-payload";
 import { PROJECT_CHANGE_EVENT_TOPIC } from "@shared/project-event";
+import {
+  RUNTIME_ACTIVITY_EVENT_TOPIC,
+  type RuntimeActivitySnapshot,
+} from "@shared/runtime-activity";
 import { is_task_type } from "@domain/task";
 
 type SettingsChangedEventPayload = {
@@ -34,7 +39,9 @@ type DesktopEventStreamOptions = {
   schedulerRef: MutableRefObject<DesktopRefreshScheduler | null>;
   applySettingsSnapshot: (payload: SettingsSnapshotPayload) => void;
   applyTaskSnapshot: (snapshot: TaskSnapshot) => void;
+  applyRuntimeSnapshot: (snapshot: RuntimeActivitySnapshot) => void;
   refreshSettings: () => Promise<unknown>;
+  refreshRuntime: () => Promise<unknown>;
   projectEvents: ProjectEventPipeline;
   recovery: DesktopRecoveryActions;
 };
@@ -47,7 +54,9 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
     schedulerRef,
     applySettingsSnapshot,
     applyTaskSnapshot,
+    applyRuntimeSnapshot,
     refreshSettings,
+    refreshRuntime,
     projectEvents,
     recovery,
   } = options;
@@ -130,6 +139,28 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
       }
     }
 
+    /** runtime 快照不参与合帧；锁定与解锁必须立即反映到所有页面。 */
+    function handle_runtime_snapshot_changed(event: MessageEvent<string>): void {
+      let payload: Record<string, unknown> = {};
+      try {
+        payload = parse_event_payload(event);
+        applyRuntimeSnapshot(normalize_runtime_activity_snapshot(payload));
+      } catch (error) {
+        report_state_error(error, {
+          source: "sse",
+          triggeringEvent: { topic: RUNTIME_ACTIVITY_EVENT_TOPIC, runtime: payload },
+          context: { stage: "handle_runtime_snapshot_changed" },
+        });
+        void refreshRuntime().catch((refresh_error: unknown) => {
+          report_state_error(refresh_error, {
+            source: "state-recovery",
+            triggeringEvent: { topic: RUNTIME_ACTIVITY_EVENT_TOPIC },
+            context: { stage: "refresh_runtime_after_event_failure" },
+          });
+        });
+      }
+    }
+
     async function handle_project_data_changed(event: MessageEvent<string>): Promise<void> {
       let payload: ProjectChangeEventPayload = {};
       try {
@@ -168,6 +199,10 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
           handle_task_snapshot_changed as EventListener,
         );
         event_source.addEventListener("settings.changed", handle_settings_changed as EventListener);
+        event_source.addEventListener(
+          RUNTIME_ACTIVITY_EVENT_TOPIC,
+          handle_runtime_snapshot_changed as EventListener,
+        );
         event_source.addEventListener(PROJECT_CHANGE_EVENT_TOPIC, ((
           event: MessageEvent<string>,
         ) => {
@@ -194,10 +229,12 @@ export function useDesktopEventStream(options: DesktopEventStreamOptions): void 
   }, [
     applySettingsSnapshot,
     applyTaskSnapshot,
+    applyRuntimeSnapshot,
     refresh_project_state_after_error,
     refresh_task_after_state_error,
     report_state_error,
     refreshSettings,
+    refreshRuntime,
     projectEvents,
     schedulerRef,
   ]);

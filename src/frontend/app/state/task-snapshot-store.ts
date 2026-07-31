@@ -10,8 +10,7 @@ export type TaskSnapshot = {
   extras: TranslationTaskExtras | AnalysisTaskExtras;
 };
 
-export type TaskLockSnapshot = {
-  busy: boolean;
+export type TaskStatusSnapshot = {
   status: string;
 };
 
@@ -147,15 +146,8 @@ export function createTaskSnapshotStore(): TaskSnapshotStore {
 }
 
 /**
- * 任务 busy 期间页面写入入口保持只读，防止前端提交和后端任务写回交错。
- */
-export function is_project_write_locked(task_snapshot: Pick<TaskLockSnapshot, "busy">): boolean {
-  return task_snapshot.busy;
-}
-
-/**
  * stopping 是任务终止中的过渡态，工作台任务菜单需要继续展示等待状态。
  */
-export function is_task_stopping(task_snapshot: Pick<TaskLockSnapshot, "status">): boolean {
+export function is_task_stopping(task_snapshot: TaskStatusSnapshot): boolean {
   return task_snapshot.status === "stopping";
 }

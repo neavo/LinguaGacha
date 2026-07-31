@@ -7,6 +7,7 @@ import { normalize_setting_snapshot } from "../../domain/setting";
 import { is_task_skipped_item_status } from "../../domain/task";
 import * as AppErrors from "../../shared/error";
 import { ProjectSessionState } from "./project-session-state";
+import type { RuntimeOperationGate } from "../runtime-operation-gate";
 
 /**
  * 承载公开 reset preview；当前服务负责预演响应和 asset 重解析
@@ -17,7 +18,7 @@ export class ProjectResetPreviewService {
    */
   public constructor(
     private readonly database: ProjectDatabase,
-    private readonly is_task_busy: () => boolean,
+    private readonly runtime_gate: RuntimeOperationGate,
     private readonly session_state: ProjectSessionState,
   ) {}
 
@@ -118,9 +119,7 @@ export class ProjectResetPreviewService {
     if (!state.loaded || state.projectPath === "") {
       throw new AppErrors.ProjectNotLoadedError();
     }
-    if (this.is_task_busy()) {
-      throw new AppErrors.TaskBusyError();
-    }
+    this.runtime_gate.assert_runtime_idle();
     return state.projectPath;
   }
 

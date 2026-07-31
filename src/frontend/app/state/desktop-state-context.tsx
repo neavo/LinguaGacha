@@ -21,6 +21,11 @@ import {
   normalize_task_snapshot,
   type TaskSnapshot,
 } from "@frontend/app/state/task-snapshot-store";
+import {
+  createRuntimeActivityStore,
+  normalize_runtime_activity_snapshot,
+  type RuntimeActivityPayload,
+} from "@frontend/app/state/runtime-activity-store";
 import type { DesktopRefreshScheduler } from "@frontend/app/state/desktop-refresh-scheduler";
 import { useDesktopRecovery } from "@frontend/app/state/desktop-recovery";
 import { useDesktopEventStream } from "@frontend/app/state/desktop-event-stream";
@@ -40,6 +45,7 @@ import type { AppLanguage } from "@domain/app-language";
 import type { TaskType } from "@domain/task";
 import { PROJECT_DATA_SECTIONS } from "@shared/project-event";
 import { InternalInvariantError } from "@shared/error";
+import type { RuntimeActivitySnapshot } from "@shared/runtime-activity";
 
 type RecentProjectEntry = RecentProjectSetting;
 
@@ -80,6 +86,7 @@ type DesktopStateContextValue = {
   settings_snapshot: SettingsSnapshot;
   project_snapshot: ProjectSnapshot;
   task_snapshot: TaskSnapshot;
+  runtime_snapshot: RuntimeActivitySnapshot;
   project_change_signal: ProjectChangeSignal;
   project_session_status: ProjectSessionStatus;
   project_session_stage: ProjectStage | null;
@@ -89,12 +96,14 @@ type DesktopStateContextValue = {
   set_pending_target_route: (route_id: RouteId | null) => void;
   apply_settings_snapshot: (payload: SettingsSnapshotPayload) => SettingsSnapshot;
   sync_task_snapshot: (snapshot: TaskSnapshot) => void;
+  sync_runtime_snapshot: (snapshot: RuntimeActivitySnapshot) => void;
   refresh_project_snapshot: () => Promise<ProjectSnapshot>;
   refresh_project_state: () => Promise<void>;
   commit_project_write: ProjectWriteCommitter;
   update_app_language: (language: AppLanguage) => Promise<SettingsSnapshot>;
   refresh_settings: () => Promise<SettingsSnapshot>;
   refresh_task: (task_type?: TaskType) => Promise<TaskSnapshot>;
+  refresh_runtime: () => Promise<RuntimeActivitySnapshot>;
 };
 
 export type SettingsSnapshotPayload = {
@@ -256,6 +265,14 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
   );
   const sync_task_snapshot = useCallback((snapshot: TaskSnapshot): void => {
     task_snapshot_store_ref.current.applySnapshot(snapshot);
+  }, []);
+  const runtime_snapshot_store_ref = useRef(createRuntimeActivityStore()); // Provider 生命周期内唯一镜像
+  const runtime_snapshot = useSyncExternalStore(
+    runtime_snapshot_store_ref.current.subscribe,
+    runtime_snapshot_store_ref.current.getSnapshot,
+  );
+  const sync_runtime_snapshot = useCallback((snapshot: RuntimeActivitySnapshot): void => {
+    runtime_snapshot_store_ref.current.applySnapshot(snapshot);
   }, []);
   const [project_change_signal, set_project_change_signal] = useState<ProjectChangeSignal>(
     DEFAULT_PROJECT_CHANGE_SIGNAL,
@@ -452,6 +469,14 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     },
     [sync_task_snapshot],
   );
+
+  /** SSE 解析失败时从同一公开快照入口恢复，不借 task 状态推导 owner。 */
+  const refresh_runtime = useCallback(async (): Promise<RuntimeActivitySnapshot> => {
+    const payload = await api_fetch<RuntimeActivityPayload>("/api/runtime/snapshot", {});
+    const next_snapshot = normalize_runtime_activity_snapshot(payload);
+    sync_runtime_snapshot(next_snapshot);
+    return next_snapshot;
+  }, [sync_runtime_snapshot]);
 
   const update_app_language = useCallback(
     async (language: AppLanguage): Promise<SettingsSnapshot> => {
@@ -684,10 +709,11 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     async function load_initial_state(): Promise<void> {
       try {
         // Backend API 状态是共享权威源，渲染层启动或热更新时不能通过卸载工程去“重置会话”，否则开发态的 StrictMode、Fast Refresh 或整页重载都会把外部手动打开的旧应用状态一起清空
-        const [next_settings, next_project, next_task] = await Promise.all([
+        const [next_settings, next_project, next_task, next_runtime] = await Promise.all([
           api_fetch<SettingsSnapshotPayload>("/api/settings/app", {}),
           api_fetch<ProjectSnapshotPayload>("/api/session/project/snapshot", {}),
           api_fetch<TaskSnapshotPayload>("/api/tasks/snapshot", {}),
+          api_fetch<RuntimeActivityPayload>("/api/runtime/snapshot", {}),
         ]);
         if (cancelled) {
           return;
@@ -696,6 +722,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
         apply_settings_snapshot(next_settings);
         sync_project_snapshot(normalize_project_snapshot(next_project));
         sync_task_snapshot(normalize_task_snapshot(next_task));
+        sync_runtime_snapshot(normalize_runtime_activity_snapshot(next_runtime));
         set_initial_state_error(null);
         set_initial_state_ready(true);
       } catch (error) {
@@ -718,7 +745,13 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     return () => {
       cancelled = true;
     };
-  }, [apply_settings_snapshot, report_state_error, sync_project_snapshot, sync_task_snapshot]);
+  }, [
+    apply_settings_snapshot,
+    report_state_error,
+    sync_project_snapshot,
+    sync_runtime_snapshot,
+    sync_task_snapshot,
+  ]);
 
   useEffect(() => {
     if (!project_snapshot.loaded || project_snapshot.path.trim() === "") {
@@ -780,7 +813,9 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     schedulerRef: refresh_scheduler_ref,
     applySettingsSnapshot: apply_settings_snapshot,
     applyTaskSnapshot: sync_task_snapshot,
+    applyRuntimeSnapshot: sync_runtime_snapshot,
     refreshSettings: refresh_settings,
+    refreshRuntime: refresh_runtime,
     projectEvents: project_event_pipeline,
     recovery: {
       report_state_error,
@@ -796,6 +831,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       settings_snapshot,
       project_snapshot,
       task_snapshot,
+      runtime_snapshot,
       project_change_signal,
       project_session_status,
       project_session_stage,
@@ -805,12 +841,14 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       set_pending_target_route,
       apply_settings_snapshot,
       sync_task_snapshot,
+      sync_runtime_snapshot,
       refresh_project_snapshot,
       refresh_project_state,
       commit_project_write,
       update_app_language,
       refresh_settings,
       refresh_task,
+      refresh_runtime,
     };
   }, [
     initial_state_ready,
@@ -818,6 +856,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     settings_snapshot,
     project_snapshot,
     task_snapshot,
+    runtime_snapshot,
     project_change_signal,
     project_session_status,
     project_session_stage,
@@ -829,6 +868,8 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     refresh_project_state,
     refresh_settings,
     refresh_task,
+    refresh_runtime,
+    sync_runtime_snapshot,
     sync_task_snapshot,
     update_app_language,
   ]);

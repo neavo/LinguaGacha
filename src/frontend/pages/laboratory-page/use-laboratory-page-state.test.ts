@@ -12,9 +12,7 @@ import { useLaboratoryPageState } from "@frontend/pages/laboratory-page/use-labo
 
 type RuntimeFixture = {
   settings_snapshot: SettingsSnapshot;
-  task_snapshot: {
-    busy: boolean;
-  };
+  runtime_snapshot: { revision: number; owner: "task" | "agent" | null };
   project_snapshot: {
     loaded: boolean;
   };
@@ -86,9 +84,7 @@ function create_runtime_fixture(): RuntimeFixture {
   const settings_snapshot = create_settings_snapshot();
   return {
     settings_snapshot,
-    task_snapshot: {
-      busy: false,
-    },
+    runtime_snapshot: { revision: 0, owner: null },
     project_snapshot: {
       loaded: true,
     },
@@ -196,10 +192,10 @@ describe("useLaboratoryPageState", () => {
     expect(runtime_fixture.current.commit_project_write).not.toHaveBeenCalled();
   });
 
-  it("任务运行中不提交提示词增强设置", async () => {
+  it("Agent 运行中不提交提示词增强设置", async () => {
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      task_snapshot: { busy: true },
+      runtime_snapshot: { revision: 1, owner: "agent" },
     };
     await render_hook();
 

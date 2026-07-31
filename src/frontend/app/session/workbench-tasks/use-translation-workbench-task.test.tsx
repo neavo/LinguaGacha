@@ -23,6 +23,7 @@ type RuntimeFixture = {
   };
   sync_task_snapshot: ReturnType<typeof vi.fn>;
   task_snapshot: Record<string, unknown>;
+  runtime_snapshot: { revision: number; owner: "task" | null };
   commit_project_write: ReturnType<typeof vi.fn>;
   refresh_project_state: ReturnType<typeof vi.fn>;
   refresh_task: ReturnType<typeof vi.fn>;
@@ -105,6 +106,10 @@ function create_runtime_fixture(
     },
     sync_task_snapshot: vi.fn(),
     task_snapshot,
+    runtime_snapshot: {
+      revision: 0,
+      owner: task_snapshot["busy"] === true ? "task" : null,
+    },
     commit_project_write: vi.fn(async ({ run }: { run: () => Promise<unknown> }) => {
       const payload = await run();
       return {

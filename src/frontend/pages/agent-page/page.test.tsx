@@ -11,6 +11,9 @@ type AgentPageState = ReturnType<typeof UseAgentPageStateFunction>;
 const page_state = vi.hoisted(() => ({ current: {} as AgentPageState }));
 
 vi.mock("./use-agent-page-state", () => ({ useAgentPageState: () => page_state.current }));
+vi.mock("@frontend/app/state/use-desktop-state", () => ({
+  useDesktopState: () => ({ runtime_snapshot: { revision: 0, owner: null } }),
+}));
 vi.mock("@frontend/features/model-selection/use-model-selection", async (import_original) => {
   const actual =
     await import_original<

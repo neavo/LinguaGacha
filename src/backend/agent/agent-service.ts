@@ -41,6 +41,7 @@ import type { LogManager } from "../log/log-manager";
 import type { ProjectSessionState } from "../project/project-session-state";
 import type { ProofreadingService } from "../proofreading/proofreading-service";
 import type { QualityRuleService } from "../quality/quality-rule-service";
+import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-gate";
 import { AGENT_PROOFREADING_UPDATE_SOURCE, create_agent_item_tools } from "./agent-item-tools";
 import { register_agent_model, type AgentModelLimits } from "./agent-model";
 import {
@@ -105,8 +106,9 @@ type AgentServiceOptions = {
   userAgent: string;
   sessionState: ProjectSessionState;
   cache: AgentServiceCache;
-  qualityRules: Pick<QualityRuleService, "query" | "update">;
-  proofreading: Pick<ProofreadingService, "update_items">;
+  qualityRules: Pick<QualityRuleService, "query" | "update_from_agent">;
+  proofreading: Pick<ProofreadingService, "update_items_from_agent">;
+  runtimeGate: RuntimeOperationGate;
   logManager: Pick<LogManager, "error" | "warning">;
   publish: (topic: string, payload: JsonRecord) => void;
 };
@@ -122,6 +124,7 @@ export class AgentService {
   private readonly cache: AgentServiceOptions["cache"];
   private readonly quality_rules: AgentServiceOptions["qualityRules"];
   private readonly proofreading: AgentServiceOptions["proofreading"];
+  private readonly runtime_gate: RuntimeOperationGate; // task / Agent 互斥与 Agent 写工具授权来源
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
   private readonly unsubscribe_project_session: () => void;
@@ -129,6 +132,7 @@ export class AgentService {
   private session_reset: Promise<void> | null = null; // 清理完成前禁止新消息跨会话进入
   private message_acceptance: Promise<AgentSessionSnapshot> | null = null; // 串行覆盖异步建会话与换模
   private prompt_settlement: Promise<void> | null = null; // SDK idle 尚未覆盖异步 preflight，单独纳入关闭屏障
+  private runtime_lease: RuntimeLease | null = null; // 从消息受理覆盖到 SDK 最终 settle
   private runtime_generation = 0; // stop/reset/dispose 统一令迟到异步阶段失效
   private state: AgentSessionState = "idle";
   private entries: AgentEntry[] = [];
@@ -145,6 +149,7 @@ export class AgentService {
     this.cache = options.cache;
     this.quality_rules = options.qualityRules;
     this.proofreading = options.proofreading;
+    this.runtime_gate = options.runtimeGate;
     this.log_manager = options.logManager;
     this.publish = options.publish;
     this.unsubscribe_project_session = this.session_state.subscribe_change(() => {
@@ -178,9 +183,7 @@ export class AgentService {
   public async send_message(request: JsonRecord): Promise<AgentSessionSnapshot> {
     this.assert_not_disposed();
     if (this.session_reset !== null) {
-      throw new AppErrors.RequestValidationError({
-        diagnostic_context: { reason: "agent_session_resetting" },
-      });
+      throw new AppErrors.RuntimeBusyError();
     }
     const system_prompt = this.require_system_prompt();
     this.session_state.require_loaded_project_path();
@@ -208,18 +211,9 @@ export class AgentService {
       selected_skill_names.add(part.name);
       selected_skills.push(skill);
     }
-    if (
-      this.message_acceptance !== null ||
-      this.prompt_settlement !== null ||
-      this.state === "running" ||
-      this.runtime?.session.isIdle === false
-    ) {
-      throw new AppErrors.RequestValidationError({
-        diagnostic_context: { reason: "agent_already_running" },
-      });
-    }
-
-    const acceptance = this.accept_message(system_prompt, parts, selected_skills);
+    const runtime_lease = this.runtime_gate.begin_runtime("agent");
+    this.runtime_lease = runtime_lease;
+    const acceptance = this.accept_message(system_prompt, parts, selected_skills, runtime_lease);
     this.message_acceptance = acceptance;
     const clear_acceptance = () => {
       if (this.message_acceptance === acceptance) this.message_acceptance = null;
@@ -231,8 +225,15 @@ export class AgentService {
   /** 清空当前对话，并在消息受理与旧运行时完全退出后返回最终空快照。 */
   public async reset(): Promise<AgentSessionSnapshot> {
     this.assert_not_disposed();
-    await this.reset_session();
-    return this.get_snapshot();
+    const existing_lease = this.runtime_lease;
+    const reset_lease = existing_lease ?? this.runtime_gate.begin_runtime("agent");
+    if (existing_lease === null) this.runtime_lease = reset_lease;
+    try {
+      await this.reset_session();
+      return this.get_snapshot();
+    } finally {
+      if (existing_lease === null) this.finish_runtime(reset_lease);
+    }
   }
 
   /** 立即封口公开轮次并保留历史，后台取消压缩、重试和当前模型回合。 */
@@ -299,65 +300,77 @@ export class AgentService {
     system_prompt: string,
     parts: AgentUserMessagePart[],
     selected_skills: AgentSkillDefinition[],
+    runtime_lease: RuntimeLease,
   ): Promise<AgentSessionSnapshot> {
-    let binding = this.read_binding();
-    if (this.runtime !== null && !bindings_equal(this.runtime.binding, binding)) {
-      await this.reset_session();
-      binding = this.read_binding();
-    }
-    const generation = this.runtime_generation;
-    const model_settings = this.settings.read_setting();
-    let runtime = this.runtime;
-    const created = runtime === null;
-    let candidate_closed = false;
-
+    let prompt_started = false;
     try {
-      if (runtime === null) {
-        runtime = await this.create_runtime(binding, system_prompt, model_settings);
-      } else {
-        const resolved_model = register_agent_model(
-          runtime.session.modelRuntime,
-          model_settings,
-          this.user_agent,
-          runtime.limits,
-        );
-        await runtime.session.setModel(resolved_model.model);
-        runtime.session.setThinkingLevel(resolved_model.thinkingLevel);
+      let binding = this.read_binding();
+      if (this.runtime !== null && !bindings_equal(this.runtime.binding, binding)) {
+        await this.reset_session();
+        binding = this.read_binding();
       }
+      const generation = this.runtime_generation;
+      const model_settings = this.settings.read_setting();
+      let runtime = this.runtime;
+      const created = runtime === null;
+      let candidate_closed = false;
 
-      if (!this.acceptance_is_current(generation, binding)) {
-        if (created || this.runtime === runtime) {
-          if (this.runtime === runtime) this.runtime = null;
-          await this.close_runtime(runtime);
-          candidate_closed = true;
+      try {
+        if (runtime === null) {
+          runtime = await this.create_runtime(binding, system_prompt, model_settings);
+        } else {
+          const resolved_model = register_agent_model(
+            runtime.session.modelRuntime,
+            model_settings,
+            this.user_agent,
+            runtime.limits,
+          );
+          await runtime.session.setModel(resolved_model.model);
+          runtime.session.setThinkingLevel(resolved_model.thinkingLevel);
         }
-        throw new AppErrors.RequestValidationError({
-          diagnostic_context: { reason: "agent_message_invalidated" },
-        });
-      }
-      if (created) this.runtime = runtime;
-    } catch (error) {
-      if (created && runtime !== null && this.runtime !== runtime && !candidate_closed) {
-        await this.close_runtime(runtime);
-      }
-      throw error;
-    }
 
-    this.upsert_entry({
-      kind: "user_message",
-      id: uuidv7(),
-      parts,
-      createdAt: Date.now(),
-      endedAt: null,
-    });
-    this.set_state("running");
-    const prompt = this.run_prompt(runtime, generation, build_agent_prompt(parts, selected_skills));
-    this.prompt_settlement = prompt;
-    const clear_prompt = () => {
-      if (this.prompt_settlement === prompt) this.prompt_settlement = null;
-    };
-    void prompt.then(clear_prompt, clear_prompt);
-    return this.get_snapshot();
+        if (!this.acceptance_is_current(generation, binding)) {
+          if (created || this.runtime === runtime) {
+            if (this.runtime === runtime) this.runtime = null;
+            await this.close_runtime(runtime);
+            candidate_closed = true;
+          }
+          throw new AppErrors.RequestValidationError({
+            diagnostic_context: { reason: "agent_message_invalidated" },
+          });
+        }
+        if (created) this.runtime = runtime;
+      } catch (error) {
+        if (created && runtime !== null && this.runtime !== runtime && !candidate_closed) {
+          await this.close_runtime(runtime);
+        }
+        throw error;
+      }
+
+      this.upsert_entry({
+        kind: "user_message",
+        id: uuidv7(),
+        parts,
+        createdAt: Date.now(),
+        endedAt: null,
+      });
+      this.set_state("running");
+      const prompt = this.run_prompt(
+        runtime,
+        generation,
+        build_agent_prompt(parts, selected_skills),
+        runtime_lease,
+      );
+      this.prompt_settlement = prompt;
+      prompt_started = true;
+      const clear_prompt = () => {
+        if (this.prompt_settlement === prompt) this.prompt_settlement = null;
+      };
+      void prompt.then(clear_prompt, clear_prompt);
+      return this.get_snapshot();
+    } finally {
+      if (!prompt_started) this.finish_runtime(runtime_lease);
+    }
   }
 
   /** 创建完全内存化的 SDK 会话，并只注册五个产品工具。 */
@@ -422,7 +435,12 @@ export class AgentService {
   }
 
   /** prompt() 已覆盖自动重试与溢出恢复；只有最终 settle 才决定公开终态。 */
-  private async run_prompt(runtime: AgentRuntime, generation: number, text: string): Promise<void> {
+  private async run_prompt(
+    runtime: AgentRuntime,
+    generation: number,
+    text: string,
+    runtime_lease: RuntimeLease,
+  ): Promise<void> {
     try {
       await runtime.session.prompt(text, {
         expandPromptTemplates: false,
@@ -452,6 +470,7 @@ export class AgentService {
         this.end_current_round();
         this.set_state("complete");
       }
+      this.finish_runtime(runtime_lease);
     }
   }
 
@@ -652,8 +671,15 @@ export class AgentService {
     }
   }
 
+  /** 清理失败不改变已完成的会话隔离，只保留诊断。 */
   private warn_cleanup_failure(error: unknown): void {
     this.log_manager.warning("Agent 会话清理失败", { source: "agent", error });
+  }
+
+  /** 同时清除本地引用和共享 owner；迟到 lease 由 gate 身份校验忽略。 */
+  private finish_runtime(lease: RuntimeLease): void {
+    if (this.runtime_lease === lease) this.runtime_lease = null;
+    this.runtime_gate.finish_runtime(lease);
   }
 
   /** 受理结果只有在工程绑定、运行世代和服务生命周期均未变化时才能公开。 */

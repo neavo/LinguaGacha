@@ -82,7 +82,7 @@ export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
             title_key: "laboratory_page.fields.mtool_optimizer_enable.title",
             value: laboratory_page_state.snapshot.mtool_optimizer_enable,
             disabled:
-              laboratory_page_state.is_task_busy ||
+              laboratory_page_state.runtime_locked ||
               laboratory_page_state.pending_state.mtool_optimizer_enable,
             on_value_change: (next_value) => {
               void laboratory_page_state.update_mtool_optimizer_enable(next_value);
@@ -97,7 +97,7 @@ export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
             title_key: "laboratory_page.fields.skip_duplicate_source_text_enable.title",
             value: laboratory_page_state.snapshot.skip_duplicate_source_text_enable,
             disabled:
-              laboratory_page_state.is_task_busy ||
+              laboratory_page_state.runtime_locked ||
               laboratory_page_state.pending_state.skip_duplicate_source_text_enable,
             on_value_change: (next_value) => {
               void laboratory_page_state.update_skip_duplicate_source_text_enable(next_value);
@@ -112,7 +112,7 @@ export function LaboratoryPage(_props: ScreenComponentProps): JSX.Element {
             title_key: "laboratory_page.fields.prompt_enhancement_enable.title",
             value: laboratory_page_state.snapshot.prompt_enhancement_enable,
             disabled:
-              laboratory_page_state.is_task_busy ||
+              laboratory_page_state.runtime_locked ||
               laboratory_page_state.pending_state.prompt_enhancement_enable,
             on_value_change: (next_value) => {
               void laboratory_page_state.update_prompt_enhancement_enable(next_value);

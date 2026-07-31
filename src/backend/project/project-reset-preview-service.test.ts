@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ProjectDatabase } from "../database/database-operations";
 import { ProjectResetPreviewService } from "./project-reset-preview-service";
 import { ProjectSessionState } from "./project-session-state";
+import { RuntimeOperationGate } from "../runtime-operation-gate";
 
 let temp_dir = "";
 const cleanup_databases: ProjectDatabase[] = [];
@@ -25,7 +26,11 @@ function create_service(): {
   const lg_path = path.join(temp_dir, "reset-preview.lg");
   database.create_project(lg_path, "demo");
   session_state.mark_loaded(lg_path);
-  const service = new ProjectResetPreviewService(database, () => false, session_state);
+  const service = new ProjectResetPreviewService(
+    database,
+    new RuntimeOperationGate(),
+    session_state,
+  );
   return { database, lg_path, service };
 }
 

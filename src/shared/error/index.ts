@@ -7,7 +7,6 @@ export * from "./errors/request-errors";
 export * from "./errors/project-errors";
 export * from "./errors/file-errors";
 export * from "./errors/data-errors";
-export * from "./errors/task-errors";
 export * from "./errors/model-errors";
 export * from "./errors/worker-errors";
 export * from "./errors/runtime-errors";

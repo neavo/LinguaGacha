@@ -8,7 +8,7 @@ import { ProjectDatabase } from "../database/database-operations";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { FileFormatService } from "../file/file-format-service";
 import type { LogManager } from "../log/log-manager";
-import { ProjectOperationGate } from "./project-operation-gate";
+import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectContentService } from "./project-content-service";
 import type {
   ProjectChangePublisher,
@@ -46,11 +46,10 @@ function create_service(
 ): {
   database: ProjectDatabase;
   service: ProjectContentService;
-  set_task_busy: (busy: boolean) => void;
+  runtime_gate: RuntimeOperationGate;
   lg_path: string;
 } {
   const database = new ProjectDatabase();
-  let task_busy = false;
   const session_state = new ProjectSessionState();
   const lg_path = project_path("demo.lg");
   database.create_project(lg_path, "demo");
@@ -59,23 +58,21 @@ function create_service(
     project_change_publisher === undefined
       ? create_test_project_change_publisher(database, lg_path)
       : project_change_publisher;
-  const project_operation_gate = new ProjectOperationGate(() => task_busy);
+  const runtime_gate = new RuntimeOperationGate();
   const project_event_bus = vi.fn();
   const write_store = new ProjectWriteStore(database, project_event_bus, publisher);
   return {
     database,
     service: new ProjectContentService(
       database,
-      project_operation_gate,
+      runtime_gate,
       session_state,
       write_store,
       null,
       undefined,
       log_manager,
     ),
-    set_task_busy: (busy) => {
-      task_busy = busy;
-    },
+    runtime_gate,
     lg_path,
   };
 }
@@ -427,7 +424,7 @@ describe("ProjectContentService", () => {
           mode: "failed",
           expected_section_revisions: { items: 0 },
         }),
-      ).rejects.toThrow("task.busy");
+      ).rejects.toThrow("runtime.busy");
     } finally {
       release_parse();
     }
@@ -493,7 +490,7 @@ describe("ProjectContentService", () => {
           mode: "failed",
           expected_section_revisions: { items: 0 },
         }),
-      ).rejects.toThrow("task.busy");
+      ).rejects.toThrow("runtime.busy");
     } finally {
       release_parse();
     }
@@ -857,8 +854,8 @@ describe("ProjectContentService", () => {
   });
 
   it("任务忙碌时拒绝 translation reset 且不写库", async () => {
-    const { database, service, set_task_busy, lg_path } = create_service();
-    set_task_busy(true);
+    const { database, service, runtime_gate, lg_path } = create_service();
+    runtime_gate.begin_runtime("task");
     database.set_items(lg_path, [{ id: 1, src: "旧", dst: "old", status: "PROCESSED" }]);
 
     await expect(
@@ -867,7 +864,7 @@ describe("ProjectContentService", () => {
         project_settings: { source_language: "JA" },
         expected_section_revisions: { items: 0, analysis: 0 },
       }),
-    ).rejects.toThrow("task.busy");
+    ).rejects.toThrow("runtime.busy");
 
     expect(database.get_all_items(lg_path)).toEqual([
       { id: 1, src: "旧", dst: "old", status: "PROCESSED" },
@@ -876,51 +873,51 @@ describe("ProjectContentService", () => {
   });
 
   it("任务忙碌时拒绝 analysis reset 且不写 analysis meta", async () => {
-    const { database, service, set_task_busy, lg_path } = create_service();
-    set_task_busy(true);
+    const { database, service, runtime_gate, lg_path } = create_service();
+    runtime_gate.begin_runtime("task");
 
     await expect(
       service.reset_analysis({
         mode: "all",
         expected_section_revisions: { analysis: 0 },
       }),
-    ).rejects.toThrow("task.busy");
+    ).rejects.toThrow("runtime.busy");
 
     expect(read_meta(database, lg_path, "analysis_extras", null)).toBeNull();
     database.close();
   });
 
   it("任务忙碌时拒绝 settings-only 对齐且不写设置 meta", async () => {
-    const { database, service, set_task_busy, lg_path } = create_service();
-    set_task_busy(true);
+    const { database, service, runtime_gate, lg_path } = create_service();
+    runtime_gate.begin_runtime("task");
 
     await expect(
       service.align_settings({
         mode: "settings_only",
         project_settings: { source_language: "JA" },
       }),
-    ).rejects.toThrow("task.busy");
+    ).rejects.toThrow("runtime.busy");
 
     expect(read_meta(database, lg_path, "source_language", "")).toBe("");
     database.close();
   });
 
   it("任务忙碌时拒绝工作台文件 write 且不写库", async () => {
-    const { database, service, set_task_busy, lg_path } = create_service();
+    const { database, service, runtime_gate, lg_path } = create_service();
     const first_source = project_path("a.txt");
     const second_source = project_path("b.txt");
     fs.writeFileSync(first_source, "a", "utf-8");
     fs.writeFileSync(second_source, "b", "utf-8");
     database.add_asset_from_source(lg_path, "a.txt", first_source, 0);
     database.add_asset_from_source(lg_path, "b.txt", second_source, 1);
-    set_task_busy(true);
+    runtime_gate.begin_runtime("task");
 
     await expect(
       service.reorder_files({
         ordered_rel_paths: ["b.txt", "a.txt"],
         expected_section_revisions: { files: 0 },
       }),
-    ).rejects.toThrow("task.busy");
+    ).rejects.toThrow("runtime.busy");
 
     expect(database.get_all_asset_records(lg_path)).toEqual([
       { path: "a.txt", sort_order: 0 },

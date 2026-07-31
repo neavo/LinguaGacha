@@ -33,6 +33,8 @@ import { AgentService } from "../agent/agent-service";
 import { TaskService } from "../engine/task-service";
 import { TaskRuntime } from "../engine/task-runtime";
 import { BackendWorkerClient } from "../worker/worker-client";
+import { RuntimeOperationGate } from "../runtime-operation-gate";
+import { RuntimeBusyError } from "../../shared/error";
 
 function create_backend_services_options(): BackendServicesOptions {
   return {
@@ -46,6 +48,7 @@ function create_backend_services_options(): BackendServicesOptions {
     appSettingService: {
       read_setting: () => ({ app_language: "zh-CN" }),
       set_stream_publisher: vi.fn(),
+      update_app_settings: vi.fn((request) => ({ settings: request })),
     },
     database: {},
     logManager: {
@@ -127,6 +130,47 @@ describe("BackendServices", () => {
     const frame = new TextDecoder().decode(chunk?.value);
     expect(frame).toContain("event: task.snapshot_changed");
     expect(frame).toContain('data: {"task":{"run_revision":7');
+  });
+
+  it("把统一运行时快照按公开 SSE envelope 发布", async () => {
+    let publish_snapshot: Parameters<RuntimeOperationGate["subscribe"]>[0] | undefined;
+    const subscribe_spy = vi
+      .spyOn(RuntimeOperationGate.prototype, "subscribe")
+      .mockImplementation((listener) => {
+        publish_snapshot = listener;
+        return vi.fn();
+      });
+    const services = new BackendServices(create_backend_services_options());
+    const reader = services.create_event_stream_response().body?.getReader();
+
+    expect(publish_snapshot).toBeDefined();
+    expect(reader).toBeDefined();
+    publish_snapshot?.({ revision: 3, owner: "agent" });
+    const chunk = await reader?.read();
+
+    await reader?.cancel();
+    await services.dispose();
+    subscribe_spy.mockRestore();
+
+    const frame = new TextDecoder().decode(chunk?.value);
+    expect(frame).toContain("event: runtime.snapshot_changed");
+    expect(frame).toContain('data: {"runtime":{"revision":3,"owner":"agent"}}');
+  });
+
+  it("设置更新在持久化前经过统一运行时门禁", async () => {
+    const options = create_backend_services_options();
+    const assert_idle_spy = vi
+      .spyOn(RuntimeOperationGate.prototype, "assert_runtime_idle")
+      .mockImplementation(() => {
+        throw new RuntimeBusyError();
+      });
+    const services = new BackendServices(options);
+
+    expect(() => services.app.updateSettings({ app_language: "ZH" })).toThrow("runtime.busy");
+    expect(options.appSettingService.update_app_settings).not.toHaveBeenCalled();
+
+    assert_idle_spy.mockRestore();
+    await services.dispose();
   });
 
   it("等待任务落稳后才释放执行池", async () => {

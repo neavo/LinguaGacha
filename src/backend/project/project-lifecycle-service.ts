@@ -46,7 +46,7 @@ import {
   ProjectDefaultPresetReader,
   type ProjectDefaultPresetInput,
 } from "./project-default-preset-reader";
-import type { ProjectOperationGate } from "./project-operation-gate";
+import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectSessionState } from "./project-session-state";
 import type { ProjectWriteStore } from "./project-write-store";
 import {
@@ -92,7 +92,7 @@ type ProjectWriteSettings = ProjectSettingsSnapshot;
 export class ProjectLifecycleService {
   private readonly database: ProjectDatabase; // .lg 物理事实唯一写入口，项目域只拼受限 operation
 
-  private readonly project_operation_gate: ProjectOperationGate; // 工程切换、创建、卸载与任务运行共享同一互斥事实
+  private readonly runtime_gate: RuntimeOperationGate; // 工程生命周期与模型运行共享同一互斥事实
 
   private readonly session_state: ProjectSessionState; // 渲染进程可见 loaded/path 的唯一权威
 
@@ -113,7 +113,7 @@ export class ProjectLifecycleService {
    */
   public constructor(
     database: ProjectDatabase,
-    project_operation_gate: ProjectOperationGate,
+    runtime_gate: RuntimeOperationGate,
     session_state: ProjectSessionState,
     app_setting_service: AppSettingService,
     paths: AppPathService,
@@ -123,7 +123,7 @@ export class ProjectLifecycleService {
     native_fs: NativeFs = default_native_fs,
   ) {
     this.database = database;
-    this.project_operation_gate = project_operation_gate;
+    this.runtime_gate = runtime_gate;
     this.session_state = session_state;
     this.app_setting_service = app_setting_service;
     this.log_manager = log_manager;
@@ -155,7 +155,7 @@ export class ProjectLifecycleService {
    * 加载既有 .lg，并在标记会话 loaded 前完成打开期 operation 迁移
    */
   public async load_project(body: JsonRecord): Promise<JsonRecord> {
-    return await this.project_operation_gate.run_exclusive_project_write(
+    return await this.runtime_gate.run_project_write(
       async () => await this.load_project_under_lease(body),
     );
   }
@@ -194,7 +194,7 @@ export class ProjectLifecycleService {
    * 后端按用户源路径生成新建工程事实，并复用 load_project 进入 loaded 状态
    */
   public async create_project_commit(body: JsonRecord): Promise<JsonRecord> {
-    return await this.project_operation_gate.run_exclusive_project_write(
+    return await this.runtime_gate.run_project_write(
       async () => await this.create_project_commit_under_lease(body),
     );
   }
@@ -256,7 +256,7 @@ export class ProjectLifecycleService {
    * 为当前 loaded 工程一次性应用领域任务输入，CLI 无需理解 Store 或物理 meta。
    */
   public async apply_task_input(input: ProjectTaskInput): Promise<ProjectWriteResult> {
-    return await this.project_operation_gate.run_exclusive_project_write(async () => {
+    return await this.runtime_gate.run_project_write(async () => {
       const project_path = this.session_state.require_loaded_project_path();
       const section_revisions = build_section_revisions_from_meta(this.get_all_meta(project_path));
       return await this.write_store.apply_task_input({
@@ -508,7 +508,7 @@ export class ProjectLifecycleService {
    * 卸载公开工程会话，并释放 database 缓存句柄
    */
   public async unload_project(): Promise<JsonRecord> {
-    return await this.project_operation_gate.run_exclusive_project_write(async () => {
+    return await this.runtime_gate.run_project_write(async () => {
       const state = this.session_state.snapshot();
       if (state.loaded && state.projectPath !== "") {
         await this.project_event_handler(create_project_unloaded_event(state.projectPath));

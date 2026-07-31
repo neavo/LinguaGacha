@@ -9,6 +9,7 @@ import type { JsonRecord } from "../../domain/json";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { LLMClient } from "../llm/llm-client";
+import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ModelService } from "./model-service";
 
 type ModelPresetFiles = {
@@ -21,6 +22,7 @@ type ModelServiceFixture = {
   paths: AppPathService;
   service: ModelService;
   app_setting_service: AppSettingService;
+  runtime_gate: RuntimeOperationGate;
 };
 
 type LogEntry = {
@@ -148,7 +150,12 @@ describe("ModelService 配置管理", () => {
       model_id: "00000000-0000-4000-8000-000000000021",
       patch: { agent: { context_window: 400_000, max_output_tokens: 50_000 } },
     });
-    const second_service = new ModelService(paths, app_setting_service, TEST_LLM_USER_AGENT);
+    const second_service = new ModelService(
+      paths,
+      app_setting_service,
+      TEST_LLM_USER_AGENT,
+      new RuntimeOperationGate(),
+    );
     const snapshot = read_request_model_snapshot(second_service.get_snapshot());
 
     expect(snapshot.models).toEqual(
@@ -463,6 +470,22 @@ describe("ModelService 配置管理", () => {
       "request.validation_failed",
     );
   });
+
+  it("任务或 Agent 运行期间拒绝全部模型配置写入", async () => {
+    const { service, runtime_gate } = await create_model_service([create_model({})]);
+    runtime_gate.begin_runtime("agent");
+
+    for (const operation of [
+      () => service.update_model({}),
+      () => service.select_model({}),
+      () => service.add_model({}),
+      () => service.delete_model({}),
+      () => service.reset_preset_model({}),
+      () => service.reorder_model({}),
+    ]) {
+      expect(operation).toThrow("runtime.busy");
+    }
+  });
 });
 
 describe("ModelService 远端模型能力", () => {
@@ -588,11 +611,19 @@ async function create_model_service(
             log_entries.push({ level: "warning", message, payload });
           },
         };
+  const runtime_gate = new RuntimeOperationGate();
   return {
     app_root,
     paths,
-    service: new ModelService(paths, app_setting_service, TEST_LLM_USER_AGENT, log_manager),
+    service: new ModelService(
+      paths,
+      app_setting_service,
+      TEST_LLM_USER_AGENT,
+      runtime_gate,
+      log_manager,
+    ),
     app_setting_service,
+    runtime_gate,
   };
 }
 

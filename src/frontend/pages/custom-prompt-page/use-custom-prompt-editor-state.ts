@@ -9,7 +9,7 @@ import {
   type ProjectWriteResult,
   type ProjectWriteResultPayload,
 } from "@frontend/app/state/desktop-project-write";
-import { is_project_write_locked } from "@frontend/app/state/task-snapshot-store";
+import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import {
   CUSTOM_PROMPT_VARIANT_CONFIG,
@@ -116,9 +116,9 @@ export function useCustomPromptEditorState(
   const config = CUSTOM_PROMPT_VARIANT_CONFIG[variant];
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
-  const { project_snapshot, settings_snapshot, commit_project_write, task_snapshot } =
+  const { project_snapshot, settings_snapshot, commit_project_write, runtime_snapshot } =
     useDesktopState();
-  const readonly = is_project_write_locked(task_snapshot);
+  const readonly = is_runtime_busy(runtime_snapshot);
 
   const [template, set_template] = useState<CustomPromptTemplate>(() => {
     return create_empty_prompt_template();

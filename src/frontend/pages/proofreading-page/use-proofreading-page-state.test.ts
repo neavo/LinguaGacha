@@ -39,6 +39,7 @@ type RuntimeFixture = {
       scope: { kind: "all" } | { kind: "items"; item_ids: number[] };
     };
   };
+  runtime_snapshot: { revision: number; owner: "task" | "agent" | null };
   sync_task_snapshot: ReturnType<typeof vi.fn>;
   project_change_signal: ProjectChangeSignal;
   commit_project_write: ReturnType<typeof vi.fn>;
@@ -273,6 +274,7 @@ function create_runtime_fixture(): RuntimeFixture {
       task_type: "idle",
       extras: { kind: "translation", scope: { kind: "all" } },
     },
+    runtime_snapshot: { revision: 0, owner: null },
     sync_task_snapshot: vi.fn((snapshot) => {
       runtime_fixture.current = {
         ...runtime_fixture.current,
@@ -647,13 +649,10 @@ describe("useProofreadingPageState", () => {
     expect(clear_proofreading_lookup_intent).toHaveBeenCalledTimes(1);
   });
 
-  it("任务 busy 时会把页面写入口暴露为只读", async () => {
+  it("Agent 运行时会把页面写入口暴露为只读", async () => {
     runtime_fixture.current = {
       ...runtime_fixture.current,
-      task_snapshot: {
-        ...runtime_fixture.current.task_snapshot,
-        busy: true,
-      },
+      runtime_snapshot: { revision: 1, owner: "agent" },
     };
 
     await render_hook();

@@ -55,6 +55,7 @@ export function register_api_routes(context: ApiRouteContext): void {
   );
 
   context.app.get("/api/events/stream", () => services.create_event_stream_response());
+  context.postJson("/api/runtime/snapshot", () => services.runtime.getSnapshot());
   context.app.get("/api/agent/snapshot", (hono_context) =>
     hono_context.json(ok(services.agent.get_snapshot())),
   );
@@ -147,7 +148,7 @@ export function register_api_routes(context: ApiRouteContext): void {
 
   const settings = services.app.settings;
   context.postJson("/api/settings/app", () => settings.get_app_settings());
-  context.postJson("/api/settings/update", (body) => settings.update_app_settings(body));
+  context.postJson("/api/settings/update", (body) => services.app.updateSettings(body));
   context.postJson("/api/settings/recent-projects/add", (body) =>
     settings.add_recent_project(body),
   );

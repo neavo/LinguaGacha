@@ -24,7 +24,7 @@ import { ModelService } from "../model/model-service";
 import { ProjectContentService } from "../project/project-content-service";
 import { create_project_change_publisher } from "../project/project-write-event-adapter";
 import { ProjectDataReader } from "../project/project-data-reader";
-import { ProjectOperationGate } from "../project/project-operation-gate";
+import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectLifecycleService } from "../project/project-lifecycle-service";
 import { ProjectResetPreviewService } from "../project/project-reset-preview-service";
 import { ProjectSessionState } from "../project/project-session-state";
@@ -40,6 +40,10 @@ import { BackendWorkerClient } from "../worker/worker-client";
 import type { BackendWorkerExecution } from "../worker/worker-execution";
 import type { JsonRecord } from "../../domain/json";
 import { PROJECT_CHANGE_EVENT_TOPIC } from "../../shared/project-event";
+import {
+  RUNTIME_ACTIVITY_EVENT_TOPIC,
+  type RuntimeActivitySnapshot,
+} from "../../shared/runtime-activity";
 
 const TASK_SNAPSHOT_EVENT_TOPIC = "task.snapshot_changed";
 
@@ -58,6 +62,11 @@ export interface BackendAppServices {
   paths: AppPathService;
   metadata: AppMetadataService;
   settings: AppSettingService;
+  updateSettings: (request: JsonRecord) => JsonRecord; // 设置 API 的统一运行时门禁入口
+}
+
+export interface BackendRuntimeServices {
+  getSnapshot: () => { runtime: RuntimeActivitySnapshot }; // API 不接触 gate lease
 }
 
 export interface BackendProjectServices {
@@ -95,12 +104,15 @@ export class BackendServices {
   private readonly cache_manager: CacheManager;
   private readonly backend_worker_client: BackendWorkerClient;
   private readonly task_runtime: TaskRuntime;
+  private readonly runtime_gate = new RuntimeOperationGate(); // task、Agent 与结构性写入共享的唯一门禁
   private readonly work_unit_worker_pool: WorkUnitWorkerPool;
   private readonly planning_worker_pool: PlanningWorkerPool;
   private task_stream_unsubscribe: (() => void) | null;
+  private runtime_stream_unsubscribe: (() => void) | null; // dispose 时停止向已关闭 hub 发布
   private started = false;
 
   public readonly app: BackendAppServices;
+  public readonly runtime: BackendRuntimeServices;
   public readonly project: BackendProjectServices;
   public readonly proofreading: BackendProofreadingServices;
   public readonly quality: BackendQualityServices;
@@ -146,11 +158,10 @@ export class BackendServices {
       publish_project_change,
     );
 
-    this.task_runtime = new TaskRuntime(session_state, data_reader);
-    const project_gate = new ProjectOperationGate(() => this.task_runtime.is_busy());
+    this.task_runtime = new TaskRuntime(session_state, data_reader, this.runtime_gate);
     const lifecycle = new ProjectLifecycleService(
       options.database,
-      project_gate,
+      this.runtime_gate,
       session_state,
       this.app_setting_service,
       paths,
@@ -195,6 +206,15 @@ export class BackendServices {
       paths,
       metadata,
       settings: this.app_setting_service,
+      // 设置持久化是同步操作，检查与提交之间不会让出事件循环。
+      updateSettings: (request) => {
+        this.runtime_gate.assert_runtime_idle();
+        return this.app_setting_service.update_app_settings(request);
+      },
+    };
+    this.runtime = {
+      // 只暴露公开快照，不把 gate 或 lease 交给 API 层。
+      getSnapshot: () => ({ runtime: this.runtime_gate.get_snapshot() }),
     };
     this.project = {
       lifecycle,
@@ -204,7 +224,7 @@ export class BackendServices {
       summary: new ProjectSummaryService(session_state, this.cache_manager),
       content: new ProjectContentService(
         options.database,
-        project_gate,
+        this.runtime_gate,
         session_state,
         write_store,
         this.app_setting_service,
@@ -213,7 +233,7 @@ export class BackendServices {
       ),
       resetPreview: new ProjectResetPreviewService(
         options.database,
-        () => this.task_runtime.is_busy(),
+        this.runtime_gate,
         session_state,
       ),
     };
@@ -222,14 +242,19 @@ export class BackendServices {
         sessionState: session_state,
         cache: this.cache_manager.proofreading,
       }),
-      commands: new ProofreadingService(options.database, project_gate, session_state, write_store),
+      commands: new ProofreadingService(
+        options.database,
+        this.runtime_gate,
+        session_state,
+        write_store,
+      ),
     };
     const quality_rules = new QualityRuleService(
       paths,
       options.database,
       session_state,
       write_store,
-      project_gate,
+      this.runtime_gate,
       this.cache_manager,
     );
     this.quality = {
@@ -240,7 +265,7 @@ export class BackendServices {
         options.database,
         session_state,
         write_store,
-        project_gate,
+        this.runtime_gate,
         this.cache_manager,
       ),
       statistics: new QualityStatisticsService({
@@ -261,7 +286,13 @@ export class BackendServices {
       }),
     };
     const user_agent = metadata.build_linguagacha_user_agent();
-    this.model = new ModelService(paths, this.app_setting_service, user_agent, this.logManager);
+    this.model = new ModelService(
+      paths,
+      this.app_setting_service,
+      user_agent,
+      this.runtime_gate,
+      this.logManager,
+    );
     this.agent = new AgentService({
       paths,
       settings: this.app_setting_service,
@@ -270,13 +301,19 @@ export class BackendServices {
       cache: this.cache_manager,
       qualityRules: quality_rules,
       proofreading: this.proofreading.commands,
+      runtimeGate: this.runtime_gate,
       logManager: this.logManager,
       publish: (topic, payload) => this.api_stream_hub.publish(topic, payload),
     });
-    this.tasks = new TaskService(task_engine, this.task_runtime, project_gate, session_state);
+    this.tasks = new TaskService(task_engine, this.task_runtime, session_state);
     this.task_stream_unsubscribe = this.tasks.subscribe((snapshot) => {
       this.api_stream_hub.publish(TASK_SNAPSHOT_EVENT_TOPIC, {
         task: snapshot as unknown as JsonRecord,
+      });
+    });
+    this.runtime_stream_unsubscribe = this.runtime_gate.subscribe((snapshot) => {
+      this.api_stream_hub.publish(RUNTIME_ACTIVITY_EVENT_TOPIC, {
+        runtime: snapshot,
       });
     });
   }
@@ -306,6 +343,8 @@ export class BackendServices {
     this.app_setting_service.set_stream_publisher(null);
     this.task_stream_unsubscribe?.();
     this.task_stream_unsubscribe = null;
+    this.runtime_stream_unsubscribe?.();
+    this.runtime_stream_unsubscribe = null;
     const errors: unknown[] = [];
     try {
       await this.agent.dispose();

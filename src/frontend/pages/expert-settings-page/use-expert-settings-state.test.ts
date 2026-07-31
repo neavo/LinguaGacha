@@ -7,7 +7,7 @@ import { useExpertSettingsState } from "./use-expert-settings-state";
 
 const commit_update = vi.fn(async () => null);
 const runtime = {
-  busy: false,
+  owner: null as "task" | "agent" | null,
 };
 const snapshot: ExpertSettingsSnapshot = {
   preceding_lines_threshold: 3,
@@ -19,7 +19,7 @@ const snapshot: ExpertSettingsSnapshot = {
 
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => ({
-    task_snapshot: runtime,
+    runtime_snapshot: runtime,
   }),
 }));
 
@@ -52,7 +52,7 @@ describe("useExpertSettingsState", () => {
     container = null;
     root = null;
     latest_state = null;
-    runtime.busy = false;
+    runtime.owner = null;
     commit_update.mockClear();
   });
 
@@ -85,14 +85,14 @@ describe("useExpertSettingsState", () => {
   });
 
   it("项目写锁生效时不提交设置", async () => {
-    runtime.busy = true;
+    runtime.owner = "agent";
     await render_hook();
 
     await act(async () => {
       await latest_state?.update_clean_ruby(true);
     });
 
-    expect(latest_state?.is_task_busy).toBe(true);
+    expect(latest_state?.runtime_locked).toBe(true);
     expect(commit_update).not.toHaveBeenCalled();
   });
 });

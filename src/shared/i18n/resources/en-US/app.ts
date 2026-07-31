@@ -182,12 +182,6 @@ export const en_us_app = {
         action: "Refresh the current data and submit again …",
       },
     },
-    task: {
-      busy: {
-        message: "A background task is running. Please try again later …",
-        action: "Wait for the current task to finish or stop it first …",
-      },
-    },
     model: {
       not_found: {
         message: "The model configuration does not exist …",
@@ -207,6 +201,10 @@ export const en_us_app = {
       },
     },
     runtime: {
+      busy: {
+        message: "The model runtime is busy. Please try again later …",
+        action: "Wait for the current task or Agent turn to finish …",
+      },
       capability_missing: {
         message: "The current runtime is missing a required capability …",
       },

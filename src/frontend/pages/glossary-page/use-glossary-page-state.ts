@@ -19,7 +19,7 @@ import {
   type QualityRuleStatisticsCacheSnapshot,
 } from "@frontend/app/session/quality-rule-statistics-store";
 import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
-import { is_project_write_locked } from "@frontend/app/state/task-snapshot-store";
+import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useQualityRuleStatistics } from "@frontend/app/session/quality-rule-statistics-context";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { useProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
@@ -392,7 +392,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     settings_snapshot,
     apply_settings_snapshot,
     commit_project_write,
-    task_snapshot,
+    runtime_snapshot,
   } = useDesktopState();
   const { navigate_to_route, push_proofreading_lookup_intent } = useAppNavigation();
   const [quality_slice, set_quality_slice] = useState<GlossaryQualitySlice>(DEFAULT_QUALITY_SLICE);
@@ -633,7 +633,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     return new Set(visible_entry_ids);
   }, [visible_entry_ids]);
   const has_active_sort = sort_state.field !== null;
-  const readonly = is_project_write_locked(task_snapshot);
+  const readonly = is_runtime_busy(runtime_snapshot);
   const drag_disabled = readonly || has_active_filters || has_active_sort; // 搜索过滤和逻辑排序都会打破“真实顺序即操作上下文”的前提，因此拖拽要一起禁用
   const statistics_badge_by_entry_id = useMemo<
     Record<GlossaryEntryId, GlossaryStatisticsBadgeState>

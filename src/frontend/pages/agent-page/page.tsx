@@ -4,6 +4,8 @@ import { Bot } from "lucide-react";
 import type { AgentEntry, AgentSessionState, AgentUserMessagePart } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import { useModelSelection } from "@frontend/features/model-selection/use-model-selection";
+import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
 import { AgentComposer } from "./agent-composer";
@@ -45,6 +47,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const agent = useAgentPageState();
   const model_selection = useModelSelection();
+  const { runtime_snapshot } = useDesktopState();
   const message_end_ref = useRef<HTMLDivElement | null>(null);
   const auto_follow_ref = useRef(true); // 用户主动离开底部后，流式增量不得抢回滚动位置
   const [reset_dialog_open, set_reset_dialog_open] = useState(false);
@@ -92,6 +95,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
       <AgentComposer
         skills={agent.skills}
         running={is_running}
+        runtime_busy={is_runtime_busy(runtime_snapshot)}
         error={agent.error}
         can_reset={!agent.loading && agent.entries.length > 0}
         resetting={agent.resetting}

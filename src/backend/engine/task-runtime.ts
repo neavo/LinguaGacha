@@ -18,6 +18,7 @@ import {
   type MutableJsonRecord,
 } from "../../domain/json";
 import * as AppErrors from "../../shared/error";
+import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-gate";
 import type { TaskProgress, TaskSnapshot, TaskSnapshotListener } from "./protocol/task-snapshot";
 
 export const TASK_REQUEST_PRESSURE_PUBLISH_INTERVAL_MS = 500;
@@ -27,7 +28,6 @@ type ActiveTaskType = TaskType | "idle";
 export type TaskRuntimeStateSnapshot = {
   run_revision: number;
   status: TaskRunStatus;
-  busy: boolean;
   request_in_flight_count: number;
   active_task_type: ActiveTaskType;
   translation_scope: TranslationScope;
@@ -43,8 +43,9 @@ type ActiveRun = {
   run_id: string;
   task_type: TaskType;
   abort_controller: AbortController;
+  runtime_lease: RuntimeLease;
   previous_state: TaskRuntimeStateSnapshot;
-  completion: Promise<void> | null; // Engine 接管后绑定，dispose 必须等它释放项目 lease
+  completion: Promise<void> | null; // Engine 接管后绑定，dispose 必须等它释放运行 lease
 };
 
 type PendingRequestPressure = {
@@ -53,12 +54,10 @@ type PendingRequestPressure = {
 };
 
 /**
- * 任务运行态唯一所有者，集中维护任务锁、取消、快照和请求压力节流。
+ * 任务运行态唯一所有者，集中维护任务取消、快照和请求压力节流。
  */
 export class TaskRuntime {
   private status: TaskRunStatus = "idle";
-
-  private busy = false;
 
   private active_task_type: ActiveTaskType = "idle";
 
@@ -90,6 +89,7 @@ export class TaskRuntime {
   public constructor(
     private readonly session_state: ProjectSessionState,
     private readonly data_reader: ProjectDataReader,
+    private readonly runtime_gate: RuntimeOperationGate,
   ) {
     this.unsubscribe_project_session_change = this.session_state.subscribe_change(
       async (change) => await this.reset_for_project_session(change),
@@ -103,18 +103,10 @@ export class TaskRuntime {
     return {
       run_revision: this.run_revision,
       status: this.status,
-      busy: this.busy,
       request_in_flight_count: this.request_in_flight_count,
       active_task_type: this.active_task_type,
       translation_scope: clone_translation_scope(this.translation_scope),
     };
-  }
-
-  /**
-   * 项目门禁只读取 busy，不反向依赖任务实现。
-   */
-  public is_busy(): boolean {
-    return this.busy;
   }
 
   /**
@@ -139,6 +131,7 @@ export class TaskRuntime {
     if (active_run !== null && active_run.completion === null) {
       this.restore_state(active_run.previous_state);
       this.active_run = null;
+      this.runtime_gate.finish_runtime(active_run.runtime_lease);
     }
     this.cancel_pending_request_pressure();
     await Promise.all([this.request_pressure_flush.catch(() => undefined), ...this.completions]);
@@ -154,21 +147,20 @@ export class TaskRuntime {
     if (this.disposed) {
       throw new AppErrors.RuntimeDisposedError();
     }
-    if (this.active_run !== null || this.busy) {
-      throw new AppErrors.TaskBusyError();
-    }
+    if (this.active_run !== null) throw new AppErrors.RuntimeBusyError();
     const previous_state = this.snapshot_state();
     const abort_controller = new AbortController();
+    const runtime_lease = this.runtime_gate.begin_runtime("task");
     const active_run: ActiveRun = {
       run_id: crypto.randomUUID(),
       task_type,
       abort_controller,
+      runtime_lease,
       previous_state,
       completion: null,
     };
     this.active_run = active_run;
     this.status = "requested";
-    this.busy = true;
     this.active_task_type = task_type;
     this.request_in_flight_count = 0;
     if (task_type === "translation") {
@@ -185,12 +177,12 @@ export class TaskRuntime {
   }
 
   /**
-   * Engine 启动后同步绑定真实运行 Promise，让关闭流程等待终态与项目 lease 全部释放。
+   * Engine 启动后同步绑定真实运行 Promise，让关闭流程等待终态与运行 lease 全部释放。
    */
   public bind_completion(handle: TaskRunHandle, completion: Promise<void>): void {
     const active_run = this.read_current_run(handle.run_id);
     if (active_run === null) {
-      throw new AppErrors.TaskBusyError();
+      throw new AppErrors.RuntimeBusyError();
     }
     const tracked_completion = completion.catch(() => undefined);
     active_run.completion = tracked_completion;
@@ -211,7 +203,11 @@ export class TaskRuntime {
     this.cancel_pending_request_pressure();
     this.restore_state(active_run.previous_state);
     this.active_run = null;
-    await this.publish_snapshot(this.resolve_snapshot_task_type(active_run.previous_state));
+    try {
+      await this.publish_snapshot(this.resolve_snapshot_task_type(active_run.previous_state));
+    } finally {
+      this.runtime_gate.finish_runtime(active_run.runtime_lease);
+    }
   }
 
   /**
@@ -225,7 +221,6 @@ export class TaskRuntime {
       return;
     }
     this.status = status;
-    this.busy = true;
     this.active_task_type = handle.task_type;
     this.bump_run_revision();
     await this.publish_snapshot(handle.task_type);
@@ -322,9 +317,8 @@ export class TaskRuntime {
    * 当前任务进入终态时先清除 active run，再发布快照，所有失败都不能遗留运行锁。
    */
   public async finish(handle: TaskRunHandle, status: "idle" | "done" | "error"): Promise<void> {
-    if (!this.is_current(handle.run_id)) {
-      return;
-    }
+    const active_run = this.read_current_run(handle.run_id);
+    if (active_run === null) return;
     const errors: unknown[] = [];
     try {
       await this.flush_request_pressure();
@@ -334,7 +328,6 @@ export class TaskRuntime {
 
     this.cancel_pending_request_pressure();
     this.status = status;
-    this.busy = false;
     this.active_task_type = "idle";
     this.request_in_flight_count = 0;
     this.translation_scope = { kind: "all" };
@@ -345,6 +338,8 @@ export class TaskRuntime {
       await this.publish_snapshot(handle.task_type);
     } catch (error) {
       errors.push(error);
+    } finally {
+      this.runtime_gate.finish_runtime(active_run.runtime_lease);
     }
     this.throw_collected_errors(errors, "任务终态快照发布失败");
   }
@@ -371,7 +366,7 @@ export class TaskRuntime {
       run_revision: runtime_state.run_revision,
       task_type,
       status: runtime_state.status,
-      busy: runtime_state.busy,
+      busy: this.active_run !== null,
       request_in_flight_count: runtime_state.request_in_flight_count,
       progress: progress as TaskProgress,
       extras:
@@ -422,7 +417,7 @@ export class TaskRuntime {
     if (this.disposed) {
       return;
     }
-    if (this.active_run !== null || this.busy) {
+    if (this.active_run !== null) {
       throw new AppErrors.InternalInvariantError({
         diagnostic_context: {
           reason: "project_session_changed_while_task_active",
@@ -432,7 +427,6 @@ export class TaskRuntime {
     }
     this.cancel_pending_request_pressure();
     this.status = "idle";
-    this.busy = false;
     this.active_task_type = "idle";
     this.request_in_flight_count = 0;
     this.translation_scope = { kind: "all" };
@@ -449,9 +443,15 @@ export class TaskRuntime {
     this.cancel_pending_request_pressure();
     this.restore_state(active_run.previous_state);
     this.active_run = null;
+    let restore_error: unknown;
     try {
       await this.publish_snapshot(this.resolve_snapshot_task_type(active_run.previous_state));
-    } catch (restore_error) {
+    } catch (error) {
+      restore_error = error;
+    } finally {
+      this.runtime_gate.finish_runtime(active_run.runtime_lease);
+    }
+    if (restore_error !== undefined) {
       throw new AggregateError([cause, restore_error], "任务启动失败且恢复快照发布失败");
     }
     throw cause;
@@ -462,7 +462,6 @@ export class TaskRuntime {
    */
   private restore_state(snapshot: TaskRuntimeStateSnapshot): void {
     this.status = snapshot.status;
-    this.busy = snapshot.busy;
     this.request_in_flight_count = snapshot.request_in_flight_count;
     this.active_task_type = snapshot.active_task_type;
     this.translation_scope = normalize_translation_scope(snapshot.translation_scope);

@@ -4,7 +4,7 @@ import type { TaskEngine } from "./core/engine";
 import { TaskService } from "./task-service";
 import { TaskRuntime } from "./task-runtime";
 import type { ProjectDataReader } from "../project/project-data-reader";
-import { ProjectOperationGate } from "../project/project-operation-gate";
+import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectSessionState } from "../project/project-session-state";
 import type { JsonRecord } from "../../domain/json";
 
@@ -228,7 +228,7 @@ describe("TaskService", () => {
       }),
     ).rejects.toThrow("任务启动失败且恢复快照发布失败");
 
-    expect(runtime.is_busy()).toBe(false);
+    expect((await runtime.build_snapshot({ task_type: "translation" })).busy).toBe(false);
     await expect(runtime.begin("analysis")).resolves.toMatchObject({ task_type: "analysis" });
   });
 
@@ -236,12 +236,12 @@ describe("TaskService", () => {
     const calls: string[] = [];
     const session_state = new ProjectSessionState();
     session_state.mark_loaded("E:/Project/demo.lg");
-    const runtime = create_runtime({ quality: 1, prompts: 2 }, session_state);
-    const project_operation_gate = new ProjectOperationGate(() => runtime.is_busy());
+    const runtime_gate = new RuntimeOperationGate();
+    const runtime = create_runtime({ quality: 1, prompts: 2 }, session_state, [], {}, runtime_gate);
     let release_write = (): void => {
       throw new Error("写入租约尚未建立");
     };
-    const running_write = project_operation_gate.run_exclusive_project_write(
+    const running_write = runtime_gate.run_project_write(
       async () =>
         new Promise<void>((resolve) => {
           release_write = resolve;
@@ -254,7 +254,6 @@ describe("TaskService", () => {
         },
       } as unknown as TaskEngine,
       runtime,
-      project_operation_gate,
       session_state,
     );
 
@@ -264,7 +263,7 @@ describe("TaskService", () => {
         mode: "new",
         expected_section_revisions: { quality: 1, prompts: 2 },
       }),
-    ).rejects.toThrow("task.busy");
+    ).rejects.toThrow("runtime.busy");
 
     expect(calls).toEqual([]);
     release_write();
@@ -317,7 +316,7 @@ describe("TaskService", () => {
     }
 
     expect(calls).toEqual([]);
-    expect(runtime.is_busy()).toBe(false);
+    expect((await runtime.build_snapshot({ task_type: "translation" })).busy).toBe(false);
   });
 
   it("停止回包晚于终态时返回当前真实快照", async () => {
@@ -438,14 +437,19 @@ describe("TaskService", () => {
     session_state: ProjectSessionState,
     read_sections: string[] = [],
     meta: JsonRecord = {},
+    runtime_gate = new RuntimeOperationGate(),
   ): TaskRuntime {
-    return new TaskRuntime(session_state, {
-      get_all_meta: () => meta,
-      get_section_revision: (_meta: unknown, section: string) => {
-        read_sections.push(section);
-        return revisions[section] ?? 0;
-      },
-    } as unknown as ProjectDataReader);
+    return new TaskRuntime(
+      session_state,
+      {
+        get_all_meta: () => meta,
+        get_section_revision: (_meta: unknown, section: string) => {
+          read_sections.push(section);
+          return revisions[section] ?? 0;
+        },
+      } as unknown as ProjectDataReader,
+      runtime_gate,
+    );
   }
 
   function create_service(
@@ -453,11 +457,6 @@ describe("TaskService", () => {
     runtime: TaskRuntime,
     session_state: ProjectSessionState,
   ): TaskService {
-    return new TaskService(
-      task_engine,
-      runtime,
-      new ProjectOperationGate(() => runtime.is_busy()),
-      session_state,
-    );
+    return new TaskService(task_engine, runtime, session_state);
   }
 });

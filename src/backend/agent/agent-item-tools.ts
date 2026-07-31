@@ -103,7 +103,7 @@ type AgentItemCache = Pick<CacheReadPort, "snapshot"> & {
   readonly items: Pick<CacheReadPort["items"], "readItems">;
 };
 
-type AgentItemCommands = Pick<ProofreadingService, "update_items">;
+type AgentItemCommands = Pick<ProofreadingService, "update_items_from_agent">;
 
 type AgentItemDependencies = {
   cache: AgentItemCache;
@@ -144,7 +144,10 @@ export function create_agent_item_tools(dependencies: AgentItemDependencies): To
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
         assert_translation_changes(params.changes);
-        await dependencies.proofreading.update_items(params, AGENT_PROOFREADING_UPDATE_SOURCE);
+        await dependencies.proofreading.update_items_from_agent(
+          params,
+          AGENT_PROOFREADING_UPDATE_SOURCE,
+        );
         return tool_result(
           query_agent_project_items(dependencies.cache, {
             mode: "ids",

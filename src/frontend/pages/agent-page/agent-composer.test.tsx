@@ -277,6 +277,28 @@ describe("AgentComposer", () => {
     expect(submit?.disabled).toBe(true);
   });
 
+  it("普通任务占用运行时时保留草稿编辑但禁用 Agent 命令和模型选择", async () => {
+    const view = await render_composer(
+      undefined,
+      false,
+      undefined,
+      {},
+      {
+        runtime_busy: true,
+        can_reset: true,
+      },
+    );
+    const editor = get_editor(view);
+    await set_document(editor, "稍后发送", 4);
+
+    expect(editor.contentDOM.getAttribute("contenteditable")).toBe("true");
+    expect(view.querySelector<HTMLButtonElement>(".agent-composer__reset")?.disabled).toBe(true);
+    expect(view.querySelector<HTMLButtonElement>(".agent-composer__model-trigger")?.disabled).toBe(
+      true,
+    );
+    expect(view.querySelector<HTMLButtonElement>(".agent-composer__submit")?.disabled).toBe(true);
+  });
+
   it("底栏常驻显示百分比，并在提示中提供 K 单位详情与阈值状态", async () => {
     const view = await render_composer(
       undefined,
@@ -350,9 +372,9 @@ describe("AgentComposer", () => {
       {},
       { can_reset: true, on_reset },
     );
-    expect(reset?.disabled).toBe(false);
+    expect(reset?.disabled).toBe(true);
     await act(async () => reset?.click());
-    expect(on_reset).toHaveBeenCalledOnce();
+    expect(on_reset).not.toHaveBeenCalled();
 
     await render_composer(
       vi.fn(async () => true),
@@ -427,6 +449,7 @@ describe("AgentComposer", () => {
       on_reset?: () => void;
       error?: boolean;
       context_usage?: AgentContextUsage | null;
+      runtime_busy?: boolean;
     } = {},
   ): Promise<HTMLDivElement> {
     if (container === null) {
@@ -439,6 +462,7 @@ describe("AgentComposer", () => {
         <AgentComposer
           skills={skills}
           running={running}
+          runtime_busy={composer_overrides.runtime_busy ?? running}
           error={composer_overrides.error ?? false}
           can_reset={composer_overrides.can_reset ?? true}
           resetting={composer_overrides.resetting ?? false}

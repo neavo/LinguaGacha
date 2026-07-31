@@ -27,10 +27,7 @@ type RuntimeFixture = {
     app_language: string;
   };
   commit_project_write: ReturnType<typeof vi.fn>;
-  task_snapshot: {
-    busy: boolean;
-    status: string;
-  };
+  runtime_snapshot: { revision: number; owner: "task" | "agent" | null };
 };
 
 type SaveHandler = (body: Record<string, unknown>, save_index: number) => Promise<void> | void;
@@ -113,10 +110,7 @@ function create_runtime_fixture(): RuntimeFixture {
         };
       },
     ),
-    task_snapshot: {
-      busy: false,
-      status: "idle",
-    },
+    runtime_snapshot: { revision: 0, owner: null },
   };
 }
 
@@ -426,20 +420,20 @@ describe("useCustomPromptEditorState", () => {
     ]);
   });
 
-  it("任务锁定会暂停防抖，解除锁定后保存仍然脏的草稿", async () => {
+  it("Agent 锁定会暂停防抖，解除锁定后保存仍然脏的草稿", async () => {
     await render_probe();
     await act(async () => {
       latest_state?.update_prompt_text("锁定前草稿");
     });
 
-    runtime_fixture.task_snapshot.busy = true;
+    runtime_fixture.runtime_snapshot = { revision: 1, owner: "agent" };
     await render_probe();
     await act(async () => {
       vi.advanceTimersByTime(CUSTOM_PROMPT_AUTOSAVE_DELAY_MS);
     });
     expect(get_save_payloads()).toHaveLength(0);
 
-    runtime_fixture.task_snapshot.busy = false;
+    runtime_fixture.runtime_snapshot = { revision: 2, owner: null };
     await render_probe();
     await act(async () => {
       vi.advanceTimersByTime(CUSTOM_PROMPT_AUTOSAVE_DELAY_MS);
@@ -454,7 +448,7 @@ describe("useCustomPromptEditorState", () => {
     ]);
   });
 
-  it("任务锁定时只允许在途写入结束，解除后再提交后续草稿", async () => {
+  it("Agent 锁定时只允许在途写入结束，解除后再提交后续草稿", async () => {
     let release_first_save: (() => void) | null = null;
     const first_save = new Promise<void>((resolve) => {
       release_first_save = resolve;
@@ -475,7 +469,7 @@ describe("useCustomPromptEditorState", () => {
       latest_state?.update_prompt_text("锁定后待保存版本");
     });
 
-    runtime_fixture.task_snapshot.busy = true;
+    runtime_fixture.runtime_snapshot = { revision: 1, owner: "agent" };
     await render_probe();
     await act(async () => {
       release_first_save?.();
@@ -485,7 +479,7 @@ describe("useCustomPromptEditorState", () => {
     });
     expect(get_save_payloads()).toEqual([expect.objectContaining({ text: "在途版本" })]);
 
-    runtime_fixture.task_snapshot.busy = false;
+    runtime_fixture.runtime_snapshot = { revision: 2, owner: null };
     await render_probe();
     await act(async () => {
       vi.advanceTimersByTime(CUSTOM_PROMPT_AUTOSAVE_DELAY_MS);

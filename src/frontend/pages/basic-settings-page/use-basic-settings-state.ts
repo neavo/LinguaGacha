@@ -7,6 +7,7 @@ import { resolve_visible_error_message } from "@frontend/app/feedback/visible-er
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useSettingsEditor } from "@frontend/features/settings-editor/use-settings-editor";
 import { apply_basic_settings_prefilter_write } from "@frontend/pages/basic-settings-page/basic-settings-api-client";
 import {
@@ -28,7 +29,7 @@ const BASIC_SETTINGS_PENDING_FIELDS = [
 type UseBasicSettingsStateResult = {
   snapshot: BasicSettingsSnapshot;
   pending_state: Record<(typeof BASIC_SETTINGS_PENDING_FIELDS)[number], boolean>;
-  is_task_busy: boolean;
+  runtime_locked: boolean;
   update_source_language: (next_language: string) => Promise<void>;
   update_target_language: (next_language: string) => Promise<void>;
   update_project_save_mode: (next_mode: ProjectSaveMode) => Promise<void>;
@@ -47,7 +48,7 @@ function clamp_request_timeout(next_value: number): number {
  * 组合通用设置编辑器与项目预过滤对齐流程，页面不直接拥有后端设置事实。
  */
 export function useBasicSettingsState(): UseBasicSettingsStateResult {
-  const { settings_snapshot, task_snapshot, project_snapshot, commit_project_write } =
+  const { settings_snapshot, runtime_snapshot, project_snapshot, commit_project_write } =
     useDesktopState();
   const { push_toast, run_modal_progress_toast } = useDesktopToast();
   const { t } = useI18n();
@@ -57,7 +58,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     refresh_error_key: "basic_settings_page.feedback.refresh_failed",
     update_error_key: "basic_settings_page.feedback.update_failed",
   });
-  const is_task_busy = task_snapshot.busy;
+  const runtime_locked = is_runtime_busy(runtime_snapshot);
 
   // 预过滤写入失败回滚设置后，只恢复项目设置镜像，不再次执行失败的预过滤。
   const apply_project_settings_only_alignment = useCallback(
@@ -131,7 +132,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
       const previous_snapshot = snapshot;
       const previous_settings_snapshot = settings_snapshot;
 
-      if (is_task_busy || previous_snapshot.source_language === next_language) {
+      if (runtime_locked || previous_snapshot.source_language === next_language) {
         return;
       }
 
@@ -177,7 +178,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     [
       apply_prefilter_from_settings,
       commit_update,
-      is_task_busy,
+      runtime_locked,
       project_snapshot.loaded,
       push_toast,
       rollback_source_language_after_prefilter_error,
@@ -190,7 +191,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
 
   const update_target_language = useCallback(
     async (next_language: string): Promise<void> => {
-      if (is_task_busy || snapshot.target_language === next_language) {
+      if (runtime_locked || snapshot.target_language === next_language) {
         return;
       }
 
@@ -224,7 +225,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
     [
       apply_project_settings_only_alignment,
       commit_update,
-      is_task_busy,
+      runtime_locked,
       project_snapshot.loaded,
       push_toast,
       snapshot.target_language,
@@ -302,7 +303,7 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
   return {
     snapshot,
     pending_state,
-    is_task_busy,
+    runtime_locked,
     update_source_language,
     update_target_language,
     update_project_save_mode,

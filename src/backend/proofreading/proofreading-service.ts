@@ -1,7 +1,7 @@
 import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
 import { ProjectDatabase } from "../database/database-operations";
 import { ProjectWriteStore } from "../project/project-write-store";
-import type { ProjectOperationGate } from "../project/project-operation-gate";
+import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectSessionState } from "../project/project-session-state";
 import {
   require_project_expected_section_revisions,
@@ -47,7 +47,7 @@ const DEFAULT_PROOFREADING_UPDATE_SOURCE = "proofreading_update_items";
 export class ProofreadingService {
   private readonly database: ProjectDatabase; // 校对同步保存直接写 .lg，但仍只能通过 ProjectDatabase workflow 触达数据库
 
-  private readonly project_operation_gate: ProjectOperationGate; // 人工校对与翻译任务不能同时改写 item
+  private readonly runtime_gate: RuntimeOperationGate; // 用户与 Agent 写入口共享串行门禁
 
   private readonly session_state: ProjectSessionState; // 校对同步写入口只以 公开会话状态定位当前工程
 
@@ -58,12 +58,12 @@ export class ProofreadingService {
    */
   public constructor(
     database: ProjectDatabase,
-    project_operation_gate: ProjectOperationGate,
+    runtime_gate: RuntimeOperationGate,
     session_state: ProjectSessionState,
     write_store: ProjectWriteStore,
   ) {
     this.database = database;
-    this.project_operation_gate = project_operation_gate;
+    this.runtime_gate = runtime_gate;
     this.session_state = session_state;
     this.write_store = write_store;
   }
@@ -71,11 +71,18 @@ export class ProofreadingService {
   /**
    * 批量更新正文与姓名译文，整批事实在同一项目写租约和事务内提交。
    */
-  public async update_items(
+  public async update_items(request: JsonRecord): Promise<ProjectWriteResult> {
+    return await this.runtime_gate.run_project_write(
+      async () => await this.update_items_under_lease(request, DEFAULT_PROOFREADING_UPDATE_SOURCE),
+    );
+  }
+
+  /** Agent 工具只能在自己的运行 lease 内复用同一译文提交实现。 */
+  public async update_items_from_agent(
     request: JsonRecord,
-    source = DEFAULT_PROOFREADING_UPDATE_SOURCE,
+    source: string,
   ): Promise<ProjectWriteResult> {
-    return await this.project_operation_gate.run_exclusive_project_write(
+    return await this.runtime_gate.run_agent_project_write(
       async () => await this.update_items_under_lease(request, source),
     );
   }
@@ -133,7 +140,7 @@ export class ProofreadingService {
    * 批量替换在后端编译文本模式，避免渲染进程提交替换后的最终事实
    */
   public async replace_all(request: JsonRecord): Promise<ProjectWriteResult> {
-    return await this.project_operation_gate.run_exclusive_project_write(
+    return await this.runtime_gate.run_project_write(
       async () => await this.replace_all_under_lease(request),
     );
   }
@@ -201,7 +208,7 @@ export class ProofreadingService {
    * 批量清空译文同时清空正文和姓名译文，保留 status 和 retry_count 供用户手动判定
    */
   public async clear_translations(request: JsonRecord): Promise<ProjectWriteResult> {
-    return await this.project_operation_gate.run_exclusive_project_write(
+    return await this.runtime_gate.run_project_write(
       async () => await this.clear_translations_under_lease(request),
     );
   }
@@ -235,7 +242,7 @@ export class ProofreadingService {
    * 批量设置状态只接受人工可写状态集合，并把旧重试计数从新状态事实中清掉
    */
   public async set_translation_status(request: JsonRecord): Promise<ProjectWriteResult> {
-    return await this.project_operation_gate.run_exclusive_project_write(
+    return await this.runtime_gate.run_project_write(
       async () => await this.set_translation_status_under_lease(request),
     );
   }

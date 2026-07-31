@@ -8,7 +8,7 @@ import { ProjectDatabase } from "../database/database-operations";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { ProjectWriteStore } from "../project/project-write-store";
 import { get_section_revision } from "../project/project-data-reader";
-import { ProjectOperationGate } from "../project/project-operation-gate";
+import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectSessionState } from "../project/project-session-state";
 import { AppPathService } from "../app/app-path-service";
 import type { CacheReadPort } from "../cache/cache-types";
@@ -120,7 +120,7 @@ describe("QualityRuleService", () => {
   it("任务 busy 时拒绝全部质量项目写但不阻塞预设文件 IO", async () => {
     const database = new ProjectDatabase();
     cleanup_databases.push(database);
-    const { service } = create_workbench_service(database, () => true);
+    const { service } = create_workbench_service(database, "task");
     const project_writes = [
       () =>
         service.update({
@@ -143,7 +143,7 @@ describe("QualityRuleService", () => {
     ];
 
     for (const write of project_writes) {
-      await expect(write()).rejects.toThrow("task.busy");
+      await expect(write()).rejects.toThrow("runtime.busy");
     }
     expect(() =>
       service.save_rule_preset({
@@ -185,25 +185,6 @@ describe("QualityRuleService", () => {
     expect(database.get_all_meta(lg_path)).toMatchObject({
       glossary_enable: false,
       "quality_rule_revision.glossary": 1,
-    });
-
-    publisher.publish_project_change.mockClear();
-    await expect(
-      service.update(
-        {
-          rule_type: "glossary",
-          expected_section_revisions: { quality: 1 },
-          meta: { enabled: true },
-        },
-        "agent_quality_rule_update",
-      ),
-    ).resolves.toMatchObject({
-      changes: [{ source: "agent_quality_rule_update", sectionRevisions: { quality: 2 } }],
-    });
-    expect(publisher.publish_project_change).toHaveBeenCalledWith({
-      projectPath: lg_path,
-      source: "agent_quality_rule_update",
-      updatedSections: ["quality"],
     });
 
     publisher.publish_project_change.mockClear();
@@ -321,6 +302,26 @@ describe("QualityRuleService", () => {
     });
   });
 
+  it("Agent 规则写入口只在 Agent 租约内复用同一事务提交", async () => {
+    const database = new ProjectDatabase();
+    cleanup_databases.push(database);
+    const { service, runtime_gate } = create_workbench_service(database);
+    runtime_gate.begin_runtime("agent");
+    const request = {
+      rule_type: "glossary",
+      entries: [{ src: "MP", dst: "魔力值" }],
+      expected_section_revisions: { quality: 0 },
+    };
+
+    await expect(service.update(request)).rejects.toThrow("runtime.busy");
+    await expect(
+      service.update_from_agent(request, "agent_quality_rule_update"),
+    ).resolves.toMatchObject({
+      accepted: true,
+      changes: [expect.objectContaining({ source: "agent_quality_rule_update" })],
+    });
+  });
+
   it("分析术语导入写入变化规则并消费候选池", async () => {
     const database = new ProjectDatabase();
     cleanup_databases.push(database);
@@ -359,7 +360,7 @@ describe("QualityRuleService", () => {
   /**
    * 构造只依赖预设文件 IO 的质量规则服务，数据库边界在这些用例中不参与。
    */
-  function create_service(read_task_busy: () => boolean = () => false): {
+  function create_service(runtime_owner: "task" | "agent" | null = null): {
     service: QualityRuleService;
     app_root: string;
   } {
@@ -376,7 +377,7 @@ describe("QualityRuleService", () => {
       database,
       new ProjectSessionState(),
       new ProjectWriteStore(database, vi.fn(), null),
-      new ProjectOperationGate(read_task_busy),
+      create_runtime_gate(runtime_owner),
       create_cache(),
     );
     return { service, app_root };
@@ -387,11 +388,12 @@ describe("QualityRuleService", () => {
    */
   function create_workbench_service(
     database: ProjectDatabase,
-    read_task_busy: () => boolean = () => false,
+    runtime_owner: "task" | "agent" | null = null,
   ): {
     service: QualityRuleService;
     lg_path: string;
     publisher: ReturnType<typeof create_test_project_change_publisher>;
+    runtime_gate: RuntimeOperationGate;
   } {
     const { app_root } = create_service();
     const paths = new AppPathService({
@@ -405,17 +407,19 @@ describe("QualityRuleService", () => {
     const publisher = create_test_project_change_publisher(database, lg_path);
     database.create_project(lg_path, "quality");
     session_state.mark_loaded(lg_path);
+    const runtime_gate = create_runtime_gate(runtime_owner);
     return {
       service: new QualityRuleService(
         paths,
         database,
         session_state,
         new ProjectWriteStore(database, project_event_bus, publisher.publish_project_change),
-        new ProjectOperationGate(read_task_busy),
+        runtime_gate,
         create_cache(),
       ),
       lg_path,
       publisher,
+      runtime_gate,
     };
   }
 
@@ -446,6 +450,12 @@ describe("QualityRuleService", () => {
         };
       }),
     };
+  }
+
+  function create_runtime_gate(owner: "task" | "agent" | null): RuntimeOperationGate {
+    const gate = new RuntimeOperationGate();
+    if (owner !== null) gate.begin_runtime(owner);
+    return gate;
   }
 
   function create_cache(): CacheReadPort {
