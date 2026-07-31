@@ -11,6 +11,7 @@ import {
   type ProjectWriteResultPayload,
 } from "@frontend/app/state/desktop-project-write";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-provider";
@@ -143,6 +144,7 @@ export function useTranslationWorkbenchTask(
     settings_snapshot,
     sync_task_snapshot,
     task_snapshot,
+    runtime_snapshot,
     commit_project_write,
     refresh_task,
   } = useDesktopState();
@@ -189,7 +191,7 @@ export function useTranslationWorkbenchTask(
   const translation_action_submitting =
     task_confirm_state !== null && task_confirm_state.submitting;
   const translation_action_blocked =
-    !project_snapshot.loaded || task_snapshot.busy || translation_dialog_open;
+    !project_snapshot.loaded || is_runtime_busy(runtime_snapshot) || translation_dialog_open;
   const translation_task_menu_busy = translation_action_submitting;
   const translation_task_menu_disabled = translation_action_blocked;
   const can_open_translation_detail_sheet = project_snapshot.loaded;

@@ -46,7 +46,7 @@ export function ExpertSettingsPage(_props: ExpertSettingsPageProps): JSX.Element
   );
   const [is_preceding_lines_threshold_editing, set_is_preceding_lines_threshold_editing] =
     useState(false);
-  const write_locked = expert_settings_state.is_task_busy;
+  const write_locked = expert_settings_state.runtime_locked;
   const parsed_preceding_lines_threshold = parse_number_draft(
     preceding_lines_threshold_draft,
     PRECEDING_LINES_THRESHOLD_MIN,

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { AppError, is_app_error } from "./app-error";
+import { APP_ERROR_DEFINITIONS, AppError, is_app_error } from "./app-error";
+import { RuntimeBusyError } from "./errors/runtime-errors";
 
 describe("AppError", () => {
   it("构造稳定错误事实并过滤非 JSON 公开详情", () => {
@@ -33,5 +34,17 @@ describe("AppError", () => {
     expect(is_app_error(new AppError({ code: "request.validation_failed" }))).toBe(true);
     expect(is_app_error(new Error("boom"))).toBe(false);
     expect(is_app_error({ code: "request.validation_failed" })).toBe(false);
+  });
+
+  it("统一运行时冲突公开稳定错误码、文案键和 HTTP 状态", () => {
+    const error = new RuntimeBusyError();
+
+    expect(error).toMatchObject({
+      code: "runtime.busy",
+      message_key: "app.error.runtime.busy.message",
+      action_key: "app.error.runtime.busy.action",
+      severity: "expected",
+    });
+    expect(APP_ERROR_DEFINITIONS[error.code].status).toBe(423);
   });
 });

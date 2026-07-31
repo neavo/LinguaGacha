@@ -161,7 +161,7 @@ type AgentQualityCache = {
   readonly items: Pick<CacheReadPort["items"], "readItems">;
 };
 
-type AgentQualityRules = Pick<QualityRuleService, "query" | "update">;
+type AgentQualityRules = Pick<QualityRuleService, "query" | "update_from_agent">;
 
 type AgentQualityDependencies = {
   qualityRules: AgentQualityRules;
@@ -208,7 +208,7 @@ export function create_agent_quality_tools(
                 changes,
                 corpus_items: dependencies.cache.items.readItems(),
               });
-        await dependencies.qualityRules.update(
+        await dependencies.qualityRules.update_from_agent(
           {
             rule_type: params.rule_type,
             ...(entries === undefined ? {} : { entries }),

@@ -57,6 +57,7 @@ type EditorSnapshot = {
 type AgentComposerProps = {
   skills: readonly AgentSkillSnapshot[];
   running: boolean;
+  runtime_busy: boolean; // task 或 Agent 自身占用时阻止新命令，但不阻止编辑草稿
   error: boolean;
   can_reset: boolean;
   resetting: boolean;
@@ -163,6 +164,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const menu_index = Math.max(0, Math.min(menu_index_value, matching_skills.length - 1));
   const can_send =
     !props.running &&
+    !props.runtime_busy &&
     !props.resetting &&
     !submitting &&
     !props.model_selection.updating &&
@@ -397,7 +399,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             size="xs"
             variant="ghost"
             className="agent-composer__reset"
-            disabled={!props.can_reset || props.resetting || submitting}
+            disabled={!props.can_reset || props.runtime_busy || props.resetting || submitting}
             onClick={props.on_reset}
           >
             <MessageSquarePlus aria-hidden="true" />
@@ -412,6 +414,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                 className="agent-composer__model-trigger"
                 disabled={
                   props.running ||
+                  props.runtime_busy ||
                   props.resetting ||
                   props.model_selection.loading ||
                   props.model_selection.updating
@@ -428,7 +431,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               <ModelSelectionCategories
                 controller={props.model_selection}
                 usage="agent"
-                disabled={props.running || props.resetting}
+                disabled={props.runtime_busy || props.resetting}
               />
             </AppDropdownMenuContent>
           </AppDropdownMenu>
@@ -467,7 +470,9 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                   type={props.running ? "button" : "submit"}
                   size="icon-xs"
                   onClick={props.running ? () => void props.on_stop() : undefined}
-                  disabled={props.resetting || (!props.running && !can_send)}
+                  disabled={
+                    props.resetting || (!props.running && (props.runtime_busy || !can_send))
+                  }
                   aria-label={submit_label}
                 >
                   {props.running ? <Square aria-hidden="true" /> : <ArrowUp aria-hidden="true" />}

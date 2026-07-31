@@ -82,7 +82,7 @@ function create_basic_settings_state_fixture() {
       output_folder_open_on_finish: false,
       request_timeout: false,
     },
-    is_task_busy: false,
+    runtime_locked: false,
     update_source_language: vi.fn(async (_next_language: string) => {}),
     update_target_language: vi.fn(async (_next_language: string) => {}),
     update_project_save_mode: vi.fn(async (_next_mode: "MANUAL" | "FIXED" | "SOURCE") => {}),

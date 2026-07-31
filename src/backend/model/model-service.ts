@@ -31,6 +31,7 @@ import { format_i18n_message, type LocaleKey } from "../../shared/i18n";
 import { JsonTool } from "../../shared/utils/json-tool";
 import * as AppErrors from "../../shared/error";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
+import type { RuntimeOperationGate } from "../runtime-operation-gate";
 
 // 模型页只允许写入这些配置字段，防止表单 patch 污染持久化模型对象
 const PATCH_ALLOWED_KEYS = new Set([
@@ -62,6 +63,7 @@ export class ModelService {
   private readonly paths: AppPathService; // 提供模型内置预设目录
   private readonly app_setting_service: AppSettingService; // 模型配置唯一持久化入口
   private readonly llm_user_agent: string; // 来自 AppMetadataService，模型测试不再读取 version.txt
+  private readonly runtime_gate: RuntimeOperationGate; // 模型配置写入只允许在统一运行态空闲时发生
   private readonly log_manager?: Pick<LogManager, "info" | "warning">; // 只记录模型探测诊断
   private readonly native_fs: NativeFs; // 统一读取内置模型预设文件
 
@@ -72,12 +74,14 @@ export class ModelService {
     paths: AppPathService,
     app_setting_service: AppSettingService,
     llm_user_agent: string,
+    runtime_gate: RuntimeOperationGate,
     log_manager?: Pick<LogManager, "info" | "warning">,
     native_fs: NativeFs = default_native_fs,
   ) {
     this.paths = paths;
     this.app_setting_service = app_setting_service;
     this.llm_user_agent = llm_user_agent;
+    this.runtime_gate = runtime_gate;
     this.log_manager = log_manager;
     this.native_fs = native_fs;
   }
@@ -99,6 +103,7 @@ export class ModelService {
    * 更新模型白名单字段，避免页面写入未知配置
    */
   public update_model(request: JsonRecord): JsonRecord {
+    this.runtime_gate.assert_runtime_idle();
     const model_id = String(request["model_id"] ?? "");
     const patch_value = request["patch"];
     if (typeof patch_value !== "object" || patch_value === null || Array.isArray(patch_value)) {
@@ -124,6 +129,7 @@ export class ModelService {
    * 只更新一个任务用途的模型选择，另外两个用途保持不变
    */
   public select_model(request: JsonRecord): JsonRecord {
+    this.runtime_gate.assert_runtime_idle();
     const usage = MODEL_USAGES.find((candidate) => candidate === request["usage"]);
     if (usage === undefined) {
       throw new AppErrors.RequestValidationError({
@@ -144,6 +150,7 @@ export class ModelService {
    * 新增自定义模型，避免调用方复制默认字段补齐规则
    */
   public add_model(request: JsonRecord): JsonRecord {
+    this.runtime_gate.assert_runtime_idle();
     const model_type = String(request["model_type"] ?? "");
     if (Model.resolve_template_filename(model_type) === null) {
       throw new AppErrors.RequestValidationError({
@@ -161,6 +168,7 @@ export class ModelService {
    * 删除模型并为所有引用该模型的用途重选，防止配置留下悬空引用
    */
   public delete_model(request: JsonRecord): JsonRecord {
+    this.runtime_gate.assert_runtime_idle();
     const model_id = String(request["model_id"] ?? "");
     const config = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
@@ -186,6 +194,7 @@ export class ModelService {
    * 用内置预设重置模型，保持 preset 事实来自资源目录
    */
   public reset_preset_model(request: JsonRecord): JsonRecord {
+    this.runtime_gate.assert_runtime_idle();
     const model_id = String(request["model_id"] ?? "");
     const config = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
@@ -206,6 +215,7 @@ export class ModelService {
    * 重排同组模型，确保 ordered ids 完整覆盖当前分组
    */
   public reorder_model(request: JsonRecord): JsonRecord {
+    this.runtime_gate.assert_runtime_idle();
     const ordered_ids_raw = request["ordered_model_ids"];
     if (!Array.isArray(ordered_ids_raw)) {
       throw new AppErrors.RequestValidationError();

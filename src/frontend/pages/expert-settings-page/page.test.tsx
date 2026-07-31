@@ -66,7 +66,7 @@ function create_expert_settings_state_fixture() {
       write_translated_name_fields_to_file: false,
       auto_process_prefix_suffix_preserved_text: false,
     },
-    is_task_busy: false,
+    runtime_locked: false,
     update_preceding_lines_threshold: vi.fn(async (_next_value: number) => {}),
     update_clean_ruby: vi.fn(async (_next_checked: boolean) => {}),
     update_deduplication_in_bilingual: vi.fn(async (_next_checked: boolean) => {}),
@@ -187,10 +187,10 @@ describe("ExpertSettingsPage", () => {
     );
   });
 
-  it("任务运行中锁定专家设置输入", async () => {
+  it("运行时占用时锁定专家设置输入", async () => {
     expert_settings_state_fixture.current = {
       ...create_expert_settings_state_fixture(),
-      is_task_busy: true,
+      runtime_locked: true,
     };
 
     await mount_page();

@@ -8,7 +8,7 @@ import { JsonTool } from "../../shared/utils/json-tool";
 import { ProjectWriteStore } from "../project/project-write-store";
 import { require_project_expected_section_revisions } from "../project/project-write-request";
 import { ProjectSessionState } from "../project/project-session-state";
-import type { ProjectOperationGate } from "../project/project-operation-gate";
+import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import type { ProjectDataSection, ProjectWriteResult } from "../../shared/project-event";
 import {
   build_analysis_glossary_entry_from_candidate,
@@ -41,7 +41,7 @@ export class QualityRuleService {
 
   private readonly write_store: ProjectWriteStore; // 工程质量 / 提示词事实统一交由 ProjectWriteStore 提交
 
-  private readonly project_operation_gate: ProjectOperationGate; // 项目写准备、提交与 cache event 共享同一互斥租约
+  private readonly runtime_gate: RuntimeOperationGate; // 用户与 Agent 写入口共享串行门禁
 
   private readonly cache: CacheReadPort; // 查询与分析导入准备只读取当前 loaded 工程热事实
 
@@ -55,7 +55,7 @@ export class QualityRuleService {
     database: ProjectDatabase,
     session_state: ProjectSessionState,
     write_store: ProjectWriteStore,
-    project_operation_gate: ProjectOperationGate,
+    runtime_gate: RuntimeOperationGate,
     cache: CacheReadPort,
     native_fs: NativeFs = default_native_fs,
   ) {
@@ -63,7 +63,7 @@ export class QualityRuleService {
     this.database = database;
     this.session_state = session_state;
     this.write_store = write_store;
-    this.project_operation_gate = project_operation_gate;
+    this.runtime_gate = runtime_gate;
     this.cache = cache;
     this.native_fs = native_fs;
   }
@@ -106,7 +106,7 @@ export class QualityRuleService {
    * 提交分析术语导入，同时推进真实发生变化的 quality / analysis revision。
    */
   public async import_analysis_glossary(request: JsonRecord): Promise<ProjectWriteResult> {
-    return await this.project_operation_gate.run_exclusive_project_write(async () => {
+    return await this.runtime_gate.run_project_write(async () => {
       const project_path = this.session_state.require_loaded_project_path();
       this.assert_no_legacy_fields(request, [
         "analysis_candidate_count",
@@ -148,44 +148,56 @@ export class QualityRuleService {
   /**
    * 原子更新规则条目与 meta；entries 缺失表示不改条目，空数组表示清空条目。
    */
-  public async update(
+  public async update(request: JsonRecord): Promise<ProjectWriteResult> {
+    return await this.runtime_gate.run_project_write(
+      async () => await this.update_under_lease(request, DEFAULT_QUALITY_RULE_UPDATE_SOURCE),
+    );
+  }
+
+  /** Agent 工具只能在自己的运行 lease 内复用同一规则提交实现。 */
+  public async update_from_agent(request: JsonRecord, source: string): Promise<ProjectWriteResult> {
+    return await this.runtime_gate.run_agent_project_write(
+      async () => await this.update_under_lease(request, source),
+    );
+  }
+
+  /** 用户与 Agent 两条门禁入口在取得 lease 后共享同一规范化和事务提交。 */
+  private async update_under_lease(
     request: JsonRecord,
-    source = DEFAULT_QUALITY_RULE_UPDATE_SOURCE,
+    source: string,
   ): Promise<ProjectWriteResult> {
-    return await this.project_operation_gate.run_exclusive_project_write(async () => {
-      this.assert_no_legacy_fields(request, ["expected_revision"]);
-      const rule_type = this.normalize_rule_type(request["rule_type"]);
-      const project_path = this.session_state.require_loaded_project_path();
-      const has_entries = Object.prototype.hasOwnProperty.call(request, "entries");
-      const entries = has_entries ? this.normalize_rule_entries(request["entries"]) : undefined;
-      const meta = { ...read_json_record(request["meta"]) };
-      if (!has_entries && Object.keys(meta).length === 0) {
-        throw new AppErrors.RequestValidationError({
-          diagnostic_context: { reason: "empty_quality_rule_update" },
-        });
-      }
-      const meta_entries: JsonRecord = {};
-      for (const [key, value] of Object.entries(meta)) {
-        const meta_key = this.resolve_rule_meta_key(rule_type, key);
-        const meta_value = this.normalize_rule_meta_value(rule_type, key, value);
-        meta_entries[meta_key] = meta_value;
-      }
-      return await this.write_store.save_quality_rules({
-        projectPath: project_path,
-        expectedSectionRevisions: require_project_expected_section_revisions(
-          request["expected_section_revisions"],
-        ),
-        source,
-        rule:
-          entries === undefined
-            ? undefined
-            : {
-                databaseType: QualityRule.from_json(rule_type).database_type,
-                entries,
-              },
-        metaEntries: meta_entries,
-        revisionKey: this.build_rule_revision_key(rule_type),
+    this.assert_no_legacy_fields(request, ["expected_revision"]);
+    const rule_type = this.normalize_rule_type(request["rule_type"]);
+    const project_path = this.session_state.require_loaded_project_path();
+    const has_entries = Object.prototype.hasOwnProperty.call(request, "entries");
+    const entries = has_entries ? this.normalize_rule_entries(request["entries"]) : undefined;
+    const meta = { ...read_json_record(request["meta"]) };
+    if (!has_entries && Object.keys(meta).length === 0) {
+      throw new AppErrors.RequestValidationError({
+        diagnostic_context: { reason: "empty_quality_rule_update" },
       });
+    }
+    const meta_entries: JsonRecord = {};
+    for (const [key, value] of Object.entries(meta)) {
+      const meta_key = this.resolve_rule_meta_key(rule_type, key);
+      const meta_value = this.normalize_rule_meta_value(rule_type, key, value);
+      meta_entries[meta_key] = meta_value;
+    }
+    return await this.write_store.save_quality_rules({
+      projectPath: project_path,
+      expectedSectionRevisions: require_project_expected_section_revisions(
+        request["expected_section_revisions"],
+      ),
+      source,
+      rule:
+        entries === undefined
+          ? undefined
+          : {
+              databaseType: QualityRule.from_json(rule_type).database_type,
+              entries,
+            },
+      metaEntries: meta_entries,
+      revisionKey: this.build_rule_revision_key(rule_type),
     });
   }
 

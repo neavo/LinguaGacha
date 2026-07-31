@@ -11,7 +11,7 @@ import {
   useDebouncedCallback,
 } from "@frontend/widgets/interactions/use-debounce";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
-import { is_project_write_locked } from "@frontend/app/state/task-snapshot-store";
+import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import type { ProjectChangeSignal } from "@frontend/app/state/desktop-state-context";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
@@ -89,6 +89,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
     settings_snapshot,
     project_snapshot,
     task_snapshot,
+    runtime_snapshot,
     sync_task_snapshot,
     project_change_signal,
     commit_project_write,
@@ -238,7 +239,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       }),
     );
   }, [visible_items]);
-  const readonly = is_project_write_locked(task_snapshot);
+  const readonly = is_runtime_busy(runtime_snapshot);
   const retranslating_row_ids = useMemo(() => {
     if (
       task_snapshot.task_type !== "translation" ||

@@ -19,10 +19,7 @@ type RuntimeFixture = {
   };
   apply_settings_snapshot: ReturnType<typeof vi.fn>;
   commit_project_write: ReturnType<typeof vi.fn>;
-  task_snapshot: {
-    busy: boolean;
-    status: string;
-  };
+  runtime_snapshot: { revision: number; owner: "task" | "agent" | null };
 };
 
 type ToastFixture = {
@@ -104,10 +101,7 @@ function create_runtime_fixture(): RuntimeFixture {
         },
       };
     }),
-    task_snapshot: {
-      busy: false,
-      status: "idle",
-    },
+    runtime_snapshot: { revision: 0, owner: null },
   };
 }
 

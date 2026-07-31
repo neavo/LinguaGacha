@@ -178,12 +178,6 @@ export const zh_cn_app = {
         action: "请刷新当前数据后再次提交 …",
       },
     },
-    task: {
-      busy: {
-        message: "后台任务正在执行中，请稍后再试 …",
-        action: "请等待当前任务结束或先停止任务 …",
-      },
-    },
     model: {
       not_found: {
         message: "模型配置不存在 …",
@@ -203,6 +197,10 @@ export const zh_cn_app = {
       },
     },
     runtime: {
+      busy: {
+        message: "模型运行时正在执行中，请稍后再试 …",
+        action: "请等待当前任务或 Agent 回合结束 …",
+      },
       capability_missing: {
         message: "当前运行环境缺少必要能力 …",
       },

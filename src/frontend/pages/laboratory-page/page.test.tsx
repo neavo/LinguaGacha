@@ -75,7 +75,7 @@ function create_laboratory_state_fixture() {
       mtool_optimizer_enable: false,
       skip_duplicate_source_text_enable: false,
     },
-    is_task_busy: false,
+    runtime_locked: false,
     update_prompt_enhancement_enable: vi.fn(async (_next_value: boolean) => {}),
     update_mtool_optimizer_enable: vi.fn(async (_next_value: boolean) => {}),
     update_skip_duplicate_source_text_enable: vi.fn(async (_next_value: boolean) => {}),
@@ -131,10 +131,10 @@ describe("LaboratoryPage", () => {
     );
   });
 
-  it("任务运行中禁用提示词增强开关", async () => {
+  it("运行时占用时禁用提示词增强开关", async () => {
     laboratory_state_fixture.current = {
       ...create_laboratory_state_fixture(),
-      is_task_busy: true,
+      runtime_locked: true,
     };
     await mount_page();
 

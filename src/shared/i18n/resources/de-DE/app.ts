@@ -190,13 +190,6 @@ export const de_de_app = {
         action: "Aktuelle Daten aktualisieren und erneut senden …",
       },
     },
-    task: {
-      busy: {
-        message: "Eine Hintergrundaufgabe wird ausgeführt. Bitte versuchen Sie es später erneut …",
-        action:
-          "Warten Sie, bis die aktuelle Aufgabe abgeschlossen ist, oder stoppen Sie sie zuerst …",
-      },
-    },
     model: {
       not_found: {
         message: "Die Modellkonfiguration existiert nicht …",
@@ -217,6 +210,10 @@ export const de_de_app = {
       },
     },
     runtime: {
+      busy: {
+        message: "Die Modelllaufzeit ist belegt. Bitte versuchen Sie es später erneut …",
+        action: "Warten Sie, bis die aktuelle Aufgabe oder Agent-Runde beendet ist …",
+      },
       capability_missing: {
         message: "Der aktuellen Laufzeitumgebung fehlt eine erforderliche Fähigkeit …",
       },

@@ -80,7 +80,7 @@ export class TaskEngine {
    */
   public async start(handle: TaskRunHandle, command: StartTaskCommand): Promise<void> {
     if (!this.task_runtime.is_current(handle.run_id) || handle.task_type !== command.task_type) {
-      throw new AppErrors.TaskBusyError();
+      throw new AppErrors.RuntimeBusyError();
     }
     const completion =
       command.task_type === "translation"

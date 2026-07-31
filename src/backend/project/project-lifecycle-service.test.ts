@@ -10,7 +10,7 @@ import type { LogManager } from "../log/log-manager";
 import type { AppSettingService } from "../app/app-setting-service";
 import { AppPathService } from "../app/app-path-service";
 import { ProjectLifecycleService } from "./project-lifecycle-service";
-import { ProjectOperationGate } from "./project-operation-gate";
+import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectWriteStore } from "./project-write-store";
 
 type TestProjectDatabase = ProjectDatabase & {
@@ -61,20 +61,20 @@ describe("ProjectLifecycleService", () => {
       task_busy: true,
     });
 
-    await expect(service.load_project({ path: next_project_path })).rejects.toThrow("task.busy");
+    await expect(service.load_project({ path: next_project_path })).rejects.toThrow("runtime.busy");
     await expect(
       service.create_project_commit({
         path: path.join(temp_dir, "created.lg"),
         source_paths: [],
       }),
-    ).rejects.toThrow("task.busy");
+    ).rejects.toThrow("runtime.busy");
     await expect(
       service.apply_task_input({
         quality_rules: [],
         prompts: [],
       }),
-    ).rejects.toThrow("task.busy");
-    await expect(service.unload_project()).rejects.toThrow("task.busy");
+    ).rejects.toThrow("runtime.busy");
+    await expect(service.unload_project()).rejects.toThrow("runtime.busy");
 
     expect(session_state.snapshot()).toEqual({
       loaded: true,
@@ -687,7 +687,7 @@ describe("ProjectLifecycleService", () => {
     const project_event_handler = options.project_event_handler ?? vi.fn();
     return new ProjectLifecycleService(
       options.database,
-      new ProjectOperationGate(() => options.task_busy ?? false),
+      create_runtime_gate(options.task_busy ?? false),
       options.session_state ?? create_session_state(),
       create_setting_service(options.config ?? {}),
       new AppPathService({ appRoot: app_root }),
@@ -695,6 +695,12 @@ describe("ProjectLifecycleService", () => {
       project_event_handler,
       new ProjectWriteStore(options.database, project_event_handler, null),
     );
+  }
+
+  function create_runtime_gate(busy: boolean): RuntimeOperationGate {
+    const gate = new RuntimeOperationGate();
+    if (busy) gate.begin_runtime("task");
+    return gate;
   }
 
   // 数据库 fake 只提供无需真实持久化的生命周期场景所需读取面。

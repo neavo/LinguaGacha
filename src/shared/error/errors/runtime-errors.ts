@@ -1,5 +1,12 @@
 import { AppError, type AppErrorArgs } from "../app-error";
 
+/** 普通任务、Agent 或互斥项目操作正在占用运行时。 */
+export class RuntimeBusyError extends AppError {
+  public constructor(args: AppErrorArgs = {}) {
+    super({ code: "runtime.busy", ...args });
+  }
+}
+
 /** 当前 Electron / Node 环境缺少必要运行能力。 */
 export class RuntimeCapabilityMissingError extends AppError {
   public constructor(args: AppErrorArgs = {}) {

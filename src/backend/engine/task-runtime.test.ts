@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ProjectDatabase } from "../database/database-operations";
 import { ProjectDataReader } from "../project/project-data-reader";
 import { ProjectSessionState } from "../project/project-session-state";
+import { RuntimeOperationGate } from "../runtime-operation-gate";
 import type { TranslationScope } from "../../domain/task";
 import type { TaskSnapshot } from "./protocol/task-snapshot";
 import { TASK_REQUEST_PRESSURE_PUBLISH_INTERVAL_MS, TaskRuntime } from "./task-runtime";
@@ -43,7 +44,7 @@ describe("TaskRuntime", () => {
     await expect(runtime.build_snapshot({ task_type: "translation" })).resolves.toMatchObject({
       extras: { kind: "translation", scope: { kind: "items", item_ids: [3, 4] } },
     });
-    await expect(runtime.begin("analysis")).rejects.toThrow("task.busy");
+    await expect(runtime.begin("analysis")).rejects.toThrow("runtime.busy");
     await runtime.finish(handle, "done");
   });
 
@@ -52,7 +53,11 @@ describe("TaskRuntime", () => {
     const session_state = new ProjectSessionState();
     session_state.mark_loaded(project_path);
     seed_project(database, project_path);
-    const runtime = new TaskRuntime(session_state, new ProjectDataReader(database));
+    const runtime = new TaskRuntime(
+      session_state,
+      new ProjectDataReader(database),
+      new RuntimeOperationGate(),
+    );
     const handle = await runtime.begin("translation", {
       kind: "items",
       item_ids: [101],
@@ -119,9 +124,13 @@ describe("TaskRuntime", () => {
         },
       ],
     ]);
-    const runtime = new TaskRuntime(session_state, {
-      get_all_meta: (project_path: string) => meta_by_project.get(project_path) ?? {},
-    } as unknown as ProjectDataReader);
+    const runtime = new TaskRuntime(
+      session_state,
+      {
+        get_all_meta: (project_path: string) => meta_by_project.get(project_path) ?? {},
+      } as unknown as ProjectDataReader,
+      new RuntimeOperationGate(),
+    );
     const published_snapshots: TaskSnapshot[] = [];
     runtime.subscribe((snapshot) => {
       published_snapshots.push(snapshot);
@@ -281,7 +290,7 @@ describe("TaskRuntime", () => {
       { status: "requested", busy: true, request_in_flight_count: 3 },
       { status: "done", busy: false, request_in_flight_count: 0 },
     ]);
-    expect(runtime.is_busy()).toBe(false);
+    expect((await runtime.build_snapshot({ task_type: "translation" })).busy).toBe(false);
     await expect(runtime.begin("analysis")).resolves.toMatchObject({
       task_type: "analysis",
     });
@@ -310,17 +319,22 @@ describe("TaskRuntime", () => {
   it("快照构造失败时仍恢复启动前状态并释放运行锁", async () => {
     const session_state = new ProjectSessionState();
     session_state.mark_loaded("E:/Project/broken.lg");
-    const runtime = new TaskRuntime(session_state, {
-      get_all_meta: () => {
-        throw new Error("snapshot failed");
-      },
-    } as unknown as ProjectDataReader);
+    const runtime_gate = new RuntimeOperationGate();
+    const runtime = new TaskRuntime(
+      session_state,
+      {
+        get_all_meta: () => {
+          throw new Error("snapshot failed");
+        },
+      } as unknown as ProjectDataReader,
+      runtime_gate,
+    );
     runtime.subscribe(() => undefined);
 
     await expect(runtime.begin("translation")).rejects.toThrow("任务启动失败且恢复快照发布失败");
 
-    expect(runtime.is_busy()).toBe(false);
-    await expect(runtime.begin("analysis")).rejects.not.toThrow("task.busy");
+    expect(runtime_gate.get_snapshot().owner).toBeNull();
+    await expect(runtime.begin("analysis")).rejects.not.toThrow("runtime.busy");
   });
 
   it("终态 listener 失败也先释放运行锁并允许下一轮启动", async () => {
@@ -348,14 +362,18 @@ describe("TaskRuntime", () => {
     let snapshot_failed = false;
     const session_state = new ProjectSessionState();
     session_state.mark_loaded("E:/Project/terminal-snapshot.lg");
-    const runtime = new TaskRuntime(session_state, {
-      get_all_meta: () => {
-        if (snapshot_failed) {
-          throw new Error("terminal snapshot failed");
-        }
-        return {};
-      },
-    } as unknown as ProjectDataReader);
+    const runtime = new TaskRuntime(
+      session_state,
+      {
+        get_all_meta: () => {
+          if (snapshot_failed) {
+            throw new Error("terminal snapshot failed");
+          }
+          return {};
+        },
+      } as unknown as ProjectDataReader,
+      new RuntimeOperationGate(),
+    );
     runtime.subscribe(() => undefined);
     const handle = await runtime.begin("translation");
     snapshot_failed = true;
@@ -407,7 +425,11 @@ describe("TaskRuntime", () => {
   });
 
   function create_empty_runtime(): TaskRuntime {
-    return new TaskRuntime(new ProjectSessionState(), {} as unknown as ProjectDataReader);
+    return new TaskRuntime(
+      new ProjectSessionState(),
+      {} as unknown as ProjectDataReader,
+      new RuntimeOperationGate(),
+    );
   }
 
   function create_project_database(): {

@@ -47,7 +47,7 @@ describe("Agent 正文工具", () => {
     const tools = create_agent_item_tools({
       cache: create_cache(() => []),
       proofreading: {
-        update_items: async () => ({ accepted: true, changes: [] }),
+        update_items_from_agent: async () => ({ accepted: true, changes: [] }),
       },
     });
 
@@ -135,7 +135,7 @@ describe("Agent 正文工具", () => {
         () => items,
         () => revisions,
       ),
-      proofreading: { update_items },
+      proofreading: { update_items_from_agent: update_items },
     });
     const tool = tools.find((candidate) => candidate.name === "update_project_translations");
     if (tool === undefined) throw new Error("缺少 update_project_translations");

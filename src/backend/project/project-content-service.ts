@@ -11,7 +11,7 @@ import type { LogManager } from "../log/log-manager";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 import { ProjectWriteStore, type ProjectAssetWrite } from "./project-write-store";
 import { require_project_expected_section_revisions } from "./project-write-request";
-import type { ProjectOperationGate } from "./project-operation-gate";
+import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectSessionState } from "./project-session-state";
 import {
   Item,
@@ -77,7 +77,7 @@ type TranslationResetParsedItemDraft = {
 export class ProjectContentService {
   private readonly database: ProjectDatabase; // 所有 .lg 写入必须经由 ProjectDatabase workflow，避免项目域直接碰 SQL
 
-  private readonly project_operation_gate: ProjectOperationGate; // 结构性写入与任务启动统一经由后端互斥门闩
+  private readonly runtime_gate: RuntimeOperationGate; // 用户写入与模型运行共享唯一互斥门闩
 
   private readonly session_state: ProjectSessionState; // 当前公开工程路径由 API Gateway 会话状态提供，避免同步写入回读旧缓存
 
@@ -94,7 +94,7 @@ export class ProjectContentService {
    */
   public constructor(
     database: ProjectDatabase,
-    project_operation_gate: ProjectOperationGate,
+    runtime_gate: RuntimeOperationGate,
     session_state: ProjectSessionState,
     write_store: ProjectWriteStore,
     app_setting_service: AppSettingService | null = null,
@@ -102,7 +102,7 @@ export class ProjectContentService {
     log_manager: Pick<LogManager, "warning"> | null = null,
   ) {
     this.database = database;
-    this.project_operation_gate = project_operation_gate;
+    this.runtime_gate = runtime_gate;
     this.session_state = session_state;
     this.write_store = write_store;
     this.app_setting_service = app_setting_service;
@@ -115,7 +115,7 @@ export class ProjectContentService {
    */
   public async import_files(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
-    return this.project_operation_gate.run_exclusive_project_write(async () => {
+    return this.runtime_gate.run_project_write(async () => {
       this.assert_no_legacy_fields(request, [
         "items",
         "translation_extras",
@@ -271,7 +271,7 @@ export class ProjectContentService {
    */
   public async reset_files(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
-    return this.project_operation_gate.run_exclusive_project_write(async () => {
+    return this.runtime_gate.run_project_write(async () => {
       this.assert_no_legacy_fields(request, [
         "items",
         "translation_extras",
@@ -322,7 +322,7 @@ export class ProjectContentService {
    */
   public async delete_files(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
-    return this.project_operation_gate.run_exclusive_project_write(async () => {
+    return this.runtime_gate.run_project_write(async () => {
       this.assert_no_legacy_fields(request, [
         "items",
         "translation_extras",
@@ -378,7 +378,7 @@ export class ProjectContentService {
    */
   public async reorder_files(request: JsonRecord): Promise<ProjectWriteResult> {
     const project_path = this.session_state.require_loaded_project_path();
-    return this.project_operation_gate.run_exclusive_project_write(async () => {
+    return this.runtime_gate.run_project_write(async () => {
       const ordered_paths = this.normalize_string_list(request["ordered_rel_paths"]);
       const current_paths = this.get_asset_records(project_path).map((record) => record.path);
       this.assert_complete_path_order(current_paths, ordered_paths);
@@ -400,7 +400,7 @@ export class ProjectContentService {
     if (mode !== "settings_only" && mode !== "prefiltered_items") {
       throw new AppErrors.RequestValidationError();
     }
-    return this.project_operation_gate.run_exclusive_project_write(async () => {
+    return this.runtime_gate.run_project_write(async () => {
       const project_path = await this.resolve_project_path(request);
       const settings_meta = this.build_project_settings_only_meta(request["project_settings"]);
       if (mode === "settings_only") {
@@ -443,7 +443,7 @@ export class ProjectContentService {
     const project_path = this.session_state.require_loaded_project_path();
     const mode = String(request["mode"] ?? "").toLowerCase();
     this.assert_no_legacy_fields(request, ["items", "translation_extras", "prefilter_config"]);
-    return this.project_operation_gate.run_exclusive_project_write(async () => {
+    return this.runtime_gate.run_project_write(async () => {
       if (mode === "all") {
         const reset_item_drafts = await this.reparse_all_asset_identity_items(project_path);
         const settings = this.read_project_write_settings(
@@ -511,7 +511,7 @@ export class ProjectContentService {
     const project_path = this.session_state.require_loaded_project_path();
     const mode = String(request["mode"] ?? "").toLowerCase();
     this.assert_no_legacy_fields(request, ["analysis_extras"]);
-    return this.project_operation_gate.run_exclusive_project_write(async () => {
+    return this.runtime_gate.run_project_write(async () => {
       const analysis_extras = this.build_analysis_reset_extras(project_path, mode);
       if (mode !== "all" && mode !== "failed") {
         throw new AppErrors.RequestValidationError();

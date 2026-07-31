@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 
-import { is_project_write_locked } from "@frontend/app/state/task-snapshot-store";
+import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
 import { useSettingsEditor } from "@frontend/features/settings-editor/use-settings-editor";
 import {
@@ -23,7 +23,7 @@ type ExpertSettingsPendingField = (typeof EXPERT_SETTINGS_PENDING_FIELDS)[number
 type UseExpertSettingsStateResult = {
   snapshot: ExpertSettingsSnapshot;
   pending_state: Record<ExpertSettingsPendingField, boolean>;
-  is_task_busy: boolean;
+  runtime_locked: boolean;
   update_preceding_lines_threshold: (next_value: number) => Promise<void>;
   update_clean_ruby: (next_checked: boolean) => Promise<void>;
   update_deduplication_in_bilingual: (next_checked: boolean) => Promise<void>;
@@ -45,14 +45,14 @@ function clamp_preceding_lines_threshold(next_value: number): number {
  * 将专家设置字段映射到共享设置编辑器，并统一受项目写锁保护。
  */
 export function useExpertSettingsState(): UseExpertSettingsStateResult {
-  const { task_snapshot } = useDesktopState();
+  const { runtime_snapshot } = useDesktopState();
   const { snapshot, pending_state, commit_update } = useSettingsEditor({
     select_snapshot: build_expert_settings_snapshot,
     pending_fields: EXPERT_SETTINGS_PENDING_FIELDS,
     refresh_error_key: "expert_settings_page.feedback.refresh_failed",
     update_error_key: "expert_settings_page.feedback.update_failed",
   });
-  const is_task_busy = is_project_write_locked(task_snapshot);
+  const runtime_locked = is_runtime_busy(runtime_snapshot);
 
   // 所有专家设置共享同一写锁判断，避免各字段遗漏任务互斥。
   const commit_if_idle = useCallback(
@@ -60,11 +60,11 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
       field: ExpertSettingsPendingField,
       patch: Partial<ExpertSettingsSnapshot>,
     ): Promise<void> => {
-      if (!is_task_busy) {
+      if (!runtime_locked) {
         await commit_update(field, patch);
       }
     },
-    [commit_update, is_task_busy],
+    [commit_update, runtime_locked],
   );
 
   const update_preceding_lines_threshold = useCallback(
@@ -131,7 +131,7 @@ export function useExpertSettingsState(): UseExpertSettingsStateResult {
   return {
     snapshot,
     pending_state,
-    is_task_busy,
+    runtime_locked,
     update_preceding_lines_threshold,
     update_clean_ruby,
     update_deduplication_in_bilingual,

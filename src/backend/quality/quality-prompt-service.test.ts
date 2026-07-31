@@ -12,7 +12,7 @@ import type {
   ProjectChangePublisher,
   ProjectWriteChangeRequest,
 } from "../project/project-write-event-adapter";
-import { ProjectOperationGate } from "../project/project-operation-gate";
+import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ProjectSessionState } from "../project/project-session-state";
 import { ProjectWriteStore } from "../project/project-write-store";
 import type { ProjectChangeEvent } from "../../shared/project-event";
@@ -105,7 +105,7 @@ describe("QualityPromptService", () => {
   });
 
   it("任务 busy 时拒绝提示词项目写但不阻塞预设文件 IO", async () => {
-    const { service } = create_service(null, () => true);
+    const { service } = create_service(null, "task");
 
     await expect(
       service.save({
@@ -114,7 +114,7 @@ describe("QualityPromptService", () => {
         enabled: true,
         expected_section_revisions: { prompts: 0 },
       }),
-    ).rejects.toThrow("task.busy");
+    ).rejects.toThrow("runtime.busy");
     expect(() =>
       service.save_preset({
         task_type: "translation",
@@ -126,7 +126,7 @@ describe("QualityPromptService", () => {
 
   function create_service(
     database: ProjectDatabase | null = null,
-    read_task_busy: () => boolean = () => false,
+    runtime_owner: "task" | "agent" | null = null,
   ): {
     service: QualityPromptService;
     app_root: string;
@@ -156,7 +156,7 @@ describe("QualityPromptService", () => {
       project_database,
       session_state,
       new ProjectWriteStore(project_database, vi.fn(), publisher),
-      new ProjectOperationGate(read_task_busy),
+      create_runtime_gate(runtime_owner),
       {
         readSectionRevisions: () => ({ prompts: 2 }),
         prompts: {
@@ -173,5 +173,11 @@ describe("QualityPromptService", () => {
     const temp_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-prompt-"));
     cleanup_paths.push(temp_dir);
     return temp_dir;
+  }
+
+  function create_runtime_gate(owner: "task" | "agent" | null): RuntimeOperationGate {
+    const gate = new RuntimeOperationGate();
+    if (owner !== null) gate.begin_runtime(owner);
+    return gate;
   }
 });

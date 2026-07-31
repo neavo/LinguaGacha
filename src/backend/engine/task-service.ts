@@ -1,4 +1,3 @@
-import type { ProjectOperationGate } from "../project/project-operation-gate";
 import type { ProjectSessionState } from "../project/project-session-state";
 import { normalize_project_expected_section_revisions } from "../project/project-write-request";
 import type { TaskEngine } from "./core/engine";
@@ -32,8 +31,6 @@ export class TaskService {
 
   private readonly task_runtime: TaskRuntime; // 任务锁、快照、取消和失败恢复的唯一所有者
 
-  private readonly project_operation_gate: ProjectOperationGate; // 统一判断任务启动是否会撞上 busy 或结构性写入
-
   private readonly session_state: ProjectSessionState; // 决定重翻 revision 校验是否能定位当前工程
 
   /**
@@ -42,12 +39,10 @@ export class TaskService {
   public constructor(
     task_engine: TaskEngine,
     task_runtime: TaskRuntime,
-    project_operation_gate: ProjectOperationGate,
     session_state: ProjectSessionState,
   ) {
     this.task_engine = task_engine;
     this.task_runtime = task_runtime;
-    this.project_operation_gate = project_operation_gate;
     this.session_state = session_state;
   }
 
@@ -94,9 +89,7 @@ export class TaskService {
    * HTTP 与同进程入口汇入这里后共享门禁、预约、失败恢复和真实回包快照。
    */
   private async start_command(command: StartTaskCommand): Promise<TaskSnapshot> {
-    // assert 与 begin 调用之间不能插入 await；begin 会在首次 await 前同步占用运行态。
     this.session_state.require_loaded_project_path();
-    this.project_operation_gate.assert_task_start_allowed();
     const handle = await this.task_runtime.begin(
       command.task_type,
       command.task_type === "translation" ? command.scope : { kind: "all" },

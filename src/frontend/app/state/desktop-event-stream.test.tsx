@@ -53,7 +53,7 @@ function create_event_source_stub(): {
   };
 }
 
-// wait_for_condition 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
+/** 让 React 微任务推进到事件监听器完成注册，达到上限仍未收敛则立即失败。 */
 async function wait_for_condition(predicate: () => boolean, attempts = 20): Promise<void> {
   for (let index = 0; index < attempts; index += 1) {
     if (predicate()) {
@@ -89,6 +89,30 @@ function render_event_stream(options: Omit<DesktopEventStreamOptions, "scheduler
   });
 }
 
+/** 只替换目标协作者，避免每个事件用例重复搭建无关管线。 */
+function create_event_stream_options(
+  overrides: Partial<Omit<DesktopEventStreamOptions, "schedulerRef">> = {},
+): Omit<DesktopEventStreamOptions, "schedulerRef"> {
+  return {
+    applySettingsSnapshot: vi.fn(),
+    applyTaskSnapshot: vi.fn(),
+    applyRuntimeSnapshot: vi.fn(),
+    refreshSettings: vi.fn(async () => undefined),
+    refreshRuntime: vi.fn(async () => undefined),
+    projectEvents: {
+      applyProjectChangeBatch: vi.fn(),
+      shouldApplyProjectChange: vi.fn(() => true),
+      handleProjectDataChangedPayload: vi.fn(async () => undefined),
+    },
+    recovery: {
+      report_state_error: vi.fn(),
+      refresh_task_after_state_error: vi.fn(async () => undefined),
+      refresh_project_state_after_error: vi.fn(async () => undefined),
+    },
+    ...overrides,
+  };
+}
+
 describe("useDesktopEventStream", () => {
   afterEach(async () => {
     if (root !== null) {
@@ -110,23 +134,22 @@ describe("useDesktopEventStream", () => {
     const raw_project_path = "E:/secret/private/demo.lg";
     open_event_stream_mock.mockResolvedValue(event_stream.event_source);
 
-    render_event_stream({
-      applySettingsSnapshot: vi.fn(),
-      applyTaskSnapshot: vi.fn(),
-      refreshSettings: vi.fn(async () => undefined),
-      projectEvents: {
-        applyProjectChangeBatch: vi.fn(),
-        shouldApplyProjectChange: vi.fn(() => true),
-        handleProjectDataChangedPayload: vi.fn(async () => {
-          throw project_pipeline_error;
-        }),
-      },
-      recovery: {
-        report_state_error,
-        refresh_task_after_state_error: vi.fn(async () => undefined),
-        refresh_project_state_after_error,
-      },
-    });
+    render_event_stream(
+      create_event_stream_options({
+        projectEvents: {
+          applyProjectChangeBatch: vi.fn(),
+          shouldApplyProjectChange: vi.fn(() => true),
+          handleProjectDataChangedPayload: vi.fn(async () => {
+            throw project_pipeline_error;
+          }),
+        },
+        recovery: {
+          report_state_error,
+          refresh_task_after_state_error: vi.fn(async () => undefined),
+          refresh_project_state_after_error,
+        },
+      }),
+    );
 
     await wait_for_condition(() => event_stream.has_listener("project.data_changed"));
 
@@ -171,5 +194,23 @@ describe("useDesktopEventStream", () => {
       "project_data_changed_event_failed",
       { topic: "project.data_changed" },
     );
+  });
+
+  it("运行时事件立即写入共享快照", async () => {
+    const event_stream = create_event_source_stub();
+    const apply_runtime_snapshot = vi.fn();
+    open_event_stream_mock.mockResolvedValue(event_stream.event_source);
+    render_event_stream(
+      create_event_stream_options({ applyRuntimeSnapshot: apply_runtime_snapshot }),
+    );
+
+    await wait_for_condition(() => event_stream.has_listener("runtime.snapshot_changed"));
+    act(() => {
+      event_stream.emit("runtime.snapshot_changed", {
+        runtime: { revision: 3, owner: "agent" },
+      });
+    });
+
+    expect(apply_runtime_snapshot).toHaveBeenCalledWith({ revision: 3, owner: "agent" });
   });
 });

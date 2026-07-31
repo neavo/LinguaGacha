@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { ProjectDataReader } from "../../project/project-data-reader";
 import { ProjectSessionState } from "../../project/project-session-state";
+import { RuntimeOperationGate } from "../../runtime-operation-gate";
 import { TaskRuntime } from "../task-runtime";
 import type { StartTaskCommand } from "../protocol/task-command";
 import type { TaskSnapshot } from "../protocol/task-snapshot";
@@ -306,7 +307,9 @@ describe("TaskEngine", () => {
       expected_section_revisions: {},
     });
     await lease_released;
-    await wait_until(() => !task_runtime.is_busy());
+    await wait_until(
+      async () => !(await task_runtime.build_snapshot({ task_type: "translation" })).busy,
+    );
 
     expect(lease_release_count).toBe(1);
     await expect(task_runtime.build_snapshot({ task_type: "translation" })).resolves.toMatchObject({
@@ -642,10 +645,14 @@ describe("TaskEngine", () => {
     if (read_meta !== null) {
       session_state.mark_loaded("E:/Project/task-runtime-test.lg");
     }
-    const runtime = new TaskRuntime(session_state, {
-      get_all_meta: () => read_meta?.() ?? {},
-      get_section_revision: () => 0,
-    } as unknown as ProjectDataReader);
+    const runtime = new TaskRuntime(
+      session_state,
+      {
+        get_all_meta: () => read_meta?.() ?? {},
+        get_section_revision: () => 0,
+      } as unknown as ProjectDataReader,
+      new RuntimeOperationGate(),
+    );
     runtime.subscribe(listener);
     return runtime;
   }
@@ -663,14 +670,14 @@ describe("TaskEngine", () => {
   }
 
   // wait_until 构造测试所需的稳定夹具，避免每个用例重复铺设环境。
-  async function wait_until(predicate: () => boolean): Promise<void> {
+  async function wait_until(predicate: () => boolean | Promise<boolean>): Promise<void> {
     for (let index = 0; index < 10; index += 1) {
-      if (predicate()) {
+      if (await predicate()) {
         return;
       }
       await Promise.resolve();
     }
-    expect(predicate()).toBe(true);
+    expect(await predicate()).toBe(true);
   }
 
   /**

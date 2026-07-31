@@ -18,6 +18,7 @@ const GET_PATHS = new Set([
 const POST_PATHS = new Set([
   "/api/logs/detail",
   "/api/diagnostics/renderer-error",
+  "/api/runtime/snapshot",
   "/api/agent/message",
   "/api/agent/stop",
   "/api/agent/reset",
@@ -148,6 +149,23 @@ describe("register_api_routes", () => {
     });
     expect(fixture.reset).toHaveBeenCalledWith();
   });
+
+  it("POST 路由从组合根读取统一运行时快照", () => {
+    const fixture = create_route_fixture();
+
+    expect(read_post_handler(fixture.post_json, "/api/runtime/snapshot")({})).toEqual({
+      runtime: { revision: 0, owner: null },
+    });
+  });
+
+  it("设置更新只调用组合根提供的受保护写入口", () => {
+    const fixture = create_route_fixture();
+
+    expect(
+      read_post_handler(fixture.post_json, "/api/settings/update")({ app_language: "ZH" }),
+    ).toEqual({ settings: { app_language: "ZH" } });
+    expect(fixture.update_settings).toHaveBeenCalledWith({ app_language: "ZH" });
+  });
 });
 
 /** 每个行为独立注册一次，避免跨测试共享 mock 调用历史。 */
@@ -163,8 +181,9 @@ function create_route_fixture() {
     skills: [],
     contextUsage: null,
   }));
+  const update_settings = vi.fn((request: JsonRecord) => ({ settings: request }));
   const services = {
-    app: { metadata: {}, settings: {} },
+    app: { metadata: {}, settings: {}, updateSettings: update_settings },
     project: {
       lifecycle: {},
       data: {},
@@ -194,6 +213,9 @@ function create_route_fixture() {
       reset,
     },
     tasks: { start_task },
+    runtime: {
+      getSnapshot: vi.fn(() => ({ runtime: { revision: 0, owner: null } })),
+    },
     create_event_stream_response: vi.fn(),
   } as unknown as BackendServices;
 
@@ -205,7 +227,7 @@ function create_route_fixture() {
     readLogDetail: vi.fn(),
     recordRendererError: vi.fn(),
   });
-  return { get, post_json, reset, send_message, start_task, stop };
+  return { get, post_json, reset, send_message, start_task, stop, update_settings };
 }
 
 /** 读取已注册 GET handler，缺失路径立即给出可定位错误。 */

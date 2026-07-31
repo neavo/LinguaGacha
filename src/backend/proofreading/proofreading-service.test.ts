@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ProjectDatabase } from "../database/database-operations";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { ProjectWriteStore } from "../project/project-write-store";
-import { ProjectOperationGate } from "../project/project-operation-gate";
+import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { get_section_revision } from "../project/project-data-reader";
 import { ProjectSessionState } from "../project/project-session-state";
 import { ProofreadingService } from "./proofreading-service";
@@ -35,6 +35,7 @@ function create_service(task_busy = false): {
   session_state: ProjectSessionState;
   lg_path: string;
   publisher: ReturnType<typeof create_test_project_change_publisher>;
+  runtime_gate: RuntimeOperationGate;
 } {
   const database = new ProjectDatabase();
   cleanup_databases.push(database);
@@ -49,18 +50,21 @@ function create_service(task_busy = false): {
     project_event_bus,
     publisher.publish_project_change,
   );
+  const runtime_gate = create_runtime_gate(task_busy);
   return {
     database,
-    service: new ProofreadingService(
-      database,
-      new ProjectOperationGate(() => task_busy),
-      session_state,
-      write_store,
-    ),
+    service: new ProofreadingService(database, runtime_gate, session_state, write_store),
     session_state,
     lg_path,
     publisher,
+    runtime_gate,
   };
+}
+
+function create_runtime_gate(busy: boolean): RuntimeOperationGate {
+  const gate = new RuntimeOperationGate();
+  if (busy) gate.begin_runtime("task");
+  return gate;
 }
 
 function create_test_project_change_publisher(database: ProjectDatabase, lg_path: string) {
@@ -133,12 +137,13 @@ describe("ProofreadingService", () => {
       async () => await service.clear_translations({}),
       async () => await service.set_translation_status({}),
     ]) {
-      await expect(operation()).rejects.toThrow("task.busy");
+      await expect(operation()).rejects.toThrow("runtime.busy");
     }
   });
 
-  it("保存单条校对结果时只提交命令并由后端计算事实", async () => {
-    const { database, service, lg_path, publisher } = create_service();
+  it("Agent 校对写入口在自身租约内提交命令并由后端计算事实", async () => {
+    const { database, service, lg_path, publisher, runtime_gate } = create_service();
+    runtime_gate.begin_runtime("agent");
     database.set_items(lg_path, [
       create_project_item({
         src: "旧原文",
@@ -155,7 +160,7 @@ describe("ProofreadingService", () => {
       translation_extras: { total_tokens: 99, time: 5 },
     });
 
-    const ack = await service.update_items(
+    const ack = await service.update_items_from_agent(
       {
         changes: [{ item_id: 1, dst: "新译文" }],
         expected_section_revisions: { items: 2, proofreading: 3 },

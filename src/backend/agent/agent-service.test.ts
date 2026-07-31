@@ -17,6 +17,7 @@ import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { JsonRecord } from "../../domain/json";
 import type { ProjectChangeEvent, ProjectWriteResult } from "../../shared/project-event";
 import { ProjectSessionState } from "../project/project-session-state";
+import { RuntimeOperationGate } from "../runtime-operation-gate";
 
 const skill_loader = vi.hoisted(() =>
   vi.fn(async () => [
@@ -889,8 +890,7 @@ describe("AgentService", () => {
       resetting_error = error;
     }
     expect(resetting_error).toMatchObject({
-      code: "request.validation_failed",
-      diagnostic_context: { reason: "agent_session_resetting" },
+      code: "runtime.busy",
     });
     expect(service.get_snapshot().entries).toEqual([]);
 
@@ -1129,9 +1129,7 @@ describe("AgentService", () => {
     const first = service.send_message({ parts: [{ kind: "text", text: "第一轮" }] });
     const second = service.send_message({ parts: [{ kind: "text", text: "第二轮" }] });
 
-    await expect(second).rejects.toMatchObject({
-      diagnostic_context: { reason: "agent_already_running" },
-    });
+    await expect(second).rejects.toThrow("runtime.busy");
     await expect(first).resolves.toMatchObject({ state: "running" });
     expect(read_setting_count()).toBe(1);
     expect(service.get_snapshot().entries).toEqual([
@@ -1148,7 +1146,7 @@ describe("AgentService", () => {
 
     await expect(
       service.send_message({ parts: [{ kind: "text", text: "第二轮" }] }),
-    ).rejects.toThrow("request.validation_failed");
+    ).rejects.toThrow("runtime.busy");
     expect(read_setting_count()).toBe(1);
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
     service.stop();
@@ -1203,6 +1201,16 @@ describe("AgentService", () => {
     );
   });
 
+  it("普通任务占用运行时期间拒绝 Agent 消息", async () => {
+    const { service, runtime_gate } = await create_service();
+    const lease = runtime_gate.begin_runtime("task");
+
+    await expect(service.send_message({ parts: [{ kind: "text", text: "开始" }] })).rejects.toThrow(
+      "runtime.busy",
+    );
+    runtime_gate.finish_runtime(lease);
+  });
+
   async function create_service(load_resources = true): Promise<{
     service: AgentService;
     publish: ReturnType<typeof vi.fn>;
@@ -1210,6 +1218,7 @@ describe("AgentService", () => {
     log_warning: ReturnType<typeof vi.fn>;
     select_agent_model: (model_id: "active" | "next") => void;
     read_setting_count: () => number;
+    runtime_gate: RuntimeOperationGate;
   }> {
     const session_state = new ProjectSessionState();
     await session_state.mark_loaded("test.lg");
@@ -1267,7 +1276,7 @@ describe("AgentService", () => {
         sectionRevisions: { quality: revision },
         qualityRule: { enabled: true, entries: [] },
       }),
-      update: async (
+      update_from_agent: async (
         _request: JsonRecord,
         source = AGENT_QUALITY_RULE_UPDATE_SOURCE,
       ): Promise<ProjectWriteResult> => {
@@ -1281,7 +1290,7 @@ describe("AgentService", () => {
       },
     };
     const proofreading = {
-      update_items: async (
+      update_items_from_agent: async (
         _request: JsonRecord,
         source = AGENT_PROOFREADING_UPDATE_SOURCE,
       ): Promise<ProjectWriteResult> => {
@@ -1302,6 +1311,7 @@ describe("AgentService", () => {
     const publish = vi.fn((_topic: string, _payload: JsonRecord) => undefined);
     const log_error = vi.fn();
     const log_warning = vi.fn();
+    const runtime_gate = new RuntimeOperationGate();
     service = new AgentService({
       paths: {
         get_app_root: () => "E:/Project/LinguaGacha",
@@ -1316,6 +1326,7 @@ describe("AgentService", () => {
       cache,
       qualityRules: quality_rules,
       proofreading,
+      runtimeGate: runtime_gate,
       logManager: { error: log_error, warning: log_warning },
       publish,
     });
@@ -1330,6 +1341,7 @@ describe("AgentService", () => {
         agent_model_id = model_id;
       },
       read_setting_count: () => setting_read_count,
+      runtime_gate,
     };
   }
 });

@@ -17,7 +17,7 @@ export type AppErrorCode =
   | "file.io_failed"
   | "database.conflict"
   | "data.revision_conflict"
-  | "task.busy"
+  | "runtime.busy"
   | "model.not_found"
   | "model.provider_failed"
   | "worker.failed"
@@ -102,10 +102,10 @@ export const APP_ERROR_DEFINITIONS: Readonly<Record<AppErrorCode, AppErrorDefini
     severity: "expected",
     action_key: "app.error.data.revision_conflict.action",
   },
-  "task.busy": {
+  "runtime.busy": {
     status: 423,
     severity: "expected",
-    action_key: "app.error.task.busy.action",
+    action_key: "app.error.runtime.busy.action",
   },
   "model.not_found": {
     status: 404,

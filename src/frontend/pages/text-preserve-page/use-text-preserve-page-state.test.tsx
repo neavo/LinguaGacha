@@ -69,13 +69,6 @@ let run_state = {
   proofreading: {
     revision: 0,
   },
-  task: {
-    task_type: null,
-    status: "idle",
-    busy: false,
-    progress: {},
-    extras: { kind: "analysis", candidate_count: 0 },
-  },
   revisions: {
     projectRevision: 1,
     sections: {
@@ -217,7 +210,7 @@ const project_store = {
 };
 
 let current_statistics_cache: QualityRuleStatisticsCacheSnapshot;
-let task_snapshot: { busy: boolean; status: string };
+let runtime_snapshot: { revision: number; owner: "task" | "agent" | null };
 let project_change_seq = 0;
 let project_change_sections: Array<"items" | "quality"> = ["quality"];
 
@@ -507,7 +500,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
       settings_snapshot: {},
       apply_settings_snapshot: vi.fn(),
       refresh_project_state: vi.fn(async () => {}),
-      task_snapshot,
+      runtime_snapshot,
       commit_project_write: vi.fn(async (request) => {
         const payload = await request.run();
         const write_result = {
@@ -577,10 +570,7 @@ describe("useTextPreservePageState", () => {
     );
     current_statistics_cache = create_statistics_cache({});
     project_change_sections = ["quality"];
-    task_snapshot = {
-      busy: false,
-      status: "idle",
-    };
+    runtime_snapshot = { revision: 0, owner: null };
     page_ui_state_store.clear();
     run_state = {
       ...run_state,
@@ -1219,11 +1209,8 @@ describe("useTextPreservePageState", () => {
     });
   });
 
-  it("任务运行中锁定文本保护 write，但保留筛选和已有项查看可用", async () => {
-    task_snapshot = {
-      busy: true,
-      status: "running",
-    };
+  it("Agent 运行中锁定文本保护 write，但保留筛选和已有项查看可用", async () => {
+    runtime_snapshot = { revision: 1, owner: "agent" };
     await mount_probe();
 
     expect(latest_state?.readonly).toBe(true);

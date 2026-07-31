@@ -39,6 +39,7 @@ type RuntimeFixture = {
     task_type: string;
     status: string;
   };
+  runtime_snapshot: { revision: number; owner: "task" | "agent" | null };
 };
 
 type TranslationWorkbenchTaskFixture = TranslationWorkbenchTask;
@@ -207,6 +208,7 @@ function create_runtime_fixture(): RuntimeFixture {
       task_type: "",
       status: "idle",
     },
+    runtime_snapshot: { revision: 0, owner: null },
   };
 }
 
@@ -735,6 +737,7 @@ describe("useWorkbenchPageState", () => {
     };
     runtime_fixture.current = {
       ...runtime_fixture.current,
+      runtime_snapshot: { revision: 1, owner: "task" },
       task_snapshot: {
         busy: true,
         task_type: "translation",
@@ -779,6 +782,7 @@ describe("useWorkbenchPageState", () => {
     };
     runtime_fixture.current = {
       ...runtime_fixture.current,
+      runtime_snapshot: { revision: 1, owner: "task" },
       task_snapshot: {
         busy: true,
         task_type: "analysis",
@@ -859,6 +863,7 @@ describe("useWorkbenchPageState", () => {
     };
     runtime_fixture.current = {
       ...runtime_fixture.current,
+      runtime_snapshot: { revision: 1, owner: "task" },
       task_snapshot: {
         busy: true,
         task_type: "analysis",
@@ -1135,6 +1140,7 @@ describe("useWorkbenchPageState", () => {
   it("翻译任务运行中允许生成当前可用译文", async () => {
     runtime_fixture.current = {
       ...runtime_fixture.current,
+      runtime_snapshot: { revision: 1, owner: "task" },
       task_snapshot: {
         busy: true,
         task_type: "translation",
@@ -1156,6 +1162,7 @@ describe("useWorkbenchPageState", () => {
   it("任务停止收尾中禁止生成译文", async () => {
     runtime_fixture.current = {
       ...runtime_fixture.current,
+      runtime_snapshot: { revision: 1, owner: "task" },
       task_snapshot: {
         busy: true,
         task_type: "translation",

@@ -15,6 +15,7 @@ import {
   type ProjectWriteResultPayload,
 } from "@frontend/app/state/desktop-project-write";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-provider";
@@ -164,6 +165,7 @@ export function useAnalysisWorkbenchTask(
     project_snapshot,
     sync_task_snapshot,
     task_snapshot,
+    runtime_snapshot,
     commit_project_write,
     refresh_task,
   } = useDesktopState();
@@ -214,7 +216,10 @@ export function useAnalysisWorkbenchTask(
     (analysis_confirm_state !== null && analysis_confirm_state.submitting) ||
     analysis_import_confirm_state.submitting;
   const analysis_action_blocked =
-    !project_snapshot.loaded || task_snapshot.busy || analysis_dialog_open || analysis_importing;
+    !project_snapshot.loaded ||
+    is_runtime_busy(runtime_snapshot) ||
+    analysis_dialog_open ||
+    analysis_importing;
   const analysis_task_menu_busy = analysis_action_submitting;
   const analysis_task_menu_disabled = analysis_action_blocked;
   const can_open_analysis_detail_sheet =
@@ -466,7 +471,7 @@ export function useAnalysisWorkbenchTask(
     ): Promise<boolean> => {
       if (
         !project_snapshot.loaded ||
-        task_snapshot.busy ||
+        is_runtime_busy(runtime_snapshot) ||
         analysis_task_metrics.candidate_count <= 0
       ) {
         return false;
@@ -525,8 +530,7 @@ export function useAnalysisWorkbenchTask(
       commit_prepared_analysis_glossary_import,
       project_snapshot.loaded,
       run_modal_progress_toast,
-      task_snapshot,
-      task_snapshot.busy,
+      runtime_snapshot,
       t,
     ],
   );

@@ -8,7 +8,7 @@ import type { ProjectDatabase } from "../database/database-operations";
 import type { ProjectSessionState } from "../project/project-session-state";
 import type { ProjectWriteStore } from "../project/project-write-store";
 import { require_project_expected_section_revisions } from "../project/project-write-request";
-import type { ProjectOperationGate } from "../project/project-operation-gate";
+import type { RuntimeOperationGate } from "../runtime-operation-gate";
 import { resolve_prompt_template_language } from "../../domain/app-language";
 import { is_json_record } from "../../domain/json";
 import { Prompt } from "../../domain/prompt";
@@ -31,7 +31,7 @@ export class QualityPromptService {
     private readonly database: ProjectDatabase,
     private readonly session_state: ProjectSessionState,
     private readonly write_store: ProjectWriteStore,
-    private readonly project_operation_gate: ProjectOperationGate,
+    private readonly runtime_gate: RuntimeOperationGate,
     private readonly cache: CacheReadPort,
     private readonly native_fs: NativeFs = default_native_fs,
   ) {}
@@ -82,7 +82,7 @@ export class QualityPromptService {
    * 保存工程提示词。
    */
   public async save(request: JsonRecord): Promise<ProjectWriteResult> {
-    return await this.project_operation_gate.run_exclusive_project_write(async () => {
+    return await this.runtime_gate.run_project_write(async () => {
       this.assert_no_legacy_fields(request, ["expected_revision"]);
       const prompt = Prompt.from_json(request["task_type"]);
       const project_path = this.session_state.require_loaded_project_path();

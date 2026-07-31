@@ -120,7 +120,7 @@ export function BasicSettingsPage(_props: BasicSettingsPageProps): JSX.Element {
         )
       : t("basic_settings_page.fields.project_save_mode.description");
 
-  const language_locked = basic_settings_state.is_task_busy;
+  const language_locked = basic_settings_state.runtime_locked;
 
   useEffect(() => {
     if (is_request_timeout_editing) {

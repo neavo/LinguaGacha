@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-provider";
@@ -409,7 +410,7 @@ function reorder_snapshot_group(
 export function useModelPageState(): UseModelPageStateResult {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
-  const { task_snapshot } = useDesktopState();
+  const { runtime_snapshot } = useDesktopState();
   const [snapshot, set_snapshot] = useState<ModelPageSnapshot>(EMPTY_SNAPSHOT);
   const [is_action_running, set_is_action_running] = useState(false);
   const [dialog_state, set_dialog_state] = useState<ModelDialogState>(close_dialog_state());
@@ -459,7 +460,7 @@ export function useModelPageState(): UseModelPageStateResult {
     return find_model(snapshot, dialog_state.model_id);
   }, [dialog_state.model_id, snapshot]);
 
-  const readonly = task_snapshot.busy || is_action_running;
+  const readonly = is_runtime_busy(runtime_snapshot) || is_action_running;
 
   const update_model_patch = useCallback(
     async (model_id: string, patch: Record<string, unknown>): Promise<void> => {

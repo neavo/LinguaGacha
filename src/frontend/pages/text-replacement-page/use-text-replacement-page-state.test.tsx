@@ -81,13 +81,6 @@ const run_state = {
   proofreading: {
     revision: 0,
   },
-  task: {
-    task_type: null,
-    status: "idle",
-    busy: false,
-    progress: {},
-    extras: { kind: "analysis", candidate_count: 0 },
-  },
   revisions: {
     projectRevision: 1,
     sections: {
@@ -95,6 +88,11 @@ const run_state = {
       analysis: 0,
     },
   },
+};
+
+let runtime_snapshot: { revision: number; owner: "task" | "agent" | null } = {
+  revision: 0,
+  owner: null,
 };
 
 const project_store = {
@@ -303,7 +301,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
         };
       }),
       refresh_project_state: vi.fn(async () => {}),
-      task_snapshot: run_state.task,
+      runtime_snapshot,
     }),
   };
 });
@@ -563,8 +561,7 @@ describe("useTextReplacementPageState", () => {
     );
     project_change_seq = 0;
     project_change_sections = ["quality"];
-    run_state.task.busy = false;
-    run_state.task.status = "idle";
+    runtime_snapshot = { revision: 0, owner: null };
     page_ui_state_store.clear();
     run_state.quality.pre_replacement = {
       entries: [
@@ -1050,9 +1047,8 @@ describe("useTextReplacementPageState", () => {
     });
   });
 
-  it("任务运行中锁定替换规则 write，但保留筛选和已有项查看可用", async () => {
-    run_state.task.busy = true;
-    run_state.task.status = "running";
+  it("Agent 运行中锁定替换规则 write，但保留筛选和已有项查看可用", async () => {
+    runtime_snapshot = { revision: 1, owner: "agent" };
     await mount_probe();
 
     expect(latest_state?.readonly).toBe(true);
