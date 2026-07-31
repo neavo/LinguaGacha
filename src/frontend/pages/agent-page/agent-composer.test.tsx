@@ -81,6 +81,16 @@ describe("AgentComposer", () => {
     const editor = get_editor(view);
     await select_skill(view, editor, "glossary-audit");
     const token_length = "@glossary-audit".length;
+    const token = view.querySelector<HTMLElement>(".agent-skill-token");
+
+    expect(editor.state.doc.toString()).toBe("@glossary-audit");
+    expect(view.querySelector(".cm-cursorLayer")).not.toBeNull();
+    expect(token?.getAttribute("contenteditable")).toBe("false");
+    if (token === null) throw new Error("缺少能力 token");
+    const token_rect = { left: 10, right: 30, top: 2, bottom: 18 } as DOMRect;
+    vi.spyOn(token, "getBoundingClientRect").mockReturnValue(token_rect);
+    vi.spyOn(token, "getClientRects").mockReturnValue([token_rect] as unknown as DOMRectList);
+    expect(editor.coordsAtPos(token_length, -1)?.left).toBe(31);
 
     await act(async () => {
       editor.dispatch({ selection: EditorSelection.cursor(token_length) });
@@ -159,10 +169,9 @@ describe("AgentComposer", () => {
     expect(editor.state.doc.toString()).toBe(" \n @glossary-audit 说明  ");
   });
 
-  it("Enter 选择菜单项，Shift+Enter 换行，运行时切换为停止按钮", async () => {
+  it("Enter 选择菜单项，Shift+Enter 换行", async () => {
     const on_send = vi.fn(async () => true);
-    const on_stop = vi.fn(async () => undefined);
-    const view = await render_composer(on_send, false, on_stop);
+    const view = await render_composer(on_send);
     const editor = get_editor(view);
     await set_document(editor, "@g", 2);
     await dispatch_key(editor.contentDOM, "Enter");
@@ -171,30 +180,40 @@ describe("AgentComposer", () => {
 
     await dispatch_key(editor.contentDOM, "Enter", true);
     expect(editor.state.doc.toString()).toBe("@glossary-audit\n");
+  });
 
-    await render_composer(on_send, true, on_stop);
-    const stop = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
+  it("运行态保持草稿可编辑，只停止当前任务并在结束后恢复发送", async () => {
+    const on_send = vi.fn(async () => true);
+    const on_stop = vi.fn(async () => undefined);
+    const view = await render_composer(on_send, true, on_stop);
+    const editor = get_editor(view);
+    const content = editor.contentDOM;
+
+    expect(content.getAttribute("contenteditable")).toBe("true");
+    await set_document(editor, "@g", 2);
+    await wait_for_element(view, '[role="listbox"]');
+    await dispatch_key(content, "Enter");
+    expect(editor.state.doc.toString()).toBe("@glossary-audit");
+
+    await dispatch_key(content, "Enter", true);
+    expect(editor.state.doc.toString()).toBe("@glossary-audit\n");
+
+    await dispatch_key(content, "Enter");
+    expect(on_send).not.toHaveBeenCalled();
+
+    const stop = view.querySelector<HTMLButtonElement>('button[aria-label="停止"]');
     if (stop === null) throw new Error("缺少停止按钮");
     await act(async () => stop.click());
     expect(on_stop).toHaveBeenCalledOnce();
-  });
 
-  it("运行态立即切换为可聚焦只读 DOM，并在停止后原地恢复编辑", async () => {
-    const view = await render_composer(
-      vi.fn(async () => true),
-      true,
-    );
-    const content = get_editor(view).contentDOM;
+    await render_composer(on_send, false, on_stop);
 
-    expect(content.getAttribute("contenteditable")).toBe("false");
-
-    await render_composer(
-      vi.fn(async () => true),
+    expect(get_editor(view)).toBe(editor);
+    expect(content.getAttribute("contenteditable")).toBe("true");
+    expect(editor.state.doc.toString()).toBe("@glossary-audit\n");
+    expect(view.querySelector<HTMLButtonElement>('button[aria-label="发送"]')?.disabled).toBe(
       false,
     );
-
-    expect(get_editor(view).contentDOM).toBe(content);
-    expect(content.getAttribute("contenteditable")).toBe("true");
   });
 
   it("Escape 只关闭菜单并保留查询，继续输入后重新打开", async () => {
@@ -309,7 +328,9 @@ describe("AgentComposer", () => {
       await Promise.resolve();
     });
     expect(reset?.disabled).toBe(true);
+    expect(get_editor(view).contentDOM.getAttribute("contenteditable")).toBe("false");
     await act(async () => resolve_send(false));
+    expect(get_editor(view).contentDOM.getAttribute("contenteditable")).toBe("true");
   });
 
   it("resetting 前后复用 EditorView，并保留正文与 skill token 草稿", async () => {
