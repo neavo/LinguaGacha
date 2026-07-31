@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type {
   AgentAssistantMessagePart,
+  AgentContextUsage,
   AgentEntry,
   AgentSessionEvent,
   AgentSessionSnapshot,
@@ -18,12 +19,14 @@ const EMPTY_SNAPSHOT: AgentSessionSnapshot = {
   state: "idle",
   entries: [],
   skills: [],
+  contextUsage: null,
 };
 
 type UseAgentPageState = {
   state: AgentSessionState;
   entries: AgentEntry[];
   skills: AgentSkillSnapshot[];
+  contextUsage: AgentContextUsage | null;
   loading: boolean;
   error: boolean;
   resetting: boolean;
@@ -130,10 +133,13 @@ export function useAgentPageState(): UseAgentPageState {
     acknowledged_snapshot?: AgentSessionSnapshot,
   ): void => {
     if (command_event_queue_ref.current !== events) return;
+    // 必须先校验 ack；若校验抛错，命令 catch 仍需用同一队列重放已到达的 SSE。
+    const normalized_snapshot =
+      acknowledged_snapshot === undefined ? undefined : normalize_snapshot(acknowledged_snapshot);
     command_event_queue_ref.current = null;
     // HTTP ack 可能晚于对应 SSE；先应用 ack，再按真实到达顺序重放事件，禁止状态倒退。
-    if (acknowledged_snapshot !== undefined) {
-      set_snapshot(replay_agent_events(normalize_snapshot(acknowledged_snapshot), events));
+    if (normalized_snapshot !== undefined) {
+      set_snapshot(replay_agent_events(normalized_snapshot, events));
       return;
     }
     if (events.length > 0) {
@@ -202,6 +208,7 @@ export function useAgentPageState(): UseAgentPageState {
     state: snapshot.state,
     entries: snapshot.entries,
     skills: snapshot.skills,
+    contextUsage: snapshot.contextUsage,
     loading,
     error,
     resetting,
@@ -224,15 +231,24 @@ export function apply_agent_event(
   snapshot: AgentSessionSnapshot,
   event: AgentSessionEvent,
 ): AgentSessionSnapshot {
-  if (event.type === "snapshot_seed") return normalize_snapshot(event.snapshot);
-  if (event.type === "request_failed") return snapshot;
-  if (event.type === "session_state") return { ...snapshot, state: event.state };
-  const entries = [...snapshot.entries];
-  const entry = structuredClone(event.entry);
-  const index = entries.findIndex((entry) => entry.id === event.entry.id);
-  if (index < 0) entries.push(entry);
-  else entries[index] = entry;
-  return { ...snapshot, entries };
+  switch (event.type) {
+    case "snapshot_seed":
+      return normalize_snapshot(event.snapshot);
+    case "request_failed":
+      return snapshot;
+    case "session_state":
+      return { ...snapshot, state: event.state };
+    case "context_usage":
+      return { ...snapshot, contextUsage: { ...event.contextUsage } };
+    case "entry_upsert": {
+      const entries = [...snapshot.entries];
+      const entry = structuredClone(event.entry);
+      const index = entries.findIndex((entry) => entry.id === event.entry.id);
+      if (index < 0) entries.push(entry);
+      else entries[index] = entry;
+      return { ...snapshot, entries };
+    }
+  }
 }
 
 /**
@@ -245,24 +261,51 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
     ? record["entries"].flatMap(normalize_entry)
     : [];
   const skills = Array.isArray(record["skills"]) ? record["skills"].flatMap(normalize_skill) : [];
-  return { state, entries, skills };
+  const context_usage = normalize_context_usage(record["contextUsage"]);
+  if (context_usage === undefined) throw new TypeError("Agent snapshot contextUsage 非法");
+  return { state, entries, skills, contextUsage: context_usage };
 }
 
 /** SSE 顶层判别失败时丢弃单帧，重连仍会读取权威 snapshot。 */
 function normalize_agent_event(value: unknown): AgentSessionEvent | null {
   const record = read_json_record(value);
-  if (record["type"] === "request_failed") return { type: "request_failed" };
-  if (record["type"] === "snapshot_seed") {
-    return { type: "snapshot_seed", snapshot: normalize_snapshot(record["snapshot"]) };
+  switch (record["type"]) {
+    case "request_failed":
+      return { type: "request_failed" };
+    case "snapshot_seed":
+      return { type: "snapshot_seed", snapshot: normalize_snapshot(record["snapshot"]) };
+    case "session_state":
+      return { type: "session_state", state: normalize_state(record["state"]) };
+    case "context_usage": {
+      const context_usage = normalize_context_usage(record["contextUsage"]);
+      return context_usage === null || context_usage === undefined
+        ? null
+        : { type: "context_usage", contextUsage: context_usage };
+    }
+    case "entry_upsert": {
+      const entry = normalize_entry(record["entry"])[0];
+      return entry === undefined ? null : { type: "entry_upsert", entry };
+    }
+    default:
+      return null;
   }
-  if (record["type"] === "session_state") {
-    return { type: "session_state", state: normalize_state(record["state"]) };
+}
+
+/** null 只表示完整快照尚无运行时；undefined 表示协议字段非法。 */
+function normalize_context_usage(value: unknown): AgentContextUsage | null | undefined {
+  if (value === null) return null;
+  if (
+    !is_json_record(value) ||
+    typeof value["tokens"] !== "number" ||
+    !Number.isInteger(value["tokens"]) ||
+    value["tokens"] < 0 ||
+    typeof value["contextWindow"] !== "number" ||
+    !Number.isInteger(value["contextWindow"]) ||
+    value["contextWindow"] <= 0
+  ) {
+    return undefined;
   }
-  if (record["type"] === "entry_upsert") {
-    const entry = normalize_entry(record["entry"])[0];
-    return entry === undefined ? null : { type: "entry_upsert", entry };
-  }
-  return null;
+  return { tokens: value["tokens"], contextWindow: value["contextWindow"] };
 }
 
 /** 单条协议记录必须完整通过所属 kind 的字段校验，否则整条丢弃。 */

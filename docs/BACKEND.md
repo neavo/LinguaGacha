@@ -9,7 +9,7 @@
 - Gateway 只监听本机地址，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
 - 成功响应为 `{ ok: true, data }`，失败响应为 `{ ok: false, error }`；公开错误不包含 diagnostic context、cause、stack 或供应商原始异常。
 - 公开 SSE topic 固定为 `project.data_changed`、`task.snapshot_changed`、`agent.session_event`、`settings.changed`、`log.appended`，data 使用严格 JSON 序列化。
-- Agent 公开入口固定为 `GET /api/agent/snapshot` 与 `POST /api/agent/message|stop|reset`；消息保留有序 text / skill parts，snapshot 与 `agent.session_event` 共同恢复会话，增量按同 id 原位覆盖，整段清空使用 `snapshot_seed`。
+- Agent 公开入口固定为 `GET /api/agent/snapshot` 与 `POST /api/agent/message|stop|reset`；消息保留有序 text / skill parts，snapshot 与 `agent.session_event` 共同恢复会话，条目按同 id 原位覆盖，整段清空使用 `snapshot_seed`；snapshot 的 `contextUsage` 与事件 `context_usage` 从当前 Pi Agent 消息历史投影 token 用量与模型窗口。
 - 通用质量规则切片通过 `POST /api/quality/rules/query` 读取、`POST /api/quality/rules/update` 写入，分析术语导入等复合 workflow 保留独立命令；`POST /api/proofreading/query` 统一分发校对查询，`POST /api/proofreading/items/update` 只批量更新 `dst` / `name_dst`，清空、状态与替换使用各自命令。
 - 模型管理 API 只负责配置 CRUD；任务入口通过 `GET /api/models/selection` 读取窄选项，通过 `POST /api/models/select` 按 `translation`、`analysis` 或 `agent` 用途更新单项选择，不公开密钥、请求覆盖或生成参数。
 - `user_message` 的 `createdAt` / `endedAt` 是轮次起止事实，运行中 `endedAt` 为 `null`，任一终止路径都原位封口；`assistant_message` 保留有序 text / thinking parts，但不公开空白或脱敏思考、签名和供应商连续性元数据；`tool_call` 只公开名称、状态和模型实际收到的文本输出（运行中为 `null`），不公开参数或第三方结果包装。
@@ -68,7 +68,8 @@ project, files, items, quality, prompts, analysis, proofreading
 - `TaskRuntime` 拥有全局运行互斥、取消、终态和 Engine completion；`TaskEngine` 只负责编排，任务结果统一经 `TaskProjectStore` 进入项目写入边界。全量翻译与分析经过 Planner，行级重翻直接从目标 items 构造 context。
 - work-unit worker 负责提示词构建、runner、pipeline 和响应处理；planning worker 只承担规划期计算。线程数不等于 LLM 并发，实际并发由模型 key lease 与 limiter 决定。
 - 非 engine 的重型计算通过 `BackendWorkerClient` 提交无状态 worker task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
-- 模型请求快照、provider policy、SDK transport 和结果归一归 `src/backend/llm`，任务层不解析供应商异常文本；OneShot 与 Pi Agent 发送前复用同一思考与扩展规则。模型页 generation 和输入/输出 token 设置只作用于 OneShot，Agent 使用独立固定容量；Agent 在每个空闲回合前重新解析 agent 用途选择并只替换模型请求能力，运行中变化只影响下一轮。
+- 模型请求快照、provider policy、SDK transport 和结果归一归 `src/backend/llm`，任务层不解析供应商异常文本；OneShot 与 Pi Agent 发送前复用同一思考与扩展规则。Pi Agent 的 OpenAI-compatible Chat Completions 统一以 `system` 承载基础指令，不启用 `developer` 角色；所有 Agent 工具的 parameters schema 显式以 `object` 为根，判别联合保留在内部约束。
+- 模型页 generation 和输入/输出 token 设置只作用于 OneShot，Agent 使用独立固定容量；Agent 在每个空闲回合前重新解析 agent 用途选择并只替换模型请求能力，运行中变化只影响下一轮。
 - Agent 基础 system prompt 的唯一资源为 `resource/agent/system_prompt.md`，与内置、用户 skill 一并在启动期固定；基础资源失败会阻止启动，坏 skill 只进入诊断。Pi 目录只公开可自动调用的 skill；manual-only skill 必须由显式 skill part 授权，`read_skill` 只读取启动期形成的 `SKILL.md` 与 references 白名单，不访问运行期文件系统。
 - Agent 会话绑定工程 epoch 与 `quality` / `items` / `proofreading` revision；用户 reset、工程切换和外部相关变更共用重置屏障，Agent 自身写入由专用 source 识别，只推进绑定。写入批准属于模型工作流，后端不保存批准状态，只以 section revision 拒绝并发覆盖。
 

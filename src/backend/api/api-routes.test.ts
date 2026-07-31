@@ -107,7 +107,7 @@ describe("register_api_routes", () => {
 
     expect(read_get_handler(fixture.get, "/api/agent/snapshot")({ json })).toEqual({
       ok: true,
-      data: { state: "idle", entries: [], skills: [] },
+      data: { state: "idle", entries: [], skills: [], contextUsage: null },
     });
     expect(read_get_handler(fixture.get, "/api/models/selection")({ json })).toEqual({
       ok: true,
@@ -144,6 +144,7 @@ describe("register_api_routes", () => {
       state: "idle",
       entries: [],
       skills: [],
+      contextUsage: null,
     });
     expect(fixture.reset).toHaveBeenCalledWith();
   });
@@ -156,7 +157,12 @@ function create_route_fixture() {
   const start_task = vi.fn(() => ({ accepted: true }));
   const send_message = vi.fn(() => ({ state: "running" }));
   const stop = vi.fn(() => ({ state: "idle" }));
-  const reset = vi.fn(async () => ({ state: "idle", entries: [], skills: [] }));
+  const reset = vi.fn(async () => ({
+    state: "idle",
+    entries: [],
+    skills: [],
+    contextUsage: null,
+  }));
   const services = {
     app: { metadata: {}, settings: {} },
     project: {
@@ -177,7 +183,12 @@ function create_route_fixture() {
       })),
     },
     agent: {
-      get_snapshot: vi.fn(() => ({ state: "idle", entries: [], skills: [] })),
+      get_snapshot: vi.fn(() => ({
+        state: "idle",
+        entries: [],
+        skills: [],
+        contextUsage: null,
+      })),
       send_message,
       stop,
       reset,
@@ -197,6 +208,7 @@ function create_route_fixture() {
   return { get, post_json, reset, send_message, start_task, stop };
 }
 
+/** 读取已注册 GET handler，缺失路径立即给出可定位错误。 */
 function read_get_handler(
   get: ReturnType<typeof vi.fn>,
   route_path: string,

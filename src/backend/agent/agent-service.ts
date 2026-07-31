@@ -1,5 +1,6 @@
 import {
   Agent,
+  estimateContextTokens,
   formatSkillInvocation,
   formatSkillsForSystemPrompt,
   uuidv7,
@@ -13,6 +14,7 @@ import {
   format_agent_user_message_text,
   normalize_agent_user_message_parts,
   type AgentAssistantMessagePart,
+  type AgentContextUsage,
   type AgentEntry,
   type AgentSessionEvent,
   type AgentSessionSnapshot,
@@ -127,6 +129,7 @@ export class AgentService {
       state: this.state,
       entries: structuredClone(this.entries),
       skills: this.skills.map(({ name, description }) => ({ name, description })),
+      contextUsage: this.read_context_usage(),
     };
   }
 
@@ -345,8 +348,14 @@ export class AgentService {
       this.upsert_assistant_message(event.assistantMessageEvent.partial, false);
       return;
     }
-    if (event.type === "message_end" && event.message.role === "assistant") {
-      this.upsert_assistant_message(event.message, true);
+    if (event.type === "message_end") {
+      if (event.message.role === "assistant") {
+        this.upsert_assistant_message(event.message, true);
+      }
+      const context_usage = this.read_context_usage();
+      if (context_usage !== null) {
+        this.publish_event({ type: "context_usage", contextUsage: context_usage });
+      }
       return;
     }
     if (event.type === "tool_execution_start") {
@@ -434,6 +443,15 @@ export class AgentService {
         entry.kind === "user_message" && entry.endedAt === null,
     );
     if (user !== undefined) this.upsert_entry({ ...user, endedAt: Date.now() });
+  }
+
+  /** 上下文用量直接投影当前 Pi Agent 历史，不建立第二份计数状态。 */
+  private read_context_usage(): AgentContextUsage | null {
+    if (this.runtime === null) return null;
+    return {
+      tokens: estimateContextTokens(this.runtime.agent.state.messages).tokens,
+      contextWindow: this.runtime.agent.state.model.contextWindow,
+    };
   }
 
   /** 状态未变化时不发布重复 SSE。 */

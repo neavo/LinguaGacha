@@ -24,44 +24,47 @@ const MAX_QUERY_PATTERNS = 100;
 /** Agent 发起的译文提交使用独立 source，AgentService 据此区分自身与外部写入。 */
 export const AGENT_PROOFREADING_UPDATE_SOURCE = "agent_proofreading_update_items";
 
-/** 正文 query 以判别 mode 固定三种互斥输入形状。 */
-const QUERY_PROJECT_ITEMS_PARAMETERS = Type.Union([
-  Type.Object(
-    {
-      mode: Type.Literal("page"),
-      cursor: Type.Optional(Type.String()),
-      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_QUERY_LIMIT })),
-    },
-    { additionalProperties: false },
-  ),
-  Type.Object(
-    {
-      mode: Type.Literal("ids"),
-      item_ids: Type.Array(Type.Integer({ minimum: 1 }), {
-        minItems: 1,
-        maxItems: MAX_QUERY_IDS,
-        uniqueItems: true,
-      }),
-    },
-    { additionalProperties: false },
-  ),
-  Type.Object(
-    {
-      mode: Type.Literal("search"),
-      patterns: Type.Array(Type.String(), {
-        minItems: 1,
-        maxItems: MAX_QUERY_PATTERNS,
-      }),
-      scope: Type.Optional(
-        Type.Union([Type.Literal("src"), Type.Literal("dst"), Type.Literal("all")]),
-      ),
-      case_sensitive: Type.Optional(Type.Boolean()),
-      cursor: Type.Optional(Type.String()),
-      limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_QUERY_LIMIT })),
-    },
-    { additionalProperties: false },
-  ),
-]);
+/** 正文 query 以判别 mode 固定三种互斥输入形状；根节点显式 object 兼容模型工具协议。 */
+const QUERY_PROJECT_ITEMS_PARAMETERS = Type.Union(
+  [
+    Type.Object(
+      {
+        mode: Type.Literal("page"),
+        cursor: Type.Optional(Type.String()),
+        limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_QUERY_LIMIT })),
+      },
+      { additionalProperties: false },
+    ),
+    Type.Object(
+      {
+        mode: Type.Literal("ids"),
+        item_ids: Type.Array(Type.Integer({ minimum: 1 }), {
+          minItems: 1,
+          maxItems: MAX_QUERY_IDS,
+          uniqueItems: true,
+        }),
+      },
+      { additionalProperties: false },
+    ),
+    Type.Object(
+      {
+        mode: Type.Literal("search"),
+        patterns: Type.Array(Type.String(), {
+          minItems: 1,
+          maxItems: MAX_QUERY_PATTERNS,
+        }),
+        scope: Type.Optional(
+          Type.Union([Type.Literal("src"), Type.Literal("dst"), Type.Literal("all")]),
+        ),
+        case_sensitive: Type.Optional(Type.Boolean()),
+        cursor: Type.Optional(Type.String()),
+        limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_QUERY_LIMIT })),
+      },
+      { additionalProperties: false },
+    ),
+  ],
+  { type: "object" },
+);
 
 /** 译文工具只接受窄字段变更与双 section 乐观锁。 */
 const UPDATE_PROJECT_TRANSLATIONS_PARAMETERS = Type.Object(
