@@ -170,7 +170,7 @@ describe("DesktopUpdateService", () => {
     fs.mkdirSync(path.join(paths.get_berserker_update_root_dir(), "cache"), { recursive: true });
     fs.writeFileSync(path.join(paths.get_berserker_update_root_dir(), "berserker.exe"), "exe");
 
-    await cleanup_berserker_version_dirs(paths);
+    await cleanup_berserker_version_dirs(paths.get_berserker_update_root_dir());
 
     expect(fs.existsSync(path.join(paths.get_berserker_update_root_dir(), "v1.2.3"))).toBe(false);
     expect(fs.existsSync(path.join(paths.get_berserker_update_root_dir(), "cache"))).toBe(true);
@@ -322,7 +322,12 @@ function create_service(
   runtime: Partial<DesktopUpdateRuntime> = {},
 ): DesktopUpdateService {
   return new DesktopUpdateService({
-    paths: new AppPathService({ appRoot: app_root, env: {}, platform: "win32" }),
+    appRoot: app_root,
+    updateRootDir: new AppPathService({
+      appRoot: app_root,
+      env: {},
+      platform: "win32",
+    }).get_berserker_update_root_dir(),
     runtime: {
       platform: "win32",
       arch: "x64",

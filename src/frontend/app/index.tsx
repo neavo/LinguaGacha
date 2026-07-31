@@ -33,7 +33,7 @@ import {
   summarize_task_snapshot_for_diagnostics,
 } from "@frontend/app/state/desktop-diagnostics";
 import { update_renderer_diagnostics_context } from "@frontend/app/diagnostics/renderer-error-reporter";
-import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { useDesktopState, useTaskSnapshot } from "@frontend/app/state/use-desktop-state";
 import {
   DesktopProgressToastModalLayer,
   useDesktopToast,
@@ -287,7 +287,6 @@ function AppContent(props: AppContentProps): JSX.Element {
     project_session_status,
     settings_snapshot,
     set_pending_target_route,
-    task_snapshot,
     update_app_language,
   } = useDesktopState();
   const { push_toast } = useDesktopToast();
@@ -319,24 +318,6 @@ function AppContent(props: AppContentProps): JSX.Element {
   const update_release_url = update_release?.release_url ?? null;
   const theme_mode: ThemeMode =
     resolvedTheme === "dark" ? "dark" : resolvedTheme === "light" ? "light" : read_theme_mode();
-
-  useEffect(() => {
-    update_renderer_diagnostics_context({
-      route: selected_route,
-      project: summarize_project_state_for_diagnostics({
-        loaded: project_snapshot.loaded,
-        path: project_snapshot.path,
-        sessionStatus: project_session_status,
-      }),
-      task: summarize_task_snapshot_for_diagnostics(task_snapshot),
-    });
-  }, [
-    project_snapshot.loaded,
-    project_snapshot.path,
-    project_session_status,
-    selected_route,
-    task_snapshot,
-  ]);
 
   useEffect(() => {
     window.desktopApp.setTitleBarTheme(theme_mode);
@@ -788,6 +769,12 @@ function AppContent(props: AppContentProps): JSX.Element {
 
   return (
     <>
+      <RendererDiagnosticsSync
+        route={selected_route}
+        project_loaded={project_snapshot.loaded}
+        project_path={project_snapshot.path}
+        project_session_status={project_session_status}
+      />
       <SidebarProvider
         open={!is_sidebar_collapsed}
         onOpenChange={(is_open) => {
@@ -885,6 +872,29 @@ function AppContent(props: AppContentProps): JSX.Element {
       />
     </>
   );
+}
+
+/** 高频 task 诊断订阅隔离在无 UI 子节点，避免任务进度刷新整棵应用壳。 */
+function RendererDiagnosticsSync(props: {
+  route: RouteId;
+  project_loaded: boolean;
+  project_path: string;
+  project_session_status: "idle" | "warming" | "ready";
+}): null {
+  const task_snapshot = useTaskSnapshot();
+  const { route, project_loaded, project_path, project_session_status } = props;
+  useEffect(() => {
+    update_renderer_diagnostics_context({
+      route,
+      project: summarize_project_state_for_diagnostics({
+        loaded: project_loaded,
+        path: project_path,
+        sessionStatus: project_session_status,
+      }),
+      task: summarize_task_snapshot_for_diagnostics(task_snapshot),
+    });
+  }, [project_loaded, project_path, project_session_status, route, task_snapshot]);
+  return null;
 }
 
 function read_initial_log_window_app_language(): AppLanguage {

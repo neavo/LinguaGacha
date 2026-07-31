@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { ProjectChangeSignal } from "@frontend/app/state/desktop-state-context";
 import {
   hasProjectChangeSections,
   resolveProjectChangeSeqForSections,
+  type ProjectChangeSignal,
 } from "@frontend/app/state/project-change-signal";
 
 function create_signal(overrides: Partial<ProjectChangeSignal> = {}): ProjectChangeSignal {

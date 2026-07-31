@@ -223,7 +223,8 @@ describe("桌面 IPC 宿主", () => {
 
   it("打开路径类 IPC 返回路径快照并传递对应原生选择限制", async () => {
     const main_window = { id: "main-window" };
-    await register_handlers({ mainWindow: main_window });
+    const read_app_language = vi.fn(async () => "ZH");
+    await register_handlers({ mainWindow: main_window, readAppLanguage: read_app_language });
     electron_mock.show_open_dialog
       .mockResolvedValueOnce({ canceled: false, filePaths: ["C:/novel/a.txt", "C:/novel/b.txt"] })
       .mockResolvedValueOnce({ canceled: false, filePaths: ["C:/novel"] })
@@ -316,6 +317,7 @@ describe("桌面 IPC 宿主", () => {
       properties: ["openFile"],
       filters: [{ name: "支持的文件 (*.txt)", extensions: ["txt"] }],
     });
+    expect(read_app_language).toHaveBeenCalledTimes(3);
   });
 
   it("保存路径类 IPC 返回单路径快照并只在有默认名时设置 defaultPath", async () => {
@@ -417,7 +419,7 @@ describe("桌面 IPC 宿主", () => {
   it("文件过滤器文案按调用时应用语言解析", async () => {
     let app_language = "EN";
     await register_handlers({
-      readAppLanguage: () => app_language,
+      readAppLanguage: async () => app_language,
     });
     electron_mock.show_open_dialog.mockResolvedValueOnce({
       canceled: false,
@@ -472,7 +474,7 @@ async function register_handlers(
     markRendererConfirmedAppQuit?: () => void;
     quitAfterBackendShutdown?: (exit_code: number) => Promise<void>;
     recordRendererDiagnostics?: (sender: unknown, payload: unknown) => void;
-    readAppLanguage?: () => unknown;
+    readAppLanguage?: () => Promise<unknown>;
     updateService?: {
       download_release?: (
         request: unknown,
@@ -489,7 +491,7 @@ async function register_handlers(
     markRendererConfirmedAppQuit: options.markRendererConfirmedAppQuit ?? vi.fn(),
     quitAfterBackendShutdown: options.quitAfterBackendShutdown ?? vi.fn(async () => undefined),
     recordRendererDiagnostics: (options.recordRendererDiagnostics ?? vi.fn()) as never,
-    readAppLanguage: options.readAppLanguage ?? (() => "ZH"),
+    readAppLanguage: options.readAppLanguage ?? (async () => "ZH"),
     updateService: {
       download_release:
         options.updateService?.download_release ?? vi.fn(async () => ({ status: "downloaded" })),

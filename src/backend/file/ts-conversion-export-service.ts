@@ -1,7 +1,7 @@
 import type { CacheReadPort } from "../cache/cache-types";
 import type { TranslationFileExportService } from "./translation-file-export-service";
 import type { ProjectSessionState } from "../project/project-session-state";
-import type { BackendWorkerClient } from "../worker/worker-client";
+import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { Item } from "../../domain/item";
 import {
   is_json_record,
@@ -24,7 +24,7 @@ import {
 export class TsConversionExportService {
   private readonly session_state: ProjectSessionState; // 校验当前导出项目身份。
   private readonly cache: CacheReadPort; // 提供 item 与文本保护规则快照。
-  private readonly worker_client: BackendWorkerClient; // 执行繁简转换计算。
+  private readonly worker_client: ComputeWorkerClient; // 执行繁简转换计算。
   private readonly read_builtin_text_preserve_rule_sources: (text_type: string) => string[];
   private readonly file_export_service: TranslationFileExportService; // 负责真实文件写回。
 
@@ -34,7 +34,7 @@ export class TsConversionExportService {
   public constructor(options: {
     sessionState: ProjectSessionState;
     cache: CacheReadPort;
-    workerClient: BackendWorkerClient;
+    workerClient: ComputeWorkerClient;
     readBuiltinTextPreserveRuleSources: (text_type: string) => string[];
     fileExportService: TranslationFileExportService;
   }) {

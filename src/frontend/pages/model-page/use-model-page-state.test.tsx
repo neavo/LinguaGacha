@@ -16,6 +16,7 @@ vi.mock("@frontend/app/desktop/desktop-api", () => ({
 
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => ({ runtime_snapshot: { revision: 0, owner: null } }),
+  useRuntimeSnapshot: () => ({ revision: 0, owner: null }),
 }));
 
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({

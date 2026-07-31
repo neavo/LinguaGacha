@@ -53,6 +53,9 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
 vi.mock("@frontend/app/state/use-desktop-state", () => {
   return {
     useDesktopState: () => runtime_fixture.current,
+    useTaskSnapshot: () => runtime_fixture.current.task_snapshot,
+    useRuntimeSnapshot: () => runtime_fixture.current.runtime_snapshot,
+    useSyncTaskSnapshot: () => runtime_fixture.current.sync_task_snapshot,
   };
 });
 

@@ -1,605 +1,191 @@
-import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { BackendWorkerExecution } from "../backend/worker/worker-execution";
+import type { BackendRuntimeReady } from "../shared/backend-runtime";
+import { run_gui_entry } from "./gui-entry";
 
-type Listener = (...args: unknown[]) => void;
-type ReadyResolver = () => void;
-type FakeWindow = { id: string };
-type BackendBootstrapOptions = {
-  appRoot: string;
-  exposeApiGateway: boolean;
-  systemProxyResolver?: { resolveProxy: (url: string) => Promise<string> };
-  openOutputFolder: (output_path: string) => Promise<void>;
-  workerExecution: BackendWorkerExecution;
-};
-type BackendBootstrapInstance = {
-  options: BackendBootstrapOptions;
-  start: () => Promise<{
-    apiBaseUrl: string | null;
-    backendServices: {
-      app: {
-        paths: unknown;
-      };
-    };
-    readAppLanguage: () => unknown;
-    systemProxyStartupNotice: SystemProxyStartupNotice;
-  }>;
-  stop: () => Promise<void>;
-  isStopped: () => boolean;
-};
-type SystemProxyStartupNotice = {
-  detected: boolean; // 测试只关心入口层是否把脱敏提示摘要继续传给窗口宿主
-  proxiedOriginCount: number; // 命中数量帮助断言摘要没有被入口层重新计算
-  proxyDisplay: string | null; // URL 展示值必须由 Backend 生成，GUI 入口不重新解析代理
-};
-type MainWindowOptions = {
-  desktopBundleDir: string;
-  backendApiBaseUrl: string;
-  systemProxyStartupNotice: SystemProxyStartupNotice;
-  rendererDiagnostics: RendererDiagnosticsRegistry;
-  shouldBypassCloseConfirmation: () => boolean;
-  onClosed: () => void;
-};
-type LogWindowOptions = {
-  desktopBundleDir: string;
-  backendApiBaseUrl: string;
-  systemProxyStartupNotice: SystemProxyStartupNotice;
-  rendererDiagnostics: RendererDiagnosticsRegistry;
-};
-type IpcHandlerOptions = {
-  getMainWindow: () => FakeWindow | null;
-  getLogWindowHost: () => { close: () => void } | null;
-  markRendererConfirmedAppQuit: () => void;
-  quitAfterBackendShutdown: (exit_code: number) => Promise<void>;
-  recordRendererDiagnostics: (...args: unknown[]) => void;
-  readAppLanguage: () => unknown;
-  updateService: unknown;
-};
-type FatalHandlerOptions = {
-  isAppShutdownInProgress: () => boolean;
-  quitAfterBackendShutdown: (exit_code: number) => Promise<void>;
-};
-type RendererDiagnosticsRegistry = {
-  registerWindow: (...args: unknown[]) => void;
-  recordRendererDiagnostics: (...args: unknown[]) => void;
-  buildRendererProcessGoneContext: (...args: unknown[]) => Record<string, unknown>;
-  buildWindowUnresponsiveContext: (...args: unknown[]) => Record<string, unknown>;
-};
+const mocks = vi.hoisted(() => {
+  type Listener = (...args: unknown[]) => void;
+  const app_listeners = new Map<string, Listener>();
+  const backend_instances: Record<string, unknown>[] = [];
+  const ready: BackendRuntimeReady = {
+    apiBaseUrl: "http://127.0.0.1:4567",
+    berserkerUpdateRootDir: "E:/userdata/berserker",
+    systemProxyStartupNotice: { detected: false, proxiedOriginCount: 0, proxyDisplay: null },
+  };
+  const backend_start = vi.fn(async () => ready);
+  const backend_stop = vi.fn(async () => undefined);
+  const backend_read_language = vi.fn(async () => "ZH");
+  const backend_record_diagnostic = vi.fn(async () => undefined);
+  let backend_stopped = false;
 
-// MOCK MODULES 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
-const MOCK_MODULES = [
-  "electron",
-  "./shell/desktop-ipc-host",
-  "./shell/desktop-window-host",
-  "./shell/desktop-update-service",
-  "./shell/renderer-process-diagnostics",
-  "./shell/native-error-dialog",
-  "../backend/bootstrap/backend-bootstrap",
-  "./shell/main-fatal-error-handler",
-  "../backend/log/log-bridge",
-  "../backend/log/log-text",
-] as const;
+  class BackendRuntimeClient {
+    constructor(readonly options: Record<string, unknown>) {
+      backend_instances.push(options);
+    }
 
-beforeEach(() => {
-  vi.resetModules();
-});
-
-afterEach(() => {
-  for (const module_id of MOCK_MODULES) {
-    vi.doUnmock(module_id);
-  }
-  vi.restoreAllMocks();
-  vi.resetModules();
-});
-
-describe("Electron main 入口", () => {
-  it("ready 后先启动 Backend，再创建日志窗口、注册 IPC 并创建主窗口", async () => {
-    const harness = create_index_harness();
-
-    await harness.import_index();
-    harness.resolve_ready();
-    await flush_promises();
-
-    expect(harness.calls.renderer_public_path_dirs).toHaveLength(1);
-    expect(harness.calls.remote_debugging_configured).toBe(1);
-    expect(harness.calls.renderer_crash_reporting_configured).toBe(1);
-    expect(harness.calls.renderer_diagnostics_registry_count).toBe(1);
-    expect(harness.calls.backend_bootstraps).toHaveLength(1);
-    expect(harness.calls.backend_bootstraps[0]?.options.appRoot).toBe(process.cwd());
-    expect(harness.calls.backend_bootstraps[0]?.options.exposeApiGateway).toBe(true);
-    expect(harness.calls.update_service_paths).toEqual([harness.backend_paths]);
-    expect(harness.calls.update_cleanup_count).toBe(1);
-    await expect(
-      harness.calls.backend_bootstraps[0]?.options.systemProxyResolver?.resolveProxy(
-        "https://api.example/v1",
-      ),
-    ).resolves.toBe("DIRECT");
-    expect(harness.calls.proxy_resolve_urls).toEqual(["https://api.example/v1"]);
-    expect(harness.calls.backend_bootstraps[0]?.options.workerExecution).toEqual(
-      create_test_worker_execution(),
-    );
-    expect(harness.calls.log_window_options).toEqual([
-      {
-        desktopBundleDir: expect.any(String),
-        backendApiBaseUrl: harness.base_url,
-        systemProxyStartupNotice: harness.system_proxy_startup_notice,
-        rendererDiagnostics: harness.renderer_process_diagnostics,
-      },
-    ]);
-    expect(harness.calls.ipc_handler_options).toHaveLength(1);
-    expect(harness.calls.main_window_options).toEqual([
-      {
-        desktopBundleDir: expect.any(String),
-        backendApiBaseUrl: harness.base_url,
-        systemProxyStartupNotice: harness.system_proxy_startup_notice,
-        rendererDiagnostics: harness.renderer_process_diagnostics,
-        shouldBypassCloseConfirmation: expect.any(Function),
-        onClosed: expect.any(Function),
-      },
-    ]);
-    expect(harness.calls.ipc_handler_options[0]?.getMainWindow()).toBe(
-      harness.calls.created_windows[0],
-    );
-    expect(harness.calls.ipc_handler_options[0]?.readAppLanguage()).toBe("ZH");
-    expect(harness.calls.ipc_handler_options[0]?.updateService).toBe(
-      harness.desktop_update_service,
-    );
-    expect(harness.calls.ipc_handler_options[0]?.getLogWindowHost()).toBe(harness.log_window_host);
-    expect(harness.calls.ipc_handler_options[0]?.recordRendererDiagnostics).toBe(
-      harness.renderer_process_diagnostics.recordRendererDiagnostics,
-    );
-    expect(harness.calls.main_window_options[0]?.shouldBypassCloseConfirmation()).toBe(false);
-
-    harness.calls.ipc_handler_options[0]?.markRendererConfirmedAppQuit();
-
-    expect(harness.calls.main_window_options[0]?.shouldBypassCloseConfirmation()).toBe(true);
-
-    await harness.calls.ipc_handler_options[0]?.quitAfterBackendShutdown(0);
-
-    expect(harness.calls.app_exit_codes).toEqual([0]);
-  });
-
-  it("before-quit 会阻止直接退出并先关闭 Backend 生命周期", async () => {
-    const harness = create_index_harness();
-    let prevented = false;
-
-    await harness.import_index();
-    harness.emit("before-quit", {
-      preventDefault: () => {
-        prevented = true;
-      },
+    start = backend_start;
+    stop = vi.fn(async () => {
+      backend_stopped = true;
+      await backend_stop();
     });
-    await flush_promises();
-
-    expect(prevented).toBe(true);
-    expect(harness.calls.backend_stop_count).toBe(1);
-    expect(harness.calls.app_exit_codes).toEqual([0]);
-  });
-
-  it("所有窗口关闭时会关闭日志窗口并触发应用退出", async () => {
-    const harness = create_index_harness();
-
-    await harness.import_index();
-    harness.resolve_ready();
-    await flush_promises();
-    harness.emit("window-all-closed");
-
-    expect(harness.calls.log_window_close_count).toBe(1);
-    expect(harness.calls.app_quit_count).toBe(1);
-  });
-
-  it("Backend 启动失败时写入主进程日志、展示错误并退出应用", async () => {
-    const harness = create_index_harness();
-    const start_error = new Error("端口不可用");
-    harness.set_start_error(start_error);
-
-    await harness.import_index();
-    harness.resolve_ready();
-    await flush_promises();
-
-    expect(harness.calls.main_errors).toEqual([
-      {
-        message: "log:app.diagnostic.lifecycle.app_start_failed",
-        context: { error: start_error },
-      },
-    ]);
-    expect(harness.calls.show_error_boxes).toEqual([["LinguaGacha 启动失败", "端口不可用"]]);
-    expect(harness.calls.backend_stop_count).toBe(1);
-    expect(harness.calls.app_exit_codes).toEqual([1]);
-  });
-
-  it("启动失败诊断日志写入失败时仍关闭 Backend 并退出应用", async () => {
-    const harness = create_index_harness();
-    const start_error = new Error("端口不可用");
-    const diagnostic_error = new Error("诊断日志写入失败");
-    const stderr_write = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    harness.set_start_error(start_error);
-    harness.set_main_error_failure(diagnostic_error);
-
-    await harness.import_index();
-    harness.resolve_ready();
-    await flush_promises();
-
-    expect(stderr_write).toHaveBeenCalledWith("[startup] 诊断日志写入失败\n");
-    expect(harness.calls.show_error_boxes).toEqual([["LinguaGacha 启动失败", "端口不可用"]]);
-    expect(harness.calls.backend_stop_count).toBe(1);
-    expect(harness.calls.app_exit_codes).toEqual([1]);
-  });
-
-  it("Backend 启动后桌面服务初始化失败时仍关闭 Backend 再退出应用", async () => {
-    const harness = create_index_harness();
-    const cleanup_error = new Error("更新目录清理失败");
-    harness.set_update_cleanup_error(cleanup_error);
-
-    await harness.import_index();
-    harness.resolve_ready();
-    await flush_promises();
-
-    expect(harness.calls.backend_start_count).toBe(1);
-    expect(harness.calls.update_cleanup_count).toBe(1);
-    expect(harness.calls.backend_stop_count).toBe(1);
-    expect(harness.calls.main_errors).toEqual([
-      {
-        message: "log:app.diagnostic.lifecycle.app_start_failed",
-        context: { error: cleanup_error },
-      },
-    ]);
-    expect(harness.calls.show_error_boxes).toEqual([["LinguaGacha 启动失败", "更新目录清理失败"]]);
-    expect(harness.calls.app_exit_codes).toEqual([1]);
-  });
-
-  it("打开输出目录失败时把 shell 错误转换为文件域异常", async () => {
-    const harness = create_index_harness();
-    harness.set_open_path_result("系统拒绝访问");
-
-    await harness.import_index();
-    const manager = harness.calls.backend_bootstraps[0];
-
-    await expect(manager?.options.openOutputFolder("E:/Novel/out")).rejects.toThrow(
-      "file.io_failed",
-    );
-  });
-});
-
-/**
- * 搭建 Electron main 入口测试夹具，用假的 app、窗口和 BackendBootstrap 观察启动顺序。
- */
-function create_index_harness(): {
-  base_url: string;
-  backend_paths: unknown;
-  desktop_update_service: unknown;
-  log_window_host: { close: () => void };
-  renderer_process_diagnostics: RendererDiagnosticsRegistry;
-  system_proxy_startup_notice: SystemProxyStartupNotice;
-  calls: {
-    app_exit_codes: number[];
-    app_quit_count: number;
-    backend_bootstraps: BackendBootstrapInstance[];
-    backend_start_count: number;
-    backend_stop_count: number;
-    created_windows: FakeWindow[];
-    fatal_handler_options: FatalHandlerOptions[];
-    ipc_handler_options: IpcHandlerOptions[];
-    log_window_close_count: number;
-    log_window_options: LogWindowOptions[];
-    main_errors: Array<{ message: string; context: Record<string, unknown> }>;
-    main_window_options: MainWindowOptions[];
-    proxy_resolve_urls: string[];
-    remote_debugging_configured: number;
-    renderer_crash_reporting_configured: number;
-    renderer_diagnostics_registry_count: number;
-    renderer_public_path_dirs: string[];
-    show_error_boxes: Array<[string, string]>;
-    update_cleanup_count: number;
-    update_service_paths: unknown[];
-  };
-  emit: (event_name: string, ...args: unknown[]) => void;
-  import_index: () => Promise<void>;
-  resolve_ready: ReadyResolver;
-  set_open_path_result: (result: string) => void;
-  set_main_error_failure: (error: Error) => void;
-  set_start_error: (error: Error) => void;
-  set_update_cleanup_error: (error: Error) => void;
-} {
-  const base_url = "http://127.0.0.1:19001";
-  const backend_paths = { id: "backend-paths" };
-  let update_cleanup_error: Error | null = null;
-  const desktop_update_service = {
-    id: "desktop-update-service",
-    cleanup_berserker_version_dirs: async () => {
-      calls.update_cleanup_count += 1;
-      if (update_cleanup_error !== null) {
-        throw update_cleanup_error;
-      }
-    },
-  };
-  const system_proxy_startup_notice: SystemProxyStartupNotice = {
-    detected: true,
-    proxiedOriginCount: 2,
-    proxyDisplay: "http://127.0.0.1:7890",
-  }; // system_proxy_startup_notice 模拟 BackendBootstrap 返回的启动期代理摘要
-  const listeners = new Map<string, Listener[]>();
-  let resolve_ready: ReadyResolver = () => undefined;
-  const ready_promise = new Promise<void>((resolve) => {
-    resolve_ready = resolve;
-  });
-  let open_path_result = "";
-  let main_error_failure: Error | null = null;
-  let start_error: Error | null = null;
-  const log_window_host = {
-    close: () => {
-      calls.log_window_close_count += 1;
-    },
-  };
-  const renderer_process_diagnostics: RendererDiagnosticsRegistry = {
-    registerWindow: vi.fn(),
-    recordRendererDiagnostics: vi.fn(),
-    buildRendererProcessGoneContext: vi.fn(() => ({})),
-    buildWindowUnresponsiveContext: vi.fn(() => ({})),
-  };
-  const calls = {
-    app_exit_codes: [] as number[],
-    app_quit_count: 0,
-    backend_bootstraps: [] as BackendBootstrapInstance[],
-    backend_start_count: 0,
-    backend_stop_count: 0,
-    created_windows: [] as FakeWindow[],
-    fatal_handler_options: [] as FatalHandlerOptions[],
-    ipc_handler_options: [] as IpcHandlerOptions[],
-    log_window_close_count: 0,
-    log_window_options: [] as LogWindowOptions[],
-    main_errors: [] as Array<{ message: string; context: Record<string, unknown> }>,
-    main_window_options: [] as MainWindowOptions[],
-    proxy_resolve_urls: [] as string[],
-    remote_debugging_configured: 0,
-    renderer_crash_reporting_configured: 0,
-    renderer_diagnostics_registry_count: 0,
-    renderer_public_path_dirs: [] as string[],
-    show_error_boxes: [] as Array<[string, string]>,
-    update_cleanup_count: 0,
-    update_service_paths: [] as unknown[],
-  };
-
-  // 模拟外部运行时对象，只保留当前测试会触发的行为面。
-  class FakeBackendBootstrap implements BackendBootstrapInstance {
-    public readonly options: BackendBootstrapOptions;
-    private stopped = false;
-
-    // 构造阶段只注入必要依赖，避免实例创建时读取外部可变状态。
-    public constructor(options: BackendBootstrapOptions) {
-      this.options = options;
-      calls.backend_bootstraps.push(this);
-    }
-
-    // start 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    public async start(): Promise<{
-      apiBaseUrl: string;
-      backendServices: {
-        app: {
-          paths: unknown;
-        };
-      };
-      readAppLanguage: () => unknown;
-      systemProxyStartupNotice: SystemProxyStartupNotice;
-    }> {
-      calls.backend_start_count += 1;
-      if (start_error !== null) {
-        throw start_error;
-      }
-      return {
-        apiBaseUrl: base_url,
-        backendServices: {
-          app: {
-            paths: backend_paths,
-          },
-        },
-        readAppLanguage: () => "ZH",
-        systemProxyStartupNotice: system_proxy_startup_notice,
-      };
-    }
-
-    // stop 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    public async stop(): Promise<void> {
-      calls.backend_stop_count += 1;
-      this.stopped = true;
-    }
-
-    // isStopped 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    public isStopped(): boolean {
-      return this.stopped;
-    }
+    readAppLanguage = backend_read_language;
+    recordHostDiagnostic = backend_record_diagnostic;
+    isStopped = () => backend_stopped;
   }
 
-  vi.doMock("electron", () => {
-    return {
-      app: {
-        isPackaged: false,
-        commandLine: {
-          appendSwitch: () => undefined,
-        },
-        exit: (exit_code: number) => {
-          calls.app_exit_codes.push(exit_code);
-        },
-        on: (event_name: string, listener: Listener) => {
-          const event_listeners = listeners.get(event_name) ?? [];
-          event_listeners.push(listener);
-          listeners.set(event_name, event_listeners);
-        },
-        quit: () => {
-          calls.app_quit_count += 1;
-        },
-        whenReady: () => ready_promise,
-      },
-      BrowserWindow: {
-        getAllWindows: () => calls.created_windows,
-      },
-      shell: {
-        openPath: async () => open_path_result,
-      },
-      session: {
-        defaultSession: {
-          resolveProxy: async (url: string) => {
-            calls.proxy_resolve_urls.push(url);
-            return "DIRECT";
-          },
-        },
-      },
-    };
-  });
+  const cleanup_updates = vi.fn(async () => undefined);
+  const update_options: unknown[] = [];
+  class DesktopUpdateService {
+    constructor(options: unknown) {
+      update_options.push(options);
+    }
 
-  vi.doMock("./shell/desktop-ipc-host", () => {
-    return {
-      register_desktop_ipc_handlers: (options: IpcHandlerOptions) => {
-        calls.ipc_handler_options.push(options);
-      },
-    };
-  });
-
-  vi.doMock("./shell/desktop-window-host", () => {
-    return {
-      configure_development_remote_debugging: () => {
-        calls.remote_debugging_configured += 1;
-      },
-      configure_renderer_public_path: (desktop_bundle_dir: string) => {
-        calls.renderer_public_path_dirs.push(desktop_bundle_dir);
-      },
-      create_log_window_host: (options: LogWindowOptions) => {
-        calls.log_window_options.push(options);
-        return log_window_host;
-      },
-      create_main_window: (options: MainWindowOptions) => {
-        calls.main_window_options.push(options);
-        const window = { id: `window-${calls.created_windows.length.toString()}` };
-        calls.created_windows.push(window);
-        return window;
-      },
-    };
-  });
-
-  vi.doMock("./shell/desktop-update-service", () => {
-    return {
-      DesktopUpdateService: class {
-        // 构造函数记录入口层传入的路径服务，避免测试启动真实更新服务。
-        public constructor(options: { paths: unknown }) {
-          calls.update_service_paths.push(options.paths);
-          return desktop_update_service;
-        }
-      },
-    };
-  });
-
-  vi.doMock("./shell/renderer-process-diagnostics", () => {
-    return {
-      configure_renderer_crash_reporting: () => {
-        calls.renderer_crash_reporting_configured += 1;
-      },
-      create_renderer_process_diagnostics_registry: () => {
-        calls.renderer_diagnostics_registry_count += 1;
-        return renderer_process_diagnostics;
-      },
-    };
-  });
-
-  vi.doMock("./shell/native-error-dialog", () => {
-    return {
-      try_show_native_error_dialog: (title: string, message: string) => {
-        calls.show_error_boxes.push([title, message]);
-      },
-    };
-  });
-
-  vi.doMock("../backend/bootstrap/backend-bootstrap", () => {
-    return {
-      BackendBootstrap: FakeBackendBootstrap,
-    };
-  });
-
-  vi.doMock("./shell/main-fatal-error-handler", () => {
-    return {
-      install_main_fatal_error_handler: (options: FatalHandlerOptions) => {
-        calls.fatal_handler_options.push(options);
-      },
-    };
-  });
-
-  vi.doMock("../backend/log/log-bridge", () => {
-    return {
-      write_electron_main_error: (message: string, context: Record<string, unknown>) => {
-        if (main_error_failure !== null) {
-          throw main_error_failure;
-        }
-        calls.main_errors.push({ message, context });
-      },
-    };
-  });
-
-  vi.doMock("../backend/log/log-text", () => {
-    return {
-      t_main_log: (key: string) => `log:${key}`,
-    };
-  });
+    cleanup_berserker_version_dirs = cleanup_updates;
+  }
 
   return {
-    base_url,
-    backend_paths,
-    calls,
-    desktop_update_service,
-    emit: (event_name, ...args) => {
-      for (const listener of listeners.get(event_name) ?? []) {
-        listener(...args);
-      }
+    app_listeners,
+    backend_instances,
+    ready,
+    backend_start,
+    backend_stop,
+    backend_read_language,
+    backend_record_diagnostic,
+    reset_backend_stopped: () => {
+      backend_stopped = false;
     },
-    import_index: async () => {
-      const entry = await import("./gui-entry");
-      entry.run_gui_entry({
-        desktopBundleDir: path.join(process.cwd(), "build", "dist-electron"),
-        workerExecution: create_test_worker_execution(),
-      });
-    },
-    log_window_host,
-    renderer_process_diagnostics,
-    resolve_ready,
-    system_proxy_startup_notice,
-    set_open_path_result: (result) => {
-      open_path_result = result;
-    },
-    set_main_error_failure: (error) => {
-      main_error_failure = error;
-    },
-    set_start_error: (error) => {
-      start_error = error;
-    },
-    set_update_cleanup_error: (error) => {
-      update_cleanup_error = error;
-    },
+    BackendRuntimeClient,
+    DesktopUpdateService,
+    update_options,
+    cleanup_updates,
+    app_exit: vi.fn(),
+    app_quit: vi.fn(),
+    resolve_proxy: vi.fn(async () => "DIRECT"),
+    open_path: vi.fn(async () => ""),
+    configure_public_path: vi.fn(),
+    configure_debugging: vi.fn(),
+    configure_crash_reporting: vi.fn(),
+    create_main_window: vi.fn(() => ({ kind: "main" })),
+    create_log_window_host: vi.fn(() => ({ close: vi.fn() })),
+    register_ipc: vi.fn(),
+    install_fatal_handler: vi.fn(),
+    show_native_error: vi.fn(),
   };
-}
+});
 
-/**
- * 构造 GUI 启动测试使用的 Backend worker 执行配置，断言入口层会原样传入 BackendBootstrap。
- */
-function create_test_worker_execution(): BackendWorkerExecution {
-  return {
-    kind: "worker_threads",
-    workUnitWorkerEntryUrl: pathToFileURL(
-      path.join(process.cwd(), "build", "dist-electron", "work-unit-worker-entry.js"),
-    ),
-    planningWorkerEntryUrl: pathToFileURL(
-      path.join(process.cwd(), "build", "dist-electron", "planning-worker-entry.js"),
-    ),
-    backendWorkerEntryUrl: pathToFileURL(
-      path.join(process.cwd(), "build", "dist-electron", "backend-worker-entry.js"),
-    ),
-  };
-}
+vi.mock("electron", () => ({
+  app: {
+    isPackaged: false,
+    on: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
+      mocks.app_listeners.set(event, listener);
+    }),
+    whenReady: vi.fn(() => Promise.resolve()),
+    exit: mocks.app_exit,
+    quit: mocks.app_quit,
+  },
+  BrowserWindow: { getAllWindows: vi.fn(() => []) },
+  session: { defaultSession: { resolveProxy: mocks.resolve_proxy } },
+  shell: { openPath: mocks.open_path },
+}));
+vi.mock("./runtime/backend-runtime-client", () => ({
+  BackendRuntimeClient: mocks.BackendRuntimeClient,
+}));
+vi.mock("./shell/desktop-update-service", () => ({
+  DesktopUpdateService: mocks.DesktopUpdateService,
+}));
+vi.mock("./shell/desktop-ipc-host", () => ({
+  register_desktop_ipc_handlers: mocks.register_ipc,
+}));
+vi.mock("./shell/desktop-window-host", () => ({
+  configure_renderer_public_path: mocks.configure_public_path,
+  configure_development_remote_debugging: mocks.configure_debugging,
+  create_main_window: mocks.create_main_window,
+  create_log_window_host: mocks.create_log_window_host,
+}));
+vi.mock("./shell/main-fatal-error-handler", () => ({
+  install_main_fatal_error_handler: mocks.install_fatal_handler,
+}));
+vi.mock("./shell/native-error-dialog", () => ({
+  try_show_native_error_dialog: mocks.show_native_error,
+}));
+vi.mock("./shell/renderer-process-diagnostics", () => ({
+  configure_renderer_crash_reporting: mocks.configure_crash_reporting,
+  create_renderer_process_diagnostics_registry: () => ({
+    recordRendererDiagnostics: vi.fn(),
+  }),
+}));
 
-/**
- * 刷新入口异步链路中的 ready、start 和窗口创建微任务。
- */
-async function flush_promises(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-  await Promise.resolve();
-}
+describe("run_gui_entry", () => {
+  beforeEach(() => {
+    mocks.app_listeners.clear();
+    mocks.backend_instances.length = 0;
+    mocks.update_options.length = 0;
+    mocks.reset_backend_stopped();
+    vi.clearAllMocks();
+    mocks.backend_start.mockResolvedValue(mocks.ready);
+  });
+
+  it("Backend ready 后才装配更新器、IPC 和窗口", async () => {
+    const worker_url = new URL("file:///backend-runtime-worker-entry.js");
+
+    run_gui_entry({
+      desktopBundleDir: "E:/app/dist-electron",
+      backendRuntimeWorkerEntryUrl: worker_url,
+    });
+    await vi.waitFor(() => expect(mocks.create_main_window).toHaveBeenCalledOnce());
+
+    expect(mocks.backend_instances[0]).toMatchObject({
+      workerEntryUrl: worker_url,
+      appRoot: process.cwd(),
+    });
+    expect(mocks.update_options).toEqual([
+      { appRoot: process.cwd(), updateRootDir: "E:/userdata/berserker" },
+    ]);
+    expect(mocks.cleanup_updates).toHaveBeenCalledOnce();
+    expect(mocks.create_log_window_host).toHaveBeenCalledWith(
+      expect.objectContaining({ backendApiBaseUrl: "http://127.0.0.1:4567" }),
+    );
+    expect(mocks.register_ipc).toHaveBeenCalledOnce();
+    const ipc_options = mocks.register_ipc.mock.calls[0]?.[0] as {
+      readAppLanguage: () => Promise<unknown>;
+    };
+    await expect(ipc_options.readAppLanguage()).resolves.toBe("ZH");
+  });
+
+  it("before-quit 先阻止原生退出，等待 Backend 停止后再退出", async () => {
+    run_gui_entry({
+      desktopBundleDir: "E:/app/dist-electron",
+      backendRuntimeWorkerEntryUrl: new URL("file:///backend-runtime-worker-entry.js"),
+    });
+    await vi.waitFor(() => expect(mocks.create_main_window).toHaveBeenCalledOnce());
+    const prevent_default = vi.fn();
+    const before_quit = mocks.app_listeners.get("before-quit");
+    if (before_quit === undefined) throw new Error("缺少 before-quit listener。");
+
+    before_quit({ preventDefault: prevent_default });
+    await vi.waitFor(() => expect(mocks.app_exit).toHaveBeenCalledWith(0));
+
+    expect(prevent_default).toHaveBeenCalledOnce();
+    expect(mocks.backend_stop).toHaveBeenCalledOnce();
+    expect(mocks.backend_stop.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.app_exit.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY,
+    );
+  });
+
+  it("Backend 意外退出时显示原生错误并走故障退出码", async () => {
+    run_gui_entry({
+      desktopBundleDir: "E:/app/dist-electron",
+      backendRuntimeWorkerEntryUrl: new URL("file:///backend-runtime-worker-entry.js"),
+    });
+    await vi.waitFor(() => expect(mocks.create_main_window).toHaveBeenCalledOnce());
+    const on_unexpected_exit = mocks.backend_instances[0]?.["onUnexpectedExit"] as
+      | ((error: Error) => void)
+      | undefined;
+    if (on_unexpected_exit === undefined) throw new Error("缺少 Backend 异常退出处理器。");
+
+    on_unexpected_exit(new Error("worker gone"));
+    await vi.waitFor(() => expect(mocks.app_exit).toHaveBeenCalledWith(1));
+
+    expect(mocks.show_native_error).toHaveBeenCalledWith("LinguaGacha 后端异常退出", "worker gone");
+  });
+});

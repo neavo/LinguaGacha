@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { CacheManager } from "../cache/cache-manager";
 import { ProjectDatabase } from "../database/database-operations";
 import { ProjectSessionState } from "./project-session-state";
-import type { BackendWorkerClient } from "../worker/worker-client";
+import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { ProjectSummaryService } from "./project-summary-service";
 
 // query service 测试只关心公开读取结果，item helper 提供稳定的最小项目行。
@@ -184,7 +184,7 @@ describe("ProjectSummaryService", () => {
       workerClient: {
         run: async () => ({}),
         dispose: async () => undefined,
-      } as unknown as BackendWorkerClient,
+      } as unknown as ComputeWorkerClient,
     });
     await cache.warmProject("E:/Project/demo.lg");
     const session_state = new ProjectSessionState();

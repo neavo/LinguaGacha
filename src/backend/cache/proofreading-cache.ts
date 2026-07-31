@@ -1,5 +1,5 @@
 import type { AppSettingService } from "../app/app-setting-service";
-import type { BackendWorkerClient } from "../worker/worker-client";
+import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import type { CacheFileEntry, CacheItem, CacheReadPort } from "./cache-types";
 import * as AppErrors from "../../shared/error";
 import { Item } from "../../domain/item";
@@ -57,7 +57,7 @@ export type ProofreadingCacheResult<TData> = {
 export class ProofreadingCache {
   private readonly cache: CacheReadPort; // 完整同步输入只来自当前会话缓存快照
   private readonly app_setting_service: AppSettingService; // 语言缺省值来自当前应用设置
-  private readonly worker_client: BackendWorkerClient; // 质量评估在 worker 中执行
+  private readonly worker_client: ComputeWorkerClient; // 质量评估在 worker 中执行
   private readonly service: ReturnType<typeof createProofreadingListReader>; // 持有列表索引运行态
   private synced_key: string | null = null; // synced_state 对应的完整身份
   private synced_state: ProofreadingSyncState | null = null; // 最近一次成功同步的公开摘要
@@ -69,7 +69,7 @@ export class ProofreadingCache {
   public constructor(options: {
     cache: CacheReadPort;
     appSettingService: AppSettingService;
-    workerClient: BackendWorkerClient;
+    workerClient: ComputeWorkerClient;
     service: ReturnType<typeof createProofreadingListReader>;
   }) {
     this.cache = options.cache;

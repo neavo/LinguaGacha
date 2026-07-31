@@ -7,8 +7,14 @@ import {
   DesktopStateProvider,
   normalize_settings_snapshot,
 } from "@frontend/app/state/desktop-state-context";
+import type { ProjectChangeSignal } from "@frontend/app/state/project-change-signal";
 import { DESKTOP_RUNTIME_REFRESH_INTERVAL_MS } from "@frontend/app/state/desktop-refresh-scheduler";
-import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import {
+  useDesktopState,
+  useProjectChangeSignal,
+  useRuntimeSnapshot,
+  useTaskSnapshot,
+} from "@frontend/app/state/use-desktop-state";
 
 const { api_fetch_mock, open_event_stream_mock, report_renderer_error_mock } = vi.hoisted(() => {
   return {
@@ -69,7 +75,7 @@ type ProofreadingSignalSnapshot = {
 };
 
 function resolve_proofreading_project_change_signal(
-  signal: ReturnType<typeof useDesktopState>["project_change_signal"],
+  signal: ProjectChangeSignal,
 ): ProofreadingSignalSnapshot | null {
   if (signal.updated_sections.length === 0) {
     return null;
@@ -133,7 +139,7 @@ function resolve_state_workbench_change_signal(signal: {
   seq: number;
   reason: string;
   updated_sections: string[];
-  results: ReturnType<typeof useDesktopState>["project_change_signal"]["results"];
+  results: ProjectChangeSignal["results"];
 }): { seq: number; reason: string; file_full_replace: boolean } | null {
   return signal.updated_sections.some((section) =>
     ["project", "files", "items", "analysis"].includes(section),
@@ -150,13 +156,16 @@ function RuntimeProbe(props: {
   onSnapshot: (snapshot: RuntimeSnapshot) => void;
 }): JSX.Element | null {
   const state = useDesktopState();
+  const project_change_signal = useProjectChangeSignal();
+  const task_snapshot = useTaskSnapshot();
+  const runtime_snapshot = useRuntimeSnapshot();
   const workbench_signal = useMemo(
-    () => resolve_state_workbench_change_signal(state.project_change_signal),
-    [state.project_change_signal],
+    () => resolve_state_workbench_change_signal(project_change_signal),
+    [project_change_signal],
   );
   const proofreading_signal = useMemo(
-    () => resolve_proofreading_project_change_signal(state.project_change_signal),
-    [state.project_change_signal],
+    () => resolve_proofreading_project_change_signal(project_change_signal),
+    [project_change_signal],
   );
   const last_workbench_signal_ref = useRef(workbench_signal);
   const last_proofreading_signal_ref = useRef(proofreading_signal);
@@ -181,24 +190,24 @@ function RuntimeProbe(props: {
       proofreadingItemIds: current_proofreading_signal?.item_ids ?? [],
       proofreadingFieldPatch: current_proofreading_signal?.field_patch ?? null,
       projectPath: state.project_snapshot.path,
-      taskStatus: state.task_snapshot.status,
-      taskLine: state.task_snapshot.progress.line,
-      taskProcessedLine: state.task_snapshot.progress.processed_line,
-      taskOutputTokens: state.task_snapshot.progress.total_output_tokens,
-      taskRequestInFlightCount: state.task_snapshot.request_in_flight_count,
-      runtimeOwner: state.runtime_snapshot.owner,
+      taskStatus: task_snapshot.status,
+      taskLine: task_snapshot.progress.line,
+      taskProcessedLine: task_snapshot.progress.processed_line,
+      taskOutputTokens: task_snapshot.progress.total_output_tokens,
+      taskRequestInFlightCount: task_snapshot.request_in_flight_count,
+      runtimeOwner: runtime_snapshot.owner,
       sourceLanguage: state.settings_snapshot.source_language,
     });
   }, [
     props,
     proofreading_signal,
     state.settings_snapshot.source_language,
-    state.task_snapshot.progress.line,
-    state.task_snapshot.progress.processed_line,
-    state.task_snapshot.request_in_flight_count,
-    state.runtime_snapshot.owner,
-    state.task_snapshot.status,
-    state.task_snapshot.progress.total_output_tokens,
+    task_snapshot.progress.line,
+    task_snapshot.progress.processed_line,
+    task_snapshot.request_in_flight_count,
+    runtime_snapshot.owner,
+    task_snapshot.status,
+    task_snapshot.progress.total_output_tokens,
     state.project_snapshot.path,
     workbench_signal,
   ]);

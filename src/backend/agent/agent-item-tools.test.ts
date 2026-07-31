@@ -38,7 +38,11 @@ function create_cache(
       sectionRevisions: read_revisions(),
       itemCount: read_items().length,
     }),
-    items: { readItems: read_items },
+    items: {
+      readItems: read_items,
+      readItem: (item_id: number) =>
+        read_items().find((item) => item["item_id"] === item_id) ?? null,
+    },
   };
 }
 

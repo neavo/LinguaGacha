@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, type ReactNode, type UIEvent } from "react";
+import { memo, useEffect, useRef, useState, type ReactNode, type UIEvent } from "react";
 import { Bot } from "lucide-react";
 
 import type { AgentEntry, AgentSessionState, AgentUserMessagePart } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import { useModelSelection } from "@frontend/features/model-selection/use-model-selection";
-import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
@@ -27,14 +27,12 @@ const AGENT_STATUS_LABEL_KEYS: Readonly<Record<DetailStatus, LocaleKey>> = Objec
 });
 
 type AgentDetailEntryProps = {
-  kind: "tool" | "thinking";
   label: string;
   started_at: number;
   status: DetailStatus;
   active: boolean;
   status_label: string;
-  content: string | null;
-};
+} & ({ kind: "thinking"; content: string | null } | { kind: "tool" });
 
 type AgentStatusLightProps = {
   status: DetailStatus;
@@ -47,7 +45,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
   const agent = useAgentPageState();
   const model_selection = useModelSelection();
-  const { runtime_snapshot } = useDesktopState();
+  const runtime_snapshot = useRuntimeSnapshot();
   const message_end_ref = useRef<HTMLDivElement | null>(null);
   const auto_follow_ref = useRef(true); // 用户主动离开底部后，流式增量不得抢回滚动位置
   const [reset_dialog_open, set_reset_dialog_open] = useState(false);
@@ -124,27 +122,44 @@ function render_conversation(
   state: AgentSessionState,
   t: Translate,
 ): ReactNode[] {
-  const nodes: ReactNode[] = [];
   const last_entry = state === "running" ? entries.at(-1) : undefined;
-  for (const entry of entries) {
-    if (entry.kind === "tool_call") {
-      nodes.push(
-        <AgentDetailEntry
-          key={entry.id}
-          kind="tool"
-          label={entry.toolName}
-          started_at={entry.createdAt}
-          status={entry.status}
-          active={state === "running" && entry.status === "running"}
-          status_label={t(AGENT_STATUS_LABEL_KEYS[entry.status])}
-          content={entry.output === null ? null : format_tool_output(entry.output)}
-        />,
-      );
-      continue;
-    }
-    if (entry.kind === "user_message") {
-      nodes.push(<AgentRoundHeader key={`round-${entry.id}`} user={entry} t={t} />);
-      nodes.push(
+  return entries.map((entry) => (
+    <AgentEntryView
+      key={entry.id}
+      entry={entry}
+      active={
+        entry.kind === "tool_call"
+          ? state === "running" && entry.status === "running"
+          : last_entry === entry && entry.kind === "assistant_message" && !entry.complete
+      }
+      t={t}
+    />
+  ));
+}
+
+/** 后端 upsert 保留未变化条目对象身份，memo 只重绘真实变化的时间线条目。 */
+const AgentEntryView = memo(function AgentEntryView(props: {
+  entry: AgentEntry;
+  active: boolean;
+  t: Translate;
+}): ReactNode {
+  const entry = props.entry;
+  if (entry.kind === "tool_call") {
+    return (
+      <AgentDetailEntry
+        kind="tool"
+        label={entry.toolName}
+        started_at={entry.createdAt}
+        status={entry.status}
+        active={props.active}
+        status_label={props.t(AGENT_STATUS_LABEL_KEYS[entry.status])}
+      />
+    );
+  }
+  if (entry.kind === "user_message") {
+    return (
+      <>
+        <AgentRoundHeader user={entry} t={props.t} />
         <article className="agent-message agent-message--user" key={entry.id}>
           <p className="agent-message__user-text">
             {entry.parts.map((part, part_index) =>
@@ -157,14 +172,12 @@ function render_conversation(
               ),
             )}
           </p>
-        </article>,
-      );
-      continue;
-    }
-    nodes.push(render_assistant_entry(entry, last_entry === entry && !entry.complete, t));
+        </article>
+      </>
+    );
   }
-  return nodes;
-}
+  return render_assistant_entry(entry, props.active, props.t);
+});
 
 /** 保持 text / thinking 的供应商顺序，并只把流式状态标到最后一个开放 part。 */
 function render_assistant_entry(
@@ -222,9 +235,27 @@ function AgentRoundHeader({ user, t }: { user: UserEntry; t: Translate }): JSX.E
   );
 }
 
-/** 工具输出与思考过程共享折叠交互，但保留各自的语义 class。 */
-function AgentDetailEntry(props: AgentDetailEntryProps): JSX.Element {
+/** 工具只显示状态行；思考过程保留可展开正文。 */
+const AgentDetailEntry = memo(function AgentDetailEntry(props: AgentDetailEntryProps): JSX.Element {
   const duration = useAgentElapsed(props.started_at, props.active);
+  if (props.kind === "tool") {
+    return (
+      <div className="agent-detail-entry agent-detail-entry--tool">
+        <span className="agent-detail-entry__label">
+          {props.label}
+          {props.active && (
+            <>
+              {" · "}
+              <span className="agent-detail-entry__elapsed" role="timer" aria-live="off">
+                {duration}
+              </span>
+            </>
+          )}
+        </span>
+        <AgentStatusLight status={props.status} active={props.active} label={props.status_label} />
+      </div>
+    );
+  }
   return (
     <details className={`agent-detail-entry agent-detail-entry--${props.kind}`}>
       <summary>
@@ -244,7 +275,7 @@ function AgentDetailEntry(props: AgentDetailEntryProps): JSX.Element {
       {props.content !== null && <pre tabIndex={0}>{props.content}</pre>}
     </details>
   );
-}
+});
 
 /** 状态色与动画独立；运行时闪烁所有并行工具或当前思考块。 */
 function AgentStatusLight(props: AgentStatusLightProps): JSX.Element {
@@ -268,15 +299,6 @@ function useAgentElapsed(started_at: number, running: boolean, ended_at?: number
   }, [running]);
 
   return format_elapsed((running ? now : (ended_at ?? started_at)) - started_at);
-}
-
-/** JSON 工具结果便于人工检查，非 JSON 正文保持模型实际收到的原文。 */
-function format_tool_output(output: string): string {
-  try {
-    return JSON.stringify(JSON.parse(output) as unknown, null, 2) ?? output;
-  } catch {
-    return output;
-  }
 }
 
 /** 轮次耗时使用固定紧凑格式，跨语言文案只负责包裹该稳定数值。 */

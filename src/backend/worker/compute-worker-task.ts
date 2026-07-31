@@ -24,39 +24,40 @@ type TsConversionWorkerTaskInput = {
   preset_rules_by_text_type: Record<string, string[]>;
 };
 
-export type BackendWorkerTaskInputByType = {
+export type ComputeWorkerTaskInputByType = {
   quality_statistics: QualityStatisticsWorkerTaskInput;
   ts_conversion: TsConversionWorkerTaskInput;
   proofreading_sync: ProofreadingSyncInput;
 };
 
-export type BackendWorkerTaskResultByType = {
+export type ComputeWorkerTaskResultByType = {
   quality_statistics: Record<string, unknown>;
   ts_conversion: TsConversionConvertedItem[];
   proofreading_sync: ProofreadingEvaluatedSlice;
 };
 
-export type BackendWorkerTaskType = keyof BackendWorkerTaskInputByType;
+export type ComputeWorkerTaskType = keyof ComputeWorkerTaskInputByType;
 
-export type BackendWorkerTask = {
-  [TType in BackendWorkerTaskType]: {
+export type ComputeWorkerTask = {
+  [TType in ComputeWorkerTaskType]: {
     type: TType;
-    input: BackendWorkerTaskInputByType[TType];
+    input: ComputeWorkerTaskInputByType[TType];
   };
-}[BackendWorkerTaskType];
+}[ComputeWorkerTaskType];
 
-export type BackendWorkerTaskResult<TTask extends BackendWorkerTask> =
-  BackendWorkerTaskResultByType[TTask["type"]];
+export type ComputeWorkerTaskResult<TTask extends ComputeWorkerTask> =
+  ComputeWorkerTaskResultByType[TTask["type"]];
 
-export async function run_worker_task<TTask extends BackendWorkerTask>(
+/** 在当前执行环境分发纯计算任务；线程入口与测试模式共用该唯一实现。 */
+export async function run_compute_worker_task<TTask extends ComputeWorkerTask>(
   task: TTask,
-): Promise<BackendWorkerTaskResult<TTask>> {
+): Promise<ComputeWorkerTaskResult<TTask>> {
   switch (task.type) {
     case "quality_statistics":
-      return run_quality_statistics_worker_task(task.input) as BackendWorkerTaskResult<TTask>;
+      return run_quality_statistics_worker_task(task.input) as ComputeWorkerTaskResult<TTask>;
     case "ts_conversion":
-      return build_ts_conversion_converted_items(task.input) as BackendWorkerTaskResult<TTask>;
+      return build_ts_conversion_converted_items(task.input) as ComputeWorkerTaskResult<TTask>;
     case "proofreading_sync":
-      return evaluateProofreadingSlice(task.input) as BackendWorkerTaskResult<TTask>;
+      return evaluateProofreadingSlice(task.input) as ComputeWorkerTaskResult<TTask>;
   }
 }

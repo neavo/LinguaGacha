@@ -1,11 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { set_electron_main_log_manager } from "../log/log-bridge";
-import type { LogManager } from "../log/log-manager";
 import { format_bootstrap_log, write_bootstrap_error, write_bootstrap_log } from "./bootstrap-log";
 
 afterEach(() => {
-  set_electron_main_log_manager(null);
   vi.useRealTimers();
   vi.restoreAllMocks();
 });
@@ -33,9 +30,7 @@ describe("write_bootstrap_log", () => {
 
   it("存在日志管理器时写入生命周期来源的 info 记录", () => {
     const info = vi.fn();
-    set_electron_main_log_manager({ info } as unknown as LogManager);
-
-    write_bootstrap_log("Backend 已启动");
+    write_bootstrap_log("Backend 已启动", { info });
 
     expect(info).toHaveBeenCalledWith("Backend 已启动", { source: "backend-bootstrap" });
   });
@@ -68,11 +63,7 @@ describe("write_bootstrap_error", () => {
 
   it("存在日志管理器时写入生命周期来源的 error 记录", () => {
     const error = vi.fn();
-    set_electron_main_log_manager({ error } as unknown as LogManager);
-
-    write_bootstrap_error("Backend 启动失败", {
-      error: new Error("端口占用"),
-    });
+    write_bootstrap_error("Backend 启动失败", { error: new Error("端口占用") }, { error });
 
     expect(error).toHaveBeenCalledWith(
       "Backend 启动失败",

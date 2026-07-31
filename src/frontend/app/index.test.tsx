@@ -189,6 +189,20 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
       set_pending_target_route: desktop_state_mock.set_pending_target_route,
       update_app_language: desktop_state_mock.update_app_language,
     }),
+    useTaskSnapshot: () => ({
+      run_revision: 0,
+      task_type: "translation",
+      status: "idle",
+      busy: false,
+      request_in_flight_count: 0,
+      progress: {
+        line: 0,
+        total_line: 0,
+        processed_line: 0,
+        error_line: 0,
+        total_output_tokens: 0,
+      },
+    }),
   };
 });
 

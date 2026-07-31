@@ -6,10 +6,8 @@ import type {
   ProjectChangeApplyResult,
   ProjectStage,
 } from "@frontend/app/state/desktop-project-change-types";
-import type {
-  ProjectChangeSignal,
-  ProjectSnapshot,
-} from "@frontend/app/state/desktop-state-context";
+import type { ProjectSnapshot } from "@frontend/app/state/desktop-state-context";
+import type { ProjectChangeSignal } from "@frontend/app/state/project-change-signal";
 import type {
   QualityRuleStatisticsCacheSnapshot,
   QualityRuleStatisticsRuleType,
@@ -42,6 +40,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
       project_session_status: current_project_session_status,
       project_change_signal: current_project_change_signal,
     }),
+    useProjectChangeSignal: () => current_project_change_signal,
   };
 });
 

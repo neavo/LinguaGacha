@@ -303,6 +303,13 @@ vi.mock("@frontend/app/state/use-desktop-state", () => {
       refresh_project_state: vi.fn(async () => {}),
       runtime_snapshot,
     }),
+    useProjectChangeSignal: () => ({
+      seq: project_change_seq,
+      reason: "test",
+      updated_sections: project_change_sections,
+      results: [],
+    }),
+    useRuntimeSnapshot: () => runtime_snapshot,
   };
 });
 

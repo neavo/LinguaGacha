@@ -11,7 +11,7 @@ import {
 } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { useDesktopState, useProjectChangeSignal } from "@frontend/app/state/use-desktop-state";
 import {
   createEmptyQualityRuleStatisticsCacheSnapshot,
   createQualityRuleStatisticsStore,
@@ -39,7 +39,8 @@ const QualityRuleStatisticsContext = createContext<QualityRuleStatisticsContextV
  * 质量规则统计 Provider 只负责把页面活跃规则映射到后端 query。
  */
 export function QualityRuleStatisticsProvider(props: { children: ReactNode }): JSX.Element {
-  const { project_snapshot, project_session_status, project_change_signal } = useDesktopState();
+  const { project_snapshot, project_session_status } = useDesktopState();
+  const project_change_signal = useProjectChangeSignal();
   // store_ref 保持项目 session 内共享缓存身份，避免 Provider 重渲染重建订阅源。
   const store_ref = useRef<QualityRuleStatisticsStore | null>(null);
   if (store_ref.current === null) {

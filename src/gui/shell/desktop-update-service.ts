@@ -3,7 +3,6 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { Dirent } from "node:fs";
 
-import type { AppPathService } from "../../backend/app/app-path-service";
 import {
   build_windows_release_zip_name,
   is_windows_release_zip_name_for_arch,
@@ -42,7 +41,8 @@ export type DesktopUpdateRuntime = {
 };
 
 export type DesktopUpdateServiceOptions = {
-  paths: AppPathService;
+  appRoot: string;
+  updateRootDir: string;
   runtime?: Partial<DesktopUpdateRuntime>;
 };
 
@@ -50,14 +50,16 @@ export type DesktopUpdateServiceOptions = {
  * Electron main 自动更新副作用入口，renderer 只能通过 preload 的窄桥接调用它。
  */
 export class DesktopUpdateService {
-  private readonly paths: AppPathService;
+  private readonly app_root: string;
+  private readonly update_root_dir: string;
   private readonly runtime: DesktopUpdateRuntime;
 
   /**
    * 初始化自动更新服务依赖，测试可替换运行时副作用边界。
    */
   public constructor(options: DesktopUpdateServiceOptions) {
-    this.paths = options.paths;
+    this.app_root = options.appRoot;
+    this.update_root_dir = options.updateRootDir;
     this.runtime = {
       platform: options.runtime?.platform ?? process.platform,
       arch: options.runtime?.arch ?? process.arch,
@@ -72,7 +74,7 @@ export class DesktopUpdateService {
    * 启动期只清理版本目录，保留可复用的 berserker.exe。
    */
   public async cleanup_berserker_version_dirs(): Promise<void> {
-    await cleanup_berserker_version_dirs(this.paths);
+    await cleanup_berserker_version_dirs(this.update_root_dir);
   }
 
   /**
@@ -87,7 +89,7 @@ export class DesktopUpdateService {
       return download_target;
     }
 
-    const version_dir = this.paths.get_berserker_version_dir(request.latest_version);
+    const version_dir = this.get_version_dir(request.latest_version);
     const zip_file_name = resolve_zip_file_name(
       download_target.zip_url,
       request.latest_version,
@@ -141,7 +143,7 @@ export class DesktopUpdateService {
   public async launch_berserker(
     request: DesktopUpdateLaunchRequest,
   ): Promise<DesktopUpdateLaunchResult> {
-    const version_dir = this.paths.get_berserker_version_dir(request.latest_version);
+    const version_dir = this.get_version_dir(request.latest_version);
     const resolved_zip_path = path.resolve(request.zip_path);
     if (!is_path_inside(resolved_zip_path, version_dir)) {
       throw new Error("更新包路径不在当前版本目录内");
@@ -158,17 +160,16 @@ export class DesktopUpdateService {
       throw new Error("更新包架构与当前应用不匹配");
     }
 
-    const update_root_dir = this.paths.get_berserker_update_root_dir();
-    await fs.mkdir(update_root_dir, { recursive: true });
-    const packaged_berserker_path = path.join(this.paths.get_app_root(), BERSERKER_EXECUTABLE_NAME);
-    const user_berserker_path = path.join(update_root_dir, BERSERKER_EXECUTABLE_NAME);
+    await fs.mkdir(this.update_root_dir, { recursive: true });
+    const packaged_berserker_path = path.join(this.app_root, BERSERKER_EXECUTABLE_NAME);
+    const user_berserker_path = path.join(this.update_root_dir, BERSERKER_EXECUTABLE_NAME);
     await fs.copyFile(packaged_berserker_path, user_berserker_path);
 
     const args = [
       "--zip",
       resolved_zip_path,
       "--target",
-      this.paths.get_app_root(),
+      this.app_root,
       "--app",
       this.runtime.execPath,
       "--wait-pid",
@@ -221,13 +222,16 @@ export class DesktopUpdateService {
       zip_url,
     };
   }
+
+  private get_version_dir(version: string): string {
+    return path.join(this.update_root_dir, `${UPDATE_VERSION_DIR_PREFIX}${version}`);
+  }
 }
 
 /**
  * 清理 userdata/berserker 下的 v* 目录，避免旧更新包长期滞留。
  */
-export async function cleanup_berserker_version_dirs(paths: AppPathService): Promise<void> {
-  const update_root_dir = paths.get_berserker_update_root_dir();
+export async function cleanup_berserker_version_dirs(update_root_dir: string): Promise<void> {
   let entries: Dirent[];
   try {
     entries = await fs.readdir(update_root_dir, { withFileTypes: true });

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
 import type { ProjectItemPublicRecord } from "@domain/item";
-import type { ProjectChangeSignal } from "@frontend/app/state/desktop-state-context";
+import type { ProjectChangeSignal } from "@frontend/app/state/project-change-signal";
 import type { AnalysisTaskSnapshot } from "@shared/workbench/analysis-task";
 import type { AnalysisWorkbenchTask } from "@frontend/app/session/workbench-tasks/use-analysis-workbench-task";
 import type { TranslationWorkbenchTask } from "@frontend/app/session/workbench-tasks/use-translation-workbench-task";
@@ -107,6 +107,9 @@ Object.defineProperty(window, "desktopApp", {
 vi.mock("@frontend/app/state/use-desktop-state", () => {
   return {
     useDesktopState: () => runtime_fixture.current,
+    useProjectChangeSignal: () => runtime_fixture.current.project_change_signal,
+    useTaskSnapshot: () => runtime_fixture.current.task_snapshot,
+    useRuntimeSnapshot: () => runtime_fixture.current.runtime_snapshot,
   };
 });
 

@@ -18,7 +18,7 @@ type CLIEntryCall = {
 
 type GuiEntryCall = {
   desktopBundleDir: string;
-  workerExecution: BackendWorkerExecution;
+  backendRuntimeWorkerEntryUrl: URL;
 };
 
 beforeEach(() => {
@@ -101,7 +101,9 @@ describe("产品统一入口", () => {
     expect(calls.gui[0]).toMatchObject({
       desktopBundleDir: expect.any(String),
     });
-    expect_worker_threads_backend_worker_execution(calls.gui[0]?.workerExecution);
+    expect(String(calls.gui[0]?.backendRuntimeWorkerEntryUrl)).toMatch(
+      /\/backend-runtime-worker-entry\.js$/u,
+    );
     expect(exit_codes).toEqual([]);
   });
 
@@ -117,7 +119,9 @@ describe("产品统一入口", () => {
     expect(calls.gui[0]).toMatchObject({
       desktopBundleDir: expect.any(String),
     });
-    expect_worker_threads_backend_worker_execution(calls.gui[0]?.workerExecution);
+    expect(String(calls.gui[0]?.backendRuntimeWorkerEntryUrl)).toMatch(
+      /\/backend-runtime-worker-entry\.js$/u,
+    );
     expect(exit_codes).toEqual([]);
   });
 });

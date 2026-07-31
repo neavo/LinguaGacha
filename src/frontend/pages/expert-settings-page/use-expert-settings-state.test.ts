@@ -21,6 +21,7 @@ vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => ({
     runtime_snapshot: runtime,
   }),
+  useRuntimeSnapshot: () => runtime,
 }));
 
 vi.mock("@frontend/features/settings-editor/use-settings-editor", () => ({

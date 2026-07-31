@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
-import type { BackendWorkerClient } from "../worker/worker-client";
+import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import {
   evaluateProofreadingSlice,
   type ProofreadingSyncInput,
@@ -82,7 +82,7 @@ function create_settings(): AppSettingService {
   } as unknown as AppSettingService;
 }
 
-function create_worker(): BackendWorkerClient & { run: ReturnType<typeof vi.fn> } {
+function create_worker(): ComputeWorkerClient & { run: ReturnType<typeof vi.fn> } {
   return {
     run: vi.fn(async (task: { type: string; input: ProofreadingSyncInput }) => {
       if (task.type === "proofreading_sync") {
@@ -91,13 +91,13 @@ function create_worker(): BackendWorkerClient & { run: ReturnType<typeof vi.fn> 
       return {};
     }),
     dispose: vi.fn(async () => undefined),
-  } as unknown as BackendWorkerClient & { run: ReturnType<typeof vi.fn> };
+  } as unknown as ComputeWorkerClient & { run: ReturnType<typeof vi.fn> };
 }
 
 function create_cache(options: {
   database: ProjectDatabase;
   logManager?: Pick<LogManager, "warning" | "error"> | null;
-  worker?: BackendWorkerClient;
+  worker?: ComputeWorkerClient;
 }): CacheManager {
   return new CacheManager({
     database: options.database,
