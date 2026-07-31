@@ -39,6 +39,7 @@ const translate = (key: string): string => key;
 vi.mock("@frontend/app/state/use-desktop-state", () => {
   return {
     useDesktopState: () => runtime_fixture.current,
+    useRuntimeSnapshot: () => runtime_fixture.current.runtime_snapshot,
   };
 });
 

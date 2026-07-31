@@ -9,6 +9,8 @@ import { resolve_title_bar_overlay_theme } from "./shell-contract";
 import { LOG_WINDOW_QUERY_KEY, LOG_WINDOW_QUERY_VALUE } from "./log-window-host";
 import type { RendererProcessDiagnosticsRegistry } from "./renderer-process-diagnostics";
 
+const record_host_diagnostic = vi.fn(async () => undefined);
+
 // electron mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
 const electron_mock = vi.hoisted(() => {
   type Listener = (...args: unknown[]) => void;
@@ -253,14 +255,6 @@ const electron_mock = vi.hoisted(() => {
   };
 });
 
-// log bridge mock 是测试级共享夹具，集中保存跨用例复用的 mock 状态。
-const log_bridge_mock = vi.hoisted(() => {
-  return {
-    write_electron_main_error: vi.fn(),
-    write_electron_main_warning: vi.fn(),
-  };
-});
-
 vi.mock("electron", () => {
   return {
     app: {
@@ -273,16 +267,6 @@ vi.mock("electron", () => {
       showErrorBox: electron_mock.show_error_box,
     },
     nativeTheme: electron_mock.native_theme,
-  };
-});
-
-vi.mock("../../backend/log/log-bridge", () => {
-  return log_bridge_mock;
-});
-
-vi.mock("../../backend/log/log-text", () => {
-  return {
-    t_main_log: (key: string) => key,
   };
 });
 
@@ -314,6 +298,7 @@ describe("桌面窗口宿主", () => {
         proxyDisplay: "http://127.0.0.1:7890",
       },
       rendererDiagnostics: create_renderer_diagnostics_stub(),
+      recordHostDiagnostic: record_host_diagnostic,
       shouldBypassCloseConfirmation: () => false,
       onClosed: on_closed,
     });
@@ -365,6 +350,7 @@ describe("桌面窗口宿主", () => {
       backendApiBaseUrl: "http://127.0.0.1:6789",
       systemProxyStartupNotice: { detected: false, proxiedOriginCount: 0, proxyDisplay: null },
       rendererDiagnostics: create_renderer_diagnostics_stub(),
+      recordHostDiagnostic: record_host_diagnostic,
     });
     const close_event = { preventDefault: vi.fn() };
 
@@ -394,6 +380,7 @@ describe("桌面窗口宿主", () => {
       backendApiBaseUrl: "http://127.0.0.1:4567",
       systemProxyStartupNotice: { detected: false, proxiedOriginCount: 0, proxyDisplay: null },
       rendererDiagnostics: create_renderer_diagnostics_stub(),
+      recordHostDiagnostic: record_host_diagnostic,
       shouldBypassCloseConfirmation: () => true,
       onClosed: vi.fn(),
     });
@@ -416,30 +403,28 @@ describe("桌面窗口宿主", () => {
       false,
     );
 
-    expect(log_bridge_mock.write_electron_main_error).toHaveBeenCalledWith(
-      "app.diagnostic.renderer.main_frame_load_failed",
-      {
-        context: {
-          error_code: -102,
-          error_description: "连接被拒绝",
-          validated_url: "http://127.0.0.1:5173/",
-        },
+    expect(record_host_diagnostic).toHaveBeenCalledWith({
+      level: "error",
+      messageKey: "app.diagnostic.renderer.main_frame_load_failed",
+      context: {
+        error_code: -102,
+        error_description: "连接被拒绝",
+        validated_url: "http://127.0.0.1:5173/",
       },
-    );
+    });
     expect(electron_mock.show_error_box).toHaveBeenCalledWith(
       "LinguaGacha 渲染层加载失败",
       "渲染层入口没有成功加载。\n目标地址：http://127.0.0.1:5173/\n错误信息：加载失败 (-102): 连接被拒绝",
     );
-    expect(log_bridge_mock.write_electron_main_warning).toHaveBeenCalledWith(
-      "app.diagnostic.renderer.subframe_load_failed",
-      {
-        context: {
-          error_code: -3,
-          error_description: "子框架中断",
-          validated_url: "https://asset.test",
-        },
+    expect(record_host_diagnostic).toHaveBeenCalledWith({
+      level: "warning",
+      messageKey: "app.diagnostic.renderer.subframe_load_failed",
+      context: {
+        error_code: -3,
+        error_description: "子框架中断",
+        validated_url: "https://asset.test",
       },
-    );
+    });
     expect(main_window.visible).toBe(true);
     expect(main_window.focused).toBe(true);
   });
@@ -461,6 +446,7 @@ describe("桌面窗口宿主", () => {
       backendApiBaseUrl: "http://127.0.0.1:4567",
       systemProxyStartupNotice: { detected: false, proxiedOriginCount: 0, proxyDisplay: null },
       rendererDiagnostics: renderer_diagnostics,
+      recordHostDiagnostic: record_host_diagnostic,
       shouldBypassCloseConfirmation: () => true,
       onClosed: vi.fn(),
     });
@@ -476,17 +462,16 @@ describe("桌面窗口宿主", () => {
       main_window,
       details,
     );
-    expect(log_bridge_mock.write_electron_main_error).toHaveBeenCalledWith(
-      "app.diagnostic.renderer.process_exited",
-      {
-        context: {
-          windowKind: "main",
-          rendererDiagnostics: {
-            route: "workbench",
-          },
+    expect(record_host_diagnostic).toHaveBeenCalledWith({
+      level: "error",
+      messageKey: "app.diagnostic.renderer.process_exited",
+      context: {
+        windowKind: "main",
+        rendererDiagnostics: {
+          route: "workbench",
         },
       },
-    );
+    });
     expect(main_window.visible).toBe(true);
     expect(main_window.focused).toBe(true);
   });
@@ -506,6 +491,7 @@ describe("桌面窗口宿主", () => {
       backendApiBaseUrl: "http://127.0.0.1:4567",
       systemProxyStartupNotice: { detected: false, proxiedOriginCount: 0, proxyDisplay: null },
       rendererDiagnostics: create_renderer_diagnostics_stub(),
+      recordHostDiagnostic: record_host_diagnostic,
       shouldBypassCloseConfirmation: () => true,
       onClosed: vi.fn(),
     });

@@ -14,7 +14,12 @@ import {
   type ProjectWriteOperation,
   type ProjectWriteResultPayload,
 } from "@frontend/app/state/desktop-project-write";
-import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import {
+  useDesktopState,
+  useRuntimeSnapshot,
+  useSyncTaskSnapshot,
+  useTaskSnapshot,
+} from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
@@ -161,14 +166,10 @@ export function useAnalysisWorkbenchTask(
 ): AnalysisWorkbenchTask {
   const { t } = useI18n();
   const { push_toast, run_modal_progress_toast } = useDesktopToast();
-  const {
-    project_snapshot,
-    sync_task_snapshot,
-    task_snapshot,
-    runtime_snapshot,
-    commit_project_write,
-    refresh_task,
-  } = useDesktopState();
+  const { project_snapshot, commit_project_write, refresh_task } = useDesktopState();
+  const sync_task_snapshot = useSyncTaskSnapshot();
+  const task_snapshot = useTaskSnapshot();
+  const runtime_snapshot = useRuntimeSnapshot();
   const [analysis_task_snapshot, set_analysis_task_snapshot] = useState<AnalysisTaskSnapshot>(
     () => {
       return create_empty_analysis_task_snapshot();

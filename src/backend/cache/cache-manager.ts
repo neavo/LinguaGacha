@@ -3,7 +3,7 @@ import type { ProjectDatabase } from "../database/database-operations";
 import type { LogManager } from "../log/log-manager";
 import { ProjectDataReader } from "../project/project-data-reader";
 import type { ProjectEvent } from "../project/project-events";
-import type { BackendWorkerClient } from "../worker/worker-client";
+import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import type { JsonRecord } from "../../domain/json";
 import { createProofreadingListReader } from "../../shared/proofreading/proofreading-list-reader";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
@@ -62,7 +62,7 @@ export class CacheManager implements CacheReadPort {
     database: ProjectDatabase;
     logManager: Pick<LogManager, "warning" | "error"> | null;
     appSettingService: AppSettingService;
-    workerClient: BackendWorkerClient;
+    workerClient: ComputeWorkerClient;
   }) {
     this.data_reader = new ProjectDataReader(options.database);
     this.log_manager = options.logManager;

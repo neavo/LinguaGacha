@@ -42,7 +42,7 @@ npm run format -- --check
 | 纯长期文档 | 检查 [`AGENTS.md`](../AGENTS.md) 声明的文档集合、相对链接和 diff；涉及 README、脚本提示、测试断言或技能时全文检索入口 |
 | 单域源码行为 | 运行离改动最近的 `*.test.ts`、`*.test.tsx` 或 `*.test.mjs` |
 | 跨目录、跨前后端或共享契约 | 运行双方相关测试；影响面无法可靠收窄时执行 `npm test` |
-| GUI / preload / native / 桌面集成 | 运行相关单测，必要时 `npm run dev` 走真实主链路 |
+| GUI / preload / native / Backend Runtime worker | 运行相关单测和 `npm run check`；构建入口变化时执行 `npm run build`；只有视觉或原生交互证据确有需要时才执行 `npm run dev` |
 | 前端视觉、CSS、可见文案 | 运行相关页面或组件测试，核对当前设计输入与既有视觉证据，必要时 Electron 真机检查 |
 | Windows Go launcher | 在受影响的 `buildtools/builder/win-cli` 或 `buildtools/builder/win-berserker` 内执行 `go test ./...` |
 | 构建、Vite、electron-builder、afterPack、发布资产 | `npm run build`；afterPack 会测试并构建对应 Go module |

@@ -5,7 +5,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type ReactNode,
 } from "react";
 
@@ -46,6 +45,7 @@ import type { TaskType } from "@domain/task";
 import { PROJECT_DATA_SECTIONS } from "@shared/project-event";
 import { InternalInvariantError } from "@shared/error";
 import type { RuntimeActivitySnapshot } from "@shared/runtime-activity";
+import { createProjectChangeSignalStore } from "@frontend/app/state/project-change-signal-store";
 
 type RecentProjectEntry = RecentProjectSetting;
 
@@ -54,13 +54,6 @@ export type SettingsSnapshot = SettingSnapshot;
 export type ProjectSnapshot = {
   path: string;
   loaded: boolean;
-};
-
-export type ProjectChangeSignal = {
-  seq: number;
-  reason: string;
-  updated_sections: ProjectStage[];
-  results: ProjectChangeApplyResult[];
 };
 
 const APPLIED_PROJECT_EVENT_ID_LIMIT = 256; // 去重窗口只覆盖近期 HTTP/SSE 同源事件，避免长期保存事件历史
@@ -85,9 +78,6 @@ type DesktopStateContextValue = {
   initial_state_error: string | null;
   settings_snapshot: SettingsSnapshot;
   project_snapshot: ProjectSnapshot;
-  task_snapshot: TaskSnapshot;
-  runtime_snapshot: RuntimeActivitySnapshot;
-  project_change_signal: ProjectChangeSignal;
   project_session_status: ProjectSessionStatus;
   project_session_stage: ProjectStage | null;
   pending_target_route: RouteId | null;
@@ -95,8 +85,6 @@ type DesktopStateContextValue = {
   set_project_session_status: (status: ProjectSessionStatus) => void;
   set_pending_target_route: (route_id: RouteId | null) => void;
   apply_settings_snapshot: (payload: SettingsSnapshotPayload) => SettingsSnapshot;
-  sync_task_snapshot: (snapshot: TaskSnapshot) => void;
-  sync_runtime_snapshot: (snapshot: RuntimeActivitySnapshot) => void;
   refresh_project_snapshot: () => Promise<ProjectSnapshot>;
   refresh_project_state: () => Promise<void>;
   commit_project_write: ProjectWriteCommitter;
@@ -137,16 +125,14 @@ const DEFAULT_PROJECT_SNAPSHOT: ProjectSnapshot = {
   loaded: false,
 };
 
-// DEFAULT PROJECT CHANGE SIGNAL 是默认快照事实，调用方只读取副本不临时拼装。
-const DEFAULT_PROJECT_CHANGE_SIGNAL: ProjectChangeSignal = {
-  seq: 0,
-  reason: "",
-  updated_sections: [],
-  results: [],
-};
-
 // Desktop Runtime Context 是模块级稳定契约，集中维护避免调用点散落魔术值。
 export const DesktopStateContext = createContext<DesktopStateContextValue | null>(null);
+export type DesktopStateStores = {
+  task: ReturnType<typeof createTaskSnapshotStore>;
+  runtime: ReturnType<typeof createRuntimeActivityStore>;
+  projectChange: ReturnType<typeof createProjectChangeSignalStore>;
+};
+export const DesktopStateStoresContext = createContext<DesktopStateStores | null>(null);
 
 export function normalize_settings_snapshot(payload: SettingsSnapshotPayload): SettingsSnapshot {
   return normalize_setting_snapshot(payload.settings);
@@ -259,24 +245,19 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
   const [project_snapshot, write_project_snapshot] =
     useState<ProjectSnapshot>(DEFAULT_PROJECT_SNAPSHOT);
   const task_snapshot_store_ref = useRef(createTaskSnapshotStore());
-  const task_snapshot = useSyncExternalStore(
-    task_snapshot_store_ref.current.subscribe,
-    task_snapshot_store_ref.current.getSnapshot,
-  );
   const sync_task_snapshot = useCallback((snapshot: TaskSnapshot): void => {
     task_snapshot_store_ref.current.applySnapshot(snapshot);
   }, []);
   const runtime_snapshot_store_ref = useRef(createRuntimeActivityStore()); // Provider 生命周期内唯一镜像
-  const runtime_snapshot = useSyncExternalStore(
-    runtime_snapshot_store_ref.current.subscribe,
-    runtime_snapshot_store_ref.current.getSnapshot,
-  );
   const sync_runtime_snapshot = useCallback((snapshot: RuntimeActivitySnapshot): void => {
     runtime_snapshot_store_ref.current.applySnapshot(snapshot);
   }, []);
-  const [project_change_signal, set_project_change_signal] = useState<ProjectChangeSignal>(
-    DEFAULT_PROJECT_CHANGE_SIGNAL,
-  );
+  const project_change_store_ref = useRef(createProjectChangeSignalStore());
+  const state_stores_ref = useRef<DesktopStateStores>({
+    task: task_snapshot_store_ref.current,
+    runtime: runtime_snapshot_store_ref.current,
+    projectChange: project_change_store_ref.current,
+  });
   const [project_session_status, set_project_session_status] =
     useState<ProjectSessionStatus>("idle");
   const [project_session_stage, set_project_session_stage] = useState<ProjectStage | null>(null);
@@ -505,7 +486,8 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
         return;
       }
 
-      set_project_change_signal((previous_signal) => ({
+      const previous_signal = project_change_store_ref.current.getSnapshot();
+      project_change_store_ref.current.applySnapshot({
         seq: previous_signal.seq + 1,
         reason: resolve_project_apply_result_reason(applied_results),
         updated_sections: collect_project_apply_result_sections(applied_results),
@@ -535,7 +517,7 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
                 },
               }),
         })),
-      }));
+      });
     },
     [],
   );
@@ -830,9 +812,6 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       initial_state_error,
       settings_snapshot,
       project_snapshot,
-      task_snapshot,
-      runtime_snapshot,
-      project_change_signal,
       project_session_status,
       project_session_stage,
       pending_target_route,
@@ -840,8 +819,6 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
       set_project_session_status,
       set_pending_target_route,
       apply_settings_snapshot,
-      sync_task_snapshot,
-      sync_runtime_snapshot,
       refresh_project_snapshot,
       refresh_project_state,
       commit_project_write,
@@ -855,9 +832,6 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     initial_state_error,
     settings_snapshot,
     project_snapshot,
-    task_snapshot,
-    runtime_snapshot,
-    project_change_signal,
     project_session_status,
     project_session_stage,
     pending_target_route,
@@ -869,14 +843,14 @@ export function DesktopStateProvider(props: { children: ReactNode }): JSX.Elemen
     refresh_settings,
     refresh_task,
     refresh_runtime,
-    sync_runtime_snapshot,
-    sync_task_snapshot,
     update_app_language,
   ]);
 
   return (
-    <DesktopStateContext.Provider value={context_value}>
-      {props.children}
-    </DesktopStateContext.Provider>
+    <DesktopStateStoresContext.Provider value={state_stores_ref.current}>
+      <DesktopStateContext.Provider value={context_value}>
+        {props.children}
+      </DesktopStateContext.Provider>
+    </DesktopStateStoresContext.Provider>
   );
 }

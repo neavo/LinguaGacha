@@ -4,7 +4,8 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const BUNDLED_CHUNK_DIRECTORY_NAME = "chunks"; // electron-vite 会把动态入口拆到 chunks，运行时契约需要回到 dist-electron 根目录
 const WORK_UNIT_WORKER_ENTRY_FILE_NAME = "work-unit-worker-entry.js"; // work unit worker 入口产物名必须与 Vite main input 保持一致
 const PLANNING_WORKER_ENTRY_FILE_NAME = "planning-worker-entry.js"; // planning worker 入口产物名必须与 Vite main input 保持一致
-const BACKEND_WORKER_ENTRY_FILE_NAME = "backend-worker-entry.js"; // 非 engine Backend worker 入口产物名必须与 Vite main input 保持一致
+const COMPUTE_WORKER_ENTRY_FILE_NAME = "compute-worker-entry.js"; // 非 engine Compute worker 入口产物名必须与 Vite main input 保持一致
+const BACKEND_RUNTIME_WORKER_ENTRY_FILE_NAME = "backend-runtime-worker-entry.js"; // GUI Backend Runtime 入口产物名必须与 Vite main input 保持一致
 
 // 由产品入口显式注入，避免运行时在底层自行猜测构建产物位置或执行模式。
 export type BackendWorkerExecution =
@@ -12,7 +13,7 @@ export type BackendWorkerExecution =
       kind: "worker_threads"; // worker_threads 是 GUI / CLI 正式 worker 执行路径
       workUnitWorkerEntryUrl: URL; // 指向构建产物中的 work unit worker 入口文件
       planningWorkerEntryUrl: URL; // 指向构建产物中的 planning worker 入口文件
-      backendWorkerEntryUrl: URL; // 指向非 engine 通用 worker 入口文件
+      computeWorkerEntryUrl: URL; // 指向非 engine 通用 worker 入口文件
     }
   | {
       // in_process 是测试和源码执行显式选择的同进程模式：不读取构建产物，不作为生产回退或兼容层。
@@ -45,8 +46,15 @@ export function build_worker_threads_backend_worker_execution_from_desktop_bundl
     planningWorkerEntryUrl: pathToFileURL(
       path.join(desktop_bundle_dir, PLANNING_WORKER_ENTRY_FILE_NAME),
     ),
-    backendWorkerEntryUrl: pathToFileURL(
-      path.join(desktop_bundle_dir, BACKEND_WORKER_ENTRY_FILE_NAME),
+    computeWorkerEntryUrl: pathToFileURL(
+      path.join(desktop_bundle_dir, COMPUTE_WORKER_ENTRY_FILE_NAME),
     ),
   };
+}
+
+/** 解析 GUI Backend Runtime 的独立线程入口；该入口不属于 BackendWorkerExecution。 */
+export function build_backend_runtime_worker_entry_url_from_desktop_bundle_dir(
+  desktop_bundle_dir: string,
+): URL {
+  return pathToFileURL(path.join(desktop_bundle_dir, BACKEND_RUNTIME_WORKER_ENTRY_FILE_NAME));
 }

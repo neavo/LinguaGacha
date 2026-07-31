@@ -10,7 +10,7 @@ import {
   type ProjectWriteResultPayload,
 } from "@frontend/app/state/desktop-project-write";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import {
   CUSTOM_PROMPT_VARIANT_CONFIG,
   type CustomPromptVariant,
@@ -116,8 +116,8 @@ export function useCustomPromptEditorState(
   const config = CUSTOM_PROMPT_VARIANT_CONFIG[variant];
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
-  const { project_snapshot, settings_snapshot, commit_project_write, runtime_snapshot } =
-    useDesktopState();
+  const { project_snapshot, settings_snapshot, commit_project_write } = useDesktopState();
+  const runtime_snapshot = useRuntimeSnapshot();
   const readonly = is_runtime_busy(runtime_snapshot);
 
   const [template, set_template] = useState<CustomPromptTemplate>(() => {

@@ -3,12 +3,7 @@ import {
   formatSkillInvocation,
   formatSkillsForSystemPrompt,
 } from "@earendil-works/pi-agent-core";
-import {
-  contentText,
-  InMemoryCredentialStore,
-  type AssistantMessage,
-  uuidv7,
-} from "@earendil-works/pi-ai";
+import { InMemoryCredentialStore, type AssistantMessage, uuidv7 } from "@earendil-works/pi-ai";
 import {
   createAgentSession,
   DefaultResourceLoader,
@@ -42,6 +37,7 @@ import type { ProjectSessionState } from "../project/project-session-state";
 import type { ProofreadingService } from "../proofreading/proofreading-service";
 import type { QualityRuleService } from "../quality/quality-rule-service";
 import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-gate";
+import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { AGENT_PROOFREADING_UPDATE_SOURCE, create_agent_item_tools } from "./agent-item-tools";
 import { register_agent_model, type AgentModelLimits } from "./agent-model";
 import {
@@ -89,7 +85,7 @@ type AgentRuntime = {
 };
 
 type AgentServiceCache = Pick<CacheReadPort, "snapshot"> & {
-  readonly items: Pick<CacheReadPort["items"], "readItems">;
+  readonly items: Pick<CacheReadPort["items"], "readItems" | "readItem">;
 };
 
 type AgentServicePaths = Pick<
@@ -109,6 +105,7 @@ type AgentServiceOptions = {
   qualityRules: Pick<QualityRuleService, "query" | "update_from_agent">;
   proofreading: Pick<ProofreadingService, "update_items_from_agent">;
   runtimeGate: RuntimeOperationGate;
+  computeWorker: ComputeWorkerClient;
   logManager: Pick<LogManager, "error" | "warning">;
   publish: (topic: string, payload: JsonRecord) => void;
 };
@@ -125,6 +122,7 @@ export class AgentService {
   private readonly quality_rules: AgentServiceOptions["qualityRules"];
   private readonly proofreading: AgentServiceOptions["proofreading"];
   private readonly runtime_gate: RuntimeOperationGate; // task / Agent 互斥与 Agent 写工具授权来源
+  private readonly compute_worker: ComputeWorkerClient;
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
   private readonly unsubscribe_project_session: () => void;
@@ -150,6 +148,7 @@ export class AgentService {
     this.quality_rules = options.qualityRules;
     this.proofreading = options.proofreading;
     this.runtime_gate = options.runtimeGate;
+    this.compute_worker = options.computeWorker;
     this.log_manager = options.logManager;
     this.publish = options.publish;
     this.unsubscribe_project_session = this.session_state.subscribe_change(() => {
@@ -417,6 +416,7 @@ export class AgentService {
         ...create_agent_quality_tools({
           qualityRules: this.quality_rules,
           cache: this.cache,
+          computeWorker: this.compute_worker,
         }),
         ...create_agent_item_tools({
           cache: this.cache,
@@ -507,7 +507,6 @@ export class AgentService {
         id: event.toolCallId,
         toolName: event.toolName,
         status: "running",
-        output: null,
         createdAt: Date.now(),
       });
       return;
@@ -522,7 +521,6 @@ export class AgentService {
       this.upsert_entry({
         ...running_entry,
         status: event.isError ? "error" : "success",
-        output: contentText(event.result.content, ""),
       });
     }
   }

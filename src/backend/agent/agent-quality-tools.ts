@@ -9,15 +9,13 @@ import {
   create_quality_rule_entry_id,
   ensure_quality_rule_entry_ids,
 } from "../../shared/quality/quality-rule-entry-id";
-import {
-  count_quality_literal_matches,
-  run_quality_statistics_task_sync,
-} from "../../shared/quality/quality-statistics";
-import { read_item_source_text_parts } from "../../shared/item-text";
+import { type QualityStatisticsRuleMode } from "../../shared/quality/quality-statistics";
+import { prepare_quality_statistics_task_input } from "../../shared/quality/quality-statistics-input";
 import { compile_text_pattern } from "../../shared/text/text-pattern";
 import { JsonTool } from "../../shared/utils/json-tool";
 import type { CacheReadPort } from "../cache/cache-types";
 import type { QualityRuleService } from "../quality/quality-rule-service";
+import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 
 /** 质量规则工具只公开四个稳定业务 kind，不接受数据库物理类型。 */
 const RULE_TYPE_PARAMETERS = Type.Union([
@@ -166,6 +164,7 @@ type AgentQualityRules = Pick<QualityRuleService, "query" | "update_from_agent">
 type AgentQualityDependencies = {
   qualityRules: AgentQualityRules;
   cache: AgentQualityCache;
+  computeWorker: Pick<ComputeWorkerClient, "run">;
 };
 
 /** Agent 发起的规则提交使用独立 source，AgentService 据此区分自身与外部写入。 */
@@ -183,7 +182,13 @@ export function create_agent_quality_tools(
       parameters: QUERY_QUALITY_RULES_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
-        return tool_result(query_agent_quality_rules(dependencies, params.rule_type));
+        return tool_result(
+          await query_agent_quality_rules(
+            dependencies,
+            params.rule_type,
+            signal ?? new AbortController().signal,
+          ),
+        );
       },
     }),
     defineTool({
@@ -194,41 +199,91 @@ export function create_agent_quality_tools(
       parameters: UPDATE_QUALITY_RULES_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
+        const execution_signal = signal ?? new AbortController().signal;
         const changes = params.changes ?? [];
         if (changes.length === 0 && params.meta === undefined) {
           throw new Error("质量规则更新至少需要 changes 或 meta");
         }
-        const current = query_agent_quality_rules(dependencies, params.rule_type);
-        const entries =
+        // 更新只读取规则结构；术语语料统计统一留给 prospective 集合，避免同一写入扫描两次。
+        const current = read_agent_quality_rules_snapshot(
+          dependencies.qualityRules,
+          params.rule_type,
+        );
+        const applied =
           changes.length === 0
             ? undefined
             : apply_agent_quality_rule_changes({
                 rule_type: params.rule_type,
                 current_entries: current.entries,
                 changes,
-                corpus_items: dependencies.cache.items.readItems(),
               });
-        await dependencies.qualityRules.update_from_agent(
+        if (params.rule_type === "glossary" && applied !== undefined) {
+          const statistics = await compute_glossary_statistics(
+            dependencies,
+            applied.entries,
+            execution_signal,
+          );
+          for (const entry_id of applied.affected_entry_ids) {
+            if ((statistics.matched_count_by_entry_id[entry_id] ?? 0) === 0) {
+              const entry = applied.entries.find((candidate) => candidate["entry_id"] === entry_id);
+              throw new Error(`术语 src 在语料中零出现：${String(entry?.["src"] ?? "")}`);
+            }
+          }
+        }
+        const write_result = await dependencies.qualityRules.update_from_agent(
           {
             rule_type: params.rule_type,
-            ...(entries === undefined ? {} : { entries }),
+            ...(applied === undefined ? {} : { entries: applied.entries }),
             ...(params.meta === undefined ? {} : { meta: params.meta }),
             expected_section_revisions: params.expected_section_revisions,
           },
           AGENT_QUALITY_RULE_UPDATE_SOURCE,
         );
-        return tool_result(query_agent_quality_rules(dependencies, params.rule_type));
+        const change = write_result.changes.at(-1);
+        return tool_result({
+          accepted: true,
+          rule_type: params.rule_type,
+          projectPath: change?.projectPath ?? current.projectPath,
+          sectionRevisions: change?.sectionRevisions ?? current.sectionRevisions,
+          affected_entries:
+            applied?.entries.filter((entry) =>
+              applied.affected_entry_ids.includes(String(entry["entry_id"] ?? "")),
+            ) ?? [],
+          deleted_entry_ids: applied?.deleted_entry_ids ?? [],
+          meta: params.meta ?? current.meta,
+        });
       },
     }),
   ];
 }
 
 /** 从权威规则切片生成 Agent 可消费的窄投影。 */
-export function query_agent_quality_rules(
-  dependencies: Pick<AgentQualityDependencies, "qualityRules" | "cache">,
+export async function query_agent_quality_rules(
+  dependencies: AgentQualityDependencies,
+  rule_type: QualityRuleKind,
+  signal: AbortSignal = new AbortController().signal,
+): Promise<JsonRecord & { entries: JsonRecord[] }> {
+  const result = read_agent_quality_rules_snapshot(dependencies.qualityRules, rule_type);
+  if (rule_type !== "glossary") return result;
+
+  const glossary_entries = result.entries.map((entry) => normalize_glossary_entry(entry));
+  const statistics = await compute_glossary_statistics(dependencies, glossary_entries, signal);
+  result.entries = glossary_entries.map((entry) =>
+    enrich_glossary_entry(entry, statistics.matched_count_by_entry_id[entry.entry_id] ?? 0),
+  );
+  result["structure"] = build_glossary_structure(
+    glossary_entries,
+    statistics.subset_parent_labels_by_entry_id,
+  );
+  return result;
+}
+
+/** 读取规则结构和 revision，不触发语料计算；query 与 update 共用同一规范化入口。 */
+function read_agent_quality_rules_snapshot(
+  quality_rules: AgentQualityRules,
   rule_type: QualityRuleKind,
 ): JsonRecord & { entries: JsonRecord[] } {
-  const payload = dependencies.qualityRules.query({ rule_type });
+  const payload = quality_rules.query({ rule_type });
   const quality_rule = read_json_record(payload["qualityRule"]);
   const raw_entries = Array.isArray(quality_rule["entries"])
     ? quality_rule["entries"].filter(is_json_record)
@@ -247,18 +302,6 @@ export function query_agent_quality_rules(
         : { enabled: rule.normalize_enabled(quality_rule["enabled"]) },
     entries,
   };
-  if (rule_type !== "glossary") return result;
-
-  const glossary_entries = entries.map((entry) => normalize_glossary_entry(entry));
-  const exact_occurrences = count_glossary_exact_occurrences(
-    glossary_entries,
-    dependencies.cache.items.readItems(),
-  );
-  const enriched_entries = glossary_entries.map((entry, index) =>
-    enrich_glossary_entry(entry, exact_occurrences[index] ?? 0),
-  );
-  result.entries = enriched_entries;
-  result["structure"] = build_glossary_structure(glossary_entries);
   return result;
 }
 
@@ -267,24 +310,25 @@ export function apply_agent_quality_rule_changes(args: {
   rule_type: QualityRuleKind;
   current_entries: JsonRecord[];
   changes: QualityRuleChange[];
-  corpus_items: JsonRecord[];
-}): JsonRecord[] {
+}): { entries: JsonRecord[]; affected_entry_ids: string[]; deleted_entry_ids: string[] } {
   const entries = args.current_entries.map((entry) =>
     normalize_stored_entry(args.rule_type, entry),
   );
   assert_unique_entry_ids(entries);
   const targeted_entry_ids = new Set<string>();
   const placements: Array<{ entry_id: string; before_entry_id: string | null }> = [];
-  const occurrence_lookup = build_occurrence_lookup(args.corpus_items);
+  const affected_entry_ids: string[] = [];
+  const deleted_entry_ids: string[] = [];
 
   for (const change of args.changes) {
     if (change.action === "create") {
       if (change.entry === undefined) throw new Error("create 变更缺少 entry");
       const entry_id = create_quality_rule_entry_id();
       entries.push({
-        ...normalize_writable_entry(args.rule_type, change.entry, occurrence_lookup),
+        ...normalize_writable_entry(args.rule_type, change.entry),
         entry_id,
       });
+      affected_entry_ids.push(entry_id);
       if (Object.prototype.hasOwnProperty.call(change, "before_entry_id")) {
         placements.push({ entry_id, before_entry_id: change.before_entry_id ?? null });
       }
@@ -301,13 +345,15 @@ export function apply_agent_quality_rule_changes(args: {
 
     if (change.action === "delete") {
       entries.splice(index, 1);
+      deleted_entry_ids.push(entry_id);
       continue;
     }
     if (change.entry === undefined) throw new Error("update 变更缺少 entry");
     entries[index] = {
-      ...normalize_writable_entry(args.rule_type, change.entry, occurrence_lookup),
+      ...normalize_writable_entry(args.rule_type, change.entry),
       entry_id,
     };
+    affected_entry_ids.push(entry_id);
     if (Object.prototype.hasOwnProperty.call(change, "before_entry_id")) {
       placements.push({ entry_id, before_entry_id: change.before_entry_id ?? null });
     }
@@ -317,14 +363,14 @@ export function apply_agent_quality_rule_changes(args: {
     move_entry_before(entries, placement.entry_id, placement.before_entry_id);
   }
   assert_unique_entry_ids(entries);
-  return entries;
+  return { entries, affected_entry_ids, deleted_entry_ids };
 }
 
 /** 读取投影按规则 kind 丢弃无关字段，同时保留稳定 entry_id。 */
 function normalize_stored_entry(rule_type: QualityRuleKind, entry: JsonRecord): JsonRecord {
   const entry_id = String(entry["entry_id"] ?? "").trim();
   if (rule_type === "glossary") {
-    return { ...normalize_glossary_entry(entry), entry_id };
+    return normalize_glossary_rule_entry(entry, entry_id);
   }
   if (rule_type === "text_preserve") {
     return {
@@ -343,20 +389,13 @@ function normalize_stored_entry(rule_type: QualityRuleKind, entry: JsonRecord): 
 }
 
 /** 写入条目统一裁剪文本、固定不可写字段并执行规则专属校验。 */
-function normalize_writable_entry(
-  rule_type: QualityRuleKind,
-  entry: JsonRecord,
-  occurrence_lookup: (src: string, case_sensitive: boolean) => number,
-): JsonRecord {
+function normalize_writable_entry(rule_type: QualityRuleKind, entry: JsonRecord): JsonRecord {
   const src = String(entry["src"] ?? "").trim();
   if (src === "") throw new Error("质量规则 src 去空白后不能为空");
   if (rule_type === "glossary") {
     const dst = String(entry["dst"] ?? "").trim();
     const case_sensitive = entry["case_sensitive"] === true;
     if (dst === "") throw new Error("术语 dst 去空白后不能为空");
-    if (occurrence_lookup(src, case_sensitive) === 0) {
-      throw new Error(`术语 src 在语料中零出现：${src}`);
-    }
     return {
       src,
       dst,
@@ -436,91 +475,58 @@ function move_entry_before(
   entries.splice(target_index, 0, entry);
 }
 
-type GlossaryEntry = JsonRecord & {
+type GlossaryRuleEntry = JsonRecord & {
   entry_id: string;
   src: string;
   dst: string;
   info: string;
   regex: boolean;
   case_sensitive: boolean;
-  exact_occurrences: number;
+};
+
+type GlossaryEntry = GlossaryRuleEntry & {
+  matched_item_count: number;
   fact_violations: string[];
 };
 
-/** 术语读取统一补齐事实分析字段的空初值。 */
-function normalize_glossary_entry(entry: JsonRecord): GlossaryEntry {
+/** 术语持久化投影不携带统计字段，避免 Agent 派生事实回写规则存储。 */
+function normalize_glossary_rule_entry(entry: JsonRecord, entry_id: string): GlossaryRuleEntry {
   const src = String(entry["src"] ?? "").trim();
   if (src === "") throw new Error("术语 src 去空白后不能为空");
   return {
-    entry_id: String(entry["entry_id"] ?? ""),
+    entry_id,
     src,
     dst: String(entry["dst"] ?? "").trim(),
     info: String(entry["info"] ?? "").trim(),
     regex: entry["regex"] === true,
     case_sensitive: entry["case_sensitive"] === true,
-    exact_occurrences: 0,
+  };
+}
+
+/** 术语读取统一补齐事实分析字段的空初值。 */
+function normalize_glossary_entry(entry: JsonRecord): GlossaryEntry {
+  const normalized = normalize_glossary_rule_entry(entry, String(entry["entry_id"] ?? ""));
+  return {
+    ...normalized,
+    matched_item_count: 0,
     fact_violations: [],
   };
 }
 
-/** 按大小写敏感性分组复用批量字面量统计，返回与条目同序的总次数。 */
-function count_glossary_exact_occurrences(entries: GlossaryEntry[], items: JsonRecord[]): number[] {
-  const texts = collect_source_match_texts(items);
-  const totals = Array.from({ length: entries.length }, () => 0);
-  for (const case_sensitive of [false, true]) {
-    const group = entries.flatMap((entry, index) =>
-      entry.case_sensitive === case_sensitive ? [{ index, pattern: entry.src }] : [],
-    );
-    if (group.length === 0) continue;
-    const counts_by_text = count_quality_literal_matches({
-      patterns: group.map(({ pattern }) => pattern),
-      texts,
-      case_sensitive,
-    });
-    group.forEach(({ index }, pattern_index) => {
-      totals[index] = counts_by_text.reduce((sum, counts) => sum + (counts[pattern_index] ?? 0), 0);
-    });
-  }
-  return totals;
-}
-
 /** 只附加机器可判事实，不替代模型的语义审校。 */
-function enrich_glossary_entry(entry: GlossaryEntry, exact_occurrences: number): GlossaryEntry {
+function enrich_glossary_entry(entry: GlossaryEntry, matched_item_count: number): GlossaryEntry {
   const fact_violations: string[] = [];
-  if (exact_occurrences === 0) fact_violations.push("zero_occurrence");
+  if (matched_item_count === 0) fact_violations.push("zero_occurrence");
   if (entry.dst === "") fact_violations.push("empty_dst");
   if (entry.regex) fact_violations.push("regex_enabled");
-  return { ...entry, exact_occurrences, fact_violations };
-}
-
-/** 同批写入复用重复 src 的出现次数，避免重复扫描全量原文。 */
-function build_occurrence_lookup(
-  items: JsonRecord[],
-): (src: string, case_sensitive: boolean) => number {
-  const texts = collect_source_match_texts(items);
-  const cache = new Map<string, number>();
-  return (src, case_sensitive) => {
-    const key = `${case_sensitive ? "1" : "0"}${src}`;
-    const cached = cache.get(key);
-    if (cached !== undefined) return cached;
-    const counts = count_quality_literal_matches({ patterns: [src], texts, case_sensitive });
-    const total = counts.reduce((sum, item_counts) => sum + (item_counts[0] ?? 0), 0);
-    cache.set(key, total);
-    return total;
-  };
-}
-
-/** 术语出现次数只消费 src/name_src 非空文本。 */
-function collect_source_match_texts(items: JsonRecord[]): string[] {
-  return items.flatMap((item) =>
-    read_item_source_text_parts(item)
-      .filter((part) => part.text !== "")
-      .map((part) => part.text),
-  );
+  return { ...entry, matched_item_count, fact_violations };
 }
 
 /** 汇总重复、包含与共享前缀三类候选关系。 */
-function build_glossary_structure(entries: GlossaryEntry[]): JsonRecord {
+function build_glossary_structure(
+  entries: GlossaryEntry[],
+  subset_parent_labels_by_entry_id: Record<string, string[]>,
+): JsonRecord {
   const duplicate_groups = collect_quality_rule_duplicate_groups({
     rule_type: "GLOSSARY",
     entries,
@@ -537,19 +543,8 @@ function build_glossary_structure(entries: GlossaryEntry[]): JsonRecord {
       }),
     }),
   );
-  const relation_results = run_quality_statistics_task_sync({
-    rules: entries.map((entry) => ({
-      key: entry.entry_id,
-      pattern: entry.src,
-      mode: "glossary",
-      case_sensitive: entry.case_sensitive,
-    })),
-    srcTextGroups: [],
-    dstTextGroups: [],
-    relationCandidates: entries.map((entry) => ({ key: entry.entry_id, src: entry.src })),
-  }).results;
   const containment_candidates: JsonRecord[] = entries.flatMap((entry) => {
-    const parents = relation_results[entry.entry_id]?.subset_parents ?? [];
+    const parents = subset_parent_labels_by_entry_id[entry.entry_id] ?? [];
     return parents.length === 0 ? [] : [{ entry_id: entry.entry_id, src: entry.src, parents }];
   });
   return {
@@ -557,6 +552,51 @@ function build_glossary_structure(entries: GlossaryEntry[]): JsonRecord {
     containment_candidates,
     root_candidates: build_shared_prefix_groups(entries.map((entry) => entry.src)),
   };
+}
+
+async function compute_glossary_statistics(
+  dependencies: Pick<AgentQualityDependencies, "cache" | "computeWorker">,
+  entries: JsonRecord[],
+  signal: AbortSignal,
+): Promise<{
+  matched_count_by_entry_id: Record<string, number>;
+  subset_parent_labels_by_entry_id: Record<string, string[]>;
+}> {
+  const result = await dependencies.computeWorker.run(
+    {
+      type: "quality_statistics",
+      input: prepare_quality_statistics_task_input({
+        rule_key: "glossary" satisfies QualityStatisticsRuleMode,
+        entries,
+        items: dependencies.cache.items.readItems(),
+      }),
+    },
+    signal,
+  );
+  return {
+    matched_count_by_entry_id: read_number_record(result["matched_count_by_entry_id"]),
+    subset_parent_labels_by_entry_id: read_string_array_record(
+      result["subset_parent_labels_by_entry_id"],
+    ),
+  };
+}
+
+/** Worker 返回值属于跨线程输入，丢弃非有限数字和非字符串成员。 */
+function read_number_record(value: unknown): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(read_json_record(value)).flatMap(([key, item]) =>
+      typeof item === "number" && Number.isFinite(item) ? [[key, item]] : [],
+    ),
+  );
+}
+
+function read_string_array_record(value: unknown): Record<string, string[]> {
+  return Object.fromEntries(
+    Object.entries(read_json_record(value)).map(([key, item]) => [
+      key,
+      Array.isArray(item) ? item.filter((part): part is string => typeof part === "string") : [],
+    ]),
+  );
 }
 
 /** 为至少两个术语共享且发生分叉的最长 Unicode 前缀分组。 */

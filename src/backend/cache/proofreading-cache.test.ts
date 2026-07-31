@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { AppSettingService } from "../app/app-setting-service";
-import type { BackendWorkerClient } from "../worker/worker-client";
+import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import {
   createProofreadingListReader,
   evaluateProofreadingSlice,
@@ -76,7 +76,7 @@ function create_settings(): AppSettingService {
 }
 
 // 记录 proofreading_sync 输入，并用真实 list reader 评估 worker 返回值。
-function create_worker(): BackendWorkerClient & {
+function create_worker(): ComputeWorkerClient & {
   sync_inputs: ProofreadingSyncInput[];
 } {
   const sync_inputs: ProofreadingSyncInput[] = [];
@@ -90,7 +90,7 @@ function create_worker(): BackendWorkerClient & {
       return evaluateProofreadingSlice(task.input);
     }),
     dispose: vi.fn(async () => undefined),
-  } as unknown as BackendWorkerClient & {
+  } as unknown as ComputeWorkerClient & {
     sync_inputs: ProofreadingSyncInput[];
   };
 }

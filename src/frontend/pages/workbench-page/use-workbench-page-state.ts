@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import {
+  useDesktopState,
+  useProjectChangeSignal,
+  useRuntimeSnapshot,
+  useTaskSnapshot,
+} from "@frontend/app/state/use-desktop-state";
 import { capture_renderer_error } from "@frontend/app/diagnostics/renderer-error-reporter";
 import { is_task_stopping } from "@frontend/app/state/task-snapshot-store";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
@@ -670,13 +675,13 @@ export function useWorkbenchPageState(
   const {
     project_snapshot,
     commit_project_write,
-    project_change_signal,
     refresh_task,
     refresh_project_snapshot,
     settings_snapshot,
-    task_snapshot,
-    runtime_snapshot,
   } = useDesktopState();
+  const project_change_signal = useProjectChangeSignal();
+  const task_snapshot = useTaskSnapshot();
+  const runtime_snapshot = useRuntimeSnapshot();
   const [snapshot, set_snapshot] = useState<WorkbenchSnapshot>(EMPTY_SNAPSHOT);
   const [entries, set_entries] = useState<WorkbenchFileEntry[]>([]);
   const [cache_status, set_cache_status] = useState<"idle" | "refreshing" | "ready" | "error">(

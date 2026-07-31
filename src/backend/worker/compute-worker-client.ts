@@ -9,19 +9,22 @@ import {
 } from "../../shared/error";
 import type { BackendWorkerExecution } from "./worker-execution";
 import {
-  run_worker_task,
-  type BackendWorkerTask,
-  type BackendWorkerTaskResult,
-} from "./worker-task";
-import type { BackendWorkerIncomingMessage, BackendWorkerOutgoingMessage } from "./worker-entry";
+  run_compute_worker_task,
+  type ComputeWorkerTask,
+  type ComputeWorkerTaskResult,
+} from "./compute-worker-task";
+import type {
+  ComputeWorkerIncomingMessage,
+  ComputeWorkerOutgoingMessage,
+} from "./compute-worker-entry";
 
-type BackendWorkerClientOptions = {
+type ComputeWorkerClientOptions = {
   execution: BackendWorkerExecution;
 };
 
 type PendingTask = {
   id: string; // 隔离迟到的 worker 响应，只有当前任务 id 可以结算
-  task: BackendWorkerTask;
+  task: ComputeWorkerTask;
   signal: AbortSignal;
   resolve: (value: unknown) => void;
   reject: (error: unknown) => void;
@@ -29,26 +32,27 @@ type PendingTask = {
 };
 
 /**
- * Backend worker 的单飞 FIFO 门面；线程与进程内执行共享同一取消、结算和销毁语义。
+ * Compute worker 的单飞 FIFO 门面；线程与进程内执行共享同一取消、结算和销毁语义。
  */
-export class BackendWorkerClient {
+export class ComputeWorkerClient {
   private readonly execution: BackendWorkerExecution;
   private readonly queue: PendingTask[] = [];
   private worker: Worker | null = null;
   private active_task: PendingTask | null = null; // 单飞所有者，后续任务必须等待它结算
   private disposed = false; // 销毁后拒绝新任务，也禁止异常退出时重建 worker
 
-  public constructor(options: BackendWorkerClientOptions) {
+  public constructor(options: ComputeWorkerClientOptions) {
     this.execution = options.execution;
     if (this.execution.kind === "worker_threads") {
       this.worker = this.create_worker();
     }
   }
 
-  public run<TTask extends BackendWorkerTask>(
+  /** 排队执行一个可取消计算；同一 client 永远只结算一个 active task。 */
+  public run<TTask extends ComputeWorkerTask>(
     task: TTask,
     signal: AbortSignal,
-  ): Promise<BackendWorkerTaskResult<TTask>> {
+  ): Promise<ComputeWorkerTaskResult<TTask>> {
     if (this.disposed) {
       return Promise.reject(this.create_disposed_error());
     }
@@ -60,7 +64,7 @@ export class BackendWorkerClient {
         id: crypto.randomUUID(),
         task,
         signal,
-        resolve: (value) => resolve(value as BackendWorkerTaskResult<TTask>),
+        resolve: (value) => resolve(value as ComputeWorkerTaskResult<TTask>),
         reject,
         abort_listener: () => this.cancel_task(pending),
       };
@@ -70,6 +74,7 @@ export class BackendWorkerClient {
     });
   }
 
+  /** 拒绝所有未结算任务并终止线程；销毁后的实例不可复用。 */
   public async dispose(): Promise<void> {
     this.disposed = true;
     for (const task of this.queue.splice(0, this.queue.length)) {
@@ -101,7 +106,7 @@ export class BackendWorkerClient {
       id: task.id,
       type: "run",
       task: task.task,
-    } satisfies BackendWorkerIncomingMessage);
+    } satisfies ComputeWorkerIncomingMessage);
   }
 
   private async execute_in_process(task: PendingTask): Promise<void> {
@@ -109,7 +114,7 @@ export class BackendWorkerClient {
       if (task.signal.aborted) {
         throw this.create_cancelled_error();
       }
-      const data = await run_worker_task(task.task);
+      const data = await run_compute_worker_task(task.task);
       this.finish_task(task.id, data, null);
     } catch (error) {
       this.finish_task(task.id, null, error);
@@ -131,7 +136,7 @@ export class BackendWorkerClient {
       this.worker?.postMessage({
         id: task.id,
         type: "cancel",
-      } satisfies BackendWorkerIncomingMessage);
+      } satisfies ComputeWorkerIncomingMessage);
     }
     this.active_task = null;
     this.reject_task(task, this.create_cancelled_error());
@@ -140,22 +145,23 @@ export class BackendWorkerClient {
 
   private create_worker(): Worker {
     if (this.execution.kind !== "worker_threads") {
-      throw new Error("BackendWorkerClient 创建 worker 时必须使用 worker_threads。");
+      throw new Error("ComputeWorkerClient 创建线程时必须使用 worker_threads。");
     }
-    const worker = new Worker(this.execution.backendWorkerEntryUrl);
-    worker.on("message", (message: BackendWorkerOutgoingMessage) => {
+    const worker = new Worker(this.execution.computeWorkerEntryUrl);
+    worker.on("message", (message: ComputeWorkerOutgoingMessage) => {
       this.finish_worker_message(message);
     });
     worker.on("error", (error) => this.fail_worker(worker, error));
     worker.on("exit", (code) => {
-      if (!this.disposed && code !== 0) {
-        this.fail_worker(worker, new Error(`Backend worker exited: ${code.toString()}`));
+      // code 0 也可能是当前活动线程意外结束；只有 dispose 主动终止才可忽略。
+      if (!this.disposed) {
+        this.fail_worker(worker, new Error(`Compute worker exited: ${code.toString()}`));
       }
     });
     return worker;
   }
 
-  private finish_worker_message(message: BackendWorkerOutgoingMessage): void {
+  private finish_worker_message(message: ComputeWorkerOutgoingMessage): void {
     const task = this.active_task;
     if (task === null || task.id !== message.id) {
       return;
@@ -168,7 +174,7 @@ export class BackendWorkerClient {
         null,
         new WorkerExecutionFailedError({
           diagnostic_context: {
-            failure: normalize_log_error(message.error, "Backend worker 执行失败。"),
+            failure: normalize_log_error(message.error, "Compute worker 执行失败。"),
           },
         }),
       );
@@ -214,14 +220,14 @@ export class BackendWorkerClient {
 
   private create_disposed_error(): RuntimeDisposedError {
     return new RuntimeDisposedError({
-      public_details: { resource: "BackendWorkerClient" },
+      public_details: { resource: "ComputeWorkerClient" },
       diagnostic_context: { queue_length: this.queue.length },
     });
   }
 
   private create_cancelled_error(): RuntimeCancelledError {
     return new RuntimeCancelledError({
-      public_details: { resource: "backend_worker" },
+      public_details: { resource: "compute_worker" },
     });
   }
 }

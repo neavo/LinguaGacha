@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { BackendWorkerClient } from "../worker/worker-client";
-import type { BackendWorkerTask } from "../worker/worker-task";
+import type { ComputeWorkerClient } from "../worker/compute-worker-client";
+import type { ComputeWorkerTask } from "../worker/compute-worker-task";
 import type { CacheChange } from "./cache-change";
 import type { CacheReadPort } from "./cache-types";
 import { QualityStatisticsCache } from "./quality-statistics-cache";
@@ -79,14 +79,14 @@ function create_cache_read_port(): CacheReadPort & {
 /**
  * worker mock 返回输入身份快照，便于断言缓存是否复用同一次计算。
  */
-function create_worker(): BackendWorkerClient & { run: ReturnType<typeof vi.fn> } {
+function create_worker(): ComputeWorkerClient & { run: ReturnType<typeof vi.fn> } {
   return {
-    run: vi.fn(async (task: BackendWorkerTask) => ({
+    run: vi.fn(async (task: ComputeWorkerTask) => ({
       rule_key: task.type === "quality_statistics" ? task.input.rule_key : "",
       snapshot_signature:
         task.type === "quality_statistics" ? task.input.completed_snapshot.snapshot_signature : "",
     })),
-  } as unknown as BackendWorkerClient & { run: ReturnType<typeof vi.fn> };
+  } as unknown as ComputeWorkerClient & { run: ReturnType<typeof vi.fn> };
 }
 
 /**
@@ -139,7 +139,7 @@ describe("QualityStatisticsCache", () => {
             resolve_task = resolve;
           }),
       ),
-    } as unknown as BackendWorkerClient & { run: ReturnType<typeof vi.fn> };
+    } as unknown as ComputeWorkerClient & { run: ReturnType<typeof vi.fn> };
     const cache = new QualityStatisticsCache({ cache: cache_port, workerClient: worker });
 
     const first = cache.read("glossary");

@@ -10,7 +10,7 @@ import { ProjectDatabase } from "../database/database-operations";
 import type { ProjectEventHandler } from "../project/project-events";
 import { ProjectWriteStore } from "../project/project-write-store";
 import { ProjectSessionState } from "../project/project-session-state";
-import type { BackendWorkerClient } from "../worker/worker-client";
+import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import type { MutableJsonRecord } from "../../domain/json";
 import { TaskProjectStore } from "./task-project-store";
 
@@ -356,7 +356,7 @@ describe("TaskProjectStore", () => {
       workerClient: {
         run: async () => ({}),
         dispose: async () => undefined,
-      } as unknown as BackendWorkerClient,
+      } as unknown as ComputeWorkerClient,
     });
     const published_changes: MutableJsonRecord[] = [];
     database.create_project(project_path, "task");

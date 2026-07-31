@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { useSettingsEditor } from "@frontend/features/settings-editor/use-settings-editor";
 import {
   PRECEDING_LINES_THRESHOLD_MAX,
@@ -45,7 +45,7 @@ function clamp_preceding_lines_threshold(next_value: number): number {
  * 将专家设置字段映射到共享设置编辑器，并统一受项目写锁保护。
  */
 export function useExpertSettingsState(): UseExpertSettingsStateResult {
-  const { runtime_snapshot } = useDesktopState();
+  const runtime_snapshot = useRuntimeSnapshot();
   const { snapshot, pending_state, commit_update } = useSettingsEditor({
     select_snapshot: build_expert_settings_snapshot,
     pending_fields: EXPERT_SETTINGS_PENDING_FIELDS,

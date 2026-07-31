@@ -4,7 +4,7 @@ import type { Item } from "../../domain/item";
 import type { CacheReadPort } from "../cache/cache-types";
 import { ProjectSessionState } from "../project/project-session-state";
 import type { TranslationFileExportService } from "./translation-file-export-service";
-import type { BackendWorkerClient } from "../worker/worker-client";
+import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { TsConversionExportService } from "./ts-conversion-export-service";
 
 describe("TsConversionExportService", () => {
@@ -45,7 +45,7 @@ describe("TsConversionExportService", () => {
           }),
         },
       } as unknown as CacheReadPort,
-      workerClient: { run: worker_run } as unknown as BackendWorkerClient,
+      workerClient: { run: worker_run } as unknown as ComputeWorkerClient,
       readBuiltinTextPreserveRuleSources: vi.fn(() => ["<keep>"]),
       fileExportService: {
         export_items_with_suffix,

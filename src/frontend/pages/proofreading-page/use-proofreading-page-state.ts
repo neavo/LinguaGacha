@@ -10,9 +10,15 @@ import {
   INPUT_QUERY_DEBOUNCE_MS,
   useDebouncedCallback,
 } from "@frontend/widgets/interactions/use-debounce";
-import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import {
+  useDesktopState,
+  useProjectChangeSignal,
+  useRuntimeSnapshot,
+  useSyncTaskSnapshot,
+  useTaskSnapshot,
+} from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
-import type { ProjectChangeSignal } from "@frontend/app/state/desktop-state-context";
+import type { ProjectChangeSignal } from "@frontend/app/state/project-change-signal";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-provider";
@@ -85,16 +91,12 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
   const { t } = useI18n();
   const { dismiss_toast, push_progress_toast, push_toast } = useDesktopToast();
   const { proofreading_lookup_intent, clear_proofreading_lookup_intent } = useAppNavigation();
-  const {
-    settings_snapshot,
-    project_snapshot,
-    task_snapshot,
-    runtime_snapshot,
-    sync_task_snapshot,
-    project_change_signal,
-    commit_project_write,
-    refresh_task,
-  } = useDesktopState();
+  const { settings_snapshot, project_snapshot, commit_project_write, refresh_task } =
+    useDesktopState();
+  const task_snapshot = useTaskSnapshot();
+  const runtime_snapshot = useRuntimeSnapshot();
+  const sync_task_snapshot = useSyncTaskSnapshot();
+  const project_change_signal = useProjectChangeSignal();
   const table_ui_state = useProjectSessionTableUiState<
     ProofreadingViewFilterState,
     AppTableSortState | null

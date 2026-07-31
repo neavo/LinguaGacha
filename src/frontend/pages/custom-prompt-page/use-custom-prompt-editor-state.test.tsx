@@ -54,6 +54,7 @@ vi.mock("@frontend/app/desktop/desktop-api", async (import_original) => {
 vi.mock("@frontend/app/state/use-desktop-state", () => {
   return {
     useDesktopState: () => runtime_fixture,
+    useRuntimeSnapshot: () => runtime_fixture.runtime_snapshot,
   };
 });
 

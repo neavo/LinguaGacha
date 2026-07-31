@@ -36,7 +36,7 @@ import { QualityPromptService } from "../quality/quality-prompt-service";
 import { read_builtin_text_preserve_rule_sources } from "../quality/quality-rule-file-io";
 import { QualityRuleService } from "../quality/quality-rule-service";
 import { QualityStatisticsService } from "../quality/quality-statistics-service";
-import { BackendWorkerClient } from "../worker/worker-client";
+import { ComputeWorkerClient } from "../worker/compute-worker-client";
 import type { BackendWorkerExecution } from "../worker/worker-execution";
 import type { JsonRecord } from "../../domain/json";
 import { PROJECT_CHANGE_EVENT_TOPIC } from "../../shared/project-event";
@@ -102,7 +102,7 @@ export class BackendServices {
   private readonly app_setting_service: AppSettingService;
   private readonly api_stream_hub = new ApiStreamHub();
   private readonly cache_manager: CacheManager;
-  private readonly backend_worker_client: BackendWorkerClient;
+  private readonly compute_worker_client: ComputeWorkerClient;
   private readonly task_runtime: TaskRuntime;
   private readonly runtime_gate = new RuntimeOperationGate(); // task、Agent 与结构性写入共享的唯一门禁
   private readonly work_unit_worker_pool: WorkUnitWorkerPool;
@@ -133,14 +133,14 @@ export class BackendServices {
 
     this.app_setting_service = options.appSettingService;
     this.logManager = options.logManager;
-    this.backend_worker_client = new BackendWorkerClient({
+    this.compute_worker_client = new ComputeWorkerClient({
       execution: options.workerExecution,
     });
     this.cache_manager = new CacheManager({
       database: options.database,
       logManager: this.logManager,
       appSettingService: this.app_setting_service,
-      workerClient: this.backend_worker_client,
+      workerClient: this.compute_worker_client,
     });
     const handle_project_event = this.cache_manager.handleProjectEvent.bind(this.cache_manager);
     const adapt_project_change = create_project_change_publisher(options.database, session_state);
@@ -279,7 +279,7 @@ export class BackendServices {
       tsConversionExport: new TsConversionExportService({
         sessionState: session_state,
         cache: this.cache_manager,
-        workerClient: this.backend_worker_client,
+        workerClient: this.compute_worker_client,
         readBuiltinTextPreserveRuleSources: (text_type) =>
           read_builtin_text_preserve_rule_sources(paths, text_type),
         fileExportService: translation_export,
@@ -302,6 +302,7 @@ export class BackendServices {
       qualityRules: quality_rules,
       proofreading: this.proofreading.commands,
       runtimeGate: this.runtime_gate,
+      computeWorker: this.compute_worker_client,
       logManager: this.logManager,
       publish: (topic, payload) => this.api_stream_hub.publish(topic, payload),
     });
@@ -360,7 +361,7 @@ export class BackendServices {
     const worker_results = await Promise.allSettled([
       this.work_unit_worker_pool.dispose(),
       this.planning_worker_pool.dispose(),
-      this.backend_worker_client.dispose(),
+      this.compute_worker_client.dispose(),
     ]);
     for (const result of worker_results) {
       if (result.status === "rejected") {

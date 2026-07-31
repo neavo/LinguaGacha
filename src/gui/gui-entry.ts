@@ -1,10 +1,6 @@
 import { app, BrowserWindow, session, shell } from "electron";
 import path from "node:path";
 
-import { BackendBootstrap } from "../backend/bootstrap/backend-bootstrap";
-import type { BackendWorkerExecution } from "../backend/worker/worker-execution";
-import { write_electron_main_error } from "../backend/log/log-bridge";
-import { t_main_log } from "../backend/log/log-text";
 import * as AppErrors from "../shared/error";
 import type { DesktopSystemProxyStartupNotice } from "./bridge/bridge-types";
 import { EMPTY_DESKTOP_SYSTEM_PROXY_STARTUP_NOTICE } from "./bridge/system-proxy-startup-notice";
@@ -23,10 +19,11 @@ import {
   create_renderer_process_diagnostics_registry,
 } from "./shell/renderer-process-diagnostics";
 import { DesktopUpdateService } from "./shell/desktop-update-service";
+import { BackendRuntimeClient } from "./runtime/backend-runtime-client";
 
 export interface GuiEntryOptions {
   desktopBundleDir: string; // 产品入口解析出的桌面 bundle 根目录
-  workerExecution: BackendWorkerExecution; // GUI Backend worker 执行配置的唯一入口契约
+  backendRuntimeWorkerEntryUrl: URL;
 }
 
 /**
@@ -61,15 +58,31 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     }
   }
 
-  const backend_bootstrap = new BackendBootstrap({
-    appRoot: app.isPackaged ? path.dirname(process.execPath) : process.cwd(),
-    exposeApiGateway: true,
-    systemProxyResolver: {
-      resolveProxy: (url) => session.defaultSession.resolveProxy(url),
-    },
+  const app_root = app.isPackaged ? path.dirname(process.execPath) : process.cwd();
+  const backend_runtime = new BackendRuntimeClient({
+    workerEntryUrl: options.backendRuntimeWorkerEntryUrl,
+    appRoot: app_root,
+    resolveProxy: (url) => session.defaultSession.resolveProxy(url),
     openOutputFolder: open_output_folder,
-    workerExecution: options.workerExecution,
+    onUnexpectedExit: (error) => {
+      try_show_native_error_dialog("LinguaGacha 后端异常退出", error.message);
+      void quit_app_after_backend_shutdown(1);
+    },
   });
+  // 窗口诊断失败不能形成新的 unhandled rejection；fatal 路径另行等待并兜底 stderr。
+  const record_host_diagnostic: BackendRuntimeClient["recordHostDiagnostic"] = async (args) => {
+    try {
+      await backend_runtime.recordHostDiagnostic(args);
+    } catch (error) {
+      try {
+        process.stderr.write(
+          `[diagnostic] ${error instanceof Error ? error.message : String(error)}\n`,
+        );
+      } catch {
+        // 诊断通道与 stderr 同时不可用时没有剩余安全出口，窗口业务仍继续。
+      }
+    }
+  };
 
   /**
    * 窗口只能在 Backend API ready 后创建，避免 preload 暴露不可用的 API 地址。
@@ -100,13 +113,14 @@ export function run_gui_entry(options: GuiEntryOptions): void {
         win = null;
         log_window_host?.close();
       },
+      recordHostDiagnostic: record_host_diagnostic,
     });
   }
 
   /**
    * 注册 renderer 可调用的桌面宿主桥接能力。
    */
-  function register_runtime_ipc_handlers(read_app_language: () => unknown): void {
+  function register_runtime_ipc_handlers(): void {
     if (desktop_update_service === null) {
       throw new AppErrors.InternalInvariantError({
         diagnostic_context: { reason: "desktop_update_service_not_ready" },
@@ -125,7 +139,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       },
       quitAfterBackendShutdown: quit_app_after_backend_shutdown,
       recordRendererDiagnostics: renderer_process_diagnostics.recordRendererDiagnostics,
-      readAppLanguage: read_app_language,
+      readAppLanguage: () => backend_runtime.readAppLanguage(),
       updateService: desktop_update_service,
     });
   }
@@ -140,7 +154,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
 
     is_app_shutdown_in_progress = true;
     try {
-      await backend_bootstrap.stop();
+      await backend_runtime.stop();
     } finally {
       app.exit(exit_code);
     }
@@ -149,6 +163,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   install_main_fatal_error_handler({
     isAppShutdownInProgress: () => is_app_shutdown_in_progress,
     quitAfterBackendShutdown: quit_app_after_backend_shutdown,
+    getBackendRuntimeClient: () => backend_runtime,
   });
 
   // 所有窗口关闭时进入应用退出；日志窗口也要一起收掉，避免诊断窗口单独存活。
@@ -160,7 +175,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
 
   // Electron 原生退出前拦截一次，用统一 Backend 收尾路径替代直接退出。
   app.on("before-quit", (event) => {
-    if (backend_bootstrap.isStopped()) {
+    if (backend_runtime.isStopped()) {
       return;
     }
 
@@ -178,16 +193,12 @@ export function run_gui_entry(options: GuiEntryOptions): void {
   // Electron ready 后才能启动 Backend 和创建窗口，保证 app API 与原生资源都已可用。
   app.whenReady().then(async () => {
     try {
-      const backend_start_result = await backend_bootstrap.start();
-      if (backend_start_result.apiBaseUrl === null) {
-        throw new AppErrors.InternalInvariantError({
-          diagnostic_context: { reason: "gui_backend_api_not_exposed" },
-        });
-      }
+      const backend_start_result = await backend_runtime.start();
       backend_api_base_url = backend_start_result.apiBaseUrl;
       system_proxy_startup_notice = backend_start_result.systemProxyStartupNotice;
       desktop_update_service = new DesktopUpdateService({
-        paths: backend_start_result.backendServices.app.paths,
+        appRoot: app_root,
+        updateRootDir: backend_start_result.berserkerUpdateRootDir,
       });
       await desktop_update_service.cleanup_berserker_version_dirs();
       log_window_host = create_log_window_host({
@@ -195,14 +206,23 @@ export function run_gui_entry(options: GuiEntryOptions): void {
         backendApiBaseUrl: backend_start_result.apiBaseUrl,
         systemProxyStartupNotice: system_proxy_startup_notice,
         rendererDiagnostics: renderer_process_diagnostics,
+        recordHostDiagnostic: record_host_diagnostic,
       });
-      register_runtime_ipc_handlers(backend_start_result.readAppLanguage);
+      register_runtime_ipc_handlers();
       create_main_window_for_runtime();
     } catch (error) {
       try {
-        write_electron_main_error(t_main_log("app.diagnostic.lifecycle.app_start_failed"), {
-          error,
-        });
+        if (backend_api_base_url === null) {
+          process.stderr.write(
+            `[startup] ${error instanceof Error ? error.message : String(error)}\n`,
+          );
+        } else {
+          await backend_runtime.recordHostDiagnostic({
+            level: "error",
+            messageKey: "app.diagnostic.lifecycle.app_start_failed",
+            error,
+          });
+        }
       } catch (diagnostic_error) {
         try {
           process.stderr.write(

@@ -100,7 +100,7 @@ type AgentProjectItem = JsonRecord & {
 };
 
 type AgentItemCache = Pick<CacheReadPort, "snapshot"> & {
-  readonly items: Pick<CacheReadPort["items"], "readItems">;
+  readonly items: Pick<CacheReadPort["items"], "readItems" | "readItem">;
 };
 
 type AgentItemCommands = Pick<ProofreadingService, "update_items_from_agent">;
@@ -164,10 +164,6 @@ export function query_agent_project_items(
   cache: AgentItemCache,
   request: ProjectItemQuery,
 ): JsonRecord {
-  const items = cache.items
-    .readItems()
-    .map(project_agent_item)
-    .filter((item) => item.item_id > 0);
   const snapshot = cache.snapshot();
   const common = {
     projectPath: snapshot.projectPath,
@@ -182,7 +178,12 @@ export function query_agent_project_items(
     ) {
       throw new Error("item_ids 必须是 1 到 500 个唯一正整数");
     }
-    const by_id = new Map(items.map((item) => [item.item_id, item]));
+    const by_id = new Map(
+      request.item_ids.flatMap((item_id) => {
+        const item = cache.items.readItem(item_id);
+        return item === null ? [] : [[item_id, project_agent_item(item)] as const];
+      }),
+    );
     return {
       ...common,
       items: request.item_ids.flatMap((item_id) => {
@@ -194,6 +195,10 @@ export function query_agent_project_items(
       complete: true,
     };
   }
+  const items = cache.items
+    .readItems()
+    .map(project_agent_item)
+    .filter((item) => item.item_id > 0);
   if (request.mode === "page") {
     const offset = parse_cursor(request.cursor);
     const limit = normalize_limit(request.limit);

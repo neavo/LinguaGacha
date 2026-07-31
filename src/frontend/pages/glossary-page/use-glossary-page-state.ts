@@ -21,7 +21,11 @@ import {
 import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useQualityRuleStatistics } from "@frontend/app/session/quality-rule-statistics-context";
-import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import {
+  useDesktopState,
+  useProjectChangeSignal,
+  useRuntimeSnapshot,
+} from "@frontend/app/state/use-desktop-state";
 import { useProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
@@ -387,13 +391,13 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const { push_toast } = useDesktopToast();
   const {
     project_snapshot,
-    project_change_signal,
     project_session_status = "ready",
     settings_snapshot,
     apply_settings_snapshot,
     commit_project_write,
-    runtime_snapshot,
   } = useDesktopState();
+  const project_change_signal = useProjectChangeSignal();
+  const runtime_snapshot = useRuntimeSnapshot();
   const { navigate_to_route, push_proofreading_lookup_intent } = useAppNavigation();
   const [quality_slice, set_quality_slice] = useState<GlossaryQualitySlice>(DEFAULT_QUALITY_SLICE);
   const [quality_loaded, set_quality_loaded] = useState(false);

@@ -16,13 +16,13 @@
 
 ## 2. 主窗口运行态
 
-- `DesktopStateProvider` 是主窗口项目身份、任务、模型运行活动、设置、事件流和写入结果的共享状态入口；日志窗口不启动该运行态，只读取语言并消费日志流。
+- `DesktopStateProvider` 是主窗口项目身份、设置、事件流和写入编排入口；日志窗口不启动该运行态，只读取语言并消费日志流。高频 task、runtime 与项目变更信号各自由稳定外部 store 持有，不进入 `DesktopStateContext`，Provider 自身不订阅这些快照。
 - 初始状态并行读取设置、项目 snapshot、任务 snapshot 与 runtime snapshot；renderer 启动、热更新或整页重载不通过关闭工程重置后端会话。
 - 项目身份由 `path + epoch + phase` 守护；项目切换、同路径重新初始化、迟到事件和首刷期间暂存事件都经过同一身份闸门。
-- `TaskSnapshotStore` 只缓存后端完整 task snapshot，并用 `run_revision` 丢弃旧值；`DesktopRefreshScheduler` 合帧时也只保留最高 revision，相同 revision 才允许后到的按类型快照覆盖。task 不进入项目 query 或页面计算缓存。
-- `RuntimeActivityStore` 只缓存 `revision + owner`，用 revision 丢弃 HTTP / SSE 乱序旧值；项目写入、设置、模型配置、任务启动和 Agent 发送入口统一按 `owner !== null` 锁定。task snapshot 的 `busy` 只服务任务进度、停止与终态展示，不充当全局写锁。
+- `TaskSnapshotStore` 只缓存后端完整 task snapshot，并用 `run_revision` 丢弃旧值；`DesktopRefreshScheduler` 合帧时也只保留最高 revision，相同 revision 才允许后到的按类型快照覆盖。消费方通过 `useTaskSnapshot` 精确订阅，task 不进入项目 query 或页面计算缓存。
+- `RuntimeActivityStore` 只缓存 `revision + owner`，用 revision 丢弃 HTTP / SSE 乱序旧值；消费方通过 `useRuntimeSnapshot` 精确订阅。项目写入、设置、模型配置、任务启动和 Agent 发送入口统一按 `owner !== null` 锁定。task snapshot 的 `busy` 只服务任务进度、停止与终态展示，不充当全局写锁。
 - settings 只由后端设置载荷同步，task 只由后端 snapshot 或命令 ack 同步，project identity 只由后端项目载荷同步。
-- HTTP 写入结果与 `project.data_changed` SSE 共用同一事件入口、去重窗口和恢复策略；共享层只生成轻量 `ProjectChangeSignal`，页面根据目标 section 重新 query。
+- HTTP 写入结果与 `project.data_changed` SSE 共用同一事件入口、去重窗口和恢复策略；共享层只向 `ProjectChangeSignalStore` 发布轻量信号，页面通过 `useProjectChangeSignal` 精确订阅并根据目标 section 重新 query。
 - `DesktopRefreshScheduler` 只合并可延迟的 task snapshot 和项目刷新信号；项目切换、设置刷新、写入结果和任务终态先冲刷窗口。
 - flush、SSE 或写入处理失败进入 renderer 诊断，并通过可等待、可去重的权威 query 恢复；当前项目的有效事件不静默丢弃。
 

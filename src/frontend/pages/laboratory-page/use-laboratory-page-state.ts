@@ -4,7 +4,7 @@ import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { format_project_settings_aligned_toast } from "@frontend/app/feedback/project-settings-alignment-feedback";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
-import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useSettingsEditor } from "@frontend/features/settings-editor/use-settings-editor";
 import { apply_laboratory_prefilter_write } from "@frontend/pages/laboratory-page/laboratory-api-client";
@@ -39,7 +39,8 @@ type UseLaboratoryPageStateResult = {
  * 组合通用设置编辑器与项目预过滤对齐流程，页面不直接拥有后端设置事实。
  */
 export function useLaboratoryPageState(): UseLaboratoryPageStateResult {
-  const { runtime_snapshot, project_snapshot, commit_project_write } = useDesktopState();
+  const { project_snapshot, commit_project_write } = useDesktopState();
+  const runtime_snapshot = useRuntimeSnapshot();
   const { push_toast, run_modal_progress_toast } = useDesktopToast();
   const { t } = useI18n();
   const { snapshot, pending_state, commit_update } = useSettingsEditor({

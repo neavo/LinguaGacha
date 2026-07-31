@@ -13,6 +13,7 @@ const page_state = vi.hoisted(() => ({ current: {} as AgentPageState }));
 vi.mock("./use-agent-page-state", () => ({ useAgentPageState: () => page_state.current }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => ({ runtime_snapshot: { revision: 0, owner: null } }),
+  useRuntimeSnapshot: () => ({ revision: 0, owner: null }),
 }));
 vi.mock("@frontend/features/model-selection/use-model-selection", async (import_original) => {
   const actual =
@@ -142,18 +143,24 @@ describe("AgentPage", () => {
     const tool = view.querySelector<HTMLDetailsElement>(".agent-detail-entry--tool");
     const timer = tool?.querySelector<HTMLElement>('[role="timer"]');
 
-    expect(tool?.querySelector("summary")?.textContent).toBe("query_project_items · 8s");
+    expect(tool?.querySelector(".agent-detail-entry__label")?.textContent).toBe(
+      "query_project_items · 8s",
+    );
     expect(timer?.getAttribute("aria-live")).toBe("off");
     expect(tool?.querySelector(".agent-status-light--active")).not.toBeNull();
     expect(view.querySelector(".agent-message__activity")).toBeNull();
     await act(async () => vi.advanceTimersByTime(1_000));
-    expect(tool?.querySelector("summary")?.textContent).toBe("query_project_items · 9s");
+    expect(tool?.querySelector(".agent-detail-entry__label")?.textContent).toBe(
+      "query_project_items · 9s",
+    );
 
     await render_page({
       state: "running",
       entries: [tool_entry("tool-1", "query_project_items", "success", "{}", 1)],
     });
-    expect(tool?.querySelector("summary")?.textContent).toBe("query_project_items");
+    expect(tool?.querySelector(".agent-detail-entry__label")?.textContent).toBe(
+      "query_project_items",
+    );
     expect(tool?.querySelector('[role="timer"]')).toBeNull();
     expect(tool?.querySelector(".agent-status-light--success")).not.toBeNull();
   });
@@ -170,9 +177,13 @@ describe("AgentPage", () => {
     });
     const tools = view.querySelectorAll<HTMLDetailsElement>(".agent-detail-entry--tool");
 
-    expect(tools[0]?.querySelector("summary")?.textContent).toBe("query_project_items · 8s");
+    expect(tools[0]?.querySelector(".agent-detail-entry__label")?.textContent).toBe(
+      "query_project_items · 8s",
+    );
     expect(tools[0]?.querySelector(".agent-status-light--active")).not.toBeNull();
-    expect(tools[1]?.querySelector("summary")?.textContent).toBe("query_quality_rules");
+    expect(tools[1]?.querySelector(".agent-detail-entry__label")?.textContent).toBe(
+      "query_quality_rules",
+    );
     expect(tools[1]?.querySelector(".agent-status-light--success")).not.toBeNull();
   });
 
@@ -272,7 +283,7 @@ describe("AgentPage", () => {
     expect(view.querySelector(".agent-message--assistant")).toBeNull();
   });
 
-  it("按后端顺序交错渲染独立工具记录，并默认折叠完整输出", async () => {
+  it("按后端顺序交错渲染独立工具状态且不公开输出", async () => {
     const view = await render_page({
       state: "complete",
       entries: [
@@ -308,23 +319,18 @@ describe("AgentPage", () => {
       visible_text.indexOf("read_skill"),
     );
     expect(visible_text.indexOf("read_skill")).toBeLessThan(visible_text.indexOf("查询完成"));
-    const tools = view.querySelectorAll<HTMLDetailsElement>(".agent-detail-entry--tool");
+    const tools = view.querySelectorAll<HTMLElement>(".agent-detail-entry--tool");
     expect(tools).toHaveLength(2);
-    expect([...tools].every((tool) => !tool.open)).toBe(true);
-    expect(tools[0]?.querySelector("summary")?.textContent).toBe("query_project_items");
-    expect(tools[1]?.querySelector("summary")?.textContent).toBe("read_skill");
-    const success_light = tools[0]?.querySelector(".agent-status-light--success");
-    expect(success_light).toBe(tools[0]?.querySelector("summary")?.lastElementChild);
-    expect(success_light?.getAttribute("aria-label")).toBe("已完成");
-    expect(tools[0]?.querySelector("summary")?.textContent).not.toContain("Alice");
-    await act(async () => tools[0]?.querySelector("summary")?.click());
-    expect(tools[0]?.open).toBe(true);
-    expect(tools[1]?.open).toBe(false);
-    expect(tools[0]?.querySelector("pre")?.textContent).toBe(
-      '{\n  "results": [\n    {\n      "pattern": "Alice",\n      "contexts": []\n    }\n  ]\n}',
+    expect(tools[0]?.querySelector(".agent-detail-entry__label")?.textContent).toBe(
+      "query_project_items",
     );
-    expect(tools[0]?.querySelector("pre")?.tabIndex).toBe(0);
-    expect(tools[1]?.querySelector("pre")?.textContent).toBe("# 审校标准\n\n完整正文");
+    expect(tools[1]?.querySelector(".agent-detail-entry__label")?.textContent).toBe("read_skill");
+    const success_light = tools[0]?.querySelector(".agent-status-light--success");
+    expect(success_light).toBe(tools[0]?.lastElementChild);
+    expect(success_light?.getAttribute("aria-label")).toBe("已完成");
+    expect(tools[0]?.textContent).not.toContain("Alice");
+    expect(tools[0]?.querySelector("pre")).toBeNull();
+    expect(tools[1]?.querySelector("pre")).toBeNull();
     expect(view.querySelector(".agent-tool-group")).toBeNull();
     expect(view.querySelector(".agent-message__user-text")?.textContent).toBe(
       "请用 @glossary-audit\n查询",
@@ -344,16 +350,18 @@ describe("AgentPage", () => {
       ],
     });
     const tools = view.querySelectorAll<HTMLDetailsElement>(".agent-detail-entry--tool");
-    expect(tools[0]?.querySelector("summary")?.textContent).toBe("custom_reader");
+    expect(tools[0]?.querySelector(".agent-detail-entry__label")?.textContent).toBe(
+      "custom_reader",
+    );
     const running_light = tools[0]?.querySelector(".agent-status-light--running");
-    expect(running_light).toBe(tools[0]?.querySelector("summary")?.lastElementChild);
+    expect(running_light).toBe(tools[0]?.lastElementChild);
     expect(running_light?.getAttribute("aria-label")).toBe("正在处理");
     expect(tools[0]?.querySelector("pre")).toBeNull();
-    expect(tools[1]?.querySelector("summary")?.textContent).toBe("missing_tool");
+    expect(tools[1]?.querySelector(".agent-detail-entry__label")?.textContent).toBe("missing_tool");
     const error_light = tools[1]?.querySelector(".agent-status-light--error");
-    expect(error_light).toBe(tools[1]?.querySelector("summary")?.lastElementChild);
+    expect(error_light).toBe(tools[1]?.lastElementChild);
     expect(error_light?.getAttribute("aria-label")).toBe("失败");
-    expect(tools[1]?.querySelector("pre")?.textContent).toBe("工具不存在");
+    expect(tools[1]?.querySelector("pre")).toBeNull();
   });
 
   it("按运行态切换提交按钮并允许停止", async () => {

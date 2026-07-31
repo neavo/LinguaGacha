@@ -6,7 +6,7 @@ import { format_project_settings_aligned_toast } from "@frontend/app/feedback/pr
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
-import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useSettingsEditor } from "@frontend/features/settings-editor/use-settings-editor";
 import { apply_basic_settings_prefilter_write } from "@frontend/pages/basic-settings-page/basic-settings-api-client";
@@ -48,8 +48,8 @@ function clamp_request_timeout(next_value: number): number {
  * 组合通用设置编辑器与项目预过滤对齐流程，页面不直接拥有后端设置事实。
  */
 export function useBasicSettingsState(): UseBasicSettingsStateResult {
-  const { settings_snapshot, runtime_snapshot, project_snapshot, commit_project_write } =
-    useDesktopState();
+  const { settings_snapshot, project_snapshot, commit_project_write } = useDesktopState();
+  const runtime_snapshot = useRuntimeSnapshot();
   const { push_toast, run_modal_progress_toast } = useDesktopToast();
   const { t } = useI18n();
   const { snapshot, pending_state, commit_update } = useSettingsEditor({

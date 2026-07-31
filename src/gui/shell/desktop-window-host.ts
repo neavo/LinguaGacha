@@ -17,11 +17,8 @@ import type {
 } from "../bridge/bridge-types";
 import { build_desktop_system_proxy_startup_notice_argument } from "../bridge/system-proxy-startup-notice";
 import { LOG_WINDOW_QUERY_KEY, LOG_WINDOW_QUERY_VALUE, LogWindowHost } from "./log-window-host";
-import {
-  write_electron_main_error,
-  write_electron_main_warning,
-} from "../../backend/log/log-bridge";
-import { t_main_log } from "../../backend/log/log-text";
+import type { BackendRuntimeDiagnosticLevel } from "../../shared/backend-runtime";
+import type { LocaleKey } from "../../shared/i18n";
 import type { RendererProcessDiagnosticsRegistry } from "./renderer-process-diagnostics";
 import { register_text_context_menu } from "./text-context-menu";
 
@@ -55,6 +52,7 @@ export type MainWindowHostOptions = {
   rendererDiagnostics: RendererProcessDiagnosticsRegistry;
   shouldBypassCloseConfirmation: () => boolean;
   onClosed: () => void;
+  recordHostDiagnostic: HostDiagnosticReporter;
 };
 
 export type LogWindowHostFactoryOptions = {
@@ -62,7 +60,14 @@ export type LogWindowHostFactoryOptions = {
   backendApiBaseUrl: string;
   systemProxyStartupNotice: DesktopSystemProxyStartupNotice;
   rendererDiagnostics: RendererProcessDiagnosticsRegistry;
+  recordHostDiagnostic: HostDiagnosticReporter;
 };
+
+type HostDiagnosticReporter = (args: {
+  level: BackendRuntimeDiagnosticLevel;
+  messageKey: LocaleKey;
+  context?: Record<string, unknown>;
+}) => Promise<void>;
 
 /**
  * 开发态暴露 Chromium 调试端口，方便 Playwright 直接附着现有 Electron 实例
@@ -101,6 +106,7 @@ export function create_log_window_host(options: LogWindowHostFactoryOptions): Lo
         confirmOnClose: false,
         rendererDiagnostics: options.rendererDiagnostics,
         shouldBypassCloseConfirmation: () => true,
+        recordHostDiagnostic: options.recordHostDiagnostic,
       });
     },
     loadTarget: (target_window) => {
@@ -128,6 +134,7 @@ export function create_main_window(options: MainWindowHostOptions): BrowserWindo
     confirmOnClose: true,
     rendererDiagnostics: options.rendererDiagnostics,
     shouldBypassCloseConfirmation: options.shouldBypassCloseConfirmation,
+    recordHostDiagnostic: options.recordHostDiagnostic,
   });
 
   main_window.on("closed", () => {
@@ -323,6 +330,7 @@ function register_window_events(
     confirmOnClose: boolean;
     rendererDiagnostics: RendererProcessDiagnosticsRegistry;
     shouldBypassCloseConfirmation: () => boolean;
+    recordHostDiagnostic: HostDiagnosticReporter;
   },
 ): void {
   register_text_context_menu(target_window);
@@ -351,7 +359,9 @@ function register_window_events(
       const error_message = `加载失败 (${error_code.toString()}): ${error_description}`;
 
       if (is_main_frame) {
-        write_electron_main_error(t_main_log("app.diagnostic.renderer.main_frame_load_failed"), {
+        void options.recordHostDiagnostic({
+          level: "error",
+          messageKey: "app.diagnostic.renderer.main_frame_load_failed",
           // 主框架失败意味着整个 renderer 不可用，main 只负责记录并弹出原生诊断提示
           context: {
             error_code,
@@ -365,7 +375,9 @@ function register_window_events(
           `渲染层入口没有成功加载。\n目标地址：${validated_url}\n错误信息：${error_message}`,
         );
       } else {
-        write_electron_main_warning(t_main_log("app.diagnostic.renderer.subframe_load_failed"), {
+        void options.recordHostDiagnostic({
+          level: "warning",
+          messageKey: "app.diagnostic.renderer.subframe_load_failed",
           // 子框架失败不替换页面，先写入日志，避免误伤仍可交互的主应用
           context: {
             error_code,
@@ -378,7 +390,9 @@ function register_window_events(
   );
 
   target_window.webContents.on("render-process-gone", (_event, details) => {
-    write_electron_main_error(t_main_log("app.diagnostic.renderer.process_exited"), {
+    void options.recordHostDiagnostic({
+      level: "error",
+      messageKey: "app.diagnostic.renderer.process_exited",
       // 渲染进程退出后保持窗口可见，方便用户和开发者看到当前故障状态
       context: options.rendererDiagnostics.buildRendererProcessGoneContext(target_window, details),
     });
@@ -386,7 +400,9 @@ function register_window_events(
   });
 
   target_window.on("unresponsive", () => {
-    write_electron_main_error(t_main_log("app.diagnostic.renderer.window_unresponsive"), {
+    void options.recordHostDiagnostic({
+      level: "error",
+      messageKey: "app.diagnostic.renderer.window_unresponsive",
       // 失去响应时不自动重载，先记录宿主快照并拉前台，避免破坏用户尚未保存的页面状态
       context: options.rendererDiagnostics.buildWindowUnresponsiveContext(target_window),
     });

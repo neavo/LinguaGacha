@@ -8,6 +8,11 @@ import {
   create_agent_quality_tools,
   query_agent_quality_rules,
 } from "./agent-quality-tools";
+import { ComputeWorkerClient } from "../worker/compute-worker-client";
+
+function create_compute_worker(): ComputeWorkerClient {
+  return new ComputeWorkerClient({ execution: { kind: "in_process" } });
+}
 
 function create_cache(items: JsonRecord[] = []) {
   return { items: { readItems: () => items } };
@@ -25,6 +30,7 @@ describe("Agent 质量规则工具", () => {
         update_from_agent: async () => ({ accepted: true, changes: [] }),
       },
       cache: create_cache(),
+      computeWorker: create_compute_worker(),
     });
 
     expect(tools.map((tool) => tool.parameters)).toEqual([
@@ -34,7 +40,7 @@ describe("Agent 质量规则工具", () => {
     expect(tools.map((tool) => tool.executionMode)).toEqual([undefined, "sequential"]);
   });
 
-  it("查询四类规则，并为术语保留派生事实", () => {
+  it("查询四类规则，并为术语保留派生事实", async () => {
     const rules: Record<string, JsonRecord> = {
       glossary: {
         enabled: false,
@@ -67,26 +73,27 @@ describe("Agent 质量规则工具", () => {
         update_from_agent: vi.fn(),
       },
       cache: create_cache([{ item_id: 1, src: "白之城骑士守护白之城", name_src: "白之城" }]),
+      computeWorker: create_compute_worker(),
     };
 
-    expect(query_agent_quality_rules(dependencies, "pre_replacement")).toMatchObject({
+    expect(await query_agent_quality_rules(dependencies, "pre_replacement")).toMatchObject({
       projectPath: "test.lg",
       sectionRevisions: { quality: 4 },
       meta: { enabled: true },
       entries: [{ entry_id: "pre", src: "A", dst: "B", regex: false }],
     });
-    expect(query_agent_quality_rules(dependencies, "post_replacement")).toMatchObject({
+    expect(await query_agent_quality_rules(dependencies, "post_replacement")).toMatchObject({
       meta: { enabled: false },
       entries: [{ entry_id: "post", regex: true }],
     });
-    expect(query_agent_quality_rules(dependencies, "text_preserve")).toMatchObject({
+    expect(await query_agent_quality_rules(dependencies, "text_preserve")).toMatchObject({
       meta: { mode: "custom" },
       entries: [{ entry_id: "keep", info: "控制码" }],
     });
 
-    const glossary = query_agent_quality_rules(dependencies, "glossary");
+    const glossary = await query_agent_quality_rules(dependencies, "glossary");
     expect(glossary).toMatchObject({ meta: { enabled: false } });
-    expect(glossary.entries[0]).toMatchObject({ exact_occurrences: 3, fact_violations: [] });
+    expect(glossary.entries[0]).toMatchObject({ matched_item_count: 1, fact_violations: [] });
     expect((glossary["structure"] as JsonRecord)["duplicate_src_groups"]).toMatchObject([
       { entry_ids: ["a", "c"] },
     ]);
@@ -102,7 +109,6 @@ describe("Agent 质量规则工具", () => {
     const next = apply_agent_quality_rule_changes({
       rule_type: "glossary",
       current_entries: current,
-      corpus_items: [{ src: "Alpha Gamma Delta Epsilon" }],
       changes: [
         {
           action: "update",
@@ -123,13 +129,13 @@ describe("Agent 质量规则工具", () => {
       ],
     });
 
-    expect(next.map((entry) => entry["entry_id"])).toEqual([
+    expect(next.entries.map((entry) => entry["entry_id"])).toEqual([
       "a",
       "d",
       "c",
       expect.stringMatching(/^qr:/u),
     ]);
-    expect(next[0]).toMatchObject({ dst: "阿尔法", entry_id: "a" });
+    expect(next.entries[0]).toMatchObject({ dst: "阿尔法", entry_id: "a" });
     expect(current.map((entry) => entry["entry_id"])).toEqual(["a", "b", "c", "d"]);
   });
 
@@ -147,6 +153,7 @@ describe("Agent 质量规则工具", () => {
         update_from_agent: update,
       },
       cache: create_cache([{ src: "Alpha Beta" }]),
+      computeWorker: create_compute_worker(),
     });
     const tool = tools.find((candidate) => candidate.name === "update_quality_rules");
     if (tool === undefined) throw new Error("缺少 update_quality_rules");
@@ -202,7 +209,7 @@ describe("Agent 质量规则工具", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  it("条目与 meta 同批提交，成功后返回最新规范化快照", async () => {
+  it("条目与 meta 同批提交，每次写入只统计一次 prospective 集合并返回有限确认", async () => {
     let revision = 2;
     let enabled = true;
     let entries = [stored_entry("a", "Alpha", "甲")];
@@ -213,8 +220,23 @@ describe("Agent 质量规则工具", () => {
       entries = structuredClone(request["entries"] as JsonRecord[]);
       enabled = (request["meta"] as JsonRecord)["enabled"] === true;
       revision += 1;
-      return { accepted: true, changes: [] };
+      return {
+        accepted: true,
+        changes: [
+          {
+            type: "project.changed",
+            eventId: `change-${revision.toString()}`,
+            source: AGENT_QUALITY_RULE_UPDATE_SOURCE,
+            projectPath: "test.lg",
+            projectRevision: revision,
+            sectionRevisions: { quality: revision },
+            updatedSections: ["quality"],
+          },
+        ],
+      };
     });
+    const compute_worker = create_compute_worker();
+    const compute_run = vi.spyOn(compute_worker, "run");
     const tools = create_agent_quality_tools({
       qualityRules: {
         query: () => ({
@@ -225,6 +247,7 @@ describe("Agent 质量规则工具", () => {
         update_from_agent: update,
       },
       cache: create_cache([{ src: "Alpha" }]),
+      computeWorker: compute_worker,
     });
     const tool = tools.find((candidate) => candidate.name === "update_quality_rules");
     if (tool === undefined) throw new Error("缺少 update_quality_rules");
@@ -274,10 +297,15 @@ describe("Agent 质量规则工具", () => {
       }),
       AGENT_QUALITY_RULE_UPDATE_SOURCE,
     );
-    expect(result.details).toMatchObject({
+    const result_details = result.details as JsonRecord;
+    expect(result_details).toMatchObject({
       sectionRevisions: { quality: 3 },
       meta: { enabled: false },
-      entries: [{ entry_id: "a", dst: "A", exact_occurrences: 1 }],
+      affected_entries: [{ entry_id: "a", dst: "A" }],
     });
+    expect((result_details["affected_entries"] as JsonRecord[])[0]).not.toHaveProperty(
+      "matched_item_count",
+    );
+    expect(compute_run).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { prepare_quality_statistics_task_input } from "../../shared/quality/quality-statistics-input";
-import type { BackendWorkerIncomingMessage } from "./worker-entry";
-import type { BackendWorkerTask } from "./worker-task";
+import type { ComputeWorkerIncomingMessage } from "./compute-worker-entry";
+import type { ComputeWorkerTask } from "./compute-worker-task";
 
 type WorkerPortHarness = {
-  listener: ((message: BackendWorkerIncomingMessage) => void) | null;
+  listener: ((message: ComputeWorkerIncomingMessage) => void) | null;
   postMessage: ReturnType<typeof vi.fn>;
-  emit: (message: BackendWorkerIncomingMessage) => void;
+  emit: (message: ComputeWorkerIncomingMessage) => void;
 };
 
 function install_worker_threads_mock(): WorkerPortHarness {
@@ -19,7 +19,7 @@ function install_worker_threads_mock(): WorkerPortHarness {
     },
   };
   const parent_port = {
-    on: vi.fn((event_name: string, listener: (message: BackendWorkerIncomingMessage) => void) => {
+    on: vi.fn((event_name: string, listener: (message: ComputeWorkerIncomingMessage) => void) => {
       if (event_name === "message") {
         harness.listener = listener;
       }
@@ -33,7 +33,7 @@ function install_worker_threads_mock(): WorkerPortHarness {
   return harness;
 }
 
-function create_task(): BackendWorkerTask {
+function create_task(): ComputeWorkerTask {
   return {
     type: "quality_statistics",
     input: prepare_quality_statistics_task_input({
@@ -49,24 +49,24 @@ async function flush_worker_microtasks(): Promise<void> {
   await Promise.resolve();
 }
 
-describe("backend worker entry", () => {
+describe("Compute worker entry", () => {
   afterEach(() => {
     vi.resetModules();
     vi.doUnmock("node:worker_threads");
-    vi.doUnmock("./worker-task");
+    vi.doUnmock("./compute-worker-task");
   });
 
   it("按消息 id 回传 task 结果", async () => {
     const harness = install_worker_threads_mock();
     const task = create_task();
-    const run_worker_task = vi.fn(async () => ({ phase: "current" }));
-    vi.doMock("./worker-task", () => ({ run_worker_task }));
+    const run_compute_worker_task = vi.fn(async () => ({ phase: "current" }));
+    vi.doMock("./compute-worker-task", () => ({ run_compute_worker_task }));
 
-    await import("./worker-entry");
+    await import("./compute-worker-entry");
     harness.emit({ id: "task-1", type: "run", task });
     await flush_worker_microtasks();
 
-    expect(run_worker_task).toHaveBeenCalledWith(task);
+    expect(run_compute_worker_task).toHaveBeenCalledWith(task);
     expect(harness.postMessage).toHaveBeenCalledWith({
       id: "task-1",
       ok: true,
@@ -80,15 +80,15 @@ describe("backend worker entry", () => {
     const task_completion: {
       resolve: ((value: Record<string, unknown>) => void) | null;
     } = { resolve: null };
-    const run_worker_task = vi.fn(
+    const run_compute_worker_task = vi.fn(
       () =>
         new Promise<Record<string, unknown>>((resolve) => {
           task_completion.resolve = resolve;
         }),
     );
-    vi.doMock("./worker-task", () => ({ run_worker_task }));
+    vi.doMock("./compute-worker-task", () => ({ run_compute_worker_task }));
 
-    await import("./worker-entry");
+    await import("./compute-worker-entry");
     harness.emit({ id: "task-2", type: "run", task });
     await Promise.resolve();
     harness.emit({ id: "task-2", type: "cancel" });
@@ -100,7 +100,7 @@ describe("backend worker entry", () => {
         id: "task-2",
         ok: false,
         error: expect.objectContaining({
-          message: "Backend worker 任务已取消。",
+          message: "Compute worker 任务已取消。",
           context: { worker_task_type: "quality_statistics" },
         }),
       }),

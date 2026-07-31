@@ -8,7 +8,7 @@ import {
   normalize_project_write_result,
   type ProjectWriteResultPayload,
 } from "@frontend/app/state/desktop-project-write";
-import type { ProjectChangeSignal } from "@frontend/app/state/desktop-state-context";
+import type { ProjectChangeSignal } from "@frontend/app/state/project-change-signal";
 import { INPUT_QUERY_DEBOUNCE_MS } from "@frontend/widgets/interactions/use-debounce";
 import type { ProjectItemPublicRecord } from "@domain/item";
 import type { ProjectDataSectionRevisions } from "@shared/project-event";
@@ -175,6 +175,10 @@ const toast_fixture: { current: ToastFixture } = {
 vi.mock("@frontend/app/state/use-desktop-state", () => {
   return {
     useDesktopState: () => runtime_fixture.current,
+    useProjectChangeSignal: () => runtime_fixture.current.project_change_signal,
+    useTaskSnapshot: () => runtime_fixture.current.task_snapshot,
+    useRuntimeSnapshot: () => runtime_fixture.current.runtime_snapshot,
+    useSyncTaskSnapshot: () => runtime_fixture.current.sync_task_snapshot,
   };
 });
 

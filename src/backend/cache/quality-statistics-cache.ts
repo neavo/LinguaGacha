@@ -1,4 +1,4 @@
-import type { BackendWorkerClient } from "../worker/worker-client";
+import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import * as AppErrors from "../../shared/error";
 import type { QualityStatisticsRuleMode } from "../../shared/quality/quality-statistics";
 import {
@@ -25,7 +25,7 @@ export type QualityStatisticsCacheResult = {
  */
 export class QualityStatisticsCache {
   private readonly cache_reader: CacheReadPort; // 统计输入全部来自 session 缓存快照。
-  private readonly worker_client: BackendWorkerClient; // 计算密集逻辑交给 worker 执行。
+  private readonly worker_client: ComputeWorkerClient; // 计算密集逻辑交给 worker 执行。
   private readonly values = new Map<
     QualityStatisticsRuleMode,
     Map<string, Promise<Record<string, unknown>>>
@@ -34,7 +34,7 @@ export class QualityStatisticsCache {
   /**
    * 注入缓存读取端口和 worker client，保持统计缓存无数据库写入口。
    */
-  public constructor(options: { cache: CacheReadPort; workerClient: BackendWorkerClient }) {
+  public constructor(options: { cache: CacheReadPort; workerClient: ComputeWorkerClient }) {
     this.cache_reader = options.cache;
     this.worker_client = options.workerClient;
   }

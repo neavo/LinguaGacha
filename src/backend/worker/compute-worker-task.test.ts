@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { prepare_quality_statistics_task_input } from "../../shared/quality/quality-statistics-input";
-import { run_worker_task } from "./worker-task";
+import { run_compute_worker_task } from "./compute-worker-task";
 
-describe("run_worker_task", () => {
+describe("run_compute_worker_task", () => {
   it("执行质量统计 task 并返回匹配计数快照", async () => {
-    const result = await run_worker_task({
+    const result = await run_compute_worker_task({
       type: "quality_statistics",
       input: prepare_quality_statistics_task_input({
         rule_key: "glossary",
@@ -26,7 +26,7 @@ describe("run_worker_task", () => {
   });
 
   it("执行繁简转换 task 并返回转换后的条目", async () => {
-    const result = await run_worker_task({
+    const result = await run_compute_worker_task({
       type: "ts_conversion",
       input: {
         items: [
@@ -56,7 +56,7 @@ describe("run_worker_task", () => {
   });
 
   it("执行校对 sync task 并只返回可序列化评估分片", async () => {
-    const result = await run_worker_task({
+    const result = await run_compute_worker_task({
       type: "proofreading_sync",
       input: {
         projectId: "E:/Project/demo.lg",

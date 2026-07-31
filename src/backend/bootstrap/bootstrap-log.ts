@@ -1,15 +1,14 @@
-import { get_electron_main_log_manager } from "../log/log-bridge";
 import { to_log_error, type LogError } from "../../shared/error";
+import type { LogManager } from "../log/log-manager";
 
-// MAIN LOG LEVEL 是模块级稳定契约，集中维护避免调用点散落魔术值。
 const MAIN_LOG_LEVEL = "MAIN";
-// LOG LEVEL COLUMN WIDTH 是运行时节流或容量阈值，集中保存便于评估性能影响。
-const LOG_LEVEL_COLUMN_WIDTH = 8;
+const LOG_LEVEL_COLUMN_WIDTH = 8; // 与其它控制台日志等级列保持固定对齐
 
 function pad_time_unit(value: number): string {
   return value.toString().padStart(2, "0");
 }
 
+/** 生成 LogManager 尚未可用时的启动期控制台行。 */
 export function format_bootstrap_log(message: string, date: Date = new Date()): string {
   const hours = pad_time_unit(date.getHours());
   const minutes = pad_time_unit(date.getMinutes());
@@ -18,9 +17,9 @@ export function format_bootstrap_log(message: string, date: Date = new Date()): 
   return `[${hours}:${minutes}:${seconds}] ${level} ${message}`;
 }
 
-export function write_bootstrap_log(message: string): void {
-  const log_manager = get_electron_main_log_manager();
-  if (log_manager === null) {
+/** 优先写入结构化日志；启动最早期才使用 stdout。 */
+export function write_bootstrap_log(message: string, log_manager?: Pick<LogManager, "info">): void {
+  if (log_manager === undefined) {
     process.stdout.write(`${format_bootstrap_log(message)}\n`);
     return;
   }
@@ -33,11 +32,11 @@ export function write_bootstrap_log(message: string): void {
 export function write_bootstrap_error(
   message: string,
   payload: { error?: unknown; logError?: LogError } = {},
+  log_manager?: Pick<LogManager, "error">,
 ): void {
-  const log_manager = get_electron_main_log_manager();
   const log_error =
     payload.logError ?? (payload.error === undefined ? null : to_log_error(payload.error));
-  if (log_manager === null) {
+  if (log_manager === undefined) {
     const suffix =
       log_error === null
         ? ""

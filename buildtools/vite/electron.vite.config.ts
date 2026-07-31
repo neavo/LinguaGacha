@@ -13,7 +13,10 @@ export default defineConfig({
       rolldownOptions: {
         input: {
           index: project_path("src/index.ts"),
-          "backend-worker-entry": project_path("src/backend/worker/worker-entry.ts"),
+          "backend-runtime-worker-entry": project_path(
+            "src/backend/bootstrap/backend-runtime-worker-entry.ts",
+          ),
+          "compute-worker-entry": project_path("src/backend/worker/compute-worker-entry.ts"),
           "planning-worker-entry": project_path(
             "src/backend/engine/planning/planning-worker-entry.ts",
           ),

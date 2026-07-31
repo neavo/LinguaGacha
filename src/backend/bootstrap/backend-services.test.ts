@@ -32,7 +32,7 @@ import type { BackendServicesOptions } from "./backend-services";
 import { AgentService } from "../agent/agent-service";
 import { TaskService } from "../engine/task-service";
 import { TaskRuntime } from "../engine/task-runtime";
-import { BackendWorkerClient } from "../worker/worker-client";
+import { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { RuntimeBusyError } from "../../shared/error";
 
@@ -70,7 +70,7 @@ describe("BackendServices", () => {
 
   it("启动和释放时只管理组合根拥有的运行期资源", async () => {
     const options = create_backend_services_options();
-    const backend_worker_dispose = vi.spyOn(BackendWorkerClient.prototype, "dispose");
+    const compute_worker_dispose = vi.spyOn(ComputeWorkerClient.prototype, "dispose");
     const agent_dispose = vi.spyOn(AgentService.prototype, "dispose");
     const services = new BackendServices(options);
 
@@ -82,10 +82,10 @@ describe("BackendServices", () => {
     expect(options.appSettingService.set_stream_publisher).toHaveBeenLastCalledWith(null);
     expect(work_unit_dispose_mock).toHaveBeenCalledTimes(1);
     expect(planning_dispose_mock).toHaveBeenCalledTimes(1);
-    expect(backend_worker_dispose).toHaveBeenCalledTimes(1);
+    expect(compute_worker_dispose).toHaveBeenCalledTimes(1);
     expect(agent_dispose).toHaveBeenCalledTimes(1);
     expect(options.metadata.build_linguagacha_user_agent).toHaveBeenCalledTimes(1);
-    backend_worker_dispose.mockRestore();
+    compute_worker_dispose.mockRestore();
     agent_dispose.mockRestore();
   });
 

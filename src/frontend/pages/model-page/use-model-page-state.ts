@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
-import { useDesktopState } from "@frontend/app/state/use-desktop-state";
+import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
@@ -410,7 +410,7 @@ function reorder_snapshot_group(
 export function useModelPageState(): UseModelPageStateResult {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
-  const { runtime_snapshot } = useDesktopState();
+  const runtime_snapshot = useRuntimeSnapshot();
   const [snapshot, set_snapshot] = useState<ModelPageSnapshot>(EMPTY_SNAPSHOT);
   const [is_action_running, set_is_action_running] = useState(false);
   const [dialog_state, set_dialog_state] = useState<ModelDialogState>(close_dialog_state());

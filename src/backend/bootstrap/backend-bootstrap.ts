@@ -4,7 +4,6 @@ import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { ProjectDatabase } from "../database/database-operations";
 import { LogManager } from "../log/log-manager";
-import { set_electron_main_log_manager } from "../log/log-bridge";
 import { set_main_log_language_reader, t_main_log } from "../log/log-text";
 import { migration_orchestrator } from "../migration/migration-orchestrator";
 import {
@@ -108,11 +107,13 @@ export class BackendBootstrap {
       targets: this.options.logTargets,
     });
     this.log_manager = log_manager;
-    set_electron_main_log_manager(log_manager);
 
     try {
-      write_bootstrap_log("");
-      write_bootstrap_log(t_main_log("app.log.app_version", { VERSION: metadata.read_version() }));
+      write_bootstrap_log("", log_manager);
+      write_bootstrap_log(
+        t_main_log("app.log.app_version", { VERSION: metadata.read_version() }),
+        log_manager,
+      );
       // 启动期迁移必须早于服务启动，确保配置和预设读取只看到当前 userdata/resource 布局。
       migration_orchestrator.run_startup_migrations({ paths, log_manager });
       const app_setting_service = new AppSettingService(paths);
@@ -146,9 +147,11 @@ export class BackendBootstrap {
       this.state = "failed";
       const failures: unknown[] = [error];
       try {
-        write_bootstrap_error(t_main_log("app.diagnostic.lifecycle.backend_gateway_start_failed"), {
-          error,
-        });
+        write_bootstrap_error(
+          t_main_log("app.diagnostic.lifecycle.backend_gateway_start_failed"),
+          { error },
+          log_manager,
+        );
       } catch (log_error) {
         failures.push(log_error);
       }
@@ -211,8 +214,9 @@ export class BackendBootstrap {
     this.gateway_server = gateway_server;
     write_bootstrap_log(
       t_main_log("app.log.api_gateway_started", { BASE_URL: gateway_start_result.baseUrl }),
+      this.log_manager ?? undefined,
     );
-    write_bootstrap_log("");
+    write_bootstrap_log("", this.log_manager ?? undefined);
     return gateway_start_result.baseUrl;
   }
 
@@ -243,6 +247,7 @@ export class BackendBootstrap {
         t_main_log("app.log.system_proxy_startup_detected", {
           PROXY: this.system_proxy_startup_notice.proxyDisplay ?? "",
         }),
+        this.log_manager ?? undefined,
       );
     }
   }
@@ -283,7 +288,6 @@ export class BackendBootstrap {
     const log_manager = this.log_manager;
     this.log_manager = null;
     await attempt(async () => await log_manager?.shutdown());
-    set_electron_main_log_manager(null);
     set_main_log_language_reader(null);
     this.state = "stopped";
     if (errors.length > 0) {

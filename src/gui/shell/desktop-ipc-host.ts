@@ -37,7 +37,7 @@ export type DesktopIpcHandlerOptions = {
     sender: Electron.WebContents,
     payload: DesktopRendererDiagnosticsPayload,
   ) => void; // 诊断载荷由 main 注册器统一清洗，IPC 层只保持 sender 归属
-  readAppLanguage: () => unknown; // 原生系统对话框文案必须跟随当前应用语言
+  readAppLanguage: () => Promise<unknown>; // 原生系统对话框文案必须跟随当前应用语言
   updateService: {
     download_release: (
       request: DesktopUpdateDownloadIpcRequest,
@@ -109,8 +109,10 @@ export function register_desktop_ipc_handlers(options: DesktopIpcHandlerOptions)
 /**
  * 系统文件选择器不经过 renderer，本地化文案在打开瞬间读取当前设置。
  */
-function create_dialog_text_resolver(options: DesktopIpcHandlerOptions): TextResolver {
-  return create_text_resolver(resolve_app_locale(options.readAppLanguage()));
+async function create_dialog_text_resolver(
+  options: DesktopIpcHandlerOptions,
+): Promise<TextResolver> {
+  return create_text_resolver(resolve_app_locale(await options.readAppLanguage()));
 }
 
 /**
@@ -189,14 +191,14 @@ async function pick_path(
     case "project-file":
       return pick_open_path(main_window, request.default_directory, {
         properties: ["openFile"],
-        filters: build_project_file_filters(create_dialog_text_resolver(options)),
+        filters: build_project_file_filters(await create_dialog_text_resolver(options)),
       });
     case "project-save":
       return pick_save_path(
         main_window,
         request.default_directory,
         request.default_name,
-        build_project_file_filters(create_dialog_text_resolver(options)),
+        build_project_file_filters(await create_dialog_text_resolver(options)),
       );
     case "workbench-files":
       return pick_open_path(main_window, request.default_directory, {
@@ -213,26 +215,26 @@ async function pick_path(
     case "glossary-import":
       return pick_open_path(main_window, request.default_directory, {
         properties: ["openFile"],
-        filters: build_glossary_import_file_filters(create_dialog_text_resolver(options)),
+        filters: build_glossary_import_file_filters(await create_dialog_text_resolver(options)),
       });
     case "glossary-export":
       return pick_save_path(
         main_window,
         request.default_directory,
         request.default_name,
-        build_glossary_export_file_filters(create_dialog_text_resolver(options)),
+        build_glossary_export_file_filters(await create_dialog_text_resolver(options)),
       );
     case "prompt-import":
       return pick_open_path(main_window, request.default_directory, {
         properties: ["openFile"],
-        filters: build_prompt_file_filters(create_dialog_text_resolver(options)),
+        filters: build_prompt_file_filters(await create_dialog_text_resolver(options)),
       });
     case "prompt-export":
       return pick_save_path(
         main_window,
         request.default_directory,
         "",
-        build_prompt_file_filters(create_dialog_text_resolver(options)),
+        build_prompt_file_filters(await create_dialog_text_resolver(options)),
       );
     default:
       throw new TypeError("Unsupported desktop path picker kind.");

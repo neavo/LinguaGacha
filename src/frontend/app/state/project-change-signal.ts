@@ -1,7 +1,17 @@
 import { useRef } from "react";
 
-import type { ProjectChangeSignal } from "@frontend/app/state/desktop-state-context";
-import type { ProjectStage } from "@frontend/app/state/desktop-project-change-types";
+import type {
+  ProjectChangeApplyResult,
+  ProjectStage,
+} from "@frontend/app/state/desktop-project-change-types";
+
+/** 页面只消费变更身份和受影响 section，具体项目事实仍由领域 query 读取。 */
+export type ProjectChangeSignal = {
+  seq: number;
+  reason: string;
+  updated_sections: ProjectStage[];
+  results: ProjectChangeApplyResult[];
+};
 
 /**
  * 判断项目变更是否命中调用方关心的 section，调用方无需关心 section 去重细节。
