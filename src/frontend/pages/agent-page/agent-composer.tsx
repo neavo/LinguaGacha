@@ -11,7 +11,15 @@ import {
   StateField,
   type Extension,
 } from "@codemirror/state";
-import { Decoration, EditorView, keymap, placeholder, type DecorationSet } from "@codemirror/view";
+import {
+  Decoration,
+  EditorView,
+  WidgetType,
+  drawSelection,
+  keymap,
+  placeholder,
+  type DecorationSet,
+} from "@codemirror/view";
 
 import type { AgentSkillSnapshot, AgentUserMessagePart } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-provider";
@@ -148,8 +156,8 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             !snapshot.selected_skill_names.has(skill.name) &&
             `${skill.name}\n${skill.description}`.toLocaleLowerCase().includes(query_text),
         );
-  const read_only = props.running || props.resetting || submitting;
-  const menu_open = !read_only && !menu_suppressed && matching_skills.length > 0;
+  const editor_read_only = props.resetting || submitting;
+  const menu_open = !editor_read_only && !menu_suppressed && matching_skills.length > 0;
   const menu_index = Math.max(0, Math.min(menu_index_value, matching_skills.length - 1));
   const can_send =
     !props.running &&
@@ -160,8 +168,8 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const selected_model = read_selected_model(props.model_selection, "agent");
   const selected_model_name =
     selected_model?.name || selected_model?.id || t("app.model.selection.unavailable");
-  // 编辑器只创建一次，首次运行态必须在首帧扩展中生效，不能等待后续 effect。
-  const initial_read_only_ref = useRef(read_only);
+  // 编辑器只创建一次，首次锁定态必须在首帧扩展中生效，不能等待后续 effect。
+  const initial_editor_read_only_ref = useRef(editor_read_only);
 
   menu_open_ref.current = menu_open;
   matching_skills_ref.current = matching_skills;
@@ -189,10 +197,12 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
         extensions: [
           theme_compartment.of(resolve_app_editor_theme_extensions(resolvedTheme, "plain")),
           read_only_compartment.of(
-            resolve_app_editor_readonly_extensions(initial_read_only_ref.current),
+            resolve_app_editor_readonly_extensions(initial_editor_read_only_ref.current),
           ),
           placeholder_compartment.of(placeholder(placeholder_text)),
           skill_token_extension,
+          // widget 边界坐标必须由 CodeMirror 绘制光标消费，不能回退到 Chromium 原生 caret。
+          drawSelection(),
           history(),
           EditorView.lineWrapping,
           EditorView.domEventHandlers({
@@ -258,9 +268,11 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     const view = view_ref.current;
     if (view === null) return;
     view.dispatch({
-      effects: read_only_compartment.reconfigure(resolve_app_editor_readonly_extensions(read_only)),
+      effects: read_only_compartment.reconfigure(
+        resolve_app_editor_readonly_extensions(editor_read_only),
+      ),
     });
-  }, [read_only]);
+  }, [editor_read_only]);
 
   useEffect(() => {
     const view = view_ref.current;
@@ -496,9 +508,50 @@ function find_skill_query(state: EditorState): SkillQuery | null {
   return { from, to, text: match[2] ?? "" };
 }
 
-/** 创建不可拆分的 skill DOM 标记，名称保存在 decoration spec 中。 */
+/** replace widget 拥有完整视觉盒，光标只能停在原子 skill 的两侧。 */
+class SkillTokenWidget extends WidgetType {
+  private static readonly CURSOR_GAP_PX = 1;
+  private readonly name: string;
+
+  constructor(name: string) {
+    super();
+    this.name = name;
+  }
+
+  override eq(widget: WidgetType): boolean {
+    return widget instanceof SkillTokenWidget && widget.name === this.name;
+  }
+
+  override toDOM(): HTMLElement {
+    const token = document.createElement("span");
+    token.className = "agent-skill-token";
+    token.textContent = `@${this.name}`;
+    return token;
+  }
+
+  override coordsAt(
+    dom: HTMLElement,
+    pos: number,
+  ): {
+    left: number;
+    right: number;
+    top: number;
+    bottom: number;
+  } {
+    const rect = dom.getBoundingClientRect();
+    // CodeMirror 光标线向左占宽，右边界需留出间隙才能保持在色块之外。
+    const x = pos === 0 ? rect.left : rect.right + SkillTokenWidget.CURSOR_GAP_PX;
+    return { left: x, right: x, top: rect.top, bottom: rect.bottom };
+  }
+}
+
+/** 文档保留原始 @name，replace decoration 只负责原子交互与 DOM 投影。 */
 function create_skill_token_decoration(name: string): Decoration {
-  return Decoration.mark({ class: "agent-skill-token", skill_name: name });
+  return Decoration.replace({
+    widget: new SkillTokenWidget(name),
+    inclusive: false,
+    skill_name: name,
+  });
 }
 
 /** 从 decoration spec 安全读取 skill 名，拒绝非字符串的外部值。 */
