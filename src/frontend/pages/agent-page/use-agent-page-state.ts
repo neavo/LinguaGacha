@@ -297,15 +297,22 @@ function normalize_context_usage(value: unknown): AgentContextUsage | null | und
   if (
     !is_json_record(value) ||
     typeof value["tokens"] !== "number" ||
-    !Number.isInteger(value["tokens"]) ||
+    !Number.isSafeInteger(value["tokens"]) ||
     value["tokens"] < 0 ||
     typeof value["contextWindow"] !== "number" ||
-    !Number.isInteger(value["contextWindow"]) ||
-    value["contextWindow"] <= 0
+    !Number.isSafeInteger(value["contextWindow"]) ||
+    value["contextWindow"] <= 0 ||
+    typeof value["maxTokens"] !== "number" ||
+    !Number.isSafeInteger(value["maxTokens"]) ||
+    value["maxTokens"] <= 0
   ) {
     return undefined;
   }
-  return { tokens: value["tokens"], contextWindow: value["contextWindow"] };
+  return {
+    tokens: value["tokens"],
+    contextWindow: value["contextWindow"],
+    maxTokens: value["maxTokens"],
+  };
 }
 
 /** 单条协议记录必须完整通过所属 kind 的字段校验，否则整条丢弃。 */

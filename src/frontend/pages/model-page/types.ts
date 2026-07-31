@@ -1,4 +1,4 @@
-import type { ModelThinkingLevel, ModelType } from "@domain/model";
+import type { ModelAgentConfig, ModelThinkingLevel, ModelType } from "@domain/model";
 
 export type { ModelThinkingLevel, ModelType };
 
@@ -39,6 +39,7 @@ export type ModelEntrySnapshot = {
   api_url: string;
   api_key: string;
   model_id: string;
+  agent: ModelAgentConfig;
   request: ModelRequestSnapshot;
   threshold: ModelThresholdSnapshot;
   thinking: ModelThinkingSnapshot;

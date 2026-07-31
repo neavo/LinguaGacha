@@ -12,6 +12,7 @@ import {
   MODEL_USAGES,
   Model,
   normalize_model_selection,
+  parse_model_agent_config,
   type ModelSelection,
 } from "../../domain/model";
 import {
@@ -37,6 +38,7 @@ const PATCH_ALLOWED_KEYS = new Set([
   "api_url",
   "api_key",
   "model_id",
+  "agent",
   "thinking",
   "threshold",
   "generation",
@@ -49,7 +51,9 @@ type ModelTestFailure = {
 };
 
 // 嵌套配置字段采用浅合并，保留未出现在 patch 中的历史配置项
-const PATCH_OBJECT_KEYS = new Set(["thinking", "threshold", "generation", "request"]);
+const PATCH_OBJECT_KEYS = new Set(["agent", "thinking", "threshold", "generation", "request"]);
+// Agent 容量是原子数值对，不接受领域协议外的嵌套字段。
+const MODEL_AGENT_PATCH_KEYS = new Set(["context_window", "max_output_tokens"]);
 
 /**
  * 封装模型配置 CRUD 与按用途选择；任务执行时由调用方解析不可变模型快照
@@ -86,7 +90,7 @@ export class ModelService {
     return this.build_snapshot_response(config);
   }
 
-  /** 读取任务入口需要的窄模型选项，不公开密钥、请求覆盖或生成参数。 */
+  /** 读取任务入口需要的窄模型选项，只额外公开非敏感的 Agent 容量。 */
   public get_selection_snapshot(): JsonRecord {
     return this.build_selection_snapshot(this.load_setting_with_models(true));
   }
@@ -599,6 +603,14 @@ export class ModelService {
             public_details: { field: key },
           });
         }
+        if (
+          key === "agent" &&
+          Object.keys(value).some((field) => !MODEL_AGENT_PATCH_KEYS.has(field))
+        ) {
+          throw new AppErrors.RequestValidationError({
+            public_details: { field: "agent" },
+          });
+        }
         result[key] = {
           ...read_json_record(result[key]),
           ...value,
@@ -606,6 +618,11 @@ export class ModelService {
       } else {
         result[key] = String(value ?? "");
       }
+    }
+    if (patch["agent"] !== undefined && parse_model_agent_config(result["agent"]) === null) {
+      throw new AppErrors.RequestValidationError({
+        public_details: { field: "agent" },
+      });
     }
     return this.normalize_model(result);
   }
@@ -687,7 +704,7 @@ export class ModelService {
     };
   }
 
-  /** 生成任务入口需要的窄快照，不暴露密钥和生成参数。 */
+  /** 生成任务入口需要的窄快照，只额外公开非敏感的 Agent 容量。 */
   private build_selection_snapshot(config: JsonRecord): JsonRecord {
     return {
       model_selection: normalize_model_selection(config["model_selection"]),
@@ -695,6 +712,7 @@ export class ModelService {
         id: String(model["id"] ?? ""),
         type: String(model["type"] ?? ""),
         name: String(model["name"] ?? ""),
+        agent: read_json_record(model["agent"]),
       })),
     };
   }

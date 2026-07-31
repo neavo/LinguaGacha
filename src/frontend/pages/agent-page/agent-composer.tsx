@@ -73,10 +73,6 @@ const EMPTY_EDITOR_SNAPSHOT: EditorSnapshot = {
   selected_skill_names: new Set(),
 };
 
-/** 只有越过 70% / 90% 才升级色阶，边界值保留在较低等级。 */
-const CONTEXT_USAGE_WARNING_PERCENT = 70;
-const CONTEXT_USAGE_FAILURE_PERCENT = 90;
-
 // 三个 Compartment 只承接运行期配置，不参与草稿或 token 事实。
 const theme_compartment = new Compartment();
 const read_only_compartment = new Compartment();
@@ -174,8 +170,18 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const selected_model = read_selected_model(props.model_selection, "agent");
   const selected_model_name =
     selected_model?.name || selected_model?.id || t("app.model.selection.unavailable");
+  // 新对话用当前选择显示 0%，已有对话始终优先显示后端冻结的真实用量。
+  const context_usage_source =
+    props.context_usage ??
+    (selected_model === null
+      ? null
+      : {
+          tokens: 0,
+          contextWindow: selected_model.agent.context_window,
+          maxTokens: selected_model.agent.max_output_tokens,
+        });
   const context_usage =
-    props.context_usage === null ? null : format_context_usage(props.context_usage);
+    context_usage_source === null ? null : format_context_usage(context_usage_source);
   // 编辑器只创建一次，首次锁定态必须在首帧扩展中生效，不能等待后续 effect。
   const initial_editor_read_only_ref = useRef(editor_read_only);
 
@@ -433,17 +439,18 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                   className="agent-composer__context-usage"
                   data-tone={context_usage.tone}
                   tabIndex={0}
-                  aria-label={t("agent_page.context_usage", {
+                  aria-label={`${t("agent_page.context_usage", {
                     percent: context_usage.percent,
                     used: context_usage.used,
                     total: context_usage.total,
-                  })}
+                  })}${context_usage.warning ? ` · ${t("agent_page.context_usage_warning")}` : ""}`}
                 >
                   {context_usage.percent}
                 </span>
               </TooltipTrigger>
               <TooltipContent side="top" sideOffset={8}>
                 <p>{`${context_usage.used} / ${context_usage.total}`}</p>
+                {context_usage.warning ? <p>{t("agent_page.context_usage_warning")}</p> : null}
               </TooltipContent>
             </Tooltip>
           )}
@@ -492,19 +499,18 @@ function format_context_usage(usage: AgentContextUsage): {
   percent: string;
   used: string;
   total: string;
-  tone: "default" | "warning" | "failure";
+  tone: "default" | "warning";
+  warning: boolean;
 } {
   const percent = (usage.tokens / usage.contextWindow) * 100;
+  // 为下一次回复和压缩各保留一份最大输出预算，阈值本身仍保持默认色。
+  const warning = usage.tokens > usage.contextWindow - usage.maxTokens * 2;
   return {
     percent: `${percent.toFixed(1)}%`,
     used: format_context_tokens(usage.tokens),
     total: format_context_tokens(usage.contextWindow),
-    tone:
-      percent > CONTEXT_USAGE_FAILURE_PERCENT
-        ? "failure"
-        : percent > CONTEXT_USAGE_WARNING_PERCENT
-          ? "warning"
-          : "default",
+    tone: warning ? "warning" : "default",
+    warning,
   };
 }
 

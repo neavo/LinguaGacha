@@ -50,11 +50,20 @@ export const zh_cn_model_page = {
     reorder_failed: "模型顺序保存失败，请稍后再试 …",
     delete_last_one: "每个分类至少需要保留一个模型，无法删除 …",
     reset_success: "模型已重置 …",
+    agent_limits_invalid: "上下文窗口必须大于最大输出长度的两倍",
     json_format_error: "JSON 格式错误，请输入有效的 JSON 对象 …",
     selector_load_failed: "获取模型列表失败，请检查接口配置 …",
     test_failed: "模型测试失败，请稍后再试 …",
   },
   fields: {
+    context_window: {
+      title: "上下文窗口",
+      description: "仅对 AGENT 任务生效",
+    },
+    max_output_tokens: {
+      title: "最大输出长度",
+      description: "仅对 AGENT 任务生效",
+    },
     name: {
       title: "模型名称",
       description: "请输入模型名称，仅用于应用内显示，无实际作用",

@@ -91,6 +91,7 @@ describe("useModelPageState", () => {
     expect(latest_state?.snapshot.models[1]).toMatchObject({
       id: "custom",
       api_format: "OpenAI",
+      agent: { context_window: 288_000, max_output_tokens: 32_000 },
       threshold: { input_token_limit: 512, output_token_limit: 4096 },
     });
 
@@ -98,6 +99,28 @@ describe("useModelPageState", () => {
 
     expect(latest_state?.confirm_state).toEqual({ kind: null, model_id: null });
     expect(push_toast).toHaveBeenCalledWith("warning", "model_page.feedback.delete_last_one");
+  });
+
+  it("乐观更新合并 Agent 容量并保留同组字段", async () => {
+    api_fetch_mock.mockResolvedValue(create_snapshot());
+    await render_hook();
+    const update = create_deferred<ReturnType<typeof create_snapshot>>();
+    api_fetch_mock.mockReturnValue(update.promise);
+
+    let request!: Promise<void>;
+    await act(async () => {
+      request = latest_state!.update_model_patch("custom", {
+        agent: { context_window: 300_000 },
+      });
+      await Promise.resolve();
+    });
+    expect(latest_state?.snapshot.models[1]?.agent).toEqual({
+      context_window: 300_000,
+      max_output_tokens: 32_000,
+    });
+
+    update.resolve(create_snapshot());
+    await act(async () => request);
   });
 
   it("并发更新只接受同一模型最后一次请求的回包", async () => {

@@ -6,7 +6,8 @@ import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import { create_model_snapshot } from "@frontend/pages/model-page/dialogs/model-dialog-test-fixture";
 import { ModelPage } from "./page";
 
-const { use_model_page_state_mock } = vi.hoisted(() => ({
+const { push_toast_mock, use_model_page_state_mock } = vi.hoisted(() => ({
+  push_toast_mock: vi.fn(),
   use_model_page_state_mock: vi.fn(),
 }));
 
@@ -15,7 +16,7 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
 }));
 
 vi.mock("@frontend/app/feedback/desktop-toast", () => ({
-  useDesktopToast: () => ({ push_toast: vi.fn() }),
+  useDesktopToast: () => ({ push_toast: push_toast_mock }),
 }));
 
 vi.mock("@frontend/pages/model-page/use-model-page-state", () => ({
@@ -38,7 +39,9 @@ vi.mock("@frontend/pages/model-page/components/model-item-chip", () => ({
 }));
 
 vi.mock("@frontend/pages/model-page/dialogs/model-advanced-settings-dialog", () => ({
-  ModelAdvancedSettingsDialog: () => null,
+  ModelAdvancedSettingsDialog: (props: { onAgentLimitsError: () => void }) => (
+    <button type="button" aria-label="agent-limits-error" onClick={props.onAgentLimitsError} />
+  ),
 }));
 
 vi.mock("@frontend/pages/model-page/dialogs/model-basic-settings-dialog", () => ({
@@ -128,6 +131,7 @@ describe("ModelPage", () => {
     container = null;
     root = null;
     use_model_page_state_mock.mockReset();
+    push_toast_mock.mockReset();
   });
 
   it("配置动作携带对应类型与模型标识，且不再提供旧激活入口", async () => {
@@ -167,5 +171,27 @@ describe("ModelPage", () => {
         (button) => button.textContent?.trim() === "model_page.action.activate",
       ),
     ).toBe(false);
+  });
+
+  it("Agent 容量校验失败时显示本地化警告", async () => {
+    const { state } = create_model_page_state();
+    use_model_page_state_mock.mockReturnValue(state);
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(<ModelPage is_sidebar_collapsed={false} />);
+    });
+
+    await act(async () => {
+      container
+        ?.querySelector<HTMLButtonElement>('button[aria-label="agent-limits-error"]')
+        ?.click();
+    });
+
+    expect(push_toast_mock).toHaveBeenCalledWith(
+      "warning",
+      "model_page.feedback.agent_limits_invalid",
+    );
   });
 });

@@ -5,30 +5,46 @@ import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completio
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 import type { JsonRecord } from "../../domain/json";
-import type { ModelApiFormat } from "../../domain/model";
+import { parse_model_agent_config, type ModelApiFormat } from "../../domain/model";
 import * as AppErrors from "../../shared/error";
 import { LLMClientPolicy } from "../llm/llm-client-policy";
 import { resolve_model_for_usage } from "../model/model-config-resolver";
 
-const AGENT_CONTEXT_WINDOW = 256_000;
-const AGENT_MAX_OUTPUT_TOKENS = 64_000;
-
 type AgentProviderId = "openai" | "openai-compatible" | "anthropic" | "google";
 type AgentApi = "openai-completions" | "anthropic-messages" | "google-generative-ai";
 
+/** Provider 与 AgentSession 共用的当前对话容量快照。 */
+export type AgentModelLimits = Readonly<{
+  contextWindow: number; // 当前对话冻结的上下文总容量
+  maxTokens: number; // 当前对话冻结的单次输出与压缩预留容量
+}>;
+
 /**
- * 把统一请求快照注册到当前 coding-agent 模型运行时。
+ * 把统一请求快照注册到当前 coding-agent 模型运行时；已有对话可覆盖并冻结容量。
  */
 export function register_agent_model(
   model_runtime: ModelRuntime,
   config: JsonRecord,
   user_agent: string,
+  frozen_limits?: AgentModelLimits,
 ): {
   model: PiModel<AgentApi>;
   thinkingLevel: "off" | "low" | "medium" | "high";
 } {
   const raw_model = resolve_model_for_usage(config, "agent");
   if (raw_model === null) throw new AppErrors.ModelNotFoundError();
+  const agent_config = parse_model_agent_config(raw_model["agent"]);
+  if (agent_config === null) {
+    throw new AppErrors.InternalInvariantError({
+      diagnostic_context: { reason: "invalid_normalized_agent_model_config" },
+    });
+  }
+  const limits =
+    frozen_limits ??
+    Object.freeze({
+      contextWindow: agent_config.context_window,
+      maxTokens: agent_config.max_output_tokens,
+    });
 
   const policy = new LLMClientPolicy(user_agent);
   const snapshot = policy.read_model_snapshot(raw_model);
@@ -59,9 +75,9 @@ export function register_agent_model(
         reasoning: policy.supports_thinking(snapshot),
         input: ["text"],
         cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-        // 模型页 generation 与 token threshold 只属于 OneShot；Agent 使用独立固定容量。
-        contextWindow: AGENT_CONTEXT_WINDOW,
-        maxTokens: AGENT_MAX_OUTPUT_TOKENS,
+        // Agent 容量在新对话创建时冻结；换模只刷新请求能力。
+        contextWindow: limits.contextWindow,
+        maxTokens: limits.maxTokens,
         headers: { ...request_headers },
         // developer 不是 OpenAI-compatible 的共同能力，统一保持 system 角色基线。
         compat: api.api === "openai-completions" ? { supportsDeveloperRole: false } : undefined,

@@ -83,6 +83,9 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
         onPatch={(patch) =>
           model_page_state.update_model_patch(model_page_state.dialog_state.model_id ?? "", patch)
         }
+        onAgentLimitsError={() => {
+          push_toast("warning", t("model_page.feedback.agent_limits_invalid"));
+        }}
         onJsonFormatError={() => {
           push_toast("warning", t("model_page.feedback.json_format_error"));
         }}

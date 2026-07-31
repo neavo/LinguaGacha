@@ -16,6 +16,13 @@ function change_textarea_value(textarea: HTMLTextAreaElement, value: string): vo
   textarea.dispatchEvent(new Event("input", { bubbles: true }));
 }
 
+/** 通过原生 value setter 触发 React 受控 input 的 input 事件。 */
+function change_input_value(input: HTMLInputElement, value: string): void {
+  const value_descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+  value_descriptor?.set?.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 describe("ModelAdvancedSettingsDialog", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
@@ -47,6 +54,7 @@ describe("ModelAdvancedSettingsDialog", () => {
             })}
             readonly={false}
             onPatch={on_patch}
+            onAgentLimitsError={() => {}}
             onJsonFormatError={() => {}}
             onClose={() => {}}
           />,
@@ -77,5 +85,69 @@ describe("ModelAdvancedSettingsDialog", () => {
     expect(on_patch).toHaveBeenCalledWith({
       request: { extra_headers: { "X-Test": "ok" } },
     });
+  });
+
+  it("把 Agent 容量置顶并只原子提交合法数值对", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    const on_patch = vi.fn(async () => {});
+    const on_agent_limits_error = vi.fn();
+    await act(async () => {
+      root?.render(
+        <ModelAdvancedSettingsDialog
+          open
+          model={create_model_snapshot()}
+          readonly={false}
+          onPatch={on_patch}
+          onAgentLimitsError={on_agent_limits_error}
+          onJsonFormatError={() => {}}
+          onClose={() => {}}
+        />,
+      );
+    });
+
+    const titles = [...document.querySelectorAll(".model-page__setting-list h2")].map(
+      (title) => title.textContent,
+    );
+    expect(titles.slice(0, 2)).toEqual([
+      "model_page.fields.context_window.title",
+      "model_page.fields.max_output_tokens.title",
+    ]);
+    const context_window = document.querySelector<HTMLInputElement>(
+      'input[aria-label="model_page.fields.context_window.title"]',
+    );
+    const max_output_tokens = document.querySelector<HTMLInputElement>(
+      'input[aria-label="model_page.fields.max_output_tokens.title"]',
+    );
+    if (context_window === null || max_output_tokens === null) {
+      throw new Error("Agent 容量输入框未挂载。");
+    }
+
+    await act(async () => change_input_value(context_window, "300000"));
+    await act(async () =>
+      context_window.dispatchEvent(new FocusEvent("focusout", { bubbles: true })),
+    );
+    expect(on_patch).toHaveBeenLastCalledWith({
+      agent: { context_window: 300_000, max_output_tokens: 32_000 },
+    });
+
+    on_patch.mockClear();
+    await act(async () => change_input_value(context_window, "64000"));
+    await act(async () =>
+      context_window.dispatchEvent(new FocusEvent("focusout", { bubbles: true })),
+    );
+    expect(on_patch).not.toHaveBeenCalled();
+    expect(on_agent_limits_error).toHaveBeenCalledOnce();
+    expect(context_window.value).toBe("64000");
+    expect(context_window.getAttribute("aria-invalid")).toBe("true");
+    expect(max_output_tokens.getAttribute("aria-invalid")).toBe("true");
+
+    await act(async () => change_input_value(context_window, "300000"));
+    expect(on_patch).toHaveBeenLastCalledWith({
+      agent: { context_window: 300_000, max_output_tokens: 32_000 },
+    });
+    expect(context_window.getAttribute("aria-invalid")).toBeNull();
+    expect(max_output_tokens.getAttribute("aria-invalid")).toBeNull();
   });
 });

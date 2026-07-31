@@ -21,7 +21,14 @@ vi.mock("@frontend/features/model-selection/use-model-selection", async (import_
     useModelSelection: () => ({
       snapshot: {
         model_selection: { translation: "preset", analysis: "preset", agent: "agent" },
-        models: [{ id: "agent", type: "CUSTOM_OPENAI", name: "Agent Model" }],
+        models: [
+          {
+            id: "agent",
+            type: "CUSTOM_OPENAI",
+            name: "Agent Model",
+            agent: { context_window: 288_000, max_output_tokens: 32_000 },
+          },
+        ],
       },
       loading: false,
       updating: false,
@@ -89,10 +96,10 @@ describe("AgentPage", () => {
 
   it("把当前上下文用量装配到底栏", async () => {
     const view = await render_page({
-      contextUsage: { tokens: 31_488, contextWindow: 256_000 },
+      contextUsage: { tokens: 31_488, contextWindow: 288_000, maxTokens: 32_000 },
     });
 
-    expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("12.3%");
+    expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("10.9%");
   });
 
   it("用户离开消息底部后不被流式输出抢回滚动位置", async () => {

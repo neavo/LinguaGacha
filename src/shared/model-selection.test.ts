@@ -13,9 +13,25 @@ describe("模型选择快照", () => {
           unknown: "ignored",
         },
         models: [
-          { id: " model-1 ", type: "PRESET", name: " 预设 " },
-          { id: "model-2", type: "UNKNOWN", name: "坏类型" },
-          { id: "", type: "CUSTOM_OPENAI", name: "空 ID" },
+          {
+            id: " model-1 ",
+            type: "PRESET",
+            name: " 预设 ",
+            agent: { context_window: 288_000, max_output_tokens: 32_000 },
+          },
+          {
+            id: "model-2",
+            type: "UNKNOWN",
+            name: "坏类型",
+            agent: { context_window: 288_000, max_output_tokens: 32_000 },
+          },
+          {
+            id: "",
+            type: "CUSTOM_OPENAI",
+            name: "空 ID",
+            agent: { context_window: 288_000, max_output_tokens: 32_000 },
+          },
+          { id: "missing-agent", type: "CUSTOM_OPENAI", name: "缺少容量" },
           null,
         ],
       }),
@@ -25,7 +41,14 @@ describe("模型选择快照", () => {
         analysis: "",
         agent: "agent-model",
       },
-      models: [{ id: "model-1", type: "PRESET", name: "预设" }],
+      models: [
+        {
+          id: "model-1",
+          type: "PRESET",
+          name: "预设",
+          agent: { context_window: 288_000, max_output_tokens: 32_000 },
+        },
+      ],
     });
   });
 });
