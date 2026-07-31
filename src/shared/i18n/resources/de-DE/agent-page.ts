@@ -10,6 +10,10 @@ export const de_de_agent_page = {
   loading: "Sitzung wird wiederhergestellt …",
   empty: {
     message: "「Aibō」, was machen wir als Nächstes  ( •̀ ᗜ •́ )つ▱",
+    suggestions: {
+      capabilities: "Stell mir deine Fähigkeiten vor",
+      glossary_audit: "Bitte prüfe mein Glossar",
+    },
   },
   input: {
     placeholder: "Aufgabe beschreiben oder mit @ eine Fähigkeit wählen …",

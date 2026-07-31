@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { useTheme } from "next-themes";
 import { ArrowUp, ChevronDown, Cpu, MessageSquarePlus, Square } from "lucide-react";
 
@@ -10,6 +10,7 @@ import {
   StateEffect,
   StateField,
   type Extension,
+  type Range,
 } from "@codemirror/state";
 import {
   Decoration,
@@ -54,7 +55,12 @@ type EditorSnapshot = {
   selected_skill_names: Set<string>;
 };
 
+export type AgentComposerHandle = {
+  write_draft: (parts: readonly AgentUserMessagePart[]) => void;
+};
+
 type AgentComposerProps = {
+  ref?: Ref<AgentComposerHandle>;
   skills: readonly AgentSkillSnapshot[];
   running: boolean;
   runtime_busy: boolean; // task 或 Agent 自身占用时阻止新命令，但不阻止编辑草稿
@@ -186,6 +192,19 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     context_usage_source === null ? null : format_context_usage(context_usage_source);
   // 编辑器只创建一次，首次锁定态必须在首帧扩展中生效，不能等待后续 effect。
   const initial_editor_read_only_ref = useRef(editor_read_only);
+
+  useImperativeHandle(
+    props.ref,
+    () => ({
+      write_draft(parts) {
+        const view = view_ref.current;
+        if (view === null || editor_read_only) return;
+        write_agent_message_parts(view, parts);
+        view.focus();
+      },
+    }),
+    [editor_read_only],
+  );
 
   menu_open_ref.current = menu_open;
   matching_skills_ref.current = matching_skills;
@@ -349,11 +368,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     set_submitting(true);
     try {
       if (await props.on_send(parts)) {
-        view.dispatch({
-          changes: { from: 0, to: view.state.doc.length, insert: "" },
-          selection: EditorSelection.cursor(0),
-          effects: set_skill_tokens_effect.of(Decoration.none),
-        });
+        write_agent_message_parts(view, []);
       }
     } finally {
       set_submitting(false);
@@ -497,6 +512,26 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     );
     return true;
   }
+}
+
+/** 用单次事务写入结构化消息，确保正文、原子 token、光标与撤销历史同步。 */
+function write_agent_message_parts(view: EditorView, parts: readonly AgentUserMessagePart[]): void {
+  let text = "";
+  const tokens: Range<Decoration>[] = [];
+  for (const part of parts) {
+    if (part.kind === "text") {
+      text += part.text;
+      continue;
+    }
+    const from = text.length;
+    text += `@${part.name}`;
+    tokens.push(create_skill_token_decoration(part.name).range(from, text.length));
+  }
+  view.dispatch({
+    changes: { from: 0, to: view.state.doc.length, insert: text },
+    selection: EditorSelection.cursor(text.length),
+    effects: set_skill_tokens_effect.of(Decoration.set(tokens, true)),
+  });
 }
 
 /** 一次生成上下文百分比、详情与色阶，避免组件分别重复派生。 */

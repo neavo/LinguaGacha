@@ -44,7 +44,10 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
     t: (key: string, params?: Record<string, string>) => {
       if (key === "agent_page.action.new_task") return "新任务";
+      if (key === "agent_page.action.send") return "发送";
       if (key === "agent_page.confirm.new_task") return "是否确认开始新的对话任务 …?";
+      if (key === "agent_page.empty.suggestions.capabilities") return "介绍一下你的能力";
+      if (key === "agent_page.empty.suggestions.glossary_audit") return "请帮我审校术语表";
       if (key === "agent_page.thinking_active") return "正在思考";
       if (key === "agent_page.status.running") return "正在处理";
       if (key === "agent_page.status.success") return "已完成";
@@ -86,16 +89,46 @@ describe("AgentPage", () => {
     return container;
   }
 
-  it("空会话只显示一段搭档提示", async () => {
-    const view = await render_page({ entries: [] });
+  it("空会话显示两个起始任务并写入结构化草稿", async () => {
+    const send = vi.fn(async () => false);
+    const view = await render_page({ entries: [], send });
     const empty = view.querySelector(".agent-page__empty");
+    const suggestions = [...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion")];
+    const editor = view.querySelector<HTMLElement>(".cm-content");
+    const submit = get_button_by_label(view, "发送");
 
-    expect(empty?.querySelector("h2")).toBeNull();
-    expect(empty?.querySelectorAll("p")).toHaveLength(1);
+    expect(suggestions.map((button) => button.textContent)).toEqual([
+      "介绍一下你的能力",
+      "请帮我审校术语表 @glossary-audit",
+    ]);
     expect(view.querySelector(".agent-composer__model-trigger")?.textContent).toContain(
       "Agent Model",
     );
     expect(view.querySelector<HTMLButtonElement>(".agent-composer__reset")?.disabled).toBe(true);
+
+    await act(async () => suggestions[0]?.click());
+    expect(send).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(editor);
+    await act(async () => {
+      submit.click();
+      await Promise.resolve();
+    });
+    expect(send).toHaveBeenLastCalledWith([{ kind: "text", text: "介绍一下你的能力" }]);
+
+    await act(async () => suggestions[1]?.click());
+    expect(empty?.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
+    expect(document.activeElement).toBe(editor);
+    await act(async () => {
+      submit.click();
+      await Promise.resolve();
+    });
+    expect(send).toHaveBeenLastCalledWith([
+      { kind: "text", text: "请帮我审校术语表 " },
+      { kind: "skill", name: "glossary-audit" },
+    ]);
+
+    await render_page();
+    expect(view.querySelectorAll(".agent-page__suggestion")).toHaveLength(0);
   });
 
   it("把当前上下文用量装配到底栏", async () => {

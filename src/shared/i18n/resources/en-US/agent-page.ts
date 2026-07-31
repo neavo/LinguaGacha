@@ -10,6 +10,10 @@ export const en_us_agent_page = {
   loading: "Restoring session …",
   empty: {
     message: "「Aibō」，what shall we do next  ( •̀ ᗜ •́ )つ▱",
+    suggestions: {
+      capabilities: "Tell me about your capabilities",
+      glossary_audit: "Please audit my glossary",
+    },
   },
   input: {
     placeholder: "Describe a task, or type @ to select a capability …",
