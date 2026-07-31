@@ -71,10 +71,12 @@ project, files, items, quality, prompts, analysis, proofreading
 - work-unit worker 负责提示词构建、runner、pipeline 和响应处理；planning worker 只承担规划期计算。线程数不等于 LLM 并发，实际并发由模型 key lease 与 limiter 决定。
 - 非 engine 的重型计算通过 `ComputeWorkerClient` 提交无状态 compute task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。术语统计、父子关系与 Agent 术语写前零命中校验复用同一 `quality_statistics` task，不在 Agent 线程重复扫描语料。
 - 模型请求快照、provider policy、SDK transport 和结果归一归 `src/backend/llm`，任务层不解析供应商异常文本；OneShot 与 Agent Provider 发送前复用同一思考与扩展规则。Agent Provider 保留真实供应商 ID，URL、密钥、请求头和 payload override 只取当前模型快照，不保留 coding-agent 的归因请求头。OpenAI-compatible Chat Completions 统一以 `system` 承载基础指令，不启用 `developer` 角色。
-- Agent 运行时完全内存化，不创建或恢复磁盘会话；coding-agent 的默认工具与项目资源发现全部关闭，基础 system prompt 和产品 skill 只在启动期加载，运行时只注册产品工具。写工具串行，只读工具保留 SDK 默认并行；上下文压缩、自动重试、中断与 settle 由 `AgentSession` 拥有。模型级 `agent.context_window` 与 `agent.max_output_tokens` 在新运行时创建时冻结，压缩预留量等于最大输出长度，最近历史固定保留 32K token。
+- Agent 运行时完全内存化，不创建或恢复磁盘会话；coding-agent 的默认工具与项目资源发现全部关闭，运行时只注册产品工具。写工具串行，只读工具保留 SDK 默认并行；上下文压缩、自动重试、中断与 settle 由 `AgentSession` 拥有。模型级 `agent.context_window` 与 `agent.max_output_tokens` 在新运行时创建时冻结，压缩预留量等于最大输出长度，最近历史固定保留 32K token。
 - `AgentService` 先完成消息、skill 与工程校验，再同步取得 Agent 运行 lease；运行时创建或换模成功后才追加公开用户条目，重复受理和 task 占用统一由共享 gate 拒绝。`AgentSession.prompt()` 覆盖工具循环、重试、溢出恢复与阈值压缩，最终 settle 后公开状态才进入 `complete` 并释放 lease。中间回合错误不发布 `request_failed`，最终错误只报告一次，压缩错误只记 warning；stop 立即封口但 lease 保持到模型 settle，reset 立即隔离运行时并清空公开时间线，dispose 不再发布事件且等待受理、prompt settle 和运行时清理。
 - 模型页 generation 和 threshold 输入/输出 token 设置只作用于 OneShot；Agent 在每个空闲回合前重新解析 agent 用途选择，重新注册 Provider 后通过 SDK API 设置模型和 thinking level。URL、密钥、请求头、能力与思考等级从下一轮生效，该刷新不改变当前运行时容量。
-- Agent 基础 system prompt 的唯一资源为 `resource/agent/system_prompt.md`；SDK 只追加应用根工作目录行，不发现项目 `AGENTS.md` 或 `.pi` 资源。基础资源失败会阻止启动，坏 skill 只进入诊断；自动 skill 进入启动期清单，manual-only skill 必须由显式 skill part 授权，`read_skill` 只读取启动期形成的 `SKILL.md` 与 references 白名单，不访问运行期文件系统。
+- Agent 基础 system prompt 的唯一资源为 `resource/agent/system_prompt.md`；SDK 只追加应用根工作目录行，不发现项目 `AGENTS.md` 或 `.pi` 资源，基础资源失败会阻止启动。
+- 产品 skill 只在启动期从内置与用户目录加载，坏 skill 只进入诊断。模型可见描述固定取 `SKILL.md` 的 `description`；同目录可选 `i18n.json` 只生成按全部应用语言补全的 UI 描述，缺失或整份无效时回退模型描述，非法文件另记 warning。
+- 自动 skill 进入启动期模型清单，manual-only skill 必须由显式 skill part 授权；`read_skill` 只读取启动期形成的 `SKILL.md` 与 references 白名单，不向模型暴露 UI 翻译，也不访问运行期文件系统。
 - Agent 会话绑定工程 epoch 与 `quality` / `items` / `proofreading` revision；用户 reset、工程切换和外部相关变更共用重置屏障，Agent 自身写入由专用 source 识别，只推进绑定。创建、换模或 prompt preflight 期间发生 stop、reset、dispose 或绑定变化时，候选运行时必须关闭，且不得产生迟到用户条目、状态事件或模型请求。写入批准属于模型工作流，后端不保存批准状态，只以 section revision 拒绝并发覆盖。
 - Agent 正文按 ids 查询逐项走 item cache 的 `readItem`，分页和搜索才读取完整 items；术语 query 输出每条规则命中的 item 数和结构候选。质量规则变更先在内存应用结构，再对 prospective 术语集合执行一次 compute 校验；成功响应只返回受影响条目、删除 id、meta 与提交后的 revision，不重新查询完整规则切片。
 

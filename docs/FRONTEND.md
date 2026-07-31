@@ -12,7 +12,8 @@
 - `DesktopApiError` 是 API 与本地网络失败的统一错误；用户可见文案从稳定 `message_key` / `details` 解析，页面只在确有恢复分支时按稳定 `code` 判断，不解析原始异常文本。
 - renderer 诊断只上报实际异常摘要与 route / project / task / event 白名单上下文，不上报完整 items / files、页面自定义对象或原始路径 / URL。
 - 日志列表只保存 `log.appended` 轻量事件，选中后由 `desktop-api.ts` 严格归一当前进程详情；普通页面、toast 和空状态不展示调用栈或原始异常。
-- 持久化 `AppLanguage` 只在 `src/domain/app-language.ts` 投影为 renderer `Locale`；可见文案从 `src/shared/i18n` 解析，React Provider 只消费已解析的 locale。
+- 持久化 `AppLanguage` 只在 `src/domain/app-language.ts` 投影为 renderer `Locale`，React Provider 只消费已解析的 locale。
+- 应用自身的可见文案从 `src/shared/i18n` 解析；Agent skill 描述由后端 snapshot 提供完整 `displayDescriptions`，页面只按当前 locale 选择，不建立第二份全局翻译表。
 
 ## 2. 主窗口运行态
 

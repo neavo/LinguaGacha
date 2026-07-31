@@ -138,7 +138,7 @@ const skill_token_extension: Extension = [
 
 /** 页面私有的结构化消息编辑器，不把 Agent 领域状态泄漏到通用 AppEditor。 */
 export function AgentComposer(props: AgentComposerProps): JSX.Element {
-  const { t } = useI18n();
+  const { locale, t } = useI18n();
   const { resolvedTheme } = useTheme();
   const placeholder_text = t("agent_page.input.placeholder");
   const submit_label = t(props.running ? "agent_page.action.stop" : "agent_page.action.send");
@@ -156,14 +156,16 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const [menu_suppressed, set_menu_suppressed] = useState(false);
   const [submitting, set_submitting] = useState(false);
 
-  const query_text = snapshot.query?.text.toLocaleLowerCase();
+  const query_text = snapshot.query?.text.toLocaleLowerCase(locale);
   const matching_skills =
     query_text === undefined
       ? []
       : props.skills.filter(
           (skill) =>
             !snapshot.selected_skill_names.has(skill.name) &&
-            `${skill.name}\n${skill.description}`.toLocaleLowerCase().includes(query_text),
+            `${skill.name}\n${skill.displayDescriptions[locale]}`
+              .toLocaleLowerCase(locale)
+              .includes(query_text),
         );
   const editor_read_only = props.resetting || submitting;
   const menu_open = !editor_read_only && !menu_suppressed && matching_skills.length > 0;
@@ -399,7 +401,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               onClick={() => select_skill(skill)}
             >
               <strong>{skill.name}</strong>
-              <small>{skill.description}</small>
+              <small>{skill.displayDescriptions[locale]}</small>
             </button>
           ))}
         </div>

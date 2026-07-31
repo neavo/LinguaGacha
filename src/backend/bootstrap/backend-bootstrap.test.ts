@@ -110,7 +110,14 @@ describe("BackendBootstrap", () => {
       });
       expect(start_result.readAppLanguage()).toBe("ZH");
       expect(start_result.backendServices.agent.get_snapshot().skills).toEqual([
-        { name: "test-skill", description: "启动期能力" },
+        {
+          name: "test-skill",
+          displayDescriptions: {
+            "zh-CN": "启动期能力",
+            "en-US": "启动期能力",
+            "de-DE": "启动期能力",
+          },
+        },
       ]);
 
       const log_text = read_log_text(path.join(temp_dir, "log"));
