@@ -18,6 +18,21 @@ function stored_entry(entry_id: string, src: string, dst: string): JsonRecord {
 }
 
 describe("Agent 质量规则工具", () => {
+  it("所有工具向模型公开 object 根 schema", () => {
+    const tools = create_agent_quality_tools({
+      qualityRules: {
+        query: () => ({}),
+        update: async () => ({ accepted: true, changes: [] }),
+      },
+      cache: create_cache(),
+    });
+
+    expect(tools.map((tool) => tool.parameters)).toEqual([
+      expect.objectContaining({ type: "object" }),
+      expect.objectContaining({ type: "object" }),
+    ]);
+  });
+
   it("查询四类规则，并为术语保留派生事实", () => {
     const rules: Record<string, JsonRecord> = {
       glossary: {

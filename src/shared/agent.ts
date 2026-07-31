@@ -20,6 +20,12 @@ export type AgentAssistantMessagePart = JsonRecord &
 /** 单会话终态保留 complete，和用户主动 stop 后的 idle 区分。 */
 export type AgentSessionState = "idle" | "running" | "complete";
 
+/** 当前模型可见上下文的 token 估算与窗口容量。 */
+export type AgentContextUsage = JsonRecord & {
+  tokens: number;
+  contextWindow: number;
+};
+
 /** 工具条目保留原始工具名与完整文本输出；参数不进入公开会话。 */
 export type AgentToolEntry = JsonRecord & {
   kind: "tool_call";
@@ -55,6 +61,7 @@ export type AgentSessionSnapshot = JsonRecord & {
   state: AgentSessionState;
   entries: AgentEntry[];
   skills: AgentSkillSnapshot[];
+  contextUsage: AgentContextUsage | null;
 };
 
 /** SSE 以完整条目按 id 覆盖，重复帧天然幂等；断线时由 snapshot_seed 或 GET 恢复。 */
@@ -62,6 +69,7 @@ export type AgentSessionEvent = JsonRecord &
   (
     | { type: "entry_upsert"; entry: AgentEntry }
     | { type: "session_state"; state: AgentSessionState }
+    | { type: "context_usage"; contextUsage: AgentContextUsage }
     | { type: "snapshot_seed"; snapshot: AgentSessionSnapshot }
     | { type: "request_failed" }
   );

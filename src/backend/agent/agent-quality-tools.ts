@@ -101,47 +101,54 @@ const QUERY_QUALITY_RULES_PARAMETERS = Type.Object(
   { additionalProperties: false },
 );
 
-/** 更新 schema 保持 rule kind、条目形状与 meta 互相匹配。 */
-const UPDATE_QUALITY_RULES_PARAMETERS = Type.Union([
-  Type.Object(
-    {
-      rule_type: Type.Literal("glossary"),
-      changes: Type.Optional(create_change_parameters(GLOSSARY_ENTRY_PARAMETERS)),
-      meta: Type.Optional(
-        Type.Object({ enabled: Type.Boolean() }, { additionalProperties: false }),
-      ),
-      expected_section_revisions: EXPECTED_QUALITY_REVISION_PARAMETERS,
-    },
-    { additionalProperties: false },
-  ),
-  Type.Object(
-    {
-      rule_type: Type.Union([Type.Literal("pre_replacement"), Type.Literal("post_replacement")]),
-      changes: Type.Optional(create_change_parameters(REPLACEMENT_ENTRY_PARAMETERS)),
-      meta: Type.Optional(
-        Type.Object({ enabled: Type.Boolean() }, { additionalProperties: false }),
-      ),
-      expected_section_revisions: EXPECTED_QUALITY_REVISION_PARAMETERS,
-    },
-    { additionalProperties: false },
-  ),
-  Type.Object(
-    {
-      rule_type: Type.Literal("text_preserve"),
-      changes: Type.Optional(create_change_parameters(TEXT_PRESERVE_ENTRY_PARAMETERS)),
-      meta: Type.Optional(
-        Type.Object(
-          {
-            mode: Type.Union([Type.Literal("off"), Type.Literal("smart"), Type.Literal("custom")]),
-          },
-          { additionalProperties: false },
+/** 更新 schema 保持 rule kind、条目形状与 meta 匹配；根节点显式 object 兼容模型工具协议。 */
+const UPDATE_QUALITY_RULES_PARAMETERS = Type.Union(
+  [
+    Type.Object(
+      {
+        rule_type: Type.Literal("glossary"),
+        changes: Type.Optional(create_change_parameters(GLOSSARY_ENTRY_PARAMETERS)),
+        meta: Type.Optional(
+          Type.Object({ enabled: Type.Boolean() }, { additionalProperties: false }),
         ),
-      ),
-      expected_section_revisions: EXPECTED_QUALITY_REVISION_PARAMETERS,
-    },
-    { additionalProperties: false },
-  ),
-]);
+        expected_section_revisions: EXPECTED_QUALITY_REVISION_PARAMETERS,
+      },
+      { additionalProperties: false },
+    ),
+    Type.Object(
+      {
+        rule_type: Type.Union([Type.Literal("pre_replacement"), Type.Literal("post_replacement")]),
+        changes: Type.Optional(create_change_parameters(REPLACEMENT_ENTRY_PARAMETERS)),
+        meta: Type.Optional(
+          Type.Object({ enabled: Type.Boolean() }, { additionalProperties: false }),
+        ),
+        expected_section_revisions: EXPECTED_QUALITY_REVISION_PARAMETERS,
+      },
+      { additionalProperties: false },
+    ),
+    Type.Object(
+      {
+        rule_type: Type.Literal("text_preserve"),
+        changes: Type.Optional(create_change_parameters(TEXT_PRESERVE_ENTRY_PARAMETERS)),
+        meta: Type.Optional(
+          Type.Object(
+            {
+              mode: Type.Union([
+                Type.Literal("off"),
+                Type.Literal("smart"),
+                Type.Literal("custom"),
+              ]),
+            },
+            { additionalProperties: false },
+          ),
+        ),
+        expected_section_revisions: EXPECTED_QUALITY_REVISION_PARAMETERS,
+      },
+      { additionalProperties: false },
+    ),
+  ],
+  { type: "object" },
+);
 
 type QualityRuleChange = {
   action: "create" | "update" | "delete";

@@ -433,6 +433,31 @@
   white-space: nowrap;
 }
 
+.agent-composer__context-usage {
+  display: inline-flex;
+  height: 24px;
+  flex: 0 0 auto;
+  align-items: center;
+  border-radius: var(--ui-radius-button);
+  padding-inline: 4px;
+  color: var(--muted-foreground);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.agent-composer__context-usage[data-tone="warning"] {
+  color: var(--ui-warning);
+}
+
+.agent-composer__context-usage[data-tone="failure"] {
+  color: var(--ui-failure);
+}
+
+.agent-composer__context-usage:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+
 .agent-composer__hint {
   flex: 0 0 auto;
   margin-left: 6px;

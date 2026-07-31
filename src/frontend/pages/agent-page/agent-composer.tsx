@@ -21,7 +21,7 @@ import {
   type DecorationSet,
 } from "@codemirror/view";
 
-import type { AgentSkillSnapshot, AgentUserMessagePart } from "@shared/agent";
+import type { AgentContextUsage, AgentSkillSnapshot, AgentUserMessagePart } from "@shared/agent";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { ModelSelectionCategories } from "@frontend/features/model-selection/model-selection-menu";
 import {
@@ -60,6 +60,7 @@ type AgentComposerProps = {
   error: boolean;
   can_reset: boolean;
   resetting: boolean;
+  context_usage: AgentContextUsage | null;
   model_selection: ModelSelectionController;
   on_send: (parts: readonly AgentUserMessagePart[]) => Promise<boolean>;
   on_stop: () => Promise<void>;
@@ -71,6 +72,11 @@ const EMPTY_EDITOR_SNAPSHOT: EditorSnapshot = {
   query: null,
   selected_skill_names: new Set(),
 };
+
+/** 只有越过 70% / 90% 才升级色阶，边界值保留在较低等级。 */
+const CONTEXT_USAGE_WARNING_PERCENT = 70;
+const CONTEXT_USAGE_FAILURE_PERCENT = 90;
+
 // 三个 Compartment 只承接运行期配置，不参与草稿或 token 事实。
 const theme_compartment = new Compartment();
 const read_only_compartment = new Compartment();
@@ -168,6 +174,8 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const selected_model = read_selected_model(props.model_selection, "agent");
   const selected_model_name =
     selected_model?.name || selected_model?.id || t("app.model.selection.unavailable");
+  const context_usage =
+    props.context_usage === null ? null : format_context_usage(props.context_usage);
   // 编辑器只创建一次，首次锁定态必须在首帧扩展中生效，不能等待后续 effect。
   const initial_editor_read_only_ref = useRef(editor_read_only);
 
@@ -418,6 +426,27 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               />
             </AppDropdownMenuContent>
           </AppDropdownMenu>
+          {context_usage !== null && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  className="agent-composer__context-usage"
+                  data-tone={context_usage.tone}
+                  tabIndex={0}
+                  aria-label={t("agent_page.context_usage", {
+                    percent: context_usage.percent,
+                    used: context_usage.used,
+                    total: context_usage.total,
+                  })}
+                >
+                  {context_usage.percent}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" sideOffset={8}>
+                <p>{`${context_usage.used} / ${context_usage.total}`}</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
           <span className="agent-composer__hint">{t("agent_page.input.hint")}</span>
         </div>
         <div className="agent-composer__footer-end">
@@ -456,6 +485,32 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     );
     return true;
   }
+}
+
+/** 一次生成上下文百分比、详情与色阶，避免组件分别重复派生。 */
+function format_context_usage(usage: AgentContextUsage): {
+  percent: string;
+  used: string;
+  total: string;
+  tone: "default" | "warning" | "failure";
+} {
+  const percent = (usage.tokens / usage.contextWindow) * 100;
+  return {
+    percent: `${percent.toFixed(1)}%`,
+    used: format_context_tokens(usage.tokens),
+    total: format_context_tokens(usage.contextWindow),
+    tone:
+      percent > CONTEXT_USAGE_FAILURE_PERCENT
+        ? "failure"
+        : percent > CONTEXT_USAGE_WARNING_PERCENT
+          ? "warning"
+          : "default",
+  };
+}
+
+/** 上下文详情固定以 K 为单位，并省略无意义的尾随零。 */
+function format_context_tokens(tokens: number): string {
+  return `${(Math.round(tokens / 100) / 10).toString()}K`;
 }
 
 /** 按 DecorationSet 投影 parts，并只裁剪整条组合消息的文本外缘。 */
@@ -513,15 +568,18 @@ class SkillTokenWidget extends WidgetType {
   private static readonly CURSOR_GAP_PX = 1;
   private readonly name: string;
 
+  /** 绑定协议中的规范 skill 名称。 */
   constructor(name: string) {
     super();
     this.name = name;
   }
 
+  /** 同名 widget 可复用现有 DOM，避免编辑事务重建 token。 */
   override eq(widget: WidgetType): boolean {
     return widget instanceof SkillTokenWidget && widget.name === this.name;
   }
 
+  /** 生成由 CodeMirror 管理的原子 token 视觉节点。 */
   override toDOM(): HTMLElement {
     const token = document.createElement("span");
     token.className = "agent-skill-token";
@@ -529,6 +587,7 @@ class SkillTokenWidget extends WidgetType {
     return token;
   }
 
+  /** 将 token 两侧的文档位置映射到视觉盒边界。 */
   override coordsAt(
     dom: HTMLElement,
     pos: number,

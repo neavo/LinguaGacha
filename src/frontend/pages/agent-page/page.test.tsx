@@ -86,6 +86,14 @@ describe("AgentPage", () => {
     expect(view.querySelector<HTMLButtonElement>(".agent-composer__reset")?.disabled).toBe(true);
   });
 
+  it("把当前上下文用量装配到底栏", async () => {
+    const view = await render_page({
+      contextUsage: { tokens: 31_488, contextWindow: 256_000 },
+    });
+
+    expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("12.3%");
+  });
+
   it("用户离开消息底部后不被流式输出抢回滚动位置", async () => {
     const view = await render_page();
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
@@ -397,6 +405,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     state: "idle",
     entries: [assistant_entry("assistant-1", "**变更方案**", false, 1)],
     skills,
+    contextUsage: overrides.contextUsage ?? null,
     loading: false,
     error: false,
     resetting: false,

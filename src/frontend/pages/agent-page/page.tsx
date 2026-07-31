@@ -94,6 +94,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         error={agent.error}
         can_reset={!agent.loading && agent.entries.length > 0}
         resetting={agent.resetting}
+        context_usage={agent.contextUsage}
         model_selection={model_selection}
         on_send={send}
         on_stop={agent.stop}

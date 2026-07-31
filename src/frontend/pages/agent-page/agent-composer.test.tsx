@@ -11,6 +11,7 @@ import {
 } from "@codemirror/commands";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import type { AgentContextUsage } from "@shared/agent";
 
 import { AgentComposer } from "./agent-composer";
 
@@ -22,18 +23,20 @@ vi.mock("@frontend/shadcn/tooltip", () => ({
 }));
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
-    t: (key: string) =>
+    t: (key: string, params?: Record<string, string>) =>
       key === "agent_page.input.placeholder"
         ? "描述任务，或输入 @ 选择能力 …"
         : key === "agent_page.input.hint"
           ? "Enter 发送 · Shift + Enter 换行"
-          : key === "agent_page.action.send"
-            ? "发送"
-            : key === "agent_page.action.stop"
-              ? "停止"
-              : key === "agent_page.error"
-                ? "请求失败，请重试。"
-                : key,
+          : key === "agent_page.context_usage"
+            ? `上下文 ${params?.["percent"]} · ${params?.["used"]} / ${params?.["total"]}`
+            : key === "agent_page.action.send"
+              ? "发送"
+              : key === "agent_page.action.stop"
+                ? "停止"
+                : key === "agent_page.error"
+                  ? "请求失败，请重试。"
+                  : key,
   }),
 }));
 
@@ -272,6 +275,53 @@ describe("AgentComposer", () => {
     expect(submit?.disabled).toBe(true);
   });
 
+  it("底栏只显示百分比，并在提示中提供 K 单位详情与阈值状态", async () => {
+    const view = await render_composer(
+      undefined,
+      false,
+      undefined,
+      {},
+      {
+        context_usage: { tokens: 31_488, contextWindow: 256_000 },
+      },
+    );
+    const usage = view.querySelector<HTMLElement>(".agent-composer__context-usage");
+
+    expect(usage?.textContent).toBe("12.3%");
+    expect(usage?.getAttribute("aria-label")).toBe("上下文 12.3% · 31.5K / 256K");
+    expect(usage?.tabIndex).toBe(0);
+    expect(usage?.dataset["tone"]).toBe("default");
+    expect(
+      [...view.querySelectorAll('[role="tooltip"]')].map((tooltip) => tooltip.textContent),
+    ).toContain("31.5K / 256K");
+    expect(
+      [...view.querySelectorAll('[role="tooltip"]')].map((tooltip) => tooltip.textContent),
+    ).not.toContain("上下文 12.3% · 31.5K / 256K");
+
+    for (const [tokens, tone] of [
+      [700, "default"],
+      [701, "warning"],
+      [900, "warning"],
+      [901, "failure"],
+    ] as const) {
+      await render_composer(
+        undefined,
+        false,
+        undefined,
+        {},
+        {
+          context_usage: { tokens, contextWindow: 1_000 },
+        },
+      );
+      expect(
+        view.querySelector<HTMLElement>(".agent-composer__context-usage")?.dataset["tone"],
+      ).toBe(tone);
+    }
+
+    await render_composer(undefined, false, undefined, {}, { context_usage: null });
+    expect(view.querySelector(".agent-composer__context-usage")).toBeNull();
+  });
+
   it("新任务按钮按会话、重置和提交状态禁用", async () => {
     const on_reset = vi.fn();
     const view = await render_composer(
@@ -370,6 +420,7 @@ describe("AgentComposer", () => {
       resetting?: boolean;
       on_reset?: () => void;
       error?: boolean;
+      context_usage?: AgentContextUsage | null;
     } = {},
   ): Promise<HTMLDivElement> {
     if (container === null) {
@@ -385,6 +436,7 @@ describe("AgentComposer", () => {
           error={composer_overrides.error ?? false}
           can_reset={composer_overrides.can_reset ?? true}
           resetting={composer_overrides.resetting ?? false}
+          context_usage={composer_overrides.context_usage ?? null}
           model_selection={{
             snapshot: {
               model_selection: { translation: "preset", analysis: "preset", agent: "agent" },

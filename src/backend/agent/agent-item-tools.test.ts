@@ -43,6 +43,20 @@ function create_cache(
 }
 
 describe("Agent 正文工具", () => {
+  it("所有工具向模型公开 object 根 schema", () => {
+    const tools = create_agent_item_tools({
+      cache: create_cache(() => []),
+      proofreading: {
+        update_items: async () => ({ accepted: true, changes: [] }),
+      },
+    });
+
+    expect(tools.map((tool) => tool.parameters)).toEqual([
+      expect.objectContaining({ type: "object" }),
+      expect.objectContaining({ type: "object" }),
+    ]);
+  });
+
   it("page 与 ids 按稳定顺序返回固定窄投影", () => {
     const items = [create_item(2), create_item(1), create_item(3)];
     const cache = create_cache(() => items);

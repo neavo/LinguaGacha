@@ -44,6 +44,8 @@ export function resolve_agent_model(
     contextWindow: AGENT_CONTEXT_WINDOW,
     maxTokens: AGENT_MAX_OUTPUT_TOKENS,
     headers: snapshot.headers,
+    // developer 不是 OpenAI-compatible 的共同能力，统一保持 system 角色基线。
+    compat: api.api === "openai-completions" ? { supportsDeveloperRole: false } : undefined,
   };
   return {
     model: pi_model,

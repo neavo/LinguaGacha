@@ -27,6 +27,17 @@ describe("Agent 模型桥接", () => {
     expect(resolve_pi_api(api_format)).toMatchObject({ provider, api });
   });
 
+  it.each([
+    ["OpenAI", { supportsDeveloperRole: false }],
+    ["SakuraLLM", { supportsDeveloperRole: false }],
+    ["Anthropic", undefined],
+    ["Google", undefined],
+  ] as const)("为 %s Agent 设置对应 developer 消息角色能力", (api_format, compat) => {
+    expect(resolve_agent_model(build_config(api_format), TEST_USER_AGENT).model.compat).toEqual(
+      compat,
+    );
+  });
+
   it("统一归一模型事实并固定 Agent 容量，不注入 OneShot 小参数", async () => {
     const resolved = resolve_agent_model(
       build_config("OpenAI", {

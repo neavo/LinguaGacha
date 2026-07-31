@@ -380,6 +380,34 @@ describe("AgentService", () => {
     expect(complete_index).toBeGreaterThan(round_end_index);
   });
 
+  it("从真实 Agent 消息历史发布上下文用量，并在重置时清空", async () => {
+    const { service, publish } = await create_service();
+    expect(service.get_snapshot().contextUsage).toBeNull();
+
+    service.send_message({ parts: [{ kind: "text", text: "x".repeat(400) }] });
+    await wait_for_complete(service);
+
+    const context_events = publish.mock.calls
+      .map(([, event]) => event)
+      .filter((event) => event["type"] === "context_usage");
+    expect(context_events[0]).toEqual({
+      type: "context_usage",
+      contextUsage: { tokens: expect.any(Number), contextWindow: 4096 },
+    });
+    expect(service.get_snapshot().contextUsage).toMatchObject({
+      tokens: expect.any(Number),
+      contextWindow: 4096,
+    });
+    expect(service.get_snapshot().contextUsage?.tokens).toBeGreaterThan(0);
+    expect(context_events.at(-1)?.["contextUsage"]).toEqual(service.get_snapshot().contextUsage);
+
+    await expect(service.reset()).resolves.toMatchObject({ contextUsage: null });
+    expect(publish).toHaveBeenLastCalledWith("agent.session_event", {
+      type: "snapshot_seed",
+      snapshot: service.get_snapshot(),
+    });
+  });
+
   it("按上游顺序流式公开思考与正文，并隔离脱敏内容和签名", async () => {
     const { service, publish } = await create_service();
     fake_agent_state.mode = "thinking";
@@ -498,6 +526,38 @@ describe("AgentService", () => {
         (entry) => !("args" in entry) && !("details" in entry) && "output" in entry,
       ),
     ).toBe(true);
+    const published_events = publish.mock.calls.map(([, payload]) => payload);
+    const first_tool_success_index = published_events.findIndex((event) => {
+      const entry = event["entry"];
+      return (
+        event["type"] === "entry_upsert" &&
+        typeof entry === "object" &&
+        entry !== null &&
+        !Array.isArray(entry) &&
+        (entry as JsonRecord)["kind"] === "tool_call" &&
+        (entry as JsonRecord)["status"] === "success"
+      );
+    });
+    const next_assistant_index = published_events.findIndex((event, index) => {
+      const entry = event["entry"];
+      return (
+        index > first_tool_success_index &&
+        event["type"] === "entry_upsert" &&
+        typeof entry === "object" &&
+        entry !== null &&
+        !Array.isArray(entry) &&
+        (entry as JsonRecord)["kind"] === "assistant_message"
+      );
+    });
+    const tool_result_usage_index = published_events.findIndex(
+      (event, index) =>
+        index > first_tool_success_index &&
+        index < next_assistant_index &&
+        event["type"] === "context_usage",
+    );
+    expect(first_tool_success_index).toBeGreaterThan(-1);
+    expect(next_assistant_index).toBeGreaterThan(first_tool_success_index);
+    expect(tool_result_usage_index).toBeGreaterThan(first_tool_success_index);
   });
 
   it("真实 Agent 将流终态错误发布为 typed event，并让 prompt 正常结束", async () => {
@@ -558,6 +618,7 @@ describe("AgentService", () => {
         { name: "glossary-audit", description: "审校术语" },
         { name: "corpus-search", description: "检索语料" },
       ],
+      contextUsage: null,
     });
   });
 
@@ -606,10 +667,12 @@ describe("AgentService", () => {
     await vi.advanceTimersByTimeAsync(0);
 
     vi.setSystemTime(13_500);
-    expect(service.stop()).toMatchObject({
+    const stopped_snapshot = service.stop();
+    expect(stopped_snapshot).toMatchObject({
       state: "idle",
       entries: [{ kind: "user_message", createdAt: 1_000, endedAt: 13_500 }],
     });
+    expect(stopped_snapshot.contextUsage).toMatchObject({ contextWindow: 4096 });
     expect(fake_agent_state.abort_count).toBe(1);
     await service.dispose();
     expect(publish).not.toHaveBeenCalledWith("agent.session_event", {
@@ -643,6 +706,7 @@ describe("AgentService", () => {
         { name: "glossary-audit", description: "审校术语" },
         { name: "corpus-search", description: "检索语料" },
       ],
+      contextUsage: null,
     });
     expect(publish).toHaveBeenLastCalledWith("agent.session_event", {
       type: "snapshot_seed",
