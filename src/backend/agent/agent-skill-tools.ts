@@ -20,11 +20,17 @@ type AgentSkillResource = {
   content: string;
 };
 
+/** 读取工具只依赖 skill 的受控文件快照，不接触模型清单或 UI 描述。 */
+type AgentSkillReadDefinition = Pick<
+  AgentSkillDefinition,
+  "name" | "filePath" | "content" | "disableModelInvocation" | "references"
+>;
+
 /**
  * 只读取启动期固定的 skill 白名单；manual-only skill 必须先由用户显式引用。
  */
 export function create_agent_skill_tools(
-  skills: readonly AgentSkillDefinition[],
+  skills: readonly AgentSkillReadDefinition[],
   is_explicitly_invoked: (name: string) => boolean,
 ): ToolDefinition[] {
   if (skills.length === 0) return [];
@@ -52,7 +58,7 @@ export function create_agent_skill_tools(
 
 /** 按启动期快照和 manual-only 授权解析唯一可读资源。 */
 function resolve_skill_resource(
-  skills: readonly AgentSkillDefinition[],
+  skills: readonly AgentSkillReadDefinition[],
   is_explicitly_invoked: (name: string) => boolean,
   file_path: string,
 ): AgentSkillResource | null {

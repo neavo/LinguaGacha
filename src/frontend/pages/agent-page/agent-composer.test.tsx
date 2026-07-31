@@ -12,8 +12,12 @@ import {
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { AgentContextUsage } from "@shared/agent";
+import type { Locale } from "@shared/i18n/types";
 
 import { AgentComposer } from "./agent-composer";
+
+/** 测试通过真实重渲染读取当前 locale，只替换应用 Provider 边界。 */
+const locale_state = vi.hoisted(() => ({ value: "zh-CN" as Locale }));
 
 vi.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
 vi.mock("@frontend/shadcn/tooltip", () => ({
@@ -23,6 +27,7 @@ vi.mock("@frontend/shadcn/tooltip", () => ({
 }));
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
+    locale: locale_state.value,
     t: (key: string, params?: Record<string, string>) =>
       key === "agent_page.input.placeholder"
         ? "描述任务，或输入 @ 选择能力 …"
@@ -43,8 +48,22 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
 }));
 
 const skills = [
-  { name: "glossary-audit", description: "审校术语" },
-  { name: "corpus-search", description: "检索语料" },
+  {
+    name: "glossary-audit",
+    displayDescriptions: {
+      "zh-CN": "审校术语",
+      "en-US": "Review glossary",
+      "de-DE": "Glossar prüfen",
+    },
+  },
+  {
+    name: "corpus-search",
+    displayDescriptions: {
+      "zh-CN": "检索语料",
+      "en-US": "Search corpus",
+      "de-DE": "Korpus durchsuchen",
+    },
+  },
 ];
 
 describe("AgentComposer", () => {
@@ -56,6 +75,7 @@ describe("AgentComposer", () => {
     container?.remove();
     container = null;
     root = null;
+    locale_state.value = "zh-CN";
   });
 
   it("在当前光标查询并混排多个唯一 skill，保留查询后的文本", async () => {
@@ -79,6 +99,18 @@ describe("AgentComposer", () => {
     const next_menu = await wait_for_element(view, '[role="listbox"]');
     expect(next_menu.textContent).toContain("glossary-audit");
     expect(next_menu.textContent).not.toContain("corpus-search");
+  });
+
+  it("按当前应用语言搜索并显示 skill 描述", async () => {
+    locale_state.value = "en-US";
+    const view = await render_composer();
+    const editor = get_editor(view);
+    await set_document(editor, "@review", 7);
+
+    const menu = await wait_for_element(view, '[role="listbox"]');
+    expect(menu.textContent).toContain("glossary-audit");
+    expect(menu.textContent).toContain("Review glossary");
+    expect(menu.textContent).not.toContain("审校术语");
   });
 
   it("把 skill 当作原子范围删除、跨越，并随撤销重做恢复语义", async () => {

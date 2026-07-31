@@ -1,12 +1,16 @@
 import { is_json_record, type JsonRecord } from "../domain/json";
+import type { Locale } from "./i18n/types";
 
 /** AgentService 与 renderer 共享的唯一 SSE topic。 */
 export const AGENT_SESSION_EVENT_TOPIC = "agent.session_event";
 
-/** 启动期 skill 清单只公开能力选择所需的最小字段。 */
+/** skill 展示描述是按应用支持语言补全的 UI 值，不参与模型能力判断。 */
+export type AgentSkillDisplayDescriptions = JsonRecord & Record<Locale, string>;
+
+/** 启动期 skill 清单只公开能力选择所需的稳定名称与 UI 描述。 */
 export type AgentSkillSnapshot = JsonRecord & {
   name: string;
-  description: string;
+  displayDescriptions: AgentSkillDisplayDescriptions;
 };
 
 /** 用户可见消息的唯一正文形状；skill part 表示用户显式强制调用能力。 */

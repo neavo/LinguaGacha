@@ -498,8 +498,22 @@ describe("AgentPage", () => {
 
 function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
   const skills = [
-    { name: "glossary-audit", description: "审校术语" },
-    { name: "corpus-search", description: "检索语料" },
+    {
+      name: "glossary-audit",
+      displayDescriptions: {
+        "zh-CN": "审校术语",
+        "en-US": "Review glossary",
+        "de-DE": "Glossar prüfen",
+      },
+    },
+    {
+      name: "corpus-search",
+      displayDescriptions: {
+        "zh-CN": "检索语料",
+        "en-US": "Search corpus",
+        "de-DE": "Korpus durchsuchen",
+      },
+    },
   ];
   return {
     state: "idle",

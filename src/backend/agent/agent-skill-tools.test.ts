@@ -1,11 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import type { AgentSkillDefinition } from "./agent-skills";
 import { create_agent_skill_tools } from "./agent-skill-tools";
 
-const auto_skill: AgentSkillDefinition = {
+const auto_skill = {
   name: "glossary-audit",
-  description: "审校术语",
   content: "执行术语审校。",
   filePath: "E:/skills/glossary-audit/SKILL.md",
   disableModelInvocation: false,
@@ -18,9 +16,8 @@ const auto_skill: AgentSkillDefinition = {
   ],
 };
 
-const manual_skill: AgentSkillDefinition = {
+const manual_skill = {
   name: "manual-only",
-  description: "手动能力",
   content: "执行手动任务。",
   filePath: "E:/skills/manual-only/SKILL.md",
   disableModelInvocation: true,

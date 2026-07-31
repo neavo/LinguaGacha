@@ -14,6 +14,26 @@ vi.mock("@frontend/app/desktop/desktop-api", () => desktop_api_mocks);
 
 import { useAgentPageState } from "./use-agent-page-state";
 
+/** 多个会话入口共享同一份新协议夹具，避免各用例维护平行字段形状。 */
+const TEST_SKILLS: AgentSessionSnapshot["skills"] = [
+  {
+    name: "glossary-audit",
+    displayDescriptions: {
+      "zh-CN": "审校术语",
+      "en-US": "Review glossary",
+      "de-DE": "Glossar prüfen",
+    },
+  },
+  {
+    name: "corpus-search",
+    displayDescriptions: {
+      "zh-CN": "检索语料",
+      "en-US": "Search corpus",
+      "de-DE": "Korpus durchsuchen",
+    },
+  },
+];
+
 /** 只实现页面状态测试需要的订阅、重连与 JSON 发帧表面。 */
 class FakeEventSource {
   public onopen: (() => void) | null = null;
@@ -50,10 +70,7 @@ describe("useAgentPageState", () => {
       agent_snapshot({
         state: "complete",
         entries: [assistant_entry("assistant-1", "已恢复", true, 1)],
-        skills: [
-          { name: "glossary-audit", description: "审校术语" },
-          { name: "corpus-search", description: "检索语料" },
-        ],
+        skills: TEST_SKILLS,
       }),
     );
     desktop_api_mocks.api_fetch.mockReset();
@@ -154,6 +171,33 @@ describe("useAgentPageState", () => {
 
     expect(latest.contextUsage).toBeNull();
     expect(latest.error).toBe(true);
+  });
+
+  it("skill 清单只接纳完整的新 UI 描述协议", async () => {
+    desktop_api_mocks.api_get.mockResolvedValue({
+      state: "idle",
+      entries: [],
+      contextUsage: null,
+      skills: [
+        TEST_SKILLS[0],
+        { name: "legacy", description: "旧描述" },
+        {
+          name: "incomplete",
+          displayDescriptions: { "zh-CN": "不完整", "en-US": "Incomplete" },
+        },
+        {
+          name: "blank",
+          displayDescriptions: { "zh-CN": "空白", "en-US": "Blank", "de-DE": " " },
+        },
+      ],
+    });
+    let latest!: ReturnType<typeof useAgentPageState>;
+    await render_probe(() => {
+      latest = useAgentPageState();
+    });
+    await wait_for(() => expect(latest.loading).toBe(false));
+
+    expect(latest.skills).toEqual([TEST_SKILLS[0]]);
   });
 
   it("只接纳字段完整且值域合法的时间线条目", async () => {
@@ -372,10 +416,7 @@ describe("useAgentPageState", () => {
     desktop_api_mocks.api_fetch.mockResolvedValue(
       agent_snapshot({
         state: "running",
-        skills: [
-          { name: "glossary-audit", description: "审校术语" },
-          { name: "corpus-search", description: "检索语料" },
-        ],
+        skills: TEST_SKILLS,
       }),
     );
     let latest!: ReturnType<typeof useAgentPageState>;
@@ -618,7 +659,7 @@ describe("useAgentPageState", () => {
       resolve_reset({
         state: "unknown",
         entries: [{ kind: "legacy" }],
-        skills: [{ name: "glossary-audit", description: "审校术语" }],
+        skills: TEST_SKILLS.slice(0, 1),
         contextUsage: null,
       });
       accepted = await result;
@@ -627,7 +668,7 @@ describe("useAgentPageState", () => {
     expect(latest).toMatchObject({
       state: "idle",
       entries: [],
-      skills: [{ name: "glossary-audit", description: "审校术语" }],
+      skills: TEST_SKILLS.slice(0, 1),
       error: false,
       resetting: false,
     });

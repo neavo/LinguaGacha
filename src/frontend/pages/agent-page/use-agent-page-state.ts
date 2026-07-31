@@ -7,11 +7,13 @@ import type {
   AgentSessionEvent,
   AgentSessionSnapshot,
   AgentSessionState,
+  AgentSkillDisplayDescriptions,
   AgentSkillSnapshot,
   AgentToolEntry,
   AgentUserMessagePart,
 } from "@shared/agent";
 import { AGENT_SESSION_EVENT_TOPIC, normalize_agent_user_message_parts } from "@shared/agent";
+import { LOCALES } from "@shared/i18n/types";
 import { is_json_record, read_json_record, type JsonRecord } from "@domain/json";
 import { api_fetch, api_get, open_event_stream } from "@frontend/app/desktop/desktop-api";
 
@@ -415,14 +417,16 @@ function normalize_state(value: unknown): AgentSessionState {
   return value === "running" || value === "complete" ? value : "idle";
 }
 
-/** skill snapshot 只保留能力选择所需的名称与描述。 */
+/** skill snapshot 严格接纳新协议的完整 UI 描述，不兼容旧单数 description。 */
 function normalize_skill(value: unknown): AgentSkillSnapshot[] {
-  if (
-    !is_json_record(value) ||
-    typeof value["name"] !== "string" ||
-    typeof value["description"] !== "string"
-  ) {
-    return [];
+  if (!is_json_record(value) || typeof value["name"] !== "string") return [];
+  const raw_descriptions = value["displayDescriptions"];
+  if (!is_json_record(raw_descriptions)) return [];
+  const display_descriptions = {} as AgentSkillDisplayDescriptions;
+  for (const locale of LOCALES) {
+    const description = raw_descriptions[locale];
+    if (typeof description !== "string" || description.trim() === "") return [];
+    display_descriptions[locale] = description.trim();
   }
-  return [{ name: value["name"], description: value["description"] }];
+  return [{ name: value["name"], displayDescriptions: display_descriptions }];
 }

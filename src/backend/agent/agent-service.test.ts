@@ -20,32 +20,54 @@ import { ProjectSessionState } from "../project/project-session-state";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ComputeWorkerClient } from "../worker/compute-worker-client";
 
-const skill_loader = vi.hoisted(() =>
-  vi.fn(async () => [
+/** 集中保存模型定义与公开快照的共同 skill 身份，避免协议断言复制语言矩阵。 */
+const skill_test_fixture = vi.hoisted(() => {
+  const snapshots = [
     {
       name: "glossary-audit",
-      description: "审校术语",
-      content: "执行术语审校。",
-      filePath: "E:/skills/glossary-audit/SKILL.md",
-      disableModelInvocation: false,
-      references: [
-        {
-          path: "references/audit-standard.md",
-          filePath: "E:/skills/glossary-audit/references/audit-standard.md",
-          content: "# 审校标准\n\n完整正文。",
-        },
-      ],
+      displayDescriptions: {
+        "zh-CN": "审校术语",
+        "en-US": "Review glossary",
+        "de-DE": "Glossar prüfen",
+      },
     },
     {
       name: "corpus-search",
-      description: "检索语料",
-      content: "执行语料检索。",
-      filePath: "E:/skills/corpus-search/SKILL.md",
-      disableModelInvocation: true,
-      references: [],
+      displayDescriptions: {
+        "zh-CN": "检索语料",
+        "en-US": "Search corpus",
+        "de-DE": "Korpus durchsuchen",
+      },
     },
-  ]),
-);
+  ];
+  return {
+    snapshots,
+    loader: vi.fn(async () => [
+      {
+        ...snapshots[0],
+        description: "审校术语",
+        content: "执行术语审校。",
+        filePath: "E:/skills/glossary-audit/SKILL.md",
+        disableModelInvocation: false,
+        references: [
+          {
+            path: "references/audit-standard.md",
+            filePath: "E:/skills/glossary-audit/references/audit-standard.md",
+            content: "# 审校标准\n\n完整正文。",
+          },
+        ],
+      },
+      {
+        ...snapshots[1],
+        description: "检索语料",
+        content: "执行语料检索。",
+        filePath: "E:/skills/corpus-search/SKILL.md",
+        disableModelInvocation: true,
+        references: [],
+      },
+    ]),
+  };
+});
 const system_prompt_loader = vi.hoisted(() => vi.fn(() => "基础系统指令。"));
 const agent_model_registrar = vi.hoisted(() => vi.fn());
 
@@ -81,7 +103,7 @@ const fake_agent_state = vi.hoisted(() => ({
   release_auth: null as (() => void) | null,
 }));
 
-vi.mock("./agent-skills", () => ({ load_agent_skills: skill_loader }));
+vi.mock("./agent-skills", () => ({ load_agent_skills: skill_test_fixture.loader }));
 vi.mock("./agent-system-prompt", () => ({
   load_agent_system_prompt: system_prompt_loader,
 }));
@@ -366,7 +388,7 @@ describe("AgentService", () => {
     fake_agent_state.release_auth = null;
     agent_model_registrar.mockReset();
     agent_model_registrar.mockImplementation(register_fake_agent_model);
-    skill_loader.mockClear();
+    skill_test_fixture.loader.mockClear();
     system_prompt_loader.mockClear();
   });
 
@@ -381,10 +403,7 @@ describe("AgentService", () => {
   it("快照下发启动期 skill 清单，旧协议、未知和重复 skill 均在变更状态前拒绝", async () => {
     const fixture = await create_service();
 
-    expect(fixture.service.get_snapshot().skills).toEqual([
-      { name: "glossary-audit", description: "审校术语" },
-      { name: "corpus-search", description: "检索语料" },
-    ]);
+    expect(fixture.service.get_snapshot().skills).toEqual(skill_test_fixture.snapshots);
     await expect(fixture.service.send_message({ text: "旧协议" })).rejects.toThrow(
       "request.validation_failed",
     );
@@ -400,6 +419,16 @@ describe("AgentService", () => {
       }),
     ).rejects.toThrow("request.validation_failed");
     expect(fixture.service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
+  });
+
+  it("skill 快照复制 UI 描述，不向调用方暴露内部资源引用", async () => {
+    const fixture = await create_service();
+    const expected_skills = structuredClone(skill_test_fixture.snapshots);
+    const snapshot = fixture.service.get_snapshot();
+
+    snapshot.skills[0]!.displayDescriptions["en-US"] = "污染外部快照";
+
+    expect(fixture.service.get_snapshot().skills).toEqual(expected_skills);
   });
 
   it("按引用顺序展开多个 skill，并把混排可见文本追加到模型用户消息", async () => {
@@ -744,10 +773,7 @@ describe("AgentService", () => {
     expect(service.get_snapshot()).toEqual({
       state: "idle",
       entries: [],
-      skills: [
-        { name: "glossary-audit", description: "审校术语" },
-        { name: "corpus-search", description: "检索语料" },
-      ],
+      skills: skill_test_fixture.snapshots,
       contextUsage: null,
     });
   });
@@ -871,10 +897,7 @@ describe("AgentService", () => {
     expect(service.get_snapshot()).toEqual({
       state: "idle",
       entries: [],
-      skills: [
-        { name: "glossary-audit", description: "审校术语" },
-        { name: "corpus-search", description: "检索语料" },
-      ],
+      skills: skill_test_fixture.snapshots,
       contextUsage: null,
     });
     expect(publish).toHaveBeenLastCalledWith("agent.session_event", {
@@ -1373,6 +1396,7 @@ function expect_agent_system_prompt(prompt: string | undefined): void {
   expect(prompt).toContain("<available_skills>");
   expect(prompt).toContain("<name>glossary-audit</name>");
   expect(prompt).toContain("<description>审校术语</description>");
+  expect(prompt).not.toContain("Review glossary");
   expect(prompt).toContain("<location>E:/skills/glossary-audit/SKILL.md</location>");
   expect(prompt).not.toContain("<name>corpus-search</name>");
   expect(prompt).not.toContain("执行术语审校。");

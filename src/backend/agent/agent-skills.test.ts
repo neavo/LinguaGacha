@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { LOCALES } from "../../shared/i18n/types";
 import { AppPathService } from "../app/app-path-service";
 import { load_agent_skills } from "./agent-skills";
 
@@ -44,6 +45,11 @@ describe("Agent skill 加载", () => {
       {
         name: "valid",
         description: "合法能力",
+        displayDescriptions: {
+          "zh-CN": "合法能力",
+          "en-US": "合法能力",
+          "de-DE": "合法能力",
+        },
         content: "执行合法任务。",
         filePath: expect.stringMatching(/\/valid\/SKILL\.md$/u),
         disableModelInvocation: false,
@@ -52,6 +58,11 @@ describe("Agent skill 加载", () => {
       {
         name: "manual",
         description: "手动能力",
+        displayDescriptions: {
+          "zh-CN": "手动能力",
+          "en-US": "手动能力",
+          "de-DE": "手动能力",
+        },
         content: "执行手动任务。",
         filePath: expect.stringMatching(/\/manual\/SKILL\.md$/u),
         disableModelInvocation: true,
@@ -77,17 +88,24 @@ describe("Agent skill 加载", () => {
       path.join(builtin_dir, "SKILL.md"),
       "---\nname: shared\ndescription: 内置能力\n---\n\n内置正文。",
     );
+    write_skill(path.join(builtin_dir, "i18n.json"), '{"en-US":"Built-in skill"}');
     write_skill(path.join(builtin_dir, "references", "guide.md"), "# 内置参考");
     write_skill(
       path.join(user_dir, "SKILL.md"),
       "---\nname: shared\ndescription: 用户能力\n---\n\n用户正文。",
     );
+    write_skill(path.join(user_dir, "i18n.json"), '{"en-US":"User skill"}');
     write_skill(path.join(user_dir, "references", "guide.md"), "# 用户参考");
 
     await expect(load_agent_skills(paths, { warning: vi.fn(), error: vi.fn() })).resolves.toEqual([
       {
         name: "shared",
         description: "用户能力",
+        displayDescriptions: {
+          "zh-CN": "用户能力",
+          "en-US": "User skill",
+          "de-DE": "用户能力",
+        },
         content: "用户正文。",
         filePath: path.join(user_dir, "SKILL.md").replaceAll("\\", "/"),
         disableModelInvocation: false,
@@ -100,6 +118,60 @@ describe("Agent skill 加载", () => {
         ],
       },
     ]);
+  });
+
+  it.each([
+    ["坏 JSON", "{"],
+    ["非法语言", '{"ja-JP":"日本語"}'],
+  ])("%s 的 i18n.json 整份回退并记录诊断", async (_case_name, i18n) => {
+    const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-skills-i18n-"));
+    cleanup_roots.push(app_root);
+    const paths = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
+    const skill_dir = path.join(paths.get_agent_builtin_skill_dir(), "invalid-i18n");
+    write_skill(
+      path.join(skill_dir, "SKILL.md"),
+      "---\nname: invalid-i18n\ndescription: 默认描述\n---\n\n执行任务。",
+    );
+    write_skill(path.join(skill_dir, "i18n.json"), i18n);
+    const warning = vi.fn();
+
+    const skills = await load_agent_skills(paths, { warning, error: vi.fn() });
+
+    expect(skills[0]?.displayDescriptions).toEqual({
+      "zh-CN": "默认描述",
+      "en-US": "默认描述",
+      "de-DE": "默认描述",
+    });
+    expect(warning).toHaveBeenCalledWith(
+      expect.stringContaining("i18n"),
+      expect.objectContaining({
+        source: "agent",
+        context: expect.objectContaining({ path: expect.stringMatching(/i18n\.json$/u) }),
+      }),
+    );
+  });
+
+  it("真实内置 glossary-audit 为全部应用语言提供独立 UI 描述", async () => {
+    const app_root = path.resolve(".");
+    const builtin_skill_dir = path.join(app_root, "resource", "agent", "skill");
+    const user_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-user-skills-"));
+    cleanup_roots.push(user_root);
+    const raw_i18n = JSON.parse(
+      fs.readFileSync(path.join(builtin_skill_dir, "glossary-audit", "i18n.json"), "utf8"),
+    ) as Record<string, unknown>;
+
+    expect(Object.keys(raw_i18n).sort()).toEqual([...LOCALES].sort());
+    const skills = await load_agent_skills(
+      {
+        get_app_root: () => app_root,
+        get_agent_builtin_skill_dir: () => builtin_skill_dir,
+        get_agent_user_skill_dir: () => path.join(user_root, "missing"),
+      },
+      { warning: vi.fn(), error: vi.fn() },
+    );
+    const glossary_audit = skills.find((skill) => skill.name === "glossary-audit");
+
+    expect(glossary_audit?.displayDescriptions).toEqual(raw_i18n);
   });
 
   it("递归加载排序后的 Markdown references，并忽略其它文件和符号链接", async () => {
@@ -127,6 +199,11 @@ describe("Agent skill 加载", () => {
     expect(skills).toHaveLength(1);
     const skill = skills[0];
     expect(skill?.content).toBe("执行术语审校。");
+    expect(skill?.displayDescriptions).toEqual({
+      "zh-CN": "审校术语",
+      "en-US": "审校术语",
+      "de-DE": "审校术语",
+    });
     expect(skill?.references).toEqual([
       {
         path: "references/a-first.md",

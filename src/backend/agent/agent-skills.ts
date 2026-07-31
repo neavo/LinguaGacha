@@ -14,10 +14,14 @@ import {
 } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 
+import { is_json_record } from "../../domain/json";
 import { default_native_fs, type NativeFs } from "../../native/native-fs";
+import type { AgentSkillDisplayDescriptions } from "../../shared/agent";
+import { LOCALES } from "../../shared/i18n/types";
 import type { AppPathService } from "../app/app-path-service";
 import type { LogManager } from "../log/log-manager";
 
+const I18N_FILE_NAME = "i18n.json";
 const REFERENCES_DIR_NAME = "references";
 const REFERENCE_EXTENSION = ".md";
 
@@ -27,8 +31,9 @@ export type AgentSkillReference = {
   content: string; // 启动期固定的完整正文，只在 read_skill 时下发
 };
 
-/** 保留 Pi skill 的完整调用语义，并附加启动期固定的受控 references。 */
+/** 保留 Pi skill 的模型调用语义，并附加启动期固定的 UI 描述与受控 references。 */
 export type AgentSkillDefinition = Skill & {
+  displayDescriptions: AgentSkillDisplayDescriptions;
   references: AgentSkillReference[];
 };
 
@@ -64,6 +69,7 @@ export async function load_agent_skills(
       if (invalid_paths.has(skill.filePath)) continue;
       skills.set(skill.name, {
         ...skill,
+        displayDescriptions: load_skill_display_descriptions(skill, log_manager, native_fs),
         references: load_skill_references(skill.filePath, log_manager, native_fs),
       });
     }
@@ -72,6 +78,53 @@ export async function load_agent_skills(
     log_manager.error("Agent skill 加载失败", { source: "agent", error });
     return [];
   }
+}
+
+/**
+ * 同目录 i18n.json 只负责 UI 描述；缺失或整份无效时统一回退模型 description。
+ */
+function load_skill_display_descriptions(
+  skill: Skill,
+  log_manager: AgentSkillLog,
+  native_fs: AgentSkillNativeFs,
+): AgentSkillDisplayDescriptions {
+  const descriptions = Object.fromEntries(
+    LOCALES.map((locale) => [locale, skill.description]),
+  ) as AgentSkillDisplayDescriptions;
+  const file_path = path.join(path.dirname(skill.filePath), I18N_FILE_NAME);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(native_fs.read_text_file(file_path)) as unknown;
+  } catch (error) {
+    if (!is_not_found_error(error)) {
+      log_skill_i18n_diagnostic(log_manager, skill.name, file_path, error);
+    }
+    return descriptions;
+  }
+
+  if (!is_json_record(parsed)) {
+    log_skill_i18n_diagnostic(log_manager, skill.name, file_path, "格式无效");
+    return descriptions;
+  }
+  const entries = Object.entries(parsed);
+  if (
+    entries.length === 0 ||
+    entries.some(
+      ([locale, description]) =>
+        !LOCALES.some((supported_locale) => supported_locale === locale) ||
+        typeof description !== "string" ||
+        description.trim() === "",
+    )
+  ) {
+    log_skill_i18n_diagnostic(log_manager, skill.name, file_path, "格式无效");
+    return descriptions;
+  }
+
+  for (const locale of LOCALES) {
+    const description = parsed[locale];
+    if (typeof description === "string") descriptions[locale] = description.trim();
+  }
+  return descriptions;
 }
 
 /**
@@ -106,7 +159,7 @@ function collect_skill_references(
   try {
     entries = native_fs.read_dirents(directory);
   } catch (error) {
-    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) {
+    if (!is_not_found_error(error)) {
       log_manager.warning("Agent skill references 目录读取失败", {
         source: "agent",
         context: { path: directory, error: String(error) },
@@ -135,6 +188,11 @@ function collect_skill_references(
       });
     }
   }
+}
+
+/** 缺失的可选 skill 资源不产生诊断，其它 IO 错误仍需显式暴露。 */
+function is_not_found_error(error: unknown): boolean {
+  return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
 /**
@@ -241,5 +299,18 @@ function log_skill_diagnostic(log_manager: AgentSkillLog, diagnostic: SkillDiagn
   log_manager.warning(diagnostic.message, {
     source: "agent",
     context: { code: diagnostic.code, path: diagnostic.path },
+  });
+}
+
+/** skill UI 翻译失败只降级当前 skill，并保留完整诊断上下文。 */
+function log_skill_i18n_diagnostic(
+  log_manager: AgentSkillLog,
+  skill_name: string,
+  file_path: string,
+  error: unknown,
+): void {
+  log_manager.warning(`Agent skill i18n 加载失败：${skill_name}`, {
+    source: "agent",
+    context: { path: file_path, error: String(error) },
   });
 }

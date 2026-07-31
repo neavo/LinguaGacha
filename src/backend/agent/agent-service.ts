@@ -166,7 +166,10 @@ export class AgentService {
     return {
       state: this.state,
       entries: structuredClone(this.entries),
-      skills: this.skills.map(({ name, description }) => ({ name, description })),
+      skills: this.skills.map(({ name, displayDescriptions }) => ({
+        name,
+        displayDescriptions: { ...displayDescriptions },
+      })),
       contextUsage: this.read_context_usage(),
     };
   }
