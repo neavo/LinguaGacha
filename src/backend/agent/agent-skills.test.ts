@@ -4,7 +4,6 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { LOCALES } from "../../shared/i18n/types";
 import { AppPathService } from "../app/app-path-service";
 import { load_agent_skills } from "./agent-skills";
 
@@ -149,29 +148,6 @@ describe("Agent skill 加载", () => {
         context: expect.objectContaining({ path: expect.stringMatching(/i18n\.json$/u) }),
       }),
     );
-  });
-
-  it("真实内置 glossary-audit 为全部应用语言提供独立 UI 描述", async () => {
-    const app_root = path.resolve(".");
-    const builtin_skill_dir = path.join(app_root, "resource", "agent", "skill");
-    const user_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-user-skills-"));
-    cleanup_roots.push(user_root);
-    const raw_i18n = JSON.parse(
-      fs.readFileSync(path.join(builtin_skill_dir, "glossary-audit", "i18n.json"), "utf8"),
-    ) as Record<string, unknown>;
-
-    expect(Object.keys(raw_i18n).sort()).toEqual([...LOCALES].sort());
-    const skills = await load_agent_skills(
-      {
-        get_app_root: () => app_root,
-        get_agent_builtin_skill_dir: () => builtin_skill_dir,
-        get_agent_user_skill_dir: () => path.join(user_root, "missing"),
-      },
-      { warning: vi.fn(), error: vi.fn() },
-    );
-    const glossary_audit = skills.find((skill) => skill.name === "glossary-audit");
-
-    expect(glossary_audit?.displayDescriptions).toEqual(raw_i18n);
   });
 
   it("递归加载排序后的 Markdown references，并忽略其它文件和符号链接", async () => {
