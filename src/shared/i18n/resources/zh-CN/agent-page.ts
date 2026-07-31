@@ -7,6 +7,10 @@ export const zh_cn_agent_page = {
   loading: "正在恢复会话 …",
   empty: {
     message: "「搭档」，我们接下来做点什么呢  ( •̀ ᗜ •́ )つ▱",
+    suggestions: {
+      capabilities: "介绍一下你的能力",
+      glossary_audit: "请帮我审校术语表",
+    },
   },
   input: {
     placeholder: "描述任务，或输入 @ 选择能力 …",

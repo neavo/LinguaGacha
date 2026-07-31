@@ -1,5 +1,5 @@
 import { memo, useEffect, useRef, useState, type ReactNode, type UIEvent } from "react";
-import { Bot } from "lucide-react";
+import { BookCheck, Bot, Sparkles } from "lucide-react";
 
 import type { AgentEntry, AgentSessionState, AgentUserMessagePart } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
@@ -7,8 +7,9 @@ import { useModelSelection } from "@frontend/features/model-selection/use-model-
 import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
+import { Card } from "@frontend/shadcn/card";
 import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
-import { AgentComposer } from "./agent-composer";
+import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
 import { AgentMarkdown } from "./agent-markdown";
 import { useAgentPageState } from "./use-agent-page-state";
 import "./agent-page.css";
@@ -25,6 +26,7 @@ const AGENT_STATUS_LABEL_KEYS: Readonly<Record<DetailStatus, LocaleKey>> = Objec
   success: "agent_page.status.success",
   error: "agent_page.status.error",
 });
+const GLOSSARY_AUDIT_SKILL_NAME = "glossary-audit";
 
 type AgentDetailEntryProps = {
   kind: "tool" | "thinking";
@@ -49,6 +51,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const model_selection = useModelSelection();
   const runtime_snapshot = useRuntimeSnapshot();
   const message_end_ref = useRef<HTMLDivElement | null>(null);
+  const composer_ref = useRef<AgentComposerHandle | null>(null);
   const auto_follow_ref = useRef(true); // 用户主动离开底部后，流式增量不得抢回滚动位置
   const [reset_dialog_open, set_reset_dialog_open] = useState(false);
   const is_running = agent.state === "running";
@@ -76,13 +79,56 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
       >
         {agent.loading ? (
           <div className="agent-page__empty" role="status">
-            <Bot aria-hidden="true" />
-            <p>{t("agent_page.loading")}</p>
+            <div className="agent-page__empty-intro">
+              <Bot className="agent-page__empty-icon" aria-hidden="true" />
+              <p>{t("agent_page.loading")}</p>
+            </div>
           </div>
         ) : agent.entries.length === 0 ? (
           <div className="agent-page__empty">
-            <Bot aria-hidden="true" />
-            <p className="agent-page__empty-message">{t("agent_page.empty.message")}</p>
+            <div className="agent-page__empty-intro">
+              <Bot className="agent-page__empty-icon" aria-hidden="true" />
+              <p className="agent-page__empty-message">{t("agent_page.empty.message")}</p>
+            </div>
+            <div className="agent-page__suggestions">
+              <Card
+                asChild
+                className="agent-page__suggestion"
+                onClick={() =>
+                  composer_ref.current?.write_draft([
+                    { kind: "text", text: t("agent_page.empty.suggestions.capabilities") },
+                  ])
+                }
+              >
+                <button type="button">
+                  <Sparkles className="agent-page__suggestion-icon" aria-hidden="true" />
+                  <span className="agent-page__suggestion-label">
+                    {t("agent_page.empty.suggestions.capabilities")}
+                  </span>
+                </button>
+              </Card>
+              <Card
+                asChild
+                className="agent-page__suggestion"
+                onClick={() =>
+                  composer_ref.current?.write_draft([
+                    {
+                      kind: "text",
+                      text: `${t("agent_page.empty.suggestions.glossary_audit")} `,
+                    },
+                    { kind: "skill", name: GLOSSARY_AUDIT_SKILL_NAME },
+                  ])
+                }
+              >
+                <button type="button">
+                  <BookCheck className="agent-page__suggestion-icon" aria-hidden="true" />
+                  <span className="agent-page__suggestion-label">
+                    {t("agent_page.empty.suggestions.glossary_audit")}{" "}
+                    <span className="agent-skill-token">@{GLOSSARY_AUDIT_SKILL_NAME}</span>
+                  </span>
+                </button>
+              </Card>
+            </div>
           </div>
         ) : (
           <div className="agent-page__messages">
@@ -102,6 +148,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
       </section>
 
       <AgentComposer
+        ref={composer_ref}
         skills={agent.skills}
         running={is_running}
         runtime_busy={is_runtime_busy(runtime_snapshot)}
