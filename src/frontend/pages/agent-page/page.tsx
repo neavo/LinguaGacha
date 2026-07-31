@@ -107,27 +107,29 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                   </span>
                 </button>
               </Card>
-              <Card
-                asChild
-                className="agent-page__suggestion"
-                onClick={() =>
-                  composer_ref.current?.write_draft([
-                    {
-                      kind: "text",
-                      text: `${t("agent_page.empty.suggestions.glossary_audit")} `,
-                    },
-                    { kind: "skill", name: GLOSSARY_AUDIT_SKILL_NAME },
-                  ])
-                }
-              >
-                <button type="button">
-                  <BookCheck className="agent-page__suggestion-icon" aria-hidden="true" />
-                  <span className="agent-page__suggestion-label">
-                    {t("agent_page.empty.suggestions.glossary_audit")}{" "}
-                    <span className="agent-skill-token">@{GLOSSARY_AUDIT_SKILL_NAME}</span>
-                  </span>
-                </button>
-              </Card>
+              {agent.skills.some((skill) => skill.name === GLOSSARY_AUDIT_SKILL_NAME) && (
+                <Card
+                  asChild
+                  className="agent-page__suggestion"
+                  onClick={() =>
+                    composer_ref.current?.write_draft([
+                      {
+                        kind: "text",
+                        text: `${t("agent_page.empty.suggestions.glossary_audit")} `,
+                      },
+                      { kind: "skill", name: GLOSSARY_AUDIT_SKILL_NAME },
+                    ])
+                  }
+                >
+                  <button type="button">
+                    <BookCheck className="agent-page__suggestion-icon" aria-hidden="true" />
+                    <span className="agent-page__suggestion-label">
+                      {t("agent_page.empty.suggestions.glossary_audit")}{" "}
+                      <span className="agent-skill-token">@{GLOSSARY_AUDIT_SKILL_NAME}</span>
+                    </span>
+                  </button>
+                </Card>
+              )}
             </div>
           </div>
         ) : (

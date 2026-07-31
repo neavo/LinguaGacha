@@ -152,6 +152,30 @@ describe("run_gui_entry", () => {
     await expect(ipc_options.readAppLanguage()).resolves.toBe("ZH");
   });
 
+  it("Backend 完整就绪前不注册 macOS 恢复窗口入口", async () => {
+    const start_completion: { resolve: ((ready: BackendRuntimeReady) => void) | null } = {
+      resolve: null,
+    };
+    mocks.backend_start.mockImplementationOnce(
+      () =>
+        new Promise<BackendRuntimeReady>((resolve) => {
+          start_completion.resolve = resolve;
+        }),
+    );
+
+    run_gui_entry({
+      desktopBundleDir: "E:/app/dist-electron",
+      backendRuntimeWorkerEntryUrl: new URL("file:///backend-runtime-worker-entry.js"),
+    });
+    await vi.waitFor(() => expect(mocks.backend_start).toHaveBeenCalledOnce());
+    expect(mocks.app_listeners.has("activate")).toBe(false);
+
+    if (start_completion.resolve === null) throw new Error("缺少 Backend start resolver。");
+    start_completion.resolve(mocks.ready);
+    await vi.waitFor(() => expect(mocks.create_main_window).toHaveBeenCalledOnce());
+    expect(mocks.app_listeners.has("activate")).toBe(true);
+  });
+
   it("before-quit 先阻止原生退出，等待 Backend 停止后再退出", async () => {
     run_gui_entry({
       desktopBundleDir: "E:/app/dist-electron",

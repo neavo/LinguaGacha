@@ -36,7 +36,7 @@
 - `SCREEN_REGISTRY` 是页面注册与标题 key 的唯一入口。
 - Agent、工作台与校对可在未加载工程时发起项目选择，并在 session ready 后恢复 pending route；其它项目功能页在工程未加载或 session 未 ready 时禁用。
 - 跨页面模型选择由 `features/model-selection` 归一协议并持有页面生命周期 query / command；模型数据不进入 `DesktopStateProvider`，也不通过 SSE 同步，但选择和配置写入消费共享 runtime 锁。
-- Agent 页面从后端 snapshot 恢复私有会话并消费统一 Agent SSE，不把会话内容放入 `DesktopStateProvider` 或项目 session UI 缓存；页面只消费共享 runtime 锁来禁用发送、reset 与模型选择，stop 始终保留。composer 草稿由页面拥有，发送经后端受理后清空，会话 reset 保留未发送草稿与 skill token。
+- Agent 页面从后端 snapshot 恢复私有会话并消费统一 Agent SSE，不把会话内容放入 `DesktopStateProvider` 或项目 session UI 缓存；页面只消费共享 runtime 锁来禁用发送、reset 与模型选择，stop 始终保留。
 - `ProjectSessionUiStateProvider` 只保存当前项目内可跨路由恢复的轻量 UI 状态，项目切换或关闭时清空，不写入后端事实。
 - `WorkbenchTasksSessionProvider` 保存翻译 / 分析完成后的跨路由 follow-up；页面计算缓存、弹窗、导入和提交中状态默认随页面挂载与卸载。
 - `src/frontend/pages/<page>` 只包含页面入口及该页面的私有实现；页面之间不互相导入，共用能力先迁入 `features`，`features` 不反向依赖 `pages`。

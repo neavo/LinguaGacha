@@ -32,21 +32,26 @@ export type ComputeWorkerOutgoingMessage =
       error: ReturnType<typeof to_log_error>;
     };
 
-const cancelled_ids = new Set<string>(); // 取消只标记单个任务，worker 生命周期由 ComputeWorkerClient 管理。
+type ComputeWorkerTaskState = { cancelled: boolean };
+
+const task_states = new Map<string, ComputeWorkerTaskState>(); // 只保留执行中的任务，迟到 cancel 不产生陈旧状态。
 
 function handle_message(message: ComputeWorkerIncomingMessage): void {
   if (message.type === "cancel") {
-    cancelled_ids.add(message.id);
+    const state = task_states.get(message.id);
+    if (state !== undefined) state.cancelled = true;
     return;
   }
   void execute_message(message);
 }
 
 async function execute_message(message: ComputeWorkerRunMessage): Promise<void> {
+  const state: ComputeWorkerTaskState = { cancelled: false };
+  task_states.set(message.id, state);
   try {
-    assert_not_cancelled(message.id);
+    assert_not_cancelled(state);
     const data = await run_compute_worker_task(message.task);
-    assert_not_cancelled(message.id);
+    assert_not_cancelled(state);
     post_message({ id: message.id, ok: true, data });
   } catch (error) {
     post_message({
@@ -55,12 +60,12 @@ async function execute_message(message: ComputeWorkerRunMessage): Promise<void> 
       error: to_log_error(error, { worker_task_type: message.task.type }),
     });
   } finally {
-    cancelled_ids.delete(message.id);
+    task_states.delete(message.id);
   }
 }
 
-function assert_not_cancelled(id: string): void {
-  if (cancelled_ids.has(id)) {
+function assert_not_cancelled(state: ComputeWorkerTaskState): void {
+  if (state.cancelled) {
     throw new Error("Compute worker 任务已取消。");
   }
 }

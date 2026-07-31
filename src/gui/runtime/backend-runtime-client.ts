@@ -73,7 +73,6 @@ export class BackendRuntimeClient {
     worker.on("message", (message: BackendRuntimeWorkerMessage) => this.handle_message(message));
     worker.on("error", (error) => this.handle_exit(error));
     worker.on("exit", (code) => {
-      this.worker = null;
       // 主动 stop 期间也必须拒绝尚未收到 response 的请求，否则退出流程会永久等待。
       this.handle_exit(new Error(`Backend runtime worker 退出：${code.toString()}`));
     });
@@ -168,6 +167,8 @@ export class BackendRuntimeClient {
 
   /** 统一结算启动与控制请求；只有 ready 后的非主动退出才升级为应用级故障。 */
   private handle_exit(error: Error): void {
+    // error 可能早于 exit 到达，必须先关闭请求入口，避免两事件之间产生永不结算的新请求。
+    this.worker = null;
     if (this.exit_handled) return;
     this.exit_handled = true;
     this.start_reject?.(error);

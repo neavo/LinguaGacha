@@ -183,13 +183,6 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     void quit_app_after_backend_shutdown(0);
   });
 
-  // macOS Dock 激活事件只负责恢复工作台窗口，不应在退出流程中重新建窗。
-  app.on("activate", () => {
-    if (!is_app_shutdown_in_progress && BrowserWindow.getAllWindows().length === 0) {
-      create_main_window_for_runtime();
-    }
-  });
-
   // Electron ready 后才能启动 Backend 和创建窗口，保证 app API 与原生资源都已可用。
   app.whenReady().then(async () => {
     try {
@@ -209,6 +202,12 @@ export function run_gui_entry(options: GuiEntryOptions): void {
         recordHostDiagnostic: record_host_diagnostic,
       });
       register_runtime_ipc_handlers();
+      // Backend、更新器和 IPC 完整就绪后才允许 macOS Dock 恢复窗口。
+      app.on("activate", () => {
+        if (!is_app_shutdown_in_progress && BrowserWindow.getAllWindows().length === 0) {
+          create_main_window_for_runtime();
+        }
+      });
       create_main_window_for_runtime();
     } catch (error) {
       try {

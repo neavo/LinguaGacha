@@ -74,9 +74,11 @@ describe("Agent 正文工具", () => {
     const ids = query_agent_project_items(cache, { mode: "ids", item_ids: [3, 404, 2] });
     expect((ids["items"] as JsonRecord[]).map((item) => item["item_id"])).toEqual([3, 2]);
     expect(ids["missing_item_ids"]).toEqual([404]);
-    expect(() => query_agent_project_items(cache, { mode: "page", cursor: "bad" })).toThrow(
-      "cursor 无效",
-    );
+    for (const cursor of ["bad", "0x10", "1e2", "9007199254740992"]) {
+      expect(() => query_agent_project_items(cache, { mode: "page", cursor })).toThrow(
+        "cursor 无效",
+      );
+    }
   });
 
   it("search 将 src/name_src 与 dst/name_dst 分字段匹配并稳定分页", () => {
