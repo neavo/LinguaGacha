@@ -32,12 +32,8 @@ export const en_us_glossary_page = {
     },
   },
 
-  dialog: {
-    create_title: "Create glossary entry",
-    edit_title: "Edit glossary entry",
-  },
-
   feedback: {
+    load_failed: "Failed to load the glossary. Please try again later.",
     save_failed: "Failed to save the glossary.",
     import_failed: "Failed to import the glossary.",
 

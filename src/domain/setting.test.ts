@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { normalize_project_settings_snapshot, normalize_setting_snapshot } from "./setting";
+import {
+  normalize_project_settings_snapshot,
+  normalize_setting_snapshot,
+  Setting,
+} from "./setting";
 
 describe("设置快照", () => {
   it("设置快照缺字段时统一使用领域默认值", () => {
@@ -41,5 +45,25 @@ describe("设置快照", () => {
         skip_duplicate_source_text_enable: true,
       },
     );
+  });
+
+  it("完整设置只保留三个模型用途并丢弃旧激活字段", () => {
+    const legacy_key = ["activate", "model", "id"].join("_");
+    const setting = Setting.from_json({
+      [legacy_key]: "legacy",
+      model_selection: {
+        translation: " translation-model ",
+        analysis: 42,
+        agent: "agent-model",
+        unknown: "ignored",
+      },
+    }).to_json();
+
+    expect(setting["model_selection"]).toEqual({
+      translation: "translation-model",
+      analysis: "",
+      agent: "agent-model",
+    });
+    expect(setting).not.toHaveProperty(legacy_key);
   });
 });

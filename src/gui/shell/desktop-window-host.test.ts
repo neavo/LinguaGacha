@@ -350,6 +350,7 @@ describe("桌面窗口宿主", () => {
     );
     expect(close_event.preventDefault).toHaveBeenCalledTimes(1);
     expect(main_window.webContents.sent_channels).toEqual([IPC_CHANNEL_WINDOW_CLOSE_REQUEST]);
+    expect(main_window.webContents.listeners.has("context-menu")).toBe(true);
     expect(main_window.visible).toBe(true);
     expect(main_window.focused).toBe(true);
     expect(on_closed).toHaveBeenCalledTimes(1);
@@ -381,6 +382,7 @@ describe("桌面窗口宿主", () => {
     });
     expect(close_event.preventDefault).not.toHaveBeenCalled();
     expect(log_window.webContents.sent_channels).toEqual([]);
+    expect(log_window.webContents.listeners.has("context-menu")).toBe(true);
   });
 
   it("渲染层加载失败时记录诊断并显示原生错误提示", async () => {

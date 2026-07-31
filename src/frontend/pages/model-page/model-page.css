@@ -135,14 +135,6 @@
   right: 12px;
 }
 
-.model-page__item-chip[data-active="true"] .model-page__drag-handle {
-  color: color-mix(in srgb, var(--primary-foreground) 90%, transparent);
-}
-
-.model-page__item-chip[data-active="true"] .model-page__drag-handle:hover {
-  color: var(--primary-foreground);
-}
-
 .model-page__dialog-scroll {
   min-height: 0;
   max-height: calc(100vh - 220px);

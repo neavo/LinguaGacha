@@ -65,9 +65,7 @@ export const de_de_quality_editor = {
     dialog: {
       name_placeholder: "Namen der Voreinstellung eingeben …",
       rename_confirm: "Umbenennen",
-      rename_title: "Voreinstellung umbenennen",
       save_confirm: "Speichern",
-      save_title: "Als Voreinstellung speichern",
     },
     rename: "Umbenennen",
     save: "Voreinstellung speichern",

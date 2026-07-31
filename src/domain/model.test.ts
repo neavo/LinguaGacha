@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { Model } from "./model";
+import { Model, normalize_model_selection } from "./model";
 
 describe("Model", () => {
   it("从不完整设置生成稳定的模型快照", () => {
@@ -79,5 +79,20 @@ describe("Model", () => {
     expect(Model.resolve_template_filename("PRESET")).toBeNull();
     expect(Model.api_format_supports_reasoning_by_default("Google")).toBe(true);
     expect(Model.api_format_supports_reasoning_by_default("OpenAI")).toBe(false);
+  });
+
+  it("模型用途选择只保留规范化后的三个模型 ID", () => {
+    expect(
+      normalize_model_selection({
+        translation: " translation-model ",
+        analysis: 7,
+        agent: "agent-model",
+        unknown: "ignored",
+      }),
+    ).toEqual({
+      translation: "translation-model",
+      analysis: "",
+      agent: "agent-model",
+    });
   });
 });

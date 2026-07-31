@@ -94,6 +94,32 @@ describe("AppEditor", () => {
     expect(container.querySelector(".cm-content")?.textContent).toBe("Alice Bob");
   });
 
+  it("只读状态同步 DOM 编辑语义并在切换时保留内容", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+
+    await act(async () => {
+      root?.render(<AppEditor value="Alpha" aria_label="切换编辑器" read_only={false} />);
+    });
+
+    const content = get_editor_content(container);
+    expect(content.getAttribute("contenteditable")).toBe("true");
+
+    await act(async () => {
+      root?.render(<AppEditor value="Alpha" aria_label="切换编辑器" read_only />);
+    });
+
+    expect(content.getAttribute("contenteditable")).toBe("false");
+    expect(content.textContent).toBe("Alpha");
+
+    await act(async () => {
+      root?.render(<AppEditor value="Alpha" aria_label="切换编辑器" read_only={false} />);
+    });
+
+    expect(content.getAttribute("contenteditable")).toBe("true");
+  });
+
   it("默认使用 Tab 缩进", async () => {
     container = document.createElement("div");
     document.body.append(container);

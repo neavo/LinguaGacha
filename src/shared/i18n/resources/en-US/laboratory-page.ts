@@ -15,7 +15,6 @@ export const en_us_laboratory_page = {
       title: "MTool Optimizer",
       description:
         "For MTool text, <emphasis> cuts translation time and tokens by up to 40%</emphasis>, enabled by default",
-      help_label: "View the MTool Optimizer guide",
     },
     skip_duplicate_source_text_enable: {
       title: "Skip Duplicate Source Text",

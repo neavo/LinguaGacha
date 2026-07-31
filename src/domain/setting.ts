@@ -1,5 +1,6 @@
 import type { JsonRecord, JsonValue } from "./json";
 import { normalize_app_language, type AppLanguage } from "./app-language";
+import { normalize_model_selection } from "./model";
 
 export {
   ALL_LANGUAGE_CODE,
@@ -129,7 +130,11 @@ export const DEFAULT_SETTING: JsonRecord = {
   translation_custom_prompt_default_preset: "",
   analysis_custom_prompt_default_preset: "",
   recent_projects: [],
-  activate_model_id: "",
+  model_selection: {
+    translation: "",
+    analysis: "",
+    agent: "",
+  },
   models: null,
 };
 
@@ -250,6 +255,9 @@ export class Setting {
     }
     if (key === "recent_projects") {
       return normalize_recent_project_settings(value) as unknown as JsonValue;
+    }
+    if (key === "model_selection") {
+      return normalize_model_selection(value) as unknown as JsonValue;
     }
     if (BOOLEAN_SETTING_KEYS.has(key)) {
       return normalize_boolean_setting(value, Boolean(DEFAULT_SETTING[key]));

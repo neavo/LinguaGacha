@@ -427,6 +427,64 @@ function collect_literal_match_indexes(
 }
 
 /**
+ * 批量返回每段文本命中的字面量索引，Agent 正文检索与质量统计共用同一 Aho 和大小写口径。
+ */
+export function collect_quality_literal_match_indexes(args: {
+  patterns: string[];
+  texts: string[];
+  case_sensitive: boolean;
+}): number[][] {
+  const patterns = args.case_sensitive
+    ? args.patterns
+    : args.patterns.map((pattern) => casefold_text(pattern));
+  const matcher = build_aho_matcher(patterns);
+  if (matcher === null) {
+    return args.texts.map(() => []);
+  }
+
+  const seen_generation_by_pattern = new Uint32Array(matcher.patternCount);
+  return args.texts.map((text, index) => {
+    return collect_literal_match_indexes(
+      matcher,
+      args.case_sensitive ? text : casefold_text(text),
+      seen_generation_by_pattern,
+      index + 1,
+    );
+  });
+}
+
+/**
+ * 批量统计每段文本中各字面量的实际出现次数；重叠命中也按 Aho 扫描结果计数。
+ */
+export function count_quality_literal_matches(args: {
+  patterns: string[];
+  texts: string[];
+  case_sensitive: boolean;
+}): number[][] {
+  const patterns = args.case_sensitive
+    ? args.patterns
+    : args.patterns.map((pattern) => casefold_text(pattern));
+  const matcher = build_aho_matcher(patterns);
+  if (matcher === null) return args.texts.map(() => []);
+
+  return args.texts.map((raw_text) => {
+    const counts = Array.from({ length: matcher.patternCount }, () => 0);
+    const text = args.case_sensitive ? raw_text : casefold_text(raw_text);
+    let node_index = 0;
+    for (const character of text) {
+      while (node_index !== 0 && !matcher.nodes[node_index].next.has(character)) {
+        node_index = matcher.nodes[node_index].fail;
+      }
+      node_index = matcher.nodes[node_index].next.get(character) ?? 0;
+      for (const pattern_index of matcher.nodes[node_index].outputs) {
+        counts[pattern_index] = (counts[pattern_index] ?? 0) + 1;
+      }
+    }
+    return counts;
+  });
+}
+
+/**
  * 统计每个字面量 pattern 命中的项目条目数，不统计总出现次数。
  */
 function count_literal_bucket_matches(

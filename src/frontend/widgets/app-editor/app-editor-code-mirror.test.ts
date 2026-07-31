@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   app_editor_text_mark_field,
   app_editor_whitespace_extension,
+  resolve_app_editor_readonly_extensions,
   set_app_editor_text_marks_effect,
 } from "@frontend/widgets/app-editor/app-editor-code-mirror";
 
@@ -72,5 +73,16 @@ describe("app text marks", () => {
 
     expect(parent.querySelector(".app-text-mark--success")).toBeNull();
     expect(parent.querySelector(".app-text-mark--warning")?.textContent).toBe("Bob");
+  });
+});
+
+describe("resolve_app_editor_readonly_extensions", () => {
+  it("同时关闭 DOM 编辑并保留键盘聚焦和只读语义", () => {
+    const parent = create_editor("Alpha", resolve_app_editor_readonly_extensions(true));
+    const content = parent.querySelector(".cm-content");
+
+    expect(content?.getAttribute("contenteditable")).toBe("false");
+    expect(content?.getAttribute("tabindex")).toBe("0");
+    expect(content?.getAttribute("aria-readonly")).toBe("true");
   });
 });

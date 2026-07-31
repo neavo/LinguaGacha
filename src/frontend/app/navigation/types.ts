@@ -5,6 +5,7 @@ import type { ComponentType } from "react";
 export type RouteId =
   | "project-home"
   | "model"
+  | "agent"
   | "proofreading"
   | "workbench"
   | "basic-settings"

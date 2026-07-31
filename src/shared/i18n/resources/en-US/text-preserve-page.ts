@@ -33,10 +33,6 @@ export const en_us_text_preserve_page = {
     },
   },
 
-  dialog: {
-    create_title: "Create Text Preserve Rule",
-    edit_title: "Edit Text Preserve Rule",
-  },
   preset: {
     dialog: {
       name_placeholder: "Please enter preset name …",
@@ -45,13 +41,13 @@ export const en_us_text_preserve_page = {
   statistics: {
     hit_count: "Matched Item Count: {COUNT}",
 
-    running: "Calculating",
     action: {
       search_relation: "Search Contains Relation",
     },
   },
 
   feedback: {
+    load_failed: "Failed to load text preservation rules. Please try again later.",
     preset_name_required: "Preset name cannot be empty",
 
     default_preset_cleared: "Default preset cleared …",

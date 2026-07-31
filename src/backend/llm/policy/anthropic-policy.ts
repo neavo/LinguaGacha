@@ -32,18 +32,31 @@ export function build_anthropic_payload(
   }
   patch_temperature(payload, snapshot);
   patch_generation_fields(payload, snapshot.generation, { top_p: "top_p" });
-  Object.assign(payload, snapshot.extra_body);
-  delete payload["presence_penalty"];
-  delete payload["frequency_penalty"];
+  return apply_anthropic_request_overrides(payload, snapshot);
+}
+
+/**
+ * 统一覆盖 OneShot 与 Pi payload；Claude thinking 规则高于 extra_body。
+ */
+export function apply_anthropic_request_overrides(
+  payload: Record<string, unknown>,
+  snapshot: ModelRequestSnapshot,
+): Record<string, unknown> {
+  const result = { ...payload };
+  delete result["thinking"];
+  delete result["output_config"];
+  Object.assign(result, snapshot.extra_body);
+  delete result["presence_penalty"];
+  delete result["frequency_penalty"];
   const thinking = build_anthropic_thinking_payload(snapshot);
   if (thinking !== null) {
-    payload["thinking"] = thinking;
+    result["thinking"] = thinking;
   }
   if (snapshot.thinking_level !== "OFF" && thinking !== null) {
-    delete payload["temperature"];
-    delete payload["top_p"];
+    delete result["temperature"];
+    delete result["top_p"];
   }
-  return payload;
+  return result;
 }
 
 /**

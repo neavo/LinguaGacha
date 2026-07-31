@@ -25,9 +25,7 @@ export function TextPreserveEditDialog(props: TextPreserveEditDialogProps): JSX.
   const save_label = t("quality_editor.action.save");
   const disabled = props.readonly || props.saving;
   const title =
-    props.mode === "create"
-      ? t("text_preserve_page.dialog.create_title")
-      : t("text_preserve_page.dialog.edit_title");
+    props.mode === "create" ? t("quality_editor.action.create") : t("quality_editor.action.edit");
 
   useActionShortcut({
     action: "save",

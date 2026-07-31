@@ -34,7 +34,6 @@ export const zh_cn_project_page = {
     failed: "加载工程失败：{ERROR}",
     failed_generic: "加载工程失败",
     action: "打开工程",
-    remove_recent_project: "移除最近打开记录",
     remove_unavailable: "当前无法移除这条最近使用记录，请稍后重试。",
     missing_file_description: "工程文件已失效，是否从列表中移除 …?",
   },

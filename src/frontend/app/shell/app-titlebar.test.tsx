@@ -43,7 +43,7 @@ describe("AppTitlebar", () => {
     root = null;
   });
 
-  it("展示宿主标题栏方位，并由可访问按钮切换侧栏", async () => {
+  it("展示宿主标题栏方位，并由菜单按钮切换侧栏", async () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);

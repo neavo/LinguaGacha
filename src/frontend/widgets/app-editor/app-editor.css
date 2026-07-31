@@ -61,6 +61,7 @@
   letter-spacing: 0.075em;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  user-select: text;
 }
 
 .app-editor .cm-lineWrapping {

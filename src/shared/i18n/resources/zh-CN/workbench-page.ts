@@ -22,11 +22,9 @@ export const zh_cn_workbench_page = {
   },
   table: {
     drag_handle: "拖拽",
-    drag_handle_aria: "拖拽排序",
     file_name: "文件名",
     line_count: "行数",
     actions: "操作",
-    open_actions: "打开操作菜单",
   },
   sort: {
     ascending: "按升序排序",
@@ -146,9 +144,6 @@ export const zh_cn_workbench_page = {
       reset_failed_failed: "重置失败条目失败",
       generate_failed: "生成当前可用译文失败",
     },
-  },
-  command: {
-    description: "工作台动作条承接工程级快捷操作。",
   },
   reorder: {
     failed: "文件顺序保存失败，请稍后再试。",

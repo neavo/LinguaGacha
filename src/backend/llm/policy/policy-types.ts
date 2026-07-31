@@ -12,7 +12,7 @@ export interface ModelRequestSnapshot {
   api_keys: string[]; // 当前模型可轮换的凭据集合
   base_url: string; // policy 归一后的 SDK 端点
   model_id: string; // 最终写入供应商 payload 的模型名
-  headers: Record<string, string>; // 已启用的自定义请求头
+  headers: Record<string, string>; // 包含 User-Agent 与已启用扩展头的最终模型请求头
   extra_body: JsonRecord; // 已启用的供应商扩展字段
   generation: JsonRecord; // 温度等生成参数快照
   output_token_limit: number; // 统一解析后的输出 token 上限

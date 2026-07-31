@@ -24,6 +24,7 @@ export function AppTitlebar(props: AppTitlebarProps): JSX.Element {
       <div className="topbar__content">
         <div className="topbar__left">
           <button
+            type="button"
             className="topbar__menu-button"
             aria-label={t("app.aria.toggle_navigation")}
             onClick={() => {
@@ -32,7 +33,7 @@ export function AppTitlebar(props: AppTitlebarProps): JSX.Element {
               });
             }}
           >
-            <SidebarToggleIcon size={18} />
+            <SidebarToggleIcon size={18} aria-hidden="true" />
           </button>
           <div className="topbar__brand">
             <strong className="font-medium">{props.title}</strong>

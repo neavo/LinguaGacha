@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import { resolve_active_model } from "../../model/model-config-resolver";
+import { resolve_model_for_usage } from "../../model/model-config-resolver";
 import type { TaskRunHandle } from "../task-runtime";
 import type { WorkUnitExecutor } from "../work-unit/work-unit-executor";
 import { WorkUnitExecutorTransportError } from "../work-unit/work-unit-transport-error";
@@ -114,7 +114,7 @@ export class TaskEngine {
       release_database_lease = this.task_store.acquire_project_lease(
         `task:${handle.run_id}:translation`,
       );
-      const run_context = this.resolve_task_run_context();
+      const run_context = this.resolve_task_run_context("translation");
       app_language = run_context.config_snapshot["app_language"];
       const quality_snapshot = this.task_store.build_quality_snapshot();
       await this.log_task_run_start("translation", run_context, quality_snapshot, app_language);
@@ -199,7 +199,7 @@ export class TaskEngine {
       release_database_lease = this.task_store.acquire_project_lease(
         `task:${handle.run_id}:analysis`,
       );
-      const run_context = this.resolve_task_run_context();
+      const run_context = this.resolve_task_run_context("analysis");
       app_language = run_context.config_snapshot["app_language"];
       const quality_snapshot = this.task_store.build_quality_snapshot();
       await this.log_task_run_start("analysis", run_context, quality_snapshot, app_language);
@@ -762,11 +762,11 @@ export class TaskEngine {
   }
 
   /**
-   * 读取当前配置和激活模型，作为一次任务 run 的不可变快照
+   * 按任务用途读取当前配置和模型，作为一次 run 的不可变快照
    */
-  private resolve_task_run_context(): TaskRunContext {
+  private resolve_task_run_context(task_type: TaskType): TaskRunContext {
     const config_snapshot = this.app_setting_service.read_setting();
-    const model = resolve_active_model(config_snapshot);
+    const model = resolve_model_for_usage(config_snapshot, task_type);
     if (model === null) {
       throw new AppErrors.ModelNotFoundError();
     }

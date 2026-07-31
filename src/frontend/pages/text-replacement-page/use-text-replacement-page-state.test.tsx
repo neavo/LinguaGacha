@@ -6,10 +6,18 @@ import { INPUT_QUERY_DEBOUNCE_MS } from "@frontend/widgets/interactions/use-debo
 import type { QualityRuleStatisticsCacheSnapshot } from "@frontend/app/session/quality-rule-statistics-store";
 import { useTextReplacementPageState } from "@frontend/pages/text-replacement-page/use-text-replacement-page-state";
 
-const { api_fetch_mock, push_toast_mock, page_ui_state_store } = vi.hoisted(() => {
+const {
+  api_fetch_mock,
+  push_toast_mock,
+  query_quality_rules_mock,
+  translate_mock,
+  page_ui_state_store,
+} = vi.hoisted(() => {
   return {
     api_fetch_mock: vi.fn(),
     push_toast_mock: vi.fn(),
+    query_quality_rules_mock: vi.fn(),
+    translate_mock: (key: string) => key,
     page_ui_state_store: new Map<string, unknown>(),
   };
 });
@@ -164,7 +172,7 @@ function create_quality_write_result(
     accepted: true,
     changes: [
       {
-        source: "quality_rule_save_entries",
+        source: "quality_rule_update",
         projectPath: "E:/demo/sample.lg",
         projectRevision: project_revision,
         updatedSections: ["quality"],
@@ -264,14 +272,7 @@ vi.mock("@frontend/app/navigation/navigation-context", () => {
 
 vi.mock("@frontend/features/quality-rule-editor/quality-rule-api-client", () => {
   return {
-    read_quality_rule: vi.fn(async (rule_type: keyof typeof run_state.quality) => ({
-      projectPath: run_state.project.path,
-      sectionRevisions: { ...run_state.revisions.sections },
-      qualityRule: run_state.quality[rule_type],
-    })),
-    read_quality_rule_section_revisions: vi.fn(async () => ({
-      ...run_state.revisions.sections,
-    })),
+    query_quality_rules: query_quality_rules_mock,
   };
 });
 
@@ -526,7 +527,7 @@ vi.mock("@frontend/app/session/project-session-ui-state-context", async () => {
 vi.mock("@frontend/app/locale/locale-provider", () => {
   return {
     useI18n: () => ({
-      t: (key: string) => key,
+      t: translate_mock,
     }),
   };
 });
@@ -552,6 +553,14 @@ describe("useTextReplacementPageState", () => {
     project_store_listeners.clear();
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
+    query_quality_rules_mock.mockReset();
+    query_quality_rules_mock.mockImplementation(
+      async (rule_type: keyof typeof run_state.quality) => ({
+        projectPath: run_state.project.path,
+        sectionRevisions: { ...run_state.revisions.sections },
+        qualityRule: run_state.quality[rule_type],
+      }),
+    );
     project_change_seq = 0;
     project_change_sections = ["quality"];
     run_state.task.busy = false;
@@ -622,6 +631,42 @@ describe("useTextReplacementPageState", () => {
       vi.advanceTimersByTime(INPUT_QUERY_DEBOUNCE_MS);
     });
   }
+
+  it("首次规则查询失败时显示错误提醒", async () => {
+    query_quality_rules_mock.mockRejectedValue(new Error("替换规则读取失败"));
+
+    await mount_probe();
+
+    expect(push_toast_mock).toHaveBeenCalledWith("error", expect.anything());
+  });
+
+  it("提交开关时沿用生成当前替换规则事实的旧 revision", async () => {
+    await mount_probe();
+    run_state.revisions.sections.quality = 9;
+    api_fetch_mock.mockResolvedValueOnce(
+      create_quality_write_result({
+        quality: {
+          ...run_state.quality,
+          pre_replacement: {
+            ...run_state.quality.pre_replacement,
+            enabled: false,
+            revision: 3,
+          },
+        },
+        quality_revision: 3,
+      }),
+    );
+
+    await act(async () => {
+      await latest_state?.update_enabled(false);
+    });
+
+    expect(api_fetch_mock).toHaveBeenCalledWith("/api/quality/rules/update", {
+      rule_type: "pre_replacement",
+      expected_section_revisions: { quality: 2 },
+      meta: { enabled: false },
+    });
+  });
 
   it("items 变更后保留当前替换规则表格主体", async () => {
     await mount_probe();
@@ -878,7 +923,7 @@ describe("useTextReplacementPageState", () => {
       await latest_state?.import_duplicate_skip();
     });
 
-    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
+    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/update", {
       rule_type: "pre_replacement",
       expected_section_revisions: { quality: 2 },
       entries: [
@@ -990,7 +1035,7 @@ describe("useTextReplacementPageState", () => {
       await latest_state?.import_duplicate_overwrite();
     });
 
-    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/save-entries", {
+    expect(api_fetch_mock).toHaveBeenLastCalledWith("/api/quality/rules/update", {
       rule_type: "pre_replacement",
       expected_section_revisions: { quality: 2 },
       entries: [

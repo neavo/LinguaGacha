@@ -1,18 +1,35 @@
 import { Model, type ModelApiFormat } from "../../domain/model";
 import {
+  is_json_record,
   read_json_integer,
   read_json_record,
   type JsonRecord,
   type JsonValue,
 } from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
-import { build_anthropic_payload } from "./policy/anthropic-policy";
-import { build_google_payload, normalize_google_sdk_base_url } from "./policy/google-policy";
+import * as AppErrors from "../../shared/error";
 import {
+  apply_anthropic_request_overrides,
+  build_anthropic_payload,
+  build_anthropic_thinking_payload,
+} from "./policy/anthropic-policy";
+import {
+  apply_google_request_overrides,
+  build_google_payload,
+  build_google_thinking_config,
+  normalize_google_sdk_base_url,
+} from "./policy/google-policy";
+import {
+  apply_openai_request_overrides,
   build_openai_compatible_payload,
+  build_openai_thinking_payload,
   normalize_openai_compatible_sdk_base_url,
 } from "./policy/openai-compatible-policy";
-import { build_sakura_payload, normalize_sakura_sdk_base_url } from "./policy/sakura-policy";
+import {
+  apply_sakura_request_overrides,
+  build_sakura_payload,
+  normalize_sakura_sdk_base_url,
+} from "./policy/sakura-policy";
 import type {
   ModelRequestSnapshot,
   ResolvedRequestPolicy,
@@ -39,7 +56,7 @@ export class LLMClientPolicy {
    * 解析请求策略；协议和模型定制规则全部委托给 policy 目录下的专属文件。
    */
   public resolve(body: LLMRequestBody): ResolvedRequestPolicy {
-    const snapshot = this.read_request_model_snapshot(body.model);
+    const snapshot = this.read_model_snapshot(body.model);
     const payload = this.build_payload(snapshot, body.messages);
     return {
       provider: snapshot.provider,
@@ -87,28 +104,9 @@ export class LLMClientPolicy {
   }
 
   /**
-   * 按 provider 分发最终 payload 构造，保证同一请求只进入一个策略分支。
+   * 从模型 JSON 读取 OneShot 与 Agent 共用的请求事实。
    */
-  private build_payload(
-    snapshot: ModelRequestSnapshot,
-    messages: LLMMessage[],
-  ): Record<string, unknown> {
-    if (snapshot.provider === "google") {
-      return build_google_payload(snapshot, messages);
-    }
-    if (snapshot.provider === "anthropic") {
-      return build_anthropic_payload(snapshot, messages);
-    }
-    if (snapshot.provider === "sakura") {
-      return build_sakura_payload(snapshot, messages);
-    }
-    return build_openai_compatible_payload(snapshot, messages);
-  }
-
-  /**
-   * 从任务模型 JSON 快照读取 policy 所需字段，避免 transport 直接碰原始配置。
-   */
-  private read_request_model_snapshot(model: JsonValue): ModelRequestSnapshot {
+  public read_model_snapshot(model: JsonValue): ModelRequestSnapshot {
     const record = read_json_record(model);
     const api_format = Model.normalize_api_format(record["api_format"]);
     const provider = this.resolve_provider(api_format);
@@ -131,6 +129,79 @@ export class LLMClientPolicy {
       output_token_limit,
       thinking_level: Model.normalize_thinking_level(thinking["level"]),
     };
+  }
+
+  /**
+   * Pi 只拥有 Agent payload 结构；最终供应商覆盖规则仍由项目 policy 决定。
+   */
+  public apply_request_overrides(
+    snapshot: ModelRequestSnapshot,
+    payload: unknown,
+  ): Record<string, unknown> {
+    if (!is_json_record(payload)) {
+      throw new AppErrors.InternalInvariantError({
+        diagnostic_context: {
+          reason: "invalid_provider_request_payload",
+          provider: snapshot.provider,
+        },
+      });
+    }
+    if (snapshot.provider === "google") {
+      const config = payload["config"];
+      if (!is_json_record(config)) {
+        throw new AppErrors.InternalInvariantError({
+          diagnostic_context: {
+            reason: "invalid_provider_request_payload",
+            provider: snapshot.provider,
+            field: "config",
+          },
+        });
+      }
+      return {
+        ...payload,
+        config: apply_google_request_overrides(config, snapshot),
+      };
+    }
+    if (snapshot.provider === "anthropic") {
+      return apply_anthropic_request_overrides(payload, snapshot);
+    }
+    if (snapshot.provider === "sakura") {
+      return apply_sakura_request_overrides(payload, snapshot);
+    }
+    return apply_openai_request_overrides(payload, snapshot);
+  }
+
+  /** `reasoning` 表示模型族能力，不由当前 OFF/LOW/HIGH 挡位推断。 */
+  public supports_thinking(snapshot: ModelRequestSnapshot): boolean {
+    if (snapshot.provider === "google") {
+      return build_google_thinking_config(snapshot) !== null;
+    }
+    if (snapshot.provider === "anthropic") {
+      return build_anthropic_thinking_payload(snapshot) !== null;
+    }
+    if (snapshot.provider === "sakura") {
+      return false;
+    }
+    return build_openai_thinking_payload(snapshot.model_id, snapshot.thinking_level) !== null;
+  }
+
+  /**
+   * 按 provider 分发最终 payload 构造，保证同一请求只进入一个策略分支。
+   */
+  private build_payload(
+    snapshot: ModelRequestSnapshot,
+    messages: LLMMessage[],
+  ): Record<string, unknown> {
+    if (snapshot.provider === "google") {
+      return build_google_payload(snapshot, messages);
+    }
+    if (snapshot.provider === "anthropic") {
+      return build_anthropic_payload(snapshot, messages);
+    }
+    if (snapshot.provider === "sakura") {
+      return build_sakura_payload(snapshot, messages);
+    }
+    return build_openai_compatible_payload(snapshot, messages);
   }
 
   /**

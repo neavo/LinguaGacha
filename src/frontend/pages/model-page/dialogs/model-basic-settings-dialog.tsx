@@ -30,11 +30,14 @@ type ModelBasicSettingsDialogProps = {
 };
 
 const THINKING_LEVEL_VALUES: readonly ModelThinkingLevel[] = MODEL_THINKING_LEVELS;
+// 支持说明只有中英文版本，未单独维护的 locale 统一落到英文页面。
 const THINKING_SUPPORT_URL_BY_LOCALE = {
   "zh-CN": "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupport",
   "en-US": "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN",
   "de-DE": "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN",
 } as const;
+
+/** 把持久化档位映射为当前语言的用户可见标签。 */
 function resolve_thinking_label(
   t: ReturnType<typeof useI18n>["t"],
   thinking_level: ModelThinkingLevel,
@@ -50,10 +53,12 @@ function resolve_thinking_label(
   }
 }
 
+/** 只有已归一的供应商格式才展示当前连接字段。 */
 function should_show_connection_fields(api_format: string): boolean {
   return Model.normalize_api_format(api_format) === api_format;
 }
 
+/** OpenAI compatible 与原生支持推理的供应商共用思考档位。 */
 function should_show_thinking_field(api_format: string): boolean {
   const normalized_api_format = Model.normalize_api_format(api_format);
   return (
@@ -61,6 +66,8 @@ function should_show_thinking_field(api_format: string): boolean {
     Model.api_format_supports_reasoning_by_default(normalized_api_format)
   );
 }
+
+/** 编辑模型名称、连接信息和思考档位的基础设置对话框。 */
 export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): JSX.Element | null {
   const { locale, t } = useI18n();
   const [is_model_id_editor_open, set_is_model_id_editor_open] = useState(false);
@@ -95,7 +102,12 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
   const show_connection_fields = should_show_connection_fields(model.api_format);
   const show_thinking_field = should_show_thinking_field(model.api_format);
 
+  /** 项目可能在输入弹窗保持打开时进入锁定态，提交点必须再次守卫。 */
   async function commit_model_id_input(): Promise<void> {
+    if (props.readonly) {
+      return;
+    }
+
     await props.onPatch({
       model_id: model_id_input_value.trim(),
     });
@@ -120,7 +132,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
                 <Input
                   className="model-page__field model-page__field--md"
                   value={model.name}
-                  disabled={props.readonly}
+                  readOnly={props.readonly}
                   placeholder={t("model_page.fields.name.placeholder")}
                   onChange={(event) => {
                     void props.onPatch({
@@ -140,7 +152,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
                     <Input
                       className="model-page__field model-page__field--lg"
                       value={model.api_url}
-                      disabled={props.readonly}
+                      readOnly={props.readonly}
                       placeholder={t("model_page.fields.api_url.placeholder")}
                       onChange={(event) => {
                         void props.onPatch({
@@ -159,7 +171,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
                     <Textarea
                       className="model-page__textarea"
                       value={model.api_key}
-                      disabled={props.readonly}
+                      readOnly={props.readonly}
                       placeholder={t("model_page.fields.api_key.placeholder")}
                       onChange={(event) => {
                         void props.onPatch({
@@ -226,7 +238,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
                 title_suffix={
                   <SettingHelpButton
                     url={THINKING_SUPPORT_URL_BY_LOCALE[locale]}
-                    aria_label={t("model_page.fields.thinking.help_label")}
+                    aria_label={t("model_page.fields.thinking.title")}
                   />
                 }
                 description={t("model_page.fields.thinking.description")}
@@ -305,7 +317,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
           autoFocus
           className="model-page__field model-page__field--full"
           value={model_id_input_value}
-          disabled={props.readonly}
+          readOnly={props.readonly}
           placeholder={t("model_page.fields.model_id.placeholder")}
           onChange={(event) => {
             set_model_id_input_value(event.target.value);

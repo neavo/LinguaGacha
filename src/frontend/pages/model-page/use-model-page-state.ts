@@ -20,6 +20,7 @@ import type {
   ModelType,
 } from "@frontend/pages/model-page/types";
 import { MODEL_TYPES, Model } from "@domain/model";
+import { MODEL_TYPE_TITLE_KEY } from "@frontend/features/model-selection/model-selection-meta";
 
 type ModelPageSnapshotPayload = {
   snapshot?: Partial<ModelPageSnapshot> & {
@@ -42,7 +43,6 @@ type UseModelPageStateResult = {
   selector_state: ModelSelectorState;
   active_dialog_model: ModelEntrySnapshot | null;
   request_add_model: (model_type: ModelType) => Promise<void>;
-  request_activate_model: (model_id: string) => Promise<void>;
   request_delete_model: (model_id: string) => void;
   request_reset_model: (model_id: string) => void;
   request_reorder_models: (model_type: ModelType, ordered_model_ids: string[]) => Promise<void>;
@@ -64,11 +64,6 @@ const MODEL_TYPE_ORDER: readonly ModelType[] = MODEL_TYPES;
 const MODEL_CATEGORY_META: Record<
   ModelType,
   {
-    title_key:
-      | "model_page.category.preset.title"
-      | "model_page.category.custom_google.title"
-      | "model_page.category.custom_openai.title"
-      | "model_page.category.custom_anthropic.title";
     description_key:
       | "model_page.category.preset.description"
       | "model_page.category.custom_google.description"
@@ -78,22 +73,18 @@ const MODEL_CATEGORY_META: Record<
   }
 > = {
   PRESET: {
-    title_key: "model_page.category.preset.title",
     description_key: "model_page.category.preset.description",
     accent_color: "var(--model-page-accent-preset)",
   },
   CUSTOM_GOOGLE: {
-    title_key: "model_page.category.custom_google.title",
     description_key: "model_page.category.custom_google.description",
     accent_color: "var(--model-page-accent-google)",
   },
   CUSTOM_OPENAI: {
-    title_key: "model_page.category.custom_openai.title",
     description_key: "model_page.category.custom_openai.description",
     accent_color: "var(--model-page-accent-openai)",
   },
   CUSTOM_ANTHROPIC: {
-    title_key: "model_page.category.custom_anthropic.title",
     description_key: "model_page.category.custom_anthropic.description",
     accent_color: "var(--model-page-accent-anthropic)",
   },
@@ -118,7 +109,6 @@ const DEFAULT_GENERATION_SNAPSHOT: ModelGenerationSnapshot = {
 };
 
 const EMPTY_SNAPSHOT: ModelPageSnapshot = {
-  active_model_id: "",
   models: [],
 };
 
@@ -272,10 +262,7 @@ function normalize_model_page_snapshot(payload: ModelPageSnapshotPayload): Model
         .map((model) => normalize_model_entry(model))
         .filter((model) => model.id !== "")
     : [];
-  const active_model_id = String(snapshot.active_model_id ?? "");
-
   return {
-    active_model_id,
     models,
   };
 }
@@ -449,7 +436,7 @@ export function useModelPageState(): UseModelPageStateResult {
       const category_meta = MODEL_CATEGORY_META[model_type];
       return {
         type: model_type,
-        title: t(category_meta.title_key),
+        title: t(MODEL_TYPE_TITLE_KEY[model_type]),
         description: t(category_meta.description_key),
         accent_color: category_meta.accent_color,
         can_add: model_type !== "PRESET",
@@ -517,34 +504,6 @@ export function useModelPageState(): UseModelPageStateResult {
         push_toast(
           "error",
           resolve_visible_error_message(error, t, t("model_page.feedback.add_failed")),
-        );
-      } finally {
-        set_is_action_running(false);
-      }
-    },
-    [push_toast, readonly, t],
-  );
-
-  const request_activate_model = useCallback(
-    async (model_id: string): Promise<void> => {
-      if (readonly) {
-        return;
-      }
-      if (snapshot_ref.current.active_model_id === model_id) {
-        return;
-      }
-
-      set_is_action_running(true);
-
-      try {
-        const payload = await api_fetch<ModelPageSnapshotPayload>("/api/models/activate", {
-          model_id,
-        });
-        set_snapshot(normalize_model_page_snapshot(payload));
-      } catch (error) {
-        push_toast(
-          "error",
-          resolve_visible_error_message(error, t, t("model_page.feedback.update_failed")),
         );
       } finally {
         set_is_action_running(false);
@@ -811,7 +770,6 @@ export function useModelPageState(): UseModelPageStateResult {
     selector_state,
     active_dialog_model,
     request_add_model,
-    request_activate_model,
     request_delete_model,
     request_reset_model,
     request_reorder_models,

@@ -99,6 +99,7 @@ describe("ProjectWriteStore", () => {
     await store.apply_proofreading_item_patch({
       projectPath: project_path,
       expectedSectionRevisions: { items: 0, proofreading: 0 },
+      source: "proofreading_update_items",
       changes: [
         {
           current: { id: 1, dst: "", status: "NONE", retry_count: 0 },
@@ -127,7 +128,7 @@ describe("ProjectWriteStore", () => {
       }),
     });
     expect(published_changes.at(-1)).toMatchObject({
-      source: "proofreading_save_items",
+      source: "proofreading_update_items",
       updatedSections: ["items", "proofreading"],
       items: {
         payloadMode: "field-patch",
@@ -285,7 +286,7 @@ describe("ProjectWriteStore", () => {
     await store.save_quality_rules({
       projectPath: project_path,
       expectedSectionRevisions: { quality: 0 },
-      source: "quality_rule_save_entries",
+      source: "quality_rule_update",
       rule: {
         databaseType: "glossary",
         entries: [{ src: "姫", dst: "公主" }],

@@ -93,11 +93,7 @@ export const de_de_proofreading_page = {
     no_warning: "Keine Warnung",
     no_glossary_error: "Keine gültigen Daten …",
   },
-  dialog: {
-    edit_title: "Eintrag bearbeiten",
-  },
   context: {
-    title: "Kontext",
     loading: "Kontext wird geladen …",
     load_failed: "Kontext konnte nicht geladen werden",
   },

@@ -2,6 +2,8 @@ import { BrushCleaning, FileDown, Paintbrush, Play, Radar, ScanText } from "luci
 
 import "@frontend/pages/workbench-page/components/workbench-task.css";
 import { useI18n } from "@frontend/app/locale/locale-provider";
+import { ModelSelectionMenu } from "@frontend/features/model-selection/model-selection-menu";
+import type { ModelSelectionController } from "@frontend/features/model-selection/use-model-selection";
 import type { WorkbenchStats } from "@frontend/pages/workbench-page/types";
 import { Badge } from "@frontend/shadcn/badge";
 import { Spinner } from "@frontend/shadcn/spinner";
@@ -26,6 +28,7 @@ type WorkbenchTaskMenuProps = {
   workbench_stats: WorkbenchStats;
   disabled: boolean;
   busy: boolean;
+  model_selection: ModelSelectionController;
   active_task_action_kind: AnalysisTaskActionKind | TranslationTaskActionKind | null;
   on_start_or_continue: () => Promise<void>;
   on_request_reset: (kind: WorkbenchTaskResetKind) => void;
@@ -52,7 +55,8 @@ type WorkbenchTaskMenuProps = {
 export function WorkbenchTaskMenu(props: WorkbenchTaskMenuProps): JSX.Element {
   const { t } = useI18n();
   const is_analysis = props.task_kind === "analysis";
-  const action_items_disabled = props.active || props.busy || props.disabled;
+  const action_items_disabled =
+    props.active || props.busy || props.disabled || props.model_selection.updating;
   const progress_percent = props.workbench_stats.completion_percent;
 
   return (
@@ -114,6 +118,14 @@ export function WorkbenchTaskMenu(props: WorkbenchTaskMenuProps): JSX.Element {
             {t(`workbench_page.action.start_${props.task_kind}`)}
           </AppDropdownMenuItem>
         </AppDropdownMenuGroup>
+
+        <AppDropdownMenuSeparator />
+
+        <ModelSelectionMenu
+          controller={props.model_selection}
+          usage={props.task_kind}
+          disabled={action_items_disabled}
+        />
 
         <AppDropdownMenuSeparator />
 

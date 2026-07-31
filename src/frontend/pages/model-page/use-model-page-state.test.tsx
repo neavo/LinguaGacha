@@ -29,7 +29,6 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
 function create_snapshot(name = "自定义模型") {
   return {
     snapshot: {
-      active_model_id: "preset",
       models: [
         { id: "preset", type: "PRESET", name: "内置模型" },
         { id: "custom", type: "CUSTOM_OPENAI", name },

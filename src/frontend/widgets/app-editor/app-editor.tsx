@@ -20,6 +20,7 @@ import {
   type AppTextMark,
   normalize_app_text_marks,
   resolve_app_editor_mode_extensions,
+  resolve_app_editor_readonly_extensions,
   resolve_app_editor_theme_extensions,
   set_app_editor_text_marks_effect,
 } from "@frontend/widgets/app-editor/app-editor-code-mirror";
@@ -42,16 +43,19 @@ type AppEditorProps = {
   on_blur?: () => void;
 };
 
+// 各维度独立重配，避免 React 属性变化时重建 EditorView 和丢失选区。
 const editor_theme_compartment = new Compartment();
 const editor_readonly_compartment = new Compartment();
 const editor_mode_compartment = new Compartment();
 const editor_variant_compartment = new Compartment();
 const editor_keymap_compartment = new Compartment();
 
+/** 字段形态不允许换行，外部多行值统一折叠为空格。 */
 function normalize_field_editor_value(value: string): string {
   return value.replace(/\r\n|\r|\n/gu, " ");
 }
 
+/** 字段形态在事务边界强制单行，并吞掉 Enter 以避免表单误提交。 */
 const field_editor_single_line_extension: Extension = [
   EditorState.transactionFilter.of((transaction) => {
     if (!transaction.docChanged || transaction.newDoc.lines <= 1) {
@@ -86,6 +90,7 @@ const field_editor_single_line_extension: Extension = [
   ),
 ];
 
+/** 编辑器形态启用行号与空白标记，字段形态只启用单行约束。 */
 function resolve_app_editor_variant_extensions(variant: AppEditorVariant): Extension[] {
   if (variant === "field") {
     return [field_editor_single_line_extension];
@@ -99,6 +104,7 @@ function resolve_app_editor_variant_extensions(variant: AppEditorVariant): Exten
   ];
 }
 
+/** 外部值进入字段形态前先应用与事务一致的单行规则。 */
 function resolve_app_editor_value(value: string, variant: AppEditorVariant): string {
   if (variant === "field") {
     return normalize_field_editor_value(value);
@@ -107,6 +113,7 @@ function resolve_app_editor_value(value: string, variant: AppEditorVariant): str
   return value;
 }
 
+/** Tab 是否缩进由调用方决定，其余键位始终沿用 CodeMirror 默认映射。 */
 function resolve_app_editor_keymap_extension(indent_with_tab: boolean): Extension {
   return keymap.of([
     ...(indent_with_tab ? [indentWithTab] : []),
@@ -115,6 +122,7 @@ function resolve_app_editor_keymap_extension(indent_with_tab: boolean): Extensio
   ]);
 }
 
+/** 外部值缩短时把选区端点限制到新文档范围。 */
 function clamp_selection_offset(offset: number, max_offset: number): number {
   if (offset < 0) {
     return 0;
@@ -126,6 +134,7 @@ function clamp_selection_offset(offset: number, max_offset: number): number {
   return offset;
 }
 
+/** 保留多选区结构，只裁剪越过新文档末尾的端点。 */
 function create_clamped_selection(
   selection: EditorSelection,
   next_length: number,
@@ -141,6 +150,7 @@ function create_clamped_selection(
   );
 }
 
+/** 组合只创建一次的基础扩展；运行期变化通过各自 Compartment 重配。 */
 function create_editor_extensions(args: {
   theme_extension: Extension;
   mode_extension: Extension;
@@ -154,7 +164,7 @@ function create_editor_extensions(args: {
 }): Extension[] {
   return [
     editor_theme_compartment.of(args.theme_extension),
-    editor_readonly_compartment.of(EditorState.readOnly.of(args.read_only)),
+    editor_readonly_compartment.of(resolve_app_editor_readonly_extensions(args.read_only)),
     editor_mode_compartment.of(args.mode_extension),
     editor_variant_compartment.of(args.variant_extension),
     app_editor_text_mark_field,
@@ -178,6 +188,7 @@ function create_editor_extensions(args: {
   ];
 }
 
+/** 受控 CodeMirror 编辑器，统一字段/正文形态、标记和只读语义。 */
 export function AppEditor(props: AppEditorProps): JSX.Element {
   const { resolvedTheme } = useTheme();
   const mode = props.mode ?? "plain";
@@ -189,6 +200,7 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
   const on_change_ref = useRef(props.on_change);
   const on_blur_ref = useRef(props.on_blur);
   const suppress_change_ref = useRef(false);
+  // EditorView 生命周期独立于 React 重渲染，首帧配置固定后只通过 Compartment 同步。
   const initial_value_ref = useRef(value);
   const initial_aria_label_ref = useRef(props.aria_label);
   const initial_aria_invalid_ref = useRef((props.aria_invalid ?? props.invalid) === true);
@@ -328,7 +340,9 @@ export function AppEditor(props: AppEditorProps): JSX.Element {
     }
 
     editor_view.dispatch({
-      effects: editor_readonly_compartment.reconfigure(EditorState.readOnly.of(props.read_only)),
+      effects: editor_readonly_compartment.reconfigure(
+        resolve_app_editor_readonly_extensions(props.read_only),
+      ),
     });
   }, [props.read_only]);
 

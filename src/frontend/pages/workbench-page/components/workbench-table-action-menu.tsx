@@ -56,7 +56,7 @@ export function WorkbenchTableActionMenu(props: WorkbenchTableActionMenuProps): 
           size="icon-sm"
           disabled={props.disabled}
           className="workbench-page__row-action"
-          aria-label={t("workbench_page.table.open_actions")}
+          aria-label={t("workbench_page.table.actions")}
           data-workbench-ignore-row-click="true"
           data-workbench-ignore-box-select="true"
         >

@@ -326,7 +326,7 @@ describe("useProofreadingBatchActions", () => {
     );
   });
 
-  it("确认清空译文时提交目标条目和 revision 锁", async () => {
+  it("确认清空译文时不读取本地条目，直接提交目标和 revision 锁", async () => {
     await render_hook();
 
     await act(async () => {
@@ -358,6 +358,7 @@ describe("useProofreadingBatchActions", () => {
         proofreading: 5,
       },
     });
+    expect(fixture.read_items_by_row_ids).not.toHaveBeenCalled();
     expect(latest_state?.pending_confirmation).toBeNull();
   });
 

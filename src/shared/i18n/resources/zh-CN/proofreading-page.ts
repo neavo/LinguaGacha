@@ -90,11 +90,7 @@ export const zh_cn_proofreading_page = {
     no_warning: "无警告",
     no_glossary_error: "没有有效数据 …",
   },
-  dialog: {
-    edit_title: "编辑条目",
-  },
   context: {
-    title: "上下文",
     loading: "正在读取上下文 …",
     load_failed: "无法读取上下文",
   },

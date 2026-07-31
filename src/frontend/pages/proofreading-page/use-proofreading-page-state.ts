@@ -419,7 +419,7 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
       set_is_writing(true);
 
       try {
-        await commit_project_write({
+        const { write_result } = await commit_project_write({
           operation: PROOFREADING_WRITE,
           run: async () => {
             return await api_fetch<ProjectWriteResultPayload>(args.path, write_plan.request_body);
@@ -428,7 +428,13 @@ export function useProofreadingPageState(): UseProofreadingPageStateResult {
         await refresh_task();
 
         if (args.success_message_builder !== null && args.success_message_builder !== undefined) {
-          push_toast("success", args.success_message_builder(write_plan.changed_item_ids.length));
+          // 成功数量只消费后端规范化事实，避免候选目标把部分变化或 no-op 计为已变更。
+          const changed_item_count = new Set(
+            write_result.changes.flatMap((change) =>
+              change.operations.flatMap((operation) => operation.items?.changedIds ?? []),
+            ),
+          ).size;
+          push_toast("success", args.success_message_builder(changed_item_count));
         }
 
         if (args.close_dialog) {

@@ -14,8 +14,7 @@ import {
 import { useDebouncedCallback } from "@frontend/widgets/interactions/use-debounce";
 import { buildProofreadingLookupQuery } from "@shared/quality/quality-rule-proofreading-query";
 import {
-  read_quality_rule,
-  read_quality_rule_section_revisions,
+  query_quality_rules,
   type QualityRuleQuerySlice,
 } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
 import {
@@ -425,7 +424,7 @@ export function useTextReplacementPageState(
         return DEFAULT_QUALITY_SLICE;
       }
 
-      const response = await read_quality_rule(config.rule_type);
+      const response = await query_quality_rules(config.rule_type);
       if (response.projectPath !== project_snapshot.path) {
         return quality_slice;
       }
@@ -462,18 +461,31 @@ export function useTextReplacementPageState(
     }
 
     let cancelled = false;
-    void read_quality_rule(config.rule_type).then((response) => {
-      if (cancelled || response.projectPath !== project_snapshot.path) {
-        return;
-      }
-      set_quality_slice(
-        normalize_text_replacement_quality_slice(
-          response.qualityRule,
-          response.sectionRevisions?.quality ?? 0,
-        ),
-      );
-      set_quality_loaded(true);
-    });
+    void query_quality_rules(config.rule_type)
+      .then((response) => {
+        if (cancelled || response.projectPath !== project_snapshot.path) {
+          return;
+        }
+        set_quality_slice(
+          normalize_text_replacement_quality_slice(
+            response.qualityRule,
+            response.sectionRevisions?.quality ?? 0,
+          ),
+        );
+        set_quality_loaded(true);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          push_toast(
+            "error",
+            resolve_visible_error_message(
+              error,
+              t,
+              t("text_replacement_page.feedback.load_failed"),
+            ),
+          );
+        }
+      });
 
     return () => {
       cancelled = true;
@@ -484,6 +496,8 @@ export function useTextReplacementPageState(
     project_session_status,
     project_snapshot.loaded,
     project_snapshot.path,
+    push_toast,
+    t,
   ]);
 
   useEffect(() => {
@@ -687,14 +701,13 @@ export function useTextReplacementPageState(
       );
 
       try {
-        const section_revisions = await read_quality_rule_section_revisions();
         await commit_project_write({
           operation: create_quality_rule_entries_save_write(config.rule_type),
           run: async () => {
-            return await api_fetch<ProjectWriteResultPayload>("/api/quality/rules/save-entries", {
+            return await api_fetch<ProjectWriteResultPayload>("/api/quality/rules/update", {
               rule_type: config.rule_type,
               expected_section_revisions: {
-                quality: section_revisions.quality ?? 0,
+                quality: quality_slice.section_revision,
               },
               entries: normalized_entries,
             });
@@ -724,6 +737,7 @@ export function useTextReplacementPageState(
       commit_project_write,
       config.rule_type,
       push_toast,
+      quality_slice.section_revision,
       readonly,
       refresh_quality_rule_snapshot,
       t,
@@ -942,14 +956,13 @@ export function useTextReplacementPageState(
       }
 
       try {
-        const section_revisions = await read_quality_rule_section_revisions();
         await commit_project_write({
           operation: create_quality_rule_meta_update_write(config.rule_type),
           run: async () => {
-            return await api_fetch<ProjectWriteResultPayload>("/api/quality/rules/update-meta", {
+            return await api_fetch<ProjectWriteResultPayload>("/api/quality/rules/update", {
               rule_type: config.rule_type,
               expected_section_revisions: {
-                quality: section_revisions.quality ?? 0,
+                quality: quality_slice.section_revision,
               },
               meta: {
                 enabled: next_enabled,
@@ -976,6 +989,7 @@ export function useTextReplacementPageState(
       config.rule_type,
       config.title_key,
       push_toast,
+      quality_slice.section_revision,
       readonly,
       refresh_quality_rule_snapshot,
       t,

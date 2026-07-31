@@ -1524,7 +1524,7 @@ export function ProjectPage(_props: ProjectPageProps): JSX.Element {
               on_remove={() => {
                 void handle_recent_project_remove(project_item.path);
               }}
-              remove_aria_label={t("project_page.open.remove_recent_project")}
+              remove_aria_label={t("quality_editor.action.delete")}
             />
           ))}
         </div>

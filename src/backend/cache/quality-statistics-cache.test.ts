@@ -246,7 +246,7 @@ describe("QualityStatisticsCache", () => {
     cache.applyChange(
       create_cache_change({
         eventType: "project.quality.changed",
-        source: "quality_rule_save_entries",
+        source: "quality_rule_update",
         affectedSections: ["quality"],
         items: { mode: "keep" },
         quality: { mode: "full" },

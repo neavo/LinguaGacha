@@ -28,7 +28,7 @@ export class ProofreadingQueryService {
   /**
    * 分发校对页唯一查询入口，未知 action 在协议边界直接拒绝。
    */
-  public async read(request: JsonRecord): Promise<MutableJsonRecord> {
+  public async query(request: JsonRecord): Promise<MutableJsonRecord> {
     this.session_state.require_loaded_project_path();
     const action = String(request["action"] ?? "sync");
     if (action === "sync") {

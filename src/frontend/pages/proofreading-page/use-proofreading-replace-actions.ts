@@ -3,7 +3,7 @@ import { useCallback, type MutableRefObject } from "react";
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
   create_replace_all_plan,
-  create_save_item_plan,
+  create_update_items_plan,
   type ProofreadingCommandPlan,
 } from "@shared/proofreading/proofreading-command-planner";
 import {
@@ -146,8 +146,8 @@ export function useProofreadingReplaceActions(
     }
 
     await options.run_project_write({
-      path: "/api/proofreading/item/save",
-      plan: create_save_item_plan({
+      path: "/api/proofreading/items/update",
+      plan: create_update_items_plan({
         snapshot: {
           items: [target_item],
           section_revisions: options.list_revisions,

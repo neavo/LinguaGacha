@@ -24,21 +24,16 @@ export const de_de_text_replacement_page = {
     },
   },
 
-  dialog: {
-    create_title: "Ersetzungsregel erstellen",
-    edit_title: "Ersetzungsregel bearbeiten",
-  },
-
   statistics: {
     subset_relations: "Teilmengenbeziehungen:",
 
-    running: "Wird ausgeführt",
     action: {
       search_relation: "Beziehung suchen",
     },
   },
 
   feedback: {
+    load_failed: "Ersetzungsregeln konnten nicht geladen werden. Bitte später erneut versuchen.",
     save_failed: "Fehler beim Speichern der Ersetzungsseite.",
     import_failed: "Fehler beim Importieren der Ersetzungsregeln.",
 
