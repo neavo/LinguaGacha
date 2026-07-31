@@ -8,6 +8,7 @@ describe("migration-registry", () => {
       "legacy-default-config",
       "prompt-user-preset-layout",
       "quality-rule-preset-layout",
+      "model-selection",
       "project-schema",
       "project-rule-storage",
       "project-item-stable-metadata",
