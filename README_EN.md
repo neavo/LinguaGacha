@@ -16,7 +16,7 @@
 - Supports various text types and formats such as `Subtitle`, `E-Book`, and `Game Text`
 - Supports both local and online interfaces compatible with `OpenAI`, `Google`, `Anthropic`, `SakuraLLM`
 
-> <img width="2570" height="1605" alt="01" src="https://github.com/user-attachments/assets/898f6606-9c74-47db-b63e-33d544cfdf15" />
+> <img width="2562" height="1602" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
 
 > <img width="2570" height="1605" alt="02" src="https://github.com/user-attachments/assets/7f6d6556-d6b2-4fb1-b509-2d8272814290" />
 
@@ -25,12 +25,13 @@
 - For projects involving commercial activities or profits, please contact the author for authorization before using [LinguaGacha](https://github.com/neavo/LinguaGacha)!
 
 ## Feature Advantages 📌
+- Built-in `AGENT` mode that automatically completes various tasks through conversation `👈👈 Exclusive Feature`
 - Ultra-fast translation speed: subtitles in ten seconds, novels in one minute, games in five minutes
-- One click to generate glossary to ensure consistent translation of proper nouns like character names `👈👈 Exclusive Feature`
+- One click to generate glossary to ensure consistent translation of proper nouns like character names
 - Optimal translation quality, whether it's flagship models `such as DeepSeek-R1` or local small models `such as Qwen2.5-7B`
 - The strongest style and code retention capability among similar applications, significantly reducing post-processing workload, making it the best choice for creating embedded Chinese localization.
   - `.md` `.ass` `.epub` formats can almost retain all original styles.
-  - Most `WOLF`, `RenPy`, `RPGMaker`, `Kirikiri` games require no manual processing, allowing for instant translation and play `👈👈 Exclusive Feature`
+  - Most `WOLF`, `RenPy`, `RPGMaker`, `Kirikiri` games require no manual processing, allowing for instant translation and play
 
 ## Basic Workflow 🛸
 - Download application from [Releases page](https://github.com/neavo/LinguaGacha/releases)
@@ -49,16 +50,16 @@
 - Obtain a reliable AI model interface (choose one):
   - [ [Local API](https://github.com/neavo/OneClickLLAMA) ] (Free, requires ≥8GB VRAM GPU, Nvidia recommended)
   - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (Cheapest, fast, high-quality, no GPU required)
-  - [ [VolcEngine](https://github.com/neavo/LinguaGacha/wiki/VolcEngine) ] (Little more expensive, **currently the best translation model**, no GPU required)　`👈👈 Recommended`
 - Prepare source text:
   - `Subtitles`/`E-books` typically require no preprocessing
   - `Game texts` need extraction using appropriate tools for specific game engines
 - Launch the application:
   - Drag the `files to translate` onto the page to create a project
-  - Configure and activate the model you want to use in `Model Management`
+  - Configure the model you want to use in `Model Management`
   - Configure essential information such as source and target languages in `Basic Settings`
-  - Run `Analysis` in `Workbench` to extract the glossary
-  - Run `Translation` in `Workbench` to complete the translation
+  - Activate the model and run `Analysis` in `Workbench` to extract the glossary
+  - Automatically review the glossary in `AGENT` (optional)
+  - Activate the model and run `Translation` in `Workbench` to complete the translation
   - Enjoy!
 
 ## User Guide 📝
@@ -90,14 +91,13 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260728 v0.104.0
-  - Redesigned the task log style
-  - Added source context lookup to the proofreading editor
-  - Adjustments and improvements [#657](https://github.com/neavo/LinguaGacha/issues/657) [#669](https://github.com/neavo/LinguaGacha/issues/669) [#671](https://github.com/neavo/LinguaGacha/issues/671)
-
-- 20260725 v0.103.0
-  - Added a `German` interface @Errorism1
-  - Adjustments and improvements [#597](https://github.com/neavo/LinguaGacha/issues/597) [#658](https://github.com/neavo/LinguaGacha/issues/658) [#665](https://github.com/neavo/LinguaGacha/issues/665) [#666](https://github.com/neavo/LinguaGacha/issues/666) [#667](https://github.com/neavo/LinguaGacha/issues/667)
+- 20260801 v0.110.0
+  - In-app `AGENT` mode
+    - Automatically complete tasks such as glossary review through conversation
+  - Support for more models
+    - `Kimi K3`
+    - `DeepSeek V4 Flash 0731`
+  - Adjustments and improvements [#678](https://github.com/neavo/LinguaGacha/issues/678)
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org), then run `npm install`

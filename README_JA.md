@@ -15,7 +15,7 @@
 - `字幕`、`電子書籍`、`ゲームテキストなど`、色々なテキストタイプと形式に対応。
 - `OpenAI`、`Google`、`Anthropic`、`SakuraLLM` などのローカルおよびオンラインインターフェースをサポート
 
-> <img width="2570" height="1605" alt="01" src="https://github.com/user-attachments/assets/898f6606-9c74-47db-b63e-33d544cfdf15" />
+> <img width="2562" height="1602" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
 
 > <img width="2570" height="1605" alt="02" src="https://github.com/user-attachments/assets/7f6d6556-d6b2-4fb1-b509-2d8272814290" />
 
@@ -24,12 +24,13 @@
 - 商業活動や利益を伴うプロジェクトの場合は、[LinguaGacha](https://github.com/neavo/LinguaGacha) を使用する前に、著者に連絡して許可を得てください！
 
 ## 機能の利点 📌
+- 対話を通じてさまざまなタスクを自動で完了する内蔵 `AGENT` モード　`👈👈 独自の強み`
 - 圧倒的な翻訳速度、10秒で字幕1本、1分で小説1冊、5分でゲーム1本
-- 用語集をワンクリックで生成し、キャラクター名などの専門用語の訳語を作品全体で統一　`👈👈 独自の強み`
+- 用語集をワンクリックで生成し、キャラクター名などの専門用語の訳語を作品全体で統一
 - 最高の翻訳品質、フラッグシップモデル `DeepSeek-R1など` でも、ローカル小規模モデル　`Qwen2.5-7Bなど` でも
 - 同種のアプリケーションの中で最強のスタイルとコード保持能力、後工程の作業量を大幅に削減、字幕埋め込み（内嵌字幕）作成に最適
   - `.md` `.ass` `.epub` 形式はほぼすべての元のスタイルを保持可能
-  - 大部分の `WOLF`、`RenPy`、`RPGMaker`、`Kirikiri` エンジンゲームは手作業なしで、即翻訳即プレイ可能　`👈👈 独自の強み`
+  - 大部分の `WOLF`、`RenPy`、`RPGMaker`、`Kirikiri` エンジンゲームは手作業なしで、即翻訳即プレイ可能
 
 ## ワークフロー 🛸
 - [リリースページ](https://github.com/neavo/LinguaGacha/releases) からアプリケーションをダウンロード
@@ -48,16 +49,16 @@
 - 信頼できるAIモデルインターフェースを取得（以下のいずれかを選択）：
   - [ [Local API](https://github.com/neavo/OneClickLLAMA) ] (無料、8GB以上のVRAM GPUが必要、Nvidia推奨)
   - [ [DeepSeek API](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ] (最安、高速、高品質、NO-GPU)
-  - [ [VolcEngine](https://github.com/neavo/LinguaGacha/wiki/VolcEngine) ] (少し高め、**現在最高の翻訳モデル**、NO-GPU)　`👈👈 推奨`
 - ソーステキストを準備：
   - `字幕`/`電子書籍`は通常、前処理が不要
   - `ゲームテキスト`は特定のゲームエンジンに適したツールを使用して抽出が必要
 - アプリケーションを起動：
   - `翻訳するファイル` をページにドラッグしてプロジェクトを作成
-  - `モデル管理` で使用するモデルを設定し、有効化
+  - `モデル管理` で使用するモデルを設定
   - `基本設定` でソース言語、ターゲット言語などの必要な情報を設定
-  - `ワークベンチ` で `分析` を実行して用語集を抽出
-  - `ワークベンチ` で `翻訳` を実行して翻訳を完了
+  - `ワークベンチ` でモデルを有効化し、`分析` を実行して用語集を抽出
+  - `AGENT` で用語集のレビューを自動で完了（任意）
+  - `ワークベンチ` でモデルを有効化し、`翻訳` を実行して翻訳を完了
   - Enjoy!
 
 ## 使い方チュートリアル - English 📝
@@ -89,14 +90,13 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
-- 20260728 v0.104.0
-  - タスクログのスタイルを再設計
-  - 校正エディターで出典のコンテキスト検索に対応
-  - 調整と改善 [#657](https://github.com/neavo/LinguaGacha/issues/657) [#669](https://github.com/neavo/LinguaGacha/issues/669) [#671](https://github.com/neavo/LinguaGacha/issues/671)
-
-- 20260725 v0.103.0
-  - `ドイツ語` インターフェースを追加 @Errorism1
-  - 調整と改善 [#597](https://github.com/neavo/LinguaGacha/issues/597) [#658](https://github.com/neavo/LinguaGacha/issues/658) [#665](https://github.com/neavo/LinguaGacha/issues/665) [#666](https://github.com/neavo/LinguaGacha/issues/666) [#667](https://github.com/neavo/LinguaGacha/issues/667)
+- 20260801 v0.110.0
+  - アプリ内 `AGENT` モード
+    - 対話を通じて用語集のレビューなどのタスクを自動で完了
+  - より多くのモデルに対応
+    - `Kimi K3`
+    - `DeepSeek V4 Flash 0731`
+  - 調整と改善 [#678](https://github.com/neavo/LinguaGacha/issues/678)
 
 ## 開発ガイド 🛠️
 - [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストールし、その後 `npm install` を実行します

@@ -14,7 +14,7 @@
 - 支持 `字幕`、`电子书`、`游戏文本` 等多种文本类型与文本格式
 - 支持 `OpenAI` `Google` `Anthropic` `SakuraLLM` 等各种本地或在线接口
 
-> <img width="2570" height="1605" alt="01" src="https://github.com/user-attachments/assets/898f6606-9c74-47db-b63e-33d544cfdf15" />
+> <img width="2562" height="1602" alt="01" src="https://github.com/user-attachments/assets/9ab0ef8f-136b-4b45-9640-d16b451acde7" />
 
 > <img width="2570" height="1605" alt="02" src="https://github.com/user-attachments/assets/7f6d6556-d6b2-4fb1-b509-2d8272814290" />
 
@@ -23,12 +23,13 @@
 - 如您的项目涉及任何商业行为或者商业收益，在使用 [LinguaGacha](https://github.com/neavo/LinguaGacha) 前，请先与作者联系以获得授权！
 
 ## 功能优势 📌
+- 内置 `AGENT` 模式，通过对话自动完成各种任务　`👈👈 独家绝技`
 - 极快的翻译速度，十秒钟一份字幕，一分钟一本小说，五分钟一部游戏
-- 一键生成术语表，保证角色姓名等专有名词在整部作品中的译名统一　`👈👈 独家绝技`
+- 一键生成术语表，保证角色姓名等专有名词在整部作品中的译名统一
 - 最优的翻译质量，无论是 旗舰模型 `诸如 DeepSeek-R1` 还是 本地小模型　`诸如 Qwen2.5-7B`
 - 同类应用中最强的样式与代码保留能力，显著减少后期工作量，是制作内嵌汉化的最佳选择
   - `.md` `.ass` `.epub` 格式几乎可以保留所有原有样式
-  - 大部分的 `WOLF`、`RenPy`、`RPGMaker`、`Kirikiri` 引擎游戏无需人工处理，即翻即玩　`👈👈 独家绝技`
+  - 大部分的 `WOLF`、`RenPy`、`RPGMaker`、`Kirikiri` 引擎游戏无需人工处理，即翻即玩
 
 ## 基本流程 🛸
 - 从 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载应用
@@ -47,16 +48,16 @@
 - 获取一个可靠的 AI 大模型接口，建议选择其一：
   - [ [本地接口](https://github.com/neavo/OneClickLLAMA) ]，免费，需至少 8G 显存的独立显卡，Nvidia 显卡为佳
   - [ [DeepSeek](https://github.com/neavo/LinguaGacha/wiki/DeepSeek) ]，最便宜，速度快，质量高，无显卡要求
-  - [ [VolcEngine](https://github.com/neavo/LinguaGacha/wiki/VolcEngine) ]，贵一点点，**当前最佳翻译模型**，无显卡要求 `👈👈 推荐`
 - 准备要翻译的文本
   - `字幕`、`电子书` 等一般不需要预处理
   - `游戏文本` 需要根据游戏引擎选择合适的工具进行提取
 - 启动应用
   - 将 `待翻译的文件` 拖到页面上创建项目
-  - 在 `模型管理` 中设置并激活要使用的模型
+  - 在 `模型管理` 中设置要使用的模型
   - 在 `基础设置` 中设置原文语言、译文语言等必要信息
-  - 在 `工作台` 中执行 `分析` 提取术语表
-  - 在 `工作台` 中执行 `翻译` 完成翻译
+  - 在 `工作台` 中激活模型并执行 `分析` 提取术语表
+  - 在 `AGENT` 中自动完成术语表的审校（可选）
+  - 在 `工作台` 中激活模型并执行 `翻译` 完成翻译
   - Enjoy!
 
 ## 使用教程 📝
@@ -89,14 +90,13 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
-- 20260728 v0.104.0
-  - 重新设计了任务日志的样式
-  - 校对编辑窗口中支持查询出处上下文
-  - 调整与改进 [#657](https://github.com/neavo/LinguaGacha/issues/657) [#669](https://github.com/neavo/LinguaGacha/issues/669) [#671](https://github.com/neavo/LinguaGacha/issues/671)
-
-- 20260725 v0.103.0
-  - 增加 `德语` 界面 @Errorism1
-  - 调整与改进 [#597](https://github.com/neavo/LinguaGacha/issues/597) [#658](https://github.com/neavo/LinguaGacha/issues/658) [#665](https://github.com/neavo/LinguaGacha/issues/665) [#666](https://github.com/neavo/LinguaGacha/issues/666) [#667](https://github.com/neavo/LinguaGacha/issues/667)
+- 20260801 v0.110.0
+  - 应用内 `AGENT` 模式
+    - 通过对话自动完成术语表审校等任务
+  - 支持更多模型
+    - `Kimi K3`
+    - `DeepSeek V4 Flash 0731`
+  - 调整与改进 [#678](https://github.com/neavo/LinguaGacha/issues/678)
 
 ## 开发指南 🛠️
 - 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]，然后 `npm install`
