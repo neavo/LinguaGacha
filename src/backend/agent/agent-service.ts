@@ -3,7 +3,12 @@ import {
   formatSkillInvocation,
   formatSkillsForSystemPrompt,
 } from "@earendil-works/pi-agent-core";
-import { InMemoryCredentialStore, type AssistantMessage, uuidv7 } from "@earendil-works/pi-ai";
+import {
+  contentText,
+  InMemoryCredentialStore,
+  type AssistantMessage,
+  uuidv7,
+} from "@earendil-works/pi-ai";
 import {
   createAgentSession,
   DefaultResourceLoader,
@@ -507,6 +512,7 @@ export class AgentService {
         id: event.toolCallId,
         toolName: event.toolName,
         status: "running",
+        output: null,
         createdAt: Date.now(),
       });
       return;
@@ -521,6 +527,7 @@ export class AgentService {
       this.upsert_entry({
         ...running_entry,
         status: event.isError ? "error" : "success",
+        output: contentText(event.result.content, ""),
       });
     }
   }

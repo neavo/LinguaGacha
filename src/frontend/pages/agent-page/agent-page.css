@@ -192,6 +192,13 @@
   text-align: left;
 }
 
+.agent-message__activity {
+  display: flex;
+  min-height: 8px;
+  align-items: center;
+  margin-top: 4px;
+}
+
 .agent-detail-entry {
   overflow: hidden;
   border-radius: var(--ui-radius-button);
