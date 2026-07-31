@@ -27,12 +27,14 @@ const AGENT_STATUS_LABEL_KEYS: Readonly<Record<DetailStatus, LocaleKey>> = Objec
 });
 
 type AgentDetailEntryProps = {
+  kind: "tool" | "thinking";
   label: string;
   started_at: number;
   status: DetailStatus;
   active: boolean;
   status_label: string;
-} & ({ kind: "thinking"; content: string | null } | { kind: "tool" });
+  content: string | null;
+};
 
 type AgentStatusLightProps = {
   status: DetailStatus;
@@ -85,6 +87,15 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         ) : (
           <div className="agent-page__messages">
             {render_conversation(agent.entries, agent.state, t)}
+            {is_running && (
+              <div className="agent-message__activity">
+                <AgentStatusLight
+                  status="running"
+                  active
+                  label={t(AGENT_STATUS_LABEL_KEYS.running)}
+                />
+              </div>
+            )}
           </div>
         )}
         <div ref={message_end_ref} />
@@ -153,6 +164,7 @@ const AgentEntryView = memo(function AgentEntryView(props: {
         status={entry.status}
         active={props.active}
         status_label={props.t(AGENT_STATUS_LABEL_KEYS[entry.status])}
+        content={entry.output}
       />
     );
   }
@@ -235,29 +247,15 @@ function AgentRoundHeader({ user, t }: { user: UserEntry; t: Translate }): JSX.E
   );
 }
 
-/** 工具只显示状态行；思考过程保留可展开正文。 */
+/** 工具输出与思考正文共用原生折叠，内容只在用户展开时进入 DOM。 */
 const AgentDetailEntry = memo(function AgentDetailEntry(props: AgentDetailEntryProps): JSX.Element {
   const duration = useAgentElapsed(props.started_at, props.active);
-  if (props.kind === "tool") {
-    return (
-      <div className="agent-detail-entry agent-detail-entry--tool">
-        <span className="agent-detail-entry__label">
-          {props.label}
-          {props.active && (
-            <>
-              {" · "}
-              <span className="agent-detail-entry__elapsed" role="timer" aria-live="off">
-                {duration}
-              </span>
-            </>
-          )}
-        </span>
-        <AgentStatusLight status={props.status} active={props.active} label={props.status_label} />
-      </div>
-    );
-  }
+  const [open, set_open] = useState(false);
   return (
-    <details className={`agent-detail-entry agent-detail-entry--${props.kind}`}>
+    <details
+      className={`agent-detail-entry agent-detail-entry--${props.kind}`}
+      onToggle={(event) => set_open(event.currentTarget.open)}
+    >
       <summary>
         <span className="agent-detail-entry__label">
           {props.label}
@@ -272,7 +270,11 @@ const AgentDetailEntry = memo(function AgentDetailEntry(props: AgentDetailEntryP
         </span>
         <AgentStatusLight status={props.status} active={props.active} label={props.status_label} />
       </summary>
-      {props.content !== null && <pre tabIndex={0}>{props.content}</pre>}
+      {open && props.content !== null && (
+        <pre tabIndex={0}>
+          {props.kind === "tool" ? format_tool_output(props.content) : props.content}
+        </pre>
+      )}
     </details>
   );
 });
@@ -299,6 +301,15 @@ function useAgentElapsed(started_at: number, running: boolean, ended_at?: number
   }, [running]);
 
   return format_elapsed((running ? now : (ended_at ?? started_at)) - started_at);
+}
+
+/** JSON 工具结果便于人工检查，非 JSON 正文保持模型实际收到的原文。 */
+function format_tool_output(output: string): string {
+  try {
+    return JSON.stringify(JSON.parse(output) as unknown, null, 2) ?? output;
+  } catch {
+    return output;
+  }
 }
 
 /** 轮次耗时使用固定紧凑格式，跨语言文案只负责包裹该稳定数值。 */

@@ -599,6 +599,7 @@ describe("AgentService", () => {
           id: "tool-1",
           status: "running",
           toolName: "query_project_items",
+          output: null,
         }),
       }),
     );
@@ -622,6 +623,7 @@ describe("AgentService", () => {
         id: "tool-1",
         toolName: "query_project_items",
         status: "success",
+        output: expect.stringContaining('"results"'),
         createdAt: expect.any(Number),
       },
       {
@@ -629,6 +631,7 @@ describe("AgentService", () => {
         id: "tool-2",
         toolName: "read_skill",
         status: "success",
+        output: expect.stringContaining("完整正文。"),
         createdAt: expect.any(Number),
       },
       {
@@ -650,7 +653,7 @@ describe("AgentService", () => {
     expect(published_tool_entries).toHaveLength(4);
     expect(
       published_tool_entries.every(
-        (entry) => !("args" in entry) && !("details" in entry) && !("output" in entry),
+        (entry) => !("args" in entry) && !("details" in entry) && "output" in entry,
       ),
     ).toBe(true);
     const published_events = publish.mock.calls.map(([, payload]) => payload);
@@ -1162,16 +1165,19 @@ describe("AgentService", () => {
           kind: "tool_call",
           id: "auto-root",
           status: "success",
+          output: expect.stringContaining("执行术语审校。"),
         }),
         expect.objectContaining({
           kind: "tool_call",
           id: "auto-reference",
           status: "success",
+          output: expect.stringContaining("完整正文。"),
         }),
         expect.objectContaining({
           kind: "tool_call",
           id: "manual-before-invocation",
           status: "error",
+          output: expect.stringContaining("当前会话不可读取"),
         }),
       ]),
     );
@@ -1183,6 +1189,7 @@ describe("AgentService", () => {
         kind: "tool_call",
         id: "manual-after-invocation",
         status: "success",
+        output: expect.stringContaining("执行语料检索。"),
       }),
     );
   });

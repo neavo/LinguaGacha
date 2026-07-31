@@ -12,7 +12,7 @@
 - Agent 公开入口固定为 `GET /api/agent/snapshot` 与 `POST /api/agent/message|stop|reset`；消息保留有序 text / skill parts，snapshot 与 `agent.session_event` 共同恢复会话，条目按同 id 原位覆盖，整段清空使用 `snapshot_seed`。`AgentService` 的公开 `entries` 完整保留本次 reset 以来的 UI 时间线；snapshot 的 `contextUsage` 与事件 `context_usage` 从内存 `AgentSession` 压缩后的模型可见历史投影 token 用量、模型窗口与最大输出长度。
 - 通用质量规则切片通过 `POST /api/quality/rules/query` 读取、`POST /api/quality/rules/update` 写入，分析术语导入等复合 workflow 保留独立命令；`POST /api/proofreading/query` 统一分发校对查询，`POST /api/proofreading/items/update` 只批量更新 `dst` / `name_dst`，清空、状态与替换使用各自命令。
 - 模型管理 API 只负责配置 CRUD；任务入口通过 `GET /api/models/selection` 读取窄选项，通过 `POST /api/models/select` 按 `translation`、`analysis` 或 `agent` 用途更新单项选择。选项只携带显示身份与非敏感的 Agent 容量，不公开密钥、请求覆盖或生成参数。
-- `user_message` 的 `createdAt` / `endedAt` 是轮次起止事实，运行中 `endedAt` 为 `null`，任一终止路径都原位封口；`assistant_message` 保留有序 text / thinking parts，但不公开空白或脱敏思考、签名和供应商连续性元数据；`tool_call` 只公开名称与状态，不公开参数、输出或第三方结果包装，完整工具输出只留在 SDK 模型上下文。
+- `user_message` 的 `createdAt` / `endedAt` 是轮次起止事实，运行中 `endedAt` 为 `null`，任一终止路径都原位封口；`assistant_message` 保留有序 text / thinking parts，但不公开空白或脱敏思考、签名和供应商连续性元数据；`tool_call` 公开名称、状态和模型实际收到的文本输出（运行中为 `null`），不公开参数或第三方结果包装。
 - `LogManager` 以 `LogContent` 判别联合保存单一正文事实：文件和控制台从它生成纯文本投影，`log.appended` 只携带轻量预览，`/api/logs/detail` 只查询当前进程结构化详情池且不回扫历史文件。
 - `/api/diagnostics/renderer-error` 只接收实际 renderer 异常摘要与白名单上下文并写入 `LogManager`，不改变项目、任务或设置事实。
 

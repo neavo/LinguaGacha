@@ -27,12 +27,13 @@ export type AgentContextUsage = JsonRecord & {
   maxTokens: number; // 当前对话冻结的单次输出上限
 };
 
-/** 工具条目只公开执行状态；完整输出仅留在 SDK 模型上下文。 */
+/** 工具条目保留原始工具名与模型实际收到的完整文本输出；参数不进入公开会话。 */
 export type AgentToolEntry = JsonRecord & {
   kind: "tool_call";
   id: string;
   toolName: string;
   status: "running" | "success" | "error";
+  output: string | null;
   createdAt: number;
 };
 
