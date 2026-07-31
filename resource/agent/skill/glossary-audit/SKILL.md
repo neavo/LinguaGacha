@@ -1,6 +1,6 @@
 ---
 name: glossary-audit
-description: 用于审查、整理、修正、去重、优化或维护当前工程中的术语数据
+description: 用于审查、整理、修正、去重、优化或维护当前工程中的术语数据；不用于仅查看、计数或检索术语
 ---
 
 # 术语表审校
@@ -121,7 +121,7 @@ description: 用于审查、整理、修正、去重、优化或维护当前工�
 ### 3. 按需读取原文证据
 
 - 零出现条目不查询正文；以完整出现次数和关系事实作为证据。
-- 按 `case_sensitive` 分组，用 `query_project_items` 的 `search` 模式、`scope: src` 和去重后的 `patterns` 查询；首次查询显式使用 `limit: 20`。
+- 按 `case_sensitive` 分组并去重；用 `query_project_items` 的 `search` 模式和 `scope: src` 查询，遵守 `patterns` 参数说明，超过上限时拆成多次直接调用；每批首次查询显式使用 `limit: 20`。
 - 按上述语境证据要求决定是否继续使用 `cursor`；每次继续前先明确尚待解决的问题，问题解决后立即停止。
 
 ### 4. 生成变更方案

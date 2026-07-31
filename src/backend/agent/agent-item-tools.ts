@@ -52,6 +52,7 @@ const QUERY_PROJECT_ITEMS_PARAMETERS = Type.Union(
         patterns: Type.Array(Type.String(), {
           minItems: 1,
           maxItems: MAX_QUERY_PATTERNS,
+          description: `patterns 必须包含 1 至 ${MAX_QUERY_PATTERNS.toString()} 个非空字面量；超过上限时直接多次调用 query_project_items。`,
         }),
         scope: Type.Optional(
           Type.Union([Type.Literal("src"), Type.Literal("dst"), Type.Literal("all")]),
