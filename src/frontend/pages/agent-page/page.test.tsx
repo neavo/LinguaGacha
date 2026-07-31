@@ -131,6 +131,16 @@ describe("AgentPage", () => {
     expect(view.querySelectorAll(".agent-page__suggestion")).toHaveLength(0);
   });
 
+  it("术语 skill 未加载时不展示不可提交的快捷入口", async () => {
+    const view = await render_page({ entries: [], skills: [] });
+
+    expect(
+      [...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion")].map(
+        (button) => button.textContent,
+      ),
+    ).toEqual(["介绍一下你的能力"]);
+  });
+
   it("把当前上下文用量装配到底栏", async () => {
     const view = await render_page({
       contextUsage: { tokens: 31_488, contextWindow: 288_000, maxTokens: 32_000 },

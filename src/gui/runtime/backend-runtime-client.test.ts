@@ -153,6 +153,23 @@ describe("BackendRuntimeClient", () => {
     expect(client.isStopped()).toBe(true);
   });
 
+  it("error 先于 exit 到达时立即关闭请求入口且只上报一次", async () => {
+    const { client, on_unexpected_exit } = create_client();
+    const start = client.start();
+    const worker = get_worker();
+    worker.emit("message", { type: "ready", data: READY } satisfies BackendRuntimeWorkerMessage);
+    await start;
+    const language = client.readAppLanguage();
+
+    worker.emit("error", new Error("worker error"));
+
+    await expect(language).rejects.toThrow("worker error");
+    await expect(client.readAppLanguage()).rejects.toThrow("Backend runtime worker 未启动");
+    worker.emit("exit", 1);
+    expect(on_unexpected_exit).toHaveBeenCalledTimes(1);
+    expect(client.isStopped()).toBe(true);
+  });
+
   it("启动失败只拒绝 start，不误报 ready 后异常退出", async () => {
     const { client, on_unexpected_exit } = create_client();
     const start = client.start();

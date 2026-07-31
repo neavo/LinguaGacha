@@ -106,4 +106,25 @@ describe("Compute worker entry", () => {
       }),
     );
   });
+
+  it("完成后的迟到取消不污染后续任务状态", async () => {
+    const harness = install_worker_threads_mock();
+    const task = create_task();
+    const run_compute_worker_task = vi.fn(async () => ({ phase: "current" }));
+    vi.doMock("./compute-worker-task", () => ({ run_compute_worker_task }));
+
+    await import("./compute-worker-entry");
+    harness.emit({ id: "reused-id", type: "run", task });
+    await flush_worker_microtasks();
+    harness.emit({ id: "reused-id", type: "cancel" });
+    harness.emit({ id: "reused-id", type: "run", task });
+    await flush_worker_microtasks();
+
+    expect(run_compute_worker_task).toHaveBeenCalledTimes(2);
+    expect(harness.postMessage).toHaveBeenLastCalledWith({
+      id: "reused-id",
+      ok: true,
+      data: { phase: "current" },
+    });
+  });
 });

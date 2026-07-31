@@ -334,8 +334,9 @@ function normalize_limit(limit: number | undefined): number {
 /** 游标是当前稳定结果集的非负十进制偏移。 */
 function parse_cursor(cursor: string | undefined): number {
   if (cursor === undefined || cursor === "") return 0;
+  if (!/^\d+$/u.test(cursor)) throw new Error("cursor 无效");
   const parsed = Number(cursor);
-  if (!Number.isInteger(parsed) || parsed < 0) throw new Error("cursor 无效");
+  if (!Number.isSafeInteger(parsed)) throw new Error("cursor 无效");
   return parsed;
 }
 
