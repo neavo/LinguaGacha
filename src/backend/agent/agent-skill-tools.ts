@@ -1,5 +1,5 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
+import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import type { JsonRecord } from "../../domain/json";
 import { JsonTool } from "../../shared/utils/json-tool";
@@ -26,20 +26,19 @@ type AgentSkillResource = {
 export function create_agent_skill_tools(
   skills: readonly AgentSkillDefinition[],
   is_explicitly_invoked: (name: string) => boolean,
-): AgentTool[] {
+): ToolDefinition[] {
   if (skills.length === 0) return [];
   return [
-    {
+    defineTool({
       name: "read_skill",
       label: "读技能",
       description: "读取可自动调用或当前会话已显式引用 skill 的 SKILL.md 与参考正文。",
       parameters: READ_SKILL_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
-        const request = params as { path: string };
-        const resource = resolve_skill_resource(skills, is_explicitly_invoked, request.path);
+        const resource = resolve_skill_resource(skills, is_explicitly_invoked, params.path);
         if (resource === null) {
-          throw new Error(`技能文件不存在或当前会话不可读取：${request.path}`);
+          throw new Error(`技能文件不存在或当前会话不可读取：${params.path}`);
         }
         return tool_result({
           skill: resource.skill,
@@ -47,7 +46,7 @@ export function create_agent_skill_tools(
           content: resource.content,
         });
       },
-    },
+    }),
   ];
 }
 

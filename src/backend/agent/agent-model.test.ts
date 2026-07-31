@@ -1,45 +1,45 @@
-import type { StreamFn } from "@earendil-works/pi-agent-core";
-import type { Context, SimpleStreamOptions } from "@earendil-works/pi-ai";
+import { InMemoryCredentialStore, type Context, type ProviderStreams } from "@earendil-works/pi-ai";
+import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord } from "../../domain/json";
-import { resolve_agent_model, resolve_pi_api } from "./agent-model";
+import { register_agent_model } from "./agent-model";
 
-const stream_mock = vi.hoisted(() => vi.fn<StreamFn>(() => ({}) as never));
+const api_mocks = vi.hoisted(() => ({
+  streamSimple: vi.fn<ProviderStreams["streamSimple"]>(() => ({}) as never),
+}));
 
 vi.mock("@earendil-works/pi-ai/api/openai-completions.lazy", () => ({
-  openAICompletionsApi: () => ({ streamSimple: stream_mock }),
+  openAICompletionsApi: () => ({ streamSimple: api_mocks.streamSimple }),
 }));
 
 const TEST_USER_AGENT = "LinguaGacha/Test";
 
 beforeEach(() => {
-  stream_mock.mockClear();
+  api_mocks.streamSimple.mockClear();
 });
 
-describe("Agent 模型桥接", () => {
+describe("Agent 模型注册", () => {
   it.each([
-    ["OpenAI", "openai", "openai-completions"],
-    ["SakuraLLM", "openai-compatible", "openai-completions"],
-    ["Anthropic", "anthropic", "anthropic-messages"],
-    ["Google", "google", "google-generative-ai"],
-  ] as const)("把 %s 映射到 pi API", (api_format, provider, api) => {
-    expect(resolve_pi_api(api_format)).toMatchObject({ provider, api });
-  });
+    ["OpenAI", "openai", "openai-completions", { supportsDeveloperRole: false }],
+    ["SakuraLLM", "openai-compatible", "openai-completions", { supportsDeveloperRole: false }],
+    ["Anthropic", "anthropic", "anthropic-messages", undefined],
+    ["Google", "google", "google-generative-ai", undefined],
+  ] as const)(
+    "把 %s 注册为对应 Provider、API 与 developer 角色能力",
+    async (api_format, provider, api, compat) => {
+      const runtime = await create_model_runtime();
+      const resolved = register_agent_model(runtime, build_config(api_format), TEST_USER_AGENT);
 
-  it.each([
-    ["OpenAI", { supportsDeveloperRole: false }],
-    ["SakuraLLM", { supportsDeveloperRole: false }],
-    ["Anthropic", undefined],
-    ["Google", undefined],
-  ] as const)("为 %s Agent 设置对应 developer 消息角色能力", (api_format, compat) => {
-    expect(resolve_agent_model(build_config(api_format), TEST_USER_AGENT).model.compat).toEqual(
-      compat,
-    );
-  });
+      expect(resolved.model).toMatchObject({ provider, api, compat });
+      expect(runtime.getModels(provider)).toEqual([resolved.model]);
+    },
+  );
 
-  it("统一归一模型事实并固定 Agent 容量，不注入 OneShot 小参数", async () => {
-    const resolved = resolve_agent_model(
+  it("注册统一模型事实，并在 streamSimple 强制 LinguaGacha 请求策略", async () => {
+    const runtime = await create_model_runtime();
+    const resolved = register_agent_model(
+      runtime,
       build_config("OpenAI", {
         api_key: " secret-1 \nsecret-2",
         model_id: "kimi-k3",
@@ -67,21 +67,67 @@ describe("Agent 模型桥接", () => {
       reasoning: true,
       contextWindow: 256_000,
       maxTokens: 64_000,
+    });
+    const provider_config = runtime.getRegisteredProviderConfig("openai");
+    expect(provider_config).toMatchObject({
+      api: "openai-completions",
+      apiKey: "secret-1",
+      authHeader: false,
+      headers: {
+        "User-Agent": TEST_USER_AGENT,
+        "X-Test": "yes",
+        "X-Number": "7",
+      },
+      models: [
+        expect.objectContaining({
+          id: "kimi-k3",
+          contextWindow: 256_000,
+          maxTokens: 64_000,
+        }),
+      ],
+    });
+    expect(await runtime.getAuth(resolved.model)).toMatchObject({
+      auth: {
+        apiKey: "secret-1",
+        headers: {
+          "User-Agent": TEST_USER_AGENT,
+          "X-Test": "yes",
+          "X-Number": "7",
+        },
+      },
+    });
+    if (provider_config?.streamSimple === undefined) {
+      throw new Error("Agent 缺少 provider streamSimple");
+    }
+
+    const signal = new AbortController().signal;
+    const context: Context = { messages: [] };
+    void provider_config.streamSimple(resolved.model, context, {
+      signal,
+      reasoning: "high",
+      timeoutMs: 5_000,
+      maxRetries: 3,
+      maxRetryDelayMs: 6_000,
+      headers: { "X-SDK-Injected": "yes" },
+    });
+
+    const options = api_mocks.streamSimple.mock.calls.at(-1)?.[2];
+    expect(options).toMatchObject({
+      signal,
+      reasoning: "high",
+      timeoutMs: 5_000,
+      maxRetries: 3,
+      maxRetryDelayMs: 6_000,
+      apiKey: "secret-1",
       headers: {
         "User-Agent": TEST_USER_AGENT,
         "X-Test": "yes",
         "X-Number": "7",
       },
     });
-
-    const options = read_stream_options(resolved);
-    expect(options).toMatchObject({ apiKey: "secret-1" });
-    expect(options).not.toHaveProperty("maxTokens");
+    expect(options?.headers).not.toHaveProperty("X-SDK-Injected");
     expect(options).not.toHaveProperty("temperature");
-    expect(options).not.toHaveProperty("top_p");
-    expect(options).not.toHaveProperty("presence_penalty");
-    expect(options).not.toHaveProperty("frequency_penalty");
-    if (options.onPayload === undefined) throw new Error("Agent 缺少 provider payload hook");
+    if (options?.onPayload === undefined) throw new Error("Agent 缺少 provider payload hook");
     const payload = await options.onPayload(
       { messages: [], reasoning_effort: "medium" },
       resolved.model,
@@ -90,7 +136,9 @@ describe("Agent 模型桥接", () => {
   });
 
   it("未知模型不猜测思考能力，禁用的扩展配置也不进入 Agent", async () => {
-    const resolved = resolve_agent_model(
+    const runtime = await create_model_runtime();
+    const resolved = register_agent_model(
+      runtime,
       build_config("OpenAI", {
         model_id: "unknown-model",
         thinking: { level: "HIGH" },
@@ -106,14 +154,20 @@ describe("Agent 模型桥接", () => {
 
     expect(resolved.model.reasoning).toBe(false);
     expect(resolved.thinkingLevel).toBe("high");
-    expect(resolved.model.headers).toEqual({ "User-Agent": TEST_USER_AGENT });
-    const options = read_stream_options(resolved);
-    if (options.onPayload === undefined) throw new Error("Agent 缺少 provider payload hook");
+    const provider_config = runtime.getRegisteredProviderConfig("openai");
+    expect(provider_config?.headers).toEqual({ "User-Agent": TEST_USER_AGENT });
+    if (provider_config?.streamSimple === undefined) {
+      throw new Error("Agent 缺少 provider streamSimple");
+    }
+    void provider_config.streamSimple(resolved.model, { messages: [] });
+    const options = api_mocks.streamSimple.mock.calls.at(-1)?.[2];
+    if (options?.onPayload === undefined) throw new Error("Agent 缺少 provider payload hook");
     expect(await options.onPayload({ messages: [] }, resolved.model)).toEqual({ messages: [] });
   });
 
-  it("Agent 使用统一 policy 归一后的模型 URL", () => {
-    const resolved = resolve_agent_model(build_config("SakuraLLM"), TEST_USER_AGENT);
+  it("Agent 使用统一 policy 归一后的模型 URL", async () => {
+    const runtime = await create_model_runtime();
+    const resolved = register_agent_model(runtime, build_config("SakuraLLM"), TEST_USER_AGENT);
 
     expect(resolved.model).toMatchObject({
       api: "openai-completions",
@@ -122,7 +176,7 @@ describe("Agent 模型桥接", () => {
     });
   });
 
-  it("Agent 只读取 agent 用途选择", () => {
+  it("Agent 只读取 agent 用途选择", async () => {
     const config = build_config("OpenAI");
     const models = config["models"];
     if (!Array.isArray(models)) throw new Error("测试配置缺少模型");
@@ -136,20 +190,18 @@ describe("Agent 模型桥接", () => {
       },
       ...models,
     ];
+    const runtime = await create_model_runtime();
 
-    expect(resolve_agent_model(config, TEST_USER_AGENT).model.id).toBe("test-model");
+    expect(register_agent_model(runtime, config, TEST_USER_AGENT).model.id).toBe("test-model");
   });
 });
 
-type ResolvedAgentModel = ReturnType<typeof resolve_agent_model>;
-
-/** 触发一次 Pi 桥接并读取交给底层 stream 的最终 options。 */
-function read_stream_options(resolved: ResolvedAgentModel): SimpleStreamOptions {
-  const context: Context = { messages: [] };
-  void resolved.stream(resolved.model, context, {});
-  const options = stream_mock.mock.calls.at(-1)?.[2] as SimpleStreamOptions | undefined;
-  if (options === undefined) throw new Error("Pi streamSimple 未收到 options");
-  return options;
+async function create_model_runtime(): Promise<ModelRuntime> {
+  return await ModelRuntime.create({
+    credentials: new InMemoryCredentialStore(),
+    modelsPath: null,
+    allowModelNetwork: false,
+  });
 }
 
 /** 构造只包含 Agent 模型解析所需字段的设置快照。 */

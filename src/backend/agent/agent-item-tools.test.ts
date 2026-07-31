@@ -43,7 +43,7 @@ function create_cache(
 }
 
 describe("Agent 正文工具", () => {
-  it("所有工具向模型公开 object 根 schema", () => {
+  it("所有工具公开 object 根 schema，并只串行写入口", () => {
     const tools = create_agent_item_tools({
       cache: create_cache(() => []),
       proofreading: {
@@ -55,6 +55,7 @@ describe("Agent 正文工具", () => {
       expect.objectContaining({ type: "object" }),
       expect.objectContaining({ type: "object" }),
     ]);
+    expect(tools.map((tool) => tool.executionMode)).toEqual([undefined, "sequential"]);
   });
 
   it("page 与 ids 按稳定顺序返回固定窄投影", () => {
@@ -146,7 +147,7 @@ describe("Agent 正文工具", () => {
       expected_section_revisions: { items: 2, proofreading: 3 },
     };
 
-    const result = await tool.execute("update", request);
+    const result = await tool.execute("update", request, undefined, undefined, undefined as never);
     expect(update_items).toHaveBeenCalledTimes(1);
     expect(update_items).toHaveBeenCalledWith(request, AGENT_PROOFREADING_UPDATE_SOURCE);
     expect(result.details).toMatchObject({
@@ -158,13 +159,19 @@ describe("Agent 正文工具", () => {
     });
 
     await expect(
-      tool.execute("duplicate", {
-        changes: [
-          { item_id: 1, dst: "A" },
-          { item_id: 1, name_dst: "B" },
-        ],
-        expected_section_revisions: revisions,
-      }),
+      tool.execute(
+        "duplicate",
+        {
+          changes: [
+            { item_id: 1, dst: "A" },
+            { item_id: 1, name_dst: "B" },
+          ],
+          expected_section_revisions: revisions,
+        },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
     ).rejects.toThrow("唯一正整数");
     expect(update_items).toHaveBeenCalledTimes(1);
   });

@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
-import type { AgentAssistantMessagePart, AgentEntry, AgentToolEntry } from "@shared/agent";
+import type { AgentAssistantMessagePart, AgentToolEntry } from "@shared/agent";
 import type { useAgentPageState as UseAgentPageStateFunction } from "./use-agent-page-state";
 
 type AgentPageState = ReturnType<typeof UseAgentPageStateFunction>;
@@ -34,6 +34,7 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
     t: (key: string, params?: Record<string, string>) => {
       if (key === "agent_page.action.new_task") return "新任务";
       if (key === "agent_page.confirm.new_task") return "是否确认开始新的对话任务 …?";
+      if (key === "agent_page.thinking_active") return "正在思考";
       if (key === "agent_page.status.running") return "正在处理";
       if (key === "agent_page.status.success") return "已完成";
       if (key === "agent_page.status.error") return "失败";
@@ -114,46 +115,55 @@ describe("AgentPage", () => {
     expect(scroll_into_view).not.toHaveBeenCalled();
   });
 
-  it("渲染模型流式 Markdown 与统一状态灯", async () => {
+  it("渲染模型流式 Markdown", async () => {
     const view = await render_page({ state: "running" });
 
     expect(view.querySelector("strong")?.textContent).toBe("变更方案");
-    const active_light = view.querySelector<HTMLElement>(".agent-status-light--active");
-    expect(active_light?.classList.contains("agent-status-light--running")).toBe(true);
-    expect(active_light?.getAttribute("aria-label")).toBe("正在处理");
     expect(view.querySelector(".agent-message__cursor")).toBeNull();
   });
 
-  it("任务运行期间始终显示底部活动灯", async () => {
-    const scenarios: AgentEntry[][] = [
-      [user_entry("user-1", [{ kind: "text", text: "开始" }], 0, null)],
-      [tool_entry("tool-success", "query_project_items", "success", "{}", 1)],
-      [tool_entry("tool-error", "query_project_items", "error", "失败", 1)],
-      [assistant_parts_entry("assistant-empty", [], false, 1)],
-    ];
-
-    for (const entries of scenarios) {
-      const view = await render_page({ state: "running", entries });
-      const active_lights = view.querySelectorAll(".agent-status-light--active");
-      expect(active_lights).toHaveLength(1);
-      expect(active_lights[0]?.parentElement?.classList.contains("agent-message__activity")).toBe(
-        true,
-      );
-    }
-  });
-
-  it("运行工具在自身位置和文本区底部同时显示活动灯", async () => {
+  it("运行工具在标题逐秒计时，完成后恢复工具名称", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(8_001);
     const view = await render_page({
       state: "running",
       entries: [tool_entry("tool-1", "query_project_items", "running", null, 1)],
     });
-    const active_lights = view.querySelectorAll(".agent-status-light--active");
+    const tool = view.querySelector<HTMLDetailsElement>(".agent-detail-entry--tool");
+    const timer = tool?.querySelector<HTMLElement>('[role="timer"]');
 
-    expect(active_lights).toHaveLength(2);
-    expect(active_lights[0]?.closest("summary")).not.toBeNull();
-    expect(
-      view.querySelector(".agent-message__activity .agent-status-light--active"),
-    ).not.toBeNull();
+    expect(tool?.querySelector("summary")?.textContent).toBe("query_project_items · 8s");
+    expect(timer?.getAttribute("aria-live")).toBe("off");
+    expect(tool?.querySelector(".agent-status-light--active")).not.toBeNull();
+    expect(view.querySelector(".agent-message__activity")).toBeNull();
+    await act(async () => vi.advanceTimersByTime(1_000));
+    expect(tool?.querySelector("summary")?.textContent).toBe("query_project_items · 9s");
+
+    await render_page({
+      state: "running",
+      entries: [tool_entry("tool-1", "query_project_items", "success", "{}", 1)],
+    });
+    expect(tool?.querySelector("summary")?.textContent).toBe("query_project_items");
+    expect(tool?.querySelector('[role="timer"]')).toBeNull();
+    expect(tool?.querySelector(".agent-status-light--success")).not.toBeNull();
+  });
+
+  it("并行工具乱序完成后仍为未完成项保留计时", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(8_001);
+    const view = await render_page({
+      state: "running",
+      entries: [
+        tool_entry("tool-running", "query_project_items", "running", null, 1),
+        tool_entry("tool-complete", "query_quality_rules", "success", "{}", 2),
+      ],
+    });
+    const tools = view.querySelectorAll<HTMLDetailsElement>(".agent-detail-entry--tool");
+
+    expect(tools[0]?.querySelector("summary")?.textContent).toBe("query_project_items · 8s");
+    expect(tools[0]?.querySelector(".agent-status-light--active")).not.toBeNull();
+    expect(tools[1]?.querySelector("summary")?.textContent).toBe("query_quality_rules");
+    expect(tools[1]?.querySelector(".agent-status-light--success")).not.toBeNull();
   });
 
   it("运行中逐秒更新长耗时，结束后冻结且不动态播报", async () => {
@@ -195,6 +205,8 @@ describe("AgentPage", () => {
   });
 
   it("默认折叠流式思考，展开状态在正文到达后保持", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(8_001);
     const view = await render_page({
       state: "running",
       entries: [
@@ -210,10 +222,12 @@ describe("AgentPage", () => {
     if (thinking === null) throw new Error("缺少思考块");
 
     expect(thinking.open).toBe(false);
-    expect(thinking.querySelector("summary")?.textContent).toBe("agent_page.thinking");
+    expect(thinking.querySelector("summary")?.textContent).toBe("正在思考 · 8s");
     expect(thinking.querySelector("pre")?.textContent).toBe("检查术语\n逐项核对");
     expect(thinking.querySelector("pre")?.tabIndex).toBe(0);
     expect(thinking.querySelector(".agent-status-light--active")).not.toBeNull();
+    await act(async () => vi.advanceTimersByTime(1_000));
+    expect(thinking.querySelector("summary")?.textContent).toBe("正在思考 · 9s");
     await act(async () => thinking.querySelector("summary")?.click());
 
     await render_page({
@@ -232,13 +246,11 @@ describe("AgentPage", () => {
     });
     const updated = view.querySelector<HTMLDetailsElement>(".agent-detail-entry--thinking");
     expect(updated?.open).toBe(true);
+    expect(updated?.querySelector("summary")?.textContent).toBe("agent_page.thinking");
     expect(updated?.querySelector("pre")?.textContent).toBe("检查术语\n逐项核对完成");
     expect(updated?.querySelector(".agent-status-light--success")).not.toBeNull();
     expect(view.querySelector("strong")?.textContent).toBe("结论");
-    expect(view.querySelectorAll(".agent-status-light--active")).toHaveLength(1);
-    expect(
-      view.querySelector(".agent-message__activity .agent-status-light--active"),
-    ).not.toBeNull();
+    expect(view.querySelector(".agent-status-light--active")).toBeNull();
   });
 
   it("空 assistant parts 不产生思考或正文块", async () => {

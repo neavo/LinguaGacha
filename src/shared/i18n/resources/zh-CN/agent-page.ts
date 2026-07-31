@@ -1,6 +1,7 @@
 export const zh_cn_agent_page = {
   title: "Agent",
   thinking: "思考过程",
+  thinking_active: "正在思考",
   diagram: { label: "图表", render_failed: "图表渲染失败，已显示 Mermaid 源码。" },
   image: { omitted: "图片已省略" },
   loading: "正在恢复会话 …",

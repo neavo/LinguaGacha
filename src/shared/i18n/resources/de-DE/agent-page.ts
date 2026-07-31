@@ -1,6 +1,7 @@
 export const de_de_agent_page = {
   title: "Agent",
   thinking: "Denkprozess",
+  thinking_active: "Denkt nach",
   diagram: {
     label: "Diagramm",
     render_failed: "Diagramm konnte nicht gerendert werden. Der Mermaid-Quelltext wird angezeigt.",
