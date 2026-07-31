@@ -2,6 +2,7 @@ import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { startTransition } from "react";
 
 import { useSidebar } from "@frontend/shadcn/sidebar";
+import { useI18n } from "@frontend/app/locale/locale-provider";
 import "@frontend/app/shell/app-titlebar.css";
 
 type AppTitlebarProps = {
@@ -9,6 +10,7 @@ type AppTitlebarProps = {
 };
 
 export function AppTitlebar(props: AppTitlebarProps): JSX.Element {
+  const { t } = useI18n();
   const { state, toggleSidebar } = useSidebar();
   const shell_info = window.desktopApp.shell; // 标题栏安全区统一来自 preload 暴露的桌面壳层信息，避免渲染层再猜平台细节
   const SidebarToggleIcon = state === "expanded" ? PanelLeftClose : PanelLeftOpen;
@@ -22,14 +24,16 @@ export function AppTitlebar(props: AppTitlebarProps): JSX.Element {
       <div className="topbar__content">
         <div className="topbar__left">
           <button
+            type="button"
             className="topbar__menu-button"
+            aria-label={t("app.aria.toggle_navigation")}
             onClick={() => {
               startTransition(() => {
                 toggleSidebar();
               });
             }}
           >
-            <SidebarToggleIcon size={18} />
+            <SidebarToggleIcon size={18} aria-hidden="true" />
           </button>
           <div className="topbar__brand">
             <strong className="font-medium">{props.title}</strong>

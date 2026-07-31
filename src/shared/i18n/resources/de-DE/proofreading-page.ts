@@ -25,7 +25,9 @@ export const de_de_proofreading_page = {
     drag: "Ziehen",
     status: "Status",
     source: "Quelle",
+    source_name: "Quellname",
     translation: "Übersetzung",
+    translation_name: "Übersetzungsname",
   },
   search: {
     placeholder: "Abfrage …",

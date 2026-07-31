@@ -234,16 +234,9 @@ describe("proofreading command planner", () => {
     });
   });
 
-  it("清空译文只提交目标 item_ids 并保留状态和重试计数事实给后端", () => {
+  it("清空译文只打包用户目标和 revision，由后端决定实际变化", () => {
     const plan = create_clear_translations_plan({
-      snapshot: create_test_snapshot([
-        create_test_item({
-          item_id: 1,
-          dst: "已有译文",
-          status: "PROCESSED",
-          retry_count: 3,
-        }),
-      ]),
+      section_revisions: { items: 4, proofreading: 2 },
       item_ids: [1],
     });
 
@@ -257,22 +250,6 @@ describe("proofreading command planner", () => {
         },
       },
     });
-  });
-
-  it("正文译文为空且姓名译文第 0 槽为空时不提交清空命令", () => {
-    const plan = create_clear_translations_plan({
-      snapshot: create_test_snapshot([
-        create_test_item({
-          item_id: 1,
-          dst: "",
-          name_dst: ["", "保留译名"],
-          status: "PROCESSED",
-        }),
-      ]),
-      item_ids: [1],
-    });
-
-    expect(plan).toBeNull();
   });
 
   it("设置翻译状态会在状态相同但仍有重试计数时提交清理命令", () => {

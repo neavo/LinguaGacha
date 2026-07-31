@@ -213,7 +213,7 @@ export function WorkbenchFileTable(props: WorkbenchFileTableProps): JSX.Element 
   return (
     <Card variant="table" className="workbench-page__table-card">
       <CardHeader className="sr-only">
-        <CardTitle>{t("workbench_page.title")}</CardTitle>
+        <CardTitle>{t("workbench_page.section.file_list")}</CardTitle>
       </CardHeader>
       <CardContent className="workbench-page__table-card-content">
         <AppTable

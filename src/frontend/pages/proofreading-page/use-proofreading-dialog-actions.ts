@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 
+import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
   create_update_items_plan,
@@ -96,7 +97,22 @@ export function useProofreadingDialogActions(
     async (row_id: string): Promise<void> => {
       const request_id = dialog_request_id_ref.current + 1;
       dialog_request_id_ref.current = request_id;
-      const target_item = (await options.read_items_by_row_ids([row_id]))[0];
+      let target_item: ProofreadingClientItem | undefined;
+      try {
+        target_item = (await options.read_items_by_row_ids([row_id]))[0];
+      } catch (error) {
+        if (dialog_request_id_ref.current === request_id) {
+          options.push_toast(
+            "error",
+            resolve_visible_error_message(
+              error,
+              options.t,
+              options.t("proofreading_page.feedback.refresh_failed"),
+            ),
+          );
+        }
+        return;
+      }
       if (target_item === undefined || dialog_request_id_ref.current !== request_id) {
         return;
       }

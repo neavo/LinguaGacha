@@ -33,6 +33,7 @@ export const de_de_text_replacement_page = {
   },
 
   feedback: {
+    load_failed: "Ersetzungsregeln konnten nicht geladen werden. Bitte später erneut versuchen.",
     save_failed: "Fehler beim Speichern der Ersetzungsseite.",
     import_failed: "Fehler beim Importieren der Ersetzungsregeln.",
 

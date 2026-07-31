@@ -30,6 +30,7 @@ export const zh_cn_text_replacement_page = {
   },
 
   feedback: {
+    load_failed: "替换规则加载失败，请稍后重试。",
     save_failed: "替换页保存失败",
     import_failed: "替换页导入失败",
 

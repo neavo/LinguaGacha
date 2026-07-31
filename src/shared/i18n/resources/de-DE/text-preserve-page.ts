@@ -47,6 +47,8 @@ export const de_de_text_preserve_page = {
   },
 
   feedback: {
+    load_failed:
+      "Texterhaltungsregeln konnten nicht geladen werden. Bitte später erneut versuchen.",
     preset_name_required: "Name der Voreinstellung darf nicht leer sein",
 
     default_preset_cleared: "Standard-Voreinstellung gelöscht …",

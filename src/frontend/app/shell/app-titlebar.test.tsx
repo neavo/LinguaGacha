@@ -10,6 +10,10 @@ const sidebar_mock = vi.hoisted(() => ({
   toggle_sidebar: vi.fn(),
 }));
 
+vi.mock("@frontend/app/locale/locale-provider", () => ({
+  useI18n: () => ({ t: (key: string) => key }),
+}));
+
 vi.mock("@frontend/shadcn/sidebar", () => ({
   useSidebar: () => ({
     state: sidebar_mock.state,
@@ -50,7 +54,9 @@ describe("AppTitlebar", () => {
 
     expect(container.querySelector("header")?.dataset.titlebarControlSide).toBe("right");
     expect(container.querySelector("strong")?.textContent).toBe("LinguaGacha");
-    const toggle_button = container.querySelector<HTMLButtonElement>("button");
+    const toggle_button = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="app.aria.toggle_navigation"]',
+    );
     if (toggle_button === null) {
       throw new Error("缺少侧栏切换按钮。");
     }

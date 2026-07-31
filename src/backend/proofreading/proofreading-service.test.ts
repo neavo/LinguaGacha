@@ -575,27 +575,29 @@ describe("ProofreadingService", () => {
   });
 
   it("正文译文已空但姓名译文非空时清空仍会写入", async () => {
-    const { database, service, lg_path, publisher } = create_service();
+    const { database, service, lg_path } = create_service();
     database.set_items(lg_path, [create_project_item({ dst: "", name_dst: ["", "保留译名"] })]);
 
-    await service.clear_translations({
+    const ack = await service.clear_translations({
       item_ids: [1],
       expected_section_revisions: { items: 0, proofreading: 0 },
     });
 
+    expect(ack).toMatchObject({
+      accepted: true,
+      changes: [
+        {
+          items: {
+            payloadMode: "field-patch",
+            changedIds: [1],
+            fieldPatch: { dst: "", name_dst: null },
+          },
+        },
+      ],
+    });
     expect(database.get_all_items(lg_path)).toEqual([
       create_project_item({ dst: "", name_dst: null }),
     ]);
-    expect(publisher.publish_project_change).toHaveBeenCalledWith(
-      expect.objectContaining({
-        items: expect.objectContaining({
-          fieldPatch: {
-            dst: "",
-            name_dst: null,
-          },
-        }),
-      }),
-    );
   });
 
   it("设置翻译状态只改 status 并清除重试计数", async () => {

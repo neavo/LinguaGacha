@@ -47,6 +47,7 @@ export const en_us_text_preserve_page = {
   },
 
   feedback: {
+    load_failed: "Failed to load text preservation rules. Please try again later.",
     preset_name_required: "Preset name cannot be empty",
 
     default_preset_cleared: "Default preset cleared …",

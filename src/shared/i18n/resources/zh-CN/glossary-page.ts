@@ -29,6 +29,7 @@ export const zh_cn_glossary_page = {
   },
 
   feedback: {
+    load_failed: "术语表加载失败，请稍后重试。",
     save_failed: "术语表保存失败",
     import_failed: "术语表导入失败",
 

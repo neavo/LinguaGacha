@@ -25,14 +25,3 @@ export async function query_quality_rules(
     rule_type,
   });
 }
-
-/**
- * 写操作复用工作台快照中的顶层 revision，不能以规则局部 revision 代替乐观锁。
- */
-export async function query_quality_rule_section_revisions(): Promise<QualityRuleSectionRevisions> {
-  const response = await api_fetch<{ sectionRevisions?: QualityRuleSectionRevisions }>(
-    "/api/workbench/snapshot",
-    {},
-  );
-  return response.sectionRevisions ?? {};
-}

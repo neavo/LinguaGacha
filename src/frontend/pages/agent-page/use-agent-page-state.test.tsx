@@ -339,6 +339,69 @@ describe("useAgentPageState", () => {
     });
   });
 
+  it("发送 ack 晚于 SSE 时先应用 ack 再重放增量", async () => {
+    let resolve_send!: (value: unknown) => void;
+    desktop_api_mocks.api_fetch.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolve_send = resolve;
+        }),
+    );
+    let latest!: ReturnType<typeof useAgentPageState>;
+    await render_probe(() => {
+      latest = useAgentPageState();
+    });
+    await wait_for(() => expect(latest.loading).toBe(false));
+
+    let result!: Promise<boolean>;
+    await act(async () => {
+      result = latest.send([{ kind: "text", text: "继续" }]);
+      await Promise.resolve();
+    });
+    await act(async () => {
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "entry_upsert",
+        entry: assistant_entry("assistant-2", "SSE 新消息", false, 2),
+      });
+      resolve_send({ state: "running", entries: [], skills: [] });
+      await result;
+    });
+
+    expect(latest.state).toBe("running");
+    expect(latest.entries).toEqual([assistant_entry("assistant-2", "SSE 新消息", false, 2)]);
+  });
+
+  it("同一帧重复发送只受理第一个请求", async () => {
+    let resolve_send!: (value: unknown) => void;
+    desktop_api_mocks.api_fetch.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolve_send = resolve;
+        }),
+    );
+    let latest!: ReturnType<typeof useAgentPageState>;
+    await render_probe(() => {
+      latest = useAgentPageState();
+    });
+    await wait_for(() => expect(latest.loading).toBe(false));
+
+    let first!: Promise<boolean>;
+    let second!: Promise<boolean>;
+    await act(async () => {
+      first = latest.send([{ kind: "text", text: "第一次" }]);
+      second = latest.send([{ kind: "text", text: "第二次" }]);
+      await Promise.resolve();
+    });
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledOnce();
+    await expect(second).resolves.toBe(false);
+    await act(async () => {
+      resolve_send({ state: "running", entries: [], skills: [] });
+      await first;
+    });
+    await expect(first).resolves.toBe(true);
+  });
+
   it("模型失败与发送失败都保持错误态，发送失败返回 false", async () => {
     desktop_api_mocks.api_fetch.mockRejectedValue(new Error("offline"));
     let latest!: ReturnType<typeof useAgentPageState>;
@@ -357,6 +420,55 @@ describe("useAgentPageState", () => {
       accepted = await latest.send([{ kind: "text", text: "重试" }]);
     });
     expect(accepted).toBe(false);
+    expect(latest.error).toBe(true);
+  });
+
+  it("停止成功后应用空闲快照", async () => {
+    desktop_api_mocks.api_get.mockResolvedValue({
+      state: "running",
+      entries: [assistant_entry("assistant-1", "处理中", false, 1)],
+      skills: [],
+    });
+    desktop_api_mocks.api_fetch.mockResolvedValue({
+      state: "idle",
+      entries: [assistant_entry("assistant-1", "已停止", true, 1)],
+      skills: [],
+    });
+    let latest!: ReturnType<typeof useAgentPageState>;
+    await render_probe(() => {
+      latest = useAgentPageState();
+    });
+    await wait_for(() => expect(latest.loading).toBe(false));
+
+    await act(async () => {
+      await latest.stop();
+    });
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/stop");
+    expect(latest.state).toBe("idle");
+    expect(latest.entries).toEqual([assistant_entry("assistant-1", "已停止", true, 1)]);
+  });
+
+  it("停止失败时保留运行快照并显示错误态", async () => {
+    desktop_api_mocks.api_get.mockResolvedValue({
+      state: "running",
+      entries: [assistant_entry("assistant-1", "处理中", false, 1)],
+      skills: [],
+    });
+    desktop_api_mocks.api_fetch.mockRejectedValue(new Error("offline"));
+    let latest!: ReturnType<typeof useAgentPageState>;
+    await render_probe(() => {
+      latest = useAgentPageState();
+    });
+    await wait_for(() => expect(latest.loading).toBe(false));
+    const previous_entries = latest.entries;
+
+    await act(async () => {
+      await latest.stop();
+    });
+
+    expect(latest.state).toBe("running");
+    expect(latest.entries).toEqual(previous_entries);
     expect(latest.error).toBe(true);
   });
 

@@ -41,6 +41,9 @@ export function useAgentPageState(): UseAgentPageState {
   const [error, set_error] = useState(false);
   const [resetting, set_resetting] = useState(false);
   const request_failed_ref = useRef(false); // 重连只清除传输错误，不能吞掉尚未重试的命令失败
+  // 命令互斥必须同步生效；否则同一帧的重复调用会在 React 提交状态前穿透 UI 禁用态。
+  const command_event_queue_ref = useRef<AgentSessionEvent[] | null>(null);
+  const send_in_flight_ref = useRef(false);
 
   useEffect(() => {
     let disposed = false;
@@ -87,7 +90,9 @@ export function useAgentPageState(): UseAgentPageState {
               set_error(true);
               return;
             }
-            if (syncing) pending_events.push(agent_event);
+            const command_events = command_event_queue_ref.current;
+            if (command_events !== null) command_events.push(agent_event);
+            else if (syncing) pending_events.push(agent_event);
             else set_snapshot((current) => apply_agent_event(current, agent_event));
           } catch {
             set_error(true);
@@ -113,43 +118,78 @@ export function useAgentPageState(): UseAgentPageState {
     };
   }, []);
 
+  const begin_command = (): AgentSessionEvent[] | null => {
+    if (command_event_queue_ref.current !== null) return null;
+    const events: AgentSessionEvent[] = [];
+    command_event_queue_ref.current = events;
+    return events;
+  };
+
+  const finish_command = (
+    events: AgentSessionEvent[],
+    acknowledged_snapshot?: AgentSessionSnapshot,
+  ): void => {
+    if (command_event_queue_ref.current !== events) return;
+    command_event_queue_ref.current = null;
+    // HTTP ack 可能晚于对应 SSE；先应用 ack，再按真实到达顺序重放事件，禁止状态倒退。
+    if (acknowledged_snapshot !== undefined) {
+      set_snapshot(replay_agent_events(normalize_snapshot(acknowledged_snapshot), events));
+      return;
+    }
+    if (events.length > 0) {
+      set_snapshot((current) => replay_agent_events(current, events));
+    }
+  };
+
   const send = async (parts: readonly AgentUserMessagePart[]): Promise<boolean> => {
-    if (snapshot.state === "running") return false;
+    if (snapshot.state === "running" || send_in_flight_ref.current) return false;
+    const command_events = begin_command();
+    if (command_events === null) return false;
+    send_in_flight_ref.current = true;
     request_failed_ref.current = false;
     set_error(false);
     try {
       const next = await api_fetch<AgentSessionSnapshot>("/api/agent/message", {
         parts,
       });
-      set_snapshot(normalize_snapshot(next));
+      finish_command(command_events, next);
       return true;
     } catch {
+      finish_command(command_events);
       request_failed_ref.current = true;
       set_error(true);
       return false;
+    } finally {
+      send_in_flight_ref.current = false;
     }
   };
 
   const stop = async (): Promise<void> => {
     if (snapshot.state !== "running") return;
+    const command_events = begin_command();
+    if (command_events === null) return;
     try {
       const next = await api_fetch<AgentSessionSnapshot>("/api/agent/stop");
-      set_snapshot(normalize_snapshot(next));
+      finish_command(command_events, next);
     } catch {
+      finish_command(command_events);
       request_failed_ref.current = true;
       set_error(true);
     }
   };
 
   const reset = async (): Promise<boolean> => {
+    const command_events = begin_command();
+    if (command_events === null) return false;
     request_failed_ref.current = false;
     set_error(false);
     set_resetting(true);
     try {
       const next = await api_fetch<AgentSessionSnapshot>("/api/agent/reset");
-      set_snapshot(normalize_snapshot(next));
+      finish_command(command_events, next);
       return true;
     } catch {
+      finish_command(command_events);
       request_failed_ref.current = true;
       set_error(true);
       return false;
@@ -169,6 +209,14 @@ export function useAgentPageState(): UseAgentPageState {
     stop,
     reset,
   };
+}
+
+/** 按接收顺序重放命令期间积压的 SSE，保持条目覆盖与会话状态语义一致。 */
+function replay_agent_events(
+  snapshot: AgentSessionSnapshot,
+  events: readonly AgentSessionEvent[],
+): AgentSessionSnapshot {
+  return events.reduce(apply_agent_event, snapshot);
 }
 
 /** 以完整条目按 id 覆盖；首次出现的位置就是后端确认的真实时序。 */

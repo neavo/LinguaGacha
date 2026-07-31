@@ -1,6 +1,9 @@
 import { LANGUAGE_DISPLAY_NAMES } from "../../../../domain/language";
 
 export const zh_cn_app = {
+  aria: {
+    toggle_navigation: "切换导航",
+  },
   metadata: {
     app_name: "LinguaGacha",
   },

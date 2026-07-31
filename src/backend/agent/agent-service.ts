@@ -275,7 +275,6 @@ export class AgentService {
    */
   private create_runtime(binding: AgentBinding, system_prompt: string): AgentRuntime {
     const resolved_model = resolve_agent_model(this.settings.read_setting(), this.user_agent);
-    const runtime = {} as AgentRuntime;
     const agent = new Agent({
       initialState: {
         systemPrompt: system_prompt,
@@ -299,14 +298,12 @@ export class AgentService {
       streamFn: resolved_model.stream,
       toolExecution: "sequential",
     });
-    runtime.agent = agent;
-    runtime.binding = binding;
-    runtime.unsubscribe = agent.subscribe((event) => {
-      if (this.runtime === runtime) {
+    const unsubscribe = agent.subscribe((event) => {
+      if (this.runtime?.agent === agent) {
         this.handle_agent_event(event);
       }
     });
-    return runtime;
+    return { agent, binding, unsubscribe };
   }
 
   /**
@@ -317,8 +314,7 @@ export class AgentService {
       await runtime.agent.prompt(text);
     } catch (error) {
       if (this.runtime === runtime && this.state !== "idle") {
-        this.log_manager.error("Agent 模型回合失败", { source: "agent", error });
-        this.publish_event({ type: "request_failed" });
+        this.report_request_failure(error);
       }
     } finally {
       if (this.runtime === runtime && this.state !== "idle") {
@@ -332,6 +328,15 @@ export class AgentService {
    * 将第三方 AgentEvent 收窄为按真实事件顺序追加的公开时间线。
    */
   private handle_agent_event(event: AgentEvent): void {
+    if (
+      event.type === "turn_end" &&
+      event.message.role === "assistant" &&
+      event.message.stopReason === "error" &&
+      this.state !== "idle"
+    ) {
+      this.report_request_failure(new Error(event.message.errorMessage ?? "Agent 模型回合失败"));
+      return;
+    }
     if (
       event.type === "message_update" &&
       (event.assistantMessageEvent.type === "text_delta" ||
@@ -368,6 +373,12 @@ export class AgentService {
         output: contentText(event.result.content, ""),
       });
     }
+  }
+
+  /** Pi 以终态消息承载模型错误；公开层只发布稳定事件并把诊断留在日志。 */
+  private report_request_failure(error: unknown): void {
+    this.log_manager.error("Agent 模型回合失败", { source: "agent", error });
+    this.publish_event({ type: "request_failed" });
   }
 
   /** 以 Pi 的完整 partial / final 消息校正公开 parts，同一模型消息始终原位覆盖。 */

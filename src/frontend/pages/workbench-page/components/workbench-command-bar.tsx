@@ -117,7 +117,7 @@ export function WorkbenchCommandBar(props: WorkbenchCommandBarProps): JSX.Elemen
   return (
     <CommandBar
       className="workbench-page__task-command-bar"
-      title={t("workbench_page.title")}
+      title={t("workbench_page.section.command_bar")}
       actions={
         <>
           <CommandBarGroup>

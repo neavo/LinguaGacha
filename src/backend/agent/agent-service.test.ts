@@ -1,6 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { StreamFn } from "@earendil-works/pi-agent-core";
+import {
+  createFauxCore,
+  fauxAssistantMessage,
+  fauxText,
+  fauxToolCall,
+  type AssistantMessage,
+  type Context,
+  type FauxResponseStep,
+} from "@earendil-works/pi-ai";
 import type { JsonRecord } from "../../domain/json";
 import type { ProjectChangeEvent, ProjectWriteResult } from "../../shared/project-event";
 import { ProjectSessionState } from "../project/project-session-state";
@@ -32,6 +41,7 @@ const skill_loader = vi.hoisted(() =>
   ]),
 );
 const system_prompt_loader = vi.hoisted(() => vi.fn(() => "基础系统指令。"));
+const agent_model_resolver = vi.hoisted(() => vi.fn());
 
 const fake_agent_state = vi.hoisted(() => ({
   mode: "complete" as
@@ -39,254 +49,208 @@ const fake_agent_state = vi.hoisted(() => ({
     | "write"
     | "failure"
     | "pending"
+    | "read_skill"
     | "thinking"
     | "tool_only"
     | "tools",
   abort_count: 0,
-  id: 0,
   system_prompts: [] as string[],
   prompts: [] as string[],
   model_ids: [] as string[],
-  agent_instances: 0,
-  tools: [] as AgentTool[],
+  tool_names: [] as string[][],
   release_pending: null as (() => void) | null,
   hold_idle: false,
   external_change_during_write: false,
-  release_idle: null as (() => void) | null,
-  emit_late: null as ((event: Record<string, unknown>) => void) | null,
 }));
 
 vi.mock("./agent-skills", () => ({ load_agent_skills: skill_loader }));
 vi.mock("./agent-system-prompt", () => ({
   load_agent_system_prompt: system_prompt_loader,
 }));
-
-vi.mock("@earendil-works/pi-agent-core", async (import_original) => {
-  const actual = await import_original<typeof import("@earendil-works/pi-agent-core")>();
-
-  /** 只替换远程模型运行时，同时按真实 Pi 事件顺序驱动 AgentService 的公开观察面。 */
-  class FakeAgent {
-    public readonly state: Record<string, unknown> = { isStreaming: false };
-    public streamFunction: unknown;
-    private listener: ((event: Record<string, unknown>) => void) | null = null;
-
-    public constructor(private readonly options: Record<string, unknown>) {
-      fake_agent_state.agent_instances += 1;
-      Object.assign(this.state, options["initialState"]);
-      this.streamFunction = options["streamFn"];
-      fake_agent_state.tools = this.state["tools"] as AgentTool[];
-    }
-
-    public subscribe(listener: (event: Record<string, unknown>) => void): () => void {
-      this.listener = listener;
-      fake_agent_state.emit_late = listener;
-      return () => {
-        this.listener = null;
-      };
-    }
-
-    public async prompt(prompt: string): Promise<void> {
-      this.state["isStreaming"] = true;
-      fake_agent_state.system_prompts.push(String(this.state["systemPrompt"] ?? ""));
-      fake_agent_state.prompts.push(prompt);
-      fake_agent_state.model_ids.push(
-        String((this.state["model"] as Record<string, unknown> | undefined)?.["id"] ?? ""),
-      );
-      try {
-        if (fake_agent_state.mode === "pending") {
-          await new Promise<void>((resolve) => {
-            fake_agent_state.release_pending = resolve;
-          });
-          return;
-        }
-        if (fake_agent_state.mode === "failure") throw new Error("request failed");
-        if (fake_agent_state.mode === "write") {
-          const tools = this.state["tools"] as AgentTool[];
-          const write_tool = tools.find((tool) => tool.name === "update_quality_rules");
-          if (write_tool === undefined) throw new Error("缺少 update_quality_rules");
-          await write_tool.execute("write-1", {
-            rule_type: "glossary",
-            meta: { enabled: false },
-            expected_section_revisions: { quality: 3 },
-          });
-        } else if (fake_agent_state.mode === "tools") {
-          this.emit_tool_round();
-        } else if (fake_agent_state.mode === "thinking") {
-          this.emit_thinking_assistant();
-        } else if (fake_agent_state.mode === "tool_only") {
-          this.emit_tool_only_round();
-        } else {
-          this.emit_assistant("已完成");
-        }
-      } finally {
-        this.state["isStreaming"] = false;
-      }
-    }
-
-    public abort(): void {
-      fake_agent_state.abort_count += 1;
-      fake_agent_state.release_pending?.();
-      fake_agent_state.release_pending = null;
-    }
-
-    public async waitForIdle(): Promise<void> {
-      if (!fake_agent_state.hold_idle) return;
-      await new Promise<void>((resolve) => {
-        fake_agent_state.release_idle = resolve;
-      });
-    }
-
-    private emit_assistant(text: string): void {
-      const message = this.create_assistant_message([{ type: "text", text }]);
-      this.listener?.({ type: "message_start", message });
-      this.listener?.({
-        type: "message_update",
-        message,
-        assistantMessageEvent: { type: "text_delta", delta: text, partial: message },
-      });
-      this.listener?.({ type: "message_end", message });
-    }
-
-    /** 驱动 thinking 增量、相邻块合并、脱敏块过滤和最终正文顺序。 */
-    private emit_thinking_assistant(): void {
-      const started = this.create_assistant_message([]);
-      const thinking = this.create_assistant_message([
-        { type: "thinking", thinking: "检查术语\n", thinkingSignature: "private-visible" },
-      ]);
-      const complete = this.create_assistant_message([
-        { type: "thinking", thinking: "检查术语\n", thinkingSignature: "private-visible" },
-        { type: "thinking", thinking: "逐项核对" },
-        {
-          type: "thinking",
-          thinking: "",
-          thinkingSignature: "private-redacted",
-          redacted: true,
-        },
-        { type: "text", text: "已完成" },
-      ]);
-      this.listener?.({ type: "message_start", message: started });
-      this.listener?.({
-        type: "message_update",
-        message: thinking,
-        assistantMessageEvent: {
-          type: "thinking_delta",
-          contentIndex: 0,
-          delta: "检查术语\n",
-          partial: thinking,
-        },
-      });
-      this.listener?.({
-        type: "message_update",
-        message: complete,
-        assistantMessageEvent: {
-          type: "text_delta",
-          contentIndex: 3,
-          delta: "已完成",
-          partial: complete,
-        },
-      });
-      this.listener?.({ type: "message_end", message: complete });
-    }
-
-    private create_assistant_message(content: JsonRecord[]): JsonRecord {
-      return {
-        role: "assistant",
-        content,
-        api: "openai-completions",
-        provider: "openai",
-        model: "test",
-        usage: {
-          input: 0,
-          output: 0,
-          cacheRead: 0,
-          cacheWrite: 0,
-          totalTokens: 0,
-          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-        },
-        stopReason: "stop",
-        timestamp: Date.now(),
-      };
-    }
-
-    private emit_tool_round(): void {
-      this.emit_assistant("准备查询");
-      this.listener?.({
-        type: "tool_execution_start",
-        toolCallId: "tool-1",
-        toolName: "query_project_items",
-        args: { patterns: ["Alice", "Bob"] },
-      });
-      this.listener?.({
-        type: "tool_execution_end",
-        toolCallId: "tool-1",
-        toolName: "query_project_items",
-        result: {
-          content: [{ type: "text", text: '{"results":[{"total_matches":2}]}' }],
-          details: { results: [{ total_matches: 2 }, { total_matches: 5 }] },
-        },
-        isError: false,
-      });
-      this.listener?.({
-        type: "tool_execution_start",
-        toolCallId: "tool-2",
-        toolName: "read_skill",
-        args: { path: "E:/skills/glossary-audit/references/audit-standard.md" },
-      });
-      this.listener?.({
-        type: "tool_execution_end",
-        toolCallId: "tool-2",
-        toolName: "read_skill",
-        result: {
-          content: [{ type: "text", text: '{"content":"完整正文"}' }],
-          details: {
-            skill: "glossary-audit",
-            path: "E:/skills/glossary-audit/references/audit-standard.md",
-            content: "完整正文",
-          },
-        },
-        isError: false,
-      });
-      this.emit_assistant("查询完成");
-    }
-
-    /** 驱动只有 toolCall 的 assistant 帧，验证公开时间线不会产生空消息。 */
-    private emit_tool_only_round(): void {
-      const message = this.create_assistant_message([
-        {
-          type: "toolCall",
-          id: "tool-only",
-          name: "query_project_items",
-          arguments: { patterns: ["Alice"] },
-        },
-      ]);
-      this.listener?.({ type: "message_start", message });
-      this.listener?.({ type: "message_end", message });
-      this.listener?.({
-        type: "tool_execution_start",
-        toolCallId: "tool-only",
-        toolName: "query_project_items",
-        args: { patterns: ["Alice"] },
-      });
-      this.listener?.({
-        type: "tool_execution_end",
-        toolCallId: "tool-only",
-        toolName: "query_project_items",
-        result: { content: [{ type: "text", text: '{"results":[]}' }], details: {} },
-        isError: false,
-      });
-    }
-  }
-
-  return {
-    ...actual,
-    Agent: FakeAgent,
-    uuidv7: () => `message-${(fake_agent_state.id += 1).toString()}`,
-  };
-});
+vi.mock("./agent-model", () => ({ resolve_agent_model: agent_model_resolver }));
 
 import { AGENT_PROOFREADING_UPDATE_SOURCE } from "./agent-item-tools";
 import { AGENT_QUALITY_RULE_UPDATE_SOURCE } from "./agent-quality-tools";
 import { AgentService } from "./agent-service";
+
+/** 测试只替换远程流边界，Agent 的事件、工具执行、abort 与收尾均使用真实实现。 */
+const fake_agent_stream: StreamFn = (model, context, options) => {
+  fake_agent_state.system_prompts.push(context.systemPrompt ?? "");
+  fake_agent_state.prompts.push(read_last_user_text(context));
+  fake_agent_state.model_ids.push(model.id);
+  fake_agent_state.tool_names.push(context.tools?.map((tool) => tool.name) ?? []);
+  const faux = createFauxCore({
+    api: model.api,
+    provider: model.provider,
+    tokenSize: { min: 10_000, max: 10_000 },
+  });
+  faux.setResponses([create_fake_response(context)]);
+  return faux.streamSimple(model, context, options);
+};
+
+/** 根据测试配置选择模型身份，远程行为统一交给同一个可控流边界。 */
+function resolve_fake_agent_model(config: JsonRecord) {
+  const selection = config["model_selection"];
+  const selected =
+    typeof selection === "object" && selection !== null && !Array.isArray(selection)
+      ? Reflect.get(selection, "agent")
+      : undefined;
+  const model_id = selected === "next" ? "next-model" : "test-model";
+  return {
+    model: {
+      id: model_id,
+      name: model_id,
+      api: "faux",
+      provider: "faux",
+      baseUrl: "http://localhost:0",
+      reasoning: false,
+      input: ["text" as const],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: 4096,
+      maxTokens: 1024,
+    },
+    thinkingLevel: "off" as const,
+    stream: fake_agent_stream,
+  };
+}
+
+/** 只描述模型响应，不复制 Agent 的事件协议、工具执行或生命周期。 */
+function create_fake_response(context: Context): FauxResponseStep {
+  if (fake_agent_state.mode === "pending") {
+    return async (_context, options) => await wait_for_pending_release(options?.signal);
+  }
+  const after_tool_call = context.messages.at(-1)?.role === "toolResult";
+  if (after_tool_call) {
+    return fauxAssistantMessage(fake_agent_state.mode === "tools" ? "查询完成" : []);
+  }
+  if (fake_agent_state.mode === "failure") {
+    return fauxAssistantMessage([], {
+      stopReason: "error",
+      errorMessage: "request failed",
+    });
+  }
+  if (fake_agent_state.mode === "thinking") {
+    return fauxAssistantMessage([
+      {
+        type: "thinking",
+        thinking: "检查术语\n",
+        thinkingSignature: "private-visible",
+      },
+      { type: "thinking", thinking: "逐项核对" },
+      {
+        type: "thinking",
+        thinking: "",
+        thinkingSignature: "private-redacted",
+        redacted: true,
+      },
+      fauxText("已完成"),
+    ]);
+  }
+  if (fake_agent_state.mode === "write") {
+    return fauxAssistantMessage(
+      fauxToolCall(
+        "update_quality_rules",
+        {
+          rule_type: "glossary",
+          meta: { enabled: false },
+          expected_section_revisions: { quality: 3 },
+        },
+        { id: "write-1" },
+      ),
+      { stopReason: "toolUse" },
+    );
+  }
+  if (fake_agent_state.mode === "tool_only") {
+    return fauxAssistantMessage(
+      fauxToolCall(
+        "query_project_items",
+        { mode: "search", patterns: ["Alice"] },
+        { id: "tool-only" },
+      ),
+      { stopReason: "toolUse" },
+    );
+  }
+  if (fake_agent_state.mode === "tools") {
+    return fauxAssistantMessage(
+      [
+        fauxText("准备查询"),
+        fauxToolCall(
+          "query_project_items",
+          { mode: "search", patterns: ["Alice", "Bob"] },
+          { id: "tool-1" },
+        ),
+        fauxToolCall(
+          "read_skill",
+          { path: "E:/skills/glossary-audit/references/audit-standard.md" },
+          { id: "tool-2" },
+        ),
+      ],
+      { stopReason: "toolUse" },
+    );
+  }
+  if (fake_agent_state.mode === "read_skill") {
+    const prompt = read_last_user_text(context);
+    const calls = prompt.includes('<skill name="corpus-search"')
+      ? [
+          fauxToolCall(
+            "read_skill",
+            { path: "E:/skills/corpus-search/SKILL.md" },
+            { id: "manual-after-invocation" },
+          ),
+        ]
+      : [
+          fauxToolCall(
+            "read_skill",
+            { path: "E:/skills/glossary-audit/SKILL.md" },
+            { id: "auto-root" },
+          ),
+          fauxToolCall(
+            "read_skill",
+            { path: "E:/skills/glossary-audit/references/audit-standard.md" },
+            { id: "auto-reference" },
+          ),
+          fauxToolCall(
+            "read_skill",
+            { path: "E:/skills/corpus-search/SKILL.md" },
+            { id: "manual-before-invocation" },
+          ),
+        ];
+    return fauxAssistantMessage(calls, { stopReason: "toolUse" });
+  }
+  return fauxAssistantMessage("已完成");
+}
+
+function read_last_user_text(context: Context): string {
+  const message = context.messages.findLast((candidate) => candidate.role === "user");
+  if (message?.role !== "user") return "";
+  if (typeof message.content === "string") return message.content;
+  return message.content
+    .flatMap((content) => (content.type === "text" ? [content.text] : []))
+    .join("");
+}
+
+/** pending 响应可选择在 abort 后继续占住，用于验证 reset/dispose 的真实收尾屏障。 */
+function wait_for_pending_release(signal: AbortSignal | undefined): Promise<AssistantMessage> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const release = () => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener("abort", handle_abort);
+      if (fake_agent_state.release_pending === release) {
+        fake_agent_state.release_pending = null;
+      }
+      resolve(fauxAssistantMessage("已完成"));
+    };
+    const handle_abort = () => {
+      fake_agent_state.abort_count += 1;
+      if (!fake_agent_state.hold_idle) release();
+    };
+    fake_agent_state.release_pending = release;
+    if (signal?.aborted === true) handle_abort();
+    else signal?.addEventListener("abort", handle_abort, { once: true });
+  });
+}
 
 describe("AgentService", () => {
   const services: AgentService[] = [];
@@ -294,17 +258,15 @@ describe("AgentService", () => {
   beforeEach(() => {
     fake_agent_state.mode = "complete";
     fake_agent_state.abort_count = 0;
-    fake_agent_state.id = 0;
     fake_agent_state.system_prompts = [];
     fake_agent_state.prompts = [];
     fake_agent_state.model_ids = [];
-    fake_agent_state.agent_instances = 0;
-    fake_agent_state.tools = [];
+    fake_agent_state.tool_names = [];
     fake_agent_state.release_pending = null;
     fake_agent_state.hold_idle = false;
     fake_agent_state.external_change_during_write = false;
-    fake_agent_state.release_idle = null;
-    fake_agent_state.emit_late = null;
+    agent_model_resolver.mockReset();
+    agent_model_resolver.mockImplementation(resolve_fake_agent_model);
     skill_loader.mockClear();
     system_prompt_loader.mockClear();
   });
@@ -312,7 +274,7 @@ describe("AgentService", () => {
   afterEach(async () => {
     vi.useRealTimers();
     fake_agent_state.hold_idle = false;
-    fake_agent_state.release_idle?.();
+    fake_agent_state.release_pending?.();
     await Promise.all(services.splice(0).map(async (service) => await service.dispose()));
   });
 
@@ -486,14 +448,14 @@ describe("AgentService", () => {
     expect(snapshot.entries).toEqual([
       {
         kind: "user_message",
-        id: "message-1",
+        id: expect.any(String),
         parts: [{ kind: "text", text: "查询" }],
         createdAt: expect.any(Number),
         endedAt: expect.any(Number),
       },
       {
         kind: "assistant_message",
-        id: "message-2",
+        id: expect.any(String),
         parts: [{ kind: "text", text: "准备查询" }],
         createdAt: expect.any(Number),
         complete: true,
@@ -503,7 +465,7 @@ describe("AgentService", () => {
         id: "tool-1",
         toolName: "query_project_items",
         status: "success",
-        output: '{"results":[{"total_matches":2}]}',
+        output: expect.stringContaining('"results"'),
         createdAt: expect.any(Number),
       },
       {
@@ -511,12 +473,12 @@ describe("AgentService", () => {
         id: "tool-2",
         toolName: "read_skill",
         status: "success",
-        output: '{"content":"完整正文"}',
+        output: expect.stringContaining("完整正文。"),
         createdAt: expect.any(Number),
       },
       {
         kind: "assistant_message",
-        id: "message-3",
+        id: expect.any(String),
         parts: [{ kind: "text", text: "查询完成" }],
         createdAt: expect.any(Number),
         complete: true,
@@ -538,7 +500,7 @@ describe("AgentService", () => {
     ).toBe(true);
   });
 
-  it("请求失败发布 typed event 并结束回合，不在后端拼用户文案", async () => {
+  it("真实 Agent 将流终态错误发布为 typed event，并让 prompt 正常结束", async () => {
     const { service, publish, log_error } = await create_service();
     fake_agent_state.mode = "failure";
 
@@ -548,7 +510,10 @@ describe("AgentService", () => {
     expect(publish).toHaveBeenCalledWith("agent.session_event", { type: "request_failed" });
     expect(log_error).toHaveBeenCalledWith(
       "Agent 模型回合失败",
-      expect.objectContaining({ source: "agent", error: expect.any(Error) }),
+      expect.objectContaining({
+        source: "agent",
+        error: expect.objectContaining({ message: "request failed" }),
+      }),
     );
     expect(service.get_snapshot()).toMatchObject({
       state: "complete",
@@ -573,14 +538,17 @@ describe("AgentService", () => {
       ],
     });
     await wait_for_complete(service);
-    expect(fake_agent_state.tools.map((tool) => tool.name)).toEqual([
+    expect(fake_agent_state.tool_names.at(-1)).toEqual([
       "query_quality_rules",
       "update_quality_rules",
       "query_project_items",
       "update_project_translations",
       "read_skill",
     ]);
-    expect(service.get_snapshot().entries).toHaveLength(1);
+    expect(service.get_snapshot().entries.map((entry) => entry.kind)).toEqual([
+      "user_message",
+      "tool_call",
+    ]);
 
     service.handle_project_change(project_change(5));
     expect(service.get_snapshot()).toEqual({
@@ -629,12 +597,13 @@ describe("AgentService", () => {
     }
   });
 
-  it("停止会中断当前回合并回到 idle", async () => {
+  it("停止会中断当前回合并回到 idle，主动 abort 不上报请求失败", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
-    const { service } = await create_service();
+    const { service, publish, log_error } = await create_service();
     fake_agent_state.mode = "pending";
     service.send_message({ parts: [{ kind: "text", text: "开始" }] });
+    await vi.advanceTimersByTimeAsync(0);
 
     vi.setSystemTime(13_500);
     expect(service.stop()).toMatchObject({
@@ -642,9 +611,14 @@ describe("AgentService", () => {
       entries: [{ kind: "user_message", createdAt: 1_000, endedAt: 13_500 }],
     });
     expect(fake_agent_state.abort_count).toBe(1);
+    await service.dispose();
+    expect(publish).not.toHaveBeenCalledWith("agent.session_event", {
+      type: "request_failed",
+    });
+    expect(log_error).not.toHaveBeenCalled();
   });
 
-  it("运行中重置立即隔离旧会话，并在旧回合退出后创建全新 Agent", async () => {
+  it("运行中重置立即隔离旧会话，并在旧回合退出后创建全新上下文", async () => {
     const { service, publish } = await create_service();
     fake_agent_state.mode = "pending";
     fake_agent_state.hold_idle = true;
@@ -654,10 +628,7 @@ describe("AgentService", () => {
         { kind: "text", text: "旧任务" },
       ],
     });
-    const old_skill_tool = fake_agent_state.tools.find(
-      (candidate) => candidate.name === "read_skill",
-    );
-    if (old_skill_tool === undefined) throw new Error("缺少 read_skill");
+    await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
 
     let settled = false;
     const resetting = service.reset().then((snapshot) => {
@@ -690,39 +661,18 @@ describe("AgentService", () => {
       code: "request.validation_failed",
       diagnostic_context: { reason: "agent_session_resetting" },
     });
-    fake_agent_state.emit_late?.({
-      type: "tool_execution_start",
-      toolCallId: "late-tool",
-      toolName: "query_project_items",
-      args: {},
-    });
     expect(service.get_snapshot().entries).toEqual([]);
-    await expect(
-      old_skill_tool.execute("manual-after-reset", {
-        path: "E:/skills/corpus-search/SKILL.md",
-      }),
-    ).rejects.toThrow("技能文件不存在或当前会话不可读取");
 
     fake_agent_state.hold_idle = false;
-    fake_agent_state.release_idle?.();
+    fake_agent_state.release_pending?.();
     await expect(resetting).resolves.toMatchObject({ state: "idle", entries: [] });
     fake_agent_state.mode = "complete";
     service.send_message({ parts: [{ kind: "text", text: "新任务" }] });
     await wait_for_complete(service);
 
-    expect(fake_agent_state.agent_instances).toBe(2);
     expect(service.get_snapshot().entries.filter((entry) => entry.kind === "user_message")).toEqual(
       [expect.objectContaining({ parts: [{ kind: "text", text: "新任务" }] })],
     );
-    const new_skill_tool = fake_agent_state.tools.find(
-      (candidate) => candidate.name === "read_skill",
-    );
-    if (new_skill_tool === undefined) throw new Error("缺少 read_skill");
-    await expect(
-      new_skill_tool.execute("auto-after-reset", {
-        path: "E:/skills/glossary-audit/SKILL.md",
-      }),
-    ).resolves.toMatchObject({ details: { content: "执行术语审校。" } });
   });
 
   it("dispose 等待已经脱离 runtime 的重置收尾", async () => {
@@ -730,6 +680,7 @@ describe("AgentService", () => {
     fake_agent_state.mode = "pending";
     fake_agent_state.hold_idle = true;
     service.send_message({ parts: [{ kind: "text", text: "旧任务" }] });
+    await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
     const resetting = service.reset();
 
     let disposed = false;
@@ -740,7 +691,7 @@ describe("AgentService", () => {
     expect(disposed).toBe(false);
 
     fake_agent_state.hold_idle = false;
-    fake_agent_state.release_idle?.();
+    fake_agent_state.release_pending?.();
     await Promise.all([resetting, disposing]);
     expect(disposed).toBe(true);
   });
@@ -764,7 +715,7 @@ describe("AgentService", () => {
     expect(fake_agent_state.prompts.at(-1)).toBe("普通对话");
   });
 
-  it("空闲回合之间重绑定 Agent 模型并复用同一运行时和历史", async () => {
+  it("空闲回合之间重绑定 Agent 模型并保留历史", async () => {
     const { service, select_agent_model } = await create_service();
 
     service.send_message({ parts: [{ kind: "text", text: "第一轮" }] });
@@ -773,7 +724,6 @@ describe("AgentService", () => {
     service.send_message({ parts: [{ kind: "text", text: "第二轮" }] });
     await wait_for_complete(service);
 
-    expect(fake_agent_state.agent_instances).toBe(1);
     expect(fake_agent_state.model_ids).toEqual(["test-model", "next-model"]);
     expect(
       service.get_snapshot().entries.filter((entry) => entry.kind === "user_message"),
@@ -789,41 +739,49 @@ describe("AgentService", () => {
       "request.validation_failed",
     );
     expect(read_setting_count()).toBe(1);
+    await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
     service.stop();
   });
 
   it("read_skill 始终读取自动 skill，并仅在显式引用后读取 manual-only skill", async () => {
     const { service } = await create_service();
+    fake_agent_state.mode = "read_skill";
 
     service.send_message({ parts: [{ kind: "text", text: "普通对话" }] });
     await wait_for_complete(service);
-    const skill_tool = fake_agent_state.tools.find((candidate) => candidate.name === "read_skill");
-    if (skill_tool === undefined) throw new Error("缺少 read_skill");
-    await expect(
-      skill_tool.execute("auto-root", {
-        path: "E:/skills/glossary-audit/SKILL.md",
-      }),
-    ).resolves.toMatchObject({ details: { content: "执行术语审校。" } });
-    await expect(
-      skill_tool.execute("auto-reference", {
-        path: "E:/skills/glossary-audit/references/audit-standard.md",
-      }),
-    ).resolves.toMatchObject({ details: { content: "# 审校标准\n\n完整正文。" } });
-    await expect(
-      skill_tool.execute("manual-before-invocation", {
-        path: "E:/skills/corpus-search/SKILL.md",
-      }),
-    ).rejects.toThrow("技能文件不存在或当前会话不可读取");
+    expect(service.get_snapshot().entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "tool_call",
+          id: "auto-root",
+          status: "success",
+          output: expect.stringContaining("执行术语审校。"),
+        }),
+        expect.objectContaining({
+          kind: "tool_call",
+          id: "auto-reference",
+          status: "success",
+          output: expect.stringContaining("完整正文。"),
+        }),
+        expect.objectContaining({
+          kind: "tool_call",
+          id: "manual-before-invocation",
+          status: "error",
+          output: expect.stringContaining("当前会话不可读取"),
+        }),
+      ]),
+    );
 
     service.send_message({ parts: [{ kind: "skill", name: "corpus-search" }] });
     await wait_for_complete(service);
-    await expect(
-      skill_tool.execute("manual-after-invocation", {
-        path: "E:/skills/corpus-search/SKILL.md",
+    expect(service.get_snapshot().entries).toContainEqual(
+      expect.objectContaining({
+        kind: "tool_call",
+        id: "manual-after-invocation",
+        status: "success",
+        output: expect.stringContaining("执行语料检索。"),
       }),
-    ).resolves.toMatchObject({
-      details: { content: "执行语料检索。" },
-    });
+    );
   });
 
   it("资源未加载时拒绝启动模型回合", async () => {

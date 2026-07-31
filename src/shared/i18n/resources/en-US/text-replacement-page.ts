@@ -33,6 +33,7 @@ export const en_us_text_replacement_page = {
   },
 
   feedback: {
+    load_failed: "Failed to load replacement rules. Please try again later.",
     save_failed: "Failed to save replacement page.",
     import_failed: "Failed to import replacement rules.",
 

@@ -8,10 +8,7 @@ vi.mock("@frontend/app/desktop/desktop-api", () => ({
   api_fetch: api_fetch_mock,
 }));
 
-import {
-  query_quality_rule_section_revisions,
-  query_quality_rules,
-} from "./quality-rule-api-client";
+import { query_quality_rules } from "./quality-rule-api-client";
 
 describe("quality rule api client", () => {
   beforeEach(() => {
@@ -28,11 +25,4 @@ describe("quality rule api client", () => {
       expect(api_fetch_mock).toHaveBeenCalledWith("/api/quality/rules/query", { rule_type });
     },
   );
-
-  it("读取写入所需的 section revisions", async () => {
-    api_fetch_mock.mockResolvedValue({ sectionRevisions: { quality: 5 } });
-
-    await expect(query_quality_rule_section_revisions()).resolves.toEqual({ quality: 5 });
-    expect(api_fetch_mock).toHaveBeenCalledWith("/api/workbench/snapshot", {});
-  });
 });

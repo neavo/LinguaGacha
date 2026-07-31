@@ -33,6 +33,7 @@ export const en_us_glossary_page = {
   },
 
   feedback: {
+    load_failed: "Failed to load the glossary. Please try again later.",
     save_failed: "Failed to save the glossary.",
     import_failed: "Failed to import the glossary.",
 

@@ -4,7 +4,6 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { NativeFs } from "../../native/native-fs";
 import { AppPathService } from "../app/app-path-service";
 import { load_agent_skills } from "./agent-skills";
 
@@ -40,11 +39,8 @@ describe("Agent skill 加载", () => {
     );
     const warning = vi.fn();
     const log_manager = { warning, error: vi.fn() };
-    const native_fs = new NativeFs();
-    const read_dirents = vi.spyOn(native_fs, "read_dirents");
-    const read_text_file = vi.spyOn(native_fs, "read_text_file");
 
-    await expect(load_agent_skills(paths, log_manager, native_fs)).resolves.toEqual([
+    await expect(load_agent_skills(paths, log_manager)).resolves.toEqual([
       {
         name: "valid",
         description: "合法能力",
@@ -69,8 +65,41 @@ describe("Agent skill 加载", () => {
     expect(warning.mock.calls.map((call) => call[1]?.context?.code)).toEqual(
       expect.arrayContaining(["parse_failed", "invalid_metadata"]),
     );
-    expect(read_dirents).toHaveBeenCalled();
-    expect(read_text_file).toHaveBeenCalled();
+  });
+
+  it("用户同名 skill 连同正文、路径与 references 一起覆盖内置定义", async () => {
+    const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-skills-override-"));
+    cleanup_roots.push(app_root);
+    const paths = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
+    const builtin_dir = path.join(paths.get_agent_builtin_skill_dir(), "shared");
+    const user_dir = path.join(paths.get_agent_user_skill_dir(), "shared");
+    write_skill(
+      path.join(builtin_dir, "SKILL.md"),
+      "---\nname: shared\ndescription: 内置能力\n---\n\n内置正文。",
+    );
+    write_skill(path.join(builtin_dir, "references", "guide.md"), "# 内置参考");
+    write_skill(
+      path.join(user_dir, "SKILL.md"),
+      "---\nname: shared\ndescription: 用户能力\n---\n\n用户正文。",
+    );
+    write_skill(path.join(user_dir, "references", "guide.md"), "# 用户参考");
+
+    await expect(load_agent_skills(paths, { warning: vi.fn(), error: vi.fn() })).resolves.toEqual([
+      {
+        name: "shared",
+        description: "用户能力",
+        content: "用户正文。",
+        filePath: path.join(user_dir, "SKILL.md").replaceAll("\\", "/"),
+        disableModelInvocation: false,
+        references: [
+          {
+            path: "references/guide.md",
+            filePath: path.join(user_dir, "references", "guide.md").replaceAll("\\", "/"),
+            content: "# 用户参考",
+          },
+        ],
+      },
+    ]);
   });
 
   it("递归加载排序后的 Markdown references，并忽略其它文件和符号链接", async () => {

@@ -23,11 +23,7 @@ export function ModelSelectionMenu(props: ModelSelectionMenuProps): JSX.Element 
   const { t } = useI18n();
   const selected = read_selected_model(props.controller, props.usage);
   const selected_name = selected?.name || selected?.id || t("app.model.selection.unavailable");
-  const disabled =
-    Boolean(props.disabled) ||
-    props.controller.loading ||
-    props.controller.updating ||
-    selected === null;
+  const disabled = Boolean(props.disabled) || props.controller.loading || props.controller.updating;
 
   return (
     <AppDropdownMenuSub>

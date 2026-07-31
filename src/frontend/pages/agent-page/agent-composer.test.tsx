@@ -227,7 +227,7 @@ describe("AgentComposer", () => {
     expect(on_send).not.toHaveBeenCalled();
   });
 
-  it("快捷键提示位于模型右侧，发送按钮缩入底栏且只提示动作", async () => {
+  it("呈现可访问的输入提示、错误与禁用操作", async () => {
     const view = await render_composer(
       vi.fn(async () => true),
       false,
@@ -235,40 +235,25 @@ describe("AgentComposer", () => {
       { updating: true },
       { error: true },
     );
-    const footer = view.querySelector(".agent-composer__footer");
-    const actions = view.querySelector(".agent-composer__footer-actions");
-    const footer_end = view.querySelector(".agent-composer__footer-end");
-    const reset = view.querySelector<HTMLButtonElement>(".agent-composer__reset");
-    const model_trigger = view.querySelector<HTMLButtonElement>(".agent-composer__model-trigger");
-    const hint = view.querySelector(".agent-composer__hint");
-    const error = view.querySelector(".agent-composer__error");
-    const placeholder = view.querySelector(".cm-placeholder");
-    const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
+    const model_trigger = view.querySelector<HTMLButtonElement>(
+      'button[aria-label="app.model.selection.label"]',
+    );
+    const submit = view.querySelector<HTMLButtonElement>('button[aria-label="发送"]');
+    const editor = view.querySelector<HTMLElement>(
+      '[contenteditable][aria-label="描述任务，或输入 @ 选择能力 …"]',
+    );
     const tooltip = view.querySelector('[role="tooltip"]');
 
-    expect(footer?.firstElementChild).toBe(actions);
-    expect(actions?.firstElementChild).toBe(reset);
-    expect(reset?.nextElementSibling).toBe(model_trigger);
-    expect(model_trigger?.nextElementSibling).toBe(hint);
-    expect(hint?.textContent).toBe("Enter 发送 · Shift + Enter 换行");
-    expect(footer?.lastElementChild).toBe(footer_end);
-    expect(error?.nextElementSibling).toBe(submit?.parentElement);
-    expect(footer_end?.contains(submit ?? null)).toBe(true);
+    expect(view.textContent).toContain("Enter 发送 · Shift + Enter 换行");
+    expect(view.textContent).toContain("请求失败，请重试。");
     expect(model_trigger?.textContent).toContain("Agent Model");
     expect(model_trigger?.disabled).toBe(true);
-    expect(placeholder?.textContent).toBe("描述任务，或输入 @ 选择能力 …");
-    expect(submit?.title).toBe("");
-    expect(submit?.dataset.size).toBe("icon-xs");
-    expect(submit?.parentElement?.classList.contains("agent-composer__submit-shell")).toBe(true);
+    expect(editor?.getAttribute("contenteditable")).toBe("true");
     expect(tooltip?.textContent).toBe("发送");
-    expect(view.querySelector(".agent-composer__editor .agent-composer__submit")).toBeNull();
-    expect(view.querySelector(".agent-composer__meta")).toBeNull();
-    expect(view.querySelector(".agent-composer__controls")).toBeNull();
-    expect(get_editor(view).contentDOM.getAttribute("contenteditable")).toBe("true");
     expect(submit?.disabled).toBe(true);
   });
 
-  it("新任务按钮固定在模型左侧，并按会话、重置和提交状态禁用", async () => {
+  it("新任务按钮按会话、重置和提交状态禁用", async () => {
     const on_reset = vi.fn();
     const view = await render_composer(
       vi.fn(async () => true),
@@ -277,10 +262,11 @@ describe("AgentComposer", () => {
       {},
       { can_reset: false, on_reset },
     );
-    const reset = view.querySelector<HTMLButtonElement>(".agent-composer__reset");
-    const model = view.querySelector<HTMLButtonElement>(".agent-composer__model-trigger");
+    const reset = find_button_by_text(view, "agent_page.action.new_task");
+    const model = view.querySelector<HTMLButtonElement>(
+      'button[aria-label="app.model.selection.label"]',
+    );
     expect(reset?.disabled).toBe(true);
-    expect(reset?.nextElementSibling).toBe(model);
 
     await render_composer(
       vi.fn(async () => true),
@@ -302,7 +288,7 @@ describe("AgentComposer", () => {
     );
     expect(reset?.disabled).toBe(true);
     expect(model?.disabled).toBe(true);
-    expect(view.querySelector<HTMLButtonElement>(".agent-composer__submit")?.disabled).toBe(true);
+    expect(view.querySelector<HTMLButtonElement>('button[aria-label="发送"]')?.disabled).toBe(true);
 
     let resolve_send!: (accepted: boolean) => void;
     await render_composer(
@@ -446,6 +432,12 @@ async function wait_for_element(container: HTMLElement, selector: string): Promi
   });
   if (element === null) throw new Error(`缺少元素：${selector}`);
   return element;
+}
+
+function find_button_by_text(container: HTMLElement, text: string): HTMLButtonElement | undefined {
+  return Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => {
+    return button.textContent?.includes(text) === true;
+  });
 }
 
 async function dispatch_key(

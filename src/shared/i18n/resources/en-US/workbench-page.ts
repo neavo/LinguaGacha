@@ -3,6 +3,11 @@ import type { LocaleMessageSchema } from "../../types";
 
 export const en_us_workbench_page = {
   title: "Workbench",
+  section: {
+    stats: "Workbench Stats",
+    file_list: "File List",
+    command_bar: "Workbench Command Bar",
+  },
   unit: {
     line: "Line",
   },

@@ -218,10 +218,7 @@ export function useProofreadingBatchActions(
       await run_project_write({
         path: "/api/proofreading/translations/clear",
         plan: create_clear_translations_plan({
-          snapshot: {
-            items: await read_items_by_row_ids(row_ids),
-            section_revisions: list_revisions,
-          },
+          section_revisions: list_revisions,
           item_ids: target_item_ids,
         }),
         fallback_error_key: "proofreading_page.feedback.clear_translation_failed",
@@ -236,7 +233,7 @@ export function useProofreadingBatchActions(
         empty_warning_message: null,
       });
     },
-    [dialog_open, list_revisions, read_items_by_row_ids, run_project_write, t],
+    [dialog_open, list_revisions, run_project_write, t],
   );
 
   const submit_set_translation_status_row_ids = useCallback(

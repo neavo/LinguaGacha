@@ -3,6 +3,11 @@ import type { LocaleMessageSchema } from "../../types";
 
 export const de_de_workbench_page = {
   title: "Werkbank",
+  section: {
+    stats: "Werkbank-Statistiken",
+    file_list: "Dateiliste",
+    command_bar: "Werkbank-Befehlsleiste",
+  },
   unit: {
     line: "Zeile",
   },

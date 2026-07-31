@@ -14,7 +14,6 @@ import { useDebouncedCallback } from "@frontend/widgets/interactions/use-debounc
 import { buildProofreadingLookupQuery } from "@shared/quality/quality-rule-proofreading-query";
 import {
   query_quality_rules,
-  query_quality_rule_section_revisions,
   type QualityRuleQuerySlice,
 } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
 import {
@@ -429,18 +428,27 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     }
 
     let cancelled = false;
-    void query_quality_rules(TEXT_PRESERVE_RULE_TYPE).then((response) => {
-      if (cancelled || response.projectPath !== project_snapshot.path) {
-        return;
-      }
-      set_quality_slice(
-        normalize_text_preserve_quality_slice(
-          response.qualityRule,
-          response.sectionRevisions?.quality ?? 0,
-        ),
-      );
-      set_quality_loaded(true);
-    });
+    void query_quality_rules(TEXT_PRESERVE_RULE_TYPE)
+      .then((response) => {
+        if (cancelled || response.projectPath !== project_snapshot.path) {
+          return;
+        }
+        set_quality_slice(
+          normalize_text_preserve_quality_slice(
+            response.qualityRule,
+            response.sectionRevisions?.quality ?? 0,
+          ),
+        );
+        set_quality_loaded(true);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          push_toast(
+            "error",
+            resolve_visible_error_message(error, t, t("text_preserve_page.feedback.load_failed")),
+          );
+        }
+      });
 
     return () => {
       cancelled = true;
@@ -450,6 +458,8 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     project_session_status,
     project_snapshot.loaded,
     project_snapshot.path,
+    push_toast,
+    t,
   ]);
 
   useEffect(() => {
@@ -662,14 +672,13 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       );
 
       try {
-        const section_revisions = await query_quality_rule_section_revisions();
         await commit_project_write({
           operation: TEXT_PRESERVE_ENTRIES_SAVE_WRITE,
           run: async () => {
             return await api_fetch<ProjectWriteResultPayload>("/api/quality/rules/update", {
               rule_type: TEXT_PRESERVE_RULE_TYPE,
               expected_section_revisions: {
-                quality: section_revisions.quality ?? 0,
+                quality: quality_slice.section_revision,
               },
               entries: normalized_entries,
             });
@@ -692,7 +701,13 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         return false;
       }
     },
-    [commit_project_write, push_action_error_toast, readonly, refresh_quality_rule_snapshot],
+    [
+      commit_project_write,
+      push_action_error_toast,
+      quality_slice.section_revision,
+      readonly,
+      refresh_quality_rule_snapshot,
+    ],
   );
 
   const apply_import_entries = useCallback(
@@ -914,14 +929,13 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           message: t("text_preserve_page.mode.loading_toast"),
           timeout_ms: TEXT_PRESERVE_MODE_REFRESH_TIMEOUT_MS,
           task: async () => {
-            const section_revisions = await query_quality_rule_section_revisions();
             await commit_project_write({
               operation: TEXT_PRESERVE_MODE_UPDATE_WRITE,
               run: async () => {
                 return await api_fetch<ProjectWriteResultPayload>("/api/quality/rules/update", {
                   rule_type: TEXT_PRESERVE_RULE_TYPE,
                   expected_section_revisions: {
-                    quality: section_revisions.quality ?? 0,
+                    quality: quality_slice.section_revision,
                   },
                   meta: {
                     mode: next_mode,
@@ -955,6 +969,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       commit_project_write,
       push_toast,
       push_action_error_toast,
+      quality_slice.section_revision,
       refresh_quality_rule_snapshot,
       readonly,
       run_modal_progress_toast,

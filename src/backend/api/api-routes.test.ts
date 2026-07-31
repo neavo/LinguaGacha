@@ -6,181 +6,212 @@ import type { BackendServices } from "../bootstrap/backend-services";
 import type { ApiJsonHandler } from "./api-json";
 import { register_api_routes } from "./api-routes";
 
+/** 路由集合是公开面契约，注册顺序不是。 */
+const GET_PATHS = new Set([
+  "/api/health",
+  "/api/logs/stream",
+  "/api/events/stream",
+  "/api/agent/snapshot",
+  "/api/models/selection",
+]);
+
+const POST_PATHS = new Set([
+  "/api/logs/detail",
+  "/api/diagnostics/renderer-error",
+  "/api/agent/message",
+  "/api/agent/stop",
+  "/api/agent/reset",
+  "/api/session/project/manifest",
+  "/api/session/project/snapshot",
+  "/api/session/project/close",
+  "/api/session/project/preview",
+  "/api/session/source-files/collect",
+  "/api/session/project/create-preview",
+  "/api/session/project/open",
+  "/api/session/project/create",
+  "/api/session/project/open-preview",
+  "/api/workbench/snapshot",
+  "/api/workbench/files/import",
+  "/api/workbench/file/reset",
+  "/api/workbench/file/delete",
+  "/api/workbench/files/reorder",
+  "/api/workbench/file/parse",
+  "/api/workbench/settings-alignment/apply",
+  "/api/workbench/translation/reset",
+  "/api/workbench/translation/reset-preview",
+  "/api/proofreading/query",
+  "/api/proofreading/items/update",
+  "/api/proofreading/translations/clear",
+  "/api/proofreading/items/set-status",
+  "/api/proofreading/items/replace-all",
+  "/api/quality/statistics/view",
+  "/api/quality/rules/query",
+  "/api/quality/prompts/view",
+  "/api/quality/rules/update",
+  "/api/quality/rules/import",
+  "/api/quality/rules/export",
+  "/api/quality/rules/presets",
+  "/api/quality/rules/presets/read",
+  "/api/quality/rules/presets/save",
+  "/api/quality/rules/presets/rename",
+  "/api/quality/rules/presets/delete",
+  "/api/quality/prompts/template",
+  "/api/quality/prompts/save",
+  "/api/quality/prompts/import",
+  "/api/quality/prompts/export",
+  "/api/quality/prompts/presets",
+  "/api/quality/prompts/presets/read",
+  "/api/quality/prompts/presets/save",
+  "/api/quality/prompts/presets/rename",
+  "/api/quality/prompts/presets/delete",
+  "/api/analysis/glossary-import/preview",
+  "/api/analysis/reset",
+  "/api/analysis/reset-preview",
+  "/api/analysis/candidates/list",
+  "/api/analysis/glossary/import",
+  "/api/translation/files/export",
+  "/api/toolbox/ts-conversion/files/export",
+  "/api/settings/app",
+  "/api/settings/update",
+  "/api/settings/recent-projects/add",
+  "/api/settings/recent-projects/remove",
+  "/api/models/snapshot",
+  "/api/models/update",
+  "/api/models/select",
+  "/api/models/add",
+  "/api/models/delete",
+  "/api/models/reset-preset",
+  "/api/models/reorder",
+  "/api/models/list-available",
+  "/api/models/test",
+  "/api/tasks/start",
+  "/api/tasks/stop",
+  "/api/tasks/snapshot",
+]);
+
 describe("register_api_routes", () => {
-  it("集中注册完整且无重复的公开路径，并把任务与 Agent 请求转交组合根", async () => {
-    const get = vi.fn();
-    const post_json = vi.fn();
-    const start_task = vi.fn(() => ({ accepted: true }));
-    const services = {
-      app: { metadata: {}, settings: {} },
-      project: {
-        lifecycle: {},
-        data: {},
-        sessionState: {},
-        summary: {},
-        content: {},
-        resetPreview: {},
-      },
-      proofreading: { query: {}, commands: {} },
-      quality: { statistics: {}, rules: {}, prompts: {} },
-      files: { preview: {}, translationExport: {}, tsConversionExport: {} },
-      model: {
-        get_selection_snapshot: vi.fn(() => ({
-          model_selection: { translation: "a", analysis: "b", agent: "c" },
-          models: [],
-        })),
-      },
-      agent: {
-        get_snapshot: vi.fn(() => ({ state: "idle", entries: [], skills: [] })),
-        send_message: vi.fn(() => ({ state: "running" })),
-        stop: vi.fn(() => ({ state: "idle" })),
-        reset: vi.fn(async () => ({ state: "idle", entries: [], skills: [] })),
-      },
-      tasks: { start_task },
-      create_event_stream_response: vi.fn(),
-    } as unknown as BackendServices;
-
-    register_api_routes({
-      app: { get } as unknown as Hono,
-      services,
-      postJson: post_json,
-      createLogStreamResponse: vi.fn(),
-      readLogDetail: vi.fn(),
-      recordRendererError: vi.fn(),
-    });
-
-    const get_paths = get.mock.calls.map(([route_path]) => String(route_path));
-    const post_paths = post_json.mock.calls.map(([route_path]) => String(route_path));
+  it("注册完整且无重复的公开路径，不锁定注册顺序", () => {
+    const fixture = create_route_fixture();
+    const get_paths = fixture.get.mock.calls.map(([route_path]) => String(route_path));
+    const post_paths = fixture.post_json.mock.calls.map(([route_path]) => String(route_path));
     const all_paths = [...get_paths, ...post_paths];
-    expect(get_paths).toEqual([
-      "/api/health",
-      "/api/logs/stream",
-      "/api/events/stream",
-      "/api/agent/snapshot",
-      "/api/models/selection",
-    ]);
+
+    expect(new Set(get_paths)).toEqual(GET_PATHS);
+    expect(new Set(post_paths)).toEqual(POST_PATHS);
     expect(new Set(all_paths).size).toBe(all_paths.length);
-    expect(new Set(post_paths)).toEqual(
-      new Set([
-        "/api/logs/detail",
-        "/api/diagnostics/renderer-error",
-        "/api/agent/message",
-        "/api/agent/stop",
-        "/api/agent/reset",
-        "/api/session/project/manifest",
-        "/api/session/project/snapshot",
-        "/api/session/project/close",
-        "/api/session/project/preview",
-        "/api/session/source-files/collect",
-        "/api/session/project/create-preview",
-        "/api/session/project/open",
-        "/api/session/project/create",
-        "/api/session/project/open-preview",
-        "/api/workbench/snapshot",
-        "/api/workbench/files/import",
-        "/api/workbench/file/reset",
-        "/api/workbench/file/delete",
-        "/api/workbench/files/reorder",
-        "/api/workbench/file/parse",
-        "/api/workbench/settings-alignment/apply",
-        "/api/workbench/translation/reset",
-        "/api/workbench/translation/reset-preview",
-        "/api/proofreading/query",
-        "/api/proofreading/items/update",
-        "/api/proofreading/translations/clear",
-        "/api/proofreading/items/set-status",
-        "/api/proofreading/items/replace-all",
-        "/api/quality/statistics/view",
-        "/api/quality/rules/query",
-        "/api/quality/prompts/view",
-        "/api/quality/rules/update",
-        "/api/quality/rules/import",
-        "/api/quality/rules/export",
-        "/api/quality/rules/presets",
-        "/api/quality/rules/presets/read",
-        "/api/quality/rules/presets/save",
-        "/api/quality/rules/presets/rename",
-        "/api/quality/rules/presets/delete",
-        "/api/quality/prompts/template",
-        "/api/quality/prompts/save",
-        "/api/quality/prompts/import",
-        "/api/quality/prompts/export",
-        "/api/quality/prompts/presets",
-        "/api/quality/prompts/presets/read",
-        "/api/quality/prompts/presets/save",
-        "/api/quality/prompts/presets/rename",
-        "/api/quality/prompts/presets/delete",
-        "/api/analysis/glossary-import/preview",
-        "/api/analysis/reset",
-        "/api/analysis/reset-preview",
-        "/api/analysis/candidates/list",
-        "/api/analysis/glossary/import",
-        "/api/translation/files/export",
-        "/api/toolbox/ts-conversion/files/export",
-        "/api/settings/app",
-        "/api/settings/update",
-        "/api/settings/recent-projects/add",
-        "/api/settings/recent-projects/remove",
-        "/api/models/snapshot",
-        "/api/models/update",
-        "/api/models/select",
-        "/api/models/add",
-        "/api/models/delete",
-        "/api/models/reset-preset",
-        "/api/models/reorder",
-        "/api/models/list-available",
-        "/api/models/test",
-        "/api/tasks/start",
-        "/api/tasks/stop",
-        "/api/tasks/snapshot",
-      ]),
-    );
+  });
 
-    const start_task_handler = post_json.mock.calls.find(
-      ([route_path]) => route_path === "/api/tasks/start",
-    )?.[1] as ApiJsonHandler | undefined;
-    expect(start_task_handler?.({ task_type: "translation" })).toEqual({ accepted: true });
-    expect(start_task).toHaveBeenCalledWith({ task_type: "translation" });
+  it("GET 路由返回 Agent 与模型选择快照", () => {
+    const fixture = create_route_fixture();
+    const json = (value: unknown) => value;
 
-    const snapshot_handler = get.mock.calls.find(
-      ([route_path]) => route_path === "/api/agent/snapshot",
-    )?.[1] as ((context: { json: (value: unknown) => unknown }) => unknown) | undefined;
-    expect(snapshot_handler?.({ json: (value) => value })).toEqual({
+    expect(read_get_handler(fixture.get, "/api/agent/snapshot")({ json })).toEqual({
       ok: true,
       data: { state: "idle", entries: [], skills: [] },
     });
-
-    const selection_handler = get.mock.calls.find(
-      ([route_path]) => route_path === "/api/models/selection",
-    )?.[1] as ((context: { json: (value: unknown) => unknown }) => unknown) | undefined;
-    expect(selection_handler?.({ json: (value) => value })).toEqual({
+    expect(read_get_handler(fixture.get, "/api/models/selection")({ json })).toEqual({
       ok: true,
       data: {
         model_selection: { translation: "a", analysis: "b", agent: "c" },
         models: [],
       },
     });
+  });
 
-    const message_handler = post_json.mock.calls.find(
-      ([route_path]) => route_path === "/api/agent/message",
-    )?.[1] as ApiJsonHandler | undefined;
+  it("POST 路由把任务与 Agent 命令原样转交组合根", async () => {
+    const fixture = create_route_fixture();
+    const task = { task_type: "translation" };
     const message: JsonRecord = {
       parts: [
         { kind: "skill", name: "glossary-audit" },
         { kind: "text", text: "审校" },
       ],
     };
-    expect(message_handler?.(message)).toEqual({ state: "running" });
-    expect(services.agent.send_message).toHaveBeenCalledWith(message);
 
-    const reset_handler = post_json.mock.calls.find(
-      ([route_path]) => route_path === "/api/agent/reset",
-    )?.[1] as ApiJsonHandler | undefined;
-    await expect(reset_handler?.({})).resolves.toEqual({
+    expect(read_post_handler(fixture.post_json, "/api/tasks/start")(task)).toEqual({
+      accepted: true,
+    });
+    expect(fixture.start_task).toHaveBeenCalledWith(task);
+    expect(read_post_handler(fixture.post_json, "/api/agent/message")(message)).toEqual({
+      state: "running",
+    });
+    expect(fixture.send_message).toHaveBeenCalledWith(message);
+    expect(read_post_handler(fixture.post_json, "/api/agent/stop")({})).toEqual({
+      state: "idle",
+    });
+    expect(fixture.stop).toHaveBeenCalledWith();
+    await expect(read_post_handler(fixture.post_json, "/api/agent/reset")({})).resolves.toEqual({
       state: "idle",
       entries: [],
       skills: [],
     });
-    expect(services.agent.reset).toHaveBeenCalledWith();
+    expect(fixture.reset).toHaveBeenCalledWith();
   });
 });
+
+/** 每个行为独立注册一次，避免跨测试共享 mock 调用历史。 */
+function create_route_fixture() {
+  const get = vi.fn();
+  const post_json = vi.fn();
+  const start_task = vi.fn(() => ({ accepted: true }));
+  const send_message = vi.fn(() => ({ state: "running" }));
+  const stop = vi.fn(() => ({ state: "idle" }));
+  const reset = vi.fn(async () => ({ state: "idle", entries: [], skills: [] }));
+  const services = {
+    app: { metadata: {}, settings: {} },
+    project: {
+      lifecycle: {},
+      data: {},
+      sessionState: {},
+      summary: {},
+      content: {},
+      resetPreview: {},
+    },
+    proofreading: { query: {}, commands: {} },
+    quality: { statistics: {}, rules: {}, prompts: {} },
+    files: { preview: {}, translationExport: {}, tsConversionExport: {} },
+    model: {
+      get_selection_snapshot: vi.fn(() => ({
+        model_selection: { translation: "a", analysis: "b", agent: "c" },
+        models: [],
+      })),
+    },
+    agent: {
+      get_snapshot: vi.fn(() => ({ state: "idle", entries: [], skills: [] })),
+      send_message,
+      stop,
+      reset,
+    },
+    tasks: { start_task },
+    create_event_stream_response: vi.fn(),
+  } as unknown as BackendServices;
+
+  register_api_routes({
+    app: { get } as unknown as Hono,
+    services,
+    postJson: post_json,
+    createLogStreamResponse: vi.fn(),
+    readLogDetail: vi.fn(),
+    recordRendererError: vi.fn(),
+  });
+  return { get, post_json, reset, send_message, start_task, stop };
+}
+
+function read_get_handler(
+  get: ReturnType<typeof vi.fn>,
+  route_path: string,
+): (context: { json: (value: unknown) => unknown }) => unknown {
+  const handler = get.mock.calls.find(([candidate]) => candidate === route_path)?.[1];
+  if (typeof handler !== "function") throw new Error(`GET 路由未注册：${route_path}`);
+  return handler;
+}
+
+/** 读取已注册 POST handler，缺失路径立即给出可定位错误。 */
+function read_post_handler(
+  post_json: ReturnType<typeof vi.fn>,
+  route_path: string,
+): ApiJsonHandler {
+  const handler = post_json.mock.calls.find(([candidate]) => candidate === route_path)?.[1];
+  if (typeof handler !== "function") throw new Error(`POST 路由未注册：${route_path}`);
+  return handler as ApiJsonHandler;
+}

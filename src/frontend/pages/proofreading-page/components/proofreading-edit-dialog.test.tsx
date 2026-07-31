@@ -24,8 +24,10 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
             "proofreading_page.action.view_context": "查看上下文",
             "proofreading_page.action.back": "返回",
             "proofreading_page.fields.source": "原文",
+            "proofreading_page.fields.source_name": "原文姓名",
             "proofreading_page.fields.status": "状态",
             "proofreading_page.fields.translation": "译文",
+            "proofreading_page.fields.translation_name": "译文姓名",
             "proofreading_page.glossary.miss": "术语全部失效",
             "proofreading_page.glossary.ok": "术语全部生效",
             "proofreading_page.glossary.partial": "术语部分生效",
@@ -192,11 +194,11 @@ describe("find_text_match_ranges", () => {
   });
 });
 
-function get_field_editor(container: HTMLElement, value: string): HTMLTextAreaElement {
-  const editor = [
-    ...container.querySelectorAll<HTMLTextAreaElement>(".app-editor--field textarea"),
-  ].find((candidate) => candidate.value === value);
-  if (editor === undefined) throw new Error(`缺少字段编辑器：${value}`);
+function get_textbox_by_name(container: HTMLElement, name: string): HTMLTextAreaElement {
+  const editor = [...container.querySelectorAll<HTMLTextAreaElement>("textarea")].find(
+    (candidate) => candidate.getAttribute("aria-label") === name,
+  );
+  if (editor === undefined) throw new Error(`缺少名为“${name}”的文本框。`);
   return editor;
 }
 
@@ -288,8 +290,8 @@ describe("ProofreadingEditDialog", () => {
       on_change,
     });
 
-    const source_input = get_field_editor(rendered, "Alice");
-    const translation_input = get_field_editor(rendered, "旧译名");
+    const source_input = get_textbox_by_name(rendered, "原文姓名");
+    const translation_input = get_textbox_by_name(rendered, "译文姓名");
     expect(source_input.value).toBe("Alice");
     expect(source_input.readOnly).toBe(true);
     expect(source_input.getAttribute("data-readonly")).toBe("true");
@@ -335,7 +337,7 @@ describe("ProofreadingEditDialog", () => {
       readonly: true,
     });
 
-    const translation_input = get_field_editor(rendered, "旧译名");
+    const translation_input = get_textbox_by_name(rendered, "译文姓名");
 
     expect(translation_input.readOnly).toBe(true);
     expect(translation_input.disabled).toBe(false);
@@ -358,8 +360,8 @@ describe("ProofreadingEditDialog", () => {
       state: create_dialog_state({ draft_item: { dst: "", name_dst: "" } }),
     });
 
-    const source_input = get_field_editor(rendered, "Alice");
-    const translation_input = get_field_editor(rendered, "");
+    const source_input = get_textbox_by_name(rendered, "原文姓名");
+    const translation_input = get_textbox_by_name(rendered, "译文姓名");
     const source_root = source_input.closest(".app-editor--field");
     const translation_root = translation_input.closest(".app-editor--field");
     if (source_root === null || translation_root === null) {
@@ -378,8 +380,8 @@ describe("ProofreadingEditDialog", () => {
       state: create_dialog_state({ draft_item: { dst: "", name_dst: "艾丽丝" } }),
     });
 
-    const next_source_input = get_field_editor(rendered, "Alice");
-    const next_translation_input = get_field_editor(rendered, "艾丽丝");
+    const next_source_input = get_textbox_by_name(rendered, "原文姓名");
+    const next_translation_input = get_textbox_by_name(rendered, "译文姓名");
     const next_source_root = next_source_input.closest(".app-editor--field");
     const next_translation_root = next_translation_input.closest(".app-editor--field");
     if (next_source_root === null || next_translation_root === null) {

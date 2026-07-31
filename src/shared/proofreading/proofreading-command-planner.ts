@@ -1,11 +1,10 @@
 import type { ItemNameField } from "../../domain/item";
 import type { ProjectDataSectionRevisions } from "../project-event";
 import { read_item_name_text } from "../item-name";
-import { has_item_translation_text } from "../item-text";
 import { compile_text_pattern, replace_text_pattern } from "../text/text-pattern";
 import type { ProofreadingManualStatusCode } from "./proofreading-types";
 
-// 校对 planner 只读取当前 query 结果中的轻量 item 快照判断是否需要发命令。
+// 校对 planner 只打包用户意图；仅需预判变化的命令才读取 query 的轻量 item 快照。
 export type ProofreadingCommandItemSnapshot = {
   item_id: number | string;
   dst: string;
@@ -194,33 +193,16 @@ export function create_replace_all_plan(args: {
   };
 }
 
-// 批量清空译文只提交目标 id，后端保留状态和重试计数。
+// 批量清空只提交用户目标，是否存在实际变化由后端当前事实决定。
 export function create_clear_translations_plan(args: {
-  snapshot: ProofreadingCommandSnapshot;
+  section_revisions: ProjectDataSectionRevisions;
   item_ids: number[];
-}): ProofreadingCommandPlan | null {
-  const changed_item_ids: number[] = [];
-
-  for (const item_id of args.item_ids) {
-    const current_item = read_store_item(args.snapshot, item_id);
-    if (current_item === undefined) {
-      continue;
-    }
-    if (!has_item_translation_text(current_item)) {
-      continue;
-    }
-    changed_item_ids.push(item_id);
-  }
-
-  if (changed_item_ids.length === 0) {
-    return null;
-  }
-
+}): ProofreadingCommandPlan {
   return {
-    changed_item_ids,
+    changed_item_ids: args.item_ids,
     request_body: {
       item_ids: args.item_ids,
-      expected_section_revisions: build_expected_revisions(args.snapshot.section_revisions),
+      expected_section_revisions: build_expected_revisions(args.section_revisions),
     },
   };
 }

@@ -84,4 +84,25 @@ describe("ModelSelectionMenu", () => {
     menu_state.on_value_change?.("preset");
     expect(select_model).toHaveBeenCalledWith("translation", "preset");
   });
+
+  it("当前选择失效时仍可打开菜单恢复到可用模型", () => {
+    const controller: ModelSelectionController = {
+      snapshot: {
+        model_selection: { translation: "missing", analysis: "", agent: "" },
+        models: [{ id: "openai", type: "CUSTOM_OPENAI", name: "OpenAI Main" }],
+      },
+      loading: false,
+      updating: false,
+      select_model: vi.fn(async () => undefined),
+    };
+
+    const html = renderToStaticMarkup(
+      <ModelSelectionMenu controller={controller} usage="translation" />,
+    );
+    const document = new DOMParser().parseFromString(html, "text/html");
+
+    expect(document.querySelector("button")?.disabled).toBe(false);
+    expect(document.querySelector("button")?.textContent).toBe("app.model.selection.unavailable");
+    expect(document.querySelector('[role="radio"][data-value="openai"]')).not.toBeNull();
+  });
 });

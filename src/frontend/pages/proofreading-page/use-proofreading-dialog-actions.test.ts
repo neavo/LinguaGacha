@@ -67,6 +67,8 @@ describe("useProofreadingDialogActions", () => {
   const target_item = create_client_item(); // 当前弹窗编辑目标
   const write_calls: WriteCall[] = []; // 记录公开写入请求，避免断言 hook 内部状态
   const read_context = vi.fn<(row_id: string) => Promise<ProofreadingContextItem[]>>();
+  const push_toast = vi.fn();
+  let read_items_error: Error | null = null;
 
   afterEach(async () => {
     if (root !== null) {
@@ -81,6 +83,8 @@ describe("useProofreadingDialogActions", () => {
     latest_state = null;
     write_calls.length = 0;
     read_context.mockReset();
+    push_toast.mockReset();
+    read_items_error = null;
   });
 
   // 暴露 hook 返回值，测试只通过公开动作驱动弹窗状态。
@@ -93,13 +97,16 @@ describe("useProofreadingDialogActions", () => {
       },
       visible_item_by_id: new Map([["1", target_item]]),
       read_items_by_row_ids: async (row_ids) => {
+        if (read_items_error !== null) {
+          throw read_items_error;
+        }
         return row_ids.includes("1") ? [target_item] : [];
       },
       read_context,
       run_project_write: vi.fn(async (args: WriteCall) => {
         write_calls.push(args);
       }),
-      push_toast: vi.fn(),
+      push_toast,
       t: (key) => key,
     });
     return null;
@@ -148,6 +155,18 @@ describe("useProofreadingDialogActions", () => {
         proofreading: 5,
       },
     });
+  });
+
+  it("首次读取详情失败时显示错误提醒并保持弹窗关闭", async () => {
+    read_items_error = new Error("详情读取失败");
+    await render_hook();
+
+    await act(async () => {
+      await latest_state?.open_edit_dialog("1");
+    });
+
+    expect(push_toast).toHaveBeenCalledWith("error", expect.anything());
+    expect(latest_state?.dialog_state.open).toBe(false);
   });
 
   it("读取上下文失败后可重试并返回编辑状态", async () => {

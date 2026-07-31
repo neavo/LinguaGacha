@@ -139,6 +139,7 @@ describe("WorkbenchCommandBar", () => {
       </TooltipProvider>,
     );
 
+    expect(html).toContain("workbench_page.section.command_bar");
     expect(html).toContain("workbench_page.action.add_file");
     expect(html).toContain("Ctrl+N");
     expect(html).toContain("workbench_page.action.delete_file");

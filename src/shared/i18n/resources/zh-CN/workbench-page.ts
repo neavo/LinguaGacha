@@ -1,5 +1,10 @@
 export const zh_cn_workbench_page = {
   title: "工作台",
+  section: {
+    stats: "工作台统计",
+    file_list: "文件列表",
+    command_bar: "工作台命令栏",
+  },
   unit: {
     line: "Line",
   },
