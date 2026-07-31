@@ -1,6 +1,7 @@
 export const en_us_agent_page = {
   title: "Agent",
   thinking: "Thinking",
+  thinking_active: "Thinking",
   diagram: {
     label: "Diagram",
     render_failed: "Diagram rendering failed. Mermaid source is shown.",

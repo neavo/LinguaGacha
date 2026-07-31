@@ -18,7 +18,7 @@ function stored_entry(entry_id: string, src: string, dst: string): JsonRecord {
 }
 
 describe("Agent 质量规则工具", () => {
-  it("所有工具向模型公开 object 根 schema", () => {
+  it("所有工具公开 object 根 schema，并只串行写入口", () => {
     const tools = create_agent_quality_tools({
       qualityRules: {
         query: () => ({}),
@@ -31,6 +31,7 @@ describe("Agent 质量规则工具", () => {
       expect.objectContaining({ type: "object" }),
       expect.objectContaining({ type: "object" }),
     ]);
+    expect(tools.map((tool) => tool.executionMode)).toEqual([undefined, "sequential"]);
   });
 
   it("查询四类规则，并为术语保留派生事实", () => {
@@ -180,15 +181,23 @@ describe("Agent 质量规则工具", () => {
       ],
     ];
     for (const changes of invalid_changes) {
-      await expect(tool.execute("invalid", { ...base, changes })).rejects.toThrow();
+      await expect(
+        tool.execute("invalid", { ...base, changes }, undefined, undefined, undefined as never),
+      ).rejects.toThrow();
     }
 
     await expect(
-      tool.execute("invalid-regex", {
-        rule_type: "text_preserve",
-        changes: [{ action: "create", entry: { src: "[", info: "" } }],
-        expected_section_revisions: { quality: 1 },
-      }),
+      tool.execute(
+        "invalid-regex",
+        {
+          rule_type: "text_preserve",
+          changes: [{ action: "create", entry: { src: "[", info: "" } }],
+          expected_section_revisions: { quality: 1 },
+        },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
     ).rejects.toThrow("不是合法正则");
     expect(update).not.toHaveBeenCalled();
   });
@@ -221,7 +230,28 @@ describe("Agent 质量规则工具", () => {
     if (tool === undefined) throw new Error("缺少 update_quality_rules");
 
     await expect(
-      tool.execute("conflict", {
+      tool.execute(
+        "conflict",
+        {
+          rule_type: "glossary",
+          changes: [
+            {
+              action: "update",
+              entry_id: "a",
+              entry: { src: "Alpha", dst: "A", info: "", case_sensitive: false },
+            },
+          ],
+          expected_section_revisions: { quality: 1 },
+        },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).rejects.toThrow("revision conflict");
+
+    const result = await tool.execute(
+      "success",
+      {
         rule_type: "glossary",
         changes: [
           {
@@ -230,22 +260,13 @@ describe("Agent 质量规则工具", () => {
             entry: { src: "Alpha", dst: "A", info: "", case_sensitive: false },
           },
         ],
-        expected_section_revisions: { quality: 1 },
-      }),
-    ).rejects.toThrow("revision conflict");
-
-    const result = await tool.execute("success", {
-      rule_type: "glossary",
-      changes: [
-        {
-          action: "update",
-          entry_id: "a",
-          entry: { src: "Alpha", dst: "A", info: "", case_sensitive: false },
-        },
-      ],
-      meta: { enabled: false },
-      expected_section_revisions: { quality: 2 },
-    });
+        meta: { enabled: false },
+        expected_section_revisions: { quality: 2 },
+      },
+      undefined,
+      undefined,
+      undefined as never,
+    );
     expect(update).toHaveBeenLastCalledWith(
       expect.objectContaining({
         entries: [expect.objectContaining({ entry_id: "a", dst: "A" })],

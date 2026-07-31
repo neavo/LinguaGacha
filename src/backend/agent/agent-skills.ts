@@ -138,7 +138,7 @@ function collect_skill_references(
 }
 
 /**
- * pi-agent-core 0.82.1 的 skill walker 使用 POSIX 分隔符比较路径；适配器只复用它的协议解析，
+ * pi-agent-core 的 skill walker 使用 POSIX 分隔符比较路径；适配器只复用它的协议解析，
  * 实际读取全部经过 NativeFs。符号链接不进入 skill 扫描，避免越过受控根或形成递归环。
  */
 class AgentSkillExecutionEnv extends NodeExecutionEnv {

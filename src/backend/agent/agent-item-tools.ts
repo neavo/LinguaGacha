@@ -1,5 +1,5 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
+import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import { Item } from "../../domain/item";
 import { read_json_integer, type JsonRecord } from "../../domain/json";
@@ -123,21 +123,19 @@ type ProjectItemQuery =
     };
 
 /** 构造统一正文 query 与窄译文 update 工具。 */
-export function create_agent_item_tools(dependencies: AgentItemDependencies): AgentTool[] {
+export function create_agent_item_tools(dependencies: AgentItemDependencies): ToolDefinition[] {
   return [
-    {
+    defineTool({
       name: "query_project_items",
       label: "查询正文",
       description: "按分页、item_ids 或 src/dst/all 字面量搜索查询当前工程正文与译文。",
       parameters: QUERY_PROJECT_ITEMS_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
-        return tool_result(
-          query_agent_project_items(dependencies.cache, params as ProjectItemQuery),
-        );
+        return tool_result(query_agent_project_items(dependencies.cache, params));
       },
-    },
-    {
+    }),
+    defineTool({
       name: "update_project_translations",
       label: "更新译文",
       description: "按 items/proofreading revision 原子更新当前工程多个 item 的 dst/name_dst。",
@@ -145,20 +143,16 @@ export function create_agent_item_tools(dependencies: AgentItemDependencies): Ag
       parameters: UPDATE_PROJECT_TRANSLATIONS_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
-        const request = params as {
-          changes: Array<{ item_id: number; dst?: string; name_dst?: string }>;
-          expected_section_revisions: { items: number; proofreading: number };
-        };
-        assert_translation_changes(request.changes);
-        await dependencies.proofreading.update_items(request, AGENT_PROOFREADING_UPDATE_SOURCE);
+        assert_translation_changes(params.changes);
+        await dependencies.proofreading.update_items(params, AGENT_PROOFREADING_UPDATE_SOURCE);
         return tool_result(
           query_agent_project_items(dependencies.cache, {
             mode: "ids",
-            item_ids: request.changes.map((change) => change.item_id),
+            item_ids: params.changes.map((change) => change.item_id),
           }),
         );
       },
-    },
+    }),
   ];
 }
 

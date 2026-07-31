@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
+  createProvider,
   createFauxCore,
   fauxAssistantMessage,
   fauxText,
@@ -9,7 +9,11 @@ import {
   type AssistantMessage,
   type Context,
   type FauxResponseStep,
+  type Model,
+  type ProviderStreams,
+  type StreamOptions,
 } from "@earendil-works/pi-ai";
+import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { JsonRecord } from "../../domain/json";
 import type { ProjectChangeEvent, ProjectWriteResult } from "../../shared/project-event";
 import { ProjectSessionState } from "../project/project-session-state";
@@ -41,7 +45,7 @@ const skill_loader = vi.hoisted(() =>
   ]),
 );
 const system_prompt_loader = vi.hoisted(() => vi.fn(() => "基础系统指令。"));
-const agent_model_resolver = vi.hoisted(() => vi.fn());
+const agent_model_registrar = vi.hoisted(() => vi.fn());
 
 const fake_agent_state = vi.hoisted(() => ({
   mode: "complete" as
@@ -50,6 +54,7 @@ const fake_agent_state = vi.hoisted(() => ({
     | "failure"
     | "pending"
     | "read_skill"
+    | "retry"
     | "thinking"
     | "tool_only"
     | "tools",
@@ -61,20 +66,45 @@ const fake_agent_state = vi.hoisted(() => ({
   release_pending: null as (() => void) | null,
   hold_idle: false,
   external_change_during_write: false,
+  context_window: 256_000,
+  model_call_count: 0,
+  retry_failures_remaining: 0,
+  summary_failures_remaining: 0,
+  request_kinds: [] as Array<"model" | "summary">,
+  model_contexts: [] as Context["messages"][],
+  auth_configured: true,
+  hold_auth: false,
+  auth_wait: null as Promise<void> | null,
+  release_auth: null as (() => void) | null,
 }));
 
 vi.mock("./agent-skills", () => ({ load_agent_skills: skill_loader }));
 vi.mock("./agent-system-prompt", () => ({
   load_agent_system_prompt: system_prompt_loader,
 }));
-vi.mock("./agent-model", () => ({ resolve_agent_model: agent_model_resolver }));
+vi.mock("./agent-model", () => ({ register_agent_model: agent_model_registrar }));
 
 import { AGENT_PROOFREADING_UPDATE_SOURCE } from "./agent-item-tools";
 import { AGENT_QUALITY_RULE_UPDATE_SOURCE } from "./agent-quality-tools";
 import { AgentService } from "./agent-service";
 
 /** 测试只替换远程流边界，Agent 的事件、工具执行、abort 与收尾均使用真实实现。 */
-const fake_agent_stream: StreamFn = (model, context, options) => {
+const fake_provider_streams: ProviderStreams = {
+  stream: (model, context, options) => create_fake_agent_stream(model, context, options),
+  streamSimple: (model, context, options) => create_fake_agent_stream(model, context, options),
+};
+
+function create_fake_agent_stream(
+  model: Model<any>,
+  context: Context,
+  options: StreamOptions | undefined,
+) {
+  const is_summary = context.systemPrompt?.includes("context summarization assistant") === true;
+  fake_agent_state.request_kinds.push(is_summary ? "summary" : "model");
+  if (!is_summary) {
+    fake_agent_state.model_call_count += 1;
+    fake_agent_state.model_contexts.push(structuredClone(context.messages));
+  }
   fake_agent_state.system_prompts.push(context.systemPrompt ?? "");
   fake_agent_state.prompts.push(read_last_user_text(context));
   fake_agent_state.model_ids.push(model.id);
@@ -84,34 +114,73 @@ const fake_agent_stream: StreamFn = (model, context, options) => {
     provider: model.provider,
     tokenSize: { min: 10_000, max: 10_000 },
   });
-  faux.setResponses([create_fake_response(context)]);
+  const response =
+    is_summary && fake_agent_state.summary_failures_remaining > 0
+      ? (() => {
+          fake_agent_state.summary_failures_remaining -= 1;
+          return fauxAssistantMessage([], {
+            stopReason: "error",
+            errorMessage: "摘要生成失败",
+          });
+        })()
+      : is_summary
+        ? fauxAssistantMessage("压缩摘要")
+        : create_fake_response(context);
+  faux.setResponses([response]);
   return faux.streamSimple(model, context, options);
-};
+}
 
 /** 根据测试配置选择模型身份，远程行为统一交给同一个可控流边界。 */
-function resolve_fake_agent_model(config: JsonRecord) {
+function register_fake_agent_model(model_runtime: ModelRuntime, config: JsonRecord) {
   const selection = config["model_selection"];
   const selected =
     typeof selection === "object" && selection !== null && !Array.isArray(selection)
       ? Reflect.get(selection, "agent")
       : undefined;
   const model_id = selected === "next" ? "next-model" : "test-model";
-  return {
-    model: {
-      id: model_id,
-      name: model_id,
-      api: "faux",
-      provider: "faux",
-      baseUrl: "http://localhost:0",
-      reasoning: false,
-      input: ["text" as const],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      contextWindow: 4096,
-      maxTokens: 1024,
-    },
-    thinkingLevel: "off" as const,
-    stream: fake_agent_stream,
+  const model = {
+    id: model_id,
+    name: model_id,
+    api: "faux",
+    provider: "faux",
+    baseUrl: "http://localhost:0",
+    reasoning: false,
+    input: ["text" as const],
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: fake_agent_state.context_window,
+    maxTokens: 1024,
   };
+  model_runtime.registerNativeProvider(
+    createProvider({
+      id: "faux",
+      auth: {
+        apiKey: {
+          name: "测试 Provider",
+          resolve: async () => {
+            if (fake_agent_state.hold_auth) {
+              if (fake_agent_state.auth_wait === null) {
+                fake_agent_state.auth_wait = new Promise<void>((resolve) => {
+                  fake_agent_state.release_auth = () => {
+                    fake_agent_state.hold_auth = false;
+                    fake_agent_state.auth_wait = null;
+                    fake_agent_state.release_auth = null;
+                    resolve();
+                  };
+                });
+              }
+              await fake_agent_state.auth_wait;
+            }
+            return fake_agent_state.auth_configured
+              ? { auth: { headers: {} }, source: "测试 Provider" }
+              : undefined;
+          },
+        },
+      },
+      models: [model],
+      api: fake_provider_streams,
+    }),
+  );
+  return { model, thinkingLevel: "off" as const };
 }
 
 /** 只描述模型响应，不复制 Agent 的事件协议、工具执行或生命周期。 */
@@ -127,6 +196,13 @@ function create_fake_response(context: Context): FauxResponseStep {
     return fauxAssistantMessage([], {
       stopReason: "error",
       errorMessage: "request failed",
+    });
+  }
+  if (fake_agent_state.mode === "retry" && fake_agent_state.retry_failures_remaining > 0) {
+    fake_agent_state.retry_failures_remaining -= 1;
+    return fauxAssistantMessage([], {
+      stopReason: "error",
+      errorMessage: "overloaded_error",
     });
   }
   if (fake_agent_state.mode === "thinking") {
@@ -265,8 +341,18 @@ describe("AgentService", () => {
     fake_agent_state.release_pending = null;
     fake_agent_state.hold_idle = false;
     fake_agent_state.external_change_during_write = false;
-    agent_model_resolver.mockReset();
-    agent_model_resolver.mockImplementation(resolve_fake_agent_model);
+    fake_agent_state.context_window = 256_000;
+    fake_agent_state.model_call_count = 0;
+    fake_agent_state.retry_failures_remaining = 0;
+    fake_agent_state.summary_failures_remaining = 0;
+    fake_agent_state.request_kinds = [];
+    fake_agent_state.model_contexts = [];
+    fake_agent_state.auth_configured = true;
+    fake_agent_state.hold_auth = false;
+    fake_agent_state.auth_wait = null;
+    fake_agent_state.release_auth = null;
+    agent_model_registrar.mockReset();
+    agent_model_registrar.mockImplementation(register_fake_agent_model);
     skill_loader.mockClear();
     system_prompt_loader.mockClear();
   });
@@ -274,6 +360,7 @@ describe("AgentService", () => {
   afterEach(async () => {
     vi.useRealTimers();
     fake_agent_state.hold_idle = false;
+    fake_agent_state.release_auth?.();
     fake_agent_state.release_pending?.();
     await Promise.all(services.splice(0).map(async (service) => await service.dispose()));
   });
@@ -285,27 +372,27 @@ describe("AgentService", () => {
       { name: "glossary-audit", description: "审校术语" },
       { name: "corpus-search", description: "检索语料" },
     ]);
-    expect(() => fixture.service.send_message({ text: "旧协议" })).toThrow(
+    await expect(fixture.service.send_message({ text: "旧协议" })).rejects.toThrow(
       "request.validation_failed",
     );
-    expect(() =>
+    await expect(
       fixture.service.send_message({ parts: [{ kind: "skill", name: "missing" }] }),
-    ).toThrow("request.validation_failed");
-    expect(() =>
+    ).rejects.toThrow("request.validation_failed");
+    await expect(
       fixture.service.send_message({
         parts: [
           { kind: "skill", name: "glossary-audit" },
           { kind: "skill", name: "glossary-audit" },
         ],
       }),
-    ).toThrow("request.validation_failed");
+    ).rejects.toThrow("request.validation_failed");
     expect(fixture.service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
   });
 
   it("按引用顺序展开多个 skill，并把混排可见文本追加到模型用户消息", async () => {
     const fixture = await create_service();
 
-    fixture.service.send_message({
+    await fixture.service.send_message({
       parts: [
         { kind: "text", text: "先用 " },
         { kind: "skill", name: "corpus-search" },
@@ -328,7 +415,9 @@ describe("AgentService", () => {
   it("仅含 skill 的消息只发送 skill block，不补通用用户指令", async () => {
     const fixture = await create_service();
 
-    fixture.service.send_message({ parts: [{ kind: "skill", name: "glossary-audit" }] });
+    await fixture.service.send_message({
+      parts: [{ kind: "skill", name: "glossary-audit" }],
+    });
     await wait_for_complete(fixture.service);
 
     expect(fake_agent_state.prompts.at(-1)).toMatch(/^<skill name="glossary-audit"/u);
@@ -338,7 +427,7 @@ describe("AgentService", () => {
   it("模型回合只经历 running 到 complete", async () => {
     const { service, publish } = await create_service();
 
-    service.send_message({ parts: [{ kind: "text", text: "开始" }] });
+    await service.send_message({ parts: [{ kind: "text", text: "开始" }] });
     expect(service.get_snapshot().state).toBe("running");
     expect(service.get_snapshot().entries[0]).toMatchObject({
       kind: "user_message",
@@ -384,7 +473,7 @@ describe("AgentService", () => {
     const { service, publish } = await create_service();
     expect(service.get_snapshot().contextUsage).toBeNull();
 
-    service.send_message({ parts: [{ kind: "text", text: "x".repeat(400) }] });
+    await service.send_message({ parts: [{ kind: "text", text: "x".repeat(400) }] });
     await wait_for_complete(service);
 
     const context_events = publish.mock.calls
@@ -392,11 +481,11 @@ describe("AgentService", () => {
       .filter((event) => event["type"] === "context_usage");
     expect(context_events[0]).toEqual({
       type: "context_usage",
-      contextUsage: { tokens: expect.any(Number), contextWindow: 4096 },
+      contextUsage: { tokens: expect.any(Number), contextWindow: 256_000 },
     });
     expect(service.get_snapshot().contextUsage).toMatchObject({
       tokens: expect.any(Number),
-      contextWindow: 4096,
+      contextWindow: 256_000,
     });
     expect(service.get_snapshot().contextUsage?.tokens).toBeGreaterThan(0);
     expect(context_events.at(-1)?.["contextUsage"]).toEqual(service.get_snapshot().contextUsage);
@@ -412,7 +501,7 @@ describe("AgentService", () => {
     const { service, publish } = await create_service();
     fake_agent_state.mode = "thinking";
 
-    service.send_message({ parts: [{ kind: "text", text: "开始" }] });
+    await service.send_message({ parts: [{ kind: "text", text: "开始" }] });
     await wait_for_complete(service);
     const snapshot = service.get_snapshot();
 
@@ -443,7 +532,7 @@ describe("AgentService", () => {
     const { service } = await create_service();
     fake_agent_state.mode = "tool_only";
 
-    service.send_message({ parts: [{ kind: "text", text: "查询" }] });
+    await service.send_message({ parts: [{ kind: "text", text: "查询" }] });
     await wait_for_complete(service);
 
     expect(service.get_snapshot().entries.map((entry) => entry.kind)).toEqual([
@@ -456,7 +545,7 @@ describe("AgentService", () => {
     const { service, publish } = await create_service();
     fake_agent_state.mode = "tools";
 
-    service.send_message({ parts: [{ kind: "text", text: "查询" }] });
+    await service.send_message({ parts: [{ kind: "text", text: "查询" }] });
     await wait_for_complete(service);
     const snapshot = service.get_snapshot();
 
@@ -564,7 +653,7 @@ describe("AgentService", () => {
     const { service, publish, log_error } = await create_service();
     fake_agent_state.mode = "failure";
 
-    service.send_message({ parts: [{ kind: "text", text: "开始" }] });
+    await service.send_message({ parts: [{ kind: "text", text: "开始" }] });
     await wait_for_complete(service);
 
     expect(publish).toHaveBeenCalledWith("agent.session_event", { type: "request_failed" });
@@ -591,7 +680,7 @@ describe("AgentService", () => {
     const { service } = await create_service();
     fake_agent_state.mode = "write";
 
-    service.send_message({
+    await service.send_message({
       parts: [
         { kind: "skill", name: "glossary-audit" },
         { kind: "text", text: "写入" },
@@ -627,7 +716,7 @@ describe("AgentService", () => {
     fake_agent_state.mode = "write";
     fake_agent_state.external_change_during_write = true;
 
-    service.send_message({ parts: [{ kind: "text", text: "写入" }] });
+    await service.send_message({ parts: [{ kind: "text", text: "写入" }] });
 
     await vi.waitFor(() => {
       expect(service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
@@ -637,7 +726,7 @@ describe("AgentService", () => {
   it("外部 items 与 proofreading 变化重置会话，无关 section 不重置", async () => {
     for (const section of ["items", "proofreading"] as const) {
       const { service } = await create_service();
-      service.send_message({ parts: [{ kind: "text", text: section }] });
+      await service.send_message({ parts: [{ kind: "text", text: section }] });
       await wait_for_complete(service);
 
       service.handle_project_change({
@@ -663,7 +752,7 @@ describe("AgentService", () => {
     vi.setSystemTime(1_000);
     const { service, publish, log_error } = await create_service();
     fake_agent_state.mode = "pending";
-    service.send_message({ parts: [{ kind: "text", text: "开始" }] });
+    await service.send_message({ parts: [{ kind: "text", text: "开始" }] });
     await vi.advanceTimersByTimeAsync(0);
 
     vi.setSystemTime(13_500);
@@ -672,7 +761,7 @@ describe("AgentService", () => {
       state: "idle",
       entries: [{ kind: "user_message", createdAt: 1_000, endedAt: 13_500 }],
     });
-    expect(stopped_snapshot.contextUsage).toMatchObject({ contextWindow: 4096 });
+    expect(stopped_snapshot.contextUsage).toMatchObject({ contextWindow: 256_000 });
     expect(fake_agent_state.abort_count).toBe(1);
     await service.dispose();
     expect(publish).not.toHaveBeenCalledWith("agent.session_event", {
@@ -681,11 +770,47 @@ describe("AgentService", () => {
     expect(log_error).not.toHaveBeenCalled();
   });
 
+  it("SDK preflight 尚未结束时 stop 也不会迟到启动模型请求", async () => {
+    const { service, publish, log_error } = await create_service();
+    fake_agent_state.hold_auth = true;
+    await service.send_message({ parts: [{ kind: "text", text: "立即停止" }] });
+    await vi.waitFor(() => expect(fake_agent_state.release_auth).not.toBeNull());
+
+    expect(service.stop()).toMatchObject({ state: "idle" });
+    fake_agent_state.release_auth?.();
+    await vi.waitFor(() => expect(fake_agent_state.release_auth).toBeNull());
+    await Promise.resolve();
+
+    expect(fake_agent_state.model_call_count).toBe(0);
+    expect(count_published_events(publish, "request_failed")).toBe(0);
+    expect(log_error).not.toHaveBeenCalled();
+  });
+
+  it("reset 会立即隔离并等待 SDK preflight 真正 settle", async () => {
+    const { service } = await create_service();
+    fake_agent_state.hold_auth = true;
+    await service.send_message({ parts: [{ kind: "text", text: "立即重置" }] });
+    await vi.waitFor(() => expect(fake_agent_state.release_auth).not.toBeNull());
+
+    let settled = false;
+    const resetting = service.reset().then((snapshot) => {
+      settled = true;
+      return snapshot;
+    });
+    expect(service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+
+    fake_agent_state.release_auth?.();
+    await expect(resetting).resolves.toMatchObject({ state: "idle", entries: [] });
+    expect(fake_agent_state.model_call_count).toBe(0);
+  });
+
   it("运行中重置立即隔离旧会话，并在旧回合退出后创建全新上下文", async () => {
     const { service, publish } = await create_service();
     fake_agent_state.mode = "pending";
     fake_agent_state.hold_idle = true;
-    service.send_message({
+    await service.send_message({
       parts: [
         { kind: "skill", name: "corpus-search" },
         { kind: "text", text: "旧任务" },
@@ -717,7 +842,7 @@ describe("AgentService", () => {
 
     let resetting_error: unknown;
     try {
-      service.send_message({ parts: [{ kind: "text", text: "过早的新任务" }] });
+      await service.send_message({ parts: [{ kind: "text", text: "过早的新任务" }] });
     } catch (error) {
       resetting_error = error;
     }
@@ -731,7 +856,7 @@ describe("AgentService", () => {
     fake_agent_state.release_pending?.();
     await expect(resetting).resolves.toMatchObject({ state: "idle", entries: [] });
     fake_agent_state.mode = "complete";
-    service.send_message({ parts: [{ kind: "text", text: "新任务" }] });
+    await service.send_message({ parts: [{ kind: "text", text: "新任务" }] });
     await wait_for_complete(service);
 
     expect(service.get_snapshot().entries.filter((entry) => entry.kind === "user_message")).toEqual(
@@ -743,7 +868,7 @@ describe("AgentService", () => {
     const { service } = await create_service();
     fake_agent_state.mode = "pending";
     fake_agent_state.hold_idle = true;
-    service.send_message({ parts: [{ kind: "text", text: "旧任务" }] });
+    await service.send_message({ parts: [{ kind: "text", text: "旧任务" }] });
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
     const resetting = service.reset();
 
@@ -763,14 +888,14 @@ describe("AgentService", () => {
   it("skill 进入消息历史后，后续普通回合仍使用稳定基础 system prompt", async () => {
     const { service } = await create_service();
 
-    service.send_message({
+    await service.send_message({
       parts: [
         { kind: "skill", name: "glossary-audit" },
         { kind: "text", text: "审校" },
       ],
     });
     await wait_for_complete(service);
-    service.send_message({ parts: [{ kind: "text", text: "普通对话" }] });
+    await service.send_message({ parts: [{ kind: "text", text: "普通对话" }] });
     await wait_for_complete(service);
 
     expect(fake_agent_state.system_prompts.at(-1)).toBe(fake_agent_state.system_prompts.at(-2));
@@ -782,10 +907,10 @@ describe("AgentService", () => {
   it("空闲回合之间重绑定 Agent 模型并保留历史", async () => {
     const { service, select_agent_model } = await create_service();
 
-    service.send_message({ parts: [{ kind: "text", text: "第一轮" }] });
+    await service.send_message({ parts: [{ kind: "text", text: "第一轮" }] });
     await wait_for_complete(service);
     select_agent_model("next");
-    service.send_message({ parts: [{ kind: "text", text: "第二轮" }] });
+    await service.send_message({ parts: [{ kind: "text", text: "第二轮" }] });
     await wait_for_complete(service);
 
     expect(fake_agent_state.model_ids).toEqual(["test-model", "next-model"]);
@@ -794,14 +919,194 @@ describe("AgentService", () => {
     ).toHaveLength(2);
   });
 
+  it("建会话准备失败时不公开用户条目、状态或模型请求", async () => {
+    const { service, publish } = await create_service();
+    agent_model_registrar.mockImplementationOnce(() => {
+      throw new Error("模型解析失败");
+    });
+    const before = service.get_snapshot();
+
+    await expect(
+      service.send_message({ parts: [{ kind: "text", text: "不会受理" }] }),
+    ).rejects.toThrow("模型解析失败");
+
+    expect(service.get_snapshot()).toEqual(before);
+    expect(publish).not.toHaveBeenCalled();
+    expect(fake_agent_state.model_call_count).toBe(0);
+  });
+
+  it("换模鉴权失败时保留原公开快照", async () => {
+    const { service, select_agent_model } = await create_service();
+    await service.send_message({ parts: [{ kind: "text", text: "第一轮" }] });
+    await wait_for_complete(service);
+    const before = service.get_snapshot();
+    select_agent_model("next");
+    fake_agent_state.auth_configured = false;
+
+    await expect(
+      service.send_message({ parts: [{ kind: "text", text: "不会追加" }] }),
+    ).rejects.toThrow("No API key");
+
+    expect(service.get_snapshot()).toEqual(before);
+    expect(fake_agent_state.model_call_count).toBe(1);
+  });
+
+  it("创建运行时期间 stop 会令候选失效且不产生公开受理事实", async () => {
+    const { service } = await create_service();
+
+    const sending = service.send_message({ parts: [{ kind: "text", text: "不会启动" }] });
+    expect(service.stop()).toMatchObject({ state: "idle", entries: [] });
+
+    await expect(sending).rejects.toMatchObject({
+      diagnostic_context: { reason: "agent_message_invalidated" },
+    });
+    expect(service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
+    expect(fake_agent_state.model_call_count).toBe(0);
+  });
+
+  it("换模期间 stop 会关闭候选运行时并保留既有公开历史", async () => {
+    const { service, select_agent_model } = await create_service();
+    await service.send_message({ parts: [{ kind: "text", text: "既有历史" }] });
+    await wait_for_complete(service);
+    const entries_before = service.get_snapshot().entries;
+    select_agent_model("next");
+    fake_agent_state.hold_auth = true;
+
+    const switching = service.send_message({ parts: [{ kind: "text", text: "不会受理" }] });
+    await vi.waitFor(() => expect(fake_agent_state.release_auth).not.toBeNull());
+    expect(service.stop()).toMatchObject({ state: "idle", entries: entries_before });
+    fake_agent_state.release_auth?.();
+
+    await expect(switching).rejects.toMatchObject({
+      diagnostic_context: { reason: "agent_message_invalidated" },
+    });
+    expect(service.get_snapshot()).toMatchObject({ state: "idle", entries: entries_before });
+    expect(fake_agent_state.model_call_count).toBe(1);
+  });
+
+  it("首次过载后自动重试成功，不公开中间失败", async () => {
+    vi.useFakeTimers();
+    const { service, publish, log_error } = await create_service();
+    fake_agent_state.mode = "retry";
+    fake_agent_state.retry_failures_remaining = 1;
+
+    await service.send_message({ parts: [{ kind: "text", text: "重试" }] });
+    await vi.runAllTimersAsync();
+    await wait_for_complete(service);
+
+    expect(fake_agent_state.model_call_count).toBe(2);
+    expect(service.get_snapshot().entries.at(-1)).toMatchObject({
+      kind: "assistant_message",
+      parts: [{ kind: "text", text: "已完成" }],
+      complete: true,
+    });
+    expect(count_published_events(publish, "request_failed")).toBe(0);
+    expect(log_error).not.toHaveBeenCalled();
+  });
+
+  it("重试等待期间 stop 会取消后续调用且不报告失败", async () => {
+    vi.useFakeTimers();
+    const { service, publish, log_error } = await create_service();
+    fake_agent_state.mode = "retry";
+    fake_agent_state.retry_failures_remaining = 1;
+    await service.send_message({ parts: [{ kind: "text", text: "取消重试" }] });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fake_agent_state.model_call_count).toBe(1);
+
+    expect(service.stop()).toMatchObject({ state: "idle" });
+    await vi.runAllTimersAsync();
+
+    expect(fake_agent_state.model_call_count).toBe(1);
+    expect(count_published_events(publish, "request_failed")).toBe(0);
+    expect(log_error).not.toHaveBeenCalled();
+  });
+
+  it("高用量回答触发阈值压缩，公开时间线不缩水且下一轮从摘要继续", async () => {
+    const { service, publish } = await create_service();
+    fake_agent_state.context_window = 100_000;
+    for (const round of [1, 2, 3]) {
+      await service.send_message({
+        parts: [{ kind: "text", text: `第${round.toString()}轮${"x".repeat(40_000)}` }],
+      });
+      await wait_for_complete(service);
+    }
+    const after_compaction = service.get_snapshot();
+    const usage_tokens = publish.mock.calls.flatMap(([, event]) =>
+      event["type"] === "context_usage"
+        ? [Number((event["contextUsage"] as JsonRecord)["tokens"])]
+        : [],
+    );
+
+    expect(fake_agent_state.request_kinds).toContain("summary");
+    expect(after_compaction.entries).toHaveLength(6);
+
+    fake_agent_state.context_window = 256_000;
+    await service.send_message({ parts: [{ kind: "text", text: "继续" }] });
+    await wait_for_complete(service);
+    const next_context = fake_agent_state.model_contexts.at(-1);
+    expect(JSON.stringify(next_context?.[0])).toContain("压缩摘要");
+    expect(service.get_snapshot().contextUsage?.tokens ?? Number.POSITIVE_INFINITY).toBeLessThan(
+      Math.max(...usage_tokens),
+    );
+    expect(service.get_snapshot().entries).toHaveLength(8);
+  });
+
+  it("阈值压缩失败只记录 warning，已成功的最终回答不转成请求失败", async () => {
+    const { service, publish, log_error, log_warning } = await create_service();
+    fake_agent_state.context_window = 100_000;
+    fake_agent_state.summary_failures_remaining = 1;
+    for (const round of [1, 2, 3]) {
+      await service.send_message({
+        parts: [{ kind: "text", text: `第${round.toString()}轮${"x".repeat(40_000)}` }],
+      });
+      await wait_for_complete(service);
+    }
+
+    expect(fake_agent_state.request_kinds).toContain("summary");
+    expect(service.get_snapshot()).toMatchObject({
+      state: "complete",
+      entries: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "assistant_message",
+          parts: [{ kind: "text", text: "已完成" }],
+        }),
+      ]),
+    });
+    expect(log_warning).toHaveBeenCalledWith(
+      "Agent 上下文压缩失败",
+      expect.objectContaining({ source: "agent" }),
+    );
+    expect(count_published_events(publish, "request_failed")).toBe(0);
+    expect(log_error).not.toHaveBeenCalled();
+  });
+
+  it("同一事件循环的第二条消息异步拒绝，且不重复读取模型设置", async () => {
+    const { service, read_setting_count } = await create_service();
+    fake_agent_state.mode = "pending";
+
+    const first = service.send_message({ parts: [{ kind: "text", text: "第一轮" }] });
+    const second = service.send_message({ parts: [{ kind: "text", text: "第二轮" }] });
+
+    await expect(second).rejects.toMatchObject({
+      diagnostic_context: { reason: "agent_already_running" },
+    });
+    await expect(first).resolves.toMatchObject({ state: "running" });
+    expect(read_setting_count()).toBe(1);
+    expect(service.get_snapshot().entries).toEqual([
+      expect.objectContaining({ parts: [{ kind: "text", text: "第一轮" }] }),
+    ]);
+    await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
+    service.stop();
+  });
+
   it("运行中重复消息在读取新模型前被拒绝", async () => {
     const { service, read_setting_count } = await create_service();
     fake_agent_state.mode = "pending";
-    service.send_message({ parts: [{ kind: "text", text: "第一轮" }] });
+    await service.send_message({ parts: [{ kind: "text", text: "第一轮" }] });
 
-    expect(() => service.send_message({ parts: [{ kind: "text", text: "第二轮" }] })).toThrow(
-      "request.validation_failed",
-    );
+    await expect(
+      service.send_message({ parts: [{ kind: "text", text: "第二轮" }] }),
+    ).rejects.toThrow("request.validation_failed");
     expect(read_setting_count()).toBe(1);
     await vi.waitFor(() => expect(fake_agent_state.release_pending).not.toBeNull());
     service.stop();
@@ -811,7 +1116,7 @@ describe("AgentService", () => {
     const { service } = await create_service();
     fake_agent_state.mode = "read_skill";
 
-    service.send_message({ parts: [{ kind: "text", text: "普通对话" }] });
+    await service.send_message({ parts: [{ kind: "text", text: "普通对话" }] });
     await wait_for_complete(service);
     expect(service.get_snapshot().entries).toEqual(
       expect.arrayContaining([
@@ -836,7 +1141,7 @@ describe("AgentService", () => {
       ]),
     );
 
-    service.send_message({ parts: [{ kind: "skill", name: "corpus-search" }] });
+    await service.send_message({ parts: [{ kind: "skill", name: "corpus-search" }] });
     await wait_for_complete(service);
     expect(service.get_snapshot().entries).toContainEqual(
       expect.objectContaining({
@@ -851,7 +1156,7 @@ describe("AgentService", () => {
   it("资源未加载时拒绝启动模型回合", async () => {
     const { service } = await create_service(false);
 
-    expect(() => service.send_message({ parts: [{ kind: "text", text: "开始" }] })).toThrow(
+    await expect(service.send_message({ parts: [{ kind: "text", text: "开始" }] })).rejects.toThrow(
       "runtime.internal_invariant",
     );
   });
@@ -860,6 +1165,7 @@ describe("AgentService", () => {
     service: AgentService;
     publish: ReturnType<typeof vi.fn>;
     log_error: ReturnType<typeof vi.fn>;
+    log_warning: ReturnType<typeof vi.fn>;
     select_agent_model: (model_id: "active" | "next") => void;
     read_setting_count: () => number;
   }> {
@@ -953,6 +1259,7 @@ describe("AgentService", () => {
     };
     const publish = vi.fn((_topic: string, _payload: JsonRecord) => undefined);
     const log_error = vi.fn();
+    const log_warning = vi.fn();
     service = new AgentService({
       paths: {
         get_app_root: () => "E:/Project/LinguaGacha",
@@ -967,7 +1274,7 @@ describe("AgentService", () => {
       cache,
       qualityRules: quality_rules,
       proofreading,
-      logManager: { error: log_error, warning: vi.fn() },
+      logManager: { error: log_error, warning: log_warning },
       publish,
     });
     if (load_resources) await service.load_resources();
@@ -976,6 +1283,7 @@ describe("AgentService", () => {
       service,
       publish,
       log_error,
+      log_warning,
       select_agent_model: (model_id) => {
         agent_model_id = model_id;
       },
@@ -1000,6 +1308,10 @@ async function wait_for_complete(service: AgentService): Promise<void> {
   await vi.waitFor(() => expect(service.get_snapshot().state).toBe("complete"));
 }
 
+function count_published_events(publish: ReturnType<typeof vi.fn>, type: string): number {
+  return publish.mock.calls.filter(([, event]) => event["type"] === type).length;
+}
+
 function expect_agent_system_prompt(prompt: string | undefined): void {
   expect(prompt).toContain("基础系统指令。");
   expect(prompt).toContain("<available_skills>");
@@ -1009,4 +1321,8 @@ function expect_agent_system_prompt(prompt: string | undefined): void {
   expect(prompt).not.toContain("<name>corpus-search</name>");
   expect(prompt).not.toContain("执行术语审校。");
   expect(prompt).not.toContain("完整正文。");
+  expect(prompt).not.toContain("You are an expert coding assistant operating inside pi");
+  expect(prompt).not.toContain("LinguaGacha Agent 协作指南");
+  expect(prompt?.match(/Current working directory:/gu)).toHaveLength(1);
+  expect(prompt?.endsWith("Current working directory: E:/Project/LinguaGacha")).toBe(true);
 }

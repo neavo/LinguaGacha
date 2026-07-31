@@ -1,5 +1,5 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "@earendil-works/pi-ai";
+import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import type { JsonRecord } from "../../domain/json";
 import { is_json_record, read_json_record } from "../../domain/json";
@@ -172,20 +172,21 @@ type AgentQualityDependencies = {
 export const AGENT_QUALITY_RULE_UPDATE_SOURCE = "agent_quality_rule_update";
 
 /** 构造统一质量规则 query/update 工具；领域持久化仍由 QualityRuleService 拥有。 */
-export function create_agent_quality_tools(dependencies: AgentQualityDependencies): AgentTool[] {
+export function create_agent_quality_tools(
+  dependencies: AgentQualityDependencies,
+): ToolDefinition[] {
   return [
-    {
+    defineTool({
       name: "query_quality_rules",
       label: "查询质量规则",
       description: "查询当前工程指定质量规则的完整有序条目、meta、事实分析和 revision。",
       parameters: QUERY_QUALITY_RULES_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
-        const request = params as { rule_type: QualityRuleKind };
-        return tool_result(query_agent_quality_rules(dependencies, request.rule_type));
+        return tool_result(query_agent_quality_rules(dependencies, params.rule_type));
       },
-    },
-    {
+    }),
+    defineTool({
       name: "update_quality_rules",
       label: "更新质量规则",
       description: "按 expected_section_revisions 原子应用质量规则增删改、重排和 meta 更新。",
@@ -193,38 +194,32 @@ export function create_agent_quality_tools(dependencies: AgentQualityDependencie
       parameters: UPDATE_QUALITY_RULES_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
-        const request = params as {
-          rule_type: QualityRuleKind;
-          changes?: QualityRuleChange[];
-          meta?: JsonRecord;
-          expected_section_revisions: Record<string, number>;
-        };
-        const changes = request.changes ?? [];
-        if (changes.length === 0 && request.meta === undefined) {
+        const changes = params.changes ?? [];
+        if (changes.length === 0 && params.meta === undefined) {
           throw new Error("质量规则更新至少需要 changes 或 meta");
         }
-        const current = query_agent_quality_rules(dependencies, request.rule_type);
+        const current = query_agent_quality_rules(dependencies, params.rule_type);
         const entries =
           changes.length === 0
             ? undefined
             : apply_agent_quality_rule_changes({
-                rule_type: request.rule_type,
+                rule_type: params.rule_type,
                 current_entries: current.entries,
                 changes,
                 corpus_items: dependencies.cache.items.readItems(),
               });
         await dependencies.qualityRules.update(
           {
-            rule_type: request.rule_type,
+            rule_type: params.rule_type,
             ...(entries === undefined ? {} : { entries }),
-            ...(request.meta === undefined ? {} : { meta: request.meta }),
-            expected_section_revisions: request.expected_section_revisions,
+            ...(params.meta === undefined ? {} : { meta: params.meta }),
+            expected_section_revisions: params.expected_section_revisions,
           },
           AGENT_QUALITY_RULE_UPDATE_SOURCE,
         );
-        return tool_result(query_agent_quality_rules(dependencies, request.rule_type));
+        return tool_result(query_agent_quality_rules(dependencies, params.rule_type));
       },
-    },
+    }),
   ];
 }
 

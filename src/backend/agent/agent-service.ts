@@ -1,12 +1,23 @@
 import {
-  Agent,
   estimateContextTokens,
   formatSkillInvocation,
   formatSkillsForSystemPrompt,
-  uuidv7,
-  type AgentEvent,
 } from "@earendil-works/pi-agent-core";
-import { contentText, type AssistantMessage } from "@earendil-works/pi-ai";
+import {
+  contentText,
+  InMemoryCredentialStore,
+  type AssistantMessage,
+  uuidv7,
+} from "@earendil-works/pi-ai";
+import {
+  createAgentSession,
+  DefaultResourceLoader,
+  ModelRuntime,
+  SessionManager,
+  SettingsManager,
+  type AgentSession,
+  type AgentSessionEvent as PiAgentSessionEvent,
+} from "@earendil-works/pi-coding-agent";
 
 import type { JsonRecord } from "../../domain/json";
 import {
@@ -31,7 +42,7 @@ import type { ProjectSessionState } from "../project/project-session-state";
 import type { ProofreadingService } from "../proofreading/proofreading-service";
 import type { QualityRuleService } from "../quality/quality-rule-service";
 import { AGENT_PROOFREADING_UPDATE_SOURCE, create_agent_item_tools } from "./agent-item-tools";
-import { resolve_agent_model } from "./agent-model";
+import { register_agent_model } from "./agent-model";
 import {
   AGENT_QUALITY_RULE_UPDATE_SOURCE,
   create_agent_quality_tools,
@@ -47,6 +58,14 @@ const AGENT_PROJECT_SECTIONS = [
   "proofreading",
 ] as const satisfies readonly ProjectDataSection[];
 
+/** 产品会话固定启用内存压缩与重试，不读取 coding-agent 的用户级设置。 */
+const AGENT_SESSION_SETTINGS = Object.freeze({
+  enableInstallTelemetry: false,
+  enableSkillCommands: false,
+  compaction: Object.freeze({ enabled: true, reserveTokens: 64_000, keepRecentTokens: 20_000 }),
+  retry: Object.freeze({ enabled: true, maxRetries: 3, baseDelayMs: 2_000 }),
+});
+
 type AgentBinding = {
   projectPath: string; // loaded 工程身份
   epoch: number; // 同路径重新加载也必须失效旧会话
@@ -54,7 +73,7 @@ type AgentBinding = {
 };
 
 type AgentRuntime = {
-  agent: Agent;
+  session: AgentSession;
   binding: AgentBinding;
   unsubscribe: () => void;
 };
@@ -84,7 +103,7 @@ type AgentServiceOptions = {
 };
 
 /**
- * 单个后端 Agent 会话的状态拥有者；页面只通过 snapshot、命令和 SSE 观察它。
+ * 单个后端 Agent 产品会话的状态拥有者；通用模型生命周期交给 AgentSession。
  */
 export class AgentService {
   private readonly paths: AgentServiceOptions["paths"];
@@ -97,8 +116,11 @@ export class AgentService {
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
   private readonly unsubscribe_project_session: () => void;
-  private runtime: AgentRuntime | null = null; // 模型状态只绑定当前工程世代
-  private session_reset: Promise<void> | null = null; // 旧运行时退出前阻止新消息跨会话并发
+  private runtime: AgentRuntime | null = null; // 模型历史只绑定当前工程世代
+  private session_reset: Promise<void> | null = null; // 清理完成前禁止新消息跨会话进入
+  private message_acceptance: Promise<AgentSessionSnapshot> | null = null; // 串行覆盖异步建会话与换模
+  private prompt_settlement: Promise<void> | null = null; // SDK idle 尚未覆盖异步 preflight，单独纳入关闭屏障
+  private runtime_generation = 0; // stop/reset/dispose 统一令迟到异步阶段失效
   private state: AgentSessionState = "idle";
   private entries: AgentEntry[] = [];
   private skills: AgentSkillDefinition[] = [];
@@ -116,14 +138,12 @@ export class AgentService {
     this.proofreading = options.proofreading;
     this.log_manager = options.logManager;
     this.publish = options.publish;
-    this.unsubscribe_project_session = this.session_state.subscribe_change(() =>
-      this.reset_session(),
-    );
+    this.unsubscribe_project_session = this.session_state.subscribe_change(() => {
+      void this.reset_session();
+    });
   }
 
-  /**
-   * 返回仅含不可变投影的公开快照，避免 API 调用方持有会话内部引用。
-   */
+  /** 返回仅含不可变投影的公开快照，避免 API 调用方持有会话内部引用。 */
   public get_snapshot(): AgentSessionSnapshot {
     return {
       state: this.state,
@@ -144,9 +164,9 @@ export class AgentService {
   }
 
   /**
-   * 完整校验结构化消息后异步启动模型回合，HTTP 只等待命令受理。
+   * 同步校验消息，以单一 Promise 串行完成建会话或换模后再公开受理结果。
    */
-  public send_message(request: JsonRecord): AgentSessionSnapshot {
+  public async send_message(request: JsonRecord): Promise<AgentSessionSnapshot> {
     this.assert_not_disposed();
     if (this.session_reset !== null) {
       throw new AppErrors.RequestValidationError({
@@ -179,13 +199,139 @@ export class AgentService {
       selected_skill_names.add(part.name);
       selected_skills.push(skill);
     }
-
-    if (this.runtime?.agent.state.isStreaming) {
+    if (
+      this.message_acceptance !== null ||
+      this.prompt_settlement !== null ||
+      this.state === "running" ||
+      this.runtime?.session.isIdle === false
+    ) {
       throw new AppErrors.RequestValidationError({
         diagnostic_context: { reason: "agent_already_running" },
       });
     }
-    const runtime = this.ensure_runtime(system_prompt);
+
+    const acceptance = this.accept_message(system_prompt, parts, selected_skills);
+    this.message_acceptance = acceptance;
+    const clear_acceptance = () => {
+      if (this.message_acceptance === acceptance) this.message_acceptance = null;
+    };
+    void acceptance.then(clear_acceptance, clear_acceptance);
+    return await acceptance;
+  }
+
+  /** 清空当前对话，并在消息受理与旧运行时完全退出后返回最终空快照。 */
+  public async reset(): Promise<AgentSessionSnapshot> {
+    this.assert_not_disposed();
+    await this.reset_session();
+    return this.get_snapshot();
+  }
+
+  /** 立即封口公开轮次并保留历史，后台取消压缩、重试和当前模型回合。 */
+  public stop(): AgentSessionSnapshot {
+    this.assert_not_disposed();
+    this.runtime_generation += 1;
+    const runtime = this.runtime;
+    if (runtime !== null) {
+      try {
+        runtime.session.abortCompaction();
+      } catch (error) {
+        this.warn_cleanup_failure(error);
+      }
+      void runtime.session.abort().catch((error: unknown) => this.warn_cleanup_failure(error));
+    }
+    this.end_current_round();
+    this.set_state("idle");
+    return this.get_snapshot();
+  }
+
+  /** 相关项目事实变化令旧上下文失效；Agent 自己的原子写入只推进 binding。 */
+  public handle_project_change(event: ProjectChangeEvent): void {
+    if (
+      !event.updatedSections.some((section) =>
+        (AGENT_PROJECT_SECTIONS as readonly ProjectDataSection[]).includes(section),
+      )
+    ) {
+      return;
+    }
+    if (
+      this.runtime !== null &&
+      (event.source === AGENT_QUALITY_RULE_UPDATE_SOURCE ||
+        event.source === AGENT_PROOFREADING_UPDATE_SOURCE)
+    ) {
+      this.runtime.binding = this.read_binding();
+      return;
+    }
+    if (this.runtime !== null || this.message_acceptance !== null) {
+      void this.reset_session();
+    }
+  }
+
+  /** dispose 不再发布事件，但会等待 reset、消息受理与所有运行时清理。 */
+  public async dispose(): Promise<void> {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.runtime_generation += 1;
+    this.unsubscribe_project_session();
+    const runtime = this.runtime;
+    const reset = this.session_reset;
+    const acceptance = this.message_acceptance;
+    const prompt = this.prompt_settlement;
+    this.runtime = null;
+    await Promise.all([
+      reset,
+      acceptance?.catch(() => undefined),
+      prompt?.catch(() => undefined),
+      runtime === null ? undefined : this.close_runtime(runtime),
+    ]);
+  }
+
+  /** 失效绑定先完整重置，再在受理世代内准备唯一候选运行时。 */
+  private async accept_message(
+    system_prompt: string,
+    parts: AgentUserMessagePart[],
+    selected_skills: AgentSkillDefinition[],
+  ): Promise<AgentSessionSnapshot> {
+    let binding = this.read_binding();
+    if (this.runtime !== null && !bindings_equal(this.runtime.binding, binding)) {
+      await this.reset_session();
+      binding = this.read_binding();
+    }
+    const generation = this.runtime_generation;
+    const model_settings = this.settings.read_setting();
+    let runtime = this.runtime;
+    const created = runtime === null;
+    let candidate_closed = false;
+
+    try {
+      if (runtime === null) {
+        runtime = await this.create_runtime(binding, system_prompt, model_settings);
+      } else {
+        const resolved_model = register_agent_model(
+          runtime.session.modelRuntime,
+          model_settings,
+          this.user_agent,
+        );
+        await runtime.session.setModel(resolved_model.model);
+        runtime.session.setThinkingLevel(resolved_model.thinkingLevel);
+      }
+
+      if (!this.acceptance_is_current(generation, binding)) {
+        if (created || this.runtime === runtime) {
+          if (this.runtime === runtime) this.runtime = null;
+          await this.close_runtime(runtime);
+          candidate_closed = true;
+        }
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: { reason: "agent_message_invalidated" },
+        });
+      }
+      if (created) this.runtime = runtime;
+    } catch (error) {
+      if (created && runtime !== null && this.runtime !== runtime && !candidate_closed) {
+        await this.close_runtime(runtime);
+      }
+      throw error;
+    }
 
     this.upsert_entry({
       kind: "user_message",
@@ -195,151 +341,108 @@ export class AgentService {
       endedAt: null,
     });
     this.set_state("running");
-    void this.run_prompt(runtime, build_agent_prompt(parts, selected_skills));
+    const prompt = this.run_prompt(runtime, generation, build_agent_prompt(parts, selected_skills));
+    this.prompt_settlement = prompt;
+    const clear_prompt = () => {
+      if (this.prompt_settlement === prompt) this.prompt_settlement = null;
+    };
+    void prompt.then(clear_prompt, clear_prompt);
     return this.get_snapshot();
   }
 
-  /** 清空当前对话，并在旧模型回合完全退出后返回最终空快照。 */
-  public async reset(): Promise<AgentSessionSnapshot> {
-    this.assert_not_disposed();
-    await this.reset_session();
-    return this.get_snapshot();
-  }
-
-  /**
-   * 中断当前模型回合；迟到的完成回调因状态已回到 idle 不再覆盖公开状态。
-   */
-  public stop(): AgentSessionSnapshot {
-    this.runtime?.agent.abort();
-    this.end_current_round();
-    this.set_state("idle");
-    return this.get_snapshot();
-  }
-
-  /**
-   * 相关项目事实变化令旧上下文失效；Agent 自己的原子写入只推进 binding。
-   */
-  public handle_project_change(event: ProjectChangeEvent): void {
-    if (
-      this.runtime === null ||
-      !event.updatedSections.some((section) =>
-        (AGENT_PROJECT_SECTIONS as readonly ProjectDataSection[]).includes(section),
-      )
-    ) {
-      return;
-    }
-    if (
-      event.source === AGENT_QUALITY_RULE_UPDATE_SOURCE ||
-      event.source === AGENT_PROOFREADING_UPDATE_SOURCE
-    ) {
-      this.runtime.binding = this.read_binding();
-      return;
-    }
-    void this.reset_session();
-  }
-
-  /**
-   * 先断开订阅和模型事件，再等待当前模型回合退出。
-   */
-  public async dispose(): Promise<void> {
-    if (this.disposed) return;
-    this.disposed = true;
-    this.unsubscribe_project_session();
-    const runtime = this.runtime;
-    const session_reset = this.session_reset;
-    this.runtime = null;
-    runtime?.agent.abort();
-    runtime?.unsubscribe();
-    await Promise.all([runtime?.agent.waitForIdle(), session_reset]);
-  }
-
-  /**
-   * 复用同一工程绑定的运行时；工程事实失效时清空整段会话。
-   */
-  private ensure_runtime(system_prompt: string): AgentRuntime {
-    const binding = this.read_binding();
-    if (this.runtime !== null && !bindings_equal(this.runtime.binding, binding)) {
-      void this.reset_session();
-    }
-    if (this.runtime === null) {
-      this.runtime = this.create_runtime(binding, system_prompt);
-    } else {
-      // 空闲回合只替换模型请求能力，消息、工具、公开条目和工程绑定继续复用。
-      const resolved_model = resolve_agent_model(this.settings.read_setting(), this.user_agent);
-      this.runtime.agent.state.model = resolved_model.model;
-      this.runtime.agent.state.thinkingLevel = resolved_model.thinkingLevel;
-      this.runtime.agent.streamFunction = resolved_model.stream;
-    }
-    return this.runtime;
-  }
-
-  /**
-   * 创建单个 pi Agent，并把领域工具和事件订阅收口在同一生命周期对象中。
-   */
-  private create_runtime(binding: AgentBinding, system_prompt: string): AgentRuntime {
-    const resolved_model = resolve_agent_model(this.settings.read_setting(), this.user_agent);
-    const agent = new Agent({
-      initialState: {
-        systemPrompt: system_prompt,
-        model: resolved_model.model,
-        thinkingLevel: resolved_model.thinkingLevel,
-        tools: [
-          ...create_agent_quality_tools({
-            qualityRules: this.quality_rules,
-            cache: this.cache,
-          }),
-          ...create_agent_item_tools({
-            cache: this.cache,
-            proofreading: this.proofreading,
-          }),
-          ...create_agent_skill_tools(this.skills, (name) =>
-            this.is_skill_explicitly_invoked(name),
-          ),
-        ],
-        messages: [],
-      },
-      streamFn: resolved_model.stream,
-      toolExecution: "sequential",
+  /** 创建完全内存化的 SDK 会话，并只注册五个产品工具。 */
+  private async create_runtime(
+    binding: AgentBinding,
+    system_prompt: string,
+    model_settings: JsonRecord,
+  ): Promise<AgentRuntime> {
+    const app_root = this.paths.get_app_root();
+    const model_runtime = await ModelRuntime.create({
+      credentials: new InMemoryCredentialStore(),
+      modelsPath: null,
+      allowModelNetwork: false,
     });
-    const unsubscribe = agent.subscribe((event) => {
-      if (this.runtime?.agent === agent) {
-        this.handle_agent_event(event);
-      }
+    const resolved_model = register_agent_model(model_runtime, model_settings, this.user_agent);
+    const settings_manager = SettingsManager.inMemory(AGENT_SESSION_SETTINGS, {
+      projectTrusted: false,
     });
-    return { agent, binding, unsubscribe };
+    const resource_loader = new DefaultResourceLoader({
+      cwd: app_root,
+      agentDir: app_root,
+      settingsManager: settings_manager,
+      noExtensions: true,
+      noSkills: true,
+      noPromptTemplates: true,
+      noThemes: true,
+      noContextFiles: true,
+      systemPrompt: system_prompt,
+      appendSystemPrompt: [],
+    });
+    await resource_loader.reload();
+    const { session } = await createAgentSession({
+      cwd: app_root,
+      agentDir: app_root,
+      modelRuntime: model_runtime,
+      model: resolved_model.model,
+      thinkingLevel: resolved_model.thinkingLevel,
+      noTools: "builtin",
+      customTools: [
+        ...create_agent_quality_tools({
+          qualityRules: this.quality_rules,
+          cache: this.cache,
+        }),
+        ...create_agent_item_tools({
+          cache: this.cache,
+          proofreading: this.proofreading,
+        }),
+        ...create_agent_skill_tools(this.skills, (name) => this.is_skill_explicitly_invoked(name)),
+      ],
+      resourceLoader: resource_loader,
+      sessionManager: SessionManager.inMemory(app_root),
+      settingsManager: settings_manager,
+    });
+    const unsubscribe = session.subscribe((event) => {
+      if (this.runtime?.session === session) this.handle_agent_event(event);
+    });
+    return { session, binding, unsubscribe };
   }
 
-  /**
-   * 把模型异常转成稳定 typed event；已经停止或失效的旧运行时不再发布终态。
-   */
-  private async run_prompt(runtime: AgentRuntime, text: string): Promise<void> {
+  /** prompt() 已覆盖自动重试与溢出恢复；只有最终 settle 才决定公开终态。 */
+  private async run_prompt(runtime: AgentRuntime, generation: number, text: string): Promise<void> {
     try {
-      await runtime.agent.prompt(text);
+      await runtime.session.prompt(text, {
+        expandPromptTemplates: false,
+        // SDK 在异步 preflight 完成前仍处于 idle；失效后必须在真正启动模型前截断。
+        preflightResult: (accepted) => {
+          if (accepted && !this.prompt_is_current(runtime, generation)) {
+            throw new Error("Agent 消息在模型请求前已失效");
+          }
+        },
+      });
+      if (this.prompt_is_current(runtime, generation)) {
+        const final_assistant = runtime.session.messages.findLast(
+          (message): message is AssistantMessage => message.role === "assistant",
+        );
+        if (final_assistant?.stopReason === "error") {
+          this.report_request_failure(
+            new Error(final_assistant.errorMessage ?? "Agent 模型回合失败"),
+          );
+        }
+      }
     } catch (error) {
-      if (this.runtime === runtime && this.state !== "idle") {
+      if (this.prompt_is_current(runtime, generation)) {
         this.report_request_failure(error);
       }
     } finally {
-      if (this.runtime === runtime && this.state !== "idle") {
+      if (this.prompt_is_current(runtime, generation)) {
         this.end_current_round();
         this.set_state("complete");
       }
     }
   }
 
-  /**
-   * 将第三方 AgentEvent 收窄为按真实事件顺序追加的公开时间线。
-   */
-  private handle_agent_event(event: AgentEvent): void {
-    if (
-      event.type === "turn_end" &&
-      event.message.role === "assistant" &&
-      event.message.stopReason === "error" &&
-      this.state !== "idle"
-    ) {
-      this.report_request_failure(new Error(event.message.errorMessage ?? "Agent 模型回合失败"));
-      return;
-    }
+  /** 将 SDK 事件收窄为按真实顺序追加的公开时间线；中间失败不冒充最终失败。 */
+  private handle_agent_event(event: PiAgentSessionEvent): void {
     if (
       event.type === "message_update" &&
       (event.assistantMessageEvent.type === "text_delta" ||
@@ -352,10 +455,17 @@ export class AgentService {
       if (event.message.role === "assistant") {
         this.upsert_assistant_message(event.message, true);
       }
-      const context_usage = this.read_context_usage();
-      if (context_usage !== null) {
-        this.publish_event({ type: "context_usage", contextUsage: context_usage });
+      this.publish_context_usage();
+      return;
+    }
+    if (event.type === "compaction_end") {
+      if (event.errorMessage !== undefined) {
+        this.log_manager.warning("Agent 上下文压缩失败", {
+          source: "agent",
+          context: { reason: event.reason, error: event.errorMessage },
+        });
       }
+      this.publish_context_usage();
       return;
     }
     if (event.type === "tool_execution_start") {
@@ -384,7 +494,7 @@ export class AgentService {
     }
   }
 
-  /** Pi 以终态消息承载模型错误；公开层只发布稳定事件并把诊断留在日志。 */
+  /** Pi 以最终 assistant 承载模型错误；公开层只发布一次稳定事件。 */
   private report_request_failure(error: unknown): void {
     this.log_manager.error("Agent 模型回合失败", { source: "agent", error });
     this.publish_event({ type: "request_failed" });
@@ -445,13 +555,22 @@ export class AgentService {
     if (user !== undefined) this.upsert_entry({ ...user, endedAt: Date.now() });
   }
 
-  /** 上下文用量直接投影当前 Pi Agent 历史，不建立第二份计数状态。 */
+  /** SDK 在压缩后会暂时返回未知值；公开仪表继续从模型可见历史生成稳定数值。 */
   private read_context_usage(): AgentContextUsage | null {
-    if (this.runtime === null) return null;
+    const session = this.runtime?.session;
+    const model = session?.model;
+    if (session === undefined || model === undefined) return null;
     return {
-      tokens: estimateContextTokens(this.runtime.agent.state.messages).tokens,
-      contextWindow: this.runtime.agent.state.model.contextWindow,
+      tokens: estimateContextTokens(session.messages).tokens,
+      contextWindow: model.contextWindow,
     };
+  }
+
+  private publish_context_usage(): void {
+    const context_usage = this.read_context_usage();
+    if (context_usage !== null) {
+      this.publish_event({ type: "context_usage", contextUsage: context_usage });
+    }
   }
 
   /** 状态未变化时不发布重复 SSE。 */
@@ -466,31 +585,79 @@ export class AgentService {
     this.publish(AGENT_SESSION_EVENT_TOPIC, event);
   }
 
-  /**
-   * 隔离旧运行时并原子清空公开时间线；流式回合完全退出前共享同一收尾屏障。
-   */
+  /** 立即隔离并清空公开会话，再等待消息受理与旧 SDK 运行时关闭。 */
   private reset_session(): Promise<void> {
     if (this.session_reset !== null) return this.session_reset;
+    this.runtime_generation += 1;
     const runtime = this.runtime;
-    const was_streaming = runtime?.agent.state.isStreaming === true;
+    const acceptance = this.message_acceptance;
+    const prompt = this.prompt_settlement;
     this.runtime = null;
-    runtime?.unsubscribe();
-    runtime?.agent.abort();
-    if (runtime !== null && was_streaming) {
-      const reset = runtime.agent.waitForIdle().finally(() => {
-        if (this.session_reset === reset) this.session_reset = null;
-      });
-      this.session_reset = reset;
-    }
     this.state = "idle";
     this.entries = [];
-    this.publish_event({ type: "snapshot_seed", snapshot: this.get_snapshot() });
-    return this.session_reset ?? Promise.resolve();
+    if (!this.disposed) {
+      this.publish_event({ type: "snapshot_seed", snapshot: this.get_snapshot() });
+    }
+    const reset = Promise.all([
+      acceptance?.catch(() => undefined),
+      prompt?.catch(() => undefined),
+      runtime === null ? undefined : this.close_runtime(runtime),
+    ])
+      .then(() => undefined)
+      .finally(() => {
+        if (this.session_reset === reset) this.session_reset = null;
+      });
+    this.session_reset = reset;
+    return reset;
   }
 
-  /**
-   * 会话绑定同时读取工程世代与工具依赖 section revision，不能只比较路径。
-   */
+  /** SDK 运行时只有一个关闭入口，清理失败记录 warning 但仍继续 dispose。 */
+  private async close_runtime(runtime: AgentRuntime): Promise<void> {
+    try {
+      runtime.unsubscribe();
+    } catch (error) {
+      this.warn_cleanup_failure(error);
+    }
+    try {
+      runtime.session.abortCompaction();
+    } catch (error) {
+      this.warn_cleanup_failure(error);
+    }
+    try {
+      await runtime.session.abort();
+    } catch (error) {
+      this.warn_cleanup_failure(error);
+    } finally {
+      try {
+        runtime.session.dispose();
+      } catch (error) {
+        this.warn_cleanup_failure(error);
+      }
+    }
+  }
+
+  private warn_cleanup_failure(error: unknown): void {
+    this.log_manager.warning("Agent 会话清理失败", { source: "agent", error });
+  }
+
+  /** 受理结果只有在工程绑定、运行世代和服务生命周期均未变化时才能公开。 */
+  private acceptance_is_current(generation: number, binding: AgentBinding): boolean {
+    if (this.disposed || generation !== this.runtime_generation) return false;
+    try {
+      return bindings_equal(binding, this.read_binding());
+    } catch {
+      return false;
+    }
+  }
+
+  /** prompt 只有仍绑定当前运行时且未被终止时才能发布最终状态。 */
+  private prompt_is_current(runtime: AgentRuntime, generation: number): boolean {
+    return (
+      this.runtime === runtime && generation === this.runtime_generation && this.state !== "idle"
+    );
+  }
+
+  /** 会话绑定同时读取工程世代与工具依赖 section revision，不能只比较路径。 */
   private read_binding(): AgentBinding {
     const project_path = this.session_state.require_loaded_project_path();
     const snapshot = this.cache.snapshot();
@@ -517,9 +684,7 @@ export class AgentService {
 
   /** dispose 后的命令必须失败，避免重新创建已脱离订阅的运行时。 */
   private assert_not_disposed(): void {
-    if (this.disposed) {
-      throw new AppErrors.RuntimeDisposedError();
-    }
+    if (this.disposed) throw new AppErrors.RuntimeDisposedError();
   }
 }
 

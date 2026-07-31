@@ -132,9 +132,9 @@ describe("register_api_routes", () => {
       accepted: true,
     });
     expect(fixture.start_task).toHaveBeenCalledWith(task);
-    expect(read_post_handler(fixture.post_json, "/api/agent/message")(message)).toEqual({
-      state: "running",
-    });
+    await expect(
+      read_post_handler(fixture.post_json, "/api/agent/message")(message),
+    ).resolves.toEqual({ state: "running" });
     expect(fixture.send_message).toHaveBeenCalledWith(message);
     expect(read_post_handler(fixture.post_json, "/api/agent/stop")({})).toEqual({
       state: "idle",
@@ -155,7 +155,7 @@ function create_route_fixture() {
   const get = vi.fn();
   const post_json = vi.fn();
   const start_task = vi.fn(() => ({ accepted: true }));
-  const send_message = vi.fn(() => ({ state: "running" }));
+  const send_message = vi.fn(async () => ({ state: "running" }));
   const stop = vi.fn(() => ({ state: "idle" }));
   const reset = vi.fn(async () => ({
     state: "idle",

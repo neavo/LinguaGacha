@@ -27,6 +27,7 @@ const AGENT_STATUS_LABEL_KEYS: Readonly<Record<DetailStatus, LocaleKey>> = Objec
 type AgentDetailEntryProps = {
   kind: "tool" | "thinking";
   label: string;
+  started_at: number;
   status: DetailStatus;
   active: boolean;
   status_label: string;
@@ -120,7 +121,7 @@ function render_conversation(
   t: Translate,
 ): ReactNode[] {
   const nodes: ReactNode[] = [];
-  const active_entry = state === "running" ? entries.at(-1) : undefined;
+  const last_entry = state === "running" ? entries.at(-1) : undefined;
   for (const entry of entries) {
     if (entry.kind === "tool_call") {
       nodes.push(
@@ -128,8 +129,9 @@ function render_conversation(
           key={entry.id}
           kind="tool"
           label={entry.toolName}
+          started_at={entry.createdAt}
           status={entry.status}
-          active={active_entry === entry && entry.status === "running"}
+          active={state === "running" && entry.status === "running"}
           status_label={t(AGENT_STATUS_LABEL_KEYS[entry.status])}
           content={entry.output === null ? null : format_tool_output(entry.output)}
         />,
@@ -155,14 +157,7 @@ function render_conversation(
       );
       continue;
     }
-    nodes.push(render_assistant_entry(entry, active_entry === entry && !entry.complete, t));
-  }
-  if (state === "running") {
-    nodes.push(
-      <div className="agent-message__activity" key="agent-activity">
-        <AgentStatusLight status="running" active label={t(AGENT_STATUS_LABEL_KEYS.running)} />
-      </div>,
-    );
+    nodes.push(render_assistant_entry(entry, last_entry === entry && !entry.complete, t));
   }
   return nodes;
 }
@@ -185,7 +180,8 @@ function render_assistant_entry(
             <AgentDetailEntry
               key={key}
               kind="thinking"
-              label={t("agent_page.thinking")}
+              label={t(active ? "agent_page.thinking_active" : "agent_page.thinking")}
+              started_at={entry.createdAt}
               status={status}
               active={active}
               status_label={t(AGENT_STATUS_LABEL_KEYS[status])}
@@ -205,15 +201,11 @@ function render_assistant_entry(
 
 /** 每轮只在未结束时持有一个本地时钟；结束时间始终以后端 user 条目为准。 */
 function AgentRoundHeader({ user, t }: { user: UserEntry; t: Translate }): JSX.Element {
-  const [now, set_now] = useState(Date.now);
-
-  useEffect(() => {
-    if (user.endedAt !== null) return;
-    const timer = window.setInterval(() => set_now(Date.now()), 1_000);
-    return () => window.clearInterval(timer);
-  }, [user.endedAt]);
-
-  const duration = format_elapsed((user.endedAt ?? now) - user.createdAt);
+  const duration = useAgentElapsed(
+    user.createdAt,
+    user.endedAt === null,
+    user.endedAt ?? undefined,
+  );
   return (
     <div className="agent-round-header">
       <span aria-hidden="true" />
@@ -228,10 +220,21 @@ function AgentRoundHeader({ user, t }: { user: UserEntry; t: Translate }): JSX.E
 
 /** 工具输出与思考过程共享折叠交互，但保留各自的语义 class。 */
 function AgentDetailEntry(props: AgentDetailEntryProps): JSX.Element {
+  const duration = useAgentElapsed(props.started_at, props.active);
   return (
     <details className={`agent-detail-entry agent-detail-entry--${props.kind}`}>
       <summary>
-        <span className="agent-detail-entry__label">{props.label}</span>
+        <span className="agent-detail-entry__label">
+          {props.label}
+          {props.active && (
+            <>
+              {" · "}
+              <span className="agent-detail-entry__elapsed" role="timer" aria-live="off">
+                {duration}
+              </span>
+            </>
+          )}
+        </span>
         <AgentStatusLight status={props.status} active={props.active} label={props.status_label} />
       </summary>
       {props.content !== null && <pre tabIndex={0}>{props.content}</pre>}
@@ -239,7 +242,7 @@ function AgentDetailEntry(props: AgentDetailEntryProps): JSX.Element {
   );
 }
 
-/** 状态色与动画独立；运行时工具 / 思考块可与底部活动灯同时闪烁。 */
+/** 状态色与动画独立；运行时闪烁所有并行工具或当前思考块。 */
 function AgentStatusLight(props: AgentStatusLightProps): JSX.Element {
   return (
     <span
@@ -248,6 +251,19 @@ function AgentStatusLight(props: AgentStatusLightProps): JSX.Element {
       aria-label={props.label}
     />
   );
+}
+
+/** 轮次与当前详情共用同一计时规则；轮次结束时按后端时间冻结。 */
+function useAgentElapsed(started_at: number, running: boolean, ended_at?: number): string {
+  const [now, set_now] = useState(Date.now);
+
+  useEffect(() => {
+    if (!running) return;
+    const timer = window.setInterval(() => set_now(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [running]);
+
+  return format_elapsed((running ? now : (ended_at ?? started_at)) - started_at);
 }
 
 /** JSON 工具结果便于人工检查，非 JSON 正文保持模型实际收到的原文。 */
