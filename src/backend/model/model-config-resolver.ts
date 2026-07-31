@@ -1,7 +1,7 @@
 import path from "node:path";
 
 import { is_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
-import { normalize_model_selection, type ModelUsage } from "../../domain/model";
+import { Model, normalize_model_selection, type ModelUsage } from "../../domain/model";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { NativeFs, default_native_fs } from "../../native/native-fs";
 
@@ -26,15 +26,13 @@ export function read_config_model_records(config: JsonRecord): JsonRecord[] {
 export function resolve_model_for_usage(config: JsonRecord, usage: ModelUsage): JsonRecord | null {
   const models = read_config_model_records(config);
   const selected_model_id = normalize_model_selection(config["model_selection"])[usage];
-  if (selected_model_id !== "") {
-    const selected_model = models.find((model) => {
-      return String(model["id"] ?? "") === selected_model_id;
-    });
-    if (selected_model !== undefined) {
-      return selected_model;
-    }
-  }
-  return models[0] ?? null;
+  const selected_model = models.find(
+    (model) => selected_model_id !== "" && String(model["id"] ?? "") === selected_model_id,
+  );
+  const model = selected_model ?? models[0];
+  return model === undefined
+    ? null
+    : (Model.from_json(model, String(model["id"] ?? "")).to_json() as JsonRecord);
 }
 
 /**

@@ -144,6 +144,10 @@ describe("ModelService 配置管理", () => {
     ]);
 
     await service.add_model({ model_type: "CUSTOM_OPENAI" });
+    await service.update_model({
+      model_id: "00000000-0000-4000-8000-000000000021",
+      patch: { agent: { context_window: 400_000, max_output_tokens: 50_000 } },
+    });
     const second_service = new ModelService(paths, app_setting_service, TEST_LLM_USER_AGENT);
     const snapshot = read_request_model_snapshot(second_service.get_snapshot());
 
@@ -152,6 +156,7 @@ describe("ModelService 配置管理", () => {
         expect.objectContaining({
           id: "00000000-0000-4000-8000-000000000021",
           type: "CUSTOM_OPENAI",
+          agent: { context_window: 400_000, max_output_tokens: 50_000 },
         }),
       ]),
     );
@@ -209,7 +214,12 @@ describe("ModelService 配置管理", () => {
       analysis: "openai-a",
       agent: "preset",
     });
-    expect(snapshot.models[0]).toEqual({ id: "preset", type: "PRESET", name: "模型" });
+    expect(snapshot.models[0]).toEqual({
+      id: "preset",
+      type: "PRESET",
+      name: "模型",
+      agent: { context_window: 288_000, max_output_tokens: 32_000 },
+    });
     expect(snapshot.models[0]).not.toHaveProperty("api_key");
   });
 
@@ -284,6 +294,7 @@ describe("ModelService 配置管理", () => {
   it("更新模型只应用白名单字段并重建快照", async () => {
     const { service } = await create_model_service([
       create_model({
+        agent: { context_window: 288_000, max_output_tokens: 32_000 },
         generation: { temperature: 0.4, temperature_custom_enable: true },
         id: "custom",
         threshold: { input_token_limit: 1024, output_token_limit: 2048 },
@@ -295,6 +306,7 @@ describe("ModelService 配置管理", () => {
       await service.update_model({
         model_id: "custom",
         patch: {
+          agent: { context_window: 300_000 },
           generation: { top_p_custom_enable: true },
           name: "updated-name",
           threshold: { concurrency_limit: 2 },
@@ -307,6 +319,7 @@ describe("ModelService 配置管理", () => {
         expect.objectContaining({
           id: "custom",
           name: "updated-name",
+          agent: { context_window: 300_000, max_output_tokens: 32_000 },
           generation: expect.objectContaining({
             temperature: 0.4,
             temperature_custom_enable: true,
@@ -320,6 +333,31 @@ describe("ModelService 配置管理", () => {
         }),
       ]),
     );
+  });
+
+  it("拒绝非法或未知 Agent 容量字段且不落盘", async () => {
+    const { service, app_setting_service } = await create_model_service([
+      create_model({
+        id: "custom",
+        agent: { context_window: 288_000, max_output_tokens: 32_000 },
+      }),
+    ]);
+    service.get_snapshot();
+    const before = app_setting_service.read_setting();
+
+    expect(() =>
+      service.update_model({
+        model_id: "custom",
+        patch: { agent: { context_window: 64_000 } },
+      }),
+    ).toThrow("request.validation_failed");
+    expect(() =>
+      service.update_model({
+        model_id: "custom",
+        patch: { agent: { context_window: 288_000, unknown: 1 } },
+      }),
+    ).toThrow("request.validation_failed");
+    expect(app_setting_service.read_setting()).toEqual(before);
   });
 
   it("更新不存在模型或未知字段会返回业务错误", async () => {
@@ -342,7 +380,12 @@ describe("ModelService 配置管理", () => {
     const { service } = await create_model_service(
       [
         create_model({ id: "other", name: "other-old", type: "PRESET" }),
-        create_model({ id: "target", name: "target-old", type: "PRESET" }),
+        create_model({
+          id: "target",
+          name: "target-old",
+          type: "PRESET",
+          agent: { context_window: 400_000, max_output_tokens: 50_000 },
+        }),
       ],
       {
         builtin_models: [
@@ -358,7 +401,11 @@ describe("ModelService 配置管理", () => {
 
     expect(snapshot.models).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: "target", name: "target-updated" }),
+        expect.objectContaining({
+          id: "target",
+          name: "target-updated",
+          agent: { context_window: 288_000, max_output_tokens: 32_000 },
+        }),
         expect.objectContaining({ id: "other", name: "other-old" }),
       ]),
     );

@@ -30,13 +30,15 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
           ? "Enter 发送 · Shift + Enter 换行"
           : key === "agent_page.context_usage"
             ? `上下文 ${params?.["percent"]} · ${params?.["used"]} / ${params?.["total"]}`
-            : key === "agent_page.action.send"
-              ? "发送"
-              : key === "agent_page.action.stop"
-                ? "停止"
-                : key === "agent_page.error"
-                  ? "请求失败，请重试。"
-                  : key,
+            : key === "agent_page.context_usage_warning"
+              ? "接近上下文上限，将在达到阈值后自动整理历史"
+              : key === "agent_page.action.send"
+                ? "发送"
+                : key === "agent_page.action.stop"
+                  ? "停止"
+                  : key === "agent_page.error"
+                    ? "请求失败，请重试。"
+                    : key,
   }),
 }));
 
@@ -264,45 +266,44 @@ describe("AgentComposer", () => {
     const editor = view.querySelector<HTMLElement>(
       '[contenteditable][aria-label="描述任务，或输入 @ 选择能力 …"]',
     );
-    const tooltip = view.querySelector('[role="tooltip"]');
+    const tooltips = [...view.querySelectorAll('[role="tooltip"]')];
 
     expect(view.textContent).toContain("Enter 发送 · Shift + Enter 换行");
     expect(view.textContent).toContain("请求失败，请重试。");
     expect(model_trigger?.textContent).toContain("Agent Model");
     expect(model_trigger?.disabled).toBe(true);
     expect(editor?.getAttribute("contenteditable")).toBe("true");
-    expect(tooltip?.textContent).toBe("发送");
+    expect(tooltips.map((tooltip) => tooltip.textContent)).toContain("发送");
     expect(submit?.disabled).toBe(true);
   });
 
-  it("底栏只显示百分比，并在提示中提供 K 单位详情与阈值状态", async () => {
+  it("底栏常驻显示百分比，并在提示中提供 K 单位详情与阈值状态", async () => {
     const view = await render_composer(
       undefined,
       false,
       undefined,
       {},
       {
-        context_usage: { tokens: 31_488, contextWindow: 256_000 },
+        context_usage: { tokens: 31_488, contextWindow: 288_000, maxTokens: 32_000 },
       },
     );
     const usage = view.querySelector<HTMLElement>(".agent-composer__context-usage");
 
-    expect(usage?.textContent).toBe("12.3%");
-    expect(usage?.getAttribute("aria-label")).toBe("上下文 12.3% · 31.5K / 256K");
+    expect(usage?.textContent).toBe("10.9%");
+    expect(usage?.getAttribute("aria-label")).toBe("上下文 10.9% · 31.5K / 288K");
     expect(usage?.tabIndex).toBe(0);
     expect(usage?.dataset["tone"]).toBe("default");
     expect(
       [...view.querySelectorAll('[role="tooltip"]')].map((tooltip) => tooltip.textContent),
-    ).toContain("31.5K / 256K");
+    ).toContain("31.5K / 288K");
     expect(
       [...view.querySelectorAll('[role="tooltip"]')].map((tooltip) => tooltip.textContent),
-    ).not.toContain("上下文 12.3% · 31.5K / 256K");
+    ).not.toContain("上下文 10.9% · 31.5K / 288K");
 
     for (const [tokens, tone] of [
-      [700, "default"],
-      [701, "warning"],
-      [900, "warning"],
-      [901, "failure"],
+      [224_000, "default"],
+      [224_001, "warning"],
+      [256_000, "warning"],
     ] as const) {
       await render_composer(
         undefined,
@@ -310,16 +311,21 @@ describe("AgentComposer", () => {
         undefined,
         {},
         {
-          context_usage: { tokens, contextWindow: 1_000 },
+          context_usage: { tokens, contextWindow: 288_000, maxTokens: 32_000 },
         },
       );
       expect(
         view.querySelector<HTMLElement>(".agent-composer__context-usage")?.dataset["tone"],
       ).toBe(tone);
     }
+    const warning_usage = view.querySelector<HTMLElement>(".agent-composer__context-usage");
+    expect(warning_usage?.getAttribute("aria-label")).toContain("接近上下文上限");
+    expect(
+      [...view.querySelectorAll('[role="tooltip"]')].map((tooltip) => tooltip.textContent),
+    ).toContain("256K / 288K接近上下文上限，将在达到阈值后自动整理历史");
 
     await render_composer(undefined, false, undefined, {}, { context_usage: null });
-    expect(view.querySelector(".agent-composer__context-usage")).toBeNull();
+    expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("0.0%");
   });
 
   it("新任务按钮按会话、重置和提交状态禁用", async () => {
@@ -440,7 +446,14 @@ describe("AgentComposer", () => {
           model_selection={{
             snapshot: {
               model_selection: { translation: "preset", analysis: "preset", agent: "agent" },
-              models: [{ id: "agent", type: "CUSTOM_OPENAI", name: "Agent Model" }],
+              models: [
+                {
+                  id: "agent",
+                  type: "CUSTOM_OPENAI",
+                  name: "Agent Model",
+                  agent: { context_window: 288_000, max_output_tokens: 32_000 },
+                },
+              ],
             },
             loading: false,
             updating: false,

@@ -42,7 +42,7 @@ import type { ProjectSessionState } from "../project/project-session-state";
 import type { ProofreadingService } from "../proofreading/proofreading-service";
 import type { QualityRuleService } from "../quality/quality-rule-service";
 import { AGENT_PROOFREADING_UPDATE_SOURCE, create_agent_item_tools } from "./agent-item-tools";
-import { register_agent_model } from "./agent-model";
+import { register_agent_model, type AgentModelLimits } from "./agent-model";
 import {
   AGENT_QUALITY_RULE_UPDATE_SOURCE,
   create_agent_quality_tools,
@@ -58,13 +58,21 @@ const AGENT_PROJECT_SECTIONS = [
   "proofreading",
 ] as const satisfies readonly ProjectDataSection[];
 
-/** 产品会话固定启用内存压缩与重试，不读取 coding-agent 的用户级设置。 */
-const AGENT_SESSION_SETTINGS = Object.freeze({
-  enableInstallTelemetry: false,
-  enableSkillCommands: false,
-  compaction: Object.freeze({ enabled: true, reserveTokens: 64_000, keepRecentTokens: 20_000 }),
-  retry: Object.freeze({ enabled: true, maxRetries: 3, baseDelayMs: 2_000 }),
-});
+const AGENT_KEEP_RECENT_TOKENS = 32_000; // 产品固定保留的最近模型可见历史
+
+/** 产品会话只从冻结的模型容量派生压缩预算，不读取 coding-agent 用户设置。 */
+function build_agent_session_settings(limits: AgentModelLimits) {
+  return {
+    enableInstallTelemetry: false,
+    enableSkillCommands: false,
+    compaction: {
+      enabled: true,
+      reserveTokens: limits.maxTokens,
+      keepRecentTokens: AGENT_KEEP_RECENT_TOKENS,
+    },
+    retry: { enabled: true, maxRetries: 3, baseDelayMs: 2_000 },
+  };
+}
 
 type AgentBinding = {
   projectPath: string; // loaded 工程身份
@@ -75,6 +83,7 @@ type AgentBinding = {
 type AgentRuntime = {
   session: AgentSession;
   binding: AgentBinding;
+  limits: AgentModelLimits; // 换模时继续传回 Provider，维持当前对话容量
   unsubscribe: () => void;
 };
 
@@ -310,6 +319,7 @@ export class AgentService {
           runtime.session.modelRuntime,
           model_settings,
           this.user_agent,
+          runtime.limits,
         );
         await runtime.session.setModel(resolved_model.model);
         runtime.session.setThinkingLevel(resolved_model.thinkingLevel);
@@ -363,7 +373,11 @@ export class AgentService {
       allowModelNetwork: false,
     });
     const resolved_model = register_agent_model(model_runtime, model_settings, this.user_agent);
-    const settings_manager = SettingsManager.inMemory(AGENT_SESSION_SETTINGS, {
+    const limits = Object.freeze({
+      contextWindow: resolved_model.model.contextWindow,
+      maxTokens: resolved_model.model.maxTokens,
+    });
+    const settings_manager = SettingsManager.inMemory(build_agent_session_settings(limits), {
       projectTrusted: false,
     });
     const resource_loader = new DefaultResourceLoader({
@@ -404,7 +418,7 @@ export class AgentService {
     const unsubscribe = session.subscribe((event) => {
       if (this.runtime?.session === session) this.handle_agent_event(event);
     });
-    return { session, binding, unsubscribe };
+    return { session, binding, limits, unsubscribe };
   }
 
   /** prompt() 已覆盖自动重试与溢出恢复；只有最终 settle 才决定公开终态。 */
@@ -563,9 +577,11 @@ export class AgentService {
     return {
       tokens: estimateContextTokens(session.messages).tokens,
       contextWindow: model.contextWindow,
+      maxTokens: model.maxTokens,
     };
   }
 
+  /** 每次模型历史变化后发布与 snapshot 同形的容量投影。 */
   private publish_context_usage(): void {
     const context_usage = this.read_context_usage();
     if (context_usage !== null) {

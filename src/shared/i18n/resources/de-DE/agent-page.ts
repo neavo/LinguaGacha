@@ -16,6 +16,8 @@ export const de_de_agent_page = {
     hint: "Enter zum Senden · Shift + Enter für eine neue Zeile",
   },
   context_usage: "Kontext {percent} · {used} / {total}",
+  context_usage_warning:
+    "Das Kontextlimit wird erreicht; der Verlauf wird am Schwellenwert automatisch komprimiert",
   action: { send: "Senden", stop: "Stoppen", new_task: "Neue Aufgabe" },
   confirm: { new_task: "Wirklich eine neue Unterhaltung starten …?" },
   status: { running: "Wird verarbeitet", success: "Abgeschlossen", error: "Fehlgeschlagen" },

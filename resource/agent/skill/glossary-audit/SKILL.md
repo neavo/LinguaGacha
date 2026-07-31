@@ -1,6 +1,6 @@
 ---
 name: glossary-audit
-description: 用于审查、整理、修正、去重、优化或维护当前工程术语表
+description: 用于审查、整理、修正、去重、优化或维护当前工程中的术语数据
 ---
 
 # 术语表审校

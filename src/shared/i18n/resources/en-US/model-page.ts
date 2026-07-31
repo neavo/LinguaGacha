@@ -53,11 +53,20 @@ export const en_us_model_page = {
     reorder_failed: "Failed to save the model order. Please try again later",
     delete_last_one: "At least one model must remain in each category",
     reset_success: "Model reset successfully",
+    agent_limits_invalid: "Context window must be greater than twice the maximum output length",
     json_format_error: "JSON format error. Please enter a valid JSON object",
     selector_load_failed: "Failed to load the model list. Please check the API configuration",
     test_failed: "Failed to test the model. Please try again later",
   },
   fields: {
+    context_window: {
+      title: "Context Window",
+      description: "Only applies to AGENT tasks",
+    },
+    max_output_tokens: {
+      title: "Maximum Output Length",
+      description: "Only applies to AGENT tasks",
+    },
     name: {
       title: "Model Name",
       description: "Enter a model name used only for display inside the application",

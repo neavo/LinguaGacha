@@ -1,4 +1,4 @@
-import type { JsonRecord, JsonValue } from "./json";
+import type { JsonRecord } from "./json";
 import { read_json_record } from "./json";
 
 // 模型类型是设置文件、模型页分组和服务端模板选择共享的稳定值域
@@ -22,6 +22,12 @@ export type ModelUsage = (typeof MODEL_USAGES)[number];
 export type ModelSelection = Record<ModelUsage, string>;
 export type ModelApiFormat = (typeof MODEL_API_FORMATS)[number];
 export type ModelThinkingLevel = (typeof MODEL_THINKING_LEVELS)[number];
+/** 每个模型独立持有、只在 Agent 新对话创建时读取的容量配置。 */
+export type ModelAgentConfig = {
+  context_window: number; // Agent 新对话可使用的上下文总容量
+  max_output_tokens: number; // Agent 单次回复上限，同时作为压缩预留容量
+};
+
 type ModelRequestConfig = {
   extra_headers: JsonRecord; // 请求层额外 headers
   extra_headers_custom_enable: boolean; // 是否启用自定义 headers
@@ -84,6 +90,12 @@ const DEFAULT_THRESHOLD_CONFIG: ModelThresholdConfig = {
   concurrency_limit: 0,
 };
 
+/** 缺失或损坏的 Agent 容量整组回到这一份领域默认。 */
+export const DEFAULT_MODEL_AGENT_CONFIG: Readonly<ModelAgentConfig> = Object.freeze({
+  context_window: 288_000,
+  max_output_tokens: 32_000,
+});
+
 const DEFAULT_THINKING_CONFIG: ModelThinkingConfig = {
   level: "OFF",
 };
@@ -110,6 +122,7 @@ export class Model {
   public readonly api_url: string; // API 地址
   public readonly api_key: string; // API Key
   public readonly model_id: string; // 服务商模型 ID
+  public readonly agent: ModelAgentConfig; // Agent 新对话级容量配置
   public readonly request: ModelRequestConfig; // 请求层配置快照
   public readonly threshold: ModelThresholdConfig; // 阈值配置快照
   public readonly thinking: ModelThinkingConfig; // 思考挡位配置快照
@@ -123,6 +136,7 @@ export class Model {
     api_url: string;
     api_key: string;
     model_id: string;
+    agent: ModelAgentConfig;
     request: ModelRequestConfig;
     threshold: ModelThresholdConfig;
     thinking: ModelThinkingConfig;
@@ -135,6 +149,7 @@ export class Model {
     this.api_url = fields.api_url;
     this.api_key = fields.api_key;
     this.model_id = fields.model_id;
+    this.agent = fields.agent;
     this.request = fields.request;
     this.threshold = fields.threshold;
     this.thinking = fields.thinking;
@@ -154,6 +169,7 @@ export class Model {
       api_url: String(record["api_url"] ?? ""),
       api_key: String(record["api_key"] ?? "no_key_required"),
       model_id: String(record["model_id"] ?? ""),
+      agent: normalize_model_agent_config(record["agent"]),
       request: Model.normalize_request_config(record["request"]),
       threshold: Model.normalize_threshold_config(record["threshold"]),
       thinking: Model.normalize_thinking_config(record["thinking"]),
@@ -161,11 +177,9 @@ export class Model {
     });
   }
 
-  /**
-   * 输出模型设置 JSON，跨进程和任务 worker 都只消费普通对象
-   */
+  /** 输出与领域对象脱离引用的模型设置 JSON，供跨进程和任务 worker 消费。 */
   public to_json(): JsonRecord {
-    return {
+    return structuredClone({
       id: this.id,
       type: this.type,
       name: this.name,
@@ -173,11 +187,12 @@ export class Model {
       api_url: this.api_url,
       api_key: this.api_key,
       model_id: this.model_id,
-      request: this.request as unknown as JsonValue,
-      threshold: this.threshold as unknown as JsonValue,
-      thinking: this.thinking as unknown as JsonValue,
-      generation: this.generation as unknown as JsonValue,
-    };
+      agent: this.agent,
+      request: this.request,
+      threshold: this.threshold,
+      thinking: this.thinking,
+      generation: this.generation,
+    }) as JsonRecord;
   }
 
   /**
@@ -336,6 +351,31 @@ export function is_model_api_format(value: unknown): value is ModelApiFormat {
 
 export function is_model_thinking_level(value: unknown): value is ModelThinkingLevel {
   return MODEL_THINKING_LEVEL_SET.has(value as ModelThinkingLevel);
+}
+
+/** 只接受当前 Agent 容量协议；两个值共同决定压缩与警告阈值。 */
+export function parse_model_agent_config(value: unknown): ModelAgentConfig | null {
+  const record = read_json_model_record(value);
+  const context_window = record["context_window"];
+  const max_output_tokens = record["max_output_tokens"];
+  if (
+    typeof context_window !== "number" ||
+    !Number.isSafeInteger(context_window) ||
+    context_window <= 0 ||
+    typeof max_output_tokens !== "number" ||
+    !Number.isSafeInteger(max_output_tokens) ||
+    max_output_tokens <= 0
+  ) {
+    return null;
+  }
+  // 等价于 context_window > max_output_tokens * 2，同时避免乘法越过安全整数边界。
+  if (max_output_tokens > Math.floor((context_window - 1) / 2)) return null;
+  return { context_window, max_output_tokens };
+}
+
+/** 缺失或损坏的磁盘配置回到唯一默认值，不在消费层建立兼容旁路。 */
+export function normalize_model_agent_config(value: unknown): ModelAgentConfig {
+  return parse_model_agent_config(value) ?? { ...DEFAULT_MODEL_AGENT_CONFIG };
 }
 
 function read_json_model_record(value: unknown): JsonRecord {

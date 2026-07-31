@@ -22,8 +22,9 @@ export type AgentSessionState = "idle" | "running" | "complete";
 
 /** 当前模型可见上下文的 token 估算与窗口容量。 */
 export type AgentContextUsage = JsonRecord & {
-  tokens: number;
-  contextWindow: number;
+  tokens: number; // 当前模型可见历史的估算用量
+  contextWindow: number; // 当前对话冻结的上下文总容量
+  maxTokens: number; // 当前对话冻结的单次输出上限
 };
 
 /** 工具条目保留原始工具名与完整文本输出；参数不进入公开会话。 */

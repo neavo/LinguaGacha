@@ -65,8 +65,8 @@ describe("Agent 模型注册", () => {
       id: "kimi-k3",
       name: "Test",
       reasoning: true,
-      contextWindow: 256_000,
-      maxTokens: 64_000,
+      contextWindow: 288_000,
+      maxTokens: 32_000,
     });
     const provider_config = runtime.getRegisteredProviderConfig("openai");
     expect(provider_config).toMatchObject({
@@ -81,8 +81,8 @@ describe("Agent 模型注册", () => {
       models: [
         expect.objectContaining({
           id: "kimi-k3",
-          contextWindow: 256_000,
-          maxTokens: 64_000,
+          contextWindow: 288_000,
+          maxTokens: 32_000,
         }),
       ],
     });
@@ -133,6 +133,20 @@ describe("Agent 模型注册", () => {
       resolved.model,
     );
     expect(payload).toMatchObject({ max_tokens: 123, reasoning_effort: "high" });
+  });
+
+  it("换模时使用当前对话冻结的容量而不读取新模型容量", async () => {
+    const runtime = await create_model_runtime();
+    const resolved = register_agent_model(
+      runtime,
+      build_config("OpenAI", {
+        agent: { context_window: 400_000, max_output_tokens: 50_000 },
+      }),
+      TEST_USER_AGENT,
+      { contextWindow: 288_000, maxTokens: 32_000 },
+    );
+
+    expect(resolved.model).toMatchObject({ contextWindow: 288_000, maxTokens: 32_000 });
   });
 
   it("未知模型不猜测思考能力，禁用的扩展配置也不进入 Agent", async () => {

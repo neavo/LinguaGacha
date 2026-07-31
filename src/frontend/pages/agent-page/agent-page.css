@@ -446,10 +446,6 @@
   color: var(--ui-warning);
 }
 
-.agent-composer__context-usage[data-tone="failure"] {
-  color: var(--ui-failure);
-}
-
 .agent-composer__context-usage:focus-visible {
   outline: 1px solid var(--ring);
   outline-offset: -1px;

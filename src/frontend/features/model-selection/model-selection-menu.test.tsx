@@ -51,8 +51,18 @@ describe("ModelSelectionMenu", () => {
       snapshot: {
         model_selection: { translation: "openai", analysis: "", agent: "" },
         models: [
-          { id: "preset", type: "PRESET", name: "" },
-          { id: "openai", type: "CUSTOM_OPENAI", name: "OpenAI Main" },
+          {
+            id: "preset",
+            type: "PRESET",
+            name: "",
+            agent: { context_window: 288_000, max_output_tokens: 32_000 },
+          },
+          {
+            id: "openai",
+            type: "CUSTOM_OPENAI",
+            name: "OpenAI Main",
+            agent: { context_window: 288_000, max_output_tokens: 32_000 },
+          },
         ],
       },
       loading: false,
@@ -89,7 +99,14 @@ describe("ModelSelectionMenu", () => {
     const controller: ModelSelectionController = {
       snapshot: {
         model_selection: { translation: "missing", analysis: "", agent: "" },
-        models: [{ id: "openai", type: "CUSTOM_OPENAI", name: "OpenAI Main" }],
+        models: [
+          {
+            id: "openai",
+            type: "CUSTOM_OPENAI",
+            name: "OpenAI Main",
+            agent: { context_window: 288_000, max_output_tokens: 32_000 },
+          },
+        ],
       },
       loading: false,
       updating: false,

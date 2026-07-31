@@ -37,6 +37,21 @@ describe("model-config-resolver", () => {
     expect(resolve_model_for_usage(config, "agent")?.["id"]).toBe("model-2");
   });
 
+  it("执行用途始终返回领域归一后的 Agent 容量配置", () => {
+    const resolved = resolve_model_for_usage(
+      {
+        model_selection: { agent: "model-1" },
+        models: [{ id: "model-1" }],
+      },
+      "agent",
+    );
+
+    expect(resolved?.["agent"]).toEqual({
+      context_window: 288_000,
+      max_output_tokens: 32_000,
+    });
+  });
+
   it("过滤坏模型项并在没有可用模型时返回空结果", () => {
     expect(
       read_config_model_records({

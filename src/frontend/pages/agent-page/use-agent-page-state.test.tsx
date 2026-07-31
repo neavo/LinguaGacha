@@ -114,22 +114,34 @@ describe("useAgentPageState", () => {
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "context_usage",
-        contextUsage: { tokens: 31_488, contextWindow: 256_000 },
+        contextUsage: { tokens: 31_488, contextWindow: 288_000, maxTokens: 32_000 },
       });
     });
-    expect(latest.contextUsage).toEqual({ tokens: 31_488, contextWindow: 256_000 });
+    expect(latest.contextUsage).toEqual({
+      tokens: 31_488,
+      contextWindow: 288_000,
+      maxTokens: 32_000,
+    });
 
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "context_usage",
-        contextUsage: { tokens: -1, contextWindow: 0 },
+        contextUsage: { tokens: -1, contextWindow: 0, maxTokens: 0 },
+      });
+      event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
+        type: "context_usage",
+        contextUsage: { tokens: 1, contextWindow: 288_000 },
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "context_usage",
         contextUsage: null,
       });
     });
-    expect(latest.contextUsage).toEqual({ tokens: 31_488, contextWindow: 256_000 });
+    expect(latest.contextUsage).toEqual({
+      tokens: 31_488,
+      contextWindow: 288_000,
+      maxTokens: 32_000,
+    });
   });
 
   it("缺失上下文用量的完整快照按当前协议失败", async () => {
@@ -415,12 +427,12 @@ describe("useAgentPageState", () => {
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "context_usage",
-        contextUsage: { tokens: 200, contextWindow: 1_000 },
+        contextUsage: { tokens: 200, contextWindow: 1_000, maxTokens: 100 },
       });
       resolve_send(
         agent_snapshot({
           state: "running",
-          contextUsage: { tokens: 100, contextWindow: 1_000 },
+          contextUsage: { tokens: 100, contextWindow: 1_000, maxTokens: 100 },
         }),
       );
       await result;
@@ -428,7 +440,7 @@ describe("useAgentPageState", () => {
 
     expect(latest.state).toBe("running");
     expect(latest.entries).toEqual([assistant_entry("assistant-2", "SSE 新消息", false, 2)]);
-    expect(latest.contextUsage).toEqual({ tokens: 200, contextWindow: 1_000 });
+    expect(latest.contextUsage).toEqual({ tokens: 200, contextWindow: 1_000, maxTokens: 100 });
   });
 
   it("非法命令 ack 不吞掉排队事件或锁死后续命令", async () => {
@@ -453,14 +465,14 @@ describe("useAgentPageState", () => {
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "context_usage",
-        contextUsage: { tokens: 200, contextWindow: 1_000 },
+        contextUsage: { tokens: 200, contextWindow: 1_000, maxTokens: 100 },
       });
       resolve_send({ state: "running", entries: [], skills: [] });
       await first;
     });
 
     expect(await first).toBe(false);
-    expect(latest.contextUsage).toEqual({ tokens: 200, contextWindow: 1_000 });
+    expect(latest.contextUsage).toEqual({ tokens: 200, contextWindow: 1_000, maxTokens: 100 });
     expect(latest.error).toBe(true);
 
     desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot({ state: "running" }));

@@ -102,8 +102,18 @@ function snapshot(selected: string): unknown {
   return {
     model_selection: { translation: selected, analysis: "preset", agent: "preset" },
     models: [
-      { id: "preset", type: "PRESET", name: "Preset" },
-      { id: "openai", type: "CUSTOM_OPENAI", name: "OpenAI" },
+      {
+        id: "preset",
+        type: "PRESET",
+        name: "Preset",
+        agent: { context_window: 288_000, max_output_tokens: 32_000 },
+      },
+      {
+        id: "openai",
+        type: "CUSTOM_OPENAI",
+        name: "OpenAI",
+        agent: { context_window: 400_000, max_output_tokens: 50_000 },
+      },
     ],
   };
 }

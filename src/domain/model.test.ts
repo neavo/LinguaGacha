@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { Model, normalize_model_selection } from "./model";
+import { is_json_record } from "./json";
+import {
+  DEFAULT_MODEL_AGENT_CONFIG,
+  Model,
+  normalize_model_selection,
+  parse_model_agent_config,
+} from "./model";
 
 describe("Model", () => {
   it("从不完整设置生成稳定的模型快照", () => {
@@ -35,6 +41,7 @@ describe("Model", () => {
       api_url: "",
       api_key: "no_key_required",
       model_id: "",
+      agent: DEFAULT_MODEL_AGENT_CONFIG,
       request: {
         extra_headers: { "X-Trace": "1" },
         extra_headers_custom_enable: true,
@@ -59,6 +66,53 @@ describe("Model", () => {
         frequency_penalty_custom_enable: false,
       },
     });
+  });
+
+  it("只接受正安全整数且窗口大于两倍输出容量", () => {
+    expect(
+      parse_model_agent_config({ context_window: 288_000, max_output_tokens: 32_000 }),
+    ).toEqual({ context_window: 288_000, max_output_tokens: 32_000 });
+    expect(
+      parse_model_agent_config({ context_window: 64_000, max_output_tokens: 32_000 }),
+    ).toBeNull();
+    expect(parse_model_agent_config({ context_window: 64_001, max_output_tokens: 32_000 })).toEqual(
+      {
+        context_window: 64_001,
+        max_output_tokens: 32_000,
+      },
+    );
+    expect(
+      parse_model_agent_config({ context_window: 288_000.5, max_output_tokens: 32_000 }),
+    ).toBeNull();
+    expect(parse_model_agent_config({ context_window: 288_000, max_output_tokens: 0 })).toBeNull();
+    expect(
+      parse_model_agent_config({ context_window: "288000", max_output_tokens: 32_000 }),
+    ).toBeNull();
+  });
+
+  it("Agent 容量合法时完整往返，缺失或损坏时整组恢复默认", () => {
+    const model = Model.from_json(
+      {
+        agent: { context_window: 400_000, max_output_tokens: 50_000 },
+      },
+      "valid-agent",
+    );
+    const serialized_agent = model.to_json()["agent"];
+    expect(serialized_agent).toEqual({ context_window: 400_000, max_output_tokens: 50_000 });
+    if (!is_json_record(serialized_agent)) throw new Error("Agent 容量未序列化为对象");
+    serialized_agent["context_window"] = 1;
+    expect(model.to_json()["agent"]).toEqual({
+      context_window: 400_000,
+      max_output_tokens: 50_000,
+    });
+    expect(
+      Model.from_json(
+        {
+          agent: { context_window: 400_000, max_output_tokens: 0 },
+        },
+        "dirty-agent",
+      ).to_json()["agent"],
+    ).toEqual(DEFAULT_MODEL_AGENT_CONFIG);
   });
 
   it("公开枚举值保持原值，未知值回退到兼容默认值", () => {

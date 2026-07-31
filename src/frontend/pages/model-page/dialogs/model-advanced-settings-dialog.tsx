@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { parse_model_agent_config, type ModelAgentConfig } from "@domain/model";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import { Card, CardContent, CardDescription, CardTitle } from "@frontend/shadcn/card";
@@ -7,12 +8,14 @@ import { Input } from "@frontend/shadcn/input";
 import { Textarea } from "@frontend/shadcn/textarea";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 import { SegmentedToggle } from "@frontend/widgets/segmented-toggle/segmented-toggle";
+import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
 
 type ModelAdvancedSettingsDialogProps = {
   open: boolean;
   model: ModelEntrySnapshot | null;
   readonly: boolean;
   onPatch: (patch: Record<string, unknown>) => Promise<void>;
+  onAgentLimitsError: () => void;
   onJsonFormatError: () => void;
   onClose: () => void;
 };
@@ -27,6 +30,21 @@ type JsonParseResult =
     };
 
 type SliderFieldName = "top_p" | "temperature" | "presence_penalty" | "frequency_penalty";
+type AgentLimitFieldName = keyof ModelAgentConfig;
+
+/** 两项 Agent 容量固定置于高级设置顶部并共享草稿流程。 */
+const AGENT_LIMIT_FIELDS = [
+  {
+    field_name: "context_window",
+    title_key: "model_page.fields.context_window.title",
+    description_key: "model_page.fields.context_window.description",
+  },
+  {
+    field_name: "max_output_tokens",
+    title_key: "model_page.fields.max_output_tokens.title",
+    description_key: "model_page.fields.max_output_tokens.description",
+  },
+] as const;
 
 type SliderFieldConfig = {
   field_name: SliderFieldName;
@@ -170,6 +188,28 @@ function normalize_slider_value(field_config: SliderFieldConfig, raw_value: numb
   return Number((field_config.min + step_count * field_config.step).toFixed(2));
 }
 
+/** 为允许空值和中间态的两个容量输入构造文本草稿。 */
+function create_agent_limit_draft(
+  model: ModelEntrySnapshot | null,
+): Record<AgentLimitFieldName, string> {
+  return {
+    context_window: model?.agent.context_window.toString() ?? "",
+    max_output_tokens: model?.agent.max_output_tokens.toString() ?? "",
+  };
+}
+
+/** 两项草稿共用领域校验，避免前端维护第二套数值关系。 */
+function parse_agent_limit_draft(
+  draft: Record<AgentLimitFieldName, string>,
+): ModelAgentConfig | null {
+  const context_window_text = draft.context_window.trim();
+  const max_output_tokens_text = draft.max_output_tokens.trim();
+  return parse_model_agent_config({
+    context_window: context_window_text === "" ? null : Number(context_window_text),
+    max_output_tokens: max_output_tokens_text === "" ? null : Number(max_output_tokens_text),
+  });
+}
+
 /** 编辑生成参数与 OpenAI compatible 自定义请求字段。 */
 export function ModelAdvancedSettingsDialog(
   props: ModelAdvancedSettingsDialogProps,
@@ -189,6 +229,10 @@ export function ModelAdvancedSettingsDialog(
   const [body_text, set_body_text] = useState("");
   const [headers_error, set_headers_error] = useState(false);
   const [body_error, set_body_error] = useState(false);
+  const [agent_limit_draft, set_agent_limit_draft] = useState(
+    create_agent_limit_draft(props.model),
+  );
+  const [agent_limits_error, set_agent_limits_error] = useState(false);
   const [slider_values, set_slider_values] = useState<Record<SliderFieldName, number>>(
     create_slider_value_state(props.model),
   );
@@ -202,6 +246,8 @@ export function ModelAdvancedSettingsDialog(
       set_body_text(format_request_json_text(props.model.request.extra_body));
       set_headers_error(false);
       set_body_error(false);
+      set_agent_limit_draft(create_agent_limit_draft(props.model));
+      set_agent_limits_error(false);
     }
   }, [props.model]);
 
@@ -235,6 +281,38 @@ export function ModelAdvancedSettingsDialog(
     void props.onPatch({ request: { [field]: parsed_result.value } });
   }
 
+  /** 两项容量必须作为一组校验和保存，避免产生瞬时非法组合。 */
+  function commit_agent_limits(): void {
+    const candidate = parse_agent_limit_draft(agent_limit_draft);
+    if (candidate === null) {
+      set_agent_limits_error(true);
+      props.onAgentLimitsError();
+      return;
+    }
+    save_agent_limits(candidate);
+  }
+
+  /** 已显示错误时，任一修改恢复合法组合便立即清错并提交。 */
+  function update_agent_limit_draft(field_name: AgentLimitFieldName, text: string): void {
+    const next_draft = { ...agent_limit_draft, [field_name]: text };
+    set_agent_limit_draft(next_draft);
+    if (!agent_limits_error) return;
+    const candidate = parse_agent_limit_draft(next_draft);
+    if (candidate === null) return;
+    save_agent_limits(candidate);
+  }
+
+  /** 只提交与当前模型不同的完整容量配置。 */
+  function save_agent_limits(candidate: ModelAgentConfig): void {
+    set_agent_limits_error(false);
+    if (
+      candidate.context_window !== model.agent.context_window ||
+      candidate.max_output_tokens !== model.agent.max_output_tokens
+    ) {
+      void props.onPatch({ agent: candidate });
+    }
+  }
+
   return (
     <AppPageDialog
       open={props.open}
@@ -245,6 +323,31 @@ export function ModelAdvancedSettingsDialog(
     >
       <div className="model-page__dialog-scroll">
         <div className="model-page__setting-list">
+          {AGENT_LIMIT_FIELDS.map((field_config) => (
+            <SettingCardRow
+              key={field_config.field_name}
+              title={t(field_config.title_key)}
+              description={t(field_config.description_key)}
+              action={
+                <Input
+                  className="model-page__field"
+                  type="number"
+                  min={1}
+                  step={1}
+                  inputMode="numeric"
+                  value={agent_limit_draft[field_config.field_name]}
+                  disabled={props.readonly}
+                  aria-label={t(field_config.title_key)}
+                  aria-invalid={agent_limits_error || undefined}
+                  onChange={(event) => {
+                    update_agent_limit_draft(field_config.field_name, event.target.value);
+                  }}
+                  onBlur={commit_agent_limits}
+                />
+              }
+            />
+          ))}
+
           {SLIDER_FIELD_CONFIGS.map((field_config) => {
             const current_value = slider_values[field_config.field_name] ?? 0;
             const current_text = slider_texts[field_config.field_name] ?? current_value.toFixed(2);

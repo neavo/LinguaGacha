@@ -66,7 +66,8 @@ const fake_agent_state = vi.hoisted(() => ({
   release_pending: null as (() => void) | null,
   hold_idle: false,
   external_change_during_write: false,
-  context_window: 256_000,
+  context_window: 288_000,
+  max_tokens: 32_000,
   model_call_count: 0,
   retry_failures_remaining: 0,
   summary_failures_remaining: 0,
@@ -131,13 +132,22 @@ function create_fake_agent_stream(
 }
 
 /** 根据测试配置选择模型身份，远程行为统一交给同一个可控流边界。 */
-function register_fake_agent_model(model_runtime: ModelRuntime, config: JsonRecord) {
+function register_fake_agent_model(
+  model_runtime: ModelRuntime,
+  config: JsonRecord,
+  _user_agent: string,
+  frozen_limits?: { contextWindow: number; maxTokens: number },
+) {
   const selection = config["model_selection"];
   const selected =
     typeof selection === "object" && selection !== null && !Array.isArray(selection)
       ? Reflect.get(selection, "agent")
       : undefined;
   const model_id = selected === "next" ? "next-model" : "test-model";
+  const limits = frozen_limits ?? {
+    contextWindow: fake_agent_state.context_window,
+    maxTokens: fake_agent_state.max_tokens,
+  };
   const model = {
     id: model_id,
     name: model_id,
@@ -147,8 +157,8 @@ function register_fake_agent_model(model_runtime: ModelRuntime, config: JsonReco
     reasoning: false,
     input: ["text" as const],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: fake_agent_state.context_window,
-    maxTokens: 1024,
+    contextWindow: limits.contextWindow,
+    maxTokens: limits.maxTokens,
   };
   model_runtime.registerNativeProvider(
     createProvider({
@@ -341,7 +351,8 @@ describe("AgentService", () => {
     fake_agent_state.release_pending = null;
     fake_agent_state.hold_idle = false;
     fake_agent_state.external_change_during_write = false;
-    fake_agent_state.context_window = 256_000;
+    fake_agent_state.context_window = 288_000;
+    fake_agent_state.max_tokens = 32_000;
     fake_agent_state.model_call_count = 0;
     fake_agent_state.retry_failures_remaining = 0;
     fake_agent_state.summary_failures_remaining = 0;
@@ -481,11 +492,16 @@ describe("AgentService", () => {
       .filter((event) => event["type"] === "context_usage");
     expect(context_events[0]).toEqual({
       type: "context_usage",
-      contextUsage: { tokens: expect.any(Number), contextWindow: 256_000 },
+      contextUsage: {
+        tokens: expect.any(Number),
+        contextWindow: 288_000,
+        maxTokens: 32_000,
+      },
     });
     expect(service.get_snapshot().contextUsage).toMatchObject({
       tokens: expect.any(Number),
-      contextWindow: 256_000,
+      contextWindow: 288_000,
+      maxTokens: 32_000,
     });
     expect(service.get_snapshot().contextUsage?.tokens).toBeGreaterThan(0);
     expect(context_events.at(-1)?.["contextUsage"]).toEqual(service.get_snapshot().contextUsage);
@@ -494,6 +510,29 @@ describe("AgentService", () => {
     expect(publish).toHaveBeenLastCalledWith("agent.session_event", {
       type: "snapshot_seed",
       snapshot: service.get_snapshot(),
+    });
+  });
+
+  it("同一对话冻结容量并在重置后的新对话读取最新设置", async () => {
+    const { service } = await create_service();
+    await service.send_message({ parts: [{ kind: "text", text: "第一轮" }] });
+    await wait_for_complete(service);
+
+    fake_agent_state.context_window = 400_000;
+    fake_agent_state.max_tokens = 50_000;
+    await service.send_message({ parts: [{ kind: "text", text: "第二轮" }] });
+    await wait_for_complete(service);
+    expect(service.get_snapshot().contextUsage).toMatchObject({
+      contextWindow: 288_000,
+      maxTokens: 32_000,
+    });
+
+    await service.reset();
+    await service.send_message({ parts: [{ kind: "text", text: "新对话" }] });
+    await wait_for_complete(service);
+    expect(service.get_snapshot().contextUsage).toMatchObject({
+      contextWindow: 400_000,
+      maxTokens: 50_000,
     });
   });
 
@@ -761,7 +800,10 @@ describe("AgentService", () => {
       state: "idle",
       entries: [{ kind: "user_message", createdAt: 1_000, endedAt: 13_500 }],
     });
-    expect(stopped_snapshot.contextUsage).toMatchObject({ contextWindow: 256_000 });
+    expect(stopped_snapshot.contextUsage).toMatchObject({
+      contextWindow: 288_000,
+      maxTokens: 32_000,
+    });
     expect(fake_agent_state.abort_count).toBe(1);
     await service.dispose();
     expect(publish).not.toHaveBeenCalledWith("agent.session_event", {
@@ -1023,8 +1065,8 @@ describe("AgentService", () => {
 
   it("高用量回答触发阈值压缩，公开时间线不缩水且下一轮从摘要继续", async () => {
     const { service, publish } = await create_service();
-    fake_agent_state.context_window = 100_000;
-    for (const round of [1, 2, 3]) {
+    fake_agent_state.context_window = 65_001;
+    for (const round of [1, 2, 3, 4, 5]) {
       await service.send_message({
         parts: [{ kind: "text", text: `第${round.toString()}轮${"x".repeat(40_000)}` }],
       });
@@ -1038,24 +1080,24 @@ describe("AgentService", () => {
     );
 
     expect(fake_agent_state.request_kinds).toContain("summary");
-    expect(after_compaction.entries).toHaveLength(6);
+    expect(after_compaction.entries).toHaveLength(10);
 
-    fake_agent_state.context_window = 256_000;
     await service.send_message({ parts: [{ kind: "text", text: "继续" }] });
     await wait_for_complete(service);
     const next_context = fake_agent_state.model_contexts.at(-1);
     expect(JSON.stringify(next_context?.[0])).toContain("压缩摘要");
+    expect(JSON.stringify(next_context)).toContain("第5轮");
     expect(service.get_snapshot().contextUsage?.tokens ?? Number.POSITIVE_INFINITY).toBeLessThan(
       Math.max(...usage_tokens),
     );
-    expect(service.get_snapshot().entries).toHaveLength(8);
+    expect(service.get_snapshot().entries).toHaveLength(12);
   });
 
   it("阈值压缩失败只记录 warning，已成功的最终回答不转成请求失败", async () => {
     const { service, publish, log_error, log_warning } = await create_service();
-    fake_agent_state.context_window = 100_000;
+    fake_agent_state.context_window = 65_001;
     fake_agent_state.summary_failures_remaining = 1;
-    for (const round of [1, 2, 3]) {
+    for (const round of [1, 2, 3, 4, 5]) {
       await service.send_message({
         parts: [{ kind: "text", text: `第${round.toString()}轮${"x".repeat(40_000)}` }],
       });

@@ -16,6 +16,8 @@ export const en_us_agent_page = {
     hint: "Enter to send · Shift + Enter for a new line",
   },
   context_usage: "Context {percent} · {used} / {total}",
+  context_usage_warning:
+    "Approaching the context limit; history will be compacted automatically at the threshold",
   action: { send: "Send", stop: "Stop", new_task: "New task" },
   confirm: { new_task: "Confirm starting a new conversation task …?" },
   status: { running: "Processing", success: "Completed", error: "Failed" },

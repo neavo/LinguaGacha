@@ -12,6 +12,10 @@ export function create_model_snapshot(
     api_url: "https://api.example.test",
     api_key: "secret",
     model_id: "alpha-model",
+    agent: {
+      context_window: 288_000,
+      max_output_tokens: 32_000,
+    },
     request: {
       extra_headers: { Authorization: "Bearer token" },
       extra_headers_custom_enable: false,
