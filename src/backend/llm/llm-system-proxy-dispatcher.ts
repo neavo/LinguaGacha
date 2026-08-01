@@ -6,9 +6,7 @@ import {
   setGlobalDispatcher,
 } from "undici";
 
-import { Model, type ModelApiFormat } from "../../domain/model";
 import type { JsonRecord } from "../../domain/json";
-import { LLMClientPolicy } from "./llm-client-policy";
 
 export interface SystemProxyResolver {
   resolveProxy: (url: string) => Promise<string>; // 由 Electron session 注入，Backend 不直接导入 Electron
@@ -44,10 +42,10 @@ export const EMPTY_SYSTEM_PROXY_STARTUP_NOTICE: SystemProxyStartupNotice = Objec
 });
 
 const PROVIDER_DEFAULT_PROXY_URLS = [
-  { apiFormat: "Google", apiUrl: "https://generativelanguage.googleapis.com" },
-  { apiFormat: "OpenAI", apiUrl: "https://api.openai.com/v1" },
-  { apiFormat: "Anthropic", apiUrl: "https://api.anthropic.com" },
-] as const satisfies ReadonlyArray<{ apiFormat: ModelApiFormat; apiUrl: string }>;
+  "https://generativelanguage.googleapis.com",
+  "https://api.openai.com/v1",
+  "https://api.anthropic.com",
+] as const;
 
 /**
  * 从当前模型配置和内置预设收集启动期需要询问系统代理的 URL。
@@ -55,12 +53,10 @@ const PROVIDER_DEFAULT_PROXY_URLS = [
 export function collect_system_proxy_urls(models: JsonRecord[]): string[] {
   const urls_by_origin = new Map<string, string>(); // 防止同一服务商 origin 被重复 resolveProxy
   for (const model of models) {
-    const api_format = Model.normalize_api_format(model["api_format"]);
-    const api_url = String(model["api_url"] ?? "");
-    add_proxy_url(urls_by_origin, api_format, api_url);
+    add_proxy_url(urls_by_origin, String(model["api_url"] ?? ""));
   }
-  for (const item of PROVIDER_DEFAULT_PROXY_URLS) {
-    add_proxy_url(urls_by_origin, item.apiFormat, item.apiUrl);
+  for (const url of PROVIDER_DEFAULT_PROXY_URLS) {
+    add_proxy_url(urls_by_origin, url);
   }
   return [...urls_by_origin.values()];
 }
@@ -328,14 +324,10 @@ class SystemProxyDispatcher extends Dispatcher {
 }
 
 /**
- * 添加模型 API URL，并按 provider 策略归一到 SDK 实际请求根。
+ * 添加模型 API URL；系统代理快照按 origin 去重，不依赖 provider payload 规则。
  */
-function add_proxy_url(
-  urls_by_origin: Map<string, string>,
-  api_format: ModelApiFormat,
-  api_url: string,
-): void {
-  const normalized_url = LLMClientPolicy.normalize_api_url(api_url, api_format);
+function add_proxy_url(urls_by_origin: Map<string, string>, api_url: string): void {
+  const normalized_url = api_url.trim();
   if (normalized_url === "") {
     return;
   }

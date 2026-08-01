@@ -1,11 +1,5 @@
-import {
-  patch_generation_fields,
-  patch_temperature,
-  resolve_max_tokens_for_request,
-} from "./policy-shared";
-import { RequestValidationError } from "../../../shared/error";
+import { patch_generation_fields } from "./policy-shared";
 import type { ModelRequestSnapshot } from "./policy-types";
-import type { LLMMessage } from "../llm-types";
 
 // Google SDK 会自行拼接版本段；这里只识别用户配置末尾的显式版本。
 const GOOGLE_SDK_VERSION_SEGMENT_PATTERN = /\/v1(?:beta|alpha)?$/iu;
@@ -30,35 +24,34 @@ export function normalize_google_sdk_base_url(url: string): string {
   return url.trim().replace(/\/+$/u, "").replace(GOOGLE_SDK_VERSION_SEGMENT_PATTERN, "");
 }
 
-/**
- * Google / Gemini 规则：官方 SDK 消费 contents + config，安全阈值始终显式写入 config。
- */
-export function build_google_payload(
+/** Pi 的 Google adapter 在自定义 base URL 下不再追加版本，因此这里补齐默认 v1beta。 */
+export function normalize_google_pi_base_url(url: string): string {
+  const normalized = url.trim().replace(/\/+$/u, "");
+  if (normalized === "" || GOOGLE_SDK_VERSION_SEGMENT_PATTERN.test(normalized)) {
+    return normalized;
+  }
+  return `${normalized}/v1beta`;
+}
+
+/** Google OneShot 在 Pi config 上补齐项目生成、安全和思考规则。 */
+export function apply_google_one_shot_request_overrides(
+  config: Record<string, unknown>,
   snapshot: ModelRequestSnapshot,
-  messages: LLMMessage[],
+  signal: AbortSignal,
 ): Record<string, unknown> {
-  const config: Record<string, unknown> = {};
-  patch_temperature(config, snapshot, { allow_thinking_temperature: true });
-  patch_generation_fields(config, snapshot.generation, {
+  const result = { ...config };
+  patch_generation_fields(result, snapshot.generation, {
     top_p: "topP",
     presence_penalty: "presencePenalty",
     frequency_penalty: "frequencyPenalty",
   });
-  const max_tokens = resolve_max_tokens_for_request(snapshot);
-  if (max_tokens !== null) {
-    config["maxOutputTokens"] = max_tokens;
-  }
-  config["safetySettings"] = [
+  result["safetySettings"] = [
     { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
     { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
     { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
     { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
   ];
-  return {
-    model: snapshot.model_id,
-    contents: build_google_contents(messages),
-    config: apply_google_request_overrides(config, snapshot),
-  };
+  return { ...apply_google_request_overrides(result, snapshot), abortSignal: signal };
 }
 
 /**
@@ -75,36 +68,6 @@ export function apply_google_request_overrides(
     result["thinkingConfig"] = thinking_config;
   }
   return Object.assign(result, snapshot.extra_body);
-}
-
-/**
- * Gemini 没有 system role 时，把 system 文本合并为首条 user content。
- */
-function build_google_contents(
-  messages: LLMMessage[],
-): Array<{ role: string; parts: Array<{ text: string }> }> {
-  const system_text = messages
-    .filter((message) => message.role === "system")
-    .map((message) => message.content.trim())
-    .filter(Boolean)
-    .join("\n\n");
-  const contents = messages
-    .filter((message) => message.role !== "system")
-    .map((message) => ({
-      role: message.role === "assistant" ? "model" : "user",
-      parts: [{ text: message.content.trim() }],
-    }))
-    .filter((message) => message.parts[0]?.text !== "");
-  if (system_text !== "") {
-    contents.unshift({ role: "user", parts: [{ text: system_text }] });
-  }
-  if (contents.length === 0) {
-    throw new RequestValidationError({
-      public_details: { field: "messages" },
-      diagnostic_context: { provider_policy: "google", reason: "empty_messages" },
-    });
-  }
-  return contents;
 }
 
 /**

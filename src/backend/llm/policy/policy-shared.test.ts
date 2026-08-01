@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  patch_generation_fields,
-  patch_temperature,
-  resolve_max_tokens_for_request,
-} from "./policy-shared";
+import { patch_generation_fields, resolve_max_tokens_for_request } from "./policy-shared";
 import type { ModelRequestSnapshot } from "./policy-types";
 
 function create_snapshot(overrides: Partial<ModelRequestSnapshot> = {}): ModelRequestSnapshot {
@@ -42,34 +38,6 @@ describe("policy-shared", () => {
       },
     );
     expect(payload).toEqual({ top_p: 0.8 });
-  });
-
-  it("thinking 开启时默认不发送 temperature", () => {
-    const payload: Record<string, unknown> = {};
-    patch_temperature(
-      payload,
-      create_snapshot({
-        thinking_level: "LOW",
-        generation: {
-          temperature: 0.2,
-          temperature_custom_enable: true,
-        },
-      }),
-    );
-    expect(payload).toEqual({});
-
-    patch_temperature(
-      payload,
-      create_snapshot({
-        thinking_level: "LOW",
-        generation: {
-          temperature: 0.2,
-          temperature_custom_enable: true,
-        },
-      }),
-      { allow_thinking_temperature: true },
-    );
-    expect(payload).toEqual({ temperature: 0.2 });
   });
 
   it("自动 token 上限可回落到 provider 默认值", () => {

@@ -24,7 +24,7 @@ import { PromptBuilder, type PromptBuilderConfig } from "../work-unit-prompt-bui
 import { ResponseChecker } from "../response/response-checker";
 import { ResponseCleaner } from "../response/response-cleaner";
 import { ResponseDecoder } from "../response/response-decoder";
-import type { LLMClientPort, LLMRequestResult } from "../../../llm/llm-types";
+import type { LLMClientPort, LLMMessage, LLMRequestResult } from "../../../llm/llm-types";
 import type { TranslationWorkUnit, WorkUnitLogEntry } from "../../protocol/work-unit";
 import type { WorkUnitExecutionResult } from "../../protocol/work-unit-result";
 import { normalize_setting_snapshot } from "../../../../domain/setting";
@@ -237,7 +237,7 @@ export class TranslationWorkUnitRunner {
         done: false;
         lines: TranslationLine[];
         mode: TranslationPromptMode;
-        messages: Array<{ role: string; content: string }>;
+        messages: LLMMessage[];
         console_log: string[];
         pipeline_contexts: TranslationPrePipelineContext[];
       }

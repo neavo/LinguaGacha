@@ -1,6 +1,6 @@
 import type { JsonRecord } from "../../../domain/json";
 import { JsonTool } from "../../../shared/utils/json-tool";
-import { LLMClientPolicy } from "../../llm/llm-client-policy";
+import { collect_api_keys } from "../../llm/llm-client-policy";
 
 /**
  * ModelKeyLeasePool 在 TaskEngine 进程内按模型资源签名做全局 round-robin，不让 worker 本地轮换分裂 Key 分布。
@@ -12,7 +12,7 @@ export class ModelKeyLeasePool {
    * work unit 即将真实进入 in-flight 前调用；返回写入单个租约 key 的模型快照副本。
    */
   public lease_model(model: JsonRecord): JsonRecord {
-    const keys = LLMClientPolicy.collect_api_keys(String(model["api_key"] ?? ""));
+    const keys = collect_api_keys(String(model["api_key"] ?? ""));
     const signature = this.build_signature(model, keys);
     const offset = this.offsets.get(signature) ?? 0;
     const selected_key = keys[offset % keys.length] ?? "no_key_required";

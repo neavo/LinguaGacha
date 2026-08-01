@@ -7,7 +7,7 @@ import { AppSettingService } from "../app/app-setting-service";
 import { LLMClient } from "../llm/llm-client";
 import { list_available_models } from "../llm/llm-model-catalog";
 import type { LLMMessage, LLMRequestResult } from "../llm/llm-types";
-import { LLMClientPolicy } from "../llm/llm-client-policy";
+import { collect_api_keys } from "../llm/llm-client-policy";
 import {
   MODEL_USAGES,
   Model,
@@ -260,7 +260,7 @@ export class ModelService {
   public async test_model(request: JsonRecord): Promise<JsonRecord> {
     const config = this.load_setting_with_models(false);
     const model = this.get_model_from_request(config, request);
-    const keys = LLMClientPolicy.collect_api_keys(String(model["api_key"] ?? ""));
+    const keys = collect_api_keys(String(model["api_key"] ?? ""));
     const client = new LLMClient({ userAgent: this.llm_user_agent });
     const key_results: Array<JsonRecord> = [];
     const app_language = config["app_language"];

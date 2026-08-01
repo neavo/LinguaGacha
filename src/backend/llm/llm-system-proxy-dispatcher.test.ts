@@ -51,7 +51,7 @@ describe("llm-system-proxy-dispatcher", () => {
     expect(urls).toEqual([
       "https://api.anthropic.com",
       "https://api.openai.com/v1",
-      "https://api.example/v1",
+      "https://api.example/v1/chat/completions",
       "https://generativelanguage.googleapis.com",
     ]);
   });

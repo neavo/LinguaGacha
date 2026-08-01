@@ -1,63 +1,39 @@
+import { contentText, type AssistantMessage } from "@earendil-works/pi-ai";
+
 import { JsonTool } from "../../shared/utils/json-tool";
-import { to_log_error } from "../../shared/error";
-import type { JsonValue } from "../../domain/json";
-import { LLMClientPolicy } from "./llm-client-policy";
-import type { RequestProvider } from "./policy/policy-types";
+import { log_error_from_message, to_log_error, type LogError } from "../../shared/error";
+import { read_model_request_snapshot, read_request_timeout_ms } from "./llm-client-policy";
+import { LLMClientDegradationDetector } from "./llm-client-degradation-detector";
+import { resolve_one_shot_pi_request } from "./llm-pi";
 import type { LLMRequestBody, LLMClientPort, LLMRequestResult } from "./llm-types";
-import { AnthropicTransport, create_anthropic_client } from "./transport/anthropic-transport";
-import { GoogleTransport, create_google_client } from "./transport/google-transport";
-import {
-  OpenAICompatibleTransport,
-  create_openai_compatible_client,
-} from "./transport/openai-compatible-transport";
-import { SakuraTransport } from "./transport/sakura-transport";
-import type {
-  ProviderClientFactory,
-  ProviderClientPoolRequest,
-  ProviderClientResolver,
-  RequestTransport,
-} from "./transport/transport-types";
-import { empty_llm_result } from "./transport/transport-types";
+import type { ModelRequestSnapshot } from "./policy/policy-types";
 
 interface LLMClientOptions {
   userAgent: string; // 由应用元信息层注入，LLMClient 不读取 version.txt
-  transports?: Partial<Record<RequestProvider, RequestTransport>>; // 只允许按 provider 替换边界实现
 }
 
-/**
- * LLMClient 是 Backend 进程内 LLM 请求入口，负责 policy、超时、取消和错误归一。
- */
+/** Backend 进程内 OneShot LLM 入口，拥有总时限、取消、退化和结果归一。 */
 export class LLMClient implements LLMClientPort {
-  private readonly policy: LLMClientPolicy; // 请求快照到最终 provider payload 的唯一入口
-  private readonly transports: Record<RequestProvider, RequestTransport>; // 按 provider 分发表层请求，不再改写模型策略
+  private readonly user_agent: string; // 当前 Backend 实例的固定请求身份
 
-  /**
-   * 构造 Backend 进程内 LLM 请求客户端；测试只替换远程 transport 边界。
-   */
+  /** User-Agent 由组合根注入，避免请求层读取应用资源。 */
   public constructor(options: LLMClientOptions) {
-    const client_pool = new ProviderClientPool();
-    this.policy = new LLMClientPolicy(options.userAgent);
-    this.transports = {
-      "openai-compatible":
-        options.transports?.["openai-compatible"] ?? new OpenAICompatibleTransport(client_pool),
-      sakura: options.transports?.sakura ?? new SakuraTransport(client_pool),
-      google: options.transports?.google ?? new GoogleTransport(client_pool),
-      anthropic: options.transports?.anthropic ?? new AnthropicTransport(client_pool),
-    };
+    this.user_agent = options.userAgent;
   }
 
-  /**
-   * 每次请求只解析一次 policy；transport 不再拥有模型族判断或 payload patch 权限。
-   */
+  /** 单次解析模型快照，并把取消、总时限和 Pi 流统一收敛为 LLMRequestResult。 */
   public async request(body: LLMRequestBody, signal: AbortSignal): Promise<LLMRequestResult> {
-    const resolved_policy = this.policy.resolve(body);
+    const snapshot = read_model_request_snapshot(body.model, this.user_agent);
     const controller = new AbortController();
+    const request = resolve_one_shot_pi_request(snapshot, body.messages, controller.signal);
+    // AbortController 只传递中止；三个标记保留触发原因并决定最终结果优先级。
     let timeout = false;
     let cancelled = false;
+    let degraded = false;
     const timer = setTimeout(() => {
       timeout = true;
       controller.abort();
-    }, resolved_policy.timeout_ms);
+    }, read_request_timeout_ms(body.config_snapshot));
     const abort_listener = (): void => {
       cancelled = true;
       controller.abort();
@@ -67,98 +43,160 @@ export class LLMClient implements LLMClientPort {
       if (signal.aborted) {
         return empty_llm_result({ cancelled: true });
       }
-      return await this.transports[resolved_policy.provider].send(
-        resolved_policy,
-        controller.signal,
-      );
+      const stream = request.stream(request.model, request.context, request.options);
+      const final_message = stream.result(); // 先持有终态，再消费 delta 做实时退化检测
+      const detector = new LLMClientDegradationDetector();
+      for await (const event of stream) {
+        if (event.type === "text_delta" && detector.feed(event.delta)) {
+          degraded = true;
+          controller.abort();
+        }
+      }
+      const message = await final_message;
+      if (timeout) return empty_llm_result({ timeout: true });
+      if (cancelled || signal.aborted) return empty_llm_result({ cancelled: true });
+      if (degraded) return empty_llm_result({ degraded: true });
+
+      const response_result = contentText(message.content, "").trim();
+      if (LLMClientDegradationDetector.has_output_degradation(response_result)) {
+        return empty_llm_result({ degraded: true });
+      }
+      return normalize_pi_result(snapshot, message, response_result);
     } catch (error) {
-      if (timeout) {
-        return empty_llm_result({ timeout: true });
-      }
-      if (cancelled || signal.aborted) {
-        return empty_llm_result({ cancelled: true });
-      }
-      const model_id = this.read_request_model_id(body.model);
-      return empty_llm_result({
-        request_error: to_log_error(error, {
-          api_format: resolved_policy.api_format,
-          ...(model_id === "" ? {} : { model_id }),
-          provider: resolved_policy.provider,
-          run_id: body.run_id,
-          work_unit_id: body.work_unit_id,
-        }),
-      });
+      if (timeout) return empty_llm_result({ timeout: true });
+      if (cancelled || signal.aborted) return empty_llm_result({ cancelled: true });
+      if (degraded) return empty_llm_result({ degraded: true });
+      return empty_llm_result({ request_error: build_request_error(error, snapshot, body) });
     } finally {
       clearTimeout(timer);
       signal.removeEventListener("abort", abort_listener);
     }
   }
-
-  /**
-   * 模型 ID 是安全诊断值；缺失时不向错误 context 写空字段。
-   */
-  private read_request_model_id(value: JsonValue): string {
-    if (typeof value !== "object" || value === null || Array.isArray(value)) {
-      return "";
-    }
-    const model_id = value["model_id"];
-    return typeof model_id === "string" ? model_id : "";
-  }
 }
 
-/**
- * ProviderClientPool 是 LLMClient 私有的 SDK client 生命周期编排器。
- */
-export class ProviderClientPool implements ProviderClientResolver {
-  private readonly clients = new Map<string, unknown>(); // 缓存 key 包含 provider/key/header/timeout，避免跨凭据复用
-  private readonly factory: ProviderClientFactory; // SDK client 创建的唯一委托，pool 不理解各 provider 构造参数
-
-  /**
-   * factory 只供测试注入 fake SDK client，生产路径使用 official SDK factory。
-   */
-  public constructor(factory: ProviderClientFactory = create_official_sdk_client) {
-    this.factory = factory;
+/** Pi 的终态是成功与否的权威；供应商 raw reason 只用于后续诊断。 */
+function normalize_pi_result(
+  snapshot: ModelRequestSnapshot,
+  message: AssistantMessage,
+  response_result: string,
+): LLMRequestResult {
+  if (
+    message.stopReason === "error" ||
+    message.stopReason === "aborted" ||
+    message.stopReason === "pending"
+  ) {
+    throw new Error(message.errorMessage ?? "供应商请求未正常结束。");
   }
+  const response_think = message.content
+    .filter((block) => block.type === "thinking")
+    .map((block) => block.thinking)
+    .join("")
+    .trim();
+  const usage = normalize_usage(snapshot, message);
+  const finish_error = read_finish_error(snapshot, message);
+  const normalized_result =
+    snapshot.provider === "sakura" && response_result !== "" && finish_error === undefined
+      ? convert_sakura_response(response_result)
+      : response_result;
+  return {
+    response_think,
+    response_result: finish_error === undefined ? normalized_result : "",
+    ...usage,
+    cancelled: false,
+    timeout: false,
+    degraded: false,
+    ...(finish_error === undefined ? {} : { request_error: finish_error }),
+  };
+}
 
-  /**
-   * 按 provider/key/header 组合取 client；cache miss 时才创建官方 SDK client。
-   */
-  public get_client<T>(request: ProviderClientPoolRequest): T {
-    const key = this.build_key(request);
-    const existing = this.clients.get(key);
-    if (existing !== undefined) {
-      return existing as T;
-    }
-    const created = this.factory(request);
-    this.clients.set(key, created);
-    return created as T;
+/** 把 Pi 的缓存与思考拆分计数还原为项目既有的供应商统计口径。 */
+function normalize_usage(
+  snapshot: ModelRequestSnapshot,
+  message: AssistantMessage,
+): Pick<LLMRequestResult, "input_tokens" | "output_tokens"> {
+  if (snapshot.provider === "google") {
+    return {
+      input_tokens: message.usage.input + message.usage.cacheRead,
+      output_tokens: Math.max(0, message.usage.output - (message.usage.reasoning ?? 0)),
+    };
   }
+  if (snapshot.provider === "anthropic") {
+    return { input_tokens: message.usage.input, output_tokens: message.usage.output };
+  }
+  return {
+    input_tokens: message.usage.input + message.usage.cacheRead + message.usage.cacheWrite,
+    output_tokens: message.usage.output,
+  };
+}
 
-  /**
-   * cache key 必须包含凭据和 header 签名，避免跨租户或跨自定义 header 复用。
-   */
-  private build_key(request: ProviderClientPoolRequest): string {
-    return JsonTool.stringifyStrict({
-      provider: request.provider,
-      api_format: request.api_format,
-      base_url: request.base_url,
-      api_key: request.api_key,
-      timeout_ms: request.timeout_ms,
-      headers_signature: JsonTool.stringifyStrict(request.headers),
-      auth_mode: request.auth_mode ?? "api-key",
+/** 只保留任务层已定义的长度截断与工具调用错误；Google 延续原有正文语义。 */
+function read_finish_error(
+  snapshot: ModelRequestSnapshot,
+  message: AssistantMessage,
+): LogError | undefined {
+  if (snapshot.provider === "google") return undefined;
+  const raw_reason = message.rawStopReason;
+  if (
+    (snapshot.provider === "anthropic" &&
+      (raw_reason === "max_tokens" ||
+        (raw_reason === undefined && message.stopReason === "length"))) ||
+    (snapshot.provider !== "anthropic" &&
+      (raw_reason === "length" || (raw_reason === undefined && message.stopReason === "length")))
+  ) {
+    return log_error_from_message("供应商返回长度截断。", {
+      [snapshot.provider === "anthropic" ? "stop_reason" : "finish_reason"]: raw_reason ?? "length",
     });
   }
+  if (
+    (snapshot.provider === "anthropic" &&
+      (raw_reason === "tool_use" ||
+        (raw_reason === undefined && message.stopReason === "toolUse"))) ||
+    (snapshot.provider !== "anthropic" &&
+      (raw_reason === "tool_calls" ||
+        (raw_reason === undefined && message.stopReason === "toolUse")))
+  ) {
+    return log_error_from_message("供应商返回工具调用，当前任务不支持。", {
+      [snapshot.provider === "anthropic" ? "stop_reason" : "finish_reason"]:
+        raw_reason ?? "tool_calls",
+    });
+  }
+  return undefined;
 }
 
-/**
- * official SDK client factory 只在请求编排层做 provider 到专属 SDK 构造器的分发。
- */
-function create_official_sdk_client(request: ProviderClientPoolRequest): unknown {
-  if (request.provider === "google") {
-    return create_google_client(request);
+/** Sakura 仍向 ResponseDecoder 暴露逐行 JSON map，而不另建 transport。 */
+function convert_sakura_response(response_result: string): string {
+  const rows: Record<string, string> = {};
+  for (const [index, line] of response_result.trim().split(/\r?\n/u).entries()) {
+    rows[String(index)] = line.trim();
   }
-  if (request.provider === "anthropic") {
-    return create_anthropic_client(request);
-  }
-  return create_openai_compatible_client(request);
+  return JsonTool.stringifyStrict(rows);
+}
+
+/** 请求异常只附加安全的模型与 work-unit 定位字段。 */
+function build_request_error(
+  error: unknown,
+  snapshot: ModelRequestSnapshot,
+  body: LLMRequestBody,
+): LogError {
+  return to_log_error(error, {
+    api_format: snapshot.api_format,
+    ...(snapshot.model_id === "" ? {} : { model_id: snapshot.model_id }),
+    provider: snapshot.provider,
+    run_id: body.run_id,
+    work_unit_id: body.work_unit_id,
+  });
+}
+
+/** 所有无结果分支共用完整默认值，调用方无需猜测缺失布尔字段。 */
+function empty_llm_result(overrides: Partial<LLMRequestResult> = {}): LLMRequestResult {
+  return {
+    response_think: "",
+    response_result: "",
+    input_tokens: 0,
+    output_tokens: 0,
+    cancelled: false,
+    timeout: false,
+    degraded: false,
+    ...overrides,
+  };
 }

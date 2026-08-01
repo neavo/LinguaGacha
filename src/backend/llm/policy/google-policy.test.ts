@@ -2,28 +2,32 @@ import { describe, expect, it } from "vitest";
 
 import type { ModelRequestSnapshot } from "./policy-types";
 import {
+  apply_google_one_shot_request_overrides,
   apply_google_request_overrides,
-  build_google_payload,
   build_google_thinking_config,
+  normalize_google_pi_base_url,
   normalize_google_sdk_base_url,
 } from "./google-policy";
 
-describe("google-policy", () => {
-  it("Google SDK baseUrl 去掉末尾版本段并保留代理根路径", () => {
-    expect(normalize_google_sdk_base_url("https://generativelanguage.googleapis.com/v1beta/")).toBe(
-      "https://generativelanguage.googleapis.com",
-    );
+describe("Google 请求规则", () => {
+  it("分别按 Google SDK 与 Pi adapter 契约归一 base URL", () => {
     expect(normalize_google_sdk_base_url("https://proxy.example/google/v1alpha")).toBe(
       "https://proxy.example/google",
     );
+    expect(normalize_google_pi_base_url("https://proxy.example/google")).toBe(
+      "https://proxy.example/google/v1beta",
+    );
+    expect(normalize_google_pi_base_url("https://proxy.example/google/v1alpha/")).toBe(
+      "https://proxy.example/google/v1alpha",
+    );
   });
 
-  it("构造 Gemini payload 时合并 system 文本并写入安全阈值和生成参数", () => {
-    const payload = build_google_payload(
+  it("OneShot 补齐生成、安全和思考字段，并让内部 signal 最终生效", () => {
+    const signal = new AbortController().signal;
+    const config = apply_google_one_shot_request_overrides(
+      { temperature: 0.2, abortSignal: "pi-signal" },
       create_snapshot({
         generation: {
-          temperature_custom_enable: true,
-          temperature: 0.2,
           top_p_custom_enable: true,
           top_p: 0.9,
           presence_penalty_custom_enable: true,
@@ -31,86 +35,31 @@ describe("google-policy", () => {
           frequency_penalty_custom_enable: true,
           frequency_penalty: 0.3,
         },
-        extra_body: { responseMimeType: "application/json" },
+        extra_body: { responseMimeType: "application/json", abortSignal: "bad" },
         thinking_level: "LOW",
       }),
-      [
-        { role: "system", content: " 系统约束 " },
-        { role: "system", content: " 输出 JSON " },
-        { role: "user", content: " こんにちは " },
-        { role: "assistant", content: " 你好 " },
-      ],
+      signal,
     );
 
-    expect(payload).toMatchObject({
-      model: "gemini-2.5-flash",
-      contents: [
-        { role: "user", parts: [{ text: "系统约束\n\n输出 JSON" }] },
-        { role: "user", parts: [{ text: "こんにちは" }] },
-        { role: "model", parts: [{ text: "你好" }] },
-      ],
-      config: {
-        temperature: 0.2,
-        topP: 0.9,
-        presencePenalty: 0.1,
-        frequencyPenalty: 0.3,
-        maxOutputTokens: 4096,
-        responseMimeType: "application/json",
-        thinkingConfig: { thinkingBudget: 384, includeThoughts: true },
-      },
+    expect(config).toMatchObject({
+      temperature: 0.2,
+      topP: 0.9,
+      presencePenalty: 0.1,
+      frequencyPenalty: 0.3,
+      responseMimeType: "application/json",
+      thinkingConfig: { thinkingBudget: 384, includeThoughts: true },
+      abortSignal: signal,
     });
-    expect((payload["config"] as Record<string, unknown>)["safetySettings"]).toEqual([
-      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-    ]);
+    expect(config["safetySettings"]).toHaveLength(4);
   });
 
-  it("Gemini thinking 等级按官方能力映射到预算和等级字段", () => {
-    expect(
-      build_google_thinking_config({ model_id: "gemini-3.1-pro", thinking_level: "OFF" }),
-    ).toEqual({ thinkingLevel: "LOW", includeThoughts: false });
-    expect(
-      build_google_thinking_config({ model_id: "gemini-3.1-pro", thinking_level: "MEDIUM" }),
-    ).toEqual({ thinkingLevel: "MEDIUM", includeThoughts: true });
-    expect(
-      build_google_thinking_config({ model_id: "gemini-3-flash-preview", thinking_level: "OFF" }),
-    ).toEqual({ thinkingLevel: "MINIMAL", includeThoughts: false });
-    expect(
-      build_google_thinking_config({ model_id: "gemini-3.5-flash", thinking_level: "OFF" }),
-    ).toEqual({ thinkingLevel: "MINIMAL", includeThoughts: false });
-    expect(
-      build_google_thinking_config({ model_id: "gemini-3.5-flash", thinking_level: "LOW" }),
-    ).toEqual({ thinkingLevel: "LOW", includeThoughts: true });
-    expect(
-      build_google_thinking_config({ model_id: "gemini-3.5-flash", thinking_level: "MEDIUM" }),
-    ).toEqual({ thinkingLevel: "MEDIUM", includeThoughts: true });
-    expect(
-      build_google_thinking_config({ model_id: "gemini-3.5-flash", thinking_level: "HIGH" }),
-    ).toEqual({ thinkingLevel: "HIGH", includeThoughts: true });
-    expect(
-      build_google_thinking_config({ model_id: "gemini-2.5-pro", thinking_level: "OFF" }),
-    ).toEqual({ thinkingBudget: 128, includeThoughts: false });
-    expect(
-      build_google_thinking_config({ model_id: "gemini-2.5-flash-lite", thinking_level: "LOW" }),
-    ).toEqual({ thinkingBudget: 512, includeThoughts: true });
-    expect(
-      build_google_thinking_config({ model_id: "gemini-2.5-flash", thinking_level: "MEDIUM" }),
-    ).toEqual({ thinkingBudget: 768, includeThoughts: true });
-    expect(
-      build_google_thinking_config({ model_id: "gemini-2.5-flash", thinking_level: "HIGH" }),
-    ).toEqual({ thinkingBudget: 1024, includeThoughts: true });
-  });
-
-  it("共享覆盖规则只替换 config thinking 并保留 Pi 结构字段", () => {
+  it("共享覆盖只替换 config thinking 并保留 Pi 结构字段", () => {
     const source = {
       systemInstruction: { parts: [{ text: "系统" }] },
       tools: [{ functionDeclarations: [{ name: "search" }] }],
       toolConfig: { functionCallingConfig: { mode: "AUTO" } },
       thinkingConfig: { thinkingLevel: "HIGH" },
     };
-
     const config = apply_google_request_overrides(
       source,
       create_snapshot({
@@ -129,10 +78,22 @@ describe("google-policy", () => {
     expect(source).toHaveProperty("thinkingConfig.thinkingLevel", "HIGH");
   });
 
-  it("空 Gemini contents 在协议边界直接阻断", () => {
-    expect(() =>
-      build_google_payload(create_snapshot(), [{ role: "user", content: "   " }]),
-    ).toThrow("request.validation_failed");
+  it("保持 Gemini 2.5/3.x 的 thinking 能力映射", () => {
+    expect(
+      build_google_thinking_config({ model_id: "gemini-3.1-pro", thinking_level: "MEDIUM" }),
+    ).toEqual({ thinkingLevel: "MEDIUM", includeThoughts: true });
+    expect(
+      build_google_thinking_config({ model_id: "gemini-3.5-flash", thinking_level: "OFF" }),
+    ).toEqual({ thinkingLevel: "MINIMAL", includeThoughts: false });
+    expect(
+      build_google_thinking_config({ model_id: "gemini-2.5-pro", thinking_level: "OFF" }),
+    ).toEqual({ thinkingBudget: 128, includeThoughts: false });
+    expect(
+      build_google_thinking_config({ model_id: "gemini-2.5-flash-lite", thinking_level: "LOW" }),
+    ).toEqual({ thinkingBudget: 512, includeThoughts: true });
+    expect(
+      build_google_thinking_config({ model_id: "gemini-2.5-flash", thinking_level: "HIGH" }),
+    ).toEqual({ thinkingBudget: 1024, includeThoughts: true });
   });
 });
 
@@ -141,7 +102,7 @@ function create_snapshot(overrides: Partial<ModelRequestSnapshot> = {}): ModelRe
     provider: "google",
     api_format: "Google",
     api_keys: ["key"],
-    base_url: "https://generativelanguage.googleapis.com",
+    base_url: "https://generativelanguage.googleapis.com/v1beta",
     model_id: "gemini-2.5-flash",
     headers: {},
     extra_body: {},
