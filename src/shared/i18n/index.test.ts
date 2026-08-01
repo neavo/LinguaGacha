@@ -26,6 +26,34 @@ describe("shared i18n", () => {
       create_text_resolver("de-DE")("app.feedback.feature_enabled", { TITLE: "Glossar" }),
     ).toBe("Glossar aktiviert …");
   });
+
+  it("解析 AGENT 品牌、英文任务按钮与模型默认容量文案", () => {
+    for (const locale of LOCALES) {
+      expect(create_text_resolver(locale)("agent_page.title")).toBe("AGENT");
+    }
+
+    expect(create_text_resolver("en-US")("agent_page.action.new_task")).toBe("New Task");
+    expect(
+      create_text_resolver("zh-CN")("model_page.fields.context_window.description", {
+        DEFAULT: "288000",
+      }),
+    ).toBe("仅对 AGENT 任务生效，默认值为 288000");
+    expect(
+      create_text_resolver("zh-CN")("model_page.fields.max_output_tokens.description", {
+        DEFAULT: "32000",
+      }),
+    ).toBe("仅对 AGENT 任务生效，默认值为 32000");
+    expect(
+      create_text_resolver("en-US")("model_page.fields.context_window.description", {
+        DEFAULT: "288000",
+      }),
+    ).toBe("Only applies to AGENT tasks, default value: 288000");
+    expect(
+      create_text_resolver("de-DE")("model_page.fields.context_window.description", {
+        DEFAULT: "288000",
+      }),
+    ).toBe("Gilt nur für AGENT-Aufgaben, standardwert: 288000");
+  });
 });
 
 /**

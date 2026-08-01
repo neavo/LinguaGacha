@@ -1,5 +1,5 @@
 export const zh_cn_agent_page = {
-  title: "Agent",
+  title: "AGENT",
   thinking: "思考过程",
   thinking_active: "正在思考",
   diagram: { label: "图表", render_failed: "图表渲染失败，已显示 Mermaid 源码。" },

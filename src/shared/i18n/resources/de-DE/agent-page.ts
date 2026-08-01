@@ -1,5 +1,5 @@
 export const de_de_agent_page = {
-  title: "Agent",
+  title: "AGENT",
   thinking: "Denkprozess",
   thinking_active: "Denkt nach",
   diagram: {

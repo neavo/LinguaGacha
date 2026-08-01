@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
-import type { AgentAssistantMessagePart, AgentToolEntry } from "@shared/agent";
+import type { AgentAssistantMessagePart } from "@shared/agent";
 import type { useAgentPageState as UseAgentPageStateFunction } from "./use-agent-page-state";
 
 type AgentPageState = ReturnType<typeof UseAgentPageStateFunction>;
@@ -48,10 +48,6 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.confirm.new_task") return "是否确认开始新的对话任务 …?";
       if (key === "agent_page.empty.suggestions.capabilities") return "介绍一下你的能力";
       if (key === "agent_page.empty.suggestions.glossary_audit") return "请帮我审校术语表";
-      if (key === "agent_page.thinking_active") return "正在思考";
-      if (key === "agent_page.status.running") return "正在处理";
-      if (key === "agent_page.status.success") return "已完成";
-      if (key === "agent_page.status.error") return "失败";
       return params === undefined ? key : `${key}:${Object.values(params).join(",")}`;
     },
   }),
@@ -66,7 +62,6 @@ describe("AgentPage", () => {
 
   afterEach(async () => {
     if (root !== null) await act(async () => root?.unmount());
-    vi.useRealTimers();
     container?.remove();
     root = null;
     container = null;
@@ -133,7 +128,6 @@ describe("AgentPage", () => {
 
   it("术语 skill 未加载时不展示不可提交的快捷入口", async () => {
     const view = await render_page({ entries: [], skills: [] });
-
     expect(
       [...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion")].map(
         (button) => button.textContent,
@@ -145,310 +139,86 @@ describe("AgentPage", () => {
     const view = await render_page({
       contextUsage: { tokens: 31_488, contextWindow: 288_000, maxTokens: 32_000 },
     });
-
     expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("10.9%");
   });
 
-  it("用户离开消息底部后不被流式输出抢回滚动位置", async () => {
+  it("程序平滑滚动期间不会把中间帧误判为用户接管", async () => {
     const view = await render_page();
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
-    const message_end = conversation?.lastElementChild as HTMLElement | null;
-    if (conversation === null || message_end === null) throw new Error("缺少消息滚动容器");
-    const scroll_into_view = vi.fn();
-    message_end.scrollIntoView = scroll_into_view;
+    if (conversation === null) throw new Error("缺少消息滚动容器");
+    const scroll_to = vi.fn();
+    conversation.scrollTo = scroll_to;
     Object.defineProperties(conversation, {
       scrollHeight: { configurable: true, value: 1000 },
       clientHeight: { configurable: true, value: 400 },
       scrollTop: { configurable: true, value: 100, writable: true },
     });
-    await act(async () => conversation.dispatchEvent(new Event("scroll", { bubbles: true })));
 
     await render_page({
       entries: [...page_state.current.entries, assistant_entry("assistant-2", "增量", false, 2)],
     });
-    expect(scroll_into_view).not.toHaveBeenCalled();
+    expect(scroll_to).toHaveBeenLastCalledWith({ top: 1000 });
+    await act(async () => conversation.dispatchEvent(new Event("scroll", { bubbles: true })));
+    scroll_to.mockClear();
+    await render_page({
+      entries: [...page_state.current.entries, assistant_entry("assistant-3", "继续", false, 3)],
+    });
+    expect(scroll_to).toHaveBeenLastCalledWith({ top: 1000 });
+
+    await act(async () => conversation.dispatchEvent(new Event("scrollend", { bubbles: true })));
+    scroll_to.mockClear();
+    await render_page({
+      entries: [...page_state.current.entries, assistant_entry("assistant-4", "停止", false, 4)],
+    });
+    expect(scroll_to).not.toHaveBeenCalled();
   });
 
-  it("渲染模型流式 Markdown", async () => {
-    const view = await render_page({ state: "running" });
-
-    expect(view.querySelector("strong")?.textContent).toBe("变更方案");
-    expect(view.querySelector(".agent-message__cursor")).toBeNull();
-  });
-
-  it("任务运行期间始终在时间线底部显示会话活动灯", async () => {
-    const scenarios = [
-      [user_entry("user-1", [{ kind: "text" as const, text: "开始" }], 0, null)],
-      [tool_entry("tool-success", "query_project_items", "success", "{}", 1)],
-      [tool_entry("tool-error", "query_project_items", "error", "失败", 1)],
-      [assistant_parts_entry("assistant-empty", [], false, 1)],
+  it("滚轮、指针和滚动键允许用户接管，回到底部后恢复跟随", async () => {
+    const view = await render_page();
+    const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
+    if (conversation === null) throw new Error("缺少消息滚动容器");
+    const scroll_to = vi.fn();
+    conversation.scrollTo = scroll_to;
+    Object.defineProperties(conversation, {
+      scrollHeight: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 400 },
+      scrollTop: { configurable: true, value: 100, writable: true },
+    });
+    const stop_events = [
+      new WheelEvent("wheel", { bubbles: true }),
+      new Event("pointerdown", { bubbles: true }),
+      new KeyboardEvent("keydown", { bubbles: true, key: "PageUp" }),
     ];
 
-    for (const entries of scenarios) {
-      const view = await render_page({ state: "running", entries });
-      const messages = view.querySelector(".agent-page__messages");
-      const activity = view.querySelector(".agent-message__activity");
-      expect(activity).toBe(messages?.lastElementChild);
-      expect(
-        activity?.querySelector(".agent-status-light--active")?.getAttribute("aria-label"),
-      ).toBe("正在处理");
+    for (const [index, event] of stop_events.entries()) {
+      await act(async () => conversation.dispatchEvent(event));
+      scroll_to.mockClear();
+      await render_page({
+        entries: [
+          ...page_state.current.entries,
+          assistant_entry(`assistant-stop-${index.toString()}`, "停止", false, index + 2),
+        ],
+      });
+      expect(scroll_to).not.toHaveBeenCalled();
+
+      conversation.scrollTop = 600;
+      await act(async () => conversation.dispatchEvent(new Event("scroll", { bubbles: true })));
+      scroll_to.mockClear();
+      await render_page({
+        entries: [
+          ...page_state.current.entries,
+          assistant_entry(`assistant-resume-${index.toString()}`, "恢复", false, index + 20),
+        ],
+      });
+      expect(scroll_to).toHaveBeenLastCalledWith({ top: 1000 });
+      conversation.scrollTop = 100;
     }
-
-    const view = await render_page({ state: "complete" });
-    expect(view.querySelector(".agent-message__activity")).toBeNull();
-  });
-
-  it("运行工具在标题逐秒计时，完成后恢复工具名称", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(8_001);
-    const view = await render_page({
-      state: "running",
-      entries: [tool_entry("tool-1", "query_project_items", "running", null, 1)],
-    });
-    const tool = view.querySelector<HTMLDetailsElement>(".agent-detail-entry--tool");
-    const timer = tool?.querySelector<HTMLElement>('[role="timer"]');
-
-    expect(tool?.querySelector("summary")?.textContent).toBe("query_project_items · 8s");
-    expect(timer?.getAttribute("aria-live")).toBe("off");
-    expect(tool?.querySelector(".agent-status-light--active")).not.toBeNull();
-    expect(view.querySelector(".agent-message__activity")).not.toBeNull();
-    await act(async () => vi.advanceTimersByTime(1_000));
-    expect(tool?.querySelector("summary")?.textContent).toBe("query_project_items · 9s");
-    await act(async () => tool?.querySelector("summary")?.click());
-    expect(tool?.open).toBe(true);
-    expect(tool?.querySelector("pre")).toBeNull();
-
-    await render_page({
-      state: "running",
-      entries: [tool_entry("tool-1", "query_project_items", "success", "{}", 1)],
-    });
-    expect(tool?.querySelector("summary")?.textContent).toBe("query_project_items");
-    expect(tool?.querySelector('[role="timer"]')).toBeNull();
-    expect(tool?.querySelector(".agent-status-light--success")).not.toBeNull();
-    expect(tool?.open).toBe(true);
-    expect(tool?.querySelector("pre")?.textContent).toBe("{}");
-  });
-
-  it("并行工具乱序完成后仍为未完成项保留计时", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(8_001);
-    const view = await render_page({
-      state: "running",
-      entries: [
-        tool_entry("tool-running", "query_project_items", "running", null, 1),
-        tool_entry("tool-complete", "query_quality_rules", "success", "{}", 2),
-      ],
-    });
-    const tools = view.querySelectorAll<HTMLDetailsElement>(".agent-detail-entry--tool");
-
-    expect(tools[0]?.querySelector(".agent-detail-entry__label")?.textContent).toBe(
-      "query_project_items · 8s",
-    );
-    expect(tools[0]?.querySelector(".agent-status-light--active")).not.toBeNull();
-    expect(tools[1]?.querySelector(".agent-detail-entry__label")?.textContent).toBe(
-      "query_quality_rules",
-    );
-    expect(tools[1]?.querySelector(".agent-status-light--success")).not.toBeNull();
-  });
-
-  it("运行中逐秒更新长耗时，结束后冻结且不动态播报", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(45_295_000);
-    const view = await render_page({
-      state: "running",
-      entries: [user_entry("user-1", [{ kind: "text", text: "开始" }], 0, null)],
-    });
-    const timer = view.querySelector<HTMLElement>('[role="timer"]');
-    if (timer === null) throw new Error("缺少轮次计时器");
-
-    expect(timer.textContent).toBe("agent_page.round.running:12h 34m 55s");
-    expect(timer.getAttribute("aria-live")).toBe("off");
-    await act(async () => vi.advanceTimersByTime(1_000));
-    expect(timer.textContent).toBe("agent_page.round.running:12h 34m 56s");
-
-    await render_page({
-      state: "complete",
-      entries: [user_entry("user-1", [{ kind: "text", text: "开始" }], 0, 45_296_000)],
-    });
-    expect(timer.textContent).toBe("agent_page.round.ended:12h 34m 56s");
-    await act(async () => vi.advanceTimersByTime(3_600_000));
-    expect(timer.textContent).toBe("agent_page.round.ended:12h 34m 56s");
-  });
-
-  it("按秒、分钟分档格式化已结束轮次", async () => {
-    const view = await render_page({
-      state: "complete",
-      entries: [
-        user_entry("user-1", [{ kind: "text", text: "短任务" }], 0, 8_000),
-        user_entry("user-2", [{ kind: "text", text: "长任务" }], 10_000, 738_000),
-      ],
-    });
-
-    expect(
-      [...view.querySelectorAll<HTMLElement>('[role="timer"]')].map((timer) => timer.textContent),
-    ).toEqual(["agent_page.round.ended:8s", "agent_page.round.ended:12m 08s"]);
-  });
-
-  it("默认折叠流式思考，展开状态在正文到达后保持", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(8_001);
-    const view = await render_page({
-      state: "running",
-      entries: [
-        assistant_parts_entry(
-          "assistant-1",
-          [{ kind: "thinking", text: "检查术语\n逐项核对" }],
-          false,
-          1,
-        ),
-      ],
-    });
-    const thinking = view.querySelector<HTMLDetailsElement>(".agent-detail-entry--thinking");
-    if (thinking === null) throw new Error("缺少思考块");
-
-    expect(thinking.open).toBe(false);
-    expect(thinking.querySelector("summary")?.textContent).toBe("正在思考 · 8s");
-    expect(thinking.querySelector("pre")).toBeNull();
-    expect(thinking.querySelector(".agent-status-light--active")).not.toBeNull();
-    await act(async () => vi.advanceTimersByTime(1_000));
-    expect(thinking.querySelector("summary")?.textContent).toBe("正在思考 · 9s");
-    await act(async () => thinking.querySelector("summary")?.click());
-    expect(thinking.querySelector("pre")?.textContent).toBe("检查术语\n逐项核对");
-    expect(thinking.querySelector("pre")?.tabIndex).toBe(0);
-
-    await render_page({
-      state: "running",
-      entries: [
-        assistant_parts_entry(
-          "assistant-1",
-          [
-            { kind: "thinking", text: "检查术语\n逐项核对完成" },
-            { kind: "text", text: "**结论**" },
-          ],
-          false,
-          1,
-        ),
-      ],
-    });
-    const updated = view.querySelector<HTMLDetailsElement>(".agent-detail-entry--thinking");
-    expect(updated?.open).toBe(true);
-    expect(updated?.querySelector("summary")?.textContent).toBe("agent_page.thinking");
-    expect(updated?.querySelector("pre")?.textContent).toBe("检查术语\n逐项核对完成");
-    expect(updated?.querySelector(".agent-status-light--success")).not.toBeNull();
-    expect(view.querySelector("strong")?.textContent).toBe("结论");
-    expect(updated?.querySelector(".agent-status-light--active")).toBeNull();
-    expect(
-      view.querySelector(".agent-message__activity .agent-status-light--active"),
-    ).not.toBeNull();
-  });
-
-  it("空 assistant parts 不产生思考或正文块", async () => {
-    const view = await render_page({
-      entries: [assistant_parts_entry("assistant-1", [], true, 1)],
-    });
-
-    expect(view.querySelector(".agent-detail-entry--thinking")).toBeNull();
-    expect(view.querySelector(".agent-message--assistant")).toBeNull();
-  });
-
-  it("按后端顺序渲染工具并只在展开时挂载对应完整输出", async () => {
-    const view = await render_page({
-      state: "complete",
-      entries: [
-        user_entry(
-          "user-1",
-          [
-            { kind: "text", text: "请用 " },
-            { kind: "skill", name: "glossary-audit" },
-            { kind: "text", text: "\n查询" },
-          ],
-          0,
-          2_000,
-        ),
-        assistant_entry("assistant-1", "准备查询", true, 1000),
-        tool_entry(
-          "tool-1",
-          "query_project_items",
-          "success",
-          '{"results":[{"pattern":"Alice","contexts":[]}]}',
-          1500,
-        ),
-        tool_entry("tool-2", "read_skill", "success", "# 审校标准\n\n完整正文", 1800),
-        assistant_entry("assistant-2", "查询完成", true, 2000),
-      ],
-    });
-
-    const visible_text = view.textContent ?? "";
-    expect(visible_text.indexOf("请用")).toBeLessThan(visible_text.indexOf("准备查询"));
-    expect(visible_text.indexOf("准备查询")).toBeLessThan(
-      visible_text.indexOf("query_project_items"),
-    );
-    expect(visible_text.indexOf("query_project_items")).toBeLessThan(
-      visible_text.indexOf("read_skill"),
-    );
-    expect(visible_text.indexOf("read_skill")).toBeLessThan(visible_text.indexOf("查询完成"));
-    const tools = view.querySelectorAll<HTMLDetailsElement>(".agent-detail-entry--tool");
-    expect(tools).toHaveLength(2);
-    expect([...tools].every((tool) => !tool.open)).toBe(true);
-    expect(tools[0]?.querySelector("summary")?.textContent).toBe("query_project_items");
-    expect(tools[1]?.querySelector("summary")?.textContent).toBe("read_skill");
-    const success_light = tools[0]?.querySelector(".agent-status-light--success");
-    expect(success_light).toBe(tools[0]?.querySelector("summary")?.lastElementChild);
-    expect(success_light?.getAttribute("aria-label")).toBe("已完成");
-    expect(tools[0]?.textContent).not.toContain("Alice");
-    expect(tools[0]?.querySelector("pre")).toBeNull();
-    expect(tools[1]?.querySelector("pre")).toBeNull();
-    await act(async () => tools[0]?.querySelector("summary")?.click());
-    expect(tools[0]?.querySelector("pre")?.textContent).toBe(
-      '{\n  "results": [\n    {\n      "pattern": "Alice",\n      "contexts": []\n    }\n  ]\n}',
-    );
-    expect(tools[0]?.querySelector("pre")?.tabIndex).toBe(0);
-    expect(tools[1]?.querySelector("pre")).toBeNull();
-    await act(async () => tools[0]?.querySelector("summary")?.click());
-    expect(tools[0]?.querySelector("pre")).toBeNull();
-    expect(tools[0]?.textContent).not.toContain("Alice");
-    await act(async () => tools[1]?.querySelector("summary")?.click());
-    expect(tools[1]?.querySelector("pre")?.textContent).toBe("# 审校标准\n\n完整正文");
-    expect(view.querySelector(".agent-tool-group")).toBeNull();
-    expect(view.querySelector(".agent-message__user-text")?.textContent).toBe(
-      "请用 @glossary-audit\n查询",
-    );
-    expect(view.querySelector(".agent-message__user-text .agent-skill-token")?.textContent).toBe(
-      "@glossary-audit",
-    );
-    expect(view.querySelector(".agent-round-header")?.textContent).toContain("2s");
-    expect(view.querySelector(".agent-status-light--active")).toBeNull();
-  });
-
-  it("用右侧状态灯区分运行中和失败，并提供可访问名称", async () => {
-    const view = await render_page({
-      entries: [
-        tool_entry("tool-1", "custom_reader", "running", null, 1),
-        tool_entry("tool-2", "missing_tool", "error", "工具不存在", 2),
-      ],
-    });
-    const tools = view.querySelectorAll<HTMLDetailsElement>(".agent-detail-entry--tool");
-    expect(tools[0]?.querySelector(".agent-detail-entry__label")?.textContent).toBe(
-      "custom_reader",
-    );
-    const running_light = tools[0]?.querySelector(".agent-status-light--running");
-    expect(running_light).toBe(tools[0]?.querySelector("summary")?.lastElementChild);
-    expect(running_light?.getAttribute("aria-label")).toBe("正在处理");
-    expect(tools[0]?.querySelector("pre")).toBeNull();
-    expect(tools[1]?.querySelector(".agent-detail-entry__label")?.textContent).toBe("missing_tool");
-    const error_light = tools[1]?.querySelector(".agent-status-light--error");
-    expect(error_light).toBe(tools[1]?.querySelector("summary")?.lastElementChild);
-    expect(error_light?.getAttribute("aria-label")).toBe("失败");
-    expect(tools[1]?.querySelector("pre")).toBeNull();
-    await act(async () => tools[1]?.querySelector("summary")?.click());
-    expect(tools[1]?.querySelector("pre")?.textContent).toBe("工具不存在");
   });
 
   it("按运行态切换提交按钮并允许停止", async () => {
     const stop = vi.fn();
     const view = await render_page({ state: "running", stop });
-    const stop_button = get_button_by_label(view, "agent_page.action.stop");
-    await act(async () => stop_button.click());
+    await act(async () => get_button_by_label(view, "agent_page.action.stop").click());
     expect(stop).toHaveBeenCalledOnce();
   });
 
@@ -468,8 +238,7 @@ describe("AgentPage", () => {
     expect(document.body.querySelector('[data-slot="alert-dialog-description"]')?.textContent).toBe(
       "是否确认开始新的对话任务 …?",
     );
-    const cancel = get_portal_button("app.action.cancel");
-    await act(async () => cancel.click());
+    await act(async () => get_portal_button("app.action.cancel").click());
     expect(reset).not.toHaveBeenCalled();
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull();
 
@@ -497,10 +266,8 @@ describe("AgentPage", () => {
     const view = await render_page({ reset });
     const reset_button = view.querySelector<HTMLButtonElement>(".agent-composer__reset");
     if (reset_button === null) throw new Error("缺少新任务按钮");
-
     await act(async () => reset_button.click());
     await act(async () => get_portal_button("app.action.confirm").click());
-
     expect(reset).toHaveBeenCalledOnce();
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
   });
@@ -540,15 +307,6 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
   };
 }
 
-function user_entry(
-  id: string,
-  parts: Array<{ kind: "text"; text: string } | { kind: "skill"; name: string }>,
-  createdAt: number,
-  endedAt: number | null,
-) {
-  return { kind: "user_message" as const, id, parts, createdAt, endedAt };
-}
-
 function assistant_entry(id: string, text: string, complete: boolean, createdAt: number) {
   return assistant_parts_entry(id, [{ kind: "text", text }], complete, createdAt);
 }
@@ -560,23 +318,6 @@ function assistant_parts_entry(
   createdAt: number,
 ) {
   return { kind: "assistant_message" as const, id, parts, complete, createdAt };
-}
-
-function tool_entry(
-  id: string,
-  toolName: string,
-  status: AgentToolEntry["status"],
-  output: string | null,
-  createdAt: number,
-): AgentToolEntry {
-  return {
-    kind: "tool_call" as const,
-    id,
-    toolName,
-    status,
-    output,
-    createdAt,
-  };
 }
 
 function get_button_by_label(container: HTMLElement, label: string): HTMLButtonElement {

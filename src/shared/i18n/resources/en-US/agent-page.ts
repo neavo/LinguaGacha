@@ -1,5 +1,5 @@
 export const en_us_agent_page = {
-  title: "Agent",
+  title: "AGENT",
   thinking: "Thinking",
   thinking_active: "Thinking",
   diagram: {
@@ -22,7 +22,7 @@ export const en_us_agent_page = {
   context_usage: "Context {percent} · {used} / {total}",
   context_usage_warning:
     "Approaching the context limit; history will be compacted automatically at the threshold",
-  action: { send: "Send", stop: "Stop", new_task: "New task" },
+  action: { send: "Send", stop: "Stop", new_task: "New Task" },
   confirm: { new_task: "Confirm starting a new conversation task …?" },
   status: { running: "Processing", success: "Completed", error: "Failed" },
   round: { running: "Processing for {duration}", ended: "Processed in {duration}" },
