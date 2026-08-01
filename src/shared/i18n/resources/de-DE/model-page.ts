@@ -13,6 +13,9 @@ export const de_de_model_page = {
     custom_openai: {
       description: "Benutzerdefinierte Modelle, kompatibel mit dem OpenAI API-Format",
     },
+    custom_openai_responses: {
+      description: "Benutzerdefinierte Modelle, kompatibel mit dem OpenAI Responses API-Format",
+    },
     custom_anthropic: {
       description: "Benutzerdefinierte Modelle, kompatibel mit dem Anthropic Claude API-Format",
     },
@@ -124,14 +127,6 @@ export const de_de_model_page = {
     },
     temperature: {
       title: "temperature",
-      description: "Bitte seien Sie vorsichtig, ungültige Werte können Fehler verursachen",
-    },
-    presence_penalty: {
-      title: "presence_penalty",
-      description: "Bitte seien Sie vorsichtig, ungültige Werte können Fehler verursachen",
-    },
-    frequency_penalty: {
-      title: "frequency_penalty",
       description: "Bitte seien Sie vorsichtig, ungültige Werte können Fehler verursachen",
     },
     extra_headers: {

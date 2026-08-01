@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ModelBasicSettingsDialog } from "./model-basic-settings-dialog";
-import { create_model_snapshot } from "./model-dialog-test-fixture";
+import { create_model_snapshot } from "@frontend/pages/model-page/model-test-fixture";
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({ locale: "zh-CN", t: (key: string) => key }),
@@ -68,5 +68,29 @@ describe("ModelBasicSettingsDialog", () => {
     });
 
     expect(on_patch).not.toHaveBeenCalled();
+  });
+
+  it("Responses 模型显示连接字段与思考档位", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(
+        <ModelBasicSettingsDialog
+          open
+          model={create_model_snapshot({ api_format: "OpenAIResponses" })}
+          readonly={false}
+          onPatch={async () => {}}
+          onRequestOpenSelector={() => {}}
+          onRequestTestModel={() => {}}
+          onClose={() => {}}
+        />,
+      );
+    });
+
+    expect(
+      document.querySelector('input[placeholder="model_page.fields.api_url.placeholder"]'),
+    ).not.toBeNull();
+    expect(document.body.textContent).toContain("model_page.fields.thinking.title");
   });
 });

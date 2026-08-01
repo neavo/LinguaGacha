@@ -1,6 +1,6 @@
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 
-/** 为模型对话框测试提供完整、可按顶层字段覆盖的公开快照。 */
+/** 为模型页测试提供完整、可按顶层字段覆盖的公开快照。 */
 export function create_model_snapshot(
   overrides: Partial<ModelEntrySnapshot> = {},
 ): ModelEntrySnapshot {
@@ -34,10 +34,6 @@ export function create_model_snapshot(
       temperature_custom_enable: false,
       top_p: 1,
       top_p_custom_enable: false,
-      presence_penalty: 0,
-      presence_penalty_custom_enable: false,
-      frequency_penalty: 0,
-      frequency_penalty_custom_enable: false,
     },
     ...overrides,
   };

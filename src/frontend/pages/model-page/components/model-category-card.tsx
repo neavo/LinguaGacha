@@ -24,11 +24,11 @@ type ModelCategoryCardProps = {
   accent_color: string;
   models: ModelEntrySnapshot[];
   add_action: ReactNode;
-  drag_disabled: boolean;
   children: ReactNode;
   on_reorder: (ordered_model_ids: string[]) => void;
 };
 
+/** 展示单个模型分类，并把有效拖拽结果转换为完整模型 ID 顺序。 */
 export function ModelCategoryCard(props: ModelCategoryCardProps): JSX.Element {
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -41,6 +41,7 @@ export function ModelCategoryCard(props: ModelCategoryCardProps): JSX.Element {
     }),
   );
 
+  /** 无效落点与分类外 ID 不改变顺序，避免向写入口提交残缺载荷。 */
   function handle_drag_end(event: DragEndEvent): void {
     const { active, over } = event;
     if (over === null || active.id === over.id) {

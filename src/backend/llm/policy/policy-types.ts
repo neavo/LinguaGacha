@@ -1,13 +1,9 @@
 import type { ModelApiFormat, ModelThinkingLevel } from "../../../domain/model";
 import type { JsonRecord } from "../../../domain/json";
 
-/** 项目结果归一与 payload 覆盖使用的稳定 provider 身份。 */
-export type RequestProvider = "openai-compatible" | "google" | "anthropic" | "sakura";
-
 /** 模型配置在 policy 边界收窄后的不可变请求事实。 */
 export type ModelRequestSnapshot = Readonly<{
-  provider: RequestProvider; // 保留产品协议身份，用于结果规则和诊断
-  api_format: ModelApiFormat; // 保留供应商协议族，用于 payload 与诊断
+  api_format: ModelApiFormat; // 供应商协议族，用于 adapter、payload、结果规则与诊断
   api_keys: readonly string[]; // 当前模型可轮换的凭据集合
   base_url: string; // 按 pi-ai adapter 契约归一后的请求端点
   model_id: string; // 最终写入供应商 payload 的模型名

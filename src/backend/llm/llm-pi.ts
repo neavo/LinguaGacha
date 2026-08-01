@@ -7,17 +7,23 @@ import {
 import { anthropicMessagesApi } from "@earendil-works/pi-ai/api/anthropic-messages.lazy";
 import { googleGenerativeAIApi } from "@earendil-works/pi-ai/api/google-generative-ai.lazy";
 import { openAICompletionsApi } from "@earendil-works/pi-ai/api/openai-completions.lazy";
+import { openAIResponsesApi } from "@earendil-works/pi-ai/api/openai-responses.lazy";
 
 import { RequestValidationError } from "../../shared/error";
 import {
   apply_one_shot_request_overrides,
+  model_supports_pi_reasoning,
   resolve_one_shot_generation_options,
 } from "./llm-client-policy";
 import type { LLMMessage } from "./llm-types";
 import type { ModelRequestSnapshot } from "./policy/policy-types";
 
-// Pi provider 身份用于 adapter 注册，项目 RequestProvider 仍负责结果和覆盖规则。
-type PiApi = "openai-completions" | "anthropic-messages" | "google-generative-ai";
+// Pi provider 身份只用于 adapter 与 ModelRuntime 注册，项目策略直接使用 api_format。
+type PiApi =
+  | "openai-completions"
+  | "openai-responses"
+  | "anthropic-messages"
+  | "google-generative-ai";
 type PiProvider = "openai" | "openai-compatible" | "anthropic" | "google";
 
 /** 调用方拥有显示身份与容量，协议字段统一由本模块补齐。 */
@@ -51,7 +57,7 @@ export function resolve_pi_model(
     maxTokens: settings.maxTokens,
     headers: { ...snapshot.headers },
     // 自定义 OpenAI-compatible 服务只共同保证 system role；OneShot 会继续冻结旧 payload 形状。
-    compat: api.api === "openai-completions" ? { supportsDeveloperRole: false } : undefined,
+    ...(api.api === "openai-completions" ? { compat: { supportsDeveloperRole: false } } : {}),
   };
   return { model, stream: api.stream, streamSimple: api.streamSimple };
 }
@@ -68,13 +74,14 @@ export function resolve_one_shot_pi_request(
   stream: ProviderStreams["stream"];
 } {
   const generation = resolve_one_shot_generation_options(snapshot);
+  const supports_reasoning = model_supports_pi_reasoning(snapshot);
   const resolved = resolve_pi_model(snapshot, {
     name: snapshot.model_id,
     contextWindow: 0,
     maxTokens: generation.maxTokens ?? 0,
-    reasoning: false,
+    reasoning: snapshot.api_format === "OpenAIResponses" && supports_reasoning,
   });
-  // OneShot 保持迁移前的 max_tokens、stream_options 与无 store 契约，不采用 URL 猜测。
+  // Chat Completions 保持既有 payload；Responses 直接使用 Pi 的原生 Items 与 store:false 契约。
   const model: PiModel<PiApi> =
     resolved.model.api === "openai-completions"
       ? {
@@ -95,7 +102,12 @@ export function resolve_one_shot_pi_request(
     signal,
     ...(generation.temperature === undefined ? {} : { temperature: generation.temperature }),
     ...(generation.maxTokens === undefined ? {} : { maxTokens: generation.maxTokens }),
-    ...(snapshot.provider === "anthropic" ? { interleavedThinking: false } : {}),
+    ...(snapshot.api_format === "OpenAIResponses" &&
+    supports_reasoning &&
+    snapshot.thinking_level !== "OFF"
+      ? { reasoningEffort: snapshot.thinking_level.toLowerCase() }
+      : {}),
+    ...(snapshot.api_format === "Anthropic" ? { interleavedThinking: false } : {}),
     onPayload: (payload) => apply_one_shot_request_overrides(snapshot, payload, signal),
   };
   return {
@@ -122,6 +134,9 @@ function resolve_pi_api(api_format: ModelRequestSnapshot["api_format"]): {
   if (api_format === "Google") {
     return { provider: "google", api: "google-generative-ai", ...googleGenerativeAIApi() };
   }
+  if (api_format === "OpenAIResponses") {
+    return { provider: "openai", api: "openai-responses", ...openAIResponsesApi() };
+  }
   return { provider: "openai", api: "openai-completions", ...openAICompletionsApi() };
 }
 
@@ -138,20 +153,20 @@ function build_pi_context(snapshot: ModelRequestSnapshot, messages: LLMMessage[]
     .filter(Boolean)
     .map((content) => ({ role: "user" as const, content, timestamp: 0 }));
 
-  if (snapshot.provider === "google") {
+  if (snapshot.api_format === "Google") {
     const google_messages =
       system_prompt === ""
         ? user_messages
         : [{ role: "user" as const, content: system_prompt, timestamp: 0 }, ...user_messages];
-    assert_non_empty_messages(google_messages.length, snapshot.provider);
+    assert_non_empty_messages(google_messages.length, snapshot.api_format);
     return { messages: google_messages };
   }
-  if (snapshot.provider === "anthropic") {
-    assert_non_empty_messages(user_messages.length, snapshot.provider);
+  if (snapshot.api_format === "Anthropic") {
+    assert_non_empty_messages(user_messages.length, snapshot.api_format);
   } else {
     assert_non_empty_messages(
       user_messages.length + (system_prompt === "" ? 0 : 1),
-      snapshot.provider,
+      snapshot.api_format,
     );
   }
   return {
@@ -160,14 +175,14 @@ function build_pi_context(snapshot: ModelRequestSnapshot, messages: LLMMessage[]
   };
 }
 
-/** 空提示词在发起远端请求前按 provider 语义转为稳定校验错误。 */
+/** 空提示词在发起远端请求前按 API 格式语义转为稳定校验错误。 */
 function assert_non_empty_messages(
   count: number,
-  provider: ModelRequestSnapshot["provider"],
+  api_format: ModelRequestSnapshot["api_format"],
 ): void {
   if (count > 0) return;
   throw new RequestValidationError({
     public_details: { field: "messages" },
-    diagnostic_context: { provider_policy: provider, reason: "empty_messages" },
+    diagnostic_context: { api_format, reason: "empty_messages" },
   });
 }

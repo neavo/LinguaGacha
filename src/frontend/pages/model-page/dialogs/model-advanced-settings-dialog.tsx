@@ -33,7 +33,7 @@ type JsonParseResult =
       ok: false;
     };
 
-type SliderFieldName = "top_p" | "temperature" | "presence_penalty" | "frequency_penalty";
+type SliderFieldName = "top_p" | "temperature";
 type AgentLimitFieldName = keyof ModelAgentConfig;
 
 /** 两项 Agent 容量固定置于高级设置顶部并共享草稿流程。 */
@@ -52,28 +52,18 @@ const AGENT_LIMIT_FIELDS = [
 
 type SliderFieldConfig = {
   field_name: SliderFieldName;
-  title_key:
-    | "model_page.fields.top_p.title"
-    | "model_page.fields.temperature.title"
-    | "model_page.fields.presence_penalty.title"
-    | "model_page.fields.frequency_penalty.title";
+  title_key: "model_page.fields.top_p.title" | "model_page.fields.temperature.title";
   description_key:
     | "model_page.fields.top_p.description"
-    | "model_page.fields.temperature.description"
-    | "model_page.fields.presence_penalty.description"
-    | "model_page.fields.frequency_penalty.description";
-  enabled_key:
-    | "top_p_custom_enable"
-    | "temperature_custom_enable"
-    | "presence_penalty_custom_enable"
-    | "frequency_penalty_custom_enable";
+    | "model_page.fields.temperature.description";
+  enabled_key: "top_p_custom_enable" | "temperature_custom_enable";
   min: number;
   max: number;
   step: number;
 };
 
-/** 四个生成参数共用同一渲染与归一流程，差异只保留在字段配置。 */
-const SLIDER_FIELD_CONFIGS: SliderFieldConfig[] = [
+/** 两个生成参数共用同一渲染与归一流程，差异只保留在字段配置。 */
+const SLIDER_FIELD_CONFIGS = [
   {
     field_name: "top_p",
     title_key: "model_page.fields.top_p.title",
@@ -92,25 +82,7 @@ const SLIDER_FIELD_CONFIGS: SliderFieldConfig[] = [
     max: 2,
     step: 0.01,
   },
-  {
-    field_name: "presence_penalty",
-    title_key: "model_page.fields.presence_penalty.title",
-    description_key: "model_page.fields.presence_penalty.description",
-    enabled_key: "presence_penalty_custom_enable",
-    min: -1,
-    max: 1,
-    step: 0.01,
-  },
-  {
-    field_name: "frequency_penalty",
-    title_key: "model_page.fields.frequency_penalty.title",
-    description_key: "model_page.fields.frequency_penalty.description",
-    enabled_key: "frequency_penalty_custom_enable",
-    min: -1,
-    max: 1,
-    step: 0.01,
-  },
-];
+] as const satisfies readonly SliderFieldConfig[];
 
 /** 把用户输入收窄为 JSON object；空文本等价于空配置。 */
 function parse_request_json_text(value: string): JsonParseResult {
@@ -158,15 +130,11 @@ function create_slider_value_state(
     return {
       top_p: 0,
       temperature: 0,
-      presence_penalty: 0,
-      frequency_penalty: 0,
     };
   } else {
     return {
       top_p: model.generation.top_p,
       temperature: model.generation.temperature,
-      presence_penalty: model.generation.presence_penalty,
-      frequency_penalty: model.generation.frequency_penalty,
     };
   }
 }
@@ -180,8 +148,6 @@ function create_slider_text_state(
   return {
     top_p: slider_value_state.top_p.toFixed(2),
     temperature: slider_value_state.temperature.toFixed(2),
-    presence_penalty: slider_value_state.presence_penalty.toFixed(2),
-    frequency_penalty: slider_value_state.frequency_penalty.toFixed(2),
   };
 }
 
@@ -214,7 +180,7 @@ function parse_agent_limit_draft(
   });
 }
 
-/** 编辑生成参数与 OpenAI compatible 自定义请求字段。 */
+/** 编辑协议支持的生成参数与自定义请求字段。 */
 export function ModelAdvancedSettingsDialog(
   props: ModelAdvancedSettingsDialogProps,
 ): JSX.Element | null {

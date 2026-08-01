@@ -6,13 +6,17 @@ import { parse_model_agent_config } from "../../domain/model";
 import * as AppErrors from "../../shared/error";
 import {
   apply_agent_request_overrides,
+  model_supports_pi_reasoning,
   read_model_request_snapshot,
-  supports_thinking,
 } from "../llm/llm-client-policy";
 import { resolve_pi_model } from "../llm/llm-pi";
 import { resolve_model_for_usage } from "../model/model-config-resolver";
 
-type AgentApi = "openai-completions" | "anthropic-messages" | "google-generative-ai";
+type AgentApi =
+  | "openai-completions"
+  | "openai-responses"
+  | "anthropic-messages"
+  | "google-generative-ai";
 
 /** Provider 与 AgentSession 共用的当前对话容量快照。 */
 export type AgentModelLimits = Readonly<{
@@ -55,7 +59,7 @@ export function register_agent_model(
     name: configured_name || snapshot.model_id,
     contextWindow: limits.contextWindow,
     maxTokens: limits.maxTokens,
-    reasoning: supports_thinking(snapshot),
+    reasoning: model_supports_pi_reasoning(snapshot),
   });
   // ModelRuntime 会合并 SDK 请求选项；最终密钥、请求头和 payload 仍以项目快照为准。
   const force_request_policy = <TOptions extends object>(options?: TOptions) => ({

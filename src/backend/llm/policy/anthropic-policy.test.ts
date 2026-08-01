@@ -8,14 +8,12 @@ import {
 } from "./anthropic-policy";
 
 describe("Anthropic 请求规则", () => {
-  it("thinking 开启时删除不允许组合的采样和 penalty 字段", () => {
+  it("thinking 开启时删除不允许组合的采样字段", () => {
     const payload = apply_anthropic_one_shot_request_overrides(
       {
         messages: [],
         temperature: 0.4,
         top_p: 0.7,
-        presence_penalty: 0.2,
-        frequency_penalty: 0.3,
       },
       create_snapshot({
         thinking_level: "HIGH",
@@ -26,8 +24,6 @@ describe("Anthropic 请求规则", () => {
     expect(payload["thinking"]).toEqual({ type: "enabled", budget_tokens: 2048 });
     expect(payload).not.toHaveProperty("temperature");
     expect(payload).not.toHaveProperty("top_p");
-    expect(payload).not.toHaveProperty("presence_penalty");
-    expect(payload).not.toHaveProperty("frequency_penalty");
   });
 
   it("共享覆盖用项目预算替换 Pi thinking 且不修改输入", () => {
@@ -84,7 +80,6 @@ describe("Anthropic 请求规则", () => {
 
 function create_snapshot(overrides: Partial<ModelRequestSnapshot> = {}): ModelRequestSnapshot {
   return {
-    provider: "anthropic",
     api_format: "Anthropic",
     api_keys: ["key"],
     base_url: "https://api.anthropic.com",

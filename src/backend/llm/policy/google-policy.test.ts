@@ -28,10 +28,6 @@ describe("Google 请求规则", () => {
         generation: {
           top_p_custom_enable: true,
           top_p: 0.9,
-          presence_penalty_custom_enable: true,
-          presence_penalty: 0.1,
-          frequency_penalty_custom_enable: true,
-          frequency_penalty: 0.3,
         },
         extra_body: { responseMimeType: "application/json", abortSignal: "bad" },
         thinking_level: "LOW",
@@ -42,10 +38,8 @@ describe("Google 请求规则", () => {
     expect(config).toMatchObject({
       temperature: 0.2,
       topP: 0.9,
-      presencePenalty: 0.1,
-      frequencyPenalty: 0.3,
       responseMimeType: "application/json",
-      thinkingConfig: { thinkingBudget: 384, includeThoughts: true },
+      thinkingConfig: { thinkingLevel: "low" },
       abortSignal: signal,
     });
     expect(config["safetySettings"]).toHaveLength(4);
@@ -76,32 +70,36 @@ describe("Google 请求规则", () => {
     expect(source).toHaveProperty("thinkingConfig.thinkingLevel", "HIGH");
   });
 
-  it("保持 Gemini 2.5/3.x 的 thinking 能力映射", () => {
+  it("保持 Gemini 3.x 的 thinking 能力映射", () => {
     expect(
       build_google_thinking_config({ model_id: "gemini-3.1-pro", thinking_level: "MEDIUM" }),
-    ).toEqual({ thinkingLevel: "MEDIUM", includeThoughts: true });
+    ).toEqual({ thinkingLevel: "medium" });
     expect(
       build_google_thinking_config({ model_id: "gemini-3.5-flash", thinking_level: "OFF" }),
-    ).toEqual({ thinkingLevel: "MINIMAL", includeThoughts: false });
+    ).toEqual({ thinkingLevel: "minimal" });
+  });
+
+  it.each([
+    ["gemini-2.0-flash", "OFF"],
+    ["gemini-2.5-pro", "LOW"],
+    ["gemini-2.5-flash", "MEDIUM"],
+    ["gemini-2.5-flash-lite", "HIGH"],
+  ] as const)("不为 Gemini 2.x %s/%s 注入 thinkingConfig", (model_id, thinking_level) => {
+    const snapshot = create_snapshot({ model_id, thinking_level });
+
+    expect(build_google_thinking_config(snapshot)).toBeNull();
     expect(
-      build_google_thinking_config({ model_id: "gemini-2.5-pro", thinking_level: "OFF" }),
-    ).toEqual({ thinkingBudget: 128, includeThoughts: false });
-    expect(
-      build_google_thinking_config({ model_id: "gemini-2.5-flash-lite", thinking_level: "LOW" }),
-    ).toEqual({ thinkingBudget: 512, includeThoughts: true });
-    expect(
-      build_google_thinking_config({ model_id: "gemini-2.5-flash", thinking_level: "HIGH" }),
-    ).toEqual({ thinkingBudget: 1024, includeThoughts: true });
+      apply_google_request_overrides({ thinkingConfig: { thinkingBudget: 2048 } }, snapshot),
+    ).not.toHaveProperty("thinkingConfig");
   });
 });
 
 function create_snapshot(overrides: Partial<ModelRequestSnapshot> = {}): ModelRequestSnapshot {
   return {
-    provider: "google",
     api_format: "Google",
     api_keys: ["key"],
     base_url: "https://generativelanguage.googleapis.com/v1beta",
-    model_id: "gemini-2.5-flash",
+    model_id: "gemini-3.1-pro",
     headers: {},
     extra_body: {},
     generation: {},

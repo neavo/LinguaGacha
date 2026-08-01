@@ -3,6 +3,7 @@ import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord } from "../../domain/json";
+import type { ModelApiFormat } from "../../domain/model";
 import { register_agent_model } from "./agent-model";
 
 const api_mocks = vi.hoisted(() => ({
@@ -11,6 +12,10 @@ const api_mocks = vi.hoisted(() => ({
 
 vi.mock("@earendil-works/pi-ai/api/openai-completions.lazy", () => ({
   openAICompletionsApi: () => ({ streamSimple: api_mocks.streamSimple }),
+}));
+
+vi.mock("@earendil-works/pi-ai/api/openai-responses.lazy", () => ({
+  openAIResponsesApi: () => ({ streamSimple: api_mocks.streamSimple }),
 }));
 
 const TEST_USER_AGENT = "LinguaGacha/Test";
@@ -22,6 +27,7 @@ beforeEach(() => {
 describe("Agent 模型注册", () => {
   it.each([
     ["OpenAI", "openai", "openai-completions", { supportsDeveloperRole: false }],
+    ["OpenAIResponses", "openai", "openai-responses", undefined],
     ["SakuraLLM", "openai-compatible", "openai-completions", { supportsDeveloperRole: false }],
     ["Anthropic", "anthropic", "anthropic-messages", undefined],
     ["Google", "google", "google-generative-ai", undefined],
@@ -31,7 +37,9 @@ describe("Agent 模型注册", () => {
       const runtime = await create_model_runtime();
       const resolved = register_agent_model(runtime, build_config(api_format), TEST_USER_AGENT);
 
-      expect(resolved.model).toMatchObject({ provider, api, compat });
+      expect(resolved.model).toMatchObject({ provider, api });
+      if (compat === undefined) expect(resolved.model).not.toHaveProperty("compat");
+      else expect(resolved.model.compat).toEqual(compat);
       expect(runtime.getModels(provider)).toEqual([resolved.model]);
     },
   );
@@ -149,6 +157,69 @@ describe("Agent 模型注册", () => {
     expect(resolved.model).toMatchObject({ contextWindow: 288_000, maxTokens: 32_000 });
   });
 
+  it("GPT-5.6 Responses 按项目规则注册为 reasoning 模型", async () => {
+    const runtime = await create_model_runtime();
+    const resolved = register_agent_model(
+      runtime,
+      build_config("OpenAIResponses", {
+        model_id: "gpt-5.6-luna",
+        thinking: { level: "HIGH" },
+        request: {
+          extra_headers_custom_enable: false,
+          extra_body_custom_enable: true,
+          extra_body: { custom_flag: true },
+        },
+      }),
+      TEST_USER_AGENT,
+    );
+
+    expect(resolved.model).toMatchObject({ api: "openai-responses", reasoning: true });
+    expect(resolved.thinkingLevel).toBe("high");
+    const provider_config = runtime.getRegisteredProviderConfig("openai");
+    if (provider_config?.streamSimple === undefined) {
+      throw new Error("Agent 缺少 Responses streamSimple");
+    }
+    void provider_config.streamSimple(resolved.model, { messages: [] }, { reasoning: "high" });
+    const options = api_mocks.streamSimple.mock.calls.at(-1)?.[2];
+    expect(options).toMatchObject({ reasoning: "high" });
+    if (options?.onPayload === undefined) throw new Error("Agent 缺少 Responses payload hook");
+    expect(
+      options.onPayload(
+        {
+          input: [
+            { role: "system", content: "系统约束" },
+            { role: "user", content: "用户输入" },
+          ],
+          reasoning: { effort: "high" },
+          store: false,
+        },
+        resolved.model,
+      ),
+    ).toEqual({
+      input: [
+        { role: "developer", content: "系统约束" },
+        { role: "user", content: "用户输入" },
+      ],
+      reasoning: { effort: "high" },
+      store: false,
+      custom_flag: true,
+    });
+  });
+
+  it("Responses 未收录模型不启用 reasoning", async () => {
+    const runtime = await create_model_runtime();
+    const resolved = register_agent_model(
+      runtime,
+      build_config("OpenAIResponses", {
+        model_id: "custom-reasoning-model",
+        thinking: { level: "HIGH" },
+      }),
+      TEST_USER_AGENT,
+    );
+
+    expect(resolved.model.reasoning).toBe(false);
+  });
+
   it("未知模型不猜测思考能力，禁用的扩展配置也不进入 Agent", async () => {
     const runtime = await create_model_runtime();
     const resolved = register_agent_model(
@@ -219,7 +290,7 @@ async function create_model_runtime(): Promise<ModelRuntime> {
 }
 
 /** 构造只包含 Agent 模型解析所需字段的设置快照。 */
-function build_config(api_format: string, overrides: JsonRecord = {}): JsonRecord {
+function build_config(api_format: ModelApiFormat, overrides: JsonRecord = {}): JsonRecord {
   return {
     model_selection: { translation: "translation", analysis: "analysis", agent: "active" },
     models: [

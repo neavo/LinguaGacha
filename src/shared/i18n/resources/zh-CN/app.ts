@@ -12,6 +12,7 @@ export const zh_cn_app = {
       preset: "预设模型",
       google: "自定义 Google 模型",
       openai: "自定义 OpenAI 模型",
+      openai_responses: "自定义 OpenAI Responses 模型",
       anthropic: "自定义 Anthropic 模型",
     },
     selection: {

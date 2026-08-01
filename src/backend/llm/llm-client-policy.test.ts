@@ -5,11 +5,11 @@ import {
   apply_agent_request_overrides,
   collect_api_keys,
   get_primary_api_key,
+  model_supports_pi_reasoning,
   normalize_pi_api_url,
   read_model_request_snapshot,
   read_request_timeout_ms,
   resolve_one_shot_generation_options,
-  supports_thinking,
 } from "./llm-client-policy";
 
 const TEST_USER_AGENT = "LinguaGacha/v1.2.3 (https://github.com/neavo/LinguaGacha)";
@@ -32,7 +32,6 @@ describe("LLM 请求策略", () => {
     );
 
     expect(snapshot).toMatchObject({
-      provider: "openai-compatible",
       api_format: "OpenAI",
       api_keys: ["key-1", "key-2"],
       base_url: "https://example.com/v1",
@@ -42,16 +41,7 @@ describe("LLM 请求策略", () => {
       output_token_limit: 4096,
       thinking_level: "OFF",
     });
-  });
-
-  it.each([
-    ["Google", "google"],
-    ["Anthropic", "anthropic"],
-    ["SakuraLLM", "sakura"],
-  ] as const)("把 %s api_format 分发到 %s provider", (api_format, provider) => {
-    expect(
-      read_model_request_snapshot(create_model({ api_format }), TEST_USER_AGENT).provider,
-    ).toBe(provider);
+    expect(snapshot).not.toHaveProperty("provider");
   });
 
   it("按 Pi adapter 契约归一请求 URL", () => {
@@ -59,6 +49,9 @@ describe("LLM 请求策略", () => {
       "https://google.example/v1beta",
     );
     expect(normalize_pi_api_url("https://api.example/v1/chat/completions", "OpenAI")).toBe(
+      "https://api.example/v1",
+    );
+    expect(normalize_pi_api_url("https://api.example/v1/responses/", "OpenAIResponses")).toBe(
       "https://api.example/v1",
     );
     expect(normalize_pi_api_url("https://sakura.example/v1/chat/completions/", "SakuraLLM")).toBe(
@@ -98,10 +91,14 @@ describe("LLM 请求策略", () => {
     expect(resolve_one_shot_generation_options(anthropic)).toEqual({ maxTokens: 4096 });
   });
 
-  it("拒绝不符合 Pi provider 契约的 Agent payload", () => {
+  it("拒绝不符合 Pi adapter 契约的 Agent payload", () => {
     const openai = read_model_request_snapshot(create_model(), TEST_USER_AGENT);
     const google = read_model_request_snapshot(
       create_model({ api_format: "Google" }),
+      TEST_USER_AGENT,
+    );
+    const responses = read_model_request_snapshot(
+      create_model({ api_format: "OpenAIResponses" }),
       TEST_USER_AGENT,
     );
 
@@ -109,21 +106,31 @@ describe("LLM 请求策略", () => {
     expect(() => apply_agent_request_overrides(google, { contents: [] })).toThrow(
       "runtime.internal_invariant",
     );
+    expect(() => apply_agent_request_overrides(responses, { input: null })).toThrow(
+      "runtime.internal_invariant",
+    );
   });
 
   it.each([
-    ["OpenAI", "kimi-k3", true],
-    ["OpenAI", "unknown-model", false],
-    ["Anthropic", "claude-sonnet-4-5", true],
-    ["Google", "gemini-2.5-flash", true],
-    ["SakuraLLM", "sakura-v1", false],
-  ] as const)("从 %s/%s 的模型族规则判断思考能力", (api_format, model_id, expected) => {
-    const snapshot = read_model_request_snapshot(
-      create_model({ api_format, model_id }),
-      TEST_USER_AGENT,
-    );
-    expect(supports_thinking(snapshot)).toBe(expected);
-  });
+    ["OpenAI", "kimi-k3", "OFF", true],
+    ["OpenAI", "unknown-model", "HIGH", false],
+    ["OpenAIResponses", "gpt-5.6-luna", "OFF", true],
+    ["OpenAIResponses", "gpt-5.6-luna", "HIGH", true],
+    ["OpenAIResponses", "custom-reasoning-model", "HIGH", false],
+    ["Anthropic", "claude-sonnet-4-5", "OFF", true],
+    ["Google", "gemini-3.1-pro", "OFF", true],
+    ["Google", "gemini-2.5-flash", "HIGH", false],
+    ["SakuraLLM", "sakura-v1", "HIGH", false],
+  ] as const)(
+    "从 %s/%s/%s 判断 Pi reasoning 能力",
+    (api_format, model_id, thinking_level, expected) => {
+      const snapshot = read_model_request_snapshot(
+        create_model({ api_format, model_id, thinking: { level: thinking_level } }),
+        TEST_USER_AGENT,
+      );
+      expect(model_supports_pi_reasoning(snapshot)).toBe(expected);
+    },
+  );
 });
 
 function create_model(overrides: JsonRecord = {}): JsonRecord {

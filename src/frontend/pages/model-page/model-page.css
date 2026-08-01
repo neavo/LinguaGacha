@@ -1,7 +1,8 @@
 .model-page {
-  --model-page-accent-preset: #6b7280;
-  --model-page-accent-google: #4285f4;
+  --model-page-accent-preset: #7a8491;
+  --model-page-accent-google: #1a73e8;
   --model-page-accent-openai: #10a37f;
+  --model-page-accent-openai-responses: #14b8a6;
   --model-page-accent-anthropic: #d97757;
   display: flex;
   flex-direction: column;
@@ -21,12 +22,12 @@
 .model-page__category-card-content {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 .model-page__category-header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 16px;
 }
 
@@ -34,15 +35,15 @@
   display: flex;
   min-width: 0;
   flex: 1 1 auto;
-  align-items: stretch;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
 }
 
 .model-page__category-accent {
   width: 4px;
+  height: 32px;
   border-radius: var(--ui-radius-pill);
   flex: 0 0 auto;
-  align-self: stretch;
 }
 
 .model-page__category-copy {
@@ -64,7 +65,7 @@
   margin: 0;
   color: var(--muted-foreground);
   font-size: 12px;
-  line-height: 1.4;
+  line-height: 1.25;
 }
 
 .model-page__category-action {
@@ -111,7 +112,7 @@
 
 .model-page__name-trigger {
   width: auto;
-  min-width: 192px;
+  min-width: 182px;
   max-width: none;
   position: relative;
   justify-content: center;

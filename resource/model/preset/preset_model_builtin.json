@@ -26,11 +26,7 @@
       "temperature": 0.95,
       "temperature_custom_enable": false,
       "top_p": 0.95,
-      "top_p_custom_enable": false,
-      "presence_penalty": 0.0,
-      "presence_penalty_custom_enable": false,
-      "frequency_penalty": 0.0,
-      "frequency_penalty_custom_enable": false
+      "top_p_custom_enable": false
     }
   },
   {
@@ -60,11 +56,7 @@
       "temperature": 0.95,
       "temperature_custom_enable": false,
       "top_p": 0.95,
-      "top_p_custom_enable": false,
-      "presence_penalty": 0.0,
-      "presence_penalty_custom_enable": false,
-      "frequency_penalty": 0.0,
-      "frequency_penalty_custom_enable": false
+      "top_p_custom_enable": false
     }
   },
   {
@@ -94,11 +86,7 @@
       "temperature": 0.95,
       "temperature_custom_enable": false,
       "top_p": 0.95,
-      "top_p_custom_enable": false,
-      "presence_penalty": 0.0,
-      "presence_penalty_custom_enable": false,
-      "frequency_penalty": 0.0,
-      "frequency_penalty_custom_enable": false
+      "top_p_custom_enable": false
     }
   },
   {
@@ -128,11 +116,7 @@
       "temperature": 0.95,
       "temperature_custom_enable": false,
       "top_p": 0.95,
-      "top_p_custom_enable": false,
-      "presence_penalty": 0.0,
-      "presence_penalty_custom_enable": false,
-      "frequency_penalty": 0.0,
-      "frequency_penalty_custom_enable": false
+      "top_p_custom_enable": false
     }
   },
   {
@@ -162,11 +146,7 @@
       "temperature": 0.95,
       "temperature_custom_enable": false,
       "top_p": 0.95,
-      "top_p_custom_enable": false,
-      "presence_penalty": 0.0,
-      "presence_penalty_custom_enable": false,
-      "frequency_penalty": 0.0,
-      "frequency_penalty_custom_enable": false
+      "top_p_custom_enable": false
     }
   },
   {
@@ -196,11 +176,7 @@
       "temperature": 0.95,
       "temperature_custom_enable": false,
       "top_p": 0.95,
-      "top_p_custom_enable": false,
-      "presence_penalty": 0.0,
-      "presence_penalty_custom_enable": false,
-      "frequency_penalty": 0.0,
-      "frequency_penalty_custom_enable": false
+      "top_p_custom_enable": false
     }
   },
   {
@@ -230,11 +206,7 @@
       "temperature": 0.95,
       "temperature_custom_enable": false,
       "top_p": 0.95,
-      "top_p_custom_enable": false,
-      "presence_penalty": 0.0,
-      "presence_penalty_custom_enable": false,
-      "frequency_penalty": 0.0,
-      "frequency_penalty_custom_enable": false
+      "top_p_custom_enable": false
     }
   },
   {
@@ -264,11 +236,7 @@
       "temperature": 0.95,
       "temperature_custom_enable": false,
       "top_p": 0.95,
-      "top_p_custom_enable": false,
-      "presence_penalty": 0.0,
-      "presence_penalty_custom_enable": false,
-      "frequency_penalty": 0.0,
-      "frequency_penalty_custom_enable": false
+      "top_p_custom_enable": false
     }
   },
   {
@@ -298,11 +266,7 @@
       "temperature": 0.95,
       "temperature_custom_enable": false,
       "top_p": 0.95,
-      "top_p_custom_enable": false,
-      "presence_penalty": 0.0,
-      "presence_penalty_custom_enable": false,
-      "frequency_penalty": 0.0,
-      "frequency_penalty_custom_enable": false
+      "top_p_custom_enable": false
     }
   },
   {
@@ -332,11 +296,7 @@
       "temperature": 0.95,
       "temperature_custom_enable": false,
       "top_p": 0.95,
-      "top_p_custom_enable": false,
-      "presence_penalty": 0.0,
-      "presence_penalty_custom_enable": false,
-      "frequency_penalty": 0.0,
-      "frequency_penalty_custom_enable": false
+      "top_p_custom_enable": false
     }
   }
 ]

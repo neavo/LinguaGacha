@@ -81,9 +81,10 @@ describe("ModelSelectionMenu", () => {
       "app.model.type.preset",
       "app.model.type.google",
       "app.model.type.openaiapp.model.selection.current_category",
+      "app.model.type.openai_responses",
       "app.model.type.anthropic",
     ]);
-    expect(document.querySelectorAll("button:disabled")).toHaveLength(2);
+    expect(document.querySelectorAll("button:disabled")).toHaveLength(3);
     expect(document.querySelector('button[aria-current="true"]')?.textContent).toContain(
       "app.model.type.openai",
     );

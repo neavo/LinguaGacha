@@ -7,7 +7,6 @@ import {
   type JsonValue,
 } from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
-import * as AppErrors from "../../shared/error";
 import {
   apply_anthropic_one_shot_request_overrides,
   apply_anthropic_request_overrides,
@@ -20,14 +19,20 @@ import {
   normalize_google_api_base_url,
 } from "./policy/google-policy";
 import {
-  apply_openai_one_shot_request_overrides,
-  apply_openai_request_overrides,
+  apply_openai_completions_one_shot_request_overrides,
+  apply_openai_completions_request_overrides,
+  apply_openai_responses_one_shot_request_overrides,
+  apply_openai_responses_request_overrides,
   apply_sakura_one_shot_request_overrides,
   build_openai_thinking_payload,
-  normalize_openai_compatible_base_url,
-} from "./policy/openai-compatible-policy";
-import { read_custom_number, resolve_max_tokens_for_request } from "./policy/policy-shared";
-import type { ModelRequestSnapshot, RequestProvider } from "./policy/policy-types";
+  normalize_openai_sdk_base_url,
+} from "./policy/openai-policy";
+import {
+  invalid_pi_payload,
+  read_custom_number,
+  resolve_max_tokens_for_request,
+} from "./policy/policy-shared";
+import type { ModelRequestSnapshot } from "./policy/policy-types";
 
 const DEFAULT_OUTPUT_TOKEN_LIMIT = 4096; // 旧配置缺少 threshold 时保持既有单次输出上限
 
@@ -50,8 +55,8 @@ export function normalize_pi_api_url(url: string, api_format: ModelApiFormat): s
   if (api_format === "Google") {
     return normalize_google_api_base_url(url);
   }
-  if (api_format === "OpenAI" || api_format === "SakuraLLM") {
-    return normalize_openai_compatible_base_url(url);
+  if (api_format === "OpenAI" || api_format === "OpenAIResponses" || api_format === "SakuraLLM") {
+    return normalize_openai_sdk_base_url(url);
   }
   return url.trim().replace(/\/+$/u, "");
 }
@@ -67,7 +72,6 @@ export function read_model_request_snapshot(
   const threshold = read_json_record(record["threshold"]);
   const thinking = read_json_record(record["thinking"]);
   return {
-    provider: resolve_provider(api_format),
     api_format,
     api_keys: collect_api_keys(String(record["api_key"] ?? "")),
     base_url: normalize_pi_api_url(String(record["api_url"] ?? ""), api_format),
@@ -98,12 +102,12 @@ export function resolve_one_shot_generation_options(snapshot: ModelRequestSnapsh
   const temperature = read_custom_number(snapshot.generation, "temperature");
   if (
     temperature !== null &&
-    (snapshot.provider !== "anthropic" || snapshot.thinking_level === "OFF")
+    (snapshot.api_format !== "Anthropic" || snapshot.thinking_level === "OFF")
   ) {
     result.temperature = temperature;
   }
   const max_tokens = resolve_max_tokens_for_request(snapshot, {
-    auto_value: snapshot.provider === "anthropic" ? 8192 : null,
+    auto_value: snapshot.api_format === "Anthropic" ? 8192 : null,
   });
   if (max_tokens !== null) {
     result.maxTokens = max_tokens;
@@ -117,24 +121,27 @@ export function apply_one_shot_request_overrides(
   payload: unknown,
   signal: AbortSignal,
 ): Record<string, unknown> {
-  const record = read_pi_payload(payload, snapshot.provider);
-  if (snapshot.provider === "google") {
+  const record = read_pi_payload(payload, snapshot.api_format);
+  if (snapshot.api_format === "Google") {
     const config = record["config"];
     if (!is_json_record(config)) {
-      throw invalid_pi_payload(snapshot.provider, "config");
+      throw invalid_pi_payload(snapshot.api_format, "config");
     }
     return {
       ...record,
       config: apply_google_one_shot_request_overrides(config, snapshot, signal),
     };
   }
-  if (snapshot.provider === "anthropic") {
+  if (snapshot.api_format === "Anthropic") {
     return apply_anthropic_one_shot_request_overrides(record, snapshot);
   }
-  if (snapshot.provider === "sakura") {
+  if (snapshot.api_format === "SakuraLLM") {
     return apply_sakura_one_shot_request_overrides(record, snapshot);
   }
-  return apply_openai_one_shot_request_overrides(record, snapshot);
+  if (snapshot.api_format === "OpenAIResponses") {
+    return apply_openai_responses_one_shot_request_overrides(record, snapshot);
+  }
+  return apply_openai_completions_one_shot_request_overrides(record, snapshot);
 }
 
 /** Agent 沿用当前只覆盖思考和 extra_body 的策略，不消费 OneShot 生成参数。 */
@@ -142,43 +149,44 @@ export function apply_agent_request_overrides(
   snapshot: ModelRequestSnapshot,
   payload: unknown,
 ): Record<string, unknown> {
-  const record = read_pi_payload(payload, snapshot.provider);
-  if (snapshot.provider === "google") {
+  const record = read_pi_payload(payload, snapshot.api_format);
+  if (snapshot.api_format === "Google") {
     const config = record["config"];
     if (!is_json_record(config)) {
-      throw invalid_pi_payload(snapshot.provider, "config");
+      throw invalid_pi_payload(snapshot.api_format, "config");
     }
     return { ...record, config: apply_google_request_overrides(config, snapshot) };
   }
-  if (snapshot.provider === "anthropic") {
+  if (snapshot.api_format === "Anthropic") {
     return apply_anthropic_request_overrides(record, snapshot);
   }
-  if (snapshot.provider === "sakura") {
+  if (snapshot.api_format === "SakuraLLM") {
     return Object.assign({ ...record }, snapshot.extra_body);
   }
-  return apply_openai_request_overrides(record, snapshot);
+  if (snapshot.api_format === "OpenAIResponses") {
+    return apply_openai_responses_request_overrides(record, snapshot);
+  }
+  return apply_openai_completions_request_overrides(record, snapshot);
 }
 
-/** `reasoning` 表示模型族能力，不由当前 OFF/LOW/HIGH 挡位推断。 */
-export function supports_thinking(snapshot: ModelRequestSnapshot): boolean {
-  if (snapshot.provider === "google") {
+/** Pi model 的 reasoning 能力只来自项目已知模型规则，不按用户挡位或未知模型猜测。 */
+export function model_supports_pi_reasoning(snapshot: ModelRequestSnapshot): boolean {
+  if (snapshot.api_format === "Google") {
     return build_google_thinking_config(snapshot) !== null;
   }
-  if (snapshot.provider === "anthropic") {
+  if (snapshot.api_format === "Anthropic") {
     return build_anthropic_thinking_payload(snapshot) !== null;
   }
-  if (snapshot.provider === "sakura") {
+  if (snapshot.api_format === "SakuraLLM") {
     return false;
   }
-  return build_openai_thinking_payload(snapshot.model_id, snapshot.thinking_level) !== null;
-}
-
-/** 产品 API 格式只在这里映射为结果归一与覆盖规则使用的 provider 身份。 */
-function resolve_provider(api_format: ModelApiFormat): RequestProvider {
-  if (api_format === "Google") return "google";
-  if (api_format === "Anthropic") return "anthropic";
-  if (api_format === "SakuraLLM") return "sakura";
-  return "openai-compatible";
+  return (
+    build_openai_thinking_payload(
+      snapshot.api_format,
+      snapshot.model_id,
+      snapshot.thinking_level,
+    ) !== null
+  );
 }
 
 /** 自定义 header 只有显式启用才覆盖默认 User-Agent。 */
@@ -205,23 +213,9 @@ function read_enabled_record(
 }
 
 /** onPayload 属于 SDK 边界；坏结构是适配器契约破坏而非用户输入错误。 */
-function read_pi_payload(payload: unknown, provider: RequestProvider): Record<string, unknown> {
+function read_pi_payload(payload: unknown, api_format: ModelApiFormat): Record<string, unknown> {
   if (!is_json_record(payload)) {
-    throw invalid_pi_payload(provider);
+    throw invalid_pi_payload(api_format);
   }
   return payload;
-}
-
-/** 统一构造 Pi payload 结构异常，保留 provider 与可选字段定位。 */
-function invalid_pi_payload(
-  provider: RequestProvider,
-  field?: string,
-): AppErrors.InternalInvariantError {
-  return new AppErrors.InternalInvariantError({
-    diagnostic_context: {
-      reason: "invalid_provider_request_payload",
-      provider,
-      ...(field === undefined ? {} : { field }),
-    },
-  });
 }

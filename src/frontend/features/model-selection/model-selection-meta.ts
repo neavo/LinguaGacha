@@ -6,5 +6,6 @@ export const MODEL_TYPE_TITLE_KEY = {
   PRESET: "app.model.type.preset",
   CUSTOM_GOOGLE: "app.model.type.google",
   CUSTOM_OPENAI: "app.model.type.openai",
+  CUSTOM_OPENAI_RESPONSES: "app.model.type.openai_responses",
   CUSTOM_ANTHROPIC: "app.model.type.anthropic",
 } as const satisfies Record<ModelType, LocaleKey>;

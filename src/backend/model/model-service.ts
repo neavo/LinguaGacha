@@ -13,6 +13,7 @@ import {
   Model,
   normalize_model_selection,
   parse_model_agent_config,
+  type CustomModelType,
   type ModelSelection,
 } from "../../domain/model";
 import {
@@ -152,7 +153,7 @@ export class ModelService {
   public add_model(request: JsonRecord): JsonRecord {
     this.runtime_gate.assert_runtime_idle();
     const model_type = String(request["model_type"] ?? "");
-    if (Model.resolve_template_filename(model_type) === null) {
+    if (!Model.is_custom_type(model_type)) {
       throw new AppErrors.RequestValidationError({
         public_details: { model_type },
       });
@@ -580,10 +581,10 @@ export class ModelService {
   /**
    * 构造自定义模型默认值，避免新增入口散落字段定义
    */
-  private build_custom_model(model_type: string): JsonRecord {
+  private build_custom_model(model_type: CustomModelType): JsonRecord {
     const template_path = path.join(
       this.paths.get_model_preset_dir(),
-      Model.resolve_template_filename(model_type) ?? "",
+      Model.resolve_template_filename(model_type),
     );
     const template = this.read_json_file(template_path, {});
     const model = { ...read_json_record(template) };

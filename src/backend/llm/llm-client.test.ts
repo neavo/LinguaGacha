@@ -13,6 +13,7 @@ import type { LLMRequestBody, LLMRequestResult } from "./llm-types";
 
 const api_mocks = vi.hoisted(() => ({
   openai: vi.fn<ProviderStreams["stream"]>(),
+  responses: vi.fn<ProviderStreams["stream"]>(),
   anthropic: vi.fn<ProviderStreams["stream"]>(),
   google: vi.fn<ProviderStreams["stream"]>(),
   streamSimple: vi.fn<ProviderStreams["streamSimple"]>(),
@@ -21,6 +22,12 @@ const api_mocks = vi.hoisted(() => ({
 vi.mock("@earendil-works/pi-ai/api/openai-completions.lazy", () => ({
   openAICompletionsApi: () => ({
     stream: api_mocks.openai,
+    streamSimple: api_mocks.streamSimple,
+  }),
+}));
+vi.mock("@earendil-works/pi-ai/api/openai-responses.lazy", () => ({
+  openAIResponsesApi: () => ({
+    stream: api_mocks.responses,
     streamSimple: api_mocks.streamSimple,
   }),
 }));
@@ -41,6 +48,7 @@ const TEST_USER_AGENT = "LinguaGacha/v1.2.3 (https://github.com/neavo/LinguaGach
 
 beforeEach(() => {
   api_mocks.openai.mockReset();
+  api_mocks.responses.mockReset();
   api_mocks.anthropic.mockReset();
   api_mocks.google.mockReset();
 });
@@ -108,18 +116,51 @@ describe("LLMClient", () => {
     expect(result).toMatchObject({ input_tokens: input, output_tokens: output });
   });
 
+  it("Responses completed 返回正文与 OpenAI token 口径", async () => {
+    api_mocks.responses.mockImplementation(() =>
+      completed_stream(
+        create_message({
+          api: "openai-responses",
+          content: [{ type: "text", text: "你好" }],
+          rawStopReason: "completed",
+          usage: create_usage({ input: 10, output: 7, cacheRead: 2, cacheWrite: 3 }),
+        }),
+      ),
+    );
+    const client = new LLMClient({ userAgent: TEST_USER_AGENT });
+
+    const result = await client.request(
+      create_body({ api_format: "OpenAIResponses" }),
+      new AbortController().signal,
+    );
+
+    expect(result).toMatchObject({ response_result: "你好", input_tokens: 15, output_tokens: 7 });
+  });
+
   it.each([
     ["OpenAI", "length", "finish_reason"],
     ["OpenAI", "tool_calls", "finish_reason"],
+    ["OpenAIResponses", "incomplete", "status"],
     ["Anthropic", "max_tokens", "stop_reason"],
     ["Anthropic", "tool_use", "stop_reason"],
   ] as const)("把 %s/%s 保持为当前请求错误", async (api_format, raw_reason, field) => {
-    const mock = api_format === "Anthropic" ? api_mocks.anthropic : api_mocks.openai;
-    const is_length = raw_reason === "length" || raw_reason === "max_tokens";
+    const mock =
+      api_format === "Anthropic"
+        ? api_mocks.anthropic
+        : api_format === "OpenAIResponses"
+          ? api_mocks.responses
+          : api_mocks.openai;
+    const is_length =
+      raw_reason === "length" || raw_reason === "incomplete" || raw_reason === "max_tokens";
     mock.mockImplementation(() =>
       completed_stream(
         create_message({
-          api: api_format === "Anthropic" ? "anthropic-messages" : "openai-completions",
+          api:
+            api_format === "Anthropic"
+              ? "anthropic-messages"
+              : api_format === "OpenAIResponses"
+                ? "openai-responses"
+                : "openai-completions",
           provider: api_format === "Anthropic" ? "anthropic" : "openai",
           content: [
             { type: "thinking", thinking: "推理" },
@@ -193,7 +234,6 @@ describe("LLMClient", () => {
           context: {
             api_format: "OpenAI",
             model_id: "gpt-5-mini",
-            provider: "openai-compatible",
             run_id: "run-1",
             work_unit_id: "unit-1",
           },

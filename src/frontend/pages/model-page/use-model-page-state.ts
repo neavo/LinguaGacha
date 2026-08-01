@@ -5,7 +5,7 @@ import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import type {
   ModelCategorySnapshot,
   ModelConfirmState,
@@ -18,9 +18,8 @@ import type {
   ModelTestResult,
   ModelThinkingSnapshot,
   ModelThresholdSnapshot,
-  ModelType,
 } from "@frontend/pages/model-page/types";
-import { MODEL_TYPES, Model, normalize_model_agent_config } from "@domain/model";
+import { MODEL_TYPES, Model, normalize_model_agent_config, type ModelType } from "@domain/model";
 import { MODEL_TYPE_TITLE_KEY } from "@frontend/features/model-selection/model-selection-meta";
 
 type ModelPageSnapshotPayload = {
@@ -60,19 +59,8 @@ type UseModelPageStateResult = {
   select_model_id: (model_name: string) => Promise<void>;
 };
 
-const MODEL_TYPE_ORDER: readonly ModelType[] = MODEL_TYPES;
-
-const MODEL_CATEGORY_META: Record<
-  ModelType,
-  {
-    description_key:
-      | "model_page.category.preset.description"
-      | "model_page.category.custom_google.description"
-      | "model_page.category.custom_openai.description"
-      | "model_page.category.custom_anthropic.description";
-    accent_color: string;
-  }
-> = {
+/** 供应商识别色只用于模型分类色条，不进入全局主题语义。 */
+const MODEL_CATEGORY_META = {
   PRESET: {
     description_key: "model_page.category.preset.description",
     accent_color: "var(--model-page-accent-preset)",
@@ -85,11 +73,15 @@ const MODEL_CATEGORY_META: Record<
     description_key: "model_page.category.custom_openai.description",
     accent_color: "var(--model-page-accent-openai)",
   },
+  CUSTOM_OPENAI_RESPONSES: {
+    description_key: "model_page.category.custom_openai_responses.description",
+    accent_color: "var(--model-page-accent-openai-responses)",
+  },
   CUSTOM_ANTHROPIC: {
     description_key: "model_page.category.custom_anthropic.description",
     accent_color: "var(--model-page-accent-anthropic)",
   },
-};
+} as const satisfies Record<ModelType, { description_key: LocaleKey; accent_color: string }>;
 
 const DEFAULT_THRESHOLD_SNAPSHOT: ModelThresholdSnapshot = {
   input_token_limit: 512,
@@ -103,10 +95,6 @@ const DEFAULT_GENERATION_SNAPSHOT: ModelGenerationSnapshot = {
   temperature_custom_enable: false,
   top_p: 0.95,
   top_p_custom_enable: false,
-  presence_penalty: 0,
-  presence_penalty_custom_enable: false,
-  frequency_penalty: 0,
-  frequency_penalty_custom_enable: false,
 };
 
 const EMPTY_SNAPSHOT: ModelPageSnapshot = {
@@ -220,16 +208,6 @@ function normalize_generation_snapshot(candidate: unknown): ModelGenerationSnaps
     temperature_custom_enable: Boolean(source.temperature_custom_enable),
     top_p: read_number(source.top_p, DEFAULT_GENERATION_SNAPSHOT.top_p),
     top_p_custom_enable: Boolean(source.top_p_custom_enable),
-    presence_penalty: read_number(
-      source.presence_penalty,
-      DEFAULT_GENERATION_SNAPSHOT.presence_penalty,
-    ),
-    presence_penalty_custom_enable: Boolean(source.presence_penalty_custom_enable),
-    frequency_penalty: read_number(
-      source.frequency_penalty,
-      DEFAULT_GENERATION_SNAPSHOT.frequency_penalty,
-    ),
-    frequency_penalty_custom_enable: Boolean(source.frequency_penalty_custom_enable),
   };
 }
 
@@ -245,7 +223,7 @@ function normalize_model_entry(
     id: String(source.id ?? ""),
     type: Model.normalize_type(source.type),
     name: String(source.name ?? ""),
-    api_format: String(source.api_format ?? "OpenAI"),
+    api_format: Model.normalize_api_format(source.api_format),
     api_url: String(source.api_url ?? ""),
     api_key: String(source.api_key ?? ""),
     model_id: String(source.model_id ?? ""),
@@ -257,6 +235,7 @@ function normalize_model_entry(
   };
 }
 
+/** 将后端载荷收窄为 renderer 可安全消费的完整快照。 */
 function normalize_model_page_snapshot(payload: ModelPageSnapshotPayload): ModelPageSnapshot {
   const snapshot = payload.snapshot ?? {};
   const models = Array.isArray(snapshot.models)
@@ -364,6 +343,8 @@ function apply_model_patch(
     }),
   };
 }
+
+/** 校验同组完整 ID 集合后重排，并保持其它分类在总列表中的位置。 */
 function reorder_snapshot_group(
   snapshot: ModelPageSnapshot,
   model_type: ModelType,
@@ -407,6 +388,8 @@ function reorder_snapshot_group(
     models: next_models,
   };
 }
+
+/** 持有模型页 query、乐观更新与对话框状态，后端仍是模型事实唯一来源。 */
 export function useModelPageState(): UseModelPageStateResult {
   const { t } = useI18n();
   const { push_toast } = useDesktopToast();
@@ -443,7 +426,7 @@ export function useModelPageState(): UseModelPageStateResult {
   }, [refresh_snapshot]);
 
   const grouped_categories = useMemo<ModelCategorySnapshot[]>(() => {
-    return MODEL_TYPE_ORDER.map((model_type) => {
+    return MODEL_TYPES.map((model_type) => {
       const category_meta = MODEL_CATEGORY_META[model_type];
       return {
         type: model_type,

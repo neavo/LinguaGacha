@@ -1,4 +1,4 @@
-import { patch_generation_fields } from "./policy-shared";
+import { patch_top_p } from "./policy-shared";
 import { is_json_record } from "../../../domain/json";
 import type { ModelRequestSnapshot } from "./policy-types";
 
@@ -18,7 +18,7 @@ export function apply_anthropic_one_shot_request_overrides(
       .join("\n\n");
     if (system_text !== "") result["system"] = system_text;
   }
-  patch_generation_fields(result, snapshot.generation, { top_p: "top_p" });
+  patch_top_p(result, snapshot.generation, "top_p");
   return apply_anthropic_request_overrides(result, snapshot);
 }
 
@@ -33,8 +33,6 @@ export function apply_anthropic_request_overrides(
   delete result["thinking"];
   delete result["output_config"];
   Object.assign(result, snapshot.extra_body);
-  delete result["presence_penalty"];
-  delete result["frequency_penalty"];
   const thinking = build_anthropic_thinking_payload(snapshot);
   if (thinking !== null) {
     result["thinking"] = thinking;
