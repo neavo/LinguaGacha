@@ -1,11 +1,11 @@
-import type { JsonRecord, JsonValue } from "../../domain/json";
+import type { JsonValue } from "../../domain/json";
 import type { LogError } from "../../shared/error";
 
 /**
- * 请求消息保持标准 chat 形状，policy 再转换为各官方 SDK 的最终 payload。
+ * 请求消息保持标准 chat 形状，Pi adapter 负责协议转换，项目 policy 只做最终覆盖。
  */
 export interface LLMMessage {
-  role: string; // prompt 与供应商协议的稳定分流键，runner 不解释 provider 差异
+  role: "system" | "user"; // OneShot 只接受业务提示词，不承载多轮 assistant 历史
   content: string; // 已拼好的业务提示词，request policy 不再读取项目事实
 }
 
@@ -18,7 +18,6 @@ export interface LLMRequestBody {
   model: JsonValue; // 保留任务启动快照形状，policy 在边界处收窄供应商字段
   config_snapshot: JsonValue; // 与任务启动时一致，确保重试不读取后续 UI 修改
   messages: LLMMessage[]; // 已由 PromptBuilder 拼好，policy 只做协议转换
-  request_options?: JsonRecord; // 只允许低频传输覆盖，不承载业务状态
 }
 
 /**
@@ -36,7 +35,7 @@ export interface LLMRequestResult {
 }
 
 /**
- * Work unit 只依赖这个中性端口，真实实现由 official SDK direct transport 承担。
+ * Work unit 只依赖这个中性端口，真实 wire protocol 由 pi-ai 承担。
  */
 export interface LLMClientPort {
   /**

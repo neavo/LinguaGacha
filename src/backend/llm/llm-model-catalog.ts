@@ -3,7 +3,9 @@ import { GoogleGenAI, type Model as GoogleSdkModel } from "@google/genai";
 import { read_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
 import { Model, type ModelApiFormat } from "../../domain/model";
 import * as AppErrors from "../../shared/error";
-import { LLMClientPolicy } from "./llm-client-policy";
+import { get_primary_api_key } from "./llm-client-policy";
+import { normalize_google_sdk_base_url } from "./policy/google-policy";
+import { normalize_openai_compatible_base_url } from "./policy/openai-compatible-policy";
 
 // 模型列表探测沿用浏览器 UA，减少部分服务商对 Node 默认 UA 的拒绝概率。
 const BROWSER_USER_AGENT =
@@ -21,8 +23,10 @@ export async function list_available_models(model: JsonRecord): Promise<string[]
     if (api_format === "Anthropic") {
       return await fetch_anthropic_available_models(model);
     }
-    return await fetch_openai_available_models(model, api_format);
+    return await fetch_openai_available_models(model);
   } catch (error) {
+    // fetch_json 已完成公开状态收窄；重复包装会丢失这份安全诊断。
+    if (error instanceof AppErrors.ModelProviderFailedError) throw error;
     throw new AppErrors.ModelProviderFailedError({ cause: error });
   }
 }
@@ -30,13 +34,10 @@ export async function list_available_models(model: JsonRecord): Promise<string[]
 /**
  * OpenAI-compatible 与 Sakura 都复用 `/models` 列表语义。
  */
-async function fetch_openai_available_models(
-  model: JsonRecord,
-  api_format: ModelApiFormat,
-): Promise<string[]> {
-  const api_url = LLMClientPolicy.normalize_api_url(String(model["api_url"] ?? ""), api_format);
+async function fetch_openai_available_models(model: JsonRecord): Promise<string[]> {
+  const api_url = normalize_openai_compatible_base_url(String(model["api_url"] ?? ""));
   const data = await fetch_json(`${api_url}/models`, {
-    Authorization: `Bearer ${LLMClientPolicy.get_primary_api_key(String(model["api_key"] ?? ""))}`,
+    Authorization: `Bearer ${get_primary_api_key(String(model["api_key"] ?? ""))}`,
     ...build_browser_headers(model),
   });
   return read_response_model_ids(data, "data", "id");
@@ -46,9 +47,9 @@ async function fetch_openai_available_models(
  * Google 模型列表走 @google/genai，让 SDK 统一拼接 apiVersion 与 list 路径。
  */
 async function fetch_google_available_models(model: JsonRecord): Promise<string[]> {
-  const api_url = LLMClientPolicy.normalize_api_url(String(model["api_url"] ?? ""), "Google");
+  const api_url = normalize_google_sdk_base_url(String(model["api_url"] ?? ""));
   const client = new GoogleGenAI({
-    apiKey: LLMClientPolicy.get_primary_api_key(String(model["api_key"] ?? "")),
+    apiKey: get_primary_api_key(String(model["api_key"] ?? "")),
     httpOptions: {
       baseUrl: api_url === "" ? undefined : api_url,
       headers: build_browser_headers(model),
@@ -61,18 +62,20 @@ async function fetch_google_available_models(model: JsonRecord): Promise<string[
  * Anthropic models.list 使用 `/v1/models` 与 x-api-key header。
  */
 async function fetch_anthropic_available_models(model: JsonRecord): Promise<string[]> {
-  const api_url = LLMClientPolicy.normalize_api_url(String(model["api_url"] ?? ""), "Anthropic");
+  const api_url = String(model["api_url"] ?? "")
+    .trim()
+    .replace(/\/+$/u, "");
   const base_url = api_url === "" ? "https://api.anthropic.com" : api_url;
   const data = await fetch_json(`${base_url}/v1/models`, {
     "anthropic-version": "2023-06-01",
-    "x-api-key": LLMClientPolicy.get_primary_api_key(String(model["api_key"] ?? "")),
+    "x-api-key": get_primary_api_key(String(model["api_key"] ?? "")),
     ...build_browser_headers(model),
   });
   return read_response_model_ids(data, "data", "id");
 }
 
 /**
- * fetch 只负责 HTTP 细节，模型列表字段解释留在调用点。
+ * fetch 只负责 HTTP，并把非成功状态收窄为安全公开详情；列表字段解释留在调用点。
  */
 async function fetch_json(url: string, headers: Record<string, string>): Promise<JsonValue> {
   const response = await fetch(url, { headers, method: "GET" });

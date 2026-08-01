@@ -531,7 +531,7 @@ describe("BackendBootstrap", () => {
     await manager.start();
     try {
       expect(resolved_urls).toEqual([
-        "https://api.example/v1",
+        "https://api.example/v1/chat/completions",
         "https://generativelanguage.googleapis.com",
         "https://api.openai.com/v1",
         "https://api.anthropic.com",

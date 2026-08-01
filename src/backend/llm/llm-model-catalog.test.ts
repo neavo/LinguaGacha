@@ -114,7 +114,7 @@ describe("llm-model-catalog", () => {
     });
   });
 
-  it("远端列表非成功响应转换为模型供应商错误", async () => {
+  it("远端列表非成功响应转换为模型供应商错误并保留 HTTP 状态", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => new Response("unauthorized", { status: 401 })),
@@ -126,7 +126,10 @@ describe("llm-model-catalog", () => {
         api_key: "openai-key",
         api_url: "https://api.example/v1",
       }),
-    ).rejects.toMatchObject({ code: "model.provider_failed" });
+    ).rejects.toMatchObject({
+      code: "model.provider_failed",
+      public_details: { status: 401 },
+    });
   });
 });
 

@@ -4,7 +4,7 @@ import type { ModelRequestSnapshot } from "./policy-types";
 /**
  * 自定义数值只有开关为 true 才生效，避免默认 UI 值误入 payload。
  */
-function read_custom_number(generation: JsonRecord, key: string): number | null {
+export function read_custom_number(generation: Readonly<JsonRecord>, key: string): number | null {
   if (generation[`${key}_custom_enable`] !== true) {
     return null;
   }
@@ -17,7 +17,7 @@ function read_custom_number(generation: JsonRecord, key: string): number | null 
  */
 export function patch_generation_fields(
   payload: Record<string, unknown>,
-  generation: JsonRecord,
+  generation: Readonly<JsonRecord>,
   field_map: Record<string, string>,
 ): void {
   for (const [source_key, target_key] of Object.entries(field_map)) {
@@ -26,24 +26,6 @@ export function patch_generation_fields(
       payload[target_key] = value;
     }
   }
-}
-
-/**
- * temperature 只在用户显式启用且 provider 规则允许时发送。
- */
-export function patch_temperature(
-  payload: Record<string, unknown>,
-  snapshot: ModelRequestSnapshot,
-  options: { allow_thinking_temperature?: boolean } = {},
-): void {
-  const temperature = read_custom_number(snapshot.generation, "temperature");
-  if (temperature === null) {
-    return;
-  }
-  if (options.allow_thinking_temperature !== true && snapshot.thinking_level !== "OFF") {
-    return;
-  }
-  payload["temperature"] = temperature;
 }
 
 /**

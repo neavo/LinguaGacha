@@ -1,38 +1,25 @@
-import {
-  patch_generation_fields,
-  patch_temperature,
-  resolve_max_tokens_for_request,
-} from "./policy-shared";
-import { RequestValidationError } from "../../../shared/error";
+import { patch_generation_fields } from "./policy-shared";
+import { is_json_record } from "../../../domain/json";
 import type { ModelRequestSnapshot } from "./policy-types";
-import type { LLMMessage } from "../llm-types";
 
-/**
- * Anthropic 规则：system 独立于 messages；thinking 开启时强制删除 temperature/top_p。
- */
-export function build_anthropic_payload(
+/** Anthropic OneShot 保持 string system 契约，补齐 top_p 后进入共用覆盖规则。 */
+export function apply_anthropic_one_shot_request_overrides(
+  payload: Record<string, unknown>,
   snapshot: ModelRequestSnapshot,
-  messages: LLMMessage[],
 ): Record<string, unknown> {
-  const system = messages
-    .filter((message) => message.role === "system")
-    .map((message) => message.content.trim())
-    .filter(Boolean)
-    .join("\n\n");
-  const payload: Record<string, unknown> = {
-    model: snapshot.model_id,
-    messages: normalize_anthropic_chat_messages(
-      messages.filter((message) => message.role !== "system"),
-    ),
-    stream: true,
-    max_tokens: resolve_max_tokens_for_request(snapshot, { auto_value: 8192 }) ?? 8192,
-  };
-  if (system !== "") {
-    payload["system"] = system;
+  const result = { ...payload };
+  const system = result["system"];
+  if (Array.isArray(system)) {
+    const system_text = system
+      .map((block) =>
+        is_json_record(block) && typeof block["text"] === "string" ? block["text"] : "",
+      )
+      .filter(Boolean)
+      .join("\n\n");
+    if (system_text !== "") result["system"] = system_text;
   }
-  patch_temperature(payload, snapshot);
-  patch_generation_fields(payload, snapshot.generation, { top_p: "top_p" });
-  return apply_anthropic_request_overrides(payload, snapshot);
+  patch_generation_fields(result, snapshot.generation, { top_p: "top_p" });
+  return apply_anthropic_request_overrides(result, snapshot);
 }
 
 /**
@@ -55,24 +42,6 @@ export function apply_anthropic_request_overrides(
   if (snapshot.thinking_level !== "OFF" && thinking !== null) {
     delete result["temperature"];
     delete result["top_p"];
-  }
-  return result;
-}
-
-/**
- * Anthropic messages 不包含 system role，并在自身边界去空白与阻断空请求。
- */
-function normalize_anthropic_chat_messages(
-  messages: LLMMessage[],
-): Array<{ role: string; content: string }> {
-  const result = messages
-    .map((message) => ({ role: message.role, content: message.content.trim() }))
-    .filter((message) => message.content !== "");
-  if (result.length === 0) {
-    throw new RequestValidationError({
-      public_details: { field: "messages" },
-      diagnostic_context: { provider_policy: "anthropic", reason: "empty_messages" },
-    });
   }
   return result;
 }
