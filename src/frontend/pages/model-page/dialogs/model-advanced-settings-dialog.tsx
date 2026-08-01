@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 
-import { parse_model_agent_config, type ModelAgentConfig } from "@domain/model";
+import {
+  DEFAULT_MODEL_AGENT_CONFIG,
+  parse_model_agent_config,
+  type ModelAgentConfig,
+} from "@domain/model";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import { Card, CardContent, CardDescription, CardTitle } from "@frontend/shadcn/card";
@@ -327,7 +331,9 @@ export function ModelAdvancedSettingsDialog(
             <SettingCardRow
               key={field_config.field_name}
               title={t(field_config.title_key)}
-              description={t(field_config.description_key)}
+              description={t(field_config.description_key, {
+                DEFAULT: DEFAULT_MODEL_AGENT_CONFIG[field_config.field_name].toString(),
+              })}
               action={
                 <Input
                   className="model-page__field"

@@ -6,7 +6,11 @@ import { ModelAdvancedSettingsDialog } from "./model-advanced-settings-dialog";
 import { create_model_snapshot } from "./model-dialog-test-fixture";
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
-  useI18n: () => ({ locale: "zh-CN", t: (key: string) => key }),
+  useI18n: () => ({
+    locale: "zh-CN",
+    t: (key: string, params?: Record<string, string>) =>
+      params?.["DEFAULT"] === undefined ? key : `${key}:${params["DEFAULT"]}`,
+  }),
 }));
 
 /** 通过原生 value setter 触发 React 受控 textarea 的 input 事件。 */
@@ -113,6 +117,13 @@ describe("ModelAdvancedSettingsDialog", () => {
     expect(titles.slice(0, 2)).toEqual([
       "model_page.fields.context_window.title",
       "model_page.fields.max_output_tokens.title",
+    ]);
+    const descriptions = [
+      ...document.querySelectorAll(".model-page__setting-list .setting-card-row__description"),
+    ].map((description) => description.textContent);
+    expect(descriptions.slice(0, 2)).toEqual([
+      "model_page.fields.context_window.description:288000",
+      "model_page.fields.max_output_tokens.description:32000",
     ]);
     const context_window = document.querySelector<HTMLInputElement>(
       'input[aria-label="model_page.fields.context_window.title"]',
