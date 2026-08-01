@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ModelAdvancedSettingsDialog } from "./model-advanced-settings-dialog";
-import { create_model_snapshot } from "./model-dialog-test-fixture";
+import { create_model_snapshot } from "@frontend/pages/model-page/model-test-fixture";
 
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
@@ -111,20 +111,19 @@ describe("ModelAdvancedSettingsDialog", () => {
       );
     });
 
-    const titles = [...document.querySelectorAll(".model-page__setting-list h2")].map(
-      (title) => title.textContent,
-    );
-    expect(titles.slice(0, 2)).toEqual([
+    const number_field_labels = [
+      ...document.querySelectorAll<HTMLInputElement>('input[type="number"]'),
+    ].map((input) => input.getAttribute("aria-label"));
+    expect(number_field_labels.slice(0, 2)).toEqual([
       "model_page.fields.context_window.title",
       "model_page.fields.max_output_tokens.title",
     ]);
-    const descriptions = [
-      ...document.querySelectorAll(".model-page__setting-list .setting-card-row__description"),
-    ].map((description) => description.textContent);
-    expect(descriptions.slice(0, 2)).toEqual([
+    expect(document.body.textContent).toContain(
       "model_page.fields.context_window.description:288000",
+    );
+    expect(document.body.textContent).toContain(
       "model_page.fields.max_output_tokens.description:32000",
-    ]);
+    );
     const context_window = document.querySelector<HTMLInputElement>(
       'input[aria-label="model_page.fields.context_window.title"]',
     );
@@ -160,5 +159,30 @@ describe("ModelAdvancedSettingsDialog", () => {
     });
     expect(context_window.getAttribute("aria-invalid")).toBeNull();
     expect(max_output_tokens.getAttribute("aria-invalid")).toBeNull();
+  });
+
+  it("不再显示已移除的惩罚参数", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(
+        <ModelAdvancedSettingsDialog
+          open
+          model={create_model_snapshot()}
+          readonly={false}
+          onPatch={async () => {}}
+          onAgentLimitsError={() => {}}
+          onJsonFormatError={() => {}}
+          onClose={() => {}}
+        />,
+      );
+    });
+
+    const visible_text = document.body.textContent ?? "";
+    expect(visible_text).toContain("model_page.fields.top_p.title");
+    expect(visible_text).toContain("model_page.fields.temperature.title");
+    expect(visible_text).not.toContain("model_page.fields.presence_penalty.title");
+    expect(visible_text).not.toContain("model_page.fields.frequency_penalty.title");
   });
 });

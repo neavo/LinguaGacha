@@ -2,7 +2,7 @@ import type { JsonValue } from "../../domain/json";
 import type { LogError } from "../../shared/error";
 
 /**
- * 请求消息保持标准 chat 形状，Pi adapter 负责协议转换，项目 policy 只做最终覆盖。
+ * 请求消息保持 provider-neutral chat 形状；Pi 负责基础协议转换，项目 policy 固定最终协议语义。
  */
 export interface LLMMessage {
   role: "system" | "user"; // OneShot 只接受业务提示词，不承载多轮 assistant 历史

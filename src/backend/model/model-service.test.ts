@@ -6,6 +6,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord } from "../../domain/json";
+import { Model, type CustomModelType } from "../../domain/model";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { LLMClient } from "../llm/llm-client";
@@ -14,7 +15,7 @@ import { ModelService } from "./model-service";
 
 type ModelPresetFiles = {
   builtin_models?: Array<JsonRecord>;
-  templates?: Partial<Record<"CUSTOM_GOOGLE" | "CUSTOM_OPENAI" | "CUSTOM_ANTHROPIC", JsonRecord>>;
+  templates?: Partial<Record<CustomModelType, JsonRecord>>;
 };
 
 type ModelServiceFixture = {
@@ -44,7 +45,11 @@ afterEach(async () => {
 
 describe("ModelService 配置管理", () => {
   it("快照初始化保留用户模型并补齐缺失预设和自定义类型", async () => {
-    stub_random_ids("00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002");
+    stub_random_ids(
+      "00000000-0000-4000-8000-000000000001",
+      "00000000-0000-4000-8000-000000000002",
+      "00000000-0000-4000-8000-000000000003",
+    );
     const { service } = await create_model_service(
       [
         create_model({
@@ -61,6 +66,10 @@ describe("ModelService 配置管理", () => {
         builtin_models: [create_model({ id: "preset-new", type: "PRESET" })],
         templates: {
           CUSTOM_GOOGLE: create_template("template-CUSTOM_GOOGLE", "Google"),
+          CUSTOM_OPENAI_RESPONSES: create_template(
+            "template-CUSTOM_OPENAI_RESPONSES",
+            "OpenAIResponses",
+          ),
           CUSTOM_ANTHROPIC: create_template("template-CUSTOM_ANTHROPIC", "Anthropic"),
         },
       },
@@ -80,6 +89,11 @@ describe("ModelService 配置管理", () => {
         }),
         expect.objectContaining({
           id: "00000000-0000-4000-8000-000000000002",
+          name: "template-CUSTOM_OPENAI_RESPONSES",
+          type: "CUSTOM_OPENAI_RESPONSES",
+        }),
+        expect.objectContaining({
+          id: "00000000-0000-4000-8000-000000000003",
           name: "template-CUSTOM_ANTHROPIC",
           type: "CUSTOM_ANTHROPIC",
         }),
@@ -87,11 +101,12 @@ describe("ModelService 配置管理", () => {
     );
   });
 
-  it("空模型配置按内置预设后补齐三类自定义模型", async () => {
+  it("空模型配置按内置预设后补齐全部自定义模型", async () => {
     stub_random_ids(
       "00000000-0000-4000-8000-000000000011",
       "00000000-0000-4000-8000-000000000012",
       "00000000-0000-4000-8000-000000000013",
+      "00000000-0000-4000-8000-000000000014",
     );
     const { service } = await create_model_service([], {
       builtin_models: [
@@ -110,6 +125,7 @@ describe("ModelService 配置管理", () => {
     expect(snapshot.models.slice(2).map((model) => model["type"])).toEqual([
       "CUSTOM_GOOGLE",
       "CUSTOM_OPENAI",
+      "CUSTOM_OPENAI_RESPONSES",
       "CUSTOM_ANTHROPIC",
     ]);
     expect(selection.model_selection).toEqual({
@@ -142,6 +158,11 @@ describe("ModelService 配置管理", () => {
     const { paths, service, app_setting_service } = await create_model_service([
       create_model({ id: "google", type: "CUSTOM_GOOGLE", api_format: "Google" }),
       create_model({ id: "openai", type: "CUSTOM_OPENAI" }),
+      create_model({
+        id: "responses",
+        type: "CUSTOM_OPENAI_RESPONSES",
+        api_format: "OpenAIResponses",
+      }),
       create_model({ id: "anthropic", type: "CUSTOM_ANTHROPIC", api_format: "Anthropic" }),
     ]);
 
@@ -175,6 +196,11 @@ describe("ModelService 配置管理", () => {
       [
         create_model({ id: "google", type: "CUSTOM_GOOGLE", api_format: "Google" }),
         create_model({ id: "openai", type: "CUSTOM_OPENAI" }),
+        create_model({
+          id: "responses",
+          type: "CUSTOM_OPENAI_RESPONSES",
+          api_format: "OpenAIResponses",
+        }),
         create_model({ id: "anthropic", type: "CUSTOM_ANTHROPIC", api_format: "Anthropic" }),
       ],
       {
@@ -657,20 +683,14 @@ async function write_model_presets(app_root: string, presets: ModelPresetFiles):
     JSON.stringify(presets.builtin_models ?? []),
     "utf-8",
   );
-  await writeFile(
-    path.join(preset_dir, "preset_model_custom_google.json"),
-    JSON.stringify(presets.templates?.CUSTOM_GOOGLE ?? {}),
-    "utf-8",
-  );
-  await writeFile(
-    path.join(preset_dir, "preset_model_custom_openai.json"),
-    JSON.stringify(presets.templates?.CUSTOM_OPENAI ?? {}),
-    "utf-8",
-  );
-  await writeFile(
-    path.join(preset_dir, "preset_model_custom_anthropic.json"),
-    JSON.stringify(presets.templates?.CUSTOM_ANTHROPIC ?? {}),
-    "utf-8",
+  await Promise.all(
+    Model.custom_types().map((model_type) =>
+      writeFile(
+        path.join(preset_dir, Model.resolve_template_filename(model_type)),
+        JSON.stringify(presets.templates?.[model_type] ?? {}),
+        "utf-8",
+      ),
+    ),
   );
 }
 

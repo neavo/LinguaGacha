@@ -10,6 +10,9 @@ export const zh_cn_model_page = {
     custom_openai: {
       description: "兼容 OpenAI API 格式的自定义模型",
     },
+    custom_openai_responses: {
+      description: "兼容 OpenAI Responses API 格式的自定义模型",
+    },
     custom_anthropic: {
       description: "兼容 Anthropic Claude API 格式的自定义模型",
     },
@@ -111,14 +114,6 @@ export const zh_cn_model_page = {
     },
     temperature: {
       title: "temperature",
-      description: "请谨慎设置，错误的值可能导致结果异常或者请求报错",
-    },
-    presence_penalty: {
-      title: "presence_penalty",
-      description: "请谨慎设置，错误的值可能导致结果异常或者请求报错",
-    },
-    frequency_penalty: {
-      title: "frequency_penalty",
       description: "请谨慎设置，错误的值可能导致结果异常或者请求报错",
     },
     extra_headers: {

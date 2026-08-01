@@ -10,6 +10,7 @@ const TEST_USER_AGENT = "LinguaGacha/Test";
 describe("pi-ai 请求适配", () => {
   it.each([
     ["OpenAI", "openai", "openai-completions"],
+    ["OpenAIResponses", "openai", "openai-responses"],
     ["SakuraLLM", "openai-compatible", "openai-completions"],
     ["Anthropic", "anthropic", "anthropic-messages"],
     ["Google", "google", "google-generative-ai"],
@@ -25,7 +26,7 @@ describe("pi-ai 请求适配", () => {
     expect(resolved.model).toMatchObject({ provider, api, name: "Test" });
   });
 
-  it.each(["OpenAI", "SakuraLLM", "Anthropic", "Google"] as const)(
+  it.each(["OpenAI", "OpenAIResponses", "SakuraLLM", "Anthropic", "Google"] as const)(
     "%s 在协议转换前拒绝空业务提示词",
     (api_format) => {
       const snapshot = read_model_request_snapshot(create_model({ api_format }), TEST_USER_AGENT);
@@ -118,6 +119,102 @@ describe("pi-ai 请求适配", () => {
     expect(payload).not.toHaveProperty("thinking");
   });
 
+  it("非推理 Responses 由 Pi 生成 Items，且不注入 reasoning", async () => {
+    const request = resolve_request({
+      api_format: "OpenAIResponses",
+      api_url: "https://openai.example/v1/responses/",
+      model_id: "custom-model",
+      generation: {
+        temperature_custom_enable: true,
+        temperature: 0.2,
+        top_p_custom_enable: true,
+        top_p: 0.9,
+      },
+      thinking: { level: "OFF" },
+    });
+    const payload = await capture_payload(request);
+
+    expect(request.model).toMatchObject({
+      provider: "openai",
+      api: "openai-responses",
+      baseUrl: "https://openai.example/v1",
+      reasoning: false,
+    });
+    expect(request.model).not.toHaveProperty("compat");
+    expect(request.options).toMatchObject({ temperature: 0.2, maxTokens: 4096 });
+    expect(request.options).not.toHaveProperty("reasoningEffort");
+    expect(payload).toMatchObject({
+      model: "custom-model",
+      input: expect.any(Array),
+      stream: true,
+      store: false,
+      temperature: 0.2,
+      max_output_tokens: 4096,
+      top_p: 0.9,
+    });
+    expect(payload["input"]).toEqual([
+      { role: "developer", content: "系统约束" },
+      {
+        role: "user",
+        content: [{ type: "input_text", text: "こんにちは" }],
+      },
+    ]);
+    expect(payload).not.toHaveProperty("messages");
+    expect(payload).not.toHaveProperty("max_tokens");
+    expect(payload).not.toHaveProperty("reasoning");
+  });
+
+  it("GPT-5.6 Responses 的 OFF 档显式发送 reasoning.effort=none", async () => {
+    const request = resolve_request({
+      api_format: "OpenAIResponses",
+      model_id: "gpt-5.6-luna",
+      thinking: { level: "OFF" },
+    });
+    const payload = await capture_payload(request);
+
+    expect(request.model.reasoning).toBe(true);
+    expect(request.options).not.toHaveProperty("reasoningEffort");
+    expect(payload).toHaveProperty("reasoning.effort", "none");
+    expect(payload).not.toHaveProperty("include");
+  });
+
+  it("GPT-5.6 Responses 的非 OFF 档启用 Pi reasoning 连续性", async () => {
+    const request = resolve_request({
+      api_format: "OpenAIResponses",
+      model_id: "gpt-5.6-luna",
+      thinking: { level: "HIGH" },
+    });
+    const payload = await capture_payload(request);
+
+    expect(request.model.reasoning).toBe(true);
+    expect(request.options).toMatchObject({ reasoningEffort: "high" });
+    expect(payload).toMatchObject({
+      reasoning: { effort: "high" },
+      include: ["reasoning.encrypted_content"],
+    });
+    expect(payload["input"]).toEqual([
+      { role: "developer", content: "系统约束" },
+      {
+        role: "user",
+        content: [{ type: "input_text", text: "こんにちは" }],
+      },
+    ]);
+  });
+
+  it("Responses 未收录模型即使选择 HIGH 也不启用 reasoning", async () => {
+    const request = resolve_request({
+      api_format: "OpenAIResponses",
+      model_id: "custom-reasoning-model",
+      thinking: { level: "HIGH" },
+    });
+    const payload = await capture_payload(request);
+
+    expect(request.model.reasoning).toBe(false);
+    expect(request.options).not.toHaveProperty("reasoningEffort");
+    expect(payload).not.toHaveProperty("reasoning");
+    expect(payload).not.toHaveProperty("include");
+  });
+
   it("让 Pi 构造 Anthropic system/messages，并保持 thinking 采样互斥", async () => {
     const request = resolve_request({
       api_format: "Anthropic",
@@ -185,9 +282,9 @@ describe("pi-ai 请求适配", () => {
       maxOutputTokens: 4096,
       topP: 0.9,
       responseMimeType: "application/json",
-      thinkingConfig: { thinkingBudget: 384, includeThoughts: true },
       abortSignal: request.options.signal,
     });
+    expect(config).not.toHaveProperty("thinkingConfig");
     expect(config["safetySettings"]).toHaveLength(4);
   });
 });

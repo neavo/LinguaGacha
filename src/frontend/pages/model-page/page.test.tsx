@@ -3,7 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
-import { create_model_snapshot } from "@frontend/pages/model-page/dialogs/model-dialog-test-fixture";
+import { create_model_snapshot } from "@frontend/pages/model-page/model-test-fixture";
 import { ModelPage } from "./page";
 
 const { push_toast_mock, use_model_page_state_mock } = vi.hoisted(() => ({
@@ -21,15 +21,6 @@ vi.mock("@frontend/app/feedback/desktop-toast", () => ({
 
 vi.mock("@frontend/pages/model-page/use-model-page-state", () => ({
   useModelPageState: use_model_page_state_mock,
-}));
-
-vi.mock("@frontend/pages/model-page/components/model-category-card", () => ({
-  ModelCategoryCard: (props: { title: string; add_action: ReactNode; children: ReactNode }) => (
-    <section aria-label={props.title}>
-      {props.add_action}
-      {props.children}
-    </section>
-  ),
 }));
 
 vi.mock("@frontend/pages/model-page/components/model-item-chip", () => ({

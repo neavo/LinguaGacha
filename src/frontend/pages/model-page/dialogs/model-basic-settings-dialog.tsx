@@ -1,8 +1,9 @@
 import { PencilLine, RefreshCw, Send } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { MODEL_THINKING_LEVELS, Model, type ModelThinkingLevel } from "@domain/model";
 import { useI18n } from "@frontend/app/locale/locale-provider";
-import type { ModelEntrySnapshot, ModelThinkingLevel } from "@frontend/pages/model-page/types";
+import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import { AppButton } from "@frontend/widgets/app-button";
 import { Input } from "@frontend/shadcn/input";
 import {
@@ -17,7 +18,6 @@ import { Textarea } from "@frontend/shadcn/textarea";
 import { AppPageDialog } from "@frontend/widgets/app-page-dialog";
 import { SettingHelpButton } from "@frontend/widgets/setting-help-button";
 import { SettingCardRow } from "@frontend/widgets/setting-card-row/setting-card-row";
-import { MODEL_THINKING_LEVELS, Model } from "@domain/model";
 
 type ModelBasicSettingsDialogProps = {
   open: boolean;
@@ -29,7 +29,6 @@ type ModelBasicSettingsDialogProps = {
   onClose: () => void;
 };
 
-const THINKING_LEVEL_VALUES: readonly ModelThinkingLevel[] = MODEL_THINKING_LEVELS;
 // 支持说明只有中英文版本，未单独维护的 locale 统一落到英文页面。
 const THINKING_SUPPORT_URL_BY_LOCALE = {
   "zh-CN": "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupport",
@@ -53,20 +52,6 @@ function resolve_thinking_label(
   }
 }
 
-/** 只有已归一的供应商格式才展示当前连接字段。 */
-function should_show_connection_fields(api_format: string): boolean {
-  return Model.normalize_api_format(api_format) === api_format;
-}
-
-/** OpenAI compatible 与原生支持推理的供应商共用思考档位。 */
-function should_show_thinking_field(api_format: string): boolean {
-  const normalized_api_format = Model.normalize_api_format(api_format);
-  return (
-    normalized_api_format === "OpenAI" ||
-    Model.api_format_supports_reasoning_by_default(normalized_api_format)
-  );
-}
-
 /** 编辑模型名称、连接信息和思考档位的基础设置对话框。 */
 export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): JSX.Element | null {
   const { locale, t } = useI18n();
@@ -86,7 +71,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
   }, [props.open]);
 
   const thinking_level_options = useMemo(() => {
-    return THINKING_LEVEL_VALUES.map((thinking_level) => {
+    return MODEL_THINKING_LEVELS.map((thinking_level) => {
       return {
         value: thinking_level,
         label: resolve_thinking_label(t, thinking_level),
@@ -99,8 +84,7 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
   }
 
   const model = props.model;
-  const show_connection_fields = should_show_connection_fields(model.api_format);
-  const show_thinking_field = should_show_thinking_field(model.api_format);
+  const show_thinking_field = Model.api_format_supports_thinking_configuration(model.api_format);
 
   /** 项目可能在输入弹窗保持打开时进入锁定态，提交点必须再次守卫。 */
   async function commit_model_id_input(): Promise<void> {
@@ -143,94 +127,90 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
               }
             />
 
-            {show_connection_fields ? (
-              <>
-                <SettingCardRow
-                  title={t("model_page.fields.api_url.title")}
-                  description={t("model_page.fields.api_url.description")}
-                  action={
-                    <Input
-                      className="model-page__field model-page__field--lg"
-                      value={model.api_url}
-                      readOnly={props.readonly}
-                      placeholder={t("model_page.fields.api_url.placeholder")}
-                      onChange={(event) => {
-                        void props.onPatch({
-                          api_url: event.target.value.trim(),
-                        });
-                      }}
-                    />
-                  }
+            <SettingCardRow
+              title={t("model_page.fields.api_url.title")}
+              description={t("model_page.fields.api_url.description")}
+              action={
+                <Input
+                  className="model-page__field model-page__field--lg"
+                  value={model.api_url}
+                  readOnly={props.readonly}
+                  placeholder={t("model_page.fields.api_url.placeholder")}
+                  onChange={(event) => {
+                    void props.onPatch({
+                      api_url: event.target.value.trim(),
+                    });
+                  }}
                 />
+              }
+            />
 
-                <SettingCardRow
-                  className="model-page__setting-card-row--block"
-                  title={t("model_page.fields.api_key.title")}
-                  description={t("model_page.fields.api_key.description")}
-                  action={
-                    <Textarea
-                      className="model-page__textarea"
-                      value={model.api_key}
-                      readOnly={props.readonly}
-                      placeholder={t("model_page.fields.api_key.placeholder")}
-                      onChange={(event) => {
-                        void props.onPatch({
-                          api_key: event.target.value,
-                        });
-                      }}
-                    />
-                  }
+            <SettingCardRow
+              className="model-page__setting-card-row--block"
+              title={t("model_page.fields.api_key.title")}
+              description={t("model_page.fields.api_key.description")}
+              action={
+                <Textarea
+                  className="model-page__textarea"
+                  value={model.api_key}
+                  readOnly={props.readonly}
+                  placeholder={t("model_page.fields.api_key.placeholder")}
+                  onChange={(event) => {
+                    void props.onPatch({
+                      api_key: event.target.value,
+                    });
+                  }}
                 />
+              }
+            />
 
-                <SettingCardRow
-                  className="model-page__setting-card-row--auto-action"
-                  title={t("model_page.fields.model_id.title")}
-                  description={t("model_page.fields.model_id.description").replace(
-                    "{MODEL}",
-                    model.model_id,
-                  )}
-                  action={
-                    <div className="model-page__inline-button-group">
-                      <AppButton
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={props.readonly}
-                        onClick={() => {
-                          set_model_id_input_value(model.model_id);
-                          set_is_model_id_editor_open(true);
-                        }}
-                      >
-                        <PencilLine data-icon="inline-start" />
-                        {t("model_page.action.input")}
-                      </AppButton>
-                      <AppButton
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={props.readonly}
-                        onClick={props.onRequestOpenSelector}
-                      >
-                        <RefreshCw data-icon="inline-start" />
-                        {t("model_page.action.fetch")}
-                      </AppButton>
-                      <AppButton
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={props.readonly}
-                        onClick={() => {
-                          void props.onRequestTestModel();
-                        }}
-                      >
-                        <Send data-icon="inline-start" />
-                        {t("model_page.action.test")}
-                      </AppButton>
-                    </div>
-                  }
-                />
-              </>
-            ) : null}
+            <SettingCardRow
+              className="model-page__setting-card-row--auto-action"
+              title={t("model_page.fields.model_id.title")}
+              description={t("model_page.fields.model_id.description").replace(
+                "{MODEL}",
+                model.model_id,
+              )}
+              action={
+                <div className="model-page__inline-button-group">
+                  <AppButton
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={props.readonly}
+                    onClick={() => {
+                      set_model_id_input_value(model.model_id);
+                      set_is_model_id_editor_open(true);
+                    }}
+                  >
+                    <PencilLine data-icon="inline-start" />
+                    {t("model_page.action.input")}
+                  </AppButton>
+                  <AppButton
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={props.readonly}
+                    onClick={props.onRequestOpenSelector}
+                  >
+                    <RefreshCw data-icon="inline-start" />
+                    {t("model_page.action.fetch")}
+                  </AppButton>
+                  <AppButton
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={props.readonly}
+                    onClick={() => {
+                      void props.onRequestTestModel();
+                    }}
+                  >
+                    <Send data-icon="inline-start" />
+                    {t("model_page.action.test")}
+                  </AppButton>
+                </div>
+              }
+            />
 
             {show_thinking_field ? (
               <SettingCardRow

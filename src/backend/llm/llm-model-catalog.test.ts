@@ -8,41 +8,42 @@ afterEach(() => {
 });
 
 describe("llm-model-catalog", () => {
-  it.each(["OpenAI", "SakuraLLM"] as const)(
-    "%s 模型列表读取 data[].id、排序并附带浏览器 UA",
-    async (api_format) => {
-      const fetch_mock = vi.fn(async () =>
-        Response.json({
-          data: [{ id: "model-z" }, { id: "" }, { name: "skip" }, { id: "model-a" }],
-        }),
-      );
-      vi.stubGlobal("fetch", fetch_mock);
+  it.each([
+    ["OpenAI", "https://api.example/v1"],
+    ["OpenAIResponses", "https://api.example/v1/responses/"],
+    ["SakuraLLM", "https://api.example/v1/chat/completions/"],
+  ] as const)("%s 模型列表读取 data[].id、排序并附带浏览器 UA", async (api_format, api_url) => {
+    const fetch_mock = vi.fn(async () =>
+      Response.json({
+        data: [{ id: "model-z" }, { id: "" }, { name: "skip" }, { id: "model-a" }],
+      }),
+    );
+    vi.stubGlobal("fetch", fetch_mock);
 
-      await expect(
-        list_available_models({
-          api_format,
-          api_url: "https://api.example/v1",
-          api_key: "key-a\nkey-b",
-          request: {
-            extra_headers: { "X-Trace": "trace-1" },
-            extra_headers_custom_enable: true,
-          },
-        }),
-      ).resolves.toEqual(["model-a", "model-z"]);
+    await expect(
+      list_available_models({
+        api_format,
+        api_url,
+        api_key: "key-a\nkey-b",
+        request: {
+          extra_headers: { "X-Trace": "trace-1" },
+          extra_headers_custom_enable: true,
+        },
+      }),
+    ).resolves.toEqual(["model-a", "model-z"]);
 
-      expect(fetch_mock).toHaveBeenCalledWith(
-        "https://api.example/v1/models",
-        expect.objectContaining({
-          method: "GET",
-          headers: expect.objectContaining({
-            Authorization: "Bearer key-a",
-            "User-Agent": expect.stringContaining("Chrome/133"),
-            "X-Trace": "trace-1",
-          }),
+    expect(fetch_mock).toHaveBeenCalledWith(
+      "https://api.example/v1/models",
+      expect.objectContaining({
+        method: "GET",
+        headers: expect.objectContaining({
+          Authorization: "Bearer key-a",
+          "User-Agent": expect.stringContaining("Chrome/133"),
+          "X-Trace": "trace-1",
         }),
-      );
-    },
-  );
+      }),
+    );
+  });
 
   it("Google 模型列表通过 REST 拉取所有页后统一排序", async () => {
     const fetch_mock = vi

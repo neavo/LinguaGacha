@@ -3,13 +3,14 @@ import { describe, expect, it } from "vitest";
 import { is_json_record } from "./json";
 import {
   DEFAULT_MODEL_AGENT_CONFIG,
+  MODEL_TYPES,
   Model,
   normalize_model_selection,
   parse_model_agent_config,
 } from "./model";
 
 describe("Model", () => {
-  it("从不完整设置生成稳定的模型快照", () => {
+  it("从不完整及旧设置生成稳定的模型快照", () => {
     const model = Model.from_json(
       {
         name: "demo-model",
@@ -28,6 +29,10 @@ describe("Model", () => {
         generation: {
           temperature: 0.1,
           top_p_custom_enable: true,
+          presence_penalty: 0.4,
+          presence_penalty_custom_enable: true,
+          frequency_penalty: 0.5,
+          frequency_penalty_custom_enable: true,
         },
       },
       "generated-id",
@@ -60,10 +65,6 @@ describe("Model", () => {
         temperature_custom_enable: false,
         top_p: 0.95,
         top_p_custom_enable: true,
-        presence_penalty: 0,
-        presence_penalty_custom_enable: false,
-        frequency_penalty: 0,
-        frequency_penalty_custom_enable: false,
       },
     });
   });
@@ -117,22 +118,35 @@ describe("Model", () => {
 
   it("公开枚举值保持原值，未知值回退到兼容默认值", () => {
     expect(Model.normalize_type("CUSTOM_GOOGLE")).toBe("CUSTOM_GOOGLE");
+    expect(Model.normalize_type("CUSTOM_OPENAI_RESPONSES")).toBe("CUSTOM_OPENAI_RESPONSES");
     expect(Model.normalize_type("unknown")).toBe("PRESET");
     expect(Model.normalize_api_format("Anthropic")).toBe("Anthropic");
+    expect(Model.normalize_api_format("OpenAIResponses")).toBe("OpenAIResponses");
     expect(Model.normalize_api_format("unknown")).toBe("OpenAI");
     expect(Model.normalize_thinking_level("HIGH")).toBe("HIGH");
     expect(Model.normalize_thinking_level("unknown")).toBe("OFF");
   });
 
-  it("模型类型决定排序、自定义模板和默认推理能力", () => {
-    expect(Model.resolve_type_sort_order("CUSTOM_OPENAI")).toBe(2);
+  it("模型类型注册表统一决定排序、自定义模板和思考配置", () => {
+    expect(MODEL_TYPES).toEqual([
+      "PRESET",
+      "CUSTOM_GOOGLE",
+      "CUSTOM_OPENAI",
+      "CUSTOM_OPENAI_RESPONSES",
+      "CUSTOM_ANTHROPIC",
+    ]);
+    expect(Model.custom_types()).toEqual(MODEL_TYPES.slice(1));
+    expect(Model.resolve_type_sort_order("CUSTOM_OPENAI_RESPONSES")).toBe(3);
     expect(Model.resolve_type_sort_order("unknown")).toBe(99);
+    expect(Model.resolve_template_filename("CUSTOM_OPENAI_RESPONSES")).toBe(
+      "preset_model_custom_openai_responses.json",
+    );
     expect(Model.resolve_template_filename("CUSTOM_ANTHROPIC")).toBe(
       "preset_model_custom_anthropic.json",
     );
     expect(Model.resolve_template_filename("PRESET")).toBeNull();
-    expect(Model.api_format_supports_reasoning_by_default("Google")).toBe(true);
-    expect(Model.api_format_supports_reasoning_by_default("OpenAI")).toBe(false);
+    expect(Model.api_format_supports_thinking_configuration("OpenAIResponses")).toBe(true);
+    expect(Model.api_format_supports_thinking_configuration("SakuraLLM")).toBe(false);
   });
 
   it("模型用途选择只保留规范化后的三个模型 ID", () => {

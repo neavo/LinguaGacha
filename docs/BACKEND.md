@@ -69,7 +69,8 @@ project, files, items, quality, prompts, analysis, proofreading
 - `TaskRuntime` 拥有任务取消、终态和 Engine completion，并以当前 active run 派生 task snapshot 的 `busy`。`TaskEngine` 只负责编排，任务结果统一经 `TaskProjectStore` 进入项目写入边界。全量翻译与分析经过 Planner，行级重翻直接从目标 items 构造 context。
 - work-unit worker 负责提示词构建、runner、pipeline 和响应处理；planning worker 只承担规划期计算。线程数不等于 LLM 并发，实际并发由模型 key lease 与 limiter 决定。
 - 非 engine 的重型计算通过 `ComputeWorkerClient` 提交无状态 compute task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
-- 模型请求快照、provider 覆盖规则、结果归一和模型列表探测归 `src/backend/llm`；OneShot 与 Agent 的生成请求统一由 `pi-ai` 实现，模型列表探测直接调用供应商 REST API。`LLMClient` 独立拥有 OneShot 单次请求的总时限、取消、退化和结果语义，任务层不解析供应商异常文本。OneShot 与 Agent 复用同一模型、API、URL、请求头和思考规则，Agent 仍只消费当前模型快照。
+- 模型请求快照、`api_format` 协议策略、最终请求覆盖、结果归一和模型列表探测归 `src/backend/llm`；OneShot 与 Agent 共用同一请求事实和 `pi-ai` 原生 adapter，模型列表探测直接调用供应商 REST API。`LLMClient` 独立拥有 OneShot 的总时限、取消、退化和结果语义，任务层不解析供应商异常文本。
+- OpenAI Chat Completions 与 Responses 是显式独立的 `api_format`，不按 URL 或模型名自动探测，也不互相重试或降级；模型族思考字段由项目共享策略生成，未收录模型不猜测，`extra_body` 最后覆盖。Responses 的原生载荷与连续性由 `pi-ai` 生成；除通用思考与 `extra_body` 策略外，项目只把其中的系统指令规范为 `developer`，指令角色不随思考档位变化。
 - Agent 运行时完全内存化，coding-agent 的默认工具与项目资源发现全部关闭。消息受理到 SDK 最终 settle 期间持续持有共享运行 lease；stop 只终止当前回合，reset、工程切换和外部相关事实变化会立即隔离公开会话并等待旧运行时清理，迟到异步阶段不得发布条目或启动模型请求。
 - 模型级 `agent.context_window` 与 `agent.max_output_tokens` 在新会话创建时冻结；每个后续回合重新解析 agent 用途选择并刷新请求快照与思考等级，但不改变当前会话容量。模型页 generation 和 threshold 输入 / 输出 token 设置只作用于 OneShot。
 - Agent 基础 system prompt 的唯一资源为 `resource/agent/system_prompt.md`，缺失或无效会阻止启动；产品 skill 只在启动期从内置与用户目录加载，坏 skill 只记录诊断，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。

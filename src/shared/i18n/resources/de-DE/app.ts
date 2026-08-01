@@ -14,6 +14,7 @@ export const de_de_app = {
       preset: "Voreingestellte Modelle",
       google: "Benutzerdefinierte Google-Modelle",
       openai: "Benutzerdefinierte OpenAI-Modelle",
+      openai_responses: "Benutzerdefinierte OpenAI-Responses-Modelle",
       anthropic: "Benutzerdefinierte Anthropic-Modelle",
     },
     selection: {

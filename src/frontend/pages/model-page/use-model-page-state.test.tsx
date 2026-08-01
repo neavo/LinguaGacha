@@ -33,6 +33,12 @@ function create_snapshot(name = "自定义模型") {
       models: [
         { id: "preset", type: "PRESET", name: "内置模型" },
         { id: "custom", type: "CUSTOM_OPENAI", name },
+        {
+          id: "responses",
+          type: "CUSTOM_OPENAI_RESPONSES",
+          api_format: "OpenAIResponses",
+          name: "Responses 模型",
+        },
       ],
     },
   };
@@ -87,8 +93,18 @@ describe("useModelPageState", () => {
       "PRESET",
       "CUSTOM_GOOGLE",
       "CUSTOM_OPENAI",
+      "CUSTOM_OPENAI_RESPONSES",
       "CUSTOM_ANTHROPIC",
     ]);
+    expect(
+      latest_state?.grouped_categories.find(
+        (category) => category.type === "CUSTOM_OPENAI_RESPONSES",
+      ),
+    ).toMatchObject({
+      description: "model_page.category.custom_openai_responses.description",
+      accent_color: "var(--model-page-accent-openai-responses)",
+      models: [{ id: "responses", api_format: "OpenAIResponses" }],
+    });
     expect(latest_state?.snapshot.models[1]).toMatchObject({
       id: "custom",
       api_format: "OpenAI",

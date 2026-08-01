@@ -1,6 +1,9 @@
-import type { ModelAgentConfig, ModelThinkingLevel, ModelType } from "@domain/model";
-
-export type { ModelThinkingLevel, ModelType };
+import type {
+  ModelAgentConfig,
+  ModelApiFormat,
+  ModelThinkingLevel,
+  ModelType,
+} from "@domain/model";
 
 export type ModelRequestSnapshot = {
   extra_headers: Record<string, string>;
@@ -25,17 +28,13 @@ export type ModelGenerationSnapshot = {
   temperature_custom_enable: boolean;
   top_p: number;
   top_p_custom_enable: boolean;
-  presence_penalty: number;
-  presence_penalty_custom_enable: boolean;
-  frequency_penalty: number;
-  frequency_penalty_custom_enable: boolean;
 };
 
 export type ModelEntrySnapshot = {
   id: string;
   type: ModelType;
   name: string;
-  api_format: string;
+  api_format: ModelApiFormat;
   api_url: string;
   api_key: string;
   model_id: string;

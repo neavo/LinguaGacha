@@ -3,7 +3,7 @@ import { Model, type ModelApiFormat } from "../../domain/model";
 import * as AppErrors from "../../shared/error";
 import { get_primary_api_key } from "./llm-client-policy";
 import { normalize_google_api_base_url } from "./policy/google-policy";
-import { normalize_openai_compatible_base_url } from "./policy/openai-compatible-policy";
+import { normalize_openai_sdk_base_url } from "./policy/openai-policy";
 
 // 模型列表探测沿用浏览器 UA，减少部分服务商对 Node 默认 UA 的拒绝概率。
 const BROWSER_USER_AGENT =
@@ -33,10 +33,10 @@ export async function list_available_models(model: JsonRecord): Promise<string[]
 }
 
 /**
- * OpenAI-compatible 与 Sakura 都复用 `/models` 列表语义。
+ * OpenAI 两种 wire 格式与 Sakura 都复用 `/models` 列表语义。
  */
 async function fetch_openai_available_models(model: JsonRecord): Promise<string[]> {
-  const api_url = normalize_openai_compatible_base_url(String(model["api_url"] ?? ""));
+  const api_url = normalize_openai_sdk_base_url(String(model["api_url"] ?? ""));
   const data = await fetch_json(`${api_url}/models`, {
     Authorization: `Bearer ${get_primary_api_key(String(model["api_key"] ?? ""))}`,
     ...build_browser_headers(model),

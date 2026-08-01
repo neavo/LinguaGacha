@@ -14,6 +14,7 @@ export const en_us_app = {
       preset: "Preset Models",
       google: "Custom Google Models",
       openai: "Custom OpenAI Models",
+      openai_responses: "Custom OpenAI Responses Models",
       anthropic: "Custom Anthropic Models",
     },
     selection: {

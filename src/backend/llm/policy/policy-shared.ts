@@ -1,5 +1,21 @@
 import type { JsonRecord } from "../../../domain/json";
+import type { ModelApiFormat } from "../../../domain/model";
+import * as AppErrors from "../../../shared/error";
 import type { ModelRequestSnapshot } from "./policy-types";
+
+/** 统一构造 Pi payload 结构异常，保留 API 格式与可选字段定位。 */
+export function invalid_pi_payload(
+  api_format: ModelApiFormat,
+  field?: string,
+): AppErrors.InternalInvariantError {
+  return new AppErrors.InternalInvariantError({
+    diagnostic_context: {
+      reason: "invalid_model_request_payload",
+      api_format,
+      ...(field === undefined ? {} : { field }),
+    },
+  });
+}
 
 /**
  * 自定义数值只有开关为 true 才生效，避免默认 UI 值误入 payload。
@@ -12,19 +28,15 @@ export function read_custom_number(generation: Readonly<JsonRecord>, key: string
   return Number.isFinite(value) ? value : null;
 }
 
-/**
- * generation 字段按 provider 字段名映射，未启用的用户字段不进入 payload。
- */
-export function patch_generation_fields(
+/** top_p 只有显式启用时才按 provider 字段名写入 payload。 */
+export function patch_top_p(
   payload: Record<string, unknown>,
   generation: Readonly<JsonRecord>,
-  field_map: Record<string, string>,
+  target_key: "top_p" | "topP",
 ): void {
-  for (const [source_key, target_key] of Object.entries(field_map)) {
-    const value = read_custom_number(generation, source_key);
-    if (value !== null) {
-      payload[target_key] = value;
-    }
+  const value = read_custom_number(generation, "top_p");
+  if (value !== null) {
+    payload[target_key] = value;
   }
 }
 

@@ -95,7 +95,7 @@ function normalize_pi_result(
   const usage = normalize_usage(snapshot, message);
   const finish_error = read_finish_error(snapshot, message);
   const normalized_result =
-    snapshot.provider === "sakura" && response_result !== "" && finish_error === undefined
+    snapshot.api_format === "SakuraLLM" && response_result !== "" && finish_error === undefined
       ? convert_sakura_response(response_result)
       : response_result;
   return {
@@ -114,13 +114,13 @@ function normalize_usage(
   snapshot: ModelRequestSnapshot,
   message: AssistantMessage,
 ): Pick<LLMRequestResult, "input_tokens" | "output_tokens"> {
-  if (snapshot.provider === "google") {
+  if (snapshot.api_format === "Google") {
     return {
       input_tokens: message.usage.input + message.usage.cacheRead,
       output_tokens: Math.max(0, message.usage.output - (message.usage.reasoning ?? 0)),
     };
   }
-  if (snapshot.provider === "anthropic") {
+  if (snapshot.api_format === "Anthropic") {
     return { input_tokens: message.usage.input, output_tokens: message.usage.output };
   }
   return {
@@ -134,30 +134,22 @@ function read_finish_error(
   snapshot: ModelRequestSnapshot,
   message: AssistantMessage,
 ): LogError | undefined {
-  if (snapshot.provider === "google") return undefined;
-  const raw_reason = message.rawStopReason;
-  if (
-    (snapshot.provider === "anthropic" &&
-      (raw_reason === "max_tokens" ||
-        (raw_reason === undefined && message.stopReason === "length"))) ||
-    (snapshot.provider !== "anthropic" &&
-      (raw_reason === "length" || (raw_reason === undefined && message.stopReason === "length")))
-  ) {
+  if (snapshot.api_format === "Google") return undefined;
+  const reason_key =
+    snapshot.api_format === "Anthropic"
+      ? "stop_reason"
+      : snapshot.api_format === "OpenAIResponses"
+        ? "status"
+        : "finish_reason";
+  const raw_reason = message.rawStopReason ?? message.stopReason;
+  if (message.stopReason === "length") {
     return log_error_from_message("供应商返回长度截断。", {
-      [snapshot.provider === "anthropic" ? "stop_reason" : "finish_reason"]: raw_reason ?? "length",
+      [reason_key]: raw_reason,
     });
   }
-  if (
-    (snapshot.provider === "anthropic" &&
-      (raw_reason === "tool_use" ||
-        (raw_reason === undefined && message.stopReason === "toolUse"))) ||
-    (snapshot.provider !== "anthropic" &&
-      (raw_reason === "tool_calls" ||
-        (raw_reason === undefined && message.stopReason === "toolUse")))
-  ) {
+  if (message.stopReason === "toolUse") {
     return log_error_from_message("供应商返回工具调用，当前任务不支持。", {
-      [snapshot.provider === "anthropic" ? "stop_reason" : "finish_reason"]:
-        raw_reason ?? "tool_calls",
+      [reason_key]: raw_reason,
     });
   }
   return undefined;
@@ -181,7 +173,6 @@ function build_request_error(
   return to_log_error(error, {
     api_format: snapshot.api_format,
     ...(snapshot.model_id === "" ? {} : { model_id: snapshot.model_id }),
-    provider: snapshot.provider,
     run_id: body.run_id,
     work_unit_id: body.work_unit_id,
   });

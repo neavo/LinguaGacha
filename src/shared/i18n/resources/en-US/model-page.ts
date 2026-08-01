@@ -13,6 +13,9 @@ export const en_us_model_page = {
     custom_openai: {
       description: "Custom models compatible with OpenAI API format",
     },
+    custom_openai_responses: {
+      description: "Custom models compatible with OpenAI Responses API format",
+    },
     custom_anthropic: {
       description: "Custom models compatible with Anthropic Claude API format",
     },
@@ -115,14 +118,6 @@ export const en_us_model_page = {
     },
     temperature: {
       title: "temperature",
-      description: "Please be careful, invalid values may cause errors",
-    },
-    presence_penalty: {
-      title: "presence_penalty",
-      description: "Please be careful, invalid values may cause errors",
-    },
-    frequency_penalty: {
-      title: "frequency_penalty",
       description: "Please be careful, invalid values may cause errors",
     },
     extra_headers: {

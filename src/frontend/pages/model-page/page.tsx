@@ -113,7 +113,6 @@ export function ModelPage(_props: ModelPageProps): JSX.Element {
               description={category.description}
               accent_color={category.accent_color}
               models={category.models}
-              drag_disabled={model_page_state.readonly}
               add_action={
                 category.can_add ? (
                   <AppButton

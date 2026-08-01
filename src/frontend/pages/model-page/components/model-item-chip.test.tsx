@@ -2,7 +2,7 @@ import { act, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { create_model_snapshot } from "@frontend/pages/model-page/dialogs/model-dialog-test-fixture";
+import { create_model_snapshot } from "@frontend/pages/model-page/model-test-fixture";
 import { ModelItemChip } from "./model-item-chip";
 
 const { use_sortable_mock } = vi.hoisted(() => ({

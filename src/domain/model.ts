@@ -1,22 +1,42 @@
 import type { JsonRecord } from "./json";
 import { read_json_record } from "./json";
 
-// 模型类型是设置文件、模型页分组和服务端模板选择共享的稳定值域
-export const MODEL_TYPES = [
-  "PRESET",
-  "CUSTOM_GOOGLE",
-  "CUSTOM_OPENAI",
-  "CUSTOM_ANTHROPIC",
-] as const;
+// 模型类型是设置文件、模型页分组和服务端模板选择共享的稳定值域。
+const MODEL_TYPE_DEFINITIONS = {
+  PRESET: { sort_order: 0, template_filename: null },
+  CUSTOM_GOOGLE: { sort_order: 1, template_filename: "preset_model_custom_google.json" },
+  CUSTOM_OPENAI: { sort_order: 2, template_filename: "preset_model_custom_openai.json" },
+  CUSTOM_OPENAI_RESPONSES: {
+    sort_order: 3,
+    template_filename: "preset_model_custom_openai_responses.json",
+  },
+  CUSTOM_ANTHROPIC: { sort_order: 4, template_filename: "preset_model_custom_anthropic.json" },
+} as const;
+
+export type ModelType = keyof typeof MODEL_TYPE_DEFINITIONS;
+export type CustomModelType = Exclude<ModelType, "PRESET">;
+
+/** 排序、模板补齐和模型页展示共用同一份类型定义。 */
+export const MODEL_TYPES: readonly ModelType[] = Object.freeze(
+  (Object.keys(MODEL_TYPE_DEFINITIONS) as ModelType[]).sort(
+    (left, right) =>
+      MODEL_TYPE_DEFINITIONS[left].sort_order - MODEL_TYPE_DEFINITIONS[right].sort_order,
+  ),
+);
 
 /** 配置、API 与运行时共用的模型执行用途。 */
 export const MODEL_USAGES = ["translation", "analysis", "agent"] as const;
 
-export const MODEL_API_FORMATS = ["OpenAI", "SakuraLLM", "Google", "Anthropic"] as const; // API 格式同时影响连通性测试、LLM adapter 和请求 payload 兼容策略
+export const MODEL_API_FORMATS = [
+  "OpenAI",
+  "OpenAIResponses",
+  "SakuraLLM",
+  "Google",
+  "Anthropic",
+] as const; // API 格式同时影响连通性测试、LLM adapter 和请求 payload 兼容策略
 
 export const MODEL_THINKING_LEVELS = ["OFF", "LOW", "MEDIUM", "HIGH"] as const; // thinking 档位只在支持推理的模型上生效，但快照值域保持统一
 
-export type ModelType = (typeof MODEL_TYPES)[number];
 export type ModelUsage = (typeof MODEL_USAGES)[number];
 /** 每种执行用途当前选择的模型 ID。 */
 export type ModelSelection = Record<ModelUsage, string>;
@@ -51,30 +71,11 @@ type ModelGenerationConfig = {
   temperature_custom_enable: boolean; // 是否启用自定义温度
   top_p: number; // Top P
   top_p_custom_enable: boolean; // 是否启用自定义 Top P
-  presence_penalty: number; // Presence penalty
-  presence_penalty_custom_enable: boolean; // 是否启用自定义 presence penalty
-  frequency_penalty: number; // Frequency penalty
-  frequency_penalty_custom_enable: boolean; // 是否启用自定义 frequency penalty
 };
 
 const MODEL_TYPE_SET = new Set<ModelType>(MODEL_TYPES);
 const MODEL_API_FORMAT_SET = new Set<ModelApiFormat>(MODEL_API_FORMATS);
 const MODEL_THINKING_LEVEL_SET = new Set<ModelThinkingLevel>(MODEL_THINKING_LEVELS);
-
-// 排序值决定设置落盘与模型页展示顺序，新增类型时必须显式补齐
-const MODEL_TYPE_SORT_ORDER = {
-  PRESET: 0,
-  CUSTOM_GOOGLE: 1,
-  CUSTOM_OPENAI: 2,
-  CUSTOM_ANTHROPIC: 3,
-} as const satisfies Record<ModelType, number>;
-
-// 自定义模型模板文件名由模型类型唯一决定，服务层不再手写分发表
-const MODEL_TEMPLATE_FILENAME_BY_TYPE = {
-  CUSTOM_GOOGLE: "preset_model_custom_google.json",
-  CUSTOM_OPENAI: "preset_model_custom_openai.json",
-  CUSTOM_ANTHROPIC: "preset_model_custom_anthropic.json",
-} as const satisfies Partial<Record<ModelType, string>>;
 
 const DEFAULT_REQUEST_CONFIG: ModelRequestConfig = {
   extra_headers: {},
@@ -105,10 +106,6 @@ const DEFAULT_GENERATION_CONFIG: ModelGenerationConfig = {
   temperature_custom_enable: false,
   top_p: 0.95,
   top_p_custom_enable: false,
-  presence_penalty: 0,
-  presence_penalty_custom_enable: false,
-  frequency_penalty: 0,
-  frequency_penalty_custom_enable: false,
 };
 
 /**
@@ -241,32 +238,35 @@ export class Model {
    * 未知类型排在最后，模型页排序不因脏数据抛错
    */
   public static resolve_type_sort_order(value: unknown): number {
-    return is_model_type(value) ? MODEL_TYPE_SORT_ORDER[value] : 99;
+    return is_model_type(value) ? MODEL_TYPE_DEFINITIONS[value].sort_order : 99;
   }
 
   /**
    * 自定义模板路径只由模型类型计算，避免调用点散落文件名
    */
+  public static resolve_template_filename(value: CustomModelType): string;
+  public static resolve_template_filename(value: unknown): string | null;
   public static resolve_template_filename(value: unknown): string | null {
-    return Model.is_custom_type(value) ? MODEL_TEMPLATE_FILENAME_BY_TYPE[value] : null;
+    return is_model_type(value) ? MODEL_TYPE_DEFINITIONS[value].template_filename : null;
   }
 
   /**
-   * 默认推理能力用于初始化设置，具体请求仍以模型配置为准
+   * API 格式是否允许显示思考配置，具体请求仍以模型配置与模型能力为准。
    */
-  public static api_format_supports_reasoning_by_default(api_format: ModelApiFormat): boolean {
-    return api_format === "Google" || api_format === "Anthropic";
+  public static api_format_supports_thinking_configuration(api_format: ModelApiFormat): boolean {
+    return api_format !== "SakuraLLM";
   }
 
-  public static is_custom_type(value: unknown): value is Exclude<ModelType, "PRESET"> {
-    return value === "CUSTOM_GOOGLE" || value === "CUSTOM_OPENAI" || value === "CUSTOM_ANTHROPIC";
+  /** 模板存在性是自定义类型的唯一判据，避免另维护一份并行枚举。 */
+  public static is_custom_type(value: unknown): value is CustomModelType {
+    return is_model_type(value) && MODEL_TYPE_DEFINITIONS[value].template_filename !== null;
   }
 
   /**
    * 服务层用这个顺序补齐每类自定义模型模板，避免枚举散落
    */
-  public static custom_types(): Array<Exclude<ModelType, "PRESET">> {
-    return ["CUSTOM_GOOGLE", "CUSTOM_OPENAI", "CUSTOM_ANTHROPIC"];
+  public static custom_types(): CustomModelType[] {
+    return MODEL_TYPES.filter(Model.is_custom_type);
   }
 
   private static normalize_request_config(value: unknown): ModelRequestConfig {
@@ -317,16 +317,6 @@ export class Model {
       temperature_custom_enable: Boolean(record["temperature_custom_enable"]),
       top_p: read_json_model_number(record["top_p"], DEFAULT_GENERATION_CONFIG.top_p),
       top_p_custom_enable: Boolean(record["top_p_custom_enable"]),
-      presence_penalty: read_json_model_number(
-        record["presence_penalty"],
-        DEFAULT_GENERATION_CONFIG.presence_penalty,
-      ),
-      presence_penalty_custom_enable: Boolean(record["presence_penalty_custom_enable"]),
-      frequency_penalty: read_json_model_number(
-        record["frequency_penalty"],
-        DEFAULT_GENERATION_CONFIG.frequency_penalty,
-      ),
-      frequency_penalty_custom_enable: Boolean(record["frequency_penalty_custom_enable"]),
     };
   }
 }
