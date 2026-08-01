@@ -1,8 +1,8 @@
 import { patch_generation_fields } from "./policy-shared";
 import type { ModelRequestSnapshot } from "./policy-types";
 
-// Google SDK 会自行拼接版本段；这里只识别用户配置末尾的显式版本。
-const GOOGLE_SDK_VERSION_SEGMENT_PATTERN = /\/v1(?:beta|alpha)?$/iu;
+const GOOGLE_DEFAULT_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
+const GOOGLE_API_VERSION_SEGMENT_PATTERN = /\/v1(?:beta|alpha)?$/iu;
 const GOOGLE_25_PRO_MIN_THINKING_BUDGET = 128;
 
 const GOOGLE_25_THINKING_BUDGET_BY_LEVEL = {
@@ -17,17 +17,13 @@ const GOOGLE_25_FLASH_LITE_THINKING_BUDGET_BY_LEVEL = {
   HIGH: 1024,
 } as const satisfies Record<"LOW" | "MEDIUM" | "HIGH", number>;
 
-/**
- * Google SDK 会按 apiVersion 拼路径，base URL 末尾不能再携带 v1/v1beta/v1alpha。
- */
-export function normalize_google_sdk_base_url(url: string): string {
-  return url.trim().replace(/\/+$/u, "").replace(GOOGLE_SDK_VERSION_SEGMENT_PATTERN, "");
-}
-
-/** Pi 的 Google adapter 在自定义 base URL 下不再追加版本，因此这里补齐默认 v1beta。 */
-export function normalize_google_pi_base_url(url: string): string {
+/** Google REST 与 Pi 共用完整 API 地址；保留显式版本，缺失时补齐默认 v1beta。 */
+export function normalize_google_api_base_url(url: string): string {
   const normalized = url.trim().replace(/\/+$/u, "");
-  if (normalized === "" || GOOGLE_SDK_VERSION_SEGMENT_PATTERN.test(normalized)) {
+  if (normalized === "") {
+    return GOOGLE_DEFAULT_API_BASE_URL;
+  }
+  if (GOOGLE_API_VERSION_SEGMENT_PATTERN.test(normalized)) {
     return normalized;
   }
   return `${normalized}/v1beta`;
