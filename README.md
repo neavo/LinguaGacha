@@ -55,9 +55,9 @@
   - 将 `待翻译的文件` 拖到页面上创建项目
   - 在 `模型管理` 中设置要使用的模型
   - 在 `基础设置` 中设置原文语言、译文语言等必要信息
-  - 在 `工作台` 中激活模型并执行 `分析` 提取术语表
-  - 在 `AGENT` 中自动完成术语表的审校（可选）
-  - 在 `工作台` 中激活模型并执行 `翻译` 完成翻译
+  - 在 `工作台` 中选择模型并执行 `分析` 提取术语表
+  - 在 `AGENT` 中选择模型，然后自动完成术语表的审校（可选）
+  - 在 `工作台` 中选择模型并执行 `翻译` 完成翻译
   - Enjoy!
 
 ## 使用教程 📝
@@ -72,8 +72,6 @@
   - [命令行模式](https://github.com/neavo/LinguaGacha/wiki/CLIMode)
   - [术语表](https://github.com/neavo/LinguaGacha/wiki/Glossary)　　[文本保护](https://github.com/neavo/LinguaGacha/wiki/TextPreserve)　　[文本替换](https://github.com/neavo/LinguaGacha/wiki/Replacement)　　
   - [MTool 优化器](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizer)　　[百宝箱 - 繁简转换](https://github.com/neavo/LinguaGacha/wiki/TSConversion)
-- 配套 Skill
-  - [术语表自动审校](https://github.com/neavo/LinguaGacha/blob/main/.codex/skills/lg-glossary-audit/SKILL.md)
 - 你可以在 [Wiki](https://github.com/neavo/LinguaGacha/wiki) 找到各项功能的更详细介绍，也欢迎在 [讨论区](https://github.com/neavo/LinguaGacha/discussions) 投稿你的使用心得
 
 ## 文本格式 🏷️
@@ -90,6 +88,9 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20260802 v0.110.1
+  - 调整与改进 [#683](https://github.com/neavo/LinguaGacha/issues/683) [#685](https://github.com/neavo/LinguaGacha/issues/685) [#686](https://github.com/neavo/LinguaGacha/issues/686) [687](https://github.com/neavo/LinguaGacha/issues/687)
+
 - 20260801 v0.110.0
   - 应用内 `AGENT` 模式
     - 通过对话自动完成术语表审校等任务

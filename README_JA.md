@@ -56,9 +56,9 @@
   - `翻訳するファイル` をページにドラッグしてプロジェクトを作成
   - `モデル管理` で使用するモデルを設定
   - `基本設定` でソース言語、ターゲット言語などの必要な情報を設定
-  - `ワークベンチ` でモデルを有効化し、`分析` を実行して用語集を抽出
-  - `AGENT` で用語集のレビューを自動で完了（任意）
-  - `ワークベンチ` でモデルを有効化し、`翻訳` を実行して翻訳を完了
+  - `ワークベンチ` でモデルを選択し、`分析` を実行して用語集を抽出
+  - `AGENT` でモデルを選択し、用語集のレビューを自動で完了（任意）
+  - `ワークベンチ` でモデルを選択し、`翻訳` を実行して翻訳を完了
   - Enjoy!
 
 ## 使い方チュートリアル - English 📝
@@ -72,8 +72,6 @@
   - [CLI Mode](https://github.com/neavo/LinguaGacha/wiki/CLIModeEN)
   - [Glossary](https://github.com/neavo/LinguaGacha/wiki/GlossaryEN)　　[Text Preserve](https://github.com/neavo/LinguaGacha/wiki/TextPreserveEN)　　[Text Replacement](https://github.com/neavo/LinguaGacha/wiki/ReplacementEN)
   - [MTool Optimizer](https://github.com/neavo/LinguaGacha/wiki/MToolOptimizerEN)　　[TS Conversion](https://github.com/neavo/LinguaGacha/wiki/TSConversionEN)
-- 連携 Skill
-  - [用語集の自動校正](https://github.com/neavo/LinguaGacha/blob/main/.codex/skills/lg-glossary-audit/SKILL.md)
 - You can find more details on each feature in the [Wiki](https://github.com/neavo/LinguaGacha/wiki), and you are welcome to share your experience in the [Discussions](https://github.com/neavo/LinguaGacha/discussions)
 
 ## 対応フォーマット 🏷️
@@ -90,6 +88,9 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
+- 20260802 v0.110.1
+  - 調整と改善 [#683](https://github.com/neavo/LinguaGacha/issues/683) [#685](https://github.com/neavo/LinguaGacha/issues/685) [#686](https://github.com/neavo/LinguaGacha/issues/686) [687](https://github.com/neavo/LinguaGacha/issues/687)
+
 - 20260801 v0.110.0
   - アプリ内 `AGENT` モード
     - 対話を通じて用語集のレビューなどのタスクを自動で完了
