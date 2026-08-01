@@ -17,7 +17,7 @@ import {
   apply_google_one_shot_request_overrides,
   apply_google_request_overrides,
   build_google_thinking_config,
-  normalize_google_pi_base_url,
+  normalize_google_api_base_url,
 } from "./policy/google-policy";
 import {
   apply_openai_one_shot_request_overrides,
@@ -48,7 +48,7 @@ export function get_primary_api_key(raw_api_key: string): string {
 /** 按 pi-ai adapter 的实际 base URL 契约归一模型请求地址。 */
 export function normalize_pi_api_url(url: string, api_format: ModelApiFormat): string {
   if (api_format === "Google") {
-    return normalize_google_pi_base_url(url);
+    return normalize_google_api_base_url(url);
   }
   if (api_format === "OpenAI" || api_format === "SakuraLLM") {
     return normalize_openai_compatible_base_url(url);

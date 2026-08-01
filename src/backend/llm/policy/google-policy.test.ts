@@ -5,21 +5,19 @@ import {
   apply_google_one_shot_request_overrides,
   apply_google_request_overrides,
   build_google_thinking_config,
-  normalize_google_pi_base_url,
-  normalize_google_sdk_base_url,
+  normalize_google_api_base_url,
 } from "./google-policy";
 
 describe("Google 请求规则", () => {
-  it("分别按 Google SDK 与 Pi adapter 契约归一 base URL", () => {
-    expect(normalize_google_sdk_base_url("https://proxy.example/google/v1alpha")).toBe(
-      "https://proxy.example/google",
-    );
-    expect(normalize_google_pi_base_url("https://proxy.example/google")).toBe(
-      "https://proxy.example/google/v1beta",
-    );
-    expect(normalize_google_pi_base_url("https://proxy.example/google/v1alpha/")).toBe(
-      "https://proxy.example/google/v1alpha",
-    );
+  it.each([
+    ["", "https://generativelanguage.googleapis.com/v1beta"],
+    ["https://proxy.example/google", "https://proxy.example/google/v1beta"],
+    ["https://proxy.example/google/", "https://proxy.example/google/v1beta"],
+    ["https://proxy.example/google/v1", "https://proxy.example/google/v1"],
+    ["https://proxy.example/google/v1beta/", "https://proxy.example/google/v1beta"],
+    ["https://proxy.example/google/v1alpha", "https://proxy.example/google/v1alpha"],
+  ])("把 Google API 地址 %s 归一为 %s", (url, expected) => {
+    expect(normalize_google_api_base_url(url)).toBe(expected);
   });
 
   it("OneShot 补齐生成、安全和思考字段，并让内部 signal 最终生效", () => {

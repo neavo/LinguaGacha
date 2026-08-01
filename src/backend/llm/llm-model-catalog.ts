@@ -1,15 +1,14 @@
-import { GoogleGenAI, type Model as GoogleSdkModel } from "@google/genai";
-
 import { read_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
 import { Model, type ModelApiFormat } from "../../domain/model";
 import * as AppErrors from "../../shared/error";
 import { get_primary_api_key } from "./llm-client-policy";
-import { normalize_google_sdk_base_url } from "./policy/google-policy";
+import { normalize_google_api_base_url } from "./policy/google-policy";
 import { normalize_openai_compatible_base_url } from "./policy/openai-compatible-policy";
 
 // 模型列表探测沿用浏览器 UA，减少部分服务商对 Node 默认 UA 的拒绝概率。
 const BROWSER_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36";
+const GOOGLE_MODEL_LIST_PAGE_SIZE = 1000;
 
 /**
  * 按供应商协议查询远端实时模型列表；任务级 Key 轮换不参与模型列表探测。
@@ -17,13 +16,15 @@ const BROWSER_USER_AGENT =
 export async function list_available_models(model: JsonRecord): Promise<string[]> {
   try {
     const api_format = resolve_model_api_format(model);
+    let models: string[];
     if (api_format === "Google") {
-      return await fetch_google_available_models(model);
+      models = await fetch_google_available_models(model);
+    } else if (api_format === "Anthropic") {
+      models = await fetch_anthropic_available_models(model);
+    } else {
+      models = await fetch_openai_available_models(model);
     }
-    if (api_format === "Anthropic") {
-      return await fetch_anthropic_available_models(model);
-    }
-    return await fetch_openai_available_models(model);
+    return models.sort();
   } catch (error) {
     // fetch_json 已完成公开状态收窄；重复包装会丢失这份安全诊断。
     if (error instanceof AppErrors.ModelProviderFailedError) throw error;
@@ -44,18 +45,29 @@ async function fetch_openai_available_models(model: JsonRecord): Promise<string[
 }
 
 /**
- * Google 模型列表走 @google/genai，让 SDK 统一拼接 apiVersion 与 list 路径。
+ * Google models.list 按 nextPageToken 拉取所有页。
  */
 async function fetch_google_available_models(model: JsonRecord): Promise<string[]> {
-  const api_url = normalize_google_sdk_base_url(String(model["api_url"] ?? ""));
-  const client = new GoogleGenAI({
-    apiKey: get_primary_api_key(String(model["api_key"] ?? "")),
-    httpOptions: {
-      baseUrl: api_url === "" ? undefined : api_url,
-      headers: build_browser_headers(model),
-    },
-  } as ConstructorParameters<typeof GoogleGenAI>[0]);
-  return await read_google_model_names(await client.models.list());
+  const api_url = normalize_google_api_base_url(String(model["api_url"] ?? ""));
+  const headers = {
+    "x-goog-api-key": get_primary_api_key(String(model["api_key"] ?? "")),
+    ...build_browser_headers(model),
+  };
+  const models: string[] = [];
+  let page_token: string | undefined;
+  do {
+    const url = new URL(`${api_url}/models`);
+    url.searchParams.set("pageSize", String(GOOGLE_MODEL_LIST_PAGE_SIZE));
+    if (page_token !== undefined) {
+      url.searchParams.set("pageToken", page_token);
+    }
+    const data = await fetch_json(url.toString(), headers);
+    models.push(...read_response_model_ids(data, "models", "name"));
+    const next_page_token = read_json_record(data)["nextPageToken"];
+    page_token =
+      typeof next_page_token === "string" && next_page_token !== "" ? next_page_token : undefined;
+  } while (page_token !== undefined);
+  return models;
 }
 
 /**
@@ -100,19 +112,6 @@ function read_response_model_ids(data: JsonValue, array_key: string, id_key: str
   return items
     .map((item) => ({ ...read_json_record(item) })[id_key])
     .filter((value): value is string => typeof value === "string" && value.trim() !== "");
-}
-
-/**
- * Google SDK pager 会自动跨页，模型名缺失的条目不进入页面候选列表。
- */
-async function read_google_model_names(pager: AsyncIterable<GoogleSdkModel>): Promise<string[]> {
-  const names: string[] = [];
-  for await (const item of pager) {
-    if (typeof item.name === "string" && item.name.trim() !== "") {
-      names.push(item.name);
-    }
-  }
-  return names;
 }
 
 /**

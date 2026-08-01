@@ -58,10 +58,6 @@ describe("LLM 请求策略", () => {
     expect(normalize_pi_api_url("https://google.example", "Google")).toBe(
       "https://google.example/v1beta",
     );
-    expect(normalize_pi_api_url("https://google.example/v1alpha/", "Google")).toBe(
-      "https://google.example/v1alpha",
-    );
-    expect(normalize_pi_api_url("", "Google")).toBe("");
     expect(normalize_pi_api_url("https://api.example/v1/chat/completions", "OpenAI")).toBe(
       "https://api.example/v1",
     );

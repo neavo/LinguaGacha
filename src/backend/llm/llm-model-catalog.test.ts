@@ -2,98 +2,98 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { list_available_models } from "./llm-model-catalog";
 
-const google_genai_mock = vi.hoisted(() => ({
-  constructor_options: [] as unknown[],
-  list: vi.fn(),
-}));
-
-vi.mock("@google/genai", () => ({
-  GoogleGenAI: vi.fn(function GoogleGenAI(options: unknown) {
-    google_genai_mock.constructor_options.push(options);
-    return { models: { list: google_genai_mock.list } };
-  }),
-}));
-
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
-  google_genai_mock.constructor_options.length = 0;
-  google_genai_mock.list.mockReset();
 });
 
 describe("llm-model-catalog", () => {
-  it("OpenAI-compatible 模型列表读取 data[].id 并附带浏览器 UA", async () => {
-    const fetch_mock = vi.fn(async () =>
-      Response.json({
-        data: [{ id: "gpt-test" }, { id: "" }, { name: "skip" }, { id: "gpt-ok" }],
-      }),
-    );
-    vi.stubGlobal("fetch", fetch_mock);
-
-    await expect(
-      list_available_models({
-        api_format: "OpenAI",
-        api_url: "https://api.example/v1",
-        api_key: "key-a\nkey-b",
-        request: {
-          extra_headers: { "X-Trace": "trace-1" },
-          extra_headers_custom_enable: true,
-        },
-      }),
-    ).resolves.toEqual(["gpt-test", "gpt-ok"]);
-
-    expect(fetch_mock).toHaveBeenCalledWith(
-      "https://api.example/v1/models",
-      expect.objectContaining({
-        method: "GET",
-        headers: expect.objectContaining({
-          Authorization: "Bearer key-a",
-          "User-Agent": expect.stringContaining("Chrome/133"),
-          "X-Trace": "trace-1",
+  it.each(["OpenAI", "SakuraLLM"] as const)(
+    "%s 模型列表读取 data[].id、排序并附带浏览器 UA",
+    async (api_format) => {
+      const fetch_mock = vi.fn(async () =>
+        Response.json({
+          data: [{ id: "model-z" }, { id: "" }, { name: "skip" }, { id: "model-a" }],
         }),
-      }),
-    );
-  });
+      );
+      vi.stubGlobal("fetch", fetch_mock);
 
-  it("Google 模型列表使用 SDK、首个 key 和归一化后的 baseUrl", async () => {
-    google_genai_mock.list.mockResolvedValue(
-      create_google_model_pager([
-        { name: "models/gemini-2.5-flash" },
-        { name: "" },
-        { displayName: "missing-name" },
-        { name: "models/gemini-2.5-pro" },
-      ]),
-    );
+      await expect(
+        list_available_models({
+          api_format,
+          api_url: "https://api.example/v1",
+          api_key: "key-a\nkey-b",
+          request: {
+            extra_headers: { "X-Trace": "trace-1" },
+            extra_headers_custom_enable: true,
+          },
+        }),
+      ).resolves.toEqual(["model-a", "model-z"]);
+
+      expect(fetch_mock).toHaveBeenCalledWith(
+        "https://api.example/v1/models",
+        expect.objectContaining({
+          method: "GET",
+          headers: expect.objectContaining({
+            Authorization: "Bearer key-a",
+            "User-Agent": expect.stringContaining("Chrome/133"),
+            "X-Trace": "trace-1",
+          }),
+        }),
+      );
+    },
+  );
+
+  it("Google 模型列表通过 REST 拉取所有页后统一排序", async () => {
+    const fetch_mock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        Response.json({
+          models: [{ name: "models/gemini-z" }, { name: "" }, { displayName: "missing-name" }],
+          nextPageToken: "page 2",
+        }),
+      )
+      .mockResolvedValueOnce(Response.json({ models: [{ name: "models/gemini-a" }] }));
+    vi.stubGlobal("fetch", fetch_mock);
 
     await expect(
       list_available_models({
         api_format: "Google",
         api_key: "google-key-a\ngoogle-key-b",
-        api_url: "https://generativelanguage.googleapis.com/v1beta",
+        api_url: "https://generativelanguage.googleapis.com",
         request: {
           extra_headers: { "X-Trace": "trace-google" },
           extra_headers_custom_enable: true,
         },
       }),
-    ).resolves.toEqual(["models/gemini-2.5-flash", "models/gemini-2.5-pro"]);
+    ).resolves.toEqual(["models/gemini-a", "models/gemini-z"]);
 
-    expect(google_genai_mock.list).toHaveBeenCalledWith();
-    expect(google_genai_mock.constructor_options).toEqual([
-      expect.objectContaining({
-        apiKey: "google-key-a",
-        httpOptions: expect.objectContaining({
-          baseUrl: "https://generativelanguage.googleapis.com",
-          headers: expect.objectContaining({
-            "User-Agent": expect.stringContaining("Chrome/133"),
-            "X-Trace": "trace-google",
-          }),
+    expect(fetch_mock).toHaveBeenNthCalledWith(
+      1,
+      "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",
+      {
+        headers: expect.objectContaining({
+          "x-goog-api-key": "google-key-a",
+          "User-Agent": expect.stringContaining("Chrome/133"),
+          "X-Trace": "trace-google",
         }),
-      }),
-    ]);
+        method: "GET",
+      },
+    );
+    expect(fetch_mock).toHaveBeenNthCalledWith(
+      2,
+      "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&pageToken=page+2",
+      {
+        headers: expect.objectContaining({ "x-goog-api-key": "google-key-a" }),
+        method: "GET",
+      },
+    );
   });
 
-  it("Anthropic 模型列表使用默认地址和供应商请求头", async () => {
-    const fetch_mock = vi.fn(async () => Response.json({ data: [{ id: "claude-sonnet-4-5" }] }));
+  it("Anthropic 模型列表排序并使用默认地址和供应商请求头", async () => {
+    const fetch_mock = vi.fn(async () =>
+      Response.json({ data: [{ id: "claude-z" }, { id: "claude-a" }] }),
+    );
     vi.stubGlobal("fetch", fetch_mock);
 
     await expect(
@@ -102,7 +102,7 @@ describe("llm-model-catalog", () => {
         api_key: "anthropic-key",
         api_url: "",
       }),
-    ).resolves.toEqual(["claude-sonnet-4-5"]);
+    ).resolves.toEqual(["claude-a", "claude-z"]);
 
     expect(fetch_mock).toHaveBeenCalledWith("https://api.anthropic.com/v1/models", {
       headers: expect.objectContaining({
@@ -132,13 +132,3 @@ describe("llm-model-catalog", () => {
     });
   });
 });
-
-function create_google_model_pager(
-  models: Array<{ name?: string; displayName?: string }>,
-): AsyncIterable<{ name?: string; displayName?: string }> {
-  return {
-    async *[Symbol.asyncIterator]() {
-      yield* models;
-    },
-  };
-}
