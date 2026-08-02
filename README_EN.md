@@ -57,7 +57,7 @@
   - Drag the `files to translate` onto the page to create a project
   - Configure the model you want to use in `Model Management`
   - Configure essential information such as source and target languages in `Basic Settings`
-  - Select the model and run `Analysis` in `Workbench` to extract the glossary
+  - Select the model and run `Analysis` in `Workbench` to extract the glossary (optional)
   - Select the model in `AGENT`, then automatically review the glossary (optional)
   - Select the model and run `Translation` in `Workbench` to complete the translation
   - Enjoy!
@@ -89,8 +89,11 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260803 v0.110.2
+  - Adjustments and improvements [#690](https://github.com/neavo/LinguaGacha/issues/690) [#693](https://github.com/neavo/LinguaGacha/issues/693) [#694](https://github.com/neavo/LinguaGacha/issues/694) [#695](https://github.com/neavo/LinguaGacha/issues/695) [#696](https://github.com/neavo/LinguaGacha/issues/696)
+
 - 20260802 v0.110.1
-  - Adjustments and improvements [#683](https://github.com/neavo/LinguaGacha/issues/683) [#685](https://github.com/neavo/LinguaGacha/issues/685) [#686](https://github.com/neavo/LinguaGacha/issues/686) [687](https://github.com/neavo/LinguaGacha/issues/687)
+  - Adjustments and improvements [#683](https://github.com/neavo/LinguaGacha/issues/683) [#685](https://github.com/neavo/LinguaGacha/issues/685) [#686](https://github.com/neavo/LinguaGacha/issues/686) [#687](https://github.com/neavo/LinguaGacha/issues/687)
 
 - 20260801 v0.110.0
   - In-app `AGENT` mode
