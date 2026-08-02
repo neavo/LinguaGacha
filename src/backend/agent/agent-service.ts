@@ -1,3 +1,5 @@
+import { scheduler } from "node:timers/promises";
+
 import {
   estimateContextTokens,
   formatSkillInvocation,
@@ -17,6 +19,7 @@ import {
   SettingsManager,
   type AgentSession,
   type AgentSessionEvent as PiAgentSessionEvent,
+  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 
 import type { JsonRecord } from "../../domain/json";
@@ -63,6 +66,17 @@ function build_agent_session_settings(limits: AgentModelLimits) {
       keepRecentTokens: AGENT_KEEP_RECENT_TOKENS,
     },
     retry: { enabled: true, maxRetries: 3, baseDelayMs: 2_000 },
+  };
+}
+
+/** SDK 已发布工具开始事件；统一让出一个事件循环，为本地 SSE 首帧提供发送轮次。 */
+function yield_before_tool_execution(tool: ToolDefinition): ToolDefinition {
+  return {
+    ...tool,
+    execute: async (...args: Parameters<ToolDefinition["execute"]>) => {
+      await scheduler.yield();
+      return tool.execute(...args);
+    },
   };
 }
 
@@ -337,7 +351,7 @@ export class AgentService {
     }
   }
 
-  /** 创建完全内存化的 SDK 会话，并只注册五个产品工具。 */
+  /** 创建完全内存化的 SDK 会话，并关闭默认工具与运行期资源发现。 */
   private async create_runtime(
     system_prompt: string,
     model_settings: JsonRecord,
@@ -387,7 +401,7 @@ export class AgentService {
           proofreading: this.proofreading,
         }),
         ...create_agent_skill_tools(this.skills, (name) => this.is_skill_explicitly_invoked(name)),
-      ],
+      ].map(yield_before_tool_execution),
       resourceLoader: resource_loader,
       sessionManager: SessionManager.inMemory(app_root),
       settingsManager: settings_manager,

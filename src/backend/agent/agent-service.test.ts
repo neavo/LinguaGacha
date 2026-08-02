@@ -15,6 +15,7 @@ import {
 } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { JsonRecord } from "../../domain/json";
+import type { AgentSessionEvent } from "../../shared/agent";
 import type { ProjectWriteResult } from "../../shared/project-event";
 import { ProjectSessionState } from "../project/project-session-state";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
@@ -613,6 +614,36 @@ describe("AgentService", () => {
     ]);
   });
 
+  it("工具执行体在 running 事件获得发送轮次后才开始", async () => {
+    const { service, publish, read_items } = await create_service();
+    fake_agent_state.mode = "tool_only";
+    let running_event_send_turn_completed = false;
+    let tool_started_before_running_turn = false;
+    // publish 的下一轮代表本地 SSE 获得写出机会；工具执行体不得抢在它之前。
+    publish.mockImplementation((_topic, payload) => {
+      const event = payload as AgentSessionEvent;
+      if (
+        event.type === "entry_upsert" &&
+        event.entry.kind === "tool_call" &&
+        event.entry.status === "running"
+      ) {
+        setImmediate(() => {
+          running_event_send_turn_completed = true;
+        });
+      }
+    });
+    read_items.mockImplementation(() => {
+      tool_started_before_running_turn = !running_event_send_turn_completed;
+      return [];
+    });
+
+    await service.send_message({ parts: [{ kind: "text", text: "查询" }] });
+    await wait_for_idle(service);
+
+    expect(tool_started_before_running_turn).toBe(false);
+    expect(read_items).toHaveBeenCalledOnce();
+  });
+
   it("模型回合按 user、assistant、tool_call、assistant 的真实时序追加条目", async () => {
     const { service, publish } = await create_service();
     fake_agent_state.mode = "tools";
@@ -781,7 +812,7 @@ describe("AgentService", () => {
     expect(count_published_events(publish, "snapshot_seed")).toBe(1);
   });
 
-  it("真实 Agent 注册五个产品工具并保留写入时间线", async () => {
+  it("真实 Agent 仅注册产品工具并保留写入时间线", async () => {
     const { service } = await create_service();
     fake_agent_state.mode = "write";
 
@@ -1251,6 +1282,7 @@ describe("AgentService", () => {
   async function create_service(load_resources = true): Promise<{
     service: AgentService;
     publish: ReturnType<typeof vi.fn>;
+    read_items: ReturnType<typeof vi.fn<() => JsonRecord[]>>;
     log_error: ReturnType<typeof vi.fn>;
     log_warning: ReturnType<typeof vi.fn>;
     select_agent_model: (model_id: "active" | "next") => void;
@@ -1264,6 +1296,7 @@ describe("AgentService", () => {
     let revision = 3;
     let items_revision = 0;
     let proofreading_revision = 0;
+    const read_items = vi.fn<() => JsonRecord[]>(() => []);
     const cache = {
       snapshot: () => ({
         projectPath: "test.lg",
@@ -1276,7 +1309,7 @@ describe("AgentService", () => {
         },
         itemCount: 0,
       }),
-      items: { readItems: () => [], readItem: () => null },
+      items: { readItems: read_items, readItem: () => null },
     };
     let agent_model_id: "active" | "next" = "active";
     let setting_read_count = 0;
@@ -1369,6 +1402,7 @@ describe("AgentService", () => {
     return {
       service,
       publish,
+      read_items,
       log_error,
       log_warning,
       select_agent_model: (model_id) => {

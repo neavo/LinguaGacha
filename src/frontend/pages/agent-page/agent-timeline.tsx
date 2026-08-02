@@ -1,5 +1,4 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Check, Square, X } from "lucide-react";
 
 import type { AgentEntry, AgentEntryStatus } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
@@ -353,24 +352,14 @@ function AgentRoundHeader({ user, t }: { user: UserEntry; t: Translate }): JSX.E
   );
 }
 
-/** 状态同时使用形状与颜色，避免只靠红绿区分结果。 */
+/** 所有状态复用固定圆形灯，颜色与可访问名称共同表达结果。 */
 function AgentStatusMark(props: AgentStatusMarkProps): JSX.Element {
-  const icon =
-    props.status === "success" ? (
-      <Check aria-hidden="true" />
-    ) : props.status === "error" ? (
-      <X aria-hidden="true" />
-    ) : props.status === "stopped" ? (
-      <Square aria-hidden="true" />
-    ) : null;
   return (
     <span
       className={`agent-status-mark agent-status-mark--${props.status}`}
       role="img"
       aria-label={props.label}
-    >
-      {icon}
-    </span>
+    />
   );
 }
 

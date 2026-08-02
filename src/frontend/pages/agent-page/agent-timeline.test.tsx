@@ -115,26 +115,25 @@ describe("AgentTimeline", () => {
     expect(on_follow_hold_change).toHaveBeenLastCalledWith("tool:tool-1", false);
   });
 
-  it("并行工具乱序完成后仍为运行、成功和停止项保留独立状态", async () => {
-    vi.useFakeTimers();
-    vi.setSystemTime(8_001);
+  it("并行工具复用无图标状态灯并保留独立状态语义", async () => {
     const view = await render_timeline([
       tool_entry("tool-running", "query_project_items", "running", null, 1),
       tool_entry("tool-success", "query_quality_rules", "success", "{}", 2),
-      tool_entry("tool-stopped", "update_quality_rules", "stopped", null, 3),
+      tool_entry("tool-error", "read_skill", "error", "工具不存在", 3),
+      tool_entry("tool-stopped", "update_quality_rules", "stopped", null, 4),
     ]);
-    const tools = view.querySelectorAll<HTMLDetailsElement>(".agent-detail-entry--tool");
-    expect(tools[0]?.querySelector(".agent-detail-entry__label")?.textContent).toBe(
-      "query_project_items · 8s",
-    );
-    expect(tools[0]?.querySelector(".agent-status-mark--running")).not.toBeNull();
-    expect(tools[1]?.querySelector(".agent-detail-entry__label")?.textContent).toBe(
-      "query_quality_rules",
-    );
-    expect(tools[1]?.querySelector(".agent-status-mark--success")).not.toBeNull();
-    expect(tools[2]?.querySelector(".agent-status-mark--stopped")?.getAttribute("aria-label")).toBe(
-      "已停止",
-    );
+    for (const [status, label] of [
+      ["running", "正在处理"],
+      ["success", "已完成"],
+      ["error", "失败"],
+      ["stopped", "已停止"],
+    ] as const) {
+      const mark = view.querySelector<HTMLElement>(
+        `.agent-detail-entry--tool .agent-status-mark--${status}[role="img"]`,
+      );
+      expect(mark?.getAttribute("aria-label")).toBe(label);
+      expect(mark?.childElementCount).toBe(0);
+    }
   });
 
   it("轮次运行时更新耗时，结束后冻结并保持紧凑格式", async () => {
