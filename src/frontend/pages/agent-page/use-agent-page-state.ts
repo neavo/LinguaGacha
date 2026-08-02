@@ -4,6 +4,7 @@ import type {
   AgentAssistantMessagePart,
   AgentContextUsage,
   AgentEntry,
+  AgentEntryStatus,
   AgentSessionEvent,
   AgentSessionSnapshot,
   AgentSessionState,
@@ -17,6 +18,7 @@ import { LOCALES } from "@shared/i18n/types";
 import { is_json_record, read_json_record, type JsonRecord } from "@domain/json";
 import { api_fetch, api_get, open_event_stream } from "@frontend/app/desktop/desktop-api";
 
+/** 首帧占位不代表恢复成功，loading 会在合法快照或明确失败后才结束。 */
 const EMPTY_SNAPSHOT: AgentSessionSnapshot = {
   state: "idle",
   entries: [],
@@ -24,17 +26,23 @@ const EMPTY_SNAPSHOT: AgentSessionSnapshot = {
   contextUsage: null,
 };
 
+/** 页面命令状态只表达当前互斥中的写请求，不复述后端会话状态。 */
+export type AgentCommand = "send" | "stop" | "reset" | null;
+/** 恢复/连接问题与各命令失败保持正交，避免一个 error 布尔量丢失恢复路径。 */
+export type AgentPageIssue = "restore" | "connection" | "send" | "stop" | "reset" | null;
+
 type UseAgentPageState = {
   state: AgentSessionState;
   entries: AgentEntry[];
   skills: AgentSkillSnapshot[];
   contextUsage: AgentContextUsage | null;
   loading: boolean;
-  error: boolean;
-  resetting: boolean;
+  command: AgentCommand;
+  issue: AgentPageIssue;
   send: (parts: readonly AgentUserMessagePart[]) => Promise<boolean>;
   stop: () => Promise<void>;
   reset: () => Promise<boolean>;
+  retry: () => void;
 };
 
 /**
@@ -43,12 +51,12 @@ type UseAgentPageState = {
 export function useAgentPageState(): UseAgentPageState {
   const [snapshot, set_snapshot] = useState<AgentSessionSnapshot>(EMPTY_SNAPSHOT);
   const [loading, set_loading] = useState(true);
-  const [error, set_error] = useState(false);
-  const [resetting, set_resetting] = useState(false);
-  const request_failed_ref = useRef(false); // 重连只清除传输错误，不能吞掉尚未重试的命令失败
+  const [command, set_command] = useState<AgentCommand>(null);
+  const [issue, set_issue] = useState<AgentPageIssue>(null);
+  const [connection_revision, set_connection_revision] = useState(0); // 用户重试时重建整个传输 effect
+  const loaded_once_ref = useRef(false); // 区分首次恢复失败与已恢复会话断线
   // 命令互斥必须同步生效；否则同一帧的重复调用会在 React 提交状态前穿透 UI 禁用态。
   const command_event_queue_ref = useRef<AgentSessionEvent[] | null>(null);
-  const send_in_flight_ref = useRef(false);
 
   useEffect(() => {
     let disposed = false;
@@ -56,7 +64,15 @@ export function useAgentPageState(): UseAgentPageState {
     let syncing = false;
     let opened_once = false;
     const pending_events: AgentSessionEvent[] = [];
+    /** 首次加载失败与已恢复会话断线是不同的用户恢复路径，命令错误优先保留。 */
+    const set_transport_issue = (): void => {
+      const next = loaded_once_ref.current ? "connection" : "restore";
+      set_issue((current) =>
+        current === "send" || current === "stop" || current === "reset" ? current : next,
+      );
+    };
 
+    /** 先订阅再拉快照，并按到达顺序重放同步窗口内的事件。 */
     const sync_snapshot = async (): Promise<void> => {
       if (syncing || disposed) return;
       syncing = true;
@@ -67,12 +83,15 @@ export function useAgentPageState(): UseAgentPageState {
           next = apply_agent_event(next, event);
         }
         set_snapshot(next);
+        loaded_once_ref.current = true;
         set_loading(false);
-        set_error(request_failed_ref.current);
+        set_issue((current) =>
+          current === "restore" || current === "connection" ? null : current,
+        );
       } catch {
         if (!disposed) {
           set_loading(false);
-          set_error(true);
+          set_transport_issue();
         }
       } finally {
         syncing = false;
@@ -90,30 +109,25 @@ export function useAgentPageState(): UseAgentPageState {
           try {
             const agent_event = normalize_agent_event(JSON.parse(event.data) as unknown);
             if (agent_event === null) return;
-            if (agent_event.type === "request_failed") {
-              request_failed_ref.current = true;
-              set_error(true);
-              return;
-            }
             const command_events = command_event_queue_ref.current;
             if (command_events !== null) command_events.push(agent_event);
             else if (syncing) pending_events.push(agent_event);
             else set_snapshot((current) => apply_agent_event(current, agent_event));
           } catch {
-            set_error(true);
+            set_transport_issue();
           }
         }) as EventListener);
         source.onopen = () => {
           if (opened_once) void sync_snapshot();
           opened_once = true;
         };
-        source.onerror = () => set_error(true);
+        source.onerror = set_transport_issue;
         void sync_snapshot();
       })
       .catch(() => {
         if (!disposed) {
           set_loading(false);
-          set_error(true);
+          set_transport_issue();
         }
       });
 
@@ -121,15 +135,19 @@ export function useAgentPageState(): UseAgentPageState {
       disposed = true;
       event_source?.close();
     };
-  }, []);
+  }, [connection_revision]);
 
-  const begin_command = (): AgentSessionEvent[] | null => {
+  /** 同步取得命令互斥并建立 SSE 暂存队列，阻止同一渲染帧的重复提交。 */
+  const begin_command = (next_command: Exclude<AgentCommand, null>): AgentSessionEvent[] | null => {
     if (command_event_queue_ref.current !== null) return null;
     const events: AgentSessionEvent[] = [];
     command_event_queue_ref.current = events;
+    set_command(next_command);
+    set_issue(null);
     return events;
   };
 
+  /** 用 HTTP ack 建立基线，再重放命令期间到达的 SSE，保证公开状态不倒退。 */
   const finish_command = (
     events: AgentSessionEvent[],
     acknowledged_snapshot?: AgentSessionSnapshot,
@@ -149,13 +167,11 @@ export function useAgentPageState(): UseAgentPageState {
     }
   };
 
+  /** 发送成功只表示后端已受理；模型回合结果继续由 snapshot / SSE 条目表达。 */
   const send = async (parts: readonly AgentUserMessagePart[]): Promise<boolean> => {
-    if (snapshot.state === "running" || send_in_flight_ref.current) return false;
-    const command_events = begin_command();
+    if (loading || !loaded_once_ref.current || snapshot.state === "running") return false;
+    const command_events = begin_command("send");
     if (command_events === null) return false;
-    send_in_flight_ref.current = true;
-    request_failed_ref.current = false;
-    set_error(false);
     try {
       const next = await api_fetch<AgentSessionSnapshot>("/api/agent/message", {
         parts,
@@ -164,46 +180,51 @@ export function useAgentPageState(): UseAgentPageState {
       return true;
     } catch {
       finish_command(command_events);
-      request_failed_ref.current = true;
-      set_error(true);
+      set_issue("send");
       return false;
     } finally {
-      send_in_flight_ref.current = false;
+      set_command(null);
     }
   };
 
+  /** stop 失败保留仍在运行的权威快照，让用户可以继续尝试停止。 */
   const stop = async (): Promise<void> => {
     if (snapshot.state !== "running") return;
-    const command_events = begin_command();
+    const command_events = begin_command("stop");
     if (command_events === null) return;
     try {
       const next = await api_fetch<AgentSessionSnapshot>("/api/agent/stop");
       finish_command(command_events, next);
     } catch {
       finish_command(command_events);
-      request_failed_ref.current = true;
-      set_error(true);
+      set_issue("stop");
+    } finally {
+      set_command(null);
     }
   };
 
+  /** reset 只有收到合法权威快照才算成功，失败时保留当前对话。 */
   const reset = async (): Promise<boolean> => {
-    const command_events = begin_command();
+    const command_events = begin_command("reset");
     if (command_events === null) return false;
-    request_failed_ref.current = false;
-    set_error(false);
-    set_resetting(true);
     try {
       const next = await api_fetch<AgentSessionSnapshot>("/api/agent/reset");
       finish_command(command_events, next);
       return true;
     } catch {
       finish_command(command_events);
-      request_failed_ref.current = true;
-      set_error(true);
+      set_issue("reset");
       return false;
     } finally {
-      set_resetting(false);
+      set_command(null);
     }
+  };
+
+  /** 显式重试重建 SSE 与初始快照同步，不维护额外的连接状态机。 */
+  const retry = (): void => {
+    set_loading(true);
+    set_issue(null);
+    set_connection_revision((current) => current + 1);
   };
 
   return {
@@ -212,11 +233,12 @@ export function useAgentPageState(): UseAgentPageState {
     skills: snapshot.skills,
     contextUsage: snapshot.contextUsage,
     loading,
-    error,
-    resetting,
+    command,
+    issue,
     send,
     stop,
     reset,
+    retry,
   };
 }
 
@@ -229,15 +251,13 @@ function replay_agent_events(
 }
 
 /** 以完整条目按 id 覆盖；首次出现的位置就是后端确认的真实时序。 */
-export function apply_agent_event(
+function apply_agent_event(
   snapshot: AgentSessionSnapshot,
   event: AgentSessionEvent,
 ): AgentSessionSnapshot {
   switch (event.type) {
     case "snapshot_seed":
       return normalize_snapshot(event.snapshot);
-    case "request_failed":
-      return snapshot;
     case "session_state":
       return { ...snapshot, state: event.state };
     case "context_usage":
@@ -272,8 +292,6 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
 function normalize_agent_event(value: unknown): AgentSessionEvent | null {
   const record = read_json_record(value);
   switch (record["type"]) {
-    case "request_failed":
-      return { type: "request_failed" };
     case "snapshot_seed":
       return { type: "snapshot_seed", snapshot: normalize_snapshot(record["snapshot"]) };
     case "session_state":
@@ -328,8 +346,13 @@ function normalize_entry(value: unknown): AgentEntry[] {
     return [];
   }
   if (value["kind"] === "user_message") {
+    const status = normalize_entry_status(value["status"]);
     const ended_at = value["endedAt"];
-    if (ended_at !== null && (typeof ended_at !== "number" || !Number.isInteger(ended_at))) {
+    if (
+      status === null ||
+      (ended_at !== null && (typeof ended_at !== "number" || !Number.isInteger(ended_at))) ||
+      (status === "running") !== (ended_at === null)
+    ) {
       return [];
     }
     const parts = normalize_agent_user_message_parts(value["parts"]);
@@ -339,20 +362,22 @@ function normalize_entry(value: unknown): AgentEntry[] {
         kind: "user_message",
         id: value["id"],
         parts,
+        status,
         createdAt: value["createdAt"],
         endedAt: ended_at,
       },
     ];
   }
   if (value["kind"] === "assistant_message") {
+    const status = normalize_entry_status(value["status"]);
     const parts = normalize_assistant_message_parts(value["parts"]);
-    if (parts === null) return [];
+    if (parts === null || status === null) return [];
     return [
       {
         kind: "assistant_message",
         id: value["id"],
         parts,
-        complete: value["complete"] === true,
+        status,
         createdAt: value["createdAt"],
       },
     ];
@@ -392,9 +417,9 @@ function normalize_assistant_message_parts(value: unknown): AgentAssistantMessag
 
 /** 工具条目只接纳公开状态和值域，不兼容旧 detail 载荷。 */
 function normalize_tool_entry(value: JsonRecord): AgentToolEntry[] {
-  const status_value = value["status"];
+  const status = normalize_entry_status(value["status"]);
   if (
-    (status_value !== "running" && status_value !== "success" && status_value !== "error") ||
+    status === null ||
     typeof value["toolName"] !== "string" ||
     (value["output"] !== null && typeof value["output"] !== "string")
   ) {
@@ -405,16 +430,24 @@ function normalize_tool_entry(value: JsonRecord): AgentToolEntry[] {
       kind: "tool_call",
       id: value["id"] as string,
       toolName: value["toolName"],
-      status: status_value,
+      status,
       output: value["output"],
       createdAt: value["createdAt"] as number,
     },
   ];
 }
 
-/** 未知会话状态安全降级为 idle。 */
+/** 所有条目共享一个公开值域，kind 只决定字段形状，不建立平行状态词表。 */
+function normalize_entry_status(value: unknown): AgentEntryStatus | null {
+  return value === "running" || value === "success" || value === "error" || value === "stopped"
+    ? value
+    : null;
+}
+
+/** 完整快照不兼容旧会话状态，避免把协议错误伪装为空闲。 */
 function normalize_state(value: unknown): AgentSessionState {
-  return value === "running" || value === "complete" ? value : "idle";
+  if (value === "idle" || value === "running") return value;
+  throw new TypeError("Agent snapshot state 非法");
 }
 
 /** skill snapshot 严格接纳新协议的完整 UI 描述，不兼容旧单数 description。 */

@@ -9,7 +9,7 @@ import { useI18n } from "@frontend/app/locale/locale-provider";
 
 type AgentMarkdownProps = {
   text: string;
-  complete: boolean;
+  streaming: boolean;
 };
 
 type MermaidThemeMode = "light" | "dark";
@@ -46,7 +46,7 @@ export function AgentMarkdown(props: AgentMarkdownProps): JSX.Element {
     ),
     pre: ({ node: _node, children, ...pre_props }) => {
       const source = read_mermaid_source(children);
-      return props.complete && source !== null ? (
+      return !props.streaming && source !== null ? (
         <AgentMermaid source={source} />
       ) : (
         <pre {...pre_props}>{children}</pre>

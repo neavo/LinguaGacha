@@ -45,20 +45,20 @@ describe("AgentMarkdown", () => {
   });
 
   /** 复用同一 React root，主题与源码切换用例因此走真实 rerender 生命周期。 */
-  async function render_markdown(text: string, complete: boolean): Promise<HTMLDivElement> {
+  async function render_markdown(text: string, streaming: boolean): Promise<HTMLDivElement> {
     if (container === null) {
       container = document.createElement("div");
       document.body.append(container);
       root = createRoot(container);
     }
-    await act(async () => root?.render(<AgentMarkdown text={text} complete={complete} />));
+    await act(async () => root?.render(<AgentMarkdown text={text} streaming={streaming} />));
     return container;
   }
 
   it("保留 GFM 与宿主外链，并把图片降级为替代文字", async () => {
     const view = await render_markdown(
       "| 名称 | 值 |\n| --- | --- |\n| A | 1 |\n\n[证据](https://example.com)\n\n![示意图](https://example.com/a.png) ![](https://example.com/b.png)",
-      true,
+      false,
     );
     const link = view.querySelector<HTMLAnchorElement>('a[href="https://example.com"]');
     if (link === null) throw new Error("缺少 Markdown 链接");
@@ -72,7 +72,7 @@ describe("AgentMarkdown", () => {
   });
 
   it("流式 Mermaid 保留源码且不加载渲染器", async () => {
-    const view = await render_markdown(mermaid_block("flowchart LR\nA-->B"), false);
+    const view = await render_markdown(mermaid_block("flowchart LR\nA-->B"), true);
 
     expect(view.querySelector("code.language-mermaid")?.textContent).toBe("flowchart LR\nA-->B\n");
     expect(mocks.render).not.toHaveBeenCalled();
@@ -81,7 +81,7 @@ describe("AgentMarkdown", () => {
   it("只识别完整消息中的显式 mermaid 围栏", async () => {
     const view = await render_markdown(
       "```mmd\nflowchart LR\nA-->B\n```\n\nflowchart LR\nA-->B",
-      true,
+      false,
     );
 
     expect(view.querySelector("code.language-mmd")?.textContent).toContain("flowchart LR");
@@ -89,7 +89,7 @@ describe("AgentMarkdown", () => {
   });
 
   it("完成后生成可聚焦图表并应用安全主题配置", async () => {
-    const view = await render_markdown(mermaid_block("flowchart LR\nA-->B"), true);
+    const view = await render_markdown(mermaid_block("flowchart LR\nA-->B"), false);
     await wait_for_condition(() => view.querySelector("figure svg") !== null);
 
     const figure = view.querySelector<HTMLElement>("figure.agent-message__diagram");
@@ -120,11 +120,11 @@ describe("AgentMarkdown", () => {
   it("主题切换重新渲染且忽略旧源码的迟到结果", async () => {
     const first = deferred<{ svg: string }>();
     mocks.render.mockImplementationOnce(() => first.promise);
-    const view = await render_markdown(mermaid_block("flowchart LR\nOld-->Value"), true);
+    const view = await render_markdown(mermaid_block("flowchart LR\nOld-->Value"), false);
     await wait_for_condition(() => mocks.render.mock.calls.length === 1);
 
     mocks.theme.current = "dark";
-    await render_markdown(mermaid_block("flowchart LR\nNew-->Value"), true);
+    await render_markdown(mermaid_block("flowchart LR\nNew-->Value"), false);
     await wait_for_condition(() => mocks.render.mock.calls.length === 2);
     await wait_for_condition(() => view.querySelector("svg[data-diagram-id]") !== null);
     first.resolve({ svg: '<svg data-diagram="old"></svg>' });
@@ -141,7 +141,7 @@ describe("AgentMarkdown", () => {
 
   it("渲染失败后显示提示与源码", async () => {
     mocks.render.mockRejectedValueOnce(new Error("bad diagram"));
-    const view = await render_markdown(mermaid_block("invalid"), true);
+    const view = await render_markdown(mermaid_block("invalid"), false);
     await wait_for_condition(
       () => view.textContent?.includes("agent_page.diagram.render_failed") === true,
     );

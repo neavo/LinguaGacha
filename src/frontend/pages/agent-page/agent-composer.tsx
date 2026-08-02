@@ -1,6 +1,6 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { useTheme } from "next-themes";
-import { ArrowUp, ChevronDown, Cpu, MessageSquarePlus, Square } from "lucide-react";
+import { ArrowUp, ChevronDown, Cpu, LoaderCircle, MessageSquarePlus, Square } from "lucide-react";
 
 import { defaultKeymap, history, historyKeymap, invertedEffects } from "@codemirror/commands";
 import {
@@ -23,7 +23,7 @@ import {
 } from "@codemirror/view";
 
 import type { AgentContextUsage, AgentSkillSnapshot, AgentUserMessagePart } from "@shared/agent";
-import { useI18n } from "@frontend/app/locale/locale-provider";
+import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import { ModelSelectionCategories } from "@frontend/features/model-selection/model-selection-menu";
 import {
   read_selected_model,
@@ -40,6 +40,7 @@ import {
   resolve_app_editor_readonly_extensions,
   resolve_app_editor_theme_extensions,
 } from "@frontend/widgets/app-editor/app-editor-code-mirror";
+import type { AgentCommand, AgentPageIssue } from "./use-agent-page-state";
 
 /** 光标前尚未确认的 @ 查询范围；确认后会被替换为 Decoration。 */
 type SkillQuery = {
@@ -59,20 +60,39 @@ export type AgentComposerHandle = {
   write_draft: (parts: readonly AgentUserMessagePart[]) => void;
 };
 
+/** 互斥于发送的新命令原因；三种状态都允许继续编辑本地草稿。 */
+type AgentUnavailableReason = "restoring" | "runtime_busy" | "settling";
+
 type AgentComposerProps = {
   ref?: Ref<AgentComposerHandle>;
   skills: readonly AgentSkillSnapshot[];
   running: boolean;
-  runtime_busy: boolean; // task 或 Agent 自身占用时阻止新命令，但不阻止编辑草稿
-  error: boolean;
+  unavailable_reason: AgentUnavailableReason | null;
+  command: AgentCommand;
+  issue: AgentPageIssue;
   can_reset: boolean;
-  resetting: boolean;
   context_usage: AgentContextUsage | null;
   model_selection: ModelSelectionController;
   on_send: (parts: readonly AgentUserMessagePart[]) => Promise<boolean>;
   on_stop: () => Promise<void>;
   on_reset: () => void;
 };
+
+/** Composer 只呈现已完成初始恢复后的可操作错误；restore 由页面空态独占。 */
+const AGENT_COMPOSER_ISSUE_KEYS: Readonly<
+  Record<Exclude<AgentPageIssue, null | "restore">, LocaleKey>
+> = Object.freeze({
+  connection: "agent_page.error.connection",
+  send: "agent_page.error.send",
+  stop: "agent_page.error.stop",
+  reset: "agent_page.error.reset",
+});
+/** 命令不可用原因同时驱动禁用态和提示，禁止平行布尔量产生矛盾组合。 */
+const AGENT_UNAVAILABLE_REASON_KEYS = Object.freeze({
+  restoring: "agent_page.unavailable.restoring",
+  runtime_busy: "agent_page.unavailable.runtime_busy",
+  settling: "agent_page.unavailable.settling",
+} satisfies Readonly<Record<AgentUnavailableReason, LocaleKey>>);
 
 const EMPTY_EDITOR_SNAPSHOT: EditorSnapshot = {
   parts: [],
@@ -85,11 +105,12 @@ const theme_compartment = new Compartment();
 const read_only_compartment = new Compartment();
 const placeholder_compartment = new Compartment();
 
-/** DecorationSet 是 skill 原子范围的唯一事实；effect 只负责让撤销历史恢复整组范围。 */
+/** effect 只负责让撤销历史恢复整组原子 token。 */
 const set_skill_tokens_effect = StateEffect.define<DecorationSet>({
   map: (tokens, changes) => tokens.map(changes),
 });
 
+/** DecorationSet 是 skill 原子范围的唯一事实，正文不另存 token 元数据。 */
 const skill_tokens_field = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update(tokens, transaction) {
@@ -141,8 +162,20 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const { locale, t } = useI18n();
   const { resolvedTheme } = useTheme();
   const placeholder_text = t("agent_page.input.placeholder");
-  const submit_label = t(props.running ? "agent_page.action.stop" : "agent_page.action.send");
-  const submit_tooltip = submit_label;
+  const submit_label = t(
+    props.command === "send"
+      ? "agent_page.action.sending"
+      : props.command === "stop"
+        ? "agent_page.action.stopping"
+        : props.running
+          ? "agent_page.action.stop"
+          : "agent_page.action.send",
+  );
+  const submit_command_active = props.command === "send" || props.command === "stop";
+  const submit_tooltip =
+    submit_command_active || props.unavailable_reason === null
+      ? submit_label
+      : t(AGENT_UNAVAILABLE_REASON_KEYS[props.unavailable_reason]);
   const host_ref = useRef<HTMLDivElement | null>(null);
   const view_ref = useRef<EditorView | null>(null);
   const submit_ref = useRef<() => void>(() => undefined);
@@ -154,7 +187,6 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const [snapshot, set_snapshot] = useState<EditorSnapshot>(EMPTY_EDITOR_SNAPSHOT);
   const [menu_index_value, set_menu_index] = useState(0);
   const [menu_suppressed, set_menu_suppressed] = useState(false);
-  const [submitting, set_submitting] = useState(false);
 
   const query_text = snapshot.query?.text.toLocaleLowerCase(locale);
   const matching_skills =
@@ -167,14 +199,13 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               .toLocaleLowerCase(locale)
               .includes(query_text),
         );
-  const editor_read_only = props.resetting || submitting;
+  const editor_read_only = props.command === "send" || props.command === "reset";
   const menu_open = !editor_read_only && !menu_suppressed && matching_skills.length > 0;
   const menu_index = Math.max(0, Math.min(menu_index_value, matching_skills.length - 1));
   const can_send =
     !props.running &&
-    !props.runtime_busy &&
-    !props.resetting &&
-    !submitting &&
+    props.unavailable_reason === null &&
+    props.command === null &&
     !props.model_selection.updating &&
     snapshot.parts.some((part) => part.kind === "skill" || part.text.trim() !== "");
   const selected_model = read_selected_model(props.model_selection, "agent");
@@ -338,6 +369,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     }
   }, [matching_skills, menu_index, menu_open]);
 
+  /** 用一次事务把当前 @ 查询替换成原子 token，并保持光标与撤销历史一致。 */
   const select_skill = (skill: AgentSkillSnapshot): void => {
     const view = view_ref.current;
     const query = view === null ? null : find_skill_query(view.state);
@@ -363,17 +395,13 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   };
   select_skill_ref.current = select_skill;
 
+  /** 只有后端确认受理后才清空草稿；模型失败属于已提交轮次，不恢复旧草稿。 */
   const submit = async (): Promise<void> => {
     const view = view_ref.current;
     if (view === null || !can_send) return;
     const parts = read_agent_message_parts(view.state);
-    set_submitting(true);
-    try {
-      if (await props.on_send(parts)) {
-        write_agent_message_parts(view, []);
-      }
-    } finally {
-      set_submitting(false);
+    if (await props.on_send(parts)) {
+      write_agent_message_parts(view, []);
     }
   };
   submit_ref.current = () => void submit();
@@ -416,7 +444,12 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             size="xs"
             variant="ghost"
             className="agent-composer__reset"
-            disabled={!props.can_reset || props.runtime_busy || props.resetting || submitting}
+            disabled={
+              !props.can_reset ||
+              props.running ||
+              props.unavailable_reason !== null ||
+              props.command !== null
+            }
             onClick={props.on_reset}
           >
             <MessageSquarePlus aria-hidden="true" />
@@ -431,8 +464,8 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                 className="agent-composer__model-trigger"
                 disabled={
                   props.running ||
-                  props.runtime_busy ||
-                  props.resetting ||
+                  props.unavailable_reason !== null ||
+                  props.command !== null ||
                   props.model_selection.loading ||
                   props.model_selection.updating
                 }
@@ -448,7 +481,9 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               <ModelSelectionCategories
                 controller={props.model_selection}
                 usage="agent"
-                disabled={props.runtime_busy || props.resetting}
+                disabled={
+                  props.running || props.unavailable_reason !== null || props.command !== null
+                }
               />
             </AppDropdownMenuContent>
           </AppDropdownMenu>
@@ -477,22 +512,32 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
           <span className="agent-composer__hint">{t("agent_page.input.hint")}</span>
         </div>
         <div className="agent-composer__footer-end">
-          {props.error && <span className="agent-composer__error">{t("agent_page.error")}</span>}
+          {props.issue !== null && props.issue !== "restore" && (
+            <span className="agent-composer__error" role="alert">
+              {t(AGENT_COMPOSER_ISSUE_KEYS[props.issue])}
+            </span>
+          )}
           <Tooltip>
             {/* 外层触发器在按钮禁用 pointer events 时仍可承接悬停。 */}
             <TooltipTrigger asChild>
               <span className="agent-composer__submit-shell">
                 <AppButton
                   className="agent-composer__submit"
-                  type={props.running ? "button" : "submit"}
+                  type={props.running || props.command === "stop" ? "button" : "submit"}
                   size="icon-xs"
-                  onClick={props.running ? () => void props.on_stop() : undefined}
-                  disabled={
-                    props.resetting || (!props.running && (props.runtime_busy || !can_send))
+                  onClick={
+                    props.running && props.command === null ? () => void props.on_stop() : undefined
                   }
+                  disabled={props.command !== null || (!props.running && !can_send)}
                   aria-label={submit_label}
                 >
-                  {props.running ? <Square aria-hidden="true" /> : <ArrowUp aria-hidden="true" />}
+                  {submit_command_active ? (
+                    <LoaderCircle className="animate-spin" aria-hidden="true" />
+                  ) : props.running ? (
+                    <Square aria-hidden="true" />
+                  ) : (
+                    <ArrowUp aria-hidden="true" />
+                  )}
                 </AppButton>
               </span>
             </TooltipTrigger>

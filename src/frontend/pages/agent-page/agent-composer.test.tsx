@@ -1,4 +1,4 @@
-import { act, type ReactNode } from "react";
+import { act, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -11,13 +11,42 @@ import {
 } from "@codemirror/commands";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import type { AgentContextUsage } from "@shared/agent";
 import type { Locale } from "@shared/i18n/types";
 
 import { AgentComposer } from "./agent-composer";
 
+type AgentComposerTestProps = ComponentProps<typeof AgentComposer>;
+type RenderComposerOptions = Partial<
+  Pick<
+    AgentComposerTestProps,
+    | "can_reset"
+    | "command"
+    | "context_usage"
+    | "issue"
+    | "on_reset"
+    | "on_send"
+    | "on_stop"
+    | "running"
+    | "unavailable_reason"
+  >
+> & {
+  model_selection?: { loading?: boolean; updating?: boolean };
+};
+
 /** 测试通过真实重渲染读取当前 locale，只替换应用 Provider 边界。 */
 const locale_state = vi.hoisted(() => ({ value: "zh-CN" as Locale }));
+/** 只列当前组件断言涉及的可见文案，其余 key 原样返回以便定位。 */
+const TEST_MESSAGES = vi.hoisted(() => ({
+  "agent_page.input.placeholder": "描述任务，或输入 @ 选择能力 …",
+  "agent_page.input.hint": "Enter 发送 · Shift + Enter 换行",
+  "agent_page.context_usage_warning": "接近上下文上限，将在达到阈值后自动整理历史",
+  "agent_page.action.send": "发送",
+  "agent_page.action.stop": "停止",
+  "agent_page.error.send": "发送失败，草稿已保留。",
+  "agent_page.unavailable.restoring": "正在恢复会话",
+  "agent_page.unavailable.runtime_busy": "其它任务正在运行",
+  "agent_page.unavailable.settling": "正在结束当前任务",
+}));
 
 vi.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
 vi.mock("@frontend/shadcn/tooltip", () => ({
@@ -29,21 +58,9 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
     locale: locale_state.value,
     t: (key: string, params?: Record<string, string>) =>
-      key === "agent_page.input.placeholder"
-        ? "描述任务，或输入 @ 选择能力 …"
-        : key === "agent_page.input.hint"
-          ? "Enter 发送 · Shift + Enter 换行"
-          : key === "agent_page.context_usage"
-            ? `上下文 ${params?.["percent"]} · ${params?.["used"]} / ${params?.["total"]}`
-            : key === "agent_page.context_usage_warning"
-              ? "接近上下文上限，将在达到阈值后自动整理历史"
-              : key === "agent_page.action.send"
-                ? "发送"
-                : key === "agent_page.action.stop"
-                  ? "停止"
-                  : key === "agent_page.error"
-                    ? "请求失败，请重试。"
-                    : key,
+      key === "agent_page.context_usage"
+        ? `上下文 ${params?.["percent"]} · ${params?.["used"]} / ${params?.["total"]}`
+        : (TEST_MESSAGES[key as keyof typeof TEST_MESSAGES] ?? key),
   }),
 }));
 
@@ -168,7 +185,7 @@ describe("AgentComposer", () => {
 
   it("普通粘贴的 @name 保持 text，失败保留草稿，受理后全部清空", async () => {
     const on_send = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-    const view = await render_composer(on_send);
+    const view = await render_composer({ on_send: on_send });
     const editor = get_editor(view);
     const draft = "  \n@glossary-audit \n ";
     await set_document(editor, draft, draft.length);
@@ -184,7 +201,7 @@ describe("AgentComposer", () => {
 
   it("含 skill 的消息只裁剪组合外缘并保留 token 内侧空白", async () => {
     const on_send = vi.fn(async () => false);
-    const view = await render_composer(on_send);
+    const view = await render_composer({ on_send: on_send });
     const editor = get_editor(view);
     await select_skill(view, editor, "glossary-audit");
     const token_length = editor.state.doc.length;
@@ -208,7 +225,7 @@ describe("AgentComposer", () => {
 
   it("Enter 选择菜单项，Shift+Enter 换行", async () => {
     const on_send = vi.fn(async () => true);
-    const view = await render_composer(on_send);
+    const view = await render_composer({ on_send: on_send });
     const editor = get_editor(view);
     await set_document(editor, "@g", 2);
     await dispatch_key(editor.contentDOM, "Enter");
@@ -222,7 +239,7 @@ describe("AgentComposer", () => {
   it("运行态保持草稿可编辑，只停止当前任务并在结束后恢复发送", async () => {
     const on_send = vi.fn(async () => true);
     const on_stop = vi.fn(async () => undefined);
-    const view = await render_composer(on_send, true, on_stop);
+    const view = await render_composer({ on_send: on_send, running: true, on_stop: on_stop });
     const editor = get_editor(view);
     const content = editor.contentDOM;
 
@@ -243,7 +260,7 @@ describe("AgentComposer", () => {
     await act(async () => stop.click());
     expect(on_stop).toHaveBeenCalledOnce();
 
-    await render_composer(on_send, false, on_stop);
+    await render_composer({ on_send: on_send, on_stop: on_stop });
 
     expect(get_editor(view)).toBe(editor);
     expect(content.getAttribute("contenteditable")).toBe("true");
@@ -271,7 +288,7 @@ describe("AgentComposer", () => {
 
   it("IME composing 期间 Enter 不选择 skill 或发送", async () => {
     const on_send = vi.fn(async () => true);
-    const view = await render_composer(on_send);
+    const view = await render_composer({ on_send: on_send });
     const editor = get_editor(view);
     await set_document(editor, "@g", 2);
     await wait_for_element(view, '[role="listbox"]');
@@ -284,13 +301,10 @@ describe("AgentComposer", () => {
   });
 
   it("呈现可访问的输入提示、错误与禁用操作", async () => {
-    const view = await render_composer(
-      vi.fn(async () => true),
-      false,
-      vi.fn(async () => undefined),
-      { updating: true },
-      { error: true },
-    );
+    const view = await render_composer({
+      issue: "send",
+      model_selection: { updating: true },
+    });
     const model_trigger = view.querySelector<HTMLButtonElement>(
       'button[aria-label="app.model.selection.label"]',
     );
@@ -301,7 +315,8 @@ describe("AgentComposer", () => {
     const tooltips = [...view.querySelectorAll('[role="tooltip"]')];
 
     expect(view.textContent).toContain("Enter 发送 · Shift + Enter 换行");
-    expect(view.textContent).toContain("请求失败，请重试。");
+    expect(view.textContent).toContain("发送失败，草稿已保留。");
+    expect(view.querySelector('[role="alert"]')).not.toBeNull();
     expect(model_trigger?.textContent).toContain("Agent Model");
     expect(model_trigger?.disabled).toBe(true);
     expect(editor?.getAttribute("contenteditable")).toBe("true");
@@ -309,17 +324,15 @@ describe("AgentComposer", () => {
     expect(submit?.disabled).toBe(true);
   });
 
-  it("普通任务占用运行时时保留草稿编辑但禁用 Agent 命令和模型选择", async () => {
-    const view = await render_composer(
-      undefined,
-      false,
-      undefined,
-      {},
-      {
-        runtime_busy: true,
-        can_reset: true,
-      },
-    );
+  it.each([
+    ["restoring", "正在恢复会话"],
+    ["runtime_busy", "其它任务正在运行"],
+    ["settling", "正在结束当前任务"],
+  ] as const)("%s 时保留草稿编辑并禁用命令，提示对应恢复路径", async (reason, label) => {
+    const view = await render_composer({
+      unavailable_reason: reason,
+      can_reset: true,
+    });
     const editor = get_editor(view);
     await set_document(editor, "稍后发送", 4);
 
@@ -329,18 +342,13 @@ describe("AgentComposer", () => {
       true,
     );
     expect(view.querySelector<HTMLButtonElement>(".agent-composer__submit")?.disabled).toBe(true);
+    expect([...view.querySelectorAll('[role="tooltip"]')].at(-1)?.textContent).toBe(label);
   });
 
   it("底栏常驻显示百分比，并在提示中提供 K 单位详情与阈值状态", async () => {
-    const view = await render_composer(
-      undefined,
-      false,
-      undefined,
-      {},
-      {
-        context_usage: { tokens: 31_488, contextWindow: 288_000, maxTokens: 32_000 },
-      },
-    );
+    const view = await render_composer({
+      context_usage: { tokens: 31_488, contextWindow: 288_000, maxTokens: 32_000 },
+    });
     const usage = view.querySelector<HTMLElement>(".agent-composer__context-usage");
 
     expect(usage?.textContent).toBe("10.9%");
@@ -359,15 +367,9 @@ describe("AgentComposer", () => {
       [224_001, "warning"],
       [256_000, "warning"],
     ] as const) {
-      await render_composer(
-        undefined,
-        false,
-        undefined,
-        {},
-        {
-          context_usage: { tokens, contextWindow: 288_000, maxTokens: 32_000 },
-        },
-      );
+      await render_composer({
+        context_usage: { tokens, contextWindow: 288_000, maxTokens: 32_000 },
+      });
       expect(
         view.querySelector<HTMLElement>(".agent-composer__context-usage")?.dataset["tone"],
       ).toBe(tone);
@@ -378,72 +380,45 @@ describe("AgentComposer", () => {
       [...view.querySelectorAll('[role="tooltip"]')].map((tooltip) => tooltip.textContent),
     ).toContain("256K / 288K接近上下文上限，将在达到阈值后自动整理历史");
 
-    await render_composer(undefined, false, undefined, {}, { context_usage: null });
+    await render_composer({ context_usage: null });
     expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("0.0%");
   });
 
   it("新任务按钮按会话、重置和提交状态禁用", async () => {
     const on_reset = vi.fn();
-    const view = await render_composer(
-      vi.fn(async () => true),
-      false,
-      vi.fn(async () => undefined),
-      {},
-      { can_reset: false, on_reset },
-    );
+    const view = await render_composer({ can_reset: false, on_reset });
     const reset = find_button_by_text(view, "agent_page.action.new_task");
     const model = view.querySelector<HTMLButtonElement>(
       'button[aria-label="app.model.selection.label"]',
     );
     expect(reset?.disabled).toBe(true);
 
-    await render_composer(
-      vi.fn(async () => true),
-      true,
-      vi.fn(async () => undefined),
-      {},
-      { can_reset: true, on_reset },
-    );
+    await render_composer({ running: true, can_reset: true, on_reset });
     expect(reset?.disabled).toBe(true);
     await act(async () => reset?.click());
     expect(on_reset).not.toHaveBeenCalled();
 
-    await render_composer(
-      vi.fn(async () => true),
-      false,
-      vi.fn(async () => undefined),
-      {},
-      { can_reset: true, resetting: true, on_reset },
-    );
+    await render_composer({ can_reset: true, command: "reset", on_reset });
     expect(reset?.disabled).toBe(true);
     expect(model?.disabled).toBe(true);
     expect(view.querySelector<HTMLButtonElement>('button[aria-label="发送"]')?.disabled).toBe(true);
 
-    let resolve_send!: (accepted: boolean) => void;
-    await render_composer(
-      vi.fn(
-        () =>
-          new Promise<boolean>((resolve) => {
-            resolve_send = resolve;
-          }),
-      ),
-      false,
-      vi.fn(async () => undefined),
-      {},
-      { can_reset: true, on_reset },
-    );
-    await set_document(get_editor(view), "提交中", 3);
-    await act(async () => {
-      view.querySelector<HTMLButtonElement>(".agent-composer__submit")?.click();
-      await Promise.resolve();
+    await render_composer({
+      can_reset: true,
+      command: "send",
+      unavailable_reason: "settling",
+      on_reset,
     });
     expect(reset?.disabled).toBe(true);
     expect(get_editor(view).contentDOM.getAttribute("contenteditable")).toBe("false");
-    await act(async () => resolve_send(false));
+    expect([...view.querySelectorAll('[role="tooltip"]')].at(-1)?.textContent).toBe(
+      "agent_page.action.sending",
+    );
+    await render_composer({ can_reset: true, on_reset });
     expect(get_editor(view).contentDOM.getAttribute("contenteditable")).toBe("true");
   });
 
-  it("resetting 前后复用 EditorView，并保留正文与 skill token 草稿", async () => {
+  it("reset 命令前后复用 EditorView，并保留正文与 skill token 草稿", async () => {
     const view = await render_composer();
     const editor = get_editor(view);
     await select_skill(view, editor, "glossary-audit");
@@ -451,13 +426,7 @@ describe("AgentComposer", () => {
       editor.dispatch({ changes: { from: editor.state.doc.length, insert: " 待处理" } });
     });
 
-    await render_composer(
-      vi.fn(async () => true),
-      false,
-      vi.fn(async () => undefined),
-      {},
-      { resetting: true },
-    );
+    await render_composer({ command: "reset" });
     expect(get_editor(view)).toBe(editor);
     expect(editor.contentDOM.getAttribute("contenteditable")).toBe("false");
     expect(editor.state.doc.toString()).toBe("@glossary-audit 待处理");
@@ -470,20 +439,8 @@ describe("AgentComposer", () => {
     expect(view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
   });
 
-  async function render_composer(
-    on_send = vi.fn(async () => true),
-    running = false,
-    on_stop = vi.fn(async () => undefined),
-    model_selection_overrides: { loading?: boolean; updating?: boolean } = {},
-    composer_overrides: {
-      can_reset?: boolean;
-      resetting?: boolean;
-      on_reset?: () => void;
-      error?: boolean;
-      context_usage?: AgentContextUsage | null;
-      runtime_busy?: boolean;
-    } = {},
-  ): Promise<HTMLDivElement> {
+  /** 统一用命名参数重渲染同一个组件实例，避免位置参数隐藏测试意图。 */
+  async function render_composer(options: RenderComposerOptions = {}): Promise<HTMLDivElement> {
     if (container === null) {
       container = document.createElement("div");
       document.body.append(container);
@@ -493,12 +450,12 @@ describe("AgentComposer", () => {
       root?.render(
         <AgentComposer
           skills={skills}
-          running={running}
-          runtime_busy={composer_overrides.runtime_busy ?? running}
-          error={composer_overrides.error ?? false}
-          can_reset={composer_overrides.can_reset ?? true}
-          resetting={composer_overrides.resetting ?? false}
-          context_usage={composer_overrides.context_usage ?? null}
+          running={options.running ?? false}
+          unavailable_reason={options.unavailable_reason ?? null}
+          command={options.command ?? null}
+          issue={options.issue ?? null}
+          can_reset={options.can_reset ?? true}
+          context_usage={options.context_usage ?? null}
           model_selection={{
             snapshot: {
               model_selection: { translation: "preset", analysis: "preset", agent: "agent" },
@@ -514,11 +471,11 @@ describe("AgentComposer", () => {
             loading: false,
             updating: false,
             select_model: vi.fn(async () => undefined),
-            ...model_selection_overrides,
+            ...options.model_selection,
           }}
-          on_send={on_send}
-          on_stop={on_stop}
-          on_reset={composer_overrides.on_reset ?? vi.fn()}
+          on_send={options.on_send ?? vi.fn(async () => true)}
+          on_stop={options.on_stop ?? vi.fn(async () => undefined)}
+          on_reset={options.on_reset ?? vi.fn()}
         />,
       );
     });

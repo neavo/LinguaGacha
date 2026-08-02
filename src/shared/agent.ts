@@ -21,8 +21,11 @@ export type AgentUserMessagePart = JsonRecord &
 export type AgentAssistantMessagePart = JsonRecord &
   ({ kind: "text"; text: string } | { kind: "thinking"; text: string });
 
-/** 单会话终态保留 complete，和用户主动 stop 后的 idle 区分。 */
-export type AgentSessionState = "idle" | "running" | "complete";
+/** 会话只表达当前是否占用运行时；每轮与每个条目的结果由自身 status 持有。 */
+export type AgentSessionState = "idle" | "running";
+
+/** 每个时间线条目独立持有结果；会话 state 不再复制轮次终态。 */
+export type AgentEntryStatus = "running" | "success" | "error" | "stopped";
 
 /** 当前模型可见上下文的 token 估算与窗口容量。 */
 export type AgentContextUsage = JsonRecord & {
@@ -36,7 +39,7 @@ export type AgentToolEntry = JsonRecord & {
   kind: "tool_call";
   id: string;
   toolName: string;
-  status: "running" | "success" | "error";
+  status: AgentEntryStatus;
   output: string | null;
   createdAt: number;
 };
@@ -48,14 +51,15 @@ export type AgentEntry = JsonRecord &
         kind: "user_message";
         id: string;
         parts: AgentUserMessagePart[];
+        status: AgentEntryStatus;
         createdAt: number;
-        endedAt: number | null; // null 表示当前轮仍在运行，终止时由 AgentService 原位封口
+        endedAt: number | null;
       }
     | {
         kind: "assistant_message";
         id: string;
         parts: AgentAssistantMessagePart[];
-        complete: boolean;
+        status: AgentEntryStatus;
         createdAt: number;
       }
     | AgentToolEntry
@@ -76,7 +80,6 @@ export type AgentSessionEvent = JsonRecord &
     | { type: "session_state"; state: AgentSessionState }
     | { type: "context_usage"; contextUsage: AgentContextUsage }
     | { type: "snapshot_seed"; snapshot: AgentSessionSnapshot }
-    | { type: "request_failed" }
   );
 
 /**

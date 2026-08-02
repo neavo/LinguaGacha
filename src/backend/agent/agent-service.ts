@@ -27,6 +27,7 @@ import {
   type AgentAssistantMessagePart,
   type AgentContextUsage,
   type AgentEntry,
+  type AgentEntryStatus,
   type AgentSessionEvent,
   type AgentSessionSnapshot,
   type AgentSessionState,
@@ -119,8 +120,8 @@ export class AgentService {
   private prompt_settlement: Promise<void> | null = null; // SDK idle 尚未覆盖异步 preflight，单独纳入关闭屏障
   private runtime_lease: RuntimeLease | null = null; // 从消息受理覆盖到 SDK 最终 settle
   private runtime_generation = 0; // stop/reset/dispose 统一令迟到异步阶段失效
-  private state: AgentSessionState = "idle";
-  private entries: AgentEntry[] = [];
+  private state: AgentSessionState = "idle"; // 只表达当前回合是否运行，结果归各条目
+  private entries: AgentEntry[] = []; // 本次 reset 以来唯一的公开时间线事实
   private skills: AgentSkillDefinition[] = [];
   private system_prompt: string | null = null;
   private disposed = false;
@@ -229,6 +230,8 @@ export class AgentService {
   public stop(): AgentSessionSnapshot {
     this.assert_not_disposed();
     this.runtime_generation += 1;
+    this.finish_current_round("stopped");
+    this.set_state("idle");
     const runtime = this.runtime;
     if (runtime !== null) {
       try {
@@ -238,8 +241,6 @@ export class AgentService {
       }
       void runtime.session.abort().catch((error: unknown) => this.warn_cleanup_failure(error));
     }
-    this.end_current_round();
-    this.set_state("idle");
     return this.get_snapshot();
   }
 
@@ -313,6 +314,7 @@ export class AgentService {
         kind: "user_message",
         id: uuidv7(),
         parts,
+        status: "running",
         createdAt: Date.now(),
         endedAt: null,
       });
@@ -403,6 +405,7 @@ export class AgentService {
     text: string,
     runtime_lease: RuntimeLease,
   ): Promise<void> {
+    let outcome: Extract<AgentEntryStatus, "success" | "error"> = "success";
     try {
       await runtime.session.prompt(text, {
         expandPromptTemplates: false,
@@ -418,19 +421,19 @@ export class AgentService {
           (message): message is AssistantMessage => message.role === "assistant",
         );
         if (final_assistant?.stopReason === "error") {
-          this.report_request_failure(
-            new Error(final_assistant.errorMessage ?? "Agent 模型回合失败"),
-          );
+          outcome = "error";
+          this.log_request_failure(new Error(final_assistant.errorMessage ?? "Agent 模型回合失败"));
         }
       }
     } catch (error) {
       if (this.prompt_is_current(runtime, generation)) {
-        this.report_request_failure(error);
+        outcome = "error";
+        this.log_request_failure(error);
       }
     } finally {
       if (this.prompt_is_current(runtime, generation)) {
-        this.end_current_round();
-        this.set_state("complete");
+        this.finish_current_round(outcome);
+        this.set_state("idle");
       }
       this.finish_runtime(runtime_lease);
     }
@@ -438,17 +441,22 @@ export class AgentService {
 
   /** 将 SDK 事件收窄为按真实顺序追加的公开时间线；中间失败不冒充最终失败。 */
   private handle_agent_event(event: PiAgentSessionEvent): void {
+    // stop 会先切 idle 再取消 SDK，因此取消过程中到达的事件天然失效。
+    if (this.state !== "running") return;
     if (
       event.type === "message_update" &&
       (event.assistantMessageEvent.type === "text_delta" ||
         event.assistantMessageEvent.type === "thinking_delta")
     ) {
-      this.upsert_assistant_message(event.assistantMessageEvent.partial, false);
+      this.upsert_assistant_message(event.assistantMessageEvent.partial, "running");
       return;
     }
     if (event.type === "message_end") {
       if (event.message.role === "assistant") {
-        this.upsert_assistant_message(event.message, true);
+        this.upsert_assistant_message(
+          event.message,
+          event.message.stopReason === "error" ? "error" : "success",
+        );
       }
       this.publish_context_usage();
       return;
@@ -489,14 +497,13 @@ export class AgentService {
     }
   }
 
-  /** Pi 以最终 assistant 承载模型错误；公开层只发布一次稳定事件。 */
-  private report_request_failure(error: unknown): void {
+  /** Pi 以最终 assistant 承载模型错误；公开状态由轮次终态统一表达。 */
+  private log_request_failure(error: unknown): void {
     this.log_manager.error("Agent 模型回合失败", { source: "agent", error });
-    this.publish_event({ type: "request_failed" });
   }
 
   /** 以 Pi 的完整 partial / final 消息校正公开 parts，同一模型消息始终原位覆盖。 */
-  private upsert_assistant_message(message: AssistantMessage, complete: boolean): void {
+  private upsert_assistant_message(message: AssistantMessage, status: AgentEntryStatus): void {
     const parts = project_assistant_message_parts(message);
     const existing = this.find_open_assistant_entry();
     if (existing === undefined) {
@@ -505,11 +512,11 @@ export class AgentService {
         kind: "assistant_message",
         id: uuidv7(),
         parts,
+        status,
         createdAt: message.timestamp,
-        complete,
       });
     } else {
-      this.upsert_entry({ ...existing, parts, complete });
+      this.upsert_entry({ ...existing, parts, status });
     }
   }
 
@@ -537,17 +544,29 @@ export class AgentService {
     | undefined {
     return this.entries.findLast(
       (entry): entry is Extract<AgentEntry, { kind: "assistant_message" }> =>
-        entry.kind === "assistant_message" && !entry.complete,
+        entry.kind === "assistant_message" && entry.status === "running",
     );
   }
 
-  /** 轮次由 user 条目拥有；所有终止路径在状态切换前通过同一时间戳封口。 */
-  private end_current_round(): void {
-    const user = this.entries.findLast(
-      (entry): entry is Extract<AgentEntry, { kind: "user_message" }> =>
-        entry.kind === "user_message" && entry.endedAt === null,
+  /** 先封口本轮开放的子条目，再冻结轮次结果；终态只在后端写一次。 */
+  private finish_current_round(
+    outcome: Extract<AgentEntryStatus, "success" | "error" | "stopped">,
+  ): void {
+    const user_index = this.entries.findLastIndex(
+      (entry) => entry.kind === "user_message" && entry.status === "running",
     );
-    if (user !== undefined) this.upsert_entry({ ...user, endedAt: Date.now() });
+    if (user_index < 0) return;
+    for (const entry of this.entries.slice(user_index + 1)) {
+      if (entry.status !== "running") continue;
+      this.upsert_entry({
+        ...entry,
+        status: entry.kind === "tool_call" && outcome !== "success" ? "stopped" : outcome,
+      });
+    }
+    const user = this.entries[user_index];
+    if (user?.kind === "user_message") {
+      this.upsert_entry({ ...user, status: outcome, endedAt: Date.now() });
+    }
   }
 
   /** SDK 在压缩后会暂时返回未知值；公开仪表继续从模型可见历史生成稳定数值。 */
@@ -647,7 +666,7 @@ export class AgentService {
   /** prompt 只有仍绑定当前运行时且未被终止时才能发布最终状态。 */
   private prompt_is_current(runtime: AgentRuntime, generation: number): boolean {
     return (
-      this.runtime === runtime && generation === this.runtime_generation && this.state !== "idle"
+      this.runtime === runtime && generation === this.runtime_generation && this.state === "running"
     );
   }
 

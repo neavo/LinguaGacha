@@ -9,7 +9,7 @@ import { FileIoFailedError, InvalidFileStructureError } from "../../shared/error
 import { AppPathService } from "../app/app-path-service";
 import { load_agent_system_prompt } from "./agent-system-prompt";
 
-const cleanup_roots: string[] = [];
+const cleanup_roots: string[] = []; // 每个用例独立建临时应用根，统一在 afterEach 回收
 
 afterEach(() => {
   while (cleanup_roots.length > 0) {
@@ -18,7 +18,23 @@ afterEach(() => {
   }
 });
 
-describe("Agent system prompt 加载", () => {
+describe("Agent system prompt 加载与资源契约", () => {
+  it("内置提示中的标准 Mermaid 示例遵循真实渲染器契约", async () => {
+    const prompt = fs.readFileSync(
+      path.join(process.cwd(), "resource", "agent", "system_prompt.md"),
+      "utf-8",
+    );
+    const sources = Array.from(
+      prompt.matchAll(/```mermaid\r?\n([\s\S]*?)\r?\n```/gu),
+      (match) => match[1] ?? "",
+    );
+
+    expect(sources).toHaveLength(1);
+    expect(sources[0]?.split(/\r?\n/u)[0]).toMatch(/^flowchart (?:TD|LR)$/u);
+    const mermaid = (await import("mermaid")).default;
+    await expect(mermaid.parse(sources[0] ?? "")).resolves.toBeTruthy();
+  });
+
   it("从内置资源读取并裁剪首尾空白", () => {
     const paths = create_paths();
     write_system_prompt(paths, "\n  基础系统指令。\n第二行。  \n");
@@ -50,12 +66,14 @@ describe("Agent system prompt 加载", () => {
   });
 });
 
+/** 使用真实 AppPathService 解析资源位置，不在测试里复制路径规则。 */
 function create_paths(): AppPathService {
   const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-prompt-"));
   cleanup_roots.push(app_root);
   return new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
 }
 
+/** 只写当前用例的临时资源，避免读取或污染真实应用目录。 */
 function write_system_prompt(paths: AppPathService, content: string): void {
   const file_path = paths.get_agent_system_prompt_path();
   fs.mkdirSync(path.dirname(file_path), { recursive: true });
