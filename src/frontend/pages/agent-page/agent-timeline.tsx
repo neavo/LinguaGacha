@@ -1,34 +1,41 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Check, Square, X } from "lucide-react";
 
-import type { AgentEntry, AgentSessionState } from "@shared/agent";
+import type { AgentEntry, AgentEntryStatus } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import { AgentMarkdown } from "./agent-markdown";
+import { is_at_scroll_end } from "./agent-scroll";
 
 type Translate = ReturnType<typeof useI18n>["t"];
 type UserEntry = Extract<AgentEntry, { kind: "user_message" }>;
 type AssistantEntry = Extract<AgentEntry, { kind: "assistant_message" }>;
-type ToolEntry = Extract<AgentEntry, { kind: "tool_call" }>;
-type DetailStatus = ToolEntry["status"];
 
 /** 工具与思考详情共享同一状态文案词表。 */
-const AGENT_STATUS_LABEL_KEYS: Readonly<Record<DetailStatus, LocaleKey>> = Object.freeze({
+const AGENT_STATUS_LABEL_KEYS: Readonly<Record<AgentEntryStatus, LocaleKey>> = Object.freeze({
   running: "agent_page.status.running",
   success: "agent_page.status.success",
   error: "agent_page.status.error",
+  stopped: "agent_page.status.stopped",
 });
-const AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS = 3_000;
+const AGENT_ROUND_LABEL_KEYS: Readonly<Record<AgentEntryStatus, LocaleKey>> = Object.freeze({
+  running: "agent_page.round.running",
+  success: "agent_page.round.success",
+  error: "agent_page.round.error",
+  stopped: "agent_page.round.stopped",
+});
+const AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS = 3_000; // 给用户留出确认终态的短暂视觉窗口
 
 type AgentTimelineProps = {
   entries: readonly AgentEntry[];
-  state: AgentSessionState;
+  resume_revision: number;
+  on_follow_hold_change: (id: string, paused: boolean) => void;
 };
 
 type AgentDetailDisclosureProps = {
   kind: "tool" | "thinking";
   label: string;
   started_at: number;
-  status: DetailStatus;
-  active: boolean;
+  status: AgentEntryStatus;
   status_label: string;
   open: boolean;
   on_open_change: (open: boolean) => void;
@@ -36,21 +43,21 @@ type AgentDetailDisclosureProps = {
   children?: ReactNode;
 };
 
-type AgentStatusLightProps = {
-  status: DetailStatus;
-  active: boolean;
+type AgentStatusMarkProps = {
+  status: AgentEntryStatus;
   label: string;
 };
 
 /** 时间线独立拥有条目次序、详情状态与运行指示，页面只负责滚动和命令入口。 */
 export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
   const { t } = useI18n();
+  const show_activity = should_show_trailing_activity(props.entries);
   return (
     <div className="agent-page__messages">
-      {render_conversation(props.entries, props.state, t)}
-      {props.state === "running" && (
+      {render_conversation(props.entries, t, props.resume_revision, props.on_follow_hold_change)}
+      {show_activity && (
         <div className="agent-message__activity">
-          <AgentStatusLight status="running" active label={t(AGENT_STATUS_LABEL_KEYS.running)} />
+          <AgentStatusMark status="running" label={t(AGENT_STATUS_LABEL_KEYS.running)} />
         </div>
       )}
     </div>
@@ -60,20 +67,17 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
 /** 单次顺序遍历后端时间线，保持 user、assistant 与 tool 的公开事件次序。 */
 function render_conversation(
   entries: readonly AgentEntry[],
-  state: AgentSessionState,
   t: Translate,
+  resume_revision: number,
+  on_follow_hold_change: (id: string, paused: boolean) => void,
 ): ReactNode[] {
-  const last_entry = state === "running" ? entries.at(-1) : undefined;
   return entries.map((entry) => (
     <AgentEntryView
       key={entry.id}
       entry={entry}
-      active={
-        entry.kind === "tool_call"
-          ? state === "running" && entry.status === "running"
-          : last_entry === entry && entry.kind === "assistant_message" && !entry.complete
-      }
       t={t}
+      resume_revision={resume_revision}
+      on_follow_hold_change={on_follow_hold_change}
     />
   ));
 }
@@ -81,19 +85,22 @@ function render_conversation(
 /** 后端 upsert 保留未变化条目对象身份，memo 只重绘真实变化的时间线条目。 */
 const AgentEntryView = memo(function AgentEntryView(props: {
   entry: AgentEntry;
-  active: boolean;
   t: Translate;
+  resume_revision: number;
+  on_follow_hold_change: (id: string, paused: boolean) => void;
 }): ReactNode {
   const entry = props.entry;
   if (entry.kind === "tool_call") {
     return (
       <AgentToolDetail
+        id={`tool:${entry.id}`}
         label={entry.toolName}
         started_at={entry.createdAt}
         status={entry.status}
-        active={props.active}
         status_label={props.t(AGENT_STATUS_LABEL_KEYS[entry.status])}
         content={entry.output}
+        resume_revision={props.resume_revision}
+        on_follow_hold_change={props.on_follow_hold_change}
       />
     );
   }
@@ -117,14 +124,15 @@ const AgentEntryView = memo(function AgentEntryView(props: {
       </>
     );
   }
-  return render_assistant_entry(entry, props.active, props.t);
+  return render_assistant_entry(entry, props.t, props.resume_revision, props.on_follow_hold_change);
 });
 
 /** 保持 text / thinking 的供应商顺序，并只把流式状态标到最后一个开放 part。 */
 function render_assistant_entry(
   entry: AssistantEntry,
-  active_entry: boolean,
   t: Translate,
+  resume_revision: number,
+  on_follow_hold_change: (id: string, paused: boolean) => void,
 ): ReactNode {
   if (entry.parts.length === 0) return null;
   return (
@@ -132,23 +140,24 @@ function render_assistant_entry(
       {entry.parts.map((part, part_index) => {
         const key = `${entry.id}-${part_index.toString()}`;
         if (part.kind === "thinking") {
-          const active = active_entry && part_index === entry.parts.length - 1;
-          const status = active ? "running" : "success";
+          const status = part_index === entry.parts.length - 1 ? entry.status : "success";
           return (
             <AgentThinkingDetail
               key={key}
-              label={t(active ? "agent_page.thinking_active" : "agent_page.thinking")}
+              id={`thinking:${key}`}
+              label={t(status === "running" ? "agent_page.thinking_active" : "agent_page.thinking")}
               started_at={entry.createdAt}
               status={status}
-              active={active}
               status_label={t(AGENT_STATUS_LABEL_KEYS[status])}
               content={part.text}
+              resume_revision={resume_revision}
+              on_follow_hold_change={on_follow_hold_change}
             />
           );
         }
         return (
           <div className="agent-message__markdown" key={key}>
-            <AgentMarkdown text={part.text} complete={entry.complete} />
+            <AgentMarkdown text={part.text} streaming={entry.status === "running"} />
           </div>
         );
       })}
@@ -158,27 +167,59 @@ function render_assistant_entry(
 
 /** 工具详情只在用户展开时格式化和挂载完整输出。 */
 function AgentToolDetail(props: {
+  id: string;
   label: string;
   started_at: number;
-  status: DetailStatus;
-  active: boolean;
+  status: AgentEntryStatus;
   status_label: string;
   content: string | null;
+  resume_revision: number;
+  on_follow_hold_change: (id: string, paused: boolean) => void;
 }): JSX.Element {
   const [open, set_open] = useState(false);
+  const content_ref = useRef<HTMLPreElement | null>(null);
+  const previous_resume_revision_ref = useRef(props.resume_revision);
+
+  // “回到最新”同时恢复已展开工具输出，关闭详情则不产生无意义滚动。
+  useLayoutEffect(() => {
+    if (previous_resume_revision_ref.current === props.resume_revision) return;
+    previous_resume_revision_ref.current = props.resume_revision;
+    if (!open) return;
+    const content = content_ref.current;
+    if (content !== null) {
+      content.scrollTop = content.scrollHeight;
+      props.on_follow_hold_change(props.id, false);
+    }
+  }, [open, props.id, props.on_follow_hold_change, props.resume_revision]);
+
+  useEffect(
+    () => () => props.on_follow_hold_change(props.id, false),
+    [props.id, props.on_follow_hold_change],
+  );
+
   return (
     <AgentDetailDisclosure
       kind="tool"
       label={props.label}
       started_at={props.started_at}
       status={props.status}
-      active={props.active}
       status_label={props.status_label}
       open={open}
-      on_open_change={set_open}
+      on_open_change={(next_open) => {
+        set_open(next_open);
+        if (!next_open) props.on_follow_hold_change(props.id, false);
+      }}
     >
       {open && props.content !== null && (
-        <pre tabIndex={0}>{format_tool_output(props.content)}</pre>
+        <pre
+          ref={content_ref}
+          tabIndex={0}
+          onScroll={(event) =>
+            props.on_follow_hold_change(props.id, !is_at_scroll_end(event.currentTarget))
+          }
+        >
+          {format_tool_output(props.content)}
+        </pre>
       )}
     </AgentDetailDisclosure>
   );
@@ -186,30 +227,53 @@ function AgentToolDetail(props: {
 
 /** 思考详情独立拥有流式跟随、用户接管与完成后的自动收缩。 */
 function AgentThinkingDetail(props: {
+  id: string;
   label: string;
   started_at: number;
-  status: DetailStatus;
-  active: boolean;
+  status: AgentEntryStatus;
   status_label: string;
   content: string;
+  resume_revision: number;
+  on_follow_hold_change: (id: string, paused: boolean) => void;
 }): JSX.Element {
-  const [open, set_open] = useState(props.active);
+  const active = props.status === "running";
+  const [open, set_open] = useState(active);
+  const [follow_paused, set_follow_paused] = useState(false);
   const content_ref = useRef<HTMLPreElement | null>(null);
-  const previous_active_ref = useRef(props.active);
-  const user_toggled_ref = useRef(false);
+  const follow_paused_ref = useRef(false); // 同步守卫先于 React 状态提交，避免下一帧增量抢回滚动位置
+  const user_toggled_ref = useRef(false); // 手动开合始终优先于自动收缩
+  const previous_resume_revision_ref = useRef(props.resume_revision);
 
+  // 流式增量只在详情仍跟随时归底，用户一旦上划便保留当前位置。
   useLayoutEffect(() => {
     const content = content_ref.current;
-    if (props.active && open && content !== null) content.scrollTop = content.scrollHeight;
-  }, [open, props.active, props.content]);
+    if (active && open && !follow_paused_ref.current && content !== null) {
+      content.scrollTop = content.scrollHeight;
+    }
+  }, [active, open, props.content]);
+
+  // 显式“回到最新”覆盖所有阅读暂停，并让完成后的自动收缩重新获得资格。
+  useLayoutEffect(() => {
+    if (previous_resume_revision_ref.current === props.resume_revision) return;
+    previous_resume_revision_ref.current = props.resume_revision;
+    const content = content_ref.current;
+    if (content === null) return;
+    content.scrollTop = content.scrollHeight;
+    follow_paused_ref.current = false;
+    set_follow_paused(false);
+    props.on_follow_hold_change(props.id, false);
+  }, [props.id, props.on_follow_hold_change, props.resume_revision]);
 
   useEffect(() => {
-    const was_active = previous_active_ref.current;
-    previous_active_ref.current = props.active;
-    if (!was_active || props.active || !open || user_toggled_ref.current) return;
+    if (active || !open || follow_paused || user_toggled_ref.current) return;
     const timer = window.setTimeout(() => set_open(false), AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS);
     return () => window.clearTimeout(timer);
-  }, [open, props.active]);
+  }, [active, follow_paused, open]);
+
+  useEffect(
+    () => () => props.on_follow_hold_change(props.id, false),
+    [props.id, props.on_follow_hold_change],
+  );
 
   return (
     <AgentDetailDisclosure
@@ -217,15 +281,26 @@ function AgentThinkingDetail(props: {
       label={props.label}
       started_at={props.started_at}
       status={props.status}
-      active={props.active}
       status_label={props.status_label}
       open={open}
-      on_open_change={set_open}
+      on_open_change={(next_open) => {
+        set_open(next_open);
+        if (!next_open) props.on_follow_hold_change(props.id, false);
+      }}
       on_user_toggle={() => {
         user_toggled_ref.current = true;
       }}
     >
-      <pre ref={content_ref} tabIndex={0}>
+      <pre
+        ref={content_ref}
+        tabIndex={0}
+        onScroll={(event) => {
+          const paused = !is_at_scroll_end(event.currentTarget);
+          follow_paused_ref.current = paused;
+          set_follow_paused(paused);
+          props.on_follow_hold_change(props.id, paused);
+        }}
+      >
         {props.content}
       </pre>
     </AgentDetailDisclosure>
@@ -234,7 +309,8 @@ function AgentThinkingDetail(props: {
 
 /** 详情外观保持无状态，工具与思考只共享稳定的原生 disclosure 结构。 */
 function AgentDetailDisclosure(props: AgentDetailDisclosureProps): JSX.Element {
-  const duration = useAgentElapsed(props.started_at, props.active);
+  const active = props.status === "running";
+  const duration = useAgentElapsed(props.started_at, active);
   return (
     <details
       className={`agent-detail-entry agent-detail-entry--${props.kind}`}
@@ -244,7 +320,7 @@ function AgentDetailDisclosure(props: AgentDetailDisclosureProps): JSX.Element {
       <summary onClick={props.on_user_toggle}>
         <span className="agent-detail-entry__label">
           {props.label}
-          {props.active && (
+          {active && (
             <>
               {" · "}
               <span className="agent-detail-entry__elapsed" role="timer" aria-live="off">
@@ -253,7 +329,7 @@ function AgentDetailDisclosure(props: AgentDetailDisclosureProps): JSX.Element {
             </>
           )}
         </span>
-        <AgentStatusLight status={props.status} active={props.active} label={props.status_label} />
+        <AgentStatusMark status={props.status} label={props.status_label} />
       </summary>
       {props.children}
     </details>
@@ -264,29 +340,49 @@ function AgentDetailDisclosure(props: AgentDetailDisclosureProps): JSX.Element {
 function AgentRoundHeader({ user, t }: { user: UserEntry; t: Translate }): JSX.Element {
   const duration = useAgentElapsed(
     user.createdAt,
-    user.endedAt === null,
+    user.status === "running",
     user.endedAt ?? undefined,
   );
   return (
     <div className="agent-round-header">
       <span aria-hidden="true" />
       <small role="timer" aria-live="off">
-        {t(user.endedAt === null ? "agent_page.round.running" : "agent_page.round.ended", {
-          duration,
-        })}
+        {t(AGENT_ROUND_LABEL_KEYS[user.status], { duration })}
       </small>
     </div>
   );
 }
 
-/** 状态色与动画独立；运行时闪烁所有并行工具或当前思考块。 */
-function AgentStatusLight(props: AgentStatusLightProps): JSX.Element {
+/** 状态同时使用形状与颜色，避免只靠红绿区分结果。 */
+function AgentStatusMark(props: AgentStatusMarkProps): JSX.Element {
+  const icon =
+    props.status === "success" ? (
+      <Check aria-hidden="true" />
+    ) : props.status === "error" ? (
+      <X aria-hidden="true" />
+    ) : props.status === "stopped" ? (
+      <Square aria-hidden="true" />
+    ) : null;
   return (
     <span
-      className={`agent-status-light agent-status-light--${props.status}${props.active ? " agent-status-light--active" : ""}`}
+      className={`agent-status-mark agent-status-mark--${props.status}`}
       role="img"
       aria-label={props.label}
-    />
+    >
+      {icon}
+    </span>
+  );
+}
+
+/** 没有可见的运行标记时才补尾部活动标记，避免同一状态重复出现。 */
+function should_show_trailing_activity(entries: readonly AgentEntry[]): boolean {
+  if (!entries.some((entry) => entry.status === "running")) return false;
+  const last = entries.at(-1);
+  if (last?.kind === "tool_call") return last.status !== "running";
+  return !(
+    last?.kind === "assistant_message" &&
+    last.status === "running" &&
+    last.parts.at(-1)?.kind === "thinking"
   );
 }
 

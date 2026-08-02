@@ -1,19 +1,23 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
-import type { AgentAssistantMessagePart } from "@shared/agent";
+import type { AgentAssistantMessagePart, AgentEntryStatus } from "@shared/agent";
 import type { useAgentPageState as UseAgentPageStateFunction } from "./use-agent-page-state";
 
 type AgentPageState = ReturnType<typeof UseAgentPageStateFunction>;
 
 const page_state = vi.hoisted(() => ({ current: {} as AgentPageState }));
+/** 用真实 hook 返回形状驱动 runtime owner 迁移，不复制 store 内部实现。 */
+const runtime_state = vi.hoisted(() => ({
+  current: { revision: 0, owner: null as "task" | "agent" | null },
+}));
 
 vi.mock("./use-agent-page-state", () => ({ useAgentPageState: () => page_state.current }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
-  useDesktopState: () => ({ runtime_snapshot: { revision: 0, owner: null } }),
-  useRuntimeSnapshot: () => ({ revision: 0, owner: null }),
+  useDesktopState: () => ({ runtime_snapshot: runtime_state.current }),
+  useRuntimeSnapshot: () => runtime_state.current,
 }));
 vi.mock("@frontend/features/model-selection/use-model-selection", async (import_original) => {
   const actual =
@@ -60,6 +64,10 @@ describe("AgentPage", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
 
+  beforeEach(() => {
+    runtime_state.current = { revision: 0, owner: null };
+  });
+
   afterEach(async () => {
     if (root !== null) await act(async () => root?.unmount());
     container?.remove();
@@ -67,6 +75,7 @@ describe("AgentPage", () => {
     container = null;
   });
 
+  /** 只替换页面拥有者的公开快照，并复用 root 验证真实状态迁移。 */
   async function render_page(overrides: Partial<AgentPageState> = {}): Promise<HTMLDivElement> {
     page_state.current = build_state(overrides);
     if (container === null) {
@@ -142,77 +151,137 @@ describe("AgentPage", () => {
     expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("10.9%");
   });
 
-  it("程序平滑滚动期间不会把中间帧误判为用户接管", async () => {
-    const view = await render_page();
-    const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
-    if (conversation === null) throw new Error("缺少消息滚动容器");
-    const scroll_to = vi.fn();
-    conversation.scrollTo = scroll_to;
-    Object.defineProperties(conversation, {
-      scrollHeight: { configurable: true, value: 1000 },
-      clientHeight: { configurable: true, value: 400 },
-      scrollTop: { configurable: true, value: 100, writable: true },
-    });
+  it("恢复失败时显示单一重试入口并重新连接", async () => {
+    const retry = vi.fn();
+    const view = await render_page({ issue: "restore", retry });
+    const alert = view.querySelector<HTMLElement>('[role="alert"]');
+    const retry_button = [...view.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent === "agent_page.action.retry",
+    );
+    if (retry_button === undefined) throw new Error("缺少恢复重试按钮");
 
-    await render_page({
-      entries: [...page_state.current.entries, assistant_entry("assistant-2", "增量", false, 2)],
-    });
-    expect(scroll_to).toHaveBeenLastCalledWith({ top: 1000 });
-    await act(async () => conversation.dispatchEvent(new Event("scroll", { bubbles: true })));
-    scroll_to.mockClear();
-    await render_page({
-      entries: [...page_state.current.entries, assistant_entry("assistant-3", "继续", false, 3)],
-    });
-    expect(scroll_to).toHaveBeenLastCalledWith({ top: 1000 });
-
-    await act(async () => conversation.dispatchEvent(new Event("scrollend", { bubbles: true })));
-    scroll_to.mockClear();
-    await render_page({
-      entries: [...page_state.current.entries, assistant_entry("assistant-4", "停止", false, 4)],
-    });
-    expect(scroll_to).not.toHaveBeenCalled();
+    expect(alert?.textContent).toContain("agent_page.error.restore");
+    expect(view.querySelector<HTMLButtonElement>(".agent-composer__model-trigger")?.disabled).toBe(
+      true,
+    );
+    await act(async () => retry_button.click());
+    expect(retry).toHaveBeenCalledOnce();
   });
 
-  it("滚轮、指针和滚动键允许用户接管，回到底部后恢复跟随", async () => {
+  it("公开回合先结束但 Agent lease 尚未释放时保持结算禁用态", async () => {
+    runtime_state.current = { revision: 1, owner: "agent" };
+    const view = await render_page({ state: "idle" });
+    const model = view.querySelector<HTMLButtonElement>(".agent-composer__model-trigger");
+
+    expect(model?.disabled).toBe(true);
+    runtime_state.current = { revision: 2, owner: null };
+    await render_page({ state: "idle" });
+    expect(model?.disabled).toBe(false);
+  });
+
+  it("外层只按自身真实位置暂停，回到底端后恢复追随", async () => {
     const view = await render_page();
     const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
     if (conversation === null) throw new Error("缺少消息滚动容器");
-    const scroll_to = vi.fn();
-    conversation.scrollTo = scroll_to;
+    let scroll_top = 600;
+    const writes: number[] = [];
     Object.defineProperties(conversation, {
       scrollHeight: { configurable: true, value: 1000 },
       clientHeight: { configurable: true, value: 400 },
-      scrollTop: { configurable: true, value: 100, writable: true },
+      scrollTop: {
+        configurable: true,
+        get: () => scroll_top,
+        set: (value: number) => {
+          scroll_top = Math.min(value, 600);
+          writes.push(value);
+        },
+      },
     });
-    const stop_events = [
-      new WheelEvent("wheel", { bubbles: true }),
-      new Event("pointerdown", { bubbles: true }),
-      new KeyboardEvent("keydown", { bubbles: true, key: "PageUp" }),
-    ];
 
-    for (const [index, event] of stop_events.entries()) {
-      await act(async () => conversation.dispatchEvent(event));
-      scroll_to.mockClear();
-      await render_page({
+    scroll_top = 100;
+    await act(async () => conversation.dispatchEvent(new Event("scroll")));
+    writes.length = 0;
+    await render_page({
+      entries: [
+        ...page_state.current.entries,
+        assistant_entry("assistant-2", "增量", "running", 2),
+      ],
+    });
+    expect(writes).toEqual([]);
+    expect(view.textContent).toContain("agent_page.action.return_latest");
+
+    scroll_top = 600;
+    await act(async () => conversation.dispatchEvent(new Event("scroll")));
+    writes.length = 0;
+    await render_page({
+      entries: [
+        ...page_state.current.entries,
+        assistant_entry("assistant-3", "继续", "running", 3),
+      ],
+    });
+    expect(writes).toContain(1000);
+    expect(view.textContent).not.toContain("agent_page.action.return_latest");
+  });
+
+  it("思考块离底会暂停外层，回底后恢复且不覆盖外层独立暂停", async () => {
+    const render_thinking = (text: string) =>
+      render_page({
+        state: "running",
         entries: [
-          ...page_state.current.entries,
-          assistant_entry(`assistant-stop-${index.toString()}`, "停止", false, index + 2),
+          assistant_parts_entry("assistant-thinking", [{ kind: "thinking", text }], "running", 1),
         ],
       });
-      expect(scroll_to).not.toHaveBeenCalled();
+    const view = await render_thinking("第一步\n第二步");
+    const conversation = view.querySelector<HTMLElement>(".agent-page__conversation");
+    const thinking = view.querySelector<HTMLPreElement>(".agent-detail-entry--thinking pre");
+    if (conversation === null || thinking === null) throw new Error("缺少嵌套滚动容器");
+    let outer_top = 600;
+    let inner_top = 240;
+    const outer_writes: number[] = [];
+    Object.defineProperties(conversation, {
+      scrollHeight: { configurable: true, value: 1000 },
+      clientHeight: { configurable: true, value: 400 },
+      scrollTop: {
+        configurable: true,
+        get: () => outer_top,
+        set: (value: number) => {
+          outer_top = Math.min(value, 600);
+          outer_writes.push(value);
+        },
+      },
+    });
+    Object.defineProperties(thinking, {
+      scrollHeight: { configurable: true, value: 480 },
+      clientHeight: { configurable: true, value: 240 },
+      scrollTop: {
+        configurable: true,
+        get: () => inner_top,
+        set: (value: number) => {
+          inner_top = Math.min(value, 240);
+        },
+      },
+    });
 
-      conversation.scrollTop = 600;
-      await act(async () => conversation.dispatchEvent(new Event("scroll", { bubbles: true })));
-      scroll_to.mockClear();
-      await render_page({
-        entries: [
-          ...page_state.current.entries,
-          assistant_entry(`assistant-resume-${index.toString()}`, "恢复", false, index + 20),
-        ],
-      });
-      expect(scroll_to).toHaveBeenLastCalledWith({ top: 1000 });
-      conversation.scrollTop = 100;
-    }
+    inner_top = 80;
+    await act(async () => thinking.dispatchEvent(new Event("scroll")));
+    outer_writes.length = 0;
+    await render_thinking("第一步\n第二步\n第三步");
+    expect(inner_top).toBe(80);
+    expect(outer_writes).toEqual([]);
+
+    outer_top = 100;
+    await act(async () => conversation.dispatchEvent(new Event("scroll")));
+    inner_top = 240;
+    await act(async () => thinking.dispatchEvent(new Event("scroll")));
+    outer_writes.length = 0;
+    await render_thinking("第一步\n第二步\n第三步\n第四步");
+    expect(outer_writes).toEqual([]);
+
+    const latest = [...view.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent === "agent_page.action.return_latest",
+    );
+    await act(async () => latest?.click());
+    expect(outer_writes).toContain(1000);
   });
 
   it("按运行态切换提交按钮并允许停止", async () => {
@@ -249,7 +318,7 @@ describe("AgentPage", () => {
       await Promise.resolve();
     });
     expect(reset).toHaveBeenCalledOnce();
-    await render_page({ reset, resetting: true });
+    await render_page({ reset, command: "reset" });
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
     expect(get_portal_button("app.action.cancel").disabled).toBe(true);
 
@@ -294,30 +363,37 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
   ];
   return {
     state: "idle",
-    entries: [assistant_entry("assistant-1", "**变更方案**", false, 1)],
+    entries: [assistant_entry("assistant-1", "**变更方案**", "success", 1)],
     skills,
     contextUsage: overrides.contextUsage ?? null,
     loading: false,
-    error: false,
-    resetting: false,
+    command: null,
+    issue: null,
     send: vi.fn(async () => true),
     stop: vi.fn(),
     reset: vi.fn(async () => true),
+    retry: vi.fn(),
     ...overrides,
   };
 }
 
-function assistant_entry(id: string, text: string, complete: boolean, createdAt: number) {
-  return assistant_parts_entry(id, [{ kind: "text", text }], complete, createdAt);
+function assistant_entry(id: string, text: string, status: AgentEntryStatus, createdAt: number) {
+  return assistant_parts_entry(id, [{ kind: "text", text }], status, createdAt);
 }
 
 function assistant_parts_entry(
   id: string,
   parts: AgentAssistantMessagePart[],
-  complete: boolean,
+  status: AgentEntryStatus,
   createdAt: number,
 ) {
-  return { kind: "assistant_message" as const, id, parts, complete, createdAt };
+  return {
+    kind: "assistant_message" as const,
+    id,
+    parts,
+    status,
+    createdAt,
+  };
 }
 
 function get_button_by_label(container: HTMLElement, label: string): HTMLButtonElement {

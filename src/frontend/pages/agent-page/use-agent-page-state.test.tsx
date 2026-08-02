@@ -2,7 +2,11 @@ import { act, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AGENT_SESSION_EVENT_TOPIC, type AgentSessionSnapshot } from "@shared/agent";
+import {
+  AGENT_SESSION_EVENT_TOPIC,
+  type AgentEntryStatus,
+  type AgentSessionSnapshot,
+} from "@shared/agent";
 
 const desktop_api_mocks = vi.hoisted(() => ({
   api_get: vi.fn(),
@@ -68,8 +72,8 @@ describe("useAgentPageState", () => {
     event_source = new FakeEventSource();
     desktop_api_mocks.api_get.mockReset().mockResolvedValue(
       agent_snapshot({
-        state: "complete",
-        entries: [assistant_entry("assistant-1", "已恢复", true, 1)],
+        state: "idle",
+        entries: [assistant_entry("assistant-1", "已恢复", "success", 1)],
         skills: TEST_SKILLS,
       }),
     );
@@ -94,7 +98,7 @@ describe("useAgentPageState", () => {
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "entry_upsert",
-        entry: assistant_entry("assistant-2", "第一段", false, 2),
+        entry: assistant_entry("assistant-2", "第一段", "running", 2),
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "entry_upsert",
@@ -105,7 +109,7 @@ describe("useAgentPageState", () => {
             { kind: "thinking", text: "检查" },
             { kind: "text", text: "第一段第二段" },
           ],
-          complete: true,
+          status: "success",
           createdAt: 2,
         },
       });
@@ -117,7 +121,7 @@ describe("useAgentPageState", () => {
         { kind: "thinking", text: "检查" },
         { kind: "text", text: "第一段第二段" },
       ],
-      complete: true,
+      status: "success",
     });
   });
 
@@ -170,7 +174,28 @@ describe("useAgentPageState", () => {
     await wait_for(() => expect(latest.loading).toBe(false));
 
     expect(latest.contextUsage).toBeNull();
-    expect(latest.error).toBe(true);
+    expect(latest.issue).toBe("restore");
+  });
+
+  it("拒绝旧会话终态，并允许用户按当前协议重新恢复", async () => {
+    desktop_api_mocks.api_get
+      .mockResolvedValueOnce({ state: "complete", entries: [], skills: [], contextUsage: null })
+      .mockResolvedValueOnce(
+        agent_snapshot({ entries: [assistant_entry("assistant-current", "已恢复", "success", 2)] }),
+      );
+    let latest!: ReturnType<typeof useAgentPageState>;
+    await render_probe(() => {
+      latest = useAgentPageState();
+    });
+    await wait_for(() => expect(latest.issue).toBe("restore"));
+    expect(latest.entries).toEqual([]);
+    await expect(latest.send([{ kind: "text", text: "不可发送" }])).resolves.toBe(false);
+    expect(desktop_api_mocks.api_fetch).not.toHaveBeenCalled();
+
+    await act(async () => latest.retry());
+    await wait_for(() => expect(latest.loading).toBe(false));
+    expect(latest.issue).toBeNull();
+    expect(latest.entries).toEqual([assistant_entry("assistant-current", "已恢复", "success", 2)]);
   });
 
   it("skill 清单只接纳完整的新 UI 描述协议", async () => {
@@ -202,7 +227,7 @@ describe("useAgentPageState", () => {
 
   it("只接纳字段完整且值域合法的时间线条目", async () => {
     desktop_api_mocks.api_get.mockResolvedValue({
-      state: "complete",
+      state: "idle",
       entries: [
         {
           kind: "tool_call",
@@ -214,7 +239,7 @@ describe("useAgentPageState", () => {
         },
         {
           kind: "tool_call",
-          id: "complete",
+          id: "success",
           toolName: "query_project_items",
           status: "success",
           output: '{"results":[]}',
@@ -252,28 +277,28 @@ describe("useAgentPageState", () => {
             { kind: "thinking", text: "\n完成" },
             { kind: "text", text: "结论" },
           ],
-          complete: true,
+          status: "success",
           createdAt: 6,
         },
         {
           kind: "assistant_message",
           id: "assistant-legacy",
           text: "旧协议不得兼容",
-          complete: true,
+          status: "success",
           createdAt: 7,
         },
         {
           kind: "assistant_message",
           id: "assistant-unknown",
           parts: [{ kind: "reasoning", text: "未知类型" }],
-          complete: true,
+          status: "success",
           createdAt: 8,
         },
         {
           kind: "assistant_message",
           id: "assistant-invalid-text",
           parts: [{ kind: "thinking", text: { value: "非法正文" } }],
-          complete: true,
+          status: "success",
           createdAt: 9,
         },
         {
@@ -283,6 +308,7 @@ describe("useAgentPageState", () => {
             { kind: "skill", name: "glossary-audit" },
             { kind: "text", text: "审校" },
           ],
+          status: "success",
           createdAt: 10,
           endedAt: 12,
         },
@@ -327,7 +353,7 @@ describe("useAgentPageState", () => {
       },
       {
         kind: "tool_call",
-        id: "complete",
+        id: "success",
         toolName: "query_project_items",
         status: "success",
         output: '{"results":[]}',
@@ -348,7 +374,7 @@ describe("useAgentPageState", () => {
           { kind: "thinking", text: "检查\n完成" },
           { kind: "text", text: "结论" },
         ],
-        complete: true,
+        status: "success",
         createdAt: 6,
       },
       {
@@ -358,6 +384,7 @@ describe("useAgentPageState", () => {
           { kind: "skill", name: "glossary-audit" },
           { kind: "text", text: "审校" },
         ],
+        status: "success",
         createdAt: 10,
         endedAt: 12,
       },
@@ -376,8 +403,8 @@ describe("useAgentPageState", () => {
       )
       .mockResolvedValueOnce(
         agent_snapshot({
-          state: "complete",
-          entries: [assistant_entry("assistant-1", "重连已恢复", true, 1)],
+          state: "idle",
+          entries: [assistant_entry("assistant-1", "重连已恢复", "success", 1)],
         }),
       );
     const texts: string[] = [];
@@ -399,7 +426,7 @@ describe("useAgentPageState", () => {
     await wait_for(() => expect(desktop_api_mocks.open_event_stream).toHaveBeenCalledOnce());
     event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
       type: "entry_upsert",
-      entry: assistant_entry("assistant-1", "订阅期条目", false, 1),
+      entry: assistant_entry("assistant-1", "订阅期条目", "running", 1),
     });
     await act(async () => {
       resolve_seed(agent_snapshot({ state: "running" }));
@@ -464,7 +491,7 @@ describe("useAgentPageState", () => {
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "entry_upsert",
-        entry: assistant_entry("assistant-2", "SSE 新消息", false, 2),
+        entry: assistant_entry("assistant-2", "SSE 新消息", "running", 2),
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "context_usage",
@@ -480,7 +507,7 @@ describe("useAgentPageState", () => {
     });
 
     expect(latest.state).toBe("running");
-    expect(latest.entries).toEqual([assistant_entry("assistant-2", "SSE 新消息", false, 2)]);
+    expect(latest.entries).toEqual([assistant_entry("assistant-2", "SSE 新消息", "running", 2)]);
     expect(latest.contextUsage).toEqual({ tokens: 200, contextWindow: 1_000, maxTokens: 100 });
   });
 
@@ -514,7 +541,7 @@ describe("useAgentPageState", () => {
 
     expect(await first).toBe(false);
     expect(latest.contextUsage).toEqual({ tokens: 200, contextWindow: 1_000, maxTokens: 100 });
-    expect(latest.error).toBe(true);
+    expect(latest.issue).toBe("send");
 
     desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot({ state: "running" }));
     let second = false;
@@ -555,7 +582,7 @@ describe("useAgentPageState", () => {
     await expect(first).resolves.toBe(true);
   });
 
-  it("模型失败与发送失败都保持错误态，发送失败返回 false", async () => {
+  it("发送失败返回 false、保留快照并记录命令错误", async () => {
     desktop_api_mocks.api_fetch.mockRejectedValue(new Error("offline"));
     let latest!: ReturnType<typeof useAgentPageState>;
     await render_probe(() => {
@@ -563,30 +590,25 @@ describe("useAgentPageState", () => {
     });
     await wait_for(() => expect(latest.loading).toBe(false));
 
-    await act(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "request_failed" });
-    });
-    expect(latest.error).toBe(true);
-
     let accepted = true;
     await act(async () => {
       accepted = await latest.send([{ kind: "text", text: "重试" }]);
     });
     expect(accepted).toBe(false);
-    expect(latest.error).toBe(true);
+    expect(latest.issue).toBe("send");
   });
 
   it("停止成功后应用空闲快照", async () => {
     desktop_api_mocks.api_get.mockResolvedValue(
       agent_snapshot({
         state: "running",
-        entries: [assistant_entry("assistant-1", "处理中", false, 1)],
+        entries: [assistant_entry("assistant-1", "处理中", "running", 1)],
       }),
     );
     desktop_api_mocks.api_fetch.mockResolvedValue(
       agent_snapshot({
         state: "idle",
-        entries: [assistant_entry("assistant-1", "已停止", true, 1)],
+        entries: [assistant_entry("assistant-1", "已停止", "stopped", 1)],
       }),
     );
     let latest!: ReturnType<typeof useAgentPageState>;
@@ -601,14 +623,14 @@ describe("useAgentPageState", () => {
 
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/stop");
     expect(latest.state).toBe("idle");
-    expect(latest.entries).toEqual([assistant_entry("assistant-1", "已停止", true, 1)]);
+    expect(latest.entries).toEqual([assistant_entry("assistant-1", "已停止", "stopped", 1)]);
   });
 
   it("停止失败时保留运行快照并显示错误态", async () => {
     desktop_api_mocks.api_get.mockResolvedValue(
       agent_snapshot({
         state: "running",
-        entries: [assistant_entry("assistant-1", "处理中", false, 1)],
+        entries: [assistant_entry("assistant-1", "处理中", "running", 1)],
       }),
     );
     desktop_api_mocks.api_fetch.mockRejectedValue(new Error("offline"));
@@ -625,10 +647,10 @@ describe("useAgentPageState", () => {
 
     expect(latest.state).toBe("running");
     expect(latest.entries).toEqual(previous_entries);
-    expect(latest.error).toBe(true);
+    expect(latest.issue).toBe("stop");
   });
 
-  it("重置期间清除旧错误，并在成功后归一应用权威空快照", async () => {
+  it("重置期间公开命令状态，并在成功后应用权威空快照", async () => {
     let resolve_reset!: (value: unknown) => void;
     desktop_api_mocks.api_fetch.mockImplementation(
       () =>
@@ -641,27 +663,18 @@ describe("useAgentPageState", () => {
       latest = useAgentPageState();
     });
     await wait_for(() => expect(latest.loading).toBe(false));
-    await act(async () => {
-      event_source.emit(AGENT_SESSION_EVENT_TOPIC, { type: "request_failed" });
-    });
-
     let result!: Promise<boolean>;
     await act(async () => {
       result = latest.reset();
       await Promise.resolve();
     });
-    expect(latest.resetting).toBe(true);
-    expect(latest.error).toBe(false);
+    expect(latest.command).toBe("reset");
+    expect(latest.issue).toBeNull();
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/reset");
 
     let accepted = false;
     await act(async () => {
-      resolve_reset({
-        state: "unknown",
-        entries: [{ kind: "legacy" }],
-        skills: TEST_SKILLS.slice(0, 1),
-        contextUsage: null,
-      });
+      resolve_reset(agent_snapshot({ skills: TEST_SKILLS.slice(0, 1) }));
       accepted = await result;
     });
     expect(accepted).toBe(true);
@@ -669,8 +682,8 @@ describe("useAgentPageState", () => {
       state: "idle",
       entries: [],
       skills: TEST_SKILLS.slice(0, 1),
-      error: false,
-      resetting: false,
+      issue: null,
+      command: null,
     });
   });
 
@@ -690,10 +703,11 @@ describe("useAgentPageState", () => {
 
     expect(accepted).toBe(false);
     expect(latest.entries).toEqual(previous_entries);
-    expect(latest.error).toBe(true);
-    expect(latest.resetting).toBe(false);
+    expect(latest.issue).toBe("reset");
+    expect(latest.command).toBeNull();
   });
 
+  /** 探针只暴露 Hook 的公开返回值，不读取或注入内部 setter。 */
   async function render_probe(use_probe: () => void): Promise<void> {
     function Probe(): null {
       use_probe();
@@ -706,12 +720,12 @@ describe("useAgentPageState", () => {
   }
 });
 
-function assistant_entry(id: string, text: string, complete: boolean, createdAt: number) {
+function assistant_entry(id: string, text: string, status: AgentEntryStatus, createdAt: number) {
   return {
     kind: "assistant_message" as const,
     id,
     parts: [{ kind: "text" as const, text }],
-    complete,
+    status,
     createdAt,
   };
 }

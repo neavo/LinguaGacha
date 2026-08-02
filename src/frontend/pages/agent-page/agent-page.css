@@ -17,8 +17,22 @@
   flex: 1;
   flex-direction: column;
   overflow-y: auto;
-  scroll-behavior: smooth;
   scrollbar-gutter: stable;
+}
+
+/* 只允许末尾哨兵成为原生锚点；用户回看时 data-enabled 会撤销该资格。 */
+.agent-page__conversation > :not(.agent-page__scroll-anchor) {
+  overflow-anchor: none;
+}
+
+.agent-page__scroll-anchor {
+  height: 1px;
+  flex: 0 0 1px;
+  overflow-anchor: auto;
+}
+
+.agent-page__scroll-anchor[data-enabled="false"] {
+  overflow-anchor: none;
 }
 
 .agent-page__empty {
@@ -153,8 +167,19 @@
 .agent-message__markdown h2,
 .agent-message__markdown h3 {
   margin: 18px 0 8px;
-  font-size: 14px;
   font-weight: 600;
+}
+
+.agent-message__markdown h1 {
+  font-size: 16px;
+}
+
+.agent-message__markdown h2 {
+  font-size: 15px;
+}
+
+.agent-message__markdown h3 {
+  font-size: 14px;
 }
 
 .agent-message__markdown p,
@@ -257,7 +282,7 @@
   min-height: 34px;
   width: 100%;
   align-items: center;
-  grid-template-columns: 5px minmax(0, 1fr) 8px;
+  grid-template-columns: 5px minmax(0, 1fr) 12px;
   gap: 8px;
   padding: 6px 8px;
   cursor: pointer;
@@ -307,29 +332,41 @@
   font-variant-numeric: tabular-nums;
 }
 
-.agent-status-light {
-  display: inline-block;
+.agent-status-mark {
+  display: inline-flex;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted-foreground);
+}
+
+.agent-status-mark svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2;
+}
+
+.agent-status-mark--running::before {
   width: 8px;
   height: 8px;
-  flex: 0 0 auto;
   border-radius: var(--ui-radius-pill);
-  background: var(--muted-foreground);
-}
-
-.agent-status-light--running {
   background: var(--primary);
+  animation: agent-status-mark-pulse 1s ease-out infinite;
+  content: "";
 }
 
-.agent-status-light--success {
-  background: var(--ui-success);
+.agent-status-mark--success {
+  color: var(--ui-success);
 }
 
-.agent-status-light--error {
-  background: var(--ui-failure);
+.agent-status-mark--error {
+  color: var(--ui-failure);
 }
 
-.agent-status-light--active {
-  animation: agent-status-light-pulse 1s ease-out infinite;
+.agent-status-mark--stopped {
+  color: var(--muted-foreground);
 }
 
 .agent-detail-entry pre {
@@ -354,6 +391,7 @@
   interpolate-size: allow-keywords;
 }
 
+/* 思考正文常驻 DOM 才能平滑自动收缩；工具输出仍按展开状态延迟挂载。 */
 .agent-detail-entry--thinking::details-content {
   height: 0;
   overflow: clip;
@@ -398,6 +436,22 @@
   background: var(--popover);
   padding: 6px 6px 5px 12px;
   transition: border-color 160ms ease;
+}
+
+/* 控件占零高度叠在输入框上方，不挤压信息流或改变滚动高度。 */
+.agent-page__follow-control {
+  position: relative;
+  z-index: 10;
+  height: 0;
+  flex: 0 0 0;
+  pointer-events: none;
+}
+
+.agent-page__follow-control > button {
+  position: absolute;
+  right: 24px;
+  bottom: 8px;
+  pointer-events: auto;
 }
 
 .agent-composer:focus-within {
@@ -535,11 +589,9 @@
 
 .agent-composer__error {
   min-width: 0;
-  overflow: hidden;
   color: var(--ui-failure);
   text-align: end;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
 }
 
 .agent-skill-token {
@@ -605,7 +657,7 @@
   user-select: text;
 }
 
-@keyframes agent-status-light-pulse {
+@keyframes agent-status-mark-pulse {
   0% {
     box-shadow: 0 0 0 0 color-mix(in srgb, var(--primary) 55%, transparent);
   }
@@ -617,11 +669,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .agent-page__conversation {
-    scroll-behavior: auto;
-  }
-
-  .agent-status-light--active {
+  .agent-status-mark--running::before {
     animation: none;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
   }

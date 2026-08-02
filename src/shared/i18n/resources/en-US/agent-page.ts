@@ -22,9 +22,33 @@ export const en_us_agent_page = {
   context_usage: "Context {percent} · {used} / {total}",
   context_usage_warning:
     "Approaching the context limit; history will be compacted automatically at the threshold",
-  action: { send: "Send", stop: "Stop", new_task: "New Task" },
+  action: {
+    send: "Send",
+    sending: "Sending",
+    stop: "Stop",
+    stopping: "Stopping",
+    new_task: "New Task",
+    retry: "Retry",
+    return_latest: "Return to latest",
+  },
   confirm: { new_task: "Confirm starting a new conversation task …?" },
-  status: { running: "Processing", success: "Completed", error: "Failed" },
-  round: { running: "Processing for {duration}", ended: "Processed in {duration}" },
-  error: "Request failed. Try again.",
+  status: { running: "Processing", success: "Completed", error: "Failed", stopped: "Stopped" },
+  round: {
+    running: "Processing for {duration}",
+    success: "Completed · {duration}",
+    error: "Failed · {duration}",
+    stopped: "Stopped · {duration}",
+  },
+  error: {
+    restore: "The session could not be restored. Try again.",
+    connection: "Connection interrupted. Waiting to reconnect.",
+    send: "Message could not be sent. Your draft was preserved.",
+    stop: "The task could not be stopped. Try again.",
+    reset: "A new task could not be created. Try again.",
+  },
+  unavailable: {
+    restoring: "Restoring the session",
+    runtime_busy: "Another task is running",
+    settling: "Finishing the current task",
+  },
 } as const;
