@@ -282,7 +282,7 @@
   min-height: 34px;
   width: 100%;
   align-items: center;
-  grid-template-columns: 5px minmax(0, 1fr) 12px;
+  grid-template-columns: 5px minmax(0, 1fr) 8px;
   gap: 8px;
   padding: 6px 8px;
   cursor: pointer;
@@ -333,40 +333,25 @@
 }
 
 .agent-status-mark {
-  display: inline-flex;
-  width: 12px;
-  height: 12px;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  color: var(--muted-foreground);
-}
-
-.agent-status-mark svg {
-  width: 12px;
-  height: 12px;
-  stroke-width: 2;
-}
-
-.agent-status-mark--running::before {
+  display: inline-block;
   width: 8px;
   height: 8px;
+  flex: 0 0 auto;
   border-radius: var(--ui-radius-pill);
+  background: var(--muted-foreground);
+}
+
+.agent-status-mark--running {
   background: var(--primary);
   animation: agent-status-mark-pulse 1s ease-out infinite;
-  content: "";
 }
 
 .agent-status-mark--success {
-  color: var(--ui-success);
+  background: var(--ui-success);
 }
 
 .agent-status-mark--error {
-  color: var(--ui-failure);
-}
-
-.agent-status-mark--stopped {
-  color: var(--muted-foreground);
+  background: var(--ui-failure);
 }
 
 .agent-detail-entry pre {
@@ -669,7 +654,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .agent-status-mark--running::before {
+  .agent-status-mark--running {
     animation: none;
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 35%, transparent);
   }

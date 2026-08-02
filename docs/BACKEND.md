@@ -9,7 +9,9 @@
 - Gateway 只监听本机地址，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
 - 成功响应为 `{ ok: true, data }`，失败响应为 `{ ok: false, error }`；公开错误不包含 diagnostic context、cause、stack 或供应商原始异常。
 - 公开 SSE topic 固定为 `project.data_changed`、`task.snapshot_changed`、`runtime.snapshot_changed`、`agent.session_event`、`settings.changed`、`log.appended`，data 使用严格 JSON 序列化；`POST /api/runtime/snapshot` 返回带单调 `revision` 的当前运行所有者 `task | agent | null`。
-- Agent 公开入口固定为 `GET /api/agent/snapshot` 与 `POST /api/agent/message|stop|reset`；消息保留有序 text / skill parts，会话状态只区分 `idle | running`，user / assistant / tool 条目各自携带 `running | success | error | stopped` 状态。snapshot 与 `agent.session_event` 通过同 id 完整条目覆盖和 `snapshot_seed` 共同恢复本次 reset 以来的内存时间线，并公开模型可见历史的估算用量与当前会话容量；模型失败只写入对应条目和轮次，不发布第二套失败事件。公开条目不包含工具参数、供应商连续性元数据或脱敏思考。
+- Agent 公开入口固定为 `GET /api/agent/snapshot` 与 `POST /api/agent/message|stop|reset`；消息保留有序 text / skill parts，会话状态只区分 `idle | running`，user / assistant / tool 条目各自携带 `running | success | error | stopped` 状态。
+- Agent 时间线由 snapshot 与 `agent.session_event` 通过同 id 完整条目覆盖和 `snapshot_seed` 共同恢复本次 reset 以来的内存历史，并公开模型可见历史的估算用量与当前会话容量；模型失败只写入对应条目和轮次，不发布第二套失败事件。公开条目不包含工具参数、供应商连续性元数据或脱敏思考。
+- 工具 `running` 条目在执行体开始前发布；所有产品工具在统一注册边界先让出一次事件循环，为本地 SSE 首帧提供独立发送轮次。
 - 通用质量规则切片通过 `POST /api/quality/rules/query` 读取、`POST /api/quality/rules/update` 写入，分析术语导入等复合 workflow 保留独立命令；`POST /api/proofreading/query` 统一分发校对查询，`POST /api/proofreading/items/update` 只批量更新 `dst` / `name_dst`，清空、状态与替换使用各自命令。
 - 模型管理 API 只负责配置 CRUD；任务入口通过 `GET /api/models/selection` 读取窄选项，通过 `POST /api/models/select` 按 `translation`、`analysis` 或 `agent` 用途更新单项选择。选项只携带显示身份与非敏感的 Agent 容量，不公开密钥、请求覆盖或生成参数。
 - `LogManager` 以 `LogContent` 判别联合保存单一正文事实：文件和控制台从它生成纯文本投影，`log.appended` 只携带轻量预览，`/api/logs/detail` 只查询当前进程结构化详情池且不回扫历史文件。
