@@ -78,6 +78,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - Agent 基础 system prompt 的唯一资源为 `resource/agent/system_prompt.md`，缺失或无效会阻止启动；产品 skill 只在启动期从内置与用户目录加载，坏 skill 只记录诊断，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。
 - skill 的 `SKILL.md` 描述同时作为模型描述和 UI 翻译缺失时的回退；manual-only skill 必须由显式 skill part 授权，`read_skill` 只能读取启动期形成的 `SKILL.md` 与 references 白名单，UI 翻译不进入模型上下文。
 - Agent 产品工具从当前 cache / query 读取事实，写入经对应服务的 Agent 专用入口复用同一 revision、事务和项目事件边界，重型统计复用 compute worker。
+- Agent 正文 query 以互斥模式区分顺序分页、ID 精读、穷举字面量搜索和代表采样；搜索与采样共享匹配口径并返回各自所需的窄载荷，完整条目统一经 ID 精读取得。
 
 ## 5. 数据库与 `.lg` 存储
 

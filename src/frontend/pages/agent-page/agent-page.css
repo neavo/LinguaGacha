@@ -175,11 +175,11 @@
 }
 
 .agent-message__markdown h2 {
-  font-size: 15px;
+  font-size: 14px;
 }
 
 .agent-message__markdown h3 {
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .agent-message__markdown p,
@@ -272,8 +272,8 @@
 .agent-detail-entry {
   overflow: hidden;
   border-radius: var(--ui-radius-button);
-  background: var(--muted);
-  color: var(--muted-foreground);
+  background: color-mix(in srgb, var(--muted) 32%, transparent);
+  color: color-mix(in srgb, var(--muted-foreground) 85%, var(--foreground));
   font-size: 12px;
 }
 
@@ -322,7 +322,6 @@
 .agent-detail-entry__label {
   min-width: 0;
   overflow: hidden;
-  color: var(--foreground);
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;

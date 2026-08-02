@@ -204,6 +204,9 @@ function fold_text_groups(text_groups: ItemTextGroup[]): ItemTextGroup[] {
   });
 }
 
+/**
+ * 组合原文和译文视图，并在首次大小写不敏感查询时缓存折叠结果。
+ */
 function build_text_views(
   src_text_groups: ItemTextGroup[],
   dst_text_groups: ItemTextGroup[],
@@ -391,13 +394,14 @@ function build_aho_matcher(patterns: string[]): AhoMatcher | null {
 }
 
 /**
- * 收集单条文本命中的 pattern 索引，同一 pattern 在同一文本中只计一次。
+ * 收集单条文本命中的 pattern 索引；同一文本内索引去重，可选总数数组仍累计每次重叠命中。
  */
 function collect_literal_match_indexes(
   matcher: AhoMatcher,
   text: string,
   seen_generation_by_pattern: Uint32Array,
   generation: number,
+  total_matches_by_pattern?: number[],
 ): number[] {
   const matched_indexes: number[] = [];
   let node_index = 0;
@@ -414,6 +418,10 @@ function collect_literal_match_indexes(
     }
 
     for (const pattern_index of outputs) {
+      if (total_matches_by_pattern !== undefined) {
+        total_matches_by_pattern[pattern_index] =
+          (total_matches_by_pattern[pattern_index] ?? 0) + 1;
+      }
       if (seen_generation_by_pattern[pattern_index] === generation) {
         continue;
       }
@@ -427,61 +435,39 @@ function collect_literal_match_indexes(
 }
 
 /**
- * 批量返回每段文本命中的字面量索引，Agent 正文检索与质量统计共用同一 Aho 和大小写口径。
+ * 单次扫描同时返回每段文本命中的字面量索引与各 pattern 的实际出现次数。
  */
-export function collect_quality_literal_match_indexes(args: {
+export function analyze_quality_literal_matches(args: {
   patterns: string[];
   texts: string[];
   case_sensitive: boolean;
-}): number[][] {
+}): {
+  matched_pattern_indexes_by_text: number[][];
+  total_matches_by_pattern: number[];
+} {
   const patterns = args.case_sensitive
     ? args.patterns
     : args.patterns.map((pattern) => casefold_text(pattern));
   const matcher = build_aho_matcher(patterns);
+  const total_matches_by_pattern = Array.from({ length: patterns.length }, () => 0);
   if (matcher === null) {
-    return args.texts.map(() => []);
+    return {
+      matched_pattern_indexes_by_text: args.texts.map(() => []),
+      total_matches_by_pattern,
+    };
   }
 
   const seen_generation_by_pattern = new Uint32Array(matcher.patternCount);
-  return args.texts.map((text, index) => {
-    return collect_literal_match_indexes(
+  const matched_pattern_indexes_by_text = args.texts.map((text, index) =>
+    collect_literal_match_indexes(
       matcher,
       args.case_sensitive ? text : casefold_text(text),
       seen_generation_by_pattern,
       index + 1,
-    );
-  });
-}
-
-/**
- * 批量统计每段文本中各字面量的实际出现次数；重叠命中也按 Aho 扫描结果计数。
- */
-export function count_quality_literal_matches(args: {
-  patterns: string[];
-  texts: string[];
-  case_sensitive: boolean;
-}): number[][] {
-  const patterns = args.case_sensitive
-    ? args.patterns
-    : args.patterns.map((pattern) => casefold_text(pattern));
-  const matcher = build_aho_matcher(patterns);
-  if (matcher === null) return args.texts.map(() => []);
-
-  return args.texts.map((raw_text) => {
-    const counts = Array.from({ length: matcher.patternCount }, () => 0);
-    const text = args.case_sensitive ? raw_text : casefold_text(raw_text);
-    let node_index = 0;
-    for (const character of text) {
-      while (node_index !== 0 && !matcher.nodes[node_index].next.has(character)) {
-        node_index = matcher.nodes[node_index].fail;
-      }
-      node_index = matcher.nodes[node_index].next.get(character) ?? 0;
-      for (const pattern_index of matcher.nodes[node_index].outputs) {
-        counts[pattern_index] = (counts[pattern_index] ?? 0) + 1;
-      }
-    }
-    return counts;
-  });
+      total_matches_by_pattern,
+    ),
+  );
+  return { matched_pattern_indexes_by_text, total_matches_by_pattern };
 }
 
 /**
