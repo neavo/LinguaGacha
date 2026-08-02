@@ -2,8 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { ItemTextGroup } from "../item-text";
 import {
-  collect_quality_literal_match_indexes,
-  count_quality_literal_matches,
+  analyze_quality_literal_matches,
   run_quality_statistics_task_sync,
 } from "./quality-statistics";
 
@@ -25,8 +24,10 @@ describe("Agent 字面量统计出口", () => {
   it("共享大小写折叠口径并保留重叠出现次数", () => {
     const args = { patterns: ["aa", "B"], texts: ["aaa b"], case_sensitive: false };
 
-    expect(collect_quality_literal_match_indexes(args)).toEqual([[0, 1]]);
-    expect(count_quality_literal_matches(args)).toEqual([[2, 1]]);
+    expect(analyze_quality_literal_matches(args)).toEqual({
+      matched_pattern_indexes_by_text: [[0, 1]],
+      total_matches_by_pattern: [2, 1],
+    });
   });
 });
 
