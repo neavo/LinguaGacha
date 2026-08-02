@@ -15,7 +15,7 @@ import {
 } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { JsonRecord } from "../../domain/json";
-import type { ProjectChangeEvent, ProjectWriteResult } from "../../shared/project-event";
+import type { ProjectWriteResult } from "../../shared/project-event";
 import { ProjectSessionState } from "../project/project-session-state";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ComputeWorkerClient } from "../worker/compute-worker-client";
@@ -89,7 +89,6 @@ const fake_agent_state = vi.hoisted(() => ({
   tool_names: [] as string[][],
   release_pending: null as (() => void) | null,
   hold_idle: false,
-  external_change_during_write: false,
   context_window: 288_000,
   max_tokens: 32_000,
   model_call_count: 0,
@@ -109,8 +108,6 @@ vi.mock("./agent-system-prompt", () => ({
 }));
 vi.mock("./agent-model", () => ({ register_agent_model: agent_model_registrar }));
 
-import { AGENT_PROOFREADING_UPDATE_SOURCE } from "./agent-item-tools";
-import { AGENT_QUALITY_RULE_UPDATE_SOURCE } from "./agent-quality-tools";
 import { AgentService } from "./agent-service";
 
 /** 测试只替换远程流边界，Agent 的事件、工具执行、abort 与收尾均使用真实实现。 */
@@ -374,7 +371,6 @@ describe("AgentService", () => {
     fake_agent_state.tool_names = [];
     fake_agent_state.release_pending = null;
     fake_agent_state.hold_idle = false;
-    fake_agent_state.external_change_during_write = false;
     fake_agent_state.context_window = 288_000;
     fake_agent_state.max_tokens = 32_000;
     fake_agent_state.model_call_count = 0;
@@ -746,7 +742,39 @@ describe("AgentService", () => {
     });
   });
 
-  it("自身工程写入只推进 binding，外部相关变更仍清空会话", async () => {
+  it("同一工程事实变化后保留历史并继续原会话", async () => {
+    const { service, publish, change_project_facts } = await create_service();
+
+    await service.send_message({ parts: [{ kind: "text", text: "第一轮" }] });
+    await wait_for_complete(service);
+    change_project_facts();
+    await service.send_message({ parts: [{ kind: "text", text: "第二轮" }] });
+    await wait_for_complete(service);
+
+    expect(
+      service.get_snapshot().entries.filter((entry) => entry.kind === "user_message"),
+    ).toHaveLength(2);
+    expect(JSON.stringify(fake_agent_state.model_contexts.at(-1))).toContain("第一轮");
+    expect(count_published_events(publish, "snapshot_seed")).toBe(0);
+  });
+
+  it("工程会话切换仍清空会话", async () => {
+    const { service, publish, session_state } = await create_service();
+
+    await service.send_message({ parts: [{ kind: "text", text: "开始" }] });
+    await wait_for_complete(service);
+    await session_state.mark_loaded("next.lg");
+
+    expect(service.get_snapshot()).toEqual({
+      state: "idle",
+      entries: [],
+      skills: skill_test_fixture.snapshots,
+      contextUsage: null,
+    });
+    expect(count_published_events(publish, "snapshot_seed")).toBe(1);
+  });
+
+  it("真实 Agent 注册五个产品工具并保留写入时间线", async () => {
     const { service } = await create_service();
     fake_agent_state.mode = "write";
 
@@ -768,50 +796,6 @@ describe("AgentService", () => {
       "user_message",
       "tool_call",
     ]);
-
-    service.handle_project_change(project_change(5));
-    expect(service.get_snapshot()).toEqual({
-      state: "idle",
-      entries: [],
-      skills: skill_test_fixture.snapshots,
-      contextUsage: null,
-    });
-  });
-
-  it("Agent 写入尚未提交时遇到外部变更也会清空旧会话", async () => {
-    const { service } = await create_service();
-    fake_agent_state.mode = "write";
-    fake_agent_state.external_change_during_write = true;
-
-    await service.send_message({ parts: [{ kind: "text", text: "写入" }] });
-
-    await vi.waitFor(() => {
-      expect(service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
-    });
-  });
-
-  it("外部 items 与 proofreading 变化重置会话，无关 section 不重置", async () => {
-    for (const section of ["items", "proofreading"] as const) {
-      const { service } = await create_service();
-      await service.send_message({ parts: [{ kind: "text", text: section }] });
-      await wait_for_complete(service);
-
-      service.handle_project_change({
-        ...project_change(4),
-        eventId: `${section}-unrelated`,
-        updatedSections: ["analysis"],
-        sectionRevisions: { analysis: 4 },
-      });
-      expect(service.get_snapshot().entries).not.toHaveLength(0);
-
-      service.handle_project_change({
-        ...project_change(4),
-        eventId: `${section}-external`,
-        updatedSections: [section],
-        sectionRevisions: { [section]: 4 },
-      });
-      expect(service.get_snapshot().entries).toHaveLength(0);
-    }
   });
 
   it("停止会中断当前回合并回到 idle，主动 abort 不上报请求失败", async () => {
@@ -1235,6 +1219,7 @@ describe("AgentService", () => {
     runtime_gate.finish_runtime(lease);
   });
 
+  /** 只替换资源、模型与领域协作者，生命周期、门禁和 AgentSession 仍走生产实现。 */
   async function create_service(load_resources = true): Promise<{
     service: AgentService;
     publish: ReturnType<typeof vi.fn>;
@@ -1243,13 +1228,14 @@ describe("AgentService", () => {
     select_agent_model: (model_id: "active" | "next") => void;
     read_setting_count: () => number;
     runtime_gate: RuntimeOperationGate;
+    change_project_facts: () => void;
+    session_state: ProjectSessionState;
   }> {
     const session_state = new ProjectSessionState();
     await session_state.mark_loaded("test.lg");
     let revision = 3;
     let items_revision = 0;
     let proofreading_revision = 0;
-    let service!: AgentService;
     const cache = {
       snapshot: () => ({
         projectPath: "test.lg",
@@ -1302,33 +1288,19 @@ describe("AgentService", () => {
       }),
       update_from_agent: async (
         _request: JsonRecord,
-        source = AGENT_QUALITY_RULE_UPDATE_SOURCE,
+        _source: string,
       ): Promise<ProjectWriteResult> => {
-        if (fake_agent_state.external_change_during_write) {
-          revision += 1;
-          service.handle_project_change(project_change(revision));
-        }
         revision += 1;
-        service.handle_project_change({ ...project_change(revision), source });
         return { accepted: true, changes: [] };
       },
     };
     const proofreading = {
       update_items_from_agent: async (
         _request: JsonRecord,
-        source = AGENT_PROOFREADING_UPDATE_SOURCE,
+        _source: string,
       ): Promise<ProjectWriteResult> => {
         items_revision += 1;
         proofreading_revision += 1;
-        service.handle_project_change({
-          ...project_change(items_revision),
-          source,
-          sectionRevisions: {
-            items: items_revision,
-            proofreading: proofreading_revision,
-          },
-          updatedSections: ["items", "proofreading"],
-        });
         return { accepted: true, changes: [] };
       },
     };
@@ -1336,7 +1308,7 @@ describe("AgentService", () => {
     const log_error = vi.fn();
     const log_warning = vi.fn();
     const runtime_gate = new RuntimeOperationGate();
-    service = new AgentService({
+    const service = new AgentService({
       paths: {
         get_app_root: () => "E:/Project/LinguaGacha",
         get_agent_builtin_skill_dir: () => "E:/Project/LinguaGacha/resource/agent/skill",
@@ -1367,21 +1339,15 @@ describe("AgentService", () => {
       },
       read_setting_count: () => setting_read_count,
       runtime_gate,
+      change_project_facts: () => {
+        revision += 1;
+        items_revision += 1;
+        proofreading_revision += 1;
+      },
+      session_state,
     };
   }
 });
-
-function project_change(revision: number): ProjectChangeEvent {
-  return {
-    type: "project.changed" as const,
-    eventId: `quality-${revision.toString()}`,
-    source: "quality_rule_update",
-    projectPath: "test.lg",
-    projectRevision: revision,
-    sectionRevisions: { quality: revision },
-    updatedSections: ["quality"],
-  };
-}
 
 async function wait_for_complete(service: AgentService): Promise<void> {
   await vi.waitFor(() => expect(service.get_snapshot().state).toBe("complete"));

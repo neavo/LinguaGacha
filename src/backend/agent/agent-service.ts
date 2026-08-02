@@ -33,7 +33,6 @@ import {
   type AgentUserMessagePart,
 } from "../../shared/agent";
 import * as AppErrors from "../../shared/error";
-import type { ProjectChangeEvent, ProjectDataSection } from "../../shared/project-event";
 import type { AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { CacheReadPort } from "../cache/cache-types";
@@ -43,22 +42,12 @@ import type { ProofreadingService } from "../proofreading/proofreading-service";
 import type { QualityRuleService } from "../quality/quality-rule-service";
 import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-gate";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
-import { AGENT_PROOFREADING_UPDATE_SOURCE, create_agent_item_tools } from "./agent-item-tools";
+import { create_agent_item_tools } from "./agent-item-tools";
 import { register_agent_model, type AgentModelLimits } from "./agent-model";
-import {
-  AGENT_QUALITY_RULE_UPDATE_SOURCE,
-  create_agent_quality_tools,
-} from "./agent-quality-tools";
+import { create_agent_quality_tools } from "./agent-quality-tools";
 import { create_agent_skill_tools } from "./agent-skill-tools";
 import { load_agent_skills, type AgentSkillDefinition } from "./agent-skills";
 import { load_agent_system_prompt } from "./agent-system-prompt";
-
-/** 任一工具事实 section 变化都会令旧模型上下文失效。 */
-const AGENT_PROJECT_SECTIONS = [
-  "quality",
-  "items",
-  "proofreading",
-] as const satisfies readonly ProjectDataSection[];
 
 const AGENT_KEEP_RECENT_TOKENS = 32_000; // 产品固定保留的最近模型可见历史
 
@@ -76,15 +65,8 @@ function build_agent_session_settings(limits: AgentModelLimits) {
   };
 }
 
-type AgentBinding = {
-  projectPath: string; // loaded 工程身份
-  epoch: number; // 同路径重新加载也必须失效旧会话
-  sectionRevisions: Record<(typeof AGENT_PROJECT_SECTIONS)[number], number>; // 工具事实依赖的 revision
-};
-
 type AgentRuntime = {
   session: AgentSession;
-  binding: AgentBinding;
   limits: AgentModelLimits; // 换模时继续传回 Provider，维持当前对话容量
   unsubscribe: () => void;
 };
@@ -131,7 +113,7 @@ export class AgentService {
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
   private readonly unsubscribe_project_session: () => void;
-  private runtime: AgentRuntime | null = null; // 模型历史只绑定当前工程世代
+  private runtime: AgentRuntime | null = null; // 模型历史只存活于当前工程会话世代
   private session_reset: Promise<void> | null = null; // 清理完成前禁止新消息跨会话进入
   private message_acceptance: Promise<AgentSessionSnapshot> | null = null; // 串行覆盖异步建会话与换模
   private prompt_settlement: Promise<void> | null = null; // SDK idle 尚未覆盖异步 preflight，单独纳入关闭屏障
@@ -143,7 +125,7 @@ export class AgentService {
   private system_prompt: string | null = null;
   private disposed = false;
 
-  /** 捕获组合根依赖，并让工程会话切换直接失效当前 Agent 运行时。 */
+  /** 会话订阅返回 reset Promise，保证工程生命周期等待旧 Agent 完整退出。 */
   public constructor(options: AgentServiceOptions) {
     this.paths = options.paths;
     this.settings = options.settings;
@@ -156,9 +138,9 @@ export class AgentService {
     this.compute_worker = options.computeWorker;
     this.log_manager = options.logManager;
     this.publish = options.publish;
-    this.unsubscribe_project_session = this.session_state.subscribe_change(() => {
-      void this.reset_session();
-    });
+    this.unsubscribe_project_session = this.session_state.subscribe_change(() =>
+      this.reset_session(),
+    );
   }
 
   /** 返回仅含不可变投影的公开快照，避免 API 调用方持有会话内部引用。 */
@@ -261,28 +243,6 @@ export class AgentService {
     return this.get_snapshot();
   }
 
-  /** 相关项目事实变化令旧上下文失效；Agent 自己的原子写入只推进 binding。 */
-  public handle_project_change(event: ProjectChangeEvent): void {
-    if (
-      !event.updatedSections.some((section) =>
-        (AGENT_PROJECT_SECTIONS as readonly ProjectDataSection[]).includes(section),
-      )
-    ) {
-      return;
-    }
-    if (
-      this.runtime !== null &&
-      (event.source === AGENT_QUALITY_RULE_UPDATE_SOURCE ||
-        event.source === AGENT_PROOFREADING_UPDATE_SOURCE)
-    ) {
-      this.runtime.binding = this.read_binding();
-      return;
-    }
-    if (this.runtime !== null || this.message_acceptance !== null) {
-      void this.reset_session();
-    }
-  }
-
   /** dispose 不再发布事件，但会等待 reset、消息受理与所有运行时清理。 */
   public async dispose(): Promise<void> {
     if (this.disposed) return;
@@ -302,7 +262,7 @@ export class AgentService {
     ]);
   }
 
-  /** 失效绑定先完整重置，再在受理世代内准备唯一候选运行时。 */
+  /** 在当前运行世代内准备唯一候选运行时。 */
   private async accept_message(
     system_prompt: string,
     parts: AgentUserMessagePart[],
@@ -311,11 +271,6 @@ export class AgentService {
   ): Promise<AgentSessionSnapshot> {
     let prompt_started = false;
     try {
-      let binding = this.read_binding();
-      if (this.runtime !== null && !bindings_equal(this.runtime.binding, binding)) {
-        await this.reset_session();
-        binding = this.read_binding();
-      }
       const generation = this.runtime_generation;
       const model_settings = this.settings.read_setting();
       let runtime = this.runtime;
@@ -324,7 +279,7 @@ export class AgentService {
 
       try {
         if (runtime === null) {
-          runtime = await this.create_runtime(binding, system_prompt, model_settings);
+          runtime = await this.create_runtime(system_prompt, model_settings);
         } else {
           const resolved_model = register_agent_model(
             runtime.session.modelRuntime,
@@ -336,7 +291,7 @@ export class AgentService {
           runtime.session.setThinkingLevel(resolved_model.thinkingLevel);
         }
 
-        if (!this.acceptance_is_current(generation, binding)) {
+        if (this.disposed || generation !== this.runtime_generation) {
           if (created || this.runtime === runtime) {
             if (this.runtime === runtime) this.runtime = null;
             await this.close_runtime(runtime);
@@ -382,7 +337,6 @@ export class AgentService {
 
   /** 创建完全内存化的 SDK 会话，并只注册五个产品工具。 */
   private async create_runtime(
-    binding: AgentBinding,
     system_prompt: string,
     model_settings: JsonRecord,
   ): Promise<AgentRuntime> {
@@ -439,7 +393,7 @@ export class AgentService {
     const unsubscribe = session.subscribe((event) => {
       if (this.runtime?.session === session) this.handle_agent_event(event);
     });
-    return { session, binding, limits, unsubscribe };
+    return { session, limits, unsubscribe };
   }
 
   /** prompt() 已覆盖自动重试与溢出恢复；只有最终 settle 才决定公开终态。 */
@@ -690,36 +644,11 @@ export class AgentService {
     this.runtime_gate.finish_runtime(lease);
   }
 
-  /** 受理结果只有在工程绑定、运行世代和服务生命周期均未变化时才能公开。 */
-  private acceptance_is_current(generation: number, binding: AgentBinding): boolean {
-    if (this.disposed || generation !== this.runtime_generation) return false;
-    try {
-      return bindings_equal(binding, this.read_binding());
-    } catch {
-      return false;
-    }
-  }
-
   /** prompt 只有仍绑定当前运行时且未被终止时才能发布最终状态。 */
   private prompt_is_current(runtime: AgentRuntime, generation: number): boolean {
     return (
       this.runtime === runtime && generation === this.runtime_generation && this.state !== "idle"
     );
-  }
-
-  /** 会话绑定同时读取工程世代与工具依赖 section revision，不能只比较路径。 */
-  private read_binding(): AgentBinding {
-    const project_path = this.session_state.require_loaded_project_path();
-    const snapshot = this.cache.snapshot();
-    return {
-      projectPath: project_path,
-      epoch: snapshot.epoch,
-      sectionRevisions: {
-        quality: snapshot.sectionRevisions.quality ?? 0,
-        items: snapshot.sectionRevisions.items ?? 0,
-        proofreading: snapshot.sectionRevisions.proofreading ?? 0,
-      },
-    };
   }
 
   /** 资源加载是发送消息的硬前置，不能用空 prompt 降级启动。 */
@@ -767,16 +696,4 @@ function project_assistant_message_parts(message: AssistantMessage): AgentAssist
     else parts.push(part);
   }
   return parts;
-}
-
-/** 工程路径、世代和任一工具依赖 revision 变化都会令旧上下文失效。 */
-function bindings_equal(left: AgentBinding | null, right: AgentBinding): boolean {
-  return (
-    left !== null &&
-    left.projectPath === right.projectPath &&
-    left.epoch === right.epoch &&
-    AGENT_PROJECT_SECTIONS.every(
-      (section) => left.sectionRevisions[section] === right.sectionRevisions[section],
-    )
-  );
 }
