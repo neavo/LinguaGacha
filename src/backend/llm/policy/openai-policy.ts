@@ -85,6 +85,11 @@ export function build_openai_thinking_payload(
       return { reasoning_effort: level === "OFF" ? "none" : level.toLowerCase() };
     }
 
+    // https://docs.x.ai/developers/model-capabilities/text/reasoning
+    if (/grok/iu.test(model_id)) {
+      return { reasoning_effort: level === "OFF" ? "low" : level.toLowerCase() };
+    }
+
     // https://docs.volcengine.com/docs/82379/1449737?lang=zh#fc5eac89
     if (/doubao-seed/iu.test(model_id)) {
       return { reasoning_effort: level === "OFF" ? "minimal" : level.toLowerCase() };
@@ -112,6 +117,15 @@ export function build_openai_thinking_payload(
   }
 
   if (api_format === "OpenAIResponses") {
+    // https://docs.x.ai/developers/model-capabilities/text/reasoning
+    if (/grok/iu.test(model_id)) {
+      return {
+        reasoning: {
+          effort: level === "OFF" ? "low" : level.toLowerCase(),
+        },
+      };
+    }
+
     // https://docs.volcengine.com/docs/82379/1449737?lang=zh#fc5eac89
     if (/doubao-seed/iu.test(model_id)) {
       return {

@@ -157,6 +157,20 @@ describe("OpenAI 请求规则", () => {
   });
 
   it.each([
+    ["OFF", "low"],
+    ["LOW", "low"],
+    ["MEDIUM", "medium"],
+    ["HIGH", "high"],
+  ] as const)("Grok 将 %s 映射到两种 OpenAI 协议的 effort=%s", (level, effort) => {
+    expect(build_openai_thinking_payload("OpenAI", "grok-4.5", level)).toEqual({
+      reasoning_effort: effort,
+    });
+    expect(build_openai_thinking_payload("OpenAIResponses", "grok-4.5", level)).toEqual({
+      reasoning: { effort },
+    });
+  });
+
+  it.each([
     ["OFF", { thinking: { type: "disabled" } }],
     ["LOW", { thinking: { type: "enabled" }, reasoning_effort: "low" }],
     ["MEDIUM", { thinking: { type: "enabled" }, reasoning_effort: "low" }],
