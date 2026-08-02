@@ -21,7 +21,7 @@ const MAX_QUERY_LIMIT = 500;
 const MAX_QUERY_IDS = 500;
 const MAX_QUERY_PATTERNS = 100;
 
-/** Agent 发起的译文提交使用独立 source，AgentService 据此区分自身与外部写入。 */
+/** Agent 发起的译文提交使用独立 source，确保项目事件保留真实来源。 */
 export const AGENT_PROOFREADING_UPDATE_SOURCE = "agent_proofreading_update_items";
 
 /** 正文 query 以判别 mode 固定三种互斥输入形状；根节点显式 object 兼容模型工具协议。 */

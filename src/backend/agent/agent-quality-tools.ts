@@ -167,7 +167,7 @@ type AgentQualityDependencies = {
   computeWorker: Pick<ComputeWorkerClient, "run">;
 };
 
-/** Agent 发起的规则提交使用独立 source，AgentService 据此区分自身与外部写入。 */
+/** Agent 发起的规则提交使用独立 source，确保项目事件保留真实来源。 */
 export const AGENT_QUALITY_RULE_UPDATE_SOURCE = "agent_quality_rule_update";
 
 /** 构造统一质量规则 query/update 工具；领域持久化仍由 QualityRuleService 拥有。 */
@@ -554,6 +554,7 @@ function build_glossary_structure(
   };
 }
 
+/** 在 compute worker 计算当前缓存文本的术语统计，并收窄跨线程返回值。 */
 async function compute_glossary_statistics(
   dependencies: Pick<AgentQualityDependencies, "cache" | "computeWorker">,
   entries: JsonRecord[],
@@ -581,7 +582,7 @@ async function compute_glossary_statistics(
   };
 }
 
-/** Worker 返回值属于跨线程输入，丢弃非有限数字和非字符串成员。 */
+/** 跨线程计数映射只接受有限数字成员。 */
 function read_number_record(value: unknown): Record<string, number> {
   return Object.fromEntries(
     Object.entries(read_json_record(value)).flatMap(([key, item]) =>
@@ -590,6 +591,7 @@ function read_number_record(value: unknown): Record<string, number> {
   );
 }
 
+/** 跨线程父级映射只保留字符串数组成员。 */
 function read_string_array_record(value: unknown): Record<string, string[]> {
   return Object.fromEntries(
     Object.entries(read_json_record(value)).map(([key, item]) => [

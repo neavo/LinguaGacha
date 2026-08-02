@@ -147,7 +147,6 @@ export class BackendServices {
     const publish_project_change = (request: Parameters<typeof adapt_project_change>[0]) => {
       const event = adapt_project_change(request);
       if (event !== null) {
-        this.agent?.handle_project_change(event);
         this.api_stream_hub.publish(PROJECT_CHANGE_EVENT_TOPIC, event as unknown as JsonRecord);
       }
       return event;
