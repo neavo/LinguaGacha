@@ -1,17 +1,21 @@
 import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json";
 import { read_json_record } from "../../domain/json";
-import type { ProofreadingCache } from "../cache/proofreading-cache";
+import type { ProofreadingCache, ProofreadingCacheResult } from "../cache/proofreading-cache";
 import type { ProjectSessionState } from "../project/project-session-state";
 import * as AppErrors from "../../shared/error";
 import type {
   ProofreadingFilterOptions,
   ProofreadingSearchScope,
 } from "../../shared/proofreading/proofreading-types";
-import type { ProofreadingListViewQuery } from "../../shared/proofreading/proofreading-list-reader";
+import type {
+  ProofreadingListViewQuery,
+  ProofreadingWarningPage,
+  ProofreadingWarningQuery,
+} from "../../shared/proofreading/proofreading-reader";
 import type { ProofreadingSortState } from "../../shared/proofreading/list";
 
 /**
- * 将校对页面 action 收窄为当前 loaded 工程的只读缓存查询。
+ * 提供校对页 JSON 查询适配与后端内部类型化只读查询。
  */
 export class ProofreadingQueryService {
   private readonly session_state: ProjectSessionState; // 查询必须绑定当前 loaded 工程
@@ -23,6 +27,14 @@ export class ProofreadingQueryService {
   public constructor(options: { sessionState: ProjectSessionState; cache: ProofreadingCache }) {
     this.session_state = options.sessionState;
     this.cache = options.cache;
+  }
+
+  /** 查询当前校对运行态的真实 warning，不扩张 renderer action 集合。 */
+  public query_warnings(
+    query: ProofreadingWarningQuery,
+  ): Promise<ProofreadingCacheResult<ProofreadingWarningPage>> {
+    this.session_state.require_loaded_project_path();
+    return this.cache.warnings(query);
   }
 
   /**

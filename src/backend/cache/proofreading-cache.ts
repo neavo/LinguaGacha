@@ -15,8 +15,10 @@ import type {
   ProofreadingRowIndexQuery,
   ProofreadingSyncInput,
   ProofreadingSyncState,
-  createProofreadingListReader,
-} from "../../shared/proofreading/proofreading-list-reader";
+  ProofreadingWarningQuery,
+  ProofreadingWarningPage,
+  createProofreadingReader,
+} from "../../shared/proofreading/proofreading-reader";
 import type {
   ProofreadingClientItem,
   ProofreadingContextItem,
@@ -24,7 +26,7 @@ import type {
   ProofreadingListView,
   ProofreadingItemRecord,
 } from "../../shared/proofreading/proofreading-types";
-import type { ProofreadingListWindow } from "../../shared/proofreading/proofreading-list-reader";
+import type { ProofreadingListWindow } from "../../shared/proofreading/proofreading-reader";
 import type { QualitySlice, QualitySnapshot } from "../../shared/quality/quality-rule-snapshot";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
 import type { CacheChange } from "./cache-change";
@@ -52,13 +54,13 @@ export type ProofreadingCacheResult<TData> = {
 };
 
 /**
- * 按工程、会话 epoch、依赖 revision 和语言缓存校对列表运行态。
+ * 按工程、会话 epoch、依赖 revision 和语言缓存校对评估运行态。
  */
 export class ProofreadingCache {
   private readonly cache: CacheReadPort; // 完整同步输入只来自当前会话缓存快照
   private readonly app_setting_service: AppSettingService; // 语言缺省值来自当前应用设置
   private readonly worker_client: ComputeWorkerClient; // 质量评估在 worker 中执行
-  private readonly service: ReturnType<typeof createProofreadingListReader>; // 持有列表索引运行态
+  private readonly reader: ReturnType<typeof createProofreadingReader>; // 持有校对索引与 GUI 列表视图运行态
   private synced_key: string | null = null; // synced_state 对应的完整身份
   private synced_state: ProofreadingSyncState | null = null; // 最近一次成功同步的公开摘要
   private sync_promises = new Map<string, Promise<ProofreadingSyncState>>(); // 合并同身份并发同步
@@ -70,12 +72,12 @@ export class ProofreadingCache {
     cache: CacheReadPort;
     appSettingService: AppSettingService;
     workerClient: ComputeWorkerClient;
-    service: ReturnType<typeof createProofreadingListReader>;
+    reader: ReturnType<typeof createProofreadingReader>;
   }) {
     this.cache = options.cache;
     this.app_setting_service = options.appSettingService;
     this.worker_client = options.workerClient;
-    this.service = options.service;
+    this.reader = options.reader;
   }
 
   /**
@@ -96,7 +98,14 @@ export class ProofreadingCache {
   public async list(
     query: ProofreadingListViewQuery,
   ): Promise<ProofreadingCacheResult<ProofreadingListView>> {
-    return this.query_current(() => this.service.read_list_view(query));
+    return this.query_current(() => this.reader.read_list_view(query));
+  }
+
+  /** 查询当前评估运行态中的真实 warning，不改变 GUI 视图。 */
+  public async warnings(
+    query: ProofreadingWarningQuery,
+  ): Promise<ProofreadingCacheResult<ProofreadingWarningPage>> {
+    return this.query_current(() => this.reader.read_warning_page(query));
   }
 
   /**
@@ -105,7 +114,7 @@ export class ProofreadingCache {
   public async window(
     query: ProofreadingListWindowQuery,
   ): Promise<ProofreadingCacheResult<ProofreadingListWindow>> {
-    return this.query_current(() => this.service.read_list_window(query));
+    return this.query_current(() => this.reader.read_list_window(query));
   }
 
   /**
@@ -114,7 +123,7 @@ export class ProofreadingCache {
   public async rowIdsRange(
     query: ProofreadingRowIdsRangeQuery,
   ): Promise<ProofreadingCacheResult<string[]>> {
-    return this.query_current(() => this.service.read_row_ids_range(query));
+    return this.query_current(() => this.reader.read_row_ids_range(query));
   }
 
   /**
@@ -123,7 +132,7 @@ export class ProofreadingCache {
   public async rowIndex(
     query: ProofreadingRowIndexQuery,
   ): Promise<ProofreadingCacheResult<number | null>> {
-    return this.query_current(() => this.service.resolve_row_index(query) ?? null);
+    return this.query_current(() => this.reader.resolve_row_index(query) ?? null);
   }
 
   /**
@@ -133,7 +142,7 @@ export class ProofreadingCache {
     query: ProofreadingItemsByRowIdsQuery,
   ): Promise<ProofreadingCacheResult<ProofreadingClientItem[]>> {
     return this.query_current(() => {
-      return this.service.read_items_by_row_ids(query).map((item) => {
+      return this.reader.read_items_by_row_ids(query).map((item) => {
         const cached_item = this.cache.items.readItem(Number(item.item_id));
         if (cached_item === null || String(cached_item["file_type"] ?? "") !== "TRANS") {
           return item;
@@ -154,7 +163,7 @@ export class ProofreadingCache {
   public async context(
     query: ProofreadingContextQuery,
   ): Promise<ProofreadingCacheResult<ProofreadingContextItem[]>> {
-    return this.query_current(() => this.service.read_context_items(query));
+    return this.query_current(() => this.reader.read_context_items(query));
   }
 
   /**
@@ -163,11 +172,11 @@ export class ProofreadingCache {
   public async filterPanel(
     query: ProofreadingFilterPanelQuery,
   ): Promise<ProofreadingCacheResult<ProofreadingFilterPanelState>> {
-    return this.query_current(() => this.service.build_filter_panel(query));
+    return this.query_current(() => this.reader.build_filter_panel(query));
   }
 
   /**
-   * 清理指定项目的校对列表运行态；未传项目时清掉当前身份。
+   * 清理指定项目的校对评估运行态；未传项目时清掉当前身份。
    */
   public async clearProject(projectPath?: string): Promise<void> {
     const current_key = this.synced_key;
@@ -183,7 +192,7 @@ export class ProofreadingCache {
     this.synced_state = null;
     this.sync_promises.clear();
     if (parsed_key !== null) {
-      this.service.dispose_project(parsed_key.projectPath);
+      this.reader.dispose_project(parsed_key.projectPath);
     }
   }
 
@@ -218,7 +227,7 @@ export class ProofreadingCache {
     }
 
     try {
-      const sync_state = this.service.apply_item_delta({
+      const sync_state = this.reader.apply_item_delta({
         projectId: change.projectPath,
         revisions: next_revisions,
         total_item_count: this.cache.snapshot().itemCount,
@@ -278,7 +287,7 @@ export class ProofreadingCache {
         new AbortController().signal,
       )
       .then((result) => {
-        const sync_state = this.service.sync_evaluated_full({
+        const sync_state = this.reader.sync_evaluated_full({
           ...result,
           quality: identity.input.quality,
         });

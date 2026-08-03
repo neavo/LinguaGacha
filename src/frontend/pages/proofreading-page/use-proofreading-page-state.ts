@@ -52,7 +52,7 @@ import {
   type ProofreadingListWindowBounds,
   type ProofreadingResolvedListQuery,
 } from "@frontend/pages/proofreading-page/proofreading-list-query-utils";
-import type { ProofreadingSyncState } from "@shared/proofreading/proofreading-list-reader";
+import type { ProofreadingSyncState } from "@shared/proofreading/proofreading-reader";
 import type {
   AppTableScrollAnchor,
   AppTableSortState,

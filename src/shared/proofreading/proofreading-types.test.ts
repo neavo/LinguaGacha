@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  PROOFREADING_WARNING_CODES,
+  PROOFREADING_WARNING_FILTER_CODES,
   clone_proofreading_filter_options,
   compress_proofreading_text,
   format_proofreading_glossary_term,
@@ -9,6 +11,21 @@ import {
 } from "./proofreading-types";
 
 describe("proofreading types", () => {
+  it("区分真实警告与 GUI 无警告虚拟筛选值", () => {
+    expect(PROOFREADING_WARNING_CODES).toEqual([
+      "KANA",
+      "HANGEUL",
+      "TEXT_PRESERVE",
+      "SIMILARITY",
+      "GLOSSARY",
+      "RETRY_THRESHOLD",
+    ]);
+    expect(PROOFREADING_WARNING_FILTER_CODES).toEqual([
+      "NO_WARNING",
+      ...PROOFREADING_WARNING_CODES,
+    ]);
+  });
+
   it("格式化术语、压缩换行并将未知状态排在已知状态之后", () => {
     expect(format_proofreading_glossary_term({ src: "魔法", dst: "Magic" })).toBe("魔法 -> Magic");
     expect(compress_proofreading_text("第一行\n第二行")).toBe("第一行 ↵ 第二行");

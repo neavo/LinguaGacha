@@ -4,15 +4,22 @@ import type { GlossaryApplication } from "../quality/glossary";
 // 筛选面板表示“无警告”的虚拟 warning。
 export const PROOFREADING_NO_WARNING_CODE = "NO_WARNING" as const;
 
-// 固定警告筛选的默认展示顺序。
+// 真实校对警告的唯一词表。
 export const PROOFREADING_WARNING_CODES = [
-  PROOFREADING_NO_WARNING_CODE,
   "KANA",
   "HANGEUL",
   "TEXT_PRESERVE",
   "SIMILARITY",
   "GLOSSARY",
   "RETRY_THRESHOLD",
+] as const;
+
+export type ProofreadingWarningCode = (typeof PROOFREADING_WARNING_CODES)[number];
+
+// GUI 筛选词表额外包含“无警告”虚拟值。
+export const PROOFREADING_WARNING_FILTER_CODES = [
+  PROOFREADING_NO_WARNING_CODE,
+  ...PROOFREADING_WARNING_CODES,
 ] as const;
 
 export const PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES = ["NONE", "PROCESSED", "ERROR"] as const;
@@ -80,7 +87,7 @@ export type ProofreadingItem = {
   name_dst: ItemNameField;
   status: string;
   retry_count: number;
-  warnings: string[];
+  warnings: ProofreadingWarningCode[];
   warning_fragments_by_code: ProofreadingWarningFragmentsByCode;
   glossary_applications: GlossaryApplication[];
 };
@@ -210,7 +217,7 @@ export function clone_proofreading_filter_options(
 export function resolve_default_proofreading_warning_types(
   available_warning_types: string[],
 ): string[] {
-  const known_warning_types: string[] = [...PROOFREADING_WARNING_CODES];
+  const known_warning_types: string[] = [...PROOFREADING_WARNING_FILTER_CODES];
   const known_warning_type_set = new Set<string>(known_warning_types);
   const extra_warning_types = unique_strings(available_warning_types)
     .filter((warning) => !known_warning_type_set.has(warning))

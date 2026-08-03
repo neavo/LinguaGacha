@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { ProofreadingCache } from "../cache/proofreading-cache";
 import { ProjectSessionState } from "../project/project-session-state";
 import { ProofreadingQueryService } from "./proofreading-query-service";
+import { ProjectNotLoadedError } from "../../shared/error";
 
 function create_cache(): ProofreadingCache {
   const base_result = {
@@ -37,6 +38,10 @@ function create_cache(): ProofreadingCache {
         window_rows: [],
         invalid_regex_message: null,
       },
+    })),
+    warnings: vi.fn(async (query) => ({
+      ...base_result,
+      data: { total_item_count: 0, items: [], invalid_regex_message: null, query },
     })),
     window: vi.fn(),
     rowIdsRange: vi.fn(),
@@ -112,5 +117,31 @@ describe("ProofreadingQueryService", () => {
       rows: [{ row_id: "1", row_number: 1, src: "原文", dst: "译文" }],
     });
     expect(cache.context).toHaveBeenCalledWith({ row_id: "1" });
+  });
+
+  it("类型化 warning 查询保留 loaded-project 守卫且不扩张公开 action", async () => {
+    const session_state = new ProjectSessionState();
+    const cache = create_cache();
+    const service = new ProofreadingQueryService({ sessionState: session_state, cache });
+    const query = {
+      warning_types: ["GLOSSARY" as const],
+      keyword: "HP",
+      scope: "all" as const,
+      is_regex: false,
+      case_sensitive: false,
+      offset: 0,
+      limit: 20,
+    };
+
+    expect(() => service.query_warnings(query)).toThrow(ProjectNotLoadedError);
+    session_state.mark_loaded("E:/Project/demo.lg");
+    await expect(service.query_warnings(query)).resolves.toMatchObject({
+      projectPath: "E:/Project/demo.lg",
+      data: { total_item_count: 0 },
+    });
+    expect(cache.warnings).toHaveBeenCalledWith(query);
+    await expect(service.query({ action: "warnings" })).rejects.toMatchObject({
+      diagnostic_context: { reason: "invalid_proofreading_query_action" },
+    });
   });
 });

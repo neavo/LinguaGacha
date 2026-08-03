@@ -10,7 +10,7 @@ import {
   type ProofreadingSearchScope,
   type ProofreadingVisibleItem,
 } from "@shared/proofreading/proofreading-types";
-import type { ProofreadingSyncState } from "@shared/proofreading/proofreading-list-reader";
+import type { ProofreadingSyncState } from "@shared/proofreading/proofreading-reader";
 import type {
   AppTableSelectionChange,
   AppTableSortState,

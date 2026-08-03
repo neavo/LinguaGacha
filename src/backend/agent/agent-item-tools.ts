@@ -9,7 +9,10 @@ import {
 } from "../../shared/item-text";
 import {
   PROOFREADING_MANUAL_STATUS_CODES,
+  PROOFREADING_WARNING_CODES,
   type ProofreadingManualStatusCode,
+  type ProofreadingClientItem,
+  type ProofreadingWarningCode,
 } from "../../shared/proofreading/proofreading-types";
 import {
   create_text_keyword_matcher,
@@ -18,6 +21,7 @@ import {
 import { JsonTool } from "../../shared/utils/json-tool";
 import type { CacheReadPort } from "../cache/cache-types";
 import type { ProofreadingService } from "../proofreading/proofreading-service";
+import type { ProofreadingQueryService } from "../proofreading/proofreading-query-service";
 
 // 工具结果保持小页；筛选值与写入批次共享模型单次调用上限。
 const DEFAULT_QUERY_LIMIT = 20;
@@ -33,6 +37,22 @@ const MANUAL_STATUS_PARAMETERS = Type.Union([
   Type.Literal(PROOFREADING_MANUAL_STATUS_CODES[1]),
   Type.Literal(PROOFREADING_MANUAL_STATUS_CODES[2]),
 ]);
+const WARNING_TYPE_PARAMETERS = Type.Union(
+  PROOFREADING_WARNING_CODES.map((warning) => Type.Literal(warning)),
+);
+
+// 两个只读工具共用同一搜索协议，避免字段默认值和校验语义分叉。
+const ITEM_SEARCH_PARAMETERS = Type.Object(
+  {
+    keyword: Type.String(),
+    scope: Type.Optional(
+      Type.Union([Type.Literal("src"), Type.Literal("dst"), Type.Literal("all")]),
+    ),
+    is_regex: Type.Optional(Type.Boolean()),
+    case_sensitive: Type.Optional(Type.Boolean()),
+  },
+  { additionalProperties: false },
+);
 
 /** item query 组合筛选与单一文本搜索，不返回命中明细或派生审校事实。 */
 const QUERY_ITEMS_PARAMETERS = Type.Object(
@@ -65,19 +85,45 @@ const QUERY_ITEMS_PARAMETERS = Type.Object(
         { additionalProperties: false },
       ),
     ),
-    search: Type.Optional(
+    search: Type.Optional(ITEM_SEARCH_PARAMETERS),
+    cursor: Type.Optional(Type.String()),
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_QUERY_LIMIT })),
+  },
+  { additionalProperties: false },
+);
+
+/** warning query 只接受真实警告词表，不把 GUI 的“无警告”虚拟筛选值暴露给 Agent。 */
+const QUERY_WARNING_ITEMS_PARAMETERS = Type.Object(
+  {
+    filters: Type.Optional(
       Type.Object(
         {
-          keyword: Type.String(),
-          scope: Type.Optional(
-            Type.Union([Type.Literal("src"), Type.Literal("dst"), Type.Literal("all")]),
+          warning_types: Type.Optional(
+            Type.Array(WARNING_TYPE_PARAMETERS, {
+              minItems: 1,
+              maxItems: PROOFREADING_WARNING_CODES.length,
+              uniqueItems: true,
+            }),
           ),
-          is_regex: Type.Optional(Type.Boolean()),
-          case_sensitive: Type.Optional(Type.Boolean()),
+          statuses: Type.Optional(
+            Type.Array(ITEM_STATUS_PARAMETERS, {
+              minItems: 1,
+              maxItems: ITEM_STATUSES.length,
+              uniqueItems: true,
+            }),
+          ),
+          file_paths: Type.Optional(
+            Type.Array(Type.String({ minLength: 1 }), {
+              minItems: 1,
+              maxItems: MAX_TOOL_ITEMS,
+              uniqueItems: true,
+            }),
+          ),
         },
         { additionalProperties: false },
       ),
     ),
+    search: Type.Optional(ITEM_SEARCH_PARAMETERS),
     cursor: Type.Optional(Type.String()),
     limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_QUERY_LIMIT })),
   },
@@ -122,18 +168,32 @@ type AgentProjectItem = JsonRecord & {
 
 type SearchScope = "src" | "dst" | "all";
 
+type AgentItemSearch = {
+  keyword: string;
+  scope?: SearchScope;
+  is_regex?: boolean;
+  case_sensitive?: boolean;
+};
+
 export type AgentItemQuery = {
   filters?: {
     item_ids?: number[];
     statuses?: ItemStatus[];
     file_paths?: string[];
   };
-  search?: {
-    keyword: string;
-    scope?: SearchScope;
-    is_regex?: boolean;
-    case_sensitive?: boolean;
+  search?: AgentItemSearch;
+  cursor?: string;
+  limit?: number;
+};
+
+/** Agent warning 查询意图；派生条目与 revision 由后端校对运行态返回。 */
+export type AgentWarningItemQuery = {
+  filters?: {
+    warning_types?: ProofreadingWarningCode[];
+    statuses?: ItemStatus[];
+    file_paths?: string[];
   };
+  search?: AgentItemSearch;
   cursor?: string;
   limit?: number;
 };
@@ -142,9 +202,15 @@ type AgentItemCache = Pick<CacheReadPort, "snapshot"> & {
   readonly items: Pick<CacheReadPort["items"], "readItems" | "readItem">;
 };
 
+/** Agent 只依赖校对域的 warning 读口和条目写口。 */
+export type AgentProofreading = {
+  query: Pick<ProofreadingQueryService, "query_warnings">;
+  commands: Pick<ProofreadingService, "update_items_from_agent">;
+};
+
 type AgentItemDependencies = {
   cache: AgentItemCache;
-  proofreading: Pick<ProofreadingService, "update_items_from_agent">;
+  proofreading: AgentProofreading;
 };
 
 /** 构造职责单一的 item query/update 工具。 */
@@ -161,6 +227,46 @@ export function create_agent_item_tools(dependencies: AgentItemDependencies): To
       },
     }),
     defineTool({
+      name: "query_warning_items",
+      label: "查询警告条目",
+      description:
+        "查询当前工程校对评估产生的真实 warning 条目；省略 warning_types 表示任意警告，工程事实变化后应从首屏重新查询。",
+      parameters: QUERY_WARNING_ITEMS_PARAMETERS,
+      execute: async (_tool_call_id, params, signal) => {
+        signal?.throwIfAborted();
+        assert_warning_item_query(params);
+        const offset = parse_cursor(params.cursor);
+        const result = await dependencies.proofreading.query.query_warnings({
+          warning_types: params.filters?.warning_types ?? [...PROOFREADING_WARNING_CODES],
+          ...(params.filters?.statuses === undefined ? {} : { statuses: params.filters.statuses }),
+          ...(params.filters?.file_paths === undefined
+            ? {}
+            : { file_paths: params.filters.file_paths }),
+          keyword: params.search?.keyword ?? "",
+          scope: params.search?.scope ?? "all",
+          is_regex: params.search?.is_regex ?? false,
+          case_sensitive: params.search?.case_sensitive ?? false,
+          offset,
+          limit: params.limit ?? DEFAULT_QUERY_LIMIT,
+        });
+        signal?.throwIfAborted();
+        if (result.data.invalid_regex_message !== null) {
+          throw new Error(result.data.invalid_regex_message);
+        }
+        const items = result.data.items.map(project_warning_item);
+        const next_offset = offset + items.length;
+        const complete = next_offset >= result.data.total_item_count;
+        return tool_result({
+          projectPath: result.projectPath,
+          sectionRevisions: result.sectionRevisions,
+          total_item_count: result.data.total_item_count,
+          items,
+          cursor: complete ? null : next_offset.toString(),
+          complete,
+        });
+      },
+    }),
+    defineTool({
       name: "update_items",
       label: "更新条目",
       description: "按 items/proofreading revision 原子更新多个 item 的译文、译名和人工状态。",
@@ -169,7 +275,7 @@ export function create_agent_item_tools(dependencies: AgentItemDependencies): To
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
         assert_item_changes(params.changes);
-        await dependencies.proofreading.update_items_from_agent(
+        await dependencies.proofreading.commands.update_items_from_agent(
           params,
           AGENT_PROOFREADING_UPDATE_SOURCE,
         );
@@ -256,6 +362,37 @@ function project_agent_item(item: JsonRecord): AgentProjectItem {
   };
 }
 
+/** warning 工具只返回后续修复必需的条目事实与评估证据。 */
+function project_warning_item(item: ProofreadingClientItem): JsonRecord {
+  return {
+    item_id: item.item_id,
+    file_path: item.file_path,
+    row_number: item.row_number,
+    src: item.src,
+    dst: item.dst,
+    name_src: Item.normalize_name_field(item.name_src),
+    name_dst: Item.normalize_name_field(item.name_dst),
+    status: item.status,
+    retry_count: item.retry_count,
+    warnings: [...item.warnings],
+    warning_fragments_by_code: {
+      ...(item.warning_fragments_by_code.KANA === undefined
+        ? {}
+        : { KANA: [...item.warning_fragments_by_code.KANA] }),
+      ...(item.warning_fragments_by_code.HANGEUL === undefined
+        ? {}
+        : { HANGEUL: [...item.warning_fragments_by_code.HANGEUL] }),
+      ...(item.warning_fragments_by_code.TEXT_PRESERVE === undefined
+        ? {}
+        : { TEXT_PRESERVE: [...item.warning_fragments_by_code.TEXT_PRESERVE] }),
+    },
+    glossary_applications: item.glossary_applications.map((application) => ({
+      ...application,
+      fields: application.fields.map((field) => ({ ...field })),
+    })),
+  };
+}
+
 /** 收窄文本搜索配置，并把无效正则转换为工具错误。 */
 function create_query_matcher(search: AgentItemQuery["search"]): TextKeywordMatcher | undefined {
   if (search === undefined) return undefined;
@@ -304,7 +441,39 @@ function assert_item_query(request: AgentItemQuery): void {
       (value) => typeof value === "string" && value !== "",
     );
   }
-  const search = request.search;
+  assert_item_search(request.search);
+  assert_query_pagination(request);
+}
+
+/** warning 查询额外收窄真实 warning 词表，其余边界与 item 查询一致。 */
+function assert_warning_item_query(request: AgentWarningItemQuery): void {
+  if (!is_json_record(request)) throw new Error("query_warning_items 请求必须是 object");
+  assert_known_keys(request, ["filters", "search", "cursor", "limit"]);
+  const filters = request.filters;
+  if (filters !== undefined) {
+    if (!is_json_record(filters)) throw new Error("filters 必须是 object");
+    assert_known_keys(filters, ["warning_types", "statuses", "file_paths"]);
+    assert_unique_array(
+      filters.warning_types,
+      "warning_types",
+      PROOFREADING_WARNING_CODES.length,
+      (value) => PROOFREADING_WARNING_CODES.includes(value as ProofreadingWarningCode),
+    );
+    assert_unique_array(filters.statuses, "statuses", ITEM_STATUSES.length, (value) =>
+      ITEM_STATUSES.includes(value as ItemStatus),
+    );
+    assert_unique_array(
+      filters.file_paths,
+      "file_paths",
+      MAX_TOOL_ITEMS,
+      (value) => typeof value === "string" && value !== "",
+    );
+  }
+  assert_item_search(request.search);
+  assert_query_pagination(request);
+}
+
+function assert_item_search(search: AgentItemSearch | undefined): void {
   if (search !== undefined) {
     if (!is_json_record(search)) throw new Error("search 必须是 object");
     assert_known_keys(search, ["keyword", "scope", "is_regex", "case_sensitive"]);
@@ -321,6 +490,9 @@ function assert_item_query(request: AgentItemQuery): void {
       throw new Error("search.case_sensitive 必须是 boolean");
     }
   }
+}
+
+function assert_query_pagination(request: { cursor?: string; limit?: number }): void {
   parse_cursor(request.cursor);
   if (
     request.limit !== undefined &&

@@ -5,7 +5,7 @@ import { ProjectDataReader } from "../project/project-data-reader";
 import type { ProjectEvent } from "../project/project-events";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import type { JsonRecord } from "../../domain/json";
-import { createProofreadingListReader } from "../../shared/proofreading/proofreading-list-reader";
+import { createProofreadingReader } from "../../shared/proofreading/proofreading-reader";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
 import { create_cache_change, type CacheChange } from "./cache-change";
 import type { CacheFreshness, CacheReadPort, CacheSnapshot } from "./cache-types";
@@ -70,7 +70,7 @@ export class CacheManager implements CacheReadPort {
       cache: this,
       appSettingService: options.appSettingService,
       workerClient: options.workerClient,
-      service: createProofreadingListReader(),
+      reader: createProofreadingReader(),
     });
     this.qualityStatistics = new QualityStatisticsCache({
       cache: this,

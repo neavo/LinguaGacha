@@ -42,11 +42,10 @@ import type { AppSettingService } from "../app/app-setting-service";
 import type { CacheReadPort } from "../cache/cache-types";
 import type { LogManager } from "../log/log-manager";
 import type { ProjectSessionState } from "../project/project-session-state";
-import type { ProofreadingService } from "../proofreading/proofreading-service";
 import type { QualityRuleService } from "../quality/quality-rule-service";
 import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-gate";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
-import { create_agent_item_tools } from "./agent-item-tools";
+import { create_agent_item_tools, type AgentProofreading } from "./agent-item-tools";
 import { register_agent_model, type AgentModelLimits } from "./agent-model";
 import { create_agent_quality_tools } from "./agent-quality-tools";
 import {
@@ -111,7 +110,7 @@ type AgentServiceOptions = {
   sessionState: ProjectSessionState;
   cache: AgentServiceCache;
   qualityRules: Pick<QualityRuleService, "query" | "update_from_agent">;
-  proofreading: Pick<ProofreadingService, "update_items_from_agent">;
+  proofreading: AgentProofreading;
   runtimeGate: RuntimeOperationGate;
   computeWorker: ComputeWorkerClient;
   logManager: Pick<LogManager, "error" | "warning">;

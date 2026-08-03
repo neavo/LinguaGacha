@@ -18,7 +18,7 @@ import {
 import type {
   ProofreadingListWindow,
   ProofreadingSyncState,
-} from "@shared/proofreading/proofreading-list-reader";
+} from "@shared/proofreading/proofreading-reader";
 import type { ProjectDataSectionRevisions } from "@shared/project-event";
 import {
   clone_proofreading_filter_selection,

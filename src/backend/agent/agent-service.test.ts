@@ -847,6 +847,7 @@ describe("AgentService", () => {
       "query_quality_rules",
       "update_quality_rules",
       "query_items",
+      "query_warning_items",
       "update_items",
       "read_skill",
     ]);
@@ -1385,13 +1386,26 @@ describe("AgentService", () => {
       },
     };
     const proofreading = {
-      update_items_from_agent: async (
-        _request: JsonRecord,
-        _source: string,
-      ): Promise<ProjectWriteResult> => {
-        items_revision += 1;
-        proofreading_revision += 1;
-        return { accepted: true, changes: [] };
+      query: {
+        query_warnings: async () => ({
+          projectPath: "test.lg",
+          sectionRevisions: {
+            quality: revision,
+            items: items_revision,
+            proofreading: proofreading_revision,
+          },
+          data: { total_item_count: 0, items: [], invalid_regex_message: null },
+        }),
+      },
+      commands: {
+        update_items_from_agent: async (
+          _request: JsonRecord,
+          _source: string,
+        ): Promise<ProjectWriteResult> => {
+          items_revision += 1;
+          proofreading_revision += 1;
+          return { accepted: true, changes: [] };
+        },
       },
     };
     const publish = vi.fn((_topic: string, _payload: JsonRecord) => undefined);

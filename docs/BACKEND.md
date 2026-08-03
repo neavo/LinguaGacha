@@ -51,7 +51,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - `CacheManager` 是当前 session 的热读缓存根；query 只组合 cache、按需数据库读取和 shared 纯规则，不建立第二套项目事实。
 - 所有质量规则消费链统一通过 `QualityRule` 与 `normalize_quality_rule_entries` 收窄，并由真实执行器校验；入口不得另建字段或正则容错。
 - 质量规则执行语义集中在 shared：术语只匹配 `src/name_src` 并检查对应译文字段；替换按顺序正向执行，校对不逆推译后规则；文本保护消费者复用同一规则实现。
-- 校对 reader 同时维护原始自然顺序和单个列表视图：`view_id` 表示稳定结果快照，条目字段增量只刷新旧视图中的行内容，删除 tombstone 从旧视图移除成员，成员与排序只由新的 list query 重算；上下文读取不创建或替换当前列表视图。
+- 校对 reader 同时维护原始自然顺序和单个 GUI 列表视图：`view_id` 表示稳定结果快照，条目字段增量只刷新旧视图中的行内容，删除 tombstone 从旧视图移除成员，成员与排序只由新的 list query 重算；上下文、按 ID 读取和 Agent warning 分页只查询共享评估运行态，不创建或替换该视图。
 - 质量规则统计按 item 去重；译后替换读取译文字段，其余规则读取源字段，不模拟启用态或执行链。`QualityStatisticsCache` 只在能证明影响范围时局部失效，否则全量失效。
 - 客户端只提交用户意图、设置镜像和 revision 依赖；canonical items、task extras、prefilter 结果和 analysis 结果由后端计算。
 - 需要乐观锁的用户写入在最终提交点完成 revision guard 与单 `.lg` 事务；任务 artifact 等内部写入可以不带预期 revision，但仍通过 `ProjectWriteStore` 更新事实和 section revision。
@@ -80,7 +80,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - 模型级 `agent.context_window` 与 `agent.max_output_tokens` 在新会话创建时冻结；每个后续回合重新解析 agent 用途选择并刷新请求快照与思考等级，但不改变当前会话容量。模型页 generation 和 threshold 输入 / 输出 token 设置只作用于 OneShot。
 - Agent 启动期原子加载必需的 `resource/agent/system_prompt.md` 与 `resource/agent/session_seed.json`；会话种子以固定的 user / assistant 一问一答进入每个新会话的模型历史，但不进入公开时间线，任一资源缺失或无效都会阻止启动。产品 skill 仅在启动期从内置与用户目录加载，坏 skill 只记录诊断；SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。
 - skill 的 `SKILL.md` 描述同时作为模型描述和 UI 翻译缺失时的回退；manual-only skill 必须由显式 skill part 授权，`read_skill` 只能读取启动期形成的 `SKILL.md` 与 references 白名单，UI 翻译不进入模型上下文。
-- Agent 产品工具从当前 cache / query 读取事实，写入经对应服务的 Agent 专用入口复用同一 revision、事务和项目事件边界；`query_items` 只组合 ID、状态、文件与单一文本搜索条件并返回 item 分页，`update_items` 与 GUI 共用译文、译名和人工状态的字段更新核心。
+- Agent 产品工具从当前 cache / query 读取事实，写入经对应服务的 Agent 专用入口复用同一 revision、事务和项目事件边界；`query_items` 只从基础 item cache 组合 ID、状态、文件与单一文本搜索并返回分页，`query_warning_items` 复用当前校对评估运行态且只返回具有真实 warning 的条目与证据，`update_items` 与 GUI 共用译文、译名和人工状态的字段更新核心。
 - `query_quality_rules(glossary)` 复用一次 `quality_statistics` compute task 同时返回覆盖数、实际命中次数、结构关系和每条最多一个有效语境 sample；sample 由统计启动前捕获的 item 快照投影，后续 `query_items` 以 section revisions 相等作为一致性边界，不另建 Agent 统计缓存或正文重扫。
 
 ## 5. 数据库与 `.lg` 存储
