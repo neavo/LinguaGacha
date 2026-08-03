@@ -17,6 +17,34 @@ const entries: GlossaryEntry[] = [
 ];
 
 describe("共享术语领域规则", () => {
+  it("不敏感术语跨兼容字符形态匹配原始源文", () => {
+    const matches = match_glossary_source(
+      compile_glossary([
+        {
+          entry_id: "compat",
+          src: "HP",
+          dst: "生命值",
+          info: "",
+          case_sensitive: false,
+        },
+      ]),
+      read_item_source_text_parts({ src: "ＨＰ" }),
+    );
+
+    expect(matches.map(({ entry, fields }) => ({ entry_id: entry.entry_id, fields }))).toEqual([
+      {
+        entry_id: "compat",
+        fields: [
+          {
+            source_field: "src",
+            target_field: "dst",
+            ranges: [{ start: 0, end: 2 }],
+          },
+        ],
+      },
+    ]);
+  });
+
   it("按原始正文与姓名分别覆盖，保留重叠次数和 entry_id 身份", () => {
     const matches = match_glossary_source(
       compile_glossary(entries),

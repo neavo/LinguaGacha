@@ -1,5 +1,4 @@
 import { TextRubyCleaner } from "../../../../shared/text/text-ruby-cleaner";
-import { normalize_text_for_processing } from "../../../../shared/text/text-normalizer";
 import {
   build_text_preserve_rule,
   type TextPreserveRule,
@@ -39,7 +38,7 @@ export interface TranslationPrePipelineContext {
 export class TranslationPrePipeline {
   private readonly config: TextProcessingConfig; // 语言与文本修复策略的任务启动快照
   private readonly quality_snapshot: TextQualitySnapshot; // 保护与译前替换规则的同轮快照
-  private readonly pre_replacements: CompiledTextReplacements | null;
+  private readonly pre_replacements: CompiledTextReplacements | null; // 启用时只编译一次，同一 work unit 复用
 
   /**
    * 绑定配置快照和质量快照，pipeline 不读取全局会话缓存
@@ -53,7 +52,7 @@ export class TranslationPrePipeline {
   }
 
   /**
-   * 按固定顺序执行：读取 item.src、归一化、纯文本 ruby、保护、替换
+   * 按固定顺序执行：原样读取 item.src、纯文本 ruby、保护、替换
    */
   public process_item(
     item: TextTaskItemRecord | null,
@@ -73,8 +72,7 @@ export class TranslationPrePipeline {
     const actor_src = read_optional_item_name_text(item.name_src);
     context.source_text = String(item.src ?? "");
     for (const [line_index, raw_src] of context.source_text.split("\n").entries()) {
-      let src = normalize_text_for_processing(raw_src);
-      src = this.clean_ruby(src, text_type);
+      let src = this.clean_ruby(raw_src, text_type);
       if (src === "" || src.trim() === "") {
         continue;
       }
