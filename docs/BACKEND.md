@@ -78,7 +78,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - OpenAI Chat Completions 与 Responses 是显式独立的 `api_format`，不按 URL 或模型名自动探测，也不互相重试或降级；模型族思考字段由项目共享策略生成，未收录模型不猜测，`extra_body` 最后覆盖。Responses 的原生载荷与连续性由 `pi-ai` 生成；除通用思考与 `extra_body` 策略外，项目只把其中的系统指令规范为 `developer`，指令角色不随思考档位变化。
 - Agent 运行时完全内存化，coding-agent 的默认工具与项目资源发现全部关闭。消息受理到 SDK 最终 settle 期间持续持有共享运行 lease；stop 同步把当前轮次内仍运行的子条目和 user 条目封口为 `stopped`、将公开会话切回 `idle`，再异步取消 SDK，运行 lease 仍到最终 settle 才释放；显式 reset 与 `ProjectSessionState.mark_loaded` / `clear` 会立即隔离公开会话并等待旧运行时清理，同一工程内的项目事实变化不重置公开时间线或模型历史；已失效运行时的迟到阶段不得改写条目、发布终态或启动模型请求。
 - 模型级 `agent.context_window` 与 `agent.max_output_tokens` 在新会话创建时冻结；每个后续回合重新解析 agent 用途选择并刷新请求快照与思考等级，但不改变当前会话容量。模型页 generation 和 threshold 输入 / 输出 token 设置只作用于 OneShot。
-- Agent 基础 system prompt 的唯一资源为 `resource/agent/system_prompt.md`，缺失或无效会阻止启动；产品 skill 只在启动期从内置与用户目录加载，坏 skill 只记录诊断，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。
+- Agent 启动期原子加载必需的 `resource/agent/system_prompt.md` 与 `resource/agent/session_seed.json`；会话种子以固定的 user / assistant 一问一答进入每个新会话的模型历史，但不进入公开时间线，任一资源缺失或无效都会阻止启动。产品 skill 仅在启动期从内置与用户目录加载，坏 skill 只记录诊断；SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。
 - skill 的 `SKILL.md` 描述同时作为模型描述和 UI 翻译缺失时的回退；manual-only skill 必须由显式 skill part 授权，`read_skill` 只能读取启动期形成的 `SKILL.md` 与 references 白名单，UI 翻译不进入模型上下文。
 - Agent 产品工具从当前 cache / query 读取事实，写入经对应服务的 Agent 专用入口复用同一 revision、事务和项目事件边界；`query_items` 只组合 ID、状态、文件与单一文本搜索条件并返回 item 分页，`update_items` 与 GUI 共用译文、译名和人工状态的字段更新核心。
 - `query_quality_rules(glossary)` 复用一次 `quality_statistics` compute task 同时返回覆盖数、实际命中次数、结构关系和每条最多一个有效语境 sample；sample 由统计启动前捕获的 item 快照投影，后续 `query_items` 以 section revisions 相等作为一致性边界，不另建 Agent 统计缓存或正文重扫。

@@ -1,7 +1,0 @@
-interface:
-  display_name: LinguaGacha 术语表审校
-  short_description: 对 LinguaGacha 工程文件内的术语表数据进行质量审校
-  default_prompt: 使用 $lg-glossary-audit 基于原文语境审校目标文件内的术语表数据
-
-policy:
-  allow_implicit_invocation: false

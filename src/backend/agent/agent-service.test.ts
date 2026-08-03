@@ -70,6 +70,9 @@ const skill_test_fixture = vi.hoisted(() => {
   };
 });
 const system_prompt_loader = vi.hoisted(() => vi.fn(() => "基础系统指令。"));
+const session_seed_loader = vi.hoisted(() =>
+  vi.fn(() => ({ user: "种子设定。", assistant: "种子确认。" })),
+);
 const agent_model_registrar = vi.hoisted(() => vi.fn());
 
 const fake_agent_state = vi.hoisted(() => ({
@@ -106,6 +109,10 @@ const fake_agent_state = vi.hoisted(() => ({
 }));
 
 vi.mock("./agent-skills", () => ({ load_agent_skills: skill_test_fixture.loader }));
+vi.mock("./agent-session-seed", async (import_original) => ({
+  ...(await import_original<typeof import("./agent-session-seed")>()),
+  load_agent_session_seed: session_seed_loader,
+}));
 vi.mock("./agent-system-prompt", () => ({
   load_agent_system_prompt: system_prompt_loader,
 }));
@@ -383,6 +390,7 @@ describe("AgentService", () => {
     agent_model_registrar.mockImplementation(register_fake_agent_model);
     skill_test_fixture.loader.mockClear();
     system_prompt_loader.mockClear();
+    session_seed_loader.mockClear();
   });
 
   afterEach(async () => {
@@ -423,6 +431,26 @@ describe("AgentService", () => {
     snapshot.skills[0]!.displayDescriptions["en-US"] = "污染外部快照";
 
     expect(fixture.service.get_snapshot().skills).toEqual(expected_skills);
+  });
+
+  it("新对话把一问一答种子放在模型历史最前且不公开到时间线", async () => {
+    const fixture = await create_service();
+
+    await fixture.service.send_message({ parts: [{ kind: "text", text: "正文" }] });
+    await wait_for_idle(fixture.service);
+
+    const context = fake_agent_state.model_contexts[0] ?? [];
+    expect(context[0]).toMatchObject({ role: "user", content: "种子设定。" });
+    expect(context[1]).toMatchObject({ role: "assistant" });
+    expect(JSON.stringify(context[1])).toContain("种子确认。");
+    expect(context[2]?.role).toBe("user");
+    expect(JSON.stringify(context[2])).toContain("正文");
+    const entries = fixture.service.get_snapshot().entries;
+    expect(entries[0]).toMatchObject({
+      kind: "user_message",
+      parts: [{ kind: "text", text: "正文" }],
+    });
+    expect(JSON.stringify(entries)).not.toContain("种子设定。");
   });
 
   it("按引用顺序展开多个 skill，并把混排可见文本追加到模型用户消息", async () => {
@@ -1377,6 +1405,8 @@ describe("AgentService", () => {
         get_agent_user_skill_dir: () => "E:/Project/LinguaGacha/userdata/agent/skill",
         get_agent_system_prompt_path: () =>
           "E:/Project/LinguaGacha/resource/agent/system_prompt.md",
+        get_agent_session_seed_path: () =>
+          "E:/Project/LinguaGacha/resource/agent/session_seed.json",
       },
       settings,
       userAgent: "LinguaGacha/Test",

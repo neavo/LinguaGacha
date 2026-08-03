@@ -20,7 +20,7 @@ import type { CacheReadPort } from "../cache/cache-types";
 import type { ProofreadingService } from "../proofreading/proofreading-service";
 
 // 工具结果保持小页；筛选值与写入批次共享模型单次调用上限。
-const DEFAULT_QUERY_LIMIT = 50;
+const DEFAULT_QUERY_LIMIT = 20;
 const MAX_QUERY_LIMIT = 100;
 const MAX_TOOL_ITEMS = 500;
 
