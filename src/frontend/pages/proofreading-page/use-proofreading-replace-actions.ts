@@ -152,9 +152,13 @@ export function useProofreadingReplaceActions(
           items: [target_item],
           section_revisions: options.list_revisions,
         },
-        item_id: Number(target_item.item_id),
-        next_dst: replaced_result.field === "dst" ? replaced_result.text : target_item.dst,
-        next_name_dst: replaced_result.field === "name_dst" ? replaced_result.text : undefined,
+        changes: [
+          {
+            item_id: Number(target_item.item_id),
+            dst: replaced_result.field === "dst" ? replaced_result.text : target_item.dst,
+            name_dst: replaced_result.field === "name_dst" ? replaced_result.text : undefined,
+          },
+        ],
       }),
       fallback_error_key: "proofreading_page.feedback.replace_failed",
       preferred_row_id: build_proofreading_row_id(target_item.item_id),

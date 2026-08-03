@@ -5,7 +5,6 @@ import {
   create_clear_translations_plan,
   create_replace_all_plan,
   create_update_items_plan,
-  create_set_translation_status_plan,
   type ProofreadingCommandSnapshot,
 } from "./proofreading-command-planner";
 
@@ -29,252 +28,102 @@ function create_test_item(overrides: Partial<ProjectItemPublicRecord>): ProjectI
   };
 }
 
-function create_test_snapshot(
-  items: ProjectItemPublicRecord[] = [
-    create_test_item({
-      item_id: 1,
-      file_path: "script/a.txt",
-      row_number: 1,
-      src: "原文",
-      dst: "",
-      name_src: "Alice",
-      extra_field: { keep: true },
-      tag: "dialog",
-      file_type: "TXT",
-    }),
-  ],
-): ProofreadingCommandSnapshot {
-  return {
-    items,
-    section_revisions: {
-      items: 4,
-      proofreading: 2,
-    },
-  };
+function create_test_snapshot(items: ProjectItemPublicRecord[]): ProofreadingCommandSnapshot {
+  return { items, section_revisions: { items: 4, proofreading: 2 } };
 }
 
 describe("proofreading command planner", () => {
-  it("保存译文只提交 item_id、变化字段与 revision 锁", () => {
-    const plan = create_update_items_plan({
-      snapshot: create_test_snapshot(),
-      item_id: 1,
-      next_dst: "译文",
-      next_name_dst: "",
-    });
-
-    expect(plan?.request_body).toEqual({
-      changes: [{ item_id: 1, dst: "译文" }],
-      expected_section_revisions: {
-        items: 4,
-        proofreading: 2,
-      },
-    });
-  });
-
-  it("保存姓名译文时只提交第 0 槽姓名字段", () => {
+  it("批量译文、译名和状态变化统一提交 changes 与 revision 锁", () => {
     const plan = create_update_items_plan({
       snapshot: create_test_snapshot([
-        create_test_item({
-          item_id: 1,
-          dst: "正文译文",
-          name_dst: ["旧译名", "保留译名"],
-        }),
+        create_test_item({ item_id: 1, dst: "旧正文", name_dst: "旧译名" }),
+        create_test_item({ item_id: 2, status: "PROCESSED", retry_count: 2 }),
       ]),
-      item_id: 1,
-      next_dst: "正文译文",
-      next_name_dst: "新译名",
-    });
-
-    expect(plan?.request_body).toEqual({
-      changes: [{ item_id: 1, name_dst: "新译名" }],
-      expected_section_revisions: {
-        items: 4,
-        proofreading: 2,
-      },
-    });
-  });
-
-  it("姓名数组第 0 槽为空时仍只比较第 0 槽", () => {
-    const plan = create_update_items_plan({
-      snapshot: create_test_snapshot([
-        create_test_item({
-          item_id: 1,
-          dst: "正文译文",
-          name_src: ["", "Bob"],
-          name_dst: ["", "旧译名"],
-        }),
-      ]),
-      item_id: 1,
-      next_dst: "正文译文",
-      next_name_dst: "新译名",
-    });
-
-    expect(plan?.request_body).toEqual({
-      changes: [{ item_id: 1, name_dst: "新译名" }],
-      expected_section_revisions: {
-        items: 4,
-        proofreading: 2,
-      },
-    });
-  });
-
-  it("正文和姓名译文同时变化时放入同一保存命令", () => {
-    const plan = create_update_items_plan({
-      snapshot: create_test_snapshot([
-        create_test_item({
-          item_id: 1,
-          dst: "旧正文",
-          name_dst: "旧译名",
-        }),
-      ]),
-      item_id: 1,
-      next_dst: "新正文",
-      next_name_dst: "新译名",
-    });
-
-    expect(plan?.request_body).toMatchObject({
-      changes: [{ item_id: 1, dst: "新正文", name_dst: "新译名" }],
-    });
-  });
-
-  it("正文和姓名译文都未变化时不提交保存命令", () => {
-    const plan = create_update_items_plan({
-      snapshot: create_test_snapshot([
-        create_test_item({
-          item_id: 1,
-          dst: "正文译文",
-          name_dst: ["译名", "保留译名"],
-        }),
-      ]),
-      item_id: 1,
-      next_dst: "正文译文",
-      next_name_dst: "译名",
-    });
-
-    expect(plan).toBeNull();
-  });
-
-  it("清空第 0 槽姓名译文时提交空字符串", () => {
-    const plan = create_update_items_plan({
-      snapshot: create_test_snapshot([
-        create_test_item({
-          item_id: 1,
-          dst: "旧正文",
-          name_src: "Alice",
-          name_dst: "旧译名",
-        }),
-      ]),
-      item_id: 1,
-      next_dst: "旧正文",
-      next_name_dst: "",
-    });
-
-    expect(plan?.request_body).toEqual({
-      changes: [{ item_id: 1, name_dst: "" }],
-      expected_section_revisions: {
-        items: 4,
-        proofreading: 2,
-      },
-    });
-  });
-
-  it("正则全部替换只提交搜索命令并保留变更计数", () => {
-    const plan = create_replace_all_plan({
-      snapshot: create_test_snapshot([
-        create_test_item({
-          item_id: 1,
-          file_path: "script/a.txt",
-          row_number: 1,
-          src: "原文",
-          dst: "Name: Alice",
-          status: "NONE",
-        }),
-      ]),
-      item_ids: [1],
-      search_text: "Name: (.+)",
-      replace_text: "$1",
-      is_regex: true,
-    });
-
-    expect(plan?.request_body).toMatchObject({
-      item_ids: [1],
-      search_text: "Name: (.+)",
-      replace_text: "$1",
-      is_regex: true,
-      expected_section_revisions: {
-        items: 4,
-        proofreading: 2,
-      },
-    });
-    expect(plan?.changed_item_ids).toEqual([1]);
-  });
-
-  it("全部替换会把第 0 槽姓名译文变化纳入变更计数", () => {
-    const plan = create_replace_all_plan({
-      snapshot: create_test_snapshot([
-        create_test_item({
-          item_id: 1,
-          dst: "正文译文",
-          name_dst: ["Name: Alice", "保留译名"],
-          status: "PROCESSED",
-        }),
-      ]),
-      item_ids: [1],
-      search_text: "Name: (.+)",
-      replace_text: "$1",
-      is_regex: true,
-    });
-
-    expect(plan?.changed_item_ids).toEqual([1]);
-    expect(plan?.request_body).toMatchObject({
-      item_ids: [1],
-      search_text: "Name: (.+)",
-      replace_text: "$1",
-      is_regex: true,
-    });
-  });
-
-  it("清空译文只打包用户目标和 revision，由后端决定实际变化", () => {
-    const plan = create_clear_translations_plan({
-      section_revisions: { items: 4, proofreading: 2 },
-      item_ids: [1],
+      changes: [
+        { item_id: 1, dst: "新正文", name_dst: "新译名" },
+        { item_id: 2, status: "PROCESSED" },
+      ],
     });
 
     expect(plan).toEqual({
-      changed_item_ids: [1],
+      changed_item_ids: [1, 2],
       request_body: {
-        item_ids: [1],
-        expected_section_revisions: {
-          items: 4,
-          proofreading: 2,
-        },
+        changes: [
+          { item_id: 1, dst: "新正文", name_dst: "新译名" },
+          { item_id: 2, status: "PROCESSED" },
+        ],
+        expected_section_revisions: { items: 4, proofreading: 2 },
       },
     });
   });
 
-  it("设置翻译状态会在状态相同但仍有重试计数时提交清理命令", () => {
-    const plan = create_set_translation_status_plan({
-      snapshot: create_test_snapshot([
-        create_test_item({
-          item_id: 1,
-          dst: "已有译文",
-          status: "PROCESSED",
-          retry_count: 2,
-        }),
-      ]),
-      item_ids: [1],
-      status: "PROCESSED",
-    });
+  it("姓名数组只比较第 0 槽，并在无最终变化时省略命令", () => {
+    const snapshot = create_test_snapshot([
+      create_test_item({ item_id: 1, dst: "正文", name_dst: ["译名", "保留"] }),
+    ]);
+    expect(
+      create_update_items_plan({
+        snapshot,
+        changes: [{ item_id: 1, dst: "正文", name_dst: "译名" }],
+      }),
+    ).toBeNull();
+    expect(
+      create_update_items_plan({
+        snapshot,
+        changes: [{ item_id: 1, name_dst: "新译名" }],
+      })?.request_body.changes,
+    ).toEqual([{ item_id: 1, name_dst: "新译名" }]);
+  });
 
-    expect(plan).toEqual({
+  it("显式状态在必要时覆盖 dst 自动状态并清理 retry", () => {
+    const plan = create_update_items_plan({
+      snapshot: create_test_snapshot([
+        create_test_item({ item_id: 1, dst: "旧", status: "EXCLUDED", retry_count: 0 }),
+      ]),
+      changes: [{ item_id: 1, dst: "新", status: "EXCLUDED" }],
+    });
+    expect(plan?.request_body.changes).toEqual([{ item_id: 1, dst: "新", status: "EXCLUDED" }]);
+
+    expect(
+      create_update_items_plan({
+        snapshot: create_test_snapshot([
+          create_test_item({ item_id: 1, status: "PROCESSED", retry_count: 0 }),
+        ]),
+        changes: [{ item_id: 1, status: "PROCESSED" }],
+      }),
+    ).toBeNull();
+  });
+
+  it("正则全部替换仍只提交后端搜索命令", () => {
+    const plan = create_replace_all_plan({
+      snapshot: create_test_snapshot([create_test_item({ item_id: 1, dst: "Name: Alice" })]),
+      item_ids: [1],
+      search_text: "Name: (.+)",
+      replace_text: "$1",
+      is_regex: true,
+    });
+    expect(plan).toMatchObject({
       changed_item_ids: [1],
       request_body: {
         item_ids: [1],
-        status: "PROCESSED",
-        expected_section_revisions: {
-          items: 4,
-          proofreading: 2,
-        },
+        search_text: "Name: (.+)",
+        replace_text: "$1",
+        is_regex: true,
+      },
+    });
+  });
+
+  it("清空译文仍只打包用户目标和 revision", () => {
+    expect(
+      create_clear_translations_plan({
+        section_revisions: { items: 4, proofreading: 2 },
+        item_ids: [1],
+      }),
+    ).toEqual({
+      changed_item_ids: [1],
+      request_body: {
+        item_ids: [1],
+        expected_section_revisions: { items: 4, proofreading: 2 },
       },
     });
   });

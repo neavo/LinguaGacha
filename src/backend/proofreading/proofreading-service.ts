@@ -7,13 +7,9 @@ import {
   require_project_expected_section_revisions,
   type ProjectExpectedSectionRevisions,
 } from "../project/project-write-request";
-import { Item, type ItemStatus } from "../../domain/item";
+import { Item } from "../../domain/item";
 import { is_json_record } from "../../domain/json";
-import type {
-  ProjectChangeItemFieldPatch,
-  ProjectChangeItemsPayload,
-  ProjectWriteResult,
-} from "../../shared/project-event";
+import type { ProjectChangeItemsPayload, ProjectWriteResult } from "../../shared/project-event";
 import {
   are_item_name_fields_equal,
   read_item_name_text,
@@ -36,20 +32,21 @@ type ProofreadingItemUpdate = {
   item_id: number;
   dst?: string;
   name_dst?: string;
+  status?: ProofreadingManualStatusCode;
 };
 
 const MAX_PROOFREADING_ITEM_UPDATES = 500;
 const DEFAULT_PROOFREADING_UPDATE_SOURCE = "proofreading_update_items";
 
 /**
- * 承载校对同步写入口，把渲染进程命令转换为 Electron main 数据库事实
+ * 承载校对同步写入口，把客户端命令转换为后端项目事实。
  */
 export class ProofreadingService {
   private readonly database: ProjectDatabase; // 校对同步保存直接写 .lg，但仍只能通过 ProjectDatabase workflow 触达数据库
 
   private readonly runtime_gate: RuntimeOperationGate; // 用户与 Agent 写入口共享串行门禁
 
-  private readonly session_state: ProjectSessionState; // 校对同步写入口只以 公开会话状态定位当前工程
+  private readonly session_state: ProjectSessionState; // 校对同步写入口只以公开会话状态定位当前工程
 
   private readonly write_store: ProjectWriteStore; // 校对只提交业务补丁，事务和事件统一由 ProjectWriteStore 完成
 
@@ -100,7 +97,6 @@ export class ProofreadingService {
       updates.map((update) => update.item_id),
     );
     const changes: ProofreadingItemChange[] = [];
-    let update_translation_extras = false;
     for (const update of updates) {
       const current = current_by_id.get(update.item_id);
       if (current === undefined) {
@@ -111,16 +107,23 @@ export class ProofreadingService {
       let next = current;
       if (update.dst !== undefined) {
         next = this.apply_manual_dst(next, update.dst);
-        update_translation_extras ||=
-          String(current["dst"] ?? "") !== update.dst || current["status"] !== next["status"];
       }
       if (update.name_dst !== undefined) {
         next = this.apply_manual_name_dst(next, update.name_dst);
+      }
+      if (update.status !== undefined) {
+        next = { ...next, status: update.status, retry_count: 0 };
       }
       if (!this.are_items_equal(current, next)) {
         changes.push({ current, next });
       }
     }
+    const update_translation_extras = changes.some(
+      ({ current, next }) =>
+        String(current["dst"] ?? "") !== String(next["dst"] ?? "") ||
+        String(current["status"] ?? "") !== String(next["status"] ?? "") ||
+        Number(current["retry_count"] ?? 0) !== Number(next["retry_count"] ?? 0),
+    );
     return await this.persist_changed_items(
       project_path,
       expected_section_revisions,
@@ -231,54 +234,16 @@ export class ProofreadingService {
       }
       changes.push({ current: item, next: next_item });
     }
-    return await this.persist_field_patch_items(project_path, expected_section_revisions, {
-      changes,
-      field_patch: { dst: "", name_dst: null },
-      update_translation_extras: false,
-    });
-  }
-
-  /**
-   * 批量设置状态只接受人工可写状态集合，并把旧重试计数从新状态事实中清掉
-   */
-  public async set_translation_status(request: JsonRecord): Promise<ProjectWriteResult> {
-    return await this.runtime_gate.run_project_write(
-      async () => await this.set_translation_status_under_lease(request),
-    );
-  }
-
-  /** 在项目写租约内归一人工状态，并同步清除旧重试计数。 */
-  private async set_translation_status_under_lease(
-    request: JsonRecord,
-  ): Promise<ProjectWriteResult> {
-    const project_path = this.session_state.require_loaded_project_path();
-    const expected_section_revisions = this.prepare_write_context(request);
-    const next_status = this.parse_manual_status_or_throw(request["status"]);
-    const item_ids = this.normalize_item_ids(request["item_ids"]);
-    const current_by_id = this.get_item_write_facts_by_ids(project_path, item_ids);
-    const changes: ProofreadingItemChange[] = [];
-    for (const item_id of item_ids) {
-      const item = current_by_id.get(item_id);
-      if (item === undefined) {
-        continue;
-      }
-      const next_item = {
-        ...item,
-        status: next_status,
-        retry_count: 0,
-      };
-      if (this.are_items_equal(item, next_item)) {
-        continue;
-      }
-      changes.push({ current: item, next: next_item });
+    if (changes.length === 0) {
+      return { accepted: true, changes: [] };
     }
-    return await this.persist_field_patch_items(project_path, expected_section_revisions, {
+    return await this.write_store.apply_proofreading_item_patch({
+      projectPath: project_path,
+      expectedSectionRevisions: expected_section_revisions,
+      source: DEFAULT_PROOFREADING_UPDATE_SOURCE,
       changes,
-      field_patch: {
-        status: next_status,
-        retry_count: 0,
-      },
-      update_translation_extras: true,
+      fieldPatch: { dst: "", name_dst: null },
+      updateTranslationExtras: false,
     });
   }
 
@@ -333,38 +298,13 @@ export class ProofreadingService {
   }
 
   /**
-   * 统一字段 patch 走数据库 JSON 局部写入，避免为校对批量操作构造完整 item DTO。
-   */
-  private async persist_field_patch_items(
-    project_path: string,
-    expected_section_revisions: ProjectExpectedSectionRevisions,
-    args: {
-      changes: ProofreadingItemChange[];
-      field_patch: ProjectChangeItemFieldPatch;
-      update_translation_extras: boolean;
-    },
-  ): Promise<ProjectWriteResult> {
-    if (args.changes.length === 0) {
-      return { accepted: true, changes: [] };
-    }
-    return await this.write_store.apply_proofreading_item_patch({
-      projectPath: project_path,
-      expectedSectionRevisions: expected_section_revisions,
-      source: DEFAULT_PROOFREADING_UPDATE_SOURCE,
-      changes: args.changes,
-      fieldPatch: args.field_patch,
-      updateTranslationExtras: args.update_translation_extras,
-    });
-  }
-
-  /**
-   * 手动写入译文后由后端统一决定 status，不接受渲染进程提交 status 事实
+   * 非空正文译文默认置为已处理；同一变更中的显式人工状态随后覆盖该默认值。
    */
   private apply_manual_dst(item: MutableJsonRecord, next_dst: string): MutableJsonRecord {
     return {
       ...item,
       dst: next_dst,
-      status: next_dst === "" ? this.normalize_item_status(item["status"]) : "PROCESSED",
+      status: next_dst === "" ? Item.normalize_status(item["status"]) : "PROCESSED",
     };
   }
 
@@ -428,7 +368,7 @@ export class ProofreadingService {
   }
 
   /**
-   * 译文更新命令必须非空、ID 唯一且每项至少包含一个可写字段。
+   * item 更新命令必须非空、字段已知、ID 唯一且每项至少包含一个可写字段。
    */
   private normalize_item_updates(value: JsonValue | undefined): ProofreadingItemUpdate[] {
     if (
@@ -456,7 +396,20 @@ export class ProofreadingService {
       }
       const has_dst = Object.prototype.hasOwnProperty.call(raw_update, "dst");
       const has_name_dst = Object.prototype.hasOwnProperty.call(raw_update, "name_dst");
-      if (!has_dst && !has_name_dst) {
+      const has_status = Object.prototype.hasOwnProperty.call(raw_update, "status");
+      const unknown_field = Object.keys(raw_update).find(
+        (field) => !["item_id", "dst", "name_dst", "status"].includes(field),
+      );
+      if (unknown_field !== undefined) {
+        throw new AppErrors.RequestValidationError({
+          diagnostic_context: {
+            reason: "unknown_proofreading_item_update_field",
+            item_id,
+            field: unknown_field,
+          },
+        });
+      }
+      if (!has_dst && !has_name_dst && !has_status) {
         throw new AppErrors.RequestValidationError({
           diagnostic_context: { reason: "empty_proofreading_item_update", item_id },
         });
@@ -474,6 +427,7 @@ export class ProofreadingService {
         item_id,
         ...(has_dst ? { dst: raw_update["dst"] as string } : {}),
         ...(has_name_dst ? { name_dst: raw_update["name_dst"] as string } : {}),
+        ...(has_status ? { status: this.parse_manual_status_or_throw(raw_update["status"]) } : {}),
       });
     }
     return updates;
@@ -536,13 +490,6 @@ export class ProofreadingService {
   }
 
   /**
-   * 校对写入口只接受当前状态域，非法值按未处理状态兜底
-   */
-  private normalize_item_status(value: JsonValue | undefined): ItemStatus {
-    return Item.normalize_status(value);
-  }
-
-  /**
    * 人工状态菜单只暴露三种可写状态，其它计算状态不能从校对页直接写入
    */
   private parse_manual_status_or_throw(value: JsonValue | undefined): ProofreadingManualStatusCode {
@@ -577,12 +524,13 @@ export class ProofreadingService {
    */
   private parse_integer_like(value: JsonValue | undefined): number | null {
     if (typeof value === "number") {
-      return Number.isInteger(value) ? value : null;
+      return Number.isSafeInteger(value) ? value : null;
     }
     if (typeof value === "string") {
       const trimmed = value.trim();
       if (/^[+-]?\d+$/.test(trimmed)) {
-        return Number.parseInt(trimmed, 10);
+        const parsed = Number(trimmed);
+        return Number.isSafeInteger(parsed) ? parsed : null;
       }
     }
     return null;

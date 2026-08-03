@@ -14,6 +14,7 @@ export function run_quality_statistics_worker_task(
     rules: input.rules,
     text_groups: input.text_groups,
     relation_candidates: input.relation_candidates,
+    collect_literal_evidence: input.collect_literal_evidence,
   });
   // 输出表按 completed_entry_ids 补齐缺失项，保证页面读取时无需再做空 key 分支。
   const matched_count_by_entry_id = Object.fromEntries(
@@ -27,6 +28,7 @@ export function run_quality_statistics_worker_task(
       return [entry_id, statistics_result.results[entry_id]?.subset_parents ?? []];
     }),
   );
+  const literal_evidence = statistics_result.literal_evidence_by_entry_id;
   return {
     phase: "current",
     current_snapshot: input.completed_snapshot,
@@ -37,5 +39,21 @@ export function run_quality_statistics_worker_task(
     last_error: null,
     request_token: 0,
     updated_at: Date.now(),
+    ...(literal_evidence === undefined
+      ? {}
+      : {
+          total_matches_by_entry_id: Object.fromEntries(
+            input.completed_entry_ids.map((entry_id) => [
+              entry_id,
+              literal_evidence[entry_id]?.total_matches ?? 0,
+            ]),
+          ),
+          context_sample_by_entry_id: Object.fromEntries(
+            input.completed_entry_ids.map((entry_id) => [
+              entry_id,
+              literal_evidence[entry_id]?.context_sample ?? null,
+            ]),
+          ),
+        }),
   };
 }

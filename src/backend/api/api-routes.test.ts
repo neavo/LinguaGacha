@@ -43,7 +43,6 @@ const POST_PATHS = new Set([
   "/api/proofreading/query",
   "/api/proofreading/items/update",
   "/api/proofreading/translations/clear",
-  "/api/proofreading/items/set-status",
   "/api/proofreading/items/replace-all",
   "/api/quality/statistics/view",
   "/api/quality/rules/query",
