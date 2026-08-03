@@ -23,6 +23,7 @@ type RenderComposerOptions = Partial<
     | "command"
     | "context_usage"
     | "issue"
+    | "message_history"
     | "on_reset"
     | "on_send"
     | "on_stop"
@@ -128,6 +129,99 @@ describe("AgentComposer", () => {
     expect(menu.textContent).toContain("glossary-audit");
     expect(menu.textContent).toContain("Review glossary");
     expect(menu.textContent).not.toContain("审校术语");
+  });
+
+  it("从空输入框双向浏览全部用户消息并停在两端", async () => {
+    const view = await render_composer({
+      message_history: [
+        [{ kind: "text", text: "最旧消息" }],
+        [{ kind: "text", text: "较旧消息" }],
+        [{ kind: "text", text: "最新消息" }],
+      ],
+    });
+    const editor = get_editor(view);
+
+    for (const [key, expected] of [
+      ["ArrowDown", ""],
+      ["ArrowUp", "最新消息"],
+      ["ArrowUp", "较旧消息"],
+      ["ArrowUp", "最旧消息"],
+      ["ArrowUp", "最旧消息"],
+      ["ArrowDown", "较旧消息"],
+      ["ArrowDown", "最新消息"],
+      ["ArrowDown", ""],
+      ["ArrowDown", ""],
+    ] as const) {
+      await dispatch_key(editor.contentDOM, key);
+      expect(editor.state.doc.toString()).toBe(expected);
+    }
+  });
+
+  it("历史回填恢复 skill 语义且不污染撤销栈", async () => {
+    const on_send = vi.fn(async () => false);
+    const view = await render_composer({
+      on_send,
+      message_history: [
+        [
+          { kind: "text", text: "检查 " },
+          { kind: "skill", name: "glossary-audit" },
+        ],
+      ],
+    });
+    const editor = get_editor(view);
+
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    expect(editor.state.doc.toString()).toBe("检查 @glossary-audit");
+    expect(view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
+    expect(undo(editor)).toBe(false);
+    await click_send(view);
+    expect(on_send).toHaveBeenCalledWith([
+      { kind: "text", text: "检查 " },
+      { kind: "skill", name: "glossary-audit" },
+    ]);
+  });
+
+  it("只在空白或未修改的历史浏览状态接管方向键", async () => {
+    const message_history = [
+      [{ kind: "text", text: "较旧消息" }],
+      [{ kind: "text", text: "最新消息" }],
+    ] as const;
+    const view = await render_composer({ message_history });
+    const editor = get_editor(view);
+
+    await set_document(editor, "普通草稿", 4);
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    expect(editor.state.doc.toString()).toBe("普通草稿");
+
+    await set_document(editor, "", 0);
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    await act(async () => {
+      editor.dispatch({ changes: { from: editor.state.doc.length, insert: "已修改" } });
+    });
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    expect(editor.state.doc.toString()).toBe("最新消息已修改");
+
+    await set_document(editor, "", 0);
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    await act(async () => {
+      editor.dispatch({ selection: EditorSelection.cursor(0) });
+    });
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    expect(editor.state.doc.toString()).toBe("最新消息");
+  });
+
+  it("skill 菜单优先消费历史导航方向键", async () => {
+    const view = await render_composer({
+      message_history: [[{ kind: "text", text: "@" }]],
+    });
+    const editor = get_editor(view);
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    const menu = await wait_for_element(view, '[role="listbox"]');
+
+    await dispatch_key(editor.contentDOM, "ArrowDown");
+
+    expect(editor.state.doc.toString()).toBe("@");
+    expect(menu.querySelector('[data-highlight="true"]')?.textContent).toContain("corpus-search");
   });
 
   it("把 skill 当作原子范围删除、跨越，并随撤销重做恢复语义", async () => {
@@ -450,6 +544,7 @@ describe("AgentComposer", () => {
       root?.render(
         <AgentComposer
           skills={skills}
+          message_history={options.message_history ?? []}
           running={options.running ?? false}
           unavailable_reason={options.unavailable_reason ?? null}
           command={options.command ?? null}

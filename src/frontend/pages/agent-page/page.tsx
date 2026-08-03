@@ -36,7 +36,8 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const [resume_revision, set_resume_revision] = useState(0); // 统一通知所有展开详情回到各自底端
   const [reset_dialog_open, set_reset_dialog_open] = useState(false);
   const is_running = agent.state === "running";
-  const last_user = agent.entries.findLast((entry) => entry.kind === "user_message");
+  const user_entries = agent.entries.filter((entry) => entry.kind === "user_message");
+  const last_user = user_entries.at(-1);
   const follow_paused = follow_holds.size > 0;
   // 公开回合先回 idle、共享 lease 后释放；两者之间统一显示为 Agent 自身结算。
   const agent_settling = !is_running && runtime_snapshot.owner === "agent";
@@ -192,6 +193,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
       <AgentComposer
         ref={composer_ref}
         skills={agent.skills}
+        message_history={user_entries.map((entry) => entry.parts)}
         running={is_running}
         unavailable_reason={unavailable_reason}
         command={agent.command}
