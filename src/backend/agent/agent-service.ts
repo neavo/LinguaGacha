@@ -49,6 +49,11 @@ import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { create_agent_item_tools } from "./agent-item-tools";
 import { register_agent_model, type AgentModelLimits } from "./agent-model";
 import { create_agent_quality_tools } from "./agent-quality-tools";
+import {
+  append_agent_session_seed,
+  load_agent_session_seed,
+  type AgentSessionSeed,
+} from "./agent-session-seed";
 import { create_agent_skill_tools } from "./agent-skill-tools";
 import { load_agent_skills, type AgentSkillDefinition } from "./agent-skills";
 import { load_agent_system_prompt } from "./agent-system-prompt";
@@ -96,6 +101,7 @@ type AgentServicePaths = Pick<
   | "get_agent_builtin_skill_dir"
   | "get_agent_user_skill_dir"
   | "get_agent_system_prompt_path"
+  | "get_agent_session_seed_path"
 >;
 
 type AgentServiceOptions = {
@@ -111,6 +117,12 @@ type AgentServiceOptions = {
   logManager: Pick<LogManager, "error" | "warning">;
   publish: (topic: string, payload: JsonRecord) => void;
 };
+
+type LoadedAgentResources = Readonly<{
+  systemPrompt: string;
+  sessionSeed: AgentSessionSeed;
+  skills: readonly AgentSkillDefinition[];
+}>;
 
 /**
  * 单个后端 Agent 产品会话的状态拥有者；通用模型生命周期交给 AgentSession。
@@ -136,8 +148,7 @@ export class AgentService {
   private runtime_generation = 0; // stop/reset/dispose 统一令迟到异步阶段失效
   private state: AgentSessionState = "idle"; // 只表达当前回合是否运行，结果归各条目
   private entries: AgentEntry[] = []; // 本次 reset 以来唯一的公开时间线事实
-  private skills: AgentSkillDefinition[] = [];
-  private system_prompt: string | null = null;
+  private resources: LoadedAgentResources | null = null; // 启动期一次性加载的原子资源集，null 表示未完成加载
   private disposed = false;
 
   /** 会话订阅返回 reset Promise，保证工程生命周期等待旧 Agent 完整退出。 */
@@ -163,7 +174,7 @@ export class AgentService {
     return {
       state: this.state,
       entries: structuredClone(this.entries),
-      skills: this.skills.map(({ name, displayDescriptions }) => ({
+      skills: (this.resources?.skills ?? []).map(({ name, displayDescriptions }) => ({
         name,
         displayDescriptions: { ...displayDescriptions },
       })),
@@ -171,14 +182,17 @@ export class AgentService {
     };
   }
 
-  /** 启动期原子加载必需的基础 Prompt 和可降级的 skill 清单。 */
+  /** 启动期原子加载必需的基础 Prompt、会话种子和可降级的 skill 清单。 */
   public async load_resources(): Promise<void> {
     const system_prompt = load_agent_system_prompt(this.paths);
+    const session_seed = load_agent_session_seed(this.paths);
     const skills = await load_agent_skills(this.paths, this.log_manager);
     const skills_prompt = formatSkillsForSystemPrompt(skills);
-    this.system_prompt =
-      skills_prompt === "" ? system_prompt : `${system_prompt}\n\n${skills_prompt}`;
-    this.skills = skills;
+    this.resources = {
+      systemPrompt: skills_prompt === "" ? system_prompt : `${system_prompt}\n\n${skills_prompt}`,
+      sessionSeed: session_seed,
+      skills,
+    };
   }
 
   /**
@@ -189,7 +203,7 @@ export class AgentService {
     if (this.session_reset !== null) {
       throw new AppErrors.RuntimeBusyError();
     }
-    const system_prompt = this.require_system_prompt();
+    const resources = this.require_resources();
     this.session_state.require_loaded_project_path();
     const parts = normalize_agent_user_message_parts(request["parts"]);
     if (parts === null || !parts.some((part) => part.kind === "skill" || part.text.trim() !== "")) {
@@ -206,7 +220,7 @@ export class AgentService {
           diagnostic_context: { reason: "duplicate_agent_skill", skill: part.name },
         });
       }
-      const skill = this.skills.find((candidate) => candidate.name === part.name);
+      const skill = resources.skills.find((candidate) => candidate.name === part.name);
       if (skill === undefined) {
         throw new AppErrors.RequestValidationError({
           diagnostic_context: { reason: "invalid_agent_skill", skill: part.name },
@@ -217,7 +231,7 @@ export class AgentService {
     }
     const runtime_lease = this.runtime_gate.begin_runtime("agent");
     this.runtime_lease = runtime_lease;
-    const acceptance = this.accept_message(system_prompt, parts, selected_skills, runtime_lease);
+    const acceptance = this.accept_message(resources, parts, selected_skills, runtime_lease);
     this.message_acceptance = acceptance;
     const clear_acceptance = () => {
       if (this.message_acceptance === acceptance) this.message_acceptance = null;
@@ -279,7 +293,7 @@ export class AgentService {
 
   /** 在当前运行世代内准备唯一候选运行时。 */
   private async accept_message(
-    system_prompt: string,
+    resources: LoadedAgentResources,
     parts: AgentUserMessagePart[],
     selected_skills: AgentSkillDefinition[],
     runtime_lease: RuntimeLease,
@@ -294,7 +308,7 @@ export class AgentService {
 
       try {
         if (runtime === null) {
-          runtime = await this.create_runtime(system_prompt, model_settings);
+          runtime = await this.create_runtime(resources, model_settings);
         } else {
           const resolved_model = register_agent_model(
             runtime.session.modelRuntime,
@@ -353,7 +367,7 @@ export class AgentService {
 
   /** 创建完全内存化的 SDK 会话，并关闭默认工具与运行期资源发现。 */
   private async create_runtime(
-    system_prompt: string,
+    resources: LoadedAgentResources,
     model_settings: JsonRecord,
   ): Promise<AgentRuntime> {
     const app_root = this.paths.get_app_root();
@@ -379,10 +393,12 @@ export class AgentService {
       noPromptTemplates: true,
       noThemes: true,
       noContextFiles: true,
-      systemPrompt: system_prompt,
+      systemPrompt: resources.systemPrompt,
       appendSystemPrompt: [],
     });
     await resource_loader.reload();
+    const session_manager = SessionManager.inMemory(app_root);
+    append_agent_session_seed(session_manager, resources.sessionSeed, resolved_model.model);
     const { session } = await createAgentSession({
       cwd: app_root,
       agentDir: app_root,
@@ -400,10 +416,12 @@ export class AgentService {
           cache: this.cache,
           proofreading: this.proofreading,
         }),
-        ...create_agent_skill_tools(this.skills, (name) => this.is_skill_explicitly_invoked(name)),
+        ...create_agent_skill_tools(resources.skills, (name) =>
+          this.is_skill_explicitly_invoked(name),
+        ),
       ].map(yield_before_tool_execution),
       resourceLoader: resource_loader,
-      sessionManager: SessionManager.inMemory(app_root),
+      sessionManager: session_manager,
       settingsManager: settings_manager,
     });
     const unsubscribe = session.subscribe((event) => {
@@ -684,14 +702,14 @@ export class AgentService {
     );
   }
 
-  /** 资源加载是发送消息的硬前置，不能用空 prompt 降级启动。 */
-  private require_system_prompt(): string {
-    if (this.system_prompt === null) {
+  /** 资源加载是发送消息的硬前置，不能用部分资源降级启动。 */
+  private require_resources(): LoadedAgentResources {
+    if (this.resources === null) {
       throw new AppErrors.InternalInvariantError({
         diagnostic_context: { reason: "agent_resources_not_loaded" },
       });
     }
-    return this.system_prompt;
+    return this.resources;
   }
 
   /** dispose 后的命令必须失败，避免重新创建已脱离订阅的运行时。 */

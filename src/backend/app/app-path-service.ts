@@ -178,6 +178,13 @@ export class AppPathService {
   }
 
   /**
+   * 返回必需的内置 Agent 会话种子路径。
+   */
+  public get_agent_session_seed_path(): string {
+    return this.get_resource_path("agent", "session_seed.json");
+  }
+
+  /**
    * 返回内置 Agent skill 根目录，供启动期协议加载统一使用。
    */
   public get_agent_builtin_skill_dir(): string {

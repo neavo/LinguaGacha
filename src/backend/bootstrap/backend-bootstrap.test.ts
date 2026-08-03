@@ -41,6 +41,11 @@ beforeEach(() => {
   const agent_resource_dir = path.join(temp_dir, "resource", "agent");
   fs.mkdirSync(agent_resource_dir, { recursive: true });
   fs.writeFileSync(path.join(agent_resource_dir, "system_prompt.md"), "基础系统指令。", "utf-8");
+  fs.writeFileSync(
+    path.join(agent_resource_dir, "session_seed.json"),
+    JSON.stringify({ user: "种子设定。", assistant: "种子确认。" }),
+    "utf-8",
+  );
   fs.writeFileSync(path.join(temp_dir, "version.txt"), "9.8.7", "utf-8");
   original_initial_cwd = process.env[NPM_INITIAL_CWD_ENV_NAME];
   process.env[NPM_INITIAL_CWD_ENV_NAME] = temp_dir;

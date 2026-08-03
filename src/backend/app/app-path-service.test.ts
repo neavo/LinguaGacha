@@ -37,6 +37,9 @@ describe("AppPathService", () => {
     expect(service.get_agent_system_prompt_path()).toBe(
       path.join(app_root, "resource", "agent", "system_prompt.md"),
     );
+    expect(service.get_agent_session_seed_path()).toBe(
+      path.join(app_root, "resource", "agent", "session_seed.json"),
+    );
     expect(service.get_agent_builtin_skill_dir()).toBe(
       path.join(app_root, "resource", "agent", "skill"),
     );
