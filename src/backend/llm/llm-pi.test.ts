@@ -1,4 +1,4 @@
-import type { Model, ProviderStreamOptions } from "@earendil-works/pi-ai";
+import { Type, type Model, type ProviderStreamOptions } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
 
 import { is_json_record, type JsonRecord } from "../../domain/json";
@@ -162,6 +162,27 @@ describe("pi-ai 请求适配", () => {
     expect(payload).not.toHaveProperty("messages");
     expect(payload).not.toHaveProperty("max_tokens");
     expect(payload).not.toHaveProperty("reasoning");
+  });
+
+  it("Responses 原样发送工具 parameters 且默认 strict=false", async () => {
+    const request = resolve_request({
+      api_format: "OpenAIResponses",
+      model_id: "custom-model",
+    });
+    request.model.compat = { supportsStrictMode: true };
+    const parameters = Type.Object({ value: Type.String() }, { additionalProperties: false });
+    request.context.tools = [{ name: "probe", description: "探针工具", parameters }];
+    const payload = await capture_payload(request);
+
+    expect(payload["tools"]).toEqual([
+      {
+        type: "function",
+        name: "probe",
+        description: "探针工具",
+        parameters,
+        strict: false,
+      },
+    ]);
   });
 
   it("GPT-5.6 Responses 的 OFF 档显式发送 reasoning.effort=none", async () => {
