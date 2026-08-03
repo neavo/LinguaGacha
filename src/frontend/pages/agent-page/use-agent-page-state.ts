@@ -264,10 +264,9 @@ function apply_agent_event(
       return { ...snapshot, contextUsage: { ...event.contextUsage } };
     case "entry_upsert": {
       const entries = [...snapshot.entries];
-      const entry = structuredClone(event.entry);
       const index = entries.findIndex((entry) => entry.id === event.entry.id);
-      if (index < 0) entries.push(entry);
-      else entries[index] = entry;
+      if (index < 0) entries.push(event.entry);
+      else entries[index] = event.entry;
       return { ...snapshot, entries };
     }
   }

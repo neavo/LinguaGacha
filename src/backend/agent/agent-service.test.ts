@@ -83,6 +83,7 @@ const fake_agent_state = vi.hoisted(() => ({
     | "pending"
     | "read_skill"
     | "retry"
+    | "streaming"
     | "thinking"
     | "tool_only"
     | "tools",
@@ -106,6 +107,8 @@ const fake_agent_state = vi.hoisted(() => ({
   hold_auth: false,
   auth_wait: null as Promise<void> | null,
   release_auth: null as (() => void) | null,
+  stream_token_size: 10_000,
+  stream_tokens_per_second: undefined as number | undefined,
 }));
 
 vi.mock("./agent-skills", () => ({ load_agent_skills: skill_test_fixture.loader }));
@@ -144,7 +147,11 @@ function create_fake_agent_stream(
   const faux = createFauxCore({
     api: model.api,
     provider: model.provider,
-    tokenSize: { min: 10_000, max: 10_000 },
+    tokenSize: {
+      min: fake_agent_state.stream_token_size,
+      max: fake_agent_state.stream_token_size,
+    },
+    tokensPerSecond: fake_agent_state.stream_tokens_per_second,
   });
   const response =
     is_summary && fake_agent_state.summary_failures_remaining > 0
@@ -253,6 +260,7 @@ function create_fake_response(context: Context): FauxResponseStep {
         thinking: "检查术语\n",
         thinkingSignature: "private-visible",
       },
+      { type: "thinking", thinking: "    " },
       { type: "thinking", thinking: "逐项核对" },
       {
         type: "thinking",
@@ -262,6 +270,9 @@ function create_fake_response(context: Context): FauxResponseStep {
       },
       fauxText("已完成"),
     ]);
+  }
+  if (fake_agent_state.mode === "streaming") {
+    return fauxAssistantMessage("abcdefghijklmnopqrstuvwxabcdefghijklmnopqrstuvwx");
   }
   if (fake_agent_state.mode === "write") {
     return fauxAssistantMessage(
@@ -386,6 +397,8 @@ describe("AgentService", () => {
     fake_agent_state.hold_auth = false;
     fake_agent_state.auth_wait = null;
     fake_agent_state.release_auth = null;
+    fake_agent_state.stream_token_size = 10_000;
+    fake_agent_state.stream_tokens_per_second = undefined;
     agent_model_registrar.mockReset();
     agent_model_registrar.mockImplementation(register_fake_agent_model);
     skill_test_fixture.loader.mockClear();
@@ -534,6 +547,94 @@ describe("AgentService", () => {
     expect(idle_index).toBeGreaterThan(round_end_index);
   });
 
+  it("高频 assistant delta 按固定窗口合并，并立即发布完整终帧", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const { service, publish } = await create_service();
+    const published_at: number[] = [];
+    publish.mockImplementation(() => {
+      published_at.push(Date.now());
+    });
+    fake_agent_state.mode = "streaming";
+    fake_agent_state.stream_token_size = 1;
+    fake_agent_state.stream_tokens_per_second = 40;
+
+    await service.send_message({ parts: [{ kind: "text", text: "开始" }] });
+    await vi.runAllTimersAsync();
+    await wait_for_idle(service);
+
+    const assistant_events = publish.mock.calls.flatMap(([, payload], index) => {
+      const event = payload as AgentSessionEvent;
+      return event.type === "entry_upsert" && event.entry.kind === "assistant_message"
+        ? [{ entry: event.entry, publishedAt: published_at[index] }]
+        : [];
+    });
+    const running_events = assistant_events.filter(({ entry }) => entry.status === "running");
+    const final_text = "abcdefghijklmnopqrstuvwxabcdefghijklmnopqrstuvwx";
+
+    expect(running_events.length).toBeGreaterThan(0);
+    expect(running_events.length).toBeLessThan(12);
+    expect(
+      running_events
+        .slice(1)
+        .every(
+          (event, index) =>
+            event.publishedAt !== undefined &&
+            running_events[index]?.publishedAt !== undefined &&
+            event.publishedAt - running_events[index].publishedAt >= 100,
+        ),
+    ).toBe(true);
+    expect(
+      running_events.every(
+        ({ entry }) =>
+          entry.kind === "assistant_message" &&
+          entry.parts.length === 1 &&
+          entry.parts[0]?.kind === "text" &&
+          final_text.startsWith(entry.parts[0].text),
+      ),
+    ).toBe(true);
+    expect(
+      running_events
+        .slice(1)
+        .every(
+          ({ entry }, index) =>
+            entry.kind === "assistant_message" &&
+            running_events[index]?.entry.kind === "assistant_message" &&
+            entry.parts[0]!.text.length >= running_events[index].entry.parts[0]!.text.length,
+        ),
+    ).toBe(true);
+    expect(new Set(assistant_events.map(({ entry }) => entry.id))).toHaveProperty("size", 1);
+    expect(assistant_events.at(-1)?.entry).toMatchObject({
+      kind: "assistant_message",
+      parts: [{ kind: "text", text: final_text }],
+      status: "success",
+    });
+
+    const final_assistant_index = publish.mock.calls.findLastIndex(([, payload]) => {
+      const event = payload as AgentSessionEvent;
+      return (
+        event.type === "entry_upsert" &&
+        event.entry.kind === "assistant_message" &&
+        event.entry.status === "success"
+      );
+    });
+    const final_user_index = publish.mock.calls.findLastIndex(([, payload]) => {
+      const event = payload as AgentSessionEvent;
+      return (
+        event.type === "entry_upsert" &&
+        event.entry.kind === "user_message" &&
+        event.entry.status === "success"
+      );
+    });
+    const idle_index = publish.mock.calls.findLastIndex(([, payload]) => {
+      const event = payload as AgentSessionEvent;
+      return event.type === "session_state" && event.state === "idle";
+    });
+    expect(final_user_index).toBeGreaterThan(final_assistant_index);
+    expect(idle_index).toBeGreaterThan(final_user_index);
+    expect(service.get_snapshot().entries.at(-1)).toEqual(assistant_events.at(-1)?.entry);
+  });
+
   it("从真实 Agent 消息历史发布上下文用量，并在重置时清空", async () => {
     const { service, publish } = await create_service();
     expect(service.get_snapshot().contextUsage).toBeNull();
@@ -591,10 +692,14 @@ describe("AgentService", () => {
   });
 
   it("按上游顺序流式公开思考与正文，并隔离脱敏内容和签名", async () => {
+    vi.useFakeTimers();
     const { service, publish } = await create_service();
     fake_agent_state.mode = "thinking";
+    fake_agent_state.stream_token_size = 1;
+    fake_agent_state.stream_tokens_per_second = 10;
 
     await service.send_message({ parts: [{ kind: "text", text: "开始" }] });
+    await vi.runAllTimersAsync();
     await wait_for_idle(service);
     const snapshot = service.get_snapshot();
 
@@ -606,19 +711,25 @@ describe("AgentService", () => {
       ],
       status: "success",
     });
-    expect(publish).toHaveBeenCalledWith(
-      "agent.session_event",
-      expect.objectContaining({
-        type: "entry_upsert",
-        entry: expect.objectContaining({
-          kind: "assistant_message",
-          parts: [{ kind: "thinking", text: "检查术语\n" }],
-          status: "running",
+    const running_assistant_entries = publish.mock.calls.flatMap(([, payload]) => {
+      const event = payload as AgentSessionEvent;
+      return event.type === "entry_upsert" &&
+        event.entry.kind === "assistant_message" &&
+        event.entry.status === "running"
+        ? [event.entry]
+        : [];
+    });
+    expect(running_assistant_entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          parts: [{ kind: "thinking", text: "检查术语\n逐项核对" }],
         }),
-      }),
+      ]),
     );
     expect(JSON.stringify(snapshot)).not.toContain("private-visible");
     expect(JSON.stringify(snapshot)).not.toContain("private-redacted");
+    expect(JSON.stringify(publish.mock.calls)).not.toContain("private-visible");
+    expect(JSON.stringify(publish.mock.calls)).not.toContain("private-redacted");
   });
 
   it("纯工具调用消息不产生空 assistant 条目", async () => {
@@ -880,6 +991,63 @@ describe("AgentService", () => {
     expect(log_error).not.toHaveBeenCalled();
   });
 
+  it("停止会冲刷窗口内最新正文并阻止迟到 running 帧", async () => {
+    vi.useFakeTimers();
+    const { service, publish, log_error } = await create_service();
+    fake_agent_state.mode = "streaming";
+    fake_agent_state.stream_token_size = 1;
+    fake_agent_state.stream_tokens_per_second = 40;
+
+    await service.send_message({ parts: [{ kind: "text", text: "开始" }] });
+    await vi.advanceTimersByTimeAsync(25);
+    const stopped_snapshot = service.stop();
+    const stopped_assistant = stopped_snapshot.entries.find(
+      (entry) => entry.kind === "assistant_message",
+    );
+
+    expect(stopped_assistant).toMatchObject({
+      kind: "assistant_message",
+      parts: [{ kind: "text", text: "abcd" }],
+      status: "stopped",
+    });
+    expect(stopped_snapshot).toMatchObject({
+      state: "idle",
+      entries: [
+        expect.objectContaining({
+          kind: "user_message",
+          status: "stopped",
+          endedAt: expect.any(Number),
+        }),
+        expect.objectContaining({ kind: "assistant_message", status: "stopped" }),
+      ],
+    });
+    const stopped_index = publish.mock.calls.findLastIndex(([, payload]) => {
+      const event = payload as AgentSessionEvent;
+      return (
+        event.type === "entry_upsert" &&
+        event.entry.kind === "assistant_message" &&
+        event.entry.status === "stopped"
+      );
+    });
+
+    await vi.runAllTimersAsync();
+
+    expect(
+      publish.mock.calls.slice(stopped_index + 1).some(([, payload]) => {
+        const event = payload as AgentSessionEvent;
+        return (
+          event.type === "entry_upsert" &&
+          event.entry.kind === "assistant_message" &&
+          event.entry.status === "running"
+        );
+      }),
+    ).toBe(false);
+    expect(
+      service.get_snapshot().entries.find((entry) => entry.id === stopped_assistant?.id),
+    ).toEqual(stopped_assistant);
+    expect(log_error).not.toHaveBeenCalled();
+  });
+
   it("停止会先封口运行中的工具，迟到的工具结果不能改写历史", async () => {
     const { service, runtime_gate } = await create_service();
     fake_agent_state.mode = "write";
@@ -995,6 +1163,49 @@ describe("AgentService", () => {
     expect(service.get_snapshot().entries.filter((entry) => entry.kind === "user_message")).toEqual(
       [expect.objectContaining({ parts: [{ kind: "text", text: "新任务" }] })],
     );
+  });
+
+  it("reset 丢弃窗口内 pending 正文且不发布迟到事件", async () => {
+    vi.useFakeTimers();
+    const { service, publish } = await create_service();
+    fake_agent_state.mode = "streaming";
+    fake_agent_state.stream_token_size = 1;
+    fake_agent_state.stream_tokens_per_second = 40;
+
+    await service.send_message({ parts: [{ kind: "text", text: "旧任务" }] });
+    await vi.advanceTimersByTimeAsync(25);
+    const resetting = service.reset();
+    const seed_index = publish.mock.calls.findLastIndex(
+      ([, payload]) => payload["type"] === "snapshot_seed",
+    );
+
+    expect(service.get_snapshot()).toMatchObject({ state: "idle", entries: [] });
+    expect(seed_index).toBeGreaterThan(-1);
+    await vi.runAllTimersAsync();
+    await expect(resetting).resolves.toMatchObject({ state: "idle", entries: [] });
+    expect(
+      publish.mock.calls.slice(seed_index + 1).some(([, payload]) => {
+        const event = payload as AgentSessionEvent;
+        return event.type === "entry_upsert" && event.entry.kind === "assistant_message";
+      }),
+    ).toBe(false);
+  });
+
+  it("dispose 清理 pending timer 且不再发布事件", async () => {
+    vi.useFakeTimers();
+    const { service, publish } = await create_service();
+    fake_agent_state.mode = "streaming";
+    fake_agent_state.stream_token_size = 1;
+    fake_agent_state.stream_tokens_per_second = 40;
+
+    await service.send_message({ parts: [{ kind: "text", text: "旧任务" }] });
+    await vi.advanceTimersByTimeAsync(25);
+    const disposing = service.dispose();
+    const publish_count = publish.mock.calls.length;
+
+    await vi.runAllTimersAsync();
+    await disposing;
+    expect(publish).toHaveBeenCalledTimes(publish_count);
   });
 
   it("dispose 等待已经脱离 runtime 的重置收尾", async () => {

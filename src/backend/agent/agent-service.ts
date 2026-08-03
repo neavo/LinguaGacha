@@ -9,6 +9,7 @@ import {
   contentText,
   InMemoryCredentialStore,
   type AssistantMessage,
+  type AssistantMessageEvent,
   uuidv7,
 } from "@earendil-works/pi-ai";
 import {
@@ -58,6 +59,7 @@ import { load_agent_skills, type AgentSkillDefinition } from "./agent-skills";
 import { load_agent_system_prompt } from "./agent-system-prompt";
 
 const AGENT_KEEP_RECENT_TOKENS = 32_000; // 产品固定保留的最近模型可见历史
+const AGENT_STREAM_PUBLISH_INTERVAL_MS = 100; // assistant 完整公开条目最多 10Hz；工具与终态不等待
 
 /** 产品会话只从冻结的模型容量派生压缩预算，不读取 coding-agent 用户设置。 */
 function build_agent_session_settings(limits: AgentModelLimits) {
@@ -89,6 +91,22 @@ type AgentRuntime = {
   limits: AgentModelLimits; // 换模时继续传回 Provider，维持当前对话容量
   unsubscribe: () => void;
 };
+
+type AgentAssistantStreamBlock = {
+  content_index: number;
+  kind: "text" | "thinking";
+  chunks: string[];
+};
+
+type AgentAssistantStream = {
+  created_at: number;
+  blocks: AgentAssistantStreamBlock[];
+};
+
+type AgentAssistantStreamDelta = Extract<
+  AssistantMessageEvent,
+  { type: "text_delta" | "thinking_delta" }
+>;
 
 type AgentServiceCache = Pick<CacheReadPort, "snapshot"> & {
   readonly items: Pick<CacheReadPort["items"], "readItems" | "readItem">;
@@ -147,6 +165,8 @@ export class AgentService {
   private runtime_generation = 0; // stop/reset/dispose 统一令迟到异步阶段失效
   private state: AgentSessionState = "idle"; // 只表达当前回合是否运行，结果归各条目
   private entries: AgentEntry[] = []; // 本次 reset 以来唯一的公开时间线事实
+  private assistant_stream: AgentAssistantStream | null = null; // 当前生成消息的窄字符串增量
+  private assistant_stream_publish_timer: ReturnType<typeof setTimeout> | null = null;
   private resources: LoadedAgentResources | null = null; // 启动期一次性加载的原子资源集，null 表示未完成加载
   private disposed = false;
 
@@ -256,6 +276,7 @@ export class AgentService {
   /** 立即封口公开轮次并保留历史，后台取消压缩、重试和当前模型回合。 */
   public stop(): AgentSessionSnapshot {
     this.assert_not_disposed();
+    this.flush_assistant_stream();
     this.runtime_generation += 1;
     this.finish_current_round("stopped");
     this.set_state("idle");
@@ -275,6 +296,7 @@ export class AgentService {
   public async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    this.clear_assistant_stream();
     this.runtime_generation += 1;
     this.unsubscribe_project_session();
     const runtime = this.runtime;
@@ -463,6 +485,7 @@ export class AgentService {
       }
     } finally {
       if (this.prompt_is_current(runtime, generation)) {
+        this.flush_assistant_stream();
         this.finish_current_round(outcome);
         this.set_state("idle");
       }
@@ -479,11 +502,12 @@ export class AgentService {
       (event.assistantMessageEvent.type === "text_delta" ||
         event.assistantMessageEvent.type === "thinking_delta")
     ) {
-      this.upsert_assistant_message(event.assistantMessageEvent.partial, "running");
+      this.append_assistant_stream_delta(event.assistantMessageEvent);
       return;
     }
     if (event.type === "message_end") {
       if (event.message.role === "assistant") {
+        this.clear_assistant_stream();
         this.upsert_assistant_message(
           event.message,
           event.message.stopReason === "error" ? "error" : "success",
@@ -535,7 +559,19 @@ export class AgentService {
 
   /** 以 Pi 的完整 partial / final 消息校正公开 parts，同一模型消息始终原位覆盖。 */
   private upsert_assistant_message(message: AssistantMessage, status: AgentEntryStatus): void {
-    const parts = project_assistant_message_parts(message);
+    this.upsert_assistant_parts(
+      project_assistant_message_parts(message),
+      message.timestamp,
+      status,
+    );
+  }
+
+  /** running 与 canonical final 复用同一条目身份和覆盖规则。 */
+  private upsert_assistant_parts(
+    parts: AgentAssistantMessagePart[],
+    created_at: number,
+    status: AgentEntryStatus,
+  ): void {
     const existing = this.find_open_assistant_entry();
     if (existing === undefined) {
       if (parts.length === 0) return;
@@ -544,11 +580,66 @@ export class AgentService {
         id: uuidv7(),
         parts,
         status,
-        createdAt: message.timestamp,
+        createdAt: created_at,
       });
     } else {
       this.upsert_entry({ ...existing, parts, status });
     }
+  }
+
+  /** 单个 SDK delta 只保存窄字符串，完整投影延迟到固定发布窗口。 */
+  private append_assistant_stream_delta(event: AgentAssistantStreamDelta): void {
+    if (event.delta === "") return;
+    const kind = event.type === "text_delta" ? "text" : "thinking";
+    const content = event.partial.content[event.contentIndex];
+    if (content?.type !== kind || (content.type === "thinking" && content.redacted === true)) {
+      return;
+    }
+    const stream = (this.assistant_stream ??= {
+      created_at: event.partial.timestamp,
+      blocks: [],
+    });
+    const last = stream.blocks.at(-1);
+    if (last?.content_index === event.contentIndex) last.chunks.push(event.delta);
+    else stream.blocks.push({ content_index: event.contentIndex, kind, chunks: [event.delta] });
+    if (this.assistant_stream_publish_timer !== null) return;
+    this.assistant_stream_publish_timer = setTimeout(() => {
+      this.assistant_stream_publish_timer = null;
+      this.publish_assistant_stream();
+    }, AGENT_STREAM_PUBLISH_INTERVAL_MS);
+  }
+
+  /** 发布当前完整累积内容，但保留增量供下一窗口继续追加。 */
+  private publish_assistant_stream(): void {
+    const stream = this.assistant_stream;
+    if (stream === null) return;
+    const parts: AgentAssistantMessagePart[] = [];
+    for (const block of stream.blocks) {
+      append_assistant_message_part(parts, block.kind, block.chunks.join(""));
+    }
+    this.upsert_assistant_parts(parts, stream.created_at, "running");
+  }
+
+  /** stop 与异常收尾公开窗口内最新正文后销毁流。 */
+  private flush_assistant_stream(): void {
+    if (this.assistant_stream_publish_timer !== null) {
+      clearTimeout(this.assistant_stream_publish_timer);
+      this.assistant_stream_publish_timer = null;
+    }
+    try {
+      this.publish_assistant_stream();
+    } finally {
+      this.assistant_stream = null;
+    }
+  }
+
+  /** final、reset 与 dispose 丢弃非权威增量，阻止迟到 timer 回流。 */
+  private clear_assistant_stream(): void {
+    if (this.assistant_stream_publish_timer !== null) {
+      clearTimeout(this.assistant_stream_publish_timer);
+      this.assistant_stream_publish_timer = null;
+    }
+    this.assistant_stream = null;
   }
 
   /** manual-only skill 的读取授权直接由当前公开会话中的显式 skill part 推导。 */
@@ -566,7 +657,7 @@ export class AgentService {
     const index = this.entries.findIndex((item) => item.id === entry.id);
     if (index < 0) this.entries.push(next);
     else this.entries[index] = next;
-    this.publish_event({ type: "entry_upsert", entry: structuredClone(next) });
+    this.publish_event({ type: "entry_upsert", entry: next });
   }
 
   /** 流式增量只归入最后一个尚未终结的 assistant 条目。 */
@@ -636,6 +727,7 @@ export class AgentService {
   private reset_session(): Promise<void> {
     if (this.session_reset !== null) return this.session_reset;
     this.runtime_generation += 1;
+    this.clear_assistant_stream();
     const runtime = this.runtime;
     const acceptance = this.message_acceptance;
     const prompt = this.prompt_settlement;
@@ -734,16 +826,22 @@ function build_agent_prompt(
 function project_assistant_message_parts(message: AssistantMessage): AgentAssistantMessagePart[] {
   const parts: AgentAssistantMessagePart[] = [];
   for (const content of message.content) {
-    const part =
-      content.type === "text" && content.text !== ""
-        ? ({ kind: "text", text: content.text } as const)
-        : content.type === "thinking" && !content.redacted && content.thinking.trim() !== ""
-          ? ({ kind: "thinking", text: content.thinking } as const)
-          : null;
-    if (part === null) continue;
-    const previous = parts.at(-1);
-    if (previous?.kind === part.kind) previous.text += part.text;
-    else parts.push(part);
+    if (content.type === "text") append_assistant_message_part(parts, "text", content.text);
+    else if (content.type === "thinking" && !content.redacted) {
+      append_assistant_message_part(parts, "thinking", content.thinking);
+    }
   }
   return parts;
+}
+
+/** 过滤不可见内容后合并相邻同类块，确保流帧与最终消息使用同一公开规则。 */
+function append_assistant_message_part(
+  parts: AgentAssistantMessagePart[],
+  kind: AgentAssistantMessagePart["kind"],
+  text: string,
+): void {
+  if (text === "" || (kind === "thinking" && text.trim() === "")) return;
+  const previous = parts.at(-1);
+  if (previous?.kind === kind) previous.text += text;
+  else parts.push({ kind, text });
 }
