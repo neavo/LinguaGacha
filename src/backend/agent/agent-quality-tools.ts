@@ -1,4 +1,4 @@
-import { Type } from "@earendil-works/pi-ai";
+import { Type, type Static } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import type { JsonRecord } from "../../domain/json";
@@ -24,78 +24,64 @@ import type { ResolvedGlossaryEntry } from "../../shared/quality/glossary";
 import { read_item_name_text } from "../../shared/item-name";
 
 /** 质量规则工具只公开四个稳定业务 kind，不接受数据库物理类型。 */
-const RULE_TYPE_PARAMETERS = Type.Union([
-  Type.Literal(QUALITY_RULE_KINDS[0]),
-  Type.Literal(QUALITY_RULE_KINDS[1]),
-  Type.Literal(QUALITY_RULE_KINDS[2]),
-  Type.Literal(QUALITY_RULE_KINDS[3]),
-]);
+const RULE_TYPE_PARAMETERS = Type.Enum(QUALITY_RULE_KINDS, {
+  type: "string",
+  description: "决定 entry 和 meta 的适用字段。",
+});
 
-/** 术语条目要求完整语义字段，regex 固定由后端关闭。 */
-const GLOSSARY_ENTRY_PARAMETERS = Type.Object(
+const CHANGE_ACTION_PARAMETERS = Type.Enum(["create", "update", "delete"], {
+  type: "string",
+  description: "create 需要 entry；update 需要 entry_id 和 entry；delete 只需要 entry_id。",
+});
+
+const TEXT_PRESERVE_MODE_PARAMETERS = Type.Enum(TEXT_PRESERVE_MODES, {
+  type: "string",
+  description: "仅 text_preserve 的 meta。",
+});
+
+/** 模型可见 entry 只表达可移植字段类型，规则种类关联由 Agent 入口收窄。 */
+const QUALITY_RULE_ENTRY_PARAMETERS = Type.Object(
   {
-    src: Type.String(),
-    dst: Type.String(),
-    info: Type.String(),
-    case_sensitive: Type.Boolean(),
+    src: Type.String({ description: "所有规则必填。" }),
+    dst: Type.Optional(Type.String({ description: "glossary 和两类 replacement 必填。" })),
+    info: Type.Optional(Type.String({ description: "glossary 和 text_preserve 必填。" })),
+    regex: Type.Optional(Type.Boolean({ description: "仅两类 replacement 必填。" })),
+    case_sensitive: Type.Optional(
+      Type.Boolean({ description: "glossary 和两类 replacement 必填。" }),
+    ),
   },
   { additionalProperties: false },
 );
 
-/** 前后替换共享同一可写条目形状。 */
-const REPLACEMENT_ENTRY_PARAMETERS = Type.Object(
+/** 增删改共享普通对象结构，action 的字段组合由 Agent 入口收窄。 */
+const QUALITY_RULE_CHANGE_PARAMETERS = Type.Object(
   {
-    src: Type.String(),
-    dst: Type.String(),
-    regex: Type.Boolean(),
-    case_sensitive: Type.Boolean(),
+    action: CHANGE_ACTION_PARAMETERS,
+    entry_id: Type.Optional(Type.String({ description: "只用于 update/delete，不得放入 entry。" })),
+    entry: Type.Optional(QUALITY_RULE_ENTRY_PARAMETERS),
+    before_entry_id: Type.Optional(
+      // null 分支必须在前，避免 SDK 的 TypeBox 转换把 null 改为空字符串。
+      Type.Union([Type.Null(), Type.String()], {
+        description: "只用于 create/update；null 表示移到末尾。",
+      }),
+    ),
   },
   { additionalProperties: false },
 );
 
-/** 文本保护只接受模式源与说明，存储默认字段由后端补齐。 */
-const TEXT_PRESERVE_ENTRY_PARAMETERS = Type.Object(
+/** meta 共享普通对象结构，规则种类关联由 Agent 入口收窄。 */
+const QUALITY_RULE_META_PARAMETERS = Type.Object(
   {
-    src: Type.String(),
-    info: Type.String(),
+    enabled: Type.Optional(Type.Boolean({ description: "glossary 和两类 replacement 的 meta。" })),
+    mode: Type.Optional(TEXT_PRESERVE_MODE_PARAMETERS),
   },
   { additionalProperties: false },
 );
-
-/** 增删改协议允许 create/update 同时声明最终位置，避免再发送独立 move。 */
-function create_change_parameters(
-  entry_parameters:
-    | typeof GLOSSARY_ENTRY_PARAMETERS
-    | typeof REPLACEMENT_ENTRY_PARAMETERS
-    | typeof TEXT_PRESERVE_ENTRY_PARAMETERS,
-) {
-  const before_entry_id = Type.Optional(Type.Union([Type.String(), Type.Null()]));
-  return Type.Array(
-    Type.Union([
-      Type.Object(
-        { action: Type.Literal("create"), entry: entry_parameters, before_entry_id },
-        { additionalProperties: false },
-      ),
-      Type.Object(
-        {
-          action: Type.Literal("update"),
-          entry_id: Type.String(),
-          entry: entry_parameters,
-          before_entry_id,
-        },
-        { additionalProperties: false },
-      ),
-      Type.Object(
-        { action: Type.Literal("delete"), entry_id: Type.String() },
-        { additionalProperties: false },
-      ),
-    ]),
-  );
-}
 
 /** 质量写入只依赖 quality section revision。 */
 const EXPECTED_QUALITY_REVISION_PARAMETERS = Type.Object(
-  { quality: Type.Integer({ minimum: 0 }) },
+  // number + multipleOf 避免 SDK 把小数先截断成 integer 再放行。
+  { quality: Type.Number({ minimum: 0, multipleOf: 1 }) },
   { additionalProperties: false },
 );
 
@@ -105,60 +91,32 @@ const QUERY_QUALITY_RULES_PARAMETERS = Type.Object(
   { additionalProperties: false },
 );
 
-/** 更新 schema 保持 rule kind、条目形状与 meta 匹配；根节点显式 object 兼容模型工具协议。 */
-const UPDATE_QUALITY_RULES_PARAMETERS = Type.Union(
-  [
-    Type.Object(
-      {
-        rule_type: Type.Literal("glossary"),
-        changes: Type.Optional(create_change_parameters(GLOSSARY_ENTRY_PARAMETERS)),
-        meta: Type.Optional(
-          Type.Object({ enabled: Type.Boolean() }, { additionalProperties: false }),
-        ),
-        expected_section_revisions: EXPECTED_QUALITY_REVISION_PARAMETERS,
-      },
-      { additionalProperties: false },
-    ),
-    Type.Object(
-      {
-        rule_type: Type.Union([Type.Literal("pre_replacement"), Type.Literal("post_replacement")]),
-        changes: Type.Optional(create_change_parameters(REPLACEMENT_ENTRY_PARAMETERS)),
-        meta: Type.Optional(
-          Type.Object({ enabled: Type.Boolean() }, { additionalProperties: false }),
-        ),
-        expected_section_revisions: EXPECTED_QUALITY_REVISION_PARAMETERS,
-      },
-      { additionalProperties: false },
-    ),
-    Type.Object(
-      {
-        rule_type: Type.Literal("text_preserve"),
-        changes: Type.Optional(create_change_parameters(TEXT_PRESERVE_ENTRY_PARAMETERS)),
-        meta: Type.Optional(
-          Type.Object(
-            {
-              mode: Type.Union([
-                Type.Literal(TEXT_PRESERVE_MODES[0]),
-                Type.Literal(TEXT_PRESERVE_MODES[1]),
-                Type.Literal(TEXT_PRESERVE_MODES[2]),
-              ]),
-            },
-            { additionalProperties: false },
-          ),
-        ),
-        expected_section_revisions: EXPECTED_QUALITY_REVISION_PARAMETERS,
-      },
-      { additionalProperties: false },
-    ),
-  ],
-  { type: "object" },
+/** 更新 schema 只表达跨供应商稳定的结构约束。 */
+const UPDATE_QUALITY_RULES_PARAMETERS = Type.Object(
+  {
+    rule_type: RULE_TYPE_PARAMETERS,
+    changes: Type.Optional(Type.Array(QUALITY_RULE_CHANGE_PARAMETERS)),
+    meta: Type.Optional(QUALITY_RULE_META_PARAMETERS),
+    expected_section_revisions: EXPECTED_QUALITY_REVISION_PARAMETERS,
+  },
+  { additionalProperties: false },
 );
 
-type QualityRuleChange = {
-  action: "create" | "update" | "delete";
-  entry_id?: string;
-  entry?: JsonRecord;
-  before_entry_id?: string | null;
+type QualityRuleChange =
+  | { action: "create"; entry: JsonRecord; before_entry_id?: string | null }
+  | {
+      action: "update";
+      entry_id: string;
+      entry: JsonRecord;
+      before_entry_id?: string | null;
+    }
+  | { action: "delete"; entry_id: string };
+
+type AgentQualityRuleUpdate = {
+  rule_type: QualityRuleKind;
+  changes: QualityRuleChange[];
+  meta?: JsonRecord;
+  expected_section_revisions: { quality: number };
 };
 
 type AgentQualityCache = {
@@ -175,6 +133,101 @@ type AgentQualityDependencies = {
 
 /** Agent 发起的规则提交使用独立 source，确保项目事件保留真实来源。 */
 export const AGENT_QUALITY_RULE_UPDATE_SOURCE = "agent_quality_rule_update";
+
+/** 在读取项目快照前把宽 Schema 参数收窄为唯一可执行形状。 */
+function read_agent_quality_rule_update(
+  params: Static<typeof UPDATE_QUALITY_RULES_PARAMETERS>,
+): AgentQualityRuleUpdate {
+  const rule_type = QualityRule.from_json(params.rule_type).kind;
+  const changes = (params.changes ?? []).map((change, index) =>
+    read_agent_quality_rule_change(rule_type, change, index),
+  );
+  const meta =
+    params.meta === undefined ? undefined : read_agent_quality_rule_meta(rule_type, params.meta);
+  if (changes.length === 0 && meta === undefined) {
+    throw new Error("质量规则更新至少需要 changes 或 meta");
+  }
+  return {
+    rule_type,
+    changes,
+    ...(meta === undefined ? {} : { meta }),
+    expected_section_revisions: params.expected_section_revisions,
+  };
+}
+
+/** action 决定 change 的完整字段集合，读取后不再携带不可能状态。 */
+function read_agent_quality_rule_change(
+  rule_type: QualityRuleKind,
+  value: unknown,
+  index: number,
+): QualityRuleChange {
+  const change = read_json_record(value);
+  const label = `第 ${(index + 1).toString()} 个 changes`;
+  switch (change["action"]) {
+    case "create":
+      assert_fields(change, ["action", "entry"], ["before_entry_id"], label);
+      return {
+        action: "create",
+        entry: read_agent_quality_rule_entry(rule_type, change["entry"], label),
+        ...(Object.prototype.hasOwnProperty.call(change, "before_entry_id")
+          ? { before_entry_id: change["before_entry_id"] as string | null }
+          : {}),
+      };
+    case "update":
+      assert_fields(change, ["action", "entry_id", "entry"], ["before_entry_id"], label);
+      return {
+        action: "update",
+        entry_id: normalize_entry_id(change["entry_id"]),
+        entry: read_agent_quality_rule_entry(rule_type, change["entry"], label),
+        ...(Object.prototype.hasOwnProperty.call(change, "before_entry_id")
+          ? { before_entry_id: change["before_entry_id"] as string | null }
+          : {}),
+      };
+    case "delete":
+      assert_fields(change, ["action", "entry_id"], [], label);
+      return { action: "delete", entry_id: normalize_entry_id(change["entry_id"]) };
+    default:
+      throw new Error(`${label} 的 action 无效`);
+  }
+}
+
+/** rule_type 决定 entry 必须且只能具有的完整替换字段。 */
+function read_agent_quality_rule_entry(
+  rule_type: QualityRuleKind,
+  value: unknown,
+  change_label: string,
+): JsonRecord {
+  const entry = read_json_record(value);
+  const fields =
+    rule_type === "glossary"
+      ? ["src", "dst", "info", "case_sensitive"]
+      : rule_type === "text_preserve"
+        ? ["src", "info"]
+        : ["src", "dst", "regex", "case_sensitive"];
+  assert_fields(entry, fields, [], `${change_label} 的 entry`);
+  return entry;
+}
+
+/** rule_type 决定 meta 的单一完整字段。 */
+function read_agent_quality_rule_meta(rule_type: QualityRuleKind, value: unknown): JsonRecord {
+  const meta = read_json_record(value);
+  assert_fields(meta, [rule_type === "text_preserve" ? "mode" : "enabled"], [], "meta");
+  return meta;
+}
+
+/** 条件协议只检查字段集合；类型、枚举和数值范围由 SDK Schema 校验。 */
+function assert_fields(
+  record: JsonRecord,
+  required: readonly string[],
+  optional: readonly string[],
+  label: string,
+): void {
+  const allowed = new Set([...required, ...optional]);
+  const unknown = Object.keys(record).find((field) => !allowed.has(field));
+  if (unknown !== undefined) throw new Error(`${label} 包含未知字段：${unknown}`);
+  const missing = required.find((field) => !Object.prototype.hasOwnProperty.call(record, field));
+  if (missing !== undefined) throw new Error(`${label} 缺少必填字段：${missing}`);
+}
 
 /** 构造统一质量规则 query/update 工具；领域持久化仍由 QualityRuleService 拥有。 */
 export function create_agent_quality_tools(
@@ -205,25 +258,22 @@ export function create_agent_quality_tools(
       parameters: UPDATE_QUALITY_RULES_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
+        const update = read_agent_quality_rule_update(params);
         const execution_signal = signal ?? new AbortController().signal;
-        const changes = params.changes ?? [];
-        if (changes.length === 0 && params.meta === undefined) {
-          throw new Error("质量规则更新至少需要 changes 或 meta");
-        }
         // 更新只读取规则结构；术语语料统计统一留给 prospective 集合，避免同一写入扫描两次。
         const current = read_agent_quality_rules_snapshot(
           dependencies.qualityRules,
-          params.rule_type,
+          update.rule_type,
         );
         const applied =
-          changes.length === 0
+          update.changes.length === 0
             ? undefined
             : apply_agent_quality_rule_changes({
-                rule_type: params.rule_type,
+                rule_type: update.rule_type,
                 current_entries: current.entries,
-                changes,
+                changes: update.changes,
               });
-        if (params.rule_type === "glossary" && applied !== undefined) {
+        if (update.rule_type === "glossary" && applied !== undefined) {
           const statistics = await compute_glossary_statistics(
             dependencies,
             applied.entries,
@@ -240,17 +290,17 @@ export function create_agent_quality_tools(
         }
         const write_result = await dependencies.qualityRules.update_from_agent(
           {
-            rule_type: params.rule_type,
+            rule_type: update.rule_type,
             ...(applied === undefined ? {} : { entries: applied.entries }),
-            ...(params.meta === undefined ? {} : { meta: params.meta }),
-            expected_section_revisions: params.expected_section_revisions,
+            ...(update.meta === undefined ? {} : { meta: update.meta }),
+            expected_section_revisions: update.expected_section_revisions,
           },
           AGENT_QUALITY_RULE_UPDATE_SOURCE,
         );
         const change = write_result.changes.at(-1);
         return tool_result({
           accepted: true,
-          rule_type: params.rule_type,
+          rule_type: update.rule_type,
           projectPath: change?.projectPath ?? current.projectPath,
           sectionRevisions: change?.sectionRevisions ?? current.sectionRevisions,
           affected_entries:
@@ -258,7 +308,7 @@ export function create_agent_quality_tools(
               applied.affected_entry_ids.includes(String(entry["entry_id"] ?? "")),
             ) ?? [],
           deleted_entry_ids: applied?.deleted_entry_ids ?? [],
-          meta: params.meta ?? current.meta,
+          meta: update.meta ?? current.meta,
         });
       },
     }),
@@ -340,7 +390,6 @@ export function apply_agent_quality_rule_changes(args: {
 
   for (const change of args.changes) {
     if (change.action === "create") {
-      if (change.entry === undefined) throw new Error("create 变更缺少 entry");
       const entry_id = create_quality_rule_entry_id();
       entries.push({
         ...normalize_writable_entry(args.rule_type, change.entry),
@@ -366,7 +415,6 @@ export function apply_agent_quality_rule_changes(args: {
       deleted_entry_ids.push(entry_id);
       continue;
     }
-    if (change.entry === undefined) throw new Error("update 变更缺少 entry");
     entries[index] = {
       ...normalize_writable_entry(args.rule_type, change.entry),
       entry_id,
