@@ -9,6 +9,7 @@ import {
   EditorState,
   StateEffect,
   StateField,
+  Transaction,
   type Extension,
   type Range,
 } from "@codemirror/state";
@@ -66,6 +67,7 @@ type AgentUnavailableReason = "restoring" | "runtime_busy" | "settling";
 type AgentComposerProps = {
   ref?: Ref<AgentComposerHandle>;
   skills: readonly AgentSkillSnapshot[];
+  message_history: readonly (readonly AgentUserMessagePart[])[];
   running: boolean;
   unavailable_reason: AgentUnavailableReason | null;
   command: AgentCommand;
@@ -184,6 +186,8 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const matching_skills_ref = useRef<readonly AgentSkillSnapshot[]>([]);
   const menu_index_ref = useRef(0);
   const last_query_key_ref = useRef("");
+  const message_history_ref = useRef(props.message_history);
+  const message_history_index_ref = useRef<number | null>(null);
   const [snapshot, set_snapshot] = useState<EditorSnapshot>(EMPTY_EDITOR_SNAPSHOT);
   const [menu_index_value, set_menu_index] = useState(0);
   const [menu_suppressed, set_menu_suppressed] = useState(false);
@@ -242,6 +246,14 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   menu_open_ref.current = menu_open;
   matching_skills_ref.current = matching_skills;
   menu_index_ref.current = menu_index;
+  // EditorView 只创建一次，变化中的历史通过 ref 进入稳定 keymap；历史缩短时废弃失效游标。
+  message_history_ref.current = props.message_history;
+  if (
+    message_history_index_ref.current !== null &&
+    message_history_index_ref.current >= props.message_history.length
+  ) {
+    message_history_index_ref.current = null;
+  }
 
   useEffect(() => {
     const host = host_ref.current;
@@ -280,11 +292,11 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
           keymap.of([
             {
               key: "ArrowDown",
-              run: () => navigate_menu(1),
+              run: (view) => navigate_skill_menu(1) || navigate_message_history(view, "newer"),
             },
             {
               key: "ArrowUp",
-              run: () => navigate_menu(-1),
+              run: (view) => navigate_skill_menu(-1) || navigate_message_history(view, "older"),
             },
             {
               key: "Escape",
@@ -308,7 +320,17 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             ...historyKeymap,
           ]),
           EditorView.updateListener.of((update) => {
-            if (update.docChanged || update.selectionSet) emit_snapshot(update.state);
+            if (update.docChanged || update.selectionSet) {
+              // 历史回填不进入撤销栈并保留浏览位置；其它编辑或选区操作转回普通草稿。
+              if (
+                !update.transactions.every(
+                  (transaction) => transaction.annotation(Transaction.addToHistory) === false,
+                )
+              ) {
+                message_history_index_ref.current = null;
+              }
+              emit_snapshot(update.state);
+            }
           }),
         ],
       }),
@@ -551,7 +573,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   );
 
   /** 菜单打开时循环选择候选；关闭时把方向键交还 CodeMirror。 */
-  function navigate_menu(delta: 1 | -1): boolean {
+  function navigate_skill_menu(delta: 1 | -1): boolean {
     if (!menu_open_ref.current || matching_skills_ref.current.length === 0) return false;
     set_menu_index(
       (current) =>
@@ -559,10 +581,39 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     );
     return true;
   }
+
+  /** 只在空白或未修改的历史内容中接管方向键。 */
+  function navigate_message_history(view: EditorView, direction: "older" | "newer"): boolean {
+    const message_history = message_history_ref.current;
+    const current_index = message_history_index_ref.current;
+    if (view.composing || view.state.readOnly || message_history.length === 0) return false;
+    let next_index: number;
+    if (current_index === null) {
+      if (view.state.doc.length > 0 || direction === "newer") return false;
+      next_index = message_history.length - 1;
+    } else if (direction === "older") {
+      if (current_index === 0) return true;
+      next_index = current_index - 1;
+    } else {
+      next_index = current_index + 1;
+    }
+    if (next_index === message_history.length) {
+      message_history_index_ref.current = null;
+      write_agent_message_parts(view, [], false);
+    } else {
+      message_history_index_ref.current = next_index;
+      write_agent_message_parts(view, message_history[next_index]!, false);
+    }
+    return true;
+  }
 }
 
-/** 用单次事务写入结构化消息，确保正文、原子 token、光标与撤销历史同步。 */
-function write_agent_message_parts(view: EditorView, parts: readonly AgentUserMessagePart[]): void {
+/** 用单次事务同步正文、原子 token 与光标；历史回填可显式排除撤销记录。 */
+function write_agent_message_parts(
+  view: EditorView,
+  parts: readonly AgentUserMessagePart[],
+  record_undo = true,
+): void {
   let text = "";
   const tokens: Range<Decoration>[] = [];
   for (const part of parts) {
@@ -578,6 +629,7 @@ function write_agent_message_parts(view: EditorView, parts: readonly AgentUserMe
     changes: { from: 0, to: view.state.doc.length, insert: text },
     selection: EditorSelection.cursor(text.length),
     effects: set_skill_tokens_effect.of(Decoration.set(tokens, true)),
+    annotations: record_undo ? [] : Transaction.addToHistory.of(false),
   });
 }
 
