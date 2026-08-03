@@ -4,6 +4,18 @@ import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shar
 import { TranslationPrePipeline } from "./translation-pre-pipeline";
 
 describe("TranslationPrePipeline", () => {
+  it("保持源正文的 Unicode 形态进入模型行", () => {
+    const pipeline = new TranslationPrePipeline(create_config(), create_quality_snapshot());
+    const source_text = "ＡＢＣ１２３ ｶﾞ Cafe\u0301";
+
+    const context = pipeline.process_item({
+      src: source_text,
+      text_type: "TXT",
+    });
+
+    expect(line_texts(context)).toEqual([source_text]);
+  });
+
   it("记录并剥离每行头尾空白", () => {
     const pipeline = new TranslationPrePipeline(create_config(), create_quality_snapshot());
 
