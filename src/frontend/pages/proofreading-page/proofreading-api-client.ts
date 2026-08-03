@@ -9,7 +9,7 @@ import type {
   ProofreadingRowIndexQuery,
   ProofreadingRowIdsRangeQuery,
   ProofreadingSyncState,
-} from "@shared/proofreading/proofreading-list-reader";
+} from "@shared/proofreading/proofreading-reader";
 import type {
   ProofreadingClientItem,
   ProofreadingContextItem,

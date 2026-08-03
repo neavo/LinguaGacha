@@ -7,7 +7,7 @@ import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import {
   evaluateProofreadingSlice,
   type ProofreadingSyncInput,
-} from "../../shared/proofreading/proofreading-list-reader";
+} from "../../shared/proofreading/proofreading-reader";
 import { CacheManager } from "./cache-manager";
 
 type MutableRecord = Record<string, unknown>;

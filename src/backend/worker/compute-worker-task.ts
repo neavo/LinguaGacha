@@ -2,7 +2,7 @@ import {
   evaluateProofreadingSlice,
   type ProofreadingEvaluatedSlice,
   type ProofreadingSyncInput,
-} from "../../shared/proofreading/proofreading-list-reader";
+} from "../../shared/proofreading/proofreading-reader";
 import {
   build_ts_conversion_converted_items,
   type TsConversionConvertedItem,

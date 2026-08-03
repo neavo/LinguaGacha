@@ -4,6 +4,7 @@ import {
   resolve_proofreading_status_sort_rank,
   type ProofreadingClientItem,
   type ProofreadingVisibleItem,
+  type ProofreadingWarningCode,
   type ProofreadingWarningFragmentsByCode,
 } from "./proofreading-types";
 import type { GlossaryApplication } from "../quality/glossary";
@@ -163,7 +164,7 @@ export function sort_proofreading_client_items(
  */
 export function create_proofreading_client_item(args: {
   item: ProofreadingSortableItemRecord;
-  warnings: string[];
+  warnings: ProofreadingWarningCode[];
   warning_fragments_by_code: ProofreadingWarningFragmentsByCode;
   glossary_applications: GlossaryApplication[];
 }): ProofreadingClientItem {

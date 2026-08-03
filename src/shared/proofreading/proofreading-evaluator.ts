@@ -9,6 +9,7 @@ import type {
   ProofreadingClientItem,
   ProofreadingItemRecord,
   ProofreadingWarningFragmentsByCode,
+  ProofreadingWarningCode,
 } from "./proofreading-types";
 import { create_proofreading_client_item } from "./list";
 import {
@@ -119,7 +120,7 @@ export function evaluateProofreadingItem(args: {
   targetLanguage: string;
   sample_rule_cache: Map<string, TextPreserveRule | null>;
 }): ProofreadingClientItem {
-  const warnings: string[] = [];
+  const warnings: ProofreadingWarningCode[] = [];
   const warning_fragments_by_code: ProofreadingWarningFragmentsByCode = {};
   let glossary_applications: GlossaryApplication[] = [];
   const sample_rule_cache_key = `${args.item.text_type}:${args.quality.text_preserve.mode}:${args.quality.text_preserve.revision}`;

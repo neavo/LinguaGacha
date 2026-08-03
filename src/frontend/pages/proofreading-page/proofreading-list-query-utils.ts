@@ -7,7 +7,7 @@ import type {
   ProofreadingListViewQuery,
   ProofreadingListWindow,
   ProofreadingSyncState,
-} from "@shared/proofreading/proofreading-list-reader";
+} from "@shared/proofreading/proofreading-reader";
 import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-types";
 import {
   build_filter_signature,

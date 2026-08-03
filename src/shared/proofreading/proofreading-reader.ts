@@ -3,7 +3,7 @@ import {
   PROOFREADING_NO_WARNING_CODE,
   PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES,
   PROOFREADING_STATUS_ORDER,
-  PROOFREADING_WARNING_CODES,
+  PROOFREADING_WARNING_FILTER_CODES,
   clone_proofreading_filter_options,
   create_empty_proofreading_filter_panel_state,
   create_empty_proofreading_list_view,
@@ -18,6 +18,7 @@ import {
   type ProofreadingItemRecord,
   type ProofreadingSearchScope,
   type ProofreadingVisibleItem,
+  type ProofreadingWarningCode,
 } from "./proofreading-types";
 import {
   build_proofreading_visible_items,
@@ -103,6 +104,26 @@ export type ProofreadingListViewQuery = {
   window_count?: number;
 };
 
+// Agent warning 查询只读取真实警告，并使用自然顺序的偏移分页。
+export type ProofreadingWarningQuery = {
+  warning_types: ProofreadingWarningCode[];
+  statuses?: string[];
+  file_paths?: string[];
+  keyword: string;
+  scope: ProofreadingSearchScope;
+  is_regex: boolean;
+  case_sensitive: boolean;
+  offset: number;
+  limit: number;
+};
+
+// warning 页保留搜索错误，让工具边界统一转换为可读失败。
+export type ProofreadingWarningPage = {
+  total_item_count: number;
+  items: ProofreadingClientItem[];
+  invalid_regex_message: string | null;
+};
+
 // 筛选面板查询只关心当前筛选条件，不需要窗口信息
 export type ProofreadingFilterPanelQuery = {
   filters: ProofreadingFilterOptions;
@@ -155,7 +176,7 @@ export type ProofreadingSyncState = {
   defaultFilters: ProofreadingFilterOptions;
 };
 
-// 列表完整运行态，所有计算筛选计数都从这里维护
+// 校对完整运行态，GUI 列表与 Agent warning 查询共享同一份评估事实。
 type ProofreadingReaderState = {
   projectId: string;
   revisions: ProofreadingRevisions;
@@ -213,11 +234,27 @@ type ProofreadingSearchContext = {
   scope: ProofreadingSearchScope; // 当前搜索范围：原文、译文或两者
 };
 
+// 内部公共查询形状允许 GUI 完整筛选和 Agent 部分筛选共用一次解析。
+type ProofreadingItemsReadQuery = {
+  filters: Partial<ProofreadingFilterOptions>;
+  keyword: string;
+  scope: ProofreadingSearchScope;
+  is_regex: boolean;
+  case_sensitive: boolean;
+  sort_state: ProofreadingSortState | null;
+};
+
+// 查询结果同时携带非法正则诊断，调用方决定展示或转成工具错误。
+type ResolvedProofreadingItems = {
+  items: ProofreadingClientItem[];
+  invalid_regex_message: string | null;
+};
+
 const PROOFREADING_DEFAULT_WINDOW_COUNT = 160; // 默认窗口大小控制每次返回量，防止大项目一次复制全量行
 const PROOFREADING_CONTEXT_RADIUS = 2; // 固定前后各两条，避免 UI 与 reader 各自维护窗口语义
 
 /**
- * 列表运行态接收后端 query 结果，需要先归一成稳定 item 行
+ * 校对运行态接收后端 query 结果，需要先归一成稳定 item 行
  */
 function normalize_reader_item(record: unknown): ProofreadingItemRecord | null {
   if (typeof record !== "object" || record === null) {
@@ -300,28 +337,38 @@ function item_has_glossary_miss(item: ProofreadingClientItem): boolean {
 }
 
 /**
- * 将 UI 筛选值编译成单次查询上下文，大列表过滤时直接复用集合
+ * 将可选校对筛选值编译成单次查询上下文，大列表过滤时直接复用集合
  */
 function create_proofreading_filter_context(args: {
-  filters: ProofreadingFilterOptions;
+  filters: Partial<ProofreadingFilterOptions>;
   ignored_dimensions?: ProofreadingFilterDimension[];
 }): ProofreadingFilterContext {
   const ignored_dimension_set = new Set(args.ignored_dimensions ?? []);
-  const glossary_filter_enabled = !ignored_dimension_set.has("glossary_entry_ids");
+  const glossary_filter_enabled =
+    !ignored_dimension_set.has("glossary_entry_ids") &&
+    (args.filters.glossary_entry_ids !== undefined ||
+      args.filters.include_without_glossary_miss !== undefined);
 
   return {
     warning_type_set: ignored_dimension_set.has("warning_types")
       ? null
-      : new Set(args.filters.warning_types),
-    status_set: ignored_dimension_set.has("statuses") ? null : new Set(args.filters.statuses),
+      : args.filters.warning_types === undefined
+        ? null
+        : new Set(args.filters.warning_types),
+    status_set:
+      ignored_dimension_set.has("statuses") || args.filters.statuses === undefined
+        ? null
+        : new Set(args.filters.statuses),
     file_path_set: ignored_dimension_set.has("file_paths")
       ? null
-      : new Set(args.filters.file_paths),
+      : args.filters.file_paths === undefined
+        ? null
+        : new Set(args.filters.file_paths),
     glossary_filter_enabled,
     glossary_entry_id_set: glossary_filter_enabled
-      ? new Set(args.filters.glossary_entry_ids)
+      ? new Set(args.filters.glossary_entry_ids ?? [])
       : new Set<string>(),
-    include_without_glossary_miss: args.filters.include_without_glossary_miss,
+    include_without_glossary_miss: args.filters.include_without_glossary_miss ?? false,
   };
 }
 
@@ -332,12 +379,13 @@ function create_proofreading_search_context(args: {
   keyword: string;
   is_regex: boolean;
   scope: ProofreadingSearchScope;
+  case_sensitive: boolean;
 }): ProofreadingSearchContext {
   return {
     matcher: create_text_keyword_matcher({
       keyword: args.keyword,
       is_regex: args.is_regex,
-      case_sensitive: false,
+      case_sensitive: args.case_sensitive,
     }),
     scope: args.scope,
   };
@@ -481,7 +529,7 @@ function build_warning_values(args: {
   items: ProofreadingClientItem[];
   filters: ProofreadingFilterOptions;
 }): string[] {
-  const known_warnings: string[] = [...PROOFREADING_WARNING_CODES];
+  const known_warnings: string[] = [...PROOFREADING_WARNING_FILTER_CODES];
   const known_warning_set = new Set(known_warnings);
   const dynamic_warnings = args.items.flatMap((item) => {
     return item.warnings.length > 0 ? item.warnings : [PROOFREADING_NO_WARNING_CODE];
@@ -731,7 +779,7 @@ function build_revision_signature(revisions: ProofreadingRevisions): string {
 }
 
 /**
- * 页面只需要同步凭据和默认筛选，完整条目继续留在列表运行态内部按窗口读取
+ * 页面只需要同步凭据和默认筛选，完整条目继续留在校对运行态内部按窗口读取
  */
 function build_sync_state(state: ProofreadingReaderState): ProofreadingSyncState {
   return {
@@ -916,7 +964,7 @@ function resolve_items_in_natural_order(state: ProofreadingReaderState): Proofre
 }
 
 /**
- * 列表查询沿自然 id 顺序流式收集结果，避免为搜索先复制一份全量 item 数组
+ * 校对查询沿自然 id 顺序流式收集结果，避免为搜索先复制一份全量 item 数组
  */
 function collect_visible_items_in_natural_order(args: {
   state: ProofreadingReaderState;
@@ -946,6 +994,27 @@ function collect_visible_items_in_natural_order(args: {
     matched_items.push(item);
   });
   return matched_items;
+}
+
+/** 共享校对筛选、搜索与排序核心，不读写 GUI 列表视图状态。 */
+function resolve_proofreading_items(
+  state: ProofreadingReaderState,
+  query: ProofreadingItemsReadQuery,
+): ResolvedProofreadingItems {
+  const filter_context = create_proofreading_filter_context({ filters: query.filters });
+  const search_context = create_proofreading_search_context({
+    keyword: query.keyword,
+    is_regex: query.is_regex,
+    scope: query.scope,
+    case_sensitive: query.case_sensitive,
+  });
+  return {
+    items: sort_proofreading_client_items(
+      collect_visible_items_in_natural_order({ state, filter_context, search_context }),
+      query.sort_state,
+    ),
+    invalid_regex_message: search_context.matcher.invalid_regex_message,
+  };
 }
 
 /**
@@ -978,16 +1047,16 @@ function apply_item_changes_to_list_view_cache(args: {
 }
 
 /**
- * 创建校对列表运行态实例，集中管理项目态、列表缓存和筛选面板计算数据
+ * 创建校对运行态实例，集中管理评估事实、GUI 列表缓存和筛选面板数据。
  */
-export function createProofreadingListReader() {
+export function createProofreadingReader() {
   let state: ProofreadingReaderState | null = null; // 当前项目的完整运行态，dispose 或跨项目同步前不得泄露给渲染层
   let list_view_cache: ProofreadingListViewCache | null = null; // 最近一次列表视图的排序结果缓存，窗口滚动只读取 id 切片
   let next_list_view_id = 0; // 视图 id 单调递增，避免同 revision 下筛选条件变化时复用旧窗口请求
 
   return {
     /**
-     * 合并已评估分片并重建完整运行态，最终索引仍由主 service 持有。
+     * 合并已评估分片并重建完整运行态，最终索引仍由主 reader 持有。
      */
     sync_evaluated_full(input: ProofreadingEvaluatedSyncInput): ProofreadingSyncState {
       state = create_run_state_from_evaluated(input);
@@ -1087,24 +1156,18 @@ export function createProofreadingListReader() {
         filters: query.filters,
         defaultFilters: state.defaultFilters,
       });
-      const filter_context = create_proofreading_filter_context({ filters });
-      const search_context = create_proofreading_search_context({
+      const resolved = resolve_proofreading_items(state, {
+        filters,
         keyword: query.keyword,
         is_regex: query.is_regex,
         scope: query.scope,
+        case_sensitive: false,
+        sort_state: query.sort_state,
       });
-      const sorted_items = sort_proofreading_client_items(
-        collect_visible_items_in_natural_order({
-          state,
-          filter_context,
-          search_context,
-        }),
-        query.sort_state,
-      );
       next_list_view_id += 1;
       const revision_signature = build_revision_signature(state.revisions);
       const view_id = `${state.projectId}:${revision_signature}:${next_list_view_id.toString()}`;
-      const ordered_item_ids = sorted_items.map((item) => String(item.item_id));
+      const ordered_item_ids = resolved.items.map((item) => String(item.item_id));
       list_view_cache = create_list_view_cache({
         view_id,
         projectId: state.projectId,
@@ -1128,7 +1191,36 @@ export function createProofreadingListReader() {
           start: window_bounds.start,
           count: window_bounds.count,
         }),
-        invalid_regex_message: search_context.matcher.invalid_regex_message,
+        invalid_regex_message: resolved.invalid_regex_message,
+      };
+    },
+    /** 读取真实 warning 分页，不创建、替换或推进 GUI 视图。 */
+    read_warning_page(query: ProofreadingWarningQuery): ProofreadingWarningPage {
+      if (state === null) {
+        return { total_item_count: 0, items: [], invalid_regex_message: null };
+      }
+
+      const resolved = resolve_proofreading_items(state, {
+        filters: {
+          warning_types: query.warning_types,
+          ...(query.statuses === undefined ? {} : { statuses: query.statuses }),
+          ...(query.file_paths === undefined ? {} : { file_paths: query.file_paths }),
+        },
+        keyword: query.keyword,
+        scope: query.scope,
+        is_regex: query.is_regex,
+        case_sensitive: query.case_sensitive,
+        sort_state: null,
+      });
+      const bounds = normalize_window_bounds({
+        start: query.offset,
+        count: query.limit,
+        row_count: resolved.items.length,
+      });
+      return {
+        total_item_count: resolved.items.length,
+        items: resolved.items.slice(bounds.start, bounds.start + bounds.count),
+        invalid_regex_message: resolved.invalid_regex_message,
       };
     },
     /**

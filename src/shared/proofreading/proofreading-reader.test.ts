@@ -1,12 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  createProofreadingListReader,
+  createProofreadingReader,
   evaluateProofreadingSlice,
   type ProofreadingSyncInput,
-} from "./proofreading-list-reader";
+} from "./proofreading-reader";
 import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
 import type { ItemNameField } from "../../domain/item";
+import { PROOFREADING_WARNING_CODES } from "./proofreading-types";
 
 // 提供含术语表的最小质量快照，用于触发 warning 和筛选路径。
 function create_quality(): QualitySnapshot {
@@ -23,7 +24,7 @@ function create_quality(): QualitySnapshot {
   };
 }
 
-// 生成 list reader 使用的 item 记录，默认按 item_id 绑定行号。
+// 生成校对 reader 使用的 item 记录，默认按 item_id 绑定行号。
 function create_item(input: {
   item_id: number;
   src?: string;
@@ -51,7 +52,7 @@ function create_item(input: {
 }
 
 function sync_full(
-  service: ReturnType<typeof createProofreadingListReader>,
+  service: ReturnType<typeof createProofreadingReader>,
   input: ProofreadingSyncInput,
 ) {
   return service.sync_evaluated_full({
@@ -60,9 +61,180 @@ function sync_full(
   });
 }
 
-describe("proofreading-list-reader", () => {
+describe("proofreading-reader", () => {
+  it("warning 分页复用组合筛选与搜索，且不改变 GUI 视图", () => {
+    const service = createProofreadingReader();
+    const sync_state = sync_full(service, {
+      projectId: "E:/demo/sample.lg",
+      revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
+      total_item_count: 5,
+      sourceLanguage: "ja",
+      targetLanguage: "zh-CN",
+      quality: create_quality(),
+      upsertItems: [
+        create_item({
+          item_id: 1,
+          file_path: "b.txt",
+          row_number: 2,
+          src: "HP",
+          dst: "カナ",
+          name_src: "Magic",
+          name_dst: "魔法",
+          status: "PROCESSED",
+        }),
+        create_item({
+          item_id: 2,
+          file_path: "a.txt",
+          row_number: 3,
+          src: "HP",
+          dst: "普通译文",
+          name_src: "Magic",
+          name_dst: "TargetName",
+          status: "PROCESSED",
+        }),
+        create_item({
+          item_id: 3,
+          file_path: "a.txt",
+          row_number: 1,
+          src: "メニュー",
+          dst: "菜单",
+          status: "PROCESSED",
+        }),
+        create_item({
+          item_id: 4,
+          file_path: "a.txt",
+          row_number: 4,
+          src: "失败",
+          dst: "",
+          status: "ERROR",
+        }),
+        create_item({
+          item_id: 5,
+          file_path: "a.txt",
+          row_number: 2,
+          src: "文本",
+          dst: "カナ",
+          status: "PROCESSED",
+        }),
+      ],
+    });
+    const first_view = service.read_list_view({
+      filters: sync_state.defaultFilters,
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: null,
+      window_start: 0,
+      window_count: 10,
+    });
+
+    const first_page = service.read_warning_page({
+      warning_types: [...PROOFREADING_WARNING_CODES],
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      case_sensitive: false,
+      offset: 0,
+      limit: 2,
+    });
+    expect(first_page.total_item_count).toBe(3);
+    expect(first_page.items.map((item) => item.item_id)).toEqual([5, 2]);
+    expect(first_page.items[1]).toMatchObject({
+      warnings: ["GLOSSARY"],
+      glossary_applications: [
+        {
+          entry_id: "HP::0",
+          fields: [{ source_field: "src", target_field: "dst", applied: false }],
+        },
+      ],
+    });
+
+    const combined = service.read_warning_page({
+      warning_types: ["GLOSSARY", "KANA"],
+      statuses: ["PROCESSED"],
+      file_paths: ["b.txt"],
+      keyword: "magic",
+      scope: "src",
+      is_regex: false,
+      case_sensitive: false,
+      offset: 0,
+      limit: 10,
+    });
+    expect(combined.items).toHaveLength(1);
+    expect(combined.items[0]).toMatchObject({
+      item_id: 1,
+      warnings: expect.arrayContaining(["KANA", "GLOSSARY"]),
+      warning_fragments_by_code: { KANA: ["カナ"] },
+    });
+    expect(
+      service.read_warning_page({
+        warning_types: ["GLOSSARY"],
+        keyword: "targetname",
+        scope: "dst",
+        is_regex: false,
+        case_sensitive: true,
+        offset: 0,
+        limit: 10,
+      }).items,
+    ).toEqual([]);
+
+    expect(
+      service.read_list_window({ view_id: first_view.view_id, start: 0, count: 10 }).rows,
+    ).toEqual(first_view.window_rows);
+    expect(
+      service.read_row_ids_range({ view_id: first_view.view_id, start: 0, count: 10 }),
+    ).toEqual(first_view.window_rows.map((row) => row.row_id));
+    expect(service.resolve_row_index({ view_id: first_view.view_id, row_id: "5" })).toBe(1);
+    const second_view = service.read_list_view({
+      filters: sync_state.defaultFilters,
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: null,
+    });
+    expect(first_view.view_id).toMatch(/:1$/u);
+    expect(second_view.view_id).toMatch(/:2$/u);
+  });
+
+  it("warning 分页保留非法正则信息且未同步时返回空页", () => {
+    const empty_service = createProofreadingReader();
+    expect(
+      empty_service.read_warning_page({
+        warning_types: [...PROOFREADING_WARNING_CODES],
+        keyword: "",
+        scope: "all",
+        is_regex: false,
+        case_sensitive: false,
+        offset: 0,
+        limit: 20,
+      }),
+    ).toEqual({ total_item_count: 0, items: [], invalid_regex_message: null });
+
+    const service = createProofreadingReader();
+    sync_full(service, {
+      projectId: "E:/demo/sample.lg",
+      revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
+      total_item_count: 1,
+      sourceLanguage: "ja",
+      targetLanguage: "zh-CN",
+      quality: create_quality(),
+      upsertItems: [create_item({ item_id: 1, src: "HP", dst: "普通译文", status: "PROCESSED" })],
+    });
+    const page = service.read_warning_page({
+      warning_types: [...PROOFREADING_WARNING_CODES],
+      keyword: "(",
+      scope: "all",
+      is_regex: true,
+      case_sensitive: false,
+      offset: 0,
+      limit: 20,
+    });
+    expect(page.invalid_regex_message).toContain("Invalid regular expression");
+    expect(page.items.map((item) => item.item_id)).toEqual([1]);
+  });
+
   it("同步后构建带警告、筛选和窗口的列表视图", () => {
-    const service = createProofreadingListReader();
+    const service = createProofreadingReader();
     const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
@@ -129,7 +301,7 @@ describe("proofreading-list-reader", () => {
   });
 
   it("上下文跳过空行并按同文件自然顺序读取前后各两条且不替换当前列表视图", () => {
-    const service = createProofreadingListReader();
+    const service = createProofreadingReader();
     const items = [
       create_item({ item_id: 1, file_path: "before.txt", file_order: 0, dst: "前文件" }),
       create_item({ item_id: 9, file_path: "script.txt", file_order: 1, dst: "译文 9" }),
@@ -186,7 +358,7 @@ describe("proofreading-list-reader", () => {
   });
 
   it("非法正则返回错误信息且不裁剪列表结果", () => {
-    const service = createProofreadingListReader();
+    const service = createProofreadingReader();
     const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
@@ -226,7 +398,7 @@ describe("proofreading-list-reader", () => {
   });
 
   it("搜索范围覆盖正文和姓名字段", () => {
-    const service = createProofreadingListReader();
+    const service = createProofreadingReader();
     const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
@@ -270,7 +442,7 @@ describe("proofreading-list-reader", () => {
   });
 
   it("字面量搜索按请求的大小写规则筛选", () => {
-    const service = createProofreadingListReader();
+    const service = createProofreadingReader();
     const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
@@ -294,7 +466,7 @@ describe("proofreading-list-reader", () => {
   });
 
   it("姓名术语缺失进入筛选面板术语计数", () => {
-    const service = createProofreadingListReader();
+    const service = createProofreadingReader();
     const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
@@ -336,7 +508,7 @@ describe("proofreading-list-reader", () => {
   });
 
   it("字段 patch 更新旧视图内容但保持当前排序快照", () => {
-    const service = createProofreadingListReader();
+    const service = createProofreadingReader();
     const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
@@ -381,7 +553,7 @@ describe("proofreading-list-reader", () => {
   });
 
   it("字段 patch 更新姓名译文并保留数组后续项", () => {
-    const service = createProofreadingListReader();
+    const service = createProofreadingReader();
     const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
@@ -430,7 +602,7 @@ describe("proofreading-list-reader", () => {
   });
 
   it("删除 delta 会从旧视图移除对应行并保持剩余索引", () => {
-    const service = createProofreadingListReader();
+    const service = createProofreadingReader();
     const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
@@ -471,7 +643,7 @@ describe("proofreading-list-reader", () => {
   });
 
   it("新增 item 不会自动插入旧视图", () => {
-    const service = createProofreadingListReader();
+    const service = createProofreadingReader();
     const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
@@ -511,7 +683,7 @@ describe("proofreading-list-reader", () => {
   });
 
   it("全量同步后旧 view_id 失效", () => {
-    const service = createProofreadingListReader();
+    const service = createProofreadingReader();
     const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },

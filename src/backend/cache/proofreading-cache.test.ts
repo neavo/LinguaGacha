@@ -3,13 +3,14 @@ import { describe, expect, it, vi } from "vitest";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import {
-  createProofreadingListReader,
+  createProofreadingReader,
   evaluateProofreadingSlice,
   type ProofreadingSyncInput,
-} from "../../shared/proofreading/proofreading-list-reader";
+} from "../../shared/proofreading/proofreading-reader";
 import type { CacheReadPort } from "./cache-types";
 import type { CacheChange } from "./cache-change";
 import { ProofreadingCache } from "./proofreading-cache";
+import { PROOFREADING_WARNING_CODES } from "../../shared/proofreading/proofreading-types";
 
 // 提供 ProofreadingCache 所需的最小缓存读口，并允许覆盖 revisions 与 items。
 function create_cache_read_port(options: {
@@ -121,13 +122,13 @@ function create_delta_change(overrides: Partial<CacheChange> = {}): CacheChange 
 }
 
 describe("ProofreadingCache", () => {
-  it("同一工程身份下只执行一次 sync task 并用本地列表 service 查询", async () => {
+  it("同一工程身份下只执行一次 sync task 并用本地 reader 查询", async () => {
     const worker = create_worker();
     const cache = new ProofreadingCache({
       cache: create_cache_read_port({}),
       appSettingService: create_settings(),
       workerClient: worker,
-      service: createProofreadingListReader(),
+      reader: createProofreadingReader(),
     });
 
     const sync = await cache.sync({});
@@ -139,6 +140,15 @@ describe("ProofreadingCache", () => {
       sort_state: null,
     });
     const context = await cache.context({ row_id: "1" });
+    const warnings = await cache.warnings({
+      warning_types: [...PROOFREADING_WARNING_CODES],
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      case_sensitive: false,
+      offset: 0,
+      limit: 20,
+    });
 
     expect(worker.run).toHaveBeenCalledTimes(1);
     expect(worker.sync_inputs[0]).toMatchObject({
@@ -156,6 +166,11 @@ describe("ProofreadingCache", () => {
       projectPath: "E:/Project/demo.lg",
       sectionRevisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       data: [{ row_id: "1" }],
+    });
+    expect(warnings).toMatchObject({
+      projectPath: "E:/Project/demo.lg",
+      sectionRevisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
+      data: { total_item_count: 1, items: [{ item_id: 1 }] },
     });
   });
 
@@ -179,7 +194,7 @@ describe("ProofreadingCache", () => {
       cache: create_cache_read_port({ items }),
       appSettingService: create_settings(),
       workerClient: worker,
-      service: createProofreadingListReader(),
+      reader: createProofreadingReader(),
     });
 
     const rows = await cache.itemsByRowIds({ row_ids: ["1"] });
@@ -198,7 +213,7 @@ describe("ProofreadingCache", () => {
       cache: create_cache_read_port({ revisions }),
       appSettingService: create_settings(),
       workerClient: worker,
-      service: createProofreadingListReader(),
+      reader: createProofreadingReader(),
     });
 
     await cache.sync({ sourceLanguage: "JA", targetLanguage: "ZH" });
@@ -222,7 +237,7 @@ describe("ProofreadingCache", () => {
       cache: create_cache_read_port({}),
       appSettingService: create_settings(),
       workerClient: worker,
-      service: createProofreadingListReader(),
+      reader: createProofreadingReader(),
     });
     await cache.sync({});
 
@@ -255,19 +270,38 @@ describe("ProofreadingCache", () => {
       cache: create_cache_read_port({ revisions, items }),
       appSettingService: create_settings(),
       workerClient: worker,
-      service: createProofreadingListReader(),
+      reader: createProofreadingReader(),
     });
-    await cache.sync({});
+    const sync = await cache.sync({});
+    const view = await cache.list({
+      filters: sync.data.defaultFilters,
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      sort_state: null,
+    });
     revisions.items = 2;
     items[0] = { ...items[0], dst: "生命值" };
 
     await cache.applyChange(create_delta_change(), revisions);
     const next_sync = await cache.sync({});
     const rows = await cache.itemsByRowIds({ row_ids: ["1"] });
+    const warnings = await cache.warnings({
+      warning_types: [...PROOFREADING_WARNING_CODES],
+      keyword: "",
+      scope: "all",
+      is_regex: false,
+      case_sensitive: false,
+      offset: 0,
+      limit: 20,
+    });
+    const old_window = await cache.window({ view_id: view.data.view_id, start: 0, count: 10 });
 
     expect(worker.run).toHaveBeenCalledTimes(1);
     expect(next_sync.data.revisions.items).toBe(2);
     expect(rows.data).toMatchObject([{ item_id: 1, dst: "生命值" }]);
+    expect(warnings.data).toMatchObject({ total_item_count: 0, items: [] });
+    expect(old_window.data.rows).toMatchObject([{ item: { item_id: 1, dst: "生命值" } }]);
   });
 
   it("field-patch 增量会更新旧列表窗口内容且不重建排序", async () => {
@@ -299,7 +333,7 @@ describe("ProofreadingCache", () => {
       cache: create_cache_read_port({ revisions, items }),
       appSettingService: create_settings(),
       workerClient: worker,
-      service: createProofreadingListReader(),
+      reader: createProofreadingReader(),
     });
     const sync = await cache.sync({});
     const view = await cache.list({
@@ -369,7 +403,7 @@ describe("ProofreadingCache", () => {
       cache: create_cache_read_port({ revisions, items }),
       appSettingService: create_settings(),
       workerClient: worker,
-      service: createProofreadingListReader(),
+      reader: createProofreadingReader(),
     });
     const sync = await cache.sync({});
     const view = await cache.list({
@@ -413,7 +447,7 @@ describe("ProofreadingCache", () => {
       cache: create_cache_read_port({ revisions }),
       appSettingService: create_settings(),
       workerClient: worker,
-      service: createProofreadingListReader(),
+      reader: createProofreadingReader(),
     });
     await cache.sync({});
     revisions.quality = 2;
