@@ -86,4 +86,22 @@ describe("prepare_quality_statistics_task_input", () => {
       }),
     ).toThrow("质量规则正则不是合法正则");
   });
+
+  it("literal evidence 默认关闭且不进入依赖快照", () => {
+    const base = prepare_quality_statistics_task_input({
+      rule_key: "glossary",
+      entries: [{ entry_id: "hp", src: "HP" }],
+      items: [{ src: "HP +10" }],
+    });
+    const evidence = prepare_quality_statistics_task_input({
+      rule_key: "glossary",
+      entries: [{ entry_id: "hp", src: "HP" }],
+      items: [{ src: "HP +10" }],
+      collect_literal_evidence: true,
+    });
+
+    expect(base.collect_literal_evidence).toBe(false);
+    expect(evidence.collect_literal_evidence).toBe(true);
+    expect(evidence.completed_snapshot).toEqual(base.completed_snapshot);
+  });
 });

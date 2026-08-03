@@ -22,14 +22,20 @@ export type ProofreadingCommandSnapshot = {
 export type ProofreadingCommandPlan = {
   changed_item_ids: number[]; // UI 用于计数和乐观反馈，不作为最终写库事实
   request_body: {
-    changes?: Array<{ item_id: number; dst?: string; name_dst?: string }>; // 窄译文批量更新
-    item_ids?: number[]; // 批量替换、清空译文或设置状态的目标 item 集合
-    status?: ProofreadingManualStatusCode; // 批量设置的人工翻译状态
+    changes?: ProofreadingItemFieldUpdate[]; // 译文、译名与人工状态的统一字段更新
+    item_ids?: number[]; // 批量替换或清空译文的目标 item 集合
     search_text?: string; // 批量替换搜索文本，真实替换由后端执行
     replace_text?: string; // 批量替换目标文本
     is_regex?: boolean; // 批量替换是否使用正则语义
     expected_section_revisions: ProjectDataSectionRevisions; // items 与 proofreading 双 section 乐观锁
   };
+};
+
+export type ProofreadingItemFieldUpdate = {
+  item_id: number;
+  dst?: string;
+  name_dst?: string;
+  status?: ProofreadingManualStatusCode;
 };
 
 // 校对计划只按目标 id 读取当前动作相关 item，避免重新依赖前端项目事实镜像。
@@ -113,38 +119,45 @@ function has_replace_all_change(args: {
   return name_replace_result.count > 0 && name_replace_result.text !== name_dst;
 }
 
-// 单条编辑投影为批量更新命令，status 与进度统计由后端计算。
+// 字段变更统一投影为批量更新命令，最终状态与进度统计由后端计算。
 export function create_update_items_plan(args: {
   snapshot: ProofreadingCommandSnapshot;
-  item_id: number;
-  next_dst: string;
-  next_name_dst?: string;
+  changes: ProofreadingItemFieldUpdate[];
 }): ProofreadingCommandPlan | null {
-  const current_item = read_store_item(args.snapshot, args.item_id);
-  if (current_item === undefined) {
-    return null;
-  }
-
-  const change: NonNullable<ProofreadingCommandPlan["request_body"]["changes"]>[number] = {
-    item_id: args.item_id,
-  };
-  if (current_item.dst !== args.next_dst) {
-    change.dst = args.next_dst;
-  }
-  if (args.next_name_dst !== undefined) {
-    if (read_item_name_text(current_item.name_dst) !== args.next_name_dst) {
-      change.name_dst = args.next_name_dst;
+  const changes: ProofreadingItemFieldUpdate[] = [];
+  for (const requested of args.changes) {
+    const current_item = read_store_item(args.snapshot, requested.item_id);
+    if (current_item === undefined) continue;
+    const change: ProofreadingItemFieldUpdate = { item_id: requested.item_id };
+    // 后端会把非空 dst 默认置为 PROCESSED；这里仅预判该结果，避免漏掉显式覆盖状态。
+    let automatic_status = current_item.status;
+    if (requested.dst !== undefined && current_item.dst !== requested.dst) {
+      change.dst = requested.dst;
+      if (requested.dst !== "") automatic_status = "PROCESSED";
+    }
+    if (
+      requested.name_dst !== undefined &&
+      read_item_name_text(current_item.name_dst) !== requested.name_dst
+    ) {
+      change.name_dst = requested.name_dst;
+    }
+    if (
+      requested.status !== undefined &&
+      (requested.status !== automatic_status || current_item.retry_count !== 0)
+    ) {
+      change.status = requested.status;
+    }
+    if (change.dst !== undefined || change.name_dst !== undefined || change.status !== undefined) {
+      changes.push(change);
     }
   }
 
-  if (change.dst === undefined && change.name_dst === undefined) {
-    return null;
-  }
+  if (changes.length === 0) return null;
 
   return {
-    changed_item_ids: [args.item_id],
+    changed_item_ids: changes.map((change) => change.item_id),
     request_body: {
-      changes: [change],
+      changes,
       expected_section_revisions: build_expected_revisions(args.snapshot.section_revisions),
     },
   };
@@ -203,39 +216,6 @@ export function create_clear_translations_plan(args: {
     request_body: {
       item_ids: args.item_ids,
       expected_section_revisions: build_expected_revisions(args.section_revisions),
-    },
-  };
-}
-
-// 批量设置状态提交目标状态；同状态但仍有 retry_count 时也需要提交清理。
-export function create_set_translation_status_plan(args: {
-  snapshot: ProofreadingCommandSnapshot;
-  item_ids: number[];
-  status: ProofreadingManualStatusCode;
-}): ProofreadingCommandPlan | null {
-  const changed_item_ids: number[] = [];
-
-  for (const item_id of args.item_ids) {
-    const current_item = read_store_item(args.snapshot, item_id);
-    if (current_item === undefined) {
-      continue;
-    }
-    if (current_item.status === args.status && current_item.retry_count === 0) {
-      continue;
-    }
-    changed_item_ids.push(item_id);
-  }
-
-  if (changed_item_ids.length === 0) {
-    return null;
-  }
-
-  return {
-    changed_item_ids,
-    request_body: {
-      item_ids: args.item_ids,
-      status: args.status,
-      expected_section_revisions: build_expected_revisions(args.snapshot.section_revisions),
     },
   };
 }

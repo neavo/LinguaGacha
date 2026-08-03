@@ -3,7 +3,12 @@ import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent
 
 import type { JsonRecord } from "../../domain/json";
 import { read_json_integer, read_json_record } from "../../domain/json";
-import { QualityRule, type QualityRuleKind } from "../../domain/quality";
+import {
+  QUALITY_RULE_KINDS,
+  QualityRule,
+  TEXT_PRESERVE_MODES,
+  type QualityRuleKind,
+} from "../../domain/quality";
 import { collect_quality_rule_duplicate_groups } from "../../shared/quality/quality-rule-import";
 import {
   create_quality_rule_entry_id,
@@ -15,21 +20,15 @@ import { JsonTool } from "../../shared/utils/json-tool";
 import type { CacheReadPort } from "../cache/cache-types";
 import type { QualityRuleService } from "../quality/quality-rule-service";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
-import { read_item_source_text_parts } from "../../shared/item-text";
-import {
-  compile_glossary,
-  match_glossary_source,
-  type GlossaryEntry as SharedGlossaryEntry,
-  type ResolvedGlossaryEntry,
-} from "../../shared/quality/glossary";
+import type { ResolvedGlossaryEntry } from "../../shared/quality/glossary";
 import { read_item_name_text } from "../../shared/item-name";
 
 /** 质量规则工具只公开四个稳定业务 kind，不接受数据库物理类型。 */
 const RULE_TYPE_PARAMETERS = Type.Union([
-  Type.Literal("glossary"),
-  Type.Literal("pre_replacement"),
-  Type.Literal("post_replacement"),
-  Type.Literal("text_preserve"),
+  Type.Literal(QUALITY_RULE_KINDS[0]),
+  Type.Literal(QUALITY_RULE_KINDS[1]),
+  Type.Literal(QUALITY_RULE_KINDS[2]),
+  Type.Literal(QUALITY_RULE_KINDS[3]),
 ]);
 
 /** 术语条目要求完整语义字段，regex 固定由后端关闭。 */
@@ -106,28 +105,6 @@ const QUERY_QUALITY_RULES_PARAMETERS = Type.Object(
   { additionalProperties: false },
 );
 
-const QUERY_ITEMS_BY_GLOSSARY_PARAMETERS = Type.Union(
-  [
-    Type.Object(
-      {
-        entry_ids: Type.Array(Type.String(), { minItems: 1, maxItems: 20, uniqueItems: true }),
-        mode: Type.Literal("sample"),
-      },
-      { additionalProperties: false },
-    ),
-    Type.Object(
-      {
-        entry_ids: Type.Array(Type.String(), { minItems: 1, maxItems: 20, uniqueItems: true }),
-        mode: Type.Literal("search"),
-        cursor: Type.Optional(Type.String()),
-        limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 500 })),
-      },
-      { additionalProperties: false },
-    ),
-  ],
-  { type: "object" },
-);
-
 /** 更新 schema 保持 rule kind、条目形状与 meta 匹配；根节点显式 object 兼容模型工具协议。 */
 const UPDATE_QUALITY_RULES_PARAMETERS = Type.Union(
   [
@@ -161,9 +138,9 @@ const UPDATE_QUALITY_RULES_PARAMETERS = Type.Union(
           Type.Object(
             {
               mode: Type.Union([
-                Type.Literal("off"),
-                Type.Literal("smart"),
-                Type.Literal("custom"),
+                Type.Literal(TEXT_PRESERVE_MODES[0]),
+                Type.Literal(TEXT_PRESERVE_MODES[1]),
+                Type.Literal(TEXT_PRESERVE_MODES[2]),
               ]),
             },
             { additionalProperties: false },
@@ -185,7 +162,6 @@ type QualityRuleChange = {
 };
 
 type AgentQualityCache = {
-  readonly snapshot: CacheReadPort["snapshot"];
   readonly items: Pick<CacheReadPort["items"], "readItems">;
 };
 
@@ -222,16 +198,6 @@ export function create_agent_quality_tools(
       },
     }),
     defineTool({
-      name: "query_items_by_glossary",
-      label: "查询术语出处",
-      description: "按权威术语 entry_id 查询原文覆盖统计、代表样本或完整命中流。",
-      parameters: QUERY_ITEMS_BY_GLOSSARY_PARAMETERS,
-      execute: async (_tool_call_id, params, signal) => {
-        signal?.throwIfAborted();
-        return tool_result(query_agent_items_by_glossary(dependencies, params));
-      },
-    }),
-    defineTool({
       name: "update_quality_rules",
       label: "更新质量规则",
       description: "按 expected_section_revisions 原子应用质量规则增删改、重排和 meta 更新。",
@@ -262,6 +228,8 @@ export function create_agent_quality_tools(
             dependencies,
             applied.entries,
             execution_signal,
+            dependencies.cache.items.readItems(),
+            false,
           );
           for (const entry_id of applied.affected_entry_ids) {
             if ((statistics.matched_count_by_entry_id[entry_id] ?? 0) === 0) {
@@ -297,162 +265,6 @@ export function create_agent_quality_tools(
   ];
 }
 
-type GlossaryItemQuery =
-  | { entry_ids: string[]; mode: "sample" }
-  | { entry_ids: string[]; mode: "search"; cursor?: string; limit?: number };
-
-type GlossaryMatchedItem = {
-  item: JsonRecord;
-  fields: Array<{ field: "src" | "name_src"; text: string }>;
-};
-
-/** 当前上限 20 条术语时同步扫描最短；ponytail: profiling 证明阻塞 Backend Runtime 后再迁 compute worker。 */
-export function query_agent_items_by_glossary(
-  dependencies: Pick<AgentQualityDependencies, "qualityRules" | "cache">,
-  request: GlossaryItemQuery,
-): JsonRecord {
-  const entry_ids = request.entry_ids.map((entry_id) => entry_id.trim());
-  if (
-    entry_ids.length === 0 ||
-    entry_ids.length > 20 ||
-    entry_ids.some((entry_id) => entry_id === "") ||
-    new Set(entry_ids).size !== entry_ids.length
-  ) {
-    throw new Error("entry_ids 必须是 1 到 20 个唯一非空值");
-  }
-
-  const quality = read_agent_quality_rules_snapshot(dependencies.qualityRules, "glossary");
-  const entry_by_id = new Map(quality.entries.map((entry) => [String(entry["entry_id"]), entry]));
-  const missing_entry_ids = entry_ids.filter((entry_id) => !entry_by_id.has(entry_id));
-  const selected_entries = entry_ids.flatMap((entry_id): SharedGlossaryEntry[] => {
-    const entry = entry_by_id.get(entry_id);
-    return entry === undefined
-      ? []
-      : [
-          {
-            entry_id,
-            src: String(entry["src"] ?? ""),
-            dst: String(entry["dst"] ?? ""),
-            info: String(entry["info"] ?? ""),
-            case_sensitive: entry["case_sensitive"] === true,
-          },
-        ];
-  });
-  const compiled = compile_glossary(selected_entries);
-  const matches_by_entry_id = new Map<string, GlossaryMatchedItem[]>();
-  const total_matches_by_entry_id = new Map<string, number>();
-  const hits: JsonRecord[] = [];
-  for (const raw_item of dependencies.cache.items.readItems()) {
-    const item = project_glossary_item(raw_item);
-    const match_by_id = new Map(
-      match_glossary_source(compiled, read_item_source_text_parts(item)).map((match) => [
-        match.entry.entry_id,
-        match,
-      ]),
-    );
-    for (const field of ["src", "name_src"] as const) {
-      for (const entry_id of entry_ids) {
-        const match = match_by_id.get(entry_id);
-        const matched_field = match?.fields.find((candidate) => candidate.source_field === field);
-        if (matched_field === undefined) continue;
-        const text = String(item[field] ?? "");
-        hits.push({
-          entry_id,
-          item_id: item["item_id"],
-          field,
-          text,
-          file_path: item["file_path"],
-          row_number: item["row_number"],
-        });
-      }
-    }
-    for (const [entry_id, match] of match_by_id) {
-      const fields = match.fields.map(({ source_field }) => ({
-        field: source_field,
-        text: String(item[source_field] ?? ""),
-      }));
-      const matched_items = matches_by_entry_id.get(entry_id) ?? [];
-      matched_items.push({ item, fields });
-      matches_by_entry_id.set(entry_id, matched_items);
-      total_matches_by_entry_id.set(
-        entry_id,
-        (total_matches_by_entry_id.get(entry_id) ?? 0) +
-          match.fields.reduce((total, field) => total + field.ranges.length, 0),
-      );
-    }
-  }
-
-  const results = compiled.entries.map((entry) => {
-    const matched_items = matches_by_entry_id.get(entry.entry_id) ?? [];
-    const result: JsonRecord = {
-      entry_id: entry.entry_id,
-      src: entry.src,
-      case_sensitive: entry.case_sensitive,
-      matched_item_count: matched_items.length,
-      total_matches: total_matches_by_entry_id.get(entry.entry_id) ?? 0,
-    };
-    if (request.mode === "sample") {
-      const sample_count = Math.min(3, matched_items.length);
-      result["samples"] = Array.from({ length: sample_count }, (_, index) => {
-        const rank = Math.floor(((2 * index + 1) * matched_items.length) / (2 * sample_count));
-        const matched = matched_items[rank];
-        return matched === undefined
-          ? {}
-          : {
-              item_id: matched.item["item_id"],
-              matched_fields: matched.fields.map(({ field }) => field),
-              src: matched.item["src"],
-              ...(String(matched.item["name_src"] ?? "") === ""
-                ? {}
-                : { name_src: matched.item["name_src"] }),
-            };
-      });
-    }
-    return result;
-  });
-  const snapshot = dependencies.cache.snapshot();
-  const common = {
-    projectPath: snapshot.projectPath,
-    sectionRevisions: {
-      ...snapshot.sectionRevisions,
-      ...read_json_record(quality["sectionRevisions"]),
-    },
-    mode: request.mode,
-    missing_entry_ids,
-    results,
-  };
-  if (request.mode === "sample") return common;
-
-  const offset = parse_glossary_cursor(request.cursor);
-  const limit = Math.min(500, Math.max(1, request.limit ?? 100));
-  const page = hits.slice(offset, offset + limit);
-  const next_offset = offset + page.length;
-  return {
-    ...common,
-    hits: page,
-    cursor: next_offset < hits.length ? next_offset.toString() : null,
-    complete: next_offset >= hits.length,
-  };
-}
-
-function project_glossary_item(item: JsonRecord): JsonRecord {
-  return {
-    item_id: read_json_integer(item["item_id"] ?? item["id"], 0),
-    src: String(item["src"] ?? ""),
-    name_src: read_item_name_text(item["name_src"]),
-    file_path: String(item["file_path"] ?? ""),
-    row_number: read_json_integer(item["row_number"] ?? item["row"], 0),
-  };
-}
-
-function parse_glossary_cursor(cursor: string | undefined): number {
-  if (cursor === undefined || cursor === "") return 0;
-  if (!/^\d+$/u.test(cursor)) throw new Error("cursor 无效");
-  const value = Number(cursor);
-  if (!Number.isSafeInteger(value)) throw new Error("cursor 无效");
-  return value;
-}
-
 /** 从权威规则切片生成 Agent 可消费的窄投影。 */
 export async function query_agent_quality_rules(
   dependencies: AgentQualityDependencies,
@@ -463,9 +275,21 @@ export async function query_agent_quality_rules(
   if (rule_type !== "glossary") return result;
 
   const glossary_entries = result.entries.map((entry) => normalize_glossary_entry(entry));
-  const statistics = await compute_glossary_statistics(dependencies, glossary_entries, signal);
+  const items = dependencies.cache.items.readItems();
+  const statistics = await compute_glossary_statistics(
+    dependencies,
+    glossary_entries,
+    signal,
+    items,
+    true,
+  );
   result.entries = glossary_entries.map((entry) =>
-    enrich_glossary_entry(entry, statistics.matched_count_by_entry_id[entry.entry_id] ?? 0),
+    enrich_glossary_entry(
+      entry,
+      statistics.matched_count_by_entry_id[entry.entry_id] ?? 0,
+      statistics.total_matches_by_entry_id[entry.entry_id] ?? 0,
+      project_glossary_sample(items, statistics.context_sample_by_entry_id[entry.entry_id] ?? null),
+    ),
   );
   result["structure"] = build_glossary_structure(
     glossary_entries,
@@ -616,7 +440,9 @@ function move_entry_before(
 type AgentGlossaryEntry = ResolvedGlossaryEntry &
   JsonRecord & {
     matched_item_count: number;
+    total_matches: number;
     fact_violations: string[];
+    sample: JsonRecord | null;
   };
 
 /** 术语读取统一补齐事实分析字段的空初值。 */
@@ -628,7 +454,9 @@ function normalize_glossary_entry(entry: JsonRecord): AgentGlossaryEntry {
     info: String(entry["info"] ?? ""),
     case_sensitive: entry["case_sensitive"] === true,
     matched_item_count: 0,
+    total_matches: 0,
     fact_violations: [],
+    sample: null,
   };
 }
 
@@ -636,11 +464,38 @@ function normalize_glossary_entry(entry: JsonRecord): AgentGlossaryEntry {
 function enrich_glossary_entry(
   entry: AgentGlossaryEntry,
   matched_item_count: number,
+  total_matches: number,
+  sample: JsonRecord | null,
 ): AgentGlossaryEntry {
   const fact_violations: string[] = [];
   if (matched_item_count === 0) fact_violations.push("zero_occurrence");
   if (entry.dst === "") fact_violations.push("empty_dst");
-  return { ...entry, matched_item_count, fact_violations };
+  return { ...entry, matched_item_count, total_matches, fact_violations, sample };
+}
+
+type GlossaryContextSample = {
+  item_index: number;
+  matched_fields: Array<"src" | "name_src">;
+};
+
+/** worker 只返回数组索引，主线程用启动任务前捕获的同一 item 快照投影。 */
+function project_glossary_sample(
+  items: JsonRecord[],
+  evidence: GlossaryContextSample | null,
+): JsonRecord | null {
+  if (evidence === null) return null;
+  const item = items[evidence.item_index];
+  if (item === undefined) return null;
+  const item_id = read_json_integer(item["item_id"] ?? item["id"], 0);
+  if (item_id <= 0) return null;
+  return {
+    item_id,
+    matched_fields: evidence.matched_fields,
+    src: String(item["src"] ?? ""),
+    name_src: read_item_name_text(item["name_src"]) || null,
+    file_path: String(item["file_path"] ?? ""),
+    row_number: read_json_integer(item["row_number"] ?? item["row"], 0),
+  };
 }
 
 /** 汇总重复、包含与共享前缀三类候选关系。 */
@@ -677,12 +532,16 @@ function build_glossary_structure(
 
 /** 在 compute worker 计算当前缓存文本的术语统计，并收窄跨线程返回值。 */
 async function compute_glossary_statistics(
-  dependencies: Pick<AgentQualityDependencies, "cache" | "computeWorker">,
+  dependencies: Pick<AgentQualityDependencies, "computeWorker">,
   entries: JsonRecord[],
   signal: AbortSignal,
+  items: JsonRecord[],
+  collect_literal_evidence: boolean,
 ): Promise<{
   matched_count_by_entry_id: Record<string, number>;
   subset_parent_labels_by_entry_id: Record<string, string[]>;
+  total_matches_by_entry_id: Record<string, number>;
+  context_sample_by_entry_id: Record<string, GlossaryContextSample | null>;
 }> {
   const result = await dependencies.computeWorker.run(
     {
@@ -690,7 +549,8 @@ async function compute_glossary_statistics(
       input: prepare_quality_statistics_task_input({
         rule_key: "glossary",
         entries,
-        items: dependencies.cache.items.readItems(),
+        items,
+        collect_literal_evidence,
       }),
     },
     signal,
@@ -700,6 +560,8 @@ async function compute_glossary_statistics(
     subset_parent_labels_by_entry_id: read_string_array_record(
       result["subset_parent_labels_by_entry_id"],
     ),
+    total_matches_by_entry_id: read_number_record(result["total_matches_by_entry_id"]),
+    context_sample_by_entry_id: read_context_sample_record(result["context_sample_by_entry_id"]),
   };
 }
 
@@ -719,6 +581,29 @@ function read_string_array_record(value: unknown): Record<string, string[]> {
       key,
       Array.isArray(item) ? item.filter((part): part is string => typeof part === "string") : [],
     ]),
+  );
+}
+
+/** 跨线程 sample 只接受有效数组索引与稳定原文字段集合。 */
+function read_context_sample_record(value: unknown): Record<string, GlossaryContextSample | null> {
+  return Object.fromEntries(
+    Object.entries(read_json_record(value)).map(([key, item]) => {
+      if (item === null) return [key, null];
+      const record = read_json_record(item);
+      const item_index = record["item_index"];
+      const fields = record["matched_fields"];
+      if (
+        !Number.isSafeInteger(item_index) ||
+        (item_index as number) < 0 ||
+        !Array.isArray(fields)
+      ) {
+        return [key, null];
+      }
+      const matched_fields = fields.filter(
+        (field): field is "src" | "name_src" => field === "src" || field === "name_src",
+      );
+      return [key, { item_index: item_index as number, matched_fields }];
+    }),
   );
 }
 

@@ -64,7 +64,7 @@ description: 用于审查、整理、修正、去重、优化或维护当前工�
 
 ### 1. 建立事实快照与审校范围
 
-本轮审校开始时调用一次 `query_quality_rules` 并指定 `rule_type: glossary`，读取完整术语表、每条的 `matched_item_count` 与 `fact_violations`、`structure` 的 `duplicate_src_groups` / `containment_candidates` / `root_candidates` 三组，以及 `sectionRevisions`。
+本轮审校开始时调用一次 `query_quality_rules` 并指定 `rule_type: glossary`，读取完整术语表、每条的 `matched_item_count` / `total_matches` / `fact_violations` / `sample`、`structure` 的 `duplicate_src_groups` / `containment_candidates` / `root_candidates` 三组，以及 `sectionRevisions`。
 
 - 用户未限定范围时，审校全部条目。
 - 用户明确限定范围时，只为范围内条目形成结论和变更，直接相关的范围外条目可以作为关系证据，但不得擅自纳入变更。
@@ -88,11 +88,12 @@ description: 用于审查、整理、修正、去重、优化或维护当前工�
 
 ### 3. 按需读取原文证据
 
-- 零出现条目不查询正文，以命中条目数和关系事实作为证据。
-- 以 `query_quality_rules` 的 `matched_item_count` 作为覆盖 item 数；`query_items_by_glossary` 返回的同名 `matched_item_count` 在相同 `items/quality` revision 下必须一致，`total_matches` 只补充实际命中次数，允许大于覆盖 item 数。
-- 按审校组直接传 `entry_ids`，默认用 `query_items_by_glossary` 的 `sample` 模式查询；每次最多 20 条，超过上限时拆成多次调用。工具会从权威术语表读取 `src/case_sensitive`，不得自行分组、传 pattern 或重新关联条目。
-- 相同 `entry_ids` 和 `items/quality` revision 不重复采样，代表样本不足以形成结论时列为未决。
-- 只有用户明确要求逐项检查全部命中时，才改用 `query_items_by_glossary` 的 `search` 模式并沿 `cursor` 读取至 `complete: true`；不得回退通用正文 search。
+- `matched_item_count === 0` 时不查询 item，以零出现和关系事实作为证据；`total_matches` 是全部 `src/name_src` 字段的实际命中次数，允许大于覆盖 item 数。
+- `sample !== null` 时先使用其中的完整 `src/name_src`、实际 `matched_fields`、路径和行号判断；需要译文、状态或其它 item 事实时，调用 `query_items({ filters: { item_ids: [sample.item_id] } })` 精读。
+- sample 保证命中字段包含术语，且同 item 还有术语之外的字母或数字语境。`sample === null && matched_item_count > 0` 表示全部命中 item 都缺少有效同条目语境；普通审校直接列为未决或仅使用关系事实，不重复搜索期待不存在的语境。
+- 确需检查更多不同出现位置，或用户明确要求穷举时，调用 `query_items({ search: { keyword: entry.src, scope: "src", is_regex: false, case_sensitive: entry.case_sensitive }, cursor })`；首页省略 `cursor`，随后沿返回的 `cursor` 读取所需页面。
+- 在相同 `items/quality` revision 下，上述 literal search 的 `total_item_count` 应等于 `matched_item_count`；不为交叉验证额外调用，只在已经深化语境且数量不一致时视为快照失效或实现错误。
+- 任一深化查询返回的 `items` 或 `quality` revision 与初始快照不同，丢弃本轮 item 证据并重新执行初始 `query_quality_rules`。
 - 修改译名、`info` 或边界时，至少保留一个直接支持判断的 `item_id`。删除实际出现的条目时，展示其属于泛用词、称谓、冗余派生词或错误边界的原文证据。
 - 高频词按完整原文、姓名字段和工程分布核验样本中已经发现的不同语义簇，并披露已核验范围与残余风险。
 
@@ -109,13 +110,13 @@ description: 用于审查、整理、修正、去重、优化或维护当前工�
 
 ### 5. 先交付变更清单并等待明确批准
 
-向用户交付：新增 / 修改 / 删除清单、每项的出处与语义理由、同根处理、保留项中的重要歧义、变更前后数量，并明确声明尚未写入。
+向用户交付：新增 / 修改 / 删除清单、每项的出处与语义理由、同根处理、保留项中的重要歧义、变更前后数量，并明确声明尚未写入。变更后数量按 `快照条目数 + create 数 - delete 数` 计算。
 
 到此停止，等待用户对当前方案的明确批准。不得把「继续」「看起来可以」等模糊表达解释为授权。若用户修改方案，重新展示完整变更清单并再次等待明确批准。
 
 ### 6. 批准后原子写入并复核
 
-获得明确批准后调用一次 `update_quality_rules`，指定 `rule_type: glossary`，提交完整 changes 和 `expected_section_revisions: { quality: sectionRevisions.quality }`。
+获得明确批准后调用一次 `update_quality_rules`，指定 `rule_type: glossary`，提交完整 changes 和 `expected_section_revisions: { quality: sectionRevisions.quality }`。写入成功后以返回的 `accepted`、`affected_entries`、`deleted_entry_ids` 和 `sectionRevisions.quality` 逐项核对批准方案；最终数量沿用已批准方案的确定性计算，不追加查询。
 
 - 出现 `RevisionConflictError` 时不得覆盖或强写：重新 `query_quality_rules`，按原审校范围基于新快照生成新方案，回到第 5 步再次等待批准。
-- 写入成功后直接以 `update_quality_rules` 的返回结果复核，不追加重复查询，向用户报告新 revision、变更及最终数量、以及未执行或未决项，只报告已确认事实。
+- 返回结果与批准方案不一致时，报告写入响应异常并停止，不补写；一致时报告新 revision、实际变更、最终数量，以及未执行或未决项。

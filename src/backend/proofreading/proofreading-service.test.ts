@@ -135,7 +135,6 @@ describe("ProofreadingService", () => {
       async () => await service.update_items({}),
       async () => await service.replace_all({}),
       async () => await service.clear_translations({}),
-      async () => await service.set_translation_status({}),
     ]) {
       await expect(operation()).rejects.toThrow("runtime.busy");
     }
@@ -284,7 +283,7 @@ describe("ProofreadingService", () => {
     );
   });
 
-  it("重复、缺失 item 或非法字段整批拒绝且不发布事件", async () => {
+  it("重复、越界、缺失 item 或非法字段整批拒绝且不发布事件", async () => {
     const { database, service, lg_path, publisher } = create_service();
     database.set_items(lg_path, [create_project_item({ id: 1, dst: "旧译文" })]);
 
@@ -300,6 +299,24 @@ describe("ProofreadingService", () => {
     await expect(
       service.update_items({
         changes: [{ item_id: 1, dst: null }],
+        expected_section_revisions: { items: 0, proofreading: 0 },
+      }),
+    ).rejects.toThrow("request.validation_failed");
+    await expect(
+      service.update_items({
+        changes: [{ item_id: Number.MAX_SAFE_INTEGER + 1, dst: "A" }],
+        expected_section_revisions: { items: 0, proofreading: 0 },
+      }),
+    ).rejects.toThrow("request.validation_failed");
+    await expect(
+      service.update_items({
+        changes: [{ item_id: 1 }],
+        expected_section_revisions: { items: 0, proofreading: 0 },
+      }),
+    ).rejects.toThrow("request.validation_failed");
+    await expect(
+      service.update_items({
+        changes: [{ item_id: 1, dst: "A", legacy: true }],
         expected_section_revisions: { items: 0, proofreading: 0 },
       }),
     ).rejects.toThrow("request.validation_failed");
@@ -622,15 +639,14 @@ describe("ProofreadingService", () => {
     ]);
   });
 
-  it("设置翻译状态只改 status 并清除重试计数", async () => {
+  it("统一 item 更新只改 status 时清除重试计数", async () => {
     const { database, service, lg_path, publisher } = create_service();
     database.set_items(lg_path, [
       create_project_item({ dst: "保留译文", status: "ERROR", retry_count: 4 }),
     ]);
 
-    const ack = await service.set_translation_status({
-      item_ids: [1],
-      status: "PROCESSED",
+    const ack = await service.update_items({
+      changes: [{ item_id: 1, status: "PROCESSED" }],
       expected_section_revisions: { items: 0, proofreading: 0 },
     });
 
@@ -656,32 +672,36 @@ describe("ProofreadingService", () => {
       source: "proofreading_update_items",
       updatedSections: ["items", "proofreading"],
       items: {
-        payloadMode: "field-patch",
+        payloadMode: "canonical-delta",
         changedIds: [1],
-        fieldPatch: {
-          status: "PROCESSED",
-          retry_count: 0,
-        },
       },
     });
   });
 
-  it("设置翻译状态拒绝菜单外的计算状态", async () => {
+  it("显式 status 覆盖 dst 自动状态，菜单外状态整批拒绝", async () => {
     const { database, service, lg_path, publisher } = create_service();
     database.set_items(lg_path, [
       create_project_item({ dst: "保留译文", status: "ERROR", retry_count: 4 }),
     ]);
 
+    await service.update_items({
+      changes: [{ item_id: 1, dst: "新译文", status: "EXCLUDED" }],
+      expected_section_revisions: { items: 0, proofreading: 0 },
+    });
+    expect(database.get_all_items(lg_path)).toEqual([
+      create_project_item({ dst: "新译文", status: "EXCLUDED", retry_count: 0 }),
+    ]);
+    publisher.publish_project_change.mockClear();
+
     await expect(
-      service.set_translation_status({
-        item_ids: [1],
-        status: "ERROR",
-        expected_section_revisions: { items: 0, proofreading: 0 },
+      service.update_items({
+        changes: [{ item_id: 1, status: "ERROR" }],
+        expected_section_revisions: { items: 1, proofreading: 1 },
       }),
     ).rejects.toThrow("request.validation_failed");
 
     expect(database.get_all_items(lg_path)).toEqual([
-      create_project_item({ dst: "保留译文", status: "ERROR", retry_count: 4 }),
+      create_project_item({ dst: "新译文", status: "EXCLUDED", retry_count: 0 }),
     ]);
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
   });

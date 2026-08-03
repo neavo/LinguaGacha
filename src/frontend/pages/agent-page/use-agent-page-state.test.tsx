@@ -240,9 +240,9 @@ describe("useAgentPageState", () => {
         {
           kind: "tool_call",
           id: "success",
-          toolName: "query_project_items",
+          toolName: "query_items",
           status: "success",
-          output: '{"results":[]}',
+          output: '{"items":[]}',
           createdAt: 2,
         },
         {
@@ -256,7 +256,7 @@ describe("useAgentPageState", () => {
         {
           kind: "tool_call",
           id: "legacy",
-          toolName: "query_project_items",
+          toolName: "query_items",
           status: "success",
           detail: "旧协议不得兼容",
           createdAt: 4,
@@ -354,9 +354,9 @@ describe("useAgentPageState", () => {
       {
         kind: "tool_call",
         id: "success",
-        toolName: "query_project_items",
+        toolName: "query_items",
         status: "success",
-        output: '{"results":[]}',
+        output: '{"items":[]}',
         createdAt: 2,
       },
       {

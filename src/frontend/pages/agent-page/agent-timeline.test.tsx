@@ -86,20 +86,18 @@ describe("AgentTimeline", () => {
   it("运行工具逐秒计时，完成后保留用户展开状态并挂载输出", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(8_001);
-    const view = await render_timeline([
-      tool_entry("tool-1", "query_project_items", "running", null, 1),
-    ]);
+    const view = await render_timeline([tool_entry("tool-1", "query_items", "running", null, 1)]);
     const tool = view.querySelector<HTMLDetailsElement>(".agent-detail-entry--tool");
-    expect(tool?.querySelector("summary")?.textContent).toBe("query_project_items · 8s");
+    expect(tool?.querySelector("summary")?.textContent).toBe("query_items · 8s");
     expect(tool?.querySelector('[role="timer"]')?.getAttribute("aria-live")).toBe("off");
     await act(async () => vi.advanceTimersByTime(1_000));
-    expect(tool?.querySelector("summary")?.textContent).toBe("query_project_items · 9s");
+    expect(tool?.querySelector("summary")?.textContent).toBe("query_items · 9s");
     await act(async () => tool?.querySelector("summary")?.click());
     expect(tool?.querySelector("pre")).toBeNull();
 
-    await render_timeline([tool_entry("tool-1", "query_project_items", "success", "{}", 1)]);
+    await render_timeline([tool_entry("tool-1", "query_items", "success", "{}", 1)]);
     expect(tool?.open).toBe(true);
-    expect(tool?.querySelector("summary")?.textContent).toBe("query_project_items");
+    expect(tool?.querySelector("summary")?.textContent).toBe("query_items");
     const output = tool?.querySelector<HTMLPreElement>("pre");
     expect(output?.textContent).toBe("{}");
     expect(tool?.querySelector(".agent-status-mark--success")).not.toBeNull();
@@ -117,7 +115,7 @@ describe("AgentTimeline", () => {
 
   it("并行工具复用无图标状态灯并保留独立状态语义", async () => {
     const view = await render_timeline([
-      tool_entry("tool-running", "query_project_items", "running", null, 1),
+      tool_entry("tool-running", "query_items", "running", null, 1),
       tool_entry("tool-success", "query_quality_rules", "success", "{}", 2),
       tool_entry("tool-error", "read_skill", "error", "工具不存在", 3),
       tool_entry("tool-stopped", "update_quality_rules", "stopped", null, 4),
@@ -343,21 +341,17 @@ describe("AgentTimeline", () => {
       assistant_entry("assistant-1", "准备查询", "success", 1000),
       tool_entry(
         "tool-1",
-        "query_project_items",
+        "query_items",
         "success",
-        '{"results":[{"pattern":"Alice","contexts":[]}]}',
+        '{"items":[{"item_id":1,"src":"Alice"}]}',
         1500,
       ),
       tool_entry("tool-2", "read_skill", "error", "工具不存在", 1800),
       assistant_entry("assistant-2", "查询完成", "success", 2000),
     ]);
     const visible_text = view.textContent ?? "";
-    expect(visible_text.indexOf("准备查询")).toBeLessThan(
-      visible_text.indexOf("query_project_items"),
-    );
-    expect(visible_text.indexOf("query_project_items")).toBeLessThan(
-      visible_text.indexOf("read_skill"),
-    );
+    expect(visible_text.indexOf("准备查询")).toBeLessThan(visible_text.indexOf("query_items"));
+    expect(visible_text.indexOf("query_items")).toBeLessThan(visible_text.indexOf("read_skill"));
     const tools = view.querySelectorAll<HTMLDetailsElement>(".agent-detail-entry--tool");
     expect([...tools].every((tool) => !tool.open)).toBe(true);
     expect(tools[0]?.textContent).not.toContain("Alice");
@@ -365,7 +359,7 @@ describe("AgentTimeline", () => {
       "失败",
     );
     await act(async () => tools[0]?.querySelector("summary")?.click());
-    expect(tools[0]?.querySelector("pre")?.textContent).toContain('"pattern": "Alice"');
+    expect(tools[0]?.querySelector("pre")?.textContent).toContain('"src": "Alice"');
     expect(tools[1]?.querySelector("pre")).toBeNull();
     await act(async () => tools[0]?.querySelector("summary")?.click());
     expect(tools[0]?.querySelector("pre")).toBeNull();

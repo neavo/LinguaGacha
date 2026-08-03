@@ -18,12 +18,14 @@ export type QualityStatisticsPreparedTaskInput = {
   relation_candidates: QualityStatisticsRelationCandidate[]; // 字面量父子关系输入
   completed_snapshot: QualityStatisticsDependencySnapshot; // cache 与页面共同校验的依赖快照
   completed_entry_ids: string[]; // worker 完成后允许页面展示的条目身份
+  collect_literal_evidence: boolean; // 仅 Agent glossary 查询开启有限证据
 };
 
 type QualityStatisticsPrepareTaskInputArgs = {
   rule_key: QualityRuleKind; // 决定规则结构和扫描文本侧
   entries: unknown; // 来自 cache 的未信任规则批次
   items: Array<Record<string, unknown>>; // cache item 快照，不向 worker 传可变引用
+  collect_literal_evidence?: boolean; // 默认 false，不扩大 GUI/cache 响应
 };
 
 /** 在主线程完成规则类型、文本来源和缓存身份解析，worker 只做纯计算。 */
@@ -68,6 +70,7 @@ export function prepare_quality_statistics_task_input(
     relation_candidates,
     completed_snapshot,
     completed_entry_ids: rules.map((statistics_rule) => statistics_rule.entry_id),
+    collect_literal_evidence: args.collect_literal_evidence === true,
   };
 }
 

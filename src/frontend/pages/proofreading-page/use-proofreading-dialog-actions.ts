@@ -234,9 +234,13 @@ export function useProofreadingDialogActions(
             items: [target_item],
             section_revisions: options.list_revisions,
           },
-          item_id: Number(target_item.item_id),
-          next_dst: dialog_state.draft_item.dst,
-          next_name_dst: dialog_state.draft_item.name_dst,
+          changes: [
+            {
+              item_id: Number(target_item.item_id),
+              dst: dialog_state.draft_item.dst,
+              name_dst: dialog_state.draft_item.name_dst,
+            },
+          ],
         }),
         fallback_error_key: "proofreading_page.feedback.save_failed",
         preferred_row_id: dialog_state.target_row_id,

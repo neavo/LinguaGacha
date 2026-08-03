@@ -6,7 +6,6 @@ import {
   AGENT_QUALITY_RULE_UPDATE_SOURCE,
   apply_agent_quality_rule_changes,
   create_agent_quality_tools,
-  query_agent_items_by_glossary,
   query_agent_quality_rules,
 } from "./agent-quality-tools";
 import { ComputeWorkerClient } from "../worker/compute-worker-client";
@@ -17,13 +16,6 @@ function create_compute_worker(): ComputeWorkerClient {
 
 function create_cache(items: JsonRecord[] = []) {
   return {
-    snapshot: () => ({
-      projectPath: "test.lg",
-      epoch: 1,
-      freshness: "fresh" as const,
-      sectionRevisions: { quality: 4, items: 2 },
-      itemCount: items.length,
-    }),
     items: { readItems: () => items },
   };
 }
@@ -43,12 +35,12 @@ describe("Agent 质量规则工具", () => {
       computeWorker: create_compute_worker(),
     });
 
+    expect(tools.map((tool) => tool.name)).toEqual(["query_quality_rules", "update_quality_rules"]);
     expect(tools.map((tool) => tool.parameters)).toEqual([
       expect.objectContaining({ type: "object" }),
       expect.objectContaining({ type: "object" }),
-      expect.objectContaining({ type: "object" }),
     ]);
-    expect(tools.map((tool) => tool.executionMode)).toEqual([undefined, undefined, "sequential"]);
+    expect(tools.map((tool) => tool.executionMode)).toEqual([undefined, "sequential"]);
   });
 
   it("查询四类规则，并为术语保留派生事实", async () => {
@@ -111,22 +103,16 @@ describe("Agent 质量规则工具", () => {
     ]);
   });
 
-  it("按 entry_id 统一返回代表样本、完整命中流和共享覆盖统计", async () => {
-    const entries = [
-      stored_entry("upper", "X", "甲"),
-      { ...stored_entry("folded", "x", "乙"), case_sensitive: false },
+  it("一次统计返回真实次数和首个有效 sample，无有效语境时为 null", async () => {
+    const entries = [stored_entry("x", "X", "甲"), stored_entry("y", "Y", "乙")];
+    const items = [
+      { item_id: 1, src: "X", name_src: null, file_path: "a.txt", row_number: 1 },
+      { item_id: 2, src: "X！", name_src: null, file_path: "a.txt", row_number: 2 },
+      { item_id: 3, src: "对话 X X", name_src: "X", file_path: "b.txt", row_number: 3 },
+      { item_id: 4, src: "Y。", name_src: null, file_path: "b.txt", row_number: 4 },
     ];
-    entries[0]!["case_sensitive"] = true;
-    const item_ids = [90, 10, 80, 20, 70, 30];
-    const cache = create_cache(
-      item_ids.map((item_id, index) => ({
-        item_id,
-        src: `X X ${index.toString()}`,
-        name_src: index === 3 ? "X speaker" : null,
-        file_path: "script.txt",
-        row_number: index + 1,
-      })),
-    );
+    const read_items = vi.fn(() => items);
+    const cache = { ...create_cache(), items: { readItems: read_items } };
     const qualityRules = {
       query: () => ({
         projectPath: "test.lg",
@@ -135,49 +121,27 @@ describe("Agent 质量规则工具", () => {
       }),
       update_from_agent: vi.fn(),
     };
-
-    const sample = query_agent_items_by_glossary(
-      { qualityRules, cache },
-      { entry_ids: ["upper", "missing", "folded"], mode: "sample" },
-    );
-    expect(sample).toMatchObject({
-      mode: "sample",
-      missing_entry_ids: ["missing"],
-      results: [
-        {
-          entry_id: "upper",
-          matched_item_count: 6,
-          total_matches: 13,
-          samples: [
-            { item_id: 10, matched_fields: ["src"] },
-            { item_id: 20, matched_fields: ["src", "name_src"] },
-            { item_id: 30, matched_fields: ["src"] },
-          ],
-        },
-        { entry_id: "folded", matched_item_count: 6, total_matches: 13 },
-      ],
-    });
-
-    const search = query_agent_items_by_glossary(
-      { qualityRules, cache },
-      { entry_ids: ["upper"], mode: "search", limit: 2 },
-    );
-    expect(search).toMatchObject({
-      cursor: "2",
-      complete: false,
-      hits: [
-        { entry_id: "upper", item_id: 90, field: "src", text: "X X 0" },
-        { entry_id: "upper", item_id: 10, field: "src", text: "X X 1" },
-      ],
-    });
-
     const quality = await query_agent_quality_rules(
       { qualityRules, cache, computeWorker: create_compute_worker() },
       "glossary",
     );
-    expect(quality.entries.map((entry) => entry["matched_item_count"])).toEqual(
-      (sample["results"] as JsonRecord[]).map((entry) => entry["matched_item_count"]),
-    );
+    expect(quality.entries).toMatchObject([
+      {
+        entry_id: "x",
+        matched_item_count: 3,
+        total_matches: 5,
+        sample: {
+          item_id: 3,
+          matched_fields: ["src", "name_src"],
+          src: "对话 X X",
+          name_src: "X",
+          file_path: "b.txt",
+          row_number: 3,
+        },
+      },
+      { entry_id: "y", matched_item_count: 1, total_matches: 1, sample: null },
+    ]);
+    expect(read_items).toHaveBeenCalledTimes(1);
   });
 
   it("在内存副本一次应用增删改和重排，并保留既有身份", () => {

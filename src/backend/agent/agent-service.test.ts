@@ -272,11 +272,7 @@ function create_fake_response(context: Context): FauxResponseStep {
   }
   if (fake_agent_state.mode === "tool_only") {
     return fauxAssistantMessage(
-      fauxToolCall(
-        "query_project_items",
-        { mode: "search", patterns: ["Alice"] },
-        { id: "tool-only" },
-      ),
+      fauxToolCall("query_items", { search: { keyword: "Alice" } }, { id: "tool-only" }),
       { stopReason: "toolUse" },
     );
   }
@@ -284,11 +280,7 @@ function create_fake_response(context: Context): FauxResponseStep {
     return fauxAssistantMessage(
       [
         fauxText("准备查询"),
-        fauxToolCall(
-          "query_project_items",
-          { mode: "search", patterns: ["Alice", "Bob"] },
-          { id: "tool-1" },
-        ),
+        fauxToolCall("query_items", { search: { keyword: "Alice" } }, { id: "tool-1" }),
         fauxToolCall(
           "read_skill",
           { path: "E:/skills/glossary-audit/references/audit-standard.md" },
@@ -660,7 +652,7 @@ describe("AgentService", () => {
           kind: "tool_call",
           id: "tool-1",
           status: "running",
-          toolName: "query_project_items",
+          toolName: "query_items",
           output: null,
         }),
       }),
@@ -684,9 +676,9 @@ describe("AgentService", () => {
       {
         kind: "tool_call",
         id: "tool-1",
-        toolName: "query_project_items",
+        toolName: "query_items",
         status: "success",
-        output: expect.stringContaining('"results"'),
+        output: expect.stringContaining('"items"'),
         createdAt: expect.any(Number),
       },
       {
@@ -825,10 +817,9 @@ describe("AgentService", () => {
     await wait_for_idle(service);
     expect(fake_agent_state.tool_names.at(-1)).toEqual([
       "query_quality_rules",
-      "query_items_by_glossary",
       "update_quality_rules",
-      "query_project_items",
-      "update_project_translations",
+      "query_items",
+      "update_items",
       "read_skill",
     ]);
     expect(service.get_snapshot().entries.map((entry) => entry.kind)).toEqual([

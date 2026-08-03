@@ -374,14 +374,13 @@ describe("useProofreadingBatchActions", () => {
     expect(fixture.write_calls).toHaveLength(1);
     const write_call = fixture.write_calls[0];
     expect(write_call).toMatchObject({
-      path: "/api/proofreading/items/set-status",
+      path: "/api/proofreading/items/update",
       fallback_error_key: "proofreading_page.feedback.set_status_failed",
       preferred_row_id: "2",
       close_dialog: false,
     });
     expect(write_call?.plan?.request_body).toMatchObject({
-      item_ids: [2],
-      status: "PROCESSED",
+      changes: [{ item_id: 2, status: "PROCESSED" }],
       expected_section_revisions: {
         items: 7,
         proofreading: 5,
