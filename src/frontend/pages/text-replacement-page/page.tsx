@@ -98,14 +98,14 @@ export function TextReplacementPage(props: TextReplacementPageProps): JSX.Elemen
             entries={page_state.filtered_entries}
             sort_state={page_state.sort_state}
             drag_disabled={page_state.drag_disabled}
-            statistics_running={page_state.statistics_state.running}
-            statistics_ready={page_state.statistics_ready}
+            hit_running={page_state.hit_state.running}
+            hit_ready={page_state.hit_ready}
             readonly={page_state.readonly}
             selected_entry_ids={page_state.selected_entry_ids}
             active_entry_id={page_state.active_entry_id}
             anchor_entry_id={page_state.selection_anchor_entry_id}
             restore_scroll_entry_id={page_state.restore_scroll_entry_id}
-            statistics_badge_by_entry_id={page_state.statistics_badge_by_entry_id}
+            hit_badge_by_entry_id={page_state.hit_badge_by_entry_id}
             on_sort_change={page_state.apply_table_sort_state}
             on_selection_change={page_state.apply_table_selection}
             on_open_edit={page_state.open_edit_dialog}
@@ -113,7 +113,7 @@ export function TextReplacementPage(props: TextReplacementPageProps): JSX.Elemen
             on_toggle_case_sensitive={page_state.toggle_case_sensitive_for_selected}
             on_reorder={page_state.reorder_selected_entries}
             on_query_entry_source={page_state.query_entry_source}
-            on_search_entry_relations={page_state.search_entry_relations_from_statistics}
+            on_search_entry_relations={page_state.search_entry_relations_from_hit}
           />
         </FileDropZone>
       </div>

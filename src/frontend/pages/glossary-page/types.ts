@@ -1,12 +1,7 @@
 import type { QualityStatisticsDependencySnapshot } from "@shared/quality/quality-statistics";
 
-export type GlossaryEntry = {
-  entry_id?: string;
-  src: string;
-  dst: string;
-  info: string;
-  case_sensitive: boolean;
-};
+export type { GlossaryEntry } from "@shared/quality/glossary";
+import type { GlossaryEntry } from "@shared/quality/glossary";
 
 export type GlossaryEntryId = string;
 
@@ -30,7 +25,7 @@ export type GlossaryFilterState = {
   is_regex: boolean;
 };
 
-export type GlossaryStatisticsState = {
+export type GlossaryHitState = {
   running: boolean;
   completed_snapshot: QualityStatisticsDependencySnapshot | null;
   completed_entry_ids: GlossaryEntryId[];
@@ -38,16 +33,16 @@ export type GlossaryStatisticsState = {
   subset_parent_labels_by_entry_id: Record<GlossaryEntryId, string[]>;
 };
 
-export type GlossaryStatisticsBadgeKind = "matched" | "unmatched" | "related";
+export type GlossaryHitBadgeKind = "matched" | "unmatched" | "related";
 
-export type GlossaryStatisticsBadgeState = {
-  kind: GlossaryStatisticsBadgeKind;
+export type GlossaryHitBadgeState = {
+  kind: GlossaryHitBadgeKind;
   matched_count: number;
   subset_parent_labels: string[];
   tooltip: string;
 };
 
-export type GlossarySortField = "src" | "dst" | "info" | "rule" | "statistics";
+export type GlossarySortField = "src" | "dst" | "info" | "rule" | "hit";
 
 export type GlossarySortDirection = "ascending" | "descending";
 

@@ -73,7 +73,7 @@ export const zh_cn_quality_editor = {
     clear: "取消",
     descending: "反序",
   },
-  statistics: {
+  hit: {
     hit_count: "命中条目数：{COUNT}",
     relation_line: "{CHILD} -> {PARENT}",
     subset_relations: "存在包含关系：",

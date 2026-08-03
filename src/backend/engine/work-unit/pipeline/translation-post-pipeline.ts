@@ -4,8 +4,11 @@ import { HangeulFixer } from "../../../../shared/fixer/hangeul-fixer";
 import { KanaFixer } from "../../../../shared/fixer/kana-fixer";
 import { NumberFixer } from "../../../../shared/fixer/number-fixer";
 import { PunctuationFixer } from "../../../../shared/fixer/punctuation-fixer";
-import { build_text_preserve_rule } from "../../../../shared/text/text-preserve-rules";
-import { apply_text_replacements } from "../../../../shared/text/text-replacement-rules";
+import {
+  apply_text_replacements,
+  compile_text_replacements,
+  type CompiledTextReplacements,
+} from "../../../../shared/text/text-replacement-rules";
 import type { TextProcessingConfig, TextQualitySnapshot } from "../../../../shared/text/text-types";
 import {
   normalize_translation_actor,
@@ -28,14 +31,16 @@ export interface TranslationPostPipelineResult {
  */
 export class TranslationPostPipeline {
   private readonly config: TextProcessingConfig; // 自动修复与语言策略的任务启动快照
-  private readonly quality_snapshot: TextQualitySnapshot; // 与译前处理同轮的保护和替换规则
+  private readonly post_replacements: CompiledTextReplacements | null;
 
   /**
    * 绑定配置快照和质量快照，确保译后修复与译前规则使用同一批快照
    */
   public constructor(config: TextProcessingConfig, quality_snapshot: TextQualitySnapshot) {
     this.config = config;
-    this.quality_snapshot = quality_snapshot;
+    this.post_replacements = quality_snapshot.post_replacement_enable
+      ? compile_text_replacements(quality_snapshot.post_replacement_entries)
+      : null;
   }
 
   /**
@@ -114,16 +119,7 @@ export class TranslationPostPipeline {
       result = HangeulFixer.fix(result);
     }
     // 代码修复必须复用译前 SAMPLE 规则，否则控制码收集与写回校验会使用两套口径。
-    result = CodeFixer.fix(
-      src,
-      result,
-      build_text_preserve_rule({
-        mode: this.quality_snapshot.text_preserve_mode,
-        text_type: String(context.item?.text_type ?? "TXT").toUpperCase(),
-        entries: this.quality_snapshot.text_preserve_entries,
-        kind: "sample",
-      }),
-    );
+    result = CodeFixer.fix(src, result, context.preserve_rule);
     result = EscapeFixer.fix(src, result);
     result = NumberFixer.fix(src, result);
     result = PunctuationFixer.fix(
@@ -139,9 +135,8 @@ export class TranslationPostPipeline {
    * 译后替换和译前替换共享同一组 regex / literal 语义
    */
   private replace_post_translation(dst: string): string {
-    if (!this.quality_snapshot.post_replacement_enable) {
-      return dst;
-    }
-    return apply_text_replacements(dst, this.quality_snapshot.post_replacement_entries);
+    return this.post_replacements === null
+      ? dst
+      : apply_text_replacements(dst, this.post_replacements);
   }
 }

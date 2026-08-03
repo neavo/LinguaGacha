@@ -1,3 +1,6 @@
+import type { ItemNameField } from "../../domain/item";
+import type { GlossaryApplication } from "../quality/glossary";
+
 // 筛选面板表示“无警告”的虚拟 warning。
 export const PROOFREADING_NO_WARNING_CODE = "NO_WARNING" as const;
 
@@ -52,8 +55,6 @@ export const PROOFREADING_WARNING_LABEL_KEY_BY_CODE = {
   NO_WARNING: "proofreading_page.filter.no_warning",
 } as const;
 
-export type ProofreadingGlossaryTerm = readonly [string, string];
-
 export type ProofreadingWarningFragmentsByCode = {
   KANA?: string[];
   HANGEUL?: string[];
@@ -64,7 +65,7 @@ export type ProofreadingFilterOptions = {
   warning_types: string[];
   statuses: string[];
   file_paths: string[];
-  glossary_terms: ProofreadingGlossaryTerm[];
+  glossary_entry_ids: string[];
   include_without_glossary_miss: boolean;
 };
 
@@ -81,8 +82,7 @@ export type ProofreadingItem = {
   retry_count: number;
   warnings: string[];
   warning_fragments_by_code: ProofreadingWarningFragmentsByCode;
-  applied_glossary_terms: ProofreadingGlossaryTerm[];
-  failed_glossary_terms: ProofreadingGlossaryTerm[];
+  glossary_applications: GlossaryApplication[];
 };
 
 export type ProofreadingItemRecord = {
@@ -138,7 +138,9 @@ export type ProofreadingListView = {
 };
 
 export type ProofreadingFilterPanelTermEntry = {
-  term: ProofreadingGlossaryTerm;
+  entry_id: string;
+  src: string;
+  dst: string;
   count: number;
 };
 
@@ -164,10 +166,10 @@ export function build_proofreading_row_id(item_id: number | string): string {
 }
 
 /**
- * 术语二元组展示为稳定文本，供筛选面板和弹窗复用。
+ * 术语展示为稳定文本，供筛选面板和弹窗复用。
  */
-export function format_proofreading_glossary_term(term: ProofreadingGlossaryTerm): string {
-  return `${term[0]} -> ${term[1]}`;
+export function format_proofreading_glossary_term(term: { src: string; dst: string }): string {
+  return `${term.src} -> ${term.dst}`;
 }
 
 /**
@@ -188,7 +190,7 @@ export function compress_proofreading_text(text: string): string {
 }
 
 /**
- * 筛选项克隆会复制术语 tuple，避免页面局部修改污染缓存状态。
+ * 筛选项克隆会复制 entry id 数组，避免页面局部修改污染缓存状态。
  */
 export function clone_proofreading_filter_options(
   filters: ProofreadingFilterOptions,
@@ -197,9 +199,7 @@ export function clone_proofreading_filter_options(
     warning_types: [...filters.warning_types],
     statuses: [...filters.statuses],
     file_paths: [...filters.file_paths],
-    glossary_terms: filters.glossary_terms.map((term) => {
-      return [term[0], term[1]] as const;
-    }),
+    glossary_entry_ids: [...filters.glossary_entry_ids],
     include_without_glossary_miss: filters.include_without_glossary_miss,
   };
 }
@@ -263,4 +263,3 @@ export function create_empty_proofreading_filter_panel_state(): ProofreadingFilt
     without_glossary_miss_count: 0,
   };
 }
-import type { ItemNameField } from "../../domain/item";

@@ -2,7 +2,7 @@ import type {
   TextReplacementEntry,
   TextReplacementEntryId,
   TextReplacementFilterState,
-  TextReplacementStatisticsState,
+  TextReplacementHitState,
   TextReplacementVisibleEntry,
 } from "@frontend/pages/text-replacement-page/types";
 import {
@@ -67,14 +67,14 @@ export function build_text_replacement_filter_result(
 export function sort_text_replacement_entries(
   visible_entries: TextReplacementVisibleEntry[],
   sort_state: import("@frontend/widgets/app-table/app-table-types").AppTableSortState | null,
-  statistics_ready: boolean,
-  statistics_state: TextReplacementStatisticsState,
+  hit_ready: boolean,
+  hit_state: TextReplacementHitState,
 ): TextReplacementVisibleEntry[] {
   if (sort_state === null) {
     return visible_entries;
   }
 
-  if (sort_state.column_id === "statistics" && !statistics_ready) {
+  if (sort_state.column_id === "hit" && !hit_ready) {
     return visible_entries;
   }
 
@@ -94,9 +94,9 @@ export function sort_text_replacement_entries(
         Number(right_entry.entry.regex) * 2 + Number(right_entry.entry.case_sensitive);
       comparison_result =
         sort_state.direction === "ascending" ? left_value - right_value : right_value - left_value;
-    } else if (sort_state.column_id === "statistics") {
-      const left_value = statistics_state.matched_count_by_entry_id[left_entry.entry_id] ?? 0;
-      const right_value = statistics_state.matched_count_by_entry_id[right_entry.entry_id] ?? 0;
+    } else if (sort_state.column_id === "hit") {
+      const left_value = hit_state.matched_count_by_entry_id[left_entry.entry_id] ?? 0;
+      const right_value = hit_state.matched_count_by_entry_id[right_entry.entry_id] ?? 0;
       comparison_result =
         sort_state.direction === "ascending" ? left_value - right_value : right_value - left_value;
     }

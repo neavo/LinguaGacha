@@ -21,7 +21,7 @@ function create_cache(): ProofreadingCache {
           warning_types: ["GLOSSARY"],
           statuses: ["PROCESSED"],
           file_paths: [],
-          glossary_terms: [],
+          glossary_entry_ids: [],
           include_without_glossary_miss: true,
         },
       },

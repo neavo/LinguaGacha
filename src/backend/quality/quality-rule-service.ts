@@ -26,6 +26,7 @@ import {
   prepare_analysis_glossary_import_from_cache,
   to_analysis_glossary_import_prepare_payload,
 } from "./quality-rule-analysis-glossary-import";
+import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
 
 const DEFAULT_QUALITY_RULE_UPDATE_SOURCE = "quality_rule_update";
 
@@ -112,8 +113,9 @@ export class QualityRuleService {
         "analysis_candidate_count",
         "expected_glossary_revision",
       ]);
-      const next_rules = this.normalize_rule_entries(request["entries"]);
+      const next_rules = this.normalize_rule_entries("glossary", request["entries"]);
       const current_rules = this.normalize_rule_entries(
+        "glossary",
         this.database.get_rules(project_path, QualityRule.from_json("glossary").database_type),
       );
       const quality_changed = !this.are_rule_entries_equal(current_rules, next_rules);
@@ -170,7 +172,9 @@ export class QualityRuleService {
     const rule_type = this.normalize_rule_type(request["rule_type"]);
     const project_path = this.session_state.require_loaded_project_path();
     const has_entries = Object.prototype.hasOwnProperty.call(request, "entries");
-    const entries = has_entries ? this.normalize_rule_entries(request["entries"]) : undefined;
+    const entries = has_entries
+      ? this.normalize_rule_entries(rule_type, request["entries"])
+      : undefined;
     const meta = { ...read_json_record(request["meta"]) };
     if (!has_entries && Object.keys(meta).length === 0) {
       throw new AppErrors.RequestValidationError({
@@ -205,8 +209,13 @@ export class QualityRuleService {
    * 从外部文件导入规则预演结果，保持导入解析在服务内收口
    */
   public async import_rules(request: JsonRecord): Promise<JsonRecord> {
+    const rule_type = this.normalize_rule_type(request["rule_type"]);
     const file_path = String(request["path"] ?? "");
-    return { entries: (await this.load_rules_from_file(file_path)) as unknown as JsonValue };
+    const entries = this.normalize_rule_entries(
+      rule_type,
+      (await this.load_rules_from_file(file_path)) as unknown as JsonValue,
+    );
+    return { entries: entries as unknown as JsonValue };
   }
 
   /**
@@ -214,7 +223,8 @@ export class QualityRuleService {
    */
   public async export_rules(request: JsonRecord): Promise<JsonRecord> {
     const file_path = String(request["path"] ?? "");
-    const entries = this.normalize_rule_entries(request["entries"]);
+    const rule_type = this.normalize_rule_type(request["rule_type"]);
+    const entries = this.normalize_rule_entries(rule_type, request["entries"]);
     const base_path = this.without_extension(file_path);
     await this.export_rules_to_files(base_path, entries);
     return { path: `${base_path}.json`.replace(/\\/g, "/") };
@@ -263,7 +273,8 @@ export class QualityRuleService {
    * 读取规则预设内容，隐藏内置和用户目录差异
    */
   public read_rule_preset(request: JsonRecord): JsonRecord {
-    const preset_directory = QualityRule.from_json(request["rule_type"]).preset_directory;
+    const rule_type = this.normalize_rule_type(request["rule_type"]);
+    const preset_directory = QualityRule.from_json(rule_type).preset_directory;
     const preset_path = this.resolve_rule_preset_file(
       preset_directory,
       String(request["virtual_id"] ?? ""),
@@ -276,7 +287,9 @@ export class QualityRuleService {
         },
       });
     }
-    return { entries: data as unknown as JsonValue };
+    return {
+      entries: this.normalize_rule_entries(rule_type, data as JsonValue) as unknown as JsonValue,
+    };
   }
 
   /**
@@ -285,7 +298,8 @@ export class QualityRuleService {
   public save_rule_preset(request: JsonRecord): JsonRecord {
     const preset_directory = QualityRule.from_json(request["rule_type"]).preset_directory;
     const name = this.normalize_preset_name(String(request["name"] ?? ""));
-    const entries = this.normalize_rule_entries(request["entries"]);
+    const rule_type = this.normalize_rule_type(request["rule_type"]);
+    const entries = this.normalize_rule_entries(rule_type, request["entries"]);
     const directory = this.paths.get_quality_rule_user_preset_dir(preset_directory);
     this.native_fs.make_dir(directory);
     const preset_file = resolve_preset_file({
@@ -392,15 +406,29 @@ export class QualityRuleService {
   /**
    * 归一规则条目列表，确保写入数据库前字段完整
    */
-  private normalize_rule_entries(value: JsonValue | undefined): JsonRecord[] {
-    return QualityRule.normalize_entries(value) as JsonRecord[];
+  private normalize_rule_entries(
+    rule_type: QualityRuleKind,
+    value: JsonValue | undefined,
+  ): JsonRecord[] {
+    try {
+      return normalize_quality_rule_entries(
+        QualityRule.from_json(rule_type),
+        value,
+      ) as JsonRecord[];
+    } catch (cause) {
+      throw new AppErrors.RequestValidationError({ cause });
+    }
   }
 
   /**
    * 归一单条规则，兼容导入和页面编辑两种来源
    */
-  private normalize_rule_entry(entry: JsonRecord): JsonRecord {
-    return QualityRule.normalize_entry(entry) as JsonRecord;
+  private normalize_rule_entry(rule_type: QualityRuleKind, entry: JsonRecord): JsonRecord {
+    try {
+      return QualityRule.from_json(rule_type).normalize_entry(entry) as JsonRecord;
+    } catch (cause) {
+      throw new AppErrors.RequestValidationError({ cause });
+    }
   }
 
   /**
@@ -459,7 +487,7 @@ export class QualityRuleService {
   /**
    * 按扩展名读取规则文件，保持导入格式分发集中
    */
-  private async load_rules_from_file(file_path: string): Promise<JsonRecord[]> {
+  private async load_rules_from_file(file_path: string): Promise<unknown[]> {
     return load_quality_rule_entries_from_file(file_path, this.native_fs);
   }
 
@@ -487,7 +515,7 @@ export class QualityRuleService {
       if (entry === null) {
         continue;
       }
-      entries.push(this.normalize_rule_entry(entry as unknown as JsonRecord));
+      entries.push(this.normalize_rule_entry("glossary", entry as unknown as JsonRecord));
     }
     return entries;
   }

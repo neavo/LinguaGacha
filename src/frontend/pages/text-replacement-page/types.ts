@@ -4,14 +4,8 @@ import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-ty
 
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
 import type { PresetInputState, PresetItem } from "@frontend/features/preset-editor/preset-types";
-
-export type TextReplacementEntry = {
-  entry_id?: string;
-  src: string;
-  dst: string;
-  regex: boolean;
-  case_sensitive: boolean;
-};
+import type { TextReplacementEntry } from "@domain/quality";
+export type { TextReplacementEntry } from "@domain/quality";
 
 export type TextReplacementEntryId = string;
 
@@ -35,7 +29,7 @@ export type TextReplacementFilterState = {
   is_regex: boolean;
 };
 
-export type TextReplacementStatisticsState = {
+export type TextReplacementHitState = {
   running: boolean;
   completed_snapshot: QualityStatisticsDependencySnapshot | null;
   completed_entry_ids: TextReplacementEntryId[];
@@ -43,10 +37,10 @@ export type TextReplacementStatisticsState = {
   subset_parent_labels_by_entry_id: Record<TextReplacementEntryId, string[]>;
 };
 
-export type TextReplacementStatisticsBadgeKind = "matched" | "unmatched" | "related";
+export type TextReplacementHitBadgeKind = "matched" | "unmatched" | "related";
 
-export type TextReplacementStatisticsBadgeState = {
-  kind: TextReplacementStatisticsBadgeKind;
+export type TextReplacementHitBadgeState = {
+  kind: TextReplacementHitBadgeKind;
   matched_count: number;
   subset_parent_labels: string[];
   tooltip: string;
@@ -90,9 +84,9 @@ export type UseTextReplacementPageStateResult = {
   invalid_filter_message: string | null;
   readonly: boolean;
   drag_disabled: boolean;
-  statistics_state: TextReplacementStatisticsState;
-  statistics_ready: boolean;
-  statistics_badge_by_entry_id: Record<TextReplacementEntryId, TextReplacementStatisticsBadgeState>;
+  hit_state: TextReplacementHitState;
+  hit_ready: boolean;
+  hit_badge_by_entry_id: Record<TextReplacementEntryId, TextReplacementHitBadgeState>;
   preset_items: PresetItem[];
   selected_entry_ids: TextReplacementEntryId[];
   active_entry_id: TextReplacementEntryId | null;
@@ -133,7 +127,7 @@ export type UseTextReplacementPageStateResult = {
     over_entry_id: TextReplacementEntryId,
   ) => Promise<void>;
   query_entry_source: (entry_id: TextReplacementEntryId) => Promise<void>;
-  search_entry_relations_from_statistics: (entry_id: TextReplacementEntryId) => void;
+  search_entry_relations_from_hit: (entry_id: TextReplacementEntryId) => void;
   save_dialog_entry: () => Promise<void>;
   request_close_dialog: () => Promise<void>;
   confirm_pending_action: () => Promise<void>;

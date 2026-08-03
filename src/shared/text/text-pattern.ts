@@ -1,10 +1,21 @@
+import { compile_literal_patterns, type LiteralMatcher, type TextRange } from "./literal-matcher";
+
 // 文本模式只区分用户输入的普通文本和显式正则，避免调用点自造第三种解释
 type TextPatternMode = "literal" | "regex";
 
 // 替换语法必须由业务场景声明，防止 `$1` 和 `\1` 在不同入口互相误伤
 export type TextReplacementSyntax = "literal" | "javascript" | "backslash";
 
-export type CompiledTextPattern = RegExp;
+export type CompiledTextPattern =
+  | {
+      readonly kind: "literal";
+      readonly matcher: LiteralMatcher;
+      readonly global: boolean;
+    }
+  | {
+      readonly kind: "regex";
+      readonly regexp: RegExp;
+    };
 
 type TextPatternCompileOptions = {
   readonly source_text: string; // 用户输入或规则 src
@@ -26,13 +37,6 @@ export type TextKeywordMatcher = {
 };
 
 /**
- * 普通文本模式进入 RegExp 前统一转义，避免调用点各自维护特殊字符集合
- */
-export function escape_text_pattern(source_text: string): string {
-  return source_text.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-}
-
-/**
  * 编译可复用文本模式；空白关键字归一为 null，非法正则沿用 RegExp 原生错误
  */
 export function compile_text_pattern(
@@ -43,14 +47,22 @@ export function compile_text_pattern(
     return null;
   }
 
-  const mode = options.mode;
   const case_sensitive = options.case_sensitive === true;
   const global = options.global === true;
-  const pattern_source = mode === "regex" ? source_text : escape_text_pattern(source_text);
-  return new RegExp(
-    pattern_source,
-    build_text_pattern_flags({ case_sensitive, global, unicode: options.unicode !== false }),
-  );
+  if (options.mode === "literal") {
+    return {
+      kind: "literal",
+      matcher: compile_literal_patterns([{ key: "pattern", text: source_text, case_sensitive }]),
+      global,
+    };
+  }
+  return {
+    kind: "regex",
+    regexp: new RegExp(
+      source_text,
+      build_text_pattern_flags({ case_sensitive, global, unicode: options.unicode !== false }),
+    ),
+  };
 }
 
 /**
@@ -87,32 +99,20 @@ export function create_text_keyword_matcher(args: {
     };
   }
 
-  const case_sensitive = args.case_sensitive === true;
-  if (args.is_regex) {
-    const compile_result = try_compile_text_pattern({
-      source_text: args.keyword,
-      mode: "regex",
-      case_sensitive,
-      global: false,
-      trim: false,
-      unicode: args.unicode !== false,
-    });
-    return {
-      invalid_regex_message: compile_result.invalid_regex_message,
-      matches: (value: string): boolean => {
-        return compile_result.pattern === null
-          ? false
-          : matches_text_pattern(value, compile_result.pattern);
-      },
-    };
-  }
-
-  const keyword = case_sensitive ? normalized_keyword : normalized_keyword.toLocaleLowerCase();
+  const compile_result = try_compile_text_pattern({
+    source_text: args.is_regex ? args.keyword : normalized_keyword,
+    mode: args.is_regex ? "regex" : "literal",
+    case_sensitive: args.case_sensitive === true,
+    global: false,
+    trim: false,
+    unicode: args.unicode !== false,
+  });
   return {
-    invalid_regex_message: null,
+    invalid_regex_message: compile_result.invalid_regex_message,
     matches: (value: string): boolean => {
-      const candidate = case_sensitive ? value : value.toLocaleLowerCase();
-      return candidate.includes(keyword);
+      return compile_result.pattern === null
+        ? false
+        : matches_text_pattern(value, compile_result.pattern);
     },
   };
 }
@@ -121,7 +121,9 @@ export function create_text_keyword_matcher(args: {
  * 用独立 RegExp 实例执行匹配，隔离 global / sticky lastIndex 对复用模式的影响
  */
 export function matches_text_pattern(text: string, pattern: CompiledTextPattern): boolean {
-  return clone_text_pattern_regexp(pattern).test(text);
+  return pattern.kind === "literal"
+    ? pattern.matcher.match(text).length > 0
+    : clone_text_pattern_regexp(pattern).test(text);
 }
 
 /**
@@ -133,6 +135,17 @@ export function replace_text_pattern(args: {
   readonly replacement_text: string;
   readonly replacement_syntax: TextReplacementSyntax;
 }): { text: string; count: number } {
+  if (args.pattern.kind === "literal") {
+    if (args.replacement_syntax !== "literal") {
+      throw new Error("字面量模式只支持 literal replacement syntax");
+    }
+    const ranges = select_literal_replacement_ranges(args.text, args.pattern);
+    return {
+      text: replace_literal_ranges(args.text, ranges, args.replacement_text),
+      count: ranges.length,
+    };
+  }
+
   if (args.replacement_syntax === "javascript") {
     const count = count_text_pattern_matches(args.text, args.pattern);
     return {
@@ -181,7 +194,10 @@ function build_text_pattern_flags(args: {
  * 每次执行都复制 RegExp，保证全局匹配和多次 test 不共享 lastIndex
  */
 function clone_text_pattern_regexp(pattern: CompiledTextPattern): RegExp {
-  return new RegExp(pattern);
+  if (pattern.kind !== "regex") {
+    throw new Error("字面量模式没有 RegExp 实例");
+  }
+  return new RegExp(pattern.regexp);
 }
 
 /**
@@ -189,11 +205,38 @@ function clone_text_pattern_regexp(pattern: CompiledTextPattern): RegExp {
  */
 function count_text_pattern_matches(text: string, pattern: CompiledTextPattern): number {
   const regexp = clone_text_pattern_regexp(pattern);
-  if (!pattern.global) {
+  if (!regexp.global) {
     return regexp.test(text) ? 1 : 0;
   }
 
   return Array.from(text.matchAll(regexp)).length;
+}
+
+function select_literal_replacement_ranges(
+  text: string,
+  pattern: Extract<CompiledTextPattern, { kind: "literal" }>,
+): TextRange[] {
+  const ranges = (pattern.matcher.match(text)[0]?.ranges ?? []).toSorted(
+    (left, right) => left.start - right.start || left.end - right.end,
+  );
+  const selected: TextRange[] = [];
+  for (const range of ranges) {
+    const previous = selected.at(-1);
+    if (previous !== undefined && range.start < previous.end) continue;
+    selected.push(range);
+    if (!pattern.global) break;
+  }
+  return selected;
+}
+
+function replace_literal_ranges(text: string, ranges: TextRange[], replacement: string): string {
+  let result = "";
+  let offset = 0;
+  for (const range of ranges) {
+    result += text.slice(offset, range.start) + replacement;
+    offset = range.end;
+  }
+  return result + text.slice(offset);
 }
 
 /**

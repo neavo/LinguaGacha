@@ -126,7 +126,7 @@ export class ProofreadingQueryService {
   }
 
   /**
-   * 只接受稳定过滤字段；非法术语元组在边界丢弃。
+   * 只接受稳定过滤字段，术语筛选直接读取 entry_id。
    */
   private read_filters(value: JsonValue | undefined): ProofreadingFilterOptions {
     const record = read_json_record(value);
@@ -134,13 +134,9 @@ export class ProofreadingQueryService {
       warning_types: this.read_string_array(record["warning_types"] as JsonValue | undefined),
       statuses: this.read_string_array(record["statuses"] as JsonValue | undefined),
       file_paths: this.read_string_array(record["file_paths"] as JsonValue | undefined),
-      glossary_terms: Array.isArray(record["glossary_terms"])
-        ? record["glossary_terms"].flatMap((term) => {
-            return Array.isArray(term) && term.length >= 2
-              ? [[String(term[0] ?? ""), String(term[1] ?? "")] as const]
-              : [];
-          })
-        : [],
+      glossary_entry_ids: this.read_string_array(
+        record["glossary_entry_ids"] as JsonValue | undefined,
+      ),
       include_without_glossary_miss: record["include_without_glossary_miss"] !== false,
     };
   }

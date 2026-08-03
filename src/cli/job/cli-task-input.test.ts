@@ -50,7 +50,7 @@ describe("build_cli_task_input", () => {
         mode: null,
       },
       text_preserve: {
-        entries: [{ src: "<[^>]+>", regex: true }],
+        entries: [{ src: "<[^>]+>", info: "" }],
         enabled: null,
         mode: "custom",
       },
@@ -83,6 +83,19 @@ describe("build_cli_task_input", () => {
       { kind: "translation", text: "", enabled: false },
       { kind: "analysis", text: "自定义分析提示词", enabled: true },
     ]);
+  });
+
+  it("质量规则资源含非法正则时拒绝构造任务输入", async () => {
+    const root = create_temp_root();
+    const pre_replacement_path = write_json(root, "invalid-pre.json", [
+      { src: "(", dst: "x", regex: true, case_sensitive: false },
+    ]);
+
+    await expect(
+      build_cli_task_input(
+        create_command("translate", { preReplacementPath: pre_replacement_path }),
+      ),
+    ).rejects.toThrow("质量规则正则不是合法正则");
   });
 });
 

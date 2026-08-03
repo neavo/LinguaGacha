@@ -42,7 +42,9 @@ describe("QualityRuleService", () => {
         rule_type: "glossary",
         virtual_id: "builtin:demo.json",
       }),
-    ).toEqual({ entries: [{ src: "A", dst: "甲" }] });
+    ).toEqual({
+      entries: [{ src: "A", dst: "甲", info: "", case_sensitive: false }],
+    });
   });
 
   it("读取 text_preserve 内置预设时使用质量规则预设目录", () => {
@@ -60,7 +62,7 @@ describe("QualityRuleService", () => {
         rule_type: "text_preserve",
         virtual_id: "builtin:renpy.json",
       }),
-    ).toEqual({ entries: [{ src: "\\[[^\\]]+\\]" }] });
+    ).toEqual({ entries: [{ src: "\\[[^\\]]+\\]", info: "" }] });
   });
 
   it("读取规则预设时拒绝带目录边界的虚拟文件名", () => {
@@ -94,27 +96,43 @@ describe("QualityRuleService", () => {
     fs.writeFileSync(json_path, '[{"src":"HP","dst":"生命值"}]', "utf-8");
     fs.writeFileSync(text_path, "HP=生命值", "utf-8");
 
-    await expect(service.import_rules({ path: json_path })).resolves.toEqual({
-      entries: [
-        {
-          src: "HP",
-          dst: "生命值",
-          info: "",
-          regex: false,
-          case_sensitive: false,
-        },
-      ],
+    await expect(service.import_rules({ rule_type: "glossary", path: json_path })).resolves.toEqual(
+      {
+        entries: [
+          {
+            src: "HP",
+            dst: "生命值",
+            info: "",
+            case_sensitive: false,
+          },
+        ],
+      },
+    );
+    await expect(service.import_rules({ rule_type: "glossary", path: text_path })).resolves.toEqual(
+      { entries: [] },
+    );
+    await expect(service.import_rules({ rule_type: "glossary", path: "" })).resolves.toEqual({
+      entries: [],
     });
-    await expect(service.import_rules({ path: text_path })).resolves.toEqual({ entries: [] });
-    await expect(service.import_rules({ path: "" })).resolves.toEqual({ entries: [] });
     await expect(
       service.export_rules({
+        rule_type: "glossary",
         path: export_path,
         entries: [{ src: "HP", dst: "生命值" }],
       }),
     ).resolves.toEqual({ path: path.join(app_root, "exports", "rules.json").replace(/\\/gu, "/") });
     expect(fs.existsSync(path.join(app_root, "exports", "rules.json"))).toBe(true);
     expect(fs.existsSync(export_path)).toBe(true);
+  });
+
+  it("外部规则批次含坏项时整批拒绝", async () => {
+    const { service, app_root } = create_service();
+    const json_path = path.join(app_root, "invalid-rules.json");
+    fs.writeFileSync(json_path, '[{"src":"HP","dst":"生命值"},42]', "utf-8");
+
+    await expect(service.import_rules({ rule_type: "glossary", path: json_path })).rejects.toThrow(
+      "request.validation_failed",
+    );
   });
 
   it("任务 busy 时拒绝全部质量项目写但不阻塞预设文件 IO", async () => {
@@ -197,7 +215,7 @@ describe("QualityRuleService", () => {
     ).rejects.toThrow("data.revision_conflict");
     expect(publisher.publish_project_change).not.toHaveBeenCalled();
     expect(database.get_rules(lg_path, "glossary")).toEqual([
-      { src: "HP", dst: "生命值", info: "", regex: false, case_sensitive: false },
+      { src: "HP", dst: "生命值", info: "", case_sensitive: false },
     ]);
   });
 
@@ -218,7 +236,6 @@ describe("QualityRuleService", () => {
         src: "HP",
         dst: "生命值",
         info: "",
-        regex: false,
         case_sensitive: false,
       },
     ]);
@@ -352,7 +369,7 @@ describe("QualityRuleService", () => {
       changes: [{ updatedSections: ["quality", "analysis"] }],
     });
     expect(database.get_rules(lg_path, "glossary")).toEqual([
-      { src: "艾琳", dst: "Erin", info: "角色名", regex: false, case_sensitive: true },
+      { src: "艾琳", dst: "Erin", info: "角色名", case_sensitive: true },
     ]);
     expect(database.get_analysis_candidate_aggregates(lg_path)).toEqual([]);
   });

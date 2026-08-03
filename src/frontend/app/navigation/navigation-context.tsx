@@ -1,11 +1,6 @@
 import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 
-import type { RouteId } from "@frontend/app/navigation/types";
-
-type ProofreadingLookupIntent = {
-  keyword: string;
-  is_regex: boolean;
-};
+import type { ProofreadingLookupIntent, RouteId } from "@frontend/app/navigation/types";
 
 type AppNavigationContextValue = {
   selected_route: RouteId;

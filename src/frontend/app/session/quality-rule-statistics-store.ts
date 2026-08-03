@@ -1,7 +1,5 @@
-import {
-  QUALITY_STATISTICS_RULE_MODES,
-  type QualityStatisticsDependencySnapshot,
-} from "@shared/quality/quality-statistics";
+import { QUALITY_RULE_KINDS } from "@domain/quality";
+import { type QualityStatisticsDependencySnapshot } from "@shared/quality/quality-statistics";
 import {
   resolve_quality_statistics_item_text_change_scope,
   type QualityStatisticsTextChangeScope,
@@ -9,7 +7,7 @@ import {
 import type { ProjectChangeItemFieldPatch, ProjectDataSection } from "@shared/project-event";
 
 // 渲染进程统计调度消费的共享规则词表别名。
-export const QUALITY_RULE_STATISTICS_RULE_TYPES = QUALITY_STATISTICS_RULE_MODES;
+export const QUALITY_RULE_STATISTICS_RULE_TYPES = QUALITY_RULE_KINDS;
 
 // 页面、调度器和 store 共享的质量统计规则窄化类型。
 export type QualityRuleStatisticsRuleType = (typeof QUALITY_RULE_STATISTICS_RULE_TYPES)[number];

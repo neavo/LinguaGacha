@@ -7,7 +7,7 @@ export const zh_cn_text_replacement_page = {
   fields: {
     replacement: "替换",
 
-    statistics: "状态",
+    hit: "命中",
   },
   rule: {
     regex: "正则表达式",
@@ -21,7 +21,7 @@ export const zh_cn_text_replacement_page = {
     },
   },
 
-  statistics: {
+  hit: {
     subset_relations: "存在包含关系：",
 
     action: {

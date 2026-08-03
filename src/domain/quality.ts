@@ -14,6 +14,30 @@ export const QUALITY_RULE_KINDS = [
 export type TextPreserveMode = (typeof TEXT_PRESERVE_MODES)[number];
 export type QualityRuleKind = (typeof QUALITY_RULE_KINDS)[number];
 
+export type TextReplacementEntry = {
+  entry_id?: string; // 旧工程可缺失，消费前按原顺序补稳定身份
+  src: string; // 字面量或正则源模式
+  dst: string; // 规则命中后的替换文本
+  regex: boolean; // true 时 src/dst 使用规则型正则语义
+  case_sensitive: boolean; // 字面量和正则共同遵循的大小写策略
+};
+
+export type TextPreserveEntry = {
+  entry_id?: string; // 旧工程可缺失，消费前按原顺序补稳定身份
+  src: string; // 自定义模式下直接编译为正则
+  info: string; // 用户说明，不参与匹配
+};
+
+export type GlossaryEntry = {
+  entry_id?: string; // 旧工程可缺失，跨页面与统计前补稳定身份
+  src: string; // 只在原始源文字段匹配
+  dst: string; // 只在对应译文字段检查应用
+  info: string; // 提示词和页面使用的术语说明
+  case_sensitive: boolean; // 源文字面量的大小写策略
+};
+
+export type QualityRuleEntry = GlossaryEntry | TextReplacementEntry | TextPreserveEntry;
+
 export type QualityRuleDatabaseType =
   | "glossary"
   | "text_preserve"
@@ -37,7 +61,6 @@ type QualityRuleModel = {
     | "text_preserve_default_preset"
     | "pre_translation_replacement_default_preset"
     | "post_translation_replacement_default_preset"; // 默认预设 setting key
-  store_key: QualityRuleKind; // 渲染进程质量切片的公开 key
   preset_extension: ".json"; // 质量规则预设扩展名
   default_enabled: boolean; // 缺失启用 meta 时使用的领域默认值
   default_mode: TextPreserveMode; // 默认文本保护模式
@@ -51,7 +74,6 @@ const QUALITY_RULE_MODEL = {
     mode_meta_key: null,
     revision_meta_key: "quality_rule_revision.glossary",
     default_preset_setting_key: "glossary_default_preset",
-    store_key: "glossary",
     preset_extension: ".json",
     default_enabled: true,
     default_mode: "off",
@@ -63,7 +85,6 @@ const QUALITY_RULE_MODEL = {
     mode_meta_key: "text_preserve_mode",
     revision_meta_key: "quality_rule_revision.text_preserve",
     default_preset_setting_key: "text_preserve_default_preset",
-    store_key: "text_preserve",
     preset_extension: ".json",
     default_enabled: false,
     default_mode: "smart",
@@ -75,7 +96,6 @@ const QUALITY_RULE_MODEL = {
     mode_meta_key: null,
     revision_meta_key: "quality_rule_revision.pre_replacement",
     default_preset_setting_key: "pre_translation_replacement_default_preset",
-    store_key: "pre_replacement",
     preset_extension: ".json",
     default_enabled: false,
     default_mode: "off",
@@ -87,7 +107,6 @@ const QUALITY_RULE_MODEL = {
     mode_meta_key: null,
     revision_meta_key: "quality_rule_revision.post_replacement",
     default_preset_setting_key: "post_translation_replacement_default_preset",
-    store_key: "post_replacement",
     preset_extension: ".json",
     default_enabled: false,
     default_mode: "off",
@@ -98,7 +117,7 @@ const TEXT_PRESERVE_MODE_SET = new Set<TextPreserveMode>(TEXT_PRESERVE_MODES);
 const QUALITY_RULE_KIND_SET = new Set<QualityRuleKind>(QUALITY_RULE_KINDS);
 
 /**
- * QualityRule 是质量规则槽位实体，统一计算数据库类型、预设目录、meta key 和 store key
+ * QualityRule 是质量规则槽位实体，统一计算数据库类型、预设目录和 meta key。
  */
 export class QualityRule {
   public readonly kind: QualityRuleKind; // 质量规则槽位类型
@@ -127,13 +146,6 @@ export class QualityRule {
    */
   public static all(): QualityRule[] {
     return QUALITY_RULE_KINDS.map((kind) => new QualityRule(kind));
-  }
-
-  /**
-   * 输出公开 kind，跨层不传 class 实例
-   */
-  public to_json(): JsonRecord {
-    return { kind: this.kind };
   }
 
   /**
@@ -179,13 +191,6 @@ export class QualityRule {
   }
 
   /**
-   * 公开存储键名是渲染进程质量切片的稳定字段名
-   */
-  public get store_key(): QualityRuleKind {
-    return QUALITY_RULE_MODEL[this.kind].store_key;
-  }
-
-  /**
    * 质量规则预设固定为 json 文件
    */
   public get preset_extension(): ".json" {
@@ -209,64 +214,42 @@ export class QualityRule {
   /**
    * 将页面、导入文件或旧工程中的规则条目归一为数据库可写形状
    */
-  public static normalize_entry(entry: unknown): JsonRecord {
-    const record = read_record(entry);
-    const normalized_entry: JsonRecord = {
-      src: String(record["src"] ?? "").trim(),
-      dst: String(record["dst"] ?? "").trim(),
-      info: String(record["info"] ?? "").trim(),
-      regex: Boolean(record["regex"] ?? false),
-      case_sensitive: Boolean(record["case_sensitive"] ?? false),
-    };
-    const entry_id = String(record["entry_id"] ?? "").trim();
-    if (entry_id !== "") {
-      normalized_entry["entry_id"] = entry_id;
-    }
-    return normalized_entry;
-  }
+  public normalize_entry(entry: unknown): QualityRuleEntry {
+    const record = require_record(entry, "质量规则条目必须是对象");
+    const src = read_string_field(record, "src").trim();
+    if (src === "") throw new TypeError("质量规则 src 不能为空");
+    const entry_id = read_optional_string_field(record, "entry_id")?.trim();
+    const identity = entry_id === undefined || entry_id === "" ? {} : { entry_id };
 
-  /**
-   * 规则列表写入数据库前过滤坏项和空 src，保持 CRUD 与预设导入一致
-   */
-  public static normalize_entries(value: unknown): JsonRecord[] {
-    if (!Array.isArray(value)) {
-      return [];
+    if (this.kind === "text_preserve") {
+      return {
+        ...identity,
+        src,
+        info: read_string_field(record, "info", "").trim(),
+      };
     }
-    const result: JsonRecord[] = [];
-    for (const entry of value) {
-      if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-        continue;
-      }
-      const normalized = QualityRule.normalize_entry(entry);
-      if (normalized["src"] !== "") {
-        result.push(normalized);
-      }
+    if (this.kind === "pre_replacement" || this.kind === "post_replacement") {
+      return {
+        ...identity,
+        src,
+        dst: read_string_field(record, "dst", "").trim(),
+        regex: read_boolean_field(record, "regex", false),
+        case_sensitive: read_boolean_field(record, "case_sensitive", false),
+      };
     }
-    return result;
-  }
-
-  /**
-   * 项目 query 消费 quality slice 时复用同一 entries / meta / revision 口径
-   */
-  public normalize_slice(value: unknown): {
-    entries: JsonRecord[];
-    enabled: boolean;
-    mode: TextPreserveMode;
-    revision: number;
-  } {
-    const record = read_record(value);
     return {
-      entries: Array.isArray(record["entries"])
-        ? record["entries"].flatMap((entry) => {
-            return typeof entry === "object" && entry !== null && !Array.isArray(entry)
-              ? [{ ...(entry as JsonRecord) }]
-              : [];
-          })
-        : [],
-      enabled: this.normalize_enabled(record["enabled"]),
-      mode: this.normalize_mode(record["mode"]),
-      revision: Number(record["revision"] ?? 0),
+      ...identity,
+      src,
+      dst: read_string_field(record, "dst", "").trim(),
+      info: read_string_field(record, "info", "").trim(),
+      case_sensitive: read_boolean_field(record, "case_sensitive", false),
     };
+  }
+
+  /** 规则列表逐项归一；任一坏项会令整批失败。 */
+  public normalize_entries(value: unknown): QualityRuleEntry[] {
+    if (!Array.isArray(value)) throw new TypeError("质量规则 entries 必须是数组");
+    return value.map((entry) => this.normalize_entry(entry));
   }
 
   /**
@@ -341,6 +324,34 @@ function read_record(value: unknown): JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as JsonRecord)
     : {};
+}
+
+function require_record(value: unknown, message: string): JsonRecord {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new TypeError(message);
+  }
+  return value as JsonRecord;
+}
+
+function read_string_field(record: JsonRecord, key: string, fallback?: string): string {
+  const value = record[key];
+  if (value === undefined && fallback !== undefined) return fallback;
+  if (typeof value !== "string") throw new TypeError(`质量规则 ${key} 必须是字符串`);
+  return value;
+}
+
+function read_optional_string_field(record: JsonRecord, key: string): string | undefined {
+  const value = record[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string") throw new TypeError(`质量规则 ${key} 必须是字符串`);
+  return value;
+}
+
+function read_boolean_field(record: JsonRecord, key: string, fallback: boolean): boolean {
+  const value = record[key];
+  if (value === undefined) return fallback;
+  if (typeof value !== "boolean") throw new TypeError(`质量规则 ${key} 必须是布尔值`);
+  return value;
 }
 
 function normalize_boolean_meta_value(value: unknown, fallback: boolean): boolean {

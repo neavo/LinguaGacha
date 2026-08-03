@@ -4,7 +4,7 @@ type QualityRuleEntryWithId = {
 };
 
 // entry_id 去空后为空即视为缺失。
-export function normalize_quality_rule_entry_id(value: unknown): string | null {
+function normalize_quality_rule_entry_id(value: unknown): string | null {
   if (typeof value !== "string") {
     return null;
   }
@@ -40,9 +40,17 @@ function ensure_quality_rule_entry_id<Entry extends QualityRuleEntryWithId>(
 
 // 批量补 ID 时保留已有合法身份，只为缺失项生成迁移期身份。
 export function ensure_quality_rule_entry_ids<Entry extends QualityRuleEntryWithId>(
-  entries: Entry[],
+  entries: readonly Entry[],
 ): Array<Entry & { entry_id: string }> {
-  return entries.map((entry, index) => {
+  const resolved_entries = entries.map((entry, index) => {
     return ensure_quality_rule_entry_id(entry, index);
   });
+  const entry_ids = new Set<string>();
+  for (const entry of resolved_entries) {
+    if (entry_ids.has(entry.entry_id)) {
+      throw new TypeError(`质量规则 entry_id 重复：${entry.entry_id}`);
+    }
+    entry_ids.add(entry.entry_id);
+  }
+  return resolved_entries;
 }

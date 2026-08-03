@@ -22,7 +22,7 @@ describe("TranslationPrePipeline", () => {
       create_config(),
       create_quality_snapshot({
         text_preserve_mode: "CUSTOM",
-        text_preserve_entries: [{ src: "\\\\n\\[\\d+\\]" }],
+        text_preserve_entries: [{ src: "\\\\n\\[\\d+\\]", info: "" }],
       }),
     );
 
@@ -117,7 +117,7 @@ describe("TranslationPrePipeline", () => {
       create_config({ auto_process_prefix_suffix_preserved_text: false }),
       create_quality_snapshot({
         text_preserve_mode: "CUSTOM",
-        text_preserve_entries: [{ src: "<[^>]+>" }],
+        text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
       }),
     );
 
@@ -142,7 +142,7 @@ describe("TranslationPrePipeline", () => {
       create_config({ auto_process_prefix_suffix_preserved_text: false }),
       create_quality_snapshot({
         text_preserve_mode: "OFF",
-        text_preserve_entries: [{ src: "<[^>]+>" }],
+        text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
       }),
     );
 

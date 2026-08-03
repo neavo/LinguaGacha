@@ -9,6 +9,7 @@ import {
   type TsConversionDirection,
   type TsConversionItem,
 } from "../../shared/text/ts-conversion";
+import type { TextPreserveEntry } from "../../domain/quality";
 import {
   run_quality_statistics_worker_task,
   type QualityStatisticsWorkerTaskInput,
@@ -20,8 +21,7 @@ type TsConversionWorkerTaskInput = {
   convert_name: boolean;
   preserve_text: boolean;
   text_preserve_mode: string;
-  custom_rules: string[];
-  preset_rules_by_text_type: Record<string, string[]>;
+  text_preserve_entries: TextPreserveEntry[];
 };
 
 export type ComputeWorkerTaskInputByType = {

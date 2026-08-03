@@ -78,13 +78,13 @@ describe("TextReplacementTable", () => {
         sort_state={null}
         readonly={false}
         drag_disabled={false}
-        statistics_running
-        statistics_ready={false}
+        hit_running
+        hit_ready={false}
         selected_entry_ids={[]}
         active_entry_id={null}
         anchor_entry_id={null}
         restore_scroll_entry_id={null}
-        statistics_badge_by_entry_id={{}}
+        hit_badge_by_entry_id={{}}
         on_sort_change={vi.fn()}
         on_selection_change={vi.fn()}
         on_open_edit={vi.fn()}
@@ -102,6 +102,6 @@ describe("TextReplacementTable", () => {
     expect(html).toContain('data-state="active"');
     expect(html).toContain('data-state="inactive"');
     expect(html).toContain("app.action.loading");
-    expect(html).toContain('data-column-id="statistics" data-sort-disabled="true"');
+    expect(html).toContain('data-column-id="hit" data-sort-disabled="true"');
   });
 });

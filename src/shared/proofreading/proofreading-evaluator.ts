@@ -1,21 +1,26 @@
 import {
-  applyQualityCompiledTextParts,
-  applyQualityCompiledReplacements,
-  collectNonBlankQualityPreservedSegments,
-  createQualityTextPreserveRule,
-  partitionQualityCompiledGlossaryTerms,
-  stripQualityPreservedSegments,
-  type QualityCompiledContext,
-} from "../quality/quality-rule-compiled-context";
+  QualityRule,
+  type GlossaryEntry,
+  type TextPreserveEntry,
+  type TextReplacementEntry,
+} from "../../domain/quality";
 import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
 import type {
   ProofreadingClientItem,
-  ProofreadingGlossaryTerm,
   ProofreadingItemRecord,
   ProofreadingWarningFragmentsByCode,
 } from "./proofreading-types";
 import { create_proofreading_client_item } from "./list";
-import type { TextPreserveRule } from "../text/text-preserve-rules";
+import {
+  build_text_preserve_rule,
+  collect_non_blank_text_preserve_segments,
+  type TextPreserveRule,
+} from "../text/text-preserve-rules";
+import {
+  apply_text_replacements,
+  compile_text_replacements,
+  type CompiledTextReplacements,
+} from "../text/text-replacement-rules";
 import {
   collect_translation_residue_fragments,
   has_translation_retry_reached_review_threshold,
@@ -26,6 +31,45 @@ import {
   read_item_source_text_parts,
   read_item_translation_text_parts,
 } from "../item-text";
+import {
+  evaluate_glossary_applications,
+  compile_glossary,
+  match_glossary_source,
+  type CompiledGlossary,
+  type GlossaryApplication,
+} from "../quality/glossary";
+import { normalize_quality_rule_entries } from "../quality/quality-rule-entry";
+
+export type ProofreadingEvaluationContext = {
+  glossary: CompiledGlossary; // 术语始终按原始 src/name_src 命中
+  pre_replacements: CompiledTextReplacements | null; // 仅译前规则参与源文校对
+  text_preserve_entries: TextPreserveEntry[]; // 按 item 文本类型延迟编译的规范规则
+};
+
+/** 一次解析质量快照并验证全部校对规则，禁用态也不能掩盖损坏事实。 */
+export function buildProofreadingEvaluationContext(
+  quality: QualitySnapshot,
+): ProofreadingEvaluationContext {
+  const glossary_entries = normalize_quality_rule_entries(
+    QualityRule.from_json("glossary"),
+    quality.glossary.entries,
+  ) as GlossaryEntry[];
+  const pre_entries = normalize_quality_rule_entries(
+    QualityRule.from_json("pre_replacement"),
+    quality.pre_replacement.entries,
+  ) as TextReplacementEntry[];
+  return {
+    glossary: compile_glossary(quality.glossary.enabled ? glossary_entries : []),
+    pre_replacements:
+      quality.pre_replacement.enabled && pre_entries.length > 0
+        ? compile_text_replacements(pre_entries)
+        : null,
+    text_preserve_entries: normalize_quality_rule_entries(
+      QualityRule.from_json("text_preserve"),
+      quality.text_preserve.entries,
+    ) as TextPreserveEntry[],
+  };
+}
 
 // 跳过类状态仍要进入筛选统计，但不参与警告计算。
 const PROOFREADING_SKIPPED_WARNING_STATUSES = new Set([
@@ -69,7 +113,7 @@ function build_text_preserve_failed_fragments(args: {
  */
 export function evaluateProofreadingItem(args: {
   item: ProofreadingItemRecord;
-  quality_context: QualityCompiledContext;
+  quality_context: ProofreadingEvaluationContext;
   quality: QualitySnapshot;
   sourceLanguage: string;
   targetLanguage: string;
@@ -77,15 +121,14 @@ export function evaluateProofreadingItem(args: {
 }): ProofreadingClientItem {
   const warnings: string[] = [];
   const warning_fragments_by_code: ProofreadingWarningFragmentsByCode = {};
-  const failed_terms: ProofreadingGlossaryTerm[] = [];
-  const applied_terms: ProofreadingGlossaryTerm[] = [];
+  let glossary_applications: GlossaryApplication[] = [];
   const sample_rule_cache_key = `${args.item.text_type}:${args.quality.text_preserve.mode}:${args.quality.text_preserve.revision}`;
   let sample_rule = args.sample_rule_cache.get(sample_rule_cache_key);
   if (sample_rule === undefined) {
-    sample_rule = createQualityTextPreserveRule({
+    sample_rule = build_text_preserve_rule({
       mode: args.quality.text_preserve.mode,
       text_type: args.item.text_type,
-      entries: args.quality.text_preserve.entries,
+      entries: args.quality_context.text_preserve_entries,
     });
     args.sample_rule_cache.set(sample_rule_cache_key, sample_rule);
   }
@@ -98,17 +141,16 @@ export function evaluateProofreadingItem(args: {
       item: args.item,
       warnings,
       warning_fragments_by_code,
-      failed_terms,
-      applied_terms,
+      glossary_applications,
     });
   }
 
   if (args.item.dst !== "") {
-    const { src_replaced, dst_replaced } = applyQualityCompiledReplacements(
-      args.item,
-      args.quality_context,
+    const src_replaced = apply_pre_replacements_by_line(
+      args.item.src,
+      args.quality_context.pre_replacements,
     );
-    const normalized_dst = stripQualityPreservedSegments(args.item.dst, sample_rule);
+    const normalized_dst = strip_preserved_segments(args.item.dst, sample_rule);
     const residue_fragments = collect_translation_residue_fragments({
       text: normalized_dst,
       sourceLanguage: args.sourceLanguage,
@@ -125,14 +167,8 @@ export function evaluateProofreadingItem(args: {
       warning_fragments_by_code.HANGEUL = hangeul_fragments;
     }
 
-    const source_preserved_segments = collectNonBlankQualityPreservedSegments(
-      src_replaced,
-      sample_rule,
-    );
-    const translation_preserved_segments = collectNonBlankQualityPreservedSegments(
-      dst_replaced,
-      sample_rule,
-    );
+    const source_preserved_segments = collect_non_blank_segments(src_replaced, sample_rule);
+    const translation_preserved_segments = collect_non_blank_segments(args.item.dst, sample_rule);
     if (
       source_preserved_segments.join("\u0000") !== translation_preserved_segments.join("\u0000")
     ) {
@@ -145,8 +181,8 @@ export function evaluateProofreadingItem(args: {
 
     if (
       has_translation_similarity_issue({
-        src: stripQualityPreservedSegments(src_replaced, sample_rule),
-        dst: stripQualityPreservedSegments(dst_replaced, sample_rule),
+        src: strip_preserved_segments(src_replaced, sample_rule),
+        dst: strip_preserved_segments(args.item.dst, sample_rule),
         sourceLanguage: args.sourceLanguage,
         targetLanguage: args.targetLanguage,
       })
@@ -156,21 +192,15 @@ export function evaluateProofreadingItem(args: {
   }
 
   if (args.quality_context.glossary.entries.length > 0) {
-    const replaced_parts = applyQualityCompiledTextParts(
-      {
-        source: read_item_source_text_parts(args.item),
-        translation: read_item_translation_text_parts(args.item),
-      },
-      args.quality_context,
+    glossary_applications = evaluate_glossary_applications(
+      match_glossary_source(args.quality_context.glossary, read_item_source_text_parts(args.item)),
+      read_item_translation_text_parts(args.item),
     );
-    const glossary_result = partitionQualityCompiledGlossaryTerms({
-      glossary: args.quality_context.glossary,
-      source_replaced_parts: replaced_parts.source,
-      translation_replaced_parts: replaced_parts.translation,
-    });
-    failed_terms.push(...glossary_result.failed_terms);
-    applied_terms.push(...glossary_result.applied_terms);
-    if (glossary_result.failed_terms.length > 0) {
+    if (
+      glossary_applications.some((application) =>
+        application.fields.some((field) => !field.applied),
+      )
+    ) {
       warnings.push("GLOSSARY");
     }
   }
@@ -183,7 +213,27 @@ export function evaluateProofreadingItem(args: {
     item: args.item,
     warnings,
     warning_fragments_by_code,
-    failed_terms,
-    applied_terms,
+    glossary_applications,
   });
+}
+
+/** 译前替换遵循翻译入口的逐行语义；校对不逆向猜测译后规则。 */
+function apply_pre_replacements_by_line(
+  text: string,
+  replacements: CompiledTextReplacements | null,
+): string {
+  return replacements === null
+    ? text
+    : text
+        .split("\n")
+        .map((line) => apply_text_replacements(line, replacements))
+        .join("\n");
+}
+
+function strip_preserved_segments(text: string, rule: TextPreserveRule | null): string {
+  return rule?.replace(text, "") ?? text;
+}
+
+function collect_non_blank_segments(text: string, rule: TextPreserveRule | null): string[] {
+  return rule === null ? [] : collect_non_blank_text_preserve_segments(text, rule);
 }

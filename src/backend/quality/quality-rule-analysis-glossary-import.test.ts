@@ -71,7 +71,6 @@ describe("prepare_analysis_glossary_import_from_cache", () => {
         src: "艾琳",
         dst: "Erin",
         info: "角色名",
-        regex: false,
         case_sensitive: true,
       },
     ]);
@@ -93,7 +92,6 @@ describe("prepare_analysis_glossary_import_from_cache", () => {
                 src: "艾琳",
                 dst: "Eileen",
                 info: "既有角色名",
-                regex: false,
                 case_sensitive: true,
               },
             ],
@@ -113,7 +111,6 @@ describe("prepare_analysis_glossary_import_from_cache", () => {
         src: "艾琳",
         dst: "Eileen",
         info: "既有角色名",
-        regex: false,
         case_sensitive: true,
       },
     ]);
@@ -131,7 +128,6 @@ describe("prepare_analysis_glossary_import_from_cache", () => {
                 src: "艾琳",
                 dst: "Eileen",
                 info: "既有角色名",
-                regex: false,
                 case_sensitive: true,
               },
             ],
@@ -149,7 +145,6 @@ describe("prepare_analysis_glossary_import_from_cache", () => {
         src: "艾琳",
         dst: "Erin",
         info: "角色名",
-        regex: false,
         case_sensitive: true,
       },
     ]);
@@ -209,7 +204,6 @@ describe("prepare_analysis_glossary_import_from_cache", () => {
         src: "艾琳",
         dst: "Erin",
         info: "角色名",
-        regex: false,
         case_sensitive: true,
       },
     ]);

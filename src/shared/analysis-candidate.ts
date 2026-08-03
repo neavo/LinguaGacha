@@ -2,7 +2,6 @@ export type AnalysisCandidateGlossaryEntry = {
   src: string; // 候选原文，作为候选池消费和术语表 key 的共同身份
   dst: string; // 最高票译文，进入术语表前已去掉空白
   info: string; // 最高票类型说明，决定候选是否能作为术语导出
-  regex: false; // 分析候选只生成普通术语，不生成正则规则
   case_sensitive: boolean; // 是否大小写敏感，沿用候选聚合行的服务端事实
 };
 
@@ -85,7 +84,6 @@ export function build_analysis_glossary_entry_from_candidate(
     src,
     dst,
     info,
-    regex: false,
     case_sensitive: Boolean(value["case_sensitive"]),
   };
 }

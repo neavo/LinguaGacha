@@ -6,22 +6,25 @@ import type { LogManager } from "../log/log-manager";
 import { t_main_log } from "../log/log-text";
 import { NativeFs } from "../../native/native-fs";
 import * as AppErrors from "../../shared/error";
-import type { JsonValue, MutableJsonRecord } from "../../domain/json";
+import type { JsonValue } from "../../domain/json";
 import { JsonTool } from "../../shared/utils/json-tool";
 import { Prompt, type PromptKind } from "../../domain/prompt";
-import { is_json_record } from "../../domain/json";
-import { QualityRule, type QualityRuleKind, type TextPreserveMode } from "../../domain/quality";
+import {
+  QualityRule,
+  type QualityRuleEntry,
+  type QualityRuleKind,
+  type TextPreserveMode,
+} from "../../domain/quality";
+import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
 import type {
   ProjectPromptInput,
   ProjectQualityRuleInput,
   ProjectTaskInput,
 } from "./project-task-input";
+import { build_project_quality_rule_input } from "./project-task-input";
 
 // 文本保护默认 mode 的权威在质量规则领域模型，初始化器只消费该项目事实默认值。
 const DEFAULT_TEXT_PRESERVE_MODE = QualityRule.from_json("text_preserve").default_mode;
-// 文本保护默认预设成功加载后，项目事实切换为用户可见的 custom 模式。
-const LOADED_TEXT_PRESERVE_PRESET_MODE = "custom" satisfies TextPreserveMode;
-
 // 领域模型不承载日志展示名，初始化器只保留这层面向日志的映射。
 const QUALITY_DEFAULT_PRESET_DISPLAY_NAMES: Record<QualityRuleKind, string> = {
   glossary: "术语表",
@@ -85,7 +88,7 @@ export class ProjectDefaultPresetReader {
       }
       try {
         const entries = this.read_quality_rule_preset(rule, virtual_id);
-        quality_rules.push(this.build_quality_rule_input(rule, entries));
+        quality_rules.push(build_project_quality_rule_input(rule, entries, true));
         loaded_names.push(QUALITY_DEFAULT_PRESET_DISPLAY_NAMES[rule.kind]);
       } catch (error) {
         this.log_non_blocking_warning(
@@ -144,10 +147,8 @@ export class ProjectDefaultPresetReader {
     );
   }
 
-  /**
-   * 读取质量规则预设，并把非对象条目过滤掉。
-   */
-  private read_quality_rule_preset(rule: QualityRule, virtual_id: string): MutableJsonRecord[] {
+  /** 读取质量规则预设；任一非法条目由调用方现有 warning/skip 分支整体跳过。 */
+  private read_quality_rule_preset(rule: QualityRule, virtual_id: string): QualityRuleEntry[] {
     const preset_path = this.resolve_quality_rule_preset_path(rule, virtual_id);
     const data = JsonTool.parseStrict(this.native_fs.read_file(preset_path)) as unknown;
     if (!Array.isArray(data)) {
@@ -157,7 +158,7 @@ export class ProjectDefaultPresetReader {
         },
       });
     }
-    return data.filter((entry): entry is MutableJsonRecord => is_json_record(entry));
+    return normalize_quality_rule_entries(rule, data);
   }
 
   /**
@@ -194,21 +195,6 @@ export class ProjectDefaultPresetReader {
       builtin_directory: this.paths.get_prompt_builtin_preset_dir(prompt.kind),
       user_directory: this.paths.get_prompt_user_preset_dir(prompt.kind),
     }).file_path;
-  }
-
-  /**
-   * 将规则模型收窄为生命周期可直接写入的显式输入。
-   */
-  private build_quality_rule_input(
-    rule: QualityRule,
-    entries: MutableJsonRecord[],
-  ): ProjectQualityRuleInput {
-    return {
-      kind: rule.kind,
-      entries,
-      enabled: rule.enabled_meta_key === null ? null : true,
-      mode: rule.mode_meta_key === null ? null : LOADED_TEXT_PRESERVE_PRESET_MODE,
-    };
   }
 
   /**

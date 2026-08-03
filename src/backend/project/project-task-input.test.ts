@@ -1,11 +1,34 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  build_project_quality_rule_input,
   resolve_project_prompt_storage,
   resolve_project_quality_rule_storage,
 } from "./project-task-input";
+import { QualityRule } from "../../domain/quality";
 
 describe("project-task-input", () => {
+  it("按规则类型构造唯一项目输入形状", () => {
+    expect(
+      build_project_quality_rule_input(
+        QualityRule.from_json("text_preserve"),
+        [{ src: "<[^>]+>", info: "" }],
+        true,
+      ),
+    ).toEqual({
+      kind: "text_preserve",
+      entries: [{ src: "<[^>]+>", info: "" }],
+      enabled: null,
+      mode: "custom",
+    });
+    expect(build_project_quality_rule_input(QualityRule.from_json("glossary"), [], false)).toEqual({
+      kind: "glossary",
+      entries: [],
+      enabled: false,
+      mode: null,
+    });
+  });
+
   it("质量规则映射到唯一物理存储键", () => {
     expect(resolve_project_quality_rule_storage("glossary")).toEqual({
       database_type: "glossary",

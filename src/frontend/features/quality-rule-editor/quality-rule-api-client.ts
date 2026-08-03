@@ -1,27 +1,40 @@
 import { api_fetch } from "@frontend/app/desktop/desktop-api";
+import type {
+  GlossaryEntry,
+  QualityRuleKind,
+  TextPreserveEntry,
+  TextReplacementEntry,
+} from "@domain/quality";
 
-export type QualityRuleSectionRevisions = Record<string, number | undefined>;
-export type QualityRuleType = "glossary" | "pre_replacement" | "post_replacement" | "text_preserve";
+type QualityRuleSectionRevisions = Record<string, number | undefined>;
+type QualityRuleType = QualityRuleKind;
 
-export type QualityRuleQuerySlice = {
-  enabled?: unknown;
-  mode?: unknown;
-  entries?: unknown;
+type QualityRuleEntryByType = {
+  glossary: GlossaryEntry;
+  pre_replacement: TextReplacementEntry;
+  post_replacement: TextReplacementEntry;
+  text_preserve: TextPreserveEntry;
 };
 
-export type QualityRuleQueryResponse = {
+export type QualityRuleQuerySlice<TType extends QualityRuleType = QualityRuleType> = {
+  enabled?: unknown;
+  mode?: unknown;
+  entries?: QualityRuleEntryByType[TType][];
+};
+
+type QualityRuleQueryResponse<TType extends QualityRuleType = QualityRuleType> = {
   projectPath: string;
   sectionRevisions?: QualityRuleSectionRevisions;
-  qualityRule?: QualityRuleQuerySlice;
+  qualityRule?: QualityRuleQuerySlice<TType>;
 };
 
 /**
  * 通过统一质量规则查询入口读取指定规则切片，页面负责在边界处窄化载荷。
  */
-export async function query_quality_rules(
-  rule_type: QualityRuleType,
-): Promise<QualityRuleQueryResponse> {
-  return await api_fetch<QualityRuleQueryResponse>("/api/quality/rules/query", {
+export async function query_quality_rules<TType extends QualityRuleType>(
+  rule_type: TType,
+): Promise<QualityRuleQueryResponse<TType>> {
+  return await api_fetch<QualityRuleQueryResponse<TType>>("/api/quality/rules/query", {
     rule_type,
   });
 }

@@ -379,8 +379,12 @@ describe("ProjectLifecycleService", () => {
         }),
       ).resolves.toEqual({ project: { path: project_path, loaded: true } });
 
-      expect(database.get_rules(project_path, "glossary")).toEqual([{ src: "魔力", dst: "Mana" }]);
-      expect(database.get_rules(project_path, "text_preserve")).toEqual([{ src: "\\[[^\\]]+\\]" }]);
+      expect(database.get_rules(project_path, "glossary")).toEqual([
+        { src: "魔力", dst: "Mana", info: "", case_sensitive: false },
+      ]);
+      expect(database.get_rules(project_path, "text_preserve")).toEqual([
+        { src: "\\[[^\\]]+\\]", info: "" },
+      ]);
       expect(database.get_rule_text(project_path, "translation_prompt")).toBe("翻译提示词");
       expect(database.get_all_meta(project_path)).toMatchObject({
         glossary_enable: true,

@@ -82,7 +82,7 @@ function create_cache_read_port(): CacheReadPort & {
 function create_worker(): ComputeWorkerClient & { run: ReturnType<typeof vi.fn> } {
   return {
     run: vi.fn(async (task: ComputeWorkerTask) => ({
-      rule_key: task.type === "quality_statistics" ? task.input.rule_key : "",
+      entry_ids: task.type === "quality_statistics" ? task.input.completed_entry_ids : [],
       snapshot_signature:
         task.type === "quality_statistics" ? task.input.completed_snapshot.snapshot_signature : "",
     })),
@@ -117,6 +117,30 @@ function create_cache_change(overrides: Partial<CacheChange> = {}): CacheChange 
 }
 
 describe("QualityStatisticsCache", () => {
+  it("坏质量规则事实不会在统计输入边界被静默过滤", async () => {
+    const cache_port = create_cache_read_port();
+    vi.spyOn(cache_port.quality, "readBlock").mockReturnValue({
+      glossary: { entries: [null], enabled: true, mode: "custom", revision: 1 },
+    });
+    const worker = create_worker();
+    const cache = new QualityStatisticsCache({ cache: cache_port, workerClient: worker });
+
+    await expect(cache.read("glossary")).rejects.toThrow("质量规则条目必须是对象");
+    expect(worker.run).not.toHaveBeenCalled();
+  });
+
+  it("非数组规则事实不会被降级为空统计", async () => {
+    const cache_port = create_cache_read_port();
+    vi.spyOn(cache_port.quality, "readBlock").mockReturnValue({
+      glossary: { entries: { src: "HP" }, enabled: true, mode: "custom", revision: 1 },
+    });
+    const worker = create_worker();
+    const cache = new QualityStatisticsCache({ cache: cache_port, workerClient: worker });
+
+    await expect(cache.read("glossary")).rejects.toThrow("entries 必须是数组");
+    expect(worker.run).not.toHaveBeenCalled();
+  });
+
   it("同一依赖签名重复读取时复用统计结果", async () => {
     const cache_port = create_cache_read_port();
     const worker = create_worker();
@@ -161,7 +185,7 @@ describe("QualityStatisticsCache", () => {
 
     await expect(cache.read("glossary")).rejects.toThrow("worker failed");
     await expect(cache.read("glossary")).resolves.toMatchObject({
-      statistics: { rule_key: "glossary" },
+      statistics: { entry_ids: ["hp"] },
     });
 
     expect(worker.run).toHaveBeenCalledTimes(2);

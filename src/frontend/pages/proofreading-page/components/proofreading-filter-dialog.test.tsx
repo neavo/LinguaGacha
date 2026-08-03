@@ -28,7 +28,7 @@ const filters = {
   warning_types: [],
   statuses: [],
   file_paths: ["chapter01.txt", "appendix.txt"],
-  glossary_terms: [],
+  glossary_entry_ids: [],
   include_without_glossary_miss: true,
 };
 
@@ -113,5 +113,28 @@ describe("ProofreadingFilterDialog", () => {
 
     expect(rendered.textContent).toContain("appendix.txt");
     expect(rendered.textContent).not.toContain("chapter01.txt");
+  });
+
+  it("同文案术语仍按 entry_id 独立切换", async () => {
+    const on_change = vi.fn();
+    const rendered = await render_dialog({
+      on_change,
+      panel: {
+        ...panel,
+        glossary_term_entries: [
+          { entry_id: "first", src: "HP", dst: "生命值", count: 1 },
+          { entry_id: "second", src: "HP", dst: "生命值", count: 2 },
+        ],
+      },
+    });
+    const term_buttons = [...rendered.querySelectorAll("button")].filter((button) =>
+      button.textContent?.includes("HP -> 生命值"),
+    );
+
+    await act(async () => term_buttons[1]?.click());
+
+    expect(on_change).toHaveBeenCalledWith(
+      expect.objectContaining({ glossary_entry_ids: ["second"] }),
+    );
   });
 });

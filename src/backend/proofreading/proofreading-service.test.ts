@@ -497,6 +497,23 @@ describe("ProofreadingService", () => {
     ]);
   });
 
+  it("替换全部固定按大小写不敏感匹配", async () => {
+    const { database, service, lg_path } = create_service();
+    database.set_items(lg_path, [create_project_item({ dst: "Magic magic", status: "PROCESSED" })]);
+
+    await service.replace_all({
+      item_ids: [1],
+      search_text: "Magic",
+      replace_text: "魔法",
+      is_regex: false,
+      expected_section_revisions: { items: 0, proofreading: 0 },
+    });
+
+    expect(database.get_all_items(lg_path)).toEqual([
+      create_project_item({ dst: "魔法 魔法", status: "PROCESSED" }),
+    ]);
+  });
+
   it("替换全部能只更新第 0 槽姓名译文并保留正文状态", async () => {
     const { database, service, lg_path } = create_service();
     database.set_items(lg_path, [

@@ -24,7 +24,7 @@ export const de_de_text_preserve_page = {
   },
   fields: {
     note: "Bemerkungen (Nur zur Referenz, keine tatsächliche Wirkung)",
-    statistics: "Status",
+    hit: "Treffer",
   },
   filter: {
     scope: {
@@ -38,12 +38,8 @@ export const de_de_text_preserve_page = {
       name_placeholder: "Bitte Namen der Voreinstellung eingeben …",
     },
   },
-  statistics: {
+  hit: {
     hit_count: "Anzahl übereinstimmender Einträge: {COUNT}",
-
-    action: {
-      search_relation: "Enthalten-Beziehung suchen",
-    },
   },
 
   feedback: {

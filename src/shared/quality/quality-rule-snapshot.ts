@@ -1,14 +1,21 @@
-import { QualityRule, type TextPreserveMode } from "../../domain/quality";
+import {
+  QualityRule,
+  type GlossaryEntry,
+  type TextPreserveEntry,
+  type TextPreserveMode,
+  type TextReplacementEntry,
+} from "../../domain/quality";
 import type { JsonRecord } from "../../domain/json";
+import { normalize_quality_rule_entries } from "./quality-rule-entry";
 
 type QualityRuleSnapshot = {
   glossary_enable: boolean;
   text_preserve_mode: TextPreserveMode;
-  text_preserve_entries: JsonRecord[];
+  text_preserve_entries: TextPreserveEntry[];
   pre_replacement_enable: boolean;
-  pre_replacement_entries: JsonRecord[];
+  pre_replacement_entries: TextReplacementEntry[];
   post_replacement_enable: boolean;
-  post_replacement_entries: JsonRecord[];
+  post_replacement_entries: TextReplacementEntry[];
   glossary_revision: number;
   text_preserve_revision: number;
   pre_replacement_revision: number;
@@ -19,7 +26,7 @@ type QualityRuleSnapshot = {
   analysis_prompt_enable: boolean;
   analysis_prompt: string;
   analysis_prompt_revision: number;
-  glossary_entries: JsonRecord[];
+  glossary_entries: GlossaryEntry[];
 };
 
 // 页面和 reader 消费的质量规则最小快照。
@@ -50,25 +57,6 @@ export type PromptSlice = {
  */
 export class QualityRuleSnapshotTool {
   /**
-   * 统一复制有效规则项，避免不同规则各写一套筛选逻辑
-   */
-  public static copy_non_empty_entries(raw_entries: unknown): JsonRecord[] {
-    return this.normalize_entries(raw_entries).flatMap((entry) => {
-      return String(entry["src"] ?? "").trim() === "" ? [] : [{ ...entry }];
-    });
-  }
-
-  /**
-   * 只保留普通对象项，数组、null 和标量不能进入快照
-   */
-  public static normalize_entries(raw_entries: unknown): JsonRecord[] {
-    if (!Array.isArray(raw_entries)) {
-      return [];
-    }
-    return raw_entries.flatMap((entry) => (is_record(entry) ? [{ ...entry }] : []));
-  }
-
-  /**
    * revision 只接受可确定为整数的标量，并收敛到非负有限值。
    */
   public static normalize_revision(value: unknown): number {
@@ -98,7 +86,6 @@ export class QualityRuleSnapshotTool {
     const post_replacement = read_record(quality["post_replacement"]);
     const translation = read_record(prompts["translation"]);
     const analysis = read_record(prompts["analysis"]);
-    const glossary_entries = this.normalize_entries(glossary["entries"]);
     const glossary_rule = QualityRule.from_json("glossary");
     const text_preserve_rule = QualityRule.from_json("text_preserve");
     const pre_replacement_rule = QualityRule.from_json("pre_replacement");
@@ -107,11 +94,20 @@ export class QualityRuleSnapshotTool {
     return {
       glossary_enable: glossary_rule.normalize_enabled(glossary["enabled"]),
       text_preserve_mode: text_preserve_rule.normalize_mode(text_preserve["mode"]),
-      text_preserve_entries: this.copy_non_empty_entries(text_preserve["entries"]),
+      text_preserve_entries: normalize_quality_rule_entries(
+        text_preserve_rule,
+        text_preserve["entries"] ?? [],
+      ) as TextPreserveEntry[],
       pre_replacement_enable: pre_replacement_rule.normalize_enabled(pre_replacement["enabled"]),
-      pre_replacement_entries: this.copy_non_empty_entries(pre_replacement["entries"]),
+      pre_replacement_entries: normalize_quality_rule_entries(
+        pre_replacement_rule,
+        pre_replacement["entries"] ?? [],
+      ) as TextReplacementEntry[],
       post_replacement_enable: post_replacement_rule.normalize_enabled(post_replacement["enabled"]),
-      post_replacement_entries: this.copy_non_empty_entries(post_replacement["entries"]),
+      post_replacement_entries: normalize_quality_rule_entries(
+        post_replacement_rule,
+        post_replacement["entries"] ?? [],
+      ) as TextReplacementEntry[],
       glossary_revision: this.normalize_revision(glossary["revision"] ?? 0),
       text_preserve_revision: this.normalize_revision(text_preserve["revision"] ?? 0),
       pre_replacement_revision: this.normalize_revision(pre_replacement["revision"] ?? 0),
@@ -122,7 +118,10 @@ export class QualityRuleSnapshotTool {
       analysis_prompt_enable: Boolean(analysis["enabled"] ?? false),
       analysis_prompt: String(analysis["text"] ?? ""),
       analysis_prompt_revision: this.normalize_revision(analysis["revision"] ?? 0),
-      glossary_entries: this.copy_non_empty_entries(glossary_entries),
+      glossary_entries: normalize_quality_rule_entries(
+        glossary_rule,
+        glossary["entries"] ?? [],
+      ) as GlossaryEntry[],
     };
   }
 

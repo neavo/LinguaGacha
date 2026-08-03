@@ -203,11 +203,11 @@ function create_pre_replacement_quality(
   };
 }
 
-let current_statistics_cache: QualityRuleStatisticsCacheSnapshot;
+let current_hit_cache: QualityRuleStatisticsCacheSnapshot;
 let project_change_seq = 0;
 let project_change_sections: Array<"items" | "quality"> = ["quality"];
 
-function create_statistics_cache(
+function create_hit_cache(
   args: Partial<QualityRuleStatisticsCacheSnapshot>,
 ): QualityRuleStatisticsCacheSnapshot {
   return {
@@ -323,7 +323,7 @@ vi.mock("@frontend/app/feedback/desktop-toast", () => {
 
 vi.mock("@frontend/app/session/quality-rule-statistics-context", () => {
   return {
-    useQualityRuleStatistics: () => current_statistics_cache,
+    useQualityRuleStatistics: () => current_hit_cache,
   };
 });
 
@@ -585,7 +585,7 @@ describe("useTextReplacementPageState", () => {
       revision: 2,
     };
     run_state.revisions.sections.quality = 2;
-    current_statistics_cache = create_statistics_cache({});
+    current_hit_cache = create_hit_cache({});
   });
 
   afterEach(async () => {
@@ -716,8 +716,8 @@ describe("useTextReplacementPageState", () => {
   it("首次进入页面时直接读取预热后的统计结果", async () => {
     await mount_probe();
 
-    expect(latest_state?.statistics_ready).toBe(true);
-    expect(latest_state?.statistics_badge_by_entry_id["hero::0"]?.matched_count).toBe(1);
+    expect(latest_state?.hit_ready).toBe(true);
+    expect(latest_state?.hit_badge_by_entry_id["hero::0"]?.matched_count).toBe(1);
   });
 
   it("功能开关写入成功后显示对应状态提醒", async () => {
@@ -755,18 +755,18 @@ describe("useTextReplacementPageState", () => {
     expect(push_toast_mock).not.toHaveBeenCalledWith("success", expect.anything());
   });
 
-  it("统计未 ready 时不会启用 statistics 排序", async () => {
+  it("统计未 ready 时不会启用 hit 排序", async () => {
     await mount_probe();
 
     await act(async () => {
       latest_state?.apply_table_sort_state({
-        column_id: "statistics",
+        column_id: "hit",
         direction: "descending",
       });
     });
-    expect(latest_state?.sort_state?.column_id).toBe("statistics");
+    expect(latest_state?.sort_state?.column_id).toBe("hit");
 
-    current_statistics_cache = create_statistics_cache({
+    current_hit_cache = create_hit_cache({
       phase: "running",
     });
     await act(async () => {
@@ -779,9 +779,9 @@ describe("useTextReplacementPageState", () => {
       );
     });
 
-    expect(latest_state?.statistics_ready).toBe(false);
+    expect(latest_state?.hit_ready).toBe(false);
     expect(latest_state?.sort_state).toBeNull();
-    expect(latest_state?.statistics_badge_by_entry_id["hero::0"]?.matched_count).toBe(1);
+    expect(latest_state?.hit_badge_by_entry_id["hero::0"]?.matched_count).toBe(1);
   });
 
   it("编辑窗口保存时会先关闭弹窗，不阻塞等待保存回包", async () => {

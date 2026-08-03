@@ -94,19 +94,19 @@ export function GlossaryPage(_props: ScreenComponentProps): JSX.Element {
             sort_state={glossary_page_state.sort_state}
             readonly={glossary_page_state.readonly}
             drag_disabled={glossary_page_state.drag_disabled}
-            statistics_sort_available={glossary_page_state.statistics_sort_available}
+            hit_sort_available={glossary_page_state.hit_sort_available}
             selected_entry_ids={glossary_page_state.selected_entry_ids}
             active_entry_id={glossary_page_state.active_entry_id}
             anchor_entry_id={glossary_page_state.selection_anchor_entry_id}
             restore_scroll_entry_id={glossary_page_state.restore_scroll_entry_id}
-            statistics_badge_by_entry_id={glossary_page_state.statistics_badge_by_entry_id}
+            hit_badge_by_entry_id={glossary_page_state.hit_badge_by_entry_id}
             on_sort_change={glossary_page_state.apply_table_sort_state}
             on_selection_change={glossary_page_state.apply_table_selection}
             on_open_edit={glossary_page_state.open_edit_dialog}
             on_toggle_case_sensitive={glossary_page_state.toggle_case_sensitive_for_selected}
             on_reorder={glossary_page_state.reorder_selected_entries}
-            on_query_entry_source={glossary_page_state.query_entry_source_from_statistics}
-            on_search_entry_relations={glossary_page_state.search_entry_relations_from_statistics}
+            on_query_entry_source={glossary_page_state.query_entry_source_from_hit}
+            on_search_entry_relations={glossary_page_state.search_entry_relations_from_hit}
           />
         </FileDropZone>
       </div>

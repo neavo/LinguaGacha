@@ -10,7 +10,7 @@ export const de_de_text_replacement_page = {
   fields: {
     replacement: "Ersetzung",
 
-    statistics: "Treffer",
+    hit: "Treffer",
   },
   rule: {
     regex: "Regulärer Ausdruck",
@@ -24,7 +24,7 @@ export const de_de_text_replacement_page = {
     },
   },
 
-  statistics: {
+  hit: {
     subset_relations: "Teilmengenbeziehungen:",
 
     action: {

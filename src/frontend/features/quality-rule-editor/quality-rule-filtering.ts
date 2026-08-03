@@ -78,7 +78,7 @@ export function compare_quality_rule_text_value(
 /**
  * 只为已完成统计的条目生成徽章，避免把尚未计算误显示为零命中。
  */
-export function resolve_quality_rule_statistics_badge_kind(
+export function resolve_quality_rule_hit_badge_kind(
   entry_id: string,
   statistics_state: QualityRuleStatisticsState,
   completed_statistics_entry_id_set: ReadonlySet<string>,

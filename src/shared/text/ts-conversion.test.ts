@@ -32,10 +32,7 @@ describe("ts-conversion", () => {
       convert_name: true,
       preserve_text: true,
       text_preserve_mode: "smart",
-      custom_rules: [],
-      preset_rules_by_text_type: {
-        RENPY: ["\\[[^\\]]+\\]"],
-      },
+      text_preserve_entries: [],
       converter: (text) => text.replaceAll("后台", "後臺"),
     });
 

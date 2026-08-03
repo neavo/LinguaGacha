@@ -19,19 +19,16 @@ describe("QualityRule", () => {
     expect(normalize_text_preserve_mode("unknown", "smart")).toBe("smart");
   });
 
-  it("规则列表写入前清理字段并过滤坏项", () => {
+  it("各规则槽位只输出自身 canonical 字段", () => {
     expect(
-      QualityRule.normalize_entries([
-        null,
-        ["invalid"],
-        { src: "   ", dst: "忽略" },
+      QualityRule.from_json("pre_replacement").normalize_entries([
         {
           entry_id: " rule-1 ",
           src: " HP ",
           dst: " 生命值 ",
-          info: " 属性 ",
-          regex: 1,
-          case_sensitive: 0,
+          info: "丢弃",
+          regex: true,
+          case_sensitive: false,
         },
       ]),
     ).toEqual([
@@ -39,27 +36,30 @@ describe("QualityRule", () => {
         entry_id: "rule-1",
         src: "HP",
         dst: "生命值",
-        info: "属性",
         regex: true,
         case_sensitive: false,
       },
     ]);
+    expect(
+      QualityRule.from_json("text_preserve").normalize_entry({ src: " <A> ", info: " 控制码 " }),
+    ).toEqual({ src: "<A>", info: "控制码" });
+  });
+
+  it("错误字段类型和空 src 整批拒绝", () => {
+    const rule = QualityRule.from_json("post_replacement");
+    expect(() => rule.normalize_entries([null])).toThrow("质量规则条目必须是对象");
+    expect(() => rule.normalize_entries([{ src: "", dst: "x" }])).toThrow("质量规则 src 不能为空");
+    expect(() => rule.normalize_entries([{ src: "a", dst: 1 }])).toThrow(
+      "质量规则 dst 必须是字符串",
+    );
+    expect(() => rule.normalize_entries([{ src: "a", dst: "b", regex: 1 }])).toThrow(
+      "质量规则 regex 必须是布尔值",
+    );
   });
 
   it("不同规则槽位保留各自的缺省启用态和模式", () => {
-    expect(QualityRule.from_json("glossary").normalize_slice({})).toMatchObject({
-      enabled: true,
-      mode: "off",
-    });
-    expect(QualityRule.from_json("pre_replacement").normalize_slice({})).toMatchObject({
-      enabled: false,
-      mode: "off",
-    });
-    expect(
-      QualityRule.from_json("text_preserve").normalize_slice({
-        enabled: "false",
-        mode: "CUSTOM",
-      }),
-    ).toMatchObject({ enabled: false, mode: "custom" });
+    expect(QualityRule.from_json("glossary").normalize_enabled(undefined)).toBe(true);
+    expect(QualityRule.from_json("pre_replacement").normalize_enabled(undefined)).toBe(false);
+    expect(QualityRule.from_json("text_preserve").normalize_mode("CUSTOM")).toBe("custom");
   });
 });

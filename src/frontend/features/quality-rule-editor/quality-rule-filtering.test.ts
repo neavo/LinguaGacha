@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   compare_quality_rule_text_value,
   create_quality_rule_keyword_matcher,
-  resolve_quality_rule_statistics_badge_kind,
+  resolve_quality_rule_hit_badge_kind,
 } from "./quality-rule-filtering";
 
 describe("quality rule filtering", () => {
@@ -29,11 +29,22 @@ describe("quality rule filtering", () => {
     };
     const completed = new Set(["related", "missing"]);
 
-    expect(resolve_quality_rule_statistics_badge_kind("related", statistics_state, completed)).toBe(
+    expect(resolve_quality_rule_hit_badge_kind("related", statistics_state, completed)).toBe(
       "related",
     );
-    expect(resolve_quality_rule_statistics_badge_kind("missing", statistics_state, completed)).toBe(
+    expect(resolve_quality_rule_hit_badge_kind("missing", statistics_state, completed)).toBe(
       "unmatched",
     );
+    expect(
+      resolve_quality_rule_hit_badge_kind(
+        "matched",
+        {
+          matched_count_by_entry_id: { matched: 1 },
+          subset_parent_labels_by_entry_id: { matched: [] },
+        },
+        new Set(["matched"]),
+      ),
+    ).toBe("matched");
+    expect(resolve_quality_rule_hit_badge_kind("pending", statistics_state, completed)).toBeNull();
   });
 });

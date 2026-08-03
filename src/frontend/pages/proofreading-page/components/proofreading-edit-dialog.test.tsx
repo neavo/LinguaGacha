@@ -2,10 +2,7 @@ import { act, type ComponentProps, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  find_text_match_ranges,
-  ProofreadingEditDialog,
-} from "@frontend/pages/proofreading-page/components/proofreading-edit-dialog";
+import { ProofreadingEditDialog } from "@frontend/pages/proofreading-page/components/proofreading-edit-dialog";
 import type { ProofreadingItem } from "@shared/proofreading/proofreading-types";
 import type { ProofreadingDialogState } from "@frontend/pages/proofreading-page/proofreading-page-ui-types";
 
@@ -28,16 +25,16 @@ vi.mock("@frontend/app/locale/locale-provider", () => {
             "proofreading_page.fields.status": "状态",
             "proofreading_page.fields.translation": "译文",
             "proofreading_page.fields.translation_name": "译文姓名",
-            "proofreading_page.glossary.miss": "术语全部失效",
-            "proofreading_page.glossary.ok": "术语全部生效",
-            "proofreading_page.glossary.partial": "术语部分生效",
-            "proofreading_page.glossary.tooltip_applied": "术语已生效",
-            "proofreading_page.glossary.tooltip_failed": "术语未生效",
+            "proofreading_page.glossary.missing": "术语未落实",
+            "proofreading_page.glossary.applied": "术语已落实",
+            "proofreading_page.glossary.partial": "术语部分落实",
+            "proofreading_page.glossary.tooltip_applied": "术语已落实",
+            "proofreading_page.glossary.tooltip_missing": "术语未落实",
             "proofreading_page.status.excluded": "已排除",
             "proofreading_page.status.none": "等待翻译",
             "proofreading_page.status.processed": "翻译成功",
-            "proofreading_page.tooltip.glossary_applied_terms": "生效",
-            "proofreading_page.tooltip.glossary_failed_terms": "未生效",
+            "proofreading_page.tooltip.glossary_applied_terms": "已落实",
+            "proofreading_page.tooltip.glossary_missing_terms": "未落实",
           };
           return messages[key] ?? key;
         },
@@ -160,8 +157,22 @@ function create_proofreading_item(): ProofreadingItem {
     retry_count: 0,
     warnings: ["GLOSSARY"],
     warning_fragments_by_code: {},
-    applied_glossary_terms: [["魔法", "Magic"]],
-    failed_glossary_terms: [["美優", "美优"]],
+    glossary_applications: [
+      {
+        entry_id: "magic",
+        src: "魔法",
+        dst: "Magic",
+        case_sensitive: false,
+        fields: [{ source_field: "src", target_field: "dst", applied: true }],
+      },
+      {
+        entry_id: "miyu",
+        src: "美優",
+        dst: "美优",
+        case_sensitive: false,
+        fields: [{ source_field: "src", target_field: "dst", applied: false }],
+      },
+    ],
   };
 }
 
@@ -178,21 +189,6 @@ function create_dialog_state(
     ...overrides,
   };
 }
-
-describe("find_text_match_ranges", () => {
-  it("使用 CodeMirror 归一后的换行坐标匹配 Windows 换行文本", () => {
-    const text = "そこで注目を浴びているのは、\r\n星継\r\n銀音\r\n。";
-
-    expect(find_text_match_ranges(text, "星継")).toEqual([{ start: 15, end: 17 }]);
-    expect(find_text_match_ranges(text, "銀音")).toEqual([{ start: 18, end: 20 }]);
-  });
-
-  it("同步归一多行术语片段，避免片段自身含 CRLF 时偏移", () => {
-    const text = "alpha\r\nbeta\r\ngamma";
-
-    expect(find_text_match_ranges(text, "beta\r\ngamma")).toEqual([{ start: 6, end: 16 }]);
-  });
-});
 
 function get_textbox_by_name(container: HTMLElement, name: string): HTMLTextAreaElement {
   const editor = [...container.querySelectorAll<HTMLTextAreaElement>("textarea")].find(
@@ -249,7 +245,7 @@ describe("ProofreadingEditDialog", () => {
     return rendered;
   }
 
-  it("术语检查胶囊的未生效提示使用原文到译文格式", async () => {
+  it("术语检查胶囊的未落实提示使用原文到译文格式", async () => {
     const rendered = await render_dialog();
 
     expect(rendered.textContent).toContain("魔法 -> Magic");
@@ -351,8 +347,15 @@ describe("ProofreadingEditDialog", () => {
       dst: "",
       name_src: "Alice",
       name_dst: "",
-      applied_glossary_terms: [],
-      failed_glossary_terms: [["Alice", "艾丽丝"]],
+      glossary_applications: [
+        {
+          entry_id: "alice",
+          src: "Alice",
+          dst: "艾丽丝",
+          case_sensitive: false,
+          fields: [{ source_field: "name_src", target_field: "name_dst", applied: false }],
+        },
+      ],
     };
 
     const rendered = await render_dialog({
@@ -373,7 +376,7 @@ describe("ProofreadingEditDialog", () => {
       "Alice",
     );
     expect(translation_root.querySelector(".app-text-mark[data-tone='warning']")).toBeNull();
-    expect(rendered.textContent).toContain("术语全部失效");
+    expect(rendered.textContent).toContain("术语未落实");
 
     await render_dialog({
       item,
@@ -395,7 +398,7 @@ describe("ProofreadingEditDialog", () => {
     expect(
       next_translation_root.querySelector(".app-text-mark[data-tone='success']")?.textContent,
     ).toBe("艾丽丝");
-    expect(rendered.textContent).toContain("术语全部生效");
+    expect(rendered.textContent).toContain("术语已落实");
   });
 
   it("只读时仍可查看上下文且保存中禁用入口", async () => {

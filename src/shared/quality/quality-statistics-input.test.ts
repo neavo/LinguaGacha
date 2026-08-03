@@ -76,4 +76,14 @@ describe("prepare_quality_statistics_task_input", () => {
       first.completed_snapshot.text_signature,
     );
   });
+
+  it("worker 入参准备前执行规则真实编译校验", () => {
+    expect(() =>
+      prepare_quality_statistics_task_input({
+        rule_key: "pre_replacement",
+        entries: [{ src: "(", dst: "x", regex: true }],
+        items: [],
+      }),
+    ).toThrow("质量规则正则不是合法正则");
+  });
 });

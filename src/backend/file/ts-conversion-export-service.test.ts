@@ -40,13 +40,12 @@ describe("TsConversionExportService", () => {
           readBlock: () => ({
             text_preserve: {
               mode: "smart",
-              entries: [{ src: "HP" }],
+              entries: [{ src: "HP", info: "" }],
             },
           }),
         },
       } as unknown as CacheReadPort,
       workerClient: { run: worker_run } as unknown as ComputeWorkerClient,
-      readBuiltinTextPreserveRuleSources: vi.fn(() => ["<keep>"]),
       fileExportService: {
         export_items_with_suffix,
       } as unknown as TranslationFileExportService,
@@ -63,8 +62,7 @@ describe("TsConversionExportService", () => {
           convert_name: true,
           preserve_text: true,
           text_preserve_mode: "smart",
-          custom_rules: ["HP"],
-          preset_rules_by_text_type: { KAG: ["<keep>"] },
+          text_preserve_entries: [{ src: "HP", info: "" }],
         },
       },
       expect.any(AbortSignal),

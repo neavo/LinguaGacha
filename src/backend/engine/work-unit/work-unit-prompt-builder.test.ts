@@ -1,12 +1,22 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import type { TextQualitySnapshot } from "../../../shared/text/text-types";
 import type { TranslationActor, TranslationLine } from "./translation-line";
 import { PromptBuilder } from "./work-unit-prompt-builder";
+
+const template_roots: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    template_roots.splice(0).map(async (root) => {
+      await rm(root, { force: true, recursive: true });
+    }),
+  );
+});
 
 describe("PromptBuilder", () => {
   it("从资源模板生成翻译提示词并注入上文、术语和控制字符示例", async () => {
@@ -21,6 +31,15 @@ describe("PromptBuilder", () => {
       create_quality_snapshot({
         glossary_entries: [{ src: "Alice", dst: "爱丽丝", info: "女性人名" }],
       }),
+      [
+        {
+          entry_id: "alice",
+          src: "Alice",
+          dst: "爱丽丝",
+          info: "女性人名",
+          case_sensitive: false,
+        },
+      ],
     );
 
     const result = await builder.generate_prompt(
@@ -40,7 +59,12 @@ describe("PromptBuilder", () => {
 
   it("生成术语分析提示词时只携带分析输入", async () => {
     const app_root = await create_template_root();
-    const builder = new PromptBuilder(app_root, { app_language: "EN" }, create_quality_snapshot());
+    const builder = new PromptBuilder(
+      app_root,
+      { app_language: "EN" },
+      create_quality_snapshot(),
+      [],
+    );
 
     const result = await builder.generate_glossary_prompt(["Alice"]);
 
@@ -58,6 +82,7 @@ describe("PromptBuilder", () => {
         target_language: "ZH",
       },
       create_quality_snapshot(),
+      [],
     );
 
     const result = await builder.build_main("text");
@@ -79,6 +104,7 @@ describe("PromptBuilder", () => {
         translation_prompt_enable: true,
         translation_prompt: "自定义规则：{target_language}",
       }),
+      [],
     );
 
     const result = await builder.build_main("text");
@@ -98,6 +124,7 @@ describe("PromptBuilder", () => {
         prompt_enhancement_enable: false,
       },
       create_quality_snapshot(),
+      [],
     );
 
     await expect(builder.build_main("text")).resolves.toBe(
@@ -108,7 +135,7 @@ describe("PromptBuilder", () => {
     );
   });
 
-  it("公开提示词结果按大小写规则筛选术语并格式化 info", async () => {
+  it("公开提示词只格式化 runner 已激活的术语", async () => {
     const app_root = await create_template_root();
     const builder = new PromptBuilder(
       app_root,
@@ -119,6 +146,7 @@ describe("PromptBuilder", () => {
           { src: "foo", dst: "乙", info: "备注", case_sensitive: false },
         ],
       }),
+      [{ entry_id: "foo", src: "foo", dst: "乙", info: "备注", case_sensitive: false }],
     );
 
     const result = await builder.generate_prompt(
@@ -142,6 +170,7 @@ describe("PromptBuilder", () => {
         translation_prompt_enable: true,
         translation_prompt: "普通内容",
       }),
+      [],
     );
 
     const result = await builder.generate_prompt(
@@ -154,14 +183,12 @@ describe("PromptBuilder", () => {
     expect(result.messages[1]?.content).not.toContain("控制字符示例");
   });
 
-  it("Sakura 提示词在术语启用但未命中时使用默认内容", () => {
+  it("Sakura 提示词没有已激活术语时使用默认内容", () => {
     const builder = new PromptBuilder(
       "unused",
       { app_language: "ZH", target_language: "ZH", prompt_enhancement_enable: false },
-      create_quality_snapshot({
-        glossary_enable: true,
-        glossary_entries: [{ src: "HP", dst: "生命值", case_sensitive: true }],
-      }),
+      create_quality_snapshot(),
+      [],
     );
 
     const result = builder.generate_prompt_sakura(["hp が足りない"]);
@@ -170,14 +197,12 @@ describe("PromptBuilder", () => {
     expect(result.console_log).toEqual([]);
   });
 
-  it("Sakura 术语表命中时使用无空格箭头格式", () => {
+  it("Sakura 已激活术语使用无空格箭头格式", () => {
     const builder = new PromptBuilder(
       "unused",
       { app_language: "ZH", target_language: "ZH" },
-      create_quality_snapshot({
-        glossary_enable: true,
-        glossary_entries: [{ src: "HP", dst: "生命值", case_sensitive: true, info: "stat" }],
-      }),
+      create_quality_snapshot(),
+      [{ entry_id: "hp", src: "HP", dst: "生命值", info: "stat", case_sensitive: true }],
     );
 
     const result = builder.generate_prompt_sakura(["hp", "HP"]);
@@ -186,15 +211,13 @@ describe("PromptBuilder", () => {
     expect(result.messages[1]?.content).toContain("根据以下术语表");
   });
 
-  it("生成普通提示词时术语关闭则不写入 user prompt", async () => {
+  it("普通提示词没有已激活术语时不写入术语段", async () => {
     const app_root = await create_template_root();
     const builder = new PromptBuilder(
       app_root,
       { app_language: "ZH", source_language: "JA", target_language: "ZH" },
-      create_quality_snapshot({
-        glossary_enable: false,
-        glossary_entries: [{ src: "HP", dst: "生命值", case_sensitive: false }],
-      }),
+      create_quality_snapshot(),
+      [],
     );
 
     const result = await builder.generate_prompt(
@@ -218,6 +241,7 @@ describe("PromptBuilder", () => {
         analysis_prompt_enable: true,
         analysis_prompt: "自定义分析：{target_language}",
       }),
+      [],
     );
 
     const result = await builder.build_glossary_analysis_main();
@@ -226,7 +250,7 @@ describe("PromptBuilder", () => {
     expect(result).not.toContain("翻译前缀");
   });
 
-  it("含姓名请求使用 actor/text 输入输出格式并让术语表扫描姓名", async () => {
+  it("含姓名请求使用 actor/text 格式并写入已激活姓名术语", async () => {
     const app_root = await create_template_root();
     const builder = new PromptBuilder(
       app_root,
@@ -235,9 +259,16 @@ describe("PromptBuilder", () => {
         source_language: "JA",
         target_language: "ZH",
       },
-      create_quality_snapshot({
-        glossary_entries: [{ src: "虎鉄", dst: "虎铁", info: "男性人名" }],
-      }),
+      create_quality_snapshot(),
+      [
+        {
+          entry_id: "name",
+          src: "虎鉄",
+          dst: "虎铁",
+          info: "男性人名",
+          case_sensitive: false,
+        },
+      ],
     );
 
     const result = await builder.generate_prompt(
@@ -264,6 +295,7 @@ describe("PromptBuilder", () => {
       app_root,
       { app_language: "ZH", source_language: "JA", target_language: "ZH" },
       create_quality_snapshot(),
+      [],
     );
 
     const result = await builder.generate_prompt(
@@ -283,6 +315,7 @@ describe("PromptBuilder", () => {
  */
 async function create_template_root(): Promise<string> {
   const app_root = await mkdtemp(path.join(tmpdir(), "linguagacha-prompt-"));
+  template_roots.push(app_root);
   await write_template(app_root, "translation_prompt", "zh", {
     prefix: "翻译前缀",
     base: "请从 {source_language} 翻译到 {target_language}，保留控制字符。",

@@ -10,7 +10,7 @@ export const en_us_text_replacement_page = {
   fields: {
     replacement: "Replacement",
 
-    statistics: "Hits",
+    hit: "Hits",
   },
   rule: {
     regex: "Regular Expression",
@@ -24,7 +24,7 @@ export const en_us_text_replacement_page = {
     },
   },
 
-  statistics: {
+  hit: {
     subset_relations: "Subset relations:",
 
     action: {

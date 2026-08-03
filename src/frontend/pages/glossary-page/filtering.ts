@@ -5,7 +5,7 @@ import type {
   GlossarySortDirection,
   GlossarySortField,
   GlossarySortState,
-  GlossaryStatisticsState,
+  GlossaryHitState,
   GlossaryVisibleEntry,
 } from "@frontend/pages/glossary-page/types";
 import {
@@ -18,8 +18,8 @@ type BuildGlossaryFilterResultOptions = {
   entry_ids: GlossaryEntryId[];
   filter_state: GlossaryFilterState;
   sort_state: GlossarySortState;
-  statistics_sort_available: boolean;
-  statistics_state: GlossaryStatisticsState;
+  hit_sort_available: boolean;
+  hit_state: GlossaryHitState;
 };
 
 type BuildGlossaryFilterResult = {
@@ -47,7 +47,7 @@ function resolve_glossary_sort_comparison(
   right_entry: GlossaryVisibleEntry,
   field: GlossarySortField,
   direction: GlossarySortDirection,
-  statistics_state: GlossaryStatisticsState,
+  hit_state: GlossaryHitState,
 ): number {
   if (field === "src" || field === "dst" || field === "info") {
     return compare_quality_rule_text_value(
@@ -63,22 +63,22 @@ function resolve_glossary_sort_comparison(
     return direction === "ascending" ? left_value - right_value : right_value - left_value;
   }
 
-  const left_value = statistics_state.matched_count_by_entry_id[left_entry.entry_id] ?? 0;
-  const right_value = statistics_state.matched_count_by_entry_id[right_entry.entry_id] ?? 0;
+  const left_value = hit_state.matched_count_by_entry_id[left_entry.entry_id] ?? 0;
+  const right_value = hit_state.matched_count_by_entry_id[right_entry.entry_id] ?? 0;
   return direction === "ascending" ? left_value - right_value : right_value - left_value;
 }
 
 function apply_glossary_sort(
   visible_entries: GlossaryVisibleEntry[],
   sort_state: GlossarySortState,
-  statistics_sort_available: boolean,
-  statistics_state: GlossaryStatisticsState,
+  hit_sort_available: boolean,
+  hit_state: GlossaryHitState,
 ): GlossaryVisibleEntry[] {
   if (sort_state.field === null || sort_state.direction === null) {
     return visible_entries;
   }
 
-  if (sort_state.field === "statistics" && !statistics_sort_available) {
+  if (sort_state.field === "hit" && !hit_sort_available) {
     return visible_entries;
   }
 
@@ -89,7 +89,7 @@ function apply_glossary_sort(
       right_entry,
       sort_state.field,
       sort_state.direction,
-      statistics_state,
+      hit_state,
     );
 
     if (comparison_result !== 0) {
@@ -126,8 +126,8 @@ export function build_glossary_filter_result(
   const sorted_visible_entries = apply_glossary_sort(
     visible_entries,
     options.sort_state,
-    options.statistics_sort_available,
-    options.statistics_state,
+    options.hit_sort_available,
+    options.hit_state,
   );
 
   return {

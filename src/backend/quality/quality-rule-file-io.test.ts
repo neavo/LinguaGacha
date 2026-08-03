@@ -5,11 +5,9 @@ import path from "node:path";
 import ExcelJS from "exceljs";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { AppPathService } from "../app/app-path-service";
 import {
   export_quality_rule_entries_to_files,
   load_quality_rule_entries_from_file,
-  read_builtin_text_preserve_rule_sources,
 } from "./quality-rule-file-io";
 
 const cleanup_roots: string[] = [];
@@ -24,7 +22,7 @@ afterEach(() => {
 });
 
 describe("quality-rule-file-io", () => {
-  it("修复非标 JSON 并只读取外部可维护字段", async () => {
+  it("修复非标 JSON 并保留外部字段给领域边界统一校验", async () => {
     const file_path = write_temp_file(
       "rules.json",
       '[{"entry_id":"rule-1","src":" Alice ","dst":" 爱丽丝 ","info":" 人名 ","regex":true},{"src":"",},]',
@@ -32,19 +30,23 @@ describe("quality-rule-file-io", () => {
 
     await expect(load_quality_rule_entries_from_file(file_path)).resolves.toEqual([
       {
-        src: "Alice",
-        dst: "爱丽丝",
-        info: "人名",
+        src: " Alice ",
+        dst: " 爱丽丝 ",
+        info: " 人名 ",
         regex: true,
-        case_sensitive: false,
       },
+      { src: "" },
     ]);
   });
 
   it("兼容 RPG Maker Actors 与 KV 字典", async () => {
     const actors_path = write_temp_file(
       "actors.json",
-      JSON.stringify([{ id: 7, name: "勇者", nickname: "小勇" }]),
+      JSON.stringify([
+        null,
+        { id: 1, name: "", nickname: "" },
+        { id: 7, name: "勇者", nickname: "小勇" },
+      ]),
     );
     const kv_path = write_temp_file("kv.json", JSON.stringify({ A: "甲", B: null }));
 
@@ -111,20 +113,6 @@ describe("quality-rule-file-io", () => {
     await workbook.xlsx.readFile(`${base_path}.xlsx`);
     const cell = workbook.worksheets[0]?.getCell(2, 1);
     expect(cell?.value).toBe("'=SUM(A1:A2)");
-  });
-
-  it("读取指定文本类型的内置保护源文本", () => {
-    const root = create_temp_root();
-    fs.writeFileSync(
-      path.join(root, "kag.json"),
-      JSON.stringify([{ src: "<keep>" }, { src: " " }, null]),
-      "utf-8",
-    );
-    const paths = {
-      get_quality_rule_builtin_preset_dir: () => root,
-    } as unknown as AppPathService;
-
-    expect(read_builtin_text_preserve_rule_sources(paths, "KAG")).toEqual(["<keep>"]);
   });
 });
 

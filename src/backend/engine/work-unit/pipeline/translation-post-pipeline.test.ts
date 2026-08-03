@@ -13,7 +13,7 @@ describe("TranslationPostPipeline", () => {
       create_config(),
       create_quality_snapshot({
         text_preserve_mode: "CUSTOM",
-        text_preserve_entries: [{ src: "\\\\n\\[\\d+\\]" }],
+        text_preserve_entries: [{ src: "\\\\n\\[\\d+\\]", info: "" }],
       }),
     );
     const context = pre.process_item({
@@ -67,7 +67,7 @@ describe("TranslationPostPipeline", () => {
       create_config(),
       create_quality_snapshot({
         text_preserve_mode: "CUSTOM",
-        text_preserve_entries: [{ src: "<[^>]+>" }],
+        text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
       }),
     );
 
@@ -184,7 +184,7 @@ describe("TranslationPostPipeline", () => {
       create_config(),
       create_quality_snapshot({
         text_preserve_mode: "CUSTOM",
-        text_preserve_entries: [{ src: "<[^>]+>" }],
+        text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
       }),
     );
     const context = pre.process_item({ src: "A<1>①", text_type: "TXT" });

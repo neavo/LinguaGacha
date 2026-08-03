@@ -101,9 +101,7 @@ export function useProofreadingTableActions(
     (next_keyword: string): void => {
       options.should_select_first_visible_ref.current = false;
       options.visible_range_ref.current = null;
-      options.set_table_filter_state({
-        search_keyword: next_keyword,
-      });
+      options.set_table_filter_state({ search_keyword: next_keyword });
       options.clear_table_selection();
       options.schedule_search_list_view_query();
     },

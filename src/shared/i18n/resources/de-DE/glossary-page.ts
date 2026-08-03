@@ -14,9 +14,9 @@ export const de_de_glossary_page = {
     translation: "Übersetzung",
     description: "Beschreibung",
 
-    statistics: "Treffer",
+    hit: "Treffer",
   },
-  statistics: {
+  hit: {
     action: {
       query_source: "Quelle abfragen",
       search_relation: "Teilmengenbeziehungen abfragen",

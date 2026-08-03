@@ -17,8 +17,7 @@ function create_item(item_id: number, file_path: string, row_number: number, dst
     },
     warnings: [],
     warning_fragments_by_code: {},
-    failed_terms: [],
-    applied_terms: [],
+    glossary_applications: [],
   });
 }
 
