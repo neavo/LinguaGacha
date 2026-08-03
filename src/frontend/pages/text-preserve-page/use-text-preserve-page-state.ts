@@ -48,10 +48,7 @@ import {
   build_text_preserve_filter_result,
   sort_text_preserve_entries,
 } from "@frontend/pages/text-preserve-page/filtering";
-import {
-  has_active_quality_rule_filters,
-  resolve_quality_rule_statistics_badge_kind,
-} from "@frontend/features/quality-rule-editor/quality-rule-filtering";
+import { has_active_quality_rule_filters } from "@frontend/features/quality-rule-editor/quality-rule-filtering";
 import {
   PRESERVE_RESULT_REFRESH,
   REBUILD_RESULT_REFRESH,
@@ -83,8 +80,8 @@ import type {
   TextPreserveFilterScope,
   TextPreserveFilterState,
   TextPreserveMode,
-  TextPreserveStatisticsBadgeState,
-  TextPreserveStatisticsState,
+  TextPreserveHitBadgeState,
+  TextPreserveHitState,
   TextPreserveVisibleEntry,
   UseTextPreservePageStateResult,
 } from "@frontend/pages/text-preserve-page/types";
@@ -94,6 +91,7 @@ import type {
 } from "@frontend/widgets/app-table/app-table-types";
 import { normalize_text_preserve_mode } from "@domain/quality";
 import { QualityRuleImportRuleTypeValue } from "@shared/quality/quality-rule-import";
+import { build_text_preserve_rule } from "@shared/text/text-preserve-rules";
 
 type TextPreservePresetPayload = {
   builtin_presets: TextPreservePresetItem[];
@@ -131,7 +129,7 @@ const QUALITY_RULE_REFRESH_SECTIONS = ["quality"] as const;
 // 模式切换必须等项目事件回流，超时后由补偿刷新恢复权威快照。
 const TEXT_PRESERVE_MODE_REFRESH_TIMEOUT_MS = 15000;
 // session 恢复排序的白名单，避免旧列 ID 进入当前表格。
-const TEXT_PRESERVE_SORT_COLUMN_IDS = new Set(["src", "info", "statistics"]);
+const TEXT_PRESERVE_SORT_COLUMN_IDS = new Set(["src", "info", "hit"]);
 
 /**
  * 在 session 恢复边界收窄排序状态，旧列统一回到未排序。
@@ -192,32 +190,16 @@ function normalize_entry(entry: Partial<TextPreserveEntry>): TextPreserveEntry {
 }
 
 /**
- * 导入数据不信任外部 ID，只提取可写业务字段。
- */
-function normalize_imported_entry(entry: Record<string, unknown>): TextPreserveEntry {
-  return normalize_entry({
-    src: String(entry.src ?? ""),
-    info: String(entry.info ?? ""),
-  });
-}
-
-/**
  * 将后端 quality 查询收窄为页面稳定切片，并为旧数据补齐条目 ID。
  */
 function normalize_text_preserve_quality_slice(
-  slice: QualityRuleQuerySlice | undefined,
+  slice: QualityRuleQuerySlice<"text_preserve"> | undefined,
   section_revision: number,
 ): TextPreserveQualitySlice {
-  const raw_entries = Array.isArray(slice?.entries) ? slice.entries : [];
+  const raw_entries = slice?.entries ?? [];
   return {
     mode: normalize_text_preserve_mode(slice?.mode),
-    entries: ensure_quality_rule_entry_ids(
-      raw_entries.map((entry) => {
-        return typeof entry === "object" && entry !== null
-          ? normalize_entry(entry as Partial<TextPreserveEntry>)
-          : normalize_entry({});
-      }),
-    ),
+    entries: ensure_quality_rule_entry_ids(raw_entries.map(clone_entry)),
     section_revision,
   };
 }
@@ -265,28 +247,8 @@ function create_empty_confirm_state(): TextPreserveConfirmState {
 /**
  * 将命中数和子集父项关系合并成徽章的多行说明。
  */
-function build_statistics_badge_tooltip(
-  t: (key: LocaleKey) => string,
-  entry: TextPreserveEntry,
-  matched_count: number,
-  subset_parent_labels: string[],
-): string {
-  const tooltip_lines = [
-    t("text_preserve_page.statistics.hit_count").replace("{COUNT}", matched_count.toString()),
-  ];
-
-  if (subset_parent_labels.length > 0) {
-    tooltip_lines.push(t("quality_editor.statistics.subset_relations"));
-    tooltip_lines.push(
-      ...subset_parent_labels.map((label) => {
-        return t("quality_editor.statistics.relation_line")
-          .replace("{CHILD}", entry.src)
-          .replace("{PARENT}", label);
-      }),
-    );
-  }
-
-  return tooltip_lines.join("\n");
+function build_hit_badge_tooltip(t: (key: LocaleKey) => string, matched_count: number): string {
+  return t("text_preserve_page.hit.hit_count").replace("{COUNT}", matched_count.toString());
 }
 
 /** 以设置协议字段名构造默认预设更新载荷。 */
@@ -304,16 +266,15 @@ function is_modal_progress_timeout_error(error: unknown): boolean {
 /**
  * 将会话级统计缓存投影为页面只读状态，不复制规则事实。
  */
-function build_text_preserve_statistics_state_from_cache(
+function build_text_preserve_hit_state_from_cache(
   statistics_cache: QualityRuleStatisticsCacheSnapshot,
-): TextPreserveStatisticsState {
+): TextPreserveHitState {
   // 页面只从质量统计缓存计算展示状态，不持有也不修改文本保护规则事实。
   return {
     running: isQualityRuleStatisticsCacheRunning(statistics_cache),
     completed_snapshot: statistics_cache.completed_snapshot,
     completed_entry_ids: statistics_cache.completed_entry_ids,
     matched_count_by_entry_id: statistics_cache.matched_count_by_entry_id,
-    subset_parent_labels_by_entry_id: statistics_cache.subset_parent_labels_by_entry_id,
   };
 }
 
@@ -383,10 +344,10 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const dialog_state_ref = useRef(dialog_state);
   const entries_ref = useRef(entries);
   const statistics_cache = useQualityRuleStatistics(TEXT_PRESERVE_RULE_TYPE);
-  const statistics_state = useMemo<TextPreserveStatisticsState>(() => {
-    return build_text_preserve_statistics_state_from_cache(statistics_cache);
+  const hit_state = useMemo<TextPreserveHitState>(() => {
+    return build_text_preserve_hit_state_from_cache(statistics_cache);
   }, [statistics_cache]);
-  const statistics_ready = isQualityRuleStatisticsCacheReady(statistics_cache);
+  const hit_ready = isQualityRuleStatisticsCacheReady(statistics_cache);
   // 区分同组件内项目身份切换，避免旧项目状态污染新项目。
   const project_view_identity_ref = useRef(project_snapshot.loaded ? project_snapshot.path : "");
 
@@ -502,9 +463,9 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
     return null;
   }, [active_entry_id, entry_index_by_id, selected_entry_ids]);
-  const completed_statistics_entry_id_set = useMemo<ReadonlySet<TextPreserveEntryId>>(() => {
-    return new Set(statistics_state.completed_entry_ids);
-  }, [statistics_state.completed_entry_ids]);
+  const completed_hit_entry_id_set = useMemo<ReadonlySet<TextPreserveEntryId>>(() => {
+    return new Set(hit_state.completed_entry_ids);
+  }, [hit_state.completed_entry_ids]);
 
   const build_result_snapshot = useCallback(
     (
@@ -519,8 +480,8 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       const visible_entries = sort_text_preserve_entries(
         result.visible_entries,
         next_sort_state,
-        statistics_ready,
-        statistics_state,
+        hit_ready,
+        hit_state,
       );
 
       return create_result_snapshot({
@@ -532,7 +493,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
         invalid_message: result.invalid_regex_message,
       });
     },
-    [entries, entry_ids, statistics_ready, statistics_state],
+    [entries, entry_ids, hit_ready, hit_state],
   );
   const build_current_result_snapshot = useCallback(() => {
     return build_result_snapshot(filter_state, sort_state);
@@ -581,8 +542,8 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     return sort_text_preserve_entries(
       filter_result.visible_entries,
       sort_state,
-      statistics_ready,
-      statistics_state,
+      hit_ready,
+      hit_state,
     );
   }, [
     entries,
@@ -590,8 +551,8 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     filter_result.visible_entries,
     result_snapshot,
     sort_state,
-    statistics_ready,
-    statistics_state,
+    hit_ready,
+    hit_state,
   ]);
 
   const visible_entry_ids = useMemo<TextPreserveEntryId[]>(() => {
@@ -605,51 +566,29 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   const readonly = is_runtime_busy(runtime_snapshot);
   const drag_disabled = readonly || has_active_filters || sort_state !== null;
 
-  const statistics_badge_by_entry_id = useMemo<
-    Record<TextPreserveEntryId, TextPreserveStatisticsBadgeState>
+  const hit_badge_by_entry_id = useMemo<
+    Record<TextPreserveEntryId, TextPreserveHitBadgeState>
   >(() => {
-    const next_badge_by_entry_id: Record<TextPreserveEntryId, TextPreserveStatisticsBadgeState> =
-      {};
-    if (!statistics_ready && statistics_state.completed_snapshot === null) {
+    const next_badge_by_entry_id: Record<TextPreserveEntryId, TextPreserveHitBadgeState> = {};
+    if (!hit_ready && hit_state.completed_snapshot === null) {
       return next_badge_by_entry_id;
     }
 
-    entries.forEach((entry, index) => {
-      const entry_id = entry_ids[index];
-      if (entry_id === undefined) {
+    entry_ids.forEach((entry_id) => {
+      if (!completed_hit_entry_id_set.has(entry_id)) {
         return;
       }
 
-      const kind = resolve_quality_rule_statistics_badge_kind(
-        entry_id,
-        statistics_state,
-        completed_statistics_entry_id_set,
-      );
-      if (kind === null) {
-        return;
-      }
-
-      const matched_count = statistics_state.matched_count_by_entry_id[entry_id] ?? 0;
-      const subset_parent_labels =
-        statistics_state.subset_parent_labels_by_entry_id[entry_id] ?? [];
-
+      const matched_count = hit_state.matched_count_by_entry_id[entry_id] ?? 0;
       next_badge_by_entry_id[entry_id] = {
-        kind,
+        kind: matched_count > 0 ? "matched" : "unmatched",
         matched_count,
-        subset_parent_labels,
-        tooltip: build_statistics_badge_tooltip(t, entry, matched_count, subset_parent_labels),
+        tooltip: build_hit_badge_tooltip(t, matched_count),
       };
     });
 
     return next_badge_by_entry_id;
-  }, [
-    completed_statistics_entry_id_set,
-    entries,
-    entry_ids,
-    statistics_ready,
-    statistics_state,
-    t,
-  ]);
+  }, [completed_hit_entry_id_set, entry_ids, hit_ready, hit_state, t]);
 
   const clear_selection_state = table_ui_state.clear_selection_state;
 
@@ -787,13 +726,13 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
   }, [project_snapshot.loaded, project_snapshot.path, reset_table_state]);
 
   useEffect(() => {
-    if (statistics_ready || sort_state?.column_id !== "statistics") {
+    if (hit_ready || sort_state?.column_id !== "hit") {
       return;
     }
 
     set_table_sort_state(null);
     set_result_snapshot(build_result_snapshot(filter_state, null));
-  }, [build_result_snapshot, filter_state, set_table_sort_state, sort_state, statistics_ready]);
+  }, [build_result_snapshot, filter_state, set_table_sort_state, sort_state, hit_ready]);
 
   useEffect(() => {
     if (!quality_loaded) {
@@ -1146,34 +1085,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     ],
   );
 
-  const search_entry_relations_from_statistics = useCallback(
-    (entry_id: TextPreserveEntryId): void => {
-      const target_index = entry_index_by_id.get(entry_id);
-      const target_entry = target_index === undefined ? null : entries[target_index];
-      if (target_entry === null || target_entry === undefined) {
-        return;
-      }
-
-      const next_filter_state = {
-        keyword: target_entry.src,
-        scope: "src" as const,
-        is_regex: false,
-      };
-      debounced_result_snapshot.cancel();
-      set_table_filter_state(next_filter_state);
-      set_table_sort_state(null);
-      set_result_snapshot(build_result_snapshot(next_filter_state, null));
-    },
-    [
-      build_result_snapshot,
-      debounced_result_snapshot,
-      entries,
-      entry_index_by_id,
-      set_table_filter_state,
-      set_table_sort_state,
-    ],
-  );
-
   const import_entries_from_path = useCallback(
     async (path: string): Promise<void> => {
       try {
@@ -1181,18 +1092,14 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           return;
         }
 
-        const payload = await api_fetch<{ entries?: Array<Record<string, unknown>> }>(
+        const payload = await api_fetch<{ entries?: TextPreserveEntry[] }>(
           "/api/quality/rules/import",
           {
             rule_type: TEXT_PRESERVE_RULE_TYPE,
             path,
           },
         );
-        const imported_entries = Array.isArray(payload.entries)
-          ? payload.entries.map((entry) => {
-              return normalize_imported_entry(entry);
-            })
-          : [];
+        const imported_entries = payload.entries?.map(clone_entry) ?? [];
         if (imported_entries.length === 0) {
           push_toast("warning", t("app.feedback.no_valid_data"));
           return;
@@ -1275,16 +1182,14 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       }
 
       try {
-        const payload = await api_fetch<{ entries: Array<Record<string, unknown>> }>(
+        const payload = await api_fetch<{ entries: TextPreserveEntry[] }>(
           "/api/quality/rules/presets/read",
           {
             rule_type: TEXT_PRESERVE_RULE_TYPE,
             virtual_id,
           },
         );
-        const incoming_entries = payload.entries.map((entry) => {
-          return normalize_imported_entry(entry);
-        });
+        const incoming_entries = payload.entries.map(clone_entry);
         await persist_entries_with_duplicate_resolution(
           () => {
             return create_quality_rule_duplicate_resolution_plan({
@@ -1513,7 +1418,7 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       }
 
       try {
-        void new RegExp(entry.src, "iu");
+        build_text_preserve_rule({ mode: "custom", text_type: "NONE", entries: [entry] });
         return null;
       } catch (error) {
         const detail = error instanceof Error ? error.message : "";
@@ -1798,9 +1703,9 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     invalid_filter_message: result_snapshot?.invalid_message ?? filter_result.invalid_regex_message,
     readonly,
     drag_disabled,
-    statistics_state,
-    statistics_ready,
-    statistics_badge_by_entry_id,
+    hit_state,
+    hit_ready,
+    hit_badge_by_entry_id,
     preset_items,
     selected_entry_ids,
     active_entry_id,
@@ -1834,7 +1739,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     delete_selected_entries,
     reorder_selected_entries,
     query_entry_source,
-    search_entry_relations_from_statistics,
     save_dialog_entry,
     request_close_dialog,
     confirm_pending_action,

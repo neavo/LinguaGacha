@@ -37,14 +37,12 @@ describe("analysis candidate helpers", () => {
         src: "\\n[1]",
         dst: "\\n[1]",
         info: "控制码",
-        regex: false,
         case_sensitive: false,
       },
       {
         src: "艾琳",
         dst: "Erin",
         info: "角色名",
-        regex: false,
         case_sensitive: true,
       },
     ]);

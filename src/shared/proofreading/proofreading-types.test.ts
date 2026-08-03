@@ -10,26 +10,26 @@ import {
 
 describe("proofreading types", () => {
   it("格式化术语、压缩换行并将未知状态排在已知状态之后", () => {
-    expect(format_proofreading_glossary_term(["魔法", "Magic"])).toBe("魔法 -> Magic");
+    expect(format_proofreading_glossary_term({ src: "魔法", dst: "Magic" })).toBe("魔法 -> Magic");
     expect(compress_proofreading_text("第一行\n第二行")).toBe("第一行 ↵ 第二行");
     expect(resolve_proofreading_status_sort_rank("NONE")).toBeLessThan(
       resolve_proofreading_status_sort_rank("UNKNOWN"),
     );
   });
 
-  it("克隆筛选项时不会共享术语元组", () => {
+  it("克隆筛选项时不会共享术语 ID 数组", () => {
     const filters = {
       warning_types: ["GLOSSARY"],
       statuses: ["NONE", "PROCESSED", "ERROR"],
       file_paths: ["chapter.txt"],
-      glossary_terms: [["魔法", "Magic"] as const],
+      glossary_entry_ids: ["magic"],
       include_without_glossary_miss: true,
     };
     const cloned = clone_proofreading_filter_options(filters);
-    cloned.glossary_terms[0] = ["污染", "Dirty"];
+    cloned.glossary_entry_ids[0] = "dirty";
 
     expect(filters.warning_types).toEqual(["GLOSSARY"]);
-    expect(filters.glossary_terms).toEqual([["魔法", "Magic"]]);
+    expect(filters.glossary_entry_ids).toEqual(["magic"]);
   });
 
   it("默认警告筛选保留已知顺序并追加去重的未知警告", () => {

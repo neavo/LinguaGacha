@@ -46,21 +46,6 @@ function create_cache(
   };
 }
 
-function create_sample_cache() {
-  const item_ids = [90, 10, 80, 20, 70, 30];
-  return create_cache(() =>
-    item_ids.map((item_id, index) =>
-      create_item(item_id, {
-        src: `X ${index.toString()}`,
-        name_src: index === 3 ? "X speaker" : null,
-        dst: `Y ${index.toString()}`,
-        name_dst: index === 3 ? "Y speaker" : null,
-        row_number: index + 1,
-      }),
-    ),
-  );
-}
-
 describe("Agent 正文工具", () => {
   it("所有工具公开 object 根 schema，并只串行写入口", () => {
     const tools = create_agent_item_tools({
@@ -85,11 +70,7 @@ describe("Agent 正文工具", () => {
     const sample_schema = query_schema.anyOf?.find(
       (candidate) => candidate.properties?.["mode"]?.const === "sample",
     );
-    expect(sample_schema).toBeDefined();
-    expect(sample_schema?.additionalProperties).toBe(false);
-    expect(sample_schema?.properties?.["patterns"]?.maxItems).toBe(20);
-    expect(sample_schema?.properties).not.toHaveProperty("cursor");
-    expect(sample_schema?.properties).not.toHaveProperty("limit");
+    expect(sample_schema).toBeUndefined();
   });
 
   it("page 与 ids 按稳定顺序返回固定窄投影", () => {
@@ -181,91 +162,7 @@ describe("Agent 正文工具", () => {
     expect(all["hits"]).toMatchObject([{ item_id: 2, field: "dst", text: "alpha" }]);
   });
 
-  it("sample 按命中条目顺序等距取样，并合并同一条目的命中字段", () => {
-    const source = query_agent_project_items(create_sample_cache(), {
-      mode: "sample",
-      patterns: ["X", "missing"],
-      scope: "src",
-      case_sensitive: true,
-    });
-    expect(source).toEqual({
-      projectPath: "test.lg",
-      sectionRevisions: { items: 2, proofreading: 3 },
-      results: [
-        {
-          pattern: "X",
-          total_matches: 7,
-          matched_item_count: 6,
-          samples: [
-            { item_id: 10, matched_fields: ["src"], src: "X 1" },
-            {
-              item_id: 20,
-              matched_fields: ["src", "name_src"],
-              src: "X 3",
-              name_src: "X speaker",
-            },
-            { item_id: 30, matched_fields: ["src"], src: "X 5" },
-          ],
-        },
-        { pattern: "missing", total_matches: 0, matched_item_count: 0, samples: [] },
-      ],
-    });
-  });
-
-  it("sample 按 scope 只投影所需正文侧", () => {
-    const cache = create_sample_cache();
-    const destination = query_agent_project_items(cache, {
-      mode: "sample",
-      patterns: ["Y"],
-      scope: "dst",
-      case_sensitive: true,
-    });
-    expect(destination["results"]).toEqual([
-      {
-        pattern: "Y",
-        total_matches: 7,
-        matched_item_count: 6,
-        samples: [
-          { item_id: 10, matched_fields: ["dst"], dst: "Y 1" },
-          {
-            item_id: 20,
-            matched_fields: ["dst", "name_dst"],
-            dst: "Y 3",
-            name_dst: "Y speaker",
-          },
-          { item_id: 30, matched_fields: ["dst"], dst: "Y 5" },
-        ],
-      },
-    ]);
-
-    const all = query_agent_project_items(cache, {
-      mode: "sample",
-      patterns: ["X"],
-      scope: "all",
-      case_sensitive: true,
-    });
-    expect(all["results"]).toEqual([
-      {
-        pattern: "X",
-        total_matches: 7,
-        matched_item_count: 6,
-        samples: [
-          { item_id: 10, matched_fields: ["src"], src: "X 1", dst: "Y 1" },
-          {
-            item_id: 20,
-            matched_fields: ["src", "name_src"],
-            src: "X 3",
-            name_src: "X speaker",
-            dst: "Y 3",
-            name_dst: "Y speaker",
-          },
-          { item_id: 30, matched_fields: ["src"], src: "X 5", dst: "Y 5" },
-        ],
-      },
-    ]);
-  });
-
-  it("拒绝非法游标、空字面量与超限 sample patterns", () => {
+  it("拒绝非法游标与空字面量", () => {
     const cache = create_cache(() => []);
     for (const cursor of ["bad", "0x10", "1e2", "9007199254740992"]) {
       expect(() => query_agent_project_items(cache, { mode: "page", cursor })).toThrow(
@@ -275,12 +172,6 @@ describe("Agent 正文工具", () => {
     expect(() => query_agent_project_items(cache, { mode: "search", patterns: ["   "] })).toThrow(
       "patterns",
     );
-    expect(() =>
-      query_agent_project_items(cache, {
-        mode: "sample",
-        patterns: Array.from({ length: 21 }, (_, index) => `term-${index.toString()}`),
-      }),
-    ).toThrow("1 到 20");
   });
 
   it("批量更新只调用一次领域命令，并按变更顺序返回最新条目", async () => {

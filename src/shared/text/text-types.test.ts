@@ -26,7 +26,7 @@ describe("text worker snapshots", () => {
         quality: {
           glossary: {
             enabled: true,
-            entries: [{ src: "HP", dst: "生命值" }, { src: " " }],
+            entries: [{ src: "HP", dst: "生命值" }],
             revision: 9,
           },
         },
@@ -41,7 +41,7 @@ describe("text worker snapshots", () => {
       }),
     ).toEqual({
       glossary_enable: true,
-      glossary_entries: [{ src: "HP", dst: "生命值" }],
+      glossary_entries: [{ src: "HP", dst: "生命值", info: "", case_sensitive: false }],
       text_preserve_mode: "smart",
       text_preserve_entries: [],
       pre_replacement_enable: false,

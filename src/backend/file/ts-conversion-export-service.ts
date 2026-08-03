@@ -3,17 +3,15 @@ import type { TranslationFileExportService } from "./translation-file-export-ser
 import type { ProjectSessionState } from "../project/project-session-state";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { Item } from "../../domain/item";
+import { read_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
 import {
-  is_json_record,
-  read_json_record,
-  type JsonRecord,
-  type JsonValue,
-} from "../../domain/json";
-import { normalize_text_preserve_mode } from "../../domain/quality";
+  normalize_text_preserve_mode,
+  QualityRule,
+  type TextPreserveEntry,
+} from "../../domain/quality";
 import * as AppErrors from "../../shared/error";
+import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
 import {
-  build_ts_conversion_custom_rules,
-  collect_ts_conversion_text_types,
   normalize_ts_conversion_items,
   type TsConversionDirection,
 } from "../../shared/text/ts-conversion";
@@ -25,7 +23,6 @@ export class TsConversionExportService {
   private readonly session_state: ProjectSessionState; // 校验当前导出项目身份。
   private readonly cache: CacheReadPort; // 提供 item 与文本保护规则快照。
   private readonly worker_client: ComputeWorkerClient; // 执行繁简转换计算。
-  private readonly read_builtin_text_preserve_rule_sources: (text_type: string) => string[];
   private readonly file_export_service: TranslationFileExportService; // 负责真实文件写回。
 
   /**
@@ -35,13 +32,11 @@ export class TsConversionExportService {
     sessionState: ProjectSessionState;
     cache: CacheReadPort;
     workerClient: ComputeWorkerClient;
-    readBuiltinTextPreserveRuleSources: (text_type: string) => string[];
     fileExportService: TranslationFileExportService;
   }) {
     this.session_state = options.sessionState;
     this.cache = options.cache;
     this.worker_client = options.workerClient;
-    this.read_builtin_text_preserve_rule_sources = options.readBuiltinTextPreserveRuleSources;
     this.file_export_service = options.fileExportService;
   }
 
@@ -62,14 +57,6 @@ export class TsConversionExportService {
     const runtime_items = normalize_ts_conversion_items(source_items);
     const text_preserve = this.read_text_preserve_slice();
     const text_preserve_mode = normalize_text_preserve_mode(text_preserve.mode, "smart");
-    const normalized_text_preserve_mode = text_preserve_mode.toLowerCase();
-    const custom_rules = build_ts_conversion_custom_rules(text_preserve.entries);
-    const preset_rules_by_text_type =
-      preserve_text &&
-      normalized_text_preserve_mode !== "off" &&
-      normalized_text_preserve_mode !== "custom"
-        ? this.read_preset_rules_by_text_type(collect_ts_conversion_text_types(runtime_items))
-        : {};
     const converted_items = await this.worker_client.run(
       {
         type: "ts_conversion",
@@ -79,8 +66,7 @@ export class TsConversionExportService {
           convert_name,
           preserve_text,
           text_preserve_mode,
-          custom_rules,
-          preset_rules_by_text_type,
+          text_preserve_entries: text_preserve.entries,
         },
       },
       new AbortController().signal,
@@ -114,30 +100,18 @@ export class TsConversionExportService {
    */
   private read_text_preserve_slice(): {
     mode: string;
-    entries: Array<Record<string, unknown>>;
+    entries: TextPreserveEntry[];
   } {
     const quality_block = this.cache.quality.readBlock();
     const slice = read_json_record(quality_block["text_preserve"]);
-    const entries = Array.isArray(slice["entries"])
-      ? slice["entries"].flatMap((entry) => {
-          return is_json_record(entry) ? [{ ...entry }] : [];
-        })
-      : [];
+    const entries = normalize_quality_rule_entries(
+      QualityRule.from_json("text_preserve"),
+      slice["entries"] ?? [],
+    ) as TextPreserveEntry[];
     return {
       mode: String(slice["mode"] ?? "smart"),
       entries,
     };
-  }
-
-  /**
-   * 按当前项目出现的 text_type 读取内置保护规则。
-   */
-  private read_preset_rules_by_text_type(text_types: string[]): Record<string, string[]> {
-    return Object.fromEntries(
-      text_types.map((text_type) => {
-        return [text_type, this.read_builtin_text_preserve_rule_sources(text_type)];
-      }),
-    );
   }
 
   /**

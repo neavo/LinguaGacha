@@ -76,7 +76,7 @@ export const en_us_quality_editor = {
     clear: "Clear",
     descending: "Descending",
   },
-  statistics: {
+  hit: {
     hit_count: "Matched item count: {COUNT}",
     relation_line: "{CHILD} -> {PARENT}",
     subset_relations: "Contains subset relations:",

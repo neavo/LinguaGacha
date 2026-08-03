@@ -1,24 +1,14 @@
 import { useMemo } from "react";
 
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
-import { cn } from "@frontend/shadcn/classnames";
 import { TextPreserveContextMenuContent } from "@frontend/pages/text-preserve-page/components/text-preserve-context-menu";
 import type {
   TextPreserveEntryId,
-  TextPreserveStatisticsBadgeState,
+  TextPreserveHitBadgeState,
   TextPreserveVisibleEntry,
 } from "@frontend/pages/text-preserve-page/types";
-import { Badge } from "@frontend/shadcn/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@frontend/shadcn/card";
-import {
-  AppDropdownMenu,
-  AppDropdownMenuContent,
-  AppDropdownMenuGroup,
-  AppDropdownMenuItem,
-  AppDropdownMenuTrigger,
-} from "@frontend/widgets/app-dropdown-menu";
-import { Spinner } from "@frontend/shadcn/spinner";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import { QualityRuleHitBadge } from "@frontend/features/quality-rule-editor/quality-rule-hit-badge";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
 import type {
   AppTableColumn,
@@ -33,13 +23,13 @@ type TextPreserveTableProps = {
   sort_state: AppTableSortState | null;
   readonly: boolean;
   drag_disabled: boolean;
-  statistics_running: boolean;
-  statistics_ready: boolean;
+  hit_running: boolean;
+  hit_ready: boolean;
   selected_entry_ids: TextPreserveEntryId[];
   active_entry_id: TextPreserveEntryId | null;
   anchor_entry_id: TextPreserveEntryId | null;
   restore_scroll_entry_id: TextPreserveEntryId | null;
-  statistics_badge_by_entry_id: Record<TextPreserveEntryId, TextPreserveStatisticsBadgeState>;
+  hit_badge_by_entry_id: Record<TextPreserveEntryId, TextPreserveHitBadgeState>;
   on_sort_change: (sort_state: AppTableSortState | null) => void;
   on_selection_change: (payload: AppTableSelectionChange) => void;
   on_open_edit: (entry_id: TextPreserveEntryId) => void;
@@ -48,7 +38,6 @@ type TextPreserveTableProps = {
     over_entry_id: TextPreserveEntryId,
   ) => Promise<void>;
   on_query_entry_source: (entry_id: TextPreserveEntryId) => Promise<void>;
-  on_search_entry_relations: (entry_id: TextPreserveEntryId) => void;
 };
 
 /** 交互控件和滚动条不应成为框选手势的起点。 */
@@ -78,137 +67,6 @@ function should_ignore_row_click_target(target_element: HTMLElement): boolean {
   );
 }
 
-type TextPreserveStatisticsBadgeProps = {
-  entry_id: TextPreserveEntryId;
-  statistics_running: boolean;
-  badge_state: TextPreserveStatisticsBadgeState | null;
-  on_query_entry_source: (entry_id: TextPreserveEntryId) => Promise<void>;
-  on_search_entry_relations: (entry_id: TextPreserveEntryId) => void;
-};
-function TextPreserveStatisticsBadge(props: TextPreserveStatisticsBadgeProps): JSX.Element | null {
-  const { t } = useI18n();
-
-  if (props.statistics_running) {
-    return (
-      <span
-        data-text-preserve-ignore-box-select="true"
-        data-text-preserve-ignore-row-click="true"
-        className="text-preserve-page__statistics-badge-wrap"
-      >
-        <Badge
-          variant="outline"
-          className="preserve-page__statistics-badge preserve-page__statistics-badge--running [&>svg]:!size-[10px]"
-        >
-          <Spinner data-icon="inline-start" />
-          <span className="sr-only">{t("app.action.loading")}</span>
-        </Badge>
-      </span>
-    );
-  }
-
-  if (props.badge_state === null) {
-    return null;
-  }
-
-  const badge_color_class_name =
-    props.badge_state.kind === "matched"
-      ? "border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-400"
-      : props.badge_state.kind === "related"
-        ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400"
-        : "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400";
-
-  const badge = (
-    <Badge className={cn("preserve-page__statistics-badge", badge_color_class_name)}>
-      {props.badge_state.matched_count.toString()}
-    </Badge>
-  );
-
-  const tooltip_content = (
-    <TooltipContent side="top" sideOffset={8}>
-      <p className="whitespace-pre-line">{props.badge_state.tooltip}</p>
-    </TooltipContent>
-  );
-
-  if (props.badge_state.kind === "unmatched") {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            data-text-preserve-ignore-box-select="true"
-            data-text-preserve-ignore-row-click="true"
-            className="text-preserve-page__statistics-badge-wrap"
-          >
-            {badge}
-          </span>
-        </TooltipTrigger>
-        {tooltip_content}
-      </Tooltip>
-    );
-  }
-
-  if (props.badge_state.kind === "matched") {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            data-text-preserve-ignore-box-select="true"
-            data-text-preserve-ignore-row-click="true"
-            className="preserve-page__statistics-badge-button"
-            onClick={(event) => {
-              event.stopPropagation();
-              void props.on_query_entry_source(props.entry_id);
-            }}
-          >
-            {badge}
-          </button>
-        </TooltipTrigger>
-        {tooltip_content}
-      </Tooltip>
-    );
-  }
-
-  return (
-    <AppDropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <AppDropdownMenuTrigger asChild>
-            <button
-              type="button"
-              data-text-preserve-ignore-box-select="true"
-              data-text-preserve-ignore-row-click="true"
-              className="preserve-page__statistics-badge-button"
-              onClick={(event) => {
-                event.stopPropagation();
-              }}
-            >
-              {badge}
-            </button>
-          </AppDropdownMenuTrigger>
-        </TooltipTrigger>
-        {tooltip_content}
-      </Tooltip>
-      <AppDropdownMenuContent align="center">
-        <AppDropdownMenuGroup>
-          <AppDropdownMenuItem
-            onClick={() => {
-              void props.on_query_entry_source(props.entry_id);
-            }}
-          >
-            {t("quality_editor.action.query")}
-          </AppDropdownMenuItem>
-          <AppDropdownMenuItem
-            onClick={() => {
-              props.on_search_entry_relations(props.entry_id);
-            }}
-          >
-            {t("text_preserve_page.statistics.action.search_relation")}
-          </AppDropdownMenuItem>
-        </AppDropdownMenuGroup>
-      </AppDropdownMenuContent>
-    </AppDropdownMenu>
-  );
-}
 export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
   const { t } = useI18n();
 
@@ -272,32 +130,36 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
       },
       {
         kind: "data",
-        id: "statistics",
-        title: t("text_preserve_page.fields.statistics"),
+        id: "hit",
+        title: t("text_preserve_page.fields.hit"),
         width: 92,
         align: "center",
         sortable: {
-          disabled: !props.statistics_ready,
+          disabled: !props.hit_ready,
           action_labels: {
             ascending: t("quality_editor.sort.ascending"),
             descending: t("quality_editor.sort.descending"),
             clear: t("quality_editor.sort.clear"),
           },
         },
-        head_class_name: "text-preserve-page__table-statistics-head",
-        cell_class_name: "text-preserve-page__table-statistics-cell",
+        head_class_name: "text-preserve-page__table-hit-head",
+        cell_class_name: "text-preserve-page__table-hit-cell",
         render_cell: (payload) => {
           if (payload.presentation === "overlay") {
             return null;
           }
 
           return (
-            <TextPreserveStatisticsBadge
+            <QualityRuleHitBadge
               entry_id={payload.row_id}
-              statistics_running={props.statistics_running}
-              badge_state={props.statistics_badge_by_entry_id[payload.row_id] ?? null}
+              running={props.hit_running}
+              badge_state={props.hit_badge_by_entry_id[payload.row_id] ?? null}
+              badge_class_name="preserve-page__hit-badge"
+              running_class_name="preserve-page__hit-badge--running"
+              wrap_class_name="text-preserve-page__hit-badge-wrap"
+              button_class_name="preserve-page__hit-badge-button"
+              query_label={t("quality_editor.action.query")}
               on_query_entry_source={props.on_query_entry_source}
-              on_search_entry_relations={props.on_search_entry_relations}
             />
           );
         },
@@ -305,10 +167,9 @@ export function TextPreserveTable(props: TextPreserveTableProps): JSX.Element {
     ];
   }, [
     props.on_query_entry_source,
-    props.on_search_entry_relations,
-    props.statistics_badge_by_entry_id,
-    props.statistics_ready,
-    props.statistics_running,
+    props.hit_badge_by_entry_id,
+    props.hit_ready,
+    props.hit_running,
     t,
   ]);
 

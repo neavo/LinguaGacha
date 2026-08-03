@@ -297,7 +297,7 @@ describe("TaskProjectStore", () => {
     const quality = snapshot["quality"] as MutableJsonRecord;
 
     expect(quality["glossary"]).toEqual({
-      entries: [{ src: "HP", dst: "生命值" }],
+      entries: [{ src: "HP", dst: "生命值", info: "", case_sensitive: false }],
       enabled: true,
       revision: 0,
     });

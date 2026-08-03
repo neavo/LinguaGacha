@@ -13,6 +13,7 @@ import {
   type ProjectDataSection,
 } from "../../shared/project-event";
 import * as AppErrors from "../../shared/error";
+import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
 
 export { PROJECT_DATA_SECTIONS };
 export type { ProjectDataSection };
@@ -463,7 +464,7 @@ export class ProjectDataReader {
   ): JsonRecord {
     const rule = QualityRule.from_json(rule_type);
     return {
-      entries: this.get_rule_entries(project_path, rule.database_type) as unknown as JsonValue,
+      entries: this.get_rule_entries(project_path, rule) as unknown as JsonValue,
       enabled:
         rule.enabled_meta_key === null
           ? rule.default_enabled
@@ -584,15 +585,12 @@ export class ProjectDataReader {
     return records;
   }
 
-  /**
-   * 规则 entries 允许非对象项，统一包装成可序列化记录
-   */
-  private get_rule_entries(project_path: string, rule_type: string): JsonRecord[] {
-    const value = this.database.get_rules(project_path, rule_type);
-    if (!Array.isArray(value)) {
-      return [];
-    }
-    return value.map((entry) => (is_json_record(entry) ? { ...entry } : { value: entry }));
+  /** 规则事实读取后立即按具体 kind 归一验证，坏项目不能进入 cache。 */
+  private get_rule_entries(project_path: string, rule: QualityRule): JsonRecord[] {
+    return normalize_quality_rule_entries(
+      rule,
+      this.database.get_rules(project_path, rule.database_type),
+    ) as JsonRecord[];
   }
 
   /**

@@ -12,7 +12,6 @@ import {
   PROOFREADING_MANUAL_STATUS_CODES,
   PROOFREADING_STATUS_LABEL_KEY_BY_CODE,
   PROOFREADING_WARNING_LABEL_KEY_BY_CODE,
-  type ProofreadingGlossaryTerm,
   type ProofreadingItem,
   type ProofreadingManualStatusCode,
 } from "@shared/proofreading/proofreading-types";
@@ -29,6 +28,14 @@ import {
   AppDropdownMenuItem,
   AppDropdownMenuTrigger,
 } from "@frontend/widgets/app-dropdown-menu";
+import {
+  evaluate_glossary_applications,
+  resolve_glossary_application_state,
+  type GlossaryApplication,
+  type GlossarySourceMatch,
+} from "@shared/quality/glossary";
+import { read_item_translation_text_parts } from "@shared/item-text";
+import { compile_literal_patterns } from "@shared/text/literal-matcher";
 
 type ProofreadingEditDialogProps = {
   state: ProofreadingDialogState;
@@ -51,8 +58,7 @@ type ProofreadingBadgeTone = "neutral" | "success" | "warning" | "failure";
 
 type ProofreadingNameGlossaryState = {
   tone: "neutral" | "success" | "warning";
-  applied_terms: ProofreadingGlossaryTerm[];
-  failed_terms: ProofreadingGlossaryTerm[];
+  applications: GlossaryApplication[];
 };
 
 function resolve_status_badge_tone(status: string): ProofreadingBadgeTone {
@@ -86,11 +92,11 @@ function render_fragment_section(title: string, fragments: string[]): JSX.Elemen
 }
 
 function render_glossary_tooltip_content(
-  applied_terms: ProofreadingGlossaryTerm[],
-  failed_terms: ProofreadingGlossaryTerm[],
+  applications: GlossaryApplication[],
   t: ReturnType<typeof useI18n>["t"],
 ): JSX.Element | null {
-  if (applied_terms.length === 0 && failed_terms.length === 0) {
+  const { applied, failed } = split_glossary_applications(applications);
+  if (applied.length === 0 && failed.length === 0) {
     return null;
   }
 
@@ -98,11 +104,11 @@ function render_glossary_tooltip_content(
     <div className="proofreading-page__dialog-badge-tooltip-copy">
       {render_fragment_section(
         t("proofreading_page.tooltip.glossary_applied_terms"),
-        applied_terms.map((term) => `${term[0]} -> ${term[1]}`),
+        applied.map(format_proofreading_glossary_term),
       )}
       {render_fragment_section(
-        t("proofreading_page.tooltip.glossary_failed_terms"),
-        failed_terms.map(format_proofreading_glossary_term),
+        t("proofreading_page.tooltip.glossary_missing_terms"),
+        failed.map(format_proofreading_glossary_term),
       )}
     </div>
   );
@@ -182,126 +188,107 @@ function render_status_badge(args: {
   );
 }
 
-/** 以用户可见术语对为身份去重，保持最后一份条目事实。 */
-function dedupe_glossary_terms(terms: ProofreadingGlossaryTerm[]): ProofreadingGlossaryTerm[] {
-  const term_map = new Map<string, ProofreadingGlossaryTerm>();
-  terms.forEach((term) => {
-    term_map.set(format_proofreading_glossary_term(term), term);
-  });
-  return [...term_map.values()];
-}
-
-/** 译文正文或姓名任一处包含目标词即可视为当前草稿已应用术语。 */
-function is_glossary_term_applied(
-  term: ProofreadingGlossaryTerm,
-  draft_item: ProofreadingDialogState["draft_item"],
-): boolean {
-  return (
-    term[1].trim().length > 0 &&
-    (draft_item.dst.includes(term[1]) || draft_item.name_dst.includes(term[1]))
-  );
-}
-
-/** 按当前草稿重算术语状态，使胶囊和标亮随编辑实时刷新。 */
-function partition_glossary_terms(
-  item: ProofreadingItem,
-  draft_item: ProofreadingDialogState["draft_item"],
-): {
-  applied_terms: ProofreadingGlossaryTerm[];
-  failed_terms: ProofreadingGlossaryTerm[];
-} {
-  const all_terms = dedupe_glossary_terms([
-    ...item.applied_glossary_terms,
-    ...item.failed_glossary_terms,
-  ]);
-  const applied_terms = all_terms.filter((term) => is_glossary_term_applied(term, draft_item));
-  const failed_terms = all_terms.filter((term) => !is_glossary_term_applied(term, draft_item));
-
-  return {
-    applied_terms,
-    failed_terms,
-  };
-}
-
 function normalize_code_editor_match_text(text: string): string {
   return text.replace(/\r\n|\r/gu, "\n");
 }
 
-/** 将 CRLF 坐标归一到 CodeMirror 文本后查找全部不重叠片段。 */
-export function find_text_match_ranges(
-  text: string,
-  fragment: string,
-): Array<Pick<AppTextMark, "start" | "end">> {
-  const editor_text = normalize_code_editor_match_text(text);
-  const editor_fragment = normalize_code_editor_match_text(fragment);
+function split_glossary_applications(applications: GlossaryApplication[]): {
+  applied: GlossaryApplication[];
+  failed: GlossaryApplication[];
+} {
+  return {
+    applied: applications.filter((application) =>
+      application.fields.every((field) => field.applied),
+    ),
+    failed: applications.filter((application) =>
+      application.fields.some((field) => !field.applied),
+    ),
+  };
+}
 
-  if (editor_fragment.length === 0) {
-    return [];
-  }
+/** 编辑窗沿用后端已锁定的源字段集合，只对草稿目标字段重新求值。 */
+function evaluate_draft_glossary_applications(
+  item: ProofreadingItem,
+  draft_item: ProofreadingDialogState["draft_item"],
+): GlossaryApplication[] {
+  const source_matches: GlossarySourceMatch[] = item.glossary_applications.map(
+    ({ entry_id, src, dst, case_sensitive, fields }) => ({
+      entry: { entry_id, src, dst, case_sensitive, info: "" },
+      fields: fields.map(({ source_field, target_field }) => ({
+        source_field,
+        target_field,
+        ranges: [],
+      })),
+    }),
+  );
+  return evaluate_glossary_applications(
+    source_matches,
+    read_item_translation_text_parts({ dst: draft_item.dst, name_dst: draft_item.name_dst }),
+  );
+}
 
-  const ranges: Array<Pick<AppTextMark, "start" | "end">> = [];
-  let search_start = 0;
-
-  while (search_start < editor_text.length) {
-    const match_start = editor_text.indexOf(editor_fragment, search_start);
-
-    if (match_start < 0) {
-      break;
-    }
-
-    ranges.push({
-      start: match_start,
-      end: match_start + editor_fragment.length,
-    });
-    search_start = match_start + editor_fragment.length;
-  }
-
-  return ranges;
+function build_glossary_field_marks(args: {
+  text: string;
+  applications: GlossaryApplication[];
+  field: "src" | "name_src" | "dst" | "name_dst";
+  t: ReturnType<typeof useI18n>["t"];
+}): AppTextMark[] {
+  const source_field = args.field === "src" || args.field === "name_src";
+  const applications = args.applications.filter((application) =>
+    application.fields.some((field) =>
+      source_field ? field.source_field === args.field : field.target_field === args.field,
+    ),
+  );
+  const matcher = compile_literal_patterns(
+    applications.map((application) => ({
+      key: application.entry_id,
+      text: source_field ? application.src : application.dst,
+      case_sensitive: source_field ? application.case_sensitive : true,
+    })),
+  );
+  const application_by_id = new Map(
+    applications.map((application) => [application.entry_id, application]),
+  );
+  return matcher.match(normalize_code_editor_match_text(args.text)).flatMap((match) => {
+    const application = application_by_id.get(match.key);
+    if (application === undefined) return [];
+    const applied = application.fields
+      .filter((field) =>
+        source_field ? field.source_field === args.field : field.target_field === args.field,
+      )
+      .every((field) => field.applied);
+    if (!source_field && !applied) return [];
+    const label = format_proofreading_glossary_term(application);
+    return match.ranges.map((range) => ({
+      ...range,
+      tone: applied ? ("success" as const) : ("warning" as const),
+      tooltip: `${args.t(
+        applied
+          ? "proofreading_page.glossary.tooltip_applied"
+          : "proofreading_page.glossary.tooltip_missing",
+      )}\n${label}`,
+    }));
+  });
 }
 
 /** 命中术语标亮双语文本，缺失译文的术语只警示原文。 */
 function build_glossary_highlights(
   item: ProofreadingItem,
   draft_item: ProofreadingDialogState["draft_item"],
+  applications: GlossaryApplication[],
   t: ReturnType<typeof useI18n>["t"],
 ): {
   source_marks: AppTextMark[];
   translation_marks: AppTextMark[];
 } {
-  const { applied_terms, failed_terms } = partition_glossary_terms(item, draft_item);
-  const source_marks: AppTextMark[] = [];
-  const translation_marks: AppTextMark[] = [];
-
-  applied_terms.forEach((term) => {
-    find_text_match_ranges(item.src, term[0]).forEach((range) => {
-      source_marks.push({
-        ...range,
-        tone: "success",
-        tooltip: `${t("proofreading_page.glossary.tooltip_applied")}\n${term[0]} -> ${term[1]}`,
-      });
-    });
-    find_text_match_ranges(draft_item.dst, term[1]).forEach((range) => {
-      translation_marks.push({
-        ...range,
-        tone: "success",
-        tooltip: `${t("proofreading_page.glossary.tooltip_applied")}\n${term[0]} -> ${term[1]}`,
-      });
-    });
-  });
-
-  failed_terms.forEach((term) => {
-    find_text_match_ranges(item.src, term[0]).forEach((range) => {
-      source_marks.push({
-        ...range,
-        tone: "warning",
-        tooltip: `${t("proofreading_page.glossary.tooltip_failed")}\n${term[0]} -> ${term[1]}`,
-      });
-    });
-  });
-
   return {
-    source_marks,
-    translation_marks,
+    source_marks: build_glossary_field_marks({ text: item.src, applications, field: "src", t }),
+    translation_marks: build_glossary_field_marks({
+      text: draft_item.dst,
+      applications,
+      field: "dst",
+      t,
+    }),
   };
 }
 
@@ -312,58 +299,37 @@ function build_name_glossary_marks(args: {
   state: ProofreadingNameGlossaryState;
   t: ReturnType<typeof useI18n>["t"];
 }): AppTextMark[] {
-  const marks: AppTextMark[] = [];
-
-  args.state.applied_terms.forEach((term) => {
-    const fragment = args.source_field ? term[0] : term[1];
-    find_text_match_ranges(args.text, fragment).forEach((range) => {
-      marks.push({
-        ...range,
-        tone: "success",
-        tooltip: `${args.t("proofreading_page.glossary.tooltip_applied")}\n${term[0]} -> ${term[1]}`,
-      });
-    });
+  return build_glossary_field_marks({
+    text: args.text,
+    applications: args.state.applications,
+    field: args.source_field ? "name_src" : "name_dst",
+    t: args.t,
   });
-
-  args.state.failed_terms.forEach((term) => {
-    const fragment = args.source_field ? term[0] : term[1];
-    find_text_match_ranges(args.text, fragment).forEach((range) => {
-      marks.push({
-        ...range,
-        tone: "warning",
-        tooltip: `${args.t("proofreading_page.glossary.tooltip_failed")}\n${term[0]} -> ${term[1]}`,
-      });
-    });
-  });
-
-  return marks;
 }
 
 /** 将当前草稿术语命中情况归纳为成功、部分或失败胶囊。 */
 function resolve_glossary_badge_state(
-  item: ProofreadingItem,
-  draft_item: ProofreadingDialogState["draft_item"],
+  applications: GlossaryApplication[],
   t: ReturnType<typeof useI18n>["t"],
 ): {
   label: string;
   tone: ProofreadingBadgeTone;
 } | null {
-  const { applied_terms, failed_terms } = partition_glossary_terms(item, draft_item);
-
-  if (applied_terms.length === 0 && failed_terms.length === 0) {
+  const state = resolve_glossary_application_state(applications);
+  if (state === "none") {
     return null;
   }
 
-  if (failed_terms.length === 0) {
+  if (state === "applied") {
     return {
-      label: t("proofreading_page.glossary.ok"),
+      label: t("proofreading_page.glossary.applied"),
       tone: "success",
     };
   }
 
-  if (applied_terms.length === 0) {
+  if (state === "missing") {
     return {
-      label: t("proofreading_page.glossary.miss"),
+      label: t("proofreading_page.glossary.missing"),
       tone: "failure",
     };
   }
@@ -375,38 +341,18 @@ function resolve_glossary_badge_state(
 }
 
 /** 原文姓名只消费源词命中，避免正文中的同词污染姓名状态。 */
-function resolve_source_name_glossary_state(args: {
-  source_name: string;
-  applied_terms: ProofreadingGlossaryTerm[];
-  failed_terms: ProofreadingGlossaryTerm[];
-}): ProofreadingNameGlossaryState {
-  const applied_terms = args.applied_terms.filter((term) => args.source_name.includes(term[0]));
-  const failed_terms = args.failed_terms.filter((term) => args.source_name.includes(term[0]));
-  return {
-    tone: failed_terms.length > 0 ? "warning" : applied_terms.length > 0 ? "success" : "neutral",
-    applied_terms,
-    failed_terms,
-  };
-}
-
-/** 译文姓名以原文姓名涉及的术语为全集，再按当前译名判定命中。 */
-function resolve_translation_name_glossary_state(args: {
-  source_name: string;
-  translation_name: string;
-  applied_terms: ProofreadingGlossaryTerm[];
-  failed_terms: ProofreadingGlossaryTerm[];
-}): ProofreadingNameGlossaryState {
-  const terms = dedupe_glossary_terms([...args.applied_terms, ...args.failed_terms]).filter(
-    (term) => {
-      return args.source_name.includes(term[0]);
-    },
+function resolve_name_glossary_state(
+  applications: GlossaryApplication[],
+): ProofreadingNameGlossaryState {
+  const name_applications = applications.filter((application) =>
+    application.fields.some((field) => field.source_field === "name_src"),
   );
-  const applied_terms = terms.filter((term) => args.translation_name.includes(term[1]));
-  const failed_terms = terms.filter((term) => !args.translation_name.includes(term[1]));
+  const has_failed = name_applications.some((application) =>
+    application.fields.some((field) => field.source_field === "name_src" && !field.applied),
+  );
   return {
-    tone: failed_terms.length > 0 ? "warning" : applied_terms.length > 0 ? "success" : "neutral",
-    applied_terms,
-    failed_terms,
+    tone: has_failed ? "warning" : name_applications.length > 0 ? "success" : "neutral",
+    applications: name_applications,
   };
 }
 
@@ -415,11 +361,7 @@ function render_name_input_with_glossary_state(args: {
   state: ProofreadingNameGlossaryState;
   t: ReturnType<typeof useI18n>["t"];
 }): JSX.Element {
-  const tooltip_content = render_glossary_tooltip_content(
-    args.state.applied_terms,
-    args.state.failed_terms,
-    args.t,
-  );
+  const tooltip_content = render_glossary_tooltip_content(args.state.applications, args.t);
   if (tooltip_content === null) {
     return args.input;
   }
@@ -477,14 +419,15 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
     ];
   const status_badge_tone = resolve_status_badge_tone(item.status);
   const status_label = status_label_key === undefined ? item.status : t(status_label_key);
-  const glossary_badge_state = resolve_glossary_badge_state(item, draft_item, t);
-  const glossary_terms = partition_glossary_terms(item, draft_item);
-  const glossary_tooltip_content = render_glossary_tooltip_content(
-    glossary_terms.applied_terms,
-    glossary_terms.failed_terms,
+  const glossary_applications = evaluate_draft_glossary_applications(item, draft_item);
+  const glossary_badge_state = resolve_glossary_badge_state(glossary_applications, t);
+  const glossary_tooltip_content = render_glossary_tooltip_content(glossary_applications, t);
+  const { source_marks, translation_marks } = build_glossary_highlights(
+    item,
+    draft_item,
+    glossary_applications,
     t,
   );
-  const { source_marks, translation_marks } = build_glossary_highlights(item, draft_item, t);
   const visible_warning_codes =
     glossary_badge_state === null
       ? item.warnings
@@ -495,17 +438,8 @@ export function ProofreadingEditDialog(props: ProofreadingEditDialogProps): JSX.
     item.internal_file_path === undefined
       ? item.file_path
       : `${item.file_path} | ${item.internal_file_path}`;
-  const source_name_glossary_state = resolve_source_name_glossary_state({
-    source_name,
-    applied_terms: glossary_terms.applied_terms,
-    failed_terms: glossary_terms.failed_terms,
-  });
-  const translation_name_glossary_state = resolve_translation_name_glossary_state({
-    source_name,
-    translation_name,
-    applied_terms: glossary_terms.applied_terms,
-    failed_terms: glossary_terms.failed_terms,
-  });
+  const source_name_glossary_state = resolve_name_glossary_state(glossary_applications);
+  const translation_name_glossary_state = source_name_glossary_state;
   const show_name_fields =
     read_optional_item_name_text(item.name_src) !== null ||
     read_optional_item_name_text(item.name_dst) !== null ||

@@ -7,7 +7,6 @@ import {
 } from "@frontend/app/state/desktop-project-write";
 import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import { useDebouncedCallback } from "@frontend/widgets/interactions/use-debounce";
-import type { QualityStatisticsDependencySnapshot } from "@shared/quality/quality-statistics";
 import { buildProofreadingLookupQuery } from "@shared/quality/quality-rule-proofreading-query";
 import {
   query_quality_rules,
@@ -43,7 +42,7 @@ import type {
 } from "@frontend/features/preset-editor/preset-types";
 import {
   has_active_quality_rule_filters,
-  resolve_quality_rule_statistics_badge_kind,
+  resolve_quality_rule_hit_badge_kind,
 } from "@frontend/features/quality-rule-editor/quality-rule-filtering";
 import { build_glossary_filter_result } from "@frontend/pages/glossary-page/filtering";
 import {
@@ -87,8 +86,8 @@ import type {
   GlossaryFilterState,
   GlossarySortField,
   GlossarySortState,
-  GlossaryStatisticsBadgeState,
-  GlossaryStatisticsState,
+  GlossaryHitBadgeState,
+  GlossaryHitState,
   GlossaryVisibleEntry,
 } from "@frontend/pages/glossary-page/types";
 
@@ -165,7 +164,7 @@ function create_empty_sort_state(): GlossarySortState {
 }
 
 // session 恢复排序的白名单，防止旧版本或其它页面列 id 泄入本页。
-const GLOSSARY_SORT_FIELDS = new Set(["src", "dst", "info", "rule", "statistics"]);
+const GLOSSARY_SORT_FIELDS = new Set(["src", "dst", "info", "rule", "hit"]);
 
 /**
  * 在 session 恢复边界收窄排序状态，旧列或半有效状态统一回到未排序。
@@ -259,18 +258,18 @@ function normalize_glossary_quality_slice(
 /**
  * 将命中数和子集父项关系合并成徽章的多行说明。
  */
-function build_statistics_badge_tooltip(
+function build_hit_badge_tooltip(
   t: (key: LocaleKey) => string,
   entry: GlossaryEntry,
   matched_count: number,
   subset_parent_labels: string[],
 ): string {
   const tooltip_lines = [
-    t("quality_editor.statistics.hit_count").replace("{COUNT}", matched_count.toString()),
+    t("quality_editor.hit.hit_count").replace("{COUNT}", matched_count.toString()),
   ];
 
   if (subset_parent_labels.length > 0) {
-    tooltip_lines.push(t("quality_editor.statistics.subset_relations"));
+    tooltip_lines.push(t("quality_editor.hit.subset_relations"));
     tooltip_lines.push(
       ...subset_parent_labels.map((label) => {
         return `${entry.src} -> ${label}`;
@@ -281,34 +280,12 @@ function build_statistics_badge_tooltip(
   return tooltip_lines.join("\n");
 }
 
-export function buildGlossaryStatisticsState(args: {
-  snapshot: QualityStatisticsDependencySnapshot;
-  completed_entry_ids: GlossaryEntryId[];
-  results: Record<string, { matched_item_count?: number; subset_parents?: string[] }>;
-}): GlossaryStatisticsState {
-  return {
-    running: false,
-    completed_snapshot: args.snapshot,
-    completed_entry_ids: args.completed_entry_ids,
-    matched_count_by_entry_id: Object.fromEntries(
-      Object.entries(args.results).map(([entry_id, result]) => {
-        return [entry_id, result.matched_item_count ?? 0];
-      }),
-    ),
-    subset_parent_labels_by_entry_id: Object.fromEntries(
-      Object.entries(args.results).map(([entry_id, result]) => {
-        return [entry_id, result.subset_parents ?? []];
-      }),
-    ),
-  };
-}
-
 /**
  * 将会话级统计缓存投影为页面只读状态，不复制规则事实。
  */
-function build_glossary_statistics_state_from_cache(
+function build_glossary_hit_state_from_cache(
   statistics_cache: QualityRuleStatisticsCacheSnapshot,
-): GlossaryStatisticsState {
+): GlossaryHitState {
   // 页面只从质量统计缓存计算展示状态，不持有也不修改项目质量规则事实。
   return {
     running: isQualityRuleStatisticsCacheRunning(statistics_cache),
@@ -327,9 +304,9 @@ type UseGlossaryPageStateResult = {
   invalid_filter_message: string | null;
   readonly: boolean;
   drag_disabled: boolean;
-  statistics_ready: boolean;
-  statistics_sort_available: boolean;
-  statistics_badge_by_entry_id: Record<GlossaryEntryId, GlossaryStatisticsBadgeState>;
+  hit_ready: boolean;
+  hit_sort_available: boolean;
+  hit_badge_by_entry_id: Record<GlossaryEntryId, GlossaryHitBadgeState>;
   preset_items: GlossaryPresetItem[];
   selected_entry_ids: GlossaryEntryId[];
   active_entry_id: GlossaryEntryId | null;
@@ -366,8 +343,8 @@ type UseGlossaryPageStateResult = {
     active_entry_id: GlossaryEntryId,
     over_entry_id: GlossaryEntryId,
   ) => Promise<void>;
-  query_entry_source_from_statistics: (entry_id: GlossaryEntryId) => Promise<void>;
-  search_entry_relations_from_statistics: (entry_id: GlossaryEntryId) => void;
+  query_entry_source_from_hit: (entry_id: GlossaryEntryId) => Promise<void>;
+  search_entry_relations_from_hit: (entry_id: GlossaryEntryId) => void;
   save_dialog_entry: () => Promise<void>;
   request_close_dialog: () => Promise<void>;
   confirm_pending_action: () => Promise<void>;
@@ -436,12 +413,11 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const dialog_state_ref = useRef(dialog_state);
   const entries_ref = useRef(entries);
   const statistics_cache = useQualityRuleStatistics("glossary");
-  const statistics_state = useMemo<GlossaryStatisticsState>(() => {
-    return build_glossary_statistics_state_from_cache(statistics_cache);
+  const hit_state = useMemo<GlossaryHitState>(() => {
+    return build_glossary_hit_state_from_cache(statistics_cache);
   }, [statistics_cache]);
-  const statistics_ready = isQualityRuleStatisticsCacheReady(statistics_cache);
-  const statistics_sort_available =
-    statistics_ready || statistics_state.completed_snapshot !== null;
+  const hit_ready = isQualityRuleStatisticsCacheReady(statistics_cache);
+  const hit_sort_available = hit_ready || hit_state.completed_snapshot !== null;
   // 区分同组件内项目身份切换，避免把上一项目的表格状态写入新项目。
   const project_view_identity_ref = useRef(project_snapshot.loaded ? project_snapshot.path : "");
 
@@ -553,9 +529,9 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
 
     return null;
   }, [active_entry_id, entry_index_by_id, selected_entry_ids]);
-  const completed_statistics_entry_id_set = useMemo<ReadonlySet<GlossaryEntryId>>(() => {
-    return new Set(statistics_state.completed_entry_ids);
-  }, [statistics_state.completed_entry_ids]);
+  const completed_hit_entry_id_set = useMemo<ReadonlySet<GlossaryEntryId>>(() => {
+    return new Set(hit_state.completed_entry_ids);
+  }, [hit_state.completed_entry_ids]);
   const build_result_snapshot = useCallback(
     (
       next_filter_state: GlossaryFilterState,
@@ -566,8 +542,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         entry_ids,
         filter_state: next_filter_state,
         sort_state: next_sort_state,
-        statistics_sort_available,
-        statistics_state,
+        hit_sort_available,
+        hit_state,
       });
 
       return create_result_snapshot({
@@ -579,7 +555,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         invalid_message: result.invalid_regex_message,
       });
     },
-    [entries, entry_ids, statistics_sort_available, statistics_state],
+    [entries, entry_ids, hit_sort_available, hit_state],
   );
   const build_current_result_snapshot = useCallback(() => {
     return build_result_snapshot(filter_state, sort_state);
@@ -606,10 +582,10 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       entry_ids,
       filter_state,
       sort_state,
-      statistics_sort_available,
-      statistics_state,
+      hit_sort_available,
+      hit_state,
     });
-  }, [entries, entry_ids, filter_state, sort_state, statistics_sort_available, statistics_state]);
+  }, [entries, entry_ids, filter_state, sort_state, hit_sort_available, hit_state]);
   const visible_entry_by_id = useMemo(() => {
     return new Map(
       entries.flatMap((entry, source_index) => {
@@ -639,11 +615,9 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
   const has_active_sort = sort_state.field !== null;
   const readonly = is_runtime_busy(runtime_snapshot);
   const drag_disabled = readonly || has_active_filters || has_active_sort; // 搜索过滤和逻辑排序都会打破“真实顺序即操作上下文”的前提，因此拖拽要一起禁用
-  const statistics_badge_by_entry_id = useMemo<
-    Record<GlossaryEntryId, GlossaryStatisticsBadgeState>
-  >(() => {
-    const next_badge_by_entry_id: Record<GlossaryEntryId, GlossaryStatisticsBadgeState> = {};
-    if (!statistics_ready && statistics_state.completed_snapshot === null) {
+  const hit_badge_by_entry_id = useMemo<Record<GlossaryEntryId, GlossaryHitBadgeState>>(() => {
+    const next_badge_by_entry_id: Record<GlossaryEntryId, GlossaryHitBadgeState> = {};
+    if (!hit_ready && hit_state.completed_snapshot === null) {
       return next_badge_by_entry_id;
     }
 
@@ -653,36 +627,28 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
         return;
       }
 
-      const kind = resolve_quality_rule_statistics_badge_kind(
+      const kind = resolve_quality_rule_hit_badge_kind(
         entry_id,
-        statistics_state,
-        completed_statistics_entry_id_set,
+        hit_state,
+        completed_hit_entry_id_set,
       );
       if (kind === null) {
         return;
       }
 
-      const matched_count = statistics_state.matched_count_by_entry_id[entry_id] ?? 0;
-      const subset_parent_labels =
-        statistics_state.subset_parent_labels_by_entry_id[entry_id] ?? [];
+      const matched_count = hit_state.matched_count_by_entry_id[entry_id] ?? 0;
+      const subset_parent_labels = hit_state.subset_parent_labels_by_entry_id[entry_id] ?? [];
 
       next_badge_by_entry_id[entry_id] = {
         kind,
         matched_count,
         subset_parent_labels,
-        tooltip: build_statistics_badge_tooltip(t, entry, matched_count, subset_parent_labels),
+        tooltip: build_hit_badge_tooltip(t, entry, matched_count, subset_parent_labels),
       };
     });
 
     return next_badge_by_entry_id;
-  }, [
-    completed_statistics_entry_id_set,
-    entries,
-    entry_ids,
-    statistics_ready,
-    statistics_state,
-    t,
-  ]);
+  }, [completed_hit_entry_id_set, entries, entry_ids, hit_ready, hit_state, t]);
   const clear_selection_state = table_ui_state.clear_selection_state;
 
   const save_entries_snapshot = useCallback(
@@ -995,7 +961,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     [set_table_selection_state],
   );
 
-  const search_entry_relations_from_statistics = useCallback(
+  const search_entry_relations_from_hit = useCallback(
     (entry_id: GlossaryEntryId): void => {
       const target_index = entry_index_by_id.get(entry_id);
       const target_entry = target_index === undefined ? null : entries[target_index];
@@ -1290,7 +1256,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     set_dialog_state(create_empty_dialog_state());
   }, []);
 
-  const query_entry_source_from_statistics = useCallback(
+  const query_entry_source_from_hit = useCallback(
     async (entry_id: GlossaryEntryId): Promise<void> => {
       const target_index = entry_index_by_id.get(entry_id);
       const target_entry = target_index === undefined ? null : entries[target_index];
@@ -1835,9 +1801,9 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       invalid_filter_message: invalid_regex_message,
       readonly,
       drag_disabled,
-      statistics_ready,
-      statistics_sort_available,
-      statistics_badge_by_entry_id,
+      hit_ready,
+      hit_sort_available,
+      hit_badge_by_entry_id,
       preset_items,
       selected_entry_ids,
       active_entry_id,
@@ -1871,8 +1837,8 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
       delete_selected_entries,
       toggle_case_sensitive_for_selected,
       reorder_selected_entries,
-      query_entry_source_from_statistics,
-      search_entry_relations_from_statistics,
+      query_entry_source_from_hit,
+      search_entry_relations_from_hit,
       save_dialog_entry,
       request_close_dialog,
       confirm_pending_action,
@@ -1915,7 +1881,7 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     preset_items,
     preset_input_state,
     preset_menu_open,
-    query_entry_source_from_statistics,
+    query_entry_source_from_hit,
     reorder_selected_entries,
     request_delete_preset,
     request_close_dialog,
@@ -1925,14 +1891,14 @@ export function useGlossaryPageState(): UseGlossaryPageStateResult {
     readonly,
     restore_scroll_entry_id,
     save_dialog_entry,
-    search_entry_relations_from_statistics,
+    search_entry_relations_from_hit,
     selected_entry_ids,
     selection_anchor_entry_id,
     set_default_preset,
     sort_state,
-    statistics_badge_by_entry_id,
-    statistics_sort_available,
-    statistics_ready,
+    hit_badge_by_entry_id,
+    hit_sort_available,
+    hit_ready,
     submit_preset_input,
     toggle_case_sensitive_for_selected,
     update_dialog_draft,

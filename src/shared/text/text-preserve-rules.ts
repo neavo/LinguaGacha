@@ -1,9 +1,12 @@
 import { has_cjk_language_character } from "../../domain/language";
-import type { JsonRecord } from "../../domain/json";
-export { normalize_text_preserve_mode, type TextPreserveMode } from "../../domain/quality";
-import { normalize_text_preserve_mode } from "../../domain/quality";
+import {
+  normalize_text_preserve_mode,
+  type TextPreserveEntry,
+  type TextPreserveMode,
+} from "../../domain/quality";
 
-type TextPreserveRuleKind = "check" | "sample" | "prefix" | "suffix";
+export { normalize_text_preserve_mode };
+export type { TextPreserveMode };
 
 type TextPreservePatternDefinition = {
   source: string;
@@ -76,50 +79,56 @@ const TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE = {
  */
 export class TextPreserveRule {
   private readonly definitions: CompiledTextPreservePatternDefinition[];
-  private readonly kind: TextPreserveRuleKind;
 
-  public constructor(
-    definitions: readonly TextPreservePatternDefinition[],
-    kind: TextPreserveRuleKind,
-  ) {
-    this.definitions = definitions.flatMap(compile_text_preserve_pattern_definition);
-    this.kind = kind;
+  public constructor(definitions: readonly TextPreservePatternDefinition[]) {
+    this.definitions = definitions.map(compile_text_preserve_pattern_definition);
   }
 
   /**
-   * 所有规则都编译失败时等同没有可执行保护规则
-   */
-  public is_empty(): boolean {
-    return this.definitions.length === 0;
-  }
-
-  /**
-   * 收集当前 kind 下的可接受保护段，prefix/suffix 只返回对应边缘连续段
+   * 收集正文中的可接受保护段
    */
   public collect(text: string): string[] {
-    if (this.kind === "prefix") {
-      return this.collect_prefix_matches(text).map((match) => match.value);
-    }
-    if (this.kind === "suffix") {
-      return this.collect_suffix_matches(text).map((match) => match.value);
-    }
     return this.collect_sample_matches(text).map((match) => match.value);
   }
 
   /**
-   * 替换当前 kind 下的可接受保护段，回调索引只统计实际被替换的段
+   * 替换正文中的可接受保护段，回调索引只统计实际被替换的段
    */
   public replace(
     text: string,
     replacement: string | ((match: string, index: number) => string),
   ): string {
-    const matches =
-      this.kind === "prefix"
-        ? this.collect_prefix_matches(text)
-        : this.kind === "suffix"
-          ? this.collect_suffix_matches(text)
-          : this.collect_sample_matches(text);
-    return this.replace_matches(text, matches, replacement);
+    return this.replace_matches(text, this.collect_sample_matches(text), replacement);
+  }
+
+  /** 连续提取行首保护段，并返回移除后的正文。 */
+  public extract_prefix(text: string): { text: string; segments: string[] } {
+    const matches = this.collect_prefix_matches(text);
+    return {
+      text: this.replace_matches(text, matches, ""),
+      segments: matches.map((match) => match.value),
+    };
+  }
+
+  /** 连续提取行尾保护段，并保持片段的原始顺序。 */
+  public extract_suffix(text: string): { text: string; segments: string[] } {
+    const matches = this.collect_suffix_matches(text);
+    return {
+      text: this.replace_matches(text, matches, ""),
+      segments: matches.map((match) => match.value),
+    };
+  }
+
+  /** 仅转换保护段之间的文本，保护段按原样写回。 */
+  public transform_unpreserved(text: string, transform: (value: string) => string): string {
+    const matches = this.collect_sample_matches(text);
+    let result = "";
+    let cursor = 0;
+    for (const match of matches) {
+      result += transform(text.slice(cursor, match.index)) + match.value;
+      cursor = match.index + match.value.length;
+    }
+    return result + transform(text.slice(cursor));
   }
 
   /**
@@ -207,6 +216,7 @@ export class TextPreserveRule {
     return !definition.rejects_cjk_language_text || !has_cjk_language_character(value);
   }
 
+  /** 同起点按规则顺序优先，随后丢弃与已选范围重叠的候选。 */
   private remove_overlapping_matches(candidates: TextPreserveMatch[]): TextPreserveMatch[] {
     const sorted_candidates = [...candidates].sort((left, right) => {
       if (left.index !== right.index) {
@@ -247,56 +257,35 @@ export class TextPreserveRule {
  */
 function compile_text_preserve_pattern_definition(
   definition: TextPreservePatternDefinition,
-): CompiledTextPreservePatternDefinition[] {
-  const source = definition.source;
-  try {
-    return [
-      {
-        ...definition,
-        source,
-        sample_pattern: new RegExp(source, "giu"),
-        prefix_pattern: new RegExp(`^(?:${source})`, "iu"),
-        suffix_pattern: new RegExp(`(?:${source})$`, "iu"),
-      },
-    ];
-  } catch {
-    return [];
-  }
-}
-
-function create_custom_pattern_definitions(entries: JsonRecord[]): TextPreservePatternDefinition[] {
-  return entries
-    .map((entry) => entry["src"])
-    .filter((src): src is string => typeof src === "string")
-    .map((src) => src.trim())
-    .filter(Boolean)
-    .map((source) => {
-      return {
-        source,
-        rejects_cjk_language_text: false,
-      };
-    });
+): CompiledTextPreservePatternDefinition {
+  return {
+    ...definition,
+    sample_pattern: new RegExp(definition.source, "giu"),
+    prefix_pattern: new RegExp(`^(?:${definition.source})`, "iu"),
+    suffix_pattern: new RegExp(`(?:${definition.source})$`, "iu"),
+  };
 }
 
 function resolve_text_preserve_pattern_definitions(args: {
   mode: string;
   text_type: string;
-  entries: JsonRecord[];
-}): TextPreservePatternDefinition[] {
+  entries: readonly TextPreserveEntry[];
+}): readonly TextPreservePatternDefinition[] {
   const mode = normalize_text_preserve_mode(args.mode);
   if (mode === "off") {
     return [];
   }
   if (mode === "custom") {
-    return create_custom_pattern_definitions(args.entries);
+    return args.entries.map((entry) => ({
+      source: entry.src,
+      rejects_cjk_language_text: false,
+    }));
   }
   const text_type = args.text_type.toUpperCase();
   const key = (
     text_type in TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE ? text_type : "NONE"
   ) as keyof typeof TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE;
-  return TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE[key].map((definition) => {
-    return { ...definition };
-  });
+  return TEXT_PRESERVE_SMART_PATTERNS_BY_TEXT_TYPE[key];
 }
 
 /**
@@ -305,15 +294,13 @@ function resolve_text_preserve_pattern_definitions(args: {
 export function build_text_preserve_rule(args: {
   mode: string;
   text_type: string;
-  entries: JsonRecord[];
-  kind: TextPreserveRuleKind;
+  entries: readonly TextPreserveEntry[];
 }): TextPreserveRule | null {
   const definitions = resolve_text_preserve_pattern_definitions(args);
   if (definitions.length === 0) {
     return null;
   }
-  const rule = new TextPreserveRule(definitions, args.kind);
-  return rule.is_empty() ? null : rule;
+  return new TextPreserveRule(definitions);
 }
 
 const BLANK_PATTERN = /\s+/gu;

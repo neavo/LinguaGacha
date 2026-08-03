@@ -33,7 +33,6 @@ import { ProjectWriteStore } from "../project/project-write-store";
 import { ProofreadingQueryService } from "../proofreading/proofreading-query-service";
 import { ProofreadingService } from "../proofreading/proofreading-service";
 import { QualityPromptService } from "../quality/quality-prompt-service";
-import { read_builtin_text_preserve_rule_sources } from "../quality/quality-rule-file-io";
 import { QualityRuleService } from "../quality/quality-rule-service";
 import { QualityStatisticsService } from "../quality/quality-statistics-service";
 import { ComputeWorkerClient } from "../worker/compute-worker-client";
@@ -279,8 +278,6 @@ export class BackendServices {
         sessionState: session_state,
         cache: this.cache_manager,
         workerClient: this.compute_worker_client,
-        readBuiltinTextPreserveRuleSources: (text_type) =>
-          read_builtin_text_preserve_rule_sources(paths, text_type),
         fileExportService: translation_export,
       }),
     };

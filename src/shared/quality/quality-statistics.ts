@@ -1,677 +1,160 @@
-import { escape_text_pattern } from "../text/text-pattern";
 import type { ItemTextGroup } from "../item-text";
-
-export const QUALITY_STATISTICS_RULE_MODES = [
-  "glossary",
-  "pre_replacement",
-  "post_replacement",
-  "text_preserve",
-] as const;
-
-export type QualityStatisticsRuleMode = (typeof QUALITY_STATISTICS_RULE_MODES)[number];
-
-type QualityStatisticsTextSource = "src" | "dst"; // 统计缓存失效按原文/译文文本源分流。
+import { compile_literal_patterns, fold_literal_text } from "../text/literal-matcher";
+import { compile_text_pattern, matches_text_pattern } from "../text/text-pattern";
 
 export type QualityStatisticsRuleInput = {
-  key: string; // 统计结果返回给调用方的稳定索引
-  pattern: string; // 术语、替换规则或文本保护规则的匹配表达式
-  mode: QualityStatisticsRuleMode; // 决定匹配原文/译文以及字面量/正则口径
-  regex?: boolean; // 仅替换类规则使用，true 时按原始正则编译
-  case_sensitive?: boolean; // 决定是否使用大小写折叠文本视图
+  entry_id: string; // worker 结果与页面条目的唯一关联键
+  pattern: string; // 已通过真实编译校验的规则文本
+  pattern_kind: "literal" | "regex"; // 决定共享 matcher 或独立正则路径
+  case_sensitive: boolean; // 匹配大小写策略
 };
 
 export type QualityStatisticsRelationCandidate = {
-  key: string; // 对应规则结果，用于写回 subset_parents
-  src: string; // 参与包含关系判断的源文本
+  entry_id: string; // 与统计规则共享的结果键
+  src: string; // 仅字面量规则参与父子包含关系
 };
 
 type QualityStatisticsDependencyRuleSnapshot = {
-  key: string; // 保留规则自身身份，允许同依赖规则映射回原结果
-  dependency_signature: string; // 只表达规则配置，不包含列表位置
-  token: string; // 去重后的依赖身份，相同配置规则用序号拆分
+  key: string; // 当前 entry_id，变更时只影响结果身份
+  dependency_signature: string; // 不含身份的规则执行配置
+  token: string; // 同配置规则按出现顺序区分的依赖令牌
 };
 
 export type QualityStatisticsDependencySnapshot = {
-  text_source: "src" | "dst"; // 变化必须触发全量统计
-  text_signature: string; // 当前项目文本集合
-  dependency_signature: string; // 用于判断统计结果是否仍然可复用
-  snapshot_signature: string; // 同时包含 key，用于 UI 缓存身份判断
-  rules: QualityStatisticsDependencyRuleSnapshot[]; // 按依赖稳定排序后的规则快照
+  text_source: "src" | "dst"; // 当前规则实际扫描的 item 文本侧
+  text_signature: string; // 进程内判断文本事实是否改变的签名
+  dependency_signature: string; // 忽略 entry_id 的计算依赖签名
+  snapshot_signature: string; // 包含 entry_id 的页面结果身份签名
+  rules: QualityStatisticsDependencyRuleSnapshot[]; // 按输入顺序保存规则依赖
 };
 
-type QualityStatisticsTaskInput = {
-  rules: QualityStatisticsRuleInput[]; // 本次需要计算命中数的规则集合
-  srcTextGroups: ItemTextGroup[]; // 按项目条目顺序排列的原文与姓名原文文本组
-  dstTextGroups: ItemTextGroup[]; // 按项目条目顺序排列的译文与姓名译文文本组
-  relationCandidates: QualityStatisticsRelationCandidate[]; // 父子关系判断的完整范围
-  relationTargetCandidates?: QualityStatisticsRelationCandidate[]; // 限定局部计划只计算目标关系
+export type QualityStatisticsTaskInput = {
+  rules: QualityStatisticsRuleInput[]; // 主线程完成归一后交给 worker 的规则
+  text_groups: ItemTextGroup[]; // 每个 item 的 src/name_src 或 dst/name_dst 字段组
+  relation_candidates: QualityStatisticsRelationCandidate[]; // 仅需计算包含关系的字面量规则
 };
 
-type QualityStatisticsTaskResultEntry = {
-  matched_item_count: number; // 统计有至少一次命中的项目条目数量
-  subset_parents: string[]; // 记录包含当前术语的更长父级术语
-};
-
-type QualityStatisticsTaskResult = {
-  results: Record<string, QualityStatisticsTaskResultEntry>; // 按规则 key 返回统计项
-};
-
-type TextSource = QualityStatisticsTextSource;
-
-type LiteralRuleBucket = {
-  source: TextSource; // 决定读取原文还是译文文本数组
-  caseSensitive: boolean; // 决定 pattern 和文本是否走 casefold
-  patternKeys: string[][]; // 保存同一 pattern 对应的全部规则 key
-  patterns: string[]; // Aho-Corasick matcher 的去重字面量集合
-};
-
-type CompiledRegexRuleBucket = {
-  keys: string[]; // 共享同一个已编译正则的规则列表
-  regexp: RegExp; // 已带 flags 的可执行正则
-  source: TextSource; // 决定正则作用于原文还是译文
-};
-
-type AhoNode = {
-  next: Map<string, number>; // 字符到子节点索引的转移表
-  fail: number; // 失配时回退的节点索引
-  outputs: number[]; // 保存当前节点命中的 pattern 索引
-};
-
-type AhoMatcher = {
-  nodes: AhoNode[]; // 紧凑 trie/自动机节点数组
-  patternCount: number; // 用于分配 per-text 去重数组
-};
-
-type QualityStatisticsTextViews = {
-  getTextGroups: (source: TextSource, caseSensitive: boolean) => ItemTextGroup[]; // 懒构建大小写折叠文本视图
-};
-
-type RelationSnapshot = {
-  key: string; // subset_parents 回写目标
-  src: string; // 保留原始父级术语文本用于 UI 展示
-  srcFold: string; // 用于大小写无关的包含关系匹配
-  length: number; // 用于排除自身和更短候选作为父级
-};
-
-type RelationTargetGroup = {
-  pattern: string; // 按 srcFold 分组后的目标术语文本
-  length: number; // 目标术语长度，用来判断父子方向
-  targets: RelationSnapshot[]; // 保存同文本的多个规则 key
-};
-
-/**
- * 统一大小写折叠规则；质量统计和自动规划共享这个文本口径。
- */
-function casefold_text(text: string): string {
-  return text.normalize("NFKC").replaceAll("ẞ", "ss").replaceAll("ß", "ss").toLocaleLowerCase();
-}
-
-/**
- * 编译用户规则正则；非法正则在统计阶段跳过，不中断整个任务。
- */
-function compile_pattern(pattern: string, flags: string): RegExp | null {
-  try {
-    return new RegExp(pattern, flags);
-  } catch {
-    return null;
-  }
-}
-
-/**
- * 将关系候选归一化为可匹配快照，空 key 或空 src 不参与父子关系。
- */
-function build_relation_snapshots(
-  candidates: QualityStatisticsRelationCandidate[],
-): RelationSnapshot[] {
-  const snapshots: RelationSnapshot[] = [];
-
-  for (const candidate of candidates) {
-    const key = String(candidate.key ?? "").trim();
-    const src = String(candidate.src ?? "").trim();
-    if (key === "" || src === "") {
-      continue;
-    }
-
-    const src_fold = casefold_text(src);
-    snapshots.push({
-      key,
-      src,
-      srcFold: src_fold,
-      length: src_fold.length,
-    });
-  }
-
-  return snapshots;
-}
-
-/**
- * 在父级搜索范围内按折叠文本去重，避免同一父级文本重复写入 subset_parents。
- */
-function dedupe_relation_scope(scope_snapshots: RelationSnapshot[]): RelationSnapshot[] {
-  const seen_folds = new Set<string>();
-  const deduped_snapshots: RelationSnapshot[] = [];
-
-  for (const snapshot of scope_snapshots) {
-    if (seen_folds.has(snapshot.srcFold)) {
-      continue;
-    }
-
-    seen_folds.add(snapshot.srcFold);
-    deduped_snapshots.push(snapshot);
-  }
-
-  return deduped_snapshots;
-}
-
-/**
- * 根据规则类型选择统计文本来源；后置替换检查译文，其它规则检查原文。
- */
-export function resolve_quality_statistics_text_source(
-  mode: QualityStatisticsRuleMode,
-): QualityStatisticsTextSource {
-  return mode === "post_replacement" ? "dst" : "src";
-}
-
-/**
- * 判断规则是否可以走字面量批量匹配，术语固定按字面量处理。
- */
-function is_literal_rule(rule: QualityStatisticsRuleInput): boolean {
-  if (rule.mode === "glossary") {
-    return true;
-  }
-
-  return rule.mode !== "text_preserve" && !rule.regex;
-}
-
-/**
- * 判断是否保留大小写；未显式声明时默认大小写不敏感。
- */
-function is_case_sensitive_rule(rule: QualityStatisticsRuleInput): boolean {
-  return rule.case_sensitive === true;
-}
-
-/**
- * 懒构建原文/译文的大小写折叠视图，避免每个 bucket 重复转换大数组。
- */
-function fold_text_groups(text_groups: ItemTextGroup[]): ItemTextGroup[] {
-  return text_groups.map((text_group) => {
-    return text_group.map((part) => {
-      return {
-        ...part,
-        text: casefold_text(part.text),
-      };
-    });
-  });
-}
-
-/**
- * 组合原文和译文视图，并在首次大小写不敏感查询时缓存折叠结果。
- */
-function build_text_views(
-  src_text_groups: ItemTextGroup[],
-  dst_text_groups: ItemTextGroup[],
-): QualityStatisticsTextViews {
-  let folded_src_text_groups: ItemTextGroup[] | null = null;
-  let folded_dst_text_groups: ItemTextGroup[] | null = null;
-
-  return {
-    // getTextGroups 懒加载大小写折叠数组，保证同一统计任务内可复用。
-    getTextGroups(source, caseSensitive) {
-      if (caseSensitive) {
-        return source === "dst" ? dst_text_groups : src_text_groups;
-      }
-
-      if (source === "dst") {
-        if (folded_dst_text_groups === null) {
-          folded_dst_text_groups = fold_text_groups(dst_text_groups);
-        }
-        return folded_dst_text_groups;
-      }
-
-      if (folded_src_text_groups === null) {
-        folded_src_text_groups = fold_text_groups(src_text_groups);
-      }
-      return folded_src_text_groups;
-    },
-  };
-}
-
-/**
- * 将字面量规则按文本来源和大小写口径分桶，便于一次自动机扫描统计多条规则。
- */
-function build_literal_rule_buckets(rules: QualityStatisticsRuleInput[]): LiteralRuleBucket[] {
-  const bucket_map = new Map<
+export type QualityStatisticsTaskResult = {
+  results: Record<
     string,
-    { source: TextSource; caseSensitive: boolean; pattern_map: Map<string, string[]> }
-  >();
-
-  for (const rule of rules) {
-    if (!is_literal_rule(rule)) {
-      continue;
-    }
-
-    const raw_pattern = String(rule.pattern ?? "");
-    if (raw_pattern === "") {
-      continue;
-    }
-
-    const source = resolve_quality_statistics_text_source(rule.mode);
-    const case_sensitive = is_case_sensitive_rule(rule);
-    const normalized_pattern = case_sensitive ? raw_pattern : casefold_text(raw_pattern);
-    const bucket_key = `${source}|${case_sensitive ? "1" : "0"}`;
-    const bucket = bucket_map.get(bucket_key) ?? {
-      source,
-      caseSensitive: case_sensitive,
-      pattern_map: new Map<string, string[]>(),
-    };
-    const pattern_keys = bucket.pattern_map.get(normalized_pattern) ?? [];
-    pattern_keys.push(rule.key);
-    bucket.pattern_map.set(normalized_pattern, pattern_keys);
-    bucket_map.set(bucket_key, bucket);
-  }
-
-  return [...bucket_map.values()].map((bucket) => {
-    const patterns = [...bucket.pattern_map.keys()];
-    return {
-      source: bucket.source,
-      caseSensitive: bucket.caseSensitive,
-      patterns,
-      patternKeys: patterns.map((pattern) => {
-        return bucket.pattern_map.get(pattern) ?? [];
-      }),
-    };
-  });
-}
-
-/**
- * 将正则规则按来源、flags 和 pattern 合并，避免重复编译相同正则。
- */
-function build_regex_rule_buckets(rules: QualityStatisticsRuleInput[]): CompiledRegexRuleBucket[] {
-  const bucket_map = new Map<string, CompiledRegexRuleBucket>();
-
-  for (const rule of rules) {
-    if (is_literal_rule(rule)) {
-      continue;
-    }
-
-    const raw_pattern = String(rule.pattern ?? "");
-    if (raw_pattern === "") {
-      continue;
-    }
-
-    const source = resolve_quality_statistics_text_source(rule.mode);
-    const flags = rule.mode === "text_preserve" ? "iu" : is_case_sensitive_rule(rule) ? "u" : "iu";
-    const pattern =
-      rule.mode === "text_preserve" || rule.regex ? raw_pattern : escape_text_pattern(raw_pattern);
-    const bucket_key = `${source}|${flags}|${pattern}`;
-    const existing_bucket = bucket_map.get(bucket_key);
-    if (existing_bucket !== undefined) {
-      existing_bucket.keys.push(rule.key);
-      continue;
-    }
-
-    const compiled_pattern = compile_pattern(pattern, flags);
-    if (compiled_pattern === null) {
-      continue;
-    }
-
-    bucket_map.set(bucket_key, {
-      keys: [rule.key],
-      regexp: compiled_pattern,
-      source,
-    });
-  }
-
-  return [...bucket_map.values()];
-}
-
-/**
- * 为字面量集合构建 Aho-Corasick 自动机，实现单次扫描匹配多 pattern。
- */
-function build_aho_matcher(patterns: string[]): AhoMatcher | null {
-  if (patterns.length === 0) {
-    return null;
-  }
-
-  const nodes: AhoNode[] = [
     {
-      next: new Map<string, number>(),
-      fail: 0,
-      outputs: [],
-    },
-  ];
-
-  patterns.forEach((pattern, pattern_index) => {
-    let node_index = 0;
-
-    for (const character of pattern) {
-      const next_node_index = nodes[node_index].next.get(character);
-      if (next_node_index !== undefined) {
-        node_index = next_node_index;
-        continue;
-      }
-
-      const created_node_index = nodes.length;
-      nodes.push({
-        next: new Map<string, number>(),
-        fail: 0,
-        outputs: [],
-      });
-      nodes[node_index].next.set(character, created_node_index);
-      node_index = created_node_index;
+      matched_item_count: number; // 至少一个字段命中的 item 数，不累计同 item 次数
+      subset_parents: string[]; // 包含当前 src 的更长字面量源文
     }
+  >;
+};
 
-    nodes[node_index].outputs.push(pattern_index);
-  });
-
-  const queue: number[] = [];
-  for (const next_node_index of nodes[0].next.values()) {
-    queue.push(next_node_index);
-  }
-
-  for (let queue_index = 0; queue_index < queue.length; queue_index += 1) {
-    const node_index = queue[queue_index];
-    const node = nodes[node_index];
-
-    for (const [character, child_index] of node.next.entries()) {
-      queue.push(child_index);
-      let fail_index = node.fail;
-
-      while (fail_index !== 0 && !nodes[fail_index].next.has(character)) {
-        fail_index = nodes[fail_index].fail;
-      }
-
-      const fallback_index = nodes[fail_index].next.get(character) ?? 0;
-      nodes[child_index].fail = fallback_index;
-      nodes[child_index].outputs.push(...nodes[fallback_index].outputs);
-    }
-  }
-
-  return {
-    nodes,
-    patternCount: patterns.length,
-  };
-}
-
-/**
- * 收集单条文本命中的 pattern 索引；同一文本内索引去重，可选总数数组仍累计每次重叠命中。
- */
-function collect_literal_match_indexes(
-  matcher: AhoMatcher,
-  text: string,
-  seen_generation_by_pattern: Uint32Array,
-  generation: number,
-  total_matches_by_pattern?: number[],
-): number[] {
-  const matched_indexes: number[] = [];
-  let node_index = 0;
-
-  for (const character of text) {
-    while (node_index !== 0 && !matcher.nodes[node_index].next.has(character)) {
-      node_index = matcher.nodes[node_index].fail;
-    }
-
-    node_index = matcher.nodes[node_index].next.get(character) ?? 0;
-    const outputs = matcher.nodes[node_index].outputs;
-    if (outputs.length === 0) {
-      continue;
-    }
-
-    for (const pattern_index of outputs) {
-      if (total_matches_by_pattern !== undefined) {
-        total_matches_by_pattern[pattern_index] =
-          (total_matches_by_pattern[pattern_index] ?? 0) + 1;
-      }
-      if (seen_generation_by_pattern[pattern_index] === generation) {
-        continue;
-      }
-
-      seen_generation_by_pattern[pattern_index] = generation;
-      matched_indexes.push(pattern_index);
-    }
-  }
-
-  return matched_indexes;
-}
-
-/**
- * 单次扫描同时返回每段文本命中的字面量索引与各 pattern 的实际出现次数。
- */
-export function analyze_quality_literal_matches(args: {
-  patterns: string[];
-  texts: string[];
-  case_sensitive: boolean;
-}): {
-  matched_pattern_indexes_by_text: number[][];
-  total_matches_by_pattern: number[];
-} {
-  const patterns = args.case_sensitive
-    ? args.patterns
-    : args.patterns.map((pattern) => casefold_text(pattern));
-  const matcher = build_aho_matcher(patterns);
-  const total_matches_by_pattern = Array.from({ length: patterns.length }, () => 0);
-  if (matcher === null) {
-    return {
-      matched_pattern_indexes_by_text: args.texts.map(() => []),
-      total_matches_by_pattern,
-    };
-  }
-
-  const seen_generation_by_pattern = new Uint32Array(matcher.patternCount);
-  const matched_pattern_indexes_by_text = args.texts.map((text, index) =>
-    collect_literal_match_indexes(
-      matcher,
-      args.case_sensitive ? text : casefold_text(text),
-      seen_generation_by_pattern,
-      index + 1,
-      total_matches_by_pattern,
-    ),
-  );
-  return { matched_pattern_indexes_by_text, total_matches_by_pattern };
-}
-
-/**
- * 统计每个字面量 pattern 命中的项目条目数，不统计总出现次数。
- */
-function count_literal_bucket_matches(
-  text_groups: ItemTextGroup[],
-  patterns: string[],
-): Uint32Array {
-  const matcher = build_aho_matcher(patterns);
-  const matched_counts = new Uint32Array(patterns.length);
-  if (matcher === null) {
-    return matched_counts;
-  }
-
-  const seen_generation_by_pattern = new Uint32Array(matcher.patternCount);
-
-  text_groups.forEach((text_group, index) => {
-    const generation = index + 1;
-
-    for (const part of text_group) {
-      const matched_indexes = collect_literal_match_indexes(
-        matcher,
-        part.text,
-        seen_generation_by_pattern,
-        generation,
-      );
-
-      for (const pattern_index of matched_indexes) {
-        matched_counts[pattern_index] += 1;
-      }
-    }
-  });
-
-  return matched_counts;
-}
-
-/**
- * 把字面量 bucket 的命中数写回各规则结果，同 pattern 多 key 会共享计数。
- */
-function assign_literal_rule_counts(args: {
-  rules: QualityStatisticsRuleInput[];
-  textViews: QualityStatisticsTextViews;
-  results: QualityStatisticsTaskResult["results"];
-}): void {
-  const buckets = build_literal_rule_buckets(args.rules);
-
-  for (const bucket of buckets) {
-    const text_groups = args.textViews.getTextGroups(bucket.source, bucket.caseSensitive);
-    const matched_counts = count_literal_bucket_matches(text_groups, bucket.patterns);
-
-    bucket.patternKeys.forEach((pattern_keys, pattern_index) => {
-      const matched_item_count = matched_counts[pattern_index] ?? 0;
-
-      for (const key of pattern_keys) {
-        args.results[key] = {
-          ...args.results[key],
-          matched_item_count,
-        };
-      }
-    });
-  }
-}
-
-/**
- * 逐条执行正则 bucket，并把“至少命中一次”的项目条目数写回结果。
- */
-function assign_regex_rule_counts(args: {
-  rules: QualityStatisticsRuleInput[];
-  textViews: QualityStatisticsTextViews;
-  results: QualityStatisticsTaskResult["results"];
-}): void {
-  const regex_buckets = build_regex_rule_buckets(args.rules);
-
-  for (const bucket of regex_buckets) {
-    const text_groups = args.textViews.getTextGroups(bucket.source, true);
-    let matched_item_count = 0;
-
-    for (const text_group of text_groups) {
-      if (!text_group.some((part) => bucket.regexp.test(part.text))) {
-        continue;
-      }
-
-      matched_item_count += 1;
-    }
-
-    for (const key of bucket.keys) {
-      args.results[key] = {
-        ...args.results[key],
-        matched_item_count,
-      };
-    }
-  }
-}
-
-/**
- * 按折叠后的目标文本分组，避免父子关系匹配重复构建相同 pattern。
- */
-function build_relation_target_groups(target_snapshots: RelationSnapshot[]): RelationTargetGroup[] {
-  const group_map = new Map<string, RelationTargetGroup>();
-
-  for (const target_snapshot of target_snapshots) {
-    const existing_group = group_map.get(target_snapshot.srcFold);
-    if (existing_group !== undefined) {
-      existing_group.targets.push(target_snapshot);
-      continue;
-    }
-
-    group_map.set(target_snapshot.srcFold, {
-      pattern: target_snapshot.srcFold,
-      length: target_snapshot.length,
-      targets: [target_snapshot],
-    });
-  }
-
-  return [...group_map.values()];
-}
-
-/**
- * 构建每个目标术语的父级术语列表；局部统计时只计算 targetCandidates 的关系。
- */
-function build_subset_relation_map(args: {
-  relationCandidates: QualityStatisticsRelationCandidate[];
-  relationTargetCandidates?: QualityStatisticsRelationCandidate[];
-}): Record<string, string[]> {
-  const target_snapshots = build_relation_snapshots(
-    args.relationTargetCandidates ?? args.relationCandidates,
-  );
-  const scope_snapshots = dedupe_relation_scope(build_relation_snapshots(args.relationCandidates));
-  const target_groups = build_relation_target_groups(target_snapshots);
-  const subset_parent_map: Record<string, string[]> = {};
-  const matcher = build_aho_matcher(
-    target_groups.map((target_group) => {
-      return target_group.pattern;
-    }),
-  );
-
-  if (matcher === null) {
-    return subset_parent_map;
-  }
-
-  const seen_generation_by_pattern = new Uint32Array(matcher.patternCount);
-
-  scope_snapshots.forEach((scope_snapshot, index) => {
-    const matched_indexes = collect_literal_match_indexes(
-      matcher,
-      scope_snapshot.srcFold,
-      seen_generation_by_pattern,
-      index + 1,
-    );
-
-    for (const matched_index of matched_indexes) {
-      const target_group = target_groups[matched_index];
-      if (target_group === undefined || target_group.length >= scope_snapshot.length) {
-        continue;
-      }
-
-      for (const target_snapshot of target_group.targets) {
-        if (target_snapshot.key === scope_snapshot.key) {
-          continue;
-        }
-
-        const parents = subset_parent_map[target_snapshot.key] ?? [];
-        parents.push(scope_snapshot.src);
-        subset_parent_map[target_snapshot.key] = parents;
-      }
-    }
-  });
-
-  return subset_parent_map;
-}
-
-/**
- * 执行质量统计任务；该函数只消费调用方传入的文本和规则，不触碰运行时状态。
- */
+/** 对调用方准备好的单一文本源计算命中 item 数和字面量包含关系。 */
 export function run_quality_statistics_task_sync(
   input: QualityStatisticsTaskInput,
 ): QualityStatisticsTaskResult {
-  const subset_parent_map = build_subset_relation_map({
-    relationCandidates: input.relationCandidates,
-    relationTargetCandidates: input.relationTargetCandidates,
-  });
-  const results: QualityStatisticsTaskResult["results"] = {};
-  const text_views = build_text_views(input.srcTextGroups, input.dstTextGroups);
+  const results = Object.fromEntries(
+    input.rules.map((rule) => [
+      rule.entry_id,
+      { matched_item_count: 0, subset_parents: [] as string[] },
+    ]),
+  );
+  assign_literal_counts(input.rules, input.text_groups, results);
+  assign_regex_counts(input.rules, input.text_groups, results);
 
-  for (const rule of input.rules) {
-    results[rule.key] = {
-      matched_item_count: 0,
-      subset_parents: subset_parent_map[rule.key] ?? [],
-    };
+  const subset_parents = build_subset_relation_map(input.relation_candidates);
+  for (const [entry_id, parents] of Object.entries(subset_parents)) {
+    const result = results[entry_id];
+    if (result !== undefined) result.subset_parents = parents;
   }
+  return { results };
+}
 
-  assign_literal_rule_counts({
-    rules: input.rules,
-    textViews: text_views,
-    results,
-  });
-  assign_regex_rule_counts({
-    rules: input.rules,
-    textViews: text_views,
-    results,
-  });
+/** 字面量规则共用一次 matcher 扫描，并在每个 item 内按 entry_id 去重。 */
+function assign_literal_counts(
+  rules: QualityStatisticsRuleInput[],
+  text_groups: ItemTextGroup[],
+  results: QualityStatisticsTaskResult["results"],
+): void {
+  const literal_rules = rules.filter((rule) => rule.pattern_kind === "literal");
+  const matcher = compile_literal_patterns(
+    literal_rules.map((rule) => ({
+      key: rule.entry_id,
+      text: rule.pattern,
+      case_sensitive: rule.case_sensitive,
+    })),
+  );
+  for (const text_group of text_groups) {
+    const matched = new Set<string>();
+    for (const part of text_group) {
+      for (const match of matcher.match(part.text)) matched.add(match.key);
+    }
+    for (const entry_id of matched) {
+      const result = results[entry_id];
+      if (result !== undefined) result.matched_item_count += 1;
+    }
+  }
+}
 
-  return {
-    results,
-  };
+/** 正则规则独立统计至少命中一个字段的 item 数。 */
+function assign_regex_counts(
+  rules: QualityStatisticsRuleInput[],
+  text_groups: ItemTextGroup[],
+  results: QualityStatisticsTaskResult["results"],
+): void {
+  const compiled = rules
+    .filter((rule) => rule.pattern_kind === "regex")
+    .map((rule) => {
+      const pattern = compile_text_pattern({
+        source_text: rule.pattern,
+        mode: "regex",
+        case_sensitive: rule.case_sensitive,
+        trim: false,
+      });
+      if (pattern === null) throw new TypeError("质量统计正则不能为空");
+      return { rule, pattern };
+    });
+  for (const { rule, pattern } of compiled) {
+    for (const text_group of text_groups) {
+      if (text_group.some((part) => matches_text_pattern(part.text, pattern))) {
+        const result = results[rule.entry_id];
+        if (result !== undefined) result.matched_item_count += 1;
+      }
+    }
+  }
+}
+
+/** 包含关系只比较显式字面量候选，并按父文本首次出现顺序输出。 */
+function build_subset_relation_map(
+  candidates: QualityStatisticsRelationCandidate[],
+): Record<string, string[]> {
+  const snapshots = candidates.map((candidate) => ({
+    ...candidate,
+    folded: fold_literal_text(candidate.src),
+  }));
+  const snapshot_by_entry_id = new Map(
+    snapshots.map((snapshot) => [snapshot.entry_id, snapshot] as const),
+  );
+  const matcher = compile_literal_patterns(
+    snapshots.map((snapshot) => ({
+      key: snapshot.entry_id,
+      text: snapshot.folded,
+      case_sensitive: true,
+    })),
+  );
+  const result: Record<string, string[]> = {};
+  const seen_parent_text = new Set<string>();
+  for (const parent of snapshots) {
+    if (seen_parent_text.has(parent.folded)) continue;
+    seen_parent_text.add(parent.folded);
+    for (const match of matcher.match(parent.folded)) {
+      const child = snapshot_by_entry_id.get(match.key);
+      if (
+        child === undefined ||
+        child.entry_id === parent.entry_id ||
+        child.folded.length >= parent.folded.length
+      ) {
+        continue;
+      }
+      const parents = result[child.entry_id] ?? [];
+      parents.push(parent.src);
+      result[child.entry_id] = parents;
+    }
+  }
+  return result;
 }

@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { buildQualityCompiledContext } from "../quality/quality-rule-compiled-context";
 import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
-import { evaluateProofreadingItem } from "./proofreading-evaluator";
+import {
+  buildProofreadingEvaluationContext,
+  evaluateProofreadingItem,
+} from "./proofreading-evaluator";
 import type { ItemNameField } from "../../domain/item";
 
 function create_quality(overrides: Partial<QualitySnapshot> = {}): QualitySnapshot {
@@ -41,7 +43,7 @@ function evaluate(args: {
       retry_count: args.retry_count ?? 0,
     },
     quality,
-    quality_context: buildQualityCompiledContext(quality),
+    quality_context: buildProofreadingEvaluationContext(quality),
     sourceLanguage: args.sourceLanguage,
     targetLanguage: args.targetLanguage ?? "ZH",
     sample_rule_cache: new Map(),
@@ -49,6 +51,19 @@ function evaluate(args: {
 }
 
 describe("proofreading-evaluator", () => {
+  it("禁用规则也必须通过真实编译校验", () => {
+    const quality = create_quality({
+      pre_replacement: {
+        enabled: false,
+        mode: "off",
+        revision: 1,
+        entries: [{ src: "(", dst: "x", regex: true }],
+      },
+    });
+
+    expect(() => buildProofreadingEvaluationContext(quality)).toThrow("质量规则正则不是合法正则");
+  });
+
   it("按源语言识别假名和谚文残留", () => {
     expect(evaluate({ src: "東京", dst: "東京あ", sourceLanguage: "JA" })?.warnings).toContain(
       "KANA",
@@ -85,7 +100,13 @@ describe("proofreading-evaluator", () => {
     expect(item?.warnings).toEqual(
       expect.arrayContaining(["TEXT_PRESERVE", "SIMILARITY", "GLOSSARY", "RETRY_THRESHOLD"]),
     );
-    expect(item?.failed_glossary_terms).toEqual([["HP", "生命值"]]);
+    expect(item?.glossary_applications).toMatchObject([
+      {
+        src: "HP",
+        dst: "生命值",
+        fields: [{ source_field: "src", target_field: "dst", applied: false }],
+      },
+    ]);
     expect(item?.warning_fragments_by_code.TEXT_PRESERVE).toEqual(
       expect.arrayContaining(["{PLAYER}", "{PLAYER2}"]),
     );
@@ -111,7 +132,13 @@ describe("proofreading-evaluator", () => {
     });
 
     expect(item?.warnings).toEqual(["GLOSSARY"]);
-    expect(item?.failed_glossary_terms).toEqual([["Alice", "艾丽丝"]]);
+    expect(item?.glossary_applications).toMatchObject([
+      {
+        src: "Alice",
+        dst: "艾丽丝",
+        fields: [{ source_field: "name_src", target_field: "name_dst", applied: false }],
+      },
+    ]);
   });
 
   it("姓名译文满足术语时不触发正文类警告", () => {
@@ -140,6 +167,56 @@ describe("proofreading-evaluator", () => {
     });
 
     expect(item?.warnings).toEqual([]);
-    expect(item?.applied_glossary_terms).toEqual([["Alice", "艾丽丝"]]);
+    expect(item?.glossary_applications).toMatchObject([
+      {
+        src: "Alice",
+        dst: "艾丽丝",
+        fields: [{ source_field: "name_src", target_field: "name_dst", applied: true }],
+      },
+    ]);
+  });
+
+  it("逐行正向应用译前替换，并且不逆向解释最终译文", () => {
+    const pre_quality = create_quality({
+      pre_replacement: {
+        enabled: true,
+        mode: "off",
+        revision: 1,
+        entries: [{ src: '^"', dst: "<Q>", regex: true, case_sensitive: true }],
+      },
+      text_preserve: {
+        enabled: true,
+        mode: "custom",
+        revision: 1,
+        entries: [{ src: "<Q>", info: "" }],
+      },
+    });
+    expect(
+      evaluate({
+        src: '"one\n"two',
+        dst: "<Q>一\n<Q>二",
+        sourceLanguage: "EN",
+        quality: pre_quality,
+      })?.warnings,
+    ).not.toContain("TEXT_PRESERVE");
+
+    const post_quality = create_quality({
+      post_replacement: {
+        enabled: true,
+        mode: "off",
+        revision: 1,
+        entries: [{ src: '^"', dst: "「", regex: true, case_sensitive: true }],
+      },
+      text_preserve: {
+        enabled: true,
+        mode: "custom",
+        revision: 1,
+        entries: [{ src: '\\^"', info: "" }],
+      },
+    });
+    expect(
+      evaluate({ src: '"source', dst: "「译文", sourceLanguage: "EN", quality: post_quality })
+        ?.warnings,
+    ).not.toContain("TEXT_PRESERVE");
   });
 });

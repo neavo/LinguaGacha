@@ -9,7 +9,6 @@ import {
   format_proofreading_glossary_term,
   type ProofreadingFilterOptions,
   type ProofreadingFilterPanelState,
-  type ProofreadingGlossaryTerm,
 } from "@shared/proofreading/proofreading-types";
 import { Badge } from "@frontend/shadcn/badge";
 import { AppButton } from "@frontend/widgets/app-button";
@@ -28,27 +27,12 @@ type ProofreadingFilterDialogProps = {
   on_close: () => void;
 };
 
-function build_term_key(term: ProofreadingGlossaryTerm): string {
-  return format_proofreading_glossary_term(term);
-}
-
 function toggle_string(values: string[], target_value: string): string[] {
   return values.includes(target_value)
     ? values.filter((value) => value !== target_value)
     : [...values, target_value];
 }
 
-function toggle_term(
-  glossary_terms: ProofreadingGlossaryTerm[],
-  target_term: ProofreadingGlossaryTerm,
-): ProofreadingGlossaryTerm[] {
-  const target_key = build_term_key(target_term);
-  if (glossary_terms.some((term) => build_term_key(term) === target_key)) {
-    return glossary_terms.filter((term) => build_term_key(term) !== target_key);
-  }
-
-  return [...glossary_terms, target_term];
-}
 function FilterToggleButton(props: {
   label: string;
   count: number;
@@ -139,7 +123,9 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
     }
 
     return props.panel.glossary_term_entries.filter((entry) => {
-      return build_term_key(entry.term).toLocaleLowerCase().includes(normalized_keyword);
+      return format_proofreading_glossary_term(entry)
+        .toLocaleLowerCase()
+        .includes(normalized_keyword);
     });
   }, [props.panel.glossary_term_entries, term_keyword]);
   async function handle_confirm(): Promise<void> {
@@ -332,7 +318,9 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
                   onClick={() => {
                     props.on_change({
                       ...clone_proofreading_filter_options(props.filters),
-                      glossary_terms: props.panel.glossary_term_entries.map((entry) => entry.term),
+                      glossary_entry_ids: props.panel.glossary_term_entries.map(
+                        (entry) => entry.entry_id,
+                      ),
                       include_without_glossary_miss: true,
                     });
                   }}
@@ -346,7 +334,7 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
                   onClick={() => {
                     props.on_change({
                       ...clone_proofreading_filter_options(props.filters),
-                      glossary_terms: [],
+                      glossary_entry_ids: [],
                       include_without_glossary_miss: false,
                     });
                   }}
@@ -384,16 +372,17 @@ export function ProofreadingFilterDialog(props: ProofreadingFilterDialogProps): 
                     />
                     {visible_term_entries.map((entry) => (
                       <FilterListRow
-                        key={build_term_key(entry.term)}
-                        label={build_term_key(entry.term)}
+                        key={entry.entry_id}
+                        label={format_proofreading_glossary_term(entry)}
                         count={entry.count}
-                        selected={props.filters.glossary_terms.some((term) => {
-                          return build_term_key(term) === build_term_key(entry.term);
-                        })}
+                        selected={props.filters.glossary_entry_ids.includes(entry.entry_id)}
                         onClick={() => {
                           props.on_change({
                             ...clone_proofreading_filter_options(props.filters),
-                            glossary_terms: toggle_term(props.filters.glossary_terms, entry.term),
+                            glossary_entry_ids: toggle_string(
+                              props.filters.glossary_entry_ids,
+                              entry.entry_id,
+                            ),
                           });
                         }}
                       />

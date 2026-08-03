@@ -1,6 +1,8 @@
 import * as OpenCC from "opencc-js";
 
 import { read_item_name_text, write_item_name_text } from "../item-name";
+import type { TextPreserveEntry } from "../../domain/quality";
+import { build_text_preserve_rule, type TextPreserveRule } from "./text-preserve-rules";
 
 export type TsConversionDirection = "s2t" | "t2s";
 
@@ -27,8 +29,7 @@ type BuildConvertedItemsInput = {
   convert_name: boolean;
   preserve_text: boolean;
   text_preserve_mode: string;
-  custom_rules: string[];
-  preset_rules_by_text_type: Record<string, string[]>;
+  text_preserve_entries: TextPreserveEntry[];
   converter?: TsConversionTextConverter;
 };
 
@@ -87,80 +88,25 @@ function create_ts_conversion_converter(
   return OpenCC.Converter({ from: "tw", to: "cn" });
 }
 
-function resolve_rules_for_item(args: {
-  item: TsConversionItem;
-  text_preserve_mode: string;
-  custom_rules: string[];
-  preset_rules_by_text_type: Record<string, string[]>;
-}): string[] {
-  const mode = args.text_preserve_mode.toLowerCase();
-  if (mode === "off") {
-    return [];
-  }
-  if (mode === "custom") {
-    return args.custom_rules;
-  }
-  return args.preset_rules_by_text_type[args.item.text_type] ?? [];
-}
-
-function compile_text_preserve_rule(rules: string[]): RegExp | null {
-  const effective_rules = rules.filter((rule) => rule.trim() !== "");
-  if (effective_rules.length === 0) {
-    return null;
-  }
-
-  try {
-    return new RegExp(`(?:${effective_rules.join("|")})+`, "giu");
-  } catch {
-    return null;
-  }
-}
-
 // 保留片段原样拼回，只转换各匹配区间之间的文本，避免简繁转换破坏占位符。
 function convert_text_with_optional_preserve(args: {
   text: string;
   converter: TsConversionTextConverter;
-  rules: string[];
-  preserve_text: boolean;
+  preserve_rule: TextPreserveRule | null;
 }): string {
   if (args.text === "") {
     return args.text;
   }
-  if (!args.preserve_text) {
-    return args.converter(args.text);
-  }
-
-  const preserve_rule = compile_text_preserve_rule(args.rules);
-  if (preserve_rule === null) {
-    return args.converter(args.text);
-  }
-
-  let last_end = 0;
-  const result: string[] = [];
-  for (const match of args.text.matchAll(preserve_rule)) {
-    const matched_text = match[0];
-    const start = match.index ?? 0;
-    if (matched_text === "") {
-      continue;
-    }
-    if (start > last_end) {
-      result.push(args.converter(args.text.slice(last_end, start)));
-    }
-    result.push(matched_text);
-    last_end = start + matched_text.length;
-  }
-
-  if (last_end < args.text.length) {
-    result.push(args.converter(args.text.slice(last_end)));
-  }
-  return result.join("");
+  return (
+    args.preserve_rule?.transform_unpreserved(args.text, args.converter) ??
+    args.converter(args.text)
+  );
 }
 
 function convert_name_dst(args: {
   name_dst: TsConversionNameDst;
   converter: TsConversionTextConverter;
-  rules: string[];
-  preserve_text: boolean;
+  preserve_rule: TextPreserveRule | null;
 }): TsConversionNameDst {
   const name = read_item_name_text(args.name_dst);
   if (name === "") {
@@ -170,22 +116,9 @@ function convert_name_dst(args: {
   const converted_name = convert_text_with_optional_preserve({
     text: name,
     converter: args.converter,
-    rules: args.rules,
-    preserve_text: args.preserve_text,
+    preserve_rule: args.preserve_rule,
   });
   return write_item_name_text(args.name_dst, converted_name);
-}
-
-// 自定义保护规则按用户顺序去空保留，正则合法性在编译阶段统一处理。
-export function build_ts_conversion_custom_rules(
-  entries: Array<Record<string, unknown>>,
-): string[] {
-  return entries.map((entry) => normalize_text(entry.src).trim()).filter((rule) => rule !== "");
-}
-
-// worker 只需要实际出现的文本类型集合来加载对应预置保护规则。
-export function collect_ts_conversion_text_types(items: TsConversionItem[]): string[] {
-  return [...new Set(items.map((item) => item.text_type).filter((text_type) => text_type !== ""))];
 }
 
 // 每个条目按文本类型选择保护规则，正文与姓名共享同一转换器。
@@ -193,21 +126,26 @@ export function build_ts_conversion_converted_items(
   input: BuildConvertedItemsInput,
 ): TsConversionConvertedItem[] {
   const converter = input.converter ?? create_ts_conversion_converter(input.direction);
+  const preserve_rule_by_text_type = new Map<string, TextPreserveRule | null>();
   return input.items.map((item) => {
-    const rules = resolve_rules_for_item({
-      item,
-      text_preserve_mode: input.text_preserve_mode,
-      custom_rules: input.custom_rules,
-      preset_rules_by_text_type: input.preset_rules_by_text_type,
-    });
+    let preserve_rule = preserve_rule_by_text_type.get(item.text_type);
+    if (preserve_rule === undefined) {
+      preserve_rule = input.preserve_text
+        ? build_text_preserve_rule({
+            mode: input.text_preserve_mode,
+            text_type: item.text_type,
+            entries: input.text_preserve_entries,
+          })
+        : null;
+      preserve_rule_by_text_type.set(item.text_type, preserve_rule);
+    }
     const dst =
       item.dst === ""
         ? item.dst
         : convert_text_with_optional_preserve({
             text: item.dst,
             converter,
-            rules,
-            preserve_text: input.preserve_text,
+            preserve_rule,
           });
 
     return {
@@ -217,8 +155,7 @@ export function build_ts_conversion_converted_items(
         ? convert_name_dst({
             name_dst: item.name_dst,
             converter,
-            rules,
-            preserve_text: input.preserve_text,
+            preserve_rule,
           })
         : item.name_dst,
     };

@@ -51,7 +51,7 @@ describe("ProjectDefaultPresetReader", () => {
       quality_rules: [
         {
           kind: "glossary",
-          entries: [{ src: "勇者", dst: "Hero" }],
+          entries: [{ src: "勇者", dst: "Hero", info: "", case_sensitive: false }],
           enabled: true,
           mode: null,
         },
@@ -87,7 +87,7 @@ describe("ProjectDefaultPresetReader", () => {
     expect(input.quality_rules).toEqual([
       {
         kind: "text_preserve",
-        entries: [{ src: "\\[[^\\]]+\\]" }],
+        entries: [{ src: "\\[[^\\]]+\\]", info: "" }],
         enabled: null,
         mode: "custom",
       },

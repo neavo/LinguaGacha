@@ -381,7 +381,7 @@ describe("ProjectWriteStore", () => {
         quality_rules: [
           {
             kind: "glossary",
-            entries: [{ src: "HP", dst: "生命值" }],
+            entries: [{ src: "HP", dst: "生命值", info: "", case_sensitive: false }],
             enabled: true,
             mode: null,
           },
@@ -400,7 +400,9 @@ describe("ProjectWriteStore", () => {
       accepted: true,
       changes: [{ updatedSections: ["quality", "prompts"] }],
     });
-    expect(database.get_rules(project_path, "glossary")).toEqual([{ src: "HP", dst: "生命值" }]);
+    expect(database.get_rules(project_path, "glossary")).toEqual([
+      { src: "HP", dst: "生命值", info: "", case_sensitive: false },
+    ]);
     expect(database.get_rule_text(project_path, "translation_prompt")).toBe("翻译提示词");
     expect(read_meta(database, project_path)).toMatchObject({
       glossary_enable: true,

@@ -1,13 +1,33 @@
-import type { JsonRecord } from "../../domain/json";
 import { Prompt, type PromptKind } from "../../domain/prompt";
-import { QualityRule, type QualityRuleKind, type TextPreserveMode } from "../../domain/quality";
+import {
+  QualityRule,
+  type GlossaryEntry,
+  type QualityRuleEntry,
+  type QualityRuleKind,
+  type TextPreserveEntry,
+  type TextPreserveMode,
+  type TextReplacementEntry,
+} from "../../domain/quality";
 
-export type ProjectQualityRuleInput = {
-  kind: QualityRuleKind; // 质量规则业务类型
-  entries: JsonRecord[]; // 已归一的规则条目
-  enabled: boolean | null; // null 表示该类型无启用开关
-  mode: TextPreserveMode | null; // 仅 text_preserve 使用
-};
+export type ProjectQualityRuleInput =
+  | {
+      kind: "glossary";
+      entries: GlossaryEntry[];
+      enabled: boolean;
+      mode: null;
+    }
+  | {
+      kind: "text_preserve";
+      entries: TextPreserveEntry[];
+      enabled: null;
+      mode: TextPreserveMode;
+    }
+  | {
+      kind: "pre_replacement" | "post_replacement";
+      entries: TextReplacementEntry[];
+      enabled: boolean;
+      mode: null;
+    };
 
 export type ProjectPromptInput = {
   kind: PromptKind; // 提示词业务类型
@@ -19,6 +39,33 @@ export type ProjectTaskInput = {
   quality_rules: ProjectQualityRuleInput[]; // 初始化或 CLI 注入的质量规则
   prompts: ProjectPromptInput[]; // 初始化或 CLI 注入的提示词
 };
+
+/**
+ * 将已归一的质量规则条目收窄为生命周期与 CLI 共用的项目输入。
+ */
+export function build_project_quality_rule_input(
+  rule: QualityRule,
+  entries: QualityRuleEntry[],
+  enabled: boolean,
+): ProjectQualityRuleInput {
+  if (rule.kind === "glossary") {
+    return { kind: rule.kind, entries: entries as GlossaryEntry[], enabled, mode: null };
+  }
+  if (rule.kind === "text_preserve") {
+    return {
+      kind: rule.kind,
+      entries: entries as TextPreserveEntry[],
+      enabled: null,
+      mode: enabled ? "custom" : "off",
+    };
+  }
+  return {
+    kind: rule.kind,
+    entries: entries as TextReplacementEntry[],
+    enabled,
+    mode: null,
+  };
+}
 
 type ProjectQualityRuleStorage = Readonly<{
   database_type: string; // rules 表物理类型

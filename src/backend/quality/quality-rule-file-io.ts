@@ -1,9 +1,6 @@
-import path from "node:path";
-
 import ExcelJS from "exceljs";
 import type { Row } from "exceljs";
 
-import type { AppPathService } from "../app/app-path-service";
 import type { JsonRecord } from "../../domain/json";
 import { NativeFs, default_native_fs, normalize_native_file_bytes } from "../../native/native-fs";
 import { JsonTool } from "../../shared/utils/json-tool";
@@ -12,40 +9,12 @@ import { SpreadsheetTool } from "../../shared/utils/spreadsheet-tool";
 export type QualityRuleFileEntry = JsonRecord;
 
 /**
- * 读取繁简转换需要的内置文本保护源文本。
- */
-export function read_builtin_text_preserve_rule_sources(
-  paths: AppPathService,
-  text_type: string,
-  native_fs: NativeFs = default_native_fs,
-): string[] {
-  const preset_path = path.join(
-    paths.get_quality_rule_builtin_preset_dir("text_preserve"),
-    `${text_type.toLowerCase()}.json`,
-  );
-  if (!native_fs.exists(preset_path)) {
-    return [];
-  }
-  const data = JsonTool.parseStrict(native_fs.read_file(preset_path)) as unknown;
-  if (!Array.isArray(data)) {
-    return [];
-  }
-  return data.flatMap((entry) => {
-    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
-      return [];
-    }
-    const src = String((entry as Record<string, unknown>)["src"] ?? "").trim();
-    return src === "" ? [] : [src];
-  });
-}
-
-/**
  * 从外部规则文件读取质量规则条目，供 GUI 导入和 CLI 单次任务资源复用同一解析口径。
  */
 export async function load_quality_rule_entries_from_file(
   file_path: string,
   native_fs: NativeFs = default_native_fs,
-): Promise<QualityRuleFileEntry[]> {
+): Promise<unknown[]> {
   if (file_path === "") {
     return [];
   }
@@ -98,19 +67,38 @@ export async function export_quality_rule_entries_to_files(
 async function load_quality_rule_entries_from_json(
   file_path: string,
   native_fs: NativeFs,
-): Promise<QualityRuleFileEntry[]> {
+): Promise<unknown[]> {
   const data = await JsonTool.repairParse(native_fs.read_file(file_path));
-  const result: QualityRuleFileEntry[] = [];
+  const result: unknown[] = [];
   if (Array.isArray(data)) {
-    for (const item of data) {
+    const has_rpg_actor_placeholder =
+      data[0] === null &&
+      data.slice(1).some((item) => {
+        if (typeof item !== "object" || item === null || Array.isArray(item)) {
+          return false;
+        }
+        const record = item as QualityRuleFileEntry;
+        return typeof record["id"] === "number" && ("name" in record || "nickname" in record);
+      });
+    for (const [index, item] of data.entries()) {
+      // RPG Maker 角色表固定用索引 0 的 null 占位；普通规则数组中的坏项仍交给领域边界拒绝。
+      if (has_rpg_actor_placeholder && index === 0 && item === null) {
+        continue;
+      }
       if (typeof item !== "object" || item === null || Array.isArray(item)) {
+        result.push(item);
         continue;
       }
       const record = item as QualityRuleFileEntry;
+      let recognized = false;
       if ("src" in record) {
-        push_normalized_rule(result, record);
+        result.push(project_external_rule_fields(record));
+        recognized = true;
       }
-      push_rpg_actor_name_rules(result, record);
+      recognized = push_rpg_actor_name_rules(result, record) || recognized;
+      if (!recognized) {
+        result.push(project_external_rule_fields(record));
+      }
     }
   } else if (typeof data === "object" && data !== null) {
     for (const [src, dst] of Object.entries(data as Record<string, unknown>)) {
@@ -123,7 +111,7 @@ async function load_quality_rule_entries_from_json(
       });
     }
   }
-  return result.filter((item) => item["src"] !== "");
+  return result;
 }
 
 /**
@@ -162,12 +150,9 @@ async function load_quality_rule_entries_from_xlsx(
 /**
  * RPG 角色表导入会把名称和昵称转换为控制码映射，沿用 GUI 术语表导入语义。
  */
-function push_rpg_actor_name_rules(
-  result: QualityRuleFileEntry[],
-  record: QualityRuleFileEntry,
-): void {
-  if (typeof record["id"] !== "number") {
-    return;
+function push_rpg_actor_name_rules(result: unknown[], record: QualityRuleFileEntry): boolean {
+  if (typeof record["id"] !== "number" || (!("name" in record) && !("nickname" in record))) {
+    return false;
   }
   const actor_id = Number(record["id"]);
   const name = String(record["name"] ?? "").trim();
@@ -204,16 +189,28 @@ function push_rpg_actor_name_rules(
       case_sensitive: false,
     });
   }
+  return true;
 }
 
 /**
  * 外部规则文件只承载用户可维护字段，内部行身份由页面和统计链路自行补齐。
  */
-function push_normalized_rule(result: QualityRuleFileEntry[], entry: QualityRuleFileEntry): void {
+function push_normalized_rule(result: unknown[], entry: QualityRuleFileEntry): void {
   const normalized = normalize_external_rule(entry);
   if (normalized["src"] !== "") {
     result.push(normalized);
   }
+}
+
+/** JSON 数组只投影外部可维护字段，字段值留给具体规则边界校验。 */
+function project_external_rule_fields(entry: QualityRuleFileEntry): QualityRuleFileEntry {
+  const result: QualityRuleFileEntry = {};
+  for (const key of ["src", "dst", "info", "regex", "case_sensitive"] as const) {
+    if (Object.prototype.hasOwnProperty.call(entry, key)) {
+      result[key] = entry[key];
+    }
+  }
+  return result;
 }
 
 function normalize_external_rule(entry: QualityRuleFileEntry): QualityRuleFileEntry {

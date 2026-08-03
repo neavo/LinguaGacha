@@ -24,7 +24,7 @@ export const en_us_text_preserve_page = {
   },
   fields: {
     note: "Remarks (For reference only, no actual effect)",
-    statistics: "Status",
+    hit: "Hits",
   },
   filter: {
     scope: {
@@ -38,12 +38,8 @@ export const en_us_text_preserve_page = {
       name_placeholder: "Please enter preset name …",
     },
   },
-  statistics: {
+  hit: {
     hit_count: "Matched Item Count: {COUNT}",
-
-    action: {
-      search_relation: "Search Contains Relation",
-    },
   },
 
   feedback: {

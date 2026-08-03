@@ -1,7 +1,9 @@
 import { useEffect, type MutableRefObject, type SetStateAction } from "react";
 
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
+import type { ProofreadingLookupIntent } from "@frontend/app/navigation/types";
 import type { ProofreadingViewFilterState } from "@frontend/pages/proofreading-page/proofreading-filter-state";
+import { create_default_proofreading_filter_selection } from "@frontend/pages/proofreading-page/proofreading-filter-state";
 import {
   resolve_list_view_window_bounds,
   type ProofreadingListSnapshot,
@@ -19,11 +21,6 @@ type ProgressToastOptions = {
   message: string;
   progress_percent?: number;
   presentation?: "inline" | "modal";
-};
-
-type ProofreadingLookupIntent = {
-  keyword: string;
-  is_regex: boolean;
 };
 
 type LocaleTextResolver = (key: LocaleKey, params?: Record<string, string>) => string;
@@ -274,8 +271,9 @@ export function useProofreadingPageEffects(options: UseProofreadingPageEffectsOp
     visible_range_ref.current = null;
     cancel_pending_list_view_query();
     update_table_filter_state({
+      selection: create_default_proofreading_filter_selection(),
       search_keyword: proofreading_lookup_intent.keyword,
-      search_scope: "all",
+      search_scope: proofreading_lookup_intent.scope,
       is_regex: proofreading_lookup_intent.is_regex,
     });
     clear_table_selection();

@@ -32,9 +32,7 @@ describe("run_compute_worker_task", () => {
         items: [
           {
             item_id: 1,
-            src: "测试",
             dst: "鼠标",
-            name_src: "装备",
             name_dst: "鼠标",
             text_type: "NONE",
           },
@@ -43,8 +41,7 @@ describe("run_compute_worker_task", () => {
         convert_name: true,
         preserve_text: false,
         text_preserve_mode: "off",
-        custom_rules: [],
-        preset_rules_by_text_type: {},
+        text_preserve_entries: [],
       },
     });
 

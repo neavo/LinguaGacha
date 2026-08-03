@@ -114,7 +114,14 @@ describe("proofreading-list-reader", () => {
     expect(view.window_rows[0]?.item).toMatchObject({
       item_id: 1,
       warnings: expect.arrayContaining(["GLOSSARY"]),
-      failed_glossary_terms: [["HP", "生命值"]],
+      glossary_applications: [
+        {
+          entry_id: "HP::0",
+          src: "HP",
+          dst: "生命值",
+          fields: [{ source_field: "src", target_field: "dst", applied: false }],
+        },
+      ],
     });
     expect(service.read_row_ids_range({ view_id: view.view_id, start: 0, count: 1 })).toEqual([
       "1",
@@ -262,6 +269,30 @@ describe("proofreading-list-reader", () => {
     expect(translation_view.window_rows.map((row) => row.row_id)).toEqual(["1"]);
   });
 
+  it("字面量搜索按请求的大小写规则筛选", () => {
+    const service = createProofreadingListReader();
+    const sync_state = sync_full(service, {
+      projectId: "E:/demo/sample.lg",
+      revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
+      total_item_count: 1,
+      sourceLanguage: "ja",
+      targetLanguage: "zh-CN",
+      quality: create_quality(),
+      upsertItems: [create_item({ item_id: 1, src: "Magic", dst: "译文" })],
+    });
+    const read = service.read_list_view({
+      filters: sync_state.defaultFilters,
+      keyword: "magic",
+      scope: "src",
+      is_regex: false,
+      sort_state: null,
+      window_start: 0,
+      window_count: 10,
+    });
+
+    expect(read.window_rows.map((row) => row.row_id)).toEqual(["1"]);
+  });
+
   it("姓名术语缺失进入筛选面板术语计数", () => {
     const service = createProofreadingListReader();
     const sync_state = sync_full(service, {
@@ -296,7 +327,9 @@ describe("proofreading-list-reader", () => {
 
     expect(panel.glossary_term_entries).toEqual([
       {
-        term: ["Alice", "艾丽丝"],
+        entry_id: "Alice::0",
+        src: "Alice",
+        dst: "艾丽丝",
         count: 1,
       },
     ]);

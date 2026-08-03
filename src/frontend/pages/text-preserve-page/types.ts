@@ -3,16 +3,10 @@ import type { QualityRuleImportConfirmState } from "@frontend/widgets/quality-ru
 import type { AppTableSortState } from "@frontend/widgets/app-table/app-table-types";
 
 import type { LocaleKey } from "@frontend/app/locale/locale-provider";
-import type { TextPreserveMode } from "@domain/quality";
+import type { TextPreserveEntry, TextPreserveMode } from "@domain/quality";
 import type { PresetInputState, PresetItem } from "@frontend/features/preset-editor/preset-types";
 
-export type { TextPreserveMode };
-
-export type TextPreserveEntry = {
-  entry_id?: string;
-  src: string;
-  info: string;
-};
+export type { TextPreserveEntry, TextPreserveMode } from "@domain/quality";
 
 export type TextPreserveEntryId = string;
 
@@ -36,20 +30,18 @@ export type TextPreserveFilterState = {
   is_regex: boolean;
 };
 
-export type TextPreserveStatisticsState = {
+export type TextPreserveHitState = {
   running: boolean;
   completed_snapshot: QualityStatisticsDependencySnapshot | null;
   completed_entry_ids: TextPreserveEntryId[];
   matched_count_by_entry_id: Record<TextPreserveEntryId, number>;
-  subset_parent_labels_by_entry_id: Record<TextPreserveEntryId, string[]>;
 };
 
-export type TextPreserveStatisticsBadgeKind = "matched" | "unmatched" | "related";
+export type TextPreserveHitBadgeKind = "matched" | "unmatched";
 
-export type TextPreserveStatisticsBadgeState = {
-  kind: TextPreserveStatisticsBadgeKind;
+export type TextPreserveHitBadgeState = {
+  kind: TextPreserveHitBadgeKind;
   matched_count: number;
-  subset_parent_labels: string[];
   tooltip: string;
 };
 
@@ -91,9 +83,9 @@ export type UseTextPreservePageStateResult = {
   invalid_filter_message: string | null;
   readonly: boolean;
   drag_disabled: boolean;
-  statistics_state: TextPreserveStatisticsState;
-  statistics_ready: boolean;
-  statistics_badge_by_entry_id: Record<TextPreserveEntryId, TextPreserveStatisticsBadgeState>;
+  hit_state: TextPreserveHitState;
+  hit_ready: boolean;
+  hit_badge_by_entry_id: Record<TextPreserveEntryId, TextPreserveHitBadgeState>;
   preset_items: PresetItem[];
   selected_entry_ids: TextPreserveEntryId[];
   active_entry_id: TextPreserveEntryId | null;
@@ -132,7 +124,6 @@ export type UseTextPreservePageStateResult = {
     over_entry_id: TextPreserveEntryId,
   ) => Promise<void>;
   query_entry_source: (entry_id: TextPreserveEntryId) => Promise<void>;
-  search_entry_relations_from_statistics: (entry_id: TextPreserveEntryId) => void;
   save_dialog_entry: () => Promise<void>;
   request_close_dialog: () => Promise<void>;
   confirm_pending_action: () => Promise<void>;

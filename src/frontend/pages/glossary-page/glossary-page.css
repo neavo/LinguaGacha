@@ -165,8 +165,8 @@
 .glossary-page__table-drag-cell,
 .glossary-page__table-rule-head,
 .glossary-page__table-rule-cell,
-.glossary-page__table-statistics-head,
-.glossary-page__table-statistics-cell {
+.glossary-page__table-hit-head,
+.glossary-page__table-hit-cell {
   text-align: center;
 }
 
@@ -212,14 +212,14 @@
   color: var(--primary-foreground);
 }
 
-.glossary-page__statistics-badge-wrap,
-.glossary-page__statistics-badge-button {
+.glossary-page__hit-badge-wrap,
+.glossary-page__hit-badge-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
 
-.glossary-page__statistics-badge-button {
+.glossary-page__hit-badge-button {
   padding: 0;
   border: 0;
   background: none;
@@ -227,7 +227,7 @@
   cursor: pointer;
 }
 
-.glossary-page__statistics-badge {
+.glossary-page__hit-badge {
   justify-content: center;
   font-size: 10px;
   transition:

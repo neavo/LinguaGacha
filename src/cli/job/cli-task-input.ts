@@ -1,11 +1,12 @@
 import type {
   ProjectPromptInput,
-  ProjectQualityRuleInput,
   ProjectTaskInput,
 } from "../../backend/project/project-task-input";
+import { build_project_quality_rule_input } from "../../backend/project/project-task-input";
 import { load_quality_rule_entries_from_file } from "../../backend/quality/quality-rule-file-io";
 import { Prompt, type PromptKind } from "../../domain/prompt";
 import { QualityRule, type QualityRuleKind } from "../../domain/quality";
+import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
 import { default_native_fs } from "../../native/native-fs";
 import type { CLICommandOptions } from "../cli-parser";
 
@@ -17,14 +18,11 @@ export async function build_cli_task_input(command: CLICommandOptions): Promise<
     quality_rules: await Promise.all(
       QualityRule.all().map(async (rule) => {
         const resource_path = read_rule_resource_path(command, rule.kind);
-        const entries =
-          resource_path === null ? [] : await load_quality_rule_entries_from_file(resource_path);
-        return {
-          kind: rule.kind,
-          entries,
-          enabled: rule.enabled_meta_key === null ? null : resource_path !== null,
-          mode: rule.mode_meta_key === null ? null : resource_path === null ? "off" : "custom",
-        } satisfies ProjectQualityRuleInput;
+        const entries = normalize_quality_rule_entries(
+          rule,
+          resource_path === null ? [] : await load_quality_rule_entries_from_file(resource_path),
+        );
+        return build_project_quality_rule_input(rule, entries, resource_path !== null);
       }),
     ),
     prompts: Prompt.all().map((prompt) => build_prompt_input(command, prompt.kind)),

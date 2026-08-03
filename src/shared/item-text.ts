@@ -2,7 +2,7 @@ import { read_item_name_text } from "./item-name";
 
 type ItemTextField = "src" | "name_src" | "dst" | "name_dst";
 
-type ItemTextPart = {
+export type ItemTextPart = {
   field: ItemTextField; // 参与规则计算的原始字段
   text: string; // 规则匹配文本，调用方不得拼接跨字段文本
 };

@@ -805,6 +805,7 @@ export class TaskEngine {
       this.app_root,
       normalize_setting_snapshot(run_context.config_snapshot),
       TextQualitySnapshotTool.from_api_value(quality_snapshot),
+      [],
     );
     return task_type === "analysis"
       ? await builder.build_glossary_analysis_main()

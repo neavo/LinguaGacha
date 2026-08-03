@@ -17,7 +17,6 @@ import {
   create_empty_proofreading_list_view,
   type ProofreadingClientItem,
   type ProofreadingFilterOptions,
-  type ProofreadingGlossaryTerm,
 } from "@shared/proofreading/proofreading-types";
 import { useProofreadingPageState } from "@frontend/pages/proofreading-page/use-proofreading-page-state";
 
@@ -52,6 +51,7 @@ type NavigationFixture = {
   proofreading_lookup_intent: {
     keyword: string;
     is_regex: boolean;
+    scope: "src" | "dst" | "all";
   } | null;
   clear_proofreading_lookup_intent: ReturnType<typeof vi.fn>;
 };
@@ -317,7 +317,7 @@ function create_sync_state(
     warning_types: ["NO_WARNING"],
     statuses: ["NONE"],
     file_paths: ["chapter01.txt"],
-    glossary_terms: [],
+    glossary_entry_ids: [],
     include_without_glossary_miss: true,
     ...default_filter_patch,
   };
@@ -376,8 +376,7 @@ function create_client_item(
     retry_count: 0,
     warnings: [],
     warning_fragments_by_code: {},
-    applied_glossary_terms: [],
-    failed_glossary_terms: [],
+    glossary_applications: [],
     compressed_src: `foo-${item_id}`,
     compressed_dst: `bar-${item_id}`,
     ...overrides,
@@ -619,8 +618,26 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.dialog_item?.internal_file_path).toBe("data/Actors.json");
   });
 
-  it("收到导航查找意图时会更新搜索状态并执行统一列表查询", async () => {
+  it("收到导航查找意图时会重置旧筛选并执行统一列表查询", async () => {
     await render_hook();
+    await act(async () => {
+      latest_state?.open_filter_dialog();
+    });
+    await flush_async_updates();
+    await act(async () => {
+      if (latest_state === null) {
+        throw new Error("校对页面状态未准备就绪。");
+      }
+      latest_state.update_filter_dialog_filters({
+        warning_types: [],
+        statuses: [],
+        file_paths: [],
+        glossary_entry_ids: ["stale"],
+        include_without_glossary_miss: false,
+      });
+      await latest_state.confirm_filter_dialog_filters();
+    });
+    await flush_async_updates();
     proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
     const clear_proofreading_lookup_intent = vi.fn(() => {
       navigation_fixture.current = {
@@ -632,6 +649,7 @@ describe("useProofreadingPageState", () => {
       proofreading_lookup_intent: {
         keyword: "^foo$",
         is_regex: true,
+        scope: "src",
       },
       clear_proofreading_lookup_intent,
     };
@@ -639,14 +657,21 @@ describe("useProofreadingPageState", () => {
     await render_hook();
 
     expect(latest_state?.search_keyword).toBe("^foo$");
-    expect(latest_state?.search_scope).toBe("all");
+    expect(latest_state?.search_scope).toBe("src");
     expect(latest_state?.is_regex).toBe(true);
     expect(
       proofreading_client_fixture.current.build_proofreading_list_view,
     ).toHaveBeenLastCalledWith(
       expect.objectContaining({
+        filters: {
+          warning_types: ["NO_WARNING"],
+          statuses: ["NONE"],
+          file_paths: ["chapter01.txt"],
+          glossary_entry_ids: [],
+          include_without_glossary_miss: true,
+        },
         keyword: "^foo$",
-        scope: "all",
+        scope: "src",
         is_regex: true,
       }),
     );
@@ -665,11 +690,11 @@ describe("useProofreadingPageState", () => {
   });
 
   it("首次进入校对页时把默认意图展开为当前默认筛选", async () => {
-    const glossary_term: ProofreadingGlossaryTerm = ["魔法", "Magic"];
+    const glossary_entry_id = "magic";
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
       return create_sync_state({
         statuses: ["NONE", "PROCESSED", "ERROR"],
-        glossary_terms: [glossary_term],
+        glossary_entry_ids: [glossary_entry_id],
       });
     });
 
@@ -681,7 +706,7 @@ describe("useProofreadingPageState", () => {
       expect.objectContaining({
         filters: expect.objectContaining({
           statuses: ["NONE", "PROCESSED", "ERROR"],
-          glossary_terms: [glossary_term],
+          glossary_entry_ids: [glossary_entry_id],
         }),
       }),
     );
@@ -813,7 +838,7 @@ describe("useProofreadingPageState", () => {
 
   it("正则搜索中的条目 delta 刷新只更新行内容并保留多选工作集", async () => {
     vi.useFakeTimers();
-    const glossary_term: ProofreadingGlossaryTerm = ["魔法", "Magic"];
+    const glossary_entry_id = "magic";
     const searched_list_view = {
       ...create_list_view(),
       row_count: 2,
@@ -834,7 +859,7 @@ describe("useProofreadingPageState", () => {
     };
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
       return create_sync_state({
-        glossary_terms: [glossary_term],
+        glossary_entry_ids: [glossary_entry_id],
       });
     });
     proofreading_client_fixture.current.build_proofreading_list_view = vi.fn(async () => {
@@ -868,7 +893,7 @@ describe("useProofreadingPageState", () => {
     });
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
       return create_sync_state({
-        glossary_terms: [],
+        glossary_entry_ids: [],
       });
     });
     proofreading_client_fixture.current.read_proofreading_list_window = vi.fn(async () => {
@@ -1804,7 +1829,7 @@ describe("useProofreadingPageState", () => {
   });
 
   it("只保存选区后重新进入会用新的术语缺失默认筛选", async () => {
-    const glossary_term: ProofreadingGlossaryTerm = ["魔法", "Magic"];
+    const glossary_entry_id = "magic";
     await render_hook();
 
     await act(async () => {
@@ -1818,7 +1843,7 @@ describe("useProofreadingPageState", () => {
     await unmount_page();
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
       return create_sync_state({
-        glossary_terms: [glossary_term],
+        glossary_entry_ids: [glossary_entry_id],
       });
     });
     proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
@@ -1831,7 +1856,7 @@ describe("useProofreadingPageState", () => {
     ).toHaveBeenLastCalledWith(
       expect.objectContaining({
         filters: expect.objectContaining({
-          glossary_terms: [glossary_term],
+          glossary_entry_ids: [glossary_entry_id],
         }),
       }),
     );
@@ -1839,11 +1864,11 @@ describe("useProofreadingPageState", () => {
 
   // 回归 #625：未改动默认筛选时，页面重新进入后仍应使用最新术语默认范围。
   it("确认未改动的默认筛选后重新进入会选中新术语缺失", async () => {
-    const glossary_term: ProofreadingGlossaryTerm = ["魔法", "Magic"];
-    const next_glossary_term: ProofreadingGlossaryTerm = ["王国", "Kingdom"];
+    const glossary_entry_id = "magic";
+    const next_glossary_entry_id = "kingdom";
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
       return create_sync_state({
-        glossary_terms: [glossary_term],
+        glossary_entry_ids: [glossary_entry_id],
       });
     });
     await render_hook();
@@ -1861,41 +1886,41 @@ describe("useProofreadingPageState", () => {
     await unmount_page();
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
       return create_sync_state({
-        glossary_terms: [glossary_term, next_glossary_term],
+        glossary_entry_ids: [glossary_entry_id, next_glossary_entry_id],
       });
     });
     proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
 
     await render_hook();
 
-    expect(latest_state?.filter_dialog_filters.glossary_terms).toEqual([
-      glossary_term,
-      next_glossary_term,
+    expect(latest_state?.filter_dialog_filters.glossary_entry_ids).toEqual([
+      glossary_entry_id,
+      next_glossary_entry_id,
     ]);
     expect(
       proofreading_client_fixture.current.build_proofreading_list_view,
     ).toHaveBeenLastCalledWith(
       expect.objectContaining({
         filters: expect.objectContaining({
-          glossary_terms: [glossary_term, next_glossary_term],
+          glossary_entry_ids: [glossary_entry_id, next_glossary_entry_id],
         }),
       }),
     );
   });
 
   it("确认未改动的默认筛选时会按同步后的最新默认值重建列表", async () => {
-    const glossary_term: ProofreadingGlossaryTerm = ["魔法", "Magic"];
-    const next_glossary_term: ProofreadingGlossaryTerm = ["王国", "Kingdom"];
+    const glossary_entry_id = "magic";
+    const next_glossary_entry_id = "kingdom";
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
       return create_sync_state({
-        glossary_terms: [glossary_term],
+        glossary_entry_ids: [glossary_entry_id],
       });
     });
     await render_hook();
 
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
       return create_sync_state({
-        glossary_terms: [glossary_term, next_glossary_term],
+        glossary_entry_ids: [glossary_entry_id, next_glossary_entry_id],
       });
     });
     proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
@@ -1928,18 +1953,18 @@ describe("useProofreadingPageState", () => {
     ).toHaveBeenLastCalledWith(
       expect.objectContaining({
         filters: expect.objectContaining({
-          glossary_terms: [glossary_term, next_glossary_term],
+          glossary_entry_ids: [glossary_entry_id, next_glossary_entry_id],
         }),
       }),
     );
   });
 
   it("用户显式确认空术语筛选后重新进入仍保留空选择", async () => {
-    const glossary_term: ProofreadingGlossaryTerm = ["魔法", "Magic"];
-    const next_glossary_term: ProofreadingGlossaryTerm = ["王国", "Kingdom"];
+    const glossary_entry_id = "magic";
+    const next_glossary_entry_id = "kingdom";
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
       return create_sync_state({
-        glossary_terms: [glossary_term],
+        glossary_entry_ids: [glossary_entry_id],
       });
     });
     await render_hook();
@@ -1956,7 +1981,7 @@ describe("useProofreadingPageState", () => {
 
       latest_state.update_filter_dialog_filters({
         ...latest_state.filter_dialog_filters,
-        glossary_terms: [],
+        glossary_entry_ids: [],
       });
       await latest_state.confirm_filter_dialog_filters();
     });
@@ -1965,27 +1990,27 @@ describe("useProofreadingPageState", () => {
     await unmount_page();
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
       return create_sync_state({
-        glossary_terms: [glossary_term, next_glossary_term],
+        glossary_entry_ids: [glossary_entry_id, next_glossary_entry_id],
       });
     });
     proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
 
     await render_hook();
 
-    expect(latest_state?.filter_dialog_filters.glossary_terms).toEqual([]);
+    expect(latest_state?.filter_dialog_filters.glossary_entry_ids).toEqual([]);
     expect(
       proofreading_client_fixture.current.build_proofreading_list_view,
     ).toHaveBeenLastCalledWith(
       expect.objectContaining({
         filters: expect.objectContaining({
-          glossary_terms: [],
+          glossary_entry_ids: [],
         }),
       }),
     );
   });
 
   it("项目身份重置后会重新使用默认筛选意图", async () => {
-    const glossary_term: ProofreadingGlossaryTerm = ["魔法", "Magic"];
+    const glossary_entry_id = "magic";
     await render_hook();
 
     await act(async () => {
@@ -2000,7 +2025,7 @@ describe("useProofreadingPageState", () => {
 
       latest_state.update_filter_dialog_filters({
         ...latest_state.filter_dialog_filters,
-        glossary_terms: [],
+        glossary_entry_ids: [],
       });
       await latest_state.confirm_filter_dialog_filters();
     });
@@ -2008,7 +2033,7 @@ describe("useProofreadingPageState", () => {
 
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
       return create_sync_state({
-        glossary_terms: [glossary_term],
+        glossary_entry_ids: [glossary_entry_id],
       });
     });
     proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
@@ -2026,19 +2051,19 @@ describe("useProofreadingPageState", () => {
     ).toHaveBeenLastCalledWith(
       expect.objectContaining({
         filters: expect.objectContaining({
-          glossary_terms: [glossary_term],
+          glossary_entry_ids: [glossary_entry_id],
         }),
       }),
     );
   });
 
-  it("显式筛选意图会克隆术语 tuple", async () => {
+  it("显式筛选意图会克隆术语选择", async () => {
     vi.useFakeTimers();
     const selected_filters: ProofreadingFilterOptions = {
       warning_types: ["NO_WARNING"],
       statuses: ["NONE"],
       file_paths: ["chapter01.txt"],
-      glossary_terms: [["魔法", "Magic"]],
+      glossary_entry_ids: ["magic"],
       include_without_glossary_miss: true,
     };
     await render_hook();
@@ -2057,7 +2082,7 @@ describe("useProofreadingPageState", () => {
       await latest_state.confirm_filter_dialog_filters();
     });
     await flush_async_updates();
-    selected_filters.glossary_terms[0] = ["污染", "Dirty"];
+    selected_filters.glossary_entry_ids[0] = "dirty";
     proofreading_client_fixture.current.build_proofreading_list_view.mockClear();
 
     await act(async () => {
@@ -2071,7 +2096,7 @@ describe("useProofreadingPageState", () => {
     ).toHaveBeenLastCalledWith(
       expect.objectContaining({
         filters: expect.objectContaining({
-          glossary_terms: [["魔法", "Magic"]],
+          glossary_entry_ids: ["magic"],
         }),
         keyword: "foo",
       }),

@@ -10,9 +10,9 @@ export const zh_cn_glossary_page = {
     translation: "译文",
     description: "描述",
 
-    statistics: "统计",
+    hit: "命中",
   },
-  statistics: {
+  hit: {
     action: {
       query_source: "查询出处",
       search_relation: "查询包含关系",

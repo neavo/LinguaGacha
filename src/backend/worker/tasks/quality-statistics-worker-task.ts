@@ -12,9 +12,8 @@ export function run_quality_statistics_worker_task(
 ): Record<string, unknown> {
   const statistics_result = run_quality_statistics_task_sync({
     rules: input.rules,
-    srcTextGroups: input.src_text_groups,
-    dstTextGroups: input.dst_text_groups,
-    relationCandidates: input.relation_candidates,
+    text_groups: input.text_groups,
+    relation_candidates: input.relation_candidates,
   });
   // 输出表按 completed_entry_ids 补齐缺失项，保证页面读取时无需再做空 key 分支。
   const matched_count_by_entry_id = Object.fromEntries(

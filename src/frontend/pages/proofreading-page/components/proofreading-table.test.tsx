@@ -101,8 +101,7 @@ function create_item(overrides: Partial<ProofreadingItem> = {}): ProofreadingIte
     retry_count: 0,
     warnings: ["GLOSSARY"],
     warning_fragments_by_code: {},
-    applied_glossary_terms: [],
-    failed_glossary_terms: [],
+    glossary_applications: [],
     ...overrides,
   };
 }

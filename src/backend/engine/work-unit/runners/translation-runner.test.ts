@@ -214,6 +214,85 @@ describe("TranslationWorkUnitRunner", () => {
     expect(captured_requests[0]?.messages[0]?.content).not.toContain("提示词增强");
   });
 
+  it("术语只按预处理前的原始正文与姓名激活，并忽略空译文", async () => {
+    const captured_requests: LLMRequestBody[] = [];
+    const runner = new TranslationWorkUnitRunner(
+      await create_template_root(),
+      create_llm_client(
+        { response_result: '{"0":{"actor":"爱丽丝","text":"生命值"}}' },
+        captured_requests,
+      ),
+    );
+    const quality = create_quality_payload();
+    const quality_block = quality["quality"] as JsonRecord;
+    quality_block["glossary"] = {
+      enabled: true,
+      entries: [
+        { entry_id: "hp", src: "HP", dst: "生命值", info: "", case_sensitive: true },
+        { entry_id: "mana", src: "Mana", dst: "魔力", info: "", case_sensitive: true },
+        { entry_id: "alice", src: "Alice", dst: "爱丽丝", info: "", case_sensitive: false },
+        { entry_id: "empty", src: "HP", dst: "   ", info: "", case_sensitive: true },
+      ],
+    };
+    quality_block["pre_replacement"] = {
+      enabled: true,
+      entries: [{ src: "HP", dst: "Mana", regex: false, case_sensitive: true }],
+    };
+
+    await runner.execute_unit(
+      create_translation_unit({
+        model: { api_format: "OpenAI" },
+        quality_snapshot: quality,
+        config_overrides: { prompt_enhancement_enable: false },
+        items: [
+          {
+            id: 1,
+            src: "HP",
+            name_src: "Alice",
+            dst: "",
+            status: "NONE",
+            text_type: "TXT",
+          },
+        ],
+      }),
+      new AbortController().signal,
+    );
+
+    const prompt = captured_requests[0]?.messages[1]?.content ?? "";
+    expect(prompt).toContain("HP -> 生命值");
+    expect(prompt).toContain("Alice -> 爱丽丝");
+    expect(prompt).not.toContain("Mana -> 魔力");
+    expect(prompt).not.toContain("HP ->    ");
+    expect(prompt).toContain("Mana");
+  });
+
+  it("术语全局关闭时普通与 Sakura 请求都不注入术语", async () => {
+    for (const api_format of ["OpenAI", "SakuraLLM"]) {
+      const captured_requests: LLMRequestBody[] = [];
+      const quality = create_quality_payload();
+      (quality["quality"] as JsonRecord)["glossary"] = {
+        enabled: false,
+        entries: [{ entry_id: "hp", src: "HP", dst: "生命值", info: "", case_sensitive: false }],
+      };
+      const runner = new TranslationWorkUnitRunner(
+        await create_template_root(),
+        create_llm_client({ response_result: '{"0":"译文"}' }, captured_requests),
+      );
+
+      await runner.execute_unit(
+        create_translation_unit({
+          model: { api_format },
+          quality_snapshot: quality,
+          config_overrides: { prompt_enhancement_enable: false },
+          src: "HP",
+        }),
+        new AbortController().signal,
+      );
+
+      expect(captured_requests[0]?.messages[1]?.content).not.toContain("生命值");
+    }
+  });
+
   it("翻译日志的请求用时覆盖 LLM 等待时间", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(1000));
@@ -580,6 +659,7 @@ function create_translation_unit(args: {
   retry_count?: number;
   items?: Array<JsonRecord>;
   config_overrides?: JsonRecord;
+  quality_snapshot?: JsonRecord;
 }): TranslationWorkUnit {
   return {
     kind: "translation",
@@ -587,7 +667,7 @@ function create_translation_unit(args: {
     run_id: "run-1",
     model: args.model,
     config_snapshot: create_config_payload(args.config_overrides),
-    quality_snapshot: create_quality_payload(),
+    quality_snapshot: args.quality_snapshot ?? create_quality_payload(),
     payload: {
       items: args.items ?? [
         {

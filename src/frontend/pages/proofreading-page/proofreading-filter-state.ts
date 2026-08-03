@@ -2,7 +2,6 @@ import { JsonTool } from "@shared/utils/json-tool";
 import {
   clone_proofreading_filter_options,
   type ProofreadingFilterOptions,
-  type ProofreadingGlossaryTerm,
   type ProofreadingSearchScope,
 } from "@shared/proofreading/proofreading-types";
 
@@ -19,7 +18,7 @@ export type ProofreadingFilterSelection = {
   warning_types: ProofreadingFilterChoice<string>;
   statuses: ProofreadingFilterChoice<string>;
   file_paths: ProofreadingFilterChoice<string>;
-  glossary_terms: ProofreadingFilterChoice<ProofreadingGlossaryTerm>;
+  glossary_entry_ids: ProofreadingFilterChoice<string>;
   include_without_glossary_miss: boolean;
 };
 
@@ -66,17 +65,6 @@ function materialize_filter_choice<T>(
   return source_values.map((value) => clone_value(value));
 }
 
-function clone_glossary_term(term: ProofreadingGlossaryTerm): ProofreadingGlossaryTerm {
-  return [term[0], term[1]] as const;
-}
-
-/**
- * 术语二元组比较使用源文和译文共同组成稳定 key，避免数组引用影响意图判断。
- */
-function build_glossary_term_key(term: ProofreadingGlossaryTerm): string {
-  return `${term[0]}→${term[1]}`;
-}
-
 /**
  * 普通筛选维度按集合语义比较，筛选面板顺序变化不应把默认意图改成显式选择。
  */
@@ -87,22 +75,6 @@ function are_string_values_equal(left_values: string[], right_values: string[]):
 
   const left_signature = [...left_values].sort().join("\n");
   const right_signature = [...right_values].sort().join("\n");
-  return left_signature === right_signature;
-}
-
-/**
- * 术语筛选按术语内容比较，保证同一术语 tuple 被克隆后仍能识别默认意图。
- */
-function are_glossary_terms_equal(
-  left_terms: ProofreadingGlossaryTerm[],
-  right_terms: ProofreadingGlossaryTerm[],
-): boolean {
-  if (left_terms.length !== right_terms.length) {
-    return false;
-  }
-
-  const left_signature = left_terms.map(build_glossary_term_key).sort().join("\n");
-  const right_signature = right_terms.map(build_glossary_term_key).sort().join("\n");
   return left_signature === right_signature;
 }
 
@@ -121,13 +93,13 @@ function resolve_string_filter_choice(args: {
 /**
  * 将已物化的术语筛选值恢复成筛选意图，用户改动过的术语列表才固化为显式选择。
  */
-function resolve_glossary_term_filter_choice(args: {
-  values: ProofreadingGlossaryTerm[];
-  default_values: ProofreadingGlossaryTerm[];
-}): ProofreadingFilterChoice<ProofreadingGlossaryTerm> {
-  return are_glossary_terms_equal(args.values, args.default_values)
+function resolve_glossary_entry_id_filter_choice(args: {
+  values: string[];
+  default_values: string[];
+}): ProofreadingFilterChoice<string> {
+  return are_string_values_equal(args.values, args.default_values)
     ? create_default_filter_choice()
-    : create_selected_filter_choice(args.values, clone_glossary_term);
+    : create_selected_filter_choice(args.values, (value) => value);
 }
 
 export function create_empty_filter_options(): ProofreadingFilterOptions {
@@ -135,7 +107,7 @@ export function create_empty_filter_options(): ProofreadingFilterOptions {
     warning_types: [],
     statuses: [],
     file_paths: [],
-    glossary_terms: [],
+    glossary_entry_ids: [],
     include_without_glossary_miss: true,
   };
 }
@@ -147,7 +119,7 @@ export function create_default_proofreading_filter_selection(
     warning_types: create_default_filter_choice(),
     statuses: create_default_filter_choice(),
     file_paths: create_default_filter_choice(),
-    glossary_terms: create_default_filter_choice(),
+    glossary_entry_ids: create_default_filter_choice(),
     include_without_glossary_miss: default_filters.include_without_glossary_miss,
   };
 }
@@ -159,7 +131,7 @@ export function create_selected_proofreading_filter_selection(
     warning_types: create_selected_filter_choice(filters.warning_types, (value) => value),
     statuses: create_selected_filter_choice(filters.statuses, (value) => value),
     file_paths: create_selected_filter_choice(filters.file_paths, (value) => value),
-    glossary_terms: create_selected_filter_choice(filters.glossary_terms, clone_glossary_term),
+    glossary_entry_ids: create_selected_filter_choice(filters.glossary_entry_ids, (value) => value),
     include_without_glossary_miss: filters.include_without_glossary_miss,
   };
 }
@@ -171,7 +143,7 @@ export function clone_proofreading_filter_selection(
     warning_types: clone_filter_choice(selection.warning_types, (value) => value),
     statuses: clone_filter_choice(selection.statuses, (value) => value),
     file_paths: clone_filter_choice(selection.file_paths, (value) => value),
-    glossary_terms: clone_filter_choice(selection.glossary_terms, clone_glossary_term),
+    glossary_entry_ids: clone_filter_choice(selection.glossary_entry_ids, (value) => value),
     include_without_glossary_miss: selection.include_without_glossary_miss,
   };
 }
@@ -196,9 +168,9 @@ export function resolve_proofreading_filter_selection_from_filters(args: {
       values: args.filters.file_paths,
       default_values: args.default_filters.file_paths,
     }),
-    glossary_terms: resolve_glossary_term_filter_choice({
-      values: args.filters.glossary_terms,
-      default_values: args.default_filters.glossary_terms,
+    glossary_entry_ids: resolve_glossary_entry_id_filter_choice({
+      values: args.filters.glossary_entry_ids,
+      default_values: args.default_filters.glossary_entry_ids,
     }),
     include_without_glossary_miss: args.filters.include_without_glossary_miss,
   };
@@ -222,10 +194,10 @@ export function materialize_proofreading_filters(
       default_filters.file_paths,
       (value) => value,
     ),
-    glossary_terms: materialize_filter_choice(
-      selection.glossary_terms,
-      default_filters.glossary_terms,
-      clone_glossary_term,
+    glossary_entry_ids: materialize_filter_choice(
+      selection.glossary_entry_ids,
+      default_filters.glossary_entry_ids,
+      (value) => value,
     ),
     include_without_glossary_miss: selection.include_without_glossary_miss,
   };
@@ -265,20 +237,12 @@ export function create_proofreading_view_filter_state(args: {
   };
 }
 
-function serialize_glossary_terms(glossary_terms: ProofreadingGlossaryTerm[]): string[][] {
-  return glossary_terms.map((term) => [term[0], term[1]]);
-}
-
 export function build_filter_signature(filters: ProofreadingFilterOptions): string {
   return JsonTool.stringifyStrict({
     warning_types: [...filters.warning_types].sort(),
     statuses: [...filters.statuses].sort(),
     file_paths: [...filters.file_paths].sort(),
-    glossary_terms: serialize_glossary_terms(filters.glossary_terms).sort(
-      (left_term, right_term) => {
-        return left_term.join("→").localeCompare(right_term.join("→"), "zh-Hans-CN");
-      },
-    ),
+    glossary_entry_ids: [...filters.glossary_entry_ids].sort(),
     include_without_glossary_miss: filters.include_without_glossary_miss,
   });
 }

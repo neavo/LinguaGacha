@@ -112,13 +112,15 @@ describe("quality rule statistics cache helpers", () => {
 
   it("quality 变化会让四类统计全部过期", () => {
     expect(
-      resolveQualityRuleStatisticsRulesToExpire(
-        create_project_change_signal({
-          updated_sections: ["quality"],
-          results: [],
-        }),
+      new Set(
+        resolveQualityRuleStatisticsRulesToExpire(
+          create_project_change_signal({
+            updated_sections: ["quality"],
+            results: [],
+          }),
+        ),
       ),
-    ).toEqual(["glossary", "pre_replacement", "post_replacement", "text_preserve"]);
+    ).toEqual(new Set(["glossary", "text_preserve", "pre_replacement", "post_replacement"]));
   });
 
   it.each([["translation_batch_update"], ["retranslate_items"]] as const)(
@@ -188,36 +190,40 @@ describe("quality rule statistics cache helpers", () => {
 
   it("items 全量替换会让四类统计全部过期", () => {
     expect(
-      resolveQualityRuleStatisticsRulesToExpire(
-        create_project_change_signal({
-          results: [
-            {
-              source: "translation_reset",
-              updatedSections: ["items"],
-              itemDelta: {
-                upsertItemIds: [1],
-                deleteItemIds: [],
-                fullReplace: true,
+      new Set(
+        resolveQualityRuleStatisticsRulesToExpire(
+          create_project_change_signal({
+            results: [
+              {
+                source: "translation_reset",
+                updatedSections: ["items"],
+                itemDelta: {
+                  upsertItemIds: [1],
+                  deleteItemIds: [],
+                  fullReplace: true,
+                },
               },
-            },
-          ],
-        }),
+            ],
+          }),
+        ),
       ),
-    ).toEqual(["glossary", "pre_replacement", "post_replacement", "text_preserve"]);
+    ).toEqual(new Set(["glossary", "text_preserve", "pre_replacement", "post_replacement"]));
   });
 
   it("items 变化缺少行级载荷时让四类统计全部过期", () => {
     expect(
-      resolveQualityRuleStatisticsRulesToExpire(
-        create_project_change_signal({
-          results: [
-            {
-              source: "unknown_items_change",
-              updatedSections: ["items"],
-            },
-          ],
-        }),
+      new Set(
+        resolveQualityRuleStatisticsRulesToExpire(
+          create_project_change_signal({
+            results: [
+              {
+                source: "unknown_items_change",
+                updatedSections: ["items"],
+              },
+            ],
+          }),
+        ),
       ),
-    ).toEqual(["glossary", "pre_replacement", "post_replacement", "text_preserve"]);
+    ).toEqual(new Set(["glossary", "text_preserve", "pre_replacement", "post_replacement"]));
   });
 });

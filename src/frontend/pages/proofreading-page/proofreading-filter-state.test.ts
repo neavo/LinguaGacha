@@ -4,10 +4,7 @@ import {
   materialize_proofreading_filters,
   resolve_proofreading_filter_selection_from_filters,
 } from "@frontend/pages/proofreading-page/proofreading-filter-state";
-import type {
-  ProofreadingFilterOptions,
-  ProofreadingGlossaryTerm,
-} from "@shared/proofreading/proofreading-types";
+import type { ProofreadingFilterOptions } from "@shared/proofreading/proofreading-types";
 
 // 生成当前测试场景的完整筛选载荷，避免用例只关心术语时遗漏其它维度语义。
 function create_filters(patch: Partial<ProofreadingFilterOptions> = {}): ProofreadingFilterOptions {
@@ -15,7 +12,7 @@ function create_filters(patch: Partial<ProofreadingFilterOptions> = {}): Proofre
     warning_types: ["NO_WARNING", "GLOSSARY"],
     statuses: ["NONE", "PROCESSED", "ERROR"],
     file_paths: ["chapter01.txt"],
-    glossary_terms: [],
+    glossary_entry_ids: [],
     include_without_glossary_miss: true,
     ...patch,
   };
@@ -24,52 +21,52 @@ function create_filters(patch: Partial<ProofreadingFilterOptions> = {}): Proofre
 describe("resolve_proofreading_filter_selection_from_filters", () => {
   // 默认术语筛选确认后仍保存默认意图，后续新增术语应随默认值展开。
   it("未改动的默认术语筛选会继续跟随后续默认术语", () => {
-    const glossary_term: ProofreadingGlossaryTerm = ["魔法", "Magic"];
-    const next_glossary_term: ProofreadingGlossaryTerm = ["王国", "Kingdom"];
+    const glossary_entry_id = "magic";
+    const next_glossary_entry_id = "kingdom";
     const default_filters = create_filters({
-      glossary_terms: [glossary_term],
+      glossary_entry_ids: [glossary_entry_id],
     });
 
     const selection = resolve_proofreading_filter_selection_from_filters({
       filters: create_filters({
-        glossary_terms: [["魔法", "Magic"]],
+        glossary_entry_ids: ["magic"],
       }),
       default_filters,
     });
 
-    expect(selection.glossary_terms).toEqual({ mode: "default" });
+    expect(selection.glossary_entry_ids).toEqual({ mode: "default" });
     expect(
       materialize_proofreading_filters(
         selection,
         create_filters({
-          glossary_terms: [glossary_term, next_glossary_term],
+          glossary_entry_ids: [glossary_entry_id, next_glossary_entry_id],
         }),
-      ).glossary_terms,
-    ).toEqual([glossary_term, next_glossary_term]);
+      ).glossary_entry_ids,
+    ).toEqual([glossary_entry_id, next_glossary_entry_id]);
   });
 
   // 空术语列表代表用户明确排除术语缺失项，后续默认值变化不能覆盖该选择。
   it("显式清空术语筛选后会保留空选择", () => {
-    const glossary_term: ProofreadingGlossaryTerm = ["魔法", "Magic"];
-    const next_glossary_term: ProofreadingGlossaryTerm = ["王国", "Kingdom"];
+    const glossary_entry_id = "magic";
+    const next_glossary_entry_id = "kingdom";
 
     const selection = resolve_proofreading_filter_selection_from_filters({
       filters: create_filters({
-        glossary_terms: [],
+        glossary_entry_ids: [],
       }),
       default_filters: create_filters({
-        glossary_terms: [glossary_term],
+        glossary_entry_ids: [glossary_entry_id],
       }),
     });
 
-    expect(selection.glossary_terms).toEqual({ mode: "selected", values: [] });
+    expect(selection.glossary_entry_ids).toEqual({ mode: "selected", values: [] });
     expect(
       materialize_proofreading_filters(
         selection,
         create_filters({
-          glossary_terms: [glossary_term, next_glossary_term],
+          glossary_entry_ids: [glossary_entry_id, next_glossary_entry_id],
         }),
-      ).glossary_terms,
+      ).glossary_entry_ids,
     ).toEqual([]);
   });
 

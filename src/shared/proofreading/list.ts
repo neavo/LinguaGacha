@@ -5,8 +5,8 @@ import {
   type ProofreadingClientItem,
   type ProofreadingVisibleItem,
   type ProofreadingWarningFragmentsByCode,
-  type ProofreadingGlossaryTerm,
 } from "./proofreading-types";
+import type { GlossaryApplication } from "../quality/glossary";
 import type { ItemNameField } from "../../domain/item";
 
 export type ProofreadingSortState = {
@@ -165,8 +165,7 @@ export function create_proofreading_client_item(args: {
   item: ProofreadingSortableItemRecord;
   warnings: string[];
   warning_fragments_by_code: ProofreadingWarningFragmentsByCode;
-  failed_terms: ProofreadingGlossaryTerm[];
-  applied_terms: ProofreadingGlossaryTerm[];
+  glossary_applications: GlossaryApplication[];
 }): ProofreadingClientItem {
   return {
     item_id: args.item.item_id,
@@ -190,12 +189,10 @@ export function create_proofreading_client_item(args: {
         ? {}
         : { TEXT_PRESERVE: [...args.warning_fragments_by_code.TEXT_PRESERVE] }),
     },
-    failed_glossary_terms: args.failed_terms.map((term) => {
-      return [term[0], term[1]] as const;
-    }),
-    applied_glossary_terms: args.applied_terms.map((term) => {
-      return [term[0], term[1]] as const;
-    }),
+    glossary_applications: args.glossary_applications.map((application) => ({
+      ...application,
+      fields: application.fields.map((field) => ({ ...field })),
+    })),
     row_id: build_proofreading_row_id(args.item.item_id),
     compressed_src: compress_proofreading_text(args.item.src),
     compressed_dst: compress_proofreading_text(args.item.dst),

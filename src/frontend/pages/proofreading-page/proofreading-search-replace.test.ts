@@ -20,8 +20,7 @@ function create_item(overrides: Partial<ProofreadingItem> = {}): ProofreadingIte
     retry_count: 0,
     warnings: [],
     warning_fragments_by_code: {},
-    applied_glossary_terms: [],
-    failed_glossary_terms: [],
+    glossary_applications: [],
     ...overrides,
   };
 }
@@ -41,6 +40,22 @@ describe("proofreading search replace", () => {
         is_regex: false,
       }),
     ).toEqual({ field: "dst", text: "魔法 和 Magic" });
+  });
+
+  it("字面量替换固定忽略大小写", () => {
+    const pattern = create_search_pattern("Magic", false);
+    if (pattern === null) {
+      throw new Error("搜索模式缺失");
+    }
+
+    expect(
+      find_first_translation_replace({
+        item: create_item({ dst: "magic" }),
+        search_pattern: pattern,
+        replacement: "魔法",
+        is_regex: false,
+      }),
+    ).toEqual({ field: "dst", text: "魔法" });
   });
 
   it("正文没有变化时继续检查姓名译文", () => {

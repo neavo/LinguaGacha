@@ -46,7 +46,7 @@ function create_filters(patch: Partial<ProofreadingFilterOptions> = {}): Proofre
     warning_types: ["NO_WARNING"],
     statuses: ["NONE", "PROCESSED"],
     file_paths: ["chapter01.txt"],
-    glossary_terms: [["魔法", "Magic"]],
+    glossary_entry_ids: ["magic"],
     include_without_glossary_miss: true,
     ...patch,
   };

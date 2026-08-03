@@ -14,4 +14,10 @@ describe("quality-rule-entry-id", () => {
       { entry_id: "香蕉::1", src: "香蕉" },
     ]);
   });
+
+  it("拒绝显式身份与补齐身份冲突", () => {
+    expect(() =>
+      ensure_quality_rule_entry_ids([{ entry_id: "苹果::1", src: "香蕉" }, { src: "苹果" }]),
+    ).toThrow("entry_id 重复");
+  });
 });

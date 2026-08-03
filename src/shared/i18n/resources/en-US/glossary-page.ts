@@ -14,9 +14,9 @@ export const en_us_glossary_page = {
     translation: "Translation",
     description: "Description",
 
-    statistics: "Hits",
+    hit: "Hits",
   },
-  statistics: {
+  hit: {
     action: {
       query_source: "Query source",
       search_relation: "Query subset relations",

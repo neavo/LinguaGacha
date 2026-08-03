@@ -39,6 +39,8 @@
 - Agent 页面从后端 snapshot 恢复私有会话并消费统一 Agent SSE，不把会话内容放入 `DesktopStateProvider` 或项目 session UI 缓存；后端 snapshot、恢复 loading、当前 command 与带恢复路径的 issue 是彼此独立的页面状态，轮次结果只读取条目状态。命令互斥不锁定草稿编辑；共享 runtime 锁禁用发送、reset 与模型选择，当前 Agent 回合的 stop 始终保留。
 - Agent 信息流仅在外层容器原本位于底端、且没有展开详情处于回看状态时跟随新内容；外层和思考 / 工具详情都按各自真实滚动位置暂停或恢复，统一的“回到最新”动作清除全部暂停原因。外层使用原生滚动锚点承接内容高度变化，页面只在恢复跟随时执行即时定位，不根据 wheel、pointer 或 keyboard 输入猜测用户意图。
 - `ProjectSessionUiStateProvider` 只保存当前项目内可跨路由恢复的轻量 UI 状态，项目切换或关闭时清空，不写入后端事实。
+- 校对以 `entry_id` 消费后端字段级术语结果；编辑窗只对对应译文字段重新求值，不重建术语身份。
+- 规则页通过一次性查找意图跳转校对并重置旧筛选；跳转只负责定位，命中统计仍以质量统计结果为准。
 - `WorkbenchTasksSessionProvider` 保存翻译 / 分析完成后的跨路由 follow-up；页面计算缓存、弹窗、导入和提交中状态默认随页面挂载与卸载。
 - `src/frontend/pages/<page>` 只包含页面入口及该页面的私有实现；页面之间不互相导入，共用能力先迁入 `features`，`features` 不反向依赖 `pages`。
 - `src/frontend/widgets/interactions` 只承接通用交互与快捷键，不依赖 app state、页面领域、桌面桥、后端 API 或 SSE。

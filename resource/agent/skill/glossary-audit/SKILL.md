@@ -9,10 +9,10 @@ description: 用于审查、整理、修正、去重、优化或维护当前工�
 
 ## 核心规则
 
-### 生效与收录
+### 覆盖与收录
 
-- 术语按 `src` 的字面量子字符串命中，不识别词边界，包含或重叠条目可能同时生效。
-- 仅将命中的条目以 `src -> dst #info` 提供给模型，因此条目边界、译法和备注会直接影响结果。
+- 术语按自身 `case_sensitive` 规则对原始 `src/name_src` 做字面量子字符串覆盖，不识别词边界，包含或重叠条目可以同时覆盖。
+- 翻译只激活已覆盖且 `dst` 非空的条目，并以 `src -> dst #info` 提供给模型，因此条目边界、译法和备注会直接影响结果。
 - 只保留会影响后续翻译一致性、属性判断或世界观理解的核心专有名词。
 - 先查原文实际位置和语境，再决定译名、语义身份和边界；`src` 必须是原文中实际出现的连续子字符串。
 - 只截取保证身份和译法所需的最小边界：
@@ -68,7 +68,7 @@ description: 用于审查、整理、修正、去重、优化或维护当前工�
 
 - 用户未限定范围时，审校全部条目。
 - 用户明确限定范围时，只为范围内条目形成结论和变更，直接相关的范围外条目可以作为关系证据，但不得擅自纳入变更。
-- 零出现、空译文、正则、重复、包含和共享词根只是排序审校队列的事实信号，不能据此跳过没有信号的范围内条目。
+- 零出现、空译文、重复、包含和共享词根只是排序审校队列的事实信号，不能据此跳过没有信号的范围内条目。
 
 ### 2. 建立关系组并逐项审校
 
@@ -89,10 +89,10 @@ description: 用于审查、整理、修正、去重、优化或维护当前工�
 ### 3. 按需读取原文证据
 
 - 零出现条目不查询正文，以命中条目数和关系事实作为证据。
-- 以 `query_quality_rules` 的 `matched_item_count` 作为覆盖全部原文的命中条目数；`query_project_items` 的 `total_matches` 只补充同一查询范围内的实际出现次数。
-- 按审校组及 `case_sensitive` 分组并去重，默认用 `query_project_items` 的 `sample` 模式和 `scope: src` 查询，遵守 `patterns` 参数上限，超过上限时拆成多次直接调用。
-- 相同 `patterns`、`scope`、`case_sensitive` 和 `items` revision 不重复采样，代表样本不足以形成结论时列为未决。
-- 只有用户明确要求逐项检查全部命中时，才改用 `search` 模式并以相同查询参数沿 `cursor` 读取至 `complete: true`。
+- 以 `query_quality_rules` 的 `matched_item_count` 作为覆盖 item 数；`query_items_by_glossary` 返回的同名 `matched_item_count` 在相同 `items/quality` revision 下必须一致，`total_matches` 只补充实际命中次数，允许大于覆盖 item 数。
+- 按审校组直接传 `entry_ids`，默认用 `query_items_by_glossary` 的 `sample` 模式查询；每次最多 20 条，超过上限时拆成多次调用。工具会从权威术语表读取 `src/case_sensitive`，不得自行分组、传 pattern 或重新关联条目。
+- 相同 `entry_ids` 和 `items/quality` revision 不重复采样，代表样本不足以形成结论时列为未决。
+- 只有用户明确要求逐项检查全部命中时，才改用 `query_items_by_glossary` 的 `search` 模式并沿 `cursor` 读取至 `complete: true`；不得回退通用正文 search。
 - 修改译名、`info` 或边界时，至少保留一个直接支持判断的 `item_id`。删除实际出现的条目时，展示其属于泛用词、称谓、冗余派生词或错误边界的原文证据。
 - 高频词按完整原文、姓名字段和工程分布核验样本中已经发现的不同语义簇，并披露已核验范围与残余风险。
 

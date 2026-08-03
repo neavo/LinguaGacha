@@ -32,6 +32,13 @@ import { resolve_app_locale } from "../../../../domain/app-language";
 import { format_i18n_message, type LocaleKey } from "../../../../shared/i18n";
 import type { LogError } from "../../../../shared/error";
 import { has_translation_retry_reached_review_threshold } from "../../../../shared/text/translation-quality-rules";
+import { read_item_source_text_parts } from "../../../../shared/item-text";
+import {
+  compile_glossary,
+  match_glossary_source,
+  type GlossaryEntry,
+  type ResolvedGlossaryEntry,
+} from "../../../../shared/quality/glossary";
 
 /**
  * worker 边界传入的公共请求字段，全部来自任务启动时的不可变快照。
@@ -243,6 +250,10 @@ export class TranslationWorkUnitRunner {
       }
   > {
     const samples: string[] = [];
+    const activated_glossary_entries = this.resolve_activated_glossary_entries(
+      quality_snapshot,
+      items,
+    );
     const pre_pipeline = new TranslationPrePipeline(config, quality_snapshot);
     const pipeline_contexts: TranslationPrePipelineContext[] = [];
     let request_index_start = 0;
@@ -275,6 +286,7 @@ export class TranslationWorkUnitRunner {
       this.app_root,
       this.config_to_prompt_config(config, request.config_snapshot),
       quality_snapshot,
+      activated_glossary_entries,
     );
     const api_format = this.resolve_model_api_format(request.model);
     const mode = api_format === "SakuraLLM" ? "text" : resolve_translation_prompt_mode(lines);
@@ -290,6 +302,35 @@ export class TranslationWorkUnitRunner {
       console_log: prompt_result.console_log,
       pipeline_contexts,
     };
+  }
+
+  /** Prompt 激活只读取预处理前的原始源字段，开关和空译文在此唯一裁决。 */
+  private resolve_activated_glossary_entries(
+    quality_snapshot: TextQualitySnapshot,
+    items: TextTaskItemRecord[],
+  ): ResolvedGlossaryEntry[] {
+    if (!quality_snapshot.glossary_enable) return [];
+    const compiled = compile_glossary(
+      quality_snapshot.glossary_entries.map(
+        (entry): GlossaryEntry => ({
+          entry_id: typeof entry["entry_id"] === "string" ? entry["entry_id"] : undefined,
+          src: String(entry["src"] ?? ""),
+          dst: String(entry["dst"] ?? ""),
+          info: String(entry["info"] ?? ""),
+          case_sensitive: entry["case_sensitive"] === true,
+        }),
+      ),
+    );
+    const activated_ids = new Set(
+      items.flatMap((item) =>
+        match_glossary_source(compiled, read_item_source_text_parts(item)).map(
+          ({ entry }) => entry.entry_id,
+        ),
+      ),
+    );
+    return compiled.entries.filter(
+      (entry) => entry.dst.trim() !== "" && activated_ids.has(entry.entry_id),
+    );
   }
 
   /**

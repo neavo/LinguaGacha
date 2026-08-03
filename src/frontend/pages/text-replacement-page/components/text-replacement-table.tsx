@@ -2,24 +2,15 @@ import { CaseSensitive, Regex } from "lucide-react";
 import { useMemo } from "react";
 
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
-import { cn } from "@frontend/shadcn/classnames";
 import { TextReplacementContextMenuContent } from "@frontend/pages/text-replacement-page/components/text-replacement-context-menu";
 import type {
   TextReplacementEntryId,
-  TextReplacementStatisticsBadgeState,
+  TextReplacementHitBadgeState,
   TextReplacementVisibleEntry,
 } from "@frontend/pages/text-replacement-page/types";
-import { Badge } from "@frontend/shadcn/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@frontend/shadcn/card";
-import {
-  AppDropdownMenu,
-  AppDropdownMenuContent,
-  AppDropdownMenuGroup,
-  AppDropdownMenuItem,
-  AppDropdownMenuTrigger,
-} from "@frontend/widgets/app-dropdown-menu";
-import { Spinner } from "@frontend/shadcn/spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import { QualityRuleHitBadge } from "@frontend/features/quality-rule-editor/quality-rule-hit-badge";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
 import type {
   AppTableColumn,
@@ -33,14 +24,14 @@ type TextReplacementTableProps = {
   entries: TextReplacementVisibleEntry[];
   sort_state: AppTableSortState | null;
   drag_disabled: boolean;
-  statistics_running: boolean;
-  statistics_ready: boolean;
+  hit_running: boolean;
+  hit_ready: boolean;
   readonly: boolean;
   selected_entry_ids: TextReplacementEntryId[];
   active_entry_id: TextReplacementEntryId | null;
   anchor_entry_id: TextReplacementEntryId | null;
   restore_scroll_entry_id: TextReplacementEntryId | null;
-  statistics_badge_by_entry_id: Record<TextReplacementEntryId, TextReplacementStatisticsBadgeState>;
+  hit_badge_by_entry_id: Record<TextReplacementEntryId, TextReplacementHitBadgeState>;
   on_sort_change: (sort_state: AppTableSortState | null) => void;
   on_selection_change: (payload: AppTableSelectionChange) => void;
   on_open_edit: (entry_id: TextReplacementEntryId) => void;
@@ -165,139 +156,6 @@ function TextReplacementRuleBadge(props: TextReplacementRuleBadgeProps): JSX.Ele
   );
 }
 
-type TextReplacementStatisticsBadgeProps = {
-  entry_id: TextReplacementEntryId;
-  statistics_running: boolean;
-  badge_state: TextReplacementStatisticsBadgeState | null;
-  on_query_entry_source: (entry_id: TextReplacementEntryId) => Promise<void>;
-  on_search_entry_relations: (entry_id: TextReplacementEntryId) => void;
-};
-function TextReplacementStatisticsBadge(
-  props: TextReplacementStatisticsBadgeProps,
-): JSX.Element | null {
-  const { t } = useI18n();
-
-  if (props.statistics_running) {
-    return (
-      <span
-        data-text-replacement-ignore-box-select="true"
-        data-text-replacement-ignore-row-click="true"
-        className="text-replacement-page__statistics-badge-wrap"
-      >
-        <Badge
-          variant="outline"
-          className="replacement-page__statistics-badge replacement-page__statistics-badge--running [&>svg]:!size-[10px]"
-        >
-          <Spinner data-icon="inline-start" />
-          <span className="sr-only">{t("app.action.loading")}</span>
-        </Badge>
-      </span>
-    );
-  }
-
-  if (props.badge_state === null) {
-    return null;
-  }
-
-  const badge_color_class_name =
-    props.badge_state.kind === "matched"
-      ? "border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-400"
-      : props.badge_state.kind === "related"
-        ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400"
-        : "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400";
-
-  const badge = (
-    <Badge className={cn("replacement-page__statistics-badge", badge_color_class_name)}>
-      {props.badge_state.matched_count.toString()}
-    </Badge>
-  );
-
-  const tooltip_content = (
-    <TooltipContent side="top" sideOffset={8}>
-      <p className="whitespace-pre-line">{props.badge_state.tooltip}</p>
-    </TooltipContent>
-  );
-
-  if (props.badge_state.kind === "unmatched") {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            data-text-replacement-ignore-box-select="true"
-            data-text-replacement-ignore-row-click="true"
-            className="text-replacement-page__statistics-badge-wrap"
-          >
-            {badge}
-          </span>
-        </TooltipTrigger>
-        {tooltip_content}
-      </Tooltip>
-    );
-  }
-
-  if (props.badge_state.kind === "matched") {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            data-text-replacement-ignore-box-select="true"
-            data-text-replacement-ignore-row-click="true"
-            className="replacement-page__statistics-badge-button"
-            onClick={(event) => {
-              event.stopPropagation();
-              void props.on_query_entry_source(props.entry_id);
-            }}
-          >
-            {badge}
-          </button>
-        </TooltipTrigger>
-        {tooltip_content}
-      </Tooltip>
-    );
-  }
-
-  return (
-    <AppDropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <AppDropdownMenuTrigger asChild>
-            <button
-              type="button"
-              data-text-replacement-ignore-box-select="true"
-              data-text-replacement-ignore-row-click="true"
-              className="replacement-page__statistics-badge-button"
-              onClick={(event) => {
-                event.stopPropagation();
-              }}
-            >
-              {badge}
-            </button>
-          </AppDropdownMenuTrigger>
-        </TooltipTrigger>
-        {tooltip_content}
-      </Tooltip>
-      <AppDropdownMenuContent align="center">
-        <AppDropdownMenuGroup>
-          <AppDropdownMenuItem
-            onClick={() => {
-              void props.on_query_entry_source(props.entry_id);
-            }}
-          >
-            {t("quality_editor.action.query")}
-          </AppDropdownMenuItem>
-          <AppDropdownMenuItem
-            onClick={() => {
-              props.on_search_entry_relations(props.entry_id);
-            }}
-          >
-            {t("text_replacement_page.statistics.action.search_relation")}
-          </AppDropdownMenuItem>
-        </AppDropdownMenuGroup>
-      </AppDropdownMenuContent>
-    </AppDropdownMenu>
-  );
-}
 export function TextReplacementTable(props: TextReplacementTableProps): JSX.Element {
   const { t } = useI18n();
   const visible_entry_by_id = useMemo(() => {
@@ -413,30 +271,36 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
       },
       {
         kind: "data",
-        id: "statistics",
-        title: t("text_replacement_page.fields.statistics"),
+        id: "hit",
+        title: t("text_replacement_page.fields.hit"),
         width: 92,
         align: "center",
         sortable: {
-          disabled: !props.statistics_ready,
+          disabled: !props.hit_ready,
           action_labels: {
             ascending: t("quality_editor.sort.ascending"),
             descending: t("quality_editor.sort.descending"),
             clear: t("quality_editor.sort.clear"),
           },
         },
-        head_class_name: "text-replacement-page__table-statistics-head",
-        cell_class_name: "text-replacement-page__table-statistics-cell",
+        head_class_name: "text-replacement-page__table-hit-head",
+        cell_class_name: "text-replacement-page__table-hit-cell",
         render_cell: (payload) => {
           if (payload.presentation === "overlay") {
             return null;
           }
 
           return (
-            <TextReplacementStatisticsBadge
+            <QualityRuleHitBadge
               entry_id={payload.row_id}
-              statistics_running={props.statistics_running}
-              badge_state={props.statistics_badge_by_entry_id[payload.row_id] ?? null}
+              running={props.hit_running}
+              badge_state={props.hit_badge_by_entry_id[payload.row_id] ?? null}
+              badge_class_name="replacement-page__hit-badge"
+              running_class_name="replacement-page__hit-badge--running"
+              wrap_class_name="text-replacement-page__hit-badge-wrap"
+              button_class_name="replacement-page__hit-badge-button"
+              query_label={t("quality_editor.action.query")}
+              relation_label={t("text_replacement_page.hit.action.search_relation")}
               on_query_entry_source={props.on_query_entry_source}
               on_search_entry_relations={props.on_search_entry_relations}
             />
@@ -447,9 +311,9 @@ export function TextReplacementTable(props: TextReplacementTableProps): JSX.Elem
   }, [
     props.on_query_entry_source,
     props.on_search_entry_relations,
-    props.statistics_badge_by_entry_id,
-    props.statistics_ready,
-    props.statistics_running,
+    props.hit_badge_by_entry_id,
+    props.hit_ready,
+    props.hit_running,
     t,
   ]);
 

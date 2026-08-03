@@ -21,7 +21,7 @@ export const zh_cn_text_preserve_page = {
   },
   fields: {
     note: "备注（仅作备忘，无实际作用）",
-    statistics: "状态",
+    hit: "命中",
   },
   filter: {
     scope: {
@@ -35,12 +35,8 @@ export const zh_cn_text_preserve_page = {
       name_placeholder: "请输入预设名称 …",
     },
   },
-  statistics: {
+  hit: {
     hit_count: "命中条目数：{COUNT}",
-
-    action: {
-      search_relation: "查询包含关系",
-    },
   },
 
   feedback: {

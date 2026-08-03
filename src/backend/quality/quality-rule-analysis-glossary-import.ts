@@ -12,10 +12,7 @@ import {
   type QualityStatisticsRelationCandidate,
   type QualityStatisticsRuleInput,
 } from "../../shared/quality/quality-statistics";
-import {
-  read_item_source_text_parts,
-  read_item_translation_text_parts,
-} from "../../shared/item-text";
+import { read_item_source_text_parts } from "../../shared/item-text";
 import {
   QualityRuleImportRuleTypeValue,
   preview_quality_rule_import,
@@ -23,16 +20,11 @@ import {
   type QualityRuleImportPreview,
 } from "../../shared/quality/quality-rule-import";
 import { is_json_record, type JsonRecord, type JsonValue } from "../../domain/json";
+import { QualityRule } from "../../domain/quality";
 import type { CacheItem } from "../cache/cache-types";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
-
-type GlossaryEntry = {
-  src: string; // 术语匹配和重复检测的主键文本
-  dst: string; // 导入后写回质量规则的目标译文
-  info: string; // 保留候选来源附加说明
-  regex: boolean; // 标记沿用质量规则的匹配模式
-  case_sensitive: boolean; // 参与统计 key，避免大小写口径混淆
-};
+import type { GlossaryEntry } from "../../shared/quality/glossary";
+import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
 
 export type PreparedAnalysisGlossaryImport = {
   duplicate_count: number; // 用于确认弹窗提示重复候选数量
@@ -57,35 +49,14 @@ export type AnalysisGlossaryImportPrepareRequest = {
 };
 
 /**
- * 质量规则边界只接受有源文的规范术语；其它字段收敛到稳定默认值。
- */
-function normalize_glossary_entry(entry: unknown): GlossaryEntry | null {
-  if (!is_json_record(entry)) {
-    return null;
-  }
-  const src = String(entry["src"] ?? "").trim();
-  if (src === "") {
-    return null;
-  }
-  return {
-    src,
-    dst: String(entry["dst"] ?? "").trim(),
-    info: String(entry["info"] ?? "").trim(),
-    regex: Boolean(entry["regex"] ?? false),
-    case_sensitive: Boolean(entry["case_sensitive"]),
-  };
-}
-
-/**
- * 从 quality section 的公开形状读取现有术语，并丢弃损坏行。
+ * 从 quality section 的公开形状读取现有术语；损坏行由共享规则边界整批拒绝。
  */
 function read_existing_glossary_entries(quality_block: JsonRecord): GlossaryEntry[] {
   const glossary_slice = is_json_record(quality_block["glossary"]) ? quality_block["glossary"] : {};
-  const entries = Array.isArray(glossary_slice["entries"]) ? glossary_slice["entries"] : [];
-  return entries.flatMap((entry) => {
-    const normalized_entry = normalize_glossary_entry(entry);
-    return normalized_entry === null ? [] : [normalized_entry];
-  });
+  return normalize_quality_rule_entries(
+    QualityRule.from_json("glossary"),
+    glossary_slice["entries"] ?? [],
+  ) as GlossaryEntry[];
 }
 
 /**
@@ -120,10 +91,10 @@ function are_glossary_entries_equal(
       return false;
     }
     if (
+      left_entry.entry_id !== right_entry.entry_id ||
       left_entry.src !== right_entry.src ||
       left_entry.dst !== right_entry.dst ||
       left_entry.info !== right_entry.info ||
-      left_entry.regex !== right_entry.regex ||
       left_entry.case_sensitive !== right_entry.case_sensitive
     ) {
       return false;
@@ -152,7 +123,7 @@ function build_duplicate_signature(preview: QualityRuleImportPreview): string {
  * 统计键同时包含大小写策略，避免同源文的不同匹配规则互相覆盖。
  */
 function build_glossary_stat_key(entry: GlossaryEntry): string {
-  return `${entry.src}|${entry.case_sensitive ? 1 : 0}`;
+  return JSON.stringify([entry.src, entry.case_sensitive]);
 }
 
 /**
@@ -209,37 +180,25 @@ function filter_import_candidates(args: {
     args.incoming_entries,
   );
   const merged_entries = import_preview.overwrite_entries as GlossaryEntry[];
-  const preview_entries = args.incoming_entries;
   const src_text_groups = args.items.map((item) => read_item_source_text_parts(item));
-  const dst_text_groups = args.items.map((item) => read_item_translation_text_parts(item));
   const rules: QualityStatisticsRuleInput[] = merged_entries.map((entry) => {
     return {
-      key: build_glossary_stat_key(entry),
+      entry_id: build_glossary_stat_key(entry),
       pattern: entry.src,
-      mode: "glossary",
+      pattern_kind: "literal",
       case_sensitive: entry.case_sensitive,
     };
   });
   const relation_candidates: QualityStatisticsRelationCandidate[] = merged_entries.map((entry) => {
     return {
-      key: build_glossary_stat_key(entry),
+      entry_id: build_glossary_stat_key(entry),
       src: entry.src,
     };
   });
-  const relation_target_candidates: QualityStatisticsRelationCandidate[] = preview_entries.map(
-    (entry) => {
-      return {
-        key: build_glossary_stat_key(entry),
-        src: entry.src,
-      };
-    },
-  );
   const statistics_result = run_quality_statistics_task_sync({
     rules,
-    srcTextGroups: src_text_groups,
-    dstTextGroups: dst_text_groups,
-    relationCandidates: relation_candidates,
-    relationTargetCandidates: relation_target_candidates,
+    text_groups: src_text_groups,
+    relation_candidates,
   });
   const key_by_src = new Map<string, string>();
   merged_entries.forEach((entry) => {
@@ -320,7 +279,10 @@ export function prepare_analysis_glossary_import_from_cache(
   const action = request.action ?? "overwrite";
   const next_entries =
     action === "skip" ? import_preview.skip_entries : import_preview.overwrite_entries;
-  const next_glossary_entries = next_entries as GlossaryEntry[];
+  const next_glossary_entries = normalize_quality_rule_entries(
+    QualityRule.from_json("glossary"),
+    next_entries,
+  ) as GlossaryEntry[];
   const quality_changed = !are_glossary_entries_equal(
     existing_glossary_entries,
     next_glossary_entries,

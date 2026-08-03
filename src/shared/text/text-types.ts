@@ -1,6 +1,7 @@
 import { QualityRuleSnapshotTool } from "../quality/quality-rule-snapshot";
 import type { JsonRecord, JsonValue } from "../../domain/json";
 import { normalize_setting_snapshot } from "../../domain/setting";
+import type { TextPreserveEntry, TextReplacementEntry } from "../../domain/quality";
 
 /**
  * 文本处理只依赖的配置字段，字段名保持配置快照兼容
@@ -19,11 +20,11 @@ export interface TextQualitySnapshot {
   glossary_enable: boolean; // glossary 与 replacement 规则均为运行时快照，worker 不回读数据库
   glossary_entries: JsonRecord[];
   text_preserve_mode: string;
-  text_preserve_entries: JsonRecord[];
+  text_preserve_entries: TextPreserveEntry[];
   pre_replacement_enable: boolean;
-  pre_replacement_entries: JsonRecord[];
+  pre_replacement_entries: TextReplacementEntry[];
   post_replacement_enable: boolean;
-  post_replacement_entries: JsonRecord[];
+  post_replacement_entries: TextReplacementEntry[];
   translation_prompt_enable: boolean; // prompt 字段来自提示词设置页，PromptBuilder 负责与资源模板合并
   translation_prompt: string;
   analysis_prompt_enable: boolean;

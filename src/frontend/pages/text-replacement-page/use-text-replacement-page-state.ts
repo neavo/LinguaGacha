@@ -56,7 +56,7 @@ import {
 } from "@frontend/pages/text-replacement-page/filtering";
 import {
   has_active_quality_rule_filters,
-  resolve_quality_rule_statistics_badge_kind,
+  resolve_quality_rule_hit_badge_kind,
 } from "@frontend/features/quality-rule-editor/quality-rule-filtering";
 import {
   PRESERVE_RESULT_REFRESH,
@@ -88,8 +88,8 @@ import type {
   TextReplacementEntryId,
   TextReplacementFilterScope,
   TextReplacementFilterState,
-  TextReplacementStatisticsBadgeState,
-  TextReplacementStatisticsState,
+  TextReplacementHitBadgeState,
+  TextReplacementHitState,
   TextReplacementVisibleEntry,
   UseTextReplacementPageStateResult,
 } from "@frontend/pages/text-replacement-page/types";
@@ -101,6 +101,7 @@ import {
   QualityRuleImportRuleTypeValue,
   type QualityRuleImportRuleType,
 } from "@shared/quality/quality-rule-import";
+import { compile_text_replacements } from "@shared/text/text-replacement-rules";
 
 type TextReplacementPresetPayload = {
   builtin_presets: TextReplacementPresetItem[];
@@ -119,7 +120,7 @@ type TextReplacementQualitySlice = {
 };
 
 // session 恢复排序的白名单，避免跨变体列 ID 污染表格。
-const TEXT_REPLACEMENT_SORT_COLUMN_IDS = new Set(["src", "dst", "rule", "statistics"]);
+const TEXT_REPLACEMENT_SORT_COLUMN_IDS = new Set(["src", "dst", "rule", "hit"]);
 
 /**
  * 将前后替换页隔离到各自的项目 session UI 状态命名空间。
@@ -268,21 +269,13 @@ function normalize_entry(entry: TextReplacementEntry): TextReplacementEntry {
  * 将后端 quality 查询收窄为页面稳定切片，并为旧数据补齐条目 ID。
  */
 function normalize_text_replacement_quality_slice(
-  slice: QualityRuleQuerySlice | undefined,
+  slice: QualityRuleQuerySlice<"pre_replacement" | "post_replacement"> | undefined,
   section_revision: number,
 ): TextReplacementQualitySlice {
-  const raw_entries = Array.isArray(slice?.entries) ? slice.entries : [];
+  const raw_entries = slice?.entries ?? [];
   return {
     enabled: slice?.enabled === undefined ? true : Boolean(slice.enabled),
-    entries: ensure_quality_rule_entry_ids(
-      raw_entries.map((entry) => {
-        const record = typeof entry === "object" && entry !== null ? entry : {};
-        return normalize_entry({
-          ...EMPTY_ENTRY,
-          ...(record as Partial<TextReplacementEntry>),
-        });
-      }),
-    ),
+    entries: ensure_quality_rule_entry_ids(raw_entries.map(clone_entry)),
     section_revision,
   };
 }
@@ -290,21 +283,21 @@ function normalize_text_replacement_quality_slice(
 /**
  * 将命中数和子集父项关系合并成徽章的多行说明。
  */
-function build_statistics_badge_tooltip(
+function build_hit_badge_tooltip(
   t: (key: LocaleKey) => string,
   entry: TextReplacementEntry,
   matched_count: number,
   subset_parent_labels: string[],
 ): string {
   const tooltip_lines = [
-    t("quality_editor.statistics.hit_count").replace("{COUNT}", matched_count.toString()),
+    t("quality_editor.hit.hit_count").replace("{COUNT}", matched_count.toString()),
   ];
 
   if (subset_parent_labels.length > 0) {
-    tooltip_lines.push(t("text_replacement_page.statistics.subset_relations"));
+    tooltip_lines.push(t("text_replacement_page.hit.subset_relations"));
     tooltip_lines.push(
       ...subset_parent_labels.map((label) => {
-        return t("quality_editor.statistics.relation_line")
+        return t("quality_editor.hit.relation_line")
           .replace("{CHILD}", entry.src)
           .replace("{PARENT}", label);
       }),
@@ -329,9 +322,9 @@ function build_default_preset_update_payload(
 /**
  * 将会话级统计缓存投影为页面只读状态，不复制规则事实。
  */
-function build_text_replacement_statistics_state_from_cache(
+function build_text_replacement_hit_state_from_cache(
   statistics_cache: QualityRuleStatisticsCacheSnapshot,
-): TextReplacementStatisticsState {
+): TextReplacementHitState {
   // 页面只从质量统计缓存计算展示状态，不持有也不修改替换规则事实。
   return {
     running: isQualityRuleStatisticsCacheRunning(statistics_cache),
@@ -409,10 +402,10 @@ export function useTextReplacementPageState(
   const dialog_state_ref = useRef(dialog_state);
   const entries_ref = useRef(entries);
   const statistics_cache = useQualityRuleStatistics(config.rule_type);
-  const statistics_state = useMemo<TextReplacementStatisticsState>(() => {
-    return build_text_replacement_statistics_state_from_cache(statistics_cache);
+  const hit_state = useMemo<TextReplacementHitState>(() => {
+    return build_text_replacement_hit_state_from_cache(statistics_cache);
   }, [statistics_cache]);
-  const statistics_ready = isQualityRuleStatisticsCacheReady(statistics_cache);
+  const hit_ready = isQualityRuleStatisticsCacheReady(statistics_cache);
   // 区分同组件内项目身份切换，避免旧项目状态污染新项目。
   const project_view_identity_ref = useRef(project_snapshot.loaded ? project_snapshot.path : "");
 
@@ -536,9 +529,9 @@ export function useTextReplacementPageState(
 
     return null;
   }, [active_entry_id, entry_index_by_id, selected_entry_ids]);
-  const completed_statistics_entry_id_set = useMemo<ReadonlySet<TextReplacementEntryId>>(() => {
-    return new Set(statistics_state.completed_entry_ids);
-  }, [statistics_state.completed_entry_ids]);
+  const completed_hit_entry_id_set = useMemo<ReadonlySet<TextReplacementEntryId>>(() => {
+    return new Set(hit_state.completed_entry_ids);
+  }, [hit_state.completed_entry_ids]);
 
   const build_result_snapshot = useCallback(
     (
@@ -553,8 +546,8 @@ export function useTextReplacementPageState(
       const visible_entries = sort_text_replacement_entries(
         result.visible_entries,
         next_sort_state,
-        statistics_ready,
-        statistics_state,
+        hit_ready,
+        hit_state,
       );
 
       return create_result_snapshot({
@@ -566,7 +559,7 @@ export function useTextReplacementPageState(
         invalid_message: result.invalid_regex_message,
       });
     },
-    [entries, entry_ids, statistics_ready, statistics_state],
+    [entries, entry_ids, hit_ready, hit_state],
   );
   const build_current_result_snapshot = useCallback(() => {
     return build_result_snapshot(filter_state, sort_state);
@@ -615,8 +608,8 @@ export function useTextReplacementPageState(
     return sort_text_replacement_entries(
       filter_result.visible_entries,
       sort_state,
-      statistics_ready,
-      statistics_state,
+      hit_ready,
+      hit_state,
     );
   }, [
     entries,
@@ -624,8 +617,8 @@ export function useTextReplacementPageState(
     filter_result.visible_entries,
     result_snapshot,
     sort_state,
-    statistics_ready,
-    statistics_state,
+    hit_ready,
+    hit_state,
   ]);
 
   const visible_entry_ids = useMemo<TextReplacementEntryId[]>(() => {
@@ -639,14 +632,11 @@ export function useTextReplacementPageState(
   const readonly = is_runtime_busy(runtime_snapshot);
   const drag_disabled = readonly || has_active_filters || sort_state !== null;
 
-  const statistics_badge_by_entry_id = useMemo<
-    Record<TextReplacementEntryId, TextReplacementStatisticsBadgeState>
+  const hit_badge_by_entry_id = useMemo<
+    Record<TextReplacementEntryId, TextReplacementHitBadgeState>
   >(() => {
-    const next_badge_by_entry_id: Record<
-      TextReplacementEntryId,
-      TextReplacementStatisticsBadgeState
-    > = {};
-    if (!statistics_ready && statistics_state.completed_snapshot === null) {
+    const next_badge_by_entry_id: Record<TextReplacementEntryId, TextReplacementHitBadgeState> = {};
+    if (!hit_ready && hit_state.completed_snapshot === null) {
       return next_badge_by_entry_id;
     }
 
@@ -656,36 +646,28 @@ export function useTextReplacementPageState(
         return;
       }
 
-      const kind = resolve_quality_rule_statistics_badge_kind(
+      const kind = resolve_quality_rule_hit_badge_kind(
         entry_id,
-        statistics_state,
-        completed_statistics_entry_id_set,
+        hit_state,
+        completed_hit_entry_id_set,
       );
       if (kind === null) {
         return;
       }
 
-      const matched_count = statistics_state.matched_count_by_entry_id[entry_id] ?? 0;
-      const subset_parent_labels =
-        statistics_state.subset_parent_labels_by_entry_id[entry_id] ?? [];
+      const matched_count = hit_state.matched_count_by_entry_id[entry_id] ?? 0;
+      const subset_parent_labels = hit_state.subset_parent_labels_by_entry_id[entry_id] ?? [];
 
       next_badge_by_entry_id[entry_id] = {
         kind,
         matched_count,
         subset_parent_labels,
-        tooltip: build_statistics_badge_tooltip(t, entry, matched_count, subset_parent_labels),
+        tooltip: build_hit_badge_tooltip(t, entry, matched_count, subset_parent_labels),
       };
     });
 
     return next_badge_by_entry_id;
-  }, [
-    completed_statistics_entry_id_set,
-    entries,
-    entry_ids,
-    statistics_ready,
-    statistics_state,
-    t,
-  ]);
+  }, [completed_hit_entry_id_set, entries, entry_ids, hit_ready, hit_state, t]);
 
   const clear_selection_state = table_ui_state.clear_selection_state;
 
@@ -823,13 +805,13 @@ export function useTextReplacementPageState(
   }, [project_snapshot.loaded, project_snapshot.path, reset_table_state]);
 
   useEffect(() => {
-    if (statistics_ready || sort_state?.column_id !== "statistics") {
+    if (hit_ready || sort_state?.column_id !== "hit") {
       return;
     }
 
     set_table_sort_state(null);
     set_result_snapshot(build_result_snapshot(filter_state, null));
-  }, [build_result_snapshot, filter_state, set_table_sort_state, sort_state, statistics_ready]);
+  }, [build_result_snapshot, filter_state, set_table_sort_state, sort_state, hit_ready]);
 
   useEffect(() => {
     if (!quality_loaded) {
@@ -1216,7 +1198,7 @@ export function useTextReplacementPageState(
     ],
   );
 
-  const search_entry_relations_from_statistics = useCallback(
+  const search_entry_relations_from_hit = useCallback(
     (entry_id: TextReplacementEntryId): void => {
       const target_index = entry_index_by_id.get(entry_id);
       const target_entry = target_index === undefined ? null : entries[target_index];
@@ -1606,7 +1588,7 @@ export function useTextReplacementPageState(
       }
 
       try {
-        void new RegExp(entry.src, entry.case_sensitive ? "" : "i");
+        compile_text_replacements([entry]);
         return null;
       } catch (error) {
         const detail = error instanceof Error ? error.message : "";
@@ -1898,9 +1880,9 @@ export function useTextReplacementPageState(
     invalid_filter_message: result_snapshot?.invalid_message ?? filter_result.invalid_regex_message,
     readonly,
     drag_disabled,
-    statistics_state,
-    statistics_ready,
-    statistics_badge_by_entry_id,
+    hit_state,
+    hit_ready,
+    hit_badge_by_entry_id,
     preset_items,
     selected_entry_ids,
     active_entry_id,
@@ -1936,7 +1918,7 @@ export function useTextReplacementPageState(
     toggle_case_sensitive_for_selected,
     reorder_selected_entries,
     query_entry_source,
-    search_entry_relations_from_statistics,
+    search_entry_relations_from_hit,
     save_dialog_entry,
     request_close_dialog,
     confirm_pending_action,

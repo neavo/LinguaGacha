@@ -21,11 +21,11 @@ import {
   get_prompt_target_language_name,
   normalize_language_code,
 } from "../../../domain/language";
+import type { TranslationLine, TranslationPromptMode } from "./translation-line";
 import {
-  read_translation_text_srcs,
-  type TranslationLine,
-  type TranslationPromptMode,
-} from "./translation-line";
+  format_glossary_entry,
+  type ResolvedGlossaryEntry,
+} from "../../../shared/quality/glossary";
 
 /**
  * 提示词构造所需的最小配置快照，worker 只读取语言与提示词增强开关
@@ -52,6 +52,7 @@ export class PromptBuilder {
   private readonly app_root: string;
   private readonly config: PromptBuilderConfig;
   private readonly quality_snapshot: TextQualitySnapshot;
+  private readonly activated_glossary_entries: readonly ResolvedGlossaryEntry[];
 
   /**
    * app_root 由 Electron main 注入，worker 不自行猜测资源根
@@ -60,6 +61,7 @@ export class PromptBuilder {
     app_root: string,
     config: Partial<PromptBuilderConfig>,
     quality_snapshot: TextQualitySnapshot,
+    activated_glossary_entries: readonly ResolvedGlossaryEntry[],
   ) {
     const setting_snapshot = normalize_setting_snapshot(config);
     this.app_root = app_root;
@@ -70,6 +72,7 @@ export class PromptBuilder {
       prompt_enhancement_enable: setting_snapshot.prompt_enhancement_enable,
     };
     this.quality_snapshot = quality_snapshot;
+    this.activated_glossary_entries = activated_glossary_entries;
   }
 
   /**
@@ -92,12 +95,10 @@ export class PromptBuilder {
       console_log.push(preceding);
     }
 
-    if (this.quality_snapshot.glossary_enable) {
-      const glossary = this.build_glossary(lines, mode);
-      if (glossary !== "") {
-        user_parts.push(glossary);
-        console_log.push(glossary);
-      }
+    const glossary = this.build_glossary(" -> ");
+    if (glossary !== "") {
+      user_parts.push(glossary);
+      console_log.push(glossary);
     }
 
     const control_samples = this.build_control_characters_samples(instruction_text, samples);
@@ -129,12 +130,10 @@ export class PromptBuilder {
     ];
     const console_log: string[] = [];
     let content = `将下面的日文文本翻译成中文：\n${srcs.join("\n")}`;
-    if (this.quality_snapshot.glossary_enable) {
-      const glossary = this.build_glossary_sakura(srcs);
-      if (glossary !== "") {
-        content = `根据以下术语表（可以为空）：\n${glossary}\n将下面的日文文本根据对应关系和备注翻译成中文：\n${srcs.join("\n")}`;
-        console_log.push(glossary);
-      }
+    const glossary = this.build_glossary("->", false);
+    if (glossary !== "") {
+      content = `根据以下术语表（可以为空）：\n${glossary}\n将下面的日文文本根据对应关系和备注翻译成中文：\n${srcs.join("\n")}`;
+      console_log.push(glossary);
     }
     messages.push({ role: "user", content });
     return { messages, console_log };
@@ -232,21 +231,18 @@ export class PromptBuilder {
   }
 
   /**
-   * 术语表按当前输入全文命中过滤，未命中时不污染 prompt
+   * runner 已按原始输入激活术语；这里仅保持顺序并格式化提示词。
    */
-  private build_glossary(lines: TranslationLine[], mode: TranslationPromptMode): string {
-    const result = this.build_glossary_lines(this.build_glossary_match_texts(lines, mode), " -> ");
+  private build_glossary(separator: string, include_header = true): string {
+    const result = this.activated_glossary_entries.map((entry) =>
+      format_glossary_entry(entry).replace(" -> ", separator),
+    );
     if (result.length === 0) {
       return "";
     }
-    return `${this.t("app.prompt.builder_glossary_header")}\n${result.join("\n")}`;
-  }
-
-  /**
-   * SakuraLLM 术语格式不带空格，保持旧提示词格式
-   */
-  private build_glossary_sakura(srcs: string[]): string {
-    return this.build_glossary_lines(srcs, "->").join("\n");
+    return include_header
+      ? `${this.t("app.prompt.builder_glossary_header")}\n${result.join("\n")}`
+      : result.join("\n");
   }
 
   /**
@@ -375,49 +371,5 @@ export class PromptBuilder {
     const text = default_native_fs.read_text_file(template_path).trim();
     PromptBuilder.template_cache.set(cache_key, text);
     return text;
-  }
-
-  /**
-   * 术语匹配尊重大小写标志，命中后按指定分隔符生成行文本
-   */
-  private build_glossary_lines(srcs: string[], separator: string): string[] {
-    const full_text = srcs.join("\n");
-    const full_text_lower = full_text.toLowerCase();
-    const result: string[] = [];
-    for (const entry of this.quality_snapshot.glossary_entries) {
-      const src = String(entry["src"] ?? "");
-      const dst = String(entry["dst"] ?? "");
-      const info = String(entry["info"] ?? "");
-      const case_sensitive = entry["case_sensitive"] === true;
-      const matched = case_sensitive
-        ? full_text.includes(src)
-        : full_text_lower.includes(src.toLowerCase());
-      if (!matched) {
-        continue;
-      }
-      result.push(info === "" ? `${src}${separator}${dst}` : `${src}${separator}${dst} #${info}`);
-    }
-    return result;
-  }
-
-  /**
-   * actor/text 模式下术语表同时扫描正文和姓名，保证人名术语能进入提示词。
-   */
-  private build_glossary_match_texts(
-    lines: TranslationLine[],
-    mode: TranslationPromptMode,
-  ): string[] {
-    if (mode === "text") {
-      return read_translation_text_srcs(lines);
-    }
-    const texts: string[] = [];
-    for (const line of lines) {
-      texts.push(line.text_src);
-      if (line.actor_src === null) {
-        continue;
-      }
-      texts.push(line.actor_src);
-    }
-    return texts;
   }
 }

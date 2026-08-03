@@ -2,24 +2,16 @@ import { CaseSensitive } from "lucide-react";
 import { useMemo } from "react";
 
 import { useI18n } from "@frontend/app/locale/locale-provider";
-import { cn } from "@frontend/shadcn/classnames";
 import { GlossaryContextMenuContent } from "@frontend/pages/glossary-page/components/glossary-context-menu";
 import type {
   GlossaryEntryId,
   GlossarySortState,
-  GlossaryStatisticsBadgeState,
+  GlossaryHitBadgeState,
   GlossaryVisibleEntry,
 } from "@frontend/pages/glossary-page/types";
-import { Badge } from "@frontend/shadcn/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@frontend/shadcn/card";
-import {
-  AppDropdownMenu,
-  AppDropdownMenuContent,
-  AppDropdownMenuGroup,
-  AppDropdownMenuItem,
-  AppDropdownMenuTrigger,
-} from "@frontend/widgets/app-dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@frontend/shadcn/tooltip";
+import { QualityRuleHitBadge } from "@frontend/features/quality-rule-editor/quality-rule-hit-badge";
 import { AppTable } from "@frontend/widgets/app-table/app-table";
 import type {
   AppTableColumn,
@@ -33,12 +25,12 @@ type GlossaryTableProps = {
   sort_state: GlossarySortState;
   readonly: boolean;
   drag_disabled: boolean;
-  statistics_sort_available: boolean;
+  hit_sort_available: boolean;
   selected_entry_ids: GlossaryEntryId[];
   active_entry_id: GlossaryEntryId | null;
   anchor_entry_id: GlossaryEntryId | null;
   restore_scroll_entry_id: GlossaryEntryId | null;
-  statistics_badge_by_entry_id: Record<GlossaryEntryId, GlossaryStatisticsBadgeState>;
+  hit_badge_by_entry_id: Record<GlossaryEntryId, GlossaryHitBadgeState>;
   on_sort_change: (sort_state: AppTableSortState | null) => void;
   on_selection_change: (payload: AppTableSelectionChange) => void;
   on_open_edit: (entry_id: GlossaryEntryId) => void;
@@ -166,118 +158,6 @@ function GlossaryRuleBadge(props: GlossaryRuleBadgeProps): JSX.Element {
   );
 }
 
-type GlossaryStatisticsBadgeProps = {
-  entry_id: GlossaryEntryId;
-  badge_state: GlossaryStatisticsBadgeState | null;
-  on_query_entry_source: (entry_id: GlossaryEntryId) => Promise<void>;
-  on_search_entry_relations: (entry_id: GlossaryEntryId) => void;
-};
-function GlossaryStatisticsBadge(props: GlossaryStatisticsBadgeProps): JSX.Element | null {
-  const { t } = useI18n();
-
-  if (props.badge_state === null) {
-    return null;
-  }
-
-  const badge_color_class_name =
-    props.badge_state.kind === "matched"
-      ? "border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-400"
-      : props.badge_state.kind === "related"
-        ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-400"
-        : "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400";
-
-  const badge = (
-    <Badge className={cn("glossary-page__statistics-badge", badge_color_class_name)}>
-      {props.badge_state.matched_count.toString()}
-    </Badge>
-  );
-
-  const tooltip_content = (
-    <TooltipContent side="top" sideOffset={8}>
-      <p className="whitespace-pre-line">{props.badge_state.tooltip}</p>
-    </TooltipContent>
-  );
-
-  if (props.badge_state.kind === "unmatched") {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            data-glossary-ignore-box-select="true"
-            data-glossary-ignore-row-click="true"
-            className="glossary-page__statistics-badge-wrap"
-          >
-            {badge}
-          </span>
-        </TooltipTrigger>
-        {tooltip_content}
-      </Tooltip>
-    );
-  }
-
-  if (props.badge_state.kind === "matched") {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            data-glossary-ignore-box-select="true"
-            data-glossary-ignore-row-click="true"
-            className="glossary-page__statistics-badge-button"
-            onClick={(event) => {
-              event.stopPropagation();
-              void props.on_query_entry_source(props.entry_id);
-            }}
-          >
-            {badge}
-          </button>
-        </TooltipTrigger>
-        {tooltip_content}
-      </Tooltip>
-    );
-  }
-
-  return (
-    <AppDropdownMenu>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <AppDropdownMenuTrigger asChild>
-            <button
-              type="button"
-              data-glossary-ignore-box-select="true"
-              data-glossary-ignore-row-click="true"
-              className="glossary-page__statistics-badge-button"
-              onClick={(event) => {
-                event.stopPropagation();
-              }}
-            >
-              {badge}
-            </button>
-          </AppDropdownMenuTrigger>
-        </TooltipTrigger>
-        {tooltip_content}
-      </Tooltip>
-      <AppDropdownMenuContent align="center">
-        <AppDropdownMenuGroup>
-          <AppDropdownMenuItem
-            onClick={() => {
-              void props.on_query_entry_source(props.entry_id);
-            }}
-          >
-            {t("glossary_page.statistics.action.query_source")}
-          </AppDropdownMenuItem>
-          <AppDropdownMenuItem
-            onClick={() => {
-              props.on_search_entry_relations(props.entry_id);
-            }}
-          >
-            {t("glossary_page.statistics.action.search_relation")}
-          </AppDropdownMenuItem>
-        </AppDropdownMenuGroup>
-      </AppDropdownMenuContent>
-    </AppDropdownMenu>
-  );
-}
 export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
   const { t } = useI18n();
   const visible_entry_by_id = useMemo(() => {
@@ -394,29 +274,36 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
       },
       {
         kind: "data",
-        id: "statistics",
-        title: t("glossary_page.fields.statistics"),
+        id: "hit",
+        title: t("glossary_page.fields.hit"),
         width: 92,
         align: "center",
         sortable: {
-          disabled: !props.statistics_sort_available,
+          disabled: !props.hit_sort_available,
           action_labels: {
             ascending: t("quality_editor.sort.ascending"),
             descending: t("quality_editor.sort.descending"),
             clear: t("quality_editor.sort.clear"),
           },
         },
-        head_class_name: "glossary-page__table-statistics-head",
-        cell_class_name: "glossary-page__table-statistics-cell",
+        head_class_name: "glossary-page__table-hit-head",
+        cell_class_name: "glossary-page__table-hit-cell",
         render_cell: (payload) => {
           if (payload.presentation === "overlay") {
             return null;
           }
 
           return (
-            <GlossaryStatisticsBadge
+            <QualityRuleHitBadge
               entry_id={payload.row_id}
-              badge_state={props.statistics_badge_by_entry_id[payload.row_id] ?? null}
+              running={false}
+              badge_state={props.hit_badge_by_entry_id[payload.row_id] ?? null}
+              badge_class_name="glossary-page__hit-badge"
+              running_class_name=""
+              wrap_class_name="glossary-page__hit-badge-wrap"
+              button_class_name="glossary-page__hit-badge-button"
+              query_label={t("glossary_page.hit.action.query_source")}
+              relation_label={t("glossary_page.hit.action.search_relation")}
               on_query_entry_source={props.on_query_entry_source}
               on_search_entry_relations={props.on_search_entry_relations}
             />
@@ -427,8 +314,8 @@ export function GlossaryTable(props: GlossaryTableProps): JSX.Element {
   }, [
     props.on_query_entry_source,
     props.on_search_entry_relations,
-    props.statistics_badge_by_entry_id,
-    props.statistics_sort_available,
+    props.hit_badge_by_entry_id,
+    props.hit_sort_available,
     t,
   ]);
 

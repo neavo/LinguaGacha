@@ -68,7 +68,7 @@ export function createProofreadingApiClient(): ProofreadingApiClient {
           warning_types: [],
           statuses: [],
           file_paths: [],
-          glossary_terms: [],
+          glossary_entry_ids: [],
           include_without_glossary_miss: true,
         },
       };

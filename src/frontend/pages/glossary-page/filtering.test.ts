@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { build_glossary_filter_result } from "./filtering";
 
-const statistics_state = {
+const hit_state = {
   running: false,
   completed_snapshot: null,
   completed_entry_ids: [],
@@ -20,8 +20,8 @@ describe("glossary filtering", () => {
       entry_ids: ["apple-id", "pear-id"],
       filter_state: { keyword: "fruit", scope: "info", is_regex: false },
       sort_state: { field: null, direction: null },
-      statistics_sort_available: false,
-      statistics_state,
+      hit_sort_available: false,
+      hit_state,
     });
 
     expect(result.invalid_regex_message).toBeNull();
@@ -38,8 +38,8 @@ describe("glossary filtering", () => {
       entry_ids: ["b", "a", "c"],
       filter_state: { keyword: "", scope: "all", is_regex: false },
       sort_state: { field: "rule", direction: "ascending" },
-      statistics_sort_available: false,
-      statistics_state,
+      hit_sort_available: false,
+      hit_state,
     });
 
     expect(result.visible_entries.map((entry) => entry.entry_id)).toEqual(["a", "c", "b"]);

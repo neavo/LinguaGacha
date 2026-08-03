@@ -62,9 +62,8 @@ function create_rule(sources: string[]): TextPreserveRule {
     mode: "CUSTOM",
     text_type: "NONE",
     entries: sources.map((src) => {
-      return { src };
+      return { src, info: "" };
     }),
-    kind: "sample",
   });
   if (rule === null) {
     throw new Error("测试保护规则构造失败。");

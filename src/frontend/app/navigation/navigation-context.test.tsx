@@ -12,12 +12,17 @@ function NavigationProbe(): JSX.Element {
   return (
     <>
       <output>
-        {navigation.selected_route}:{navigation.proofreading_lookup_intent?.keyword ?? "none"}
+        {navigation.selected_route}:{navigation.proofreading_lookup_intent?.keyword ?? "none"}:
+        {navigation.proofreading_lookup_intent?.scope ?? "none"}
       </output>
       <button onClick={() => navigation.navigate_to_route("workbench")}>导航</button>
       <button
         onClick={() =>
-          navigation.push_proofreading_lookup_intent({ keyword: "角色名", is_regex: false })
+          navigation.push_proofreading_lookup_intent({
+            keyword: "角色名",
+            is_regex: false,
+            scope: "src",
+          })
         }
       >
         查找
@@ -45,10 +50,10 @@ describe("AppNavigationProvider", () => {
     expect(navigate_to_route).toHaveBeenCalledWith("workbench");
 
     await act(async () => buttons[1]?.click());
-    expect(container.querySelector("output")?.textContent).toBe("project-home:角色名");
+    expect(container.querySelector("output")?.textContent).toBe("project-home:角色名:src");
 
     await act(async () => buttons[2]?.click());
-    expect(container.querySelector("output")?.textContent).toBe("project-home:none");
+    expect(container.querySelector("output")?.textContent).toBe("project-home:none:none");
 
     await act(async () => root.unmount());
   });

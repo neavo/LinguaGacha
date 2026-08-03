@@ -121,6 +121,7 @@ export class AnalysisWorkUnitRunner {
       this.app_root,
       normalize_setting_snapshot(request.config_snapshot),
       quality_snapshot,
+      [],
     );
     const prompt_result = await prompt_builder.generate_glossary_prompt(prepared.request_srcs);
     const start_time = Date.now();

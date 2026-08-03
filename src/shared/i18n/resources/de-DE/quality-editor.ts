@@ -76,7 +76,7 @@ export const de_de_quality_editor = {
     clear: "Löschen",
     descending: "Absteigend",
   },
-  statistics: {
+  hit: {
     hit_count: "Anzahl übereinstimmender Einträge: {COUNT}",
     relation_line: "{CHILD} -> {PARENT}",
     subset_relations: "Enthält Teilmengenbeziehungen:",

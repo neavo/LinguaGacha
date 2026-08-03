@@ -1,6 +1,6 @@
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import * as AppErrors from "../../shared/error";
-import type { QualityStatisticsRuleMode } from "../../shared/quality/quality-statistics";
+import type { QualityRuleKind } from "../../domain/quality";
 import {
   prepare_quality_statistics_task_input,
   type QualityStatisticsPreparedTaskInput,
@@ -9,7 +9,7 @@ import { resolve_quality_statistics_item_text_change_scope } from "../../shared/
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
 import type { CacheChange } from "./cache-change";
 import type { CacheReadPort } from "./cache-types";
-import { is_json_record, read_json_record } from "../../domain/json";
+import { read_json_record } from "../../domain/json";
 
 /**
  * QualityStatisticsCacheResult 携带统计结果和读取时的项目 revision。
@@ -27,7 +27,7 @@ export class QualityStatisticsCache {
   private readonly cache_reader: CacheReadPort; // 统计输入全部来自 session 缓存快照。
   private readonly worker_client: ComputeWorkerClient; // 计算密集逻辑交给 worker 执行。
   private readonly values = new Map<
-    QualityStatisticsRuleMode,
+    QualityRuleKind,
     Map<string, Promise<Record<string, unknown>>>
   >();
 
@@ -42,7 +42,7 @@ export class QualityStatisticsCache {
   /**
    * 读取指定质量规则统计；未命中时启动一次 worker 计算。
    */
-  public async read(rule_key: QualityStatisticsRuleMode): Promise<QualityStatisticsCacheResult> {
+  public async read(rule_key: QualityRuleKind): Promise<QualityStatisticsCacheResult> {
     const section_revisions = this.cache_reader.readSectionRevisions();
     const snapshot = this.cache_reader.snapshot();
     if (snapshot.projectPath === "") {
@@ -89,7 +89,7 @@ export class QualityStatisticsCache {
    * 从当前缓存快照构造 worker 输入并写回结果缓存。
    */
   private read_or_compute(
-    rule_key: QualityStatisticsRuleMode,
+    rule_key: QualityRuleKind,
     cache_key: string,
     prepared_input: QualityStatisticsPreparedTaskInput,
   ): Promise<Record<string, unknown>> {
@@ -121,7 +121,7 @@ export class QualityStatisticsCache {
    * 每条规则独占一个 Promise 分桶，同时复用完成结果和进行中的请求。
    */
   private read_cache_for_rule(
-    rule_key: QualityStatisticsRuleMode,
+    rule_key: QualityRuleKind,
   ): Map<string, Promise<Record<string, unknown>>> {
     let cache_by_rule = this.values.get(rule_key);
     if (cache_by_rule === undefined) {
@@ -134,19 +134,12 @@ export class QualityStatisticsCache {
   /**
    * 从质量规则和 item 快照构造 prepared input，worker 不再读取 raw 项目事实。
    */
-  private prepare_task_input(
-    rule_key: QualityStatisticsRuleMode,
-  ): QualityStatisticsPreparedTaskInput {
+  private prepare_task_input(rule_key: QualityRuleKind): QualityStatisticsPreparedTaskInput {
     const quality_block = this.cache_reader.quality.readBlock();
     const slice = read_json_record(quality_block[rule_key]);
-    const entries = Array.isArray(slice["entries"])
-      ? slice["entries"].flatMap((entry) => {
-          return is_json_record(entry) ? [{ ...entry }] : [];
-        })
-      : [];
     return prepare_quality_statistics_task_input({
       rule_key,
-      entries,
+      entries: slice["entries"] ?? [],
       items: this.cache_reader.items.readItems(),
     });
   }
@@ -154,7 +147,7 @@ export class QualityStatisticsCache {
   /**
    * 清理单个规则的结果和进行中请求。
    */
-  private clear_rule(rule_key: QualityStatisticsRuleMode): void {
+  private clear_rule(rule_key: QualityRuleKind): void {
     this.values.delete(rule_key);
   }
 }

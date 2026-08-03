@@ -4,7 +4,11 @@ import {
   build_text_preserve_rule,
   type TextPreserveRule,
 } from "../../../../shared/text/text-preserve-rules";
-import { apply_text_replacements } from "../../../../shared/text/text-replacement-rules";
+import {
+  apply_text_replacements,
+  compile_text_replacements,
+  type CompiledTextReplacements,
+} from "../../../../shared/text/text-replacement-rules";
 import type {
   TextProcessingConfig,
   TextQualitySnapshot,
@@ -26,6 +30,7 @@ export interface TranslationPrePipelineContext {
   suffix_codes_by_line: Map<number, string[]>; // 单独保存后缀保护码，避免恢复时改变原始右侧顺序
   leading_whitespace_by_line: Map<number, string>; // 记录行首空白，避免模型输出破坏原文件排版
   trailing_whitespace_by_line: Map<number, string>; // 记录行尾空白，保留脚本行末格式
+  preserve_rule: TextPreserveRule | null; // 同一 item 的保护能力只编译一次并交给译后流程
 }
 
 /**
@@ -34,6 +39,7 @@ export interface TranslationPrePipelineContext {
 export class TranslationPrePipeline {
   private readonly config: TextProcessingConfig; // 语言与文本修复策略的任务启动快照
   private readonly quality_snapshot: TextQualitySnapshot; // 保护与译前替换规则的同轮快照
+  private readonly pre_replacements: CompiledTextReplacements | null;
 
   /**
    * 绑定配置快照和质量快照，pipeline 不读取全局会话缓存
@@ -41,6 +47,9 @@ export class TranslationPrePipeline {
   public constructor(config: TextProcessingConfig, quality_snapshot: TextQualitySnapshot) {
     this.config = config;
     this.quality_snapshot = quality_snapshot;
+    this.pre_replacements = quality_snapshot.pre_replacement_enable
+      ? compile_text_replacements(quality_snapshot.pre_replacement_entries)
+      : null;
   }
 
   /**
@@ -56,6 +65,11 @@ export class TranslationPrePipeline {
       return context;
     }
     const text_type = String(item.text_type ?? "TXT").toUpperCase();
+    context.preserve_rule = build_text_preserve_rule({
+      mode: this.quality_snapshot.text_preserve_mode,
+      text_type,
+      entries: this.quality_snapshot.text_preserve_entries,
+    });
     const actor_src = read_optional_item_name_text(item.name_src);
     context.source_text = String(item.src ?? "");
     for (const [line_index, raw_src] of context.source_text.split("\n").entries()) {
@@ -65,13 +79,13 @@ export class TranslationPrePipeline {
         continue;
       }
       src = this.extract_line_edge_whitespace(context, line_index, src);
-      src = this.prefix_suffix_process(context, line_index, src, text_type);
+      src = this.prefix_suffix_process(context, line_index, src);
       if (src === "") {
         continue;
       }
       if (
         !this.config.auto_process_prefix_suffix_preserved_text &&
-        this.is_fully_preserved_line(src, text_type)
+        this.is_fully_preserved_line(src, context.preserve_rule)
       ) {
         continue;
       }
@@ -103,6 +117,7 @@ export class TranslationPrePipeline {
       suffix_codes_by_line: new Map<number, string[]>(),
       leading_whitespace_by_line: new Map<number, string>(),
       trailing_whitespace_by_line: new Map<number, string>(),
+      preserve_rule: null,
     };
   }
 
@@ -137,23 +152,20 @@ export class TranslationPrePipeline {
     context: TranslationPrePipelineContext,
     line_index: number,
     src: string,
-    text_type: string,
   ): string {
     if (!this.config.auto_process_prefix_suffix_preserved_text) {
       return src;
     }
     let result = src;
-    const prefix_rule = this.build_preserve_rule("prefix", text_type);
-    if (prefix_rule !== null) {
-      const extracted = this.extract(prefix_rule, result);
-      result = extracted.line;
-      context.prefix_codes_by_line.set(line_index, extracted.codes);
+    if (context.preserve_rule !== null) {
+      const extracted = context.preserve_rule.extract_prefix(result);
+      result = extracted.text;
+      context.prefix_codes_by_line.set(line_index, extracted.segments);
     }
-    const suffix_rule = this.build_preserve_rule("suffix", text_type);
-    if (suffix_rule !== null) {
-      const extracted = this.extract(suffix_rule, result);
-      result = extracted.line;
-      context.suffix_codes_by_line.set(line_index, extracted.codes);
+    if (context.preserve_rule !== null) {
+      const extracted = context.preserve_rule.extract_suffix(result);
+      result = extracted.text;
+      context.suffix_codes_by_line.set(line_index, extracted.segments);
     }
     return result;
   }
@@ -161,22 +173,17 @@ export class TranslationPrePipeline {
   /**
    * 完全保护行不能送给模型，否则会把代码段翻译成自然语言
    */
-  private is_fully_preserved_line(src: string, text_type: string): boolean {
-    const rule = this.build_preserve_rule("check", text_type);
-    if (rule === null) {
-      return false;
-    }
-    return rule.matches_entire_text(src);
+  private is_fully_preserved_line(src: string, rule: TextPreserveRule | null): boolean {
+    return rule?.matches_entire_text(src) ?? false;
   }
 
   /**
    * 译前替换只消费质量快照
    */
   private replace_pre_translation(src: string): string {
-    if (!this.quality_snapshot.pre_replacement_enable) {
-      return src;
-    }
-    return apply_text_replacements(src, this.quality_snapshot.pre_replacement_entries);
+    return this.pre_replacements === null
+      ? src
+      : apply_text_replacements(src, this.pre_replacements);
   }
 
   /**
@@ -187,39 +194,11 @@ export class TranslationPrePipeline {
     src: string,
     text_type: string,
   ): void {
-    const sample_rule = this.build_preserve_rule("sample", text_type);
-    if (sample_rule !== null) {
-      context.samples.push(...sample_rule.collect(src));
+    if (context.preserve_rule !== null) {
+      context.samples.push(...context.preserve_rule.collect(src));
     }
     if (text_type === "MD") {
       context.samples.push("Markdown Code");
     }
-  }
-
-  /**
-   * 抽取匹配段并返回剩余正文，供前后缀保护逻辑复用
-   */
-  private extract(rule: TextPreserveRule, line: string): { line: string; codes: string[] } {
-    const codes: string[] = [];
-    const replaced = rule.replace(line, (match) => {
-      codes.push(match);
-      return "";
-    });
-    return { line: replaced, codes };
-  }
-
-  /**
-   * 文本保护规则按运行态 mode 展开，smart 使用共享预置规则，custom 使用用户 entries
-   */
-  private build_preserve_rule(
-    kind: "check" | "sample" | "prefix" | "suffix",
-    text_type: string,
-  ): TextPreserveRule | null {
-    return build_text_preserve_rule({
-      mode: this.quality_snapshot.text_preserve_mode,
-      text_type,
-      entries: this.quality_snapshot.text_preserve_entries,
-      kind,
-    });
   }
 }

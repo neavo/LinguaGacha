@@ -49,6 +49,50 @@ describe("text-pattern", () => {
     });
   });
 
+  it("不敏感字面量替换复用 Unicode 折叠并选择左侧非重叠范围", () => {
+    const folded = compile_text_pattern({
+      source_text: "STRASSE",
+      mode: "literal",
+      case_sensitive: false,
+      global: true,
+    });
+    const overlapping = compile_text_pattern({
+      source_text: "aa",
+      mode: "literal",
+      case_sensitive: true,
+      global: true,
+    });
+
+    expect(
+      replace_text_pattern({
+        text: "Straße",
+        pattern: folded!,
+        replacement_text: "路",
+        replacement_syntax: "literal",
+      }),
+    ).toEqual({ text: "路", count: 1 });
+    expect(
+      replace_text_pattern({
+        text: "aaa",
+        pattern: overlapping!,
+        replacement_text: "x",
+        replacement_syntax: "literal",
+      }),
+    ).toEqual({ text: "xa", count: 1 });
+  });
+
+  it("字面量模式拒绝正则替换语法", () => {
+    const pattern = compile_text_pattern({ source_text: "a", mode: "literal" });
+    expect(() =>
+      replace_text_pattern({
+        text: "a",
+        pattern: pattern!,
+        replacement_text: "$&",
+        replacement_syntax: "javascript",
+      }),
+    ).toThrow("字面量模式只支持 literal replacement syntax");
+  });
+
   it("规则型正则替换使用反斜杠捕获语法", () => {
     const pattern = compile_text_pattern({
       source_text: "(.+?)=(.+)",

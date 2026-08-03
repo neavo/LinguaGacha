@@ -4,13 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { INPUT_QUERY_DEBOUNCE_MS } from "@frontend/widgets/interactions/use-debounce";
 import type { QualityRuleStatisticsCacheSnapshot } from "@frontend/app/session/quality-rule-statistics-store";
-import { buildGlossaryStatisticsState, useGlossaryPageState } from "./use-glossary-page-state";
+import { useGlossaryPageState } from "./use-glossary-page-state";
 import type { GlossaryEntry } from "./types";
 
 const {
   api_fetch_mock,
   push_toast_mock,
   query_quality_rules_mock,
+  navigate_to_route_mock,
+  push_proofreading_lookup_intent_mock,
   translate_mock,
   page_ui_state_store,
 } = vi.hoisted(() => {
@@ -18,6 +20,8 @@ const {
     api_fetch_mock: vi.fn(),
     push_toast_mock: vi.fn(),
     query_quality_rules_mock: vi.fn(),
+    navigate_to_route_mock: vi.fn(),
+    push_proofreading_lookup_intent_mock: vi.fn(),
     translate_mock: (key: string) => key,
     page_ui_state_store: new Map<string, unknown>(),
   };
@@ -299,8 +303,8 @@ vi.mock("@frontend/features/quality-rule-editor/quality-rule-api-client", () => 
 vi.mock("@frontend/app/navigation/navigation-context", () => {
   return {
     useAppNavigation: () => ({
-      navigate_to_route: vi.fn(),
-      push_proofreading_lookup_intent: vi.fn(),
+      navigate_to_route: navigate_to_route_mock,
+      push_proofreading_lookup_intent: push_proofreading_lookup_intent_mock,
     }),
   };
 });
@@ -581,36 +585,6 @@ function Probe(props: {
   return null;
 }
 
-describe("buildGlossaryStatisticsState", () => {
-  it("把统计结果映射成按条目索引的状态", () => {
-    const state = buildGlossaryStatisticsState({
-      snapshot: {
-        text_source: "src",
-        text_signature: "texts",
-        dependency_signature: "deps",
-        snapshot_signature: "snapshot",
-        rules: [
-          {
-            key: "苹果|1",
-            dependency_signature: "苹果",
-            token: "苹果",
-          },
-        ],
-      },
-      completed_entry_ids: ["苹果|1"],
-      results: {
-        "苹果|1": {
-          matched_item_count: 1,
-          subset_parents: [],
-        },
-      },
-    });
-
-    expect(state.completed_snapshot?.snapshot_signature).toBe("snapshot");
-    expect(state.matched_count_by_entry_id["苹果|1"]).toBe(1);
-  });
-});
-
 describe("useGlossaryPageState", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
@@ -622,6 +596,8 @@ describe("useGlossaryPageState", () => {
     api_fetch_mock.mockReset();
     push_toast_mock.mockReset();
     query_quality_rules_mock.mockReset();
+    navigate_to_route_mock.mockReset();
+    push_proofreading_lookup_intent_mock.mockReset();
     query_quality_rules_mock.mockImplementation(async () => ({
       projectPath: run_state.project.path,
       sectionRevisions: { ...run_state.revisions.sections },
@@ -827,12 +803,36 @@ describe("useGlossaryPageState", () => {
   it("首次进入页面时直接读取预热后的统计结果", async () => {
     await mount_probe();
 
-    expect(latest_state?.statistics_ready).toBe(true);
-    expect(latest_state?.statistics_sort_available).toBe(true);
-    expect(latest_state?.statistics_badge_by_entry_id["苹果::0"]?.matched_count).toBe(1);
+    expect(latest_state?.hit_ready).toBe(true);
+    expect(latest_state?.hit_sort_available).toBe(true);
+    expect(latest_state?.hit_badge_by_entry_id["苹果::0"]?.matched_count).toBe(1);
   });
 
-  it("统计刷新中会保留 statistics 排序并继续使用旧统计结果", async () => {
+  it("从命中徽章查询出处时使用固定的大小写不敏感源字段查询", async () => {
+    run_state.quality.glossary.entries = [
+      {
+        entry_id: "qr:hp",
+        src: "HP",
+        dst: "生命值",
+        info: "属性",
+        case_sensitive: true,
+      },
+    ];
+    await mount_probe();
+
+    await act(async () => {
+      await latest_state?.query_entry_source_from_hit("qr:hp");
+    });
+
+    expect(push_proofreading_lookup_intent_mock).toHaveBeenCalledWith({
+      keyword: "HP",
+      is_regex: false,
+      scope: "src",
+    });
+    expect(navigate_to_route_mock).toHaveBeenCalledWith("proofreading");
+  });
+
+  it("统计刷新中会保留 hit 排序并继续使用旧命中结果", async () => {
     run_state.quality.glossary.entries = [
       {
         src: "苹果",
@@ -869,11 +869,11 @@ describe("useGlossaryPageState", () => {
 
     await act(async () => {
       latest_state?.apply_table_sort_state({
-        column_id: "statistics",
+        column_id: "hit",
         direction: "descending",
       });
     });
-    expect(latest_state?.sort_state.field).toBe("statistics");
+    expect(latest_state?.sort_state.field).toBe("hit");
     expect(latest_state?.filtered_entries.map((entry) => entry.entry_id)).toEqual([
       "梨::2",
       "苹果::0",
@@ -930,14 +930,14 @@ describe("useGlossaryPageState", () => {
     });
     await rerender_probe();
 
-    expect(latest_state?.statistics_ready).toBe(false);
-    expect(latest_state?.statistics_sort_available).toBe(true);
-    expect(latest_state?.sort_state.field).toBe("statistics");
+    expect(latest_state?.hit_ready).toBe(false);
+    expect(latest_state?.hit_sort_available).toBe(true);
+    expect(latest_state?.sort_state.field).toBe("hit");
     expect(latest_state?.filtered_entries.map((entry) => entry.entry_id)).toEqual([
       "苹果::0",
       "香蕉::1",
     ]);
-    expect(latest_state?.statistics_badge_by_entry_id["苹果::0"]?.matched_count).toBe(3);
+    expect(latest_state?.hit_badge_by_entry_id["苹果::0"]?.matched_count).toBe(3);
   });
 
   it("首次没有统计快照时不会用空统计结果排序", async () => {
@@ -967,13 +967,13 @@ describe("useGlossaryPageState", () => {
 
     await act(async () => {
       latest_state?.apply_table_sort_state({
-        column_id: "statistics",
+        column_id: "hit",
         direction: "descending",
       });
     });
 
-    expect(latest_state?.statistics_ready).toBe(false);
-    expect(latest_state?.statistics_sort_available).toBe(false);
+    expect(latest_state?.hit_ready).toBe(false);
+    expect(latest_state?.hit_sort_available).toBe(false);
     expect(latest_state?.filtered_entries.map((entry) => entry.entry_id)).toEqual([
       "苹果::0",
       "香蕉::1",
@@ -1333,8 +1333,8 @@ describe("useGlossaryPageState", () => {
       }),
     );
 
-    expect(latest_state?.statistics_ready).toBe(true);
-    expect(latest_state?.statistics_badge_by_entry_id["苹果::0"]?.matched_count).toBe(1);
+    expect(latest_state?.hit_ready).toBe(true);
+    expect(latest_state?.hit_badge_by_entry_id["苹果::0"]?.matched_count).toBe(1);
 
     await act(async () => {
       latest_state?.open_edit_dialog("苹果::0");
@@ -1364,8 +1364,8 @@ describe("useGlossaryPageState", () => {
         },
       ],
     });
-    expect(latest_state?.statistics_ready).toBe(true);
-    expect(latest_state?.statistics_badge_by_entry_id["苹果::0"]?.matched_count).toBe(1);
+    expect(latest_state?.hit_ready).toBe(true);
+    expect(latest_state?.hit_badge_by_entry_id["苹果::0"]?.matched_count).toBe(1);
   });
 
   it("导入遇到重复术语时先确认，跳过只保存非重复条目", async () => {

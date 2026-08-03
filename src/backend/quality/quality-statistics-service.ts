@@ -2,15 +2,7 @@ import type { JsonRecord, JsonValue, MutableJsonRecord } from "../../domain/json
 import type { QualityStatisticsCache } from "../cache/quality-statistics-cache";
 import type { ProjectSessionState } from "../project/project-session-state";
 import * as AppErrors from "../../shared/error";
-import type { QualityStatisticsRuleMode } from "../../shared/quality/quality-statistics";
-
-// 公开统计入口只允许这四类规则，内部 revision key 不得由请求透传。
-const QUALITY_STATISTICS_RULE_KEYS = new Set<string>([
-  "glossary",
-  "pre_replacement",
-  "post_replacement",
-  "text_preserve",
-]);
+import { is_quality_rule_kind, type QualityRuleKind } from "../../domain/quality";
 
 /**
  * 将质量统计请求绑定当前 loaded 工程，并交给统计缓存计算。
@@ -47,13 +39,12 @@ export class QualityStatisticsService {
   /**
    * 将公开 rule_key 收窄为统计模块支持的稳定枚举。
    */
-  private read_rule_key(value: JsonValue | undefined): QualityStatisticsRuleMode {
-    const rule_key = String(value ?? "");
-    if (QUALITY_STATISTICS_RULE_KEYS.has(rule_key)) {
-      return rule_key as QualityStatisticsRuleMode;
+  private read_rule_key(value: JsonValue | undefined): QualityRuleKind {
+    if (is_quality_rule_kind(value)) {
+      return value;
     }
     throw new AppErrors.RequestValidationError({
-      diagnostic_context: { reason: "invalid_quality_statistics_rule_key", rule_key },
+      diagnostic_context: { reason: "invalid_quality_statistics_rule_key", rule_key: value },
     });
   }
 }

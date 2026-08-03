@@ -825,6 +825,7 @@ describe("AgentService", () => {
     await wait_for_idle(service);
     expect(fake_agent_state.tool_names.at(-1)).toEqual([
       "query_quality_rules",
+      "query_items_by_glossary",
       "update_quality_rules",
       "query_project_items",
       "update_project_translations",

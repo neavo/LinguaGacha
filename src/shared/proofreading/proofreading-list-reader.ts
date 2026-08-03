@@ -1,9 +1,5 @@
 import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
 import {
-  buildQualityCompiledContext,
-  type QualityCompiledContext,
-} from "../quality/quality-rule-compiled-context";
-import {
   PROOFREADING_NO_WARNING_CODE,
   PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES,
   PROOFREADING_STATUS_ORDER,
@@ -18,7 +14,6 @@ import {
   type ProofreadingFilterOptions,
   type ProofreadingFilterPanelState,
   type ProofreadingFilterPanelTermEntry,
-  type ProofreadingGlossaryTerm,
   type ProofreadingListView,
   type ProofreadingItemRecord,
   type ProofreadingSearchScope,
@@ -36,7 +31,11 @@ import { apply_project_item_field_patch } from "../project/project-item-field-pa
 import type { TextPreserveRule } from "../text/text-preserve-rules";
 import { create_text_keyword_matcher, type TextKeywordMatcher } from "../text/text-pattern";
 import type { ProofreadingSortState } from "./list";
-import { evaluateProofreadingItem } from "./proofreading-evaluator";
+import {
+  buildProofreadingEvaluationContext,
+  evaluateProofreadingItem,
+  type ProofreadingEvaluationContext,
+} from "./proofreading-evaluator";
 import { Item } from "../../domain/item";
 import { read_item_source_text_parts, read_item_translation_text_parts } from "../item-text";
 
@@ -164,7 +163,7 @@ type ProofreadingReaderState = {
   quality: QualitySnapshot;
   sourceLanguage: string;
   targetLanguage: string;
-  quality_context: QualityCompiledContext;
+  quality_context: ProofreadingEvaluationContext;
   sample_rule_cache: Map<string, TextPreserveRule | null>;
   raw_item_by_id: Map<string, ProofreadingItemRecord>;
   natural_item_ids: string[];
@@ -192,7 +191,11 @@ type ProofreadingListViewCache = {
 };
 
 // 筛选维度枚举用于“构建面板时忽略当前维度”的交叉统计
-type ProofreadingFilterDimension = "warning_types" | "statuses" | "file_paths" | "glossary_terms";
+type ProofreadingFilterDimension =
+  | "warning_types"
+  | "statuses"
+  | "file_paths"
+  | "glossary_entry_ids";
 
 // 单次筛选查询的预编译上下文，避免在每个 item 上重复构造 Set
 type ProofreadingFilterContext = {
@@ -200,7 +203,7 @@ type ProofreadingFilterContext = {
   status_set: Set<string> | null; // null 表示当前查询忽略 status 维度
   file_path_set: Set<string> | null; // null 表示当前查询忽略 file 维度
   glossary_filter_enabled: boolean; // false 表示当前查询忽略术语维度
-  glossary_term_key_set: Set<string>; // 预归一后的术语缺失筛选键
+  glossary_entry_id_set: Set<string>; // 术语缺失筛选直接使用稳定条目身份
   include_without_glossary_miss: boolean; // 是否保留没有术语缺失的条目
 };
 
@@ -243,27 +246,10 @@ function normalize_reader_item(record: unknown): ProofreadingItemRecord | null {
 }
 
 /**
- * 字段级 patch 只合并后端事件允许的校对字段，保留列表运行态内完整 item 事实。
- */
-/**
- * 术语筛选使用稳定 key 表达二元组，避免数组引用参与比较
- */
-function build_glossary_term_key(term: ProofreadingGlossaryTerm): string {
-  return `${term[0]}→${term[1]}`;
-}
-
-/**
  * 字符串去重保持首次出现顺序，筛选项和 warning 片段都依赖这个稳定性
  */
 function unique_strings(values: string[]): string[] {
   return [...new Set(values)];
-}
-
-/**
- * 术语二元组是 readonly tuple，克隆后可安全传给 UI
- */
-function clone_glossary_term(term: ProofreadingGlossaryTerm): ProofreadingGlossaryTerm {
-  return [term[0], term[1]] as const;
 }
 
 /**
@@ -277,23 +263,12 @@ function normalize_runtime_filter_options(args: {
   const has_warning_types = Array.isArray(filters?.warning_types);
   const has_statuses = Array.isArray(filters?.statuses);
   const has_file_paths = Array.isArray(filters?.file_paths);
-  const has_glossary_terms = Array.isArray(filters?.glossary_terms);
+  const has_glossary_entry_ids = Array.isArray(filters?.glossary_entry_ids);
   const has_include_without_glossary_miss =
     typeof filters?.include_without_glossary_miss === "boolean";
 
-  const glossary_terms = has_glossary_terms
-    ? unique_strings(
-        (filters?.glossary_terms ?? []).flatMap((term) => {
-          if (!Array.isArray(term) || term.length < 2) {
-            return [];
-          }
-
-          return [build_glossary_term_key([String(term[0] ?? ""), String(term[1] ?? "")])];
-        }),
-      ).map((key) => {
-        const [src, dst] = key.split("→");
-        return [src ?? "", dst ?? ""] as const;
-      })
+  const glossary_entry_ids = has_glossary_entry_ids
+    ? unique_strings((filters?.glossary_entry_ids ?? []).map((value) => String(value)))
     : [];
 
   return {
@@ -306,9 +281,9 @@ function normalize_runtime_filter_options(args: {
     file_paths: has_file_paths
       ? unique_strings((filters?.file_paths ?? []).map((value) => String(value)))
       : [...args.defaultFilters.file_paths],
-    glossary_terms: has_glossary_terms
-      ? glossary_terms
-      : args.defaultFilters.glossary_terms.map(clone_glossary_term),
+    glossary_entry_ids: has_glossary_entry_ids
+      ? glossary_entry_ids
+      : [...args.defaultFilters.glossary_entry_ids],
     include_without_glossary_miss: has_include_without_glossary_miss
       ? Boolean(filters?.include_without_glossary_miss)
       : args.defaultFilters.include_without_glossary_miss,
@@ -316,10 +291,12 @@ function normalize_runtime_filter_options(args: {
 }
 
 /**
- * 术语 miss 只看 failed_glossary_terms，不把已命中术语算作警告
+ * 术语 miss 只看字段级落实结果。
  */
 function item_has_glossary_miss(item: ProofreadingClientItem): boolean {
-  return item.failed_glossary_terms.length > 0;
+  return item.glossary_applications.some((application) =>
+    application.fields.some((field) => !field.applied),
+  );
 }
 
 /**
@@ -330,7 +307,7 @@ function create_proofreading_filter_context(args: {
   ignored_dimensions?: ProofreadingFilterDimension[];
 }): ProofreadingFilterContext {
   const ignored_dimension_set = new Set(args.ignored_dimensions ?? []);
-  const glossary_filter_enabled = !ignored_dimension_set.has("glossary_terms");
+  const glossary_filter_enabled = !ignored_dimension_set.has("glossary_entry_ids");
 
   return {
     warning_type_set: ignored_dimension_set.has("warning_types")
@@ -341,8 +318,8 @@ function create_proofreading_filter_context(args: {
       ? null
       : new Set(args.filters.file_paths),
     glossary_filter_enabled,
-    glossary_term_key_set: glossary_filter_enabled
-      ? new Set(args.filters.glossary_terms.map((term) => build_glossary_term_key(term)))
+    glossary_entry_id_set: glossary_filter_enabled
+      ? new Set(args.filters.glossary_entry_ids)
       : new Set<string>(),
     include_without_glossary_miss: args.filters.include_without_glossary_miss,
   };
@@ -381,12 +358,15 @@ function item_matches_glossary_filter(
     return context.include_without_glossary_miss;
   }
 
-  if (context.glossary_term_key_set.size === 0) {
+  if (context.glossary_entry_id_set.size === 0) {
     return false;
   }
 
-  return item.failed_glossary_terms.some((term) => {
-    return context.glossary_term_key_set.has(build_glossary_term_key(term));
+  return item.glossary_applications.some((application) => {
+    return (
+      context.glossary_entry_id_set.has(application.entry_id) &&
+      application.fields.some((field) => !field.applied)
+    );
   });
 }
 
@@ -575,11 +555,13 @@ function build_term_count_entries(args: {
       return;
     }
 
-    item.failed_glossary_terms.forEach((term) => {
-      const term_key = build_glossary_term_key(term);
-      const previous_entry = next_term_count_map.get(term_key);
-      next_term_count_map.set(term_key, {
-        term,
+    item.glossary_applications.forEach((application) => {
+      if (application.fields.every((field) => field.applied)) return;
+      const previous_entry = next_term_count_map.get(application.entry_id);
+      next_term_count_map.set(application.entry_id, {
+        entry_id: application.entry_id,
+        src: application.src,
+        dst: application.dst,
         count: (previous_entry?.count ?? 0) + 1,
       });
     });
@@ -590,9 +572,7 @@ function build_term_count_entries(args: {
       return right_entry.count - left_entry.count;
     }
 
-    return build_glossary_term_key(left_entry.term).localeCompare(
-      build_glossary_term_key(right_entry.term),
-    );
+    return left_entry.entry_id.localeCompare(right_entry.entry_id);
   });
 }
 
@@ -626,17 +606,19 @@ function apply_counter_delta(args: {
     increment_map_count(args.state.warning_count_by_code, warning, args.delta);
   });
 
-  args.item.failed_glossary_terms.forEach((term) => {
-    const term_key = build_glossary_term_key(term);
-    const previous_entry = args.state.glossary_term_count_map.get(term_key);
+  args.item.glossary_applications.forEach((application) => {
+    if (application.fields.every((field) => field.applied)) return;
+    const previous_entry = args.state.glossary_term_count_map.get(application.entry_id);
     const next_count = (previous_entry?.count ?? 0) + args.delta;
     if (next_count <= 0) {
-      args.state.glossary_term_count_map.delete(term_key);
+      args.state.glossary_term_count_map.delete(application.entry_id);
       return;
     }
 
-    args.state.glossary_term_count_map.set(term_key, {
-      term,
+    args.state.glossary_term_count_map.set(application.entry_id, {
+      entry_id: application.entry_id,
+      src: application.src,
+      dst: application.dst,
       count: next_count,
     });
   });
@@ -722,20 +704,15 @@ function buildDefaultFiltersFromState(state: ProofreadingReaderState): Proofread
   const warning_types = resolve_default_proofreading_warning_types([...warning_type_set]);
 
   const file_paths = [...state.file_count_by_path.keys()].sort(compare_proofreading_text);
-  const glossary_terms = [...state.glossary_term_count_map.values()]
-    .map((entry) => entry.term)
-    .sort((left_term, right_term) => {
-      return compare_proofreading_text(
-        build_glossary_term_key(left_term),
-        build_glossary_term_key(right_term),
-      );
-    });
+  const glossary_entry_ids = [...state.glossary_term_count_map.keys()].sort(
+    compare_proofreading_text,
+  );
 
   return {
     warning_types,
     statuses: [...PROOFREADING_DEFAULT_ACTIVE_STATUS_CODES],
     file_paths,
-    glossary_terms,
+    glossary_entry_ids,
     include_without_glossary_miss: true,
   };
 }
@@ -771,7 +748,7 @@ function create_empty_filter_options(): ProofreadingFilterOptions {
     warning_types: [],
     statuses: [],
     file_paths: [],
-    glossary_terms: [],
+    glossary_entry_ids: [],
     include_without_glossary_miss: true,
   };
 }
@@ -838,7 +815,7 @@ function create_list_view_cache(args: {
 export function evaluateProofreadingSlice(
   input: ProofreadingSyncInput,
 ): ProofreadingEvaluatedSlice {
-  const quality_context = buildQualityCompiledContext(input.quality);
+  const quality_context = buildProofreadingEvaluationContext(input.quality);
   const sample_rule_cache = new Map<string, TextPreserveRule | null>();
   const rawItems: ProofreadingItemRecord[] = [];
   const evaluatedItems: ProofreadingClientItem[] = [];
@@ -885,7 +862,7 @@ function create_run_state_from_evaluated(
     quality: input.quality,
     sourceLanguage: input.sourceLanguage,
     targetLanguage: input.targetLanguage,
-    quality_context: buildQualityCompiledContext(input.quality),
+    quality_context: buildProofreadingEvaluationContext(input.quality),
     sample_rule_cache: new Map<string, TextPreserveRule | null>(),
     raw_item_by_id: new Map(),
     natural_item_ids: [],
@@ -1325,7 +1302,7 @@ export function createProofreadingListReader() {
       const warning_scope_items = filter_items_by_context({
         items: items_in_natural_order,
         filters,
-        ignored_dimensions: ["warning_types", "glossary_terms"],
+        ignored_dimensions: ["warning_types", "glossary_entry_ids"],
       });
       const file_scope_items = filter_items_by_context({
         items: items_in_natural_order,
@@ -1335,7 +1312,7 @@ export function createProofreadingListReader() {
       const term_scope_items = filter_items_by_context({
         items: items_in_natural_order,
         filters,
-        ignored_dimensions: ["glossary_terms"],
+        ignored_dimensions: ["glossary_entry_ids"],
       });
       const all_file_paths = [...state.file_count_by_path.keys()].sort(compare_proofreading_text);
       const file_count_by_path = build_file_count_by_path(file_scope_items);
