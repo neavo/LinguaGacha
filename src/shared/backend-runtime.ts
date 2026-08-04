@@ -17,10 +17,24 @@ export type BackendRuntimeResult<T = unknown> =
   | { ok: true; data: T }
   | { ok: false; error: LogError };
 
-/** 必须留在 Electron main 执行的两项宿主能力。 */
+export type BackendRuntimeWebFetchRequest = Readonly<{
+  url: string; // 模型请求的原始公开 HTTP(S) URL
+}>;
+
+/** main 完成安全下载后传给 Backend 的有限、可克隆响应。 */
+export type BackendRuntimeWebFetchResponse = Readonly<{
+  requestedUrl: string; // 调用方请求 URL，用于区分最终重定向地址
+  url: string; // 经过逐跳校验后的最终 URL
+  status: number; // 当前仅允许 2xx，保留字段用于明确宿主契约
+  contentType: string; // 原始响应头，由 Backend 决定正文归一方式
+  body: Uint8Array; // 已受宿主字节上限约束的原始响应体
+}>;
+
+/** 必须留在 Electron main 执行的宿主能力。 */
 export type BackendRuntimeHostOperation =
   | { kind: "resolve_proxy"; url: string }
-  | { kind: "open_output_folder"; path: string };
+  | { kind: "open_output_folder"; path: string }
+  | { kind: "web_fetch"; request: BackendRuntimeWebFetchRequest };
 
 export type BackendRuntimeDiagnosticLevel = "warning" | "error" | "fatal";
 
@@ -47,6 +61,7 @@ export type BackendRuntimeWorkerMessage =
   | { type: "ready"; data: BackendRuntimeReady }
   | { type: "start_failed"; error: LogError }
   | { type: "response"; requestId: string; result: BackendRuntimeResult }
+  | { type: "host_cancel"; requestId: string }
   | {
       type: "host_request";
       requestId: string;

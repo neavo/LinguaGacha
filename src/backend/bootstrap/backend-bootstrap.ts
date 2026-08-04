@@ -126,6 +126,9 @@ export class BackendBootstrap {
         database: this.database,
         logManager: log_manager,
         systemProxySnapshot: this.system_proxy_snapshot,
+        ...(this.options.agentWebFetch === undefined
+          ? {}
+          : { agentWebFetch: this.options.agentWebFetch }),
         openOutputFolder: this.options.openOutputFolder,
         workerExecution: this.options.workerExecution,
       });

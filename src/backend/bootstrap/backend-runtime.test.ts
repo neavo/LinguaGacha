@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type {
+  BackendRuntimeHostOperation,
   BackendRuntimeMainMessage,
+  BackendRuntimeWebFetchRequest,
+  BackendRuntimeWebFetchResponse,
   BackendRuntimeWorkerMessage,
 } from "../../shared/backend-runtime";
 import { run_backend_runtime, type BackendRuntimePort } from "./backend-runtime";
@@ -77,6 +80,10 @@ describe("run_backend_runtime", () => {
     const bootstrap_options = runtime_mocks.constructor_options[0] as {
       systemProxyResolver: { resolveProxy: (url: string) => Promise<string> };
       openOutputFolder: (path: string) => Promise<void>;
+      agentWebFetch: (
+        request: BackendRuntimeWebFetchRequest,
+        signal: AbortSignal,
+      ) => Promise<BackendRuntimeWebFetchResponse>;
     };
     const proxy = bootstrap_options.systemProxyResolver.resolveProxy("https://example.com");
     const proxy_request = get_host_request(port, "resolve_proxy");
@@ -95,6 +102,27 @@ describe("run_backend_runtime", () => {
       result: { ok: false, error: { message: "无法打开目录" } },
     });
     await expect(open).rejects.toThrow("无法打开目录");
+
+    const fetch_controller = new AbortController();
+    const fetch = bootstrap_options.agentWebFetch(
+      { url: "https://example.com/article" },
+      fetch_controller.signal,
+    );
+    const fetch_request = get_host_request(port, "web_fetch");
+    expect(structuredClone(fetch_request)).toEqual(fetch_request);
+    const fetch_response = {
+      requestedUrl: "https://example.com/article",
+      url: "https://example.com/final",
+      status: 200,
+      contentType: "text/plain",
+      body: new Uint8Array([111, 107]),
+    };
+    port.emit({
+      type: "host_response",
+      requestId: fetch_request.requestId,
+      result: { ok: true, data: fetch_response },
+    });
+    await expect(fetch).resolves.toEqual(fetch_response);
 
     port.emit({ type: "read_app_language", requestId: "language-1" });
     port.emit({
@@ -117,6 +145,59 @@ describe("run_backend_runtime", () => {
       { source: "electron-main", context: { window_kind: "main" } },
     );
     expect(runtime_mocks.stop).toHaveBeenCalledOnce();
+  });
+
+  it("取消宿主抓取后发送 host_cancel、保留原始原因并忽略迟到结果", async () => {
+    const port = create_port();
+    await run_backend_runtime({ appRoot: "E:/app", moduleUrl: import.meta.url, port });
+    const bootstrap_options = runtime_mocks.constructor_options[0] as {
+      agentWebFetch: (
+        request: BackendRuntimeWebFetchRequest,
+        signal: AbortSignal,
+      ) => Promise<unknown>;
+    };
+    const controller = new AbortController();
+    const reason = new Error("用户停止 Agent");
+    const fetch = bootstrap_options.agentWebFetch(
+      { url: "https://example.com" },
+      controller.signal,
+    );
+    const request = get_host_request(port, "web_fetch");
+
+    controller.abort(reason);
+
+    await expect(fetch).rejects.toBe(reason);
+    expect(port.messages).toContainEqual({ type: "host_cancel", requestId: request.requestId });
+    expect(() =>
+      port.emit({
+        type: "host_response",
+        requestId: request.requestId,
+        result: { ok: true, data: null },
+      }),
+    ).not.toThrow();
+  });
+
+  it("runtime 关闭时取消并拒绝尚未结算的宿主请求", async () => {
+    const port = create_port();
+    await run_backend_runtime({ appRoot: "E:/app", moduleUrl: import.meta.url, port });
+    const bootstrap_options = runtime_mocks.constructor_options[0] as {
+      agentWebFetch: (
+        request: BackendRuntimeWebFetchRequest,
+        signal: AbortSignal,
+      ) => Promise<unknown>;
+    };
+    const pending = bootstrap_options.agentWebFetch(
+      { url: "https://example.com" },
+      new AbortController().signal,
+    );
+    const rejection = expect(pending).rejects.toThrow("Backend runtime 已关闭");
+    const request = get_host_request(port, "web_fetch");
+
+    port.emit({ type: "stop", requestId: "stop-pending" });
+
+    await rejection;
+    await vi.waitFor(() => expect(port.close).toHaveBeenCalledOnce());
+    expect(port.messages).toContainEqual({ type: "host_cancel", requestId: request.requestId });
   });
 
   it("启动失败时发送结构化错误、释放资源并关闭端口", async () => {
@@ -153,7 +234,7 @@ function create_port() {
 
 function get_host_request(
   port: { messages: BackendRuntimeWorkerMessage[] },
-  kind: "resolve_proxy" | "open_output_folder",
+  kind: BackendRuntimeHostOperation["kind"],
 ): Extract<BackendRuntimeWorkerMessage, { type: "host_request" }> {
   const request = port.messages.findLast(
     (message): message is Extract<BackendRuntimeWorkerMessage, { type: "host_request" }> =>

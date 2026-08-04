@@ -9,42 +9,18 @@ function strip_utf8_bom(text: string): string {
   return text.startsWith(UTF8_BOM) ? text.slice(1) : text;
 }
 
-/**
- * 统一历史编码名归一化规则，避免探测入口之间出现大小写和 BOM 差异
- */
-function normalize_detected_encoding(encoding: string, add_sig_to_utf8: boolean): string {
-  let normalized_encoding = encoding;
-  let normalized_key = normalized_encoding.toLowerCase().replace(/_/gu, "-");
-  if (normalized_key === "ascii") {
-    normalized_encoding = "utf-8";
-    normalized_key = "utf-8";
-  }
-  if (add_sig_to_utf8 && (normalized_key === "utf-8" || normalized_key === "utf8")) {
-    return "utf-8-sig";
-  }
-  return normalized_encoding;
-}
-
-/**
- * 自动探测二进制内容编码，失败时回退 UTF-8
- */
-async function detect_text_encoding(
-  content: Uint8Array,
-  add_sig_to_utf8: boolean,
-): Promise<string> {
-  let encoding = "utf-8";
-
+/** 自动探测二进制内容编码；失败或无结果时由调用方回退 UTF-8。 */
+async function detect_text_encoding(content: Uint8Array): Promise<string | null> {
   try {
     const chardet = await import("chardet");
     const detected = chardet.detect(content as never);
     if (typeof detected === "string" && detected.trim() !== "") {
-      encoding = detected.trim();
+      return detected.trim();
     }
   } catch {
     // 编码探测失败时回退 UTF-8，保持解析主流程可继续
   }
-
-  return normalize_detected_encoding(encoding, add_sig_to_utf8);
+  return null;
 }
 
 /**
@@ -82,21 +58,23 @@ export function check_similarity_by_jaccard(left: string, right: string): number
   return intersection / union;
 }
 
-/**
- * 解码文件内容，探测失败或 iconv 不支持时回退 UTF-8
- */
+/** 按声明编码、自动探测、UTF-8 的固定优先级解码文本。 */
 export async function decode_text_content(
   content: Uint8Array,
-  add_sig_to_utf8 = true,
+  options?: { declaredEncoding?: string },
 ): Promise<string> {
-  const encoding = await detect_text_encoding(content, add_sig_to_utf8);
-  if (encoding.toLowerCase().replace(/_/gu, "-") === "utf-8-sig") {
-    return strip_utf8_bom(new TextDecoder("utf-8").decode(content));
-  }
   try {
     const iconv = await import("iconv-lite");
-    return strip_utf8_bom(iconv.decode(content as never, encoding));
+    const declared_encoding = options?.declaredEncoding?.trim();
+    if (declared_encoding !== undefined && iconv.encodingExists(declared_encoding)) {
+      return strip_utf8_bom(iconv.decode(content as never, declared_encoding));
+    }
+    const detected_encoding = await detect_text_encoding(content);
+    if (detected_encoding !== null && iconv.encodingExists(detected_encoding)) {
+      return strip_utf8_bom(iconv.decode(content as never, detected_encoding));
+    }
   } catch {
-    return strip_utf8_bom(new TextDecoder("utf-8").decode(content));
+    // iconv 不可用或不支持探测结果时统一回退 UTF-8。
   }
+  return strip_utf8_bom(new TextDecoder("utf-8").decode(content));
 }

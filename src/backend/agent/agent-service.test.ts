@@ -17,6 +17,7 @@ import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import type { JsonRecord } from "../../domain/json";
 import type { AgentSessionEvent } from "../../shared/agent";
 import type { ProjectWriteResult } from "../../shared/project-event";
+import type { AgentWebFetchPort } from "./agent-web-tools";
 import { ProjectSessionState } from "../project/project-session-state";
 import { RuntimeOperationGate } from "../runtime-operation-gate";
 import { ComputeWorkerClient } from "../worker/compute-worker-client";
@@ -986,6 +987,22 @@ describe("AgentService", () => {
     ]);
   });
 
+  it("仅在宿主抓取端口可用时注册 web_fetch", async () => {
+    const web_fetch = vi.fn<AgentWebFetchPort>(async (request) => ({
+      requestedUrl: request.url,
+      url: request.url,
+      status: 200,
+      contentType: "text/plain",
+      body: new TextEncoder().encode("正文"),
+    }));
+    const { service } = await create_service(true, web_fetch);
+
+    await service.send_message({ parts: [{ kind: "text", text: "读取网页" }] });
+    await wait_for_idle(service);
+
+    expect(fake_agent_state.tool_names.at(-1)).toContain("web_fetch");
+  });
+
   it("停止会中断当前回合并回到 idle，主动 abort 不上报请求失败", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(1_000);
@@ -1529,7 +1546,10 @@ describe("AgentService", () => {
   });
 
   /** 只替换资源、模型与领域协作者，生命周期、门禁和 AgentSession 仍走生产实现。 */
-  async function create_service(load_resources = true): Promise<{
+  async function create_service(
+    load_resources = true,
+    web_fetch?: AgentWebFetchPort,
+  ): Promise<{
     service: AgentService;
     publish: ReturnType<typeof vi.fn>;
     read_items: ReturnType<typeof vi.fn<() => JsonRecord[]>>;
@@ -1659,6 +1679,7 @@ describe("AgentService", () => {
       proofreading,
       runtimeGate: runtime_gate,
       computeWorker: new ComputeWorkerClient({ execution: { kind: "in_process" } }),
+      webFetch: web_fetch,
       logManager: { error: log_error, warning: log_warning },
       publish,
     });
