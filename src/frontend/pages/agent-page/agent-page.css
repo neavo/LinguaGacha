@@ -361,7 +361,6 @@
   background: color-mix(in srgb, var(--popover) 60%, transparent);
   padding: 8px 12px 10px 28px;
   color: var(--foreground);
-  font: inherit;
   line-height: 1.55;
   white-space: pre;
 }

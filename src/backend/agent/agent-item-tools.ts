@@ -257,7 +257,6 @@ export function create_agent_item_tools(dependencies: AgentItemDependencies): To
         const next_offset = offset + items.length;
         const complete = next_offset >= result.data.total_item_count;
         return tool_result({
-          projectPath: result.projectPath,
           sectionRevisions: result.sectionRevisions,
           total_item_count: result.data.total_item_count,
           items,
@@ -284,7 +283,6 @@ export function create_agent_item_tools(dependencies: AgentItemDependencies): To
         });
         return tool_result({
           accepted: true,
-          projectPath: queried["projectPath"],
           sectionRevisions: queried["sectionRevisions"],
           items: queried["items"],
         });
@@ -334,7 +332,6 @@ export function query_agent_items(cache: AgentItemCache, request: AgentItemQuery
   const next_offset = offset + items.length;
   const complete = next_offset >= total_item_count;
   return {
-    projectPath: snapshot.projectPath,
     sectionRevisions: snapshot.sectionRevisions,
     total_item_count,
     items,

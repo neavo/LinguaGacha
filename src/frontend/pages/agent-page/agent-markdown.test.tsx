@@ -107,9 +107,11 @@ describe("AgentMarkdown", () => {
         suppressErrorRendering: true,
         theme: "base",
         secure: ["theme", "themeVariables", "themeCSS", "fontFamily"],
+        fontFamily: "var(--ui-font-family-base)",
         flowchart: { useMaxWidth: true },
         themeVariables: expect.objectContaining({
           background: "#f00001",
+          fontFamily: "var(--ui-font-family-base)",
           fontSize: "13px",
           darkMode: false,
         }),
@@ -164,7 +166,6 @@ function set_theme_tokens(): void {
   style.setProperty("--accent", "#eef0f3");
   style.setProperty("--secondary", "#e8eaee");
   style.setProperty("--muted-foreground", "#717783");
-  style.setProperty("--ui-font-family-base", "LGMono, sans-serif");
 }
 
 /** 控制旧 Mermaid render 的完成时机，用于证明 effect 会丢弃迟到结果。 */
