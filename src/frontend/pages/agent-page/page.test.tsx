@@ -151,27 +151,6 @@ describe("AgentPage", () => {
     expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("10.9%");
   });
 
-  it("按时间线顺序把全部用户消息装配为输入历史", async () => {
-    const view = await render_page({
-      entries: [
-        user_entry("user-1", "较旧消息", 1),
-        assistant_entry("assistant-1", "回复", "success", 2),
-        user_entry("user-2", "最新消息", 3),
-      ],
-    });
-    const editor = view.querySelector<HTMLElement>(".cm-content");
-    if (editor === null) throw new Error("缺少 CodeMirror 编辑器");
-
-    for (const expected of ["最新消息", "较旧消息"]) {
-      await act(async () =>
-        editor.dispatchEvent(
-          new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true }),
-        ),
-      );
-      expect(editor.textContent).toBe(expected);
-    }
-  });
-
   it("恢复失败时显示单一重试入口并重新连接", async () => {
     const retry = vi.fn();
     const view = await render_page({ issue: "restore", retry });
@@ -400,17 +379,6 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
 
 function assistant_entry(id: string, text: string, status: AgentEntryStatus, createdAt: number) {
   return assistant_parts_entry(id, [{ kind: "text", text }], status, createdAt);
-}
-
-function user_entry(id: string, text: string, createdAt: number) {
-  return {
-    kind: "user_message" as const,
-    id,
-    parts: [{ kind: "text" as const, text }],
-    status: "success" as const,
-    createdAt,
-    endedAt: createdAt,
-  };
 }
 
 function assistant_parts_entry(

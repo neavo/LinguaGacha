@@ -36,7 +36,7 @@
 - `SCREEN_REGISTRY` 是页面注册与标题 key 的唯一入口。
 - Agent、工作台与校对可在未加载工程时发起项目选择，并在 session ready 后恢复 pending route；其它项目功能页在工程未加载或 session 未 ready 时禁用。
 - 跨页面模型选择由 `features/model-selection` 归一协议并持有页面生命周期 query / command；模型数据不进入 `DesktopStateProvider`，也不通过 SSE 同步，但选择和配置写入消费共享 runtime 锁。
-- Agent 页面从后端 snapshot 恢复私有会话并消费统一 Agent SSE，不把会话内容放入 `DesktopStateProvider` 或项目 session UI 缓存；后端 snapshot、恢复 loading、当前 command 与带恢复路径的 issue 是彼此独立的页面状态，轮次结果只读取条目状态。命令互斥不锁定草稿编辑；共享 runtime 锁禁用发送、reset 与模型选择，当前 Agent 回合的 stop 始终保留。
+- Agent 页面从后端 snapshot 恢复当前私有会话并消费统一 Agent SSE，snapshot 时间线不进入 `DesktopStateProvider` 或项目 session UI 缓存；后端 snapshot、恢复 loading、当前 command 与带恢复路径的 issue 是彼此独立的页面状态，轮次结果只读取条目状态。命令互斥不锁定草稿编辑；共享 runtime 锁禁用发送、reset 与模型选择，当前 Agent 回合的 stop 始终保留。
 - Agent 信息流仅在外层容器原本位于底端、且没有展开详情处于回看状态时跟随新内容；外层和思考 / 工具详情都按各自真实滚动位置暂停或恢复，统一的“回到最新”动作清除全部暂停原因。外层使用原生滚动锚点承接内容高度变化，页面只在恢复跟随时执行即时定位，不根据 wheel、pointer 或 keyboard 输入猜测用户意图。
 - `ProjectSessionUiStateProvider` 只保存当前项目内可跨路由恢复的轻量 UI 状态，项目切换或关闭时清空，不写入后端事实。
 - 校对以 `entry_id` 消费后端字段级术语结果；编辑窗只对对应译文字段重新求值，不重建术语身份。

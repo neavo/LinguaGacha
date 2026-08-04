@@ -11,9 +11,11 @@ import {
 } from "@codemirror/commands";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
+import type { AgentUserMessagePart } from "@shared/agent";
 import type { Locale } from "@shared/i18n/types";
 
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
+import { AGENT_INPUT_HISTORY_STORAGE_KEY } from "./agent-input-history";
 
 type AgentComposerTestProps = ComponentProps<typeof AgentComposer>;
 type RenderComposerOptions = Partial<
@@ -23,7 +25,6 @@ type RenderComposerOptions = Partial<
     | "command"
     | "context_usage"
     | "issue"
-    | "message_history"
     | "on_reset"
     | "on_send"
     | "on_stop"
@@ -95,6 +96,7 @@ describe("AgentComposer", () => {
     container = null;
     root = null;
     locale_state.value = "zh-CN";
+    window.localStorage.clear();
   });
 
   it("在当前光标查询并混排多个唯一 skill，保留查询后的文本", async () => {
@@ -133,13 +135,12 @@ describe("AgentComposer", () => {
   });
 
   it("从空输入框双向浏览全部用户消息并停在两端", async () => {
-    const view = await render_composer({
-      message_history: [
-        [{ kind: "text", text: "最旧消息" }],
-        [{ kind: "text", text: "较旧消息" }],
-        [{ kind: "text", text: "最新消息" }],
-      ],
-    });
+    seed_input_history([
+      [{ kind: "text", text: "最旧消息" }],
+      [{ kind: "text", text: "较旧消息" }],
+      [{ kind: "text", text: "最新消息" }],
+    ]);
+    const view = await render_composer();
     const editor = get_editor(view);
 
     for (const [key, expected] of [
@@ -160,15 +161,13 @@ describe("AgentComposer", () => {
 
   it("历史回填恢复 skill 语义且不污染撤销栈", async () => {
     const on_send = vi.fn(async () => false);
-    const view = await render_composer({
-      on_send,
-      message_history: [
-        [
-          { kind: "text", text: "检查 " },
-          { kind: "skill", name: "glossary-audit" },
-        ],
+    seed_input_history([
+      [
+        { kind: "text", text: "检查 " },
+        { kind: "skill", name: "glossary-audit" },
       ],
-    });
+    ]);
+    const view = await render_composer({ on_send });
     const editor = get_editor(view);
 
     await dispatch_key(editor.contentDOM, "ArrowUp");
@@ -187,10 +186,10 @@ describe("AgentComposer", () => {
   it("保存非空结构化草稿并在越过最新历史时完整恢复", async () => {
     const composer_ref = createRef<AgentComposerHandle>();
     const on_send = vi.fn(async () => false);
+    seed_input_history([[{ kind: "text", text: "最新消息" }]]);
     const view = await render_composer({
       composer_ref,
       on_send,
-      message_history: [[{ kind: "text", text: "最新消息" }]],
     });
     const editor = get_editor(view);
 
@@ -218,9 +217,8 @@ describe("AgentComposer", () => {
   });
 
   it("未到最上方视觉行时把 ArrowUp 交还 CodeMirror", async () => {
-    const view = await render_composer({
-      message_history: [[{ kind: "text", text: "最新消息" }]],
-    });
+    seed_input_history([[{ kind: "text", text: "最新消息" }]]);
+    const view = await render_composer();
     const editor = get_editor(view);
     const draft = "第一行\n第二行";
     await set_document(editor, draft, draft.length);
@@ -232,9 +230,8 @@ describe("AgentComposer", () => {
   });
 
   it("修改回填消息后退出导航且不恢复旧草稿", async () => {
-    const view = await render_composer({
-      message_history: [[{ kind: "text", text: "最新消息" }]],
-    });
+    seed_input_history([[{ kind: "text", text: "最新消息" }]]);
+    const view = await render_composer();
     const editor = get_editor(view);
     await set_document(editor, "原草稿", 0);
     await dispatch_key(editor.contentDOM, "ArrowUp");
@@ -248,9 +245,11 @@ describe("AgentComposer", () => {
   });
 
   it("只移动选区时保留历史导航位置", async () => {
-    const view = await render_composer({
-      message_history: [[{ kind: "text", text: "较旧消息" }], [{ kind: "text", text: "最新消息" }]],
-    });
+    seed_input_history([
+      [{ kind: "text", text: "较旧消息" }],
+      [{ kind: "text", text: "最新消息" }],
+    ]);
+    const view = await render_composer();
     const editor = get_editor(view);
     await dispatch_key(editor.contentDOM, "ArrowUp");
     await act(async () => {
@@ -262,53 +261,10 @@ describe("AgentComposer", () => {
     expect(editor.state.doc.toString()).toBe("较旧消息");
   });
 
-  it("历史 reset 时恢复进入导航前的结构化草稿", async () => {
-    const composer_ref = createRef<AgentComposerHandle>();
-    const message_history = [[{ kind: "text", text: "最新消息" }]] as const;
-    const view = await render_composer({ composer_ref, message_history });
-    const editor = get_editor(view);
-    await act(async () => {
-      composer_ref.current?.write_draft([
-        { kind: "skill", name: "glossary-audit" },
-        { kind: "text", text: " 待检查" },
-      ]);
-      editor.dispatch({ selection: EditorSelection.cursor(0) });
-    });
-    await dispatch_key(editor.contentDOM, "ArrowUp");
-    expect(editor.state.doc.toString()).toBe("最新消息");
-
-    await render_composer({ composer_ref, message_history: [] });
-
-    expect(editor.state.doc.toString()).toBe("@glossary-audit 待检查");
-    expect(view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
-    expect(editor.state.selection.main.head).toBe(editor.state.doc.length);
-  });
-
-  it("历史尾部追加消息时保持绝对索引并继续向新消息浏览", async () => {
-    const original_history = [
-      [{ kind: "text", text: "较旧消息" }],
-      [{ kind: "text", text: "原最新消息" }],
-    ] as const;
-    const view = await render_composer({ message_history: original_history });
-    const editor = get_editor(view);
-    await set_document(editor, "原草稿", 0);
-    await dispatch_key(editor.contentDOM, "ArrowUp");
-
-    await render_composer({
-      message_history: [...original_history, [{ kind: "text", text: "新增消息" }]],
-    });
-    await dispatch_key(editor.contentDOM, "ArrowDown");
-    expect(editor.state.doc.toString()).toBe("新增消息");
-    await dispatch_key(editor.contentDOM, "ArrowDown");
-    expect(editor.state.doc.toString()).toBe("原草稿");
-  });
-
   it("write_draft 即使写入相同内容也显式退出历史导航", async () => {
     const composer_ref = createRef<AgentComposerHandle>();
-    const view = await render_composer({
-      composer_ref,
-      message_history: [[{ kind: "text", text: "最新消息" }]],
-    });
+    seed_input_history([[{ kind: "text", text: "最新消息" }]]);
+    const view = await render_composer({ composer_ref });
     const editor = get_editor(view);
     await set_document(editor, "原草稿", 0);
     await dispatch_key(editor.contentDOM, "ArrowUp");
@@ -323,9 +279,8 @@ describe("AgentComposer", () => {
   });
 
   it("非空选区不启动历史导航", async () => {
-    const view = await render_composer({
-      message_history: [[{ kind: "text", text: "最新消息" }]],
-    });
+    seed_input_history([[{ kind: "text", text: "最新消息" }]]);
+    const view = await render_composer();
     const editor = get_editor(view);
     await set_document(editor, "普通草稿", 4);
     await act(async () => {
@@ -338,9 +293,8 @@ describe("AgentComposer", () => {
   });
 
   it("skill 菜单优先消费历史导航方向键", async () => {
-    const view = await render_composer({
-      message_history: [[{ kind: "text", text: "@" }]],
-    });
+    seed_input_history([[{ kind: "text", text: "@" }]]);
+    const view = await render_composer();
     const editor = get_editor(view);
     await dispatch_key(editor.contentDOM, "ArrowUp");
     const menu = await wait_for_element(view, '[role="listbox"]');
@@ -408,9 +362,9 @@ describe("AgentComposer", () => {
     expect(view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
   });
 
-  it("普通粘贴的 @name 保持 text，失败保留草稿，受理后全部清空", async () => {
+  it("失败保留草稿且不记录，受理后持久化发送投影并可在重新挂载后恢复", async () => {
     const on_send = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-    const view = await render_composer({ on_send: on_send });
+    const view = await render_composer({ on_send });
     const editor = get_editor(view);
     const draft = "  \n@glossary-audit \n ";
     await set_document(editor, draft, draft.length);
@@ -419,9 +373,26 @@ describe("AgentComposer", () => {
     await click_send(view);
     expect(on_send).toHaveBeenLastCalledWith([{ kind: "text", text: "@glossary-audit" }]);
     expect(editor.state.doc.toString()).toBe(draft);
+    expect(window.localStorage.getItem(AGENT_INPUT_HISTORY_STORAGE_KEY)).toBeNull();
+    await act(async () => editor.dispatch({ selection: EditorSelection.cursor(0) }));
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    expect(editor.state.doc.toString()).toBe(draft);
 
     await click_send(view);
     expect(editor.state.doc.toString()).toBe("");
+    expect(
+      JSON.parse(window.localStorage.getItem(AGENT_INPUT_HISTORY_STORAGE_KEY) ?? "null"),
+    ).toEqual([[{ kind: "text", text: "@glossary-audit" }]]);
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    expect(editor.state.doc.toString()).toBe("@glossary-audit");
+    expect(view.querySelector(".agent-skill-token")).toBeNull();
+
+    await act(async () => root?.unmount());
+    root = null;
+    const remounted_view = await render_composer();
+    const remounted_editor = get_editor(remounted_view);
+    await dispatch_key(remounted_editor.contentDOM, "ArrowUp");
+    expect(remounted_editor.state.doc.toString()).toBe("@glossary-audit");
   });
 
   it("含 skill 的消息只裁剪组合外缘并保留 token 内侧空白", async () => {
@@ -644,6 +615,7 @@ describe("AgentComposer", () => {
   });
 
   it("reset 命令前后复用 EditorView，并保留正文与 skill token 草稿", async () => {
+    seed_input_history([[{ kind: "text", text: "持久历史" }]]);
     const view = await render_composer();
     const editor = get_editor(view);
     await select_skill(view, editor, "glossary-audit");
@@ -662,6 +634,9 @@ describe("AgentComposer", () => {
     expect(editor.contentDOM.getAttribute("contenteditable")).toBe("true");
     expect(editor.state.doc.toString()).toBe("@glossary-audit 待处理");
     expect(view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
+    await act(async () => editor.dispatch({ selection: EditorSelection.cursor(0) }));
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    expect(editor.state.doc.toString()).toBe("持久历史");
   });
 
   /** 统一用命名参数重渲染同一个组件实例，避免位置参数隐藏测试意图。 */
@@ -669,6 +644,8 @@ describe("AgentComposer", () => {
     if (container === null) {
       container = document.createElement("div");
       document.body.append(container);
+    }
+    if (root === null) {
       root = createRoot(container);
     }
     await act(async () => {
@@ -676,7 +653,6 @@ describe("AgentComposer", () => {
         <AgentComposer
           ref={options.composer_ref}
           skills={skills}
-          message_history={options.message_history ?? []}
           running={options.running ?? false}
           unavailable_reason={options.unavailable_reason ?? null}
           command={options.command ?? null}
@@ -715,6 +691,10 @@ function get_editor(container: HTMLElement): EditorView {
   const editor = content === null ? null : EditorView.findFromDOM(content);
   if (editor === null) throw new Error("缺少 CodeMirror 编辑器");
   return editor;
+}
+
+function seed_input_history(history: readonly (readonly AgentUserMessagePart[])[]): void {
+  window.localStorage.setItem(AGENT_INPUT_HISTORY_STORAGE_KEY, JSON.stringify(history));
 }
 
 async function set_document(editor: EditorView, text: string, head: number): Promise<void> {
