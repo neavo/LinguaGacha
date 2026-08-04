@@ -24,7 +24,7 @@ const WINDOWS_PLATFORM: NodeJS.Platform = "win32";
 const UPDATE_VERSION_DIR_PREFIX = "v";
 
 type DesktopUpdateProgressReporter = (progress: DesktopUpdateDownloadProgress) => void;
-type DesktopUpdateFetch = typeof fetch;
+type DesktopUpdateFetch = (url: string, init?: RequestInit) => Promise<Response>;
 type DesktopUpdateSpawn = typeof child_process.spawn;
 type DesktopUpdateDownloadTarget = {
   arch: WindowsReleaseArch; // main 根据当前进程架构归一后的更新目标
@@ -43,7 +43,7 @@ export type DesktopUpdateRuntime = {
 export type DesktopUpdateServiceOptions = {
   appRoot: string;
   updateRootDir: string;
-  runtime?: Partial<DesktopUpdateRuntime>;
+  runtime: Partial<DesktopUpdateRuntime> & { fetch: DesktopUpdateFetch };
 };
 
 /**
@@ -55,18 +55,18 @@ export class DesktopUpdateService {
   private readonly runtime: DesktopUpdateRuntime;
 
   /**
-   * 初始化自动更新服务依赖，测试可替换运行时副作用边界。
+   * 初始化自动更新服务依赖；网络栈由组合根选择，测试可替换运行时副作用边界。
    */
   public constructor(options: DesktopUpdateServiceOptions) {
     this.app_root = options.appRoot;
     this.update_root_dir = options.updateRootDir;
     this.runtime = {
-      platform: options.runtime?.platform ?? process.platform,
-      arch: options.runtime?.arch ?? process.arch,
-      execPath: options.runtime?.execPath ?? process.execPath,
-      pid: options.runtime?.pid ?? process.pid,
-      fetch: options.runtime?.fetch ?? fetch,
-      spawn: options.runtime?.spawn ?? child_process.spawn,
+      platform: options.runtime.platform ?? process.platform,
+      arch: options.runtime.arch ?? process.arch,
+      execPath: options.runtime.execPath ?? process.execPath,
+      pid: options.runtime.pid ?? process.pid,
+      fetch: options.runtime.fetch,
+      spawn: options.runtime.spawn ?? child_process.spawn,
     };
   }
 
@@ -223,6 +223,9 @@ export class DesktopUpdateService {
     };
   }
 
+  /**
+   * 把 release 版本映射到独立下载目录。
+   */
   private get_version_dir(version: string): string {
     return path.join(this.update_root_dir, `${UPDATE_VERSION_DIR_PREFIX}${version}`);
   }

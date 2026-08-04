@@ -192,6 +192,10 @@ export function run_gui_entry(options: GuiEntryOptions): void {
       desktop_update_service = new DesktopUpdateService({
         appRoot: app_root,
         updateRootDir: backend_start_result.berserkerUpdateRootDir,
+        // 更新包必须复用默认 session 的 Chromium 网络栈，不能回退到 Node fetch。
+        runtime: {
+          fetch: (url, init) => session.defaultSession.fetch(url, init),
+        },
       });
       await desktop_update_service.cleanup_berserker_version_dirs();
       log_window_host = create_log_window_host({
