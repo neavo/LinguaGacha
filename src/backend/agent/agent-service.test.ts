@@ -286,10 +286,9 @@ function create_fake_response(context: Context): FauxResponseStep {
   if (fake_agent_state.mode === "write") {
     return fauxAssistantMessage(
       fauxToolCall(
-        "update_quality_rules",
+        "update_text_preserve_rules",
         {
-          rule_type: "glossary",
-          meta: { enabled: false },
+          create_entries: [{ entry: { src: "\\\\N", info: "控制码" } }],
           expected_section_revisions: { quality: 3 },
         },
         { id: "write-1" },
@@ -976,7 +975,9 @@ describe("AgentService", () => {
     expect(fake_agent_state.tool_names.at(-1)).toEqual([
       "query_project_meta",
       "query_quality_rules",
-      "update_quality_rules",
+      "update_glossary_rules",
+      "update_replacement_rules",
+      "update_text_preserve_rules",
       "query_items",
       "query_warning_items",
       "update_items",
@@ -1511,7 +1512,7 @@ describe("AgentService", () => {
           kind: "tool_call",
           id: "manual-before-invocation",
           status: "error",
-          output: expect.stringContaining("当前会话不可读取"),
+          output: expect.stringContaining("工具调用失败：技能文件不存在或当前会话不可读取"),
         }),
       ]),
     );

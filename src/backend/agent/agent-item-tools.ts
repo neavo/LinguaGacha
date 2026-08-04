@@ -32,11 +32,14 @@ const MAX_TOOL_ITEMS = 500;
 export const AGENT_PROOFREADING_UPDATE_SOURCE = "agent_proofreading_update_items";
 
 const ITEM_STATUS_PARAMETERS = Type.Union(ITEM_STATUSES.map((status) => Type.Literal(status)));
-const MANUAL_STATUS_PARAMETERS = Type.Union([
-  Type.Literal(PROOFREADING_MANUAL_STATUS_CODES[0]),
-  Type.Literal(PROOFREADING_MANUAL_STATUS_CODES[1]),
-  Type.Literal(PROOFREADING_MANUAL_STATUS_CODES[2]),
-]);
+const MANUAL_STATUS_PARAMETERS = Type.Union(
+  [
+    Type.Literal(PROOFREADING_MANUAL_STATUS_CODES[0]),
+    Type.Literal(PROOFREADING_MANUAL_STATUS_CODES[1]),
+    Type.Literal(PROOFREADING_MANUAL_STATUS_CODES[2]),
+  ],
+  { description: "新的人工状态；只有确实需要改变人工状态时才提供。" },
+);
 const WARNING_TYPE_PARAMETERS = Type.Union(
   PROOFREADING_WARNING_CODES.map((warning) => Type.Literal(warning)),
 );
@@ -44,12 +47,18 @@ const WARNING_TYPE_PARAMETERS = Type.Union(
 // 两个只读工具共用同一搜索协议，避免字段默认值和校验语义分叉。
 const ITEM_SEARCH_PARAMETERS = Type.Object(
   {
-    keyword: Type.String(),
+    keyword: Type.String({ description: "要匹配的非空文本或正则表达式。" }),
     scope: Type.Optional(
-      Type.Union([Type.Literal("src"), Type.Literal("dst"), Type.Literal("all")]),
+      Type.Union([Type.Literal("src"), Type.Literal("dst"), Type.Literal("all")], {
+        description: "搜索原文、译文或两者；省略表示 all。",
+      }),
     ),
-    is_regex: Type.Optional(Type.Boolean()),
-    case_sensitive: Type.Optional(Type.Boolean()),
+    is_regex: Type.Optional(
+      Type.Boolean({ description: "是否把 keyword 作为正则；省略表示 false。" }),
+    ),
+    case_sensitive: Type.Optional(
+      Type.Boolean({ description: "是否区分大小写；省略表示 false。" }),
+    ),
   },
   { additionalProperties: false },
 );
@@ -86,8 +95,16 @@ const QUERY_ITEMS_PARAMETERS = Type.Object(
       ),
     ),
     search: Type.Optional(ITEM_SEARCH_PARAMETERS),
-    cursor: Type.Optional(Type.String()),
-    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_QUERY_LIMIT })),
+    cursor: Type.Optional(
+      Type.String({ description: "继续查询时原样使用上次结果返回的 cursor；首屏省略。" }),
+    ),
+    limit: Type.Optional(
+      Type.Integer({
+        minimum: 1,
+        maximum: MAX_QUERY_LIMIT,
+        description: `返回条目上限；省略表示 ${DEFAULT_QUERY_LIMIT.toString()}。`,
+      }),
+    ),
   },
   { additionalProperties: false },
 );
@@ -124,24 +141,39 @@ const QUERY_WARNING_ITEMS_PARAMETERS = Type.Object(
       ),
     ),
     search: Type.Optional(ITEM_SEARCH_PARAMETERS),
-    cursor: Type.Optional(Type.String()),
-    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: MAX_QUERY_LIMIT })),
+    cursor: Type.Optional(
+      Type.String({ description: "继续查询时原样使用上次结果返回的 cursor；首屏省略。" }),
+    ),
+    limit: Type.Optional(
+      Type.Integer({
+        minimum: 1,
+        maximum: MAX_QUERY_LIMIT,
+        description: `返回条目上限；省略表示 ${DEFAULT_QUERY_LIMIT.toString()}。`,
+      }),
+    ),
   },
   { additionalProperties: false },
 );
 
-/** GUI 与 Agent 共享的 item 字段 patch；显式人工状态最后覆盖自动状态。 */
+/** Agent DTO 明确表达局部 patch；进入领域服务前再映射到共享 changes 词表。 */
 const UPDATE_ITEMS_PARAMETERS = Type.Object(
   {
-    changes: Type.Array(
+    patches: Type.Array(
       Type.Object(
         {
-          item_id: Type.Integer({ minimum: 1 }),
-          dst: Type.Optional(Type.String()),
-          name_dst: Type.Optional(Type.String()),
+          item_id: Type.Integer({ minimum: 1, description: "当前快照中已有的 item ID。" }),
+          dst: Type.Optional(
+            Type.String({ description: "新的正文译文；省略保持不变，空字符串表示清空。" }),
+          ),
+          name_dst: Type.Optional(
+            Type.String({ description: "新的姓名译文；省略保持不变，空字符串表示清空。" }),
+          ),
           status: Type.Optional(MANUAL_STATUS_PARAMETERS),
         },
-        { additionalProperties: false },
+        {
+          additionalProperties: false,
+          description: "单个 item 的局部补丁；只提供真正变化的字段。",
+        },
       ),
       { minItems: 1, maxItems: MAX_TOOL_ITEMS },
     ),
@@ -268,23 +300,27 @@ export function create_agent_item_tools(dependencies: AgentItemDependencies): To
     defineTool({
       name: "update_items",
       label: "更新条目",
-      description: "按 items/proofreading revision 原子更新多个 item 的译文、译名和人工状态。",
+      description:
+        "按 items/proofreading revision 原子应用多个 item 的局部补丁。每项只提供真正变化的 dst、name_dst 或人工 status；省略字段保持不变。",
       executionMode: "sequential",
       parameters: UPDATE_ITEMS_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
-        assert_item_changes(params.changes);
+        assert_item_patches(params.patches);
         await dependencies.proofreading.commands.update_items_from_agent(
-          params,
+          {
+            changes: params.patches,
+            expected_section_revisions: params.expected_section_revisions,
+          },
           AGENT_PROOFREADING_UPDATE_SOURCE,
         );
         const queried = query_agent_items(dependencies.cache, {
-          filters: { item_ids: params.changes.map((change) => change.item_id) },
+          filters: { item_ids: params.patches.map((patch) => patch.item_id) },
         });
         return tool_result({
           accepted: true,
           sectionRevisions: queried["sectionRevisions"],
-          items: queried["items"],
+          updated_items: queried["items"],
         });
       },
     }),
@@ -470,6 +506,7 @@ function assert_warning_item_query(request: AgentWarningItemQuery): void {
   assert_query_pagination(request);
 }
 
+/** 直接调用边界补齐 search 子对象的字段关联与非空语义。 */
 function assert_item_search(search: AgentItemSearch | undefined): void {
   if (search !== undefined) {
     if (!is_json_record(search)) throw new Error("search 必须是 object");
@@ -489,6 +526,7 @@ function assert_item_search(search: AgentItemSearch | undefined): void {
   }
 }
 
+/** 两个查询入口共享同一游标和页大小边界。 */
 function assert_query_pagination(request: { cursor?: string; limit?: number }): void {
   parse_cursor(request.cursor);
   if (
@@ -499,6 +537,7 @@ function assert_query_pagination(request: { cursor?: string; limit?: number }): 
   }
 }
 
+/** 可选筛选数组统一执行非空、上限、去重和领域值校验。 */
 function assert_unique_array(
   value: unknown,
   field: string,
@@ -517,36 +556,33 @@ function assert_unique_array(
   }
 }
 
+/** 直接函数调用无法借助 Schema 的 additionalProperties，需在此拒绝未知字段。 */
 function assert_known_keys(value: JsonRecord, keys: string[]): void {
   const unknown = Object.keys(value).find((key) => !keys.includes(key));
   if (unknown !== undefined) throw new Error(`未知字段：${unknown}`);
 }
 
 /** TypeBox 无法表达跨数组 item_id 唯一和至少一个变更字段，这里补齐关联校验。 */
-function assert_item_changes(
-  changes: Array<{
+function assert_item_patches(
+  patches: Array<{
     item_id: number;
     dst?: string;
     name_dst?: string;
     status?: ProofreadingManualStatusCode;
   }>,
 ): void {
-  if (changes.length === 0 || changes.length > MAX_TOOL_ITEMS) {
-    throw new Error(`changes 必须包含 1 到 ${MAX_TOOL_ITEMS.toString()} 项`);
+  if (patches.length === 0 || patches.length > MAX_TOOL_ITEMS) {
+    throw new Error(`patches 必须包含 1 到 ${MAX_TOOL_ITEMS.toString()} 项`);
   }
   const item_ids = new Set<number>();
-  for (const change of changes) {
-    if (
-      !Number.isSafeInteger(change.item_id) ||
-      change.item_id <= 0 ||
-      item_ids.has(change.item_id)
-    ) {
-      throw new Error(`item_id 必须是唯一正整数：${change.item_id.toString()}`);
+  for (const patch of patches) {
+    if (!Number.isSafeInteger(patch.item_id) || patch.item_id <= 0 || item_ids.has(patch.item_id)) {
+      throw new Error(`item_id 必须是唯一正整数：${patch.item_id.toString()}`);
     }
-    if (change.dst === undefined && change.name_dst === undefined && change.status === undefined) {
-      throw new Error(`item 变更缺少 dst/name_dst/status：${change.item_id.toString()}`);
+    if (patch.dst === undefined && patch.name_dst === undefined && patch.status === undefined) {
+      throw new Error(`item patch 缺少 dst/name_dst/status：${patch.item_id.toString()}`);
     }
-    item_ids.add(change.item_id);
+    item_ids.add(patch.item_id);
   }
 }
 

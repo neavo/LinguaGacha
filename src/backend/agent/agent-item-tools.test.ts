@@ -1,3 +1,4 @@
+import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord } from "../../domain/json";
@@ -76,7 +77,7 @@ function create_proofreading(
 }
 
 describe("Agent item 工具", () => {
-  it("按固定顺序注册两个查询与串行 update_items", () => {
+  it("按固定顺序注册工具，并由 SDK 拒绝旧 changes 协议", () => {
     const tools = create_agent_item_tools({
       cache: create_cache(() => []),
       proofreading: create_proofreading(),
@@ -88,12 +89,29 @@ describe("Agent item 工具", () => {
       "update_items",
     ]);
     expect(tools.map((tool) => tool.executionMode)).toEqual([undefined, undefined, "sequential"]);
-    expect(tools.map((tool) => tool.parameters)).toEqual([
-      expect.objectContaining({ type: "object", additionalProperties: false }),
-      expect.objectContaining({ type: "object", additionalProperties: false }),
-      expect.objectContaining({ type: "object", additionalProperties: false }),
-    ]);
-    expect(JSON.stringify(tools[1]?.parameters)).not.toContain("NO_WARNING");
+    const update_tool = tools[2];
+    if (update_tool === undefined) throw new Error("缺少 update_items");
+    const revisions = { items: 2, proofreading: 3 };
+    const patch_call: ToolCall = {
+      type: "toolCall",
+      id: "patch-update",
+      name: "update_items",
+      arguments: {
+        patches: [{ item_id: 1, dst: "新译文" }],
+        expected_section_revisions: revisions,
+      },
+    };
+    expect(validateToolArguments(update_tool, patch_call)).toEqual(patch_call.arguments);
+    expect(() =>
+      validateToolArguments(update_tool, {
+        ...patch_call,
+        id: "old-update",
+        arguments: {
+          changes: [{ item_id: 1, dst: "旧协议" }],
+          expected_section_revisions: revisions,
+        },
+      }),
+    ).toThrow();
   });
 
   it("组合筛选、统计与分页，并保持 ID 请求顺序和窄投影", () => {
@@ -377,7 +395,7 @@ describe("Agent item 工具", () => {
     const tool = tools.find((candidate) => candidate.name === "update_items");
     if (tool === undefined) throw new Error("缺少 update_items");
     const request = {
-      changes: [
+      patches: [
         { item_id: 2, name_dst: "二号", status: "EXCLUDED" as const },
         { item_id: 1, dst: "一号译文" },
       ],
@@ -385,11 +403,17 @@ describe("Agent item 工具", () => {
     };
 
     const result = await tool.execute("update", request, undefined, undefined, undefined as never);
-    expect(update_items).toHaveBeenCalledWith(request, AGENT_PROOFREADING_UPDATE_SOURCE);
+    expect(update_items).toHaveBeenCalledWith(
+      {
+        changes: request.patches,
+        expected_section_revisions: request.expected_section_revisions,
+      },
+      AGENT_PROOFREADING_UPDATE_SOURCE,
+    );
     expect(result.details).toMatchObject({
       accepted: true,
       sectionRevisions: { items: 3, proofreading: 4 },
-      items: [
+      updated_items: [
         { item_id: 2, name_dst: "二号", status: "EXCLUDED" },
         { item_id: 1, dst: "一号译文" },
       ],
@@ -400,7 +424,7 @@ describe("Agent item 工具", () => {
       tool.execute(
         "duplicate",
         {
-          changes: [
+          patches: [
             { item_id: 1, dst: "A" },
             { item_id: 1, status: "NONE" },
           ],

@@ -77,13 +77,18 @@ function build_agent_session_settings(limits: AgentModelLimits) {
   };
 }
 
-/** SDK 已发布工具开始事件；统一让出一个事件循环，为本地 SSE 首帧提供发送轮次。 */
-function yield_before_tool_execution(tool: ToolDefinition): ToolDefinition {
+/** 统一保证 SSE 首帧时序，并让模型可见错误正文显式表达失败状态。 */
+function wrap_agent_tool_execution(tool: ToolDefinition): ToolDefinition {
   return {
     ...tool,
     execute: async (...args: Parameters<ToolDefinition["execute"]>) => {
       await scheduler.yield();
-      return tool.execute(...args);
+      try {
+        return await tool.execute(...args);
+      } catch (cause) {
+        const message = cause instanceof Error ? cause.message : String(cause);
+        throw new Error(`工具调用失败：${message}`, { cause });
+      }
     },
   };
 }
@@ -450,7 +455,7 @@ export class AgentService {
           this.is_skill_explicitly_invoked(name),
         ),
         ...(this.web_fetch === undefined ? [] : create_agent_web_tools(this.web_fetch)),
-      ].map(yield_before_tool_execution),
+      ].map(wrap_agent_tool_execution),
       resourceLoader: resource_loader,
       sessionManager: session_manager,
       settingsManager: settings_manager,
