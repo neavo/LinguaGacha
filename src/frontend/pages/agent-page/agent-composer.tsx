@@ -4,6 +4,7 @@ import { ArrowUp, ChevronDown, Cpu, LoaderCircle, MessageSquarePlus, Square } fr
 
 import { defaultKeymap, history, historyKeymap, invertedEffects } from "@codemirror/commands";
 import {
+  Annotation,
   Compartment,
   EditorSelection,
   EditorState,
@@ -12,6 +13,7 @@ import {
   Transaction,
   type Extension,
   type Range,
+  type TransactionSpec,
 } from "@codemirror/state";
 import {
   Decoration,
@@ -55,6 +57,12 @@ type EditorSnapshot = {
   parts: AgentUserMessagePart[];
   query: SkillQuery | null;
   selected_skill_names: Set<string>;
+};
+
+/** 历史游标与进入导航前的原始草稿必须同生共灭，避免恢复发送投影后的残缺内容。 */
+type MessageHistoryNavigation = {
+  index: number; // 当前展示消息在 props.message_history 中的绝对索引。
+  draft: AgentUserMessagePart[]; // 从唯一 EditorState 读取，保留正文首尾空白与原子 token。
 };
 
 export type AgentComposerHandle = {
@@ -101,6 +109,13 @@ const EMPTY_EDITOR_SNAPSHOT: EditorSnapshot = {
   query: null,
   selected_skill_names: new Set(),
 };
+
+/** 撤销标记只控制 CodeMirror 历史；此标记单独标识 Composer 的历史导航事务。 */
+const message_history_navigation_annotation = Annotation.define<boolean>();
+const message_history_navigation_annotations = [
+  Transaction.addToHistory.of(false),
+  message_history_navigation_annotation.of(true),
+];
 
 // 三个 Compartment 只承接运行期配置，不参与草稿或 token 事实。
 const theme_compartment = new Compartment();
@@ -187,7 +202,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const menu_index_ref = useRef(0);
   const last_query_key_ref = useRef("");
   const message_history_ref = useRef(props.message_history);
-  const message_history_index_ref = useRef<number | null>(null);
+  const message_history_navigation_ref = useRef<MessageHistoryNavigation | null>(null);
   const [snapshot, set_snapshot] = useState<EditorSnapshot>(EMPTY_EDITOR_SNAPSHOT);
   const [menu_index_value, set_menu_index] = useState(0);
   const [menu_suppressed, set_menu_suppressed] = useState(false);
@@ -236,6 +251,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       write_draft(parts) {
         const view = view_ref.current;
         if (view === null || editor_read_only) return;
+        message_history_navigation_ref.current = null;
         write_agent_message_parts(view, parts);
         view.focus();
       },
@@ -246,14 +262,8 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   menu_open_ref.current = menu_open;
   matching_skills_ref.current = matching_skills;
   menu_index_ref.current = menu_index;
-  // EditorView 只创建一次，变化中的历史通过 ref 进入稳定 keymap；历史缩短时废弃失效游标。
+  // EditorView 只创建一次，变化中的历史通过 ref 进入稳定 keymap。
   message_history_ref.current = props.message_history;
-  if (
-    message_history_index_ref.current !== null &&
-    message_history_index_ref.current >= props.message_history.length
-  ) {
-    message_history_index_ref.current = null;
-  }
 
   useEffect(() => {
     const host = host_ref.current;
@@ -321,13 +331,14 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
           ]),
           EditorView.updateListener.of((update) => {
             if (update.docChanged || update.selectionSet) {
-              // 历史回填不进入撤销栈并保留浏览位置；其它编辑或选区操作转回普通草稿。
               if (
+                update.docChanged &&
                 !update.transactions.every(
-                  (transaction) => transaction.annotation(Transaction.addToHistory) === false,
+                  (transaction) =>
+                    transaction.annotation(message_history_navigation_annotation) === true,
                 )
               ) {
-                message_history_index_ref.current = null;
+                message_history_navigation_ref.current = null;
               }
               emit_snapshot(update.state);
             }
@@ -345,6 +356,17 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       view_ref.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const navigation = message_history_navigation_ref.current;
+    if (navigation === null || navigation.index < props.message_history.length) return;
+    // 历史缩短（包括 reset）会让绝对索引失效，此时必须恢复进入导航前的草稿。
+    message_history_navigation_ref.current = null;
+    const view = view_ref.current;
+    if (view !== null) {
+      write_agent_message_parts(view, navigation.draft, message_history_navigation_annotations);
+    }
+  }, [props.message_history]);
 
   useEffect(() => {
     view_ref.current?.dispatch({
@@ -582,37 +604,62 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     return true;
   }
 
-  /** 只在空白或未修改的历史内容中接管方向键。 */
+  /** 仅从视觉首行进入历史；越过最新消息时恢复原始草稿，两端都消费按键。 */
   function navigate_message_history(view: EditorView, direction: "older" | "newer"): boolean {
     const message_history = message_history_ref.current;
-    const current_index = message_history_index_ref.current;
-    if (view.composing || view.state.readOnly || message_history.length === 0) return false;
-    let next_index: number;
-    if (current_index === null) {
-      if (view.state.doc.length > 0 || direction === "newer") return false;
-      next_index = message_history.length - 1;
-    } else if (direction === "older") {
-      if (current_index === 0) return true;
-      next_index = current_index - 1;
-    } else {
-      next_index = current_index + 1;
+    if (view.composing || view.state.readOnly) return false;
+    const navigation = message_history_navigation_ref.current;
+
+    if (navigation === null) {
+      if (
+        direction === "newer" ||
+        message_history.length === 0 ||
+        !can_start_message_history(view)
+      ) {
+        return false;
+      }
+      const next = {
+        index: message_history.length - 1,
+        draft: read_agent_draft_parts(view.state),
+      };
+      message_history_navigation_ref.current = next;
+      write_agent_message_parts(
+        view,
+        message_history[next.index]!,
+        message_history_navigation_annotations,
+      );
+      return true;
     }
-    if (next_index === message_history.length) {
-      message_history_index_ref.current = null;
-      write_agent_message_parts(view, [], false);
-    } else {
-      message_history_index_ref.current = next_index;
-      write_agent_message_parts(view, message_history[next_index]!, false);
+
+    const next_index = navigation.index + (direction === "older" ? -1 : 1);
+    if (next_index < 0) return true;
+    if (next_index >= message_history.length) {
+      message_history_navigation_ref.current = null;
+      write_agent_message_parts(view, navigation.draft, message_history_navigation_annotations);
+      return true;
     }
+    message_history_navigation_ref.current = { ...navigation, index: next_index };
+    write_agent_message_parts(
+      view,
+      message_history[next_index]!,
+      message_history_navigation_annotations,
+    );
     return true;
   }
 }
 
-/** 用单次事务同步正文、原子 token 与光标；历史回填可显式排除撤销记录。 */
+/** 视觉顶部由 CodeMirror 判断，原生覆盖软换行和原子范围。 */
+function can_start_message_history(view: EditorView): boolean {
+  const selection = view.state.selection;
+  if (selection.ranges.length !== 1 || !selection.main.empty) return false;
+  return view.moveVertically(selection.main, false).head === selection.main.head;
+}
+
+/** 用单次事务同步正文、原子 token 与末尾光标。 */
 function write_agent_message_parts(
   view: EditorView,
   parts: readonly AgentUserMessagePart[],
-  record_undo = true,
+  annotations?: TransactionSpec["annotations"],
 ): void {
   let text = "";
   const tokens: Range<Decoration>[] = [];
@@ -629,7 +676,7 @@ function write_agent_message_parts(
     changes: { from: 0, to: view.state.doc.length, insert: text },
     selection: EditorSelection.cursor(text.length),
     effects: set_skill_tokens_effect.of(Decoration.set(tokens, true)),
-    annotations: record_undo ? [] : Transaction.addToHistory.of(false),
+    annotations,
   });
 }
 
@@ -658,8 +705,8 @@ function format_context_tokens(tokens: number): string {
   return `${(Math.round(tokens / 100) / 10).toString()}K`;
 }
 
-/** 按 DecorationSet 投影 parts，并只裁剪整条组合消息的文本外缘。 */
-function read_agent_message_parts(state: EditorState): AgentUserMessagePart[] {
+/** 按 DecorationSet 读取可原样回填的草稿，不套用发送时的首尾裁剪。 */
+function read_agent_draft_parts(state: EditorState): AgentUserMessagePart[] {
   const parts: AgentUserMessagePart[] = [];
   let cursor = 0;
   state.field(skill_tokens_field).between(0, state.doc.length, (from, to, decoration) => {
@@ -674,6 +721,12 @@ function read_agent_message_parts(state: EditorState): AgentUserMessagePart[] {
   if (cursor < state.doc.length) {
     parts.push({ kind: "text", text: state.doc.sliceString(cursor) });
   }
+  return parts;
+}
+
+/** 从原始草稿派生发送投影，只裁剪整条组合消息的文本外缘。 */
+function read_agent_message_parts(state: EditorState): AgentUserMessagePart[] {
+  const parts = read_agent_draft_parts(state);
   const first = parts[0];
   if (first?.kind === "text") first.text = first.text.trimStart();
   const last = parts.at(-1);

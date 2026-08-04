@@ -1,4 +1,4 @@
-import { act, type ComponentProps, type ReactNode } from "react";
+import { act, createRef, type ComponentProps, type ReactNode, type RefObject } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -13,7 +13,7 @@ import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { Locale } from "@shared/i18n/types";
 
-import { AgentComposer } from "./agent-composer";
+import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
 
 type AgentComposerTestProps = ComponentProps<typeof AgentComposer>;
 type RenderComposerOptions = Partial<
@@ -31,6 +31,7 @@ type RenderComposerOptions = Partial<
     | "unavailable_reason"
   >
 > & {
+  composer_ref?: RefObject<AgentComposerHandle | null>;
   model_selection?: { loading?: boolean; updating?: boolean };
 };
 
@@ -179,35 +180,161 @@ describe("AgentComposer", () => {
       { kind: "text", text: "检查 " },
       { kind: "skill", name: "glossary-audit" },
     ]);
+    await dispatch_key(editor.contentDOM, "ArrowDown");
+    expect(editor.state.doc.toString()).toBe("");
   });
 
-  it("只在空白或未修改的历史浏览状态接管方向键", async () => {
-    const message_history = [
-      [{ kind: "text", text: "较旧消息" }],
-      [{ kind: "text", text: "最新消息" }],
-    ] as const;
-    const view = await render_composer({ message_history });
+  it("保存非空结构化草稿并在越过最新历史时完整恢复", async () => {
+    const composer_ref = createRef<AgentComposerHandle>();
+    const on_send = vi.fn(async () => false);
+    const view = await render_composer({
+      composer_ref,
+      on_send,
+      message_history: [[{ kind: "text", text: "最新消息" }]],
+    });
     const editor = get_editor(view);
 
-    await set_document(editor, "普通草稿", 4);
-    await dispatch_key(editor.contentDOM, "ArrowUp");
-    expect(editor.state.doc.toString()).toBe("普通草稿");
-
-    await set_document(editor, "", 0);
-    await dispatch_key(editor.contentDOM, "ArrowUp");
     await act(async () => {
-      editor.dispatch({ changes: { from: editor.state.doc.length, insert: "已修改" } });
-    });
-    await dispatch_key(editor.contentDOM, "ArrowUp");
-    expect(editor.state.doc.toString()).toBe("最新消息已修改");
-
-    await set_document(editor, "", 0);
-    await dispatch_key(editor.contentDOM, "ArrowUp");
-    await act(async () => {
+      composer_ref.current?.write_draft([
+        { kind: "text", text: "  检查 " },
+        { kind: "skill", name: "glossary-audit" },
+        { kind: "text", text: " 待处理  " },
+      ]);
       editor.dispatch({ selection: EditorSelection.cursor(0) });
     });
     await dispatch_key(editor.contentDOM, "ArrowUp");
     expect(editor.state.doc.toString()).toBe("最新消息");
+
+    await dispatch_key(editor.contentDOM, "ArrowDown");
+    expect(editor.state.doc.toString()).toBe("  检查 @glossary-audit 待处理  ");
+    expect(view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
+    expect(editor.state.selection.main.head).toBe(editor.state.doc.length);
+    await click_send(view);
+    expect(on_send).toHaveBeenCalledWith([
+      { kind: "text", text: "检查 " },
+      { kind: "skill", name: "glossary-audit" },
+      { kind: "text", text: " 待处理" },
+    ]);
+  });
+
+  it("未到最上方视觉行时把 ArrowUp 交还 CodeMirror", async () => {
+    const view = await render_composer({
+      message_history: [[{ kind: "text", text: "最新消息" }]],
+    });
+    const editor = get_editor(view);
+    const draft = "第一行\n第二行";
+    await set_document(editor, draft, draft.length);
+
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+
+    expect(editor.state.doc.toString()).toBe(draft);
+    expect(editor.state.doc.lineAt(editor.state.selection.main.head).number).toBe(1);
+  });
+
+  it("修改回填消息后退出导航且不恢复旧草稿", async () => {
+    const view = await render_composer({
+      message_history: [[{ kind: "text", text: "最新消息" }]],
+    });
+    const editor = get_editor(view);
+    await set_document(editor, "原草稿", 0);
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    await act(async () => {
+      editor.dispatch({ changes: { from: editor.state.doc.length, insert: "已修改" } });
+    });
+
+    await dispatch_key(editor.contentDOM, "ArrowDown");
+
+    expect(editor.state.doc.toString()).toBe("最新消息已修改");
+  });
+
+  it("只移动选区时保留历史导航位置", async () => {
+    const view = await render_composer({
+      message_history: [[{ kind: "text", text: "较旧消息" }], [{ kind: "text", text: "最新消息" }]],
+    });
+    const editor = get_editor(view);
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    await act(async () => {
+      editor.dispatch({ selection: EditorSelection.cursor(0) });
+    });
+
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+
+    expect(editor.state.doc.toString()).toBe("较旧消息");
+  });
+
+  it("历史 reset 时恢复进入导航前的结构化草稿", async () => {
+    const composer_ref = createRef<AgentComposerHandle>();
+    const message_history = [[{ kind: "text", text: "最新消息" }]] as const;
+    const view = await render_composer({ composer_ref, message_history });
+    const editor = get_editor(view);
+    await act(async () => {
+      composer_ref.current?.write_draft([
+        { kind: "skill", name: "glossary-audit" },
+        { kind: "text", text: " 待检查" },
+      ]);
+      editor.dispatch({ selection: EditorSelection.cursor(0) });
+    });
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    expect(editor.state.doc.toString()).toBe("最新消息");
+
+    await render_composer({ composer_ref, message_history: [] });
+
+    expect(editor.state.doc.toString()).toBe("@glossary-audit 待检查");
+    expect(view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
+    expect(editor.state.selection.main.head).toBe(editor.state.doc.length);
+  });
+
+  it("历史尾部追加消息时保持绝对索引并继续向新消息浏览", async () => {
+    const original_history = [
+      [{ kind: "text", text: "较旧消息" }],
+      [{ kind: "text", text: "原最新消息" }],
+    ] as const;
+    const view = await render_composer({ message_history: original_history });
+    const editor = get_editor(view);
+    await set_document(editor, "原草稿", 0);
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+
+    await render_composer({
+      message_history: [...original_history, [{ kind: "text", text: "新增消息" }]],
+    });
+    await dispatch_key(editor.contentDOM, "ArrowDown");
+    expect(editor.state.doc.toString()).toBe("新增消息");
+    await dispatch_key(editor.contentDOM, "ArrowDown");
+    expect(editor.state.doc.toString()).toBe("原草稿");
+  });
+
+  it("write_draft 即使写入相同内容也显式退出历史导航", async () => {
+    const composer_ref = createRef<AgentComposerHandle>();
+    const view = await render_composer({
+      composer_ref,
+      message_history: [[{ kind: "text", text: "最新消息" }]],
+    });
+    const editor = get_editor(view);
+    await set_document(editor, "原草稿", 0);
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    expect(editor.state.doc.toString()).toBe("最新消息");
+
+    await act(async () => {
+      composer_ref.current?.write_draft([{ kind: "text", text: "最新消息" }]);
+    });
+    await dispatch_key(editor.contentDOM, "ArrowDown");
+
+    expect(editor.state.doc.toString()).toBe("最新消息");
+  });
+
+  it("非空选区不启动历史导航", async () => {
+    const view = await render_composer({
+      message_history: [[{ kind: "text", text: "最新消息" }]],
+    });
+    const editor = get_editor(view);
+    await set_document(editor, "普通草稿", 4);
+    await act(async () => {
+      editor.dispatch({ selection: EditorSelection.range(0, 4) });
+    });
+
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+
+    expect(editor.state.doc.toString()).toBe("普通草稿");
   });
 
   it("skill 菜单优先消费历史导航方向键", async () => {
@@ -222,6 +349,10 @@ describe("AgentComposer", () => {
 
     expect(editor.state.doc.toString()).toBe("@");
     expect(menu.querySelector('[data-highlight="true"]')?.textContent).toContain("corpus-search");
+
+    await dispatch_key(editor.contentDOM, "Enter");
+    await dispatch_key(editor.contentDOM, "ArrowDown");
+    expect(editor.state.doc.toString()).toBe("@corpus-search");
   });
 
   it("把 skill 当作原子范围删除、跨越，并随撤销重做恢复语义", async () => {
@@ -543,6 +674,7 @@ describe("AgentComposer", () => {
     await act(async () => {
       root?.render(
         <AgentComposer
+          ref={options.composer_ref}
           skills={skills}
           message_history={options.message_history ?? []}
           running={options.running ?? false}
