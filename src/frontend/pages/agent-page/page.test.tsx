@@ -102,16 +102,16 @@ describe("AgentPage", () => {
     const submit = get_button_by_label(view, "发送");
 
     expect(suggestions.map((button) => button.textContent)).toEqual([
+      "介绍你的能力",
       "请帮我审校术语 @glossary-review",
       "请帮我审校译文 @translation-review",
-      "介绍你的能力",
     ]);
     expect(view.querySelector(".agent-composer__model-trigger")?.textContent).toContain(
       "Agent Model",
     );
     expect(view.querySelector<HTMLButtonElement>(".agent-composer__reset")?.disabled).toBe(true);
 
-    await act(async () => suggestions[2]?.click());
+    await act(async () => suggestions[0]?.click());
     expect(send).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(editor);
     await act(async () => {
@@ -120,7 +120,7 @@ describe("AgentPage", () => {
     });
     expect(send).toHaveBeenLastCalledWith([{ kind: "text", text: "介绍你的能力" }]);
 
-    await act(async () => suggestions[1]?.click());
+    await act(async () => suggestions[2]?.click());
     expect(document.activeElement).toBe(editor);
     await act(async () => {
       submit.click();
@@ -147,14 +147,14 @@ describe("AgentPage", () => {
       [...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion")].map(
         (button) => button.textContent,
       ),
-    ).toEqual(["请帮我审校译文 @translation-review", "介绍你的能力"]);
+    ).toEqual(["介绍你的能力", "请帮我审校译文 @translation-review"]);
 
     await render_page({ entries: [], skills: [glossary, corpus] });
     expect(
       [...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion")].map(
         (button) => button.textContent,
       ),
-    ).toEqual(["请帮我审校术语 @glossary-review", "介绍你的能力"]);
+    ).toEqual(["介绍你的能力", "请帮我审校术语 @glossary-review"]);
 
     await render_page({ entries: [], skills: [corpus] });
     expect(

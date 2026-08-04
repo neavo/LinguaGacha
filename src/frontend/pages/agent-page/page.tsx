@@ -135,6 +135,22 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
               <p className="agent-page__empty-message">{t("agent_page.empty.message")}</p>
             </div>
             <div className="agent-page__suggestions">
+              <Card
+                asChild
+                className="agent-page__suggestion"
+                onClick={() =>
+                  composer_ref.current?.write_draft([
+                    { kind: "text", text: t("agent_page.empty.suggestions.capabilities") },
+                  ])
+                }
+              >
+                <button type="button">
+                  <Sparkles className="agent-page__suggestion-icon" aria-hidden="true" />
+                  <span className="agent-page__suggestion-label">
+                    {t("agent_page.empty.suggestions.capabilities")}
+                  </span>
+                </button>
+              </Card>
               {FEATURED_AGENT_SKILLS.filter((featured) =>
                 agent.skills.some((skill) => skill.name === featured.name),
               ).map(({ name, suggestionKey, Icon }) => (
@@ -157,22 +173,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                   </button>
                 </Card>
               ))}
-              <Card
-                asChild
-                className="agent-page__suggestion"
-                onClick={() =>
-                  composer_ref.current?.write_draft([
-                    { kind: "text", text: t("agent_page.empty.suggestions.capabilities") },
-                  ])
-                }
-              >
-                <button type="button">
-                  <Sparkles className="agent-page__suggestion-icon" aria-hidden="true" />
-                  <span className="agent-page__suggestion-label">
-                    {t("agent_page.empty.suggestions.capabilities")}
-                  </span>
-                </button>
-              </Card>
             </div>
           </div>
         ) : (

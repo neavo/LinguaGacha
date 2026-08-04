@@ -75,9 +75,9 @@
 .agent-page__suggestions {
   display: grid;
   grid-row: 3;
-  width: min(100%, 608px);
+  width: min(100%, 768px);
   align-self: start;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin-top: 20px;
 }
