@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { BackendRuntimeReady } from "../shared/backend-runtime";
+import type { DesktopUpdateServiceOptions } from "./shell/desktop-update-service";
 import { run_gui_entry } from "./gui-entry";
 
 const mocks = vi.hoisted(() => {
@@ -34,9 +35,9 @@ const mocks = vi.hoisted(() => {
   }
 
   const cleanup_updates = vi.fn(async () => undefined);
-  const update_options: unknown[] = [];
+  const update_options: DesktopUpdateServiceOptions[] = [];
   class DesktopUpdateService {
-    constructor(options: unknown) {
+    constructor(options: DesktopUpdateServiceOptions) {
       update_options.push(options);
     }
 
@@ -61,6 +62,7 @@ const mocks = vi.hoisted(() => {
     app_exit: vi.fn(),
     app_quit: vi.fn(),
     resolve_proxy: vi.fn(async () => "DIRECT"),
+    session_fetch: vi.fn(async () => new Response()),
     open_path: vi.fn(async () => ""),
     configure_public_path: vi.fn(),
     configure_debugging: vi.fn(),
@@ -84,7 +86,9 @@ vi.mock("electron", () => ({
     quit: mocks.app_quit,
   },
   BrowserWindow: { getAllWindows: vi.fn(() => []) },
-  session: { defaultSession: { resolveProxy: mocks.resolve_proxy } },
+  session: {
+    defaultSession: { fetch: mocks.session_fetch, resolveProxy: mocks.resolve_proxy },
+  },
   shell: { openPath: mocks.open_path },
 }));
 vi.mock("./runtime/backend-runtime-client", () => ({
@@ -125,7 +129,7 @@ describe("run_gui_entry", () => {
     mocks.backend_start.mockResolvedValue(mocks.ready);
   });
 
-  it("Backend ready 后才装配更新器、IPC 和窗口", async () => {
+  it("Backend ready 后以 Electron 默认会话装配更新器、IPC 和窗口", async () => {
     const worker_url = new URL("file:///backend-runtime-worker-entry.js");
 
     run_gui_entry({
@@ -139,8 +143,20 @@ describe("run_gui_entry", () => {
       appRoot: process.cwd(),
     });
     expect(mocks.update_options).toEqual([
-      { appRoot: process.cwd(), updateRootDir: "E:/userdata/berserker" },
+      {
+        appRoot: process.cwd(),
+        updateRootDir: "E:/userdata/berserker",
+        runtime: { fetch: expect.any(Function) },
+      },
     ]);
+    const update_fetch = mocks.update_options[0]?.runtime.fetch;
+    if (update_fetch === undefined) throw new Error("缺少更新器 fetch。");
+    const update_request_init = { method: "GET" };
+    await update_fetch("https://example.com/update.zip", update_request_init);
+    expect(mocks.session_fetch).toHaveBeenCalledWith(
+      "https://example.com/update.zip",
+      update_request_init,
+    );
     expect(mocks.cleanup_updates).toHaveBeenCalledOnce();
     expect(mocks.create_log_window_host).toHaveBeenCalledWith(
       expect.objectContaining({ backendApiBaseUrl: "http://127.0.0.1:4567" }),
