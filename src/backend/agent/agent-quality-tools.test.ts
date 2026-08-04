@@ -364,12 +364,13 @@ describe("Agent 质量规则工具", () => {
       computeWorker: create_compute_worker(),
     };
 
-    expect(await query_agent_quality_rules(dependencies, "pre_replacement")).toMatchObject({
-      projectPath: "test.lg",
+    const pre_replacement = await query_agent_quality_rules(dependencies, "pre_replacement");
+    expect(pre_replacement).toMatchObject({
       sectionRevisions: { quality: 4 },
       meta: { enabled: true },
       entries: [{ entry_id: "pre", src: "A", dst: "B", regex: false }],
     });
+    expect(pre_replacement).not.toHaveProperty("projectPath");
     expect(await query_agent_quality_rules(dependencies, "post_replacement")).toMatchObject({
       meta: { enabled: false },
       entries: [{ entry_id: "post", regex: true }],
@@ -633,6 +634,7 @@ describe("Agent 质量规则工具", () => {
       meta: { enabled: false },
       affected_entries: [{ entry_id: "a", dst: "A" }],
     });
+    expect(result_details).not.toHaveProperty("projectPath");
     expect((result_details["affected_entries"] as JsonRecord[])[0]).not.toHaveProperty(
       "matched_item_count",
     );

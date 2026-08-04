@@ -71,7 +71,6 @@
 .log-detail-view__process pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-family: var(--ui-font-family-base);
 }
 
 .log-detail-view__items,

@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, useState, type UIEvent } from "react";
-import { ArrowDown, BookCheck, Bot, Sparkles } from "lucide-react";
+import { ArrowDown, BookCheck, Bot, ScanText, Sparkles } from "lucide-react";
 
 import type { AgentEntryStatus, AgentUserMessagePart } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
@@ -15,7 +15,19 @@ import { is_at_scroll_end } from "./agent-scroll";
 import { useAgentPageState } from "./use-agent-page-state";
 import "./agent-page.css";
 
-const GLOSSARY_AUDIT_SKILL_NAME = "glossary-audit";
+/** 空会话只展示产品内置且确已加载的高频工作流，顺序同时决定界面优先级。 */
+const FEATURED_AGENT_SKILLS = [
+  {
+    name: "glossary-review",
+    suggestionKey: "agent_page.empty.suggestions.glossary_review",
+    Icon: BookCheck,
+  },
+  {
+    name: "translation-review",
+    suggestionKey: "agent_page.empty.suggestions.translation_review",
+    Icon: ScanText,
+  },
+] as const;
 const AGENT_CONVERSATION_FOLLOW_HOLD = "conversation";
 const AGENT_STATUS_LABEL_KEYS = Object.freeze({
   running: "agent_page.status.running",
@@ -123,6 +135,28 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
               <p className="agent-page__empty-message">{t("agent_page.empty.message")}</p>
             </div>
             <div className="agent-page__suggestions">
+              {FEATURED_AGENT_SKILLS.filter((featured) =>
+                agent.skills.some((skill) => skill.name === featured.name),
+              ).map(({ name, suggestionKey, Icon }) => (
+                <Card
+                  key={name}
+                  asChild
+                  className="agent-page__suggestion"
+                  onClick={() =>
+                    composer_ref.current?.write_draft([
+                      { kind: "text", text: `${t(suggestionKey)} ` },
+                      { kind: "skill", name },
+                    ])
+                  }
+                >
+                  <button type="button">
+                    <Icon className="agent-page__suggestion-icon" aria-hidden="true" />
+                    <span className="agent-page__suggestion-label">
+                      {t(suggestionKey)} <span className="agent-skill-token">@{name}</span>
+                    </span>
+                  </button>
+                </Card>
+              ))}
               <Card
                 asChild
                 className="agent-page__suggestion"
@@ -139,29 +173,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                   </span>
                 </button>
               </Card>
-              {agent.skills.some((skill) => skill.name === GLOSSARY_AUDIT_SKILL_NAME) && (
-                <Card
-                  asChild
-                  className="agent-page__suggestion"
-                  onClick={() =>
-                    composer_ref.current?.write_draft([
-                      {
-                        kind: "text",
-                        text: `${t("agent_page.empty.suggestions.glossary_audit")} `,
-                      },
-                      { kind: "skill", name: GLOSSARY_AUDIT_SKILL_NAME },
-                    ])
-                  }
-                >
-                  <button type="button">
-                    <BookCheck className="agent-page__suggestion-icon" aria-hidden="true" />
-                    <span className="agent-page__suggestion-label">
-                      {t("agent_page.empty.suggestions.glossary_audit")}{" "}
-                      <span className="agent-skill-token">@{GLOSSARY_AUDIT_SKILL_NAME}</span>
-                    </span>
-                  </button>
-                </Card>
-              )}
             </div>
           </div>
         ) : (

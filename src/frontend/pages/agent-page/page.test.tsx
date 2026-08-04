@@ -50,8 +50,9 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.action.new_task") return "新任务";
       if (key === "agent_page.action.send") return "发送";
       if (key === "agent_page.confirm.new_task") return "是否确认开始新的对话任务 …?";
-      if (key === "agent_page.empty.suggestions.capabilities") return "介绍一下你的能力";
-      if (key === "agent_page.empty.suggestions.glossary_audit") return "请帮我审校术语表";
+      if (key === "agent_page.empty.suggestions.capabilities") return "介绍你的能力";
+      if (key === "agent_page.empty.suggestions.glossary_review") return "请帮我审校术语";
+      if (key === "agent_page.empty.suggestions.translation_review") return "请帮我审校译文";
       return params === undefined ? key : `${key}:${Object.values(params).join(",")}`;
     },
   }),
@@ -93,55 +94,74 @@ describe("AgentPage", () => {
     return container;
   }
 
-  it("空会话显示两个起始任务并写入结构化草稿", async () => {
+  it("空会话按顺序显示三个起始任务，并把译文审查写成结构化草稿", async () => {
     const send = vi.fn(async () => false);
     const view = await render_page({ entries: [], send });
-    const empty = view.querySelector(".agent-page__empty");
     const suggestions = [...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion")];
     const editor = view.querySelector<HTMLElement>(".cm-content");
     const submit = get_button_by_label(view, "发送");
 
     expect(suggestions.map((button) => button.textContent)).toEqual([
-      "介绍一下你的能力",
-      "请帮我审校术语表 @glossary-audit",
+      "请帮我审校术语 @glossary-review",
+      "请帮我审校译文 @translation-review",
+      "介绍你的能力",
     ]);
     expect(view.querySelector(".agent-composer__model-trigger")?.textContent).toContain(
       "Agent Model",
     );
     expect(view.querySelector<HTMLButtonElement>(".agent-composer__reset")?.disabled).toBe(true);
 
-    await act(async () => suggestions[0]?.click());
+    await act(async () => suggestions[2]?.click());
     expect(send).not.toHaveBeenCalled();
     expect(document.activeElement).toBe(editor);
     await act(async () => {
       submit.click();
       await Promise.resolve();
     });
-    expect(send).toHaveBeenLastCalledWith([{ kind: "text", text: "介绍一下你的能力" }]);
+    expect(send).toHaveBeenLastCalledWith([{ kind: "text", text: "介绍你的能力" }]);
 
     await act(async () => suggestions[1]?.click());
-    expect(empty?.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
     expect(document.activeElement).toBe(editor);
     await act(async () => {
       submit.click();
       await Promise.resolve();
     });
     expect(send).toHaveBeenLastCalledWith([
-      { kind: "text", text: "请帮我审校术语表 " },
-      { kind: "skill", name: "glossary-audit" },
+      { kind: "text", text: "请帮我审校译文 " },
+      { kind: "skill", name: "translation-review" },
     ]);
 
     await render_page();
     expect(view.querySelectorAll(".agent-page__suggestion")).toHaveLength(0);
   });
 
-  it("术语 skill 未加载时不展示不可提交的快捷入口", async () => {
-    const view = await render_page({ entries: [], skills: [] });
+  it("featured skill 各自按真实加载状态显示，非 featured skill 不进入空态", async () => {
+    const glossary = build_state().skills.find((skill) => skill.name === "glossary-review");
+    const translation = build_state().skills.find((skill) => skill.name === "translation-review");
+    const corpus = build_state().skills.find((skill) => skill.name === "corpus-search");
+    if (glossary === undefined || translation === undefined || corpus === undefined) {
+      throw new Error("缺少 skill fixture");
+    }
+    const view = await render_page({ entries: [], skills: [translation, corpus] });
     expect(
       [...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion")].map(
         (button) => button.textContent,
       ),
-    ).toEqual(["介绍一下你的能力"]);
+    ).toEqual(["请帮我审校译文 @translation-review", "介绍你的能力"]);
+
+    await render_page({ entries: [], skills: [glossary, corpus] });
+    expect(
+      [...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion")].map(
+        (button) => button.textContent,
+      ),
+    ).toEqual(["请帮我审校术语 @glossary-review", "介绍你的能力"]);
+
+    await render_page({ entries: [], skills: [corpus] });
+    expect(
+      [...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion")].map(
+        (button) => button.textContent,
+      ),
+    ).toEqual(["介绍你的能力"]);
   });
 
   it("把当前上下文用量装配到底栏", async () => {
@@ -345,11 +365,19 @@ describe("AgentPage", () => {
 function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
   const skills = [
     {
-      name: "glossary-audit",
+      name: "glossary-review",
       displayDescriptions: {
         "zh-CN": "审校术语",
         "en-US": "Review glossary",
         "de-DE": "Glossar prüfen",
+      },
+    },
+    {
+      name: "translation-review",
+      displayDescriptions: {
+        "zh-CN": "审查译文",
+        "en-US": "Review translations",
+        "de-DE": "Übersetzungen prüfen",
       },
     },
     {

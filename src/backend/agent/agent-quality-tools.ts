@@ -301,7 +301,6 @@ export function create_agent_quality_tools(
         return tool_result({
           accepted: true,
           rule_type: update.rule_type,
-          projectPath: change?.projectPath ?? current.projectPath,
           sectionRevisions: change?.sectionRevisions ?? current.sectionRevisions,
           affected_entries:
             applied?.entries.filter((entry) =>
@@ -362,7 +361,6 @@ function read_agent_quality_rules_snapshot(
   const rule = QualityRule.from_json(rule_type);
   const result: JsonRecord & { entries: JsonRecord[] } = {
     rule_type,
-    projectPath: String(payload["projectPath"] ?? ""),
     sectionRevisions: read_json_record(payload["sectionRevisions"]),
     meta:
       rule_type === "text_preserve"

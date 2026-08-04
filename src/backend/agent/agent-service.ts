@@ -48,6 +48,7 @@ import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-ga
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { create_agent_item_tools, type AgentProofreading } from "./agent-item-tools";
 import { register_agent_model, type AgentModelLimits } from "./agent-model";
+import { create_agent_project_tools } from "./agent-project-tools";
 import { create_agent_quality_tools } from "./agent-quality-tools";
 import {
   append_agent_session_seed,
@@ -432,6 +433,10 @@ export class AgentService {
       thinkingLevel: resolved_model.thinkingLevel,
       noTools: "builtin",
       customTools: [
+        ...create_agent_project_tools({
+          settings: this.settings,
+          sessionState: this.session_state,
+        }),
         ...create_agent_quality_tools({
           qualityRules: this.quality_rules,
           cache: this.cache,

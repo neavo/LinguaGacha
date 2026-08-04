@@ -51,14 +51,10 @@
 }
 
 .custom-prompt-page__readonly-block {
-  margin: 0;
-  font-family: inherit;
-}
-
-.custom-prompt-page__readonly-block {
   display: block;
   min-width: 0;
   flex: 1;
+  margin: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -84,7 +80,6 @@
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-family: inherit;
   font-size: 12px;
   line-height: 1.55;
 }

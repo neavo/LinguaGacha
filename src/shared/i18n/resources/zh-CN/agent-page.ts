@@ -8,8 +8,9 @@ export const zh_cn_agent_page = {
   empty: {
     message: "「搭档」，我们接下来做点什么呢  ( •̀ ᗜ •́ )つ▱",
     suggestions: {
-      capabilities: "介绍一下你的能力",
-      glossary_audit: "请帮我审校术语表",
+      capabilities: "介绍你的能力",
+      glossary_review: "请帮我审校术语",
+      translation_review: "请帮我审校译文",
     },
   },
   input: {

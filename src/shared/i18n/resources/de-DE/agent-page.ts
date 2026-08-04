@@ -11,8 +11,9 @@ export const de_de_agent_page = {
   empty: {
     message: "「Aibō」, was machen wir als Nächstes  ( •̀ ᗜ •́ )つ▱",
     suggestions: {
-      capabilities: "Stell mir deine Fähigkeiten vor",
-      glossary_audit: "Bitte prüfe mein Glossar",
+      capabilities: "Stell deine Fähigkeiten vor",
+      glossary_review: "Bitte prüfe meine Terminologie",
+      translation_review: "Bitte prüfe meine Übersetzungen",
     },
   },
   input: {

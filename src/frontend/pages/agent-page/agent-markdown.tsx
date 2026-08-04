@@ -146,7 +146,7 @@ async function render_mermaid(
 function build_mermaid_config(theme_mode: MermaidThemeMode): MermaidConfig {
   const style = getComputedStyle(document.documentElement);
   const read_token = (name: string): string => style.getPropertyValue(name).trim();
-  const font_family = read_token("--ui-font-family-base");
+  const font_family = "var(--ui-font-family-base)";
   const theme_variables = {
     background: read_token("--popover"),
     primaryColor: read_token("--muted"),

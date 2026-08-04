@@ -119,6 +119,7 @@ describe("Agent item 工具", () => {
       cursor: "1",
       complete: false,
     });
+    expect(page).not.toHaveProperty("projectPath");
     expect(page["items"]).toMatchObject([{ item_id: 2, retry_count: 2 }]);
     expect((page["items"] as JsonRecord[])[0]).not.toHaveProperty("extra_field");
     expect((page["items"] as JsonRecord[])[0]).not.toHaveProperty("skip_internal_filter");
@@ -258,7 +259,6 @@ describe("Agent item 工具", () => {
       limit: 5,
     });
     expect(result.details).toMatchObject({
-      projectPath: "test.lg",
       sectionRevisions: { files: 1, items: 2, quality: 3, proofreading: 4 },
       total_item_count: 4,
       cursor: "3",
@@ -272,6 +272,7 @@ describe("Agent item 工具", () => {
         },
       ],
     });
+    expect(result.details).not.toHaveProperty("projectPath");
     const item = ((result.details as JsonRecord)["items"] as JsonRecord[])[0];
     expect(item).not.toHaveProperty("row_id");
     expect(item).not.toHaveProperty("compressed_src");
@@ -393,6 +394,7 @@ describe("Agent item 工具", () => {
         { item_id: 1, dst: "一号译文" },
       ],
     });
+    expect(result.details).not.toHaveProperty("projectPath");
 
     await expect(
       tool.execute(
