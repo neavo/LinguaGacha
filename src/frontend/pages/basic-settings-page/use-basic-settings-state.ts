@@ -8,8 +8,8 @@ import { useI18n } from "@frontend/app/locale/locale-provider";
 import type { SettingsSnapshot } from "@frontend/app/state/desktop-state-context";
 import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
+import { apply_prefilter_settings_write } from "@frontend/features/settings-editor/prefilter-settings-write";
 import { useSettingsEditor } from "@frontend/features/settings-editor/use-settings-editor";
-import { apply_basic_settings_prefilter_write } from "@frontend/pages/basic-settings-page/basic-settings-api-client";
 import {
   REQUEST_TIMEOUT_MAX,
   REQUEST_TIMEOUT_MIN,
@@ -88,11 +88,9 @@ export function useBasicSettingsState(): UseBasicSettingsStateResult {
         return;
       }
 
-      await apply_basic_settings_prefilter_write({
-        source_language: next_settings_snapshot.source_language,
-        target_language: next_settings_snapshot.target_language,
-        mtool_optimizer_enable: next_settings_snapshot.mtool_optimizer_enable,
-        skip_duplicate_source_text_enable: next_settings_snapshot.skip_duplicate_source_text_enable,
+      await apply_prefilter_settings_write({
+        operation: "basic-settings.prefilter_settings",
+        settings: next_settings_snapshot,
         commit_project_write,
       });
     },

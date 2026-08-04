@@ -31,19 +31,16 @@ afterEach(() => {
 
 describe("run_cli_entry", () => {
   it("读取发布目录 version.txt 并把版本写到 stdout", async () => {
-    const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-cli-entry-"));
+    using temp_root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-cli-entry-"));
+    const app_root = temp_root.path;
     const stdout = spy_process_write(process.stdout);
-    try {
-      fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3\n", "utf-8");
+    fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3\n", "utf-8");
 
-      await expect(
-        run_cli_entry(["--version"], app_root, IN_PROCESS_WORKER_EXECUTION),
-      ).resolves.toBe(0);
+    await expect(run_cli_entry(["--version"], app_root, IN_PROCESS_WORKER_EXECUTION)).resolves.toBe(
+      0,
+    );
 
-      expect(stdout.messages).toEqual(["1.2.3\n"]);
-    } finally {
-      fs.rmSync(app_root, { force: true, recursive: true });
-    }
+    expect(stdout.messages).toEqual(["1.2.3\n"]);
   });
 
   it("命令成功时透传运行配置且不追加 stdout", async () => {

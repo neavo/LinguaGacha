@@ -114,54 +114,34 @@ describe("TaskService", () => {
     });
   });
 
-  it("HTTP 与 current-project 重翻入口使用同一 required-section 规则", async () => {
+  it("current-project 重翻入口补全 required-section revision", async () => {
     const revisions = { items: 7, proofreading: 2, quality: 3, prompts: 4 };
-    const api_sections: string[] = [];
-    const api_commands: Array<Record<string, unknown>> = [];
-    const api_session = new ProjectSessionState();
-    api_session.mark_loaded("E:/Project/api.lg");
-    const api_runtime = create_runtime(revisions, api_session, api_sections);
-    const api_service = create_service(
+    const sections: string[] = [];
+    const commands: Array<Record<string, unknown>> = [];
+    const session = new ProjectSessionState();
+    session.mark_loaded("E:/Project/current.lg");
+    const runtime = create_runtime(revisions, session, sections);
+    const service = create_service(
       {
         start: async (_handle: unknown, command: Record<string, unknown>) => {
-          api_commands.push(command);
+          commands.push(command);
         },
       } as unknown as TaskEngine,
-      api_runtime,
-      api_session,
+      runtime,
+      session,
     );
 
-    await api_service.start_task({
+    const snapshot = await service.start_current_project_task({
       task_type: "translation",
       mode: "new",
       scope: { kind: "items", item_ids: [2, 1] },
+    });
+
+    expect(sections).toEqual(["items", "proofreading", "quality", "prompts"]);
+    expect(commands[0]).toMatchObject({
       expected_section_revisions: revisions,
-    });
-
-    const current_sections: string[] = [];
-    const current_commands: Array<Record<string, unknown>> = [];
-    const current_session = new ProjectSessionState();
-    current_session.mark_loaded("E:/Project/current.lg");
-    const current_runtime = create_runtime(revisions, current_session, current_sections);
-    const current_service = create_service(
-      {
-        start: async (_handle: unknown, command: Record<string, unknown>) => {
-          current_commands.push(command);
-        },
-      } as unknown as TaskEngine,
-      current_runtime,
-      current_session,
-    );
-
-    const snapshot = await current_service.start_current_project_task({
-      task_type: "translation",
-      mode: "new",
       scope: { kind: "items", item_ids: [2, 1] },
     });
-
-    expect(api_sections).toEqual(["items", "proofreading", "quality", "prompts"]);
-    expect(current_sections).toEqual(api_sections);
-    expect(current_commands).toEqual(api_commands);
     expect(snapshot).toMatchObject({
       task_type: "translation",
       status: "requested",

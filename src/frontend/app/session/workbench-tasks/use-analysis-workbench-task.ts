@@ -26,7 +26,10 @@ import { resolve_visible_error_message } from "@frontend/app/feedback/visible-er
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import { should_defer_task_snapshot_refresh } from "@shared/workbench/task-ownership";
 import { should_open_analysis_glossary_import_followup } from "@shared/workbench/task-completion-followup";
-import { useTerminalPromptSuppression } from "@frontend/app/session/workbench-tasks/terminal-prompt-suppression";
+import {
+  resolve_task_terminal_transition,
+  useTerminalPromptSuppression,
+} from "@frontend/app/session/workbench-tasks/terminal-prompt-suppression";
 import { read_workbench_task_section_revisions } from "@frontend/app/session/workbench-tasks/workbench-task-revisions-api";
 import {
   advance_task_waveform_state,
@@ -116,46 +119,6 @@ function create_task_confirm_state(kind: AnalysisTaskActionKind): AnalysisTaskCo
     open: true,
     submitting: false,
   };
-}
-
-/**
- * 只在任务从活动态离开时生成一次终态反馈，停止流程优先于完成反馈。
- */
-function resolve_analysis_terminal_feedback_message(args: {
-  previous_status: string;
-  next_status: string;
-  has_result: boolean;
-  t: ReturnType<typeof useI18n>["t"];
-}): string | null {
-  if (args.previous_status === "stopping" && args.next_status !== "stopping") {
-    return args.t("workbench_page.task.feedback.stopped");
-  }
-
-  if (
-    !is_active_analysis_task_status(args.previous_status) ||
-    args.previous_status === "stopping"
-  ) {
-    return null;
-  }
-
-  if (args.next_status === "done" || (args.next_status === "idle" && args.has_result)) {
-    return args.t("workbench_page.task.feedback.done");
-  }
-
-  return null;
-}
-
-/**
- * 活动态到非活动态是终端提示边界，运行中的状态细分不重复触发。
- */
-function is_analysis_terminal_prompt_boundary(args: {
-  previous_status: string;
-  next_status: string;
-}): boolean {
-  return (
-    is_active_analysis_task_status(args.previous_status) &&
-    !is_active_analysis_task_status(args.next_status)
-  );
 }
 
 /**
@@ -721,20 +684,19 @@ export function useAnalysisWorkbenchTask(
     }
 
     // 为什么：完成/停止提示只认真实状态跃迁，避免初始状态读取和后续刷新把成功提示连续弹多次
-    const feedback_message = resolve_analysis_terminal_feedback_message({
+    const terminal_transition = resolve_task_terminal_transition({
       previous_status,
       next_status,
       has_result: has_analysis_task_display_state(analysis_task_display_snapshot),
-      t,
+      is_active_status: is_active_analysis_task_status,
     });
 
-    if (feedback_message !== null) {
-      push_toast("success", feedback_message);
+    if (terminal_transition.feedback !== null) {
+      push_toast("success", t(`workbench_page.task.feedback.${terminal_transition.feedback}`));
     }
 
     const terminal_prompt_suppressed =
-      is_analysis_terminal_prompt_boundary({ previous_status, next_status }) &&
-      consume_terminal_prompt_suppression();
+      terminal_transition.prompt_boundary && consume_terminal_prompt_suppression();
 
     if (
       !analysis_dialog_open &&

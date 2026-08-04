@@ -16,6 +16,7 @@ import {
   create_empty_proofreading_filter_panel_state,
   create_empty_proofreading_list_view,
   type ProofreadingClientItem,
+  type ProofreadingContextItem,
   type ProofreadingFilterOptions,
 } from "@shared/proofreading/proofreading-types";
 import { useProofreadingPageState } from "@frontend/pages/proofreading-page/use-proofreading-page-state";
@@ -64,6 +65,7 @@ type ProofreadingClientFixture = {
   read_proofreading_row_ids_range: ReturnType<typeof vi.fn>;
   resolve_proofreading_row_index: ReturnType<typeof vi.fn>;
   read_proofreading_items_by_row_ids: ReturnType<typeof vi.fn>;
+  read_proofreading_context: ReturnType<typeof vi.fn>;
   build_proofreading_filter_panel: ReturnType<typeof vi.fn>;
 };
 
@@ -492,6 +494,7 @@ function create_proofreading_client_fixture(): ProofreadingClientFixture {
     read_proofreading_items_by_row_ids: vi.fn(async () => {
       return create_list_view().window_rows.map((row) => row.item);
     }),
+    read_proofreading_context: vi.fn(async () => []),
     build_proofreading_filter_panel: vi.fn(async () => create_filter_panel()),
   };
 }
@@ -618,6 +621,104 @@ describe("useProofreadingPageState", () => {
     expect(latest_state?.dialog_item?.internal_file_path).toBe("data/Actors.json");
   });
 
+  it("保存弹窗改动时提交当前列表 revision 锁", async () => {
+    await render_hook();
+    await act(async () => {
+      await latest_state?.open_edit_dialog("1");
+    });
+    act(() => {
+      latest_state?.update_dialog_draft({ dst: "新译文", name_dst: "新姓名" });
+    });
+    await act(async () => {
+      await latest_state?.save_dialog_entry();
+    });
+
+    expect(api_fetch).toHaveBeenCalledWith("/api/proofreading/items/update", {
+      changes: [{ item_id: 1, dst: "新译文", name_dst: "新姓名" }],
+      expected_section_revisions: { items: 7, proofreading: 1 },
+    });
+  });
+
+  it("首次读取详情失败时显示错误提醒并保持弹窗关闭", async () => {
+    proofreading_client_fixture.current.read_proofreading_items_by_row_ids.mockRejectedValueOnce(
+      new Error("详情读取失败"),
+    );
+    await render_hook();
+
+    await act(async () => {
+      await latest_state?.open_edit_dialog("1");
+    });
+
+    expect(latest_state?.dialog_state.open).toBe(false);
+    expect(toast_fixture.current.push_toast).toHaveBeenCalledWith("error", expect.any(String));
+  });
+
+  it("上下文读取失败后可重试", async () => {
+    const context_item: ProofreadingContextItem = {
+      row_id: "1",
+      row_number: 1,
+      src: "原文",
+      dst: "译文",
+      name_src: null,
+      name_dst: null,
+    };
+    proofreading_client_fixture.current.read_proofreading_context
+      .mockRejectedValueOnce(new Error("failed"))
+      .mockResolvedValueOnce([context_item]);
+    await render_hook();
+    await act(async () => {
+      await latest_state?.open_edit_dialog("1");
+    });
+    await act(async () => {
+      await latest_state?.open_dialog_context();
+    });
+    expect(latest_state?.dialog_state.context.status).toBe("error");
+
+    await act(async () => {
+      await latest_state?.open_dialog_context();
+    });
+    expect(latest_state?.dialog_state.context).toEqual({ status: "ready", items: [context_item] });
+  });
+
+  it("重新打开上下文后忽略旧请求结果", async () => {
+    const stale_request = create_deferred<ProofreadingContextItem[]>();
+    const current_request = create_deferred<ProofreadingContextItem[]>();
+    proofreading_client_fixture.current.read_proofreading_context
+      .mockReturnValueOnce(stale_request.promise)
+      .mockReturnValueOnce(current_request.promise);
+    await render_hook();
+    await act(async () => {
+      await latest_state?.open_edit_dialog("1");
+    });
+
+    let first: Promise<void> | undefined;
+    let second: Promise<void> | undefined;
+    act(() => {
+      first = latest_state?.open_dialog_context();
+      latest_state?.close_dialog_context();
+      second = latest_state?.open_dialog_context();
+    });
+    await act(async () => {
+      stale_request.resolve([]);
+      await first;
+    });
+    expect(latest_state?.dialog_state.context.status).toBe("loading");
+
+    const current_item: ProofreadingContextItem = {
+      row_id: "1",
+      row_number: 1,
+      src: "当前原文",
+      dst: "当前译文",
+      name_src: null,
+      name_dst: null,
+    };
+    await act(async () => {
+      current_request.resolve([current_item]);
+      await second;
+    });
+    expect(latest_state?.dialog_state.context).toEqual({ status: "ready", items: [current_item] });
+  });
+
   it("收到导航查找意图时会重置旧筛选并执行统一列表查询", async () => {
     await render_hook();
     await act(async () => {
@@ -687,6 +788,12 @@ describe("useProofreadingPageState", () => {
     await render_hook();
 
     expect(latest_state?.readonly).toBe(true);
+    await act(async () => {
+      latest_state?.request_retranslate_row_ids(["1"]);
+      latest_state?.request_set_translation_status_row_ids(["1"], "PROCESSED");
+    });
+    expect(latest_state?.pending_confirmation).toBeNull();
+    expect(api_fetch).not.toHaveBeenCalledWith("/api/tasks/start", expect.anything());
   });
 
   it("首次进入校对页时把默认意图展开为当前默认筛选", async () => {
@@ -2230,6 +2337,33 @@ describe("useProofreadingPageState", () => {
     expect(proofreading_client_fixture.current.build_proofreading_list_view).not.toHaveBeenCalled();
   });
 
+  it("空替换文本会按当前列表 revision 清除全部可见匹配", async () => {
+    proofreading_client_fixture.current.read_proofreading_row_ids_range.mockResolvedValueOnce([
+      "1",
+      "2",
+    ]);
+    proofreading_client_fixture.current.read_proofreading_items_by_row_ids.mockResolvedValueOnce([
+      create_client_item(1, { dst: "旧译文" }),
+      create_client_item(2, { dst: "第二条旧译文" }),
+    ]);
+    await render_hook();
+    await act(async () => {
+      latest_state?.update_search_keyword("旧");
+      latest_state?.update_replace_text("");
+    });
+    await act(async () => {
+      await latest_state?.replace_all_visible_matches();
+    });
+
+    expect(api_fetch).toHaveBeenCalledWith("/api/proofreading/items/replace-all", {
+      item_ids: [1, 2],
+      search_text: "旧",
+      replace_text: "",
+      is_regex: false,
+      expected_section_revisions: { items: 7, proofreading: 1 },
+    });
+  });
+
   it("sync 顶层 sectionRevisions 会作为重翻的完整操作基线", async () => {
     proofreading_client_fixture.current.sync_proofreading_cache = vi.fn(async () => {
       return create_sync_state({}, { prompts: 3 });
@@ -2335,7 +2469,10 @@ describe("useProofreadingPageState", () => {
         task_type: string;
         status: string;
         busy: boolean;
-        extras: { kind: "translation"; scope: { kind: "items"; item_ids: Array<number | string> } };
+        extras?: {
+          kind: "translation";
+          scope: { kind: "items"; item_ids: Array<number | string> };
+        };
       };
     }>();
     vi.mocked(api_fetch).mockReturnValueOnce(retranslate_deferred.promise);
@@ -2368,7 +2505,6 @@ describe("useProofreadingPageState", () => {
           task_type: "translation",
           status: "requested",
           busy: true,
-          extras: { kind: "translation", scope: { kind: "items", item_ids: [2, 1] } },
         },
       });
       await confirm_promise;

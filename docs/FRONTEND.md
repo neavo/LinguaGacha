@@ -8,7 +8,7 @@
 - 主进程按 Chromium 编辑语义为主窗口和日志窗口提供原生文本菜单；renderer 不新增菜单 IPC 或页面私有实现。
 - renderer 只加载同源、`data:` 与 `blob:` 图片；模型 Markdown 的远程图片降级为文本，用户外链仍交给宿主入口。
 - 后端传输统一收口到 `src/frontend/app/desktop/desktop-api.ts`；页面和跨页面 feature 可以直接调用其 `api_fetch`，也可以在各自所有权目录建立领域适配器，但不直接创建后端 `fetch` 或 `EventSource`。
-- `desktop-api.ts` 统一处理 API base URL、health probe、响应壳、SSE、本地网络错误、renderer 诊断、日志详情和 GitHub release 元数据请求；release zip 与 GUI Agent 的受控静态网页抓取都由 Electron main 复用默认 session 的 Chromium 网络栈。Agent 抓取只经 main 与 Backend Runtime 的私有宿主协议提供，不进入 renderer、preload 或公开 HTTP API。
+- `desktop-api.ts` 统一处理 API base URL、health probe、响应壳、SSE、本地网络错误、renderer 诊断、日志详情和 GitHub release 元数据请求；release zip 与 GUI Agent 的受控静态网页抓取都由 Electron main 复用默认 session 的 Chromium 网络栈，网页抓取逐跳限制 HTTP(S)、DNS/IP、重定向、超时与响应字节。Agent 抓取只经 main 与 Backend Runtime 的私有宿主协议提供，不进入 renderer、preload 或公开 HTTP API。
 - `DesktopApiError` 是 API 与本地网络失败的统一错误；用户可见文案从稳定 `message_key` / `details` 解析，页面只在确有恢复分支时按稳定 `code` 判断，不解析原始异常文本。
 - renderer 诊断只上报实际异常摘要与 route / project / task / event 白名单上下文，不上报完整 items / files、页面自定义对象或原始路径 / URL。
 - 日志列表只保存 `log.appended` 轻量事件，选中后由 `desktop-api.ts` 严格归一当前进程详情；普通页面、toast 和空状态不展示调用栈或原始异常。
@@ -37,10 +37,10 @@
 - Agent、工作台与校对可在未加载工程时发起项目选择，并在 session ready 后恢复 pending route；其它项目功能页在工程未加载或 session 未 ready 时禁用。
 - 跨页面模型选择由 `features/model-selection` 归一协议并持有页面生命周期 query / command；模型数据不进入 `DesktopStateProvider`，也不通过 SSE 同步，但选择和配置写入消费共享 runtime 锁。
 - Agent 页面从后端 snapshot 恢复当前私有会话并消费统一 Agent SSE，snapshot 时间线不进入 `DesktopStateProvider` 或项目 session UI 缓存；后端 snapshot、恢复 loading、当前 command 与带恢复路径的 issue 是彼此独立的页面状态，轮次结果只读取条目状态。命令互斥不锁定草稿编辑；共享 runtime 锁禁用发送、reset 与模型选择，当前 Agent 回合的 stop 始终保留。
-- Agent 信息流仅在外层容器原本位于底端、且没有展开详情处于回看状态时跟随新内容；外层和思考 / 工具详情都按各自真实滚动位置暂停或恢复，统一的“回到最新”动作清除全部暂停原因。外层使用原生滚动锚点承接内容高度变化，页面只在恢复跟随时执行即时定位，不根据 wheel、pointer 或 keyboard 输入猜测用户意图。
 - `ProjectSessionUiStateProvider` 只保存当前项目内可跨路由恢复的轻量 UI 状态，项目切换或关闭时清空，不写入后端事实。
+- `QualityRuleStatisticsProvider` 持有当前项目内跨规则页共享的后端统计 query 缓存；项目切换时重置，项目事件按受影响规则失效并推进请求 token，旧项目或旧 token 的迟到结果不得写回。
 - 校对以 `entry_id` 消费后端字段级术语结果；编辑窗只对对应译文字段重新求值，不重建术语身份。
-- 规则页通过一次性查找意图跳转校对并重置旧筛选；跳转只负责定位，命中统计仍以质量统计结果为准。
+- 规则页通过一次性查找意图跳转校对并重置旧筛选，命中统计仍以共享质量统计结果为准。
 - `WorkbenchTasksSessionProvider` 保存翻译 / 分析完成后的跨路由 follow-up；页面计算缓存、弹窗、导入和提交中状态默认随页面挂载与卸载。
 - `src/frontend/pages/<page>` 只包含页面入口及该页面的私有实现；页面之间不互相导入，共用能力先迁入 `features`，`features` 不反向依赖 `pages`。
 - `src/frontend/widgets/interactions` 只承接通用交互与快捷键，不依赖 app state、页面领域、桌面桥、后端 API 或 SSE。
@@ -51,7 +51,3 @@
 - 本文不定义视觉风格，只记录工程消费落点；具体方向来自当前任务输入、既有界面证据和适用设计流程，不绑定固定文件名。
 - `src/frontend/index.css` 拥有全局 token 与主题入口，`src/frontend/shadcn` 拥有基础控件，`widgets`、`features` 与 `pages` 只消费 token 并组合各自所有权内的界面。
 - `npm run check` 是前端分层、可见文案与样式消费边界的机器门闩，验证选择见 [`WORKFLOW.md`](WORKFLOW.md)。
-
-## 5. 更新条件
-
-宿主契约、传输入口、共享状态所有权与生命周期、事件恢复、feature / 页面 query / 写入边界、导航入口或样式消费落点变化时更新本文；后端协议更新 [`BACKEND.md`](BACKEND.md)，单纯视觉方向变化不触发本文更新。

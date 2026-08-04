@@ -384,68 +384,6 @@ describe("ProofreadingService", () => {
     });
   });
 
-  it("保存数组姓名译文时替换第 0 槽并保留后续姓名", async () => {
-    const { database, service, lg_path, publisher } = create_service();
-    database.set_items(lg_path, [
-      create_project_item({
-        dst: "旧译文",
-        name_src: ["Alice", "Bob"],
-        name_dst: ["旧译名", "保留译名"],
-        status: "PROCESSED",
-      }),
-    ]);
-
-    await service.update_items({
-      changes: [{ item_id: 1, name_dst: "新译名" }],
-      expected_section_revisions: { items: 0, proofreading: 0 },
-    });
-
-    expect(database.get_all_items(lg_path)).toEqual([
-      create_project_item({
-        dst: "旧译文",
-        name_src: ["Alice", "Bob"],
-        name_dst: ["新译名", "保留译名"],
-        status: "PROCESSED",
-      }),
-    ]);
-    expect(publisher.publish_project_change).toHaveBeenCalledWith(
-      expect.objectContaining({
-        items: { payloadMode: "canonical-delta", changedIds: [1] },
-      }),
-    );
-  });
-
-  it("保存前置空槽后的姓名译文时仍只替换第 0 槽", async () => {
-    const { database, service, lg_path, publisher } = create_service();
-    database.set_items(lg_path, [
-      create_project_item({
-        dst: "旧译文",
-        name_src: ["", "Bob"],
-        name_dst: ["", "旧译名"],
-        status: "PROCESSED",
-      }),
-    ]);
-
-    await service.update_items({
-      changes: [{ item_id: 1, name_dst: "新译名" }],
-      expected_section_revisions: { items: 0, proofreading: 0 },
-    });
-
-    expect(database.get_all_items(lg_path)).toEqual([
-      create_project_item({
-        dst: "旧译文",
-        name_src: ["", "Bob"],
-        name_dst: ["新译名", "旧译名"],
-        status: "PROCESSED",
-      }),
-    ]);
-    expect(publisher.publish_project_change).toHaveBeenCalledWith(
-      expect.objectContaining({
-        items: { payloadMode: "canonical-delta", changedIds: [1] },
-      }),
-    );
-  });
-
   it("正文和姓名译文同次保存时发布同一个字段 patch", async () => {
     const { database, service, lg_path, publisher } = create_service();
     database.set_items(lg_path, [

@@ -48,9 +48,9 @@ describe("useDesktopRecovery", () => {
   let root: Root | null = null;
   let host: HTMLDivElement | null = null;
 
-  afterEach(() => {
+  afterEach(async () => {
     capture_renderer_error_mock.mockClear();
-    root?.unmount();
+    await act(async () => root?.unmount());
     root = null;
     host?.remove();
     host = null;

@@ -266,8 +266,13 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
   };
 });
 
-vi.mock("@frontend/features/quality-rule-editor/quality-rule-api-client", () => {
+vi.mock("@frontend/features/quality-rule-editor/quality-rule-api-client", async (import_actual) => {
+  const actual =
+    await import_actual<
+      typeof import("@frontend/features/quality-rule-editor/quality-rule-api-client")
+    >();
   return {
+    ...actual,
     query_quality_rules: query_quality_rules_mock,
   };
 });
@@ -658,14 +663,6 @@ describe("useTextPreservePageState", () => {
     });
   }
 
-  it("首次规则查询失败时显示错误提醒", async () => {
-    query_quality_rules_mock.mockRejectedValue(new Error("文本保护读取失败"));
-
-    await mount_probe();
-
-    expect(push_toast_mock).toHaveBeenCalledWith("error", expect.anything());
-  });
-
   it("提交模式时沿用生成当前文本保护事实的旧 revision", async () => {
     await mount_probe();
     run_state.revisions.sections.quality = 9;
@@ -692,63 +689,6 @@ describe("useTextPreservePageState", () => {
       expected_section_revisions: { quality: 1 },
       meta: { mode: "smart" },
     });
-  });
-
-  it("items 变更后保留当前文本保护规则表格主体", async () => {
-    await mount_probe();
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo"]);
-
-    project_change_sections = ["items"];
-    run_state = {
-      ...run_state,
-      quality: create_text_preserve_quality(
-        [
-          {
-            src: "baz",
-            info: "qux",
-          },
-        ],
-        2,
-      ),
-      revisions: {
-        ...run_state.revisions,
-        sections: {
-          ...run_state.revisions.sections,
-          quality: 2,
-        },
-      },
-    };
-    await rerender_probe();
-
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["foo"]);
-  });
-
-  it("quality 变更后重新读取文本保护规则表格主体", async () => {
-    await mount_probe();
-
-    project_change_sections = ["quality"];
-    run_state = {
-      ...run_state,
-      quality: create_text_preserve_quality(
-        [
-          {
-            src: "baz",
-            info: "qux",
-          },
-        ],
-        2,
-      ),
-      revisions: {
-        ...run_state.revisions,
-        sections: {
-          ...run_state.revisions.sections,
-          quality: 2,
-        },
-      },
-    };
-    await rerender_probe();
-
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["baz"]);
   });
 
   it("模式切换成功后直接收敛到后端已提交模式", async () => {

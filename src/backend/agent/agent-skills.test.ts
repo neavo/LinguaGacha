@@ -2,24 +2,15 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AppPathService } from "../app/app-path-service";
 import { load_agent_skills } from "./agent-skills";
 
-const cleanup_roots: string[] = [];
-
-afterEach(() => {
-  while (cleanup_roots.length > 0) {
-    const root = cleanup_roots.pop();
-    if (root !== undefined) fs.rmSync(root, { force: true, recursive: true });
-  }
-});
-
 describe("Agent skill 加载", () => {
   it("加载双目录合法 SKILL.md，记录坏 frontmatter，并过滤目录名不匹配项", async () => {
-    const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-skills-"));
-    cleanup_roots.push(app_root);
+    using temp_root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-agent-skills-"));
+    const app_root = temp_root.path;
     const paths = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
     write_skill(
       path.join(paths.get_agent_builtin_skill_dir(), "valid", "SKILL.md"),
@@ -78,8 +69,10 @@ describe("Agent skill 加载", () => {
   });
 
   it("用户同名 skill 连同正文、路径与 references 一起覆盖内置定义", async () => {
-    const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-skills-override-"));
-    cleanup_roots.push(app_root);
+    using temp_root = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-agent-skills-override-"),
+    );
+    const app_root = temp_root.path;
     const paths = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
     const builtin_dir = path.join(paths.get_agent_builtin_skill_dir(), "shared");
     const user_dir = path.join(paths.get_agent_user_skill_dir(), "shared");
@@ -123,8 +116,10 @@ describe("Agent skill 加载", () => {
     ["坏 JSON", "{"],
     ["非法语言", '{"ja-JP":"日本語"}'],
   ])("%s 的 i18n.json 整份回退并记录诊断", async (_case_name, i18n) => {
-    const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-skills-i18n-"));
-    cleanup_roots.push(app_root);
+    using temp_root = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-agent-skills-i18n-"),
+    );
+    const app_root = temp_root.path;
     const paths = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
     const skill_dir = path.join(paths.get_agent_builtin_skill_dir(), "invalid-i18n");
     write_skill(
@@ -151,8 +146,10 @@ describe("Agent skill 加载", () => {
   });
 
   it("递归加载排序后的 Markdown references，并忽略其它文件和符号链接", async () => {
-    const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-agent-skills-ref-"));
-    cleanup_roots.push(app_root);
+    using temp_root = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-agent-skills-ref-"),
+    );
+    const app_root = temp_root.path;
     const paths = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
     const skill_dir = path.join(paths.get_agent_builtin_skill_dir(), "glossary-audit");
     write_skill(

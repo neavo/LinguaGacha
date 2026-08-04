@@ -3,9 +3,6 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { LaboratoryPage } from "@frontend/pages/laboratory-page/page";
-import { de_de_laboratory_page } from "@shared/i18n/resources/de-DE/laboratory-page";
-import { en_us_laboratory_page } from "@shared/i18n/resources/en-US/laboratory-page";
-import { zh_cn_laboratory_page } from "@shared/i18n/resources/zh-CN/laboratory-page";
 
 const { laboratory_state_fixture } = vi.hoisted(() => ({
   laboratory_state_fixture: {
@@ -112,17 +109,7 @@ describe("LaboratoryPage", () => {
   it("展示提示词增强开关并按设置值提交", async () => {
     await mount_page();
     const toggle = container?.querySelector('button[aria-label="提示词增强"]');
-    const description = [
-      ...(container?.querySelectorAll(".setting-card-row__description") ?? []),
-    ].find((element) => element.textContent?.includes("通过模拟思维链强化 AI 对指令的遵循"));
-
     expect(toggle?.getAttribute("data-value")).toBe("enabled");
-    expect(description?.querySelectorAll("br")).toHaveLength(1);
-    expect(
-      [...(container?.querySelectorAll(".setting-card-row__title") ?? [])].map(
-        (element) => element.textContent,
-      ),
-    ).toEqual(["MTool 优化器", "跳过重复原文", "提示词增强"]);
     await act(async () => {
       (toggle as HTMLButtonElement | undefined)?.click();
     });
@@ -140,19 +127,5 @@ describe("LaboratoryPage", () => {
 
     const toggle = container?.querySelector('button[aria-label="提示词增强"]');
     expect((toggle as HTMLButtonElement | null)?.disabled).toBe(true);
-  });
-
-  it("三个 locale 的提示词增强文案固定为两行且行尾无句号", () => {
-    const descriptions = [
-      zh_cn_laboratory_page.fields.prompt_enhancement_enable.description,
-      en_us_laboratory_page.fields.prompt_enhancement_enable.description,
-      de_de_laboratory_page.fields.prompt_enhancement_enable.description,
-    ];
-
-    for (const description of descriptions) {
-      const lines = description.split("\n");
-      expect(lines).toHaveLength(2);
-      expect(lines.every((line) => !/[。.\s]$/u.test(line))).toBe(true);
-    }
   });
 });

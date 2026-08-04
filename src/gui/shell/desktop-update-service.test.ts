@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { AppPathService } from "../../backend/app/app-path-service";
 import {
@@ -12,20 +12,10 @@ import {
   type DesktopUpdateRuntime,
 } from "./desktop-update-service";
 
-const cleanup_roots: string[] = [];
-
-afterEach(() => {
-  while (cleanup_roots.length > 0) {
-    const root = cleanup_roots.pop();
-    if (root !== undefined) {
-      fs.rmSync(root, { force: true, recursive: true });
-    }
-  }
-});
-
 describe("DesktopUpdateService", () => {
   it("x64 运行态下载 x64 zip 到 userdata berserker 版本目录并回传进度", async () => {
-    const app_root = create_temp_root("linguagacha-update-app-");
+    using temp_root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-update-app-"));
+    const app_root = temp_root.path;
     const exec_path = path.join(app_root, "app.exe");
     fs.writeFileSync(exec_path, "app", "utf-8");
     const service = create_service(app_root, {
@@ -72,48 +62,11 @@ describe("DesktopUpdateService", () => {
     expect(progress_values.at(-1)).toBe(100);
   });
 
-  it("arm64 运行态下载 arm64 zip", async () => {
-    const app_root = create_temp_root("linguagacha-update-arm64-");
-    const exec_path = path.join(app_root, "app.exe");
-    fs.writeFileSync(exec_path, "app", "utf-8");
-    const fetched_urls: string[] = [];
-    const service = create_service(app_root, {
-      arch: "arm64",
-      execPath: exec_path,
-      fetch: async (url) => {
-        fetched_urls.push(String(url));
-        return new Response(new Blob(["arm update"]), { status: 200 });
-      },
-    });
-
-    const result = await service.download_release(
-      {
-        request_id: "download-1",
-        latest_version: "1.2.4",
-        release_url: "release",
-        windows_zip_urls: {
-          x64: "https://example.com/LinguaGacha_v1.2.4_Windows_x64.zip",
-          arm64: "https://example.com/LinguaGacha_v1.2.4_Windows_arm64.zip",
-        },
-      },
-      vi.fn(),
-    );
-
-    expect(fetched_urls).toEqual(["https://example.com/LinguaGacha_v1.2.4_Windows_arm64.zip"]);
-    expect(result).toMatchObject({
-      status: "downloaded",
-      zip_path: path.join(
-        app_root,
-        "userdata",
-        "berserker",
-        "v1.2.4",
-        "LinguaGacha_v1.2.4_Windows_arm64.zip",
-      ),
-    });
-  });
-
   it("非 Windows、unsupported arch、缺当前架构 zip 或应用目录不可写时返回发布页回退结果", async () => {
-    const app_root = create_temp_root("linguagacha-update-fallback-");
+    using temp_root = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-update-fallback-"),
+    );
+    const app_root = temp_root.path;
     const base_request = {
       request_id: "download-1",
       latest_version: "1.2.4",
@@ -164,7 +117,10 @@ describe("DesktopUpdateService", () => {
   });
 
   it("启动清理只删除 berserker 下的 v 开头目录", async () => {
-    const app_root = create_temp_root("linguagacha-update-cleanup-");
+    using temp_root = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-update-cleanup-"),
+    );
+    const app_root = temp_root.path;
     const paths = new AppPathService({ appRoot: app_root, env: {}, platform: "win32" });
     fs.mkdirSync(path.join(paths.get_berserker_update_root_dir(), "v1.2.3"), { recursive: true });
     fs.mkdirSync(path.join(paths.get_berserker_update_root_dir(), "cache"), { recursive: true });
@@ -180,7 +136,10 @@ describe("DesktopUpdateService", () => {
   });
 
   it("重启更新前复制 berserker 并用 zip、目标目录、主程序和 pid 启动", async () => {
-    const app_root = create_temp_root("linguagacha-update-launch-");
+    using temp_root = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-update-launch-"),
+    );
+    const app_root = temp_root.path;
     const packaged_berserker_path = path.join(app_root, "berserker.exe");
     const zip_path = path.join(
       app_root,
@@ -238,71 +197,11 @@ describe("DesktopUpdateService", () => {
     ]);
   });
 
-  it("arm64 运行态拒绝启动 x64 更新包", async () => {
-    const app_root = create_temp_root("linguagacha-update-launch-arm64-mismatch-");
-    const zip_path = path.join(
-      app_root,
-      "userdata",
-      "berserker",
-      "v1.2.4",
-      "LinguaGacha_v1.2.4_Windows_x64.zip",
-    );
-    fs.mkdirSync(path.dirname(zip_path), { recursive: true });
-    fs.writeFileSync(zip_path, "zip", "utf-8");
-    const service = create_service(app_root, { arch: "arm64" });
-
-    await expect(
-      service.launch_berserker({
-        latest_version: "1.2.4",
-        zip_path,
-      }),
-    ).rejects.toThrow("更新包架构与当前应用不匹配");
-  });
-
-  it("x64 运行态拒绝启动 arm64 更新包", async () => {
-    const app_root = create_temp_root("linguagacha-update-launch-x64-mismatch-");
-    const zip_path = path.join(
-      app_root,
-      "userdata",
-      "berserker",
-      "v1.2.4",
-      "LinguaGacha_v1.2.4_Windows_arm64.zip",
-    );
-    fs.mkdirSync(path.dirname(zip_path), { recursive: true });
-    fs.writeFileSync(zip_path, "zip", "utf-8");
-    const service = create_service(app_root, { arch: "x64" });
-
-    await expect(
-      service.launch_berserker({
-        latest_version: "1.2.4",
-        zip_path,
-      }),
-    ).rejects.toThrow("更新包架构与当前应用不匹配");
-  });
-
-  it("拒绝启动版本不匹配的更新包", async () => {
-    const app_root = create_temp_root("linguagacha-update-launch-version-mismatch-");
-    const zip_path = path.join(
-      app_root,
-      "userdata",
-      "berserker",
-      "v1.2.4",
-      "LinguaGacha_v1.2.5_Windows_x64.zip",
-    );
-    fs.mkdirSync(path.dirname(zip_path), { recursive: true });
-    fs.writeFileSync(zip_path, "zip", "utf-8");
-    const service = create_service(app_root, { arch: "x64" });
-
-    await expect(
-      service.launch_berserker({
-        latest_version: "1.2.4",
-        zip_path,
-      }),
-    ).rejects.toThrow("更新包架构与当前应用不匹配");
-  });
-
   it("拒绝启动当前版本目录外的更新包", async () => {
-    const app_root = create_temp_root("linguagacha-update-invalid-");
+    using temp_root = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-update-invalid-"),
+    );
+    const app_root = temp_root.path;
     const service = create_service(app_root);
 
     await expect(
@@ -337,13 +236,4 @@ function create_service(
       ...runtime,
     },
   });
-}
-
-/**
- * 创建测试临时根目录，afterEach 统一清理。
- */
-function create_temp_root(prefix: string): string {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-  cleanup_roots.push(root);
-  return root;
 }

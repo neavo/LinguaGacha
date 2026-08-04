@@ -13,9 +13,12 @@ import { useAppNavigation } from "@frontend/app/navigation/navigation-context";
 import { useDebouncedCallback } from "@frontend/widgets/interactions/use-debounce";
 import { buildProofreadingLookupQuery } from "@shared/quality/quality-rule-proofreading-query";
 import {
-  query_quality_rules,
+  export_quality_rule_entries,
+  import_quality_rule_entries,
+  pick_quality_rule_import_path,
   type QualityRuleQuerySlice,
 } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
+import { useQualityRuleQuery } from "@frontend/features/quality-rule-editor/use-quality-rule-query";
 import {
   isQualityRuleStatisticsCacheReady,
   isQualityRuleStatisticsCacheRunning,
@@ -23,12 +26,7 @@ import {
 } from "@frontend/app/session/quality-rule-statistics-store";
 import type { SettingsSnapshotPayload } from "@frontend/app/state/desktop-state-context";
 import { useQualityRuleStatistics } from "@frontend/app/session/quality-rule-statistics-context";
-import {
-  useDesktopState,
-  useProjectChangeSignal,
-  useRuntimeSnapshot,
-} from "@frontend/app/state/use-desktop-state";
-import { useProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
+import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
 import { is_runtime_busy } from "@frontend/app/state/runtime-activity-store";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
@@ -68,10 +66,13 @@ import {
   useQualityRuleImportConfirmation,
 } from "@frontend/widgets/quality-rule-import-confirm-dialog/use-quality-rule-import-confirmation";
 import {
-  are_quality_rule_entry_ids_equal,
   reorder_selected_quality_rule_entries,
   resolve_quality_rule_entry_id,
 } from "@frontend/features/quality-rule-editor/quality-rule-selection";
+import {
+  useQualityRuleSelectionPruning,
+  useQualityRuleTableSessionReset,
+} from "@frontend/features/quality-rule-editor/use-quality-rule-table-session";
 import type {
   TextPreserveConfirmState,
   TextPreserveDialogState,
@@ -124,8 +125,6 @@ const DEFAULT_QUALITY_SLICE: TextPreserveQualitySlice = {
   entries: [],
   section_revision: 0,
 };
-// 文本保护规则事实只归 quality section 拥有，items 变化只影响统计和结果视图。
-const QUALITY_RULE_REFRESH_SECTIONS = ["quality"] as const;
 // 模式切换必须等项目事件回流，超时后由补偿刷新恢复权威快照。
 const TEXT_PRESERVE_MODE_REFRESH_TIMEOUT_MS = 15000;
 // session 恢复排序的白名单，避免旧列 ID 进入当前表格。
@@ -294,11 +293,24 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     apply_settings_snapshot,
     commit_project_write,
   } = useDesktopState();
-  const project_change_signal = useProjectChangeSignal();
   const runtime_snapshot = useRuntimeSnapshot();
-  const [quality_slice, set_quality_slice] =
-    useState<TextPreserveQualitySlice>(DEFAULT_QUALITY_SLICE);
-  const [quality_loaded, set_quality_loaded] = useState(false);
+  const handle_quality_rule_load_error = useCallback(
+    (error: unknown): void => {
+      push_toast(
+        "error",
+        resolve_visible_error_message(error, t, t("text_preserve_page.feedback.load_failed")),
+      );
+    },
+    [push_toast, t],
+  );
+  const { quality_slice, quality_loaded, refresh_quality_rule_snapshot } = useQualityRuleQuery({
+    rule_type: TEXT_PRESERVE_RULE_TYPE,
+    project_path: project_snapshot.loaded ? project_snapshot.path : "",
+    session_ready: project_session_status === "ready",
+    default_slice: DEFAULT_QUALITY_SLICE,
+    normalize_slice: normalize_text_preserve_quality_slice,
+    on_load_error: handle_quality_rule_load_error,
+  });
   const mode = project_snapshot.loaded ? quality_slice.mode : DEFAULT_MODE;
   const entries = project_snapshot.loaded ? quality_slice.entries : [];
   const [mode_updating, set_mode_updating] = useState(false);
@@ -348,85 +360,6 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     return build_text_preserve_hit_state_from_cache(statistics_cache);
   }, [statistics_cache]);
   const hit_ready = isQualityRuleStatisticsCacheReady(statistics_cache);
-  // 区分同组件内项目身份切换，避免旧项目状态污染新项目。
-  const project_view_identity_ref = useRef(project_snapshot.loaded ? project_snapshot.path : "");
-
-  const refresh_quality_rule_snapshot = useCallback(async (): Promise<TextPreserveQualitySlice> => {
-    if (
-      !project_snapshot.loaded ||
-      project_snapshot.path === "" ||
-      project_session_status !== "ready"
-    ) {
-      set_quality_slice(DEFAULT_QUALITY_SLICE);
-      set_quality_loaded(false);
-      return DEFAULT_QUALITY_SLICE;
-    }
-
-    const response = await query_quality_rules(TEXT_PRESERVE_RULE_TYPE);
-    if (response.projectPath !== project_snapshot.path) {
-      return quality_slice;
-    }
-    const next_slice = normalize_text_preserve_quality_slice(
-      response.qualityRule,
-      response.sectionRevisions?.quality ?? 0,
-    );
-    set_quality_slice(next_slice);
-    set_quality_loaded(true);
-    return next_slice;
-  }, [project_session_status, project_snapshot.loaded, project_snapshot.path, quality_slice]);
-
-  // 保持规则读取 effect 只响应 quality 变化，翻译批次保留当前规则表格主体。
-  const quality_rule_change_seq = useProjectChangeSeqForSections(
-    project_change_signal,
-    QUALITY_RULE_REFRESH_SECTIONS,
-  );
-
-  useEffect(() => {
-    if (
-      !project_snapshot.loaded ||
-      project_snapshot.path === "" ||
-      project_session_status !== "ready"
-    ) {
-      set_quality_slice(DEFAULT_QUALITY_SLICE);
-      set_quality_loaded(false);
-      return;
-    }
-
-    let cancelled = false;
-    void query_quality_rules(TEXT_PRESERVE_RULE_TYPE)
-      .then((response) => {
-        if (cancelled || response.projectPath !== project_snapshot.path) {
-          return;
-        }
-        set_quality_slice(
-          normalize_text_preserve_quality_slice(
-            response.qualityRule,
-            response.sectionRevisions?.quality ?? 0,
-          ),
-        );
-        set_quality_loaded(true);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          push_toast(
-            "error",
-            resolve_visible_error_message(error, t, t("text_preserve_page.feedback.load_failed")),
-          );
-        }
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    quality_rule_change_seq,
-    project_session_status,
-    project_snapshot.loaded,
-    project_snapshot.path,
-    push_toast,
-    t,
-  ]);
-
   useEffect(() => {
     mode_ref.current = mode;
   }, [mode]);
@@ -499,15 +432,19 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     return build_result_snapshot(filter_state, sort_state);
   }, [build_result_snapshot, filter_state, sort_state]);
   const has_active_filters = has_active_quality_rule_filters(filter_state);
-  const { result_snapshot, set_result_snapshot, set_pending_result_refresh } =
-    useResultSnapshotState({
-      project_path: project_snapshot.path,
-      section: "quality",
-      section_revision: quality_slice.section_revision,
-      has_active_query: has_active_filters,
-      valid_ids: entry_ids,
-      build_snapshot: build_current_result_snapshot,
-    });
+  const {
+    result_snapshot,
+    set_result_snapshot,
+    set_pending_result_refresh,
+    reset_result_snapshot,
+  } = useResultSnapshotState({
+    project_path: project_snapshot.path,
+    section: "quality",
+    section_revision: quality_slice.section_revision,
+    has_active_query: has_active_filters,
+    valid_ids: entry_ids,
+    build_snapshot: build_current_result_snapshot,
+  });
   // 筛选控件状态即时更新；结果快照延迟刷新，显式 action 会 cancel 后立即重建。
   const debounced_result_snapshot = useDebouncedCallback(
     (
@@ -712,18 +649,11 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     );
   }, [settings_snapshot]);
 
-  useEffect(() => {
-    // 项目身份变化时页面计算视图和 session 表格状态必须一起重置。
-    const next_project_identity = project_snapshot.loaded ? project_snapshot.path : "";
-    set_result_snapshot(null);
-    set_pending_result_refresh(null);
-    if (project_view_identity_ref.current === next_project_identity) {
-      return;
-    }
-
-    project_view_identity_ref.current = next_project_identity;
-    reset_table_state({ persist: false });
-  }, [project_snapshot.loaded, project_snapshot.path, reset_table_state]);
+  useQualityRuleTableSessionReset({
+    project_identity: project_snapshot.loaded ? project_snapshot.path : "",
+    reset_result_snapshot,
+    reset_table_state,
+  });
 
   useEffect(() => {
     if (hit_ready || sort_state?.column_id !== "hit") {
@@ -734,47 +664,15 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
     set_result_snapshot(build_result_snapshot(filter_state, null));
   }, [build_result_snapshot, filter_state, set_table_sort_state, sort_state, hit_ready]);
 
-  useEffect(() => {
-    if (!quality_loaded) {
-      return;
-    }
-    // 可见结果变化会让旧选区失去操作上下文，必须同步裁剪 session 选区。
-    const next_selected_entry_ids = selected_entry_ids.filter((entry_id) => {
-      return entry_index_by_id.has(entry_id) && visible_entry_id_set.has(entry_id);
-    });
-    const next_active_entry_id =
-      active_entry_id !== null && visible_entry_id_set.has(active_entry_id)
-        ? active_entry_id
-        : null;
-    const next_anchor_entry_id =
-      selection_anchor_entry_id !== null && visible_entry_id_set.has(selection_anchor_entry_id)
-        ? selection_anchor_entry_id
-        : null;
-    const selection_changed = !are_quality_rule_entry_ids_equal(
-      selected_entry_ids,
-      next_selected_entry_ids,
-    );
-
-    if (
-      selection_changed ||
-      active_entry_id !== next_active_entry_id ||
-      selection_anchor_entry_id !== next_anchor_entry_id
-    ) {
-      set_table_selection_state({
-        selected_row_ids: next_selected_entry_ids,
-        active_row_id: next_active_entry_id,
-        anchor_row_id: next_anchor_entry_id,
-      });
-    }
-  }, [
-    active_entry_id,
-    entry_index_by_id,
-    quality_loaded,
+  useQualityRuleSelectionPruning({
+    loaded: quality_loaded,
     selected_entry_ids,
+    active_entry_id,
     selection_anchor_entry_id,
-    set_table_selection_state,
-    visible_entry_id_set,
-  ]);
+    valid_entry_ids: entry_index_by_id,
+    visible_entry_ids: visible_entry_id_set,
+    set_selection_state: set_table_selection_state,
+  });
 
   const update_filter_keyword = useCallback(
     (next_keyword: string): void => {
@@ -1092,14 +990,9 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
           return;
         }
 
-        const payload = await api_fetch<{ entries?: TextPreserveEntry[] }>(
-          "/api/quality/rules/import",
-          {
-            rule_type: TEXT_PRESERVE_RULE_TYPE,
-            path,
-          },
-        );
-        const imported_entries = payload.entries?.map(clone_entry) ?? [];
+        const imported_entries = (
+          await import_quality_rule_entries(TEXT_PRESERVE_RULE_TYPE, path)
+        ).map(clone_entry);
         if (imported_entries.length === 0) {
           push_toast("warning", t("app.feedback.no_valid_data"));
           return;
@@ -1133,9 +1026,8 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
       return;
     }
 
-    const pick_result = await window.desktopApp.pickGlossaryImportFilePath();
-    const selected_path = pick_result.paths[0] ?? null;
-    if (pick_result.canceled || selected_path === null) {
+    const selected_path = await pick_quality_rule_import_path();
+    if (selected_path === null) {
       return;
     }
 
@@ -1144,22 +1036,16 @@ export function useTextPreservePageState(): UseTextPreservePageStateResult {
 
   const export_entries_from_picker = useCallback(async (): Promise<void> => {
     try {
-      const pick_result = await window.desktopApp.pickGlossaryExportPath(
-        TEXT_PRESERVE_EXPORT_FILE_NAME,
-      );
-      const selected_path = pick_result.paths[0] ?? null;
-      if (pick_result.canceled || selected_path === null) {
-        return;
-      }
-
-      await api_fetch("/api/quality/rules/export", {
+      const exported = await export_quality_rule_entries({
         rule_type: TEXT_PRESERVE_RULE_TYPE,
-        path: selected_path,
+        file_name: TEXT_PRESERVE_EXPORT_FILE_NAME,
         entries: entries.map((entry) => {
           return normalize_entry(entry);
         }),
       });
-      push_toast("success", t("quality_editor.feedback.export_success"));
+      if (exported) {
+        push_toast("success", t("quality_editor.feedback.export_success"));
+      }
     } catch (error) {
       push_action_error_toast(error);
     }

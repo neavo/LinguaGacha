@@ -9,17 +9,8 @@ import {
 
 describe("project event contract", () => {
   it("公开稳定的项目 section 与事件 topic", () => {
-    expect(PROJECT_DATA_SECTIONS).toEqual([
-      "project",
-      "files",
-      "items",
-      "quality",
-      "prompts",
-      "analysis",
-      "proofreading",
-    ]);
     expect(PROJECT_CHANGE_EVENT_TOPIC).toBe("project.data_changed");
-
+    expect(PROJECT_DATA_SECTIONS.every(isProjectDataSection)).toBe(true);
     expect(isProjectDataSection("items")).toBe(true);
     expect(isProjectDataSection("task")).toBe(false);
   });

@@ -9,13 +9,13 @@
 - Gateway 只监听本机地址，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
 - 成功响应为 `{ ok: true, data }`，失败响应为 `{ ok: false, error }`；公开错误不包含 diagnostic context、cause、stack 或供应商原始异常。
 - 公开 SSE topic 固定为 `project.data_changed`、`task.snapshot_changed`、`runtime.snapshot_changed`、`agent.session_event`、`settings.changed`、`log.appended`，data 使用严格 JSON 序列化；`POST /api/runtime/snapshot` 返回带单调 `revision` 的当前运行所有者 `task | agent | null`。
-- Agent 公开入口固定为 `GET /api/agent/snapshot` 与 `POST /api/agent/message|stop|reset`；消息保留有序 text / skill parts，会话状态只区分 `idle | running`，user / assistant / tool 条目各自携带 `running | success | error | stopped` 状态。
+- Agent 公开入口提供 snapshot、message、stop 与 reset；消息保留有序 text / skill parts，会话状态只区分 `idle | running`，user / assistant / tool 条目各自携带 `running | success | error | stopped` 状态。
 - Agent 时间线由 snapshot 与 `agent.session_event` 通过同 id 完整条目覆盖和 `snapshot_seed` 共同恢复本次 reset 以来的内存历史，并公开模型可见历史的估算用量与当前会话容量；模型失败只写入对应条目和轮次，不发布第二套失败事件。公开条目不包含工具参数、供应商连续性元数据或脱敏思考。
 - 工具 `running` 条目在执行体开始前发布；所有产品工具在统一注册边界先让出一次事件循环，为本地 SSE 首帧提供独立发送轮次。
-- 通用质量规则切片通过 `POST /api/quality/rules/query` 读取、`POST /api/quality/rules/update` 写入，分析术语导入等复合 workflow 保留独立命令；`POST /api/proofreading/query` 统一分发校对查询，`POST /api/proofreading/items/update` 原子批量更新 `dst` / `name_dst` / 人工状态，清空与替换保留各自的后端意图命令。
-- 模型管理 API 只负责配置 CRUD；任务入口通过 `GET /api/models/selection` 读取窄选项，通过 `POST /api/models/select` 按 `translation`、`analysis` 或 `agent` 用途更新单项选择。选项只携带显示身份与非敏感的 Agent 容量，不公开密钥、请求覆盖或生成参数。
-- `LogManager` 以 `LogContent` 判别联合保存单一正文事实：文件和控制台从它生成纯文本投影，`log.appended` 只携带轻量预览，`/api/logs/detail` 只查询当前进程结构化详情池且不回扫历史文件。
-- `/api/diagnostics/renderer-error` 只接收实际 renderer 异常摘要与白名单上下文并写入 `LogManager`，不改变项目、任务或设置事实。
+- 通用质量规则由切片 query / update 读写，分析术语导入等复合 workflow 保留独立命令；校对 query 统一分发读取，items update 原子批量更新 `dst` / `name_dst` / 人工状态，清空与替换保留各自的后端意图命令。
+- 模型管理 API 只负责配置 CRUD；任务入口按 `translation`、`analysis` 或 `agent` 用途读取窄选项并更新单项选择。选项只携带显示身份与非敏感的 Agent 容量，不公开密钥、请求覆盖或生成参数。
+- `LogManager` 以 `LogContent` 判别联合保存单一正文事实：文件和控制台从它生成纯文本投影，`log.appended` 只携带轻量预览，详情 query 只查询当前进程结构化详情池且不回扫历史文件。
+- renderer 诊断入口只接收实际异常摘要与白名单上下文并写入 `LogManager`，不改变项目、任务或设置事实。
 
 ## 2. 状态拥有者
 
@@ -67,7 +67,6 @@ project, files, items, quality, prompts, analysis, proofreading
 - `TaskService` 负责命令 JSON 收窄、task / mode / scope 归一、section revision 校验和 Engine 命令转交；`TaskRuntime.begin` 原子取得共享运行 lease。`TaskEngine` 在每轮 run 开始时按 translation / analysis 用途解析模型，并与限流、提示词配置一起冻结到运行上下文。行级重翻和 CLI 复用同一任务入口，不另建模型选择旁路。
 - 启动任务必须携带 `TaskService` 按 task type 与 scope 固定要求的 `expected_section_revisions`；取得运行 lease 后立即进入 task busy，Engine 启动失败时恢复前置状态并释放 lease。
 - 所有任务命令 ack 都通过 `TaskRuntime.build_snapshot` 重新读取当前事实，避免旧命令意图覆盖更晚的终态。
-- `TaskRuntime.build_snapshot` 组合内存中的 status、busy、`run_revision`、请求压力与 translation scope，以及 `.lg` 中的 progress / analysis candidate count；`run_revision` 是前端丢弃旧 snapshot 的排序依据。
 - 每次成功 load / unload 都推进 `ProjectSessionState` 的内部会话世代；生命周期返回前，`TaskRuntime` 重置为新会话的 idle、推进 `run_revision` 并发布快照，因此旧工程迟到帧严格早于新工程事实。
 - 生命周期和进度提交立即发布完整 `task.snapshot_changed`；只有请求压力允许合并，终态前必须冲刷。请求压力只表示已租约发出的 LLM 请求，不表示队列或 worker 数量。
 - `TaskRuntime` 拥有任务取消、终态和 Engine completion，并以当前 active run 派生 task snapshot 的 `busy`。`TaskEngine` 只负责编排，任务结果统一经 `TaskProjectStore` 进入项目写入边界。全量翻译与分析经过 Planner，行级重翻直接从目标 items 构造 context。
@@ -82,7 +81,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - skill 的 `SKILL.md` 描述同时作为模型描述和 UI 翻译缺失时的回退；manual-only skill 必须由显式 skill part 授权，`read_skill` 只能读取启动期形成的 `SKILL.md` 与 references 白名单，UI 翻译不进入模型上下文。
 - Agent 产品工具只从当前设置、cache 与领域 query 读取事实，写入经对应服务的 Agent 专用入口复用同一 revision、事务和项目事件边界；`query_project_meta` 按需读取当前权威源语言和目标语言。模型可见的项目工具结果不暴露绝对 `projectPath`，item、warning、quality 查询及写入确认继续携带与数据快照绑定的 `sectionRevisions`。
 - `query_items` 只从基础 item cache 组合 ID、状态、文件与单一文本搜索并返回分页；`query_warning_items` 复用当前校对评估运行态且只返回具有真实 warning 的条目与证据；`update_items` 与 GUI 共用译文、译名和人工状态的字段更新核心。
-- `web_fetch({ url })` 是仅在 GUI 宿主能力可用时注册的 Agent 只读联网工具；CLI 不提供假实现。Electron main 负责每跳 HTTP(S) URL、DNS/IP、重定向、超时和响应字节上限，Backend 只接收有限字节与原始 Content-Type，并把 HTML / XHTML 经本地 Defuddle、其余受支持文本按 MIME 和 charset 统一归一为带不可信边界的 Markdown；二进制、无有效正文和不支持的 MIME 明确失败。
+- `web_fetch({ url })` 是仅在 GUI 宿主能力可用时注册的 Agent 只读联网工具；CLI 不提供假实现。Backend 只接收有限字节与原始 Content-Type，并把 HTML / XHTML 经本地 Defuddle、其余受支持文本按 MIME 和 charset 统一归一为带不可信边界的 Markdown；二进制、无有效正文和不支持的 MIME 明确失败。
 - `query_quality_rules(glossary)` 复用一次 `quality_statistics` compute task 同时返回覆盖数、实际命中次数、结构关系和每条最多一个有效语境 sample；sample 由统计启动前捕获的 item 快照投影，后续 `query_items` 以 section revisions 相等作为一致性边界，不另建 Agent 统计缓存或正文重扫。
 
 ## 5. 数据库与 `.lg` 存储
@@ -93,7 +92,3 @@ project, files, items, quality, prompts, analysis, proofreading
 - asset 存在 `assets` 表，以 Zstd blob 落库；压缩格式集中在 `src/shared/utils/zstd-tool.ts`，数据库读取向上返回解压后的 bytes。
 - `schema_version` 只描述物理表结构，业务写回迁移单独记账；完整表与 migration 清单以 migration registry 和 schema migration 代码为准。
 - 启动期迁移先处理 userdata / resource 落点，再读取设置；项目迁移在 `.lg` 首次打开时先补 schema，再执行幂等写回迁移。
-
-## 6. 更新条件
-
-公开路由、响应壳、错误载荷、SSE、状态所有权、写入/失败语义、任务快照、worker / LLM 边界、数据库 workflow、migration 或 `.lg` 物理格式变化时更新本文；前端消费方式只更新 [`FRONTEND.md`](FRONTEND.md)。

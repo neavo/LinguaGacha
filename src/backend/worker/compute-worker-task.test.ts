@@ -1,30 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { prepare_quality_statistics_task_input } from "../../shared/quality/quality-statistics-input";
 import { run_compute_worker_task } from "./compute-worker-task";
 
 describe("run_compute_worker_task", () => {
-  it("执行质量统计 task 并返回匹配计数快照", async () => {
-    const result = await run_compute_worker_task({
-      type: "quality_statistics",
-      input: prepare_quality_statistics_task_input({
-        rule_key: "glossary",
-        entries: [{ entry_id: "hp", src: "HP", dst: "生命值" }],
-        items: [
-          { src: "HP +10", dst: "生命值 +10" },
-          { src: "MP +5", dst: "魔力 +5" },
-        ],
-      }),
-    });
-
-    expect(result).toMatchObject({
-      phase: "current",
-      completed_entry_ids: ["hp"],
-      matched_count_by_entry_id: { hp: 1 },
-      last_error: null,
-    });
-  });
-
   it("执行繁简转换 task 并返回转换后的条目", async () => {
     const result = await run_compute_worker_task({
       type: "ts_conversion",

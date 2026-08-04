@@ -5,7 +5,6 @@
 ## 1. 入口边界
 
 - CLI 只能由产品入口中的显式 `--cli` 触发，用户参数从 `--cli` 后开始读取；文件名、进程名或平台启动器名称不参与分发。
-- CLI 通过 `BackendBootstrap(exposeApiGateway=false)` 复用 `BackendServices`，不开放本机 Gateway。
 - job 期间后端 console / window 日志关闭；人类可读启动提示和入口错误走 stderr，机器状态走 stdout JSONL。
 - CLI 完成导出后不自动打开输出目录。
 
@@ -52,7 +51,3 @@ CLI job 开始前若 Bootstrap 或入口初始化失败，只写 stderr 并返�
 - Windows 发布包提供 Go 编译的 `cli.exe` console launcher：定位同目录 `app.exe`，追加 `--cli`，继承 stdin/stdout/stderr，并返回子进程退出码。
 - `afterPack` 在对应 Go module 内先运行测试再构建并复制 launcher；缺少 Go 工具链、测试失败或产物缺失都会使打包失败。
 - macOS 与 Linux 不维护独立 CLI 二进制，使用主程序追加 `--cli`。
-
-## 6. 更新条件
-
-命令、参数、资源、设置继承、临时工程、产物、JSONL、stdout/stderr、退出码或平台启动器契约变化时更新本文；后端写链和任务协议只更新 [`BACKEND.md`](BACKEND.md)。
