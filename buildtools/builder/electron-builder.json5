@@ -10,8 +10,10 @@
   },
   afterPack: "buildtools/builder/after-pack.mjs",
   files: [
+    // electron-vite 已内联纯 JS 依赖，node_modules 只保留三项 Agent 运行时。
     "build/dist/**/*",
     "build/dist-electron/**/*",
+    "!node_modules/**/*.map",
   ],
   win: {
     target: ["zip"],

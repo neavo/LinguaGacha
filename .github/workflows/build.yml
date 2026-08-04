@@ -53,6 +53,13 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "24"
+          cache: npm
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: buildtools/builder/win-cli/go.mod
+          cache-dependency-path: buildtools/builder/**/go.mod
 
       - name: Sync Manifest Versions
         shell: bash
@@ -63,7 +70,7 @@ jobs:
       - name: Install Dependencies
         shell: bash
         run: |
-          npm install
+          npm ci
 
       - name: Build Electron Zip Package
         shell: bash
@@ -74,6 +81,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Windows_${{ matrix.arch }}
+          compression-level: 0
           path: |
             build/release/${{ needs.prepare.outputs.version }}/LinguaGacha_v${{ needs.prepare.outputs.version }}_Windows_${{ matrix.arch }}.zip
 
@@ -101,6 +109,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "24"
+          cache: npm
 
       - name: Sync Manifest Versions
         shell: bash
@@ -111,7 +120,7 @@ jobs:
       - name: Install Dependencies
         shell: bash
         run: |
-          npm install
+          npm ci
 
       - name: Build Electron DMG Package
         shell: bash
@@ -124,6 +133,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_macOS_${{ matrix.arch }}
+          compression-level: 0
           path: |
             build/release/${{ needs.prepare.outputs.version }}/LinguaGacha_v${{ needs.prepare.outputs.version }}_macOS_${{ matrix.arch }}.dmg
 
@@ -153,6 +163,7 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "24"
+          cache: npm
 
       - name: Sync Manifest Versions
         shell: bash
@@ -163,7 +174,7 @@ jobs:
       - name: Install Dependencies
         shell: bash
         run: |
-          npm install
+          npm ci
 
       - name: Build Electron AppImage Package
         shell: bash
@@ -186,6 +197,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ${{ needs.prepare.outputs.app_name }}_${{ needs.prepare.outputs.version }}_Linux_${{ matrix.arch }}
+          compression-level: 0
           path: |
             build/release/${{ needs.prepare.outputs.version }}/LinguaGacha_v${{ needs.prepare.outputs.version }}_Linux_${{ matrix.arch }}.AppImage
 
