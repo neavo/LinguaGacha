@@ -88,27 +88,14 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
-- 20260803 v0.110.3
-  - AGENT の指示遵守を強化
-  - 調整と改善 [#698](https://github.com/neavo/LinguaGacha/issues/698) [#699](https://github.com/neavo/LinguaGacha/issues/699)
-
-- 20260803 v0.110.2
-  - 調整と改善 [#690](https://github.com/neavo/LinguaGacha/issues/690) [#693](https://github.com/neavo/LinguaGacha/issues/693) [#694](https://github.com/neavo/LinguaGacha/issues/694) [#695](https://github.com/neavo/LinguaGacha/issues/695) [#696](https://github.com/neavo/LinguaGacha/issues/696)
-
-- 20260802 v0.110.1
-  - 調整と改善 [#683](https://github.com/neavo/LinguaGacha/issues/683) [#685](https://github.com/neavo/LinguaGacha/issues/685) [#686](https://github.com/neavo/LinguaGacha/issues/686) [#687](https://github.com/neavo/LinguaGacha/issues/687)
-
-- 20260801 v0.110.0
-  - アプリ内 `AGENT` モード
-    - 対話を通じて用語集のレビューなどのタスクを自動で完了
-  - より多くのモデルに対応
-    - `Kimi K3`
-    - `DeepSeek V4 Flash 0731`
-  - 調整と改善 [#678](https://github.com/neavo/LinguaGacha/issues/678)
+- 20260805 v0.111.1
+  - 新しい AGENT 機能 `翻訳レビュー`
+  - 新しい AGENT 機能 `ウェブデータ取得`
+  - 調整と改善 [#703](https://github.com/neavo/LinguaGacha/issues/703) [#704](https://github.com/neavo/LinguaGacha/issues/704) [#705](https://github.com/neavo/LinguaGacha/issues/705) [#707](https://github.com/neavo/LinguaGacha/issues/707) [#709](https://github.com/neavo/LinguaGacha/issues/709)
 
 ## 開発ガイド 🛠️
 - [Go](https://go.dev) と [`Node.js`](https://nodejs.org) をインストールし、その後 `npm install` を実行します
-- 依存関係の更新: `npm update`
+- 依存関係の更新: `npm ci`
 - アプリの実行: `npm run dev`
 - PRを提出する前に、変更範囲に応じて [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) の対応する検証を実行してください
 - 非開発者の方は [リリースページ](https://github.com/neavo/LinguaGacha/releases) からビルド済みバージョンをダウンロードすることをお勧めします

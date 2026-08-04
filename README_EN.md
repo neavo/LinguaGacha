@@ -89,27 +89,14 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
-- 20260803 v0.110.3
-  - Strengthened AGENT's adherence to instructions
-  - Adjustments and improvements [#698](https://github.com/neavo/LinguaGacha/issues/698) [#699](https://github.com/neavo/LinguaGacha/issues/699)
-
-- 20260803 v0.110.2
-  - Adjustments and improvements [#690](https://github.com/neavo/LinguaGacha/issues/690) [#693](https://github.com/neavo/LinguaGacha/issues/693) [#694](https://github.com/neavo/LinguaGacha/issues/694) [#695](https://github.com/neavo/LinguaGacha/issues/695) [#696](https://github.com/neavo/LinguaGacha/issues/696)
-
-- 20260802 v0.110.1
-  - Adjustments and improvements [#683](https://github.com/neavo/LinguaGacha/issues/683) [#685](https://github.com/neavo/LinguaGacha/issues/685) [#686](https://github.com/neavo/LinguaGacha/issues/686) [#687](https://github.com/neavo/LinguaGacha/issues/687)
-
-- 20260801 v0.110.0
-  - In-app `AGENT` mode
-    - Automatically complete tasks such as glossary review through conversation
-  - Support for more models
-    - `Kimi K3`
-    - `DeepSeek V4 Flash 0731`
-  - Adjustments and improvements [#678](https://github.com/neavo/LinguaGacha/issues/678)
+- 20260805 v0.111.1
+  - New AGENT capability: `Translation Review`
+  - New AGENT capability: `Web Data Retrieval`
+  - Adjustments and improvements [#703](https://github.com/neavo/LinguaGacha/issues/703) [#704](https://github.com/neavo/LinguaGacha/issues/704) [#705](https://github.com/neavo/LinguaGacha/issues/705) [#707](https://github.com/neavo/LinguaGacha/issues/707) [#709](https://github.com/neavo/LinguaGacha/issues/709)
 
 ## Development Guide 🛠️
 - Install [Go](https://go.dev) and [`Node.js`](https://nodejs.org), then run `npm install`
-- Update dependencies `npm update`
+- Update dependencies `npm ci`
 - Run the application `npm run dev`
 - Before submitting a PR, run the corresponding checks in [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) based on the scope of your changes
 - For non-developers, please download the packaged version directly from the [Releases page](https://github.com/neavo/LinguaGacha/releases)

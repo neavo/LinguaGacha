@@ -88,27 +88,14 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
-- 20260803 v0.110.3
-  - 强化 AGENT 对指令的遵循度
-  - 调整与改进 [#698](https://github.com/neavo/LinguaGacha/issues/698) [#699](https://github.com/neavo/LinguaGacha/issues/699)
-
-- 20260803 v0.110.2
-  - 调整与改进 [#690](https://github.com/neavo/LinguaGacha/issues/690) [#693](https://github.com/neavo/LinguaGacha/issues/693) [#694](https://github.com/neavo/LinguaGacha/issues/694) [#695](https://github.com/neavo/LinguaGacha/issues/695) [#696](https://github.com/neavo/LinguaGacha/issues/696)
-
-- 20260802 v0.110.1
-  - 调整与改进 [#683](https://github.com/neavo/LinguaGacha/issues/683) [#685](https://github.com/neavo/LinguaGacha/issues/685) [#686](https://github.com/neavo/LinguaGacha/issues/686) [#687](https://github.com/neavo/LinguaGacha/issues/687)
-
-- 20260801 v0.110.0
-  - 应用内 `AGENT` 模式
-    - 通过对话自动完成术语表审校等任务
-  - 支持更多模型
-    - `Kimi K3`
-    - `DeepSeek V4 Flash 0731`
-  - 调整与改进 [#678](https://github.com/neavo/LinguaGacha/issues/678)
+- 20260805 v0.111.1
+  - 新的 AGENT 能力 `译文审校`
+  - 新的 AGENT 能力 `获取网络数据`
+  - 调整与改进 [#703](https://github.com/neavo/LinguaGacha/issues/703) [#704](https://github.com/neavo/LinguaGacha/issues/704) [#705](https://github.com/neavo/LinguaGacha/issues/705) [#707](https://github.com/neavo/LinguaGacha/issues/707) [#709](https://github.com/neavo/LinguaGacha/issues/709)
 
 ## 开发指南 🛠️
 - 安装 [ [Go](https://go.dev) ] 和 [ [`Node.js`](https://nodejs.org) ]，然后 `npm install`
-- 更新依赖 `npm update`
+- 更新依赖 `npm ci`
 - 运行应用 `npm run dev`
 - 提交 PR 前请根据改动范围执行 [`docs/WORKFLOW.md`](./docs/WORKFLOW.md) 中的对应验证
 - 非开发者请直接在 [发布页](https://github.com/neavo/LinguaGacha/releases) 下载打包版本
