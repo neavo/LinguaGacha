@@ -5,6 +5,7 @@ import type {
   SystemProxyResolver,
   SystemProxyStartupNotice,
 } from "../llm/llm-system-proxy-dispatcher";
+import type { AgentWebFetchPort } from "../agent/agent-web-tools";
 
 export type BackendBootstrapState =
   | "idle"
@@ -26,6 +27,7 @@ export interface BackendBootstrapOptions {
   exposeApiGateway: boolean;
   logTargets?: Partial<LogTargets>; // 由入口适配器选择，CLI 会关闭控制台避免污染 JSONL stdout
   systemProxyResolver?: SystemProxyResolver; // 由 Electron 入口注入，Bootstrap 只消费启动期系统代理快照
+  agentWebFetch?: AgentWebFetchPort; // 仅 GUI 注入 Electron 宿主能力；其它入口不提供该能力
   openOutputFolder: (outputPath: string) => Promise<void>;
   workerExecution: BackendWorkerExecution; // 固定 Backend worker 执行配置，避免服务层自行回退或探测入口。
 }

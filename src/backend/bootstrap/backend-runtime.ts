@@ -7,6 +7,7 @@ import type {
   BackendRuntimeMainMessage,
   BackendRuntimeReady,
   BackendRuntimeResult,
+  BackendRuntimeWebFetchResponse,
   BackendRuntimeWorkerMessage,
 } from "../../shared/backend-runtime";
 import { AppPathService } from "../app/app-path-service";
@@ -26,7 +27,9 @@ export type BackendRuntimePort = {
 
 type PendingHostRequest = {
   resolve: (value: unknown) => void;
-  reject: (error: Error) => void;
+  reject: (reason?: unknown) => void;
+  signal?: AbortSignal; // Agent stop 的原始取消来源
+  abortListener?: () => void; // 结算时必须解绑，避免长会话积累监听器
 };
 
 /** GUI Backend 的完整生命周期只存在于 runtime worker 内。 */
@@ -37,13 +40,41 @@ export async function run_backend_runtime(args: {
 }): Promise<void> {
   const pending_host_requests = new Map<string, PendingHostRequest>(); // requestId 隔离并发宿主回调
   // Electron 专属能力反向交给 main 执行，Backend worker 不导入 Electron。
-  const call_host = async (operation: BackendRuntimeHostOperation): Promise<unknown> => {
+  const call_host = async (
+    operation: BackendRuntimeHostOperation,
+    signal?: AbortSignal,
+  ): Promise<unknown> => {
+    signal?.throwIfAborted();
     const request_id = randomUUID();
     const result = new Promise<unknown>((resolve, reject) => {
-      pending_host_requests.set(request_id, { resolve, reject });
+      const pending: PendingHostRequest = { resolve, reject, signal };
+      pending_host_requests.set(request_id, pending);
+      if (signal !== undefined) {
+        const abort_listener = () => {
+          if (!pending_host_requests.delete(request_id)) return;
+          signal.removeEventListener("abort", abort_listener);
+          args.port.postMessage({ type: "host_cancel", requestId: request_id });
+          reject(signal.reason);
+        };
+        pending.abortListener = abort_listener;
+        signal.addEventListener("abort", abort_listener, { once: true });
+        if (signal.aborted) abort_listener();
+      }
     });
-    args.port.postMessage({ type: "host_request", requestId: request_id, operation });
+    if (pending_host_requests.has(request_id)) {
+      args.port.postMessage({ type: "host_request", requestId: request_id, operation });
+    }
     return await result;
+  };
+  const reject_pending_host_requests = (reason: unknown): void => {
+    for (const [request_id, pending] of pending_host_requests) {
+      if (pending.signal !== undefined && pending.abortListener !== undefined) {
+        pending.signal.removeEventListener("abort", pending.abortListener);
+      }
+      args.port.postMessage({ type: "host_cancel", requestId: request_id });
+      pending.reject(reason);
+    }
+    pending_host_requests.clear();
   };
   const desktop_bundle_dir = resolve_desktop_bundle_dir_from_module_url(args.moduleUrl);
   const bootstrap = new BackendBootstrap({
@@ -55,6 +86,8 @@ export async function run_backend_runtime(args: {
     openOutputFolder: async (output_path) => {
       await call_host({ kind: "open_output_folder", path: output_path });
     },
+    agentWebFetch: async (request, signal) =>
+      (await call_host({ kind: "web_fetch", request }, signal)) as BackendRuntimeWebFetchResponse,
     workerExecution:
       build_worker_threads_backend_worker_execution_from_desktop_bundle_dir(desktop_bundle_dir),
   });
@@ -65,6 +98,9 @@ export async function run_backend_runtime(args: {
       const pending = pending_host_requests.get(message.requestId);
       if (pending === undefined) return;
       pending_host_requests.delete(message.requestId);
+      if (pending.signal !== undefined && pending.abortListener !== undefined) {
+        pending.signal.removeEventListener("abort", pending.abortListener);
+      }
       if (message.result.ok) pending.resolve(message.result.data);
       else pending.reject(to_error(message.result.error));
       return;
@@ -81,6 +117,7 @@ export async function run_backend_runtime(args: {
   ): Promise<void> => {
     try {
       if (message.type === "stop") {
+        reject_pending_host_requests(new Error("Backend runtime 已关闭。"));
         await bootstrap.stop();
         respond(message.requestId, { ok: true, data: null });
         args.port.close?.();
@@ -118,6 +155,7 @@ export async function run_backend_runtime(args: {
     args.port.postMessage({ type: "ready", data: ready });
   } catch (error) {
     args.port.postMessage({ type: "start_failed", error: to_log_error(error) });
+    reject_pending_host_requests(error);
     await bootstrap.stop().catch(() => undefined);
     args.port.close?.();
   }

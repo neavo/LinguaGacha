@@ -55,6 +55,7 @@ import {
   type AgentSessionSeed,
 } from "./agent-session-seed";
 import { create_agent_skill_tools } from "./agent-skill-tools";
+import { create_agent_web_tools, type AgentWebFetchPort } from "./agent-web-tools";
 import { load_agent_skills, type AgentSkillDefinition } from "./agent-skills";
 import { load_agent_system_prompt } from "./agent-system-prompt";
 
@@ -131,6 +132,7 @@ type AgentServiceOptions = {
   proofreading: AgentProofreading;
   runtimeGate: RuntimeOperationGate;
   computeWorker: ComputeWorkerClient;
+  webFetch: AgentWebFetchPort | undefined;
   logManager: Pick<LogManager, "error" | "warning">;
   publish: (topic: string, payload: JsonRecord) => void;
 };
@@ -154,6 +156,7 @@ export class AgentService {
   private readonly proofreading: AgentServiceOptions["proofreading"];
   private readonly runtime_gate: RuntimeOperationGate; // task / Agent 互斥与 Agent 写工具授权来源
   private readonly compute_worker: ComputeWorkerClient;
+  private readonly web_fetch: AgentWebFetchPort | undefined; // 缺失即不向模型注册 GUI 专属联网工具
   private readonly log_manager: AgentServiceOptions["logManager"];
   private readonly publish: AgentServiceOptions["publish"];
   private readonly unsubscribe_project_session: () => void;
@@ -181,6 +184,7 @@ export class AgentService {
     this.proofreading = options.proofreading;
     this.runtime_gate = options.runtimeGate;
     this.compute_worker = options.computeWorker;
+    this.web_fetch = options.webFetch;
     this.log_manager = options.logManager;
     this.publish = options.publish;
     this.unsubscribe_project_session = this.session_state.subscribe_change(() =>
@@ -440,6 +444,7 @@ export class AgentService {
         ...create_agent_skill_tools(resources.skills, (name) =>
           this.is_skill_explicitly_invoked(name),
         ),
+        ...(this.web_fetch === undefined ? [] : create_agent_web_tools(this.web_fetch)),
       ].map(yield_before_tool_execution),
       resourceLoader: resource_loader,
       sessionManager: session_manager,

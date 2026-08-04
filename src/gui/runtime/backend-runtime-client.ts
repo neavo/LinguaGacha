@@ -15,6 +15,8 @@ import type {
   BackendRuntimeMainMessage,
   BackendRuntimeReady,
   BackendRuntimeResult,
+  BackendRuntimeWebFetchRequest,
+  BackendRuntimeWebFetchResponse,
   BackendRuntimeWorkerMessage,
 } from "../../shared/backend-runtime";
 
@@ -27,6 +29,7 @@ type PendingRequest = {
 export class BackendRuntimeClient {
   private worker: Worker | null = null;
   private readonly pending = new Map<string, PendingRequest>(); // requestId 隔离并发控制响应
+  private readonly active_host_operations = new Map<string, AbortController>(); // worker 可按 requestId 取消 main 副作用
   private start_promise: Promise<BackendRuntimeReady> | null = null; // 固化单次启动结果，禁止复用实例重启
   private start_reject: ((error: Error) => void) | null = null;
   private ready = false; // 只有 ready 后退出才属于应用运行期故障
@@ -39,6 +42,11 @@ export class BackendRuntimeClient {
       appRoot: string;
       resolveProxy: (url: string) => Promise<string>;
       openOutputFolder: (path: string) => Promise<void>;
+      /** main 专属受控下载能力；worker 只持有这个可取消窄端口。 */
+      webFetch: (
+        request: BackendRuntimeWebFetchRequest,
+        signal: AbortSignal,
+      ) => Promise<BackendRuntimeWebFetchResponse>;
       onUnexpectedExit: (error: Error) => void;
     },
   ) {}
@@ -135,6 +143,10 @@ export class BackendRuntimeClient {
 
   /** 分流宿主回调和普通控制响应；生命周期消息只由 start 监听器消费。 */
   private handle_message(message: BackendRuntimeWorkerMessage): void {
+    if (message.type === "host_cancel") {
+      this.active_host_operations.get(message.requestId)?.abort();
+      return;
+    }
     if (message.type === "host_request") {
       void this.handle_host_request(message.requestId, message.operation);
       return;
@@ -152,15 +164,27 @@ export class BackendRuntimeClient {
     request_id: string,
     operation: BackendRuntimeHostOperation,
   ): Promise<void> {
+    const controller = new AbortController();
+    this.active_host_operations.set(request_id, controller);
     let result: BackendRuntimeResult;
     try {
-      const data =
-        operation.kind === "resolve_proxy"
-          ? await this.options.resolveProxy(operation.url)
-          : await this.options.openOutputFolder(operation.path);
+      let data: unknown;
+      switch (operation.kind) {
+        case "resolve_proxy":
+          data = await this.options.resolveProxy(operation.url);
+          break;
+        case "open_output_folder":
+          data = await this.options.openOutputFolder(operation.path);
+          break;
+        case "web_fetch":
+          data = await this.options.webFetch(operation.request, controller.signal);
+          break;
+      }
       result = { ok: true, data };
     } catch (error) {
       result = { ok: false, error: to_log_error(error) };
+    } finally {
+      this.active_host_operations.delete(request_id);
     }
     this.worker?.postMessage({ type: "host_response", requestId: request_id, result });
   }
@@ -173,6 +197,8 @@ export class BackendRuntimeClient {
     this.exit_handled = true;
     this.start_reject?.(error);
     this.start_reject = null;
+    for (const controller of this.active_host_operations.values()) controller.abort();
+    this.active_host_operations.clear();
     for (const pending of this.pending.values()) pending.reject(error);
     this.pending.clear();
     if (!this.stopped && this.ready) this.options.onUnexpectedExit(error);

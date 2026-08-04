@@ -81,6 +81,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - Agent 启动期原子加载必需的 `resource/agent/system_prompt.md` 与 `resource/agent/session_seed.json`；会话种子由一个或多个严格交替的完整 user / assistant 轮次组成，按资源顺序进入每个新会话的模型历史，但不进入公开时间线，任一资源缺失或结构无效都会阻止启动。产品 skill 仅在启动期从内置与用户目录加载，坏 skill 只记录诊断；SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。
 - skill 的 `SKILL.md` 描述同时作为模型描述和 UI 翻译缺失时的回退；manual-only skill 必须由显式 skill part 授权，`read_skill` 只能读取启动期形成的 `SKILL.md` 与 references 白名单，UI 翻译不进入模型上下文。
 - Agent 产品工具从当前 cache / query 读取事实，写入经对应服务的 Agent 专用入口复用同一 revision、事务和项目事件边界；`query_items` 只从基础 item cache 组合 ID、状态、文件与单一文本搜索并返回分页，`query_warning_items` 复用当前校对评估运行态且只返回具有真实 warning 的条目与证据，`update_items` 与 GUI 共用译文、译名和人工状态的字段更新核心。
+- `web_fetch({ url })` 是仅在 GUI 宿主能力可用时注册的 Agent 只读联网工具；CLI 不提供假实现。Electron main 负责每跳 HTTP(S) URL、DNS/IP、重定向、超时和响应字节上限，Backend 只接收有限字节与原始 Content-Type，并把 HTML / XHTML 经本地 Defuddle、其余受支持文本按 MIME 和 charset 统一归一为带不可信边界的 Markdown；二进制、无有效正文和不支持的 MIME 明确失败。
 - `query_quality_rules(glossary)` 复用一次 `quality_statistics` compute task 同时返回覆盖数、实际命中次数、结构关系和每条最多一个有效语境 sample；sample 由统计启动前捕获的 item 快照投影，后续 `query_items` 以 section revisions 相等作为一致性边界，不另建 Agent 统计缓存或正文重扫。
 
 ## 5. 数据库与 `.lg` 存储

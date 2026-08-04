@@ -2,6 +2,7 @@ import { AppMetadataService } from "../app/app-metadata-service";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { AgentService } from "../agent/agent-service";
+import type { AgentWebFetchPort } from "../agent/agent-web-tools";
 import { ApiStreamHub } from "../api/api-stream-hub";
 import { CacheManager } from "../cache/cache-manager";
 import { ProjectDatabase } from "../database/database-operations";
@@ -53,6 +54,7 @@ export interface BackendServicesOptions {
   database: ProjectDatabase; // 由 Bootstrap 持有并负责关闭，服务层只组合业务能力
   logManager: LogManager; // Backend 内部日志和任务日志的唯一汇聚点
   systemProxySnapshot: SystemProxySnapshot | null; // 启动期系统代理事实，传给 LLM worker 线程复用
+  agentWebFetch?: AgentWebFetchPort; // 只有 GUI runtime 提供 Electron 抓取端口
   openOutputFolder: OutputFolderOpener; // GUI 专用副作用，CLI 注入空实现
   workerExecution: BackendWorkerExecution; // 入口层注入的 Backend worker 执行配置
 }
@@ -299,6 +301,7 @@ export class BackendServices {
       proofreading: this.proofreading,
       runtimeGate: this.runtime_gate,
       computeWorker: this.compute_worker_client,
+      webFetch: options.agentWebFetch,
       logManager: this.logManager,
       publish: (topic, payload) => this.api_stream_hub.publish(topic, payload),
     });

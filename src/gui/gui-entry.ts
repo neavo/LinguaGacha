@@ -20,6 +20,7 @@ import {
 } from "./shell/renderer-process-diagnostics";
 import { DesktopUpdateService } from "./shell/desktop-update-service";
 import { BackendRuntimeClient } from "./runtime/backend-runtime-client";
+import { desktop_web_fetch } from "./runtime/desktop-web-fetch";
 
 export interface GuiEntryOptions {
   desktopBundleDir: string; // 产品入口解析出的桌面 bundle 根目录
@@ -64,6 +65,7 @@ export function run_gui_entry(options: GuiEntryOptions): void {
     appRoot: app_root,
     resolveProxy: (url) => session.defaultSession.resolveProxy(url),
     openOutputFolder: open_output_folder,
+    webFetch: (request, signal) => desktop_web_fetch(session.defaultSession, request, signal),
     onUnexpectedExit: (error) => {
       try_show_native_error_dialog("LinguaGacha 后端异常退出", error.message);
       void quit_app_after_backend_shutdown(1);

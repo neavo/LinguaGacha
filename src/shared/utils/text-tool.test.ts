@@ -61,6 +61,23 @@ describe("文本工具", () => {
     await expect(decode_text_content(new Uint8Array([0xe9]))).resolves.toBe("é");
   });
 
+  it("声明编码优先于自动探测", async () => {
+    chardet_detect_mock.mockReturnValue("utf-8");
+
+    await expect(
+      decode_text_content(new Uint8Array([0xe9]), { declaredEncoding: "windows-1252" }),
+    ).resolves.toBe("é");
+    expect(chardet_detect_mock).not.toHaveBeenCalled();
+  });
+
+  it("声明编码不受支持时继续使用探测结果", async () => {
+    chardet_detect_mock.mockReturnValue("windows-1252");
+
+    await expect(
+      decode_text_content(new Uint8Array([0xe9]), { declaredEncoding: "unsupported" }),
+    ).resolves.toBe("é");
+  });
+
   it("编码探测异常时回退默认 UTF-8 解码", async () => {
     chardet_detect_mock.mockImplementation(() => {
       throw new Error("boom");
