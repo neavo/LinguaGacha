@@ -1,37 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { prepare_quality_statistics_task_input } from "../../shared/quality/quality-statistics-input";
+import {
+  flush_worker_microtasks,
+  install_worker_threads_mock,
+} from "../../test/worker-port-harness";
 import type { ComputeWorkerIncomingMessage } from "./compute-worker-entry";
 import type { ComputeWorkerTask } from "./compute-worker-task";
-
-type WorkerPortHarness = {
-  listener: ((message: ComputeWorkerIncomingMessage) => void) | null;
-  postMessage: ReturnType<typeof vi.fn>;
-  emit: (message: ComputeWorkerIncomingMessage) => void;
-};
-
-function install_worker_threads_mock(): WorkerPortHarness {
-  const harness: WorkerPortHarness = {
-    listener: null,
-    postMessage: vi.fn(),
-    emit(message) {
-      harness.listener?.(message);
-    },
-  };
-  const parent_port = {
-    on: vi.fn((event_name: string, listener: (message: ComputeWorkerIncomingMessage) => void) => {
-      if (event_name === "message") {
-        harness.listener = listener;
-      }
-    }),
-    postMessage: harness.postMessage,
-  };
-  vi.doMock("node:worker_threads", () => ({
-    default: { parentPort: parent_port },
-    parentPort: parent_port,
-  }));
-  return harness;
-}
 
 function create_task(): ComputeWorkerTask {
   return {
@@ -44,11 +19,6 @@ function create_task(): ComputeWorkerTask {
   };
 }
 
-async function flush_worker_microtasks(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-}
-
 describe("Compute worker entry", () => {
   afterEach(() => {
     vi.resetModules();
@@ -57,7 +27,7 @@ describe("Compute worker entry", () => {
   });
 
   it("按消息 id 回传 task 结果", async () => {
-    const harness = install_worker_threads_mock();
+    const harness = install_worker_threads_mock<ComputeWorkerIncomingMessage>();
     const task = create_task();
     const run_compute_worker_task = vi.fn(async () => ({ phase: "current" }));
     vi.doMock("./compute-worker-task", () => ({ run_compute_worker_task }));
@@ -75,7 +45,7 @@ describe("Compute worker entry", () => {
   });
 
   it("运行中取消后返回结构化错误", async () => {
-    const harness = install_worker_threads_mock();
+    const harness = install_worker_threads_mock<ComputeWorkerIncomingMessage>();
     const task = create_task();
     const task_completion: {
       resolve: ((value: Record<string, unknown>) => void) | null;
@@ -108,7 +78,7 @@ describe("Compute worker entry", () => {
   });
 
   it("完成后的迟到取消不污染后续任务状态", async () => {
-    const harness = install_worker_threads_mock();
+    const harness = install_worker_threads_mock<ComputeWorkerIncomingMessage>();
     const task = create_task();
     const run_compute_worker_task = vi.fn(async () => ({ phase: "current" }));
     vi.doMock("./compute-worker-task", () => ({ run_compute_worker_task }));

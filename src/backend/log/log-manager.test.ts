@@ -210,9 +210,9 @@ describe("LogManager", () => {
   });
 
   it("真实文件输出按 app.yyyymmdd.log 写入结构化日志", async () => {
-    const log_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-log-file-test-"));
+    using temp_dir = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-log-file-test-"));
+    const log_dir = temp_dir.path;
     const now = new Date(2012, 11, 12, 8, 0, 0);
-    cleanup_callbacks.push(() => fs.rmSync(log_dir, { force: true, recursive: true }));
     const log_manager = new LogManager({
       consoleWriter: () => undefined,
       logDir: log_dir,
@@ -240,9 +240,11 @@ describe("LogManager", () => {
   });
 
   it("磁盘日志只保留最近 3 份 app.yyyymmdd.log", async () => {
-    const log_dir = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-log-retention-test-"));
+    using temp_dir = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-log-retention-test-"),
+    );
+    const log_dir = temp_dir.path;
     const now = new Date(2012, 11, 12, 8, 0, 0);
-    cleanup_callbacks.push(() => fs.rmSync(log_dir, { force: true, recursive: true }));
     for (const file_name of [
       "app.20121208.log",
       "app.20121209.log",

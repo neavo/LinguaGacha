@@ -53,6 +53,16 @@ import { AppSidebar } from "@frontend/app/shell/app-sidebar";
 import { AppTitlebar } from "@frontend/app/shell/app-titlebar";
 import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
 import { LogWindowPage } from "@frontend/pages/log-window-page/page";
+import {
+  is_update_dialog_open,
+  is_update_dialog_submitting,
+  read_update_release,
+  resolve_disabled_route_ids,
+  resolve_project_route_after_snapshot,
+  resolve_route_selection,
+  resolve_update_confirm_label,
+  type UpdateDialogState,
+} from "@frontend/app/app-shell-state";
 import type {
   DesktopUpdateDownloadProgress,
   DesktopUpdateDownloadResult,
@@ -73,99 +83,6 @@ const THEME_STORAGE_KEY = "lg-theme-mode";
 const FONT_FAMILY_STORAGE_KEY = "lg-base-font-mode";
 const LOG_WINDOW_APP_LANGUAGE_STORAGE_KEY = "lg-log-window-app-language"; // 日志窗口不启动主运行态，首屏语言用独立缓存兜底
 const GITHUB_REPOSITORY_URL = "https://github.com/neavo/LinguaGacha";
-
-type UpdateDialogState =
-  | { phase: "idle" }
-  | { phase: "available"; release: GithubReleaseUpdate; zip_path: string | null }
-  | { phase: "confirming"; release: GithubReleaseUpdate }
-  | { phase: "downloading"; release: GithubReleaseUpdate; progress_percent: number }
-  | { phase: "ready_to_restart"; release: GithubReleaseUpdate; zip_path: string }
-  | { phase: "launching"; release: GithubReleaseUpdate; zip_path: string };
-type AppTranslator = ReturnType<typeof useI18n>["t"];
-
-// 未加载工程时仍可点击，并通过项目页恢复目标路由的加载入口。
-const PROJECT_LOAD_ENTRY_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
-  "agent",
-  "proofreading",
-  "workbench",
-]);
-
-// 必须已有 ready 工程才能进入的项目功能页。
-const PROJECT_LOADED_ONLY_ROUTE_IDS: ReadonlySet<RouteId> = new Set([
-  "glossary",
-  "text-preserve",
-  "pre-translation-replacement",
-  "post-translation-replacement",
-  "translation-prompt",
-  "analysis-prompt",
-  "laboratory",
-  "toolbox",
-]);
-
-// 加载入口和 loaded-only 页面都依赖项目 session，但未加载时的可选性不同。
-function is_project_dependent_route(route_id: RouteId): boolean {
-  return PROJECT_LOAD_ENTRY_ROUTE_IDS.has(route_id) || PROJECT_LOADED_ONLY_ROUTE_IDS.has(route_id);
-}
-
-/**
- * 从更新弹窗状态中读取当前 release，idle 阶段没有可消费版本。
- */
-function read_update_release(state: UpdateDialogState): GithubReleaseUpdate | null {
-  return state.phase === "idle" ? null : state.release;
-}
-
-/**
- * 判断更新弹窗当前是否需要保持可见。
- */
-function is_update_dialog_open(state: UpdateDialogState): boolean {
-  return (
-    state.phase === "confirming" ||
-    state.phase === "downloading" ||
-    state.phase === "ready_to_restart" ||
-    state.phase === "launching"
-  );
-}
-
-/**
- * 判断更新弹窗是否处于不可关闭的提交阶段。
- */
-function is_update_dialog_submitting(state: UpdateDialogState): boolean {
-  return state.phase === "downloading" || state.phase === "launching";
-}
-
-/**
- * 格式化下载进度，避免按钮文本出现越界数值。
- */
-function format_update_progress_label(progress_percent: number): string {
-  return `${Math.max(0, Math.min(100, progress_percent)).toFixed(2)}%`;
-}
-
-/**
- * 根据更新状态解析确认按钮展示文本。
- */
-function resolve_update_confirm_label(state: UpdateDialogState, t: AppTranslator): string {
-  if (state.phase === "ready_to_restart") {
-    return t("app.update.restart_confirm");
-  }
-  if (state.phase === "downloading") {
-    return format_update_progress_label(state.progress_percent);
-  }
-  if (state.phase === "launching") {
-    return t("app.update.launching");
-  }
-
-  return t("app.action.confirm");
-}
-
-function resolve_selectable_route(route_id: RouteId): RouteId {
-  if (route_id === "text-replacement") {
-    return "pre-translation-replacement";
-  } else if (route_id === "custom-prompt") {
-    return "translation-prompt";
-  } else {
-    return route_id;
-  }
-}
 
 function has_registered_screen(route_id: RouteId): boolean {
   return SCREEN_REGISTRY[route_id] !== undefined;
@@ -408,32 +325,18 @@ function AppContent(props: AppContentProps): JSX.Element {
     previous_project_path_ref.current = project_snapshot.path;
     previous_project_session_status_ref.current = project_session_status;
 
-    if (was_loaded && !project_snapshot.loaded) {
-      set_selected_route(DEFAULT_ROUTE_ID);
-      set_pending_target_route(null);
-      return;
-    }
-
-    if (!project_snapshot.loaded || project_session_status !== "ready") {
-      return;
-    }
-
-    const project_just_loaded = !was_loaded;
-    const project_path_changed = previous_project_path !== project_snapshot.path;
-    const session_just_became_ready = previous_project_session_status !== "ready";
-
-    if (project_just_loaded || project_path_changed || session_just_became_ready) {
-      if (pending_target_route !== null) {
-        set_selected_route(resolve_selectable_route(pending_target_route));
-        set_pending_target_route(null);
-      } else if (
-        selected_route === DEFAULT_ROUTE_ID ||
-        project_just_loaded ||
-        project_path_changed ||
-        session_just_became_ready
-      ) {
-        set_selected_route("workbench");
-      }
+    const next_route = resolve_project_route_after_snapshot({
+      previous_project_loaded: was_loaded,
+      previous_project_path,
+      previous_project_session_status,
+      project_loaded: project_snapshot.loaded,
+      project_path: project_snapshot.path,
+      project_session_status,
+      pending_target_route,
+    });
+    if (next_route !== null) {
+      set_selected_route(next_route.selected_route);
+      set_pending_target_route(next_route.pending_target_route);
     }
   }, [
     initial_state_ready,
@@ -446,15 +349,10 @@ function AppContent(props: AppContentProps): JSX.Element {
   ]);
 
   const disabled_route_ids = useMemo<ReadonlySet<RouteId>>(() => {
-    if (!project_snapshot.loaded) {
-      return new Set(PROJECT_LOADED_ONLY_ROUTE_IDS);
-    }
-
-    if (project_session_status === "ready") {
-      return new Set();
-    }
-
-    return new Set([...PROJECT_LOAD_ENTRY_ROUTE_IDS, ...PROJECT_LOADED_ONLY_ROUTE_IDS]);
+    return resolve_disabled_route_ids({
+      project_loaded: project_snapshot.loaded,
+      project_session_status,
+    });
   }, [project_snapshot.loaded, project_session_status]);
   const badged_bottom_action_ids = useMemo<ReadonlySet<BottomActionId>>(() => {
     return log_badge_visible ? new Set<BottomActionId>(["logs"]) : new Set();
@@ -497,29 +395,14 @@ function AppContent(props: AppContentProps): JSX.Element {
   }, []);
 
   function handle_select_route(route_id: RouteId): void {
-    const next_route = resolve_selectable_route(route_id);
-
-    if (!project_snapshot.loaded && is_project_dependent_route(next_route)) {
-      set_pending_target_route(next_route);
-      set_selected_route(DEFAULT_ROUTE_ID);
-      return;
-    }
-
-    if (
-      project_snapshot.loaded &&
-      project_session_status !== "ready" &&
-      is_project_dependent_route(next_route)
-    ) {
-      set_pending_target_route(next_route);
-      set_selected_route(DEFAULT_ROUTE_ID);
-      return;
-    }
-
-    if (!is_project_dependent_route(next_route)) {
-      set_pending_target_route(null);
-    }
-
-    set_selected_route(next_route);
+    const next_route = resolve_route_selection({
+      route_id,
+      project_loaded: project_snapshot.loaded,
+      project_session_status,
+      pending_target_route,
+    });
+    set_pending_target_route(next_route.pending_target_route);
+    set_selected_route(next_route.selected_route);
   }
 
   useEffect(() => {

@@ -8,7 +8,7 @@ vi.mock("@frontend/app/desktop/desktop-api", () => ({
   api_fetch: api_fetch_mock,
 }));
 
-import { query_quality_rules } from "./quality-rule-api-client";
+import { import_quality_rule_entries, query_quality_rules } from "./quality-rule-api-client";
 
 describe("quality rule api client", () => {
   beforeEach(() => {
@@ -25,4 +25,16 @@ describe("quality rule api client", () => {
       expect(api_fetch_mock).toHaveBeenCalledWith("/api/quality/rules/query", { rule_type });
     },
   );
+
+  it("导入规则时只返回数组 entries", async () => {
+    const entries = [{ src: "HP", dst: "生命值", info: "", case_sensitive: false }];
+    api_fetch_mock.mockResolvedValueOnce({ entries }).mockResolvedValueOnce({ entries: null });
+
+    await expect(import_quality_rule_entries("glossary", "E:/rules.json")).resolves.toBe(entries);
+    await expect(import_quality_rule_entries("glossary", "E:/bad.json")).resolves.toEqual([]);
+    expect(api_fetch_mock).toHaveBeenNthCalledWith(1, "/api/quality/rules/import", {
+      rule_type: "glossary",
+      path: "E:/rules.json",
+    });
+  });
 });

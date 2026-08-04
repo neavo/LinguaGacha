@@ -325,7 +325,7 @@ function create_renderer_px_first_literal_rule() {
         }
         const content = context.read_file(file_path);
         const matches = find_pattern_errors(content, /\d+(?:\.\d+)?rem\b/g, () => {
-          return "违规则使用了 rem 尺寸字面量；请改用 px，或回到 DESIGN.md 判断是否需要沉淀新的长期设计语义";
+          return "违规则使用了 rem 尺寸字面量；请改用 px，或依据当前任务设计输入与既有界面证据判断是否需要新的尺寸语义";
         });
         for (const match of matches) {
           errors.push({

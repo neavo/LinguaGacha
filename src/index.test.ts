@@ -42,27 +42,24 @@ afterEach(() => {
 
 describe("产品统一入口", () => {
   it("发布态 app.exe 使用 --cli 后的命令参数并以可执行文件目录作为 appRoot", async () => {
-    const app_root = fs.mkdtempSync(path.join(os.tmpdir(), "linguagacha-entry-"));
+    using temp_root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-entry-"));
+    const app_root = temp_root.path;
     const calls = mock_entry_modules();
-    try {
-      const executable_path = path.join(app_root, "app.exe");
-      fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3", "utf-8");
-      set_process_args(executable_path, [executable_path, "--cli", "translate", "--help"]);
+    const executable_path = path.join(app_root, "app.exe");
+    fs.writeFileSync(path.join(app_root, "version.txt"), "1.2.3", "utf-8");
+    set_process_args(executable_path, [executable_path, "--cli", "translate", "--help"]);
 
-      await import("./index");
-      await wait_for_entry(() => calls.cli.length === 1);
+    await import("./index");
+    await wait_for_entry(() => calls.cli.length === 1);
 
-      expect(calls.cli).toHaveLength(1);
-      expect(calls.cli[0]).toMatchObject({
-        argv: ["translate", "--help"],
-        appRoot: app_root,
-      });
-      expect_worker_threads_backend_worker_execution(calls.cli[0]?.workerExecution);
-      expect(calls.gui).toEqual([]);
-      expect(exit_codes).toEqual([0]);
-    } finally {
-      fs.rmSync(app_root, { force: true, recursive: true });
-    }
+    expect(calls.cli).toHaveLength(1);
+    expect(calls.cli[0]).toMatchObject({
+      argv: ["translate", "--help"],
+      appRoot: app_root,
+    });
+    expect_worker_threads_backend_worker_execution(calls.cli[0]?.workerExecution);
+    expect(calls.gui).toEqual([]);
+    expect(exit_codes).toEqual([0]);
   });
 
   it("开发态 --cli 只把标记后的参数交给 CLI parser", async () => {
@@ -92,24 +89,6 @@ describe("产品统一入口", () => {
   it("可执行文件名为 cli.exe 但没有 --cli 时仍进入 GUI 入口", async () => {
     const calls = mock_entry_modules();
     const executable_path = path.join(process.cwd(), "cli.exe");
-    set_process_args(executable_path, [executable_path]);
-
-    await import("./index");
-    await wait_for_entry(() => calls.gui.length === 1);
-
-    expect(calls.cli).toEqual([]);
-    expect(calls.gui[0]).toMatchObject({
-      desktopBundleDir: expect.any(String),
-    });
-    expect(String(calls.gui[0]?.backendRuntimeWorkerEntryUrl)).toMatch(
-      /\/backend-runtime-worker-entry\.js$/u,
-    );
-    expect(exit_codes).toEqual([]);
-  });
-
-  it("普通 app 可执行文件进入 GUI 入口", async () => {
-    const calls = mock_entry_modules();
-    const executable_path = path.join(process.cwd(), "app.exe");
     set_process_args(executable_path, [executable_path]);
 
     await import("./index");

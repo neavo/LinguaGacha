@@ -12,7 +12,7 @@ vi.mock("@frontend/widgets/interactions/use-action-shortcut", () => ({
 }));
 vi.mock("@frontend/widgets/app-editor/app-editor", () => ({
   AppEditor: (props: { value: string; aria_label: string; read_only: boolean }) => (
-    <textarea aria-label={props.aria_label} readOnly={props.read_only} value={props.value} />
+    <textarea aria-label={props.aria_label} readOnly={props.read_only} defaultValue={props.value} />
   ),
 }));
 vi.mock("@frontend/widgets/app-page-dialog", () => ({

@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import {
+  flush_worker_microtasks,
+  install_worker_threads_mock,
+} from "../../../test/worker-port-harness";
+
 // 复刻入口私有协议，避免测试导出生产私有类型。
 type WorkUnitWorkerIncomingMessage =
   | {
@@ -12,50 +17,10 @@ type WorkUnitWorkerIncomingMessage =
       type: "cancel";
     };
 
-// 保存入口监听器和回包 spy，测试不创建真实 worker。
-type WorkerPortHarness = {
-  listener: ((message: WorkUnitWorkerIncomingMessage) => void) | null;
-  postMessage: ReturnType<typeof vi.fn>;
-  emit: (message: WorkUnitWorkerIncomingMessage) => void;
-};
-
 // WorkUnitRunner 的最小行为面，聚焦入口分发和取消语义。
 type RunnerMock = {
   run: ReturnType<typeof vi.fn>;
 };
-
-// harness 固定 workerData 和 parentPort，隔离真实 worker_threads 环境。
-function install_worker_threads_mock(worker_data: Record<string, unknown>): WorkerPortHarness {
-  const harness: WorkerPortHarness = {
-    listener: null,
-    postMessage: vi.fn(),
-    // emit 模拟测试场景中的对应运行时方法，保持断言聚焦协议行为。
-    emit(message) {
-      harness.listener?.(message);
-    },
-  };
-  const parent_port = {
-    on: vi.fn((event_name: string, listener: (message: WorkUnitWorkerIncomingMessage) => void) => {
-      if (event_name === "message") {
-        harness.listener = listener;
-      }
-    }),
-    postMessage: harness.postMessage,
-  };
-
-  vi.doMock("node:worker_threads", () => {
-    return {
-      default: {
-        parentPort: parent_port,
-        workerData: worker_data,
-      },
-      parentPort: parent_port,
-      workerData: worker_data,
-    };
-  });
-
-  return harness;
-}
 
 // WorkUnitRunner 是入口唯一业务依赖，mock class 保留 new 调用语义。
 function install_runner_mock(runner: RunnerMock): void {
@@ -76,12 +41,6 @@ async function import_worker_entry(): Promise<void> {
   await import("./work-unit-worker-entry");
 }
 
-// run_message 异步回包在微任务中完成，测试用显式 flush 固定断言时序。
-async function flush_worker_microtasks(): Promise<void> {
-  await Promise.resolve();
-  await Promise.resolve();
-}
-
 describe("work-unit-worker-entry", () => {
   afterEach(() => {
     vi.resetModules();
@@ -92,7 +51,7 @@ describe("work-unit-worker-entry", () => {
 
   it("加载时安装代理快照，并把 execute 结果按消息 id 回传", async () => {
     const system_proxy_snapshot = { mode: "fixed", url: "http://127.0.0.1:7890" };
-    const harness = install_worker_threads_mock({
+    const harness = install_worker_threads_mock<WorkUnitWorkerIncomingMessage>({
       appRoot: "E:/Project/LinguaGacha",
       systemProxySnapshot: system_proxy_snapshot,
     });
@@ -126,7 +85,7 @@ describe("work-unit-worker-entry", () => {
   });
 
   it("cancel 只中断同 id 的运行中消息", async () => {
-    const harness = install_worker_threads_mock({
+    const harness = install_worker_threads_mock<WorkUnitWorkerIncomingMessage>({
       appRoot: "E:/Project/LinguaGacha",
       systemProxySnapshot: null,
     });

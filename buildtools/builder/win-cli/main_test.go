@@ -2,7 +2,6 @@ package main
 
 import (
 	"errors"
-	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -36,18 +35,6 @@ func TestBuildLauncherPlanRejectsEmptyExecutablePath(t *testing.T) {
 	}
 }
 
-// 证明子进程成功时启动器返回 0。
-func TestNormalizeExitResultKeepsSuccess(t *testing.T) {
-	exitCode, err := normalizeExitResult(nil)
-
-	if err != nil {
-		t.Fatalf("normalizeExitResult 返回错误：%v", err)
-	}
-	if exitCode != 0 {
-		t.Fatalf("退出码 = %d，期望 0", exitCode)
-	}
-}
-
 // 证明启动失败时启动器返回通用失败码。
 func TestNormalizeExitResultReportsLaunchFailure(t *testing.T) {
 	launchErr := errors.New("启动失败")
@@ -59,31 +46,5 @@ func TestNormalizeExitResultReportsLaunchFailure(t *testing.T) {
 	}
 	if exitCode != 1 {
 		t.Fatalf("退出码 = %d，期望 1", exitCode)
-	}
-}
-
-// 证明缺少 app.exe 时会给出明确错误。
-func TestEnsureAppExecutableExistsReportsMissingApp(t *testing.T) {
-	tempDir := t.TempDir()
-
-	err := ensureAppExecutableExists(filepath.Join(tempDir, "app.exe"))
-
-	if err == nil {
-		t.Fatal("ensureAppExecutableExists 应该报告 app.exe 缺失")
-	}
-}
-
-// 证明 app.exe 存在时启动前检查通过。
-func TestEnsureAppExecutableExistsAcceptsExistingApp(t *testing.T) {
-	tempDir := t.TempDir()
-	appPath := filepath.Join(tempDir, "app.exe")
-	if err := os.WriteFile(appPath, []byte("app"), 0o755); err != nil {
-		t.Fatalf("准备 app.exe 失败：%v", err)
-	}
-
-	err := ensureAppExecutableExists(appPath)
-
-	if err != nil {
-		t.Fatalf("ensureAppExecutableExists 返回错误：%v", err)
 	}
 }

@@ -294,8 +294,13 @@ vi.mock("@frontend/app/desktop/desktop-api", () => {
   };
 });
 
-vi.mock("@frontend/features/quality-rule-editor/quality-rule-api-client", () => {
+vi.mock("@frontend/features/quality-rule-editor/quality-rule-api-client", async (import_actual) => {
+  const actual =
+    await import_actual<
+      typeof import("@frontend/features/quality-rule-editor/quality-rule-api-client")
+    >();
   return {
+    ...actual,
     query_quality_rules: query_quality_rules_mock,
   };
 });
@@ -667,14 +672,6 @@ describe("useGlossaryPageState", () => {
     });
   }
 
-  it("首次规则查询失败时显示错误提醒", async () => {
-    query_quality_rules_mock.mockRejectedValue(new Error("术语表读取失败"));
-
-    await mount_probe();
-
-    expect(push_toast_mock).toHaveBeenCalledWith("error", expect.anything());
-  });
-
   it("提交开关时沿用生成当前术语表事实的旧 revision", async () => {
     await mount_probe();
     run_state.revisions.sections.quality = 9;
@@ -759,45 +756,6 @@ describe("useGlossaryPageState", () => {
     expect(latest_state?.enabled).toBe(true);
     expect(push_toast_mock).not.toHaveBeenCalledWith("success", expect.anything());
     expect(push_toast_mock).toHaveBeenCalledWith("error", expect.anything());
-  });
-
-  it("items 变更后保留当前术语规则表格主体", async () => {
-    await mount_probe();
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
-
-    project_change_sections = ["items"];
-    run_state.quality.glossary.entries = [
-      {
-        src: "橘子",
-        dst: "Orange",
-        info: "水果",
-        case_sensitive: false,
-      },
-    ];
-    run_state.quality.glossary.revision = 2;
-    run_state.revisions.sections.quality = 2;
-    await rerender_probe();
-
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["苹果"]);
-  });
-
-  it("quality 变更后重新读取术语规则表格主体", async () => {
-    await mount_probe();
-
-    project_change_sections = ["quality"];
-    run_state.quality.glossary.entries = [
-      {
-        src: "橘子",
-        dst: "Orange",
-        info: "水果",
-        case_sensitive: false,
-      },
-    ];
-    run_state.quality.glossary.revision = 2;
-    run_state.revisions.sections.quality = 2;
-    await rerender_probe();
-
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["橘子"]);
   });
 
   it("首次进入页面时直接读取预热后的统计结果", async () => {

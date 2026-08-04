@@ -21,7 +21,7 @@ vi.mock("@frontend/widgets/app-editor/app-editor", () => ({
       aria-label={props.aria_label}
       aria-invalid={props.invalid || undefined}
       readOnly={props.read_only}
-      value={props.value}
+      defaultValue={props.value}
     />
   ),
 }));

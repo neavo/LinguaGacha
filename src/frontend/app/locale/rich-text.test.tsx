@@ -1,46 +1,24 @@
-import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, expect, it } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
 
 import { render_rich_text } from "@frontend/app/locale/rich-text";
 
 describe("render_rich_text", () => {
-  let container: HTMLDivElement | null = null;
-  let root: Root | null = null;
-
-  afterEach(() => {
-    root?.unmount();
-    container?.remove();
-    root = null;
-    container = null;
-  });
-
-  async function render_to_text(source_text: string): Promise<string> {
-    container = document.createElement("div");
-    document.body.append(container);
-    root = createRoot(container);
-    await act(async () => {
-      root?.render(
-        <p>
-          {render_rich_text(source_text, {
-            emphasis: (children) => <strong>{children}</strong>,
-          })}
-        </p>,
-      );
-    });
-    return container.textContent ?? "";
+  function render(source_text: string): string {
+    return renderToStaticMarkup(
+      <>{render_rich_text(source_text, { emphasis: (children) => <strong>{children}</strong> })}</>,
+    );
   }
 
-  it("保留未注册标签的字面文本", async () => {
-    await expect(render_to_text("<ruby>漢字<rt>かんじ</rt></ruby>")).resolves.toBe(
-      "<ruby>漢字<rt>かんじ</rt></ruby>",
+  it("保留未注册标签的字面文本", () => {
+    expect(render("<ruby>漢字<rt>かんじ</rt></ruby>")).toBe(
+      "&lt;ruby&gt;漢字&lt;rt&gt;かんじ&lt;/rt&gt;&lt;/ruby&gt;",
     );
   });
 
-  it("继续渲染已注册的富文本标签", async () => {
-    await expect(render_to_text("翻译 <emphasis>GalGame</emphasis> 文本")).resolves.toBe(
-      "翻译 GalGame 文本",
+  it("继续渲染已注册的富文本标签", () => {
+    expect(render("翻译 <emphasis>GalGame</emphasis> 文本")).toBe(
+      "翻译 <strong>GalGame</strong> 文本",
     );
-    expect(container?.querySelector("strong")?.textContent).toBe("GalGame");
   });
 });

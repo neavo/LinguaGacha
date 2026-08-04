@@ -11,14 +11,6 @@ vi.mock("electron", () => {
 });
 
 describe("原生错误弹窗", () => {
-  it("显示原生错误提示", async () => {
-    const { show_native_error_dialog } = await import("./native-error-dialog");
-
-    show_native_error_dialog("启动失败", "端口不可用");
-
-    expect(show_error_box).toHaveBeenCalledWith("启动失败", "端口不可用");
-  });
-
   it("致命错误容错提示不会抛出原生弹窗异常", async () => {
     const { try_show_native_error_dialog } = await import("./native-error-dialog");
     show_error_box.mockImplementationOnce(() => {

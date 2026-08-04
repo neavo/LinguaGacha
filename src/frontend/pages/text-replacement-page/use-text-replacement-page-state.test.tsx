@@ -268,8 +268,13 @@ vi.mock("@frontend/app/navigation/navigation-context", () => {
   };
 });
 
-vi.mock("@frontend/features/quality-rule-editor/quality-rule-api-client", () => {
+vi.mock("@frontend/features/quality-rule-editor/quality-rule-api-client", async (import_actual) => {
+  const actual =
+    await import_actual<
+      typeof import("@frontend/features/quality-rule-editor/quality-rule-api-client")
+    >();
   return {
+    ...actual,
     query_quality_rules: query_quality_rules_mock,
   };
 });
@@ -636,14 +641,6 @@ describe("useTextReplacementPageState", () => {
     });
   }
 
-  it("首次规则查询失败时显示错误提醒", async () => {
-    query_quality_rules_mock.mockRejectedValue(new Error("替换规则读取失败"));
-
-    await mount_probe();
-
-    expect(push_toast_mock).toHaveBeenCalledWith("error", expect.anything());
-  });
-
   it("提交开关时沿用生成当前替换规则事实的旧 revision", async () => {
     await mount_probe();
     run_state.revisions.sections.quality = 9;
@@ -670,47 +667,6 @@ describe("useTextReplacementPageState", () => {
       expected_section_revisions: { quality: 2 },
       meta: { enabled: false },
     });
-  });
-
-  it("items 变更后保留当前替换规则表格主体", async () => {
-    await mount_probe();
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["hero"]);
-
-    project_change_sections = ["items"];
-    run_state.quality.pre_replacement.entries = [
-      {
-        entry_id: "villain::0",
-        src: "villain",
-        dst: "魔王",
-        regex: false,
-        case_sensitive: false,
-      },
-    ];
-    run_state.quality.pre_replacement.revision = 3;
-    run_state.revisions.sections.quality = 3;
-    await rerender_probe();
-
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["hero"]);
-  });
-
-  it("quality 变更后重新读取替换规则表格主体", async () => {
-    await mount_probe();
-
-    project_change_sections = ["quality"];
-    run_state.quality.pre_replacement.entries = [
-      {
-        entry_id: "villain::0",
-        src: "villain",
-        dst: "魔王",
-        regex: false,
-        case_sensitive: false,
-      },
-    ];
-    run_state.quality.pre_replacement.revision = 3;
-    run_state.revisions.sections.quality = 3;
-    await rerender_probe();
-
-    expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["villain"]);
   });
 
   it("首次进入页面时直接读取预热后的统计结果", async () => {

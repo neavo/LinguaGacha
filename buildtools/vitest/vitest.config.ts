@@ -1,6 +1,6 @@
 import { defineConfig } from "vitest/config";
 
-import { frontend_resolve_alias } from "../vite/project-paths";
+import { frontend_resolve_alias } from "../vite/project-paths.ts";
 
 export default defineConfig({
   resolve: {

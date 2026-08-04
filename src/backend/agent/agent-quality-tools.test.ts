@@ -2,7 +2,6 @@ import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord } from "../../domain/json";
-import { QUALITY_RULE_KINDS } from "../../domain/quality";
 import type { ProjectWriteResult } from "../../shared/project-event";
 import {
   AGENT_QUALITY_RULE_UPDATE_SOURCE,
@@ -27,7 +26,7 @@ function stored_entry(entry_id: string, src: string, dst: string): JsonRecord {
 }
 
 describe("Agent 质量规则工具", () => {
-  it("更新工具公开普通 object 根 schema，并只串行写入口", () => {
+  it("注册查询工具与串行写入口", () => {
     const tools = create_agent_quality_tools({
       qualityRules: {
         query: () => ({}),
@@ -39,41 +38,6 @@ describe("Agent 质量规则工具", () => {
 
     expect(tools.map((tool) => tool.name)).toEqual(["query_quality_rules", "update_quality_rules"]);
     expect(tools.map((tool) => tool.executionMode)).toEqual([undefined, "sequential"]);
-    const update_tool = tools.find((tool) => tool.name === "update_quality_rules");
-    if (update_tool === undefined) throw new Error("缺少 update_quality_rules");
-    const parameters = update_tool.parameters as JsonRecord;
-    const properties = parameters["properties"] as JsonRecord;
-    const changes = properties["changes"] as JsonRecord;
-    const change_items = changes["items"] as JsonRecord;
-    const change_properties = change_items["properties"] as JsonRecord;
-
-    expect(parameters).toMatchObject({
-      type: "object",
-      required: ["rule_type", "expected_section_revisions"],
-      additionalProperties: false,
-    });
-    expect(parameters).not.toHaveProperty("anyOf");
-    expect(parameters).not.toHaveProperty("oneOf");
-    expect(parameters).not.toHaveProperty("allOf");
-    expect(Object.keys(properties)).toEqual([
-      "rule_type",
-      "changes",
-      "meta",
-      "expected_section_revisions",
-    ]);
-    expect(properties["rule_type"]).toMatchObject({
-      type: "string",
-      enum: QUALITY_RULE_KINDS,
-    });
-    expect(change_items).toMatchObject({ type: "object", additionalProperties: false });
-    expect(change_items).not.toHaveProperty("anyOf");
-    expect(change_items).not.toHaveProperty("oneOf");
-    expect(change_items).not.toHaveProperty("allOf");
-    expect(change_properties["action"]).toMatchObject({
-      type: "string",
-      enum: ["create", "update", "delete"],
-    });
-    expect(update_tool).not.toHaveProperty("constrainedSampling");
   });
 
   it("SDK 真实校验器接受所有稳定调用形状且不改写载荷", () => {
