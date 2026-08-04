@@ -43,7 +43,10 @@ beforeEach(() => {
   fs.writeFileSync(path.join(agent_resource_dir, "system_prompt.md"), "基础系统指令。", "utf-8");
   fs.writeFileSync(
     path.join(agent_resource_dir, "session_seed.json"),
-    JSON.stringify({ user: "种子设定。", assistant: "种子确认。" }),
+    JSON.stringify([
+      { role: "user", content: "种子设定。" },
+      { role: "assistant", content: "种子确认。" },
+    ]),
     "utf-8",
   );
   fs.writeFileSync(path.join(temp_dir, "version.txt"), "9.8.7", "utf-8");

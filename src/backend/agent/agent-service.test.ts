@@ -71,7 +71,15 @@ const skill_test_fixture = vi.hoisted(() => {
 });
 const system_prompt_loader = vi.hoisted(() => vi.fn(() => "基础系统指令。"));
 const session_seed_loader = vi.hoisted(() =>
-  vi.fn(() => ({ user: "种子设定。", assistant: "种子确认。" })),
+  vi.fn(
+    () =>
+      [
+        { role: "user", content: "第一轮种子设定。" },
+        { role: "assistant", content: "第一轮种子确认。" },
+        { role: "user", content: "第二轮种子设定。" },
+        { role: "assistant", content: "第二轮种子确认。" },
+      ] as const,
+  ),
 );
 const agent_model_registrar = vi.hoisted(() => vi.fn());
 
@@ -446,24 +454,34 @@ describe("AgentService", () => {
     expect(fixture.service.get_snapshot().skills).toEqual(expected_skills);
   });
 
-  it("新对话把一问一答种子放在模型历史最前且不公开到时间线", async () => {
+  it("多轮种子按顺序进入模型历史且不公开到时间线", async () => {
     const fixture = await create_service();
 
     await fixture.service.send_message({ parts: [{ kind: "text", text: "正文" }] });
     await wait_for_idle(fixture.service);
 
     const context = fake_agent_state.model_contexts[0] ?? [];
-    expect(context[0]).toMatchObject({ role: "user", content: "种子设定。" });
-    expect(context[1]).toMatchObject({ role: "assistant" });
-    expect(JSON.stringify(context[1])).toContain("种子确认。");
-    expect(context[2]?.role).toBe("user");
-    expect(JSON.stringify(context[2])).toContain("正文");
+    expect(context[0]).toMatchObject({ role: "user", content: "第一轮种子设定。" });
+    expect(context[1]).toMatchObject({
+      role: "assistant",
+      content: [{ type: "text", text: "第一轮种子确认。" }],
+    });
+    expect(context[2]).toMatchObject({ role: "user", content: "第二轮种子设定。" });
+    expect(context[3]).toMatchObject({
+      role: "assistant",
+      content: [{ type: "text", text: "第二轮种子确认。" }],
+    });
+    expect(context[4]).toMatchObject({
+      role: "user",
+      content: [{ type: "text", text: "正文" }],
+    });
     const entries = fixture.service.get_snapshot().entries;
     expect(entries[0]).toMatchObject({
       kind: "user_message",
       parts: [{ kind: "text", text: "正文" }],
     });
-    expect(JSON.stringify(entries)).not.toContain("种子设定。");
+    expect(JSON.stringify(entries)).not.toContain("种子");
+    expect(JSON.stringify(fixture.publish.mock.calls)).not.toContain("种子");
   });
 
   it("按引用顺序展开多个 skill，并把混排可见文本追加到模型用户消息", async () => {

@@ -11,11 +11,20 @@ type AgentSessionSeedPaths = Pick<AppPathService, "get_agent_session_seed_path">
 type AgentSessionSeedNativeFs = Pick<NativeFs, "read_text_file">;
 type AgentSessionSeedManager = Pick<SessionManager, "appendMessage">;
 
-/** 每个新 Agent 会话最先进入模型历史的一问一答种子。 */
-export type AgentSessionSeed = Readonly<{
-  user: string;
-  assistant: string;
+type AgentSessionSeedMessage = Readonly<{
+  role: "user" | "assistant";
+  content: string;
 }>;
+
+/** 每个新 Agent 会话最先进入模型历史的一个或多个完整 user / assistant 轮次。 */
+export type AgentSessionSeed = readonly AgentSessionSeedMessage[];
+
+/** 所有结构错误共享同一诊断语义，调用方无需理解资源内部 schema。 */
+function throw_invalid_agent_session_seed(file_path: string): never {
+  throw new AppErrors.InvalidFileStructureError({
+    diagnostic_context: { reason: "invalid_agent_session_seed", path: file_path },
+  });
+}
 
 /** 读取必需的内置会话种子；缺失或损坏时禁止无种子启动。 */
 export function load_agent_session_seed(
@@ -38,19 +47,24 @@ export function load_agent_session_seed(
       diagnostic_context: { reason: "agent_session_seed_read_failed", path: file_path },
     });
   }
-  if (
-    !is_json_record(parsed) ||
-    Object.keys(parsed).length !== 2 ||
-    typeof parsed["user"] !== "string" ||
-    parsed["user"].trim() === "" ||
-    typeof parsed["assistant"] !== "string" ||
-    parsed["assistant"].trim() === ""
-  ) {
-    throw new AppErrors.InvalidFileStructureError({
-      diagnostic_context: { reason: "invalid_agent_session_seed", path: file_path },
-    });
+  if (!Array.isArray(parsed) || parsed.length === 0 || parsed.length % 2 !== 0) {
+    throw_invalid_agent_session_seed(file_path);
   }
-  return { user: parsed["user"].trim(), assistant: parsed["assistant"].trim() };
+  const seed: AgentSessionSeedMessage[] = [];
+  for (const [index, value] of parsed.entries()) {
+    const expected_role = index % 2 === 0 ? "user" : "assistant";
+    if (
+      !is_json_record(value) ||
+      Object.keys(value).length !== 2 ||
+      value["role"] !== expected_role ||
+      typeof value["content"] !== "string" ||
+      value["content"].trim() === ""
+    ) {
+      throw_invalid_agent_session_seed(file_path);
+    }
+    seed.push({ role: expected_role, content: value["content"].trim() });
+  }
+  return seed;
 }
 
 /** 把种子写入模型历史而不进入 AgentService 的公开 UI 时间线。 */
@@ -60,23 +74,28 @@ export function append_agent_session_seed(
   model: Model<Api>,
 ): void {
   const timestamp = Date.now();
-  session_manager.appendMessage({ role: "user", content: seed.user, timestamp });
-  session_manager.appendMessage({
-    role: "assistant",
-    // SDK 的 assistant 消息类型要求 usage，种子并非真实响应，数值全程置零
-    content: [{ type: "text", text: seed.assistant }],
-    api: model.api,
-    provider: model.provider,
-    model: model.id,
-    usage: {
-      input: 0,
-      output: 0,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 0,
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-    },
-    stopReason: "stop",
-    timestamp,
-  });
+  for (const message of seed) {
+    if (message.role === "user") {
+      session_manager.appendMessage({ role: "user", content: message.content, timestamp });
+      continue;
+    }
+    session_manager.appendMessage({
+      role: "assistant",
+      // SDK 的 assistant 消息类型要求 usage，种子并非真实响应，数值全程置零
+      content: [{ type: "text", text: message.content }],
+      api: model.api,
+      provider: model.provider,
+      model: model.id,
+      usage: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        totalTokens: 0,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      },
+      stopReason: "stop",
+      timestamp,
+    });
+  }
 }
