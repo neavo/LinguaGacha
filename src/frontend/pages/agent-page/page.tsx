@@ -193,7 +193,6 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
       <AgentComposer
         ref={composer_ref}
         skills={agent.skills}
-        message_history={user_entries.map((entry) => entry.parts)}
         running={is_running}
         unavailable_reason={unavailable_reason}
         command={agent.command}

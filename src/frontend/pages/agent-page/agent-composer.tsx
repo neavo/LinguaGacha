@@ -43,6 +43,7 @@ import {
   resolve_app_editor_readonly_extensions,
   resolve_app_editor_theme_extensions,
 } from "@frontend/widgets/app-editor/app-editor-code-mirror";
+import { append_agent_input_history, read_agent_input_history } from "./agent-input-history";
 import type { AgentCommand, AgentPageIssue } from "./use-agent-page-state";
 
 /** 光标前尚未确认的 @ 查询范围；确认后会被替换为 Decoration。 */
@@ -60,8 +61,8 @@ type EditorSnapshot = {
 };
 
 /** 历史游标与进入导航前的原始草稿必须同生共灭，避免恢复发送投影后的残缺内容。 */
-type MessageHistoryNavigation = {
-  index: number; // 当前展示消息在 props.message_history 中的绝对索引。
+type InputHistoryNavigation = {
+  index: number; // 当前展示消息在 input_history_ref 中的绝对索引。
   draft: AgentUserMessagePart[]; // 从唯一 EditorState 读取，保留正文首尾空白与原子 token。
 };
 
@@ -75,7 +76,6 @@ type AgentUnavailableReason = "restoring" | "runtime_busy" | "settling";
 type AgentComposerProps = {
   ref?: Ref<AgentComposerHandle>;
   skills: readonly AgentSkillSnapshot[];
-  message_history: readonly (readonly AgentUserMessagePart[])[];
   running: boolean;
   unavailable_reason: AgentUnavailableReason | null;
   command: AgentCommand;
@@ -111,10 +111,10 @@ const EMPTY_EDITOR_SNAPSHOT: EditorSnapshot = {
 };
 
 /** 撤销标记只控制 CodeMirror 历史；此标记单独标识 Composer 的历史导航事务。 */
-const message_history_navigation_annotation = Annotation.define<boolean>();
-const message_history_navigation_annotations = [
+const input_history_navigation_annotation = Annotation.define<boolean>();
+const input_history_navigation_annotations = [
   Transaction.addToHistory.of(false),
-  message_history_navigation_annotation.of(true),
+  input_history_navigation_annotation.of(true),
 ];
 
 // 三个 Compartment 只承接运行期配置，不参与草稿或 token 事实。
@@ -201,8 +201,12 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const matching_skills_ref = useRef<readonly AgentSkillSnapshot[]>([]);
   const menu_index_ref = useRef(0);
   const last_query_key_ref = useRef("");
-  const message_history_ref = useRef(props.message_history);
-  const message_history_navigation_ref = useRef<MessageHistoryNavigation | null>(null);
+  // 首次渲染读取一次缓存；后续受理消息同步更新同一内存快照与持久化副本。
+  const input_history_ref = useRef<AgentUserMessagePart[][] | null>(null);
+  if (input_history_ref.current === null) {
+    input_history_ref.current = read_agent_input_history(window.localStorage);
+  }
+  const input_history_navigation_ref = useRef<InputHistoryNavigation | null>(null);
   const [snapshot, set_snapshot] = useState<EditorSnapshot>(EMPTY_EDITOR_SNAPSHOT);
   const [menu_index_value, set_menu_index] = useState(0);
   const [menu_suppressed, set_menu_suppressed] = useState(false);
@@ -251,7 +255,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       write_draft(parts) {
         const view = view_ref.current;
         if (view === null || editor_read_only) return;
-        message_history_navigation_ref.current = null;
+        input_history_navigation_ref.current = null;
         write_agent_message_parts(view, parts);
         view.focus();
       },
@@ -262,8 +266,6 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   menu_open_ref.current = menu_open;
   matching_skills_ref.current = matching_skills;
   menu_index_ref.current = menu_index;
-  // EditorView 只创建一次，变化中的历史通过 ref 进入稳定 keymap。
-  message_history_ref.current = props.message_history;
 
   useEffect(() => {
     const host = host_ref.current;
@@ -302,11 +304,11 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
           keymap.of([
             {
               key: "ArrowDown",
-              run: (view) => navigate_skill_menu(1) || navigate_message_history(view, "newer"),
+              run: (view) => navigate_skill_menu(1) || navigate_input_history(view, "newer"),
             },
             {
               key: "ArrowUp",
-              run: (view) => navigate_skill_menu(-1) || navigate_message_history(view, "older"),
+              run: (view) => navigate_skill_menu(-1) || navigate_input_history(view, "older"),
             },
             {
               key: "Escape",
@@ -335,10 +337,10 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                 update.docChanged &&
                 !update.transactions.every(
                   (transaction) =>
-                    transaction.annotation(message_history_navigation_annotation) === true,
+                    transaction.annotation(input_history_navigation_annotation) === true,
                 )
               ) {
-                message_history_navigation_ref.current = null;
+                input_history_navigation_ref.current = null;
               }
               emit_snapshot(update.state);
             }
@@ -356,17 +358,6 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       view_ref.current = null;
     };
   }, []);
-
-  useEffect(() => {
-    const navigation = message_history_navigation_ref.current;
-    if (navigation === null || navigation.index < props.message_history.length) return;
-    // 历史缩短（包括 reset）会让绝对索引失效，此时必须恢复进入导航前的草稿。
-    message_history_navigation_ref.current = null;
-    const view = view_ref.current;
-    if (view !== null) {
-      write_agent_message_parts(view, navigation.draft, message_history_navigation_annotations);
-    }
-  }, [props.message_history]);
 
   useEffect(() => {
     view_ref.current?.dispatch({
@@ -445,6 +436,11 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     if (view === null || !can_send) return;
     const parts = read_agent_message_parts(view.state);
     if (await props.on_send(parts)) {
+      input_history_ref.current = append_agent_input_history(
+        window.localStorage,
+        input_history_ref.current ?? [],
+        parts,
+      );
       write_agent_message_parts(view, []);
     }
   };
@@ -605,51 +601,47 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   }
 
   /** 仅从视觉首行进入历史；越过最新消息时恢复原始草稿，两端都消费按键。 */
-  function navigate_message_history(view: EditorView, direction: "older" | "newer"): boolean {
-    const message_history = message_history_ref.current;
+  function navigate_input_history(view: EditorView, direction: "older" | "newer"): boolean {
+    const input_history = input_history_ref.current ?? [];
     if (view.composing || view.state.readOnly) return false;
-    const navigation = message_history_navigation_ref.current;
+    const navigation = input_history_navigation_ref.current;
 
     if (navigation === null) {
-      if (
-        direction === "newer" ||
-        message_history.length === 0 ||
-        !can_start_message_history(view)
-      ) {
+      if (direction === "newer" || input_history.length === 0 || !can_start_input_history(view)) {
         return false;
       }
       const next = {
-        index: message_history.length - 1,
+        index: input_history.length - 1,
         draft: read_agent_draft_parts(view.state),
       };
-      message_history_navigation_ref.current = next;
+      input_history_navigation_ref.current = next;
       write_agent_message_parts(
         view,
-        message_history[next.index]!,
-        message_history_navigation_annotations,
+        input_history[next.index]!,
+        input_history_navigation_annotations,
       );
       return true;
     }
 
     const next_index = navigation.index + (direction === "older" ? -1 : 1);
     if (next_index < 0) return true;
-    if (next_index >= message_history.length) {
-      message_history_navigation_ref.current = null;
-      write_agent_message_parts(view, navigation.draft, message_history_navigation_annotations);
+    if (next_index >= input_history.length) {
+      input_history_navigation_ref.current = null;
+      write_agent_message_parts(view, navigation.draft, input_history_navigation_annotations);
       return true;
     }
-    message_history_navigation_ref.current = { ...navigation, index: next_index };
+    input_history_navigation_ref.current = { ...navigation, index: next_index };
     write_agent_message_parts(
       view,
-      message_history[next_index]!,
-      message_history_navigation_annotations,
+      input_history[next_index]!,
+      input_history_navigation_annotations,
     );
     return true;
   }
 }
 
 /** 视觉顶部由 CodeMirror 判断，原生覆盖软换行和原子范围。 */
-function can_start_message_history(view: EditorView): boolean {
+function can_start_input_history(view: EditorView): boolean {
   const selection = view.state.selection;
   if (selection.ranges.length !== 1 || !selection.main.empty) return false;
   return view.moveVertically(selection.main, false).head === selection.main.head;
