@@ -22,24 +22,18 @@ import { JsonTool } from "../../shared/utils/json-tool";
 import type { CacheReadPort } from "../cache/cache-types";
 import type { ProofreadingService } from "../proofreading/proofreading-service";
 import type { ProofreadingQueryService } from "../proofreading/proofreading-query-service";
+import { AgentToolError } from "./agent-tool-error";
 
 // 工具结果保持小页；筛选值与写入批次共享模型单次调用上限。
 const DEFAULT_QUERY_LIMIT = 20;
 const MAX_QUERY_LIMIT = 100;
 const MAX_TOOL_ITEMS = 500;
+const ITEM_WRITE_FIELDS = ["dst", "name_dst", "status"] as const;
 
 /** Agent 发起的 item 提交使用独立 source，确保项目事件保留真实来源。 */
 export const AGENT_PROOFREADING_UPDATE_SOURCE = "agent_proofreading_update_items";
 
 const ITEM_STATUS_PARAMETERS = Type.Union(ITEM_STATUSES.map((status) => Type.Literal(status)));
-const MANUAL_STATUS_PARAMETERS = Type.Union(
-  [
-    Type.Literal(PROOFREADING_MANUAL_STATUS_CODES[0]),
-    Type.Literal(PROOFREADING_MANUAL_STATUS_CODES[1]),
-    Type.Literal(PROOFREADING_MANUAL_STATUS_CODES[2]),
-  ],
-  { description: "新的人工状态；只有确实需要改变人工状态时才提供。" },
-);
 const WARNING_TYPE_PARAMETERS = Type.Union(
   PROOFREADING_WARNING_CODES.map((warning) => Type.Literal(warning)),
 );
@@ -155,24 +149,25 @@ const QUERY_WARNING_ITEMS_PARAMETERS = Type.Object(
   { additionalProperties: false },
 );
 
-/** Agent DTO 明确表达局部 patch；进入领域服务前再映射到共享 changes 词表。 */
+/** 每条 write 只表达一个明确字段和值，避免用可选标量字段承载无操作语义。 */
 const UPDATE_ITEMS_PARAMETERS = Type.Object(
   {
-    patches: Type.Array(
+    write: Type.Array(
       Type.Object(
         {
           item_id: Type.Integer({ minimum: 1, description: "当前快照中已有的 item ID。" }),
-          dst: Type.Optional(
-            Type.String({ description: "新的正文译文；省略保持不变，空字符串表示清空。" }),
+          field: Type.Union(
+            ITEM_WRITE_FIELDS.map((field) => Type.Literal(field)),
+            { description: "本条操作要写入的唯一字段。" },
           ),
-          name_dst: Type.Optional(
-            Type.String({ description: "新的姓名译文；省略保持不变，空字符串表示清空。" }),
-          ),
-          status: Type.Optional(MANUAL_STATUS_PARAMETERS),
+          value: Type.String({
+            description:
+              "字段的新值；dst/name_dst 允许空字符串表示清空，status 只接受 NONE、PROCESSED 或 EXCLUDED。",
+          }),
         },
         {
           additionalProperties: false,
-          description: "单个 item 的局部补丁；只提供真正变化的字段。",
+          description: "单个 item 字段写入；item_id、field 和 value 均为必填。",
         },
       ),
       { minItems: 1, maxItems: MAX_TOOL_ITEMS },
@@ -196,6 +191,21 @@ type AgentProjectItem = JsonRecord & {
   row_number: number;
   status: ItemStatus;
   retry_count: number;
+};
+
+type AgentItemWriteField = (typeof ITEM_WRITE_FIELDS)[number];
+
+type AgentItemWrite = {
+  item_id: number;
+  field: AgentItemWriteField;
+  value: string;
+};
+
+type AgentItemUpdate = {
+  item_id: number;
+  dst?: string;
+  name_dst?: string;
+  status?: ProofreadingManualStatusCode;
 };
 
 type SearchScope = "src" | "dst" | "all";
@@ -301,30 +311,50 @@ export function create_agent_item_tools(dependencies: AgentItemDependencies): To
       name: "update_items",
       label: "更新条目",
       description:
-        "按 items/proofreading revision 原子应用多个 item 的局部补丁。每项只提供真正变化的 dst、name_dst 或人工 status；省略字段保持不变。",
+        "按 items/proofreading revision 原子应用 write。每项通过必填的 item_id、field 和 value 只写一个 dst、name_dst 或人工 status；回执只确认实际更新 ID 和最新 revision。",
       executionMode: "sequential",
       parameters: UPDATE_ITEMS_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
-        assert_item_patches(params.patches);
-        await dependencies.proofreading.commands.update_items_from_agent(
+        const changes = read_item_writes(params.write);
+        const current_revisions = dependencies.cache.snapshot().sectionRevisions;
+        const write_result = await dependencies.proofreading.commands.update_items_from_agent(
           {
-            changes: params.patches,
+            changes,
             expected_section_revisions: params.expected_section_revisions,
           },
           AGENT_PROOFREADING_UPDATE_SOURCE,
         );
-        const queried = query_agent_items(dependencies.cache, {
-          filters: { item_ids: params.patches.map((patch) => patch.item_id) },
-        });
+        const change = write_result.changes.at(-1);
+        if (change === undefined) {
+          return tool_result({
+            status: "unchanged",
+            sectionRevisions: project_item_revisions(current_revisions),
+          });
+        }
+        const updated = change.items?.changedIds ?? [];
+        if (updated.length === 0) {
+          throw new AgentToolError({ code: "item.write_not_confirmed", action: "query_items" });
+        }
         return tool_result({
-          accepted: true,
-          sectionRevisions: queried["sectionRevisions"],
-          updated_items: queried["items"],
+          status: "applied",
+          sectionRevisions: project_item_revisions(change.sectionRevisions),
+          updated,
         });
       },
     }),
   ];
+}
+
+/** item 写工具只公开参与乐观锁的双 revision，不回传其它 section 或项目身份。 */
+function project_item_revisions(revisions: {
+  items?: unknown;
+  proofreading?: unknown;
+}): JsonRecord {
+  return {
+    items: read_json_integer(revisions["items"], 0),
+    proofreading: read_json_integer(revisions["proofreading"], 0),
+  };
 }
 
 /** 从当前 cache 快照执行稳定、有限且无全量命中物化的 item 查询。 */
@@ -562,28 +592,34 @@ function assert_known_keys(value: JsonRecord, keys: string[]): void {
   if (unknown !== undefined) throw new Error(`未知字段：${unknown}`);
 }
 
-/** TypeBox 无法表达跨数组 item_id 唯一和至少一个变更字段，这里补齐关联校验。 */
-function assert_item_patches(
-  patches: Array<{
-    item_id: number;
-    dst?: string;
-    name_dst?: string;
-    status?: ProofreadingManualStatusCode;
-  }>,
-): void {
-  if (patches.length === 0 || patches.length > MAX_TOOL_ITEMS) {
-    throw new Error(`patches 必须包含 1 到 ${MAX_TOOL_ITEMS.toString()} 项`);
+/** 将模型的单字段命令聚合为现有领域字段更新，同一 item 可以写入多个不同字段。 */
+function read_item_writes(writes: AgentItemWrite[]): AgentItemUpdate[] {
+  if (writes.length === 0 || writes.length > MAX_TOOL_ITEMS) {
+    throw new Error(`write 必须包含 1 到 ${MAX_TOOL_ITEMS.toString()} 项`);
   }
-  const item_ids = new Set<number>();
-  for (const patch of patches) {
-    if (!Number.isSafeInteger(patch.item_id) || patch.item_id <= 0 || item_ids.has(patch.item_id)) {
-      throw new Error(`item_id 必须是唯一正整数：${patch.item_id.toString()}`);
+  const written_fields = new Set<string>();
+  const updates = new Map<number, AgentItemUpdate>();
+  for (const write of writes) {
+    if (!Number.isSafeInteger(write.item_id) || write.item_id <= 0) {
+      throw new Error(`item_id 必须是正整数：${write.item_id.toString()}`);
     }
-    if (patch.dst === undefined && patch.name_dst === undefined && patch.status === undefined) {
-      throw new Error(`item patch 缺少 dst/name_dst/status：${patch.item_id.toString()}`);
+    const identity = `${write.item_id.toString()}:${write.field}`;
+    if (written_fields.has(identity)) {
+      throw new Error(`item_id/field 必须唯一：${identity}`);
     }
-    item_ids.add(patch.item_id);
+    if (
+      write.field === "status" &&
+      !(PROOFREADING_MANUAL_STATUS_CODES as readonly string[]).includes(write.value)
+    ) {
+      throw new Error(`status value 无效：${write.value}`);
+    }
+    const update = updates.get(write.item_id) ?? { item_id: write.item_id };
+    if (write.field === "status") update.status = write.value as ProofreadingManualStatusCode;
+    else update[write.field] = write.value;
+    updates.set(write.item_id, update);
+    written_fields.add(identity);
   }
+  return [...updates.values()];
 }
 
 /** 游标是过滤后结果流的非负十进制偏移。 */

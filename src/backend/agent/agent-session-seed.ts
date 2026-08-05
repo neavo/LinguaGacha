@@ -16,7 +16,7 @@ type AgentSessionSeedMessage = Readonly<{
   content: string;
 }>;
 
-/** 每个新 Agent 会话最先进入模型历史的一个或多个完整 user / assistant 轮次。 */
+/** 每个新 Agent 会话最先进入模型历史的有序 user / assistant 消息列表，可为空。 */
 export type AgentSessionSeed = readonly AgentSessionSeedMessage[];
 
 /** 所有结构错误共享同一诊断语义，调用方无需理解资源内部 schema。 */
@@ -26,7 +26,7 @@ function throw_invalid_agent_session_seed(file_path: string): never {
   });
 }
 
-/** 读取必需的内置会话种子；缺失或损坏时禁止无种子启动。 */
+/** 读取必需的内置会话种子；缺失或结构损坏时阻止启动。 */
 export function load_agent_session_seed(
   paths: AgentSessionSeedPaths,
   native_fs: AgentSessionSeedNativeFs = default_native_fs,
@@ -47,24 +47,20 @@ export function load_agent_session_seed(
       diagnostic_context: { reason: "agent_session_seed_read_failed", path: file_path },
     });
   }
-  if (!Array.isArray(parsed) || parsed.length === 0 || parsed.length % 2 !== 0) {
+  if (!Array.isArray(parsed)) {
     throw_invalid_agent_session_seed(file_path);
   }
-  const seed: AgentSessionSeedMessage[] = [];
-  for (const [index, value] of parsed.entries()) {
-    const expected_role = index % 2 === 0 ? "user" : "assistant";
+  return parsed.map((value) => {
     if (
       !is_json_record(value) ||
       Object.keys(value).length !== 2 ||
-      value["role"] !== expected_role ||
-      typeof value["content"] !== "string" ||
-      value["content"].trim() === ""
+      (value["role"] !== "user" && value["role"] !== "assistant") ||
+      typeof value["content"] !== "string"
     ) {
       throw_invalid_agent_session_seed(file_path);
     }
-    seed.push({ role: expected_role, content: value["content"].trim() });
-  }
-  return seed;
+    return { role: value["role"], content: value["content"].trim() };
+  });
 }
 
 /** 把种子写入模型历史而不进入 AgentService 的公开 UI 时间线。 */

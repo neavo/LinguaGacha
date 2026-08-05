@@ -25,31 +25,33 @@ afterEach(() => {
 describe("Agent 会话种子加载", () => {
   it("内置会话种子资源可直接加载", () => {
     const paths = new AppPathService({ appRoot: process.cwd(), env: {}, platform: "win32" });
-    const seed = load_agent_session_seed(paths, new NativeFs());
 
-    expect(seed.length).toBeGreaterThan(0);
-    expect(seed.length % 2).toBe(0);
-    expect(seed.every(({ content }) => content.length > 0)).toBe(true);
+    expect(() => load_agent_session_seed(paths, new NativeFs())).not.toThrow();
   });
 
-  it("读取并裁剪多轮对话", () => {
+  it("读取任意顺序的消息并裁剪文本", () => {
     const paths = create_paths();
     write_seed(
       paths,
       JSON.stringify([
-        { role: "user", content: "  第一轮设定。 " },
-        { role: "assistant", content: " 第一轮确认。\n" },
-        { role: "user", content: "\n第二轮设定。  " },
-        { role: "assistant", content: "\t第二轮确认。 " },
+        { role: "assistant", content: " 第一条消息。\n" },
+        { role: "assistant", content: "\t " },
+        { role: "user", content: "" },
       ]),
     );
 
     expect(load_agent_session_seed(paths, new NativeFs())).toEqual([
-      { role: "user", content: "第一轮设定。" },
-      { role: "assistant", content: "第一轮确认。" },
-      { role: "user", content: "第二轮设定。" },
-      { role: "assistant", content: "第二轮确认。" },
+      { role: "assistant", content: "第一条消息。" },
+      { role: "assistant", content: "" },
+      { role: "user", content: "" },
     ]);
+  });
+
+  it("消息数组为空时返回空种子", () => {
+    const paths = create_paths();
+    write_seed(paths, "[]");
+
+    expect(load_agent_session_seed(paths, new NativeFs())).toEqual([]);
   });
 
   it("资源缺失时保留原始读取异常", () => {
@@ -75,52 +77,11 @@ describe("Agent 会话种子加载", () => {
 
   it.each([
     ["仍使用旧对象格式", { user: "种子设定。", assistant: "种子确认。" }],
-    ["消息数组为空", []],
-    ["消息条数为奇数", [{ role: "user", content: "种子设定。" }]],
-    [
-      "首条为 assistant",
-      [
-        { role: "assistant", content: "种子确认。" },
-        { role: "user", content: "种子设定。" },
-      ],
-    ],
-    [
-      "连续两条 user",
-      [
-        { role: "user", content: "第一条设定。" },
-        { role: "user", content: "第二条设定。" },
-      ],
-    ],
-    ["消息项不是对象", ["种子设定。", { role: "assistant", content: "种子确认。" }]],
-    ["消息缺少字段", [{ role: "user" }, { role: "assistant", content: "种子确认。" }]],
-    [
-      "消息包含额外字段",
-      [
-        { role: "user", content: "种子设定。", extra: true },
-        { role: "assistant", content: "种子确认。" },
-      ],
-    ],
-    [
-      "role 非法",
-      [
-        { role: "system", content: "种子设定。" },
-        { role: "assistant", content: "种子确认。" },
-      ],
-    ],
-    [
-      "content 不是字符串",
-      [
-        { role: "user", content: 1 },
-        { role: "assistant", content: "种子确认。" },
-      ],
-    ],
-    [
-      "content 只有空白",
-      [
-        { role: "user", content: " " },
-        { role: "assistant", content: "种子确认。" },
-      ],
-    ],
+    ["消息项不是对象", ["种子设定。"]],
+    ["消息缺少字段", [{ role: "user" }]],
+    ["消息包含额外字段", [{ role: "user", content: "种子设定。", extra: true }]],
+    ["role 非法", [{ role: "system", content: "种子设定。" }]],
+    ["content 不是字符串", [{ role: "user", content: 1 }]],
   ])("%s 时拒绝启动", (_case_name, value) => {
     const paths = create_paths();
     write_seed(paths, JSON.stringify(value));

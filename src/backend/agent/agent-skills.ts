@@ -31,11 +31,16 @@ export type AgentSkillReference = {
   content: string; // 启动期固定的完整正文，只在 read_skill 时下发
 };
 
-/** 保留 Pi skill 的模型调用语义，并附加启动期固定的 UI 描述与受控 references。 */
-export type AgentSkillDefinition = Skill & {
+type AgentSkillUi = {
+  visible: boolean; // 是否进入公开能力列表，不改变模型调用或读取权限
   displayDescriptions: AgentSkillDisplayDescriptions;
-  references: AgentSkillReference[];
 };
+
+/** 保留 Pi skill 的模型调用语义，并附加启动期固定的 UI 配置与受控 references。 */
+export type AgentSkillDefinition = Skill &
+  AgentSkillUi & {
+    references: AgentSkillReference[];
+  };
 
 type AgentSkillLog = Pick<LogManager, "error" | "warning">;
 type AgentSkillNativeFs = Pick<NativeFs, "read_dirents" | "read_text_file" | "stat">;
@@ -69,7 +74,7 @@ export async function load_agent_skills(
       if (invalid_paths.has(skill.filePath)) continue;
       skills.set(skill.name, {
         ...skill,
-        displayDescriptions: load_skill_display_descriptions(skill, log_manager, native_fs),
+        ...load_skill_ui(skill, log_manager, native_fs),
         references: load_skill_references(skill.filePath, log_manager, native_fs),
       });
     }
@@ -81,16 +86,19 @@ export async function load_agent_skills(
 }
 
 /**
- * 同目录 i18n.json 只负责 UI 描述；缺失或整份无效时统一回退模型 description。
+ * 同目录 i18n.json 定义 UI 可见性与描述；缺失或整份无效时统一回退为可见及模型 description。
  */
-function load_skill_display_descriptions(
+function load_skill_ui(
   skill: Skill,
   log_manager: AgentSkillLog,
   native_fs: AgentSkillNativeFs,
-): AgentSkillDisplayDescriptions {
-  const descriptions = Object.fromEntries(
-    LOCALES.map((locale) => [locale, skill.description]),
-  ) as AgentSkillDisplayDescriptions;
+): AgentSkillUi {
+  const fallback: AgentSkillUi = {
+    visible: true,
+    displayDescriptions: Object.fromEntries(
+      LOCALES.map((locale) => [locale, skill.description]),
+    ) as AgentSkillDisplayDescriptions,
+  };
   const file_path = path.join(path.dirname(skill.filePath), I18N_FILE_NAME);
   let parsed: unknown;
   try {
@@ -99,17 +107,20 @@ function load_skill_display_descriptions(
     if (!is_not_found_error(error)) {
       log_skill_i18n_diagnostic(log_manager, skill.name, file_path, error);
     }
-    return descriptions;
+    return fallback;
   }
 
   if (!is_json_record(parsed)) {
     log_skill_i18n_diagnostic(log_manager, skill.name, file_path, "格式无效");
-    return descriptions;
+    return fallback;
   }
-  const entries = Object.entries(parsed);
+  const has_visible = Object.hasOwn(parsed, "visible");
+  const visible = parsed["visible"];
+  const description_entries = Object.entries(parsed).filter(([key]) => key !== "visible");
   if (
-    entries.length === 0 ||
-    entries.some(
+    (!has_visible && description_entries.length === 0) ||
+    (has_visible && typeof visible !== "boolean") ||
+    description_entries.some(
       ([locale, description]) =>
         !LOCALES.some((supported_locale) => supported_locale === locale) ||
         typeof description !== "string" ||
@@ -117,14 +128,15 @@ function load_skill_display_descriptions(
     )
   ) {
     log_skill_i18n_diagnostic(log_manager, skill.name, file_path, "格式无效");
-    return descriptions;
+    return fallback;
   }
 
+  const display_descriptions = { ...fallback.displayDescriptions };
   for (const locale of LOCALES) {
     const description = parsed[locale];
-    if (typeof description === "string") descriptions[locale] = description.trim();
+    if (typeof description === "string") display_descriptions[locale] = description.trim();
   }
-  return descriptions;
+  return { visible: visible !== false, displayDescriptions: display_descriptions };
 }
 
 /**

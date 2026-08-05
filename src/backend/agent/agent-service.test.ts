@@ -47,6 +47,7 @@ const skill_test_fixture = vi.hoisted(() => {
     loader: vi.fn(async () => [
       {
         ...snapshots[0],
+        visible: true,
         description: "审校术语",
         content: "执行术语审校。",
         filePath: "E:/skills/glossary-audit/SKILL.md",
@@ -61,10 +62,25 @@ const skill_test_fixture = vi.hoisted(() => {
       },
       {
         ...snapshots[1],
+        visible: true,
         description: "检索语料",
         content: "执行语料检索。",
         filePath: "E:/skills/corpus-search/SKILL.md",
         disableModelInvocation: true,
+        references: [],
+      },
+      {
+        name: "internal-guidance",
+        visible: false,
+        displayDescriptions: {
+          "zh-CN": "内部指导",
+          "en-US": "Internal guidance",
+          "de-DE": "Interne Anleitung",
+        },
+        description: "内部指导",
+        content: "执行内部指导。",
+        filePath: "E:/skills/internal-guidance/SKILL.md",
+        disableModelInvocation: false,
         references: [],
       },
     ]),
@@ -455,7 +471,7 @@ describe("AgentService", () => {
     expect(fixture.service.get_snapshot().skills).toEqual(expected_skills);
   });
 
-  it("多轮种子按顺序进入模型历史且不公开到时间线", async () => {
+  it("种子消息按顺序进入模型历史且不公开到时间线", async () => {
     const fixture = await create_service();
 
     await fixture.service.send_message({ parts: [{ kind: "text", text: "正文" }] });
@@ -508,16 +524,16 @@ describe("AgentService", () => {
     expect(prompt).not.toContain("完整正文。");
   });
 
-  it("仅含 skill 的消息只发送 skill block，不补通用用户指令", async () => {
+  it("隐藏能力仍可按名称显式调用，且仅发送 skill block", async () => {
     const fixture = await create_service();
 
     await fixture.service.send_message({
-      parts: [{ kind: "skill", name: "glossary-audit" }],
+      parts: [{ kind: "skill", name: "internal-guidance" }],
     });
     await wait_for_idle(fixture.service);
 
-    expect(fake_agent_state.prompts.at(-1)).toMatch(/^<skill name="glossary-audit"/u);
-    expect(fake_agent_state.prompts.at(-1)).not.toContain("@glossary-audit");
+    expect(fake_agent_state.prompts.at(-1)).toMatch(/^<skill name="internal-guidance"/u);
+    expect(fake_agent_state.prompts.at(-1)).not.toContain("@internal-guidance");
   });
 
   it("模型回合从 running 回到 idle，并由条目保存成功终态", async () => {
@@ -1725,7 +1741,10 @@ function expect_agent_system_prompt(prompt: string | undefined): void {
   expect(prompt).toContain("<description>审校术语</description>");
   expect(prompt).not.toContain("Review glossary");
   expect(prompt).toContain("<location>E:/skills/glossary-audit/SKILL.md</location>");
+  expect(prompt).toContain("<name>internal-guidance</name>");
+  expect(prompt).toContain("<location>E:/skills/internal-guidance/SKILL.md</location>");
   expect(prompt).not.toContain("<name>corpus-search</name>");
+  expect(prompt).not.toContain("<visible>");
   expect(prompt).not.toContain("执行术语审校。");
   expect(prompt).not.toContain("完整正文。");
   expect(prompt).not.toContain("You are an expert coding assistant operating inside pi");

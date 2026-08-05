@@ -76,8 +76,29 @@ function create_proofreading(
   };
 }
 
+/** 构造写工具关心的最窄项目事件回执，省略 ID 用于验证异常确认。 */
+function create_item_write_result(changed_ids?: number[]): ProjectWriteResult {
+  return {
+    accepted: true,
+    changes: [
+      {
+        type: "project.changed",
+        eventId: "item-change",
+        source: AGENT_PROOFREADING_UPDATE_SOURCE,
+        projectPath: "test.lg",
+        projectRevision: 4,
+        sectionRevisions: { items: 3, proofreading: 4 },
+        updatedSections: ["items", "proofreading"],
+        ...(changed_ids === undefined
+          ? {}
+          : { items: { payloadMode: "canonical-delta", changedIds: changed_ids } }),
+      },
+    ],
+  };
+}
+
 describe("Agent item 工具", () => {
-  it("按固定顺序注册工具，并由 SDK 拒绝旧 changes 协议", () => {
+  it("按固定顺序注册工具，并由 SDK 接受单字段 write、拒绝旧 patches 协议", () => {
     const tools = create_agent_item_tools({
       cache: create_cache(() => []),
       proofreading: create_proofreading(),
@@ -92,26 +113,46 @@ describe("Agent item 工具", () => {
     const update_tool = tools[2];
     if (update_tool === undefined) throw new Error("缺少 update_items");
     const revisions = { items: 2, proofreading: 3 };
-    const patch_call: ToolCall = {
+    const write_call: ToolCall = {
       type: "toolCall",
-      id: "patch-update",
+      id: "write-update",
       name: "update_items",
       arguments: {
-        patches: [{ item_id: 1, dst: "新译文" }],
+        write: [{ item_id: 1, field: "dst", value: "新译文" }],
         expected_section_revisions: revisions,
       },
     };
-    expect(validateToolArguments(update_tool, patch_call)).toEqual(patch_call.arguments);
-    expect(() =>
-      validateToolArguments(update_tool, {
-        ...patch_call,
-        id: "old-update",
-        arguments: {
-          changes: [{ item_id: 1, dst: "旧协议" }],
-          expected_section_revisions: revisions,
-        },
-      }),
-    ).toThrow();
+    expect(validateToolArguments(update_tool, write_call)).toEqual(write_call.arguments);
+    for (const arguments_ of [
+      {
+        patches: [{ item_id: 1, dst: "旧协议" }],
+        expected_section_revisions: revisions,
+      },
+      {
+        write: [{ item_id: 1, value: "缺少字段" }],
+        expected_section_revisions: revisions,
+      },
+      {
+        write: [{ item_id: 1, field: "dst" }],
+        expected_section_revisions: revisions,
+      },
+      {
+        write: [{ item_id: 1, field: "src", value: "不可写字段" }],
+        expected_section_revisions: revisions,
+      },
+      {
+        write: [{ item_id: 1, field: "dst", value: "新译文", status: "PROCESSED" }],
+        expected_section_revisions: revisions,
+      },
+    ]) {
+      expect(() =>
+        validateToolArguments(update_tool, {
+          ...write_call,
+          id: "invalid-update",
+          arguments: arguments_,
+        }),
+      ).toThrow();
+    }
   });
 
   it("组合筛选、统计与分页，并保持 ID 请求顺序和窄投影", () => {
@@ -374,20 +415,16 @@ describe("Agent item 工具", () => {
     expect(query_warnings).toHaveBeenCalledTimes(1);
   });
 
-  it("update_items 一次提交混合字段并按请求顺序返回最新条目", async () => {
-    let revisions = { items: 2, proofreading: 3 };
-    const items = [create_item(1), create_item(2)];
-    const update_items = vi.fn(async (request: JsonRecord): Promise<ProjectWriteResult> => {
-      for (const change of request["changes"] as JsonRecord[]) {
-        const item = items.find((candidate) => candidate["item_id"] === change["item_id"]);
-        if (item !== undefined) Object.assign(item, change);
-      }
-      revisions = { items: 3, proofreading: 4 };
-      return { accepted: true, changes: [] };
-    });
+  it("update_items 聚合同一 item 的单字段 write 并返回紧凑权威回执", async () => {
+    const revisions = { items: 2, proofreading: 3 };
+    const update_items = vi.fn(async (request: JsonRecord): Promise<ProjectWriteResult> =>
+      create_item_write_result(
+        (request["changes"] as JsonRecord[]).map((change) => change["item_id"] as number),
+      ),
+    );
     const tools = create_agent_item_tools({
       cache: create_cache(
-        () => items,
+        () => [],
         () => revisions,
       ),
       proofreading: create_proofreading({ update_items_from_agent: update_items }),
@@ -395,9 +432,10 @@ describe("Agent item 工具", () => {
     const tool = tools.find((candidate) => candidate.name === "update_items");
     if (tool === undefined) throw new Error("缺少 update_items");
     const request = {
-      patches: [
-        { item_id: 2, name_dst: "二号", status: "EXCLUDED" as const },
-        { item_id: 1, dst: "一号译文" },
+      write: [
+        { item_id: 2, field: "name_dst" as const, value: "" },
+        { item_id: 2, field: "status" as const, value: "EXCLUDED" },
+        { item_id: 1, field: "dst" as const, value: "一号译文" },
       ],
       expected_section_revisions: { items: 2, proofreading: 3 },
     };
@@ -405,28 +443,29 @@ describe("Agent item 工具", () => {
     const result = await tool.execute("update", request, undefined, undefined, undefined as never);
     expect(update_items).toHaveBeenCalledWith(
       {
-        changes: request.patches,
+        changes: [
+          { item_id: 2, name_dst: "", status: "EXCLUDED" },
+          { item_id: 1, dst: "一号译文" },
+        ],
         expected_section_revisions: request.expected_section_revisions,
       },
       AGENT_PROOFREADING_UPDATE_SOURCE,
     );
     expect(result.details).toMatchObject({
-      accepted: true,
+      status: "applied",
       sectionRevisions: { items: 3, proofreading: 4 },
-      updated_items: [
-        { item_id: 2, name_dst: "二号", status: "EXCLUDED" },
-        { item_id: 1, dst: "一号译文" },
-      ],
+      updated: [2, 1],
     });
+    expect(result.details).not.toHaveProperty("updated_items");
     expect(result.details).not.toHaveProperty("projectPath");
 
     await expect(
       tool.execute(
         "duplicate",
         {
-          patches: [
-            { item_id: 1, dst: "A" },
-            { item_id: 1, status: "NONE" },
+          write: [
+            { item_id: 1, field: "dst", value: "A" },
+            { item_id: 1, field: "dst", value: "B" },
           ],
           expected_section_revisions: revisions,
         },
@@ -434,7 +473,98 @@ describe("Agent item 工具", () => {
         undefined,
         undefined as never,
       ),
-    ).rejects.toThrow("唯一正整数");
+    ).rejects.toThrow("item_id/field 必须唯一");
+    await expect(
+      tool.execute(
+        "invalid-status",
+        {
+          write: [{ item_id: 1, field: "status", value: "ERROR" }],
+          expected_section_revisions: revisions,
+        },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).rejects.toThrow("status value 无效");
     expect(update_items).toHaveBeenCalledTimes(1);
+  });
+
+  it("update_items 对超过默认查询页的写入仍返回全部实际更新 ID", async () => {
+    const updated = Array.from({ length: 25 }, (_, index) => index + 1);
+    const update_items = vi.fn(async (): Promise<ProjectWriteResult> =>
+      create_item_write_result(updated),
+    );
+    const tool = create_agent_item_tools({
+      cache: create_cache(() => []),
+      proofreading: create_proofreading({ update_items_from_agent: update_items }),
+    }).find((candidate) => candidate.name === "update_items");
+    if (tool === undefined) throw new Error("缺少 update_items");
+
+    const result = await tool.execute(
+      "many",
+      {
+        write: updated.map((item_id) => ({
+          item_id,
+          field: "dst" as const,
+          value: `新译文 ${item_id.toString()}`,
+        })),
+        expected_section_revisions: { items: 2, proofreading: 3 },
+      },
+      undefined,
+      undefined,
+      undefined as never,
+    );
+
+    expect(result.details).toEqual({
+      status: "applied",
+      sectionRevisions: { items: 3, proofreading: 4 },
+      updated,
+    });
+  });
+
+  it("update_items 回执缺少实际更新 ID 时拒绝确认成功", async () => {
+    const update_items = vi.fn(async (): Promise<ProjectWriteResult> => create_item_write_result());
+    const tool = create_agent_item_tools({
+      cache: create_cache(() => []),
+      proofreading: create_proofreading({ update_items_from_agent: update_items }),
+    }).find((candidate) => candidate.name === "update_items");
+    if (tool === undefined) throw new Error("缺少 update_items");
+
+    await expect(
+      tool.execute(
+        "unconfirmed",
+        {
+          write: [{ item_id: 1, field: "dst", value: "新译文" }],
+          expected_section_revisions: { items: 2, proofreading: 3 },
+        },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).rejects.toThrow("item.write_not_confirmed");
+  });
+
+  it("update_items 没有实际变化时返回 unchanged 和当前 revision", async () => {
+    const tool = create_agent_item_tools({
+      cache: create_cache(() => []),
+      proofreading: create_proofreading(),
+    }).find((candidate) => candidate.name === "update_items");
+    if (tool === undefined) throw new Error("缺少 update_items");
+
+    const result = await tool.execute(
+      "unchanged",
+      {
+        write: [{ item_id: 1, field: "dst", value: "既有译文" }],
+        expected_section_revisions: { items: 2, proofreading: 3 },
+      },
+      undefined,
+      undefined,
+      undefined as never,
+    );
+
+    expect(result.details).toEqual({
+      status: "unchanged",
+      sectionRevisions: { items: 2, proofreading: 3 },
+    });
   });
 });

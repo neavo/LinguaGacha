@@ -21,14 +21,14 @@
 ## 3. 模型、资源与 skill
 
 - Agent 与 OneShot 共用 [`BACKEND.md`](BACKEND.md) 定义的模型请求边界。模型级 `agent.context_window` 与 `agent.max_output_tokens` 在新会话创建时冻结；后续每回合重新解析 agent 用途选择并刷新请求快照与思考等级，但不改变当前会话容量。模型页 generation 和 threshold 输入 / 输出 token 设置只作用于 OneShot。
-- 启动期原子加载必需的 `resource/agent/system_prompt.md` 与 `resource/agent/session_seed.json`；会话种子由一个或多个严格交替的完整 user / assistant 轮次组成，按资源顺序进入每个新会话的模型历史但不进入公开时间线，任一资源缺失或结构无效都会阻止启动。
-- coding-agent 的默认工具与项目资源发现全部关闭；产品 skill 只在启动期从内置与用户目录加载，坏 skill 只记录诊断，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。`SKILL.md` 描述同时作为模型描述和 UI 翻译缺失时的回退，manual-only skill 必须由显式 skill part 授权，`read_skill` 只能读取启动期形成的 `SKILL.md` 与 references 白名单，UI 翻译不进入模型上下文。
+- 启动期原子加载必需的 `resource/agent/system_prompt.md` 与 `resource/agent/session_seed.json`；会话种子由零个或多个顺序任意的 user / assistant 消息组成，文本裁剪后允许为空，按资源顺序进入每个新会话的模型历史但不进入公开时间线，任一资源缺失或结构无效都会阻止启动。
+- coding-agent 的默认工具与项目资源发现全部关闭；产品 skill 只在启动期从内置与用户目录加载，坏 skill 只记录诊断，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。`SKILL.md` 描述同时作为模型描述和 `i18n.json` UI 描述缺失时的回退；`i18n.json` 的 `visible: false` 只让 skill 不进入公开 snapshot 能力列表，不改变模型清单、显式调用或读取权限。manual-only skill 必须由显式 skill part 授权，`read_skill` 只能读取启动期形成的 `SKILL.md` 与 references 白名单，UI 配置不进入模型上下文。
 
 ## 4. 产品工具与宿主能力
 
-- 产品工具只从当前设置、cache 与领域 query 读取事实；写入经对应服务的 Agent 专用入口复用 [`BACKEND.md`](BACKEND.md) 的 revision、事务和项目事件边界。模型可见结果不暴露绝对 `projectPath`，item、warning、quality 查询及写入确认携带与数据快照绑定的 section revision。
+- 产品工具只从当前设置、cache 与领域 query 读取事实；写入经对应服务的 Agent 专用入口复用 [`BACKEND.md`](BACKEND.md) 的 revision、事务和项目事件边界。模型可见结果不暴露绝对 `projectPath`，item、warning、quality 查询及写入确认携带与数据快照绑定的 section revision；写工具以 `applied | unchanged` 和紧凑变更身份表达权威结果，成功后不为确认重复查询完整事实。
 - 质量规则工具统一查询和原子更新，模型通过 `write`、`delete`、`move` 表达差异，后端按 `entry_id` 决定创建或更新，并在提交前拒绝新增或扩大的重复组；Agent 不允许修改启用状态或文本保护模式。业务校验失败不写入，revision 冲突返回当前 revision 和重新查询动作，成功回执携带提交后的 quality revision。
-- `query_items` 只从基础 item cache 组合 ID、状态、文件与单一文本搜索并返回分页；`query_warning_items` 复用当前校对评估运行态，只返回具有真实 warning 的条目与证据且不创建或替换 GUI 列表视图；`update_items` 与 GUI 共用译文、译名和人工状态的字段更新核心。`query_project_meta` 按需读取当前权威源语言和目标语言。
+- `query_items` 只从基础 item cache 组合 ID、状态、文件与单一文本搜索并返回分页；`query_warning_items` 复用当前校对评估运行态，只返回具有真实 warning 的条目与证据且不创建或替换 GUI 列表视图；`update_items` 接收由必填 `item_id`、`field` 和 `value` 组成的单字段 `write`，在 Agent 边界按 item 聚合后与 GUI 共用译文、译名和人工状态的字段更新核心，并以实际更新 ID 与提交后双 revision 确认结果，不回传更新后正文。`query_project_meta` 按需读取当前权威源语言和目标语言。
 - `query_quality_rules(glossary)` 复用一次 `quality_statistics` compute task 同时返回覆盖数、实际命中次数、结构关系和每条最多一个有效语境 sample；sample 由统计启动前捕获的 item 快照投影，后续 `query_items` 以 section revisions 相等作为一致性边界，不另建 Agent 统计缓存或正文重扫。
 - `web_fetch({ url })` 仅在 GUI 宿主能力可用时注册，CLI 不提供假实现。Electron main 复用默认 session 的 Chromium 网络栈逐跳限制 HTTP(S)、DNS/IP、重定向、超时和响应字节，只经 main 与 Backend Runtime 的私有宿主协议返回有限字节与原始 Content-Type；Backend 将 HTML / XHTML 经本地 Defuddle、其它受支持文本按 MIME 和 charset 归一为带不可信边界的 Markdown，二进制、无有效正文和不支持的 MIME 明确失败。
 
