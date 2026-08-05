@@ -1,6 +1,6 @@
 # LinguaGacha 后端权威边界
 
-本文统一承载后端公开协议、状态拥有者、项目写入、任务运行态、数据库与 `.lg` 物理存储规则。字段级细节、完整 schema 和局部算法留在代码与测试中。
+本文统一承载共享后端公开协议、状态拥有者、项目写入、任务运行态、数据库与 `.lg` 物理存储规则；产品 Agent 的专属协议与运行时归 [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md)。字段级细节、完整 schema 和局部算法留在代码与测试中。
 
 ## 1. 公开协议
 
@@ -9,9 +9,6 @@
 - Gateway 只监听本机地址，CORS 只允许 `Content-Type`，renderer 不依赖额外私有请求头。
 - 成功响应为 `{ ok: true, data }`，失败响应为 `{ ok: false, error }`；公开错误不包含 diagnostic context、cause、stack 或供应商原始异常。
 - 公开 SSE topic 固定为 `project.data_changed`、`task.snapshot_changed`、`runtime.snapshot_changed`、`agent.session_event`、`settings.changed`、`log.appended`，data 使用严格 JSON 序列化；`POST /api/runtime/snapshot` 返回带单调 `revision` 的当前运行所有者 `task | agent | null`。
-- Agent 公开入口提供 snapshot、message、stop 与 reset；消息保留有序 text / skill parts，会话状态只区分 `idle | running`，user / assistant / tool 条目各自携带 `running | success | error | stopped` 状态。
-- Agent 时间线由 snapshot 与 `agent.session_event` 通过同 id 完整条目覆盖和 `snapshot_seed` 共同恢复本次 reset 以来的内存历史，并公开模型可见历史的估算用量与当前会话容量；模型失败只写入对应条目和轮次，不发布第二套失败事件。公开条目不包含工具参数、供应商连续性元数据或脱敏思考。
-- 工具 `running` 条目在执行体开始前发布；所有产品工具在统一注册边界先让出一次事件循环，为本地 SSE 首帧提供独立发送轮次。
 - 通用质量规则由切片 query / update 读写，分析术语导入等复合 workflow 保留独立命令；校对 query 统一分发读取，items update 原子批量更新 `dst` / `name_dst` / 人工状态，清空与替换保留各自的后端意图命令。
 - 模型管理 API 只负责配置 CRUD；任务入口按 `translation`、`analysis` 或 `agent` 用途读取窄选项并更新单项选择。选项只携带显示身份与非敏感的 Agent 容量，不公开密钥、请求覆盖或生成参数。
 - `LogManager` 以 `LogContent` 判别联合保存单一正文事实：文件和控制台从它生成纯文本投影，`log.appended` 只携带轻量预览，详情 query 只查询当前进程结构化详情池且不回扫历史文件。
@@ -30,8 +27,6 @@
 | 活动任务类型、translation scope、status、busy、`run_revision`、请求压力 | `TaskRuntime` | 任务命令、Engine 生命周期、项目会话切换 |
 | 任务 progress / analysis candidate count | `.lg` meta | `TaskProjectStore` 经 `ProjectWriteStore` 写入 |
 | 任务公开快照 | `TaskRuntime.build_snapshot` | 组合内存运行态与 `.lg` meta |
-| Agent 公开状态、完整 UI 时间线、Agent 会话生命周期与启动期资源 | `AgentService` | Agent API、`agent.session_event`；规则与译文写工具委托对应服务的 Agent 专用写入口 |
-| Agent 模型可见历史、工具循环、上下文压缩、中断与 settle | 内存 `AgentSession` | `AgentService` 只通过 SDK 的 prompt、模型切换与关闭 API 驱动 |
 | `.lg` 物理 workflow | `ProjectDatabase` | 类型化读写方法、`transaction(projectPath, callback)` |
 | 平台 IO 与路径身份 | `NativeFs` / `NativePathPolicy` | `src/native` |
 | 后端日志 | `LogManager` | 文件日志、轻量 SSE、当前进程详情池 |
@@ -51,7 +46,7 @@ project, files, items, quality, prompts, analysis, proofreading
 - `CacheManager` 是当前 session 的热读缓存根；query 只组合 cache、按需数据库读取和 shared 纯规则，不建立第二套项目事实。
 - 所有质量规则消费链统一通过 `QualityRule` 与 `normalize_quality_rule_entries` 收窄，并由真实执行器校验；入口不得另建字段或正则容错。
 - 质量规则执行语义集中在 shared：术语只匹配 `src/name_src` 并检查对应译文字段；替换按顺序正向执行，校对不逆推译后规则；文本保护消费者复用同一规则实现。
-- 校对 reader 同时维护原始自然顺序和单个 GUI 列表视图：`view_id` 表示稳定结果快照，条目字段增量只刷新旧视图中的行内容，删除 tombstone 从旧视图移除成员，成员与排序只由新的 list query 重算；上下文、按 ID 读取和 Agent warning 分页只查询共享评估运行态，不创建或替换该视图。
+- 校对 reader 同时维护原始自然顺序和单个 GUI 列表视图：`view_id` 表示稳定结果快照，条目字段增量只刷新旧视图中的行内容，删除 tombstone 从旧视图移除成员，成员与排序只由新的 list query 重算；上下文与按 ID 读取只查询共享评估运行态，不创建或替换该视图。
 - 质量规则统计按 item 去重；译后替换读取译文字段，其余规则读取源字段，不模拟启用态或执行链。`QualityStatisticsCache` 只在能证明影响范围时局部失效，否则全量失效。
 - 客户端只提交用户意图、设置镜像和 revision 依赖；canonical items、task extras、prefilter 结果和 analysis 结果由后端计算。
 - 需要乐观锁的用户写入在最终提交点完成 revision guard 与单 `.lg` 事务；任务 artifact 等内部写入可以不带预期 revision，但仍通过 `ProjectWriteStore` 更新事实和 section revision。
@@ -75,14 +70,6 @@ project, files, items, quality, prompts, analysis, proofreading
 - 非 engine 的重型计算通过 `ComputeWorkerClient` 提交无状态 compute task；worker 不读数据库、不写 `.lg`、不发布事件、不持有项目 cache。
 - 模型请求快照、`api_format` 协议策略、最终请求覆盖、结果归一和模型列表探测归 `src/backend/llm`；OneShot 与 Agent 共用同一请求事实和 `pi-ai` 原生 adapter，模型列表探测直接调用供应商 REST API。`LLMClient` 独立拥有 OneShot 的总时限、取消、退化和结果语义，任务层不解析供应商异常文本。
 - OpenAI Chat Completions 与 Responses 是显式独立的 `api_format`，不按 URL 或模型名自动探测，也不互相重试或降级；模型族思考字段由项目共享策略生成，未收录模型不猜测，`extra_body` 最后覆盖。Responses 的原生载荷与连续性由 `pi-ai` 生成；除通用思考与 `extra_body` 策略外，项目只把其中的系统指令规范为 `developer`，指令角色不随思考档位变化。
-- Agent 运行时完全内存化，coding-agent 的默认工具与项目资源发现全部关闭。消息受理到 SDK 最终 settle 期间持续持有共享运行 lease；stop 同步把当前轮次内仍运行的子条目和 user 条目封口为 `stopped`、将公开会话切回 `idle`，再异步取消 SDK，运行 lease 仍到最终 settle 才释放；显式 reset 与 `ProjectSessionState.mark_loaded` / `clear` 会立即隔离公开会话并等待旧运行时清理，同一工程内的项目事实变化不重置公开时间线或模型历史；已失效运行时的迟到阶段不得改写条目、发布终态或启动模型请求。
-- 模型级 `agent.context_window` 与 `agent.max_output_tokens` 在新会话创建时冻结；每个后续回合重新解析 agent 用途选择并刷新请求快照与思考等级，但不改变当前会话容量。模型页 generation 和 threshold 输入 / 输出 token 设置只作用于 OneShot。
-- Agent 启动期原子加载必需的 `resource/agent/system_prompt.md` 与 `resource/agent/session_seed.json`；会话种子由一个或多个严格交替的完整 user / assistant 轮次组成，按资源顺序进入每个新会话的模型历史，但不进入公开时间线，任一资源缺失或结构无效都会阻止启动。产品 skill 仅在启动期从内置与用户目录加载，坏 skill 只记录诊断；SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。
-- skill 的 `SKILL.md` 描述同时作为模型描述和 UI 翻译缺失时的回退；manual-only skill 必须由显式 skill part 授权，`read_skill` 只能读取启动期形成的 `SKILL.md` 与 references 白名单，UI 翻译不进入模型上下文。
-- Agent 产品工具只从当前设置、cache 与领域 query 读取事实，写入经对应服务的 Agent 专用入口复用同一 revision、事务和项目事件边界；质量规则统一查询和原子更新，模型通过 `write`、`delete`、`move` 表达差异，后端按 `entry_id` 决定创建或更新，并在提交前拒绝新增或扩大的重复组；Agent 不允许修改启用状态或文本保护模式。质量规则业务校验失败不写入，revision 冲突返回当前 revision 和重新查询动作，成功回执携带提交后的 quality revision。`query_project_meta` 按需读取当前权威源语言和目标语言。模型可见的项目工具结果不暴露绝对 `projectPath`，item、warning、quality 查询及写入确认继续携带与数据快照绑定的 section revision。
-- `query_items` 只从基础 item cache 组合 ID、状态、文件与单一文本搜索并返回分页；`query_warning_items` 复用当前校对评估运行态且只返回具有真实 warning 的条目与证据；`update_items` 与 GUI 共用译文、译名和人工状态的字段更新核心。
-- `web_fetch({ url })` 是仅在 GUI 宿主能力可用时注册的 Agent 只读联网工具；CLI 不提供假实现。Backend 只接收有限字节与原始 Content-Type，并把 HTML / XHTML 经本地 Defuddle、其余受支持文本按 MIME 和 charset 统一归一为带不可信边界的 Markdown；二进制、无有效正文和不支持的 MIME 明确失败。
-- `query_quality_rules(glossary)` 复用一次 `quality_statistics` compute task 同时返回覆盖数、实际命中次数、结构关系和每条最多一个有效语境 sample；sample 由统计启动前捕获的 item 快照投影，后续 `query_items` 以 section revisions 相等作为一致性边界，不另建 Agent 统计缓存或正文重扫。
 
 ## 5. 数据库与 `.lg` 存储
 

@@ -15,6 +15,7 @@
 | 系统分层、跨层边界、运行时主链路、模块关系 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) |
 | CLI 命令、入口分发、临时工程、资源、输出和平台启动器 | [`docs/CLI.md`](docs/CLI.md) |
 | 后端协议、状态拥有者、唯一写入口、任务、数据库和 `.lg` 存储 | [`docs/BACKEND.md`](docs/BACKEND.md) |
+| 产品 Agent 会话、模型历史、启动资源、skill、工具、宿主能力和页面消费 | [`docs/AGENT_RUNTIME.md`](docs/AGENT_RUNTIME.md) |
 | Electron、preload、renderer、前端运行态、导航和样式消费 | [`docs/FRONTEND.md`](docs/FRONTEND.md) |
 | 阅读路径、验证矩阵、文档同步和交付自检 | [`docs/WORKFLOW.md`](docs/WORKFLOW.md) |
 
@@ -56,7 +57,7 @@ TypeScript / React / CSS：
 
 ## 5. 文档治理硬约束
 
-- 本文件权威定义工程长期文档集合：只包含 `docs/` 下的 `ARCHITECTURE.md`、`CLI.md`、`BACKEND.md`、`FRONTEND.md` 和 `WORKFLOW.md`；专题归宿见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)，`AGENTS.md` 是体系外的行动规则。
+- 本文件权威定义工程长期文档集合：只包含 `docs/` 下的 `ARCHITECTURE.md`、`CLI.md`、`BACKEND.md`、`AGENT_RUNTIME.md`、`FRONTEND.md` 和 `WORKFLOW.md`；专题归宿见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)，`AGENTS.md` 是体系外的行动规则。
 - 长期文档只记录未来维护必须知道、且不能轻易从代码表面得出的当前稳定事实；同一工程语义在上述长期文档内只允许一个权威归宿。
 - Agent 必须始终遵循的关键约束可以在本文件自足表达，不因项目文档已有相近内容而删成仅剩链接。
 - `DESIGN.md` 是 Impeccable 设计流程的可选产物，可能不存在；它与 `PRODUCT.md` 等流程产物都不属于工程长期文档，工程文档不得依赖这些文件存在。
