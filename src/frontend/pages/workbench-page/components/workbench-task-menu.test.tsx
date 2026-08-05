@@ -69,6 +69,7 @@ const shared_props = {
     loading: false,
     updating: false,
     select_model: vi.fn(async () => undefined),
+    update_thinking_level: vi.fn(async () => undefined),
   },
   active_task_action_kind: null,
   on_start_or_continue: async () => {},

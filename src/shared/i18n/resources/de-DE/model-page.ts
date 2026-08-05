@@ -142,10 +142,4 @@ export const de_de_model_page = {
       placeholder: 'Beispiel: {"seed": 42}',
     },
   },
-  thinking_level: {
-    off: "Aus",
-    low: "Niedrig",
-    medium: "Mittel",
-    high: "Hoch",
-  },
 } satisfies LocaleMessageSchema<typeof zh_cn_model_page>;

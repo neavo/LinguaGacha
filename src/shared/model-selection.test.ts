@@ -18,6 +18,8 @@ describe("模型选择快照", () => {
             type: "PRESET",
             name: " 预设 ",
             agent: { context_window: 288_000, max_output_tokens: 32_000 },
+            thinking_level: "HIGH",
+            thinking_configurable: true,
           },
           {
             id: "model-2",
@@ -47,8 +49,30 @@ describe("模型选择快照", () => {
           type: "PRESET",
           name: "预设",
           agent: { context_window: 288_000, max_output_tokens: 32_000 },
+          thinking_level: "HIGH",
+          thinking_configurable: true,
         },
       ],
+    });
+  });
+
+  it("非法思考字段回退安全默认值", () => {
+    const snapshot = normalize_model_selection_snapshot({
+      models: [
+        {
+          id: "model-1",
+          type: "PRESET",
+          name: "预设",
+          agent: { context_window: 288_000, max_output_tokens: 32_000 },
+          thinking_level: "UNKNOWN",
+          thinking_configurable: "true",
+        },
+      ],
+    });
+
+    expect(snapshot.models[0]).toMatchObject({
+      thinking_level: "OFF",
+      thinking_configurable: false,
     });
   });
 });

@@ -1,8 +1,9 @@
 import { PencilLine, RefreshCw, Send } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { MODEL_THINKING_LEVELS, Model, type ModelThinkingLevel } from "@domain/model";
+import { MODEL_THINKING_LEVELS, Model } from "@domain/model";
 import { useI18n } from "@frontend/app/locale/locale-provider";
+import { MODEL_THINKING_LEVEL_LABEL_KEY } from "@frontend/features/model-selection/model-selection-meta";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import { AppButton } from "@frontend/widgets/app-button";
 import { Input } from "@frontend/shadcn/input";
@@ -36,22 +37,6 @@ const THINKING_SUPPORT_URL_BY_LOCALE = {
   "de-DE": "https://github.com/neavo/LinguaGacha/wiki/ThinkingLevelSupportEN",
 } as const;
 
-/** 把持久化档位映射为当前语言的用户可见标签。 */
-function resolve_thinking_label(
-  t: ReturnType<typeof useI18n>["t"],
-  thinking_level: ModelThinkingLevel,
-): string {
-  if (thinking_level === "LOW") {
-    return t("model_page.thinking_level.low");
-  } else if (thinking_level === "MEDIUM") {
-    return t("model_page.thinking_level.medium");
-  } else if (thinking_level === "HIGH") {
-    return t("model_page.thinking_level.high");
-  } else {
-    return t("model_page.thinking_level.off");
-  }
-}
-
 /** 编辑模型名称、连接信息和思考档位的基础设置对话框。 */
 export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): JSX.Element | null {
   const { locale, t } = useI18n();
@@ -69,15 +54,6 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
       set_is_model_id_editor_open(false);
     }
   }, [props.open]);
-
-  const thinking_level_options = useMemo(() => {
-    return MODEL_THINKING_LEVELS.map((thinking_level) => {
-      return {
-        value: thinking_level,
-        label: resolve_thinking_label(t, thinking_level),
-      };
-    });
-  }, [t]);
 
   if (props.model === null) {
     return null;
@@ -246,9 +222,9 @@ export function ModelBasicSettingsDialog(props: ModelBasicSettingsDialogProps): 
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        {thinking_level_options.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
+                        {MODEL_THINKING_LEVELS.map((thinking_level) => (
+                          <SelectItem key={thinking_level} value={thinking_level}>
+                            {t(MODEL_THINKING_LEVEL_LABEL_KEY[thinking_level])}
                           </SelectItem>
                         ))}
                       </SelectGroup>

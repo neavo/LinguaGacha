@@ -190,7 +190,7 @@ describe("Agent 模型注册", () => {
             { role: "system", content: "系统约束" },
             { role: "user", content: "用户输入" },
           ],
-          reasoning: { effort: "high" },
+          reasoning: { effort: "high", summary: "auto" },
           store: false,
         },
         resolved.model,
@@ -200,7 +200,7 @@ describe("Agent 模型注册", () => {
         { role: "developer", content: "系统约束" },
         { role: "user", content: "用户输入" },
       ],
-      reasoning: { effort: "high" },
+      reasoning: { effort: "high", summary: "auto" },
       store: false,
       custom_flag: true,
     });

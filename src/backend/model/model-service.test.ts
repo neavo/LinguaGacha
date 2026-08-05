@@ -252,8 +252,63 @@ describe("ModelService 配置管理", () => {
       type: "PRESET",
       name: "模型",
       agent: { context_window: 288_000, max_output_tokens: 32_000 },
+      thinking_level: "OFF",
+      thinking_configurable: true,
     });
     expect(snapshot.models[0]).not.toHaveProperty("api_key");
+  });
+
+  it("按用途更新当前模型思考档位并保持选择快照狭窄", async () => {
+    const { service } = await create_model_service([
+      create_model({ id: "preset", type: "PRESET" }),
+      create_model({ id: "openai", type: "CUSTOM_OPENAI" }),
+    ]);
+    service.select_model({ usage: "agent", model_id: "openai" });
+
+    const selection = read_selection_snapshot(
+      service.update_selected_model_thinking_level({ usage: "agent", thinking_level: "HIGH" }),
+    );
+    const selected = selection.models.find((model) => model["id"] === "openai");
+    const management = read_request_model_snapshot(service.get_snapshot());
+    const persisted = management.models.find((model) => model["id"] === "openai");
+
+    expect(selected).toMatchObject({
+      thinking_level: "HIGH",
+      thinking_configurable: true,
+    });
+    expect(selected).not.toHaveProperty("api_key");
+    expect(persisted?.["thinking"]).toEqual({ level: "HIGH" });
+  });
+
+  it.each([
+    {
+      name: "非法用途",
+      request: { usage: "unknown", thinking_level: "HIGH" },
+    },
+    {
+      name: "非法思考档位",
+      request: { usage: "agent", thinking_level: "UNKNOWN" },
+    },
+  ])("$name 不落盘", async ({ request }) => {
+    const { service } = await create_model_service([create_model({ id: "preset" })]);
+    const before = service.get_selection_snapshot();
+
+    expect(() => service.update_selected_model_thinking_level(request)).toThrow(
+      "request.validation_failed",
+    );
+    expect(service.get_selection_snapshot()).toEqual(before);
+  });
+
+  it("不可配置思考档位的模型不落盘", async () => {
+    const { service } = await create_model_service([
+      create_model({ id: "sakura", type: "PRESET", api_format: "SakuraLLM" }),
+    ]);
+    const before = service.get_selection_snapshot();
+
+    expect(() =>
+      service.update_selected_model_thinking_level({ usage: "agent", thinking_level: "HIGH" }),
+    ).toThrow("request.validation_failed");
+    expect(service.get_selection_snapshot()).toEqual(before);
   });
 
   it("非法用途和缺失模型均不落盘", async () => {
@@ -504,6 +559,7 @@ describe("ModelService 配置管理", () => {
     for (const operation of [
       () => service.update_model({}),
       () => service.select_model({}),
+      () => service.update_selected_model_thinking_level({}),
       () => service.add_model({}),
       () => service.delete_model({}),
       () => service.reset_preset_model({}),

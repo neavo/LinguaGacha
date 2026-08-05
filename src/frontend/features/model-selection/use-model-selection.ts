@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { ModelUsage } from "@domain/model";
+import type { ModelThinkingLevel, ModelUsage } from "@domain/model";
 import { api_fetch, api_get } from "@frontend/app/desktop/desktop-api";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
@@ -11,17 +11,18 @@ import {
   type ModelSelectionSnapshot,
 } from "@shared/model-selection";
 
-/** 页面内模型选择的公开状态与唯一写命令。 */
+/** 页面内模型选择及所选模型思考配置的公开状态与唯一写命令。 */
 export type ModelSelectionController = {
   snapshot: ModelSelectionSnapshot;
   loading: boolean;
   updating: boolean;
   select_model: (usage: ModelUsage, model_id: string) => Promise<void>;
+  update_thinking_level: (usage: ModelUsage, thinking_level: ModelThinkingLevel) => Promise<void>; // 后端按用途原子定位当前模型，调用方不提交可能过期的模型 ID
 };
 
 const EMPTY_SNAPSHOT = normalize_model_selection_snapshot({});
 
-/** 页面生命周期内唯一拥有模型选择 query 与 command，不进入全局运行态。 */
+/** 页面生命周期内唯一拥有模型控制 query 与 command，不进入全局运行态。 */
 export function useModelSelection(): ModelSelectionController {
   const { push_toast } = useDesktopToast();
   const { t } = useI18n();
@@ -54,15 +55,14 @@ export function useModelSelection(): ModelSelectionController {
     };
   }, [push_toast, t]);
 
-  const select_model = useCallback(
-    async (usage: ModelUsage, model_id: string): Promise<void> => {
-      if (updating_ref.current || snapshot.model_selection[usage] === model_id) {
-        return;
-      }
+  /** 两种模型控制命令共用提交、回包归一和错误恢复。 */
+  const update_snapshot = useCallback(
+    async (path: string, request: Record<string, string>): Promise<void> => {
+      if (updating_ref.current) return;
       updating_ref.current = true;
       set_updating(true);
       try {
-        const payload = await api_fetch<unknown>("/api/models/select", { usage, model_id });
+        const payload = await api_fetch<unknown>(path, request);
         const next = normalize_model_selection_snapshot(payload);
         set_snapshot(next);
       } catch (error) {
@@ -75,10 +75,35 @@ export function useModelSelection(): ModelSelectionController {
         set_updating(false);
       }
     },
-    [push_toast, snapshot, t],
+    [push_toast, t],
   );
 
-  return { snapshot, loading, updating, select_model };
+  const select_model = useCallback(
+    async (usage: ModelUsage, model_id: string): Promise<void> => {
+      if (snapshot.model_selection[usage] === model_id) return;
+      await update_snapshot("/api/models/select", { usage, model_id });
+    },
+    [snapshot.model_selection, update_snapshot],
+  );
+
+  const update_thinking_level = useCallback(
+    async (usage: ModelUsage, thinking_level: ModelThinkingLevel): Promise<void> => {
+      const selected = snapshot.models.find(
+        (model) => model.id === snapshot.model_selection[usage],
+      );
+      if (
+        selected === undefined ||
+        !selected.thinking_configurable ||
+        selected.thinking_level === thinking_level
+      ) {
+        return;
+      }
+      await update_snapshot("/api/models/thinking-level/update", { usage, thinking_level });
+    },
+    [snapshot, update_snapshot],
+  );
+
+  return { snapshot, loading, updating, select_model, update_thinking_level };
 }
 
 /** 从公开快照读取用途对应模型，失效选择不伪造回退项。 */

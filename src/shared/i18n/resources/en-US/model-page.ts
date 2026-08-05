@@ -133,10 +133,4 @@ export const en_us_model_page = {
       placeholder: 'Example: {"seed": 42}',
     },
   },
-  thinking_level: {
-    off: "Off",
-    low: "Low",
-    medium: "Medium",
-    high: "High",
-  },
 } satisfies LocaleMessageSchema<typeof zh_cn_model_page>;

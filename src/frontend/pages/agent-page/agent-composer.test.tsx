@@ -59,6 +59,9 @@ const TEST_MESSAGES = vi.hoisted(() => ({
   "agent_page.unavailable.restoring": "正在恢复会话",
   "agent_page.unavailable.runtime_busy": "其它任务正在运行",
   "agent_page.unavailable.settling": "正在结束当前任务",
+  "app.model.selection.label": "选择模型",
+  "app.model.thinking_level.label": "思考等级",
+  "app.model.thinking_level.medium": "中",
 }));
 
 vi.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
@@ -528,7 +531,10 @@ describe("AgentComposer", () => {
       model_selection: { updating: true },
     });
     const model_trigger = view.querySelector<HTMLButtonElement>(
-      'button[aria-label="app.model.selection.label"]',
+      'button[aria-label="选择模型: Agent Model"]',
+    );
+    const thinking_trigger = view.querySelector<HTMLButtonElement>(
+      'button[aria-label="思考等级: 中"]',
     );
     const submit = view.querySelector<HTMLButtonElement>('button[aria-label="发送"]');
     const editor = view.querySelector<HTMLElement>(
@@ -541,8 +547,12 @@ describe("AgentComposer", () => {
     expect(view.querySelector('[role="alert"]')).not.toBeNull();
     expect(model_trigger?.textContent).toContain("Agent Model");
     expect(model_trigger?.disabled).toBe(true);
+    expect(thinking_trigger?.textContent).toContain("中");
+    expect(thinking_trigger?.disabled).toBe(true);
     expect(editor?.getAttribute("contenteditable")).toBe("true");
-    expect(tooltips.map((tooltip) => tooltip.textContent)).toContain("发送");
+    expect(tooltips.map((tooltip) => tooltip.textContent)).toEqual(
+      expect.arrayContaining(["Agent Model", "思考等级", "发送"]),
+    );
     expect(submit?.disabled).toBe(true);
   });
 
@@ -563,6 +573,9 @@ describe("AgentComposer", () => {
     expect(view.querySelector<HTMLButtonElement>(".agent-composer__model-trigger")?.disabled).toBe(
       true,
     );
+    expect(
+      view.querySelector<HTMLButtonElement>(".agent-composer__thinking-trigger")?.disabled,
+    ).toBe(true);
     expect(view.querySelector<HTMLButtonElement>(".agent-composer__submit")?.disabled).toBe(true);
     expect([...view.querySelectorAll('[role="tooltip"]')].at(-1)?.textContent).toBe(label);
   });
@@ -611,7 +624,7 @@ describe("AgentComposer", () => {
     const view = await render_composer({ can_reset: false, on_reset });
     const reset = find_button_by_text(view, "agent_page.action.new_task");
     const model = view.querySelector<HTMLButtonElement>(
-      'button[aria-label="app.model.selection.label"]',
+      'button[aria-label="选择模型: Agent Model"]',
     );
     expect(reset?.disabled).toBe(true);
 
@@ -695,12 +708,15 @@ describe("AgentComposer", () => {
                   type: "CUSTOM_OPENAI",
                   name: "Agent Model",
                   agent: { context_window: 288_000, max_output_tokens: 32_000 },
+                  thinking_level: "MEDIUM",
+                  thinking_configurable: true,
                 },
               ],
             },
             loading: false,
             updating: false,
             select_model: vi.fn(async () => undefined),
+            update_thinking_level: vi.fn(async () => undefined),
             ...options.model_selection,
           }}
           input_session={options.input_session ?? default_input_session}

@@ -24,6 +24,13 @@ export const en_us_app = {
       load_failed: "Failed to load model selection. Please try again …",
       update_failed: "Failed to save model selection. Please try again …",
     },
+    thinking_level: {
+      label: "Thinking level",
+      off: "Off",
+      low: "Low",
+      medium: "Medium",
+      high: "High",
+    },
   },
   action: {
     cancel: "Cancel",

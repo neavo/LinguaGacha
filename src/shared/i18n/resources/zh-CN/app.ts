@@ -22,6 +22,13 @@ export const zh_cn_app = {
       load_failed: "模型选择加载失败，请稍后重试 …",
       update_failed: "模型选择保存失败，请稍后重试 …",
     },
+    thinking_level: {
+      label: "思考等级",
+      off: "无",
+      low: "低",
+      medium: "中",
+      high: "高",
+    },
   },
   action: {
     cancel: "取消",

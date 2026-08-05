@@ -514,14 +514,16 @@
 }
 
 .agent-composer__reset,
-.agent-composer__model-trigger {
+.agent-composer__model-trigger,
+.agent-composer__thinking-trigger {
   height: 24px;
   padding-inline: 4px;
   color: var(--muted-foreground);
   font-size: 12px;
 }
 
-.agent-composer__reset {
+.agent-composer__reset,
+.agent-composer__thinking-trigger {
   flex: 0 0 auto;
 }
 

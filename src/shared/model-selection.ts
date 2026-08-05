@@ -1,10 +1,12 @@
 import { is_json_record, type JsonRecord } from "../domain/json";
 import {
+  Model,
   is_model_type,
   normalize_model_selection,
   parse_model_agent_config,
   type ModelAgentConfig,
   type ModelSelection,
+  type ModelThinkingLevel,
   type ModelType,
 } from "../domain/model";
 
@@ -14,6 +16,8 @@ export type ModelSelectionOption = JsonRecord & {
   type: ModelType;
   name: string;
   agent: ModelAgentConfig; // Agent 空会话展示当前模型容量所需的非敏感配置
+  thinking_level: ModelThinkingLevel; // 模型当前持久化的全局思考档位
+  thinking_configurable: boolean; // 当前 API 格式是否允许用户修改思考档位
 };
 
 /** renderer 查询与选择命令共用的公开快照。 */
@@ -22,7 +26,7 @@ export type ModelSelectionSnapshot = JsonRecord & {
   models: ModelSelectionOption[];
 };
 
-/** GET 与 POST 回包统一收窄；除 Agent 容量外的模型配置不属于该协议。 */
+/** GET 与 POST 回包统一收窄，只接收任务入口直接控制所需的非敏感配置。 */
 export function normalize_model_selection_snapshot(value: unknown): ModelSelectionSnapshot {
   const record = is_json_record(value) ? value : {};
   const raw_models = Array.isArray(record["models"]) ? record["models"] : [];
@@ -37,6 +41,8 @@ export function normalize_model_selection_snapshot(value: unknown): ModelSelecti
         type: item["type"],
         name: typeof item["name"] === "string" ? item["name"].trim() : "",
         agent,
+        thinking_level: Model.normalize_thinking_level(item["thinking_level"]),
+        thinking_configurable: item["thinking_configurable"] === true,
       },
     ];
   });

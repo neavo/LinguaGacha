@@ -2,6 +2,7 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { ModelThinkingLevel } from "@domain/model";
 import { useModelSelection } from "./use-model-selection";
 
 const api = vi.hoisted(() => ({ get: vi.fn(), fetch: vi.fn() }));
@@ -42,7 +43,7 @@ describe("useModelSelection", () => {
         }),
     );
     const container = await render_probe();
-    await wait_for_text(container, "preset:false");
+    await wait_for_text(container, "preset:OFF:false");
 
     act(() => {
       find_button(container, "same").click();
@@ -55,23 +56,38 @@ describe("useModelSelection", () => {
       usage: "translation",
       model_id: "openai",
     });
-    expect(container.textContent).toContain("preset:true");
+    expect(container.textContent).toContain("preset:OFF:true");
 
     await act(async () => {
       resolve_update(snapshot("openai"));
       await Promise.resolve();
     });
-    expect(container.textContent).toContain("openai:false");
+    expect(container.textContent).toContain("openai:OFF:false");
+  });
+
+  it("更新当前用途模型的思考档位并消费统一窄回包", async () => {
+    api.get.mockResolvedValue(snapshot("preset"));
+    api.fetch.mockResolvedValue(snapshot("preset", "HIGH"));
+    const container = await render_probe();
+    await wait_for_text(container, "preset:OFF:false");
+
+    await act(async () => find_button(container, "thinking").click());
+
+    expect(api.fetch).toHaveBeenCalledWith("/api/models/thinking-level/update", {
+      usage: "translation",
+      thinking_level: "HIGH",
+    });
+    expect(container.textContent).toContain("preset:HIGH:false");
   });
 
   it("更新失败保留旧快照并显示统一错误", async () => {
     api.get.mockResolvedValue(snapshot("preset"));
     api.fetch.mockRejectedValue(new Error("offline"));
     const container = await render_probe();
-    await wait_for_text(container, "preset:false");
+    await wait_for_text(container, "preset:OFF:false");
 
     await act(async () => find_button(container, "change").click());
-    await wait_for_text(container, "preset:false");
+    await wait_for_text(container, "preset:OFF:false");
 
     expect(push_toast).toHaveBeenCalledWith("error", "app.model.selection.update_failed");
   });
@@ -88,17 +104,23 @@ describe("useModelSelection", () => {
 
 function Probe(): JSX.Element {
   const controller = useModelSelection();
+  const selected = controller.snapshot.models.find(
+    (model) => model.id === controller.snapshot.model_selection.translation,
+  );
   return (
     <div>
-      <span>{`${controller.snapshot.model_selection.translation}:${controller.updating.toString()}`}</span>
+      <span>{`${controller.snapshot.model_selection.translation}:${selected?.thinking_level ?? "OFF"}:${controller.updating.toString()}`}</span>
       <button onClick={() => void controller.select_model("translation", "preset")}>same</button>
       <button onClick={() => void controller.select_model("translation", "openai")}>change</button>
       <button onClick={() => void controller.select_model("analysis", "openai")}>other</button>
+      <button onClick={() => void controller.update_thinking_level("translation", "HIGH")}>
+        thinking
+      </button>
     </div>
   );
 }
 
-function snapshot(selected: string): unknown {
+function snapshot(selected: string, thinking_level: ModelThinkingLevel = "OFF"): unknown {
   return {
     model_selection: { translation: selected, analysis: "preset", agent: "preset" },
     models: [
@@ -107,12 +129,16 @@ function snapshot(selected: string): unknown {
         type: "PRESET",
         name: "Preset",
         agent: { context_window: 288_000, max_output_tokens: 32_000 },
+        thinking_level,
+        thinking_configurable: true,
       },
       {
         id: "openai",
         type: "CUSTOM_OPENAI",
         name: "OpenAI",
         agent: { context_window: 400_000, max_output_tokens: 50_000 },
+        thinking_level: "OFF",
+        thinking_configurable: true,
       },
     ],
   };

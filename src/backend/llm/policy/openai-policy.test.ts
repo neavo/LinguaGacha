@@ -79,7 +79,7 @@ describe("OpenAI 请求规则", () => {
       input: [{ role: "system", content: "rules" }, { type: "message" }],
       tools: [{ type: "function", name: "lookup" }],
       include: ["reasoning.encrypted_content"],
-      reasoning: { effort: "high" },
+      reasoning: { effort: "high", summary: "auto" },
     };
 
     expect(
@@ -95,10 +95,10 @@ describe("OpenAI 请求规则", () => {
     ).toEqual({
       ...source,
       input: [{ role: "developer", content: "rules" }, { type: "message" }],
-      reasoning: { effort: "high" },
+      reasoning: { effort: "high", summary: "auto" },
       custom_flag: true,
     });
-    expect(source.reasoning).toEqual({ effort: "high" });
+    expect(source.reasoning).toEqual({ effort: "high", summary: "auto" });
   });
 
   it("Sakura 只复用 Chat Completions 生成字段，不注入模型族 thinking", () => {
@@ -195,9 +195,9 @@ describe("OpenAI 请求规则", () => {
 
   it.each([
     ["OFF", { reasoning: { effort: "none" } }],
-    ["LOW", { reasoning: { effort: "low" } }],
-    ["MEDIUM", { reasoning: { effort: "medium" } }],
-    ["HIGH", { reasoning: { effort: "high" } }],
+    ["LOW", { reasoning: { effort: "low", summary: "auto" } }],
+    ["MEDIUM", { reasoning: { effort: "medium", summary: "auto" } }],
+    ["HIGH", { reasoning: { effort: "high", summary: "auto" } }],
   ] as const)("GPT-5.6 Responses 将 %s 映射为项目 reasoning 字段", (level, expected) => {
     expect(build_openai_thinking_payload("OpenAIResponses", "openai/gpt-5.6-luna", level)).toEqual(
       expected,

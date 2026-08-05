@@ -196,6 +196,7 @@ describe("pi-ai 请求适配", () => {
     expect(request.model.reasoning).toBe(true);
     expect(request.options).not.toHaveProperty("reasoningEffort");
     expect(payload).toHaveProperty("reasoning.effort", "none");
+    expect(payload).not.toHaveProperty("reasoning.summary");
     expect(payload).not.toHaveProperty("include");
   });
 
@@ -210,7 +211,7 @@ describe("pi-ai 请求适配", () => {
     expect(request.model.reasoning).toBe(true);
     expect(request.options).toMatchObject({ reasoningEffort: "high" });
     expect(payload).toMatchObject({
-      reasoning: { effort: "high" },
+      reasoning: { effort: "high", summary: "auto" },
       include: ["reasoning.encrypted_content"],
     });
     expect(payload["input"]).toEqual([

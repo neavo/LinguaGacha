@@ -19,7 +19,7 @@
 | 状态 / 边界 | 拥有者 | 唯一写入口 / 读出口 |
 | --- | --- | --- |
 | 应用设置、最近工程、语言 | `AppSettingService` | 设置 API、CLI transient overrides、`settings.changed` |
-| 模型集合与按用途选择 | `ModelService` | 模型 API；经 `AppSettingService` 持久化到应用设置 |
+| 模型集合、配置与按用途选择 | `ModelService` | 模型 API；经 `AppSettingService` 持久化到应用设置 |
 | 普通任务 / Agent 活动所有者与项目写互斥 | `RuntimeOperationGate` | 运行 lease、`POST /api/runtime/snapshot`、`runtime.snapshot_changed` |
 | loaded 工程身份 | `ProjectSessionState` | `ProjectLifecycleService` |
 | loaded 工程热读数据 | `CacheManager` | 工程热机、committed event、功能 query |
