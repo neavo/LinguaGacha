@@ -1,10 +1,15 @@
-import { Type, type TSchema } from "@earendil-works/pi-ai";
+import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import type { JsonRecord } from "../../domain/json";
 import { read_json_integer, read_json_record } from "../../domain/json";
 import { QUALITY_RULE_KINDS, QualityRule, type QualityRuleKind } from "../../domain/quality";
-import { collect_quality_rule_duplicate_groups } from "../../shared/quality/quality-rule-import";
+import { is_app_error } from "../../shared/error";
+import {
+  collect_quality_rule_duplicate_groups,
+  QualityRuleImportRuleTypeValue,
+  type QualityRuleImportRuleType,
+} from "../../shared/quality/quality-rule-import";
 import {
   create_quality_rule_entry_id,
   ensure_quality_rule_entry_ids,
@@ -17,106 +22,65 @@ import type { QualityRuleService } from "../quality/quality-rule-service";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import type { ResolvedGlossaryEntry } from "../../shared/quality/glossary";
 import { read_item_name_text } from "../../shared/item-name";
+import { AgentToolError } from "./agent-tool-error";
 
 /** 质量规则工具只公开四个稳定业务 kind，不接受数据库物理类型。 */
 const RULE_TYPE_PARAMETERS = Type.Enum(QUALITY_RULE_KINDS, {
   type: "string",
-  description: "决定 entry 和 meta 的适用字段。",
+  description: "决定 entry 的有效业务字段。",
 });
 
-const REPLACEMENT_RULE_TYPE_PARAMETERS = Type.Enum(
-  ["pre_replacement", "post_replacement"] as const,
-  { type: "string", description: "要更新的替换规则类型。" },
-);
+/** 复用导入域的重复键口径，避免 Agent 写入口产生第二套规则种类映射。 */
+const DUPLICATE_RULE_TYPE_BY_KIND = Object.freeze({
+  glossary: QualityRuleImportRuleTypeValue.GLOSSARY,
+  pre_replacement: QualityRuleImportRuleTypeValue.PRE_REPLACEMENT,
+  post_replacement: QualityRuleImportRuleTypeValue.POST_REPLACEMENT,
+  text_preserve: QualityRuleImportRuleTypeValue.TEXT_PRESERVE,
+} satisfies Record<QualityRuleKind, QualityRuleImportRuleType>);
 
-/** 术语、替换与文本保护分别公开精确字段，不把规则种类关联留给模型猜测。 */
-const GLOSSARY_ENTRY_PARAMETERS = Type.Object(
+/** 普通对象 Schema 保持跨供应商稳定，规则种类关联由 Agent 入口收窄。 */
+const QUALITY_RULE_ENTRY_PARAMETERS = Type.Object(
   {
     src: Type.String(),
-    dst: Type.String(),
-    info: Type.String(),
-    case_sensitive: Type.Boolean(),
+    dst: Type.Optional(Type.String()),
+    info: Type.Optional(Type.String()),
+    regex: Type.Optional(Type.Boolean()),
+    case_sensitive: Type.Optional(Type.Boolean()),
   },
   { additionalProperties: false },
 );
 
-const REPLACEMENT_ENTRY_PARAMETERS = Type.Object(
+/** write 以 entry_id 区分更新和创建，before_entry_id 只表达新条目位置。 */
+const QUALITY_RULE_WRITE_PARAMETERS = Type.Object(
   {
-    src: Type.String(),
-    dst: Type.String(),
-    regex: Type.Boolean(),
-    case_sensitive: Type.Boolean(),
-  },
-  { additionalProperties: false },
-);
-
-const TEXT_PRESERVE_ENTRY_PARAMETERS = Type.Object(
-  {
-    src: Type.String(),
-    info: Type.String(),
-  },
-  { additionalProperties: false },
-);
-
-/** 三类写工具共享意图明确的差异结构，避免模型把修改错误拆成新增与旧值回写。 */
-function create_quality_rule_change_parameters<TEntry extends TSchema>(entry: TEntry) {
-  return {
-    create_entries: Type.Optional(
-      Type.Array(
-        Type.Object(
-          {
-            entry,
-            insert_before_entry_id: Type.Optional(
-              Type.String({
-                minLength: 1,
-                description: "把新条目插入该现有 entry_id 之前；省略表示追加到末尾。",
-              }),
-            ),
-          },
-          { additionalProperties: false },
-        ),
-        {
-          minItems: 1,
-          description:
-            "仅新增没有现有 entry_id 的独立条目；entry 必须是完整值。修改已有条目不得使用此字段。",
-        },
-      ),
-    ),
-    update_entries: Type.Optional(
-      Type.Array(
-        Type.Object(
-          {
-            entry_id: Type.String({
-              minLength: 1,
-              description: "当前快照中已有条目的稳定 ID；即使修改 src 也必须保留该 ID。",
-            }),
-            new_entry: entry,
-            move_before_entry_id: Type.Optional(
-              // null 分支必须在前，避免 SDK 的 TypeBox 转换把 null 改为空字符串。
-              Type.Union([Type.Null(), Type.String({ minLength: 1 })], {
-                description:
-                  "同时移动到该现有 entry_id 之前；null 表示移到末尾，省略表示保持当前位置。",
-              }),
-            ),
-          },
-          { additionalProperties: false },
-        ),
-        {
-          minItems: 1,
-          description:
-            "修改已有条目；new_entry 是修改后的完整最终值，可改变 src、译文和其它可写字段。不得重复提交旧值。",
-        },
-      ),
-    ),
-    delete_entry_ids: Type.Optional(
-      Type.Array(Type.String({ minLength: 1 }), {
-        minItems: 1,
-        uniqueItems: true,
-        description: "删除已有条目时只提交当前快照中的 entry_id。",
+    entry_id: Type.Optional(
+      Type.String({
+        minLength: 1,
+        description: "已有条目必须携带当前快照中的稳定 ID；省略表示创建独立新条目。",
       }),
     ),
-  };
-}
+    entry: QUALITY_RULE_ENTRY_PARAMETERS,
+    before_entry_id: Type.Optional(
+      Type.String({
+        minLength: 1,
+        description: "仅创建时可用；把新条目插入该现有 entry_id 之前。省略表示追加。",
+      }),
+    ),
+  },
+  { additionalProperties: false },
+);
+
+/** 已有条目排序与内容写入分离，允许一次提交同时更新并移动同一条目。 */
+const QUALITY_RULE_MOVE_PARAMETERS = Type.Object(
+  {
+    entry_id: Type.String({ minLength: 1 }),
+    // null 分支必须在前，避免 SDK 的 TypeBox 转换把 null 改为空字符串。
+    before_entry_id: Type.Union([Type.Null(), Type.String({ minLength: 1 })], {
+      description: "移动到该现有 entry_id 之前；null 表示移到末尾。",
+    }),
+  },
+  { additionalProperties: false },
+);
 
 /** 质量写入只依赖 quality section revision。 */
 const EXPECTED_QUALITY_REVISION_PARAMETERS = Type.Object(
@@ -137,40 +101,36 @@ const QUERY_QUALITY_RULES_PARAMETERS = Type.Object(
   { additionalProperties: false },
 );
 
-const UPDATE_GLOSSARY_RULES_PARAMETERS = Type.Object(
+/** 单一普通对象 Schema 避免供应商对判别联合类型的不一致支持。 */
+const UPDATE_QUALITY_RULES_PARAMETERS = Type.Object(
   {
-    ...create_quality_rule_change_parameters(GLOSSARY_ENTRY_PARAMETERS),
+    rule_type: RULE_TYPE_PARAMETERS,
+    write: Type.Optional(
+      Type.Array(QUALITY_RULE_WRITE_PARAMETERS, {
+        minItems: 1,
+        description:
+          "有 entry_id 时更新已有条目，无 entry_id 时创建新条目。entry 始终是完整最终值。",
+      }),
+    ),
+    delete: Type.Optional(
+      Type.Array(Type.String({ minLength: 1 }), { minItems: 1, uniqueItems: true }),
+    ),
+    move: Type.Optional(Type.Array(QUALITY_RULE_MOVE_PARAMETERS, { minItems: 1 })),
     expected_section_revisions: EXPECTED_QUALITY_REVISION_PARAMETERS,
   },
   { additionalProperties: false },
 );
 
-const UPDATE_REPLACEMENT_RULES_PARAMETERS = Type.Object(
-  {
-    rule_type: REPLACEMENT_RULE_TYPE_PARAMETERS,
-    ...create_quality_rule_change_parameters(REPLACEMENT_ENTRY_PARAMETERS),
-    expected_section_revisions: EXPECTED_QUALITY_REVISION_PARAMETERS,
-  },
-  { additionalProperties: false },
-);
-
-const UPDATE_TEXT_PRESERVE_RULES_PARAMETERS = Type.Object(
-  {
-    ...create_quality_rule_change_parameters(TEXT_PRESERVE_ENTRY_PARAMETERS),
-    expected_section_revisions: EXPECTED_QUALITY_REVISION_PARAMETERS,
-  },
-  { additionalProperties: false },
-);
-
-/** Schema 收窄后的分组差异保持模型原始意图，不再转换成第二套 action 词表。 */
+/** write_index 保留模型原始数组位置，使新 ID 回执和错误路径无需复制条目正文。 */
 type AgentQualityRuleChanges = {
-  create_entries: Array<{ entry: JsonRecord; insert_before_entry_id?: string }>;
-  update_entries: Array<{
-    entry_id: string;
-    new_entry: JsonRecord;
-    move_before_entry_id?: string | null;
+  write: Array<{
+    write_index: number;
+    entry_id?: string;
+    entry: JsonRecord;
+    before_entry_id?: string;
   }>;
-  delete_entry_ids: string[];
+  delete: string[];
+  move: Array<{ entry_id: string; before_entry_id: string | null }>;
 };
 
 type AgentQualityRuleUpdate = AgentQualityRuleChanges & {
@@ -178,15 +138,11 @@ type AgentQualityRuleUpdate = AgentQualityRuleChanges & {
   expected_section_revisions: { quality: number };
 };
 
-/** 三个精确写入 Schema 共享的差异载荷，不包含各规则独有设置。 */
-type AgentQualityRuleChangeParameters = {
-  create_entries?: Array<{ entry: unknown; insert_before_entry_id?: string }>;
-  update_entries?: Array<{
-    entry_id: string;
-    new_entry: unknown;
-    move_before_entry_id?: string | null;
-  }>;
-  delete_entry_ids?: string[];
+type AgentQualityRuleParameters = {
+  rule_type: QualityRuleKind;
+  write?: Array<{ entry_id?: string; entry: unknown; before_entry_id?: string }>;
+  delete?: string[];
+  move?: Array<{ entry_id: string; before_entry_id: string | null }>;
   expected_section_revisions: { quality: number };
 };
 
@@ -205,40 +161,81 @@ type AgentQualityDependencies = {
 /** Agent 发起的规则提交使用独立 source，确保项目事件保留真实来源。 */
 export const AGENT_QUALITY_RULE_UPDATE_SOURCE = "agent_quality_rule_update";
 
-/** 精确工具载荷只收窄条目对象，不改写已经明确的增删改意图。 */
-function create_agent_quality_rule_update(
-  rule_type: QualityRuleKind,
-  params: AgentQualityRuleChangeParameters,
+/** 一个普通对象入口按 rule_type 收窄业务字段，并以 entry_id 决定创建或更新。 */
+function read_agent_quality_rule_update(
+  params: AgentQualityRuleParameters,
 ): AgentQualityRuleUpdate {
+  const rule_type = QualityRule.from_json(params.rule_type).kind;
   const update: AgentQualityRuleUpdate = {
     rule_type,
-    create_entries: (params.create_entries ?? []).map((change) => ({
-      entry: read_json_record(change.entry),
-      ...(Object.prototype.hasOwnProperty.call(change, "insert_before_entry_id")
-        ? { insert_before_entry_id: change.insert_before_entry_id }
-        : {}),
-    })),
-    update_entries: (params.update_entries ?? []).map((change) => ({
-      entry_id: change.entry_id,
-      new_entry: read_json_record(change.new_entry),
-      ...(Object.prototype.hasOwnProperty.call(change, "move_before_entry_id")
-        ? { move_before_entry_id: change.move_before_entry_id }
-        : {}),
-    })),
-    delete_entry_ids: [...(params.delete_entry_ids ?? [])],
+    write: (params.write ?? []).map((change, write_index) => {
+      if (change.entry_id !== undefined && change.before_entry_id !== undefined) {
+        throw new AgentToolError({
+          code: "quality_rule.invalid_write",
+          path: `write[${write_index.toString()}].before_entry_id`,
+          action: "move",
+        });
+      }
+      return {
+        write_index,
+        ...(change.entry_id === undefined ? {} : { entry_id: change.entry_id }),
+        entry: read_agent_quality_rule_entry(
+          rule_type,
+          change.entry,
+          `write[${write_index.toString()}].entry`,
+        ),
+        ...(change.before_entry_id === undefined
+          ? {}
+          : { before_entry_id: change.before_entry_id }),
+      };
+    }),
+    delete: [...(params.delete ?? [])],
+    move: [...(params.move ?? [])],
     expected_section_revisions: params.expected_section_revisions,
   };
-  if (
-    update.create_entries.length === 0 &&
-    update.update_entries.length === 0 &&
-    update.delete_entry_ids.length === 0
-  ) {
-    throw new Error("质量规则更新至少需要 create_entries、update_entries 或 delete_entry_ids");
+  if (update.write.length === 0 && update.delete.length === 0 && update.move.length === 0) {
+    throw new AgentToolError({ code: "quality_rule.empty_change" });
   }
   return update;
 }
 
-/** 构造统一查询与三个精确写工具；领域持久化仍由 QualityRuleService 拥有。 */
+/** rule_type 决定模型写入条目必须且只能具有的完整字段集合。 */
+function read_agent_quality_rule_entry(
+  rule_type: QualityRuleKind,
+  value: unknown,
+  path: string,
+): JsonRecord {
+  const entry = read_json_record(value);
+  const fields =
+    rule_type === "glossary"
+      ? ["src", "dst", "info", "case_sensitive"]
+      : rule_type === "text_preserve"
+        ? ["src", "info"]
+        : ["src", "dst", "regex", "case_sensitive"];
+  assert_fields(entry, fields, path);
+  return entry;
+}
+
+/** 运行时按 rule_type 补足普通 Schema 无法表达的必填与排他字段约束。 */
+function assert_fields(record: JsonRecord, required: readonly string[], path: string): void {
+  const allowed = new Set(required);
+  const unknown = Object.keys(record).find((field) => !allowed.has(field));
+  if (unknown !== undefined) {
+    throw new AgentToolError({
+      code: "quality_rule.invalid_entry_field",
+      path: `${path}.${unknown}`,
+    });
+  }
+  const missing = required.find((field) => !Object.prototype.hasOwnProperty.call(record, field));
+  if (missing !== undefined) {
+    throw new AgentToolError({
+      code: "quality_rule.missing_entry_field",
+      path: `${path}.${missing}`,
+    });
+  }
+}
+
+/** 构造统一质量规则查询与原子写工具；领域持久化仍由 QualityRuleService 拥有。 */
 export function create_agent_quality_tools(
   dependencies: AgentQualityDependencies,
 ): ToolDefinition[] {
@@ -260,46 +257,16 @@ export function create_agent_quality_tools(
       },
     }),
     defineTool({
-      name: "update_glossary_rules",
-      label: "更新术语规则",
+      name: "update_quality_rules",
+      label: "更新质量规则",
       description:
-        "原子应用术语条目的新增、修改、删除和重排。已有 entry_id 的术语必须使用 update_entries，只有独立新术语才使用 create_entries。",
+        "按 rule_type 原子应用 write、delete 和 move。write 有 entry_id 时更新已有条目，无 entry_id 时创建新条目；任一业务校验失败均不写入。",
       executionMode: "sequential",
-      parameters: UPDATE_GLOSSARY_RULES_PARAMETERS,
+      parameters: UPDATE_QUALITY_RULES_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         return execute_agent_quality_rule_update(
           dependencies,
-          create_agent_quality_rule_update("glossary", params),
-          signal,
-        );
-      },
-    }),
-    defineTool({
-      name: "update_replacement_rules",
-      label: "更新替换规则",
-      description:
-        "原子应用指定译前或译后替换条目的新增、修改、删除和重排。已有 entry_id 的规则必须使用 update_entries，只有独立新规则才使用 create_entries。",
-      executionMode: "sequential",
-      parameters: UPDATE_REPLACEMENT_RULES_PARAMETERS,
-      execute: async (_tool_call_id, params, signal) => {
-        return execute_agent_quality_rule_update(
-          dependencies,
-          create_agent_quality_rule_update(params.rule_type, params),
-          signal,
-        );
-      },
-    }),
-    defineTool({
-      name: "update_text_preserve_rules",
-      label: "更新文本保护规则",
-      description:
-        "原子应用文本保护条目的新增、修改、删除和重排。已有 entry_id 的规则必须使用 update_entries，只有独立新规则才使用 create_entries。",
-      executionMode: "sequential",
-      parameters: UPDATE_TEXT_PRESERVE_RULES_PARAMETERS,
-      execute: async (_tool_call_id, params, signal) => {
-        return execute_agent_quality_rule_update(
-          dependencies,
-          create_agent_quality_rule_update("text_preserve", params),
+          read_agent_quality_rule_update(params),
           signal,
         );
       },
@@ -307,7 +274,7 @@ export function create_agent_quality_tools(
   ];
 }
 
-/** 三个模型写入口共用同一质量规则事务、统计与确认语义。 */
+/** 统一模型写入口先验证 prospective 集合，再复用质量规则事务与确认语义。 */
 async function execute_agent_quality_rule_update(
   dependencies: AgentQualityDependencies,
   update: AgentQualityRuleUpdate,
@@ -320,10 +287,22 @@ async function execute_agent_quality_rule_update(
   const applied = apply_agent_quality_rule_changes({
     rule_type: update.rule_type,
     current_entries: current.entries,
-    create_entries: update.create_entries,
-    update_entries: update.update_entries,
-    delete_entry_ids: update.delete_entry_ids,
+    write: update.write,
+    delete: update.delete,
+    move: update.move,
   });
+  const current_revision = read_json_integer(
+    read_json_record(current["sectionRevisions"])["quality"],
+    0,
+  );
+  if (
+    applied.created.length === 0 &&
+    applied.updated.length === 0 &&
+    applied.deleted.length === 0 &&
+    applied.moved.length === 0
+  ) {
+    return tool_result({ status: "unchanged", revision: current_revision });
+  }
   if (update.rule_type === "glossary") {
     const statistics = await compute_glossary_statistics(
       dependencies,
@@ -332,33 +311,52 @@ async function execute_agent_quality_rule_update(
       dependencies.cache.items.readItems(),
       false,
     );
-    for (const entry_id of [...applied.created_entry_ids, ...applied.updated_entry_ids]) {
+    for (const entry_id of [
+      ...applied.created.map((entry) => entry.entry_id),
+      ...applied.updated,
+    ]) {
       if ((statistics.matched_count_by_entry_id[entry_id] ?? 0) === 0) {
         const entry = applied.entries.find((candidate) => candidate["entry_id"] === entry_id);
-        throw new Error(`术语 src 在语料中零出现：${String(entry?.["src"] ?? "")}`);
+        throw new AgentToolError({
+          code: "quality_rule.glossary_src_not_found",
+          entry_id,
+          src: String(entry?.["src"] ?? ""),
+        });
       }
     }
   }
-  const write_result = await dependencies.qualityRules.update_from_agent(
-    {
-      rule_type: update.rule_type,
-      entries: applied.entries,
-      expected_section_revisions: update.expected_section_revisions,
-    },
-    AGENT_QUALITY_RULE_UPDATE_SOURCE,
-  );
+  const write_result = await dependencies.qualityRules
+    .update_from_agent(
+      {
+        rule_type: update.rule_type,
+        entries: applied.entries,
+        expected_section_revisions: update.expected_section_revisions,
+      },
+      AGENT_QUALITY_RULE_UPDATE_SOURCE,
+    )
+    .catch((cause: unknown) => {
+      if (is_app_error(cause) && cause.code === "data.revision_conflict") {
+        throw new AgentToolError(
+          { code: cause.code, ...cause.public_details, action: "query_quality_rules" },
+          cause,
+        );
+      }
+      throw cause;
+    });
   const change = write_result.changes.at(-1);
+  if (change === undefined) {
+    throw new AgentToolError({
+      code: "quality_rule.write_not_confirmed",
+      action: "query_quality_rules",
+    });
+  }
   return tool_result({
-    accepted: true,
-    rule_type: update.rule_type,
-    sectionRevisions: change?.sectionRevisions ?? current.sectionRevisions,
-    created_entries: applied.entries.filter((entry) =>
-      applied.created_entry_ids.includes(String(entry["entry_id"] ?? "")),
-    ),
-    updated_entries: applied.entries.filter((entry) =>
-      applied.updated_entry_ids.includes(String(entry["entry_id"] ?? "")),
-    ),
-    deleted_entry_ids: applied.deleted_entry_ids,
+    status: "applied",
+    revision: read_json_integer(change.sectionRevisions["quality"], current_revision),
+    ...(applied.created.length === 0 ? {} : { created: applied.created }),
+    ...(applied.updated.length === 0 ? {} : { updated: applied.updated }),
+    ...(applied.deleted.length === 0 ? {} : { deleted: applied.deleted }),
+    ...(applied.moved.length === 0 ? {} : { moved: applied.moved }),
   });
 }
 
@@ -427,66 +425,134 @@ function apply_agent_quality_rule_changes(
   },
 ): {
   entries: JsonRecord[];
-  created_entry_ids: string[];
-  updated_entry_ids: string[];
-  deleted_entry_ids: string[];
+  created: Array<{ write_index: number; entry_id: string }>;
+  updated: string[];
+  deleted: string[];
+  moved: string[];
 } {
   const entries = args.current_entries.map((entry) =>
     normalize_stored_entry(args.rule_type, entry),
   );
+  const previous_entries = entries.map((entry) => ({ ...entry }));
   assert_unique_entry_ids(entries);
-  const targeted_entry_ids = new Set<string>();
-  const placements: Array<{ entry_id: string; before_entry_id: string | null }> = [];
-  const created_entry_ids: string[] = [];
-  const updated_entry_ids: string[] = [];
-  const deleted_entry_ids: string[] = [];
-  // 修改与删除共享同一目标存在性和单批唯一性约束，局部闭包不扩张模块表面。
-  const find_target = (value: unknown): { entry_id: string; index: number } => {
+  // 内容写入与删除互斥；移动可与内容更新组合，但不能与删除或另一移动重复。
+  const exclusive_target_paths = new Map<string, string>();
+  const deleted_paths = new Map<string, string>();
+  const moved_paths = new Map<string, string>();
+  // 只记录真正改变重复键的写入来源，用于返回模型可直接修正的路径。
+  const origins = new Map<string, { path: string; created: boolean }>();
+  const placements: Array<{
+    entry_id: string;
+    before_entry_id: string | null;
+    path: string;
+    report_move: boolean;
+  }> = [];
+  const created: Array<{ write_index: number; entry_id: string }> = [];
+  const updated: string[] = [];
+  const deleted: string[] = [];
+  const moved: string[] = [];
+  const find_exclusive_target = (
+    value: unknown,
+    path: string,
+  ): { entry_id: string; index: number } => {
     const entry_id = normalize_entry_id(value);
-    if (targeted_entry_ids.has(entry_id)) {
-      throw new Error(`同一质量规则条目不能重复变更：${entry_id}`);
+    const previous_path = exclusive_target_paths.get(entry_id);
+    if (previous_path !== undefined) {
+      throw new AgentToolError({
+        code: "quality_rule.target_conflict",
+        entry_id,
+        paths: [previous_path, path],
+      });
     }
-    targeted_entry_ids.add(entry_id);
+    exclusive_target_paths.set(entry_id, path);
     const index = entries.findIndex((entry) => entry["entry_id"] === entry_id);
-    if (index < 0) throw new Error(`质量规则条目不存在：${entry_id}`);
+    if (index < 0) {
+      throw new AgentToolError({ code: "quality_rule.entry_not_found", entry_id, path });
+    }
     return { entry_id, index };
   };
 
-  for (const change of args.create_entries) {
-    const entry_id = create_quality_rule_entry_id();
-    entries.push({
-      ...normalize_writable_entry(args.rule_type, change.entry),
-      entry_id,
-    });
-    created_entry_ids.push(entry_id);
-    if (Object.prototype.hasOwnProperty.call(change, "insert_before_entry_id")) {
-      placements.push({ entry_id, before_entry_id: change.insert_before_entry_id ?? null });
+  for (const write of args.write) {
+    const path = `write[${write.write_index.toString()}]`;
+    const normalized = normalize_writable_entry(args.rule_type, write.entry);
+    if (write.entry_id === undefined) {
+      const entry_id = create_quality_rule_entry_id();
+      entries.push({ entry_id, ...normalized });
+      created.push({ write_index: write.write_index, entry_id });
+      origins.set(entry_id, { path, created: true });
+      if (write.before_entry_id !== undefined) {
+        placements.push({
+          entry_id,
+          before_entry_id: write.before_entry_id,
+          path: `${path}.before_entry_id`,
+          report_move: false,
+        });
+      }
+      continue;
+    }
+    const { entry_id, index } = find_exclusive_target(write.entry_id, `${path}.entry_id`);
+    const next_entry = { entry_id, ...normalized };
+    if (JSON.stringify(entries[index]) !== JSON.stringify(next_entry)) {
+      entries[index] = next_entry;
+      updated.push(entry_id);
+      origins.set(entry_id, { path, created: false });
     }
   }
 
-  for (const change of args.update_entries) {
-    const { entry_id, index } = find_target(change.entry_id);
-    entries[index] = {
-      ...normalize_writable_entry(args.rule_type, change.new_entry),
-      entry_id,
-    };
-    updated_entry_ids.push(entry_id);
-    if (Object.prototype.hasOwnProperty.call(change, "move_before_entry_id")) {
-      placements.push({ entry_id, before_entry_id: change.move_before_entry_id ?? null });
-    }
-  }
-
-  for (const deleted_entry_id of args.delete_entry_ids) {
-    const { entry_id, index } = find_target(deleted_entry_id);
+  for (const [delete_index, deleted_entry_id] of args.delete.entries()) {
+    const path = `delete[${delete_index.toString()}]`;
+    const { entry_id, index } = find_exclusive_target(deleted_entry_id, path);
     entries.splice(index, 1);
-    deleted_entry_ids.push(entry_id);
+    deleted.push(entry_id);
+    deleted_paths.set(entry_id, path);
+  }
+
+  for (const [move_index, move] of args.move.entries()) {
+    const path = `move[${move_index.toString()}]`;
+    const entry_id = normalize_entry_id(move.entry_id);
+    const delete_path = deleted_paths.get(entry_id);
+    if (delete_path !== undefined) {
+      throw new AgentToolError({
+        code: "quality_rule.target_conflict",
+        entry_id,
+        paths: [delete_path, `${path}.entry_id`],
+      });
+    }
+    const previous_path = moved_paths.get(entry_id);
+    if (previous_path !== undefined) {
+      throw new AgentToolError({
+        code: "quality_rule.target_conflict",
+        entry_id,
+        paths: [previous_path, `${path}.entry_id`],
+      });
+    }
+    moved_paths.set(entry_id, `${path}.entry_id`);
+    if (!entries.some((entry) => entry["entry_id"] === entry_id)) {
+      throw new AgentToolError({
+        code: "quality_rule.entry_not_found",
+        entry_id,
+        path: `${path}.entry_id`,
+      });
+    }
+    placements.push({
+      entry_id,
+      before_entry_id: move.before_entry_id,
+      path: `${path}.before_entry_id`,
+      report_move: true,
+    });
   }
 
   for (const placement of placements) {
-    move_entry_before(entries, placement.entry_id, placement.before_entry_id);
+    if (
+      move_entry_before(entries, placement.entry_id, placement.before_entry_id, placement.path) &&
+      placement.report_move
+    ) {
+      moved.push(placement.entry_id);
+    }
   }
   assert_unique_entry_ids(entries);
-  return { entries, created_entry_ids, updated_entry_ids, deleted_entry_ids };
+  assert_no_new_duplicate_groups(args.rule_type, previous_entries, entries, origins);
+  return { entries, created, updated, deleted, moved };
 }
 
 /** 读取投影按规则 kind 丢弃无关字段，同时保留稳定 entry_id。 */
@@ -504,6 +570,46 @@ function normalize_writable_entry(rule_type: QualityRuleKind, entry: JsonRecord)
     if (normalized["dst"] === "") throw new Error("术语 dst 去空白后不能为空");
   }
   return normalized;
+}
+
+/** Agent 可以清理历史重复，但一次写入不得新增或扩大按领域 key 判定的重复组。 */
+function assert_no_new_duplicate_groups(
+  rule_type: QualityRuleKind,
+  previous_entries: JsonRecord[],
+  next_entries: JsonRecord[],
+  origins: Map<string, { path: string; created: boolean }>,
+): void {
+  const duplicate_rule_type = DUPLICATE_RULE_TYPE_BY_KIND[rule_type];
+  const previous_counts = new Map(
+    collect_quality_rule_duplicate_groups({
+      rule_type: duplicate_rule_type,
+      entries: previous_entries,
+    }).map((group) => [group.key, group.indexes.length]),
+  );
+  const conflict = collect_quality_rule_duplicate_groups({
+    rule_type: duplicate_rule_type,
+    entries: next_entries,
+  }).find((group) => group.indexes.length > (previous_counts.get(group.key) ?? 1));
+  if (conflict === undefined) return;
+
+  const all_entry_ids = conflict.indexes.map((index) =>
+    normalize_entry_id(next_entries[index]?.["entry_id"]),
+  );
+  const conflict_origins = all_entry_ids.flatMap((entry_id) => {
+    const origin = origins.get(entry_id);
+    return origin === undefined ? [] : [origin];
+  });
+  const entry_ids = all_entry_ids.filter((entry_id) => !origins.get(entry_id)?.created);
+  const paths = [...new Set(conflict_origins.map((origin) => origin.path))];
+  const created_paths = conflict_origins
+    .filter((origin) => origin.created)
+    .map((origin) => origin.path);
+  throw new AgentToolError({
+    code: "quality_rule.duplicate_final_entry",
+    paths,
+    ...(entry_ids.length === 0 ? {} : { entry_ids }),
+    ...(created_paths.length === 1 ? { remove: created_paths[0] } : {}),
+  });
 }
 
 /** 条目身份在比较和报错前统一裁剪，空值不进入变更流程。 */
@@ -528,18 +634,31 @@ function move_entry_before(
   entries: JsonRecord[],
   entry_id: string,
   before_entry_id: string | null,
-): void {
-  if (entry_id === before_entry_id) throw new Error("质量规则条目不能移动到自身之前");
+  path: string,
+): boolean {
+  if (entry_id === before_entry_id) {
+    throw new AgentToolError({ code: "quality_rule.invalid_move", entry_id, path });
+  }
   const source_index = entries.findIndex((entry) => entry["entry_id"] === entry_id);
-  if (source_index < 0) throw new Error(`待移动质量规则条目不存在：${entry_id}`);
+  if (source_index < 0) {
+    throw new AgentToolError({ code: "quality_rule.entry_not_found", entry_id, path });
+  }
   const [entry] = entries.splice(source_index, 1);
+  if (entry === undefined) throw new Error("质量规则移动源条目丢失");
   if (before_entry_id === null) {
     entries.push(entry);
-    return;
+    return source_index !== entries.length - 1;
   }
   const target_index = entries.findIndex((candidate) => candidate["entry_id"] === before_entry_id);
-  if (target_index < 0) throw new Error(`质量规则移动锚点不存在：${before_entry_id}`);
+  if (target_index < 0) {
+    throw new AgentToolError({
+      code: "quality_rule.entry_not_found",
+      entry_id: before_entry_id,
+      path,
+    });
+  }
   entries.splice(target_index, 0, entry);
+  return source_index !== target_index;
 }
 
 type AgentGlossaryEntry = ResolvedGlossaryEntry &

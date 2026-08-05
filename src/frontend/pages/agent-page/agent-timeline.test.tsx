@@ -118,7 +118,7 @@ describe("AgentTimeline", () => {
       tool_entry("tool-running", "query_items", "running", null, 1),
       tool_entry("tool-success", "query_quality_rules", "success", "{}", 2),
       tool_entry("tool-error", "read_skill", "error", "工具不存在", 3),
-      tool_entry("tool-stopped", "update_glossary_rules", "stopped", null, 4),
+      tool_entry("tool-stopped", "update_quality_rules", "stopped", null, 4),
     ]);
     for (const [status, label] of [
       ["running", "正在处理"],

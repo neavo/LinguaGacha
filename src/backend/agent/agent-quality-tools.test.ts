@@ -2,6 +2,7 @@ import { validateToolArguments, type ToolCall } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord } from "../../domain/json";
+import { RevisionConflictError } from "../../shared/error/errors/data-errors";
 import type { ProjectWriteResult } from "../../shared/project-event";
 import {
   AGENT_QUALITY_RULE_UPDATE_SOURCE,
@@ -41,21 +42,11 @@ describe("Agent 质量规则工具", () => {
       computeWorker: create_compute_worker(),
     });
 
-    expect(tools.map((tool) => tool.name)).toEqual([
-      "query_quality_rules",
-      "update_glossary_rules",
-      "update_replacement_rules",
-      "update_text_preserve_rules",
-    ]);
-    expect(tools.map((tool) => tool.executionMode)).toEqual([
-      undefined,
-      "sequential",
-      "sequential",
-      "sequential",
-    ]);
+    expect(tools.map((tool) => tool.name)).toEqual(["query_quality_rules", "update_quality_rules"]);
+    expect(tools.map((tool) => tool.executionMode)).toEqual([undefined, "sequential"]);
   });
 
-  it("SDK 真实校验器接受三个意图明确的写入形状且不改写载荷", () => {
+  it("SDK 真实校验器接受统一普通对象写入形状且不改写载荷", () => {
     const tools = create_agent_quality_tools({
       qualityRules: {
         query: () => ({}),
@@ -65,71 +56,62 @@ describe("Agent 质量规则工具", () => {
       computeWorker: create_compute_worker(),
     });
     const revision = { expected_section_revisions: { quality: 1 } };
-    const cases: Array<{ tool_name: string; payload: JsonRecord }> = [
+    const tool = find_tool(tools, "update_quality_rules");
+    const parameters = tool.parameters as JsonRecord;
+    expect(parameters).toMatchObject({ type: "object", additionalProperties: false });
+    expect(parameters).not.toHaveProperty("anyOf");
+    expect(parameters).not.toHaveProperty("oneOf");
+    const payloads: JsonRecord[] = [
       {
-        tool_name: "update_glossary_rules",
-        payload: {
-          create_entries: [
-            {
-              entry: { src: "A", dst: "甲", info: "名称", case_sensitive: false },
-              insert_before_entry_id: "b",
-            },
-          ],
-          update_entries: [
-            {
-              entry_id: "a",
-              new_entry: { src: "A-1", dst: "乙", info: "名称", case_sensitive: true },
-              move_before_entry_id: null,
-            },
-          ],
-          delete_entry_ids: ["b"],
-          ...revision,
-        },
+        rule_type: "glossary",
+        write: [
+          {
+            entry: { src: "A", dst: "甲", info: "名称", case_sensitive: false },
+            before_entry_id: "b",
+          },
+          {
+            entry_id: "a",
+            entry: { src: "A-1", dst: "乙", info: "名称", case_sensitive: true },
+          },
+        ],
+        delete: ["b"],
+        move: [{ entry_id: "a", before_entry_id: null }],
+        ...revision,
       },
       {
-        tool_name: "update_replacement_rules",
-        payload: {
-          rule_type: "pre_replacement",
-          create_entries: [{ entry: { src: "A", dst: "B", regex: false, case_sensitive: false } }],
-          ...revision,
-        },
+        rule_type: "pre_replacement",
+        write: [{ entry: { src: "A", dst: "B", regex: false, case_sensitive: false } }],
+        ...revision,
       },
       {
-        tool_name: "update_replacement_rules",
-        payload: {
-          rule_type: "post_replacement",
-          create_entries: [{ entry: { src: "A", dst: "B", regex: true, case_sensitive: true } }],
-          ...revision,
-        },
+        rule_type: "post_replacement",
+        write: [{ entry: { src: "A", dst: "B", regex: true, case_sensitive: true } }],
+        ...revision,
       },
       {
-        tool_name: "update_text_preserve_rules",
-        payload: {
-          create_entries: [{ entry: { src: "\\\\N", info: "控制码" } }],
-          ...revision,
-        },
+        rule_type: "text_preserve",
+        write: [{ entry: { src: "\\\\N", info: "控制码" } }],
+        ...revision,
       },
       {
-        tool_name: "update_text_preserve_rules",
-        payload: { delete_entry_ids: ["keep"], ...revision },
+        rule_type: "text_preserve",
+        delete: ["keep"],
+        ...revision,
       },
     ];
 
-    for (const { tool_name, payload } of cases) {
-      const tool = find_tool(tools, tool_name);
+    for (const payload of payloads) {
       const call: ToolCall = {
         type: "toolCall",
         id: "test-call",
         name: tool.name,
         arguments: payload,
       };
-      expect(validateToolArguments(tool, call), `${tool_name}: ${JSON.stringify(payload)}`).toEqual(
-        payload,
-      );
+      expect(validateToolArguments(tool, call), JSON.stringify(payload)).toEqual(payload);
     }
   });
 
-  it("SDK 在执行前拒绝旧协议、设置写入、删除对象和跨规则字段", () => {
+  it("SDK 在执行前拒绝旧协议、设置写入和非结构化行为", () => {
     const tools = create_agent_quality_tools({
       qualityRules: {
         query: () => ({}),
@@ -139,86 +121,35 @@ describe("Agent 质量规则工具", () => {
       computeWorker: create_compute_worker(),
     });
     const revision = { expected_section_revisions: { quality: 1 } };
-    const validate = (tool_name: string, payload: JsonRecord) =>
-      validateToolArguments(find_tool(tools, tool_name), {
+    const tool = find_tool(tools, "update_quality_rules");
+    const validate = (payload: JsonRecord) =>
+      validateToolArguments(tool, {
         type: "toolCall",
         id: "test-call",
-        name: tool_name,
+        name: tool.name,
         arguments: payload,
       });
-    const invalid_cases: Array<{ tool_name: string; payload: JsonRecord }> = [
+    const invalid_payloads: JsonRecord[] = [
       {
-        tool_name: "update_glossary_rules",
-        payload: {
-          rule_type: "glossary",
-          changes: [{ action: "delete", entry_id: "a" }],
-          ...revision,
-        },
+        rule_type: "glossary",
+        changes: [{ action: "delete", entry_id: "a" }],
+        ...revision,
       },
-      { tool_name: "update_glossary_rules", payload: { enabled: false, ...revision } },
-      { tool_name: "update_text_preserve_rules", payload: { mode: "custom", ...revision } },
+      { rule_type: "glossary", enabled: false, ...revision },
+      { rule_type: "text_preserve", mode: "custom", ...revision },
       {
-        tool_name: "update_glossary_rules",
-        payload: {
-          delete_entry_ids: [
-            {
-              entry_id: "a",
-              entry: { src: "A", dst: "甲", info: "", case_sensitive: false },
-            },
-          ],
-          ...revision,
-        },
+        rule_type: "glossary",
+        delete: [{ entry_id: "a" }],
+        ...revision,
       },
       {
-        tool_name: "update_glossary_rules",
-        payload: {
-          create_entries: [
-            {
-              entry: {
-                src: "A",
-                dst: "甲",
-                info: "",
-                regex: false,
-                case_sensitive: false,
-              },
-            },
-          ],
-          ...revision,
-        },
-      },
-      {
-        tool_name: "update_replacement_rules",
-        payload: {
-          rule_type: "glossary",
-          create_entries: [{ entry: { src: "A", dst: "B", regex: false, case_sensitive: false } }],
-          ...revision,
-        },
-      },
-      {
-        tool_name: "update_replacement_rules",
-        payload: {
-          rule_type: "pre_replacement",
-          create_entries: [
-            {
-              entry: { src: "A", dst: "B", info: "", regex: false, case_sensitive: false },
-            },
-          ],
-          ...revision,
-        },
-      },
-      {
-        tool_name: "update_text_preserve_rules",
-        payload: {
-          create_entries: [{ entry: { src: "A", dst: "B", info: "" } }],
-          ...revision,
-        },
+        rule_type: "glossary",
+        move: [{ entry_id: "a" }],
+        ...revision,
       },
     ];
-    for (const test_case of invalid_cases) {
-      expect(
-        () => validate(test_case.tool_name, test_case.payload),
-        `${test_case.tool_name}: ${JSON.stringify(test_case.payload)}`,
-      ).toThrow();
+    for (const payload of invalid_payloads) {
+      expect(() => validate(payload), JSON.stringify(payload)).toThrow();
     }
   });
 
@@ -235,14 +166,14 @@ describe("Agent 质量规则工具", () => {
     });
 
     await expect(
-      find_tool(tools, "update_glossary_rules").execute(
+      find_tool(tools, "update_quality_rules").execute(
         "empty",
-        { expected_section_revisions: { quality: 1 } },
+        { rule_type: "glossary", expected_section_revisions: { quality: 1 } },
         undefined,
         undefined,
         undefined as never,
       ),
-    ).rejects.toThrow("至少需要 create_entries、update_entries 或 delete_entry_ids");
+    ).rejects.toThrow("quality_rule.empty_change");
     expect(query).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
   });
@@ -366,51 +297,59 @@ describe("Agent 质量规则工具", () => {
       cache: create_cache([{ src: "Alpha Beta" }]),
       computeWorker: create_compute_worker(),
     });
-    const glossary_tool = find_tool(tools, "update_glossary_rules");
+    const tool = find_tool(tools, "update_quality_rules");
     const revision = { expected_section_revisions: { quality: 1 } };
     const invalid_payloads = [
-      { delete_entry_ids: ["missing"], ...revision },
+      { rule_type: "glossary", delete: ["missing"], ...revision },
       {
-        update_entries: [
+        rule_type: "glossary",
+        write: [
           {
             entry_id: "a",
-            new_entry: { src: "Alpha", dst: "甲", info: "", case_sensitive: false },
-            move_before_entry_id: "missing",
+            entry: { src: "Alpha", dst: "甲", info: "", case_sensitive: false },
+            before_entry_id: "missing",
           },
         ],
         ...revision,
       },
       {
-        update_entries: [
+        rule_type: "glossary",
+        write: [
           {
             entry_id: "a",
-            new_entry: { src: "Alpha", dst: "甲", info: "", case_sensitive: false },
+            entry: { src: "Alpha", dst: "甲", info: "", case_sensitive: false },
           },
           {
             entry_id: "a",
-            new_entry: { src: "Alpha", dst: "   ", info: "", case_sensitive: false },
+            entry: { src: "Alpha", dst: "   ", info: "", case_sensitive: false },
           },
         ],
         ...revision,
       },
       {
-        create_entries: [{ entry: { src: "Ghost", dst: "幽灵", info: "", case_sensitive: false } }],
+        rule_type: "glossary",
+        write: [{ entry: { src: "Ghost", dst: "幽灵", info: "", case_sensitive: false } }],
+        ...revision,
+      },
+      {
+        rule_type: "pre_replacement",
+        write: [{ entry: { src: "Alpha", dst: "甲", info: "", case_sensitive: false } }],
         ...revision,
       },
     ];
     for (const payload of invalid_payloads) {
       await expect(
-        glossary_tool.execute("invalid", payload, undefined, undefined, undefined as never),
+        tool.execute("invalid", payload, undefined, undefined, undefined as never),
         JSON.stringify(payload),
       ).rejects.toThrow();
     }
 
-    const text_preserve_tool = find_tool(tools, "update_text_preserve_rules");
     await expect(
-      text_preserve_tool.execute(
+      tool.execute(
         "invalid-regex",
         {
-          create_entries: [{ entry: { src: "[", info: "" } }],
+          rule_type: "text_preserve",
+          write: [{ entry: { src: "[", info: "" } }],
           expected_section_revisions: { quality: 1 },
         },
         undefined,
@@ -421,9 +360,189 @@ describe("Agent 质量规则工具", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it("prospective 状态拒绝新增重复但允许清理历史重复", async () => {
+    let entries = [stored_entry("a", "A", "甲")];
+    const update = vi.fn(async (): Promise<ProjectWriteResult> => ({
+      accepted: true,
+      changes: [
+        {
+          type: "project.changed",
+          eventId: "cleanup",
+          source: AGENT_QUALITY_RULE_UPDATE_SOURCE,
+          projectPath: "test.lg",
+          projectRevision: 2,
+          sectionRevisions: { quality: 2 },
+          updatedSections: ["quality"],
+        },
+      ],
+    }));
+    const tools = create_agent_quality_tools({
+      qualityRules: {
+        query: () => ({
+          sectionRevisions: { quality: 1 },
+          qualityRule: { enabled: true, entries },
+        }),
+        update_from_agent: update,
+      },
+      cache: create_cache([{ src: "AB" }]),
+      computeWorker: create_compute_worker(),
+    });
+    const tool = find_tool(tools, "update_quality_rules");
+
+    await expect(
+      tool.execute(
+        "duplicate",
+        {
+          rule_type: "glossary",
+          write: [
+            { entry_id: "a", entry: { src: "AB", dst: "甲", info: "", case_sensitive: false } },
+            { entry: { src: "AB", dst: "甲", info: "", case_sensitive: false } },
+          ],
+          expected_section_revisions: { quality: 1 },
+        },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).rejects.toThrow(/quality_rule\.duplicate_final_entry.*write\[0\].*write\[1\]/u);
+    expect(update).not.toHaveBeenCalled();
+
+    entries = [stored_entry("a", "A", "甲"), stored_entry("b", "a", "乙")];
+    await expect(
+      tool.execute(
+        "cleanup",
+        {
+          rule_type: "glossary",
+          delete: ["b"],
+          expected_section_revisions: { quality: 1 },
+        },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).resolves.toMatchObject({ details: { status: "applied", revision: 2, deleted: ["b"] } });
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  it("内容和顺序均未变化时不写入也不推进 revision", async () => {
+    const update = vi.fn();
+    const tools = create_agent_quality_tools({
+      qualityRules: {
+        query: () => ({
+          sectionRevisions: { quality: 4 },
+          qualityRule: {
+            enabled: true,
+            entries: [stored_entry("a", "A", "甲"), stored_entry("b", "B", "乙")],
+          },
+        }),
+        update_from_agent: update,
+      },
+      cache: create_cache(),
+      computeWorker: create_compute_worker(),
+    });
+
+    await expect(
+      find_tool(tools, "update_quality_rules").execute(
+        "unchanged",
+        {
+          rule_type: "glossary",
+          write: [
+            {
+              entry_id: "a",
+              entry: { src: "A", dst: "甲", info: "其他", case_sensitive: false },
+            },
+          ],
+          move: [{ entry_id: "a", before_entry_id: "b" }],
+          expected_section_revisions: { quality: 4 },
+        },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).resolves.toMatchObject({ details: { status: "unchanged", revision: 4 } });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("revision 冲突返回当前事实和确定的重新查询动作", async () => {
+    const tools = create_agent_quality_tools({
+      qualityRules: {
+        query: () => ({
+          sectionRevisions: { quality: 3 },
+          qualityRule: { enabled: true, entries: [stored_entry("a", "A", "甲")] },
+        }),
+        update_from_agent: async () => {
+          throw new RevisionConflictError({
+            public_details: { section: "quality", expected_revision: 2, current_revision: 3 },
+          });
+        },
+      },
+      cache: create_cache(),
+      computeWorker: create_compute_worker(),
+    });
+
+    await expect(
+      find_tool(tools, "update_quality_rules").execute(
+        "revision-conflict",
+        {
+          rule_type: "glossary",
+          delete: ["a"],
+          expected_section_revisions: { quality: 2 },
+        },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).rejects.toMatchObject({
+      details: {
+        code: "data.revision_conflict",
+        section: "quality",
+        expected_revision: 2,
+        current_revision: 3,
+        action: "query_quality_rules",
+      },
+    });
+  });
+
+  it("事实已改变但写入口缺少确认时要求重新查询", async () => {
+    const tools = create_agent_quality_tools({
+      qualityRules: {
+        query: () => ({
+          sectionRevisions: { quality: 1 },
+          qualityRule: { mode: "custom", entries: [{ entry_id: "a", src: "A", info: "" }] },
+        }),
+        update_from_agent: async () => ({ accepted: true, changes: [] }),
+      },
+      cache: create_cache(),
+      computeWorker: create_compute_worker(),
+    });
+
+    await expect(
+      find_tool(tools, "update_quality_rules").execute(
+        "missing-confirmation",
+        {
+          rule_type: "text_preserve",
+          delete: ["a"],
+          expected_section_revisions: { quality: 1 },
+        },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).rejects.toMatchObject({
+      details: {
+        code: "quality_rule.write_not_confirmed",
+        action: "query_quality_rules",
+      },
+    });
+  });
+
   it("一次原子应用增删改与重排，保留既有身份并按动作返回确认", async () => {
     let revision = 2;
-    const original_entries = [stored_entry("a", "Alpha", "甲"), stored_entry("b", "Beta", "乙")];
+    const original_entries = [
+      stored_entry("a", "Alpha", "甲"),
+      stored_entry("b", "Beta", "乙"),
+      stored_entry("c", "Gamma", "丙"),
+    ];
     let entries = original_entries;
     const update = vi.fn(async (request: JsonRecord): Promise<ProjectWriteResult> => {
       if ((request["expected_section_revisions"] as JsonRecord)["quality"] !== revision) {
@@ -460,16 +579,17 @@ describe("Agent 质量规则工具", () => {
       cache: create_cache([{ src: "Alpha Prime Delta" }]),
       computeWorker: compute_worker,
     });
-    const tool = find_tool(tools, "update_glossary_rules");
+    const tool = find_tool(tools, "update_quality_rules");
 
     await expect(
       tool.execute(
         "conflict",
         {
-          update_entries: [
+          rule_type: "glossary",
+          write: [
             {
               entry_id: "a",
-              new_entry: { src: "Alpha Prime", dst: "A", info: "", case_sensitive: false },
+              entry: { src: "Alpha Prime", dst: "A", info: "", case_sensitive: false },
             },
           ],
           expected_section_revisions: { quality: 1 },
@@ -483,19 +603,19 @@ describe("Agent 质量规则工具", () => {
     const result = await tool.execute(
       "success",
       {
-        create_entries: [
+        rule_type: "glossary",
+        write: [
           {
             entry: { src: "Delta", dst: "德尔塔", info: "名称", case_sensitive: false },
-            insert_before_entry_id: "a",
+            before_entry_id: "a",
           },
-        ],
-        update_entries: [
           {
             entry_id: "a",
-            new_entry: { src: "Alpha Prime", dst: "A", info: "", case_sensitive: false },
+            entry: { src: "Alpha Prime", dst: "A", info: "", case_sensitive: false },
           },
         ],
-        delete_entry_ids: ["b"],
+        delete: ["b"],
+        move: [{ entry_id: "a", before_entry_id: null }],
         expected_section_revisions: { quality: 2 },
       },
       undefined,
@@ -506,6 +626,7 @@ describe("Agent 质量规则工具", () => {
       expect.objectContaining({
         entries: [
           expect.objectContaining({ entry_id: expect.stringMatching(/^qr:/u), src: "Delta" }),
+          expect.objectContaining({ entry_id: "c", src: "Gamma" }),
           expect.objectContaining({ entry_id: "a", src: "Alpha Prime", dst: "A" }),
         ],
       }),
@@ -513,16 +634,16 @@ describe("Agent 质量规则工具", () => {
     );
     const result_details = result.details as JsonRecord;
     expect(result_details).toMatchObject({
-      sectionRevisions: { quality: 3 },
-      created_entries: [{ entry_id: expect.stringMatching(/^qr:/u), src: "Delta" }],
-      updated_entries: [{ entry_id: "a", src: "Alpha Prime", dst: "A" }],
-      deleted_entry_ids: ["b"],
+      status: "applied",
+      revision: 3,
+      created: [{ write_index: 0, entry_id: expect.stringMatching(/^qr:/u) }],
+      updated: ["a"],
+      deleted: ["b"],
+      moved: ["a"],
     });
     expect(result_details).not.toHaveProperty("projectPath");
-    expect((result_details["updated_entries"] as JsonRecord[])[0]).not.toHaveProperty(
-      "matched_item_count",
-    );
-    expect(original_entries.map((entry) => entry["entry_id"])).toEqual(["a", "b"]);
+    expect(result_details).not.toHaveProperty("updated_entries");
+    expect(original_entries.map((entry) => entry["entry_id"])).toEqual(["a", "b", "c"]);
     expect(compute_run).toHaveBeenCalledTimes(2);
   });
 });
