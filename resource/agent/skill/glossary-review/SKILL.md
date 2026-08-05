@@ -187,4 +187,4 @@ description: 当需要对当前工程内的特定范围或全部术语进行审�
 
 - 使用 `query_quality_rules` 读取或分析术语规则，规则类型固定为 `glossary`。
 - 使用 `query_items` 补充原文证据。
-- 使用 `update_glossary_rules` 原子写入获批的术语差异。
+- 使用 `update_quality_rules` 并固定 `rule_type: glossary`，通过 `write`、`delete` 和 `move` 原子写入获批差异。

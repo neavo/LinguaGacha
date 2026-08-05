@@ -59,6 +59,7 @@ import { create_agent_skill_tools } from "./agent-skill-tools";
 import { create_agent_web_tools, type AgentWebFetchPort } from "./agent-web-tools";
 import { load_agent_skills, type AgentSkillDefinition } from "./agent-skills";
 import { load_agent_system_prompt } from "./agent-system-prompt";
+import { normalize_agent_tool_error } from "./agent-tool-error";
 
 const AGENT_KEEP_RECENT_TOKENS = 32_000; // 产品固定保留的最近模型可见历史
 const AGENT_STREAM_PUBLISH_INTERVAL_MS = 100; // assistant 完整公开条目最多 10Hz；工具与终态不等待
@@ -77,7 +78,7 @@ function build_agent_session_settings(limits: AgentModelLimits) {
   };
 }
 
-/** 统一保证 SSE 首帧时序，并让模型可见错误正文显式表达失败状态。 */
+/** 统一保证 SSE 首帧时序，并保留模型修复工具调用所需的安全错误事实。 */
 function wrap_agent_tool_execution(tool: ToolDefinition): ToolDefinition {
   return {
     ...tool,
@@ -86,8 +87,7 @@ function wrap_agent_tool_execution(tool: ToolDefinition): ToolDefinition {
       try {
         return await tool.execute(...args);
       } catch (cause) {
-        const message = cause instanceof Error ? cause.message : String(cause);
-        throw new Error(`工具调用失败：${message}`, { cause });
+        throw normalize_agent_tool_error(cause);
       }
     },
   };
