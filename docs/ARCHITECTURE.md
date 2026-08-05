@@ -1,6 +1,6 @@
 # LinguaGacha 架构边界
 
-本文只记录进程拓扑、跨层依赖和运行时主链路。命令、后端协议、前端运行态与验证流程分别进入对应专题文档；产品语义和视觉权威不在这里展开。
+本文只记录进程拓扑、跨层依赖和运行时主链路。命令、后端共享边界、产品 Agent、前端运行态与验证流程分别进入对应专题文档；产品语义和视觉权威不在这里展开。
 
 ## 1. 专题地图
 
@@ -9,6 +9,7 @@
 | 系统分层、进程拓扑、跨层边界、运行时主链路 | 本文 |
 | CLI 入口、命令、临时工程、资源、输出、平台启动器 | [`CLI.md`](CLI.md) |
 | 后端 API / SSE、状态、任务、数据库、`.lg` 存储 | [`BACKEND.md`](BACKEND.md) |
+| 产品 Agent 会话、模型历史、启动资源、skill、工具、宿主能力、页面消费 | [`AGENT_RUNTIME.md`](AGENT_RUNTIME.md) |
 | Electron / preload / renderer、共享运行态、页面 query、导航、样式消费 | [`FRONTEND.md`](FRONTEND.md) |
 | 阅读路径与验证矩阵 | [`WORKFLOW.md`](WORKFLOW.md) |
 
