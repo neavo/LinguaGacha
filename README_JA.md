@@ -88,6 +88,10 @@
 - 例については [Wiki - 対応フォーマット](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) を参照。フォーマットのリクエストは [ISSUES](https://github.com/neavo/LinguaGacha/issues) で提出
 
 ## 最近の更新 📅
+- 20260805 v0.111.2
+  - AGENT の指示遵守能力を大幅に強化
+  - 調整と改善 [#715](https://github.com/neavo/LinguaGacha/issues/715) [#716](https://github.com/neavo/LinguaGacha/issues/716)
+
 - 20260805 v0.111.1
   - 新しい AGENT 機能 `翻訳レビュー`
   - 新しい AGENT 機能 `ウェブデータ取得`
