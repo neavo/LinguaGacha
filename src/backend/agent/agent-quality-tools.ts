@@ -281,8 +281,6 @@ async function execute_agent_quality_rule_update(
   signal: AbortSignal | undefined,
 ) {
   signal?.throwIfAborted();
-  const execution_signal = signal ?? new AbortController().signal;
-  // 更新只读取规则结构；术语语料统计统一留给 prospective 集合，避免同一写入扫描两次。
   const current = read_agent_quality_rules_snapshot(dependencies.qualityRules, update.rule_type);
   const applied = apply_agent_quality_rule_changes({
     rule_type: update.rule_type,
@@ -302,28 +300,6 @@ async function execute_agent_quality_rule_update(
     applied.moved.length === 0
   ) {
     return tool_result({ status: "unchanged", revision: current_revision });
-  }
-  if (update.rule_type === "glossary") {
-    const statistics = await compute_glossary_statistics(
-      dependencies,
-      applied.entries,
-      execution_signal,
-      dependencies.cache.items.readItems(),
-      false,
-    );
-    for (const entry_id of [
-      ...applied.created.map((entry) => entry.entry_id),
-      ...applied.updated,
-    ]) {
-      if ((statistics.matched_count_by_entry_id[entry_id] ?? 0) === 0) {
-        const entry = applied.entries.find((candidate) => candidate["entry_id"] === entry_id);
-        throw new AgentToolError({
-          code: "quality_rule.glossary_src_not_found",
-          entry_id,
-          src: String(entry?.["src"] ?? ""),
-        });
-      }
-    }
   }
   const write_result = await dependencies.qualityRules
     .update_from_agent(
@@ -376,7 +352,6 @@ export async function query_agent_quality_rules(
     glossary_entries,
     signal,
     items,
-    true,
   );
   result.entries = glossary_entries.map((entry) =>
     enrich_glossary_entry(
@@ -758,7 +733,6 @@ async function compute_glossary_statistics(
   entries: JsonRecord[],
   signal: AbortSignal,
   items: JsonRecord[],
-  collect_literal_evidence: boolean,
 ): Promise<{
   matched_count_by_entry_id: Record<string, number>;
   subset_parent_labels_by_entry_id: Record<string, string[]>;
@@ -772,7 +746,7 @@ async function compute_glossary_statistics(
         rule_key: "glossary",
         entries,
         items,
-        collect_literal_evidence,
+        collect_literal_evidence: true,
       }),
     },
     signal,

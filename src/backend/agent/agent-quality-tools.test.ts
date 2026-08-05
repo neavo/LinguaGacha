@@ -186,6 +186,7 @@ describe("Agent 质量规则工具", () => {
           stored_entry("a", "白之城", "White City"),
           stored_entry("b", "白之城骑士", "Knight"),
           stored_entry("c", "白之城", "City"),
+          stored_entry("d", "Ghost", "幽灵"),
         ],
       },
       pre_replacement: {
@@ -233,6 +234,10 @@ describe("Agent 质量规则工具", () => {
     const glossary = await query_agent_quality_rules(dependencies, "glossary");
     expect(glossary).toMatchObject({ meta: { enabled: false } });
     expect(glossary.entries[0]).toMatchObject({ matched_item_count: 1, fact_violations: [] });
+    expect(glossary.entries[3]).toMatchObject({
+      matched_item_count: 0,
+      fact_violations: ["zero_occurrence"],
+    });
     expect(glossary.entries[0]).not.toHaveProperty("regex");
     expect((glossary["structure"] as JsonRecord)["duplicate_src_groups"]).toMatchObject([
       { entry_ids: ["a", "c"] },
@@ -327,11 +332,6 @@ describe("Agent 质量规则工具", () => {
         ...revision,
       },
       {
-        rule_type: "glossary",
-        write: [{ entry: { src: "Ghost", dst: "幽灵", info: "", case_sensitive: false } }],
-        ...revision,
-      },
-      {
         rule_type: "pre_replacement",
         write: [{ entry: { src: "Alpha", dst: "甲", info: "", case_sensitive: false } }],
         ...revision,
@@ -358,6 +358,49 @@ describe("Agent 质量规则工具", () => {
       ),
     ).rejects.toThrow("不是合法正则");
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it("显式变更允许写入当前语料零命中的术语", async () => {
+    const update = vi.fn(async (): Promise<ProjectWriteResult> => ({
+      accepted: true,
+      changes: [
+        {
+          type: "project.changed",
+          eventId: "zero-occurrence",
+          source: AGENT_QUALITY_RULE_UPDATE_SOURCE,
+          projectPath: "test.lg",
+          projectRevision: 2,
+          sectionRevisions: { quality: 2 },
+          updatedSections: ["quality"],
+        },
+      ],
+    }));
+    const tools = create_agent_quality_tools({
+      qualityRules: {
+        query: () => ({
+          sectionRevisions: { quality: 1 },
+          qualityRule: { enabled: true, entries: [] },
+        }),
+        update_from_agent: update,
+      },
+      cache: create_cache(),
+      computeWorker: create_compute_worker(),
+    });
+
+    await expect(
+      find_tool(tools, "update_quality_rules").execute(
+        "zero-occurrence",
+        {
+          rule_type: "glossary",
+          write: [{ entry: { src: "Ghost", dst: "幽灵", info: "", case_sensitive: false } }],
+          expected_section_revisions: { quality: 1 },
+        },
+        undefined,
+        undefined,
+        undefined as never,
+      ),
+    ).resolves.toMatchObject({ details: { status: "applied", revision: 2 } });
+    expect(update).toHaveBeenCalledTimes(1);
   });
 
   it("prospective 状态拒绝新增重复但允许清理历史重复", async () => {
@@ -565,8 +608,6 @@ describe("Agent 质量规则工具", () => {
         ],
       };
     });
-    const compute_worker = create_compute_worker();
-    const compute_run = vi.spyOn(compute_worker, "run");
     const tools = create_agent_quality_tools({
       qualityRules: {
         query: () => ({
@@ -576,8 +617,8 @@ describe("Agent 质量规则工具", () => {
         }),
         update_from_agent: update,
       },
-      cache: create_cache([{ src: "Alpha Prime Delta" }]),
-      computeWorker: compute_worker,
+      cache: create_cache(),
+      computeWorker: create_compute_worker(),
     });
     const tool = find_tool(tools, "update_quality_rules");
 
@@ -644,6 +685,5 @@ describe("Agent 质量规则工具", () => {
     expect(result_details).not.toHaveProperty("projectPath");
     expect(result_details).not.toHaveProperty("updated_entries");
     expect(original_entries.map((entry) => entry["entry_id"])).toEqual(["a", "b", "c"]);
-    expect(compute_run).toHaveBeenCalledTimes(2);
   });
 });
