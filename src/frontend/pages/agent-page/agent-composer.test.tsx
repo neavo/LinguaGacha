@@ -13,9 +13,14 @@ import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { AgentUserMessagePart } from "@shared/agent";
 import type { Locale } from "@shared/i18n/types";
+import type { AgentInputSession } from "@frontend/app/session/agent/agent-session-context";
+import {
+  AGENT_INPUT_HISTORY_STORAGE_KEY,
+  append_agent_input_history,
+  read_agent_input_history,
+} from "@frontend/app/session/agent/agent-input-history";
 
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
-import { AGENT_INPUT_HISTORY_STORAGE_KEY } from "./agent-input-history";
 
 type AgentComposerTestProps = ComponentProps<typeof AgentComposer>;
 type RenderComposerOptions = Partial<
@@ -33,7 +38,12 @@ type RenderComposerOptions = Partial<
   >
 > & {
   composer_ref?: RefObject<AgentComposerHandle | null>;
+  input_session?: AgentInputSession;
   model_selection?: { loading?: boolean; updating?: boolean };
+};
+
+type TestAgentInputSession = AgentInputSession & {
+  accept_message: (parts: readonly AgentUserMessagePart[]) => void;
 };
 
 /** 测试通过真实重渲染读取当前 locale，只替换应用 Provider 边界。 */
@@ -89,12 +99,14 @@ const skills = [
 describe("AgentComposer", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
+  let default_input_session: TestAgentInputSession | null = null;
 
   afterEach(async () => {
     if (root !== null) await act(async () => root?.unmount());
     container?.remove();
     container = null;
     root = null;
+    default_input_session = null;
     locale_state.value = "zh-CN";
     window.localStorage.clear();
   });
@@ -160,7 +172,7 @@ describe("AgentComposer", () => {
   });
 
   it("历史回填恢复 skill 语义且不污染撤销栈", async () => {
-    const on_send = vi.fn(async () => false);
+    const on_send = vi.fn();
     seed_input_history([
       [
         { kind: "text", text: "检查 " },
@@ -185,7 +197,7 @@ describe("AgentComposer", () => {
 
   it("保存非空结构化草稿并在越过最新历史时完整恢复", async () => {
     const composer_ref = createRef<AgentComposerHandle>();
-    const on_send = vi.fn(async () => false);
+    const on_send = vi.fn();
     seed_input_history([[{ kind: "text", text: "最新消息" }]]);
     const view = await render_composer({
       composer_ref,
@@ -214,6 +226,17 @@ describe("AgentComposer", () => {
       { kind: "skill", name: "glossary-audit" },
       { kind: "text", text: " 待处理" },
     ]);
+  });
+
+  it("第一视觉行的非零光标首次 ArrowUp 就进入历史", async () => {
+    seed_input_history([[{ kind: "text", text: "最新消息" }]]);
+    const view = await render_composer();
+    const editor = get_editor(view);
+    await set_document(editor, "普通草稿", 4);
+
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+
+    expect(editor.state.doc.toString()).toBe("最新消息");
   });
 
   it("未到最上方视觉行时把 ArrowUp 交还 CodeMirror", async () => {
@@ -362,42 +385,45 @@ describe("AgentComposer", () => {
     expect(view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
   });
 
-  it("失败保留草稿且不记录，受理后持久化发送投影并可在重新挂载后恢复", async () => {
-    const on_send = vi.fn().mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-    const view = await render_composer({ on_send });
-    const editor = get_editor(view);
-    const draft = "  \n@glossary-audit \n ";
-    await set_document(editor, draft, draft.length);
-    expect(view.querySelector(".agent-skill-token")).toBeNull();
-
-    await click_send(view);
-    expect(on_send).toHaveBeenLastCalledWith([{ kind: "text", text: "@glossary-audit" }]);
-    expect(editor.state.doc.toString()).toBe(draft);
-    expect(window.localStorage.getItem(AGENT_INPUT_HISTORY_STORAGE_KEY)).toBeNull();
-    await act(async () => editor.dispatch({ selection: EditorSelection.cursor(0) }));
-    await dispatch_key(editor.contentDOM, "ArrowUp");
-    expect(editor.state.doc.toString()).toBe(draft);
-
-    await click_send(view);
-    expect(editor.state.doc.toString()).toBe("");
-    expect(
-      JSON.parse(window.localStorage.getItem(AGENT_INPUT_HISTORY_STORAGE_KEY) ?? "null"),
-    ).toEqual([[{ kind: "text", text: "@glossary-audit" }]]);
-    await dispatch_key(editor.contentDOM, "ArrowUp");
-    expect(editor.state.doc.toString()).toBe("@glossary-audit");
-    expect(view.querySelector(".agent-skill-token")).toBeNull();
+  it("跨重新挂载恢复结构化草稿，并在 session 受理后清空且可浏览历史", async () => {
+    const composer_ref = createRef<AgentComposerHandle>();
+    const on_send = vi.fn();
+    await render_composer({ composer_ref, on_send });
+    await act(async () => {
+      composer_ref.current?.write_draft([
+        { kind: "text", text: "  检查 " },
+        { kind: "skill", name: "glossary-audit" },
+        { kind: "text", text: "  " },
+      ]);
+    });
 
     await act(async () => root?.unmount());
     root = null;
-    const remounted_view = await render_composer();
+    const remounted_view = await render_composer({ composer_ref, on_send });
     const remounted_editor = get_editor(remounted_view);
+    expect(remounted_editor.state.doc.toString()).toBe("  检查 @glossary-audit  ");
+    expect(remounted_view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
+
+    await click_send(remounted_view);
+    const accepted_parts: AgentUserMessagePart[] = [
+      { kind: "text", text: "检查 " },
+      { kind: "skill", name: "glossary-audit" },
+    ];
+    expect(on_send).toHaveBeenCalledWith(accepted_parts);
+    expect(remounted_editor.state.doc.toString()).toBe("  检查 @glossary-audit  ");
+
+    const input_session = default_input_session!;
+    input_session.accept_message(accepted_parts);
+    await render_composer({ composer_ref, on_send, input_session });
+    expect(remounted_editor.state.doc.toString()).toBe("");
     await dispatch_key(remounted_editor.contentDOM, "ArrowUp");
-    expect(remounted_editor.state.doc.toString()).toBe("@glossary-audit");
+    expect(remounted_editor.state.doc.toString()).toBe("检查 @glossary-audit");
+    expect(remounted_view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
   });
 
   it("含 skill 的消息只裁剪组合外缘并保留 token 内侧空白", async () => {
-    const on_send = vi.fn(async () => false);
-    const view = await render_composer({ on_send: on_send });
+    const on_send = vi.fn();
+    const view = await render_composer({ on_send });
     const editor = get_editor(view);
     await select_skill(view, editor, "glossary-audit");
     const token_length = editor.state.doc.length;
@@ -420,8 +446,8 @@ describe("AgentComposer", () => {
   });
 
   it("Enter 选择菜单项，Shift+Enter 换行", async () => {
-    const on_send = vi.fn(async () => true);
-    const view = await render_composer({ on_send: on_send });
+    const on_send = vi.fn();
+    const view = await render_composer({ on_send });
     const editor = get_editor(view);
     await set_document(editor, "@g", 2);
     await dispatch_key(editor.contentDOM, "Enter");
@@ -433,9 +459,9 @@ describe("AgentComposer", () => {
   });
 
   it("运行态保持草稿可编辑，只停止当前任务并在结束后恢复发送", async () => {
-    const on_send = vi.fn(async () => true);
+    const on_send = vi.fn();
     const on_stop = vi.fn(async () => undefined);
-    const view = await render_composer({ on_send: on_send, running: true, on_stop: on_stop });
+    const view = await render_composer({ on_send, running: true, on_stop });
     const editor = get_editor(view);
     const content = editor.contentDOM;
 
@@ -456,7 +482,7 @@ describe("AgentComposer", () => {
     await act(async () => stop.click());
     expect(on_stop).toHaveBeenCalledOnce();
 
-    await render_composer({ on_send: on_send, on_stop: on_stop });
+    await render_composer({ on_send, on_stop });
 
     expect(get_editor(view)).toBe(editor);
     expect(content.getAttribute("contenteditable")).toBe("true");
@@ -483,8 +509,8 @@ describe("AgentComposer", () => {
   });
 
   it("IME composing 期间 Enter 不选择 skill 或发送", async () => {
-    const on_send = vi.fn(async () => true);
-    const view = await render_composer({ on_send: on_send });
+    const on_send = vi.fn();
+    const view = await render_composer({ on_send });
     const editor = get_editor(view);
     await set_document(editor, "@g", 2);
     await wait_for_element(view, '[role="listbox"]');
@@ -649,6 +675,7 @@ describe("AgentComposer", () => {
       root = createRoot(container);
     }
     await act(async () => {
+      default_input_session ??= create_input_session(window.localStorage);
       root?.render(
         <AgentComposer
           ref={options.composer_ref}
@@ -676,7 +703,8 @@ describe("AgentComposer", () => {
             select_model: vi.fn(async () => undefined),
             ...options.model_selection,
           }}
-          on_send={options.on_send ?? vi.fn(async () => true)}
+          input_session={options.input_session ?? default_input_session}
+          on_send={options.on_send ?? vi.fn()}
           on_stop={options.on_stop ?? vi.fn(async () => undefined)}
           on_reset={options.on_reset ?? vi.fn()}
         />,
@@ -695,6 +723,25 @@ function get_editor(container: HTMLElement): EditorView {
 
 function seed_input_history(history: readonly (readonly AgentUserMessagePart[])[]): void {
   window.localStorage.setItem(AGENT_INPUT_HISTORY_STORAGE_KEY, JSON.stringify(history));
+}
+
+function create_input_session(storage: Storage): TestAgentInputSession {
+  let draft: AgentUserMessagePart[] = [];
+  let history = read_agent_input_history(storage);
+  const session: TestAgentInputSession = {
+    revision: 0,
+    read_draft: () => draft,
+    write_draft: (parts) => {
+      draft = parts.map((part) => ({ ...part }));
+    },
+    read_history: () => history,
+    accept_message: (parts) => {
+      history = append_agent_input_history(storage, history, parts);
+      draft = [];
+      session.revision += 1;
+    },
+  };
+  return session;
 }
 
 async function set_document(editor: EditorView, text: string, head: number): Promise<void> {

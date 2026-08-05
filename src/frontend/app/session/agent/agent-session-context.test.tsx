@@ -7,6 +7,7 @@ import {
   type AgentEntryStatus,
   type AgentSessionSnapshot,
 } from "@shared/agent";
+import { AGENT_INPUT_HISTORY_STORAGE_KEY } from "./agent-input-history";
 
 const desktop_api_mocks = vi.hoisted(() => ({
   api_get: vi.fn(),
@@ -16,7 +17,7 @@ const desktop_api_mocks = vi.hoisted(() => ({
 
 vi.mock("@frontend/app/desktop/desktop-api", () => desktop_api_mocks);
 
-import { useAgentPageState } from "./use-agent-page-state";
+import { AgentSessionProvider, useAgentSession } from "./agent-session-context";
 
 /** 多个会话入口共享同一份新协议夹具，避免各用例维护平行字段形状。 */
 const TEST_SKILLS: AgentSessionSnapshot["skills"] = [
@@ -63,12 +64,13 @@ class FakeEventSource {
   }
 }
 
-describe("useAgentPageState", () => {
+describe("AgentSessionProvider", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
   let event_source: FakeEventSource;
 
   beforeEach(() => {
+    window.localStorage.clear();
     event_source = new FakeEventSource();
     desktop_api_mocks.api_get.mockReset().mockResolvedValue(
       agent_snapshot({
@@ -89,12 +91,11 @@ describe("useAgentPageState", () => {
   });
 
   it("按 id 覆盖完整条目并保留首次出现的真实顺序", async () => {
-    let latest!: ReturnType<typeof useAgentPageState>;
+    let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
-      latest = useAgentPageState();
+      latest = useAgentSession();
     });
     await wait_for(() => expect(latest.loading).toBe(false));
-
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
         type: "entry_upsert",
@@ -126,9 +127,9 @@ describe("useAgentPageState", () => {
   });
 
   it("只接纳合法上下文用量事件，非法帧不覆盖当前值", async () => {
-    let latest!: ReturnType<typeof useAgentPageState>;
+    let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
-      latest = useAgentPageState();
+      latest = useAgentSession();
     });
     await wait_for(() => expect(latest.loading).toBe(false));
 
@@ -167,9 +168,9 @@ describe("useAgentPageState", () => {
 
   it("缺失上下文用量的完整快照按当前协议失败", async () => {
     desktop_api_mocks.api_get.mockResolvedValue({ state: "idle", entries: [], skills: [] });
-    let latest!: ReturnType<typeof useAgentPageState>;
+    let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
-      latest = useAgentPageState();
+      latest = useAgentSession();
     });
     await wait_for(() => expect(latest.loading).toBe(false));
 
@@ -183,13 +184,13 @@ describe("useAgentPageState", () => {
       .mockResolvedValueOnce(
         agent_snapshot({ entries: [assistant_entry("assistant-current", "已恢复", "success", 2)] }),
       );
-    let latest!: ReturnType<typeof useAgentPageState>;
+    let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
-      latest = useAgentPageState();
+      latest = useAgentSession();
     });
     await wait_for(() => expect(latest.issue).toBe("restore"));
     expect(latest.entries).toEqual([]);
-    await expect(latest.send([{ kind: "text", text: "不可发送" }])).resolves.toBe(false);
+    await latest.send([{ kind: "text", text: "不可发送" }]);
     expect(desktop_api_mocks.api_fetch).not.toHaveBeenCalled();
 
     await act(async () => latest.retry());
@@ -216,9 +217,9 @@ describe("useAgentPageState", () => {
         },
       ],
     });
-    let latest!: ReturnType<typeof useAgentPageState>;
+    let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
-      latest = useAgentPageState();
+      latest = useAgentSession();
     });
     await wait_for(() => expect(latest.loading).toBe(false));
 
@@ -336,9 +337,9 @@ describe("useAgentPageState", () => {
       skills: [],
       contextUsage: null,
     });
-    let latest!: ReturnType<typeof useAgentPageState>;
+    let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
-      latest = useAgentPageState();
+      latest = useAgentSession();
     });
     await wait_for(() => expect(latest.loading).toBe(false));
 
@@ -410,7 +411,7 @@ describe("useAgentPageState", () => {
     const texts: string[] = [];
 
     await render_probe(() => {
-      const state = useAgentPageState();
+      const state = useAgentSession();
       useEffect(() => {
         const entry = state.entries.at(-1);
         texts.push(
@@ -439,34 +440,80 @@ describe("useAgentPageState", () => {
     await wait_for(() => expect(texts.at(-1)).toBe("重连已恢复"));
   });
 
-  it("发送有序 parts，命令受理后返回 true", async () => {
+  it("发送有序 parts，受理后原子记录历史并清空草稿", async () => {
     desktop_api_mocks.api_fetch.mockResolvedValue(
       agent_snapshot({
         state: "running",
         skills: TEST_SKILLS,
       }),
     );
-    let latest!: ReturnType<typeof useAgentPageState>;
+    let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
-      latest = useAgentPageState();
+      latest = useAgentSession();
     });
     await wait_for(() => expect(latest.loading).toBe(false));
+    latest.input.write_draft([
+      { kind: "text", text: "  请处理 " },
+      { kind: "skill", name: "corpus-search" },
+    ]);
 
-    let accepted = false;
     await act(async () => {
-      accepted = await latest.send([
+      await latest.send([
         { kind: "text", text: "请处理 " },
         { kind: "skill", name: "corpus-search" },
       ]);
     });
 
-    expect(accepted).toBe(true);
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/message", {
       parts: [
         { kind: "text", text: "请处理 " },
         { kind: "skill", name: "corpus-search" },
       ],
     });
+    expect(latest.input.read_draft()).toEqual([]);
+    expect(latest.input.read_history()).toEqual([
+      [
+        { kind: "text", text: "请处理 " },
+        { kind: "skill", name: "corpus-search" },
+      ],
+    ]);
+    expect(
+      JSON.parse(window.localStorage.getItem(AGENT_INPUT_HISTORY_STORAGE_KEY) ?? "null"),
+    ).toEqual(latest.input.read_history());
+    expect(latest.input.revision).toBe(1);
+  });
+
+  it("消费页面卸载后仍保留结构化草稿", async () => {
+    let latest: ReturnType<typeof useAgentSession> | null = null;
+    function Probe(): null {
+      latest = useAgentSession();
+      return null;
+    }
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    const render_visible = async (visible: boolean): Promise<void> => {
+      await act(async () =>
+        root?.render(<AgentSessionProvider>{visible ? <Probe /> : null}</AgentSessionProvider>),
+      );
+    };
+
+    await render_visible(true);
+    await wait_for(() => expect(latest?.loading).toBe(false));
+    latest!.input.write_draft([
+      { kind: "text", text: "检查 " },
+      { kind: "skill", name: "glossary-audit" },
+    ]);
+
+    await render_visible(false);
+    latest = null;
+    await render_visible(true);
+
+    const restored_session = latest as ReturnType<typeof useAgentSession> | null;
+    expect(restored_session?.input.read_draft()).toEqual([
+      { kind: "text", text: "检查 " },
+      { kind: "skill", name: "glossary-audit" },
+    ]);
   });
 
   it("发送 ack 晚于 SSE 时先应用 ack 再重放增量", async () => {
@@ -477,13 +524,13 @@ describe("useAgentPageState", () => {
           resolve_send = resolve;
         }),
     );
-    let latest!: ReturnType<typeof useAgentPageState>;
+    let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
-      latest = useAgentPageState();
+      latest = useAgentSession();
     });
     await wait_for(() => expect(latest.loading).toBe(false));
 
-    let result!: Promise<boolean>;
+    let result!: Promise<void>;
     await act(async () => {
       result = latest.send([{ kind: "text", text: "继续" }]);
       await Promise.resolve();
@@ -519,13 +566,13 @@ describe("useAgentPageState", () => {
           resolve_send = resolve;
         }),
     );
-    let latest!: ReturnType<typeof useAgentPageState>;
+    let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
-      latest = useAgentPageState();
+      latest = useAgentSession();
     });
     await wait_for(() => expect(latest.loading).toBe(false));
 
-    let first!: Promise<boolean>;
+    let first!: Promise<void>;
     await act(async () => {
       first = latest.send([{ kind: "text", text: "继续" }]);
       await Promise.resolve();
@@ -539,16 +586,14 @@ describe("useAgentPageState", () => {
       await first;
     });
 
-    expect(await first).toBe(false);
     expect(latest.contextUsage).toEqual({ tokens: 200, contextWindow: 1_000, maxTokens: 100 });
     expect(latest.issue).toBe("send");
 
     desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot({ state: "running" }));
-    let second = false;
     await act(async () => {
-      second = await latest.send([{ kind: "text", text: "再次继续" }]);
+      await latest.send([{ kind: "text", text: "再次继续" }]);
     });
-    expect(second).toBe(true);
+    expect(latest.issue).toBeNull();
   });
 
   it("同一帧重复发送只受理第一个请求", async () => {
@@ -559,14 +604,14 @@ describe("useAgentPageState", () => {
           resolve_send = resolve;
         }),
     );
-    let latest!: ReturnType<typeof useAgentPageState>;
+    let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
-      latest = useAgentPageState();
+      latest = useAgentSession();
     });
     await wait_for(() => expect(latest.loading).toBe(false));
 
-    let first!: Promise<boolean>;
-    let second!: Promise<boolean>;
+    let first!: Promise<void>;
+    let second!: Promise<void>;
     await act(async () => {
       first = latest.send([{ kind: "text", text: "第一次" }]);
       second = latest.send([{ kind: "text", text: "第二次" }]);
@@ -574,28 +619,30 @@ describe("useAgentPageState", () => {
     });
 
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledOnce();
-    await expect(second).resolves.toBe(false);
+    await second;
     await act(async () => {
       resolve_send(agent_snapshot({ state: "running" }));
       await first;
     });
-    await expect(first).resolves.toBe(true);
+    await first;
   });
 
-  it("发送失败返回 false、保留快照并记录命令错误", async () => {
+  it("发送失败保留草稿、快照并记录命令错误", async () => {
     desktop_api_mocks.api_fetch.mockRejectedValue(new Error("offline"));
-    let latest!: ReturnType<typeof useAgentPageState>;
+    let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
-      latest = useAgentPageState();
+      latest = useAgentSession();
     });
     await wait_for(() => expect(latest.loading).toBe(false));
+    latest.input.write_draft([{ kind: "text", text: "重试草稿" }]);
 
-    let accepted = true;
     await act(async () => {
-      accepted = await latest.send([{ kind: "text", text: "重试" }]);
+      await latest.send([{ kind: "text", text: "重试" }]);
     });
-    expect(accepted).toBe(false);
     expect(latest.issue).toBe("send");
+    expect(latest.input.read_draft()).toEqual([{ kind: "text", text: "重试草稿" }]);
+    expect(latest.input.read_history()).toEqual([]);
+    expect(latest.input.revision).toBe(0);
   });
 
   it("停止成功后应用空闲快照", async () => {
@@ -611,9 +658,9 @@ describe("useAgentPageState", () => {
         entries: [assistant_entry("assistant-1", "已停止", "stopped", 1)],
       }),
     );
-    let latest!: ReturnType<typeof useAgentPageState>;
+    let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
-      latest = useAgentPageState();
+      latest = useAgentSession();
     });
     await wait_for(() => expect(latest.loading).toBe(false));
 
@@ -634,9 +681,9 @@ describe("useAgentPageState", () => {
       }),
     );
     desktop_api_mocks.api_fetch.mockRejectedValue(new Error("offline"));
-    let latest!: ReturnType<typeof useAgentPageState>;
+    let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
-      latest = useAgentPageState();
+      latest = useAgentSession();
     });
     await wait_for(() => expect(latest.loading).toBe(false));
     const previous_entries = latest.entries;
@@ -658,9 +705,9 @@ describe("useAgentPageState", () => {
           resolve_reset = resolve;
         }),
     );
-    let latest!: ReturnType<typeof useAgentPageState>;
+    let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
-      latest = useAgentPageState();
+      latest = useAgentSession();
     });
     await wait_for(() => expect(latest.loading).toBe(false));
     let result!: Promise<boolean>;
@@ -689,9 +736,9 @@ describe("useAgentPageState", () => {
 
   it("重置失败保留当前快照并恢复可操作错误态", async () => {
     desktop_api_mocks.api_fetch.mockRejectedValue(new Error("offline"));
-    let latest!: ReturnType<typeof useAgentPageState>;
+    let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
-      latest = useAgentPageState();
+      latest = useAgentSession();
     });
     await wait_for(() => expect(latest.loading).toBe(false));
     const previous_entries = latest.entries;
@@ -716,7 +763,13 @@ describe("useAgentPageState", () => {
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
-    await act(async () => root?.render(<Probe />));
+    await act(async () =>
+      root?.render(
+        <AgentSessionProvider>
+          <Probe />
+        </AgentSessionProvider>,
+      ),
+    );
   }
 });
 

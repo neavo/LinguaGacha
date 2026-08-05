@@ -1,4 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import type {
   AgentAssistantMessagePart,
@@ -17,6 +26,7 @@ import { AGENT_SESSION_EVENT_TOPIC, normalize_agent_user_message_parts } from "@
 import { LOCALES } from "@shared/i18n/types";
 import { is_json_record, read_json_record, type JsonRecord } from "@domain/json";
 import { api_fetch, api_get, open_event_stream } from "@frontend/app/desktop/desktop-api";
+import { append_agent_input_history, read_agent_input_history } from "./agent-input-history";
 
 /** 首帧占位不代表恢复成功，loading 会在合法快照或明确失败后才结束。 */
 const EMPTY_SNAPSHOT: AgentSessionSnapshot = {
@@ -26,33 +36,51 @@ const EMPTY_SNAPSHOT: AgentSessionSnapshot = {
   contextUsage: null,
 };
 
-/** 页面命令状态只表达当前互斥中的写请求，不复述后端会话状态。 */
+/** 前端命令状态只表达当前互斥中的写请求，不复述后端会话状态。 */
 export type AgentCommand = "send" | "stop" | "reset" | null;
 /** 恢复/连接问题与各命令失败保持正交，避免一个 error 布尔量丢失恢复路径。 */
-export type AgentPageIssue = "restore" | "connection" | "send" | "stop" | "reset" | null;
+export type AgentSessionIssue = "restore" | "connection" | "send" | "stop" | "reset" | null;
 
-type UseAgentPageState = {
+type AgentSessionStateView = {
   state: AgentSessionState;
   entries: AgentEntry[];
   skills: AgentSkillSnapshot[];
   contextUsage: AgentContextUsage | null;
   loading: boolean;
   command: AgentCommand;
-  issue: AgentPageIssue;
-  send: (parts: readonly AgentUserMessagePart[]) => Promise<boolean>;
+  issue: AgentSessionIssue;
+  send: (parts: readonly AgentUserMessagePart[]) => Promise<void>;
   stop: () => Promise<void>;
   reset: () => Promise<boolean>;
   retry: () => void;
 };
 
+/** 跨路由保留纯输入事实；光标、菜单与历史索引仍由当前 Composer 持有。 */
+export type AgentInputSession = {
+  revision: number;
+  read_draft: () => readonly AgentUserMessagePart[];
+  write_draft: (parts: readonly AgentUserMessagePart[]) => void;
+  read_history: () => readonly (readonly AgentUserMessagePart[])[];
+};
+
+/** 页面消费的完整 Agent 会话入口，输入事实与后端会话镜像共享同一生命周期。 */
+export type AgentSessionController = AgentSessionStateView & {
+  input: AgentInputSession;
+};
+
+/** null 默认值让越过应用装配边界的误用立即失败，不伪造可运行会话。 */
+const AgentSessionContext = createContext<AgentSessionController | null>(null);
+
 /**
- * 持有 Agent 页面私有状态，并把 HTTP 快照与 SSE 增量合并为同一公开视图。
+ * 把 HTTP 快照与 SSE 增量合并为同一公开视图；Provider 决定它的跨路由生命周期。
  */
-export function useAgentPageState(): UseAgentPageState {
+function useAgentSessionState(
+  on_message_accepted: (parts: readonly AgentUserMessagePart[]) => void,
+): AgentSessionStateView {
   const [snapshot, set_snapshot] = useState<AgentSessionSnapshot>(EMPTY_SNAPSHOT);
   const [loading, set_loading] = useState(true);
   const [command, set_command] = useState<AgentCommand>(null);
-  const [issue, set_issue] = useState<AgentPageIssue>(null);
+  const [issue, set_issue] = useState<AgentSessionIssue>(null);
   const [connection_revision, set_connection_revision] = useState(0); // 用户重试时重建整个传输 effect
   const loaded_once_ref = useRef(false); // 区分首次恢复失败与已恢复会话断线
   // 命令互斥必须同步生效；否则同一帧的重复调用会在 React 提交状态前穿透 UI 禁用态。
@@ -168,20 +196,19 @@ export function useAgentPageState(): UseAgentPageState {
   };
 
   /** 发送成功只表示后端已受理；模型回合结果继续由 snapshot / SSE 条目表达。 */
-  const send = async (parts: readonly AgentUserMessagePart[]): Promise<boolean> => {
-    if (loading || !loaded_once_ref.current || snapshot.state === "running") return false;
+  const send = async (parts: readonly AgentUserMessagePart[]): Promise<void> => {
+    if (loading || !loaded_once_ref.current || snapshot.state === "running") return;
     const command_events = begin_command("send");
-    if (command_events === null) return false;
+    if (command_events === null) return;
     try {
       const next = await api_fetch<AgentSessionSnapshot>("/api/agent/message", {
         parts,
       });
       finish_command(command_events, next);
-      return true;
+      on_message_accepted(parts);
     } catch {
       finish_command(command_events);
       set_issue("send");
-      return false;
     } finally {
       set_command(null);
     }
@@ -240,6 +267,61 @@ export function useAgentPageState(): UseAgentPageState {
     reset,
     retry,
   };
+}
+
+/** 常驻拥有 Agent 传输镜像、命令和 renderer 私有输入会话，页面切换只替换消费者。 */
+export function AgentSessionProvider(props: { children: ReactNode }): JSX.Element {
+  // 草稿和历史用 ref 避免每次编辑重渲染整棵应用；revision 只通知受理后的原子清空。
+  const draft_ref = useRef<AgentUserMessagePart[]>([]);
+  const input_history_ref = useRef<AgentUserMessagePart[][] | null>(null);
+  if (input_history_ref.current === null) {
+    input_history_ref.current = read_agent_input_history(window.localStorage);
+  }
+  const [input_revision, set_input_revision] = useState(0);
+
+  const read_draft = useCallback((): readonly AgentUserMessagePart[] => draft_ref.current, []);
+  const write_draft = useCallback((parts: readonly AgentUserMessagePart[]): void => {
+    draft_ref.current = parts.map((part) => ({ ...part }));
+  }, []);
+  const read_history = useCallback(
+    (): readonly (readonly AgentUserMessagePart[])[] => input_history_ref.current ?? [],
+    [],
+  );
+  const accept_message = useCallback((parts: readonly AgentUserMessagePart[]): void => {
+    input_history_ref.current = append_agent_input_history(
+      window.localStorage,
+      input_history_ref.current ?? [],
+      parts,
+    );
+    draft_ref.current = [];
+    set_input_revision((current) => current + 1);
+  }, []);
+
+  const session = useAgentSessionState(accept_message);
+  const input = useMemo<AgentInputSession>(
+    () => ({
+      revision: input_revision,
+      read_draft,
+      write_draft,
+      read_history,
+    }),
+    [input_revision, read_draft, read_history, write_draft],
+  );
+
+  return (
+    <AgentSessionContext.Provider value={{ ...session, input }}>
+      {props.children}
+    </AgentSessionContext.Provider>
+  );
+}
+
+/** 只允许应用装配树内的页面消费共享会话，缺少 Provider 属于编程错误。 */
+export function useAgentSession(): AgentSessionController {
+  const session = useContext(AgentSessionContext);
+  if (session === null) {
+    throw new Error("useAgentSession must be used inside AgentSessionProvider.");
+  }
+  return session;
 }
 
 /** 按接收顺序重放命令期间积压的 SSE，保持条目覆盖与会话状态语义一致。 */

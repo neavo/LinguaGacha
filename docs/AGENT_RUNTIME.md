@@ -35,4 +35,5 @@
 ## 5. 前端消费
 
 - Agent skill 的完整 `displayDescriptions` 由后端 snapshot 提供，页面只按当前 locale 选择，不建立第二份全局翻译表。
-- Agent 页面从后端 snapshot 恢复当前私有会话并消费统一 SSE，时间线不进入 `DesktopStateProvider` 或项目 session UI 缓存；snapshot 恢复、当前 command 与带恢复路径的 issue 是独立页面状态，轮次结果只读取条目状态。命令互斥不锁定草稿编辑；共享 runtime 锁禁用发送、reset 与模型选择，当前 Agent 回合的 stop 始终保留。
+- `AgentSessionProvider` 跨路由持有 snapshot / SSE 镜像、当前 command、带恢复路径的 issue、结构化草稿与 renderer 全局输入历史；时间线不进入 `DesktopStateProvider` 或项目 session UI 缓存。合法消息 ack 原子追加输入历史并清空草稿，失败保留草稿；页面只持有滚动与弹窗，Composer 只持有 EditorView、光标、skill 菜单和当前历史索引。
+- Agent 回合运行态与 stop 命令不锁定草稿编辑，send / reset 命令跨路由保持编辑器只读；共享 runtime 锁禁用发送、reset 与模型选择，当前 Agent 回合的 stop 始终保留。

@@ -1,6 +1,6 @@
 import { normalize_agent_user_message_parts, type AgentUserMessagePart } from "@shared/agent";
 
-/** 输入历史属于 renderer 全局 UI 缓存，不按工程或后端会话分区。 */
+/** Agent 输入历史属于 renderer 全局 UI 缓存，不按工程或后端会话分区。 */
 export const AGENT_INPUT_HISTORY_STORAGE_KEY = "lg-agent-input-history";
 /** 有界历史避免辅助缓存随长期使用无限增长。 */
 export const AGENT_INPUT_HISTORY_LIMIT = 20;
