@@ -8,6 +8,19 @@ import {
 import type { QualitySnapshot } from "../quality/quality-rule-snapshot";
 import type { ItemNameField } from "../../domain/item";
 import { PROOFREADING_WARNING_CODES } from "./proofreading-types";
+import type { TextProcessingConfig } from "../text/text-types";
+
+function create_processing_config(
+  source_language = "ja",
+  target_language = "zh-CN",
+): TextProcessingConfig {
+  return {
+    source_language,
+    target_language,
+    clean_ruby: false,
+    auto_process_prefix_suffix_preserved_text: true,
+  };
+}
 
 // 提供含术语表的最小质量快照，用于触发 warning 和筛选路径。
 function create_quality(): QualitySnapshot {
@@ -68,8 +81,7 @@ describe("proofreading-reader", () => {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 5,
-      sourceLanguage: "ja",
-      targetLanguage: "zh-CN",
+      processingConfig: create_processing_config(),
       quality: create_quality(),
       upsertItems: [
         create_item({
@@ -215,8 +227,7 @@ describe("proofreading-reader", () => {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 1,
-      sourceLanguage: "ja",
-      targetLanguage: "zh-CN",
+      processingConfig: create_processing_config(),
       quality: create_quality(),
       upsertItems: [create_item({ item_id: 1, src: "HP", dst: "普通译文", status: "PROCESSED" })],
     });
@@ -239,8 +250,7 @@ describe("proofreading-reader", () => {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 2,
-      sourceLanguage: "ja",
-      targetLanguage: "zh-CN",
+      processingConfig: create_processing_config(),
       quality: create_quality(),
       upsertItems: [
         {
@@ -317,8 +327,7 @@ describe("proofreading-reader", () => {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: items.length,
-      sourceLanguage: "ja",
-      targetLanguage: "zh-CN",
+      processingConfig: create_processing_config(),
       quality: create_quality(),
       upsertItems: items,
     });
@@ -363,8 +372,7 @@ describe("proofreading-reader", () => {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 1,
-      sourceLanguage: "ja",
-      targetLanguage: "zh-CN",
+      processingConfig: create_processing_config(),
       quality: create_quality(),
       upsertItems: [
         {
@@ -403,8 +411,7 @@ describe("proofreading-reader", () => {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 2,
-      sourceLanguage: "ja",
-      targetLanguage: "zh-CN",
+      processingConfig: create_processing_config(),
       quality: create_quality(),
       upsertItems: [
         create_item({
@@ -447,8 +454,7 @@ describe("proofreading-reader", () => {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 1,
-      sourceLanguage: "ja",
-      targetLanguage: "zh-CN",
+      processingConfig: create_processing_config(),
       quality: create_quality(),
       upsertItems: [create_item({ item_id: 1, src: "Magic", dst: "译文" })],
     });
@@ -471,8 +477,7 @@ describe("proofreading-reader", () => {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 1,
-      sourceLanguage: "ja",
-      targetLanguage: "zh-CN",
+      processingConfig: create_processing_config(),
       quality: {
         ...create_quality(),
         glossary: {
@@ -513,8 +518,7 @@ describe("proofreading-reader", () => {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 2,
-      sourceLanguage: "ja",
-      targetLanguage: "zh-CN",
+      processingConfig: create_processing_config(),
       quality: create_quality(),
       upsertItems: [create_item({ item_id: 1, dst: "M" }), create_item({ item_id: 2, dst: "Z" })],
     });
@@ -558,8 +562,7 @@ describe("proofreading-reader", () => {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 1,
-      sourceLanguage: "ja",
-      targetLanguage: "zh-CN",
+      processingConfig: create_processing_config(),
       quality: create_quality(),
       upsertItems: [
         {
@@ -601,14 +604,56 @@ describe("proofreading-reader", () => {
     });
   });
 
+  it("增量评估沿用全量同步冻结的文本处理配置", () => {
+    const service = createProofreadingReader();
+    const quality: QualitySnapshot = {
+      ...create_quality(),
+      pre_replacement: {
+        enabled: true,
+        mode: "custom",
+        revision: 1,
+        entries: [{ src: "<A>", dst: "<X>", regex: false, case_sensitive: true }],
+      },
+      text_preserve: {
+        enabled: true,
+        mode: "custom",
+        revision: 1,
+        entries: [{ src: "<[^>]+>" }],
+      },
+    };
+    sync_full(service, {
+      projectId: "E:/demo/sample.lg",
+      revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
+      total_item_count: 1,
+      processingConfig: create_processing_config(),
+      quality,
+      upsertItems: [
+        create_item({ item_id: 1, src: "<A>hello", dst: "<A>你好", status: "PROCESSED" }),
+      ],
+    });
+
+    service.apply_item_delta({
+      projectId: "E:/demo/sample.lg",
+      revisions: { files: 1, items: 2, quality: 1, proofreading: 0 },
+      total_item_count: 1,
+      upsertItems: [],
+      patchItemIds: [1],
+      fieldPatch: { dst: "<A>您好" },
+      deleteItemIds: [],
+    });
+
+    expect(service.read_items_by_row_ids({ row_ids: ["1"] })[0]?.warnings).not.toContain(
+      "TEXT_PRESERVE",
+    );
+  });
+
   it("删除 delta 会从旧视图移除对应行并保持剩余索引", () => {
     const service = createProofreadingReader();
     const sync_state = sync_full(service, {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 2,
-      sourceLanguage: "ja",
-      targetLanguage: "zh-CN",
+      processingConfig: create_processing_config(),
       quality: create_quality(),
       upsertItems: [create_item({ item_id: 1, dst: "A" }), create_item({ item_id: 2, dst: "B" })],
     });
@@ -648,8 +693,7 @@ describe("proofreading-reader", () => {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 2,
-      sourceLanguage: "ja",
-      targetLanguage: "zh-CN",
+      processingConfig: create_processing_config(),
       quality: create_quality(),
       upsertItems: [create_item({ item_id: 1, dst: "A" }), create_item({ item_id: 2, dst: "B" })],
     });
@@ -688,8 +732,7 @@ describe("proofreading-reader", () => {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 1, quality: 1, proofreading: 0 },
       total_item_count: 1,
-      sourceLanguage: "ja",
-      targetLanguage: "zh-CN",
+      processingConfig: create_processing_config(),
       quality: create_quality(),
       upsertItems: [create_item({ item_id: 1, dst: "A" })],
     });
@@ -707,8 +750,7 @@ describe("proofreading-reader", () => {
       projectId: "E:/demo/sample.lg",
       revisions: { files: 1, items: 2, quality: 1, proofreading: 0 },
       total_item_count: 1,
-      sourceLanguage: "ja",
-      targetLanguage: "zh-CN",
+      processingConfig: create_processing_config(),
       quality: create_quality(),
       upsertItems: [create_item({ item_id: 1, dst: "B" })],
     });

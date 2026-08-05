@@ -69,15 +69,34 @@ describe("run_quality_statistics_task_sync", () => {
       ],
       text_groups: [],
       relation_candidates: [
-        { entry_id: "erin", src: "艾琳" },
-        { entry_id: "saint", src: "圣女艾琳" },
-        { entry_id: "duplicate", src: "圣女艾琳" },
-        { entry_id: "captain", src: "舰长艾琳" },
+        { entry_id: "erin", src: "艾琳", case_sensitive: true },
+        { entry_id: "saint", src: "圣女艾琳", case_sensitive: true },
+        { entry_id: "duplicate", src: "圣女艾琳", case_sensitive: true },
+        { entry_id: "captain", src: "舰长艾琳", case_sensitive: true },
       ],
     });
 
     expect(result.results.erin?.subset_parents).toEqual(["圣女艾琳", "舰长艾琳"]);
     expect(result.results.regex?.subset_parents).toEqual([]);
+  });
+
+  it("包含关系尊重子规则大小写，并用原文范围排除规范化等价项", () => {
+    const result = run_quality_statistics_task_sync({
+      rules: [
+        { entry_id: "child", pattern: "JK", pattern_kind: "literal", case_sensitive: true },
+        { entry_id: "wide", pattern: "ＪＫ", pattern_kind: "literal", case_sensitive: true },
+      ],
+      text_groups: [],
+      relation_candidates: [
+        { entry_id: "child", src: "JK", case_sensitive: true },
+        { entry_id: "case-only-parent", src: "Xｊｋ", case_sensitive: true },
+        { entry_id: "nfkc-parent", src: "XＪＫ", case_sensitive: true },
+        { entry_id: "wide", src: "ＪＫ", case_sensitive: true },
+      ],
+    });
+
+    expect(result.results.child?.subset_parents).toEqual(["XＪＫ"]);
+    expect(result.results.wide?.subset_parents).toEqual(["XＪＫ"]);
   });
 
   it("同 item 多字段与重叠命中分别累计次数，但覆盖数只计一次", () => {

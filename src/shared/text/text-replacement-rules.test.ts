@@ -75,6 +75,15 @@ describe("apply_text_replacements", () => {
       ]),
     ).toBe("路 xa");
   });
+
+  it("大小写敏感字面量仍执行 NFKC，正则保持原生文本语义", () => {
+    expect(apply("ＪＫ ｊｋ", [{ src: "JK", dst: "X", regex: false, case_sensitive: true }])).toBe(
+      "X ｊｋ",
+    );
+    expect(apply("ＪＫ", [{ src: "JK", dst: "X", regex: true, case_sensitive: true }])).toBe(
+      "ＪＫ",
+    );
+  });
 });
 
 function apply(text: string, entries: TextReplacementEntry[]): string {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { compile_literal_patterns, fold_literal_text } from "./literal-matcher";
+import { compile_literal_patterns, normalize_literal_text } from "./literal-matcher";
 
 describe("共享字面量匹配器", () => {
   it("同批区分大小写规则，并按输入 key 顺序保留重复文本身份", () => {
@@ -49,12 +49,19 @@ describe("共享字面量匹配器", () => {
   });
 
   it("使用 NFKC 与兼容 casefold", () => {
-    expect(fold_literal_text("ＳＴＲＡẞＥ I ΟΣ")).toBe("strasse i οσ");
+    expect(normalize_literal_text("ＳＴＲＡẞＥ I ΟΣ", false)).toBe("strasse i οσ");
     expect(
       compile_literal_patterns([{ key: "term", text: "STRASSE", case_sensitive: false }]).match(
         "Straße",
       ),
     ).toEqual([{ key: "term", ranges: [{ start: 0, end: 6 }] }]);
+  });
+
+  it("大小写敏感规则仍执行 NFKC，但不执行大小写折叠", () => {
+    const matcher = compile_literal_patterns([{ key: "term", text: "JK", case_sensitive: true }]);
+
+    expect(matcher.match("ＪＫ")).toEqual([{ key: "term", ranges: [{ start: 0, end: 2 }] }]);
+    expect(matcher.match("ｊｋ")).toEqual([]);
   });
 
   it("统一上下文大小写折叠，并合并字符展开产生的重复原文范围", () => {

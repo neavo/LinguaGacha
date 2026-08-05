@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { prepare_quality_statistics_task_input } from "./quality-statistics-input";
+import { run_quality_statistics_task_sync } from "./quality-statistics";
 
 describe("prepare_quality_statistics_task_input", () => {
   it("同一原文不同译文只改变后置替换快照", () => {
@@ -103,5 +104,31 @@ describe("prepare_quality_statistics_task_input", () => {
     expect(base.collect_literal_evidence).toBe(false);
     expect(evidence.collect_literal_evidence).toBe(true);
     expect(evidence.completed_snapshot).toEqual(base.completed_snapshot);
+  });
+
+  it("替换与文本保护按字段内逐行统计", () => {
+    const anchored = prepare_quality_statistics_task_input({
+      rule_key: "pre_replacement",
+      entries: [{ entry_id: "anchored", src: "^JK", dst: "X", regex: true }],
+      items: [{ src: "prefix\nJK\nJK" }],
+    });
+    const cross_line = prepare_quality_statistics_task_input({
+      rule_key: "text_preserve",
+      entries: [{ entry_id: "cross-line", src: "A\\nB" }],
+      items: [{ src: "A\nB" }],
+    });
+    const cross_line_literal = prepare_quality_statistics_task_input({
+      rule_key: "pre_replacement",
+      entries: [{ entry_id: "literal", src: "A\nB", dst: "X", regex: false }],
+      items: [{ src: "A\nB" }],
+    });
+
+    expect(run_quality_statistics_task_sync(anchored).results.anchored?.matched_item_count).toBe(1);
+    expect(
+      run_quality_statistics_task_sync(cross_line).results["cross-line"]?.matched_item_count,
+    ).toBe(0);
+    expect(
+      run_quality_statistics_task_sync(cross_line_literal).results.literal?.matched_item_count,
+    ).toBe(0);
   });
 });

@@ -2,6 +2,7 @@ import { QualityRule, type QualityRuleKind } from "../../domain/quality";
 import {
   read_item_source_text_parts,
   read_item_translation_text_parts,
+  split_item_text_parts_by_line,
   type ItemTextGroup,
 } from "../item-text";
 import {
@@ -53,14 +54,22 @@ export function prepare_quality_statistics_task_input(
     };
   });
   const text_source = args.rule_key === "post_replacement" ? "dst" : "src";
-  const text_groups = args.items.map((item) =>
-    text_source === "dst"
-      ? read_item_translation_text_parts(item)
-      : read_item_source_text_parts(item),
-  );
+  const text_groups = args.items.map((item) => {
+    const parts =
+      text_source === "dst"
+        ? read_item_translation_text_parts(item)
+        : read_item_source_text_parts(item);
+    return args.rule_key === "glossary" ? parts : split_item_text_parts_by_line(parts);
+  });
   const relation_candidates = rules.flatMap((statistics_rule) =>
     statistics_rule.pattern_kind === "literal"
-      ? [{ entry_id: statistics_rule.entry_id, src: statistics_rule.pattern }]
+      ? [
+          {
+            entry_id: statistics_rule.entry_id,
+            src: statistics_rule.pattern,
+            case_sensitive: statistics_rule.case_sensitive,
+          },
+        ]
       : [],
   );
   const completed_snapshot = build_dependency_snapshot(text_source, rules, text_groups);

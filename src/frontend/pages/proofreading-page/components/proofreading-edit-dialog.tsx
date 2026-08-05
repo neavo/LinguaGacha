@@ -29,6 +29,7 @@ import {
   AppDropdownMenuTrigger,
 } from "@frontend/widgets/app-dropdown-menu";
 import {
+  compile_glossary,
   evaluate_glossary_applications,
   resolve_glossary_application_state,
   type GlossaryApplication,
@@ -222,6 +223,7 @@ function evaluate_draft_glossary_applications(
     }),
   );
   return evaluate_glossary_applications(
+    compile_glossary(source_matches.map((match) => match.entry)),
     source_matches,
     read_item_translation_text_parts({ dst: draft_item.dst, name_dst: draft_item.name_dst }),
   );

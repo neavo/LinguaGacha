@@ -18,10 +18,11 @@ import {
   type TextPreserveRule,
 } from "../text/text-preserve-rules";
 import {
-  apply_text_replacements,
   compile_text_replacements,
   type CompiledTextReplacements,
 } from "../text/text-replacement-rules";
+import { prepare_translation_source_line } from "../text/translation-source-line";
+import type { TextProcessingConfig } from "../text/text-types";
 import {
   collect_translation_residue_fragments,
   has_translation_retry_reached_review_threshold,
@@ -84,9 +85,11 @@ const PROOFREADING_SKIPPED_WARNING_STATUSES = new Set([
 /**
  * 构造文本保护失败片段时保留源/译两边差异，供编辑弹窗定位。
  */
+type ProofreadingPreservedSegment = { line_index: number; value: string };
+
 function build_text_preserve_failed_fragments(args: {
-  source_segments: string[];
-  translation_segments: string[];
+  source_segments: ProofreadingPreservedSegment[];
+  translation_segments: ProofreadingPreservedSegment[];
 }): string[] {
   const failed_fragments: string[] = [];
   const max_length = Math.max(args.source_segments.length, args.translation_segments.length);
@@ -94,15 +97,18 @@ function build_text_preserve_failed_fragments(args: {
   for (let index = 0; index < max_length; index += 1) {
     const source_segment = args.source_segments[index];
     const translation_segment = args.translation_segments[index];
-    if (source_segment === translation_segment) {
+    if (
+      source_segment?.line_index === translation_segment?.line_index &&
+      source_segment?.value === translation_segment?.value
+    ) {
       continue;
     }
 
     if (source_segment !== undefined) {
-      failed_fragments.push(source_segment);
+      failed_fragments.push(source_segment.value);
     }
     if (translation_segment !== undefined) {
-      failed_fragments.push(translation_segment);
+      failed_fragments.push(translation_segment.value);
     }
   }
 
@@ -116,8 +122,7 @@ export function evaluateProofreadingItem(args: {
   item: ProofreadingItemRecord;
   quality_context: ProofreadingEvaluationContext;
   quality: QualitySnapshot;
-  sourceLanguage: string;
-  targetLanguage: string;
+  processingConfig: TextProcessingConfig;
   sample_rule_cache: Map<string, TextPreserveRule | null>;
 }): ProofreadingClientItem {
   const warnings: ProofreadingWarningCode[] = [];
@@ -147,14 +152,24 @@ export function evaluateProofreadingItem(args: {
   }
 
   if (args.item.dst !== "") {
-    const src_replaced = apply_pre_replacements_by_line(
-      args.item.src,
-      args.quality_context.pre_replacements,
-    );
-    const normalized_dst = strip_preserved_segments(args.item.dst, sample_rule);
+    const review_src = args.item.src
+      .split("\n")
+      .map(
+        (raw_text, line_index) =>
+          prepare_translation_source_line({
+            line_index,
+            raw_text,
+            text_type: args.item.text_type,
+            config: args.processingConfig,
+            preserve_rule: sample_rule,
+            pre_replacements: args.quality_context.pre_replacements,
+          }).review_text,
+      )
+      .join("\n");
+    const normalized_dst = strip_preserved_segments_by_line(args.item.dst, sample_rule);
     const residue_fragments = collect_translation_residue_fragments({
       text: normalized_dst,
-      sourceLanguage: args.sourceLanguage,
+      sourceLanguage: args.processingConfig.source_language,
     });
     const kana_fragments = residue_fragments.kana;
     if (kana_fragments.length > 0) {
@@ -168,10 +183,13 @@ export function evaluateProofreadingItem(args: {
       warning_fragments_by_code.HANGEUL = hangeul_fragments;
     }
 
-    const source_preserved_segments = collect_non_blank_segments(src_replaced, sample_rule);
-    const translation_preserved_segments = collect_non_blank_segments(args.item.dst, sample_rule);
+    const source_preserved_segments = collect_non_blank_segments_by_line(review_src, sample_rule);
+    const translation_preserved_segments = collect_non_blank_segments_by_line(
+      args.item.dst,
+      sample_rule,
+    );
     if (
-      source_preserved_segments.join("\u0000") !== translation_preserved_segments.join("\u0000")
+      JSON.stringify(source_preserved_segments) !== JSON.stringify(translation_preserved_segments)
     ) {
       warnings.push("TEXT_PRESERVE");
       warning_fragments_by_code.TEXT_PRESERVE = build_text_preserve_failed_fragments({
@@ -182,10 +200,10 @@ export function evaluateProofreadingItem(args: {
 
     if (
       has_translation_similarity_issue({
-        src: strip_preserved_segments(src_replaced, sample_rule),
-        dst: strip_preserved_segments(args.item.dst, sample_rule),
-        sourceLanguage: args.sourceLanguage,
-        targetLanguage: args.targetLanguage,
+        src: strip_preserved_segments_by_line(review_src, sample_rule),
+        dst: normalized_dst,
+        sourceLanguage: args.processingConfig.source_language,
+        targetLanguage: args.processingConfig.target_language,
       })
     ) {
       warnings.push("SIMILARITY");
@@ -194,6 +212,7 @@ export function evaluateProofreadingItem(args: {
 
   if (args.quality_context.glossary.entries.length > 0) {
     glossary_applications = evaluate_glossary_applications(
+      args.quality_context.glossary,
       match_glossary_source(args.quality_context.glossary, read_item_source_text_parts(args.item)),
       read_item_translation_text_parts(args.item),
     );
@@ -218,23 +237,23 @@ export function evaluateProofreadingItem(args: {
   });
 }
 
-/** 译前替换遵循翻译入口的逐行语义；校对不逆向猜测译后规则。 */
-function apply_pre_replacements_by_line(
-  text: string,
-  replacements: CompiledTextReplacements | null,
-): string {
-  return replacements === null
+function strip_preserved_segments_by_line(text: string, rule: TextPreserveRule | null): string {
+  return rule === null
     ? text
     : text
         .split("\n")
-        .map((line) => apply_text_replacements(line, replacements))
+        .map((line) => rule.replace(line, ""))
         .join("\n");
 }
 
-function strip_preserved_segments(text: string, rule: TextPreserveRule | null): string {
-  return rule?.replace(text, "") ?? text;
-}
-
-function collect_non_blank_segments(text: string, rule: TextPreserveRule | null): string[] {
-  return rule === null ? [] : collect_non_blank_text_preserve_segments(text, rule);
+function collect_non_blank_segments_by_line(
+  text: string,
+  rule: TextPreserveRule | null,
+): ProofreadingPreservedSegment[] {
+  if (rule === null) return [];
+  return text
+    .split("\n")
+    .flatMap((line, line_index) =>
+      collect_non_blank_text_preserve_segments(line, rule).map((value) => ({ line_index, value })),
+    );
 }

@@ -193,6 +193,7 @@ function filter_import_candidates(args: {
     return {
       entry_id: build_glossary_stat_key(entry),
       src: entry.src,
+      case_sensitive: entry.case_sensitive,
     };
   });
   const statistics_result = run_quality_statistics_task_sync({

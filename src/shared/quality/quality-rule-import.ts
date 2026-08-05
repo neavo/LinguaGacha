@@ -1,4 +1,5 @@
 import type { JsonRecord } from "../../domain/json";
+import { normalize_literal_text } from "../text/literal-matcher";
 
 const QUALITY_RULE_IMPORT_RULE_TYPES = [
   "GLOSSARY",
@@ -71,9 +72,7 @@ export function collect_quality_rule_duplicate_groups(args: {
 type QualityRuleImportItem = {
   index: number;
   entry: JsonRecord;
-  src_norm: string;
-  src_fold: string;
-  case_sensitive: boolean;
+  identity: string;
   order: number;
 };
 
@@ -127,14 +126,14 @@ function merge_quality_rule_import_entries(args: {
   existing: JsonRecord[];
   incoming: JsonRecord[];
 }): JsonRecord[] {
-  const existing_items = ingest_import_rows(args.existing, {
+  const existing_items = ingest_import_rows(args.rule_type, args.existing, {
     order_offset: 0,
   });
-  const incoming_items = ingest_import_rows(args.incoming, {
+  const incoming_items = ingest_import_rows(args.rule_type, args.incoming, {
     order_offset: args.existing.length,
   });
-  const grouped_items = group_import_items_by_fold([...existing_items, ...incoming_items]);
-  const kept_entries = merge_grouped_import_entries(args, grouped_items);
+  const grouped_items = group_import_items_by_identity([...existing_items, ...incoming_items]);
+  const kept_entries = merge_grouped_import_entries(args.rule_type, grouped_items);
   kept_entries.sort((left, right) => left.order - right.order);
 
   return kept_entries.map((entry) => ({ ...entry.entry }));
@@ -142,6 +141,7 @@ function merge_quality_rule_import_entries(args: {
 
 // 同一归一化入口同时保留原数组索引和合并顺序，预览与最终快照共用。
 function ingest_import_rows(
+  rule_type: QualityRuleImportRuleType,
   rows: JsonRecord[],
   options: { order_offset: number },
 ): QualityRuleImportItem[] {
@@ -151,8 +151,7 @@ function ingest_import_rows(
     }
 
     const entry = normalize_quality_rule_import_entry(raw_entry);
-    const src_norm = String(entry["src"] ?? "");
-    if (src_norm === "") {
+    if (String(entry["src"] ?? "") === "") {
       return [];
     }
 
@@ -160,23 +159,21 @@ function ingest_import_rows(
       {
         index,
         entry,
-        src_norm,
-        src_fold: fold_quality_rule_import_src(src_norm),
-        case_sensitive: Boolean(entry["case_sensitive"] ?? false),
+        identity: build_pattern_identity(rule_type, entry),
         order: options.order_offset + index,
       },
     ];
   });
 }
 
-function group_import_items_by_fold(
+function group_import_items_by_identity(
   items: QualityRuleImportItem[],
 ): Map<string, QualityRuleImportItem[]> {
   const grouped_items = new Map<string, QualityRuleImportItem[]>();
   for (const item of items) {
-    const group = grouped_items.get(item.src_fold);
+    const group = grouped_items.get(item.identity);
     if (group === undefined) {
-      grouped_items.set(item.src_fold, [item]);
+      grouped_items.set(item.identity, [item]);
     } else {
       group.push(item);
     }
@@ -184,46 +181,17 @@ function group_import_items_by_fold(
   return grouped_items;
 }
 
-// 大小写不敏感规则按 fold 合并；全敏感规则只合并完全相同的 src。
 function merge_grouped_import_entries(
-  args: { rule_type: QualityRuleImportRuleType },
+  rule_type: QualityRuleImportRuleType,
   grouped_items: Map<string, QualityRuleImportItem[]>,
 ): QualityRuleKeptEntry[] {
   const kept_entries: QualityRuleKeptEntry[] = [];
-  for (const raw_items of grouped_items.values()) {
-    const items = [...raw_items].sort((left, right) => left.order - right.order);
-    if (should_use_fold_only_key(args.rule_type, items)) {
-      const base = { ...items[0].entry };
-      for (const item of items.slice(1)) {
-        overwrite_import_entry_into_base(args.rule_type, base, item.entry);
-      }
-      kept_entries.push({
-        order: items[0].order,
-        entry: base,
-      });
-      continue;
+  for (const items of grouped_items.values()) {
+    const base = { ...items[0].entry };
+    for (const item of items.slice(1)) {
+      overwrite_import_entry_into_base(rule_type, base, item.entry);
     }
-
-    const by_norm = new Map<string, QualityRuleImportItem[]>();
-    for (const item of items) {
-      const group = by_norm.get(item.src_norm);
-      if (group === undefined) {
-        by_norm.set(item.src_norm, [item]);
-      } else {
-        group.push(item);
-      }
-    }
-
-    for (const norm_items of by_norm.values()) {
-      const base = { ...norm_items[0].entry };
-      for (const item of norm_items.slice(1)) {
-        overwrite_import_entry_into_base(args.rule_type, base, item.entry);
-      }
-      kept_entries.push({
-        order: norm_items[0].order,
-        entry: base,
-      });
-    }
+    kept_entries.push({ order: items[0].order, entry: base });
   }
   return kept_entries;
 }
@@ -234,22 +202,9 @@ function overwrite_import_entry_into_base(
   base: JsonRecord,
   other: JsonRecord,
 ): void {
-  const other_src = normalize_quality_rule_import_src(other["src"]);
-  if (other_src !== "" && base["src"] !== other_src) {
-    base["src"] = other_src;
-  }
-
   for (const field of get_overwrite_fields(rule_type)) {
-    if (field === "dst" || field === "info") {
-      const next_value = read_text(other, field);
-      if (read_text(base, field) !== next_value) {
-        base[field] = next_value;
-      }
-      continue;
-    }
-
-    const next_value = read_flag(other, field);
-    if (read_flag(base, field) !== next_value) {
+    const next_value = read_text(other, field);
+    if (read_text(base, field) !== next_value) {
       base[field] = next_value;
     }
   }
@@ -261,37 +216,17 @@ function build_duplicate_key_groups(args: {
   existing: JsonRecord[];
   incoming: JsonRecord[];
 }): DuplicateKeyGroup[] {
-  const existing_items = ingest_import_rows(args.existing, { order_offset: 0 });
-  const incoming_items = ingest_import_rows(args.incoming, { order_offset: 0 });
-  const groups_by_fold = group_import_items_by_fold([...existing_items, ...incoming_items]);
-
-  const groups: DuplicateKeyGroup[] = [];
-  for (const [src_fold, folded_items] of groups_by_fold) {
-    // 同折叠组内只要存在大小写不敏感规则，就整体按 fold key 判重
-    const fold_only = should_use_fold_only_key(args.rule_type, folded_items);
-    if (fold_only) {
-      groups.push({
-        key: src_fold,
-        existing_items: existing_items.filter((item) => item.src_fold === src_fold),
-        incoming_items: incoming_items.filter((item) => item.src_fold === src_fold),
-      });
-      continue;
-    }
-
-    const norm_values = new Set(folded_items.map((item) => item.src_norm));
-    for (const src_norm of norm_values) {
-      groups.push({
-        key: build_norm_key(src_fold, src_norm),
-        existing_items: existing_items.filter((item) => {
-          return item.src_fold === src_fold && item.src_norm === src_norm;
-        }),
-        incoming_items: incoming_items.filter((item) => {
-          return item.src_fold === src_fold && item.src_norm === src_norm;
-        }),
-      });
-    }
-  }
-  return groups;
+  const existing_items = ingest_import_rows(args.rule_type, args.existing, { order_offset: 0 });
+  const incoming_items = ingest_import_rows(args.rule_type, args.incoming, { order_offset: 0 });
+  const existing_by_identity = group_import_items_by_identity(existing_items);
+  const incoming_by_identity = group_import_items_by_identity(incoming_items);
+  return [...new Set([...existing_by_identity.keys(), ...incoming_by_identity.keys()])].map(
+    (identity) => ({
+      key: identity,
+      existing_items: existing_by_identity.get(identity) ?? [],
+      incoming_items: incoming_by_identity.get(identity) ?? [],
+    }),
+  );
 }
 
 function collect_duplicate_entries(
@@ -335,20 +270,8 @@ function classify_duplicate_kind(
   return "different-target";
 }
 
-function should_use_fold_only_key(
-  rule_type: QualityRuleImportRuleType,
-  items: Array<{ case_sensitive: boolean }>,
-): boolean {
-  return rule_type === "TEXT_PRESERVE" || items.some((item) => !item.case_sensitive);
-}
-
 function normalize_quality_rule_import_src(src: unknown): string {
   return typeof src === "string" ? src.trim() : "";
-}
-
-function fold_quality_rule_import_src(src_norm: string): string {
-  // JavaScript 没有 Python str.casefold，显式补齐常见大小写折叠差异，避免规则 key 因 ß 变体分裂
-  return src_norm.replaceAll("ẞ", "ss").replaceAll("ß", "ss").toLocaleLowerCase();
 }
 
 function normalize_quality_rule_import_entry(entry: JsonRecord): JsonRecord {
@@ -366,8 +289,8 @@ function get_overwrite_fields(rule_type: QualityRuleImportRuleType) {
   return rule_type === "TEXT_PRESERVE"
     ? (["info"] as const)
     : rule_type === "GLOSSARY"
-      ? (["dst", "info", "case_sensitive"] as const)
-      : (["dst", "regex", "case_sensitive"] as const);
+      ? (["dst", "info"] as const)
+      : (["dst"] as const);
 }
 
 function read_target_text(rule_type: QualityRuleImportRuleType, entry: JsonRecord): string {
@@ -375,16 +298,20 @@ function read_target_text(rule_type: QualityRuleImportRuleType, entry: JsonRecor
   return String(entry[field] ?? "").trim();
 }
 
-function build_norm_key(src_fold: string, src_norm: string): string {
-  return `${src_fold}::${src_norm}`;
-}
-
 function read_text(record: JsonRecord, field: string): string {
   return String(record[field] ?? "").trim();
 }
 
-function read_flag(record: JsonRecord, field: string): boolean {
-  return Boolean(record[field] ?? false);
+function build_pattern_identity(rule_type: QualityRuleImportRuleType, entry: JsonRecord): string {
+  const src = read_text(entry, "src");
+  if (rule_type === "TEXT_PRESERVE") return JSON.stringify(["regex", false, src]);
+  const regex = rule_type !== "GLOSSARY" && Boolean(entry["regex"]);
+  const case_sensitive = Boolean(entry["case_sensitive"]);
+  return JSON.stringify([
+    regex ? "regex" : "literal",
+    case_sensitive,
+    regex ? src : normalize_literal_text(src, case_sensitive),
+  ]);
 }
 
 function is_record(value: unknown): value is JsonRecord {
