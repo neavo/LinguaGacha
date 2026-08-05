@@ -58,8 +58,12 @@ describe("run_compute_worker_task", () => {
           post_replacement: { entries: [], enabled: true, mode: "custom", revision: 0 },
           text_preserve: { entries: [], enabled: true, mode: "smart", revision: 0 },
         },
-        sourceLanguage: "JA",
-        targetLanguage: "ZH",
+        processingConfig: {
+          source_language: "JA",
+          target_language: "ZH",
+          clean_ruby: false,
+          auto_process_prefix_suffix_preserved_text: true,
+        },
       },
     });
 

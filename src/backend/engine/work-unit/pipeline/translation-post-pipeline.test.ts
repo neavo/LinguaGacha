@@ -35,16 +35,21 @@ describe("TranslationPostPipeline", () => {
   });
 
   it("译后保留空行、纯空白行和未进入模型的行", () => {
-    const { pre, post } = create_pipeline_pair(create_config(), create_quality_snapshot());
+    const { pre, post } = create_pipeline_pair(
+      create_config({ auto_process_prefix_suffix_preserved_text: false }),
+      create_quality_snapshot({
+        text_preserve_mode: "CUSTOM",
+        text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
+      }),
+    );
     const context = pre.process_item({
-      src: "line\n \nskip",
+      src: "line\n \n<skip>",
       text_type: "TXT",
     });
-    context.valid_line_indexes.delete(2);
 
     const result = process_text(post, context, ["ok"]);
 
-    expect(result).toBe("ok\n \nskip");
+    expect(result).toBe("ok\n \n<skip>");
   });
 
   it("译后会移除模型额外添加的头尾空白再恢复原始空白", () => {
@@ -190,6 +195,38 @@ describe("TranslationPostPipeline", () => {
     const context = pre.process_item({ src: "A<1>①", text_type: "TXT" });
 
     expect(process_text(post, context, ["B<x><1>1"])).toBe("B<1>①");
+  });
+
+  it("代码修复以实际模型源文为准，保留译前替换生成的保护码", () => {
+    const { pre, post } = create_pipeline_pair(
+      create_config(),
+      create_quality_snapshot({
+        text_preserve_mode: "CUSTOM",
+        text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
+        pre_replacement_enable: true,
+        pre_replacement_entries: [
+          { src: "one", dst: "<Q>one", regex: false, case_sensitive: true },
+        ],
+      }),
+    );
+    const context = pre.process_item({ src: "one", text_type: "TXT" });
+
+    expect(process_text(post, context, ["<Q>一"])).toBe("<Q>一");
+  });
+
+  it("只有代码修复改用模型源文，其余 fixer 仍读取原始源行", () => {
+    const { pre, post } = create_pipeline_pair(
+      create_config(),
+      create_quality_snapshot({
+        text_preserve_mode: "CUSTOM",
+        text_preserve_entries: [{ src: "<[^>]+>", info: "" }],
+        pre_replacement_enable: true,
+        pre_replacement_entries: [{ src: "①", dst: "<Q>1", regex: false, case_sensitive: true }],
+      }),
+    );
+    const context = pre.process_item({ src: "①", text_type: "TXT" });
+
+    expect(process_text(post, context, ["<Q>1"])).toBe("<Q>①");
   });
 
   it("按源语言选择日文、韩文或无语言残留修复", () => {

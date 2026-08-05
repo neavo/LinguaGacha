@@ -56,22 +56,14 @@ export class TranslationPostPipeline {
     }
     const dst_queue = decoded_lines.map((line) => line.text_dst);
     const results: string[] = [];
-    for (const [line_index, src] of context.source_text.split("\n").entries()) {
-      let dst: string;
-      if (src === "") {
-        dst = "";
-      } else if (src.trim() === "" || !context.valid_line_indexes.has(line_index)) {
-        dst = src;
-      } else {
+    for (const prepared_line of context.prepared_lines) {
+      let dst = prepared_line.raw_text;
+      if (prepared_line.state === "translatable") {
         dst = (dst_queue.shift() ?? "").trim();
-        dst = this.auto_fix(context, src, dst);
+        dst = this.auto_fix(context, prepared_line.raw_text, prepared_line.model_text, dst);
         dst = this.replace_post_translation(dst);
-        const prefix_codes = context.prefix_codes_by_line.get(line_index) ?? [];
-        const suffix_codes = context.suffix_codes_by_line.get(line_index) ?? [];
-        dst = `${prefix_codes.join("")}${dst}${suffix_codes.join("")}`;
-        dst = `${context.leading_whitespace_by_line.get(line_index) ?? ""}${dst}${
-          context.trailing_whitespace_by_line.get(line_index) ?? ""
-        }`;
+        dst = `${prepared_line.prefix_segments.join("")}${dst}${prepared_line.suffix_segments.join("")}`;
+        dst = `${prepared_line.leading_whitespace}${dst}${prepared_line.trailing_whitespace}`;
       }
       results.push(dst);
     }
@@ -111,19 +103,24 @@ export class TranslationPostPipeline {
   /**
    * 自动修复顺序必须保持：语言残留、代码、转义、数字、标点
    */
-  private auto_fix(context: TranslationPrePipelineContext, src: string, dst: string): string {
+  private auto_fix(
+    context: TranslationPrePipelineContext,
+    raw_src: string,
+    model_src: string,
+    dst: string,
+  ): string {
     let result = dst;
     if (this.config.source_language === "JA") {
       result = KanaFixer.fix(result);
     } else if (this.config.source_language === "KO") {
       result = HangeulFixer.fix(result);
     }
-    // 代码修复必须复用译前 SAMPLE 规则，否则控制码收集与写回校验会使用两套口径。
-    result = CodeFixer.fix(src, result, context.preserve_rule);
-    result = EscapeFixer.fix(src, result);
-    result = NumberFixer.fix(src, result);
+    // 只有代码修复读取实际模型源文；其余 fixer 保持读取原始源行的既定语义。
+    result = CodeFixer.fix(model_src, result, context.preserve_rule);
+    result = EscapeFixer.fix(raw_src, result);
+    result = NumberFixer.fix(raw_src, result);
     result = PunctuationFixer.fix(
-      src,
+      raw_src,
       result,
       this.config.source_language,
       this.config.target_language,

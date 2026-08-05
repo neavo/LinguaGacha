@@ -30,6 +30,7 @@ import { InternalInvariantError } from "../error";
 import type { ProjectChangeItemFieldPatch } from "../project-event";
 import { apply_project_item_field_patch } from "../project/project-item-field-patch";
 import type { TextPreserveRule } from "../text/text-preserve-rules";
+import type { TextProcessingConfig } from "../text/text-types";
 import { create_text_keyword_matcher, type TextKeywordMatcher } from "../text/text-pattern";
 import type { ProofreadingSortState } from "./list";
 import {
@@ -49,15 +50,14 @@ type ProofreadingRevisions = {
   proofreading: number;
 };
 
-// 全量同步输入包含项目分段 revision、质量规则快照和当前源/目标语言
+// 全量同步输入包含项目分段 revision、质量规则快照和完整文本处理配置。
 export type ProofreadingSyncInput = {
   projectId: string;
   revisions: ProofreadingRevisions;
   total_item_count: number;
   upsertItems: ProofreadingItemRecord[];
   quality: QualitySnapshot;
-  sourceLanguage: string;
-  targetLanguage: string;
+  processingConfig: TextProcessingConfig;
 };
 
 export type ProofreadingEvaluatedSlice = {
@@ -66,6 +66,7 @@ export type ProofreadingEvaluatedSlice = {
   total_item_count: number;
   sourceLanguage: string;
   targetLanguage: string;
+  processingConfig: TextProcessingConfig;
   rawItems: ProofreadingItemRecord[];
   evaluatedItems: ProofreadingClientItem[];
 };
@@ -78,11 +79,10 @@ type ProofreadingEvaluatedSyncInput = {
   rawItems: ProofreadingItemRecord[];
   evaluatedItems: ProofreadingClientItem[];
   quality: QualitySnapshot;
-  sourceLanguage: string;
-  targetLanguage: string;
+  processingConfig: TextProcessingConfig;
 };
 
-// 增量输入只携带变化 item，质量规则和源语言沿用已同步状态
+// 增量输入只携带变化 item，质量规则和文本处理配置沿用已同步状态。
 type ProofreadingDeltaInput = {
   projectId: string;
   revisions: ProofreadingRevisions;
@@ -182,8 +182,7 @@ type ProofreadingReaderState = {
   revisions: ProofreadingRevisions;
   total_item_count: number;
   quality: QualitySnapshot;
-  sourceLanguage: string;
-  targetLanguage: string;
+  processingConfig: TextProcessingConfig;
   quality_context: ProofreadingEvaluationContext;
   sample_rule_cache: Map<string, TextPreserveRule | null>;
   raw_item_by_id: Map<string, ProofreadingItemRecord>;
@@ -699,8 +698,7 @@ function upsert_runtime_item_in_state(
     item: normalized_item,
     quality_context: state.quality_context,
     quality: state.quality,
-    sourceLanguage: state.sourceLanguage,
-    targetLanguage: state.targetLanguage,
+    processingConfig: state.processingConfig,
     sample_rule_cache: state.sample_rule_cache,
   });
   state.evaluated_item_by_id.set(item_key, next_evaluated_item);
@@ -784,8 +782,8 @@ function build_revision_signature(revisions: ProofreadingRevisions): string {
 function build_sync_state(state: ProofreadingReaderState): ProofreadingSyncState {
   return {
     projectId: state.projectId,
-    sourceLanguage: state.sourceLanguage,
-    targetLanguage: state.targetLanguage,
+    sourceLanguage: state.processingConfig.source_language,
+    targetLanguage: state.processingConfig.target_language,
     revisions: { ...state.revisions },
     defaultFilters: clone_proofreading_filter_options(state.defaultFilters),
   };
@@ -879,8 +877,7 @@ export function evaluateProofreadingSlice(
       item: normalized_item,
       quality_context,
       quality: input.quality,
-      sourceLanguage: input.sourceLanguage,
-      targetLanguage: input.targetLanguage,
+      processingConfig: input.processingConfig,
       sample_rule_cache,
     });
     evaluatedItems.push(evaluated_item);
@@ -890,8 +887,9 @@ export function evaluateProofreadingSlice(
     projectId: input.projectId,
     revisions: { ...input.revisions },
     total_item_count: input.total_item_count,
-    sourceLanguage: input.sourceLanguage,
-    targetLanguage: input.targetLanguage,
+    sourceLanguage: input.processingConfig.source_language,
+    targetLanguage: input.processingConfig.target_language,
+    processingConfig: { ...input.processingConfig },
     rawItems,
     evaluatedItems,
   };
@@ -908,8 +906,7 @@ function create_run_state_from_evaluated(
     revisions: { ...input.revisions },
     total_item_count: input.total_item_count,
     quality: input.quality,
-    sourceLanguage: input.sourceLanguage,
-    targetLanguage: input.targetLanguage,
+    processingConfig: { ...input.processingConfig },
     quality_context: buildProofreadingEvaluationContext(input.quality),
     sample_rule_cache: new Map<string, TextPreserveRule | null>(),
     raw_item_by_id: new Map(),

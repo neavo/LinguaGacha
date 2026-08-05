@@ -97,6 +97,7 @@ describe("共享术语领域规则", () => {
       read_item_source_text_parts({ src: "HP MP", name_src: "Alice" }),
     );
     const applications = evaluate_glossary_applications(
+      compile_glossary(entries),
       matches,
       read_item_translation_text_parts({ dst: "生命值 爱丽丝", name_dst: "未翻译" }),
     );
@@ -116,6 +117,54 @@ describe("共享术语领域规则", () => {
       },
     ]);
     expect(resolve_glossary_application_state(applications)).toBe("partial");
+  });
+
+  it("目标字段复用字面量 matcher 的 Unicode 与大小写语义", () => {
+    const compiled = compile_glossary([
+      { entry_id: "wide", src: "JK", dst: "JK", info: "", case_sensitive: true },
+      { entry_id: "folded", src: "HP", dst: "HP", info: "", case_sensitive: false },
+    ]);
+    const matches = match_glossary_source(
+      compiled,
+      read_item_source_text_parts({ src: "ＪＫ hp" }),
+    );
+
+    expect(
+      evaluate_glossary_applications(
+        compiled,
+        matches,
+        read_item_translation_text_parts({ dst: "ＪＫ ｈｐ" }),
+      ).map(({ entry_id, fields }) => ({ entry_id, applied: fields[0]?.applied })),
+    ).toEqual([
+      { entry_id: "wide", applied: true },
+      { entry_id: "folded", applied: true },
+    ]);
+    expect(
+      evaluate_glossary_applications(
+        compiled,
+        matches,
+        read_item_translation_text_parts({ dst: "ｊｋ ｈｐ" }),
+      ).map(({ entry_id, fields }) => ({ entry_id, applied: fields[0]?.applied })),
+    ).toEqual([
+      { entry_id: "wide", applied: false },
+      { entry_id: "folded", applied: true },
+    ]);
+  });
+
+  it("相同目标文本的多个术语保持独立应用身份", () => {
+    const compiled = compile_glossary([
+      { entry_id: "first", src: "A", dst: "X", info: "", case_sensitive: true },
+      { entry_id: "second", src: "B", dst: "X", info: "", case_sensitive: true },
+    ]);
+    const matches = match_glossary_source(compiled, read_item_source_text_parts({ src: "A B" }));
+
+    expect(
+      evaluate_glossary_applications(
+        compiled,
+        matches,
+        read_item_translation_text_parts({ dst: "X" }),
+      ).map((application) => application.entry_id),
+    ).toEqual(["first", "second"]);
   });
 
   it("不跨字段拼接，也不读取全局开关", () => {

@@ -957,7 +957,7 @@ describe("useTextReplacementPageState", () => {
     expect(latest_state?.filtered_entries.map((entry) => entry.entry.src)).toEqual(["hero"]);
   });
 
-  it("预设重复替换规则选择覆盖时会保存新规则", async () => {
+  it("预设导入保留相同 src 的 literal 与 regex 两种执行身份", async () => {
     await mount_probe();
     api_fetch_mock
       .mockResolvedValueOnce({
@@ -976,6 +976,13 @@ describe("useTextReplacementPageState", () => {
             [
               {
                 entry_id: "hero::0",
+                src: "hero",
+                dst: "勇者",
+                regex: false,
+                case_sensitive: false,
+              },
+              {
+                entry_id: "hero::1",
                 src: "hero",
                 dst: "",
                 regex: true,
@@ -1001,6 +1008,13 @@ describe("useTextReplacementPageState", () => {
       entries: [
         {
           entry_id: "hero::0",
+          src: "hero",
+          dst: "勇者",
+          regex: false,
+          case_sensitive: false,
+        },
+        {
+          entry_id: "hero::1",
           src: "hero",
           dst: "",
           regex: true,

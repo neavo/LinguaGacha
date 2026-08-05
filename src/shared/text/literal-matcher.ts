@@ -30,7 +30,7 @@ type AhoMatcher = {
   pattern_lengths: number[];
 };
 
-type FoldedText = {
+type NormalizedText = {
   text: string;
   starts: number[];
   ends: number[];
@@ -38,14 +38,12 @@ type FoldedText = {
 
 const GRAPHEME_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
-/** 全仓大小写不敏感字面量匹配的唯一折叠规则。 */
-export function fold_literal_text(text: string): string {
-  return text
-    .normalize("NFKC")
-    .replaceAll("ẞ", "ss")
-    .replaceAll("ß", "ss")
-    .toLowerCase()
-    .replaceAll("ς", "σ");
+/** 全仓字面量匹配的唯一规范化规则；大小写标志只控制 casefold。 */
+export function normalize_literal_text(text: string, case_sensitive: boolean): string {
+  const normalized = text.normalize("NFKC");
+  return case_sensitive
+    ? normalized
+    : normalized.replaceAll("ẞ", "ss").replaceAll("ß", "ss").toLowerCase().replaceAll("ς", "σ");
 }
 
 /** 编译大小写敏感与不敏感字面量；空文本跳过，重复身份直接拒绝。 */
@@ -65,10 +63,14 @@ export function compile_literal_patterns(patterns: LiteralPattern[]): LiteralMat
     (pattern.case_sensitive ? sensitive_indexes : insensitive_indexes).push(index);
   });
   const sensitive_matcher = build_aho_matcher(
-    sensitive_indexes.map((index) => active_patterns[index]?.text ?? ""),
+    sensitive_indexes.map((index) =>
+      normalize_literal_text(active_patterns[index]?.text ?? "", true),
+    ),
   );
   const insensitive_matcher = build_aho_matcher(
-    insensitive_indexes.map((index) => fold_literal_text(active_patterns[index]?.text ?? "")),
+    insensitive_indexes.map((index) =>
+      normalize_literal_text(active_patterns[index]?.text ?? "", false),
+    ),
   );
 
   return {
@@ -78,7 +80,7 @@ export function compile_literal_patterns(patterns: LiteralPattern[]): LiteralMat
       if (sensitive_matcher !== null) {
         collect_matches(
           sensitive_matcher,
-          { text, starts: [], ends: [] },
+          normalize_text_with_source_ranges(text, true),
           sensitive_indexes,
           ranges_by_pattern,
         );
@@ -86,7 +88,7 @@ export function compile_literal_patterns(patterns: LiteralPattern[]): LiteralMat
       if (insensitive_matcher !== null) {
         collect_matches(
           insensitive_matcher,
-          fold_text_with_source_ranges(text),
+          normalize_text_with_source_ranges(text, false),
           insensitive_indexes,
           ranges_by_pattern,
         );
@@ -141,10 +143,10 @@ function build_aho_matcher(patterns: string[]): AhoMatcher | null {
   return { nodes, pattern_lengths: patterns.map((pattern) => pattern.length) };
 }
 
-/** 将折叠坐标回写到原文 UTF-16 范围；同一 grapheme 展开产生的相同范围只保留一次。 */
+/** 将规范化坐标回写到原文 UTF-16 范围；同一 grapheme 展开产生的相同范围只保留一次。 */
 function collect_matches(
   matcher: AhoMatcher,
-  input: FoldedText,
+  input: NormalizedText,
   bucket_indexes: number[],
   ranges_by_pattern: TextRange[][],
 ): void {
@@ -174,20 +176,20 @@ function collect_matches(
   }
 }
 
-/** 折叠每个 grapheme，并保存折叠 UTF-16 坐标到原文 UTF-16 范围的映射。 */
-function fold_text_with_source_ranges(text: string): FoldedText {
-  let folded = "";
+/** 规范化每个 grapheme，并保存规范化 UTF-16 坐标到原文 UTF-16 范围的映射。 */
+function normalize_text_with_source_ranges(text: string, case_sensitive: boolean): NormalizedText {
+  let normalized = "";
   const starts: number[] = [];
   const ends: number[] = [];
   for (const segment of GRAPHEME_SEGMENTER.segment(text)) {
     const start = segment.index;
     const end = start + segment.segment.length;
-    const value = fold_literal_text(segment.segment);
-    folded += value;
+    const value = normalize_literal_text(segment.segment, case_sensitive);
+    normalized += value;
     for (let index = 0; index < value.length; index += 1) {
       starts.push(start);
       ends.push(end);
     }
   }
-  return { text: folded, starts, ends };
+  return { text: normalized, starts, ends };
 }

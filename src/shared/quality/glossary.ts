@@ -36,7 +36,8 @@ export type GlossaryApplication = {
 
 export type CompiledGlossary = {
   readonly entries: readonly ResolvedGlossaryEntry[]; // 保持输入顺序的规范术语
-  readonly matcher: LiteralMatcher; // 以 entry_id 输出命中的共享字面量匹配器
+  readonly source_matcher: LiteralMatcher; // 以 entry_id 输出源文字段命中
+  readonly target_matcher: LiteralMatcher; // 以 entry_id 输出非空目标字段命中
 };
 
 /** 为旧规则补稳定身份，并丢弃无法参与匹配的空源文。 */
@@ -51,12 +52,19 @@ export function compile_glossary(entries: readonly GlossaryEntry[]): CompiledGlo
   const resolved_entries = resolve_glossary_entries(entries);
   return {
     entries: resolved_entries,
-    matcher: compile_literal_patterns(
+    source_matcher: compile_literal_patterns(
       resolved_entries.map((entry) => ({
         key: entry.entry_id,
         text: entry.src,
         case_sensitive: entry.case_sensitive,
       })),
+    ),
+    target_matcher: compile_literal_patterns(
+      resolved_entries.flatMap((entry) =>
+        entry.dst.trim() === ""
+          ? []
+          : [{ key: entry.entry_id, text: entry.dst, case_sensitive: entry.case_sensitive }],
+      ),
     ),
   };
 }
@@ -70,7 +78,7 @@ export function match_glossary_source(
   for (const part of source_parts) {
     if (part.field !== "src" && part.field !== "name_src") continue;
     const target_field = part.field === "src" ? "dst" : "name_dst";
-    for (const match of compiled.matcher.match(part.text)) {
+    for (const match of compiled.source_matcher.match(part.text)) {
       const fields = fields_by_entry_id.get(match.key) ?? [];
       fields.push({ source_field: part.field, target_field, ranges: match.ranges });
       fields_by_entry_id.set(match.key, fields);
@@ -84,10 +92,18 @@ export function match_glossary_source(
 
 /** 按源文字段逐一确认目标译文字段是否包含术语译文。 */
 export function evaluate_glossary_applications(
+  compiled: CompiledGlossary,
   source_matches: readonly GlossarySourceMatch[],
   translation_parts: readonly ItemTextPart[],
 ): GlossaryApplication[] {
-  const translation_by_field = new Map(translation_parts.map((part) => [part.field, part.text]));
+  const matched_ids_by_field = new Map<GlossaryTargetField, Set<string>>();
+  for (const part of translation_parts) {
+    if (part.field !== "dst" && part.field !== "name_dst") continue;
+    matched_ids_by_field.set(
+      part.field,
+      new Set(compiled.target_matcher.match(part.text).map((match) => match.key)),
+    );
+  }
   return source_matches.flatMap(({ entry, fields }) => {
     if (entry.dst.trim() === "") return [];
     return [
@@ -99,7 +115,7 @@ export function evaluate_glossary_applications(
         fields: fields.map(({ source_field, target_field }) => ({
           source_field,
           target_field,
-          applied: (translation_by_field.get(target_field) ?? "").includes(entry.dst),
+          applied: matched_ids_by_field.get(target_field)?.has(entry.entry_id) ?? false,
         })),
       },
     ];

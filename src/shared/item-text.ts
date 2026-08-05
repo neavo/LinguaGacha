@@ -9,6 +9,13 @@ export type ItemTextPart = {
 
 export type ItemTextGroup = ItemTextPart[];
 
+/** 保持字段边界，把每个字段拆成独立行；空行仍是可观察文本单元。 */
+export function split_item_text_parts_by_line(parts: readonly ItemTextPart[]): ItemTextGroup {
+  return parts.flatMap((part) =>
+    part.text.split("\n").map((text) => ({ field: part.field, text })),
+  );
+}
+
 type ItemTextRecord = {
   src?: unknown;
   dst?: unknown;

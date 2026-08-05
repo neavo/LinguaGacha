@@ -30,8 +30,9 @@ import type { ProofreadingListWindow } from "../../shared/proofreading/proofread
 import type { QualitySlice, QualitySnapshot } from "../../shared/quality/quality-rule-snapshot";
 import type { ProjectDataSectionRevisions } from "../../shared/project-event";
 import type { CacheChange } from "./cache-change";
+import type { TextProcessingConfig } from "../../shared/text/text-types";
 
-const PROOFREADING_CACHE_VERSION = 1;
+const PROOFREADING_CACHE_VERSION = 2;
 
 export type ProofreadingCacheKey = {
   projectPath: string;
@@ -42,8 +43,7 @@ export type ProofreadingCacheKey = {
     quality: number;
     proofreading: number;
   };
-  sourceLanguage: string;
-  targetLanguage: string;
+  processingConfig: TextProcessingConfig;
   cacheVersion: number;
 };
 
@@ -54,7 +54,7 @@ export type ProofreadingCacheResult<TData> = {
 };
 
 /**
- * 按工程、会话 epoch、依赖 revision 和语言缓存校对评估运行态。
+ * 按工程、会话 epoch、依赖 revision 和完整文本处理配置缓存校对评估运行态。
  */
 export class ProofreadingCache {
   private readonly cache: CacheReadPort; // 完整同步输入只来自当前会话缓存快照
@@ -304,7 +304,7 @@ export class ProofreadingCache {
   }
 
   /**
-   * 用会话身份、依赖 revision、语言和版本构造同步 key 与完整 worker 输入。
+   * 用会话身份、依赖 revision、文本处理配置和版本构造同步 key 与完整 worker 输入。
    */
   private build_identity(input: { sourceLanguage?: JsonValue; targetLanguage?: JsonValue }): {
     key: ProofreadingCacheKey;
@@ -318,8 +318,12 @@ export class ProofreadingCache {
       throw new AppErrors.ProjectNotLoadedError();
     }
     const settings = normalize_setting_snapshot(this.app_setting_service.read_setting());
-    const sourceLanguage = String(input.sourceLanguage ?? settings.source_language);
-    const targetLanguage = String(input.targetLanguage ?? settings.target_language);
+    const processingConfig: TextProcessingConfig = {
+      source_language: String(input.sourceLanguage ?? settings.source_language),
+      target_language: String(input.targetLanguage ?? settings.target_language),
+      clean_ruby: settings.clean_ruby,
+      auto_process_prefix_suffix_preserved_text: settings.auto_process_prefix_suffix_preserved_text,
+    };
     const revisions = {
       files: Number(sectionRevisions.files ?? 0),
       items: Number(sectionRevisions.items ?? 0),
@@ -330,8 +334,7 @@ export class ProofreadingCache {
       projectPath: snapshot.projectPath,
       sessionEpoch: snapshot.epoch,
       revisions,
-      sourceLanguage,
-      targetLanguage,
+      processingConfig,
       cacheVersion: PROOFREADING_CACHE_VERSION,
     };
     const items = this.build_items();
@@ -345,8 +348,7 @@ export class ProofreadingCache {
         total_item_count: items.length,
         upsertItems: items,
         quality: this.normalize_quality_state(this.cache.quality.readBlock()),
-        sourceLanguage,
-        targetLanguage,
+        processingConfig,
       },
     };
   }

@@ -6,6 +6,7 @@ import {
   evaluateProofreadingItem,
 } from "./proofreading-evaluator";
 import type { ItemNameField } from "../../domain/item";
+import type { TextProcessingConfig } from "../text/text-types";
 
 function create_quality(overrides: Partial<QualitySnapshot> = {}): QualitySnapshot {
   return {
@@ -26,6 +27,7 @@ function evaluate(args: {
   quality?: QualitySnapshot;
   name_src?: ItemNameField;
   name_dst?: ItemNameField;
+  processingConfig?: Partial<TextProcessingConfig>;
 }) {
   const quality = args.quality ?? create_quality();
   return evaluateProofreadingItem({
@@ -44,8 +46,13 @@ function evaluate(args: {
     },
     quality,
     quality_context: buildProofreadingEvaluationContext(quality),
-    sourceLanguage: args.sourceLanguage,
-    targetLanguage: args.targetLanguage ?? "ZH",
+    processingConfig: {
+      source_language: args.sourceLanguage,
+      target_language: args.targetLanguage ?? "ZH",
+      clean_ruby: false,
+      auto_process_prefix_suffix_preserved_text: true,
+      ...args.processingConfig,
+    },
     sample_rule_cache: new Map(),
   });
 }
@@ -217,6 +224,54 @@ describe("proofreading-evaluator", () => {
     expect(
       evaluate({ src: '"source', dst: "「译文", sourceLanguage: "EN", quality: post_quality })
         ?.warnings,
+    ).not.toContain("TEXT_PRESERVE");
+  });
+
+  it("文本保护按行精确比较原始片段", () => {
+    const quality = create_quality({
+      text_preserve: {
+        enabled: true,
+        mode: "custom",
+        revision: 1,
+        entries: [{ src: "<[^>]+>" }, { src: "A\\nB" }],
+      },
+    });
+
+    expect(
+      evaluate({ src: "A\nB", dst: "A\nX", sourceLanguage: "EN", quality })?.warnings,
+    ).not.toContain("TEXT_PRESERVE");
+    const whitespace = evaluate({
+      src: "source <A B>",
+      dst: "译文 <AB>",
+      sourceLanguage: "EN",
+      quality,
+    });
+    expect(whitespace?.warnings).toContain("TEXT_PRESERVE");
+    expect(whitespace?.warning_fragments_by_code.TEXT_PRESERVE).toEqual(["<A B>", "<AB>"]);
+
+    expect(
+      evaluate({ src: "<A>\ntext", dst: "text\n<A>", sourceLanguage: "EN", quality })?.warnings,
+    ).toContain("TEXT_PRESERVE");
+  });
+
+  it("校对复用翻译的保护前缀优先顺序", () => {
+    const quality = create_quality({
+      pre_replacement: {
+        enabled: true,
+        mode: "custom",
+        revision: 1,
+        entries: [{ src: "<A>", dst: "<X>", regex: false, case_sensitive: true }],
+      },
+      text_preserve: {
+        enabled: true,
+        mode: "custom",
+        revision: 1,
+        entries: [{ src: "<[^>]+>" }],
+      },
+    });
+
+    expect(
+      evaluate({ src: "<A>hello", dst: "<A>你好", sourceLanguage: "EN", quality })?.warnings,
     ).not.toContain("TEXT_PRESERVE");
   });
 });

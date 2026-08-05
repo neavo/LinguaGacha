@@ -41,7 +41,7 @@ describe("preview_quality_rule_import", () => {
       {
         incoming_index: 0,
         existing_indexes: [0],
-        key: "艾琳",
+        key: JSON.stringify(["literal", false, "艾琳"]),
         kind: "different-target",
       },
     ]);
@@ -82,7 +82,7 @@ describe("preview_quality_rule_import", () => {
     });
   });
 
-  it("同折叠组出现大小写不敏感规则时统一按大小写无关判重", () => {
+  it("大小写策略不同的字面量保持独立身份", () => {
     const preview = preview_quality_rule_import({
       rule_type: QualityRuleImportRuleTypeValue.PRE_REPLACEMENT,
       existing: [{ src: "Name", dst: "A", regex: false, case_sensitive: true }],
@@ -92,8 +92,8 @@ describe("preview_quality_rule_import", () => {
       ],
     });
 
-    expect(preview.duplicate_count).toBe(2);
-    expect(preview.duplicates.map((duplicate) => duplicate.incoming_index)).toEqual([0, 1]);
+    expect(preview.duplicate_count).toBe(0);
+    expect(preview.overwrite_entries).toHaveLength(3);
   });
 
   it("全部大小写敏感时允许同 fold 下不同 src 并存", () => {
@@ -107,45 +107,59 @@ describe("preview_quality_rule_import", () => {
     expect(preview.overwrite_entries.map((entry) => entry.src)).toEqual(["HP", "hp"]);
   });
 
-  it("大小写敏感与不敏感规则冲突时合并为一条并覆盖行为字段", () => {
+  it("相同 case flag 的半角与全角字面量按执行身份判重", () => {
+    const preview = preview_quality_rule_import({
+      rule_type: QualityRuleImportRuleTypeValue.GLOSSARY,
+      existing: [{ src: "JK", dst: "旧", case_sensitive: true }],
+      incoming: [{ src: "ＪＫ", dst: "新", case_sensitive: true }],
+    });
+
+    expect(preview.duplicate_count).toBe(1);
+    expect(preview.overwrite_entries).toHaveLength(1);
+    expect(preview.overwrite_entries[0]?.dst).toBe("新");
+  });
+
+  it("大小写敏感与不敏感规则不互相覆盖", () => {
     const preview = preview_quality_rule_import({
       rule_type: QualityRuleImportRuleTypeValue.GLOSSARY,
       existing: [{ src: "HP", dst: "生命值", case_sensitive: true }],
       incoming: [{ src: "hp", dst: "血量", case_sensitive: false }],
     });
 
-    expect(preview.duplicate_count).toBe(1);
-    expect(preview.overwrite_entries).toHaveLength(1);
-    expect(String(preview.overwrite_entries[0]?.src).toLowerCase()).toBe("hp");
-    expect(preview.overwrite_entries[0]?.dst).toBe("血量");
-    expect(preview.overwrite_entries[0]?.case_sensitive).toBe(false);
+    expect(preview.duplicate_count).toBe(0);
+    expect(preview.overwrite_entries).toHaveLength(2);
   });
 
-  it("文本替换覆盖 regex 与大小写敏感字段，且 regex 不参与判重 key", () => {
+  it("文本替换的 pattern kind 与大小写标志参与身份", () => {
     const preview = preview_quality_rule_import({
       rule_type: QualityRuleImportRuleTypeValue.POST_REPLACEMENT,
       existing: [{ src: "foo", dst: "bar", regex: false, case_sensitive: false }],
       incoming: [{ src: "foo", dst: "baz", regex: true, case_sensitive: true }],
     });
 
-    expect(preview.duplicate_count).toBe(1);
-    expect(preview.overwrite_entries[0]).toEqual({
-      src: "foo",
-      dst: "baz",
-      info: "",
-      regex: true,
-      case_sensitive: true,
-    });
+    expect(preview.duplicate_count).toBe(0);
+    expect(preview.overwrite_entries).toHaveLength(2);
   });
 
-  it("文本保护不区分大小写判重并使用 info 作为目标字段", () => {
+  it("相同正则源码的不同大小写策略不判重", () => {
+    const preview = preview_quality_rule_import({
+      rule_type: QualityRuleImportRuleTypeValue.PRE_REPLACEMENT,
+      existing: [{ src: "foo", dst: "A", regex: true, case_sensitive: false }],
+      incoming: [{ src: "foo", dst: "B", regex: true, case_sensitive: true }],
+    });
+
+    expect(preview.duplicate_count).toBe(0);
+    expect(preview.overwrite_entries).toHaveLength(2);
+  });
+
+  it("文本保护按原始正则源码判重", () => {
     const preview = preview_quality_rule_import({
       rule_type: QualityRuleImportRuleTypeValue.TEXT_PRESERVE,
       existing: [{ src: "{name}", info: "旧说明" }],
       incoming: [{ src: "{NAME}", info: "新说明" }],
     });
 
-    expect(preview.duplicates[0]?.kind).toBe("different-target");
+    expect(preview.duplicate_count).toBe(0);
     expect(preview.skip_entries[0]).toEqual({
       src: "{name}",
       dst: "",
@@ -153,7 +167,7 @@ describe("preview_quality_rule_import", () => {
       regex: false,
       case_sensitive: false,
     });
-    expect(preview.overwrite_entries[0]).toEqual({
+    expect(preview.overwrite_entries[1]).toEqual({
       src: "{NAME}",
       dst: "",
       info: "新说明",
@@ -201,16 +215,16 @@ describe("preview_quality_rule_import", () => {
 });
 
 describe("collect_quality_rule_duplicate_groups", () => {
-  it("只返回现有规则内部按 GUI key 判定的重复组", () => {
+  it("只返回现有规则内部执行身份完全相同的重复组", () => {
     expect(
       collect_quality_rule_duplicate_groups({
         rule_type: QualityRuleImportRuleTypeValue.GLOSSARY,
         entries: [
           { src: "Alpha", dst: "A", case_sensitive: false },
-          { src: "alpha", dst: "B", case_sensitive: true },
+          { src: "ＡＬＰＨＡ", dst: "B", case_sensitive: false },
           { src: "Beta", dst: "C", case_sensitive: false },
         ],
       }),
-    ).toEqual([{ key: "alpha", indexes: [0, 1] }]);
+    ).toEqual([{ key: JSON.stringify(["literal", false, "alpha"]), indexes: [0, 1] }]);
   });
 });

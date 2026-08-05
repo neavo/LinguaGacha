@@ -25,8 +25,10 @@ describe("TranslationPrePipeline", () => {
     });
 
     expect(line_texts(context)).toEqual(["hello"]);
-    expect(context.leading_whitespace_by_line).toEqual(new Map([[0, "  "]]));
-    expect(context.trailing_whitespace_by_line).toEqual(new Map([[0, "\t "]]));
+    expect(context.prepared_lines[0]).toMatchObject({
+      leading_whitespace: "  ",
+      trailing_whitespace: "\t ",
+    });
   });
 
   it("抽取保护前后缀并记录恢复所需的位置", () => {
@@ -44,8 +46,10 @@ describe("TranslationPrePipeline", () => {
     });
 
     expect(line_texts(context)).toEqual(["こんにちは"]);
-    expect(context.prefix_codes_by_line).toEqual(new Map([[0, ["\\n[1]"]]]));
-    expect(context.suffix_codes_by_line).toEqual(new Map([[0, ["\\n[2]"]]]));
+    expect(context.prepared_lines[0]).toMatchObject({
+      prefix_segments: ["\\n[1]"],
+      suffix_segments: ["\\n[2]"],
+    });
   });
 
   it("启用译前替换时把规则结果送入模型", () => {
@@ -82,7 +86,7 @@ describe("TranslationPrePipeline", () => {
 
     expect(line_texts(context)).toEqual([]);
     expect(context.samples).toEqual([]);
-    expect(context.valid_line_indexes).toEqual(new Set());
+    expect(context.prepared_lines).toEqual([]);
   });
 
   it("跳过空白行并为 Markdown 追加固定控制字符示例", () => {
@@ -99,7 +103,7 @@ describe("TranslationPrePipeline", () => {
     });
 
     expect(line_texts(context)).toEqual(["hello"]);
-    expect(context.valid_line_indexes).toEqual(new Set([1]));
+    expect(context.prepared_lines.map((line) => line.state)).toEqual(["preserved", "translatable"]);
     expect(context.samples).toEqual(["Markdown Code"]);
   });
 
@@ -121,7 +125,7 @@ describe("TranslationPrePipeline", () => {
     });
 
     expect(line_texts(context)).toEqual(["宝條直希"]);
-    expect(context.valid_line_indexes).toEqual(new Set([0]));
+    expect(context.prepared_lines[0]?.state).toBe("translatable");
   });
 
   it("关闭自动前后缀保护时保留原文并跳过完全保护行", () => {
@@ -143,10 +147,12 @@ describe("TranslationPrePipeline", () => {
     });
 
     expect(line_texts(fully_preserved)).toEqual([]);
-    expect(fully_preserved.valid_line_indexes).toEqual(new Set());
+    expect(fully_preserved.prepared_lines[0]?.state).toBe("preserved");
     expect(line_texts(partially_preserved)).toEqual(["<b>hello</b>"]);
-    expect(partially_preserved.prefix_codes_by_line).toEqual(new Map());
-    expect(partially_preserved.suffix_codes_by_line).toEqual(new Map());
+    expect(partially_preserved.prepared_lines[0]).toMatchObject({
+      prefix_segments: [],
+      suffix_segments: [],
+    });
   });
 
   it("保护模式关闭时即使自动前后缀保护关闭也不会跳过整行代码", () => {
@@ -164,7 +170,7 @@ describe("TranslationPrePipeline", () => {
     });
 
     expect(line_texts(context)).toEqual(["<b></b>"]);
-    expect(context.valid_line_indexes).toEqual(new Set([0]));
+    expect(context.prepared_lines[0]?.state).toBe("translatable");
   });
 });
 

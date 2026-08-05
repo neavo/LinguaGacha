@@ -45,9 +45,10 @@ project, files, items, quality, prompts, analysis, proofreading
 - 功能 query 返回其结果依赖的 `sectionRevisions`，用户写入和任务命令以这些 revision 做乐观锁；`projectRevision` 只是所有 section revision 的最大值，不是独立全序或可写锁。
 - `CacheManager` 是当前 session 的热读缓存根；query 只组合 cache、按需数据库读取和 shared 纯规则，不建立第二套项目事实。
 - 所有质量规则消费链统一通过 `QualityRule` 与 `normalize_quality_rule_entries` 收窄，并由真实执行器校验；入口不得另建字段或正则容错。
-- 质量规则执行语义集中在 shared：术语只匹配 `src/name_src` 并检查对应译文字段；替换按顺序正向执行，校对不逆推译后规则；文本保护消费者复用同一规则实现。
+- 质量规则的模式语义集中在 shared：普通字面量始终执行 NFKC，`case_sensitive` 只控制大小写折叠；正则保持 JavaScript 原生语义。术语按独立的 `src/name_src` 字段命中并用同一 matcher 检查对应译文字段，替换与文本保护按字段内逐行执行；导入身份和字面量包含关系复用相同模式语义。
+- 翻译与校对复用共享的逐行源文准备事实，固定 Ruby 清理、空白与保护前后缀提取、译前替换和保护样例收集的顺序；校对不逆推译后规则。校对 worker 与 cache identity 携带完整文本处理配置，增量评估沿用全量同步冻结的配置。
 - 校对 reader 同时维护原始自然顺序和单个 GUI 列表视图：`view_id` 表示稳定结果快照，条目字段增量只刷新旧视图中的行内容，删除 tombstone 从旧视图移除成员，成员与排序只由新的 list query 重算；上下文与按 ID 读取只查询共享评估运行态，不创建或替换该视图。
-- 质量规则统计按 item 去重；译后替换读取译文字段，其余规则读取源字段，不模拟启用态或执行链。`QualityStatisticsCache` 只在能证明影响范围时局部失效，否则全量失效。
+- 质量规则统计表示原始文本中的命中并按 item 去重，不模拟启用态、保护抽取、替换链或模型执行；术语按原始字段统计，译前/译后替换与文本保护按对应字段内逐行统计，模式语义与生产消费者一致。`QualityStatisticsCache` 只在能证明影响范围时局部失效，否则全量失效。
 - 客户端只提交用户意图、设置镜像和 revision 依赖；canonical items、task extras、prefilter 结果和 analysis 结果由后端计算。
 - 需要乐观锁的用户写入在最终提交点完成 revision guard 与单 `.lg` 事务；任务 artifact 等内部写入可以不带预期 revision，但仍通过 `ProjectWriteStore` 更新事实和 section revision。
 - settings-only alignment 只发布内部 committed event，不发布公开 project change；仅持久化任务 progress 的写入走 task snapshot 通道，不制造项目变更事件。

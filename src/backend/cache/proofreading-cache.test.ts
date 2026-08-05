@@ -70,9 +70,16 @@ function create_cache_read_port(options: {
 }
 
 // 固定测试语言设置，避免缓存测试依赖真实 app setting。
-function create_settings(): AppSettingService {
+function create_settings(
+  settings: Record<string, unknown> = {
+    source_language: "JA",
+    target_language: "ZH",
+    clean_ruby: false,
+    auto_process_prefix_suffix_preserved_text: true,
+  },
+): AppSettingService {
   return {
-    read_setting: () => ({ source_language: "JA", target_language: "ZH" }),
+    read_setting: () => settings,
   } as unknown as AppSettingService;
 }
 
@@ -153,8 +160,10 @@ describe("ProofreadingCache", () => {
     expect(worker.run).toHaveBeenCalledTimes(1);
     expect(worker.sync_inputs[0]).toMatchObject({
       projectId: "E:/Project/demo.lg",
-      sourceLanguage: "JA",
-      targetLanguage: "ZH",
+      processingConfig: {
+        source_language: "JA",
+        target_language: "ZH",
+      },
       total_item_count: 1,
     });
     expect(view).toMatchObject({
@@ -223,11 +232,57 @@ describe("ProofreadingCache", () => {
 
     expect(worker.run).toHaveBeenCalledTimes(3);
     expect(
-      worker.sync_inputs.map((input) => [input.revisions.files, input.targetLanguage]),
+      worker.sync_inputs.map((input) => [
+        input.revisions.files,
+        input.processingConfig.target_language,
+      ]),
     ).toEqual([
       [1, "ZH"],
       [2, "ZH"],
       [2, "EN"],
+    ]);
+  });
+
+  it("完整文本处理配置变化会生成新的缓存身份", async () => {
+    const worker = create_worker();
+    const settings = {
+      source_language: "JA",
+      target_language: "ZH",
+      clean_ruby: false,
+      auto_process_prefix_suffix_preserved_text: true,
+    };
+    const cache = new ProofreadingCache({
+      cache: create_cache_read_port({}),
+      appSettingService: create_settings(settings),
+      workerClient: worker,
+      reader: createProofreadingReader(),
+    });
+
+    await cache.sync({});
+    settings.clean_ruby = true;
+    await cache.sync({});
+    settings.auto_process_prefix_suffix_preserved_text = false;
+    await cache.sync({});
+
+    expect(worker.sync_inputs.map((input) => input.processingConfig)).toEqual([
+      {
+        source_language: "JA",
+        target_language: "ZH",
+        clean_ruby: false,
+        auto_process_prefix_suffix_preserved_text: true,
+      },
+      {
+        source_language: "JA",
+        target_language: "ZH",
+        clean_ruby: true,
+        auto_process_prefix_suffix_preserved_text: true,
+      },
+      {
+        source_language: "JA",
+        target_language: "ZH",
+        clean_ruby: true,
+        auto_process_prefix_suffix_preserved_text: false,
+      },
     ]);
   });
 

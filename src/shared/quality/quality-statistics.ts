@@ -1,9 +1,5 @@
 import type { ItemTextGroup } from "../item-text";
-import {
-  compile_literal_patterns,
-  fold_literal_text,
-  type TextRange,
-} from "../text/literal-matcher";
+import { compile_literal_patterns, type TextRange } from "../text/literal-matcher";
 import { compile_text_pattern, matches_text_pattern } from "../text/text-pattern";
 
 const LITERAL_CONTEXT_CHARACTER_PATTERN = /[\p{L}\p{N}]/u;
@@ -18,6 +14,7 @@ export type QualityStatisticsRuleInput = {
 export type QualityStatisticsRelationCandidate = {
   entry_id: string; // 与统计规则共享的结果键
   src: string; // 仅字面量规则参与父子包含关系
+  case_sensitive: boolean; // 包含关系复用该规则真实的大小写策略
 };
 
 type QualityStatisticsDependencyRuleSnapshot = {
@@ -211,36 +208,24 @@ function assign_regex_counts(
 function build_subset_relation_map(
   candidates: QualityStatisticsRelationCandidate[],
 ): Record<string, string[]> {
-  const snapshots = candidates.map((candidate) => ({
-    ...candidate,
-    folded: fold_literal_text(candidate.src),
-  }));
-  const snapshot_by_entry_id = new Map(
-    snapshots.map((snapshot) => [snapshot.entry_id, snapshot] as const),
-  );
   const matcher = compile_literal_patterns(
-    snapshots.map((snapshot) => ({
-      key: snapshot.entry_id,
-      text: snapshot.folded,
-      case_sensitive: true,
+    candidates.map((candidate) => ({
+      key: candidate.entry_id,
+      text: candidate.src,
+      case_sensitive: candidate.case_sensitive,
     })),
   );
   const result: Record<string, string[]> = {};
-  const seen_parent_text = new Set<string>();
-  for (const parent of snapshots) {
-    if (seen_parent_text.has(parent.folded)) continue;
-    seen_parent_text.add(parent.folded);
-    for (const match of matcher.match(parent.folded)) {
-      const child = snapshot_by_entry_id.get(match.key);
-      if (
-        child === undefined ||
-        child.entry_id === parent.entry_id ||
-        child.folded.length >= parent.folded.length
-      ) {
-        continue;
-      }
+  const candidate_by_entry_id = new Map(
+    candidates.map((candidate) => [candidate.entry_id, candidate] as const),
+  );
+  for (const parent of candidates) {
+    for (const match of matcher.match(parent.src)) {
+      const child = candidate_by_entry_id.get(match.key);
+      if (child === undefined || child.entry_id === parent.entry_id) continue;
+      if (!match.ranges.some((range) => range.start > 0 || range.end < parent.src.length)) continue;
       const parents = result[child.entry_id] ?? [];
-      parents.push(parent.src);
+      if (!parents.includes(parent.src)) parents.push(parent.src);
       result[child.entry_id] = parents;
     }
   }

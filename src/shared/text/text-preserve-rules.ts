@@ -303,20 +303,12 @@ export function build_text_preserve_rule(args: {
   return new TextPreserveRule(definitions);
 }
 
-const BLANK_PATTERN = /\s+/gu;
-
 /**
- * 统一提取并归一化非空保护段，供响应检查和迁移对拍复用
+ * 统一提取非空保护段，保留原始空白供精确比较。
  */
 export function collect_non_blank_text_preserve_segments(
   text: string,
   rule: TextPreserveRule,
 ): string[] {
-  return rule.collect(text).flatMap((match) => {
-    const segment = match.replace(BLANK_PATTERN, "");
-    if (segment !== "") {
-      return [segment];
-    }
-    return [];
-  });
+  return rule.collect(text).filter((segment) => segment.trim() !== "");
 }
