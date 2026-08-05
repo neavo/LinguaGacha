@@ -35,7 +35,7 @@
 - 页面写入只提交用户意图、设置镜像、显式 operation 与 query 返回的 revision，不提交前端计算出的 canonical facts。
 - `SCREEN_REGISTRY` 是页面注册与标题 key 的唯一入口。
 - Agent、工作台与校对可在未加载工程时发起项目选择，并在 session ready 后恢复 pending route；其它项目功能页在工程未加载或 session 未 ready 时禁用。
-- 跨页面模型选择由 `features/model-selection` 归一协议并持有页面生命周期 query / command；模型数据不进入 `DesktopStateProvider`，也不通过 SSE 同步，但选择和配置写入消费共享 runtime 锁。
+- 跨页面模型选择与所选模型思考配置由 `features/model-selection` 归一窄协议并持有页面生命周期 query / command；模型数据不进入 `DesktopStateProvider`，也不通过 SSE 同步，写入消费共享 runtime 锁。
 - `ProjectSessionUiStateProvider` 只保存当前项目内可跨路由恢复的轻量 UI 状态，项目切换或关闭时清空，不写入后端事实。
 - `QualityRuleStatisticsProvider` 持有当前项目内跨规则页共享的后端统计 query 缓存；项目切换时重置，项目事件按受影响规则失效并推进请求 token，旧项目或旧 token 的迟到结果不得写回。
 - 校对以 `entry_id` 消费后端字段级术语结果；编辑窗只对对应译文字段重新求值，不重建术语身份。

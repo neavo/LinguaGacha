@@ -11,10 +11,12 @@ import { collect_api_keys } from "../llm/llm-client-policy";
 import {
   MODEL_USAGES,
   Model,
+  is_model_thinking_level,
   normalize_model_selection,
   parse_model_agent_config,
   type CustomModelType,
   type ModelSelection,
+  type ModelUsage,
 } from "../../domain/model";
 import {
   read_json_record,
@@ -95,7 +97,7 @@ export class ModelService {
     return this.build_snapshot_response(config);
   }
 
-  /** 读取任务入口需要的窄模型选项，只额外公开非敏感的 Agent 容量。 */
+  /** 读取任务入口直接控制所需的非敏感模型摘要。 */
   public get_selection_snapshot(): JsonRecord {
     return this.build_selection_snapshot(this.load_setting_with_models(true));
   }
@@ -131,12 +133,7 @@ export class ModelService {
    */
   public select_model(request: JsonRecord): JsonRecord {
     this.runtime_gate.assert_runtime_idle();
-    const usage = MODEL_USAGES.find((candidate) => candidate === request["usage"]);
-    if (usage === undefined) {
-      throw new AppErrors.RequestValidationError({
-        public_details: { field: "usage" },
-      });
-    }
+    const usage = this.read_model_usage(request["usage"]);
     const model_id = typeof request["model_id"] === "string" ? request["model_id"].trim() : "";
     const config = this.load_setting_with_models(false);
     const models = read_config_model_records(config);
@@ -144,6 +141,35 @@ export class ModelService {
     const selection = normalize_model_selection(config["model_selection"]);
     selection[usage] = model_id;
     config["model_selection"] = selection;
+    return this.build_selection_snapshot(this.persist_config(config));
+  }
+
+  /** 按用途原子更新当前模型的全局思考档位，避免调用方提交过期模型 ID。 */
+  public update_selected_model_thinking_level(request: JsonRecord): JsonRecord {
+    this.runtime_gate.assert_runtime_idle();
+    const usage = this.read_model_usage(request["usage"]);
+    const thinking_level = request["thinking_level"];
+    if (!is_model_thinking_level(thinking_level)) {
+      throw new AppErrors.RequestValidationError({
+        public_details: { field: "thinking_level" },
+      });
+    }
+    const config = this.load_setting_with_models(false);
+    const models = read_config_model_records(config);
+    const selection = normalize_model_selection(config["model_selection"]);
+    const index = this.find_model_index_or_raise(models, selection[usage]);
+    const model = models[index] ?? {};
+    if (
+      !Model.api_format_supports_thinking_configuration(
+        Model.normalize_api_format(model["api_format"]),
+      )
+    ) {
+      throw new AppErrors.RequestValidationError({
+        public_details: { field: "thinking_level" },
+      });
+    }
+    models[index] = this.apply_patch(model, { thinking: { level: thinking_level } });
+    config["models"] = models as unknown as JsonValue;
     return this.build_selection_snapshot(this.persist_config(config));
   }
 
@@ -658,6 +684,17 @@ export class ModelService {
     return index;
   }
 
+  /** 所有按用途模型命令共用同一公开值域校验。 */
+  private read_model_usage(value: unknown): ModelUsage {
+    const usage = MODEL_USAGES.find((candidate) => candidate === value);
+    if (usage === undefined) {
+      throw new AppErrors.RequestValidationError({
+        public_details: { field: "usage" },
+      });
+    }
+    return usage;
+  }
+
   /**
    * 删除已选模型时按同类型、预设、列表首项的顺序重选
    */
@@ -715,7 +752,7 @@ export class ModelService {
     };
   }
 
-  /** 生成任务入口需要的窄快照，只额外公开非敏感的 Agent 容量。 */
+  /** 生成任务入口需要的窄快照，只公开模型选择与直接控制所需的非敏感配置。 */
   private build_selection_snapshot(config: JsonRecord): JsonRecord {
     return {
       model_selection: normalize_model_selection(config["model_selection"]),
@@ -724,6 +761,12 @@ export class ModelService {
         type: String(model["type"] ?? ""),
         name: String(model["name"] ?? ""),
         agent: read_json_record(model["agent"]),
+        thinking_level: Model.normalize_thinking_level(
+          read_json_record(model["thinking"])["level"],
+        ),
+        thinking_configurable: Model.api_format_supports_thinking_configuration(
+          Model.normalize_api_format(model["api_format"]),
+        ),
       })),
     };
   }

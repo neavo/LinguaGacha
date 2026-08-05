@@ -1,6 +1,14 @@
 import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { useTheme } from "next-themes";
-import { ArrowUp, ChevronDown, Cpu, LoaderCircle, MessageSquarePlus, Square } from "lucide-react";
+import {
+  ArrowUp,
+  Brain,
+  ChevronDown,
+  Cpu,
+  LoaderCircle,
+  MessageSquarePlus,
+  Square,
+} from "lucide-react";
 
 import { defaultKeymap, history, historyKeymap, invertedEffects } from "@codemirror/commands";
 import {
@@ -27,7 +35,11 @@ import {
 
 import type { AgentContextUsage, AgentSkillSnapshot, AgentUserMessagePart } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
-import { ModelSelectionCategories } from "@frontend/features/model-selection/model-selection-menu";
+import {
+  ModelSelectionCategories,
+  ModelThinkingLevelOptions,
+} from "@frontend/features/model-selection/model-selection-menu";
+import { MODEL_THINKING_LEVEL_LABEL_KEY } from "@frontend/features/model-selection/model-selection-meta";
 import {
   read_selected_model,
   type ModelSelectionController,
@@ -228,9 +240,18 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     props.command === null &&
     !props.model_selection.updating &&
     snapshot.parts.some((part) => part.kind === "skill" || part.text.trim() !== "");
+  // 运行命令与模型快照请求分开表达，避免把加载态误当成 Agent 会话锁。
+  const model_commands_disabled =
+    props.running || props.unavailable_reason !== null || props.command !== null;
+  const model_controls_disabled =
+    model_commands_disabled || props.model_selection.loading || props.model_selection.updating;
   const selected_model = read_selected_model(props.model_selection, "agent");
   const selected_model_name =
     selected_model?.name || selected_model?.id || t("app.model.selection.unavailable");
+  const selected_thinking_label =
+    selected_model?.thinking_configurable === true
+      ? t(MODEL_THINKING_LEVEL_LABEL_KEY[selected_model.thinking_level])
+      : null;
   // 新对话用当前选择显示 0%，已有对话始终优先显示后端冻结的真实用量。
   const context_usage_source =
     props.context_usage ??
@@ -499,37 +520,67 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             <span>{t("agent_page.action.new_task")}</span>
           </AppButton>
           <AppDropdownMenu>
-            <AppDropdownMenuTrigger asChild>
-              <AppButton
-                type="button"
-                size="xs"
-                variant="ghost"
-                className="agent-composer__model-trigger"
-                disabled={
-                  props.running ||
-                  props.unavailable_reason !== null ||
-                  props.command !== null ||
-                  props.model_selection.loading ||
-                  props.model_selection.updating
-                }
-                aria-label={t("app.model.selection.label")}
-                title={selected_model_name}
-              >
-                <Cpu aria-hidden="true" />
-                <span>{selected_model_name}</span>
-                <ChevronDown aria-hidden="true" />
-              </AppButton>
-            </AppDropdownMenuTrigger>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <AppDropdownMenuTrigger asChild>
+                  <AppButton
+                    type="button"
+                    size="xs"
+                    variant="ghost"
+                    className="agent-composer__model-trigger"
+                    disabled={model_controls_disabled}
+                    aria-label={`${t("app.model.selection.label")}: ${selected_model_name}`}
+                  >
+                    <Cpu aria-hidden="true" />
+                    <span>{selected_model_name}</span>
+                    <ChevronDown aria-hidden="true" />
+                  </AppButton>
+                </AppDropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="top" sideOffset={8}>
+                <p>{selected_model_name}</p>
+              </TooltipContent>
+            </Tooltip>
             <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
               <ModelSelectionCategories
                 controller={props.model_selection}
                 usage="agent"
-                disabled={
-                  props.running || props.unavailable_reason !== null || props.command !== null
-                }
+                disabled={model_commands_disabled}
               />
             </AppDropdownMenuContent>
           </AppDropdownMenu>
+          {selected_thinking_label !== null && (
+            <AppDropdownMenu>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <AppDropdownMenuTrigger asChild>
+                    <AppButton
+                      type="button"
+                      size="xs"
+                      variant="ghost"
+                      className="agent-composer__thinking-trigger"
+                      disabled={model_controls_disabled}
+                      aria-label={`${t("app.model.thinking_level.label")}: ${selected_thinking_label}`}
+                    >
+                      <Brain aria-hidden="true" />
+                      <span>{selected_thinking_label}</span>
+                      <ChevronDown aria-hidden="true" />
+                    </AppButton>
+                  </AppDropdownMenuTrigger>
+                </TooltipTrigger>
+                <TooltipContent side="top" sideOffset={8}>
+                  <p>{t("app.model.thinking_level.label")}</p>
+                </TooltipContent>
+              </Tooltip>
+              <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
+                <ModelThinkingLevelOptions
+                  controller={props.model_selection}
+                  usage="agent"
+                  disabled={model_commands_disabled}
+                />
+              </AppDropdownMenuContent>
+            </AppDropdownMenu>
+          )}
           {context_usage !== null && (
             <Tooltip>
               <TooltipTrigger asChild>

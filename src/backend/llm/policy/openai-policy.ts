@@ -144,12 +144,21 @@ export function build_openai_thinking_payload(
       };
     }
 
-    // https://developers.openai.com/api/docs/guides/reasoning
     // https://mimo.mi.com/docs/zh-CN/api/chat/responses
-    if (/gpt|mimo/iu.test(model_id)) {
+    if (/mimo/iu.test(model_id)) {
       return {
         reasoning: {
           effort: level === "OFF" ? "none" : level.toLowerCase(),
+        },
+      };
+    }
+
+    // https://developers.openai.com/api/docs/guides/reasoning
+    if (/gpt/iu.test(model_id)) {
+      return {
+        reasoning: {
+          effort: level === "OFF" ? "none" : level.toLowerCase(),
+          ...(level === "OFF" ? {} : { summary: "auto" }),
         },
       };
     }

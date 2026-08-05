@@ -78,6 +78,7 @@ const POST_PATHS = new Set([
   "/api/models/snapshot",
   "/api/models/update",
   "/api/models/select",
+  "/api/models/thinking-level/update",
   "/api/models/add",
   "/api/models/delete",
   "/api/models/reset-preset",
@@ -165,6 +166,16 @@ describe("register_api_routes", () => {
     ).toEqual({ settings: { app_language: "ZH" } });
     expect(fixture.update_settings).toHaveBeenCalledWith({ app_language: "ZH" });
   });
+
+  it("思考档位更新原样转交模型服务", () => {
+    const fixture = create_route_fixture();
+    const request = { usage: "agent", thinking_level: "HIGH" };
+
+    expect(
+      read_post_handler(fixture.post_json, "/api/models/thinking-level/update")(request),
+    ).toEqual({ updated: request });
+    expect(fixture.update_selected_model_thinking_level).toHaveBeenCalledWith(request);
+  });
 });
 
 /** 每个行为独立注册一次，避免跨测试共享 mock 调用历史。 */
@@ -181,6 +192,9 @@ function create_route_fixture() {
     contextUsage: null,
   }));
   const update_settings = vi.fn((request: JsonRecord) => ({ settings: request }));
+  const update_selected_model_thinking_level = vi.fn((request: JsonRecord) => ({
+    updated: request,
+  }));
   const services = {
     app: { metadata: {}, settings: {}, updateSettings: update_settings },
     project: {
@@ -199,6 +213,7 @@ function create_route_fixture() {
         model_selection: { translation: "a", analysis: "b", agent: "c" },
         models: [],
       })),
+      update_selected_model_thinking_level,
     },
     agent: {
       get_snapshot: vi.fn(() => ({
@@ -226,7 +241,16 @@ function create_route_fixture() {
     readLogDetail: vi.fn(),
     recordRendererError: vi.fn(),
   });
-  return { get, post_json, reset, send_message, start_task, stop, update_settings };
+  return {
+    get,
+    post_json,
+    reset,
+    send_message,
+    start_task,
+    stop,
+    update_selected_model_thinking_level,
+    update_settings,
+  };
 }
 
 /** 读取已注册 GET handler，缺失路径立即给出可定位错误。 */

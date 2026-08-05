@@ -24,6 +24,13 @@ export const de_de_app = {
       load_failed: "Modellauswahl konnte nicht geladen werden. Bitte erneut versuchen …",
       update_failed: "Modellauswahl konnte nicht gespeichert werden. Bitte erneut versuchen …",
     },
+    thinking_level: {
+      label: "Denkstufe",
+      off: "Aus",
+      low: "Niedrig",
+      medium: "Mittel",
+      high: "Hoch",
+    },
   },
   action: {
     cancel: "Abbrechen",

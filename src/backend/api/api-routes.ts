@@ -160,6 +160,9 @@ export function register_api_routes(context: ApiRouteContext): void {
   context.postJson("/api/models/snapshot", () => models.get_snapshot());
   context.postJson("/api/models/update", (body) => models.update_model(body));
   context.postJson("/api/models/select", (body) => models.select_model(body));
+  context.postJson("/api/models/thinking-level/update", (body) =>
+    models.update_selected_model_thinking_level(body),
+  );
   context.postJson("/api/models/add", (body) => models.add_model(body));
   context.postJson("/api/models/delete", (body) => models.delete_model(body));
   context.postJson("/api/models/reset-preset", (body) => models.reset_preset_model(body));

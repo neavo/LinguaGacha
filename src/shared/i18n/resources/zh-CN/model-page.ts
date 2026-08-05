@@ -127,10 +127,4 @@ export const zh_cn_model_page = {
       placeholder: '例如：{"seed": 42}',
     },
   },
-  thinking_level: {
-    off: "无",
-    low: "低",
-    medium: "中",
-    high: "高",
-  },
 } as const;

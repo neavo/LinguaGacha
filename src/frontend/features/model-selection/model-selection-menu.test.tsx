@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import type { ModelSelectionController } from "./use-model-selection";
-import { ModelSelectionMenu } from "./model-selection-menu";
+import { ModelSelectionMenu, ModelThinkingLevelOptions } from "./model-selection-menu";
 
 const menu_state = vi.hoisted(() => ({
   on_value_change: null as ((value: string) => void) | null,
@@ -56,18 +56,23 @@ describe("ModelSelectionMenu", () => {
             type: "PRESET",
             name: "",
             agent: { context_window: 288_000, max_output_tokens: 32_000 },
+            thinking_level: "OFF",
+            thinking_configurable: true,
           },
           {
             id: "openai",
             type: "CUSTOM_OPENAI",
             name: "OpenAI Main",
             agent: { context_window: 288_000, max_output_tokens: 32_000 },
+            thinking_level: "MEDIUM",
+            thinking_configurable: true,
           },
         ],
       },
       loading: false,
       updating: false,
       select_model,
+      update_thinking_level: vi.fn(async () => undefined),
     };
 
     const html = renderToStaticMarkup(
@@ -106,12 +111,15 @@ describe("ModelSelectionMenu", () => {
             type: "CUSTOM_OPENAI",
             name: "OpenAI Main",
             agent: { context_window: 288_000, max_output_tokens: 32_000 },
+            thinking_level: "OFF",
+            thinking_configurable: true,
           },
         ],
       },
       loading: false,
       updating: false,
       select_model: vi.fn(async () => undefined),
+      update_thinking_level: vi.fn(async () => undefined),
     };
 
     const html = renderToStaticMarkup(
@@ -122,5 +130,73 @@ describe("ModelSelectionMenu", () => {
     expect(document.querySelector("button")?.disabled).toBe(false);
     expect(document.querySelector("button")?.textContent).toBe("app.model.selection.unavailable");
     expect(document.querySelector('[role="radio"][data-value="openai"]')).not.toBeNull();
+  });
+
+  it("展示当前思考档位并提交合法选择", () => {
+    const update_thinking_level = vi.fn(async () => undefined);
+    const controller: ModelSelectionController = {
+      snapshot: {
+        model_selection: { translation: "", analysis: "", agent: "openai" },
+        models: [
+          {
+            id: "openai",
+            type: "CUSTOM_OPENAI",
+            name: "OpenAI Main",
+            agent: { context_window: 288_000, max_output_tokens: 32_000 },
+            thinking_level: "MEDIUM",
+            thinking_configurable: true,
+          },
+        ],
+      },
+      loading: false,
+      updating: false,
+      select_model: vi.fn(async () => undefined),
+      update_thinking_level,
+    };
+
+    const html = renderToStaticMarkup(
+      <ModelThinkingLevelOptions controller={controller} usage="agent" />,
+    );
+    const document = new DOMParser().parseFromString(html, "text/html");
+
+    expect(document.querySelector('[role="radiogroup"]')?.getAttribute("data-value")).toBe(
+      "MEDIUM",
+    );
+    expect(
+      [...document.querySelectorAll('[role="radio"]')].map((item) => item.textContent),
+    ).toEqual([
+      "app.model.thinking_level.off",
+      "app.model.thinking_level.low",
+      "app.model.thinking_level.medium",
+      "app.model.thinking_level.high",
+    ]);
+    menu_state.on_value_change?.("HIGH");
+    expect(update_thinking_level).toHaveBeenCalledWith("agent", "HIGH");
+  });
+
+  it("当前模型不可配置思考档位时不渲染选项", () => {
+    const controller: ModelSelectionController = {
+      snapshot: {
+        model_selection: { translation: "", analysis: "", agent: "sakura" },
+        models: [
+          {
+            id: "sakura",
+            type: "PRESET",
+            name: "Sakura",
+            agent: { context_window: 288_000, max_output_tokens: 32_000 },
+            thinking_level: "OFF",
+            thinking_configurable: false,
+          },
+        ],
+      },
+      loading: false,
+      updating: false,
+      select_model: vi.fn(async () => undefined),
+      update_thinking_level: vi.fn(async () => undefined),
+    };
+
+    expect(
+      renderToStaticMarkup(<ModelThinkingLevelOptions controller={controller} usage="agent" />),
+    ).toBe("");
   });
 });

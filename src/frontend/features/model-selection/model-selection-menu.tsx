@@ -1,6 +1,11 @@
 import { Circle, CircleCheck, Cpu } from "lucide-react";
 
-import { MODEL_TYPES, type ModelUsage } from "@domain/model";
+import {
+  MODEL_THINKING_LEVELS,
+  MODEL_TYPES,
+  is_model_thinking_level,
+  type ModelUsage,
+} from "@domain/model";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import {
   AppDropdownMenuRadioGroup,
@@ -10,7 +15,7 @@ import {
   AppDropdownMenuSubTrigger,
 } from "@frontend/widgets/app-dropdown-menu";
 import { read_selected_model, type ModelSelectionController } from "./use-model-selection";
-import { MODEL_TYPE_TITLE_KEY } from "./model-selection-meta";
+import { MODEL_THINKING_LEVEL_LABEL_KEY, MODEL_TYPE_TITLE_KEY } from "./model-selection-meta";
 
 type ModelSelectionMenuProps = {
   controller: ModelSelectionController;
@@ -83,5 +88,30 @@ export function ModelSelectionCategories(props: ModelSelectionMenuProps): JSX.El
         );
       })}
     </>
+  );
+}
+
+/** 当前用途模型的思考档位；触发器布局由消费页面负责。 */
+export function ModelThinkingLevelOptions(props: ModelSelectionMenuProps): JSX.Element | null {
+  const { t } = useI18n();
+  const selected = read_selected_model(props.controller, props.usage);
+  if (selected === null || !selected.thinking_configurable) return null;
+  const disabled = Boolean(props.disabled) || props.controller.loading || props.controller.updating;
+
+  return (
+    <AppDropdownMenuRadioGroup
+      value={selected.thinking_level}
+      onValueChange={(thinking_level) => {
+        if (is_model_thinking_level(thinking_level)) {
+          void props.controller.update_thinking_level(props.usage, thinking_level);
+        }
+      }}
+    >
+      {MODEL_THINKING_LEVELS.map((thinking_level) => (
+        <AppDropdownMenuRadioItem key={thinking_level} value={thinking_level} disabled={disabled}>
+          {t(MODEL_THINKING_LEVEL_LABEL_KEY[thinking_level])}
+        </AppDropdownMenuRadioItem>
+      ))}
+    </AppDropdownMenuRadioGroup>
   );
 }
