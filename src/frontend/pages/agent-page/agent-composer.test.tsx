@@ -545,7 +545,7 @@ describe("AgentComposer", () => {
     expect(view.textContent).toContain("Enter 发送 · Shift + Enter 换行");
     expect(view.textContent).toContain("发送失败，草稿已保留。");
     expect(view.querySelector('[role="alert"]')).not.toBeNull();
-    expect(model_trigger?.textContent).toContain("Agent Model");
+    expect(model_trigger?.textContent).toBe("选择模型");
     expect(model_trigger?.disabled).toBe(true);
     expect(thinking_trigger?.textContent).toContain("中");
     expect(thinking_trigger?.disabled).toBe(true);
