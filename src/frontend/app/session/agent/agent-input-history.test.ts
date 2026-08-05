@@ -8,7 +8,7 @@ import {
   read_agent_input_history,
 } from "./agent-input-history";
 
-describe("Agent 输入历史", () => {
+describe("Agent 输入历史持久化", () => {
   it("无持久历史时返回空数组", () => {
     expect(read_agent_input_history(create_storage(null).storage)).toEqual([]);
   });

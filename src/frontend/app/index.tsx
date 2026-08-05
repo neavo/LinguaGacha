@@ -19,6 +19,7 @@ import { SCREEN_REGISTRY } from "@frontend/app/navigation/screen-registry";
 import { AppNavigationProvider } from "@frontend/app/navigation/navigation-context";
 import { DesktopStateProvider } from "@frontend/app/state/desktop-state-context";
 import { ProjectSessionUiStateProvider } from "@frontend/app/session/project-session-ui-state-context";
+import { AgentSessionProvider } from "@frontend/app/session/agent/agent-session-context";
 import { WorkbenchTasksSessionProvider } from "@frontend/app/session/workbench-tasks/workbench-tasks-session-context";
 import { QualityRuleStatisticsProvider } from "@frontend/app/session/quality-rule-statistics-context";
 import {
@@ -715,13 +716,15 @@ function AppContent(props: AppContentProps): JSX.Element {
                 selected_route={selected_route}
                 navigate_to_route={handle_select_route}
               >
-                <ProjectSessionUiStateProvider>
-                  <WorkbenchTasksSessionProvider>
-                    <QualityRuleStatisticsProvider>
-                      <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
-                    </QualityRuleStatisticsProvider>
-                  </WorkbenchTasksSessionProvider>
-                </ProjectSessionUiStateProvider>
+                <AgentSessionProvider>
+                  <ProjectSessionUiStateProvider>
+                    <WorkbenchTasksSessionProvider>
+                      <QualityRuleStatisticsProvider>
+                        <ScreenComponent is_sidebar_collapsed={is_sidebar_collapsed} />
+                      </QualityRuleStatisticsProvider>
+                    </WorkbenchTasksSessionProvider>
+                  </ProjectSessionUiStateProvider>
+                </AgentSessionProvider>
               </AppNavigationProvider>
             </SidebarInset>
           </section>

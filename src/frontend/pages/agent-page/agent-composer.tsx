@@ -43,8 +43,11 @@ import {
   resolve_app_editor_readonly_extensions,
   resolve_app_editor_theme_extensions,
 } from "@frontend/widgets/app-editor/app-editor-code-mirror";
-import { append_agent_input_history, read_agent_input_history } from "./agent-input-history";
-import type { AgentCommand, AgentPageIssue } from "./use-agent-page-state";
+import type {
+  AgentCommand,
+  AgentInputSession,
+  AgentSessionIssue,
+} from "@frontend/app/session/agent/agent-session-context";
 
 /** 光标前尚未确认的 @ 查询范围；确认后会被替换为 Decoration。 */
 type SkillQuery = {
@@ -60,12 +63,6 @@ type EditorSnapshot = {
   selected_skill_names: Set<string>;
 };
 
-/** 历史游标与进入导航前的原始草稿必须同生共灭，避免恢复发送投影后的残缺内容。 */
-type InputHistoryNavigation = {
-  index: number; // 当前展示消息在 input_history_ref 中的绝对索引。
-  draft: AgentUserMessagePart[]; // 从唯一 EditorState 读取，保留正文首尾空白与原子 token。
-};
-
 export type AgentComposerHandle = {
   write_draft: (parts: readonly AgentUserMessagePart[]) => void;
 };
@@ -79,18 +76,19 @@ type AgentComposerProps = {
   running: boolean;
   unavailable_reason: AgentUnavailableReason | null;
   command: AgentCommand;
-  issue: AgentPageIssue;
+  issue: AgentSessionIssue;
   can_reset: boolean;
   context_usage: AgentContextUsage | null;
   model_selection: ModelSelectionController;
-  on_send: (parts: readonly AgentUserMessagePart[]) => Promise<boolean>;
+  input_session: AgentInputSession;
+  on_send: (parts: readonly AgentUserMessagePart[]) => void;
   on_stop: () => Promise<void>;
   on_reset: () => void;
 };
 
 /** Composer 只呈现已完成初始恢复后的可操作错误；restore 由页面空态独占。 */
 const AGENT_COMPOSER_ISSUE_KEYS: Readonly<
-  Record<Exclude<AgentPageIssue, null | "restore">, LocaleKey>
+  Record<Exclude<AgentSessionIssue, null | "restore">, LocaleKey>
 > = Object.freeze({
   connection: "agent_page.error.connection",
   send: "agent_page.error.send",
@@ -116,6 +114,8 @@ const input_history_navigation_annotations = [
   Transaction.addToHistory.of(false),
   input_history_navigation_annotation.of(true),
 ];
+/** Session 受理后的草稿同步不进入撤销栈，也不冒充用户编辑。 */
+const input_session_sync_annotations = [Transaction.addToHistory.of(false)];
 
 // 三个 Compartment 只承接运行期配置，不参与草稿或 token 事实。
 const theme_compartment = new Compartment();
@@ -201,12 +201,9 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const matching_skills_ref = useRef<readonly AgentSkillSnapshot[]>([]);
   const menu_index_ref = useRef(0);
   const last_query_key_ref = useRef("");
-  // 首次渲染读取一次缓存；后续受理消息同步更新同一内存快照与持久化副本。
-  const input_history_ref = useRef<AgentUserMessagePart[][] | null>(null);
-  if (input_history_ref.current === null) {
-    input_history_ref.current = read_agent_input_history(window.localStorage);
-  }
-  const input_history_navigation_ref = useRef<InputHistoryNavigation | null>(null);
+  // Session 引用承接跨路由草稿与历史，索引只属于当前 Composer 的临时浏览位置。
+  const input_session_ref = useRef(props.input_session);
+  const input_history_index_ref = useRef<number | null>(null);
   const [snapshot, set_snapshot] = useState<EditorSnapshot>(EMPTY_EDITOR_SNAPSHOT);
   const [menu_index_value, set_menu_index] = useState(0);
   const [menu_suppressed, set_menu_suppressed] = useState(false);
@@ -248,6 +245,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     context_usage_source === null ? null : format_context_usage(context_usage_source);
   // 编辑器只创建一次，首次锁定态必须在首帧扩展中生效，不能等待后续 effect。
   const initial_editor_read_only_ref = useRef(editor_read_only);
+  const input_revision = props.input_session.revision;
 
   useImperativeHandle(
     props.ref,
@@ -255,7 +253,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       write_draft(parts) {
         const view = view_ref.current;
         if (view === null || editor_read_only) return;
-        input_history_navigation_ref.current = null;
+        input_history_index_ref.current = null;
         write_agent_message_parts(view, parts);
         view.focus();
       },
@@ -266,6 +264,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   menu_open_ref.current = menu_open;
   matching_skills_ref.current = matching_skills;
   menu_index_ref.current = menu_index;
+  input_session_ref.current = props.input_session;
 
   useEffect(() => {
     const host = host_ref.current;
@@ -340,7 +339,8 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                     transaction.annotation(input_history_navigation_annotation) === true,
                 )
               ) {
-                input_history_navigation_ref.current = null;
+                input_history_index_ref.current = null;
+                input_session_ref.current.write_draft(read_agent_draft_parts(update.state));
               }
               emit_snapshot(update.state);
             }
@@ -358,6 +358,17 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       view_ref.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const view = view_ref.current;
+    if (view === null) return;
+    input_history_index_ref.current = null;
+    write_agent_message_parts(
+      view,
+      input_session_ref.current.read_draft(),
+      input_session_sync_annotations,
+    );
+  }, [input_revision]);
 
   useEffect(() => {
     view_ref.current?.dispatch({
@@ -430,28 +441,20 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   };
   select_skill_ref.current = select_skill;
 
-  /** 只有后端确认受理后才清空草稿；模型失败属于已提交轮次，不恢复旧草稿。 */
-  const submit = async (): Promise<void> => {
+  /** Composer 只提交当前投影；受理后的历史与草稿由常驻 Agent session 原子更新。 */
+  const submit = (): void => {
     const view = view_ref.current;
     if (view === null || !can_send) return;
-    const parts = read_agent_message_parts(view.state);
-    if (await props.on_send(parts)) {
-      input_history_ref.current = append_agent_input_history(
-        window.localStorage,
-        input_history_ref.current ?? [],
-        parts,
-      );
-      write_agent_message_parts(view, []);
-    }
+    props.on_send(read_agent_message_parts(view.state));
   };
-  submit_ref.current = () => void submit();
+  submit_ref.current = submit;
 
   return (
     <form
       className="agent-composer"
       onSubmit={(event) => {
         event.preventDefault();
-        void submit();
+        submit();
       }}
     >
       {menu_open && (
@@ -602,35 +605,36 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
 
   /** 仅从视觉首行进入历史；越过最新消息时恢复原始草稿，两端都消费按键。 */
   function navigate_input_history(view: EditorView, direction: "older" | "newer"): boolean {
-    const input_history = input_history_ref.current ?? [];
+    const input_history = input_session_ref.current.read_history();
     if (view.composing || view.state.readOnly) return false;
-    const navigation = input_history_navigation_ref.current;
+    const current_index = input_history_index_ref.current;
 
-    if (navigation === null) {
+    if (current_index === null) {
       if (direction === "newer" || input_history.length === 0 || !can_start_input_history(view)) {
         return false;
       }
-      const next = {
-        index: input_history.length - 1,
-        draft: read_agent_draft_parts(view.state),
-      };
-      input_history_navigation_ref.current = next;
+      const next_index = input_history.length - 1;
+      input_history_index_ref.current = next_index;
       write_agent_message_parts(
         view,
-        input_history[next.index]!,
+        input_history[next_index]!,
         input_history_navigation_annotations,
       );
       return true;
     }
 
-    const next_index = navigation.index + (direction === "older" ? -1 : 1);
+    const next_index = current_index + (direction === "older" ? -1 : 1);
     if (next_index < 0) return true;
     if (next_index >= input_history.length) {
-      input_history_navigation_ref.current = null;
-      write_agent_message_parts(view, navigation.draft, input_history_navigation_annotations);
+      input_history_index_ref.current = null;
+      write_agent_message_parts(
+        view,
+        input_session_ref.current.read_draft(),
+        input_history_navigation_annotations,
+      );
       return true;
     }
-    input_history_navigation_ref.current = { ...navigation, index: next_index };
+    input_history_index_ref.current = next_index;
     write_agent_message_parts(
       view,
       input_history[next_index]!,
@@ -644,7 +648,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
 function can_start_input_history(view: EditorView): boolean {
   const selection = view.state.selection;
   if (selection.ranges.length !== 1 || !selection.main.empty) return false;
-  return view.moveVertically(selection.main, false).head === selection.main.head;
+  return view.moveToLineBoundary(selection.main, false, true).head === 0;
 }
 
 /** 用单次事务同步正文、原子 token 与末尾光标。 */

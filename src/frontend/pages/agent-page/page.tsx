@@ -9,10 +9,10 @@ import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { Card } from "@frontend/shadcn/card";
 import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
+import { useAgentSession } from "@frontend/app/session/agent/agent-session-context";
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
 import { AgentTimeline } from "./agent-timeline";
 import { is_at_scroll_end } from "./agent-scroll";
-import { useAgentPageState } from "./use-agent-page-state";
 import "./agent-page.css";
 
 /** 空会话只展示产品内置且确已加载的高频工作流，顺序同时决定界面优先级。 */
@@ -36,10 +36,10 @@ const AGENT_STATUS_LABEL_KEYS = Object.freeze({
   stopped: "agent_page.status.stopped",
 } satisfies Readonly<Record<AgentEntryStatus, LocaleKey>>);
 
-/** 渲染 Agent 对话、能力选择与命令输入；会话事实由 useAgentPageState 统一提供。 */
+/** 渲染 Agent 对话、能力选择与命令输入；会话事实由跨路由 Agent session 提供。 */
 export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
-  const agent = useAgentPageState();
+  const agent = useAgentSession();
   const model_selection = useModelSelection();
   const runtime_snapshot = useRuntimeSnapshot();
   const conversation_ref = useRef<HTMLElement | null>(null);
@@ -87,9 +87,9 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   }, [agent.entries, agent.state, follow_paused, resume_revision]);
 
   /** 新消息代表用户重新进入最新上下文，提交前统一恢复信息流跟随。 */
-  const send = (parts: readonly AgentUserMessagePart[]): Promise<boolean> => {
+  const send = (parts: readonly AgentUserMessagePart[]): void => {
     resume_follow();
-    return agent.send(parts);
+    void agent.send(parts);
   };
 
   // live region 只播报离散会话结果，不朗读高频流式正文。
@@ -211,6 +211,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         can_reset={!agent.loading && agent.entries.length > 0}
         context_usage={agent.contextUsage}
         model_selection={model_selection}
+        input_session={agent.input}
         on_send={send}
         on_stop={agent.stop}
         on_reset={() => set_reset_dialog_open(true)}

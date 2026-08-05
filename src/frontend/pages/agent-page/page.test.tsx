@@ -4,9 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import type { AgentAssistantMessagePart, AgentEntryStatus } from "@shared/agent";
-import type { useAgentPageState as UseAgentPageStateFunction } from "./use-agent-page-state";
+import type { useAgentSession as UseAgentSessionFunction } from "@frontend/app/session/agent/agent-session-context";
 
-type AgentPageState = ReturnType<typeof UseAgentPageStateFunction>;
+type AgentPageState = ReturnType<typeof UseAgentSessionFunction>;
 
 const page_state = vi.hoisted(() => ({ current: {} as AgentPageState }));
 /** 用真实 hook 返回形状驱动 runtime owner 迁移，不复制 store 内部实现。 */
@@ -14,7 +14,9 @@ const runtime_state = vi.hoisted(() => ({
   current: { revision: 0, owner: null as "task" | "agent" | null },
 }));
 
-vi.mock("./use-agent-page-state", () => ({ useAgentPageState: () => page_state.current }));
+vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
+  useAgentSession: () => page_state.current,
+}));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
   useDesktopState: () => ({ runtime_snapshot: runtime_state.current }),
   useRuntimeSnapshot: () => runtime_state.current,
@@ -95,7 +97,7 @@ describe("AgentPage", () => {
   }
 
   it("空会话按顺序显示三个起始任务，并把译文审查写成结构化草稿", async () => {
-    const send = vi.fn(async () => false);
+    const send = vi.fn(async () => undefined);
     const view = await render_page({ entries: [], send });
     const suggestions = [...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion")];
     const editor = view.querySelector<HTMLElement>(".cm-content");
@@ -397,7 +399,13 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     loading: false,
     command: null,
     issue: null,
-    send: vi.fn(async () => true),
+    input: {
+      revision: 0,
+      read_draft: () => [],
+      write_draft: vi.fn(),
+      read_history: () => [],
+    },
+    send: vi.fn(async () => undefined),
     stop: vi.fn(),
     reset: vi.fn(async () => true),
     retry: vi.fn(),
