@@ -525,7 +525,7 @@ describe("AgentComposer", () => {
     expect(on_send).not.toHaveBeenCalled();
   });
 
-  it("呈现可访问的输入提示、错误与禁用操作", async () => {
+  it("呈现当前模型、操作提示、错误与禁用状态", async () => {
     const view = await render_composer({
       issue: "send",
       model_selection: { updating: true },
@@ -545,13 +545,13 @@ describe("AgentComposer", () => {
     expect(view.textContent).toContain("Enter 发送 · Shift + Enter 换行");
     expect(view.textContent).toContain("发送失败，草稿已保留。");
     expect(view.querySelector('[role="alert"]')).not.toBeNull();
-    expect(model_trigger?.textContent).toBe("选择模型");
+    expect(model_trigger?.textContent).toBe("Agent Model");
     expect(model_trigger?.disabled).toBe(true);
     expect(thinking_trigger?.textContent).toContain("中");
     expect(thinking_trigger?.disabled).toBe(true);
     expect(editor?.getAttribute("contenteditable")).toBe("true");
     expect(tooltips.map((tooltip) => tooltip.textContent)).toEqual(
-      expect.arrayContaining(["Agent Model", "思考等级", "发送"]),
+      expect.arrayContaining(["选择模型", "思考等级", "发送"]),
     );
     expect(submit?.disabled).toBe(true);
   });

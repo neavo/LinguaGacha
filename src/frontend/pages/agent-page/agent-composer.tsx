@@ -532,13 +532,13 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                     aria-label={`${t("app.model.selection.label")}: ${selected_model_name}`}
                   >
                     <Cpu aria-hidden="true" />
-                    <span>{t("app.model.selection.label")}</span>
+                    <span>{selected_model_name}</span>
                     <ChevronDown aria-hidden="true" />
                   </AppButton>
                 </AppDropdownMenuTrigger>
               </TooltipTrigger>
               <TooltipContent side="top" sideOffset={8}>
-                <p>{selected_model_name}</p>
+                <p>{t("app.model.selection.label")}</p>
               </TooltipContent>
             </Tooltip>
             <AppDropdownMenuContent align="start" matchTriggerWidth={false}>
