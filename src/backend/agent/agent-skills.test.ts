@@ -8,6 +8,31 @@ import { AppPathService } from "../app/app-path-service";
 import { load_agent_skills } from "./agent-skills";
 
 describe("Agent skill 加载", () => {
+  it("内置 skill 资源可直接加载且不产生诊断", async () => {
+    using temp_root = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-agent-builtin-skills-"),
+    );
+    const warning = vi.fn();
+    const error = vi.fn();
+
+    const skills = await load_agent_skills(
+      {
+        get_app_root: () => process.cwd(),
+        get_agent_builtin_skill_dir: () => path.join(process.cwd(), "resource", "agent", "skill"),
+        get_agent_user_skill_dir: () => path.join(temp_root.path, "user-skill"),
+      },
+      { warning, error },
+    );
+
+    expect(skills).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "adult-fiction-writing", visible: false }),
+      ]),
+    );
+    expect(warning).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+  });
+
   it("加载双目录合法 SKILL.md，记录坏 frontmatter，并过滤目录名不匹配项", async () => {
     using temp_root = fs.mkdtempDisposableSync(path.join(os.tmpdir(), "linguagacha-agent-skills-"));
     const app_root = temp_root.path;
@@ -35,6 +60,7 @@ describe("Agent skill 加载", () => {
       {
         name: "valid",
         description: "合法能力",
+        visible: true,
         displayDescriptions: {
           "zh-CN": "合法能力",
           "en-US": "合法能力",
@@ -48,6 +74,7 @@ describe("Agent skill 加载", () => {
       {
         name: "manual",
         description: "手动能力",
+        visible: true,
         displayDescriptions: {
           "zh-CN": "手动能力",
           "en-US": "手动能力",
@@ -93,6 +120,7 @@ describe("Agent skill 加载", () => {
       {
         name: "shared",
         description: "用户能力",
+        visible: true,
         displayDescriptions: {
           "zh-CN": "用户能力",
           "en-US": "User skill",
@@ -115,6 +143,7 @@ describe("Agent skill 加载", () => {
   it.each([
     ["坏 JSON", "{"],
     ["非法语言", '{"ja-JP":"日本語"}'],
+    ["非法可见性", '{"visible":"false"}'],
   ])("%s 的 i18n.json 整份回退并记录诊断", async (_case_name, i18n) => {
     using temp_root = fs.mkdtempDisposableSync(
       path.join(os.tmpdir(), "linguagacha-agent-skills-i18n-"),
@@ -131,10 +160,13 @@ describe("Agent skill 加载", () => {
 
     const skills = await load_agent_skills(paths, { warning, error: vi.fn() });
 
-    expect(skills[0]?.displayDescriptions).toEqual({
-      "zh-CN": "默认描述",
-      "en-US": "默认描述",
-      "de-DE": "默认描述",
+    expect(skills[0]).toMatchObject({
+      visible: true,
+      displayDescriptions: {
+        "zh-CN": "默认描述",
+        "en-US": "默认描述",
+        "de-DE": "默认描述",
+      },
     });
     expect(warning).toHaveBeenCalledWith(
       expect.stringContaining("i18n"),
@@ -143,6 +175,36 @@ describe("Agent skill 加载", () => {
         context: expect.objectContaining({ path: expect.stringMatching(/i18n\.json$/u) }),
       }),
     );
+  });
+
+  it("仅含 visible=false 的 i18n.json 隐藏 UI 能力但保留完整 skill", async () => {
+    using temp_root = fs.mkdtempDisposableSync(
+      path.join(os.tmpdir(), "linguagacha-agent-skills-hidden-"),
+    );
+    const paths = new AppPathService({ appRoot: temp_root.path, env: {}, platform: "win32" });
+    const skill_dir = path.join(paths.get_agent_builtin_skill_dir(), "hidden");
+    write_skill(
+      path.join(skill_dir, "SKILL.md"),
+      "---\nname: hidden\ndescription: 内部能力\n---\n\n执行内部任务。",
+    );
+    write_skill(path.join(skill_dir, "i18n.json"), '{"visible":false}');
+    const warning = vi.fn();
+
+    const skills = await load_agent_skills(paths, { warning, error: vi.fn() });
+
+    expect(skills).toHaveLength(1);
+    expect(skills[0]).toMatchObject({
+      name: "hidden",
+      description: "内部能力",
+      content: "执行内部任务。",
+      visible: false,
+      displayDescriptions: {
+        "zh-CN": "内部能力",
+        "en-US": "内部能力",
+        "de-DE": "内部能力",
+      },
+    });
+    expect(warning).not.toHaveBeenCalled();
   });
 
   it("递归加载排序后的 Markdown references，并忽略其它文件和符号链接", async () => {
@@ -172,10 +234,13 @@ describe("Agent skill 加载", () => {
     expect(skills).toHaveLength(1);
     const skill = skills[0];
     expect(skill?.content).toBe("执行术语审校。");
-    expect(skill?.displayDescriptions).toEqual({
-      "zh-CN": "审校术语",
-      "en-US": "审校术语",
-      "de-DE": "审校术语",
+    expect(skill).toMatchObject({
+      visible: true,
+      displayDescriptions: {
+        "zh-CN": "审校术语",
+        "en-US": "审校术语",
+        "de-DE": "审校术语",
+      },
     });
     expect(skill?.references).toEqual([
       {
