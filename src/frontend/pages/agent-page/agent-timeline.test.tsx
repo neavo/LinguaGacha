@@ -24,6 +24,17 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
 vi.mock("next-themes", () => ({ useTheme: () => ({ resolvedTheme: "light" }) }));
 
 import { AgentTimeline } from "./agent-timeline";
+import { create_agent_mention_tokens } from "./agent-mention";
+
+const MENTION_TOKENS = create_agent_mention_tokens(
+  [
+    {
+      name: "glossary-audit",
+      displayDescriptions: { "zh-CN": "", "en-US": "", "de-DE": "" },
+    },
+  ],
+  [{ src: "Alice", dst: "爱丽丝", info: "", case_sensitive: false }],
+);
 
 describe("AgentTimeline", () => {
   let container: HTMLDivElement | null = null;
@@ -53,6 +64,7 @@ describe("AgentTimeline", () => {
       root?.render(
         <AgentTimeline
           entries={entries}
+          mention_tokens={MENTION_TOKENS}
           resume_revision={resume_revision}
           on_follow_hold_change={on_follow_hold_change}
         />,
@@ -81,6 +93,28 @@ describe("AgentTimeline", () => {
 
     await render_timeline([]);
     expect(view.querySelector(".agent-message__activity")).toBeNull();
+  });
+
+  it("用户消息把已知能力与术语显示为整块，未知 marker 保持普通文本", async () => {
+    const view = await render_timeline([
+      user_entry("user-1", "@term(Alice)", "success", 0, 1_000),
+      user_entry(
+        "user-2",
+        "使用 @skill(glossary-audit) 和 @term(Unknown)",
+        "success",
+        2_000,
+        3_000,
+      ),
+    ]);
+    const messages = view.querySelectorAll<HTMLElement>(".agent-message--user");
+
+    expect(messages[0]?.dataset["mentionOnly"]).toBe("true");
+    expect(
+      [...view.querySelectorAll<HTMLElement>(".agent-mention-token")].map(
+        (token) => token.textContent,
+      ),
+    ).toEqual(["@term(Alice)", "@skill(glossary-audit)"]);
+    expect(messages[1]?.textContent).toContain("@term(Unknown)");
   });
 
   it("运行工具逐秒计时，完成后保留用户展开状态并挂载输出", async () => {
@@ -137,9 +171,7 @@ describe("AgentTimeline", () => {
   it("轮次运行时更新耗时，结束后冻结并保持紧凑格式", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(45_295_000);
-    const view = await render_timeline([
-      user_entry("user-1", [{ kind: "text", text: "开始" }], "running", 0, null),
-    ]);
+    const view = await render_timeline([user_entry("user-1", "开始", "running", 0, null)]);
     const timer = view.querySelector<HTMLElement>('[role="timer"]');
     if (timer === null) throw new Error("缺少轮次计时器");
     expect(timer.textContent).toBe("agent_page.round.running:12h 34m 55s");
@@ -147,8 +179,8 @@ describe("AgentTimeline", () => {
     expect(timer.textContent).toBe("agent_page.round.running:12h 34m 56s");
 
     await render_timeline([
-      user_entry("user-1", [{ kind: "text", text: "开始" }], "success", 0, 45_296_000),
-      user_entry("user-2", [{ kind: "text", text: "长任务" }], "stopped", 10_000, 738_000),
+      user_entry("user-1", "开始", "success", 0, 45_296_000),
+      user_entry("user-2", "长任务", "stopped", 10_000, 738_000),
     ]);
     expect(
       [...view.querySelectorAll<HTMLElement>('[role="timer"]')].map((entry) => entry.textContent),
@@ -327,17 +359,7 @@ describe("AgentTimeline", () => {
 
   it("按后端顺序渲染工具并只在展开时挂载完整输出", async () => {
     const view = await render_timeline([
-      user_entry(
-        "user-1",
-        [
-          { kind: "text", text: "请用 " },
-          { kind: "skill", name: "glossary-audit" },
-          { kind: "text", text: "\n查询" },
-        ],
-        "success",
-        0,
-        2_000,
-      ),
+      user_entry("user-1", "请用 @skill(glossary-audit)\n查询", "success", 0, 2_000),
       assistant_entry("assistant-1", "准备查询", "success", 1000),
       tool_entry(
         "tool-1",
@@ -364,7 +386,7 @@ describe("AgentTimeline", () => {
     await act(async () => tools[0]?.querySelector("summary")?.click());
     expect(tools[0]?.querySelector("pre")).toBeNull();
     expect(view.querySelector(".agent-message__user-text")?.textContent).toBe(
-      "请用 @glossary-audit\n查询",
+      "请用 @skill(glossary-audit)\n查询",
     );
     expect(view.querySelector(".agent-round-header")?.textContent).toContain("2s");
   });
@@ -372,7 +394,7 @@ describe("AgentTimeline", () => {
 
 function user_entry(
   id: string,
-  parts: Array<{ kind: "text"; text: string } | { kind: "skill"; name: string }>,
+  text: string,
   status: AgentEntryStatus,
   createdAt: number,
   endedAt: number | null,
@@ -380,7 +402,7 @@ function user_entry(
   return {
     kind: "user_message" as const,
     id,
-    parts,
+    text,
     status,
     createdAt,
     endedAt,

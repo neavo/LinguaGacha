@@ -2,15 +2,17 @@ import { useEffect, useImperativeHandle, useRef, useState, type Ref } from "reac
 import { useTheme } from "next-themes";
 import {
   ArrowUp,
+  BookA,
   Brain,
   ChevronDown,
   Cpu,
   LoaderCircle,
   MessageSquarePlus,
+  Sparkles,
   Square,
 } from "lucide-react";
 
-import { defaultKeymap, history, historyKeymap, invertedEffects } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import {
   Annotation,
   Compartment,
@@ -20,7 +22,6 @@ import {
   StateField,
   Transaction,
   type Extension,
-  type Range,
   type TransactionSpec,
 } from "@codemirror/state";
 import {
@@ -33,7 +34,12 @@ import {
   type DecorationSet,
 } from "@codemirror/view";
 
-import type { AgentSkillSnapshot, AgentUserMessagePart } from "@shared/agent";
+import type { GlossaryEntry } from "@domain/quality";
+import {
+  format_agent_skill_reference,
+  format_agent_term_reference,
+  type AgentSkillSnapshot,
+} from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
   ModelSelectionCategories,
@@ -60,23 +66,36 @@ import type {
   AgentInputSession,
   AgentSessionIssue,
 } from "@frontend/app/session/agent/agent-session-context";
+import {
+  create_agent_mention_tokens,
+  find_agent_mention_ranges,
+  type AgentMentionToken,
+} from "./agent-mention";
 
-/** 光标前尚未确认的 @ 查询范围；确认后会被替换为 Decoration。 */
-type SkillQuery = {
+/** 光标前当前 @ 查询范围。 */
+type MentionQuery = {
   from: number;
   to: number;
   text: string;
 };
 
-/** React 只持有渲染所需投影，正文与 token 仍由 EditorState 唯一拥有。 */
+/** 菜单候选只保留渲染与插入所需事实，不进入消息协议或共享状态。 */
+type MentionCandidate = {
+  kind: "skill" | "term";
+  key: string;
+  title: string;
+  description: string;
+  insertText: string;
+};
+
+/** React 只持有渲染所需投影，正文仍由 EditorState 唯一拥有。 */
 type EditorSnapshot = {
-  parts: AgentUserMessagePart[];
-  query: SkillQuery | null;
-  selected_skill_names: Set<string>;
+  text: string;
+  query: MentionQuery | null;
 };
 
 export type AgentComposerHandle = {
-  write_draft: (parts: readonly AgentUserMessagePart[]) => void;
+  write_draft: (text: string) => void;
 };
 
 /** 互斥于发送的新命令原因；三种状态都允许继续编辑本地草稿。 */
@@ -85,6 +104,8 @@ type AgentUnavailableReason = "restoring" | "runtime_busy" | "settling";
 type AgentComposerProps = {
   ref?: Ref<AgentComposerHandle>;
   skills: readonly AgentSkillSnapshot[];
+  terms: readonly GlossaryEntry[];
+  term_hit_counts: Readonly<Record<string, number>>;
   running: boolean;
   unavailable_reason: AgentUnavailableReason | null;
   command: AgentCommand;
@@ -93,7 +114,7 @@ type AgentComposerProps = {
   context_tokens: number | null;
   model_selection: ModelSelectionController;
   input_session: AgentInputSession;
-  on_send: (parts: readonly AgentUserMessagePart[]) => void;
+  on_send: (text: string) => void;
   on_stop: () => Promise<void>;
   on_reset: () => void;
 };
@@ -115,10 +136,11 @@ const AGENT_UNAVAILABLE_REASON_KEYS = Object.freeze({
 } satisfies Readonly<Record<AgentUnavailableReason, LocaleKey>>);
 
 const EMPTY_EDITOR_SNAPSHOT: EditorSnapshot = {
-  parts: [],
+  text: "",
   query: null,
-  selected_skill_names: new Set(),
 };
+/** 菜单只展示最前面的少量术语，避免完整术语表挤压能力入口。 */
+const AGENT_MENTION_TERM_LIMIT = 3;
 
 /** 撤销标记只控制 CodeMirror 历史；此标记单独标识 Composer 的历史导航事务。 */
 const input_history_navigation_annotation = Annotation.define<boolean>();
@@ -129,32 +151,34 @@ const input_history_navigation_annotations = [
 /** Session 受理后的草稿同步不进入撤销栈，也不冒充用户编辑。 */
 const input_session_sync_annotations = [Transaction.addToHistory.of(false)];
 
-// 三个 Compartment 只承接运行期配置，不参与草稿或 token 事实。
+// 三个 Compartment 只承接运行期配置，不参与草稿事实。
 const theme_compartment = new Compartment();
 const read_only_compartment = new Compartment();
 const placeholder_compartment = new Compartment();
 
-/** effect 只负责让撤销历史恢复整组原子 token。 */
-const set_skill_tokens_effect = StateEffect.define<DecorationSet>({
-  map: (tokens, changes) => tokens.map(changes),
+/** mention 配置与 Decoration 都可由当前能力、术语和纯文本正文重建。 */
+const set_mention_tokens_effect = StateEffect.define<readonly AgentMentionToken[]>();
+const mention_token_config_field = StateField.define<readonly AgentMentionToken[]>({
+  create: () => [],
+  update(tokens, transaction) {
+    for (const effect of transaction.effects) {
+      if (effect.is(set_mention_tokens_effect)) return effect.value;
+    }
+    return tokens;
+  },
 });
-
-/** DecorationSet 是 skill 原子范围的唯一事实，正文不另存 token 元数据。 */
-const skill_tokens_field = StateField.define<DecorationSet>({
+const mention_tokens_field = StateField.define<DecorationSet>({
   create: () => Decoration.none,
   update(tokens, transaction) {
-    let next = tokens.map(transaction.changes);
+    let config = transaction.startState.field(mention_token_config_field);
+    let config_changed = false;
     for (const effect of transaction.effects) {
-      if (effect.is(set_skill_tokens_effect)) {
-        next = effect.value;
-      }
+      if (!effect.is(set_mention_tokens_effect)) continue;
+      config = effect.value;
+      config_changed = true;
     }
-    return next.update({
-      filter: (from, to, decoration) => {
-        const name = read_skill_token_name(decoration);
-        return name !== null && transaction.newDoc.sliceString(from, to) === `@${name}`;
-      },
-    });
+    if (!transaction.docChanged && !config_changed) return tokens;
+    return create_mention_token_decorations(transaction.newDoc.toString(), config);
   },
   provide(field) {
     return [
@@ -163,30 +187,9 @@ const skill_tokens_field = StateField.define<DecorationSet>({
     ];
   },
 });
+const mention_token_extension: Extension = [mention_token_config_field, mention_tokens_field];
 
-const skill_token_extension: Extension = [
-  skill_tokens_field,
-  EditorState.transactionExtender.of((transaction) => {
-    if (
-      !transaction.docChanged ||
-      transaction.effects.some((effect) => effect.is(set_skill_tokens_effect))
-    ) {
-      return null;
-    }
-    return {
-      effects: set_skill_tokens_effect.of(
-        transaction.startState.field(skill_tokens_field).map(transaction.changes),
-      ),
-    };
-  }),
-  invertedEffects.of((transaction) =>
-    transaction.effects.some((effect) => effect.is(set_skill_tokens_effect))
-      ? [set_skill_tokens_effect.of(transaction.startState.field(skill_tokens_field))]
-      : [],
-  ),
-];
-
-/** 页面私有的结构化消息编辑器，不把 Agent 领域状态泄漏到通用 AppEditor。 */
+/** 页面私有的纯文本消息编辑器，不把 Agent 领域状态泄漏到通用 AppEditor。 */
 export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const { locale, t } = useI18n();
   const { resolvedTheme } = useTheme();
@@ -208,9 +211,9 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const host_ref = useRef<HTMLDivElement | null>(null);
   const view_ref = useRef<EditorView | null>(null);
   const submit_ref = useRef<() => void>(() => undefined);
-  const select_skill_ref = useRef<(skill: AgentSkillSnapshot) => void>(() => undefined);
+  const select_candidate_ref = useRef<(candidate: MentionCandidate) => void>(() => undefined);
   const menu_open_ref = useRef(false);
-  const matching_skills_ref = useRef<readonly AgentSkillSnapshot[]>([]);
+  const matching_candidates_ref = useRef<readonly MentionCandidate[]>([]);
   const menu_index_ref = useRef(0);
   const last_query_key_ref = useRef("");
   // Session 引用承接跨路由草稿与历史，索引只属于当前 Composer 的临时浏览位置。
@@ -220,26 +223,64 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const [menu_index_value, set_menu_index] = useState(0);
   const [menu_suppressed, set_menu_suppressed] = useState(false);
 
+  // 两组候选使用同一 locale 字面量搜索；能力不限量，术语过滤后再截断。
   const query_text = snapshot.query?.text.toLocaleLowerCase(locale);
-  const matching_skills =
+  const matching_skills: MentionCandidate[] =
     query_text === undefined
       ? []
-      : props.skills.filter(
-          (skill) =>
-            !snapshot.selected_skill_names.has(skill.name) &&
+      : props.skills
+          .filter((skill) =>
             `${skill.name}\n${skill.displayDescriptions[locale]}`
               .toLocaleLowerCase(locale)
               .includes(query_text),
-        );
+          )
+          .map((skill) => ({
+            kind: "skill",
+            key: `skill:${skill.name}`,
+            title: skill.name,
+            description: skill.displayDescriptions[locale],
+            insertText: format_agent_skill_reference(skill.name),
+          }));
+  const matching_terms: MentionCandidate[] =
+    query_text === undefined
+      ? []
+      : props.terms
+          .map((term, index) => ({ term, index }))
+          .filter(
+            ({ term }) =>
+              term.src !== "" &&
+              `${term.src}\n${term.dst}\n${term.info}`
+                .toLocaleLowerCase(locale)
+                .includes(query_text),
+          )
+          .slice(0, AGENT_MENTION_TERM_LIMIT)
+          .map(({ term, index }) => ({
+            kind: "term",
+            key: `term:${index.toString()}:${term.src}`,
+            title: term.src,
+            description: [
+              term.dst,
+              term.info,
+              term.entry_id !== undefined && Object.hasOwn(props.term_hit_counts, term.entry_id)
+                ? t("agent_page.mention.term_hits", {
+                    count: (props.term_hit_counts[term.entry_id] ?? 0).toString(),
+                  })
+                : "",
+            ]
+              .filter((value) => value !== "")
+              .join(" · "),
+            insertText: format_agent_term_reference(term.src),
+          }));
+  const matching_candidates = [...matching_skills, ...matching_terms];
   const editor_read_only = props.command === "send" || props.command === "reset";
-  const menu_open = !editor_read_only && !menu_suppressed && matching_skills.length > 0;
-  const menu_index = Math.max(0, Math.min(menu_index_value, matching_skills.length - 1));
+  const menu_open = snapshot.query !== null && !editor_read_only && !menu_suppressed;
+  const menu_index = Math.max(0, Math.min(menu_index_value, matching_candidates.length - 1));
   const can_send =
     !props.running &&
     props.unavailable_reason === null &&
     props.command === null &&
     !props.model_selection.updating &&
-    snapshot.parts.some((part) => part.kind === "skill" || part.text.trim() !== "");
+    snapshot.text !== "";
   // 运行命令与模型快照请求分开表达，避免把加载态误当成 Agent 会话锁。
   const model_commands_disabled =
     props.running || props.unavailable_reason !== null || props.command !== null;
@@ -268,11 +309,11 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   useImperativeHandle(
     props.ref,
     () => ({
-      write_draft(parts) {
+      write_draft(text) {
         const view = view_ref.current;
         if (view === null || editor_read_only) return;
         input_history_index_ref.current = null;
-        write_agent_message_parts(view, parts);
+        write_agent_message_text(view, text);
         view.focus();
       },
     }),
@@ -280,7 +321,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   );
 
   menu_open_ref.current = menu_open;
-  matching_skills_ref.current = matching_skills;
+  matching_candidates_ref.current = matching_candidates;
   menu_index_ref.current = menu_index;
   input_session_ref.current = props.input_session;
 
@@ -309,8 +350,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             resolve_app_editor_readonly_extensions(initial_editor_read_only_ref.current),
           ),
           placeholder_compartment.of(placeholder(placeholder_text)),
-          skill_token_extension,
-          // widget 边界坐标必须由 CodeMirror 绘制光标消费，不能回退到 Chromium 原生 caret。
+          mention_token_extension,
           drawSelection(),
           history(),
           EditorView.lineWrapping,
@@ -321,11 +361,17 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
           keymap.of([
             {
               key: "ArrowDown",
-              run: (view) => navigate_skill_menu(1) || navigate_input_history(view, "newer"),
+              run: (view) =>
+                menu_open_ref.current
+                  ? navigate_mention_menu(1)
+                  : navigate_input_history(view, "newer"),
             },
             {
               key: "ArrowUp",
-              run: (view) => navigate_skill_menu(-1) || navigate_input_history(view, "older"),
+              run: (view) =>
+                menu_open_ref.current
+                  ? navigate_mention_menu(-1)
+                  : navigate_input_history(view, "older"),
             },
             {
               key: "Escape",
@@ -339,9 +385,10 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               key: "Enter",
               run: (view) => {
                 if (view.composing) return true;
-                const skill = matching_skills_ref.current[menu_index_ref.current];
-                if (menu_open_ref.current && skill !== undefined) select_skill_ref.current(skill);
-                else submit_ref.current();
+                const candidate = matching_candidates_ref.current[menu_index_ref.current];
+                if (menu_open_ref.current && candidate !== undefined) {
+                  select_candidate_ref.current(candidate);
+                } else submit_ref.current();
                 return true;
               },
             },
@@ -358,7 +405,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                 )
               ) {
                 input_history_index_ref.current = null;
-                input_session_ref.current.write_draft(read_agent_draft_parts(update.state));
+                input_session_ref.current.write_draft(update.state.doc.toString());
               }
               emit_snapshot(update.state);
             }
@@ -381,12 +428,19 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     const view = view_ref.current;
     if (view === null) return;
     input_history_index_ref.current = null;
-    write_agent_message_parts(
+    write_agent_message_text(
       view,
       input_session_ref.current.read_draft(),
       input_session_sync_annotations,
     );
   }, [input_revision]);
+
+  useEffect(() => {
+    view_ref.current?.dispatch({
+      effects: set_mention_tokens_effect.of(create_agent_mention_tokens(props.skills, props.terms)),
+      annotations: input_session_sync_annotations,
+    });
+  }, [props.skills, props.terms]);
 
   useEffect(() => {
     view_ref.current?.dispatch({
@@ -422,48 +476,42 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     content.setAttribute("aria-haspopup", "listbox");
     content.setAttribute("aria-expanded", menu_open ? "true" : "false");
     if (menu_open) {
-      content.setAttribute("aria-controls", "agent-skill-menu");
-      content.setAttribute(
-        "aria-activedescendant",
-        `agent-skill-${matching_skills[menu_index]?.name ?? ""}`,
-      );
+      content.setAttribute("aria-controls", "agent-mention-menu");
+      if (matching_candidates[menu_index] === undefined) {
+        content.removeAttribute("aria-activedescendant");
+      } else {
+        content.setAttribute(
+          "aria-activedescendant",
+          `agent-mention-option-${menu_index.toString()}`,
+        );
+      }
     } else {
       content.removeAttribute("aria-controls");
       content.removeAttribute("aria-activedescendant");
     }
-  }, [matching_skills, menu_index, menu_open]);
+  }, [matching_candidates, menu_index, menu_open]);
 
-  /** 用一次事务把当前 @ 查询替换成原子 token，并保持光标与撤销历史一致。 */
-  const select_skill = (skill: AgentSkillSnapshot): void => {
+  /** 用一次事务把当前 @ 查询替换成字面量 marker 与结束空格。 */
+  const select_candidate = (candidate: MentionCandidate): void => {
     const view = view_ref.current;
-    const query = view === null ? null : find_skill_query(view.state);
-    if (view === null || query === null || snapshot.selected_skill_names.has(skill.name)) return;
-    const text = `@${skill.name}`;
-    const changes = view.state.changes({ from: query.from, to: query.to, insert: text });
-    const tokens = view.state
-      .field(skill_tokens_field)
-      .map(changes)
-      .update({
-        add: [
-          create_skill_token_decoration(skill.name).range(query.from, query.from + text.length),
-        ],
-        sort: true,
-      });
+    const query = view === null ? null : find_mention_query(view.state);
+    if (view === null || query === null) return;
+    const text = `${candidate.insertText} `;
     view.dispatch({
-      changes,
+      changes: { from: query.from, to: query.to, insert: text },
       selection: EditorSelection.cursor(query.from + text.length),
-      effects: set_skill_tokens_effect.of(tokens),
     });
     set_menu_suppressed(false);
     view.focus();
   };
-  select_skill_ref.current = select_skill;
+  select_candidate_ref.current = select_candidate;
 
   /** Composer 只提交当前投影；受理后的历史与草稿由常驻 Agent session 原子更新。 */
   const submit = (): void => {
     const view = view_ref.current;
     if (view === null || !can_send) return;
-    props.on_send(read_agent_message_parts(view.state));
+    const text = view.state.doc.toString().trim();
+    if (text !== "") props.on_send(text);
   };
   submit_ref.current = submit;
 
@@ -476,23 +524,36 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       }}
     >
       {menu_open && (
-        <div id="agent-skill-menu" className="agent-skill-menu" role="listbox">
-          {matching_skills.map((skill, index) => (
-            <button
-              id={`agent-skill-${skill.name}`}
-              key={skill.name}
-              type="button"
-              role="option"
-              aria-selected={index === menu_index}
-              data-highlight={index === menu_index}
-              tabIndex={-1}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => select_skill(skill)}
+        <div id="agent-mention-menu" className="agent-mention-menu" role="listbox">
+          {matching_skills.length > 0 && (
+            <div
+              className="agent-mention-menu__group"
+              role="group"
+              aria-labelledby="agent-mention-skills-label"
             >
-              <strong>{skill.name}</strong>
-              <small>{skill.displayDescriptions[locale]}</small>
-            </button>
-          ))}
+              <div id="agent-mention-skills-label" className="agent-mention-menu__group-label">
+                {t("agent_page.mention.groups.skills")}
+              </div>
+              {matching_skills.map((candidate, index) => render_candidate(candidate, index))}
+            </div>
+          )}
+          {matching_terms.length > 0 && (
+            <div
+              className="agent-mention-menu__group"
+              role="group"
+              aria-labelledby="agent-mention-terms-label"
+            >
+              <div id="agent-mention-terms-label" className="agent-mention-menu__group-label">
+                {t("agent_page.mention.groups.terms")}
+              </div>
+              {matching_terms.map((candidate, index) =>
+                render_candidate(candidate, matching_skills.length + index),
+              )}
+            </div>
+          )}
+          {matching_candidates.length === 0 && (
+            <p className="agent-mention-menu__empty">{t("agent_page.mention.no_matches")}</p>
+          )}
         </div>
       )}
       <div className="agent-composer__editor">
@@ -645,12 +706,34 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     </form>
   );
 
-  /** 菜单打开时循环选择候选；关闭时把方向键交还 CodeMirror。 */
-  function navigate_skill_menu(delta: 1 | -1): boolean {
-    if (!menu_open_ref.current || matching_skills_ref.current.length === 0) return false;
+  function render_candidate(candidate: MentionCandidate, index: number): JSX.Element {
+    const Icon = candidate.kind === "skill" ? Sparkles : BookA;
+    return (
+      <button
+        id={`agent-mention-option-${index.toString()}`}
+        key={candidate.key}
+        type="button"
+        role="option"
+        aria-selected={index === menu_index}
+        data-highlight={index === menu_index}
+        tabIndex={-1}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={() => select_candidate(candidate)}
+      >
+        <Icon aria-hidden="true" />
+        <strong>{candidate.title}</strong>
+        {candidate.description !== "" && <small>{candidate.description}</small>}
+      </button>
+    );
+  }
+
+  /** 菜单有候选时循环选择；零结果时把方向键交还 CodeMirror。 */
+  function navigate_mention_menu(delta: 1 | -1): boolean {
+    if (!menu_open_ref.current || matching_candidates_ref.current.length === 0) return false;
     set_menu_index(
       (current) =>
-        (current + delta + matching_skills_ref.current.length) % matching_skills_ref.current.length,
+        (current + delta + matching_candidates_ref.current.length) %
+        matching_candidates_ref.current.length,
     );
     return true;
   }
@@ -667,7 +750,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       }
       const next_index = input_history.length - 1;
       input_history_index_ref.current = next_index;
-      write_agent_message_parts(
+      write_agent_message_text(
         view,
         input_history[next_index]!,
         input_history_navigation_annotations,
@@ -679,7 +762,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     if (next_index < 0) return true;
     if (next_index >= input_history.length) {
       input_history_index_ref.current = null;
-      write_agent_message_parts(
+      write_agent_message_text(
         view,
         input_session_ref.current.read_draft(),
         input_history_navigation_annotations,
@@ -687,7 +770,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       return true;
     }
     input_history_index_ref.current = next_index;
-    write_agent_message_parts(
+    write_agent_message_text(
       view,
       input_history[next_index]!,
       input_history_navigation_annotations,
@@ -696,34 +779,22 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   }
 }
 
-/** 视觉顶部由 CodeMirror 判断，原生覆盖软换行和原子范围。 */
+/** 视觉顶部由 CodeMirror 判断，原生覆盖软换行。 */
 function can_start_input_history(view: EditorView): boolean {
   const selection = view.state.selection;
   if (selection.ranges.length !== 1 || !selection.main.empty) return false;
   return view.moveToLineBoundary(selection.main, false, true).head === 0;
 }
 
-/** 用单次事务同步正文、原子 token 与末尾光标。 */
-function write_agent_message_parts(
+/** 用单次事务同步纯文本正文与末尾光标。 */
+function write_agent_message_text(
   view: EditorView,
-  parts: readonly AgentUserMessagePart[],
+  text: string,
   annotations?: TransactionSpec["annotations"],
 ): void {
-  let text = "";
-  const tokens: Range<Decoration>[] = [];
-  for (const part of parts) {
-    if (part.kind === "text") {
-      text += part.text;
-      continue;
-    }
-    const from = text.length;
-    text += `@${part.name}`;
-    tokens.push(create_skill_token_decoration(part.name).range(from, text.length));
-  }
   view.dispatch({
     changes: { from: 0, to: view.state.doc.length, insert: text },
     selection: EditorSelection.cursor(text.length),
-    effects: set_skill_tokens_effect.of(Decoration.set(tokens, true)),
     annotations,
   });
 }
@@ -757,49 +828,16 @@ function format_context_tokens(tokens: number): string {
   return `${(Math.round(tokens / 100) / 10).toString()}K`;
 }
 
-/** 按 DecorationSet 读取可原样回填的草稿，不套用发送时的首尾裁剪。 */
-function read_agent_draft_parts(state: EditorState): AgentUserMessagePart[] {
-  const parts: AgentUserMessagePart[] = [];
-  let cursor = 0;
-  state.field(skill_tokens_field).between(0, state.doc.length, (from, to, decoration) => {
-    const name = read_skill_token_name(decoration);
-    if (name === null) return;
-    if (from > cursor) {
-      parts.push({ kind: "text", text: state.doc.sliceString(cursor, from) });
-    }
-    parts.push({ kind: "skill", name });
-    cursor = to;
-  });
-  if (cursor < state.doc.length) {
-    parts.push({ kind: "text", text: state.doc.sliceString(cursor) });
-  }
-  return parts;
-}
-
-/** 从原始草稿派生发送投影，只裁剪整条组合消息的文本外缘。 */
-function read_agent_message_parts(state: EditorState): AgentUserMessagePart[] {
-  const parts = read_agent_draft_parts(state);
-  const first = parts[0];
-  if (first?.kind === "text") first.text = first.text.trimStart();
-  const last = parts.at(-1);
-  if (last?.kind === "text") last.text = last.text.trimEnd();
-  return parts.filter((part) => part.kind === "skill" || part.text !== "");
-}
-
 /** 单次读取编辑器派生视图，避免 React 再维护一份可写草稿事实。 */
 function read_editor_snapshot(state: EditorState): EditorSnapshot {
-  const parts = read_agent_message_parts(state);
   return {
-    parts,
-    query: find_skill_query(state),
-    selected_skill_names: new Set(
-      parts.flatMap((part) => (part.kind === "skill" ? [part.name] : [])),
-    ),
+    text: state.doc.toString().trim(),
+    query: find_mention_query(state),
   };
 }
 
-/** 只把光标前当前单词视为查询，不把已确认的原子 token 再次打开为菜单。 */
-function find_skill_query(state: EditorState): SkillQuery | null {
+/** 只把光标前当前单词视为查询，不扫描整篇正文。 */
+function find_mention_query(state: EditorState): MentionQuery | null {
   const selection = state.selection.main;
   if (!selection.empty) return null;
   const line = state.doc.lineAt(selection.head);
@@ -807,64 +845,55 @@ function find_skill_query(state: EditorState): SkillQuery | null {
   const match = before.match(/(^|\s)@([^\s@]*)$/u);
   if (match === null) return null;
   const from = selection.head - match[0].length + match[1].length;
-  const to = selection.head;
-  const token = state.field(skill_tokens_field).iter(from);
-  if (token.value !== null && token.from < to && token.to > from) return null;
-  return { from, to, text: match[2] ?? "" };
+  const token = state.field(mention_tokens_field).iter(from);
+  if (token.value !== null && token.from < selection.head && token.to > from) return null;
+  return { from, to: selection.head, text: match[2] ?? "" };
 }
 
-/** replace widget 拥有完整视觉盒，光标只能停在原子 skill 的两侧。 */
-class SkillTokenWidget extends WidgetType {
+/** 把已知 marker 投影成原子视觉块，底层文档仍保留完整稳定协议。 */
+function create_mention_token_decorations(
+  text: string,
+  tokens: readonly AgentMentionToken[],
+): DecorationSet {
+  return Decoration.set(
+    find_agent_mention_ranges(text, tokens).map((range) =>
+      Decoration.replace({
+        widget: new MentionTokenWidget(range.marker),
+        inclusive: false,
+      }).range(range.from, range.to),
+    ),
+    true,
+  );
+}
+
+/** 输入框中的 mention 视觉块；光标只能停在完整 marker 两侧。 */
+class MentionTokenWidget extends WidgetType {
   private static readonly CURSOR_GAP_PX = 1;
-  private readonly name: string;
+  private readonly marker: string;
 
-  /** 绑定协议中的规范 skill 名称。 */
-  constructor(name: string) {
+  /** marker 既是显示文本，也是底层纯文本协议的原始值。 */
+  public constructor(marker: string) {
     super();
-    this.name = name;
+    this.marker = marker;
   }
 
-  /** 同名 widget 可复用现有 DOM，避免编辑事务重建 token。 */
-  override eq(widget: WidgetType): boolean {
-    return widget instanceof SkillTokenWidget && widget.name === this.name;
+  /** 相同 marker 复用既有 DOM，避免普通编辑事务造成视觉闪动。 */
+  public override eq(widget: WidgetType): boolean {
+    return widget instanceof MentionTokenWidget && widget.marker === this.marker;
   }
 
-  /** 生成由 CodeMirror 管理的原子 token 视觉节点。 */
-  override toDOM(): HTMLElement {
+  /** 创建与时间线共用样式的紧凑块。 */
+  public override toDOM(): HTMLElement {
     const token = document.createElement("span");
-    token.className = "agent-skill-token";
-    token.textContent = `@${this.name}`;
+    token.className = "agent-mention-token";
+    token.textContent = this.marker;
     return token;
   }
 
-  /** 将 token 两侧的文档位置映射到视觉盒边界。 */
-  override coordsAt(
-    dom: HTMLElement,
-    pos: number,
-  ): {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-  } {
+  /** 把 marker 两侧文档位置映射到视觉块边界。 */
+  public override coordsAt(dom: HTMLElement, pos: number) {
     const rect = dom.getBoundingClientRect();
-    // CodeMirror 光标线向左占宽，右边界需留出间隙才能保持在色块之外。
-    const x = pos === 0 ? rect.left : rect.right + SkillTokenWidget.CURSOR_GAP_PX;
+    const x = pos === 0 ? rect.left : rect.right + MentionTokenWidget.CURSOR_GAP_PX;
     return { left: x, right: x, top: rect.top, bottom: rect.bottom };
   }
-}
-
-/** 文档保留原始 @name，replace decoration 只负责原子交互与 DOM 投影。 */
-function create_skill_token_decoration(name: string): Decoration {
-  return Decoration.replace({
-    widget: new SkillTokenWidget(name),
-    inclusive: false,
-    skill_name: name,
-  });
-}
-
-/** 从 decoration spec 安全读取 skill 名，拒绝非字符串的外部值。 */
-function read_skill_token_name(decoration: Decoration): string | null {
-  const name = (decoration.spec as { skill_name?: unknown }).skill_name;
-  return typeof name === "string" ? name : null;
 }

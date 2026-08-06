@@ -17,8 +17,13 @@ export const en_us_agent_page = {
     },
   },
   input: {
-    placeholder: "Describe a task, or type @ to select a capability …",
+    placeholder: "Describe a task, or type @ to select a skill or term …",
     hint: "Enter to send · Shift + Enter for a new line",
+  },
+  mention: {
+    groups: { skills: "Skills", terms: "Terms" },
+    no_matches: "No matching items …",
+    term_hits: "{count} Hits",
   },
   context_usage: "Context {percent} · {used} / {total}",
   context_usage_warning: "Context will be compacted soon",
@@ -32,7 +37,12 @@ export const en_us_agent_page = {
     return_latest: "Return to latest",
   },
   confirm: { new_task: "Confirm starting a new conversation task …?" },
-  status: { running: "Processing", success: "Completed", error: "Failed", stopped: "Stopped" },
+  status: {
+    running: "Processing",
+    success: "Completed",
+    error: "Failed",
+    stopped: "Stopped",
+  },
   round: {
     running: "Processing for {duration}",
     success: "Completed · {duration}",
@@ -45,6 +55,7 @@ export const en_us_agent_page = {
     send: "Message could not be sent. Your draft was preserved.",
     stop: "The task could not be stopped. Try again.",
     reset: "A new task could not be created. Try again.",
+    terms_load: "Terms could not be loaded. Skills and messaging are still available.",
   },
   unavailable: {
     restoring: "Restoring the session",

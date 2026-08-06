@@ -122,12 +122,7 @@ describe("register_api_routes", () => {
   it("POST 路由把任务与 Agent 命令原样转交组合根", async () => {
     const fixture = create_route_fixture();
     const task = { task_type: "translation" };
-    const message: JsonRecord = {
-      parts: [
-        { kind: "skill", name: "glossary-audit" },
-        { kind: "text", text: "审校" },
-      ],
-    };
+    const message: JsonRecord = { text: "@skill(glossary-audit) 审校" };
 
     expect(read_post_handler(fixture.post_json, "/api/tasks/start")(task)).toEqual({
       accepted: true,

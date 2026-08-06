@@ -24,11 +24,8 @@ const manual_skill = {
   references: [],
 };
 
-function create_tool(is_manual_invoked = false) {
-  const tools = create_agent_skill_tools(
-    [auto_skill, manual_skill],
-    (name) => is_manual_invoked && name === manual_skill.name,
-  );
+function create_tool() {
+  const tools = create_agent_skill_tools([auto_skill, manual_skill]);
   const tool = tools.find((candidate) => candidate.name === "read_skill");
   if (tool === undefined) throw new Error("缺少 read_skill");
   return tool;
@@ -64,22 +61,21 @@ describe("Agent 技能读取工具", () => {
     });
   });
 
-  it("拒绝白名单外、目录穿越和未显式引用的 manual-only skill", async () => {
+  it("拒绝白名单外、目录穿越和不存在资源", async () => {
     const tool = create_tool();
 
     for (const path of [
       "E:/skills/glossary-audit/references/missing.md",
       "E:/skills/glossary-audit/../secret.md",
-      manual_skill.filePath,
     ]) {
       await expect(
         tool.execute("rejected", { path }, undefined, undefined, undefined as never),
-      ).rejects.toThrow("技能文件不存在或当前会话不可读取");
+      ).rejects.toThrow("技能文件不在启动期白名单");
     }
   });
 
-  it("显式引用后允许读取 manual-only skill", async () => {
-    const tool = create_tool(true);
+  it("允许读取已加载的 manual-only skill", async () => {
+    const tool = create_tool();
 
     await expect(
       tool.execute(
@@ -99,10 +95,10 @@ describe("Agent 技能读取工具", () => {
   });
 
   it("没有 skill 时不注册读取工具", () => {
-    expect(create_agent_skill_tools([], () => false)).toEqual([]);
+    expect(create_agent_skill_tools([])).toEqual([]);
   });
 
   it("读取工具使用 SDK 默认并行模式", () => {
-    expect(create_agent_skill_tools([auto_skill], () => false)[0]?.executionMode).toBeUndefined();
+    expect(create_agent_skill_tools([auto_skill])[0]?.executionMode).toBeUndefined();
   });
 });

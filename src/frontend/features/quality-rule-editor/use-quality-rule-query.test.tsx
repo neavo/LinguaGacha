@@ -121,4 +121,92 @@ describe("quality rule query lifecycle", () => {
     expect(on_load_error).toHaveBeenCalledWith(error);
     expect(current_state?.quality_loaded).toBe(false);
   });
+
+  it("项目切换后不接纳旧项目的迟到响应", async () => {
+    let resolve_old!: (value: unknown) => void;
+    let resolve_new!: (value: unknown) => void;
+    query_quality_rules_mock
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolve_old = resolve;
+          }),
+      )
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolve_new = resolve;
+          }),
+      );
+
+    await act(async () => root.render(<QueryProbe project_path="E:/old/old.lg" />));
+    await vi.waitFor(() => expect(query_quality_rules_mock).toHaveBeenCalledTimes(1));
+    await act(async () => root.render(<QueryProbe project_path="E:/new/new.lg" />));
+    expect(current_state).toMatchObject({ quality_slice: DEFAULT_SLICE, quality_loaded: false });
+
+    await act(async () =>
+      resolve_old({
+        projectPath: "E:/old/old.lg",
+        sectionRevisions: { quality: 1 },
+        qualityRule: { enabled: true },
+      }),
+    );
+    expect(current_state).toMatchObject({ quality_slice: DEFAULT_SLICE, quality_loaded: false });
+
+    await act(async () =>
+      resolve_new({
+        projectPath: "E:/new/new.lg",
+        sectionRevisions: { quality: 4 },
+        qualityRule: { enabled: false },
+      }),
+    );
+    expect(current_state).toMatchObject({
+      quality_slice: { enabled: false, section_revision: 4 },
+      quality_loaded: true,
+    });
+  });
+
+  it("显式刷新迟到时不覆盖新工程切片", async () => {
+    query_quality_rules_mock.mockResolvedValueOnce({
+      projectPath: "E:/old/old.lg",
+      sectionRevisions: { quality: 1 },
+      qualityRule: { enabled: true },
+    });
+    await act(async () => root.render(<QueryProbe project_path="E:/old/old.lg" />));
+    await vi.waitFor(() => expect(current_state?.quality_loaded).toBe(true));
+
+    let resolve_refresh!: (value: unknown) => void;
+    query_quality_rules_mock.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolve_refresh = resolve;
+        }),
+    );
+    let refresh!: Promise<unknown>;
+    await act(async () => {
+      refresh = current_state!.refresh_quality_rule_snapshot();
+      await Promise.resolve();
+    });
+
+    query_quality_rules_mock.mockResolvedValueOnce({
+      projectPath: "E:/new/new.lg",
+      sectionRevisions: { quality: 4 },
+      qualityRule: { enabled: false },
+    });
+    await act(async () => root.render(<QueryProbe project_path="E:/new/new.lg" />));
+    await vi.waitFor(() => expect(current_state?.quality_slice.section_revision).toBe(4));
+
+    await act(async () => {
+      resolve_refresh({
+        projectPath: "E:/old/old.lg",
+        sectionRevisions: { quality: 2 },
+        qualityRule: { enabled: true },
+      });
+      await refresh;
+    });
+    expect(current_state).toMatchObject({
+      quality_slice: { enabled: false, section_revision: 4 },
+      quality_loaded: true,
+    });
+  });
 });

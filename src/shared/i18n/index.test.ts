@@ -27,7 +27,7 @@ describe("shared i18n", () => {
     ).toBe("Glossar aktiviert …");
   });
 
-  it("四张质量规则表统一使用命中词表", () => {
+  it("相关 UI 统一使用命中词表", () => {
     const keys = [
       "glossary_page.fields.hit",
       "text_replacement_page.fields.hit",
@@ -38,6 +38,11 @@ describe("shared i18n", () => {
       expect(create_text_resolver("en-US")(key)).toBe("Hits");
       expect(create_text_resolver("de-DE")(key)).toBe("Treffer");
     }
+    expect(
+      create_text_resolver("en-US")("agent_page.mention.term_hits", {
+        count: "7",
+      }),
+    ).toBe("7 Hits");
   });
 
   it("解析 AGENT 品牌、英文任务按钮与模型默认容量文案", () => {

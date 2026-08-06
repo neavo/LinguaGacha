@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { useProjectChangeSignal } from "@frontend/app/state/use-desktop-state";
 import { useProjectChangeSeqForSections } from "@frontend/app/state/project-change-signal";
@@ -29,7 +29,7 @@ type QualityRuleQueryState<TSlice> = {
 const QUALITY_RULE_REFRESH_SECTIONS = ["quality"] as const;
 
 /**
- * 质量规则页共用一次查询、相关项目事件重读和迟到响应隔离。
+ * 质量规则切片消费方共用一次查询、相关项目事件重读和迟到响应隔离。
  */
 export function useQualityRuleQuery<TType extends QualityRuleType, TSlice>(
   args: UseQualityRuleQueryArgs<TType, TSlice>,
@@ -43,7 +43,15 @@ export function useQualityRuleQuery<TType extends QualityRuleType, TSlice>(
   );
   const [quality_slice, set_quality_slice] = useState(default_slice);
   const [quality_loaded, set_quality_loaded] = useState(false);
+  const request_token_ref = useRef(0);
   const query_enabled = project_path !== "" && session_ready;
+
+  // 工程、规则或会话身份变化时先失效旧请求并清空旧切片，禁止跨身份闪现旧事实。
+  useLayoutEffect(() => {
+    request_token_ref.current += 1;
+    set_quality_slice(default_slice);
+    set_quality_loaded(false);
+  }, [default_slice, project_path, rule_type, session_ready]);
 
   const read_quality_rule_snapshot = useCallback(async (): Promise<TSlice | null> => {
     const response = await query_quality_rules(rule_type);
@@ -55,6 +63,8 @@ export function useQualityRuleQuery<TType extends QualityRuleType, TSlice>(
   }, [normalize_slice, project_path, rule_type]);
 
   const refresh_quality_rule_snapshot = useCallback(async (): Promise<TSlice> => {
+    const request_token = request_token_ref.current + 1;
+    request_token_ref.current = request_token;
     if (!query_enabled) {
       set_quality_slice(default_slice);
       set_quality_loaded(false);
@@ -62,7 +72,7 @@ export function useQualityRuleQuery<TType extends QualityRuleType, TSlice>(
     }
 
     const next_slice = await read_quality_rule_snapshot();
-    if (next_slice === null) {
+    if (request_token_ref.current !== request_token || next_slice === null) {
       return quality_slice;
     }
     set_quality_slice(next_slice);
@@ -72,15 +82,15 @@ export function useQualityRuleQuery<TType extends QualityRuleType, TSlice>(
 
   useEffect(() => {
     if (!query_enabled) {
-      set_quality_slice(default_slice);
-      set_quality_loaded(false);
       return;
     }
 
     let cancelled = false;
+    const request_token = request_token_ref.current + 1;
+    request_token_ref.current = request_token;
     void read_quality_rule_snapshot()
       .then((next_slice) => {
-        if (cancelled || next_slice === null) {
+        if (cancelled || request_token_ref.current !== request_token || next_slice === null) {
           return;
         }
         set_quality_slice(next_slice);

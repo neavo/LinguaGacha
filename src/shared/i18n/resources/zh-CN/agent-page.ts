@@ -14,8 +14,13 @@ export const zh_cn_agent_page = {
     },
   },
   input: {
-    placeholder: "描述任务，或输入 @ 选择能力 …",
+    placeholder: "描述任务，或输入 @ 选择技能或术语 …",
     hint: "Enter 发送 · Shift + Enter 换行",
+  },
+  mention: {
+    groups: { skills: "技能", terms: "术语" },
+    no_matches: "没有匹配的项目 …",
+    term_hits: "{count} 次",
   },
   context_usage: "上下文 {percent} · {used} / {total}",
   context_usage_warning: "即将自动压缩上下文",
@@ -42,6 +47,7 @@ export const zh_cn_agent_page = {
     send: "发送失败，草稿已保留。",
     stop: "停止失败，请重试。",
     reset: "新任务创建失败，请重试。",
+    terms_load: "术语加载失败，技能选择与消息发送仍可使用。",
   },
   unavailable: {
     restoring: "正在恢复会话",

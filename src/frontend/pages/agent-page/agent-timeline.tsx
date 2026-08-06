@@ -2,6 +2,11 @@ import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } fr
 
 import type { AgentEntry, AgentEntryStatus } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import {
+  find_agent_mention_ranges,
+  type AgentMentionRange,
+  type AgentMentionToken,
+} from "./agent-mention";
 import { AgentMarkdown } from "./agent-markdown";
 import { is_at_scroll_end } from "./agent-scroll";
 
@@ -26,6 +31,7 @@ const AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS = 3_000; // 给用户留出确认终
 
 type AgentTimelineProps = {
   entries: readonly AgentEntry[];
+  mention_tokens: readonly AgentMentionToken[];
   resume_revision: number;
   on_follow_hold_change: (id: string, paused: boolean) => void;
 };
@@ -53,7 +59,13 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
   const show_activity = should_show_trailing_activity(props.entries);
   return (
     <div className="agent-page__messages">
-      {render_conversation(props.entries, t, props.resume_revision, props.on_follow_hold_change)}
+      {render_conversation(
+        props.entries,
+        props.mention_tokens,
+        t,
+        props.resume_revision,
+        props.on_follow_hold_change,
+      )}
       {show_activity && (
         <div className="agent-message__activity">
           <AgentStatusMark status="running" label={t(AGENT_STATUS_LABEL_KEYS.running)} />
@@ -66,6 +78,7 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
 /** 单次顺序遍历后端时间线，保持 user、assistant 与 tool 的公开事件次序。 */
 function render_conversation(
   entries: readonly AgentEntry[],
+  mention_tokens: readonly AgentMentionToken[],
   t: Translate,
   resume_revision: number,
   on_follow_hold_change: (id: string, paused: boolean) => void,
@@ -74,6 +87,7 @@ function render_conversation(
     <AgentEntryView
       key={entry.id}
       entry={entry}
+      mention_tokens={mention_tokens}
       t={t}
       resume_revision={resume_revision}
       on_follow_hold_change={on_follow_hold_change}
@@ -84,6 +98,7 @@ function render_conversation(
 /** 后端 upsert 保留未变化条目对象身份，memo 只重绘真实变化的时间线条目。 */
 const AgentEntryView = memo(function AgentEntryView(props: {
   entry: AgentEntry;
+  mention_tokens: readonly AgentMentionToken[];
   t: Translate;
   resume_revision: number;
   on_follow_hold_change: (id: string, paused: boolean) => void;
@@ -104,20 +119,21 @@ const AgentEntryView = memo(function AgentEntryView(props: {
     );
   }
   if (entry.kind === "user_message") {
+    const mention_ranges = find_agent_mention_ranges(entry.text, props.mention_tokens);
+    const mention_only =
+      mention_ranges.length === 1 &&
+      mention_ranges[0]?.from === 0 &&
+      mention_ranges[0]?.to === entry.text.length;
     return (
       <>
         <AgentRoundHeader user={entry} t={props.t} />
-        <article className="agent-message agent-message--user" key={entry.id}>
+        <article
+          className="agent-message agent-message--user"
+          data-mention-only={mention_only || undefined}
+          key={entry.id}
+        >
           <p className="agent-message__user-text">
-            {entry.parts.map((part, part_index) =>
-              part.kind === "text" ? (
-                part.text
-              ) : (
-                <span className="agent-skill-token" key={`${part.name}-${part_index.toString()}`}>
-                  @{part.name}
-                </span>
-              ),
-            )}
+            {render_agent_mention_text(entry.text, mention_ranges)}
           </p>
         </article>
       </>
@@ -125,6 +141,26 @@ const AgentEntryView = memo(function AgentEntryView(props: {
   }
   return render_assistant_entry(entry, props.t, props.resume_revision, props.on_follow_hold_change);
 });
+
+/** 用已知非重叠范围渲染用户正文；未知 marker 与普通文本保持原样。 */
+function render_agent_mention_text(
+  text: string,
+  ranges: readonly AgentMentionRange[],
+): ReactNode[] {
+  const content: ReactNode[] = [];
+  let cursor = 0;
+  for (const range of ranges) {
+    if (range.from > cursor) content.push(text.slice(cursor, range.from));
+    content.push(
+      <span className="agent-mention-token" key={`${range.from.toString()}:${range.marker}`}>
+        {range.marker}
+      </span>,
+    );
+    cursor = range.to;
+  }
+  if (cursor < text.length) content.push(text.slice(cursor));
+  return content;
+}
 
 /** 保持 text / thinking 的供应商顺序，并只把流式状态标到最后一个开放 part。 */
 function render_assistant_entry(

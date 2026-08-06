@@ -2,16 +2,10 @@ import { act, createRef, type ComponentProps, type ReactNode, type RefObject } f
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  cursorCharBackward,
-  deleteCharBackward,
-  deleteCharForward,
-  redo,
-  undo,
-} from "@codemirror/commands";
+import { deleteCharBackward } from "@codemirror/commands";
 import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import type { AgentUserMessagePart } from "@shared/agent";
+import type { GlossaryEntry } from "@domain/quality";
 import type { Locale } from "@shared/i18n/types";
 import type { AgentInputSession } from "@frontend/app/session/agent/agent-session-context";
 import {
@@ -34,6 +28,8 @@ type RenderComposerOptions = Partial<
     | "on_send"
     | "on_stop"
     | "running"
+    | "term_hit_counts"
+    | "terms"
     | "unavailable_reason"
   >
 > & {
@@ -43,15 +39,18 @@ type RenderComposerOptions = Partial<
 };
 
 type TestAgentInputSession = AgentInputSession & {
-  accept_message: (parts: readonly AgentUserMessagePart[]) => void;
+  accept_message: (text: string) => void;
 };
 
 /** 测试通过真实重渲染读取当前 locale，只替换应用 Provider 边界。 */
 const locale_state = vi.hoisted(() => ({ value: "zh-CN" as Locale }));
 /** 只列当前组件断言涉及的可见文案，其余 key 原样返回以便定位。 */
 const TEST_MESSAGES = vi.hoisted(() => ({
-  "agent_page.input.placeholder": "描述任务，或输入 @ 选择能力 …",
+  "agent_page.input.placeholder": "描述任务，或输入 @ 选择技能或术语 …",
   "agent_page.input.hint": "Enter 发送 · Shift + Enter 换行",
+  "agent_page.mention.groups.skills": "技能",
+  "agent_page.mention.groups.terms": "术语",
+  "agent_page.mention.no_matches": "没有匹配的项目 …",
   "agent_page.context_usage_warning": "即将自动压缩上下文",
   "agent_page.action.send": "发送",
   "agent_page.action.stop": "停止",
@@ -76,7 +75,9 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
     t: (key: string, params?: Record<string, string>) =>
       key === "agent_page.context_usage"
         ? `上下文 ${params?.["percent"]} · ${params?.["used"]} / ${params?.["total"]}`
-        : (TEST_MESSAGES[key as keyof typeof TEST_MESSAGES] ?? key),
+        : key === "agent_page.mention.term_hits"
+          ? `${params?.["count"]} 次`
+          : (TEST_MESSAGES[key as keyof typeof TEST_MESSAGES] ?? key),
   }),
 }));
 
@@ -99,6 +100,18 @@ const skills = [
   },
 ];
 
+const terms: GlossaryEntry[] = [
+  { entry_id: "alice", src: "Alice Smith", dst: "爱丽丝", info: "女主角", case_sensitive: false },
+  { entry_id: "bob", src: "Bob", dst: "鲍勃", info: "", case_sensitive: false },
+  { entry_id: "carol", src: "Carol", dst: "", info: "反派角色", case_sensitive: false },
+  { entry_id: "delta", src: "Delta", dst: "", info: "角色", case_sensitive: false },
+  { entry_id: "echo", src: "Echo", dst: "", info: "角色", case_sensitive: false },
+  { entry_id: "foxtrot", src: "Foxtrot", dst: "", info: "角色", case_sensitive: false },
+  { entry_id: "golf", src: "Golf", dst: "", info: "角色", case_sensitive: false },
+  { src: "", dst: "空源", info: "角色", case_sensitive: false },
+];
+const term_hit_counts = { alice: 7, bob: 2, carol: 0, delta: 1, echo: 3 };
+
 describe("AgentComposer", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
@@ -114,585 +127,253 @@ describe("AgentComposer", () => {
     window.localStorage.clear();
   });
 
-  it("在当前光标查询并混排多个唯一 skill，保留查询后的文本", async () => {
+  it("输入 @ 后按技能、术语分组显示三条术语及命中次数", async () => {
     const view = await render_composer();
     const editor = get_editor(view);
-    await set_document(editor, "前 @cor 后", 6);
-
+    await set_document(editor, "@", 1);
     const menu = await wait_for_element(view, '[role="listbox"]');
-    expect(menu.querySelectorAll('[role="option"]')).toHaveLength(1);
-    expect(menu.textContent).toContain("corpus-search");
-    await act(async () => menu.querySelector<HTMLButtonElement>('button[role="option"]')?.click());
-    expect(editor.state.doc.toString()).toBe("前 @corpus-search 后");
-    expect(view.querySelector(".agent-skill-token")?.textContent).toBe("@corpus-search");
+    const groups = [...menu.querySelectorAll<HTMLElement>('[role="group"]')];
+    const options = [...menu.querySelectorAll<HTMLElement>('[role="option"]')];
 
-    await act(async () => {
-      editor.dispatch({
-        changes: { from: editor.state.doc.length, insert: " @" },
-        selection: EditorSelection.cursor(editor.state.doc.length + 2),
-      });
-    });
-    const next_menu = await wait_for_element(view, '[role="listbox"]');
-    expect(next_menu.textContent).toContain("glossary-audit");
-    expect(next_menu.textContent).not.toContain("corpus-search");
-  });
-
-  it("按当前应用语言搜索并显示 skill 描述", async () => {
-    locale_state.value = "en-US";
-    const view = await render_composer();
-    const editor = get_editor(view);
-    await set_document(editor, "@review", 7);
-
-    const menu = await wait_for_element(view, '[role="listbox"]');
-    expect(menu.textContent).toContain("glossary-audit");
-    expect(menu.textContent).toContain("Review glossary");
-    expect(menu.textContent).not.toContain("审校术语");
-  });
-
-  it("从空输入框双向浏览全部用户消息并停在两端", async () => {
-    seed_input_history([
-      [{ kind: "text", text: "最旧消息" }],
-      [{ kind: "text", text: "较旧消息" }],
-      [{ kind: "text", text: "最新消息" }],
+    expect(groups.map((group) => group.getAttribute("aria-labelledby"))).toEqual([
+      "agent-mention-skills-label",
+      "agent-mention-terms-label",
     ]);
+    expect(groups.map((group) => group.textContent)).toEqual([
+      expect.stringContaining("技能"),
+      expect.stringContaining("术语"),
+    ]);
+    expect(menu.querySelectorAll(".lucide-sparkles")).toHaveLength(skills.length);
+    expect(menu.querySelectorAll(".lucide-book-a")).toHaveLength(3);
+    expect(options[0]?.textContent).toContain("glossary-audit审校术语");
+    expect(options[skills.length]?.textContent).toContain("Alice Smith爱丽丝 · 女主角 · 7 次");
+    expect(editor.contentDOM.getAttribute("role")).toBe("combobox");
+    expect(editor.contentDOM.getAttribute("aria-controls")).toBe("agent-mention-menu");
+    expect(editor.contentDOM.getAttribute("aria-activedescendant")).toBe("agent-mention-option-0");
+  });
+
+  it("按当前语言跨全部字段过滤，并在过滤后截取前三条术语", async () => {
     const view = await render_composer();
     const editor = get_editor(view);
 
-    for (const [key, expected] of [
-      ["ArrowDown", ""],
-      ["ArrowUp", "最新消息"],
-      ["ArrowUp", "较旧消息"],
-      ["ArrowUp", "最旧消息"],
-      ["ArrowUp", "最旧消息"],
-      ["ArrowDown", "较旧消息"],
-      ["ArrowDown", "最新消息"],
-      ["ArrowDown", ""],
-      ["ArrowDown", ""],
+    for (const [query, expected] of [
+      ["@审校", "glossary-audit"],
+      ["@爱丽丝", "Alice Smith"],
+      ["@女主角", "Alice Smith"],
+      ["@Carol", "反派角色"],
     ] as const) {
-      await dispatch_key(editor.contentDOM, key);
-      expect(editor.state.doc.toString()).toBe(expected);
+      await set_document(editor, query, query.length);
+      const menu = await wait_for_element(view, '[role="listbox"]');
+      expect(menu.textContent).toContain(expected);
     }
+
+    await set_document(editor, "@角色", 3);
+    const term_group = await wait_for_element(
+      view,
+      '[aria-labelledby="agent-mention-terms-label"]',
+    );
+    expect(term_group.querySelectorAll('[role="option"]')).toHaveLength(3);
+    expect(term_group.textContent).toContain("Carol");
+    expect(term_group.textContent).toContain("Echo");
+    expect(term_group.textContent).not.toContain("Foxtrot");
   });
 
-  it("历史回填恢复 skill 语义且不污染撤销栈", async () => {
+  it("能力描述跟随当前语言，术语描述只连接存在的字段", async () => {
+    locale_state.value = "en-US";
+    let view = await render_composer();
+    let editor = get_editor(view);
+    await set_document(editor, "@review", 7);
+    expect((await wait_for_element(view, '[role="option"]')).textContent).toContain(
+      "glossary-auditReview glossary",
+    );
+
+    locale_state.value = "zh-CN";
+    view = await render_composer();
+    editor = get_editor(view);
+    await set_document(editor, "@Bob", 4);
+    expect((await wait_for_element(view, '[role="option"] small')).textContent).toBe("鲍勃 · 2 次");
+    await set_document(editor, "@Carol", 6);
+    expect((await wait_for_element(view, '[role="option"] small')).textContent).toBe(
+      "反派角色 · 0 次",
+    );
+  });
+
+  it("选择能力和术语插入字面量，活动索引跨分组连续移动", async () => {
     const on_send = vi.fn();
-    seed_input_history([
-      [
-        { kind: "text", text: "检查 " },
-        { kind: "skill", name: "glossary-audit" },
-      ],
-    ]);
     const view = await render_composer({ on_send });
     const editor = get_editor(view);
+    const content = editor.contentDOM;
 
-    await dispatch_key(editor.contentDOM, "ArrowUp");
-    expect(editor.state.doc.toString()).toBe("检查 @glossary-audit");
-    expect(view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
-    expect(undo(editor)).toBe(false);
+    await set_document(editor, "前 @glo", 6);
+    await dispatch_key(content, "Enter");
+    expect(editor.state.doc.toString()).toBe("前 @skill(glossary-audit) ");
+    expect(view.querySelector(".agent-mention-token")?.textContent).toBe("@skill(glossary-audit)");
+
+    await set_document(editor, "@", 1);
+    await dispatch_key(content, "ArrowDown");
+    await dispatch_key(content, "ArrowDown");
+    expect(content.getAttribute("aria-activedescendant")).toBe("agent-mention-option-2");
+    await dispatch_key(content, "Enter");
+    expect(editor.state.doc.toString()).toBe("@term(Alice Smith) ");
+    expect(view.querySelector(".agent-mention-token")?.textContent).toBe("@term(Alice Smith)");
+
+    await set_document(editor, "@Bob", 4);
+    const option = await wait_for_element(view, '[role="option"]');
+    const mouse_down = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+    expect(option.dispatchEvent(mouse_down)).toBe(false);
+    await act(async () => option.click());
+    expect(editor.state.doc.toString()).toBe("@term(Bob) ");
     await click_send(view);
-    expect(on_send).toHaveBeenCalledWith([
-      { kind: "text", text: "检查 " },
-      { kind: "skill", name: "glossary-audit" },
-    ]);
-    await dispatch_key(editor.contentDOM, "ArrowDown");
+    expect(on_send).toHaveBeenCalledWith("@term(Bob)");
+  });
+
+  it("已知 marker 在输入框中整块显示和删除，底层仍保留原始文本", async () => {
+    const view = await render_composer();
+    const editor = get_editor(view);
+    const marker = "@term(Alice Smith)";
+    await set_document(editor, marker, marker.length);
+
+    expect(view.querySelector(".agent-mention-token")?.textContent).toBe(marker);
+    expect(editor.state.doc.toString()).toBe(marker);
+    await act(async () => expect(deleteCharBackward(editor)).toBe(true));
     expect(editor.state.doc.toString()).toBe("");
   });
 
-  it("保存非空结构化草稿并在越过最新历史时完整恢复", async () => {
-    const composer_ref = createRef<AgentComposerHandle>();
+  it("零结果保持菜单空态，方向键不访问非法索引，Enter 仍发送正文", async () => {
     const on_send = vi.fn();
-    seed_input_history([[{ kind: "text", text: "最新消息" }]]);
-    const view = await render_composer({
-      composer_ref,
-      on_send,
-    });
+    const view = await render_composer({ on_send });
     const editor = get_editor(view);
-
-    await act(async () => {
-      composer_ref.current?.write_draft([
-        { kind: "text", text: "  检查 " },
-        { kind: "skill", name: "glossary-audit" },
-        { kind: "text", text: " 待处理  " },
-      ]);
-      editor.dispatch({ selection: EditorSelection.cursor(0) });
-    });
-    await dispatch_key(editor.contentDOM, "ArrowUp");
-    expect(editor.state.doc.toString()).toBe("最新消息");
-
+    await set_document(editor, "@missing", 8);
+    const menu = await wait_for_element(view, '[role="listbox"]');
+    expect(menu.textContent).toBe("没有匹配的项目 …");
+    expect(menu.querySelector('[role="option"]')).toBeNull();
+    expect(editor.contentDOM.hasAttribute("aria-activedescendant")).toBe(false);
     await dispatch_key(editor.contentDOM, "ArrowDown");
-    expect(editor.state.doc.toString()).toBe("  检查 @glossary-audit 待处理  ");
-    expect(view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
-    expect(editor.state.selection.main.head).toBe(editor.state.doc.length);
-    await click_send(view);
-    expect(on_send).toHaveBeenCalledWith([
-      { kind: "text", text: "检查 " },
-      { kind: "skill", name: "glossary-audit" },
-      { kind: "text", text: " 待处理" },
-    ]);
+    expect(editor.state.doc.toString()).toBe("@missing");
+    await dispatch_key(editor.contentDOM, "Enter");
+    expect(on_send).toHaveBeenCalledWith("@missing");
   });
 
-  it("第一视觉行的非零光标首次 ArrowUp 就进入历史", async () => {
-    seed_input_history([[{ kind: "text", text: "最新消息" }]]);
+  it("Escape 关闭当前菜单，查询变化后重新打开", async () => {
     const view = await render_composer();
     const editor = get_editor(view);
-    await set_document(editor, "普通草稿", 4);
-
-    await dispatch_key(editor.contentDOM, "ArrowUp");
-
-    expect(editor.state.doc.toString()).toBe("最新消息");
+    await set_document(editor, "@g", 2);
+    await wait_for_element(view, '[role="listbox"]');
+    await dispatch_key(editor.contentDOM, "Escape");
+    expect(view.querySelector('[role="listbox"]')).toBeNull();
+    expect(editor.state.doc.toString()).toBe("@g");
+    await act(async () =>
+      editor.dispatch({
+        changes: { from: 2, insert: "l" },
+        selection: EditorSelection.cursor(3),
+      }),
+    );
+    expect(await wait_for_element(view, '[role="listbox"]')).not.toBeNull();
   });
 
-  it("未到最上方视觉行时把 ArrowUp 交还 CodeMirror", async () => {
-    seed_input_history([[{ kind: "text", text: "最新消息" }]]);
+  it("Shift+Enter 换行，IME composing 期间 Enter 不选择也不发送", async () => {
+    const on_send = vi.fn();
+    const view = await render_composer({ on_send });
+    const editor = get_editor(view);
+    await set_document(editor, "正文", 2);
+    await dispatch_key(editor.contentDOM, "Enter", true);
+    expect(editor.state.doc.toString()).toBe("正文\n");
+
+    await set_document(editor, "@glo", 4);
+    await dispatch_key(editor.contentDOM, "Enter", false, true);
+    expect(editor.state.doc.toString()).toBe("@glo");
+    expect(on_send).not.toHaveBeenCalled();
+  });
+
+  it("用纯文本历史双向浏览并恢复当前草稿", async () => {
+    seed_input_history(["第一条", "检查 @skill(glossary-audit) 完成"]);
+    const view = await render_composer();
+    const editor = get_editor(view);
+    await set_document(editor, "当前草稿", 4);
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    expect(editor.state.doc.toString()).toBe("检查 @skill(glossary-audit) 完成");
+    await dispatch_key(editor.contentDOM, "ArrowUp");
+    expect(editor.state.doc.toString()).toBe("第一条");
+    await dispatch_key(editor.contentDOM, "ArrowDown");
+    await dispatch_key(editor.contentDOM, "ArrowDown");
+    expect(editor.state.doc.toString()).toBe("当前草稿");
+  });
+
+  it("历史导航只从视觉首行启动，并在用户编辑后退出", async () => {
+    seed_input_history(["历史消息"]);
     const view = await render_composer();
     const editor = get_editor(view);
     const draft = "第一行\n第二行";
     await set_document(editor, draft, draft.length);
 
     await dispatch_key(editor.contentDOM, "ArrowUp");
-
     expect(editor.state.doc.toString()).toBe(draft);
-    expect(editor.state.doc.lineAt(editor.state.selection.main.head).number).toBe(1);
-  });
-
-  it("修改回填消息后退出导航且不恢复旧草稿", async () => {
-    seed_input_history([[{ kind: "text", text: "最新消息" }]]);
-    const view = await render_composer();
-    const editor = get_editor(view);
-    await set_document(editor, "原草稿", 0);
+    editor.dispatch({ selection: EditorSelection.cursor(0) });
     await dispatch_key(editor.contentDOM, "ArrowUp");
-    await act(async () => {
-      editor.dispatch({ changes: { from: editor.state.doc.length, insert: "已修改" } });
-    });
+    expect(editor.state.doc.toString()).toBe("历史消息");
 
-    await dispatch_key(editor.contentDOM, "ArrowDown");
-
-    expect(editor.state.doc.toString()).toBe("最新消息已修改");
-  });
-
-  it("只移动选区时保留历史导航位置", async () => {
-    seed_input_history([
-      [{ kind: "text", text: "较旧消息" }],
-      [{ kind: "text", text: "最新消息" }],
-    ]);
-    const view = await render_composer();
-    const editor = get_editor(view);
-    await dispatch_key(editor.contentDOM, "ArrowUp");
-    await act(async () => {
-      editor.dispatch({ selection: EditorSelection.cursor(0) });
-    });
-
-    await dispatch_key(editor.contentDOM, "ArrowUp");
-
-    expect(editor.state.doc.toString()).toBe("较旧消息");
-  });
-
-  it("write_draft 即使写入相同内容也显式退出历史导航", async () => {
-    const composer_ref = createRef<AgentComposerHandle>();
-    seed_input_history([[{ kind: "text", text: "最新消息" }]]);
-    const view = await render_composer({ composer_ref });
-    const editor = get_editor(view);
-    await set_document(editor, "原草稿", 0);
-    await dispatch_key(editor.contentDOM, "ArrowUp");
-    expect(editor.state.doc.toString()).toBe("最新消息");
-
-    await act(async () => {
-      composer_ref.current?.write_draft([{ kind: "text", text: "最新消息" }]);
-    });
-    await dispatch_key(editor.contentDOM, "ArrowDown");
-
-    expect(editor.state.doc.toString()).toBe("最新消息");
-  });
-
-  it("非空选区不启动历史导航", async () => {
-    seed_input_history([[{ kind: "text", text: "最新消息" }]]);
-    const view = await render_composer();
-    const editor = get_editor(view);
-    await set_document(editor, "普通草稿", 4);
-    await act(async () => {
-      editor.dispatch({ selection: EditorSelection.range(0, 4) });
-    });
-
-    await dispatch_key(editor.contentDOM, "ArrowUp");
-
-    expect(editor.state.doc.toString()).toBe("普通草稿");
-  });
-
-  it("skill 菜单优先消费历史导航方向键", async () => {
-    seed_input_history([[{ kind: "text", text: "@" }]]);
-    const view = await render_composer();
-    const editor = get_editor(view);
-    await dispatch_key(editor.contentDOM, "ArrowUp");
-    const menu = await wait_for_element(view, '[role="listbox"]');
-
-    await dispatch_key(editor.contentDOM, "ArrowDown");
-
-    expect(editor.state.doc.toString()).toBe("@");
-    expect(menu.querySelector('[data-highlight="true"]')?.textContent).toContain("corpus-search");
-
-    await dispatch_key(editor.contentDOM, "Enter");
-    await dispatch_key(editor.contentDOM, "ArrowDown");
-    expect(editor.state.doc.toString()).toBe("@corpus-search");
-  });
-
-  it("把 skill 当作原子范围删除、跨越，并随撤销重做恢复语义", async () => {
-    const view = await render_composer();
-    const editor = get_editor(view);
-    await select_skill(view, editor, "glossary-audit");
-    const token_length = "@glossary-audit".length;
-    const token = view.querySelector<HTMLElement>(".agent-skill-token");
-
-    expect(editor.state.doc.toString()).toBe("@glossary-audit");
-    expect(view.querySelector(".cm-cursorLayer")).not.toBeNull();
-    expect(token?.getAttribute("contenteditable")).toBe("false");
-    if (token === null) throw new Error("缺少能力 token");
-    const token_rect = { left: 10, right: 30, top: 2, bottom: 18 } as DOMRect;
-    vi.spyOn(token, "getBoundingClientRect").mockReturnValue(token_rect);
-    vi.spyOn(token, "getClientRects").mockReturnValue([token_rect] as unknown as DOMRectList);
-    expect(editor.coordsAtPos(token_length, -1)?.left).toBe(31);
-
-    await act(async () => {
-      editor.dispatch({ selection: EditorSelection.cursor(token_length) });
-      cursorCharBackward(editor);
-    });
-    expect(editor.state.selection.main.head).toBe(0);
-
-    await act(async () => {
-      editor.dispatch({ selection: EditorSelection.cursor(token_length) });
-      deleteCharBackward(editor);
-    });
-    expect(editor.state.doc.toString()).toBe("");
-    expect(view.querySelector(".agent-skill-token")).toBeNull();
-
-    await act(async () => void undo(editor));
-    expect(editor.state.doc.toString()).toBe("@glossary-audit");
-    expect(view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
-    await act(async () => void redo(editor));
-    expect(editor.state.doc.toString()).toBe("");
-
-    await act(async () => void undo(editor));
-    await act(async () => {
-      editor.dispatch({ selection: EditorSelection.cursor(0) });
-      deleteCharForward(editor);
-    });
-    expect(editor.state.doc.toString()).toBe("");
-    await act(async () => void undo(editor));
-    await act(async () => {
+    await act(async () =>
       editor.dispatch({
-        changes: { from: 0, to: token_length, insert: "" },
-        selection: EditorSelection.cursor(0),
-      });
-    });
-    expect(editor.state.doc.toString()).toBe("");
-    await act(async () => void undo(editor));
-    expect(view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
+        changes: { from: editor.state.doc.length, insert: "！" },
+        selection: EditorSelection.cursor(editor.state.doc.length + 1),
+      }),
+    );
+    await dispatch_key(editor.contentDOM, "ArrowDown");
+    expect(editor.state.doc.toString()).toBe("历史消息！");
   });
 
-  it("跨重新挂载恢复结构化草稿，并在 session 受理后清空且可浏览历史", async () => {
+  it("跨重渲染保留纯文本草稿，受理后清空并写入历史", async () => {
+    const input_session = create_input_session(window.localStorage);
     const composer_ref = createRef<AgentComposerHandle>();
     const on_send = vi.fn();
-    await render_composer({ composer_ref, on_send });
-    await act(async () => {
-      composer_ref.current?.write_draft([
-        { kind: "text", text: "  检查 " },
-        { kind: "skill", name: "glossary-audit" },
-        { kind: "text", text: "  " },
-      ]);
-    });
-
-    await act(async () => root?.unmount());
-    root = null;
-    const remounted_view = await render_composer({ composer_ref, on_send });
-    const remounted_editor = get_editor(remounted_view);
-    expect(remounted_editor.state.doc.toString()).toBe("  检查 @glossary-audit  ");
-    expect(remounted_view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
-
-    await click_send(remounted_view);
-    const accepted_parts: AgentUserMessagePart[] = [
-      { kind: "text", text: "检查 " },
-      { kind: "skill", name: "glossary-audit" },
-    ];
-    expect(on_send).toHaveBeenCalledWith(accepted_parts);
-    expect(remounted_editor.state.doc.toString()).toBe("  检查 @glossary-audit  ");
-
-    const input_session = default_input_session!;
-    input_session.accept_message(accepted_parts);
-    await render_composer({ composer_ref, on_send, input_session });
-    expect(remounted_editor.state.doc.toString()).toBe("");
-    await dispatch_key(remounted_editor.contentDOM, "ArrowUp");
-    expect(remounted_editor.state.doc.toString()).toBe("检查 @glossary-audit");
-    expect(remounted_view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
-  });
-
-  it("含 skill 的消息只裁剪组合外缘并保留 token 内侧空白", async () => {
-    const on_send = vi.fn();
-    const view = await render_composer({ on_send });
-    const editor = get_editor(view);
-    await select_skill(view, editor, "glossary-audit");
-    const token_length = editor.state.doc.length;
-    await act(async () => {
-      editor.dispatch({
-        changes: [
-          { from: 0, insert: " \n " },
-          { from: token_length, insert: " 说明  " },
-        ],
-      });
-    });
-
+    const view = await render_composer({ composer_ref, input_session, on_send });
+    await act(async () => composer_ref.current?.write_draft("  检查 @skill(glossary-audit)  "));
     await click_send(view);
-
-    expect(on_send).toHaveBeenCalledWith([
-      { kind: "skill", name: "glossary-audit" },
-      { kind: "text", text: " 说明" },
-    ]);
-    expect(editor.state.doc.toString()).toBe(" \n @glossary-audit 说明  ");
+    expect(on_send).toHaveBeenCalledWith("检查 @skill(glossary-audit)");
+    input_session.accept_message("检查 @skill(glossary-audit)");
+    await render_composer({ composer_ref, input_session, on_send });
+    expect(get_editor(view).state.doc.toString()).toBe("");
+    expect(input_session.read_history()).toEqual(["检查 @skill(glossary-audit)"]);
   });
 
-  it("Enter 选择菜单项，Shift+Enter 换行", async () => {
-    const on_send = vi.fn();
-    const view = await render_composer({ on_send });
-    const editor = get_editor(view);
-    await set_document(editor, "@g", 2);
-    await dispatch_key(editor.contentDOM, "Enter");
-    expect(editor.state.doc.toString()).toBe("@glossary-audit");
-    expect(on_send).not.toHaveBeenCalled();
-
-    await dispatch_key(editor.contentDOM, "Enter", true);
-    expect(editor.state.doc.toString()).toBe("@glossary-audit\n");
-  });
-
-  it("运行态保持草稿可编辑，只停止当前任务并在结束后恢复发送", async () => {
+  it("运行态仍可编辑，只由按钮停止当前任务", async () => {
     const on_send = vi.fn();
     const on_stop = vi.fn(async () => undefined);
-    const view = await render_composer({ on_send, running: true, on_stop });
+    const view = await render_composer({ running: true, on_send, on_stop });
     const editor = get_editor(view);
-    const content = editor.contentDOM;
-
-    expect(content.getAttribute("contenteditable")).toBe("true");
-    await set_document(editor, "@g", 2);
-    await wait_for_element(view, '[role="listbox"]');
-    await dispatch_key(content, "Enter");
-    expect(editor.state.doc.toString()).toBe("@glossary-audit");
-
-    await dispatch_key(content, "Enter", true);
-    expect(editor.state.doc.toString()).toBe("@glossary-audit\n");
-
-    await dispatch_key(content, "Enter");
-    expect(on_send).not.toHaveBeenCalled();
-
-    const stop = view.querySelector<HTMLButtonElement>('button[aria-label="停止"]');
-    if (stop === null) throw new Error("缺少停止按钮");
-    await act(async () => stop.click());
+    await set_document(editor, "继续补充", 4);
+    expect(editor.state.readOnly).toBe(false);
+    await click_send(view);
     expect(on_stop).toHaveBeenCalledOnce();
-
-    await render_composer({ on_send, on_stop });
-
-    expect(get_editor(view)).toBe(editor);
-    expect(content.getAttribute("contenteditable")).toBe("true");
-    expect(editor.state.doc.toString()).toBe("@glossary-audit\n");
-    expect(view.querySelector<HTMLButtonElement>('button[aria-label="发送"]')?.disabled).toBe(
-      false,
-    );
-  });
-
-  it("Escape 只关闭菜单并保留查询，继续输入后重新打开", async () => {
-    const view = await render_composer();
-    const editor = get_editor(view);
-    await set_document(editor, "@", 1);
-    await wait_for_element(view, '[role="listbox"]');
-
-    await dispatch_key(editor.contentDOM, "Escape");
-    expect(view.querySelector('[role="listbox"]')).toBeNull();
-    expect(editor.state.doc.toString()).toBe("@");
-
-    await act(async () => {
-      editor.dispatch({ changes: { from: 1, insert: "g" }, selection: EditorSelection.cursor(2) });
-    });
-    expect(await wait_for_element(view, '[role="listbox"]')).not.toBeNull();
-  });
-
-  it("IME composing 期间 Enter 不选择 skill 或发送", async () => {
-    const on_send = vi.fn();
-    const view = await render_composer({ on_send });
-    const editor = get_editor(view);
-    await set_document(editor, "@g", 2);
-    await wait_for_element(view, '[role="listbox"]');
-
-    await dispatch_key(editor.contentDOM, "Enter", false, true);
-
-    expect(editor.state.doc.toString()).toBe("@g");
-    expect(view.querySelector(".agent-skill-token")).toBeNull();
     expect(on_send).not.toHaveBeenCalled();
   });
 
-  it("呈现当前模型、操作提示、错误与禁用状态", async () => {
-    const view = await render_composer({
-      issue: "send",
-      model_selection: { updating: true },
-    });
-    const model_trigger = view.querySelector<HTMLButtonElement>(
-      'button[aria-label="选择模型: Agent Model"]',
+  it("底栏显示模型、上下文阈值和命令错误", async () => {
+    const view = await render_composer({ context_tokens: 230_000, issue: "send" });
+    expect(view.querySelector(".agent-composer__model-trigger")?.textContent).toContain(
+      "Agent Model",
     );
-    const thinking_trigger = view.querySelector<HTMLButtonElement>(
-      'button[aria-label="思考等级: 中"]',
+    expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("79.9%");
+    expect(view.querySelector(".agent-composer__context-usage")?.getAttribute("data-tone")).toBe(
+      "warning",
     );
-    const submit = view.querySelector<HTMLButtonElement>('button[aria-label="发送"]');
-    const editor = view.querySelector<HTMLElement>(
-      '[contenteditable][aria-label="描述任务，或输入 @ 选择能力 …"]',
-    );
-    const tooltips = [...view.querySelectorAll('[role="tooltip"]')];
-
-    expect(view.textContent).toContain("Enter 发送 · Shift + Enter 换行");
-    expect(view.textContent).toContain("发送失败，草稿已保留。");
-    expect(view.querySelector('[role="alert"]')).not.toBeNull();
-    expect(model_trigger?.textContent).toBe("Agent Model");
-    expect(model_trigger?.disabled).toBe(true);
-    expect(thinking_trigger?.textContent).toContain("中");
-    expect(thinking_trigger?.disabled).toBe(true);
-    expect(editor?.getAttribute("contenteditable")).toBe("true");
-    expect(tooltips.map((tooltip) => tooltip.textContent)).toEqual(
-      expect.arrayContaining(["选择模型", "思考等级", "发送"]),
-    );
-    expect(submit?.disabled).toBe(true);
+    expect(view.querySelector('[role="alert"]')?.textContent).toBe("发送失败，草稿已保留。");
   });
 
-  it.each([
-    ["restoring", "正在恢复会话"],
-    ["runtime_busy", "其它任务正在运行"],
-    ["settling", "正在结束当前任务"],
-  ] as const)("%s 时保留草稿编辑并禁用命令，提示对应恢复路径", async (reason, label) => {
-    const view = await render_composer({
-      unavailable_reason: reason,
-      can_reset: true,
-    });
-    const editor = get_editor(view);
-    await set_document(editor, "稍后发送", 4);
-
-    expect(editor.contentDOM.getAttribute("contenteditable")).toBe("true");
-    expect(view.querySelector<HTMLButtonElement>(".agent-composer__reset")?.disabled).toBe(true);
-    expect(view.querySelector<HTMLButtonElement>(".agent-composer__model-trigger")?.disabled).toBe(
-      true,
-    );
-    expect(
-      view.querySelector<HTMLButtonElement>(".agent-composer__thinking-trigger")?.disabled,
-    ).toBe(true);
-    expect(view.querySelector<HTMLButtonElement>(".agent-composer__submit")?.disabled).toBe(true);
-    expect([...view.querySelectorAll('[role="tooltip"]')].at(-1)?.textContent).toBe(label);
-  });
-
-  it("底栏常驻显示百分比，并在提示中提供 K 单位详情与阈值状态", async () => {
-    const view = await render_composer({
-      context_tokens: 31_488,
-    });
-    const usage = view.querySelector<HTMLElement>(".agent-composer__context-usage");
-
-    expect(usage?.textContent).toBe("10.9%");
-    expect(usage?.getAttribute("aria-label")).toBe("上下文 10.9% · 31.5K / 288K");
-    expect(usage?.tabIndex).toBe(0);
-    expect(usage?.dataset["tone"]).toBe("default");
-    expect(
-      [...view.querySelectorAll('[role="tooltip"]')].map((tooltip) => tooltip.textContent),
-    ).toContain("31.5K / 288K");
-    expect(
-      [...view.querySelectorAll('[role="tooltip"]')].map((tooltip) => tooltip.textContent),
-    ).not.toContain("上下文 10.9% · 31.5K / 288K");
-
-    for (const [tokens, tone] of [
-      [224_000, "default"],
-      [224_001, "warning"],
-      [256_000, "warning"],
-    ] as const) {
-      await render_composer({
-        context_tokens: tokens,
-      });
-      expect(
-        view.querySelector<HTMLElement>(".agent-composer__context-usage")?.dataset["tone"],
-      ).toBe(tone);
-    }
-    const warning_usage = view.querySelector<HTMLElement>(".agent-composer__context-usage");
-    expect(warning_usage?.getAttribute("aria-label")).toContain("即将自动压缩上下文");
-    expect(
-      [...view.querySelectorAll('[role="tooltip"]')].map((tooltip) => tooltip.textContent),
-    ).toContain("256K / 288K即将自动压缩上下文");
-
-    await render_composer({ context_tokens: null });
-    expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("0.0%");
-  });
-
-  it("新任务按钮按会话、重置和提交状态禁用", async () => {
-    const on_reset = vi.fn();
-    const view = await render_composer({ can_reset: false, on_reset });
-    const reset = find_button_by_text(view, "agent_page.action.new_task");
-    const model = view.querySelector<HTMLButtonElement>(
-      'button[aria-label="选择模型: Agent Model"]',
-    );
-    expect(reset?.disabled).toBe(true);
-
-    await render_composer({ running: true, can_reset: true, on_reset });
-    expect(reset?.disabled).toBe(true);
-    await act(async () => reset?.click());
-    expect(on_reset).not.toHaveBeenCalled();
-
-    await render_composer({ can_reset: true, command: "reset", on_reset });
-    expect(reset?.disabled).toBe(true);
-    expect(model?.disabled).toBe(true);
-    expect(view.querySelector<HTMLButtonElement>('button[aria-label="发送"]')?.disabled).toBe(true);
-
-    await render_composer({
-      can_reset: true,
-      command: "send",
-      unavailable_reason: "settling",
-      on_reset,
-    });
-    expect(reset?.disabled).toBe(true);
-    expect(get_editor(view).contentDOM.getAttribute("contenteditable")).toBe("false");
-    expect([...view.querySelectorAll('[role="tooltip"]')].at(-1)?.textContent).toBe(
-      "agent_page.action.sending",
-    );
-    await render_composer({ can_reset: true, on_reset });
-    expect(get_editor(view).contentDOM.getAttribute("contenteditable")).toBe("true");
-  });
-
-  it("reset 命令前后复用 EditorView，并保留正文与 skill token 草稿", async () => {
-    seed_input_history([[{ kind: "text", text: "持久历史" }]]);
-    const view = await render_composer();
-    const editor = get_editor(view);
-    await select_skill(view, editor, "glossary-audit");
-    await act(async () => {
-      editor.dispatch({ changes: { from: editor.state.doc.length, insert: " 待处理" } });
-    });
-
-    await render_composer({ command: "reset" });
-    expect(get_editor(view)).toBe(editor);
-    expect(editor.contentDOM.getAttribute("contenteditable")).toBe("false");
-    expect(editor.state.doc.toString()).toBe("@glossary-audit 待处理");
-    expect(view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
-
-    await render_composer();
-    expect(get_editor(view)).toBe(editor);
-    expect(editor.contentDOM.getAttribute("contenteditable")).toBe("true");
-    expect(editor.state.doc.toString()).toBe("@glossary-audit 待处理");
-    expect(view.querySelector(".agent-skill-token")?.textContent).toBe("@glossary-audit");
-    await act(async () => editor.dispatch({ selection: EditorSelection.cursor(0) }));
-    await dispatch_key(editor.contentDOM, "ArrowUp");
-    expect(editor.state.doc.toString()).toBe("持久历史");
-  });
-
-  /** 统一用命名参数重渲染同一个组件实例，避免位置参数隐藏测试意图。 */
   async function render_composer(options: RenderComposerOptions = {}): Promise<HTMLDivElement> {
     if (container === null) {
       container = document.createElement("div");
       document.body.append(container);
     }
-    if (root === null) {
-      root = createRoot(container);
-    }
+    root ??= createRoot(container);
     await act(async () => {
       default_input_session ??= create_input_session(window.localStorage);
       root?.render(
         <AgentComposer
           ref={options.composer_ref}
           skills={skills}
+          terms={options.terms ?? terms}
+          term_hit_counts={options.term_hit_counts ?? term_hit_counts}
           running={options.running ?? false}
           unavailable_reason={options.unavailable_reason ?? null}
           command={options.command ?? null}
@@ -737,23 +418,23 @@ function get_editor(container: HTMLElement): EditorView {
   return editor;
 }
 
-function seed_input_history(history: readonly (readonly AgentUserMessagePart[])[]): void {
+function seed_input_history(history: readonly string[]): void {
   window.localStorage.setItem(AGENT_INPUT_HISTORY_STORAGE_KEY, JSON.stringify(history));
 }
 
 function create_input_session(storage: Storage): TestAgentInputSession {
-  let draft: AgentUserMessagePart[] = [];
+  let draft = "";
   let history = read_agent_input_history(storage);
   const session: TestAgentInputSession = {
     revision: 0,
     read_draft: () => draft,
-    write_draft: (parts) => {
-      draft = parts.map((part) => ({ ...part }));
+    write_draft: (text) => {
+      draft = text;
     },
     read_history: () => history,
-    accept_message: (parts) => {
-      history = append_agent_input_history(storage, history, parts);
-      draft = [];
+    accept_message: (text) => {
+      history = append_agent_input_history(storage, history, text);
+      draft = "";
       session.revision += 1;
     },
   };
@@ -767,19 +448,6 @@ async function set_document(editor: EditorView, text: string, head: number): Pro
       selection: EditorSelection.cursor(head),
     });
   });
-}
-
-async function select_skill(
-  container: HTMLElement,
-  editor: EditorView,
-  name: string,
-): Promise<void> {
-  await set_document(editor, `@${name.slice(0, 2)}`, name.slice(0, 2).length + 1);
-  const option = (await wait_for_element(container, '[role="listbox"]')).querySelector<HTMLElement>(
-    `[role="option"]#agent-skill-${name}`,
-  );
-  if (option === null) throw new Error(`缺少能力选项：${name}`);
-  await act(async () => option.click());
 }
 
 async function click_send(container: HTMLElement): Promise<void> {
@@ -801,12 +469,6 @@ async function wait_for_element(container: HTMLElement, selector: string): Promi
   });
   if (element === null) throw new Error(`缺少元素：${selector}`);
   return element;
-}
-
-function find_button_by_text(container: HTMLElement, text: string): HTMLButtonElement | undefined {
-  return Array.from(container.querySelectorAll<HTMLButtonElement>("button")).find((button) => {
-    return button.textContent?.includes(text) === true;
-  });
 }
 
 async function dispatch_key(

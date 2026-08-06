@@ -1,4 +1,4 @@
-import { is_json_record, type JsonRecord } from "../domain/json";
+import type { JsonRecord } from "../domain/json";
 import type { Locale } from "./i18n/types";
 
 /** AgentService 与 renderer 共享的唯一 SSE topic。 */
@@ -12,10 +12,6 @@ export type AgentSkillSnapshot = JsonRecord & {
   name: string;
   displayDescriptions: AgentSkillDisplayDescriptions;
 };
-
-/** 用户可见消息的唯一正文形状；skill part 表示用户显式强制调用能力。 */
-export type AgentUserMessagePart = JsonRecord &
-  ({ kind: "text"; text: string } | { kind: "skill"; name: string });
 
 /** Assistant 可见正文保持供应商确认的 text / thinking 顺序，不公开思考签名。 */
 export type AgentAssistantMessagePart = JsonRecord &
@@ -43,7 +39,7 @@ export type AgentEntry = JsonRecord &
     | {
         kind: "user_message";
         id: string;
-        parts: AgentUserMessagePart[];
+        text: string;
         status: AgentEntryStatus;
         createdAt: number;
         endedAt: number | null;
@@ -75,36 +71,19 @@ export type AgentSessionEvent = JsonRecord &
     | { type: "snapshot_seed"; snapshot: AgentSessionSnapshot }
   );
 
-/**
- * 在 API 与 SSE 两个不可信 JSON 边界统一收窄 parts，并建立无空文本、无相邻文本的规范形状。
- */
-export function normalize_agent_user_message_parts(value: unknown): AgentUserMessagePart[] | null {
-  if (!Array.isArray(value)) return null;
-  const parts: AgentUserMessagePart[] = [];
-  for (const value_part of value) {
-    if (!is_json_record(value_part)) return null;
-    if (value_part["kind"] === "text" && typeof value_part["text"] === "string") {
-      if (value_part["text"] === "") continue;
-      const previous = parts.at(-1);
-      if (previous?.kind === "text") previous.text += value_part["text"];
-      else parts.push({ kind: "text", text: value_part["text"] });
-      continue;
-    }
-    if (
-      value_part["kind"] === "skill" &&
-      typeof value_part["name"] === "string" &&
-      value_part["name"] !== "" &&
-      value_part["name"].trim() === value_part["name"]
-    ) {
-      parts.push({ kind: "skill", name: value_part["name"] });
-      continue;
-    }
-    return null;
-  }
-  return parts;
+/** API、SSE 与 renderer 存储共用的用户正文边界，只裁剪整条消息外缘。 */
+export function normalize_agent_user_message_text(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+  return text === "" ? null : text;
 }
 
-/** 把结构化消息投影为用户看到的纯文本；该投影不是能力执行判据。 */
-export function format_agent_user_message_text(parts: readonly AgentUserMessagePart[]): string {
-  return parts.map((part) => (part.kind === "text" ? part.text : `@${part.name}`)).join("");
+/** 生成不会随 UI locale 改变的显式能力 marker。 */
+export function format_agent_skill_reference(name: string): string {
+  return `@skill(${name})`;
+}
+
+/** 生成只供模型阅读、不触发宿主解析的术语 marker。 */
+export function format_agent_term_reference(src: string): string {
+  return `@term(${src})`;
 }

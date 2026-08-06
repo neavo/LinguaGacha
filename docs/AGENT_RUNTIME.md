@@ -4,7 +4,7 @@
 
 ## 1. 公开会话协议
 
-- Agent 公开入口提供 snapshot、message、stop 与 reset；消息保留有序 text / skill parts，会话状态只区分 `idle | running`，user / assistant / tool 条目各自携带 `running | success | error | stopped` 状态。
+- Agent 公开入口提供 snapshot、message、stop 与 reset；message 请求和公开 user 条目只携带规范化后的 `text` 字符串，会话状态只区分 `idle | running`，user / assistant / tool 条目各自携带 `running | success | error | stopped` 状态。
 - 时间线由 snapshot 与 `agent.session_event` 通过同 id 完整条目覆盖和 `snapshot_seed` 共同恢复本次 reset 以来的内存历史，并只公开模型可见历史的估算 token；模型失败只写入对应条目和轮次，不发布第二套失败事件。公开条目不包含工具参数、供应商连续性元数据或脱敏思考。
 - 工具 `running` 条目在执行体开始前发布；所有产品工具在统一注册边界先让出一次事件循环，为本地 SSE 首帧提供独立发送轮次。
 
@@ -22,7 +22,7 @@
 
 - Agent 与 OneShot 共用 [`BACKEND.md`](BACKEND.md) 定义的模型请求边界。每条 Agent 消息受理后、模型调用前统一重新解析 agent 用途选择和完整请求快照，并把当前 `agent.context_window`、`agent.max_output_tokens`、思考等级与压缩预留同步到既有 `AgentSession`；设置因此作用于同一对话的下一次模型操作，不重建或清空模型历史。模型页 generation 和 threshold 输入 / 输出 token 设置只作用于 OneShot。
 - 启动期原子加载必需的 `resource/agent/system_prompt.md` 与 `resource/agent/session_seed.json`；会话种子由零个或多个顺序任意的 user / assistant 消息组成，文本裁剪后允许为空，按资源顺序进入每个新会话的模型历史但不进入公开时间线，任一资源缺失或结构无效都会阻止启动。
-- coding-agent 的默认工具与项目资源发现全部关闭；产品 skill 只在启动期从内置与用户目录加载，坏 skill 只记录诊断，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。`SKILL.md` 描述同时作为模型描述和 `i18n.json` UI 描述缺失时的回退；`i18n.json` 的 `visible: false` 只让 skill 不进入公开 snapshot 能力列表，不改变模型清单、显式调用或读取权限。manual-only skill 必须由显式 skill part 授权，`read_skill` 只能读取启动期形成的 `SKILL.md` 与 references 白名单，UI 配置不进入模型上下文。
+- coding-agent 的默认工具与项目资源发现全部关闭；产品 skill 只在启动期从内置与用户目录加载，坏 skill 只记录诊断，SDK 不发现项目 `AGENTS.md`、`.pi` 或其它运行期资源。`SKILL.md` 描述同时作为模型描述和 `i18n.json` UI 描述缺失时的回退；`visible: false` 只排除公开 snapshot，`disableModelInvocation` 只排除系统能力清单，二者都不改变启动期文件白名单。用户正文中的精确 `@skill(name)` 按首次出现顺序确定性注入已加载能力，重复项去重、未知 marker 与裸 `@name` 按普通文本处理；`@term(src)` 始终只是模型可读正文。`read_skill` 只读取启动期形成的 `SKILL.md` 与 references 白名单，不扫描会话历史建立第二套授权，UI 配置不进入模型上下文。
 
 ## 4. 产品工具与宿主能力
 
@@ -35,5 +35,5 @@
 ## 5. 前端消费
 
 - Agent skill 的完整 `displayDescriptions` 由后端 snapshot 提供，页面只按当前 locale 选择，不建立第二份全局翻译表。
-- `AgentSessionProvider` 跨路由持有 snapshot / SSE 镜像、当前 command、带恢复路径的 issue、模型可见历史 token、结构化草稿与 renderer 全局输入历史；时间线不进入 `DesktopStateProvider` 或项目 session UI 缓存。Agent Composer 以该 token 和页面当前模型容量生成底栏用量，合法消息 ack 原子追加输入历史并清空草稿，失败保留草稿；页面只持有滚动与弹窗，Composer 只持有 EditorView、光标、skill 菜单和当前历史索引。
+- `AgentSessionProvider` 跨路由持有 snapshot / SSE 镜像、当前 command、带恢复路径的 issue、模型可见历史 token、纯文本草稿与 renderer 全局输入历史；时间线不进入 `DesktopStateProvider` 或项目 session UI 缓存。Agent Composer 以该 token 和页面当前模型容量生成底栏用量，合法消息 ack 原子追加输入历史并清空草稿，失败保留草稿；页面只持有滚动、弹窗，以及从既有质量规则 query 与共享统计缓存读取的 glossary 和命中数，二者都不进入 Agent snapshot、草稿、历史或发送协议。输入框、引导卡片与时间线只把当前已知 marker 投影为整块视觉，不改变底层字符串或建立身份旁路。
 - Agent 回合运行态与 stop 命令不锁定草稿编辑，send / reset 命令跨路由保持编辑器只读；共享 runtime 锁禁用发送、reset 与模型选择 / 思考档位控制，当前 Agent 回合的 stop 始终保留。
