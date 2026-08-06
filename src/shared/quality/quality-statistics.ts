@@ -35,15 +35,11 @@ export type QualityStatisticsTaskInput = {
   rules: QualityStatisticsRuleInput[]; // 主线程完成归一后交给 worker 的规则
   text_groups: ItemTextGroup[]; // 每个 item 的 src/name_src 或 dst/name_dst 字段组
   relation_candidates: QualityStatisticsRelationCandidate[]; // 仅需计算包含关系的字面量规则
-  collect_literal_evidence?: boolean; // Agent glossary 查询才收集次数与有限 sample
+  collect_context_samples?: boolean; // Agent glossary 查询才收集有限代表语境
 };
 
-export type QualityStatisticsLiteralEvidence = {
-  total_matches: number; // 全部字段中的真实匹配范围数
-  context_sample: {
-    item_index: number; // 与输入 text_groups 和 captured items 的稳定数组索引一致
-    matched_fields: Array<"src" | "name_src">; // sample 中实际命中的原文字段
-  } | null;
+export type QualityStatisticsContextSample = {
+  item_index: number; // 与输入 text_groups 和 captured items 的稳定数组索引一致
 };
 
 export type QualityStatisticsTaskResult = {
@@ -54,7 +50,12 @@ export type QualityStatisticsTaskResult = {
       subset_parents: string[]; // 包含当前 src 的更长字面量源文
     }
   >;
-  literal_evidence_by_entry_id?: Record<string, QualityStatisticsLiteralEvidence>;
+  context_samples_by_entry_id?: Record<string, QualityStatisticsContextSample[]>; // 仅显式请求时返回
+};
+
+/** 内部候选额外携带稳定抽样分数，不越过 worker 边界。 */
+type QualityStatisticsContextSampleCandidate = QualityStatisticsContextSample & {
+  score: number; // 越小越优先，最终结果只保留两个候选
 };
 
 /** 对调用方准备好的单一文本源计算命中 item 数和字面量包含关系。 */
@@ -67,14 +68,19 @@ export function run_quality_statistics_task_sync(
       { matched_item_count: 0, subset_parents: [] as string[] },
     ]),
   );
-  const literal_evidence_by_entry_id = input.collect_literal_evidence
+  const context_sample_candidates_by_entry_id = input.collect_context_samples
     ? Object.fromEntries(
         input.rules
           .filter((rule) => rule.pattern_kind === "literal")
-          .map((rule) => [rule.entry_id, { total_matches: 0, context_sample: null }]),
+          .map((rule) => [rule.entry_id, [] as QualityStatisticsContextSampleCandidate[]]),
       )
     : undefined;
-  assign_literal_counts(input.rules, input.text_groups, results, literal_evidence_by_entry_id);
+  assign_literal_counts(
+    input.rules,
+    input.text_groups,
+    results,
+    context_sample_candidates_by_entry_id,
+  );
   assign_regex_counts(input.rules, input.text_groups, results);
 
   const subset_parents = build_subset_relation_map(input.relation_candidates);
@@ -84,7 +90,18 @@ export function run_quality_statistics_task_sync(
   }
   return {
     results,
-    ...(literal_evidence_by_entry_id === undefined ? {} : { literal_evidence_by_entry_id }),
+    ...(context_sample_candidates_by_entry_id === undefined
+      ? {}
+      : {
+          context_samples_by_entry_id: Object.fromEntries(
+            Object.entries(context_sample_candidates_by_entry_id).map(([entry_id, candidates]) => [
+              entry_id,
+              candidates
+                .toSorted((left, right) => left.item_index - right.item_index)
+                .map(({ item_index }) => ({ item_index })),
+            ]),
+          ),
+        }),
   };
 }
 
@@ -93,9 +110,14 @@ function assign_literal_counts(
   rules: QualityStatisticsRuleInput[],
   text_groups: ItemTextGroup[],
   results: QualityStatisticsTaskResult["results"],
-  evidence_by_entry_id: Record<string, QualityStatisticsLiteralEvidence> | undefined,
+  context_sample_candidates_by_entry_id:
+    | Record<string, QualityStatisticsContextSampleCandidate[]>
+    | undefined,
 ): void {
   const literal_rules = rules.filter((rule) => rule.pattern_kind === "literal");
+  const sample_seed_by_entry_id = new Map(
+    literal_rules.map((rule) => [rule.entry_id, hash_context_sample_key(rule.entry_id)] as const),
+  );
   const matcher = compile_literal_patterns(
     literal_rules.map((rule) => ({
       key: rule.entry_id,
@@ -105,49 +127,57 @@ function assign_literal_counts(
   );
   for (const [item_index, text_group] of text_groups.entries()) {
     const matched_entry_ids = new Set<string>();
-    const item_evidence =
-      evidence_by_entry_id === undefined
+    const ranges_by_entry_id =
+      context_sample_candidates_by_entry_id === undefined
         ? undefined
-        : {
-            by_entry_id: evidence_by_entry_id,
-            ranges_by_entry_id: new Map<string, Map<number, TextRange[]>>(),
-            fields_by_entry_id: new Map<string, Array<"src" | "name_src">>(),
-          };
+        : new Map<string, Map<number, TextRange[]>>();
     for (const [part_index, part] of text_group.entries()) {
       for (const match of matcher.match(part.text)) {
         matched_entry_ids.add(match.key);
-        if (item_evidence === undefined) continue;
-        const part_ranges =
-          item_evidence.ranges_by_entry_id.get(match.key) ?? new Map<number, TextRange[]>();
+        if (ranges_by_entry_id === undefined) continue;
+        const part_ranges = ranges_by_entry_id.get(match.key) ?? new Map<number, TextRange[]>();
         part_ranges.set(part_index, match.ranges);
-        item_evidence.ranges_by_entry_id.set(match.key, part_ranges);
-        const evidence = item_evidence.by_entry_id[match.key];
-        if (evidence !== undefined) evidence.total_matches += match.ranges.length;
-        if (part.field === "src" || part.field === "name_src") {
-          const fields = item_evidence.fields_by_entry_id.get(match.key) ?? [];
-          if (!fields.includes(part.field)) fields.push(part.field);
-          item_evidence.fields_by_entry_id.set(match.key, fields);
-        }
+        ranges_by_entry_id.set(match.key, part_ranges);
       }
     }
     for (const entry_id of matched_entry_ids) {
       const result = results[entry_id];
       if (result !== undefined) result.matched_item_count += 1;
-      const evidence = evidence_by_entry_id?.[entry_id];
-      const ranges_by_part = item_evidence?.ranges_by_entry_id.get(entry_id);
+      const candidates = context_sample_candidates_by_entry_id?.[entry_id];
+      const ranges_by_part = ranges_by_entry_id?.get(entry_id);
       if (
-        evidence !== undefined &&
+        candidates !== undefined &&
         ranges_by_part !== undefined &&
-        evidence.context_sample === null &&
         has_literal_context(text_group, ranges_by_part)
       ) {
-        evidence.context_sample = {
+        candidates.push({
           item_index,
-          matched_fields: item_evidence?.fields_by_entry_id.get(entry_id) ?? [],
-        };
+          score: score_context_sample(sample_seed_by_entry_id.get(entry_id) ?? 0, item_index),
+        });
+        candidates.sort(
+          (left, right) => left.score - right.score || left.item_index - right.item_index,
+        );
+        if (candidates.length > 2) candidates.pop();
       }
     }
   }
+}
+
+/** 同一 entry 与 item 在相同快照中得到稳定分数，bottom-2 不偏向自然顺序首尾。 */
+function hash_context_sample_key(entry_id: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < entry_id.length; index += 1) {
+    hash ^= entry_id.charCodeAt(index);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  return hash;
+}
+
+/** 混合术语 seed 与 item 索引，避免连续条目总是选中列表头部或尾部。 */
+function score_context_sample(seed: number, item_index: number): number {
+  let score = Math.imul(seed ^ item_index, 0x45d9f3b) >>> 0;
+  score = Math.imul(score ^ (score >>> 16), 0x45d9f3b) >>> 0;
+  return (score ^ (score >>> 16)) >>> 0;
 }
 
 /** 命中区间之外仍有 Unicode 字母或数字时，该 item 才能作为有效语境。 */

@@ -313,7 +313,7 @@ function create_fake_response(context: Context): FauxResponseStep {
         {
           rule_type: "text_preserve",
           write: [{ entry: { src: "\\\\N", info: "控制码" } }],
-          expected_section_revisions: { quality: 3 },
+          expected_revision: 3,
         },
         { id: "write-1" },
       ),

@@ -88,22 +88,22 @@ describe("prepare_quality_statistics_task_input", () => {
     ).toThrow("质量规则正则不是合法正则");
   });
 
-  it("literal evidence 默认关闭且不进入依赖快照", () => {
+  it("context samples 默认关闭且不进入依赖快照", () => {
     const base = prepare_quality_statistics_task_input({
       rule_key: "glossary",
       entries: [{ entry_id: "hp", src: "HP" }],
       items: [{ src: "HP +10" }],
     });
-    const evidence = prepare_quality_statistics_task_input({
+    const samples = prepare_quality_statistics_task_input({
       rule_key: "glossary",
       entries: [{ entry_id: "hp", src: "HP" }],
       items: [{ src: "HP +10" }],
-      collect_literal_evidence: true,
+      collect_context_samples: true,
     });
 
-    expect(base.collect_literal_evidence).toBe(false);
-    expect(evidence.collect_literal_evidence).toBe(true);
-    expect(evidence.completed_snapshot).toEqual(base.completed_snapshot);
+    expect(base.collect_context_samples).toBe(false);
+    expect(samples.collect_context_samples).toBe(true);
+    expect(samples.completed_snapshot).toEqual(base.completed_snapshot);
   });
 
   it("替换与文本保护按字段内逐行统计", () => {
