@@ -18,7 +18,7 @@ export const zh_cn_agent_page = {
     hint: "Enter 发送 · Shift + Enter 换行",
   },
   context_usage: "上下文 {percent} · {used} / {total}",
-  context_usage_warning: "接近上下文上限，将在达到阈值后自动整理历史",
+  context_usage_warning: "即将自动压缩上下文",
   action: {
     send: "发送",
     sending: "正在发送",

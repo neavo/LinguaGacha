@@ -597,7 +597,11 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
                   {context_usage.percent}
                 </span>
               </TooltipTrigger>
-              <TooltipContent side="top" sideOffset={8}>
+              <TooltipContent
+                className="flex-col items-start gap-0.5 whitespace-nowrap"
+                side="top"
+                sideOffset={8}
+              >
                 <p>{`${context_usage.used} / ${context_usage.total}`}</p>
                 {context_usage.warning ? <p>{t("agent_page.context_usage_warning")}</p> : null}
               </TooltipContent>
