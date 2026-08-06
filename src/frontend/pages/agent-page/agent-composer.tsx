@@ -60,7 +60,6 @@ import {
 import type {
   AgentCommand,
   AgentInputSession,
-  AgentSessionIssue,
 } from "@frontend/app/session/agent/agent-session-context";
 import {
   create_agent_mention_candidates,
@@ -99,7 +98,6 @@ type AgentComposerProps = {
   running: boolean;
   unavailable_reason: AgentUnavailableReason | null;
   command: AgentCommand;
-  issue: AgentSessionIssue;
   can_reset: boolean;
   context_tokens: number | null;
   model_selection: ModelSelectionController;
@@ -109,15 +107,6 @@ type AgentComposerProps = {
   on_reset: () => void;
 };
 
-/** Composer 只呈现已完成初始恢复后的可操作错误；restore 由页面空态独占。 */
-const AGENT_COMPOSER_ISSUE_KEYS: Readonly<
-  Record<Exclude<AgentSessionIssue, null | "restore">, LocaleKey>
-> = Object.freeze({
-  connection: "agent_page.error.connection",
-  send: "agent_page.error.send",
-  stop: "agent_page.error.stop",
-  reset: "agent_page.error.reset",
-});
 /** 命令不可用原因同时驱动禁用态和提示，禁止平行布尔量产生矛盾组合。 */
 const AGENT_UNAVAILABLE_REASON_KEYS = Object.freeze({
   restoring: "agent_page.unavailable.restoring",
@@ -631,11 +620,6 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
           <span className="agent-composer__hint">{t("agent_page.input.hint")}</span>
         </div>
         <div className="agent-composer__footer-end">
-          {props.issue !== null && props.issue !== "restore" && (
-            <span className="agent-composer__error" role="alert">
-              {t(AGENT_COMPOSER_ISSUE_KEYS[props.issue])}
-            </span>
-          )}
           <Tooltip>
             {/* 外层触发器在按钮禁用 pointer events 时仍可承接悬停。 */}
             <TooltipTrigger asChild>

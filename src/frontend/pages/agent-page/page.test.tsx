@@ -101,6 +101,7 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
     t: (key: string, params?: Record<string, string>) => {
       if (key === "agent_page.action.new_task") return "新任务";
       if (key === "agent_page.action.send") return "发送";
+      if (key === "agent_page.action.retry") return "重试";
       if (key === "agent_page.confirm.new_task") return "是否确认开始新的对话任务 …?";
       if (key === "agent_page.empty.suggestions.capabilities") return "介绍你的能力";
       if (key === "agent_page.empty.suggestions.glossary_review") return "请帮我审校术语";
@@ -110,6 +111,12 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.mention.no_matches") return "没有匹配的项目 …";
       if (key === "agent_page.mention.term_hits") return `${params?.["count"]} 次`;
       if (key === "agent_page.error.terms_load") return "术语加载失败";
+      if (key === "agent_page.error.send") return "发送失败，草稿已保留。";
+      if (key === "agent_page.error.stop") return "停止失败，请重试。";
+      if (key === "agent_page.error.reset") return "新任务创建失败，请重试。";
+      if (key === "agent_page.error.connection") return "连接中断，正在等待重连。";
+      if (key === "agent_page.status.error") return "失败";
+      if (key === "app.error.model.provider_failed.message") return "模型服务请求失败。";
       return params === undefined ? key : `${key}:${Object.values(params).join(",")}`;
     },
   }),
@@ -299,11 +306,11 @@ describe("AgentPage", () => {
   });
 
   it("恢复失败时显示单一重试入口并重新连接", async () => {
-    const retry = vi.fn();
-    const view = await render_page({ issue: "restore", retry });
+    const reconnect = vi.fn();
+    const view = await render_page({ transport: "restore_failed", reconnect });
     const alert = view.querySelector<HTMLElement>('[role="alert"]');
     const retry_button = [...view.querySelectorAll<HTMLButtonElement>("button")].find(
-      (button) => button.textContent === "agent_page.action.retry",
+      (button) => button.textContent === "重试",
     );
     if (retry_button === undefined) throw new Error("缺少恢复重试按钮");
 
@@ -312,7 +319,13 @@ describe("AgentPage", () => {
       true,
     );
     await act(async () => retry_button.click());
-    expect(retry).toHaveBeenCalledOnce();
+    expect(reconnect).toHaveBeenCalledOnce();
+  });
+
+  it("连接中断时在对话区持续提示且不污染操作栏", async () => {
+    const view = await render_page({ transport: "disconnected" });
+    expect(view.querySelector('[role="status"]')?.textContent).toBe("连接中断，正在等待重连。");
+    expect(view.querySelector(".agent-composer__error")).toBeNull();
   });
 
   it("公开回合先结束但 Agent lease 尚未释放时保持结算禁用态", async () => {
@@ -438,11 +451,56 @@ describe("AgentPage", () => {
     expect(stop).toHaveBeenCalledOnce();
   });
 
+  it("停止命令失败时保留运行态并显示错误 Toast", async () => {
+    const stop = vi.fn(() => Promise.reject(new Error("offline")));
+    const view = await render_page({ state: "running", stop });
+    await act(async () => {
+      get_button_by_label(view, "agent_page.action.stop").click();
+      await vi.waitFor(() =>
+        expect(push_toast).toHaveBeenCalledWith("error", "停止失败，请重试。"),
+      );
+    });
+
+    expect(get_button_by_label(view, "agent_page.action.stop").disabled).toBe(false);
+  });
+
+  it("发送命令失败时保留操作栏并显示错误 Toast", async () => {
+    const send = vi.fn(() => Promise.reject(new Error("offline")));
+    const view = await render_page({ entries: [], send });
+    const editor = get_editor(view);
+    await act(async () => {
+      editor.dispatch({ changes: { from: 0, insert: "继续处理" } });
+    });
+    await act(async () => {
+      get_button_by_label(view, "发送").click();
+      await vi.waitFor(() => expect(push_toast).toHaveBeenCalledOnce());
+    });
+
+    expect(push_toast).toHaveBeenCalledWith("error", "发送失败，草稿已保留。");
+    expect(view.querySelector(".agent-composer__error")).toBeNull();
+  });
+
+  it("失败轮次的重试把原消息恢复到输入框但不自动发送", async () => {
+    const send = vi.fn(async () => undefined);
+    const view = await render_page({
+      entries: [user_entry("user-error", "重新检查术语", "error", 1, 2)],
+      send,
+    });
+    const retry = [...view.querySelectorAll<HTMLButtonElement>("button")].find(
+      (button) => button.textContent === "重试",
+    );
+    if (retry === undefined) throw new Error("缺少轮次重试按钮");
+    await act(async () => retry.click());
+
+    expect(get_editor(view).state.doc.toString()).toBe("重新检查术语");
+    expect(send).not.toHaveBeenCalled();
+  });
+
   it("新任务先确认，取消不调用，确认期间锁定并在成功后关闭", async () => {
-    let resolve_reset!: (accepted: boolean) => void;
+    let resolve_reset!: () => void;
     const reset = vi.fn(
       () =>
-        new Promise<boolean>((resolve) => {
+        new Promise<void>((resolve) => {
           resolve_reset = resolve;
         }),
     );
@@ -469,7 +527,7 @@ describe("AgentPage", () => {
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
     expect(get_portal_button("app.action.cancel").disabled).toBe(true);
 
-    await act(async () => resolve_reset(true));
+    await act(async () => resolve_reset());
     await act(async () =>
       vi.waitFor(() =>
         expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).toBeNull(),
@@ -478,13 +536,14 @@ describe("AgentPage", () => {
   });
 
   it("重置失败后保留确认框供取消或重试", async () => {
-    const reset = vi.fn(async () => false);
+    const reset = vi.fn(() => Promise.reject(new Error("offline")));
     const view = await render_page({ reset });
     const reset_button = view.querySelector<HTMLButtonElement>(".agent-composer__reset");
     if (reset_button === null) throw new Error("缺少新任务按钮");
     await act(async () => reset_button.click());
     await act(async () => get_portal_button("app.action.confirm").click());
     expect(reset).toHaveBeenCalledOnce();
+    expect(push_toast).toHaveBeenCalledWith("error", "新任务创建失败，请重试。");
     expect(document.body.querySelector('[data-slot="alert-dialog-content"]')).not.toBeNull();
   });
 });
@@ -521,9 +580,8 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     entries: [assistant_entry("assistant-1", "**变更方案**", "success", 1)],
     skills,
     contextTokens: overrides.contextTokens ?? null,
-    loading: false,
+    transport: "ready",
     command: null,
-    issue: null,
     input: {
       revision: 0,
       read_draft: () => "",
@@ -532,10 +590,20 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     },
     send: vi.fn(async () => undefined),
     stop: vi.fn(),
-    reset: vi.fn(async () => true),
-    retry: vi.fn(),
+    reset: vi.fn(async () => undefined),
+    reconnect: vi.fn(),
     ...overrides,
   };
+}
+
+function user_entry(
+  id: string,
+  text: string,
+  status: AgentEntryStatus,
+  createdAt: number,
+  endedAt: number | null,
+) {
+  return { kind: "user_message" as const, id, text, status, createdAt, endedAt };
 }
 
 function assistant_entry(id: string, text: string, status: AgentEntryStatus, createdAt: number) {
@@ -561,6 +629,13 @@ function get_button_by_label(container: HTMLElement, label: string): HTMLButtonE
   const button = container.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
   if (button === null) throw new Error(`缺少按钮：${label}`);
   return button;
+}
+
+function get_editor(container: HTMLElement): EditorView {
+  const content = container.querySelector<HTMLElement>(".cm-content");
+  const editor = content === null ? null : EditorView.findFromDOM(content);
+  if (editor === null) throw new Error("缺少 CodeMirror 编辑器");
+  return editor;
 }
 
 function get_portal_button(label: string): HTMLButtonElement {

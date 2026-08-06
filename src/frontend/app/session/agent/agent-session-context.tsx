@@ -26,7 +26,7 @@ import { is_json_record, read_json_record, type JsonRecord } from "@domain/json"
 import { api_fetch, api_get, open_event_stream } from "@frontend/app/desktop/desktop-api";
 import { append_agent_input_history, read_agent_input_history } from "./agent-input-history";
 
-/** 首帧占位不代表恢复成功，loading 会在合法快照或明确失败后才结束。 */
+/** 首帧占位不代表恢复成功；transport 在合法快照或明确失败后才离开 restoring。 */
 const EMPTY_SNAPSHOT: AgentSessionSnapshot = {
   state: "idle",
   entries: [],
@@ -36,21 +36,20 @@ const EMPTY_SNAPSHOT: AgentSessionSnapshot = {
 
 /** 前端命令状态只表达当前互斥中的写请求，不复述后端会话状态。 */
 export type AgentCommand = "send" | "stop" | "reset" | null;
-/** 恢复/连接问题与各命令失败保持正交，避免一个 error 布尔量丢失恢复路径。 */
-export type AgentSessionIssue = "restore" | "connection" | "send" | "stop" | "reset" | null;
+/** 传输状态独立于命令与回合结果，禁止一次性操作错误污染共享会话。 */
+export type AgentTransportState = "restoring" | "ready" | "restore_failed" | "disconnected";
 
 type AgentSessionStateView = {
   state: AgentSessionState;
   entries: AgentEntry[];
   skills: AgentSkillSnapshot[];
   contextTokens: number | null;
-  loading: boolean;
+  transport: AgentTransportState;
   command: AgentCommand;
-  issue: AgentSessionIssue;
   send: (text: string) => Promise<void>;
   stop: () => Promise<void>;
-  reset: () => Promise<boolean>;
-  retry: () => void;
+  reset: () => Promise<void>;
+  reconnect: () => void;
 };
 
 /** 跨路由保留纯输入事实；光标、菜单与历史索引仍由当前 Composer 持有。 */
@@ -74,9 +73,8 @@ const AgentSessionContext = createContext<AgentSessionController | null>(null);
  */
 function useAgentSessionState(on_message_accepted: (text: string) => void): AgentSessionStateView {
   const [snapshot, set_snapshot] = useState<AgentSessionSnapshot>(EMPTY_SNAPSHOT);
-  const [loading, set_loading] = useState(true);
+  const [transport, set_transport] = useState<AgentTransportState>("restoring");
   const [command, set_command] = useState<AgentCommand>(null);
-  const [issue, set_issue] = useState<AgentSessionIssue>(null);
   const [connection_revision, set_connection_revision] = useState(0); // 用户重试时重建整个传输 effect
   const loaded_once_ref = useRef(false); // 区分首次恢复失败与已恢复会话断线
   // 命令互斥必须同步生效；否则同一帧的重复调用会在 React 提交状态前穿透 UI 禁用态。
@@ -88,12 +86,9 @@ function useAgentSessionState(on_message_accepted: (text: string) => void): Agen
     let syncing = false;
     let opened_once = false;
     const pending_events: AgentSessionEvent[] = [];
-    /** 首次加载失败与已恢复会话断线是不同的用户恢复路径，命令错误优先保留。 */
-    const set_transport_issue = (): void => {
-      const next = loaded_once_ref.current ? "connection" : "restore";
-      set_issue((current) =>
-        current === "send" || current === "stop" || current === "reset" ? current : next,
-      );
+    /** 首次恢复失败与已有快照后的断线需要不同的页面恢复路径。 */
+    const set_transport_failure = (): void => {
+      set_transport(loaded_once_ref.current ? "disconnected" : "restore_failed");
     };
 
     /** 先订阅再拉快照，并按到达顺序重放同步窗口内的事件。 */
@@ -108,14 +103,10 @@ function useAgentSessionState(on_message_accepted: (text: string) => void): Agen
         }
         set_snapshot(next);
         loaded_once_ref.current = true;
-        set_loading(false);
-        set_issue((current) =>
-          current === "restore" || current === "connection" ? null : current,
-        );
+        set_transport("ready");
       } catch {
         if (!disposed) {
-          set_loading(false);
-          set_transport_issue();
+          set_transport_failure();
         }
       } finally {
         syncing = false;
@@ -138,20 +129,20 @@ function useAgentSessionState(on_message_accepted: (text: string) => void): Agen
             else if (syncing) pending_events.push(agent_event);
             else set_snapshot((current) => apply_agent_event(current, agent_event));
           } catch {
-            set_transport_issue();
+            set_transport_failure();
+            void sync_snapshot();
           }
         }) as EventListener);
         source.onopen = () => {
           if (opened_once) void sync_snapshot();
           opened_once = true;
         };
-        source.onerror = set_transport_issue;
+        source.onerror = set_transport_failure;
         void sync_snapshot();
       })
       .catch(() => {
         if (!disposed) {
-          set_loading(false);
-          set_transport_issue();
+          set_transport_failure();
         }
       });
 
@@ -167,7 +158,6 @@ function useAgentSessionState(on_message_accepted: (text: string) => void): Agen
     const events: AgentSessionEvent[] = [];
     command_event_queue_ref.current = events;
     set_command(next_command);
-    set_issue(null);
     return events;
   };
 
@@ -193,7 +183,9 @@ function useAgentSessionState(on_message_accepted: (text: string) => void): Agen
 
   /** 发送成功只表示后端已受理；模型回合结果继续由 snapshot / SSE 条目表达。 */
   const send = async (text: string): Promise<void> => {
-    if (loading || !loaded_once_ref.current || snapshot.state === "running") return;
+    if (transport === "restoring" || !loaded_once_ref.current || snapshot.state === "running") {
+      return;
+    }
     const normalized_text = normalize_agent_user_message_text(text);
     if (normalized_text === null) return;
     const command_events = begin_command("send");
@@ -204,9 +196,9 @@ function useAgentSessionState(on_message_accepted: (text: string) => void): Agen
       });
       finish_command(command_events, next);
       on_message_accepted(normalized_text);
-    } catch {
+    } catch (error) {
       finish_command(command_events);
-      set_issue("send");
+      throw error;
     } finally {
       set_command(null);
     }
@@ -220,35 +212,32 @@ function useAgentSessionState(on_message_accepted: (text: string) => void): Agen
     try {
       const next = await api_fetch<AgentSessionSnapshot>("/api/agent/stop");
       finish_command(command_events, next);
-    } catch {
+    } catch (error) {
       finish_command(command_events);
-      set_issue("stop");
+      throw error;
     } finally {
       set_command(null);
     }
   };
 
   /** reset 只有收到合法权威快照才算成功，失败时保留当前对话。 */
-  const reset = async (): Promise<boolean> => {
+  const reset = async (): Promise<void> => {
     const command_events = begin_command("reset");
-    if (command_events === null) return false;
+    if (command_events === null) return;
     try {
       const next = await api_fetch<AgentSessionSnapshot>("/api/agent/reset");
       finish_command(command_events, next);
-      return true;
-    } catch {
+    } catch (error) {
       finish_command(command_events);
-      set_issue("reset");
-      return false;
+      throw error;
     } finally {
       set_command(null);
     }
   };
 
-  /** 显式重试重建 SSE 与初始快照同步，不维护额外的连接状态机。 */
-  const retry = (): void => {
-    set_loading(true);
-    set_issue(null);
+  /** 显式重试把 transport 置回 restoring，并推进 connection revision 重建传输。 */
+  const reconnect = (): void => {
+    set_transport("restoring");
     set_connection_revision((current) => current + 1);
   };
 
@@ -257,13 +246,12 @@ function useAgentSessionState(on_message_accepted: (text: string) => void): Agen
     entries: snapshot.entries,
     skills: snapshot.skills,
     contextTokens: snapshot.contextTokens,
-    loading,
+    transport,
     command,
-    issue,
     send,
     stop,
     reset,
-    retry,
+    reconnect,
   };
 }
 

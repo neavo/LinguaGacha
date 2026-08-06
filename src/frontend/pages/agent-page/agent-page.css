@@ -20,6 +20,28 @@
   scrollbar-gutter: stable;
 }
 
+.agent-page__connection-status {
+  display: flex;
+  width: min(calc(100% - 48px), 880px);
+  align-items: center;
+  gap: 8px;
+  margin: 16px auto 0;
+  border: 1px solid color-mix(in srgb, var(--ui-warning) 34%, var(--border));
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--ui-warning) 7%, var(--card));
+  padding: 8px 12px;
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.agent-page__connection-status > svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  color: var(--ui-warning);
+}
+
 /* 只允许末尾哨兵成为原生锚点；用户回看时 data-enabled 会撤销该资格。 */
 .agent-page__conversation > :not(.agent-page__scroll-anchor) {
   overflow-anchor: none;
@@ -134,6 +156,47 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.agent-round-error {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  border: 1px solid color-mix(in srgb, var(--ui-failure) 34%, var(--border));
+  border-radius: var(--ui-radius-card);
+  background: color-mix(in srgb, var(--ui-failure) 6%, var(--card));
+  padding: 10px 12px;
+}
+
+.agent-round-error > svg {
+  width: 18px;
+  height: 18px;
+  color: var(--ui-failure);
+}
+
+.agent-round-error strong,
+.agent-round-error p {
+  margin: 0;
+}
+
+.agent-round-error strong {
+  color: color-mix(in srgb, var(--ui-failure) 82%, var(--foreground));
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.agent-round-error p {
+  margin-top: 2px;
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.agent-round-error > button {
+  align-self: center;
 }
 
 .dark .agent-message--user {
@@ -568,13 +631,6 @@
 .agent-composer__submit-shell {
   display: inline-flex;
   flex: 0 0 auto;
-}
-
-.agent-composer__error {
-  min-width: 0;
-  color: var(--ui-failure);
-  text-align: end;
-  line-height: 1.35;
 }
 
 /* 外层提供真实文本基线，裁切只由内层文本承接。 */
