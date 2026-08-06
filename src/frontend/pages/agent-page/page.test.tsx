@@ -1,6 +1,8 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EditorSelection } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 
 import { TooltipProvider } from "@frontend/shadcn/tooltip";
 import type { AgentAssistantMessagePart, AgentEntryStatus } from "@shared/agent";
@@ -13,6 +15,23 @@ const page_state = vi.hoisted(() => ({ current: {} as AgentPageState }));
 const runtime_state = vi.hoisted(() => ({
   current: { revision: 0, owner: null as "task" | "agent" | null },
 }));
+const desktop_state = vi.hoisted(() => ({
+  current: {
+    project_snapshot: { loaded: true as boolean, path: "E:/demo/demo.lg" },
+    project_session_status: "ready",
+  },
+}));
+const quality_query_state = vi.hoisted(() => ({
+  entries: [] as Array<Record<string, unknown>>,
+  last_args: null as Record<string, unknown> | null,
+}));
+const quality_statistics_state = vi.hoisted(() => ({
+  current: {
+    completed_entry_ids: [] as string[],
+    matched_count_by_entry_id: {} as Record<string, number>,
+  },
+}));
+const push_toast = vi.hoisted(() => vi.fn());
 /** 模拟模型页更新后的共享选择快照，验证同一会话无需重建即可刷新容量。 */
 const model_agent_config = vi.hoisted(() => ({
   context_window: 288_000,
@@ -23,8 +42,34 @@ vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
   useAgentSession: () => page_state.current,
 }));
 vi.mock("@frontend/app/state/use-desktop-state", () => ({
-  useDesktopState: () => ({ runtime_snapshot: runtime_state.current }),
+  useDesktopState: () => desktop_state.current,
   useRuntimeSnapshot: () => runtime_state.current,
+}));
+vi.mock("@frontend/app/feedback/desktop-toast", () => ({
+  useDesktopToast: () => ({ push_toast }),
+}));
+vi.mock("@frontend/app/session/quality-rule-statistics-context", () => ({
+  useQualityRuleStatistics: () => quality_statistics_state.current,
+}));
+vi.mock("@frontend/features/quality-rule-editor/use-quality-rule-query", () => ({
+  useQualityRuleQuery: (args: {
+    project_path: string;
+    default_slice: unknown;
+    normalize_slice: (
+      slice: { entries: Array<Record<string, unknown>> },
+      revision: number,
+    ) => unknown;
+  }) => {
+    quality_query_state.last_args = args as unknown as Record<string, unknown>;
+    return {
+      quality_slice:
+        args.project_path === ""
+          ? args.default_slice
+          : args.normalize_slice({ entries: quality_query_state.entries }, 1),
+      quality_loaded: args.project_path !== "",
+      refresh_quality_rule_snapshot: vi.fn(),
+    };
+  },
 }));
 vi.mock("@frontend/features/model-selection/use-model-selection", async (import_original) => {
   const actual =
@@ -60,6 +105,11 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.empty.suggestions.capabilities") return "介绍你的能力";
       if (key === "agent_page.empty.suggestions.glossary_review") return "请帮我审校术语";
       if (key === "agent_page.empty.suggestions.translation_review") return "请帮我审校译文";
+      if (key === "agent_page.mention.groups.skills") return "技能";
+      if (key === "agent_page.mention.groups.terms") return "术语";
+      if (key === "agent_page.mention.no_matches") return "没有匹配的项目 …";
+      if (key === "agent_page.mention.term_hits") return `${params?.["count"]} 次`;
+      if (key === "agent_page.error.terms_load") return "术语加载失败";
       return params === undefined ? key : `${key}:${Object.values(params).join(",")}`;
     },
   }),
@@ -74,6 +124,17 @@ describe("AgentPage", () => {
 
   beforeEach(() => {
     runtime_state.current = { revision: 0, owner: null };
+    desktop_state.current = {
+      project_snapshot: { loaded: true, path: "E:/demo/demo.lg" },
+      project_session_status: "ready",
+    };
+    quality_query_state.entries = [];
+    quality_query_state.last_args = null;
+    quality_statistics_state.current = {
+      completed_entry_ids: [],
+      matched_count_by_entry_id: {},
+    };
+    push_toast.mockReset();
     model_agent_config.context_window = 288_000;
     model_agent_config.max_output_tokens = 32_000;
   });
@@ -103,7 +164,7 @@ describe("AgentPage", () => {
     return container;
   }
 
-  it("空会话按顺序显示三个起始任务，并把译文审查写成结构化草稿", async () => {
+  it("空会话按顺序显示三个起始任务，并把能力写成字面量草稿", async () => {
     const send = vi.fn(async () => undefined);
     const view = await render_page({ entries: [], send });
     const suggestions = [...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion")];
@@ -112,9 +173,14 @@ describe("AgentPage", () => {
 
     expect(suggestions.map((button) => button.textContent)).toEqual([
       "介绍你的能力",
-      "请帮我审校术语 @glossary-review",
-      "请帮我审校译文 @translation-review",
+      "请帮我审校术语 @skill(glossary-review)",
+      "请帮我审校译文 @skill(translation-review)",
     ]);
+    expect(
+      [...view.querySelectorAll<HTMLElement>(".agent-page__suggestion .agent-mention-token")].map(
+        (token) => token.textContent,
+      ),
+    ).toEqual(["@skill(glossary-review)", "@skill(translation-review)"]);
     expect(view.querySelector(".agent-composer__model-trigger")?.textContent).toContain(
       "Agent Model",
     );
@@ -127,7 +193,7 @@ describe("AgentPage", () => {
       submit.click();
       await Promise.resolve();
     });
-    expect(send).toHaveBeenLastCalledWith([{ kind: "text", text: "介绍你的能力" }]);
+    expect(send).toHaveBeenLastCalledWith("介绍你的能力");
 
     await act(async () => suggestions[2]?.click());
     expect(document.activeElement).toBe(editor);
@@ -135,10 +201,7 @@ describe("AgentPage", () => {
       submit.click();
       await Promise.resolve();
     });
-    expect(send).toHaveBeenLastCalledWith([
-      { kind: "text", text: "请帮我审校译文 " },
-      { kind: "skill", name: "translation-review" },
-    ]);
+    expect(send).toHaveBeenLastCalledWith("请帮我审校译文 @skill(translation-review)");
 
     await render_page();
     expect(view.querySelectorAll(".agent-page__suggestion")).toHaveLength(0);
@@ -156,14 +219,14 @@ describe("AgentPage", () => {
       [...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion")].map(
         (button) => button.textContent,
       ),
-    ).toEqual(["介绍你的能力", "请帮我审校译文 @translation-review"]);
+    ).toEqual(["介绍你的能力", "请帮我审校译文 @skill(translation-review)"]);
 
     await render_page({ entries: [], skills: [glossary, corpus] });
     expect(
       [...view.querySelectorAll<HTMLButtonElement>(".agent-page__suggestion")].map(
         (button) => button.textContent,
       ),
-    ).toEqual(["介绍你的能力", "请帮我审校术语 @glossary-review"]);
+    ).toEqual(["介绍你的能力", "请帮我审校术语 @skill(glossary-review)"]);
 
     await render_page({ entries: [], skills: [corpus] });
     expect(
@@ -171,6 +234,54 @@ describe("AgentPage", () => {
         (button) => button.textContent,
       ),
     ).toEqual(["介绍你的能力"]);
+  });
+
+  it("按当前工程接入规范术语，未加载工程与读取失败不阻断能力和发送", async () => {
+    quality_query_state.entries = [
+      {
+        entry_id: "alice",
+        src: " Alice ",
+        dst: " 爱丽丝 ",
+        info: " 主角 ",
+        case_sensitive: false,
+      },
+    ];
+    quality_statistics_state.current = {
+      completed_entry_ids: ["alice"],
+      matched_count_by_entry_id: { alice: 7 },
+    };
+    const send = vi.fn(async () => undefined);
+    const view = await render_page({ entries: [], send });
+    const editor = EditorView.findFromDOM(view.querySelector<HTMLElement>(".cm-content")!);
+    if (editor === null) throw new Error("缺少 Composer");
+    await act(async () =>
+      editor.dispatch({
+        changes: { from: 0, insert: "@" },
+        selection: EditorSelection.cursor(1),
+      }),
+    );
+    expect(
+      view.querySelector('[aria-labelledby="agent-mention-terms-label"]')?.textContent,
+    ).toContain("Alice爱丽丝 · 主角 · 7 次");
+    expect(quality_query_state.last_args).toMatchObject({
+      rule_type: "glossary",
+      project_path: "E:/demo/demo.lg",
+      session_ready: true,
+    });
+
+    const on_load_error = quality_query_state.last_args?.["on_load_error"];
+    if (typeof on_load_error !== "function") throw new Error("缺少术语错误出口");
+    await act(async () => on_load_error(new Error("load failed")));
+    expect(push_toast).toHaveBeenCalledWith("error", "术语加载失败");
+
+    desktop_state.current = {
+      project_snapshot: { loaded: false, path: "" },
+      project_session_status: "ready",
+    };
+    await render_page({ entries: [], send });
+    expect(quality_query_state.last_args).toMatchObject({ project_path: "" });
+    expect(view.textContent).toContain("介绍你的能力");
+    expect(view.querySelector('[aria-labelledby="agent-mention-terms-label"]')).toBeNull();
   });
 
   it("底栏用会话 token 和当前模型容量即时重算", async () => {
@@ -413,7 +524,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     issue: null,
     input: {
       revision: 0,
-      read_draft: () => [],
+      read_draft: () => "",
       write_draft: vi.fn(),
       read_history: () => [],
     },

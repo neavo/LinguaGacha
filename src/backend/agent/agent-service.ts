@@ -26,15 +26,14 @@ import {
 import type { JsonRecord } from "../../domain/json";
 import {
   AGENT_SESSION_EVENT_TOPIC,
-  format_agent_user_message_text,
-  normalize_agent_user_message_parts,
+  format_agent_skill_reference,
+  normalize_agent_user_message_text,
   type AgentAssistantMessagePart,
   type AgentEntry,
   type AgentEntryStatus,
   type AgentSessionEvent,
   type AgentSessionSnapshot,
   type AgentSessionState,
-  type AgentUserMessagePart,
 } from "../../shared/agent";
 import * as AppErrors from "../../shared/error";
 import type { AppPathService } from "../app/app-path-service";
@@ -232,33 +231,20 @@ export class AgentService {
     }
     const resources = this.require_resources();
     this.session_state.require_loaded_project_path();
-    const parts = normalize_agent_user_message_parts(request["parts"]);
-    if (parts === null || !parts.some((part) => part.kind === "skill" || part.text.trim() !== "")) {
+    const text = normalize_agent_user_message_text(request["text"]);
+    if (text === null) {
       throw new AppErrors.RequestValidationError({
         diagnostic_context: { reason: "empty_agent_message" },
       });
     }
-    const selected_skills: AgentSkillDefinition[] = [];
-    const selected_skill_names = new Set<string>();
-    for (const part of parts) {
-      if (part.kind !== "skill") continue;
-      if (selected_skill_names.has(part.name)) {
-        throw new AppErrors.RequestValidationError({
-          diagnostic_context: { reason: "duplicate_agent_skill", skill: part.name },
-        });
-      }
-      const skill = resources.skills.find((candidate) => candidate.name === part.name);
-      if (skill === undefined) {
-        throw new AppErrors.RequestValidationError({
-          diagnostic_context: { reason: "invalid_agent_skill", skill: part.name },
-        });
-      }
-      selected_skill_names.add(part.name);
-      selected_skills.push(skill);
-    }
+    const selected_skills = resources.skills
+      .map((skill) => ({ skill, index: text.indexOf(format_agent_skill_reference(skill.name)) }))
+      .filter((item) => item.index >= 0)
+      .sort((left, right) => left.index - right.index)
+      .map((item) => item.skill);
     const runtime_lease = this.runtime_gate.begin_runtime("agent");
     this.runtime_lease = runtime_lease;
-    const acceptance = this.accept_message(resources, parts, selected_skills, runtime_lease);
+    const acceptance = this.accept_message(resources, text, selected_skills, runtime_lease);
     this.message_acceptance = acceptance;
     const clear_acceptance = () => {
       if (this.message_acceptance === acceptance) this.message_acceptance = null;
@@ -323,7 +309,7 @@ export class AgentService {
   /** 在当前运行世代内准备唯一候选运行时。 */
   private async accept_message(
     resources: LoadedAgentResources,
-    parts: AgentUserMessagePart[],
+    text: string,
     selected_skills: AgentSkillDefinition[],
     runtime_lease: RuntimeLease,
   ): Promise<AgentSessionSnapshot> {
@@ -373,7 +359,7 @@ export class AgentService {
       this.upsert_entry({
         kind: "user_message",
         id: uuidv7(),
-        parts,
+        text,
         status: "running",
         createdAt: Date.now(),
         endedAt: null,
@@ -382,7 +368,7 @@ export class AgentService {
       const prompt = this.run_prompt(
         runtime,
         generation,
-        build_agent_prompt(parts, selected_skills),
+        build_agent_prompt(text, selected_skills),
         runtime_lease,
       );
       this.prompt_settlement = prompt;
@@ -449,9 +435,7 @@ export class AgentService {
           cache: this.cache,
           proofreading: this.proofreading,
         }),
-        ...create_agent_skill_tools(resources.skills, (name) =>
-          this.is_skill_explicitly_invoked(name),
-        ),
+        ...create_agent_skill_tools(resources.skills),
         ...(this.web_fetch === undefined ? [] : create_agent_web_tools(this.web_fetch)),
       ].map(wrap_agent_tool_execution),
       resourceLoader: resource_loader,
@@ -655,15 +639,6 @@ export class AgentService {
     this.assistant_stream = null;
   }
 
-  /** manual-only skill 的读取授权直接由当前公开会话中的显式 skill part 推导。 */
-  private is_skill_explicitly_invoked(name: string): boolean {
-    return this.entries.some(
-      (entry) =>
-        entry.kind === "user_message" &&
-        entry.parts.some((part) => part.kind === "skill" && part.name === name),
-    );
-  }
-
   /** 同 id 只替换原位置，确保工具终帧不会改变后端确认的时间线顺序。 */
   private upsert_entry(entry: AgentEntry): void {
     const next = structuredClone(entry);
@@ -816,16 +791,11 @@ export class AgentService {
   }
 }
 
-/** skill 指令块按首次出现顺序置前，可见用户文本保持原 parts 顺序随后进入历史。 */
-function build_agent_prompt(
-  parts: readonly AgentUserMessagePart[],
-  skills: readonly AgentSkillDefinition[],
-): string {
-  if (skills.length === 0) return format_agent_user_message_text(parts);
+/** skill 指令块按 marker 首次出现顺序置前，原始用户正文始终随后进入历史。 */
+function build_agent_prompt(text: string, skills: readonly AgentSkillDefinition[]): string {
+  if (skills.length === 0) return text;
   const blocks = skills.map((skill) => formatSkillInvocation(skill));
-  if (parts.some((part) => part.kind === "text" && part.text.trim() !== "")) {
-    blocks.push(format_agent_user_message_text(parts));
-  }
+  blocks.push(text);
   return blocks.join("\n\n");
 }
 

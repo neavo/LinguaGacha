@@ -19,9 +19,8 @@ import type {
   AgentSkillDisplayDescriptions,
   AgentSkillSnapshot,
   AgentToolEntry,
-  AgentUserMessagePart,
 } from "@shared/agent";
-import { AGENT_SESSION_EVENT_TOPIC, normalize_agent_user_message_parts } from "@shared/agent";
+import { AGENT_SESSION_EVENT_TOPIC, normalize_agent_user_message_text } from "@shared/agent";
 import { LOCALES } from "@shared/i18n/types";
 import { is_json_record, read_json_record, type JsonRecord } from "@domain/json";
 import { api_fetch, api_get, open_event_stream } from "@frontend/app/desktop/desktop-api";
@@ -48,7 +47,7 @@ type AgentSessionStateView = {
   loading: boolean;
   command: AgentCommand;
   issue: AgentSessionIssue;
-  send: (parts: readonly AgentUserMessagePart[]) => Promise<void>;
+  send: (text: string) => Promise<void>;
   stop: () => Promise<void>;
   reset: () => Promise<boolean>;
   retry: () => void;
@@ -57,9 +56,9 @@ type AgentSessionStateView = {
 /** 跨路由保留纯输入事实；光标、菜单与历史索引仍由当前 Composer 持有。 */
 export type AgentInputSession = {
   revision: number;
-  read_draft: () => readonly AgentUserMessagePart[];
-  write_draft: (parts: readonly AgentUserMessagePart[]) => void;
-  read_history: () => readonly (readonly AgentUserMessagePart[])[];
+  read_draft: () => string;
+  write_draft: (text: string) => void;
+  read_history: () => readonly string[];
 };
 
 /** 页面消费的完整 Agent 会话入口，输入事实与后端会话镜像共享同一生命周期。 */
@@ -73,9 +72,7 @@ const AgentSessionContext = createContext<AgentSessionController | null>(null);
 /**
  * 把 HTTP 快照与 SSE 增量合并为同一公开视图；Provider 决定它的跨路由生命周期。
  */
-function useAgentSessionState(
-  on_message_accepted: (parts: readonly AgentUserMessagePart[]) => void,
-): AgentSessionStateView {
+function useAgentSessionState(on_message_accepted: (text: string) => void): AgentSessionStateView {
   const [snapshot, set_snapshot] = useState<AgentSessionSnapshot>(EMPTY_SNAPSHOT);
   const [loading, set_loading] = useState(true);
   const [command, set_command] = useState<AgentCommand>(null);
@@ -195,16 +192,18 @@ function useAgentSessionState(
   };
 
   /** 发送成功只表示后端已受理；模型回合结果继续由 snapshot / SSE 条目表达。 */
-  const send = async (parts: readonly AgentUserMessagePart[]): Promise<void> => {
+  const send = async (text: string): Promise<void> => {
     if (loading || !loaded_once_ref.current || snapshot.state === "running") return;
+    const normalized_text = normalize_agent_user_message_text(text);
+    if (normalized_text === null) return;
     const command_events = begin_command("send");
     if (command_events === null) return;
     try {
       const next = await api_fetch<AgentSessionSnapshot>("/api/agent/message", {
-        parts,
+        text: normalized_text,
       });
       finish_command(command_events, next);
-      on_message_accepted(parts);
+      on_message_accepted(normalized_text);
     } catch {
       finish_command(command_events);
       set_issue("send");
@@ -271,28 +270,25 @@ function useAgentSessionState(
 /** 常驻拥有 Agent 传输镜像、命令和 renderer 私有输入会话，页面切换只替换消费者。 */
 export function AgentSessionProvider(props: { children: ReactNode }): JSX.Element {
   // 草稿和历史用 ref 避免每次编辑重渲染整棵应用；revision 只通知受理后的原子清空。
-  const draft_ref = useRef<AgentUserMessagePart[]>([]);
-  const input_history_ref = useRef<AgentUserMessagePart[][] | null>(null);
+  const draft_ref = useRef("");
+  const input_history_ref = useRef<string[] | null>(null);
   if (input_history_ref.current === null) {
     input_history_ref.current = read_agent_input_history(window.localStorage);
   }
   const [input_revision, set_input_revision] = useState(0);
 
-  const read_draft = useCallback((): readonly AgentUserMessagePart[] => draft_ref.current, []);
-  const write_draft = useCallback((parts: readonly AgentUserMessagePart[]): void => {
-    draft_ref.current = parts.map((part) => ({ ...part }));
+  const read_draft = useCallback((): string => draft_ref.current, []);
+  const write_draft = useCallback((text: string): void => {
+    draft_ref.current = text;
   }, []);
-  const read_history = useCallback(
-    (): readonly (readonly AgentUserMessagePart[])[] => input_history_ref.current ?? [],
-    [],
-  );
-  const accept_message = useCallback((parts: readonly AgentUserMessagePart[]): void => {
+  const read_history = useCallback((): readonly string[] => input_history_ref.current ?? [], []);
+  const accept_message = useCallback((text: string): void => {
     input_history_ref.current = append_agent_input_history(
       window.localStorage,
       input_history_ref.current ?? [],
-      parts,
+      text,
     );
-    draft_ref.current = [];
+    draft_ref.current = "";
     set_input_revision((current) => current + 1);
   }, []);
 
@@ -417,13 +413,13 @@ function normalize_entry(value: unknown): AgentEntry[] {
     ) {
       return [];
     }
-    const parts = normalize_agent_user_message_parts(value["parts"]);
-    if (parts === null || parts.length === 0) return [];
+    const text = normalize_agent_user_message_text(value["text"]);
+    if (text === null) return [];
     return [
       {
         kind: "user_message",
         id: value["id"],
-        parts,
+        text,
         status,
         createdAt: value["createdAt"],
         endedAt: ended_at,

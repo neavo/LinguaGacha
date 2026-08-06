@@ -23,28 +23,25 @@ type AgentSkillResource = {
 /** 读取工具只依赖 skill 的受控文件快照，不接触模型清单或 UI 描述。 */
 type AgentSkillReadDefinition = Pick<
   AgentSkillDefinition,
-  "name" | "filePath" | "content" | "disableModelInvocation" | "references"
+  "name" | "filePath" | "content" | "references"
 >;
 
-/**
- * 只读取启动期固定的 skill 白名单；manual-only skill 必须先由用户显式引用。
- */
+/** 只读取启动期固定的 skill 白名单，模型清单可见性不构成文件权限。 */
 export function create_agent_skill_tools(
   skills: readonly AgentSkillReadDefinition[],
-  is_explicitly_invoked: (name: string) => boolean,
 ): ToolDefinition[] {
   if (skills.length === 0) return [];
   return [
     defineTool({
       name: "read_skill",
       label: "读技能",
-      description: "读取可自动调用或当前会话已显式引用 skill 的 SKILL.md 与参考正文。",
+      description: "读取启动期已加载 skill 的 SKILL.md 与参考正文。",
       parameters: READ_SKILL_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
-        const resource = resolve_skill_resource(skills, is_explicitly_invoked, params.path);
+        const resource = resolve_skill_resource(skills, params.path);
         if (resource === null) {
-          throw new Error(`技能文件不存在或当前会话不可读取：${params.path}`);
+          throw new Error(`技能文件不在启动期白名单：${params.path}`);
         }
         return tool_result({
           skill: resource.skill,
@@ -56,14 +53,12 @@ export function create_agent_skill_tools(
   ];
 }
 
-/** 按启动期快照和 manual-only 授权解析唯一可读资源。 */
+/** 按启动期快照解析唯一可读资源。 */
 function resolve_skill_resource(
   skills: readonly AgentSkillReadDefinition[],
-  is_explicitly_invoked: (name: string) => boolean,
   file_path: string,
 ): AgentSkillResource | null {
   for (const skill of skills) {
-    if (skill.disableModelInvocation && !is_explicitly_invoked(skill.name)) continue;
     if (skill.filePath === file_path) {
       return { skill: skill.name, filePath: skill.filePath, content: skill.content };
     }

@@ -1,16 +1,23 @@
-import { useCallback, useLayoutEffect, useRef, useState, type UIEvent } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import { ArrowDown, BookCheck, Bot, ScanText, Sparkles } from "lucide-react";
 
-import type { AgentEntryStatus, AgentUserMessagePart } from "@shared/agent";
+import { QualityRule, type GlossaryEntry } from "@domain/quality";
+import { format_agent_skill_reference, type AgentEntryStatus } from "@shared/agent";
+import { normalize_quality_rule_entries } from "@shared/quality/quality-rule-entry";
+import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { useQualityRuleStatistics } from "@frontend/app/session/quality-rule-statistics-context";
 import { useModelSelection } from "@frontend/features/model-selection/use-model-selection";
-import { useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
+import { useDesktopState, useRuntimeSnapshot } from "@frontend/app/state/use-desktop-state";
+import { useQualityRuleQuery } from "@frontend/features/quality-rule-editor/use-quality-rule-query";
+import type { QualityRuleQuerySlice } from "@frontend/features/quality-rule-editor/quality-rule-api-client";
 import type { ScreenComponentProps } from "@frontend/app/navigation/types";
 import { Card } from "@frontend/shadcn/card";
 import { AppAlertDialog } from "@frontend/widgets/app-alert-dialog";
 import { AppButton } from "@frontend/widgets/app-button";
 import { useAgentSession } from "@frontend/app/session/agent/agent-session-context";
 import { AgentComposer, type AgentComposerHandle } from "./agent-composer";
+import { create_agent_mention_tokens } from "./agent-mention";
 import { AgentTimeline } from "./agent-timeline";
 import { is_at_scroll_end } from "./agent-scroll";
 import "./agent-page.css";
@@ -29,6 +36,7 @@ const FEATURED_AGENT_SKILLS = [
   },
 ] as const;
 const AGENT_CONVERSATION_FOLLOW_HOLD = "conversation";
+const EMPTY_AGENT_TERMS: GlossaryEntry[] = [];
 const AGENT_STATUS_LABEL_KEYS = Object.freeze({
   running: "agent_page.status.running",
   success: "agent_page.status.success",
@@ -36,9 +44,21 @@ const AGENT_STATUS_LABEL_KEYS = Object.freeze({
   stopped: "agent_page.status.stopped",
 } satisfies Readonly<Record<AgentEntryStatus, LocaleKey>>);
 
+/** 术语菜单复用共享规则归一化，不复制规则页编辑状态。 */
+function normalize_agent_terms(
+  slice: QualityRuleQuerySlice<"glossary"> | undefined,
+): GlossaryEntry[] {
+  return normalize_quality_rule_entries(
+    QualityRule.from_json("glossary"),
+    slice?.entries ?? [],
+  ) as GlossaryEntry[];
+}
+
 /** 渲染 Agent 对话、能力选择与命令输入；会话事实由跨路由 Agent session 提供。 */
 export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const { t } = useI18n();
+  const { push_toast } = useDesktopToast();
+  const { project_snapshot, project_session_status = "ready" } = useDesktopState();
   const agent = useAgentSession();
   const model_selection = useModelSelection();
   const runtime_snapshot = useRuntimeSnapshot();
@@ -47,6 +67,33 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   const [follow_holds, set_follow_holds] = useState<ReadonlySet<string>>(() => new Set());
   const [resume_revision, set_resume_revision] = useState(0); // 统一通知所有展开详情回到各自底端
   const [reset_dialog_open, set_reset_dialog_open] = useState(false);
+  const handle_terms_load_error = useCallback((): void => {
+    push_toast("error", t("agent_page.error.terms_load"));
+  }, [push_toast, t]);
+  const { quality_slice: terms } = useQualityRuleQuery({
+    rule_type: "glossary",
+    project_path: project_snapshot.loaded ? project_snapshot.path : "",
+    session_ready: project_session_status === "ready",
+    default_slice: EMPTY_AGENT_TERMS,
+    normalize_slice: normalize_agent_terms,
+    on_load_error: handle_terms_load_error,
+  });
+  const term_statistics = useQualityRuleStatistics("glossary");
+  // 只展示已完成统计的命中数，避免把尚未计算的术语误报为零命中。
+  const term_hit_counts = useMemo<Readonly<Record<string, number>>>(() => {
+    return Object.fromEntries(
+      term_statistics.completed_entry_ids.map((entry_id) => [
+        entry_id,
+        term_statistics.matched_count_by_entry_id[entry_id] ?? 0,
+      ]),
+    );
+  }, [term_statistics.completed_entry_ids, term_statistics.matched_count_by_entry_id]);
+  const available_terms =
+    project_snapshot.loaded && project_session_status === "ready" ? terms : EMPTY_AGENT_TERMS;
+  const mention_tokens = useMemo(
+    () => create_agent_mention_tokens(agent.skills, available_terms),
+    [agent.skills, available_terms],
+  );
   const is_running = agent.state === "running";
   const user_entries = agent.entries.filter((entry) => entry.kind === "user_message");
   const last_user = user_entries.at(-1);
@@ -87,9 +134,9 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   }, [agent.entries, agent.state, follow_paused, resume_revision]);
 
   /** 新消息代表用户重新进入最新上下文，提交前统一恢复信息流跟随。 */
-  const send = (parts: readonly AgentUserMessagePart[]): void => {
+  const send = (text: string): void => {
     resume_follow();
-    void agent.send(parts);
+    void agent.send(text);
   };
 
   // live region 只播报离散会话结果，不朗读高频流式正文。
@@ -139,9 +186,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                 asChild
                 className="agent-page__suggestion"
                 onClick={() =>
-                  composer_ref.current?.write_draft([
-                    { kind: "text", text: t("agent_page.empty.suggestions.capabilities") },
-                  ])
+                  composer_ref.current?.write_draft(t("agent_page.empty.suggestions.capabilities"))
                 }
               >
                 <button type="button">
@@ -159,16 +204,18 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                   asChild
                   className="agent-page__suggestion"
                   onClick={() =>
-                    composer_ref.current?.write_draft([
-                      { kind: "text", text: `${t(suggestionKey)} ` },
-                      { kind: "skill", name },
-                    ])
+                    composer_ref.current?.write_draft(
+                      `${t(suggestionKey)} ${format_agent_skill_reference(name)}`,
+                    )
                   }
                 >
                   <button type="button">
                     <Icon className="agent-page__suggestion-icon" aria-hidden="true" />
                     <span className="agent-page__suggestion-label">
-                      {t(suggestionKey)} <span className="agent-skill-token">@{name}</span>
+                      {t(suggestionKey)}{" "}
+                      <span className="agent-mention-token">
+                        {format_agent_skill_reference(name)}
+                      </span>
                     </span>
                   </button>
                 </Card>
@@ -178,6 +225,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         ) : (
           <AgentTimeline
             entries={agent.entries}
+            mention_tokens={mention_tokens}
             resume_revision={resume_revision}
             on_follow_hold_change={set_follow_hold}
           />
@@ -204,6 +252,8 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
       <AgentComposer
         ref={composer_ref}
         skills={agent.skills}
+        terms={available_terms}
+        term_hit_counts={term_hit_counts}
         running={is_running}
         unavailable_reason={unavailable_reason}
         command={agent.command}

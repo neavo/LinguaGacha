@@ -182,7 +182,7 @@ describe("AgentSessionProvider", () => {
     });
     await wait_for(() => expect(latest.issue).toBe("restore"));
     expect(latest.entries).toEqual([]);
-    await latest.send([{ kind: "text", text: "不可发送" }]);
+    await latest.send("不可发送");
     expect(desktop_api_mocks.api_fetch).not.toHaveBeenCalled();
 
     await act(async () => latest.retry());
@@ -297,10 +297,7 @@ describe("AgentSessionProvider", () => {
         {
           kind: "user_message",
           id: "user-new",
-          parts: [
-            { kind: "skill", name: "glossary-audit" },
-            { kind: "text", text: "审校" },
-          ],
+          text: "@skill(glossary-audit) 审校",
           status: "success",
           createdAt: 10,
           endedAt: 12,
@@ -308,20 +305,23 @@ describe("AgentSessionProvider", () => {
         {
           kind: "user_message",
           id: "user-missing-ended-at",
-          parts: [{ kind: "text", text: "旧协议不得兼容" }],
+          text: "缺少结束时间",
+          status: "success",
           createdAt: 11,
         },
         {
           kind: "user_message",
           id: "user-invalid-ended-at",
-          parts: [{ kind: "text", text: "非法结束时间" }],
+          text: "非法结束时间",
+          status: "success",
           createdAt: 12,
           endedAt: "13",
         },
         {
           kind: "user_message",
           id: "user-float-ended-at",
-          parts: [{ kind: "text", text: "浮点结束时间" }],
+          text: "浮点结束时间",
+          status: "success",
           createdAt: 13,
           endedAt: 13.5,
         },
@@ -373,10 +373,7 @@ describe("AgentSessionProvider", () => {
       {
         kind: "user_message",
         id: "user-new",
-        parts: [
-          { kind: "skill", name: "glossary-audit" },
-          { kind: "text", text: "审校" },
-        ],
+        text: "@skill(glossary-audit) 审校",
         status: "success",
         createdAt: 10,
         endedAt: 12,
@@ -432,7 +429,7 @@ describe("AgentSessionProvider", () => {
     await wait_for(() => expect(texts.at(-1)).toBe("重连已恢复"));
   });
 
-  it("发送有序 parts，受理后原子记录历史并清空草稿", async () => {
+  it("发送规范文本，受理后原子记录历史并清空草稿", async () => {
     desktop_api_mocks.api_fetch.mockResolvedValue(
       agent_snapshot({
         state: "running",
@@ -444,38 +441,24 @@ describe("AgentSessionProvider", () => {
       latest = useAgentSession();
     });
     await wait_for(() => expect(latest.loading).toBe(false));
-    latest.input.write_draft([
-      { kind: "text", text: "  请处理 " },
-      { kind: "skill", name: "corpus-search" },
-    ]);
+    latest.input.write_draft("  请处理 @skill(corpus-search)  ");
 
     await act(async () => {
-      await latest.send([
-        { kind: "text", text: "请处理 " },
-        { kind: "skill", name: "corpus-search" },
-      ]);
+      await latest.send("  请处理 @skill(corpus-search)  ");
     });
 
     expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/message", {
-      parts: [
-        { kind: "text", text: "请处理 " },
-        { kind: "skill", name: "corpus-search" },
-      ],
+      text: "请处理 @skill(corpus-search)",
     });
-    expect(latest.input.read_draft()).toEqual([]);
-    expect(latest.input.read_history()).toEqual([
-      [
-        { kind: "text", text: "请处理 " },
-        { kind: "skill", name: "corpus-search" },
-      ],
-    ]);
+    expect(latest.input.read_draft()).toBe("");
+    expect(latest.input.read_history()).toEqual(["请处理 @skill(corpus-search)"]);
     expect(
       JSON.parse(window.localStorage.getItem(AGENT_INPUT_HISTORY_STORAGE_KEY) ?? "null"),
     ).toEqual(latest.input.read_history());
     expect(latest.input.revision).toBe(1);
   });
 
-  it("消费页面卸载后仍保留结构化草稿", async () => {
+  it("消费页面卸载后仍保留纯文本草稿", async () => {
     let latest: ReturnType<typeof useAgentSession> | null = null;
     function Probe(): null {
       latest = useAgentSession();
@@ -492,20 +475,14 @@ describe("AgentSessionProvider", () => {
 
     await render_visible(true);
     await wait_for(() => expect(latest?.loading).toBe(false));
-    latest!.input.write_draft([
-      { kind: "text", text: "检查 " },
-      { kind: "skill", name: "glossary-audit" },
-    ]);
+    latest!.input.write_draft("检查 @skill(glossary-audit)");
 
     await render_visible(false);
     latest = null;
     await render_visible(true);
 
     const restored_session = latest as ReturnType<typeof useAgentSession> | null;
-    expect(restored_session?.input.read_draft()).toEqual([
-      { kind: "text", text: "检查 " },
-      { kind: "skill", name: "glossary-audit" },
-    ]);
+    expect(restored_session?.input.read_draft()).toBe("检查 @skill(glossary-audit)");
   });
 
   it("发送 ack 晚于 SSE 时先应用 ack 再重放增量", async () => {
@@ -524,7 +501,7 @@ describe("AgentSessionProvider", () => {
 
     let result!: Promise<void>;
     await act(async () => {
-      result = latest.send([{ kind: "text", text: "继续" }]);
+      result = latest.send("继续");
       await Promise.resolve();
     });
     await act(async () => {
@@ -566,7 +543,7 @@ describe("AgentSessionProvider", () => {
 
     let first!: Promise<void>;
     await act(async () => {
-      first = latest.send([{ kind: "text", text: "继续" }]);
+      first = latest.send("继续");
       await Promise.resolve();
     });
     await act(async () => {
@@ -583,7 +560,7 @@ describe("AgentSessionProvider", () => {
 
     desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot({ state: "running" }));
     await act(async () => {
-      await latest.send([{ kind: "text", text: "再次继续" }]);
+      await latest.send("再次继续");
     });
     expect(latest.issue).toBeNull();
   });
@@ -605,8 +582,8 @@ describe("AgentSessionProvider", () => {
     let first!: Promise<void>;
     let second!: Promise<void>;
     await act(async () => {
-      first = latest.send([{ kind: "text", text: "第一次" }]);
-      second = latest.send([{ kind: "text", text: "第二次" }]);
+      first = latest.send("第一次");
+      second = latest.send("第二次");
       await Promise.resolve();
     });
 
@@ -626,13 +603,13 @@ describe("AgentSessionProvider", () => {
       latest = useAgentSession();
     });
     await wait_for(() => expect(latest.loading).toBe(false));
-    latest.input.write_draft([{ kind: "text", text: "重试草稿" }]);
+    latest.input.write_draft("重试草稿");
 
     await act(async () => {
-      await latest.send([{ kind: "text", text: "重试" }]);
+      await latest.send("重试");
     });
     expect(latest.issue).toBe("send");
-    expect(latest.input.read_draft()).toEqual([{ kind: "text", text: "重试草稿" }]);
+    expect(latest.input.read_draft()).toBe("重试草稿");
     expect(latest.input.read_history()).toEqual([]);
     expect(latest.input.revision).toBe(0);
   });

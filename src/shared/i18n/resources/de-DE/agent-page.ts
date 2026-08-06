@@ -17,8 +17,13 @@ export const de_de_agent_page = {
     },
   },
   input: {
-    placeholder: "Aufgabe beschreiben oder mit @ eine Fähigkeit wählen …",
+    placeholder: "Aufgabe beschreiben oder mit @ einen Skill oder Begriff wählen …",
     hint: "Enter zum Senden · Shift + Enter für eine neue Zeile",
+  },
+  mention: {
+    groups: { skills: "Skills", terms: "Begriffe" },
+    no_matches: "Keine passenden Einträge …",
+    term_hits: "{count} Treffer",
   },
   context_usage: "Kontext {percent} · {used} / {total}",
   context_usage_warning: "Kontext wird bald automatisch komprimiert",
@@ -50,6 +55,7 @@ export const de_de_agent_page = {
     send: "Die Nachricht konnte nicht gesendet werden. Der Entwurf wurde beibehalten.",
     stop: "Die Aufgabe konnte nicht gestoppt werden. Bitte erneut versuchen.",
     reset: "Eine neue Aufgabe konnte nicht erstellt werden. Bitte erneut versuchen.",
+    terms_load: "Begriffe konnten nicht geladen werden. Skills und Nachrichten bleiben verfügbar.",
   },
   unavailable: {
     restoring: "Sitzung wird wiederhergestellt",
