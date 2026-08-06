@@ -113,6 +113,7 @@ const fake_agent_state = vi.hoisted(() => ({
     | "streaming"
     | "thinking"
     | "tool_only"
+    | "invalid_tool"
     | "tools",
   abort_count: 0,
   system_prompts: [] as string[],
@@ -322,6 +323,12 @@ function create_fake_response(context: Context): FauxResponseStep {
   if (fake_agent_state.mode === "tool_only") {
     return fauxAssistantMessage(
       fauxToolCall("query_items", { search: { keyword: "Alice" } }, { id: "tool-only" }),
+      { stopReason: "toolUse" },
+    );
+  }
+  if (fake_agent_state.mode === "invalid_tool") {
+    return fauxAssistantMessage(
+      fauxToolCall("query_items", { search: { keyword: "  " } }, { id: "schema-invalid" }),
       { stopReason: "toolUse" },
     );
   }
@@ -792,6 +799,34 @@ describe("AgentService", () => {
     ]);
   });
 
+  it("成功工具与 SDK Schema 失败都记录完整 start/end", async () => {
+    const { service, log_append } = await create_service();
+    fake_agent_state.mode = "tool_only";
+    await service.send_message({ text: "成功查询" });
+    await wait_for_idle(service);
+
+    fake_agent_state.mode = "invalid_tool";
+    await service.send_message({ text: "非法查询" });
+    await wait_for_idle(service);
+
+    const records = log_append.mock.calls.map(
+      ([payload]) =>
+        JSON.parse(payload.content.text) as {
+          event: "start" | "end";
+          tool_call_id: string;
+          is_error?: boolean;
+        },
+    );
+    expect(records.filter((record) => record.tool_call_id === "tool-only")).toEqual([
+      expect.objectContaining({ event: "start" }),
+      expect.objectContaining({ event: "end", is_error: false }),
+    ]);
+    expect(records.filter((record) => record.tool_call_id === "schema-invalid")).toEqual([
+      expect.objectContaining({ event: "start" }),
+      expect.objectContaining({ event: "end", is_error: true }),
+    ]);
+  });
+
   it("工具执行体在 running 事件获得发送轮次后才开始", async () => {
     const { service, publish, read_items } = await create_service();
     fake_agent_state.mode = "tool_only";
@@ -939,7 +974,7 @@ describe("AgentService", () => {
     await wait_for_idle(service);
 
     expect(log_error).toHaveBeenCalledWith(
-      "Agent 模型回合失败",
+      "Agent 模型回合失败 …",
       expect.objectContaining({
         source: "agent",
         error: expect.objectContaining({ message: "request failed" }),
@@ -1107,7 +1142,7 @@ describe("AgentService", () => {
   });
 
   it("停止会先封口运行中的工具，迟到的工具结果不能改写历史", async () => {
-    const { service, runtime_gate } = await create_service();
+    const { service, runtime_gate, log_append } = await create_service();
     fake_agent_state.mode = "write";
     fake_agent_state.hold_tool_write = true;
     await service.send_message({ text: "写入" });
@@ -1132,6 +1167,14 @@ describe("AgentService", () => {
     fake_agent_state.release_tool_write?.();
     await vi.waitFor(() => expect(runtime_gate.get_snapshot().owner).toBeNull());
     expect(service.get_snapshot().entries).toEqual(stopped_entries);
+    expect(
+      log_append.mock.calls
+        .map(([payload]) => JSON.parse(payload.content.text) as JsonRecord)
+        .filter((record) => record["tool_call_id"] === "write-1"),
+    ).toEqual([
+      expect.objectContaining({ event: "start" }),
+      expect.objectContaining({ event: "end" }),
+    ]);
   });
 
   it("SDK preflight 尚未结束时 stop 也不会迟到启动模型请求", async () => {
@@ -1461,7 +1504,7 @@ describe("AgentService", () => {
       ]),
     });
     expect(log_warning).toHaveBeenCalledWith(
-      "Agent 上下文压缩失败",
+      "Agent 上下文压缩失败 …",
       expect.objectContaining({ source: "agent" }),
     );
     expect(log_error).not.toHaveBeenCalled();
@@ -1549,6 +1592,7 @@ describe("AgentService", () => {
     read_items: ReturnType<typeof vi.fn<() => JsonRecord[]>>;
     log_error: ReturnType<typeof vi.fn>;
     log_warning: ReturnType<typeof vi.fn>;
+    log_append: ReturnType<typeof vi.fn>;
     select_agent_model: (model_id: "active" | "next") => void;
     read_setting_count: () => number;
     runtime_gate: RuntimeOperationGate;
@@ -1654,6 +1698,7 @@ describe("AgentService", () => {
     const publish = vi.fn((_topic: string, _payload: JsonRecord) => undefined);
     const log_error = vi.fn();
     const log_warning = vi.fn();
+    const log_append = vi.fn();
     const runtime_gate = new RuntimeOperationGate();
     const service = new AgentService({
       paths: {
@@ -1674,7 +1719,7 @@ describe("AgentService", () => {
       runtimeGate: runtime_gate,
       computeWorker: new ComputeWorkerClient({ execution: { kind: "in_process" } }),
       webFetch: web_fetch,
-      logManager: { error: log_error, warning: log_warning },
+      logManager: { append: log_append, error: log_error, warning: log_warning },
       publish,
     });
     if (load_resources) await service.load_resources();
@@ -1685,6 +1730,7 @@ describe("AgentService", () => {
       read_items,
       log_error,
       log_warning,
+      log_append,
       select_agent_model: (model_id) => {
         agent_model_id = model_id;
       },

@@ -25,6 +25,9 @@ describe("Agent 工程信息工具", () => {
     });
     const result = await tool.execute("meta", {}, undefined, undefined, undefined as never);
     expect(result.details).toEqual({ source_language: "JA", target_language: "ZH" });
+    expect(
+      JSON.parse(result.content[0]?.type === "text" ? result.content[0].text : "null"),
+    ).toEqual(result.details);
     expect(result.details).not.toHaveProperty("projectPath");
     expect(result.details).not.toHaveProperty("sectionRevisions");
     expect(result.details).not.toHaveProperty("models");

@@ -87,8 +87,11 @@ describe("Agent skill 加载", () => {
       },
     ]);
     expect(warning).toHaveBeenCalledWith(
-      expect.any(String),
-      expect.objectContaining({ source: "agent" }),
+      "Agent skill 资源加载失败 …",
+      expect.objectContaining({
+        source: "agent",
+        context: expect.objectContaining({ diagnostic_message: expect.any(String) }),
+      }),
     );
     expect(warning.mock.calls.map((call) => call[1]?.context?.code)).toEqual(
       expect.arrayContaining(["parse_failed", "invalid_metadata"]),
@@ -169,10 +172,14 @@ describe("Agent skill 加载", () => {
       },
     });
     expect(warning).toHaveBeenCalledWith(
-      expect.stringContaining("i18n"),
+      "Agent skill 资源加载失败 …",
       expect.objectContaining({
         source: "agent",
-        context: expect.objectContaining({ path: expect.stringMatching(/i18n\.json$/u) }),
+        context: expect.objectContaining({
+          skill: "invalid-i18n",
+          path: expect.stringMatching(/i18n\.json$/u),
+          error: expect.any(String),
+        }),
       }),
     );
   });

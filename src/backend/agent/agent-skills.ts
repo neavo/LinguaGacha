@@ -20,6 +20,7 @@ import type { AgentSkillDisplayDescriptions } from "../../shared/agent";
 import { LOCALES } from "../../shared/i18n/types";
 import type { AppPathService } from "../app/app-path-service";
 import type { LogManager } from "../log/log-manager";
+import { t_main_log } from "../log/log-text";
 
 const I18N_FILE_NAME = "i18n.json";
 const REFERENCES_DIR_NAME = "references";
@@ -80,7 +81,10 @@ export async function load_agent_skills(
     }
     return [...skills.values()];
   } catch (error) {
-    log_manager.error("Agent skill 加载失败", { source: "agent", error });
+    log_manager.error(t_main_log("app.diagnostic.agent.skill_load_failed"), {
+      source: "agent",
+      error,
+    });
     return [];
   }
 }
@@ -172,7 +176,7 @@ function collect_skill_references(
     entries = native_fs.read_dirents(directory);
   } catch (error) {
     if (!is_not_found_error(error)) {
-      log_manager.warning("Agent skill references 目录读取失败", {
+      log_manager.warning(t_main_log("app.diagnostic.agent.skill_resource_load_failed"), {
         source: "agent",
         context: { path: directory, error: String(error) },
       });
@@ -194,7 +198,7 @@ function collect_skill_references(
         content: native_fs.read_text_file(entry_path),
       });
     } catch (error) {
-      log_manager.warning(`Agent skill reference 读取失败：${entry.name}`, {
+      log_manager.warning(t_main_log("app.diagnostic.agent.skill_resource_load_failed"), {
         source: "agent",
         context: { path: entry_path, error: String(error) },
       });
@@ -308,9 +312,13 @@ function to_file_error(error: unknown, file_path: string): FileError {
 
 /** 第三方 loader 诊断统一进入应用日志，不阻断其它合法 skill。 */
 function log_skill_diagnostic(log_manager: AgentSkillLog, diagnostic: SkillDiagnostic): void {
-  log_manager.warning(diagnostic.message, {
+  log_manager.warning(t_main_log("app.diagnostic.agent.skill_resource_load_failed"), {
     source: "agent",
-    context: { code: diagnostic.code, path: diagnostic.path },
+    context: {
+      code: diagnostic.code,
+      path: diagnostic.path,
+      diagnostic_message: diagnostic.message,
+    },
   });
 }
 
@@ -321,8 +329,8 @@ function log_skill_i18n_diagnostic(
   file_path: string,
   error: unknown,
 ): void {
-  log_manager.warning(`Agent skill i18n 加载失败：${skill_name}`, {
+  log_manager.warning(t_main_log("app.diagnostic.agent.skill_resource_load_failed"), {
     source: "agent",
-    context: { path: file_path, error: String(error) },
+    context: { skill: skill_name, path: file_path, error: String(error) },
   });
 }

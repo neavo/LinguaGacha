@@ -51,7 +51,9 @@ describe("Agent web_fetch 工具", () => {
         contentType: "text/html",
         body: bytes("<html><body></body></html>"),
       }),
-    ).rejects.toThrow("未提取到可读内容");
+    ).rejects.toMatchObject({
+      details: { code: "web_fetch.empty_content", content_type: "text/html" },
+    });
     expect(external_fetch).not.toHaveBeenCalled();
   });
 
@@ -75,7 +77,9 @@ describe("Agent web_fetch 工具", () => {
     );
     await expect(
       execute_with_response({ contentType: "application/json", body: bytes("{invalid") }),
-    ).rejects.toThrow("无效 JSON");
+    ).rejects.toMatchObject({
+      details: { code: "web_fetch.invalid_json", content_type: "application/json" },
+    });
   });
 
   it.each(["application/xml", "text/xml", "application/rss+xml"])(
@@ -89,19 +93,29 @@ describe("Agent web_fetch 工具", () => {
     },
   );
 
-  it.each(["", "application/octet-stream", "image/png"])(
-    "拒绝缺失或不支持的 Content-Type：%s",
+  it("缺失 Content-Type 时返回稳定错误码", async () => {
+    await expect(
+      execute_with_response({ contentType: "", body: new Uint8Array([1, 2]) }),
+    ).rejects.toMatchObject({ details: { code: "web_fetch.missing_content_type" } });
+  });
+
+  it.each(["application/octet-stream", "image/png"])(
+    "不支持 %s 时返回 MIME",
     async (content_type) => {
       await expect(
         execute_with_response({ contentType: content_type, body: new Uint8Array([1, 2]) }),
-      ).rejects.toThrow();
+      ).rejects.toMatchObject({
+        details: { code: "web_fetch.unsupported_content_type", content_type },
+      });
     },
   );
 
   it.each(["text/plain", "application/xml"])("拒绝 %s 空正文", async (content_type) => {
     await expect(
       execute_with_response({ contentType: content_type, body: bytes(" \r\n ") }),
-    ).rejects.toThrow("没有可读正文");
+    ).rejects.toMatchObject({
+      details: { code: "web_fetch.empty_content", content_type },
+    });
   });
 
   it("把 HTTP charset 交给统一解码入口", async () => {

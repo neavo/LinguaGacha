@@ -178,6 +178,94 @@ describe("Agent 质量规则工具", () => {
     expect(update).not.toHaveBeenCalled();
   });
 
+  it("空条目与空术语译文返回精确 code/path", async () => {
+    const tool = find_tool(
+      create_agent_quality_tools({
+        qualityRules: {
+          query: () => ({ sectionRevisions: { quality: 1 }, qualityRule: { entries: [] } }),
+          update_from_agent: async () => ({ accepted: true, changes: [] }),
+        },
+        cache: create_cache(),
+        computeWorker: create_compute_worker(),
+      }),
+      "update_quality_rules",
+    );
+    const execute = (entry: JsonRecord) =>
+      tool.execute(
+        "empty",
+        {
+          rule_type: "glossary",
+          write: [{ entry }],
+          expected_section_revisions: { quality: 1 },
+        },
+        undefined,
+        undefined,
+        undefined as never,
+      );
+
+    await expect(
+      execute({ src: "   ", dst: "甲", info: "", case_sensitive: false }),
+    ).rejects.toMatchObject({
+      details: { code: "quality_rule.empty_entry", path: "write[0].entry" },
+    });
+    await expect(
+      execute({ src: "Alpha", dst: "   ", info: "", case_sensitive: false }),
+    ).rejects.toMatchObject({
+      details: {
+        code: "quality_rule.empty_entry_field",
+        path: "write[0].entry.dst",
+      },
+    });
+  });
+
+  const corrupted_stored_entries: Array<{
+    entries: JsonRecord | JsonRecord[];
+    reason: string;
+  }> = [
+    { entries: {}, reason: "quality_rule_stored_entries_invalid" },
+    {
+      entries: [{ src: "Alpha", dst: "甲", info: "", case_sensitive: false }],
+      reason: "quality_rule_stored_entry_id_missing",
+    },
+    {
+      entries: [stored_entry("same", "Alpha", "甲"), stored_entry("same", "Beta", "乙")],
+      reason: "quality_rule_duplicate_entry_id",
+    },
+  ];
+
+  it.each(corrupted_stored_entries)(
+    "存储条目损坏时报告内部不变量：$reason",
+    async ({ entries, reason }) => {
+      const tools = create_agent_quality_tools({
+        qualityRules: {
+          query: () => ({
+            sectionRevisions: { quality: 1 },
+            qualityRule: {
+              enabled: true,
+              entries,
+            },
+          }),
+          update_from_agent: async () => ({ accepted: true, changes: [] }),
+        },
+        cache: create_cache(),
+        computeWorker: create_compute_worker(),
+      });
+
+      await expect(
+        find_tool(tools, "query_quality_rules").execute(
+          "broken-store",
+          { rule_type: "glossary" },
+          undefined,
+          undefined,
+          undefined as never,
+        ),
+      ).rejects.toMatchObject({
+        code: "runtime.internal_invariant",
+        diagnostic_context: { reason },
+      });
+    },
+  );
+
   it("查询四类规则，并为术语保留派生事实", async () => {
     const rules: Record<string, JsonRecord> = {
       glossary: {

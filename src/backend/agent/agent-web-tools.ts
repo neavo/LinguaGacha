@@ -8,6 +8,7 @@ import type {
   BackendRuntimeWebFetchResponse,
 } from "../../shared/backend-runtime";
 import { decode_text_content } from "../../shared/utils/text-tool";
+import { AgentToolError } from "./agent-tool";
 
 export const WEB_FETCH_MAX_MARKDOWN_CHARS = 100_000;
 const TRUNCATION_NOTICE = "[内容因长度限制已截断]";
@@ -103,7 +104,7 @@ async function project_web_fetch_result(response: BackendRuntimeWebFetchResponse
 function parse_content_type(value: string): ParsedContentType {
   const [raw_mime = "", ...parameters] = value.split(";");
   const mime = raw_mime.trim().toLowerCase();
-  if (mime === "") throw new Error("网页响应缺少 Content-Type。");
+  if (mime === "") throw new AgentToolError({ code: "web_fetch.missing_content_type" });
   let charset: string | undefined;
   for (const parameter of parameters) {
     const match = /^\s*charset\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s]+))\s*$/iu.exec(parameter);
@@ -129,19 +130,23 @@ async function normalize_web_content(
       useAsync: false,
     });
     const markdown = normalize_text(result.content);
-    if (markdown === "") throw new Error("网页未提取到可读内容。");
+    if (markdown === "") {
+      throw new AgentToolError({ code: "web_fetch.empty_content", content_type: mime });
+    }
     const title = result.title.trim();
     return { markdown, title: title === "" ? null : title };
   }
 
   const text = normalize_text(decoded);
-  if (text === "") throw new Error("网页响应没有可读正文。");
+  if (text === "") {
+    throw new AgentToolError({ code: "web_fetch.empty_content", content_type: mime });
+  }
   if (mime === "application/json" || /^application\/.+\+json$/u.test(mime)) {
     let parsed: unknown;
     try {
       parsed = JSON.parse(text);
     } catch (error) {
-      throw new Error("网页响应包含无效 JSON。", { cause: error });
+      throw new AgentToolError({ code: "web_fetch.invalid_json", content_type: mime }, error);
     }
     return { markdown: `\`\`\`json\n${JSON.stringify(parsed, null, 2)}\n\`\`\``, title: null };
   }
@@ -151,7 +156,7 @@ async function normalize_web_content(
   if (mime === "text/markdown" || mime === "text/x-markdown" || mime.startsWith("text/")) {
     return { markdown: text, title: null };
   }
-  throw new Error(`不支持网页 Content-Type：${mime}`);
+  throw new AgentToolError({ code: "web_fetch.unsupported_content_type", content_type: mime });
 }
 
 /** 统一网络文本换行并移除响应外围空白。 */

@@ -70,7 +70,9 @@ describe("Agent 技能读取工具", () => {
     ]) {
       await expect(
         tool.execute("rejected", { path }, undefined, undefined, undefined as never),
-      ).rejects.toThrow("技能文件不在启动期白名单");
+      ).rejects.toMatchObject({
+        details: { code: "skill.resource_not_allowed", path },
+      });
     }
   });
 
