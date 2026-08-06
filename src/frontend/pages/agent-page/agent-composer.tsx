@@ -35,11 +35,7 @@ import {
 } from "@codemirror/view";
 
 import type { GlossaryEntry } from "@domain/quality";
-import {
-  format_agent_skill_reference,
-  format_agent_term_reference,
-  type AgentSkillSnapshot,
-} from "@shared/agent";
+import type { AgentSkillSnapshot } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
   ModelSelectionCategories,
@@ -67,8 +63,10 @@ import type {
   AgentSessionIssue,
 } from "@frontend/app/session/agent/agent-session-context";
 import {
+  create_agent_mention_candidates,
   create_agent_mention_tokens,
   find_agent_mention_ranges,
+  type AgentMentionCandidate,
   type AgentMentionToken,
 } from "./agent-mention";
 
@@ -79,21 +77,13 @@ type MentionQuery = {
   text: string;
 };
 
-/** 菜单候选只保留渲染与插入所需事实，不进入消息协议或共享状态。 */
-type MentionCandidate = {
-  kind: "skill" | "term";
-  key: string;
-  title: string;
-  description: string;
-  insertText: string;
-};
-
 /** React 只持有渲染所需投影，正文仍由 EditorState 唯一拥有。 */
 type EditorSnapshot = {
   text: string;
   query: MentionQuery | null;
 };
 
+/** 页面只能写入草稿，正文与光标所有权仍留在 CodeMirror。 */
 export type AgentComposerHandle = {
   write_draft: (text: string) => void;
 };
@@ -139,9 +129,6 @@ const EMPTY_EDITOR_SNAPSHOT: EditorSnapshot = {
   text: "",
   query: null,
 };
-/** 菜单只展示最前面的少量术语，避免完整术语表挤压能力入口。 */
-const AGENT_MENTION_TERM_LIMIT = 3;
-
 /** 撤销标记只控制 CodeMirror 历史；此标记单独标识 Composer 的历史导航事务。 */
 const input_history_navigation_annotation = Annotation.define<boolean>();
 const input_history_navigation_annotations = [
@@ -209,11 +196,12 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       ? submit_label
       : t(AGENT_UNAVAILABLE_REASON_KEYS[props.unavailable_reason]);
   const host_ref = useRef<HTMLDivElement | null>(null);
+  const menu_ref = useRef<HTMLDivElement | null>(null);
   const view_ref = useRef<EditorView | null>(null);
   const submit_ref = useRef<() => void>(() => undefined);
-  const select_candidate_ref = useRef<(candidate: MentionCandidate) => void>(() => undefined);
+  const select_candidate_ref = useRef<(candidate: AgentMentionCandidate) => void>(() => undefined);
   const menu_open_ref = useRef(false);
-  const matching_candidates_ref = useRef<readonly MentionCandidate[]>([]);
+  const matching_candidates_ref = useRef<readonly AgentMentionCandidate[]>([]);
   const menu_index_ref = useRef(0);
   const last_query_key_ref = useRef("");
   // Session 引用承接跨路由草稿与历史，索引只属于当前 Composer 的临时浏览位置。
@@ -223,54 +211,21 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const [menu_index_value, set_menu_index] = useState(0);
   const [menu_suppressed, set_menu_suppressed] = useState(false);
 
-  // 两组候选使用同一 locale 字面量搜索；能力不限量，术语过滤后再截断。
-  const query_text = snapshot.query?.text.toLocaleLowerCase(locale);
-  const matching_skills: MentionCandidate[] =
-    query_text === undefined
-      ? []
-      : props.skills
-          .filter((skill) =>
-            `${skill.name}\n${skill.displayDescriptions[locale]}`
-              .toLocaleLowerCase(locale)
-              .includes(query_text),
-          )
-          .map((skill) => ({
-            kind: "skill",
-            key: `skill:${skill.name}`,
-            title: skill.name,
-            description: skill.displayDescriptions[locale],
-            insertText: format_agent_skill_reference(skill.name),
-          }));
-  const matching_terms: MentionCandidate[] =
-    query_text === undefined
-      ? []
-      : props.terms
-          .map((term, index) => ({ term, index }))
-          .filter(
-            ({ term }) =>
-              term.src !== "" &&
-              `${term.src}\n${term.dst}\n${term.info}`
-                .toLocaleLowerCase(locale)
-                .includes(query_text),
-          )
-          .slice(0, AGENT_MENTION_TERM_LIMIT)
-          .map(({ term, index }) => ({
-            kind: "term",
-            key: `term:${index.toString()}:${term.src}`,
-            title: term.src,
-            description: [
-              term.dst,
-              term.info,
-              term.entry_id !== undefined && Object.hasOwn(props.term_hit_counts, term.entry_id)
-                ? t("agent_page.mention.term_hits", {
-                    count: (props.term_hit_counts[term.entry_id] ?? 0).toString(),
-                  })
-                : "",
-            ]
-              .filter((value) => value !== "")
-              .join(" · "),
-            insertText: format_agent_term_reference(term.src),
-          }));
+  const mention_query_text = snapshot.query?.text;
+  const candidate_groups =
+    mention_query_text === undefined
+      ? { skills: [], terms: [] }
+      : create_agent_mention_candidates({
+          query: mention_query_text,
+          locale,
+          skills: props.skills,
+          terms: props.terms,
+          term_hit_counts: props.term_hit_counts,
+          format_term_hits: (count) =>
+            t("agent_page.mention.term_hits", { count: count.toString() }),
+        });
+  const matching_skills = candidate_groups.skills;
+  const matching_terms = candidate_groups.terms;
   const matching_candidates = [...matching_skills, ...matching_terms];
   const editor_read_only = props.command === "send" || props.command === "reset";
   const menu_open = snapshot.query !== null && !editor_read_only && !menu_suppressed;
@@ -491,8 +446,16 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     }
   }, [matching_candidates, menu_index, menu_open]);
 
+  useEffect(() => {
+    if (!menu_open) return;
+    // aria-activedescendant 不会移动 DOM 焦点，必须显式保持键盘活动项可见。
+    menu_ref.current
+      ?.querySelector<HTMLElement>(`#agent-mention-option-${menu_index.toString()}`)
+      ?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [mention_query_text, menu_index, menu_open]);
+
   /** 用一次事务把当前 @ 查询替换成字面量 marker 与结束空格。 */
-  const select_candidate = (candidate: MentionCandidate): void => {
+  const select_candidate = (candidate: AgentMentionCandidate): void => {
     const view = view_ref.current;
     const query = view === null ? null : find_mention_query(view.state);
     if (view === null || query === null) return;
@@ -524,7 +487,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       }}
     >
       {menu_open && (
-        <div id="agent-mention-menu" className="agent-mention-menu" role="listbox">
+        <div ref={menu_ref} id="agent-mention-menu" className="agent-mention-menu" role="listbox">
           {matching_skills.length > 0 && (
             <div
               className="agent-mention-menu__group"
@@ -706,7 +669,8 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     </form>
   );
 
-  function render_candidate(candidate: MentionCandidate, index: number): JSX.Element {
+  /** 两个分组共用连续 option 索引，使键盘导航与 aria-activedescendant 指向同一项。 */
+  function render_candidate(candidate: AgentMentionCandidate, index: number): JSX.Element {
     const Icon = candidate.kind === "skill" ? Sparkles : BookA;
     return (
       <button
@@ -885,8 +849,10 @@ class MentionTokenWidget extends WidgetType {
   /** 创建与时间线共用样式的紧凑块。 */
   public override toDOM(): HTMLElement {
     const token = document.createElement("span");
+    const text = document.createElement("span");
     token.className = "agent-mention-token";
-    token.textContent = this.marker;
+    text.textContent = this.marker;
+    token.append(text);
     return token;
   }
 

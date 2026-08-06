@@ -35,8 +35,11 @@ const FEATURED_AGENT_SKILLS = [
     Icon: ScanText,
   },
 ] as const;
+/** 外层会话滚动与详情滚动共用暂停集合，此固定键代表外层容器。 */
 const AGENT_CONVERSATION_FOLLOW_HOLD = "conversation";
+/** 未加载工程时复用稳定空数组，避免无事实变化却重建 mention 投影。 */
 const EMPTY_AGENT_TERMS: GlossaryEntry[] = [];
+/** live region 只播报离散轮次状态，不复述高频流式正文。 */
 const AGENT_STATUS_LABEL_KEYS = Object.freeze({
   running: "agent_page.status.running",
   success: "agent_page.status.success",
@@ -214,7 +217,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
                     <span className="agent-page__suggestion-label">
                       {t(suggestionKey)}{" "}
                       <span className="agent-mention-token">
-                        {format_agent_skill_reference(name)}
+                        <span>{format_agent_skill_reference(name)}</span>
                       </span>
                     </span>
                   </button>

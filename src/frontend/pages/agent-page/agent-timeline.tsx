@@ -21,6 +21,7 @@ const AGENT_STATUS_LABEL_KEYS: Readonly<Record<AgentEntryStatus, LocaleKey>> = O
   error: "agent_page.status.error",
   stopped: "agent_page.status.stopped",
 });
+/** 轮次头只包装持续时间，状态对应的完整句式由本地化词表拥有。 */
 const AGENT_ROUND_LABEL_KEYS: Readonly<Record<AgentEntryStatus, LocaleKey>> = Object.freeze({
   running: "agent_page.round.running",
   success: "agent_page.round.success",
@@ -153,7 +154,7 @@ function render_agent_mention_text(
     if (range.from > cursor) content.push(text.slice(cursor, range.from));
     content.push(
       <span className="agent-mention-token" key={`${range.from.toString()}:${range.marker}`}>
-        {range.marker}
+        <span>{range.marker}</span>
       </span>,
     );
     cursor = range.to;

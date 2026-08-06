@@ -177,9 +177,11 @@ describe("AgentPage", () => {
       "请帮我审校译文 @skill(translation-review)",
     ]);
     expect(
-      [...view.querySelectorAll<HTMLElement>(".agent-page__suggestion .agent-mention-token")].map(
-        (token) => token.textContent,
-      ),
+      [
+        ...view.querySelectorAll<HTMLElement>(
+          ".agent-page__suggestion .agent-mention-token > span",
+        ),
+      ].map((token) => token.textContent),
     ).toEqual(["@skill(glossary-review)", "@skill(translation-review)"]);
     expect(view.querySelector(".agent-composer__model-trigger")?.textContent).toContain(
       "Agent Model",

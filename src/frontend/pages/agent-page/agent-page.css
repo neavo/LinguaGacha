@@ -36,10 +36,12 @@
 }
 
 .agent-page__empty {
-  display: grid;
+  display: flex;
   flex: 1;
-  grid-template-rows: 1fr auto 1fr;
-  justify-items: center;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 20px;
   padding: 32px;
   color: var(--muted-foreground);
   text-align: center;
@@ -47,7 +49,6 @@
 
 .agent-page__empty-intro {
   display: flex;
-  grid-row: 2;
   align-items: center;
   flex-direction: column;
   gap: 8px;
@@ -74,12 +75,9 @@
 
 .agent-page__suggestions {
   display: grid;
-  grid-row: 3;
-  width: min(100%, 768px);
-  align-self: start;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: min(100%, 640px);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
-  margin-top: 20px;
 }
 
 .agent-page__suggestion {
@@ -579,19 +577,23 @@
   line-height: 1.35;
 }
 
+/* 外层提供真实文本基线，裁切只由内层文本承接。 */
 .agent-mention-token {
-  display: inline-block;
+  display: inline-flex;
   max-width: 100%;
-  overflow: hidden;
   border-radius: var(--ui-radius-button);
   background: color-mix(in srgb, var(--primary) 12%, var(--muted));
   padding: 1px 4px;
   color: var(--primary);
   font-size: 0.92em;
   font-weight: 500;
-  line-height: 1.45;
+  vertical-align: baseline;
+}
+
+.agent-mention-token > span {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
-  vertical-align: middle;
   white-space: nowrap;
 }
 
@@ -602,7 +604,6 @@
 
 .agent-message--user[data-mention-only="true"] .agent-mention-token {
   padding: 8px 12px;
-  line-height: 1.65;
 }
 
 .agent-mention-menu {
@@ -612,7 +613,7 @@
   left: 0;
   z-index: 20;
   border: 1px solid var(--border);
-  max-height: min(360px, calc(100vh - 180px));
+  max-height: min(256px, calc(100vh - 180px));
   overflow-y: auto;
   border-radius: var(--radius-xl);
   background: var(--popover);
