@@ -28,7 +28,7 @@ type RenderComposerOptions = Partial<
     AgentComposerTestProps,
     | "can_reset"
     | "command"
-    | "context_usage"
+    | "context_tokens"
     | "issue"
     | "on_reset"
     | "on_send"
@@ -582,7 +582,7 @@ describe("AgentComposer", () => {
 
   it("底栏常驻显示百分比，并在提示中提供 K 单位详情与阈值状态", async () => {
     const view = await render_composer({
-      context_usage: { tokens: 31_488, contextWindow: 288_000, maxTokens: 32_000 },
+      context_tokens: 31_488,
     });
     const usage = view.querySelector<HTMLElement>(".agent-composer__context-usage");
 
@@ -603,7 +603,7 @@ describe("AgentComposer", () => {
       [256_000, "warning"],
     ] as const) {
       await render_composer({
-        context_usage: { tokens, contextWindow: 288_000, maxTokens: 32_000 },
+        context_tokens: tokens,
       });
       expect(
         view.querySelector<HTMLElement>(".agent-composer__context-usage")?.dataset["tone"],
@@ -615,7 +615,7 @@ describe("AgentComposer", () => {
       [...view.querySelectorAll('[role="tooltip"]')].map((tooltip) => tooltip.textContent),
     ).toContain("256K / 288K即将自动压缩上下文");
 
-    await render_composer({ context_usage: null });
+    await render_composer({ context_tokens: null });
     expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("0.0%");
   });
 
@@ -698,7 +698,7 @@ describe("AgentComposer", () => {
           command={options.command ?? null}
           issue={options.issue ?? null}
           can_reset={options.can_reset ?? true}
-          context_usage={options.context_usage ?? null}
+          context_tokens={options.context_tokens ?? null}
           model_selection={{
             snapshot: {
               model_selection: { translation: "preset", analysis: "preset", agent: "agent" },

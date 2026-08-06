@@ -99,6 +99,8 @@ const session_seed_loader = vi.hoisted(() =>
   ),
 );
 const agent_model_registrar = vi.hoisted(() => vi.fn());
+// 该窗口刚好容纳固定保留量与输出预留，用于稳定触发自动压缩边界。
+const TEST_COMPACTION_CONTEXT_WINDOW = 65_001;
 
 const fake_agent_state = vi.hoisted(() => ({
   mode: "success" as
@@ -116,6 +118,7 @@ const fake_agent_state = vi.hoisted(() => ({
   system_prompts: [] as string[],
   prompts: [] as string[],
   model_ids: [] as string[],
+  request_model_limits: [] as Array<{ contextWindow: number; maxTokens: number }>,
   tool_names: [] as string[][],
   release_pending: null as (() => void) | null,
   hold_idle: false,
@@ -168,6 +171,10 @@ function create_fake_agent_stream(
   fake_agent_state.system_prompts.push(context.systemPrompt ?? "");
   fake_agent_state.prompts.push(read_last_user_text(context));
   fake_agent_state.model_ids.push(model.id);
+  fake_agent_state.request_model_limits.push({
+    contextWindow: model.contextWindow,
+    maxTokens: model.maxTokens,
+  });
   fake_agent_state.tool_names.push(context.tools?.map((tool) => tool.name) ?? []);
   const faux = createFauxCore({
     api: model.api,
@@ -199,7 +206,6 @@ function register_fake_agent_model(
   model_runtime: ModelRuntime,
   config: JsonRecord,
   _user_agent: string,
-  frozen_limits?: { contextWindow: number; maxTokens: number },
 ) {
   const selection = config["model_selection"];
   const selected =
@@ -207,7 +213,7 @@ function register_fake_agent_model(
       ? Reflect.get(selection, "agent")
       : undefined;
   const model_id = selected === "next" ? "next-model" : "test-model";
-  const limits = frozen_limits ?? {
+  const limits = {
     contextWindow: fake_agent_state.context_window,
     maxTokens: fake_agent_state.max_tokens,
   };
@@ -406,6 +412,7 @@ describe("AgentService", () => {
     fake_agent_state.system_prompts = [];
     fake_agent_state.prompts = [];
     fake_agent_state.model_ids = [];
+    fake_agent_state.request_model_limits = [];
     fake_agent_state.tool_names = [];
     fake_agent_state.release_pending = null;
     fake_agent_state.hold_idle = false;
@@ -672,38 +679,30 @@ describe("AgentService", () => {
 
   it("从真实 Agent 消息历史发布上下文用量，并在重置时清空", async () => {
     const { service, publish } = await create_service();
-    expect(service.get_snapshot().contextUsage).toBeNull();
+    expect(service.get_snapshot().contextTokens).toBeNull();
 
     await service.send_message({ parts: [{ kind: "text", text: "x".repeat(400) }] });
     await wait_for_idle(service);
 
     const context_events = publish.mock.calls
       .map(([, event]) => event)
-      .filter((event) => event["type"] === "context_usage");
+      .filter((event) => event["type"] === "context_tokens");
     expect(context_events[0]).toEqual({
-      type: "context_usage",
-      contextUsage: {
-        tokens: expect.any(Number),
-        contextWindow: 288_000,
-        maxTokens: 32_000,
-      },
+      type: "context_tokens",
+      contextTokens: expect.any(Number),
     });
-    expect(service.get_snapshot().contextUsage).toMatchObject({
-      tokens: expect.any(Number),
-      contextWindow: 288_000,
-      maxTokens: 32_000,
-    });
-    expect(service.get_snapshot().contextUsage?.tokens).toBeGreaterThan(0);
-    expect(context_events.at(-1)?.["contextUsage"]).toEqual(service.get_snapshot().contextUsage);
+    expect(service.get_snapshot().contextTokens).toEqual(expect.any(Number));
+    expect(service.get_snapshot().contextTokens ?? 0).toBeGreaterThan(0);
+    expect(context_events.at(-1)?.["contextTokens"]).toBe(service.get_snapshot().contextTokens);
 
-    await expect(service.reset()).resolves.toMatchObject({ contextUsage: null });
+    await expect(service.reset()).resolves.toMatchObject({ contextTokens: null });
     expect(publish).toHaveBeenLastCalledWith("agent.session_event", {
       type: "snapshot_seed",
       snapshot: service.get_snapshot(),
     });
   });
 
-  it("同一对话冻结容量并在重置后的新对话读取最新设置", async () => {
+  it("同一对话在下一轮完整采用最新容量设置", async () => {
     const { service } = await create_service();
     await service.send_message({ parts: [{ kind: "text", text: "第一轮" }] });
     await wait_for_idle(service);
@@ -712,18 +711,28 @@ describe("AgentService", () => {
     fake_agent_state.max_tokens = 50_000;
     await service.send_message({ parts: [{ kind: "text", text: "第二轮" }] });
     await wait_for_idle(service);
-    expect(service.get_snapshot().contextUsage).toMatchObject({
-      contextWindow: 288_000,
-      maxTokens: 32_000,
-    });
+    expect(fake_agent_state.request_model_limits).toEqual([
+      { contextWindow: 288_000, maxTokens: 32_000 },
+      { contextWindow: 400_000, maxTokens: 50_000 },
+    ]);
+  });
 
-    await service.reset();
-    await service.send_message({ parts: [{ kind: "text", text: "新对话" }] });
+  it("同一对话缩小容量后按新阈值压缩既有历史", async () => {
+    const { service } = await create_service();
+    for (const round of [1, 2, 3, 4]) {
+      await service.send_message({
+        parts: [{ kind: "text", text: `第${round.toString()}轮${"x".repeat(40_000)}` }],
+      });
+      await wait_for_idle(service);
+    }
+    expect(fake_agent_state.request_kinds).not.toContain("summary");
+
+    fake_agent_state.context_window = TEST_COMPACTION_CONTEXT_WINDOW;
+    await service.send_message({ parts: [{ kind: "text", text: "继续" }] });
     await wait_for_idle(service);
-    expect(service.get_snapshot().contextUsage).toMatchObject({
-      contextWindow: 400_000,
-      maxTokens: 50_000,
-    });
+
+    expect(fake_agent_state.request_kinds).toContain("summary");
+    expect(JSON.stringify(fake_agent_state.model_contexts.at(-1)?.[0])).toContain("压缩摘要");
   });
 
   it("按上游顺序流式公开思考与正文，并隔离脱敏内容和签名", async () => {
@@ -912,7 +921,7 @@ describe("AgentService", () => {
       (event, index) =>
         index > first_tool_success_index &&
         index < next_assistant_index &&
-        event["type"] === "context_usage",
+        event["type"] === "context_tokens",
     );
     expect(first_tool_success_index).toBeGreaterThan(-1);
     expect(next_assistant_index).toBeGreaterThan(first_tool_success_index);
@@ -973,7 +982,7 @@ describe("AgentService", () => {
       state: "idle",
       entries: [],
       skills: skill_test_fixture.snapshots,
-      contextUsage: null,
+      contextTokens: null,
     });
     expect(count_published_events(publish, "snapshot_seed")).toBe(1);
   });
@@ -1034,10 +1043,7 @@ describe("AgentService", () => {
       state: "idle",
       entries: [{ kind: "user_message", createdAt: 1_000, endedAt: 13_500 }],
     });
-    expect(stopped_snapshot.contextUsage).toMatchObject({
-      contextWindow: 288_000,
-      maxTokens: 32_000,
-    });
+    expect(stopped_snapshot.contextTokens).toEqual(expect.any(Number));
     expect(fake_agent_state.abort_count).toBe(1);
     await service.dispose();
     expect(log_error).not.toHaveBeenCalled();
@@ -1185,7 +1191,7 @@ describe("AgentService", () => {
       state: "idle",
       entries: [],
       skills: skill_test_fixture.snapshots,
-      contextUsage: null,
+      contextTokens: null,
     });
     expect(publish).toHaveBeenLastCalledWith("agent.session_event", {
       type: "snapshot_seed",
@@ -1417,7 +1423,7 @@ describe("AgentService", () => {
 
   it("高用量回答触发阈值压缩，公开时间线不缩水且下一轮从摘要继续", async () => {
     const { service, publish } = await create_service();
-    fake_agent_state.context_window = 65_001;
+    fake_agent_state.context_window = TEST_COMPACTION_CONTEXT_WINDOW;
     for (const round of [1, 2, 3, 4, 5]) {
       await service.send_message({
         parts: [{ kind: "text", text: `第${round.toString()}轮${"x".repeat(40_000)}` }],
@@ -1426,9 +1432,7 @@ describe("AgentService", () => {
     }
     const after_compaction = service.get_snapshot();
     const usage_tokens = publish.mock.calls.flatMap(([, event]) =>
-      event["type"] === "context_usage"
-        ? [Number((event["contextUsage"] as JsonRecord)["tokens"])]
-        : [],
+      event["type"] === "context_tokens" ? [Number(event["contextTokens"])] : [],
     );
 
     expect(fake_agent_state.request_kinds).toContain("summary");
@@ -1439,7 +1443,7 @@ describe("AgentService", () => {
     const next_context = fake_agent_state.model_contexts.at(-1);
     expect(JSON.stringify(next_context?.[0])).toContain("压缩摘要");
     expect(JSON.stringify(next_context)).toContain("第5轮");
-    expect(service.get_snapshot().contextUsage?.tokens ?? Number.POSITIVE_INFINITY).toBeLessThan(
+    expect(service.get_snapshot().contextTokens ?? Number.POSITIVE_INFINITY).toBeLessThan(
       Math.max(...usage_tokens),
     );
     expect(service.get_snapshot().entries).toHaveLength(12);
@@ -1447,7 +1451,7 @@ describe("AgentService", () => {
 
   it("阈值压缩失败只记录 warning，已成功的最终回答不转成失败终态", async () => {
     const { service, log_error, log_warning } = await create_service();
-    fake_agent_state.context_window = 65_001;
+    fake_agent_state.context_window = TEST_COMPACTION_CONTEXT_WINDOW;
     fake_agent_state.summary_failures_remaining = 1;
     for (const round of [1, 2, 3, 4, 5]) {
       await service.send_message({

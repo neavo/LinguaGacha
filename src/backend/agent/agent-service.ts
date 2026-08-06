@@ -29,7 +29,6 @@ import {
   format_agent_user_message_text,
   normalize_agent_user_message_parts,
   type AgentAssistantMessagePart,
-  type AgentContextUsage,
   type AgentEntry,
   type AgentEntryStatus,
   type AgentSessionEvent,
@@ -47,7 +46,7 @@ import type { QualityRuleService } from "../quality/quality-rule-service";
 import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-gate";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import { create_agent_item_tools, type AgentProofreading } from "./agent-item-tools";
-import { register_agent_model, type AgentModelLimits } from "./agent-model";
+import { register_agent_model } from "./agent-model";
 import { create_agent_project_tools } from "./agent-project-tools";
 import { create_agent_quality_tools } from "./agent-quality-tools";
 import {
@@ -64,14 +63,14 @@ import { normalize_agent_tool_error } from "./agent-tool-error";
 const AGENT_KEEP_RECENT_TOKENS = 32_000; // 产品固定保留的最近模型可见历史
 const AGENT_STREAM_PUBLISH_INTERVAL_MS = 100; // assistant 完整公开条目最多 10Hz；工具与终态不等待
 
-/** 产品会话只从冻结的模型容量派生压缩预算，不读取 coding-agent 用户设置。 */
-function build_agent_session_settings(limits: AgentModelLimits) {
+/** 产品会话只从当前模型容量派生压缩预算，不读取 coding-agent 用户设置。 */
+function build_agent_session_settings(max_tokens: number) {
   return {
     enableInstallTelemetry: false,
     enableSkillCommands: false,
     compaction: {
       enabled: true,
-      reserveTokens: limits.maxTokens,
+      reserveTokens: max_tokens,
       keepRecentTokens: AGENT_KEEP_RECENT_TOKENS,
     },
     retry: { enabled: true, maxRetries: 3, baseDelayMs: 2_000 },
@@ -95,7 +94,6 @@ function wrap_agent_tool_execution(tool: ToolDefinition): ToolDefinition {
 
 type AgentRuntime = {
   session: AgentSession;
-  limits: AgentModelLimits; // 换模时继续传回 Provider，维持当前对话容量
   unsubscribe: () => void;
 };
 
@@ -209,7 +207,7 @@ export class AgentService {
           name,
           displayDescriptions: { ...displayDescriptions },
         })),
-      contextUsage: this.read_context_usage(),
+      contextTokens: this.read_context_tokens(),
     };
   }
 
@@ -226,9 +224,7 @@ export class AgentService {
     };
   }
 
-  /**
-   * 同步校验消息，以单一 Promise 串行完成建会话或换模后再公开受理结果。
-   */
+  /** 同步校验消息，以单一 Promise 串行完成建会话或刷新模型请求快照。 */
   public async send_message(request: JsonRecord): Promise<AgentSessionSnapshot> {
     this.assert_not_disposed();
     if (this.session_reset !== null) {
@@ -347,9 +343,12 @@ export class AgentService {
             runtime.session.modelRuntime,
             model_settings,
             this.user_agent,
-            runtime.limits,
           );
           await runtime.session.setModel(resolved_model.model);
+          // 模型容量与压缩预留必须来自同一请求快照，避免同一轮按两套阈值运行。
+          runtime.session.settingsManager.applyOverrides(
+            build_agent_session_settings(resolved_model.model.maxTokens),
+          );
           runtime.session.setThinkingLevel(resolved_model.thinkingLevel);
         }
 
@@ -410,13 +409,10 @@ export class AgentService {
       allowModelNetwork: false,
     });
     const resolved_model = register_agent_model(model_runtime, model_settings, this.user_agent);
-    const limits = Object.freeze({
-      contextWindow: resolved_model.model.contextWindow,
-      maxTokens: resolved_model.model.maxTokens,
-    });
-    const settings_manager = SettingsManager.inMemory(build_agent_session_settings(limits), {
-      projectTrusted: false,
-    });
+    const settings_manager = SettingsManager.inMemory(
+      build_agent_session_settings(resolved_model.model.maxTokens),
+      { projectTrusted: false },
+    );
     const resource_loader = new DefaultResourceLoader({
       cwd: app_root,
       agentDir: app_root,
@@ -465,7 +461,7 @@ export class AgentService {
     const unsubscribe = session.subscribe((event) => {
       if (this.runtime?.session === session) this.handle_agent_event(event);
     });
-    return { session, limits, unsubscribe };
+    return { session, unsubscribe };
   }
 
   /** prompt() 已覆盖自动重试与溢出恢复；只有最终 settle 才决定公开终态。 */
@@ -530,7 +526,7 @@ export class AgentService {
           event.message.stopReason === "error" ? "error" : "success",
         );
       }
-      this.publish_context_usage();
+      this.publish_context_tokens();
       return;
     }
     if (event.type === "compaction_end") {
@@ -540,7 +536,7 @@ export class AgentService {
           context: { reason: event.reason, error: event.errorMessage },
         });
       }
-      this.publish_context_usage();
+      this.publish_context_tokens();
       return;
     }
     if (event.type === "tool_execution_start") {
@@ -709,22 +705,16 @@ export class AgentService {
   }
 
   /** SDK 在压缩后会暂时返回未知值；公开仪表继续从模型可见历史生成稳定数值。 */
-  private read_context_usage(): AgentContextUsage | null {
+  private read_context_tokens(): number | null {
     const session = this.runtime?.session;
-    const model = session?.model;
-    if (session === undefined || model === undefined) return null;
-    return {
-      tokens: estimateContextTokens(session.messages).tokens,
-      contextWindow: model.contextWindow,
-      maxTokens: model.maxTokens,
-    };
+    return session === undefined ? null : estimateContextTokens(session.messages).tokens;
   }
 
-  /** 每次模型历史变化后发布与 snapshot 同形的容量投影。 */
-  private publish_context_usage(): void {
-    const context_usage = this.read_context_usage();
-    if (context_usage !== null) {
-      this.publish_event({ type: "context_usage", contextUsage: context_usage });
+  /** 每次模型历史变化后发布与 snapshot 同形的 token 估算。 */
+  private publish_context_tokens(): void {
+    const context_tokens = this.read_context_tokens();
+    if (context_tokens !== null) {
+      this.publish_event({ type: "context_tokens", contextTokens: context_tokens });
     }
   }
 

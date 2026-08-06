@@ -143,18 +143,18 @@ describe("Agent 模型注册", () => {
     expect(payload).toMatchObject({ max_tokens: 123, reasoning_effort: "high" });
   });
 
-  it("换模时使用当前对话冻结的容量而不读取新模型容量", async () => {
+  it("同一运行时重新注册模型时采用最新容量", async () => {
     const runtime = await create_model_runtime();
+    register_agent_model(runtime, build_config("OpenAI"), TEST_USER_AGENT);
     const resolved = register_agent_model(
       runtime,
       build_config("OpenAI", {
         agent: { context_window: 400_000, max_output_tokens: 50_000 },
       }),
       TEST_USER_AGENT,
-      { contextWindow: 288_000, maxTokens: 32_000 },
     );
 
-    expect(resolved.model).toMatchObject({ contextWindow: 288_000, maxTokens: 32_000 });
+    expect(resolved.model).toMatchObject({ contextWindow: 400_000, maxTokens: 50_000 });
   });
 
   it("GPT-5.6 Responses 按项目规则注册为 reasoning 模型", async () => {

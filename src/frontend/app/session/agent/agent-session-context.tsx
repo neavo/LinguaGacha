@@ -11,7 +11,6 @@ import {
 
 import type {
   AgentAssistantMessagePart,
-  AgentContextUsage,
   AgentEntry,
   AgentEntryStatus,
   AgentSessionEvent,
@@ -33,7 +32,7 @@ const EMPTY_SNAPSHOT: AgentSessionSnapshot = {
   state: "idle",
   entries: [],
   skills: [],
-  contextUsage: null,
+  contextTokens: null,
 };
 
 /** 前端命令状态只表达当前互斥中的写请求，不复述后端会话状态。 */
@@ -45,7 +44,7 @@ type AgentSessionStateView = {
   state: AgentSessionState;
   entries: AgentEntry[];
   skills: AgentSkillSnapshot[];
-  contextUsage: AgentContextUsage | null;
+  contextTokens: number | null;
   loading: boolean;
   command: AgentCommand;
   issue: AgentSessionIssue;
@@ -258,7 +257,7 @@ function useAgentSessionState(
     state: snapshot.state,
     entries: snapshot.entries,
     skills: snapshot.skills,
-    contextUsage: snapshot.contextUsage,
+    contextTokens: snapshot.contextTokens,
     loading,
     command,
     issue,
@@ -342,8 +341,8 @@ function apply_agent_event(
       return normalize_snapshot(event.snapshot);
     case "session_state":
       return { ...snapshot, state: event.state };
-    case "context_usage":
-      return { ...snapshot, contextUsage: { ...event.contextUsage } };
+    case "context_tokens":
+      return { ...snapshot, contextTokens: event.contextTokens };
     case "entry_upsert": {
       const entries = [...snapshot.entries];
       const index = entries.findIndex((entry) => entry.id === event.entry.id);
@@ -364,9 +363,9 @@ function normalize_snapshot(value: unknown): AgentSessionSnapshot {
     ? record["entries"].flatMap(normalize_entry)
     : [];
   const skills = Array.isArray(record["skills"]) ? record["skills"].flatMap(normalize_skill) : [];
-  const context_usage = normalize_context_usage(record["contextUsage"]);
-  if (context_usage === undefined) throw new TypeError("Agent snapshot contextUsage 非法");
-  return { state, entries, skills, contextUsage: context_usage };
+  const context_tokens = normalize_context_tokens(record["contextTokens"]);
+  if (context_tokens === undefined) throw new TypeError("Agent snapshot contextTokens 非法");
+  return { state, entries, skills, contextTokens: context_tokens };
 }
 
 /** SSE 顶层判别失败时丢弃单帧，重连仍会读取权威 snapshot。 */
@@ -377,11 +376,11 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
       return { type: "snapshot_seed", snapshot: normalize_snapshot(record["snapshot"]) };
     case "session_state":
       return { type: "session_state", state: normalize_state(record["state"]) };
-    case "context_usage": {
-      const context_usage = normalize_context_usage(record["contextUsage"]);
-      return context_usage === null || context_usage === undefined
+    case "context_tokens": {
+      const context_tokens = normalize_context_tokens(record["contextTokens"]);
+      return context_tokens === null || context_tokens === undefined
         ? null
-        : { type: "context_usage", contextUsage: context_usage };
+        : { type: "context_tokens", contextTokens: context_tokens };
     }
     case "entry_upsert": {
       const entry = normalize_entry(record["entry"])[0];
@@ -393,27 +392,9 @@ function normalize_agent_event(value: unknown): AgentSessionEvent | null {
 }
 
 /** null 只表示完整快照尚无运行时；undefined 表示协议字段非法。 */
-function normalize_context_usage(value: unknown): AgentContextUsage | null | undefined {
+function normalize_context_tokens(value: unknown): number | null | undefined {
   if (value === null) return null;
-  if (
-    !is_json_record(value) ||
-    typeof value["tokens"] !== "number" ||
-    !Number.isSafeInteger(value["tokens"]) ||
-    value["tokens"] < 0 ||
-    typeof value["contextWindow"] !== "number" ||
-    !Number.isSafeInteger(value["contextWindow"]) ||
-    value["contextWindow"] <= 0 ||
-    typeof value["maxTokens"] !== "number" ||
-    !Number.isSafeInteger(value["maxTokens"]) ||
-    value["maxTokens"] <= 0
-  ) {
-    return undefined;
-  }
-  return {
-    tokens: value["tokens"],
-    contextWindow: value["contextWindow"],
-    maxTokens: value["maxTokens"],
-  };
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
 /** 单条协议记录必须完整通过所属 kind 的字段校验，否则整条丢弃。 */

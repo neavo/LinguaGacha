@@ -108,7 +108,7 @@ describe("register_api_routes", () => {
 
     expect(read_get_handler(fixture.get, "/api/agent/snapshot")({ json })).toEqual({
       ok: true,
-      data: { state: "idle", entries: [], skills: [], contextUsage: null },
+      data: { state: "idle", entries: [], skills: [], contextTokens: null },
     });
     expect(read_get_handler(fixture.get, "/api/models/selection")({ json })).toEqual({
       ok: true,
@@ -145,7 +145,7 @@ describe("register_api_routes", () => {
       state: "idle",
       entries: [],
       skills: [],
-      contextUsage: null,
+      contextTokens: null,
     });
     expect(fixture.reset).toHaveBeenCalledWith();
   });
@@ -189,7 +189,7 @@ function create_route_fixture() {
     state: "idle",
     entries: [],
     skills: [],
-    contextUsage: null,
+    contextTokens: null,
   }));
   const update_settings = vi.fn((request: JsonRecord) => ({ settings: request }));
   const update_selected_model_thinking_level = vi.fn((request: JsonRecord) => ({
@@ -220,7 +220,7 @@ function create_route_fixture() {
         state: "idle",
         entries: [],
         skills: [],
-        contextUsage: null,
+        contextTokens: null,
       })),
       send_message,
       stop,
