@@ -2,9 +2,9 @@ import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import { normalize_setting_snapshot } from "../../domain/setting";
-import { JsonTool } from "../../shared/utils/json-tool";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { ProjectSessionState } from "../project/project-session-state";
+import { agent_tool_result } from "./agent-tool";
 
 const QUERY_PROJECT_META_PARAMETERS = Type.Object({}, { additionalProperties: false }); // 工程身份来自会话，不接受模型输入
 
@@ -32,10 +32,7 @@ export function create_agent_project_tools(
           source_language: settings.source_language,
           target_language: settings.target_language,
         };
-        return {
-          content: [{ type: "text" as const, text: JsonTool.stringifyStrict(details) }],
-          details,
-        };
+        return agent_tool_result(details);
       },
     }),
   ];

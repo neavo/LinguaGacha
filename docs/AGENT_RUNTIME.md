@@ -26,6 +26,8 @@
 
 ## 4. 产品工具与宿主能力
 
+- 产品 JSON 工具统一由 `agent-tool` 生成同源的模型正文与 `details`；TypeBox Schema 独占结构、必填、枚举与集合约束，`AgentToolError` 只表达模型可修正的领域错误。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地化应用诊断。
+- SDK 的 `tool_execution_start/end` 是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常；start 保存完整输入，SDK 产生终态时 end 保存完整最终结果与错误标记。stop 后的合法终帧仍记录，reset / dispose 在终帧前解除订阅时不伪造 end，单独的 start 即表示调用未完成；公开时间线协议不承载完整参数或结构化错误。
 - 产品工具只从当前设置、cache 与领域 query 读取事实；写入经对应服务的 Agent 专用入口复用 [`BACKEND.md`](BACKEND.md) 的 revision、事务和项目事件边界。模型可见结果不暴露绝对 `projectPath`，item、warning、quality 查询及写入确认携带与数据快照绑定的 section revision；写工具以 `applied | unchanged` 和紧凑变更身份表达权威结果，成功后不为确认重复查询完整事实。
 - 质量规则工具统一查询和原子更新，模型通过 `write`、`delete`、`move` 表达差异，后端按 `entry_id` 决定创建或更新，并在提交前拒绝新增或扩大的重复组；Agent 不允许修改启用状态或文本保护模式。业务校验失败不写入，revision 冲突返回当前 revision 和重新查询动作，成功回执携带提交后的 quality revision。
 - `query_items` 只从基础 item cache 组合 ID、状态、文件与单一文本搜索并返回分页；`query_warning_items` 复用当前校对评估运行态，只返回具有真实 warning 的条目与证据且不创建或替换 GUI 列表视图；`update_items` 接收由必填 `item_id`、`field` 和 `value` 组成的单字段 `write`，在 Agent 边界按 item 聚合后与 GUI 共用译文、译名和人工状态的字段更新核心，并以实际更新 ID 与提交后双 revision 确认结果，不回传更新后正文。`query_project_meta` 按需读取当前权威源语言和目标语言。

@@ -1,9 +1,8 @@
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 
-import type { JsonRecord } from "../../domain/json";
-import { JsonTool } from "../../shared/utils/json-tool";
 import type { AgentSkillDefinition } from "./agent-skills";
+import { AgentToolError, agent_tool_result } from "./agent-tool";
 
 const READ_SKILL_PARAMETERS = Type.Object(
   {
@@ -41,9 +40,9 @@ export function create_agent_skill_tools(
         signal?.throwIfAborted();
         const resource = resolve_skill_resource(skills, params.path);
         if (resource === null) {
-          throw new Error(`技能文件不在启动期白名单：${params.path}`);
+          throw new AgentToolError({ code: "skill.resource_not_allowed", path: params.path });
         }
-        return tool_result({
+        return agent_tool_result({
           skill: resource.skill,
           path: resource.filePath,
           content: resource.content,
@@ -68,12 +67,4 @@ function resolve_skill_resource(
     }
   }
   return null;
-}
-
-/** 工具正文和 details 共用同一严格 JSON 事实。 */
-function tool_result(details: JsonRecord) {
-  return {
-    content: [{ type: "text" as const, text: JsonTool.stringifyStrict(details) }],
-    details,
-  };
 }

@@ -24,4 +24,14 @@ describe("main log text", () => {
       "API Gateway 已启动 - http://127.0.0.1:65425",
     );
   });
+
+  it.each([
+    ["ZH", "Agent 工具执行异常 …"],
+    ["EN", "Agent tool execution failed …"],
+    ["DE", "Agent-Werkzeugausführung fehlgeschlagen …"],
+  ])("按 %s 解析 Agent 诊断标题", (language, expected) => {
+    set_main_log_language_reader(() => language);
+
+    expect(t_main_log("app.diagnostic.agent.tool_execution_failed")).toBe(expected);
+  });
 });

@@ -98,7 +98,7 @@ function create_item_write_result(changed_ids?: number[]): ProjectWriteResult {
 }
 
 describe("Agent item 工具", () => {
-  it("按固定顺序注册工具，并由 SDK 接受单字段 write、拒绝旧 patches 协议", () => {
+  it("按固定顺序注册工具，并由 SDK 独占结构参数校验", () => {
     const tools = create_agent_item_tools({
       cache: create_cache(() => []),
       proofreading: create_proofreading(),
@@ -110,8 +110,12 @@ describe("Agent item 工具", () => {
       "update_items",
     ]);
     expect(tools.map((tool) => tool.executionMode)).toEqual([undefined, undefined, "sequential"]);
+    const query_tool = tools[0];
+    const warning_tool = tools[1];
     const update_tool = tools[2];
-    if (update_tool === undefined) throw new Error("缺少 update_items");
+    if (query_tool === undefined || warning_tool === undefined || update_tool === undefined) {
+      throw new Error("缺少 item 工具");
+    }
     const revisions = { items: 2, proofreading: 3 };
     const write_call: ToolCall = {
       type: "toolCall",
@@ -144,11 +148,35 @@ describe("Agent item 工具", () => {
         write: [{ item_id: 1, field: "dst", value: "新译文", status: "PROCESSED" }],
         expected_section_revisions: revisions,
       },
+      {
+        write: [{ item_id: Number.MAX_SAFE_INTEGER + 1, field: "dst", value: "越界 ID" }],
+        expected_section_revisions: revisions,
+      },
     ]) {
       expect(() =>
         validateToolArguments(update_tool, {
           ...write_call,
           id: "invalid-update",
+          arguments: arguments_,
+        }),
+      ).toThrow();
+    }
+
+    for (const [tool, arguments_] of [
+      [query_tool, { search: { keyword: "  " } }],
+      [query_tool, { cursor: "-1" }],
+      [query_tool, { filters: { item_ids: [Number.MAX_SAFE_INTEGER + 1] } }],
+      [query_tool, { filters: { item_ids: [] } }],
+      [query_tool, { nope: true }],
+      [warning_tool, { filters: { warning_types: ["NO_WARNING"] } }],
+      [warning_tool, { filters: { warning_types: ["KANA", "KANA"] } }],
+      [warning_tool, { limit: 101 }],
+    ] as const) {
+      expect(() =>
+        validateToolArguments(tool, {
+          type: "toolCall",
+          id: "invalid-query",
+          name: tool.name,
           arguments: arguments_,
         }),
       ).toThrow();
@@ -220,22 +248,19 @@ describe("Agent item 工具", () => {
         })["items"] as JsonRecord[]
       ).map((item) => item["item_id"]),
     ).toEqual([1, 2]);
-    expect(() => query_agent_items(cache, { search: { keyword: "(", is_regex: true } })).toThrow();
-  });
-
-  it("直接调用边界拒绝空筛选、空搜索、非法游标和未知字段", () => {
-    const cache = create_cache(() => []);
-    expect(() => query_agent_items(cache, { filters: { item_ids: [] } })).toThrow("item_ids");
-    expect(() =>
-      query_agent_items(cache, {
-        filters: { item_ids: [Number.MAX_SAFE_INTEGER + 1] },
-      }),
-    ).toThrow("item_ids");
-    expect(() => query_agent_items(cache, { search: { keyword: "  " } })).toThrow("keyword");
-    for (const cursor of ["", "-1", "0x10", "1e2", "9007199254740992"]) {
-      expect(() => query_agent_items(cache, { cursor })).toThrow("cursor 无效");
+    let error: unknown;
+    try {
+      query_agent_items(cache, { search: { keyword: "(", is_regex: true } });
+    } catch (cause) {
+      error = cause;
     }
-    expect(() => query_agent_items(cache, { nope: true } as never)).toThrow("未知字段");
+    expect(error).toMatchObject({
+      details: { code: "item.invalid_search_regex", path: "search.keyword" },
+    });
+
+    expect(() => query_agent_items(cache, { cursor: "9007199254740992" })).toThrow(
+      "item.invalid_cursor",
+    );
   });
 
   it("query_warning_items 归一查询并返回窄投影、证据与分页身份", async () => {
@@ -349,7 +374,7 @@ describe("Agent item 工具", () => {
     expect(beyond.details).toMatchObject({ items: [], cursor: null, complete: true });
   });
 
-  it("query_warning_items 拒绝虚拟警告、非法参数与非法正则", async () => {
+  it("query_warning_items 把领域正则错误返回为稳定业务字段", async () => {
     const query_warnings = vi.fn<AgentProofreading["query"]["query_warnings"]>(async () => ({
       projectPath: "test.lg",
       sectionRevisions: { items: 2, proofreading: 3 },
@@ -368,23 +393,9 @@ describe("Agent item 工具", () => {
     const execute = async (params: unknown) =>
       tool.execute("invalid", params as never, undefined, undefined, undefined as never);
 
-    for (const params of [
-      { filters: { warning_types: [] } },
-      { filters: { warning_types: ["KANA", "KANA"] } },
-      { filters: { warning_types: ["NO_WARNING"] } },
-      { filters: { file_paths: [""] } },
-      { search: { keyword: "  " } },
-      { cursor: "-1" },
-      { limit: 101 },
-      { filters: { nope: true } },
-      { nope: true },
-    ]) {
-      await expect(execute(params)).rejects.toThrow();
-    }
-    expect(query_warnings).not.toHaveBeenCalled();
-    await expect(execute({ search: { keyword: "(", is_regex: true } })).rejects.toThrow(
-      "Invalid regular expression",
-    );
+    await expect(execute({ search: { keyword: "(", is_regex: true } })).rejects.toMatchObject({
+      details: { code: "item.invalid_search_regex", path: "search.keyword" },
+    });
   });
 
   it("query_warning_items 在查询前后都响应取消", async () => {
@@ -473,7 +484,14 @@ describe("Agent item 工具", () => {
         undefined,
         undefined as never,
       ),
-    ).rejects.toThrow("item_id/field 必须唯一");
+    ).rejects.toMatchObject({
+      details: {
+        code: "item.duplicate_write_target",
+        item_id: 1,
+        field: "dst",
+        paths: ["write[0].field", "write[1].field"],
+      },
+    });
     await expect(
       tool.execute(
         "invalid-status",
@@ -485,7 +503,13 @@ describe("Agent item 工具", () => {
         undefined,
         undefined as never,
       ),
-    ).rejects.toThrow("status value 无效");
+    ).rejects.toMatchObject({
+      details: {
+        code: "item.invalid_write_value",
+        field: "status",
+        path: "write[0].value",
+      },
+    });
     expect(update_items).toHaveBeenCalledTimes(1);
   });
 

@@ -4,16 +4,13 @@ import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent
 import type { JsonRecord } from "../../domain/json";
 import { read_json_integer, read_json_record } from "../../domain/json";
 import { QUALITY_RULE_KINDS, QualityRule, type QualityRuleKind } from "../../domain/quality";
-import { is_app_error } from "../../shared/error";
+import { InternalInvariantError, is_app_error } from "../../shared/error";
 import {
   collect_quality_rule_duplicate_groups,
   QualityRuleImportRuleTypeValue,
   type QualityRuleImportRuleType,
 } from "../../shared/quality/quality-rule-import";
-import {
-  create_quality_rule_entry_id,
-  ensure_quality_rule_entry_ids,
-} from "../../shared/quality/quality-rule-entry-id";
+import { create_quality_rule_entry_id } from "../../shared/quality/quality-rule-entry-id";
 import { prepare_quality_statistics_task_input } from "../../shared/quality/quality-statistics-input";
 import { normalize_quality_rule_entries } from "../../shared/quality/quality-rule-entry";
 import { JsonTool } from "../../shared/utils/json-tool";
@@ -22,7 +19,7 @@ import type { QualityRuleService } from "../quality/quality-rule-service";
 import type { ComputeWorkerClient } from "../worker/compute-worker-client";
 import type { ResolvedGlossaryEntry } from "../../shared/quality/glossary";
 import { read_item_name_text } from "../../shared/item-name";
-import { AgentToolError } from "./agent-tool-error";
+import { AgentToolError, agent_tool_result } from "./agent-tool";
 
 /** 质量规则工具只公开四个稳定业务 kind，不接受数据库物理类型。 */
 const RULE_TYPE_PARAMETERS = Type.Enum(QUALITY_RULE_KINDS, {
@@ -247,7 +244,7 @@ export function create_agent_quality_tools(
       parameters: QUERY_QUALITY_RULES_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
-        return tool_result(
+        return agent_tool_result(
           await query_agent_quality_rules(
             dependencies,
             params.rule_type,
@@ -299,7 +296,7 @@ async function execute_agent_quality_rule_update(
     applied.deleted.length === 0 &&
     applied.moved.length === 0
   ) {
-    return tool_result({ status: "unchanged", revision: current_revision });
+    return agent_tool_result({ status: "unchanged", revision: current_revision });
   }
   const write_result = await dependencies.qualityRules
     .update_from_agent(
@@ -326,7 +323,7 @@ async function execute_agent_quality_rule_update(
       action: "query_quality_rules",
     });
   }
-  return tool_result({
+  return agent_tool_result({
     status: "applied",
     revision: read_json_integer(change.sectionRevisions["quality"], current_revision),
     ...(applied.created.length === 0 ? {} : { created: applied.created }),
@@ -376,9 +373,12 @@ function read_agent_quality_rules_snapshot(
   const payload = quality_rules.query({ rule_type });
   const quality_rule = read_json_record(payload["qualityRule"]);
   const raw_entries = quality_rule["entries"] ?? [];
-  const entries = ensure_quality_rule_entry_ids(
-    normalize_quality_rule_entries(QualityRule.from_json(rule_type), raw_entries) as JsonRecord[],
-  );
+  assert_stored_entry_ids(raw_entries);
+  const entries = normalize_quality_rule_entries(
+    QualityRule.from_json(rule_type),
+    raw_entries,
+  ) as JsonRecord[];
+  assert_unique_entry_ids(entries);
   const rule = QualityRule.from_json(rule_type);
   const result: JsonRecord & { entries: JsonRecord[] } = {
     rule_type,
@@ -390,6 +390,30 @@ function read_agent_quality_rules_snapshot(
     entries,
   };
   return result;
+}
+
+/** 在共享 normalizer 处理领域字段前先验证当前存储身份，避免损坏事实伪装成业务输入错误。 */
+function assert_stored_entry_ids(value: unknown): void {
+  if (!Array.isArray(value)) {
+    throw new InternalInvariantError({
+      diagnostic_context: { reason: "quality_rule_stored_entries_invalid" },
+    });
+  }
+  const ids = new Set<string>();
+  for (const value_entry of value) {
+    const entry_id = String(read_json_record(value_entry)["entry_id"] ?? "").trim();
+    if (entry_id === "") {
+      throw new InternalInvariantError({
+        diagnostic_context: { reason: "quality_rule_stored_entry_id_missing" },
+      });
+    }
+    if (ids.has(entry_id)) {
+      throw new InternalInvariantError({
+        diagnostic_context: { reason: "quality_rule_duplicate_entry_id", entry_id },
+      });
+    }
+    ids.add(entry_id);
+  }
 }
 
 /** 在内存副本上完整应用规则变更；任一非法项不会触达持久化入口。 */
@@ -449,7 +473,7 @@ function apply_agent_quality_rule_changes(
 
   for (const write of args.write) {
     const path = `write[${write.write_index.toString()}]`;
-    const normalized = normalize_writable_entry(args.rule_type, write.entry);
+    const normalized = normalize_writable_entry(args.rule_type, write.entry, `${path}.entry`);
     if (write.entry_id === undefined) {
       const entry_id = create_quality_rule_entry_id();
       entries.push({ entry_id, ...normalized });
@@ -532,17 +556,35 @@ function apply_agent_quality_rule_changes(
 
 /** 读取投影按规则 kind 丢弃无关字段，同时保留稳定 entry_id。 */
 function normalize_stored_entry(rule_type: QualityRuleKind, entry: JsonRecord): JsonRecord {
-  return normalize_quality_rule_entries(QualityRule.from_json(rule_type), [entry])[0] as JsonRecord;
-}
-
-/** 写入条目统一裁剪文本、固定不可写字段并执行规则专属校验。 */
-function normalize_writable_entry(rule_type: QualityRuleKind, entry: JsonRecord): JsonRecord {
   const normalized = normalize_quality_rule_entries(QualityRule.from_json(rule_type), [
     entry,
   ])[0] as JsonRecord | undefined;
-  if (normalized === undefined) throw new Error("质量规则条目不能为空");
-  if (rule_type === "glossary") {
-    if (normalized["dst"] === "") throw new Error("术语 dst 去空白后不能为空");
+  const entry_id = String(normalized?.["entry_id"] ?? "").trim();
+  if (normalized === undefined || entry_id === "") {
+    throw new InternalInvariantError({
+      diagnostic_context: { reason: "quality_rule_stored_entry_id_missing" },
+    });
+  }
+  return { ...normalized, entry_id };
+}
+
+/** 写入条目统一裁剪文本、固定不可写字段并执行规则专属校验。 */
+function normalize_writable_entry(
+  rule_type: QualityRuleKind,
+  entry: JsonRecord,
+  path: string,
+): JsonRecord {
+  if (String(entry["src"]).trim() === "") {
+    throw new AgentToolError({ code: "quality_rule.empty_entry", path });
+  }
+  if (rule_type === "glossary" && String(entry["dst"]).trim() === "") {
+    throw new AgentToolError({ code: "quality_rule.empty_entry_field", path: `${path}.dst` });
+  }
+  const normalized = normalize_quality_rule_entries(QualityRule.from_json(rule_type), [
+    entry,
+  ])[0] as JsonRecord | undefined;
+  if (normalized === undefined) {
+    throw new AgentToolError({ code: "quality_rule.empty_entry", path });
   }
   return normalized;
 }
@@ -590,7 +632,11 @@ function assert_no_new_duplicate_groups(
 /** 条目身份在比较和报错前统一裁剪，空值不进入变更流程。 */
 function normalize_entry_id(value: unknown): string {
   const entry_id = String(value ?? "").trim();
-  if (entry_id === "") throw new Error("质量规则变更缺少 entry_id");
+  if (entry_id === "") {
+    throw new InternalInvariantError({
+      diagnostic_context: { reason: "quality_rule_entry_id_missing" },
+    });
+  }
   return entry_id;
 }
 
@@ -599,7 +645,11 @@ function assert_unique_entry_ids(entries: JsonRecord[]): void {
   const ids = new Set<string>();
   for (const entry of entries) {
     const entry_id = normalize_entry_id(entry["entry_id"]);
-    if (ids.has(entry_id)) throw new Error(`质量规则 entry_id 重复：${entry_id}`);
+    if (ids.has(entry_id)) {
+      throw new InternalInvariantError({
+        diagnostic_context: { reason: "quality_rule_duplicate_entry_id", entry_id },
+      });
+    }
     ids.add(entry_id);
   }
 }
@@ -619,7 +669,11 @@ function move_entry_before(
     throw new AgentToolError({ code: "quality_rule.entry_not_found", entry_id, path });
   }
   const [entry] = entries.splice(source_index, 1);
-  if (entry === undefined) throw new Error("质量规则移动源条目丢失");
+  if (entry === undefined) {
+    throw new InternalInvariantError({
+      diagnostic_context: { reason: "quality_rule_move_source_missing", entry_id },
+    });
+  }
   if (before_entry_id === null) {
     entries.push(entry);
     return source_index !== entries.length - 1;
@@ -833,12 +887,4 @@ function build_shared_prefix_groups(srcs: string[]): JsonRecord[] {
   return Array.from(longest_by_members.values())
     .sort((left, right) => left.prefix.localeCompare(right.prefix))
     .map(({ prefix, members }) => ({ root_candidate: prefix, members }));
-}
-
-/** 工具正文和 details 共用同一严格 JSON 事实。 */
-function tool_result(details: JsonRecord) {
-  return {
-    content: [{ type: "text" as const, text: JsonTool.stringifyStrict(details) }],
-    details,
-  };
 }

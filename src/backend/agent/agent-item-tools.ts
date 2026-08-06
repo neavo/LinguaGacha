@@ -2,7 +2,7 @@ import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ToolDefinition } from "@earendil-works/pi-coding-agent";
 
 import { ITEM_STATUSES, Item, type ItemStatus } from "../../domain/item";
-import { is_json_record, read_json_integer, type JsonRecord } from "../../domain/json";
+import { read_json_integer, type JsonRecord } from "../../domain/json";
 import {
   read_item_source_text_parts,
   read_item_translation_text_parts,
@@ -18,11 +18,10 @@ import {
   create_text_keyword_matcher,
   type TextKeywordMatcher,
 } from "../../shared/text/text-pattern";
-import { JsonTool } from "../../shared/utils/json-tool";
 import type { CacheReadPort } from "../cache/cache-types";
 import type { ProofreadingService } from "../proofreading/proofreading-service";
 import type { ProofreadingQueryService } from "../proofreading/proofreading-query-service";
-import { AgentToolError } from "./agent-tool-error";
+import { AgentToolError, agent_tool_result } from "./agent-tool";
 
 // 工具结果保持小页；筛选值与写入批次共享模型单次调用上限。
 const DEFAULT_QUERY_LIMIT = 20;
@@ -41,7 +40,10 @@ const WARNING_TYPE_PARAMETERS = Type.Union(
 // 两个只读工具共用同一搜索协议，避免字段默认值和校验语义分叉。
 const ITEM_SEARCH_PARAMETERS = Type.Object(
   {
-    keyword: Type.String({ description: "要匹配的非空文本或正则表达式。" }),
+    keyword: Type.String({
+      pattern: "\\S",
+      description: "要匹配的非空文本或正则表达式。",
+    }),
     scope: Type.Optional(
       Type.Union([Type.Literal("src"), Type.Literal("dst"), Type.Literal("all")], {
         description: "搜索原文、译文或两者；省略表示 all。",
@@ -64,7 +66,7 @@ const QUERY_ITEMS_PARAMETERS = Type.Object(
       Type.Object(
         {
           item_ids: Type.Optional(
-            Type.Array(Type.Integer({ minimum: 1 }), {
+            Type.Array(Type.Integer({ minimum: 1, maximum: Number.MAX_SAFE_INTEGER }), {
               minItems: 1,
               maxItems: MAX_TOOL_ITEMS,
               uniqueItems: true,
@@ -90,7 +92,11 @@ const QUERY_ITEMS_PARAMETERS = Type.Object(
     ),
     search: Type.Optional(ITEM_SEARCH_PARAMETERS),
     cursor: Type.Optional(
-      Type.String({ description: "继续查询时原样使用上次结果返回的 cursor；首屏省略。" }),
+      Type.String({
+        pattern: "^\\d+$",
+        maxLength: 16,
+        description: "继续查询时原样使用上次结果返回的 cursor；首屏省略。",
+      }),
     ),
     limit: Type.Optional(
       Type.Integer({
@@ -136,7 +142,11 @@ const QUERY_WARNING_ITEMS_PARAMETERS = Type.Object(
     ),
     search: Type.Optional(ITEM_SEARCH_PARAMETERS),
     cursor: Type.Optional(
-      Type.String({ description: "继续查询时原样使用上次结果返回的 cursor；首屏省略。" }),
+      Type.String({
+        pattern: "^\\d+$",
+        maxLength: 16,
+        description: "继续查询时原样使用上次结果返回的 cursor；首屏省略。",
+      }),
     ),
     limit: Type.Optional(
       Type.Integer({
@@ -155,7 +165,11 @@ const UPDATE_ITEMS_PARAMETERS = Type.Object(
     write: Type.Array(
       Type.Object(
         {
-          item_id: Type.Integer({ minimum: 1, description: "当前快照中已有的 item ID。" }),
+          item_id: Type.Integer({
+            minimum: 1,
+            maximum: Number.MAX_SAFE_INTEGER,
+            description: "当前快照中已有的 item ID。",
+          }),
           field: Type.Union(
             ITEM_WRITE_FIELDS.map((field) => Type.Literal(field)),
             { description: "本条操作要写入的唯一字段。" },
@@ -265,7 +279,7 @@ export function create_agent_item_tools(dependencies: AgentItemDependencies): To
       parameters: QUERY_ITEMS_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
-        return tool_result(query_agent_items(dependencies.cache, params));
+        return agent_tool_result(query_agent_items(dependencies.cache, params));
       },
     }),
     defineTool({
@@ -276,7 +290,6 @@ export function create_agent_item_tools(dependencies: AgentItemDependencies): To
       parameters: QUERY_WARNING_ITEMS_PARAMETERS,
       execute: async (_tool_call_id, params, signal) => {
         signal?.throwIfAborted();
-        assert_warning_item_query(params);
         const offset = parse_cursor(params.cursor);
         const result = await dependencies.proofreading.query.query_warnings({
           warning_types: params.filters?.warning_types ?? [...PROOFREADING_WARNING_CODES],
@@ -293,12 +306,15 @@ export function create_agent_item_tools(dependencies: AgentItemDependencies): To
         });
         signal?.throwIfAborted();
         if (result.data.invalid_regex_message !== null) {
-          throw new Error(result.data.invalid_regex_message);
+          throw new AgentToolError({
+            code: "item.invalid_search_regex",
+            path: "search.keyword",
+          });
         }
         const items = result.data.items.map(project_warning_item);
         const next_offset = offset + items.length;
         const complete = next_offset >= result.data.total_item_count;
-        return tool_result({
+        return agent_tool_result({
           sectionRevisions: result.sectionRevisions,
           total_item_count: result.data.total_item_count,
           items,
@@ -327,7 +343,7 @@ export function create_agent_item_tools(dependencies: AgentItemDependencies): To
         );
         const change = write_result.changes.at(-1);
         if (change === undefined) {
-          return tool_result({
+          return agent_tool_result({
             status: "unchanged",
             sectionRevisions: project_item_revisions(current_revisions),
           });
@@ -336,7 +352,7 @@ export function create_agent_item_tools(dependencies: AgentItemDependencies): To
         if (updated.length === 0) {
           throw new AgentToolError({ code: "item.write_not_confirmed", action: "query_items" });
         }
-        return tool_result({
+        return agent_tool_result({
           status: "applied",
           sectionRevisions: project_item_revisions(change.sectionRevisions),
           updated,
@@ -359,7 +375,6 @@ function project_item_revisions(revisions: {
 
 /** 从当前 cache 快照执行稳定、有限且无全量命中物化的 item 查询。 */
 export function query_agent_items(cache: AgentItemCache, request: AgentItemQuery): JsonRecord {
-  assert_item_query(request);
   const item_ids = request.filters?.item_ids;
   let candidates: JsonRecord[];
   const missing_item_ids: number[] = [];
@@ -464,7 +479,9 @@ function create_query_matcher(search: AgentItemQuery["search"]): TextKeywordMatc
     is_regex: search.is_regex === true,
     case_sensitive: search.case_sensitive === true,
   });
-  if (matcher.invalid_regex_message !== null) throw new Error(matcher.invalid_regex_message);
+  if (matcher.invalid_regex_message !== null) {
+    throw new AgentToolError({ code: "item.invalid_search_regex", path: "search.keyword" });
+  }
   return matcher;
 }
 
@@ -480,144 +497,37 @@ function matches_item_search(
   ].some((part) => matcher.matches(part.text));
 }
 
-/** 直接函数调用与公开 schema 使用同一校验语义。 */
-function assert_item_query(request: AgentItemQuery): void {
-  if (!is_json_record(request)) throw new Error("query_items 请求必须是 object");
-  assert_known_keys(request, ["filters", "search", "cursor", "limit"]);
-  const filters = request.filters;
-  if (filters !== undefined) {
-    if (!is_json_record(filters)) throw new Error("filters 必须是 object");
-    assert_known_keys(filters, ["item_ids", "statuses", "file_paths"]);
-    assert_unique_array(
-      filters.item_ids,
-      "item_ids",
-      MAX_TOOL_ITEMS,
-      (value) => Number.isSafeInteger(value) && Number(value) > 0,
-    );
-    assert_unique_array(filters.statuses, "statuses", ITEM_STATUSES.length, (value) =>
-      ITEM_STATUSES.includes(value as ItemStatus),
-    );
-    assert_unique_array(
-      filters.file_paths,
-      "file_paths",
-      MAX_TOOL_ITEMS,
-      (value) => typeof value === "string" && value !== "",
-    );
-  }
-  assert_item_search(request.search);
-  assert_query_pagination(request);
-}
-
-/** warning 查询额外收窄真实 warning 词表，其余边界与 item 查询一致。 */
-function assert_warning_item_query(request: AgentWarningItemQuery): void {
-  if (!is_json_record(request)) throw new Error("query_warning_items 请求必须是 object");
-  assert_known_keys(request, ["filters", "search", "cursor", "limit"]);
-  const filters = request.filters;
-  if (filters !== undefined) {
-    if (!is_json_record(filters)) throw new Error("filters 必须是 object");
-    assert_known_keys(filters, ["warning_types", "statuses", "file_paths"]);
-    assert_unique_array(
-      filters.warning_types,
-      "warning_types",
-      PROOFREADING_WARNING_CODES.length,
-      (value) => PROOFREADING_WARNING_CODES.includes(value as ProofreadingWarningCode),
-    );
-    assert_unique_array(filters.statuses, "statuses", ITEM_STATUSES.length, (value) =>
-      ITEM_STATUSES.includes(value as ItemStatus),
-    );
-    assert_unique_array(
-      filters.file_paths,
-      "file_paths",
-      MAX_TOOL_ITEMS,
-      (value) => typeof value === "string" && value !== "",
-    );
-  }
-  assert_item_search(request.search);
-  assert_query_pagination(request);
-}
-
-/** 直接调用边界补齐 search 子对象的字段关联与非空语义。 */
-function assert_item_search(search: AgentItemSearch | undefined): void {
-  if (search !== undefined) {
-    if (!is_json_record(search)) throw new Error("search 必须是 object");
-    assert_known_keys(search, ["keyword", "scope", "is_regex", "case_sensitive"]);
-    if (typeof search.keyword !== "string" || search.keyword.trim() === "") {
-      throw new Error("search.keyword 去空白后不能为空");
-    }
-    if (search.scope !== undefined && !["src", "dst", "all"].includes(search.scope)) {
-      throw new Error("search.scope 无效");
-    }
-    if (search.is_regex !== undefined && typeof search.is_regex !== "boolean") {
-      throw new Error("search.is_regex 必须是 boolean");
-    }
-    if (search.case_sensitive !== undefined && typeof search.case_sensitive !== "boolean") {
-      throw new Error("search.case_sensitive 必须是 boolean");
-    }
-  }
-}
-
-/** 两个查询入口共享同一游标和页大小边界。 */
-function assert_query_pagination(request: { cursor?: string; limit?: number }): void {
-  parse_cursor(request.cursor);
-  if (
-    request.limit !== undefined &&
-    (!Number.isInteger(request.limit) || request.limit < 1 || request.limit > MAX_QUERY_LIMIT)
-  ) {
-    throw new Error("limit 必须是 1 到 100 的整数");
-  }
-}
-
-/** 可选筛选数组统一执行非空、上限、去重和领域值校验。 */
-function assert_unique_array(
-  value: unknown,
-  field: string,
-  maximum: number,
-  predicate: (item: unknown) => boolean,
-): void {
-  if (value === undefined) return;
-  if (
-    !Array.isArray(value) ||
-    value.length === 0 ||
-    value.length > maximum ||
-    new Set(value).size !== value.length ||
-    !value.every(predicate)
-  ) {
-    throw new Error(`${field} 必须是 1 到 ${maximum.toString()} 个唯一合法值`);
-  }
-}
-
-/** 直接函数调用无法借助 Schema 的 additionalProperties，需在此拒绝未知字段。 */
-function assert_known_keys(value: JsonRecord, keys: string[]): void {
-  const unknown = Object.keys(value).find((key) => !keys.includes(key));
-  if (unknown !== undefined) throw new Error(`未知字段：${unknown}`);
-}
-
 /** 将模型的单字段命令聚合为现有领域字段更新，同一 item 可以写入多个不同字段。 */
 function read_item_writes(writes: AgentItemWrite[]): AgentItemUpdate[] {
-  if (writes.length === 0 || writes.length > MAX_TOOL_ITEMS) {
-    throw new Error(`write 必须包含 1 到 ${MAX_TOOL_ITEMS.toString()} 项`);
-  }
-  const written_fields = new Set<string>();
+  const written_fields = new Map<string, string>();
   const updates = new Map<number, AgentItemUpdate>();
-  for (const write of writes) {
-    if (!Number.isSafeInteger(write.item_id) || write.item_id <= 0) {
-      throw new Error(`item_id 必须是正整数：${write.item_id.toString()}`);
-    }
+  for (const [write_index, write] of writes.entries()) {
+    const path = `write[${write_index.toString()}]`;
     const identity = `${write.item_id.toString()}:${write.field}`;
-    if (written_fields.has(identity)) {
-      throw new Error(`item_id/field 必须唯一：${identity}`);
+    const first_path = written_fields.get(identity);
+    if (first_path !== undefined) {
+      throw new AgentToolError({
+        code: "item.duplicate_write_target",
+        item_id: write.item_id,
+        field: write.field,
+        paths: [first_path, `${path}.field`],
+      });
     }
     if (
       write.field === "status" &&
       !(PROOFREADING_MANUAL_STATUS_CODES as readonly string[]).includes(write.value)
     ) {
-      throw new Error(`status value 无效：${write.value}`);
+      throw new AgentToolError({
+        code: "item.invalid_write_value",
+        field: "status",
+        path: `${path}.value`,
+      });
     }
     const update = updates.get(write.item_id) ?? { item_id: write.item_id };
     if (write.field === "status") update.status = write.value as ProofreadingManualStatusCode;
     else update[write.field] = write.value;
     updates.set(write.item_id, update);
-    written_fields.add(identity);
+    written_fields.set(identity, `${path}.field`);
   }
   return [...updates.values()];
 }
@@ -625,16 +535,9 @@ function read_item_writes(writes: AgentItemWrite[]): AgentItemUpdate[] {
 /** 游标是过滤后结果流的非负十进制偏移。 */
 function parse_cursor(cursor: string | undefined): number {
   if (cursor === undefined) return 0;
-  if (!/^\d+$/u.test(cursor)) throw new Error("cursor 无效");
   const parsed = Number(cursor);
-  if (!Number.isSafeInteger(parsed)) throw new Error("cursor 无效");
+  if (!Number.isSafeInteger(parsed)) {
+    throw new AgentToolError({ code: "item.invalid_cursor", path: "cursor" });
+  }
   return parsed;
-}
-
-/** 工具正文和 details 共用同一严格 JSON 事实。 */
-function tool_result(details: JsonRecord) {
-  return {
-    content: [{ type: "text" as const, text: JsonTool.stringifyStrict(details) }],
-    details,
-  };
 }

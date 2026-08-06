@@ -1,5 +1,3 @@
-import { scheduler } from "node:timers/promises";
-
 import {
   estimateContextTokens,
   formatSkillInvocation,
@@ -20,7 +18,6 @@ import {
   SettingsManager,
   type AgentSession,
   type AgentSessionEvent as PiAgentSessionEvent,
-  type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
 
 import type { JsonRecord } from "../../domain/json";
@@ -40,6 +37,7 @@ import type { AppPathService } from "../app/app-path-service";
 import type { AppSettingService } from "../app/app-setting-service";
 import type { CacheReadPort } from "../cache/cache-types";
 import type { LogManager } from "../log/log-manager";
+import { t_main_log } from "../log/log-text";
 import type { ProjectSessionState } from "../project/project-session-state";
 import type { QualityRuleService } from "../quality/quality-rule-service";
 import type { RuntimeLease, RuntimeOperationGate } from "../runtime-operation-gate";
@@ -57,7 +55,7 @@ import { create_agent_skill_tools } from "./agent-skill-tools";
 import { create_agent_web_tools, type AgentWebFetchPort } from "./agent-web-tools";
 import { load_agent_skills, type AgentSkillDefinition } from "./agent-skills";
 import { load_agent_system_prompt } from "./agent-system-prompt";
-import { normalize_agent_tool_error } from "./agent-tool-error";
+import { log_agent_tool_event, wrap_agent_tool_execution } from "./agent-tool";
 
 const AGENT_KEEP_RECENT_TOKENS = 32_000; // 产品固定保留的最近模型可见历史
 const AGENT_STREAM_PUBLISH_INTERVAL_MS = 100; // assistant 完整公开条目最多 10Hz；工具与终态不等待
@@ -73,21 +71,6 @@ function build_agent_session_settings(max_tokens: number) {
       keepRecentTokens: AGENT_KEEP_RECENT_TOKENS,
     },
     retry: { enabled: true, maxRetries: 3, baseDelayMs: 2_000 },
-  };
-}
-
-/** 统一保证 SSE 首帧时序，并保留模型修复工具调用所需的安全错误事实。 */
-function wrap_agent_tool_execution(tool: ToolDefinition): ToolDefinition {
-  return {
-    ...tool,
-    execute: async (...args: Parameters<ToolDefinition["execute"]>) => {
-      await scheduler.yield();
-      try {
-        return await tool.execute(...args);
-      } catch (cause) {
-        throw normalize_agent_tool_error(cause);
-      }
-    },
   };
 }
 
@@ -136,7 +119,7 @@ type AgentServiceOptions = {
   runtimeGate: RuntimeOperationGate;
   computeWorker: ComputeWorkerClient;
   webFetch: AgentWebFetchPort | undefined;
-  logManager: Pick<LogManager, "error" | "warning">;
+  logManager: Pick<LogManager, "append" | "error" | "warning">;
   publish: (topic: string, payload: JsonRecord) => void;
 };
 
@@ -437,12 +420,13 @@ export class AgentService {
         }),
         ...create_agent_skill_tools(resources.skills),
         ...(this.web_fetch === undefined ? [] : create_agent_web_tools(this.web_fetch)),
-      ].map(wrap_agent_tool_execution),
+      ].map((tool) => wrap_agent_tool_execution(tool, this.log_manager)),
       resourceLoader: resource_loader,
       sessionManager: session_manager,
       settingsManager: settings_manager,
     });
     const unsubscribe = session.subscribe((event) => {
+      log_agent_tool_event(this.log_manager, event);
       if (this.runtime?.session === session) this.handle_agent_event(event);
     });
     return { session, unsubscribe };
@@ -462,7 +446,12 @@ export class AgentService {
         // SDK 在异步 preflight 完成前仍处于 idle；失效后必须在真正启动模型前截断。
         preflightResult: (accepted) => {
           if (accepted && !this.prompt_is_current(runtime, generation)) {
-            throw new Error("Agent 消息在模型请求前已失效");
+            throw new AppErrors.RuntimeCancelledError({
+              diagnostic_context: {
+                resource: "agent_prompt",
+                reason: "agent_message_invalidated",
+              },
+            });
           }
         },
       });
@@ -515,7 +504,7 @@ export class AgentService {
     }
     if (event.type === "compaction_end") {
       if (event.errorMessage !== undefined) {
-        this.log_manager.warning("Agent 上下文压缩失败", {
+        this.log_manager.warning(t_main_log("app.diagnostic.agent.context_compaction_failed"), {
           source: "agent",
           context: { reason: event.reason, error: event.errorMessage },
         });
@@ -539,7 +528,12 @@ export class AgentService {
         (entry) => entry.kind === "tool_call" && entry.id === event.toolCallId,
       );
       if (running_entry?.kind !== "tool_call") {
-        throw new Error(`工具调用缺少开始事件：${event.toolCallId}`);
+        throw new AppErrors.InternalInvariantError({
+          diagnostic_context: {
+            reason: "agent_tool_start_missing",
+            tool_call_id: event.toolCallId,
+          },
+        });
       }
       this.upsert_entry({
         ...running_entry,
@@ -551,7 +545,10 @@ export class AgentService {
 
   /** Pi 以最终 assistant 承载模型错误；公开状态由轮次终态统一表达。 */
   private log_request_failure(error: unknown): void {
-    this.log_manager.error("Agent 模型回合失败", { source: "agent", error });
+    this.log_manager.error(t_main_log("app.diagnostic.agent.model_round_failed"), {
+      source: "agent",
+      error,
+    });
   }
 
   /** 以 Pi 的完整 partial / final 消息校正公开 parts，同一模型消息始终原位覆盖。 */
@@ -759,7 +756,10 @@ export class AgentService {
 
   /** 清理失败不改变已完成的会话隔离，只保留诊断。 */
   private warn_cleanup_failure(error: unknown): void {
-    this.log_manager.warning("Agent 会话清理失败", { source: "agent", error });
+    this.log_manager.warning(t_main_log("app.diagnostic.agent.session_cleanup_failed"), {
+      source: "agent",
+      error,
+    });
   }
 
   /** 同时清除本地引用和共享 owner；迟到 lease 由 gate 身份校验忽略。 */
