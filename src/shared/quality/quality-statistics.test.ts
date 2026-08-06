@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { ItemTextGroup } from "../item-text";
-import { run_quality_statistics_task_sync } from "./quality-statistics";
+import {
+  run_quality_statistics_task_sync,
+  type QualityStatisticsTaskInput,
+} from "./quality-statistics";
 
 function text_groups(groups: string[][]): ItemTextGroup[] {
   return groups.map((group) =>
@@ -99,7 +102,7 @@ describe("run_quality_statistics_task_sync", () => {
     expect(result.results.wide?.subset_parents).toEqual(["XＪＫ"]);
   });
 
-  it("同 item 多字段与重叠命中分别累计次数，但覆盖数只计一次", () => {
+  it("同 item 多字段与重叠命中只计一次覆盖和一个 sample 候选", () => {
     const result = run_quality_statistics_task_sync({
       rules: [
         { entry_id: "aba", pattern: "aba", pattern_kind: "literal", case_sensitive: true },
@@ -107,47 +110,53 @@ describe("run_quality_statistics_task_sync", () => {
       ],
       text_groups: text_groups([["ababa dialogue", "aba"]]),
       relation_candidates: [],
-      collect_literal_evidence: true,
+      collect_context_samples: true,
     });
 
     expect(result.results.aba?.matched_item_count).toBe(1);
-    expect(result.literal_evidence_by_entry_id).toMatchObject({
-      aba: {
-        total_matches: 3,
-        context_sample: { item_index: 0, matched_fields: ["src", "name_src"] },
-      },
-      ba: { total_matches: 3, context_sample: { item_index: 0 } },
+    expect(result.context_samples_by_entry_id).toEqual({
+      aba: [{ item_index: 0 }],
+      ba: [{ item_index: 0 }],
     });
   });
 
-  it("跳过只有术语或标点的命中，选择首个有字母数字语境的 item", () => {
-    const result = run_quality_statistics_task_sync({
+  it("跳过无语境命中并用一次确定性采样保留最多两个 item", () => {
+    const input = {
       rules: [{ entry_id: "term", pattern: "术语", pattern_kind: "literal", case_sensitive: true }],
-      text_groups: text_groups([["术语"], ["术语！？"], ["对话术语", "术语"]]),
+      text_groups: text_groups([
+        ["术语"],
+        ["术语！？"],
+        ["第一处对话术语"],
+        ["第二处对话术语"],
+        ["第三处对话术语"],
+        ["第四处对话术语"],
+      ]),
       relation_candidates: [],
-      collect_literal_evidence: true,
-    });
+      collect_context_samples: true,
+    } satisfies QualityStatisticsTaskInput;
+    const result = run_quality_statistics_task_sync(input);
+    const repeated = run_quality_statistics_task_sync(input);
 
-    expect(result.results.term?.matched_item_count).toBe(3);
-    expect(result.literal_evidence_by_entry_id?.term).toEqual({
-      total_matches: 4,
-      context_sample: { item_index: 2, matched_fields: ["src", "name_src"] },
-    });
+    expect(result.results.term?.matched_item_count).toBe(6);
+    expect(result.context_samples_by_entry_id?.term).toHaveLength(2);
+    expect(result.context_samples_by_entry_id?.term).toEqual(
+      repeated.context_samples_by_entry_id?.term,
+    );
+    expect(
+      result.context_samples_by_entry_id?.term.every(({ item_index }) => item_index >= 2),
+    ).toBe(true);
   });
 
-  it("未命中的另一 source part 可提供语境，全部无语境时 sample 为 null", () => {
+  it("未命中的另一 source part 可提供语境，全部无语境时 samples 为空", () => {
     const with_context = run_quality_statistics_task_sync({
       rules: [
         { entry_id: "name", pattern: "Alice", pattern_kind: "literal", case_sensitive: true },
       ],
       text_groups: text_groups([["正文对话", "Alice"]]),
       relation_candidates: [],
-      collect_literal_evidence: true,
+      collect_context_samples: true,
     });
-    expect(with_context.literal_evidence_by_entry_id?.name.context_sample).toEqual({
-      item_index: 0,
-      matched_fields: ["name_src"],
-    });
+    expect(with_context.context_samples_by_entry_id?.name).toEqual([{ item_index: 0 }]);
 
     const without_context = run_quality_statistics_task_sync({
       rules: [
@@ -155,15 +164,12 @@ describe("run_quality_statistics_task_sync", () => {
       ],
       text_groups: text_groups([["ALICE..."], ["Alice！"]]),
       relation_candidates: [],
-      collect_literal_evidence: true,
+      collect_context_samples: true,
     });
-    expect(without_context.literal_evidence_by_entry_id?.name).toEqual({
-      total_matches: 2,
-      context_sample: null,
-    });
+    expect(without_context.context_samples_by_entry_id?.name).toEqual([]);
   });
 
-  it("默认不收集 evidence，保持原统计结果形状", () => {
+  it("默认不收集 samples，保持原统计结果形状", () => {
     const result = run_quality_statistics_task_sync({
       rules: [
         { entry_id: "term", pattern: "term", pattern_kind: "literal", case_sensitive: false },
@@ -172,6 +178,6 @@ describe("run_quality_statistics_task_sync", () => {
       relation_candidates: [],
     });
 
-    expect(result).not.toHaveProperty("literal_evidence_by_entry_id");
+    expect(result).not.toHaveProperty("context_samples_by_entry_id");
   });
 });
