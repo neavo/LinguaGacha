@@ -33,7 +33,7 @@ import {
   type DecorationSet,
 } from "@codemirror/view";
 
-import type { AgentContextUsage, AgentSkillSnapshot, AgentUserMessagePart } from "@shared/agent";
+import type { AgentSkillSnapshot, AgentUserMessagePart } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
   ModelSelectionCategories,
@@ -90,7 +90,7 @@ type AgentComposerProps = {
   command: AgentCommand;
   issue: AgentSessionIssue;
   can_reset: boolean;
-  context_usage: AgentContextUsage | null;
+  context_tokens: number | null;
   model_selection: ModelSelectionController;
   input_session: AgentInputSession;
   on_send: (parts: readonly AgentUserMessagePart[]) => void;
@@ -252,18 +252,15 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
     selected_model?.thinking_configurable === true
       ? t(MODEL_THINKING_LEVEL_LABEL_KEY[selected_model.thinking_level])
       : null;
-  // 新对话用当前选择显示 0%，已有对话始终优先显示后端冻结的真实用量。
-  const context_usage_source =
-    props.context_usage ??
-    (selected_model === null
+  // 后端只拥有历史 token；容量跟随当前选择，并会在下一次模型操作前同步到既有会话。
+  const context_usage =
+    selected_model === null
       ? null
-      : {
-          tokens: 0,
+      : format_context_usage({
+          tokens: props.context_tokens ?? 0,
           contextWindow: selected_model.agent.context_window,
           maxTokens: selected_model.agent.max_output_tokens,
         });
-  const context_usage =
-    context_usage_source === null ? null : format_context_usage(context_usage_source);
   // 编辑器只创建一次，首次锁定态必须在首帧扩展中生效，不能等待后续 effect。
   const initial_editor_read_only_ref = useRef(editor_read_only);
   const input_revision = props.input_session.revision;
@@ -732,7 +729,11 @@ function write_agent_message_parts(
 }
 
 /** 一次生成上下文百分比、详情与色阶，避免组件分别重复派生。 */
-function format_context_usage(usage: AgentContextUsage): {
+function format_context_usage(usage: {
+  tokens: number;
+  contextWindow: number;
+  maxTokens: number;
+}): {
   percent: string;
   used: string;
   total: string;

@@ -209,7 +209,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         command={agent.command}
         issue={agent.issue}
         can_reset={!agent.loading && agent.entries.length > 0}
-        context_usage={agent.contextUsage}
+        context_tokens={agent.contextTokens}
         model_selection={model_selection}
         input_session={agent.input}
         on_send={send}

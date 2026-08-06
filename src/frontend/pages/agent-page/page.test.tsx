@@ -13,6 +13,11 @@ const page_state = vi.hoisted(() => ({ current: {} as AgentPageState }));
 const runtime_state = vi.hoisted(() => ({
   current: { revision: 0, owner: null as "task" | "agent" | null },
 }));
+/** 模拟模型页更新后的共享选择快照，验证同一会话无需重建即可刷新容量。 */
+const model_agent_config = vi.hoisted(() => ({
+  context_window: 288_000,
+  max_output_tokens: 32_000,
+}));
 
 vi.mock("@frontend/app/session/agent/agent-session-context", () => ({
   useAgentSession: () => page_state.current,
@@ -36,7 +41,7 @@ vi.mock("@frontend/features/model-selection/use-model-selection", async (import_
             id: "agent",
             type: "CUSTOM_OPENAI",
             name: "Agent Model",
-            agent: { context_window: 288_000, max_output_tokens: 32_000 },
+            agent: { ...model_agent_config },
           },
         ],
       },
@@ -69,6 +74,8 @@ describe("AgentPage", () => {
 
   beforeEach(() => {
     runtime_state.current = { revision: 0, owner: null };
+    model_agent_config.context_window = 288_000;
+    model_agent_config.max_output_tokens = 32_000;
   });
 
   afterEach(async () => {
@@ -166,11 +173,16 @@ describe("AgentPage", () => {
     ).toEqual(["介绍你的能力"]);
   });
 
-  it("把当前上下文用量装配到底栏", async () => {
+  it("底栏用会话 token 和当前模型容量即时重算", async () => {
     const view = await render_page({
-      contextUsage: { tokens: 31_488, contextWindow: 288_000, maxTokens: 32_000 },
+      contextTokens: 31_488,
     });
     expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("10.9%");
+
+    model_agent_config.context_window = 64_000;
+    model_agent_config.max_output_tokens = 16_000;
+    await render_page({ contextTokens: 31_488 });
+    expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("49.2%");
   });
 
   it("恢复失败时显示单一重试入口并重新连接", async () => {
@@ -395,7 +407,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     state: "idle",
     entries: [assistant_entry("assistant-1", "**变更方案**", "success", 1)],
     skills,
-    contextUsage: overrides.contextUsage ?? null,
+    contextTokens: overrides.contextTokens ?? null,
     loading: false,
     command: null,
     issue: null,

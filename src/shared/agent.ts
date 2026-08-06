@@ -27,13 +27,6 @@ export type AgentSessionState = "idle" | "running";
 /** 每个时间线条目独立持有结果；会话 state 不再复制轮次终态。 */
 export type AgentEntryStatus = "running" | "success" | "error" | "stopped";
 
-/** 当前模型可见上下文的 token 估算与窗口容量。 */
-export type AgentContextUsage = JsonRecord & {
-  tokens: number; // 当前模型可见历史的估算用量
-  contextWindow: number; // 当前对话冻结的上下文总容量
-  maxTokens: number; // 当前对话冻结的单次输出上限
-};
-
 /** 工具条目保留原始工具名与模型实际收到的完整文本输出；参数不进入公开会话。 */
 export type AgentToolEntry = JsonRecord & {
   kind: "tool_call";
@@ -70,7 +63,7 @@ export type AgentSessionSnapshot = JsonRecord & {
   state: AgentSessionState;
   entries: AgentEntry[];
   skills: AgentSkillSnapshot[];
-  contextUsage: AgentContextUsage | null;
+  contextTokens: number | null; // 当前模型可见历史的估算用量
 };
 
 /** SSE 以完整条目按 id 覆盖，重复帧天然幂等；断线时由 snapshot_seed 或 GET 恢复。 */
@@ -78,7 +71,7 @@ export type AgentSessionEvent = JsonRecord &
   (
     | { type: "entry_upsert"; entry: AgentEntry }
     | { type: "session_state"; state: AgentSessionState }
-    | { type: "context_usage"; contextUsage: AgentContextUsage }
+    | { type: "context_tokens"; contextTokens: number }
     | { type: "snapshot_seed"; snapshot: AgentSessionSnapshot }
   );
 

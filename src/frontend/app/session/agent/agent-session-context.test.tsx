@@ -135,35 +135,27 @@ describe("AgentSessionProvider", () => {
 
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "context_usage",
-        contextUsage: { tokens: 31_488, contextWindow: 288_000, maxTokens: 32_000 },
+        type: "context_tokens",
+        contextTokens: 31_488,
       });
     });
-    expect(latest.contextUsage).toEqual({
-      tokens: 31_488,
-      contextWindow: 288_000,
-      maxTokens: 32_000,
-    });
+    expect(latest.contextTokens).toBe(31_488);
 
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "context_usage",
-        contextUsage: { tokens: -1, contextWindow: 0, maxTokens: 0 },
+        type: "context_tokens",
+        contextTokens: -1,
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "context_usage",
-        contextUsage: { tokens: 1, contextWindow: 288_000 },
+        type: "context_tokens",
+        contextTokens: 1.5,
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "context_usage",
-        contextUsage: null,
+        type: "context_tokens",
+        contextTokens: null,
       });
     });
-    expect(latest.contextUsage).toEqual({
-      tokens: 31_488,
-      contextWindow: 288_000,
-      maxTokens: 32_000,
-    });
+    expect(latest.contextTokens).toBe(31_488);
   });
 
   it("缺失上下文用量的完整快照按当前协议失败", async () => {
@@ -174,13 +166,13 @@ describe("AgentSessionProvider", () => {
     });
     await wait_for(() => expect(latest.loading).toBe(false));
 
-    expect(latest.contextUsage).toBeNull();
+    expect(latest.contextTokens).toBeNull();
     expect(latest.issue).toBe("restore");
   });
 
   it("拒绝旧会话终态，并允许用户按当前协议重新恢复", async () => {
     desktop_api_mocks.api_get
-      .mockResolvedValueOnce({ state: "complete", entries: [], skills: [], contextUsage: null })
+      .mockResolvedValueOnce({ state: "complete", entries: [], skills: [], contextTokens: null })
       .mockResolvedValueOnce(
         agent_snapshot({ entries: [assistant_entry("assistant-current", "已恢复", "success", 2)] }),
       );
@@ -203,7 +195,7 @@ describe("AgentSessionProvider", () => {
     desktop_api_mocks.api_get.mockResolvedValue({
       state: "idle",
       entries: [],
-      contextUsage: null,
+      contextTokens: null,
       skills: [
         TEST_SKILLS[0],
         { name: "legacy", description: "旧描述" },
@@ -335,7 +327,7 @@ describe("AgentSessionProvider", () => {
         },
       ],
       skills: [],
-      contextUsage: null,
+      contextTokens: null,
     });
     let latest!: ReturnType<typeof useAgentSession>;
     await render_probe(() => {
@@ -541,13 +533,13 @@ describe("AgentSessionProvider", () => {
         entry: assistant_entry("assistant-2", "SSE 新消息", "running", 2),
       });
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "context_usage",
-        contextUsage: { tokens: 200, contextWindow: 1_000, maxTokens: 100 },
+        type: "context_tokens",
+        contextTokens: 200,
       });
       resolve_send(
         agent_snapshot({
           state: "running",
-          contextUsage: { tokens: 100, contextWindow: 1_000, maxTokens: 100 },
+          contextTokens: 100,
         }),
       );
       await result;
@@ -555,7 +547,7 @@ describe("AgentSessionProvider", () => {
 
     expect(latest.state).toBe("running");
     expect(latest.entries).toEqual([assistant_entry("assistant-2", "SSE 新消息", "running", 2)]);
-    expect(latest.contextUsage).toEqual({ tokens: 200, contextWindow: 1_000, maxTokens: 100 });
+    expect(latest.contextTokens).toBe(200);
   });
 
   it("非法命令 ack 不吞掉排队事件或锁死后续命令", async () => {
@@ -579,14 +571,14 @@ describe("AgentSessionProvider", () => {
     });
     await act(async () => {
       event_source.emit(AGENT_SESSION_EVENT_TOPIC, {
-        type: "context_usage",
-        contextUsage: { tokens: 200, contextWindow: 1_000, maxTokens: 100 },
+        type: "context_tokens",
+        contextTokens: 200,
       });
       resolve_send({ state: "running", entries: [], skills: [] });
       await first;
     });
 
-    expect(latest.contextUsage).toEqual({ tokens: 200, contextWindow: 1_000, maxTokens: 100 });
+    expect(latest.contextTokens).toBe(200);
     expect(latest.issue).toBe("send");
 
     desktop_api_mocks.api_fetch.mockResolvedValue(agent_snapshot({ state: "running" }));
@@ -788,7 +780,7 @@ function agent_snapshot(overrides: Partial<AgentSessionSnapshot> = {}): AgentSes
     state: "idle",
     entries: [],
     skills: [],
-    contextUsage: null,
+    contextTokens: null,
     ...overrides,
   };
 }
