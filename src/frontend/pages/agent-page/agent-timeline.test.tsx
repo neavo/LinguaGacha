@@ -110,7 +110,7 @@ describe("AgentTimeline", () => {
 
     expect(messages[0]?.dataset["mentionOnly"]).toBe("true");
     expect(
-      [...view.querySelectorAll<HTMLElement>(".agent-mention-token")].map(
+      [...view.querySelectorAll<HTMLElement>(".agent-mention-token > span")].map(
         (token) => token.textContent,
       ),
     ).toEqual(["@term(Alice)", "@skill(glossary-audit)"]);

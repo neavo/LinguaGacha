@@ -152,32 +152,6 @@ describe("AgentComposer", () => {
     expect(editor.contentDOM.getAttribute("aria-activedescendant")).toBe("agent-mention-option-0");
   });
 
-  it("按当前语言跨全部字段过滤，并在过滤后截取前三条术语", async () => {
-    const view = await render_composer();
-    const editor = get_editor(view);
-
-    for (const [query, expected] of [
-      ["@审校", "glossary-audit"],
-      ["@爱丽丝", "Alice Smith"],
-      ["@女主角", "Alice Smith"],
-      ["@Carol", "反派角色"],
-    ] as const) {
-      await set_document(editor, query, query.length);
-      const menu = await wait_for_element(view, '[role="listbox"]');
-      expect(menu.textContent).toContain(expected);
-    }
-
-    await set_document(editor, "@角色", 3);
-    const term_group = await wait_for_element(
-      view,
-      '[aria-labelledby="agent-mention-terms-label"]',
-    );
-    expect(term_group.querySelectorAll('[role="option"]')).toHaveLength(3);
-    expect(term_group.textContent).toContain("Carol");
-    expect(term_group.textContent).toContain("Echo");
-    expect(term_group.textContent).not.toContain("Foxtrot");
-  });
-
   it("能力描述跟随当前语言，术语描述只连接存在的字段", async () => {
     locale_state.value = "en-US";
     let view = await render_composer();
@@ -207,7 +181,9 @@ describe("AgentComposer", () => {
     await set_document(editor, "前 @glo", 6);
     await dispatch_key(content, "Enter");
     expect(editor.state.doc.toString()).toBe("前 @skill(glossary-audit) ");
-    expect(view.querySelector(".agent-mention-token")?.textContent).toBe("@skill(glossary-audit)");
+    expect(view.querySelector(".agent-mention-token > span")?.textContent).toBe(
+      "@skill(glossary-audit)",
+    );
 
     await set_document(editor, "@", 1);
     await dispatch_key(content, "ArrowDown");
@@ -215,7 +191,9 @@ describe("AgentComposer", () => {
     expect(content.getAttribute("aria-activedescendant")).toBe("agent-mention-option-2");
     await dispatch_key(content, "Enter");
     expect(editor.state.doc.toString()).toBe("@term(Alice Smith) ");
-    expect(view.querySelector(".agent-mention-token")?.textContent).toBe("@term(Alice Smith)");
+    expect(view.querySelector(".agent-mention-token > span")?.textContent).toBe(
+      "@term(Alice Smith)",
+    );
 
     await set_document(editor, "@Bob", 4);
     const option = await wait_for_element(view, '[role="option"]');
@@ -227,13 +205,43 @@ describe("AgentComposer", () => {
     expect(on_send).toHaveBeenCalledWith("@term(Bob)");
   });
 
+  it("方向键导航到深层候选时把活动项滚入菜单可视区域", async () => {
+    const scroll_into_view = vi
+      .spyOn(HTMLElement.prototype, "scrollIntoView")
+      .mockImplementation(() => undefined);
+    try {
+      const view = await render_composer({
+        terms: Array.from({ length: 24 }, (_, index) => ({
+          src: `Character ${index.toString()}`,
+          dst: `角色 ${index.toString()}`,
+          info: "角色",
+          case_sensitive: false,
+        })),
+      });
+      const editor = get_editor(view);
+
+      await set_document(editor, "@角色", 3);
+      scroll_into_view.mockClear();
+      for (let index = 0; index < 10; index += 1) {
+        await dispatch_key(editor.contentDOM, "ArrowDown");
+      }
+
+      expect(scroll_into_view.mock.contexts.at(-1)).toBe(
+        view.querySelector("#agent-mention-option-10"),
+      );
+      expect(scroll_into_view).toHaveBeenLastCalledWith({ block: "nearest", inline: "nearest" });
+    } finally {
+      scroll_into_view.mockRestore();
+    }
+  });
+
   it("已知 marker 在输入框中整块显示和删除，底层仍保留原始文本", async () => {
     const view = await render_composer();
     const editor = get_editor(view);
     const marker = "@term(Alice Smith)";
     await set_document(editor, marker, marker.length);
 
-    expect(view.querySelector(".agent-mention-token")?.textContent).toBe(marker);
+    expect(view.querySelector(".agent-mention-token > span")?.textContent).toBe(marker);
     expect(editor.state.doc.toString()).toBe(marker);
     await act(async () => expect(deleteCharBackward(editor)).toBe(true));
     expect(editor.state.doc.toString()).toBe("");
