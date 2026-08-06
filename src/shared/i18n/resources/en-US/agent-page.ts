@@ -21,8 +21,7 @@ export const en_us_agent_page = {
     hint: "Enter to send · Shift + Enter for a new line",
   },
   context_usage: "Context {percent} · {used} / {total}",
-  context_usage_warning:
-    "Approaching the context limit; history will be compacted automatically at the threshold",
+  context_usage_warning: "Context will be compacted soon",
   action: {
     send: "Send",
     sending: "Sending",

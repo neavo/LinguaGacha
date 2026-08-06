@@ -52,7 +52,7 @@ const locale_state = vi.hoisted(() => ({ value: "zh-CN" as Locale }));
 const TEST_MESSAGES = vi.hoisted(() => ({
   "agent_page.input.placeholder": "描述任务，或输入 @ 选择能力 …",
   "agent_page.input.hint": "Enter 发送 · Shift + Enter 换行",
-  "agent_page.context_usage_warning": "接近上下文上限，将在达到阈值后自动整理历史",
+  "agent_page.context_usage_warning": "即将自动压缩上下文",
   "agent_page.action.send": "发送",
   "agent_page.action.stop": "停止",
   "agent_page.error.send": "发送失败，草稿已保留。",
@@ -610,10 +610,10 @@ describe("AgentComposer", () => {
       ).toBe(tone);
     }
     const warning_usage = view.querySelector<HTMLElement>(".agent-composer__context-usage");
-    expect(warning_usage?.getAttribute("aria-label")).toContain("接近上下文上限");
+    expect(warning_usage?.getAttribute("aria-label")).toContain("即将自动压缩上下文");
     expect(
       [...view.querySelectorAll('[role="tooltip"]')].map((tooltip) => tooltip.textContent),
-    ).toContain("256K / 288K接近上下文上限，将在达到阈值后自动整理历史");
+    ).toContain("256K / 288K即将自动压缩上下文");
 
     await render_composer({ context_usage: null });
     expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("0.0%");
