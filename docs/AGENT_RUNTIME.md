@@ -37,5 +37,7 @@
 ## 5. 前端消费
 
 - Agent skill 的完整 `displayDescriptions` 由后端 snapshot 提供，页面只按当前 locale 选择，不建立第二份全局翻译表。
-- `AgentSessionProvider` 跨路由持有 snapshot / SSE 镜像、当前 command、带恢复路径的 issue、模型可见历史 token、纯文本草稿与 renderer 全局输入历史；时间线不进入 `DesktopStateProvider` 或项目 session UI 缓存。Agent Composer 以该 token 和页面当前模型容量生成底栏用量，合法消息 ack 原子追加输入历史并清空草稿，失败保留草稿；页面只持有滚动、弹窗，以及从既有质量规则 query 与共享统计缓存读取的 glossary 和命中数，二者都不进入 Agent snapshot、草稿、历史或发送协议。输入框、引导卡片与时间线只把当前已知 marker 投影为整块视觉，不改变底层字符串或建立身份旁路。
+- `AgentSessionProvider` 跨路由持有 snapshot / SSE 镜像、独立 transport、当前 command、模型可见历史 token、纯文本草稿与 renderer 全局输入历史；时间线不进入 `DesktopStateProvider` 或项目 session UI 缓存。
+- 恢复失败与已恢复会话断线由 transport 提供持续恢复路径；send / stop / reset 失败拒绝原命令并由页面解析为安全 Toast，不写入共享会话状态。合法消息 ack 原子追加输入历史并清空草稿，失败保留草稿。
+- 页面持有滚动、弹窗，以及从既有质量规则 query 与共享统计缓存读取的 glossary 和命中数；回合失败由公开条目状态投影到所属轮次末尾，重试只把原消息写回输入框，不自动重复工具调用。上述页面事实都不进入 Agent snapshot、历史或发送协议，输入框、引导卡片与时间线只把当前已知 marker 投影为整块视觉，不改变底层字符串或建立身份旁路。
 - Agent 回合运行态与 stop 命令不锁定草稿编辑，send / reset 命令跨路由保持编辑器只读；共享 runtime 锁禁用发送、reset 与模型选择 / 思考档位控制，当前 Agent 回合的 stop 始终保留。

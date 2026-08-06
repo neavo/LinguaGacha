@@ -1,10 +1,11 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type UIEvent } from "react";
-import { ArrowDown, BookCheck, Bot, ScanText, Sparkles } from "lucide-react";
+import { ArrowDown, BookCheck, Bot, ScanText, Sparkles, WifiOff } from "lucide-react";
 
 import { QualityRule, type GlossaryEntry } from "@domain/quality";
 import { format_agent_skill_reference, type AgentEntryStatus } from "@shared/agent";
 import { normalize_quality_rule_entries } from "@shared/quality/quality-rule-entry";
 import { useDesktopToast } from "@frontend/app/feedback/desktop-toast";
+import { resolve_visible_error_message } from "@frontend/app/feedback/visible-error-message";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import { useQualityRuleStatistics } from "@frontend/app/session/quality-rule-statistics-context";
 import { useModelSelection } from "@frontend/features/model-selection/use-model-selection";
@@ -98,13 +99,14 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     [agent.skills, available_terms],
   );
   const is_running = agent.state === "running";
+  const agent_restoring = agent.transport === "restoring";
   const user_entries = agent.entries.filter((entry) => entry.kind === "user_message");
   const last_user = user_entries.at(-1);
   const follow_paused = follow_holds.size > 0;
   // 公开回合先回 idle、共享 lease 后释放；两者之间统一显示为 Agent 自身结算。
   const agent_settling = !is_running && runtime_snapshot.owner === "agent";
   const unavailable_reason =
-    agent.loading || agent.issue === "restore"
+    agent_restoring || agent.transport === "restore_failed"
       ? "restoring"
       : agent_settling
         ? "settling"
@@ -136,14 +138,33 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     conversation.scrollTop = conversation.scrollHeight;
   }, [agent.entries, agent.state, follow_paused, resume_revision]);
 
+  /** 命令失败只投影为页面 Toast，不写回共享会话状态。 */
+  const show_command_error = useCallback(
+    (error: unknown, fallback_key: LocaleKey): void => {
+      push_toast("error", resolve_visible_error_message(error, t, t(fallback_key)));
+    },
+    [push_toast, t],
+  );
+
   /** 新消息代表用户重新进入最新上下文，提交前统一恢复信息流跟随。 */
   const send = (text: string): void => {
     resume_follow();
-    void agent.send(text);
+    void agent.send(text).catch((error: unknown) => {
+      show_command_error(error, "agent_page.error.send");
+    });
+  };
+
+  /** stop 失败保留运行态，由页面 Toast 提示后允许继续尝试。 */
+  const stop = async (): Promise<void> => {
+    try {
+      await agent.stop();
+    } catch (error) {
+      show_command_error(error, "agent_page.error.stop");
+    }
   };
 
   // live region 只播报离散会话结果，不朗读高频流式正文。
-  const live_status = agent.loading
+  const live_status = agent_restoring
     ? t("agent_page.loading")
     : is_running
       ? t("agent_page.status.running")
@@ -161,17 +182,23 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
           set_follow_hold(AGENT_CONVERSATION_FOLLOW_HOLD, !is_at_scroll_end(event.currentTarget));
         }}
       >
-        {agent.issue === "restore" ? (
+        {agent.transport === "disconnected" && (
+          <div className="agent-page__connection-status" role="status">
+            <WifiOff aria-hidden="true" />
+            <span>{t("agent_page.error.connection")}</span>
+          </div>
+        )}
+        {agent.transport === "restore_failed" ? (
           <div className="agent-page__empty" role="alert">
             <div className="agent-page__empty-intro">
               <Bot className="agent-page__empty-icon" aria-hidden="true" />
               <p>{t("agent_page.error.restore")}</p>
-              <AppButton type="button" size="sm" variant="outline" onClick={agent.retry}>
+              <AppButton type="button" size="sm" variant="outline" onClick={agent.reconnect}>
                 {t("agent_page.action.retry")}
               </AppButton>
             </div>
           </div>
-        ) : agent.loading ? (
+        ) : agent_restoring ? (
           <div className="agent-page__empty" role="status">
             <div className="agent-page__empty-intro">
               <Bot className="agent-page__empty-icon" aria-hidden="true" />
@@ -231,6 +258,7 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
             mention_tokens={mention_tokens}
             resume_revision={resume_revision}
             on_follow_hold_change={set_follow_hold}
+            on_retry={(text) => composer_ref.current?.write_draft(text)}
           />
         )}
         <div
@@ -260,23 +288,25 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         running={is_running}
         unavailable_reason={unavailable_reason}
         command={agent.command}
-        issue={agent.issue}
-        can_reset={!agent.loading && agent.entries.length > 0}
+        can_reset={!agent_restoring && agent.entries.length > 0}
         context_tokens={agent.contextTokens}
         model_selection={model_selection}
         input_session={agent.input}
         on_send={send}
-        on_stop={agent.stop}
+        on_stop={stop}
         on_reset={() => set_reset_dialog_open(true)}
       />
       <AppAlertDialog
         open={reset_dialog_open}
-        description={t(
-          agent.issue === "reset" ? "agent_page.error.reset" : "agent_page.confirm.new_task",
-        )}
+        description={t("agent_page.confirm.new_task")}
         submitting={agent.command === "reset"}
         onConfirm={async () => {
-          if (await agent.reset()) set_reset_dialog_open(false);
+          try {
+            await agent.reset();
+            set_reset_dialog_open(false);
+          } catch (error) {
+            show_command_error(error, "agent_page.error.reset");
+          }
         }}
         onClose={() => set_reset_dialog_open(false)}
       />

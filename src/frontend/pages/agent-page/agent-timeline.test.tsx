@@ -17,6 +17,8 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.status.success") return "已完成";
       if (key === "agent_page.status.error") return "失败";
       if (key === "agent_page.status.stopped") return "已停止";
+      if (key === "agent_page.action.retry") return "重试";
+      if (key === "app.error.model.provider_failed.message") return "模型服务请求失败。";
       return params === undefined ? key : `${key}:${Object.values(params).join(",")}`;
     },
   }),
@@ -40,6 +42,7 @@ describe("AgentTimeline", () => {
   let container: HTMLDivElement | null = null;
   let root: Root | null = null;
   const on_follow_hold_change = vi.fn();
+  const on_retry = vi.fn();
 
   afterEach(async () => {
     if (root !== null) await act(async () => root?.unmount());
@@ -48,6 +51,7 @@ describe("AgentTimeline", () => {
     root = null;
     container = null;
     on_follow_hold_change.mockReset();
+    on_retry.mockReset();
   });
 
   /** 复用同一 root，确保详情开合、滚动位置和自动收缩状态跨增量保留。 */
@@ -67,6 +71,7 @@ describe("AgentTimeline", () => {
           mention_tokens={MENTION_TOKENS}
           resume_revision={resume_revision}
           on_follow_hold_change={on_follow_hold_change}
+          on_retry={on_retry}
         />,
       ),
     );
@@ -115,6 +120,29 @@ describe("AgentTimeline", () => {
       ),
     ).toEqual(["@term(Alice)", "@skill(glossary-audit)"]);
     expect(messages[1]?.textContent).toContain("@term(Unknown)");
+  });
+
+  it("失败卡片位于所属轮次末尾且重试只回传原消息", async () => {
+    const view = await render_timeline([
+      user_entry("user-error", "重新检查术语", "error", 0, 2_000),
+      assistant_entry("assistant-error", "部分结果", "error", 1_000),
+      user_entry("user-next", "继续", "success", 3_000, 4_000),
+    ]);
+    const assistant = view.querySelector(".agent-message--assistant");
+    const error = view.querySelector(".agent-round-error");
+    const next_header = view.querySelectorAll(".agent-round-header")[1];
+    if (assistant === null || error === null || next_header === undefined) {
+      throw new Error("缺少失败轮次结构");
+    }
+
+    expect(assistant.compareDocumentPosition(error) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    expect(error.compareDocumentPosition(next_header) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+      0,
+    );
+    expect(error.textContent).toContain("模型服务请求失败。");
+    const retry = error.querySelector<HTMLButtonElement>("button");
+    await act(async () => retry?.click());
+    expect(on_retry).toHaveBeenCalledWith("重新检查术语");
   });
 
   it("运行工具逐秒计时，完成后保留用户展开状态并挂载输出", async () => {

@@ -23,7 +23,6 @@ type RenderComposerOptions = Partial<
     | "can_reset"
     | "command"
     | "context_tokens"
-    | "issue"
     | "on_reset"
     | "on_send"
     | "on_stop"
@@ -54,7 +53,6 @@ const TEST_MESSAGES = vi.hoisted(() => ({
   "agent_page.context_usage_warning": "即将自动压缩上下文",
   "agent_page.action.send": "发送",
   "agent_page.action.stop": "停止",
-  "agent_page.error.send": "发送失败，草稿已保留。",
   "agent_page.unavailable.restoring": "正在恢复会话",
   "agent_page.unavailable.runtime_busy": "其它任务正在运行",
   "agent_page.unavailable.settling": "正在结束当前任务",
@@ -356,8 +354,8 @@ describe("AgentComposer", () => {
     expect(on_send).not.toHaveBeenCalled();
   });
 
-  it("底栏显示模型、上下文阈值和命令错误", async () => {
-    const view = await render_composer({ context_tokens: 230_000, issue: "send" });
+  it("底栏显示模型和上下文阈值", async () => {
+    const view = await render_composer({ context_tokens: 230_000 });
     expect(view.querySelector(".agent-composer__model-trigger")?.textContent).toContain(
       "Agent Model",
     );
@@ -365,7 +363,6 @@ describe("AgentComposer", () => {
     expect(view.querySelector(".agent-composer__context-usage")?.getAttribute("data-tone")).toBe(
       "warning",
     );
-    expect(view.querySelector('[role="alert"]')?.textContent).toBe("发送失败，草稿已保留。");
   });
 
   async function render_composer(options: RenderComposerOptions = {}): Promise<HTMLDivElement> {
@@ -385,7 +382,6 @@ describe("AgentComposer", () => {
           running={options.running ?? false}
           unavailable_reason={options.unavailable_reason ?? null}
           command={options.command ?? null}
-          issue={options.issue ?? null}
           can_reset={options.can_reset ?? true}
           context_tokens={options.context_tokens ?? null}
           model_selection={{

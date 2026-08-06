@@ -1,7 +1,9 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { CircleAlert } from "lucide-react";
 
 import type { AgentEntry, AgentEntryStatus } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
+import { AppButton } from "@frontend/widgets/app-button";
 import {
   find_agent_mention_ranges,
   type AgentMentionRange,
@@ -35,6 +37,7 @@ type AgentTimelineProps = {
   mention_tokens: readonly AgentMentionToken[];
   resume_revision: number;
   on_follow_hold_change: (id: string, paused: boolean) => void;
+  on_retry: (text: string) => void;
 };
 
 type AgentDetailDisclosureProps = {
@@ -66,6 +69,7 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
         t,
         props.resume_revision,
         props.on_follow_hold_change,
+        props.on_retry,
       )}
       {show_activity && (
         <div className="agent-message__activity">
@@ -83,17 +87,72 @@ function render_conversation(
   t: Translate,
   resume_revision: number,
   on_follow_hold_change: (id: string, paused: boolean) => void,
+  on_retry: (text: string) => void,
 ): ReactNode[] {
-  return entries.map((entry) => (
-    <AgentEntryView
-      key={entry.id}
-      entry={entry}
-      mention_tokens={mention_tokens}
-      t={t}
-      resume_revision={resume_revision}
-      on_follow_hold_change={on_follow_hold_change}
-    />
-  ));
+  const content: ReactNode[] = [];
+  let current_user: UserEntry | null = null;
+  for (const entry of entries) {
+    if (entry.kind === "user_message") {
+      if (current_user?.status === "error") {
+        content.push(
+          <AgentRoundError
+            key={`error:${current_user.id}`}
+            user={current_user}
+            t={t}
+            on_retry={on_retry}
+          />,
+        );
+      }
+      current_user = entry;
+    }
+    content.push(
+      <AgentEntryView
+        key={entry.id}
+        entry={entry}
+        mention_tokens={mention_tokens}
+        t={t}
+        resume_revision={resume_revision}
+        on_follow_hold_change={on_follow_hold_change}
+      />,
+    );
+  }
+  if (current_user?.status === "error") {
+    content.push(
+      <AgentRoundError
+        key={`error:${current_user.id}`}
+        user={current_user}
+        t={t}
+        on_retry={on_retry}
+      />,
+    );
+  }
+  return content;
+}
+
+/** 失败结果跟随所属轮次；重试只恢复原消息到输入框，不隐式重复工具副作用。 */
+function AgentRoundError(props: {
+  user: UserEntry;
+  t: Translate;
+  on_retry: (text: string) => void;
+}): JSX.Element {
+  const title = props.t("agent_page.status.error");
+  return (
+    <section className="agent-round-error" aria-label={title}>
+      <CircleAlert aria-hidden="true" />
+      <div>
+        <strong>{title}</strong>
+        <p>{props.t("app.error.model.provider_failed.message")}</p>
+      </div>
+      <AppButton
+        type="button"
+        size="xs"
+        variant="outline"
+        onClick={() => props.on_retry(props.user.text)}
+      >
+        {props.t("agent_page.action.retry")}
+      </AppButton>
+    </section>
+  );
 }
 
 /** 后端 upsert 保留未变化条目对象身份，memo 只重绘真实变化的时间线条目。 */
