@@ -130,6 +130,8 @@ const fake_agent_state = vi.hoisted(() => ({
   model_call_count: 0,
   retry_failures_remaining: 0,
   summary_failures_remaining: 0,
+  hold_summary: false, // 让手动压缩停在 running，以验证运行期互斥
+  release_summary: null as (() => void) | null, // 显式结束上述可控压缩
   request_kinds: [] as Array<"model" | "summary">,
   model_contexts: [] as Context["messages"][],
   auth_configured: true,
@@ -195,9 +197,18 @@ function create_fake_agent_stream(
             errorMessage: "摘要生成失败",
           });
         })()
-      : is_summary
-        ? fauxAssistantMessage("压缩摘要")
-        : create_fake_response(context);
+      : is_summary && fake_agent_state.hold_summary
+        ? async () =>
+            await new Promise<AssistantMessage>((resolve) => {
+              fake_agent_state.release_summary = () => {
+                fake_agent_state.hold_summary = false;
+                fake_agent_state.release_summary = null;
+                resolve(fauxAssistantMessage("压缩摘要"));
+              };
+            })
+        : is_summary
+          ? fauxAssistantMessage("压缩摘要")
+          : create_fake_response(context);
   faux.setResponses([response]);
   return faux.streamSimple(model, context, options);
 }
@@ -430,6 +441,8 @@ describe("AgentService", () => {
     fake_agent_state.model_call_count = 0;
     fake_agent_state.retry_failures_remaining = 0;
     fake_agent_state.summary_failures_remaining = 0;
+    fake_agent_state.hold_summary = false;
+    fake_agent_state.release_summary = null;
     fake_agent_state.request_kinds = [];
     fake_agent_state.model_contexts = [];
     fake_agent_state.auth_configured = true;
@@ -449,6 +462,7 @@ describe("AgentService", () => {
     vi.useRealTimers();
     fake_agent_state.hold_idle = false;
     fake_agent_state.release_auth?.();
+    fake_agent_state.release_summary?.();
     fake_agent_state.release_tool_write?.();
     fake_agent_state.release_pending?.();
     await Promise.all(services.splice(0).map(async (service) => await service.dispose()));
@@ -1469,7 +1483,14 @@ describe("AgentService", () => {
     );
 
     expect(fake_agent_state.request_kinds).toContain("summary");
-    expect(after_compaction.entries).toHaveLength(10);
+    expect(
+      after_compaction.entries.filter((entry) => entry.kind !== "context_compaction"),
+    ).toHaveLength(10);
+    expect(after_compaction.entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "context_compaction", status: "success" }),
+      ]),
+    );
 
     await service.send_message({ text: "继续" });
     await wait_for_idle(service);
@@ -1479,13 +1500,15 @@ describe("AgentService", () => {
     expect(service.get_snapshot().contextTokens ?? Number.POSITIVE_INFINITY).toBeLessThan(
       Math.max(...usage_tokens),
     );
-    expect(service.get_snapshot().entries).toHaveLength(12);
+    expect(
+      service.get_snapshot().entries.filter((entry) => entry.kind !== "context_compaction"),
+    ).toHaveLength(12);
   });
 
-  it("阈值压缩失败只记录 warning，已成功的最终回答不转成失败终态", async () => {
+  it("阈值压缩失败原位公开重试，压缩期间不可停止且不推翻已成功回答", async () => {
     const { service, log_error, log_warning } = await create_service();
     fake_agent_state.context_window = TEST_COMPACTION_CONTEXT_WINDOW;
-    fake_agent_state.summary_failures_remaining = 1;
+    fake_agent_state.summary_failures_remaining = 100;
     for (const round of [1, 2, 3, 4, 5]) {
       await service.send_message({
         text: `第${round.toString()}轮${"x".repeat(40_000)}`,
@@ -1501,6 +1524,7 @@ describe("AgentService", () => {
           kind: "assistant_message",
           parts: [{ kind: "text", text: "已完成" }],
         }),
+        expect.objectContaining({ kind: "context_compaction", status: "error" }),
       ]),
     });
     expect(log_warning).toHaveBeenCalledWith(
@@ -1508,6 +1532,78 @@ describe("AgentService", () => {
       expect.objectContaining({ source: "agent" }),
     );
     expect(log_error).not.toHaveBeenCalled();
+
+    const failed_entry = service
+      .get_snapshot()
+      .entries.findLast((entry) => entry.kind === "context_compaction");
+    const model_call_count_before_retry = fake_agent_state.model_call_count;
+    fake_agent_state.summary_failures_remaining = 0;
+    fake_agent_state.hold_summary = true;
+    await expect(service.retry_compaction()).resolves.toMatchObject({
+      entries: expect.arrayContaining([
+        expect.objectContaining({
+          kind: "context_compaction",
+          id: failed_entry?.id,
+          status: "running",
+        }),
+      ]),
+    });
+    await vi.waitFor(() => expect(fake_agent_state.release_summary).not.toBeNull());
+    expect(() => service.stop()).toThrow("runtime.busy");
+    fake_agent_state.release_summary?.();
+    await vi.waitFor(() =>
+      expect(
+        service.get_snapshot().entries.findLast((entry) => entry.kind === "context_compaction"),
+      ).toMatchObject({ id: failed_entry?.id, status: "success" }),
+    );
+    expect(fake_agent_state.model_call_count).toBe(model_call_count_before_retry);
+    await expect(service.retry_compaction()).rejects.toThrow("request.validation_failed");
+  });
+
+  it("同一失败任务复用压缩条目并在手动恢复后自动重发", async () => {
+    const { service } = await create_service();
+    fake_agent_state.context_window = TEST_COMPACTION_CONTEXT_WINDOW;
+    fake_agent_state.summary_failures_remaining = 100;
+    for (const round of [1, 2, 3, 4, 5]) {
+      await service.send_message({
+        text: `第${round.toString()}轮${"x".repeat(40_000)}`,
+      });
+      await wait_for_idle(service);
+    }
+    const failed_compaction = service
+      .get_snapshot()
+      .entries.findLast((entry) => entry.kind === "context_compaction");
+
+    fake_agent_state.mode = "error";
+    await service.send_message({ text: "继续失败任务" });
+    await wait_for_idle(service);
+
+    expect(
+      service.get_snapshot().entries.filter((entry) => entry.kind === "context_compaction"),
+    ).toEqual([expect.objectContaining({ id: failed_compaction?.id, status: "error" })]);
+    expect(
+      service.get_snapshot().entries.findLast((entry) => entry.kind === "user_message"),
+    ).toMatchObject({ text: "继续失败任务", status: "error" });
+
+    fake_agent_state.mode = "success";
+    fake_agent_state.summary_failures_remaining = 0;
+    await service.retry_compaction();
+
+    await vi.waitFor(() =>
+      expect(
+        service
+          .get_snapshot()
+          .entries.filter(
+            (entry) => entry.kind === "user_message" && entry.text === "继续失败任务",
+          ),
+      ).toEqual([
+        expect.objectContaining({ status: "error" }),
+        expect.objectContaining({ status: "success" }),
+      ]),
+    );
+    expect(
+      service.get_snapshot().entries.findLast((entry) => entry.kind === "context_compaction"),
+    ).toMatchObject({ id: failed_compaction?.id, status: "success" });
   });
 
   it("同一事件循环的第二条消息异步拒绝，且不重复读取模型设置", async () => {

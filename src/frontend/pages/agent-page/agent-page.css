@@ -158,45 +158,80 @@
   gap: 8px;
 }
 
-.agent-round-error {
+.agent-retry-entry {
   display: grid;
   min-width: 0;
-  grid-template-columns: 18px minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 10px;
+  min-height: 34px;
+  width: 100%;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
   border: 1px solid color-mix(in srgb, var(--ui-failure) 34%, var(--border));
-  border-radius: var(--ui-radius-card);
+  border-radius: var(--ui-radius-button);
   background: color-mix(in srgb, var(--ui-failure) 6%, var(--card));
-  padding: 10px 12px;
-}
-
-.agent-round-error > svg {
-  width: 18px;
-  height: 18px;
-  color: var(--ui-failure);
-}
-
-.agent-round-error strong,
-.agent-round-error p {
-  margin: 0;
-}
-
-.agent-round-error strong {
+  padding: 6px 8px;
   color: color-mix(in srgb, var(--ui-failure) 82%, var(--foreground));
-  font-size: 13px;
-  font-weight: 600;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
 }
 
-.agent-round-error p {
-  margin-top: 2px;
-  color: var(--foreground);
-  font-size: 12px;
-  line-height: 1.45;
+.agent-retry-entry > svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+  color: var(--ui-failure);
+  transform: translateY(-1px);
+}
+
+.agent-retry-entry > span {
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.agent-round-error > button {
-  align-self: center;
+.agent-retry-entry__action {
+  white-space: nowrap;
+}
+
+.agent-retry-entry:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--ui-failure) 9%, var(--card));
+}
+
+.agent-retry-entry:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.agent-retry-entry:focus-visible {
+  outline: 1px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.agent-retry-entry:disabled {
+  cursor: default;
+  opacity: 0.58;
+}
+
+.agent-context-compaction {
+  display: grid;
+  min-height: 34px;
+  width: 100%;
+  grid-template-columns: 16px minmax(0, 1fr) 8px;
+  align-items: center;
+  gap: 8px;
+  border-radius: var(--ui-radius-button);
+  background: color-mix(in srgb, var(--muted) 32%, transparent);
+  padding: 6px 8px;
+  color: color-mix(in srgb, var(--muted-foreground) 85%, var(--foreground));
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.agent-context-compaction > svg {
+  width: 14px;
+  height: 14px;
 }
 
 .dark .agent-message--user {
@@ -756,6 +791,7 @@
 .agent-message__markdown,
 .agent-message__user-text,
 .agent-detail-entry,
+.agent-context-compaction,
 .agent-mention-menu,
 .agent-round-header {
   user-select: text;

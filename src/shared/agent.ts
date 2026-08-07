@@ -33,6 +33,14 @@ export type AgentToolEntry = JsonRecord & {
   createdAt: number;
 };
 
+/** 上下文压缩沿用时间线条目状态；压缩不可停止，因此不公开 stopped。 */
+export type AgentContextCompactionEntry = JsonRecord & {
+  kind: "context_compaction";
+  id: string;
+  status: Extract<AgentEntryStatus, "running" | "success" | "error">;
+  createdAt: number;
+};
+
 /** 后端按真实事件顺序追加，renderer 直接按数组渲染的单一时间线条目。 */
 export type AgentEntry = JsonRecord &
   (
@@ -52,6 +60,7 @@ export type AgentEntry = JsonRecord &
         createdAt: number;
       }
     | AgentToolEntry
+    | AgentContextCompactionEntry
   );
 
 /** GET snapshot、命令响应与 snapshot_seed 共用的完整会话形状。 */

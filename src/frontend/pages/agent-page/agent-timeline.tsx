@@ -1,9 +1,8 @@
 import { memo, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { CircleAlert } from "lucide-react";
+import { ChevronsDownUp, CircleAlert } from "lucide-react";
 
 import type { AgentEntry, AgentEntryStatus } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
-import { AppButton } from "@frontend/widgets/app-button";
 import {
   find_agent_mention_ranges,
   type AgentMentionRange,
@@ -15,6 +14,7 @@ import { is_at_scroll_end } from "./agent-scroll";
 type Translate = ReturnType<typeof useI18n>["t"];
 type UserEntry = Extract<AgentEntry, { kind: "user_message" }>;
 type AssistantEntry = Extract<AgentEntry, { kind: "assistant_message" }>;
+type ContextCompactionEntry = Extract<AgentEntry, { kind: "context_compaction" }>;
 
 /** 工具与思考详情共享同一状态文案词表。 */
 const AGENT_STATUS_LABEL_KEYS: Readonly<Record<AgentEntryStatus, LocaleKey>> = Object.freeze({
@@ -30,6 +30,12 @@ const AGENT_ROUND_LABEL_KEYS: Readonly<Record<AgentEntryStatus, LocaleKey>> = Ob
   error: "agent_page.round.error",
   stopped: "agent_page.round.stopped",
 });
+const AGENT_COMPACTION_LABEL_KEYS: Readonly<Record<ContextCompactionEntry["status"], LocaleKey>> =
+  Object.freeze({
+    running: "agent_page.compaction.running",
+    success: "agent_page.compaction.success",
+    error: "agent_page.compaction.error",
+  });
 const AGENT_THINKING_AUTO_COLLAPSE_DELAY_MS = 3_000; // 给用户留出确认终态的短暂视觉窗口
 
 type AgentTimelineProps = {
@@ -38,6 +44,9 @@ type AgentTimelineProps = {
   resume_revision: number;
   on_follow_hold_change: (id: string, paused: boolean) => void;
   on_retry: (text: string) => void;
+  on_compaction_retry: () => void;
+  message_retry_disabled: boolean;
+  compaction_retry_disabled: boolean;
 };
 
 type AgentDetailDisclosureProps = {
@@ -70,6 +79,9 @@ export function AgentTimeline(props: AgentTimelineProps): JSX.Element {
         props.resume_revision,
         props.on_follow_hold_change,
         props.on_retry,
+        props.on_compaction_retry,
+        props.message_retry_disabled,
+        props.compaction_retry_disabled,
       )}
       {show_activity && (
         <div className="agent-message__activity">
@@ -88,23 +100,31 @@ function render_conversation(
   resume_revision: number,
   on_follow_hold_change: (id: string, paused: boolean) => void,
   on_retry: (text: string) => void,
+  on_compaction_retry: () => void,
+  message_retry_disabled: boolean,
+  compaction_retry_disabled: boolean,
 ): ReactNode[] {
   const content: ReactNode[] = [];
   let current_user: UserEntry | null = null;
+  let current_round_has_compaction = false;
   for (const entry of entries) {
     if (entry.kind === "user_message") {
-      if (current_user?.status === "error") {
+      if (current_user?.status === "error" && !current_round_has_compaction) {
+        const failed_user = current_user;
         content.push(
-          <AgentRoundError
-            key={`error:${current_user.id}`}
-            user={current_user}
-            t={t}
-            on_retry={on_retry}
+          <AgentRetryEntry
+            key={`error:${failed_user.id}`}
+            label={t("app.error.model.provider_failed.message")}
+            retry_label={t("agent_page.action.click_to_retry")}
+            disabled={message_retry_disabled}
+            on_retry={() => on_retry(failed_user.text)}
           />,
         );
       }
       current_user = entry;
+      current_round_has_compaction = false;
     }
+    if (entry.kind === "context_compaction") current_round_has_compaction = true;
     content.push(
       <AgentEntryView
         key={entry.id}
@@ -113,45 +133,44 @@ function render_conversation(
         t={t}
         resume_revision={resume_revision}
         on_follow_hold_change={on_follow_hold_change}
+        on_compaction_retry={on_compaction_retry}
+        compaction_retry_disabled={compaction_retry_disabled}
       />,
     );
   }
-  if (current_user?.status === "error") {
+  if (current_user?.status === "error" && !current_round_has_compaction) {
+    const failed_user = current_user;
     content.push(
-      <AgentRoundError
-        key={`error:${current_user.id}`}
-        user={current_user}
-        t={t}
-        on_retry={on_retry}
+      <AgentRetryEntry
+        key={`error:${failed_user.id}`}
+        label={t("app.error.model.provider_failed.message")}
+        retry_label={t("agent_page.action.click_to_retry")}
+        disabled={message_retry_disabled}
+        on_retry={() => on_retry(failed_user.text)}
       />,
     );
   }
   return content;
 }
 
-/** 失败结果跟随所属轮次；重试只恢复原消息到输入框，不隐式重复工具副作用。 */
-function AgentRoundError(props: {
-  user: UserEntry;
-  t: Translate;
-  on_retry: (text: string) => void;
+/** 两类失败共用整块恢复入口，文本区分错误，点击行为由各自状态拥有者决定。 */
+function AgentRetryEntry(props: {
+  label: string;
+  retry_label: string;
+  disabled: boolean;
+  on_retry: () => void;
 }): JSX.Element {
-  const title = props.t("agent_page.status.error");
   return (
-    <section className="agent-round-error" aria-label={title}>
+    <button
+      type="button"
+      className="agent-retry-entry"
+      disabled={props.disabled}
+      onClick={props.on_retry}
+    >
       <CircleAlert aria-hidden="true" />
-      <div>
-        <strong>{title}</strong>
-        <p>{props.t("app.error.model.provider_failed.message")}</p>
-      </div>
-      <AppButton
-        type="button"
-        size="xs"
-        variant="outline"
-        onClick={() => props.on_retry(props.user.text)}
-      >
-        {props.t("agent_page.action.retry")}
-      </AppButton>
-    </section>
+      <span>{props.label}</span>
+      <span className="agent-retry-entry__action">{props.retry_label}</span>
+    </button>
   );
 }
 
@@ -162,8 +181,20 @@ const AgentEntryView = memo(function AgentEntryView(props: {
   t: Translate;
   resume_revision: number;
   on_follow_hold_change: (id: string, paused: boolean) => void;
+  on_compaction_retry: () => void;
+  compaction_retry_disabled: boolean;
 }): ReactNode {
   const entry = props.entry;
+  if (entry.kind === "context_compaction") {
+    return (
+      <AgentContextCompactionEntry
+        entry={entry}
+        t={props.t}
+        disabled={props.compaction_retry_disabled}
+        on_retry={props.on_compaction_retry}
+      />
+    );
+  }
   if (entry.kind === "tool_call") {
     return (
       <AgentToolDetail
@@ -201,6 +232,33 @@ const AgentEntryView = memo(function AgentEntryView(props: {
   }
   return render_assistant_entry(entry, props.t, props.resume_revision, props.on_follow_hold_change);
 });
+
+/** 压缩是无详情的模型历史边界；失败时整条成为唯一恢复入口。 */
+function AgentContextCompactionEntry(props: {
+  entry: ContextCompactionEntry;
+  t: Translate;
+  disabled: boolean;
+  on_retry: () => void;
+}): JSX.Element {
+  const label = props.t(AGENT_COMPACTION_LABEL_KEYS[props.entry.status]);
+  if (props.entry.status === "error") {
+    return (
+      <AgentRetryEntry
+        label={label}
+        retry_label={props.t("agent_page.action.click_to_retry")}
+        disabled={props.disabled}
+        on_retry={props.on_retry}
+      />
+    );
+  }
+  return (
+    <div className="agent-context-compaction" role="status">
+      <ChevronsDownUp aria-hidden="true" />
+      <span>{label}</span>
+      <AgentStatusMark status={props.entry.status} label={label} />
+    </div>
+  );
+}
 
 /** 用已知非重叠范围渲染用户正文；未知 marker 与普通文本保持原样。 */
 function render_agent_mention_text(
@@ -463,6 +521,7 @@ function AgentStatusMark(props: AgentStatusMarkProps): JSX.Element {
 function should_show_trailing_activity(entries: readonly AgentEntry[]): boolean {
   if (!entries.some((entry) => entry.status === "running")) return false;
   const last = entries.at(-1);
+  if (last?.kind === "context_compaction") return last.status !== "running";
   if (last?.kind === "tool_call") return last.status !== "running";
   return !(
     last?.kind === "assistant_message" &&

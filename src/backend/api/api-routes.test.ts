@@ -21,6 +21,7 @@ const POST_PATHS = new Set([
   "/api/runtime/snapshot",
   "/api/agent/message",
   "/api/agent/stop",
+  "/api/agent/compaction/retry",
   "/api/agent/reset",
   "/api/session/project/manifest",
   "/api/session/project/snapshot",
@@ -136,6 +137,10 @@ describe("register_api_routes", () => {
       state: "idle",
     });
     expect(fixture.stop).toHaveBeenCalledWith();
+    await expect(
+      read_post_handler(fixture.post_json, "/api/agent/compaction/retry")({}),
+    ).resolves.toEqual({ state: "idle" });
+    expect(fixture.retry_compaction).toHaveBeenCalledWith();
     await expect(read_post_handler(fixture.post_json, "/api/agent/reset")({})).resolves.toEqual({
       state: "idle",
       entries: [],
@@ -180,6 +185,7 @@ function create_route_fixture() {
   const start_task = vi.fn(() => ({ accepted: true }));
   const send_message = vi.fn(async () => ({ state: "running" }));
   const stop = vi.fn(() => ({ state: "idle" }));
+  const retry_compaction = vi.fn(async () => ({ state: "idle" }));
   const reset = vi.fn(async () => ({
     state: "idle",
     entries: [],
@@ -219,6 +225,7 @@ function create_route_fixture() {
       })),
       send_message,
       stop,
+      retry_compaction,
       reset,
     },
     tasks: { start_task },
@@ -241,6 +248,7 @@ function create_route_fixture() {
     post_json,
     reset,
     send_message,
+    retry_compaction,
     start_task,
     stop,
     update_selected_model_thinking_level,

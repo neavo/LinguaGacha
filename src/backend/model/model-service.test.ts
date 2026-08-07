@@ -252,7 +252,7 @@ describe("ModelService 配置管理", () => {
       id: "preset",
       type: "PRESET",
       name: "模型",
-      agent_limits: { context_window: 353_000, max_output_tokens: 32_000 },
+      agent_limits: { context_window: 353_000, max_output_tokens: 48_000 },
       thinking_level: "OFF",
       thinking_configurable: true,
     });

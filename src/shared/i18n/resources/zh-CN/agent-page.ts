@@ -24,6 +24,11 @@ export const zh_cn_agent_page = {
   },
   context_usage: "上下文 {percent} · {used} / {total}",
   context_usage_warning: "即将自动压缩上下文",
+  compaction: {
+    running: "正在压缩上下文 …",
+    success: "上下文压缩成功 …",
+    error: "上下文压缩失败 …",
+  },
   action: {
     send: "发送",
     sending: "正在发送",
@@ -31,6 +36,7 @@ export const zh_cn_agent_page = {
     stopping: "正在停止",
     new_task: "新任务",
     retry: "重试",
+    click_to_retry: "点击重试",
     return_latest: "回到最新",
   },
   confirm: { new_task: "是否确认开始新的对话任务 …?" },
@@ -46,6 +52,7 @@ export const zh_cn_agent_page = {
     connection: "连接中断，正在等待重连。",
     send: "发送失败，草稿已保留。",
     stop: "停止失败，请重试。",
+    compaction_retry: "上下文压缩重试失败，请重试。",
     reset: "新任务创建失败，请重试。",
     terms_load: "术语加载失败，技能选择与消息发送仍可使用。",
   },

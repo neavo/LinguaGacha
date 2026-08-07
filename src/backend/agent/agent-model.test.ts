@@ -177,7 +177,7 @@ describe("Agent 模型注册", () => {
       api: "openai-responses",
       reasoning: true,
       contextWindow: 353_000,
-      maxTokens: 32_000,
+      maxTokens: 48_000,
     });
     expect(resolved.thinkingLevel).toBe("high");
     const provider_config = runtime.getRegisteredProviderConfig("openai");

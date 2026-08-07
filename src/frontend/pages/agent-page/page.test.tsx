@@ -102,6 +102,7 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.action.new_task") return "新任务";
       if (key === "agent_page.action.send") return "发送";
       if (key === "agent_page.action.retry") return "重试";
+      if (key === "agent_page.action.click_to_retry") return "点击重试";
       if (key === "agent_page.confirm.new_task") return "是否确认开始新的对话任务 …?";
       if (key === "agent_page.empty.suggestions.capabilities") return "介绍你的能力";
       if (key === "agent_page.empty.suggestions.glossary_review") return "请帮我审校术语";
@@ -113,9 +114,13 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.error.terms_load") return "术语加载失败";
       if (key === "agent_page.error.send") return "发送失败，草稿已保留。";
       if (key === "agent_page.error.stop") return "停止失败，请重试。";
+      if (key === "agent_page.error.compaction_retry") return "上下文压缩重试失败，请重试。";
       if (key === "agent_page.error.reset") return "新任务创建失败，请重试。";
       if (key === "agent_page.error.connection") return "连接中断，正在等待重连。";
       if (key === "agent_page.status.error") return "失败";
+      if (key === "agent_page.compaction.running") return "正在压缩上下文 …";
+      if (key === "agent_page.compaction.success") return "上下文压缩成功";
+      if (key === "agent_page.compaction.error") return "上下文压缩失败";
       if (key === "app.error.model.provider_failed.message") return "模型服务请求失败。";
       return params === undefined ? key : `${key}:${Object.values(params).join(",")}`;
     },
@@ -451,6 +456,38 @@ describe("AgentPage", () => {
     expect(stop).toHaveBeenCalledOnce();
   });
 
+  it("压缩失败只显示原位恢复入口并调用压缩重试", async () => {
+    const retryCompaction = vi.fn(async () => undefined);
+    const view = await render_page({
+      entries: [
+        user_entry("user-1", "初次检查", "success", 0, 1_000),
+        {
+          kind: "context_compaction",
+          id: "compaction-1",
+          status: "error",
+          createdAt: 1_500,
+        },
+        user_entry("user-2", "继续检查", "error", 2_000, 3_000),
+        assistant_entry("assistant-1", "部分结果", "error", 2_500),
+      ],
+      retryCompaction,
+    });
+    const retries = [...view.querySelectorAll<HTMLButtonElement>(".agent-retry-entry")];
+    const compaction_retry = retries.find((button) =>
+      button.textContent?.includes("上下文压缩失败"),
+    );
+    const message_retry = retries.find((button) =>
+      button.textContent?.includes("模型服务请求失败"),
+    );
+    expect(compaction_retry?.disabled).toBe(false);
+    expect(message_retry?.disabled).toBe(true);
+    expect(view.querySelector<HTMLButtonElement>(".agent-composer__submit")?.disabled).toBe(true);
+
+    await act(async () => compaction_retry?.click());
+
+    expect(retryCompaction).toHaveBeenCalledOnce();
+  });
+
   it("停止命令失败时保留运行态并显示错误 Toast", async () => {
     const stop = vi.fn(() => Promise.reject(new Error("offline")));
     const view = await render_page({ state: "running", stop });
@@ -480,20 +517,18 @@ describe("AgentPage", () => {
     expect(view.querySelector(".agent-composer__error")).toBeNull();
   });
 
-  it("失败轮次的重试把原消息恢复到输入框但不自动发送", async () => {
+  it("失败轮次的恢复条目自动重发原消息", async () => {
     const send = vi.fn(async () => undefined);
     const view = await render_page({
       entries: [user_entry("user-error", "重新检查术语", "error", 1, 2)],
       send,
     });
-    const retry = [...view.querySelectorAll<HTMLButtonElement>("button")].find(
-      (button) => button.textContent === "重试",
-    );
-    if (retry === undefined) throw new Error("缺少轮次重试按钮");
+    const retry = view.querySelector<HTMLButtonElement>(".agent-retry-entry");
+    if (retry === null) throw new Error("缺少轮次重试按钮");
     await act(async () => retry.click());
 
-    expect(get_editor(view).state.doc.toString()).toBe("重新检查术语");
-    expect(send).not.toHaveBeenCalled();
+    expect(send).toHaveBeenCalledWith("重新检查术语");
+    expect(get_editor(view).state.doc.toString()).toBe("");
   });
 
   it("新任务先确认，取消不调用，确认期间锁定并在成功后关闭", async () => {
@@ -590,6 +625,7 @@ function build_state(overrides: Partial<AgentPageState> = {}): AgentPageState {
     },
     send: vi.fn(async () => undefined),
     stop: vi.fn(),
+    retryCompaction: vi.fn(async () => undefined),
     reset: vi.fn(async () => undefined),
     reconnect: vi.fn(),
     ...overrides,
