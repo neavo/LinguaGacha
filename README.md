@@ -88,6 +88,10 @@
 - 具体示例可见 [Wiki - 支持的文件格式](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F)，更多格式将持续添加，你也可以在 [ISSUES](https://github.com/neavo/LinguaGacha/issues) 中提出你的需求
 
 ## 近期更新 📅
+- 20260805 v0.111.3
+  - 强化术语自动审校能力
+  - 调整与改进 [#713](https://github.com/neavo/LinguaGacha/issues/713) [#718](https://github.com/neavo/LinguaGacha/issues/718) [#720](https://github.com/neavo/LinguaGacha/issues/720) [#722](https://github.com/neavo/LinguaGacha/issues/722) [#723](https://github.com/neavo/LinguaGacha/issues/723) [#724](https://github.com/neavo/LinguaGacha/issues/724) [#725](https://github.com/neavo/LinguaGacha/issues/725)
+
 - 20260805 v0.111.2
   - 显著强化 AGENT 对指令的遵循
   - 调整与改进 [#715](https://github.com/neavo/LinguaGacha/issues/715) [#716](https://github.com/neavo/LinguaGacha/issues/716)

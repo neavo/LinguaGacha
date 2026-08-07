@@ -89,6 +89,10 @@
 - See [Wiki - Supported Formats](https://github.com/neavo/LinguaGacha/wiki/%E6%94%AF%E6%8C%81%E7%9A%84%E6%96%87%E4%BB%B6%E6%A0%BC%E5%BC%8F) for examples. Submit format requests via [ISSUES](https://github.com/neavo/LinguaGacha/issues)
 
 ## Recent Updates 📅
+- 20260805 v0.111.3
+  - Enhanced automatic glossary review
+  - Adjustments and improvements [#713](https://github.com/neavo/LinguaGacha/issues/713) [#718](https://github.com/neavo/LinguaGacha/issues/718) [#720](https://github.com/neavo/LinguaGacha/issues/720) [#722](https://github.com/neavo/LinguaGacha/issues/722) [#723](https://github.com/neavo/LinguaGacha/issues/723) [#724](https://github.com/neavo/LinguaGacha/issues/724) [#725](https://github.com/neavo/LinguaGacha/issues/725)
+
 - 20260805 v0.111.2
   - Significantly improved AGENT instruction following
   - Adjustments and improvements [#715](https://github.com/neavo/LinguaGacha/issues/715) [#716](https://github.com/neavo/LinguaGacha/issues/716)
