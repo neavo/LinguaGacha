@@ -1,4 +1,9 @@
-import { compile_literal_patterns, type LiteralMatcher, type TextRange } from "./literal-matcher";
+import {
+  compile_literal_patterns,
+  normalize_literal_text,
+  type LiteralMatcher,
+  type TextRange,
+} from "./literal-matcher";
 
 // 文本模式只区分用户输入的普通文本和显式正则，避免调用点自造第三种解释
 type TextPatternMode = "literal" | "regex";
@@ -34,6 +39,13 @@ type TextPatternCompileResult = {
 export type TextKeywordMatcher = {
   readonly invalid_regex_message: string | null; // 页面直接展示的正则错误
   readonly matches: (value: string) => boolean; // 对单个候选文本执行匹配
+};
+
+export type TextKeywordsMatcher = {
+  readonly keywords: readonly string[]; // 按匹配语义去重后的首次输入文本
+  readonly invalid_regex: { index: number; message: string } | null; // 首个非法正则及其输入位置
+  readonly match: (value: string) => string[]; // 按 keywords 顺序返回当前文本的命中归因
+  readonly matches: (value: string) => boolean; // 是否至少命中一个关键词
 };
 
 /**
@@ -91,30 +103,111 @@ export function create_text_keyword_matcher(args: {
   readonly case_sensitive?: boolean;
   readonly unicode?: boolean;
 }): TextKeywordMatcher {
-  const normalized_keyword = normalize_text_pattern_source(args.keyword, true);
-  if (normalized_keyword === "") {
+  const matcher = create_text_keywords_matcher({
+    keywords: [args.keyword],
+    is_regex: args.is_regex,
+    case_sensitive: args.case_sensitive,
+    unicode: args.unicode,
+  });
+  return {
+    invalid_regex_message: matcher.invalid_regex?.message ?? null,
+    matches: matcher.matches,
+  };
+}
+
+/** 多关键字搜索统一预编译；字面量共用 Aho–Corasick，正则逐项编译后做 OR。 */
+export function create_text_keywords_matcher(args: {
+  readonly keywords: readonly string[];
+  readonly is_regex: boolean;
+  readonly case_sensitive?: boolean;
+  readonly unicode?: boolean;
+}): TextKeywordsMatcher {
+  const keywords = normalize_text_keywords(args).map((keyword) => ({
+    raw: keyword,
+    normalized: normalize_text_pattern_source(keyword, true),
+  }));
+  const public_keywords = keywords.map((keyword) => keyword.raw);
+  if (keywords.length === 0) {
+    return { keywords: public_keywords, invalid_regex: null, match: () => [], matches: () => true };
+  }
+
+  if (!args.is_regex) {
+    const matcher = compile_literal_patterns(
+      keywords.map((keyword, index) => ({
+        key: index.toString(),
+        text: keyword.normalized,
+        case_sensitive: args.case_sensitive === true,
+      })),
+    );
+    const match = (value: string): string[] => {
+      const matched_indexes = new Set<number>();
+      matcher.scan(value, (key) => matched_indexes.add(Number.parseInt(key, 10)));
+      return [...matched_indexes]
+        .toSorted((left, right) => left - right)
+        .flatMap((index) => {
+          const keyword = keywords[index];
+          return keyword === undefined ? [] : [keyword.raw];
+        });
+    };
     return {
-      invalid_regex_message: null,
-      matches: () => true,
+      keywords: public_keywords,
+      invalid_regex: null,
+      match,
+      matches: (value) => match(value).length > 0,
     };
   }
 
-  const compile_result = try_compile_text_pattern({
-    source_text: args.is_regex ? args.keyword : normalized_keyword,
-    mode: args.is_regex ? "regex" : "literal",
-    case_sensitive: args.case_sensitive === true,
-    global: false,
-    trim: false,
-    unicode: args.unicode !== false,
-  });
+  const patterns: CompiledTextPattern[] = [];
+  for (const [index, keyword] of keywords.entries()) {
+    const result = try_compile_text_pattern({
+      source_text: keyword.raw,
+      mode: "regex",
+      case_sensitive: args.case_sensitive === true,
+      global: false,
+      trim: false,
+      unicode: args.unicode !== false,
+    });
+    if (result.invalid_regex_message !== null) {
+      return {
+        keywords: public_keywords,
+        invalid_regex: { index, message: result.invalid_regex_message },
+        match: () => [],
+        matches: () => false,
+      };
+    }
+    if (result.pattern !== null) patterns.push(result.pattern);
+  }
+  const match = (value: string): string[] =>
+    patterns.flatMap((pattern, index) =>
+      matches_text_pattern(value, pattern) ? [keywords[index]?.raw ?? ""] : [],
+    );
   return {
-    invalid_regex_message: compile_result.invalid_regex_message,
-    matches: (value: string): boolean => {
-      return compile_result.pattern === null
-        ? false
-        : matches_text_pattern(value, compile_result.pattern);
-    },
+    keywords: public_keywords,
+    invalid_regex: null,
+    match,
+    matches: (value) => match(value).length > 0,
   };
+}
+
+/** 查询关键字按匹配语义形成有序集合，重复值保留首次提交的代表文本。 */
+export function normalize_text_keywords(args: {
+  readonly keywords: readonly string[];
+  readonly is_regex: boolean;
+  readonly case_sensitive?: boolean;
+}): string[] {
+  const seen = new Set<string>();
+  const keywords: string[] = [];
+  for (const keyword of args.keywords) {
+    const trimmed = normalize_text_pattern_source(keyword, true);
+    if (trimmed === "") continue;
+    const key = args.is_regex
+      ? keyword
+      : normalize_literal_text(trimmed, args.case_sensitive === true);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    keywords.push(keyword);
+  }
+  return keywords;
 }
 
 /**

@@ -41,7 +41,7 @@ function create_cache(): ProofreadingCache {
     })),
     warnings: vi.fn(async (query) => ({
       ...base_result,
-      data: { total_item_count: 0, items: [], invalid_regex_message: null, query },
+      data: { total_item_count: 0, items: [], query },
     })),
     window: vi.fn(),
     rowIdsRange: vi.fn(),
@@ -125,10 +125,8 @@ describe("ProofreadingQueryService", () => {
     const service = new ProofreadingQueryService({ sessionState: session_state, cache });
     const query = {
       warning_types: ["GLOSSARY" as const],
-      keyword: "HP",
+      keywords: ["HP"],
       scope: "all" as const,
-      is_regex: false,
-      case_sensitive: false,
       offset: 0,
       limit: 20,
     };

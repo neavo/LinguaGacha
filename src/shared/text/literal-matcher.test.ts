@@ -48,6 +48,22 @@ describe("共享字面量匹配器", () => {
     ]);
   });
 
+  it("scan 只流式返回实际命中和原文范围", () => {
+    const matcher = compile_literal_patterns([
+      { key: "root", text: "城", case_sensitive: true },
+      { key: "full", text: "白之城", case_sensitive: true },
+      { key: "miss", text: "港口", case_sensitive: true },
+    ]);
+    const matches: Array<{ key: string; start: number; end: number }> = [];
+
+    matcher.scan("白之城", (key, range) => matches.push({ key, ...range }));
+
+    expect(matches).toEqual([
+      { key: "full", start: 0, end: 3 },
+      { key: "root", start: 2, end: 3 },
+    ]);
+  });
+
   it("使用 NFKC 与兼容 casefold", () => {
     expect(normalize_literal_text("ＳＴＲＡẞＥ I ΟΣ", false)).toBe("strasse i οσ");
     expect(

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   compile_text_pattern,
   create_text_keyword_matcher,
+  create_text_keywords_matcher,
   replace_text_pattern,
 } from "./text-pattern";
 
@@ -122,6 +123,27 @@ describe("text-pattern", () => {
 
     expect(matcher.invalid_regex_message).not.toBeNull();
     expect(matcher.matches("anything")).toBe(false);
+  });
+
+  it("多关键字匹配器按匹配语义去重并保留首次输入顺序", () => {
+    const matcher = create_text_keywords_matcher({
+      keywords: ["Alice", " alice ", "ＡＬＩＣＥ", "白之城", "白之城", "骑士"],
+      is_regex: false,
+    });
+
+    expect(matcher.keywords).toEqual(["Alice", "白之城", "骑士"]);
+    expect(matcher.match("alice 是白之城骑士")).toEqual(["Alice", "白之城", "骑士"]);
+    expect(matcher.matches("无关文本")).toBe(false);
+  });
+
+  it("重复正则只编译一次并保留首个表达式", () => {
+    const matcher = create_text_keywords_matcher({
+      keywords: ["^alpha$", "^alpha$"],
+      is_regex: true,
+    });
+
+    expect(matcher.keywords).toEqual(["^alpha$"]);
+    expect(matcher.match("ALPHA")).toEqual(["^alpha$"]);
   });
 
   it("正则关键字保留首尾空格作为模式内容", () => {

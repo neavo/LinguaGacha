@@ -16,6 +16,9 @@ export type LiteralPatternMatch = {
 
 export type LiteralMatcher = {
   readonly patterns: readonly LiteralPattern[];
+  /** 按扫描顺序流式返回命中，避免调用方为计数或分组物化完整结果。 */
+  scan: (text: string, visit: (key: string, range: TextRange) => void) => void;
+  /** 按 pattern 顺序聚合每个身份的全部原文范围。 */
   match: (text: string) => LiteralPatternMatch[];
 };
 
@@ -73,28 +76,41 @@ export function compile_literal_patterns(patterns: LiteralPattern[]): LiteralMat
     ),
   );
 
+  const scan = (text: string, visit: (key: string, range: TextRange) => void): void => {
+    const visit_index = (pattern_index: number, range: TextRange): void => {
+      const pattern = active_patterns[pattern_index];
+      if (pattern !== undefined) visit(pattern.key, range);
+    };
+    if (sensitive_matcher !== null) {
+      collect_matches(
+        sensitive_matcher,
+        normalize_text_with_source_ranges(text, true),
+        sensitive_indexes,
+        visit_index,
+      );
+    }
+    if (insensitive_matcher !== null) {
+      collect_matches(
+        insensitive_matcher,
+        normalize_text_with_source_ranges(text, false),
+        insensitive_indexes,
+        visit_index,
+      );
+    }
+  };
+
   return {
     patterns: active_patterns,
+    scan,
     match(text) {
-      const ranges_by_pattern = active_patterns.map((): TextRange[] => []);
-      if (sensitive_matcher !== null) {
-        collect_matches(
-          sensitive_matcher,
-          normalize_text_with_source_ranges(text, true),
-          sensitive_indexes,
-          ranges_by_pattern,
-        );
-      }
-      if (insensitive_matcher !== null) {
-        collect_matches(
-          insensitive_matcher,
-          normalize_text_with_source_ranges(text, false),
-          insensitive_indexes,
-          ranges_by_pattern,
-        );
-      }
-      return active_patterns.flatMap((pattern, index) => {
-        const ranges = ranges_by_pattern[index] ?? [];
+      const ranges_by_key = new Map<string, TextRange[]>();
+      scan(text, (key, range) => {
+        const ranges = ranges_by_key.get(key) ?? [];
+        ranges.push(range);
+        ranges_by_key.set(key, ranges);
+      });
+      return active_patterns.flatMap((pattern) => {
+        const ranges = ranges_by_key.get(pattern.key) ?? [];
         return ranges.length === 0 ? [] : [{ key: pattern.key, ranges }];
       });
     },
@@ -148,9 +164,10 @@ function collect_matches(
   matcher: AhoMatcher,
   input: NormalizedText,
   bucket_indexes: number[],
-  ranges_by_pattern: TextRange[][],
+  visit: (pattern_index: number, range: TextRange) => void,
 ): void {
   let node_index = 0;
+  const previous_range_by_pattern = new Map<number, TextRange>();
   for (let text_index = 0; text_index < input.text.length; text_index += 1) {
     const character = input.text[text_index] ?? "";
     while (node_index !== 0 && !matcher.nodes[node_index]?.next.has(character)) {
@@ -162,16 +179,13 @@ function collect_matches(
       const folded_start = text_index - pattern_length + 1;
       const start = input.starts[folded_start] ?? folded_start;
       const end = input.ends[text_index] ?? text_index + 1;
-      const ranges = ranges_by_pattern[bucket_indexes[bucket_index] ?? -1];
-      const previous_range = ranges?.at(-1);
-      if (
-        ranges !== undefined &&
-        (previous_range === undefined ||
-          previous_range.start !== start ||
-          previous_range.end !== end)
-      ) {
-        ranges.push({ start, end });
-      }
+      const pattern_index = bucket_indexes[bucket_index];
+      if (pattern_index === undefined) continue;
+      const previous_range = previous_range_by_pattern.get(pattern_index);
+      if (previous_range?.start === start && previous_range.end === end) continue;
+      const range = { start, end };
+      previous_range_by_pattern.set(pattern_index, range);
+      visit(pattern_index, range);
     }
   }
 }

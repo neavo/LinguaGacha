@@ -31,7 +31,7 @@ import type { ProjectChangeItemFieldPatch } from "../project-event";
 import { apply_project_item_field_patch } from "../project/project-item-field-patch";
 import type { TextPreserveRule } from "../text/text-preserve-rules";
 import type { TextProcessingConfig } from "../text/text-types";
-import { create_text_keyword_matcher, type TextKeywordMatcher } from "../text/text-pattern";
+import { create_text_keywords_matcher, type TextKeywordsMatcher } from "../text/text-pattern";
 import type { ProofreadingSortState } from "./list";
 import {
   buildProofreadingEvaluationContext,
@@ -109,19 +109,15 @@ export type ProofreadingWarningQuery = {
   warning_types: ProofreadingWarningCode[];
   statuses?: string[];
   file_paths?: string[];
-  keyword: string;
+  keywords: string[];
   scope: ProofreadingSearchScope;
-  is_regex: boolean;
-  case_sensitive: boolean;
   offset: number;
   limit: number;
 };
 
-// warning 页保留搜索错误，让工具边界统一转换为可读失败。
 export type ProofreadingWarningPage = {
   total_item_count: number;
   items: ProofreadingClientItem[];
-  invalid_regex_message: string | null;
 };
 
 // 筛选面板查询只关心当前筛选条件，不需要窗口信息
@@ -229,14 +225,14 @@ type ProofreadingFilterContext = {
 
 // 单次搜索查询的预编译上下文，普通文本走包含匹配，正则只编译一次
 type ProofreadingSearchContext = {
-  matcher: TextKeywordMatcher; // 由共享文本规则生成的稳定匹配器
+  matcher: TextKeywordsMatcher; // 由共享文本规则生成的稳定匹配器
   scope: ProofreadingSearchScope; // 当前搜索范围：原文、译文或两者
 };
 
 // 内部公共查询形状允许 GUI 完整筛选和 Agent 部分筛选共用一次解析。
 type ProofreadingItemsReadQuery = {
   filters: Partial<ProofreadingFilterOptions>;
-  keyword: string;
+  keywords: string[];
   scope: ProofreadingSearchScope;
   is_regex: boolean;
   case_sensitive: boolean;
@@ -375,14 +371,14 @@ function create_proofreading_filter_context(args: {
  * 搜索上下文统一使用共享文本规则，普通关键字不再为每个候选文本创建 RegExp
  */
 function create_proofreading_search_context(args: {
-  keyword: string;
+  keywords: string[];
   is_regex: boolean;
   scope: ProofreadingSearchScope;
   case_sensitive: boolean;
 }): ProofreadingSearchContext {
   return {
-    matcher: create_text_keyword_matcher({
-      keyword: args.keyword,
+    matcher: create_text_keywords_matcher({
+      keywords: args.keywords,
       is_regex: args.is_regex,
       case_sensitive: args.case_sensitive,
     }),
@@ -451,7 +447,7 @@ function matches_proofreading_search_scope(args: {
   item: ProofreadingClientItem;
   search_context: ProofreadingSearchContext;
 }): boolean {
-  if (args.search_context.matcher.invalid_regex_message !== null) {
+  if (args.search_context.matcher.invalid_regex !== null) {
     return true;
   }
 
@@ -1000,7 +996,7 @@ function resolve_proofreading_items(
 ): ResolvedProofreadingItems {
   const filter_context = create_proofreading_filter_context({ filters: query.filters });
   const search_context = create_proofreading_search_context({
-    keyword: query.keyword,
+    keywords: query.keywords,
     is_regex: query.is_regex,
     scope: query.scope,
     case_sensitive: query.case_sensitive,
@@ -1010,7 +1006,7 @@ function resolve_proofreading_items(
       collect_visible_items_in_natural_order({ state, filter_context, search_context }),
       query.sort_state,
     ),
-    invalid_regex_message: search_context.matcher.invalid_regex_message,
+    invalid_regex_message: search_context.matcher.invalid_regex?.message ?? null,
   };
 }
 
@@ -1155,7 +1151,7 @@ export function createProofreadingReader() {
       });
       const resolved = resolve_proofreading_items(state, {
         filters,
-        keyword: query.keyword,
+        keywords: [query.keyword],
         is_regex: query.is_regex,
         scope: query.scope,
         case_sensitive: false,
@@ -1194,7 +1190,7 @@ export function createProofreadingReader() {
     /** 读取真实 warning 分页，不创建、替换或推进 GUI 视图。 */
     read_warning_page(query: ProofreadingWarningQuery): ProofreadingWarningPage {
       if (state === null) {
-        return { total_item_count: 0, items: [], invalid_regex_message: null };
+        return { total_item_count: 0, items: [] };
       }
 
       const resolved = resolve_proofreading_items(state, {
@@ -1203,10 +1199,10 @@ export function createProofreadingReader() {
           ...(query.statuses === undefined ? {} : { statuses: query.statuses }),
           ...(query.file_paths === undefined ? {} : { file_paths: query.file_paths }),
         },
-        keyword: query.keyword,
+        keywords: query.keywords,
         scope: query.scope,
-        is_regex: query.is_regex,
-        case_sensitive: query.case_sensitive,
+        is_regex: false,
+        case_sensitive: false,
         sort_state: null,
       });
       const bounds = normalize_window_bounds({
@@ -1217,7 +1213,6 @@ export function createProofreadingReader() {
       return {
         total_item_count: resolved.items.length,
         items: resolved.items.slice(bounds.start, bounds.start + bounds.count),
-        invalid_regex_message: resolved.invalid_regex_message,
       };
     },
     /**
