@@ -149,10 +149,8 @@ describe("ProofreadingCache", () => {
     const context = await cache.context({ row_id: "1" });
     const warnings = await cache.warnings({
       warning_types: [...PROOFREADING_WARNING_CODES],
-      keyword: "",
+      keywords: [],
       scope: "all",
-      is_regex: false,
-      case_sensitive: false,
       offset: 0,
       limit: 20,
     });
@@ -343,10 +341,8 @@ describe("ProofreadingCache", () => {
     const rows = await cache.itemsByRowIds({ row_ids: ["1"] });
     const warnings = await cache.warnings({
       warning_types: [...PROOFREADING_WARNING_CODES],
-      keyword: "",
+      keywords: [],
       scope: "all",
-      is_regex: false,
-      case_sensitive: false,
       offset: 0,
       limit: 20,
     });

@@ -26,12 +26,13 @@
 
 ## 4. 产品工具与宿主能力
 
-- 产品 JSON 工具统一由 `agent-tool` 生成同源的模型正文与 `details`；TypeBox Schema 独占结构、必填、枚举与集合约束，`AgentToolError` 只表达模型可修正的领域错误。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地化应用诊断。
+- 产品 JSON 工具统一由 `agent-tool` 生成同源的模型正文与 `details`；TypeBox Schema 独占结构、必填、枚举与载荷上限。只读查询的可选集合省略或为空时均不限制对应维度，非空时在执行边界按首次出现顺序去重；可选写操作数组省略或为空时均不执行该类操作，写操作的重复目标与“没有任何真实操作”仍由领域校验拒绝。`AgentToolError` 只表达模型可修正的领域错误。受控 `AppError` 只投影稳定 `code` 与公开字段，未知执行异常对模型固定为 `{ "code": "tool_failed" }`，原始异常只进入本地化应用诊断。
 - SDK 的 `tool_execution_start/end` 是完整持久化调用记录的唯一来源，覆盖参数校验失败、未知工具、成功和执行异常；start 保存完整输入，SDK 产生终态时 end 保存完整最终结果与错误标记。stop 后的合法终帧仍记录，reset / dispose 在终帧前解除订阅时不伪造 end，单独的 start 即表示调用未完成；公开时间线协议不承载完整参数或结构化错误。
-- 产品工具只从当前设置、cache 与领域 query 读取事实；写入经对应服务的 Agent 专用入口复用 [`BACKEND.md`](BACKEND.md) 的 revision、事务和项目事件边界。模型可见结果不暴露绝对 `projectPath`，item 与 warning 查询携带依赖 section revisions，quality 写入只使用拉平的 `revision` / `expected_revision`，glossary 查询另返回派生统计依赖的 `item_revision`；写工具以 `applied | unchanged` 和紧凑变更身份表达权威结果，成功后不为确认重复查询完整事实。
-- 质量规则工具统一查询和原子更新；查询不返回启用状态或文本保护模式，可用精确 `srcs` 缩小条目范围。模型通过 `write`、`delete`、`move` 表达差异，后端按 `entry_id` 决定创建或更新，并在提交前拒绝新增或扩大的重复组。业务校验失败不写入，revision 冲突返回当前 revision 和重新查询动作，成功回执携带提交后的 quality revision。
-- `query_items` 只从基础 item cache 组合 ID、状态、文件与单一文本搜索并返回分页；`query_warning_items` 复用当前校对评估运行态，只返回具有真实 warning 的条目与证据且不创建或替换 GUI 列表视图；`update_items` 接收由必填 `item_id`、`field` 和 `value` 组成的单字段 `write`，在 Agent 边界按 item 聚合后与 GUI 共用译文、译名和人工状态的字段更新核心，并以实际更新 ID 与提交后双 revision 确认结果，不回传更新后正文。`query_project_meta` 按需读取当前权威源语言和目标语言。
-- `query_quality_rules(glossary)` 复用一次 `quality_statistics` compute task 返回每条术语的覆盖 item 数、完整包含父项和最多两个有效语境 sample；sample 由单次确定性采样选择索引，再从统计启动前捕获的同一 item 快照投影最小正文。筛选查询只统计目标术语但仍以完整术语表计算包含关系，后续 `query_items` 分别以 quality / item revision 相等作为规则与原文的一致性边界，不另建 Agent 统计缓存或正文重扫。
+- 产品工具只从当前设置、cache 与领域 query 读取事实；写入经对应服务的 Agent 专用入口复用 [`BACKEND.md`](BACKEND.md) 的 revision、事务和项目事件边界。模型可见结果不暴露绝对 `projectPath`，item 与 warning 查询统一返回 `revisions: { items, proofreading }`，item 写入使用同形的 `expected_revisions`，quality 写入只使用拉平的 `revision` / `expected_revision`，glossary 查询另返回派生统计依赖的 `item_revision`；写工具以 `applied | unchanged` 和紧凑变更身份表达权威结果，成功后不为确认重复查询完整事实。
+- 产品 Agent 的 item、warning 与 quality 查询统一以 `search.keywords` 表达文本搜索：省略或空数组不搜索，非空关键词经 NFKC 归一后忽略大小写，按 OR 做字面量包含匹配，正则和通配符没有特殊含义；item 与 warning 另以 scope 选择原文、译文或两者，quality 固定搜索规则 src。
+- 质量规则工具统一查询和原子更新；查询不返回启用状态或文本保护模式。后端按稳定条目 ID 决定创建或更新，并在提交前拒绝新增或扩大的重复组。业务校验失败不写入，revision 冲突返回当前 revision 和重新查询动作，成功回执携带提交后的 quality revision。
+- `query_items` 和 `query_warning_items` 组合结构化精确过滤与文本搜索，结果完整性由分页决定。`query_items` 只从基础 item cache 查询，并返回关键词命中归因；item 查询返回身份、正文、可见姓名、定位、状态和重试事实，且只在未完成分页时携带 `cursor`。`query_warning_items` 复用相同搜索协议、基础投影和当前校对评估运行态，只附加真实 warning 证据且不创建或替换 GUI 列表视图；`update_items` 在 Agent 边界按 item 聚合单字段写入后与 GUI 共用译文、译名和人工状态的字段更新核心，并以实际更新 ID 与提交后双 revision 确认结果，不回传更新后正文。`query_project_meta` 按需读取当前权威源语言和目标语言。
+- `query_quality_rules(glossary)` 返回平铺术语、覆盖 item 数、最多两个纯文本语境 sample，以及包含单例的稳定 `entry_id` 审校分组；搜索查询以 src 直接命中的条目为 `target_entry_ids`，展开其完整分组后只统计这些组。分组只表达共同审校范围，不表示语义等价，不传递扩张，也不持久化图或建立 Agent 缓存。sample 由单次确定性采样选择索引，再从统计启动前捕获的同一 item 快照投影最小正文，姓名存在时使用 `【name_src】src`；后续 `query_items` 以 glossary 的 `item_revision` 与 item 查询的 `revisions.items` 相等作为原文快照边界。
 - `web_fetch({ url })` 仅在 GUI 宿主能力可用时注册，CLI 不提供假实现。Electron main 复用默认 session 的 Chromium 网络栈逐跳限制 HTTP(S)、DNS/IP、重定向、超时和响应字节，只经 main 与 Backend Runtime 的私有宿主协议返回有限字节与原始 Content-Type；Backend 将 HTML / XHTML 经本地 Defuddle、其它受支持文本按 MIME 和 charset 归一为带不可信边界的 Markdown，二进制、无有效正文和不支持的 MIME 明确失败。
 
 ## 5. 前端消费

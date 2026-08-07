@@ -1,6 +1,10 @@
 import type { ItemTextGroup } from "../item-text";
 import { compile_literal_patterns, type TextRange } from "../text/literal-matcher";
 import { compile_text_pattern, matches_text_pattern } from "../text/text-pattern";
+import {
+  find_quality_rule_subset_parents,
+  type QualityRuleRelationCandidate,
+} from "./quality-rule-relations";
 
 const LITERAL_CONTEXT_CHARACTER_PATTERN = /[\p{L}\p{N}]/u;
 
@@ -9,12 +13,6 @@ export type QualityStatisticsRuleInput = {
   pattern: string; // 已通过真实编译校验的规则文本
   pattern_kind: "literal" | "regex"; // 决定共享 matcher 或独立正则路径
   case_sensitive: boolean; // 匹配大小写策略
-};
-
-export type QualityStatisticsRelationCandidate = {
-  entry_id: string; // 与统计规则共享的结果键
-  src: string; // 仅字面量规则参与父子包含关系
-  case_sensitive: boolean; // 包含关系复用该规则真实的大小写策略
 };
 
 type QualityStatisticsDependencyRuleSnapshot = {
@@ -34,7 +32,7 @@ export type QualityStatisticsDependencySnapshot = {
 export type QualityStatisticsTaskInput = {
   rules: QualityStatisticsRuleInput[]; // 主线程完成归一后交给 worker 的规则
   text_groups: ItemTextGroup[]; // 每个 item 的 src/name_src 或 dst/name_dst 字段组
-  relation_candidates: QualityStatisticsRelationCandidate[]; // 仅需计算包含关系的字面量规则
+  relation_candidates: QualityRuleRelationCandidate[]; // 仅需计算包含关系的字面量规则
   collect_context_samples?: boolean; // Agent glossary 查询才收集有限代表语境
 };
 
@@ -83,7 +81,7 @@ export function run_quality_statistics_task_sync(
   );
   assign_regex_counts(input.rules, input.text_groups, results);
 
-  const subset_parents = build_subset_relation_map(input.relation_candidates);
+  const subset_parents = find_quality_rule_subset_parents(input.relation_candidates);
   for (const [entry_id, parents] of Object.entries(subset_parents)) {
     const result = results[entry_id];
     if (result !== undefined) result.subset_parents = parents;
@@ -132,13 +130,15 @@ function assign_literal_counts(
         ? undefined
         : new Map<string, Map<number, TextRange[]>>();
     for (const [part_index, part] of text_group.entries()) {
-      for (const match of matcher.match(part.text)) {
-        matched_entry_ids.add(match.key);
-        if (ranges_by_entry_id === undefined) continue;
-        const part_ranges = ranges_by_entry_id.get(match.key) ?? new Map<number, TextRange[]>();
-        part_ranges.set(part_index, match.ranges);
-        ranges_by_entry_id.set(match.key, part_ranges);
-      }
+      matcher.scan(part.text, (entry_id, range) => {
+        matched_entry_ids.add(entry_id);
+        if (ranges_by_entry_id === undefined) return;
+        const part_ranges = ranges_by_entry_id.get(entry_id) ?? new Map<number, TextRange[]>();
+        const ranges = part_ranges.get(part_index) ?? [];
+        ranges.push(range);
+        part_ranges.set(part_index, ranges);
+        ranges_by_entry_id.set(entry_id, part_ranges);
+      });
     }
     for (const entry_id of matched_entry_ids) {
       const result = results[entry_id];
@@ -232,32 +232,4 @@ function assign_regex_counts(
       }
     }
   }
-}
-
-/** 包含关系只比较显式字面量候选，并按父文本首次出现顺序输出。 */
-function build_subset_relation_map(
-  candidates: QualityStatisticsRelationCandidate[],
-): Record<string, string[]> {
-  const matcher = compile_literal_patterns(
-    candidates.map((candidate) => ({
-      key: candidate.entry_id,
-      text: candidate.src,
-      case_sensitive: candidate.case_sensitive,
-    })),
-  );
-  const result: Record<string, string[]> = {};
-  const candidate_by_entry_id = new Map(
-    candidates.map((candidate) => [candidate.entry_id, candidate] as const),
-  );
-  for (const parent of candidates) {
-    for (const match of matcher.match(parent.src)) {
-      const child = candidate_by_entry_id.get(match.key);
-      if (child === undefined || child.entry_id === parent.entry_id) continue;
-      if (!match.ranges.some((range) => range.start > 0 || range.end < parent.src.length)) continue;
-      const parents = result[child.entry_id] ?? [];
-      if (!parents.includes(parent.src)) parents.push(parent.src);
-      result[child.entry_id] = parents;
-    }
-  }
-  return result;
 }

@@ -142,10 +142,8 @@ describe("proofreading-reader", () => {
 
     const first_page = service.read_warning_page({
       warning_types: [...PROOFREADING_WARNING_CODES],
-      keyword: "",
+      keywords: [],
       scope: "all",
-      is_regex: false,
-      case_sensitive: false,
       offset: 0,
       limit: 2,
     });
@@ -165,10 +163,8 @@ describe("proofreading-reader", () => {
       warning_types: ["GLOSSARY", "KANA"],
       statuses: ["PROCESSED"],
       file_paths: ["b.txt"],
-      keyword: "magic",
+      keywords: ["magic"],
       scope: "src",
-      is_regex: false,
-      case_sensitive: false,
       offset: 0,
       limit: 10,
     });
@@ -179,16 +175,16 @@ describe("proofreading-reader", () => {
       warning_fragments_by_code: { KANA: ["カナ"] },
     });
     expect(
-      service.read_warning_page({
-        warning_types: ["GLOSSARY"],
-        keyword: "targetname",
-        scope: "dst",
-        is_regex: false,
-        case_sensitive: true,
-        offset: 0,
-        limit: 10,
-      }).items,
-    ).toEqual([]);
+      service
+        .read_warning_page({
+          warning_types: ["GLOSSARY"],
+          keywords: ["targetname"],
+          scope: "dst",
+          offset: 0,
+          limit: 10,
+        })
+        .items.map((item) => item.item_id),
+    ).toEqual([2]);
 
     expect(
       service.read_list_window({ view_id: first_view.view_id, start: 0, count: 10 }).rows,
@@ -208,19 +204,17 @@ describe("proofreading-reader", () => {
     expect(second_view.view_id).toMatch(/:2$/u);
   });
 
-  it("warning 分页保留非法正则信息且未同步时返回空页", () => {
+  it("warning 分页把搜索元字符视为普通文本且未同步时返回空页", () => {
     const empty_service = createProofreadingReader();
     expect(
       empty_service.read_warning_page({
         warning_types: [...PROOFREADING_WARNING_CODES],
-        keyword: "",
+        keywords: [],
         scope: "all",
-        is_regex: false,
-        case_sensitive: false,
         offset: 0,
         limit: 20,
       }),
-    ).toEqual({ total_item_count: 0, items: [], invalid_regex_message: null });
+    ).toEqual({ total_item_count: 0, items: [] });
 
     const service = createProofreadingReader();
     sync_full(service, {
@@ -229,18 +223,17 @@ describe("proofreading-reader", () => {
       total_item_count: 1,
       processingConfig: create_processing_config(),
       quality: create_quality(),
-      upsertItems: [create_item({ item_id: 1, src: "HP", dst: "普通译文", status: "PROCESSED" })],
+      upsertItems: [
+        create_item({ item_id: 1, src: "HP (测试)", dst: "普通译文", status: "PROCESSED" }),
+      ],
     });
     const page = service.read_warning_page({
       warning_types: [...PROOFREADING_WARNING_CODES],
-      keyword: "(",
+      keywords: ["("],
       scope: "all",
-      is_regex: true,
-      case_sensitive: false,
       offset: 0,
       limit: 20,
     });
-    expect(page.invalid_regex_message).toContain("Invalid regular expression");
     expect(page.items.map((item) => item.item_id)).toEqual([1]);
   });
 

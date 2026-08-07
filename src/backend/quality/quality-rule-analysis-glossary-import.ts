@@ -9,9 +9,9 @@ import {
 } from "../../shared/analysis-candidate";
 import {
   run_quality_statistics_task_sync,
-  type QualityStatisticsRelationCandidate,
   type QualityStatisticsRuleInput,
 } from "../../shared/quality/quality-statistics";
+import type { QualityRuleRelationCandidate } from "../../shared/quality/quality-rule-relations";
 import { read_item_source_text_parts } from "../../shared/item-text";
 import {
   QualityRuleImportRuleTypeValue,
@@ -189,7 +189,7 @@ function filter_import_candidates(args: {
       case_sensitive: entry.case_sensitive,
     };
   });
-  const relation_candidates: QualityStatisticsRelationCandidate[] = merged_entries.map((entry) => {
+  const relation_candidates: QualityRuleRelationCandidate[] = merged_entries.map((entry) => {
     return {
       entry_id: build_glossary_stat_key(entry),
       src: entry.src,

@@ -322,13 +322,13 @@ function create_fake_response(context: Context): FauxResponseStep {
   }
   if (fake_agent_state.mode === "tool_only") {
     return fauxAssistantMessage(
-      fauxToolCall("query_items", { search: { keyword: "Alice" } }, { id: "tool-only" }),
+      fauxToolCall("query_items", { search: { keywords: ["Alice"] } }, { id: "tool-only" }),
       { stopReason: "toolUse" },
     );
   }
   if (fake_agent_state.mode === "invalid_tool") {
     return fauxAssistantMessage(
-      fauxToolCall("query_items", { search: { keyword: "  " } }, { id: "schema-invalid" }),
+      fauxToolCall("query_items", { search: { keywords: ["  "] } }, { id: "schema-invalid" }),
       { stopReason: "toolUse" },
     );
   }
@@ -336,7 +336,7 @@ function create_fake_response(context: Context): FauxResponseStep {
     return fauxAssistantMessage(
       [
         fauxText("准备查询"),
-        fauxToolCall("query_items", { search: { keyword: "Alice" } }, { id: "tool-1" }),
+        fauxToolCall("query_items", { search: { keywords: ["Alice"] } }, { id: "tool-1" }),
         fauxToolCall(
           "read_skill",
           { path: "E:/skills/glossary-audit/references/audit-standard.md" },

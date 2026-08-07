@@ -62,7 +62,7 @@ function create_proofreading(
         vi.fn<AgentProofreading["query"]["query_warnings"]>(async () => ({
           projectPath: "test.lg",
           sectionRevisions: { items: 2, proofreading: 3 },
-          data: { total_item_count: 0, items: [], invalid_regex_message: null },
+          data: { total_item_count: 0, items: [] },
         })),
     },
     commands: {
@@ -123,34 +123,38 @@ describe("Agent item 工具", () => {
       name: "update_items",
       arguments: {
         write: [{ item_id: 1, field: "dst", value: "新译文" }],
-        expected_section_revisions: revisions,
+        expected_revisions: revisions,
       },
     };
     expect(validateToolArguments(update_tool, write_call)).toEqual(write_call.arguments);
     for (const arguments_ of [
       {
         patches: [{ item_id: 1, dst: "旧协议" }],
+        expected_revisions: revisions,
+      },
+      {
+        write: [{ item_id: 1, field: "dst", value: "旧 revision 字段" }],
         expected_section_revisions: revisions,
       },
       {
         write: [{ item_id: 1, value: "缺少字段" }],
-        expected_section_revisions: revisions,
+        expected_revisions: revisions,
       },
       {
         write: [{ item_id: 1, field: "dst" }],
-        expected_section_revisions: revisions,
+        expected_revisions: revisions,
       },
       {
         write: [{ item_id: 1, field: "src", value: "不可写字段" }],
-        expected_section_revisions: revisions,
+        expected_revisions: revisions,
       },
       {
         write: [{ item_id: 1, field: "dst", value: "新译文", status: "PROCESSED" }],
-        expected_section_revisions: revisions,
+        expected_revisions: revisions,
       },
       {
         write: [{ item_id: Number.MAX_SAFE_INTEGER + 1, field: "dst", value: "越界 ID" }],
-        expected_section_revisions: revisions,
+        expected_revisions: revisions,
       },
     ]) {
       expect(() =>
@@ -163,13 +167,15 @@ describe("Agent item 工具", () => {
     }
 
     for (const [tool, arguments_] of [
-      [query_tool, { search: { keyword: "  " } }],
+      [query_tool, { search: { keywords: ["  "] } }],
+      [query_tool, { search: { keyword: "旧协议" } }],
+      [query_tool, { search: { keywords: ["A"], case_sensitive: true } }],
+      [query_tool, { search: { keywords: ["A"], is_regex: true } }],
       [query_tool, { cursor: "-1" }],
       [query_tool, { filters: { item_ids: [Number.MAX_SAFE_INTEGER + 1] } }],
-      [query_tool, { filters: { item_ids: [] } }],
       [query_tool, { nope: true }],
       [warning_tool, { filters: { warning_types: ["NO_WARNING"] } }],
-      [warning_tool, { filters: { warning_types: ["KANA", "KANA"] } }],
+      [warning_tool, { search: { keywords: ["A"], is_regex: true } }],
       [warning_tool, { limit: 101 }],
     ] as const) {
       expect(() =>
@@ -181,11 +187,70 @@ describe("Agent item 工具", () => {
         }),
       ).toThrow();
     }
+
+    for (const [tool, arguments_] of [
+      [query_tool, {}],
+      [warning_tool, {}],
+      [query_tool, { filters: {} }],
+      [warning_tool, { filters: {} }],
+      [
+        query_tool,
+        {
+          filters: { item_ids: [], statuses: [], file_paths: [] },
+          search: { keywords: [] },
+          cursor: "0",
+        },
+      ],
+      [
+        warning_tool,
+        {
+          filters: { warning_types: [], statuses: [], file_paths: [] },
+          search: { keywords: [] },
+          cursor: "0",
+        },
+      ],
+      [
+        query_tool,
+        {
+          filters: {
+            item_ids: [1, 1],
+            statuses: ["NONE", "NONE"],
+            file_paths: ["script.txt", "script.txt"],
+          },
+          search: { keywords: ["リ", "リ"], scope: "src" },
+        },
+      ],
+      [
+        warning_tool,
+        {
+          filters: {
+            warning_types: ["KANA", "KANA"],
+            statuses: ["NONE", "NONE"],
+            file_paths: ["script.txt", "script.txt"],
+          },
+          search: { keywords: ["リ", "リ"], scope: "src" },
+        },
+      ],
+    ] as const) {
+      expect(
+        validateToolArguments(tool, {
+          type: "toolCall",
+          id: "duplicate-query-values",
+          name: tool.name,
+          arguments: arguments_,
+        }),
+      ).toEqual(arguments_);
+    }
   });
 
   it("组合筛选、统计与分页，并保持 ID 请求顺序和窄投影", () => {
     const values = [
-      create_item(2, { status: "PROCESSED", file_path: "a.txt" }),
+      create_item(2, {
+        status: "PROCESSED",
+        file_path: "a.txt",
+        name_src: ["Alice", "meta"],
+        name_dst: ["艾丽丝", "meta"],
+      }),
       create_item(1, { status: "NONE", file_path: "b.txt" }),
       create_item(3, { status: "PROCESSED", file_path: "a.txt" }),
     ];
@@ -200,64 +265,102 @@ describe("Agent item 工具", () => {
       filters: { statuses: ["PROCESSED"], file_paths: ["a.txt"] },
       limit: 1,
     });
-    expect(page).toMatchObject({
-      sectionRevisions: { items: 2, proofreading: 3 },
+    expect(page).toEqual({
+      revisions: { items: 2, proofreading: 3 },
       total_item_count: 2,
+      items: [
+        {
+          item_id: 2,
+          src: "原文 2",
+          dst: "译文 2",
+          name_src: "Alice",
+          name_dst: "艾丽丝",
+          row_number: 2,
+          file_path: "a.txt",
+          status: "PROCESSED",
+          retry_count: 2,
+        },
+      ],
       cursor: "1",
-      complete: false,
     });
-    expect(page).not.toHaveProperty("projectPath");
-    expect(page["items"]).toMatchObject([{ item_id: 2, retry_count: 2 }]);
-    expect((page["items"] as JsonRecord[])[0]).not.toHaveProperty("extra_field");
-    expect((page["items"] as JsonRecord[])[0]).not.toHaveProperty("skip_internal_filter");
 
     const ids = query_agent_items(cache, {
-      filters: { item_ids: [3, 404, 2], statuses: ["PROCESSED"] },
+      filters: { item_ids: [3, 404, 2, 3], statuses: ["PROCESSED"] },
     });
-    expect((ids["items"] as JsonRecord[]).map((item) => item["item_id"])).toEqual([3, 2]);
-    expect(ids).toMatchObject({ total_item_count: 2, missing_item_ids: [404], complete: true });
+    expect(ids).toEqual({
+      revisions: { items: 2, proofreading: 3 },
+      total_item_count: 2,
+      items: [
+        {
+          item_id: 3,
+          src: "原文 3",
+          dst: "译文 3",
+          row_number: 3,
+          file_path: "a.txt",
+          status: "PROCESSED",
+          retry_count: 3,
+        },
+        {
+          item_id: 2,
+          src: "原文 2",
+          dst: "译文 2",
+          name_src: "Alice",
+          name_dst: "艾丽丝",
+          row_number: 2,
+          file_path: "a.txt",
+          status: "PROCESSED",
+          retry_count: 2,
+        },
+      ],
+    });
+
+    expect(
+      query_agent_items(cache, {
+        filters: { item_ids: [], statuses: [], file_paths: [] },
+        search: { keywords: [] },
+        cursor: "0",
+      }),
+    ).toEqual(query_agent_items(cache, {}));
 
     const beyond = query_agent_items(cache, { cursor: "99" });
-    expect(beyond).toMatchObject({ items: [], cursor: null, complete: true });
+    expect(beyond).toEqual({
+      revisions: { items: 2, proofreading: 3 },
+      total_item_count: 3,
+      items: [],
+    });
   });
 
-  it("按 src/dst/all 搜索正文与姓名，并支持 literal、regex 和大小写", () => {
+  it("按 src/dst/all 对多个关键词做 OR 搜索并返回命中归因", () => {
     const cache = create_cache(() => [
       create_item(1, { src: "Alpha", name_src: "ALICE", dst: "Beta", name_dst: "贝塔" }),
       create_item(2, { src: "beta", dst: "alpha", name_dst: "ALPHA" }),
+      create_item(3, { src: "^Alpha$", dst: "literal" }),
     ]);
 
     expect(
       (
         query_agent_items(cache, {
-          search: { keyword: "alice", scope: "src" },
+          search: { keywords: ["alice", "ALICE", "beta", "beta"], scope: "src" },
         })["items"] as JsonRecord[]
-      ).map((item) => item["item_id"]),
-    ).toEqual([1]);
+      ).map((item) => [item["item_id"], item["matched_keywords"]]),
+    ).toEqual([
+      [1, ["alice"]],
+      [2, ["beta"]],
+    ]);
     expect(
       (
         query_agent_items(cache, {
-          search: { keyword: "^alpha$", scope: "dst", is_regex: true, case_sensitive: true },
+          search: { keywords: ["^alpha$"], scope: "src" },
         })["items"] as JsonRecord[]
-      ).map((item) => item["item_id"]),
-    ).toEqual([2]);
+      ).map((item) => [item["item_id"], item["matched_keywords"]]),
+    ).toEqual([[3, ["^alpha$"]]]);
     expect(
       (
         query_agent_items(cache, {
-          search: { keyword: "beta", scope: "all" },
+          search: { keywords: ["beta"], scope: "all" },
         })["items"] as JsonRecord[]
       ).map((item) => item["item_id"]),
     ).toEqual([1, 2]);
-    let error: unknown;
-    try {
-      query_agent_items(cache, { search: { keyword: "(", is_regex: true } });
-    } catch (cause) {
-      error = cause;
-    }
-    expect(error).toMatchObject({
-      details: { code: "item.invalid_search_regex", path: "search.keyword" },
-    });
-
     expect(() => query_agent_items(cache, { cursor: "9007199254740992" })).toThrow(
       "item.invalid_cursor",
     );
@@ -301,7 +404,6 @@ describe("Agent item 工具", () => {
                   extra_field: { private: true },
                 },
               ],
-        invalid_regex_message: null,
       },
     }));
     const tools = create_agent_item_tools({
@@ -314,8 +416,11 @@ describe("Agent item 工具", () => {
     const result = await tool.execute(
       "warnings",
       {
-        filters: { statuses: ["PROCESSED"], file_paths: ["script.txt"] },
-        search: { keyword: "hp", scope: "src", case_sensitive: false },
+        filters: {
+          statuses: ["PROCESSED", "PROCESSED"],
+          file_paths: ["script.txt", "script.txt"],
+        },
+        search: { keywords: ["hp", "HP"], scope: "src" },
         cursor: "2",
         limit: 5,
       },
@@ -335,34 +440,67 @@ describe("Agent item 工具", () => {
       ],
       statuses: ["PROCESSED"],
       file_paths: ["script.txt"],
-      keyword: "hp",
+      keywords: ["hp"],
       scope: "src",
-      is_regex: false,
-      case_sensitive: false,
       offset: 2,
       limit: 5,
     });
-    expect(result.details).toMatchObject({
-      sectionRevisions: { files: 1, items: 2, quality: 3, proofreading: 4 },
+    expect(result.details).toEqual({
+      revisions: { items: 2, proofreading: 4 },
       total_item_count: 4,
       cursor: "3",
-      complete: false,
       items: [
         {
           item_id: 7,
+          file_path: "script.txt",
+          row_number: 9,
+          src: "HP",
+          dst: "カナ",
+          name_src: "Alice",
+          name_dst: "艾丽丝",
+          status: "PROCESSED",
+          retry_count: 2,
           warnings: ["KANA", "GLOSSARY"],
           warning_fragments_by_code: { KANA: ["カナ"] },
-          glossary_applications: [{ entry_id: "HP::0" }],
+          glossary_applications: [
+            {
+              entry_id: "HP::0",
+              src: "HP",
+              dst: "生命值",
+              case_sensitive: false,
+              fields: [{ source_field: "src", target_field: "dst", applied: false }],
+            },
+          ],
         },
       ],
     });
-    expect(result.details).not.toHaveProperty("projectPath");
-    const item = ((result.details as JsonRecord)["items"] as JsonRecord[])[0];
-    expect(item).not.toHaveProperty("row_id");
-    expect(item).not.toHaveProperty("compressed_src");
-    expect(item).not.toHaveProperty("compressed_dst");
-    expect(item).not.toHaveProperty("internal_file_path");
-    expect(item).not.toHaveProperty("extra_field");
+
+    query_warnings.mockClear();
+    await tool.execute(
+      "empty-query",
+      {
+        filters: { warning_types: [], statuses: [], file_paths: [] },
+        search: { keywords: [] },
+        cursor: "0",
+      },
+      undefined,
+      undefined,
+      undefined as never,
+    );
+    expect(query_warnings).toHaveBeenCalledWith({
+      warning_types: [
+        "KANA",
+        "HANGEUL",
+        "TEXT_PRESERVE",
+        "SIMILARITY",
+        "GLOSSARY",
+        "RETRY_THRESHOLD",
+      ],
+      keywords: [],
+      scope: "all",
+      offset: 0,
+      limit: 20,
+    });
 
     const beyond = await tool.execute(
       "beyond",
@@ -371,30 +509,10 @@ describe("Agent item 工具", () => {
       undefined,
       undefined as never,
     );
-    expect(beyond.details).toMatchObject({ items: [], cursor: null, complete: true });
-  });
-
-  it("query_warning_items 把领域正则错误返回为稳定业务字段", async () => {
-    const query_warnings = vi.fn<AgentProofreading["query"]["query_warnings"]>(async () => ({
-      projectPath: "test.lg",
-      sectionRevisions: { items: 2, proofreading: 3 },
-      data: {
-        total_item_count: 1,
-        items: [],
-        invalid_regex_message: "Invalid regular expression",
-      },
-    }));
-    const tools = create_agent_item_tools({
-      cache: create_cache(() => []),
-      proofreading: create_proofreading({ query_warnings }),
-    });
-    const tool = tools.find((candidate) => candidate.name === "query_warning_items");
-    if (tool === undefined) throw new Error("缺少 query_warning_items");
-    const execute = async (params: unknown) =>
-      tool.execute("invalid", params as never, undefined, undefined, undefined as never);
-
-    await expect(execute({ search: { keyword: "(", is_regex: true } })).rejects.toMatchObject({
-      details: { code: "item.invalid_search_regex", path: "search.keyword" },
+    expect(beyond.details).toEqual({
+      revisions: { items: 2, proofreading: 4 },
+      total_item_count: 4,
+      items: [],
     });
   });
 
@@ -405,7 +523,7 @@ describe("Agent item 工具", () => {
       return {
         projectPath: "test.lg",
         sectionRevisions: {},
-        data: { total_item_count: 0, items: [], invalid_regex_message: null },
+        data: { total_item_count: 0, items: [] },
       };
     });
     const tool = create_agent_item_tools({
@@ -448,7 +566,7 @@ describe("Agent item 工具", () => {
         { item_id: 2, field: "status" as const, value: "EXCLUDED" },
         { item_id: 1, field: "dst" as const, value: "一号译文" },
       ],
-      expected_section_revisions: { items: 2, proofreading: 3 },
+      expected_revisions: { items: 2, proofreading: 3 },
     };
 
     const result = await tool.execute("update", request, undefined, undefined, undefined as never);
@@ -458,17 +576,15 @@ describe("Agent item 工具", () => {
           { item_id: 2, name_dst: "", status: "EXCLUDED" },
           { item_id: 1, dst: "一号译文" },
         ],
-        expected_section_revisions: request.expected_section_revisions,
+        expected_section_revisions: request.expected_revisions,
       },
       AGENT_PROOFREADING_UPDATE_SOURCE,
     );
-    expect(result.details).toMatchObject({
+    expect(result.details).toEqual({
       status: "applied",
-      sectionRevisions: { items: 3, proofreading: 4 },
+      revisions: { items: 3, proofreading: 4 },
       updated: [2, 1],
     });
-    expect(result.details).not.toHaveProperty("updated_items");
-    expect(result.details).not.toHaveProperty("projectPath");
 
     await expect(
       tool.execute(
@@ -478,7 +594,7 @@ describe("Agent item 工具", () => {
             { item_id: 1, field: "dst", value: "A" },
             { item_id: 1, field: "dst", value: "B" },
           ],
-          expected_section_revisions: revisions,
+          expected_revisions: revisions,
         },
         undefined,
         undefined,
@@ -497,7 +613,7 @@ describe("Agent item 工具", () => {
         "invalid-status",
         {
           write: [{ item_id: 1, field: "status", value: "ERROR" }],
-          expected_section_revisions: revisions,
+          expected_revisions: revisions,
         },
         undefined,
         undefined,
@@ -532,7 +648,7 @@ describe("Agent item 工具", () => {
           field: "dst" as const,
           value: `新译文 ${item_id.toString()}`,
         })),
-        expected_section_revisions: { items: 2, proofreading: 3 },
+        expected_revisions: { items: 2, proofreading: 3 },
       },
       undefined,
       undefined,
@@ -541,7 +657,7 @@ describe("Agent item 工具", () => {
 
     expect(result.details).toEqual({
       status: "applied",
-      sectionRevisions: { items: 3, proofreading: 4 },
+      revisions: { items: 3, proofreading: 4 },
       updated,
     });
   });
@@ -559,7 +675,7 @@ describe("Agent item 工具", () => {
         "unconfirmed",
         {
           write: [{ item_id: 1, field: "dst", value: "新译文" }],
-          expected_section_revisions: { items: 2, proofreading: 3 },
+          expected_revisions: { items: 2, proofreading: 3 },
         },
         undefined,
         undefined,
@@ -579,7 +695,7 @@ describe("Agent item 工具", () => {
       "unchanged",
       {
         write: [{ item_id: 1, field: "dst", value: "既有译文" }],
-        expected_section_revisions: { items: 2, proofreading: 3 },
+        expected_revisions: { items: 2, proofreading: 3 },
       },
       undefined,
       undefined,
@@ -588,7 +704,7 @@ describe("Agent item 工具", () => {
 
     expect(result.details).toEqual({
       status: "unchanged",
-      sectionRevisions: { items: 2, proofreading: 3 },
+      revisions: { items: 2, proofreading: 3 },
     });
   });
 });

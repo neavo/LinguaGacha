@@ -47,7 +47,7 @@ describe("Agent 质量规则工具", () => {
     expect(tools.map((tool) => tool.executionMode)).toEqual([undefined, "sequential"]);
   });
 
-  it("查询参数只接受可选的精确 srcs 筛选", () => {
+  it("查询参数只接受大小写不敏感的字面量关键词搜索", () => {
     const tool = find_tool(
       create_agent_quality_tools({
         qualityRules: {
@@ -67,13 +67,37 @@ describe("Agent 质量规则工具", () => {
         arguments: arguments_,
       });
 
-    expect(validate({ rule_type: "glossary", filters: { srcs: ["白之城"] } })).toEqual({
+    expect(validate({ rule_type: "glossary" })).toEqual({ rule_type: "glossary" });
+    expect(validate({ rule_type: "glossary", search: { keywords: ["白之城"] } })).toEqual({
       rule_type: "glossary",
-      filters: { srcs: ["白之城"] },
+      search: { keywords: ["白之城"] },
     });
-    expect(() => validate({ rule_type: "glossary", filters: { srcs: [] } })).toThrow();
+    expect(
+      validate({
+        rule_type: "glossary",
+        search: { keywords: ["白之城", "白之城"] },
+      }),
+    ).toEqual({
+      rule_type: "glossary",
+      search: { keywords: ["白之城", "白之城"] },
+    });
+    expect(validate({ rule_type: "glossary", search: { keywords: [] } })).toEqual({
+      rule_type: "glossary",
+      search: { keywords: [] },
+    });
+    expect(() => validate({ rule_type: "glossary", filters: { srcs: ["白之城"] } })).toThrow();
+    expect(() => validate({ rule_type: "glossary", search: { keywords: [" "] } })).toThrow();
     expect(() =>
-      validate({ rule_type: "glossary", filters: { srcs: ["白之城"], keyword: "城" } }),
+      validate({
+        rule_type: "glossary",
+        search: { keywords: ["白之城"], is_regex: true },
+      }),
+    ).toThrow();
+    expect(() =>
+      validate({
+        rule_type: "glossary",
+        search: { keywords: ["白之城"], case_sensitive: true },
+      }),
     ).toThrow();
   });
 
@@ -89,7 +113,10 @@ describe("Agent 质量规则工具", () => {
     const revision = { expected_revision: 1 };
     const tool = find_tool(tools, "update_quality_rules");
     const parameters = tool.parameters as JsonRecord;
-    expect(parameters).toMatchObject({ type: "object", additionalProperties: false });
+    expect(parameters).toMatchObject({
+      type: "object",
+      additionalProperties: false,
+    });
     expect(parameters).not.toHaveProperty("anyOf");
     expect(parameters).not.toHaveProperty("oneOf");
     const payloads: JsonRecord[] = [
@@ -102,7 +129,12 @@ describe("Agent 质量规则工具", () => {
           },
           {
             entry_id: "a",
-            entry: { src: "A-1", dst: "乙", info: "名称", case_sensitive: true },
+            entry: {
+              src: "A-1",
+              dst: "乙",
+              info: "名称",
+              case_sensitive: true,
+            },
           },
         ],
         delete: ["b"],
@@ -111,7 +143,13 @@ describe("Agent 质量规则工具", () => {
       },
       {
         rule_type: "pre_replacement",
-        write: [{ entry: { src: "A", dst: "B", regex: false, case_sensitive: false } }],
+        write: [
+          {
+            entry: { src: "A", dst: "B", regex: false, case_sensitive: false },
+          },
+        ],
+        delete: [],
+        move: [],
         ...revision,
       },
       {
@@ -127,6 +165,13 @@ describe("Agent 质量规则工具", () => {
       {
         rule_type: "text_preserve",
         delete: ["keep"],
+        ...revision,
+      },
+      {
+        rule_type: "glossary",
+        write: [],
+        delete: [],
+        move: [],
         ...revision,
       },
     ];
@@ -199,7 +244,13 @@ describe("Agent 质量规则工具", () => {
     await expect(
       find_tool(tools, "update_quality_rules").execute(
         "empty",
-        { rule_type: "glossary", expected_revision: 1 },
+        {
+          rule_type: "glossary",
+          write: [],
+          delete: [],
+          move: [],
+          expected_revision: 1,
+        },
         undefined,
         undefined,
         undefined as never,
@@ -213,7 +264,10 @@ describe("Agent 质量规则工具", () => {
     const tool = find_tool(
       create_agent_quality_tools({
         qualityRules: {
-          query: () => ({ sectionRevisions: { quality: 1 }, qualityRule: { entries: [] } }),
+          query: () => ({
+            sectionRevisions: { quality: 1 },
+            qualityRule: { entries: [] },
+          }),
           update_from_agent: async () => ({ accepted: true, changes: [] }),
         },
         cache: create_cache(),
@@ -255,10 +309,6 @@ describe("Agent 质量规则工具", () => {
   }> = [
     { entries: {}, reason: "quality_rule_stored_entries_invalid" },
     {
-      entries: [{ src: "Alpha", dst: "甲", info: "", case_sensitive: false }],
-      reason: "quality_rule_stored_entry_id_missing",
-    },
-    {
       entries: [stored_entry("same", "Alpha", "甲"), stored_entry("same", "Beta", "乙")],
       reason: "quality_rule_duplicate_entry_id",
     },
@@ -297,6 +347,82 @@ describe("Agent 质量规则工具", () => {
     },
   );
 
+  it("旧工程术语缺少 entry_id 时补稳定身份并正常分组", async () => {
+    const dependencies = {
+      qualityRules: {
+        query: () => ({
+          sectionRevisions: { quality: 1, items: 0 },
+          qualityRule: {
+            entries: [
+              { src: "Alpha", dst: "甲", info: "", case_sensitive: false },
+              {
+                src: "Alpha Knight",
+                dst: "甲骑士",
+                info: "",
+                case_sensitive: false,
+              },
+            ],
+          },
+        }),
+        update_from_agent: vi.fn(),
+      },
+      cache: create_cache(),
+      computeWorker: create_compute_worker(),
+    };
+
+    await expect(
+      query_agent_quality_rules(dependencies, { rule_type: "glossary" }),
+    ).resolves.toMatchObject({
+      entries: [{ entry_id: "Alpha::0" }, { entry_id: "Alpha Knight::1" }],
+      groups: [["Alpha::0", "Alpha Knight::1"]],
+    });
+    await expect(
+      query_agent_quality_rules(dependencies, {
+        rule_type: "glossary",
+        search: { keywords: ["ａｌｐｈａ"] },
+      }),
+    ).resolves.toMatchObject({
+      entries: [{ entry_id: "Alpha::0" }, { entry_id: "Alpha Knight::1" }],
+      target_entry_ids: ["Alpha::0", "Alpha Knight::1"],
+    });
+  });
+
+  it("按潜在公共词根分组，并让包含搜索展开完整组", async () => {
+    const dependencies = {
+      qualityRules: {
+        query: () => ({
+          sectionRevisions: { quality: 1, items: 2 },
+          qualityRule: {
+            entries: [
+              stored_entry("family", "ドトール家", "多托尔家"),
+              stored_entry("earl", "ドトール伯爵家", "多托尔伯爵家"),
+              stored_entry("ghost", "Ghost", "幽灵"),
+            ],
+          },
+        }),
+        update_from_agent: vi.fn(),
+      },
+      cache: create_cache(),
+      computeWorker: create_compute_worker(),
+    };
+
+    await expect(
+      query_agent_quality_rules(dependencies, { rule_type: "glossary" }),
+    ).resolves.toMatchObject({
+      groups: [["family", "earl"], ["ghost"]],
+    });
+    await expect(
+      query_agent_quality_rules(dependencies, {
+        rule_type: "glossary",
+        search: { keywords: ["ドトール伯爵家"] },
+      }),
+    ).resolves.toMatchObject({
+      entries: [{ entry_id: "family" }, { entry_id: "earl" }],
+      groups: [["family", "earl"]],
+      target_entry_ids: ["earl"],
+    });
+  });
+
   it("查询四类规则，并为术语保留派生事实", async () => {
     const rules: Record<string, JsonRecord> = {
       glossary: {
@@ -334,7 +460,9 @@ describe("Agent 质量规则工具", () => {
       computeWorker: create_compute_worker(),
     };
 
-    const pre_replacement = await query_agent_quality_rules(dependencies, "pre_replacement");
+    const pre_replacement = await query_agent_quality_rules(dependencies, {
+      rule_type: "pre_replacement",
+    });
     expect(pre_replacement).toMatchObject({
       rule_type: "pre_replacement",
       revision: 4,
@@ -343,21 +471,31 @@ describe("Agent 质量规则工具", () => {
     expect(pre_replacement).not.toHaveProperty("projectPath");
     expect(pre_replacement).not.toHaveProperty("meta");
     expect(pre_replacement).not.toHaveProperty("item_revision");
-    expect(await query_agent_quality_rules(dependencies, "post_replacement")).toMatchObject({
+    expect(
+      await query_agent_quality_rules(dependencies, { rule_type: "post_replacement" }),
+    ).toMatchObject({
       revision: 4,
       entries: [{ entry_id: "post", regex: true }],
     });
-    expect(await query_agent_quality_rules(dependencies, "text_preserve")).toMatchObject({
+    expect(
+      await query_agent_quality_rules(dependencies, { rule_type: "text_preserve" }),
+    ).toMatchObject({
       revision: 4,
       entries: [{ entry_id: "keep", info: "控制码" }],
     });
 
-    const glossary = await query_agent_quality_rules(dependencies, "glossary");
-    expect(glossary).toMatchObject({ rule_type: "glossary", revision: 4, item_revision: 7 });
+    const glossary = await query_agent_quality_rules(dependencies, { rule_type: "glossary" });
+    expect(glossary.entries).toHaveLength(4);
+    expect(glossary).toMatchObject({
+      rule_type: "glossary",
+      revision: 4,
+      item_revision: 7,
+      groups: [["a", "b", "c"], ["d"]],
+    });
     expect(glossary.entries[0]).toMatchObject({
       matched_item_count: 1,
-      parent_srcs: ["白之城骑士", "白之城港"],
     });
+    expect(glossary.entries[0]).not.toHaveProperty("parent_srcs");
     expect(glossary.entries[3]).toMatchObject({
       matched_item_count: 0,
       samples: [],
@@ -365,24 +503,80 @@ describe("Agent 质量规则工具", () => {
     expect(glossary.entries[0]).not.toHaveProperty("regex");
     expect(glossary).not.toHaveProperty("structure");
 
-    const filtered = await query_agent_quality_rules(dependencies, "glossary", undefined, [
-      "白之城",
-    ]);
-    expect(filtered.entries).toHaveLength(1);
+    await expect(
+      query_agent_quality_rules(dependencies, {
+        rule_type: "glossary",
+        search: { keywords: [] },
+      }),
+    ).resolves.toEqual(glossary);
+
+    const filtered = await query_agent_quality_rules(dependencies, {
+      rule_type: "glossary",
+      search: { keywords: ["白之城", "白之城"] },
+    });
+    expect(filtered.entries).toHaveLength(3);
+    expect(filtered).toMatchObject({
+      groups: [["a", "b", "c"]],
+      target_entry_ids: ["a", "b", "c"],
+    });
     expect(filtered.entries[0]).toMatchObject({
       entry_id: "a",
-      parent_srcs: ["白之城骑士", "白之城港"],
     });
+    expect(filtered.entries.map((entry) => entry["entry_id"])).toEqual(["a", "b", "c"]);
+
+    await expect(
+      query_agent_quality_rules(dependencies, {
+        rule_type: "text_preserve",
+        search: { keywords: ["\\d+"] },
+      }),
+    ).resolves.toMatchObject({ entries: [{ entry_id: "keep" }] });
+
+    await expect(
+      query_agent_quality_rules(dependencies, {
+        rule_type: "glossary",
+        search: { keywords: ["*"] },
+      }),
+    ).resolves.toMatchObject({ entries: [], groups: [], target_entry_ids: [] });
   });
 
-  it("一次统计返回覆盖数和最多两个最小 samples", async () => {
+  it("一次统计返回覆盖数和最多两个纯文本 samples", async () => {
     const entries = [stored_entry("x", "X", "甲"), stored_entry("y", "Y", "乙")];
     const items = [
-      { item_id: 1, src: "X", name_src: null, file_path: "a.txt", row_number: 1 },
-      { item_id: 2, src: "X！", name_src: null, file_path: "a.txt", row_number: 2 },
-      { item_id: 3, src: "对话 X X", name_src: "X", file_path: "b.txt", row_number: 3 },
-      { item_id: 4, src: "Y。", name_src: null, file_path: "b.txt", row_number: 4 },
-      { item_id: 5, src: "另一处 X 语境", name_src: null, file_path: "c.txt", row_number: 5 },
+      {
+        item_id: 1,
+        src: "X",
+        name_src: null,
+        file_path: "a.txt",
+        row_number: 1,
+      },
+      {
+        item_id: 2,
+        src: "X！",
+        name_src: null,
+        file_path: "a.txt",
+        row_number: 2,
+      },
+      {
+        item_id: 3,
+        src: "对话 X X",
+        name_src: "X",
+        file_path: "b.txt",
+        row_number: 3,
+      },
+      {
+        item_id: 4,
+        src: "Y。",
+        name_src: null,
+        file_path: "b.txt",
+        row_number: 4,
+      },
+      {
+        item_id: 5,
+        src: "另一处 X 语境",
+        name_src: null,
+        file_path: "c.txt",
+        row_number: 5,
+      },
     ];
     let item_revision = 1;
     const read_items = vi.fn(() => {
@@ -400,20 +594,17 @@ describe("Agent 质量规则工具", () => {
     };
     const quality = await query_agent_quality_rules(
       { qualityRules, cache, computeWorker: create_compute_worker() },
-      "glossary",
+      { rule_type: "glossary" },
     );
     expect(quality).toMatchObject({ revision: 4, item_revision: 2 });
     expect(quality.entries).toMatchObject([
       {
         entry_id: "x",
         matched_item_count: 4,
-        samples: [
-          { item_id: 3, src: "对话 X X", name_src: "X" },
-          { item_id: 5, src: "另一处 X 语境" },
-        ],
       },
       { entry_id: "y", matched_item_count: 1, samples: [] },
     ]);
+    expect(quality.entries[0]?.["samples"]).toEqual(["【X】对话 X X", "另一处 X 语境"]);
     expect(read_items).toHaveBeenCalledTimes(1);
   });
 
@@ -427,7 +618,10 @@ describe("Agent 质量规则工具", () => {
         query: () => ({
           projectPath: "test.lg",
           sectionRevisions: { quality: 1 },
-          qualityRule: { enabled: true, entries: [stored_entry("a", "Alpha", "甲")] },
+          qualityRule: {
+            enabled: true,
+            entries: [stored_entry("a", "Alpha", "甲")],
+          },
         }),
         update_from_agent: update,
       },
@@ -458,14 +652,23 @@ describe("Agent 质量规则工具", () => {
           },
           {
             entry_id: "a",
-            entry: { src: "Alpha", dst: "   ", info: "", case_sensitive: false },
+            entry: {
+              src: "Alpha",
+              dst: "   ",
+              info: "",
+              case_sensitive: false,
+            },
           },
         ],
         ...revision,
       },
       {
         rule_type: "pre_replacement",
-        write: [{ entry: { src: "Alpha", dst: "甲", info: "", case_sensitive: false } }],
+        write: [
+          {
+            entry: { src: "Alpha", dst: "甲", info: "", case_sensitive: false },
+          },
+        ],
         ...revision,
       },
     ];
@@ -524,7 +727,16 @@ describe("Agent 质量规则工具", () => {
         "zero-occurrence",
         {
           rule_type: "glossary",
-          write: [{ entry: { src: "Ghost", dst: "幽灵", info: "", case_sensitive: false } }],
+          write: [
+            {
+              entry: {
+                src: "Ghost",
+                dst: "幽灵",
+                info: "",
+                case_sensitive: false,
+              },
+            },
+          ],
           expected_revision: 1,
         },
         undefined,
@@ -570,8 +782,13 @@ describe("Agent 质量规则工具", () => {
         {
           rule_type: "glossary",
           write: [
-            { entry_id: "a", entry: { src: "AB", dst: "甲", info: "", case_sensitive: false } },
-            { entry: { src: "AB", dst: "甲", info: "", case_sensitive: false } },
+            {
+              entry_id: "a",
+              entry: { src: "AB", dst: "甲", info: "", case_sensitive: false },
+            },
+            {
+              entry: { src: "AB", dst: "甲", info: "", case_sensitive: false },
+            },
           ],
           expected_revision: 1,
         },
@@ -595,7 +812,9 @@ describe("Agent 质量规则工具", () => {
         undefined,
         undefined as never,
       ),
-    ).resolves.toMatchObject({ details: { status: "applied", revision: 2, deleted: ["b"] } });
+    ).resolves.toMatchObject({
+      details: { status: "applied", revision: 2, deleted: ["b"] },
+    });
     expect(update).toHaveBeenCalledTimes(1);
   });
 
@@ -624,7 +843,12 @@ describe("Agent 质量规则工具", () => {
           write: [
             {
               entry_id: "a",
-              entry: { src: "A", dst: "甲", info: "其他", case_sensitive: false },
+              entry: {
+                src: "A",
+                dst: "甲",
+                info: "其他",
+                case_sensitive: false,
+              },
             },
           ],
           move: [{ entry_id: "a", before_entry_id: "b" }],
@@ -643,11 +867,18 @@ describe("Agent 质量规则工具", () => {
       qualityRules: {
         query: () => ({
           sectionRevisions: { quality: 3 },
-          qualityRule: { enabled: true, entries: [stored_entry("a", "A", "甲")] },
+          qualityRule: {
+            enabled: true,
+            entries: [stored_entry("a", "A", "甲")],
+          },
         }),
         update_from_agent: async () => {
           throw new RevisionConflictError({
-            public_details: { section: "quality", expected_revision: 2, current_revision: 3 },
+            public_details: {
+              section: "quality",
+              expected_revision: 2,
+              current_revision: 3,
+            },
           });
         },
       },
@@ -683,7 +914,10 @@ describe("Agent 质量规则工具", () => {
       qualityRules: {
         query: () => ({
           sectionRevisions: { quality: 1 },
-          qualityRule: { mode: "custom", entries: [{ entry_id: "a", src: "A", info: "" }] },
+          qualityRule: {
+            mode: "custom",
+            entries: [{ entry_id: "a", src: "A", info: "" }],
+          },
         }),
         update_from_agent: async () => ({ accepted: true, changes: [] }),
       },
@@ -762,7 +996,12 @@ describe("Agent 质量规则工具", () => {
           write: [
             {
               entry_id: "a",
-              entry: { src: "Alpha Prime", dst: "A", info: "", case_sensitive: false },
+              entry: {
+                src: "Alpha Prime",
+                dst: "A",
+                info: "",
+                case_sensitive: false,
+              },
             },
           ],
           expected_revision: 1,
@@ -779,12 +1018,22 @@ describe("Agent 质量规则工具", () => {
         rule_type: "glossary",
         write: [
           {
-            entry: { src: "Delta", dst: "德尔塔", info: "名称", case_sensitive: false },
+            entry: {
+              src: "Delta",
+              dst: "德尔塔",
+              info: "名称",
+              case_sensitive: false,
+            },
             before_entry_id: "a",
           },
           {
             entry_id: "a",
-            entry: { src: "Alpha Prime", dst: "A", info: "", case_sensitive: false },
+            entry: {
+              src: "Alpha Prime",
+              dst: "A",
+              info: "",
+              case_sensitive: false,
+            },
           },
         ],
         delete: ["b"],
@@ -798,9 +1047,16 @@ describe("Agent 质量规则工具", () => {
     expect(update).toHaveBeenLastCalledWith(
       expect.objectContaining({
         entries: [
-          expect.objectContaining({ entry_id: expect.stringMatching(/^qr:/u), src: "Delta" }),
+          expect.objectContaining({
+            entry_id: expect.stringMatching(/^qr:/u),
+            src: "Delta",
+          }),
           expect.objectContaining({ entry_id: "c", src: "Gamma" }),
-          expect.objectContaining({ entry_id: "a", src: "Alpha Prime", dst: "A" }),
+          expect.objectContaining({
+            entry_id: "a",
+            src: "Alpha Prime",
+            dst: "A",
+          }),
         ],
       }),
       AGENT_QUALITY_RULE_UPDATE_SOURCE,

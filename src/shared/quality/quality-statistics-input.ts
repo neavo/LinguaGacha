@@ -7,16 +7,16 @@ import {
 } from "../item-text";
 import {
   type QualityStatisticsDependencySnapshot,
-  type QualityStatisticsRelationCandidate,
   type QualityStatisticsRuleInput,
 } from "./quality-statistics";
+import type { QualityRuleRelationCandidate } from "./quality-rule-relations";
 import { normalize_quality_rule_entries } from "./quality-rule-entry";
 import { ensure_quality_rule_entry_ids } from "./quality-rule-entry-id";
 
 export type QualityStatisticsPreparedTaskInput = {
   rules: QualityStatisticsRuleInput[]; // worker 执行规则
   text_groups: ItemTextGroup[]; // worker 扫描的 item 字段组
-  relation_candidates: QualityStatisticsRelationCandidate[]; // 字面量父子关系输入
+  relation_candidates: QualityRuleRelationCandidate[]; // 字面量父子关系输入
   completed_snapshot: QualityStatisticsDependencySnapshot; // cache 与页面共同校验的依赖快照
   completed_entry_ids: string[]; // worker 完成后允许页面展示的条目身份
   collect_context_samples: boolean; // 仅 Agent glossary 查询开启有限代表语境

@@ -8,7 +8,10 @@ import {
 
 function text_groups(groups: string[][]): ItemTextGroup[] {
   return groups.map((group) =>
-    group.map((text, index) => ({ field: index === 0 ? "src" : "name_src", text })),
+    group.map((text, index) => ({
+      field: index === 0 ? "src" : "name_src",
+      text,
+    })),
   );
 }
 
@@ -54,7 +57,7 @@ describe("run_quality_statistics_task_sync", () => {
     ).toThrow();
   });
 
-  it("包含关系只消费显式字面量候选并保持父文本去重顺序", () => {
+  it("统计结果消费共享关系分析产生的父文本", () => {
     const result = run_quality_statistics_task_sync({
       rules: [
         {
@@ -83,30 +86,21 @@ describe("run_quality_statistics_task_sync", () => {
     expect(result.results.regex?.subset_parents).toEqual([]);
   });
 
-  it("包含关系尊重子规则大小写，并用原文范围排除规范化等价项", () => {
-    const result = run_quality_statistics_task_sync({
-      rules: [
-        { entry_id: "child", pattern: "JK", pattern_kind: "literal", case_sensitive: true },
-        { entry_id: "wide", pattern: "ＪＫ", pattern_kind: "literal", case_sensitive: true },
-      ],
-      text_groups: [],
-      relation_candidates: [
-        { entry_id: "child", src: "JK", case_sensitive: true },
-        { entry_id: "case-only-parent", src: "Xｊｋ", case_sensitive: true },
-        { entry_id: "nfkc-parent", src: "XＪＫ", case_sensitive: true },
-        { entry_id: "wide", src: "ＪＫ", case_sensitive: true },
-      ],
-    });
-
-    expect(result.results.child?.subset_parents).toEqual(["XＪＫ"]);
-    expect(result.results.wide?.subset_parents).toEqual(["XＪＫ"]);
-  });
-
   it("同 item 多字段与重叠命中只计一次覆盖和一个 sample 候选", () => {
     const result = run_quality_statistics_task_sync({
       rules: [
-        { entry_id: "aba", pattern: "aba", pattern_kind: "literal", case_sensitive: true },
-        { entry_id: "ba", pattern: "ba", pattern_kind: "literal", case_sensitive: true },
+        {
+          entry_id: "aba",
+          pattern: "aba",
+          pattern_kind: "literal",
+          case_sensitive: true,
+        },
+        {
+          entry_id: "ba",
+          pattern: "ba",
+          pattern_kind: "literal",
+          case_sensitive: true,
+        },
       ],
       text_groups: text_groups([["ababa dialogue", "aba"]]),
       relation_candidates: [],
@@ -122,7 +116,14 @@ describe("run_quality_statistics_task_sync", () => {
 
   it("跳过无语境命中并用一次确定性采样保留最多两个 item", () => {
     const input = {
-      rules: [{ entry_id: "term", pattern: "术语", pattern_kind: "literal", case_sensitive: true }],
+      rules: [
+        {
+          entry_id: "term",
+          pattern: "术语",
+          pattern_kind: "literal",
+          case_sensitive: true,
+        },
+      ],
       text_groups: text_groups([
         ["术语"],
         ["术语！？"],
@@ -150,7 +151,12 @@ describe("run_quality_statistics_task_sync", () => {
   it("未命中的另一 source part 可提供语境，全部无语境时 samples 为空", () => {
     const with_context = run_quality_statistics_task_sync({
       rules: [
-        { entry_id: "name", pattern: "Alice", pattern_kind: "literal", case_sensitive: true },
+        {
+          entry_id: "name",
+          pattern: "Alice",
+          pattern_kind: "literal",
+          case_sensitive: true,
+        },
       ],
       text_groups: text_groups([["正文对话", "Alice"]]),
       relation_candidates: [],
@@ -160,7 +166,12 @@ describe("run_quality_statistics_task_sync", () => {
 
     const without_context = run_quality_statistics_task_sync({
       rules: [
-        { entry_id: "name", pattern: "Alice", pattern_kind: "literal", case_sensitive: false },
+        {
+          entry_id: "name",
+          pattern: "Alice",
+          pattern_kind: "literal",
+          case_sensitive: false,
+        },
       ],
       text_groups: text_groups([["ALICE..."], ["Alice！"]]),
       relation_candidates: [],
@@ -172,7 +183,12 @@ describe("run_quality_statistics_task_sync", () => {
   it("默认不收集 samples，保持原统计结果形状", () => {
     const result = run_quality_statistics_task_sync({
       rules: [
-        { entry_id: "term", pattern: "term", pattern_kind: "literal", case_sensitive: false },
+        {
+          entry_id: "term",
+          pattern: "term",
+          pattern_kind: "literal",
+          case_sensitive: false,
+        },
       ],
       text_groups: text_groups([["TERM context"]]),
       relation_candidates: [],

@@ -22,7 +22,8 @@ export function create_agent_project_tools(
     defineTool({
       name: "query_project_meta",
       label: "查询工程信息",
-      description: "查询当前工程审查与翻译使用的源语言和目标语言。",
+      description:
+        "读取当前已加载工程的权威源语言和目标语言。工具无需参数，返回 source_language 与 target_language；需要判断翻译方向时先调用，不从文本猜测。只读且不修改工程。",
       parameters: QUERY_PROJECT_META_PARAMETERS,
       execute: async (_tool_call_id, _params, signal) => {
         signal?.throwIfAborted();
