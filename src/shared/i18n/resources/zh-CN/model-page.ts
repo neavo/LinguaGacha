@@ -61,11 +61,11 @@ export const zh_cn_model_page = {
   fields: {
     context_window: {
       title: "上下文窗口",
-      description: "仅对 AGENT 任务生效，默认值为 {DEFAULT}",
+      description: "仅对 AGENT 任务生效，0 = 自动",
     },
     max_output_tokens: {
       title: "最大输出长度",
-      description: "仅对 AGENT 任务生效，默认值为 {DEFAULT}",
+      description: "仅对 AGENT 任务生效，0 = 自动",
     },
     name: {
       title: "模型名称",

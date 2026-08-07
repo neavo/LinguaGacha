@@ -67,7 +67,8 @@ function build_agent_session_settings(max_tokens: number) {
     enableSkillCommands: false,
     compaction: {
       enabled: true,
-      reserveTokens: max_tokens,
+      // SDK 使用严格大于判断；多预留一个 token 后，产品阈值等价于 context >= window - max。
+      reserveTokens: max_tokens + 1,
       keepRecentTokens: AGENT_KEEP_RECENT_TOKENS,
     },
     retry: { enabled: true, maxRetries: 3, baseDelayMs: 2_000 },

@@ -354,15 +354,20 @@ describe("AgentComposer", () => {
     expect(on_send).not.toHaveBeenCalled();
   });
 
-  it("底栏显示模型和上下文阈值", async () => {
-    const view = await render_composer({ context_tokens: 230_000 });
+  it("底栏在上下文达到预警阈值时标记警告", async () => {
+    const view = await render_composer({ context_tokens: 224_000 });
     expect(view.querySelector(".agent-composer__model-trigger")?.textContent).toContain(
       "Agent Model",
     );
-    expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("79.9%");
+    expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("77.8%");
     expect(view.querySelector(".agent-composer__context-usage")?.getAttribute("data-tone")).toBe(
       "warning",
     );
+    expect(
+      [...view.querySelectorAll('[role="tooltip"]')].some(
+        (tooltip) => tooltip.textContent?.includes("224K / 288K") === true,
+      ),
+    ).toBe(true);
   });
 
   async function render_composer(options: RenderComposerOptions = {}): Promise<HTMLDivElement> {
@@ -392,7 +397,7 @@ describe("AgentComposer", () => {
                   id: "agent",
                   type: "CUSTOM_OPENAI",
                   name: "Agent Model",
-                  agent: { context_window: 288_000, max_output_tokens: 32_000 },
+                  agent_limits: { context_window: 288_000, max_output_tokens: 32_000 },
                   thinking_level: "MEDIUM",
                   thinking_configurable: true,
                 },

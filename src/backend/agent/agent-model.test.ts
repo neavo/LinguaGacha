@@ -73,7 +73,7 @@ describe("Agent 模型注册", () => {
       id: "kimi-k3",
       name: "Test",
       reasoning: true,
-      contextWindow: 288_000,
+      contextWindow: 256_000,
       maxTokens: 32_000,
     });
     const provider_config = runtime.getRegisteredProviderConfig("openai");
@@ -89,7 +89,7 @@ describe("Agent 模型注册", () => {
       models: [
         expect.objectContaining({
           id: "kimi-k3",
-          contextWindow: 288_000,
+          contextWindow: 256_000,
           maxTokens: 32_000,
         }),
       ],
@@ -173,7 +173,12 @@ describe("Agent 模型注册", () => {
       TEST_USER_AGENT,
     );
 
-    expect(resolved.model).toMatchObject({ api: "openai-responses", reasoning: true });
+    expect(resolved.model).toMatchObject({
+      api: "openai-responses",
+      reasoning: true,
+      contextWindow: 353_000,
+      maxTokens: 32_000,
+    });
     expect(resolved.thinkingLevel).toBe("high");
     const provider_config = runtime.getRegisteredProviderConfig("openai");
     if (provider_config?.streamSimple === undefined) {

@@ -243,8 +243,8 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
       ? null
       : format_context_usage({
           tokens: props.context_tokens ?? 0,
-          contextWindow: selected_model.agent.context_window,
-          maxTokens: selected_model.agent.max_output_tokens,
+          contextWindow: selected_model.agent_limits.context_window,
+          maxTokens: selected_model.agent_limits.max_output_tokens,
         });
   // 编辑器只创建一次，首次锁定态必须在首帧扩展中生效，不能等待后续 effect。
   const initial_editor_read_only_ref = useRef(editor_read_only);
@@ -761,7 +761,7 @@ function format_context_usage(usage: {
 } {
   const percent = (usage.tokens / usage.contextWindow) * 100;
   // 为下一次回复和压缩各保留一份最大输出预算，阈值本身仍保持默认色。
-  const warning = usage.tokens > usage.contextWindow - usage.maxTokens * 2;
+  const warning = usage.tokens >= usage.contextWindow - usage.maxTokens * 2;
   return {
     percent: `${percent.toFixed(1)}%`,
     used: format_context_tokens(usage.tokens),
@@ -771,9 +771,9 @@ function format_context_usage(usage: {
   };
 }
 
-/** 上下文详情固定以 K 为单位，并省略无意义的尾随零。 */
+/** 鼠标提示中的上下文详情固定以整数 K 展示。 */
 function format_context_tokens(tokens: number): string {
-  return `${(Math.round(tokens / 100) / 10).toString()}K`;
+  return `${Math.round(tokens / 1_000).toString()}K`;
 }
 
 /** 单次读取编辑器派生视图，避免 React 再维护一份可写草稿事实。 */

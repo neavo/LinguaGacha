@@ -2,7 +2,7 @@ import { type Model as PiModel } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
 import type { JsonRecord } from "../../domain/json";
-import { parse_model_agent_config } from "../../domain/model";
+import { Model } from "../../domain/model";
 import * as AppErrors from "../../shared/error";
 import {
   apply_agent_request_overrides,
@@ -29,20 +29,15 @@ export function register_agent_model(
 } {
   const raw_model = resolve_model_for_usage(config, "agent");
   if (raw_model === null) throw new AppErrors.ModelNotFoundError();
-  const agent_config = parse_model_agent_config(raw_model["agent"]);
-  if (agent_config === null) {
-    throw new AppErrors.InternalInvariantError({
-      diagnostic_context: { reason: "invalid_normalized_agent_model_config" },
-    });
-  }
+  const configured_model = Model.from_json(raw_model, String(raw_model["id"] ?? ""));
   const snapshot = read_model_request_snapshot(raw_model, user_agent);
   const api_key = snapshot.api_keys[0] ?? "no_key_required";
   const configured_name = String(raw_model["name"] ?? "").trim();
   const request_headers = Object.freeze({ ...snapshot.headers });
   const pi = resolve_pi_model(snapshot, {
     name: configured_name || snapshot.model_id,
-    contextWindow: agent_config.context_window,
-    maxTokens: agent_config.max_output_tokens,
+    contextWindow: configured_model.agent_limits.context_window,
+    maxTokens: configured_model.agent_limits.max_output_tokens,
     reasoning: model_supports_pi_reasoning(snapshot),
   });
   // ModelRuntime 会合并 SDK 请求选项；最终密钥、请求头和 payload 仍以项目快照为准。

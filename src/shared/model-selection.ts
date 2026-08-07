@@ -3,19 +3,18 @@ import {
   Model,
   is_model_type,
   normalize_model_selection,
-  parse_model_agent_config,
-  type ModelAgentConfig,
   type ModelSelection,
   type ModelThinkingLevel,
   type ModelType,
 } from "../domain/model";
+import { parse_model_agent_limits, type ModelAgentLimits } from "../domain/model-agent";
 
 /** 任务入口可见的非敏感模型摘要。 */
 export type ModelSelectionOption = JsonRecord & {
   id: string;
   type: ModelType;
   name: string;
-  agent: ModelAgentConfig; // Agent 空会话展示当前模型容量所需的非敏感配置
+  agent_limits: ModelAgentLimits; // Agent 空会话展示与运行时共用的实际容量
   thinking_level: ModelThinkingLevel; // 模型当前持久化的全局思考档位
   thinking_configurable: boolean; // 当前 API 格式是否允许用户修改思考档位
 };
@@ -33,14 +32,14 @@ export function normalize_model_selection_snapshot(value: unknown): ModelSelecti
   const models = raw_models.flatMap((item): ModelSelectionOption[] => {
     if (!is_json_record(item)) return [];
     const id = typeof item["id"] === "string" ? item["id"].trim() : "";
-    const agent = parse_model_agent_config(item["agent"]);
-    if (id === "" || !is_model_type(item["type"]) || agent === null) return [];
+    const agent_limits = parse_model_agent_limits(item["agent_limits"]);
+    if (id === "" || !is_model_type(item["type"]) || agent_limits === null) return [];
     return [
       {
         id,
         type: item["type"],
         name: typeof item["name"] === "string" ? item["name"].trim() : "",
-        agent,
+        agent_limits,
         thinking_level: Model.normalize_thinking_level(item["thinking_level"]),
         thinking_configurable: item["thinking_configurable"] === true,
       },

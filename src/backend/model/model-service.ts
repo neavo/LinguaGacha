@@ -13,11 +13,11 @@ import {
   Model,
   is_model_thinking_level,
   normalize_model_selection,
-  parse_model_agent_config,
   type CustomModelType,
   type ModelSelection,
   type ModelUsage,
 } from "../../domain/model";
+import { resolve_model_agent_limits } from "../../domain/model-agent";
 import {
   read_json_record,
   type JsonRecord,
@@ -656,7 +656,7 @@ export class ModelService {
         result[key] = String(value ?? "");
       }
     }
-    if (patch["agent"] !== undefined && parse_model_agent_config(result["agent"]) === null) {
+    if (resolve_model_agent_limits(String(result["model_id"] ?? ""), result["agent"]) === null) {
       throw new AppErrors.RequestValidationError({
         public_details: { field: "agent" },
       });
@@ -756,18 +756,19 @@ export class ModelService {
   private build_selection_snapshot(config: JsonRecord): JsonRecord {
     return {
       model_selection: normalize_model_selection(config["model_selection"]),
-      models: read_config_model_records(config).map((model) => ({
-        id: String(model["id"] ?? ""),
-        type: String(model["type"] ?? ""),
-        name: String(model["name"] ?? ""),
-        agent: read_json_record(model["agent"]),
-        thinking_level: Model.normalize_thinking_level(
-          read_json_record(model["thinking"])["level"],
-        ),
-        thinking_configurable: Model.api_format_supports_thinking_configuration(
-          Model.normalize_api_format(model["api_format"]),
-        ),
-      })),
+      models: read_config_model_records(config).map((model) => {
+        const normalized = Model.from_json(model, String(model["id"] ?? ""));
+        return {
+          id: normalized.id,
+          type: normalized.type,
+          name: normalized.name,
+          agent_limits: normalized.agent_limits,
+          thinking_level: normalized.thinking.level,
+          thinking_configurable: Model.api_format_supports_thinking_configuration(
+            normalized.api_format,
+          ),
+        };
+      }),
     };
   }
 

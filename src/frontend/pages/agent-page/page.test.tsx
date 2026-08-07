@@ -33,7 +33,7 @@ const quality_statistics_state = vi.hoisted(() => ({
 }));
 const push_toast = vi.hoisted(() => vi.fn());
 /** 模拟模型页更新后的共享选择快照，验证同一会话无需重建即可刷新容量。 */
-const model_agent_config = vi.hoisted(() => ({
+const model_agent_limits = vi.hoisted(() => ({
   context_window: 288_000,
   max_output_tokens: 32_000,
 }));
@@ -86,7 +86,7 @@ vi.mock("@frontend/features/model-selection/use-model-selection", async (import_
             id: "agent",
             type: "CUSTOM_OPENAI",
             name: "Agent Model",
-            agent: { ...model_agent_config },
+            agent_limits: { ...model_agent_limits },
           },
         ],
       },
@@ -142,8 +142,8 @@ describe("AgentPage", () => {
       matched_count_by_entry_id: {},
     };
     push_toast.mockReset();
-    model_agent_config.context_window = 288_000;
-    model_agent_config.max_output_tokens = 32_000;
+    model_agent_limits.context_window = 288_000;
+    model_agent_limits.max_output_tokens = 32_000;
   });
 
   afterEach(async () => {
@@ -299,8 +299,8 @@ describe("AgentPage", () => {
     });
     expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("10.9%");
 
-    model_agent_config.context_window = 64_000;
-    model_agent_config.max_output_tokens = 16_000;
+    model_agent_limits.context_window = 64_000;
+    model_agent_limits.max_output_tokens = 16_000;
     await render_page({ contextTokens: 31_488 });
     expect(view.querySelector(".agent-composer__context-usage")?.textContent).toBe("49.2%");
   });

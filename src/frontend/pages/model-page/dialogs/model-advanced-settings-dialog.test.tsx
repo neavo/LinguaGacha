@@ -8,8 +8,7 @@ import { create_model_snapshot } from "@frontend/pages/model-page/model-test-fix
 vi.mock("@frontend/app/locale/locale-provider", () => ({
   useI18n: () => ({
     locale: "zh-CN",
-    t: (key: string, params?: Record<string, string>) =>
-      params?.["DEFAULT"] === undefined ? key : `${key}:${params["DEFAULT"]}`,
+    t: (key: string) => key,
   }),
 }));
 
@@ -118,12 +117,8 @@ describe("ModelAdvancedSettingsDialog", () => {
       "model_page.fields.context_window.title",
       "model_page.fields.max_output_tokens.title",
     ]);
-    expect(document.body.textContent).toContain(
-      "model_page.fields.context_window.description:288000",
-    );
-    expect(document.body.textContent).toContain(
-      "model_page.fields.max_output_tokens.description:32000",
-    );
+    expect(document.body.textContent).toContain("model_page.fields.context_window.description");
+    expect(document.body.textContent).toContain("model_page.fields.max_output_tokens.description");
     const context_window = document.querySelector<HTMLInputElement>(
       'input[aria-label="model_page.fields.context_window.title"]',
     );
@@ -133,13 +128,17 @@ describe("ModelAdvancedSettingsDialog", () => {
     if (context_window === null || max_output_tokens === null) {
       throw new Error("Agent 容量输入框未挂载。");
     }
+    expect(context_window.min).toBe("0");
+    expect(max_output_tokens.min).toBe("0");
+    expect(context_window.value).toBe("0");
+    expect(max_output_tokens.value).toBe("0");
 
     await act(async () => change_input_value(context_window, "300000"));
     await act(async () =>
       context_window.dispatchEvent(new FocusEvent("focusout", { bubbles: true })),
     );
     expect(on_patch).toHaveBeenLastCalledWith({
-      agent: { context_window: 300_000, max_output_tokens: 32_000 },
+      agent: { context_window: 300_000, max_output_tokens: 0 },
     });
 
     on_patch.mockClear();
@@ -155,7 +154,7 @@ describe("ModelAdvancedSettingsDialog", () => {
 
     await act(async () => change_input_value(context_window, "300000"));
     expect(on_patch).toHaveBeenLastCalledWith({
-      agent: { context_window: 300_000, max_output_tokens: 32_000 },
+      agent: { context_window: 300_000, max_output_tokens: 0 },
     });
     expect(context_window.getAttribute("aria-invalid")).toBeNull();
     expect(max_output_tokens.getAttribute("aria-invalid")).toBeNull();

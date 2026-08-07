@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 
 import {
-  DEFAULT_MODEL_AGENT_CONFIG,
   parse_model_agent_config,
+  resolve_model_agent_limits,
   type ModelAgentConfig,
-} from "@domain/model";
+} from "@domain/model-agent";
 import { useI18n } from "@frontend/app/locale/locale-provider";
 import type { ModelEntrySnapshot } from "@frontend/pages/model-page/types";
 import { Card, CardContent, CardDescription, CardTitle } from "@frontend/shadcn/card";
@@ -170,14 +170,16 @@ function create_agent_limit_draft(
 
 /** 两项草稿共用领域校验，避免前端维护第二套数值关系。 */
 function parse_agent_limit_draft(
+  model_id: string,
   draft: Record<AgentLimitFieldName, string>,
 ): ModelAgentConfig | null {
   const context_window_text = draft.context_window.trim();
   const max_output_tokens_text = draft.max_output_tokens.trim();
-  return parse_model_agent_config({
+  const config = parse_model_agent_config({
     context_window: context_window_text === "" ? null : Number(context_window_text),
     max_output_tokens: max_output_tokens_text === "" ? null : Number(max_output_tokens_text),
   });
+  return config !== null && resolve_model_agent_limits(model_id, config) !== null ? config : null;
 }
 
 /** 编辑协议支持的生成参数与自定义请求字段。 */
@@ -253,7 +255,7 @@ export function ModelAdvancedSettingsDialog(
 
   /** 两项容量必须作为一组校验和保存，避免产生瞬时非法组合。 */
   function commit_agent_limits(): void {
-    const candidate = parse_agent_limit_draft(agent_limit_draft);
+    const candidate = parse_agent_limit_draft(model.model_id, agent_limit_draft);
     if (candidate === null) {
       set_agent_limits_error(true);
       props.onAgentLimitsError();
@@ -267,7 +269,7 @@ export function ModelAdvancedSettingsDialog(
     const next_draft = { ...agent_limit_draft, [field_name]: text };
     set_agent_limit_draft(next_draft);
     if (!agent_limits_error) return;
-    const candidate = parse_agent_limit_draft(next_draft);
+    const candidate = parse_agent_limit_draft(model.model_id, next_draft);
     if (candidate === null) return;
     save_agent_limits(candidate);
   }
@@ -297,14 +299,12 @@ export function ModelAdvancedSettingsDialog(
             <SettingCardRow
               key={field_config.field_name}
               title={t(field_config.title_key)}
-              description={t(field_config.description_key, {
-                DEFAULT: DEFAULT_MODEL_AGENT_CONFIG[field_config.field_name].toString(),
-              })}
+              description={t(field_config.description_key)}
               action={
                 <Input
                   className="model-page__field"
                   type="number"
-                  min={1}
+                  min={0}
                   step={1}
                   inputMode="numeric"
                   value={agent_limit_draft[field_config.field_name]}
