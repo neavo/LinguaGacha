@@ -22,6 +22,8 @@ type RenderComposerOptions = Partial<
     AgentComposerTestProps,
     | "can_reset"
     | "command"
+    | "compacting"
+    | "compaction_failed"
     | "context_tokens"
     | "on_reset"
     | "on_send"
@@ -51,6 +53,7 @@ const TEST_MESSAGES = vi.hoisted(() => ({
   "agent_page.mention.groups.terms": "术语",
   "agent_page.mention.no_matches": "没有匹配的项目 …",
   "agent_page.context_usage_warning": "即将自动压缩上下文",
+  "agent_page.compaction.running": "正在压缩上下文 …",
   "agent_page.action.send": "发送",
   "agent_page.action.stop": "停止",
   "agent_page.unavailable.restoring": "正在恢复会话",
@@ -354,6 +357,32 @@ describe("AgentComposer", () => {
     expect(on_send).not.toHaveBeenCalled();
   });
 
+  it("压缩期间保留草稿编辑但禁用停止，失败后阻止发送并允许切换模型", async () => {
+    const on_send = vi.fn();
+    const on_stop = vi.fn(async () => undefined);
+    const view = await render_composer({ running: true, compacting: true, on_send, on_stop });
+    const editor = get_editor(view);
+    await set_document(editor, "继续补充", 4);
+    const submit = view.querySelector<HTMLButtonElement>(".agent-composer__submit");
+    expect(editor.state.readOnly).toBe(false);
+    expect(submit?.disabled).toBe(true);
+    expect(submit?.getAttribute("aria-label")).toBe("正在压缩上下文 …");
+    await act(async () => submit?.click());
+    expect(on_stop).not.toHaveBeenCalled();
+
+    await render_composer({
+      running: false,
+      compacting: false,
+      compaction_failed: true,
+      on_send,
+      on_stop,
+    });
+    expect(view.querySelector<HTMLButtonElement>(".agent-composer__submit")?.disabled).toBe(true);
+    expect(view.querySelector<HTMLButtonElement>(".agent-composer__model-trigger")?.disabled).toBe(
+      false,
+    );
+  });
+
   it("底栏在上下文达到预警阈值时标记警告", async () => {
     const view = await render_composer({ context_tokens: 224_000 });
     expect(view.querySelector(".agent-composer__model-trigger")?.textContent).toContain(
@@ -385,6 +414,8 @@ describe("AgentComposer", () => {
           terms={options.terms ?? terms}
           term_hit_counts={options.term_hit_counts ?? term_hit_counts}
           running={options.running ?? false}
+          compacting={options.compacting ?? false}
+          compaction_failed={options.compaction_failed ?? false}
           unavailable_reason={options.unavailable_reason ?? null}
           command={options.command ?? null}
           can_reset={options.can_reset ?? true}

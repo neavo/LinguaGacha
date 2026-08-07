@@ -27,6 +27,11 @@ export const en_us_agent_page = {
   },
   context_usage: "Context {percent} · {used} / {total}",
   context_usage_warning: "Context will be compacted soon",
+  compaction: {
+    running: "Compacting context …",
+    success: "Context compacted successfully …",
+    error: "Context compaction failed …",
+  },
   action: {
     send: "Send",
     sending: "Sending",
@@ -34,6 +39,7 @@ export const en_us_agent_page = {
     stopping: "Stopping",
     new_task: "New Task",
     retry: "Retry",
+    click_to_retry: "Click to retry",
     return_latest: "Return to latest",
   },
   confirm: { new_task: "Confirm starting a new conversation task …?" },
@@ -54,6 +60,7 @@ export const en_us_agent_page = {
     connection: "Connection interrupted. Waiting to reconnect.",
     send: "Message could not be sent. Your draft was preserved.",
     stop: "The task could not be stopped. Try again.",
+    compaction_retry: "Context compaction could not be retried. Try again.",
     reset: "A new task could not be created. Try again.",
     terms_load: "Terms could not be loaded. Skills and messaging are still available.",
   },

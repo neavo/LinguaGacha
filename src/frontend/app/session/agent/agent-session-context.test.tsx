@@ -328,6 +328,18 @@ describe("AgentSessionProvider", () => {
           createdAt: 13,
           endedAt: 13.5,
         },
+        {
+          kind: "context_compaction",
+          id: "compaction-success",
+          status: "success",
+          createdAt: 14,
+        },
+        {
+          kind: "context_compaction",
+          id: "compaction-stopped",
+          status: "stopped",
+          createdAt: 15,
+        },
       ],
       skills: [],
       contextTokens: null,
@@ -380,6 +392,12 @@ describe("AgentSessionProvider", () => {
         status: "success",
         createdAt: 10,
         endedAt: 12,
+      },
+      {
+        kind: "context_compaction",
+        id: "compaction-success",
+        status: "success",
+        createdAt: 14,
       },
     ]);
   });
@@ -690,6 +708,30 @@ describe("AgentSessionProvider", () => {
 
     expect(latest.state).toBe("running");
     expect(latest.entries).toEqual(previous_entries);
+  });
+
+  it("压缩重试通过窄命令应用同 id 的运行条目", async () => {
+    const failed_compaction = {
+      kind: "context_compaction" as const,
+      id: "compaction-1",
+      status: "error" as const,
+      createdAt: 1,
+    };
+    desktop_api_mocks.api_get.mockResolvedValue(agent_snapshot({ entries: [failed_compaction] }));
+    desktop_api_mocks.api_fetch.mockResolvedValue(
+      agent_snapshot({ entries: [{ ...failed_compaction, status: "running" }] }),
+    );
+    let latest!: ReturnType<typeof useAgentSession>;
+    await render_probe(() => {
+      latest = useAgentSession();
+    });
+    await wait_for(() => expect(latest.transport).toBe("ready"));
+
+    await act(async () => latest.retryCompaction());
+
+    expect(desktop_api_mocks.api_fetch).toHaveBeenCalledWith("/api/agent/compaction/retry");
+    expect(latest.entries).toEqual([{ ...failed_compaction, status: "running" }]);
+    expect(latest.command).toBeNull();
   });
 
   it("重置期间公开命令状态，并在成功后应用权威空快照", async () => {

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
   AgentAssistantMessagePart,
+  AgentContextCompactionEntry,
   AgentEntry,
   AgentEntryStatus,
   AgentToolEntry,
@@ -18,6 +19,10 @@ vi.mock("@frontend/app/locale/locale-provider", () => ({
       if (key === "agent_page.status.error") return "失败";
       if (key === "agent_page.status.stopped") return "已停止";
       if (key === "agent_page.action.retry") return "重试";
+      if (key === "agent_page.action.click_to_retry") return "点击重试";
+      if (key === "agent_page.compaction.running") return "正在压缩上下文 …";
+      if (key === "agent_page.compaction.success") return "上下文压缩成功";
+      if (key === "agent_page.compaction.error") return "上下文压缩失败";
       if (key === "app.error.model.provider_failed.message") return "模型服务请求失败。";
       return params === undefined ? key : `${key}:${Object.values(params).join(",")}`;
     },
@@ -43,6 +48,7 @@ describe("AgentTimeline", () => {
   let root: Root | null = null;
   const on_follow_hold_change = vi.fn();
   const on_retry = vi.fn();
+  const on_compaction_retry = vi.fn();
 
   afterEach(async () => {
     if (root !== null) await act(async () => root?.unmount());
@@ -52,6 +58,7 @@ describe("AgentTimeline", () => {
     container = null;
     on_follow_hold_change.mockReset();
     on_retry.mockReset();
+    on_compaction_retry.mockReset();
   });
 
   /** 复用同一 root，确保详情开合、滚动位置和自动收缩状态跨增量保留。 */
@@ -72,6 +79,9 @@ describe("AgentTimeline", () => {
           resume_revision={resume_revision}
           on_follow_hold_change={on_follow_hold_change}
           on_retry={on_retry}
+          on_compaction_retry={on_compaction_retry}
+          message_retry_disabled={false}
+          compaction_retry_disabled={false}
         />,
       ),
     );
@@ -122,14 +132,14 @@ describe("AgentTimeline", () => {
     expect(messages[1]?.textContent).toContain("@term(Unknown)");
   });
 
-  it("失败卡片位于所属轮次末尾且重试只回传原消息", async () => {
+  it("失败恢复条目位于所属轮次末尾且整块点击回传原消息", async () => {
     const view = await render_timeline([
       user_entry("user-error", "重新检查术语", "error", 0, 2_000),
       assistant_entry("assistant-error", "部分结果", "error", 1_000),
       user_entry("user-next", "继续", "success", 3_000, 4_000),
     ]);
     const assistant = view.querySelector(".agent-message--assistant");
-    const error = view.querySelector(".agent-round-error");
+    const error = view.querySelector<HTMLButtonElement>(".agent-retry-entry");
     const next_header = view.querySelectorAll(".agent-round-header")[1];
     if (assistant === null || error === null || next_header === undefined) {
       throw new Error("缺少失败轮次结构");
@@ -140,9 +150,39 @@ describe("AgentTimeline", () => {
       0,
     );
     expect(error.textContent).toContain("模型服务请求失败。");
-    const retry = error.querySelector<HTMLButtonElement>("button");
-    await act(async () => retry?.click());
+    expect(error.textContent).toContain("点击重试");
+    expect(error.querySelectorAll("svg")).toHaveLength(1);
+    await act(async () => error.click());
     expect(on_retry).toHaveBeenCalledWith("重新检查术语");
+  });
+
+  it("压缩三态原位覆盖，失败时只开放压缩重试", async () => {
+    const round = [
+      user_entry("user-error", "继续检查", "error", 0, 2_000),
+      assistant_entry("assistant-error", "部分结果", "error", 1_000),
+    ];
+    const view = await render_timeline([
+      ...round,
+      compaction_entry("compaction-1", "running", 1_500),
+    ]);
+    expect(view.querySelector(".agent-context-compaction")?.textContent).toContain(
+      "正在压缩上下文 …",
+    );
+    expect(view.querySelector(".agent-message__activity")).toBeNull();
+
+    await render_timeline([...round, compaction_entry("compaction-1", "error", 1_500)]);
+    const retry = view.querySelector<HTMLButtonElement>(".agent-retry-entry");
+    expect(retry?.textContent).toContain("上下文压缩失败");
+    expect(retry?.textContent).toContain("点击重试");
+    expect(retry?.querySelectorAll("svg")).toHaveLength(1);
+    await act(async () => retry?.click());
+    expect(on_compaction_retry).toHaveBeenCalledOnce();
+
+    await render_timeline([...round, compaction_entry("compaction-1", "success", 1_500)]);
+    expect(view.querySelector(".agent-context-compaction")?.textContent).toContain(
+      "上下文压缩成功",
+    );
+    expect(view.querySelector(".agent-retry-entry")).toBeNull();
   });
 
   it("运行工具逐秒计时，完成后保留用户展开状态并挂载输出", async () => {
@@ -464,4 +504,12 @@ function tool_entry(
   createdAt: number,
 ): AgentToolEntry {
   return { kind: "tool_call", id, toolName, status, output, createdAt };
+}
+
+function compaction_entry(
+  id: string,
+  status: AgentContextCompactionEntry["status"],
+  createdAt: number,
+): AgentContextCompactionEntry {
+  return { kind: "context_compaction", id, status, createdAt };
 }

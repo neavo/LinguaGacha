@@ -100,11 +100,13 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
   );
   const is_running = agent.state === "running";
   const agent_restoring = agent.transport === "restoring";
-  const user_entries = agent.entries.filter((entry) => entry.kind === "user_message");
-  const last_user = user_entries.at(-1);
+  const last_user = agent.entries.findLast((entry) => entry.kind === "user_message");
+  const last_compaction = agent.entries.findLast((entry) => entry.kind === "context_compaction");
+  const compacting = last_compaction?.status === "running";
+  const compaction_failed = last_compaction?.status === "error";
   const follow_paused = follow_holds.size > 0;
   // 公开回合先回 idle、共享 lease 后释放；两者之间统一显示为 Agent 自身结算。
-  const agent_settling = !is_running && runtime_snapshot.owner === "agent";
+  const agent_settling = !is_running && !compacting && runtime_snapshot.owner === "agent";
   const unavailable_reason =
     agent_restoring || agent.transport === "restore_failed"
       ? "restoring"
@@ -163,14 +165,26 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
     }
   };
 
+  /** 压缩失败由时间线原位恢复；命令受理失败才使用一次性 Toast。 */
+  const retry_compaction = (): void => {
+    resume_follow();
+    void agent.retryCompaction().catch((error: unknown) => {
+      show_command_error(error, "agent_page.error.compaction_retry");
+    });
+  };
+
   // live region 只播报离散会话结果，不朗读高频流式正文。
   const live_status = agent_restoring
     ? t("agent_page.loading")
-    : is_running
-      ? t("agent_page.status.running")
-      : last_user === undefined
-        ? ""
-        : t(AGENT_STATUS_LABEL_KEYS[last_user.status]);
+    : compacting
+      ? t("agent_page.compaction.running")
+      : compaction_failed
+        ? t("agent_page.compaction.error")
+        : is_running
+          ? t("agent_page.status.running")
+          : last_user === undefined
+            ? ""
+            : t(AGENT_STATUS_LABEL_KEYS[last_user.status]);
 
   return (
     <div className="agent-page page-shell page-shell--full">
@@ -258,7 +272,18 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
             mention_tokens={mention_tokens}
             resume_revision={resume_revision}
             on_follow_hold_change={set_follow_hold}
-            on_retry={(text) => composer_ref.current?.write_draft(text)}
+            on_retry={send}
+            on_compaction_retry={retry_compaction}
+            message_retry_disabled={
+              agent.command !== null ||
+              is_running ||
+              compacting ||
+              compaction_failed ||
+              unavailable_reason !== null
+            }
+            compaction_retry_disabled={
+              agent.command !== null || is_running || compacting || unavailable_reason !== null
+            }
           />
         )}
         <div
@@ -286,6 +311,8 @@ export function AgentPage(_props: ScreenComponentProps): JSX.Element {
         terms={available_terms}
         term_hit_counts={term_hit_counts}
         running={is_running}
+        compacting={compacting}
+        compaction_failed={compaction_failed}
         unavailable_reason={unavailable_reason}
         command={agent.command}
         can_reset={!agent_restoring && agent.entries.length > 0}

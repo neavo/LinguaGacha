@@ -29,19 +29,18 @@ describe("模型 Agent 容量", () => {
     ).toBeNull();
   });
 
-  it("按模型 ID 正则解析预置容量，未知模型回退产品默认", () => {
-    expect(resolve_model_agent_limits("openai/gpt-5.6-luna", DEFAULT_MODEL_AGENT_CONFIG)).toEqual({
-      context_window: 353_000,
-      max_output_tokens: 32_000,
+  it.each([
+    ["openai/gpt-5.6-luna", 353_000],
+    ["GROK-4.5-fast", 500_000],
+    ["deepseek-v4", 500_000],
+  ])("按模型族为 %s 解析自动容量", (model_id, context_window) => {
+    expect(resolve_model_agent_limits(model_id, DEFAULT_MODEL_AGENT_CONFIG)).toEqual({
+      context_window,
+      max_output_tokens: 48_000,
     });
-    expect(resolve_model_agent_limits("GROK-4.5-fast", DEFAULT_MODEL_AGENT_CONFIG)).toEqual({
-      context_window: 500_000,
-      max_output_tokens: 32_000,
-    });
-    expect(resolve_model_agent_limits("deepseek-v4", DEFAULT_MODEL_AGENT_CONFIG)).toEqual({
-      context_window: 500_000,
-      max_output_tokens: 32_000,
-    });
+  });
+
+  it("未知模型使用稳定兜底容量", () => {
     expect(resolve_model_agent_limits("unknown-model", DEFAULT_MODEL_AGENT_CONFIG)).toEqual({
       context_window: 256_000,
       max_output_tokens: 32_000,
@@ -50,17 +49,17 @@ describe("模型 Agent 容量", () => {
 
   it("只替换为 0 的字段，并校验最终容量关系", () => {
     expect(
-      resolve_model_agent_limits("gpt-5.6", {
+      resolve_model_agent_limits("unknown", {
         context_window: 400_000,
         max_output_tokens: 0,
       }),
     ).toEqual({ context_window: 400_000, max_output_tokens: 32_000 });
     expect(
-      resolve_model_agent_limits("gpt-5.6", {
+      resolve_model_agent_limits("unknown", {
         context_window: 0,
         max_output_tokens: 50_000,
       }),
-    ).toEqual({ context_window: 353_000, max_output_tokens: 50_000 });
+    ).toEqual({ context_window: 256_000, max_output_tokens: 50_000 });
     expect(
       resolve_model_agent_limits("unknown", { context_window: 64_000, max_output_tokens: 0 }),
     ).toBeNull();

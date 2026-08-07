@@ -96,6 +96,8 @@ type AgentComposerProps = {
   terms: readonly GlossaryEntry[];
   term_hit_counts: Readonly<Record<string, number>>;
   running: boolean;
+  compacting: boolean;
+  compaction_failed: boolean;
   unavailable_reason: AgentUnavailableReason | null;
   command: AgentCommand;
   can_reset: boolean;
@@ -170,14 +172,17 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const { locale, t } = useI18n();
   const { resolvedTheme } = useTheme();
   const placeholder_text = t("agent_page.input.placeholder");
+  const compacting = props.compacting || props.command === "compact";
   const submit_label = t(
-    props.command === "send"
-      ? "agent_page.action.sending"
-      : props.command === "stop"
-        ? "agent_page.action.stopping"
-        : props.running
-          ? "agent_page.action.stop"
-          : "agent_page.action.send",
+    compacting
+      ? "agent_page.compaction.running"
+      : props.command === "send"
+        ? "agent_page.action.sending"
+        : props.command === "stop"
+          ? "agent_page.action.stopping"
+          : props.running
+            ? "agent_page.action.stop"
+            : "agent_page.action.send",
   );
   const submit_command_active = props.command === "send" || props.command === "stop";
   const submit_tooltip =
@@ -221,13 +226,15 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
   const menu_index = Math.max(0, Math.min(menu_index_value, matching_candidates.length - 1));
   const can_send =
     !props.running &&
+    !compacting &&
+    !props.compaction_failed &&
     props.unavailable_reason === null &&
     props.command === null &&
     !props.model_selection.updating &&
     snapshot.text !== "";
   // 运行命令与模型快照请求分开表达，避免把加载态误当成 Agent 会话锁。
   const model_commands_disabled =
-    props.running || props.unavailable_reason !== null || props.command !== null;
+    props.running || compacting || props.unavailable_reason !== null || props.command !== null;
   const model_controls_disabled =
     model_commands_disabled || props.model_selection.loading || props.model_selection.updating;
   const selected_model = read_selected_model(props.model_selection, "agent");
@@ -521,6 +528,7 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
             disabled={
               !props.can_reset ||
               props.running ||
+              compacting ||
               props.unavailable_reason !== null ||
               props.command !== null
             }
@@ -626,15 +634,19 @@ export function AgentComposer(props: AgentComposerProps): JSX.Element {
               <span className="agent-composer__submit-shell">
                 <AppButton
                   className="agent-composer__submit"
-                  type={props.running || props.command === "stop" ? "button" : "submit"}
+                  type={
+                    props.running || compacting || props.command === "stop" ? "button" : "submit"
+                  }
                   size="icon-xs"
                   onClick={
-                    props.running && props.command === null ? () => void props.on_stop() : undefined
+                    props.running && !compacting && props.command === null
+                      ? () => void props.on_stop()
+                      : undefined
                   }
-                  disabled={props.command !== null || (!props.running && !can_send)}
+                  disabled={compacting || props.command !== null || (!props.running && !can_send)}
                   aria-label={submit_label}
                 >
-                  {submit_command_active ? (
+                  {compacting || submit_command_active ? (
                     <LoaderCircle className="animate-spin" aria-hidden="true" />
                   ) : props.running ? (
                     <Square aria-hidden="true" />

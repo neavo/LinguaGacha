@@ -27,6 +27,11 @@ export const de_de_agent_page = {
   },
   context_usage: "Kontext {percent} · {used} / {total}",
   context_usage_warning: "Kontext wird bald automatisch komprimiert",
+  compaction: {
+    running: "Kontext wird komprimiert …",
+    success: "Kontext erfolgreich komprimiert …",
+    error: "Kontextkomprimierung fehlgeschlagen …",
+  },
   action: {
     send: "Senden",
     sending: "Wird gesendet",
@@ -34,6 +39,7 @@ export const de_de_agent_page = {
     stopping: "Wird gestoppt",
     new_task: "Neue Aufgabe",
     retry: "Erneut versuchen",
+    click_to_retry: "Zum Wiederholen klicken",
     return_latest: "Zum neuesten Stand",
   },
   confirm: { new_task: "Wirklich eine neue Unterhaltung starten …?" },
@@ -54,6 +60,8 @@ export const de_de_agent_page = {
     connection: "Verbindung unterbrochen. Wiederverbindung wird abgewartet.",
     send: "Die Nachricht konnte nicht gesendet werden. Der Entwurf wurde beibehalten.",
     stop: "Die Aufgabe konnte nicht gestoppt werden. Bitte erneut versuchen.",
+    compaction_retry:
+      "Die Kontextkomprimierung konnte nicht wiederholt werden. Bitte erneut versuchen.",
     reset: "Eine neue Aufgabe konnte nicht erstellt werden. Bitte erneut versuchen.",
     terms_load: "Begriffe konnten nicht geladen werden. Skills und Nachrichten bleiben verfügbar.",
   },

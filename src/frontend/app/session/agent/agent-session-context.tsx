@@ -35,7 +35,7 @@ const EMPTY_SNAPSHOT: AgentSessionSnapshot = {
 };
 
 /** 前端命令状态只表达当前互斥中的写请求，不复述后端会话状态。 */
-export type AgentCommand = "send" | "stop" | "reset" | null;
+export type AgentCommand = "send" | "stop" | "compact" | "reset" | null;
 /** 传输状态独立于命令与回合结果，禁止一次性操作错误污染共享会话。 */
 export type AgentTransportState = "restoring" | "ready" | "restore_failed" | "disconnected";
 
@@ -48,6 +48,7 @@ type AgentSessionStateView = {
   command: AgentCommand;
   send: (text: string) => Promise<void>;
   stop: () => Promise<void>;
+  retryCompaction: () => Promise<void>;
   reset: () => Promise<void>;
   reconnect: () => void;
 };
@@ -220,6 +221,21 @@ function useAgentSessionState(on_message_accepted: (text: string) => void): Agen
     }
   };
 
+  /** 后端在压缩恢复成功后原子续跑失败任务，renderer 只应用权威快照与事件。 */
+  const retry_compaction = async (): Promise<void> => {
+    const command_events = begin_command("compact");
+    if (command_events === null) return;
+    try {
+      const next = await api_fetch<AgentSessionSnapshot>("/api/agent/compaction/retry");
+      finish_command(command_events, next);
+    } catch (error) {
+      finish_command(command_events);
+      throw error;
+    } finally {
+      set_command(null);
+    }
+  };
+
   /** reset 只有收到合法权威快照才算成功，失败时保留当前对话。 */
   const reset = async (): Promise<void> => {
     const command_events = begin_command("reset");
@@ -250,6 +266,7 @@ function useAgentSessionState(on_message_accepted: (text: string) => void): Agen
     command,
     send,
     stop,
+    retryCompaction: retry_compaction,
     reset,
     reconnect,
   };
@@ -423,6 +440,18 @@ function normalize_entry(value: unknown): AgentEntry[] {
         kind: "assistant_message",
         id: value["id"],
         parts,
+        status,
+        createdAt: value["createdAt"],
+      },
+    ];
+  }
+  if (value["kind"] === "context_compaction") {
+    const status = normalize_entry_status(value["status"]);
+    if (status === null || status === "stopped") return [];
+    return [
+      {
+        kind: "context_compaction",
+        id: value["id"],
         status,
         createdAt: value["createdAt"],
       },

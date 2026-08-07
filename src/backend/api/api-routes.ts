@@ -61,6 +61,7 @@ export function register_api_routes(context: ApiRouteContext): void {
   );
   context.postJson("/api/agent/message", (body) => services.agent.send_message(body));
   context.postJson("/api/agent/stop", () => services.agent.stop());
+  context.postJson("/api/agent/compaction/retry", () => services.agent.retry_compaction());
   context.postJson("/api/agent/reset", () => services.agent.reset());
 
   const project_content = services.project.content;
