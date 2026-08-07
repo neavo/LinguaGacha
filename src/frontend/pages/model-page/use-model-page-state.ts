@@ -19,7 +19,8 @@ import type {
   ModelThinkingSnapshot,
   ModelThresholdSnapshot,
 } from "@frontend/pages/model-page/types";
-import { MODEL_TYPES, Model, normalize_model_agent_config, type ModelType } from "@domain/model";
+import { normalize_model_agent_config } from "@domain/model-agent";
+import { MODEL_TYPES, Model, type ModelType } from "@domain/model";
 import { MODEL_TYPE_TITLE_KEY } from "@frontend/features/model-selection/model-selection-meta";
 
 type ModelPageSnapshotPayload = {

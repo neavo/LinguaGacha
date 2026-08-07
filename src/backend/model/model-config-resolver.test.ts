@@ -47,8 +47,8 @@ describe("model-config-resolver", () => {
     );
 
     expect(resolved?.["agent"]).toEqual({
-      context_window: 288_000,
-      max_output_tokens: 32_000,
+      context_window: 0,
+      max_output_tokens: 0,
     });
   });
 

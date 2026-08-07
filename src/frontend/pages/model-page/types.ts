@@ -1,9 +1,5 @@
-import type {
-  ModelAgentConfig,
-  ModelApiFormat,
-  ModelThinkingLevel,
-  ModelType,
-} from "@domain/model";
+import type { ModelApiFormat, ModelThinkingLevel, ModelType } from "@domain/model";
+import type { ModelAgentConfig } from "@domain/model-agent";
 
 export type ModelRequestSnapshot = {
   extra_headers: Record<string, string>;

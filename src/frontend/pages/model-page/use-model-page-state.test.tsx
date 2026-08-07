@@ -108,7 +108,7 @@ describe("useModelPageState", () => {
     expect(latest_state?.snapshot.models[1]).toMatchObject({
       id: "custom",
       api_format: "OpenAI",
-      agent: { context_window: 288_000, max_output_tokens: 32_000 },
+      agent: { context_window: 0, max_output_tokens: 0 },
       threshold: { input_token_limit: 512, output_token_limit: 4096 },
     });
 
@@ -133,7 +133,7 @@ describe("useModelPageState", () => {
     });
     expect(latest_state?.snapshot.models[1]?.agent).toEqual({
       context_window: 300_000,
-      max_output_tokens: 32_000,
+      max_output_tokens: 0,
     });
 
     update.resolve(create_snapshot());

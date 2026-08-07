@@ -64,11 +64,11 @@ export const en_us_model_page = {
   fields: {
     context_window: {
       title: "Context Window",
-      description: "Only applies to AGENT tasks, default value: {DEFAULT}",
+      description: "Only applies to AGENT tasks; 0 = automatic",
     },
     max_output_tokens: {
       title: "Maximum Output Length",
-      description: "Only applies to AGENT tasks, default value: {DEFAULT}",
+      description: "Only applies to AGENT tasks; 0 = automatic",
     },
     name: {
       title: "Model Name",

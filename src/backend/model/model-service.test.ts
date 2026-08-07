@@ -233,7 +233,7 @@ describe("ModelService 配置管理", () => {
 
   it("选择单个用途不会改变另外两个用途，且公开快照不含敏感配置", async () => {
     const { service } = await create_model_service([
-      create_model({ id: "preset", type: "PRESET" }),
+      create_model({ id: "preset", type: "PRESET", model_id: "gpt-5.6-luna" }),
       create_model({ id: "openai-a", type: "CUSTOM_OPENAI" }),
       create_model({ id: "openai-b", type: "CUSTOM_OPENAI" }),
     ]);
@@ -241,6 +241,7 @@ describe("ModelService 配置管理", () => {
     const snapshot = read_selection_snapshot(
       service.select_model({ usage: "analysis", model_id: "openai-a" }),
     );
+    const management = read_request_model_snapshot(service.get_snapshot());
 
     expect(snapshot.model_selection).toEqual({
       translation: "preset",
@@ -251,11 +252,15 @@ describe("ModelService 配置管理", () => {
       id: "preset",
       type: "PRESET",
       name: "模型",
-      agent: { context_window: 288_000, max_output_tokens: 32_000 },
+      agent_limits: { context_window: 353_000, max_output_tokens: 32_000 },
       thinking_level: "OFF",
       thinking_configurable: true,
     });
     expect(snapshot.models[0]).not.toHaveProperty("api_key");
+    expect(management.models[0]?.["agent"]).toEqual({
+      context_window: 0,
+      max_output_tokens: 0,
+    });
   });
 
   it("按用途更新当前模型思考档位并保持选择快照狭窄", async () => {
@@ -423,11 +428,12 @@ describe("ModelService 配置管理", () => {
     );
   });
 
-  it("拒绝非法或未知 Agent 容量字段且不落盘", async () => {
+  it("拒绝会让 Agent 容量失效的 patch 和未知字段且不落盘", async () => {
     const { service, app_setting_service } = await create_model_service([
       create_model({
         id: "custom",
-        agent: { context_window: 288_000, max_output_tokens: 32_000 },
+        model_id: "gpt-5.6-luna",
+        agent: { context_window: 0, max_output_tokens: 150_000 },
       }),
     ]);
     service.get_snapshot();
@@ -443,6 +449,12 @@ describe("ModelService 配置管理", () => {
       service.update_model({
         model_id: "custom",
         patch: { agent: { context_window: 288_000, unknown: 1 } },
+      }),
+    ).toThrow("request.validation_failed");
+    expect(() =>
+      service.update_model({
+        model_id: "custom",
+        patch: { model_id: "unknown-model" },
       }),
     ).toThrow("request.validation_failed");
     expect(app_setting_service.read_setting()).toEqual(before);
@@ -492,7 +504,7 @@ describe("ModelService 配置管理", () => {
         expect.objectContaining({
           id: "target",
           name: "target-updated",
-          agent: { context_window: 288_000, max_output_tokens: 32_000 },
+          agent: { context_window: 0, max_output_tokens: 0 },
         }),
         expect.objectContaining({ id: "other", name: "other-old" }),
       ]),

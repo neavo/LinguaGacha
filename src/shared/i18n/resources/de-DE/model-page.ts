@@ -69,11 +69,11 @@ export const de_de_model_page = {
   fields: {
     context_window: {
       title: "Kontextfenster",
-      description: "Gilt nur für AGENT-Aufgaben, standardwert: {DEFAULT}",
+      description: "Gilt nur für AGENT-Aufgaben; 0 = automatisch",
     },
     max_output_tokens: {
       title: "Maximale Ausgabelänge",
-      description: "Gilt nur für AGENT-Aufgaben, standardwert: {DEFAULT}",
+      description: "Gilt nur für AGENT-Aufgaben; 0 = automatisch",
     },
     name: {
       title: "Modellname",
