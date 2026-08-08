@@ -18,10 +18,11 @@ export function LogDetailView(props: LogDetailViewProps): JSX.Element {
   if (content.kind === "text") {
     return (
       <AppEditor
+        variant="viewer"
         class_name="log-window-page__detail-editor"
         value={format_log_readable_text(props.detail)}
         aria_label={t("log_window_page.detail.title")}
-        read_only
+        wrap_lines
       />
     );
   }

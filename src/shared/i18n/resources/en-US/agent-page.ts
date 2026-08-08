@@ -49,6 +49,13 @@ export const en_us_agent_page = {
     error: "Failed",
     stopped: "Stopped",
   },
+  tool: {
+    details: "{tool} tool call details",
+    input: "Input",
+    output: "Output",
+    wrap_enabled: "Line wrapping - Enabled",
+    wrap_disabled: "Line wrapping - Disabled",
+  },
   round: {
     running: "Processing for {duration}",
     success: "Completed · {duration}",

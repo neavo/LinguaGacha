@@ -53,7 +53,7 @@ export function CustomPromptPage(props: CustomPromptPageProps): JSX.Element {
 
         <AppEditor
           class_name="custom-prompt-page__editor-host"
-          mode="markdown"
+          syntax="markdown"
           value={page_state.prompt_text}
           aria_label={t(page_state.header_title_key)}
           read_only={page_state.readonly}

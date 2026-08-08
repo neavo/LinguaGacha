@@ -49,6 +49,13 @@ export const de_de_agent_page = {
     error: "Fehlgeschlagen",
     stopped: "Gestoppt",
   },
+  tool: {
+    details: "Werkzeugaufrufdetails für {tool}",
+    input: "Eingabe",
+    output: "Ausgabe",
+    wrap_enabled: "Zeilenumbruch - Aktiviert",
+    wrap_disabled: "Zeilenumbruch - Deaktiviert",
+  },
   round: {
     running: "Wird seit {duration} verarbeitet",
     success: "Abgeschlossen · {duration}",

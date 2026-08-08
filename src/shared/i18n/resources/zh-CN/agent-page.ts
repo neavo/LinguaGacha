@@ -41,6 +41,13 @@ export const zh_cn_agent_page = {
   },
   confirm: { new_task: "是否确认开始新的对话任务 …?" },
   status: { running: "正在处理", success: "已完成", error: "失败", stopped: "已停止" },
+  tool: {
+    details: "{tool} 工具调用详情",
+    input: "输入",
+    output: "输出",
+    wrap_enabled: "自动换行 - 启用",
+    wrap_disabled: "自动换行 - 禁用",
+  },
   round: {
     running: "处理中 {duration}",
     success: "已完成 · {duration}",
