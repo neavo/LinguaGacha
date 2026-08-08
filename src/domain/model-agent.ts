@@ -20,7 +20,7 @@ export type ResolvedModelAgentConfig = Readonly<{
 }>;
 
 /** Agent 自动压缩固定保留的模型上下文容量。 */
-export const AGENT_COMPACTION_RESERVE_TOKENS = 16_384;
+export const AGENT_COMPACTION_RESERVE_TOKENS = 32_000;
 
 /** 新旧模型配置缺省时均保留自动语义，不把当前推导值写回磁盘。 */
 export const DEFAULT_MODEL_AGENT_CONFIG: Readonly<ModelAgentConfig> = Object.freeze({
@@ -39,7 +39,7 @@ const FALLBACK_MODEL_AGENT_LIMITS: ModelAgentLimits = Object.freeze({
 
 /** 自动容量只识别产品明确支持的模型族，顺序不承担优先级语义。 */
 const MODEL_AGENT_LIMIT_RULES = [
-  { pattern: /gpt-5\.6/iu, context_window: 372_000, max_output_tokens: 64_000 },
+  { pattern: /gpt-5\.6/iu, context_window: 372_000, max_output_tokens: 32_000 },
   { pattern: /grok-4\.5/iu, context_window: 500_000, max_output_tokens: 64_000 },
   { pattern: /deepseek-v4/iu, context_window: 1_000_000, max_output_tokens: 128_000 },
 ] as const;
