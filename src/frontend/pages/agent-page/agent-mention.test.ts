@@ -34,19 +34,22 @@ function create_candidates(query: string): ReturnType<typeof create_agent_mentio
 }
 
 describe("Agent mention 菜单候选", () => {
-  it("初始显示全部技能和前三条术语，筛选后保留全部技能和前二十条术语", () => {
+  it("初始术语受限，筛选后扩大结果窗口并保持源顺序", () => {
     const initial = create_candidates("");
     const filtered = create_candidates("角色");
 
-    expect(initial.skills).toHaveLength(24);
-    expect(initial.terms.map((candidate) => candidate.title)).toEqual([
-      "Character 0",
-      "Character 1",
-      "Character 2",
-    ]);
-    expect(filtered.skills).toHaveLength(24);
-    expect(filtered.terms).toHaveLength(20);
-    expect(filtered.terms.at(-1)?.title).toBe("Character 19");
+    expect(initial.skills).toHaveLength(skills.length);
+    expect(initial.terms.length).toBeGreaterThan(0);
+    expect(initial.terms.length).toBeLessThan(terms.length);
+    expect(initial.terms.map((candidate) => candidate.title)).toEqual(
+      terms.slice(0, initial.terms.length).map((term) => term.src),
+    );
+    expect(filtered.skills).toHaveLength(skills.length);
+    expect(filtered.terms.length).toBeGreaterThan(initial.terms.length);
+    expect(filtered.terms.length).toBeLessThan(terms.length);
+    expect(filtered.terms.map((candidate) => candidate.title)).toEqual(
+      terms.slice(0, filtered.terms.length).map((term) => term.src),
+    );
   });
 
   it("按当前语言匹配全部展示字段，忽略没有源文的术语", () => {

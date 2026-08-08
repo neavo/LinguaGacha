@@ -69,26 +69,29 @@ describe("llm-model-catalog", () => {
       }),
     ).resolves.toEqual(["models/gemini-a", "models/gemini-z"]);
 
-    expect(fetch_mock).toHaveBeenNthCalledWith(
-      1,
-      "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",
-      {
-        headers: expect.objectContaining({
-          "x-goog-api-key": "google-key-a",
-          "User-Agent": expect.stringContaining("Chrome/133"),
-          "X-Trace": "trace-google",
-        }),
-        method: "GET",
-      },
+    const first_url = new URL(String(fetch_mock.mock.calls[0]?.[0]));
+    const second_url = new URL(String(fetch_mock.mock.calls[1]?.[0]));
+    const page_size = Number(first_url.searchParams.get("pageSize"));
+    expect(first_url.origin + first_url.pathname).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models",
     );
-    expect(fetch_mock).toHaveBeenNthCalledWith(
-      2,
-      "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&pageToken=page+2",
-      {
-        headers: expect.objectContaining({ "x-goog-api-key": "google-key-a" }),
-        method: "GET",
-      },
-    );
+    expect(Number.isSafeInteger(page_size)).toBe(true);
+    expect(page_size).toBeGreaterThan(0);
+    expect(second_url.searchParams.get("pageSize")).toBe(page_size.toString());
+    expect(second_url.searchParams.get("pageToken")).toBe("page 2");
+
+    expect(fetch_mock).toHaveBeenNthCalledWith(1, expect.any(String), {
+      headers: expect.objectContaining({
+        "x-goog-api-key": "google-key-a",
+        "User-Agent": expect.stringContaining("Chrome/133"),
+        "X-Trace": "trace-google",
+      }),
+      method: "GET",
+    });
+    expect(fetch_mock).toHaveBeenNthCalledWith(2, expect.any(String), {
+      headers: expect.objectContaining({ "x-goog-api-key": "google-key-a" }),
+      method: "GET",
+    });
   });
 
   it("Anthropic 模型列表排序并使用默认地址和供应商请求头", async () => {

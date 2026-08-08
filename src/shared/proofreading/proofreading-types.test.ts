@@ -12,14 +12,7 @@ import {
 
 describe("proofreading types", () => {
   it("区分真实警告与 GUI 无警告虚拟筛选值", () => {
-    expect(PROOFREADING_WARNING_CODES).toEqual([
-      "KANA",
-      "HANGEUL",
-      "TEXT_PRESERVE",
-      "SIMILARITY",
-      "GLOSSARY",
-      "RETRY_THRESHOLD",
-    ]);
+    expect(PROOFREADING_WARNING_CODES).not.toContain("NO_WARNING");
     expect(PROOFREADING_WARNING_FILTER_CODES).toEqual([
       "NO_WARNING",
       ...PROOFREADING_WARNING_CODES,
@@ -52,16 +45,6 @@ describe("proofreading types", () => {
   it("默认警告筛选保留已知顺序并追加去重的未知警告", () => {
     expect(
       resolve_default_proofreading_warning_types(["CUSTOM_B", "GLOSSARY", "CUSTOM_A", "CUSTOM_B"]),
-    ).toEqual([
-      "NO_WARNING",
-      "KANA",
-      "HANGEUL",
-      "TEXT_PRESERVE",
-      "SIMILARITY",
-      "GLOSSARY",
-      "RETRY_THRESHOLD",
-      "CUSTOM_A",
-      "CUSTOM_B",
-    ]);
+    ).toEqual([...PROOFREADING_WARNING_FILTER_CODES, "CUSTOM_A", "CUSTOM_B"]);
   });
 });

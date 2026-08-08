@@ -49,7 +49,10 @@ export function apply_google_request_overrides(
   return Object.assign(result, snapshot.extra_body);
 }
 
-/** 按 Gemini 3 子系列支持范围生成 thinkingConfig；其它代际只接受显式 extra_body。 */
+/**
+ * 按 Gemini 子系列支持范围生成 thinkingConfig；其它代际只接受显式 extra_body。
+ * 模型识别和档位映射会随供应商能力调整，不逐项固化当前模型名与结果字面量测试。
+ */
 // https://ai.google.dev/gemini-api/docs/generate-content/thinking
 export function build_google_thinking_config(
   snapshot: Pick<ModelRequestSnapshot, "model_id" | "thinking_level">,

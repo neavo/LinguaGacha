@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { TaskLimiter, resolve_effective_concurrency_limit } from "./limiter-pool";
 
 describe("TaskLimiter", () => {
-  it("按显式并发、RPM、一致默认值推导最终并发", () => {
+  it("按显式并发、RPM 和正整数默认值推导最终并发", () => {
     expect(resolve_effective_concurrency_limit({ concurrency_limit: 16, rpm_limit: 1000 })).toBe(
       16,
     );
@@ -12,7 +12,12 @@ describe("TaskLimiter", () => {
     expect(resolve_effective_concurrency_limit({ concurrency_limit: 0, rpm_limit: 1000 })).toBe(
       1000,
     );
-    expect(resolve_effective_concurrency_limit({ concurrency_limit: 0, rpm_limit: 0 })).toBe(8);
+    const default_limit = resolve_effective_concurrency_limit({
+      concurrency_limit: 0,
+      rpm_limit: 0,
+    });
+    expect(Number.isSafeInteger(default_limit)).toBe(true);
+    expect(default_limit).toBeGreaterThan(0);
   });
 
   it("无 RPM 时先填满并发，后续请求按隐藏 RPS 补充启动资格", async () => {

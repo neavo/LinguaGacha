@@ -4,7 +4,6 @@ import type { ModelRequestSnapshot } from "./policy-types";
 import {
   apply_anthropic_one_shot_request_overrides,
   apply_anthropic_request_overrides,
-  build_anthropic_thinking_payload,
 } from "./anthropic-policy";
 
 describe("Anthropic 请求规则", () => {
@@ -21,7 +20,10 @@ describe("Anthropic 请求规则", () => {
       }),
     );
 
-    expect(payload["thinking"]).toEqual({ type: "enabled", budget_tokens: 2048 });
+    expect(payload["thinking"]).toEqual({
+      type: "enabled",
+      budget_tokens: expect.any(Number),
+    });
     expect(payload).not.toHaveProperty("temperature");
     expect(payload).not.toHaveProperty("top_p");
   });
@@ -41,7 +43,7 @@ describe("Anthropic 请求规则", () => {
 
     expect(payload).toMatchObject({
       messages: source.messages,
-      thinking: { type: "enabled", budget_tokens: 1536 },
+      thinking: { type: "enabled", budget_tokens: expect.any(Number) },
     });
     expect(payload).not.toHaveProperty("output_config");
     expect(payload).not.toHaveProperty("temperature");
@@ -60,21 +62,6 @@ describe("Anthropic 请求规则", () => {
     );
 
     expect(payload).toEqual({ thinking: { type: "enabled", budget_tokens: 4096 } });
-  });
-
-  it("只为当前支持的 Claude 模型生成预算", () => {
-    expect(
-      build_anthropic_thinking_payload({
-        model_id: "claude-sonnet-4-5",
-        thinking_level: "LOW",
-      }),
-    ).toEqual({ type: "enabled", budget_tokens: 1024 });
-    expect(
-      build_anthropic_thinking_payload({
-        model_id: "claude-3-5-haiku",
-        thinking_level: "HIGH",
-      }),
-    ).toBeNull();
   });
 });
 

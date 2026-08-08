@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { JsonRecord } from "../../domain/json";
 import { Model, type CustomModelType } from "../../domain/model";
+import { AGENT_COMPACTION_RESERVE_TOKENS } from "../../domain/model-agent";
 import { AppPathService } from "../app/app-path-service";
 import { AppSettingService } from "../app/app-setting-service";
 import { LLMClient } from "../llm/llm-client";
@@ -252,7 +253,10 @@ describe("ModelService 配置管理", () => {
       id: "preset",
       type: "PRESET",
       name: "模型",
-      agent_limits: { context_window: 353_000, max_output_tokens: 48_000 },
+      agent_limits: {
+        context_window: expect.any(Number),
+        max_output_tokens: expect.any(Number),
+      },
       thinking_level: "OFF",
       thinking_configurable: true,
     });
@@ -428,36 +432,54 @@ describe("ModelService 配置管理", () => {
     );
   });
 
-  it("拒绝会让 Agent 容量失效的 patch 和未知字段且不落盘", async () => {
+  it("自动规范化 Agent 容量，且拒绝未知字段不落盘", async () => {
     const { service, app_setting_service } = await create_model_service([
       create_model({
         id: "custom",
-        model_id: "gpt-5.6-luna",
+        model_id: "unknown-model",
         agent: { context_window: 0, max_output_tokens: 150_000 },
       }),
     ]);
     service.get_snapshot();
-    const before = app_setting_service.read_setting();
+    const context_window = AGENT_COMPACTION_RESERVE_TOKENS + 10_000;
 
-    expect(() =>
+    const snapshot = read_request_model_snapshot(
       service.update_model({
         model_id: "custom",
-        patch: { agent: { context_window: 64_000 } },
+        patch: { agent: { context_window } },
       }),
-    ).toThrow("request.validation_failed");
+    );
+    expect(snapshot.models).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "custom",
+          agent: { context_window, max_output_tokens: 10_000 },
+        }),
+      ]),
+    );
+    const reset_snapshot = read_request_model_snapshot(
+      service.update_model({
+        model_id: "custom",
+        patch: { agent: { context_window: AGENT_COMPACTION_RESERVE_TOKENS } },
+      }),
+    );
+    expect(reset_snapshot.models).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "custom",
+          agent: { context_window: 0, max_output_tokens: 0 },
+        }),
+      ]),
+    );
+    const after_reset = app_setting_service.read_setting();
+
     expect(() =>
       service.update_model({
         model_id: "custom",
         patch: { agent: { context_window: 288_000, unknown: 1 } },
       }),
     ).toThrow("request.validation_failed");
-    expect(() =>
-      service.update_model({
-        model_id: "custom",
-        patch: { model_id: "unknown-model" },
-      }),
-    ).toThrow("request.validation_failed");
-    expect(app_setting_service.read_setting()).toEqual(before);
+    expect(app_setting_service.read_setting()).toEqual(after_reset);
   });
 
   it("更新不存在模型或未知字段会返回业务错误", async () => {

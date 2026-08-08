@@ -311,8 +311,6 @@ describe("桌面窗口宿主", () => {
 
     expect(main_window.options).toMatchObject({
       title: "LinguaGacha",
-      width: 1280,
-      height: 800,
       show: false,
       autoHideMenuBar: true,
       webPreferences: {

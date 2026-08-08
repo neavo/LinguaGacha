@@ -35,6 +35,7 @@ import {
 } from "@codemirror/view";
 
 import type { GlossaryEntry } from "@domain/quality";
+import { AGENT_COMPACTION_RESERVE_TOKENS } from "@domain/model-agent";
 import type { AgentSkillSnapshot } from "@shared/agent";
 import { useI18n, type LocaleKey } from "@frontend/app/locale/locale-provider";
 import {
@@ -772,8 +773,9 @@ function format_context_usage(usage: {
   warning: boolean;
 } {
   const percent = (usage.tokens / usage.contextWindow) * 100;
-  // 为下一次回复和压缩各保留一份最大输出预算，阈值本身仍保持默认色。
-  const warning = usage.tokens >= usage.contextWindow - usage.maxTokens * 2;
+  // 预警到自动压缩之间保留一份最大输出预算。
+  const warning =
+    usage.tokens >= usage.contextWindow - usage.maxTokens - AGENT_COMPACTION_RESERVE_TOKENS;
   return {
     percent: `${percent.toFixed(1)}%`,
     used: format_context_tokens(usage.tokens),

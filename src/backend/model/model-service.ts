@@ -17,7 +17,6 @@ import {
   type ModelSelection,
   type ModelUsage,
 } from "../../domain/model";
-import { resolve_model_agent_limits } from "../../domain/model-agent";
 import {
   read_json_record,
   type JsonRecord,
@@ -655,11 +654,6 @@ export class ModelService {
       } else {
         result[key] = String(value ?? "");
       }
-    }
-    if (resolve_model_agent_limits(String(result["model_id"] ?? ""), result["agent"]) === null) {
-      throw new AppErrors.RequestValidationError({
-        public_details: { field: "agent" },
-      });
     }
     return this.normalize_model(result);
   }

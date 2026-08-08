@@ -30,8 +30,12 @@ vi.mock("@frontend/pages/model-page/components/model-item-chip", () => ({
 }));
 
 vi.mock("@frontend/pages/model-page/dialogs/model-advanced-settings-dialog", () => ({
-  ModelAdvancedSettingsDialog: (props: { onAgentLimitsError: () => void }) => (
-    <button type="button" aria-label="agent-limits-error" onClick={props.onAgentLimitsError} />
+  ModelAdvancedSettingsDialog: (props: { onAgentLimitsAdjusted: () => void }) => (
+    <button
+      type="button"
+      aria-label="agent-limits-adjusted"
+      onClick={props.onAgentLimitsAdjusted}
+    />
   ),
 }));
 
@@ -164,7 +168,7 @@ describe("ModelPage", () => {
     ).toBe(false);
   });
 
-  it("Agent 容量校验失败时显示本地化警告", async () => {
+  it("Agent 最大输出自动调整时显示本地化警告", async () => {
     const { state } = create_model_page_state();
     use_model_page_state_mock.mockReturnValue(state);
     container = document.createElement("div");
@@ -176,13 +180,13 @@ describe("ModelPage", () => {
 
     await act(async () => {
       container
-        ?.querySelector<HTMLButtonElement>('button[aria-label="agent-limits-error"]')
+        ?.querySelector<HTMLButtonElement>('button[aria-label="agent-limits-adjusted"]')
         ?.click();
     });
 
     expect(push_toast_mock).toHaveBeenCalledWith(
       "warning",
-      "model_page.feedback.agent_limits_invalid",
+      "model_page.feedback.agent_limits_adjusted",
     );
   });
 });

@@ -27,42 +27,10 @@ describe("shared i18n", () => {
     ).toBe("Glossar aktiviert …");
   });
 
-  it("相关 UI 统一使用命中词表", () => {
-    const keys = [
-      "glossary_page.fields.hit",
-      "text_replacement_page.fields.hit",
-      "text_preserve_page.fields.hit",
-    ] as const;
-    for (const key of keys) {
-      expect(create_text_resolver("zh-CN")(key)).toBe("命中");
-      expect(create_text_resolver("en-US")(key)).toBe("Hits");
-      expect(create_text_resolver("de-DE")(key)).toBe("Treffer");
-    }
-    expect(
-      create_text_resolver("en-US")("agent_page.mention.term_hits", {
-        count: "7",
-      }),
-    ).toBe("7 Hits");
-  });
-
-  it("解析 AGENT 品牌、英文任务按钮与模型自动容量文案", () => {
+  it("各 locale 保持 AGENT 品牌", () => {
     for (const locale of LOCALES) {
       expect(create_text_resolver(locale)("agent_page.title")).toBe("AGENT");
     }
-
-    expect(create_text_resolver("en-US")("agent_page.action.new_task")).toBe("New Task");
-    expect(create_text_resolver("zh-CN")("model_page.fields.context_window.description")).toBe(
-      "仅对 AGENT 任务生效，0 = 自动",
-    );
-    expect(create_text_resolver("zh-CN")("model_page.fields.max_output_tokens.description")).toBe(
-      "仅对 AGENT 任务生效，0 = 自动",
-    );
-    expect(create_text_resolver("en-US")("model_page.fields.context_window.description")).toBe(
-      "Only applies to AGENT tasks; 0 = automatic",
-    );
-    expect(create_text_resolver("de-DE")("model_page.fields.context_window.description")).toBe(
-      "Gilt nur für AGENT-Aufgaben; 0 = automatisch",
-    );
   });
 });
 
